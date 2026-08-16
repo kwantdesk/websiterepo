@@ -457,22 +457,14 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
   "bounce-levels": [
     { key: "refreshSeconds", label: "Refresh interval (seconds)", defaultValue: 5, min: 2, max: 60, step: 1 },
     { key: "maximumLevels", label: "Maximum active levels", defaultValue: 8, min: 1, max: 24, step: 1 },
-    { key: "maximumExpirations", label: "Current + next N expirations", defaultValue: 2, min: 1, max: 12, step: 1 },
     { key: "minimumExposurePercentile", label: "Minimum exposure percentile (%)", defaultValue: 90, min: 0, max: 100, step: 1 },
     { key: "minimumPercentOfKing", label: "Minimum KING magnitude (%)", defaultValue: 15, min: 0, max: 100, step: 1 },
-    { key: "minimumExposureStrength", label: "Minimum rendered exposure strength (%)", defaultValue: 0, min: 0, max: 100, step: 1 },
     { key: "minimumRelevanceScore", label: "Minimum relevance score", defaultValue: 55, min: 0, max: 100, step: 1 },
     { key: "maximumDistancePoints", label: "Maximum distance from price · 0 = all", defaultValue: 0, min: 0, max: 10000, step: 1 },
     { key: "clusterDistancePoints", label: "Cluster distance (points)", defaultValue: 25, min: 0.25, max: 500, step: 0.25 },
     { key: "airPocketRatio", label: "Air-pocket maximum density (%)", defaultValue: 20, min: 0, max: 100, step: 1 },
     { key: "historyBuckets", label: "Exposure history (1-minute slices)", defaultValue: 120, min: 2, max: 720, step: 1 },
-    { key: "maximumNodesPerSlice", label: "Maximum visible nodes", defaultValue: 8, min: 4, max: 64, step: 1 },
-    { key: "rocDenominatorFloor", label: "ROC denominator floor", defaultValue: 100000, min: 1, max: 10000000000, step: 10000 },
-    { key: "rocOutlierClampPercent", label: "ROC outlier clamp (%)", defaultValue: 500, min: 25, max: 5000, step: 25 },
-    { key: "rapidAccumulationThresholdPercent", label: "Rapid accumulation threshold (%)", defaultValue: 20, min: 1, max: 500, step: 1 },
-    { key: "accumulationThresholdPercent", label: "Accumulation threshold (%)", defaultValue: 5, min: 0, max: 100, step: 1 },
-    { key: "weakeningMomentumThresholdPercent", label: "Weakening threshold (%)", defaultValue: -5, min: -100, max: 0, step: 1 },
-    { key: "rapidUnwindingThresholdPercent", label: "Rapid unwind threshold (%)", defaultValue: -20, min: -500, max: -1, step: 1 },
+    { key: "maximumNodesPerSlice", label: "Maximum nodes per time slice", defaultValue: 24, min: 4, max: 64, step: 1 },
     { key: "maximumGatekeepers", label: "Maximum Gatekeepers", defaultValue: 2, min: 0, max: 8, step: 1 },
     { key: "maximumMajorNodes", label: "Maximum Major Nodes", defaultValue: 4, min: 0, max: 16, step: 1 },
     { key: "minimumGatekeeperRelevance", label: "Minimum Gatekeeper relevance", defaultValue: 60, min: 0, max: 100, step: 1 },
@@ -494,32 +486,12 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "retirementExposurePercentile", label: "Retirement exposure percentile (%)", defaultValue: 65, min: 0, max: 100, step: 1 },
     { key: "touchTolerancePercent", label: "Touch tolerance (%)", defaultValue: 0.05, min: 0.001, max: 2, step: 0.001 },
     { key: "touchDecayFactor", label: "Touch freshness retention (%)", defaultValue: 85, min: 0, max: 100, step: 1 },
-    { key: "coreThicknessMin", label: "Core thickness minimum", defaultValue: 1, min: 0.25, max: 8, step: 0.25 },
-    { key: "coreThicknessMax", label: "Core thickness maximum", defaultValue: 5, min: 1, max: 16, step: 0.5 },
-    { key: "bodyRadiusMin", label: "Body radius minimum", defaultValue: 2, min: 0.5, max: 12, step: 0.5 },
-    { key: "bodyRadiusMax", label: "Body radius maximum", defaultValue: 18, min: 2, max: 48, step: 1 },
-    { key: "haloRadiusMin", label: "Halo radius minimum", defaultValue: 3, min: 0, max: 20, step: 0.5 },
-    { key: "haloRadiusMax", label: "Halo radius maximum", defaultValue: 28, min: 3, max: 72, step: 1 },
+    { key: "minimumNodeThickness", label: "Minimum exposure thickness", defaultValue: 2, min: 0.5, max: 12, step: 0.5 },
+    { key: "maximumNodeThickness", label: "Maximum exposure thickness", defaultValue: 18, min: 4, max: 48, step: 1 },
     { key: "lineOpacity", label: "Exposure field opacity (%)", defaultValue: 78, min: 5, max: 100, step: 1 },
     { key: "minimumNodeOpacity", label: "Minimum exposure opacity (%)", defaultValue: 8, min: 0, max: 60, step: 1 },
-    { key: "maximumNodeOpacity", label: "Maximum exposure opacity (%)", defaultValue: 92, min: 10, max: 100, step: 1 },
     { key: "exposureIntensity", label: "Exposure intensity", defaultValue: 1, min: 0.25, max: 4, step: 0.05 },
     { key: "glowStrength", label: "Glow strength", defaultValue: 5, min: 0, max: 20, step: 1 },
-    { key: "glowRadius", label: "Glow radius", defaultValue: 8, min: 0, max: 40, step: 1 },
-    { key: "coreBrightness", label: "Core brightness (%)", defaultValue: 100, min: 0, max: 150, step: 1 },
-    { key: "innerHaloStrength", label: "Inner body strength (%)", defaultValue: 78, min: 0, max: 125, step: 1 },
-    { key: "outerHaloStrength", label: "Outer halo strength (%)", defaultValue: 28, min: 0, max: 100, step: 1 },
-    { key: "kingContrastBoost", label: "KING contrast boost (%)", defaultValue: 115, min: 50, max: 200, step: 1 },
-    { key: "historicalFade", label: "Historical fade (%)", defaultValue: 18, min: 0, max: 90, step: 1 },
-    { key: "liveEdgeBrightness", label: "Live-edge brightness (%)", defaultValue: 112, min: 50, max: 180, step: 1 },
-    { key: "textureDensity", label: "Texture density", defaultValue: 5, min: 1, max: 18, step: 1 },
-    { key: "textureSize", label: "Texture size", defaultValue: 1, min: 0.25, max: 4, step: 0.25 },
-    { key: "temporalSmoothing", label: "Temporal smoothing (%)", defaultValue: 24, min: 0, max: 90, step: 1 },
-    { key: "buildExpansionSensitivity", label: "Build expansion sensitivity (%)", defaultValue: 100, min: 0, max: 200, step: 1 },
-    { key: "weakeningContractionSensitivity", label: "Weakening contraction sensitivity (%)", defaultValue: 100, min: 0, max: 200, step: 1 },
-    { key: "dumpFadeSpeed", label: "Dump collapse speed (%)", defaultValue: 100, min: 0, max: 200, step: 1 },
-    { key: "reappearanceFadeIn", label: "Reappearance fade-in (%)", defaultValue: 100, min: 0, max: 200, step: 1 },
-    { key: "historicalSamplingResolution", label: "Historical sampling resolution (minutes)", defaultValue: 1, min: 1, max: 30, step: 1 },
     { key: "alertDistancePoints", label: "Approach alert distance", defaultValue: 5, min: 0.25, max: 500, step: 0.25 },
     { key: "alertMinimumRelevance", label: "Alert minimum relevance", defaultValue: 55, min: 0, max: 100, step: 1 },
     { key: "alertMinimumPercentOfKing", label: "Alert minimum KING magnitude (%)", defaultValue: 15, min: 0, max: 100, step: 1 },
@@ -1109,18 +1081,11 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
   } : {}),
   ...(indicatorId === "bounce-levels" ? {
     preset: "balanced-intraday",
-    visualMode: "advanced-heat-field",
-    temporalInterpolation: "continuous",
-    strengthCurve: "square-root",
-    textureStyle: "micro-orbs",
-    performanceQuality: "auto",
     provider: "quantdata",
     sourceTicker: "AUTO",
     greekMode: "GAMMA",
     expirationMode: "zero-to-one-dte",
     expirationDates: "",
-    minimumExpirationDate: "",
-    maximumExpirationDate: "",
     includeWeeklies: true,
     includeMonthlies: true,
     includeQuarterlies: true,
@@ -1139,21 +1104,7 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     showRetiredHistory: true,
     showTouchCount: true,
     showRocArrows: true,
-    showRocLabels: false,
-    showFloorCeilingMarker: false,
-    showGatekeeperMarker: false,
-    showHistoricalExposure: true,
-    showLiveExposure: true,
-    kingAlwaysVisible: true,
-    textureEnabled: true,
-    showGlow: true,
-    showRoleLabels: false,
-    showStrikeLabels: false,
-    showExposureLabels: false,
-    showPercentLabels: false,
-    showRightSideBoxes: false,
-    showKingText: false,
-    showKingBadge: false,
+    microOrbTexture: true,
     tooltipsEnabled: true,
     enableAlerts: false,
     alertLevelApproach: true,
@@ -1173,7 +1124,7 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     developingColor: theme?.upColor ?? "#22C55E",
     weakeningColor: theme?.downColor ?? "#EF4444",
     airPocketColor: theme?.gridColor ?? "#71717A",
-    bounceLevelsSettingsVersion: 3,
+    bounceLevelsSettingsVersion: 2,
   } : {}),
   ...(indicatorId === "dark-pool-map" ? {
     preset: "balanced",
@@ -1831,13 +1782,8 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
       provider: ["quantdata"],
       sourceTicker: ["AUTO", "QQQ", "NDX", "SPY", "SPX", "IWM"],
       greekMode: ["GAMMA", "DELTA", "VANNA", "CHARM"],
-      expirationMode: ["zero-dte", "zero-to-one-dte", "zero-to-seven-dte", "front-expiration", "current-plus-next", "current-plus-next-two", "current-plus-next-n", "date-range", "all-expirations", "custom-dte-range", "specific-expirations"],
+      expirationMode: ["zero-dte", "zero-to-one-dte", "zero-to-seven-dte", "front-expiration", "all-expirations", "custom-dte-range", "specific-expirations"],
       preset: ["balanced-intraday", "zero-dte-scalper", "major-nodes-only", "fresh-bounce-levels", "node-momentum", "clean-chart", "research"],
-      visualMode: ["advanced-heat-field", "clean-heat", "orb-field", "microbar-energy", "minimal", "legacy-lines"],
-      temporalInterpolation: ["continuous", "stepped", "discrete"],
-      strengthCurve: ["linear", "square-root", "logarithmic"],
-      textureStyle: ["micro-orbs", "micro-bars", "pulse", "fine-grain"],
-      performanceQuality: ["auto", "ultra", "high", "medium", "low"],
     };
     for (const [key, allowed] of Object.entries(enumValues)) {
       if (!allowed.includes(String(settings[key]))) settings[key] = defaults[key];
@@ -1845,18 +1791,7 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
     for (const unsafeKey of ["apiKey", "credential", "credentials", "providerCredential", "liveSnapshot", "snapshotData", "levels", "history"]) {
       delete settings[unsafeKey];
     }
-    if (Number(settings.bounceLevelsSettingsVersion ?? 0) < 3) {
-      settings.visualMode = "advanced-heat-field";
-      settings.temporalInterpolation = "continuous";
-      settings.strengthCurve = "square-root";
-      settings.textureStyle = "micro-orbs";
-      settings.textureEnabled = settings.microOrbTexture !== false;
-      settings.maximumNodesPerSlice = 8;
-      settings.showLabels = false;
-      settings.showValues = false;
-    }
-    delete settings.microOrbTexture;
-    return { ...normalizedInstance, settings: { ...settings, bounceLevelsSettingsVersion: 3 } };
+    return { ...normalizedInstance, settings: { ...settings, bounceLevelsSettingsVersion: 1 } };
   }
   if (
     normalizedInstance.indicatorId === "depth-of-market"

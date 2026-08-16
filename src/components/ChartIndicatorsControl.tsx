@@ -1248,7 +1248,7 @@ export default function ChartIndicatorsControl({
                     ["History", "historyMode", [["current-session", "Current / last session"], ["session-date", "Historical session date"], ["custom-range", "Custom ISO range"]]],
                     ["Mode", "mode", [["raw", "Raw exposure"], ["difference", "Exposure difference"]]],
                     ["Difference baseline", "baseline", [["previous-bucket", "Previous bucket"], ["session-open", "Session open"], ["rolling-average", "Rolling average"]]],
-                    ["Expiration", "expirationMode", [["zero-dte", "0DTE"], ["front-expiration", "Current expiry"], ["current-plus-next", "Current + next"], ["current-plus-next-two", "Current + next 2"], ["current-plus-next-n", "Current + next N"], ["zero-to-one-dte", "0–1 DTE"], ["zero-to-seven-dte", "0–7 DTE"], ["specific-expirations", "Selected expirations"], ["custom-dte-range", "DTE range"], ["date-range", "Date range"], ["all-expirations", "All available"]]],
+                    ["Expiration", "expirationMode", [["zero-dte", "0DTE"], ["zero-to-one-dte", "0–1 DTE"], ["zero-to-seven-dte", "0–7 DTE"], ["front-expiration", "Front expiration"], ["all-expirations", "All expirations"], ["custom-dte-range", "Custom DTE range"], ["specific-expirations", "Specific expirations"]]],
                     ["Content", "contentMode", [["net", "Net"], ["call", "Calls"], ["put", "Puts"], ["gross", "Gross absolute"], ["call-put-split", "Call / put split"]]],
                     ["Mapped bins", "aggregationMode", [["exact-display-tick", "Exact display tick"], ["auto-bin", "Automatic"], ["custom-bin", "Custom bin"]]],
                     ["Visual", "visualMode", [["bubbles", "Magnitude bubbles"], ["fixed-dots", "Fixed dots"], ["heat-cells", "Heat cells"], ["horizontal-ribbons", "Horizontal ribbons"], ["hybrid", "Hybrid"]]],
@@ -1310,21 +1310,6 @@ export default function ChartIndicatorsControl({
                       placeholder="2026-08-15, 2026-08-21"
                     />
                   </label>
-                  {String(settingsInstance.settings?.expirationMode) === "date-range" ? (
-                    <div className="grid gap-3 sm:col-span-2 sm:grid-cols-2">
-                      {["minimumExpirationDate", "maximumExpirationDate"].map((key) => (
-                        <label key={key} className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
-                          <span>{key === "minimumExpirationDate" ? "Start expiration date" : "End expiration date"}</span>
-                          <input
-                            type="date"
-                            value={String(settingsInstance.settings?.[key] ?? "")}
-                            onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [key]: event.target.value } }))}
-                            className="h-9 w-full border border-border bg-background px-3 font-mono text-[10px] normal-case tracking-normal text-foreground outline-none focus:border-primary/40"
-                          />
-                        </label>
-                      ))}
-                    </div>
-                  ) : null}
                   <div className="grid gap-2 sm:col-span-2 sm:grid-cols-2">
                     {[
                       ["enableAlerts", "Enable live alerts"],
@@ -1541,7 +1526,7 @@ export default function ChartIndicatorsControl({
                       onChange={(event) => {
                         const preset = event.target.value;
                         const presetSettings: Record<string, string | number | boolean> = preset === "zero-dte-scalper"
-                          ? { greekMode: "GAMMA", expirationMode: "zero-dte", maximumLevels: 5, maximumNodesPerSlice: 8, proximityWeight: 25, accumulationWeight: 25, persistenceWeight: 5, freshnessWeight: 15, refreshSeconds: 2, visualMode: "advanced-heat-field", temporalSmoothing: 12, showDevelopingNodes: true, showRocArrows: true }
+                          ? { greekMode: "GAMMA", expirationMode: "zero-dte", maximumLevels: 5, proximityWeight: 25, accumulationWeight: 25, persistenceWeight: 5, freshnessWeight: 15, refreshSeconds: 2, showDevelopingNodes: true, showRocArrows: true }
                           : preset === "major-nodes-only"
                             ? { maximumLevels: 8, maximumMajorNodes: 0, showKing: true, showFloor: true, showCeiling: true, showGatekeepers: true, showMajorNodes: false, showClusters: false, showDevelopingNodes: false, showWeakeningNodes: false, showRetiredHistory: false, showAirPockets: false }
                             : preset === "fresh-bounce-levels"
@@ -1549,10 +1534,10 @@ export default function ChartIndicatorsControl({
                               : preset === "node-momentum"
                                 ? { accumulationWeight: 30, freshnessWeight: 5, showRocArrows: true, showDevelopingNodes: true, showWeakeningNodes: true, enableAlerts: true }
                                 : preset === "clean-chart"
-                                  ? { visualMode: "clean-heat", glowStrength: 0, textureEnabled: false, showAirPockets: false, showTouchCount: false, showRocArrows: false, showRetiredHistory: false, showValues: false }
+                                  ? { glowStrength: 0, showAirPockets: false, showTouchCount: false, showRocArrows: false, showRetiredHistory: false, showValues: false }
                                   : preset === "research"
                                     ? { maximumLevels: 24, minimumExposurePercentile: 0, minimumPercentOfKing: 0, minimumRelevanceScore: 0, showAirPockets: true, showTouchCount: true, showRocArrows: true, showRetiredHistory: true, showDevelopingNodes: true, showWeakeningNodes: true, showClusters: true }
-                                    : { greekMode: "GAMMA", expirationMode: "zero-to-one-dte", maximumLevels: 8, maximumNodesPerSlice: 8, minimumExposurePercentile: 90, minimumPercentOfKing: 15, minimumRelevanceScore: 55, magnitudeWeight: 45, proximityWeight: 15, accumulationWeight: 15, persistenceWeight: 10, freshnessWeight: 10, clusterWeight: 5, visualMode: "advanced-heat-field", temporalInterpolation: "continuous", strengthCurve: "square-root", textureEnabled: true, showDevelopingNodes: true, showClusters: true, showAirPockets: false, refreshSeconds: 5 };
+                                    : { greekMode: "GAMMA", expirationMode: "front-expiration", maximumLevels: 8, minimumExposurePercentile: 90, minimumPercentOfKing: 15, minimumRelevanceScore: 55, magnitudeWeight: 45, proximityWeight: 15, accumulationWeight: 15, persistenceWeight: 10, freshnessWeight: 10, clusterWeight: 5, showDevelopingNodes: true, showClusters: true, showAirPockets: true, refreshSeconds: 5 };
                         replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), preset, ...presetSettings } }));
                       }}
                       className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
@@ -1570,12 +1555,7 @@ export default function ChartIndicatorsControl({
                   {[
                     ["Options source", "sourceTicker", [["AUTO", "Automatic"], ["QQQ", "QQQ"], ["NDX", "NDX"], ["SPY", "SPY"], ["SPX", "SPX"], ["IWM", "IWM"]]],
                     ["Exposure Greek", "greekMode", [["GAMMA", "Gamma"], ["DELTA", "Delta"], ["VANNA", "Vanna"], ["CHARM", "Charm"]]],
-                    ["Expiration", "expirationMode", [["zero-dte", "0DTE"], ["zero-to-one-dte", "0–1 DTE"], ["zero-to-seven-dte", "0–7 DTE"], ["front-expiration", "Front expiration"], ["current-plus-next", "Current + next"], ["current-plus-next-two", "Current + next 2"], ["current-plus-next-n", "Current + next N"], ["all-expirations", "All expirations"], ["custom-dte-range", "Custom DTE range"], ["specific-expirations", "Specific expirations"], ["date-range", "Date range"]]],
-                    ["Visual mode", "visualMode", [["advanced-heat-field", "Advanced heat field"], ["clean-heat", "Clean heat"], ["orb-field", "Orb field"], ["microbar-energy", "Microbar energy"], ["minimal", "Minimal"], ["legacy-lines", "Legacy lines"]]],
-                    ["Temporal interpolation", "temporalInterpolation", [["continuous", "Continuous"], ["stepped", "Stepped"], ["discrete", "Discrete snapshots"]]],
-                    ["Strength curve", "strengthCurve", [["square-root", "Square root"], ["linear", "Linear"], ["logarithmic", "Logarithmic"]]],
-                    ["Texture", "textureStyle", [["micro-orbs", "Micro orbs"], ["micro-bars", "Micro bars"], ["pulse", "Pulse"], ["fine-grain", "Fine grain"]]],
-                    ["Performance", "performanceQuality", [["auto", "Automatic"], ["ultra", "Ultra"], ["high", "High"], ["medium", "Medium"], ["low", "Low"]]],
+                    ["Expiration", "expirationMode", [["zero-dte", "0DTE"], ["zero-to-one-dte", "0–1 DTE"], ["zero-to-seven-dte", "0–7 DTE"], ["front-expiration", "Front expiration"], ["all-expirations", "All expirations"], ["custom-dte-range", "Custom DTE range"], ["specific-expirations", "Specific expirations"]]],
                   ].map(([label, key, options]) => (
                     <label key={String(key)} className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
                       <span>{String(label)}</span>
@@ -1598,21 +1578,6 @@ export default function ChartIndicatorsControl({
                       placeholder="2026-08-21, 2026-08-28"
                     />
                   </label>
-                  {String(settingsInstance.settings?.expirationMode) === "date-range" ? (
-                    <div className="grid gap-3 sm:col-span-2 sm:grid-cols-2">
-                      {["minimumExpirationDate", "maximumExpirationDate"].map((key) => (
-                        <label key={key} className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
-                          <span>{key === "minimumExpirationDate" ? "Start expiration date" : "End expiration date"}</span>
-                          <input
-                            type="date"
-                            value={String(settingsInstance.settings?.[key] ?? "")}
-                            onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [key]: event.target.value } }))}
-                            className="h-9 w-full border border-border bg-background px-3 font-mono text-[10px] normal-case tracking-normal text-foreground outline-none focus:border-primary/40"
-                          />
-                        </label>
-                      ))}
-                    </div>
-                  ) : null}
                   <div className="border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
                     KING is always calculated from the full filtered strike list using the largest absolute signed exposure. Centre price and KING remain independent. Historical snapshots never read beyond replay time.
                   </div>

@@ -15,35 +15,11 @@ export type BounceLevelsPrimitiveData = {
   timeAnchors: number[];
   opacity: number;
   intensity: number;
-  coreThicknessMin: number;
-  coreThicknessMax: number;
-  bodyRadiusMin: number;
-  bodyRadiusMax: number;
-  haloRadiusMin: number;
-  haloRadiusMax: number;
+  minimumNodeHeight: number;
+  maximumNodeHeight: number;
   minimumOpacity: number;
-  maximumOpacity: number;
-  coreBrightness: number;
-  innerHaloStrength: number;
-  outerHaloStrength: number;
   glowStrength: number;
-  glowRadius: number;
-  kingContrastBoost: number;
-  historicalFade: number;
-  liveEdgeBrightness: number;
-  textureEnabled: boolean;
-  textureDensity: number;
-  textureSize: number;
-  textureStyle: "micro-orbs" | "micro-bars" | "pulse" | "fine-grain";
-  visualMode: "advanced-heat-field" | "clean-heat" | "orb-field" | "microbar-energy" | "minimal" | "legacy-lines";
-  temporalInterpolation: "continuous" | "stepped" | "discrete";
-  strengthCurve: "linear" | "square-root" | "logarithmic";
-  temporalSmoothing: number;
-  buildExpansionSensitivity: number;
-  weakeningContractionSensitivity: number;
-  dumpFadeSpeed: number;
-  reappearanceFadeIn: number;
-  performanceQuality: "auto" | "ultra" | "high" | "medium" | "low";
+  microOrbTexture: boolean;
   positiveColor: string;
   negativeColor: string;
 };
@@ -62,12 +38,11 @@ const rgba = (color: string, opacity: number) => {
   const value = rgb(color);
   return `rgba(${value.r},${value.g},${value.b},${clamp(opacity, 0, 1)})`;
 };
-export function transformBounceStrength(value: number, curve: BounceLevelsPrimitiveData["strengthCurve"]) {
-  const normalized = clamp(value, 0, 1);
-  if (curve === "square-root") return Math.sqrt(normalized);
-  if (curve === "logarithmic") return Math.log1p(normalized * 9) / Math.log(10);
-  return normalized;
-}
+const percentile = (values: number[], fraction: number) => {
+  if (!values.length) return 1;
+  const sorted = [...values].sort((left, right) => left - right);
+  return sorted[Math.min(sorted.length - 1, Math.max(0, Math.ceil(sorted.length * fraction) - 1))] || 1;
+};
 
 const coordinateForTimestamp = (
   chart: IChartApi,
@@ -130,9 +105,7 @@ type PreparedNode = {
   left: number;
   right: number;
   y: number;
-  coreThickness: number;
-  bodyRadius: number;
-  haloRadius: number;
+  height: number;
   opacity: number;
   strength: number;
   color: string;
@@ -152,37 +125,33 @@ const deterministicUnit = (value: string) => {
 function traceRibbon(
   context: CanvasRenderingContext2D,
   points: PreparedNode[],
-  radius: (point: PreparedNode) => number,
-  interpolation: BounceLevelsPrimitiveData["temporalInterpolation"],
-  terminal: boolean,
-  buildExpansionSensitivity: number,
-  weakeningContractionSensitivity: number,
-  dumpFadeSpeed: number,
+  heightScale: number,
+  minimumHalfHeight: number,
 ) {
   const first = points[0];
   const last = points[points.length - 1];
-  const halfHeight = (point: PreparedNode) => Math.max(0.35, radius(point));
+  const halfHeight = (point: PreparedNode) => Math.max(minimumHalfHeight, point.height * heightScale * 0.5);
   const finalHalfHeight = halfHeight(last);
-  const edgeExtension = 0;
-  const edgeX = last.right;
-  const edgeHalfHeight = terminal
-    ? Math.max(0.25, finalHalfHeight * 0.06)
-    : last.momentum === "building"
-    ? finalHalfHeight * (1 + 0.14 * clamp(buildExpansionSensitivity, 0, 2))
+  const nominalWidth = Math.max(3, last.right - last.left);
+  const edgeExtension = last.momentum === "building"
+    ? clamp(nominalWidth * 0.5, 3, 18)
     : last.momentum === "weakening"
-      ? Math.max(0.5, finalHalfHeight * (1 - 0.78 * clamp(weakeningContractionSensitivity, 0, 1.2)))
+      ? clamp(nominalWidth * 0.35, 2, 12)
       : last.momentum === "dumped"
-        ? Math.max(0.35, finalHalfHeight * (1 - 0.92 * clamp(dumpFadeSpeed, 0, 1.08)))
+        ? clamp(nominalWidth * 0.24, 2, 8)
+        : 0;
+  const edgeX = last.right + edgeExtension;
+  const edgeHalfHeight = last.momentum === "building"
+    ? finalHalfHeight * 1.14
+    : last.momentum === "weakening"
+      ? Math.max(0.5, finalHalfHeight * 0.22)
+      : last.momentum === "dumped"
+        ? Math.max(0.35, finalHalfHeight * 0.08)
         : finalHalfHeight;
 
   context.beginPath();
   context.moveTo(first.left, first.y - halfHeight(first));
-  for (const point of points) {
-    if (interpolation === "stepped") {
-      context.lineTo(point.left, point.y - halfHeight(point));
-      context.lineTo(point.right, point.y - halfHeight(point));
-    } else context.lineTo(point.right, point.y - halfHeight(point));
-  }
+  for (const point of points) context.lineTo(point.right, point.y - halfHeight(point));
   if (edgeExtension > 0) {
     const controlX = last.right + edgeExtension * (last.momentum === "dumped" ? 0.18 : 0.55);
     context.quadraticCurveTo(controlX, last.y - finalHalfHeight, edgeX, last.y - edgeHalfHeight);
@@ -194,10 +163,7 @@ function traceRibbon(
   }
   for (let index = points.length - 1; index >= 0; index -= 1) {
     const point = points[index];
-    if (interpolation === "stepped") {
-      context.lineTo(point.right, point.y + halfHeight(point));
-      context.lineTo(point.left, point.y + halfHeight(point));
-    } else context.lineTo(point.left, point.y + halfHeight(point));
+    context.lineTo(point.left, point.y + halfHeight(point));
   }
   context.closePath();
   return { edgeX, edgeY: last.y, edgeHalfHeight };
@@ -247,6 +213,8 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
         .sort((left, right) => left.timestamp - right.timestamp);
       if (!slices.length) { this.primitive.setHits([]); return; }
 
+      const visibleNodes = slices.flatMap((slice) => slice.nodes.map((node) => ({ slice, node })));
+      const scaleCeiling = percentile(visibleNodes.map(({ node }) => node.absoluteExposure).filter((value) => value > 0), 0.98);
       const hits: RenderedHit[] = [];
       const prepared: PreparedNode[] = [];
       context.save();
@@ -254,11 +222,6 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
       context.rect(0, 0, mediaSize.width, mediaSize.height);
       context.clip();
 
-      const qualityTextureMultiplier = data.performanceQuality === "ultra" ? 1.5 : data.performanceQuality === "high" ? 1.25 : data.performanceQuality === "medium" ? 0.75 : data.performanceQuality === "low" ? 0.35 : 1;
-      const historicalSpan = Math.max(1, slices.length - 1);
-      const previousStrengthByStrike = new Map<string, number>();
-      const confirmedBoundaryMs = Math.min(Date.now(), data.snapshot.snapshotTimeMs + Math.max(1_000, data.snapshot.refreshAfterMs));
-      const confirmedBoundaryX = coordinateForTimestamp(chart, confirmedBoundaryMs, anchors, coordinateCache);
       slices.forEach((slice, sliceIndex) => {
         const previousX = slices[sliceIndex - 1]?.x;
         const nextX = slices[sliceIndex + 1]?.x;
@@ -266,28 +229,20 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
           ? Math.abs(nextX - slice.x)
           : previousX !== undefined ? Math.abs(slice.x - previousX) : 8;
         const left = previousX === undefined ? slice.x - nominalWidth / 2 : (previousX + slice.x) / 2;
-        const nominalRight = nextX === undefined ? slice.x + nominalWidth / 2 : (slice.x + nextX) / 2;
-        const right = sliceIndex === slices.length - 1 && confirmedBoundaryX !== null
-          ? Math.max(slice.x, Math.min(nominalRight, confirmedBoundaryX))
-          : nominalRight;
+        const right = nextX === undefined ? slice.x + nominalWidth / 2 : (slice.x + nextX) / 2;
         const width = Math.max(3, right - left + 0.75);
         for (const node of slice.nodes) {
           const coordinate = series.priceToCoordinate(node.mappedPrice);
           if (coordinate === null) continue;
           const y = Number(coordinate);
           if (y < -40 || y > mediaSize.height + 40) continue;
-          const rawStrength = clamp(node.percentOfKingAbsolute * data.intensity, 0, 1);
-          const previousStrength = previousStrengthByStrike.get(`${node.sourceStrike}:${Math.sign(node.signedExposure)}`);
-          const smoothing = clamp(data.temporalSmoothing, 0, 1);
-          const smoothedStrength = previousStrength === undefined ? rawStrength : previousStrength * smoothing + rawStrength * (1 - smoothing);
-          previousStrengthByStrike.set(`${node.sourceStrike}:${Math.sign(node.signedExposure)}`, smoothedStrength);
-          const visualStrength = transformBounceStrength(smoothedStrength, data.strengthCurve);
-          const ageFraction = sliceIndex / historicalSpan;
-          const historicalMultiplier = 1 - (1 - ageFraction) * clamp(data.historicalFade, 0, 0.9);
-          const liveMultiplier = sliceIndex === slices.length - 1 ? data.liveEdgeBrightness : 1;
-          const kingMultiplier = node.role === "KING" ? data.kingContrastBoost : 1;
-          const brightness = clamp(visualStrength * historicalMultiplier * liveMultiplier * kingMultiplier, 0, 1);
-          const opacity = clamp(data.opacity * (data.minimumOpacity + (data.maximumOpacity - data.minimumOpacity) * brightness), 0.01, 1);
+          const normalized = clamp((node.absoluteExposure * data.intensity) / Math.max(1, scaleCeiling), 0, 1);
+          const visualStrength = Math.sqrt(normalized);
+          const growth = clamp(node.rateOfChangePercent / 100, -0.55, 0.75);
+          const persistenceBrightness = clamp(Math.sqrt(node.bucketShare * 5), 0.15, 1);
+          const brightness = clamp(Math.max(visualStrength, persistenceBrightness * 0.72) * (1 + growth * 0.18), 0.08, 1);
+          const height = data.minimumNodeHeight + (data.maximumNodeHeight - data.minimumNodeHeight) * visualStrength;
+          const opacity = clamp(data.opacity * (data.minimumOpacity + (1 - data.minimumOpacity) * brightness), 0.02, 1);
           const color = node.signedExposure >= 0 ? data.positiveColor : data.negativeColor;
 
           prepared.push({
@@ -296,15 +251,11 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
             left,
             right: left + width,
             y,
-            coreThickness: data.coreThicknessMin + (data.coreThicknessMax - data.coreThicknessMin) * visualStrength,
-            bodyRadius: data.bodyRadiusMin + (data.bodyRadiusMax - data.bodyRadiusMin) * visualStrength,
-            haloRadius: data.haloRadiusMin + (data.haloRadiusMax - data.haloRadiusMin) * visualStrength,
+            height,
             opacity,
             strength: visualStrength,
             color,
-            momentum: node.momentumState === "rapid-unwinding" ? "dumped"
-              : node.momentumState === "weakening" ? "weakening"
-                : node.momentumState === "accumulating" || node.momentumState === "rapid-accumulation" ? "building" : "stable",
+            momentum: classifyBounceNodeMomentum(node.rateOfChangePercent),
             node,
           });
         }
@@ -326,36 +277,30 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
           if (!current || point.sliceIndex - current.at(-1)!.sliceIndex > 1) runs.push([point]);
           else current.push(point);
         }
-        for (const originalPoints of runs) {
-          const points = data.temporalInterpolation === "discrete" ? originalPoints.map((point) => [point]) : [originalPoints];
-          for (const episode of points) {
-          const terminal = episode.at(-1)!.sliceIndex < slices.length - 1;
-          const maximumStrength = Math.max(...episode.map((point) => point.strength));
-          const maximumOpacity = Math.max(...episode.map((point) => point.opacity));
-          const last = episode.at(-1)!;
+        for (const points of runs) {
+          const maximumStrength = Math.max(...points.map((point) => point.strength));
+          const maximumOpacity = Math.max(...points.map((point) => point.opacity));
+          const last = points.at(-1)!;
 
-          const episodeStartedAfterGap = episode[0].sliceIndex > 0;
-          const fadeIn = episodeStartedAfterGap ? clamp(data.reappearanceFadeIn, 0.08, 2) : 1;
-          const radiusWithFadeIn = (radius: (point: PreparedNode) => number) => (point: PreparedNode) => point === episode[0] ? radius(point) * fadeIn : radius(point);
-          const halo = traceRibbon(context, episode, radiusWithFadeIn((point) => point.haloRadius), data.temporalInterpolation, terminal, data.buildExpansionSensitivity, data.weakeningContractionSensitivity, data.dumpFadeSpeed);
+          const halo = traceRibbon(context, points, 1.72, 1.25 + data.glowStrength * 0.18);
           context.save();
           context.shadowColor = rgba(last.color, maximumOpacity * 0.52);
-          context.shadowBlur = data.glowRadius + data.glowStrength * maximumStrength;
-          context.fillStyle = ribbonGradient(context, episode, halo.edgeX, data.outerHaloStrength);
+          context.shadowBlur = data.glowStrength + maximumStrength * 11;
+          context.fillStyle = ribbonGradient(context, points, halo.edgeX, 0.2 + maximumStrength * 0.16);
           context.fill();
           context.restore();
 
-          const body = traceRibbon(context, episode, radiusWithFadeIn((point) => point.bodyRadius), data.temporalInterpolation, terminal, data.buildExpansionSensitivity, data.weakeningContractionSensitivity, data.dumpFadeSpeed);
-          context.fillStyle = ribbonGradient(context, episode, body.edgeX, data.innerHaloStrength);
+          const body = traceRibbon(context, points, 1, 0.9);
+          context.fillStyle = ribbonGradient(context, points, body.edgeX, 0.72 + maximumStrength * 0.24);
           context.fill();
 
-          traceRibbon(context, episode, radiusWithFadeIn((point) => point.coreThickness / 2), data.temporalInterpolation, terminal, data.buildExpansionSensitivity, data.weakeningContractionSensitivity, data.dumpFadeSpeed);
-          context.fillStyle = ribbonGradient(context, episode, body.edgeX, data.coreBrightness);
+          traceRibbon(context, points, 0.62, 0.7);
+          context.fillStyle = ribbonGradient(context, points, body.edgeX, 0.36 + maximumStrength * 0.28);
           context.fill();
 
           context.beginPath();
-          context.moveTo(episode[0].left, episode[0].y);
-          for (const point of episode) context.lineTo(point.right, point.y);
+          context.moveTo(points[0].left, points[0].y);
+          for (const point of points) context.lineTo(point.right, point.y);
           if (body.edgeX > last.right) context.lineTo(body.edgeX, body.edgeY);
           context.strokeStyle = rgba(last.color, clamp(maximumOpacity * (0.76 + maximumStrength * 0.34), 0.2, 1));
           context.lineWidth = 0.9 + maximumStrength * 1.8;
@@ -364,29 +309,27 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
           context.stroke();
           context.shadowBlur = 0;
 
-          if (data.textureEnabled && data.visualMode !== "clean-heat" && data.visualMode !== "minimal" && data.visualMode !== "legacy-lines") {
-            for (const point of episode) {
-              const density = Math.max(1, Math.round((1 + point.strength * data.textureDensity) * qualityTextureMultiplier));
-              const halfHeight = Math.max(0.75, point.bodyRadius * 0.84);
+          if (data.microOrbTexture) {
+            for (const point of points) {
+              const density = Math.max(1, Math.round(1 + point.strength * 4));
+              const halfHeight = Math.max(0.75, point.height * 0.42);
               for (let orbIndex = 0; orbIndex < density; orbIndex += 1) {
                 const xSeed = deterministicUnit(`${point.node.id}:x:${orbIndex}`);
                 const ySeed = deterministicUnit(`${point.node.id}:y:${orbIndex}`);
                 const radiusSeed = deterministicUnit(`${point.node.id}:r:${orbIndex}`);
                 const orbX = point.left + (point.right - point.left) * (0.1 + xSeed * 0.8);
                 const orbY = point.y + (ySeed - 0.5) * halfHeight * 1.5;
-                const radius = data.textureSize * (0.3 + radiusSeed * (0.45 + point.strength * 0.75));
+                const radius = 0.35 + radiusSeed * (0.45 + point.strength * 0.75);
                 context.beginPath();
-                if (data.textureStyle === "micro-bars") context.rect(orbX, orbY - radius, Math.max(0.5, radius * 0.65), radius * 2);
-                else if (data.textureStyle === "fine-grain") context.rect(orbX, orbY, Math.max(0.35, radius * 0.4), Math.max(0.35, radius * 0.4));
-                else context.arc(orbX, orbY, data.textureStyle === "pulse" ? radius * (0.7 + point.strength * 0.45) : radius, 0, Math.PI * 2);
-                context.fillStyle = rgba(point.color, point.opacity * (0.2 + point.strength * 0.36));
+                context.arc(orbX, orbY, radius, 0, Math.PI * 2);
+                context.fillStyle = rgba(point.color, point.opacity * (0.28 + point.strength * 0.42));
                 context.fill();
               }
             }
           }
 
-          for (const point of episode) {
-            const haloHeight = point.haloRadius * 2 + Math.max(2.5, data.glowStrength * 0.36);
+          for (const point of points) {
+            const haloHeight = point.height * 1.72 + Math.max(2.5, data.glowStrength * 0.36);
             hits.push({
               x: point.x,
               y: point.y,
@@ -397,7 +340,6 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
               top: point.y - haloHeight / 2,
               bottom: point.y + haloHeight / 2,
             });
-          }
           }
         }
       }

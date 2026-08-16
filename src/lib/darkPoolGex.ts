@@ -1,4 +1,4 @@
-import type { BounceExposureNode, BounceExposureSlice, BounceLevel, BounceLevelsSnapshot } from "@/lib/bounceLevels";
+import type { BounceExposureSlice, BounceLevelsSnapshot } from "@/lib/bounceLevels";
 import type { DarkPoolMapPayload, MappedDarkPoolPrint } from "@/lib/darkPoolMap";
 
 export const DARK_POOL_GEX_INDICATOR_ID = "dark-pool-gex";
@@ -171,15 +171,33 @@ function confluenceAllowed(node: { role: string }, mode: DarkPoolGexConfluenceMo
   return node.role === "KING" || ["MAJOR", "GATEKEEPER", "FLOOR", "CEILING"].includes(node.role);
 }
 
+type DarkPoolGexConfluenceCandidate = {
+  sourceStrike: number;
+  mappedPrice: number;
+  signedExposure: number;
+  absoluteExposure: number;
+  role?: string;
+  percentOfKing?: number;
+  percentOfKingAbsolute?: number;
+  snapshotTimeMs?: number;
+  timestamp?: number;
+};
+
 function makeConfluence(
   price: number,
-  nodes: Array<Pick<BounceLevel | BounceExposureNode, "sourceStrike" | "mappedPrice" | "signedExposure" | "absoluteExposure" | "role"> & { percentOfKing?: number; percentOfKingAbsolute?: number; snapshotTimeMs?: number; timestamp?: number }>,
+  nodes: DarkPoolGexConfluenceCandidate[],
   tickSize: number,
   settings: DarkPoolGexSettings,
 ) {
   if (settings.confluenceMode === "off" || !nodes.length) return null;
   const kingMagnitude = Math.max(...nodes.map((node) => Math.abs(node.signedExposure)), 0);
-  const nearest = nodes
+  const normalizedNodes = nodes.map((node) => ({
+    ...node,
+    // The restored Bounce exposure field predates per-slice role labels. Preserve
+    // current-level roles and derive the historical KING/MAJOR role from raw size.
+    role: node.role ?? (Math.abs(node.signedExposure) === kingMagnitude ? "KING" : "MAJOR"),
+  }));
+  const nearest = normalizedNodes
     .filter((node) => confluenceAllowed(node, settings.confluenceMode))
     .map((node) => ({ node, distance: Math.abs(node.mappedPrice - price) }))
     .sort((a, b) => a.distance - b.distance)[0];
