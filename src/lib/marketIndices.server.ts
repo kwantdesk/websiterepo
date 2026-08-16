@@ -6,6 +6,7 @@ import { getMarketIndexDefinition } from "@/lib/marketIndices";
 import { parseMassiveCashLevelOne } from "@/lib/optionsLevelOne";
 import {
   getConfiguredQuantDataApiKey,
+  getOptionsMarketPulse,
   getOptionsUnderlyingHistory,
 } from "@/lib/quantData.server";
 
@@ -22,7 +23,7 @@ export type MarketIndexSnapshot = {
   timestamp: number;
   delayed: boolean;
   marketOpen: boolean;
-  provider: "GEXBot" | "Massive" | "CBOE EOD";
+  provider: "GEXBot" | "Massive" | "KwantData" | "CBOE EOD";
 };
 
 const MASSIVE_API_BASE = "https://api.massive.com";
@@ -215,6 +216,31 @@ async function fetchGexBotVixSnapshot(): Promise<MarketIndexSnapshot> {
   };
 }
 
+async function fetchKwantDataUnderlyingSnapshot(symbol: string): Promise<MarketIndexSnapshot | null> {
+  const definition = getMarketIndexDefinition(symbol);
+  if (!definition || definition.group !== "Options Underlyings") return null;
+  const pulse = await getOptionsMarketPulse(definition.symbol, "CASH", false);
+  const marketData = pulse.marketData;
+  const lastPrice = marketData.lastPrice;
+  if (lastPrice === null || !Number.isFinite(lastPrice) || lastPrice <= 0) return null;
+  const openPrice = marketData.candles[0]?.open ?? lastPrice;
+  const change = lastPrice - openPrice;
+  const timestamp = Date.parse(marketData.asOf);
+  return {
+    symbol: definition.symbol,
+    broker: "Market Index",
+    exchange: definition.exchange,
+    lastPrice,
+    openPrice,
+    change,
+    changePercent: openPrice ? change / openPrice * 100 : 0,
+    timestamp: Number.isFinite(timestamp) ? timestamp : Date.now(),
+    delayed: marketData.stale || marketData.status !== "LIVE",
+    marketOpen: marketData.status === "LIVE" && !marketData.stale,
+    provider: "KwantData",
+  };
+}
+
 async function fetchMassiveJson(url: string) {
   const response = await fetch(url, {
     headers: { Authorization: `Bearer ${requireMassiveApiKey()}` },
@@ -317,7 +343,16 @@ export async function fetchMarketIndexSnapshots(symbols: string[]) {
   const unresolved = requested.filter((symbol) => !resolved.has(symbol));
   if (!unresolved.length) return snapshots;
   if (!getMassiveApiKey()) {
-    return [...snapshots, ...await fetchCboeVixEodSnapshots(unresolved)];
+    const quantDataResults = getConfiguredQuantDataApiKey()
+      ? await Promise.allSettled(unresolved.map(fetchKwantDataUnderlyingSnapshot))
+      : [];
+    const quantDataSnapshots = quantDataResults.flatMap((result) =>
+      result.status === "fulfilled" && result.value ? [result.value] : []);
+    return [
+      ...snapshots,
+      ...quantDataSnapshots,
+      ...await fetchCboeVixEodSnapshots(unresolved),
+    ];
   }
 
   const results = await Promise.allSettled(unresolved.map(async (symbol): Promise<MarketIndexSnapshot | null> => {
@@ -386,6 +421,15 @@ export async function fetchMarketIndexSnapshots(symbols: string[]) {
 
   snapshots.push(...results.flatMap((result) =>
     result.status === "fulfilled" && result.value ? [result.value] : []));
+  const stillUnresolved = unresolved.filter((symbol) =>
+    !snapshots.some((snapshot) => snapshot.symbol === symbol));
+  if (stillUnresolved.length && getConfiguredQuantDataApiKey()) {
+    const fallbackResults = await Promise.allSettled(
+      stillUnresolved.map(fetchKwantDataUnderlyingSnapshot),
+    );
+    snapshots.push(...fallbackResults.flatMap((result) =>
+      result.status === "fulfilled" && result.value ? [result.value] : []));
+  }
   if (snapshots.some((snapshot) => snapshot.symbol === "VIX") || !requested.includes("VIX")) return snapshots;
   return [...snapshots, ...await fetchCboeVixEodSnapshots(["VIX"])];
 }
