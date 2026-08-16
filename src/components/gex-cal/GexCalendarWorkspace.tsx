@@ -158,11 +158,16 @@ export default function GexCalendarWorkspace() {
     const expirations = [...new Set(cells.map((cell) => cell.expiration))].sort();
     const strikes = [...new Set(cells.map((cell) => cell.strike))].sort((a, b) => b - a);
     const currentValue = (cell: GexCalCell) => settings.differenceMode ? cell.change ?? 0 : cell.value;
-    const globalCell = cells.reduce<GexCalCell | null>((king, cell) => !king || Math.abs(currentValue(cell)) > Math.abs(currentValue(king)) ? cell : king, null);
+    let globalCell: GexCalCell | null = null;
+    const expirationKingCells = new Map<string, GexCalCell>();
+    for (const cell of cells) {
+      if (!globalCell || Math.abs(currentValue(cell)) > Math.abs(currentValue(globalCell))) globalCell = cell;
+      const currentKing = expirationKingCells.get(cell.expiration);
+      if (!currentKing || Math.abs(currentValue(cell)) > Math.abs(currentValue(currentKing))) expirationKingCells.set(cell.expiration, cell);
+    }
     const king = (cell: GexCalCell) => ({ expiration: cell.expiration, strike: cell.strike, value: currentValue(cell), magnitude: Math.abs(currentValue(cell)) });
     const expirationKings = expirations.flatMap((expiration) => {
-      const group = cells.filter((cell) => cell.expiration === expiration);
-      const winner = group.reduce<GexCalCell | null>((best, cell) => !best || Math.abs(currentValue(cell)) > Math.abs(currentValue(best)) ? cell : best, null);
+      const winner = expirationKingCells.get(expiration);
       return winner ? [king(winner)] : [];
     });
     return { ...matrix, cells, expirations, strikes, globalKing: globalCell ? king(globalCell) : null, expirationKings };

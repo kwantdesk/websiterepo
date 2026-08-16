@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Crown } from "lucide-react";
 import type { GexCalCell, GexCalMatrix } from "@/lib/gexCalendar";
 
@@ -31,21 +31,67 @@ const compact = (value: number) => {
 
 function GexCalendarMatrix({ matrix, differenceMode, normalization, selected, onSelect, onOpen, showKings }: Props) {
   const viewportRef = useRef<HTMLDivElement>(null);
+  const headerTrackRef = useRef<HTMLDivElement>(null);
+  const cellWidthRef = useRef(MIN_CELL_WIDTH);
+  const scrollFrameRef = useRef<number | null>(null);
+  const pendingScrollRef = useRef({ top: 0, left: 0 });
   const [viewport, setViewport] = useState({ top: 0, left: 0, width: 900, height: 500 });
-  const values = useMemo(() => matrix.cells.map((cell) => Math.abs(differenceMode ? cell.change ?? 0 : cell.value)).filter(Boolean).sort((a, b) => a - b), [differenceMode, matrix.cells]);
-  const byKey = useMemo(() => new Map(matrix.cells.map((cell) => [`${cell.strike}:${cell.expiration}`, cell])), [matrix.cells]);
-  const columnMax = useMemo(() => new Map(matrix.expirations.map((expiration) => [expiration, Math.max(0, ...matrix.cells.filter((cell) => cell.expiration === expiration).map((cell) => Math.abs(differenceMode ? cell.change ?? 0 : cell.value)))])), [differenceMode, matrix]);
-  const rowMax = useMemo(() => new Map(matrix.strikes.map((strike) => [strike, Math.max(0, ...matrix.cells.filter((cell) => cell.strike === strike).map((cell) => Math.abs(differenceMode ? cell.change ?? 0 : cell.value)))])), [differenceMode, matrix]);
+  const { values, byKey, columnMax, rowMax } = useMemo(() => {
+    const nextValues: number[] = [];
+    const nextByKey = new Map<string, GexCalCell>();
+    const nextColumnMax = new Map<string, number>();
+    const nextRowMax = new Map<number, number>();
+
+    for (const cell of matrix.cells) {
+      const absolute = Math.abs(differenceMode ? cell.change ?? 0 : cell.value);
+      nextByKey.set(`${cell.strike}:${cell.expiration}`, cell);
+      if (absolute) nextValues.push(absolute);
+      if (absolute > (nextColumnMax.get(cell.expiration) ?? 0)) nextColumnMax.set(cell.expiration, absolute);
+      if (absolute > (nextRowMax.get(cell.strike) ?? 0)) nextRowMax.set(cell.strike, absolute);
+    }
+    nextValues.sort((a, b) => a - b);
+    return { values: nextValues, byKey: nextByKey, columnMax: nextColumnMax, rowMax: nextRowMax };
+  }, [differenceMode, matrix.cells]);
   const kingKey = matrix.globalKing ? `${matrix.globalKing.strike}:${matrix.globalKing.expiration}` : "";
 
   useEffect(() => {
     const node = viewportRef.current;
     if (!node) return;
-    const update = () => setViewport((current) => ({ ...current, width: node.clientWidth, height: node.clientHeight }));
+    const update = () => {
+      const width = node.clientWidth;
+      const height = node.clientHeight;
+      setViewport((current) => current.width === width && current.height === height
+        ? current
+        : { ...current, width, height });
+    };
     update();
     const observer = new ResizeObserver(update);
     observer.observe(node);
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      if (scrollFrameRef.current !== null) cancelAnimationFrame(scrollFrameRef.current);
+    };
+  }, []);
+
+  const handleScroll = useCallback((event: React.UIEvent<HTMLDivElement>) => {
+    pendingScrollRef.current = {
+      top: event.currentTarget.scrollTop,
+      left: event.currentTarget.scrollLeft,
+    };
+    if (scrollFrameRef.current !== null) return;
+    scrollFrameRef.current = requestAnimationFrame(() => {
+      scrollFrameRef.current = null;
+      const next = pendingScrollRef.current;
+      const cellWidth = cellWidthRef.current;
+      const top = Math.floor(next.top / ROW_HEIGHT) * ROW_HEIGHT;
+      const left = Math.floor(next.left / cellWidth) * cellWidth;
+      if (headerTrackRef.current) {
+        headerTrackRef.current.style.transform = `translate3d(${-next.left}px, 0, 0)`;
+      }
+      setViewport((current) => current.top === top && current.left === left
+        ? current
+        : { ...current, top, left });
+    });
   }, []);
 
   const startRow = Math.max(0, Math.floor(viewport.top / ROW_HEIGHT) - 5);
@@ -54,8 +100,9 @@ function GexCalendarMatrix({ matrix, differenceMode, normalization, selected, on
     MIN_CELL_WIDTH,
     (viewport.width - STRIKE_WIDTH) / VISIBLE_EXPIRATION_COLUMNS,
   );
-  const startColumn = Math.max(0, Math.floor(Math.max(0, viewport.left - STRIKE_WIDTH) / cellWidth) - 2);
-  const endColumn = Math.min(matrix.expirations.length, Math.ceil((Math.max(0, viewport.left - STRIKE_WIDTH) + viewport.width) / cellWidth) + 2);
+  cellWidthRef.current = cellWidth;
+  const startColumn = Math.max(0, Math.floor(viewport.left / cellWidth) - 2);
+  const endColumn = Math.min(matrix.expirations.length, Math.ceil((viewport.left + Math.max(0, viewport.width - STRIKE_WIDTH)) / cellWidth) + 2);
   const visibleRows = matrix.strikes.slice(startRow, endRow);
   const visibleColumns = matrix.expirations.slice(startColumn, endColumn);
   const scale = (absolute: number, expiration: string, strike: number) => {
@@ -73,24 +120,24 @@ function GexCalendarMatrix({ matrix, differenceMode, normalization, selected, on
   const totalHeight = matrix.strikes.length * ROW_HEIGHT;
 
   return (
-    <div className="relative min-h-0 flex-1 overflow-hidden border border-border bg-background" aria-label="GEX expiration by strike matrix">
+    <div className="relative min-h-0 flex-1 overflow-hidden border border-border bg-background [contain:layout_paint]" aria-label="GEX expiration by strike matrix">
       <div className="absolute left-0 top-0 z-20 flex h-9 w-[92px] items-center border-b border-r border-border bg-panel px-3 text-[9px] font-semibold uppercase tracking-[0.16em] text-muted">Strike</div>
       <div className="absolute left-[92px] right-0 top-0 z-10 h-9 overflow-hidden border-b border-border bg-panel">
-        <div className="relative h-full" style={{ width: totalWidth - STRIKE_WIDTH, transform: `translateX(${-Math.max(0, viewport.left - STRIKE_WIDTH)}px)` }}>
+        <div ref={headerTrackRef} className="relative h-full will-change-transform" style={{ width: totalWidth - STRIKE_WIDTH, transform: `translate3d(${-pendingScrollRef.current.left}px, 0, 0)` }}>
           {visibleColumns.map((expiration, index) => <div key={expiration} className="absolute top-0 flex h-9 items-center justify-center border-r border-border px-2 text-[9px] font-semibold uppercase tracking-[0.08em] text-foreground" style={{ left: (startColumn + index) * cellWidth, width: cellWidth }}>{expiration.slice(5)}</div>)}
         </div>
       </div>
       <div
         ref={viewportRef}
         className="absolute inset-x-0 bottom-0 top-9 overflow-x-scroll overflow-y-auto [scrollbar-color:var(--primary)_var(--panel)] [scrollbar-width:thin]"
-        onScroll={(event) => setViewport((current) => ({ ...current, top: event.currentTarget.scrollTop, left: event.currentTarget.scrollLeft }))}
+        onScroll={handleScroll}
         aria-label="Scrollable GEX calendar surface"
       >
         <div className="relative" style={{ width: totalWidth, height: totalHeight }}>
           {visibleRows.map((strike, rowIndex) => {
             const actualRow = startRow + rowIndex;
-            return <div key={strike}>
-              <div className="sticky left-0 z-10 flex items-center justify-end border-b border-r border-border bg-panel px-3 font-mono text-[10px] text-foreground" style={{ position: "absolute", left: viewport.left, top: actualRow * ROW_HEIGHT, width: STRIKE_WIDTH, height: ROW_HEIGHT }}>{strike.toLocaleString()}</div>
+            return <div key={strike} className="absolute left-0" style={{ top: actualRow * ROW_HEIGHT, width: totalWidth, height: ROW_HEIGHT }}>
+              <div className="sticky left-0 z-10 flex items-center justify-end border-b border-r border-border bg-panel px-3 font-mono text-[10px] text-foreground" style={{ width: STRIKE_WIDTH, height: ROW_HEIGHT }}>{strike.toLocaleString()}</div>
               {visibleColumns.map((expiration, columnIndex) => {
                 const cell = byKey.get(`${strike}:${expiration}`);
                 const value = cell ? (differenceMode ? cell.change : cell.value) : null;
@@ -108,7 +155,7 @@ function GexCalendarMatrix({ matrix, differenceMode, normalization, selected, on
                   className={`absolute flex items-center justify-center border-b border-r border-border font-mono text-[9px] transition-[filter,outline] ${cell ? "hover:brightness-125" : "bg-[repeating-linear-gradient(135deg,transparent,transparent_5px,color-mix(in_srgb,var(--border)_18%,transparent)_5px,color-mix(in_srgb,var(--border)_18%,transparent)_6px)] text-muted/30"} ${isSelected ? "outline outline-1 outline-primary" : ""}`}
                   style={{
                     left: STRIKE_WIDTH + (startColumn + columnIndex) * cellWidth,
-                    top: actualRow * ROW_HEIGHT,
+                    top: 0,
                     width: cellWidth,
                     height: ROW_HEIGHT,
                     color: cell ? "var(--foreground)" : undefined,
