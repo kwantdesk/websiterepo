@@ -8,6 +8,7 @@ import {
   ChevronLeft,
   ChevronRight,
   CircleStop,
+  Crown,
   Gauge,
   Pause,
   Play,
@@ -25,6 +26,7 @@ import {
   GEX_MAP_GREEKS,
   hasRenderableGexMapSurface,
   latestGexMapStrikesFromFrames,
+  selectGexMapKingNode,
   type GexMapPanelPayload,
 } from "@/lib/gexMap";
 import {
@@ -164,6 +166,116 @@ function heatColor(value: number, strength: number) {
   const tone = value > 0 ? "var(--primary)" : "var(--danger)";
   const intensity = Math.round(14 + Math.min(1, strength) * 78);
   return `color-mix(in srgb, ${tone} ${intensity}%, var(--chart-background))`;
+}
+
+type RgbColor = { r: number; g: number; b: number };
+type KingPalette = { accent: string; text: string; outline: string };
+
+const DEFAULT_KING_PALETTE: KingPalette = {
+  accent: "#ffffff",
+  text: "#000000",
+  outline: "#000000",
+};
+
+function parseResolvedColor(value: string): RgbColor | null {
+  const normalized = value.trim();
+  const hex = normalized.match(/^#([\da-f]{3}|[\da-f]{6})$/i)?.[1];
+  if (hex) {
+    const expanded = hex.length === 3 ? [...hex].map((part) => `${part}${part}`).join("") : hex;
+    return {
+      r: Number.parseInt(expanded.slice(0, 2), 16),
+      g: Number.parseInt(expanded.slice(2, 4), 16),
+      b: Number.parseInt(expanded.slice(4, 6), 16),
+    };
+  }
+
+  const rgb = normalized.match(/^rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)/i);
+  if (rgb) return { r: Number(rgb[1]), g: Number(rgb[2]), b: Number(rgb[3]) };
+
+  const srgb = normalized.match(/^color\(srgb\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)/i);
+  if (srgb) {
+    return {
+      r: Number(srgb[1]) * 255,
+      g: Number(srgb[2]) * 255,
+      b: Number(srgb[3]) * 255,
+    };
+  }
+  return null;
+}
+
+function colorLuminance(color: RgbColor) {
+  const channel = (value: number) => {
+    const normalized = Math.max(0, Math.min(255, value)) / 255;
+    return normalized <= 0.04045
+      ? normalized / 12.92
+      : ((normalized + 0.055) / 1.055) ** 2.4;
+  };
+  return channel(color.r) * 0.2126 + channel(color.g) * 0.7152 + channel(color.b) * 0.0722;
+}
+
+function contrastRatio(left: RgbColor, right: RgbColor) {
+  const leftLuminance = colorLuminance(left);
+  const rightLuminance = colorLuminance(right);
+  return (Math.max(leftLuminance, rightLuminance) + 0.05)
+    / (Math.min(leftLuminance, rightLuminance) + 0.05);
+}
+
+function rgbHex(color: RgbColor) {
+  const channel = (value: number) => Math.round(Math.max(0, Math.min(255, value)))
+    .toString(16)
+    .padStart(2, "0");
+  return `#${channel(color.r)}${channel(color.g)}${channel(color.b)}`;
+}
+
+/** Pick the accent with the strongest worst-case contrast against this theme. */
+function resolveKingPalette(host: HTMLElement): KingPalette {
+  const probe = document.createElement("span");
+  probe.setAttribute("aria-hidden", "true");
+  probe.style.cssText = "position:absolute;pointer-events:none;visibility:hidden;color:transparent";
+  host.appendChild(probe);
+  const resolve = (value: string) => {
+    probe.style.color = value;
+    return parseResolvedColor(window.getComputedStyle(probe).color);
+  };
+
+  const references = [
+    resolve("var(--chart-background)"),
+    resolve("var(--primary)"),
+    resolve("var(--danger)"),
+    resolve("color-mix(in srgb, var(--primary) 84%, white 16%)"),
+  ].filter((color): color is RgbColor => color !== null);
+
+  const candidateValues = [
+    "var(--accent)",
+    "var(--secondary)",
+    "var(--foreground)",
+    "var(--candle-up)",
+    "var(--candle-down)",
+    "#ffffff",
+    "#000000",
+    "#fff200",
+    "#00e5ff",
+    "#ff00ff",
+    "#ff8a00",
+    "#7dff00",
+  ];
+  const candidates = candidateValues
+    .map((value) => resolve(value))
+    .filter((color): color is RgbColor => color !== null)
+    .filter((color, index, all) => all.findIndex((item) => rgbHex(item) === rgbHex(color)) === index);
+  probe.remove();
+
+  if (!references.length || !candidates.length) return DEFAULT_KING_PALETTE;
+  const accent = candidates.reduce((best, candidate) => {
+    const score = Math.min(...references.map((reference) => contrastRatio(candidate, reference)));
+    const bestScore = Math.min(...references.map((reference) => contrastRatio(best, reference)));
+    return score > bestScore ? candidate : best;
+  });
+  const white = { r: 255, g: 255, b: 255 };
+  const black = { r: 0, g: 0, b: 0 };
+  const text = contrastRatio(accent, black) >= contrastRatio(accent, white) ? black : white;
+  const outline = contrastRatio(accent, black) >= contrastRatio(accent, white) ? black : white;
+  return { accent: rgbHex(accent), text: rgbHex(text), outline: rgbHex(outline) };
 }
 
 function GexMapDropdown<T extends string>({
@@ -320,10 +432,12 @@ function ExposurePanel({
   onChange: (patch: Partial<Pick<PanelConfig, "symbol" | "greekMode">>) => void;
   onRemove?: () => void;
 }) {
+  const panelRef = useRef<HTMLElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const ladderRef = useRef<HTMLDivElement>(null);
   const [followingSpot, setFollowingSpot] = useState(true);
   const [surfacePainted, setSurfacePainted] = useState(false);
+  const [kingPalette, setKingPalette] = useState<KingPalette>(DEFAULT_KING_PALETTE);
   const { current, previous } = useMemo(
     () => payload ? buildSnapshots(payload, selectedTimestamp, stepMinutes) : { current: new Map(), previous: new Map() },
     [payload, selectedTimestamp, stepMinutes],
@@ -333,6 +447,9 @@ function ExposurePanel({
     () => [...current.values()].sort((a, b) => b.strike - a.strike),
     [current],
   );
+  // `rows` is the complete reconstructed/filtered strike surface, not the
+  // visible scroll window. Keep King selection independent from presentation.
+  const kingNode = useMemo(() => selectGexMapKingNode(rows), [rows]);
   const spotStrike = spot === null || !rows.length
     ? null
     : rows.reduce((best, row) => Math.abs(row.strike - spot) < Math.abs(best.strike - spot) ? row : best).strike;
@@ -342,7 +459,7 @@ function ExposurePanel({
   }, [rows]);
   const net = rows.reduce((sum, row) => sum + row.net, 0);
   const greek = GEX_MAP_GREEKS.find((item) => item.mode === config.greekMode) ?? GEX_MAP_GREEKS[0];
-  const viewIdentity = `${config.symbol}:${config.greekMode}:${payload?.sessionDate ?? "pending"}`;
+  const viewIdentity = `${config.symbol}:${config.greekMode}:${payload?.expiration ?? "pending"}:${payload?.sessionDate ?? "pending"}`;
   const centeringIdentity = `${viewIdentity}:${selectedTimestamp ?? "live"}:${spotStrike ?? "pending"}`;
 
   const centerLiveStrike = useCallback(() => {
@@ -380,6 +497,48 @@ function ExposurePanel({
     return paintedTargetRect.bottom > paintedContainerRect.top
       && paintedTargetRect.top < paintedContainerRect.bottom;
   }, []);
+
+  const centerKingStrike = useCallback(() => {
+    const container = scrollRef.current;
+    const ladder = ladderRef.current;
+    const target = ladder?.querySelector<HTMLElement>("[data-king-node='true']");
+    if (!container || !target || container.clientHeight <= 0) return;
+
+    const maximumScroll = Math.max(0, container.scrollHeight - container.clientHeight);
+    const containerRect = container.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    const targetCenterInContent = targetRect.top - containerRect.top
+      + container.scrollTop
+      + targetRect.height / 2;
+    const nextScroll = Math.max(0, Math.min(
+      maximumScroll,
+      targetCenterInContent - container.clientHeight / 2,
+    ));
+    container.scrollTo({ top: nextScroll, behavior: "smooth" });
+  }, []);
+
+  useLayoutEffect(() => {
+    const host = panelRef.current;
+    if (!host) return;
+
+    let frame = 0;
+    const updatePalette = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => setKingPalette(resolveKingPalette(host)));
+    };
+    updatePalette();
+    const observer = new MutationObserver(updatePalette);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["style", "class", "data-theme", "data-theme-updating"],
+    });
+    window.addEventListener("kwantdesk:theme-change", updatePalette);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("kwantdesk:theme-change", updatePalette);
+      window.cancelAnimationFrame(frame);
+    };
+  }, [viewIdentity]);
 
   useLayoutEffect(() => {
     const container = scrollRef.current;
@@ -459,7 +618,7 @@ function ExposurePanel({
   }, []);
 
   return (
-    <section className="gex-map-exposure-panel flex min-h-[250px] min-w-0 flex-col overflow-hidden rounded-xl border border-border bg-panel">
+    <section ref={panelRef} className="gex-map-exposure-panel flex min-h-[250px] min-w-0 flex-col overflow-hidden rounded-xl border border-border bg-panel">
       <div className="sticky top-0 z-20 shrink-0 border-b border-border bg-panel/95 px-3 py-2.5 shadow-[0_8px_18px_rgba(0,0,0,0.16)] backdrop-blur-xl">
         <div className="flex min-w-0 items-center gap-2">
           <GexMapDropdown
@@ -511,11 +670,32 @@ function ExposurePanel({
           <span>{greek.label}</span>
           <span className="text-border">•</span>
           <span>{payload ? `Exp ${payload.expiration}` : "Loading expiry"}</span>
-          <span className={`ml-auto font-mono ${net >= 0 ? "text-primary" : "text-danger"}`}>Net {formatCompact(net)}</span>
+          {kingNode ? (
+            <button
+              type="button"
+              onClick={() => {
+                setFollowingSpot(false);
+                window.requestAnimationFrame(centerKingStrike);
+              }}
+              className="gex-king-header ml-auto flex min-w-0 items-center gap-1 border px-1.5 py-0.5 font-mono text-[8px] font-bold tracking-[0.06em] transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-1"
+              style={{
+                "--gex-king-accent": kingPalette.accent,
+                "--gex-king-text": kingPalette.text,
+                "--gex-king-outline": kingPalette.outline,
+              } as CSSProperties}
+              title="Scroll to the King Node"
+            >
+              <Crown className="h-2.5 w-2.5 shrink-0" />
+              <span className="truncate">
+                KING {kingNode.strike.toLocaleString("en-US", { maximumFractionDigits: 2 })} · {formatCompact(kingNode.net)}
+              </span>
+            </button>
+          ) : null}
+          <span className={`font-mono ${kingNode ? "" : "ml-auto"} ${net >= 0 ? "text-primary" : "text-danger"}`}>Net {formatCompact(net)}</span>
         </div>
       </div>
 
-      <div className="gex-map-strike-row grid h-7 grid-cols-[64px_minmax(0,1fr)_86px] items-center border-b border-border bg-surface/60 px-2 text-[8px] font-semibold uppercase tracking-[0.14em] text-muted">
+      <div className="gex-map-strike-row grid h-7 grid-cols-[96px_minmax(0,1fr)_86px] items-center border-b border-border bg-surface/60 px-2 text-[8px] font-semibold uppercase tracking-[0.14em] text-muted">
         <span>Strike</span>
         <span>Signed exposure</span>
         <span className="gex-map-change-column text-right">{stepMinutes}m change</span>
@@ -557,21 +737,36 @@ function ExposurePanel({
                 ? (row.net - prior.net) / Math.abs(prior.net)
                 : null;
               const nearSpot = row.strike === spotStrike;
+              const isKing = row.strike === kingNode?.strike;
               const strength = Math.min(1, Math.abs(row.net) / magnitudeCap);
               return (
                 <div
                   key={row.strike}
                   data-near-spot={nearSpot ? "true" : undefined}
+                  data-king-node={isKing ? "true" : undefined}
                   data-gex-strike-node="true"
-                  className={`gex-map-strike-row relative grid grid-cols-[64px_minmax(0,1fr)_86px] items-center border-b border-black/10 px-2 font-mono text-[9px] transition-[height,margin,background-color] ${nearSpot ? "gex-current-price-marker z-[2] mx-1 my-1 h-[35px]" : "h-[25px]"}`}
-                  style={{ backgroundColor: heatColor(row.net, strength) }}
+                  className={`gex-map-strike-row relative grid grid-cols-[96px_minmax(0,1fr)_86px] items-center border-b border-black/10 px-2 font-mono text-[9px] transition-[height,margin,background-color] ${nearSpot ? "mx-1 my-1 h-[35px]" : isKing ? "mx-1 my-0.5 h-[29px]" : "h-[25px]"} ${isKing ? `gex-king-node z-[3] ${nearSpot ? "gex-king-is-current" : ""}` : nearSpot ? "gex-current-price-marker z-[2]" : ""}`}
+                  style={{
+                    backgroundColor: heatColor(row.net, strength),
+                    ...(isKing ? {
+                      "--gex-king-accent": kingPalette.accent,
+                      "--gex-king-text": kingPalette.text,
+                      "--gex-king-outline": kingPalette.outline,
+                    } : {}),
+                  } as CSSProperties}
                   title={`${greek.short} ${formatCompact(row.net)} · Call ${formatCompact(row.call)} · Put ${formatCompact(row.put)}`}
                 >
-                  <span className={`relative flex items-center font-semibold ${nearSpot ? "text-foreground" : "text-foreground/90"}`}>
+                  <span className={`relative flex min-w-0 items-center gap-1 font-semibold ${nearSpot ? "text-foreground" : "text-foreground/90"}`}>
                     {nearSpot ? <span className="gex-current-price-dash absolute -left-2 h-6 w-1.5" /> : null}
-                    <span className={nearSpot ? "gex-current-price-pill" : undefined}>
+                    <span className={`${nearSpot ? "gex-current-price-pill" : ""} shrink-0`}>
                       {row.strike.toLocaleString("en-US", { maximumFractionDigits: 2 })}
                     </span>
+                    {isKing ? (
+                      <span className="gex-king-badge inline-flex min-w-0 items-center gap-0.5 border px-1 py-0.5 font-sans text-[7px] font-black tracking-[0.08em]">
+                        <Crown className="h-2.5 w-2.5 shrink-0" />
+                        <span className="gex-king-badge-label">KING</span>
+                      </span>
+                    ) : null}
                   </span>
                   <span className="truncate text-right font-semibold text-foreground drop-shadow-sm">{formatCompact(row.net)}</span>
                   <span className="gex-map-change-column flex items-center justify-end gap-1">

@@ -53,6 +53,28 @@ export function latestGexMapStrikesFromFrames(frames: GexMapFrame[]): ExposureSt
   return [...strikes.values()].sort((left, right) => left.strike - right.strike);
 }
 
+/**
+ * Select the dominant signed-exposure strike from the complete surface.
+ *
+ * This deliberately uses the unrounded raw net value. It must stay independent
+ * from the live/centre price, heat intensity, interval change and viewport.
+ */
+export function selectGexMapKingNode(rows: readonly ExposureStrike[]): ExposureStrike | null {
+  let kingNode: ExposureStrike | null = null;
+  let kingMagnitude = -1;
+
+  for (const row of rows) {
+    if (!Number.isFinite(row.net)) continue;
+    const magnitude = Math.abs(row.net);
+    if (magnitude > kingMagnitude) {
+      kingNode = row;
+      kingMagnitude = magnitude;
+    }
+  }
+
+  return kingNode;
+}
+
 /** A panel is safe to paint only when it contains a recoverable strike ladder. */
 export function hasRenderableGexMapSurface(
   payload: Pick<GexMapPanelPayload, "latestStrikes" | "frames"> | null | undefined,
