@@ -6,7 +6,8 @@ import type { GexCalCell, GexCalMatrix } from "@/lib/gexCalendar";
 
 const ROW_HEIGHT = 30;
 const STRIKE_WIDTH = 92;
-const CELL_WIDTH = 112;
+const VISIBLE_EXPIRATION_COLUMNS = 7;
+const MIN_CELL_WIDTH = 72;
 
 type Props = {
   matrix: GexCalMatrix;
@@ -49,8 +50,12 @@ function GexCalendarMatrix({ matrix, differenceMode, normalization, selected, on
 
   const startRow = Math.max(0, Math.floor(viewport.top / ROW_HEIGHT) - 5);
   const endRow = Math.min(matrix.strikes.length, Math.ceil((viewport.top + viewport.height) / ROW_HEIGHT) + 5);
-  const startColumn = Math.max(0, Math.floor(Math.max(0, viewport.left - STRIKE_WIDTH) / CELL_WIDTH) - 2);
-  const endColumn = Math.min(matrix.expirations.length, Math.ceil((Math.max(0, viewport.left - STRIKE_WIDTH) + viewport.width) / CELL_WIDTH) + 2);
+  const cellWidth = Math.max(
+    MIN_CELL_WIDTH,
+    (viewport.width - STRIKE_WIDTH) / VISIBLE_EXPIRATION_COLUMNS,
+  );
+  const startColumn = Math.max(0, Math.floor(Math.max(0, viewport.left - STRIKE_WIDTH) / cellWidth) - 2);
+  const endColumn = Math.min(matrix.expirations.length, Math.ceil((Math.max(0, viewport.left - STRIKE_WIDTH) + viewport.width) / cellWidth) + 2);
   const visibleRows = matrix.strikes.slice(startRow, endRow);
   const visibleColumns = matrix.expirations.slice(startColumn, endColumn);
   const scale = (absolute: number, expiration: string, strike: number) => {
@@ -64,7 +69,7 @@ function GexCalendarMatrix({ matrix, differenceMode, normalization, selected, on
     }
     return Math.min(1, absolute / Math.max(1, values.at(-1) ?? 1));
   };
-  const totalWidth = STRIKE_WIDTH + matrix.expirations.length * CELL_WIDTH;
+  const totalWidth = STRIKE_WIDTH + matrix.expirations.length * cellWidth;
   const totalHeight = matrix.strikes.length * ROW_HEIGHT;
 
   return (
@@ -72,10 +77,15 @@ function GexCalendarMatrix({ matrix, differenceMode, normalization, selected, on
       <div className="absolute left-0 top-0 z-20 flex h-9 w-[92px] items-center border-b border-r border-border bg-panel px-3 text-[9px] font-semibold uppercase tracking-[0.16em] text-muted">Strike</div>
       <div className="absolute left-[92px] right-0 top-0 z-10 h-9 overflow-hidden border-b border-border bg-panel">
         <div className="relative h-full" style={{ width: totalWidth - STRIKE_WIDTH, transform: `translateX(${-Math.max(0, viewport.left - STRIKE_WIDTH)}px)` }}>
-          {visibleColumns.map((expiration, index) => <div key={expiration} className="absolute top-0 flex h-9 items-center justify-center border-r border-border px-2 text-[9px] font-semibold uppercase tracking-[0.08em] text-foreground" style={{ left: (startColumn + index) * CELL_WIDTH, width: CELL_WIDTH }}>{expiration.slice(5)}</div>)}
+          {visibleColumns.map((expiration, index) => <div key={expiration} className="absolute top-0 flex h-9 items-center justify-center border-r border-border px-2 text-[9px] font-semibold uppercase tracking-[0.08em] text-foreground" style={{ left: (startColumn + index) * cellWidth, width: cellWidth }}>{expiration.slice(5)}</div>)}
         </div>
       </div>
-      <div ref={viewportRef} className="absolute inset-x-0 bottom-0 top-9 overflow-auto" onScroll={(event) => setViewport((current) => ({ ...current, top: event.currentTarget.scrollTop, left: event.currentTarget.scrollLeft }))}>
+      <div
+        ref={viewportRef}
+        className="absolute inset-x-0 bottom-0 top-9 overflow-x-scroll overflow-y-auto [scrollbar-color:var(--primary)_var(--panel)] [scrollbar-width:thin]"
+        onScroll={(event) => setViewport((current) => ({ ...current, top: event.currentTarget.scrollTop, left: event.currentTarget.scrollLeft }))}
+        aria-label="Scrollable GEX calendar surface"
+      >
         <div className="relative" style={{ width: totalWidth, height: totalHeight }}>
           {visibleRows.map((strike, rowIndex) => {
             const actualRow = startRow + rowIndex;
@@ -97,9 +107,9 @@ function GexCalendarMatrix({ matrix, differenceMode, normalization, selected, on
                   onContextMenu={(event) => { event.preventDefault(); if (cell) onOpen(cell); }}
                   className={`absolute flex items-center justify-center border-b border-r border-border font-mono text-[9px] transition-[filter,outline] ${cell ? "hover:brightness-125" : "bg-[repeating-linear-gradient(135deg,transparent,transparent_5px,color-mix(in_srgb,var(--border)_18%,transparent)_5px,color-mix(in_srgb,var(--border)_18%,transparent)_6px)] text-muted/30"} ${isSelected ? "outline outline-1 outline-primary" : ""}`}
                   style={{
-                    left: STRIKE_WIDTH + (startColumn + columnIndex) * CELL_WIDTH,
+                    left: STRIKE_WIDTH + (startColumn + columnIndex) * cellWidth,
                     top: actualRow * ROW_HEIGHT,
-                    width: CELL_WIDTH,
+                    width: cellWidth,
                     height: ROW_HEIGHT,
                     color: cell ? "var(--foreground)" : undefined,
                     background: cell ? `color-mix(in srgb, ${positive ? "var(--candle-up)" : "var(--candle-down)"} ${Math.round(10 + magnitude * 76)}%, var(--background))` : undefined,
