@@ -22,7 +22,7 @@ export const maxDuration = 60;
 const payloadCache = new Map<string, { expiresAt: number; payload: unknown }>();
 const DISPLAYS = new Set(["NQ", "MNQ", "ES", "MES", "RTY", "M2K", "QQQ", "NDX", "SPY", "SPX", "IWM"]);
 const SOURCES = new Set(["QQQ", "NDX", "SPY", "SPX", "IWM"]);
-const EXPIRATIONS = new Set<GammaExpirationMode>(["zero-dte", "zero-to-one-dte", "zero-to-seven-dte", "front-expiration", "all-expirations", "custom-dte-range", "specific-expirations"]);
+const EXPIRATIONS = new Set<GammaExpirationMode>(["zero-dte", "zero-to-one-dte", "zero-to-seven-dte", "front-expiration", "current-plus-next", "current-plus-next-two", "current-plus-next-n", "date-range", "all-expirations", "custom-dte-range", "specific-expirations"]);
 const GREEKS = new Set<GreekMode>(["GAMMA", "DELTA", "VANNA", "CHARM"]);
 
 async function isAuthenticated(request: NextRequest) {
@@ -105,6 +105,9 @@ export async function GET(request: NextRequest) {
         minimumDte: finite(request, "minimumDte", 0),
         maximumDte: finite(request, "maximumDte", 7),
         expirationDates: (request.nextUrl.searchParams.get("expirationDates") || "").split(",").map((value) => value.trim()).filter(Boolean),
+        maximumExpirations: finite(request, "maximumExpirations", 2),
+        minimumExpirationDate: request.nextUrl.searchParams.get("minimumExpirationDate") || undefined,
+        maximumExpirationDate: request.nextUrl.searchParams.get("maximumExpirationDate") || undefined,
         includeWeeklies: request.nextUrl.searchParams.get("includeWeeklies") !== "false",
         includeMonthlies: request.nextUrl.searchParams.get("includeMonthlies") !== "false",
         includeQuarterlies: request.nextUrl.searchParams.get("includeQuarterlies") !== "false",
@@ -123,7 +126,13 @@ export async function GET(request: NextRequest) {
       clusterDistancePoints: finite(request, "clusterDistancePoints", /^(NQ|MNQ)$/.test(display) ? 25 : 6),
       airPocketRatio: finite(request, "airPocketRatio", 20) / 100,
       historyBuckets: finite(request, "historyBuckets", 120),
-      maximumNodesPerSlice: finite(request, "maximumNodesPerSlice", 24),
+      maximumNodesPerSlice: finite(request, "maximumNodesPerSlice", 8),
+      rocDenominatorFloor: finite(request, "rocDenominatorFloor", 100_000),
+      rocOutlierClampPercent: finite(request, "rocOutlierClampPercent", 500),
+      rapidAccumulationThresholdPercent: finite(request, "rapidAccumulationThresholdPercent", 20),
+      accumulationThresholdPercent: finite(request, "accumulationThresholdPercent", 5),
+      weakeningMomentumThresholdPercent: finite(request, "weakeningMomentumThresholdPercent", -5),
+      rapidUnwindingThresholdPercent: finite(request, "rapidUnwindingThresholdPercent", -20),
       magnitudeWeight: finite(request, "magnitudeWeight", 45) / 100,
       proximityWeight: finite(request, "proximityWeight", 15) / 100,
       accumulationWeight: finite(request, "accumulationWeight", 15) / 100,

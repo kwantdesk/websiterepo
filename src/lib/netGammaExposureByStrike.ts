@@ -24,6 +24,10 @@ export type GammaExpirationMode =
   | "zero-to-one-dte"
   | "zero-to-seven-dte"
   | "front-expiration"
+  | "current-plus-next"
+  | "current-plus-next-two"
+  | "current-plus-next-n"
+  | "date-range"
   | "all-expirations"
   | "custom-dte-range"
   | "specific-expirations";
@@ -39,6 +43,9 @@ export type GammaExpirationFilter = {
   minimumDte?: number;
   maximumDte?: number;
   expirationDates?: string[];
+  maximumExpirations?: number;
+  minimumExpirationDate?: string;
+  maximumExpirationDate?: string;
   includeWeeklies: boolean;
   includeMonthlies: boolean;
   includeQuarterlies: boolean;
@@ -196,6 +203,10 @@ function expirationLabel(filter: GammaExpirationFilter) {
   if (filter.mode === "zero-to-one-dte") return "0–1 DTE";
   if (filter.mode === "zero-to-seven-dte") return "0–7 DTE";
   if (filter.mode === "front-expiration") return "FRONT EXPIRY";
+  if (filter.mode === "current-plus-next") return "CURRENT + NEXT";
+  if (filter.mode === "current-plus-next-two") return "CURRENT + NEXT 2";
+  if (filter.mode === "current-plus-next-n") return `CURRENT + NEXT ${Math.max(1, Number(filter.maximumExpirations ?? 2) - 1)}`;
+  if (filter.mode === "date-range") return `${filter.minimumExpirationDate ?? "START"}–${filter.maximumExpirationDate ?? "END"}`;
   if (filter.mode === "all-expirations") return "ALL EXPIRIES";
   if (filter.mode === "specific-expirations") return "SELECTED EXPIRIES";
   return `${filter.minimumDte ?? 0}–${filter.maximumDte ?? 7} DTE`;
@@ -259,7 +270,14 @@ export function buildNetGammaProfile(surface: NetGammaProviderSurface, options: 
   if (representation !== "per-one-percent-move") throw new Error("The shared KwantData surface currently provides Gamma per one-percent move only.");
   const expiration: GammaExpirationFilter = { ...DEFAULT_EXPIRATION, ...options.expiration };
   const frontExpiration = surface.expiryStrikes.map((row) => row.expiration).sort()[0] ?? null;
-  const selected = surface.expiryStrikes.filter((row) => expirationMatchesFilter(row.expiration, surface.sessionDate, expiration, frontExpiration));
+  const availableExpirations = [...new Set(surface.expiryStrikes.map((row) => row.expiration))].sort();
+  const count = expiration.mode === "current-plus-next" ? 2
+    : expiration.mode === "current-plus-next-two" ? 3
+      : expiration.mode === "current-plus-next-n" ? Math.max(1, Math.round(expiration.maximumExpirations ?? 2)) : 0;
+  const effectiveExpiration: GammaExpirationFilter = count > 0
+    ? { ...expiration, mode: "specific-expirations", expirationDates: availableExpirations.slice(0, count) }
+    : expiration;
+  const selected = surface.expiryStrikes.filter((row) => expirationMatchesFilter(row.expiration, surface.sessionDate, effectiveExpiration, frontExpiration));
   const fallbackRows = selected.length || surface.expiryStrikes.length ? selected : surface.strikes.map((row) => ({ ...row, expiration: frontExpiration ?? surface.sessionDate }));
   const byStrike = new Map<number, { call: number; put: number; contributions: GammaStrikeContribution[] }>();
   for (const row of fallbackRows) {

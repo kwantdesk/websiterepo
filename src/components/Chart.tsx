@@ -5526,6 +5526,9 @@ export default function Chart({
     refreshSeconds: Number(bounceLevelsIndicator.settings?.refreshSeconds ?? 5),
     expirationMode: String(bounceLevelsIndicator.settings?.expirationMode ?? "zero-to-one-dte"),
     expirationDates: String(bounceLevelsIndicator.settings?.expirationDates ?? ""),
+    minimumExpirationDate: String(bounceLevelsIndicator.settings?.minimumExpirationDate ?? ""),
+    maximumExpirationDate: String(bounceLevelsIndicator.settings?.maximumExpirationDate ?? ""),
+    maximumExpirations: Number(bounceLevelsIndicator.settings?.maximumExpirations ?? 2),
     includeWeeklies: bounceLevelsIndicator.settings?.includeWeeklies !== false,
     includeMonthlies: bounceLevelsIndicator.settings?.includeMonthlies !== false,
     includeQuarterlies: bounceLevelsIndicator.settings?.includeQuarterlies !== false,
@@ -5537,7 +5540,13 @@ export default function Chart({
     clusterDistancePoints: Number(bounceLevelsIndicator.settings?.clusterDistancePoints ?? 25),
     airPocketRatio: Number(bounceLevelsIndicator.settings?.airPocketRatio ?? 20),
     historyBuckets: Number(bounceLevelsIndicator.settings?.historyBuckets ?? 120),
-    maximumNodesPerSlice: Number(bounceLevelsIndicator.settings?.maximumNodesPerSlice ?? 24),
+    maximumNodesPerSlice: Number(bounceLevelsIndicator.settings?.maximumNodesPerSlice ?? 8),
+    rocDenominatorFloor: Number(bounceLevelsIndicator.settings?.rocDenominatorFloor ?? 100000),
+    rocOutlierClampPercent: Number(bounceLevelsIndicator.settings?.rocOutlierClampPercent ?? 500),
+    rapidAccumulationThresholdPercent: Number(bounceLevelsIndicator.settings?.rapidAccumulationThresholdPercent ?? 20),
+    accumulationThresholdPercent: Number(bounceLevelsIndicator.settings?.accumulationThresholdPercent ?? 5),
+    weakeningMomentumThresholdPercent: Number(bounceLevelsIndicator.settings?.weakeningMomentumThresholdPercent ?? -5),
+    rapidUnwindingThresholdPercent: Number(bounceLevelsIndicator.settings?.rapidUnwindingThresholdPercent ?? -20),
     maximumGatekeepers: Number(bounceLevelsIndicator.settings?.maximumGatekeepers ?? 2),
     maximumMajorNodes: Number(bounceLevelsIndicator.settings?.maximumMajorNodes ?? 4),
     minimumGatekeeperRelevance: Number(bounceLevelsIndicator.settings?.minimumGatekeeperRelevance ?? 60),
@@ -5596,6 +5605,9 @@ export default function Chart({
         greekMode: String(indicatorSettings.greekMode),
         expirationMode: String(indicatorSettings.expirationMode),
         expirationDates: String(indicatorSettings.expirationDates),
+        minimumExpirationDate: String(indicatorSettings.minimumExpirationDate),
+        maximumExpirationDate: String(indicatorSettings.maximumExpirationDate),
+        maximumExpirations: String(indicatorSettings.maximumExpirations),
         includeWeeklies: String(indicatorSettings.includeWeeklies),
         includeMonthlies: String(indicatorSettings.includeMonthlies),
         includeQuarterlies: String(indicatorSettings.includeQuarterlies),
@@ -5608,6 +5620,12 @@ export default function Chart({
         airPocketRatio: String(indicatorSettings.airPocketRatio),
         historyBuckets: String(indicatorSettings.historyBuckets),
         maximumNodesPerSlice: String(indicatorSettings.maximumNodesPerSlice),
+        rocDenominatorFloor: String(indicatorSettings.rocDenominatorFloor),
+        rocOutlierClampPercent: String(indicatorSettings.rocOutlierClampPercent),
+        rapidAccumulationThresholdPercent: String(indicatorSettings.rapidAccumulationThresholdPercent),
+        accumulationThresholdPercent: String(indicatorSettings.accumulationThresholdPercent),
+        weakeningMomentumThresholdPercent: String(indicatorSettings.weakeningMomentumThresholdPercent),
+        rapidUnwindingThresholdPercent: String(indicatorSettings.rapidUnwindingThresholdPercent),
         maximumGatekeepers: String(indicatorSettings.maximumGatekeepers),
         maximumMajorNodes: String(indicatorSettings.maximumMajorNodes),
         minimumGatekeeperRelevance: String(indicatorSettings.minimumGatekeeperRelevance),
@@ -5665,19 +5683,56 @@ export default function Chart({
     };
     const visibleSnapshot = {
       ...bounceLevelsSnapshot,
+      exposureField: bounceLevelsSnapshot.exposureField
+        .filter((_, index, field) => indicatorSettings.showHistoricalExposure !== false || index === field.length - 1)
+        .map((slice, index, field) => ({
+        ...slice,
+        nodes: index === field.length - 1 && indicatorSettings.showLiveExposure === false
+          ? []
+          : slice.nodes.filter((node) => roleVisibility[node.role] !== false
+            && (node.role === "KING" && indicatorSettings.kingAlwaysVisible !== false
+              || node.percentOfKingAbsolute * 100 >= Number(indicatorSettings.minimumExposureStrength ?? 0))),
+      })),
       levels: bounceLevelsSnapshot.levels.filter((level) => roleVisibility[level.role] !== false),
       airPockets: indicatorSettings.showAirPockets !== false ? bounceLevelsSnapshot.airPockets : [],
     };
+    const visualMode = String(indicatorSettings.visualMode ?? "advanced-heat-field") as BounceLevelsPrimitiveData["visualMode"];
+    const minimalMode = visualMode === "minimal" || visualMode === "legacy-lines";
+    const cleanMode = visualMode === "clean-heat";
     return {
       snapshot: visibleSnapshot,
       timeAnchors: candles.map((candle) => candle.timestamp),
       opacity: Number(indicatorSettings.lineOpacity ?? 78) / 100,
       intensity: Number(indicatorSettings.exposureIntensity ?? 1),
-      minimumNodeHeight: Number(indicatorSettings.minimumNodeThickness ?? 2),
-      maximumNodeHeight: Number(indicatorSettings.maximumNodeThickness ?? 18),
+      coreThicknessMin: Number(indicatorSettings.coreThicknessMin ?? 1),
+      coreThicknessMax: Number(indicatorSettings.coreThicknessMax ?? 5),
+      bodyRadiusMin: Number(indicatorSettings.bodyRadiusMin ?? 2),
+      bodyRadiusMax: minimalMode ? Number(indicatorSettings.coreThicknessMax ?? 5) : Number(indicatorSettings.bodyRadiusMax ?? 18),
+      haloRadiusMin: Number(indicatorSettings.haloRadiusMin ?? 3),
+      haloRadiusMax: minimalMode ? Number(indicatorSettings.coreThicknessMax ?? 5) : cleanMode ? Number(indicatorSettings.bodyRadiusMax ?? 18) : Number(indicatorSettings.haloRadiusMax ?? 28),
       minimumOpacity: Number(indicatorSettings.minimumNodeOpacity ?? 8) / 100,
+      maximumOpacity: Number(indicatorSettings.maximumNodeOpacity ?? 92) / 100,
+      coreBrightness: Number(indicatorSettings.coreBrightness ?? 100) / 100,
+      innerHaloStrength: Number(indicatorSettings.innerHaloStrength ?? 78) / 100,
+      outerHaloStrength: Number(indicatorSettings.outerHaloStrength ?? 28) / 100,
       glowStrength: Number(indicatorSettings.glowStrength ?? 5),
-      microOrbTexture: indicatorSettings.microOrbTexture !== false,
+      glowRadius: indicatorSettings.showGlow === false || minimalMode || cleanMode ? 0 : Number(indicatorSettings.glowRadius ?? 8),
+      kingContrastBoost: Number(indicatorSettings.kingContrastBoost ?? 115) / 100,
+      historicalFade: Number(indicatorSettings.historicalFade ?? 18) / 100,
+      liveEdgeBrightness: Number(indicatorSettings.liveEdgeBrightness ?? 112) / 100,
+      textureEnabled: indicatorSettings.textureEnabled !== false && !minimalMode && !cleanMode,
+      textureDensity: Number(indicatorSettings.textureDensity ?? 5),
+      textureSize: Number(indicatorSettings.textureSize ?? 1),
+      textureStyle: (visualMode === "microbar-energy" ? "micro-bars" : visualMode === "orb-field" ? "micro-orbs" : String(indicatorSettings.textureStyle ?? "micro-orbs")) as BounceLevelsPrimitiveData["textureStyle"],
+      visualMode,
+      temporalInterpolation: String(indicatorSettings.temporalInterpolation ?? "continuous") as BounceLevelsPrimitiveData["temporalInterpolation"],
+      strengthCurve: String(indicatorSettings.strengthCurve ?? "square-root") as BounceLevelsPrimitiveData["strengthCurve"],
+      temporalSmoothing: Number(indicatorSettings.temporalSmoothing ?? 24) / 100,
+      buildExpansionSensitivity: Number(indicatorSettings.buildExpansionSensitivity ?? 100) / 100,
+      weakeningContractionSensitivity: Number(indicatorSettings.weakeningContractionSensitivity ?? 100) / 100,
+      dumpFadeSpeed: Number(indicatorSettings.dumpFadeSpeed ?? 100) / 100,
+      reappearanceFadeIn: Number(indicatorSettings.reappearanceFadeIn ?? 100) / 100,
+      performanceQuality: String(indicatorSettings.performanceQuality ?? "auto") as BounceLevelsPrimitiveData["performanceQuality"],
       positiveColor: useThemeColors ? settings.upColor : String(indicatorSettings.positiveColor ?? settings.upColor),
       negativeColor: useThemeColors ? settings.downColor : String(indicatorSettings.negativeColor ?? settings.downColor),
     };
@@ -11547,10 +11602,15 @@ export default function Chart({
           <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-1 text-muted">
             <span>Source strike</span><span className="text-foreground">{bounceLevelsTooltip.node.sourceStrike.toLocaleString()}</span>
             <span>Signed {bounceLevelsTooltip.snapshot.greekMode}</span><span className={bounceLevelsTooltip.node.signedExposure >= 0 ? "text-primary" : "text-danger"}>{formatGammaValue(bounceLevelsTooltip.node.signedExposure, "per-one-percent-move", false)}</span>
+            <span>Absolute exposure</span><span className="text-foreground">{formatGammaValue(bounceLevelsTooltip.node.absoluteExposure, "per-one-percent-move")}</span>
             <span>Call / Put</span><span className="text-foreground">{formatGammaValue(bounceLevelsTooltip.node.callExposure, "per-one-percent-move")} / {formatGammaValue(bounceLevelsTooltip.node.putExposure, "per-one-percent-move")}</span>
-            <span>Slice strength</span><span className="text-foreground">{(bounceLevelsTooltip.node.strength * 100).toFixed(1)}%</span>
+            <span>% of snapshot KING</span><span className="text-foreground">{(bounceLevelsTooltip.node.percentOfKingAbsolute * 100).toFixed(1)}% abs · {(bounceLevelsTooltip.node.percentOfKingSigned * 100).toFixed(1)}% signed</span>
             <span>Slice share</span><span className="text-foreground">{(bounceLevelsTooltip.node.bucketShare * 100).toFixed(1)}%</span>
-            <span>Change</span><span className={bounceLevelsTooltip.node.rateOfChangePercent >= 0 ? "text-primary" : "text-danger"}>{bounceLevelsTooltip.node.rateOfChangePercent >= 0 ? "+" : ""}{bounceLevelsTooltip.node.rateOfChangePercent.toFixed(1)}%</span>
+            <span>Role / momentum</span><span className="text-foreground">{bounceLevelsTooltip.node.role} · {bounceLevelsTooltip.node.momentumState.replaceAll("-", " ")}</span>
+            <span>ROC 1m / 5m / 15m</span><span className="text-foreground">{bounceLevelsTooltip.node.shortRateOfChange.toFixed(1)}% / {bounceLevelsTooltip.node.mediumRateOfChange.toFixed(1)}% / {bounceLevelsTooltip.node.longRateOfChange.toFixed(1)}%</span>
+            <span>Touches / freshness</span><span className="text-foreground">{bounceLevelsTooltip.node.touches} / {bounceLevelsTooltip.node.freshnessScore.toFixed(0)}%</span>
+            <span>Expiry / representation</span><span className="text-foreground">{bounceLevelsTooltip.snapshot.expirationLabel} · $/1% move</span>
+            <span>Provider / quality</span><span className="text-foreground">QuantData · {bounceLevelsTooltip.snapshot.status.replaceAll("-", " ")} · {(bounceLevelsTooltip.node.dataQuality * 100).toFixed(0)}%</span>
             <span>Mapping</span><span className="text-foreground">{bounceLevelsTooltip.snapshot.mapping.method.replaceAll("-", " ")} · {bounceLevelsTooltip.snapshot.mapping.mappingConfidence}%</span>
             <span>Source → projected</span><span className="text-foreground">{bounceLevelsTooltip.node.sourceStrike.toLocaleString()} → {bounceLevelsTooltip.node.mappedPrice.toFixed(priceFormat.precision)}</span>
           </div>

@@ -45,10 +45,12 @@ export function resolveMappedBinTicks(input: {
 }
 
 export type GammaExpirationFilterLike = {
-  mode: "zero-dte" | "zero-to-one-dte" | "zero-to-seven-dte" | "front-expiration" | "all-expirations" | "custom-dte-range" | "specific-expirations";
+  mode: "zero-dte" | "zero-to-one-dte" | "zero-to-seven-dte" | "front-expiration" | "current-plus-next" | "current-plus-next-two" | "current-plus-next-n" | "date-range" | "all-expirations" | "custom-dte-range" | "specific-expirations";
   minimumDte?: number;
   maximumDte?: number;
   expirationDates?: string[];
+  minimumExpirationDate?: string;
+  maximumExpirationDate?: string;
   includeWeeklies: boolean;
   includeMonthlies: boolean;
   includeQuarterlies: boolean;
@@ -79,6 +81,7 @@ export function expirationMatchesFilter(expiration: string, sessionDate: string,
   if (filter.mode === "zero-to-one-dte") return dte >= 0 && dte <= 1;
   if (filter.mode === "zero-to-seven-dte") return dte >= 0 && dte <= 7;
   if (filter.mode === "front-expiration") return expiration === frontExpiration;
+  if (filter.mode === "date-range") return expiration >= (filter.minimumExpirationDate ?? "0000-00-00") && expiration <= (filter.maximumExpirationDate ?? "9999-99-99");
   if (filter.mode === "custom-dte-range") return dte >= (filter.minimumDte ?? 0) && dte <= (filter.maximumDte ?? 7);
   if (filter.mode === "specific-expirations") return filter.expirationDates?.includes(expiration) ?? false;
   return true;

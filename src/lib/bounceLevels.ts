@@ -6,6 +6,8 @@ export const BOUNCE_LEVELS_SCHEMA_VERSION = 2;
 
 export type BounceGreekMode = "GAMMA" | "DELTA" | "VANNA" | "CHARM";
 export type BounceLevelRole = "KING" | "FLOOR" | "CEILING" | "GATEKEEPER" | "MAJOR" | "CLUSTER" | "DEVELOPING" | "WEAKENING" | "RETIRED" | "AIR_POCKET";
+export type BounceMomentumState = "rapid-accumulation" | "accumulating" | "stable" | "weakening" | "rapid-unwinding";
+export type BounceExposureRole = "KING" | "MAJOR" | "DEVELOPING" | "WEAKENING" | "RETIRED";
 
 export type BounceLevel = {
   id: string;
@@ -54,6 +56,16 @@ export type BounceExposureNode = {
   strength: number;
   bucketShare: number;
   rateOfChangePercent: number;
+  percentOfKingSigned: number;
+  percentOfKingAbsolute: number;
+  shortRateOfChange: number;
+  mediumRateOfChange: number;
+  longRateOfChange: number;
+  momentumState: BounceMomentumState;
+  role: BounceExposureRole;
+  dataQuality: number;
+  touches: number;
+  freshnessScore: number;
 };
 export type BounceExposureSlice = {
   timestamp: number;
@@ -120,6 +132,12 @@ export type BounceLevelsBuildSettings = {
   minimumGatekeeperPercentOfKing: number;
   touchTolerancePercent: number;
   touchDecayFactor: number;
+  rocDenominatorFloor: number;
+  rocOutlierClampPercent: number;
+  rapidAccumulationThresholdPercent: number;
+  accumulationThresholdPercent: number;
+  weakeningMomentumThresholdPercent: number;
+  rapidUnwindingThresholdPercent: number;
 };
 
 export const DEFAULT_BOUNCE_LEVELS_SETTINGS: BounceLevelsBuildSettings = {
@@ -136,7 +154,7 @@ export const DEFAULT_BOUNCE_LEVELS_SETTINGS: BounceLevelsBuildSettings = {
   airPocketRatio: 0.2,
   minimumAirPocketWidthPercent: 0.003,
   historyBuckets: 120,
-  maximumNodesPerSlice: 24,
+  maximumNodesPerSlice: 8,
   magnitudeWeight: 0.45,
   proximityWeight: 0.15,
   accumulationWeight: 0.15,
@@ -154,6 +172,12 @@ export const DEFAULT_BOUNCE_LEVELS_SETTINGS: BounceLevelsBuildSettings = {
   minimumGatekeeperPercentOfKing: 0.2,
   touchTolerancePercent: 0.0005,
   touchDecayFactor: 0.85,
+  rocDenominatorFloor: 100_000,
+  rocOutlierClampPercent: 500,
+  rapidAccumulationThresholdPercent: 20,
+  accumulationThresholdPercent: 5,
+  weakeningMomentumThresholdPercent: -5,
+  rapidUnwindingThresholdPercent: -20,
 };
 
 type StrikeHistory = { values: number[]; timestamps: number[]; sourcePrices: Array<number | null> };
@@ -173,8 +197,35 @@ function buildExposureField(
   const eligibleBuckets = (surface?.buckets ?? [])
     .filter((bucket) => bucket.timestamp <= profile.snapshotTimeMs)
     .slice(-maximumBuckets);
-  const previousByStrike = new Map<number, number>();
+  const historyByStrike = new Map<number, Array<{ timestamp: number; absoluteExposure: number }>>();
+  const touchStateByStrike = new Map<number, { inside: boolean; touches: number; lastTouchAt: number | null }>();
   const slices: BounceExposureSlice[] = [];
+
+  const priorMagnitude = (sourceStrike: number, timestamp: number, windowMs: number) => {
+    const history = historyByStrike.get(sourceStrike) ?? [];
+    const target = timestamp - windowMs;
+    let prior: number | undefined;
+    for (const sample of history) {
+      if (sample.timestamp > target) break;
+      prior = sample.absoluteExposure;
+    }
+    return prior;
+  };
+  const boundedRoc = (current: number, previous: number | undefined) => {
+    if (previous === undefined) return 0;
+    const denominator = Math.max(1, settings.rocDenominatorFloor, Math.abs(previous));
+    return Math.max(
+      -Math.abs(settings.rocOutlierClampPercent),
+      Math.min(Math.abs(settings.rocOutlierClampPercent), 100 * (current - Math.abs(previous)) / denominator),
+    );
+  };
+  const momentumState = (roc: number): BounceMomentumState => {
+    if (roc <= settings.rapidUnwindingThresholdPercent) return "rapid-unwinding";
+    if (roc < settings.weakeningMomentumThresholdPercent) return "weakening";
+    if (roc >= settings.rapidAccumulationThresholdPercent) return "rapid-accumulation";
+    if (roc > settings.accumulationThresholdPercent) return "accumulating";
+    return "stable";
+  };
 
   const buildSlice = (
     timestamp: number,
@@ -200,15 +251,34 @@ function buildExposureField(
       .sort((left, right) => Math.abs(right.signedExposure) - Math.abs(left.signedExposure));
     const maximumAbsoluteExposure = Math.max(0, ...ranked.map((row) => Math.abs(row.signedExposure)));
     const totalAbsoluteExposure = ranked.reduce((sum, row) => sum + Math.abs(row.signedExposure), 0);
-    const retained = ranked
-      .filter((row, index) => index < maximumNodes || Math.abs(row.signedExposure) >= maximumAbsoluteExposure * 0.08)
-      .slice(0, maximumNodes);
+    const presentStrikes = new Set(ranked.map((row) => row.sourceStrike));
+    for (const [strike, state] of touchStateByStrike) if (!presentStrikes.has(strike)) touchStateByStrike.set(strike, { ...state, inside: false });
+    for (const row of ranked) {
+      const prior = touchStateByStrike.get(row.sourceStrike) ?? { inside: false, touches: 0, lastTouchAt: null };
+      const tolerance = Math.max(displayTick / 2, Math.abs(row.sourceStrike) * Math.max(0, settings.touchTolerancePercent));
+      const inside = sourcePrice !== null && Math.abs(sourcePrice - row.sourceStrike) <= tolerance;
+      touchStateByStrike.set(row.sourceStrike, {
+        inside,
+        touches: prior.touches + (inside && !prior.inside ? 1 : 0),
+        lastTouchAt: inside && !prior.inside ? timestamp : prior.lastTouchAt,
+      });
+    }
+    const retained = ranked.slice(0, maximumNodes);
     const nodes = retained.map((row): BounceExposureNode => {
       const absoluteExposure = Math.abs(row.signedExposure);
-      const previous = previousByStrike.get(row.sourceStrike);
-      const rateOfChangePercent = previous === undefined
-        ? 0
-        : 100 * (absoluteExposure - Math.abs(previous)) / Math.max(1, Math.abs(previous));
+      const shortRateOfChange = boundedRoc(absoluteExposure, priorMagnitude(row.sourceStrike, timestamp, 60_000));
+      const mediumRateOfChange = boundedRoc(absoluteExposure, priorMagnitude(row.sourceStrike, timestamp, 5 * 60_000));
+      const longRateOfChange = boundedRoc(absoluteExposure, priorMagnitude(row.sourceStrike, timestamp, 15 * 60_000));
+      const state = momentumState(shortRateOfChange);
+      const percentOfKingAbsolute = maximumAbsoluteExposure > 0 ? absoluteExposure / maximumAbsoluteExposure : 0;
+      const role: BounceExposureRole = absoluteExposure === maximumAbsoluteExposure && maximumAbsoluteExposure > 0
+        ? "KING"
+        : state === "rapid-unwinding" ? "RETIRED"
+          : state === "weakening" ? "WEAKENING"
+            : state === "rapid-accumulation" || state === "accumulating" ? "DEVELOPING" : "MAJOR";
+      const touchState = touchStateByStrike.get(row.sourceStrike) ?? { inside: false, touches: 0, lastTouchAt: null };
+      const minutesSinceTouch = touchState.lastTouchAt === null ? Number.POSITIVE_INFINITY : Math.max(0, timestamp - touchState.lastTouchAt) / 60_000;
+      const freshnessScore = touchState.lastTouchAt === null ? 0 : 100 * Math.pow(Math.max(0.01, settings.touchDecayFactor), minutesSinceTouch / 5);
       return {
         id: `${timestamp}:${row.sourceStrike}`,
         timestamp,
@@ -218,13 +288,26 @@ function buildExposureField(
         absoluteExposure,
         callExposure: row.callExposure,
         putExposure: row.putExposure,
-        strength: maximumAbsoluteExposure > 0 ? absoluteExposure / maximumAbsoluteExposure : 0,
+        strength: percentOfKingAbsolute,
         bucketShare: totalAbsoluteExposure > 0 ? absoluteExposure / totalAbsoluteExposure : 0,
-        rateOfChangePercent,
+        rateOfChangePercent: shortRateOfChange,
+        percentOfKingSigned: maximumAbsoluteExposure > 0 ? row.signedExposure / maximumAbsoluteExposure : 0,
+        percentOfKingAbsolute,
+        shortRateOfChange,
+        mediumRateOfChange,
+        longRateOfChange,
+        momentumState: state,
+        role,
+        dataQuality: profile.status === "live" ? 1 : profile.status === "delayed" ? 0.8 : profile.status === "stale" ? 0.65 : 0.75,
+        touches: touchState.touches,
+        freshnessScore,
       };
     });
-    for (const row of ranked) previousByStrike.set(row.sourceStrike, row.signedExposure);
-    if (!nodes.length) return;
+    for (const row of ranked) {
+      const history = historyByStrike.get(row.sourceStrike) ?? [];
+      history.push({ timestamp, absoluteExposure: Math.abs(row.signedExposure) });
+      historyByStrike.set(row.sourceStrike, history);
+    }
     slices.push({
       timestamp,
       sourcePrice,
