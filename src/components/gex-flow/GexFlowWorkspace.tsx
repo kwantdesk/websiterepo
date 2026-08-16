@@ -354,7 +354,7 @@ export default function GexFlowWorkspace() {
     });
   };
 
-  return <div className="relative flex h-full min-h-0 flex-col bg-background text-foreground">
+  return <div className="relative flex h-full min-h-0 w-full min-w-0 flex-col bg-background text-foreground">
     <header className="flex h-9 shrink-0 items-center gap-2 border-b border-border bg-panel px-2">
       <Layers3 className="h-4 w-4 text-primary" /><h1 className="text-[11px] font-semibold uppercase tracking-[0.14em]">GEX FLOW</h1><span className="border border-border px-2 py-0.5 font-mono text-[8px] text-muted">OPTIONS FLOW SEEKER</span>
       <div className="ml-auto flex items-center gap-1"><StatusBadge payload={payload} paused={paused} /><button onClick={() => setDiagnosticsOpen((value) => !value)} className="h-7 border border-border px-2 text-muted hover:text-foreground" title="Diagnostics"><Settings2 className="h-3.5 w-3.5" /></button></div>
@@ -395,8 +395,8 @@ export default function GexFlowWorkspace() {
       {filtersOpen ? <FilterDrawer filters={filters} setFilters={setFilters} onClose={() => setFiltersOpen(false)} /> : null}
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <div className="min-h-0 flex-1 overflow-auto" ref={tableRef} onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}>
-          <div className="sticky top-0 z-20 flex h-8 border-b border-border bg-panel" style={{ width: totalWidth }}><div className="w-7 shrink-0" />{columns.map((column) => <div key={column} className="flex shrink-0 items-center border-r border-border px-2 text-[7px] font-semibold uppercase tracking-[0.12em] text-muted" style={{ width: WIDTHS[column] }}>{COLUMN_LABELS[column]}</div>)}</div>
-          <div className="relative" style={{ height: visibleRows.length * ROW_HEIGHT, width: totalWidth }}>
+          <div className="sticky top-0 z-20 flex h-8 w-full border-b border-border bg-panel" style={{ minWidth: totalWidth }}><div className="w-7 shrink-0" />{columns.map((column) => <div key={column} className="flex shrink-0 grow items-center border-r border-border px-2 text-[7px] font-semibold uppercase tracking-[0.12em] text-muted" style={{ width: WIDTHS[column], minWidth: WIDTHS[column] }}>{COLUMN_LABELS[column]}</div>)}</div>
+          <div className="relative w-full" style={{ height: visibleRows.length * ROW_HEIGHT, minWidth: totalWidth }}>
             {renderedRows.map((row, offset) => <FlowRow key={row.id} row={row} columns={columns} top={(startIndex + offset) * ROW_HEIGHT} selected={selected?.id === row.id} expanded={expanded === row.id} onSelect={() => setSelected(row)} onExpand={() => setExpanded((value) => value === row.id ? null : row.id)} />)}
           </div>
         </div>
@@ -463,7 +463,7 @@ function FlowCell({ column, row }: { column: ColumnKey; row: GexFlowRow }) {
   if (column === "iv") content = percentage(row.impliedVolatility === null ? null : row.impliedVolatility * 100, 1);
   if (column === "voi") content = row.volumeToOi === null ? "—" : row.volumeToOi === Number.POSITIVE_INFINITY ? "NEW / ∞" : `${row.volumeToOi.toFixed(2)}×`;
   if (column === "strategy") content = <span>{row.strategy ?? row.consolidationType}{row.strategyConfidence !== "UNAVAILABLE" ? ` · ${row.strategyConfidence}` : ""}</span>;
-  return <div className="flex shrink-0 items-center overflow-hidden border-r border-border/45 px-2 font-mono" style={{ width: WIDTHS[column] }}><span className="truncate">{content}</span></div>;
+  return <div className="flex shrink-0 grow items-center overflow-hidden border-r border-border/45 px-2 font-mono" style={{ width: WIDTHS[column], minWidth: WIDTHS[column] }}><span className="truncate">{content}</span></div>;
 }
 
 function SpreadCell({ row }: { row: GexFlowRow }) {
