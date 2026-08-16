@@ -386,6 +386,7 @@ export class RollingDepthEngine {
     this.capacity = capacity;
     this.frames = [];
     this.revision = 0;
+    this.tradeRevision = 0;
     this.contrast = new AdaptiveContrast(options.contrast);
     this.columnCache = new WeakMap();
     this.lastHeatmap = null;
@@ -394,6 +395,7 @@ export class RollingDepthEngine {
   reset() {
     this.frames.length = 0;
     this.revision = 0;
+    this.tradeRevision = 0;
     this.columnCache = new WeakMap();
     this.lastHeatmap = null;
     this.contrast.reset();
@@ -407,6 +409,10 @@ export class RollingDepthEngine {
       shifted += 1;
     }
     this.revision += 1;
+    // Resting-book changes do not alter execution bubbles. Keep a separate
+    // revision so the renderer does not rebuild and recluster the complete
+    // visible trade tape for every 50 ms depth-only frame.
+    if ((frame.trades?.length || 0) > 0 || shifted > 0) this.tradeRevision += 1;
     return { shifted, length: this.frames.length, revision: this.revision };
   }
 
@@ -523,8 +529,8 @@ export class RollingDepthEngine {
     let shiftColumns = 0;
     let updateStart = 0;
     let reusedColumns = 0;
-    let base = new Uint8ClampedArray(width * height);
-    let intensities = new Uint8ClampedArray(width * height);
+    let base = null;
+    let intensities = null;
 
     if (!contrastChanged && previous && previous.styleKey === styleKey && previous.width === width && previous.height === height) {
       // Display-held frames intentionally use half-step sequence ids. Numeric
@@ -542,13 +548,23 @@ export class RollingDepthEngine {
         shiftColumns = advance;
         updateStart = width - advance;
         reusedColumns = updateStart;
+        // The previous raster is no longer consumed after this call. Roll it
+        // in place instead of allocating and discarding two full typed arrays
+        // for every live book frame (several MB/s on a wide monitor).
+        base = previous.base;
+        intensities = previous.intensities;
         for (let row = 0; row < height; row += 1) {
           const oldOffset = row * width + advance;
           const newOffset = row * width;
-          base.set(previous.base.subarray(oldOffset, oldOffset + updateStart), newOffset);
-          intensities.set(previous.intensities.subarray(oldOffset, oldOffset + updateStart), newOffset);
+          base.copyWithin(newOffset, oldOffset, oldOffset + updateStart);
+          intensities.copyWithin(newOffset, oldOffset, oldOffset + updateStart);
         }
       }
+    }
+
+    if (!base || !intensities) {
+      base = new Uint8ClampedArray(width * height);
+      intensities = new Uint8ClampedArray(width * height);
     }
 
     if (updateStart < width) {

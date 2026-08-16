@@ -1,6 +1,6 @@
 import { SYMBOLS } from './market-simulator.js';
-import { BOOKMAP_VISUAL_DEFAULTS, RollingDepthEngine } from './depth-engine.js';
-import { DepthRenderer, priceLabel, timeLabel } from './renderer.js';
+import { BOOKMAP_VISUAL_DEFAULTS, RollingDepthEngine } from './depth-engine.js?v=20260817-live-stability';
+import { DepthRenderer, priceLabel, timeLabel } from './renderer.js?v=20260817-live-stability';
 import {
   DepthMarketFeed,
   isFullDepthSource,
@@ -11,7 +11,7 @@ import {
   normalizeLiquidityMapSymbol,
   symbolMatchesSnapshot,
   updateLivePresentationEdge,
-} from './live-market.js';
+} from './live-market.js?v=20260817-live-stability';
 import { DEFAULT_PALETTE, paletteCssGradient } from './palettes.js';
 import {
   DEFAULT_INDICATOR_SETTINGS,
@@ -28,9 +28,13 @@ import {
   setWebsiteThemeColors,
 } from './ui-themes.js';
 
-// Preserve roughly the same on-screen time window as the old 20 FPS / 1,800
-// frame buffer while the presentation layer follows the monitor refresh rate.
-const MAX_HISTORY = 6500;
+// Retain genuine Rithmic book frames, not monitor presentation frames. The
+// gateway emits full books at 20 FPS; 1,800 frames therefore preserves the
+// intended 90-second dense window. The previous 6,500-frame value confused
+// monitor refresh with market-frame cadence and made each embedded map retain
+// several minutes of four packed books, cached rasters and trades. Once full,
+// that heap produced the recurring stop-the-world pauses seen after ~5 min.
+const MAX_HISTORY = 1800;
 const ABSOLUTE_MIN_TIME_COLUMN_PIXELS = 0.12;
 const SPEEDS = [0.25, 0.5, 1, 2, 4];
 const LIQUIDITY_MAP_SETTINGS_KEY = 'kwantdesk:liquidity-map-settings:v1';
@@ -38,7 +42,7 @@ const LIQUIDITY_MAP_TABS_KEY = 'kwantdesk:liquidity-map-tabs:v1';
 const DEFAULT_INSTRUMENT_TABS = ['NQ', 'ES'];
 const INSTRUMENT_ORDER = [...LIQUIDITY_MAP_ROOTS];
 const INDICATOR_ANALYSIS_INTERVAL_MS = 200;
-const INDICATOR_ANALYSIS_MAX_FRAMES = 2600;
+const INDICATOR_ANALYSIS_MAX_FRAMES = 1800;
 const LIQUIDITY_MAP_DISPLAY_DEFAULTS = Object.freeze({
   palette: DEFAULT_PALETTE,
   sensitivity: 0.1,

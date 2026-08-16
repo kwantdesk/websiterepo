@@ -25,7 +25,7 @@ test("heatmap remains intact when half-step display frames roll past capacity", 
   for (const current of [frame(1, 10), frame(1.5, 10), frame(2, 12), frame(2.5, 12)]) {
     engine.append(current);
   }
-  heatmap(engine);
+  const initial = heatmap(engine);
 
   const { shifted } = engine.append(frame(3, 14));
   const rolled = heatmap(engine);
@@ -35,6 +35,7 @@ test("heatmap remains intact when half-step display frames roll past capacity", 
   assert.equal(rolled.updateStart, 3);
   assert.equal(rolled.width, 4);
   assert.ok(rolled.intensities.some((value) => value > 0));
+  assert.equal(rolled.intensities, initial.intensities, "rolling reuses the existing raster allocation");
 });
 
 test("live columns do not periodically recalibrate or dim a chosen heat scale", () => {

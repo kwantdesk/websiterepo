@@ -129,6 +129,8 @@ function niceTickStep(totalTicks) {
   return Math.max(1, Math.round(factor * magnitude));
 }
 
+const TRADE_CLUSTER_REFRESH_MS = 100;
+
 export class DepthRenderer {
   constructor(canvas, cvdCanvas, depthEngine) {
     this.canvas = canvas;
@@ -145,7 +147,7 @@ export class DepthRenderer {
     this.cameraCenterTick = null;
     this.cameraFrameAt = 0;
     this.cameraInMotion = false;
-    this.tradeClusterCache = { key: '', value: [] };
+    this.tradeClusterCache = { key: '', settingsKey: '', value: [], builtAt: 0, ready: false };
     this.executionProfileCache = { history: null, startFrame: null, endFrame: null, totals: new Map() };
     this.fontFamilies = { mono: 'Consolas, monospace', ui: '"Arial Narrow", sans-serif' };
     this.lastFontStyleSyncAt = 0;
@@ -559,10 +561,7 @@ export class DepthRenderer {
       minimumTradeSize: settings.minimumTradeSize,
       minimumPixelVolume: settings.minimumPixelVolume,
     };
-    const clusterKey = [
-      this.depthEngine.revision,
-      clusterOptions.start,
-      clusterOptions.end,
+    const clusterSettingsKey = [
       clusterOptions.rowTicks,
       clusterOptions.rowPixels.toFixed(3),
       clusterOptions.columnPixels.toFixed(3),
@@ -573,10 +572,28 @@ export class DepthRenderer {
       clusterOptions.minimumTradeSize,
       clusterOptions.minimumPixelVolume,
     ].join('|');
-    if (this.tradeClusterCache.key !== clusterKey) {
+    const clusterKey = [
+      this.depthEngine.tradeRevision,
+      clusterOptions.start,
+      clusterOptions.end,
+      clusterSettingsKey,
+    ].join('|');
+    const clusterNow = performance.now();
+    const settingsChanged = this.tradeClusterCache.settingsKey !== clusterSettingsKey;
+    if (
+      settingsChanged
+      || !this.tradeClusterCache.ready
+      || (
+        this.tradeClusterCache.key !== clusterKey
+        && clusterNow - this.tradeClusterCache.builtAt >= TRADE_CLUSTER_REFRESH_MS
+      )
+    ) {
       this.tradeClusterCache = {
         key: clusterKey,
+        settingsKey: clusterSettingsKey,
         value: this.depthEngine.clusterTrades(clusterOptions),
+        builtAt: clusterNow,
+        ready: true,
       };
     }
     const clusters = this.tradeClusterCache.value;

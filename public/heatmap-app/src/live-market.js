@@ -15,6 +15,7 @@ const STREAM_LEASE_MS = 240_000;
 // index or a late event from another contract) must never be allowed to throw
 // the camera hundreds of points away and then snap it back on the next book.
 const MAX_PRESENTATION_TICK_JUMP = 128;
+const SNAPSHOT_IDENTITY_CAPACITY = 2048;
 export const INSTITUTIONAL_MARKET_DATA_ORIGIN = '/api/institutional-market-data';
 
 export function liveInstrumentCatalogUrl() {
@@ -291,6 +292,7 @@ export class DepthMarketFeed {
     this.lastAcceptedTimestamp = 0;
     this.seenSnapshotIdentities = new Set();
     this.snapshotIdentityQueue = [];
+    this.snapshotIdentityCursor = 0;
     this.connectionGeneration = 0;
     this.running = false;
     this.status = {
@@ -353,6 +355,7 @@ export class DepthMarketFeed {
     this.lastAcceptedTimestamp = 0;
     this.seenSnapshotIdentities.clear();
     this.snapshotIdentityQueue = [];
+    this.snapshotIdentityCursor = 0;
     this.presentationSnapshot = null;
     this.latestTradeTick = null;
     this.lastRealFrameAt = 0;
@@ -718,13 +721,17 @@ export class DepthMarketFeed {
     const identity = this.#snapshotIdentity(snapshot);
     if (!identity || this.seenSnapshotIdentities.has(identity)) return;
     this.seenSnapshotIdentities.add(identity);
-    this.snapshotIdentityQueue.push(identity);
-    // Keep enough identities to span several gateway history windows without
-    // allowing a permanently open map tab to grow memory without bound.
-    while (this.snapshotIdentityQueue.length > 10_000) {
-      const expired = this.snapshotIdentityQueue.shift();
-      if (expired) this.seenSnapshotIdentities.delete(expired);
+    // A 10,000-item Array.shift() on every live frame eventually became an
+    // O(n) main-thread tax. A fixed circular identity window spans many times
+    // the gateway's retained history while eviction remains O(1).
+    if (this.snapshotIdentityQueue.length < SNAPSHOT_IDENTITY_CAPACITY) {
+      this.snapshotIdentityQueue.push(identity);
+      return;
     }
+    const expired = this.snapshotIdentityQueue[this.snapshotIdentityCursor];
+    if (expired) this.seenSnapshotIdentities.delete(expired);
+    this.snapshotIdentityQueue[this.snapshotIdentityCursor] = identity;
+    this.snapshotIdentityCursor = (this.snapshotIdentityCursor + 1) % SNAPSHOT_IDENTITY_CAPACITY;
   }
 
 }

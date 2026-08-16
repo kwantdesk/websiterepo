@@ -47,7 +47,7 @@ test("live map rendering avoids full-history analysis and repeated DOM replaceme
   const depthEngine = read("public/heatmap-app/src/depth-engine.js");
 
   assert.match(runtime, /INDICATOR_ANALYSIS_INTERVAL_MS = 200/);
-  assert.match(runtime, /INDICATOR_ANALYSIS_MAX_FRAMES = 2600/);
+  assert.match(runtime, /INDICATOR_ANALYSIS_MAX_FRAMES = 1800/);
   assert.match(runtime, /this\.indicatorTradeRevision \+= 1/);
   assert.match(runtime, /this\.history\.slice\(analysisStart, this\.viewEnd \+ 1\)/);
   assert.doesNotMatch(runtime, /this\.history\.slice\(0, this\.viewEnd \+ 1\)/);
@@ -60,7 +60,7 @@ test("live map rendering avoids full-history analysis and repeated DOM replaceme
   assert.match(depthEngine, /RAW_COLUMN_GEOMETRY_CACHE_LIMIT = 2/);
   assert.match(depthEngine, /if \(cache\.size >= RAW_COLUMN_GEOMETRY_CACHE_LIMIT\) cache\.clear\(\)/);
   assert.match(depthEngine, /typeof book\?\.forEachLevel === 'function'/);
-  assert.match(runtime, /MAX_HISTORY = 6500/);
+  assert.match(runtime, /MAX_HISTORY = 1800/);
   const feed = read("public/heatmap-app/src/live-market.js");
   assert.match(feed, /class PackedBook/);
   assert.match(feed, /Float64Array\.from\(ticks\)/);
@@ -79,6 +79,8 @@ test("wide and high-DPI screens use bounded canvas work and cached trade cluster
   assert.match(renderer, /Math\.sqrt\(5_000_000 \/ Math\.max\(1, width \* height\)\)/);
   assert.match(renderer, /Math\.min\(1\.5, window\.devicePixelRatio/);
   assert.match(renderer, /this\.tradeClusterCache\.key !== clusterKey/);
+  assert.match(renderer, /TRADE_CLUSTER_REFRESH_MS = 100/);
+  assert.match(renderer, /this\.depthEngine\.tradeRevision/);
   assert.match(renderer, /this\.executionProfileCache = \{ history: null/);
   assert.match(renderer, /this\.visibleExecutionProfile = this\.#getVisibleExecutionProfile\(history\)/);
   assert.match(renderer, /const canRoll = oldStart >= 0/);
@@ -99,4 +101,17 @@ test("wide and high-DPI screens use bounded canvas work and cached trade cluster
   assert.match(renderer, /const overlayCenterTick = this\.interaction/);
   assert.match(renderer, /overlayBottomTick, overlayTopTick, overlayCenterTick, overlayYForTick/);
   assert.match(renderer, /this\.interaction\?\.startTimestamp/);
+});
+
+test("live heatmap raster buffers roll in place instead of allocating every frame", () => {
+  const depthEngine = read("public/heatmap-app/src/depth-engine.js");
+  const feed = read("public/heatmap-app/src/live-market.js");
+
+  assert.match(depthEngine, /base = previous\.base/);
+  assert.match(depthEngine, /intensities = previous\.intensities/);
+  assert.match(depthEngine, /base\.copyWithin/);
+  assert.match(depthEngine, /intensities\.copyWithin/);
+  assert.match(feed, /SNAPSHOT_IDENTITY_CAPACITY = 2048/);
+  assert.match(feed, /this\.snapshotIdentityCursor/);
+  assert.doesNotMatch(feed, /snapshotIdentityQueue\.shift\(\)/);
 });
