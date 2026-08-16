@@ -369,7 +369,10 @@ export default function GexFlowWorkspace() {
 
     <div className="flex min-h-9 shrink-0 flex-wrap items-center gap-1 border-b border-border bg-panel px-2 py-1">
       <div className="relative"><Search className="pointer-events-none absolute left-2 top-2 h-3 w-3 text-muted" /><input value={filters.query} onChange={(event) => setFilters((value) => ({ ...value, query: event.target.value }))} placeholder="SEARCH CONTRACT" className="h-7 w-40 border border-border bg-background pl-7 pr-2 font-mono text-[9px] outline-none focus:border-primary" /></div>
-      <KwantSelect value={symbol} onChange={(event) => setSymbol(event.target.value)} className="h-7 w-36">{OPTIONS_FLOW_INSTRUMENTS.map((item) => <option key={item.symbol} value={item.symbol}>{item.symbol} · {item.label}</option>)}</KwantSelect>
+      <KwantSelect value={symbol} onChange={(event) => setSymbol(event.target.value)} className="h-7 w-40">
+        <option value="ALL">ALL OPTIONS</option>
+        {OPTIONS_FLOW_INSTRUMENTS.map((item) => <option key={item.symbol} value={item.symbol}>{item.symbol} · {item.label}</option>)}
+      </KwantSelect>
       <KwantSelect value={mode} onChange={(event) => setMode(event.target.value as GexFlowMode)} className="h-7 w-32"><option value="HYBRID">HYBRID</option><option value="CONSOLIDATED">CONSOLIDATED</option><option value="RAW">RAW TAPE</option></KwantSelect>
       <button onClick={togglePaused} className={`flex h-7 items-center gap-1 border px-2 text-[8px] font-semibold ${paused ? "border-warning/50 text-warning" : "border-primary/40 text-primary"}`}>{paused ? <Play className="h-3 w-3" /> : <Pause className="h-3 w-3" />}{paused ? "RESUME" : "PAUSE LIVE FEED"}</button>
       <KwantSelect value={refreshMode} onChange={(event) => setRefreshMode(event.target.value)} className="h-7 w-20"><option>AUTO</option><option value="2">2s</option><option value="5">5s</option><option value="10">10s</option><option value="30">30s</option><option>MANUAL</option></KwantSelect>

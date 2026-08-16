@@ -4758,10 +4758,13 @@ export async function getGexFlowPayload(args: {
   const size = Math.max(25, Math.min(100, Math.round(args.size ?? 100)));
   const requestBody: JsonRecord = {
     sessionDate,
-    filter: { ticker: symbol },
     size,
     sort: { field: "tradeTime", direction: "DESCENDING" },
   };
+  // QuantData's order-flow endpoints are provider-wide when no ticker filter is
+  // supplied. Keep ALL as one authoritative, globally sorted tape so replay,
+  // cursors and refreshes do not fan out into one request per instrument.
+  if (symbol !== "ALL") requestBody.filter = { ticker: symbol };
   if (args.cursor?.length) requestBody.searchAfter = args.cursor;
   const wantsConsolidated = mode !== "RAW";
   const wantsRaw = mode !== "CONSOLIDATED";
@@ -4808,6 +4811,7 @@ export async function getGexFlowPayload(args: {
   const selectedPayload = mode === "RAW" ? rawPayload : consolidatedPayload ?? rawPayload;
   const remaining = [consolidatedResult, rawResult].flatMap((result) => result.status === "fulfilled" && result.value.remaining !== null ? [result.value.remaining] : []);
   const limitations: string[] = [];
+  if (symbol === "ALL") limitations.push("All options uses the provider-wide options tape; ticker filters can still be applied from the table controls.");
   if (!rawAvailable && wantsRaw) limitations.push("The unconsolidated QuantData tape is unavailable for this entitlement; consolidated rows remain authoritative.");
   if (!rows.some((row) => row.previousOpenInterest !== null)) limitations.push("Daily OI change is unavailable when the provider does not return prior official OI.");
   if (!rows.some((row) => row.sector || row.industry)) limitations.push("Sector and industry enrichment are unavailable in the current projected flow payload.");
