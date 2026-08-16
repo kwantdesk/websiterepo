@@ -2,7 +2,7 @@ import type { GexIntervalProviderBucket, GexIntervalProviderSurface } from "@/li
 import type { NetGammaProfileSnapshot, NetGammaStrikeRow } from "@/lib/netGammaExposureByStrike";
 
 export const BOUNCE_LEVELS_ID = "bounce-levels";
-export const BOUNCE_LEVELS_SCHEMA_VERSION = 1;
+export const BOUNCE_LEVELS_SCHEMA_VERSION = 2;
 
 export type BounceGreekMode = "GAMMA" | "DELTA" | "VANNA" | "CHARM";
 export type BounceLevelRole = "KING" | "FLOOR" | "CEILING" | "GATEKEEPER" | "MAJOR" | "CLUSTER" | "DEVELOPING" | "WEAKENING" | "RETIRED" | "AIR_POCKET";
@@ -42,8 +42,29 @@ export type BounceLevel = {
 };
 
 export type BounceAirPocket = { id: string; lowerPrice: number; upperPrice: number; magnitudeRatio: number };
+export type BounceExposureNode = {
+  id: string;
+  timestamp: number;
+  sourceStrike: number;
+  mappedPrice: number;
+  signedExposure: number;
+  absoluteExposure: number;
+  callExposure: number;
+  putExposure: number;
+  strength: number;
+  bucketShare: number;
+  rateOfChangePercent: number;
+};
+export type BounceExposureSlice = {
+  timestamp: number;
+  sourcePrice: number | null;
+  mappedSourcePrice: number | null;
+  maximumAbsoluteExposure: number;
+  totalAbsoluteExposure: number;
+  nodes: BounceExposureNode[];
+};
 export type BounceLevelsSnapshot = {
-  schemaVersion: 1;
+  schemaVersion: 2;
   id: string;
   sourceTicker: string;
   displayInstrument: string;
@@ -56,6 +77,7 @@ export type BounceLevelsSnapshot = {
   expirationLabel: string;
   representation: "per-one-percent-move";
   mapping: NetGammaProfileSnapshot["mapping"];
+  exposureField: BounceExposureSlice[];
   levels: BounceLevel[];
   king: BounceLevel | null;
   floor: BounceLevel | null;
@@ -80,6 +102,7 @@ export type BounceLevelsBuildSettings = {
   airPocketRatio: number;
   minimumAirPocketWidthPercent: number;
   historyBuckets: number;
+  maximumNodesPerSlice: number;
   magnitudeWeight: number;
   proximityWeight: number;
   accumulationWeight: number;
@@ -112,7 +135,8 @@ export const DEFAULT_BOUNCE_LEVELS_SETTINGS: BounceLevelsBuildSettings = {
   minimumClusterNodes: 2,
   airPocketRatio: 0.2,
   minimumAirPocketWidthPercent: 0.003,
-  historyBuckets: 30,
+  historyBuckets: 120,
+  maximumNodesPerSlice: 24,
   magnitudeWeight: 0.45,
   proximityWeight: 0.15,
   accumulationWeight: 0.15,
@@ -135,6 +159,98 @@ export const DEFAULT_BOUNCE_LEVELS_SETTINGS: BounceLevelsBuildSettings = {
 type StrikeHistory = { values: number[]; timestamps: number[]; sourcePrices: Array<number | null> };
 type Candidate = Omit<BounceLevel, "role" | "explanation"> & { active: boolean; developing: boolean; weakening: boolean; retired: boolean };
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
+
+function buildExposureField(
+  profile: NetGammaProfileSnapshot,
+  surface: GexIntervalProviderSurface | null,
+  settings: BounceLevelsBuildSettings,
+) {
+  const selectedExpirations = new Set(profile.expirationDates);
+  const maximumBuckets = Math.max(2, Math.round(settings.historyBuckets));
+  const maximumNodes = Math.max(4, Math.min(64, Math.round(settings.maximumNodesPerSlice)));
+  const displayTick = /^(NQ|MNQ|ES|MES|RTY|M2K)$/.test(profile.displayInstrument) ? 0.25 : 0.01;
+  const mapPrice = (sourceStrike: number) => Math.round((profile.mapping.alpha + profile.mapping.beta * sourceStrike) / displayTick) * displayTick;
+  const eligibleBuckets = (surface?.buckets ?? [])
+    .filter((bucket) => bucket.timestamp <= profile.snapshotTimeMs)
+    .slice(-maximumBuckets);
+  const previousByStrike = new Map<number, number>();
+  const slices: BounceExposureSlice[] = [];
+
+  const buildSlice = (
+    timestamp: number,
+    sourcePrice: number | null,
+    rows: Array<{ sourceStrike: number; callExposure: number; putExposure: number; expirationDate?: string }>,
+  ) => {
+    const aggregate = new Map<number, { call: number; put: number }>();
+    for (const row of rows) {
+      if (row.expirationDate && selectedExpirations.size && !selectedExpirations.has(row.expirationDate)) continue;
+      const current = aggregate.get(row.sourceStrike) ?? { call: 0, put: 0 };
+      current.call += Number(row.callExposure) || 0;
+      current.put += Number(row.putExposure) || 0;
+      aggregate.set(row.sourceStrike, current);
+    }
+    const ranked = [...aggregate.entries()]
+      .map(([sourceStrike, exposure]) => ({
+        sourceStrike,
+        callExposure: exposure.call,
+        putExposure: exposure.put,
+        signedExposure: exposure.call + exposure.put,
+      }))
+      .filter((row) => Number.isFinite(row.signedExposure) && Math.abs(row.signedExposure) > Number.EPSILON)
+      .sort((left, right) => Math.abs(right.signedExposure) - Math.abs(left.signedExposure));
+    const maximumAbsoluteExposure = Math.max(0, ...ranked.map((row) => Math.abs(row.signedExposure)));
+    const totalAbsoluteExposure = ranked.reduce((sum, row) => sum + Math.abs(row.signedExposure), 0);
+    const retained = ranked
+      .filter((row, index) => index < maximumNodes || Math.abs(row.signedExposure) >= maximumAbsoluteExposure * 0.08)
+      .slice(0, maximumNodes);
+    const nodes = retained.map((row): BounceExposureNode => {
+      const absoluteExposure = Math.abs(row.signedExposure);
+      const previous = previousByStrike.get(row.sourceStrike);
+      const rateOfChangePercent = previous === undefined
+        ? 0
+        : 100 * (absoluteExposure - Math.abs(previous)) / Math.max(1, Math.abs(previous));
+      return {
+        id: `${timestamp}:${row.sourceStrike}`,
+        timestamp,
+        sourceStrike: row.sourceStrike,
+        mappedPrice: mapPrice(row.sourceStrike),
+        signedExposure: row.signedExposure,
+        absoluteExposure,
+        callExposure: row.callExposure,
+        putExposure: row.putExposure,
+        strength: maximumAbsoluteExposure > 0 ? absoluteExposure / maximumAbsoluteExposure : 0,
+        bucketShare: totalAbsoluteExposure > 0 ? absoluteExposure / totalAbsoluteExposure : 0,
+        rateOfChangePercent,
+      };
+    });
+    for (const row of ranked) previousByStrike.set(row.sourceStrike, row.signedExposure);
+    if (!nodes.length) return;
+    slices.push({
+      timestamp,
+      sourcePrice,
+      mappedSourcePrice: sourcePrice && sourcePrice > 0 ? mapPrice(sourcePrice) : null,
+      maximumAbsoluteExposure,
+      totalAbsoluteExposure,
+      nodes,
+    });
+  };
+
+  for (const bucket of eligibleBuckets) buildSlice(bucket.timestamp, bucket.sourcePrice, bucket.rows);
+  const latestRows = profile.rows.flatMap((row) => row.expirationContributions.length
+    ? row.expirationContributions.map((contribution) => ({
+      sourceStrike: contribution.sourceStrike,
+      callExposure: contribution.callExposure,
+      putExposure: contribution.putExposure,
+      expirationDate: contribution.expirationDate,
+    }))
+    : [{ sourceStrike: row.sourceStrike, callExposure: row.callExposure, putExposure: row.putExposure }]);
+  if (latestRows.length) {
+    const finalTimestamp = Math.max(profile.snapshotTimeMs, slices.at(-1)?.timestamp ?? 0);
+    if (slices.at(-1)?.timestamp === finalTimestamp) slices.pop();
+    buildSlice(finalTimestamp, profile.sourceSpotPrice, latestRows);
+  }
+  return slices;
+}
 
 export function selectLookaheadSafeBounceBucket(surface: GexIntervalProviderSurface, asOfMs: number): GexIntervalProviderBucket | null {
   if (!Number.isFinite(asOfMs)) return null;
@@ -371,7 +487,7 @@ export function buildBounceLevelsSnapshot(profile: NetGammaProfileSnapshot, hist
   }
   const mapSignature = [king?.id ?? "none", selectedFloor?.id ?? "none", selectedCeiling?.id ?? "none", ...gatekeepers.map((level) => level.id)].join("|");
   return {
-    schemaVersion: 1,
+    schemaVersion: BOUNCE_LEVELS_SCHEMA_VERSION,
     id: `${profile.id}:bounce:${settings.greekMode}:${settings.maximumLevels}:${settings.minimumRelevanceScore}`,
     sourceTicker: profile.sourceTicker,
     displayInstrument: profile.displayInstrument,
@@ -384,6 +500,7 @@ export function buildBounceLevelsSnapshot(profile: NetGammaProfileSnapshot, hist
     expirationLabel: profile.expirationLabel,
     representation: "per-one-percent-move",
     mapping: profile.mapping,
+    exposureField: buildExposureField(profile, historySurface, settings),
     levels: selected,
     king,
     floor: selectedFloor,
@@ -398,5 +515,9 @@ export function buildBounceLevelsSnapshot(profile: NetGammaProfileSnapshot, hist
 export function isBounceLevelsSnapshot(value: unknown): value is BounceLevelsSnapshot {
   if (!value || typeof value !== "object") return false;
   const candidate = value as Partial<BounceLevelsSnapshot>;
-  return candidate.schemaVersion === 1 && typeof candidate.id === "string" && Array.isArray(candidate.levels) && typeof candidate.greekMode === "string";
+  return candidate.schemaVersion === BOUNCE_LEVELS_SCHEMA_VERSION
+    && typeof candidate.id === "string"
+    && Array.isArray(candidate.exposureField)
+    && Array.isArray(candidate.levels)
+    && typeof candidate.greekMode === "string";
 }

@@ -117,6 +117,10 @@ assert.equal(snapshot.levels.length, 3, "the configured active-level ceiling is 
 assert.ok(snapshot.levels.some((level) => level.rateOfChangePercent > 0), "history produces deterministic positive node accumulation without reading the future bucket");
 assert.ok(snapshot.levels.every((level) => Number.isFinite(level.relevanceScore)), "every retained level has a finite relevance score");
 assert.equal(snapshot.king.percentOfKing, 100, "KING is exactly 100 percent of KING magnitude");
+assert.equal(snapshot.schemaVersion, 2, "the heat-field payload uses the current schema");
+assert.equal(snapshot.exposureField.length, 3, "the exposure field includes lookahead-safe history plus the current live surface");
+assert.ok(snapshot.exposureField.every((slice) => slice.timestamp <= now), "the exposure field never renders a future bucket");
+assert.ok(snapshot.exposureField.flatMap((slice) => slice.nodes).every((node) => Number.isFinite(node.strength) && node.strength > 0), "every rendered heat node has a finite magnitude strength");
 assert.ok(snapshot.floor && snapshot.floor.mappedPrice < profile.displayPrice, "floor is selected below current display price");
 assert.ok(snapshot.ceiling && snapshot.ceiling.mappedPrice > profile.displayPrice, "ceiling is selected above current display price");
 assert.equal(selectLookaheadSafeBounceBucket(history, now).timestamp, now - 60000, "replay selects the latest snapshot at or before replay time");
@@ -131,6 +135,13 @@ const migratedRows = rows.map((row) => row.id === "far-positive" ? { ...row, net
 const migrated = buildBounceLevelsSnapshot({ ...profile, id: "migrated-profile", rows: migratedRows }, history, { maximumLevels: 4, minimumExposurePercentile: 0, minimumPercentOfKing: 0, minimumRelevanceScore: 0 });
 assert.equal(migrated.king.id, "far-positive", "KING migrates deterministically when another absolute signed exposure becomes dominant");
 assert.notEqual(migrated.mapSignature, snapshot.mapSignature, "KING migration changes the structural map signature used by alerts");
+
+const directMapping = { ...mapping, method: "same-underlying-direct", sourceTicker: "SPY", displayInstrument: "SPY", alpha: 0, beta: 1, sourceSpotPrice: 600, displayMidPrice: 600, mappedSourceSpotPrice: 600 };
+const directRows = [makeRow("spy-600", 600, 600, 250), makeRow("spy-605", 605, 605, -150)].map((row) => ({ ...row, sourceTicker: "SPY", displayInstrument: "SPY", mapping: directMapping }));
+const directProfile = { ...profile, id: "spy-profile", sourceTicker: "SPY", displayInstrument: "SPY", sourceSpotPrice: 600, displayPrice: 601, rows: directRows, mapping: directMapping, maxPositiveRow: directRows[0], maxNegativeRow: directRows[1], dominantAbsoluteRow: directRows[0], callWallRow: directRows[0], putWallRow: directRows[1] };
+const directHistory = { ...history, sourceTicker: "SPY", buckets: history.buckets.slice(0, 2).map((bucket) => ({ ...bucket, sourcePrice: 600, rows: directRows.map((row) => ({ expirationDate: "2026-08-14", sourceStrike: row.sourceStrike, callExposure: row.callExposure, putExposure: row.putExposure })) })) };
+const directSnapshot = buildBounceLevelsSnapshot(directProfile, directHistory, { maximumLevels: 2, maximumNodesPerSlice: 8 });
+assert.ok(directSnapshot.exposureField.flatMap((slice) => slice.nodes).some((node) => node.sourceStrike === 600 && node.mappedPrice === 600), "native option underlyings retain exact strike-to-price mapping");
 
 const source = fs.readFileSync(path.join(root, "src/app/api/bounce-levels/route.ts"), "utf8");
 assert.doesNotMatch(source, /NEXT_PUBLIC_(?:QUANTDATA|GEX)[A-Z_]*(?:KEY|TOKEN|SECRET)/, "provider credentials remain server-only");

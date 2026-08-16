@@ -20,7 +20,7 @@ import { SITE_ACCESS_COOKIE, isSiteAccessConfigured, isValidSiteAccessToken } fr
 export const maxDuration = 60;
 
 const payloadCache = new Map<string, { expiresAt: number; payload: unknown }>();
-const DISPLAYS = new Set(["NQ", "MNQ", "ES", "MES", "RTY", "M2K"]);
+const DISPLAYS = new Set(["NQ", "MNQ", "ES", "MES", "RTY", "M2K", "QQQ", "NDX", "SPY", "SPX", "IWM"]);
 const SOURCES = new Set(["QQQ", "NDX", "SPY", "SPX", "IWM"]);
 const EXPIRATIONS = new Set<GammaExpirationMode>(["zero-dte", "zero-to-one-dte", "zero-to-seven-dte", "front-expiration", "all-expirations", "custom-dte-range", "specific-expirations"]);
 const GREEKS = new Set<GreekMode>(["GAMMA", "DELTA", "VANNA", "CHARM"]);
@@ -77,7 +77,7 @@ export async function GET(request: NextRequest) {
   if (!(await isAuthenticated(request))) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
   if (!getConfiguredQuantDataApiKey()) return NextResponse.json({ error: "Bounce Levels options data is not configured." }, { status: 503 });
   const display = normalizeGammaHeatmapInstrument(request.nextUrl.searchParams.get("display") || "NQ");
-  if (!DISPLAYS.has(display)) return NextResponse.json({ error: "Bounce Levels supports NQ, MNQ, ES, MES, RTY and M2K charts." }, { status: 400 });
+  if (!DISPLAYS.has(display)) return NextResponse.json({ error: "GEX Bounce supports the available index and ETF option underlyings plus their mapped futures." }, { status: 400 });
   const automaticSource = /^(ES|MES)$/.test(display) ? "SPY" : /^(RTY|M2K)$/.test(display) ? "IWM" : defaultGexIntervalMapSource(display);
   const source = (request.nextUrl.searchParams.get("source") || automaticSource).toUpperCase();
   if (!SOURCES.has(source)) return NextResponse.json({ error: "This Bounce Levels options source is unsupported." }, { status: 400 });
@@ -122,7 +122,8 @@ export async function GET(request: NextRequest) {
       maximumDistancePoints: finite(request, "maximumDistancePoints", 0),
       clusterDistancePoints: finite(request, "clusterDistancePoints", /^(NQ|MNQ)$/.test(display) ? 25 : 6),
       airPocketRatio: finite(request, "airPocketRatio", 20) / 100,
-      historyBuckets: finite(request, "historyBuckets", 30),
+      historyBuckets: finite(request, "historyBuckets", 120),
+      maximumNodesPerSlice: finite(request, "maximumNodesPerSlice", 24),
       magnitudeWeight: finite(request, "magnitudeWeight", 45) / 100,
       proximityWeight: finite(request, "proximityWeight", 15) / 100,
       accumulationWeight: finite(request, "accumulationWeight", 15) / 100,
