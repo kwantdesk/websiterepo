@@ -268,12 +268,20 @@ export async function fetchMarketIndexCandles(options: {
     && ["1D", "1W", "1M"].includes(options.timeframe);
   const canUseKwantDataHistory = definition.group === "Options Underlyings"
     && Boolean(getConfiguredQuantDataApiKey());
-  if (!getMassiveApiKey()) {
-    if (canUseKwantDataHistory) {
+  // These instruments belong to the options surface and KwantData is the
+  // authoritative shared VPS adapter for their chart history. Prefer it before
+  // probing Massive: an account without the matching minute entitlement used
+  // to burn the full Massive timeout before falling back, which made 1m/5m
+  // charts appear frozen even though valid KwantData candles were available.
+  if (canUseKwantDataHistory) {
+    try {
       const candles = await getOptionsUnderlyingHistory(options);
       if (candles.length) return candles;
-      throw new Error(`No ${definition.symbol} candles were returned for this chart window.`);
+    } catch (error) {
+      if (!getMassiveApiKey()) throw error;
     }
+  }
+  if (!getMassiveApiKey()) {
     if (definition.symbol !== "VIX") {
       throw new Error(`${definition.symbol} market history is not configured.`);
     }

@@ -657,6 +657,63 @@ function aggregateUnderlyingHistory(candles: OptionsCandle[], timeframe: string)
   }));
 }
 
+const UNDERLYING_SESSION_HISTORY_PERIODS = new Set(["1m", "5m"]);
+const UNDERLYING_COMPLETED_SESSION_REVALIDATE_SECONDS = 6 * 60 * 60;
+
+function marketDateKey(timestamp: number) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(timestamp));
+}
+
+function weekdaySessionDates(from: number, to: number) {
+  const start = marketDateKey(from);
+  const end = marketDateKey(to);
+  const cursor = new Date(`${start}T12:00:00.000Z`);
+  const final = new Date(`${end}T12:00:00.000Z`);
+  const dates: string[] = [];
+  while (cursor <= final) {
+    const weekday = cursor.getUTCDay();
+    if (weekday !== 0 && weekday !== 6) dates.push(cursor.toISOString().slice(0, 10));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return dates;
+}
+
+async function getOptionsUnderlyingSessionHistory(
+  symbol: string,
+  aggregationPeriod: string,
+  sessionDate: string,
+) {
+  const body = {
+    sessionDate,
+    aggregationPeriod,
+    filter: { ticker: symbol },
+  };
+  const load = async () => (await quantDataPost(
+    "/equities/tool/stock-price-over-time",
+    body,
+    sessionDate === marketDateKey(Date.now()) ? 5_000 : 60_000,
+  )).payload;
+
+  // One- and five-minute history is intentionally requested one market
+  // session at a time. KwantData documents minute granularity for session
+  // windows; sending a ten-calendar-day 1m request made the route spend its
+  // timeout restoring thousands of buckets and could return an empty chart.
+  // Completed sessions are immutable enough to share through Next's data
+  // cache, while today's session keeps its short live cache above.
+  return sessionDate === marketDateKey(Date.now())
+    ? load()
+    : unstable_cache(
+        load,
+        ["options-underlying-session-history-v1", symbol, aggregationPeriod, sessionDate],
+        { revalidate: UNDERLYING_COMPLETED_SESSION_REVALIDATE_SECONDS },
+      )();
+}
+
 /**
  * Historical cash-underlying bars used by the normal chart. This stays on the
  * shared VPS/KwantData adapter so browser charts never need a vendor key and a
@@ -688,17 +745,36 @@ export async function getOptionsUnderlyingHistory(input: {
   }
   const from = Math.min(input.from, input.to);
   const to = Math.max(input.from, input.to);
-  const result = await quantDataPost("/equities/tool/stock-price-over-time", {
-    timeRange: {
-      startTime: new Date(from).toISOString(),
-      endTime: new Date(to).toISOString(),
-    },
-    aggregationPeriod,
-    filter: { ticker: symbol },
-  }, to < Date.now() - 5 * 60_000 ? 5 * 60_000 : 5_000);
-  const candles = parseUnderlyingHistoryCandles(result.payload)
+  let payloads: unknown[];
+  if (UNDERLYING_SESSION_HISTORY_PERIODS.has(input.timeframe)) {
+    const sessionResults = await Promise.allSettled(
+      weekdaySessionDates(from, to).map((sessionDate) =>
+        getOptionsUnderlyingSessionHistory(symbol, aggregationPeriod, sessionDate)),
+    );
+    payloads = sessionResults.flatMap((result) =>
+      result.status === "fulfilled" ? [result.value] : []);
+    // A single transient/holiday-session response must not discard all of the
+    // other valid days. Only surface an upstream failure when no session could
+    // be restored at all.
+    if (!payloads.length) {
+      const failure = sessionResults.find((result) => result.status === "rejected");
+      if (failure?.status === "rejected") throw failure.reason;
+    }
+  } else {
+    payloads = [(await quantDataPost("/equities/tool/stock-price-over-time", {
+        timeRange: {
+          startTime: new Date(from).toISOString(),
+          endTime: new Date(to).toISOString(),
+        },
+        aggregationPeriod,
+        filter: { ticker: symbol },
+      }, to < Date.now() - 5 * 60_000 ? 5 * 60_000 : 5_000)).payload];
+  }
+  const candles = payloads.flatMap(parseUnderlyingHistoryCandles)
     .filter((candle) => candle.timestamp >= from && candle.timestamp <= to);
-  return aggregateUnderlyingHistory(candles, input.timeframe);
+  const deduplicated = [...new Map(candles.map((candle) => [candle.timestamp, candle])).values()]
+    .sort((left, right) => left.timestamp - right.timestamp);
+  return aggregateUnderlyingHistory(deduplicated, input.timeframe);
 }
 
 function parseIvRank(payload: unknown, sessionDate: string) {
