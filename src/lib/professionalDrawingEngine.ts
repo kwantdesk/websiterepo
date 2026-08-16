@@ -227,6 +227,8 @@ function normalizeNativeRecord(value: unknown): SerializedDrawing | null {
       backgroundColor: typeof candidate.options?.backgroundColor === "string" ? candidate.options.backgroundColor : undefined,
       borderColor: typeof candidate.options?.borderColor === "string" ? candidate.options.borderColor : undefined,
       padding: finiteNumber(candidate.options?.padding) ?? undefined,
+      showLabels: candidate.options?.showLabels !== false,
+      profileRowSizeTicks: finiteNumber(candidate.options?.profileRowSizeTicks) ?? undefined,
     },
   };
 }

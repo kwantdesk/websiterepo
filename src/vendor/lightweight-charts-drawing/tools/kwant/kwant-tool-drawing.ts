@@ -15,6 +15,7 @@ import { DrawingPaneView } from "../../rendering/drawing-pane-view";
 import {
   calculateVolumeProfileValueArea,
   STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
+  volumeProfileBinTick,
 } from "../../../../lib/volumeProfileMath";
 
 export type KwantToolKind =
@@ -49,6 +50,7 @@ export interface KwantToolOptions extends DrawingOptions {
   text?: string;
   unavailableReason?: string;
   showLabels?: boolean;
+  profileRowSizeTicks?: number;
 }
 
 export interface KwantAnalyticalBar {
@@ -124,7 +126,6 @@ function text(position: Point, value: string, color?: string, align: CanvasTextA
 export class KwantToolDrawing extends Drawing {
   readonly type: KwantToolKind;
   private readonly requiredAnchors: number;
-  private kwantOptions: KwantToolOptions;
   private marketDataSource: KwantMarketDataSource | null = null;
 
   constructor(
@@ -138,12 +139,11 @@ export class KwantToolDrawing extends Drawing {
     super(id, anchors, style, options);
     this.type = type;
     this.requiredAnchors = requiredAnchors;
-    this.kwantOptions = {
-      ...this._options,
-      text: options.text,
-      unavailableReason: options.unavailableReason,
-      showLabels: options.showLabels ?? true,
-    };
+    this._options = { ...this._options, showLabels: options.showLabels ?? true };
+  }
+
+  private get kwantOptions(): KwantToolOptions {
+    return this._options;
   }
 
   isValid(): boolean {
@@ -224,10 +224,16 @@ export class KwantToolDrawing extends Drawing {
     }
 
     const tickSize = Math.max(Number.EPSILON, source.tickSize);
+    const profileRowSizeTicks = this.type === "fixed-market-profile"
+      ? Math.max(1, Math.min(64, Math.round(Number(this.kwantOptions.profileRowSizeTicks ?? 4))))
+      : 1;
+    const profilePriceIncrement = tickSize * profileRowSizeTicks;
+    const profileRowCenterOffset = tickSize * (profileRowSizeTicks - 1) / 2;
     const rows = new Map<number, { volume: number; bid: number; ask: number; count: number }>();
     for (const trade of trades) {
       if (!(trade.volume > 0) || !Number.isFinite(trade.price)) continue;
-      const tick = Math.round(trade.price / tickSize);
+      const sourceTick = Math.round(trade.price / tickSize);
+      const tick = volumeProfileBinTick(sourceTick, profileRowSizeTicks);
       const row = rows.get(tick) ?? { volume: 0, bid: 0, ask: 0, count: 0 };
       row.volume += trade.volume;
       row.bid += Math.max(0, trade.bidVolume);
@@ -252,7 +258,7 @@ export class KwantToolDrawing extends Drawing {
       const maxVolume = Math.max(...ordered.map((entry) => entry[1].volume));
       const valueArea = calculateVolumeProfileValueArea(
         ordered.map(([tick, row]) => ({ price: tick * tickSize, volume: row.volume })),
-        tickSize,
+        profilePriceIncrement,
         STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
       );
       const upColor = source.upColor ?? this._style.lineColor;
@@ -261,14 +267,15 @@ export class KwantToolDrawing extends Drawing {
 
       for (const [tick, row] of ordered) {
         const price = tick * tickSize;
-        const top = viewport.priceScale.priceToCoordinate(price + tickSize / 2);
-        const bottom = viewport.priceScale.priceToCoordinate(price - tickSize / 2);
+        const rowCenterPrice = price + profileRowCenterOffset;
+        const top = viewport.priceScale.priceToCoordinate(rowCenterPrice + profilePriceIncrement / 2);
+        const bottom = viewport.priceScale.priceToCoordinate(rowCenterPrice - profilePriceIncrement / 2);
         if (top === null || bottom === null) continue;
         const width = Math.max(0.75, row.volume / maxVolume * profileWidth);
         const height = Math.max(0.72, Math.abs(bottom - top) - 0.12);
         const inValueArea = valueArea.vah !== null && valueArea.val !== null
           && price <= valueArea.vah && price >= valueArea.val;
-        const isPoc = valueArea.poc !== null && Math.abs(price - valueArea.poc) < tickSize / 2;
+        const isPoc = valueArea.poc !== null && Math.abs(price - valueArea.poc) < profilePriceIncrement / 2;
         geometry.push({
           type: "rectangle",
           topLeft: { x: profileLeft, y: Math.min(top, bottom) },
@@ -280,10 +287,10 @@ export class KwantToolDrawing extends Drawing {
         });
       }
 
-      const lowestPrice = ordered[0][0] * tickSize;
-      const highestPrice = ordered[ordered.length - 1][0] * tickSize;
-      const profileTop = viewport.priceScale.priceToCoordinate(highestPrice + tickSize / 2);
-      const profileBottom = viewport.priceScale.priceToCoordinate(lowestPrice - tickSize / 2);
+      const lowestPrice = ordered[0][0] * tickSize + profileRowCenterOffset - profilePriceIncrement / 2;
+      const highestPrice = ordered[ordered.length - 1][0] * tickSize + profileRowCenterOffset + profilePriceIncrement / 2;
+      const profileTop = viewport.priceScale.priceToCoordinate(highestPrice);
+      const profileBottom = viewport.priceScale.priceToCoordinate(lowestPrice);
       if (profileTop !== null && profileBottom !== null) {
         geometry.push({
           ...line(
@@ -298,7 +305,8 @@ export class KwantToolDrawing extends Drawing {
 
       const addProfileLevel = (price: number | null, levelColor: string, dash: number[], label: string) => {
         if (price === null) return;
-        const y = viewport.priceScale.priceToCoordinate(price);
+        const displayPrice = price + profileRowCenterOffset;
+        const y = viewport.priceScale.priceToCoordinate(displayPrice);
         if (y === null) return;
         geometry.push({
           ...line({ x: profileLeft, y }, { x: profileRight, y }),
@@ -308,7 +316,7 @@ export class KwantToolDrawing extends Drawing {
           lineDash: dash,
         });
         if (this.kwantOptions.showLabels) {
-          geometry.push(text({ x: profileRight - 4, y: y - 7 }, `${label} ${price.toFixed(2)}`, levelColor, "right"));
+          geometry.push(text({ x: profileRight - 4, y: y - 7 }, `${label} ${displayPrice.toFixed(2)}`, levelColor, "right"));
         }
       };
       addProfileLevel(valueArea.vah, upColor, [3, 3], "VAH");

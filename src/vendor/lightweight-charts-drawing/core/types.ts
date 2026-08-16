@@ -73,6 +73,9 @@ export interface DrawingOptions {
   backgroundColor?: string;
   borderColor?: string;
   padding?: number;
+  showLabels?: boolean;
+  /** Number of exchange ticks combined into one row for drawn market profiles. */
+  profileRowSizeTicks?: number;
 }
 
 /**

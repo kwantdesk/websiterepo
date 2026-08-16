@@ -2010,6 +2010,7 @@ const DOUBLE_CLICK_STYLE_DRAWING_TYPES = new Set([
   "horizontal-ray",
   "cross-line",
   "brush",
+  "fixed-market-profile",
 ]);
 const PRECISION_TOOL_BY_DRAWING_TOOL: Partial<Record<DrawingToolId, PrecisionToolId>> = {
   brush: "precision-pencil",
@@ -11401,6 +11402,19 @@ export default function Chart({
                     <button
                       type="button"
                       onClick={() => {
+                        professionalDrawingManagerRef.current?.selectDrawing(drawing.id);
+                        setSelectedProfessionalDrawingId(drawing.id);
+                        setShowDrawingSettings(true);
+                      }}
+                      className="rounded-lg p-1.5 text-muted hover:bg-primary/10 hover:text-primary"
+                      aria-label={`Open ${label} settings`}
+                      title={`${label} settings`}
+                    >
+                      <Settings2 className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
                         const target = professionalDrawingManagerRef.current?.getDrawing(drawing.id);
                         target?.updateOptions({ visible: drawing.options.visible === false });
                         syncProfessionalManagerNow();
@@ -11502,6 +11516,48 @@ export default function Chart({
                 </select>
               </label>
             </section>
+
+            {selectedProfessionalDrawing.type === "fixed-market-profile" ? (
+              <section className="space-y-3 border-t border-border pt-4">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted">Volume profile</div>
+                <label className="block text-[12px] text-muted">
+                  <span className="mb-2 flex justify-between">
+                    <span>Row size</span>
+                    <span>
+                      {Math.max(1, Math.round(Number(selectedProfessionalDrawing.options.profileRowSizeTicks ?? 4)))} ticks
+                      {` · ${(Math.max(1, Math.round(Number(selectedProfessionalDrawing.options.profileRowSizeTicks ?? 4))) * priceFormat.minMove).toFixed(priceFormat.precision)} pts`}
+                    </span>
+                  </span>
+                  <input
+                    type="range"
+                    min={1}
+                    max={64}
+                    step={1}
+                    value={Math.max(1, Math.min(64, Math.round(Number(selectedProfessionalDrawing.options.profileRowSizeTicks ?? 4))))}
+                    onChange={(event) => updateSelectedProfessionalDrawing({}, { profileRowSizeTicks: Number(event.target.value) })}
+                    className="w-full accent-primary"
+                  />
+                </label>
+                <div className="grid grid-cols-6 gap-1">
+                  {[1, 2, 4, 8, 16, 32].map((ticks) => {
+                    const selectedTicks = Math.max(1, Math.round(Number(selectedProfessionalDrawing.options.profileRowSizeTicks ?? 4)));
+                    return (
+                      <button
+                        key={ticks}
+                        type="button"
+                        onClick={() => updateSelectedProfessionalDrawing({}, { profileRowSizeTicks: ticks })}
+                        className={`h-8 border text-[10px] font-semibold ${selectedTicks === ticks ? "border-primary bg-primary/12 text-primary" : "border-border bg-surface text-muted hover:text-foreground"}`}
+                      >
+                        {ticks}T
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="text-[10px] leading-4 text-muted">
+                  Lower values show finer price detail. Higher values combine more exchange ticks into each profile row.
+                </p>
+              </section>
+            ) : null}
 
             <section className="space-y-2 border-t border-border pt-4">
               <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted">Visibility and lock</div>
