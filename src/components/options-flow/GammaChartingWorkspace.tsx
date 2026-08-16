@@ -28,6 +28,10 @@ import {
   writeChartHistoryCache,
 } from "@/lib/chartHistoryCache";
 import {
+  compressCmeClosedSessionCandles,
+  DEFAULT_CHART_HISTORY_CALENDAR_DAYS,
+} from "@/lib/chartHistoryWindow";
+import {
   BarChart3,
   Check,
   ChevronDown,
@@ -79,7 +83,7 @@ type GammaWorkspacePreset = {
 
 const newPane = (index = 0): GammaChartPane => ({
   id: `gamma-chart-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 7)}`,
-  symbol: "NQ",
+  symbol: "NQ.v.0",
   timeframe: "5m",
   indicators: [],
   locked: false,
@@ -94,6 +98,36 @@ function normalizeRoot(value: string) {
   return value.trim().toUpperCase().replace(/\.V\.0$/i, "").replace(/[^A-Z0-9]/g, "");
 }
 
+function canonicalChartSymbol(value: string) {
+  const root = normalizeRoot(value) || "NQ";
+  return DATABENTO_FUTURES.find((item) => normalizeRoot(item.symbol) === root)?.symbol ?? `${root}.v.0`;
+}
+
+function sanitizeGammaCandles(input: unknown): Candle[] {
+  if (!Array.isArray(input)) return [];
+  const byTimestamp = new Map<number, Candle>();
+  input.forEach((candidate) => {
+    if (!candidate || typeof candidate !== "object") return;
+    const candle = candidate as Partial<Candle>;
+    const timestamp = Number(candle.timestamp);
+    const open = Number(candle.open);
+    const high = Number(candle.high);
+    const low = Number(candle.low);
+    const close = Number(candle.close);
+    if (!Number.isFinite(timestamp) || ![open, high, low, close].every((value) => Number.isFinite(value) && value > 0)) return;
+    byTimestamp.set(timestamp, {
+      ...candle,
+      timestamp,
+      open,
+      high: Math.max(open, high, low, close),
+      low: Math.min(open, high, low, close),
+      close,
+      volume: Number.isFinite(Number(candle.volume)) ? Number(candle.volume) : undefined,
+    } as Candle);
+  });
+  return [...byTimestamp.values()].sort((a, b) => a.timestamp - b.timestamp).slice(-120_000);
+}
+
 function loadWorkspaceState(): GammaChartWorkspaceState {
   if (typeof window === "undefined") return defaultState();
   try {
@@ -105,7 +139,7 @@ function loadWorkspaceState(): GammaChartWorkspaceState {
           if (typeof pane.id !== "string") return [];
           return [{
             id: pane.id,
-            symbol: normalizeRoot(typeof pane.symbol === "string" ? pane.symbol : "NQ") || "NQ",
+            symbol: canonicalChartSymbol(typeof pane.symbol === "string" ? pane.symbol : "NQ.v.0"),
             timeframe: typeof pane.timeframe === "string" ? pane.timeframe : "5m",
             indicators: Array.isArray(pane.indicators) ? pane.indicators : [],
             locked: pane.locked === true,
@@ -226,10 +260,13 @@ function GammaChartPaneView({
   const [loading, setLoading] = useState(true);
   const [feedStatus, setFeedStatus] = useState<InstitutionalInstrument["status"]>("NOT_OPEN");
   const lastStateSyncRef = useRef(0);
+  const plottedCandles = useMemo(
+    () => compressCmeClosedSessionCandles(candles, pane.timeframe),
+    [candles, pane.timeframe],
+  );
 
   useEffect(() => {
     let cancelled = false;
-    const controller = new AbortController();
     setLoading(true);
     setCandles([]);
     candlesRef.current = [];
@@ -240,15 +277,38 @@ function GammaChartPaneView({
         setCandles(cached.candles);
         setLoading(false);
       }
+      try {
+        const response = await fetch(
+          `/api/cme-history?symbol=${encodeURIComponent(pane.symbol)}&timeframe=${encodeURIComponent(pane.timeframe)}&days=${DEFAULT_CHART_HISTORY_CALENDAR_DAYS}`,
+          { cache: "no-store", signal: AbortSignal.timeout(45_000) },
+        );
+        const payload = await response.json() as { candles?: unknown; error?: string };
+        if (!response.ok) throw new Error(payload.error ?? `CME history unavailable for ${pane.symbol}.`);
+        if (cancelled) return;
+        const history = sanitizeGammaCandles(payload.candles);
+        if (history.length) {
+          const merged = mergeChartHistory(candlesRef.current, history);
+          candlesRef.current = merged;
+          setCandles(merged);
+          setLoading(false);
+          void writeChartHistoryCache(pane.symbol, pane.timeframe, merged);
+        }
+      } catch {
+        // The exact Charts history route is authoritative. The institutional
+        // snapshot is only a seam fallback when that route is temporarily
+        // unavailable; it never replaces a successfully restored history.
+      }
+
+      if (cancelled || candlesRef.current.length) return;
       const snapshot = await fetchInstitutionalSnapshot({
         symbol: pane.symbol,
         timeframe: pane.timeframe,
         lookbackBars: 8_000,
         timeoutMs: 45_000,
-      });
-      if (cancelled || controller.signal.aborted) return;
+      }).catch(() => null);
+      if (cancelled) return;
       if (snapshot?.candles.length) {
-        const merged = mergeChartHistory(candlesRef.current, snapshot.candles);
+        const merged = mergeChartHistory(candlesRef.current, sanitizeGammaCandles(snapshot.candles));
         candlesRef.current = merged;
         setCandles(merged);
         setFeedStatus(snapshot.status);
@@ -260,7 +320,6 @@ function GammaChartPaneView({
     })();
     return () => {
       cancelled = true;
-      controller.abort();
     };
   }, [pane.symbol, pane.timeframe]);
 
@@ -291,7 +350,7 @@ function GammaChartPaneView({
   return (
     <section
       onPointerDown={onActivate}
-      className={`relative flex min-h-0 flex-col overflow-hidden border bg-panel transition-colors ${active ? "border-primary/60" : "border-border"}`}
+      className={`relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border bg-panel transition-colors ${active ? "border-primary/60 shadow-[inset_0_0_0_1px_rgb(var(--primary)/.15)]" : "border-border"}`}
     >
       <div className="kwant-workspace-pane-header flex shrink-0 items-center border-b border-border bg-panel/95 px-2">
         <div className="flex min-w-0 flex-1 items-center gap-2 px-1 text-[9px] font-semibold uppercase tracking-[0.1em] text-foreground">
@@ -305,10 +364,10 @@ function GammaChartPaneView({
         <button type="button" onClick={onDuplicate} className="flex h-7 w-7 items-center justify-center text-muted hover:text-primary" aria-label="Duplicate Gamma chart"><Copy className="h-3.5 w-3.5" /></button>
         <button type="button" onClick={onClose} disabled={!canClose || pane.locked} className="flex h-7 w-7 items-center justify-center text-muted hover:text-danger disabled:opacity-25" aria-label="Close Gamma chart"><X className="h-3.5 w-3.5" /></button>
       </div>
-      <div className="relative min-h-0 flex-1 bg-background">
-        {candles.length ? (
+      <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden bg-background">
+        {plottedCandles.length ? (
           <Chart
-            candles={candles}
+            candles={plottedCandles}
             instrument={pane.symbol}
             chartInstanceId={pane.id}
             workspaceId="gamma-charting"
@@ -374,7 +433,7 @@ export default function GammaChartingWorkspace() {
     if (workspace.layoutLocked) return;
     setWorkspace((current) => {
       const panes = current.panes.slice(0, count);
-      while (panes.length < count) panes.push({ ...newPane(panes.length), symbol: panes[0]?.symbol ?? "NQ", timeframe: panes[0]?.timeframe ?? "5m" });
+      while (panes.length < count) panes.push({ ...newPane(panes.length), symbol: panes[0]?.symbol ?? "NQ.v.0", timeframe: panes[0]?.timeframe ?? "5m" });
       return { ...current, panes, activePaneId: panes.some((pane) => pane.id === current.activePaneId) ? current.activePaneId : panes[0].id };
     });
   };
@@ -413,7 +472,7 @@ export default function GammaChartingWorkspace() {
       const root = normalizeRoot(item.symbol);
       if (!root || seen.has(root)) return [];
       seen.add(root);
-      return [{ root, label: item.label }];
+      return [{ symbol: item.symbol, root, label: item.label }];
     });
   }, []);
 
@@ -424,9 +483,10 @@ export default function GammaChartingWorkspace() {
       : "grid-cols-1 md:grid-cols-2 md:grid-rows-2";
 
   return (
-    <section data-gamma-chart-workspace className="flex h-[calc(100dvh-54px)] min-h-[620px] shrink-0 flex-col border-b border-border bg-background">
-      <div className="kwant-chart-command-row relative flex shrink-0 items-center border-b border-border bg-panel px-3">
-        <div className="absolute left-1/2 flex -translate-x-1/2 items-center gap-1">
+    <section data-gamma-chart-workspace className="flex h-[calc(100dvh-54px)] min-h-[680px] w-full min-w-0 shrink-0 flex-col overflow-hidden border-b border-border bg-background">
+      <header className="kwant-chart-command-deck relative grid shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] border-b border-border bg-panel">
+        <div className="col-span-3 col-start-1 row-start-1 grid min-w-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-1 overflow-x-auto border-b border-border/70 px-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="col-start-2 flex h-7 shrink-0 items-center justify-self-center gap-1">
           <button type="button" onClick={() => setPaneCount(1)} className={`kwant-chart-row-control flex h-7 w-7 items-center justify-center border ${workspace.panes.length === 1 ? "border-primary/45 bg-primary/10 text-primary" : "border-border text-muted"}`} title="One Gamma chart"><LayoutPanelLeft className="h-3.5 w-3.5" /></button>
           <button type="button" onClick={() => setPaneCount(2)} className={`kwant-chart-row-control flex h-7 w-7 items-center justify-center border ${workspace.panes.length === 2 ? "border-primary/45 bg-primary/10 text-primary" : "border-border text-muted"}`} title="Two Gamma charts"><span className="flex gap-0.5"><i className="h-3 w-1.5 border border-current" /><i className="h-3 w-1.5 border border-current" /></span></button>
           <button type="button" onClick={() => setPaneCount(4)} className={`kwant-chart-row-control flex h-7 w-7 items-center justify-center border ${workspace.panes.length === 4 ? "border-primary/45 bg-primary/10 text-primary" : "border-border text-muted"}`} title="Four Gamma charts"><Grid2X2 className="h-3.5 w-3.5" /></button>
@@ -450,21 +510,19 @@ export default function GammaChartingWorkspace() {
               </div>
             ) : null}
           </div>
+          </div>
         </div>
-        <span className="mr-auto hidden text-[9px] font-semibold uppercase tracking-[0.14em] text-muted xl:block">Gamma charting</span>
-        <span className="ml-auto hidden text-[9px] uppercase tracking-[0.12em] text-muted xl:block">Saved separately from Charts</span>
-      </div>
-
-      <div className="kwant-chart-command-row relative flex shrink-0 items-center border-b border-border bg-panel px-3">
-        <div className="absolute left-1/2 flex -translate-x-1/2 items-center gap-1">
+        <div className="col-start-1 row-start-2 flex min-w-0 items-center justify-self-start px-3">
+          <KwantSelect value={activePane.symbol} onChange={(event) => updatePane({ ...activePane, symbol: event.target.value })} className="kwant-chart-row-control h-8 min-w-0 max-w-[260px] border border-border bg-surface/50 px-2.5 text-[10px] font-semibold text-foreground sm:min-w-[220px]">
+            {instruments.map((instrument) => <option key={instrument.symbol} value={instrument.symbol}>{instrument.root} · {instrument.label}</option>)}
+          </KwantSelect>
+        </div>
+        <div className="col-start-2 row-start-2 flex min-w-0 items-center justify-self-center gap-0.5 overflow-x-auto px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {STANDARD_TIMEFRAMES.map((timeframe) => (
-            <button key={timeframe} type="button" onClick={() => updatePane({ ...activePane, timeframe })} className={`kwant-chart-row-control h-7 min-w-8 border px-2 text-[10px] font-semibold ${activePane.timeframe === timeframe ? "border-primary/45 bg-primary/10 text-primary" : "border-transparent text-muted hover:text-foreground"}`}>{timeframe}</button>
+            <button key={timeframe} type="button" onClick={() => updatePane({ ...activePane, timeframe })} className={`rounded-lg px-2.5 py-1.5 text-[13px] transition-all ${activePane.timeframe === timeframe ? "bg-surface text-foreground" : "text-muted hover:text-foreground"}`}>{timeframe}</button>
           ))}
         </div>
-        <KwantSelect value={activePane.symbol} onChange={(event) => updatePane({ ...activePane, symbol: event.target.value })} className="kwant-chart-row-control h-7 min-w-44 border border-border bg-surface px-2 text-[10px] font-semibold text-foreground">
-          {instruments.map((instrument) => <option key={instrument.root} value={instrument.root}>{instrument.root} · {instrument.label}</option>)}
-        </KwantSelect>
-        <div className="ml-auto flex items-center gap-2">
+        <div className="col-start-3 row-start-2 flex min-w-0 items-center justify-self-end gap-2 overflow-hidden px-3">
           <ChartIndicatorsControl
             instrument={activePane.symbol}
             timeframe={activePane.timeframe}
@@ -473,11 +531,11 @@ export default function GammaChartingWorkspace() {
             settingsOpenRequest={settingsOpenRequest}
             onChange={(indicators) => updatePane({ ...activePane, indicators })}
           />
-          <TimeZoneSelect value={chartSettings.timezone} onChange={(timezone) => setChartSettings((current) => ({ ...current, timezone }))} compact className="w-44" menuLabel="Gamma chart timezone" />
+          <TimeZoneSelect value={chartSettings.timezone} onChange={(timezone) => setChartSettings((current) => ({ ...current, timezone }))} compact className="w-auto min-w-[118px] max-w-[164px] shrink-0 bg-surface/50 px-2.5" menuLabel="Gamma chart timezone" />
         </div>
-      </div>
+      </header>
 
-      <div className={`grid min-h-0 flex-1 gap-px bg-border ${gridClass}`}>
+      <div className={`grid min-h-0 min-w-0 flex-1 gap-1 overflow-hidden bg-background p-1 ${gridClass}`}>
         {workspace.panes.map((pane) => (
           <GammaChartPaneView
             key={pane.id}
