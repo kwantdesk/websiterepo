@@ -28,6 +28,7 @@ import {
   Eye,
   Flag,
   Frown,
+  Hand,
   Highlighter,
   Image as ImageIcon,
   Info,
@@ -59,6 +60,7 @@ import {
   Slash,
   SmilePlus,
   Square,
+  SquareDashedMousePointer,
   Sparkles,
   Star,
   StickyNote,
@@ -2830,7 +2832,13 @@ export default function Chart({
     professionalBrushDrawingRef.current = null;
     professionalDrawingPreviewRef.current = null;
     professionalDrawingManagerRef.current?.removeDrawing("__kwantdesk_drawing_preview__");
-    setSelectedTool("cursor");
+    // The precision layer claims ownership when an explicit precision or
+    // drag-selection tool is activated. Preserve that intentional tool state;
+    // only retire a legacy tool that lost ownership to the precision layer.
+    const activeTool = selectedToolRef.current;
+    if (activeTool !== "selection" && !precisionToolForDrawingTool(activeTool)) {
+      setSelectedTool("cursor");
+    }
   }), []);
 
   useEffect(() => {
@@ -11090,14 +11098,37 @@ export default function Chart({
               event.stopPropagation();
               setOpenToolbarGroup(null);
               setShowObjectsPanel(false);
-              setSelectedTool((current) => current === "selection" ? "cursor" : "selection");
+              selectedToolRef.current = "cursor";
+              setSelectedTool("cursor");
+            }}
+            className={`flex items-center justify-center border backdrop-blur ${getToolbarButtonTone(selectedTool === "cursor")}`}
+            style={toolbarButtonStyle}
+            title="Navigate chart"
+            aria-label="Navigate chart"
+            aria-pressed={selectedTool === "cursor"}
+          >
+            <Hand className={toolbarIconClassName} />
+          </button>
+        )}
+        {!toolbarCollapsed && (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              setOpenToolbarGroup(null);
+              setShowObjectsPanel(false);
+              // Update the ref synchronously so the interaction-owner handoff
+              // cannot race the React effect that mirrors selectedTool.
+              selectedToolRef.current = "selection";
+              setSelectedTool("selection");
             }}
             className={`flex items-center justify-center border backdrop-blur ${getToolbarButtonTone(selectedTool === "selection")}`}
             style={toolbarButtonStyle}
             title="Select drawings with a drag box"
+            aria-label="Select drawings with a drag box"
             aria-pressed={selectedTool === "selection"}
           >
-            <MousePointer2 className={toolbarIconClassName} />
+            <SquareDashedMousePointer className={toolbarIconClassName} />
           </button>
         )}
         {!toolbarCollapsed && (
