@@ -10,6 +10,7 @@ import WorkspaceFailureBoundary from "@/components/WorkspaceFailureBoundary";
 
 const SECTION_BY_PATH: Record<string, PrimaryWorkspaceSection> = {
   "/charts": "charts",
+  "/gamvue": "gamvue",
   "/gamma": "gamma",
   "/levelz": "levelz",
   "/gexmap": "gexmap",

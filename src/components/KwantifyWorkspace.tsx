@@ -314,6 +314,7 @@ const loadKwantBotWorkspace = () => import("@/components/kwantbot/KwantBotIntell
 
 const workspaceModulePreloaders: Record<string, () => Promise<unknown>> = {
   charts: loadChartWorkspace,
+  gamvue: loadChartWorkspace,
   gamma: loadGammaWorkspace,
   gexmap: loadGexMapWorkspace,
   liqmap: loadLiquidityMapWorkspace,
@@ -892,7 +893,7 @@ type LevelExportRow = {
   source: string;
   asOf: string;
 };
-export type PrimaryWorkspaceSection = "charts" | "gamma" | "levelz" | "gexmap" | "liqmap" | "heatmap" | "gexbot" | "gexdesk" | "gameplan" | "kwantbot" | "news" | "zyon" | "journal" | "socials" | "backtesting";
+export type PrimaryWorkspaceSection = "charts" | "gamvue" | "gamma" | "levelz" | "gexmap" | "liqmap" | "heatmap" | "gexbot" | "gexdesk" | "gameplan" | "kwantbot" | "news" | "zyon" | "journal" | "socials" | "backtesting";
 
 const WORKSPACE_PRESETS_STORAGE_KEY = "kwantdesk-chart-workspace-presets";
 const ACTIVE_WORKSPACE_PRESET_STORAGE_KEY = "kwantdesk-chart-workspace-active-preset";
@@ -913,6 +914,7 @@ const KWANTBOT_MESSAGES_STORAGE_KEY = "kwantdesk-kwantbot-messages";
 const LIQUIDITY_MAP_INSTRUMENT_STORAGE_KEY = "kwantdesk:liquidity-map-instrument:v1";
 const BOTTOM_WORKSPACE_SECTIONS = [
   { id: "charts" as const, label: "Charts" },
+  { id: "gamvue" as const, label: "Gam Vue" },
   { id: "gamma" as const, label: "Gamma" },
   { id: "levelz" as const, label: "LEVELZ" },
   { id: "gexmap" as const, label: "GEXMAP" },
@@ -6876,7 +6878,7 @@ export default function KwantifyWorkspace({
   socialProfileHandle?: string;
 }) {
   const router = useRouter();
-  const initialChartWorkspaceScope: ChartWorkspaceScope = section === "gamma" ? "gamma" : "charts";
+  const initialChartWorkspaceScope: ChartWorkspaceScope = section === "gamvue" ? "gamma" : "charts";
   const chartWorkspaceScopeRef = useRef<ChartWorkspaceScope>(initialChartWorkspaceScope);
   const [chartWorkspaceScope, setChartWorkspaceScope] = useState<ChartWorkspaceScope>(initialChartWorkspaceScope);
   const workspaceScopeHydratingRef = useRef(false);
@@ -7270,7 +7272,7 @@ export default function KwantifyWorkspace({
   const [bottomPanelHeight, setBottomPanelHeight] = useState(BOTTOM_PANEL_DEFAULT_HEIGHT);
   const [bottomMinimized, setBottomMinimized] = useState(true);
   const bottomWorkspaceSection = optimisticWorkspaceSection;
-  const chartSurfaceActive = bottomWorkspaceSection === "charts" || bottomWorkspaceSection === "gamma";
+  const chartSurfaceActive = bottomWorkspaceSection === "charts" || bottomWorkspaceSection === "gamvue";
   const [equityPeriod, setEquityPeriod] = useState("365d");
   const [favTFs, setFavTFs] = useState<string[]>(initialChartWorkspaceRuntime.favouriteTimeframes);
   const [showAllTF, setShowAllTF] = useState(false);
@@ -7350,7 +7352,7 @@ export default function KwantifyWorkspace({
   const [chartSettingsSnapshot, setChartSettingsSnapshot] = useState<ChartSettings>(chartSettings);
   const [templates, setTemplates] = useState<ChartTemplate[]>(initialChartWorkspaceRuntime.templates);
   useEffect(() => {
-    const nextScope: ChartWorkspaceScope | null = bottomWorkspaceSection === "gamma"
+    const nextScope: ChartWorkspaceScope | null = bottomWorkspaceSection === "gamvue"
       ? "gamma"
       : bottomWorkspaceSection === "charts"
         ? "charts"
@@ -9339,7 +9341,7 @@ export default function KwantifyWorkspace({
   useEffect(() => {
     if (
       !usingDatabentoFeed
-      || (bottomWorkspaceSection !== "charts" && bottomWorkspaceSection !== "gameplan" && bottomWorkspaceSection !== "heatmap" && bottomWorkspaceSection !== "gamma")
+      || (bottomWorkspaceSection !== "charts" && bottomWorkspaceSection !== "gameplan" && bottomWorkspaceSection !== "heatmap" && bottomWorkspaceSection !== "gamvue")
     ) return;
     let cancelled = false;
     let animationFrame: number | null = null;
@@ -9410,7 +9412,7 @@ export default function KwantifyWorkspace({
   }, [bottomWorkspaceSection, usingDatabentoFeed, watchlistSymbolsCsv]);
 
   useEffect(() => {
-    if (bottomWorkspaceSection !== "charts" && bottomWorkspaceSection !== "gameplan" && bottomWorkspaceSection !== "heatmap" && bottomWorkspaceSection !== "gamma") return;
+    if (bottomWorkspaceSection !== "charts" && bottomWorkspaceSection !== "gameplan" && bottomWorkspaceSection !== "heatmap" && bottomWorkspaceSection !== "gamvue") return;
     if (activeChartBrokerLabel === "Market Index" || activeChartBrokerLabel === "Massive") return;
     const priorityLiveSymbols = new Set(priorityLiveSymbolsCsv.split(",").filter(Boolean));
     const nameMap: Record<string, string> = {
@@ -9542,7 +9544,7 @@ export default function KwantifyWorkspace({
           // Gameplan's moving Session Ladder consumes the same authoritative
           // futures stream as Charts. Publishing it here prevents delayed REST
           // snapshots from briefly displacing the live "You are here" marker.
-          if (activeWorkspaceSectionRef.current !== "charts" && activeWorkspaceSectionRef.current !== "gameplan" && activeWorkspaceSectionRef.current !== "heatmap" && activeWorkspaceSectionRef.current !== "gamma") return;
+          if (activeWorkspaceSectionRef.current !== "charts" && activeWorkspaceSectionRef.current !== "gameplan" && activeWorkspaceSectionRef.current !== "heatmap" && activeWorkspaceSectionRef.current !== "gamvue") return;
           if (priorityLiveSymbols.has(displayName)) {
             window.dispatchEvent(new CustomEvent(DATABENTO_LIVE_TICK_EVENT, { detail: price }));
           }
@@ -13860,7 +13862,7 @@ export default function KwantifyWorkspace({
         </div>
       )}
 
-      <div className={`relative z-0 flex min-w-0 flex-1 flex-col ${bottomWorkspaceSection === "gamma" ? "overflow-y-auto" : "overflow-hidden"}`} ref={mainRef}>
+      <div className="relative z-0 flex min-w-0 flex-1 flex-col overflow-hidden" ref={mainRef}>
         <AppSidebar
           activeItem={bottomWorkspaceSection}
           accountLabel="Account"
@@ -14763,12 +14765,10 @@ export default function KwantifyWorkspace({
 
         {chartSurfaceActive || visitedWorkspaceSections.has("charts") ? (
         <ReactActivity mode={chartSurfaceActive ? "visible" : "hidden"}>
-        <WorkspaceFailureBoundary resetKey={`charting-${chartWorkspaceScope}`} label={chartWorkspaceScope === "gamma" ? "Gamma charting" : "Charts"}>
+        <WorkspaceFailureBoundary resetKey={`charting-${chartWorkspaceScope}`} label={chartWorkspaceScope === "gamma" ? "Gam Vue charting" : "Charts"}>
         {!preferencesReady ? (
           workspaceLoader("Opening charts", "Restoring your saved workspace before the market feed starts.")
-        ) : <div className={bottomWorkspaceSection === "gamma"
-          ? "h-[calc(100dvh-112px)] min-h-[680px] shrink-0 overflow-hidden"
-          : "min-h-0 flex-1 overflow-hidden"}>
+        ) : <div className="min-h-0 flex-1 overflow-hidden">
           <div
             key={chartWorkspaceScope}
             ref={workspaceAreaRef}
@@ -14929,9 +14929,9 @@ export default function KwantifyWorkspace({
         </WorkspaceFailureBoundary>
         </ReactActivity>
         ) : null}
-        <ReactActivity mode={bottomWorkspaceSection === "charts" ? "hidden" : "visible"}>
+        <ReactActivity mode={chartSurfaceActive ? "hidden" : "visible"}>
           <section
-            className={`relative isolate min-w-0 overflow-hidden bg-panel ${bottomWorkspaceSection === "gamma" ? "min-h-[100dvh] shrink-0" : "min-h-0 flex-1"}`}
+            className="relative isolate min-h-0 min-w-0 flex-1 overflow-hidden bg-panel"
             aria-label={`${BOTTOM_WORKSPACE_SECTIONS.find((section) => section.id === bottomWorkspaceSection)?.label ?? "Workspace"} workspace`}
           >
             {visitedWorkspaceSections.has("gamma") ? (

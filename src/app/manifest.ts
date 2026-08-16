@@ -40,9 +40,9 @@ export default function manifest(): MetadataRoute.Manifest {
         icons: [{ src: "/icons/kwantdesk-app-192.png", sizes: "192x192" }],
       },
       {
-        name: "Gamma",
-        short_name: "Gamma",
-        url: "/gamma",
+        name: "Gam Vue",
+        short_name: "Gam Vue",
+        url: "/gamvue",
         icons: [{ src: "/icons/kwantdesk-app-192.png", sizes: "192x192" }],
       },
       {

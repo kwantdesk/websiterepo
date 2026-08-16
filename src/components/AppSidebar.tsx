@@ -25,6 +25,7 @@ type SidebarKey =
   | "agent"
   | "home"
   | "charts"
+  | "gamvue"
   | "gamma"
   | "levelz"
   | "gexmap"
@@ -87,7 +88,8 @@ const navItems: Array<{
 }> = [
   { key: "home", href: "/", label: "Home", title: "Home", icon: Home },
   { key: "charts", href: "/charts", label: "Charts", title: "Charts", icon: LineChart },
-  { key: "gamma", href: "/gamma", label: "GAMMA", title: "Gamma", icon: BarChart3 },
+  { key: "gamvue", href: "/gamvue", label: "GAM VUE", title: "Gamma charting", icon: BarChart3 },
+  { key: "gamma", href: "/gamma", label: "GAMMA", title: "Options Flow Gamma", icon: Crosshair },
   { key: "gexmap", href: "/gexmap", label: "GEX MAP", title: "GEX Map", icon: ScanLine },
   { key: "liqmap", href: "/liqmap", label: "LIQ MAP", title: "Liquidity Heatmap", icon: Waves },
   { key: "levelz", href: "/levelz", label: "LEVELZ", title: "LEVELZ", icon: Crosshair },
@@ -102,6 +104,7 @@ const navItems: Array<{
 
 const PERSISTENT_WORKSPACE_KEYS = new Set<SidebarKey>([
   "charts",
+  "gamvue",
   "zyon",
   "gameplan",
   "gamma",
