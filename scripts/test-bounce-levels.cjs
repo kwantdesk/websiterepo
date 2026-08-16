@@ -118,7 +118,7 @@ assert.equal(snapshot.levels.length, 3, "the configured active-level ceiling is 
 assert.ok(snapshot.levels.some((level) => level.rateOfChangePercent > 0), "history produces deterministic positive node accumulation without reading the future bucket");
 assert.ok(snapshot.levels.every((level) => Number.isFinite(level.relevanceScore)), "every retained level has a finite relevance score");
 assert.equal(snapshot.king.percentOfKing, 100, "KING is exactly 100 percent of KING magnitude");
-assert.equal(snapshot.schemaVersion, 2, "the heat-field payload uses the current schema");
+assert.equal(snapshot.schemaVersion, 3, "the heat-field payload uses the immutable strike-history schema");
 assert.equal(snapshot.exposureField.length, 3, "the exposure field includes lookahead-safe history plus the current live surface");
 assert.ok(snapshot.exposureField.every((slice) => slice.timestamp <= now), "the exposure field never renders a future bucket");
 assert.ok(snapshot.exposureField.flatMap((slice) => slice.nodes).every((node) => Number.isFinite(node.strength) && node.strength > 0), "every rendered heat node has a finite magnitude strength");
@@ -151,5 +151,88 @@ assert.ok(directSnapshot.exposureField.flatMap((slice) => slice.nodes).some((nod
 const source = fs.readFileSync(path.join(root, "src/app/api/bounce-levels/route.ts"), "utf8");
 assert.doesNotMatch(source, /NEXT_PUBLIC_(?:QUANTDATA|GEX)[A-Z_]*(?:KEY|TOKEN|SECRET)/, "provider credentials remain server-only");
 assert.match(source, /selectLookaheadSafeBounceBucket/, "the API uses the tested lookahead-safe selector");
+
+const migrationTimes = [0, 1, 2, 3, 4].map((minute) => now + minute * 60_000);
+const migrationValues = [[100, 10], [80, 25], [55, 60], [25, 100], [5, 130]].map(([left, right]) => [left * 1_000_000, right * 1_000_000]);
+const migrationRow = (strike, exposure, timestamp) => ({
+  ...makeRow(`migration-${strike}`, strike, strike, exposure, Math.max(exposure, 0), Math.min(exposure, 0)),
+  sourceTicker: "QQQ",
+  displayInstrument: "QQQ",
+  mapping: { ...mapping, method: "same-underlying-direct", displayInstrument: "QQQ", beta: 1, sourceSpotPrice: 742.5, displayMidPrice: 742.5, mappedSourceSpotPrice: 742.5 },
+  sourceSnapshotTimeMs: timestamp,
+  receivedTimeMs: timestamp,
+});
+const migrationSurface = {
+  ...history,
+  buckets: migrationTimes.slice(0, -1).map((timestamp, index) => ({
+    timestamp,
+    sourcePrice: 742.5,
+    rows: [742, 743].map((strike, strikeIndex) => ({ expirationDate: "2026-08-14", sourceStrike: strike, callExposure: migrationValues[index][strikeIndex], putExposure: 0 })),
+  })),
+};
+const migrationProfile = {
+  ...profile,
+  id: "strike-migration-profile",
+  sourceTicker: "QQQ",
+  displayInstrument: "QQQ",
+  sourceSpotPrice: 742.5,
+  displayPrice: 742.5,
+  snapshotTimeMs: migrationTimes[4],
+  receivedTimeMs: migrationTimes[4],
+  mapping: { ...mapping, method: "same-underlying-direct", displayInstrument: "QQQ", beta: 1, sourceSpotPrice: 742.5, displayMidPrice: 742.5, mappedSourceSpotPrice: 742.5 },
+  rows: [742, 743].map((strike, index) => migrationRow(strike, migrationValues[4][index], migrationTimes[4])),
+};
+const migrationSnapshot = buildBounceLevelsSnapshot(migrationProfile, migrationSurface, {
+  maximumLevels: 2,
+  maximumNodesPerSlice: 2,
+  minimumExposurePercentile: 0,
+  minimumPercentOfKing: 0,
+  minimumRelevanceScore: 0,
+  activeEnterThreshold: 0.05,
+  activeExitThreshold: 0.08,
+  retirementConfirmationSnapshots: 3,
+  visualStrengthBasis: "percent-of-king",
+  rollWeakeningThreshold: 40,
+  rollBuildingThreshold: 40,
+  maxRollDistance: 1,
+  rollWindowMs: 120_000,
+});
+const migration742 = migrationSnapshot.exposureSeries.find((series) => series.strike === 742);
+const migration743 = migrationSnapshot.exposureSeries.find((series) => series.strike === 743);
+assert.ok(migration742 && migration743, "742 and 743 are stored as two independent strike series");
+assert.notEqual(migration742.nodeKey, migration743.nodeKey, "strike identity cannot be reused during a roll");
+assert.deepEqual(migration742.samples.map((sample) => sample.absoluteExposure), migrationValues.map((values) => values[0]), "742 keeps its complete weakening history");
+assert.deepEqual(migration743.samples.map((sample) => sample.absoluteExposure), migrationValues.map((values) => values[1]), "743 keeps its complete building history");
+assert.equal(migration742.samples[0].percentOfKing, 1, "742 t0 strength is finalized against the t0 King");
+assert.equal(migration743.samples[0].percentOfKing, 0.1, "743 t0 strength is finalized against the t0 King");
+assert.equal(migrationSnapshot.exposureField[2].kingStrike, 743, "King changes to 743 at t2");
+assert.equal(migrationSnapshot.exposureField[0].nodes.find((node) => node.sourceStrike === 742).visualStrength, 1, "later King migration does not rewrite 742 t0 pixels");
+assert.ok(migrationSnapshot.exposureField.at(-1).nodes.some((node) => node.sourceStrike === 742), "742 remains visible during hysteresis retirement after leaving Top-N strength");
+assert.ok(migrationSnapshot.rolls.some((roll) => roll.fromStrike === 742 && roll.toStrike === 743 && roll.direction === "UP"), "derived roll analytics detect 742 weakening while 743 builds");
+assert.equal(migrationSnapshot.exposureRefreshIntervalMs, 60_000, "effective cadence is measured from real provider timestamps");
+
+const negativeValues = [[-100, -10], [-70, -40], [-30, -120]].map(([left, right]) => [left * 1_000_000, right * 1_000_000]);
+const negativeSurface = {
+  ...migrationSurface,
+  buckets: migrationTimes.slice(0, 2).map((timestamp, index) => ({
+    timestamp,
+    sourcePrice: 742.5,
+    rows: [742, 743].map((strike, strikeIndex) => ({ expirationDate: "2026-08-14", sourceStrike: strike, callExposure: 0, putExposure: negativeValues[index][strikeIndex] })),
+  })),
+};
+const negativeProfile = {
+  ...migrationProfile,
+  id: "negative-strike-migration-profile",
+  snapshotTimeMs: migrationTimes[2],
+  receivedTimeMs: migrationTimes[2],
+  rows: [742, 743].map((strike, index) => migrationRow(strike, negativeValues[2][index], migrationTimes[2])),
+};
+const negativeSnapshot = buildBounceLevelsSnapshot(negativeProfile, negativeSurface, { maximumNodesPerSlice: 2, activeEnterThreshold: 0.05, activeExitThreshold: 0.02 });
+const negativeFinal = negativeSnapshot.exposureField.at(-1).nodes;
+assert.ok(negativeFinal.find((node) => node.sourceStrike === 742).shortRateOfChange < 0, "negative 742 exposure is weakening by absolute magnitude");
+assert.ok(negativeFinal.find((node) => node.sourceStrike === 743).shortRateOfChange > 0, "more-negative 743 exposure is correctly classified as building by absolute magnitude");
+
+const replayMigration = buildBounceLevelsSnapshot({ ...migrationProfile, snapshotTimeMs: migrationTimes[2], receivedTimeMs: migrationTimes[2], rows: [742, 743].map((strike, index) => migrationRow(strike, migrationValues[2][index], migrationTimes[2])) }, migrationSurface, { maximumNodesPerSlice: 2, activeEnterThreshold: 0.05 });
+assert.ok(replayMigration.exposureSeries.every((series) => series.samples.every((sample) => sample.timestamp <= migrationTimes[2])), "replay series contain no future exposure samples");
 
 console.log("Bounce Levels tests passed");

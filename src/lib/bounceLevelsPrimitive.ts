@@ -38,12 +38,6 @@ const rgba = (color: string, opacity: number) => {
   const value = rgb(color);
   return `rgba(${value.r},${value.g},${value.b},${clamp(opacity, 0, 1)})`;
 };
-const percentile = (values: number[], fraction: number) => {
-  if (!values.length) return 1;
-  const sorted = [...values].sort((left, right) => left - right);
-  return sorted[Math.min(sorted.length - 1, Math.max(0, Math.ceil(sorted.length * fraction) - 1))] || 1;
-};
-
 const coordinateForTimestamp = (
   chart: IChartApi,
   timestamp: number,
@@ -213,8 +207,6 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
         .sort((left, right) => left.timestamp - right.timestamp);
       if (!slices.length) { this.primitive.setHits([]); return; }
 
-      const visibleNodes = slices.flatMap((slice) => slice.nodes.map((node) => ({ slice, node })));
-      const scaleCeiling = percentile(visibleNodes.map(({ node }) => node.absoluteExposure).filter((value) => value > 0), 0.98);
       const hits: RenderedHit[] = [];
       const prepared: PreparedNode[] = [];
       context.save();
@@ -236,7 +228,9 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
           if (coordinate === null) continue;
           const y = Number(coordinate);
           if (y < -40 || y > mediaSize.height + 40) continue;
-          const normalized = clamp((node.absoluteExposure * data.intensity) / Math.max(1, scaleCeiling), 0, 1);
+          // Strength is finalized against the King (or configured absolute basis)
+          // at this exact snapshot. Never renormalize historical samples here.
+          const normalized = clamp(node.visualStrength * data.intensity, 0, 1);
           const visualStrength = Math.sqrt(normalized);
           const growth = clamp(node.rateOfChangePercent / 100, -0.55, 0.75);
           const persistenceBrightness = clamp(Math.sqrt(node.bucketShare * 5), 0.15, 1);
@@ -263,7 +257,8 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
 
       const grouped = new Map<string, PreparedNode[]>();
       for (const point of prepared) {
-        const key = `${point.node.sourceStrike}:${point.node.signedExposure >= 0 ? "positive" : "negative"}`;
+        // A strike owns one immutable temporal geometry even if its sign changes.
+        const key = point.node.nodeKey;
         const group = grouped.get(key) ?? [];
         group.push(point);
         grouped.set(key, group);

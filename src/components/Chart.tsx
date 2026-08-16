@@ -261,7 +261,7 @@ import {
   type MappedStrikeAggregationMode,
   type NetGammaProfileSnapshot,
 } from "@/lib/netGammaExposureByStrike";
-import { isBounceLevelsSnapshot, type BounceLevelsSnapshot } from "@/lib/bounceLevels";
+import { isBounceLevelsSnapshot, mergeBounceLevelsSnapshots, type BounceLevelsSnapshot } from "@/lib/bounceLevels";
 import {
   BounceLevelsPrimitive,
   type BounceLevelsHit,
@@ -5579,6 +5579,17 @@ export default function Chart({
     retirementExposurePercentile: Number(bounceLevelsIndicator.settings?.retirementExposurePercentile ?? 65),
     touchTolerancePercent: Number(bounceLevelsIndicator.settings?.touchTolerancePercent ?? 0.05),
     touchDecayFactor: Number(bounceLevelsIndicator.settings?.touchDecayFactor ?? 85),
+    activeEnterThreshold: Number(bounceLevelsIndicator.settings?.activeEnterThreshold ?? 15),
+    activeExitThreshold: Number(bounceLevelsIndicator.settings?.activeExitThreshold ?? 8),
+    retirementConfirmationSnapshots: Number(bounceLevelsIndicator.settings?.retirementConfirmationSnapshots ?? 3),
+    visualStrengthBasis: String(bounceLevelsIndicator.settings?.visualStrengthBasis ?? "percent-of-king"),
+    absoluteExposureScale: Number(bounceLevelsIndicator.settings?.absoluteExposureScale ?? 1_000_000_000),
+    rollDetectionEnabled: bounceLevelsIndicator.settings?.rollDetectionEnabled !== false,
+    rollVisualizationEnabled: bounceLevelsIndicator.settings?.rollVisualizationEnabled === true,
+    rollWeakeningThreshold: Number(bounceLevelsIndicator.settings?.rollWeakeningThreshold ?? 40),
+    rollBuildingThreshold: Number(bounceLevelsIndicator.settings?.rollBuildingThreshold ?? 40),
+    maxRollDistance: Number(bounceLevelsIndicator.settings?.maxRollDistance ?? 5),
+    rollWindowSeconds: Number(bounceLevelsIndicator.settings?.rollWindowSeconds ?? 120),
   }) : "";
   useEffect(() => {
     if (!bounceLevelsDataSignature) {
@@ -5649,6 +5660,17 @@ export default function Chart({
         retirementExposurePercentile: String(indicatorSettings.retirementExposurePercentile),
         touchTolerancePercent: String(indicatorSettings.touchTolerancePercent),
         touchDecayFactor: String(indicatorSettings.touchDecayFactor),
+        activeEnterThreshold: String(indicatorSettings.activeEnterThreshold),
+        activeExitThreshold: String(indicatorSettings.activeExitThreshold),
+        retirementConfirmationSnapshots: String(indicatorSettings.retirementConfirmationSnapshots),
+        visualStrengthBasis: String(indicatorSettings.visualStrengthBasis),
+        absoluteExposureScale: String(indicatorSettings.absoluteExposureScale),
+        rollDetectionEnabled: String(indicatorSettings.rollDetectionEnabled),
+        rollVisualizationEnabled: String(indicatorSettings.rollVisualizationEnabled),
+        rollWeakeningThreshold: String(indicatorSettings.rollWeakeningThreshold),
+        rollBuildingThreshold: String(indicatorSettings.rollBuildingThreshold),
+        maxRollDistance: String(indicatorSettings.maxRollDistance),
+        rollWindowSeconds: String(indicatorSettings.rollWindowSeconds),
       });
       try {
         const payload = await fetchWorkspaceData<BounceLevelsSnapshot>(
@@ -5656,7 +5678,7 @@ export default function Chart({
           `/api/bounce-levels?${query}`,
           { force, maxAgeMs: refreshMs, timeoutMs: 35_000, validate: isBounceLevelsSnapshot, invalidMessage: "Bounce Levels returned an incomplete ranked surface." },
         );
-        if (!cancelled) { setBounceLevelsSnapshot(payload); setBounceLevelsError(null); }
+        if (!cancelled) { setBounceLevelsSnapshot((current) => mergeBounceLevelsSnapshots(current, payload)); setBounceLevelsError(null); }
       } catch (error) {
         if (!cancelled) setBounceLevelsError(error instanceof Error ? error.message : "Bounce Levels could not refresh.");
       } finally {
@@ -11815,9 +11837,11 @@ export default function Chart({
             <span>Source strike</span><span className="text-foreground">{bounceLevelsTooltip.node.sourceStrike.toLocaleString()}</span>
             <span>Signed {bounceLevelsTooltip.snapshot.greekMode}</span><span className={bounceLevelsTooltip.node.signedExposure >= 0 ? "text-primary" : "text-danger"}>{formatGammaValue(bounceLevelsTooltip.node.signedExposure, "per-one-percent-move", false)}</span>
             <span>Call / Put</span><span className="text-foreground">{formatGammaValue(bounceLevelsTooltip.node.callExposure, "per-one-percent-move")} / {formatGammaValue(bounceLevelsTooltip.node.putExposure, "per-one-percent-move")}</span>
-            <span>Slice strength</span><span className="text-foreground">{(bounceLevelsTooltip.node.strength * 100).toFixed(1)}%</span>
+            <span>Percent of King</span><span className="text-foreground">{(bounceLevelsTooltip.node.percentOfKing * 100).toFixed(1)}%</span>
             <span>Slice share</span><span className="text-foreground">{(bounceLevelsTooltip.node.bucketShare * 100).toFixed(1)}%</span>
-            <span>Change</span><span className={bounceLevelsTooltip.node.rateOfChangePercent >= 0 ? "text-primary" : "text-danger"}>{bounceLevelsTooltip.node.rateOfChangePercent >= 0 ? "+" : ""}{bounceLevelsTooltip.node.rateOfChangePercent.toFixed(1)}%</span>
+            <span>Last snapshot ROC</span><span className={bounceLevelsTooltip.node.shortRateOfChange >= 0 ? "text-primary" : "text-danger"}>{bounceLevelsTooltip.node.shortRateOfChange >= 0 ? "+" : ""}{bounceLevelsTooltip.node.shortRateOfChange.toFixed(1)}%</span>
+            <span>1m / 5m / 15m ROC</span><span className="text-foreground">{bounceLevelsTooltip.node.oneMinuteRateOfChange.toFixed(1)}% / {bounceLevelsTooltip.node.fiveMinuteRateOfChange.toFixed(1)}% / {bounceLevelsTooltip.node.fifteenMinuteRateOfChange.toFixed(1)}%</span>
+            <span>Exposure cadence</span><span className="text-foreground">{bounceLevelsTooltip.snapshot.exposureRefreshIntervalMs ? `${(bounceLevelsTooltip.snapshot.exposureRefreshIntervalMs / 1_000).toFixed(0)}s` : "Awaiting second snapshot"}</span>
             <span>Mapping</span><span className="text-foreground">{bounceLevelsTooltip.snapshot.mapping.method.replaceAll("-", " ")} · {bounceLevelsTooltip.snapshot.mapping.mappingConfidence}%</span>
             <span>Source → projected</span><span className="text-foreground">{bounceLevelsTooltip.node.sourceStrike.toLocaleString()} → {bounceLevelsTooltip.node.mappedPrice.toFixed(priceFormat.precision)}</span>
           </div>

@@ -1249,6 +1249,7 @@ export default function ChartIndicatorsControl({
                     ["Mode", "mode", [["raw", "Raw exposure"], ["difference", "Exposure difference"]]],
                     ["Difference baseline", "baseline", [["previous-bucket", "Previous bucket"], ["session-open", "Session open"], ["rolling-average", "Rolling average"]]],
                     ["Expiration", "expirationMode", [["zero-dte", "0DTE"], ["zero-to-one-dte", "0–1 DTE"], ["zero-to-seven-dte", "0–7 DTE"], ["front-expiration", "Front expiration"], ["all-expirations", "All expirations"], ["custom-dte-range", "Custom DTE range"], ["specific-expirations", "Specific expirations"]]],
+                    ["Visual strength basis", "visualStrengthBasis", [["percent-of-king", "Percent of King"], ["absolute-exposure", "Absolute Exposure"], ["hybrid", "Hybrid · sqrt(absolute × King %)" ]]],
                     ["Content", "contentMode", [["net", "Net"], ["call", "Calls"], ["put", "Puts"], ["gross", "Gross absolute"], ["call-put-split", "Call / put split"]]],
                     ["Mapped bins", "aggregationMode", [["exact-display-tick", "Exact display tick"], ["auto-bin", "Automatic"], ["custom-bin", "Custom bin"]]],
                     ["Visual", "visualMode", [["bubbles", "Magnitude bubbles"], ["fixed-dots", "Fixed dots"], ["heat-cells", "Heat cells"], ["horizontal-ribbons", "Horizontal ribbons"], ["hybrid", "Hybrid"]]],

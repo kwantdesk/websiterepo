@@ -2,7 +2,7 @@ import type { GexIntervalProviderBucket, GexIntervalProviderSurface } from "@/li
 import type { NetGammaProfileSnapshot, NetGammaStrikeRow } from "@/lib/netGammaExposureByStrike";
 
 export const BOUNCE_LEVELS_ID = "bounce-levels";
-export const BOUNCE_LEVELS_SCHEMA_VERSION = 2;
+export const BOUNCE_LEVELS_SCHEMA_VERSION = 3;
 
 export type BounceGreekMode = "GAMMA" | "DELTA" | "VANNA" | "CHARM";
 export type BounceLevelRole = "KING" | "FLOOR" | "CEILING" | "GATEKEEPER" | "MAJOR" | "CLUSTER" | "DEVELOPING" | "WEAKENING" | "RETIRED" | "AIR_POCKET";
@@ -42,8 +42,38 @@ export type BounceLevel = {
 };
 
 export type BounceAirPocket = { id: string; lowerPrice: number; upperPrice: number; magnitudeRatio: number };
+export type BounceVisualStrengthBasis = "absolute-exposure" | "percent-of-king" | "hybrid";
+export type BounceExposureSample = {
+  nodeKey: string;
+  timestamp: number;
+  strike: number;
+  signedExposure: number;
+  absoluteExposure: number;
+  percentOfKing: number;
+};
+export type BounceExposureSeries = {
+  nodeKey: string;
+  underlying: string;
+  greek: BounceGreekMode;
+  expiryScopeSignature: string;
+  strike: number;
+  samples: BounceExposureSample[];
+};
+export type BounceExposureRoll = {
+  id: string;
+  timestamp: number;
+  fromNodeKey: string;
+  toNodeKey: string;
+  fromStrike: number;
+  toStrike: number;
+  direction: "UP" | "DOWN";
+  weakeningRate: number;
+  buildingRate: number;
+  score: number;
+};
 export type BounceExposureNode = {
   id: string;
+  nodeKey: string;
   timestamp: number;
   sourceStrike: number;
   mappedPrice: number;
@@ -52,8 +82,18 @@ export type BounceExposureNode = {
   callExposure: number;
   putExposure: number;
   strength: number;
+  percentOfKing: number;
+  normalizedAbsoluteMagnitude: number;
+  visualStrength: number;
   bucketShare: number;
   rateOfChangePercent: number;
+  shortRateOfChange: number;
+  oneMinuteRateOfChange: number;
+  fiveMinuteRateOfChange: number;
+  fifteenMinuteRateOfChange: number;
+  rollWindowRateOfChange: number;
+  active: boolean;
+  retirementCount: number;
 };
 export type BounceExposureSlice = {
   timestamp: number;
@@ -61,10 +101,11 @@ export type BounceExposureSlice = {
   mappedSourcePrice: number | null;
   maximumAbsoluteExposure: number;
   totalAbsoluteExposure: number;
+  kingStrike: number | null;
   nodes: BounceExposureNode[];
 };
 export type BounceLevelsSnapshot = {
-  schemaVersion: 2;
+  schemaVersion: 3;
   id: string;
   sourceTicker: string;
   displayInstrument: string;
@@ -78,6 +119,10 @@ export type BounceLevelsSnapshot = {
   representation: "per-one-percent-move";
   mapping: NetGammaProfileSnapshot["mapping"];
   exposureField: BounceExposureSlice[];
+  exposureSeries: BounceExposureSeries[];
+  exposureRefreshIntervalMs: number | null;
+  visualStrengthBasis: BounceVisualStrengthBasis;
+  rolls: BounceExposureRoll[];
   levels: BounceLevel[];
   king: BounceLevel | null;
   floor: BounceLevel | null;
@@ -120,6 +165,17 @@ export type BounceLevelsBuildSettings = {
   minimumGatekeeperPercentOfKing: number;
   touchTolerancePercent: number;
   touchDecayFactor: number;
+  activeEnterThreshold: number;
+  activeExitThreshold: number;
+  retirementConfirmationSnapshots: number;
+  visualStrengthBasis: BounceVisualStrengthBasis;
+  absoluteExposureScale: number;
+  rollDetectionEnabled: boolean;
+  rollVisualizationEnabled: boolean;
+  rollWeakeningThreshold: number;
+  rollBuildingThreshold: number;
+  maxRollDistance: number;
+  rollWindowMs: number;
 };
 
 export const DEFAULT_BOUNCE_LEVELS_SETTINGS: BounceLevelsBuildSettings = {
@@ -154,6 +210,17 @@ export const DEFAULT_BOUNCE_LEVELS_SETTINGS: BounceLevelsBuildSettings = {
   minimumGatekeeperPercentOfKing: 0.2,
   touchTolerancePercent: 0.0005,
   touchDecayFactor: 0.85,
+  activeEnterThreshold: 0.15,
+  activeExitThreshold: 0.08,
+  retirementConfirmationSnapshots: 3,
+  visualStrengthBasis: "percent-of-king",
+  absoluteExposureScale: 1_000_000_000,
+  rollDetectionEnabled: true,
+  rollVisualizationEnabled: false,
+  rollWeakeningThreshold: 40,
+  rollBuildingThreshold: 40,
+  maxRollDistance: 5,
+  rollWindowMs: 120_000,
 };
 
 type StrikeHistory = { values: number[]; timestamps: number[]; sourcePrices: Array<number | null> };
@@ -173,8 +240,30 @@ function buildExposureField(
   const eligibleBuckets = (surface?.buckets ?? [])
     .filter((bucket) => bucket.timestamp <= profile.snapshotTimeMs)
     .slice(-maximumBuckets);
-  const previousByStrike = new Map<number, number>();
+  const expiryScopeSignature = profile.expirationDates.length
+    ? [...profile.expirationDates].sort().join(",")
+    : profile.expirationLabel;
+  const nodeKeyFor = (strike: number) => `${profile.sourceTicker}|${settings.greekMode}|${expiryScopeSignature}|${strike}`;
+  const seriesByStrike = new Map<number, BounceExposureSeries>();
+  const activeByStrike = new Map<number, { active: boolean; belowExitCount: number }>();
   const slices: BounceExposureSlice[] = [];
+  const rolls: BounceExposureRoll[] = [];
+  const snapshotTimes: number[] = [];
+
+  const priorSample = (series: BounceExposureSeries | undefined, timestamp: number, windowMs: number, lastSnapshot = false) => {
+    if (!series?.samples.length) return null;
+    if (lastSnapshot) return series.samples.at(-1) ?? null;
+    const target = timestamp - windowMs;
+    let result = series.samples[0];
+    for (const sample of series.samples) {
+      if (sample.timestamp > target) break;
+      result = sample;
+    }
+    return result ?? null;
+  };
+  const magnitudeRoc = (current: number, previous: BounceExposureSample | null) => previous
+    ? 100 * (current - previous.absoluteExposure) / Math.max(1, previous.absoluteExposure)
+    : 0;
 
   const buildSlice = (
     timestamp: number,
@@ -189,6 +278,9 @@ function buildExposureField(
       current.put += Number(row.putExposure) || 0;
       aggregate.set(row.sourceStrike, current);
     }
+    // A complete snapshot that omits a previously active strike represents a
+    // zero observation for retirement purposes; keep it long enough to taper.
+    for (const [strike, state] of activeByStrike) if (state.active && !aggregate.has(strike)) aggregate.set(strike, { call: 0, put: 0 });
     const ranked = [...aggregate.entries()]
       .map(([sourceStrike, exposure]) => ({
         sourceStrike,
@@ -196,21 +288,55 @@ function buildExposureField(
         putExposure: exposure.put,
         signedExposure: exposure.call + exposure.put,
       }))
-      .filter((row) => Number.isFinite(row.signedExposure) && Math.abs(row.signedExposure) > Number.EPSILON)
+      .filter((row) => Number.isFinite(row.signedExposure))
       .sort((left, right) => Math.abs(right.signedExposure) - Math.abs(left.signedExposure));
     const maximumAbsoluteExposure = Math.max(0, ...ranked.map((row) => Math.abs(row.signedExposure)));
     const totalAbsoluteExposure = ranked.reduce((sum, row) => sum + Math.abs(row.signedExposure), 0);
-    const retained = ranked
-      .filter((row, index) => index < maximumNodes || Math.abs(row.signedExposure) >= maximumAbsoluteExposure * 0.08)
-      .slice(0, maximumNodes);
-    const nodes = retained.map((row): BounceExposureNode => {
+    if (!ranked.length) return;
+    snapshotTimes.push(timestamp);
+    const allNodes = ranked.map((row, rank): BounceExposureNode => {
       const absoluteExposure = Math.abs(row.signedExposure);
-      const previous = previousByStrike.get(row.sourceStrike);
-      const rateOfChangePercent = previous === undefined
-        ? 0
-        : 100 * (absoluteExposure - Math.abs(previous)) / Math.max(1, Math.abs(previous));
+      const percentOfKing = maximumAbsoluteExposure > 0 ? absoluteExposure / maximumAbsoluteExposure : 0;
+      const nodeKey = nodeKeyFor(row.sourceStrike);
+      const series = seriesByStrike.get(row.sourceStrike) ?? {
+        nodeKey,
+        underlying: profile.sourceTicker,
+        greek: settings.greekMode,
+        expiryScopeSignature,
+        strike: row.sourceStrike,
+        samples: [],
+      };
+      if (series.samples.at(-1)?.timestamp === timestamp) series.samples.pop();
+      const shortRateOfChange = magnitudeRoc(absoluteExposure, priorSample(series, timestamp, 0, true));
+      const oneMinuteRateOfChange = magnitudeRoc(absoluteExposure, priorSample(series, timestamp, 60_000));
+      const fiveMinuteRateOfChange = magnitudeRoc(absoluteExposure, priorSample(series, timestamp, 300_000));
+      const fifteenMinuteRateOfChange = magnitudeRoc(absoluteExposure, priorSample(series, timestamp, 900_000));
+      const rollWindowRateOfChange = magnitudeRoc(absoluteExposure, priorSample(series, timestamp, settings.rollWindowMs));
+      const sample: BounceExposureSample = { nodeKey, timestamp, strike: row.sourceStrike, signedExposure: row.signedExposure, absoluteExposure, percentOfKing };
+      series.samples.push(sample);
+      seriesByStrike.set(row.sourceStrike, series);
+
+      const state = activeByStrike.get(row.sourceStrike) ?? { active: false, belowExitCount: 0 };
+      if (!state.active && rank < maximumNodes && percentOfKing >= settings.activeEnterThreshold) {
+        state.active = true;
+        state.belowExitCount = 0;
+      } else if (state.active && percentOfKing < settings.activeExitThreshold) {
+        state.belowExitCount += 1;
+      } else if (state.active) {
+        state.belowExitCount = 0;
+      }
+      const visible = state.active;
+      if (state.active && state.belowExitCount >= Math.max(1, Math.round(settings.retirementConfirmationSnapshots))) state.active = false;
+      activeByStrike.set(row.sourceStrike, state);
+      const normalizedAbsoluteMagnitude = absoluteExposure / Math.max(1, absoluteExposure + settings.absoluteExposureScale);
+      const visualStrength = settings.visualStrengthBasis === "absolute-exposure"
+        ? normalizedAbsoluteMagnitude
+        : settings.visualStrengthBasis === "hybrid"
+          ? Math.sqrt(normalizedAbsoluteMagnitude * percentOfKing)
+          : percentOfKing;
       return {
         id: `${timestamp}:${row.sourceStrike}`,
+        nodeKey,
         timestamp,
         sourceStrike: row.sourceStrike,
         mappedPrice: mapPrice(row.sourceStrike),
@@ -218,12 +344,22 @@ function buildExposureField(
         absoluteExposure,
         callExposure: row.callExposure,
         putExposure: row.putExposure,
-        strength: maximumAbsoluteExposure > 0 ? absoluteExposure / maximumAbsoluteExposure : 0,
+        strength: percentOfKing,
+        percentOfKing,
+        normalizedAbsoluteMagnitude,
+        visualStrength,
         bucketShare: totalAbsoluteExposure > 0 ? absoluteExposure / totalAbsoluteExposure : 0,
-        rateOfChangePercent,
+        rateOfChangePercent: shortRateOfChange,
+        shortRateOfChange,
+        oneMinuteRateOfChange,
+        fiveMinuteRateOfChange,
+        fifteenMinuteRateOfChange,
+        rollWindowRateOfChange,
+        active: visible,
+        retirementCount: state.belowExitCount,
       };
     });
-    for (const row of ranked) previousByStrike.set(row.sourceStrike, row.signedExposure);
+    const nodes = allNodes.filter((node) => node.active);
     if (!nodes.length) return;
     slices.push({
       timestamp,
@@ -231,8 +367,33 @@ function buildExposureField(
       mappedSourcePrice: sourcePrice && sourcePrice > 0 ? mapPrice(sourcePrice) : null,
       maximumAbsoluteExposure,
       totalAbsoluteExposure,
+      kingStrike: ranked[0]?.sourceStrike ?? null,
       nodes,
     });
+
+    if (settings.rollDetectionEnabled) {
+      const weakening = allNodes.filter((node) => node.rollWindowRateOfChange <= -Math.abs(settings.rollWeakeningThreshold));
+      const building = allNodes.filter((node) => node.rollWindowRateOfChange >= Math.abs(settings.rollBuildingThreshold));
+      for (const from of weakening) for (const to of building) {
+        const distance = Math.abs(to.sourceStrike - from.sourceStrike);
+        if (from.nodeKey === to.nodeKey || distance > settings.maxRollDistance) continue;
+        const weakeningMagnitude = clamp01(Math.abs(from.rollWindowRateOfChange) / Math.max(1, settings.rollWeakeningThreshold));
+        const strengtheningMagnitude = clamp01(to.rollWindowRateOfChange / Math.max(1, settings.rollBuildingThreshold));
+        const proximityScore = clamp01(1 - distance / Math.max(0.000001, settings.maxRollDistance));
+        rolls.push({
+          id: `${timestamp}:${from.nodeKey}:${to.nodeKey}`,
+          timestamp,
+          fromNodeKey: from.nodeKey,
+          toNodeKey: to.nodeKey,
+          fromStrike: from.sourceStrike,
+          toStrike: to.sourceStrike,
+          direction: to.sourceStrike > from.sourceStrike ? "UP" : "DOWN",
+          weakeningRate: from.rollWindowRateOfChange,
+          buildingRate: to.rollWindowRateOfChange,
+          score: clamp01(0.4 * weakeningMagnitude + 0.4 * strengtheningMagnitude + 0.2 * proximityScore),
+        });
+      }
+    }
   };
 
   for (const bucket of eligibleBuckets) buildSlice(bucket.timestamp, bucket.sourcePrice, bucket.rows);
@@ -249,7 +410,14 @@ function buildExposureField(
     if (slices.at(-1)?.timestamp === finalTimestamp) slices.pop();
     buildSlice(finalTimestamp, profile.sourceSpotPrice, latestRows);
   }
-  return slices;
+  const cadenceDeltas = snapshotTimes.slice(1).map((timestamp, index) => timestamp - snapshotTimes[index]).filter((value) => value > 0).sort((a, b) => a - b);
+  const exposureRefreshIntervalMs = cadenceDeltas.length ? cadenceDeltas[Math.floor(cadenceDeltas.length / 2)] : null;
+  return {
+    slices,
+    exposureSeries: [...seriesByStrike.values()],
+    exposureRefreshIntervalMs,
+    rolls,
+  };
 }
 
 export function selectLookaheadSafeBounceBucket(surface: GexIntervalProviderSurface, asOfMs: number): GexIntervalProviderBucket | null {
@@ -260,6 +428,36 @@ export function selectLookaheadSafeBounceBucket(surface: GexIntervalProviderSurf
     selected = bucket;
   }
   return selected;
+}
+
+/**
+ * Preserves every valid live head returned to this browser between provider
+ * history refreshes. Samples with the same identity and timestamp are treated
+ * as provider corrections; the newer payload wins without touching any other
+ * finalized historical sample.
+ */
+export function mergeBounceLevelsSnapshots(previous: BounceLevelsSnapshot | null, next: BounceLevelsSnapshot): BounceLevelsSnapshot {
+  if (!previous || previous.sourceTicker !== next.sourceTicker || previous.displayInstrument !== next.displayInstrument || previous.greekMode !== next.greekMode || previous.expirationLabel !== next.expirationLabel) return next;
+  const slices = new Map(previous.exposureField.map((slice) => [slice.timestamp, slice]));
+  for (const slice of next.exposureField) slices.set(slice.timestamp, slice);
+  const exposureField = [...slices.values()].sort((left, right) => left.timestamp - right.timestamp).slice(-720);
+  const series = new Map(previous.exposureSeries.map((item) => [item.nodeKey, { ...item, samples: [...item.samples] }]));
+  for (const incoming of next.exposureSeries) {
+    const current = series.get(incoming.nodeKey) ?? { ...incoming, samples: [] };
+    const samples = new Map(current.samples.map((sample) => [sample.timestamp, sample]));
+    for (const sample of incoming.samples) samples.set(sample.timestamp, sample);
+    series.set(incoming.nodeKey, { ...incoming, samples: [...samples.values()].sort((left, right) => left.timestamp - right.timestamp).slice(-720) });
+  }
+  const rolls = new Map(previous.rolls.map((roll) => [roll.id, roll]));
+  for (const roll of next.rolls) rolls.set(roll.id, roll);
+  const deltas = exposureField.slice(1).map((slice, index) => slice.timestamp - exposureField[index].timestamp).filter((value) => value > 0).sort((a, b) => a - b);
+  return {
+    ...next,
+    exposureField,
+    exposureSeries: [...series.values()],
+    exposureRefreshIntervalMs: deltas.length ? deltas[Math.floor(deltas.length / 2)] : next.exposureRefreshIntervalMs,
+    rolls: [...rolls.values()].sort((left, right) => left.timestamp - right.timestamp),
+  };
 }
 
 function percentileRanks(rows: NetGammaStrikeRow[]) {
@@ -370,6 +568,7 @@ function explanation(level: BounceLevel, greekMode: BounceGreekMode) {
 
 export function buildBounceLevelsSnapshot(profile: NetGammaProfileSnapshot, historySurface: GexIntervalProviderSurface | null, partialSettings: Partial<BounceLevelsBuildSettings> = {}): BounceLevelsSnapshot {
   const settings = { ...DEFAULT_BOUNCE_LEVELS_SETTINGS, ...partialSettings };
+  const exposureHistory = buildExposureField(profile, historySurface, settings);
   const rows = profile.rows.filter((row) => Number.isFinite(row.netExposure) && Number.isFinite(row.mappedDisplayPrice));
   const nonZeroRows = rows.filter((row) => Math.abs(row.netExposure) > Number.EPSILON);
   const kingRow = nonZeroRows.reduce<NetGammaStrikeRow | null>((best, row) => !best || Math.abs(row.netExposure) > Math.abs(best.netExposure) ? row : best, null);
@@ -500,7 +699,11 @@ export function buildBounceLevelsSnapshot(profile: NetGammaProfileSnapshot, hist
     expirationLabel: profile.expirationLabel,
     representation: "per-one-percent-move",
     mapping: profile.mapping,
-    exposureField: buildExposureField(profile, historySurface, settings),
+    exposureField: exposureHistory.slices,
+    exposureSeries: exposureHistory.exposureSeries,
+    exposureRefreshIntervalMs: exposureHistory.exposureRefreshIntervalMs,
+    visualStrengthBasis: settings.visualStrengthBasis,
+    rolls: exposureHistory.rolls,
     levels: selected,
     king,
     floor: selectedFloor,

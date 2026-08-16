@@ -143,6 +143,19 @@ export async function GET(request: NextRequest) {
       minimumAirPocketWidthPercent: finite(request, "minimumAirPocketWidthPercent", 0.3) / 100,
       touchTolerancePercent: finite(request, "touchTolerancePercent", 0.05) / 100,
       touchDecayFactor: finite(request, "touchDecayFactor", 85) / 100,
+      activeEnterThreshold: finite(request, "activeEnterThreshold", 15) / 100,
+      activeExitThreshold: finite(request, "activeExitThreshold", 8) / 100,
+      retirementConfirmationSnapshots: finite(request, "retirementConfirmationSnapshots", 3),
+      visualStrengthBasis: (["absolute-exposure", "percent-of-king", "hybrid"].includes(request.nextUrl.searchParams.get("visualStrengthBasis") || "")
+        ? request.nextUrl.searchParams.get("visualStrengthBasis")
+        : "percent-of-king") as "absolute-exposure" | "percent-of-king" | "hybrid",
+      absoluteExposureScale: finite(request, "absoluteExposureScale", 1_000_000_000),
+      rollDetectionEnabled: request.nextUrl.searchParams.get("rollDetectionEnabled") !== "false",
+      rollVisualizationEnabled: request.nextUrl.searchParams.get("rollVisualizationEnabled") === "true",
+      rollWeakeningThreshold: finite(request, "rollWeakeningThreshold", 40),
+      rollBuildingThreshold: finite(request, "rollBuildingThreshold", 40),
+      maxRollDistance: finite(request, "maxRollDistance", 5),
+      rollWindowMs: finite(request, "rollWindowSeconds", 120) * 1_000,
     });
     if (payloadCache.size > 64) for (const [key, entry] of payloadCache) if (entry.expiresAt <= Date.now()) payloadCache.delete(key);
     payloadCache.set(cacheKey, { expiresAt: Date.now() + Math.max(2_000, Math.min(15_000, payload.refreshAfterMs)), payload });
