@@ -309,7 +309,7 @@ import {
   type DarkPoolGexHit,
   type DarkPoolGexPrimitiveData,
 } from "@/lib/darkPoolGexPrimitive";
-import { fetchWorkspaceData } from "@/lib/workspaceDataCache";
+import { fetchWorkspaceData, readWorkspaceData } from "@/lib/workspaceDataCache";
 import { STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT } from "@/lib/volumeProfileMath";
 import {
   buildMarketSessionWindows,
@@ -5611,6 +5611,12 @@ export default function Chart({
       ? /^(RTY|M2K)$/.test(display) ? "IWM" : defaultGexIntervalMapSource(display)
       : requestedSource;
     const refreshMs = Math.max(2_000, Math.min(60_000, Number(indicatorSettings.refreshSeconds) * 1_000));
+    const bounceCacheKey = `bounce-levels:${display}:${source}:${bounceLevelsDataSignature}`;
+    const cachedBounce = readWorkspaceData<BounceLevelsSnapshot>(bounceCacheKey);
+    if (cachedBounce && isBounceLevelsSnapshot(cachedBounce)) {
+      setBounceLevelsSnapshot((current) => mergeBounceLevelsSnapshots(current, cachedBounce));
+      setBounceLevelsLoading(false);
+    }
     let cancelled = false;
     let timer: number | null = null;
     const load = async (force = false) => {
@@ -5674,7 +5680,7 @@ export default function Chart({
       });
       try {
         const payload = await fetchWorkspaceData<BounceLevelsSnapshot>(
-          `bounce-levels:${display}:${source}:${query.toString()}`,
+          bounceCacheKey,
           `/api/bounce-levels?${query}`,
           { force, maxAgeMs: refreshMs, timeoutMs: 35_000, validate: isBounceLevelsSnapshot, invalidMessage: "Bounce Levels returned an incomplete ranked surface." },
         );
@@ -6042,6 +6048,19 @@ export default function Chart({
     const refreshMs = Math.max(1_000, Math.min(60_000, Number(darkPoolGexIndicator.settings?.refreshSeconds ?? 5) * 1_000));
     const historicalAsOf = drawingCandlesRef.current.at(-1)?.timestamp ?? Date.now();
     const asOfMs = indicatorSettings.contextMode === "current" ? Date.now() : historicalAsOf;
+    const darkPoolCacheKey = `dark-pool-gex:prints:${display}:${source}:${indicatorSettings.lookbackDays}:${indicatorSettings.minimumNotional}:${indicatorSettings.maximumNotional}:${indicatorSettings.minimumShares}:${indicatorSettings.maximumShares}`;
+    const gexSource = /^(NQ|MNQ|QQQ)$/.test(display) ? "QQQ"
+      : display === "NDX" ? "NDX"
+        : /^(ES|MES|SPY)$/.test(display) ? "SPY"
+          : /^(SPX|SPXW)$/.test(display) ? display
+            : /^(RTY|M2K|IWM)$/.test(display) ? "IWM"
+              : null;
+    const gexCacheKey = `dark-pool-gex:gex:${display}:${gexSource ?? "none"}:${indicatorSettings.contextMode}:${indicatorSettings.contextMode === "current" ? "live" : Math.floor(asOfMs / 60_000)}`;
+    const cachedDarkPool = readWorkspaceData<DarkPoolMapPayload>(darkPoolCacheKey);
+    const cachedGex = gexSource ? readWorkspaceData<BounceLevelsSnapshot>(gexCacheKey) : null;
+    if (cachedDarkPool && isDarkPoolMapPayload(cachedDarkPool)) setDarkPoolGexPayload(cachedDarkPool);
+    if (cachedGex && isBounceLevelsSnapshot(cachedGex)) setDarkPoolGexSnapshot(cachedGex);
+    if (cachedDarkPool) setDarkPoolGexLoading(false);
     let cancelled = false;
     let timer: number | null = null;
     const load = async (force = false) => {
@@ -6051,7 +6070,7 @@ export default function Chart({
         timer = window.setTimeout(() => void load(force), 500);
         return;
       }
-      setDarkPoolGexLoading(true);
+      if (!cachedDarkPool) setDarkPoolGexLoading(true);
       const darkPoolQuery = new URLSearchParams({
         display,
         source,
@@ -6059,17 +6078,15 @@ export default function Chart({
         historyDays: String(Math.max(1, Math.min(365, indicatorSettings.lookbackDays))),
         minimumPrintNotional: String(Math.max(0, indicatorSettings.minimumNotional)),
         minimumPrintShares: String(Math.max(0, indicatorSettings.minimumShares)),
-        maximumHistoricalPrints: "100000",
+        // Dark Pool (GEX) displays a ranked handful of prints. Loading a
+        // bounded raw set prevents its first paint from waiting on a 50-page
+        // cursor walk while the aggregate levels endpoint still supplies the
+        // complete level context.
+        maximumHistoricalPrints: String(Math.max(500, Math.min(2_000, indicatorSettings.topN * 100))),
         displayPrice: String(displayPrice),
       });
       if (indicatorSettings.maximumNotional > 0) darkPoolQuery.set("maximumPrintNotional", String(indicatorSettings.maximumNotional));
       if (indicatorSettings.maximumShares > 0) darkPoolQuery.set("maximumPrintShares", String(indicatorSettings.maximumShares));
-      const gexSource = /^(NQ|MNQ|QQQ)$/.test(display) ? "QQQ"
-        : display === "NDX" ? "NDX"
-          : /^(ES|MES|SPY)$/.test(display) ? "SPY"
-            : /^(SPX|SPXW)$/.test(display) ? display
-              : /^(RTY|M2K|IWM)$/.test(display) ? "IWM"
-                : null;
       const gexQuery = new URLSearchParams({
         display,
         ...(gexSource ? { source: gexSource } : {}),
@@ -6082,13 +6099,13 @@ export default function Chart({
       });
       if (indicatorSettings.contextMode !== "current") gexQuery.set("asOf", new Date(asOfMs).toISOString());
       const darkPoolPromise = fetchWorkspaceData<DarkPoolMapPayload>(
-        `dark-pool-gex:prints:${display}:${source}:${indicatorSettings.lookbackDays}:${indicatorSettings.minimumNotional}:${indicatorSettings.maximumNotional}:${indicatorSettings.minimumShares}:${indicatorSettings.maximumShares}`,
+        darkPoolCacheKey,
         `/api/dark-pool-map?${darkPoolQuery}`,
         { force, maxAgeMs: refreshMs, timeoutMs: 40_000, validate: isDarkPoolMapPayload, invalidMessage: "Dark Pool (GEX) received an incomplete off-exchange print snapshot." },
       );
       const gexPromise = gexSource
         ? fetchWorkspaceData<BounceLevelsSnapshot>(
-          `dark-pool-gex:gex:${display}:${gexSource}:${indicatorSettings.contextMode}:${Math.floor(asOfMs / 60_000)}`,
+          gexCacheKey,
           `/api/bounce-levels?${gexQuery}`,
           { force, maxAgeMs: refreshMs, timeoutMs: 40_000, validate: isBounceLevelsSnapshot, invalidMessage: "Dark Pool (GEX) received an incomplete GEX snapshot." },
         )

@@ -138,6 +138,11 @@ export async function fetchWorkspaceData<T>(
     invalidMessage?: string;
   } = {},
 ): Promise<T> {
+  // Restore the tab-scoped cache before deciding whether a network request is
+  // necessary. Previously fetches only checked the in-memory Map, so a page
+  // reload ignored valid sessionStorage data and forced every heavy indicator
+  // to cold-start again.
+  if (!workspaceDataCache.has(key) && typeof window !== "undefined") readWorkspaceData<T>(key);
   const cached = workspaceDataCache.get(key);
   const maxAgeMs = options.maxAgeMs ?? 15_000;
   if (!options.force && cached && Date.now() - cached.updatedAt <= maxAgeMs) {

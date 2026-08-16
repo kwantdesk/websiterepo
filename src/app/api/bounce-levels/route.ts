@@ -95,10 +95,13 @@ export async function GET(request: NextRequest) {
   const cached = payloadCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return NextResponse.json(cached.payload, { headers: { "Cache-Control": "private, no-store" } });
   try {
-    const interval = await getGexIntervalMapSurface({ sourceTicker: source, sessionDate, aggregationPeriod: "1m", greekMode });
-    const profileSurface = asOf
-      ? historicalSurface({ sourceTicker: source, displayInstrument: display, displayPrice, asOf, interval })
-      : await getNetGammaExposureSurface({ sourceTicker: source, displayInstrument: display, displayPrice, greekMode });
+    const intervalPromise = getGexIntervalMapSurface({ sourceTicker: source, sessionDate, aggregationPeriod: "1m", greekMode });
+    // The live profile and interval history are independent provider surfaces.
+    // Start them together so first paint takes one network round instead of two.
+    const profilePromise = asOf
+      ? intervalPromise.then((interval) => historicalSurface({ sourceTicker: source, displayInstrument: display, displayPrice, asOf, interval }))
+      : getNetGammaExposureSurface({ sourceTicker: source, displayInstrument: display, displayPrice, greekMode });
+    const [interval, profileSurface] = await Promise.all([intervalPromise, profilePromise]);
     const profile = buildNetGammaProfile(profileSurface, {
       expiration: {
         mode: expirationMode,
