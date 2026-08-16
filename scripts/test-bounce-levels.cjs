@@ -20,6 +20,7 @@ require.extensions[".ts"] = (module, filename) => {
 };
 
 const { buildBounceLevelsSnapshot, selectLookaheadSafeBounceBucket } = require("../src/lib/bounceLevels.ts");
+const { classifyBounceNodeMomentum } = require("../src/lib/bounceLevelsPrimitive.ts");
 
 const now = Date.parse("2026-08-14T15:00:00.000Z");
 const mapping = {
@@ -125,6 +126,10 @@ assert.ok(snapshot.floor && snapshot.floor.mappedPrice < profile.displayPrice, "
 assert.ok(snapshot.ceiling && snapshot.ceiling.mappedPrice > profile.displayPrice, "ceiling is selected above current display price");
 assert.equal(selectLookaheadSafeBounceBucket(history, now).timestamp, now - 60000, "replay selects the latest snapshot at or before replay time");
 assert.equal(selectLookaheadSafeBounceBucket(history, now - 180000), null, "replay never reaches forward when no prior snapshot exists");
+assert.equal(classifyBounceNodeMomentum(18), "building", "positive node momentum expands the live edge");
+assert.equal(classifyBounceNodeMomentum(2), "stable", "small node changes keep a flat live edge");
+assert.equal(classifyBounceNodeMomentum(-18), "weakening", "moderate unwinds taper the live edge");
+assert.equal(classifyBounceNodeMomentum(-60), "dumped", "rapid unwinds collapse into a short decay tail");
 
 const zeroRows = rows.map((row) => makeRow(`zero-${row.id}`, row.sourceStrike, row.mappedDisplayPrice, 0, 0, 0));
 const zeroSnapshot = buildBounceLevelsSnapshot({ ...profile, id: "zero-profile", rows: zeroRows }, null, { maximumLevels: 8, minimumExposurePercentile: 0, minimumPercentOfKing: 0, minimumRelevanceScore: 0 });

@@ -5677,6 +5677,7 @@ export default function Chart({
       maximumNodeHeight: Number(indicatorSettings.maximumNodeThickness ?? 18),
       minimumOpacity: Number(indicatorSettings.minimumNodeOpacity ?? 8) / 100,
       glowStrength: Number(indicatorSettings.glowStrength ?? 5),
+      microOrbTexture: indicatorSettings.microOrbTexture !== false,
       positiveColor: useThemeColors ? settings.upColor : String(indicatorSettings.positiveColor ?? settings.upColor),
       negativeColor: useThemeColors ? settings.downColor : String(indicatorSettings.negativeColor ?? settings.downColor),
     };

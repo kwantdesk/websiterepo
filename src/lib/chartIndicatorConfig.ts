@@ -1078,6 +1078,7 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     showRetiredHistory: true,
     showTouchCount: true,
     showRocArrows: true,
+    microOrbTexture: true,
     tooltipsEnabled: true,
     enableAlerts: false,
     alertLevelApproach: true,
