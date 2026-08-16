@@ -9,6 +9,7 @@ import {
   emptyPaperTradingLedger,
   ensurePaperAccountLedger,
   placePaperOrder,
+  processPaperQuote,
   summarizePaperAccount,
 } from "../src/lib/paperTrading.ts";
 
@@ -111,4 +112,126 @@ test("an empty ledger initializes directly from the selected account", () => {
   const ledger = ensurePaperAccountLedger(emptyPaperTradingLedger(), account);
   assert.equal(ledger.accounts[account.id].startingBalance, 100_000);
   assert.equal(ledger.accounts[account.id].cashBalance, 100_000);
+});
+
+test("fallback quotes can mark P&L but cannot invent a take-profit fill", () => {
+  const account = createPaperTradingAccount({
+    name: "100K Sim",
+    balance: 100_000,
+    leverage: "1:30",
+    instrument: "All CME Futures",
+  });
+  const placed = placePaperOrder(
+    ensurePaperAccountLedger(emptyPaperTradingLedger(), account),
+    [account],
+    {
+      accountId: account.id,
+      symbol: "NQ",
+      side: "buy",
+      type: "market",
+      quantity: 1,
+      stopLoss: 29_990,
+      takeProfits: [{ price: 30_010, quantity: 1 }],
+    },
+    { bid: 29_999.75, ask: 30_000, timestamp: 1_000 },
+  );
+
+  const marked = processPaperQuote(
+    placed.ledger,
+    [account],
+    "NQ",
+    { bid: 30_020, ask: 30_020.25, timestamp: 2_000 },
+    { executionAuthorized: false },
+  );
+  const markedAccount = marked.accounts[account.id];
+  assert.equal(markedAccount.positions[0].status, "open");
+  assert.equal(markedAccount.positions[0].markPrice, 30_020);
+  assert.equal(markedAccount.positions[0].protectionMarkPrice, 30_000);
+  assert.equal(markedAccount.fills.filter((fill) => fill.role === "take_profit").length, 0);
+  assert.equal(markedAccount.cashBalance, 100_000);
+  assert.equal(markedAccount.realizedPnl, 0);
+});
+
+test("validated live quotes close protection only on a real executable crossing", () => {
+  const account = createPaperTradingAccount({
+    name: "100K Sim",
+    balance: 100_000,
+    leverage: "1:30",
+    instrument: "All CME Futures",
+  });
+  const placed = placePaperOrder(
+    ensurePaperAccountLedger(emptyPaperTradingLedger(), account),
+    [account],
+    {
+      accountId: account.id,
+      symbol: "NQ",
+      side: "buy",
+      type: "market",
+      quantity: 1,
+      stopLoss: 29_990,
+      takeProfits: [{ price: 30_010, quantity: 1 }],
+    },
+    { bid: 29_999.75, ask: 30_000, timestamp: 1_000 },
+  );
+
+  const safe = processPaperQuote(
+    placed.ledger,
+    [account],
+    "NQ",
+    { bid: 30_005, ask: 30_005.25, timestamp: 2_000 },
+    { executionAuthorized: true },
+  );
+  assert.equal(safe.accounts[account.id].positions[0].status, "open");
+
+  const hit = processPaperQuote(
+    safe,
+    [account],
+    "NQ",
+    { bid: 30_010, ask: 30_010.25, timestamp: 3_000 },
+    { executionAuthorized: true },
+  );
+  assert.equal(hit.accounts[account.id].positions[0].status, "closed");
+  assert.equal(hit.accounts[account.id].fills.at(-1).role, "take_profit");
+  assert.equal(hit.accounts[account.id].fills.at(-1).price, 30_010);
+  assert.equal(hit.accounts[account.id].realizedPnl, 200);
+  assert.equal(hit.accounts[account.id].cashBalance, 100_200);
+});
+
+test("an older execution quote cannot rewind protection and create a false fill", () => {
+  const account = createPaperTradingAccount({
+    name: "100K Sim",
+    balance: 100_000,
+    leverage: "1:30",
+    instrument: "All CME Futures",
+  });
+  const placed = placePaperOrder(
+    ensurePaperAccountLedger(emptyPaperTradingLedger(), account),
+    [account],
+    {
+      accountId: account.id,
+      symbol: "NQ",
+      side: "buy",
+      type: "market",
+      quantity: 1,
+      takeProfits: [{ price: 30_010, quantity: 1 }],
+    },
+    { bid: 29_999.75, ask: 30_000, timestamp: 10_000 },
+  );
+  const safe = processPaperQuote(
+    placed.ledger,
+    [account],
+    "NQ",
+    { bid: 30_005, ask: 30_005.25, timestamp: 12_000 },
+    { executionAuthorized: true },
+  );
+  const stale = processPaperQuote(
+    safe,
+    [account],
+    "NQ",
+    { bid: 30_020, ask: 30_020.25, timestamp: 11_000 },
+    { executionAuthorized: true },
+  );
+  assert.equal(stale.accounts[account.id].positions[0].status, "open");
+  assert.equal(stale.accounts[account.id].fills.filter((fill) => fill.role === "take_profit").length, 0);
+  assert.equal(stale.accounts[account.id].realizedPnl, 0);
 });

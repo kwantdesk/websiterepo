@@ -269,8 +269,11 @@ test("execution accounting remains tick accurate and protection is deterministic
   assert.match(engine, /paperProjectedPnl\(position\.symbol, position\.side, position\.entryPrice, exitPrice, quantity\)/);
   assert.match(engine, /suspendedProtectionPositionIds/);
   assert.match(engine, /marketableProtectionPositionIds/);
+  assert.match(engine, /executionAuthorized/);
+  assert.match(engine, /if \(!executionAuthorized\) continue/);
+  assert.match(engine, /previousProtectionMark/);
   assert.match(engine, /: position\.stopLoss!/);
-  assert.match(engine, /const targetFillPrice = options\.marketableProtectionPositionIds/);
+  assert.match(engine, /const targetFillPrice = marketableRelease/);
   assert.match(engine, /export function constrainDraggedPaperStop/);
   assert.match(engine, /Math\.min\(requested, snapPaperPrice\(position\.symbol, quote\.bid - tick\)\)/);
   assert.match(engine, /Math\.max\(requested, snapPaperPrice\(position\.symbol, quote\.ask \+ tick\)\)/);

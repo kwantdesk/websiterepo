@@ -15,6 +15,12 @@ export type PaperQuote = {
 };
 
 export type PaperQuoteProcessingOptions = {
+  /**
+   * Only a validated, live execution stream may create fills. Quotes from
+   * watchlists/caches may still mark positions to market, but must never
+   * trigger a pending order, stop loss, or take profit.
+   */
+  executionAuthorized?: boolean;
   /** Protection is deliberately inactive while the trader is holding a drag handle. */
   suspendedProtectionPositionIds?: ReadonlySet<string>;
   /** A newly dropped marketable level exits at the current executable price. */
@@ -38,6 +44,10 @@ export type PaperPosition = {
   entryPrice: number;
   openedAt: number;
   markPrice: number;
+  /** Last executable price from the authoritative stream used for protection crossing checks. */
+  protectionMarkPrice: number;
+  /** Timestamp of the last authoritative protection quote. */
+  protectionQuoteAt: number;
   unrealizedPnl: number;
   marginUsed: number;
   leverage: number;
@@ -471,6 +481,9 @@ function normalizePosition(value: Partial<PaperPosition>): PaperPosition | null 
   if (!value.id || !value.accountId || !value.symbol || (value.side !== "buy" && value.side !== "sell")) return null;
   const quantity = positive(value.quantity);
   const remainingQuantity = Math.max(0, Math.min(quantity, finite(value.remainingQuantity, quantity)));
+  const openedAt = positive(value.openedAt, Date.now());
+  const entryPrice = positive(value.entryPrice);
+  const markPrice = positive(value.markPrice, entryPrice);
   return {
     id: value.id,
     accountId: value.accountId,
@@ -478,9 +491,11 @@ function normalizePosition(value: Partial<PaperPosition>): PaperPosition | null 
     side: value.side,
     quantity,
     remainingQuantity,
-    entryPrice: positive(value.entryPrice),
-    openedAt: positive(value.openedAt, Date.now()),
-    markPrice: positive(value.markPrice, positive(value.entryPrice)),
+    entryPrice,
+    openedAt,
+    markPrice,
+    protectionMarkPrice: positive(value.protectionMarkPrice, entryPrice),
+    protectionQuoteAt: positive(value.protectionQuoteAt, openedAt),
     unrealizedPnl: finite(value.unrealizedPnl),
     marginUsed: Math.max(0, finite(value.marginUsed)),
     leverage: positive(value.leverage),
@@ -676,6 +691,8 @@ function createEntryPosition(
     entryPrice: fillPrice,
     openedAt: timestamp,
     markPrice: fillPrice,
+    protectionMarkPrice: fillPrice,
+    protectionQuoteAt: timestamp,
     unrealizedPnl: 0,
     marginUsed: paperContractNotional(order.symbol, fillPrice, quantity) / Math.max(1, leverage),
     leverage,
@@ -859,7 +876,14 @@ export function processPaperQuote(
   quote: PaperQuote,
   options: PaperQuoteProcessingOptions = {},
 ): PaperTradingLedger {
-  if (!(quote.bid > 0 && quote.ask > 0)) return ledger;
+  if (
+    !Number.isFinite(quote.bid)
+    || !Number.isFinite(quote.ask)
+    || !Number.isFinite(quote.timestamp)
+    || !(quote.bid > 0 && quote.ask > 0)
+    || quote.bid > quote.ask
+  ) return ledger;
+  const executionAuthorized = options.executionAuthorized === true;
   let changed = false;
   const normalizedSymbol = normalizePaperSymbol(symbol);
   const nextAccounts = { ...ledger.accounts };
@@ -868,8 +892,10 @@ export function processPaperQuote(
     const accountRecord = accounts.find((candidate) => candidate.id === accountId);
     if (!accountRecord) continue;
     let account = original;
-    const workingOrders = account.orders.filter((order) =>
-      normalizePaperSymbol(order.symbol) === normalizedSymbol && orderTriggered(order, quote));
+    const workingOrders = executionAuthorized
+      ? account.orders.filter((order) =>
+          normalizePaperSymbol(order.symbol) === normalizedSymbol && orderTriggered(order, quote))
+      : [];
     for (const order of workingOrders) {
       account = createEntryPosition(
         account,
@@ -885,6 +911,11 @@ export function processPaperQuote(
       position.status === "open" && normalizePaperSymbol(position.symbol) === normalizedSymbol);
     for (const originalPosition of openPositions) {
       let position = account.positions.find((candidate) => candidate.id === originalPosition.id) ?? originalPosition;
+
+      // Ignore delayed authoritative ticks before they can rewind either the
+      // displayed P&L or the execution watermark.
+      if (executionAuthorized && quote.timestamp < position.protectionQuoteAt) continue;
+
       const markPrice = position.side === "buy" ? quote.bid : quote.ask;
       const unrealizedPnl = calculatePnl(position, markPrice, position.remainingQuantity);
       if (position.markPrice !== markPrice || position.unrealizedPnl !== unrealizedPnl) {
@@ -897,18 +928,48 @@ export function processPaperQuote(
         changed = true;
       }
 
+      // Cached/watchlist quotes are display-only. They cannot arm, advance, or
+      // trigger simulated execution. This prevents stale or malformed fallback
+      // prices from inventing a TP/SL fill and changing the account balance.
+      if (!executionAuthorized) continue;
+
+      const previousProtectionMark = position.protectionMarkPrice;
+      const marketableRelease = options.marketableProtectionPositionIds?.has(position.id) === true;
+
       const protectionIsSuspended = options.suspendedProtectionPositionIds?.has(position.id) === true
         && options.marketableProtectionPositionIds?.has(position.id) !== true;
-      if (protectionIsSuspended) continue;
+      if (protectionIsSuspended) {
+        // A drag disables fills, not price tracking. Keeping this watermark at
+        // the latest executable price means the newly placed stop is armed
+        // from the release market rather than from an old pre-drag quote.
+        if (position.protectionMarkPrice !== markPrice || position.protectionQuoteAt !== quote.timestamp) {
+          const nextPosition = {
+            ...position,
+            protectionMarkPrice: markPrice,
+            protectionQuoteAt: Math.max(position.protectionQuoteAt, quote.timestamp),
+          };
+          account = {
+            ...account,
+            positions: account.positions.map((candidate) => candidate.id === nextPosition.id ? nextPosition : candidate),
+            updatedAt: Math.max(account.updatedAt, quote.timestamp),
+          };
+          changed = true;
+        }
+        continue;
+      }
 
       const stopHit = position.stopLoss != null && (
-        position.side === "buy" ? quote.bid <= position.stopLoss : quote.ask >= position.stopLoss
+        marketableRelease
+          ? (position.side === "buy" ? markPrice <= position.stopLoss : markPrice >= position.stopLoss)
+          : position.side === "buy"
+            ? previousProtectionMark > position.stopLoss && markPrice <= position.stopLoss
+            : previousProtectionMark < position.stopLoss && markPrice >= position.stopLoss
       );
       if (stopHit) {
         // A working simulated stop fills at its configured tick. When a trader
         // releases a dragged stop beyond the current market it is already
         // marketable, so that one release fills at the executable bid/ask.
-        const stopFillPrice = options.marketableProtectionPositionIds?.has(position.id)
+        const stopFillPrice = marketableRelease
           ? markPrice
           : position.stopLoss!;
         account = closePositionQuantity(
@@ -932,11 +993,15 @@ export function processPaperQuote(
         if (position.status !== "open") break;
         const remainingTargetQuantity = Math.max(0, target.quantity - target.filledQuantity);
         const targetHit = remainingTargetQuantity > 0 && (
-          position.side === "buy" ? quote.bid >= target.price : quote.ask <= target.price
+          marketableRelease
+            ? (position.side === "buy" ? markPrice >= target.price : markPrice <= target.price)
+            : position.side === "buy"
+              ? previousProtectionMark < target.price && markPrice >= target.price
+              : previousProtectionMark > target.price && markPrice <= target.price
         );
         if (!targetHit) continue;
         const closeQuantity = Math.min(position.remainingQuantity, remainingTargetQuantity);
-        const targetFillPrice = options.marketableProtectionPositionIds?.has(position.id)
+        const targetFillPrice = marketableRelease
           ? markPrice
           : target.price;
         account = closePositionQuantity(
@@ -961,6 +1026,26 @@ export function processPaperQuote(
                       : candidateTarget),
                 }
               : candidate),
+        };
+        changed = true;
+      }
+
+      // Advance the execution watermark only after all levels were evaluated
+      // against the same prior authoritative price.
+      position = account.positions.find((candidate) => candidate.id === originalPosition.id) ?? position;
+      if (
+        position.status === "open"
+        && (position.protectionMarkPrice !== markPrice || position.protectionQuoteAt !== quote.timestamp)
+      ) {
+        const nextPosition = {
+          ...position,
+          protectionMarkPrice: markPrice,
+          protectionQuoteAt: Math.max(position.protectionQuoteAt, quote.timestamp),
+        };
+        account = {
+          ...account,
+          positions: account.positions.map((candidate) => candidate.id === nextPosition.id ? nextPosition : candidate),
+          updatedAt: Math.max(account.updatedAt, quote.timestamp),
         };
         changed = true;
       }

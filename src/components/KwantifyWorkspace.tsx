@@ -7291,7 +7291,10 @@ export default function KwantifyWorkspace({
       paperTradingAccounts,
       quote.symbol,
       { bid: quote.bid, ask: quote.ask, timestamp: quote.timestamp },
-      { suspendedProtectionPositionIds: suspendedPaperProtectionIdsRef.current },
+      {
+        executionAuthorized: true,
+        suspendedProtectionPositionIds: suspendedPaperProtectionIdsRef.current,
+      },
     );
     if (nextLedger !== currentLedger) {
       const executionChanged = paperLedgerExecutionShapeChanged(currentLedger, nextLedger);
@@ -9070,7 +9073,10 @@ export default function KwantifyWorkspace({
         paperTradingAccounts,
         item.symbol,
         { bid: item.bid, ask: item.ask, timestamp },
-        { suspendedProtectionPositionIds: suspendedPaperProtectionIdsRef.current },
+        {
+          executionAuthorized: false,
+          suspendedProtectionPositionIds: suspendedPaperProtectionIdsRef.current,
+        },
       );
     }
     if (next !== current) {
@@ -13127,6 +13133,7 @@ export default function KwantifyWorkspace({
           position.symbol,
           quote,
           {
+            executionAuthorized: true,
             suspendedProtectionPositionIds: suspendedPaperProtectionIdsRef.current,
             marketableProtectionPositionIds: new Set([positionId]),
           },
