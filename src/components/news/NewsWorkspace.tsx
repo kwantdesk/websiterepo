@@ -137,7 +137,11 @@ function sanitizeCalendarPayload(value: unknown): EconomicCalendarPayload | null
 
   return {
     events,
-    provider: candidate.provider === "Trading Economics" ? "Trading Economics" : "Fair Economy",
+    provider: candidate.provider === "Trading Economics"
+      ? "Trading Economics"
+      : candidate.provider === "TradingView"
+        ? "TradingView"
+        : "Fair Economy",
     fetchedAt: new Date(candidate.fetchedAt).toISOString(),
     refreshAfterMs: Number.isFinite(candidate.refreshAfterMs)
       ? Math.max(60_000, Number(candidate.refreshAfterMs))
@@ -391,6 +395,7 @@ function EconomicCalendarWorkspace() {
   const [shareState, setShareState] = useState<"idle" | "loading" | "sending" | "sent" | "error">("idle");
   const [shareError, setShareError] = useState("");
   const shareFriendsLoadedRef = useRef(false);
+  const selectedDateTouchedRef = useRef(false);
   const alertTimersRef = useRef<number[]>([]);
   const payloadRef = useRef<EconomicCalendarPayload | null>(null);
 
@@ -459,6 +464,19 @@ function EconomicCalendarWorkspace() {
   }, [loadCalendar, payload]);
 
   useEffect(() => {
+    if (!payload || selectedDateTouchedRef.current) return;
+    const today = dateKey(new Date(), timeZone);
+    if (selectedDate !== today) return;
+    const now = Date.now();
+    const hasUpcomingEventsToday = payload.events.some((event) => (
+      dateKey(event.date, timeZone) === today && Date.parse(event.date) >= now
+    ));
+    if (hasUpcomingEventsToday) return;
+    const next = payload.events.find((event) => Date.parse(event.date) >= now);
+    if (next) setSelectedDate(dateKey(next.date, timeZone));
+  }, [payload, selectedDate, timeZone]);
+
+  useEffect(() => {
     alertTimersRef.current.forEach((timer) => window.clearTimeout(timer));
     alertTimersRef.current = [];
     if (!payload || typeof Notification === "undefined" || Notification.permission !== "granted") return;
@@ -494,13 +512,24 @@ function EconomicCalendarWorkspace() {
     [payload, selectedDate, timeZone],
   );
   const nextEvent = filteredEvents.find((event) => new Date(event.date).getTime() > clock.getTime()) ?? null;
+  const nextAvailableDate = useMemo(() => {
+    if (!payload) return null;
+    const next = payload.events.find((event) => dateKey(event.date, timeZone) > selectedDate);
+    return next ? dateKey(next.date, timeZone) : null;
+  }, [payload, selectedDate, timeZone]);
   const highImpactCount = filteredEvents.filter((event) => event.impact === "High").length;
   const isToday = selectedDate === dateKey(clock, timeZone);
 
   const changeTimeZone = (nextTimeZone: string) => {
     const normalized = normalizeTimeZone(nextTimeZone);
+    selectedDateTouchedRef.current = false;
     setTimeZone(normalized);
     setSelectedDate(dateKey(clock, normalized));
+  };
+
+  const selectDate = (date: string) => {
+    selectedDateTouchedRef.current = true;
+    setSelectedDate(date);
   };
 
   const toggleCurrency = (currency: EconomicCurrency) => {
@@ -660,17 +689,17 @@ function EconomicCalendarWorkspace() {
         {error && !payload ? <div className="border-b border-danger/20 bg-danger/10 px-4 py-2 text-center text-[10px] text-danger">{error}</div> : null}
         <div className="mx-auto max-w-[1680px] p-3 lg:p-4 xl:p-5">
           <div className="mb-3 flex flex-wrap items-center gap-2">
-            <button type="button" onClick={() => setSelectedDate(shiftDate(selectedDate, -1))} className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-panel text-muted hover:text-foreground" aria-label="Previous day"><ChevronLeft className="h-4 w-4" /></button>
+            <button type="button" onClick={() => selectDate(shiftDate(selectedDate, -1))} className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-panel text-muted hover:text-foreground" aria-label="Previous day"><ChevronLeft className="h-4 w-4" /></button>
             <div className="relative">
               <button type="button" onClick={() => setCalendarOpen(!calendarOpen)} className={`flex h-9 min-w-[215px] items-center gap-2 rounded-xl border bg-panel px-3 text-left text-[10px] font-semibold ${calendarOpen ? "border-primary/30 text-primary" : "border-border text-foreground"}`}>
                 <CalendarDays className="h-3.5 w-3.5 text-primary" />
                 <span className="flex-1">{formatDay(selectedDate)}</span>
                 <ChevronDown className={`h-3.5 w-3.5 text-muted transition-transform ${calendarOpen ? "rotate-180" : ""}`} />
               </button>
-              {calendarOpen ? <CalendarPopover selected={selectedDate} timeZone={timeZone} onSelect={(date) => { setSelectedDate(date); setCalendarOpen(false); }} onClose={() => setCalendarOpen(false)} /> : null}
+              {calendarOpen ? <CalendarPopover selected={selectedDate} timeZone={timeZone} onSelect={(date) => { selectDate(date); setCalendarOpen(false); }} onClose={() => setCalendarOpen(false)} /> : null}
             </div>
-            <button type="button" onClick={() => setSelectedDate(shiftDate(selectedDate, 1))} className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-panel text-muted hover:text-foreground" aria-label="Next day"><ChevronRight className="h-4 w-4" /></button>
-            {!isToday ? <button type="button" onClick={() => setSelectedDate(dateKey(new Date(), timeZone))} className="h-9 rounded-xl border border-primary/20 bg-primary/10 px-3 text-[9px] font-semibold text-primary">Today</button> : null}
+            <button type="button" onClick={() => selectDate(shiftDate(selectedDate, 1))} className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-panel text-muted hover:text-foreground" aria-label="Next day"><ChevronRight className="h-4 w-4" /></button>
+            {!isToday ? <button type="button" onClick={() => selectDate(dateKey(new Date(), timeZone))} className="h-9 rounded-xl border border-primary/20 bg-primary/10 px-3 text-[9px] font-semibold text-primary">Today</button> : null}
             <div className="ml-auto flex items-center gap-1 rounded-xl border border-border bg-panel p-1">
               {(["High", "Medium", "Low"] as const).map((impact) => {
                 const active = selectedImpacts.includes(impact);
@@ -789,6 +818,15 @@ function EconomicCalendarWorkspace() {
                 <p className="mt-1 max-w-sm text-[10px] leading-5 text-muted">
                   Select more currencies or impact levels, or choose another date from the calendar.
                 </p>
+                {nextAvailableDate ? (
+                  <button
+                    type="button"
+                    onClick={() => selectDate(nextAvailableDate)}
+                    className="mt-4 h-9 rounded-xl border border-primary/25 bg-primary/10 px-4 text-[9px] font-semibold text-primary transition-colors hover:bg-primary/15"
+                  >
+                    Open next scheduled day · {formatDay(nextAvailableDate)}
+                  </button>
+                ) : null}
               </div>
             )}
           </section>

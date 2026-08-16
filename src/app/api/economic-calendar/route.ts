@@ -46,9 +46,10 @@ export async function GET(request: NextRequest) {
 
   try {
     const payload = await getEconomicCalendar(from, to);
+    const browserMaxAge = Math.max(60, Math.min(300, Math.round(payload.refreshAfterMs / 1_000)));
     return NextResponse.json(payload, {
       headers: {
-        "Cache-Control": "private, max-age=300, stale-while-revalidate=900",
+        "Cache-Control": `private, max-age=${browserMaxAge}, stale-while-revalidate=900`,
       },
     });
   } catch (error) {

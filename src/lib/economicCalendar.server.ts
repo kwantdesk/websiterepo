@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import {
   ECONOMIC_CALENDAR_CURRENCIES,
+  economicCalendarCoverage,
+  hasUpcomingEconomicEvents,
   type EconomicCalendarEvent,
   type EconomicCalendarPayload,
   type EconomicCurrency,
@@ -35,7 +37,9 @@ const TRADING_ECONOMICS_COUNTRIES = [
   "china",
 ].join(",");
 const TRADING_ECONOMICS_REVALIDATE_SECONDS = 300;
+const TRADING_VIEW_REVALIDATE_SECONDS = 300;
 const FAIR_ECONOMY_REVALIDATE_SECONDS = 14_400;
+const FAIR_ECONOMY_ROLLOVER_REVALIDATE_SECONDS = 300;
 const STALE_CALENDAR_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1_000;
 
 type CalendarCacheEntry = {
@@ -81,6 +85,26 @@ type TradingEconomicsEvent = {
   Unit?: string;
 };
 
+type TradingViewEvent = {
+  id?: string | number;
+  title?: string;
+  country?: string;
+  indicator?: string;
+  date?: string;
+  source?: string;
+  source_url?: string;
+  actual?: string | number | null;
+  previous?: string | number | null;
+  forecast?: string | number | null;
+  currency?: string;
+  importance?: string | number;
+};
+
+type TradingViewResponse = {
+  status?: string;
+  result?: TradingViewEvent[];
+};
+
 function stableId(parts: Array<string | number | undefined>) {
   return createHash("sha1").update(parts.join("|")).digest("hex").slice(0, 18);
 }
@@ -111,17 +135,6 @@ function normalizeIso(value: string) {
   return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString();
 }
 
-function weekBounds(now = new Date()) {
-  const day = now.getUTCDay();
-  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - day));
-  const end = new Date(start);
-  end.setUTCDate(end.getUTCDate() + 6);
-  return {
-    from: start.toISOString().slice(0, 10),
-    to: end.toISOString().slice(0, 10),
-  };
-}
-
 function normalizeFairEconomy(rows: FairEconomyEvent[]) {
   return rows.flatMap((row): EconomicCalendarEvent[] => {
     const currency = validCurrency(row.country);
@@ -145,6 +158,41 @@ function normalizeFairEconomy(rows: FairEconomyEvent[]) {
       sourceUrl: "",
       unit: "",
       status: new Date(date).getTime() <= Date.now() ? "released" : "scheduled",
+    }];
+  });
+}
+
+function normalizeTradingViewImpact(value: unknown): EconomicImpact {
+  const importance = Number(value);
+  if (importance >= 1) return "High";
+  if (importance === 0) return "Medium";
+  return "Low";
+}
+
+function normalizeTradingView(rows: TradingViewEvent[]) {
+  return rows.flatMap((row): EconomicCalendarEvent[] => {
+    const currency = validCurrency(row.currency);
+    const date = normalizeIso(asText(row.date));
+    const name = asText(row.title) || asText(row.indicator);
+    if (!currency || !date || !name) return [];
+    const actual = asText(row.actual);
+    return [{
+      id: `tv-${asText(row.id) || stableId([name, row.country, date])}`,
+      date,
+      currency,
+      country: asText(row.country) || currency,
+      impact: normalizeTradingViewImpact(row.importance),
+      name,
+      category: asText(row.indicator) || name,
+      forecast: asText(row.forecast),
+      previous: asText(row.previous),
+      actual,
+      revised: "",
+      reference: "",
+      source: asText(row.source) || "TradingView Economic Calendar",
+      sourceUrl: asText(row.source_url),
+      unit: "",
+      status: actual || new Date(date).getTime() <= Date.now() ? "released" : "scheduled",
     }];
   });
 }
@@ -212,6 +260,44 @@ async function fetchTradingEconomics(
   };
 }
 
+function shiftIsoDate(date: string, days: number) {
+  const value = new Date(`${date}T12:00:00Z`);
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
+}
+
+async function fetchTradingView(from: string, to: string): Promise<EconomicCalendarPayload> {
+  const fromTimestamp = encodeURIComponent(`${from}T00:00:00.000Z`);
+  const toTimestamp = encodeURIComponent(`${to}T23:59:59.999Z`);
+  const countries = "US,EU,GB,JP,AU,CA,CH,NZ,CN";
+  const url = `https://economic-calendar.tradingview.com/events?from=${fromTimestamp}&to=${toTimestamp}&countries=${countries}`;
+  const response = await fetch(url, {
+    next: { revalidate: TRADING_VIEW_REVALIDATE_SECONDS },
+    signal: AbortSignal.timeout(15_000),
+    headers: {
+      Accept: "application/json",
+      Origin: "https://www.tradingview.com",
+      Referer: "https://www.tradingview.com/",
+    },
+  });
+  if (!response.ok) throw new Error(`Forward economic calendar returned ${response.status}.`);
+  const body = await response.json() as TradingViewResponse;
+  if (body.status !== "ok" || !Array.isArray(body.result)) {
+    throw new Error("Forward economic calendar returned an invalid response.");
+  }
+  const events = sortEvents(normalizeTradingView(body.result));
+  const coverage = economicCalendarCoverage(events, from, to);
+  return {
+    events,
+    provider: "TradingView",
+    fetchedAt: new Date().toISOString(),
+    refreshAfterMs: TRADING_VIEW_REVALIDATE_SECONDS * 1_000,
+    coverage: { ...coverage, longRange: coverage.to > shiftIsoDate(from, 7) },
+    partial: false,
+    note: "Published forward events, forecasts and released values refresh automatically.",
+  };
+}
+
 async function fetchFairEconomy(): Promise<EconomicCalendarPayload> {
   const response = await fetch(FAIR_ECONOMY_URL, {
     next: { revalidate: FAIR_ECONOMY_REVALIDATE_SECONDS },
@@ -221,26 +307,34 @@ async function fetchFairEconomy(): Promise<EconomicCalendarPayload> {
   if (!response.ok) throw new Error(`Economic calendar returned ${response.status}.`);
   const rows = await response.json() as FairEconomyEvent[];
   if (!Array.isArray(rows)) throw new Error("Economic calendar returned an invalid response.");
-  const coverage = weekBounds();
+  const events = sortEvents(normalizeFairEconomy(rows));
+  const today = new Date().toISOString().slice(0, 10);
+  const coverage = economicCalendarCoverage(events, today);
+  const hasUpcoming = hasUpcomingEconomicEvents(events);
+  const refreshAfterMs = (hasUpcoming
+    ? FAIR_ECONOMY_REVALIDATE_SECONDS
+    : FAIR_ECONOMY_ROLLOVER_REVALIDATE_SECONDS) * 1_000;
   return {
-    events: sortEvents(normalizeFairEconomy(rows)),
+    events,
     provider: "Fair Economy",
     fetchedAt: new Date().toISOString(),
-    refreshAfterMs: FAIR_ECONOMY_REVALIDATE_SECONDS * 1_000,
+    refreshAfterMs,
     coverage: { ...coverage, longRange: false },
-    partial: false,
-    note: "Current-week scheduled events and consensus values refresh automatically.",
+    partial: !hasUpcoming,
+    note: hasUpcoming
+      ? "Current-week scheduled events and consensus values refresh automatically."
+      : "The next published week has not reached the fallback feed yet. Checking automatically every five minutes.",
   };
 }
 
-function cacheKey(provider: "te" | "fair", from: string, to: string) {
-  return provider === "te" ? `${provider}:${from}:${to}` : provider;
+function cacheKey(provider: "te" | "tv" | "fair", from: string, to: string) {
+  return provider === "fair" ? provider : `${provider}:${from}:${to}`;
 }
 
 function freshFor(payload: EconomicCalendarPayload) {
-  return payload.provider === "Trading Economics"
-    ? TRADING_ECONOMICS_REVALIDATE_SECONDS * 1_000
-    : FAIR_ECONOMY_REVALIDATE_SECONDS * 1_000;
+  if (payload.provider === "Trading Economics") return TRADING_ECONOMICS_REVALIDATE_SECONDS * 1_000;
+  if (payload.provider === "TradingView") return TRADING_VIEW_REVALIDATE_SECONDS * 1_000;
+  return payload.refreshAfterMs;
 }
 
 function cachedCalendar(key: string, allowStale = false) {
@@ -277,36 +371,50 @@ async function loadEconomicCalendar(from: string, to: string) {
       const stale = staleCalendar(key);
       if (stale) return stale;
       try {
-        const fallbackKey = cacheKey("fair", from, to);
+        const fallbackKey = cacheKey("tv", from, to);
         const fallback = cachedCalendar(fallbackKey)
-          ?? rememberCalendar(fallbackKey, await fetchFairEconomy());
+          ?? rememberCalendar(fallbackKey, await fetchTradingView(from, to));
         return {
           ...fallback,
           partial: true,
-          note: "The forward source is reconnecting automatically. Current-week events remain available.",
+          note: "The primary forward source is reconnecting automatically. The published forward schedule remains available.",
         };
       } catch {
-        throw new Error(
-          primaryError instanceof Error
-            ? `The forward calendar is reconnecting: ${primaryError.message}`
-            : "The forward calendar is reconnecting.",
-        );
+        const fairKey = cacheKey("fair", from, to);
+        try {
+          return cachedCalendar(fairKey)
+            ?? rememberCalendar(fairKey, await fetchFairEconomy());
+        } catch {
+          throw new Error(
+            primaryError instanceof Error
+              ? `The forward calendar is reconnecting: ${primaryError.message}`
+              : "The forward calendar is reconnecting.",
+          );
+        }
       }
     }
   }
 
-  const key = cacheKey("fair", from, to);
+  const key = cacheKey("tv", from, to);
   try {
-    return rememberCalendar(key, await fetchFairEconomy());
+    return rememberCalendar(key, await fetchTradingView(from, to));
   } catch {
     const stale = staleCalendar(key);
     if (stale) return stale;
-    throw new Error("The economic calendar is reconnecting automatically.");
+    const fairKey = cacheKey("fair", from, to);
+    try {
+      return cachedCalendar(fairKey)
+        ?? rememberCalendar(fairKey, await fetchFairEconomy());
+    } catch {
+      const fairStale = staleCalendar(fairKey);
+      if (fairStale) return fairStale;
+      throw new Error("The economic calendar is reconnecting automatically.");
+    }
   }
 }
 
 export async function getEconomicCalendar(from: string, to: string) {
-  const provider = process.env.TRADING_ECONOMICS_API_KEY?.trim() ? "te" : "fair";
+  const provider = process.env.TRADING_ECONOMICS_API_KEY?.trim() ? "te" : "tv";
   const key = cacheKey(provider, from, to);
   const cached = cachedCalendar(key);
   if (cached) return cached;
@@ -314,9 +422,11 @@ export async function getEconomicCalendar(from: string, to: string) {
   const pending = calendarRequests.get(key);
   if (pending) return pending;
 
-  const request = loadEconomicCalendar(from, to).finally(() => {
-    calendarRequests.delete(key);
-  });
+  const request = loadEconomicCalendar(from, to)
+    .then((payload) => rememberCalendar(key, payload))
+    .finally(() => {
+      calendarRequests.delete(key);
+    });
   calendarRequests.set(key, request);
   return request;
 }
