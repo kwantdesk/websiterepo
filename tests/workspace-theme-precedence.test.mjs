@@ -9,7 +9,7 @@ const levelz = readFileSync(new URL("../src/components/levelz/LevelzWorkspace.ts
 const settings = readFileSync(new URL("../src/components/KwantifySettingsWorkspace.tsx", import.meta.url), "utf8");
 const indicatorConfig = readFileSync(new URL("../src/lib/chartIndicatorConfig.ts", import.meta.url), "utf8");
 
-test("workspace presets cannot overwrite the active account theme colours", () => {
+test("manually customised workspace colours survive later account theme changes", () => {
   for (const field of [
     "upColor",
     "downColor",
@@ -22,11 +22,21 @@ test("workspace presets cannot overwrite the active account theme colours", () =
   ]) {
     assert.match(chartSettings, new RegExp(`"${field}"`));
   }
+  assert.match(chartSettings, /themeLinked: boolean/);
+  assert.match(chartSettings, /if \(!merged\.themeLinked\) return merged/);
   assert.match(chartSettings, /merged\[field\] = active\[field\]/);
   assert.match(workspace, /mergeWorkspaceChartSettingsWithActiveTheme\([\s\S]*?preset\.chartSettings,[\s\S]*?loadStoredChartSettings\(\)/);
-  assert.match(workspace, /saveStoredChartSettings\(nextChartSettings\)/);
+  assert.match(workspace, /CHART_WORKSPACE_SETTINGS_STORAGE_KEY = "kwantdesk:chart-workspace-settings:v1"/);
+  assert.match(workspace, /themeLinked: false, \[colorPicker\]: normalized/);
   assert.doesNotMatch(workspace, /setChartSettings\(preset\.chartSettings\)/);
   assert.doesNotMatch(workspace, /saveStoredChartSettings\(preset\.chartSettings\)/);
+});
+
+test("chart colour templates are shared by Charts and GEX Vue", () => {
+  assert.match(workspace, /localStorage\.getItem\(CHART_TEMPLATES_STORAGE_KEY\)/);
+  assert.match(workspace, /localStorage\.setItem\(\s*CHART_TEMPLATES_STORAGE_KEY,[\s\S]{0,120}JSON\.stringify\(nextTemplates\)/);
+  assert.match(workspace, /savedSettings = normalizeChartSettings\(\{ \.\.\.draftChartSettings, themeLinked: false \}\)/);
+  assert.match(workspace, /Link colours to website theme/);
 });
 
 test("theme changes repaint every mounted chart surface immediately", () => {
@@ -38,7 +48,7 @@ test("theme changes repaint every mounted chart surface immediately", () => {
   assert.match(workspace, /event\.key === CHART_SETTINGS_STORAGE_KEY/);
 });
 
-test("account themes override saved indicator and chart colours", () => {
+test("account themes override linked indicators and theme-linked chart colours", () => {
   assert.match(settings, /key === "background"[\s\S]*?backgroundColor: color/);
   assert.match(settings, /key === "primary"[\s\S]*?upColor: color/);
   assert.match(settings, /key === "danger"[\s\S]*?downColor: color/);

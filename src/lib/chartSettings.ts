@@ -4,6 +4,7 @@ import type { ThemeColors } from "@/lib/theme";
 import { normalizeTimeZone } from "@/lib/timeZones";
 
 export interface ChartSettings {
+  themeLinked: boolean;
   colorBarsPreviousClose: boolean;
   upColor: string;
   downColor: string;
@@ -23,6 +24,7 @@ export const CHART_SETTINGS_METADATA_KEY = "chartSettings";
 export const CHART_SETTINGS_CHANGE_EVENT = "kwantdesk:chart-settings-change";
 
 export const defaultChartSettings: ChartSettings = {
+  themeLinked: true,
   colorBarsPreviousClose: false,
   upColor: "#16C7CE",
   downColor: "#FF1F78",
@@ -49,6 +51,10 @@ export function normalizeChartSettings(value: unknown): ChartSettings {
   const source = asRecord(value) ?? {};
 
   return {
+    themeLinked:
+      typeof source.themeLinked === "boolean"
+        ? source.themeLinked
+        : defaultChartSettings.themeLinked,
     colorBarsPreviousClose:
       typeof source.colorBarsPreviousClose === "boolean"
         ? source.colorBarsPreviousClose
@@ -84,16 +90,16 @@ const CHART_THEME_COLOR_FIELDS = [
 ] as const satisfies ReadonlyArray<keyof ChartSettings>;
 
 /**
- * Workspace presets own layout behaviour, not the user's visual identity.
- * Older presets contain a full ChartSettings snapshot, so loading one used to
- * overwrite the current account theme with whichever colours were active when
- * that workspace was saved. Always retain the active theme colour fields.
+ * Theme-linked workspaces inherit the active account palette. Once a trader
+ * customises chart colours, themeLinked becomes false and the workspace owns
+ * its exact saved palette instead of being repainted by later theme changes.
  */
 export function mergeWorkspaceChartSettingsWithActiveTheme(
   workspaceSettings: unknown,
   activeSettings: unknown,
 ): ChartSettings {
   const merged = normalizeChartSettings(workspaceSettings);
+  if (!merged.themeLinked) return merged;
   const active = normalizeChartSettings(activeSettings);
   for (const field of CHART_THEME_COLOR_FIELDS) merged[field] = active[field];
   return merged;
@@ -124,7 +130,8 @@ export function saveStoredChartSettings(settings: ChartSettings) {
 }
 
 export function chartSettingsEqual(left: ChartSettings, right: ChartSettings) {
-  return left.colorBarsPreviousClose === right.colorBarsPreviousClose
+  return left.themeLinked === right.themeLinked
+    && left.colorBarsPreviousClose === right.colorBarsPreviousClose
     && left.upColor === right.upColor
     && left.downColor === right.downColor
     && left.borderUpColor === right.borderUpColor

@@ -11,6 +11,7 @@ const SOCIAL_PREFERENCES_ID = "account-preferences";
 const TRACKED_STORAGE_KEYS = new Set([
   "olisa-theme",
   "olisa-chart-settings",
+  "kwantdesk:chart-workspace-settings:v1",
   "olisa-chart-defaults",
   "olisa-recent-colors",
   "olisa-chart-templates",

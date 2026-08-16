@@ -906,6 +906,7 @@ const ACTIVE_WORKSPACE_PRESET_STORAGE_KEY = "kwantdesk-chart-workspace-active-pr
 const WORKSPACE_FLOATING_WINDOWS_STORAGE_KEY = "olisa-chart-workspace-floating-windows";
 const WORKSPACE_LAYOUT_LOCK_STORAGE_KEY = "olisa-chart-workspace-layout-locked-v2";
 const CHART_TEMPLATES_STORAGE_KEY = "olisa-chart-templates";
+const CHART_WORKSPACE_SETTINGS_STORAGE_KEY = "kwantdesk:chart-workspace-settings:v1";
 type ChartWorkspaceScope = "charts" | "gamma";
 const GAMMA_CHART_WORKSPACE_STORAGE_PREFIX = "kwantdesk:gamma-charting";
 const workspaceScopeStorageKey = (scope: ChartWorkspaceScope, chartKey: string) =>
@@ -1677,6 +1678,7 @@ function normalizeWorkspacePresets(
         ...preset,
         panes,
         layout,
+        chartSettings: normalizeChartSettings(preset.chartSettings),
         indicators: normalizePaneIndicatorState(preset.indicators),
         levelVisibility: normalizePaneLevelVisibility(preset.levelVisibility),
         floatingWindows: normalizeWorkspaceFloatingWindows(
@@ -1742,11 +1744,20 @@ type ChartWorkspaceRuntime = {
 function loadScopedChartTemplates(scope: ChartWorkspaceScope): ChartTemplate[] {
   if (typeof window === "undefined") return [];
   try {
-    const value = JSON.parse(
-      window.localStorage.getItem(workspaceScopeStorageKey(scope, CHART_TEMPLATES_STORAGE_KEY)) ?? "[]",
+    const sharedValue = JSON.parse(
+      window.localStorage.getItem(CHART_TEMPLATES_STORAGE_KEY) ?? "[]",
     ) as unknown;
-    if (!Array.isArray(value)) return [];
-    return value
+    const legacyScopedValue = scope === "gamma"
+      ? JSON.parse(
+          window.localStorage.getItem(workspaceScopeStorageKey(scope, CHART_TEMPLATES_STORAGE_KEY)) ?? "[]",
+        ) as unknown
+      : [];
+    const values = [
+      ...(Array.isArray(sharedValue) ? sharedValue : []),
+      ...(Array.isArray(legacyScopedValue) ? legacyScopedValue : []),
+    ];
+    const templatesByName = new Map<string, ChartTemplate>();
+    values
       .filter((template): template is ChartTemplate => Boolean(
         template
         && typeof template === "object"
@@ -1756,7 +1767,9 @@ function loadScopedChartTemplates(scope: ChartWorkspaceScope): ChartTemplate[] {
       .map((template) => ({
         name: template.name,
         settings: normalizeChartSettings(template.settings),
-      }));
+      }))
+      .forEach((template) => templatesByName.set(template.name, template));
+    return [...templatesByName.values()];
   } catch {
     return [];
   }
@@ -1764,11 +1777,20 @@ function loadScopedChartTemplates(scope: ChartWorkspaceScope): ChartTemplate[] {
 
 function loadScopedChartSettings(scope: ChartWorkspaceScope) {
   const activeThemeSettings = loadStoredChartSettings();
-  if (scope === "charts" || typeof window === "undefined") return activeThemeSettings;
+  if (typeof window === "undefined") return activeThemeSettings;
   try {
-    const stored = window.localStorage.getItem(workspaceScopeStorageKey(scope, CHART_SETTINGS_STORAGE_KEY));
+    const stored = window.localStorage.getItem(
+      workspaceScopeStorageKey(scope, CHART_WORKSPACE_SETTINGS_STORAGE_KEY),
+    );
+    const legacyScoped = scope === "gamma"
+      ? window.localStorage.getItem(workspaceScopeStorageKey(scope, CHART_SETTINGS_STORAGE_KEY))
+      : null;
     return mergeWorkspaceChartSettingsWithActiveTheme(
-      stored ? JSON.parse(stored) : defaultChartSettings,
+      stored
+        ? JSON.parse(stored)
+        : legacyScoped
+          ? JSON.parse(legacyScoped)
+          : defaultChartSettings,
       activeThemeSettings,
     );
   } catch {
@@ -1777,13 +1799,9 @@ function loadScopedChartSettings(scope: ChartWorkspaceScope) {
 }
 
 function saveScopedChartSettings(scope: ChartWorkspaceScope, settings: ChartSettings) {
-  if (scope === "charts") {
-    saveStoredChartSettings(settings);
-    return;
-  }
   if (typeof window === "undefined") return;
   window.localStorage.setItem(
-    workspaceScopeStorageKey(scope, CHART_SETTINGS_STORAGE_KEY),
+    workspaceScopeStorageKey(scope, CHART_WORKSPACE_SETTINGS_STORAGE_KEY),
     JSON.stringify(normalizeChartSettings(settings)),
   );
   window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
@@ -1922,7 +1940,7 @@ function persistChartWorkspaceRuntime(
   write(CHART_INDICATORS_STORAGE_KEY, JSON.stringify(clonePaneIndicatorState(runtime.indicators)));
   write(PANE_LEVEL_VISIBILITY_STORAGE_KEY, JSON.stringify(clonePaneLevelVisibility(runtime.levelVisibility)));
   write("olisa-chart-favourite-intervals", JSON.stringify(runtime.favouriteTimeframes));
-  write(CHART_TEMPLATES_STORAGE_KEY, JSON.stringify(runtime.templates));
+  window.localStorage.setItem(CHART_TEMPLATES_STORAGE_KEY, JSON.stringify(runtime.templates));
   saveScopedChartSettings(scope, runtime.chartSettings);
 }
 
@@ -8460,8 +8478,8 @@ export default function KwantifyWorkspace({
     setRecentColors(nextRecentColors);
     window.localStorage.setItem("olisa-recent-colors", JSON.stringify(nextRecentColors));
     if (!colorPicker) return;
-    setDraftChartSettings((current) => ({ ...current, [colorPicker]: normalized }));
-    setChartSettings((current) => ({ ...current, [colorPicker]: normalized }));
+    setDraftChartSettings((current) => ({ ...current, themeLinked: false, [colorPicker]: normalized }));
+    setChartSettings((current) => ({ ...current, themeLinked: false, [colorPicker]: normalized }));
   }
 
   function chooseColorAndClose(nextColor: string) {
@@ -8503,19 +8521,35 @@ export default function KwantifyWorkspace({
   }
 
   function applyChartTemplate(templateSettings: ChartSettings) {
-    const normalizedSettings = { ...defaultChartSettings, ...templateSettings };
+    const normalizedSettings = normalizeChartSettings({
+      ...defaultChartSettings,
+      ...templateSettings,
+      themeLinked: false,
+    });
     setDraftChartSettings(normalizedSettings);
     setChartSettings(normalizedSettings);
     setShowTemplateMenu(false);
   }
 
+  function setChartThemeLink(linked: boolean) {
+    const next = linked
+      ? mergeWorkspaceChartSettingsWithActiveTheme(
+          { ...draftChartSettings, themeLinked: true },
+          loadStoredChartSettings(),
+        )
+      : { ...draftChartSettings, themeLinked: false };
+    setDraftChartSettings(next);
+    setChartSettings(next);
+  }
+
   function saveChartTemplate() {
     const name = templateName.trim();
     if (!name) return;
-    const nextTemplates = [...templates.filter((template) => template.name !== name), { name, settings: draftChartSettings }];
+    const savedSettings = normalizeChartSettings({ ...draftChartSettings, themeLinked: false });
+    const nextTemplates = [...templates.filter((template) => template.name !== name), { name, settings: savedSettings }];
     setTemplates(nextTemplates);
     window.localStorage.setItem(
-      workspaceScopeStorageKey(chartWorkspaceScopeRef.current, CHART_TEMPLATES_STORAGE_KEY),
+      CHART_TEMPLATES_STORAGE_KEY,
       JSON.stringify(nextTemplates),
     );
     setTemplateName("");
@@ -8526,7 +8560,7 @@ export default function KwantifyWorkspace({
     const nextTemplates = templates.filter((template) => template.name !== name);
     setTemplates(nextTemplates);
     window.localStorage.setItem(
-      workspaceScopeStorageKey(chartWorkspaceScopeRef.current, CHART_TEMPLATES_STORAGE_KEY),
+      CHART_TEMPLATES_STORAGE_KEY,
       JSON.stringify(nextTemplates),
     );
   }
@@ -10523,7 +10557,7 @@ export default function KwantifyWorkspace({
           setSelectedWatchlistKey(nextActivePane.watchlistKey);
           setConnectedBroker(nextActivePane.broker);
 
-          const nextChartSettings = loadStoredChartSettings();
+          const nextChartSettings = loadScopedChartSettings("charts");
           setChartSettings(nextChartSettings);
           setDraftChartSettings(nextChartSettings);
           setChartSettingsSnapshot(nextChartSettings);
@@ -10587,9 +10621,7 @@ export default function KwantifyWorkspace({
       const profileChartSettings = hasStoredChartSettings ? null : extractUserChartSettings(user);
       if (!hasStoredChartSettings && profileChartSettings) {
         saveStoredChartSettings(profileChartSettings);
-        const activeSettings = chartWorkspaceScopeRef.current === "charts"
-          ? profileChartSettings
-          : loadScopedChartSettings("gamma");
+        const activeSettings = loadScopedChartSettings(chartWorkspaceScopeRef.current);
         setChartSettings(activeSettings);
         setDraftChartSettings(activeSettings);
         setChartSettingsSnapshot(activeSettings);
@@ -10662,12 +10694,13 @@ export default function KwantifyWorkspace({
   useEffect(() => {
     const syncChartPalette = () => {
       const activeThemeSettings = loadStoredChartSettings();
-      const next = chartWorkspaceScopeRef.current === "charts"
-        ? activeThemeSettings
-        : mergeWorkspaceChartSettingsWithActiveTheme(chartSettings, activeThemeSettings);
-      setChartSettings((current) => chartSettingsEqual(current, next) ? current : next);
-      setDraftChartSettings((current) => chartSettingsEqual(current, next) ? current : next);
-      setChartSettingsSnapshot((current) => chartSettingsEqual(current, next) ? current : next);
+      const mergeLinkedPalette = (current: ChartSettings) => {
+        const next = mergeWorkspaceChartSettingsWithActiveTheme(current, activeThemeSettings);
+        return chartSettingsEqual(current, next) ? current : next;
+      };
+      setChartSettings(mergeLinkedPalette);
+      setDraftChartSettings(mergeLinkedPalette);
+      setChartSettingsSnapshot(mergeLinkedPalette);
     };
     const syncChartPaletteAcrossTabs = (event: StorageEvent) => {
       if (event.key === CHART_SETTINGS_STORAGE_KEY) syncChartPalette();
@@ -10678,7 +10711,7 @@ export default function KwantifyWorkspace({
       window.removeEventListener(CHART_SETTINGS_CHANGE_EVENT, syncChartPalette);
       window.removeEventListener("storage", syncChartPaletteAcrossTabs);
     };
-  }, [chartSettings]);
+  }, []);
 
   useEffect(() => {
     if (workspaceScopeHydratingRef.current) return;
@@ -12108,8 +12141,8 @@ export default function KwantifyWorkspace({
     ));
     setWorkspaceLayout("custom");
     if (preset.chartSettings) {
-      // The active account theme is authoritative. A workspace may restore
-      // timezone/grid behaviour, but never the old colours it was saved with.
+      // Theme-linked workspaces follow the active account palette. A workspace
+      // that the trader customised keeps its exact saved candle palette.
       const nextChartSettings = mergeWorkspaceChartSettingsWithActiveTheme(
         preset.chartSettings,
         loadStoredChartSettings(),
@@ -16858,6 +16891,7 @@ export default function KwantifyWorkspace({
               <div onClick={() => setColorPicker(null)} className="min-w-0 flex-1 space-y-5 overflow-y-auto p-5">
                 {settingsTab === "Symbol" && (
                   <>
+                    <section className="space-y-2 rounded-xl border border-border bg-surface/40 p-3"><label className="flex items-center justify-between gap-3 text-[12px] text-foreground"><span>Link colours to website theme</span><input type="checkbox" checked={draftChartSettings.themeLinked} onChange={(event) => setChartThemeLink(event.target.checked)} /></label><p className="text-[10px] leading-4 text-muted">Turn this off automatically when you customise a colour. Unlinked colours save with this workspace and are not replaced when the website theme changes.</p></section>
                     <section className="space-y-3"><h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted">Candles</h3><label className="flex items-center gap-2 text-[13px]"><input type="checkbox" checked={draftChartSettings.colorBarsPreviousClose} onChange={(event) => setDraftChartSettings((current) => ({ ...current, colorBarsPreviousClose: event.target.checked }))} />Color bars based on previous close</label><ColorButton field="upColor" label="Body up" /><ColorButton field="downColor" label="Body down" /><ColorButton field="borderUpColor" label="Border up" /><ColorButton field="borderDownColor" label="Border down" /><ColorButton field="wickUpColor" label="Wick up" /><ColorButton field="wickDownColor" label="Wick down" /></section>
                     <section className="space-y-3"><h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted">Chart</h3><ColorButton field="backgroundColor" label="Background" /><ColorButton field="gridColor" label="Grid lines" /><label className="flex items-center justify-between gap-3 text-[12px] text-muted"><span>Show grid lines</span><input type="checkbox" checked={draftChartSettings.gridLines} onChange={(event) => setDraftChartSettings((current) => ({ ...current, gridLines: event.target.checked }))} /></label></section>
                     <section className="space-y-3"><h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted">Data</h3><TimeZoneSelect value={draftChartSettings.timezone} onChange={(timeZone) => setDraftChartSettings((current) => ({ ...current, timezone: timeZone }))} menuLabel="Chart timezone" /><KwantSelect value={draftChartSettings.precision} onChange={(event) => setDraftChartSettings((current) => ({ ...current, precision: event.target.value }))} className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-[13px]"><option>Default</option><option>0</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></KwantSelect></section>
