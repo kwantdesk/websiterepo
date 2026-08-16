@@ -4598,6 +4598,30 @@ function gexFlowRows(payload: unknown, sourceKind: "CONSOLIDATED" | "RAW"): GexF
   });
 }
 
+function gexFlowComprisingRows(payload: unknown): GexFlowRow[] {
+  if (!isRecord(payload) || !Array.isArray(payload.data)) return [];
+  return payload.data.flatMap((parent, parentIndex) => {
+    if (!isRecord(parent) || !Array.isArray(parent.comprisingTrades)) return [];
+    const parentId = gexFlowText(parent, "id", "tradeId", "eventId") || `consolidated-parent-${parentIndex}`;
+    return parent.comprisingTrades.flatMap((child, childIndex) => {
+      if (!isRecord(child)) return [];
+      // Comprising trades are a deliberately smaller provider projection. Fill
+      // missing contract identity from the authoritative parent, while the
+      // child always wins for price, side, size, venue and timestamp.
+      const merged: JsonRecord = {
+        ...parent,
+        ...child,
+        id: gexFlowText(child, "id", "tradeId", "eventId") || `${parentId}:child:${childIndex}`,
+        parentId,
+        childCount: 1,
+        tradeConsolidationType: "RAW_CHILD",
+        comprisingTrades: undefined,
+      };
+      return gexFlowRows({ data: [merged] }, "RAW");
+    });
+  });
+}
+
 function gexFlowCursor(payload: unknown) {
   if (!isRecord(payload) || !Array.isArray(payload.nextSearchAfter)) return null;
   const cursor = payload.nextSearchAfter
@@ -4742,16 +4766,21 @@ export async function getGexFlowPayload(args: {
   const wantsConsolidated = mode !== "RAW";
   const wantsRaw = mode !== "CONSOLIDATED";
   const [consolidatedResult, rawResult] = await Promise.allSettled([
-    wantsConsolidated ? quantDataPost("/options/tool/order-flow/consolidated", requestBody, session.marketOpen ? 2_000 : 30_000) : Promise.resolve({ payload: { data: [] }, remaining: null }),
+    wantsConsolidated ? quantDataPost("/options/tool/order-flow/consolidated", {
+      ...requestBody,
+      includeComprisingTrades: mode === "HYBRID",
+    }, session.marketOpen ? 2_000 : 30_000) : Promise.resolve({ payload: { data: [] }, remaining: null }),
     wantsRaw ? quantDataPost("/options/tool/order-flow/unconsolidated", requestBody, session.marketOpen ? 2_000 : 30_000) : Promise.resolve({ payload: { data: [] }, remaining: null }),
   ]);
   const consolidatedPayload = consolidatedResult.status === "fulfilled" ? consolidatedResult.value.payload : null;
   const rawPayload = rawResult.status === "fulfilled" ? rawResult.value.payload : null;
   let consolidatedRows = gexFlowRows(consolidatedPayload, "CONSOLIDATED");
   let rawRows = gexFlowRows(rawPayload, "RAW");
+  let comprisingRows = mode === "HYBRID" ? gexFlowComprisingRows(consolidatedPayload) : [];
   const cutoff = replayTimestamp && Number.isFinite(replayTimestamp) ? replayTimestamp : null;
   consolidatedRows = filterGexFlowRowsAtCutoff(consolidatedRows, cutoff);
   rawRows = filterGexFlowRowsAtCutoff(rawRows, cutoff);
+  comprisingRows = filterGexFlowRowsAtCutoff(comprisingRows, cutoff);
   const rawAvailable = rawResult.status === "fulfilled";
   const consolidatedAvailable = consolidatedResult.status === "fulfilled";
   let rows = mode === "RAW" ? rawRows : consolidatedRows;
@@ -4773,7 +4802,8 @@ export async function getGexFlowPayload(args: {
   const rawSessionComplete = rawAvailable && gexFlowCursor(rawPayload) === null;
   const fallbackRatios = rawSessionComplete ? deriveGexFlowContractRatios(rawRows) : new Map<string, GexFlowContractRatio>();
   rows = scoreGexFlowRows(attachGexFlowRatios(rows, fallbackRatios)).sort((left, right) => right.tradeTime - left.tradeTime);
-  const children = mode === "HYBRID" ? scoreGexFlowRows(attachGexFlowRatios(rawRows, fallbackRatios)) : [];
+  const hybridChildren = comprisingRows.length ? comprisingRows : rawRows;
+  const children = mode === "HYBRID" ? scoreGexFlowRows(attachGexFlowRatios(hybridChildren, fallbackRatios)) : [];
   const status = historical ? "HISTORICAL" : marketOpen ? "LIVE" : "MARKET_CLOSED";
   const selectedPayload = mode === "RAW" ? rawPayload : consolidatedPayload ?? rawPayload;
   const remaining = [consolidatedResult, rawResult].flatMap((result) => result.status === "fulfilled" && result.value.remaining !== null ? [result.value.remaining] : []);
@@ -4803,7 +4833,7 @@ export async function getGexFlowPayload(args: {
       lastPoll: new Date().toISOString(),
       latencyMs: Date.now() - startedAt,
       rateLimitRemaining: remaining.length ? Math.min(...remaining) : null,
-      rowsFetched: consolidatedRows.length + rawRows.length,
+      rowsFetched: consolidatedRows.length + rawRows.length + comprisingRows.length,
       rowsVisible: rows.length,
       contractRatioSource: rawSessionComplete
           ? "complete-session server aggregation of classified raw prints"
