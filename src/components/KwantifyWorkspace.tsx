@@ -3,7 +3,6 @@
 import KwantSelect from "@/components/ui/KwantSelect";
 import TimeZoneSelect from "@/components/ui/TimeZoneSelect";
 import ChartIndicatorsControl from "@/components/ChartIndicatorsControl";
-import SourceCodeIndicatorsControl from "@/components/SourceCodeIndicatorsControl";
 import KwantLoader from "@/components/KwantLoader";
 import ImpliedVolatilityRankIcon from "@/components/icons/ImpliedVolatilityRankIcon";
 import LiveGexPanelBoundary from "@/components/backtesting/LiveGexPanelBoundary";
@@ -14045,13 +14044,6 @@ export default function KwantifyWorkspace({
               ) : null}
             </div>
           </div>
-          <TimeZoneSelect
-            value={chartSettings.timezone}
-            onChange={changeChartTimeZone}
-            menuLabel="Chart timezone"
-            compact
-            className="col-start-3 ml-1 max-w-[30px] shrink-0 justify-self-end px-1.5 sm:max-w-[150px] sm:px-2.5 [&>span]:hidden sm:[&>span]:block [&>svg:last-child]:hidden sm:[&>svg:last-child]:block"
-          />
           </div>
           <div
             aria-disabled={!activePaneIsChart}
@@ -14115,11 +14107,12 @@ export default function KwantifyWorkspace({
             ]}
             onChange={(next) => setIndicatorsForPane(activePaneId, next)}
           />
-          <SourceCodeIndicatorsControl
-            instrument={displayCmeSymbol(activeWorkspacePane.symbol)}
-            timeframe={formatChartInterval(activeWorkspacePane.timeframe)}
-            indicators={paneIndicators[activePaneId] ?? []}
-            onChange={(next) => setIndicatorsForPane(activePaneId, next)}
+          <TimeZoneSelect
+            value={chartSettings.timezone}
+            onChange={changeChartTimeZone}
+            menuLabel="Chart timezone"
+            compact
+            className="w-auto min-w-[118px] max-w-[164px] shrink-0 bg-surface/50 px-2.5"
           />
           <button
             type="button"
