@@ -2623,6 +2623,7 @@ export default function Chart({
   const liquidityStopSweepReferencesRef = useRef<SweepReferenceLevel[]>([]);
   const pocAuctionPrimitiveRef = useRef<PocAuctionPrimitive | null>(null);
   const tapeSpeedPrimitiveRef = useRef<TapeSpeedOrderFlowBurstPrimitive | null>(null);
+  const tapeSpeedAlertIdsRef = useRef(new Set<string>());
   const pocAuctionEngineRef = useRef(new PocAuctionSuiteEngine());
   const pocAuctionAlertIdsRef = useRef(new Set<string>());
   const netGammaExposurePrimitiveRef = useRef<NetGammaExposurePrimitive | null>(null);
@@ -3923,6 +3924,28 @@ export default function Chart({
   useEffect(() => {
     tapeSpeedPrimitiveRef.current?.update(tapeSpeedFrame ? { frame: tapeSpeedFrame, settings: tapeSpeedSettings, backgroundColor: settings.backgroundColor } : null);
   }, [chartReadyRevision, settings.backgroundColor, tapeSpeedFrame, tapeSpeedSettings, viewportVersion]);
+  useEffect(() => {
+    if (!tapeSpeedIndicator) {
+      tapeSpeedAlertIdsRef.current.clear();
+      return;
+    }
+    if (!tapeSpeedSettings.alertsEnabled || !tapeSpeedFrame) return;
+    for (const event of tapeSpeedFrame.events.slice(-24)) {
+      if (event.score < tapeSpeedSettings.alertMinimumScore || tapeSpeedAlertIdsRef.current.has(event.id)) continue;
+      tapeSpeedAlertIdsRef.current.add(event.id);
+      window.dispatchEvent(new CustomEvent("kwantdesk:chart-indicator-alert", { detail: {
+        indicatorId: "tape-speed-order-flow-burst",
+        instanceId: tapeSpeedIndicator.instanceId,
+        instrument,
+        title: `${event.direction === "neutral" ? "TWO-SIDED" : event.direction.toUpperCase()} TAPE BURST · ${Math.round(event.contractsPerSecond).toLocaleString()}/s`,
+        event,
+      } }));
+    }
+    if (tapeSpeedAlertIdsRef.current.size > 2_000) {
+      const retained = [...tapeSpeedAlertIdsRef.current].slice(-1_000);
+      tapeSpeedAlertIdsRef.current = new Set(retained);
+    }
+  }, [instrument, tapeSpeedFrame, tapeSpeedIndicator, tapeSpeedSettings.alertMinimumScore, tapeSpeedSettings.alertsEnabled]);
   useEffect(() => {
     const container = chartContainerRef.current;
     if (!container || !tapeSpeedIndicator || !tapeSpeedSettings.showTooltips) return;
