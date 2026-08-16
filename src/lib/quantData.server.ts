@@ -94,6 +94,23 @@ import {
   type IvRankSnapshot,
 } from "@/lib/impliedVolatilityRank";
 import { normalizeGexIntervalProviderPayload, type GexIntervalProviderSurface } from "@/lib/gexIntervalMap";
+import {
+  GEX_FLOW_SCORE_VERSION,
+  deriveGexFlowContractRatios,
+  estimateGexFlowDirection,
+  gexFlowContractKey,
+  gexFlowMoneyness,
+  gexFlowOiAnalysis,
+  gexFlowPremium,
+  gexFlowSpreadPosition,
+  filterGexFlowRowsAtCutoff,
+  normalizeGexFlowSide,
+  scoreGexFlowRows,
+  summarizeGexFlow,
+  type GexFlowMode,
+  type GexFlowPayload,
+  type GexFlowRow,
+} from "@/lib/gexFlow";
 import { getGexBotFlowSnapshot } from "@/lib/gexBotFlow.server";
 import {
   vendorMarketDataConfigured,
@@ -125,6 +142,7 @@ const endpointCache = new Map<string, CachedEndpoint>();
 // cache, so transient entitlement/network responses degrade to stale data
 // instead of a blank Gamma workspace.
 const lastGoodOptionsFlowByInstrument = new Map<string, OptionsFlowPayload>();
+const lastGoodGexFlowByRequest = new Map<string, GexFlowPayload>();
 // Last AUTO-mapping ratio formed while both legs (live futures, live cash
 // source) were fresh, per source symbol. Used to pin the scale overnight so
 // mapped levels stop tracking the futures price. Per-lambda: a cold instance
@@ -4397,6 +4415,303 @@ export async function getHistoricalReplayChartGammaLevels(
     latestCompletedOptionsSessionAt(asOf),
     futuresPrice,
   );
+}
+
+function gexFlowTimestamp(value: unknown): number {
+  if (typeof value === "string" && !/^\d+(\.\d+)?$/.test(value.trim())) {
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  let parsed = finiteNumber(value) ?? 0;
+  if (parsed > 10_000_000_000_000_000) parsed /= 1_000_000;
+  else if (parsed > 10_000_000_000_000) parsed /= 1_000;
+  else if (parsed > 0 && parsed < 10_000_000_000) parsed *= 1_000;
+  return Math.round(parsed);
+}
+
+function gexFlowBoolean(row: JsonRecord, ...keys: string[]) {
+  return keys.some((key) => row[key] === true || row[key] === 1 || String(row[key] ?? "").toLowerCase() === "true");
+}
+
+function gexFlowNumber(row: JsonRecord, ...keys: string[]) {
+  for (const key of keys) {
+    const value = finiteNumber(row[key]);
+    if (value !== null) return value;
+  }
+  return null;
+}
+
+function gexFlowText(row: JsonRecord, ...keys: string[]) {
+  for (const key of keys) {
+    const value = textValue(row[key]).trim();
+    if (value) return value;
+  }
+  return "";
+}
+
+function gexFlowRows(payload: unknown, sourceKind: "CONSOLIDATED" | "RAW"): GexFlowRow[] {
+  if (!isRecord(payload) || !Array.isArray(payload.data)) return [];
+  return payload.data.flatMap((value, index) => {
+    if (!isRecord(value)) return [];
+    const ticker = gexFlowText(value, "ticker", "underlyingSymbol", "underlying")?.toUpperCase();
+    if (!ticker) return [];
+    const rawContract = gexFlowText(value, "contractType", "optionType", "putCall").toUpperCase();
+    const contractType: GexFlowRow["contractType"] = rawContract.includes("CALL") || rawContract === "C"
+      ? "CALL"
+      : rawContract.includes("PUT") || rawContract === "P"
+        ? "PUT"
+        : "UNKNOWN";
+    const tradeTime = gexFlowTimestamp(value.tradeTime ?? value.timestamp ?? value.tsEvent ?? value.time);
+    const fill = gexFlowNumber(value, "optionPrice", "fillPrice", "averagePrice", "price");
+    const bid = gexFlowNumber(value, "bidPrice", "bid", "bestBid");
+    const ask = gexFlowNumber(value, "askPrice", "ask", "bestAsk");
+    const mid = gexFlowNumber(value, "midPrice", "mid") ?? (bid !== null && ask !== null ? (bid + ask) / 2 : null);
+    const providerSide = gexFlowText(value, "tradeSideCode", "tradeSide", "side");
+    let side = normalizeGexFlowSide(providerSide);
+    let sideSource: GexFlowRow["sideSource"] = side === "UNKNOWN" ? "UNAVAILABLE" : "PROVIDER";
+    if (side === "UNKNOWN" && fill !== null && bid !== null && ask !== null) {
+      side = fill > ask ? "ABOVE_ASK" : fill >= ask ? "ASK" : fill < bid ? "BELOW_BID" : fill <= bid ? "BID" : "MID";
+      sideSource = "ESTIMATED";
+    }
+    const providerSentiment = gexFlowText(value, "sentimentType", "sentiment", "direction").toUpperCase();
+    const sentiment: GexFlowRow["sentiment"] = providerSentiment.includes("BULL")
+      ? "BULLISH"
+      : providerSentiment.includes("BEAR")
+        ? "BEARISH"
+        : estimateGexFlowDirection(contractType, side);
+    const sentimentSource: GexFlowRow["sentimentSource"] = providerSentiment.includes("BULL") || providerSentiment.includes("BEAR")
+      ? "PROVIDER"
+      : sentiment === "NEUTRAL" && side === "UNKNOWN"
+        ? "UNAVAILABLE"
+        : "ESTIMATED";
+    const size = Math.max(0, gexFlowNumber(value, "size", "quantity", "contracts", "totalSize") ?? 0);
+    const multiplier = Math.max(1, gexFlowNumber(value, "contractMultiplier", "multiplier") ?? 100);
+    const premium = gexFlowPremium(fill, size, multiplier, gexFlowNumber(value, "premium", "notionalValue"));
+    const volume = gexFlowNumber(value, "volume", "contractVolume", "sessionVolume");
+    const openInterest = gexFlowNumber(value, "openInterest", "oi");
+    const previousOpenInterest = gexFlowNumber(value, "previousOpenInterest", "priorOpenInterest", "previousOi");
+    const deltaOpenInterest = openInterest !== null && previousOpenInterest !== null
+      ? openInterest - previousOpenInterest
+      : gexFlowNumber(value, "openInterestChange", "deltaOpenInterest", "oiChange");
+    const oiAnalysis = gexFlowOiAnalysis(size, volume, openInterest);
+    const stockPrice = gexFlowNumber(value, "stockPrice", "underlyingPrice", "spotPrice");
+    const strikePrice = gexFlowNumber(value, "strikePrice", "strike");
+    const moneyness = gexFlowMoneyness(contractType, strikePrice, stockPrice);
+    const expirationDate = gexFlowText(value, "expirationDate", "expiration", "expiry") || null;
+    const dte = gexFlowNumber(value, "dte") ?? (expirationDate && tradeTime
+      ? Math.max(0, Math.ceil((Date.parse(`${expirationDate}T21:00:00.000Z`) - tradeTime) / 86_400_000))
+      : null);
+    const consolidationType = gexFlowText(value, "tradeConsolidationType", "consolidationType", "tradeType") || sourceKind;
+    const consolidationUpper = consolidationType.toUpperCase();
+    const strategy = gexFlowText(value, "strategy", "strategyType", "detectedStrategy") || null;
+    const spreadPosition = gexFlowSpreadPosition(fill, bid, ask);
+    const spreadWidth = bid !== null && ask !== null ? Math.max(0, ask - bid) : null;
+    const spreadPercent = spreadWidth !== null && mid !== null && mid > 0 ? spreadWidth / mid : null;
+    const impliedVolatility = normalizeIv(value.impliedVolatility ?? value.iv);
+    const previousImpliedVolatility = normalizeIv(value.previousImpliedVolatility ?? value.previousIv);
+    const ivDifference = impliedVolatility !== null && previousImpliedVolatility !== null ? impliedVolatility - previousImpliedVolatility : null;
+    const osi = gexFlowText(value, "osi", "optionSymbol", "contractSymbol", "instrumentId") || null;
+    const id = gexFlowText(value, "id", "tradeId", "eventId") || `${sourceKind.toLowerCase()}-${ticker}-${tradeTime}-${index}`;
+    const childCount = Math.max(1, Math.round(gexFlowNumber(value, "childCount", "tradeCount", "printCount", "multiplierCount") ?? 1));
+    const underlyingTypeText = gexFlowText(value, "underlyingType", "assetType", "securityType").toUpperCase();
+    const underlyingType: GexFlowRow["underlyingType"] = underlyingTypeText.includes("INDEX") || ["SPX", "SPXW", "NDX"].includes(ticker)
+      ? "INDEX"
+      : underlyingTypeText.includes("ETF") || ["SPY", "QQQ", "IWM"].includes(ticker)
+        ? "ETF"
+        : underlyingTypeText.includes("STOCK") || underlyingTypeText.includes("EQUITY")
+          ? "STOCK"
+          : "UNKNOWN";
+    const row: GexFlowRow = {
+      id,
+      parentId: gexFlowText(value, "parentId", "consolidatedId", "groupId") || null,
+      childCount,
+      ticker,
+      osi,
+      contractType,
+      expirationDate,
+      dte,
+      strikePrice,
+      fill,
+      fillKind: sourceKind === "CONSOLIDATED" && childCount > 1 ? "WEIGHTED_AVERAGE" : fill === null ? "UNAVAILABLE" : "PROVIDER",
+      bid,
+      mid,
+      ask,
+      spreadWidth,
+      spreadPercent,
+      spreadPosition,
+      side,
+      sideSource,
+      sentiment,
+      sentimentSource,
+      consolidationType,
+      tradeType: gexFlowText(value, "tradeType", "tradeCondition", "condition") || sourceKind,
+      strategy,
+      strategyConfidence: strategy
+        ? (["LOW", "MEDIUM", "HIGH"].includes(gexFlowText(value, "strategyConfidence").toUpperCase())
+          ? gexFlowText(value, "strategyConfidence").toUpperCase() as GexFlowRow["strategyConfidence"]
+          : "HIGH")
+        : "UNAVAILABLE",
+      size,
+      premium: premium.value,
+      premiumSource: premium.source,
+      volume,
+      openInterest,
+      previousOpenInterest,
+      deltaOpenInterest,
+      ...oiAnalysis,
+      stockPrice,
+      moneynessPercent: moneyness.percent,
+      moneynessType: moneyness.type,
+      impliedVolatility,
+      previousImpliedVolatility,
+      ivReaction: ivDifference === null ? "UNKNOWN" : Math.abs(ivDifference) < 0.0001 ? "FLAT" : ivDifference > 0 ? "RISING" : "FALLING",
+      delta: gexFlowNumber(value, "delta"),
+      gamma: gexFlowNumber(value, "gamma"),
+      theta: gexFlowNumber(value, "theta"),
+      vega: gexFlowNumber(value, "vega"),
+      vanna: gexFlowNumber(value, "vanna"),
+      charm: gexFlowNumber(value, "charm"),
+      unusual: gexFlowBoolean(value, "isUnusual", "unusual"),
+      opening: gexFlowBoolean(value, "isOpeningPosition", "opening"),
+      goldenSweep: gexFlowBoolean(value, "isGoldenSweep", "goldenSweep"),
+      multiLeg: gexFlowBoolean(value, "isMultiLeg", "multiLeg", "complexTrade") || Boolean(strategy),
+      sweep: gexFlowBoolean(value, "isSweep", "sweep") || consolidationUpper.includes("SWEEP"),
+      block: gexFlowBoolean(value, "isBlock", "block") || consolidationUpper.includes("BLOCK"),
+      split: gexFlowBoolean(value, "isSplit", "split") || consolidationUpper.includes("SPLIT"),
+      exchange: gexFlowText(value, "exchange", "venue", "publisher") || null,
+      sector: gexFlowText(value, "sector") || null,
+      industry: gexFlowText(value, "industry") || null,
+      underlyingType,
+      tradeTime,
+      dataSource: "KwantData",
+      contractRatio: { bidContracts: 0, midContracts: 0, askContracts: 0, totalContracts: 0, classifiedShare: 0, bidRatio: 0, midRatio: 0, askRatio: 0, dominant: "UNAVAILABLE", source: "UNAVAILABLE" },
+      flowScore: 0,
+      flowScoreBreakdown: { direction: 0, directionSource: "UNAVAILABLE", premium: 0, size: 0, volumeOi: 0, sizeOi: 0, execution: 0, contractRatio: 0, unusual: 0, opening: 0, consolidation: 0, liquidity: 0 },
+    };
+    return [row];
+  });
+}
+
+function gexFlowCursor(payload: unknown) {
+  if (!isRecord(payload) || !Array.isArray(payload.nextSearchAfter)) return null;
+  const cursor = payload.nextSearchAfter
+    .filter((part) => typeof part === "string" || typeof part === "number")
+    .map(String);
+  return cursor.length ? cursor : null;
+}
+
+function attachGexFlowRatios(rows: GexFlowRow[], ratioRows: GexFlowRow[]) {
+  const ratios = deriveGexFlowContractRatios(ratioRows);
+  return rows.map((row) => ({ ...row, contractRatio: ratios.get(gexFlowContractKey(row)) ?? row.contractRatio }));
+}
+
+export async function getGexFlowPayload(args: {
+  symbol: string;
+  mode: GexFlowMode;
+  sessionDate?: string;
+  replayAt?: string;
+  size?: number;
+  cursor?: string[];
+}): Promise<GexFlowPayload> {
+  const startedAt = Date.now();
+  const session = getUsOptionsSession();
+  const symbol = args.symbol.trim().toUpperCase() || "SPX";
+  const sessionDate = args.sessionDate?.trim() || session.sessionDate;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(sessionDate)) throw new QuantDataError("A valid GEX FLOW session date is required.", 400, null);
+  if (sessionDate > session.sessionDate) throw new QuantDataError("GEX FLOW cannot request a future options session.", 400, null);
+  const replayTimestamp = args.replayAt ? Date.parse(args.replayAt) : null;
+  if (args.replayAt && !Number.isFinite(replayTimestamp)) throw new QuantDataError("A valid GEX FLOW replay timestamp is required.", 400, null);
+  const mode = args.mode;
+  const size = Math.max(25, Math.min(100, Math.round(args.size ?? 100)));
+  const requestBody: JsonRecord = {
+    sessionDate,
+    filter: { ticker: symbol },
+    size,
+    sort: { field: "tradeTime", direction: "DESCENDING" },
+  };
+  if (args.cursor?.length) requestBody.searchAfter = args.cursor;
+  const wantsConsolidated = mode !== "RAW";
+  const wantsRaw = mode !== "CONSOLIDATED";
+  const [consolidatedResult, rawResult] = await Promise.allSettled([
+    wantsConsolidated ? quantDataPost("/options/tool/order-flow/consolidated", requestBody, session.marketOpen ? 2_000 : 30_000) : Promise.resolve({ payload: { data: [] }, remaining: null }),
+    wantsRaw ? quantDataPost("/options/tool/order-flow/unconsolidated", requestBody, session.marketOpen ? 2_000 : 30_000) : Promise.resolve({ payload: { data: [] }, remaining: null }),
+  ]);
+  const consolidatedPayload = consolidatedResult.status === "fulfilled" ? consolidatedResult.value.payload : null;
+  const rawPayload = rawResult.status === "fulfilled" ? rawResult.value.payload : null;
+  let consolidatedRows = gexFlowRows(consolidatedPayload, "CONSOLIDATED");
+  let rawRows = gexFlowRows(rawPayload, "RAW");
+  const cutoff = replayTimestamp && Number.isFinite(replayTimestamp) ? replayTimestamp : null;
+  consolidatedRows = filterGexFlowRowsAtCutoff(consolidatedRows, cutoff);
+  rawRows = filterGexFlowRowsAtCutoff(rawRows, cutoff);
+  const rawAvailable = rawResult.status === "fulfilled";
+  const consolidatedAvailable = consolidatedResult.status === "fulfilled";
+  let rows = mode === "RAW" ? rawRows : consolidatedRows;
+  if (!rows.length && mode === "HYBRID" && rawRows.length) rows = rawRows;
+  if (!rows.length && mode === "RAW" && !rawAvailable) {
+    const error = rawResult.status === "rejected" ? rawResult.reason : null;
+    if (error instanceof QuantDataError) throw error;
+    throw new QuantDataError("Raw options tape is unavailable for this entitlement.", 422, null);
+  }
+  if (!rows.length && !consolidatedAvailable && !rawAvailable) {
+    const error = consolidatedResult.status === "rejected" ? consolidatedResult.reason : rawResult.status === "rejected" ? rawResult.reason : null;
+    if (error instanceof QuantDataError) throw error;
+    throw new QuantDataError("No GEX FLOW data is available for this request.", 422, null);
+  }
+  const ratioRows = rawRows.length ? rawRows : rows;
+  rows = scoreGexFlowRows(attachGexFlowRatios(rows, ratioRows)).sort((left, right) => right.tradeTime - left.tradeTime);
+  const children = mode === "HYBRID" ? scoreGexFlowRows(attachGexFlowRatios(rawRows, ratioRows)) : [];
+  const historical = sessionDate !== session.sessionDate || cutoff !== null;
+  const marketOpen = !historical && session.marketOpen;
+  const status = historical ? "HISTORICAL" : marketOpen ? "LIVE" : "MARKET_CLOSED";
+  const selectedPayload = mode === "RAW" ? rawPayload : consolidatedPayload ?? rawPayload;
+  const remaining = [consolidatedResult, rawResult].flatMap((result) => result.status === "fulfilled" && result.value.remaining !== null ? [result.value.remaining] : []);
+  const limitations: string[] = [];
+  if (!rawAvailable && wantsRaw) limitations.push("The unconsolidated QuantData tape is unavailable for this entitlement; consolidated rows remain authoritative.");
+  if (!rows.some((row) => row.previousOpenInterest !== null)) limitations.push("Daily OI change is unavailable when the provider does not return prior official OI.");
+  if (!rows.some((row) => row.sector || row.industry)) limitations.push("Sector and industry enrichment are unavailable in the current projected flow payload.");
+  limitations.push("Earnings enrichment is disabled until a validated earnings-calendar source is connected.");
+  const payload: GexFlowPayload = {
+    schemaVersion: 1,
+    mode,
+    status,
+    asOf: new Date().toISOString(),
+    sessionDate,
+    marketOpen,
+    replayAt: cutoff === null ? null : new Date(cutoff).toISOString(),
+    source: "KwantData",
+    rows,
+    children,
+    summary: summarizeGexFlow(rows),
+    nextCursor: gexFlowCursor(selectedPayload),
+    rawAvailable,
+    consolidatedAvailable,
+    stale: false,
+    refreshAfterMs: marketOpen ? 2_000 : 30_000,
+    diagnostics: {
+      lastPoll: new Date().toISOString(),
+      latencyMs: Date.now() - startedAt,
+      rateLimitRemaining: remaining.length ? Math.min(...remaining) : null,
+      rowsFetched: consolidatedRows.length + rawRows.length,
+      rowsVisible: rows.length,
+      contractRatioSource: rawRows.length ? "server aggregation of classified raw prints up to the active clock" : "server aggregation of consolidated flow up to the active clock",
+      oiSource: "KwantData official/reference open interest",
+      earningsSource: "UNAVAILABLE",
+      flowScoreVersion: GEX_FLOW_SCORE_VERSION,
+      limitations,
+    },
+  };
+  const lastGoodKey = `${symbol}:${mode}:${sessionDate}`;
+  lastGoodGexFlowByRequest.set(lastGoodKey, payload);
+  return payload;
+}
+
+export function getLastGoodGexFlowPayload(symbol: string, mode: GexFlowMode, sessionDate: string) {
+  const exact = lastGoodGexFlowByRequest.get(`${symbol.toUpperCase()}:${mode}:${sessionDate}`);
+  if (exact) return exact;
+  const prefix = `${symbol.toUpperCase()}:${mode}:`;
+  return [...lastGoodGexFlowByRequest.entries()]
+    .filter(([key]) => key.startsWith(prefix))
+    .sort((left, right) => Date.parse(right[1].asOf) - Date.parse(left[1].asOf))[0]?.[1] ?? null;
 }
 
 export function getQuantDataHttpError(error: unknown) {

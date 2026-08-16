@@ -9,6 +9,7 @@
     "lint": "eslint",
     "test:gex-interval-map": "node scripts/test-gex-interval-map.cjs",
     "test:gex-cal": "node --experimental-strip-types scripts/test-gex-calendar.mjs",
+    "test:gex-flow": "node --experimental-strip-types scripts/test-gex-flow.mjs",
     "test:bounce-levels": "node scripts/test-bounce-levels.cjs",
     "test:iv-rank": "node scripts/test-implied-volatility-rank.cjs",
     "test:iv-rank-integration": "node scripts/test-implied-volatility-rank-integration.cjs",

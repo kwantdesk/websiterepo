@@ -19,6 +19,7 @@ import {
   User,
   UsersRound,
   Wallet,
+  Workflow,
 } from "lucide-react";
 import { defaultTheme, saveTheme } from "@/lib/theme";
 type SidebarKey =
@@ -28,6 +29,7 @@ type SidebarKey =
   | "charts"
   | "gamvue"
   | "gexcal"
+  | "gexflow"
   | "gamma"
   | "levelz"
   | "gexmap"
@@ -92,6 +94,7 @@ const navItems: Array<{
   { key: "charts", href: "/charts", label: "Charts", title: "Charts", icon: LineChart },
   { key: "gamvue", href: "/gamvue", label: "GEX VUE", title: "GEX charting", icon: BarChart3 },
   { key: "gexcal", href: "/gex-cal", label: "GEX CAL", title: "Expiration by strike exposure", icon: CalendarRange },
+  { key: "gexflow", href: "/gex-flow", label: "GEX FLOW", title: "Live and historical options flow", icon: Workflow },
   { key: "gamma", href: "/gamma", label: "GAMMA", title: "Options Flow Gamma", icon: Crosshair },
   { key: "gexmap", href: "/gexmap", label: "GEX MAP", title: "GEX Map", icon: ScanLine },
   { key: "liqmap", href: "/liqmap", label: "LIQ MAP", title: "Liquidity Heatmap", icon: Waves },
@@ -109,6 +112,7 @@ const PERSISTENT_WORKSPACE_KEYS = new Set<SidebarKey>([
   "charts",
   "gamvue",
   "gexcal",
+  "gexflow",
   "zyon",
   "gameplan",
   "gamma",
