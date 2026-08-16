@@ -67,6 +67,12 @@ test("drawing controls include history, clipboard, templates, magnet and keep mo
   assert.match(chart, /professionalPendingAnchorsRef\.current\.pop\(\)/);
 });
 
+test("a drawing menu row activates its tool on the first click", () => {
+  assert.match(chart, /function activateToolbarTool\(toolId: DrawingToolId\)/);
+  assert.match(chart, /selectedToolRef\.current = toolId;[\s\S]*?claimChartInteraction\("legacy-tools"\);[\s\S]*?setSelectedTool\(toolId\)/);
+  assert.match(chart, /onClick=\{\(\) => \{\s*if \(implemented\) activateToolbarTool\(tool\.id\);\s*\}\}/);
+});
+
 test("completed line tools open their style and template editor on double-click", () => {
   assert.match(drawingManager, /addEventListener\('dblclick', this\.handleDoubleClick, true\)/);
   assert.match(drawingManager, /this\.emit\('drawing:double-clicked'/);

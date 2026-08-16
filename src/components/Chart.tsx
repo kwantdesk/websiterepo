@@ -8381,6 +8381,22 @@ export default function Chart({
     }
   }
 
+  function activateToolbarTool(toolId: DrawingToolId) {
+    const precisionTool = precisionToolForDrawingTool(toolId);
+
+    // Tool selection must take ownership immediately. Waiting for the React
+    // effect leaves the previous precision layer active long enough to swallow
+    // the first pointer event on the chart, making tools appear to require a
+    // second click.
+    selectedToolRef.current = toolId;
+    setOpenToolbarGroup(null);
+    if (!precisionTool && toolId !== "selection") {
+      claimChartInteraction("legacy-tools");
+      professionalDrawingManagerRef.current?.setActiveTool(professionalDrawingType(toolId));
+    }
+    setSelectedTool(toolId);
+  }
+
   const applyMarkers = (tradeRows: (Trade & { markerVisible?: boolean })[]) => {
     if (!candleSeriesRef.current || !tradeRows || tradeRows.length === 0) {
       candleSeriesRef.current?.setMarkers([]);
@@ -13339,28 +13355,20 @@ export default function Chart({
                           return (
                             <div
                               key={tool.id}
+                              onClick={() => {
+                                if (implemented) activateToolbarTool(tool.id);
+                              }}
                               className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-[13px] transition-all ${
                                 active
                                   ? "bg-primary/12 text-foreground"
                                   : implemented
-                                    ? "text-muted hover:bg-surface hover:text-foreground"
+                                    ? "cursor-pointer text-muted hover:bg-surface hover:text-foreground"
                                     : "cursor-not-allowed text-muted/55"
                               }`}
                             >
                               <button
                                 type="button"
                                 aria-disabled={!implemented}
-                                onClick={() => {
-                                  if (!implemented) return;
-                                  // Precision tools claim the pointer layer in
-                                  // their child effect. Mirror the selection
-                                  // synchronously so that ownership handoff
-                                  // cannot observe the previous cursor tool
-                                  // and cancel the newly selected calculator.
-                                  selectedToolRef.current = tool.id;
-                                  setSelectedTool(tool.id);
-                                  setOpenToolbarGroup(null);
-                                }}
                                 className={`flex min-w-0 flex-1 items-center gap-3 text-left ${
                                   implemented ? "" : "cursor-not-allowed"
                                 }`}
