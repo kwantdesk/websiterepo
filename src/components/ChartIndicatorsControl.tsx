@@ -1634,6 +1634,25 @@ export default function ChartIndicatorsControl({
                       </KwantSelect>
                     </label>
                   ))}
+                  <div className="grid grid-cols-2 gap-2 sm:col-span-2 sm:grid-cols-4">
+                    {([
+                      ["precisionMode", "Precision"], ["showLabels", "Labels"], ["clusterEnabled", "Clusters"], ["reactionAnalytics", "Reaction analytics"],
+                      ["showInspector", "Inspector"], ["showReactionResearch", "Reaction research"], ["firstTouchOnly", "First touch only"], ["includeLateReports", "Late reports"], ["includeCorrectedPrints", "Corrected prints"],
+                    ] as const).map(([key, label]) => {
+                      const defaultOff = key === "clusterEnabled" || key === "showInspector" || key === "showReactionResearch" || key === "firstTouchOnly";
+                      const enabled = defaultOff ? settingsInstance.settings?.[key] === true : settingsInstance.settings?.[key] !== false;
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [key]: !enabled } }))}
+                          className={`h-8 border px-2 text-[8px] uppercase tracking-[0.1em] ${enabled ? "border-primary/55 bg-primary/10 text-primary" : "border-border bg-background text-muted"}`}
+                        >
+                          {label} · {enabled ? "ON" : "OFF"}
+                        </button>
+                      );
+                    })}
+                  </div>
                   <div className="border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
                     Dark Pool Map supports every options-flow underlying. QQQ, SPY, IWM and single stocks use native off-exchange prints. NDX and SPX are non-traded indices, so they use QQQ→NDX and SPY→SPX price mapping. Futures remain explicitly mapped rather than presented as direct dark-pool feeds.
                   </div>
@@ -1643,9 +1662,13 @@ export default function ChartIndicatorsControl({
               {settingsDefinition.id === "dark-pool-gex" ? (
                 <div className="grid gap-3 border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
                   {[
+                    ["View preset", "viewPreset", [["raw-dp-levels", "Raw DP Levels"], ["dp-gex-intelligence", "DP + GEX Intelligence"]]],
+                    ["Lookback semantics", "lookbackMode", [["calendar-days", "Calendar Days"], ["trading-sessions", "Trading Sessions"]]],
+                    ["Inspector sort", "sortMode", [["notional", "Notional"], ["distance", "Current Distance"], ["freshness", "Freshness"], ["reaction-quality", "Reaction Quality"]]],
                     ["GEX context", "contextMode", [["current", "Current Structure"], ["event-time", "Event-Time Structure"], ["historical-and-current", "Historical + Current"]]],
                     ["GEX confluence", "confluenceMode", [["off", "Off"], ["nearest", "Nearest Node"], ["major", "Major Nodes Only"], ["king", "KING Only"], ["king-and-major", "KING + Major"], ["all-qualified", "All Qualified"]]],
                     ["Tolerance", "toleranceMode", [["percentage", "Percentage Distance"], ["absolute", "Absolute Price Distance"], ["ticks", "Tick Distance"]]],
+                    ["Touch tolerance", "interactionToleranceMode", [["ticks", "Ticks"], ["absolute", "Absolute Price"], ["percentage", "Percentage"]]],
                     ["Display", "displayMode", [["raw", "Raw Prints Only"], ["clusters", "Clusters Only"], ["raw-and-clusters", "Raw + Clusters"]]],
                     ["Cluster distance", "clusterDistanceMode", [["percentage", "Percentage"], ["absolute", "Absolute Price"], ["ticks", "Ticks"]]],
                     ["Performance", "performanceQuality", [["auto", "Auto"], ["ultra", "Ultra"], ["high", "High"], ["medium", "Medium"], ["low", "Low"]]],
@@ -1654,7 +1677,15 @@ export default function ChartIndicatorsControl({
                       <span>{String(label)}</span>
                       <KwantSelect
                         value={String(settingsInstance.settings?.[String(key)] ?? "")}
-                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [String(key)]: event.target.value } }))}
+                        onChange={(event) => replace(settingsInstance.instanceId, (current) => {
+                          const value = event.target.value;
+                          const preset: Record<string, string | number | boolean> = String(key) === "viewPreset"
+                            ? value === "raw-dp-levels"
+                              ? { displayMode: "raw", clusterEnabled: false, haloIntensity: 20, showReactionMarkers: false, precisionMode: true, showExactLine: true, showLabels: true }
+                              : { displayMode: "raw-and-clusters", clusterEnabled: true, haloIntensity: 70, showReactionMarkers: true, precisionMode: true, showExactLine: true, showLabels: true }
+                            : {};
+                          return { ...current, settings: { ...(current.settings ?? {}), ...preset, [String(key)]: value } };
+                        })}
                         className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
                         menuLabel={String(label)}
                       >
@@ -1663,7 +1694,7 @@ export default function ChartIndicatorsControl({
                     </label>
                   ))}
                   <div className="border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
-                    Raw prints are genuine off-exchange events and remain direction-neutral. Gamma sign is rendered only as a separate halo. Proxy projection is off by default; enable it only when you intentionally want the existing verified ETF-to-index/futures mapping.
+                    Raw Top-N membership is always ranked by individual print notional. Exact prices are never rounded or replaced by clusters. QuantData validates off-exchange reporting; a specific ATS is claimed only when venue metadata exists. Gamma remains a separate halo and never changes the DP price or Top-N selection.
                   </div>
                 </div>
               ) : null}

@@ -28,6 +28,8 @@ export type DarkPoolMappingMode = "direct" | "rolling-affine" | "live-ratio" | "
 export type DarkPoolPriceBinMode = "exact-source-price" | "source-cents" | "mapped-points" | "display-ticks";
 export type DarkPoolVisualMode = "heat-circles" | "zones" | "circles-and-zones" | "lines" | "historical-ribbons";
 export type DarkPoolStatus = "LIVE" | "CACHED" | "DELAYED" | "RESYNCING" | "RATE_LIMITED" | "MAPPING_STALE" | "UNAVAILABLE";
+export type DarkPoolOffExchangeClassification = "ATS_CONFIRMED" | "TRF_REPORTED" | "OFF_EXCHANGE_REPORTED" | "UNKNOWN";
+export type DarkPoolCorrectionState = "ORIGINAL" | "CORRECTED" | "CANCELED";
 
 export type DarkPoolPrint = {
   id: string;
@@ -43,6 +45,24 @@ export type DarkPoolPrint = {
   bidSize: number | null;
   isDelayedPrint: boolean;
   tradeTimeMs: number;
+  executionTimestampMs?: number;
+  reportTimestampMs?: number | null;
+  observableTimestampMs?: number;
+  source?: string;
+  recordId?: string;
+  originalRecordId?: string | null;
+  offExchangeClassification?: DarkPoolOffExchangeClassification;
+  venue?: string | null;
+  trf?: string | null;
+  tradeConditions?: string[];
+  correctionState?: DarkPoolCorrectionState;
+  cancellationState?: "ACTIVE" | "CANCELED";
+  rawPrice?: number;
+  rawShares?: number;
+  rawNotional?: number;
+  corporateActionAdjustmentFactor?: number;
+  adjustedChartPrice?: number;
+  corporateAction?: string | null;
 };
 
 export type DarkPoolMappingReceipt = {
@@ -314,26 +334,61 @@ function recordValue(record: Record<string, unknown>, keys: string[]) {
   return undefined;
 }
 
+function timestampMs(value: unknown) {
+  if (typeof value === "number" && value > 10_000_000_000) return value;
+  if (typeof value === "number") return value * 1_000;
+  const parsed = Date.parse(String(value ?? ""));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function booleanValue(value: unknown) {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value !== 0;
+  return ["1", "TRUE", "YES", "Y", "CANCELED", "CANCELLED"].includes(String(value ?? "").trim().toUpperCase());
+}
+
+function stringList(value: unknown) {
+  if (Array.isArray(value)) return value.map(String).map((item) => item.trim()).filter(Boolean);
+  return String(value ?? "").split(/[|,;]/).map((item) => item.trim()).filter(Boolean);
+}
+
+function offExchangeClassification(row: Record<string, unknown>): DarkPoolOffExchangeClassification {
+  const venue = String(recordValue(row, ["ATS", "ats", "ATS_VENUE", "atsVenue", "VENUE", "venue", "MARKET_CENTER", "marketCenter"]) ?? "").toUpperCase();
+  const trf = String(recordValue(row, ["TRF", "trf", "TRF_ID", "trfId", "REPORTING_FACILITY", "reportingFacility"]) ?? "").toUpperCase();
+  const classification = String(recordValue(row, ["OFF_EXCHANGE_CLASSIFICATION", "offExchangeClassification", "PRINT_TYPE", "printType", "TRADE_TYPE", "tradeType"]) ?? "").toUpperCase();
+  if (classification.includes("ATS") || venue.includes("ATS")) return "ATS_CONFIRMED";
+  if (classification.includes("TRF") || trf.includes("TRF") || trf.length > 0) return "TRF_REPORTED";
+  // This adapter is fed only by QuantData's dark-pool/off-exchange endpoint.
+  // Without venue metadata it proves off-exchange reporting, not a specific ATS.
+  return "OFF_EXCHANGE_REPORTED";
+}
+
 export function normalizeDarkPoolPrint(value: unknown): DarkPoolPrint | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const row = value as Record<string, unknown>;
   const price = finite(recordValue(row, ["PRICE", "price", "tradePrice"]));
   const size = finite(recordValue(row, ["SIZE", "size", "shares", "volume"]));
   const rawNotional = finite(recordValue(row, ["NOTIONAL_VALUE", "notionalValue", "notional"]));
-  const timeValue = recordValue(row, ["TRADE_TIME", "tradeTime", "trade_time", "timestamp", "time"]);
-  const tradeTimeMs = typeof timeValue === "number" && timeValue > 10_000_000_000
-    ? timeValue
-    : typeof timeValue === "number"
-      ? timeValue * 1_000
-      : Date.parse(String(timeValue ?? ""));
+  const executionTimestampMs = timestampMs(recordValue(row, ["EXECUTION_TIME", "executionTime", "executionTimestamp", "TRADE_TIME", "tradeTime", "trade_time", "timestamp", "time"]));
+  const reportTimestampMs = timestampMs(recordValue(row, ["REPORT_TIME", "reportTime", "reportTimestamp", "RECEIVED_TIME", "receivedTime", "publishedAt"]));
+  const tradeTimeMs = executionTimestampMs;
   if (!(price && price > 0) || !(size && size > 0) || !Number.isFinite(tradeTimeMs)) return null;
+  const validTradeTimeMs = tradeTimeMs as number;
   const sideValue = String(recordValue(row, ["TRADE_SIDE", "tradeSide", "side"]) ?? "UNKNOWN").toUpperCase().replace(/[ -]/g, "_");
   const side = (["ABOVE_ASK", "ASK", "MID_MARKET", "BID", "BELOW_BID"] as const).includes(sideValue as never)
     ? sideValue as DarkPoolTradeSide
     : "UNKNOWN";
-  const id = String(recordValue(row, ["ID", "id", "tradeId", "trade_id"]) ?? `${recordValue(row, ["TICKER", "ticker"])}:${tradeTimeMs}:${price}:${size}`);
+  const recordId = String(recordValue(row, ["RECORD_ID", "recordId", "ID", "id", "tradeId", "trade_id"]) ?? `${recordValue(row, ["TICKER", "ticker"])}:${tradeTimeMs}:${price}:${size}`);
+  const originalRecordId = String(recordValue(row, ["ORIGINAL_RECORD_ID", "originalRecordId", "ORIGINAL_TRADE_ID", "originalTradeId", "CORRECTS_ID", "correctsId"]) ?? "").trim() || null;
+  const correctionCode = String(recordValue(row, ["CORRECTION_STATE", "correctionState", "ACTION", "action", "STATUS", "status", "RECORD_TYPE", "recordType"]) ?? "").toUpperCase();
+  const canceled = booleanValue(recordValue(row, ["IS_CANCELED", "isCanceled", "IS_CANCELLED", "isCancelled", "CANCELED", "cancelled"])) || /CANCEL|DELETE|VOID/.test(correctionCode);
+  const corrected = Boolean(originalRecordId) || /CORRECT|REPLACE|AMEND/.test(correctionCode);
+  const factor = finite(recordValue(row, ["CORPORATE_ACTION_ADJUSTMENT_FACTOR", "corporateActionAdjustmentFactor", "ADJUSTMENT_FACTOR", "adjustmentFactor"])) ?? 1;
+  const adjustedPrice = finite(recordValue(row, ["ADJUSTED_PRICE", "adjustedPrice", "adjustedChartPrice"])) ?? price * factor;
+  const venue = String(recordValue(row, ["ATS_VENUE", "atsVenue", "VENUE", "venue", "MARKET_CENTER", "marketCenter"]) ?? "").trim() || null;
+  const trf = String(recordValue(row, ["TRF", "trf", "TRF_ID", "trfId", "REPORTING_FACILITY", "reportingFacility"]) ?? "").trim() || null;
   return {
-    id,
+    id: recordId,
     ticker: String(recordValue(row, ["TICKER", "ticker", "symbol"]) ?? "").toUpperCase(),
     price,
     size,
@@ -345,17 +400,37 @@ export function normalizeDarkPoolPrint(value: unknown): DarkPoolPrint | null {
     bidPrice: finite(recordValue(row, ["BID_PRICE", "bidPrice", "bid"])),
     bidSize: finite(recordValue(row, ["BID_SIZE", "bidSize"])),
     isDelayedPrint: Boolean(recordValue(row, ["IS_DELAYED_PRINT", "isDelayedPrint", "delayed"])),
-    tradeTimeMs,
+    tradeTimeMs: validTradeTimeMs,
+    executionTimestampMs: validTradeTimeMs,
+    reportTimestampMs,
+    observableTimestampMs: reportTimestampMs ?? validTradeTimeMs,
+    source: "QuantData off-exchange endpoint",
+    recordId,
+    originalRecordId,
+    offExchangeClassification: offExchangeClassification(row),
+    venue,
+    trf,
+    tradeConditions: stringList(recordValue(row, ["TRADE_CONDITIONS", "tradeConditions", "CONDITIONS", "conditions"])),
+    correctionState: canceled ? "CANCELED" : corrected ? "CORRECTED" : "ORIGINAL",
+    cancellationState: canceled ? "CANCELED" : "ACTIVE",
+    rawPrice: price,
+    rawShares: size,
+    rawNotional: rawNotional && rawNotional > 0 ? rawNotional : price * size,
+    corporateActionAdjustmentFactor: factor,
+    adjustedChartPrice: adjustedPrice,
+    corporateAction: String(recordValue(row, ["CORPORATE_ACTION", "corporateAction"]) ?? "").trim() || null,
   };
 }
 
 export function deduplicateDarkPoolPrints<T extends DarkPoolPrint>(prints: T[], maximumIds = 100_000) {
   const byId = new Map<string, T>();
-  for (const print of prints.sort((a, b) => a.tradeTimeMs - b.tradeTimeMs)) {
-    byId.set(print.id, print);
+  const ordered = [...prints].sort((a, b) => (a.observableTimestampMs ?? a.tradeTimeMs) - (b.observableTimestampMs ?? b.tradeTimeMs));
+  for (const print of ordered) {
+    const canonicalId = print.originalRecordId || print.recordId || print.id;
+    byId.set(canonicalId, print);
     if (byId.size > maximumIds) byId.delete(byId.keys().next().value as string);
   }
-  return [...byId.values()].sort((a, b) => a.tradeTimeMs - b.tradeTimeMs);
+  return [...byId.values()].sort((a, b) => (a.observableTimestampMs ?? a.tradeTimeMs) - (b.observableTimestampMs ?? b.tradeTimeMs));
 }
 
 export function fitRollingAffine(samples: Array<{ source: number; display: number }>, calculatedAtMs = Date.now()): DarkPoolMappingReceipt | null {
@@ -413,8 +488,10 @@ export function createMappingReceipt(args: {
 
 export function mapDarkPoolPrint(print: DarkPoolPrint, displayInstrument: string, receipt: DarkPoolMappingReceipt): MappedDarkPoolPrint {
   const tick = displayTickSize(displayInstrument);
-  const raw = receipt.alpha + receipt.beta * print.price;
-  const mappedPrice = Math.round(raw / tick) * tick;
+  const sourcePrice = print.adjustedChartPrice ?? print.price;
+  // Preserve the exact underlying transaction price. Tick size is metadata for
+  // display and interaction tolerances; it must not mutate the analytical level.
+  const mappedPrice = receipt.method === "direct" ? sourcePrice : receipt.alpha + receipt.beta * sourcePrice;
   return { ...print, displayInstrument, mappedPrice, mappedTick: Math.round(mappedPrice / tick), mapping: { ...receipt } };
 }
 

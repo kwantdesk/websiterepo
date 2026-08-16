@@ -6,7 +6,7 @@ import type {
   SeriesAttachedParameter,
   Time,
 } from "@/lib/lightweightChartsCompat";
-import type { DarkPoolGexCluster, DarkPoolGexEvent, DarkPoolGexFrame, DarkPoolGexSettings } from "@/lib/darkPoolGex";
+import { formatDarkPoolNotional, type DarkPoolGexCluster, type DarkPoolGexEvent, type DarkPoolGexFrame, type DarkPoolGexSettings } from "@/lib/darkPoolGex";
 
 type CandleSeriesApi = SeriesAttachedParameter<Time, "Candlestick">["series"];
 
@@ -18,6 +18,7 @@ export type DarkPoolGexPrimitiveData = {
   negativeGexColor: string;
   backgroundColor: string;
   currentPrice: number | null;
+  timelineMs: number[];
 };
 
 export type DarkPoolGexHit = {
@@ -35,6 +36,20 @@ function rgba(color: string, opacity: number) {
   const hex = /^#([0-9a-f]{6})$/i.exec(color)?.[1];
   if (!hex) return color;
   return `rgba(${parseInt(hex.slice(0, 2), 16)},${parseInt(hex.slice(2, 4), 16)},${parseInt(hex.slice(4, 6), 16)},${clamp01(opacity)})`;
+}
+
+function timeCoordinate(chart: IChartApi, timestampMs: number, timelineMs: number[]) {
+  const exact = chart.timeScale().timeToCoordinate(Math.floor(timestampMs / 1_000) as Time);
+  if (exact !== null) return exact;
+  let low = 0;
+  let high = timelineMs.length;
+  while (low < high) {
+    const middle = (low + high) >> 1;
+    if (timelineMs[middle] < timestampMs) low = middle + 1;
+    else high = middle;
+  }
+  const visibleStart = timelineMs[Math.min(low, timelineMs.length - 1)];
+  return Number.isFinite(visibleStart) ? chart.timeScale().timeToCoordinate(Math.floor(visibleStart / 1_000) as Time) : null;
 }
 
 class DarkPoolGexRenderer implements ISeriesPrimitivePaneRenderer {
@@ -57,7 +72,7 @@ class DarkPoolGexRenderer implements ISeriesPrimitivePaneRenderer {
       if (settings.displayMode !== "raw" && settings.clusterEnabled) {
         for (const cluster of data.frame.clusters) {
           const y = series.priceToCoordinate(cluster.weightedPrice);
-          const start = chart.timeScale().timeToCoordinate(Math.floor(cluster.firstTimestampMs / 1_000) as Time);
+          const start = timeCoordinate(chart, cluster.firstTimestampMs, data.timelineMs);
           if (y === null || start === null || Number(y) < -30 || Number(y) > mediaSize.height + 30) continue;
           const height = 3 + settings.bandThickness * cluster.visualStrength;
           const opacity = settings.bandOpacity / 100 * (0.35 + 0.65 * cluster.visualStrength);
@@ -78,7 +93,7 @@ class DarkPoolGexRenderer implements ISeriesPrimitivePaneRenderer {
 
       if (settings.displayMode !== "clusters") {
         for (const event of data.frame.rawEvents) {
-          const x = chart.timeScale().timeToCoordinate(Math.floor(event.timestampMs / 1_000) as Time);
+          const x = timeCoordinate(chart, event.observableTimestampMs, data.timelineMs);
           const y = series.priceToCoordinate(event.price);
           if (x === null || y === null || Number(y) < -30 || Number(y) > mediaSize.height + 30) continue;
           const originX = Number(x);
@@ -88,7 +103,7 @@ class DarkPoolGexRenderer implements ISeriesPrimitivePaneRenderer {
           const gammaColor = confluence?.signedExposure && confluence.signedExposure >= 0 ? data.positiveGexColor : data.negativeGexColor;
           const kingMultiplier = confluence?.role === "KING" ? 1 + settings.kingBoost / 100 : 1;
           const halo = confluence ? (3 + 13 * confluence.confluence) * settings.haloIntensity / 100 * kingMultiplier : 0;
-          const coreHeight = 1 + settings.bandThickness * (0.35 + 0.65 * strength);
+          const coreHeight = settings.precisionMode ? Math.max(1, settings.bandThickness) : 1 + settings.bandThickness * (0.35 + 0.65 * strength);
           const proximity = settings.proximityEmphasis && data.currentPrice !== null
             ? clamp01(1 - Math.abs(data.currentPrice - event.price) / Math.max(1e-9, settings.proximityDistance))
             : 0;
@@ -109,12 +124,17 @@ class DarkPoolGexRenderer implements ISeriesPrimitivePaneRenderer {
             memory.addColorStop(1, rgba(data.neutralColor, settings.bandOpacity / 100 * strength * 0.28));
             context.fillStyle = memory;
             context.fillRect(originX, originY - coreHeight / 2, Math.max(1, mediaSize.width - originX), coreHeight);
-            context.strokeStyle = rgba(data.neutralColor, 0.35 + 0.45 * strength + 0.18 * proximity);
-            context.lineWidth = 0.8 + 2.2 * strength;
+          }
+          if (settings.showExactLine) {
+            context.save();
+            context.setLineDash(settings.precisionMode ? [5, 4] : []);
+            context.strokeStyle = rgba(data.neutralColor, 0.72 + 0.2 * strength + 0.08 * proximity);
+            context.lineWidth = settings.precisionMode ? 1 : 0.8 + 2.2 * strength;
             context.beginPath();
-            context.moveTo(originX, originY + 0.5);
-            context.lineTo(mediaSize.width, originY + 0.5);
+            context.moveTo(originX, originY);
+            context.lineTo(mediaSize.width, originY);
             context.stroke();
+            context.restore();
           }
           const radius = settings.originMarkerSize * (0.55 + 0.75 * strength);
           if (settings.showOriginMarker) {
@@ -130,6 +150,25 @@ class DarkPoolGexRenderer implements ISeriesPrimitivePaneRenderer {
             context.beginPath();
             context.arc(originX, originY, Math.max(1.5, radius * 0.38), 0, Math.PI * 2);
             context.fill();
+          }
+          if (settings.showLabels) {
+            const date = new Intl.DateTimeFormat("en-US", { month: "numeric", day: "numeric", timeZone: "America/New_York" }).format(new Date(event.executionTimestampMs));
+            const label = settings.labelExtended
+              ? `DP ${formatDarkPoolNotional(event.notional)} · ${date} · ${event.price}`
+              : `DP ${formatDarkPoolNotional(event.notional)} · ${date}`;
+            context.save();
+            context.font = "10px ui-monospace, SFMono-Regular, Menlo, monospace";
+            context.textBaseline = "middle";
+            const width = Math.ceil(context.measureText(label).width) + 10;
+            const left = Math.max(originX + 6, mediaSize.width - width - 4);
+            context.fillStyle = rgba(data.backgroundColor, 0.9);
+            context.fillRect(left, originY - 8, width, 16);
+            context.strokeStyle = rgba(data.neutralColor, 0.72);
+            context.lineWidth = 1;
+            context.strokeRect(left + 0.5, originY - 7.5, width - 1, 15);
+            context.fillStyle = data.neutralColor;
+            context.fillText(label, left + 5, originY);
+            context.restore();
           }
           hits.push({ x: originX, y: originY, event, frame: data.frame, left: originX - radius * 2, right: mediaSize.width, top: originY - Math.max(8, halo / 2), bottom: originY + Math.max(8, halo / 2) });
         }

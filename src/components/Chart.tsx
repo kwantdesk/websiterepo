@@ -299,7 +299,9 @@ import {
 import {
   buildDarkPoolGexFrame,
   DEFAULT_DARK_POOL_GEX_SETTINGS,
+  summarizeDarkPoolGexResearch,
   type DarkPoolGexFrame,
+  type DarkPoolGexInteractionResolution,
   type DarkPoolGexSettings,
 } from "@/lib/darkPoolGex";
 import {
@@ -6032,7 +6034,7 @@ export default function Chart({
         display,
         source,
         mappingMode: source === display ? "direct" : "rolling-affine",
-        historyDays: String(Math.max(1, Math.min(180, indicatorSettings.lookbackDays))),
+        historyDays: String(Math.max(1, Math.min(365, indicatorSettings.lookbackDays))),
         minimumPrintNotional: String(Math.max(0, indicatorSettings.minimumNotional)),
         minimumPrintShares: String(Math.max(0, indicatorSettings.minimumShares)),
         maximumHistoricalPrints: "100000",
@@ -6108,9 +6110,18 @@ export default function Chart({
       settings: indicatorSettings,
       asOfMs: darkPoolGexAsOfMs,
       tickSize: priceFormat.minMove,
+      priceSamples: candles.map((candle) => ({
+        timestampMs: candle.timestamp,
+        open: candle.open,
+        high: candle.high,
+        low: candle.low,
+        close: candle.close,
+        resolution: (["1m", "3m", "5m", "15m", "1h", "4h", "1D", "1W"].includes(String(timeframe)) ? timeframe : "chart") as DarkPoolGexInteractionResolution,
+      })),
     });
-  }, [darkPoolGexAsOfMs, darkPoolGexIndicator, darkPoolGexPayload, darkPoolGexSnapshot, priceFormat.minMove]);
+  }, [candles, darkPoolGexAsOfMs, darkPoolGexIndicator, darkPoolGexPayload, darkPoolGexSnapshot, priceFormat.minMove, timeframe]);
   const darkPoolGexCurrentPrice = candles.at(-1)?.close ?? null;
+  const darkPoolGexResearch = useMemo(() => darkPoolGexFrame ? summarizeDarkPoolGexResearch(darkPoolGexFrame) : null, [darkPoolGexFrame]);
   const darkPoolGexPrimitiveData = useMemo<DarkPoolGexPrimitiveData | null>(() => {
     if (!darkPoolGexIndicator || !darkPoolGexFrame) return null;
     const indicatorSettings = { ...DEFAULT_DARK_POOL_GEX_SETTINGS, ...(darkPoolGexIndicator.settings ?? {}) } as DarkPoolGexSettings;
@@ -6123,8 +6134,9 @@ export default function Chart({
       negativeGexColor: useThemeColors ? settings.downColor : String(darkPoolGexIndicator.settings?.negativeGexColor ?? settings.downColor),
       backgroundColor: settings.backgroundColor,
       currentPrice: darkPoolGexCurrentPrice,
+      timelineMs: candles.map((candle) => candle.timestamp),
     };
-  }, [darkPoolGexCurrentPrice, darkPoolGexFrame, darkPoolGexIndicator, settings.backgroundColor, settings.downColor, settings.gridColor, settings.upColor]);
+  }, [candles, darkPoolGexCurrentPrice, darkPoolGexFrame, darkPoolGexIndicator, settings.backgroundColor, settings.downColor, settings.gridColor, settings.upColor]);
   useEffect(() => {
     darkPoolGexPrimitiveRef.current?.update(darkPoolGexPrimitiveData);
   }, [darkPoolGexPrimitiveData, viewportVersion]);
@@ -11863,8 +11875,10 @@ export default function Chart({
             <>
               <span>{darkPoolGexFrame.sourceTicker}→{darkPoolGexFrame.displayInstrument}</span>
               <span className={darkPoolGexFrame.status === "LIVE" ? "text-primary" : "text-warning"}>{darkPoolGexFrame.status.replaceAll("_", " ")}</span>
-              <span>{darkPoolGexFrame.rawEvents.length}/{darkPoolGexFrame.eligibleEventCount} prints</span>
-              <span>{darkPoolGexFrame.clusters.length} clusters</span>
+              <span>RAW TOP-{darkPoolGexFrame.rawEvents.length} / {darkPoolGexFrame.eligibleEventCount}</span>
+              {darkPoolGexIndicator.settings?.clusterEnabled === true ? <span>{darkPoolGexFrame.clusters.length} derived clusters</span> : null}
+              <span>{darkPoolGexFrame.lookbackMode.replace("-", " ")}</span>
+              {darkPoolGexFrame.status === "MARKET_CLOSED" ? <span>last valid {new Date(darkPoolGexFrame.lastValidSnapshotMs).toLocaleTimeString()}</span> : null}
               <span>direction neutral</span>
             </>
           ) : darkPoolGexLoading ? <span>Loading off-exchange prints…</span> : <span className="text-danger">{darkPoolGexError ?? "Dark Pool (GEX) unavailable"}</span>}
@@ -11873,7 +11887,7 @@ export default function Chart({
       ) : null}
       {darkPoolGexTooltip ? (
         <div
-          className="pointer-events-none absolute z-[65] min-w-[280px] border border-border bg-panel/98 p-2 font-mono text-[8px] shadow-2xl"
+          className="pointer-events-none absolute z-[65] max-h-[70%] min-w-[340px] overflow-hidden border border-border bg-panel/98 p-2 font-mono text-[8px] shadow-2xl"
           style={{
             left: Math.min(Math.max(8, darkPoolGexTooltip.x + 14), Math.max(8, overlaySize.width - 310)),
             top: Math.min(Math.max(34, darkPoolGexTooltip.y + 14), Math.max(34, overlaySize.height - 280)),
@@ -11881,17 +11895,29 @@ export default function Chart({
         >
           {darkPoolGexTooltip.event ? (
             <>
-              <div className="flex items-center justify-between gap-4 border-b border-border pb-1 text-foreground"><span>Dark Pool (GEX)</span><span>OFF EXCHANGE</span></div>
+              <div className="flex items-center justify-between gap-4 border-b border-border pb-1 text-foreground"><span>Dark Pool (GEX) · #{darkPoolGexTooltip.event.rank}</span><span>{darkPoolGexTooltip.event.classification.replaceAll("_", " ")}</span></div>
               <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-1 text-muted">
-                <span>Event time</span><span className="text-foreground">{new Date(darkPoolGexTooltip.event.timestampMs).toLocaleString()}</span>
-                <span>Price</span><span className="text-foreground">{darkPoolGexTooltip.event.price.toFixed(priceFormat.precision)}</span>
+                <span>Execution time</span><span className="text-foreground">{new Date(darkPoolGexTooltip.event.executionTimestampMs).toLocaleString()}</span>
+                <span>Report time</span><span className="text-foreground">{darkPoolGexTooltip.event.reportTimestampMs ? new Date(darkPoolGexTooltip.event.reportTimestampMs).toLocaleString() : "Not supplied"}</span>
+                <span>Observable from</span><span className="text-foreground">{new Date(darkPoolGexTooltip.event.observableTimestampMs).toLocaleString()}</span>
+                <span>Exact stored price</span><span className="text-foreground">{String(darkPoolGexTooltip.event.price)}</span>
+                <span>Display price</span><span className="text-foreground">{darkPoolGexTooltip.event.price.toFixed(priceFormat.precision)}</span>
+                <span>Original print price</span><span className="text-foreground">{String(darkPoolGexTooltip.event.print.rawPrice ?? darkPoolGexTooltip.event.sourcePrice)}</span>
+                {(darkPoolGexTooltip.event.print.corporateActionAdjustmentFactor ?? 1) !== 1 ? <><span>Adjustment</span><span className="text-foreground">×{darkPoolGexTooltip.event.print.corporateActionAdjustmentFactor} · {darkPoolGexTooltip.event.print.corporateAction ?? "Corporate action"}</span></> : null}
                 <span>Notional</span><span className="text-foreground">{darkPoolGexTooltip.event.notional.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })}</span>
                 <span>Shares</span><span className="text-foreground">{darkPoolGexTooltip.event.shares.toLocaleString()}</span>
                 <span>Direction</span><span className="text-foreground">UNKNOWN · neutral</span>
-                <span>Combined importance</span><span className="text-foreground">{(darkPoolGexTooltip.event.combinedImportance * 100).toFixed(1)}%</span>
+                <span>Source / record</span><span className="text-foreground">{darkPoolGexTooltip.event.print.source ?? "QuantData"} · {darkPoolGexTooltip.event.print.recordId ?? darkPoolGexTooltip.event.print.id}</span>
+                <span>TRF / ATS</span><span className="text-foreground">{darkPoolGexTooltip.event.print.trf ?? darkPoolGexTooltip.event.print.venue ?? "Not identified"}</span>
+                <span>Conditions</span><span className="text-foreground">{darkPoolGexTooltip.event.print.tradeConditions?.join(", ") || "None supplied"}</span>
+                <span>Record state</span><span className="text-foreground">{darkPoolGexTooltip.event.print.correctionState ?? "ORIGINAL"} · {darkPoolGexTooltip.event.print.cancellationState ?? "ACTIVE"}</span>
                 <span>Current GEX</span><span className="text-foreground">{darkPoolGexTooltip.event.currentConfluence ? `${darkPoolGexTooltip.event.currentConfluence.role} · ${(darkPoolGexTooltip.event.currentConfluence.confluence * 100).toFixed(1)}%` : "No qualified confluence"}</span>
                 <span>Event-time GEX</span><span className="text-foreground">{darkPoolGexTooltip.event.eventTimeConfluence ? `${darkPoolGexTooltip.event.eventTimeConfluence.role} · ${(darkPoolGexTooltip.event.eventTimeConfluence.confluence * 100).toFixed(1)}%` : "Unavailable / none"}</span>
-                <span>Quality</span><span className="text-foreground">{darkPoolGexTooltip.event.quality}</span>
+                <span>Quality</span><span className="text-foreground">{darkPoolGexTooltip.event.dataQualityBadges.join(" · ")}</span>
+                <span>Reaction resolution</span><span className="text-foreground">{darkPoolGexTooltip.event.reaction?.resolution ?? "Unavailable"}</span>
+                <span>Touches / H-B-R</span><span className="text-foreground">{darkPoolGexTooltip.event.reaction ? `${darkPoolGexTooltip.event.reaction.touchCount} / ${darkPoolGexTooltip.event.reaction.holds}-${darkPoolGexTooltip.event.reaction.breaks}-${darkPoolGexTooltip.event.reaction.reclaims}` : "Unavailable"}</span>
+                <span>Median touch error</span><span className="text-foreground">{darkPoolGexTooltip.event.reaction?.medianTouchError === null || !darkPoolGexTooltip.event.reaction ? "Unavailable" : `${darkPoolGexTooltip.event.reaction.medianTouchError.toFixed(priceFormat.precision + 2)}${darkPoolGexTooltip.event.reaction.supportsTickClaim ? ` · ${darkPoolGexTooltip.event.reaction.medianTouchErrorTicks?.toFixed(2)} ticks` : ` · ${darkPoolGexTooltip.event.reaction.resolution} bars (no tick claim)`}`}</span>
+                <span>Latest outcome</span><span className="text-foreground">{darkPoolGexTooltip.event.reaction?.latestOutcome ?? "NONE"}</span>
               </div>
             </>
           ) : darkPoolGexTooltip.cluster ? (
@@ -11908,16 +11934,38 @@ export default function Chart({
         </div>
       ) : null}
       {darkPoolGexIndicator?.settings?.showInspector === true && darkPoolGexFrame?.rawEvents.length ? (
-        <div className="absolute bottom-10 right-[68px] z-[26] max-h-[36%] w-[min(430px,44%)] overflow-auto border border-border bg-panel/96 font-mono text-[8px] shadow-2xl">
-          <div className="sticky top-0 grid grid-cols-[24px_1fr_1fr_70px] gap-2 border-b border-border bg-panel px-2 py-1 uppercase tracking-[0.08em] text-muted"><span>#</span><span>Price / time</span><span>Notional</span><span>GEX context</span></div>
-          {darkPoolGexFrame.rawEvents.map((event, index) => (
-            <div key={event.id} className="grid grid-cols-[24px_1fr_1fr_70px] gap-2 border-b border-border/45 px-2 py-1 text-foreground">
-              <span>{index + 1}</span>
-              <span>{event.price.toFixed(priceFormat.precision)} · {new Date(event.timestampMs).toLocaleTimeString()}</span>
+        <div className="absolute bottom-10 right-[68px] z-[26] max-h-[42%] w-[min(680px,68%)] overflow-auto border border-border bg-panel/96 font-mono text-[8px] shadow-2xl">
+          <div className="sticky top-0 grid grid-cols-[28px_120px_1fr_80px_86px_78px] gap-2 border-b border-border bg-panel px-2 py-1 uppercase tracking-[0.08em] text-muted"><span>Rank</span><span>Exact price / date</span><span>Notional</span><span>Distance</span><span>Touches H/B/R</span><span>GEX</span></div>
+          {[...darkPoolGexFrame.rawEvents].sort((left, right) => {
+            const mode = String(darkPoolGexIndicator.settings?.sortMode ?? "notional");
+            if (mode === "distance" && darkPoolGexCurrentPrice !== null) return Math.abs(left.price - darkPoolGexCurrentPrice) - Math.abs(right.price - darkPoolGexCurrentPrice);
+            if (mode === "freshness") return right.observableTimestampMs - left.observableTimestampMs;
+            if (mode === "reaction-quality") return (right.reaction?.holds ?? 0) + (right.reaction?.reclaims ?? 0) - (right.reaction?.breaks ?? 0) - ((left.reaction?.holds ?? 0) + (left.reaction?.reclaims ?? 0) - (left.reaction?.breaks ?? 0));
+            return left.rank - right.rank;
+          }).map((event) => (
+            <div key={event.id} className="grid grid-cols-[28px_120px_1fr_80px_86px_78px] gap-2 border-b border-border/45 px-2 py-1 text-foreground">
+              <span>{event.rank}</span>
+              <span>{String(event.price)} · {new Date(event.executionTimestampMs).toLocaleDateString()}</span>
               <span>{event.notional.toLocaleString("en-US", { notation: "compact", style: "currency", currency: "USD" })}</span>
+              <span>{darkPoolGexCurrentPrice === null ? "—" : `${event.price >= darkPoolGexCurrentPrice ? "+" : ""}${(event.price - darkPoolGexCurrentPrice).toFixed(priceFormat.precision)}`}</span>
+              <span>{event.reaction ? `${event.reaction.touchCount} · ${event.reaction.holds}/${event.reaction.breaks}/${event.reaction.reclaims}` : "—"}</span>
               <span className={event.primaryConfluence?.signedExposure && event.primaryConfluence.signedExposure >= 0 ? "text-primary" : event.primaryConfluence ? "text-danger" : "text-muted"}>{event.primaryConfluence ? `${event.primaryConfluence.role} ${(event.primaryConfluence.confluence * 100).toFixed(0)}%` : "NONE"}</span>
             </div>
           ))}
+        </div>
+      ) : null}
+      {darkPoolGexIndicator?.settings?.showReactionResearch === true && darkPoolGexResearch ? (
+        <div className="absolute bottom-10 left-2 z-[26] w-[min(560px,52%)] border border-border bg-panel/96 p-2 font-mono text-[8px] shadow-2xl">
+          <div className="flex items-center justify-between border-b border-border pb-1 uppercase tracking-[0.1em]"><span className="text-foreground">DP Reaction Research</span><span className={darkPoolGexResearch.sufficientSample ? "text-primary" : "text-warning"}>{darkPoolGexResearch.sufficientSample ? "Sample qualified" : `Small sample · minimum ${darkPoolGexFrame?.settings.minimumResearchSamples ?? 10}`}</span></div>
+          <div className="mt-2 grid grid-cols-4 gap-x-3 gap-y-1 text-muted">
+            <span>Levels</span><span className="text-foreground">{darkPoolGexResearch.levelCount}</span><span>Touches</span><span className="text-foreground">{darkPoolGexResearch.touchCount}</span>
+            <span>Median error</span><span className="text-foreground">{darkPoolGexResearch.medianTouchError?.toFixed(priceFormat.precision + 2) ?? "—"}</span><span>Error ticks</span><span className="text-foreground">{darkPoolGexResearch.disclosures.resolution === "tick" ? darkPoolGexResearch.medianTouchErrorTicks?.toFixed(2) ?? "—" : "Not tick-resolved"}</span>
+            <span>Hold rate</span><span className="text-foreground">{darkPoolGexResearch.holdRate === null ? "—" : `${(darkPoolGexResearch.holdRate * 100).toFixed(1)}%`}</span><span>Break rate</span><span className="text-foreground">{darkPoolGexResearch.breakRate === null ? "—" : `${(darkPoolGexResearch.breakRate * 100).toFixed(1)}%`}</span>
+            <span>Reclaim rate</span><span className="text-foreground">{darkPoolGexResearch.reclaimRate === null ? "—" : `${(darkPoolGexResearch.reclaimRate * 100).toFixed(1)}%`}</span><span>Median reaction</span><span className="text-foreground">{darkPoolGexResearch.medianReaction?.toFixed(priceFormat.precision) ?? "—"}</span>
+            <span>Median MFE / MAE</span><span className="text-foreground">{darkPoolGexResearch.medianMfe?.toFixed(priceFormat.precision) ?? "—"} / {darkPoolGexResearch.medianMae?.toFixed(priceFormat.precision) ?? "—"}</span><span>$1B+ levels / touches</span><span className="text-foreground">{darkPoolGexResearch.billionPlus.levels} / {darkPoolGexResearch.billionPlus.touches}</span>
+            <span>Fresh first touch</span><span className="text-foreground">{darkPoolGexResearch.freshFirstTouch.levels} / {darkPoolGexResearch.freshFirstTouch.touches}</span><span>DP + KING / no GEX</span><span className="text-foreground">{darkPoolGexResearch.withKing.levels} / {darkPoolGexResearch.withoutGex.levels}</span>
+          </div>
+          <div className="mt-2 border-t border-border pt-1 leading-4 text-muted">Tolerance {darkPoolGexResearch.disclosures.touchTolerance} · break {darkPoolGexResearch.disclosures.breakThreshold} · reaction {darkPoolGexResearch.disclosures.reactionThreshold} · horizon {Math.round(darkPoolGexResearch.disclosures.postTouchHorizonMs / 60_000)}m · resolution {darkPoolGexResearch.disclosures.resolution} · {darkPoolGexResearch.disclosures.sessionFilter} · {darkPoolGexResearch.sampleCount} level samples</div>
         </div>
       ) : null}
       {darkPoolMapIndicator ? (
