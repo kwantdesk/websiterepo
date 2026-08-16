@@ -1097,7 +1097,7 @@ function downloadLevelFile(content: string, filename: string, mimeType: string) 
 
 function displayMarketSource(broker: string) {
   if (broker === "Databento") return "CME";
-  if (broker === "Market Index") return "CBOE";
+  if (broker === "Market Index") return "US";
   return broker;
 }
 
@@ -1762,7 +1762,16 @@ const defaultWatchlistSections: WatchlistSection[] = [
   {
     id: "macro",
     name: "Volatility",
-    symbols: MARKET_INDEX_DEFINITIONS.map((index) => makeWatchlistKey(index.symbol, "Market Index")),
+    symbols: MARKET_INDEX_DEFINITIONS
+      .filter((instrument) => instrument.group === "Volatility Indices")
+      .map((instrument) => makeWatchlistKey(instrument.symbol, "Market Index")),
+  },
+  {
+    id: "options-underlyings",
+    name: "Options Underlyings",
+    symbols: MARKET_INDEX_DEFINITIONS
+      .filter((instrument) => instrument.group === "Options Underlyings")
+      .map((instrument) => makeWatchlistKey(instrument.symbol, "Market Index")),
   },
 ];
 
@@ -6831,9 +6840,20 @@ export default function KwantifyWorkspace({
         Array.isArray(section?.symbols)
         && section.symbols.some((key: unknown) => typeof key === "string" && key.startsWith("Market Index::")),
       );
-      return hasMarketIndices
+      const hasOptionsUnderlyings = saved.some((section) =>
+        Array.isArray(section?.symbols)
+        && section.symbols.some((key: unknown) =>
+          typeof key === "string"
+          && MARKET_INDEX_DEFINITIONS
+            .filter((instrument) => instrument.group === "Options Underlyings")
+            .some((instrument) => key === makeWatchlistKey(instrument.symbol, "Market Index"))),
+      );
+      const migrated = hasMarketIndices
         ? saved
         : [...saved, defaultWatchlistSections.find((section) => section.id === "macro")!];
+      return hasOptionsUnderlyings
+        ? migrated
+        : [...migrated, defaultWatchlistSections.find((section) => section.id === "options-underlyings")!];
     } catch {
       return defaultWatchlistSections;
     }
@@ -7407,11 +7427,13 @@ export default function KwantifyWorkspace({
       broker: "Databento",
       items: databentoOptions.map((instrument) => [instrument.symbol, `${instrument.label} · ${instrument.group}`]),
     },
-    {
-      category: "Volatility Indices",
+    ...(["Options Underlyings", "Volatility Indices"] as const).map((group) => ({
+      category: group,
       broker: "Market Index",
-      items: MARKET_INDEX_DEFINITIONS.map((index) => [index.symbol, `${index.displayName} · ${index.exchange}`]),
-    },
+      items: MARKET_INDEX_DEFINITIONS
+        .filter((instrument) => instrument.group === group)
+        .map((instrument) => [instrument.symbol, `${instrument.displayName} · ${instrument.exchange}`]),
+    })),
   ];
   const watchlistDetails: Record<string, { price: string; change: string; up: boolean }> = {
     NAS100: { price: "18,547.20", change: "+0.34%", up: true },

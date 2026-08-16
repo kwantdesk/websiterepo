@@ -21,9 +21,9 @@ export async function GET(request: Request) {
       .split(",")
       .map((symbol) => symbol.trim().toUpperCase())
       .filter((symbol, index, rows) => Boolean(getMarketIndexDefinition(symbol)) && rows.indexOf(symbol) === index)
-      .slice(0, 8);
+      .slice(0, 24);
     if (!symbols.length) {
-      return NextResponse.json({ error: "At least one supported market index is required." }, { status: 400 });
+      return NextResponse.json({ error: "At least one supported market instrument is required." }, { status: 400 });
     }
     try {
       const snapshots = await fetchMarketIndexSnapshots(symbols);
@@ -47,7 +47,7 @@ export async function GET(request: Request) {
   const symbol = url.searchParams.get("symbol")?.trim().toUpperCase() ?? "";
   const timeframe = url.searchParams.get("timeframe")?.trim() || "5m";
   if (!getMarketIndexDefinition(symbol)) {
-    return NextResponse.json({ error: "A supported market index is required." }, { status: 400 });
+    return NextResponse.json({ error: "A supported market instrument is required." }, { status: 400 });
   }
   const now = Date.now();
   const requestedFrom = Number(url.searchParams.get("from"));
@@ -65,7 +65,7 @@ export async function GET(request: Request) {
       {
         candles,
         symbol,
-        source: hasIntradayMarketIndexHistoryAccess() ? "CBOE" : "CBOE EOD",
+        source: hasIntradayMarketIndexHistoryAccess() ? "Massive" : "CBOE EOD",
         from,
         to,
       },

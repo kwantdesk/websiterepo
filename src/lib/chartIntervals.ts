@@ -223,12 +223,11 @@ export function supportsChartInterval(value: string, broker: string) {
   const option = getChartInterval(value);
   if (!option) return false;
   if (broker === "Databento") return true;
-  // The reliable Market Index history path is the official Cboe daily
-  // archive. Live index snapshots update the active daily candle, but they do
-  // not constitute an intraday OHLC archive. Do not offer minute/hour views
-  // that would either fail or imply made-up historical bars.
+  // Options underlyings and indices use Massive aggregates for real intraday
+  // history. Event-built futures intervals remain intentionally unavailable.
+  // VIX still has its official Cboe daily fallback when Massive is absent.
   if (broker === "Market Index") {
-    return ["1D", "1W", "1M"].includes(value);
+    return ["1m", "5m", "15m", "30m", "1h", "2h", "4h", "1D", "1W", "1M"].includes(value);
   }
   if (option.futuresOnly) return false;
   if (!CHART_INTERVAL_OPTIONS.some((configured) => configured.id === value)) return false;

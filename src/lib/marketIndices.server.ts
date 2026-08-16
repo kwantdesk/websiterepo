@@ -10,7 +10,7 @@ type JsonRecord = Record<string, unknown>;
 export type MarketIndexSnapshot = {
   symbol: string;
   broker: "Market Index";
-  exchange: "CBOE";
+  exchange: "CBOE" | "NASDAQ" | "NYSE ARCA";
   lastPrice: number;
   openPrice: number;
   change: number;
@@ -70,7 +70,7 @@ function timeframeToAggregate(timeframe: string) {
     "1M": { multiplier: 1, timespan: "month" },
   };
   const resolution = resolutions[timeframe];
-  if (!resolution) throw new Error(`Market indices do not support ${timeframe}.`);
+  if (!resolution) throw new Error(`Market instruments do not support ${timeframe}.`);
   return resolution;
 }
 
@@ -233,12 +233,12 @@ export async function fetchMarketIndexCandles(options: {
   to: number;
 }): Promise<Candle[]> {
   const definition = getMarketIndexDefinition(options.symbol);
-  if (!definition) throw new Error(`${options.symbol} is not a supported market index.`);
+  if (!definition) throw new Error(`${options.symbol} is not a supported market instrument.`);
   const canUseOfficialVixArchive = definition.symbol === "VIX"
     && ["1D", "1W", "1M"].includes(options.timeframe);
   if (!hasIntradayMarketIndexHistoryAccess()) {
     if (definition.symbol !== "VIX") {
-      throw new Error(`${definition.symbol} requires an indices-entitled MASSIVE_API_KEY.`);
+      throw new Error(`${definition.symbol} requires a compatible MASSIVE_API_KEY entitlement.`);
     }
     return fetchCboeVixEodCandles(options);
   }
@@ -303,28 +303,46 @@ export async function fetchMarketIndexSnapshots(symbols: string[]) {
   const results = await Promise.allSettled(unresolved.map(async (symbol): Promise<MarketIndexSnapshot | null> => {
     const definition = getMarketIndexDefinition(symbol);
     if (!definition) return null;
-    const endpoint = `${MASSIVE_API_BASE}/v3/snapshot/indices?ticker=${encodeURIComponent(definition.providerTicker)}`;
+    const endpoint = definition.providerKind === "INDEX"
+      ? `${MASSIVE_API_BASE}/v3/snapshot/indices?ticker=${encodeURIComponent(definition.providerTicker)}`
+      : `${MASSIVE_API_BASE}/v2/snapshot/locale/us/markets/stocks/tickers/${encodeURIComponent(definition.providerTicker)}`;
     const payload = await fetchMassiveJson(endpoint);
-    const quote = parseMassiveCashLevelOne(definition.symbol, "INDEX", payload);
+    const quote = parseMassiveCashLevelOne(definition.symbol, definition.providerKind, payload);
     if (!quote) return null;
 
-    const result = Array.isArray(payload.results) && isRecord(payload.results[0])
-      ? payload.results[0]
-      : null;
+    const result = definition.providerKind === "INDEX"
+      ? Array.isArray(payload.results) && isRecord(payload.results[0])
+        ? payload.results[0]
+        : null
+      : isRecord(payload.ticker)
+        ? payload.ticker
+        : null;
     const session = result && isRecord(result.session) ? result.session : null;
+    const previousDay = result && isRecord(result.prevDay ?? result.previousDay)
+      ? result.prevDay ?? result.previousDay
+      : null;
+    const currentDay = result && isRecord(result.day)
+      ? result.day
+      : null;
     const previousClose = finiteNumber(
       session?.previous_close
       ?? session?.previousClose
+      ?? (isRecord(previousDay) ? previousDay.c ?? previousDay.close : null)
       ?? result?.previous_close
       ?? result?.previousClose,
     );
-    const sessionOpen = finiteNumber(session?.open ?? result?.open);
+    const sessionOpen = finiteNumber(
+      session?.open
+      ?? (isRecord(currentDay) ? currentDay.o ?? currentDay.open : null)
+      ?? result?.open,
+    );
     const openPrice = previousClose ?? sessionOpen ?? quote.lastPrice;
     const change = quote.lastPrice - openPrice;
-    const suppliedChange = finiteNumber(session?.change ?? result?.change);
+    const suppliedChange = finiteNumber(session?.change ?? result?.todaysChange ?? result?.change);
     const suppliedChangePercent = finiteNumber(
       session?.change_percent
       ?? session?.changePercent
+      ?? result?.todaysChangePerc
       ?? result?.change_percent
       ?? result?.changePercent,
     );
@@ -339,7 +357,9 @@ export async function fetchMarketIndexSnapshots(symbols: string[]) {
       changePercent: suppliedChangePercent ?? (openPrice ? (change / openPrice) * 100 : 0),
       timestamp: quote.asOfMs,
       delayed: quote.delayed,
-      marketOpen: quote.marketOpen,
+      marketOpen: definition.providerKind === "STOCK"
+        ? newYorkMarketOpen(quote.asOfMs)
+        : quote.marketOpen,
       provider: "Massive",
     };
   }));
