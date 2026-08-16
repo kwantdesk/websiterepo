@@ -77,7 +77,7 @@ export function resolveSyncedChartCandle(sourceTimestampMs: number, candles: Can
 
 /**
  * Preserve the pointer's percentage displacement from the source candle when
- * projecting it onto a differently priced GAM VUE instrument.
+ * projecting it onto a differently priced GEX VUE instrument.
  */
 export function resolveEquivalentCrosshairPrice(
   sourcePrice: number,

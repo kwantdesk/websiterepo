@@ -40,8 +40,8 @@ export default function manifest(): MetadataRoute.Manifest {
         icons: [{ src: "/icons/kwantdesk-app-192.png", sizes: "192x192" }],
       },
       {
-        name: "Gam Vue",
-        short_name: "Gam Vue",
+        name: "GEX Vue",
+        short_name: "GEX Vue",
         url: "/gamvue",
         icons: [{ src: "/icons/kwantdesk-app-192.png", sizes: "192x192" }],
       },

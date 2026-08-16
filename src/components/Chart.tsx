@@ -12682,13 +12682,13 @@ export default function Chart({
             style={toolbarButtonStyle}
             title={crosshairSyncScope === "gamvue"
               ? crosshairSyncEnabled
-                ? "Universal GAM VUE crosshair on: equivalent prices move together"
-                : "Link equivalent prices across every GAM VUE chart"
+                ? "Universal GEX VUE crosshair on: equivalent prices move together"
+                : "Link equivalent prices across every GEX VUE chart"
               : crosshairSyncEnabled
                 ? "Linked crosshair on: matching instruments move together"
                 : "Link the crosshair across charts using the same instrument"}
             aria-label={crosshairSyncScope === "gamvue"
-              ? "Link equivalent prices across GAM VUE charts"
+              ? "Link equivalent prices across GEX VUE charts"
               : "Link crosshair across matching charts"}
             aria-pressed={crosshairSyncEnabled}
           >

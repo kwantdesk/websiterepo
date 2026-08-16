@@ -88,7 +88,7 @@ const navItems: Array<{
 }> = [
   { key: "home", href: "/", label: "Home", title: "Home", icon: Home },
   { key: "charts", href: "/charts", label: "Charts", title: "Charts", icon: LineChart },
-  { key: "gamvue", href: "/gamvue", label: "GAM VUE", title: "Gamma charting", icon: BarChart3 },
+  { key: "gamvue", href: "/gamvue", label: "GEX VUE", title: "GEX charting", icon: BarChart3 },
   { key: "gamma", href: "/gamma", label: "GAMMA", title: "Options Flow Gamma", icon: Crosshair },
   { key: "gexmap", href: "/gexmap", label: "GEX MAP", title: "GEX Map", icon: ScanLine },
   { key: "liqmap", href: "/liqmap", label: "LIQ MAP", title: "Liquidity Heatmap", icon: Waves },

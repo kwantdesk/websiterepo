@@ -914,7 +914,7 @@ const KWANTBOT_MESSAGES_STORAGE_KEY = "kwantdesk-kwantbot-messages";
 const LIQUIDITY_MAP_INSTRUMENT_STORAGE_KEY = "kwantdesk:liquidity-map-instrument:v1";
 const BOTTOM_WORKSPACE_SECTIONS = [
   { id: "charts" as const, label: "Charts" },
-  { id: "gamvue" as const, label: "Gam Vue" },
+  { id: "gamvue" as const, label: "GEX Vue" },
   { id: "gamma" as const, label: "Gamma" },
   { id: "levelz" as const, label: "LEVELZ" },
   { id: "gexmap" as const, label: "GEXMAP" },
@@ -14769,7 +14769,7 @@ export default function KwantifyWorkspace({
 
         {chartSurfaceActive || visitedWorkspaceSections.has("charts") ? (
         <ReactActivity mode={chartSurfaceActive ? "visible" : "hidden"}>
-        <WorkspaceFailureBoundary resetKey={`charting-${chartWorkspaceScope}`} label={chartWorkspaceScope === "gamma" ? "Gam Vue charting" : "Charts"}>
+        <WorkspaceFailureBoundary resetKey={`charting-${chartWorkspaceScope}`} label={chartWorkspaceScope === "gamma" ? "GEX Vue charting" : "Charts"}>
         {!preferencesReady ? (
           workspaceLoader("Opening charts", "Restoring your saved workspace before the market feed starts.")
         ) : <div className="min-h-0 flex-1 overflow-hidden">
