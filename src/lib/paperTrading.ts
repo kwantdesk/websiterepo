@@ -378,6 +378,52 @@ export function paperProjectedPnl(
     * Math.max(0, finite(quantity));
 }
 
+export type PaperMarkQuote = {
+  symbol: string;
+  bid: number;
+  ask: number;
+  timestamp: number;
+};
+
+export const PAPER_MARK_QUOTE_EVENT = "kwantdesk:paper-mark-quote";
+
+/**
+ * Resolve the executable mark for an open position. A long can be closed at
+ * bid and a short can be closed at ask, so every P&L surface must use this
+ * same side-aware mark rather than the candle close or midpoint.
+ */
+export function paperPositionMarkPrice(
+  position: Pick<PaperPosition, "symbol" | "side" | "markPrice">,
+  quote?: PaperMarkQuote | null,
+  now = Date.now(),
+  maximumQuoteAgeMs = 5_000,
+) {
+  const quoteMatches = quote
+    && normalizePaperSymbol(quote.symbol) === normalizePaperSymbol(position.symbol)
+    && Number.isFinite(quote.bid)
+    && Number.isFinite(quote.ask)
+    && quote.bid > 0
+    && quote.ask > 0
+    && quote.bid <= quote.ask
+    && now - quote.timestamp <= maximumQuoteAgeMs;
+  if (quoteMatches) return position.side === "buy" ? quote.bid : quote.ask;
+  return finite(position.markPrice);
+}
+
+export function paperPositionLivePnl(
+  position: Pick<PaperPosition, "symbol" | "side" | "entryPrice" | "markPrice" | "remainingQuantity">,
+  quote?: PaperMarkQuote | null,
+  now = Date.now(),
+) {
+  return paperProjectedPnl(
+    position.symbol,
+    position.side,
+    position.entryPrice,
+    paperPositionMarkPrice(position, quote, now),
+    position.remainingQuantity,
+  );
+}
+
 export function paperOrderQuantity(symbol: string, value: unknown, fallback = 1) {
   const quantity = positive(value, fallback);
   return paperContractSpec(symbol).isFutures ? Math.max(1, Math.floor(quantity)) : quantity;

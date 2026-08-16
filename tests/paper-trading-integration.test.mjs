@@ -72,6 +72,17 @@ test("the chart execution bridge rejects incoherent books instead of filling awa
   assert.match(workspace, /ask: bookIsCoherent \? snapPaperPrice\(pane\.symbol, rawAsk\) : mid/);
 });
 
+test("chart order lines and the Trade panel share one executable-mark P&L calculation", () => {
+  assert.match(engine, /export function paperPositionMarkPrice\(/);
+  assert.match(engine, /position\.side === "buy" \? quote\.bid : quote\.ask/);
+  assert.match(engine, /export function paperPositionLivePnl\(/);
+  assert.match(workspace, /return paperPositionLivePnl\(position, quote\)/);
+  assert.match(workspace, /new CustomEvent\(PAPER_MARK_QUOTE_EVENT, \{ detail: executionQuote \}\)/);
+  assert.match(chart, /paperPositionLivePnl\(\{/);
+  assert.match(chart, /paperPositionOverlayPrimitiveRef\.current\?\.updateMarketQuote\(detail\)/);
+  assert.doesNotMatch(chart, /updateMarkPrice\(candle\.close\)/);
+});
+
 test("futures contract sizing covers the principal CME products", () => {
   for (const symbol of ["MNQ", "NQ", "MES", "ES", "M2K", "RTY", "MYM", "YM", "MGC", "GC", "MCL", "CL", "MBT", "BTC", "MET", "ETH"]) {
     assert.match(engine, new RegExp(`\\b${symbol}:`));
@@ -279,13 +290,15 @@ test("trade panel reports live open P&L and today's realized P&L instead of rece
   assert.match(workspace, /Daily P&amp;L/);
   assert.match(workspace, /publishLiveExecutionQuote\(quote\)/);
   assert.match(workspace, /liveExecutionQuotesBySymbol\.set\(normalizePaperSymbol\(quote\.symbol\), quote\)/);
-  assert.match(workspace, /position\.side === "buy" \? quote\.bid : quote\.ask/);
+  assert.match(engine, /position\.side === "buy" \? quote\.bid : quote\.ask/);
+  assert.match(workspace, /paperPositionLivePnl\(position, quote\)/);
   assert.match(workspace, /paperExecutionTrackedSymbols\.has\(normalizePaperSymbol\(pane\.symbol\)\)/);
   assert.match(workspace, /function LivePaperPositionPnl/);
   assert.match(workspace, /function LivePaperOpenPnl/);
   assert.match(workspace, /<LivePaperOpenPnl positions=\{selectedPaperOpenPositions\} \/>/);
-  assert.match(chart, /paperPositionOverlayPrimitiveRef\.current\?\.updateMarkPrice\(candle\.close\)/);
-  assert.match(chart, /updateMarkPrice\(price: number\)/);
+  assert.match(chart, /paperPositionOverlayPrimitiveRef\.current\?\.updateMarketQuote\(detail\)/);
+  assert.match(chart, /updateMarketQuote\(quote: PaperMarkQuote\)/);
+  assert.doesNotMatch(chart, /updateMarkPrice\(candle\.close\)/);
   assert.match(chart, /const renderedLabel = livePnl === null/);
   assert.doesNotMatch(workspace, /Recent fills/);
 });

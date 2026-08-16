@@ -350,10 +350,13 @@ import { isOptionsFuturesRatioSane } from "@/lib/optionsFlow";
 import type { GexBotFlowPayload } from "@/lib/gexBotFlow";
 import {
   normalizePaperSymbol,
+  paperPositionLivePnl,
   paperContractSpec,
   paperFillCandleTimestamp,
   paperProjectedPnl,
+  PAPER_MARK_QUOTE_EVENT,
   snapPaperPrice,
+  type PaperMarkQuote,
   type PaperProtectionUpdate,
   type PaperPosition,
   type PaperTradeFill,
@@ -1442,8 +1445,11 @@ type PaperPositionOverlayRenderLevel = {
     side: "buy" | "sell";
     quantity: number;
     entryPrice: number;
+    fallbackMarkPrice: number;
   };
 };
+
+type PaperOverlayQuoteEventDetail = PaperMarkQuote & { paneId: string };
 
 function paperPositionSizeLabel(side: "buy" | "sell", quantity: number) {
   const absoluteQuantity = Math.max(0, Math.abs(quantity));
@@ -1472,15 +1478,14 @@ class PaperPositionOverlayRenderer implements ISeriesPrimitivePaneRenderer {
       for (const level of this.primitive.levels()) {
         const y = series.priceToCoordinate(level.price);
         if (y === null || y < -labelHeight || y > mediaSize.height + labelHeight) continue;
-        const markPrice = this.primitive.markPrice();
-        const livePnl = level.kind === "entry" && level.livePosition && markPrice !== null
-          ? paperProjectedPnl(
-              level.livePosition.symbol,
-              level.livePosition.side,
-              level.livePosition.entryPrice,
-              markPrice,
-              level.livePosition.quantity,
-            )
+        const livePnl = level.kind === "entry" && level.livePosition
+          ? paperPositionLivePnl({
+              symbol: level.livePosition.symbol,
+              side: level.livePosition.side,
+              entryPrice: level.livePosition.entryPrice,
+              markPrice: level.livePosition.fallbackMarkPrice,
+              remainingQuantity: level.livePosition.quantity,
+            }, this.primitive.marketQuote())
           : null;
         const renderedLabel = livePnl === null || !level.livePosition
           ? level.label
@@ -1565,7 +1570,7 @@ class PaperPositionOverlayPrimitive implements ISeriesPrimitive<Time> {
   private requestRedraw: (() => void) | null = null;
   private renderLevels: PaperPositionOverlayRenderLevel[] = [];
   private chartBackground = "#050608";
-  private liveMarkPrice: number | null = null;
+  private liveMarketQuote: PaperMarkQuote | null = null;
   private readonly overlayView = new PaperPositionOverlayView(this);
 
   attached(param: SeriesAttachedParameter<Time, "Candlestick">) {
@@ -1584,15 +1589,20 @@ class PaperPositionOverlayPrimitive implements ISeriesPrimitive<Time> {
     this.requestRedraw?.();
   }
 
-  updateMarkPrice(price: number) {
-    if (!Number.isFinite(price) || price <= 0 || this.liveMarkPrice === price) return;
-    this.liveMarkPrice = price;
+  updateMarketQuote(quote: PaperMarkQuote) {
+    if (!Number.isFinite(quote.bid) || !Number.isFinite(quote.ask) || quote.bid <= 0 || quote.ask <= 0) return;
+    if (
+      this.liveMarketQuote?.bid === quote.bid
+      && this.liveMarketQuote.ask === quote.ask
+      && this.liveMarketQuote.timestamp === quote.timestamp
+    ) return;
+    this.liveMarketQuote = quote;
     this.requestRedraw?.();
   }
 
   series() { return this.candleSeries; }
   levels() { return this.renderLevels; }
-  markPrice() { return this.liveMarkPrice; }
+  marketQuote() { return this.liveMarketQuote; }
   backgroundColor() { return this.chartBackground; }
   paneViews() { return [this.overlayView]; }
 }
@@ -3081,7 +3091,6 @@ export default function Chart({
           low: candle.low,
           close: candle.close,
         });
-        paperPositionOverlayPrimitiveRef.current?.updateMarkPrice(candle.close);
         footprintPrimitiveRef.current?.updateLiveCandle({
           time: candleTime as Time,
           timestamp: candle.timestamp,
@@ -11260,17 +11269,8 @@ export default function Chart({
     && normalizePaperSymbol(position.symbol) === normalizePaperSymbol(instrument));
   const formatPaperMoney = (value: number) =>
     `${value > 0 ? "+" : value < 0 ? "-" : ""}$${Math.abs(value).toFixed(2)}`;
-  const paperMarkPrice = candles.at(-1)?.close ?? null;
   const paperOverlayLevels = visiblePaperPositions.flatMap((position) => {
-    const livePositionPnl = paperMarkPrice === null
-      ? position.unrealizedPnl
-      : paperProjectedPnl(
-          position.symbol,
-          position.side,
-          position.entryPrice,
-          paperMarkPrice,
-          position.remainingQuantity,
-        );
+    const livePositionPnl = paperPositionLivePnl(position);
     const entry = [{
       id: `${position.id}-entry`,
       kind: "entry" as const,
@@ -11322,15 +11322,7 @@ export default function Chart({
         })()
       : level.position.remainingQuantity;
     const projectedPnl = level.kind === "entry"
-      ? (paperMarkPrice === null
-          ? level.position.unrealizedPnl
-          : paperProjectedPnl(
-              level.position.symbol,
-              level.position.side,
-              level.position.entryPrice,
-              paperMarkPrice,
-              level.position.remainingQuantity,
-            ))
+      ? paperPositionLivePnl(level.position)
       : paperProjectedPnl(
           level.position.symbol,
           level.position.side,
@@ -11389,6 +11381,7 @@ export default function Chart({
         side: level.position.side,
         quantity: level.position.remainingQuantity,
         entryPrice: level.position.entryPrice,
+        fallbackMarkPrice: level.position.markPrice,
       } : undefined,
     }));
     if (paperDraftOverlayLevel) {
@@ -11401,9 +11394,18 @@ export default function Chart({
       });
     }
     primitive.update(levels, settings.backgroundColor);
-    const latestMark = latestCandleRef.current?.close ?? candles.at(-1)?.close;
-    if (latestMark) primitive.updateMarkPrice(latestMark);
   }, [candles, onClosePaperPosition, onUpdatePaperProtection, paperDraftOverlayLevel, paperOverlayLevels, settings.backgroundColor, settings.downColor, settings.upColor]);
+
+  useEffect(() => {
+    if (!liveCandleEventKey) return;
+    const receive = (event: Event) => {
+      const detail = (event as CustomEvent<PaperOverlayQuoteEventDetail>).detail;
+      if (!detail || detail.paneId !== liveCandleEventKey) return;
+      paperPositionOverlayPrimitiveRef.current?.updateMarketQuote(detail);
+    };
+    window.addEventListener(PAPER_MARK_QUOTE_EVENT, receive);
+    return () => window.removeEventListener(PAPER_MARK_QUOTE_EVENT, receive);
+  }, [liveCandleEventKey]);
   const matchingPaperFills = paperFills
     .filter((fill) => normalizePaperSymbol(fill.symbol) === normalizePaperSymbol(instrument));
   const constrainedPaperProtectionPrice = (

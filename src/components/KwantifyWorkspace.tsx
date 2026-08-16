@@ -191,7 +191,10 @@ import {
   paperContractSpec,
   paperOrderQuantity,
   paperPointValue,
+  paperPositionLivePnl,
+  paperPositionMarkPrice,
   paperProjectedPnl,
+  PAPER_MARK_QUOTE_EVENT,
   paperTickSize,
   parseLeverage,
   placePaperOrder,
@@ -547,25 +550,15 @@ function livePaperPositionMark(
   quotesBySymbol: ReadonlyMap<string, ChartExecutionQuote>,
 ) {
   const quote = quotesBySymbol.get(normalizePaperSymbol(position.symbol)) ?? null;
-  if (
-    quote
-    && Date.now() - quote.timestamp <= 5_000
-    && normalizePaperSymbol(quote.symbol) === normalizePaperSymbol(position.symbol)
-  ) return position.side === "buy" ? quote.bid : quote.ask;
-  return position.markPrice;
+  return paperPositionMarkPrice(position, quote);
 }
 
 function livePaperPositionPnl(
   position: PaperPosition,
   quotesBySymbol: ReadonlyMap<string, ChartExecutionQuote>,
 ) {
-  return paperProjectedPnl(
-    position.symbol,
-    position.side,
-    position.entryPrice,
-    livePaperPositionMark(position, quotesBySymbol),
-    position.remainingQuantity,
-  );
+  const quote = quotesBySymbol.get(normalizePaperSymbol(position.symbol)) ?? null;
+  return paperPositionLivePnl(position, quote);
 }
 
 function LivePaperPositionPnl({ position }: { position: PaperPosition }) {
@@ -5904,14 +5897,16 @@ function WorkspaceChartPane({
           && rawBid <= mid + tickSize
           && rawAsk >= mid - tickSize
           && rawAsk - rawBid <= tickSize * 8;
-        onLiveExecutionQuote({
+        const executionQuote = {
           paneId: pane.id,
           symbol: pane.symbol,
           bid: bookIsCoherent ? snapPaperPrice(pane.symbol, rawBid) : mid,
           ask: bookIsCoherent ? snapPaperPrice(pane.symbol, rawAsk) : mid,
           mid,
           timestamp: tickTimestamp,
-        });
+        } satisfies ChartExecutionQuote;
+        onLiveExecutionQuote(executionQuote);
+        window.dispatchEvent(new CustomEvent(PAPER_MARK_QUOTE_EVENT, { detail: executionQuote }));
       }
       pendingLiveTicksRef.current.push({
         mid: price.mid,
