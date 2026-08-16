@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Crown } from "lucide-react";
+import { Star } from "lucide-react";
 import type { GexCalCell, GexCalMatrix } from "@/lib/gexCalendar";
 
 const ROW_HEIGHT = 30;
@@ -16,7 +16,7 @@ type Props = {
   selected: GexCalCell | null;
   onSelect: (cell: GexCalCell) => void;
   onOpen: (cell: GexCalCell) => void;
-  showKings: boolean;
+  showStars: boolean;
 };
 
 const compact = (value: number) => {
@@ -29,7 +29,7 @@ const compact = (value: number) => {
   return value.toLocaleString(undefined, { maximumFractionDigits: 1 });
 };
 
-function GexCalendarMatrix({ matrix, differenceMode, normalization, selected, onSelect, onOpen, showKings }: Props) {
+function GexCalendarMatrix({ matrix, differenceMode, normalization, selected, onSelect, onOpen, showStars }: Props) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const headerTrackRef = useRef<HTMLDivElement>(null);
   const cellWidthRef = useRef(MIN_CELL_WIDTH);
@@ -52,7 +52,7 @@ function GexCalendarMatrix({ matrix, differenceMode, normalization, selected, on
     nextValues.sort((a, b) => a - b);
     return { values: nextValues, byKey: nextByKey, columnMax: nextColumnMax, rowMax: nextRowMax };
   }, [differenceMode, matrix.cells]);
-  const kingKey = matrix.globalKing ? `${matrix.globalKing.strike}:${matrix.globalKing.expiration}` : "";
+  const starKey = matrix.globalStar ? `${matrix.globalStar.strike}:${matrix.globalStar.expiration}` : "";
 
   useEffect(() => {
     const node = viewportRef.current;
@@ -143,7 +143,7 @@ function GexCalendarMatrix({ matrix, differenceMode, normalization, selected, on
                 const value = cell ? (differenceMode ? cell.change : cell.value) : null;
                 const magnitude = value === null ? 0 : scale(Math.abs(value ?? 0), expiration, strike);
                 const positive = (value ?? 0) >= 0;
-                const isKing = showKings && `${strike}:${expiration}` === kingKey;
+                const isStar = showStars && `${strike}:${expiration}` === starKey;
                 const isSelected = selected?.strike === strike && selected.expiration === expiration;
                 return <button
                   key={expiration}
@@ -160,11 +160,11 @@ function GexCalendarMatrix({ matrix, differenceMode, normalization, selected, on
                     height: ROW_HEIGHT,
                     color: cell ? "var(--foreground)" : undefined,
                     background: cell ? `color-mix(in srgb, ${positive ? "var(--candle-up)" : "var(--candle-down)"} ${Math.round(10 + magnitude * 76)}%, var(--background))` : undefined,
-                    boxShadow: isKing ? "inset 0 0 0 2px var(--primary), 0 0 12px color-mix(in srgb, var(--primary) 42%, transparent)" : undefined,
+                    boxShadow: isStar ? "inset 0 0 0 2px var(--primary), 0 0 12px color-mix(in srgb, var(--primary) 42%, transparent)" : undefined,
                   }}
                   title={cell ? `${expiration} · ${strike}\n${compact(value ?? 0)}` : "Missing provider cell"}
                 >
-                  {isKing ? <Crown className="mr-1 h-3 w-3 text-primary" /> : null}
+                  {isStar ? <Star className="mr-1 h-3 w-3 fill-current text-primary" /> : null}
                   {cell ? compact(value ?? 0) : "—"}
                 </button>;
               })}

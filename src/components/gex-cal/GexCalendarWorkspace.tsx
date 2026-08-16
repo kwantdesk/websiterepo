@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, Bell, CalendarClock, ChevronLeft, ChevronRight, Crown, Download, ExternalLink, HelpCircle, Pause, Play, RefreshCw, Search, Settings2, SlidersHorizontal } from "lucide-react";
+import { AlertTriangle, Bell, CalendarClock, ChevronLeft, ChevronRight, Download, ExternalLink, HelpCircle, Pause, Play, RefreshCw, Search, Settings2, SlidersHorizontal, Star } from "lucide-react";
 import GexCalendarMatrix from "@/components/gex-cal/GexCalendarMatrix";
 import KwantLoader from "@/components/KwantLoader";
 import KwantSelect from "@/components/ui/KwantSelect";
@@ -21,7 +21,7 @@ type Settings = {
   normalization: "GLOBAL" | "COLUMN" | "ROW" | "PERCENTILE";
   differenceMode: boolean;
   baselineMode: "previous-bucket" | "previous-close";
-  showKings: boolean;
+  showStars: boolean;
   showZeros: boolean;
   rightPanelOpen: boolean;
   expirationStart: string;
@@ -41,13 +41,13 @@ const DEFAULTS: Settings = {
   normalization: "GLOBAL",
   differenceMode: false,
   baselineMode: "previous-bucket",
-  showKings: true,
+  showStars: true,
   showZeros: true,
   rightPanelOpen: true,
   expirationStart: "",
   expirationEnd: "",
 };
-const STORAGE_KEY = "kwantdesk:gex-cal:settings:v1";
+const STORAGE_KEY = "kwantdesk:gex-cal:settings:v2";
 const ALERTS_KEY = "kwantdesk:gex-cal:alerts:v1";
 
 const compact = (value: number) => {
@@ -87,7 +87,7 @@ export default function GexCalendarWorkspace() {
   const [asOf, setAsOf] = useState("");
   const [playing, setPlaying] = useState(false);
   const [playSpeed, setPlaySpeed] = useState(1);
-  const [inspectorTab, setInspectorTab] = useState<"KINGS" | "EXPIRIES" | "STRIKES" | "TERM" | "CLUSTERS" | "DETAIL">("KINGS");
+  const [inspectorTab, setInspectorTab] = useState<"STARS" | "EXPIRIES" | "STRIKES" | "TERM" | "CLUSTERS" | "DETAIL">("STARS");
   const [filtersOpen, setFiltersOpen] = useState(true);
   const [helpOpen, setHelpOpen] = useState(false);
   const [context, setContext] = useState<{ x: number; y: number; cell: GexCalCell } | null>(null);
@@ -159,18 +159,18 @@ export default function GexCalendarWorkspace() {
     const strikes = [...new Set(cells.map((cell) => cell.strike))].sort((a, b) => b - a);
     const currentValue = (cell: GexCalCell) => settings.differenceMode ? cell.change ?? 0 : cell.value;
     let globalCell: GexCalCell | null = null;
-    const expirationKingCells = new Map<string, GexCalCell>();
+    const expirationStarCells = new Map<string, GexCalCell>();
     for (const cell of cells) {
       if (!globalCell || Math.abs(currentValue(cell)) > Math.abs(currentValue(globalCell))) globalCell = cell;
-      const currentKing = expirationKingCells.get(cell.expiration);
-      if (!currentKing || Math.abs(currentValue(cell)) > Math.abs(currentValue(currentKing))) expirationKingCells.set(cell.expiration, cell);
+      const currentStar = expirationStarCells.get(cell.expiration);
+      if (!currentStar || Math.abs(currentValue(cell)) > Math.abs(currentValue(currentStar))) expirationStarCells.set(cell.expiration, cell);
     }
-    const king = (cell: GexCalCell) => ({ expiration: cell.expiration, strike: cell.strike, value: currentValue(cell), magnitude: Math.abs(currentValue(cell)) });
-    const expirationKings = expirations.flatMap((expiration) => {
-      const winner = expirationKingCells.get(expiration);
-      return winner ? [king(winner)] : [];
+    const star = (cell: GexCalCell) => ({ expiration: cell.expiration, strike: cell.strike, value: currentValue(cell), magnitude: Math.abs(currentValue(cell)) });
+    const expirationStars = expirations.flatMap((expiration) => {
+      const winner = expirationStarCells.get(expiration);
+      return winner ? [star(winner)] : [];
     });
-    return { ...matrix, cells, expirations, strikes, globalKing: globalCell ? king(globalCell) : null, expirationKings };
+    return { ...matrix, cells, expirations, strikes, globalStar: globalCell ? star(globalCell) : null, expirationStars };
   }, [matrix, search, settings.differenceMode, settings.expirationEnd, settings.expirationStart, settings.expiryPreset, settings.maxDte, settings.minDte, settings.minimumMagnitude, settings.showZeros, settings.strikeRadius]);
 
   const previousTimestamp = () => {
@@ -224,7 +224,7 @@ export default function GexCalendarWorkspace() {
           <NumberControl label="Min absolute exposure" value={settings.minimumMagnitude} onChange={(minimumMagnitude) => setSettings((value) => ({ ...value, minimumMagnitude }))} />
           <Control label="Normalization"><KwantSelect value={settings.normalization} onChange={(event) => setSettings((value) => ({ ...value, normalization: event.target.value as Settings["normalization"] }))} className="h-8 w-full"><option value="GLOBAL">GLOBAL</option><option value="COLUMN">PER EXPIRY</option><option value="ROW">PER STRIKE</option><option value="PERCENTILE">PERCENTILE</option></KwantSelect></Control>
           <Toggle label="Difference mode" checked={settings.differenceMode} onChange={(differenceMode) => setSettings((value) => ({ ...value, differenceMode }))} />
-          <Toggle label="King nodes" checked={settings.showKings} onChange={(showKings) => setSettings((value) => ({ ...value, showKings }))} />
+          <Toggle label="Star nodes" checked={settings.showStars} onChange={(showStars) => setSettings((value) => ({ ...value, showStars }))} />
           <Toggle label="Show zero cells" checked={settings.showZeros} onChange={(showZeros) => setSettings((value) => ({ ...value, showZeros }))} />
           <Control label="Exercise style"><KwantSelect disabled value="UNAVAILABLE" className="h-8 w-full"><option value="UNAVAILABLE">METADATA UNAVAILABLE</option></KwantSelect></Control>
           <Control label="Settlement / timing"><KwantSelect disabled value="UNAVAILABLE" className="h-8 w-full"><option value="UNAVAILABLE">METADATA UNAVAILABLE</option></KwantSelect></Control>
@@ -247,21 +247,21 @@ export default function GexCalendarWorkspace() {
         </div>
         {error && matrix ? <div className="flex h-7 shrink-0 items-center gap-2 border-b border-danger/30 bg-danger/5 px-3 text-[9px] text-danger"><AlertTriangle className="h-3 w-3" />Refresh delayed · showing the latest valid surface · {error}</div> : null}
         <div className="relative flex min-h-0 flex-1">
-          {visibleMatrix ? <GexCalendarMatrix matrix={visibleMatrix} differenceMode={settings.differenceMode} normalization={settings.normalization} selected={selected} onSelect={(cell) => { setSelected(cell); setInspectorTab("DETAIL"); }} onOpen={openContext} showKings={settings.showKings} /> : null}
+          {visibleMatrix ? <GexCalendarMatrix matrix={visibleMatrix} differenceMode={settings.differenceMode} normalization={settings.normalization} selected={selected} onSelect={(cell) => { setSelected(cell); setInspectorTab("DETAIL"); }} onOpen={openContext} showStars={settings.showStars} /> : null}
           {loading && !matrix ? <div className="absolute inset-0 z-20 bg-background"><KwantLoader className="h-full" compact title="Loading GEX CAL" detail="Normalizing the expiration-by-strike surface." /></div> : null}
           {!loading && !matrix ? <div className="flex flex-1 items-center justify-center"><div className="max-w-sm border border-danger/40 bg-panel p-6 text-center"><AlertTriangle className="mx-auto mb-3 h-6 w-6 text-danger" /><div className="text-[12px] font-semibold">GEX CAL unavailable</div><p className="mt-2 text-[10px] leading-5 text-muted">{error || "No eligible exposure surface was returned."}</p><button onClick={() => void load()} className="mt-4 border border-primary px-4 py-2 text-[10px] font-semibold text-primary">TRY AGAIN</button></div></div> : null}
         </div>
       </main>
 
       {settings.rightPanelOpen ? <aside className="w-[284px] shrink-0 overflow-hidden border-l border-border bg-panel">
-        <div className="flex h-9 overflow-x-auto border-b border-border">{(["KINGS", "EXPIRIES", "STRIKES", "TERM", "CLUSTERS", "DETAIL"] as const).map((tab) => <button key={tab} onClick={() => setInspectorTab(tab)} className={`shrink-0 px-2 text-[8px] font-semibold tracking-[0.1em] ${inspectorTab === tab ? "text-primary shadow-[inset_0_-1px_0_var(--primary)]" : "text-muted"}`}>{tab}</button>)}</div>
+        <div className="flex h-9 overflow-x-auto border-b border-border">{(["STARS", "EXPIRIES", "STRIKES", "TERM", "CLUSTERS", "DETAIL"] as const).map((tab) => <button key={tab} onClick={() => setInspectorTab(tab)} className={`shrink-0 px-2 text-[8px] font-semibold tracking-[0.1em] ${inspectorTab === tab ? "text-primary shadow-[inset_0_-1px_0_var(--primary)]" : "text-muted"}`}>{tab}</button>)}</div>
         <div className="h-[calc(100%-36px)] overflow-y-auto p-3">{matrix ? <Inspector matrix={matrix} tab={inspectorTab} selected={selected} differenceMode={settings.differenceMode} onSelect={(cell) => setSelected(cell)} /> : null}</div>
       </aside> : <button className="w-9 border-l border-border bg-panel text-muted" onClick={() => setSettings((value) => ({ ...value, rightPanelOpen: true }))}><Settings2 className="mx-auto h-4 w-4" /></button>}
     </div>
 
     {helpOpen ? <div className="absolute right-4 top-14 z-50 w-[380px] border border-border bg-panel p-4 shadow-2xl">
       <div className="flex items-center justify-between"><h2 className="text-[11px] font-semibold uppercase tracking-[0.14em]">Methodology & diagnostics</h2><button onClick={() => setHelpOpen(false)} className="text-muted">×</button></div>
-      <div className="mt-3 space-y-2 text-[10px] leading-5 text-muted"><p>Each cell is provider-signed call and put exposure for one exact strike and expiration. NET is CALL + PUT; GROSS is |CALL| + |PUT|.</p><p>Missing cells use a hatched state and are never converted to zero. Difference mode subtracts the selected baseline bucket. Replay selects only data at or before its timestamp.</p><p>King = maximum absolute raw cell value after the active filters. Spot is an independent reference and does not select the King.</p><p>Source: KwantData server adapter · no browser credential · {matrix?.cells.length.toLocaleString() ?? 0} current cells.</p>{matrix?.limitations.map((item) => <p key={item}>• {item}</p>)}</div>
+      <div className="mt-3 space-y-2 text-[10px] leading-5 text-muted"><p>Each cell is provider-signed call and put exposure for one exact strike and expiration. NET is CALL + PUT; GROSS is |CALL| + |PUT|.</p><p>Missing cells use a hatched state and are never converted to zero. Difference mode subtracts the selected baseline bucket. Replay selects only data at or before its timestamp.</p><p>Star = maximum absolute raw cell value after the active filters. Spot is an independent reference and does not select the Star.</p><p>Source: KwantData server adapter · no browser credential · {matrix?.cells.length.toLocaleString() ?? 0} current cells.</p>{matrix?.limitations.map((item) => <p key={item}>• {item}</p>)}</div>
     </div> : null}
 
     {context ? <div className="fixed z-[1000] w-56 border border-border bg-panel p-1 shadow-2xl" style={{ left: context.x, top: context.y }} onClick={(event) => event.stopPropagation()}>
@@ -280,9 +280,9 @@ function ContextButton({ label, icon, onClick }: { label: string; icon?: React.R
 
 function Inspector({ matrix, tab, selected, differenceMode, onSelect }: { matrix: GexCalMatrix; tab: string; selected: GexCalCell | null; differenceMode: boolean; onSelect: (cell: GexCalCell) => void }) {
   if (tab === "DETAIL") return selected ? <div className="space-y-3"><Metric label="Expiration" value={selected.expiration} /><Metric label="Strike" value={selected.strike.toLocaleString()} /><Metric label="Call" value={compact(selected.call)} /><Metric label="Put" value={compact(selected.put)} /><Metric label="Net" value={compact(selected.net)} /><Metric label="Gross" value={compact(selected.gross)} /><Metric label="Baseline" value={selected.previousValue === null ? "MISSING" : compact(selected.previousValue)} /><Metric label="Change" value={selected.change === null ? "MISSING" : compact(selected.change)} /></div> : <Empty text="Select a matrix cell." />;
-  if (tab === "KINGS") return <div className="space-y-2">{matrix.globalKing ? <div className="border border-primary/50 bg-primary/5 p-3"><div className="flex items-center gap-2 text-[9px] font-semibold text-primary"><Crown className="h-3.5 w-3.5" />GLOBAL KING</div><div className="mt-2 font-mono text-[13px]">{matrix.globalKing.strike.toLocaleString()} · {compact(matrix.globalKing.value)}</div><div className="mt-1 text-[9px] text-muted">{matrix.globalKing.expiration}</div></div> : null}{matrix.expirationKings.map((king) => <button key={king.expiration} onClick={() => { const cell = matrix.cells.find((item) => item.expiration === king.expiration && item.strike === king.strike); if (cell) onSelect(cell); }} className="flex w-full items-center justify-between border border-border p-2 text-left hover:border-primary/40"><span className="text-[9px] text-muted">{king.expiration}<br /><b className="font-mono text-foreground">{king.strike.toLocaleString()}</b></span><span className="font-mono text-[9px]">{compact(king.value)}</span></button>)}</div>;
+  if (tab === "STARS") return <div className="space-y-2">{matrix.globalStar ? <div className="border border-primary/50 bg-primary/5 p-3"><div className="flex items-center gap-2 text-[9px] font-semibold text-primary"><Star className="h-3.5 w-3.5 fill-current" />GLOBAL STAR</div><div className="mt-2 font-mono text-[13px]">{matrix.globalStar.strike.toLocaleString()} · {compact(matrix.globalStar.value)}</div><div className="mt-1 text-[9px] text-muted">{matrix.globalStar.expiration}</div></div> : null}{matrix.expirationStars.map((star) => <button key={star.expiration} onClick={() => { const cell = matrix.cells.find((item) => item.expiration === star.expiration && item.strike === star.strike); if (cell) onSelect(cell); }} className="flex w-full items-center justify-between border border-border p-2 text-left hover:border-primary/40"><span className="text-[9px] text-muted">{star.expiration}<br /><b className="font-mono text-foreground">{star.strike.toLocaleString()}</b></span><span className="font-mono text-[9px]">{compact(star.value)}</span></button>)}</div>;
   if (tab === "EXPIRIES" || tab === "TERM") return <div className="space-y-2">{matrix.totalsByExpiration.map((row) => <div key={row.expiration} className="border-b border-border pb-2"><div className="flex justify-between font-mono text-[9px]"><span>{row.expiration}</span><span className={row.value >= 0 ? "text-candle-up" : "text-candle-down"}>{compact(row.value)}</span></div><div className="mt-1 h-1 bg-background"><div className="h-full bg-primary" style={{ width: `${Math.max(2, Math.min(100, row.magnitude / Math.max(...matrix.totalsByExpiration.map((item) => item.magnitude), 1) * 100))}%` }} /></div></div>)}</div>;
-  if (tab === "STRIKES") return <div className="space-y-1">{matrix.strikeKings.slice(0, 80).map((king) => <div key={king.strike} className="flex justify-between border-b border-border py-1 font-mono text-[9px]"><span>{king.strike.toLocaleString()}</span><span>{compact(king.value)}</span></div>)}</div>;
+  if (tab === "STRIKES") return <div className="space-y-1">{matrix.strikeStars.slice(0, 80).map((star) => <div key={star.strike} className="flex justify-between border-b border-border py-1 font-mono text-[9px]"><span>{star.strike.toLocaleString()}</span><span>{compact(star.value)}</span></div>)}</div>;
   if (tab === "CLUSTERS") {
     const ranked = [...matrix.cells].sort((a, b) => Math.abs(b.value) - Math.abs(a.value)).slice(0, 12);
     return <div className="space-y-2">{ranked.map((cell, index) => <button key={`${cell.expiration}:${cell.strike}`} onClick={() => onSelect(cell)} className="w-full border border-border p-2 text-left hover:border-primary/40"><span className="text-[8px] text-muted">CLUSTER {index + 1}</span><div className="mt-1 flex justify-between font-mono text-[9px]"><span>{cell.strike.toLocaleString()} · {cell.expiration}</span><span>{compact(differenceMode ? cell.change ?? 0 : cell.value)}</span></div></button>)}</div>;

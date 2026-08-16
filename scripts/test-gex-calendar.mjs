@@ -27,7 +27,7 @@ const replay = buildGexCalMatrix({ surface, asOfTimestamp: 2_500, side: "NET" })
 assert.equal(replay.selectedTimestamp, 2_000, "replay must not select a future bucket");
 assert.equal(replay.cells.find((cell) => cell.strike === 5000)?.value, 13);
 assert.equal(replay.cells.find((cell) => cell.strike === 5000)?.change, 8);
-assert.equal(replay.globalKing?.strike, 5050, "King uses maximum absolute raw value");
+assert.equal(replay.globalStar?.strike, 5050, "Star uses maximum absolute raw value");
 assert.equal(replay.cells.find((cell) => cell.strike === 5050)?.value, -75, "negative signs are preserved");
 assert.equal(replay.cells.find((cell) => cell.strike === 5050)?.previousValue, 0, "zero is distinct from missing");
 

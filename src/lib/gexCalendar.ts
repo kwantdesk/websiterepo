@@ -16,7 +16,7 @@ export type GexCalCell = {
   change: number | null;
 };
 
-export type GexCalKing = { expiration: string; strike: number; value: number; magnitude: number };
+export type GexCalStar = { expiration: string; strike: number; value: number; magnitude: number };
 
 export type GexCalMatrix = {
   source: string;
@@ -29,9 +29,9 @@ export type GexCalMatrix = {
   expirations: string[];
   strikes: number[];
   cells: GexCalCell[];
-  globalKing: GexCalKing | null;
-  expirationKings: GexCalKing[];
-  strikeKings: GexCalKing[];
+  globalStar: GexCalStar | null;
+  expirationStars: GexCalStar[];
+  strikeStars: GexCalStar[];
   totalsByExpiration: Array<{ expiration: string; value: number; magnitude: number }>;
   availableTimestamps: number[];
   refreshAfterMs: number;
@@ -96,16 +96,16 @@ export function buildGexCalMatrix(input: {
   });
   const expirations = [...new Set(cells.map((cell) => cell.expiration))].sort();
   const strikes = [...new Set(cells.map((cell) => cell.strike))].sort((a, b) => b - a);
-  const globalCell = cells.reduce<GexCalCell | null>((king, cell) => !king || Math.abs(cell.value) > Math.abs(king.value) ? cell : king, null);
-  const kingOf = (group: GexCalCell[]) => group.reduce<GexCalCell | null>((king, cell) => !king || Math.abs(cell.value) > Math.abs(king.value) ? cell : king, null);
-  const toKing = (cell: GexCalCell): GexCalKing => ({ expiration: cell.expiration, strike: cell.strike, value: cell.value, magnitude: Math.abs(cell.value) });
-  const expirationKings = expirations.flatMap((expiration) => {
-    const king = kingOf(cells.filter((cell) => cell.expiration === expiration));
-    return king ? [toKing(king)] : [];
+  const globalCell = cells.reduce<GexCalCell | null>((star, cell) => !star || Math.abs(cell.value) > Math.abs(star.value) ? cell : star, null);
+  const starOf = (group: GexCalCell[]) => group.reduce<GexCalCell | null>((star, cell) => !star || Math.abs(cell.value) > Math.abs(star.value) ? cell : star, null);
+  const toStar = (cell: GexCalCell): GexCalStar => ({ expiration: cell.expiration, strike: cell.strike, value: cell.value, magnitude: Math.abs(cell.value) });
+  const expirationStars = expirations.flatMap((expiration) => {
+    const star = starOf(cells.filter((cell) => cell.expiration === expiration));
+    return star ? [toStar(star)] : [];
   });
-  const strikeKings = strikes.flatMap((strike) => {
-    const king = kingOf(cells.filter((cell) => cell.strike === strike));
-    return king ? [toKing(king)] : [];
+  const strikeStars = strikes.flatMap((strike) => {
+    const star = starOf(cells.filter((cell) => cell.strike === strike));
+    return star ? [toStar(star)] : [];
   });
   const totalsByExpiration = expirations.map((expiration) => {
     const group = cells.filter((cell) => cell.expiration === expiration);
@@ -122,9 +122,9 @@ export function buildGexCalMatrix(input: {
     expirations,
     strikes,
     cells,
-    globalKing: globalCell ? toKing(globalCell) : null,
-    expirationKings,
-    strikeKings,
+    globalStar: globalCell ? toStar(globalCell) : null,
+    expirationStars,
+    strikeStars,
     totalsByExpiration,
     availableTimestamps: input.surface.buckets.map((bucket) => bucket.timestamp).sort((a, b) => a - b),
     refreshAfterMs: input.surface.refreshAfterMs,
