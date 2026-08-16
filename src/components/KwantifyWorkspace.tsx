@@ -94,7 +94,7 @@ import { useAccountPreferenceSync } from "@/hooks/useAccountPreferenceSync";
 import { compactLegacyAuthPreferenceMetadata, hydrateUserPreferences } from "@/lib/userPreferences";
 import { normalizeTimeZone } from "@/lib/timeZones";
 import { clearSavedStrategiesRaw, loadSavedStrategiesRaw, saveSavedStrategiesRaw } from "@/lib/automation";
-import { CHART_SETTINGS_CHANGE_EVENT, CHART_SETTINGS_STORAGE_KEY, chartSettingsEqual, defaultChartSettings, extractUserChartSettings, loadStoredChartSettings, mergeWorkspaceChartSettingsWithActiveTheme, saveStoredChartSettings, type ChartSettings } from "@/lib/chartSettings";
+import { CHART_SETTINGS_CHANGE_EVENT, CHART_SETTINGS_STORAGE_KEY, chartSettingsEqual, defaultChartSettings, extractUserChartSettings, loadStoredChartSettings, mergeWorkspaceChartSettingsWithActiveTheme, normalizeChartSettings, saveStoredChartSettings, type ChartSettings } from "@/lib/chartSettings";
 import type { ChartLevel, ChartZone } from "@/components/Chart";
 import {
   CHART_INDICATOR_BY_ID,
@@ -898,6 +898,11 @@ const WORKSPACE_PRESETS_STORAGE_KEY = "kwantdesk-chart-workspace-presets";
 const ACTIVE_WORKSPACE_PRESET_STORAGE_KEY = "kwantdesk-chart-workspace-active-preset";
 const WORKSPACE_FLOATING_WINDOWS_STORAGE_KEY = "olisa-chart-workspace-floating-windows";
 const WORKSPACE_LAYOUT_LOCK_STORAGE_KEY = "olisa-chart-workspace-layout-locked-v2";
+const CHART_TEMPLATES_STORAGE_KEY = "olisa-chart-templates";
+type ChartWorkspaceScope = "charts" | "gamma";
+const GAMMA_CHART_WORKSPACE_STORAGE_PREFIX = "kwantdesk:gamma-charting";
+const workspaceScopeStorageKey = (scope: ChartWorkspaceScope, chartKey: string) =>
+  scope === "charts" ? chartKey : `${GAMMA_CHART_WORKSPACE_STORAGE_PREFIX}:${chartKey}`;
 const WORKSPACE_BACKUP_FORMAT = "kwantdesk-chart-workspaces";
 const MAX_WORKSPACE_BACKUP_BYTES = 2_000_000;
 const GAMMA_LEVELS_ENABLED_STORAGE_KEY = "kwantdesk:chart-gamma-levels-enabled:v1";
@@ -982,6 +987,17 @@ const DEFAULT_WORKSPACE_PANES: WorkspacePane[] = [
   { id: "pane-3", symbol: "CL.v.0", broker: "Databento", timeframe: "5m", period: "5D", watchlistKey: makeWatchlistKey("CL.v.0", "Databento"), content: "charts", locked: false },
   { id: "pane-4", symbol: "GC.v.0", broker: "Databento", timeframe: "5m", period: "5D", watchlistKey: makeWatchlistKey("GC.v.0", "Databento"), content: "charts", locked: false },
 ];
+
+// Gamma charting deliberately starts as a clean, independent workspace. Its
+// pane ids are namespaced as well, so Chart's own drawing persistence can
+// never collide with the ordinary Charts page.
+const DEFAULT_GAMMA_WORKSPACE_PANES: WorkspacePane[] = [
+  { id: "gamma-pane-1", symbol: "NQ.v.0", broker: "Databento", timeframe: "5m", period: "5D", watchlistKey: makeWatchlistKey("NQ.v.0", "Databento"), content: "charts", locked: false },
+];
+
+function defaultWorkspacePanes(scope: ChartWorkspaceScope) {
+  return scope === "gamma" ? DEFAULT_GAMMA_WORKSPACE_PANES : DEFAULT_WORKSPACE_PANES;
+}
 
 type WorkspacePanelOption<T extends WorkspacePanelKind = WorkspacePanelKind> = {
   id: T;
@@ -1573,11 +1589,14 @@ function normalizeWorkspaceFloatingWindows(
   return windows.slice(0, 12);
 }
 
-function loadWorkspaceFloatingWindows(validPaneIds?: Set<string>) {
+function loadWorkspaceFloatingWindows(
+  validPaneIds?: Set<string>,
+  scope: ChartWorkspaceScope = "charts",
+) {
   if (typeof window === "undefined") return [];
   try {
     return normalizeWorkspaceFloatingWindows(
-      JSON.parse(window.localStorage.getItem(WORKSPACE_FLOATING_WINDOWS_STORAGE_KEY) ?? "[]"),
+      JSON.parse(window.localStorage.getItem(workspaceScopeStorageKey(scope, WORKSPACE_FLOATING_WINDOWS_STORAGE_KEY)) ?? "[]"),
       validPaneIds,
     );
   } catch {
@@ -1630,13 +1649,17 @@ function isWorkspacePreset(value: unknown): value is WorkspacePreset {
   );
 }
 
-function normalizeWorkspacePresets(value: unknown): WorkspacePreset[] {
+function normalizeWorkspacePresets(
+  value: unknown,
+  scope: ChartWorkspaceScope = "charts",
+): WorkspacePreset[] {
   if (!Array.isArray(value)) return [];
+  const fallbackPanes = defaultWorkspacePanes(scope);
   return value
     .filter(isWorkspacePreset)
     .map((preset) => {
       const panes = preset.panes.map((pane, index) =>
-        normalizeWorkspacePane(pane, DEFAULT_WORKSPACE_PANES[index] ?? DEFAULT_WORKSPACE_PANES[0]));
+        normalizeWorkspacePane(pane, fallbackPanes[index] ?? fallbackPanes[0]));
       const layout = normalizeWorkspaceLayoutNode(preset.layout, new Set(panes.map((pane) => pane.id)))
         ?? createWorkspaceLayoutTree("single", panes);
       return {
@@ -1655,11 +1678,12 @@ function normalizeWorkspacePresets(value: unknown): WorkspacePreset[] {
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
-function loadLocalWorkspacePresets(): WorkspacePreset[] {
+function loadLocalWorkspacePresets(scope: ChartWorkspaceScope = "charts"): WorkspacePreset[] {
   if (typeof window === "undefined") return [];
   try {
     return normalizeWorkspacePresets(
-      JSON.parse(window.localStorage.getItem(WORKSPACE_PRESETS_STORAGE_KEY) ?? "[]"),
+      JSON.parse(window.localStorage.getItem(workspaceScopeStorageKey(scope, WORKSPACE_PRESETS_STORAGE_KEY)) ?? "[]"),
+      scope,
     );
   } catch {
     return [];
@@ -1684,6 +1708,211 @@ function normalizeWorkspacePane(pane: Partial<WorkspacePane>, fallback: Workspac
     content: pane.content === null || isWorkspacePanelKind(pane.content) ? pane.content : "charts",
     locked: pane.locked === true,
   };
+}
+
+type ChartWorkspaceRuntime = {
+  layout: WorkspaceLayout;
+  locked: boolean;
+  splitRatio: number;
+  quadSplit: { x: number; y: number };
+  panes: WorkspacePane[];
+  tree: WorkspaceLayoutNode;
+  floatingWindows: WorkspaceFloatingWindow[];
+  presets: WorkspacePreset[];
+  activePresetId: string | null;
+  activePaneId: string;
+  indicators: Record<string, ChartIndicatorInstance[]>;
+  levelVisibility: Record<string, PaneLevelVisibility>;
+  favouriteTimeframes: string[];
+  chartSettings: ChartSettings;
+  templates: ChartTemplate[];
+};
+
+function loadScopedChartTemplates(scope: ChartWorkspaceScope): ChartTemplate[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const value = JSON.parse(
+      window.localStorage.getItem(workspaceScopeStorageKey(scope, CHART_TEMPLATES_STORAGE_KEY)) ?? "[]",
+    ) as unknown;
+    if (!Array.isArray(value)) return [];
+    return value
+      .filter((template): template is ChartTemplate => Boolean(
+        template
+        && typeof template === "object"
+        && typeof (template as Partial<ChartTemplate>).name === "string"
+        && (template as Partial<ChartTemplate>).settings,
+      ))
+      .map((template) => ({
+        name: template.name,
+        settings: normalizeChartSettings(template.settings),
+      }));
+  } catch {
+    return [];
+  }
+}
+
+function loadScopedChartSettings(scope: ChartWorkspaceScope) {
+  const activeThemeSettings = loadStoredChartSettings();
+  if (scope === "charts" || typeof window === "undefined") return activeThemeSettings;
+  try {
+    const stored = window.localStorage.getItem(workspaceScopeStorageKey(scope, CHART_SETTINGS_STORAGE_KEY));
+    return mergeWorkspaceChartSettingsWithActiveTheme(
+      stored ? JSON.parse(stored) : defaultChartSettings,
+      activeThemeSettings,
+    );
+  } catch {
+    return mergeWorkspaceChartSettingsWithActiveTheme(defaultChartSettings, activeThemeSettings);
+  }
+}
+
+function saveScopedChartSettings(scope: ChartWorkspaceScope, settings: ChartSettings) {
+  if (scope === "charts") {
+    saveStoredChartSettings(settings);
+    return;
+  }
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(
+    workspaceScopeStorageKey(scope, CHART_SETTINGS_STORAGE_KEY),
+    JSON.stringify(normalizeChartSettings(settings)),
+  );
+  window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
+}
+
+function loadChartWorkspaceRuntime(scope: ChartWorkspaceScope): ChartWorkspaceRuntime {
+  const fallbackPanes = defaultWorkspacePanes(scope);
+  const defaults: ChartWorkspaceRuntime = {
+    layout: "single",
+    locked: false,
+    splitRatio: 50,
+    quadSplit: { x: 50, y: 50 },
+    panes: fallbackPanes,
+    tree: createWorkspaceLayoutTree("single", fallbackPanes),
+    floatingWindows: [],
+    presets: [],
+    activePresetId: null,
+    activePaneId: fallbackPanes[0].id,
+    indicators: {},
+    levelVisibility: {},
+    favouriteTimeframes: ["1m", "5m", "15m", "1h", "4h", "1D"],
+    chartSettings: loadScopedChartSettings(scope),
+    templates: loadScopedChartTemplates(scope),
+  };
+  if (typeof window === "undefined") return defaults;
+
+  const read = (key: string) => window.localStorage.getItem(workspaceScopeStorageKey(scope, key));
+  const layoutValue = read("olisa-chart-workspace-layout");
+  const layout: WorkspaceLayout = layoutValue === "split-vertical"
+    || layoutValue === "split-horizontal"
+    || layoutValue === "quad"
+    || layoutValue === "custom"
+    || layoutValue === "single"
+    ? layoutValue
+    : "single";
+  let panes = fallbackPanes;
+  try {
+    const parsed = JSON.parse(read("olisa-chart-workspace-panes") ?? "null") as Partial<WorkspacePane>[] | null;
+    if (parsed?.length) {
+      panes = parsed.map((pane, index) =>
+        normalizeWorkspacePane(pane, fallbackPanes[index] ?? fallbackPanes[0]));
+    }
+  } catch {}
+  let tree = createWorkspaceLayoutTree(layout === "custom" ? "single" : layout, panes);
+  try {
+    tree = normalizeWorkspaceLayoutNode(
+      JSON.parse(read("olisa-chart-workspace-tree") ?? "null"),
+      new Set(panes.map((pane) => pane.id)),
+    ) ?? tree;
+  } catch {}
+  let quadSplit = defaults.quadSplit;
+  try {
+    const parsed = JSON.parse(read("olisa-chart-workspace-quad-split") ?? "null") as { x?: number; y?: number } | null;
+    if (parsed) {
+      quadSplit = {
+        x: Math.min(75, Math.max(25, Number(parsed.x ?? 50))),
+        y: Math.min(75, Math.max(25, Number(parsed.y ?? 50))),
+      };
+    }
+  } catch {}
+  let indicators: Record<string, ChartIndicatorInstance[]> = {};
+  try {
+    const current = read(CHART_INDICATORS_STORAGE_KEY);
+    const legacy = scope === "charts" ? window.localStorage.getItem("olisa-chart-pane-indicators") : null;
+    indicators = normalizePaneIndicatorState(JSON.parse(current ?? legacy ?? "{}"));
+  } catch {}
+  let levelVisibility: Record<string, PaneLevelVisibility> = {};
+  try {
+    const storedVisibility = read(PANE_LEVEL_VISIBILITY_STORAGE_KEY);
+    levelVisibility = normalizePaneLevelVisibility(JSON.parse(storedVisibility ?? "{}"));
+    if (!storedVisibility && scope === "charts") {
+      const legacyVisibility: PaneLevelVisibility = {
+        gamma: window.localStorage.getItem(GAMMA_LEVELS_ENABLED_STORAGE_KEY) === "true",
+        kwant: false,
+        structure: window.localStorage.getItem(HISTORICAL_STRUCTURE_ENABLED_STORAGE_KEY) === "true",
+        valueArea: window.localStorage.getItem(VALUE_AREA_LEVELS_ENABLED_STORAGE_KEY) === "true",
+      };
+      if (Object.values(legacyVisibility).some(Boolean)) {
+        levelVisibility = { [panes[0].id]: legacyVisibility };
+      }
+    }
+  } catch {}
+  let favouriteTimeframes = defaults.favouriteTimeframes;
+  try {
+    const parsed = JSON.parse(read("olisa-chart-favourite-intervals") ?? "null");
+    if (Array.isArray(parsed) && parsed.every((item) => typeof item === "string")) favouriteTimeframes = parsed;
+  } catch {}
+  const requestedActivePaneId = read("olisa-chart-workspace-active-pane");
+  const activePaneId = panes.some((pane) => pane.id === requestedActivePaneId)
+    ? requestedActivePaneId as string
+    : collectWorkspacePaneIds(tree)[0] ?? panes[0].id;
+  const presets = loadLocalWorkspacePresets(scope);
+  const requestedPresetId = read(ACTIVE_WORKSPACE_PRESET_STORAGE_KEY);
+  const activePresetId = requestedPresetId && presets.some((preset) => preset.id === requestedPresetId)
+    ? requestedPresetId
+    : null;
+  const splitRatioValue = Number(read("olisa-chart-workspace-split-ratio") ?? "50");
+
+  return {
+    layout,
+    locked: read(WORKSPACE_LAYOUT_LOCK_STORAGE_KEY) === "true",
+    splitRatio: Number.isFinite(splitRatioValue) ? Math.min(80, Math.max(20, splitRatioValue)) : 50,
+    quadSplit,
+    panes,
+    tree,
+    floatingWindows: loadWorkspaceFloatingWindows(new Set(panes.map((pane) => pane.id)), scope),
+    presets,
+    activePresetId,
+    activePaneId,
+    indicators,
+    levelVisibility,
+    favouriteTimeframes,
+    chartSettings: loadScopedChartSettings(scope),
+    templates: loadScopedChartTemplates(scope),
+  };
+}
+
+function persistChartWorkspaceRuntime(
+  scope: ChartWorkspaceScope,
+  runtime: ChartWorkspaceRuntime,
+) {
+  if (typeof window === "undefined") return;
+  const write = (key: string, value: string) =>
+    window.localStorage.setItem(workspaceScopeStorageKey(scope, key), value);
+  write("olisa-chart-workspace-layout", runtime.layout);
+  write(WORKSPACE_LAYOUT_LOCK_STORAGE_KEY, String(runtime.locked));
+  write("olisa-chart-workspace-split-ratio", String(runtime.splitRatio));
+  write("olisa-chart-workspace-quad-split", JSON.stringify(runtime.quadSplit));
+  write("olisa-chart-workspace-panes", JSON.stringify(runtime.panes));
+  write("olisa-chart-workspace-tree", JSON.stringify(runtime.tree));
+  write(WORKSPACE_FLOATING_WINDOWS_STORAGE_KEY, JSON.stringify(runtime.floatingWindows));
+  write(WORKSPACE_PRESETS_STORAGE_KEY, JSON.stringify(runtime.presets));
+  if (runtime.activePresetId) write(ACTIVE_WORKSPACE_PRESET_STORAGE_KEY, runtime.activePresetId);
+  else window.localStorage.removeItem(workspaceScopeStorageKey(scope, ACTIVE_WORKSPACE_PRESET_STORAGE_KEY));
+  write("olisa-chart-workspace-active-pane", runtime.activePaneId);
+  write(CHART_INDICATORS_STORAGE_KEY, JSON.stringify(clonePaneIndicatorState(runtime.indicators)));
+  write(PANE_LEVEL_VISIBILITY_STORAGE_KEY, JSON.stringify(clonePaneLevelVisibility(runtime.levelVisibility)));
+  write("olisa-chart-favourite-intervals", JSON.stringify(runtime.favouriteTimeframes));
+  write(CHART_TEMPLATES_STORAGE_KEY, JSON.stringify(runtime.templates));
+  saveScopedChartSettings(scope, runtime.chartSettings);
 }
 
 function makeWatchlistKey(symbol: string, broker: string) {
@@ -6647,6 +6876,15 @@ export default function KwantifyWorkspace({
   socialProfileHandle?: string;
 }) {
   const router = useRouter();
+  const initialChartWorkspaceScope: ChartWorkspaceScope = section === "gamma" ? "gamma" : "charts";
+  const chartWorkspaceScopeRef = useRef<ChartWorkspaceScope>(initialChartWorkspaceScope);
+  const [chartWorkspaceScope, setChartWorkspaceScope] = useState<ChartWorkspaceScope>(initialChartWorkspaceScope);
+  const workspaceScopeHydratingRef = useRef(false);
+  const initialChartWorkspaceRuntimeRef = useRef<ChartWorkspaceRuntime | null>(null);
+  if (initialChartWorkspaceRuntimeRef.current === null) {
+    initialChartWorkspaceRuntimeRef.current = loadChartWorkspaceRuntime(initialChartWorkspaceScope);
+  }
+  const initialChartWorkspaceRuntime = initialChartWorkspaceRuntimeRef.current;
   const [optimisticWorkspaceSection, setOptimisticWorkspaceSection] = useState(section);
   const [visitedWorkspaceSections, setVisitedWorkspaceSections] = useState<Set<PrimaryWorkspaceSection>>(
     () => new Set([section]),
@@ -6710,71 +6948,25 @@ export default function KwantifyWorkspace({
   const [aiWidth, setAiWidth] = useState(360);
   const [isResizingAI, setIsResizingAI] = useState(false);
   const [bottomTab, setBottomTab] = useState<"strategies" | "metrics" | "trades">("metrics");
-  const [selectedInstrument, setSelectedInstrument] = useState("ES.v.0");
+  const initialWorkspacePane = initialChartWorkspaceRuntime.panes.find(
+    (pane) => pane.id === initialChartWorkspaceRuntime.activePaneId,
+  ) ?? initialChartWorkspaceRuntime.panes[0];
+  const [selectedInstrument, setSelectedInstrument] = useState(initialWorkspacePane.symbol);
   const [gammaChartSymbols, setGammaChartSymbols] = useState<string[]>([]);
   const [selectedLiquidityMapInstrument, setSelectedLiquidityMapInstrument] = useState(() => {
     if (typeof window === "undefined") return "NQ.v.0";
     const saved = window.localStorage.getItem(LIQUIDITY_MAP_INSTRUMENT_STORAGE_KEY) || "NQ.v.0";
     return liquidityMapInstrument(saved) || "NQ.v.0";
   });
-  const [workspaceLayout, setWorkspaceLayout] = useState<WorkspaceLayout>(() => {
-    if (typeof window === "undefined") return "single";
-    try {
-      const saved = window.localStorage.getItem("olisa-chart-workspace-layout") as WorkspaceLayout | null;
-      return saved === "split-vertical" || saved === "split-horizontal" || saved === "quad" || saved === "single" || saved === "custom" ? saved : "single";
-    } catch {
-      return "single";
-    }
-  });
-  const [workspaceLocked, setWorkspaceLocked] = useState<boolean>(() => {
-    if (typeof window === "undefined") return false;
-    return window.localStorage.getItem(WORKSPACE_LAYOUT_LOCK_STORAGE_KEY) === "true";
-  });
-  const [workspaceSplitRatio, setWorkspaceSplitRatio] = useState<number>(() => {
-    if (typeof window === "undefined") return 50;
-    const raw = Number(window.localStorage.getItem("olisa-chart-workspace-split-ratio") ?? "50");
-    return Number.isFinite(raw) ? Math.min(80, Math.max(20, raw)) : 50;
-  });
-  const [workspaceQuadSplit, setWorkspaceQuadSplit] = useState<{ x: number; y: number }>(() => {
-    if (typeof window === "undefined") return { x: 50, y: 50 };
-    try {
-      const parsed = JSON.parse(window.localStorage.getItem("olisa-chart-workspace-quad-split") ?? "{\"x\":50,\"y\":50}") as { x?: number; y?: number };
-      return {
-        x: Math.min(75, Math.max(25, parsed.x ?? 50)),
-        y: Math.min(75, Math.max(25, parsed.y ?? 50)),
-      };
-    } catch {
-      return { x: 50, y: 50 };
-    }
-  });
-  const [workspacePanes, setWorkspacePanes] = useState<WorkspacePane[]>(() => {
-    if (typeof window === "undefined") return DEFAULT_WORKSPACE_PANES;
-    try {
-      const parsed = JSON.parse(window.localStorage.getItem("olisa-chart-workspace-panes") ?? "null") as Partial<WorkspacePane>[] | null;
-      if (!parsed || parsed.length < 1) return DEFAULT_WORKSPACE_PANES;
-      return parsed.map((pane, index) => normalizeWorkspacePane(pane, DEFAULT_WORKSPACE_PANES[index] ?? DEFAULT_WORKSPACE_PANES[0]));
-    } catch {
-      return DEFAULT_WORKSPACE_PANES;
-    }
-  });
-  const [workspaceTree, setWorkspaceTree] = useState<WorkspaceLayoutNode>(() => {
-    const fallbackLayout = workspaceLayout === "custom" ? "single" : workspaceLayout;
-    if (typeof window === "undefined") return createWorkspaceLayoutTree(fallbackLayout, workspacePanes);
-    try {
-      const parsed = JSON.parse(window.localStorage.getItem("olisa-chart-workspace-tree") ?? "null");
-      return normalizeWorkspaceLayoutNode(parsed, new Set(workspacePanes.map((pane) => pane.id)))
-        ?? createWorkspaceLayoutTree(fallbackLayout, workspacePanes);
-    } catch {
-      return createWorkspaceLayoutTree(fallbackLayout, workspacePanes);
-    }
-  });
-  const [workspaceFloatingWindows, setWorkspaceFloatingWindows] = useState<WorkspaceFloatingWindow[]>(() =>
-    loadWorkspaceFloatingWindows(new Set(workspacePanes.map((pane) => pane.id))));
-  const [workspacePresets, setWorkspacePresets] = useState<WorkspacePreset[]>(loadLocalWorkspacePresets);
-  const [activeWorkspacePresetId, setActiveWorkspacePresetId] = useState<string | null>(() => {
-    if (typeof window === "undefined") return null;
-    return window.localStorage.getItem(ACTIVE_WORKSPACE_PRESET_STORAGE_KEY);
-  });
+  const [workspaceLayout, setWorkspaceLayout] = useState<WorkspaceLayout>(initialChartWorkspaceRuntime.layout);
+  const [workspaceLocked, setWorkspaceLocked] = useState<boolean>(initialChartWorkspaceRuntime.locked);
+  const [workspaceSplitRatio, setWorkspaceSplitRatio] = useState<number>(initialChartWorkspaceRuntime.splitRatio);
+  const [workspaceQuadSplit, setWorkspaceQuadSplit] = useState<{ x: number; y: number }>(initialChartWorkspaceRuntime.quadSplit);
+  const [workspacePanes, setWorkspacePanes] = useState<WorkspacePane[]>(initialChartWorkspaceRuntime.panes);
+  const [workspaceTree, setWorkspaceTree] = useState<WorkspaceLayoutNode>(initialChartWorkspaceRuntime.tree);
+  const [workspaceFloatingWindows, setWorkspaceFloatingWindows] = useState<WorkspaceFloatingWindow[]>(initialChartWorkspaceRuntime.floatingWindows);
+  const [workspacePresets, setWorkspacePresets] = useState<WorkspacePreset[]>(initialChartWorkspaceRuntime.presets);
+  const [activeWorkspacePresetId, setActiveWorkspacePresetId] = useState<string | null>(initialChartWorkspaceRuntime.activePresetId);
   const [workspaceImportDragging, setWorkspaceImportDragging] = useState(false);
   const [workspaceDeleteCandidate, setWorkspaceDeleteCandidate] = useState<WorkspacePreset | null>(null);
   const [showWorkspacePresetMenu, setShowWorkspacePresetMenu] = useState(false);
@@ -6787,10 +6979,7 @@ export default function KwantifyWorkspace({
   const workspaceAreaRef = useRef<HTMLDivElement>(null);
   const workspaceDragGhostRef = useRef<HTMLDivElement>(null);
   const workspaceHeaderDragConsumedRef = useRef(false);
-  const [activePaneId, setActivePaneId] = useState<string>(() => {
-    if (typeof window === "undefined") return DEFAULT_WORKSPACE_PANES[0].id;
-    return window.localStorage.getItem("olisa-chart-workspace-active-pane") ?? DEFAULT_WORKSPACE_PANES[0].id;
-  });
+  const [activePaneId, setActivePaneId] = useState<string>(initialChartWorkspaceRuntime.activePaneId);
   const [workspacePanelPickerPaneId, setWorkspacePanelPickerPaneId] = useState<string | null>(null);
   const [workspacePanelTransition, setWorkspacePanelTransition] = useState<{
     paneId: string;
@@ -6869,9 +7058,9 @@ export default function KwantifyWorkspace({
   const [instrumentSearch, setInstrumentSearch] = useState("");
   const [databentoOptions, setDatabentoOptions] = useState<DatabentoInstrument[]>([]);
   const [optionsLoading, setOptionsLoading] = useState(false);
-  const [selectedWatchlistKey, setSelectedWatchlistKey] = useState<string>(makeWatchlistKey("ES.v.0", "Databento"));
-  const [selectedTimeframe, setSelectedTimeframe] = useState("5m");
-  const [selectedPeriod, setSelectedPeriod] = useState(DEFAULT_WORKSPACE_PANES[0].period);
+  const [selectedWatchlistKey, setSelectedWatchlistKey] = useState<string>(initialWorkspacePane.watchlistKey);
+  const [selectedTimeframe, setSelectedTimeframe] = useState(initialWorkspacePane.timeframe);
+  const [selectedPeriod, setSelectedPeriod] = useState(initialWorkspacePane.period);
   const [chartLoadingMessage, setChartLoadingMessage] = useState("");
   const [feedErrorByBroker, setFeedErrorByBroker] = useState<Record<string, string>>({});
   const [streamHealthyByBroker, setStreamHealthyByBroker] = useState<Record<string, boolean>>({});
@@ -6962,7 +7151,7 @@ export default function KwantifyWorkspace({
   const [showBrokerModal, setShowBrokerModal] = useState(false);
   const [brokerSearch, setBrokerSearch] = useState("");
   const [brokerFavourites, setBrokerFavourites] = useState<string[]>([]);
-  const [connectedBroker, setConnectedBroker] = useState<string | null>("Databento");
+  const [connectedBroker, setConnectedBroker] = useState<string | null>(initialWorkspacePane.broker);
   const [brokerConnections, setBrokerConnections] = useState<Record<string, BrokerConnectionState>>({});
   const [linkedCTraderAccounts, setLinkedCTraderAccounts] = useState<CTraderStatusAccount[]>([]);
   const [paperTradingAccounts, setPaperTradingAccounts] = useState<PaperTradingAccountRecord[]>([]);
@@ -7083,18 +7272,7 @@ export default function KwantifyWorkspace({
   const bottomWorkspaceSection = optimisticWorkspaceSection;
   const chartSurfaceActive = bottomWorkspaceSection === "charts" || bottomWorkspaceSection === "gamma";
   const [equityPeriod, setEquityPeriod] = useState("365d");
-  const [favTFs, setFavTFs] = useState<string[]>(() => {
-    const defaults = ["1m", "5m", "15m", "1h", "4h", "1D"];
-    if (typeof window === "undefined") return defaults;
-    try {
-      const saved = JSON.parse(window.localStorage.getItem("olisa-chart-favourite-intervals") ?? "null");
-      return Array.isArray(saved) && saved.every((item) => typeof item === "string")
-        ? saved
-        : defaults;
-    } catch {
-      return defaults;
-    }
-  });
+  const [favTFs, setFavTFs] = useState<string[]>(initialChartWorkspaceRuntime.favouriteTimeframes);
   const [showAllTF, setShowAllTF] = useState(false);
   const timeframeMenuRef = useRef<HTMLDivElement>(null);
   const [intervalDrafts, setIntervalDrafts] = useState<Record<ChartIntervalKind, { primary: number; secondary: number }>>({
@@ -7116,32 +7294,12 @@ export default function KwantifyWorkspace({
   const [miniLoading, setMiniLoading] = useState(false);
   const [strategies, setStrategies] = useState<StrategyItem[]>(demoStrategies);
   const [chartIndicatorsSuppressed, setChartIndicatorsSuppressed] = useState(false);
-  const [paneIndicators, setPaneIndicators] = useState<Record<string, ChartIndicatorInstance[]>>(() => {
-    if (typeof window === "undefined") return {};
-    try {
-      const current = window.localStorage.getItem(CHART_INDICATORS_STORAGE_KEY);
-      const legacy = window.localStorage.getItem("olisa-chart-pane-indicators");
-      return normalizePaneIndicatorState(JSON.parse(current ?? legacy ?? "{}"));
-    } catch {
-      return {};
-    }
-  });
-  const [paneLevelVisibility, setPaneLevelVisibility] = useState<Record<string, PaneLevelVisibility>>(() => {
-    if (typeof window === "undefined") return {};
-    try {
-      const stored = window.localStorage.getItem(PANE_LEVEL_VISIBILITY_STORAGE_KEY);
-      if (stored) return normalizePaneLevelVisibility(JSON.parse(stored));
-    } catch {
-      // Migrate the former workspace-wide toggles onto the selected chart below.
-    }
-    const legacyVisibility: PaneLevelVisibility = {
-      gamma: window.localStorage.getItem(GAMMA_LEVELS_ENABLED_STORAGE_KEY) === "true",
-      kwant: false,
-      structure: window.localStorage.getItem(HISTORICAL_STRUCTURE_ENABLED_STORAGE_KEY) === "true",
-      valueArea: window.localStorage.getItem(VALUE_AREA_LEVELS_ENABLED_STORAGE_KEY) === "true",
-    };
-    return Object.values(legacyVisibility).some(Boolean) ? { [activePaneId]: legacyVisibility } : {};
-  });
+  const [paneIndicators, setPaneIndicators] = useState<Record<string, ChartIndicatorInstance[]>>(
+    initialChartWorkspaceRuntime.indicators,
+  );
+  const [paneLevelVisibility, setPaneLevelVisibility] = useState<Record<string, PaneLevelVisibility>>(
+    initialChartWorkspaceRuntime.levelVisibility,
+  );
   const [liveGexSnapshot, setLiveGexSnapshot] = useState<ChartGammaLevelsPayload | null>(null);
   const [liveGexLoading, setLiveGexLoading] = useState(false);
   const [liveGexError, setLiveGexError] = useState("");
@@ -7187,17 +7345,90 @@ export default function KwantifyWorkspace({
   const [showTemplateMenu, setShowTemplateMenu] = useState(false);
   const [showSaveTemplate, setShowSaveTemplate] = useState(false);
   const [templateName, setTemplateName] = useState("");
-  const [chartSettings, setChartSettings] = useState<ChartSettings>(() => loadStoredChartSettings());
+  const [chartSettings, setChartSettings] = useState<ChartSettings>(initialChartWorkspaceRuntime.chartSettings);
   const [draftChartSettings, setDraftChartSettings] = useState<ChartSettings>(chartSettings);
   const [chartSettingsSnapshot, setChartSettingsSnapshot] = useState<ChartSettings>(chartSettings);
-  const [templates, setTemplates] = useState<ChartTemplate[]>(() => {
-    if (typeof window === "undefined") return [];
-    try {
-      return JSON.parse(window.localStorage.getItem("olisa-chart-templates") ?? "[]") as ChartTemplate[];
-    } catch {
-      return [];
-    }
-  });
+  const [templates, setTemplates] = useState<ChartTemplate[]>(initialChartWorkspaceRuntime.templates);
+  useEffect(() => {
+    const nextScope: ChartWorkspaceScope | null = bottomWorkspaceSection === "gamma"
+      ? "gamma"
+      : bottomWorkspaceSection === "charts"
+        ? "charts"
+        : null;
+    const currentScope = chartWorkspaceScopeRef.current;
+    if (!nextScope || nextScope === currentScope) return;
+
+    persistChartWorkspaceRuntime(currentScope, {
+      layout: workspaceLayout,
+      locked: workspaceLocked,
+      splitRatio: workspaceSplitRatio,
+      quadSplit: workspaceQuadSplit,
+      panes: workspacePanes,
+      tree: workspaceTree,
+      floatingWindows: workspaceFloatingWindows,
+      presets: workspacePresets,
+      activePresetId: activeWorkspacePresetId,
+      activePaneId,
+      indicators: paneIndicators,
+      levelVisibility: paneLevelVisibility,
+      favouriteTimeframes: favTFs,
+      chartSettings,
+      templates,
+    });
+
+    workspaceScopeHydratingRef.current = true;
+    chartWorkspaceScopeRef.current = nextScope;
+    const next = loadChartWorkspaceRuntime(nextScope);
+    const nextPane = next.panes.find((pane) => pane.id === next.activePaneId) ?? next.panes[0];
+    setWorkspaceLayout(next.layout);
+    setWorkspaceLocked(next.locked);
+    setWorkspaceSplitRatio(next.splitRatio);
+    setWorkspaceQuadSplit(next.quadSplit);
+    setWorkspacePanes(next.panes);
+    setWorkspaceTree(next.tree);
+    setWorkspaceFloatingWindows(next.floatingWindows);
+    setWorkspacePresets(next.presets);
+    setActiveWorkspacePresetId(next.activePresetId);
+    setActivePaneId(next.activePaneId);
+    setPaneIndicators(next.indicators);
+    setPaneLevelVisibility(next.levelVisibility);
+    setFavTFs(next.favouriteTimeframes);
+    setChartSettings(next.chartSettings);
+    setDraftChartSettings(next.chartSettings);
+    setChartSettingsSnapshot(next.chartSettings);
+    setTemplates(next.templates);
+    setSelectedInstrument(nextPane.symbol);
+    setSelectedTimeframe(nextPane.timeframe);
+    setSelectedPeriod(nextPane.period);
+    setSelectedWatchlistKey(nextPane.watchlistKey);
+    setConnectedBroker(nextPane.broker);
+    setShowWorkspacePresetMenu(false);
+    setShowSaveWorkspacePreset(false);
+    setWorkspacePanelPickerPaneId(null);
+    setChartWorkspaceScope(nextScope);
+
+    window.setTimeout(() => {
+      workspaceScopeHydratingRef.current = false;
+      window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
+    }, 0);
+  }, [
+    activePaneId,
+    activeWorkspacePresetId,
+    bottomWorkspaceSection,
+    chartSettings,
+    favTFs,
+    paneIndicators,
+    paneLevelVisibility,
+    templates,
+    workspaceFloatingWindows,
+    workspaceLayout,
+    workspaceLocked,
+    workspacePanes,
+    workspacePresets,
+    workspaceQuadSplit,
+    workspaceSplitRatio,
+    workspaceTree,
+  ]);
   const [recentColors, setRecentColors] = useState<string[]>(() => {
     if (typeof window === "undefined") return [];
     try {
@@ -8183,7 +8414,10 @@ export default function KwantifyWorkspace({
     if (!name) return;
     const nextTemplates = [...templates.filter((template) => template.name !== name), { name, settings: draftChartSettings }];
     setTemplates(nextTemplates);
-    window.localStorage.setItem("olisa-chart-templates", JSON.stringify(nextTemplates));
+    window.localStorage.setItem(
+      workspaceScopeStorageKey(chartWorkspaceScopeRef.current, CHART_TEMPLATES_STORAGE_KEY),
+      JSON.stringify(nextTemplates),
+    );
     setTemplateName("");
     setShowSaveTemplate(false);
   }
@@ -8191,13 +8425,16 @@ export default function KwantifyWorkspace({
   function deleteChartTemplate(name: string) {
     const nextTemplates = templates.filter((template) => template.name !== name);
     setTemplates(nextTemplates);
-    window.localStorage.setItem("olisa-chart-templates", JSON.stringify(nextTemplates));
+    window.localStorage.setItem(
+      workspaceScopeStorageKey(chartWorkspaceScopeRef.current, CHART_TEMPLATES_STORAGE_KEY),
+      JSON.stringify(nextTemplates),
+    );
   }
 
   async function applyChartSettings() {
     setChartSettings(draftChartSettings);
     setChartSettingsSnapshot(draftChartSettings);
-    saveStoredChartSettings(draftChartSettings);
+    saveScopedChartSettings(chartWorkspaceScopeRef.current, draftChartSettings);
     setShowSettings(false);
     setShowTemplateMenu(false);
   }
@@ -8222,7 +8459,7 @@ export default function KwantifyWorkspace({
     setChartSettings(next);
     setDraftChartSettings(next);
     setChartSettingsSnapshot(next);
-    saveStoredChartSettings(next);
+    saveScopedChartSettings(chartWorkspaceScopeRef.current, next);
   }
 
   function openCreateAlert(defaultPrice?: string) {
@@ -8522,7 +8759,11 @@ export default function KwantifyWorkspace({
   }, [bottomMinimized]);
 
   useEffect(() => {
-    window.localStorage.setItem("olisa-chart-favourite-intervals", JSON.stringify(favTFs));
+    if (workspaceScopeHydratingRef.current) return;
+    window.localStorage.setItem(
+      workspaceScopeStorageKey(chartWorkspaceScopeRef.current, "olisa-chart-favourite-intervals"),
+      JSON.stringify(favTFs),
+    );
     window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
   }, [favTFs]);
 
@@ -8540,12 +8781,13 @@ export default function KwantifyWorkspace({
   }, [showAllTF]);
 
   useEffect(() => {
+    if (workspaceScopeHydratingRef.current) return;
     // Slider-driven indicator settings can emit dozens of updates per second.
     // Persist after the interaction settles so synchronous localStorage writes
     // never block the chart or settings drawer while the pointer is moving.
     const timer = window.setTimeout(() => {
       window.localStorage.setItem(
-        CHART_INDICATORS_STORAGE_KEY,
+        workspaceScopeStorageKey(chartWorkspaceScopeRef.current, CHART_INDICATORS_STORAGE_KEY),
         JSON.stringify(clonePaneIndicatorState(paneIndicators)),
       );
       window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
@@ -8833,34 +9075,40 @@ export default function KwantifyWorkspace({
   }, [brokerConnections]);
 
   useEffect(() => {
-    window.localStorage.setItem("olisa-chart-workspace-layout", workspaceLayout);
+    if (workspaceScopeHydratingRef.current) return;
+    window.localStorage.setItem(workspaceScopeStorageKey(chartWorkspaceScopeRef.current, "olisa-chart-workspace-layout"), workspaceLayout);
   }, [workspaceLayout]);
 
   useEffect(() => {
-    window.localStorage.setItem(WORKSPACE_LAYOUT_LOCK_STORAGE_KEY, String(workspaceLocked));
+    if (workspaceScopeHydratingRef.current) return;
+    window.localStorage.setItem(workspaceScopeStorageKey(chartWorkspaceScopeRef.current, WORKSPACE_LAYOUT_LOCK_STORAGE_KEY), String(workspaceLocked));
   }, [workspaceLocked]);
 
   useEffect(() => {
-    window.localStorage.setItem("olisa-chart-workspace-split-ratio", String(workspaceSplitRatio));
+    if (workspaceScopeHydratingRef.current) return;
+    window.localStorage.setItem(workspaceScopeStorageKey(chartWorkspaceScopeRef.current, "olisa-chart-workspace-split-ratio"), String(workspaceSplitRatio));
   }, [workspaceSplitRatio]);
 
   useEffect(() => {
-    window.localStorage.setItem("olisa-chart-workspace-quad-split", JSON.stringify(workspaceQuadSplit));
+    if (workspaceScopeHydratingRef.current) return;
+    window.localStorage.setItem(workspaceScopeStorageKey(chartWorkspaceScopeRef.current, "olisa-chart-workspace-quad-split"), JSON.stringify(workspaceQuadSplit));
   }, [workspaceQuadSplit]);
 
   useEffect(() => {
-    window.localStorage.setItem("olisa-chart-workspace-panes", JSON.stringify(workspacePanes));
+    if (workspaceScopeHydratingRef.current) return;
+    window.localStorage.setItem(workspaceScopeStorageKey(chartWorkspaceScopeRef.current, "olisa-chart-workspace-panes"), JSON.stringify(workspacePanes));
   }, [workspacePanes]);
 
   useEffect(() => {
-    window.localStorage.setItem("olisa-chart-workspace-tree", JSON.stringify(workspaceTree));
+    if (workspaceScopeHydratingRef.current) return;
+    window.localStorage.setItem(workspaceScopeStorageKey(chartWorkspaceScopeRef.current, "olisa-chart-workspace-tree"), JSON.stringify(workspaceTree));
   }, [workspaceTree]);
 
   useEffect(() => {
-    if (!preferencesReady) return;
+    if (!preferencesReady || workspaceScopeHydratingRef.current) return;
     const timer = window.setTimeout(() => {
       window.localStorage.setItem(
-        WORKSPACE_FLOATING_WINDOWS_STORAGE_KEY,
+        workspaceScopeStorageKey(chartWorkspaceScopeRef.current, WORKSPACE_FLOATING_WINDOWS_STORAGE_KEY),
         JSON.stringify(workspaceFloatingWindows),
       );
       window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
@@ -8869,7 +9117,11 @@ export default function KwantifyWorkspace({
   }, [preferencesReady, workspaceFloatingWindows]);
 
   useEffect(() => {
-    window.localStorage.setItem(WORKSPACE_PRESETS_STORAGE_KEY, JSON.stringify(workspacePresets));
+    if (workspaceScopeHydratingRef.current) return;
+    window.localStorage.setItem(
+      workspaceScopeStorageKey(chartWorkspaceScopeRef.current, WORKSPACE_PRESETS_STORAGE_KEY),
+      JSON.stringify(workspacePresets),
+    );
   }, [workspacePresets]);
 
   useEffect(() => {
@@ -8877,15 +9129,23 @@ export default function KwantifyWorkspace({
       activeWorkspacePresetId
       && workspacePresets.some((preset) => preset.id === activeWorkspacePresetId)
     ) {
-      window.localStorage.setItem(ACTIVE_WORKSPACE_PRESET_STORAGE_KEY, activeWorkspacePresetId);
+      if (!workspaceScopeHydratingRef.current) {
+        window.localStorage.setItem(
+          workspaceScopeStorageKey(chartWorkspaceScopeRef.current, ACTIVE_WORKSPACE_PRESET_STORAGE_KEY),
+          activeWorkspacePresetId,
+        );
+      }
       return;
     }
-    window.localStorage.removeItem(ACTIVE_WORKSPACE_PRESET_STORAGE_KEY);
+    if (!workspaceScopeHydratingRef.current) {
+      window.localStorage.removeItem(workspaceScopeStorageKey(chartWorkspaceScopeRef.current, ACTIVE_WORKSPACE_PRESET_STORAGE_KEY));
+    }
     if (activeWorkspacePresetId) setActiveWorkspacePresetId(null);
   }, [activeWorkspacePresetId, workspacePresets]);
 
   useEffect(() => {
-    window.localStorage.setItem("olisa-chart-workspace-active-pane", activePaneId);
+    if (workspaceScopeHydratingRef.current) return;
+    window.localStorage.setItem(workspaceScopeStorageKey(chartWorkspaceScopeRef.current, "olisa-chart-workspace-active-pane"), activePaneId);
   }, [activePaneId]);
 
   useEffect(() => {
@@ -8893,7 +9153,10 @@ export default function KwantifyWorkspace({
       visibleWorkspacePaneIds.includes(activePaneId)
       || workspaceFloatingWindows.some((entry) => entry.paneId === activePaneId)
     ) return;
-    setActivePaneId(visibleWorkspacePaneIds[0] ?? DEFAULT_WORKSPACE_PANES[0].id);
+    setActivePaneId(
+      visibleWorkspacePaneIds[0]
+      ?? defaultWorkspacePanes(chartWorkspaceScopeRef.current)[0].id,
+    );
   }, [activePaneId, visibleWorkspacePaneIds, workspaceFloatingWindows]);
 
   useEffect(() => {
@@ -8919,8 +9182,9 @@ export default function KwantifyWorkspace({
   }, [watchlistSections]);
 
   useEffect(() => {
+    if (workspaceScopeHydratingRef.current) return;
     window.localStorage.setItem(
-      PANE_LEVEL_VISIBILITY_STORAGE_KEY,
+      workspaceScopeStorageKey(chartWorkspaceScopeRef.current, PANE_LEVEL_VISIBILITY_STORAGE_KEY),
       JSON.stringify(clonePaneLevelVisibility(paneLevelVisibility)),
     );
     window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
@@ -10084,6 +10348,7 @@ export default function KwantifyWorkspace({
       try {
         hydrated = await hydrateUserPreferences(supabase, user);
         if (hydrated.changed) {
+          if (chartWorkspaceScopeRef.current === "charts") {
           // Account preferences are applied to localStorage by the hydrator.
           // Reconcile the chart shell in place before it is allowed to mount.
           // The previous hard reload mounted the chart with stale local state,
@@ -10175,6 +10440,14 @@ export default function KwantifyWorkspace({
           } catch {
             setPaneLevelVisibility({});
           }
+          } else {
+            // Cloud chart preferences belong to Charts. Gamma keeps its own
+            // layout and behaviour while inheriting only the active theme.
+            const nextChartSettings = loadScopedChartSettings("gamma");
+            setChartSettings(nextChartSettings);
+            setDraftChartSettings(nextChartSettings);
+            setChartSettingsSnapshot(nextChartSettings);
+          }
           setGameplanChartOverlays(loadGameplanChartOverlays());
         }
       } catch {
@@ -10190,10 +10463,13 @@ export default function KwantifyWorkspace({
         : false;
       const profileChartSettings = hasStoredChartSettings ? null : extractUserChartSettings(user);
       if (!hasStoredChartSettings && profileChartSettings) {
-        setChartSettings(profileChartSettings);
-        setDraftChartSettings(profileChartSettings);
-        setChartSettingsSnapshot(profileChartSettings);
         saveStoredChartSettings(profileChartSettings);
+        const activeSettings = chartWorkspaceScopeRef.current === "charts"
+          ? profileChartSettings
+          : loadScopedChartSettings("gamma");
+        setChartSettings(activeSettings);
+        setDraftChartSettings(activeSettings);
+        setChartSettingsSnapshot(activeSettings);
       }
       void compactLegacyAuthPreferenceMetadata(supabase, user).catch(() => {
         // Database/local preference sync remains authoritative. A later
@@ -10262,7 +10538,10 @@ export default function KwantifyWorkspace({
 
   useEffect(() => {
     const syncChartPalette = () => {
-      const next = loadStoredChartSettings();
+      const activeThemeSettings = loadStoredChartSettings();
+      const next = chartWorkspaceScopeRef.current === "charts"
+        ? activeThemeSettings
+        : mergeWorkspaceChartSettingsWithActiveTheme(chartSettings, activeThemeSettings);
       setChartSettings((current) => chartSettingsEqual(current, next) ? current : next);
       setDraftChartSettings((current) => chartSettingsEqual(current, next) ? current : next);
       setChartSettingsSnapshot((current) => chartSettingsEqual(current, next) ? current : next);
@@ -10276,10 +10555,11 @@ export default function KwantifyWorkspace({
       window.removeEventListener(CHART_SETTINGS_CHANGE_EVENT, syncChartPalette);
       window.removeEventListener("storage", syncChartPaletteAcrossTabs);
     };
-  }, []);
+  }, [chartSettings]);
 
   useEffect(() => {
-    saveStoredChartSettings(chartSettings);
+    if (workspaceScopeHydratingRef.current) return;
+    saveScopedChartSettings(chartWorkspaceScopeRef.current, chartSettings);
   }, [chartSettings]);
 
   useEffect(() => {
@@ -11147,17 +11427,18 @@ export default function KwantifyWorkspace({
   const applyWorkspaceLayoutTemplate = (layout: Exclude<WorkspaceLayout, "custom">) => {
     const requiredPaneCount = layout === "quad" ? 4 : layout === "single" ? 1 : 2;
     const nextPanes = [...workspacePanes];
-    for (const defaultPane of DEFAULT_WORKSPACE_PANES) {
+    const scopedDefaults = defaultWorkspacePanes(chartWorkspaceScopeRef.current);
+    for (const defaultPane of scopedDefaults) {
       if (nextPanes.length >= requiredPaneCount) break;
       if (!nextPanes.some((pane) => pane.id === defaultPane.id)) {
         nextPanes.push({ ...defaultPane });
       }
     }
     while (nextPanes.length < requiredPaneCount) {
-      const source = DEFAULT_WORKSPACE_PANES[nextPanes.length] ?? DEFAULT_WORKSPACE_PANES[0];
+      const source = scopedDefaults[nextPanes.length] ?? scopedDefaults[0];
       nextPanes.push({
         ...source,
-        id: `pane-${Date.now()}-${nextPanes.length + 1}`,
+        id: `${chartWorkspaceScopeRef.current}-pane-${Date.now()}-${nextPanes.length + 1}`,
       });
     }
     const currentlyVisible = new Set(collectWorkspacePaneIds(workspaceTree));
@@ -11191,7 +11472,7 @@ export default function KwantifyWorkspace({
     );
     const paneRect = paneElement?.getBoundingClientRect();
     const splitAxis: "x" | "y" = !paneRect || paneRect.width >= paneRect.height ? "x" : "y";
-    const nextPaneId = `pane-${crypto.randomUUID()}`;
+    const nextPaneId = `${chartWorkspaceScopeRef.current}-pane-${crypto.randomUUID()}`;
     const nextPane: WorkspacePane = {
       ...activeWorkspacePane,
       id: nextPaneId,
@@ -11225,7 +11506,7 @@ export default function KwantifyWorkspace({
     );
     const paneRect = paneElement?.getBoundingClientRect();
     const splitAxis: "x" | "y" = !paneRect || paneRect.width >= paneRect.height ? "x" : "y";
-    const nextPaneId = `pane-${crypto.randomUUID()}`;
+    const nextPaneId = `${chartWorkspaceScopeRef.current}-pane-${crypto.randomUUID()}`;
     const nextPane: WorkspacePane = {
       ...sourcePane,
       id: nextPaneId,
@@ -11576,9 +11857,12 @@ export default function KwantifyWorkspace({
   };
 
   const persistWorkspacePresets = (nextPresets: WorkspacePreset[]) => {
-    const normalizedPresets = normalizeWorkspacePresets(nextPresets);
+    const normalizedPresets = normalizeWorkspacePresets(nextPresets, chartWorkspaceScopeRef.current);
     setWorkspacePresets(normalizedPresets);
-    window.localStorage.setItem(WORKSPACE_PRESETS_STORAGE_KEY, JSON.stringify(normalizedPresets));
+    window.localStorage.setItem(
+      workspaceScopeStorageKey(chartWorkspaceScopeRef.current, WORKSPACE_PRESETS_STORAGE_KEY),
+      JSON.stringify(normalizedPresets),
+    );
     return normalizedPresets;
   };
 
@@ -11633,7 +11917,7 @@ export default function KwantifyWorkspace({
   };
 
   const applyWorkspacePreset = (preset: WorkspacePreset) => {
-    const panes = preset.panes.length ? preset.panes : DEFAULT_WORKSPACE_PANES;
+    const panes = preset.panes.length ? preset.panes : defaultWorkspacePanes(chartWorkspaceScopeRef.current);
     const normalizedTree = normalizeWorkspaceLayoutNode(
       preset.layout,
       new Set(panes.map((pane) => pane.id)),
@@ -11655,7 +11939,7 @@ export default function KwantifyWorkspace({
       setChartSettings(nextChartSettings);
       setDraftChartSettings(nextChartSettings);
       setChartSettingsSnapshot(nextChartSettings);
-      saveStoredChartSettings(nextChartSettings);
+      saveScopedChartSettings(chartWorkspaceScopeRef.current, nextChartSettings);
     }
     if (preset.indicators) {
       setPaneIndicators(linkPaneIndicatorStateToTheme(clonePaneIndicatorState(preset.indicators)));
@@ -11739,7 +12023,7 @@ export default function KwantifyWorkspace({
       ) {
         throw new Error("This is not a valid Kwant Desk workspace backup.");
       }
-      const importedPresets = normalizeWorkspacePresets(parsed.presets);
+      const importedPresets = normalizeWorkspacePresets(parsed.presets, chartWorkspaceScopeRef.current);
       if (importedPresets.length !== parsed.presets.length) {
         throw new Error("The backup contains an invalid workspace.");
       }
@@ -14479,13 +14763,18 @@ export default function KwantifyWorkspace({
 
         {chartSurfaceActive || visitedWorkspaceSections.has("charts") ? (
         <ReactActivity mode={chartSurfaceActive ? "visible" : "hidden"}>
-        <WorkspaceFailureBoundary resetKey="charts" label="Charts">
+        <WorkspaceFailureBoundary resetKey={`charting-${chartWorkspaceScope}`} label={chartWorkspaceScope === "gamma" ? "Gamma charting" : "Charts"}>
         {!preferencesReady ? (
           workspaceLoader("Opening charts", "Restoring your saved workspace before the market feed starts.")
         ) : <div className={bottomWorkspaceSection === "gamma"
           ? "h-[calc(100dvh-112px)] min-h-[680px] shrink-0 overflow-hidden"
           : "min-h-0 flex-1 overflow-hidden"}>
-          <div ref={workspaceAreaRef} className="relative h-full min-w-0">
+          <div
+            key={chartWorkspaceScope}
+            ref={workspaceAreaRef}
+            data-chart-workspace-scope={chartWorkspaceScope}
+            className="relative h-full min-w-0"
+          >
             {renderWorkspaceNode(workspaceTree)}
             {workspaceFloatingWindows.map((floating, index) =>
               renderFloatingWorkspaceWindow(floating, index))}
