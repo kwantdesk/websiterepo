@@ -10,6 +10,7 @@
     "test:gex-interval-map": "node scripts/test-gex-interval-map.cjs",
     "test:iv-rank": "node scripts/test-implied-volatility-rank.cjs",
     "test:iv-rank-integration": "node scripts/test-implied-volatility-rank-integration.cjs",
+    "test:pulling-stacking": "node --experimental-strip-types scripts/test-pulling-stacking.mjs",
     "desktop:build": "powershell -ExecutionPolicy Bypass -File desktop/package-windows.ps1"
   },
   "dependencies": {

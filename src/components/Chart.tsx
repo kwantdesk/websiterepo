@@ -164,6 +164,17 @@ import {
   type GammaHeatmapPrimitiveData,
 } from "@/lib/gammaHeatmapPrimitive";
 import {
+  PullingStackingEngine,
+  normalizePullingStackingSettings,
+  type PullingStackingFrame,
+} from "@/lib/pullingStacking";
+import {
+  PullingStackingPrimitive,
+  type PullingStackingHit,
+  type PullingStackingPrimitiveData,
+} from "@/lib/pullingStackingPrimitive";
+import { subscribeRithmicLiquidity, type RithmicLiquidityStatus } from "@/lib/rithmicLiquidityStream";
+import {
   defaultGammaHeatmapSource,
   isGammaHeatmapPayload,
   normalizeGammaHeatmapInstrument,
@@ -2529,6 +2540,10 @@ export default function Chart({
   const tpoProfilePrimitiveRef = useRef<TpoProfilePrimitive | null>(null);
   const classicGexProfilePrimitiveRef = useRef<ClassicGexProfilePrimitive | null>(null);
   const gammaHeatmapPrimitiveRef = useRef<GammaHeatmapPrimitive | null>(null);
+  const pullingStackingPrimitiveRef = useRef<PullingStackingPrimitive | null>(null);
+  const pullingStackingEngineRef = useRef(new PullingStackingEngine());
+  const pullingStackingFrameRef = useRef<PullingStackingFrame | null>(null);
+  const pullingStackingAlertIdsRef = useRef(new Set<string>());
   const netGammaExposurePrimitiveRef = useRef<NetGammaExposurePrimitive | null>(null);
   const gexIntervalMapPrimitiveRef = useRef<GexIntervalMapPrimitive | null>(null);
   const gexIntervalAlertStateRef = useRef<{
@@ -2651,6 +2666,9 @@ export default function Chart({
   const [gammaHeatmapLoading, setGammaHeatmapLoading] = useState(false);
   const [gammaHeatmapError, setGammaHeatmapError] = useState<string | null>(null);
   const [gammaHeatmapTooltip, setGammaHeatmapTooltip] = useState<GammaHeatmapHit | null>(null);
+  const [pullingStackingStatus, setPullingStackingStatus] = useState<RithmicLiquidityStatus>("checking");
+  const [pullingStackingFrame, setPullingStackingFrame] = useState<PullingStackingFrame | null>(null);
+  const [pullingStackingTooltip, setPullingStackingTooltip] = useState<PullingStackingHit | null>(null);
   const [netGammaProfile, setNetGammaProfile] = useState<NetGammaProfileSnapshot | null>(null);
   const [netGammaLoading, setNetGammaLoading] = useState(false);
   const [netGammaError, setNetGammaError] = useState<string | null>(null);
@@ -3075,6 +3093,113 @@ export default function Chart({
     [backgroundLevels, levels, priceFormat.minMove],
   );
   const indicatorSignature = useMemo(() => JSON.stringify(indicators), [indicators]);
+  const pullingStackingIndicator = useMemo(
+    () => indicators.find((instance) => instance.enabled && instance.indicatorId === "pulling-stacking") ?? null,
+    [indicators],
+  );
+  const pullingStackingSettings = useMemo(() => {
+    const normalized = normalizePullingStackingSettings(pullingStackingIndicator?.settings);
+    if (!normalized.useThemeColors) return normalized;
+    return {
+      ...normalized,
+      bidStackColor: settings.upColor,
+      askStackColor: settings.downColor,
+      askPullColor: settings.borderUpColor || settings.upColor,
+      neutralColor: settings.gridColor,
+    };
+  }, [pullingStackingIndicator, settings.borderUpColor, settings.downColor, settings.gridColor, settings.upColor]);
+
+  useEffect(() => {
+    if (!pullingStackingIndicator) {
+      pullingStackingEngineRef.current.reset();
+      pullingStackingFrameRef.current = null;
+      pullingStackingPrimitiveRef.current?.update(null);
+      setPullingStackingFrame(null);
+      setPullingStackingTooltip(null);
+      return;
+    }
+    const normalized = String(contractSymbol || instrument || "NQ").trim().toUpperCase().replace(/\.[VNC]\.\d+$/i, "");
+    const explicitContract = /[FGHJKMNQUVXZ]\d{1,2}$/i.test(normalized) ? normalized : null;
+    const chartRoot = normalized.replace(/[FGHJKMNQUVXZ]\d{1,2}$/i, "") || "NQ";
+    const microParents: Record<string, string> = { MNQ: "NQ", MES: "ES", MYM: "YM", M2K: "RTY", MGC: "GC", MCL: "CL", MBT: "BTC", MET: "ETH" };
+    const root = microParents[chartRoot] ?? chartRoot;
+    pullingStackingEngineRef.current.reset();
+    pullingStackingAlertIdsRef.current.clear();
+    pullingStackingFrameRef.current = null;
+    setPullingStackingFrame(null);
+    setPullingStackingStatus("checking");
+    let summaryTimer: number | null = null;
+    let lastPublishedAt = 0;
+    const publishSummary = (frame: PullingStackingFrame) => {
+      lastPublishedAt = performance.now();
+      setPullingStackingFrame(frame);
+    };
+    const unsubscribe = subscribeRithmicLiquidity({
+      root,
+      contractSymbol: explicitContract,
+      exchange: "CME",
+      replayHistory: true,
+      onStatus: setPullingStackingStatus,
+      onSnapshot: (snapshot) => {
+        const frame = pullingStackingEngineRef.current.apply(snapshot, pullingStackingSettings);
+        pullingStackingFrameRef.current = frame;
+        const primitiveData: PullingStackingPrimitiveData = { frame, settings: pullingStackingSettings, backgroundColor: settings.backgroundColor };
+        pullingStackingPrimitiveRef.current?.update(primitiveData);
+        if (pullingStackingSettings.enableAlerts) {
+          for (const event of frame.events.slice(-8)) {
+            if (event.score < pullingStackingSettings.scoreThreshold || pullingStackingAlertIdsRef.current.has(event.id)) continue;
+            pullingStackingAlertIdsRef.current.add(event.id);
+            window.dispatchEvent(new CustomEvent("kwantdesk:chart-indicator-alert", { detail: {
+              indicatorId: "pulling-stacking", instanceId: pullingStackingIndicator.instanceId,
+              instrument, title: "Pulling & Stacking", event,
+            } }));
+          }
+        }
+        const elapsed = performance.now() - lastPublishedAt;
+        if (elapsed >= 200) publishSummary(frame);
+        else if (summaryTimer === null) summaryTimer = window.setTimeout(() => {
+          summaryTimer = null;
+          if (pullingStackingFrameRef.current) publishSummary(pullingStackingFrameRef.current);
+        }, Math.max(16, 200 - elapsed));
+      },
+    });
+    return () => {
+      unsubscribe();
+      if (summaryTimer !== null) window.clearTimeout(summaryTimer);
+    };
+  }, [contractSymbol, instrument, pullingStackingIndicator, pullingStackingSettings, settings.backgroundColor]);
+
+  useEffect(() => {
+    const frame = pullingStackingFrameRef.current;
+    pullingStackingPrimitiveRef.current?.update(frame ? {
+      frame,
+      settings: pullingStackingSettings,
+      backgroundColor: settings.backgroundColor,
+    } : null);
+  }, [chartReadyRevision, pullingStackingSettings, settings.backgroundColor, viewportVersion]);
+
+  useEffect(() => {
+    const container = chartContainerRef.current;
+    if (!container || !pullingStackingIndicator) return;
+    let frameId: number | null = null;
+    let pending: PointerEvent | null = null;
+    const flush = () => {
+      frameId = null;
+      const event = pending; pending = null;
+      if (!event) return;
+      const rect = container.getBoundingClientRect();
+      setPullingStackingTooltip(pullingStackingPrimitiveRef.current?.queryHit(event.clientX - rect.left, event.clientY - rect.top) ?? null);
+    };
+    const move = (event: PointerEvent) => { pending = event; if (frameId === null) frameId = window.requestAnimationFrame(flush); };
+    const leave = () => setPullingStackingTooltip(null);
+    container.addEventListener("pointermove", move);
+    container.addEventListener("pointerleave", leave);
+    return () => {
+      container.removeEventListener("pointermove", move);
+      container.removeEventListener("pointerleave", leave);
+      if (frameId !== null) window.cancelAnimationFrame(frameId);
+    };
+  }, [pullingStackingIndicator]);
   const smtDivergenceIndicator = useMemo(
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "divergence-detector") ?? null,
     [indicators],
@@ -8007,6 +8132,9 @@ export default function Chart({
     const gammaHeatmapPrimitive = new GammaHeatmapPrimitive();
     candleSeries.attachPrimitive(gammaHeatmapPrimitive);
     gammaHeatmapPrimitiveRef.current = gammaHeatmapPrimitive;
+    const pullingStackingPrimitive = new PullingStackingPrimitive();
+    candleSeries.attachPrimitive(pullingStackingPrimitive);
+    pullingStackingPrimitiveRef.current = pullingStackingPrimitive;
     const netGammaExposurePrimitive = new NetGammaExposurePrimitive();
     candleSeries.attachPrimitive(netGammaExposurePrimitive);
     netGammaExposurePrimitiveRef.current = netGammaExposurePrimitive;
@@ -8746,6 +8874,13 @@ export default function Chart({
             // Chart teardown can detach primitives before React cleanup runs.
           }
         }
+        if (candleSeriesRef.current && pullingStackingPrimitiveRef.current) {
+          try {
+            candleSeriesRef.current.detachPrimitive(pullingStackingPrimitiveRef.current);
+          } catch {
+            // Chart teardown can detach primitives before React cleanup runs.
+          }
+        }
         if (candleSeriesRef.current && netGammaExposurePrimitiveRef.current) {
           try {
             candleSeriesRef.current.detachPrimitive(netGammaExposurePrimitiveRef.current);
@@ -8820,6 +8955,7 @@ export default function Chart({
       hedgeLevelsPrimitiveRef.current = null;
       classicGexProfilePrimitiveRef.current = null;
       gammaHeatmapPrimitiveRef.current = null;
+      pullingStackingPrimitiveRef.current = null;
       netGammaExposurePrimitiveRef.current = null;
       gexIntervalMapPrimitiveRef.current = null;
       netGammaReservedRightOffsetRef.current = null;
@@ -9929,9 +10065,55 @@ export default function Chart({
           />
         </div>
       ) : null}
+      {pullingStackingIndicator && pullingStackingSettings.showHeader ? (
+        <div
+          className="pointer-events-none absolute left-2 top-2 z-[26] flex max-w-[min(720px,calc(100%-80px))] items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur"
+          title={pullingStackingFrame?.limitations.join(" ") ?? "Waiting for the shared Rithmic order book"}
+        >
+          <span className={`h-1.5 w-1.5 rounded-full ${pullingStackingStatus === "unavailable" ? "bg-danger" : pullingStackingStatus === "checking" ? "animate-pulse bg-warning" : "bg-primary"}`} />
+          <span className="text-foreground">Pulling &amp; Stacking</span>
+          {pullingStackingFrame ? (
+            <>
+              <span>{pullingStackingFrame.contractSymbol}</span>
+              <span>{pullingStackingFrame.individualOrders && pullingStackingSettings.classificationMode === "individual-order" ? "MBO" : "PRICE LEVEL"}</span>
+              <span className={pullingStackingFrame.stale || pullingStackingFrame.sequenceGap ? "text-warning" : "text-primary"}>
+                {pullingStackingFrame.stale ? "STALE" : pullingStackingFrame.sequenceGap ? "RESYNCING" : pullingStackingFrame.warmup ? "WARMING" : "LIVE"}
+              </span>
+              <span className={pullingStackingFrame.totals.pressure >= 0 ? "text-primary" : "text-danger"}>P {Math.round(pullingStackingFrame.totals.pressure).toLocaleString()}</span>
+              <span>V {Math.round(pullingStackingFrame.totals.velocity).toLocaleString()}/s</span>
+            </>
+          ) : <span>{pullingStackingStatus === "unavailable" ? "Order book unavailable" : "Synchronising order book…"}</span>}
+        </div>
+      ) : null}
+      {pullingStackingTooltip ? (
+        <div
+          className="pointer-events-none absolute z-[68] min-w-[230px] border border-border bg-panel/96 p-2 font-mono text-[8px] shadow-2xl backdrop-blur"
+          style={{
+            left: Math.min(Math.max(8, pullingStackingTooltip.x + 14), Math.max(8, overlaySize.width - 250)),
+            top: Math.min(Math.max(34, pullingStackingTooltip.y + 14), Math.max(34, overlaySize.height - 210)),
+          }}
+        >
+          <div className="flex items-center justify-between gap-4 border-b border-border pb-1 text-foreground">
+            <span>{pullingStackingTooltip.row.price.toFixed(priceFormat.precision)}</span>
+            <span>{new Date(pullingStackingTooltip.timestamp).toLocaleTimeString()}</span>
+          </div>
+          <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-1 text-muted">
+            <span>Bid stack</span><span className="text-foreground">{Math.round(pullingStackingTooltip.row.bidStack).toLocaleString()}</span>
+            <span>Ask stack</span><span className="text-foreground">{Math.round(pullingStackingTooltip.row.askStack).toLocaleString()}</span>
+            <span>Bid pull</span><span className="text-foreground">{Math.round(pullingStackingTooltip.row.bidPull).toLocaleString()}</span>
+            <span>Ask pull</span><span className="text-foreground">{Math.round(pullingStackingTooltip.row.askPull).toLocaleString()}</span>
+            <span>Pressure</span><span className={pullingStackingTooltip.row.pressure >= 0 ? "text-primary" : "text-danger"}>{Math.round(pullingStackingTooltip.row.pressure).toLocaleString()}</span>
+            <span>Churn / velocity</span><span className="text-foreground">{Math.round(pullingStackingTooltip.row.churn).toLocaleString()} / {Math.round(pullingStackingTooltip.row.velocity).toLocaleString()}/s</span>
+            <span>Live bid / ask</span><span className="text-foreground">{pullingStackingTooltip.row.bidSize.toLocaleString()} / {pullingStackingTooltip.row.askSize.toLocaleString()}</span>
+            <span>Score</span><span className="text-foreground">{pullingStackingTooltip.row.score}</span>
+          </div>
+          {pullingStackingTooltip.event ? <div className="mt-2 border-t border-border pt-1 text-primary">{pullingStackingTooltip.event.kind.replaceAll("_", " ")} · {pullingStackingTooltip.event.quantity.toLocaleString()}</div> : null}
+        </div>
+      ) : null}
       {gammaHeatmapIndicator ? (
         <div
-          className="pointer-events-none absolute left-2 top-2 z-[24] flex max-w-[min(520px,calc(100%-80px))] items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur"
+          className="pointer-events-none absolute left-2 z-[24] flex max-w-[min(520px,calc(100%-80px))] items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur"
+          style={{ top: pullingStackingIndicator && pullingStackingSettings.showHeader ? 38 : 8 }}
           title={gammaHeatmapPayload?.limitations.join(" ") ?? gammaHeatmapError ?? "Loading options exposure history"}
         >
           <span className={`h-1.5 w-1.5 rounded-full ${gammaHeatmapError && !gammaHeatmapPayload ? "bg-danger" : gammaHeatmapLoading ? "animate-pulse bg-warning" : "bg-primary"}`} />

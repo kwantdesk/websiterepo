@@ -4,6 +4,7 @@ import { STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT } from "@/lib/volumeProfileM
 import { DEFAULT_FOOTPRINT_SETTINGS, FOOTPRINT_SETTINGS_SCHEMA_VERSION } from "@/lib/footprintSettings";
 import { defaultTpoSettings, tpoSettingsToRecord, validateTpoSettings } from "@/lib/tpo/settings";
 import { DEFAULT_DOM_PRO_VISIBLE_ROWS, DOM_PRO_SETTINGS_VERSION } from "@/lib/domPro";
+import { DEFAULT_PULLING_STACKING_SETTINGS, normalizePullingStackingSettings, PULLING_STACKING_SETTINGS_VERSION } from "@/lib/pullingStacking";
 
 export const LIVE_CHART_INDICATOR_IDS = new Set([
   "gamma-heatmap",
@@ -19,6 +20,7 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "imbalance-tracker",
   "imbalance-rejector",
   "cumulative-volume-delta",
+  "pulling-stacking",
   "moving-average",
   "vwap",
   "vwap-envelopes",
@@ -84,6 +86,21 @@ export type IndicatorNumericSetting = {
 };
 
 export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[]> = {
+  "pulling-stacking": [
+    { key: "aggregationMs", label: "Aggregation bucket (ms)", defaultValue: 1000, min: 100, max: 60000, step: 50 },
+    { key: "rollingWindowMs", label: "Rolling pressure window (ms)", defaultValue: 10000, min: 500, max: 300000, step: 500 },
+    { key: "historySeconds", label: "Visible history (seconds)", defaultValue: 300, min: 30, max: 3600, step: 30 },
+    { key: "baselineBuckets", label: "Adaptive baseline buckets", defaultValue: 60, min: 5, max: 1000, step: 5 },
+    { key: "minimumContracts", label: "Minimum event contracts", defaultValue: 10, min: 1, max: 100000, step: 1 },
+    { key: "relativeThreshold", label: "Relative threshold", defaultValue: 1.5, min: 0.1, max: 20, step: 0.1 },
+    { key: "scoreThreshold", label: "Minimum event score", defaultValue: 55, min: 1, max: 100, step: 1 },
+    { key: "visibleTicks", label: "Visible ticks around price", defaultValue: 120, min: 10, max: 2000, step: 10 },
+    { key: "currentProfileWidth", label: "Current profile width", defaultValue: 72, min: 24, max: 240, step: 2 },
+    { key: "maximumEvents", label: "Maximum retained events", defaultValue: 1500, min: 100, max: 10000, step: 100 },
+    { key: "staleAfterMs", label: "Stale feed threshold (ms)", defaultValue: 5000, min: 500, max: 120000, step: 500 },
+    { key: "markerRetentionMs", label: "Marker retention (ms)", defaultValue: 60000, min: 1000, max: 3600000, step: 1000 },
+    { key: "opacity", label: "Overlay opacity (%)", defaultValue: 62, min: 5, max: 100, step: 1 },
+  ],
   "implied-volatility-rank": [
     { key: "lookBackPeriodDays", label: "Lookback sessions", defaultValue: 252, min: 2, max: 365, step: 1 },
     { key: "targetMaturityDays", label: "Target maturity (days)", defaultValue: 30, min: 1, max: 365, step: 1 },
@@ -579,6 +596,15 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
   ...Object.fromEntries(
     (INDICATOR_NUMERIC_SETTINGS[indicatorId] ?? []).map((setting) => [setting.key, setting.defaultValue]),
   ),
+  ...(indicatorId === "pulling-stacking" ? {
+    ...DEFAULT_PULLING_STACKING_SETTINGS,
+    bidStackColor: theme?.upColor ?? DEFAULT_PULLING_STACKING_SETTINGS.bidStackColor,
+    askStackColor: theme?.downColor ?? DEFAULT_PULLING_STACKING_SETTINGS.askStackColor,
+    bidPullColor: "#F59E0B",
+    askPullColor: theme?.borderUpColor ?? "#38BDF8",
+    neutralColor: theme?.gridColor ?? DEFAULT_PULLING_STACKING_SETTINGS.neutralColor,
+    pullingStackingSettingsVersion: PULLING_STACKING_SETTINGS_VERSION,
+  } : {}),
   ...(indicatorId === "gamma-heatmap" ? {
     preset: "intraday",
     metric: "GAMMA",
@@ -1159,6 +1185,16 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
     normalizedInstance = {
       ...normalizedInstance,
       settings: tpoSettingsToRecord(validateTpoSettings(normalizedInstance.settings, variant)),
+    };
+  }
+  if (normalizedInstance.indicatorId === "pulling-stacking") {
+    const settings = normalizePullingStackingSettings({
+      ...defaultIndicatorSettings("pulling-stacking"),
+      ...(normalizedInstance.settings ?? {}),
+    });
+    return {
+      ...normalizedInstance,
+      settings: { ...settings },
     };
   }
   if (normalizedInstance.indicatorId === "implied-volatility-rank") {

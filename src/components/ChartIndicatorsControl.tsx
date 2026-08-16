@@ -46,6 +46,7 @@ import {
   type FootprintTemplate,
 } from "@/lib/footprintSettings";
 import KwantSelect from "@/components/ui/KwantSelect";
+import { PULLING_STACKING_PRESETS } from "@/lib/pullingStacking";
 
 const FAVOURITES_STORAGE_KEY = "kwantdesk-chart-indicator-favourites";
 const FOOTPRINT_PROFILE_MANAGED_SETTINGS = new Set([
@@ -2286,6 +2287,58 @@ export default function ChartIndicatorsControl({
                   >
                     Reset TPO defaults
                   </button>
+                </div>
+              ) : null}
+
+              {settingsDefinition.id === "pulling-stacking" ? (
+                <div className="space-y-3 rounded-xl border border-primary/20 bg-primary/[0.04] p-3">
+                  <div>
+                    <div className="mb-2 text-[9px] font-semibold uppercase tracking-[0.13em] text-muted">Preset</div>
+                    <div className="grid grid-cols-3 gap-2">
+                      {(["balanced", "scalper", "structural"] as const).map((preset) => (
+                        <button
+                          key={preset}
+                          type="button"
+                          onClick={() => replace(settingsInstance.instanceId, (current) => ({
+                            ...current,
+                            settings: { ...(current.settings ?? {}), ...PULLING_STACKING_PRESETS[preset] },
+                          }))}
+                          className={`h-8 border text-[8px] font-semibold uppercase tracking-[0.1em] ${settingsInstance.settings?.preset === preset ? "border-primary bg-primary/10 text-primary" : "border-border bg-background text-muted hover:text-foreground"}`}
+                        >
+                          {preset}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    <label className="space-y-1.5 text-[8px] uppercase tracking-[0.1em] text-muted">
+                      <span>Classification</span>
+                      <KwantSelect
+                        value={String(settingsInstance.settings?.classificationMode ?? "price-level")}
+                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), classificationMode: event.target.value, preset: "custom" } }))}
+                        className="h-9 w-full"
+                      ><option value="price-level">Price level</option><option value="individual-order">Individual order</option></KwantSelect>
+                    </label>
+                    <label className="space-y-1.5 text-[8px] uppercase tracking-[0.1em] text-muted">
+                      <span>Price-changing modify</span>
+                      <KwantSelect
+                        value={String(settingsInstance.settings?.moveHandling ?? "separate-move")}
+                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), moveHandling: event.target.value, preset: "custom" } }))}
+                        className="h-9 w-full"
+                      ><option value="separate-move">Separate move</option><option value="pull-and-stack">Pull + stack</option><option value="ignore-correlated-move">Ignore correlated</option></KwantSelect>
+                    </label>
+                    <label className="space-y-1.5 text-[8px] uppercase tracking-[0.1em] text-muted">
+                      <span>Render mode</span>
+                      <KwantSelect
+                        value={String(settingsInstance.settings?.renderMode ?? "hybrid")}
+                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), renderMode: event.target.value, preset: "custom" } }))}
+                        className="h-9 w-full"
+                      ><option value="hybrid">Hybrid</option><option value="heat-cells">Heat cells</option><option value="ribbons">Ribbons</option><option value="event-markers">Events</option><option value="current-profile">Current profile</option><option value="lower-pane">Lower pane</option></KwantSelect>
+                    </label>
+                  </div>
+                  <p className="text-[8px] leading-4 text-muted">
+                    Executions are reconciled before removals become pulls. The feed cannot identify participant intent, implied orders, or hidden liquidity.
+                  </p>
                 </div>
               ) : null}
 
