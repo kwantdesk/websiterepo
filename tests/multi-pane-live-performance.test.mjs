@@ -104,6 +104,15 @@ test("a live candle frame clones history once while every tick still reaches exe
     readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8"),
     /paperPositionOverlayPrimitiveRef\.current\?\.updateMarketQuote\(detail\)/,
   );
+  assert.match(workspace, /if \(activeRef\.current\) setCandles\(\[\.\.\.next\]\)/);
+  assert.match(workspace, /if \(activeRef\.current\) setCandles\(nextCandles\)/);
+});
+
+test("the five-minute chart stream proves the selected symbol before warm takeover", () => {
+  assert.match(workspace, /warmingPrice\.instrument !== selectedInstrument/);
+  assert.match(workspace, /now - activeStreamOpenedAt > 270_000/);
+  assert.match(workspace, /lastPriceMessageAtBySymbol\.get\(selectedInstrument\) === undefined/);
+  assert.match(workspace, /activeStreamOpenedAt = Date\.now\(\)/);
 });
 
 test("exchange quotes do not continuously reconcile the full workspace shell", () => {

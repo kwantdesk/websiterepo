@@ -4677,7 +4677,11 @@ function WorkspaceChartPane({
       const reconciliationCadence = activeRef.current ? 250 : 750;
       if (newBar || now - lastCandleStateSyncRef.current >= reconciliationCadence) {
         lastCandleStateSyncRef.current = now;
-        startTransition(() => setCandles(nextCandles));
+        // The selected pane is the trader's price display, so its candle
+        // commit must never sit behind lower-priority React work. Background
+        // panes can still reconcile as transitions to protect shell latency.
+        if (activeRef.current) setCandles(nextCandles);
+        else startTransition(() => setCandles(nextCandles));
       }
     };
     const queueExecutionUpdate = (records: InstitutionalTrade[]) => {
@@ -6089,10 +6093,14 @@ function WorkspaceChartPane({
         }));
         const newBar = previous.at(-1)?.timestamp !== latest.timestamp;
         const now = Date.now();
-        const reconciliationCadence = activeRef.current ? 500 : 1_000;
+        const reconciliationCadence = activeRef.current ? 250 : 1_000;
         if (newBar || now - lastCandleStateSyncRef.current >= reconciliationCadence) {
           lastCandleStateSyncRef.current = now;
-          startTransition(() => setCandles([...next]));
+          // A transition can be starved indefinitely while several live
+          // canvases are busy. Commit the active chart directly so its price
+          // cannot appear frozen even though ticks are still arriving.
+          if (activeRef.current) setCandles([...next]);
+          else startTransition(() => setCandles([...next]));
         }
       });
     };
@@ -9536,7 +9544,7 @@ export default function KwantifyWorkspace({
     let disposed = false;
     let lastServerSignalAt = Date.now();
     let lastPriceMessageAt = Date.now();
-    const streamOpenedAt = Date.now();
+    let activeStreamOpenedAt = Date.now();
     const lastPriceMessageAtBySymbol = new Map<string, number>();
     let receivedPriceMessage = false;
     let reconnecting = false;
@@ -9587,8 +9595,17 @@ export default function KwantifyWorkspace({
       if (
         now - lastServerSignalAt > 18_000
         || (receivedPriceMessage && now - lastPriceMessageAt > 24_000)
+        || now - activeStreamOpenedAt > 270_000
         || (
-          now - streamOpenedAt > 24_000
+          priorityLiveSymbols.has(selectedInstrument)
+          && now - activeStreamOpenedAt > 30_000
+          && (
+            lastPriceMessageAtBySymbol.get(selectedInstrument) === undefined
+            || now - (lastPriceMessageAtBySymbol.get(selectedInstrument) ?? 0) > 30_000
+          )
+        )
+        || (
+          now - activeStreamOpenedAt > 24_000
           && [...priorityLiveSymbols].some((symbol) => {
             const lastSymbolTick = lastPriceMessageAtBySymbol.get(symbol);
             return lastSymbolTick !== undefined && now - lastSymbolTick > 24_000;
@@ -9736,6 +9753,7 @@ export default function KwantifyWorkspace({
       activeEventSource = source;
       warmingEventSource = null;
       warmingAuthenticated = false;
+      activeStreamOpenedAt = Date.now();
       if (warmReadyTimer !== null) {
         window.clearTimeout(warmReadyTimer);
         warmReadyTimer = null;
@@ -9756,6 +9774,7 @@ export default function KwantifyWorkspace({
       } else {
         activeEventSource?.close();
         activeEventSource = source;
+        activeStreamOpenedAt = Date.now();
       }
 
       source.addEventListener("open", () => {
@@ -9795,8 +9814,17 @@ export default function KwantifyWorkspace({
         if (source === warmingEventSource) {
           // The route can replay one cached quote before Databento has
           // authenticated. Only promote after status + a subsequent market
-          // payload prove that the replacement is genuinely producing ticks.
+          // payload for the selected chart prove that the replacement is
+          // genuinely producing the price the trader is watching. Promoting
+          // on some other watchlist symbol caused the selected chart to freeze
+          // when the five-minute Vercel stream lifetime was reached.
           if (!warmingAuthenticated) return;
+          try {
+            const warmingPrice = JSON.parse(event.data) as LiveFeedPrice;
+            if (warmingPrice.error || warmingPrice.instrument !== selectedInstrument) return;
+          } catch {
+            return;
+          }
           promoteWarmingSource(source);
         }
         if (source === activeEventSource) handlePriceMessage(event);
@@ -9838,7 +9866,7 @@ export default function KwantifyWorkspace({
         watchlistLiveFrameRef.current = null;
       }
     };
-  }, [activeChartBrokerLabel, bottomWorkspaceSection, priorityLiveSymbolsCsv, streamReconnectNonce, usingCTraderFeed, usingDatabentoFeed, watchlistSymbolsCsv]);
+  }, [activeChartBrokerLabel, bottomWorkspaceSection, priorityLiveSymbolsCsv, selectedInstrument, streamReconnectNonce, usingCTraderFeed, usingDatabentoFeed, watchlistSymbolsCsv]);
 
   useEffect(() => {
     if (section !== "charts") return;

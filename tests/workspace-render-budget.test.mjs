@@ -7,7 +7,7 @@ const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf
 test("visible background charts retain live ticks but reconcile heavy state less often", () => {
   const workspace = read("src/components/KwantifyWorkspace.tsx");
   assert.match(workspace, /const activeRef = useRef\(active\)/);
-  assert.match(workspace, /activeRef\.current \? 500 : 1_000/);
+  assert.match(workspace, /activeRef\.current \? 250 : 1_000/);
   assert.match(workspace, /activeRef\.current \? 250 : 750/);
   assert.match(workspace, /dispatchEvent\(new CustomEvent\(LIVE_CHART_CANDLE_EVENT/);
 });
