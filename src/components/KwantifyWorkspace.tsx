@@ -2761,6 +2761,7 @@ function reanchorLiveMidIntoCandles(candles: Candle[], mid: number, symbol: stri
 const workspaceCandleRequests = new Map<string, Promise<Candle[]>>();
 const workspaceLiveSeamRequests = new Map<string, Promise<Candle[]>>();
 const workspaceExecutionTape = new Map<string, InstitutionalTrade[]>();
+const MAX_WORKSPACE_EXECUTION_TAPES = 8;
 const workspaceOrderFlowRequests = new Map<string, Promise<InstitutionalOrderFlowResult | null>>();
 const workspaceHistoricalExecutionRequests = new Map<string, Promise<{
   candles: Candle[];
@@ -2774,6 +2775,40 @@ function workspaceOrderFlowKey(symbol: string, timeframe: string) {
   // bar boundaries. Keep the unused argument for call-site compatibility.
   void timeframe;
   return `${symbol}::${currentCmeContract(symbol) ?? "ROOT"}::flow`;
+}
+
+function storeWorkspaceExecutionTape(key: string, tape: InstitutionalTrade[]) {
+  // Refresh insertion order so recently used instruments survive the LRU
+  // bound. Saved workspaces can visit many contracts in one browser session;
+  // retaining every 55k-record tape forever was a direct browser-memory leak.
+  workspaceExecutionTape.delete(key);
+  workspaceExecutionTape.set(key, tape);
+  while (workspaceExecutionTape.size > MAX_WORKSPACE_EXECUTION_TAPES) {
+    const oldestKey = workspaceExecutionTape.keys().next().value as string | undefined;
+    if (!oldestKey) break;
+    workspaceExecutionTape.delete(oldestKey);
+  }
+  return tape;
+}
+
+function mergeSharedWorkspaceExecutionTape(
+  symbol: string,
+  timeframe: string,
+  localTape: InstitutionalTrade[],
+  incoming: InstitutionalTrade[],
+) {
+  const key = workspaceOrderFlowKey(symbol, timeframe);
+  const sharedTape = workspaceExecutionTape.get(key) ?? [];
+  const localTail = localTape.at(-1)?.timestamp ?? 0;
+  const sharedTail = sharedTape.at(-1)?.timestamp ?? 0;
+  const baseTape = sharedTail > localTail
+    || (sharedTail === localTail && sharedTape.length >= localTape.length)
+    ? sharedTape
+    : localTape;
+  return storeWorkspaceExecutionTape(
+    key,
+    mergeInstitutionalTradeTape(baseTape, incoming),
+  );
 }
 
 function fetchWorkspaceLiveSeam(
@@ -3075,7 +3110,7 @@ async function fetchWorkspaceCandles(
         compactIndicatorExecutionHistory(privateExecutionTape),
       );
       if (includeOrderFlow) {
-        workspaceExecutionTape.set(
+        storeWorkspaceExecutionTape(
           workspaceOrderFlowKey(symbol, timeframe),
           executionTape,
         );
@@ -4362,6 +4397,15 @@ function WorkspaceChartPane({
     instance.enabled && instance.indicatorId === "weekly-volume-profile");
   const needsLiveVolumeProfiles = Boolean(dailyProfileInstance || weeklyProfileInstance);
   const requiresExecutionStream = needsOrderFlowHistory || isEventBasedChartInterval(pane.timeframe);
+  useEffect(() => {
+    if (requiresExecutionStream) return;
+    // Removing the last order-flow study must release its large React-held
+    // execution array immediately. The bounded shared cache can still restore
+    // it instantly if the user adds the study again.
+    latestMarketTradesRef.current = [];
+    latestOrderFlowCandlesRef.current = [];
+    setMarketTrades((current) => current.length ? [] : current);
+  }, [requiresExecutionStream]);
   const dailyProfileSettings = dailyProfileInstance?.settings ?? {};
   const weeklyProfileSettings = weeklyProfileInstance?.settings ?? {};
   // The developing profile belongs to the venue's current trading date, not
@@ -4579,9 +4623,16 @@ function WorkspaceChartPane({
       pendingExecutionRecords = [];
 
       if (needsOrderFlowHistory) {
-        const next = mergeInstitutionalTradeTape(latestMarketTradesRef.current, records);
+        // All panes for one contract consume the same canonical tape. The
+        // first subscriber performs the merge; sibling panes reuse that exact
+        // array instead of allocating and sorting their own 55k-record copy.
+        const next = mergeSharedWorkspaceExecutionTape(
+          pane.symbol,
+          pane.timeframe,
+          latestMarketTradesRef.current,
+          records,
+        );
         latestMarketTradesRef.current = next;
-        workspaceExecutionTape.set(workspaceOrderFlowKey(pane.symbol, pane.timeframe), next);
         scheduleMarketTradeStateSync();
       }
 
@@ -4660,9 +4711,13 @@ function WorkspaceChartPane({
           const historical = latestMarketTradesRef.current.filter(
             (record) => record.timestamp < firstRithmicTimestamp,
           );
-          const next = mergeInstitutionalTradeTape(historical, records);
+          const next = mergeSharedWorkspaceExecutionTape(
+            pane.symbol,
+            pane.timeframe,
+            historical,
+            records,
+          );
           latestMarketTradesRef.current = next;
-          workspaceExecutionTape.set(workspaceOrderFlowKey(pane.symbol, pane.timeframe), next);
           setMarketTrades(next);
         }
 
@@ -4808,7 +4863,7 @@ function WorkspaceChartPane({
         )
       : [];
     if (immediateMarketTrades.length) {
-      workspaceExecutionTape.set(
+      storeWorkspaceExecutionTape(
         workspaceOrderFlowKey(pane.symbol, pane.timeframe),
         immediateMarketTrades,
       );
@@ -4878,7 +4933,7 @@ function WorkspaceChartPane({
         );
         latestMarketTradesRef.current = mergedTape;
         if (mergedTape.length) {
-          workspaceExecutionTape.set(
+          storeWorkspaceExecutionTape(
             workspaceOrderFlowKey(pane.symbol, pane.timeframe),
             mergedTape,
           );
@@ -4934,7 +4989,7 @@ function WorkspaceChartPane({
         : [];
       if (cachedMarketTrades.length) {
         latestMarketTradesRef.current = cachedMarketTrades;
-        workspaceExecutionTape.set(
+        storeWorkspaceExecutionTape(
           workspaceOrderFlowKey(pane.symbol, pane.timeframe),
           cachedMarketTrades,
         );
@@ -5139,7 +5194,7 @@ function WorkspaceChartPane({
         latestCandlesRef.current = merged;
         latestMarketTradesRef.current = nextMarketTrades;
         if (nextMarketTrades.length) {
-          workspaceExecutionTape.set(
+          storeWorkspaceExecutionTape(
             workspaceOrderFlowKey(pane.symbol, pane.timeframe),
             nextMarketTrades,
           );
@@ -5302,7 +5357,7 @@ function WorkspaceChartPane({
       latestMarketTradesRef.current = mergedTape;
       latestOrderFlowCandlesRef.current = flowCandles;
       if (mergedTape.length) {
-        workspaceExecutionTape.set(
+        storeWorkspaceExecutionTape(
           workspaceOrderFlowKey(pane.symbol, pane.timeframe),
           mergedTape,
         );
@@ -5959,9 +6014,13 @@ function WorkspaceChartPane({
             }];
           });
           if (liveExecutions.length && !rithmicConnectedRef.current) {
-            const nextTape = [...latestMarketTradesRef.current, ...liveExecutions].slice(-50_000);
+            const nextTape = mergeSharedWorkspaceExecutionTape(
+              pane.symbol,
+              pane.timeframe,
+              latestMarketTradesRef.current,
+              liveExecutions,
+            );
             latestMarketTradesRef.current = nextTape;
-            workspaceExecutionTape.set(workspaceOrderFlowKey(pane.symbol, pane.timeframe), nextTape);
             const now = Date.now();
             const tapeCadence = activeRef.current ? 250 : 750;
             if (now - lastMarketTradeStateSyncRef.current >= tapeCadence) {

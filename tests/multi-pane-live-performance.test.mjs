@@ -48,6 +48,31 @@ test("each pane losslessly coalesces execution work before copying tape and cand
   assert.match(workspace, /onTrades: \(records\) => \{[\s\S]{0,160}queueExecutionUpdate\(records\)/);
 });
 
+test("sibling panes share one bounded execution tape instead of retaining duplicate archives", () => {
+  assert.match(workspace, /MAX_WORKSPACE_EXECUTION_TAPES = 8/);
+  assert.match(workspace, /function storeWorkspaceExecutionTape/);
+  assert.match(workspace, /while \(workspaceExecutionTape\.size > MAX_WORKSPACE_EXECUTION_TAPES\)/);
+  assert.match(workspace, /function mergeSharedWorkspaceExecutionTape/);
+  assert.match(workspace, /const records = pendingExecutionRecords;[\s\S]{0,520}mergeSharedWorkspaceExecutionTape\([\s\S]{0,180}records/);
+  assert.match(workspace, /if \(requiresExecutionStream\) return;[\s\S]{0,520}setMarketTrades/);
+});
+
+test("inactive TPO and removed studies release large derived execution arrays", () => {
+  const chart = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
+  assert.match(chart, /const tpoSamplingEnabled = useMemo/);
+  assert.match(chart, /if \(!tpoSamplingEnabled\) return \[\]/);
+  assert.match(chart, /return indicatorMarketTrades[\s\S]{0,520}aggressorSide/);
+  assert.match(chart, /if \(indicatorSamplingEnabled\) return;[\s\S]{0,520}setSampledIndicatorMarketTrades\(\[\]\)/);
+});
+
+test("chart teardown detaches every heavy primitive before disposing its canvas", () => {
+  const chart = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
+  const teardown = chart.slice(chart.indexOf("if (candleSeriesRef.current && tpoProfilePrimitiveRef.current)"));
+  assert.ok(teardown.indexOf("detachPrimitive(tpoProfilePrimitiveRef.current)") < teardown.indexOf("chartRef.current.remove()"));
+  assert.ok(teardown.indexOf("detachPrimitive(stackedImbalancePrimitiveRef.current)") < teardown.indexOf("chartRef.current.remove()"));
+  assert.ok(teardown.indexOf("detachPrimitive(tapeSpeedPrimitiveRef.current)") < teardown.indexOf("chartRef.current.remove()"));
+});
+
 test("professional drawing invalidations are coalesced away from the live tape cadence", () => {
   const chart = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
   assert.match(chart, /drawingDataRefreshTimerRef/);
@@ -77,7 +102,7 @@ test("a live candle frame clones history once while every tick still reaches exe
   assert.match(workspace, /showTradesMenu \|\| rightPanel === "order"[\s\S]{0,80}syncPaperLedgerUi\(false, 250\)/);
   assert.match(
     readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8"),
-    /const paperMarkPrice = candles\.at\(-1\)\?\.close \?\? null/,
+    /paperPositionOverlayPrimitiveRef\.current\?\.updateMarketQuote\(detail\)/,
   );
 });
 

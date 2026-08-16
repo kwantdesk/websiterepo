@@ -5,7 +5,11 @@ const EXACT_RECORD_LIMIT = 25_000;
 // Compact in batches instead of filtering and sorting the entire tape for
 // every live execution packet. The extra headroom is small in memory and
 // removes a recurring main-thread stall during active markets.
-const COMPACTION_HIGH_WATER = 70_000;
+// Keep only a small amount of merge headroom above the two retained lanes.
+// A 70k high-water mark let every open pane carry another 15k records until
+// the next compaction. Across several charts that transient headroom was
+// enough to trigger large, periodic garbage collections in Chrome.
+const COMPACTION_HIGH_WATER = 60_000;
 
 const recordKey = (record: InstitutionalTrade) => record.eventId
   || `${record.timestamp}:${record.recordIndex}:${record.close}:${record.volume}`;

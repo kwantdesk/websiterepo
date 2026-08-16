@@ -525,6 +525,7 @@ const EMPTY_CHART_LEVELS: ChartLevel[] = [];
 
 const smtComparisonSnapshotCache = new Map<string, { candles: Candle[]; storedAt: number }>();
 const smtComparisonSnapshotRequests = new Map<string, Promise<Candle[]>>();
+const MAX_SMT_COMPARISON_SNAPSHOTS = 12;
 
 async function loadSmtComparisonCandles(
   symbol: "ES" | "NQ",
@@ -533,7 +534,11 @@ async function loadSmtComparisonCandles(
 ) {
   const key = `${symbol}:${timeframe}:${lookbackBars}`;
   const cached = smtComparisonSnapshotCache.get(key);
-  if (cached && Date.now() - cached.storedAt < 10_000) return cached.candles;
+  if (cached && Date.now() - cached.storedAt < 10_000) {
+    smtComparisonSnapshotCache.delete(key);
+    smtComparisonSnapshotCache.set(key, cached);
+    return cached.candles;
+  }
   const existing = smtComparisonSnapshotRequests.get(key);
   if (existing) return existing;
   const request = fetchInstitutionalSnapshot({
@@ -543,7 +548,15 @@ async function loadSmtComparisonCandles(
     timeoutMs: 15_000,
   }).then((snapshot) => {
     const candles = snapshot?.candles ?? [];
-    if (candles.length) smtComparisonSnapshotCache.set(key, { candles, storedAt: Date.now() });
+    if (candles.length) {
+      smtComparisonSnapshotCache.delete(key);
+      smtComparisonSnapshotCache.set(key, { candles, storedAt: Date.now() });
+      while (smtComparisonSnapshotCache.size > MAX_SMT_COMPARISON_SNAPSHOTS) {
+        const oldestKey = smtComparisonSnapshotCache.keys().next().value as string | undefined;
+        if (!oldestKey) break;
+        smtComparisonSnapshotCache.delete(oldestKey);
+      }
+    }
     return candles;
   }).finally(() => {
     smtComparisonSnapshotRequests.delete(key);
@@ -2948,6 +2961,12 @@ export default function Chart({
       instance.enabled && instance.indicatorId === "deep-print-footprint"),
     [indicators],
   );
+  const tpoSamplingEnabled = useMemo(
+    () => indicators.some((instance) => instance.enabled && (
+      instance.indicatorId === "tpo-chart" || instance.indicatorId === "weekly-tpo"
+    )),
+    [indicators],
+  );
   function resetViewportBeforeReveal(
     chart: IChartApi,
     candleSeries: CandleSeriesApi,
@@ -3250,6 +3269,15 @@ export default function Chart({
       professionalUpdateHistoryTimerRef.current = null;
     }
   }, []);
+
+  useEffect(() => {
+    if (indicatorSamplingEnabled) return;
+    // A removed indicator must not keep the complete execution archive alive
+    // in component state. Price continues to paint through the direct candle
+    // event, while the shared bounded cache keeps a fast re-enable path.
+    setSampledIndicatorCandles([]);
+    setSampledIndicatorMarketTrades([]);
+  }, [indicatorSamplingEnabled]);
 
   useEffect(() => {
     if (!openToolbarGroup) return;
@@ -4093,8 +4121,9 @@ export default function Chart({
   // biased subset of large prints.
   const indicatorCandles = indicatorWindowCandles;
   const tpoSourceTrades = useMemo<TpoTrade[]>(() => {
+    if (!tpoSamplingEnabled) return [];
     const tickSize = priceFormat.minMove;
-    return sampledIndicatorMarketTrades
+    return indicatorMarketTrades
       .filter((trade) => !trade.flowOnly && Number.isFinite(trade.close) && trade.volume > 0)
       .map((trade) => ({
         instrumentId: instrument,
@@ -4105,7 +4134,7 @@ export default function Chart({
         aggressorSide: trade.aggressor === "BUY" ? "buy" as const : trade.aggressor === "SELL" ? "sell" as const : "unknown" as const,
         tickSize,
       }));
-  }, [instrument, priceFormat.minMove, sampledIndicatorMarketTrades]);
+  }, [indicatorMarketTrades, instrument, priceFormat.minMove, tpoSamplingEnabled]);
   const footprintIndicator = useMemo(
     () => indicators.find((instance) =>
       instance.enabled && instance.indicatorId === "deep-print-footprint") ?? null,
@@ -10455,23 +10484,26 @@ export default function Chart({
             // Chart teardown can detach primitives before React cleanup runs.
           }
         }
+        if (candleSeriesRef.current && tpoProfilePrimitiveRef.current) {
+          try { candleSeriesRef.current.detachPrimitive(tpoProfilePrimitiveRef.current); } catch { /* chart may already be disposed */ }
+        }
+        if (candleSeriesRef.current && stackedImbalancePrimitiveRef.current) {
+          try { candleSeriesRef.current.detachPrimitive(stackedImbalancePrimitiveRef.current); } catch { /* chart may already be disposed */ }
+        }
+        if (candleSeriesRef.current && icebergRefreshPrimitiveRef.current) {
+          try { candleSeriesRef.current.detachPrimitive(icebergRefreshPrimitiveRef.current); } catch { /* chart may already be disposed */ }
+        }
+        if (candleSeriesRef.current && liquidityStopSweepPrimitiveRef.current) {
+          try { candleSeriesRef.current.detachPrimitive(liquidityStopSweepPrimitiveRef.current); } catch { /* chart may already be disposed */ }
+        }
+        if (candleSeriesRef.current && pocAuctionPrimitiveRef.current) {
+          try { candleSeriesRef.current.detachPrimitive(pocAuctionPrimitiveRef.current); } catch { /* chart may already be disposed */ }
+        }
+        if (candleSeriesRef.current && tapeSpeedPrimitiveRef.current) {
+          try { candleSeriesRef.current.detachPrimitive(tapeSpeedPrimitiveRef.current); } catch { /* chart may already be disposed */ }
+        }
         chartRef.current.remove();
         chartRef.current = null;
-      }
-      if (candleSeriesRef.current && stackedImbalancePrimitiveRef.current) {
-        try { candleSeriesRef.current.detachPrimitive(stackedImbalancePrimitiveRef.current); } catch { /* chart may already be disposed */ }
-      }
-      if (candleSeriesRef.current && icebergRefreshPrimitiveRef.current) {
-        try { candleSeriesRef.current.detachPrimitive(icebergRefreshPrimitiveRef.current); } catch { /* chart may already be disposed */ }
-      }
-      if (candleSeriesRef.current && liquidityStopSweepPrimitiveRef.current) {
-        try { candleSeriesRef.current.detachPrimitive(liquidityStopSweepPrimitiveRef.current); } catch { /* chart may already be disposed */ }
-      }
-      if (candleSeriesRef.current && pocAuctionPrimitiveRef.current) {
-        try { candleSeriesRef.current.detachPrimitive(pocAuctionPrimitiveRef.current); } catch { /* chart may already be disposed */ }
-      }
-      if (candleSeriesRef.current && tapeSpeedPrimitiveRef.current) {
-        try { candleSeriesRef.current.detachPrimitive(tapeSpeedPrimitiveRef.current); } catch { /* chart may already be disposed */ }
       }
       candleSeriesRef.current = null;
       gameplanUnderlayRef.current = null;
@@ -10495,6 +10527,7 @@ export default function Chart({
       darkPoolMapPrimitiveRef.current = null;
       darkPoolGexPrimitiveRef.current = null;
       volumeProfilePrimitiveRef.current = null;
+      tpoProfilePrimitiveRef.current = null;
       bigTradesPrimitiveRef.current = null;
       bigBlocksPrimitiveRef.current = null;
       smtDivergencePrimitiveRef.current = null;
