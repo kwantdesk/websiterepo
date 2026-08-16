@@ -618,7 +618,7 @@ function parseUnderlyingHistoryCandles(payload: unknown): OptionsCandle[] {
     .sort((left, right) => left.timestamp - right.timestamp);
 }
 
-function underlyingHistoryBucket(timestamp: number, timeframe: string) {
+function underlyingHistoryBucket(timestamp: number, timeframe: string, sessionAnchor?: number) {
   if (timeframe === "1W") {
     const date = new Date(timestamp);
     const monday = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
@@ -634,15 +634,27 @@ function underlyingHistoryBucket(timestamp: number, timeframe: string) {
     "2h": 2 * 60 * 60_000,
     "4h": 4 * 60 * 60_000,
   };
-  const duration = durationMs[timeframe];
-  return duration ? Math.floor(timestamp / duration) * duration : timestamp;
+  const minuteMatch = timeframe.match(/^(\d+)m$/);
+  const duration = minuteMatch ? Number(minuteMatch[1]) * 60_000 : durationMs[timeframe];
+  if (!duration) return timestamp;
+  const anchor = sessionAnchor ?? 0;
+  return anchor + Math.floor((timestamp - anchor) / duration) * duration;
 }
 
-function aggregateUnderlyingHistory(candles: OptionsCandle[], timeframe: string) {
-  if (!["2h", "4h", "1W", "1M"].includes(timeframe)) return candles;
+function aggregateUnderlyingHistory(candles: OptionsCandle[], timeframe: string, sourceAggregation: string) {
+  if (timeframe.toLowerCase() === sourceAggregation.toLowerCase()) return candles;
+  const sessionAnchors = new Map<string, number>();
+  if (/^\d+m$/.test(timeframe)) {
+    for (const candle of candles) {
+      const sessionDate = marketDateKey(candle.timestamp);
+      const current = sessionAnchors.get(sessionDate);
+      if (current === undefined || candle.timestamp < current) sessionAnchors.set(sessionDate, candle.timestamp);
+    }
+  }
   const grouped = new Map<number, OptionsCandle[]>();
   for (const candle of candles) {
-    const bucket = underlyingHistoryBucket(candle.timestamp, timeframe);
+    const sessionAnchor = sessionAnchors.get(marketDateKey(candle.timestamp));
+    const bucket = underlyingHistoryBucket(candle.timestamp, timeframe, sessionAnchor);
     const rows = grouped.get(bucket);
     if (rows) rows.push(candle);
     else grouped.set(bucket, [candle]);
@@ -657,8 +669,30 @@ function aggregateUnderlyingHistory(candles: OptionsCandle[], timeframe: string)
   }));
 }
 
-const UNDERLYING_SESSION_HISTORY_PERIODS = new Set(["1m", "5m"]);
 const UNDERLYING_COMPLETED_SESSION_REVALIDATE_SECONDS = 6 * 60 * 60;
+
+function underlyingHistoryPlan(timeframe: string) {
+  const minuteMatch = timeframe.match(/^(\d+)m$/);
+  if (minuteMatch) {
+    const minutes = Number(minuteMatch[1]);
+    if (!Number.isInteger(minutes) || minutes < 1 || minutes > 240) return null;
+    // KwantData's documented native minute buckets are used as the source.
+    // Non-native minute intervals are built deterministically in KwantDesk,
+    // anchored to the first print of each New York cash session.
+    const sourceMinutes = [30, 15, 5, 1].find((candidate) => minutes % candidate === 0) ?? 1;
+    return { aggregationPeriod: `${sourceMinutes}m`, sessionScoped: true };
+  }
+  const providerAggregation: Record<string, string> = {
+    "1h": "1h",
+    "2h": "1h",
+    "4h": "1h",
+    "1D": "1d",
+    "1W": "1d",
+    "1M": "1d",
+  };
+  const aggregationPeriod = providerAggregation[timeframe];
+  return aggregationPeriod ? { aggregationPeriod, sessionScoped: false } : null;
+}
 
 function marketDateKey(timestamp: number) {
   return new Intl.DateTimeFormat("en-CA", {
@@ -699,8 +733,8 @@ async function getOptionsUnderlyingSessionHistory(
     sessionDate === marketDateKey(Date.now()) ? 5_000 : 60_000,
   )).payload;
 
-  // One- and five-minute history is intentionally requested one market
-  // session at a time. KwantData documents minute granularity for session
+  // Minute history is intentionally requested one market session at a time.
+  // KwantData documents minute granularity for session
   // windows; sending a ten-calendar-day 1m request made the route spend its
   // timeout restoring thousands of buckets and could return an empty chart.
   // Completed sessions are immutable enough to share through Next's data
@@ -727,26 +761,15 @@ export async function getOptionsUnderlyingHistory(input: {
   to: number;
 }): Promise<OptionsCandle[]> {
   const symbol = input.symbol.trim().toUpperCase();
-  const providerAggregation: Record<string, string> = {
-    "1m": "1m",
-    "5m": "5m",
-    "15m": "15m",
-    "30m": "30m",
-    "1h": "1h",
-    "2h": "1h",
-    "4h": "1h",
-    "1D": "1d",
-    "1W": "1d",
-    "1M": "1d",
-  };
-  const aggregationPeriod = providerAggregation[input.timeframe];
-  if (!aggregationPeriod) {
+  const plan = underlyingHistoryPlan(input.timeframe);
+  if (!plan) {
     throw new QuantDataError(`${input.timeframe} is not supported for cash-underlying history.`, 400, null);
   }
+  const { aggregationPeriod, sessionScoped } = plan;
   const from = Math.min(input.from, input.to);
   const to = Math.max(input.from, input.to);
   let payloads: unknown[];
-  if (UNDERLYING_SESSION_HISTORY_PERIODS.has(input.timeframe)) {
+  if (sessionScoped) {
     const sessionResults = await Promise.allSettled(
       weekdaySessionDates(from, to).map((sessionDate) =>
         getOptionsUnderlyingSessionHistory(symbol, aggregationPeriod, sessionDate)),
@@ -774,7 +797,7 @@ export async function getOptionsUnderlyingHistory(input: {
     .filter((candle) => candle.timestamp >= from && candle.timestamp <= to);
   const deduplicated = [...new Map(candles.map((candle) => [candle.timestamp, candle])).values()]
     .sort((left, right) => left.timestamp - right.timestamp);
-  return aggregateUnderlyingHistory(deduplicated, input.timeframe);
+  return aggregateUnderlyingHistory(deduplicated, input.timeframe, aggregationPeriod);
 }
 
 function parseIvRank(payload: unknown, sessionDate: string) {

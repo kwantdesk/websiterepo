@@ -62,11 +62,14 @@ function finiteNumber(value: unknown): number | null {
 }
 
 function timeframeToAggregate(timeframe: string) {
+  const minuteMatch = timeframe.match(/^(\d+)m$/);
+  if (minuteMatch) {
+    const multiplier = Number(minuteMatch[1]);
+    if (Number.isInteger(multiplier) && multiplier >= 1 && multiplier <= 240) {
+      return { multiplier, timespan: "minute" };
+    }
+  }
   const resolutions: Record<string, { multiplier: number; timespan: string }> = {
-    "1m": { multiplier: 1, timespan: "minute" },
-    "5m": { multiplier: 5, timespan: "minute" },
-    "15m": { multiplier: 15, timespan: "minute" },
-    "30m": { multiplier: 30, timespan: "minute" },
     "1h": { multiplier: 1, timespan: "hour" },
     "2h": { multiplier: 2, timespan: "hour" },
     "4h": { multiplier: 4, timespan: "hour" },

@@ -70,12 +70,16 @@ export const CHART_INTERVAL_GROUPS: ChartIntervalGroup[] = [
     kind: "minute",
     label: "Minute",
     suffix: "m",
-    defaults: [1, 5, 15, 30],
+    defaults: [1, 2, 3, 5, 10, 15, 30, 45],
     options: [
       timeOption("1m", "1 m", "minute", 1),
+      timeOption("2m", "2 m", "minute", 2),
+      timeOption("3m", "3 m", "minute", 3),
       timeOption("5m", "5 m", "minute", 5),
+      timeOption("10m", "10 m", "minute", 10),
       timeOption("15m", "15 m", "minute", 15),
       timeOption("30m", "30 m", "minute", 30),
+      timeOption("45m", "45 m", "minute", 45),
       timeOption("1h", "1 h", "minute", 60),
       timeOption("2h", "2 h", "minute", 120),
       timeOption("4h", "4 h", "minute", 240),
@@ -227,12 +231,20 @@ export function supportsChartInterval(value: string, broker: string) {
   // history. Event-built futures intervals remain intentionally unavailable.
   // VIX still has its official Cboe daily fallback when Massive is absent.
   if (broker === "Market Index") {
-    return ["1m", "5m", "15m", "30m", "1h", "2h", "4h", "1D", "1W", "1M"].includes(value);
+    const minuteMatch = value.match(/^(\d+)m$/);
+    if (minuteMatch) {
+      const minutes = Number(minuteMatch[1]);
+      return Number.isInteger(minutes) && minutes >= 1 && minutes <= 240;
+    }
+    return ["1h", "2h", "4h", "1D", "1W", "1M"].includes(value);
+  }
+  if (broker === "OANDA") {
+    return ["5s", "15s", "30s", "1m", "5m", "15m", "30m", "1h", "2h", "4h", "1D", "1W", "1M"].includes(value);
   }
   if (option.futuresOnly) return false;
   if (!CHART_INTERVAL_OPTIONS.some((configured) => configured.id === value)) return false;
   if (option.kind !== "second") return true;
-  return broker === "OANDA" && ["5s", "15s", "30s"].includes(value);
+  return false;
 }
 
 export function makeCustomChartInterval(kind: ChartIntervalKind, value: number, secondaryValue?: number) {
