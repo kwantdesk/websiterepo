@@ -216,9 +216,11 @@ export async function GET(request: NextRequest) {
     const mappingStale = nowMs - receipt.calculatedAtMs > settings.staleAllowanceSeconds * 1_000;
     const status = mappingStale ? "MAPPING_STALE" : dataAgeMs !== null && dataAgeMs > 15 * 60_000 ? "CACHED" : "LIVE";
     const limitations = [
-      `${sourceTicker} is an equity off-exchange source mapped to ${displayInstrument}; this is not a direct futures dark-pool feed.`,
+      direct
+        ? `${sourceTicker} uses native off-exchange prints and levels in ${displayInstrument} price space.`
+        : `${sourceTicker} is the tradable off-exchange source mapped to ${displayInstrument}; ${displayInstrument} itself does not publish dark-pool executions.`,
       "Trade-side labels describe execution location relative to the quote, not participant identity or intent.",
-      "Historical prints retain the first valid mapping receipt observed by this adapter; the current provider endpoint does not supply a pre-ingestion futures mapping history.",
+      ...(direct ? [] : ["Historical prints retain the first valid mapping receipt observed by this adapter; the current provider endpoint does not supply a pre-ingestion cross-instrument mapping history."]),
     ];
     if (record(printsPayload) && printsPayload.truncated === true) limitations.push("The initial provider cursor walk reached its bounded serverless page limit; newer head pages continue merging into the retained browser history without blocking the chart.");
     if (!mapped.length && baseline?.levelCount) limitations.push("Aggregate levels are available, but timestamped prints were unavailable. No fake historical circles were painted from aggregate totals.");

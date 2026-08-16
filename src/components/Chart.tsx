@@ -5856,6 +5856,7 @@ export default function Chart({
     const indicatorSettings = darkPoolMapIndicator.settings ?? {};
     const requestedSource = String(indicatorSettings.sourceTicker ?? "AUTO").toUpperCase();
     const source = requestedSource === "AUTO" ? defaultDarkPoolSource(display) : requestedSource;
+    const directSource = source === display;
     const refreshMs = Math.max(1_000, Math.min(30_000, Number(indicatorSettings.pollSeconds ?? 2) * 1_000));
     const querySettings = [
       "historyDays", "pollSeconds", "minimumPrintNotional", "maximumPrintNotional", "minimumPrintShares", "maximumPrintShares",
@@ -5869,7 +5870,7 @@ export default function Chart({
     let timer: number | null = null;
     const load = async (force = false) => {
       const displayPrice = drawingCandlesRef.current.at(-1)?.close;
-      if (!(displayPrice && displayPrice > 0)) {
+      if (!directSource && !(displayPrice && displayPrice > 0)) {
         setDarkPoolMapLoading(true);
         timer = window.setTimeout(() => void load(force), 500);
         return;
@@ -5878,10 +5879,10 @@ export default function Chart({
       const query = new URLSearchParams({
         display,
         source,
-        displayPrice: String(displayPrice),
         mappingMode: String(indicatorSettings.mappingMode ?? "rolling-affine"),
         priceBinMode: String(indicatorSettings.priceBinMode ?? "mapped-points"),
       });
+      if (displayPrice && displayPrice > 0) query.set("displayPrice", String(displayPrice));
       querySettings.forEach((key) => {
         const value = indicatorSettings[key];
         if (typeof value === "number" && Number.isFinite(value)) query.set(key, String(value));

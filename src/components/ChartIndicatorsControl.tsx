@@ -1651,7 +1651,7 @@ export default function ChartIndicatorsControl({
                     </KwantSelect>
                   </label>
                   {[
-                    ["Source ticker", "sourceTicker", [["AUTO", "Automatic"], ["QQQ", "QQQ"], ["SPY", "SPY"], ["IWM", "IWM"], ["DIA", "DIA"]]],
+                    ["Source ticker", "sourceTicker", [["AUTO", "Automatic for chart"], ["QQQ", "QQQ"], ["SPY", "SPY"], ["IWM", "IWM"], ["AAPL", "AAPL"], ["NVDA", "NVDA"], ["TSLA", "TSLA"], ["MSFT", "MSFT"], ["AMZN", "AMZN"], ["META", "META"], ["AMD", "AMD"], ["DIA", "DIA"]]],
                     ["Mapping", "mappingMode", [["rolling-affine", "Rolling affine"], ["live-ratio", "Live ratio"], ["direct", "Direct"], ["manual", "Manual alpha / beta"]]],
                     ["Visual mode", "visualMode", [["circles-and-zones", "Circles + zones"], ["heat-circles", "Heat circles"], ["zones", "Zones"], ["lines", "Lines"], ["historical-ribbons", "Historical ribbons"]]],
                     ["Price bins", "priceBinMode", [["mapped-points", "Mapped points"], ["display-ticks", "Display ticks"], ["source-cents", "Source cents"], ["exact-source-price", "Exact source price"]]],
@@ -1669,7 +1669,7 @@ export default function ChartIndicatorsControl({
                     </label>
                   ))}
                   <div className="border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
-                    Dark Pool Map visualizes reported off-exchange equity executions. It does not reveal participant identity, open positions, or guaranteed support and resistance. QQQ→NQ and SPY→ES are explicitly mapped equity data—not direct futures dark pools.
+                    Dark Pool Map supports every options-flow underlying. QQQ, SPY, IWM and single stocks use native off-exchange prints. NDX and SPX are non-traded indices, so they use QQQ→NDX and SPY→SPX price mapping. Futures remain explicitly mapped rather than presented as direct dark-pool feeds.
                   </div>
                 </div>
               ) : null}

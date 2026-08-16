@@ -2,6 +2,26 @@ export const DARK_POOL_MAP_INDICATOR_ID = "dark-pool-map";
 export const DARK_POOL_MAP_WORKSPACE_TOOL_ID = "tool-dark-pool-map";
 export const DARK_POOL_MAP_SCHEMA_VERSION = 1;
 
+/**
+ * Every underlying exposed by the options-flow instrument picker. Index
+ * underlyings do not trade, so their off-exchange source is the corresponding
+ * liquid ETF and is mapped into the index's native price space.
+ */
+export const DARK_POOL_OPTIONS_UNDERLYING_SOURCES = {
+  SPX: "SPY",
+  SPY: "SPY",
+  NDX: "QQQ",
+  QQQ: "QQQ",
+  IWM: "IWM",
+  AAPL: "AAPL",
+  NVDA: "NVDA",
+  TSLA: "TSLA",
+  MSFT: "MSFT",
+  AMZN: "AMZN",
+  META: "META",
+  AMD: "AMD",
+} as const;
+
 export type DarkPoolTradeSide = "ABOVE_ASK" | "ASK" | "MID_MARKET" | "BID" | "BELOW_BID" | "UNKNOWN";
 export type DarkPoolLocation = "ASK_SIDE" | "BID_SIDE" | "MID" | "UNKNOWN";
 export type DarkPoolMappingMode = "direct" | "rolling-affine" | "live-ratio" | "manual";
@@ -263,7 +283,16 @@ export function defaultDarkPoolSource(displayInput: string) {
   if (display === "ES" || display === "MES") return "SPY";
   if (display === "RTY" || display === "M2K") return "IWM";
   if (display === "YM" || display === "MYM") return "DIA";
+  if (display in DARK_POOL_OPTIONS_UNDERLYING_SOURCES) {
+    return DARK_POOL_OPTIONS_UNDERLYING_SOURCES[display as keyof typeof DARK_POOL_OPTIONS_UNDERLYING_SOURCES];
+  }
   return display;
+}
+
+export function isDirectDarkPoolSource(displayInput: string, sourceInput?: string) {
+  const display = normalizeDarkPoolInstrument(displayInput);
+  const source = normalizeDarkPoolInstrument(sourceInput ?? defaultDarkPoolSource(display));
+  return display === source;
 }
 
 export function displayTickSize(displayInput: string) {

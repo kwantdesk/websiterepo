@@ -11,6 +11,7 @@
     "test:bounce-levels": "node scripts/test-bounce-levels.cjs",
     "test:iv-rank": "node scripts/test-implied-volatility-rank.cjs",
     "test:iv-rank-integration": "node scripts/test-implied-volatility-rank-integration.cjs",
+    "test:dark-pool-map": "node --experimental-strip-types scripts/test-dark-pool-map.mjs",
     "test:pulling-stacking": "node --experimental-strip-types scripts/test-pulling-stacking.mjs",
     "test:absorption-detector": "node --experimental-strip-types scripts/test-absorption-detector.mjs",
     "test:stacked-imbalance-suite": "node --experimental-strip-types scripts/test-stacked-imbalance-suite.mjs",
