@@ -291,34 +291,34 @@ html[data-theme-updating="true"] *::after {
   will-change: opacity, box-shadow;
 }
 
-.gex-king-node {
+.gex-star-node {
   isolation: isolate;
   border-bottom-color: transparent;
   box-shadow:
-    inset 0 0 0 3px var(--gex-king-accent),
-    inset 0 0 0 4px var(--gex-king-outline),
-    0 0 12px color-mix(in srgb, var(--gex-king-accent) 32%, transparent);
+    inset 0 0 0 3px var(--gex-star-accent),
+    inset 0 0 0 4px var(--gex-star-outline),
+    0 0 12px color-mix(in srgb, var(--gex-star-accent) 32%, transparent);
 }
 
-/* A shared centre/King row keeps the live dash and price pill, but the King
+/* A shared centre/Star row keeps the live dash and price pill, but the Star
    border is the only row border so the two states never compete. */
-.gex-king-node.gex-king-is-current {
+.gex-star-node.gex-star-is-current {
   --gex-live-fluor: color-mix(in srgb, var(--primary) 84%, white 16%);
 }
 
-.gex-king-badge,
-.gex-king-header {
-  border-color: var(--gex-king-outline);
-  color: var(--gex-king-text);
-  background: var(--gex-king-accent);
+.gex-star-badge,
+.gex-star-header {
+  border-color: var(--gex-star-outline);
+  color: var(--gex-star-text);
+  background: var(--gex-star-accent);
   text-shadow: none;
   box-shadow:
-    0 0 0 1px var(--gex-king-accent),
-    0 0 9px color-mix(in srgb, var(--gex-king-accent) 30%, transparent);
+    0 0 0 1px var(--gex-star-accent),
+    0 0 9px color-mix(in srgb, var(--gex-star-accent) 30%, transparent);
 }
 
-.gex-king-header:focus-visible {
-  --tw-ring-color: var(--gex-king-accent);
+.gex-star-header:focus-visible {
+  --tw-ring-color: var(--gex-star-accent);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1726,7 +1726,7 @@ body.kwant-cockpit-ui canvas {
     padding-inline: 6px;
   }
 
-  .gex-king-badge-label {
+  .gex-star-badge-label {
     display: none;
   }
 }
