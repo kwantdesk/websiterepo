@@ -5,6 +5,7 @@ import { DEFAULT_FOOTPRINT_SETTINGS, FOOTPRINT_SETTINGS_SCHEMA_VERSION } from "@
 import { defaultTpoSettings, tpoSettingsToRecord, validateTpoSettings } from "@/lib/tpo/settings";
 import { DEFAULT_DOM_PRO_VISIBLE_ROWS, DOM_PRO_SETTINGS_VERSION } from "@/lib/domPro";
 import { DEFAULT_PULLING_STACKING_SETTINGS, normalizePullingStackingSettings, PULLING_STACKING_SETTINGS_VERSION } from "@/lib/pullingStacking";
+import { ABSORPTION_DETECTOR_SETTINGS_VERSION, DEFAULT_ABSORPTION_SETTINGS, normalizeAbsorptionSettings } from "@/lib/absorptionDetector";
 
 export const LIVE_CHART_INDICATOR_IDS = new Set([
   "gamma-heatmap",
@@ -21,6 +22,7 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "imbalance-rejector",
   "cumulative-volume-delta",
   "pulling-stacking",
+  "absorption-detector",
   "moving-average",
   "vwap",
   "vwap-envelopes",
@@ -86,6 +88,44 @@ export type IndicatorNumericSetting = {
 };
 
 export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[]> = {
+  "absorption-detector": [
+    { key: "windowMs", label: "Rolling window (ms)", defaultValue: 1000, min: 50, max: 60000, step: 50 },
+    { key: "rollingStepMs", label: "Rolling step (ms)", defaultValue: 100, min: 16, max: 5000, step: 16 },
+    { key: "mergeGapMs", label: "Event merge gap (ms)", defaultValue: 100, min: 0, max: 5000, step: 25 },
+    { key: "maximumCandidateDurationMs", label: "Maximum candidate duration (ms)", defaultValue: 3000, min: 100, max: 60000, step: 100 },
+    { key: "confirmationWindowMs", label: "Confirmation window (ms)", defaultValue: 2000, min: 50, max: 60000, step: 50 },
+    { key: "minimumContracts", label: "Absolute minimum contracts", defaultValue: 100, min: 1, max: 1000000, step: 1 },
+    { key: "minimumTradeCount", label: "Minimum trade count", defaultValue: 3, min: 1, max: 1000, step: 1 },
+    { key: "minimumDirectionalShare", label: "Minimum directional share", defaultValue: 0.7, min: 0.5, max: 1, step: 0.01 },
+    { key: "maximumPenetrationTicks", label: "Maximum penetration (ticks)", defaultValue: 2, min: 0, max: 100, step: 1 },
+    { key: "minimumAggressionPerTick", label: "Minimum aggression per tick", defaultValue: 50, min: 0, max: 1000000, step: 1 },
+    { key: "minimumDevelopingScore", label: "Minimum developing score", defaultValue: 45, min: 0, max: 100, step: 1 },
+    { key: "minimumConfirmedScore", label: "Minimum confirmed score", defaultValue: 70, min: 0, max: 100, step: 1 },
+    { key: "baselineWindowSeconds", label: "Dynamic baseline window (seconds)", defaultValue: 60, min: 5, max: 3600, step: 5 },
+    { key: "baselineSampleLimit", label: "Baseline sample limit", defaultValue: 4000, min: 30, max: 100000, step: 10 },
+    { key: "baselineMinimumSamples", label: "Minimum baseline samples", defaultValue: 30, min: 1, max: 10000, step: 1 },
+    { key: "baselineMedianMultiplier", label: "Baseline median multiplier", defaultValue: 3, min: 0.1, max: 20, step: 0.1 },
+    { key: "minimumResponseTicks", label: "Minimum response (ticks)", defaultValue: 2, min: 0, max: 100, step: 1 },
+    { key: "minimumPersistenceMs", label: "Minimum persistence (ms)", defaultValue: 250, min: 0, max: 60000, step: 25 },
+    { key: "minimumReplenishmentRatio", label: "Minimum replenishment ratio", defaultValue: 0.2, min: 0, max: 10, step: 0.05 },
+    { key: "zoneMergeWindowMs", label: "Zone merge window (ms)", defaultValue: 750, min: 0, max: 60000, step: 50 },
+    { key: "zoneMaximumGapTicks", label: "Zone maximum gap (ticks)", defaultValue: 1, min: 0, max: 100, step: 1 },
+    { key: "retestMinimumDepartureTicks", label: "Retest departure (ticks)", defaultValue: 3, min: 1, max: 100, step: 1 },
+    { key: "retestTouchToleranceTicks", label: "Retest tolerance (ticks)", defaultValue: 1, min: 0, max: 20, step: 1 },
+    { key: "breakToleranceTicks", label: "Break tolerance (ticks)", defaultValue: 1, min: 0, max: 20, step: 1 },
+    { key: "minimumBreakVolume", label: "Minimum break volume", defaultValue: 50, min: 0, max: 1000000, step: 1 },
+    { key: "minimumBreakTimeMs", label: "Minimum break time (ms)", defaultValue: 250, min: 0, max: 60000, step: 25 },
+    { key: "replenishmentWindowMs", label: "Replenishment window (ms)", defaultValue: 1000, min: 50, max: 60000, step: 50 },
+    { key: "replenishmentMinimumContracts", label: "Minimum replenishment contracts", defaultValue: 25, min: 0, max: 1000000, step: 1 },
+    { key: "replenishmentMinimumRatio", label: "Replenishment ratio", defaultValue: 0.2, min: 0, max: 10, step: 0.05 },
+    { key: "replenishmentMinimumRefreshCount", label: "Minimum refresh count", defaultValue: 2, min: 0, max: 100, step: 1 },
+    { key: "activeProfileWidth", label: "Active profile width", defaultValue: 120, min: 80, max: 260, step: 2 },
+    { key: "lowerPaneHeight", label: "Lower pane height", defaultValue: 160, min: 80, max: 500, step: 5 },
+    { key: "markerSize", label: "Marker size", defaultValue: 7, min: 4, max: 16, step: 1 },
+    { key: "opacity", label: "Overlay opacity (%)", defaultValue: 72, min: 5, max: 100, step: 1 },
+    { key: "historySeconds", label: "Visible history (seconds)", defaultValue: 3600, min: 30, max: 86400, step: 30 },
+    { key: "maximumEvents", label: "Maximum retained events", defaultValue: 2500, min: 100, max: 50000, step: 100 },
+  ],
   "pulling-stacking": [
     { key: "aggregationMs", label: "Aggregation bucket (ms)", defaultValue: 1000, min: 100, max: 60000, step: 50 },
     { key: "rollingWindowMs", label: "Rolling pressure window (ms)", defaultValue: 10000, min: 500, max: 300000, step: 500 },
@@ -604,6 +644,15 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     askPullColor: theme?.borderUpColor ?? "#38BDF8",
     neutralColor: theme?.gridColor ?? DEFAULT_PULLING_STACKING_SETTINGS.neutralColor,
     pullingStackingSettingsVersion: PULLING_STACKING_SETTINGS_VERSION,
+  } : {}),
+  ...(indicatorId === "absorption-detector" ? {
+    ...DEFAULT_ABSORPTION_SETTINGS,
+    bidDevelopingColor: theme?.upColor ?? DEFAULT_ABSORPTION_SETTINGS.bidDevelopingColor,
+    bidConfirmedColor: theme?.upColor ?? DEFAULT_ABSORPTION_SETTINGS.bidConfirmedColor,
+    askDevelopingColor: theme?.downColor ?? DEFAULT_ABSORPTION_SETTINGS.askDevelopingColor,
+    askConfirmedColor: theme?.downColor ?? DEFAULT_ABSORPTION_SETTINGS.askConfirmedColor,
+    neutralColor: theme?.gridColor ?? DEFAULT_ABSORPTION_SETTINGS.neutralColor,
+    version: ABSORPTION_DETECTOR_SETTINGS_VERSION,
   } : {}),
   ...(indicatorId === "gamma-heatmap" ? {
     preset: "intraday",
@@ -1195,6 +1244,18 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
     return {
       ...normalizedInstance,
       settings: { ...settings },
+    };
+  }
+  if (normalizedInstance.indicatorId === "absorption-detector" || normalizedInstance.indicatorId === "absorption") {
+    return {
+      ...normalizedInstance,
+      indicatorId: "absorption-detector",
+      settings: {
+        ...normalizeAbsorptionSettings({
+          ...defaultIndicatorSettings("absorption-detector"),
+          ...(normalizedInstance.settings ?? {}),
+        }),
+      },
     };
   }
   if (normalizedInstance.indicatorId === "implied-volatility-rank") {

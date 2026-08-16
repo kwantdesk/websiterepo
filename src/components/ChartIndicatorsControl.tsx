@@ -47,6 +47,7 @@ import {
 } from "@/lib/footprintSettings";
 import KwantSelect from "@/components/ui/KwantSelect";
 import { PULLING_STACKING_PRESETS } from "@/lib/pullingStacking";
+import { ABSORPTION_PRESETS } from "@/lib/absorptionDetector";
 
 const FAVOURITES_STORAGE_KEY = "kwantdesk-chart-indicator-favourites";
 const FOOTPRINT_PROFILE_MANAGED_SETTINGS = new Set([
@@ -215,6 +216,8 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "delta-bar",
   "delta-highlight",
   "cumulative-volume-delta",
+  "pulling-stacking",
+  "absorption-detector",
   "delta-cumulative-candlestick",
   "delta-cumulative-histogram",
   "imbalance-tracker",
@@ -2338,6 +2341,64 @@ export default function ChartIndicatorsControl({
                   </div>
                   <p className="text-[8px] leading-4 text-muted">
                     Executions are reconciled before removals become pulls. The feed cannot identify participant intent, implied orders, or hidden liquidity.
+                  </p>
+                </div>
+              ) : null}
+
+              {settingsDefinition.id === "absorption-detector" ? (
+                <div className="space-y-3 border border-primary/20 bg-primary/[0.035] p-3">
+                  <div>
+                    <div className="mb-2 text-[9px] font-semibold uppercase tracking-[0.13em] text-muted">Detection preset</div>
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      {(Object.keys(ABSORPTION_PRESETS) as Array<keyof typeof ABSORPTION_PRESETS>).map((preset) => (
+                        <button
+                          key={preset}
+                          type="button"
+                          onClick={() => replace(settingsInstance.instanceId, (current) => ({
+                            ...current,
+                            settings: { ...(current.settings ?? {}), ...ABSORPTION_PRESETS[preset] },
+                          }))}
+                          className={`min-h-8 border px-2 text-[7px] font-semibold uppercase tracking-[0.08em] ${settingsInstance.settings?.preset === preset ? "border-primary bg-primary/10 text-primary" : "border-border bg-background text-muted hover:text-foreground"}`}
+                        >
+                          {preset.replaceAll("-", " ")}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    <label className="space-y-1.5 text-[8px] uppercase tracking-[0.1em] text-muted">
+                      <span>Aggregation</span>
+                      <KwantSelect value={String(settingsInstance.settings?.aggregationMode ?? "rolling")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), aggregationMode: event.target.value, preset: "custom" } }))} className="h-9 w-full">
+                        <option value="rolling">Rolling window</option><option value="fixed">Fixed window</option><option value="chart-bar">Chart bar</option><option value="footprint-bar">Footprint bar</option>
+                      </KwantSelect>
+                    </label>
+                    <label className="space-y-1.5 text-[8px] uppercase tracking-[0.1em] text-muted">
+                      <span>Confirmation</span>
+                      <KwantSelect value={String(settingsInstance.settings?.confirmationMode ?? "combined-score")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), confirmationMode: event.target.value, preset: "custom" } }))} className="h-9 w-full">
+                        <option value="combined-score">Combined score</option><option value="price-response">Price response</option><option value="persistence">Persistence</option><option value="replenishment">Replenishment</option><option value="immediate">Immediate low progress</option><option value="any-enabled">Any enabled</option>
+                      </KwantSelect>
+                    </label>
+                    <label className="space-y-1.5 text-[8px] uppercase tracking-[0.1em] text-muted">
+                      <span>Visual mode</span>
+                      <KwantSelect value={String(settingsInstance.settings?.renderMode ?? "hybrid")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), renderMode: event.target.value, preset: "custom" } }))} className="h-9 w-full">
+                        <option value="hybrid">Hybrid</option><option value="cells">Price-time cells</option><option value="zones">Zones</option><option value="markers">Event markers</option><option value="candle-highlights">Candle highlights</option><option value="active-profile">Active profile</option><option value="lower-pane">Lower pane</option>
+                      </KwantSelect>
+                    </label>
+                    <label className="space-y-1.5 text-[8px] uppercase tracking-[0.1em] text-muted">
+                      <span>Zone extension</span>
+                      <KwantSelect value={String(settingsInstance.settings?.zoneExtensionMode ?? "until-broken")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), zoneExtensionMode: event.target.value, preset: "custom" } }))} className="h-9 w-full">
+                        <option value="until-broken">Until broken</option><option value="right-edge">Right edge</option><option value="fixed-time">Fixed time</option><option value="session-end">Session end</option><option value="manual">Manual</option>
+                      </KwantSelect>
+                    </label>
+                    <label className="space-y-1.5 text-[8px] uppercase tracking-[0.1em] text-muted">
+                      <span>Break logic</span>
+                      <KwantSelect value={String(settingsInstance.settings?.breakMode ?? "combined")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), breakMode: event.target.value, preset: "custom" } }))} className="h-9 w-full">
+                        <option value="combined">Combined</option><option value="first-trade">First trade through</option><option value="minimum-volume">Minimum volume</option><option value="minimum-time">Minimum time</option><option value="bar-close">Bar close</option>
+                      </KwantSelect>
+                    </label>
+                  </div>
+                  <p className="text-[8px] leading-4 text-muted">
+                    Uses the shared Footprint execution stream and DOM Level 3 book. It flags suspicious absorption and replenishment patterns; it does not identify a trader or legally establish intent.
                   </p>
                 </div>
               ) : null}

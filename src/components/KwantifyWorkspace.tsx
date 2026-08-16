@@ -1013,7 +1013,7 @@ const WORKSPACE_TOOL_OPTIONS: Array<WorkspacePanelOption<WorkspaceToolKind>> = [
   { id: "tool-pulling-stacking", label: "PULLING & STACKING", description: "Live resting-liquidity additions and non-executed removals mapped by price and time", icon: Layers3, indicatorId: "pulling-stacking" },
   { id: "tool-big-trades", label: "BIG CONTRACTS", description: "Large aggressive executions anchored to price", icon: Zap, indicatorId: "big-trades" },
   { id: "tool-imbalance-detector", label: "IMBALANCE DETECTOR", description: "Stacked and diagonal bid/ask imbalance", icon: Layers3, indicatorId: "imbalance-tracker" },
-  { id: "tool-absorption-indicator", label: "ABSORPTION INDICATOR", description: "Aggression absorbed by resting liquidity", icon: Eye },
+  { id: "tool-absorption-indicator", label: "ABSORPTION DETECTOR", description: "Price-time absorption, replenishment, confirmed zones, retests and breaks", icon: Eye, indicatorId: "absorption-detector" },
   { id: "tool-queue-position-tracking", label: "QUEUE POSITION TRACKING", description: "Order priority and queue movement by price", icon: List },
   { id: "tool-size-modification-tracking", label: "SIZE MODIFICATION TRACKING", description: "Resting size added, reduced and replaced", icon: Repeat },
   { id: "tool-order-size-distribution", label: "ORDER SIZE DISTRIBUTION", description: "Distribution of displayed and executed order size", icon: BarChart3 },

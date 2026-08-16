@@ -173,6 +173,16 @@ import {
   type PullingStackingHit,
   type PullingStackingPrimitiveData,
 } from "@/lib/pullingStackingPrimitive";
+import {
+  AbsorptionDetectorEngine,
+  normalizeAbsorptionSettings,
+  type AbsorptionFrame,
+} from "@/lib/absorptionDetector";
+import {
+  AbsorptionDetectorPrimitive,
+  type AbsorptionHit,
+  type AbsorptionPrimitiveData,
+} from "@/lib/absorptionDetectorPrimitive";
 import { subscribeRithmicLiquidity, type RithmicLiquidityStatus } from "@/lib/rithmicLiquidityStream";
 import {
   defaultGammaHeatmapSource,
@@ -2544,6 +2554,10 @@ export default function Chart({
   const pullingStackingEngineRef = useRef(new PullingStackingEngine());
   const pullingStackingFrameRef = useRef<PullingStackingFrame | null>(null);
   const pullingStackingAlertIdsRef = useRef(new Set<string>());
+  const absorptionPrimitiveRef = useRef<AbsorptionDetectorPrimitive | null>(null);
+  const absorptionEngineRef = useRef(new AbsorptionDetectorEngine());
+  const absorptionFrameRef = useRef<AbsorptionFrame | null>(null);
+  const absorptionAlertIdsRef = useRef(new Set<string>());
   const netGammaExposurePrimitiveRef = useRef<NetGammaExposurePrimitive | null>(null);
   const gexIntervalMapPrimitiveRef = useRef<GexIntervalMapPrimitive | null>(null);
   const gexIntervalAlertStateRef = useRef<{
@@ -2669,6 +2683,9 @@ export default function Chart({
   const [pullingStackingStatus, setPullingStackingStatus] = useState<RithmicLiquidityStatus>("checking");
   const [pullingStackingFrame, setPullingStackingFrame] = useState<PullingStackingFrame | null>(null);
   const [pullingStackingTooltip, setPullingStackingTooltip] = useState<PullingStackingHit | null>(null);
+  const [absorptionStatus, setAbsorptionStatus] = useState<RithmicLiquidityStatus>("checking");
+  const [absorptionFrame, setAbsorptionFrame] = useState<AbsorptionFrame | null>(null);
+  const [absorptionTooltip, setAbsorptionTooltip] = useState<AbsorptionHit | null>(null);
   const [netGammaProfile, setNetGammaProfile] = useState<NetGammaProfileSnapshot | null>(null);
   const [netGammaLoading, setNetGammaLoading] = useState(false);
   const [netGammaError, setNetGammaError] = useState<string | null>(null);
@@ -3200,6 +3217,124 @@ export default function Chart({
       if (frameId !== null) window.cancelAnimationFrame(frameId);
     };
   }, [pullingStackingIndicator]);
+
+  const absorptionIndicator = useMemo(
+    () => indicators.find((instance) => instance.enabled && instance.indicatorId === "absorption-detector") ?? null,
+    [indicators],
+  );
+  const absorptionSettings = useMemo(() => {
+    const normalized = normalizeAbsorptionSettings(absorptionIndicator?.settings);
+    if (!normalized.useThemeColors) return normalized;
+    return {
+      ...normalized,
+      bidDevelopingColor: settings.upColor,
+      bidConfirmedColor: settings.upColor,
+      askDevelopingColor: settings.downColor,
+      askConfirmedColor: settings.downColor,
+      retestColor: settings.borderUpColor || settings.upColor,
+      brokenColor: settings.gridColor,
+      neutralColor: settings.gridColor,
+    };
+  }, [absorptionIndicator, settings.borderUpColor, settings.downColor, settings.gridColor, settings.upColor]);
+
+  useEffect(() => {
+    if (!absorptionIndicator) {
+      absorptionEngineRef.current.reset();
+      absorptionFrameRef.current = null;
+      absorptionPrimitiveRef.current?.update(null);
+      setAbsorptionFrame(null);
+      setAbsorptionTooltip(null);
+      return;
+    }
+    const normalized = String(contractSymbol || instrument || "NQ").trim().toUpperCase().replace(/\.[VNC]\.\d+$/i, "");
+    const explicitContract = /[FGHJKMNQUVXZ]\d{1,2}$/i.test(normalized) ? normalized : null;
+    const chartRoot = normalized.replace(/[FGHJKMNQUVXZ]\d{1,2}$/i, "") || "NQ";
+    const microParents: Record<string, string> = { MNQ: "NQ", MES: "ES", MYM: "YM", M2K: "RTY", MGC: "GC", MCL: "CL", MBT: "BTC", MET: "ETH" };
+    const root = microParents[chartRoot] ?? chartRoot;
+    absorptionEngineRef.current.reset();
+    absorptionAlertIdsRef.current.clear();
+    absorptionFrameRef.current = null;
+    setAbsorptionFrame(null);
+    setAbsorptionStatus("checking");
+    let summaryTimer: number | null = null;
+    let lastPublishedAt = 0;
+    const publishSummary = (frame: AbsorptionFrame) => {
+      lastPublishedAt = performance.now();
+      setAbsorptionFrame(frame);
+    };
+    const unsubscribe = subscribeRithmicLiquidity({
+      root,
+      contractSymbol: explicitContract,
+      exchange: "CME",
+      replayHistory: true,
+      onStatus: setAbsorptionStatus,
+      onSnapshot: (snapshot) => {
+        const frame = absorptionEngineRef.current.apply(snapshot, absorptionSettings);
+        absorptionFrameRef.current = frame;
+        const primitiveData: AbsorptionPrimitiveData = { frame, settings: absorptionSettings, backgroundColor: settings.backgroundColor };
+        absorptionPrimitiveRef.current?.update(primitiveData);
+        if (absorptionSettings.enableAlerts) {
+          for (const event of frame.events.slice(-12)) {
+            if (event.score < absorptionSettings.alertMinimumScore || absorptionAlertIdsRef.current.has(event.id)) continue;
+            absorptionAlertIdsRef.current.add(event.id);
+            window.dispatchEvent(new CustomEvent("kwantdesk:chart-indicator-alert", { detail: {
+              indicatorId: "absorption-detector",
+              instanceId: absorptionIndicator.instanceId,
+              instrument,
+              title: `${event.side === "BID" ? "Bid" : "Ask"} absorption confirmed`,
+              event,
+            } }));
+          }
+        }
+        const elapsed = performance.now() - lastPublishedAt;
+        if (elapsed >= 200) publishSummary(frame);
+        else if (summaryTimer === null) summaryTimer = window.setTimeout(() => {
+          summaryTimer = null;
+          if (absorptionFrameRef.current) publishSummary(absorptionFrameRef.current);
+        }, Math.max(16, 200 - elapsed));
+      },
+    });
+    return () => {
+      unsubscribe();
+      if (summaryTimer !== null) window.clearTimeout(summaryTimer);
+    };
+  }, [absorptionIndicator, absorptionSettings, contractSymbol, instrument, settings.backgroundColor]);
+
+  useEffect(() => {
+    const frame = absorptionFrameRef.current;
+    absorptionPrimitiveRef.current?.update(frame ? {
+      frame,
+      settings: absorptionSettings,
+      backgroundColor: settings.backgroundColor,
+    } : null);
+  }, [absorptionSettings, chartReadyRevision, settings.backgroundColor, viewportVersion]);
+
+  useEffect(() => {
+    const container = chartContainerRef.current;
+    if (!container || !absorptionIndicator || !absorptionSettings.showTooltips) return;
+    let frameId: number | null = null;
+    let pending: PointerEvent | null = null;
+    const flush = () => {
+      frameId = null;
+      const event = pending;
+      pending = null;
+      if (!event) return;
+      const rect = container.getBoundingClientRect();
+      setAbsorptionTooltip(absorptionPrimitiveRef.current?.queryHit(event.clientX - rect.left, event.clientY - rect.top) ?? null);
+    };
+    const move = (event: PointerEvent) => {
+      pending = event;
+      if (frameId === null) frameId = window.requestAnimationFrame(flush);
+    };
+    const leave = () => setAbsorptionTooltip(null);
+    container.addEventListener("pointermove", move);
+    container.addEventListener("pointerleave", leave);
+    return () => {
+      container.removeEventListener("pointermove", move);
+      container.removeEventListener("pointerleave", leave);
+      if (frameId !== null) window.cancelAnimationFrame(frameId);
+    };
+  }, [absorptionIndicator, absorptionSettings.showTooltips]);
   const smtDivergenceIndicator = useMemo(
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "divergence-detector") ?? null,
     [indicators],
@@ -8135,6 +8270,9 @@ export default function Chart({
     const pullingStackingPrimitive = new PullingStackingPrimitive();
     candleSeries.attachPrimitive(pullingStackingPrimitive);
     pullingStackingPrimitiveRef.current = pullingStackingPrimitive;
+    const absorptionPrimitive = new AbsorptionDetectorPrimitive();
+    candleSeries.attachPrimitive(absorptionPrimitive);
+    absorptionPrimitiveRef.current = absorptionPrimitive;
     const netGammaExposurePrimitive = new NetGammaExposurePrimitive();
     candleSeries.attachPrimitive(netGammaExposurePrimitive);
     netGammaExposurePrimitiveRef.current = netGammaExposurePrimitive;
@@ -8881,6 +9019,13 @@ export default function Chart({
             // Chart teardown can detach primitives before React cleanup runs.
           }
         }
+        if (candleSeriesRef.current && absorptionPrimitiveRef.current) {
+          try {
+            candleSeriesRef.current.detachPrimitive(absorptionPrimitiveRef.current);
+          } catch {
+            // Chart teardown can detach primitives before React cleanup runs.
+          }
+        }
         if (candleSeriesRef.current && netGammaExposurePrimitiveRef.current) {
           try {
             candleSeriesRef.current.detachPrimitive(netGammaExposurePrimitiveRef.current);
@@ -8956,6 +9101,7 @@ export default function Chart({
       classicGexProfilePrimitiveRef.current = null;
       gammaHeatmapPrimitiveRef.current = null;
       pullingStackingPrimitiveRef.current = null;
+      absorptionPrimitiveRef.current = null;
       netGammaExposurePrimitiveRef.current = null;
       gexIntervalMapPrimitiveRef.current = null;
       netGammaReservedRightOffsetRef.current = null;
@@ -10110,10 +10256,63 @@ export default function Chart({
           {pullingStackingTooltip.event ? <div className="mt-2 border-t border-border pt-1 text-primary">{pullingStackingTooltip.event.kind.replaceAll("_", " ")} · {pullingStackingTooltip.event.quantity.toLocaleString()}</div> : null}
         </div>
       ) : null}
+      {absorptionIndicator && absorptionSettings.showHeader ? (
+        <div
+          className="pointer-events-none absolute left-2 z-[27] flex max-w-[min(760px,calc(100%-80px))] items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur"
+          style={{ top: pullingStackingIndicator && pullingStackingSettings.showHeader ? 38 : 8 }}
+          title={absorptionFrame?.limitations.join(" ") ?? "Waiting for the shared execution and order-book stream"}
+        >
+          <span className={`h-1.5 w-1.5 rounded-full ${absorptionStatus === "unavailable" ? "bg-danger" : absorptionStatus === "checking" ? "animate-pulse bg-warning" : "bg-primary"}`} />
+          <span className="text-foreground">Absorption Detector</span>
+          {absorptionFrame ? (
+            <>
+              <span>{absorptionFrame.contractSymbol}</span>
+              <span>{absorptionFrame.feedMode}</span>
+              <span>{(absorptionSettings.windowMs / 1_000).toLocaleString(undefined, { maximumFractionDigits: 2 })}s</span>
+              <span className={absorptionFrame.status.includes("STALE") || absorptionFrame.sequenceGap ? "text-warning" : "text-primary"}>
+                {absorptionFrame.sequenceGap ? "RESYNCING" : absorptionFrame.status}
+              </span>
+              <span>BID {absorptionFrame.zones.filter((zone) => zone.side === "BID" && zone.state !== "BROKEN").length}</span>
+              <span>ASK {absorptionFrame.zones.filter((zone) => zone.side === "ASK" && zone.state !== "BROKEN").length}</span>
+            </>
+          ) : <span>{absorptionStatus === "unavailable" ? "Execution feed unavailable" : "Synchronising executions…"}</span>}
+        </div>
+      ) : null}
+      {absorptionTooltip ? (
+        <div
+          className="pointer-events-none absolute z-[69] min-w-[250px] border border-border bg-panel/96 p-2 font-mono text-[8px] shadow-2xl backdrop-blur"
+          style={{
+            left: Math.min(Math.max(8, absorptionTooltip.x + 14), Math.max(8, overlaySize.width - 270)),
+            top: Math.min(Math.max(34, absorptionTooltip.y + 14), Math.max(34, overlaySize.height - 286)),
+          }}
+        >
+          <div className="flex items-center justify-between gap-4 border-b border-border pb-1 text-foreground">
+            <span>{absorptionTooltip.event.side} · {absorptionTooltip.event.state}</span>
+            <span>{new Date(absorptionTooltip.event.endTimestamp).toLocaleTimeString()}</span>
+          </div>
+          <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-1 text-muted">
+            <span>Price / range</span><span className="text-foreground">{(absorptionTooltip.event.dominantTick * (absorptionFrame?.tickSize ?? priceFormat.minMove)).toFixed(priceFormat.precision)} · {(absorptionTooltip.event.lowTick * (absorptionFrame?.tickSize ?? priceFormat.minMove)).toFixed(priceFormat.precision)}–{(absorptionTooltip.event.highTick * (absorptionFrame?.tickSize ?? priceFormat.minMove)).toFixed(priceFormat.precision)}</span>
+            <span>Aggressive qty</span><span className="text-foreground">{Math.round(absorptionTooltip.event.aggressiveQuantity).toLocaleString()}</span>
+            <span>Trades / largest</span><span className="text-foreground">{absorptionTooltip.event.tradeCount.toLocaleString()} / {Math.round(absorptionTooltip.event.largestTrade).toLocaleString()}</span>
+            <span>Penetration</span><span className="text-foreground">{absorptionTooltip.event.penetrationTicks.toFixed(1)} ticks</span>
+            <span>Aggression / tick</span><span className="text-foreground">{Math.round(absorptionTooltip.event.aggressionPerTick).toLocaleString()}</span>
+            <span>Duration / response</span><span className="text-foreground">{Math.round(absorptionTooltip.event.durationMs)}ms / {absorptionTooltip.event.responseTicks.toFixed(1)}t</span>
+            <span>Replenished</span><span className="text-foreground">{Math.round(absorptionTooltip.event.replenishmentQuantity).toLocaleString()} · {(absorptionTooltip.event.replenishmentRatio * 100).toFixed(0)}%</span>
+            <span>Depth start / end</span><span className="text-foreground">{Math.round(absorptionTooltip.event.startingDepth).toLocaleString()} / {Math.round(absorptionTooltip.event.endingDepth).toLocaleString()}</span>
+            <span>Executed / visible</span><span className="text-foreground">{absorptionTooltip.event.executedToVisible.toFixed(2)}×</span>
+            <span>Repeat / score</span><span className="text-foreground">{absorptionTooltip.event.repeatCount} / {absorptionTooltip.event.score}</span>
+          </div>
+          {absorptionTooltip.event.suspectedHiddenLiquidity ? <div className="mt-2 border-t border-border pt-1 text-primary">Suspected hidden-liquidity context · identity and intent are not established.</div> : null}
+        </div>
+      ) : null}
       {gammaHeatmapIndicator ? (
         <div
           className="pointer-events-none absolute left-2 z-[24] flex max-w-[min(520px,calc(100%-80px))] items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur"
-          style={{ top: pullingStackingIndicator && pullingStackingSettings.showHeader ? 38 : 8 }}
+          style={{
+            top: 8
+              + (pullingStackingIndicator && pullingStackingSettings.showHeader ? 30 : 0)
+              + (absorptionIndicator && absorptionSettings.showHeader ? 30 : 0),
+          }}
           title={gammaHeatmapPayload?.limitations.join(" ") ?? gammaHeatmapError ?? "Loading options exposure history"}
         >
           <span className={`h-1.5 w-1.5 rounded-full ${gammaHeatmapError && !gammaHeatmapPayload ? "bg-danger" : gammaHeatmapLoading ? "animate-pulse bg-warning" : "bg-primary"}`} />

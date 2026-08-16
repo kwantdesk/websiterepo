@@ -78,7 +78,7 @@ export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
   indicator("Stop Spotter", "Order Flow", "Locates potential stop-driven execution clusters.", true),
   indicator("Auction Gap Tracker", "Order Flow", "Tracks auction gaps and subsequent interaction.", true),
   indicator("Session Imbalance", "Order Flow", "Aggregates imbalance behaviour across a session.", true),
-  indicator("Absorption", "Order Flow", "Detects aggressive flow absorbed by resting liquidity.", true),
+  indicator("Absorption Detector", "Order Flow", "Professional price-time absorption cells, confirmed zones, replenishment context, retests and breaks from the shared execution and Level 3 feed.", true, "Kwantify"),
   indicator("Stop Run", "Order Flow", "Detects bursts consistent with stop liquidation.", true),
   indicator("Cumulative Iceberg/Stop", "Order Flow", "Accumulates inferred iceberg and stop activity.", true),
   indicator("Book Speed", "Order Flow", "Measures order-book update velocity.", true),
