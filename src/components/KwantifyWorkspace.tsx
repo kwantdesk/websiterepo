@@ -7059,6 +7059,7 @@ export default function KwantifyWorkspace({
   const [bottomPanelHeight, setBottomPanelHeight] = useState(BOTTOM_PANEL_DEFAULT_HEIGHT);
   const [bottomMinimized, setBottomMinimized] = useState(true);
   const bottomWorkspaceSection = optimisticWorkspaceSection;
+  const chartSurfaceActive = bottomWorkspaceSection === "charts" || bottomWorkspaceSection === "gamma";
   const [equityPeriod, setEquityPeriod] = useState("365d");
   const [favTFs, setFavTFs] = useState<string[]>(() => {
     const defaults = ["1m", "5m", "15m", "1h", "4h", "1D"];
@@ -13551,7 +13552,7 @@ export default function KwantifyWorkspace({
         </div>
       )}
 
-      <div className="relative z-0 flex min-w-0 flex-1 flex-col overflow-hidden" ref={mainRef}>
+      <div className={`relative z-0 flex min-w-0 flex-1 flex-col ${bottomWorkspaceSection === "gamma" ? "overflow-y-auto" : "overflow-hidden"}`} ref={mainRef}>
         <AppSidebar
           activeItem={bottomWorkspaceSection}
           accountLabel="Account"
@@ -13724,7 +13725,7 @@ export default function KwantifyWorkspace({
           </>
         )}
 
-        {bottomWorkspaceSection === "charts" && (
+        {chartSurfaceActive && (
         <header className="kwant-chart-command-deck relative grid shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] border-b border-border bg-panel">
           {chartTrades.length > 0 && (
             <div className="col-start-1 row-start-2 flex min-w-0 items-center justify-self-start gap-2 overflow-hidden px-3">
@@ -14452,12 +14453,14 @@ export default function KwantifyWorkspace({
           )
           : null}
 
-        {visitedWorkspaceSections.has("charts") ? (
-        <ReactActivity mode={bottomWorkspaceSection === "charts" ? "visible" : "hidden"}>
+        {chartSurfaceActive || visitedWorkspaceSections.has("charts") ? (
+        <ReactActivity mode={chartSurfaceActive ? "visible" : "hidden"}>
         <WorkspaceFailureBoundary resetKey="charts" label="Charts">
         {!preferencesReady ? (
           workspaceLoader("Opening charts", "Restoring your saved workspace before the market feed starts.")
-        ) : <div className="min-h-0 flex-1 overflow-hidden">
+        ) : <div className={bottomWorkspaceSection === "gamma"
+          ? "h-[calc(100dvh-112px)] min-h-[680px] shrink-0 overflow-hidden"
+          : "min-h-0 flex-1 overflow-hidden"}>
           <div ref={workspaceAreaRef} className="relative h-full min-w-0">
             {renderWorkspaceNode(workspaceTree)}
             {workspaceFloatingWindows.map((floating, index) =>
@@ -14615,7 +14618,7 @@ export default function KwantifyWorkspace({
         ) : null}
         <ReactActivity mode={bottomWorkspaceSection === "charts" ? "hidden" : "visible"}>
           <section
-            className="relative isolate min-h-0 min-w-0 flex-1 overflow-hidden bg-panel"
+            className={`relative isolate min-w-0 overflow-hidden bg-panel ${bottomWorkspaceSection === "gamma" ? "min-h-[100dvh] shrink-0" : "min-h-0 flex-1"}`}
             aria-label={`${BOTTOM_WORKSPACE_SECTIONS.find((section) => section.id === bottomWorkspaceSection)?.label ?? "Workspace"} workspace`}
           >
             {visitedWorkspaceSections.has("gamma") ? (

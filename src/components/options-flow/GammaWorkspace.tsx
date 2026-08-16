@@ -24,7 +24,6 @@ import {
 import KwantLoader from "@/components/KwantLoader";
 import MarketMapIntelligence from "@/components/options-flow/MarketMapIntelligence";
 import PositioningIntelligence from "@/components/options-flow/PositioningIntelligence";
-import GammaChartingWorkspace from "@/components/options-flow/GammaChartingWorkspace";
 import {
   OPTIONS_FLOW_INSTRUMENTS,
   type ExposureSummary,
@@ -1065,7 +1064,6 @@ export default function GammaWorkspace() {
   return (
     <div className="kwant-gamma-workspace h-full min-h-0 overflow-y-auto bg-background text-foreground">
       <main className="min-w-0">
-        <GammaChartingWorkspace />
         <header className="flex h-[52px] shrink-0 items-center gap-3 border-b border-border bg-panel px-4">
           <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
             <ScanLine className="h-[17px] w-[17px]" />
