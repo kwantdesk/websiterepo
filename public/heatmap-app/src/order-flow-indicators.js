@@ -27,7 +27,7 @@ export const DEFAULT_INDICATOR_SETTINGS = Object.freeze({
   imbalanceDecay: 0.12,
 });
 
-export function flattenTrades(history) {
+export function flattenTrades(history, frameOffset = 0) {
   const flattened = [];
   let sequence = 0;
   history.forEach((frame, frameIndex) => {
@@ -42,16 +42,29 @@ export function flattenTrades(history) {
         size,
         side: trade.side,
         timestamp: finite(trade.timestamp, finite(frame.timestamp)),
-        frameIndex,
+        frameIndex: frameIndex + frameOffset,
         sequence: sequence++,
       });
     }
   });
-  flattened.sort((left, right) => (
-    left.timestamp - right.timestamp
-    || left.frameIndex - right.frameIndex
-    || left.sequence - right.sequence
-  ));
+  // Rithmic frames and the executions inside them normally arrive in time
+  // order. Sorting the complete tape on every live analysis pass created a
+  // large allocation/GC spike. Only pay for a sort when a reconnect actually
+  // delivered an out-of-order execution.
+  let ordered = true;
+  for (let index = 1; index < flattened.length; index += 1) {
+    if (flattened[index].timestamp < flattened[index - 1].timestamp) {
+      ordered = false;
+      break;
+    }
+  }
+  if (!ordered) {
+    flattened.sort((left, right) => (
+      left.timestamp - right.timestamp
+      || left.frameIndex - right.frameIndex
+      || left.sequence - right.sequence
+    ));
+  }
   return flattened;
 }
 
@@ -62,18 +75,16 @@ export function tradeAllowed(trade, minimum = 1, maximum = 0) {
   return size >= min && (max === 0 || size <= max);
 }
 
-export function normalizeCvdHistory(points) {
-  const normalized = new Map();
-  for (const point of points || []) {
+function normalizeCvdPoint(point) {
     const timestamp = Number(point?.timestamp);
-    if (!Number.isFinite(timestamp) || timestamp <= 0) continue;
+    if (!Number.isFinite(timestamp) || timestamp <= 0) return null;
     const rawValue = Number(point?.value ?? point?.close ?? 0);
     const value = Number.isFinite(rawValue) ? rawValue : 0;
     const rawOpen = Number(point?.open ?? value);
     const rawClose = Number(point?.close ?? value);
     const open = Number.isFinite(rawOpen) ? rawOpen : value;
     const close = Number.isFinite(rawClose) ? rawClose : value;
-    normalized.set(timestamp, {
+    return {
       timestamp,
       open,
       high: Number.isFinite(Number(point?.high)) ? Number(point.high) : Math.max(open, close),
@@ -82,7 +93,14 @@ export function normalizeCvdHistory(points) {
       value,
       buy: Number(point?.buy || 0),
       sell: Number(point?.sell || 0),
-    });
+    };
+}
+
+export function normalizeCvdHistory(points) {
+  const normalized = new Map();
+  for (const point of points || []) {
+    const value = normalizeCvdPoint(point);
+    if (value) normalized.set(value.timestamp, value);
   }
   return [...normalized.values()].sort((left, right) => left.timestamp - right.timestamp);
 }
@@ -90,21 +108,38 @@ export function normalizeCvdHistory(points) {
 export function mergeLiveCvdHistory(current, incoming, {
   sameSession = false,
   asOfMs = 0,
+  currentNormalized = false,
 } = {}) {
-  const existing = normalizeCvdHistory(current);
-  const seed = normalizeCvdHistory(incoming);
-  if (!sameSession || !existing.length) return seed;
-  if (!seed.length) return existing;
+  const existing = currentNormalized ? current : normalizeCvdHistory(current);
+  if (!sameSession || !existing.length) return normalizeCvdHistory(incoming);
 
+  // Live CVD refreshes contain an overlapping session seed. Re-normalizing,
+  // cloning and sorting the complete current + incoming arrays every refresh
+  // created a visible periodic GC pause. Once a session is established, only
+  // points newer than the accepted tail (plus the authoritative final point)
+  // can change the rendered path.
   const previous = existing.at(-1);
-  const laterSeed = seed.filter(point => point.timestamp > previous.timestamp);
-  if (laterSeed.length) return [...existing, ...laterSeed];
+  const laterByTimestamp = new Map();
+  let authoritative = null;
+  for (const point of incoming || []) {
+    const normalized = normalizeCvdPoint(point);
+    if (!normalized) continue;
+    authoritative = normalized;
+    if (normalized.timestamp > previous.timestamp) {
+      laterByTimestamp.set(normalized.timestamp, normalized);
+    }
+  }
+  if (!authoritative) return existing;
+  if (laterByTimestamp.size) {
+    const laterSeed = [...laterByTimestamp.values()]
+      .sort((left, right) => left.timestamp - right.timestamp);
+    return [...existing, ...laterSeed];
+  }
 
   // A planned SSE rotation can reconnect inside the same one-minute gateway
   // bucket. Preserve the already-rendered sub-second path. Only add one new
   // point when the authoritative session total proves executions were missed
   // while the stream was changing over.
-  const authoritative = seed.at(-1);
   if (authoritative.value === previous.value) return existing;
   const timestamp = Math.max(previous.timestamp + 1, Number(asOfMs) || 0);
   return [...existing, {
@@ -123,6 +158,7 @@ export function computeCvdSeries(history, {
   minimumTradeSize = 1,
   maximumTradeSize = 0,
   resetIndex = 0,
+  frameOffset = 0,
 } = {}) {
   const points = [];
   let buy = 0;
@@ -130,7 +166,7 @@ export function computeCvdSeries(history, {
   const reset = Math.max(0, Math.floor(finite(resetIndex)));
   history.forEach((frame, frameIndex) => {
     if (frameIndex < reset) {
-      points.push({ frameIndex, value: 0, buy: 0, sell: 0 });
+      points.push({ frameIndex: frameIndex + frameOffset, value: 0, buy: 0, sell: 0 });
       return;
     }
     const open = buy + sell;
@@ -145,7 +181,7 @@ export function computeCvdSeries(history, {
       low = Math.min(low, running);
     }
     const close = buy + sell;
-    points.push({ frameIndex, value: close, open, high, low, close, buy, sell });
+    points.push({ frameIndex: frameIndex + frameOffset, value: close, open, high, low, close, buy, sell });
   });
   return { points, buy, sell, value: buy + sell };
 }
@@ -345,8 +381,9 @@ export function computeVolumeImbalance(trades) {
 
 export function analyzeOrderFlow(history, options = {}) {
   const settings = { ...DEFAULT_INDICATOR_SETTINGS, ...options };
-  const trades = flattenTrades(history);
-  const absorptionThresholds = settings.absorptionAutomatic
+  const frameOffset = Math.max(0, Math.floor(finite(options.frameOffset)));
+  const trades = flattenTrades(history, frameOffset);
+  const absorptionThresholds = settings.absorptionEnabled && settings.absorptionAutomatic
     ? buildAdaptiveThresholdSeries(trades, {
       windowMs: settings.absorptionWindowMs,
       lookbackMs: settings.absorptionLookbackMs,
@@ -354,7 +391,7 @@ export function analyzeOrderFlow(history, options = {}) {
       floor: settings.absorptionMinimumVolume,
     })
     : null;
-  const sweepThresholds = settings.sweepsAutomatic
+  const sweepThresholds = settings.sweepsEnabled && settings.sweepsAutomatic
     ? buildAdaptiveThresholdSeries(trades, {
       windowMs: settings.sweepWindowMs,
       lookbackMs: settings.sweepLookbackMs,
@@ -365,6 +402,7 @@ export function analyzeOrderFlow(history, options = {}) {
   const cvd = computeCvdSeries(history, {
     minimumTradeSize: settings.cvdMinimumTradeSize,
     maximumTradeSize: settings.cvdMaximumTradeSize,
+    frameOffset,
   });
   const absorptionEvents = settings.absorptionEnabled ? detectAbsorptions(trades, {
     windowMs: settings.absorptionWindowMs,

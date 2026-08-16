@@ -146,6 +146,7 @@ export class DepthRenderer {
     this.cameraFrameAt = 0;
     this.cameraInMotion = false;
     this.tradeClusterCache = { key: '', value: [] };
+    this.executionProfileCache = { history: null, startFrame: null, endFrame: null, totals: new Map() };
     this.fontFamilies = { mono: 'Consolas, monospace', ui: '"Arial Narrow", sans-serif' };
     this.lastFontStyleSyncAt = 0;
   }
@@ -321,6 +322,7 @@ export class DepthRenderer {
       start, end, count, xForIndex, yForTick, tickForY,
       config, history,
     };
+    this.visibleExecutionProfile = this.#getVisibleExecutionProfile(history);
 
     ctx.clearRect(0, 0, width, height);
     ctx.fillStyle = this.chrome.axis;
@@ -795,6 +797,49 @@ export class DepthRenderer {
     return Math.max(layout.rowTicks, Math.round(layout.visibleTickSpan / Math.max(12, layout.plotHeight / 25)));
   }
 
+  #getVisibleExecutionProfile(history) {
+    const layout = this.layout;
+    const cached = this.executionProfileCache;
+    const addFrame = (totals, frame, direction) => {
+      for (const trade of frame?.trades || []) {
+        const tick = Number(trade.tick);
+        const size = Number(trade.size) * direction;
+        if (!Number.isFinite(tick) || !Number.isFinite(size)) continue;
+        const value = totals.get(tick) || { buy: 0, sell: 0 };
+        value[trade.side] = Math.max(0, Number(value[trade.side] || 0) + size);
+        if (value.buy <= 0 && value.sell <= 0) totals.delete(tick);
+        else totals.set(tick, value);
+      }
+    };
+    const oldStart = cached.history === history && cached.startFrame
+      ? history.indexOf(cached.startFrame)
+      : -1;
+    const oldEnd = cached.history === history && cached.endFrame
+      ? history.indexOf(cached.endFrame)
+      : -1;
+    const canRoll = oldStart >= 0
+      && oldEnd >= oldStart
+      && layout.start >= oldStart
+      && layout.end >= oldEnd
+      && layout.end - oldEnd <= 64;
+    let totals;
+    if (canRoll) {
+      totals = cached.totals;
+      for (let index = oldStart; index < layout.start; index += 1) addFrame(totals, history[index], -1);
+      for (let index = oldEnd + 1; index <= layout.end; index += 1) addFrame(totals, history[index], 1);
+    } else {
+      totals = new Map();
+      for (let index = layout.start; index <= layout.end; index += 1) addFrame(totals, history[index], 1);
+    }
+    this.executionProfileCache = {
+      history,
+      startFrame: history[layout.start] || null,
+      endFrame: history[layout.end] || null,
+      totals,
+    };
+    return totals;
+  }
+
   #drawBidAskVolumeProfile(ctx, history, accents) {
     const layout = this.layout;
     const x0 = layout.plotWidth + layout.priceAxisWidth;
@@ -810,14 +855,13 @@ export class DepthRenderer {
     const firstTick = Math.ceil(layout.overlayBottomTick / step) * step;
     const profile = new Map();
 
-    for (let index = layout.start; index <= layout.end; index += 1) {
-      for (const trade of history[index].trades) {
-        if (trade.tick < layout.overlayBottomTick || trade.tick > layout.overlayTopTick) continue;
-        const bucket = Math.round(trade.tick / step) * step;
-        const value = profile.get(bucket) || { buy: 0, sell: 0 };
-        value[trade.side] += trade.size;
-        profile.set(bucket, value);
-      }
+    for (const [tick, totals] of this.visibleExecutionProfile || []) {
+      if (tick < layout.overlayBottomTick || tick > layout.overlayTopTick) continue;
+      const bucket = Math.round(tick / step) * step;
+      const value = profile.get(bucket) || { buy: 0, sell: 0 };
+      value.buy += totals.buy;
+      value.sell += totals.sell;
+      profile.set(bucket, value);
     }
 
     ctx.save();
@@ -888,15 +932,14 @@ export class DepthRenderer {
     const headerHeight = layout.rightHeaderHeight;
     const profile = new Map();
     let maximum = 1;
-    for (let index = layout.start; index <= layout.end; index += 1) {
-      for (const trade of history[index].trades) {
-        if (trade.tick < layout.overlayBottomTick || trade.tick > layout.overlayTopTick) continue;
-        const bucket = Math.floor(trade.tick / layout.rowTicks) * layout.rowTicks;
-        const value = profile.get(bucket) || { buy: 0, sell: 0 };
-        value[trade.side] += trade.size;
-        profile.set(bucket, value);
-        maximum = Math.max(maximum, value.buy + value.sell);
-      }
+    for (const [tick, totals] of this.visibleExecutionProfile || []) {
+      if (tick < layout.overlayBottomTick || tick > layout.overlayTopTick) continue;
+      const bucket = Math.floor(tick / layout.rowTicks) * layout.rowTicks;
+      const value = profile.get(bucket) || { buy: 0, sell: 0 };
+      value.buy += totals.buy;
+      value.sell += totals.sell;
+      profile.set(bucket, value);
+      maximum = Math.max(maximum, value.buy + value.sell);
     }
     ctx.save();
     ctx.fillStyle = this.chrome.axisAlt;

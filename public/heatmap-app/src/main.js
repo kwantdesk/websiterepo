@@ -37,7 +37,8 @@ const LIQUIDITY_MAP_SETTINGS_KEY = 'kwantdesk:liquidity-map-settings:v1';
 const LIQUIDITY_MAP_TABS_KEY = 'kwantdesk:liquidity-map-tabs:v1';
 const DEFAULT_INSTRUMENT_TABS = ['NQ', 'ES'];
 const INSTRUMENT_ORDER = [...LIQUIDITY_MAP_ROOTS];
-const INDICATOR_ANALYSIS_INTERVAL_MS = 500;
+const INDICATOR_ANALYSIS_INTERVAL_MS = 200;
+const INDICATOR_ANALYSIS_MAX_FRAMES = 2600;
 const LIQUIDITY_MAP_DISPLAY_DEFAULTS = Object.freeze({
   palette: DEFAULT_PALETTE,
   sensitivity: 0.1,
@@ -151,6 +152,7 @@ class DepthForgeApp {
     this.indicatorAnalysisKey = '';
     this.indicatorAnalysisSettingsKey = '';
     this.indicatorAnalysisAt = 0;
+    this.indicatorTradeRevision = 0;
     this.depthLadderHtml = '';
     this.tapeHtml = '';
     this.lastRenderFailureAt = 0;
@@ -762,6 +764,9 @@ class DepthForgeApp {
     this.cvdHistory = [];
     this.cvdTradingDate = '';
     this.tape = [];
+    this.indicatorAnalysis = null;
+    this.indicatorAnalysisKey = '';
+    this.indicatorTradeRevision = 0;
     this.settings.autoCenter = true;
     $('autoCenter').checked = true;
     this.view.centerTick = null;
@@ -1180,6 +1185,9 @@ class DepthForgeApp {
       this.view.centerTick = null;
       this.viewEnd = 0;
       this.eventCount = 0;
+      this.indicatorAnalysis = null;
+      this.indicatorAnalysisKey = '';
+      this.indicatorTradeRevision = 0;
       this.atLive = true;
       this.playing = true;
       this.accumulator = 0;
@@ -1193,6 +1201,8 @@ class DepthForgeApp {
       );
     }
     const { shifted } = this.depthEngine.append(snapshot);
+    if (snapshot.trades.length) this.indicatorTradeRevision += 1;
+    if (shifted && this.indicatorAnalysis) this.#shiftIndicatorAnalysis(shifted);
     if (!metadata.historical && !metadata.visualHold) {
       this.#appendLiveCvd(snapshot.timestamp, snapshot.delta);
     }
@@ -1234,9 +1244,13 @@ class DepthForgeApp {
     this.cvdHistory = mergeLiveCvdHistory(this.cvdHistory, points, {
       sameSession: Boolean(this.cvdTradingDate && this.cvdTradingDate === nextTradingDate),
       asOfMs,
+      currentNormalized: true,
     });
     this.cvdTradingDate = nextTradingDate;
-    this.indicatorAnalysisKey = '';
+    // Session CVD is attached to the cached analysis at paint time. It does
+    // not change absorption/sweep calculations, so invalidating the complete
+    // order-flow analysis here caused a full-session rebuild on every CVD
+    // refresh (the exact rhythmic freeze seen during live markets).
     this.requestRender();
   }
 
@@ -1293,6 +1307,20 @@ class DepthForgeApp {
     this.presentationCameraY = 0;
     this.presentationCameraAt = timestamp;
     if (canvas?.style.transform) canvas.style.transform = '';
+  }
+
+  #shiftIndicatorAnalysis(shifted) {
+    const amount = Math.max(0, Math.floor(Number(shifted) || 0));
+    if (!amount || !this.indicatorAnalysis) return;
+    const shiftCollection = collection => (collection || [])
+      .map(item => ({ ...item, frameIndex: Number(item.frameIndex) - amount }))
+      .filter(item => item.frameIndex >= 0);
+    this.indicatorAnalysis.trades = shiftCollection(this.indicatorAnalysis.trades);
+    this.indicatorAnalysis.absorptionEvents = shiftCollection(this.indicatorAnalysis.absorptionEvents);
+    this.indicatorAnalysis.sweepEvents = shiftCollection(this.indicatorAnalysis.sweepEvents);
+    if (this.indicatorAnalysis.cvd) {
+      this.indicatorAnalysis.cvd.points = shiftCollection(this.indicatorAnalysis.cvd.points);
+    }
   }
 
   #loop(timestamp) {
@@ -1408,12 +1436,12 @@ class DepthForgeApp {
   #getIndicatorAnalysis() {
     if (this.drag && this.indicatorAnalysis) return this.indicatorAnalysis;
     const current = this.history[this.viewEnd];
-    const first = this.history[0];
     const indicatorSettings = Object.fromEntries(
       Object.keys(DEFAULT_INDICATOR_SETTINGS).map(key => [key, this.settings[key]]),
     );
     const settingsKey = JSON.stringify(indicatorSettings);
-    const key = `${first?.id ?? 0}:${current?.id ?? 0}:${this.viewEnd}`;
+    const replayRevision = this.atLive ? 'live' : this.viewEnd;
+    const key = `${this.indicatorTradeRevision}:${replayRevision}`;
     const now = performance.now();
     const settingsChanged = settingsKey !== this.indicatorAnalysisSettingsKey;
     const dataChanged = key !== this.indicatorAnalysisKey;
@@ -1422,7 +1450,15 @@ class DepthForgeApp {
       || settingsChanged
       || (dataChanged && now - this.indicatorAnalysisAt >= INDICATOR_ANALYSIS_INTERVAL_MS)
     ) {
-      this.indicatorAnalysis = analyzeOrderFlow(this.history.slice(0, this.viewEnd + 1), indicatorSettings);
+      // All automatic order-flow detectors use at most a 120 second lookback.
+      // Keep a small safety margin while bounding main-thread work regardless
+      // of how long the terminal has been open. Frame indexes stay absolute so
+      // markers remain locked to the correct historical column.
+      const analysisStart = Math.max(0, this.viewEnd - INDICATOR_ANALYSIS_MAX_FRAMES + 1);
+      this.indicatorAnalysis = analyzeOrderFlow(
+        this.history.slice(analysisStart, this.viewEnd + 1),
+        { ...indicatorSettings, frameOffset: analysisStart },
+      );
       this.indicatorAnalysisKey = key;
       this.indicatorAnalysisSettingsKey = settingsKey;
       this.indicatorAnalysisAt = now;
