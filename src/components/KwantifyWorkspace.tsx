@@ -754,6 +754,7 @@ type WorkspaceToolKind =
   | "tool-gex-interval-map"
   | "tool-bounce-levels"
   | "tool-dark-pool-map"
+  | "tool-dark-pool-gex"
   | "tool-footprint"
   | "tool-volume-profile"
   | "tool-single-volume-profile"
@@ -1028,6 +1029,7 @@ const WORKSPACE_TOOL_OPTIONS: Array<WorkspacePanelOption<WorkspaceToolKind>> = [
   { id: "tool-gex-interval-map", label: "GEX INTERVAL MAP", description: "Signed Gamma exposure by strike and time, mapped onto the active chart", icon: Grid3X3, indicatorId: "gex-interval-map" },
   { id: "tool-bounce-levels", label: "BOUNCE LEVELS", description: "Ranked KING, floor, ceiling, gatekeeper and options-exposure energy levels", icon: Zap, indicatorId: "bounce-levels" },
   { id: "tool-dark-pool-map", label: "DARK POOL MAP", description: "Timestamped off-exchange prints, mapped levels and notional zones", icon: CircleDot, indicatorId: "dark-pool-map" },
+  { id: "tool-dark-pool-gex", label: "DARK POOL (GEX)", description: "Direction-neutral block prints with separate dealer-Gamma confluence", icon: CircleDot, indicatorId: "dark-pool-gex" },
   { id: "tool-footprint", label: "FOOTPRINT", description: "Bid × ask volume at every traded price", icon: Grid3X3, indicatorId: "deep-print-footprint" },
   { id: "tool-volume-profile", label: "VOLUME PROFILE", description: "Volume, delta, POC and value area by price", icon: BarChart3, indicatorId: "kwant-profile" },
   { id: "tool-single-volume-profile", label: "SINGLE VOLUME PROFILE", description: "One standalone or merged execution profile with live price", icon: BarChart3 },
@@ -13210,7 +13212,7 @@ export default function KwantifyWorkspace({
           </div>
           <div className="mb-2 text-[8px] font-semibold uppercase tracking-[0.16em] text-primary/80">Options</div>
           <div className="mb-3 grid grid-cols-1 gap-2 min-[440px]:grid-cols-2 min-[760px]:grid-cols-3">
-            {WORKSPACE_TOOL_OPTIONS.filter((option) => option.id === "tool-gamma-heatmap" || option.id === "tool-implied-volatility-rank" || option.id === "tool-net-gamma-exposure-by-strike" || option.id === "tool-gex-interval-map" || option.id === "tool-bounce-levels" || option.id === "tool-dark-pool-map").map((option) => {
+            {WORKSPACE_TOOL_OPTIONS.filter((option) => option.id === "tool-gamma-heatmap" || option.id === "tool-implied-volatility-rank" || option.id === "tool-net-gamma-exposure-by-strike" || option.id === "tool-gex-interval-map" || option.id === "tool-bounce-levels" || option.id === "tool-dark-pool-map" || option.id === "tool-dark-pool-gex").map((option) => {
               const Icon = option.icon;
               return (
                 <button
@@ -13228,7 +13230,7 @@ export default function KwantifyWorkspace({
           </div>
           <div className="mb-2 text-[8px] font-semibold uppercase tracking-[0.16em] text-muted">Market &amp; Order Flow</div>
           <div className="grid grid-cols-1 gap-2 min-[440px]:grid-cols-2 min-[760px]:grid-cols-3">
-            {WORKSPACE_TOOL_OPTIONS.filter((option) => option.id !== "tool-gamma-heatmap" && option.id !== "tool-implied-volatility-rank" && option.id !== "tool-net-gamma-exposure-by-strike" && option.id !== "tool-gex-interval-map" && option.id !== "tool-bounce-levels" && option.id !== "tool-dark-pool-map").map((option) => {
+            {WORKSPACE_TOOL_OPTIONS.filter((option) => option.id !== "tool-gamma-heatmap" && option.id !== "tool-implied-volatility-rank" && option.id !== "tool-net-gamma-exposure-by-strike" && option.id !== "tool-gex-interval-map" && option.id !== "tool-bounce-levels" && option.id !== "tool-dark-pool-map" && option.id !== "tool-dark-pool-gex").map((option) => {
               const Icon = option.icon;
               return (
                 <button

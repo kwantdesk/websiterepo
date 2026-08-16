@@ -296,6 +296,17 @@ import {
   type DarkPoolMapHit,
   type DarkPoolMapPrimitiveData,
 } from "@/lib/darkPoolMapPrimitive";
+import {
+  buildDarkPoolGexFrame,
+  DEFAULT_DARK_POOL_GEX_SETTINGS,
+  type DarkPoolGexFrame,
+  type DarkPoolGexSettings,
+} from "@/lib/darkPoolGex";
+import {
+  DarkPoolGexPrimitive,
+  type DarkPoolGexHit,
+  type DarkPoolGexPrimitiveData,
+} from "@/lib/darkPoolGexPrimitive";
 import { fetchWorkspaceData } from "@/lib/workspaceDataCache";
 import { STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT } from "@/lib/volumeProfileMath";
 import {
@@ -2654,6 +2665,8 @@ export default function Chart({
   const previousNetGammaSnapshotRef = useRef<NetGammaProfileSnapshot | null>(null);
   const netGammaReservedRightOffsetRef = useRef<number | null>(null);
   const darkPoolMapPrimitiveRef = useRef<DarkPoolMapPrimitive | null>(null);
+  const darkPoolGexPrimitiveRef = useRef<DarkPoolGexPrimitive | null>(null);
+  const darkPoolGexAlertStateRef = useRef<{ key: string; ids: Set<string> }>({ key: "", ids: new Set() });
   const darkPoolAlertStateRef = useRef<{
     key: string;
     printIds: Set<string>;
@@ -2798,6 +2811,11 @@ export default function Chart({
   const [darkPoolMapLoading, setDarkPoolMapLoading] = useState(false);
   const [darkPoolMapError, setDarkPoolMapError] = useState<string | null>(null);
   const [darkPoolMapTooltip, setDarkPoolMapTooltip] = useState<DarkPoolMapHit | null>(null);
+  const [darkPoolGexPayload, setDarkPoolGexPayload] = useState<DarkPoolMapPayload | null>(null);
+  const [darkPoolGexSnapshot, setDarkPoolGexSnapshot] = useState<BounceLevelsSnapshot | null>(null);
+  const [darkPoolGexLoading, setDarkPoolGexLoading] = useState(false);
+  const [darkPoolGexError, setDarkPoolGexError] = useState<string | null>(null);
+  const [darkPoolGexTooltip, setDarkPoolGexTooltip] = useState<DarkPoolGexHit | null>(null);
   const [ivRankByInstance, setIvRankByInstance] = useState<Record<string, IvRankResourceState>>({});
   const [tpoPayload, setTpoPayload] = useState<TpoLevelsPayload | null>(null);
   const [tpoLoading, setTpoLoading] = useState(false);
@@ -6026,6 +6044,198 @@ export default function Chart({
     };
   }, [darkPoolMapIndicator]);
 
+  const darkPoolGexIndicator = useMemo(
+    () => indicators.find((instance) => instance.enabled && instance.indicatorId === "dark-pool-gex") ?? null,
+    [indicators],
+  );
+  const darkPoolGexReplayMinute = darkPoolGexIndicator && darkPoolGexIndicator.settings?.contextMode !== "current"
+    ? Math.floor((candles.at(-1)?.timestamp ?? 0) / 60_000)
+    : 0;
+  useEffect(() => {
+    if (!darkPoolGexIndicator) {
+      setDarkPoolGexPayload(null);
+      setDarkPoolGexSnapshot(null);
+      setDarkPoolGexLoading(false);
+      setDarkPoolGexError(null);
+      return;
+    }
+    const display = normalizeDarkPoolInstrument(instrument);
+    const indicatorSettings = { ...DEFAULT_DARK_POOL_GEX_SETTINGS, ...(darkPoolGexIndicator.settings ?? {}) } as DarkPoolGexSettings;
+    const requiresExplicitProxy = /^(NQ|MNQ|ES|MES|RTY|M2K|YM|MYM|NDX|SPX)$/.test(display);
+    if (!indicatorSettings.proxyMode && requiresExplicitProxy) {
+      setDarkPoolGexPayload(null);
+      setDarkPoolGexSnapshot(null);
+      setDarkPoolGexLoading(false);
+      setDarkPoolGexError(`${display} has no direct off-exchange print tape. Enable explicit proxy mode to use its documented ETF mapping.`);
+      return;
+    }
+    const source = indicatorSettings.proxyMode ? defaultDarkPoolSource(display) : display;
+    const refreshMs = Math.max(1_000, Math.min(60_000, Number(darkPoolGexIndicator.settings?.refreshSeconds ?? 5) * 1_000));
+    const historicalAsOf = drawingCandlesRef.current.at(-1)?.timestamp ?? Date.now();
+    const asOfMs = indicatorSettings.contextMode === "current" ? Date.now() : historicalAsOf;
+    let cancelled = false;
+    let timer: number | null = null;
+    const load = async (force = false) => {
+      const displayPrice = drawingCandlesRef.current.at(-1)?.close;
+      if (!(displayPrice && displayPrice > 0)) {
+        setDarkPoolGexLoading(true);
+        timer = window.setTimeout(() => void load(force), 500);
+        return;
+      }
+      setDarkPoolGexLoading(true);
+      const darkPoolQuery = new URLSearchParams({
+        display,
+        source,
+        mappingMode: source === display ? "direct" : "rolling-affine",
+        historyDays: String(Math.max(1, Math.min(180, indicatorSettings.lookbackDays))),
+        minimumPrintNotional: String(Math.max(0, indicatorSettings.minimumNotional)),
+        minimumPrintShares: String(Math.max(0, indicatorSettings.minimumShares)),
+        maximumHistoricalPrints: "100000",
+        displayPrice: String(displayPrice),
+      });
+      if (indicatorSettings.maximumNotional > 0) darkPoolQuery.set("maximumPrintNotional", String(indicatorSettings.maximumNotional));
+      if (indicatorSettings.maximumShares > 0) darkPoolQuery.set("maximumPrintShares", String(indicatorSettings.maximumShares));
+      const gexSource = /^(NQ|MNQ|QQQ)$/.test(display) ? "QQQ"
+        : display === "NDX" ? "NDX"
+          : /^(ES|MES|SPY)$/.test(display) ? "SPY"
+            : display === "SPX" ? "SPX"
+              : /^(RTY|M2K|IWM)$/.test(display) ? "IWM"
+                : null;
+      const gexQuery = new URLSearchParams({
+        display,
+        ...(gexSource ? { source: gexSource } : {}),
+        displayPrice: String(displayPrice),
+        greekMode: "GAMMA",
+        expirationMode: "zero-to-one-dte",
+        maximumLevels: "30",
+        historyBuckets: "390",
+        maximumNodesPerSlice: "30",
+      });
+      if (indicatorSettings.contextMode !== "current") gexQuery.set("asOf", new Date(asOfMs).toISOString());
+      const darkPoolPromise = fetchWorkspaceData<DarkPoolMapPayload>(
+        `dark-pool-gex:prints:${display}:${source}:${indicatorSettings.lookbackDays}:${indicatorSettings.minimumNotional}:${indicatorSettings.maximumNotional}:${indicatorSettings.minimumShares}:${indicatorSettings.maximumShares}`,
+        `/api/dark-pool-map?${darkPoolQuery}`,
+        { force, maxAgeMs: refreshMs, timeoutMs: 40_000, validate: isDarkPoolMapPayload, invalidMessage: "Dark Pool (GEX) received an incomplete off-exchange print snapshot." },
+      );
+      const gexPromise = gexSource
+        ? fetchWorkspaceData<BounceLevelsSnapshot>(
+          `dark-pool-gex:gex:${display}:${gexSource}:${indicatorSettings.contextMode}:${Math.floor(asOfMs / 60_000)}`,
+          `/api/bounce-levels?${gexQuery}`,
+          { force, maxAgeMs: refreshMs, timeoutMs: 40_000, validate: isBounceLevelsSnapshot, invalidMessage: "Dark Pool (GEX) received an incomplete GEX snapshot." },
+        )
+        : Promise.reject(new Error(`No validated GEX source is configured for ${display}; raw off-exchange prints remain available.`));
+      const trackedDarkPoolPromise = darkPoolPromise.then((payload) => {
+        if (!cancelled) setDarkPoolGexPayload(payload);
+        return payload;
+      });
+      const trackedGexPromise = gexPromise.then((snapshot) => {
+        if (!cancelled) setDarkPoolGexSnapshot(snapshot);
+        return snapshot;
+      }).catch((error) => {
+        if (!cancelled) setDarkPoolGexSnapshot(null);
+        throw error;
+      });
+      const [darkPoolResult, gexResult] = await Promise.allSettled([trackedDarkPoolPromise, trackedGexPromise]);
+      if (cancelled) return;
+      const errors: string[] = [];
+      if (darkPoolResult.status === "rejected") errors.push(darkPoolResult.reason instanceof Error ? darkPoolResult.reason.message : "Off-exchange prints unavailable.");
+      if (gexResult.status === "rejected") errors.push(gexResult.reason instanceof Error ? gexResult.reason.message : "GEX context unavailable.");
+      setDarkPoolGexError(errors.length ? errors.join(" ") : null);
+      setDarkPoolGexLoading(false);
+      timer = window.setTimeout(() => void load(true), refreshMs);
+    };
+    void load(false);
+    return () => {
+      cancelled = true;
+      if (timer !== null) window.clearTimeout(timer);
+    };
+  }, [darkPoolGexIndicator, darkPoolGexReplayMinute, instrument]);
+
+  const darkPoolGexAsOfMs = darkPoolGexIndicator?.settings?.contextMode === "current"
+    ? (darkPoolGexPayload?.checkedAtMs ?? Date.now())
+    : (candles.at(-1)?.timestamp ?? darkPoolGexPayload?.checkedAtMs ?? Date.now());
+  const darkPoolGexFrame = useMemo<DarkPoolGexFrame | null>(() => {
+    if (!darkPoolGexIndicator || !darkPoolGexPayload) return null;
+    const indicatorSettings = { ...DEFAULT_DARK_POOL_GEX_SETTINGS, ...(darkPoolGexIndicator.settings ?? {}) } as DarkPoolGexSettings;
+    return buildDarkPoolGexFrame({
+      darkPool: darkPoolGexPayload,
+      gex: darkPoolGexSnapshot,
+      settings: indicatorSettings,
+      asOfMs: darkPoolGexAsOfMs,
+      tickSize: priceFormat.minMove,
+    });
+  }, [darkPoolGexAsOfMs, darkPoolGexIndicator, darkPoolGexPayload, darkPoolGexSnapshot, priceFormat.minMove]);
+  const darkPoolGexCurrentPrice = candles.at(-1)?.close ?? null;
+  const darkPoolGexPrimitiveData = useMemo<DarkPoolGexPrimitiveData | null>(() => {
+    if (!darkPoolGexIndicator || !darkPoolGexFrame) return null;
+    const indicatorSettings = { ...DEFAULT_DARK_POOL_GEX_SETTINGS, ...(darkPoolGexIndicator.settings ?? {}) } as DarkPoolGexSettings;
+    const useThemeColors = darkPoolGexIndicator.settings?.useThemeColors !== false;
+    return {
+      frame: darkPoolGexFrame,
+      settings: indicatorSettings,
+      neutralColor: useThemeColors ? settings.gridColor : String(darkPoolGexIndicator.settings?.neutralColor ?? settings.gridColor),
+      positiveGexColor: useThemeColors ? settings.upColor : String(darkPoolGexIndicator.settings?.positiveGexColor ?? settings.upColor),
+      negativeGexColor: useThemeColors ? settings.downColor : String(darkPoolGexIndicator.settings?.negativeGexColor ?? settings.downColor),
+      backgroundColor: settings.backgroundColor,
+      currentPrice: darkPoolGexCurrentPrice,
+    };
+  }, [darkPoolGexCurrentPrice, darkPoolGexFrame, darkPoolGexIndicator, settings.backgroundColor, settings.downColor, settings.gridColor, settings.upColor]);
+  useEffect(() => {
+    darkPoolGexPrimitiveRef.current?.update(darkPoolGexPrimitiveData);
+  }, [darkPoolGexPrimitiveData, viewportVersion]);
+  useEffect(() => {
+    const container = chartContainerRef.current;
+    if (!container || !darkPoolGexIndicator || darkPoolGexIndicator.settings?.showTooltip === false) {
+      setDarkPoolGexTooltip(null);
+      return;
+    }
+    let frame: number | null = null;
+    const move = (event: PointerEvent) => {
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      const rect = container.getBoundingClientRect();
+      frame = window.requestAnimationFrame(() => {
+        frame = null;
+        setDarkPoolGexTooltip(darkPoolGexPrimitiveRef.current?.queryHit(event.clientX - rect.left, event.clientY - rect.top) ?? null);
+      });
+    };
+    const leave = () => setDarkPoolGexTooltip(null);
+    container.addEventListener("pointermove", move, { passive: true });
+    container.addEventListener("pointerleave", leave, { passive: true });
+    return () => {
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      container.removeEventListener("pointermove", move);
+      container.removeEventListener("pointerleave", leave);
+    };
+  }, [darkPoolGexIndicator]);
+  useEffect(() => {
+    if (!darkPoolGexIndicator || !darkPoolGexFrame || darkPoolGexIndicator.settings?.enableAlerts !== true) return;
+    const alertKey = `${darkPoolGexIndicator.instanceId}:${darkPoolGexFrame.sourceTicker}:${darkPoolGexFrame.displayInstrument}`;
+    if (darkPoolGexAlertStateRef.current.key !== alertKey) {
+      darkPoolGexAlertStateRef.current = { key: alertKey, ids: new Set(darkPoolGexFrame.rawEvents.map((event) => event.id)) };
+      return;
+    }
+    const seen = darkPoolGexAlertStateRef.current.ids;
+    const threshold = Math.max(0, Number(darkPoolGexIndicator.settings?.alertConfluence ?? 75)) / 100;
+    const minimumNotional = Math.max(0, Number(darkPoolGexIndicator.settings?.alertPrintNotional ?? 5_000_000));
+    for (const event of darkPoolGexFrame.rawEvents) {
+      if (seen.has(event.id)) continue;
+      seen.add(event.id);
+      if (event.notional < minimumNotional || event.combinedImportance < threshold) continue;
+      const detail = {
+        indicatorId: "dark-pool-gex",
+        instanceId: darkPoolGexIndicator.instanceId,
+        instrument: darkPoolGexFrame.displayInstrument,
+        sourceTicker: darkPoolGexFrame.sourceTicker,
+        title: "Dark Pool (GEX) confluence",
+        message: `${event.notional.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })} off-exchange print at ${event.price.toFixed(priceFormat.precision)}${event.primaryConfluence ? ` near ${event.primaryConfluence.role} GEX` : ""}.`,
+        checkedAtMs: darkPoolGexFrame.generatedAtMs,
+      };
+      window.dispatchEvent(new CustomEvent("kwantdesk:dark-pool-gex-alert", { detail }));
+      window.dispatchEvent(new CustomEvent("kwantdesk:precision-alert", { detail: { objectId: event.id, message: detail.message, price: event.price, condition: detail.title } }));
+    }
+    if (seen.size > 100_000) darkPoolGexAlertStateRef.current = { key: alertKey, ids: new Set(darkPoolGexFrame.rawEvents.map((event) => event.id)) };
+  }, [darkPoolGexFrame, darkPoolGexIndicator, priceFormat.precision]);
+
   const classicGexIndicator = useMemo(
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "classic-gex-profile") ?? null,
     [indicatorSignature, indicators],
@@ -9239,6 +9449,9 @@ export default function Chart({
     const darkPoolMapPrimitive = new DarkPoolMapPrimitive();
     candleSeries.attachPrimitive(darkPoolMapPrimitive);
     darkPoolMapPrimitiveRef.current = darkPoolMapPrimitive;
+    const darkPoolGexPrimitive = new DarkPoolGexPrimitive();
+    candleSeries.attachPrimitive(darkPoolGexPrimitive);
+    darkPoolGexPrimitiveRef.current = darkPoolGexPrimitive;
     const volumeProfilePrimitive = new NativeVolumeProfilePrimitive();
     candleSeries.attachPrimitive(volumeProfilePrimitive);
     volumeProfilePrimitiveRef.current = volumeProfilePrimitive;
@@ -10034,6 +10247,13 @@ export default function Chart({
             // Chart teardown can detach primitives before React cleanup runs.
           }
         }
+        if (candleSeriesRef.current && darkPoolGexPrimitiveRef.current) {
+          try {
+            candleSeriesRef.current.detachPrimitive(darkPoolGexPrimitiveRef.current);
+          } catch {
+            // Chart teardown can detach primitives before React cleanup runs.
+          }
+        }
         if (candleSeriesRef.current && bigTradesPrimitiveRef.current) {
           try {
             candleSeriesRef.current.detachPrimitive(bigTradesPrimitiveRef.current);
@@ -10114,6 +10334,7 @@ export default function Chart({
       bounceLevelsPrimitiveRef.current = null;
       netGammaReservedRightOffsetRef.current = null;
       darkPoolMapPrimitiveRef.current = null;
+      darkPoolGexPrimitiveRef.current = null;
       volumeProfilePrimitiveRef.current = null;
       bigTradesPrimitiveRef.current = null;
       bigBlocksPrimitiveRef.current = null;
@@ -11690,10 +11911,79 @@ export default function Chart({
           ) : null}
         </div>
       ) : null}
+      {darkPoolGexIndicator ? (
+        <div
+          className="pointer-events-none absolute left-2 z-[25] flex max-w-[min(760px,calc(100%-80px))] items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg"
+          style={{ top: 8 + (gammaHeatmapIndicator ? 30 : 0) + (gexIntervalMapIndicator ? 30 : 0) + (netGammaIndicator ? 30 : 0) }}
+          title={darkPoolGexFrame?.limitations.join(" ") ?? darkPoolGexError ?? "Loading real off-exchange prints and GEX context"}
+        >
+          <span className={`h-1.5 w-1.5 rounded-full ${darkPoolGexError && !darkPoolGexFrame ? "bg-danger" : darkPoolGexLoading ? "animate-pulse bg-warning" : "bg-primary"}`} />
+          <span className="text-foreground">Dark Pool (GEX)</span>
+          {darkPoolGexFrame ? (
+            <>
+              <span>{darkPoolGexFrame.sourceTicker}→{darkPoolGexFrame.displayInstrument}</span>
+              <span className={darkPoolGexFrame.status === "LIVE" ? "text-primary" : "text-warning"}>{darkPoolGexFrame.status.replaceAll("_", " ")}</span>
+              <span>{darkPoolGexFrame.rawEvents.length}/{darkPoolGexFrame.eligibleEventCount} prints</span>
+              <span>{darkPoolGexFrame.clusters.length} clusters</span>
+              <span>direction neutral</span>
+            </>
+          ) : darkPoolGexLoading ? <span>Loading off-exchange prints…</span> : <span className="text-danger">{darkPoolGexError ?? "Dark Pool (GEX) unavailable"}</span>}
+          {darkPoolGexError && darkPoolGexFrame ? <span className="text-warning">Partial context · raw prints retained</span> : null}
+        </div>
+      ) : null}
+      {darkPoolGexTooltip ? (
+        <div
+          className="pointer-events-none absolute z-[65] min-w-[280px] border border-border bg-panel/98 p-2 font-mono text-[8px] shadow-2xl"
+          style={{
+            left: Math.min(Math.max(8, darkPoolGexTooltip.x + 14), Math.max(8, overlaySize.width - 310)),
+            top: Math.min(Math.max(34, darkPoolGexTooltip.y + 14), Math.max(34, overlaySize.height - 280)),
+          }}
+        >
+          {darkPoolGexTooltip.event ? (
+            <>
+              <div className="flex items-center justify-between gap-4 border-b border-border pb-1 text-foreground"><span>Dark Pool (GEX)</span><span>OFF EXCHANGE</span></div>
+              <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-1 text-muted">
+                <span>Event time</span><span className="text-foreground">{new Date(darkPoolGexTooltip.event.timestampMs).toLocaleString()}</span>
+                <span>Price</span><span className="text-foreground">{darkPoolGexTooltip.event.price.toFixed(priceFormat.precision)}</span>
+                <span>Notional</span><span className="text-foreground">{darkPoolGexTooltip.event.notional.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })}</span>
+                <span>Shares</span><span className="text-foreground">{darkPoolGexTooltip.event.shares.toLocaleString()}</span>
+                <span>Direction</span><span className="text-foreground">UNKNOWN · neutral</span>
+                <span>Combined importance</span><span className="text-foreground">{(darkPoolGexTooltip.event.combinedImportance * 100).toFixed(1)}%</span>
+                <span>Current GEX</span><span className="text-foreground">{darkPoolGexTooltip.event.currentConfluence ? `${darkPoolGexTooltip.event.currentConfluence.role} · ${(darkPoolGexTooltip.event.currentConfluence.confluence * 100).toFixed(1)}%` : "No qualified confluence"}</span>
+                <span>Event-time GEX</span><span className="text-foreground">{darkPoolGexTooltip.event.eventTimeConfluence ? `${darkPoolGexTooltip.event.eventTimeConfluence.role} · ${(darkPoolGexTooltip.event.eventTimeConfluence.confluence * 100).toFixed(1)}%` : "Unavailable / none"}</span>
+                <span>Quality</span><span className="text-foreground">{darkPoolGexTooltip.event.quality}</span>
+              </div>
+            </>
+          ) : darkPoolGexTooltip.cluster ? (
+            <>
+              <div className="flex items-center justify-between gap-4 border-b border-border pb-1 text-foreground"><span>Dark Pool Cluster</span><span>{darkPoolGexTooltip.cluster.events.length} prints</span></div>
+              <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-1 text-muted">
+                <span>Weighted price</span><span className="text-foreground">{darkPoolGexTooltip.cluster.weightedPrice.toFixed(priceFormat.precision)}</span>
+                <span>Total notional</span><span className="text-foreground">{darkPoolGexTooltip.cluster.totalNotional.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 })}</span>
+                <span>Total shares</span><span className="text-foreground">{darkPoolGexTooltip.cluster.totalShares.toLocaleString()}</span>
+                <span>First / last</span><span className="text-foreground">{new Date(darkPoolGexTooltip.cluster.firstTimestampMs).toLocaleDateString()} / {new Date(darkPoolGexTooltip.cluster.lastTimestampMs).toLocaleTimeString()}</span>
+              </div>
+            </>
+          ) : null}
+        </div>
+      ) : null}
+      {darkPoolGexIndicator?.settings?.showInspector === true && darkPoolGexFrame?.rawEvents.length ? (
+        <div className="absolute bottom-10 right-[68px] z-[26] max-h-[36%] w-[min(430px,44%)] overflow-auto border border-border bg-panel/96 font-mono text-[8px] shadow-2xl">
+          <div className="sticky top-0 grid grid-cols-[24px_1fr_1fr_70px] gap-2 border-b border-border bg-panel px-2 py-1 uppercase tracking-[0.08em] text-muted"><span>#</span><span>Price / time</span><span>Notional</span><span>GEX context</span></div>
+          {darkPoolGexFrame.rawEvents.map((event, index) => (
+            <div key={event.id} className="grid grid-cols-[24px_1fr_1fr_70px] gap-2 border-b border-border/45 px-2 py-1 text-foreground">
+              <span>{index + 1}</span>
+              <span>{event.price.toFixed(priceFormat.precision)} · {new Date(event.timestampMs).toLocaleTimeString()}</span>
+              <span>{event.notional.toLocaleString("en-US", { notation: "compact", style: "currency", currency: "USD" })}</span>
+              <span className={event.primaryConfluence?.signedExposure && event.primaryConfluence.signedExposure >= 0 ? "text-primary" : event.primaryConfluence ? "text-danger" : "text-muted"}>{event.primaryConfluence ? `${event.primaryConfluence.role} ${(event.primaryConfluence.confluence * 100).toFixed(0)}%` : "NONE"}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
       {darkPoolMapIndicator ? (
         <div
           className="pointer-events-none absolute left-2 z-[25] flex max-w-[min(720px,calc(100%-80px))] items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur"
-          style={{ top: 8 + (gammaHeatmapIndicator ? 30 : 0) + (gexIntervalMapIndicator ? 30 : 0) + (netGammaIndicator ? 30 : 0) }}
+          style={{ top: 8 + (gammaHeatmapIndicator ? 30 : 0) + (gexIntervalMapIndicator ? 30 : 0) + (netGammaIndicator ? 30 : 0) + (darkPoolGexIndicator ? 30 : 0) }}
           title={darkPoolMapPayload?.limitations.join(" ") ?? darkPoolMapError ?? "Loading real off-exchange prints"}
         >
           <span className={`h-1.5 w-1.5 rounded-full ${darkPoolMapError && !darkPoolMapPayload ? "bg-danger" : darkPoolMapLoading ? "animate-pulse bg-warning" : "bg-primary"}`} />

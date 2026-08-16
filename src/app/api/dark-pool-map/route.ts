@@ -114,7 +114,7 @@ function settingsFromRequest(request: NextRequest): DarkPoolMapSettings {
   const bool = (key: string, fallback: boolean) => query.has(key) ? query.get(key) !== "false" : fallback;
   return {
     ...defaultDarkPoolMapSettings,
-    historyDays: Math.max(1, Math.min(20, number("historyDays", defaultDarkPoolMapSettings.historyDays))),
+    historyDays: Math.max(1, Math.min(180, number("historyDays", defaultDarkPoolMapSettings.historyDays))),
     pollSeconds: Math.max(1, Math.min(30, number("pollSeconds", defaultDarkPoolMapSettings.pollSeconds))),
     minimumPrintNotional: Math.max(0, number("minimumPrintNotional", defaultDarkPoolMapSettings.minimumPrintNotional)),
     maximumPrintNotional: Math.max(0, number("maximumPrintNotional", 0)),

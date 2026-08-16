@@ -217,6 +217,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "gex-interval-map",
   "bounce-levels",
   "dark-pool-map",
+  "dark-pool-gex",
   "implied-volatility-rank",
   "volume",
   "delta-bar",
@@ -1670,6 +1671,34 @@ export default function ChartIndicatorsControl({
                   ))}
                   <div className="border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
                     Dark Pool Map supports every options-flow underlying. QQQ, SPY, IWM and single stocks use native off-exchange prints. NDX and SPX are non-traded indices, so they use QQQ→NDX and SPY→SPX price mapping. Futures remain explicitly mapped rather than presented as direct dark-pool feeds.
+                  </div>
+                </div>
+              ) : null}
+
+              {settingsDefinition.id === "dark-pool-gex" ? (
+                <div className="grid gap-3 border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
+                  {[
+                    ["GEX context", "contextMode", [["current", "Current Structure"], ["event-time", "Event-Time Structure"], ["historical-and-current", "Historical + Current"]]],
+                    ["GEX confluence", "confluenceMode", [["off", "Off"], ["nearest", "Nearest Node"], ["major", "Major Nodes Only"], ["king", "KING Only"], ["king-and-major", "KING + Major"], ["all-qualified", "All Qualified"]]],
+                    ["Tolerance", "toleranceMode", [["percentage", "Percentage Distance"], ["absolute", "Absolute Price Distance"], ["ticks", "Tick Distance"]]],
+                    ["Display", "displayMode", [["raw", "Raw Prints Only"], ["clusters", "Clusters Only"], ["raw-and-clusters", "Raw + Clusters"]]],
+                    ["Cluster distance", "clusterDistanceMode", [["percentage", "Percentage"], ["absolute", "Absolute Price"], ["ticks", "Ticks"]]],
+                    ["Performance", "performanceQuality", [["auto", "Auto"], ["ultra", "Ultra"], ["high", "High"], ["medium", "Medium"], ["low", "Low"]]],
+                  ].map(([label, key, options]) => (
+                    <label key={String(key)} className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                      <span>{String(label)}</span>
+                      <KwantSelect
+                        value={String(settingsInstance.settings?.[String(key)] ?? "")}
+                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [String(key)]: event.target.value } }))}
+                        className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                        menuLabel={String(label)}
+                      >
+                        {(options as string[][]).map(([value, optionLabel]) => <option key={value} value={value}>{optionLabel}</option>)}
+                      </KwantSelect>
+                    </label>
+                  ))}
+                  <div className="border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
+                    Raw prints are genuine off-exchange events and remain direction-neutral. Gamma sign is rendered only as a separate halo. Proxy projection is off by default; enable it only when you intentionally want the existing verified ETF-to-index/futures mapping.
                   </div>
                 </div>
               ) : null}

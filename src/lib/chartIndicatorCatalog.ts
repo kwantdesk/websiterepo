@@ -62,6 +62,7 @@ export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
   indicator("GEX Interval Map", "Options Flow", "Live and historical signed Gamma exposure by strike and time, mapped onto the active chart without lookahead.", false, "Kwantify"),
   indicator("Bounce Levels", "Options Flow", "Ranked dealer Gamma, Delta, Vanna or Charm energy levels with KING, floor, ceiling, gatekeeper, cluster and air-pocket context.", false, "Kwantify"),
   indicator("Dark Pool Map", "Options Flow", "Real off-exchange equity prints aggregated into timestamped circles, mapped futures levels and institutional-style zones.", false, "Kwantify"),
+  indicator("Dark Pool (GEX)", "Options Flow", "Direction-neutral off-exchange block prints anchored at exact event time and price, with separate dealer-Gamma confluence.", false, "Kwantify"),
   indicator("Implied Volatility Rank", "Options Flow", "QuantData IV Rank and true IV Percentile across configurable lookback, maturity and call/put modes.", false, "Kwantify"),
   indicator("Cumulative Volume Delta", "Order Flow", "Running aggressive buy volume minus aggressive sell volume.", true),
   indicator("Pulling & Stacking", "Order Flow", "Displayed Bid and Ask liquidity being added, pulled, moved and reposted through time using Level 3 order-book events.", true, "Kwantify"),
