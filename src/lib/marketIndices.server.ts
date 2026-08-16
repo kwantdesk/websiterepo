@@ -4,6 +4,10 @@ import type { Candle } from "@/lib/backtester";
 import { fetchGexBotVixSpot, hasGexBotVixAccess } from "@/lib/gexBotVix.server";
 import { getMarketIndexDefinition } from "@/lib/marketIndices";
 import { parseMassiveCashLevelOne } from "@/lib/optionsLevelOne";
+import {
+  getConfiguredQuantDataApiKey,
+  getOptionsUnderlyingHistory,
+} from "@/lib/quantData.server";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -44,7 +48,7 @@ export function hasLiveMarketIndexAccess() {
 }
 
 export function hasIntradayMarketIndexHistoryAccess() {
-  return Boolean(getMassiveApiKey());
+  return Boolean(getMassiveApiKey()) || Boolean(getConfiguredQuantDataApiKey());
 }
 
 function isRecord(value: unknown): value is JsonRecord {
@@ -236,9 +240,16 @@ export async function fetchMarketIndexCandles(options: {
   if (!definition) throw new Error(`${options.symbol} is not a supported market instrument.`);
   const canUseOfficialVixArchive = definition.symbol === "VIX"
     && ["1D", "1W", "1M"].includes(options.timeframe);
-  if (!hasIntradayMarketIndexHistoryAccess()) {
+  const canUseKwantDataHistory = definition.group === "Options Underlyings"
+    && Boolean(getConfiguredQuantDataApiKey());
+  if (!getMassiveApiKey()) {
+    if (canUseKwantDataHistory) {
+      const candles = await getOptionsUnderlyingHistory(options);
+      if (candles.length) return candles;
+      throw new Error(`No ${definition.symbol} candles were returned for this chart window.`);
+    }
     if (definition.symbol !== "VIX") {
-      throw new Error(`${definition.symbol} requires a compatible MASSIVE_API_KEY entitlement.`);
+      throw new Error(`${definition.symbol} market history is not configured.`);
     }
     return fetchCboeVixEodCandles(options);
   }
@@ -272,8 +283,17 @@ export async function fetchMarketIndexCandles(options: {
         volume: finiteNumber(value.v ?? value.volume) ?? 0,
       }];
     });
-    if (candles.length || !canUseOfficialVixArchive) return candles;
+    if (candles.length) return candles;
+    if (canUseKwantDataHistory) {
+      const fallback = await getOptionsUnderlyingHistory(options);
+      if (fallback.length) return fallback;
+    }
+    if (!canUseOfficialVixArchive) return [];
   } catch (error) {
+    if (canUseKwantDataHistory) {
+      const fallback = await getOptionsUnderlyingHistory(options).catch(() => []);
+      if (fallback.length) return fallback;
+    }
     if (!canUseOfficialVixArchive) throw error;
   }
 

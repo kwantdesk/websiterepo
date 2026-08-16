@@ -65,7 +65,9 @@ export async function GET(request: Request) {
       {
         candles,
         symbol,
-        source: hasIntradayMarketIndexHistoryAccess() ? "Massive" : "CBOE EOD",
+        source: symbol === "VIX" && !hasIntradayMarketIndexHistoryAccess()
+          ? "CBOE EOD"
+          : "US market data",
         from,
         to,
       },

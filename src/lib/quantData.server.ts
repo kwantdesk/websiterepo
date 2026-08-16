@@ -595,6 +595,112 @@ function parseCandles(payload: unknown, regularCashSessionOnly = false): Options
   return (regularCashSessionOnly ? filterUsRegularCashSessionCandles(candles) : candles).slice(-600);
 }
 
+function parseUnderlyingHistoryCandles(payload: unknown): OptionsCandle[] {
+  if (!isRecord(payload) || !isRecord(payload.data)) return [];
+  return Object.entries(payload.data)
+    .flatMap(([timestamp, raw]) => {
+      if (!isRecord(raw)) return [];
+      const time = normalizeMarketTimestamp(timestamp);
+      const open = finiteNumber(raw.openPrice ?? raw.open ?? raw.o);
+      const high = finiteNumber(raw.highPrice ?? raw.high ?? raw.h);
+      const low = finiteNumber(raw.lowPrice ?? raw.low ?? raw.l);
+      const close = finiteNumber(raw.closePrice ?? raw.close ?? raw.c);
+      if (time === null || open === null || high === null || low === null || close === null) return [];
+      return [{
+        timestamp: time,
+        open,
+        high,
+        low,
+        close,
+        volume: finiteNumber(raw.volume ?? raw.totalVolume ?? raw.tradeVolume ?? raw.v) ?? 0,
+      }];
+    })
+    .sort((left, right) => left.timestamp - right.timestamp);
+}
+
+function underlyingHistoryBucket(timestamp: number, timeframe: string) {
+  if (timeframe === "1W") {
+    const date = new Date(timestamp);
+    const monday = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+    const day = monday.getUTCDay() || 7;
+    monday.setUTCDate(monday.getUTCDate() - day + 1);
+    return monday.getTime();
+  }
+  if (timeframe === "1M") {
+    const date = new Date(timestamp);
+    return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1);
+  }
+  const durationMs: Record<string, number> = {
+    "2h": 2 * 60 * 60_000,
+    "4h": 4 * 60 * 60_000,
+  };
+  const duration = durationMs[timeframe];
+  return duration ? Math.floor(timestamp / duration) * duration : timestamp;
+}
+
+function aggregateUnderlyingHistory(candles: OptionsCandle[], timeframe: string) {
+  if (!["2h", "4h", "1W", "1M"].includes(timeframe)) return candles;
+  const grouped = new Map<number, OptionsCandle[]>();
+  for (const candle of candles) {
+    const bucket = underlyingHistoryBucket(candle.timestamp, timeframe);
+    const rows = grouped.get(bucket);
+    if (rows) rows.push(candle);
+    else grouped.set(bucket, [candle]);
+  }
+  return [...grouped.entries()].map(([timestamp, rows]) => ({
+    timestamp,
+    open: rows[0].open,
+    high: Math.max(...rows.map((row) => row.high)),
+    low: Math.min(...rows.map((row) => row.low)),
+    close: rows.at(-1)!.close,
+    volume: rows.reduce((sum, row) => sum + row.volume, 0),
+  }));
+}
+
+/**
+ * Historical cash-underlying bars used by the normal chart. This stays on the
+ * shared VPS/KwantData adapter so browser charts never need a vendor key and a
+ * Massive aggregate entitlement cannot leave an otherwise supported symbol
+ * with an empty chart.
+ */
+export async function getOptionsUnderlyingHistory(input: {
+  symbol: string;
+  timeframe: string;
+  from: number;
+  to: number;
+}): Promise<OptionsCandle[]> {
+  const symbol = input.symbol.trim().toUpperCase();
+  const providerAggregation: Record<string, string> = {
+    "1m": "1m",
+    "5m": "5m",
+    "15m": "15m",
+    "30m": "30m",
+    "1h": "1h",
+    "2h": "1h",
+    "4h": "1h",
+    "1D": "1d",
+    "1W": "1d",
+    "1M": "1d",
+  };
+  const aggregationPeriod = providerAggregation[input.timeframe];
+  if (!aggregationPeriod) {
+    throw new QuantDataError(`${input.timeframe} is not supported for cash-underlying history.`, 400, null);
+  }
+  const from = Math.min(input.from, input.to);
+  const to = Math.max(input.from, input.to);
+  const result = await quantDataPost("/equities/tool/stock-price-over-time", {
+    timeRange: {
+      startTime: new Date(from).toISOString(),
+      endTime: new Date(to).toISOString(),
+    },
+    aggregationPeriod,
+    filter: { ticker: symbol },
+  }, to < Date.now() - 5 * 60_000 ? 5 * 60_000 : 5_000);
+  const candles = parseUnderlyingHistoryCandles(result.payload)
+    .filter((candle) => candle.timestamp >= from && candle.timestamp <= to);
+  return aggregateUnderlyingHistory(candles, input.timeframe);
+}
+
 function parseIvRank(payload: unknown, sessionDate: string) {
   if (!isRecord(payload) || !isRecord(payload.data)) {
     return { ivRank: null, callIv: null, putIv: null, atmIv: null, ivPercentile: null, historySessions: 0, expiration: null, priorAtmIv: null };
