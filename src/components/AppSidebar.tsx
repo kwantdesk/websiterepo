@@ -247,12 +247,9 @@ function AppSidebar({
         title="Kwant Desk home"
         aria-label="Kwant Desk home"
       >
-        <img
-          src="/brand/kwantdesk-wordmark.webp"
-          alt="Kwant Desk"
-          className="h-full w-full object-cover object-center"
-          draggable={false}
-        />
+        <span className="kwant-primary-brand-wordmark" aria-hidden="true">
+          kwant desk
+        </span>
       </Link>
       <nav className="kwant-primary-workspace-nav absolute inset-y-0 flex items-center overflow-x-auto overflow-y-clip" aria-label="Primary workspace">
         <div className="kwant-primary-workspace-nav-track flex min-w-max items-center gap-1">

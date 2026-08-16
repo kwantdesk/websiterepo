@@ -1245,16 +1245,25 @@ header.kwant-command-rail {
 }
 
 .kwant-primary-brand {
-  width: 108px;
-  height: 18px;
+  width: 110px;
+  height: 28px;
   margin-right: 8px;
-  background: #000;
+  padding-inline: 3px;
   user-select: none;
 }
 
-.kwant-primary-brand img {
-  transform: scale(1.025);
-  transform-origin: center;
+.kwant-primary-brand-wordmark {
+  display: block;
+  width: 100%;
+  color: #fff;
+  font-family: "Inter", "Segoe UI", Arial, sans-serif;
+  font-size: 18px;
+  font-weight: 400;
+  line-height: 1;
+  letter-spacing: -.055em;
+  white-space: nowrap;
+  text-rendering: geometricPrecision;
+  -webkit-font-smoothing: antialiased;
 }
 
 /* Links and the top-right Trade trigger intentionally share one rendered
@@ -1302,9 +1311,13 @@ header.kwant-command-rail .kwant-primary-nav-control {
 
 @media (max-width: 1279px), (orientation: portrait) {
   .kwant-primary-brand {
-    width: 94px;
-    height: 16px;
+    width: 98px;
+    height: 28px;
     margin-right: 5px;
+  }
+
+  .kwant-primary-brand-wordmark {
+    font-size: 16px;
   }
 
   .kwant-primary-workspace-nav {
