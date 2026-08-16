@@ -261,6 +261,12 @@ import {
   type MappedStrikeAggregationMode,
   type NetGammaProfileSnapshot,
 } from "@/lib/netGammaExposureByStrike";
+import { isBounceLevelsSnapshot, type BounceLevelsSnapshot } from "@/lib/bounceLevels";
+import {
+  BounceLevelsPrimitive,
+  type BounceLevelsHit,
+  type BounceLevelsPrimitiveData,
+} from "@/lib/bounceLevelsPrimitive";
 import {
   GexIntervalMapPrimitive,
   type GexIntervalMapHit,
@@ -2630,6 +2636,8 @@ export default function Chart({
   const pocAuctionEngineRef = useRef(new PocAuctionSuiteEngine());
   const pocAuctionAlertIdsRef = useRef(new Set<string>());
   const netGammaExposurePrimitiveRef = useRef<NetGammaExposurePrimitive | null>(null);
+  const bounceLevelsPrimitiveRef = useRef<BounceLevelsPrimitive | null>(null);
+  const bounceLevelsAlertStateRef = useRef<{ key: string; states: Map<string, string>; lastFired: Map<string, number> }>({ key: "", states: new Map(), lastFired: new Map() });
   const gexIntervalMapPrimitiveRef = useRef<GexIntervalMapPrimitive | null>(null);
   const gexIntervalAlertStateRef = useRef<{
     key: string;
@@ -2772,6 +2780,10 @@ export default function Chart({
   const [netGammaLoading, setNetGammaLoading] = useState(false);
   const [netGammaError, setNetGammaError] = useState<string | null>(null);
   const [netGammaTooltip, setNetGammaTooltip] = useState<NetGammaExposureHit | null>(null);
+  const [bounceLevelsSnapshot, setBounceLevelsSnapshot] = useState<BounceLevelsSnapshot | null>(null);
+  const [bounceLevelsLoading, setBounceLevelsLoading] = useState(false);
+  const [bounceLevelsError, setBounceLevelsError] = useState<string | null>(null);
+  const [bounceLevelsTooltip, setBounceLevelsTooltip] = useState<BounceLevelsHit | null>(null);
   const [gexIntervalSurface, setGexIntervalSurface] = useState<GexIntervalProviderSurface | null>(null);
   const [gexIntervalLoading, setGexIntervalLoading] = useState(false);
   const [gexIntervalError, setGexIntervalError] = useState<string | null>(null);
@@ -5494,6 +5506,285 @@ export default function Chart({
       container.removeEventListener("pointerleave", leave);
     };
   }, [netGammaIndicator]);
+
+  const bounceLevelsIndicator = useMemo(
+    () => indicators.find((instance) => instance.enabled && instance.indicatorId === "bounce-levels") ?? null,
+    [indicators],
+  );
+  const bounceLevelsDataSignature = bounceLevelsIndicator ? JSON.stringify({
+    instanceId: bounceLevelsIndicator.instanceId,
+    sourceTicker: String(bounceLevelsIndicator.settings?.sourceTicker ?? "AUTO"),
+    greekMode: String(bounceLevelsIndicator.settings?.greekMode ?? "GAMMA"),
+    refreshSeconds: Number(bounceLevelsIndicator.settings?.refreshSeconds ?? 5),
+    expirationMode: String(bounceLevelsIndicator.settings?.expirationMode ?? "zero-to-one-dte"),
+    expirationDates: String(bounceLevelsIndicator.settings?.expirationDates ?? ""),
+    includeWeeklies: bounceLevelsIndicator.settings?.includeWeeklies !== false,
+    includeMonthlies: bounceLevelsIndicator.settings?.includeMonthlies !== false,
+    includeQuarterlies: bounceLevelsIndicator.settings?.includeQuarterlies !== false,
+    maximumLevels: Number(bounceLevelsIndicator.settings?.maximumLevels ?? 8),
+    minimumExposurePercentile: Number(bounceLevelsIndicator.settings?.minimumExposurePercentile ?? 90),
+    minimumPercentOfKing: Number(bounceLevelsIndicator.settings?.minimumPercentOfKing ?? 15),
+    minimumRelevanceScore: Number(bounceLevelsIndicator.settings?.minimumRelevanceScore ?? 55),
+    maximumDistancePoints: Number(bounceLevelsIndicator.settings?.maximumDistancePoints ?? 0),
+    clusterDistancePoints: Number(bounceLevelsIndicator.settings?.clusterDistancePoints ?? 25),
+    airPocketRatio: Number(bounceLevelsIndicator.settings?.airPocketRatio ?? 20),
+    historyBuckets: Number(bounceLevelsIndicator.settings?.historyBuckets ?? 30),
+    maximumGatekeepers: Number(bounceLevelsIndicator.settings?.maximumGatekeepers ?? 2),
+    maximumMajorNodes: Number(bounceLevelsIndicator.settings?.maximumMajorNodes ?? 4),
+    minimumGatekeeperRelevance: Number(bounceLevelsIndicator.settings?.minimumGatekeeperRelevance ?? 60),
+    minimumGatekeeperPercentOfKing: Number(bounceLevelsIndicator.settings?.minimumGatekeeperPercentOfKing ?? 20),
+    minimumClusterNodes: Number(bounceLevelsIndicator.settings?.minimumClusterNodes ?? 2),
+    minimumAirPocketWidthPercent: Number(bounceLevelsIndicator.settings?.minimumAirPocketWidthPercent ?? 0.3),
+    magnitudeWeight: Number(bounceLevelsIndicator.settings?.magnitudeWeight ?? 45),
+    proximityWeight: Number(bounceLevelsIndicator.settings?.proximityWeight ?? 15),
+    accumulationWeight: Number(bounceLevelsIndicator.settings?.accumulationWeight ?? 15),
+    persistenceWeight: Number(bounceLevelsIndicator.settings?.persistenceWeight ?? 10),
+    freshnessWeight: Number(bounceLevelsIndicator.settings?.freshnessWeight ?? 10),
+    clusterWeight: Number(bounceLevelsIndicator.settings?.clusterWeight ?? 5),
+    proximityDecayPercent: Number(bounceLevelsIndicator.settings?.proximityDecayPercent ?? 3),
+    developingMinimumPercentile: Number(bounceLevelsIndicator.settings?.developingMinimumPercentile ?? 75),
+    developingMinimumGrowthPercent: Number(bounceLevelsIndicator.settings?.developingMinimumGrowthPercent ?? 10),
+    weakeningThresholdPercent: Number(bounceLevelsIndicator.settings?.weakeningThresholdPercent ?? -10),
+    weakeningRelevanceThreshold: Number(bounceLevelsIndicator.settings?.weakeningRelevanceThreshold ?? 45),
+    retirementRelevanceThreshold: Number(bounceLevelsIndicator.settings?.retirementRelevanceThreshold ?? 30),
+    retirementExposurePercentile: Number(bounceLevelsIndicator.settings?.retirementExposurePercentile ?? 65),
+    touchTolerancePercent: Number(bounceLevelsIndicator.settings?.touchTolerancePercent ?? 0.05),
+    touchDecayFactor: Number(bounceLevelsIndicator.settings?.touchDecayFactor ?? 85),
+  }) : "";
+  useEffect(() => {
+    if (!bounceLevelsDataSignature) {
+      setBounceLevelsSnapshot(null);
+      setBounceLevelsLoading(false);
+      setBounceLevelsError(null);
+      return;
+    }
+    const indicatorSettings = JSON.parse(bounceLevelsDataSignature) as Record<string, string | number | boolean>;
+    const display = normalizeGammaHeatmapInstrument(instrument);
+    if (!/^(NQ|MNQ|ES|MES|RTY|M2K)$/.test(display)) {
+      setBounceLevelsSnapshot(null);
+      setBounceLevelsLoading(false);
+      setBounceLevelsError("Bounce Levels supports NQ, MNQ, ES, MES, RTY and M2K charts.");
+      return;
+    }
+    const requestedSource = String(indicatorSettings.sourceTicker).toUpperCase();
+    const source = requestedSource === "AUTO"
+      ? /^(ES|MES)$/.test(display) ? "SPY" : /^(RTY|M2K)$/.test(display) ? "IWM" : "QQQ"
+      : requestedSource;
+    const refreshMs = Math.max(2_000, Math.min(60_000, Number(indicatorSettings.refreshSeconds) * 1_000));
+    let cancelled = false;
+    let timer: number | null = null;
+    const load = async (force = false) => {
+      const displayPrice = drawingCandlesRef.current.at(-1)?.close;
+      if (!(displayPrice && displayPrice > 0)) {
+        if (!cancelled) timer = window.setTimeout(() => void load(force), 300);
+        return;
+      }
+      if (!bounceLevelsSnapshot) setBounceLevelsLoading(true);
+      const query = new URLSearchParams({
+        display,
+        source,
+        displayPrice: String(displayPrice),
+        greekMode: String(indicatorSettings.greekMode),
+        expirationMode: String(indicatorSettings.expirationMode),
+        expirationDates: String(indicatorSettings.expirationDates),
+        includeWeeklies: String(indicatorSettings.includeWeeklies),
+        includeMonthlies: String(indicatorSettings.includeMonthlies),
+        includeQuarterlies: String(indicatorSettings.includeQuarterlies),
+        maximumLevels: String(indicatorSettings.maximumLevels),
+        minimumExposurePercentile: String(indicatorSettings.minimumExposurePercentile),
+        minimumPercentOfKing: String(indicatorSettings.minimumPercentOfKing),
+        minimumRelevanceScore: String(indicatorSettings.minimumRelevanceScore),
+        maximumDistancePoints: String(indicatorSettings.maximumDistancePoints),
+        clusterDistancePoints: String(indicatorSettings.clusterDistancePoints),
+        airPocketRatio: String(indicatorSettings.airPocketRatio),
+        historyBuckets: String(indicatorSettings.historyBuckets),
+        maximumGatekeepers: String(indicatorSettings.maximumGatekeepers),
+        maximumMajorNodes: String(indicatorSettings.maximumMajorNodes),
+        minimumGatekeeperRelevance: String(indicatorSettings.minimumGatekeeperRelevance),
+        minimumGatekeeperPercentOfKing: String(indicatorSettings.minimumGatekeeperPercentOfKing),
+        minimumClusterNodes: String(indicatorSettings.minimumClusterNodes),
+        minimumAirPocketWidthPercent: String(indicatorSettings.minimumAirPocketWidthPercent),
+        magnitudeWeight: String(indicatorSettings.magnitudeWeight),
+        proximityWeight: String(indicatorSettings.proximityWeight),
+        accumulationWeight: String(indicatorSettings.accumulationWeight),
+        persistenceWeight: String(indicatorSettings.persistenceWeight),
+        freshnessWeight: String(indicatorSettings.freshnessWeight),
+        clusterWeight: String(indicatorSettings.clusterWeight),
+        proximityDecayPercent: String(indicatorSettings.proximityDecayPercent),
+        developingMinimumPercentile: String(indicatorSettings.developingMinimumPercentile),
+        developingMinimumGrowthPercent: String(indicatorSettings.developingMinimumGrowthPercent),
+        weakeningThresholdPercent: String(indicatorSettings.weakeningThresholdPercent),
+        weakeningRelevanceThreshold: String(indicatorSettings.weakeningRelevanceThreshold),
+        retirementRelevanceThreshold: String(indicatorSettings.retirementRelevanceThreshold),
+        retirementExposurePercentile: String(indicatorSettings.retirementExposurePercentile),
+        touchTolerancePercent: String(indicatorSettings.touchTolerancePercent),
+        touchDecayFactor: String(indicatorSettings.touchDecayFactor),
+      });
+      try {
+        const payload = await fetchWorkspaceData<BounceLevelsSnapshot>(
+          `bounce-levels:${display}:${source}:${query.toString()}`,
+          `/api/bounce-levels?${query}`,
+          { force, maxAgeMs: refreshMs, timeoutMs: 35_000, validate: isBounceLevelsSnapshot, invalidMessage: "Bounce Levels returned an incomplete ranked surface." },
+        );
+        if (!cancelled) { setBounceLevelsSnapshot(payload); setBounceLevelsError(null); }
+      } catch (error) {
+        if (!cancelled) setBounceLevelsError(error instanceof Error ? error.message : "Bounce Levels could not refresh.");
+      } finally {
+        if (!cancelled) { setBounceLevelsLoading(false); timer = window.setTimeout(() => void load(true), refreshMs); }
+      }
+    };
+    void load(false);
+    return () => { cancelled = true; if (timer !== null) window.clearTimeout(timer); };
+  // The last-good snapshot is intentionally not a dependency: refreshes update it silently.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bounceLevelsDataSignature, instrument]);
+  const bounceLevelsPrimitiveData = useMemo<BounceLevelsPrimitiveData | null>(() => {
+    if (!bounceLevelsIndicator || !bounceLevelsSnapshot) return null;
+    const indicatorSettings = bounceLevelsIndicator.settings ?? {};
+    const useThemeColors = indicatorSettings.useThemeColors !== false;
+    const background = settings.backgroundColor;
+    const parsed = /^#([0-9a-f]{6})$/i.exec(background)?.[1];
+    const luminance = parsed ? (0.2126 * parseInt(parsed.slice(0, 2), 16) + 0.7152 * parseInt(parsed.slice(2, 4), 16) + 0.0722 * parseInt(parsed.slice(4, 6), 16)) / 255 : 0;
+    const contrastKing = luminance > 0.55 ? "#000000" : "#FFFFFF";
+    const roleVisibility: Record<string, boolean> = {
+      KING: indicatorSettings.showKing !== false,
+      FLOOR: indicatorSettings.showFloor !== false,
+      CEILING: indicatorSettings.showCeiling !== false,
+      GATEKEEPER: indicatorSettings.showGatekeepers !== false,
+      MAJOR: indicatorSettings.showMajorNodes !== false,
+      CLUSTER: indicatorSettings.showClusters !== false,
+      DEVELOPING: indicatorSettings.showDevelopingNodes !== false,
+      WEAKENING: indicatorSettings.showWeakeningNodes !== false,
+      RETIRED: indicatorSettings.showRetiredHistory !== false,
+    };
+    const visibleSnapshot = {
+      ...bounceLevelsSnapshot,
+      levels: bounceLevelsSnapshot.levels.filter((level) => roleVisibility[level.role] !== false),
+      airPockets: indicatorSettings.showAirPockets !== false ? bounceLevelsSnapshot.airPockets : [],
+    };
+    return {
+      snapshot: visibleSnapshot,
+      lineWidth: Number(indicatorSettings.lineWidth ?? 1.5),
+      lineOpacity: Number(indicatorSettings.lineOpacity ?? 78) / 100,
+      glowStrength: Number(indicatorSettings.glowStrength ?? 5),
+      labelWidth: Number(indicatorSettings.labelWidth ?? 210),
+      showLabels: indicatorSettings.showLabels !== false,
+      showValues: indicatorSettings.showValues !== false,
+      showAirPockets: indicatorSettings.showAirPockets !== false,
+      positiveColor: useThemeColors ? settings.upColor : String(indicatorSettings.positiveColor ?? settings.upColor),
+      negativeColor: useThemeColors ? settings.downColor : String(indicatorSettings.negativeColor ?? settings.downColor),
+      kingColor: useThemeColors ? contrastKing : String(indicatorSettings.kingColor ?? contrastKing),
+      developingColor: useThemeColors ? settings.upColor : String(indicatorSettings.developingColor ?? settings.upColor),
+      weakeningColor: useThemeColors ? settings.downColor : String(indicatorSettings.weakeningColor ?? settings.downColor),
+      airPocketColor: useThemeColors ? settings.gridColor : String(indicatorSettings.airPocketColor ?? settings.gridColor),
+      backgroundColor: background,
+      textColor: luminance > 0.55 ? "#09090B" : "#F4F4F5",
+      precision: priceFormat.precision,
+    };
+  }, [bounceLevelsIndicator, bounceLevelsSnapshot, priceFormat.precision, settings.backgroundColor, settings.downColor, settings.gridColor, settings.upColor]);
+  useEffect(() => { bounceLevelsPrimitiveRef.current?.update(bounceLevelsPrimitiveData); }, [bounceLevelsPrimitiveData, viewportVersion]);
+  useEffect(() => {
+    const container = chartContainerRef.current;
+    if (!container || !bounceLevelsIndicator || bounceLevelsIndicator.settings?.tooltipsEnabled === false) { setBounceLevelsTooltip(null); return; }
+    let frame: number | null = null;
+    const move = (event: PointerEvent) => {
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      const rect = container.getBoundingClientRect();
+      frame = window.requestAnimationFrame(() => { frame = null; setBounceLevelsTooltip(bounceLevelsPrimitiveRef.current?.queryHit(event.clientX - rect.left, event.clientY - rect.top) ?? null); });
+    };
+    const leave = () => setBounceLevelsTooltip(null);
+    container.addEventListener("pointermove", move, { passive: true });
+    container.addEventListener("pointerleave", leave, { passive: true });
+    return () => { if (frame !== null) window.cancelAnimationFrame(frame); container.removeEventListener("pointermove", move); container.removeEventListener("pointerleave", leave); };
+  }, [bounceLevelsIndicator]);
+  useEffect(() => {
+    if (!bounceLevelsIndicator || !bounceLevelsSnapshot || bounceLevelsIndicator.settings?.enableAlerts !== true) return;
+    let state = bounceLevelsAlertStateRef.current;
+    const key = `${bounceLevelsIndicator.instanceId}:${bounceLevelsSnapshot.sourceTicker}:${bounceLevelsSnapshot.displayInstrument}`;
+    if (state.key !== key) {
+      state = { key, states: new Map(), lastFired: new Map() };
+      state.states.set("__map_signature", bounceLevelsSnapshot.mapSignature);
+      state.states.set("__king", bounceLevelsSnapshot.king?.id ?? "");
+      state.states.set("__king_abs", String(bounceLevelsSnapshot.king?.absoluteExposure ?? 0));
+      state.states.set("__floor", bounceLevelsSnapshot.floor ? `${bounceLevelsSnapshot.floor.id}:${bounceLevelsSnapshot.floor.mappedPrice}` : "");
+      state.states.set("__ceiling", bounceLevelsSnapshot.ceiling ? `${bounceLevelsSnapshot.ceiling.id}:${bounceLevelsSnapshot.ceiling.mappedPrice}` : "");
+      state.states.set("__gatekeepers", bounceLevelsSnapshot.gatekeepers.map((level) => level.id).sort().join("|"));
+      state.states.set("__clusters", bounceLevelsSnapshot.levels.filter((level) => level.role === "CLUSTER").map((level) => level.clusterId ?? level.id).sort().join("|"));
+      state.states.set("__status", bounceLevelsSnapshot.status);
+      bounceLevelsSnapshot.levels.forEach((level) => state.states.set(`role:${level.id}`, level.role));
+      bounceLevelsAlertStateRef.current = state;
+      return;
+    }
+    const price = drawingCandlesRef.current.at(-1)?.close;
+    if (!(price && price > 0)) return;
+    const approachDistance = Math.max(0.01, Number(bounceLevelsIndicator.settings?.alertDistancePoints ?? 5));
+    const cooldownMs = Math.max(5_000, Number(bounceLevelsIndicator.settings?.alertCooldownSeconds ?? 60) * 1_000);
+    const notify = (eventKey: string, title: string, message: string, eventPrice = price) => {
+      if (Date.now() - (state.lastFired.get(eventKey) ?? 0) < cooldownMs) return;
+      state.lastFired.set(eventKey, Date.now());
+      window.dispatchEvent(new CustomEvent("kwantdesk:precision-alert", { detail: { objectId: `bounce:${eventKey}`, message, price: eventPrice, condition: title } }));
+      if (bounceLevelsIndicator.settings?.browserNotifications === true && typeof Notification !== "undefined" && Notification.permission === "granted") new Notification(title, { body: message });
+    };
+    const alertMinimumRelevance = Number(bounceLevelsIndicator.settings?.alertMinimumRelevance ?? 55);
+    const alertMinimumPercentOfKing = Number(bounceLevelsIndicator.settings?.alertMinimumPercentOfKing ?? 15);
+    const alertMinimumExposure = Number(bounceLevelsIndicator.settings?.alertMinimumExposure ?? 0);
+    const alertMinimumRoc = Number(bounceLevelsIndicator.settings?.alertMinimumRoc ?? 0);
+    for (const level of bounceLevelsSnapshot.levels) {
+      if (level.relevanceScore < alertMinimumRelevance || level.percentOfKing < alertMinimumPercentOfKing || level.absoluteExposure < alertMinimumExposure || Math.abs(level.rateOfChangePercent) < alertMinimumRoc) continue;
+      if (bounceLevelsIndicator.settings?.alertFreshNodesOnly === true && level.freshnessScore < 60) continue;
+      const distance = Math.abs(price - level.mappedPrice);
+      const next = distance <= priceFormat.minMove / 2 ? "touch" : distance <= approachDistance ? "approach" : "outside";
+      const previous = state.states.get(level.id) ?? "outside";
+      state.states.set(level.id, next);
+      if (next === previous || next === "outside") continue;
+      if (next === "approach" && bounceLevelsIndicator.settings?.alertLevelApproach === false) continue;
+      if (next === "touch" && bounceLevelsIndicator.settings?.alertLevelTouch === false) continue;
+      if (next === "touch" && bounceLevelsIndicator.settings?.alertFirstTouchOnly === true && level.touches > 1) continue;
+      const eventKey = `${next}:${level.id}`;
+      const title = `${level.role.replaceAll("_", " ")} ${next === "touch" ? "touched" : "approaching"}`;
+      const message = `${bounceLevelsSnapshot.displayInstrument} ${level.mappedPrice.toFixed(priceFormat.precision)} · relevance ${level.relevanceScore.toFixed(0)}.`;
+      notify(eventKey, title, message, level.mappedPrice);
+    }
+    const previousMap = state.states.get("__map_signature");
+    state.states.set("__map_signature", bounceLevelsSnapshot.mapSignature);
+    if (bounceLevelsIndicator.settings?.alertMapReshuffle !== false && previousMap && previousMap !== bounceLevelsSnapshot.mapSignature) notify("map-reshuffle", "Bounce Levels map reshuffled", `${bounceLevelsSnapshot.displayInstrument} ${bounceLevelsSnapshot.greekMode} structure changed${bounceLevelsSnapshot.king ? ` · KING ${bounceLevelsSnapshot.king.mappedPrice.toFixed(priceFormat.precision)}` : " · no KING"}.`);
+    const previousKing = state.states.get("__king") ?? "";
+    const nextKing = bounceLevelsSnapshot.king?.id ?? "";
+    const previousKingAbs = Number(state.states.get("__king_abs") ?? 0);
+    const nextKingAbs = bounceLevelsSnapshot.king?.absoluteExposure ?? 0;
+    state.states.set("__king", nextKing);
+    state.states.set("__king_abs", String(nextKingAbs));
+    if (bounceLevelsIndicator.settings?.alertStructuralChanges !== false) {
+      if (!previousKing && nextKing) notify("new-king", "New KING node", `${bounceLevelsSnapshot.displayInstrument} KING formed at ${bounceLevelsSnapshot.king?.mappedPrice.toFixed(priceFormat.precision)}.`);
+      else if (previousKing && previousKing !== nextKing) notify("king-changed", "KING node changed", `${bounceLevelsSnapshot.displayInstrument} KING migrated to ${bounceLevelsSnapshot.king?.mappedPrice.toFixed(priceFormat.precision) ?? "none"}.`);
+      else if (nextKing && previousKingAbs > 0 && Math.abs(nextKingAbs - previousKingAbs) / previousKingAbs >= 0.05) notify(nextKingAbs > previousKingAbs ? "king-strengthening" : "king-weakening", nextKingAbs > previousKingAbs ? "KING strengthening" : "KING weakening", `${bounceLevelsSnapshot.displayInstrument} KING magnitude is ${bounceLevelsSnapshot.king?.percentOfKing.toFixed(0)}% of KING by definition; exposure ${formatGammaValue(bounceLevelsSnapshot.king?.signedExposure ?? 0, "per-one-percent-move")}.`);
+      const trackStructural = (name: "floor" | "ceiling") => {
+        const level = bounceLevelsSnapshot[name];
+        const previousRaw = state.states.get(`__${name}`) ?? "";
+        const previousPrice = Number(previousRaw.split(":").at(-1));
+        const nextRaw = level ? `${level.id}:${level.mappedPrice}` : "";
+        state.states.set(`__${name}`, nextRaw);
+        if (!previousRaw && level) notify(`new-${name}`, `New ${name}`, `${bounceLevelsSnapshot.displayInstrument} ${name} formed at ${level.mappedPrice.toFixed(priceFormat.precision)}.`, level.mappedPrice);
+        else if (previousRaw && nextRaw && previousRaw !== nextRaw && ((name === "floor" && level!.mappedPrice > previousPrice) || (name === "ceiling" && level!.mappedPrice < previousPrice))) notify(`${name}-rolled`, `${name === "floor" ? "Floor rolled higher" : "Ceiling rolled lower"}`, `${bounceLevelsSnapshot.displayInstrument} ${name} moved to ${level!.mappedPrice.toFixed(priceFormat.precision)}.`, level!.mappedPrice);
+      };
+      trackStructural("floor");
+      trackStructural("ceiling");
+      const previousGatekeepers = state.states.get("__gatekeepers") ?? "";
+      const nextGatekeepers = bounceLevelsSnapshot.gatekeepers.map((level) => level.id).sort().join("|");
+      state.states.set("__gatekeepers", nextGatekeepers);
+      if (previousGatekeepers !== nextGatekeepers) notify(nextGatekeepers.length >= previousGatekeepers.length ? "new-gatekeeper" : "gatekeeper-removed", nextGatekeepers.length >= previousGatekeepers.length ? "New gatekeeper" : "Gatekeeper removed", `${bounceLevelsSnapshot.displayInstrument} gatekeeper structure changed.`);
+    }
+    if (bounceLevelsIndicator.settings?.alertNodeTransitions !== false) for (const level of bounceLevelsSnapshot.levels) {
+      const stateKey = `role:${level.id}`;
+      const previousRole = state.states.get(stateKey);
+      state.states.set(stateKey, level.role);
+      if (previousRole && previousRole !== level.role && ["MAJOR", "DEVELOPING", "RETIRED", "WEAKENING"].includes(level.role)) notify(`role:${level.id}:${level.role}`, level.role === "DEVELOPING" ? "Developing node confirmed" : level.role === "RETIRED" ? "Node retired" : level.role === "WEAKENING" ? "Node weakening" : "Major node activated", `${bounceLevelsSnapshot.displayInstrument} ${level.mappedPrice.toFixed(priceFormat.precision)} is now ${level.role.toLowerCase()}.`, level.mappedPrice);
+      if (Math.abs(level.rateOfChangePercent) >= Math.max(10, alertMinimumRoc)) notify(`roc:${level.id}:${level.rateOfChangePercent > 0 ? "up" : "down"}`, level.rateOfChangePercent > 0 ? "Node rapid accumulation" : "Node rapid unwinding", `${bounceLevelsSnapshot.displayInstrument} ${level.mappedPrice.toFixed(priceFormat.precision)} · ${level.rateOfChangePercent.toFixed(1)}% ROC.`, level.mappedPrice);
+    }
+    const previousStatus = state.states.get("__status");
+    state.states.set("__status", bounceLevelsSnapshot.status);
+    if (previousStatus !== bounceLevelsSnapshot.status && bounceLevelsSnapshot.status !== "live") notify("data-stale", "Bounce Levels data stale", `${bounceLevelsSnapshot.displayInstrument} is showing ${bounceLevelsSnapshot.status.replaceAll("-", " ")} options context.`);
+  }, [bounceLevelsIndicator, bounceLevelsSnapshot, priceFormat.minMove, priceFormat.precision]);
 
   const darkPoolMapIndicator = useMemo(
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "dark-pool-map") ?? null,
@@ -8883,6 +9174,9 @@ export default function Chart({
     const netGammaExposurePrimitive = new NetGammaExposurePrimitive();
     candleSeries.attachPrimitive(netGammaExposurePrimitive);
     netGammaExposurePrimitiveRef.current = netGammaExposurePrimitive;
+    const bounceLevelsPrimitive = new BounceLevelsPrimitive();
+    candleSeries.attachPrimitive(bounceLevelsPrimitive);
+    bounceLevelsPrimitiveRef.current = bounceLevelsPrimitive;
     const gexIntervalMapPrimitive = new GexIntervalMapPrimitive();
     candleSeries.attachPrimitive(gexIntervalMapPrimitive);
     gexIntervalMapPrimitiveRef.current = gexIntervalMapPrimitive;
@@ -9640,6 +9934,13 @@ export default function Chart({
             // Chart teardown can detach primitives before React cleanup runs.
           }
         }
+        if (candleSeriesRef.current && bounceLevelsPrimitiveRef.current) {
+          try {
+            candleSeriesRef.current.detachPrimitive(bounceLevelsPrimitiveRef.current);
+          } catch {
+            // Chart teardown can detach primitives before React cleanup runs.
+          }
+        }
         if (candleSeriesRef.current && gexIntervalMapPrimitiveRef.current) {
           try {
             candleSeriesRef.current.detachPrimitive(gexIntervalMapPrimitiveRef.current);
@@ -9731,6 +10032,7 @@ export default function Chart({
       tapeSpeedPrimitiveRef.current = null;
       netGammaExposurePrimitiveRef.current = null;
       gexIntervalMapPrimitiveRef.current = null;
+      bounceLevelsPrimitiveRef.current = null;
       netGammaReservedRightOffsetRef.current = null;
       darkPoolMapPrimitiveRef.current = null;
       volumeProfilePrimitiveRef.current = null;
@@ -11208,6 +11510,53 @@ export default function Chart({
             <span>Mapping</span><span className="text-foreground">{gexIntervalTooltip.point.mapping.method.replaceAll("-", " ")} · {gexIntervalTooltip.point.mapping.mappingConfidence}%</span>
             <span>Expiries</span><span className="text-foreground">{gexIntervalTooltip.point.expirationDates.join(", ") || "Aggregated"}</span>
           </div>
+        </div>
+      ) : null}
+      {bounceLevelsIndicator && bounceLevelsIndicator.settings?.showHeader !== false ? (
+        <div
+          className="pointer-events-none absolute left-2 z-[26] flex max-w-[min(760px,calc(100%-80px))] items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur"
+          style={{ top: 8 + (gammaHeatmapIndicator ? 30 : 0) + (gexIntervalMapIndicator ? 30 : 0) + (netGammaIndicator ? 30 : 0) }}
+          title={bounceLevelsSnapshot?.limitations.join(" ") ?? bounceLevelsError ?? "Loading ranked Bounce Levels"}
+        >
+          <span className={`h-1.5 w-1.5 rounded-full ${bounceLevelsError && !bounceLevelsSnapshot ? "bg-danger" : bounceLevelsLoading ? "animate-pulse bg-warning" : "bg-primary"}`} />
+          <span className="text-foreground">Bounce Levels</span>
+          {bounceLevelsSnapshot ? (
+            <>
+              <span>{bounceLevelsSnapshot.sourceTicker}→{bounceLevelsSnapshot.displayInstrument}</span>
+              <span>{bounceLevelsSnapshot.greekMode}</span>
+              <span>{bounceLevelsSnapshot.expirationLabel}</span>
+              <span className={bounceLevelsSnapshot.status === "live" ? "text-primary" : "text-warning"}>{bounceLevelsSnapshot.status.replaceAll("-", " ")}</span>
+              <span>{bounceLevelsSnapshot.levels.length} active</span>
+              {bounceLevelsSnapshot.king ? <span className="text-foreground">♛ KING {bounceLevelsSnapshot.king.mappedPrice.toFixed(priceFormat.precision)}</span> : <span className="text-warning">No KING</span>}
+            </>
+          ) : bounceLevelsLoading ? <span>Ranking exposure surface…</span> : <span className="text-danger">{bounceLevelsError ?? "Bounce Levels unavailable"}</span>}
+          {bounceLevelsError && bounceLevelsSnapshot ? <span className="text-warning">Refresh delayed · last good levels</span> : null}
+        </div>
+      ) : null}
+      {bounceLevelsTooltip ? (
+        <div
+          className="pointer-events-none absolute z-[64] min-w-[300px] max-w-[410px] border border-border bg-panel/96 p-2 font-mono text-[8px] shadow-2xl backdrop-blur"
+          style={{ left: Math.min(Math.max(8, bounceLevelsTooltip.x + 14), Math.max(8, overlaySize.width - 430)), top: Math.min(Math.max(34, bounceLevelsTooltip.y + 14), Math.max(34, overlaySize.height - 300)) }}
+        >
+          <div className="flex items-center justify-between gap-4 border-b border-border pb-1 text-foreground">
+            <span>{bounceLevelsTooltip.level.role.replaceAll("_", " ")}</span>
+            <span>{bounceLevelsTooltip.level.mappedPrice.toFixed(priceFormat.precision)}</span>
+          </div>
+          <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-1 text-muted">
+            <span>Source strike</span><span className="text-foreground">{bounceLevelsTooltip.level.sourceStrike.toLocaleString()}</span>
+            <span>Signed {bounceLevelsTooltip.snapshot.greekMode}</span><span className={bounceLevelsTooltip.level.signedExposure >= 0 ? "text-primary" : "text-danger"}>{formatGammaValue(bounceLevelsTooltip.level.signedExposure, "per-one-percent-move", false)}</span>
+            <span>Call / Put</span><span className="text-foreground">{formatGammaValue(bounceLevelsTooltip.level.callExposure, "per-one-percent-move")} / {formatGammaValue(bounceLevelsTooltip.level.putExposure, "per-one-percent-move")}</span>
+            <span>Relevance</span><span className="text-foreground">{bounceLevelsTooltip.level.relevanceScore.toFixed(1)} / 100</span>
+            <span>Exposure percentile</span><span className="text-foreground">{(bounceLevelsTooltip.level.magnitudePercentile * 100).toFixed(1)}%</span>
+            <span>Of KING</span><span className="text-foreground">{bounceLevelsTooltip.level.percentOfKing.toFixed(1)}%</span>
+            <span>Accumulation</span><span className="text-foreground">{bounceLevelsTooltip.level.accumulationScore.toFixed(0)}%</span>
+            <span>ROC · short / medium / long</span><span className="text-foreground">{bounceLevelsTooltip.level.shortRateOfChange.toFixed(1)}% / {bounceLevelsTooltip.level.mediumRateOfChange.toFixed(1)}% / {bounceLevelsTooltip.level.longRateOfChange.toFixed(1)}%</span>
+            <span>Touches</span><span className="text-foreground">{bounceLevelsTooltip.level.touches}</span>
+            <span>Persistence / freshness</span><span className="text-foreground">{bounceLevelsTooltip.level.persistenceScore.toFixed(0)}% / {bounceLevelsTooltip.level.freshnessScore.toFixed(0)}%</span>
+            <span>Mapping</span><span className="text-foreground">{bounceLevelsTooltip.snapshot.mapping.method.replaceAll("-", " ")} · {bounceLevelsTooltip.snapshot.mapping.mappingConfidence}%</span>
+            <span>Source → projected</span><span className="text-foreground">{bounceLevelsTooltip.level.sourceStrike.toLocaleString()} → {bounceLevelsTooltip.level.mappedPrice.toFixed(priceFormat.precision)}</span>
+          </div>
+          <div className="mt-2 border-t border-border pt-1 text-foreground">{bounceLevelsTooltip.level.explanation}</div>
         </div>
       ) : null}
       {netGammaIndicator && netGammaIndicator.settings?.showHeader !== false ? (

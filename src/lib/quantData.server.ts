@@ -3760,22 +3760,24 @@ export async function getNetGammaExposureSurface(input: {
   sourceTicker: string;
   displayInstrument: string;
   displayPrice: number;
+  greekMode?: GreekMode;
 }): Promise<NetGammaProviderSurface> {
   const session = getUsOptionsSession();
   const sourceTicker = input.sourceTicker.trim().toUpperCase();
   if (!new Set<string>([...OPTIONS_FLOW_TICKERS, "NQ"]).has(sourceTicker)) {
     throw new QuantDataError("This source is not supported by the shared Gamma exposure adapter.", 400, null);
   }
+  const greekMode = input.greekMode ?? "GAMMA";
   const response = await quantDataPost("/options/tool/exposure-by-strike", {
     sessionDate: session.sessionDate,
-    greekMode: "GAMMA",
+    greekMode,
     representationMode: "PER_ONE_PERCENT_MOVE",
     filter: { ticker: sourceTicker },
   }, session.marketOpen ? 5_000 : 6 * 60 * 60_000);
-  const exposure = parseExposure(response.payload, sourceTicker, "GAMMA");
+  const exposure = parseExposure(response.payload, sourceTicker, greekMode);
   const sourceSpotPrice = readStockPrice(response.payload, sourceTicker);
   if (!exposure?.strikes.length || !sourceSpotPrice || sourceSpotPrice <= 0) {
-    throw new QuantDataError(`No signed Gamma exposure is available for ${sourceTicker}.`, 422, response.remaining);
+    throw new QuantDataError(`No signed ${greekMode.toLowerCase()} exposure is available for ${sourceTicker}.`, 422, response.remaining);
   }
   const displayPrice = Number(input.displayPrice);
   if (!(displayPrice > 0)) {
@@ -3856,6 +3858,7 @@ export async function getGexIntervalMapSurface(input: {
   aggregationPeriod?: string;
   startTime?: string;
   endTime?: string;
+  greekMode?: GreekMode;
 }): Promise<GexIntervalProviderSurface> {
   const session = getUsOptionsSession();
   const sourceTicker = input.sourceTicker.trim().toUpperCase();
@@ -3865,6 +3868,7 @@ export async function getGexIntervalMapSurface(input: {
   const sessionDate = input.sessionDate?.trim() || session.sessionDate;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(sessionDate)) throw new QuantDataError("A valid session date is required.", 400, null);
   const aggregationPeriod = input.aggregationPeriod?.trim() || "1m";
+  const greekMode = input.greekMode ?? "GAMMA";
   const scope = input.startTime && input.endTime
     ? { timeRange: { startTime: input.startTime, endTime: input.endTime } }
     : { sessionDate };
@@ -3873,7 +3877,7 @@ export async function getGexIntervalMapSurface(input: {
     quantDataPost("/options/tool/interval-map", {
       ...scope,
       aggregationPeriod,
-      greekMode: "GAMMA",
+      greekMode,
       representationMode: "PER_ONE_PERCENT_MOVE",
       filter: { ticker: sourceTicker },
     }, ttl),

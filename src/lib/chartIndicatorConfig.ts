@@ -16,6 +16,7 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "gamma-heatmap",
   "net-gamma-exposure-by-strike",
   "gex-interval-map",
+  "bounce-levels",
   "dark-pool-map",
   "implied-volatility-rank",
   "volume",
@@ -425,6 +426,48 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "mergeTolerancePoints", label: "Coincident level tolerance", defaultValue: 1, min: 0, max: 100, step: 0.25 },
     { key: "alertExposureThreshold", label: "Alert exposure threshold", defaultValue: 50000000, min: 0, max: 100000000000, step: 1000000 },
     { key: "alertDistancePoints", label: "Level approach distance", defaultValue: 5, min: 0.25, max: 500, step: 0.25 },
+    { key: "alertCooldownSeconds", label: "Alert cooldown (seconds)", defaultValue: 60, min: 5, max: 3600, step: 5 },
+  ],
+  "bounce-levels": [
+    { key: "refreshSeconds", label: "Refresh interval (seconds)", defaultValue: 5, min: 2, max: 60, step: 1 },
+    { key: "maximumLevels", label: "Maximum active levels", defaultValue: 8, min: 1, max: 24, step: 1 },
+    { key: "minimumExposurePercentile", label: "Minimum exposure percentile (%)", defaultValue: 90, min: 0, max: 100, step: 1 },
+    { key: "minimumPercentOfKing", label: "Minimum KING magnitude (%)", defaultValue: 15, min: 0, max: 100, step: 1 },
+    { key: "minimumRelevanceScore", label: "Minimum relevance score", defaultValue: 55, min: 0, max: 100, step: 1 },
+    { key: "maximumDistancePoints", label: "Maximum distance from price · 0 = all", defaultValue: 0, min: 0, max: 10000, step: 1 },
+    { key: "clusterDistancePoints", label: "Cluster distance (points)", defaultValue: 25, min: 0.25, max: 500, step: 0.25 },
+    { key: "airPocketRatio", label: "Air-pocket maximum density (%)", defaultValue: 20, min: 0, max: 100, step: 1 },
+    { key: "historyBuckets", label: "Momentum history buckets", defaultValue: 30, min: 2, max: 240, step: 1 },
+    { key: "maximumGatekeepers", label: "Maximum Gatekeepers", defaultValue: 2, min: 0, max: 8, step: 1 },
+    { key: "maximumMajorNodes", label: "Maximum Major Nodes", defaultValue: 4, min: 0, max: 16, step: 1 },
+    { key: "minimumGatekeeperRelevance", label: "Minimum Gatekeeper relevance", defaultValue: 60, min: 0, max: 100, step: 1 },
+    { key: "minimumGatekeeperPercentOfKing", label: "Minimum Gatekeeper KING magnitude (%)", defaultValue: 20, min: 0, max: 100, step: 1 },
+    { key: "minimumClusterNodes", label: "Minimum cluster nodes", defaultValue: 2, min: 2, max: 10, step: 1 },
+    { key: "minimumAirPocketWidthPercent", label: "Minimum Air Pocket width (%)", defaultValue: 0.3, min: 0.01, max: 10, step: 0.01 },
+    { key: "magnitudeWeight", label: "Magnitude weight (%)", defaultValue: 45, min: 0, max: 100, step: 1 },
+    { key: "proximityWeight", label: "Proximity weight (%)", defaultValue: 15, min: 0, max: 100, step: 1 },
+    { key: "accumulationWeight", label: "Accumulation weight (%)", defaultValue: 15, min: 0, max: 100, step: 1 },
+    { key: "persistenceWeight", label: "Persistence weight (%)", defaultValue: 10, min: 0, max: 100, step: 1 },
+    { key: "freshnessWeight", label: "Freshness weight (%)", defaultValue: 10, min: 0, max: 100, step: 1 },
+    { key: "clusterWeight", label: "Cluster weight (%)", defaultValue: 5, min: 0, max: 100, step: 1 },
+    { key: "proximityDecayPercent", label: "Proximity decay (%)", defaultValue: 3, min: 0.01, max: 25, step: 0.01 },
+    { key: "developingMinimumPercentile", label: "Developing exposure percentile (%)", defaultValue: 75, min: 0, max: 100, step: 1 },
+    { key: "developingMinimumGrowthPercent", label: "Developing growth (%)", defaultValue: 10, min: 0, max: 500, step: 1 },
+    { key: "weakeningThresholdPercent", label: "Weakening threshold (%)", defaultValue: -10, min: -500, max: 0, step: 1 },
+    { key: "weakeningRelevanceThreshold", label: "Weakening relevance", defaultValue: 45, min: 0, max: 100, step: 1 },
+    { key: "retirementRelevanceThreshold", label: "Retirement relevance", defaultValue: 30, min: 0, max: 100, step: 1 },
+    { key: "retirementExposurePercentile", label: "Retirement exposure percentile (%)", defaultValue: 65, min: 0, max: 100, step: 1 },
+    { key: "touchTolerancePercent", label: "Touch tolerance (%)", defaultValue: 0.05, min: 0.001, max: 2, step: 0.001 },
+    { key: "touchDecayFactor", label: "Touch freshness retention (%)", defaultValue: 85, min: 0, max: 100, step: 1 },
+    { key: "lineWidth", label: "Energy line width", defaultValue: 1.5, min: 0.5, max: 6, step: 0.25 },
+    { key: "lineOpacity", label: "Energy line opacity (%)", defaultValue: 78, min: 5, max: 100, step: 1 },
+    { key: "glowStrength", label: "Glow strength", defaultValue: 5, min: 0, max: 20, step: 1 },
+    { key: "labelWidth", label: "Right label lane width", defaultValue: 210, min: 110, max: 320, step: 5 },
+    { key: "alertDistancePoints", label: "Approach alert distance", defaultValue: 5, min: 0.25, max: 500, step: 0.25 },
+    { key: "alertMinimumRelevance", label: "Alert minimum relevance", defaultValue: 55, min: 0, max: 100, step: 1 },
+    { key: "alertMinimumPercentOfKing", label: "Alert minimum KING magnitude (%)", defaultValue: 15, min: 0, max: 100, step: 1 },
+    { key: "alertMinimumExposure", label: "Alert minimum absolute exposure", defaultValue: 0, min: 0, max: 1000000000000, step: 1000000 },
+    { key: "alertMinimumRoc", label: "Alert minimum absolute ROC (%)", defaultValue: 0, min: 0, max: 1000, step: 1 },
     { key: "alertCooldownSeconds", label: "Alert cooldown (seconds)", defaultValue: 60, min: 5, max: 3600, step: 5 },
   ],
   "divergence-detector": [
@@ -1006,6 +1049,52 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     neutralColor: "#A1A1AA",
     negativeExposurePalette: "neutral",
     gexIntervalMapSettingsVersion: 3,
+  } : {}),
+  ...(indicatorId === "bounce-levels" ? {
+    preset: "balanced-intraday",
+    provider: "quantdata",
+    sourceTicker: "AUTO",
+    greekMode: "GAMMA",
+    expirationMode: "zero-to-one-dte",
+    expirationDates: "",
+    includeWeeklies: true,
+    includeMonthlies: true,
+    includeQuarterlies: true,
+    showHeader: true,
+    showLabels: true,
+    showValues: true,
+    showAirPockets: true,
+    showKing: true,
+    showFloor: true,
+    showCeiling: true,
+    showGatekeepers: true,
+    showMajorNodes: true,
+    showClusters: true,
+    showDevelopingNodes: true,
+    showWeakeningNodes: true,
+    showRetiredHistory: true,
+    showTouchCount: true,
+    showRocArrows: true,
+    tooltipsEnabled: true,
+    enableAlerts: false,
+    alertLevelApproach: true,
+    alertLevelTouch: true,
+    alertFreshNodesOnly: false,
+    alertFirstTouchOnly: false,
+    alertMapReshuffle: true,
+    alertStructuralChanges: true,
+    alertNodeTransitions: true,
+    inAppSound: false,
+    chartMarkers: true,
+    browserNotifications: false,
+    useThemeColors: true,
+    positiveColor: theme?.upColor ?? "#22C55E",
+    negativeColor: theme?.downColor ?? "#EF4444",
+    kingColor: theme?.borderUpColor ?? "#F59E0B",
+    developingColor: theme?.upColor ?? "#22C55E",
+    weakeningColor: theme?.downColor ?? "#EF4444",
+    airPocketColor: theme?.gridColor ?? "#71717A",
+    bounceLevelsSettingsVersion: 1,
   } : {}),
   ...(indicatorId === "dark-pool-map" ? {
     preset: "balanced",
@@ -1620,6 +1709,31 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
     }
     for (const unsafeKey of ["apiKey", "credential", "credentials", "providerCredential", "liveSnapshot", "snapshotData", "buckets", "points"]) delete settings[unsafeKey];
     return { ...normalizedInstance, settings: { ...settings, gexIntervalMapSettingsVersion: 3 } };
+  }
+  if (normalizedInstance.indicatorId === "bounce-levels") {
+    const defaults: Record<string, number | string | boolean> = defaultIndicatorSettings("bounce-levels");
+    const settings: Record<string, number | string | boolean> = { ...defaults, ...(normalizedInstance.settings ?? {}) };
+    for (const definition of INDICATOR_NUMERIC_SETTINGS["bounce-levels"] ?? []) {
+      const parsed = Number(settings[definition.key]);
+      settings[definition.key] = Math.min(
+        definition.max,
+        Math.max(definition.min, Number.isFinite(parsed) ? parsed : definition.defaultValue),
+      );
+    }
+    const enumValues: Record<string, string[]> = {
+      provider: ["quantdata"],
+      sourceTicker: ["AUTO", "QQQ", "NDX", "SPY", "SPX", "IWM"],
+      greekMode: ["GAMMA", "DELTA", "VANNA", "CHARM"],
+      expirationMode: ["zero-dte", "zero-to-one-dte", "zero-to-seven-dte", "front-expiration", "all-expirations", "custom-dte-range", "specific-expirations"],
+      preset: ["balanced-intraday", "zero-dte-scalper", "major-nodes-only", "fresh-bounce-levels", "node-momentum", "clean-chart", "research"],
+    };
+    for (const [key, allowed] of Object.entries(enumValues)) {
+      if (!allowed.includes(String(settings[key]))) settings[key] = defaults[key];
+    }
+    for (const unsafeKey of ["apiKey", "credential", "credentials", "providerCredential", "liveSnapshot", "snapshotData", "levels", "history"]) {
+      delete settings[unsafeKey];
+    }
+    return { ...normalizedInstance, settings: { ...settings, bounceLevelsSettingsVersion: 1 } };
   }
   if (
     normalizedInstance.indicatorId === "depth-of-market"

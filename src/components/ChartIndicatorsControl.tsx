@@ -215,6 +215,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "gamma-heatmap",
   "net-gamma-exposure-by-strike",
   "gex-interval-map",
+  "bounce-levels",
   "dark-pool-map",
   "implied-volatility-rank",
   "volume",
@@ -1511,6 +1512,73 @@ export default function ChartIndicatorsControl({
                     >
                       Restore defaults
                     </button>
+                  </div>
+                </div>
+              ) : null}
+
+              {settingsDefinition.id === "bounce-levels" ? (
+                <div className="grid gap-3 border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">
+                    <span>Preset</span>
+                    <KwantSelect
+                      value={String(settingsInstance.settings?.preset ?? "balanced-intraday")}
+                      onChange={(event) => {
+                        const preset = event.target.value;
+                        const presetSettings: Record<string, string | number | boolean> = preset === "zero-dte-scalper"
+                          ? { greekMode: "GAMMA", expirationMode: "zero-dte", maximumLevels: 5, proximityWeight: 25, accumulationWeight: 25, persistenceWeight: 5, freshnessWeight: 15, refreshSeconds: 2, showDevelopingNodes: true, showRocArrows: true }
+                          : preset === "major-nodes-only"
+                            ? { maximumLevels: 8, maximumMajorNodes: 0, showKing: true, showFloor: true, showCeiling: true, showGatekeepers: true, showMajorNodes: false, showClusters: false, showDevelopingNodes: false, showWeakeningNodes: false, showRetiredHistory: false, showAirPockets: false }
+                            : preset === "fresh-bounce-levels"
+                              ? { freshnessWeight: 30, persistenceWeight: 5, touchDecayFactor: 60, showTouchCount: true, showDevelopingNodes: true }
+                              : preset === "node-momentum"
+                                ? { accumulationWeight: 30, freshnessWeight: 5, showRocArrows: true, showDevelopingNodes: true, showWeakeningNodes: true, enableAlerts: true }
+                                : preset === "clean-chart"
+                                  ? { glowStrength: 0, showAirPockets: false, showTouchCount: false, showRocArrows: false, showRetiredHistory: false, showValues: false }
+                                  : preset === "research"
+                                    ? { maximumLevels: 24, minimumExposurePercentile: 0, minimumPercentOfKing: 0, minimumRelevanceScore: 0, showAirPockets: true, showTouchCount: true, showRocArrows: true, showRetiredHistory: true, showDevelopingNodes: true, showWeakeningNodes: true, showClusters: true }
+                                    : { greekMode: "GAMMA", expirationMode: "front-expiration", maximumLevels: 8, minimumExposurePercentile: 90, minimumPercentOfKing: 15, minimumRelevanceScore: 55, magnitudeWeight: 45, proximityWeight: 15, accumulationWeight: 15, persistenceWeight: 10, freshnessWeight: 10, clusterWeight: 5, showDevelopingNodes: true, showClusters: true, showAirPockets: true, refreshSeconds: 5 };
+                        replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), preset, ...presetSettings } }));
+                      }}
+                      className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                      menuLabel="Bounce Levels preset"
+                    >
+                      <option value="balanced-intraday">Balanced Intraday</option>
+                      <option value="zero-dte-scalper">0DTE Scalper</option>
+                      <option value="major-nodes-only">Major Nodes Only</option>
+                      <option value="fresh-bounce-levels">Fresh Bounce Levels</option>
+                      <option value="node-momentum">Node Momentum</option>
+                      <option value="clean-chart">Clean Chart</option>
+                      <option value="research">Research</option>
+                    </KwantSelect>
+                  </label>
+                  {[
+                    ["Options source", "sourceTicker", [["AUTO", "Automatic"], ["QQQ", "QQQ"], ["NDX", "NDX"], ["SPY", "SPY"], ["SPX", "SPX"], ["IWM", "IWM"]]],
+                    ["Exposure Greek", "greekMode", [["GAMMA", "Gamma"], ["DELTA", "Delta"], ["VANNA", "Vanna"], ["CHARM", "Charm"]]],
+                    ["Expiration", "expirationMode", [["zero-dte", "0DTE"], ["zero-to-one-dte", "0–1 DTE"], ["zero-to-seven-dte", "0–7 DTE"], ["front-expiration", "Front expiration"], ["all-expirations", "All expirations"], ["custom-dte-range", "Custom DTE range"], ["specific-expirations", "Specific expirations"]]],
+                  ].map(([label, key, options]) => (
+                    <label key={String(key)} className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                      <span>{String(label)}</span>
+                      <KwantSelect
+                        value={String(settingsInstance.settings?.[String(key)] ?? "")}
+                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [String(key)]: event.target.value } }))}
+                        className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                        menuLabel={String(label)}
+                      >
+                        {(options as string[][]).map(([value, optionLabel]) => <option key={value} value={value}>{optionLabel}</option>)}
+                      </KwantSelect>
+                    </label>
+                  ))}
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">
+                    <span>Specific expirations · comma separated YYYY-MM-DD</span>
+                    <input
+                      value={String(settingsInstance.settings?.expirationDates ?? "")}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), expirationDates: event.target.value } }))}
+                      className="h-9 w-full border border-border bg-background px-3 font-mono text-[10px] normal-case tracking-normal text-foreground outline-none focus:border-primary/40"
+                      placeholder="2026-08-21, 2026-08-28"
+                    />
+                  </label>
+                  <div className="border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
+                    KING is always calculated from the full filtered strike list using the largest absolute signed exposure. Centre price and KING remain independent. Historical snapshots never read beyond replay time.
                   </div>
                 </div>
               ) : null}
