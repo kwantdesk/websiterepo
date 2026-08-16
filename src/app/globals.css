@@ -1244,6 +1244,19 @@ header.kwant-command-rail {
   max-height: var(--kwant-shell-bar-height);
 }
 
+.kwant-primary-brand {
+  width: 108px;
+  height: 18px;
+  margin-right: 8px;
+  background: #000;
+  user-select: none;
+}
+
+.kwant-primary-brand img {
+  transform: scale(1.025);
+  transform-origin: center;
+}
+
 /* Links and the top-right Trade trigger intentionally share one rendered
    control contract. The explicit dimensions prevent browser button defaults
    or broader cockpit button rules from making Trade look larger than the
@@ -1288,6 +1301,12 @@ header.kwant-command-rail .kwant-primary-nav-control {
 }
 
 @media (max-width: 1279px), (orientation: portrait) {
+  .kwant-primary-brand {
+    width: 94px;
+    height: 16px;
+    margin-right: 5px;
+  }
+
   .kwant-primary-workspace-nav {
     position: relative;
     inset: auto;

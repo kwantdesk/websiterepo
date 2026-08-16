@@ -236,6 +236,24 @@ function AppSidebar({
 
   return (
     <header className="kwant-command-rail relative z-[70] flex w-full shrink-0 items-center border-b border-border bg-panel px-2">
+      <Link
+        href="/"
+        prefetch={false}
+        onPointerEnter={() => onNavigateIntent?.("home")}
+        onPointerDown={(event) => beginPointerNavigation(event, "home")}
+        onFocus={() => onNavigateIntent?.("home")}
+        onClick={(event) => navigate(event, "home", "/")}
+        className="kwant-primary-brand relative z-10 flex shrink-0 items-center overflow-hidden"
+        title="Kwant Desk home"
+        aria-label="Kwant Desk home"
+      >
+        <img
+          src="/brand/kwantdesk-wordmark.webp"
+          alt="Kwant Desk"
+          className="h-full w-full object-cover object-center"
+          draggable={false}
+        />
+      </Link>
       <nav className="kwant-primary-workspace-nav absolute inset-y-0 flex items-center overflow-x-auto overflow-y-clip" aria-label="Primary workspace">
         <div className="kwant-primary-workspace-nav-track flex min-w-max items-center gap-1">
           {navItems.map(({ key, href, label, title, icon: Icon }) => {
