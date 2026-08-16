@@ -136,6 +136,87 @@ class DarkPoolGexRenderer implements ISeriesPrimitivePaneRenderer {
             context.stroke();
             context.restore();
           }
+          if (settings.showInteractionZone) {
+            const zoneDistance = settings.interactionToleranceMode === "absolute"
+              ? settings.interactionTolerance
+              : settings.interactionToleranceMode === "percentage"
+                ? event.price * settings.interactionTolerance / 100
+                : settings.interactionToleranceMode === "basis-points"
+                  ? event.price * settings.interactionTolerance / 10_000
+                  : settings.interactionToleranceMode === "ticks"
+                    ? data.frame.tickSize * settings.interactionTolerance
+                    : 0;
+            const upper = series.priceToCoordinate(event.price + zoneDistance);
+            const lower = series.priceToCoordinate(event.price - zoneDistance);
+            if (upper !== null && lower !== null) {
+              context.fillStyle = rgba(data.neutralColor, 0.055);
+              context.fillRect(originX, Math.min(Number(upper), Number(lower)), Math.max(1, mediaSize.width - originX), Math.max(1, Math.abs(Number(lower) - Number(upper))));
+            }
+          }
+          if (settings.showReactionMarkers && event.reaction) {
+            for (const interaction of event.reaction.interactions) {
+              const markerX = timeCoordinate(chart, interaction.touchTimestampMs, data.timelineMs);
+              const markerY = series.priceToCoordinate(event.price);
+              if (markerX === null || markerY === null) continue;
+              const outcomeVisible = interaction.outcome === "HOLD"
+                ? settings.showHoldMarkers
+                : interaction.outcome === "BREAK"
+                  ? settings.showBreakMarkers
+                  : interaction.outcome === "RECLAIM"
+                    ? settings.showReclaimMarkers
+                    : true;
+              if (!outcomeVisible) continue;
+              const mx = Number(markerX);
+              const my = Number(markerY);
+              const markerColor = interaction.outcome === "BREAK"
+                ? data.negativeGexColor
+                : interaction.outcome === "HOLD" || interaction.outcome === "RECLAIM"
+                  ? data.positiveGexColor
+                  : data.neutralColor;
+              context.save();
+              context.strokeStyle = rgba(markerColor, 0.9);
+              context.fillStyle = rgba(data.backgroundColor, 0.92);
+              context.lineWidth = 1.25;
+              context.beginPath();
+              context.arc(mx, my, interaction.outcome === "UNRESOLVED" ? 2.5 : 4, 0, Math.PI * 2);
+              context.fill();
+              context.stroke();
+              if (interaction.outcome === "HOLD") {
+                context.beginPath();
+                context.moveTo(mx - 2.2, my);
+                context.lineTo(mx - 0.4, my + 2);
+                context.lineTo(mx + 3, my - 2.5);
+                context.stroke();
+              } else if (interaction.outcome === "BREAK") {
+                context.beginPath();
+                context.moveTo(mx - 2.4, my - 2.4);
+                context.lineTo(mx + 2.4, my + 2.4);
+                context.moveTo(mx + 2.4, my - 2.4);
+                context.lineTo(mx - 2.4, my + 2.4);
+                context.stroke();
+              } else if (interaction.outcome === "RECLAIM") {
+                context.beginPath();
+                context.arc(mx, my, 2.5, Math.PI * 0.2, Math.PI * 1.8);
+                context.stroke();
+              }
+              if (settings.showReactionTrail && interaction.timeToReactionMs !== null && interaction.reactionDirection !== "NONE") {
+                const trailX = timeCoordinate(chart, interaction.touchTimestampMs + interaction.timeToReactionMs, data.timelineMs);
+                const reactionPrice = interaction.reactionDirection === "UP"
+                  ? event.price + interaction.reactionMagnitude
+                  : event.price - interaction.reactionMagnitude;
+                const trailY = series.priceToCoordinate(reactionPrice);
+                if (trailX !== null && trailY !== null) {
+                  context.setLineDash([3, 3]);
+                  context.strokeStyle = rgba(markerColor, 0.35);
+                  context.beginPath();
+                  context.moveTo(mx, my);
+                  context.lineTo(Number(trailX), Number(trailY));
+                  context.stroke();
+                }
+              }
+              context.restore();
+            }
+          }
           const radius = settings.originMarkerSize * (0.55 + 0.75 * strength);
           if (settings.showOriginMarker) {
             const pulse = context.createRadialGradient(originX, originY, 0, originX, originY, radius * 1.8);

@@ -1668,7 +1668,12 @@ export default function ChartIndicatorsControl({
                     ["GEX context", "contextMode", [["current", "Current Structure"], ["event-time", "Event-Time Structure"], ["historical-and-current", "Historical + Current"]]],
                     ["GEX confluence", "confluenceMode", [["off", "Off"], ["nearest", "Nearest Node"], ["major", "Major Nodes Only"], ["king", "KING Only"], ["king-and-major", "KING + Major"], ["all-qualified", "All Qualified"]]],
                     ["Tolerance", "toleranceMode", [["percentage", "Percentage Distance"], ["absolute", "Absolute Price Distance"], ["ticks", "Tick Distance"]]],
-                    ["Touch tolerance", "interactionToleranceMode", [["ticks", "Ticks"], ["absolute", "Absolute Price"], ["percentage", "Percentage"]]],
+                    ["Touch zone", "interactionToleranceMode", [["ticks", "Ticks"], ["absolute", "Absolute Price"], ["percentage", "Percentage"], ["basis-points", "Basis Points"], ["atr", "ATR Fraction"]]],
+                    ["Reset / departure zone", "resetDistanceMode", [["ticks", "Ticks"], ["absolute", "Absolute Price"], ["percentage", "Percentage"], ["basis-points", "Basis Points"], ["atr", "ATR Fraction"]]],
+                    ["Hold reaction", "reactionThresholdMode", [["ticks", "Ticks"], ["absolute", "Absolute Move"], ["percentage", "Percentage Move"], ["basis-points", "Basis Points"], ["atr", "ATR Multiple"]]],
+                    ["Break distance", "breakDistanceMode", [["ticks", "Ticks"], ["absolute", "Absolute Price"], ["percentage", "Percentage"], ["basis-points", "Basis Points"], ["atr", "ATR Fraction"]]],
+                    ["Break confirmation", "breakConfirmation", [["intrabar", "Intrabar Penetration"], ["1-close", "1 Close"], ["2-closes", "2 Consecutive Closes"], ["3-closes", "3 Consecutive Closes"], ["time-beyond", "Time Beyond Level"]]],
+                    ["Interaction session", "interactionSession", [["regular-hours", "Regular Hours"], ["extended-hours", "Extended Hours"], ["all", "All Available"]]],
                     ["Display", "displayMode", [["raw", "Raw Prints Only"], ["clusters", "Clusters Only"], ["raw-and-clusters", "Raw + Clusters"]]],
                     ["Cluster distance", "clusterDistanceMode", [["percentage", "Percentage"], ["absolute", "Absolute Price"], ["ticks", "Ticks"]]],
                     ["Performance", "performanceQuality", [["auto", "Auto"], ["ultra", "Ultra"], ["high", "High"], ["medium", "Medium"], ["low", "Low"]]],
@@ -1695,6 +1700,7 @@ export default function ChartIndicatorsControl({
                   ))}
                   <div className="border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
                     Raw Top-N membership is always ranked by individual print notional. Exact prices are never rounded or replaced by clusters. QuantData validates off-exchange reporting; a specific ATS is claimed only when venue metadata exists. Gamma remains a separate halo and never changes the DP price or Top-N selection.
+                    <span className="mt-1 block">This tool flags measured order-book and price-interaction patterns. It does not determine trader identity or legally establish intent, and it does not represent a dark-pool level as guaranteed support or resistance.</span>
                   </div>
                 </div>
               ) : null}

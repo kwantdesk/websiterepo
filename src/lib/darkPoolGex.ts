@@ -1,5 +1,16 @@
 import type { BounceExposureSlice, BounceLevelsSnapshot } from "./bounceLevels.ts";
 import { deduplicateDarkPoolPrints, type DarkPoolMapPayload, type MappedDarkPoolPrint } from "./darkPoolMap.ts";
+import {
+  calculateDarkPoolReactionAnalytics,
+  type DarkPoolBreakConfirmation,
+  type DarkPoolDistanceMode,
+  type DarkPoolInteraction,
+  type DarkPoolReactionAnalytics,
+  type DarkPoolReactionGexContext,
+  type DarkPoolReactionPriceSample,
+  type DarkPoolReactionResolution,
+  type DarkPoolReactionSession,
+} from "./darkPoolReactionAnalytics.ts";
 
 export const DARK_POOL_GEX_INDICATOR_ID = "dark-pool-gex";
 export const DARK_POOL_GEX_WORKSPACE_TOOL_ID = "tool-dark-pool-gex";
@@ -13,7 +24,7 @@ export type DarkPoolGexQuality = "ultra" | "high" | "medium" | "low" | "auto";
 export type DarkPoolGexLookbackMode = "calendar-days" | "trading-sessions";
 export type DarkPoolGexSortMode = "notional" | "distance" | "freshness" | "reaction-quality";
 export type DarkPoolGexViewPreset = "raw-dp-levels" | "dp-gex-intelligence";
-export type DarkPoolGexInteractionResolution = "tick" | "1s" | "1m" | "3m" | "5m" | "15m" | "1h" | "4h" | "1D" | "1W" | "chart";
+export type DarkPoolGexInteractionResolution = DarkPoolReactionResolution;
 
 export type DarkPoolGexSettings = {
   lookbackDays: number;
@@ -45,14 +56,45 @@ export type DarkPoolGexSettings = {
   showLabels: boolean;
   labelExtended: boolean;
   showReactionMarkers: boolean;
+  showHoldMarkers: boolean;
+  showBreakMarkers: boolean;
+  showReclaimMarkers: boolean;
+  showReactionTrail: boolean;
+  showInteractionZone: boolean;
   reactionAnalytics: boolean;
   showReactionResearch: boolean;
   minimumResearchSamples: number;
-  interactionToleranceMode: "ticks" | "absolute" | "percentage";
+  interactionToleranceMode: DarkPoolDistanceMode;
   interactionTolerance: number;
-  breakThresholdTicks: number;
-  reactionThresholdTicks: number;
+  resetDistanceMode: DarkPoolDistanceMode;
+  resetDistance: number;
+  minimumTimeOutsideMs: number;
+  useIntrabarHighLow: boolean;
+  interactionSession: DarkPoolReactionSession;
+  reactionThresholdMode: DarkPoolDistanceMode;
+  reactionThreshold: number;
+  maximumConfirmationBars: number;
+  requireCloseAwayFromLevel: boolean;
+  minimumReactionDurationMs: number;
+  breakDistanceMode: DarkPoolDistanceMode;
+  breakDistance: number;
+  breakConfirmation: DarkPoolBreakConfirmation;
+  breakTimeBeyondMs: number;
+  useVolumeConfirmation: boolean;
+  volumeThreshold: number;
+  enableReclaimDetection: boolean;
+  reclaimConfirmationCloses: number;
+  minimumTimeBeyondBeforeReclaimMs: number;
+  reactionHorizonBars: number;
   reactionHorizonMs: number;
+  minimumStatsSamples: number;
+  activationRadiusPercent: number;
+  qualityPrecisionWeight: number;
+  qualityExcursionWeight: number;
+  qualityEfficiencyWeight: number;
+  qualitySpeedWeight: number;
+  qualityFreshnessWeight: number;
+  qualityGexWeight: number;
   firstTouchOnly: boolean;
   includeLateReports: boolean;
   includeCorrectedPrints: boolean;
@@ -101,15 +143,46 @@ export const DEFAULT_DARK_POOL_GEX_SETTINGS: DarkPoolGexSettings = {
   showExactLine: true,
   showLabels: true,
   labelExtended: false,
-  showReactionMarkers: false,
+  showReactionMarkers: true,
+  showHoldMarkers: true,
+  showBreakMarkers: true,
+  showReclaimMarkers: true,
+  showReactionTrail: false,
+  showInteractionZone: false,
   reactionAnalytics: true,
   showReactionResearch: false,
-  minimumResearchSamples: 10,
-  interactionToleranceMode: "ticks",
-  interactionTolerance: 1,
-  breakThresholdTicks: 2,
-  reactionThresholdTicks: 4,
+  minimumResearchSamples: 3,
+  interactionToleranceMode: "percentage",
+  interactionTolerance: 0.03,
+  resetDistanceMode: "percentage",
+  resetDistance: 0.1,
+  minimumTimeOutsideMs: 0,
+  useIntrabarHighLow: true,
+  interactionSession: "regular-hours",
+  reactionThresholdMode: "percentage",
+  reactionThreshold: 0.1,
+  maximumConfirmationBars: 20,
+  requireCloseAwayFromLevel: false,
+  minimumReactionDurationMs: 0,
+  breakDistanceMode: "ticks",
+  breakDistance: 2,
+  breakConfirmation: "1-close",
+  breakTimeBeyondMs: 60_000,
+  useVolumeConfirmation: false,
+  volumeThreshold: 0,
+  enableReclaimDetection: true,
+  reclaimConfirmationCloses: 1,
+  minimumTimeBeyondBeforeReclaimMs: 0,
+  reactionHorizonBars: 20,
   reactionHorizonMs: 30 * 60_000,
+  minimumStatsSamples: 3,
+  activationRadiusPercent: 2,
+  qualityPrecisionWeight: 20,
+  qualityExcursionWeight: 25,
+  qualityEfficiencyWeight: 20,
+  qualitySpeedWeight: 15,
+  qualityFreshnessWeight: 10,
+  qualityGexWeight: 10,
   firstTouchOnly: false,
   includeLateReports: true,
   includeCorrectedPrints: true,
@@ -172,44 +245,9 @@ export type DarkPoolGexEvent = {
   reaction: DarkPoolGexReactionAnalytics | null;
 };
 
-export type DarkPoolGexPriceSample = {
-  timestampMs: number;
-  price?: number;
-  open?: number;
-  high?: number;
-  low?: number;
-  close?: number;
-  resolution?: DarkPoolGexInteractionResolution;
-};
-
-export type DarkPoolGexTouch = {
-  timestampMs: number;
-  observedPrice: number;
-  touchError: number;
-  touchErrorPercent: number;
-  touchErrorTicks: number;
-  approach: "FROM_ABOVE" | "FROM_BELOW" | "UNKNOWN";
-  outcome: "HOLD" | "BREAK" | "RECLAIM" | "TOUCH";
-  reaction: number;
-  mfe: number;
-  mae: number;
-};
-
-export type DarkPoolGexReactionAnalytics = {
-  resolution: DarkPoolGexInteractionResolution;
-  supportsTickClaim: boolean;
-  touches: DarkPoolGexTouch[];
-  touchCount: number;
-  holds: number;
-  breaks: number;
-  reclaims: number;
-  latestOutcome: DarkPoolGexTouch["outcome"] | "NONE";
-  medianTouchError: number | null;
-  medianTouchErrorTicks: number | null;
-  medianReaction: number | null;
-  medianMfe: number | null;
-  medianMae: number | null;
-};
+export type DarkPoolGexPriceSample = DarkPoolReactionPriceSample;
+export type DarkPoolGexTouch = DarkPoolInteraction;
+export type DarkPoolGexReactionAnalytics = DarkPoolReactionAnalytics;
 
 export type DarkPoolGexResearchSummary = {
   levelCount: number;
@@ -304,28 +342,6 @@ function lookbackStartMs(asOfMs: number, days: number, mode: DarkPoolGexLookback
   return cursor.getTime();
 }
 
-function interactionTolerance(price: number, tickSize: number, settings: DarkPoolGexSettings) {
-  if (settings.interactionToleranceMode === "absolute") return Math.max(0, settings.interactionTolerance);
-  if (settings.interactionToleranceMode === "percentage") return Math.max(0, price * settings.interactionTolerance / 100);
-  return Math.max(0, settings.interactionTolerance * tickSize);
-}
-
-function samplePrice(sample: DarkPoolGexPriceSample) {
-  return sample.price ?? sample.close ?? sample.open ?? sample.high ?? sample.low ?? null;
-}
-
-function sampleDistance(sample: DarkPoolGexPriceSample, level: number) {
-  const high = sample.high;
-  const low = sample.low;
-  if (typeof high === "number" && typeof low === "number") {
-    if (level >= low && level <= high) return { distance: 0, observed: level };
-    if (level > high) return { distance: level - high, observed: high };
-    return { distance: low - level, observed: low };
-  }
-  const price = samplePrice(sample);
-  return price === null ? { distance: Number.POSITIVE_INFINITY, observed: level } : { distance: Math.abs(price - level), observed: price };
-}
-
 export function calculateDarkPoolGexReaction(
   levelPrice: number,
   observableAtMs: number,
@@ -335,72 +351,25 @@ export function calculateDarkPoolGexReaction(
   asOfMs = Date.now(),
 ): DarkPoolGexReactionAnalytics | null {
   const settings = { ...DEFAULT_DARK_POOL_GEX_SETTINGS, ...settingsInput };
-  const samples = samplesInput
-    .filter((sample) => sample.timestampMs >= observableAtMs && sample.timestampMs <= asOfMs && samplePrice(sample) !== null)
-    .sort((a, b) => a.timestampMs - b.timestampMs);
-  if (!samples.length) return null;
-  const resolution = samples.find((sample) => sample.resolution)?.resolution ?? "chart";
-  const tolerance = interactionTolerance(levelPrice, tickSize, settings);
-  const breakDistance = Math.max(tickSize, settings.breakThresholdTicks * tickSize);
-  const reactionDistance = Math.max(tickSize, settings.reactionThresholdTicks * tickSize);
-  const touches: DarkPoolGexTouch[] = [];
-  let inside = false;
-  for (let index = 0; index < samples.length; index += 1) {
-    const sample = samples[index];
-    const exact = sampleDistance(sample, levelPrice);
-    const qualifies = exact.distance <= tolerance + 1e-12;
-    if (!qualifies) { inside = false; continue; }
-    if (inside) continue;
-    inside = true;
-    const previous = index > 0 ? samplePrice(samples[index - 1]) : null;
-    const approach = previous === null ? "UNKNOWN" : previous > levelPrice ? "FROM_ABOVE" : previous < levelPrice ? "FROM_BELOW" : "UNKNOWN";
-    const horizonEnd = sample.timestampMs + Math.max(1_000, settings.reactionHorizonMs);
-    const future = samples.slice(index + 1).filter((candidate) => candidate.timestampMs <= horizonEnd);
-    const futurePrices = future.map(samplePrice).filter((price): price is number => price !== null);
-    const max = futurePrices.length ? Math.max(...futurePrices) : exact.observed;
-    const min = futurePrices.length ? Math.min(...futurePrices) : exact.observed;
-    const bullish = approach === "FROM_ABOVE";
-    const bearish = approach === "FROM_BELOW";
-    const mfe = bullish ? Math.max(0, max - levelPrice) : bearish ? Math.max(0, levelPrice - min) : Math.max(Math.abs(max - levelPrice), Math.abs(min - levelPrice));
-    const mae = bullish ? Math.max(0, levelPrice - min) : bearish ? Math.max(0, max - levelPrice) : Math.min(Math.abs(max - levelPrice), Math.abs(min - levelPrice));
-    const broke = bullish ? min < levelPrice - breakDistance : bearish ? max > levelPrice + breakDistance : min < levelPrice - breakDistance || max > levelPrice + breakDistance;
-    const reclaimed = broke && futurePrices.some((price) => bullish ? price >= levelPrice : bearish ? price <= levelPrice : Math.abs(price - levelPrice) <= tolerance);
-    const held = !broke && mfe >= reactionDistance;
-    touches.push({
-      timestampMs: sample.timestampMs,
-      observedPrice: exact.observed,
-      touchError: exact.distance,
-      touchErrorPercent: 100 * exact.distance / Math.max(1e-12, levelPrice),
-      touchErrorTicks: exact.distance / Math.max(1e-12, tickSize),
-      approach,
-      outcome: reclaimed ? "RECLAIM" : broke ? "BREAK" : held ? "HOLD" : "TOUCH",
-      reaction: bullish ? max - levelPrice : bearish ? levelPrice - min : Math.max(Math.abs(max - levelPrice), Math.abs(min - levelPrice)),
-      mfe,
-      mae,
-    });
-    if (settings.firstTouchOnly) break;
-  }
-  return {
-    resolution,
-    supportsTickClaim: resolution === "tick",
-    touches,
-    touchCount: touches.length,
-    holds: touches.filter((touch) => touch.outcome === "HOLD").length,
-    breaks: touches.filter((touch) => touch.outcome === "BREAK").length,
-    reclaims: touches.filter((touch) => touch.outcome === "RECLAIM").length,
-    latestOutcome: touches.at(-1)?.outcome ?? "NONE",
-    medianTouchError: median(touches.map((touch) => touch.touchError)),
-    medianTouchErrorTicks: median(touches.map((touch) => touch.touchErrorTicks)),
-    medianReaction: median(touches.map((touch) => touch.reaction)),
-    medianMfe: median(touches.map((touch) => touch.mfe)),
-    medianMae: median(touches.map((touch) => touch.mae)),
-  };
+  return calculateDarkPoolReactionAnalytics({
+    darkPoolPrintId: "standalone",
+    levelPrice,
+    observableAtMs,
+    samples: samplesInput,
+    tickSize,
+    settings,
+    asOfMs,
+  });
 }
 
 export function summarizeDarkPoolGexResearch(frame: DarkPoolGexFrame): DarkPoolGexResearchSummary {
   const reactions = frame.rawEvents.map((event) => event.reaction).filter((reaction): reaction is DarkPoolGexReactionAnalytics => reaction !== null);
   const touches = reactions.flatMap((reaction) => reaction.touches);
   const touchDenominator = Math.max(1, touches.length);
+  const sufficientSample = touches.length >= frame.settings.minimumResearchSamples;
+  const totalHolds = reactions.reduce((sum, reaction) => sum + reaction.holdCount, 0);
+  const totalBreaks = reactions.reduce((sum, reaction) => sum + reaction.breakCount, 0);
+  const totalReclaims = reactions.reduce((sum, reaction) => sum + reaction.reclaimCount, 0);
   const subset = (predicate: (event: DarkPoolGexEvent) => boolean) => {
     const events = frame.rawEvents.filter(predicate);
     return { levels: events.length, touches: events.reduce((sum, event) => sum + (event.reaction?.touchCount ?? 0), 0) };
@@ -411,9 +380,9 @@ export function summarizeDarkPoolGexResearch(frame: DarkPoolGexFrame): DarkPoolG
     touchCount: touches.length,
     medianTouchError: median(touches.map((touch) => touch.touchError)),
     medianTouchErrorTicks: median(touches.map((touch) => touch.touchErrorTicks)),
-    holdRate: touches.length ? touches.filter((touch) => touch.outcome === "HOLD").length / touchDenominator : null,
-    breakRate: touches.length ? touches.filter((touch) => touch.outcome === "BREAK").length / touchDenominator : null,
-    reclaimRate: touches.length ? touches.filter((touch) => touch.outcome === "RECLAIM").length / touchDenominator : null,
+    holdRate: sufficientSample ? totalHolds / touchDenominator : null,
+    breakRate: sufficientSample ? totalBreaks / touchDenominator : null,
+    reclaimRate: sufficientSample ? totalReclaims / touchDenominator : null,
     medianReaction: median(touches.map((touch) => touch.reaction)),
     medianMfe: median(touches.map((touch) => touch.mfe)),
     medianMae: median(touches.map((touch) => touch.mae)),
@@ -421,11 +390,11 @@ export function summarizeDarkPoolGexResearch(frame: DarkPoolGexFrame): DarkPoolG
     freshFirstTouch: subset((event) => (event.reaction?.touchCount ?? 0) === 1),
     withKing: subset((event) => event.primaryConfluence?.role === "KING"),
     withoutGex: subset((event) => event.primaryConfluence === null),
-    sufficientSample: touches.length >= frame.settings.minimumResearchSamples,
+    sufficientSample,
     disclosures: {
       touchTolerance: `${frame.settings.interactionTolerance} ${frame.settings.interactionToleranceMode}`,
-      breakThreshold: `${frame.settings.breakThresholdTicks} ticks`,
-      reactionThreshold: `${frame.settings.reactionThresholdTicks} ticks`,
+      breakThreshold: `${frame.settings.breakDistance} ${frame.settings.breakDistanceMode} · ${frame.settings.breakConfirmation}`,
+      reactionThreshold: `${frame.settings.reactionThreshold} ${frame.settings.reactionThresholdMode}`,
       postTouchHorizonMs: frame.settings.reactionHorizonMs,
       resolution: reactions[0]?.resolution ?? frame.interactionResolution ?? "unavailable",
       sessionFilter: "all available observations",
@@ -537,6 +506,29 @@ function latestSliceAt(slices: BounceExposureSlice[], timestampMs: number) {
   return match;
 }
 
+function reactionGexContext(
+  price: number,
+  nodes: DarkPoolGexConfluenceCandidate[],
+  tickSize: number,
+  settings: DarkPoolGexSettings,
+): DarkPoolReactionGexContext | undefined {
+  if (!nodes.length) return undefined;
+  const confluence = makeConfluence(price, nodes, tickSize, settings);
+  const king = [...nodes].sort((left, right) => Math.abs(right.signedExposure) - Math.abs(left.signedExposure))[0] ?? null;
+  return {
+    nearestNodePrice: confluence?.mappedPrice ?? null,
+    nearestNodeRole: confluence?.role ?? null,
+    signedExposure: confluence?.signedExposure ?? null,
+    absoluteExposure: confluence?.absoluteExposure ?? null,
+    percentOfKing: confluence?.percentOfKing ?? null,
+    distanceToNode: confluence?.distance ?? null,
+    distanceToNodePct: confluence?.distancePercent ?? null,
+    kingPrice: king?.mappedPrice ?? null,
+    kingDistancePct: king ? Math.abs(king.mappedPrice - price) / Math.max(1e-9, price) * 100 : null,
+    dataTimestampMs: confluence?.snapshotTimeMs ?? king?.snapshotTimeMs ?? king?.timestamp ?? null,
+  };
+}
+
 function clusterThreshold(price: number, tickSize: number, settings: DarkPoolGexSettings) {
   if (settings.clusterDistanceMode === "absolute") return Math.max(1e-9, settings.clusterDistance);
   if (settings.clusterDistanceMode === "ticks") return Math.max(1e-9, settings.clusterDistance * tickSize);
@@ -573,6 +565,24 @@ function buildClusters(events: DarkPoolGexEvent[], tickSize: number, settings: D
   });
 }
 
+type ReactionCacheEntry = {
+  sampleCount: number;
+  firstTimestampMs: number | null;
+  lastTimestampMs: number | null;
+  analytics: DarkPoolReactionAnalytics | null;
+};
+
+const reactionAnalyticsCache = new Map<string, ReactionCacheEntry>();
+
+function trimReactionAnalyticsCache() {
+  if (reactionAnalyticsCache.size <= 2_000) return;
+  const removeCount = reactionAnalyticsCache.size - 1_500;
+  for (const key of reactionAnalyticsCache.keys()) {
+    reactionAnalyticsCache.delete(key);
+    if (reactionAnalyticsCache.size <= 2_000 - removeCount) break;
+  }
+}
+
 export function buildDarkPoolGexFrame(input: {
   darkPool: DarkPoolMapPayload;
   gex: BounceLevelsSnapshot | null;
@@ -599,6 +609,42 @@ export function buildDarkPoolGexFrame(input: {
     .filter((print) => !settings.maximumSharePrice || print.price <= settings.maximumSharePrice);
   const maximumNotional = Math.max(...eligible.map((print) => print.notionalValue), 1);
   const currentGexIsObservable = Boolean(input.gex && input.gex.snapshotTimeMs <= nowMs);
+  const priceSamples = (input.priceSamples ?? []).filter((sample) => sample.timestampMs <= nowMs);
+  const latestPriceSample = priceSamples.at(-1);
+  const currentPrice = latestPriceSample?.price ?? latestPriceSample?.close ?? latestPriceSample?.open ?? null;
+  const settingsCacheKey = JSON.stringify({
+    interactionToleranceMode: settings.interactionToleranceMode,
+    interactionTolerance: settings.interactionTolerance,
+    resetDistanceMode: settings.resetDistanceMode,
+    resetDistance: settings.resetDistance,
+    minimumTimeOutsideMs: settings.minimumTimeOutsideMs,
+    useIntrabarHighLow: settings.useIntrabarHighLow,
+    interactionSession: settings.interactionSession,
+    reactionThresholdMode: settings.reactionThresholdMode,
+    reactionThreshold: settings.reactionThreshold,
+    maximumConfirmationBars: settings.maximumConfirmationBars,
+    requireCloseAwayFromLevel: settings.requireCloseAwayFromLevel,
+    minimumReactionDurationMs: settings.minimumReactionDurationMs,
+    breakDistanceMode: settings.breakDistanceMode,
+    breakDistance: settings.breakDistance,
+    breakConfirmation: settings.breakConfirmation,
+    breakTimeBeyondMs: settings.breakTimeBeyondMs,
+    useVolumeConfirmation: settings.useVolumeConfirmation,
+    volumeThreshold: settings.volumeThreshold,
+    enableReclaimDetection: settings.enableReclaimDetection,
+    reclaimConfirmationCloses: settings.reclaimConfirmationCloses,
+    minimumTimeBeyondBeforeReclaimMs: settings.minimumTimeBeyondBeforeReclaimMs,
+    reactionHorizonBars: settings.reactionHorizonBars,
+    reactionHorizonMs: settings.reactionHorizonMs,
+    minimumStatsSamples: settings.minimumStatsSamples,
+    firstTouchOnly: settings.firstTouchOnly,
+    qualityPrecisionWeight: settings.qualityPrecisionWeight,
+    qualityExcursionWeight: settings.qualityExcursionWeight,
+    qualityEfficiencyWeight: settings.qualityEfficiencyWeight,
+    qualitySpeedWeight: settings.qualitySpeedWeight,
+    qualityFreshnessWeight: settings.qualityFreshnessWeight,
+    qualityGexWeight: settings.qualityGexWeight,
+  });
   const eventsUnranked = eligible.map((print): Omit<DarkPoolGexEvent, "rank"> => {
     const exactPrice = input.darkPool.direct ? (print.adjustedChartPrice ?? print.price) : print.mappedPrice;
     const observedAt = observableTimestamp(print);
@@ -641,9 +687,7 @@ export function buildDarkPoolGexFrame(input: {
       combinedImportance,
       ageDays,
       ageFade: settings.ageFade ? Math.exp(-ageDays / Math.max(0.25, settings.ageFadeHalfLifeDays)) : 1,
-      reaction: settings.reactionAnalytics
-        ? calculateDarkPoolGexReaction(exactPrice, observedAt, input.priceSamples ?? [], tickSize, settings, nowMs)
-        : null,
+      reaction: null,
     };
   });
   // Raw Top-N is always chosen by raw individual print notional. Inspector
@@ -651,7 +695,48 @@ export function buildDarkPoolGexFrame(input: {
   const topEvents = [...eventsUnranked]
     .sort((a, b) => b.notional - a.notional || a.observableTimestampMs - b.observableTimestampMs)
     .slice(0, Math.max(1, settings.topN))
-    .map((event, index): DarkPoolGexEvent => ({ ...event, rank: index + 1 }));
+    .map((event, index): DarkPoolGexEvent => {
+      if (!settings.reactionAnalytics) return { ...event, rank: index + 1 };
+      const latestLow = latestPriceSample?.low ?? currentPrice;
+      const latestHigh = latestPriceSample?.high ?? currentPrice;
+      const activationDistance = event.price * Math.max(0.001, settings.activationRadiusPercent) / 100;
+      const withinActivationRadius = currentPrice !== null && (
+        Math.abs(currentPrice - event.price) <= activationDistance
+        || (latestLow !== null && latestHigh !== null && event.price >= latestLow - activationDistance && event.price <= latestHigh + activationDistance)
+      );
+      const cacheKey = `${event.id}:${event.price}:${tickSize}:${input.gex?.snapshotTimeMs ?? 0}:${settingsCacheKey}`;
+      const cached = reactionAnalyticsCache.get(cacheKey);
+      const cacheMatches = cached
+        && cached.sampleCount === priceSamples.length
+        && cached.firstTimestampMs === (priceSamples[0]?.timestampMs ?? null)
+        && cached.lastTimestampMs === (latestPriceSample?.timestampMs ?? null);
+      let reaction = settings.contextMode === "current" && !withinActivationRadius && cacheMatches
+        ? cached.analytics
+        : calculateDarkPoolReactionAnalytics({
+            darkPoolPrintId: event.print.id,
+            levelPrice: event.price,
+            observableAtMs: event.observableTimestampMs,
+            samples: priceSamples,
+            tickSize,
+            settings,
+            asOfMs: nowMs,
+            currentPrice,
+            gexAtTouch: (timestampMs) => {
+              const historicalSlice = input.gex ? latestSliceAt(input.gex.exposureField, timestampMs) : null;
+              return historicalSlice ? reactionGexContext(event.price, historicalSlice.nodes, tickSize, settings) : undefined;
+            },
+          });
+      if (settings.contextMode === "current") {
+        reactionAnalyticsCache.set(cacheKey, {
+          sampleCount: priceSamples.length,
+          firstTimestampMs: priceSamples[0]?.timestampMs ?? null,
+          lastTimestampMs: latestPriceSample?.timestampMs ?? null,
+          analytics: reaction,
+        });
+        trimReactionAnalyticsCache();
+      }
+      return { ...event, rank: index + 1, reaction };
+    });
   const clusters = buildClusters(eventsUnranked.map((event, index) => ({ ...event, rank: index + 1 })), tickSize, settings);
   const proxy = !input.darkPool.direct;
   const marketClosed = !isUsEquityMarketOpen(nowMs);

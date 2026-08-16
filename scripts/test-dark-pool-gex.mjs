@@ -160,6 +160,89 @@ assert.equal(research.touchCount, reaction.touchCount);
 assert.equal(research.disclosures.resolution, "tick");
 assert.equal(research.sufficientSample, false, "A tiny reaction sample must not be presented as proof");
 
+const sampleSeries = (prices, start = NOW - 20 * 60_000) => prices.map((price, index) => ({
+  timestampMs: start + index * 60_000,
+  open: price,
+  high: price,
+  low: price,
+  close: price,
+  resolution: "1m",
+}));
+const reactionSettings = {
+  ...DEFAULT_DARK_POOL_GEX_SETTINGS,
+  interactionSession: "all",
+  interactionToleranceMode: "absolute",
+  interactionTolerance: 0.05,
+  resetDistanceMode: "absolute",
+  resetDistance: 0.5,
+  reactionThresholdMode: "absolute",
+  reactionThreshold: 0.25,
+  breakDistanceMode: "absolute",
+  breakDistance: 0.1,
+  breakConfirmation: "1-close",
+  reactionHorizonBars: 20,
+  reactionHorizonMs: 60 * 60_000,
+  minimumStatsSamples: 3,
+};
+
+const supportHold = calculateDarkPoolGexReaction(750, NOW - 30 * 60_000, sampleSeries([750.30, 750.10, 750.02, 750.00, 750.08, 750.25, 750.60]), 0.01, reactionSettings, NOW);
+assert.equal(supportHold?.touchCount, 1, "A support-like pass through the touch zone must create one interaction episode");
+assert.equal(supportHold?.holdCount, 1);
+assert.equal(supportHold?.breakCount, 0);
+assert.equal(supportHold?.latestInteraction?.approachSide, "FROM_ABOVE");
+assert.equal(supportHold?.latestInteraction?.minimumDistance, 0);
+assert.ok((supportHold?.latestInteraction?.reactionMagnitude ?? 0) >= 0.25);
+
+const resistanceHold = calculateDarkPoolGexReaction(742.81, NOW - 30 * 60_000, sampleSeries([742.40, 742.65, 742.79, 742.82, 742.70, 742.50, 742.20]), 0.01, reactionSettings, NOW);
+assert.equal(resistanceHold?.touchCount, 1);
+assert.equal(resistanceHold?.latestOutcome, "HOLD");
+assert.equal(resistanceHold?.latestInteraction?.approachSide, "FROM_BELOW");
+assert.equal(resistanceHold?.latestInteraction?.reactionDirection, "DOWN");
+
+const broken = calculateDarkPoolGexReaction(750, NOW - 30 * 60_000, sampleSeries([750.30, 750.05, 749.88]), 0.01, reactionSettings, NOW);
+assert.equal(broken?.latestOutcome, "BREAK");
+assert.equal(broken?.breakCount, 1);
+
+const reclaimed = calculateDarkPoolGexReaction(750, NOW - 30 * 60_000, sampleSeries([750.30, 750.05, 749.88, 749.80, 749.70, 750.05, 750.15]), 0.01, reactionSettings, NOW);
+assert.equal(reclaimed?.latestOutcome, "RECLAIM");
+assert.equal(reclaimed?.breakCount, 1, "A reclaim retains its confirmed break history");
+assert.equal(reclaimed?.reclaimCount, 1);
+assert.ok((reclaimed?.latestInteraction?.timeBeyondLevelMs ?? 0) > 0);
+
+const noDuplicateTouch = calculateDarkPoolGexReaction(750, NOW - 30 * 60_000, sampleSeries([750.30, 750.02, 749.99, 750.01, 750.03, 749.98]), 0.01, reactionSettings, NOW);
+assert.equal(noDuplicateTouch?.touchCount, 1, "Oscillation inside the reset zone must not create duplicate touches");
+
+const secondTouch = calculateDarkPoolGexReaction(750, NOW - 30 * 60_000, sampleSeries([750.30, 750.02, 750.40, 752, 751, 750.02, 750.40]), 0.01, reactionSettings, NOW);
+assert.equal(secondTouch?.touchCount, 2, "A departure beyond the reset zone must re-arm the level for a second touch");
+
+const replaySamples = sampleSeries([750.30, 750.02, 750.08, 750.20, 750.30]);
+const replayBeforeConfirmation = calculateDarkPoolGexReaction(750, replaySamples[0].timestampMs, replaySamples, 0.01, reactionSettings, replaySamples[2].timestampMs);
+const replayAfterConfirmation = calculateDarkPoolGexReaction(750, replaySamples[0].timestampMs, replaySamples, 0.01, reactionSettings, replaySamples[4].timestampMs);
+assert.equal(replayBeforeConfirmation?.latestOutcome, "UNRESOLVED", "Replay must not reveal a future hold before confirmation");
+assert.equal(replayAfterConfirmation?.latestOutcome, "HOLD");
+
+const historicalTouchAt = NOW - 4 * 60_000;
+const historicalGex = {
+  ...gex,
+  snapshotTimeMs: NOW,
+  exposureField: [
+    { timestamp: historicalTouchAt - 60_000, nodes: [node(750, 12_000_000_000, "KING", historicalTouchAt - 60_000)] },
+    { timestamp: historicalTouchAt + 120_000, nodes: [node(755, 15_000_000_000, "KING", historicalTouchAt + 120_000)] },
+  ],
+};
+const gexTouchPrint = mappedPrint("gex-touch", historicalTouchAt - 120_000, 750, 2_000_000_000);
+const gexAtTouchFrame = buildDarkPoolGexFrame({
+  darkPool: { ...darkPool, prints: [gexTouchPrint] },
+  gex: historicalGex,
+  asOfMs: NOW,
+  tickSize: 0.01,
+  settings: reactionSettings,
+  priceSamples: sampleSeries([750.30, 750.02, 750.30], historicalTouchAt - 60_000),
+});
+assert.equal(gexAtTouchFrame.rawEvents[0]?.reaction?.latestInteraction?.gexContextAtTouch?.kingPrice, 750, "GEX-at-touch must use the latest snapshot at or before the interaction");
+assert.notEqual(gexAtTouchFrame.rawEvents[0]?.reaction?.latestInteraction?.gexContextAtTouch?.kingPrice, 755, "Future GEX must not overwrite historical touch context");
+assert.equal(gexAtTouchFrame.rawEvents[0]?.reaction?.supportsTickClaim, false, "One-minute bars must disclose their resolution and cannot claim tick precision");
+
 for (const dpr of [1, 1.25, 1.5, 2]) {
   const coordinate = resolveDarkPoolGexCoordinate(737.38, (price) => price * 2, dpr);
   assert.equal(coordinate?.media, 1474.76);
