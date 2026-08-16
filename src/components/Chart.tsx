@@ -183,6 +183,15 @@ import {
   type AbsorptionHit,
   type AbsorptionPrimitiveData,
 } from "@/lib/absorptionDetectorPrimitive";
+import {
+  StackedImbalanceEngine,
+  normalizeStackedImbalanceSettings,
+  type StackedImbalanceFrame,
+} from "@/lib/stackedImbalanceSuite";
+import {
+  StackedImbalancePrimitive,
+  type StackedImbalanceHit,
+} from "@/lib/stackedImbalancePrimitive";
 import { subscribeRithmicLiquidity, type RithmicLiquidityStatus } from "@/lib/rithmicLiquidityStream";
 import {
   defaultGammaHeatmapSource,
@@ -2558,6 +2567,9 @@ export default function Chart({
   const absorptionEngineRef = useRef(new AbsorptionDetectorEngine());
   const absorptionFrameRef = useRef<AbsorptionFrame | null>(null);
   const absorptionAlertIdsRef = useRef(new Set<string>());
+  const stackedImbalancePrimitiveRef = useRef<StackedImbalancePrimitive | null>(null);
+  const stackedImbalanceEngineRef = useRef(new StackedImbalanceEngine());
+  const stackedImbalanceAlertIdsRef = useRef(new Set<string>());
   const netGammaExposurePrimitiveRef = useRef<NetGammaExposurePrimitive | null>(null);
   const gexIntervalMapPrimitiveRef = useRef<GexIntervalMapPrimitive | null>(null);
   const gexIntervalAlertStateRef = useRef<{
@@ -2686,6 +2698,8 @@ export default function Chart({
   const [absorptionStatus, setAbsorptionStatus] = useState<RithmicLiquidityStatus>("checking");
   const [absorptionFrame, setAbsorptionFrame] = useState<AbsorptionFrame | null>(null);
   const [absorptionTooltip, setAbsorptionTooltip] = useState<AbsorptionHit | null>(null);
+  const [stackedImbalanceFrame, setStackedImbalanceFrame] = useState<StackedImbalanceFrame | null>(null);
+  const [stackedImbalanceTooltip, setStackedImbalanceTooltip] = useState<StackedImbalanceHit | null>(null);
   const [netGammaProfile, setNetGammaProfile] = useState<NetGammaProfileSnapshot | null>(null);
   const [netGammaLoading, setNetGammaLoading] = useState(false);
   const [netGammaError, setNetGammaError] = useState<string | null>(null);
@@ -3594,27 +3608,32 @@ export default function Chart({
       instance.enabled && instance.indicatorId === "deep-print-footprint") ?? null,
     [indicatorSignature, indicators],
   );
+  const stackedImbalanceIndicator = useMemo(
+    () => indicators.find((instance) => instance.enabled && instance.indicatorId === "stacked-imbalance-suite") ?? null,
+    [indicatorSignature, indicators],
+  );
+  const footprintDataConsumer = footprintIndicator ?? stackedImbalanceIndicator;
   const footprintSettings = useMemo(
     () => footprintIndicator?.settings ?? {},
     [footprintIndicator],
   );
   const footprintCandles = useMemo(
-    () => footprintIndicator ? sampledIndicatorCandles.slice(-indicatorHistoryLimit) : [],
-    [footprintIndicator, indicatorHistoryLimit, sampledIndicatorCandles],
+    () => footprintDataConsumer ? sampledIndicatorCandles.slice(-indicatorHistoryLimit) : [],
+    [footprintDataConsumer, indicatorHistoryLimit, sampledIndicatorCandles],
   );
   const footprintVisibleCandles = useMemo(() => {
-    if (!footprintIndicator || !footprintCandles.length) return [];
+    if (!footprintDataConsumer || !footprintCandles.length) return [];
     const logical = chartRef.current?.timeScale().getVisibleLogicalRange();
     if (!logical) return footprintCandles.slice(-160);
     const sourceOffset = candles.length - footprintCandles.length;
     const first = Math.max(0, Math.floor(Number(logical.from)) - sourceOffset - 8);
     const last = Math.min(footprintCandles.length, Math.ceil(Number(logical.to)) - sourceOffset + 9);
     return first < last ? footprintCandles.slice(first, last) : footprintCandles.slice(-160);
-  }, [candles.length, footprintCandles, footprintIndicator, viewportVersion]);
+  }, [candles.length, footprintCandles, footprintDataConsumer, viewportVersion]);
   const footprintSourceCandles = useMemo(() => {
-    if (!footprintIndicator) return [];
+    if (!footprintDataConsumer) return [];
     return footprintVisibleCandles;
-  }, [footprintIndicator, footprintVisibleCandles]);
+  }, [footprintDataConsumer, footprintVisibleCandles]);
   const footprintMarketTrades = useMemo(() => {
     if (!footprintSourceCandles.length || !sampledIndicatorMarketTrades.length) return [];
     const start = footprintSourceCandles[0].timestamp;
@@ -3704,11 +3723,11 @@ export default function Chart({
     resolvedFootprintGroupTicks,
   ]);
   const footprintBars = useMemo(() => {
-    if (!footprintIndicator || !footprintSourceCandles.length) return [];
+    if (!footprintDataConsumer || !footprintSourceCandles.length) return [];
     return buildFootprintBars(footprintSourceCandles, footprintMarketTrades, footprintBuildSettings);
   }, [
     footprintBuildSettings,
-    footprintIndicator,
+    footprintDataConsumer,
     footprintMarketTrades,
     footprintSourceCandles,
   ]);
@@ -3757,14 +3776,14 @@ export default function Chart({
     [footprintDataKey, footprintRenderBars],
   );
   useEffect(() => {
-    if (!footprintIndicator) {
+    if (!footprintDataConsumer) {
       retainedFootprintBarsRef.current = null;
       return;
     }
     if (liveFootprintRenderBars.some((bar) => bar.hasPriceLevelFlow)) {
       retainedFootprintBarsRef.current = { key: footprintDataKey, bars: liveFootprintRenderBars };
     }
-  }, [footprintDataKey, footprintIndicator, liveFootprintRenderBars]);
+  }, [footprintDataConsumer, footprintDataKey, liveFootprintRenderBars]);
   const footprintPrimitiveOptions = useMemo((): FootprintPrimitiveOptions => {
     const useThemeColors = footprintSettings.useThemeColors !== false;
     const option = <T extends string>(value: unknown, allowed: readonly T[], fallback: T) =>
@@ -3900,6 +3919,59 @@ export default function Chart({
   const footprintHasPriceLevelFlow = liveFootprintRenderBars.some((bar) => bar.hasPriceLevelFlow);
   const footprintHasClassifiedFlow = liveFootprintRenderBars.some((bar) =>
     bar.classifiedVolume > 0);
+  const stackedImbalanceSettings = useMemo(() => {
+    const normalized = normalizeStackedImbalanceSettings(stackedImbalanceIndicator?.settings);
+    if (!normalized.useThemeColors) return normalized;
+    return { ...normalized, askColor: settings.upColor, bidColor: settings.downColor, neutralColor: settings.gridColor };
+  }, [settings.downColor, settings.gridColor, settings.upColor, stackedImbalanceIndicator]);
+
+  useEffect(() => {
+    if (!stackedImbalanceIndicator) {
+      stackedImbalanceEngineRef.current.reset();
+      stackedImbalanceAlertIdsRef.current.clear();
+      stackedImbalancePrimitiveRef.current?.update(null);
+      setStackedImbalanceFrame(null);
+      setStackedImbalanceTooltip(null);
+      return;
+    }
+    const frame = stackedImbalanceEngineRef.current.update(
+      liveFootprintRenderBars,
+      instrument,
+      priceFormat.minMove,
+      resolvedFootprintGroupTicks,
+      stackedImbalanceSettings,
+    );
+    setStackedImbalanceFrame(frame);
+    stackedImbalancePrimitiveRef.current?.update({ frame, settings: stackedImbalanceSettings, backgroundColor: settings.backgroundColor });
+    if (stackedImbalanceSettings.enableAlerts) for (const alert of frame.alerts) {
+      if (stackedImbalanceAlertIdsRef.current.has(alert.id)) continue;
+      const allowed = alert.type === "QUALIFIED"
+        || (alert.type === "RETESTING" && stackedImbalanceSettings.alertOnRetest)
+        || (alert.type === "HELD" && stackedImbalanceSettings.alertOnHeld)
+        || (alert.type === "REJECTED" && stackedImbalanceSettings.alertOnRejected)
+        || (alert.type === "BROKEN" && stackedImbalanceSettings.alertOnBroken);
+      if (!allowed) continue;
+      stackedImbalanceAlertIdsRef.current.add(alert.id);
+      window.dispatchEvent(new CustomEvent("kwantdesk:chart-indicator-alert", { detail: {
+        indicatorId: "stacked-imbalance-suite",
+        instanceId: stackedImbalanceIndicator.instanceId,
+        instrument,
+        title: `${alert.zone.side} stacked imbalance ${alert.type.toLowerCase()}`,
+        event: alert,
+      } }));
+    }
+  }, [instrument, liveFootprintRenderBars, priceFormat.minMove, resolvedFootprintGroupTicks, settings.backgroundColor, stackedImbalanceIndicator, stackedImbalanceSettings]);
+
+  useEffect(() => {
+    const container = chartContainerRef.current;
+    if (!container || !stackedImbalanceIndicator) return;
+    let frameId: number | null = null; let pending: PointerEvent | null = null;
+    const flush = () => { frameId = null; const event = pending; pending = null; if (!event) return; const rect = container.getBoundingClientRect(); setStackedImbalanceTooltip(stackedImbalancePrimitiveRef.current?.queryHit(event.clientX - rect.left, event.clientY - rect.top) ?? null); };
+    const move = (event: PointerEvent) => { pending = event; if (frameId === null) frameId = window.requestAnimationFrame(flush); };
+    const leave = () => setStackedImbalanceTooltip(null);
+    container.addEventListener("pointermove", move); container.addEventListener("pointerleave", leave);
+    return () => { container.removeEventListener("pointermove", move); container.removeEventListener("pointerleave", leave); if (frameId !== null) window.cancelAnimationFrame(frameId); };
+  }, [stackedImbalanceIndicator]);
 
   useEffect(() => {
     const primitive = footprintPrimitiveRef.current;
@@ -8273,6 +8345,9 @@ export default function Chart({
     const absorptionPrimitive = new AbsorptionDetectorPrimitive();
     candleSeries.attachPrimitive(absorptionPrimitive);
     absorptionPrimitiveRef.current = absorptionPrimitive;
+    const stackedImbalancePrimitive = new StackedImbalancePrimitive();
+    candleSeries.attachPrimitive(stackedImbalancePrimitive);
+    stackedImbalancePrimitiveRef.current = stackedImbalancePrimitive;
     const netGammaExposurePrimitive = new NetGammaExposurePrimitive();
     candleSeries.attachPrimitive(netGammaExposurePrimitive);
     netGammaExposurePrimitiveRef.current = netGammaExposurePrimitive;
@@ -9019,7 +9094,7 @@ export default function Chart({
             // Chart teardown can detach primitives before React cleanup runs.
           }
         }
-        if (candleSeriesRef.current && absorptionPrimitiveRef.current) {
+      if (candleSeriesRef.current && absorptionPrimitiveRef.current) {
           try {
             candleSeriesRef.current.detachPrimitive(absorptionPrimitiveRef.current);
           } catch {
@@ -9092,6 +9167,9 @@ export default function Chart({
         chartRef.current.remove();
         chartRef.current = null;
       }
+      if (candleSeriesRef.current && stackedImbalancePrimitiveRef.current) {
+        try { candleSeriesRef.current.detachPrimitive(stackedImbalancePrimitiveRef.current); } catch { /* chart may already be disposed */ }
+      }
       candleSeriesRef.current = null;
       gameplanUnderlayRef.current = null;
       fixedPriceLevelLabelsRef.current = null;
@@ -9102,6 +9180,7 @@ export default function Chart({
       gammaHeatmapPrimitiveRef.current = null;
       pullingStackingPrimitiveRef.current = null;
       absorptionPrimitiveRef.current = null;
+      stackedImbalancePrimitiveRef.current = null;
       netGammaExposurePrimitiveRef.current = null;
       gexIntervalMapPrimitiveRef.current = null;
       netGammaReservedRightOffsetRef.current = null;
@@ -10305,13 +10384,53 @@ export default function Chart({
           {absorptionTooltip.event.suspectedHiddenLiquidity ? <div className="mt-2 border-t border-border pt-1 text-primary">Suspected hidden-liquidity context · identity and intent are not established.</div> : null}
         </div>
       ) : null}
+      {stackedImbalanceIndicator ? (
+        <div
+          className="pointer-events-none absolute left-2 z-[27] flex max-w-[min(760px,calc(100%-80px))] items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur"
+          style={{ top: 8 + (pullingStackingIndicator && pullingStackingSettings.showHeader ? 30 : 0) + (absorptionIndicator && absorptionSettings.showHeader ? 30 : 0) }}
+          title={stackedImbalanceFrame?.limitations.join(" ") || "Exact Footprint execution cells"}
+        >
+          <span className={`h-1.5 w-1.5 rounded-full ${stackedImbalanceFrame?.status === "WAITING_FOR_EXECUTIONS" ? "animate-pulse bg-warning" : stackedImbalanceFrame?.status === "STALE" ? "bg-warning" : "bg-primary"}`} />
+          <span className="text-foreground">Stacked Imbalance Suite</span>
+          <span>{stackedImbalanceFrame?.status ?? "CALCULATING"}</span>
+          <span>ASK {stackedImbalanceFrame?.zones.filter((zone) => zone.side === "ASK" && !["BROKEN", "EXPIRED"].includes(zone.state)).length ?? 0}</span>
+          <span>BID {stackedImbalanceFrame?.zones.filter((zone) => zone.side === "BID" && !["BROKEN", "EXPIRED"].includes(zone.state)).length ?? 0}</span>
+          <span>{stackedImbalanceSettings.scopeMode.replaceAll("-", " ")}</span>
+        </div>
+      ) : null}
+      {stackedImbalanceTooltip ? (
+        <div
+          className="pointer-events-none absolute z-[70] min-w-[250px] border border-border bg-panel/96 p-2 font-mono text-[8px] shadow-2xl backdrop-blur"
+          style={{ left: Math.min(Math.max(8, stackedImbalanceTooltip.x + 14), Math.max(8, overlaySize.width - 270)), top: Math.min(Math.max(34, stackedImbalanceTooltip.y + 14), Math.max(34, overlaySize.height - 250)) }}
+        >
+          <div className="flex items-center justify-between gap-4 border-b border-border pb-1 text-foreground"><span>Stacked Imbalance Suite</span><span>{stackedImbalanceTooltip.item.side}</span></div>
+          {"numerator" in stackedImbalanceTooltip.item ? (
+            <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-1 text-muted">
+              <span>Price</span><span className="text-foreground">{stackedImbalanceTooltip.item.price.toFixed(priceFormat.precision)}</span>
+              <span>Dominant / compared</span><span className="text-foreground">{Math.round(stackedImbalanceTooltip.item.numerator).toLocaleString()} / {Math.round(stackedImbalanceTooltip.item.denominator).toLocaleString()}</span>
+              <span>Ratio</span><span className="text-foreground">{stackedImbalanceTooltip.item.zeroSide ? "ZERO SIDE" : `${stackedImbalanceTooltip.item.ratio?.toFixed(2)}×`}</span>
+              <span>Difference / share</span><span className="text-foreground">{Math.round(stackedImbalanceTooltip.item.difference).toLocaleString()} / {(stackedImbalanceTooltip.item.dominanceShare * 100).toFixed(1)}%</span>
+              <span>Mode / score</span><span className="text-foreground">{stackedImbalanceTooltip.item.comparison} / {stackedImbalanceTooltip.item.score}</span>
+            </div>
+          ) : (
+            <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-1 text-muted">
+              <span>Range</span><span className="text-foreground">{(stackedImbalanceTooltip.item.lowTick * (stackedImbalanceFrame?.tickSize ?? priceFormat.minMove)).toFixed(priceFormat.precision)}–{(stackedImbalanceTooltip.item.highTick * (stackedImbalanceFrame?.tickSize ?? priceFormat.minMove)).toFixed(priceFormat.precision)}</span>
+              <span>Levels / score</span><span className="text-foreground">{stackedImbalanceTooltip.item.levelCount} / {stackedImbalanceTooltip.item.score}</span>
+              <span>Volume</span><span className="text-foreground">{Math.round(stackedImbalanceTooltip.item.totalNumerator).toLocaleString()} / {Math.round(stackedImbalanceTooltip.item.totalDenominator).toLocaleString()}</span>
+              <span>Weighted ratio</span><span className="text-foreground">{stackedImbalanceTooltip.item.weightedRatio === null ? "ZERO SIDE" : `${stackedImbalanceTooltip.item.weightedRatio.toFixed(2)}×`}</span>
+              <span>State / retests</span><span className="text-foreground">{stackedImbalanceTooltip.item.state} / {stackedImbalanceTooltip.item.retestCount}</span>
+            </div>
+          )}
+        </div>
+      ) : null}
       {gammaHeatmapIndicator ? (
         <div
           className="pointer-events-none absolute left-2 z-[24] flex max-w-[min(520px,calc(100%-80px))] items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur"
           style={{
             top: 8
               + (pullingStackingIndicator && pullingStackingSettings.showHeader ? 30 : 0)
-              + (absorptionIndicator && absorptionSettings.showHeader ? 30 : 0),
+              + (absorptionIndicator && absorptionSettings.showHeader ? 30 : 0)
+              + (stackedImbalanceIndicator ? 30 : 0),
           }}
           title={gammaHeatmapPayload?.limitations.join(" ") ?? gammaHeatmapError ?? "Loading options exposure history"}
         >

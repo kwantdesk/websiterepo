@@ -48,6 +48,7 @@ import {
 import KwantSelect from "@/components/ui/KwantSelect";
 import { PULLING_STACKING_PRESETS } from "@/lib/pullingStacking";
 import { ABSORPTION_PRESETS } from "@/lib/absorptionDetector";
+import { STACKED_IMBALANCE_PRESETS } from "@/lib/stackedImbalanceSuite";
 
 const FAVOURITES_STORAGE_KEY = "kwantdesk-chart-indicator-favourites";
 const FOOTPRINT_PROFILE_MANAGED_SETTINGS = new Set([
@@ -218,6 +219,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "cumulative-volume-delta",
   "pulling-stacking",
   "absorption-detector",
+  "stacked-imbalance-suite",
   "delta-cumulative-candlestick",
   "delta-cumulative-histogram",
   "imbalance-tracker",
@@ -915,7 +917,7 @@ export default function ChartIndicatorsControl({
                           </div>
                           <div className="mt-1 truncate text-[9px] text-muted">{definition.description}</div>
                         </div>
-                        <div className="w-[110px] shrink-0 text-right text-[8px] uppercase tracking-[0.12em] text-muted/70">{definition.category}</div>
+                        <div className="w-[150px] shrink-0 text-right text-[8px] uppercase tracking-[0.12em] text-muted/70">{definition.category}{definition.subcategory ? ` / ${definition.subcategory}` : ""}</div>
                         <button
                           type="button"
                           disabled={!live}
@@ -2400,6 +2402,30 @@ export default function ChartIndicatorsControl({
                   <p className="text-[8px] leading-4 text-muted">
                     Uses the shared Footprint execution stream and DOM Level 3 book. It flags suspicious absorption and replenishment patterns; it does not identify a trader or legally establish intent.
                   </p>
+                </div>
+              ) : null}
+
+              {settingsDefinition.id === "stacked-imbalance-suite" ? (
+                <div className="space-y-3 border border-primary/20 bg-primary/[0.035] p-3">
+                  <div>
+                    <div className="mb-2 text-[9px] font-semibold uppercase tracking-[0.13em] text-muted">Imbalance preset</div>
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      {Object.entries(STACKED_IMBALANCE_PRESETS).map(([preset, presetSettings]) => (
+                        <button key={preset} type="button" onClick={() => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), ...presetSettings, preset } }))} className={`min-h-8 border px-2 text-[7px] font-semibold uppercase tracking-[0.08em] ${settingsInstance.settings?.preset === preset ? "border-primary bg-primary/10 text-primary" : "border-border bg-background text-muted hover:text-foreground"}`}>
+                          {preset}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    <label className="space-y-1.5 text-[8px] uppercase tracking-[0.1em] text-muted"><span>Comparison</span><KwantSelect value={String(settingsInstance.settings?.comparisonMode ?? "diagonal")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), comparisonMode: event.target.value, preset: "custom" } }))} className="h-9 w-full"><option value="diagonal">Diagonal</option><option value="horizontal">Horizontal</option><option value="custom-offset">Custom offset</option><option value="both">Both</option></KwantSelect></label>
+                    <label className="space-y-1.5 text-[8px] uppercase tracking-[0.1em] text-muted"><span>Qualification</span><KwantSelect value={String(settingsInstance.settings?.qualificationMode ?? "ratio")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), qualificationMode: event.target.value, preset: "custom" } }))} className="h-9 w-full"><option value="ratio">Ratio</option><option value="difference">Difference</option><option value="dominance">Dominance</option><option value="ratio-and-difference">Ratio + difference</option><option value="ratio-or-difference">Ratio or difference</option></KwantSelect></label>
+                    <label className="space-y-1.5 text-[8px] uppercase tracking-[0.1em] text-muted"><span>Scope</span><KwantSelect value={String(settingsInstance.settings?.scopeMode ?? "bar")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), scopeMode: event.target.value, preset: "custom" } }))} className="h-9 w-full"><option value="bar">Bar</option><option value="session">Session</option><option value="rolling-bars">Rolling bars</option><option value="custom-anchor">Custom anchor</option></KwantSelect></label>
+                    <label className="space-y-1.5 text-[8px] uppercase tracking-[0.1em] text-muted"><span>Sides</span><KwantSelect value={String(settingsInstance.settings?.enabledSides ?? "both")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), enabledSides: event.target.value, preset: "custom" } }))} className="h-9 w-full"><option value="both">Ask + Bid</option><option value="ask">Ask only</option><option value="bid">Bid only</option></KwantSelect></label>
+                    <label className="space-y-1.5 text-[8px] uppercase tracking-[0.1em] text-muted"><span>Live bar</span><KwantSelect value={String(settingsInstance.settings?.liveBarMode ?? "live")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), liveBarMode: event.target.value, preset: "custom" } }))} className="h-9 w-full"><option value="live">Update live</option><option value="closed">Closed bars only</option></KwantSelect></label>
+                    <label className="space-y-1.5 text-[8px] uppercase tracking-[0.1em] text-muted"><span>Zone extension</span><KwantSelect value={String(settingsInstance.settings?.zoneExtensionMode ?? "until-broken")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), zoneExtensionMode: event.target.value, preset: "custom" } }))} className="h-9 w-full"><option value="until-broken">Until broken</option><option value="fixed-bars">Fixed bars</option><option value="session-end">Session end</option></KwantSelect></label>
+                  </div>
+                  <p className="text-[8px] leading-4 text-muted">Uses the exact price cells from the shared Footprint execution stream. Unknown-side volume is excluded; zero-side cells are explicitly labelled instead of represented as infinite ratios.</p>
                 </div>
               ) : null}
 

@@ -6,6 +6,7 @@ import { defaultTpoSettings, tpoSettingsToRecord, validateTpoSettings } from "@/
 import { DEFAULT_DOM_PRO_VISIBLE_ROWS, DOM_PRO_SETTINGS_VERSION } from "@/lib/domPro";
 import { DEFAULT_PULLING_STACKING_SETTINGS, normalizePullingStackingSettings, PULLING_STACKING_SETTINGS_VERSION } from "@/lib/pullingStacking";
 import { ABSORPTION_DETECTOR_SETTINGS_VERSION, DEFAULT_ABSORPTION_SETTINGS, normalizeAbsorptionSettings } from "@/lib/absorptionDetector";
+import { DEFAULT_STACKED_IMBALANCE_SETTINGS, STACKED_IMBALANCE_SETTINGS_VERSION, normalizeStackedImbalanceSettings } from "@/lib/stackedImbalanceSuite";
 
 export const LIVE_CHART_INDICATOR_IDS = new Set([
   "gamma-heatmap",
@@ -23,6 +24,7 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "cumulative-volume-delta",
   "pulling-stacking",
   "absorption-detector",
+  "stacked-imbalance-suite",
   "moving-average",
   "vwap",
   "vwap-envelopes",
@@ -88,6 +90,26 @@ export type IndicatorNumericSetting = {
 };
 
 export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[]> = {
+  "stacked-imbalance-suite": [
+    { key: "customOffsetGroups", label: "Comparison offset (groups)", defaultValue: 1, min: 1, max: 20, step: 1 },
+    { key: "ratioThreshold", label: "Ratio threshold", defaultValue: 3, min: 1.01, max: 100, step: 0.1 },
+    { key: "minimumAbsoluteDifference", label: "Minimum absolute difference", defaultValue: 100, min: 0, max: 1000000, step: 1 },
+    { key: "minimumDominanceShare", label: "Minimum dominance share", defaultValue: 0.75, min: 0.5, max: 1, step: 0.01 },
+    { key: "minimumNumeratorVolume", label: "Minimum dominant volume", defaultValue: 50, min: 0, max: 1000000, step: 1 },
+    { key: "minimumCombinedVolume", label: "Minimum combined volume", defaultValue: 75, min: 0, max: 1000000, step: 1 },
+    { key: "minimumStackedLevels", label: "Minimum stacked levels", defaultValue: 3, min: 2, max: 20, step: 1 },
+    { key: "maximumGapGroups", label: "Maximum gap groups", defaultValue: 0, min: 0, max: 10, step: 1 },
+    { key: "minimumStackedTotalNumerator", label: "Minimum stacked dominant volume", defaultValue: 150, min: 0, max: 1000000, step: 1 },
+    { key: "minimumStackedScore", label: "Minimum stack score", defaultValue: 65, min: 0, max: 100, step: 1 },
+    { key: "rollingBars", label: "Rolling bars", defaultValue: 5, min: 2, max: 100, step: 1 },
+    { key: "minimumDepartureGroups", label: "Retest departure (groups)", defaultValue: 2, min: 1, max: 20, step: 1 },
+    { key: "minimumResponseGroups", label: "Held response (groups)", defaultValue: 2, min: 1, max: 20, step: 1 },
+    { key: "maximumRetestsPerZone", label: "Maximum retests", defaultValue: 3, min: 0, max: 20, step: 1 },
+    { key: "opacity", label: "Opacity", defaultValue: 74, min: 0, max: 100, step: 1 },
+    { key: "markerSize", label: "Marker size", defaultValue: 6, min: 4, max: 18, step: 1 },
+    { key: "activeLaneWidth", label: "Active lane width", defaultValue: 96, min: 86, max: 240, step: 1 },
+    { key: "alertMinimumScore", label: "Alert minimum score", defaultValue: 65, min: 0, max: 100, step: 1 },
+  ],
   "absorption-detector": [
     { key: "windowMs", label: "Rolling window (ms)", defaultValue: 1000, min: 50, max: 60000, step: 50 },
     { key: "rollingStepMs", label: "Rolling step (ms)", defaultValue: 100, min: 16, max: 5000, step: 16 },
@@ -653,6 +675,13 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     askConfirmedColor: theme?.downColor ?? DEFAULT_ABSORPTION_SETTINGS.askConfirmedColor,
     neutralColor: theme?.gridColor ?? DEFAULT_ABSORPTION_SETTINGS.neutralColor,
     version: ABSORPTION_DETECTOR_SETTINGS_VERSION,
+  } : {}),
+  ...(indicatorId === "stacked-imbalance-suite" ? {
+    ...DEFAULT_STACKED_IMBALANCE_SETTINGS,
+    askColor: theme?.upColor ?? DEFAULT_STACKED_IMBALANCE_SETTINGS.askColor,
+    bidColor: theme?.downColor ?? DEFAULT_STACKED_IMBALANCE_SETTINGS.bidColor,
+    neutralColor: theme?.gridColor ?? DEFAULT_STACKED_IMBALANCE_SETTINGS.neutralColor,
+    version: STACKED_IMBALANCE_SETTINGS_VERSION,
   } : {}),
   ...(indicatorId === "gamma-heatmap" ? {
     preset: "intraday",
@@ -1253,6 +1282,17 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
       settings: {
         ...normalizeAbsorptionSettings({
           ...defaultIndicatorSettings("absorption-detector"),
+          ...(normalizedInstance.settings ?? {}),
+        }),
+      },
+    };
+  }
+  if (normalizedInstance.indicatorId === "stacked-imbalance-suite") {
+    return {
+      ...normalizedInstance,
+      settings: {
+        ...normalizeStackedImbalanceSettings({
+          ...defaultIndicatorSettings("stacked-imbalance-suite"),
           ...(normalizedInstance.settings ?? {}),
         }),
       },
