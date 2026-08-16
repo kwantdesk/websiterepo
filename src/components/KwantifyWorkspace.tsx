@@ -11561,6 +11561,61 @@ export default function KwantifyWorkspace({
     showReportToast("success", "Panel duplicated — the copy is independent and ready to arrange", 1800);
   };
 
+  const duplicateFloatingWorkspacePane = (paneId: string) => {
+    if (workspacePanes.length >= 12) {
+      showReportToast("error", "This workspace already has the maximum of 12 panels", 2200);
+      return;
+    }
+    const sourcePane = workspacePanes.find((pane) => pane.id === paneId);
+    const sourceWindow = workspaceFloatingWindows.find((entry) => entry.paneId === paneId);
+    if (!sourcePane || !sourceWindow) return;
+
+    const nextPaneId = `${chartWorkspaceScopeRef.current}-pane-${crypto.randomUUID()}`;
+    const nextPane: WorkspacePane = {
+      ...sourcePane,
+      id: nextPaneId,
+      locked: false,
+    };
+    const offset = 0.025;
+    const nextX = Math.min(1 - sourceWindow.width, Math.max(0, sourceWindow.x + offset));
+    const nextY = Math.min(1 - sourceWindow.height, Math.max(0, sourceWindow.y + offset));
+
+    setWorkspacePanes((current) => [...current, nextPane]);
+    setPaneIndicators((current) => ({
+      ...current,
+      [nextPaneId]: (current[paneId] ?? []).map((instance) => ({
+        ...instance,
+        instanceId: `${instance.indicatorId}-${crypto.randomUUID()}`,
+        settings: instance.settings ? { ...instance.settings } : undefined,
+      })),
+    }));
+    setPaneLevelVisibility((current) => ({
+      ...current,
+      [nextPaneId]: { ...(current[paneId] ?? EMPTY_PANE_LEVEL_VISIBILITY) },
+    }));
+    setWorkspaceFloatingWindows((current) => [
+      ...current,
+      {
+        paneId: nextPaneId,
+        x: nextX,
+        y: nextY,
+        width: sourceWindow.width,
+        height: sourceWindow.height,
+        locked: false,
+      },
+    ]);
+    setWorkspaceLayout("custom");
+    setWorkspacePanelPickerPaneId(null);
+    setWorkspacePanelTransition(null);
+    setActivePaneId(nextPaneId);
+    setSelectedInstrument(nextPane.symbol);
+    setSelectedTimeframe(nextPane.timeframe);
+    setSelectedPeriod(nextPane.period);
+    setConnectedBroker(nextPane.broker);
+    setSelectedWatchlistKey(nextPane.watchlistKey);
+    showReportToast("success", "Floating panel duplicated — the copy remains independent", 1800);
+  };
+
   const detachWorkspacePane = (paneId: string) => {
     if (workspaceLocked) {
       showReportToast("error", "Unlock the workspace before detaching a panel", 2200);
@@ -13709,6 +13764,17 @@ export default function KwantifyWorkspace({
                 <Settings2 className="h-3 w-3" />
               </button>
             ) : null}
+            <button
+              type="button"
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={() => duplicateFloatingWorkspacePane(floating.paneId)}
+              disabled={workspacePanes.length >= 12}
+              className="flex h-6 w-6 items-center justify-center border border-transparent text-muted transition-colors hover:border-border hover:text-primary disabled:opacity-30"
+              title={workspacePanes.length >= 12 ? "This workspace already has 12 panels" : "Duplicate floating window"}
+              aria-label={`Duplicate ${option?.label ?? "floating"} window`}
+            >
+              <Copy className="h-3 w-3" />
+            </button>
             <button
               type="button"
               onPointerDown={(event) => event.stopPropagation()}
