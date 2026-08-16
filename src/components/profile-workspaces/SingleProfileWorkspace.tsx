@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronDown, Loader2, RefreshCw, Settings2 } from "lucide-react";
+import { Check, ChevronDown, Loader2, RefreshCw } from "lucide-react";
 import FloatingSettingsWindow from "@/components/ui/FloatingSettingsWindow";
 import { DATABENTO_LIVE_TICK_EVENT, type DatabentoLiveTick } from "@/lib/chartLiveEvents";
 import {
@@ -528,11 +528,13 @@ export default function SingleProfileWorkspace({
   instrument,
   kind,
   active,
+  settingsOpenRequest = 0,
 }: {
   workspaceId: string;
   instrument: string;
   kind: ProfileKind;
   active: boolean;
+  settingsOpenRequest?: number;
 }) {
   const storageKey = `kwantdesk:single-${kind}-workspace:v1:${workspaceId}`;
   const [settings, setSettings] = useState<WorkspaceSettings>(DEFAULT_SETTINGS);
@@ -543,7 +545,15 @@ export default function SingleProfileWorkspace({
   const [error, setError] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [refreshNonce, setRefreshNonce] = useState(0);
+  const previousSettingsOpenRequestRef = useRef(settingsOpenRequest);
   const tradingDates = useMemo(() => recentTradingDates(10), []);
+
+  useEffect(() => {
+    if (settingsOpenRequest === previousSettingsOpenRequestRef.current) return;
+    previousSettingsOpenRequestRef.current = settingsOpenRequest;
+    setDraft(settings);
+    setSettingsOpen(true);
+  }, [settings, settingsOpenRequest]);
 
   useEffect(() => {
     try {
@@ -759,7 +769,6 @@ export default function SingleProfileWorkspace({
         </div>
         <div className="flex items-center gap-1">
           <button type="button" onClick={() => setRefreshNonce((value) => value + 1)} className="flex h-7 w-7 items-center justify-center border border-border text-muted hover:border-primary/40 hover:text-primary" title="Refresh profile"><RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} /></button>
-          <button type="button" onClick={() => { setDraft(settings); setSettingsOpen(true); }} className="flex h-7 w-7 items-center justify-center border border-border text-muted hover:border-primary/40 hover:text-primary" title="Profile settings"><Settings2 className="h-3.5 w-3.5" /></button>
         </div>
       </div>
       {profile ? (

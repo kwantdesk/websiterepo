@@ -6774,6 +6774,12 @@ export default function KwantifyWorkspace({
     content: WorkspacePanelKind;
   } | null>(null);
   const [domProSettingsRequests, setDomProSettingsRequests] = useState<Record<string, number>>({});
+  const [singleProfileSettingsRequests, setSingleProfileSettingsRequests] = useState<Record<string, number>>({});
+  const [indicatorSettingsOpenRequest, setIndicatorSettingsOpenRequest] = useState<{
+    paneId: string;
+    instanceId: string;
+    requestId: number;
+  } | null>(null);
   const [draggedWorkspacePaneId, setDraggedWorkspacePaneId] = useState<string | null>(null);
   const [workspaceDropTargetPaneId, setWorkspaceDropTargetPaneId] = useState<string | null>(null);
   const [workspaceDropZone, setWorkspaceDropZone] = useState<WorkspaceDropZone>("center");
@@ -12977,13 +12983,13 @@ export default function KwantifyWorkspace({
       case "tool-single-tpo-chart":
         return (
           <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-single-tpo-${pane.symbol}`} label="Single TPO Chart">
-            <SingleProfileWorkspace workspaceId={pane.id} instrument={pane.symbol} kind="tpo" active={activePaneId === pane.id} />
+            <SingleProfileWorkspace workspaceId={pane.id} instrument={pane.symbol} kind="tpo" active={activePaneId === pane.id} settingsOpenRequest={singleProfileSettingsRequests[pane.id] ?? 0} />
           </WorkspaceFailureBoundary>
         );
       case "tool-single-volume-profile":
         return (
           <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-single-volume-${pane.symbol}`} label="Single Volume Profile">
-            <SingleProfileWorkspace workspaceId={pane.id} instrument={pane.symbol} kind="volume" active={activePaneId === pane.id} />
+            <SingleProfileWorkspace workspaceId={pane.id} instrument={pane.symbol} kind="volume" active={activePaneId === pane.id} settingsOpenRequest={singleProfileSettingsRequests[pane.id] ?? 0} />
           </WorkspaceFailureBoundary>
         );
       case "news":
@@ -13006,6 +13012,42 @@ export default function KwantifyWorkspace({
       default:
         return null;
     }
+  }
+
+  function openStandaloneWorkspaceSettings(pane: WorkspacePane) {
+    setActivePaneId(pane.id);
+    if (pane.content === "tool-depth-of-market") {
+      setDomProSettingsRequests((current) => ({
+        ...current,
+        [pane.id]: (current[pane.id] ?? 0) + 1,
+      }));
+      return;
+    }
+    if (pane.content === "tool-single-tpo-chart" || pane.content === "tool-single-volume-profile") {
+      setSingleProfileSettingsRequests((current) => ({
+        ...current,
+        [pane.id]: (current[pane.id] ?? 0) + 1,
+      }));
+      return;
+    }
+    if (pane.content === "tool-footprint") {
+      const footprint = (paneIndicators[pane.id] ?? []).find(
+        (instance) => instance.indicatorId === "deep-print-footprint",
+      );
+      if (!footprint) return;
+      setIndicatorSettingsOpenRequest({
+        paneId: pane.id,
+        instanceId: footprint.instanceId,
+        requestId: Date.now(),
+      });
+    }
+  }
+
+  function hasStandaloneWorkspaceSettings(pane: WorkspacePane) {
+    return pane.content === "tool-footprint"
+      || pane.content === "tool-depth-of-market"
+      || pane.content === "tool-single-tpo-chart"
+      || pane.content === "tool-single-volume-profile";
   }
 
   function renderWorkspacePane(paneId: string, floating = false) {
@@ -13047,6 +13089,17 @@ export default function KwantifyWorkspace({
                 >
                   {pane.locked ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
                 </button>
+                {hasStandaloneWorkspaceSettings(pane) ? (
+                  <button
+                    type="button"
+                    onClick={() => openStandaloneWorkspaceSettings(pane)}
+                    className="flex h-7 w-7 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface hover:text-primary"
+                    title={`${option?.label ?? "Workspace"} settings`}
+                    aria-label={`Open ${option?.label ?? "workspace"} settings`}
+                  >
+                    <Settings2 className="h-3.5 w-3.5" />
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={() => duplicateWorkspacePane(pane.id)}
@@ -13180,16 +13233,13 @@ export default function KwantifyWorkspace({
             >
               {pane.locked ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
             </button>
-            {pane.content === "tool-depth-of-market" ? (
+            {hasStandaloneWorkspaceSettings(pane) ? (
               <button
                 type="button"
-                onClick={() => setDomProSettingsRequests((current) => ({
-                  ...current,
-                  [pane.id]: (current[pane.id] ?? 0) + 1,
-                }))}
+                onClick={() => openStandaloneWorkspaceSettings(pane)}
                 className="flex h-7 w-7 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface hover:text-primary"
-                title="DOM Pro settings"
-                aria-label="Open DOM Pro settings"
+                title={`${chartOption?.label ?? "Workspace"} settings`}
+                aria-label={`Open ${chartOption?.label ?? "workspace"} settings`}
               >
                 <Settings2 className="h-3.5 w-3.5" />
               </button>
@@ -13288,17 +13338,14 @@ export default function KwantifyWorkspace({
             >
               {floating.locked ? <Lock className="h-3 w-3" /> : <Unlock className="h-3 w-3" />}
             </button>
-            {pane.content === "tool-depth-of-market" ? (
+            {hasStandaloneWorkspaceSettings(pane) ? (
               <button
                 type="button"
                 onPointerDown={(event) => event.stopPropagation()}
-                onClick={() => setDomProSettingsRequests((current) => ({
-                  ...current,
-                  [pane.id]: (current[pane.id] ?? 0) + 1,
-                }))}
+                onClick={() => openStandaloneWorkspaceSettings(pane)}
                 className="flex h-6 w-6 items-center justify-center border border-transparent text-muted transition-colors hover:border-border hover:text-primary"
-                title="DOM Pro settings"
-                aria-label="Open DOM Pro settings"
+                title={`${option?.label ?? "Workspace"} settings`}
+                aria-label={`Open ${option?.label ?? "workspace"} settings`}
               >
                 <Settings2 className="h-3 w-3" />
               </button>
@@ -14085,6 +14132,9 @@ export default function KwantifyWorkspace({
             timeframe={formatChartInterval(activeWorkspacePane.timeframe)}
             indicators={paneIndicators[activePaneId] ?? []}
             chartSettings={chartSettings}
+            settingsOpenRequest={indicatorSettingsOpenRequest?.paneId === activePaneId
+              ? indicatorSettingsOpenRequest
+              : null}
             levelControls={[
               {
                 id: "gamma",

@@ -265,6 +265,7 @@ type Props = {
   indicators: ChartIndicatorInstance[];
   chartSettings: ChartSettings;
   levelControls?: ChartLevelControl[];
+  settingsOpenRequest?: { instanceId: string; requestId: number } | null;
   onChange: (next: ChartIndicatorInstance[]) => void;
 };
 
@@ -317,6 +318,7 @@ export default function ChartIndicatorsControl({
   indicators,
   chartSettings,
   levelControls = [],
+  settingsOpenRequest = null,
   onChange,
 }: Props) {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -352,6 +354,17 @@ export default function ChartIndicatorsControl({
   const [selectedGexIntervalPresetId, setSelectedGexIntervalPresetId] = useState("");
   const [gexIntervalPresetName, setGexIntervalPresetName] = useState("");
   const restoredFootprintIdsRef = useRef(new Set<string>());
+  const handledSettingsOpenRequestRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!settingsOpenRequest) return;
+    if (handledSettingsOpenRequestRef.current === settingsOpenRequest.requestId) return;
+    if (!indicators.some((instance) => instance.instanceId === settingsOpenRequest.instanceId)) return;
+    handledSettingsOpenRequestRef.current = settingsOpenRequest.requestId;
+    setOpen(false);
+    setLibraryOpen(false);
+    setSettingsInstanceId(settingsOpenRequest.instanceId);
+  }, [indicators, settingsOpenRequest]);
 
   useEffect(() => {
     window.localStorage.setItem(FAVOURITES_STORAGE_KEY, JSON.stringify(favourites));
