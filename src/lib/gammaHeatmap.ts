@@ -134,7 +134,7 @@ export function buildGammaHeatmapMapping(input: {
     return { sourceInstrument, displayInstrument, method: "direct", scale: 1, basis: 0, confidence: 1, sourcePrice, displayPrice, asOf: input.asOf };
   }
   const basisMapped = (sourceInstrument === "NDX" && /^(NQ|MNQ)$/.test(displayInstrument))
-    || (sourceInstrument === "SPX" && /^(ES|MES)$/.test(displayInstrument));
+    || (/^(SPX|SPXW)$/.test(sourceInstrument) && /^(ES|MES)$/.test(displayInstrument));
   if (basisMapped) {
     return { sourceInstrument, displayInstrument, method: "live-basis", scale: 1, basis: displayPrice - sourcePrice, confidence: 0.92, sourcePrice, displayPrice, asOf: input.asOf };
   }

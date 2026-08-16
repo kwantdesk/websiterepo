@@ -19,8 +19,10 @@ export type GammaConversionId =
   | "NDX-MNQ"
   | "SPY-ES"
   | "SPX-ES"
+  | "SPXW-ES"
   | "SPY-MES"
-  | "SPX-MES";
+  | "SPX-MES"
+  | "SPXW-MES";
 
 export type GammaConversionDefinition = {
   id: GammaConversionId;
@@ -56,8 +58,10 @@ export const GAMMA_CONVERSIONS: readonly GammaConversionDefinition[] = [
   { id: "NDX-MNQ", source: "NDX", target: "MNQ", futuresRoot: "NQ", label: "NDX → MNQ" },
   { id: "SPY-ES", source: "SPY", target: "ES", futuresRoot: "ES", label: "SPY → ES" },
   { id: "SPX-ES", source: "SPX", target: "ES", futuresRoot: "ES", label: "SPX → ES" },
+  { id: "SPXW-ES", source: "SPXW", target: "ES", futuresRoot: "ES", label: "SPXW → ES" },
   { id: "SPY-MES", source: "SPY", target: "MES", futuresRoot: "ES", label: "SPY → MES" },
   { id: "SPX-MES", source: "SPX", target: "MES", futuresRoot: "ES", label: "SPX → MES" },
+  { id: "SPXW-MES", source: "SPXW", target: "MES", futuresRoot: "ES", label: "SPXW → MES" },
 ] as const;
 
 export function isGammaChartInstrument(value: string): value is GammaChartInstrument {

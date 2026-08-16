@@ -95,7 +95,7 @@ function symbols(values: string[], fallback: KwantBotMarketRoot | null = null) {
   const joined = values.join(" ").toUpperCase();
   const result = new Set<string>();
   if (/\b(NQ|MNQ|NASDAQ|QQQ|NDX|TECHNOLOGY)\b/.test(joined)) result.add("NQ");
-  if (/\b(ES|MES|S&P|SPX|SPY|EQUITIES)\b/.test(joined)) result.add("ES");
+  if (/\b(ES|MES|S&P|SPX|SPXW|SPY|EQUITIES)\b/.test(joined)) result.add("ES");
   if (/\b(ZN|TREASUR|BOND|YIELD|RATES?)\b/.test(joined)) result.add("ZN");
   if (/\b(CL|CRUDE|OIL|ENERGY)\b/.test(joined)) result.add("CL");
   if (/\b(VIX|VXN|VOLATILITY)\b/.test(joined)) result.add("VIX");

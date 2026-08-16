@@ -1,5 +1,5 @@
 export type MarketInstrumentSymbol =
-  | "VIX" | "VXN" | "SPX" | "SPY" | "NDX" | "QQQ" | "IWM"
+  | "VIX" | "VXN" | "SPX" | "SPXW" | "SPY" | "NDX" | "QQQ" | "IWM"
   | "AAPL" | "NVDA" | "TSLA" | "MSFT" | "AMZN" | "META" | "AMD";
 
 export type MarketIndexDefinition = {
@@ -37,6 +37,11 @@ export const MARKET_INDEX_DEFINITIONS = [
   {
     symbol: "SPX", providerTicker: "I:SPX", providerKind: "INDEX",
     displayName: "S&P 500 Index", exchange: "CBOE", family: "S&P 500",
+    group: "Options Underlyings", defaultBroker: "Market Index",
+  },
+  {
+    symbol: "SPXW", providerTicker: "I:SPX", providerKind: "INDEX",
+    displayName: "S&P 500 Weeklys", exchange: "CBOE", family: "S&P 500",
     group: "Options Underlyings", defaultBroker: "Market Index",
   },
   {

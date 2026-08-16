@@ -9,6 +9,7 @@ import {
 
 const expectedSources = {
   SPX: "SPY",
+  SPXW: "SPY",
   SPY: "SPY",
   NDX: "QQQ",
   QQQ: "QQQ",

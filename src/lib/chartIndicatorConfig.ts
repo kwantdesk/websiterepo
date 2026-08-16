@@ -1695,7 +1695,7 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
       const parsed = Number(settings[definition.key]);
       settings[definition.key] = Math.min(definition.max, Math.max(definition.min, Number.isFinite(parsed) ? parsed : definition.defaultValue));
     }
-    if (!["AUTO", "QQQ", "SPY", "NDX", "SPX", "IWM", "DIA"].includes(String(settings.sourceTicker))) settings.sourceTicker = "AUTO";
+    if (!["AUTO", "QQQ", "SPY", "NDX", "SPX", "SPXW", "IWM", "DIA"].includes(String(settings.sourceTicker))) settings.sourceTicker = "AUTO";
     if (!["combined", "average-call-put", "call", "put", "call-put-split"].includes(String(settings.contractMode))) settings.contractMode = "average-call-put";
     if (!["separate-pane", "main-chart-overlay"].includes(String(settings.placement))) settings.placement = "separate-pane";
     const lowThreshold = Number(settings.lowThreshold);
@@ -1758,7 +1758,7 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
       settings[definition.key] = Math.min(definition.max, Math.max(definition.min, Number.isFinite(parsed) ? parsed : definition.defaultValue));
     }
     const enumValues: Record<string, string[]> = {
-      sourceTicker: ["AUTO", "QQQ", "NDX", "NQ", "SPY", "SPX"],
+      sourceTicker: ["AUTO", "QQQ", "NDX", "NQ", "SPY", "SPX", "SPXW"],
       aggregationPeriod: ["1m", "2m", "3m", "4m", "5m", "10m", "15m", "30m", "1h"],
       historyMode: ["current-session", "session-date", "custom-range"],
       mode: ["raw", "difference"],
@@ -1801,7 +1801,7 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
     }
     const enumValues: Record<string, string[]> = {
       provider: ["quantdata"],
-      sourceTicker: ["AUTO", "QQQ", "NDX", "SPY", "SPX", "IWM"],
+      sourceTicker: ["AUTO", "QQQ", "NDX", "SPY", "SPX", "SPXW", "IWM"],
       greekMode: ["GAMMA", "DELTA", "VANNA", "CHARM"],
       expirationMode: ["zero-dte", "zero-to-one-dte", "zero-to-seven-dte", "front-expiration", "all-expirations", "custom-dte-range", "specific-expirations"],
       preset: ["balanced-intraday", "zero-dte-scalper", "major-nodes-only", "fresh-bounce-levels", "node-momentum", "clean-chart", "research"],

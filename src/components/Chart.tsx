@@ -5106,10 +5106,10 @@ export default function Chart({
       return;
     }
     const display = normalizeGammaHeatmapInstrument(instrument);
-    if (!/^(NQ|MNQ|ES|MES|QQQ|SPY|NDX|SPX)$/.test(display)) {
+    if (!/^(NQ|MNQ|ES|MES|QQQ|SPY|NDX|SPX|SPXW)$/.test(display)) {
       setGexIntervalSurface(null);
       setGexIntervalLoading(false);
-      setGexIntervalError("GEX Interval Map supports NQ, MNQ, ES, MES, QQQ, SPY, NDX and SPX charts.");
+      setGexIntervalError("GEX Interval Map supports NQ, MNQ, ES, MES, QQQ, SPY, NDX, SPX and SPXW charts.");
       return;
     }
     const source = gexIntervalDataSettings.sourceTicker === "AUTO"
@@ -5589,7 +5589,7 @@ export default function Chart({
     }
     const indicatorSettings = JSON.parse(bounceLevelsDataSignature) as Record<string, string | number | boolean>;
     const display = normalizeGammaHeatmapInstrument(instrument);
-    if (!/^(NQ|MNQ|ES|MES|RTY|M2K|QQQ|NDX|SPY|SPX|IWM)$/.test(display)) {
+    if (!/^(NQ|MNQ|ES|MES|RTY|M2K|QQQ|NDX|SPY|SPX|SPXW|IWM)$/.test(display)) {
       setBounceLevelsSnapshot(null);
       setBounceLevelsLoading(false);
       setBounceLevelsError("GEX Bounce supports the available index and ETF option underlyings plus their mapped futures.");
@@ -6008,7 +6008,7 @@ export default function Chart({
     }
     const display = normalizeDarkPoolInstrument(instrument);
     const indicatorSettings = { ...DEFAULT_DARK_POOL_GEX_SETTINGS, ...(darkPoolGexIndicator.settings ?? {}) } as DarkPoolGexSettings;
-    const requiresExplicitProxy = /^(NQ|MNQ|ES|MES|RTY|M2K|YM|MYM|NDX|SPX)$/.test(display);
+    const requiresExplicitProxy = /^(NQ|MNQ|ES|MES|RTY|M2K|YM|MYM|NDX|SPX|SPXW)$/.test(display);
     if (!indicatorSettings.proxyMode && requiresExplicitProxy) {
       setDarkPoolGexPayload(null);
       setDarkPoolGexSnapshot(null);
@@ -6045,7 +6045,7 @@ export default function Chart({
       const gexSource = /^(NQ|MNQ|QQQ)$/.test(display) ? "QQQ"
         : display === "NDX" ? "NDX"
           : /^(ES|MES|SPY)$/.test(display) ? "SPY"
-            : display === "SPX" ? "SPX"
+            : /^(SPX|SPXW)$/.test(display) ? display
               : /^(RTY|M2K|IWM)$/.test(display) ? "IWM"
                 : null;
       const gexQuery = new URLSearchParams({

@@ -8,8 +8,8 @@ import { SITE_ACCESS_COOKIE, isSiteAccessConfigured, isValidSiteAccessToken } fr
 export const maxDuration = 60;
 
 const payloadCache = new Map<string, { expiresAt: number; payload: unknown }>();
-const ALLOWED_SOURCES = new Set(["QQQ", "NDX", "NQ", "SPY", "SPX"]);
-const ALLOWED_DISPLAYS = new Set(["QQQ", "NDX", "NQ", "MNQ", "SPY", "SPX", "ES", "MES"]);
+const ALLOWED_SOURCES = new Set(["QQQ", "NDX", "NQ", "SPY", "SPX", "SPXW"]);
+const ALLOWED_DISPLAYS = new Set(["QQQ", "NDX", "NQ", "MNQ", "SPY", "SPX", "SPXW", "ES", "MES"]);
 
 async function isAuthenticated(request: NextRequest) {
   const host = request.nextUrl.hostname;

@@ -761,6 +761,10 @@ export async function getOptionsUnderlyingHistory(input: {
   to: number;
 }): Promise<OptionsCandle[]> {
   const symbol = input.symbol.trim().toUpperCase();
+  // SPXW is an option-class root, not a separate cash index. Its chart and
+  // live underlying must use the canonical SPX cash tape while all option
+  // exposure/flow requests continue to use SPXW.
+  const cashTicker = symbol === "SPXW" ? "SPX" : symbol;
   const plan = underlyingHistoryPlan(input.timeframe);
   if (!plan) {
     throw new QuantDataError(`${input.timeframe} is not supported for cash-underlying history.`, 400, null);
@@ -772,7 +776,7 @@ export async function getOptionsUnderlyingHistory(input: {
   if (sessionScoped) {
     const sessionResults = await Promise.allSettled(
       weekdaySessionDates(from, to).map((sessionDate) =>
-        getOptionsUnderlyingSessionHistory(symbol, aggregationPeriod, sessionDate)),
+        getOptionsUnderlyingSessionHistory(cashTicker, aggregationPeriod, sessionDate)),
     );
     payloads = sessionResults.flatMap((result) =>
       result.status === "fulfilled" ? [result.value] : []);
@@ -785,13 +789,13 @@ export async function getOptionsUnderlyingHistory(input: {
     }
   } else {
     payloads = [(await quantDataPost("/equities/tool/stock-price-over-time", {
-        timeRange: {
-          startTime: new Date(from).toISOString(),
-          endTime: new Date(to).toISOString(),
-        },
-        aggregationPeriod,
-        filter: { ticker: symbol },
-      }, to < Date.now() - 5 * 60_000 ? 5 * 60_000 : 5_000)).payload];
+      timeRange: {
+        startTime: new Date(from).toISOString(),
+        endTime: new Date(to).toISOString(),
+      },
+      aggregationPeriod,
+      filter: { ticker: cashTicker },
+    }, to < Date.now() - 5 * 60_000 ? 5 * 60_000 : 5_000)).payload];
   }
   const candles = payloads.flatMap(parseUnderlyingHistoryCandles)
     .filter((candle) => candle.timestamp >= from && candle.timestamp <= to);
@@ -2347,6 +2351,7 @@ export async function getOptionsMarketPulse(
   includeHistory = false,
 ): Promise<OptionsMarketPulsePayload> {
   const symbol = symbolInput.trim().toUpperCase();
+  const cashTicker = symbol === "SPXW" ? "SPX" : symbol;
   const priceMode: OptionsPriceMode = priceModeInput.trim().toUpperCase() === "FUTURES" ? "FUTURES" : "CASH";
   const session = getUsOptionsSession();
 
@@ -2373,7 +2378,7 @@ export async function getOptionsMarketPulse(
   const result = await quantDataPost("/equities/tool/stock-price-over-time", {
     sessionDate: session.sessionDate,
     aggregationPeriod: "1m",
-    filter: { ticker: symbol },
+    filter: { ticker: cashTicker },
   }, 1_000);
   const candles = parseCandles(result.payload, true);
 
@@ -3119,7 +3124,7 @@ export async function getGexDeskHistory(
 ): Promise<GexDeskHistoryPayload> {
   const instrument: GexDeskHistoryInstrument = instrumentInput.trim().toUpperCase() === "ES" ? "ES" : "NQ";
   const compatibleSources: GexDeskHistorySourceSymbol[] = instrument === "ES"
-    ? ["SPX", "SPY"]
+    ? ["SPX", "SPXW", "SPY"]
     : ["NDX", "QQQ"];
   const requestedSource = sourceInput.trim().toUpperCase();
   const source: "COMBINED" | GexDeskHistorySourceSymbol = compatibleSources.includes(requestedSource as GexDeskHistorySourceSymbol)
@@ -3537,10 +3542,10 @@ export async function getChartGammaLevels(
   }
   const compatibleSymbols = root === "NQ"
     ? (["NDX", "QQQ"] as const)
-    : (["SPX", "SPY"] as const);
+    : (["SPX", "SPXW", "SPY"] as const);
   const requestedSource = sourceInput.trim().toUpperCase();
   // NATIVE futures-options gamma (Databento): the source IS the futures root (NQ/ES).
-  // NDX/QQQ/SPX/SPY keep the KwantData cash-conversion path below.
+  // NDX/QQQ/SPX/SPXW/SPY keep the KwantData cash-conversion path below.
   if (requestedSource === root) {
     return buildNativeChartGamma(root as NativeGammaRoot, requestedSessionDate);
   }
@@ -3813,7 +3818,7 @@ export async function getImpliedVolatilityRankSnapshot(input: {
 }): Promise<IvRankSnapshot> {
   const session = getUsOptionsSession();
   const sourceTicker = input.sourceTicker.trim().toUpperCase();
-  const allowed = new Set<string>([...OPTIONS_FLOW_TICKERS, "QQQ", "SPY", "NDX", "SPX", "IWM", "DIA"]);
+  const allowed = new Set<string>([...OPTIONS_FLOW_TICKERS, "QQQ", "SPY", "NDX", "SPX", "SPXW", "IWM", "DIA"]);
   if (!allowed.has(sourceTicker)) {
     throw new QuantDataError("This options source is not supported by IV Rank.", 400, null);
   }
@@ -3991,7 +3996,7 @@ export async function getCashCalibratedChartGammaLevels(
 ): Promise<ChartGammaLevelsPayload> {
   const defaultSource = canonicalOptionsSourceForRoot(root);
   const normalizedSource = (sourceInput || defaultSource).trim().toUpperCase();
-  const compatibleSources = root === "NQ" ? new Set(["NDX", "QQQ"]) : new Set(["SPX", "SPY"]);
+  const compatibleSources = root === "NQ" ? new Set(["NDX", "QQQ"]) : new Set(["SPX", "SPXW", "SPY"]);
   if (!compatibleSources.has(normalizedSource)) {
     throw new QuantDataError(`${normalizedSource || "The requested source"} cannot be calibrated to ${root}.`, 400, null);
   }
@@ -4156,7 +4161,7 @@ export async function getHistoricalCashCalibratedChartGammaLevelsAt(
   }
 
   const source = (sourceInput || (root === "NQ" ? "QQQ" : "SPY")).trim().toUpperCase();
-  const compatible = root === "NQ" ? new Set(["NDX", "QQQ"]) : new Set(["SPX", "SPY"]);
+  const compatible = root === "NQ" ? new Set(["NDX", "QQQ"]) : new Set(["SPX", "SPXW", "SPY"]);
   if (!compatible.has(source)) {
     throw new QuantDataError(`${source || "The requested source"} cannot be calibrated to ${root}.`, 400, null);
   }

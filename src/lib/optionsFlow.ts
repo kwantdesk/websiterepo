@@ -1,5 +1,6 @@
 export const OPTIONS_FLOW_TICKERS = [
   "SPX",
+  "SPXW",
   "SPY",
   "NDX",
   "QQQ",
@@ -39,6 +40,7 @@ const OPTIONS_FUTURES_RATIO_BOUNDS: Partial<Record<OptionsFlowTicker, readonly [
   NDX: [1, 1.02],
   QQQ: [40.9, 41.6],
   SPX: [1, 1.01],
+  SPXW: [1, 1.01],
   SPY: [10, 10.15],
   IWM: [8, 12],
 };
@@ -55,6 +57,7 @@ export const OPTIONS_FLOW_INSTRUMENTS: ReadonlyArray<{
   levelTranslation: OptionsFuturesLevelTranslation | null;
 }> = [
   { symbol: "SPX", label: "S&P 500 Index", futuresRoot: "ES", levelTranslation: "RATIO" },
+  { symbol: "SPXW", label: "S&P 500 Weeklys", futuresRoot: "ES", levelTranslation: "RATIO" },
   { symbol: "SPY", label: "SPDR S&P 500 ETF", futuresRoot: "ES", levelTranslation: "RATIO" },
   { symbol: "NDX", label: "Nasdaq-100 Index", futuresRoot: "NQ", levelTranslation: "RATIO" },
   { symbol: "QQQ", label: "Invesco QQQ", futuresRoot: "NQ", levelTranslation: "RATIO" },

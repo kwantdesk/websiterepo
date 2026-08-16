@@ -392,7 +392,7 @@ export function EvolutionPanel({
   }, [history, mode, timeline]);
 
   if (loading && !history) {
-    return <KwantLoader className="min-h-[620px] rounded-2xl border border-border bg-panel" icon={Layers3} title="Building intraday exposure map" detail={`Timestamp-aligning ${instrument === "ES" ? "SPX/SPY" : "NDX/QQQ"} positioning with ${instrument} history.`} />;
+    return <KwantLoader className="min-h-[620px] rounded-2xl border border-border bg-panel" icon={Layers3} title="Building intraday exposure map" detail={`Timestamp-aligning ${instrument === "ES" ? "SPX/SPXW/SPY" : "NDX/QQQ"} positioning with ${instrument} history.`} />;
   }
   if (!history) {
     return <EmptyPanel title="Intraday evolution is unavailable" detail={error || "No timestamp-aligned interval map is available for this source yet."} />;

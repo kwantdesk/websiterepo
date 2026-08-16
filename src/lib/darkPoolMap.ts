@@ -9,6 +9,7 @@ export const DARK_POOL_MAP_SCHEMA_VERSION = 1;
  */
 export const DARK_POOL_OPTIONS_UNDERLYING_SOURCES = {
   SPX: "SPY",
+  SPXW: "SPY",
   SPY: "SPY",
   NDX: "QQQ",
   QQQ: "QQQ",

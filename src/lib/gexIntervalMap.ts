@@ -121,7 +121,7 @@ const normalizeEpochMs = (value: number) => value < 100_000_000_000 ? value * 1_
 export function defaultGexIntervalMapSource(displayInstrument: string) {
   const display = normalizeGammaHeatmapInstrument(displayInstrument);
   if (display === "ES" || display === "MES") return "SPY";
-  if (display === "SPX" || display === "SPY" || display === "NDX" || display === "QQQ") return display;
+  if (display === "SPX" || display === "SPXW" || display === "SPY" || display === "NDX" || display === "QQQ") return display;
   return "QQQ";
 }
 
@@ -229,7 +229,7 @@ function regressionMapping(input: {
     sourceSpotPrice: input.sourcePrice, displayMidPrice: input.displayPrice, mappedSourceSpotPrice: input.sourcePrice,
     mappingConfidence: 100, calculatedAtMs: input.timestamp, dataAgeMs: 0,
   };
-  const basis = (source === "NDX" && /^(NQ|MNQ)$/.test(display)) || (source === "SPX" && /^(ES|MES)$/.test(display));
+  const basis = (source === "NDX" && /^(NQ|MNQ)$/.test(display)) || (/^(SPX|SPXW)$/.test(source) && /^(ES|MES)$/.test(display));
   if (basis) {
     const alpha = input.displayPrice - input.sourcePrice;
     return {

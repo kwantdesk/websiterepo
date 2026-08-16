@@ -1108,7 +1108,7 @@ export default function ChartIndicatorsControl({
                     </KwantSelect>
                   </label>
                   {[
-                    ["Options source", "sourceTicker", [["AUTO", "Automatic (NQ → QQQ · ES → SPY)"], ["QQQ", "QQQ"], ["SPY", "SPY"], ["NDX", "NDX"], ["SPX", "SPX"], ["IWM", "IWM"], ["DIA", "DIA"]]],
+                    ["Options source", "sourceTicker", [["AUTO", "Automatic (NQ → QQQ · ES → SPY)"], ["QQQ", "QQQ"], ["SPY", "SPY"], ["NDX", "NDX"], ["SPX", "SPX"], ["SPXW", "SPXW"], ["IWM", "IWM"], ["DIA", "DIA"]]],
                     ["Contract mode", "contractMode", [["average-call-put", "Average Call + Put"], ["combined", "Combined"], ["call", "Calls"], ["put", "Puts"], ["call-put-split", "Calls vs Puts"]]],
                     ["Placement", "placement", [["separate-pane", "Separate pane"], ["main-chart-overlay", "Main-chart overlay"]]],
                   ].map(([label, key, options]) => (
@@ -1183,7 +1183,7 @@ export default function ChartIndicatorsControl({
                   {[
                     ["Exposure", "metric", [["GAMMA", "Gamma · GEX"], ["DELTA", "Delta · DEX"], ["VANNA", "Vanna · VEX"], ["CHARM", "Charm · CHEX"]]],
                     ["View", "viewMode", [["net", "Net exposure"], ["call-put", "Call / put split"], ["absolute", "Absolute concentration"], ["change", "Exposure change"], ["hedge-pressure", "Modeled hedge pressure"], ["levels-only", "Levels only"]]],
-                    ["Options source", "optionsSource", [["AUTO", "Automatic"], ["QQQ", "QQQ"], ["NDX", "NDX"], ["SPY", "SPY"], ["SPX", "SPX"]]],
+                    ["Options source", "optionsSource", [["AUTO", "Automatic"], ["QQQ", "QQQ"], ["NDX", "NDX"], ["SPY", "SPY"], ["SPX", "SPX"], ["SPXW", "SPXW"]]],
                     ["Data source", "sourceMode", [["hybrid", "Hybrid"], ["quantdata", "QuantData"], ["databento-raw", "Databento raw"]]],
                   ].map(([label, key, options]) => (
                     <label key={String(key)} className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
@@ -1243,7 +1243,7 @@ export default function ChartIndicatorsControl({
                     </KwantSelect>
                   </label>
                   {[
-                    ["Options source", "sourceTicker", [["AUTO", "Automatic"], ["QQQ", "QQQ"], ["NDX", "NDX"], ["NQ", "NQ options"], ["SPY", "SPY"], ["SPX", "SPX"]]],
+                    ["Options source", "sourceTicker", [["AUTO", "Automatic"], ["QQQ", "QQQ"], ["NDX", "NDX"], ["NQ", "NQ options"], ["SPY", "SPY"], ["SPX", "SPX"], ["SPXW", "SPXW"]]],
                     ["Provider interval", "aggregationPeriod", [["1m", "1 minute"], ["2m", "2 minutes"], ["3m", "3 minutes"], ["4m", "4 minutes"], ["5m", "5 minutes"], ["10m", "10 minutes"], ["15m", "15 minutes"], ["30m", "30 minutes"], ["1h", "1 hour"]]],
                     ["History", "historyMode", [["current-session", "Current / last session"], ["session-date", "Historical session date"], ["custom-range", "Custom ISO range"]]],
                     ["Mode", "mode", [["raw", "Raw exposure"], ["difference", "Exposure difference"]]],
@@ -1447,7 +1447,7 @@ export default function ChartIndicatorsControl({
                     </KwantSelect>
                   </label>
                   {[
-                    ["Source ticker", "sourceTicker", [["AUTO", "Automatic"], ["QQQ", "QQQ"], ["NDX", "NDX"], ["NQ", "NQ options"], ["SPY", "SPY"], ["SPX", "SPX"]]],
+                    ["Source ticker", "sourceTicker", [["AUTO", "Automatic"], ["QQQ", "QQQ"], ["NDX", "NDX"], ["NQ", "NQ options"], ["SPY", "SPY"], ["SPX", "SPX"], ["SPXW", "SPXW"]]],
                     ["Expiration", "expirationMode", [["zero-dte", "0DTE"], ["zero-to-one-dte", "0–1 DTE"], ["zero-to-seven-dte", "0–7 DTE"], ["front-expiration", "Front expiration"], ["all-expirations", "All expirations"], ["custom-dte-range", "Custom DTE range"], ["specific-expirations", "Specific expirations"]]],
                     ["Content", "contentMode", [["net", "Net"], ["net-with-call-put-detail", "Net + Call / Put detail"], ["call-put-split", "Call / Put split"], ["absolute-concentration", "Absolute concentration"], ["net-change", "Net change"]]],
                     ["Mapped bins", "aggregationMode", [["auto-bin", "Automatic"], ["exact-display-tick", "Exact display tick"], ["custom-bin", "Custom bin"]]],
@@ -1553,7 +1553,7 @@ export default function ChartIndicatorsControl({
                     </KwantSelect>
                   </label>
                   {[
-                    ["Options source", "sourceTicker", [["AUTO", "Automatic"], ["QQQ", "QQQ"], ["NDX", "NDX"], ["SPY", "SPY"], ["SPX", "SPX"], ["IWM", "IWM"]]],
+                    ["Options source", "sourceTicker", [["AUTO", "Automatic"], ["QQQ", "QQQ"], ["NDX", "NDX"], ["SPY", "SPY"], ["SPX", "SPX"], ["SPXW", "SPXW"], ["IWM", "IWM"]]],
                     ["Exposure Greek", "greekMode", [["GAMMA", "Gamma"], ["DELTA", "Delta"], ["VANNA", "Vanna"], ["CHARM", "Charm"]]],
                     ["Expiration", "expirationMode", [["zero-dte", "0DTE"], ["zero-to-one-dte", "0–1 DTE"], ["zero-to-seven-dte", "0–7 DTE"], ["front-expiration", "Front expiration"], ["all-expirations", "All expirations"], ["custom-dte-range", "Custom DTE range"], ["specific-expirations", "Specific expirations"]]],
                   ].map(([label, key, options]) => (
@@ -1654,7 +1654,7 @@ export default function ChartIndicatorsControl({
                     })}
                   </div>
                   <div className="border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
-                    Dark Pool Map supports every options-flow underlying. QQQ, SPY, IWM and single stocks use native off-exchange prints. NDX and SPX are non-traded indices, so they use QQQ→NDX and SPY→SPX price mapping. Futures remain explicitly mapped rather than presented as direct dark-pool feeds.
+                    Dark Pool Map supports every options-flow underlying. QQQ, SPY, IWM and single stocks use native off-exchange prints. NDX, SPX and SPXW are non-traded index surfaces, so they use QQQ→NDX and SPY→SPX/SPXW price mapping. Futures remain explicitly mapped rather than presented as direct dark-pool feeds.
                   </div>
                 </div>
               ) : null}

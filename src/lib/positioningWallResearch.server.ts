@@ -22,7 +22,7 @@ export async function runHistoricalPositioningWallStudy(args: {
   if (!validSessionDate(args.sessionDate)) throw new Error("A valid historical session date is required.");
   const root = args.root;
   const source = (args.source || (root === "NQ" ? "QQQ" : "SPY")).trim().toUpperCase();
-  const compatible = root === "NQ" ? new Set(["QQQ", "NDX"]) : new Set(["SPY", "SPX"]);
+  const compatible = root === "NQ" ? new Set(["QQQ", "NDX"]) : new Set(["SPY", "SPX", "SPXW"]);
   if (!compatible.has(source)) throw new Error(`${source} cannot be used to reconstruct ${root} positioning walls.`);
 
   const positioning = await getHistoricalPositioningWallFrames(source, args.sessionDate);

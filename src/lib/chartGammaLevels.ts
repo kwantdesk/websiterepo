@@ -93,9 +93,9 @@ export function mergeGammaLevelsAtSamePrice(
 }
 
 export type ChartGammaSourceSnapshot = {
-  // NDX/QQQ/SPX/SPY = cash-index sources (KwantData, converted). NQ/ES = native
+  // NDX/QQQ/SPX/SPXW/SPY = cash-index sources (KwantData, converted). NQ/ES = native
   // futures-options gamma computed directly from the chain (Databento, no conversion).
-  symbol: "NDX" | "QQQ" | "SPX" | "SPY" | "NQ" | "ES";
+  symbol: "NDX" | "QQQ" | "SPX" | "SPXW" | "SPY" | "NQ" | "ES";
   stockPrice: number;
   revision: string;
   validationStrikes: number[];
@@ -119,7 +119,7 @@ export type ChartGammaPositioningStrike = {
 };
 
 export type ChartGammaPositioningSnapshot = {
-  sourceSymbol: "NDX" | "QQQ" | "SPX" | "SPY";
+  sourceSymbol: "NDX" | "QQQ" | "SPX" | "SPXW" | "SPY";
   futuresRoot: Extract<OptionsFuturesRoot, "NQ" | "ES">;
   expiration: string | null;
   asOf: string;

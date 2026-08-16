@@ -11,8 +11,8 @@ import { SITE_ACCESS_COOKIE, isSiteAccessConfigured, isValidSiteAccessToken } fr
 
 export const maxDuration = 60;
 
-const ALLOWED_SOURCES = new Set(["QQQ", "SPY", "NDX", "SPX", "IWM", "DIA"]);
-const ALLOWED_DISPLAYS = new Set(["QQQ", "NDX", "NQ", "MNQ", "SPY", "SPX", "ES", "MES", "IWM", "DIA"]);
+const ALLOWED_SOURCES = new Set(["QQQ", "SPY", "NDX", "SPX", "SPXW", "IWM", "DIA"]);
+const ALLOWED_DISPLAYS = new Set(["QQQ", "NDX", "NQ", "MNQ", "SPY", "SPX", "SPXW", "ES", "MES", "IWM", "DIA"]);
 const ALLOWED_MODES = new Set<IvRankContractMode>(["combined", "average-call-put", "call", "put", "call-put-split"]);
 
 async function isAuthenticated(request: NextRequest) {

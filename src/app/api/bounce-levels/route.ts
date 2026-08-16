@@ -20,8 +20,8 @@ import { SITE_ACCESS_COOKIE, isSiteAccessConfigured, isValidSiteAccessToken } fr
 export const maxDuration = 60;
 
 const payloadCache = new Map<string, { expiresAt: number; payload: unknown }>();
-const DISPLAYS = new Set(["NQ", "MNQ", "ES", "MES", "RTY", "M2K", "QQQ", "NDX", "SPY", "SPX", "IWM"]);
-const SOURCES = new Set(["QQQ", "NDX", "SPY", "SPX", "IWM"]);
+const DISPLAYS = new Set(["NQ", "MNQ", "ES", "MES", "RTY", "M2K", "QQQ", "NDX", "SPY", "SPX", "SPXW", "IWM"]);
+const SOURCES = new Set(["QQQ", "NDX", "SPY", "SPX", "SPXW", "IWM"]);
 const EXPIRATIONS = new Set<GammaExpirationMode>(["zero-dte", "zero-to-one-dte", "zero-to-seven-dte", "front-expiration", "all-expirations", "custom-dte-range", "specific-expirations"]);
 const GREEKS = new Set<GreekMode>(["GAMMA", "DELTA", "VANNA", "CHARM"]);
 

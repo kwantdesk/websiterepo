@@ -23,7 +23,7 @@ export async function resolveCashLevelOne(args: {
   const apiKey = getMassiveApiKey();
   if (!apiKey) return null;
 
-  const indexTicker = args.symbol === "SPX"
+  const indexTicker = args.symbol === "SPX" || args.symbol === "SPXW"
     ? "I:SPX"
     : args.symbol === "NDX"
       ? "I:NDX"
@@ -70,5 +70,4 @@ export async function resolveCashLevelOne(args: {
     return null;
   }
 }
-
 

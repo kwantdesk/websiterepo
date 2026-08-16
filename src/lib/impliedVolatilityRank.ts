@@ -384,7 +384,7 @@ export function automaticIvSourceTicker(instrument: string) {
   const root = instrument.toUpperCase().replace(/\.[VNC]\.\d+$/i, "").replace(/[FGHJKMNQUVXZ]\d{1,2}$/i, "");
   if (root === "NQ" || root === "MNQ") return "QQQ";
   if (root === "ES" || root === "MES") return "SPY";
-  if (["QQQ", "NDX", "SPY", "SPX", "IWM", "DIA"].includes(root)) return root;
+  if (["QQQ", "NDX", "SPY", "SPX", "SPXW", "IWM", "DIA"].includes(root)) return root;
   return "QQQ";
 }
 

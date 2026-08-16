@@ -2,7 +2,7 @@ import type { ExposureSummary } from "@/lib/optionsFlow";
 
 export type GexDeskSourceSymbol = "NDX" | "QQQ";
 export type GexDeskHistoryInstrument = "NQ" | "ES";
-export type GexDeskHistorySourceSymbol = GexDeskSourceSymbol | "SPX" | "SPY";
+export type GexDeskHistorySourceSymbol = GexDeskSourceSymbol | "SPX" | "SPXW" | "SPY";
 export type GexDeskBehaviour = "STABILISING" | "AMPLIFYING" | "TRANSITION";
 export type GexDeskSourceStatus = "LIVE" | "LAST_GOOD" | "UNAVAILABLE";
 export type GexDeskZoneState = "BUILDING" | "WEAKENING" | "STABLE";
@@ -603,7 +603,7 @@ export function createGexDeskHistoryFixture(
 ): GexDeskHistoryPayload {
   const instrument: GexDeskHistoryInstrument = instrumentInput.toUpperCase() === "ES" ? "ES" : "NQ";
   const compatibleSources: GexDeskHistorySourceSymbol[] = instrument === "ES"
-    ? ["SPX", "SPY"]
+    ? ["SPX", "SPXW", "SPY"]
     : ["NDX", "QQQ"];
   const requestedSource = sourceInput.toUpperCase() as GexDeskHistorySourceSymbol;
   const source: GexDeskHistoryPayload["source"] = compatibleSources.includes(requestedSource)
@@ -646,6 +646,7 @@ export function createGexDeskHistoryFixture(
   const underlierPrices: GexDeskHistoryPayload["underlierPrices"] = instrument === "ES"
     ? {
         SPX: futuresPrices.map((price) => price * 0.998),
+        SPXW: futuresPrices.map((price) => price * 0.998),
         SPY: futuresPrices.map((price) => price / 10.03),
       }
     : {
