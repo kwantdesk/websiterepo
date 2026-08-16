@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import {
   CalendarDays,
@@ -11,12 +11,14 @@ import {
   Gauge,
   Pause,
   Play,
+  Plus,
   Radio,
   RefreshCw,
   RotateCcw,
   ScanLine,
   SkipBack,
   SkipForward,
+  X,
 } from "lucide-react";
 import KwantLoader from "@/components/KwantLoader";
 import {
@@ -37,7 +39,7 @@ import {
 } from "@/lib/workspaceDataCache";
 
 type PanelConfig = {
-  id: "left" | "centre" | "right";
+  id: string;
   symbol: string;
   greekMode: GreekMode;
 };
@@ -67,6 +69,7 @@ const MARKET_PANELS: Record<GexMapMarket, PanelConfig[]> = {
 };
 const SPEEDS = [1, 2, 5, 10] as const;
 const FRAME_STEPS = [1, 2, 5, 10] as const;
+const MAX_GEX_MAP_PANELS = 4;
 
 type GexMapDropdownOption<T extends string> = {
   value: T;
@@ -306,6 +309,7 @@ function ExposurePanel({
   selectedTimestamp,
   stepMinutes,
   onChange,
+  onRemove,
 }: {
   config: PanelConfig;
   payload: GexMapPanelPayload | null;
@@ -314,6 +318,7 @@ function ExposurePanel({
   selectedTimestamp: number | null;
   stepMinutes: number;
   onChange: (patch: Partial<Pick<PanelConfig, "symbol" | "greekMode">>) => void;
+  onRemove?: () => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const ladderRef = useRef<HTMLDivElement>(null);
@@ -489,6 +494,17 @@ function ExposurePanel({
                 : `${payload.sessionChangePercent >= 0 ? "+" : ""}${(payload.sessionChangePercent * 100).toFixed(2)}%`}
             </div>
           </div>
+          {onRemove ? (
+            <button
+              type="button"
+              onClick={onRemove}
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[3px] border border-border bg-surface text-muted transition hover:border-danger/35 hover:text-danger"
+              title="Remove this GEX column"
+              aria-label={`Remove ${config.symbol} ${greek.short} column`}
+            >
+              <X className="h-3 w-3" />
+            </button>
+          ) : null}
         </div>
         <div className="mt-2 flex items-center gap-2 text-[9px] text-muted">
           <span className={`h-1.5 w-1.5 rounded-full ${payload?.status === "LIVE" ? "animate-pulse bg-primary" : "bg-muted"}`} />
@@ -828,12 +844,42 @@ export default function GexMapWorkspace({ market = null }: GexMapWorkspaceProps 
   const currentSessionDate = latestSessionDate
     || panels.map((panel) => panelData[panel.id]?.sessionDate).find(Boolean)
     || "";
-  const initialSurfacePending = panels.some((panel) => (
+  const initialSurfacePending = panels.length > 0 && panels.every((panel) => (
     loading[panel.id] && !hasRenderableGexMapSurface(panelData[panel.id])
   ));
 
   function updatePanel(id: PanelConfig["id"], patch: Partial<Pick<PanelConfig, "symbol" | "greekMode">>) {
     setPanels((current) => current.map((panel) => panel.id === id ? { ...panel, ...patch } : panel));
+  }
+
+  function addPanel() {
+    if (panels.length >= MAX_GEX_MAP_PANELS) return;
+    const id = `extra-${Date.now()}`;
+    const symbol = linkedMarket === "ES" ? "SPY" : "QQQ";
+    const greekMode: GreekMode = "CHARM";
+    setPanelData((current) => ({ ...current, [id]: null }));
+    setPanelErrors((current) => ({ ...current, [id]: null }));
+    setLoading((current) => ({ ...current, [id]: true }));
+    setPanels((current) => [...current, { id, symbol, greekMode }]);
+  }
+
+  function removePanel(id: PanelConfig["id"]) {
+    setPanels((current) => current.filter((panel) => panel.id !== id));
+    setPanelData((current) => {
+      const next = { ...current };
+      delete next[id];
+      return next;
+    });
+    setPanelErrors((current) => {
+      const next = { ...current };
+      delete next[id];
+      return next;
+    });
+    setLoading((current) => {
+      const next = { ...current };
+      delete next[id];
+      return next;
+    });
   }
 
   function enterReplay() {
@@ -859,7 +905,7 @@ export default function GexMapWorkspace({ market = null }: GexMapWorkspaceProps 
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <h1 className="text-[11px] font-semibold tracking-tight">GEXMAP</h1>
-              <span className="rounded-md border border-border bg-surface px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.14em] text-muted">{linkedMarket ? `${linkedMarket} context` : "3 panels"}</span>
+              <span className="rounded-md border border-border bg-surface px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.14em] text-muted">{linkedMarket ? `${linkedMarket} context` : `${panels.length} panels`}</span>
             </div>
             <p className="hidden">Signed front-expiry exposure by strike</p>
           </div>
@@ -882,6 +928,16 @@ export default function GexMapWorkspace({ market = null }: GexMapWorkspaceProps 
           </div>
 
           <div className="gex-map-header-actions ml-auto flex shrink-0 items-center gap-1">
+            <button
+              type="button"
+              onClick={addPanel}
+              disabled={panels.length >= MAX_GEX_MAP_PANELS}
+              className="flex h-7 w-7 items-center justify-center rounded-[3px] border border-border bg-surface text-foreground transition hover:border-primary/35 hover:bg-primary/10 hover:text-primary disabled:cursor-not-allowed disabled:opacity-35"
+              title={panels.length >= MAX_GEX_MAP_PANELS ? "Four GEX columns are already open" : "Add another GEX column"}
+              aria-label="Add another GEX column"
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </button>
             <div className={`flex h-7 items-center gap-1.5 rounded-[3px] border px-2 text-[8px] font-semibold ${replayMode ? "border-accent/25 bg-accent/10 text-accent" : live ? "border-primary/20 bg-primary/10 text-primary" : "border-border bg-surface text-muted"}`}>
               <span className={`h-1.5 w-1.5 rounded-full ${replayMode ? "bg-accent" : live ? "animate-pulse bg-primary" : "bg-muted"}`} />
               {replayMode ? "REPLAY" : live ? "LIVE" : "LAST SESSION"}
@@ -913,8 +969,11 @@ export default function GexMapWorkspace({ market = null }: GexMapWorkspaceProps 
         </header>
 
         <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-2 pb-1.5 pt-0">
-          <div className="gex-map-panel-grid grid h-full min-w-0 gap-2">
-            {panels.map((panel) => {
+          <div
+            className="gex-map-panel-grid grid h-full min-w-0 gap-2"
+            style={{ "--gex-map-panel-count": panels.length } as CSSProperties}
+          >
+            {panels.map((panel, panelIndex) => {
               const payload = panelData[panel.id];
               const validPayload = payload
                 && payload.symbol === panel.symbol
@@ -932,6 +991,7 @@ export default function GexMapWorkspace({ market = null }: GexMapWorkspaceProps 
                   selectedTimestamp={selectedTimestamp}
                   stepMinutes={stepMinutes}
                   onChange={(patch) => updatePanel(panel.id, patch)}
+                  onRemove={panelIndex >= DEFAULT_PANELS.length ? () => removePanel(panel.id) : undefined}
                 />
               );
             })}

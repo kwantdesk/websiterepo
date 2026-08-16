@@ -1627,7 +1627,7 @@ body.kwant-cockpit-ui canvas {
   /* Keep the exposure surfaces horizontal inside workspace panes. Narrowing a
      pane progressively clips the rightmost surface instead of wrapping it
      underneath the others and turning the workspace into a tall stack. */
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(var(--gex-map-panel-count, 3), minmax(0, 1fr));
   grid-auto-rows: minmax(250px, 1fr);
 }
 
