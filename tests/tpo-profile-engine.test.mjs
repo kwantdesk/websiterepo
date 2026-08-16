@@ -65,7 +65,7 @@ function row(rowTick, tpoCount, width = 1) {
 test("TPO and Weekly TPO are registered beside Daily Profile without replacing TPO Levels", async () => {
   const catalog = await readFile(path.join(root, "src/lib/chartIndicatorCatalog.ts"), "utf8");
   const workspace = await readFile(path.join(root, "src/components/KwantifyWorkspace.tsx"), "utf8");
-  assert.match(catalog, /indicator\("TPO Chart",\s*"Volume & Profiles"/);
+  assert.match(catalog, /indicator\("TPO Daily",\s*"Volume & Profiles"/);
   assert.match(catalog, /indicator\("Weekly TPO",\s*"Volume & Profiles"/);
   assert.match(workspace, /indicatorId:\s*"tpo-chart"/);
   assert.match(workspace, /indicatorId:\s*"weekly-tpo"/);

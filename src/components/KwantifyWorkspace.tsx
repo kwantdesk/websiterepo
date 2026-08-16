@@ -1041,7 +1041,7 @@ const WORKSPACE_TOOL_OPTIONS: Array<WorkspacePanelOption<WorkspaceToolKind>> = [
   { id: "tool-footprint", label: "FOOTPRINT", description: "Bid × ask volume at every traded price", icon: Grid3X3, indicatorId: "deep-print-footprint" },
   { id: "tool-volume-profile", label: "VOLUME PROFILE", description: "Volume, delta, POC and value area by price", icon: BarChart3, indicatorId: "kwant-profile" },
   { id: "tool-single-volume-profile", label: "SINGLE VOLUME PROFILE", description: "One standalone or merged execution profile with live price", icon: BarChart3 },
-  { id: "tool-tpo-chart", label: "TPO CHART", description: "Daily square-block market profile and auction analytics", icon: Grid3X3, indicatorId: "tpo-chart" },
+  { id: "tool-tpo-chart", label: "TPO DAILY", description: "Daily square-block market profile and auction analytics", icon: Grid3X3, indicatorId: "tpo-chart" },
   { id: "tool-single-tpo-chart", label: "SINGLE TPO CHART", description: "One standalone time profile with live price, POC and value area", icon: Grid3X3 },
   { id: "tool-weekly-tpo", label: "WEEKLY TPO", description: "Weekly square-block market profile and auction analytics", icon: BarChart3, indicatorId: "weekly-tpo" },
   { id: "tool-depth-of-market", label: "DOM PRO", description: "Professional full-depth MBO ladder and traded liquidity", icon: List, indicatorId: "depth-of-market" },

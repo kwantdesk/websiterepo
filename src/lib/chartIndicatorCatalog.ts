@@ -101,7 +101,7 @@ export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
   indicator("Volume", "Volume & Profiles", "Total volume with filtering and delta-aware colouring."),
   indicator("Volume Swing", "Volume & Profiles", "Volume measured across detected price swings.", true),
   indicator("Daily Profile", "Volume & Profiles", "Configurable daily volume, bid/ask and delta profile.", true, "Reference", "KWANT Profile"),
-  indicator("TPO Chart", "Volume & Profiles", "Daily time-price-opportunity profiles with square blocks, POC, value area, initial balance and auction analytics.", true, "Kwantify"),
+  indicator("TPO Daily", "Volume & Profiles", "Daily time-price-opportunity profiles with square blocks, POC, value area, initial balance and auction analytics.", true, "Kwantify"),
   indicator("Weekly TPO", "Volume & Profiles", "Weekly time-price-opportunity profiles using the shared auction-market profile engine.", true, "Kwantify"),
   indicator("Weekly Volume Profile", "Volume & Profiles", "Separate volume profile for each trading week.", true, "Kwantify"),
   indicator("Monthly Volume Profile", "Volume & Profiles", "Separate volume profile for each calendar month.", true, "Kwantify"),
