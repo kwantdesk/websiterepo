@@ -3864,6 +3864,7 @@ export async function getGexIntervalMapSurface(input: {
   startTime?: string;
   endTime?: string;
   greekMode?: GreekMode;
+  representationMode?: "RAW" | "PER_ONE_DOLLAR_MOVE" | "PER_ONE_PERCENT_MOVE";
 }): Promise<GexIntervalProviderSurface> {
   const session = getUsOptionsSession();
   const sourceTicker = input.sourceTicker.trim().toUpperCase();
@@ -3874,6 +3875,7 @@ export async function getGexIntervalMapSurface(input: {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(sessionDate)) throw new QuantDataError("A valid session date is required.", 400, null);
   const aggregationPeriod = input.aggregationPeriod?.trim() || "1m";
   const greekMode = input.greekMode ?? "GAMMA";
+  const representationMode = input.representationMode ?? "PER_ONE_PERCENT_MOVE";
   const scope = input.startTime && input.endTime
     ? { timeRange: { startTime: input.startTime, endTime: input.endTime } }
     : { sessionDate };
@@ -3883,13 +3885,13 @@ export async function getGexIntervalMapSurface(input: {
       ...scope,
       aggregationPeriod,
       greekMode,
-      representationMode: "PER_ONE_PERCENT_MOVE",
+      representationMode,
       filter: { ticker: sourceTicker },
     }, ttl),
     quantDataPost("/equities/tool/stock-price-over-time", {
       ...scope,
       aggregationPeriod,
-      filter: { ticker: sourceTicker },
+      filter: { ticker: sourceTicker === "SPXW" ? "SPX" : sourceTicker },
     }, ttl).then((result) => result.payload).catch(() => null),
   ]);
   const historical = sessionDate !== session.sessionDate || Boolean(input.startTime && input.endTime);

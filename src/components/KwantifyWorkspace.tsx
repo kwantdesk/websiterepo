@@ -295,6 +295,7 @@ function workspaceLoader(title: string, detail: string) {
 
 const loadChartWorkspace = () => import("@/components/Chart");
 const loadGammaWorkspace = () => import("@/components/options-flow/GammaWorkspace");
+const loadGexCalendarWorkspace = () => import("@/components/gex-cal/GexCalendarWorkspace");
 const loadGexMapWorkspace = () => import("@/components/gex-map/GexMapWorkspace");
 const loadLiquidityMapWorkspace = () => import("@/components/liquidity-map/LiquidityMapWorkspace");
 const loadDepthOfMarketWorkspace = () => import("@/components/DepthOfMarketPanel");
@@ -315,6 +316,7 @@ const loadKwantBotWorkspace = () => import("@/components/kwantbot/KwantBotIntell
 const workspaceModulePreloaders: Record<string, () => Promise<unknown>> = {
   charts: loadChartWorkspace,
   gamvue: loadChartWorkspace,
+  gexcal: loadGexCalendarWorkspace,
   gamma: loadGammaWorkspace,
   gexmap: loadGexMapWorkspace,
   liqmap: loadLiquidityMapWorkspace,
@@ -346,6 +348,10 @@ const Chart = dynamic(loadChartWorkspace, {
 const GammaWorkspace = dynamic(loadGammaWorkspace, {
   ssr: false,
   loading: () => workspaceLoader("Opening Gamma", "Restoring the latest options view."),
+});
+const GexCalendarWorkspace = dynamic(loadGexCalendarWorkspace, {
+  ssr: false,
+  loading: () => workspaceLoader("Opening GEX CAL", "Normalizing expiration and strike exposure."),
 });
 const GexMapWorkspace = dynamic(loadGexMapWorkspace, {
   ssr: false,
@@ -894,7 +900,7 @@ type LevelExportRow = {
   source: string;
   asOf: string;
 };
-export type PrimaryWorkspaceSection = "charts" | "gamvue" | "gamma" | "levelz" | "gexmap" | "liqmap" | "heatmap" | "gexbot" | "gexdesk" | "gameplan" | "kwantbot" | "news" | "zyon" | "journal" | "socials" | "backtesting";
+export type PrimaryWorkspaceSection = "charts" | "gamvue" | "gexcal" | "gamma" | "levelz" | "gexmap" | "liqmap" | "heatmap" | "gexbot" | "gexdesk" | "gameplan" | "kwantbot" | "news" | "zyon" | "journal" | "socials" | "backtesting";
 
 const WORKSPACE_PRESETS_STORAGE_KEY = "kwantdesk-chart-workspace-presets";
 const ACTIVE_WORKSPACE_PRESET_STORAGE_KEY = "kwantdesk-chart-workspace-active-preset";
@@ -916,6 +922,7 @@ const LIQUIDITY_MAP_INSTRUMENT_STORAGE_KEY = "kwantdesk:liquidity-map-instrument
 const BOTTOM_WORKSPACE_SECTIONS = [
   { id: "charts" as const, label: "Charts" },
   { id: "gamvue" as const, label: "GEX Vue" },
+  { id: "gexcal" as const, label: "GEX CAL" },
   { id: "gamma" as const, label: "Gamma" },
   { id: "levelz" as const, label: "LEVELZ" },
   { id: "gexmap" as const, label: "GEXMAP" },
@@ -14940,6 +14947,13 @@ export default function KwantifyWorkspace({
             className="relative isolate min-h-0 min-w-0 flex-1 overflow-hidden bg-panel"
             aria-label={`${BOTTOM_WORKSPACE_SECTIONS.find((section) => section.id === bottomWorkspaceSection)?.label ?? "Workspace"} workspace`}
           >
+            {visitedWorkspaceSections.has("gexcal") ? (
+              <ReactActivity mode={bottomWorkspaceSection === "gexcal" ? "visible" : "hidden"}>
+                <WorkspaceFailureBoundary resetKey="gexcal" label="GEX CAL">
+                  <GexCalendarWorkspace />
+                </WorkspaceFailureBoundary>
+              </ReactActivity>
+            ) : null}
             {visitedWorkspaceSections.has("gamma") ? (
               <ReactActivity mode={bottomWorkspaceSection === "gamma" ? "visible" : "hidden"}>
                 <WorkspaceFailureBoundary resetKey="gamma" label="Gamma">
