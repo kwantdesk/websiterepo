@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Copy, Eye, Lock, Settings2, Trash2, Unlock } from "lucide-react";
 import { claimChartInteraction, releaseChartInteraction, subscribeChartInteractionOwner } from "@/lib/chartInteractionArbiter";
 import { createDefaultConfigs } from "./defaults";
@@ -273,7 +273,11 @@ export default function PrecisionToolsLayer({
     store.setToolbar((toolbar) => ({ ...toolbar, mode: "place", activeTool: toolId, activeGroup: null, activeConfigSlot: toolbar.activeConfigSlots[toolId] ?? toolbar.activeConfigSlot }));
   }, [claim, store]);
 
-  useEffect(() => {
+  // External toolbar selections must own the interaction canvas before the
+  // browser paints the next frame. A passive effect leaves a short window in
+  // which the toolbar is visibly closed but the chart still owns the click,
+  // making a fast Buy/Sell Calculator placement appear to do nothing.
+  useLayoutEffect(() => {
     if (externalActiveTool) {
       selectTool(externalActiveTool);
       store.setToolbar((toolbar) => ({ ...toolbar, hidden: false }));
@@ -319,7 +323,33 @@ export default function PrecisionToolsLayer({
       }
     }
     const raw = adapter.xToAnchor(x, y);
-    return raw ? normalizeAnchor(raw, adapter, snapDisabledRef.current ? "off" : snapshot.toolbar.snapMode) : null;
+    if (raw) return normalizeAnchor(raw, adapter, snapDisabledRef.current ? "off" : snapshot.toolbar.snapMode);
+
+    // Lightweight Charts may return no time/logical coordinate in the live
+    // whitespace to the right of the newest bar. Drawing tools must not fail
+    // silently there: anchor the calculator to the closest rendered candle at
+    // the exact pointer price so it is immediately visible and editable.
+    const price = adapter.yToPrice(y);
+    if (price == null || !Number.isFinite(price) || !adapter.candles.length) return null;
+    let closestIndex = -1;
+    let closestDistance = Number.POSITIVE_INFINITY;
+    for (let index = 0; index < adapter.candles.length; index += 1) {
+      const candle = adapter.candles[index];
+      const candleX = adapter.timeToX(candle.timestamp, index);
+      if (candleX == null || !Number.isFinite(candleX)) continue;
+      const distance = Math.abs(candleX - x);
+      if (distance < closestDistance) {
+        closestDistance = distance;
+        closestIndex = index;
+      }
+    }
+    if (closestIndex < 0) return null;
+    const candle = adapter.candles[closestIndex];
+    return normalizeAnchor(
+      { time: candle.timestamp, logicalIndex: closestIndex, price },
+      adapter,
+      snapDisabledRef.current ? "off" : snapshot.toolbar.snapMode,
+    );
   };
 
   const onPointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
