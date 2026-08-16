@@ -3975,6 +3975,7 @@ export default function Chart({
           indicatorId: instance.indicatorId,
           settings: instance.settings,
           series,
+          showLegend: instance.indicatorId === "delta-bar" ? false : undefined,
         }];
       }
       if ([
@@ -3985,13 +3986,16 @@ export default function Chart({
       ].includes(instance.indicatorId)) {
         return [{
           key: instance.instanceId,
-          title: "Cumulative Volume Delta",
+          title: instance.indicatorId === "delta-bar" ? "Delta Bar" : "Cumulative Volume Delta",
           indicatorId: instance.indicatorId,
           settings: instance.settings,
           series: [],
+          showLegend: instance.indicatorId === "delta-bar" ? false : undefined,
           unavailableReason: orderFlowHistoryReady
             ? "Waiting for executed CME bid/ask volume."
-            : "Restoring cumulative volume delta history.",
+            : instance.indicatorId === "delta-bar"
+              ? "Restoring delta bar history."
+              : "Restoring cumulative volume delta history.",
         }];
       }
       return [];
