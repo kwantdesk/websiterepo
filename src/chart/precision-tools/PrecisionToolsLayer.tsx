@@ -48,6 +48,15 @@ function copyObject<T>(value: T): T {
   return typeof structuredClone === "function" ? structuredClone(value) : JSON.parse(JSON.stringify(value)) as T;
 }
 
+function mergeHydratedPrecisionObjects(remoteObjects: PrecisionObject[], localObjects: PrecisionObject[]): PrecisionObject[] {
+  const merged = new Map(remoteObjects.map((object) => [object.id, object]));
+  localObjects.forEach((localObject) => {
+    const remoteObject = merged.get(localObject.id);
+    if (!remoteObject || localObject.updatedAt >= remoteObject.updatedAt) merged.set(localObject.id, localObject);
+  });
+  return [...merged.values()].sort((left, right) => left.zIndex - right.zIndex || left.createdAt - right.createdAt);
+}
+
 function normalizeAnchor(anchor: PrecisionAnchor, adapter: PrecisionChartAdapter, mode: "off" | "weak" | "strong"): PrecisionAnchor {
   if (mode === "off") return anchor;
   const nearest = adapter.candles.reduce<typeof adapter.candles[number] | null>((best, candle) => !best || Math.abs(candle.timestamp - anchor.time) < Math.abs(best.timestamp - anchor.time) ? candle : best, null);
@@ -124,14 +133,34 @@ export default function PrecisionToolsLayer({
   useEffect(() => { savePrecisionToolbar(workspaceId, snapshot.toolbar); }, [revision, snapshot.toolbar, workspaceId]);
   useEffect(() => {
     const controller = new AbortController();
+    const hydrationBaseline = new Map(store.getSnapshot().objects.map((object) => [object.id, object.updatedAt]));
     setCloudHydrated(false);
     void fetch(`/api/precision-tools?workspaceId=${encodeURIComponent(workspaceId)}&chartId=${encodeURIComponent(chartId)}`, { cache: "no-store", credentials: "include", signal: controller.signal })
       .then(async (response) => response.ok ? await response.json() as { configured?: boolean; objects?: PrecisionObject[]; configs?: PrecisionToolConfig[]; toolbar?: PrecisionToolbarState } : null)
       .then((payload) => {
         if (!payload?.configured) return;
-        if (Array.isArray(payload.objects) && payload.objects.length) store.replaceDocument({ schemaVersion: 1, workspaceId, chartId, objects: payload.objects, savedAt: Date.now() });
+        if (Array.isArray(payload.objects) && payload.objects.length) {
+          // A chart tool can be placed while the account-backed document is
+          // still arriving. Merge by object identity instead of replacing the
+          // live document so a late response cannot erase that new drawing.
+          const objectsChangedDuringHydration = store.getSnapshot().objects.filter((object) => {
+            const baselineUpdatedAt = hydrationBaseline.get(object.id);
+            return baselineUpdatedAt == null || object.updatedAt > baselineUpdatedAt;
+          });
+          const objects = mergeHydratedPrecisionObjects(payload.objects, objectsChangedDuringHydration);
+          store.replaceDocument({ schemaVersion: 1, workspaceId, chartId, objects, savedAt: Date.now() });
+        }
         if (Array.isArray(payload.configs) && payload.configs.length) { setConfigs(payload.configs); savePrecisionConfigs(workspaceId, payload.configs); }
-        if (payload.toolbar) store.setToolbar((toolbar) => ({ ...toolbar, ...payload.toolbar, activeTool: null, mode: "select" }));
+        if (payload.toolbar) store.setToolbar((toolbar) => {
+          const activeTool = toolbar.activeTool;
+          return {
+            ...toolbar,
+            ...payload.toolbar,
+            hidden: activeTool ? false : payload.toolbar?.hidden ?? toolbar.hidden,
+            activeTool,
+            mode: activeTool ? "place" : "select",
+          };
+        });
       })
       .catch(() => undefined)
       .finally(() => { if (!controller.signal.aborted) setCloudHydrated(true); });
@@ -258,7 +287,7 @@ export default function PrecisionToolsLayer({
       return;
     }
     if (!showChrome) release();
-  }, [claim, cloudHydrated, externalActiveTool, externalSelectionMode, release, selectTool, showChrome, store]);
+  }, [claim, externalActiveTool, externalSelectionMode, release, selectTool, showChrome, store]);
 
   useEffect(() => {
     if (appliedClearRevisionRef.current === clearRevision) return;

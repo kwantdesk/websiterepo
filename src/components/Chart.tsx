@@ -13068,7 +13068,10 @@ export default function Chart({
             externalSelectionMode={selectedTool === "selection"}
             externalKeepDrawing={keepDrawingMode}
             clearRevision={precisionClearRevision}
-            onExternalToolComplete={() => setSelectedTool("cursor")}
+            onExternalToolComplete={() => {
+              selectedToolRef.current = "cursor";
+              setSelectedTool("cursor");
+            }}
             onExternalSelectionBox={selectProfessionalDrawingInScreenBox}
           />
         </PrecisionToolsBoundary>
@@ -13297,6 +13300,12 @@ export default function Chart({
                                 aria-disabled={!implemented}
                                 onClick={() => {
                                   if (!implemented) return;
+                                  // Precision tools claim the pointer layer in
+                                  // their child effect. Mirror the selection
+                                  // synchronously so that ownership handoff
+                                  // cannot observe the previous cursor tool
+                                  // and cancel the newly selected calculator.
+                                  selectedToolRef.current = tool.id;
                                   setSelectedTool(tool.id);
                                   setOpenToolbarGroup(null);
                                 }}

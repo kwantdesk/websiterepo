@@ -169,7 +169,9 @@ test("the old movable rail owns the selected Precision tools and hides the secon
   assert.match(chart, /showChrome=\{false\}/);
   assert.match(chart, /externalSelectionMode=\{selectedTool === "selection"\}/);
   assert.match(chart, /Select drawings with a drag box/);
+  assert.match(chart, /selectedToolRef\.current = tool\.id;\s+setSelectedTool\(tool\.id\);/);
   assert.match(layer, /onExternalSelectionBox/);
+  assert.match(layer, /mergeHydratedPrecisionObjects\(payload\.objects, objectsChangedDuringHydration\)/);
   assert.match(layer, /Math\.max\(\.\.\.xs\) >= left/);
   assert.match(layer, /showChrome \? <PrecisionRail/);
 });
