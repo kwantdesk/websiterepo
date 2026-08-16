@@ -6700,6 +6700,7 @@ export default function KwantifyWorkspace({
   const [isResizingAI, setIsResizingAI] = useState(false);
   const [bottomTab, setBottomTab] = useState<"strategies" | "metrics" | "trades">("metrics");
   const [selectedInstrument, setSelectedInstrument] = useState("ES.v.0");
+  const [gammaChartSymbols, setGammaChartSymbols] = useState<string[]>([]);
   const [selectedLiquidityMapInstrument, setSelectedLiquidityMapInstrument] = useState(() => {
     if (typeof window === "undefined") return "NQ.v.0";
     const saved = window.localStorage.getItem(LIQUIDITY_MAP_INSTRUMENT_STORAGE_KEY) || "NQ.v.0";
@@ -7376,6 +7377,7 @@ export default function KwantifyWorkspace({
   const watchlistSymbolsCsv = useMemo(() => {
     const unique = new Set<string>();
     if (selectedInstrument) unique.add(selectedInstrument);
+    gammaChartSymbols.forEach((symbol) => unique.add(symbol));
     workspacePanes
       .filter((pane) => pane.broker === activeChartBrokerLabel)
       .forEach((pane) => unique.add(pane.symbol));
@@ -7383,15 +7385,16 @@ export default function KwantifyWorkspace({
       .filter((item) => item.broker === activeChartBrokerLabel)
       .forEach((item) => unique.add(item.symbol));
     return Array.from(unique).join(",");
-  }, [activeChartBrokerLabel, selectedInstrument, watchlist, workspacePanes]);
+  }, [activeChartBrokerLabel, gammaChartSymbols, selectedInstrument, watchlist, workspacePanes]);
   const priorityLiveSymbolsCsv = useMemo(() => {
     const unique = new Set<string>();
     if (selectedInstrument) unique.add(selectedInstrument);
+    gammaChartSymbols.forEach((symbol) => unique.add(symbol));
     workspacePanes
       .filter((pane) => pane.broker === activeChartBrokerLabel)
       .forEach((pane) => unique.add(pane.symbol));
     return Array.from(unique).join(",");
-  }, [activeChartBrokerLabel, selectedInstrument, workspacePanes]);
+  }, [activeChartBrokerLabel, gammaChartSymbols, selectedInstrument, workspacePanes]);
   const instrumentCategories = [
     {
       category: "CME Futures",
@@ -9031,9 +9034,23 @@ export default function KwantifyWorkspace({
   }, [watchlistPanelContextMenu]);
 
   useEffect(() => {
+    const receiveGammaChartSymbols = (event: Event) => {
+      const detail = (event as CustomEvent<unknown>).detail;
+      if (!Array.isArray(detail)) return;
+      const next = [...new Set(detail
+        .filter((symbol): symbol is string => typeof symbol === "string")
+        .map((symbol) => symbol.trim().toUpperCase())
+        .filter(Boolean))];
+      setGammaChartSymbols((current) => current.length === next.length && current.every((symbol, index) => symbol === next[index]) ? current : next);
+    };
+    window.addEventListener("kwantdesk:gamma-chart-symbols-change", receiveGammaChartSymbols);
+    return () => window.removeEventListener("kwantdesk:gamma-chart-symbols-change", receiveGammaChartSymbols);
+  }, []);
+
+  useEffect(() => {
     if (
       !usingDatabentoFeed
-      || (bottomWorkspaceSection !== "charts" && bottomWorkspaceSection !== "gameplan" && bottomWorkspaceSection !== "heatmap")
+      || (bottomWorkspaceSection !== "charts" && bottomWorkspaceSection !== "gameplan" && bottomWorkspaceSection !== "heatmap" && bottomWorkspaceSection !== "gamma")
     ) return;
     let cancelled = false;
     let animationFrame: number | null = null;
@@ -9104,7 +9121,7 @@ export default function KwantifyWorkspace({
   }, [bottomWorkspaceSection, usingDatabentoFeed, watchlistSymbolsCsv]);
 
   useEffect(() => {
-    if (bottomWorkspaceSection !== "charts" && bottomWorkspaceSection !== "gameplan" && bottomWorkspaceSection !== "heatmap") return;
+    if (bottomWorkspaceSection !== "charts" && bottomWorkspaceSection !== "gameplan" && bottomWorkspaceSection !== "heatmap" && bottomWorkspaceSection !== "gamma") return;
     if (activeChartBrokerLabel === "Market Index" || activeChartBrokerLabel === "Massive") return;
     const priorityLiveSymbols = new Set(priorityLiveSymbolsCsv.split(",").filter(Boolean));
     const nameMap: Record<string, string> = {
@@ -9236,7 +9253,7 @@ export default function KwantifyWorkspace({
           // Gameplan's moving Session Ladder consumes the same authoritative
           // futures stream as Charts. Publishing it here prevents delayed REST
           // snapshots from briefly displacing the live "You are here" marker.
-          if (activeWorkspaceSectionRef.current !== "charts" && activeWorkspaceSectionRef.current !== "gameplan" && activeWorkspaceSectionRef.current !== "heatmap") return;
+          if (activeWorkspaceSectionRef.current !== "charts" && activeWorkspaceSectionRef.current !== "gameplan" && activeWorkspaceSectionRef.current !== "heatmap" && activeWorkspaceSectionRef.current !== "gamma") return;
           if (priorityLiveSymbols.has(displayName)) {
             window.dispatchEvent(new CustomEvent(DATABENTO_LIVE_TICK_EVENT, { detail: price }));
           }
