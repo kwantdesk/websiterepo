@@ -1340,10 +1340,22 @@ header.kwant-command-rail .kwant-primary-nav-control {
 }
 
 @media (max-width: 1279px), (orientation: portrait) {
+  /* Keep the 36px command row geometrically identical to desktop and reserve
+     a separate strip underneath it for the horizontal navigation scrollbar.
+     Without this extra strip the browser subtracts scrollbar height from the
+     nav's content box, lifting its buttons above the fixed Trade controls. */
+  header.kwant-command-rail {
+    height: calc(var(--kwant-shell-bar-height) + 7px);
+    min-height: calc(var(--kwant-shell-bar-height) + 7px);
+    max-height: calc(var(--kwant-shell-bar-height) + 7px);
+    align-items: flex-start;
+  }
+
   .kwant-primary-brand {
     width: 98px;
     height: 28px;
     margin-right: 5px;
+    margin-top: calc((var(--kwant-shell-bar-height) - 28px) / 2);
   }
 
   .kwant-primary-brand-wordmark {
@@ -1356,15 +1368,22 @@ header.kwant-command-rail .kwant-primary-nav-control {
     left: auto;
     flex: 1 1 auto;
     width: auto;
+    height: calc(var(--kwant-shell-bar-height) + 7px);
     min-width: 0;
     margin-right: 8px;
     transform: none;
+    align-items: flex-start;
     scrollbar-width: thin;
     scrollbar-color: color-mix(in srgb, var(--primary) 48%, transparent) transparent;
   }
 
   .kwant-primary-workspace-nav-track {
+    height: var(--kwant-shell-bar-height);
     margin-inline: 0;
+  }
+
+  .kwant-primary-workspace-utilities {
+    margin-top: calc((var(--kwant-shell-bar-height) - 28px) / 2);
   }
 
   .kwant-primary-workspace-nav::-webkit-scrollbar {
