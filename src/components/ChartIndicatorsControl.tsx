@@ -52,6 +52,7 @@ import { STACKED_IMBALANCE_PRESETS } from "@/lib/stackedImbalanceSuite";
 import { ICEBERG_REFRESH_PRESETS } from "@/lib/icebergRefreshDetector";
 import { LIQUIDITY_STOP_SWEEP_PRESETS } from "@/lib/liquidityStopSweepDetector";
 import { POC_AUCTION_PRESETS } from "@/lib/pocAuctionSuite";
+import { TAPE_SPEED_PRESETS } from "@/lib/tapeSpeedOrderFlowBurst";
 
 const FAVOURITES_STORAGE_KEY = "kwantdesk-chart-indicator-favourites";
 const FOOTPRINT_PROFILE_MANAGED_SETTINGS = new Set([
@@ -226,6 +227,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "iceberg-refresh-detector",
   "liquidity-stop-sweep-detector",
   "poc-auction-suite",
+  "tape-speed-order-flow-burst",
   "delta-cumulative-candlestick",
   "delta-cumulative-histogram",
   "imbalance-tracker",
@@ -2513,6 +2515,30 @@ export default function ChartIndicatorsControl({
                     <label className="space-y-1.5 text-[8px] uppercase tracking-[0.1em] text-muted"><span>Resolution</span><KwantSelect value={String(settingsInstance.settings?.auctionResolutionMode ?? "first-touch")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), auctionResolutionMode: event.target.value, preset: "custom" } }))} className="h-9 w-full"><option value="first-touch">First touch</option><option value="trade-through">Trade through</option><option value="minimum-volume-at-level">Minimum volume at level</option><option value="new-finished-extreme">New finished extreme</option><option value="combined">Combined</option></KwantSelect></label>
                   </div>
                   <p className="text-[8px] leading-4 text-muted">Uses the shared Footprint execution stream. Auction extremes use exact one-tick rows when available and never fabricate bid/ask behaviour from OHLC bars.</p>
+                </div>
+              ) : null}
+
+              {settingsDefinition.id === "tape-speed-order-flow-burst" ? (
+                <div className="space-y-3 border border-primary/20 bg-primary/[0.035] p-3">
+                  <div>
+                    <div className="mb-2 text-[9px] font-semibold uppercase tracking-[0.13em] text-muted">Tape-speed preset</div>
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                      {Object.entries(TAPE_SPEED_PRESETS).map(([preset, presetSettings]) => (
+                        <button key={preset} type="button" onClick={() => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), ...presetSettings, preset } }))} className={`min-h-8 border px-2 text-[7px] font-semibold uppercase tracking-[0.08em] ${settingsInstance.settings?.preset === preset ? "border-primary bg-primary/10 text-primary" : "border-border bg-background text-muted hover:text-foreground"}`}>
+                          {preset.replaceAll("-", " ")}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    <label className="space-y-1.5 text-[8px] uppercase tracking-[0.1em] text-muted"><span>Window</span><KwantSelect value={String(settingsInstance.settings?.windowMode ?? "rolling")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), windowMode: event.target.value, preset: "custom" } }))} className="h-9 w-full"><option value="rolling">Rolling</option><option value="fixed">Fixed buckets</option><option value="chart-bar">Chart bars</option><option value="event-burst">Event bursts</option></KwantSelect></label>
+                    <label className="space-y-1.5 text-[8px] uppercase tracking-[0.1em] text-muted"><span>Pane metric</span><KwantSelect value={String(settingsInstance.settings?.paneMode ?? "contracts-per-second")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), paneMode: event.target.value, preset: "custom" } }))} className="h-9 w-full"><option value="contracts-per-second">Contracts / second</option><option value="trades-per-second">Trades / second</option><option value="delta-per-second">Delta / second</option></KwantSelect></label>
+                    <label className="space-y-1.5 text-[8px] uppercase tracking-[0.1em] text-muted"><span>Dynamic baseline</span><KwantSelect value={settingsInstance.settings?.dynamicBaselineEnabled === false ? "off" : "on"} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), dynamicBaselineEnabled: event.target.value === "on", preset: "custom" } }))} className="h-9 w-full"><option value="on">On</option><option value="off">Off</option></KwantSelect></label>
+                    <label className="space-y-1.5 text-[8px] uppercase tracking-[0.1em] text-muted"><span>Delta line</span><KwantSelect value={settingsInstance.settings?.showDeltaSpeed === true ? "on" : "off"} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), showDeltaSpeed: event.target.value === "on", preset: "custom" } }))} className="h-9 w-full"><option value="off">Off</option><option value="on">On</option></KwantSelect></label>
+                    <label className="space-y-1.5 text-[8px] uppercase tracking-[0.1em] text-muted"><span>Main-chart bands</span><KwantSelect value={settingsInstance.settings?.showPriceTimeBands === false ? "off" : "on"} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), showPriceTimeBands: event.target.value === "on", preset: "custom" } }))} className="h-9 w-full"><option value="on">On</option><option value="off">Off</option></KwantSelect></label>
+                    <label className="space-y-1.5 text-[8px] uppercase tracking-[0.1em] text-muted"><span>Major markers</span><KwantSelect value={settingsInstance.settings?.showMarkers === false ? "off" : "on"} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), showMarkers: event.target.value === "on", preset: "custom" } }))} className="h-9 w-full"><option value="on">On</option><option value="off">Off</option></KwantSelect></label>
+                  </div>
+                  <p className="text-[8px] leading-4 text-muted">Uses the shared direct Rithmic execution tape. Unknown-side contracts remain in total speed but are excluded from directional speed and delta; OHLCV is never substituted for missing executions.</p>
                 </div>
               ) : null}
 

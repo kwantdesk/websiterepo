@@ -10,6 +10,7 @@ import { DEFAULT_STACKED_IMBALANCE_SETTINGS, STACKED_IMBALANCE_SETTINGS_VERSION,
 import { DEFAULT_ICEBERG_REFRESH_SETTINGS, ICEBERG_REFRESH_SETTINGS_VERSION, normalizeIcebergRefreshSettings } from "@/lib/icebergRefreshDetector";
 import { DEFAULT_LIQUIDITY_STOP_SWEEP_SETTINGS, LIQUIDITY_STOP_SWEEP_SETTINGS_VERSION, normalizeLiquidityStopSweepSettings } from "@/lib/liquidityStopSweepDetector";
 import { DEFAULT_POC_AUCTION_SUITE_SETTINGS, POC_AUCTION_SUITE_SETTINGS_VERSION, normalizePocAuctionSuiteSettings } from "@/lib/pocAuctionSuite";
+import { DEFAULT_TAPE_SPEED_SETTINGS, normalizeTapeSpeedSettings } from "@/lib/tapeSpeedOrderFlowBurst";
 
 export const LIVE_CHART_INDICATOR_IDS = new Set([
   "gamma-heatmap",
@@ -31,6 +32,7 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "iceberg-refresh-detector",
   "liquidity-stop-sweep-detector",
   "poc-auction-suite",
+  "tape-speed-order-flow-burst",
   "moving-average",
   "vwap",
   "vwap-envelopes",
@@ -96,6 +98,33 @@ export type IndicatorNumericSetting = {
 };
 
 export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[]> = {
+  "tape-speed-order-flow-burst": [
+    { key: "rollingWindowMs", label: "Rolling window (ms)", defaultValue: 1000, min: 50, max: 60000, step: 50 },
+    { key: "updateStepMs", label: "Update step (ms)", defaultValue: 100, min: 16, max: 10000, step: 10 },
+    { key: "fixedBucketMs", label: "Fixed bucket (ms)", defaultValue: 1000, min: 50, max: 60000, step: 50 },
+    { key: "maximumInterTradeGapMs", label: "Maximum inter-trade gap (ms)", defaultValue: 75, min: 1, max: 10000, step: 1 },
+    { key: "maximumEventDurationMs", label: "Maximum event duration (ms)", defaultValue: 2000, min: 50, max: 60000, step: 50 },
+    { key: "baselineWindowMs", label: "Dynamic baseline window (ms)", defaultValue: 120000, min: 1000, max: 3600000, step: 1000 },
+    { key: "minimumBaselineSamples", label: "Minimum baseline samples", defaultValue: 30, min: 1, max: 10000, step: 1 },
+    { key: "selectedPercentile", label: "Baseline percentile", defaultValue: 0.9, min: 0.5, max: 0.999, step: 0.01 },
+    { key: "relativeSpeedMultiplier", label: "Relative speed multiplier", defaultValue: 2, min: 0.1, max: 50, step: 0.1 },
+    { key: "relativeDeltaMultiplier", label: "Relative delta multiplier", defaultValue: 2, min: 0.1, max: 50, step: 0.1 },
+    { key: "minimumContractsPerSecond", label: "Minimum contracts / second", defaultValue: 100, min: 0, max: 10000000, step: 10 },
+    { key: "minimumTradesPerSecond", label: "Minimum trades / second", defaultValue: 5, min: 0, max: 1000000, step: 1 },
+    { key: "minimumAbsoluteDeltaPerSecond", label: "Minimum absolute delta / second", defaultValue: 50, min: 0, max: 10000000, step: 10 },
+    { key: "minimumQuantity", label: "Minimum window quantity", defaultValue: 100, min: 1, max: 10000000, step: 1 },
+    { key: "minimumTradeCount", label: "Minimum window trades", defaultValue: 3, min: 1, max: 1000000, step: 1 },
+    { key: "minimumDirectionalShare", label: "Minimum directional share", defaultValue: 0.7, min: 0.5, max: 1, step: 0.01 },
+    { key: "minimumDirectionalDelta", label: "Minimum directional delta", defaultValue: 25, min: 0, max: 10000000, step: 1 },
+    { key: "minimumQualityScore", label: "Minimum data quality", defaultValue: 60, min: 0, max: 100, step: 1 },
+    { key: "minimumMarkerScore", label: "Minimum marker score", defaultValue: 70, min: 0, max: 100, step: 1 },
+    { key: "largeTradeThreshold", label: "Large trade threshold", defaultValue: 100, min: 1, max: 10000000, step: 1 },
+    { key: "continuationWindowMs", label: "Response window (ms)", defaultValue: 3000, min: 100, max: 300000, step: 100 },
+    { key: "historySeconds", label: "Visible history (seconds)", defaultValue: 3600, min: 30, max: 86400, step: 30 },
+    { key: "paneHeight", label: "Lower pane height", defaultValue: 190, min: 120, max: 520, step: 5 },
+    { key: "markerSize", label: "Marker size", defaultValue: 7, min: 4, max: 18, step: 1 },
+    { key: "opacity", label: "Overlay opacity (%)", defaultValue: 78, min: 0, max: 100, step: 1 },
+  ],
   "poc-auction-suite": [
     { key: "customGroupSizeTicks", label: "Custom grouping (ticks)", defaultValue: 1, min: 1, max: 1000, step: 1 },
     { key: "automaticTargetRows", label: "Automatic target rows", defaultValue: 80, min: 20, max: 500, step: 1 },
@@ -784,6 +813,13 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     neutralColor: theme?.gridColor ?? DEFAULT_POC_AUCTION_SUITE_SETTINGS.neutralColor,
     schemaVersion: POC_AUCTION_SUITE_SETTINGS_VERSION,
   } : {}),
+  ...(indicatorId === "tape-speed-order-flow-burst" ? {
+    ...DEFAULT_TAPE_SPEED_SETTINGS,
+    buyColor: theme?.upColor ?? DEFAULT_TAPE_SPEED_SETTINGS.buyColor,
+    sellColor: theme?.downColor ?? DEFAULT_TAPE_SPEED_SETTINGS.sellColor,
+    totalColor: theme?.borderUpColor ?? DEFAULT_TAPE_SPEED_SETTINGS.totalColor,
+    neutralColor: theme?.gridColor ?? DEFAULT_TAPE_SPEED_SETTINGS.neutralColor,
+  } : {}),
   ...(indicatorId === "gamma-heatmap" ? {
     preset: "intraday",
     metric: "GAMMA",
@@ -1428,6 +1464,17 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
       settings: {
         ...normalizePocAuctionSuiteSettings({
           ...defaultIndicatorSettings("poc-auction-suite"),
+          ...(normalizedInstance.settings ?? {}),
+        }),
+      },
+    };
+  }
+  if (normalizedInstance.indicatorId === "tape-speed-order-flow-burst") {
+    return {
+      ...normalizedInstance,
+      settings: {
+        ...normalizeTapeSpeedSettings({
+          ...defaultIndicatorSettings("tape-speed-order-flow-burst"),
           ...(normalizedInstance.settings ?? {}),
         }),
       },

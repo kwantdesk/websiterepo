@@ -767,6 +767,7 @@ type WorkspaceToolKind =
   | "tool-iceberg-refresh-detector"
   | "tool-liquidity-stop-sweep-detector"
   | "tool-poc-auction-suite"
+  | "tool-tape-speed-order-flow-burst"
   | "tool-queue-position-tracking"
   | "tool-size-modification-tracking"
   | "tool-order-size-distribution"
@@ -1022,6 +1023,7 @@ const WORKSPACE_TOOL_OPTIONS: Array<WorkspacePanelOption<WorkspaceToolKind>> = [
   { id: "tool-iceberg-refresh-detector", label: "ICEBERG / REFRESH DETECTOR", description: "Repeated passive-liquidity replenishment, suspected iceberg zones, pulls and breaks", icon: Repeat, indicatorId: "iceberg-refresh-detector" },
   { id: "tool-liquidity-stop-sweep-detector", label: "LIQUIDITY SWEEP / STOP SWEEP DETECTOR", description: "Direct multi-level aggressive sweeps, reference-level stop-sweep inference, continuation and rejection", icon: Waves, indicatorId: "liquidity-stop-sweep-detector" },
   { id: "tool-poc-auction-suite", label: "POC & AUCTION", description: "Bar, session and rolling POC, naked levels, migration, finished and unfinished auctions, and excess", icon: CircleDot, indicatorId: "poc-auction-suite" },
+  { id: "tool-tape-speed-order-flow-burst", label: "TAPE SPEED & ORDER-FLOW BURST", description: "Live tape velocity, directional bursts, churn and post-burst response", icon: Zap, indicatorId: "tape-speed-order-flow-burst" },
   { id: "tool-queue-position-tracking", label: "QUEUE POSITION TRACKING", description: "Order priority and queue movement by price", icon: List },
   { id: "tool-size-modification-tracking", label: "SIZE MODIFICATION TRACKING", description: "Resting size added, reduced and replaced", icon: Repeat },
   { id: "tool-order-size-distribution", label: "ORDER SIZE DISTRIBUTION", description: "Distribution of displayed and executed order size", icon: BarChart3 },

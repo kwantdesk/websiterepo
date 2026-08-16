@@ -223,6 +223,17 @@ import {
   PocAuctionPrimitive,
   type PocAuctionHit,
 } from "@/lib/pocAuctionPrimitive";
+import {
+  buildTapeSpeedFrame,
+  normalizeTapeSpeedSettings,
+  tapeSpeedPaneSeries,
+  type TapeSharedContextEvent,
+  type TapeSpeedFrame,
+} from "@/lib/tapeSpeedOrderFlowBurst";
+import {
+  TapeSpeedOrderFlowBurstPrimitive,
+  type TapeSpeedHit,
+} from "@/lib/tapeSpeedOrderFlowBurstPrimitive";
 import { subscribeRithmicLiquidity, type RithmicLiquidityStatus } from "@/lib/rithmicLiquidityStream";
 import {
   defaultGammaHeatmapSource,
@@ -2611,6 +2622,7 @@ export default function Chart({
   const liquidityStopSweepAlertIdsRef = useRef(new Set<string>());
   const liquidityStopSweepReferencesRef = useRef<SweepReferenceLevel[]>([]);
   const pocAuctionPrimitiveRef = useRef<PocAuctionPrimitive | null>(null);
+  const tapeSpeedPrimitiveRef = useRef<TapeSpeedOrderFlowBurstPrimitive | null>(null);
   const pocAuctionEngineRef = useRef(new PocAuctionSuiteEngine());
   const pocAuctionAlertIdsRef = useRef(new Set<string>());
   const netGammaExposurePrimitiveRef = useRef<NetGammaExposurePrimitive | null>(null);
@@ -2751,6 +2763,7 @@ export default function Chart({
   const [liquidityStopSweepTooltip, setLiquidityStopSweepTooltip] = useState<LiquidityStopSweepHit | null>(null);
   const [pocAuctionFrame, setPocAuctionFrame] = useState<PocAuctionFrame | null>(null);
   const [pocAuctionTooltip, setPocAuctionTooltip] = useState<PocAuctionHit | null>(null);
+  const [tapeSpeedTooltip, setTapeSpeedTooltip] = useState<TapeSpeedHit | null>(null);
   const [netGammaProfile, setNetGammaProfile] = useState<NetGammaProfileSnapshot | null>(null);
   const [netGammaLoading, setNetGammaLoading] = useState(false);
   const [netGammaError, setNetGammaError] = useState<string | null>(null);
@@ -3852,6 +3865,87 @@ export default function Chart({
     }
     return sampledIndicatorMarketTrades.slice(low);
   }, [indicatorWindowCandles, sampledIndicatorMarketTrades]);
+  const tapeSpeedIndicator = useMemo(
+    () => indicators.find((instance) => instance.enabled && instance.indicatorId === "tape-speed-order-flow-burst") ?? null,
+    [indicatorSignature, indicators],
+  );
+  const tapeSpeedSettings = useMemo(() => {
+    const normalized = normalizeTapeSpeedSettings(tapeSpeedIndicator?.settings);
+    if (normalized.useThemeColors) {
+      normalized.buyColor = settings.upColor;
+      normalized.sellColor = settings.downColor;
+      normalized.totalColor = settings.borderUpColor;
+      normalized.neutralColor = settings.gridColor;
+    }
+    return normalized;
+  }, [settings.borderUpColor, settings.downColor, settings.gridColor, settings.upColor, tapeSpeedIndicator]);
+  const tapeSpeedContextEvents = useMemo<TapeSharedContextEvent[]>(() => [
+    ...(liquidityStopSweepFrame?.events ?? []).map((event): TapeSharedContextEvent => ({
+      startMs: event.startMs,
+      endMs: event.endMs,
+      lowPrice: event.lowTick * liquidityStopSweepFrame!.tickSize,
+      highPrice: event.highTick * liquidityStopSweepFrame!.tickSize,
+      tag: event.subtype === "vacuum-assisted" ? "vacuum-assisted" : "sweep-linked",
+    })),
+    ...(absorptionFrame?.events ?? []).map((event): TapeSharedContextEvent => ({
+      startMs: event.startTimestamp,
+      endMs: event.endTimestamp,
+      lowPrice: event.lowTick * absorptionFrame!.tickSize,
+      highPrice: event.highTick * absorptionFrame!.tickSize,
+      tag: "absorbed",
+    })),
+    ...(icebergRefreshFrame?.zones ?? []).map((zone): TapeSharedContextEvent => ({
+      startMs: zone.startMs,
+      endMs: zone.endMs ?? icebergRefreshFrame!.generatedAt,
+      lowPrice: zone.lowTick * icebergRefreshFrame!.tickSize,
+      highPrice: zone.highTick * icebergRefreshFrame!.tickSize,
+      tag: "refresh-opposed",
+    })),
+    ...(pullingStackingFrame?.events ?? []).filter((event) => event.liquidityVacuum).map((event): TapeSharedContextEvent => ({
+      startMs: event.timestamp - tapeSpeedSettings.maximumInterTradeGapMs,
+      endMs: event.timestamp + tapeSpeedSettings.maximumInterTradeGapMs,
+      lowPrice: event.price,
+      highPrice: event.price,
+      tag: "vacuum-assisted",
+    })),
+  ], [absorptionFrame, icebergRefreshFrame, liquidityStopSweepFrame, pullingStackingFrame, tapeSpeedSettings.maximumInterTradeGapMs]);
+  const tapeSpeedFrame = useMemo<TapeSpeedFrame | null>(() => {
+    if (!tapeSpeedIndicator) return null;
+    return buildTapeSpeedFrame({
+      trades: indicatorMarketTrades,
+      settings: tapeSpeedSettings,
+      instrumentId: contractSymbol ?? instrument,
+      tickSize: priceFormat.minMove,
+      chartBars: indicatorWindowCandles,
+      contextEvents: tapeSpeedContextEvents,
+    });
+  }, [contractSymbol, indicatorMarketTrades, indicatorWindowCandles, instrument, priceFormat.minMove, tapeSpeedContextEvents, tapeSpeedIndicator, tapeSpeedSettings]);
+  useEffect(() => {
+    tapeSpeedPrimitiveRef.current?.update(tapeSpeedFrame ? { frame: tapeSpeedFrame, settings: tapeSpeedSettings, backgroundColor: settings.backgroundColor } : null);
+  }, [chartReadyRevision, settings.backgroundColor, tapeSpeedFrame, tapeSpeedSettings, viewportVersion]);
+  useEffect(() => {
+    const container = chartContainerRef.current;
+    if (!container || !tapeSpeedIndicator || !tapeSpeedSettings.showTooltips) return;
+    let frameId: number | null = null;
+    let pending: PointerEvent | null = null;
+    const flush = () => {
+      frameId = null;
+      const event = pending;
+      pending = null;
+      if (!event) return;
+      const rect = container.getBoundingClientRect();
+      setTapeSpeedTooltip(tapeSpeedPrimitiveRef.current?.queryHit(event.clientX - rect.left, event.clientY - rect.top) ?? null);
+    };
+    const move = (event: PointerEvent) => { pending = event; if (frameId === null) frameId = window.requestAnimationFrame(flush); };
+    const leave = () => setTapeSpeedTooltip(null);
+    container.addEventListener("pointermove", move, { passive: true });
+    container.addEventListener("pointerleave", leave);
+    return () => {
+      container.removeEventListener("pointermove", move);
+      container.removeEventListener("pointerleave", leave);
+      if (frameId !== null) window.cancelAnimationFrame(frameId);
+    };
+  }, [tapeSpeedIndicator, tapeSpeedSettings.showTooltips]);
   // Time bars arrive with exact aggressor-volume fields and are updated from
   // every live execution by the workspace feed. The separate execution tape
   // is intentionally sampled for print-based studies such as Big Trades; it
@@ -4505,6 +4599,47 @@ export default function Chart({
   const calculatedIndicatorPanes = useMemo(() => {
     return indicators.flatMap((instance): IndicatorPaneGroup[] => {
       if (!instance.enabled) return [];
+      if (instance.indicatorId === "tape-speed-order-flow-burst") {
+        if (!tapeSpeedFrame || tapeSpeedSettings.showPane === false) return [];
+        const metricLabel = tapeSpeedSettings.paneMode === "trades-per-second" ? "trades/s" : tapeSpeedSettings.paneMode === "delta-per-second" ? "delta/s" : "contracts/s";
+        const latest = tapeSpeedFrame.latest;
+        return [{
+          key: instance.instanceId,
+          title: `TAPE SPEED · ${metricLabel.toUpperCase()} · ${tapeSpeedFrame.status}`,
+          indicatorId: instance.indicatorId,
+          settings: instance.settings,
+          series: tapeSpeedPaneSeries(tapeSpeedFrame, instance.instanceId, tapeSpeedSettings),
+          statusLabel: tapeSpeedFrame.statusMessage,
+          currentBadgeValue: latest?.contractsPerSecond,
+          currentBadge: latest ? `${Math.round(latest.contractsPerSecond).toLocaleString()} CPS · Δ ${Math.round(latest.deltaPerSecond).toLocaleString()}/s` : tapeSpeedFrame.status,
+          showHeader: true,
+          showLegend: true,
+          defaultHeight: tapeSpeedSettings.paneHeight,
+          minimumHeight: 120,
+          maximumHeight: 520,
+          unavailableReason: tapeSpeedFrame.buckets.length ? undefined : tapeSpeedFrame.statusMessage,
+          tooltipPoints: tapeSpeedFrame.buckets.map((bucket) => ({
+            time: Math.floor(bucket.endMs / 1_000),
+            rows: [
+              { label: "Window", value: `${new Date(bucket.startMs).toLocaleTimeString()}–${new Date(bucket.endMs).toLocaleTimeString()}` },
+              { label: "Contracts / sec", value: Math.round(bucket.contractsPerSecond).toLocaleString() },
+              { label: "Trades / sec", value: bucket.tradesPerSecond.toFixed(1) },
+              { label: "Buy / sell CPS", value: `${Math.round(bucket.buyContractsPerSecond).toLocaleString()} / ${Math.round(bucket.sellContractsPerSecond).toLocaleString()}` },
+              { label: "Delta / sec", value: Math.round(bucket.deltaPerSecond).toLocaleString() },
+              { label: "Quantity / trades", value: `${Math.round(bucket.totalQuantity).toLocaleString()} / ${bucket.totalTrades}` },
+              { label: "Average / median", value: `${bucket.averageTradeSize.toFixed(1)} / ${bucket.medianTradeSize.toFixed(1)}` },
+              { label: "Largest", value: Math.round(bucket.largestTrade).toLocaleString() },
+              { label: "Buy / sell share", value: `${(bucket.buyShare * 100).toFixed(1)}% / ${(bucket.sellShare * 100).toFixed(1)}%` },
+              { label: "Range / progress", value: `${bucket.rangeTicks.toFixed(1)}t / ${bucket.progressTicks.toFixed(1)}t` },
+              { label: "Contracts / progress tick", value: bucket.contractsPerProgressTick.toFixed(1) },
+              { label: "Price impact / 100", value: `${bucket.priceImpactPerHundredContracts.toFixed(2)}t` },
+              { label: "Acceleration", value: `${bucket.acceleration >= 0 ? "+" : ""}${Math.round(bucket.acceleration).toLocaleString()} CPS` },
+              { label: "Baseline / percentile", value: `${Math.round(bucket.baselineContractsPerSecond).toLocaleString()} / ${(bucket.speedPercentile * 100).toFixed(0)}%` },
+              { label: "Quality", value: `${bucket.qualityScore}%` },
+            ],
+          })),
+        }];
+      }
       if (instance.indicatorId === "implied-volatility-rank") {
         if (instance.settings?.placement === "main-chart-overlay") return [];
         const resource = ivRankByInstance[instance.instanceId];
@@ -4701,6 +4836,8 @@ export default function Chart({
     settings.downColor,
     settings.gridColor,
     settings.upColor,
+    tapeSpeedFrame,
+    tapeSpeedSettings,
   ]);
   const defaultIndicatorPaneHeight = Math.max(88, Math.min(140, overlaySize.height * 0.18));
   const resolvedIndicatorPaneHeights = useMemo(
@@ -8703,6 +8840,9 @@ export default function Chart({
     const pocAuctionPrimitive = new PocAuctionPrimitive();
     candleSeries.attachPrimitive(pocAuctionPrimitive);
     pocAuctionPrimitiveRef.current = pocAuctionPrimitive;
+    const tapeSpeedPrimitive = new TapeSpeedOrderFlowBurstPrimitive();
+    candleSeries.attachPrimitive(tapeSpeedPrimitive);
+    tapeSpeedPrimitiveRef.current = tapeSpeedPrimitive;
     const netGammaExposurePrimitive = new NetGammaExposurePrimitive();
     candleSeries.attachPrimitive(netGammaExposurePrimitive);
     netGammaExposurePrimitiveRef.current = netGammaExposurePrimitive;
@@ -9534,6 +9674,9 @@ export default function Chart({
       if (candleSeriesRef.current && pocAuctionPrimitiveRef.current) {
         try { candleSeriesRef.current.detachPrimitive(pocAuctionPrimitiveRef.current); } catch { /* chart may already be disposed */ }
       }
+      if (candleSeriesRef.current && tapeSpeedPrimitiveRef.current) {
+        try { candleSeriesRef.current.detachPrimitive(tapeSpeedPrimitiveRef.current); } catch { /* chart may already be disposed */ }
+      }
       candleSeriesRef.current = null;
       gameplanUnderlayRef.current = null;
       fixedPriceLevelLabelsRef.current = null;
@@ -9548,6 +9691,7 @@ export default function Chart({
       icebergRefreshPrimitiveRef.current = null;
       liquidityStopSweepPrimitiveRef.current = null;
       pocAuctionPrimitiveRef.current = null;
+      tapeSpeedPrimitiveRef.current = null;
       netGammaExposurePrimitiveRef.current = null;
       gexIntervalMapPrimitiveRef.current = null;
       netGammaReservedRightOffsetRef.current = null;
@@ -10903,6 +11047,28 @@ export default function Chart({
             <span>Score / data quality</span><span className="text-foreground">{liquidityStopSweepTooltip.event.score} / {liquidityStopSweepTooltip.event.dataQualityScore}</span>
           </div>
           <div className="mt-2 border-t border-border pt-1 text-warning">Stop-sweep is reference-crossing inference. Trader identity and legal intent are not established.</div>
+        </div>
+      ) : null}
+      {tapeSpeedTooltip ? (
+        <div
+          className="pointer-events-none absolute z-[74] min-w-[280px] border border-border bg-panel/96 p-2 font-mono text-[8px] shadow-2xl backdrop-blur"
+          style={{ left: Math.min(Math.max(8, tapeSpeedTooltip.x + 14), Math.max(8, overlaySize.width - 300)), top: Math.min(Math.max(34, tapeSpeedTooltip.y + 14), Math.max(34, overlaySize.height - 300)) }}
+        >
+          <div className="flex items-center justify-between gap-4 border-b border-border pb-1 text-foreground"><span>Tape Speed &amp; Order-Flow Burst</span><span>{tapeSpeedTooltip.event.direction.toUpperCase()}</span></div>
+          <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-1 text-muted">
+            <span>Class</span><span className="text-foreground">{tapeSpeedTooltip.event.classifications.join(" · ").replaceAll("-", " ")}</span>
+            <span>Response</span><span className="text-foreground">{tapeSpeedTooltip.event.response}</span>
+            <span>Contracts / trades</span><span className="text-foreground">{Math.round(tapeSpeedTooltip.event.totalQuantity).toLocaleString()} / {tapeSpeedTooltip.event.tradeCount}</span>
+            <span>Contracts / second</span><span className="text-foreground">{Math.round(tapeSpeedTooltip.event.contractsPerSecond).toLocaleString()}</span>
+            <span>Trades / second</span><span className="text-foreground">{tapeSpeedTooltip.event.tradesPerSecond.toFixed(1)}</span>
+            <span>Delta / second</span><span className="text-foreground">{Math.round(tapeSpeedTooltip.event.deltaPerSecond).toLocaleString()}</span>
+            <span>Acceleration</span><span className="text-foreground">{Math.round(tapeSpeedTooltip.event.acceleration).toLocaleString()} CPS</span>
+            <span>Largest / share</span><span className="text-foreground">{Math.round(tapeSpeedTooltip.event.largestTrade).toLocaleString()} / {(tapeSpeedTooltip.event.directionalShare * 100).toFixed(1)}%</span>
+            <span>Range</span><span className="text-foreground">{tapeSpeedTooltip.event.lowPrice.toFixed(priceFormat.precision)}–{tapeSpeedTooltip.event.highPrice.toFixed(priceFormat.precision)}</span>
+            <span>Score / quality</span><span className="text-foreground">{tapeSpeedTooltip.event.score} / {tapeSpeedTooltip.event.qualityScore}</span>
+          </div>
+          {tapeSpeedTooltip.event.contextTags.length ? <div className="mt-2 border-t border-border pt-1 text-primary">Context: {tapeSpeedTooltip.event.contextTags.join(" · ").replaceAll("-", " ")}</div> : null}
+          {tapeSpeedTooltip.event.warnings.map((warning) => <div key={warning} className="mt-1 text-warning">{warning}</div>)}
         </div>
       ) : null}
       {gammaHeatmapIndicator ? (

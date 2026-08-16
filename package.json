@@ -16,6 +16,7 @@
     "test:iceberg-refresh-detector": "node --experimental-strip-types scripts/test-iceberg-refresh-detector.mjs",
     "test:liquidity-stop-sweep-detector": "node --experimental-strip-types scripts/test-liquidity-stop-sweep-detector.mjs",
     "test:poc-auction-suite": "node --experimental-strip-types scripts/test-poc-auction-suite.mjs",
+    "test:tape-speed-order-flow-burst": "node --experimental-strip-types scripts/test-tape-speed-order-flow-burst.mjs",
     "test:economic-calendar-forward": "node --experimental-strip-types scripts/test-economic-calendar-forward.mjs",
     "desktop:build": "powershell -ExecutionPolicy Bypass -File desktop/package-windows.ps1"
   },
