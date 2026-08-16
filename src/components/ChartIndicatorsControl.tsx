@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
 import {
   BarChart3,
@@ -610,11 +610,11 @@ export default function ChartIndicatorsControl({
     : null;
   const activeLayerCount = indicators.length + levelControls.filter((control) => control.enabled).length;
 
-  const replace = (instanceId: string, update: (current: ChartIndicatorInstance) => ChartIndicatorInstance) => {
+  const replace = useCallback((instanceId: string, update: (current: ChartIndicatorInstance) => ChartIndicatorInstance) => {
     onChange(indicators.map((instance) => instance.instanceId === instanceId ? update(instance) : instance));
-  };
+  }, [indicators, onChange]);
 
-  const closeSettingsDialog = () => {
+  const closeSettingsDialog = useCallback(() => {
     if (settingsInstance?.indicatorId === "deep-print-footprint") {
       const validated = validateFootprintSettings(settingsInstance.settings);
       replace(settingsInstance.instanceId, (current) => ({
@@ -625,7 +625,30 @@ export default function ChartIndicatorsControl({
       window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
     }
     setSettingsInstanceId(null);
-  };
+  }, [replace, settingsInstance]);
+
+  useEffect(() => {
+    if (!settingsInstanceId) return;
+
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (target && settingsDialogRef.current?.contains(target)) return;
+      closeSettingsDialog();
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeSettingsDialog();
+    };
+
+    // Keep the transparent overlay non-blocking so traders can still inspect
+    // and manipulate the chart. A capture listener closes the floating window
+    // on the same outside interaction without swallowing that chart input.
+    document.addEventListener("pointerdown", closeOnOutsidePointer, true);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsidePointer, true);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [closeSettingsDialog, settingsInstanceId]);
 
   const add = (indicatorId: string) => {
     if (!RENDERED_CHART_INDICATOR_IDS.has(indicatorId)) return;

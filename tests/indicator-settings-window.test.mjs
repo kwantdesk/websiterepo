@@ -27,9 +27,9 @@ test("indicator settings dialog can be dragged from its header", () => {
 });
 
 test("clicking outside closes the live settings dialog", () => {
-  const overlayStart = source.indexOf("data-indicator-settings-overlay");
-  const dialogStart = source.indexOf("data-indicator-settings-dialog", overlayStart);
-  const overlayMarkup = source.slice(overlayStart, dialogStart);
-  assert.match(overlayMarkup, /onClick=\{closeSettingsDialog\}/);
+  assert.match(source, /settingsDialogRef\.current\?\.contains\(target\)/);
+  assert.match(source, /document\.addEventListener\("pointerdown", closeOnOutsidePointer, true\)/);
+  assert.match(source, /document\.removeEventListener\("pointerdown", closeOnOutsidePointer, true\)/);
+  assert.match(source, /if \(event\.key === "Escape"\) closeSettingsDialog\(\)/);
   assert.match(source, /saveFootprintSettings\(settingsInstance\.instanceId, validated\)/);
 });
