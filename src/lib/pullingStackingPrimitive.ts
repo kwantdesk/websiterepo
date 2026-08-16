@@ -9,6 +9,7 @@ import type {
 import type {
   PullingStackingEvent,
   PullingStackingFrame,
+  PullingStackingMetrics,
   PullingStackingRow,
   PullingStackingSettings,
 } from "@/lib/pullingStacking";
@@ -33,7 +34,11 @@ const clamp = (value: number, minimum = 0, maximum = 1) => Math.max(minimum, Mat
 
 function rgba(color: string, alpha: number) {
   const match = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(color);
-  if (!match) return `color-mix(in srgb, ${color} ${Math.round(clamp(alpha) * 100)}%, transparent)`;
+  if (!match) {
+    const rgb = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i.exec(color);
+    if (rgb) return `rgba(${rgb[1]},${rgb[2]},${rgb[3]},${clamp(alpha)})`;
+    return `rgba(161,161,170,${clamp(alpha)})`;
+  }
   const hex = match[1].length === 3 ? match[1].split("").map((part) => part + part).join("") : match[1];
   const value = Number.parseInt(hex, 16);
   return `rgba(${value >> 16},${(value >> 8) & 255},${value & 255},${clamp(alpha)})`;
@@ -43,7 +48,10 @@ function colorForEvent(event: PullingStackingEvent, settings: PullingStackingSet
   if (event.kind === "BID_STACK") return settings.bidStackColor;
   if (event.kind === "ASK_STACK") return settings.askStackColor;
   if (event.kind === "BID_PULL") return settings.bidPullColor;
-  return settings.askPullColor;
+  if (event.kind === "ASK_PULL") return settings.askPullColor;
+  const isRemoval = event.wallCollapse || event.liquidityVacuum;
+  if (event.side === "BID") return isRemoval ? settings.bidPullColor : settings.bidStackColor;
+  return isRemoval ? settings.askPullColor : settings.askStackColor;
 }
 
 function colorForRow(row: PullingStackingRow, settings: PullingStackingSettings) {
@@ -66,7 +74,7 @@ class Renderer implements ISeriesPrimitivePaneRenderer {
       const center = frame.lastPrice ?? frame.bestBid ?? frame.bestAsk;
       const minimumPrice = center === null ? -Infinity : center - settings.visibleTicks * frame.tickSize;
       const maximumPrice = center === null ? Infinity : center + settings.visibleTicks * frame.tickSize;
-      const rowHeight = Math.max(2, Math.min(18, Math.abs(
+      const rowHeight = Math.max(settings.minimumCellHeightPx, Math.min(settings.maximumCellHeightPx, Math.abs(
         Number(series.priceToCoordinate((center ?? 0) + frame.tickSize) ?? 0)
         - Number(series.priceToCoordinate(center ?? 0) ?? 0),
       ) || 4));
@@ -91,7 +99,8 @@ class Renderer implements ISeriesPrimitivePaneRenderer {
             const y = series.priceToCoordinate(row.price);
             if (y === null || y < -rowHeight || y > mediaSize.height + rowHeight) continue;
             const strength = Math.sqrt(row.churn / maxChurn);
-            context.fillStyle = rgba(colorForRow(row, settings), opacity * (0.08 + strength * 0.58));
+            const cellOpacity = settings.minimumOpacity + strength * (settings.maximumOpacity - settings.minimumOpacity);
+            context.fillStyle = rgba(colorForRow(row, settings), cellOpacity * opacity);
             context.fillRect(Number(x) - cellWidth / 2, Number(y) - rowHeight / 2, cellWidth, rowHeight);
           }
         }
@@ -120,48 +129,86 @@ class Renderer implements ISeriesPrimitivePaneRenderer {
 
       if (settings.showEventMarkers || settings.renderMode === "event-markers") {
         for (const event of frame.events) {
+          if (event.score < settings.markerMinimumScore) continue;
           if (event.price < minimumPrice || event.price > maximumPrice) continue;
           if ((!settings.showWallBuild && event.wallBuild) || (!settings.showWallCollapse && event.wallCollapse) || (!settings.showLiquidityVacuum && event.liquidityVacuum)) continue;
           const x = chart.timeScale().timeToCoordinate(Math.floor(event.timestamp / 1_000) as Time);
           const y = series.priceToCoordinate(event.price);
           if (x === null || y === null) continue;
-          const radius = 2 + Math.min(8, Math.sqrt(event.quantity) * 0.45);
+          const radius = clamp(settings.markerSize + Math.log10(Math.max(1, event.quantity)), 4, 16);
           const color = colorForEvent(event, settings);
           context.strokeStyle = rgba(color, opacity * 0.95);
           context.fillStyle = rgba(color, opacity * 0.18);
           context.lineWidth = event.liquidityVacuum ? 2 : 1;
           context.beginPath(); context.arc(Number(x), Number(y), radius, 0, Math.PI * 2); context.fill(); context.stroke();
+          if (settings.showLabels && (event.wallBuild || event.wallCollapse || event.liquidityVacuum || event.pullRepost)) {
+            const label = event.wallBuild ? "WALL" : event.wallCollapse ? "COLLAPSE" : event.liquidityVacuum ? "VACUUM" : "REPOST";
+            context.font = "8px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace";
+            context.fillStyle = rgba(color, opacity * 0.92);
+            context.fillText(label, Number(x) + radius + 3, Number(y) + 3);
+          }
         }
       }
 
       if (settings.showCurrentProfile || settings.renderMode === "current-profile") {
         const profileRows = frame.rows.filter((row) => row.price >= minimumPrice && row.price <= maximumPrice && (row.churn > 0 || row.bidSize > 0 || row.askSize > 0));
-        const maximum = Math.max(1, ...profileRows.map((row) => Math.max(row.churn, row.bidSize, row.askSize)));
-        const right = mediaSize.width - 3;
+        const maximum = Math.max(1, ...profileRows.map((row) => Math.max(row.bidStack, row.askStack, row.bidPull, row.askPull, settings.showLiveDepth ? row.bidSize : 0, settings.showLiveDepth ? row.askSize : 0)));
+        const laneWidth = clamp(mediaSize.width * settings.profileWidthPercent / 100, settings.minimumProfileWidthPx, settings.maximumProfileWidthPx);
+        const right = mediaSize.width - 4;
+        const centerX = right - laneWidth / 2;
         for (const row of profileRows) {
           const y = series.priceToCoordinate(row.price);
           if (y === null) continue;
-          const value = Math.max(row.churn, row.bidSize, row.askSize);
-          const width = settings.currentProfileWidth * Math.sqrt(value / maximum);
-          context.fillStyle = rgba(colorForRow(row, settings), opacity * 0.48);
-          context.fillRect(right - width, Number(y) - rowHeight / 2, width, rowHeight);
+          if (settings.showLiveDepth) {
+            const bidDepthWidth = laneWidth / 2 * Math.sqrt(row.bidSize / maximum);
+            const askDepthWidth = laneWidth / 2 * Math.sqrt(row.askSize / maximum);
+            context.fillStyle = rgba(settings.bidStackColor, opacity * .12); context.fillRect(centerX - bidDepthWidth, Number(y) - rowHeight / 2, bidDepthWidth, rowHeight);
+            context.fillStyle = rgba(settings.askStackColor, opacity * .12); context.fillRect(centerX, Number(y) - rowHeight / 2, askDepthWidth, rowHeight);
+          }
+          const bidWidth = laneWidth / 2 * Math.sqrt(Math.max(row.bidStack, row.bidPull) / maximum);
+          const askWidth = laneWidth / 2 * Math.sqrt(Math.max(row.askStack, row.askPull) / maximum);
+          context.fillStyle = rgba(row.bidPull > row.bidStack ? settings.bidPullColor : settings.bidStackColor, opacity * .72);
+          context.fillRect(centerX - bidWidth, Number(y) - rowHeight * .36, bidWidth, rowHeight * .72);
+          context.fillStyle = rgba(row.askPull > row.askStack ? settings.askPullColor : settings.askStackColor, opacity * .72);
+          context.fillRect(centerX, Number(y) - rowHeight * .36, askWidth, rowHeight * .72);
         }
       }
 
       if (settings.showLowerPane || settings.renderMode === "lower-pane") {
-        const paneHeight = Math.min(86, Math.max(46, mediaSize.height * 0.14));
+        const paneHeight = Math.min(settings.lowerPaneHeight, Math.max(80, mediaSize.height * 0.14));
         const top = mediaSize.height - paneHeight;
         context.fillStyle = rgba(data.backgroundColor, 0.88); context.fillRect(0, top, mediaSize.width, paneHeight);
         context.strokeStyle = rgba(settings.neutralColor, 0.25); context.beginPath(); context.moveTo(0, top); context.lineTo(mediaSize.width, top); context.stroke();
-        const maxPressure = Math.max(1, ...frame.buckets.map((bucket) => Math.abs(bucket.totals.pressure)));
-        context.beginPath();
-        frame.buckets.forEach((bucket, index) => {
-          const x = chart.timeScale().timeToCoordinate(Math.floor(bucket.timestamp / 1_000) as Time);
-          if (x === null) return;
-          const y = top + paneHeight / 2 - (bucket.totals.pressure / maxPressure) * (paneHeight * 0.42);
-          if (index === 0) context.moveTo(Number(x), y); else context.lineTo(Number(x), y);
-        });
-        context.strokeStyle = rgba(frame.totals.pressure >= 0 ? settings.bidStackColor : settings.askStackColor, 0.88); context.lineWidth = 1.5; context.stroke();
+        const valueFor = (row: PullingStackingMetrics) => {
+          if (settings.lowerPaneMode === "net-book-change") return row.netBidDisplayedChange + row.netAskDisplayedChange;
+          if (settings.lowerPaneMode === "churn") return row.churn;
+          if (settings.lowerPaneMode === "velocity") return row.velocity;
+          if (settings.lowerPaneMode === "stack-pull-ratio") return row.stackPullRatio - 1;
+          return row.pressure;
+        };
+        const seriesDefinitions = settings.lowerPaneMode === "four-series"
+          ? [
+              { value: (row: PullingStackingMetrics) => row.bidStack, color: settings.bidStackColor },
+              { value: (row: PullingStackingMetrics) => -row.bidPull, color: settings.bidPullColor },
+              { value: (row: PullingStackingMetrics) => -row.askStack, color: settings.askStackColor },
+              { value: (row: PullingStackingMetrics) => row.askPull, color: settings.askPullColor },
+            ]
+          : [{ value: valueFor, color: frame.totals.pressure >= 0 ? settings.bidStackColor : settings.askStackColor }];
+        const maximum = Math.max(1, ...seriesDefinitions.flatMap((definition) => frame.buckets.map((bucket) => Math.abs(definition.value(bucket.totals)))));
+        for (const definition of seriesDefinitions) {
+          let started = false;
+          context.beginPath();
+          for (const bucket of frame.buckets) {
+            const x = chart.timeScale().timeToCoordinate(Math.floor(bucket.timestamp / 1_000) as Time);
+            if (x === null) continue;
+            const y = top + paneHeight / 2 - (definition.value(bucket.totals) / maximum) * (paneHeight * 0.42);
+            if (!started) { context.moveTo(Number(x), y); started = true; } else context.lineTo(Number(x), y);
+          }
+          if (!started) continue;
+          context.strokeStyle = rgba(definition.color, 0.88);
+          context.lineWidth = seriesDefinitions.length > 1 ? 1 : 1.5;
+          context.stroke();
+        }
       }
       context.restore();
     });

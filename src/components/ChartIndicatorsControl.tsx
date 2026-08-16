@@ -367,8 +367,13 @@ export default function ChartIndicatorsControl({
   const [gexIntervalUserPresets, setGexIntervalUserPresets] = useState<GexIntervalUserPreset[]>([]);
   const [selectedGexIntervalPresetId, setSelectedGexIntervalPresetId] = useState("");
   const [gexIntervalPresetName, setGexIntervalPresetName] = useState("");
+  const [clientHydrated, setClientHydrated] = useState(false);
   const restoredFootprintIdsRef = useRef(new Set<string>());
   const handledSettingsOpenRequestRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    setClientHydrated(true);
+  }, []);
 
   useEffect(() => {
     if (!settingsOpenRequest) return;
@@ -675,7 +680,7 @@ export default function ChartIndicatorsControl({
         >
           <BarChart3 className="h-3.5 w-3.5" />
           <span className="hidden sm:inline">Indicators</span>
-          {activeLayerCount > 0 ? (
+          {clientHydrated && activeLayerCount > 0 ? (
             <span className="rounded-full bg-primary/15 px-1.5 py-0.5 font-mono text-[9px] text-primary">
               {activeLayerCount}
             </span>
@@ -2307,8 +2312,8 @@ export default function ChartIndicatorsControl({
                 <div className="space-y-3 rounded-xl border border-primary/20 bg-primary/[0.04] p-3">
                   <div>
                     <div className="mb-2 text-[9px] font-semibold uppercase tracking-[0.13em] text-muted">Preset</div>
-                    <div className="grid grid-cols-3 gap-2">
-                      {(["balanced", "scalper", "structural"] as const).map((preset) => (
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                      {(Object.keys(PULLING_STACKING_PRESETS) as Array<keyof typeof PULLING_STACKING_PRESETS>).map((preset) => (
                         <button
                           key={preset}
                           type="button"
@@ -2318,7 +2323,7 @@ export default function ChartIndicatorsControl({
                           }))}
                           className={`h-8 border text-[8px] font-semibold uppercase tracking-[0.1em] ${settingsInstance.settings?.preset === preset ? "border-primary bg-primary/10 text-primary" : "border-border bg-background text-muted hover:text-foreground"}`}
                         >
-                          {preset}
+                          {preset.replaceAll("-", " ")}
                         </button>
                       ))}
                     </div>
@@ -2341,6 +2346,14 @@ export default function ChartIndicatorsControl({
                       ><option value="separate-move">Separate move</option><option value="pull-and-stack">Pull + stack</option><option value="ignore-correlated-move">Ignore correlated</option></KwantSelect>
                     </label>
                     <label className="space-y-1.5 text-[8px] uppercase tracking-[0.1em] text-muted">
+                      <span>Aggregation</span>
+                      <KwantSelect
+                        value={String(settingsInstance.settings?.aggregationMode ?? "fixed-window")}
+                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), aggregationMode: event.target.value, preset: "custom" } }))}
+                        className="h-9 w-full"
+                      ><option value="fixed-window">Fixed window</option><option value="rolling-window">Rolling window</option><option value="chart-bar">Chart bar</option></KwantSelect>
+                    </label>
+                    <label className="space-y-1.5 text-[8px] uppercase tracking-[0.1em] text-muted">
                       <span>Render mode</span>
                       <KwantSelect
                         value={String(settingsInstance.settings?.renderMode ?? "hybrid")}
@@ -2349,8 +2362,46 @@ export default function ChartIndicatorsControl({
                       ><option value="hybrid">Hybrid</option><option value="heat-cells">Heat cells</option><option value="ribbons">Ribbons</option><option value="event-markers">Events</option><option value="current-profile">Current profile</option><option value="lower-pane">Lower pane</option></KwantSelect>
                     </label>
                   </div>
+                  <div>
+                    <div className="mb-2 text-[9px] font-semibold uppercase tracking-[0.13em] text-muted">Layers and detection</div>
+                    <div className="grid gap-2 sm:grid-cols-3">
+                      {([
+                        ["bidEnabled", "Bid side"], ["askEnabled", "Ask side"],
+                        ["showHeatCells", "Heat cells"], ["showRibbons", "Ribbons"], ["showEventMarkers", "Event markers"],
+                        ["showCurrentProfile", "Current profile"], ["showLiveDepth", "Live depth"], ["showLowerPane", "Lower pane"],
+                        ["showWallBuild", "Wall build"], ["showWallCollapse", "Wall collapse"], ["showLiquidityVacuum", "Liquidity vacuum"],
+                        ["pullRepostEnabled", "Pull / repost"], ["showLabels", "Labels"], ["showHeader", "Compact header"],
+                        ["showTooltips", "Tooltips"], ["enableAlerts", "Alerts"], ["useThemeColors", "Website colours"],
+                      ] as const).map(([key, label]) => (
+                        <button
+                          key={key}
+                          type="button"
+                          aria-pressed={settingsInstance.settings?.[key] === true}
+                          onClick={() => replace(settingsInstance.instanceId, (current) => ({
+                            ...current,
+                            settings: { ...(current.settings ?? {}), [key]: current.settings?.[key] !== true, preset: "custom" },
+                          }))}
+                          className={`flex h-8 items-center justify-between border px-2 text-left text-[8px] font-semibold uppercase tracking-[0.08em] ${settingsInstance.settings?.[key] === true ? "border-primary/45 bg-primary/10 text-primary" : "border-border bg-background text-muted hover:text-foreground"}`}
+                        >
+                          <span>{label}</span><span>{settingsInstance.settings?.[key] === true ? "ON" : "OFF"}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <label className="block space-y-1.5 text-[8px] uppercase tracking-[0.1em] text-muted">
+                    <span>Lower pane metric</span>
+                    <KwantSelect
+                      value={String(settingsInstance.settings?.lowerPaneMode ?? "directional-pressure")}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), lowerPaneMode: event.target.value, preset: "custom" } }))}
+                      className="h-9 w-full"
+                    >
+                      <option value="four-series">Bid/ask stack and pull</option><option value="directional-pressure">Directional pressure</option>
+                      <option value="net-book-change">Net displayed change</option><option value="churn">Churn</option>
+                      <option value="velocity">Velocity</option><option value="stack-pull-ratio">Stack / pull ratio</option>
+                    </KwantSelect>
+                  </label>
                   <p className="text-[8px] leading-4 text-muted">
-                    Executions are reconciled before removals become pulls. The feed cannot identify participant intent, implied orders, or hidden liquidity.
+                    Executions are reconciled before removals become pulls. Snapshot and sequence-gap updates are suppressed until the shared book is valid. The feed cannot identify participant intent, implied orders, or hidden liquidity.
                   </p>
                 </div>
               ) : null}

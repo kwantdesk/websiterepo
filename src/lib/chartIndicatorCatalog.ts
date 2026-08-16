@@ -63,7 +63,7 @@ export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
   indicator("Dark Pool Map", "Options Flow", "Real off-exchange equity prints aggregated into timestamped circles, mapped futures levels and institutional-style zones.", false, "Kwantify"),
   indicator("Implied Volatility Rank", "Options Flow", "QuantData IV Rank and true IV Percentile across configurable lookback, maturity and call/put modes.", false, "Kwantify"),
   indicator("Cumulative Volume Delta", "Order Flow", "Running aggressive buy volume minus aggressive sell volume.", true),
-  indicator("Pulling & Stacking", "Order Flow", "Live resting-liquidity additions and non-executed removals, reconciled against aggressive fills and rendered by price and time.", true, "Kwantify"),
+  indicator("Pulling & Stacking", "Order Flow", "Displayed Bid and Ask liquidity being added, pulled, moved and reposted through time using Level 3 order-book events.", true, "Kwantify"),
   indicator("Delta Bar", "Order Flow", "Per-bar bid/ask aggression and delta.", true),
   indicator("Delta % Highlight", "Order Flow", "Highlights bars whose delta percentage exceeds configured thresholds.", true),
   indicator("Delta Cumulative Candlestick", "Order Flow", "Candlestick representation of cumulative delta.", true),

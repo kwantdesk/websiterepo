@@ -2604,7 +2604,10 @@ export default function Chart({
   const pullingStackingPrimitiveRef = useRef<PullingStackingPrimitive | null>(null);
   const pullingStackingEngineRef = useRef(new PullingStackingEngine());
   const pullingStackingFrameRef = useRef<PullingStackingFrame | null>(null);
-  const pullingStackingAlertIdsRef = useRef(new Set<string>());
+  const pullingStackingAlertIdsRef = useRef(new Map<string, number>());
+  const pullingStackingLastAlertAtRef = useRef(0);
+  const pullingStackingSettingsRef = useRef(normalizePullingStackingSettings(undefined));
+  const pullingStackingBackgroundRef = useRef("#000000");
   const absorptionPrimitiveRef = useRef<AbsorptionDetectorPrimitive | null>(null);
   const absorptionEngineRef = useRef(new AbsorptionDetectorEngine());
   const absorptionFrameRef = useRef<AbsorptionFrame | null>(null);
@@ -3204,9 +3207,12 @@ export default function Chart({
       neutralColor: settings.gridColor,
     };
   }, [pullingStackingIndicator, settings.borderUpColor, settings.downColor, settings.gridColor, settings.upColor]);
+  pullingStackingSettingsRef.current = pullingStackingSettings;
+  pullingStackingBackgroundRef.current = settings.backgroundColor;
+  const pullingStackingInstanceId = pullingStackingIndicator?.instanceId ?? null;
 
   useEffect(() => {
-    if (!pullingStackingIndicator) {
+    if (!pullingStackingInstanceId) {
       pullingStackingEngineRef.current.reset();
       pullingStackingFrameRef.current = null;
       pullingStackingPrimitiveRef.current?.update(null);
@@ -3221,6 +3227,7 @@ export default function Chart({
     const root = microParents[chartRoot] ?? chartRoot;
     pullingStackingEngineRef.current.reset();
     pullingStackingAlertIdsRef.current.clear();
+    pullingStackingLastAlertAtRef.current = 0;
     pullingStackingFrameRef.current = null;
     setPullingStackingFrame(null);
     setPullingStackingStatus("checking");
@@ -3237,18 +3244,25 @@ export default function Chart({
       replayHistory: true,
       onStatus: setPullingStackingStatus,
       onSnapshot: (snapshot) => {
-        const frame = pullingStackingEngineRef.current.apply(snapshot, pullingStackingSettings);
+        const liveSettings = pullingStackingSettingsRef.current;
+        const frame = pullingStackingEngineRef.current.apply(snapshot, liveSettings);
         pullingStackingFrameRef.current = frame;
-        const primitiveData: PullingStackingPrimitiveData = { frame, settings: pullingStackingSettings, backgroundColor: settings.backgroundColor };
+        const primitiveData: PullingStackingPrimitiveData = { frame, settings: liveSettings, backgroundColor: pullingStackingBackgroundRef.current };
         pullingStackingPrimitiveRef.current?.update(primitiveData);
-        if (pullingStackingSettings.enableAlerts) {
+        if (liveSettings.enableAlerts && !frame.stale && !frame.warmup) {
           for (const event of frame.events.slice(-8)) {
-            if (event.score < pullingStackingSettings.scoreThreshold || pullingStackingAlertIdsRef.current.has(event.id)) continue;
-            pullingStackingAlertIdsRef.current.add(event.id);
+            if (event.score < liveSettings.scoreThreshold || pullingStackingAlertIdsRef.current.has(event.id) || frame.timestamp - pullingStackingLastAlertAtRef.current < liveSettings.alertCooldownMs) continue;
+            pullingStackingAlertIdsRef.current.set(event.id, frame.timestamp);
+            pullingStackingLastAlertAtRef.current = frame.timestamp;
             window.dispatchEvent(new CustomEvent("kwantdesk:chart-indicator-alert", { detail: {
-              indicatorId: "pulling-stacking", instanceId: pullingStackingIndicator.instanceId,
+              indicatorId: "pulling-stacking", instanceId: pullingStackingInstanceId,
               instrument, title: "Pulling & Stacking", event,
             } }));
+          }
+          if (pullingStackingAlertIdsRef.current.size > 2_000) {
+            for (const [id, alertedAt] of pullingStackingAlertIdsRef.current) {
+              if (frame.timestamp - alertedAt > Math.max(liveSettings.alertCooldownMs * 2, liveSettings.markerRetentionMs)) pullingStackingAlertIdsRef.current.delete(id);
+            }
           }
         }
         const elapsed = performance.now() - lastPublishedAt;
@@ -3263,7 +3277,7 @@ export default function Chart({
       unsubscribe();
       if (summaryTimer !== null) window.clearTimeout(summaryTimer);
     };
-  }, [contractSymbol, instrument, pullingStackingIndicator, pullingStackingSettings, settings.backgroundColor]);
+  }, [contractSymbol, instrument, pullingStackingInstanceId]);
 
   useEffect(() => {
     const frame = pullingStackingFrameRef.current;
@@ -10826,25 +10840,25 @@ export default function Chart({
       ) : null}
       {pullingStackingIndicator && pullingStackingSettings.showHeader ? (
         <div
-          className="pointer-events-none absolute left-2 top-2 z-[26] flex max-w-[min(720px,calc(100%-80px))] items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur"
-          title={pullingStackingFrame?.limitations.join(" ") ?? "Waiting for the shared Rithmic order book"}
+          className="pointer-events-none absolute left-2 top-2 z-[26] flex h-6 max-w-[min(720px,calc(100%-80px))] items-center gap-2 border border-border bg-panel/92 px-2 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur"
         >
           <span className={`h-1.5 w-1.5 rounded-full ${pullingStackingStatus === "unavailable" ? "bg-danger" : pullingStackingStatus === "checking" ? "animate-pulse bg-warning" : "bg-primary"}`} />
           <span className="text-foreground">Pulling &amp; Stacking</span>
           {pullingStackingFrame ? (
             <>
               <span>{pullingStackingFrame.contractSymbol}</span>
-              <span>{pullingStackingFrame.individualOrders && pullingStackingSettings.classificationMode === "individual-order" ? "MBO" : "PRICE LEVEL"}</span>
+              <span>{Math.max(25, pullingStackingSettings.aggregationMs)}MS</span>
+              <span>{pullingStackingFrame.individualOrders && pullingStackingSettings.classificationMode === "individual-order" ? "LEVEL 3" : "MBP APPROXIMATION"}</span>
               <span className={pullingStackingFrame.stale || pullingStackingFrame.sequenceGap ? "text-warning" : "text-primary"}>
-                {pullingStackingFrame.stale ? "STALE" : pullingStackingFrame.sequenceGap ? "RESYNCING" : pullingStackingFrame.warmup ? "WARMING" : "LIVE"}
+                {pullingStackingFrame.statusMessage}
               </span>
-              <span className={pullingStackingFrame.totals.pressure >= 0 ? "text-primary" : "text-danger"}>P {Math.round(pullingStackingFrame.totals.pressure).toLocaleString()}</span>
+              <span className={pullingStackingFrame.totals.pressure >= 0 ? "text-primary" : "text-danger"}>LIQUIDITY PRESSURE {Math.round(pullingStackingFrame.totals.pressure).toLocaleString()}</span>
               <span>V {Math.round(pullingStackingFrame.totals.velocity).toLocaleString()}/s</span>
             </>
           ) : <span>{pullingStackingStatus === "unavailable" ? "Order book unavailable" : "Synchronising order book…"}</span>}
         </div>
       ) : null}
-      {pullingStackingTooltip ? (
+      {pullingStackingTooltip && pullingStackingSettings.showTooltips ? (
         <div
           className="pointer-events-none absolute z-[68] min-w-[230px] border border-border bg-panel/96 p-2 font-mono text-[8px] shadow-2xl backdrop-blur"
           style={{
@@ -10861,9 +10875,14 @@ export default function Chart({
             <span>Ask stack</span><span className="text-foreground">{Math.round(pullingStackingTooltip.row.askStack).toLocaleString()}</span>
             <span>Bid pull</span><span className="text-foreground">{Math.round(pullingStackingTooltip.row.bidPull).toLocaleString()}</span>
             <span>Ask pull</span><span className="text-foreground">{Math.round(pullingStackingTooltip.row.askPull).toLocaleString()}</span>
-            <span>Pressure</span><span className={pullingStackingTooltip.row.pressure >= 0 ? "text-primary" : "text-danger"}>{Math.round(pullingStackingTooltip.row.pressure).toLocaleString()}</span>
+            <span>Liquidity pressure</span><span className={pullingStackingTooltip.row.pressure >= 0 ? "text-primary" : "text-danger"}>{Math.round(pullingStackingTooltip.row.pressure).toLocaleString()}</span>
             <span>Churn / velocity</span><span className="text-foreground">{Math.round(pullingStackingTooltip.row.churn).toLocaleString()} / {Math.round(pullingStackingTooltip.row.velocity).toLocaleString()}/s</span>
+            <span>Executed bid / ask</span><span className="text-foreground">{Math.round(pullingStackingTooltip.row.bidExecution).toLocaleString()} / {Math.round(pullingStackingTooltip.row.askExecution).toLocaleString()}</span>
+            <span>Moved in / out</span><span className="text-foreground">{Math.round(pullingStackingTooltip.row.bidMovedIn + pullingStackingTooltip.row.askMovedIn).toLocaleString()} / {Math.round(pullingStackingTooltip.row.bidMovedOut + pullingStackingTooltip.row.askMovedOut).toLocaleString()}</span>
             <span>Live bid / ask</span><span className="text-foreground">{pullingStackingTooltip.row.bidSize.toLocaleString()} / {pullingStackingTooltip.row.askSize.toLocaleString()}</span>
+            <span>Orders bid / ask</span><span className="text-foreground">{pullingStackingTooltip.row.bidOrders.toLocaleString()} / {pullingStackingTooltip.row.askOrders.toLocaleString()}</span>
+            <span>Dynamic threshold</span><span className="text-foreground">{Math.round(pullingStackingTooltip.row.dynamicThreshold).toLocaleString()}</span>
+            <span>Baseline median / pctl</span><span className="text-foreground">{pullingStackingTooltip.row.baselineMedian?.toFixed(1) ?? "WARM-UP"} / {pullingStackingTooltip.row.baselinePercentile?.toFixed(1) ?? "—"}</span>
             <span>Score</span><span className="text-foreground">{pullingStackingTooltip.row.score}</span>
           </div>
           {pullingStackingTooltip.event ? <div className="mt-2 border-t border-border pt-1 text-primary">{pullingStackingTooltip.event.kind.replaceAll("_", " ")} · {pullingStackingTooltip.event.quantity.toLocaleString()}</div> : null}

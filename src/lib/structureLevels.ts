@@ -16,6 +16,8 @@ export type TrackedLiquidityLevel = {
   persistenceMs: number;
   addedSize: number;
   removedSize: number;
+  /** Largest displayed child order when supplied by the shared MBO gateway. */
+  largestOrder?: number | null;
 };
 
 export type RithmicOrderLifecycleEvent = {

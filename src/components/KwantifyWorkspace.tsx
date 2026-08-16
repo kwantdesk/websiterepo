@@ -1015,7 +1015,7 @@ const WORKSPACE_TOOL_OPTIONS: Array<WorkspacePanelOption<WorkspaceToolKind>> = [
   { id: "tool-single-tpo-chart", label: "SINGLE TPO CHART", description: "One standalone time profile with live price, POC and value area", icon: Grid3X3 },
   { id: "tool-weekly-tpo", label: "WEEKLY TPO", description: "Weekly square-block market profile and auction analytics", icon: BarChart3, indicatorId: "weekly-tpo" },
   { id: "tool-depth-of-market", label: "DOM PRO", description: "Professional full-depth MBO ladder and traded liquidity", icon: List, indicatorId: "depth-of-market" },
-  { id: "tool-pulling-stacking", label: "PULLING & STACKING", description: "Live resting-liquidity additions and non-executed removals mapped by price and time", icon: Layers3, indicatorId: "pulling-stacking" },
+  { id: "tool-pulling-stacking", label: "PULLING & STACKING", description: "Displayed Bid and Ask liquidity being added, pulled, moved and reposted through time using Level 3 order-book events.", icon: Layers3, indicatorId: "pulling-stacking" },
   { id: "tool-big-trades", label: "BIG CONTRACTS", description: "Large aggressive executions anchored to price", icon: Zap, indicatorId: "big-trades" },
   { id: "tool-imbalance-detector", label: "IMBALANCE DETECTOR", description: "Stacked and diagonal bid/ask imbalance", icon: Layers3, indicatorId: "imbalance-tracker" },
   { id: "tool-absorption-indicator", label: "ABSORPTION DETECTOR", description: "Price-time absorption, replenishment, confirmed zones, retests and breaks", icon: Eye, indicatorId: "absorption-detector" },

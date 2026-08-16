@@ -71,13 +71,14 @@ function publishStatus(stream: SharedPoll, status: RithmicLiquidityStatus) {
 
 function decodeRows(value: unknown, side: "BID" | "ASK", tickSize: number) {
   if (!Array.isArray(value)) return [];
-  return value.flatMap((item): Array<{ side: "BID" | "ASK"; price: number; size: number; orders: number }> => {
+  return value.flatMap((item): Array<{ side: "BID" | "ASK"; price: number; size: number; orders: number; largestOrder: number | null }> => {
     if (!Array.isArray(item) || item.length < 2) return [];
     const tick = Number(item[0]);
     const size = Number(item[1]);
     const orders = Number(item[2] ?? 0);
+    const largestOrder = item[3] == null ? null : Number(item[3]);
     if (![tick, size, orders].every(Number.isFinite) || size <= 0) return [];
-    return [{ side, price: tick * tickSize, size, orders }];
+    return [{ side, price: tick * tickSize, size, orders, largestOrder: largestOrder !== null && Number.isFinite(largestOrder) ? Math.max(0, largestOrder) : null }];
   });
 }
 
