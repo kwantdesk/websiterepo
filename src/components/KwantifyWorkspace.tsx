@@ -1131,6 +1131,11 @@ function displayMarketSource(broker: string) {
   return broker;
 }
 
+function sameLiveInstrument(left: string | null | undefined, right: string | null | undefined) {
+  if (!left || !right) return false;
+  return normalizePaperSymbol(left) === normalizePaperSymbol(right);
+}
+
 function fallbackFuturesContract(root: string, now = new Date()) {
   const quarterly = new Set([
     "MNQ", "NQ", "MES", "ES", "MYM", "YM", "M2K", "RTY",
@@ -5914,7 +5919,7 @@ function WorkspaceChartPane({
       const displayName = usingDatabentoPaneFeed || usingCTraderFeed
         ? price.instrument
         : (nameMap[price.instrument] || price.instrument);
-      if (displayName !== pane.symbol) return;
+      if (!sameLiveInstrument(displayName, pane.symbol)) return;
 
       const instrumentIdentity = `${pane.broker}:${pane.symbol}`;
       if (liveInstrumentIdentityRef.current !== instrumentIdentity) {
@@ -9550,6 +9555,13 @@ export default function KwantifyWorkspace({
     if (bottomWorkspaceSection !== "charts" && bottomWorkspaceSection !== "gameplan" && bottomWorkspaceSection !== "heatmap" && bottomWorkspaceSection !== "gamvue") return;
     if (activeChartBrokerLabel === "Market Index" || activeChartBrokerLabel === "Massive") return;
     const priorityLiveSymbols = new Set(priorityLiveSymbolsCsv.split(",").filter(Boolean));
+    const canonicalPriorityLiveSymbols = new Set(
+      [...priorityLiveSymbols].map((symbol) => normalizePaperSymbol(symbol)),
+    );
+    const selectedLiveInstrument = normalizePaperSymbol(selectedInstrument);
+    const isPriorityLiveSymbol = (symbol: string) => (
+      canonicalPriorityLiveSymbols.has(normalizePaperSymbol(symbol))
+    );
     const nameMap: Record<string, string> = {
       EUR_USD: "EURUSD",
       GBP_USD: "GBPUSD",
@@ -9621,7 +9633,23 @@ export default function KwantifyWorkspace({
         ...current,
         [activeChartBrokerLabel]: `${displayMarketSource(activeChartBrokerLabel)} live feed is reconnecting.`,
       }));
-      reconnectTimer = window.setTimeout(() => setStreamReconnectNonce((value) => value + 1), 1_200);
+      // Reopen inside this lifecycle instead of waiting for a React render to
+      // recreate the effect. Under a busy multi-pane workspace that state
+      // update could be delayed long enough for the chart to remain pinned to
+      // its final quote even though the gateway was healthy.
+      reconnectTimer = window.setTimeout(() => {
+        reconnectTimer = null;
+        if (disposed) return;
+        reconnecting = false;
+        receivedPriceMessage = false;
+        streamMarkedHealthy = false;
+        lastServerSignalAt = Date.now();
+        lastPriceMessageAt = Date.now();
+        lastPriceMessageAtBySymbol.clear();
+        publishDatabentoStatus("connecting");
+        openEventSource(false);
+        scheduleWarmHandoff();
+      }, 750);
     };
     const healthTimer = window.setInterval(() => {
       if (!usingDatabentoFeed || document.visibilityState !== "visible") return;
@@ -9631,16 +9659,16 @@ export default function KwantifyWorkspace({
         || (receivedPriceMessage && now - lastPriceMessageAt > 24_000)
         || now - activeStreamOpenedAt > 270_000
         || (
-          priorityLiveSymbols.has(selectedInstrument)
+          canonicalPriorityLiveSymbols.has(selectedLiveInstrument)
           && now - activeStreamOpenedAt > 30_000
           && (
-            lastPriceMessageAtBySymbol.get(selectedInstrument) === undefined
-            || now - (lastPriceMessageAtBySymbol.get(selectedInstrument) ?? 0) > 30_000
+            lastPriceMessageAtBySymbol.get(selectedLiveInstrument) === undefined
+            || now - (lastPriceMessageAtBySymbol.get(selectedLiveInstrument) ?? 0) > 30_000
           )
         )
         || (
           now - activeStreamOpenedAt > 24_000
-          && [...priorityLiveSymbols].some((symbol) => {
+          && [...canonicalPriorityLiveSymbols].some((symbol) => {
             const lastSymbolTick = lastPriceMessageAtBySymbol.get(symbol);
             return lastSymbolTick !== undefined && now - lastSymbolTick > 24_000;
           })
@@ -9666,9 +9694,9 @@ export default function KwantifyWorkspace({
           previousItem?.openPrice,
         );
         lastStreamTickAtByBrokerRef.current[activeChartBrokerLabel] = Date.now();
-        if (priorityLiveSymbols.has(displayName)) {
+        if (isPriorityLiveSymbol(displayName)) {
           lastPriceMessageAt = Date.now();
-          lastPriceMessageAtBySymbol.set(displayName, lastPriceMessageAt);
+          lastPriceMessageAtBySymbol.set(normalizePaperSymbol(displayName), lastPriceMessageAt);
           receivedPriceMessage = true;
         }
         if (usingDatabentoFeed) {
@@ -9689,7 +9717,7 @@ export default function KwantifyWorkspace({
           // futures stream as Charts. Publishing it here prevents delayed REST
           // snapshots from briefly displacing the live "You are here" marker.
           if (activeWorkspaceSectionRef.current !== "charts" && activeWorkspaceSectionRef.current !== "gameplan" && activeWorkspaceSectionRef.current !== "heatmap" && activeWorkspaceSectionRef.current !== "gamvue") return;
-          if (priorityLiveSymbols.has(displayName)) {
+          if (isPriorityLiveSymbol(displayName)) {
             window.dispatchEvent(new CustomEvent(DATABENTO_LIVE_TICK_EVENT, { detail: price }));
           }
         }
@@ -9855,7 +9883,7 @@ export default function KwantifyWorkspace({
           if (!warmingAuthenticated) return;
           try {
             const warmingPrice = JSON.parse(event.data) as LiveFeedPrice;
-            if (warmingPrice.error || warmingPrice.instrument !== selectedInstrument) return;
+            if (warmingPrice.error || !sameLiveInstrument(warmingPrice.instrument, selectedInstrument)) return;
           } catch {
             return;
           }
@@ -9878,8 +9906,25 @@ export default function KwantifyWorkspace({
     openEventSource(false);
     scheduleWarmHandoff();
 
+    const resumeLiveStream = () => {
+      if (disposed || document.visibilityState !== "visible" || !navigator.onLine) return;
+      const selectedLastTick = lastPriceMessageAtBySymbol.get(selectedLiveInstrument);
+      if (
+        !activeEventSource
+        || Date.now() - lastServerSignalAt > 12_000
+        || (selectedLastTick !== undefined && Date.now() - selectedLastTick > 18_000)
+      ) reconnect();
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") resumeLiveStream();
+    };
+    window.addEventListener("online", resumeLiveStream);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
     return () => {
       disposed = true;
+      window.removeEventListener("online", resumeLiveStream);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       activeEventSource?.close();
       warmingEventSource?.close();
       window.clearInterval(healthTimer);

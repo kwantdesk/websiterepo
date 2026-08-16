@@ -108,11 +108,13 @@ test("a live candle frame clones history once while every tick still reaches exe
   assert.match(workspace, /if \(activeRef\.current\) setCandles\(nextCandles\)/);
 });
 
-test("the five-minute chart stream proves the selected symbol before warm takeover", () => {
-  assert.match(workspace, /warmingPrice\.instrument !== selectedInstrument/);
+test("the five-minute chart stream proves the canonical selected symbol before warm takeover", () => {
+  assert.match(workspace, /sameLiveInstrument\(warmingPrice\.instrument, selectedInstrument\)/);
   assert.match(workspace, /now - activeStreamOpenedAt > 270_000/);
-  assert.match(workspace, /lastPriceMessageAtBySymbol\.get\(selectedInstrument\) === undefined/);
+  assert.match(workspace, /lastPriceMessageAtBySymbol\.get\(selectedLiveInstrument\) === undefined/);
   assert.match(workspace, /activeStreamOpenedAt = Date\.now\(\)/);
+  assert.match(workspace, /openEventSource\(false\);\s*scheduleWarmHandoff\(\);/);
+  assert.match(workspace, /window\.addEventListener\("online", resumeLiveStream\)/);
 });
 
 test("exchange quotes do not continuously reconcile the full workspace shell", () => {
