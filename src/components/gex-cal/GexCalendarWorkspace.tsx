@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, Bell, CalendarClock, ChevronLeft, ChevronRight, Download, ExternalLink, HelpCircle, Pause, Play, RefreshCw, Search, Settings2, SlidersHorizontal, Star } from "lucide-react";
+import { AlertTriangle, Bell, CalendarClock, ChevronLeft, ChevronRight, Download, ExternalLink, GripVertical, HelpCircle, Pause, Play, RefreshCw, SlidersHorizontal, Star } from "lucide-react";
 import GexCalendarMatrix from "@/components/gex-cal/GexCalendarMatrix";
 import KwantLoader from "@/components/KwantLoader";
 import KwantSelect from "@/components/ui/KwantSelect";
@@ -24,6 +24,7 @@ type Settings = {
   showStars: boolean;
   showZeros: boolean;
   rightPanelOpen: boolean;
+  rightPanelWidth: number;
   expirationStart: string;
   expirationEnd: string;
 };
@@ -44,6 +45,7 @@ const DEFAULTS: Settings = {
   showStars: true,
   showZeros: true,
   rightPanelOpen: true,
+  rightPanelWidth: 284,
   expirationStart: "",
   expirationEnd: "",
 };
@@ -89,12 +91,21 @@ export default function GexCalendarWorkspace() {
   const [playSpeed, setPlaySpeed] = useState(1);
   const [inspectorTab, setInspectorTab] = useState<"STARS" | "EXPIRIES" | "STRIKES" | "TERM" | "CLUSTERS" | "DETAIL">("STARS");
   const [filtersOpen, setFiltersOpen] = useState(true);
+  const [rightPanelWidth, setRightPanelWidth] = useState(DEFAULTS.rightPanelWidth);
   const [helpOpen, setHelpOpen] = useState(false);
   const [context, setContext] = useState<{ x: number; y: number; cell: GexCalCell } | null>(null);
   const [persistenceReady, setPersistenceReady] = useState(false);
   const requestRef = useRef<AbortController | null>(null);
+  const rightPanelWidthRef = useRef(DEFAULTS.rightPanelWidth);
 
-  useEffect(() => { setSettings(savedSettings()); setPersistenceReady(true); }, []);
+  useEffect(() => {
+    const restored = savedSettings();
+    setSettings(restored);
+    const restoredWidth = Math.min(520, Math.max(180, restored.rightPanelWidth || DEFAULTS.rightPanelWidth));
+    rightPanelWidthRef.current = restoredWidth;
+    setRightPanelWidth(restoredWidth);
+    setPersistenceReady(true);
+  }, []);
   useEffect(() => { if (persistenceReady && typeof window !== "undefined") localStorage.setItem(STORAGE_KEY, JSON.stringify(settings)); }, [persistenceReady, settings]);
 
   const load = useCallback(async (quiet = false) => {
@@ -198,6 +209,55 @@ export default function GexCalendarWorkspace() {
     setContext(null);
   };
   const openContext = (cell: GexCalCell) => setContext({ x: Math.min(window.innerWidth - 230, window.innerWidth / 2), y: Math.min(window.innerHeight - 180, window.innerHeight / 2), cell });
+  const openRightPanel = () => {
+    const width = Math.min(520, Math.max(180, settings.rightPanelWidth || DEFAULTS.rightPanelWidth));
+    rightPanelWidthRef.current = width;
+    setRightPanelWidth(width);
+    setSettings((value) => ({ ...value, rightPanelOpen: true }));
+  };
+  const closeRightPanel = () => {
+    setSettings((value) => ({
+      ...value,
+      rightPanelOpen: false,
+      rightPanelWidth: Math.max(180, rightPanelWidthRef.current || value.rightPanelWidth || DEFAULTS.rightPanelWidth),
+    }));
+  };
+  const startRightPanelResize = (event: React.PointerEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const startX = event.clientX;
+    const startWidth = rightPanelWidthRef.current;
+    const workspaceWidth = event.currentTarget.closest("[data-gex-cal-workspace-row]")?.getBoundingClientRect().width ?? window.innerWidth;
+    const maximumWidth = Math.min(520, Math.max(180, workspaceWidth - 160));
+    const move = (moveEvent: PointerEvent) => {
+      const nextWidth = Math.min(maximumWidth, Math.max(0, startWidth + startX - moveEvent.clientX));
+      rightPanelWidthRef.current = nextWidth;
+      setRightPanelWidth(nextWidth);
+    };
+    const finish = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", finish);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      const finalWidth = rightPanelWidthRef.current;
+      if (finalWidth <= 56) {
+        rightPanelWidthRef.current = Math.max(180, startWidth);
+        setRightPanelWidth(Math.max(180, startWidth));
+        setSettings((value) => ({ ...value, rightPanelOpen: false, rightPanelWidth: Math.max(180, startWidth) }));
+      } else {
+        const settledWidth = Math.max(180, finalWidth);
+        rightPanelWidthRef.current = settledWidth;
+        setRightPanelWidth(settledWidth);
+        setSettings((value) => ({ ...value, rightPanelOpen: true, rightPanelWidth: settledWidth }));
+      }
+    };
+    document.body.style.cursor = "ew-resize";
+    document.body.style.userSelect = "none";
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", finish);
+    window.addEventListener("pointercancel", finish);
+  };
 
   return <div className="flex h-full min-h-0 flex-col bg-background text-foreground" onClick={() => context && setContext(null)}>
     <header className="flex h-9 shrink-0 items-center justify-between border-b border-border bg-panel px-3">
@@ -209,10 +269,13 @@ export default function GexCalendarWorkspace() {
       </div>
     </header>
 
-    <div className="flex min-h-0 flex-1">
-      <aside className={`${filtersOpen ? "w-[244px]" : "w-9"} shrink-0 overflow-hidden border-r border-border bg-panel transition-[width]`}>
-        <button className="flex h-9 w-full items-center gap-2 border-b border-border px-3 text-[9px] font-semibold uppercase tracking-[0.14em] text-muted hover:text-foreground" onClick={() => setFiltersOpen((value) => !value)}><SlidersHorizontal className="h-3.5 w-3.5" />{filtersOpen ? "Surface controls" : null}</button>
-        {filtersOpen ? <div className="h-[calc(100%-36px)] space-y-3 overflow-y-auto p-3">
+    <div data-gex-cal-workspace-row className="relative flex min-h-0 flex-1">
+      {filtersOpen ? <aside className="w-[244px] shrink-0 overflow-hidden border-r border-border bg-panel">
+        <div className="flex h-9 w-full items-center gap-2 border-b border-border pl-3 text-[9px] font-semibold uppercase tracking-[0.14em] text-muted">
+          <SlidersHorizontal className="h-3.5 w-3.5" /><span>Surface controls</span>
+          <button className="ml-auto flex h-9 w-8 items-center justify-center border-l border-border hover:bg-surface hover:text-foreground" onClick={() => setFiltersOpen(false)} title="Minimise surface controls" aria-label="Minimise surface controls"><ChevronLeft className="h-3.5 w-3.5" /></button>
+        </div>
+        <div className="h-[calc(100%-36px)] space-y-3 overflow-y-auto p-3">
           <Control label="Series"><KwantSelect value={settings.source} onChange={(event) => setSettings((value) => ({ ...value, source: event.target.value }))} className="h-8 w-full">{OPTIONS_FLOW_INSTRUMENTS.map((item) => <option key={item.symbol} value={item.symbol}>{item.symbol} · {item.label}</option>)}</KwantSelect></Control>
           <Control label="Greek"><KwantSelect value={settings.greek} onChange={(event) => setSettings((value) => ({ ...value, greek: event.target.value as Settings["greek"] }))} className="h-8 w-full"><option>GAMMA</option><option>VANNA</option><option>DELTA</option><option>CHARM</option></KwantSelect></Control>
           <Control label="Option side"><KwantSelect value={settings.side} onChange={(event) => setSettings((value) => ({ ...value, side: event.target.value as Settings["side"] }))} className="h-8 w-full"><option>NET</option><option>CALL</option><option>PUT</option><option>GROSS</option></KwantSelect></Control>
@@ -229,8 +292,8 @@ export default function GexCalendarWorkspace() {
           <Control label="Exercise style"><KwantSelect disabled value="UNAVAILABLE" className="h-8 w-full"><option value="UNAVAILABLE">METADATA UNAVAILABLE</option></KwantSelect></Control>
           <Control label="Settlement / timing"><KwantSelect disabled value="UNAVAILABLE" className="h-8 w-full"><option value="UNAVAILABLE">METADATA UNAVAILABLE</option></KwantSelect></Control>
           <div className="border-t border-border pt-3 text-[9px] leading-4 text-muted"><div>Exercise/settlement metadata: <span className="text-foreground">provider unavailable</span></div><div>Current expirations include contracts active as of the selected timestamp. Future expirations are later listed expiries.</div></div>
-        </div> : null}
-      </aside>
+        </div>
+      </aside> : <button className="absolute left-0 top-2 z-30 flex h-8 w-5 items-center justify-center border border-l-0 border-border bg-panel text-muted shadow-lg hover:text-primary" onClick={() => setFiltersOpen(true)} title="Restore surface controls" aria-label="Restore surface controls"><ChevronRight className="h-3.5 w-3.5" /></button>}
 
       <main className="flex min-w-0 flex-1 flex-col">
         <div className="flex min-h-9 shrink-0 flex-wrap items-center gap-1 border-b border-border bg-panel px-2 py-1">
@@ -253,10 +316,20 @@ export default function GexCalendarWorkspace() {
         </div>
       </main>
 
-      {settings.rightPanelOpen ? <aside className="w-[284px] shrink-0 overflow-hidden border-l border-border bg-panel">
-        <div className="flex h-9 overflow-x-auto border-b border-border">{(["STARS", "EXPIRIES", "STRIKES", "TERM", "CLUSTERS", "DETAIL"] as const).map((tab) => <button key={tab} onClick={() => setInspectorTab(tab)} className={`shrink-0 px-2 text-[8px] font-semibold tracking-[0.1em] ${inspectorTab === tab ? "text-primary shadow-[inset_0_-1px_0_var(--primary)]" : "text-muted"}`}>{tab}</button>)}</div>
-        <div className="h-[calc(100%-36px)] overflow-y-auto p-3">{matrix ? <Inspector matrix={matrix} tab={inspectorTab} selected={selected} differenceMode={settings.differenceMode} onSelect={(cell) => setSelected(cell)} /> : null}</div>
-      </aside> : <button className="w-9 border-l border-border bg-panel text-muted" onClick={() => setSettings((value) => ({ ...value, rightPanelOpen: true }))}><Settings2 className="mx-auto h-4 w-4" /></button>}
+      {settings.rightPanelOpen ? <aside className="relative shrink-0 border-l border-border bg-panel" style={{ width: rightPanelWidth, maxWidth: "calc(100% - 160px)" }}>
+        <button
+          type="button"
+          onPointerDown={startRightPanelResize}
+          onDoubleClick={closeRightPanel}
+          className="absolute left-0 top-1/2 z-40 flex h-14 w-4 -translate-x-1/2 -translate-y-1/2 touch-none items-center justify-center border border-border bg-panel text-muted shadow-lg cursor-ew-resize hover:border-primary/50 hover:text-primary"
+          title="Drag to resize · drag fully right or double-click to hide"
+          aria-label="Resize or hide GEX Calendar inspector"
+        ><GripVertical className="h-3.5 w-3.5" /></button>
+        <div className="h-full overflow-hidden">
+          <div className="flex h-9 overflow-x-auto border-b border-border">{(["STARS", "EXPIRIES", "STRIKES", "TERM", "CLUSTERS", "DETAIL"] as const).map((tab) => <button key={tab} onClick={() => setInspectorTab(tab)} className={`shrink-0 px-2 text-[8px] font-semibold tracking-[0.1em] ${inspectorTab === tab ? "text-primary shadow-[inset_0_-1px_0_var(--primary)]" : "text-muted"}`}>{tab}</button>)}</div>
+          <div className="h-[calc(100%-36px)] overflow-y-auto p-3">{matrix ? <Inspector matrix={matrix} tab={inspectorTab} selected={selected} differenceMode={settings.differenceMode} onSelect={(cell) => setSelected(cell)} /> : null}</div>
+        </div>
+      </aside> : <button className="absolute right-0 top-1/2 z-30 flex h-14 w-5 -translate-y-1/2 items-center justify-center border border-r-0 border-border bg-panel text-muted shadow-lg hover:text-primary" onClick={openRightPanel} title="Restore Stars and expiry inspector" aria-label="Restore GEX Calendar inspector"><ChevronLeft className="h-3.5 w-3.5" /></button>}
     </div>
 
     {helpOpen ? <div className="absolute right-4 top-14 z-50 w-[380px] border border-border bg-panel p-4 shadow-2xl">
