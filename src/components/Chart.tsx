@@ -9810,7 +9810,8 @@ export default function Chart({
       if (!rect) return null;
       const x = event.clientX - rect.left;
       const y = event.clientY - rect.top;
-      const time = chart.timeScale().coordinateToTime(x);
+      const resolvedSeconds = xToTime(x);
+      const time = resolvedSeconds == null ? null : resolvedSeconds as Time;
       const price = candleSeries.coordinateToPrice(y);
       if (time === null || price === null) return null;
       const activeMagnet = magnetModeRef.current;

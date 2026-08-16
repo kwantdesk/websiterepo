@@ -118,6 +118,7 @@ export interface Viewport {
   height: number;
   timeScale: {
     coordinateToTime(x: number): Time | null;
+    coordinateToLogical(x: number): Logical | null;
     timeToCoordinate(time: Time): Coordinate | null;
     logicalToCoordinate(logical: Logical): Coordinate | null;
   };

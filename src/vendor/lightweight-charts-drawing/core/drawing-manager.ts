@@ -3,6 +3,7 @@ import type {
   ISeriesApi,
   SeriesType,
   MouseEventParams,
+  Time,
 } from 'lightweight-charts';
 
 import type {
@@ -14,6 +15,7 @@ import type {
   DrawingEventCallback,
   SerializedDrawing,
 } from './types';
+import { coordinateToNumericTime } from './coordinate-utils';
 
 /**
  * DrawingManager - Central orchestration system for managing drawings.
@@ -48,6 +50,8 @@ export class DrawingManager {
   private _marqueeCurrent: Point | null = null;
   private _marqueeElement: HTMLDivElement | null = null;
   private _suppressNextClick: boolean = false;
+  private _pendingDragPoint: Point | null = null;
+  private _dragAnimationFrame: number | null = null;
 
   constructor() {
     this.handleMouseDown = this.handleMouseDown.bind(this);
@@ -88,7 +92,9 @@ export class DrawingManager {
     // Capture before Lightweight Charts starts a pan gesture. A drawing body or
     // control point owns the gesture; empty chart space remains native chart UI.
     container.addEventListener('mousedown', this.handleMouseDown, true);
-    container.addEventListener('mousemove', this.handleMouseMove);
+    // Capture on window so a fast pointer cannot outrun the chart container.
+    // The handler is inert unless a drawing or marquee currently owns drag.
+    window.addEventListener('mousemove', this.handleMouseMove, true);
     container.addEventListener('mouseup', this.handleMouseUp);
     container.addEventListener('dblclick', this.handleDoubleClick, true);
     window.addEventListener('mouseup', this.handleMouseUp);
@@ -113,11 +119,14 @@ export class DrawingManager {
     // Remove container event listeners
     if (this._container) {
       this._container.removeEventListener('mousedown', this.handleMouseDown, true);
-      this._container.removeEventListener('mousemove', this.handleMouseMove);
       this._container.removeEventListener('mouseup', this.handleMouseUp);
       this._container.removeEventListener('dblclick', this.handleDoubleClick, true);
     }
     window.removeEventListener('mouseup', this.handleMouseUp);
+    window.removeEventListener('mousemove', this.handleMouseMove, true);
+    if (this._dragAnimationFrame !== null) window.cancelAnimationFrame(this._dragAnimationFrame);
+    this._dragAnimationFrame = null;
+    this._pendingDragPoint = null;
     this.removeMarqueeElement();
 
     this._chart = null;
@@ -370,7 +379,7 @@ export class DrawingManager {
     if (hitDrawing.options.locked) return;
 
     const viewport = this.getViewport();
-    const time = viewport?.timeScale.coordinateToTime(point.x);
+    const time = viewport ? coordinateToNumericTime(viewport, point.x) : null;
     const price = viewport?.priceScale.coordinateToPrice(point.y);
     if (typeof time !== 'number' || price == null || !Number.isFinite(price)) return;
 
@@ -426,20 +435,32 @@ export class DrawingManager {
       event.stopPropagation();
       return;
     }
-    if (!this._isDragging) return;
-    if (!this._selectedId) return;
-
-    const drawing = this._drawings.get(this._selectedId);
-    if (!drawing) return;
-
+    if (!this._isDragging || !this._selectedId) return;
     const point = this.getPointFromEvent(event);
     if (!point) return;
+    this._pendingDragPoint = point;
+    if (this._dragAnimationFrame === null) {
+      this._dragAnimationFrame = window.requestAnimationFrame(() => {
+        this._dragAnimationFrame = null;
+        const pending = this._pendingDragPoint;
+        this._pendingDragPoint = null;
+        if (pending) this.applyDragPoint(pending);
+      });
+    }
+    event.preventDefault();
+    event.stopPropagation();
+  }
 
+  private applyDragPoint(point: Point): void {
+    if (!this._isDragging || !this._selectedId) return;
+    const drawing = this._drawings.get(this._selectedId);
+    if (!drawing) return;
     const viewport = this.getViewport();
     if (!viewport) return;
 
-    // Convert point to anchor
-    const time = viewport.timeScale.coordinateToTime(point.x);
+    // Lightweight Charts has no native time value in future whitespace. Use
+    // logical-bar cadence so drawings remain draggable beyond the latest bar.
+    const time = coordinateToNumericTime(viewport, point.x);
     const price = viewport.priceScale.coordinateToPrice(point.y);
 
     if (this._dragWholeDrawing && this._dragStartAnchor && typeof time === 'number' && price !== null) {
@@ -450,22 +471,18 @@ export class DrawingManager {
         if (!selectedDrawing) continue;
         anchors.forEach((anchor, index) => {
           selectedDrawing.updateAnchor(index, {
-            time: (anchor.time + timeDelta) as typeof time,
+            time: (anchor.time + timeDelta) as Time,
             price: anchor.price + priceDelta,
           });
         });
       }
       this.emit('drawing:updated', { drawingId: drawing.id, drawing });
-      event.preventDefault();
-      event.stopPropagation();
       return;
     }
 
     if (this._dragAnchorIndex !== null && time !== null && price !== null) {
-      drawing.updateAnchor(this._dragAnchorIndex, { time, price });
+      drawing.updateAnchor(this._dragAnchorIndex, { time: time as Time, price });
       this.emit('drawing:updated', { drawingId: drawing.id, drawing });
-      event.preventDefault();
-      event.stopPropagation();
     }
   }
 
@@ -484,6 +501,11 @@ export class DrawingManager {
     }
 
     if (this._isDragging) {
+      if (this._dragAnimationFrame !== null) window.cancelAnimationFrame(this._dragAnimationFrame);
+      this._dragAnimationFrame = null;
+      const pending = this._pendingDragPoint;
+      this._pendingDragPoint = null;
+      if (pending) this.applyDragPoint(pending);
       for (const drawing of this.getSelectedDrawings()) drawing.setState('selected');
     }
 
@@ -593,6 +615,7 @@ export class DrawingManager {
       height,
       timeScale: {
         coordinateToTime: (x: number) => timeScale.coordinateToTime(x),
+        coordinateToLogical: (x: number) => timeScale.coordinateToLogical(x),
         timeToCoordinate: (time) => timeScale.timeToCoordinate(time),
         logicalToCoordinate: (logical) => timeScale.logicalToCoordinate(logical),
       },

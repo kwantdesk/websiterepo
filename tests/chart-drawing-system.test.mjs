@@ -10,6 +10,7 @@ const workspace = readFileSync(new URL("../src/components/KwantifyWorkspace.tsx"
 const drawingGeometry = readFileSync(new URL("../src/vendor/lightweight-charts-drawing/core/geometry.ts", import.meta.url), "utf8");
 const drawingPaneView = readFileSync(new URL("../src/vendor/lightweight-charts-drawing/rendering/drawing-pane-view.ts", import.meta.url), "utf8");
 const drawingManager = readFileSync(new URL("../src/vendor/lightweight-charts-drawing/core/drawing-manager.ts", import.meta.url), "utf8");
+const drawingCoordinates = readFileSync(new URL("../src/vendor/lightweight-charts-drawing/core/coordinate-utils.ts", import.meta.url), "utf8");
 const horizontalLine = readFileSync(new URL("../src/vendor/lightweight-charts-drawing/tools/lines/horizontal-line.ts", import.meta.url), "utf8");
 const horizontalLinePane = readFileSync(new URL("../src/vendor/lightweight-charts-drawing/tools/lines/horizontal-line-pane-view.ts", import.meta.url), "utf8");
 const verticalLine = readFileSync(new URL("../src/vendor/lightweight-charts-drawing/tools/lines/vertical-line.ts", import.meta.url), "utf8");
@@ -134,6 +135,14 @@ test("clear all drawings removes every chart-scoped drawing layer and persisted 
   assert.match(clearAction, /drawingPersistenceInstrument, drawings: \[\]/);
   assert.match(chart, /Clear all drawings/);
   assert.match(chart, /clearAllChartDrawings\(\)/);
+});
+
+test("drawing drags stay pointer-locked and can enter future chart whitespace", () => {
+  assert.match(drawingManager, /window\.addEventListener\('mousemove', this\.handleMouseMove, true\)/);
+  assert.match(drawingManager, /requestAnimationFrame/);
+  assert.match(drawingManager, /coordinateToNumericTime\(viewport, point\.x\)/);
+  assert.match(drawingCoordinates, /coordinateToLogical/);
+  assert.match(drawingCoordinates, /numericTimeToCoordinate/);
 });
 
 test("analytical drawings consume real volume and classified bid-ask data", () => {

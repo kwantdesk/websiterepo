@@ -20,6 +20,7 @@ import type {
   Viewport,
   ControlPoint,
 } from './types';
+import { numericTimeToCoordinate } from './coordinate-utils';
 import { DEFAULT_DRAWING_STYLE } from './types';
 import type { Geometry } from './geometry';
 
@@ -268,7 +269,7 @@ export abstract class Drawing implements IDrawing {
   // ============ Coordinate Conversion ============
 
   anchorToPixel(anchor: Anchor, viewport: Viewport): Point | null {
-    const x = viewport.timeScale.timeToCoordinate(anchor.time);
+    const x = numericTimeToCoordinate(viewport, anchor.time);
     const y = viewport.priceScale.priceToCoordinate(anchor.price);
 
     if (x === null || y === null) return null;
@@ -296,6 +297,7 @@ export abstract class Drawing implements IDrawing {
       height,
       timeScale: {
         coordinateToTime: (x: number) => timeScale.coordinateToTime(x),
+        coordinateToLogical: (x: number) => timeScale.coordinateToLogical(x),
         timeToCoordinate: (time: Time) => timeScale.timeToCoordinate(time),
         logicalToCoordinate: (logical) => timeScale.logicalToCoordinate(logical),
       },
