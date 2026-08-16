@@ -229,6 +229,19 @@ function normalizeNativeRecord(value: unknown): SerializedDrawing | null {
       padding: finiteNumber(candidate.options?.padding) ?? undefined,
       showLabels: candidate.options?.showLabels !== false,
       profileRowSizeTicks: finiteNumber(candidate.options?.profileRowSizeTicks) ?? undefined,
+      levels: Array.isArray(candidate.options?.levels)
+        ? candidate.options.levels.map(finiteNumber).filter((value): value is number => value !== null)
+        : undefined,
+      fibLevelStyles: candidate.options?.fibLevelStyles && typeof candidate.options.fibLevelStyles === "object"
+        ? candidate.options.fibLevelStyles
+        : undefined,
+      showPrices: candidate.options?.showPrices !== false,
+      showPercentages: candidate.options?.showPercentages === true,
+      showRatios: candidate.options?.showRatios !== false,
+      extendLines: candidate.options?.extendLines === true,
+      reverseDirection: candidate.options?.reverseDirection === true,
+      fibLabelPosition: candidate.options?.fibLabelPosition === "left" ? "left" : "right",
+      fibBackgroundVisible: candidate.options?.fibBackgroundVisible !== false,
     },
   };
 }

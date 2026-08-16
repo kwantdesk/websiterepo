@@ -8,17 +8,26 @@ import { FibRetracementPaneView } from './fib-retracement-pane-view';
 /**
  * Standard Fibonacci ratios
  */
-export const FIBONACCI_LEVELS = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1, 1.618, 2.618];
+export const FIBONACCI_LEVELS = [1, 0.786, 0.618, 0.5, 0.382];
 
 /**
  * FibRetracement options
  */
 export interface FibRetracementOptions extends DrawingOptions {
   levels?: number[];
+  fibLevelStyles?: Record<string, {
+    visible?: boolean;
+    color?: string;
+    lineWidth?: number;
+    lineDash?: number[];
+  }>;
   showPrices?: boolean;
   showPercentages?: boolean;
+  showRatios?: boolean;
   extendLines?: boolean;
   reverseDirection?: boolean;
+  fibLabelPosition?: 'left' | 'right';
+  fibBackgroundVisible?: boolean;
 }
 
 /**
@@ -37,34 +46,31 @@ export class FibRetracement extends Drawing {
   protected static readonly REQUIRED_ANCHORS = 2;
   protected static readonly HIT_THRESHOLD = 5;
 
-  private _fibOptions: FibRetracementOptions;
-
   constructor(
     id: string,
     anchors: Anchor[] = [],
     style: Partial<DrawingStyle> = {},
     options: Partial<FibRetracementOptions> = {}
   ) {
-    const { levels, showPrices, showPercentages, extendLines, reverseDirection, ...baseOptions } = options;
-    super(id, anchors, style, baseOptions);
-
-    this._fibOptions = {
-      ...this._options,
-      levels: levels ?? FIBONACCI_LEVELS,
-      showPrices: showPrices ?? true,
-      showPercentages: showPercentages ?? true,
-      extendLines: extendLines ?? false,
-      reverseDirection: reverseDirection ?? false,
-    };
+    super(id, anchors, style, {
+      ...options,
+      levels: options.levels ?? FIBONACCI_LEVELS,
+      showPrices: options.showPrices ?? true,
+      showPercentages: options.showPercentages ?? false,
+      showRatios: options.showRatios ?? true,
+      extendLines: options.extendLines ?? false,
+      reverseDirection: options.reverseDirection ?? false,
+      fibLabelPosition: options.fibLabelPosition ?? 'right',
+      fibBackgroundVisible: options.fibBackgroundVisible ?? true,
+    });
   }
 
   get fibOptions(): FibRetracementOptions {
-    return this._fibOptions;
+    return this._options as FibRetracementOptions;
   }
 
   setFibOptions(options: Partial<FibRetracementOptions>): void {
-    this._fibOptions = { ...this._fibOptions, ...options };
-    this.requestUpdate();
+    this.updateOptions(options);
   }
 
   isValid(): boolean {
@@ -84,13 +90,14 @@ export class FibRetracement extends Drawing {
     if (!p1 || !p2) return [];
 
     const geometries: Geometry[] = [];
-    const levels = this._fibOptions.levels ?? FIBONACCI_LEVELS;
+    const levels = (this.fibOptions.levels ?? FIBONACCI_LEVELS)
+      .filter((level) => this.fibOptions.fibLevelStyles?.[String(level)]?.visible !== false);
     const price1 = this._anchors[0].price;
     const price2 = this._anchors[1].price;
     const priceRange = price2 - price1;
 
     for (const level of levels) {
-      const price = this._fibOptions.reverseDirection
+      const price = this.fibOptions.reverseDirection
         ? price2 - priceRange * level
         : price1 + priceRange * level;
 
@@ -99,8 +106,8 @@ export class FibRetracement extends Drawing {
 
       geometries.push({
         type: 'line',
-        start: { x: this._fibOptions.extendLines ? 0 : Math.min(p1.x, p2.x), y },
-        end: { x: this._fibOptions.extendLines ? viewport.width : Math.max(p1.x, p2.x), y },
+        start: { x: this.fibOptions.extendLines ? 0 : Math.min(p1.x, p2.x), y },
+        end: { x: this.fibOptions.extendLines ? viewport.width : Math.max(p1.x, p2.x), y },
       } as LineGeometry);
     }
 
@@ -117,7 +124,7 @@ export class FibRetracement extends Drawing {
     const price2 = this._anchors[1].price;
     const priceRange = price2 - price1;
 
-    return this._fibOptions.reverseDirection
+    return this.fibOptions.reverseDirection
       ? price2 - priceRange * level
       : price1 + priceRange * level;
   }
@@ -130,17 +137,18 @@ export class FibRetracement extends Drawing {
 
     if (!p1 || !p2) return false;
 
-    const levels = this._fibOptions.levels ?? FIBONACCI_LEVELS;
+    const levels = (this.fibOptions.levels ?? FIBONACCI_LEVELS)
+      .filter((level) => this.fibOptions.fibLevelStyles?.[String(level)]?.visible !== false);
     const price1 = this._anchors[0].price;
     const price2 = this._anchors[1].price;
     const priceRange = price2 - price1;
 
-    const minX = this._fibOptions.extendLines ? 0 : Math.min(p1.x, p2.x);
-    const maxX = this._fibOptions.extendLines ? viewport.width : Math.max(p1.x, p2.x);
+    const minX = this.fibOptions.extendLines ? 0 : Math.min(p1.x, p2.x);
+    const maxX = this.fibOptions.extendLines ? viewport.width : Math.max(p1.x, p2.x);
 
     // Check if near any level line
     for (const level of levels) {
-      const price = this._fibOptions.reverseDirection
+      const price = this.fibOptions.reverseDirection
         ? price2 - priceRange * level
         : price1 + priceRange * level;
 
@@ -160,7 +168,7 @@ export class FibRetracement extends Drawing {
       newId,
       [...this._anchors],
       { ...this._style },
-      { ...this._fibOptions }
+      { ...this.fibOptions }
     );
   }
 

@@ -76,6 +76,22 @@ export interface DrawingOptions {
   showLabels?: boolean;
   /** Number of exchange ticks combined into one row for drawn market profiles. */
   profileRowSizeTicks?: number;
+  /** Fibonacci ratios rendered by Fib Retracement and related tools. */
+  levels?: number[];
+  /** Per-ratio visibility and styling, keyed by the exact ratio string. */
+  fibLevelStyles?: Record<string, {
+    visible?: boolean;
+    color?: string;
+    lineWidth?: number;
+    lineDash?: number[];
+  }>;
+  showPrices?: boolean;
+  showPercentages?: boolean;
+  showRatios?: boolean;
+  extendLines?: boolean;
+  reverseDirection?: boolean;
+  fibLabelPosition?: 'left' | 'right';
+  fibBackgroundVisible?: boolean;
 }
 
 /**

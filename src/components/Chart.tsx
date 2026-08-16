@@ -1797,7 +1797,44 @@ type DrawingTemplate = {
   isDefault?: boolean;
 };
 
-const FIB_LEVELS = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
+const KWANT_FIB_LEVELS = [1, 0.786, 0.618, 0.5, 0.382];
+const FIB_LEVELS = KWANT_FIB_LEVELS;
+const KWANT_FIB_TEMPLATE_ID = "kwant-fib-default";
+
+function createKwantFibTemplate(): DrawingTemplate {
+  const accent = "#A3FF12";
+  return {
+    id: KWANT_FIB_TEMPLATE_ID,
+    name: "Kwant Fib",
+    toolType: "fib-retracement",
+    style: {
+      lineColor: accent,
+      lineWidth: 1,
+      lineDash: [],
+      fillColor: accent,
+      fillOpacity: 0.06,
+      showLabels: true,
+      labelFont: "11px 'JetBrains Mono', monospace",
+      labelColor: accent,
+    },
+    options: {
+      levels: [...KWANT_FIB_LEVELS],
+      showPrices: true,
+      showRatios: true,
+      showPercentages: false,
+      extendLines: false,
+      reverseDirection: false,
+      fibLabelPosition: "right",
+      fibBackgroundVisible: true,
+      visible: true,
+      baseVisible: true,
+      locked: false,
+      zIndex: 0,
+    },
+    createdAt: 0,
+    isDefault: true,
+  };
+}
 const TEXT_TOOLS: DrawingToolId[] = ["text", "note", "priceNote", "callout", "comment", "priceLabel", "pin", "signpost", "flagMark"];
 
 const DRAWING_TOOLBAR_GROUPS: ToolbarGroup[] = [
@@ -2108,6 +2145,7 @@ const DOUBLE_CLICK_STYLE_DRAWING_TYPES = new Set([
   "horizontal-ray",
   "cross-line",
   "brush",
+  "fib-retracement",
   "fixed-market-profile",
 ]);
 const PRECISION_TOOL_BY_DRAWING_TOOL: Partial<Record<DrawingToolId, PrecisionToolId>> = {
@@ -7893,21 +7931,79 @@ export default function Chart({
     }
   }
 
+  function updateSelectedFibLevel(index: number, nextValue: number) {
+    const selected = professionalDrawingManagerRef.current?.getSelectedDrawing();
+    if (!selected || selected.type !== "fib-retracement" || !Number.isFinite(nextValue)) return;
+    const levels = [...(selected.options.levels?.length ? selected.options.levels : KWANT_FIB_LEVELS)];
+    const previousValue = levels[index];
+    if (previousValue === undefined) return;
+    levels[index] = nextValue;
+    const styles = { ...(selected.options.fibLevelStyles ?? {}) };
+    const previousStyle = styles[String(previousValue)];
+    delete styles[String(previousValue)];
+    if (previousStyle) styles[String(nextValue)] = previousStyle;
+    updateSelectedProfessionalDrawing({}, { levels, fibLevelStyles: styles });
+  }
+
+  function updateSelectedFibLevelStyle(
+    level: number,
+    patch: { visible?: boolean; color?: string; lineWidth?: number; lineDash?: number[] },
+  ) {
+    const selected = professionalDrawingManagerRef.current?.getSelectedDrawing();
+    if (!selected || selected.type !== "fib-retracement") return;
+    const key = String(level);
+    updateSelectedProfessionalDrawing({}, {
+      fibLevelStyles: {
+        ...(selected.options.fibLevelStyles ?? {}),
+        [key]: { ...(selected.options.fibLevelStyles?.[key] ?? {}), ...patch },
+      },
+    });
+  }
+
+  function addSelectedFibLevel() {
+    const selected = professionalDrawingManagerRef.current?.getSelectedDrawing();
+    if (!selected || selected.type !== "fib-retracement") return;
+    const levels = [...(selected.options.levels?.length ? selected.options.levels : KWANT_FIB_LEVELS)];
+    const last = levels.at(-1) ?? 0;
+    const candidate = Number((last - 0.118).toFixed(3));
+    levels.push(candidate);
+    updateSelectedProfessionalDrawing({}, { levels });
+  }
+
+  function removeSelectedFibLevel(index: number) {
+    const selected = professionalDrawingManagerRef.current?.getSelectedDrawing();
+    if (!selected || selected.type !== "fib-retracement") return;
+    const levels = [...(selected.options.levels?.length ? selected.options.levels : KWANT_FIB_LEVELS)];
+    if (levels.length <= 1) return;
+    const [removed] = levels.splice(index, 1);
+    const styles = { ...(selected.options.fibLevelStyles ?? {}) };
+    if (removed !== undefined) delete styles[String(removed)];
+    updateSelectedProfessionalDrawing({}, { levels, fibLevelStyles: styles });
+  }
+
   function saveSelectedDrawingTemplate() {
     const selected = professionalDrawingManagerRef.current?.getSelectedDrawing();
     if (!selected) return;
     const label = ALL_DRAWING_TOOLS.find((tool) => professionalDrawingType(tool.id) === selected.type)?.label ?? selected.type;
-    setDrawingTemplates((current) => [
-      ...current,
-      {
+    setDrawingTemplates((current) => {
+      const sameTypeCount = current.filter((template) => template.toolType === selected.type).length;
+      const makeDefault = selected.type === "fib-retracement";
+      const nextTemplate: DrawingTemplate = {
         id: createId("drawing-template"),
-        name: `${label} ${current.filter((template) => template.toolType === selected.type).length + 1}`,
+        name: selected.type === "fib-retracement" ? `Kwant Fib ${sameTypeCount + 1}` : `${label} ${sameTypeCount + 1}`,
         toolType: selected.type,
         style: { ...selected.style },
         options: { ...selected.options },
         createdAt: Date.now(),
-      },
-    ]);
+        isDefault: makeDefault,
+      };
+      return [
+        ...current.map((template) => makeDefault && template.toolType === selected.type
+          ? { ...template, isDefault: false }
+          : template),
+        nextTemplate,
+      ];
+    });
   }
 
   function applyDrawingTemplate(template: DrawingTemplate) {
@@ -8180,10 +8276,10 @@ export default function Chart({
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    const kwantFib = createKwantFibTemplate();
     try {
       const parsed = JSON.parse(window.localStorage.getItem(DRAWING_TEMPLATES_STORAGE_KEY) ?? "[]") as unknown;
-      if (!Array.isArray(parsed)) return;
-      setDrawingTemplates(parsed.flatMap((value) => {
+      const restored = (Array.isArray(parsed) ? parsed : []).flatMap((value) => {
         if (!value || typeof value !== "object") return [];
         const candidate = value as Partial<DrawingTemplate>;
         if (typeof candidate.id !== "string" || typeof candidate.name !== "string" || typeof candidate.toolType !== "string") return [];
@@ -8197,9 +8293,14 @@ export default function Chart({
           createdAt: Number(candidate.createdAt) || Date.now(),
           isDefault: candidate.isDefault === true,
         } satisfies DrawingTemplate];
-      }));
+      });
+      const hasKwantFib = restored.some((template) => template.id === KWANT_FIB_TEMPLATE_ID);
+      const hasDefaultFib = restored.some((template) => template.toolType === "fib-retracement" && template.isDefault);
+      setDrawingTemplates(hasKwantFib
+        ? restored
+        : [...restored, { ...kwantFib, isDefault: !hasDefaultFib }]);
     } catch {
-      setDrawingTemplates([]);
+      setDrawingTemplates([kwantFib]);
     }
   }, []);
 
@@ -9713,7 +9814,10 @@ export default function Chart({
       const price = candleSeries.coordinateToPrice(y);
       if (time === null || price === null) return null;
       const activeMagnet = magnetModeRef.current;
-      if (event.altKey || activeMagnet === "off") return { time, price };
+      // Fib anchors are deliberately free-form. Their geometry must follow the
+      // pointer rather than jumping between candle OHLC values; users can still
+      // hold Alt to bypass the magnet for every other drawing tool.
+      if (selectedToolRef.current === "fibRetracement" || event.altKey || activeMagnet === "off") return { time, price };
 
       const radius = activeMagnet === "weak" ? 6 : activeMagnet === "medium" ? 12 : 20;
       let best: { anchor: ProfessionalDrawingAnchor; distance: number } | null = null;
@@ -13515,6 +13619,106 @@ export default function Chart({
                 </select>
               </label>
             </section>
+
+            {selectedProfessionalDrawing.type === "fib-retracement" ? (
+              <section className="space-y-4 border-t border-border pt-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted">Fib levels</div>
+                    <div className="mt-1 text-[10px] text-muted">Free-drag anchors · no candle snapping</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={addSelectedFibLevel}
+                    className="h-8 border border-border bg-surface px-2.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-foreground hover:border-primary/50"
+                  >
+                    + Level
+                  </button>
+                </div>
+
+                <div className="space-y-1.5">
+                  {(selectedProfessionalDrawing.options.levels?.length
+                    ? selectedProfessionalDrawing.options.levels
+                    : KWANT_FIB_LEVELS).map((level, index) => {
+                    const levelStyle = selectedProfessionalDrawing.options.fibLevelStyles?.[String(level)] ?? {};
+                    return (
+                      <div key={`${level}-${index}`} className="grid grid-cols-[20px_66px_34px_50px_58px_24px] items-center gap-1 border border-border bg-surface/55 px-1.5 py-1.5">
+                        <input
+                          type="checkbox"
+                          checked={levelStyle.visible !== false}
+                          onChange={(event) => updateSelectedFibLevelStyle(level, { visible: event.target.checked })}
+                          className="accent-primary"
+                          aria-label={`Show ${level} Fibonacci level`}
+                        />
+                        <input
+                          type="number"
+                          step={0.001}
+                          value={level}
+                          onChange={(event) => updateSelectedFibLevel(index, Number(event.target.value))}
+                          className="h-7 min-w-0 border border-border bg-background px-1.5 font-mono text-[10px] text-foreground outline-none focus:border-primary"
+                          aria-label={`Fibonacci level ${index + 1}`}
+                        />
+                        <input
+                          type="color"
+                          value={levelStyle.color ?? selectedProfessionalDrawing.style.lineColor}
+                          onChange={(event) => updateSelectedFibLevelStyle(level, { color: event.target.value })}
+                          className="h-7 w-8 border border-border bg-background p-0.5"
+                          aria-label={`Colour for Fibonacci level ${level}`}
+                        />
+                        <select
+                          value={levelStyle.lineWidth ?? selectedProfessionalDrawing.style.lineWidth}
+                          onChange={(event) => updateSelectedFibLevelStyle(level, { lineWidth: Number(event.target.value) })}
+                          className="h-7 border border-border bg-background px-1 text-[9px] text-foreground outline-none focus:border-primary"
+                          aria-label={`Width for Fibonacci level ${level}`}
+                        >
+                          {[0.5, 1, 1.5, 2, 3, 4].map((width) => <option key={width} value={width}>{width}px</option>)}
+                        </select>
+                        <select
+                          value={(levelStyle.lineDash ?? selectedProfessionalDrawing.style.lineDash ?? []).join(",")}
+                          onChange={(event) => updateSelectedFibLevelStyle(level, { lineDash: event.target.value ? event.target.value.split(",").map(Number) : [] })}
+                          className="h-7 border border-border bg-background px-1 text-[9px] text-foreground outline-none focus:border-primary"
+                          aria-label={`Style for Fibonacci level ${level}`}
+                        >
+                          <option value="">Solid</option>
+                          <option value="6,4">Dash</option>
+                          <option value="2,3">Dot</option>
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => removeSelectedFibLevel(index)}
+                          disabled={(selectedProfessionalDrawing.options.levels?.length ?? KWANT_FIB_LEVELS.length) <= 1}
+                          className="flex h-7 w-6 items-center justify-center text-muted hover:text-danger disabled:opacity-25"
+                          aria-label={`Remove Fibonacci level ${level}`}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="grid grid-cols-2 gap-x-4 gap-y-2 border-t border-border pt-3 text-[11px] text-muted">
+                  <label className="flex items-center justify-between gap-2">Ratios<input type="checkbox" checked={selectedProfessionalDrawing.options.showRatios !== false} onChange={(event) => updateSelectedProfessionalDrawing({}, { showRatios: event.target.checked })} className="accent-primary" /></label>
+                  <label className="flex items-center justify-between gap-2">Prices<input type="checkbox" checked={selectedProfessionalDrawing.options.showPrices !== false} onChange={(event) => updateSelectedProfessionalDrawing({}, { showPrices: event.target.checked })} className="accent-primary" /></label>
+                  <label className="flex items-center justify-between gap-2">Percentages<input type="checkbox" checked={selectedProfessionalDrawing.options.showPercentages === true} onChange={(event) => updateSelectedProfessionalDrawing({}, { showPercentages: event.target.checked })} className="accent-primary" /></label>
+                  <label className="flex items-center justify-between gap-2">Background<input type="checkbox" checked={selectedProfessionalDrawing.options.fibBackgroundVisible !== false} onChange={(event) => updateSelectedProfessionalDrawing({}, { fibBackgroundVisible: event.target.checked })} className="accent-primary" /></label>
+                  <label className="flex items-center justify-between gap-2">Reverse<input type="checkbox" checked={selectedProfessionalDrawing.options.reverseDirection === true} onChange={(event) => updateSelectedProfessionalDrawing({}, { reverseDirection: event.target.checked })} className="accent-primary" /></label>
+                  <label className="flex items-center justify-between gap-2">Extend lines<input type="checkbox" checked={selectedProfessionalDrawing.options.extendLines === true} onChange={(event) => updateSelectedProfessionalDrawing({}, { extendLines: event.target.checked })} className="accent-primary" /></label>
+                </div>
+
+                <label className="block text-[11px] text-muted">
+                  <span className="mb-1.5 block">Labels position</span>
+                  <select
+                    value={selectedProfessionalDrawing.options.fibLabelPosition ?? "right"}
+                    onChange={(event) => updateSelectedProfessionalDrawing({}, { fibLabelPosition: event.target.value === "left" ? "left" : "right" })}
+                    className="h-9 w-full border border-border bg-surface px-3 text-[11px] text-foreground outline-none focus:border-primary"
+                  >
+                    <option value="right">Right</option>
+                    <option value="left">Left</option>
+                  </select>
+                </label>
+              </section>
+            ) : null}
 
             {selectedProfessionalDrawing.type === "fixed-market-profile" ? (
               <section className="space-y-3 border-t border-border pt-4">

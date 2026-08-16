@@ -14,6 +14,8 @@ const horizontalLine = readFileSync(new URL("../src/vendor/lightweight-charts-dr
 const horizontalLinePane = readFileSync(new URL("../src/vendor/lightweight-charts-drawing/tools/lines/horizontal-line-pane-view.ts", import.meta.url), "utf8");
 const verticalLine = readFileSync(new URL("../src/vendor/lightweight-charts-drawing/tools/lines/vertical-line.ts", import.meta.url), "utf8");
 const verticalLinePane = readFileSync(new URL("../src/vendor/lightweight-charts-drawing/tools/lines/vertical-line-pane-view.ts", import.meta.url), "utf8");
+const fibRetracement = readFileSync(new URL("../src/vendor/lightweight-charts-drawing/tools/channels/fib-retracement.ts", import.meta.url), "utf8");
+const fibRetracementPane = readFileSync(new URL("../src/vendor/lightweight-charts-drawing/tools/channels/fib-retracement-pane-view.ts", import.meta.url), "utf8");
 
 const expectedTools = [
   "Trend Line", "Angle", "Vertical Line", "Horizontal Line", "Horizontal Ray", "Cross Line", "Pencil",
@@ -73,6 +75,25 @@ test("completed line tools open their style and template editor on double-click"
   assert.match(chart, /Line colour/);
   assert.match(chart, /Templates/);
   assert.match(chart, /saveSelectedDrawingTemplate/);
+});
+
+test("fib retracement is free-dragged and has persistent Kwant Fib settings", () => {
+  assert.match(chart, /const KWANT_FIB_LEVELS = \[1, 0\.786, 0\.618, 0\.5, 0\.382\]/);
+  assert.match(chart, /name: "Kwant Fib"/);
+  assert.match(chart, /selectedToolRef\.current === "fibRetracement"/);
+  assert.match(chart, /"fib-retracement",[\s\S]*?"fixed-market-profile"/);
+  assert.match(chart, /Fib levels/);
+  assert.match(chart, /Free-drag anchors · no candle snapping/);
+  assert.match(chart, /updateSelectedFibLevel/);
+  assert.match(chart, /updateSelectedFibLevelStyle/);
+  assert.match(chart, /addSelectedFibLevel/);
+  assert.match(chart, /removeSelectedFibLevel/);
+  assert.match(chart, /fibLabelPosition/);
+  assert.match(chart, /fibBackgroundVisible/);
+  assert.match(fibRetracement, /FIBONACCI_LEVELS = \[1, 0\.786, 0\.618, 0\.5, 0\.382\]/);
+  assert.doesNotMatch(fibRetracement, /private _fibOptions/);
+  assert.match(fibRetracementPane, /fibLevelStyles/);
+  assert.match(fibRetracementPane, /showRatios/);
 });
 
 test("control-drag marquee selects, moves and deletes drawing groups without chart panning", () => {

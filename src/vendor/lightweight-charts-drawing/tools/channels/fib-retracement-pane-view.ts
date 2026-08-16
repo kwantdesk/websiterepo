@@ -63,7 +63,8 @@ class FibRetracementPaneRenderer implements IPrimitivePaneRenderer {
     if (!p1 || !p2) return;
 
     const options = this._drawing.fibOptions;
-    const levels = options.levels ?? FIBONACCI_LEVELS;
+    const levels = (options.levels ?? FIBONACCI_LEVELS)
+      .filter((level) => options.fibLevelStyles?.[String(level)]?.visible !== false);
     const price1 = anchors[0].price;
     const price2 = anchors[1].price;
     const priceRange = price2 - price1;
@@ -72,7 +73,7 @@ class FibRetracementPaneRenderer implements IPrimitivePaneRenderer {
     const maxX = options.extendLines ? viewport.width : Math.max(p1.x, p2.x);
 
     // Draw fill between levels
-    if (this._drawing.style.fillColor) {
+    if (this._drawing.style.fillColor && options.fibBackgroundVisible !== false) {
       const sortedLevels = [...levels].sort((a, b) => a - b);
       for (let i = 0; i < sortedLevels.length - 1; i++) {
         const level1 = sortedLevels[i];
@@ -91,7 +92,7 @@ class FibRetracementPaneRenderer implements IPrimitivePaneRenderer {
         if (y1 === null || y2 === null) continue;
 
         ctx.fillStyle = this._drawing.style.fillColor;
-        ctx.globalAlpha = 0.1;
+        ctx.globalAlpha = this._drawing.style.fillOpacity ?? 0.1;
         ctx.fillRect(
           minX * pixelRatio,
           Math.min(y1, y2) * pixelRatio,
@@ -112,14 +113,20 @@ class FibRetracementPaneRenderer implements IPrimitivePaneRenderer {
       if (y === null) continue;
 
       // Use level-specific color or default
-      const color = FIB_COLORS[level] ?? this._drawing.style.lineColor;
+      const levelStyle = options.fibLevelStyles?.[String(level)];
+      const color = levelStyle?.color ?? FIB_COLORS[level] ?? this._drawing.style.lineColor;
       ctx.strokeStyle = color;
-      ctx.lineWidth = this._drawing.style.lineWidth * pixelRatio;
+      ctx.lineWidth = (levelStyle?.lineWidth ?? this._drawing.style.lineWidth) * pixelRatio;
+      ctx.setLineDash((levelStyle?.lineDash ?? this._drawing.style.lineDash ?? []).map((value) => value * pixelRatio));
 
       drawLine(ctx, { x: minX, y }, { x: maxX, y }, pixelRatio);
 
       // Draw labels
       const labelParts: string[] = [];
+
+      if (options.showRatios !== false) {
+        labelParts.push(String(level));
+      }
 
       if (options.showPercentages) {
         labelParts.push(`${(level * 100).toFixed(1)}%`);
@@ -133,7 +140,7 @@ class FibRetracementPaneRenderer implements IPrimitivePaneRenderer {
         drawLabel(
           ctx,
           labelParts.join(' - '),
-          { x: maxX - 5, y },
+          { x: options.fibLabelPosition === 'left' ? minX + 5 : maxX - 5, y },
           {
             font: '11px sans-serif',
             textColor: '#ffffff',
@@ -144,6 +151,7 @@ class FibRetracementPaneRenderer implements IPrimitivePaneRenderer {
           pixelRatio
         );
       }
+      ctx.setLineDash([]);
     }
 
     // Draw the main trend line connecting anchors
