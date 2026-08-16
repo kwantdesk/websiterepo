@@ -9,7 +9,16 @@ import {
 import KwantLoader from "@/components/KwantLoader";
 import KwantSelect from "@/components/ui/KwantSelect";
 import { OPTIONS_FLOW_INSTRUMENTS } from "@/lib/optionsFlow";
-import type { GexFlowMode, GexFlowPayload, GexFlowRow, GexFlowSide } from "@/lib/gexFlow";
+import {
+  gexFlowContractKey,
+  scoreGexFlowRows,
+  summarizeGexFlow,
+  type GexFlowContractRatio,
+  type GexFlowMode,
+  type GexFlowPayload,
+  type GexFlowRow,
+  type GexFlowSide,
+} from "@/lib/gexFlow";
 
 const STORAGE_KEY = "kwantdesk:gex-flow:workspace:v1";
 const ALERTS_KEY = "kwantdesk:gex-flow:alerts:v1";
@@ -143,6 +152,8 @@ export default function GexFlowWorkspace() {
   const [sortField, setSortField] = useState<"TIME" | "PREMIUM" | "SIZE" | "SCORE" | "VOI">("TIME");
   const pendingPayload = useRef<GexFlowPayload | null>(null);
   const tableRef = useRef<HTMLDivElement>(null);
+  const ratioFetchInFlight = useRef(false);
+  const lastRatioFetch = useRef({ signature: "", at: 0 });
 
   useEffect(() => {
     try {
@@ -184,6 +195,77 @@ export default function GexFlowWorkspace() {
     const id = window.setInterval(() => void load(true), Math.max(2_000, intervalMs));
     return () => window.clearInterval(id);
   }, [refreshMode, payload?.refreshAfterMs, sessionDate, load]);
+
+  useEffect(() => {
+    if (!payload || ratioFetchInFlight.current) return;
+    const contracts = [...new Map([...payload.rows, ...payload.children].map((row) => [gexFlowContractKey(row), {
+      osi: row.osi,
+      ticker: row.ticker,
+      expirationDate: row.expirationDate,
+      strikePrice: row.strikePrice,
+      contractType: row.contractType,
+    }])).values()].filter((contract) => contract.contractType !== "UNKNOWN" && contract.expirationDate && contract.strikePrice !== null);
+    if (!contracts.length) return;
+    const signature = `${payload.sessionDate}:${payload.replayAt ?? "LIVE"}:${contracts.map((contract) => `${contract.osi ?? contract.ticker}:${contract.expirationDate}:${contract.strikePrice}:${contract.contractType}`).sort().join("|")}`;
+    const now = Date.now();
+    if (lastRatioFetch.current.signature === signature && now - lastRatioFetch.current.at < 60_000) return;
+    lastRatioFetch.current = { signature, at: now };
+    ratioFetchInFlight.current = true;
+    const targetSession = payload.sessionDate;
+    const targetReplay = payload.replayAt;
+    void (async () => {
+      let resolved = 0;
+      let unavailable = 0;
+      for (let index = 0; index < contracts.length; index += 25) {
+        const response = await fetch("/api/gex-flow/ratios", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          cache: "no-store",
+          body: JSON.stringify({
+            contracts: contracts.slice(index, index + 25),
+            sessionDate: targetSession,
+            replayAt: targetReplay,
+          }),
+        });
+        const result = await response.json() as {
+          ratios?: Record<string, GexFlowContractRatio>;
+          unavailable?: number;
+          requested?: number;
+          source?: string;
+          error?: string;
+        };
+        if (!response.ok) throw new Error(result.error || "Contract ratios could not be enriched.");
+        const ratioMap = result.ratios ?? {};
+        resolved += Object.keys(ratioMap).length;
+        unavailable += result.unavailable ?? 0;
+        setPayload((current) => {
+          if (!current || current.sessionDate !== targetSession || current.replayAt !== targetReplay) return current;
+          const enrich = (rows: GexFlowRow[]) => scoreGexFlowRows(rows.map((row) => ({
+            ...row,
+            contractRatio: ratioMap[gexFlowContractKey(row)] ?? row.contractRatio,
+          })));
+          const rows = enrich(current.rows);
+          const children = enrich(current.children);
+          return {
+            ...current,
+            rows,
+            children,
+            summary: summarizeGexFlow(rows, current.summary.relativeVolume),
+            diagnostics: {
+              ...current.diagnostics,
+              contractRatioSource: `${result.source ?? "QuantData exact-contract trade-side VOLUME statistics"} (${resolved}/${contracts.length} contracts)`,
+              limitations: unavailable > 0
+                ? [...current.diagnostics.limitations.filter((item) => !item.includes("exact-contract ratios")), `${unavailable} exact-contract ratios are unavailable; no parent-row ratio was fabricated.`]
+                : current.diagnostics.limitations.filter((item) => !item.includes("exact-contract ratios")),
+            },
+          };
+        });
+      }
+    })().catch(() => {
+      // Ratios are progressive enrichment. The primary tape remains usable and
+      // explicitly displays UNAVAILABLE instead of inventing a row-level ratio.
+    }).finally(() => { ratioFetchInFlight.current = false; });
+  }, [payload]);
 
   const togglePaused = () => {
     setPaused((value) => {

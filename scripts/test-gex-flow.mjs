@@ -4,6 +4,7 @@ import {
   estimateGexFlowDirection,
   gexFlowMoneyness,
   gexFlowOiAnalysis,
+  gexFlowContractRatioFromTradeSideStatistics,
   gexFlowPremium,
   gexFlowSpreadPosition,
   filterGexFlowRowsAtCutoff,
@@ -20,6 +21,22 @@ assert.deepEqual(gexFlowMoneyness("CALL", 110, 100), { percent: 10, type: "OTM" 
 assert.deepEqual(gexFlowMoneyness("PUT", 110, 100), { percent: -10, type: "ITM" });
 assert.deepEqual(gexFlowPremium(2.5, 20, 100, null), { value: 5_000, source: "DERIVED" });
 assert.deepEqual(gexFlowOiAnalysis(250, 500, 200), { volumeToOi: 2.5, sizeToOi: 1.25, sizeGreaterThanOi: true, volumeGreaterThanOi: true });
+
+const providerRatio = gexFlowContractRatioFromTradeSideStatistics({
+  data: {
+    CALL: {
+      ABOVE_ASK: { volume: 120 },
+      ASK: { volume: 500 },
+      MID_MARKET: { volume: 40 },
+      BID: { volume: 300 },
+      BELOW_BID: { volume: 40 },
+    },
+  },
+}, "CALL");
+assert.equal(providerRatio?.source, "PROVIDER");
+assert.equal(providerRatio?.askRatio, 0.62);
+assert.equal(providerRatio?.midRatio, 0.04);
+assert.equal(providerRatio?.bidRatio, 0.34);
 assert.deepEqual(filterGexFlowRowsAtCutoff([{ tradeTime: 100 }, { tradeTime: 200 }, { tradeTime: 300 }], 200), [{ tradeTime: 100 }, { tradeTime: 200 }], "replay strips every future print");
 
 const ratios = deriveGexFlowContractRatios([

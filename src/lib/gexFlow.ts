@@ -267,6 +267,53 @@ export function deriveGexFlowContractRatios(rows: Array<Pick<GexFlowRow, "osi" |
   }));
 }
 
+function aggregateVolume(value: unknown) {
+  if (typeof value === "number") return Number.isFinite(value) ? Math.max(0, value) : 0;
+  if (!value || typeof value !== "object") return 0;
+  const record = value as Record<string, unknown>;
+  const volume = Number(record.volume ?? record.contractVolume ?? record.size ?? 0);
+  return Number.isFinite(volume) ? Math.max(0, volume) : 0;
+}
+
+/**
+ * Normalizes QuantData's complete Contract Trade Side Statistics response for
+ * one exact option contract. This is deliberately separate from a row's Side:
+ * the result describes all classified contracts in the requested session or
+ * replay window, not the selected print.
+ */
+export function gexFlowContractRatioFromTradeSideStatistics(
+  payload: unknown,
+  contractType: "CALL" | "PUT" | "UNKNOWN",
+): GexFlowContractRatio | null {
+  if (contractType === "UNKNOWN" || !payload || typeof payload !== "object") return null;
+  const root = payload as Record<string, unknown>;
+  const data = root.data;
+  if (!data || typeof data !== "object") return null;
+  const contractNode = (data as Record<string, unknown>)[contractType];
+  if (!contractNode || typeof contractNode !== "object") return null;
+  const sides = contractNode as Record<string, unknown>;
+  const askContracts = aggregateVolume(sides.ABOVE_ASK) + aggregateVolume(sides.ASK);
+  const midContracts = aggregateVolume(sides.MID_MARKET ?? sides.MID);
+  const bidContracts = aggregateVolume(sides.BID) + aggregateVolume(sides.BELOW_BID);
+  const totalContracts = askContracts + midContracts + bidContracts;
+  if (totalContracts <= 0) return null;
+  const askRatio = askContracts / totalContracts;
+  const midRatio = midContracts / totalContracts;
+  const bidRatio = bidContracts / totalContracts;
+  return {
+    bidContracts,
+    midContracts,
+    askContracts,
+    totalContracts,
+    classifiedShare: 1,
+    bidRatio,
+    midRatio,
+    askRatio,
+    dominant: askRatio >= bidRatio && askRatio >= midRatio ? "ASK" : bidRatio >= midRatio ? "BID" : "MID",
+    source: "PROVIDER",
+  };
+}
+
 function percentile(values: number[], value: number) {
   if (!values.length) return 0;
   const sorted = [...values].sort((a, b) => a - b);

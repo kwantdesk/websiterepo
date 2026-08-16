@@ -98,6 +98,7 @@ import {
   GEX_FLOW_SCORE_VERSION,
   deriveGexFlowContractRatios,
   estimateGexFlowDirection,
+  gexFlowContractRatioFromTradeSideStatistics,
   gexFlowContractKey,
   gexFlowMoneyness,
   gexFlowOiAnalysis,
@@ -109,6 +110,7 @@ import {
   summarizeGexFlow,
   type GexFlowMode,
   type GexFlowPayload,
+  type GexFlowContractRatio,
   type GexFlowRow,
 } from "@/lib/gexFlow";
 import { getGexBotFlowSnapshot } from "@/lib/gexBotFlow.server";
@@ -143,6 +145,10 @@ const endpointCache = new Map<string, CachedEndpoint>();
 // instead of a blank Gamma workspace.
 const lastGoodOptionsFlowByInstrument = new Map<string, OptionsFlowPayload>();
 const lastGoodGexFlowByRequest = new Map<string, GexFlowPayload>();
+const gexFlowContractRatioCache = new Map<string, {
+  expiresAt: number;
+  promise: Promise<GexFlowContractRatio | null>;
+}>();
 // Last AUTO-mapping ratio formed while both legs (live futures, live cash
 // source) were fresh, per source symbol. Used to pin the scale overnight so
 // mapped levels stop tracking the futures price. Per-lambda: a cold instance
@@ -4600,9 +4606,112 @@ function gexFlowCursor(payload: unknown) {
   return cursor.length ? cursor : null;
 }
 
-function attachGexFlowRatios(rows: GexFlowRow[], ratioRows: GexFlowRow[]) {
-  const ratios = deriveGexFlowContractRatios(ratioRows);
+function attachGexFlowRatios(rows: GexFlowRow[], ratios: Map<string, GexFlowContractRatio>) {
   return rows.map((row) => ({ ...row, contractRatio: ratios.get(gexFlowContractKey(row)) ?? row.contractRatio }));
+}
+
+type GexFlowContractIdentity = Pick<GexFlowRow, "osi" | "ticker" | "expirationDate" | "strikePrice" | "contractType">;
+
+function requestGexFlowContractRatio(
+  row: GexFlowContractIdentity,
+  sessionDate: string,
+  replayTimestamp: number | null,
+  live: boolean,
+) {
+  if (row.contractType === "UNKNOWN" || row.expirationDate === null || row.strikePrice === null) {
+    return Promise.resolve<GexFlowContractRatio | null>(null);
+  }
+  const windowKey = replayTimestamp === null ? sessionDate : `${sessionDate}:${replayTimestamp}`;
+  const cacheKey = `${windowKey}:${gexFlowContractKey(row)}`;
+  const now = Date.now();
+  const cached = gexFlowContractRatioCache.get(cacheKey);
+  if (cached && cached.expiresAt > now) return cached.promise;
+
+  const timeScope: JsonRecord = replayTimestamp === null
+    ? { sessionDate }
+    : {
+        timeRange: {
+          // US listed options do not trade before this UTC boundary. The end
+          // is the replay clock, so the provider aggregate cannot see later
+          // prints from the selected session.
+          startTime: `${sessionDate}T00:00:00.000Z`,
+          endTime: new Date(replayTimestamp).toISOString(),
+        },
+      };
+  const promise = quantDataPost("/options/tool/contract-trade-side-statistics", {
+    ...timeScope,
+    dataMode: "VOLUME",
+    filter: {
+      ticker: row.ticker,
+      expirationDate: row.expirationDate,
+      strikePrice: row.strikePrice,
+      contractType: row.contractType,
+    },
+  }, live ? 60_000 : 21_600_000)
+    .then((result) => gexFlowContractRatioFromTradeSideStatistics(result.payload, row.contractType))
+    .catch((error) => {
+      gexFlowContractRatioCache.delete(cacheKey);
+      throw error;
+    });
+  gexFlowContractRatioCache.set(cacheKey, {
+    expiresAt: now + (live ? 60_000 : 21_600_000),
+    promise,
+  });
+  return promise;
+}
+
+async function getGexFlowContractRatios(
+  rows: GexFlowContractIdentity[],
+  sessionDate: string,
+  replayTimestamp: number | null,
+  live: boolean,
+) {
+  const contracts = [...new Map(rows.map((row) => [gexFlowContractKey(row), row])).values()];
+  const ratios = new Map<string, GexFlowContractRatio>();
+  let unavailable = 0;
+  // Keep pressure on the shared provider quota predictable. Cached contracts
+  // resolve immediately; cold contracts are enriched in small bounded waves.
+  for (let index = 0; index < contracts.length; index += 6) {
+    const batch = contracts.slice(index, index + 6);
+    const results = await Promise.allSettled(batch.map((row) => requestGexFlowContractRatio(
+      row,
+      sessionDate,
+      replayTimestamp,
+      live,
+    )));
+    results.forEach((result, resultIndex) => {
+      const row = batch[resultIndex];
+      if (result.status === "fulfilled" && result.value) ratios.set(gexFlowContractKey(row), result.value);
+      else unavailable += 1;
+    });
+  }
+  return { ratios, unavailable, requested: contracts.length };
+}
+
+export async function getGexFlowContractRatioEnrichment(args: {
+  contracts: GexFlowContractIdentity[];
+  sessionDate: string;
+  replayAt?: string;
+}) {
+  const session = getUsOptionsSession();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(args.sessionDate)) throw new QuantDataError("A valid GEX FLOW session date is required.", 400, null);
+  if (args.sessionDate > session.sessionDate) throw new QuantDataError("GEX FLOW cannot request a future options session.", 400, null);
+  const replayTimestamp = args.replayAt ? Date.parse(args.replayAt) : null;
+  if (args.replayAt && !Number.isFinite(replayTimestamp)) throw new QuantDataError("A valid GEX FLOW replay timestamp is required.", 400, null);
+  const live = args.sessionDate === session.sessionDate && replayTimestamp === null && session.marketOpen;
+  const result = await getGexFlowContractRatios(
+    args.contracts.slice(0, 25),
+    args.sessionDate,
+    replayTimestamp,
+    live,
+  );
+  return {
+    ratios: Object.fromEntries(result.ratios),
+    requested: result.requested,
+    unavailable: result.unavailable,
+    replayAt: replayTimestamp === null ? null : new Date(replayTimestamp).toISOString(),
+    source: "QuantData exact-contract trade-side VOLUME statistics",
+  };
 }
 
 export async function getGexFlowPayload(args: {
@@ -4657,11 +4766,14 @@ export async function getGexFlowPayload(args: {
     if (error instanceof QuantDataError) throw error;
     throw new QuantDataError("No GEX FLOW data is available for this request.", 422, null);
   }
-  const ratioRows = rawRows.length ? rawRows : rows;
-  rows = scoreGexFlowRows(attachGexFlowRatios(rows, ratioRows)).sort((left, right) => right.tradeTime - left.tradeTime);
-  const children = mode === "HYBRID" ? scoreGexFlowRows(attachGexFlowRatios(rawRows, ratioRows)) : [];
   const historical = sessionDate !== session.sessionDate || cutoff !== null;
   const marketOpen = !historical && session.marketOpen;
+  // A complete one-page raw response is a valid server aggregation fallback.
+  // A paginated head page is deliberately NOT treated as a session ratio.
+  const rawSessionComplete = rawAvailable && gexFlowCursor(rawPayload) === null;
+  const fallbackRatios = rawSessionComplete ? deriveGexFlowContractRatios(rawRows) : new Map<string, GexFlowContractRatio>();
+  rows = scoreGexFlowRows(attachGexFlowRatios(rows, fallbackRatios)).sort((left, right) => right.tradeTime - left.tradeTime);
+  const children = mode === "HYBRID" ? scoreGexFlowRows(attachGexFlowRatios(rawRows, fallbackRatios)) : [];
   const status = historical ? "HISTORICAL" : marketOpen ? "LIVE" : "MARKET_CLOSED";
   const selectedPayload = mode === "RAW" ? rawPayload : consolidatedPayload ?? rawPayload;
   const remaining = [consolidatedResult, rawResult].flatMap((result) => result.status === "fulfilled" && result.value.remaining !== null ? [result.value.remaining] : []);
@@ -4693,7 +4805,9 @@ export async function getGexFlowPayload(args: {
       rateLimitRemaining: remaining.length ? Math.min(...remaining) : null,
       rowsFetched: consolidatedRows.length + rawRows.length,
       rowsVisible: rows.length,
-      contractRatioSource: rawRows.length ? "server aggregation of classified raw prints up to the active clock" : "server aggregation of consolidated flow up to the active clock",
+      contractRatioSource: rawSessionComplete
+          ? "complete-session server aggregation of classified raw prints"
+          : "exact-contract ratios load progressively from QuantData trade-side VOLUME statistics",
       oiSource: "KwantData official/reference open interest",
       earningsSource: "UNAVAILABLE",
       flowScoreVersion: GEX_FLOW_SCORE_VERSION,
