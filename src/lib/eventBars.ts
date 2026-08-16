@@ -339,7 +339,11 @@ export function applyMarketTradesToEventBars(
 ) {
   const threshold = eventThreshold(timeframe, symbol);
   if (!threshold || records.length === 0) return current;
-  const bars = current.map((candle) => ({ ...candle })) as EventCandle[];
+  // Every incremental event-bar builder mutates only the forming tail and
+  // appends fresh bars. Copy the array plus that tail instead of cloning up to
+  // 5,000 completed candles for every live execution batch.
+  const bars = [...current] as EventCandle[];
+  if (bars.length) bars[bars.length - 1] = { ...bars[bars.length - 1] };
 
   for (const record of records) {
     if (!Number.isFinite(record.timestamp) || !Number.isFinite(record.price) || record.price <= 0) continue;

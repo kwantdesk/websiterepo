@@ -18,6 +18,10 @@ type SharedStream = {
   startPromise: Promise<void> | null;
   pendingTrades: InstitutionalTrade[];
   publishTimer: ReturnType<typeof setTimeout> | null;
+  reconnectTimer: ReturnType<typeof setTimeout> | null;
+  watchdogTimer: ReturnType<typeof setInterval> | null;
+  lastActivityAt: number;
+  generation: number;
   seedPublished: boolean;
 };
 
@@ -30,6 +34,9 @@ const MAX_TAPE_RECORDS = 25_000;
 // but fan visual updates out as one compact batch. Price presentation uses the
 // separate live tick path, so this does not make the chart price less live.
 const TRADE_PUBLISH_INTERVAL_MS = 40;
+const STREAM_RECONNECT_DELAY_MS = 1_000;
+const STREAM_WATCHDOG_INTERVAL_MS = 5_000;
+const STREAM_STALE_AFTER_MS = 20_000;
 
 function recordKey(record: InstitutionalTrade) {
   return record.eventId
@@ -137,20 +144,63 @@ function queueTradePublication(stream: SharedStream, records: InstitutionalTrade
   stream.publishTimer = setTimeout(() => flushPendingTrades(stream), TRADE_PUBLISH_INTERVAL_MS);
 }
 
+function clearConnection(stream: SharedStream) {
+  stream.source?.close();
+  stream.source = null;
+  if (stream.watchdogTimer !== null) clearInterval(stream.watchdogTimer);
+  stream.watchdogTimer = null;
+}
+
+function launchStream(
+  key: string,
+  stream: SharedStream,
+  symbol: string,
+  contractSymbol: string,
+) {
+  if (stream.startPromise || stream.subscribers.size === 0 || streams.get(key) !== stream) return;
+  stream.startPromise = startStream(key, stream, symbol, contractSymbol)
+    .finally(() => {
+      if (streams.get(key) === stream) stream.startPromise = null;
+    });
+}
+
+function scheduleReconnect(
+  key: string,
+  stream: SharedStream,
+  symbol: string,
+  contractSymbol: string,
+) {
+  if (streams.get(key) !== stream || stream.subscribers.size === 0) return;
+  clearConnection(stream);
+  publishStatus(stream, "checking");
+  if (stream.reconnectTimer !== null) return;
+  stream.reconnectTimer = setTimeout(() => {
+    stream.reconnectTimer = null;
+    launchStream(key, stream, symbol, contractSymbol);
+  }, STREAM_RECONNECT_DELAY_MS);
+}
+
 async function startStream(
   key: string,
   stream: SharedStream,
   symbol: string,
   contractSymbol: string,
 ) {
+  clearConnection(stream);
+  const generation = stream.generation + 1;
+  stream.generation = generation;
   publishStatus(stream, "checking");
   try {
     const health = await fetch("/api/institutional-market-data?path=health", {
       cache: "no-store",
       signal: AbortSignal.timeout(5_000),
     });
-    if (!health.ok || stream.subscribers.size === 0) {
+    if (stream.subscribers.size === 0) {
+      return;
+    }
+    if (!health.ok) {
       publishStatus(stream, "unavailable");
+      scheduleReconnect(key, stream, symbol, contractSymbol);
       return;
     }
 
@@ -163,8 +213,21 @@ async function startStream(
       `/api/institutional-market-data/v1/market-data/trades?${query.toString()}`,
     );
     stream.source = source;
-    source.addEventListener("ready", () => publishStatus(stream, "connected"));
+    const markActivity = () => {
+      if (stream.generation !== generation) return false;
+      stream.lastActivityAt = Date.now();
+      return true;
+    };
+    source.addEventListener("ready", () => {
+      if (!markActivity()) return;
+      publishStatus(stream, "connected");
+    });
+    source.addEventListener("heartbeat", () => {
+      if (!markActivity()) return;
+      if (stream.status !== "connected") publishStatus(stream, "connected");
+    });
     source.addEventListener("seed", (event) => {
+      if (!markActivity()) return;
       try {
         const payload = JSON.parse((event as MessageEvent<string>).data) as { records?: unknown };
         const records = decodeRecords(payload.records);
@@ -189,6 +252,7 @@ async function startStream(
       }
     });
     source.addEventListener("trades", (event) => {
+      if (!markActivity()) return;
       try {
         const payload = JSON.parse((event as MessageEvent<string>).data) as { records?: unknown };
         const records = decodeRecords(payload.records);
@@ -204,10 +268,26 @@ async function startStream(
         // Ignore a malformed batch and reconcile on the next valid batch.
       }
     });
-    source.onerror = () => publishStatus(stream, "checking");
+    stream.lastActivityAt = Date.now();
+    stream.watchdogTimer = setInterval(() => {
+      if (
+        stream.generation === generation
+        && Date.now() - stream.lastActivityAt > STREAM_STALE_AFTER_MS
+      ) {
+        scheduleReconnect(key, stream, symbol, contractSymbol);
+      }
+    }, STREAM_WATCHDOG_INTERVAL_MS);
+    source.onerror = () => {
+      if (stream.generation !== generation) return;
+      // EventSource's implicit reconnect can leave the indicator feed in a
+      // half-open state after the hosting proxy rotates it. Own the lifecycle
+      // explicitly so Footprint never remains frozen behind a healthy quote.
+      scheduleReconnect(key, stream, symbol, contractSymbol);
+    };
   } catch {
     publishStatus(stream, "unavailable");
     if (stream.subscribers.size === 0) streams.delete(key);
+    else scheduleReconnect(key, stream, symbol, contractSymbol);
   }
 }
 
@@ -231,6 +311,10 @@ export function subscribeRithmicIndicatorTrades(args: {
       startPromise: null,
       pendingTrades: [],
       publishTimer: null,
+      reconnectTimer: null,
+      watchdogTimer: null,
+      lastActivityAt: Date.now(),
+      generation: 0,
       seedPublished: false,
     };
     streams.set(key, stream);
@@ -248,8 +332,7 @@ export function subscribeRithmicIndicatorTrades(args: {
   subscriber.onStatus?.(stream.status);
   if (stream.records.length) subscriber.onSeed?.(stream.records);
   if (!stream.source && !stream.startPromise) {
-    stream.startPromise = startStream(key, stream, symbol, contractSymbol)
-      .finally(() => { if (stream) stream.startPromise = null; });
+    launchStream(key, stream, symbol, contractSymbol);
   }
 
   return () => {
@@ -258,9 +341,11 @@ export function subscribeRithmicIndicatorTrades(args: {
     current.subscribers.delete(subscriber);
     if (current.subscribers.size === 0) {
       if (current.publishTimer !== null) clearTimeout(current.publishTimer);
+      if (current.reconnectTimer !== null) clearTimeout(current.reconnectTimer);
       current.publishTimer = null;
+      current.reconnectTimer = null;
       current.pendingTrades = [];
-      current.source?.close();
+      clearConnection(current);
       streams.delete(key);
     }
   };

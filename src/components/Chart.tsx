@@ -2900,6 +2900,7 @@ export default function Chart({
   const latestCandleRef = useRef<Candle | null>(candles.at(-1) ?? null);
   const drawingCandlesRef = useRef(candles);
   const drawingMarketTradesRef = useRef(marketTrades);
+  const drawingDataRefreshTimerRef = useRef<number | null>(null);
   const lastRenderedCandleTimeRef = useRef<number | null>(
     candles.length ? Math.floor(candles[candles.length - 1].timestamp / 1_000) : null,
   );
@@ -2982,8 +2983,23 @@ export default function Chart({
   useEffect(() => {
     drawingCandlesRef.current = candles;
     drawingMarketTradesRef.current = marketTrades;
-    professionalDrawingManagerRef.current?.getAllDrawings().forEach((drawing) => drawing.requestUpdate());
+    if (drawingDataRefreshTimerRef.current !== null) return;
+    // A live Footprint updates its tape many times per second. Repainting every
+    // professional drawing for each tape snapshot made unrelated chart tools
+    // consume the main thread and eventually stall all visible panes. Drawing
+    // data remains current through the refs; visual invalidation is coalesced.
+    drawingDataRefreshTimerRef.current = window.setTimeout(() => {
+      drawingDataRefreshTimerRef.current = null;
+      professionalDrawingManagerRef.current?.getAllDrawings().forEach((drawing) => drawing.requestUpdate());
+    }, 200);
   }, [candles, marketTrades]);
+
+  useEffect(() => () => {
+    if (drawingDataRefreshTimerRef.current !== null) {
+      window.clearTimeout(drawingDataRefreshTimerRef.current);
+      drawingDataRefreshTimerRef.current = null;
+    }
+  }, []);
 
   useEffect(() => {
     const handleThemeChange = () => setThemeVersion((version) => version + 1);

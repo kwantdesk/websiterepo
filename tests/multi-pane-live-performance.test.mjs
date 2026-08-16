@@ -35,6 +35,24 @@ test("one shared execution stream batches visual fanout without dropping its tap
   assert.match(stream, /flushPendingTrades\(stream\)/);
   assert.match(stream, /if \(!stream\.seedPublished\)/);
   assert.match(stream, /stream\.seedPublished = true/);
+  assert.match(stream, /STREAM_STALE_AFTER_MS = 20_000/);
+  assert.match(stream, /source\.addEventListener\("heartbeat"/);
+  assert.match(stream, /scheduleReconnect\(key, stream, symbol, contractSymbol\)/);
+});
+
+test("each pane losslessly coalesces execution work before copying tape and candles", () => {
+  assert.match(workspace, /let pendingExecutionRecords: InstitutionalTrade\[\] = \[\]/);
+  assert.match(workspace, /const flushExecutionRecords = \(\) =>/);
+  assert.match(workspace, /pendingExecutionRecords\.push\(\.\.\.records\)/);
+  assert.match(workspace, /footprintLiveActive \? 100 : 160/);
+  assert.match(workspace, /onTrades: \(records\) => \{[\s\S]{0,160}queueExecutionUpdate\(records\)/);
+});
+
+test("professional drawing invalidations are coalesced away from the live tape cadence", () => {
+  const chart = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
+  assert.match(chart, /drawingDataRefreshTimerRef/);
+  assert.match(chart, /window\.setTimeout\(\(\) => \{[\s\S]{0,240}drawing\.requestUpdate\(\)/);
+  assert.match(chart, /\}, 200\)/);
 });
 
 test("live profiles and heatmap style work are throttled independently", () => {

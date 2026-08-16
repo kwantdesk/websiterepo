@@ -4539,7 +4539,9 @@ function WorkspaceChartPane({
     }
 
     let pendingProfileRecords: InstitutionalTrade[] = [];
+    let pendingExecutionRecords: InstitutionalTrade[] = [];
     let profileSyncTimer: number | null = null;
+    let executionSyncTimer: number | null = null;
     let marketTradeStateSyncTimer: number | null = null;
     const scheduleMarketTradeStateSync = () => {
       const baseCadence = footprintLiveActive
@@ -4575,6 +4577,75 @@ function WorkspaceChartPane({
           ? current.map((profile) => applyInstitutionalTradesToVolumeProfile(profile, batch))
           : current);
       }, activeRef.current ? 250 : 750);
+    };
+
+    const flushExecutionRecords = () => {
+      executionSyncTimer = null;
+      if (!pendingExecutionRecords.length) return;
+      const records = pendingExecutionRecords;
+      pendingExecutionRecords = [];
+
+      if (needsOrderFlowHistory) {
+        const next = mergeInstitutionalTradeTape(latestMarketTradesRef.current, records);
+        latestMarketTradesRef.current = next;
+        workspaceExecutionTape.set(workspaceOrderFlowKey(pane.symbol, pane.timeframe), next);
+        scheduleMarketTradeStateSync();
+      }
+
+      // Exact profiles and CVD consume the same lossless batch. Coalescing the
+      // prints before touching React/candle history avoids copying a growing
+      // 25k execution tape independently for every SSE packet and every pane.
+      // The direct quote path still paints price every animation frame.
+      queueProfileUpdate(records);
+      const previousCandles = latestCandlesRef.current;
+      const nextCandles = isEventBasedChartInterval(pane.timeframe)
+        ? applyMarketTradesToEventBars(
+            previousCandles,
+            records.map((record) => ({
+              timestamp: record.timestamp,
+              price: record.close,
+              size: Math.max(0, Number(record.volume ?? 0)),
+              trades: Math.max(1, Number(record.trades ?? 1)),
+              delta: Number(record.delta ?? 0),
+            })),
+            pane.timeframe,
+            pane.symbol,
+          )
+        : applyInstitutionalTradesToCandles(
+            previousCandles,
+            records,
+            pane.timeframe,
+            pane.symbol,
+            Math.max(600, previousCandles.length),
+          );
+      if (nextCandles === previousCandles || !nextCandles.length) return;
+
+      latestCandlesRef.current = nextCandles;
+      if (hasUsableOrderFlowHistory(nextCandles)) {
+        setOrderFlowHistoryReady(true);
+      }
+      const latest = nextCandles.at(-1)!;
+      window.dispatchEvent(new CustomEvent(LIVE_CHART_CANDLE_EVENT, {
+        detail: { key: pane.id, candle: latest },
+      }));
+      const now = Date.now();
+      const newBar = previousCandles.at(-1)?.timestamp !== latest.timestamp;
+      const reconciliationCadence = activeRef.current ? 250 : 750;
+      if (newBar || now - lastCandleStateSyncRef.current >= reconciliationCadence) {
+        lastCandleStateSyncRef.current = now;
+        startTransition(() => setCandles(nextCandles));
+      }
+    };
+    const queueExecutionUpdate = (records: InstitutionalTrade[]) => {
+      if (!records.length) return;
+      pendingExecutionRecords.push(...records);
+      if (executionSyncTimer !== null) return;
+      // Footprint remains visually live at 10 fps while multiple panes share
+      // one bounded main-thread workload. Background panes reconcile slower.
+      const delay = activeRef.current
+        ? footprintLiveActive ? 100 : 160
+        : 500;
+      executionSyncTimer = window.setTimeout(flushExecutionRecords, delay);
     };
 
     const unsubscribe = subscribeRithmicIndicatorTrades({
@@ -4636,73 +4707,16 @@ function WorkspaceChartPane({
       },
       onTrades: (records) => {
         rithmicConnectedRef.current = true;
-        if (needsOrderFlowHistory) {
-          const next = mergeInstitutionalTradeTape(latestMarketTradesRef.current, records);
-          latestMarketTradesRef.current = next;
-          workspaceExecutionTape.set(workspaceOrderFlowKey(pane.symbol, pane.timeframe), next);
-          scheduleMarketTradeStateSync();
-        }
-        // Keep the exact profiles live between refetches, as the original
-        // Kwantify build did: each print batch is folded straight into the
-        // gateway-built profiles, so the POC/VA develop in real time instead
-        // of stepping every 15 seconds. Provisional chart profiles carry a
-        // coverage watermark, so newer Rithmic prints can safely develop the
-        // active session without counting candle volume twice.
-        queueProfileUpdate(records);
-
-        // CVD is rendered from the chart candles, not from the compact trade
-        // marker tape. Fold each authoritative Rithmic execution into those
-        // candles immediately so live delta continues from the restored
-        // historical CVD instead of freezing at the history boundary.
-        const previousCandles = latestCandlesRef.current;
-        const nextCandles = isEventBasedChartInterval(pane.timeframe)
-          ? applyMarketTradesToEventBars(
-              previousCandles,
-              records.map((record) => ({
-                timestamp: record.timestamp,
-                price: record.close,
-                size: Math.max(0, Number(record.volume ?? 0)),
-                trades: Math.max(1, Number(record.trades ?? 1)),
-                delta: Number(record.delta ?? 0),
-              })),
-              pane.timeframe,
-              pane.symbol,
-            )
-          : applyInstitutionalTradesToCandles(
-              previousCandles,
-              records,
-              pane.timeframe,
-              pane.symbol,
-              Math.max(600, previousCandles.length),
-            );
-        if (nextCandles !== previousCandles && nextCandles.length) {
-          latestCandlesRef.current = nextCandles;
-          // Do not mistake the first live execution bucket for restored CVD
-          // history. A meaningful multi-bucket baseline must exist before the
-          // pane is released, otherwise refresh paints a false straight line
-          // until the slower archive response replaces it.
-          if (hasUsableOrderFlowHistory(nextCandles)) {
-            setOrderFlowHistoryReady(true);
-          }
-          const latest = nextCandles.at(-1)!;
-          window.dispatchEvent(new CustomEvent(LIVE_CHART_CANDLE_EVENT, {
-            detail: { key: pane.id, candle: latest },
-          }));
-          const now = Date.now();
-          const newBar = previousCandles.at(-1)?.timestamp !== latest.timestamp;
-          const reconciliationCadence = activeRef.current ? 250 : 750;
-          if (newBar || now - lastCandleStateSyncRef.current >= reconciliationCadence) {
-            lastCandleStateSyncRef.current = now;
-            startTransition(() => setCandles(nextCandles));
-          }
-        }
+        queueExecutionUpdate(records);
       },
     });
     return () => {
       unsubscribe();
       if (profileSyncTimer !== null) window.clearTimeout(profileSyncTimer);
+      if (executionSyncTimer !== null) window.clearTimeout(executionSyncTimer);
       if (marketTradeStateSyncTimer !== null) window.clearTimeout(marketTradeStateSyncTimer);
       pendingProfileRecords = [];
+      pendingExecutionRecords = [];
     };
   }, [
     needsLiveVolumeProfiles,
