@@ -384,8 +384,12 @@ import {
   CHART_CROSSHAIR_SYNC_TOGGLE_EVENT,
   chartCrosshairInstrumentKey,
   readChartCrosshairSyncEnabled,
+  resolveEquivalentCrosshairPrice,
+  resolveSyncedChartCandle,
   resolveSyncedChartTime,
   saveChartCrosshairSyncEnabled,
+  type ChartCrosshairSyncScope,
+  type ChartCrosshairSyncToggle,
   type ChartCrosshairSyncMove,
 } from "@/lib/chartCrosshairSync";
 
@@ -399,6 +403,7 @@ interface ChartProps {
   backgroundZones?: ChartZone[];
   instrument?: string;
   chartInstanceId?: string;
+  crosshairSyncScope?: ChartCrosshairSyncScope;
   keyboardActive?: boolean;
   workspaceId?: string;
   contractSymbol?: string | null;
@@ -2522,6 +2527,7 @@ export default function Chart({
   backgroundZones = [],
   instrument = "Instrument",
   chartInstanceId = "primary",
+  crosshairSyncScope = "matching",
   keyboardActive = true,
   workspaceId = "default-workspace",
   contractSymbol = null,
@@ -2929,12 +2935,14 @@ export default function Chart({
 
   useEffect(() => {
     const handleToggle = (event: Event) => {
-      setCrosshairSyncEnabled(Boolean((event as CustomEvent<boolean>).detail));
+      const detail = (event as CustomEvent<ChartCrosshairSyncToggle>).detail;
+      if (!detail || detail.scope !== crosshairSyncScope) return;
+      setCrosshairSyncEnabled(detail.enabled);
     };
-    setCrosshairSyncEnabled(readChartCrosshairSyncEnabled());
+    setCrosshairSyncEnabled(readChartCrosshairSyncEnabled(crosshairSyncScope));
     window.addEventListener(CHART_CROSSHAIR_SYNC_TOGGLE_EVENT, handleToggle);
     return () => window.removeEventListener(CHART_CROSSHAIR_SYNC_TOGGLE_EVENT, handleToggle);
-  }, []);
+  }, [crosshairSyncScope]);
 
   useEffect(() => {
     crosshairSyncEnabledRef.current = crosshairSyncEnabled;
@@ -9240,9 +9248,11 @@ export default function Chart({
       if (!param.point || param.time === undefined) {
         queueCrosshairMove({
           sourceChartId: chartInstanceId,
+          scope: crosshairSyncScope,
           instrumentKey: crosshairSyncInstrumentKey,
           sourceTimestampMs: null,
           price: null,
+          referencePrice: null,
           visible: false,
         });
         return;
@@ -9250,11 +9260,15 @@ export default function Chart({
       const chartTime = Number(param.time);
       const price = candleSeries.coordinateToPrice(param.point.y);
       if (!Number.isFinite(chartTime) || price === null || !Number.isFinite(price)) return;
+      const sourceTimestampMs = eventSourceTimeByChartTimeRef.current.get(chartTime) ?? chartTime * 1_000;
+      const referencePrice = resolveSyncedChartCandle(sourceTimestampMs, drawingCandlesRef.current)?.close ?? null;
       queueCrosshairMove({
         sourceChartId: chartInstanceId,
+        scope: crosshairSyncScope,
         instrumentKey: crosshairSyncInstrumentKey,
-        sourceTimestampMs: eventSourceTimeByChartTimeRef.current.get(chartTime) ?? chartTime * 1_000,
+        sourceTimestampMs,
         price,
+        referencePrice,
         visible: true,
       });
     };
@@ -9269,7 +9283,8 @@ export default function Chart({
         !detail
         || nativeCrosshairPointerActive
         || detail.sourceChartId === chartInstanceId
-        || detail.instrumentKey !== crosshairSyncInstrumentKey
+        || detail.scope !== crosshairSyncScope
+        || (crosshairSyncScope === "matching" && detail.instrumentKey !== crosshairSyncInstrumentKey)
       ) return;
 
       applyingSynchronizedCrosshair = true;
@@ -9297,8 +9312,24 @@ export default function Chart({
           hideSynchronizedPriceGuide();
           return;
         }
-        chart.setCrosshairPosition(detail.price, targetTime as Time, candleSeries);
-        const y = candleSeries.priceToCoordinate(detail.price);
+        const targetCandle = resolveSyncedChartCandle(
+          detail.sourceTimestampMs,
+          drawingCandlesRef.current,
+        );
+        const synchronizedPrice = crosshairSyncScope === "gamvue"
+          ? resolveEquivalentCrosshairPrice(
+              detail.price,
+              detail.referencePrice ?? detail.price,
+              targetCandle?.close ?? detail.price,
+            )
+          : detail.price;
+        if (synchronizedPrice === null) {
+          chart.clearCrosshairPosition();
+          hideSynchronizedPriceGuide();
+          return;
+        }
+        chart.setCrosshairPosition(synchronizedPrice, targetTime as Time, candleSeries);
+        const y = candleSeries.priceToCoordinate(synchronizedPrice);
         if (y !== null) {
           if (horzLineRef.current) {
             horzLineRef.current.style.top = `${y}px`;
@@ -9307,7 +9338,7 @@ export default function Chart({
           if (priceLabelRef.current) {
             priceLabelRef.current.style.top = `${y - 10}px`;
             priceLabelRef.current.style.display = "block";
-            priceLabelRef.current.textContent = detail.price.toFixed(priceFormat.precision);
+            priceLabelRef.current.textContent = synchronizedPrice.toFixed(priceFormat.precision);
           }
         }
       } finally {
@@ -10042,7 +10073,7 @@ export default function Chart({
       prevDataRef.current = "";
       lastRenderedCandleTimeRef.current = null;
     };
-  }, [chartInstanceId, crosshairSyncInstrumentKey, instrument, priceFormat, settings, themeVersion]);
+  }, [chartInstanceId, crosshairSyncInstrumentKey, crosshairSyncScope, instrument, priceFormat, settings, themeVersion]);
 
   useEffect(() => {
     smtDivergencePrimitiveRef.current?.update(
@@ -12644,14 +12675,20 @@ export default function Chart({
               event.stopPropagation();
               setOpenToolbarGroup(null);
               setShowObjectsPanel(false);
-              saveChartCrosshairSyncEnabled(!crosshairSyncEnabled);
+              saveChartCrosshairSyncEnabled(!crosshairSyncEnabled, crosshairSyncScope);
             }}
             className={`flex items-center justify-center border backdrop-blur ${getToolbarButtonTone(crosshairSyncEnabled)}`}
             style={toolbarButtonStyle}
-            title={crosshairSyncEnabled
-              ? "Linked crosshair on: matching instruments move together"
-              : "Link the crosshair across charts using the same instrument"}
-            aria-label="Link crosshair across matching charts"
+            title={crosshairSyncScope === "gamvue"
+              ? crosshairSyncEnabled
+                ? "Universal GAM VUE crosshair on: equivalent prices move together"
+                : "Link equivalent prices across every GAM VUE chart"
+              : crosshairSyncEnabled
+                ? "Linked crosshair on: matching instruments move together"
+                : "Link the crosshair across charts using the same instrument"}
+            aria-label={crosshairSyncScope === "gamvue"
+              ? "Link equivalent prices across GAM VUE charts"
+              : "Link crosshair across matching charts"}
             aria-pressed={crosshairSyncEnabled}
           >
             <Crosshair className={toolbarIconClassName} />

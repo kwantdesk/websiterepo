@@ -28,13 +28,14 @@ const sync = await loadCrosshairSync();
 
 test("crosshair synchronization is exposed beside the mouse selection tool", async () => {
   const chart = await readFile(path.join(root, "src/components/Chart.tsx"), "utf8");
-  const mouseButton = chart.indexOf("<MousePointer2 className={toolbarIconClassName} />");
-  const linkedButton = chart.indexOf("aria-label=\"Link crosshair across matching charts\"");
+  const mouseButton = chart.indexOf("<Hand className={toolbarIconClassName} />");
+  const linkedButton = chart.indexOf("saveChartCrosshairSyncEnabled(!crosshairSyncEnabled, crosshairSyncScope)");
   assert.ok(mouseButton >= 0);
   assert.ok(linkedButton > mouseButton);
   assert.match(chart, /chart\.subscribeCrosshairMove\(handleNativeCrosshairMove\)/);
-  assert.match(chart, /chart\.setCrosshairPosition\(detail\.price, targetTime as Time, candleSeries\)/);
-  assert.match(chart, /detail\.instrumentKey !== crosshairSyncInstrumentKey/);
+  assert.match(chart, /chart\.setCrosshairPosition\(synchronizedPrice, targetTime as Time, candleSeries\)/);
+  assert.match(chart, /crosshairSyncScope === "matching" && detail\.instrumentKey !== crosshairSyncInstrumentKey/);
+  assert.match(chart, /Link equivalent prices across GAM VUE charts/);
 });
 
 test("a synchronized timestamp resolves to the containing candle on the receiving timeframe", () => {
@@ -57,4 +58,19 @@ test("instrument linking keeps NQ, MNQ, ES and MES charts in separate groups", (
   assert.equal(sync.chartCrosshairInstrumentKey("MNQU6 · CME"), "MNQ");
   assert.equal(sync.chartCrosshairInstrumentKey("ESU6 · CME"), "ES");
   assert.equal(sync.chartCrosshairInstrumentKey("MESU6 · CME"), "MES");
+});
+
+test("GAM VUE maps a pointer to the equivalent percentage price on another instrument", () => {
+  assert.equal(sync.resolveEquivalentCrosshairPrice(731, 730, 30_000), 30_000 * (731 / 730));
+  assert.equal(sync.resolveEquivalentCrosshairPrice(5_300, 5_300, 530), 530);
+  assert.equal(sync.resolveEquivalentCrosshairPrice(1, 0, 100), null);
+});
+
+test("the synchronized candle supplies the receiving instrument reference price", () => {
+  const candles = [
+    { timestamp: 1_000, open: 10, high: 12, low: 9, close: 11, volume: 1 },
+    { timestamp: 2_000, open: 11, high: 14, low: 10, close: 13, volume: 1 },
+  ];
+  assert.equal(sync.resolveSyncedChartCandle(2_500, candles)?.close, 13);
+  assert.equal(sync.resolveSyncedChartCandle(500, candles), null);
 });

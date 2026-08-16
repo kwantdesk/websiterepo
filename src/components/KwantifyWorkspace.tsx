@@ -4173,6 +4173,7 @@ function WorkspaceChartPane({
   embedded = false,
   period,
   settings,
+  crosshairSyncScope = "matching",
   trades,
   indicators,
   onActivate,
@@ -4218,6 +4219,7 @@ function WorkspaceChartPane({
   embedded?: boolean;
   period: string;
   settings: ChartSettings;
+  crosshairSyncScope?: "matching" | "gamvue";
   trades?: (Trade & { markerVisible?: boolean })[];
   indicators: ChartIndicatorInstance[];
   onActivate: () => void;
@@ -6459,6 +6461,7 @@ function WorkspaceChartPane({
           backgroundZones={gameplanDecorations.zones}
           instrument={displayCmeSymbol(pane.symbol)}
           chartInstanceId={pane.id}
+          crosshairSyncScope={crosshairSyncScope}
           keyboardActive={active}
           contractSymbol={resolvedContractSymbol}
           timeframe={pane.timeframe}
@@ -13474,6 +13477,7 @@ export default function KwantifyWorkspace({
         embedded
         period={pane.period}
         settings={chartSettings}
+        crosshairSyncScope={chartWorkspaceScope === "gamma" ? "gamvue" : "matching"}
         trades={activePaneId === pane.id ? chartTrades : []}
         indicators={paneIndicators[pane.id] ?? []}
         paperPositions={selectedPaperAccountLedger?.positions ?? []}
