@@ -9,6 +9,7 @@ import { ABSORPTION_DETECTOR_SETTINGS_VERSION, DEFAULT_ABSORPTION_SETTINGS, norm
 import { DEFAULT_STACKED_IMBALANCE_SETTINGS, STACKED_IMBALANCE_SETTINGS_VERSION, normalizeStackedImbalanceSettings } from "@/lib/stackedImbalanceSuite";
 import { DEFAULT_ICEBERG_REFRESH_SETTINGS, ICEBERG_REFRESH_SETTINGS_VERSION, normalizeIcebergRefreshSettings } from "@/lib/icebergRefreshDetector";
 import { DEFAULT_LIQUIDITY_STOP_SWEEP_SETTINGS, LIQUIDITY_STOP_SWEEP_SETTINGS_VERSION, normalizeLiquidityStopSweepSettings } from "@/lib/liquidityStopSweepDetector";
+import { DEFAULT_POC_AUCTION_SUITE_SETTINGS, POC_AUCTION_SUITE_SETTINGS_VERSION, normalizePocAuctionSuiteSettings } from "@/lib/pocAuctionSuite";
 
 export const LIVE_CHART_INDICATOR_IDS = new Set([
   "gamma-heatmap",
@@ -29,6 +30,7 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "stacked-imbalance-suite",
   "iceberg-refresh-detector",
   "liquidity-stop-sweep-detector",
+  "poc-auction-suite",
   "moving-average",
   "vwap",
   "vwap-envelopes",
@@ -94,6 +96,29 @@ export type IndicatorNumericSetting = {
 };
 
 export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[]> = {
+  "poc-auction-suite": [
+    { key: "customGroupSizeTicks", label: "Custom grouping (ticks)", defaultValue: 1, min: 1, max: 1000, step: 1 },
+    { key: "automaticTargetRows", label: "Automatic target rows", defaultValue: 80, min: 20, max: 500, step: 1 },
+    { key: "percentageOfMaximum", label: "POC band percentage", defaultValue: 0.95, min: 0.01, max: 1, step: 0.01 },
+    { key: "topNContiguousGroups", label: "POC band contiguous rows", defaultValue: 3, min: 1, max: 100, step: 1 },
+    { key: "minimumPocVolume", label: "Minimum POC volume", defaultValue: 1, min: 0, max: 1000000000, step: 1 },
+    { key: "minimumPocTradeCount", label: "Minimum POC trades", defaultValue: 1, min: 0, max: 1000000, step: 1 },
+    { key: "rollingBars", label: "Rolling POC bars", defaultValue: 20, min: 2, max: 10000, step: 1 },
+    { key: "minimumMigrationTicks", label: "Migration threshold (ticks)", defaultValue: 1, min: 0, max: 10000, step: 1 },
+    { key: "touchToleranceTicks", label: "Naked POC touch tolerance", defaultValue: 0, min: 0, max: 1000, step: 1 },
+    { key: "minimumAcceptanceVolume", label: "Acceptance volume", defaultValue: 100, min: 0, max: 1000000000, step: 1 },
+    { key: "minimumRejectionTicks", label: "Rejection response (ticks)", defaultValue: 4, min: 1, max: 10000, step: 1 },
+    { key: "excessLookbackTicks", label: "Excess lookback (ticks)", defaultValue: 4, min: 2, max: 100, step: 1 },
+    { key: "minimumTaperSteps", label: "Minimum taper steps", defaultValue: 2, min: 1, max: 99, step: 1 },
+    { key: "maximumTaperRatio", label: "Maximum taper ratio", defaultValue: 0.75, min: 0.01, max: 1, step: 0.01 },
+    { key: "minimumExcessScore", label: "Minimum excess score", defaultValue: 35, min: 0, max: 100, step: 1 },
+    { key: "activeLaneWidth", label: "Active level lane width", defaultValue: 150, min: 90, max: 320, step: 1 },
+    { key: "maximumActiveLaneRows", label: "Maximum active lane rows", defaultValue: 14, min: 1, max: 100, step: 1 },
+    { key: "markerSize", label: "Marker size", defaultValue: 7, min: 4, max: 14, step: 1 },
+    { key: "lineWidth", label: "Line width", defaultValue: 1.5, min: 0.5, max: 4, step: 0.5 },
+    { key: "opacity", label: "Overlay opacity (%)", defaultValue: 82, min: 0, max: 100, step: 1 },
+    { key: "historyBars", label: "History bars", defaultValue: 1500, min: 50, max: 10000, step: 50 },
+  ],
   "liquidity-stop-sweep-detector": [
     { key: "maximumInterTradeGapMs", label: "Maximum inter-trade gap (ms)", defaultValue: 75, min: 1, max: 10000, step: 1 },
     { key: "maximumSweepDurationMs", label: "Maximum sweep duration (ms)", defaultValue: 1000, min: 1, max: 60000, step: 10 },
@@ -749,6 +774,16 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     neutralColor: theme?.gridColor ?? DEFAULT_LIQUIDITY_STOP_SWEEP_SETTINGS.neutralColor,
     schemaVersion: LIQUIDITY_STOP_SWEEP_SETTINGS_VERSION,
   } : {}),
+  ...(indicatorId === "poc-auction-suite" ? {
+    ...DEFAULT_POC_AUCTION_SUITE_SETTINGS,
+    barPocColor: theme?.borderUpColor ?? theme?.upColor ?? DEFAULT_POC_AUCTION_SUITE_SETTINGS.barPocColor,
+    sessionPocColor: theme?.upColor ?? DEFAULT_POC_AUCTION_SUITE_SETTINGS.sessionPocColor,
+    nakedPocColor: theme?.borderDownColor ?? DEFAULT_POC_AUCTION_SUITE_SETTINGS.nakedPocColor,
+    excessHighColor: theme?.downColor ?? DEFAULT_POC_AUCTION_SUITE_SETTINGS.excessHighColor,
+    excessLowColor: theme?.upColor ?? DEFAULT_POC_AUCTION_SUITE_SETTINGS.excessLowColor,
+    neutralColor: theme?.gridColor ?? DEFAULT_POC_AUCTION_SUITE_SETTINGS.neutralColor,
+    schemaVersion: POC_AUCTION_SUITE_SETTINGS_VERSION,
+  } : {}),
   ...(indicatorId === "gamma-heatmap" ? {
     preset: "intraday",
     metric: "GAMMA",
@@ -1382,6 +1417,17 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
       settings: {
         ...normalizeLiquidityStopSweepSettings({
           ...defaultIndicatorSettings("liquidity-stop-sweep-detector"),
+          ...(normalizedInstance.settings ?? {}),
+        }),
+      },
+    };
+  }
+  if (normalizedInstance.indicatorId === "poc-auction-suite") {
+    return {
+      ...normalizedInstance,
+      settings: {
+        ...normalizePocAuctionSuiteSettings({
+          ...defaultIndicatorSettings("poc-auction-suite"),
           ...(normalizedInstance.settings ?? {}),
         }),
       },

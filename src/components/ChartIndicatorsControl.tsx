@@ -51,6 +51,7 @@ import { ABSORPTION_PRESETS } from "@/lib/absorptionDetector";
 import { STACKED_IMBALANCE_PRESETS } from "@/lib/stackedImbalanceSuite";
 import { ICEBERG_REFRESH_PRESETS } from "@/lib/icebergRefreshDetector";
 import { LIQUIDITY_STOP_SWEEP_PRESETS } from "@/lib/liquidityStopSweepDetector";
+import { POC_AUCTION_PRESETS } from "@/lib/pocAuctionSuite";
 
 const FAVOURITES_STORAGE_KEY = "kwantdesk-chart-indicator-favourites";
 const FOOTPRINT_PROFILE_MANAGED_SETTINGS = new Set([
@@ -224,6 +225,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "stacked-imbalance-suite",
   "iceberg-refresh-detector",
   "liquidity-stop-sweep-detector",
+  "poc-auction-suite",
   "delta-cumulative-candlestick",
   "delta-cumulative-histogram",
   "imbalance-tracker",
@@ -2487,6 +2489,30 @@ export default function ChartIndicatorsControl({
                     </label>
                   </div>
                   <p className="text-[8px] leading-4 text-muted">Direct sweeps are observed aggressive executions across price levels. Stop-sweep labels are inferred only when that execution crosses a frozen reference. The tool does not identify a trader or legally establish intent.</p>
+                </div>
+              ) : null}
+
+              {settingsDefinition.id === "poc-auction-suite" ? (
+                <div className="space-y-3 border border-primary/20 bg-primary/[0.035] p-3">
+                  <div>
+                    <div className="mb-2 text-[9px] font-semibold uppercase tracking-[0.13em] text-muted">POC & auction preset</div>
+                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                      {Object.entries(POC_AUCTION_PRESETS).map(([preset, presetSettings]) => (
+                        <button key={preset} type="button" onClick={() => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), ...presetSettings, preset } }))} className={`min-h-8 border px-2 text-[7px] font-semibold uppercase tracking-[0.08em] ${settingsInstance.settings?.preset === preset ? "border-primary bg-primary/10 text-primary" : "border-border bg-background text-muted hover:text-foreground"}`}>
+                          {preset.replaceAll("-", " ")}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    <label className="space-y-1.5 text-[8px] uppercase tracking-[0.1em] text-muted"><span>POC metric</span><KwantSelect value={String(settingsInstance.settings?.metric ?? "total-volume")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), metric: event.target.value, preset: "custom" } }))} className="h-9 w-full"><option value="total-volume">Total volume</option><option value="bid-volume">Bid volume</option><option value="ask-volume">Ask volume</option><option value="absolute-delta">Absolute delta</option><option value="trade-count">Trade count</option></KwantSelect></label>
+                    <label className="space-y-1.5 text-[8px] uppercase tracking-[0.1em] text-muted"><span>Grouping</span><KwantSelect value={String(settingsInstance.settings?.groupingMode ?? "follow-footprint")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), groupingMode: event.target.value, preset: "custom" } }))} className="h-9 w-full"><option value="follow-footprint">Follow Footprint</option><option value="raw-exchange-tick">Raw exchange tick</option><option value="custom-ticks">Custom ticks</option><option value="automatic">Automatic</option></KwantSelect></label>
+                    <label className="space-y-1.5 text-[8px] uppercase tracking-[0.1em] text-muted"><span>Tie break</span><KwantSelect value={String(settingsInstance.settings?.tieBreakMode ?? "follow-shared-profile-engine")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), tieBreakMode: event.target.value, preset: "custom" } }))} className="h-9 w-full"><option value="follow-shared-profile-engine">Shared profile engine</option><option value="closest-to-volume-weighted-price">Closest to VWAP</option><option value="closest-to-close">Closest to close</option><option value="highest-price">Highest price</option><option value="lowest-price">Lowest price</option><option value="first-achieved">First achieved</option><option value="last-achieved">Last achieved</option></KwantSelect></label>
+                    <label className="space-y-1.5 text-[8px] uppercase tracking-[0.1em] text-muted"><span>POC band</span><KwantSelect value={String(settingsInstance.settings?.pocBandMode ?? "single-price-group")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), pocBandMode: event.target.value, preset: "custom" } }))} className="h-9 w-full"><option value="single-price-group">Single price group</option><option value="percentage-of-maximum">Percentage of maximum</option><option value="top-n-contiguous-groups">Top contiguous groups</option><option value="custom-ticks">Custom ticks</option></KwantSelect></label>
+                    <label className="space-y-1.5 text-[8px] uppercase tracking-[0.1em] text-muted"><span>Auction source</span><KwantSelect value={String(settingsInstance.settings?.auctionExtremeSource ?? "raw-exchange-tick")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), auctionExtremeSource: event.target.value, preset: "custom" } }))} className="h-9 w-full"><option value="raw-exchange-tick">Raw one-tick executions</option><option value="displayed-group">Displayed group approximation</option></KwantSelect></label>
+                    <label className="space-y-1.5 text-[8px] uppercase tracking-[0.1em] text-muted"><span>Resolution</span><KwantSelect value={String(settingsInstance.settings?.auctionResolutionMode ?? "first-touch")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), auctionResolutionMode: event.target.value, preset: "custom" } }))} className="h-9 w-full"><option value="first-touch">First touch</option><option value="trade-through">Trade through</option><option value="minimum-volume-at-level">Minimum volume at level</option><option value="new-finished-extreme">New finished extreme</option><option value="combined">Combined</option></KwantSelect></label>
+                  </div>
+                  <p className="text-[8px] leading-4 text-muted">Uses the shared Footprint execution stream. Auction extremes use exact one-tick rows when available and never fabricate bid/ask behaviour from OHLC bars.</p>
                 </div>
               ) : null}
 

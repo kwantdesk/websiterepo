@@ -85,6 +85,7 @@ export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
   indicator("Stacked Imbalance Suite", "Order Flow", "Diagonal, horizontal and stacked aggressive-volume imbalances with scored zones, retests and breaks from the shared Footprint stream.", true, "Kwantify", undefined, "Imbalances"),
   indicator("Iceberg / Refresh Detector", "Order Flow", "Repeated passive-liquidity replenishment inferred from aggressive executions and the shared Level 3 order-book lifecycle.", true, "Kwantify", undefined, "Liquidity"),
   indicator("Liquidity Sweep / Stop Sweep Detector", "Order Flow", "Direct multi-level aggressive execution sweeps with inferred reference-level stop sweeps, continuation and rejection.", true, "Kwantify", undefined, "Signals"),
+  indicator("POC & Auction Suite", "Order Flow", "Professional bar, session, rolling and anchored POC analysis with naked-level lifecycle, finished and unfinished auctions, excess and migration.", true, "Kwantify", undefined, "Auction"),
   indicator("Cumulative Iceberg/Stop", "Order Flow", "Accumulates inferred iceberg and stop activity.", true),
   indicator("Book Speed", "Order Flow", "Measures order-book update velocity.", true),
   indicator("DOM Pro", "Order Flow", "High-DPI Rithmic MBO ladder with resting depth, aggressor trades, order counts, queue-aware capability states and configurable professional columns.", true, "Kwantify", "Depth of Market"),

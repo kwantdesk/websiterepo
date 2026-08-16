@@ -214,6 +214,15 @@ import {
   type LiquidityStopSweepHit,
   type LiquidityStopSweepPrimitiveData,
 } from "@/lib/liquidityStopSweepPrimitive";
+import {
+  PocAuctionSuiteEngine,
+  normalizePocAuctionSuiteSettings,
+  type PocAuctionFrame,
+} from "@/lib/pocAuctionSuite";
+import {
+  PocAuctionPrimitive,
+  type PocAuctionHit,
+} from "@/lib/pocAuctionPrimitive";
 import { subscribeRithmicLiquidity, type RithmicLiquidityStatus } from "@/lib/rithmicLiquidityStream";
 import {
   defaultGammaHeatmapSource,
@@ -2601,6 +2610,9 @@ export default function Chart({
   const liquidityStopSweepFrameRef = useRef<LiquidityStopSweepFrame | null>(null);
   const liquidityStopSweepAlertIdsRef = useRef(new Set<string>());
   const liquidityStopSweepReferencesRef = useRef<SweepReferenceLevel[]>([]);
+  const pocAuctionPrimitiveRef = useRef<PocAuctionPrimitive | null>(null);
+  const pocAuctionEngineRef = useRef(new PocAuctionSuiteEngine());
+  const pocAuctionAlertIdsRef = useRef(new Set<string>());
   const netGammaExposurePrimitiveRef = useRef<NetGammaExposurePrimitive | null>(null);
   const gexIntervalMapPrimitiveRef = useRef<GexIntervalMapPrimitive | null>(null);
   const gexIntervalAlertStateRef = useRef<{
@@ -2737,6 +2749,8 @@ export default function Chart({
   const [liquidityStopSweepStatus, setLiquidityStopSweepStatus] = useState<RithmicLiquidityStatus>("checking");
   const [liquidityStopSweepFrame, setLiquidityStopSweepFrame] = useState<LiquidityStopSweepFrame | null>(null);
   const [liquidityStopSweepTooltip, setLiquidityStopSweepTooltip] = useState<LiquidityStopSweepHit | null>(null);
+  const [pocAuctionFrame, setPocAuctionFrame] = useState<PocAuctionFrame | null>(null);
+  const [pocAuctionTooltip, setPocAuctionTooltip] = useState<PocAuctionHit | null>(null);
   const [netGammaProfile, setNetGammaProfile] = useState<NetGammaProfileSnapshot | null>(null);
   const [netGammaLoading, setNetGammaLoading] = useState(false);
   const [netGammaError, setNetGammaError] = useState<string | null>(null);
@@ -3867,7 +3881,11 @@ export default function Chart({
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "stacked-imbalance-suite") ?? null,
     [indicatorSignature, indicators],
   );
-  const footprintDataConsumer = footprintIndicator ?? stackedImbalanceIndicator;
+  const pocAuctionIndicator = useMemo(
+    () => indicators.find((instance) => instance.enabled && instance.indicatorId === "poc-auction-suite") ?? null,
+    [indicatorSignature, indicators],
+  );
+  const footprintDataConsumer = footprintIndicator ?? stackedImbalanceIndicator ?? pocAuctionIndicator;
   const footprintSettings = useMemo(
     () => footprintIndicator?.settings ?? {},
     [footprintIndicator],
@@ -4030,6 +4048,14 @@ export default function Chart({
     ),
     [footprintDataKey, footprintRenderBars],
   );
+  const rawPocAuctionBars = useMemo(() => {
+    if (!pocAuctionIndicator || !footprintSourceCandles.length) return [];
+    return buildFootprintBars(footprintSourceCandles, footprintMarketTrades, {
+      ...footprintBuildSettings,
+      groupTicks: 1,
+      showEmptyPriceRows: false,
+    });
+  }, [footprintBuildSettings, footprintMarketTrades, footprintSourceCandles, pocAuctionIndicator]);
   useEffect(() => {
     if (!footprintDataConsumer) {
       retainedFootprintBarsRef.current = null;
@@ -4179,6 +4205,71 @@ export default function Chart({
     if (!normalized.useThemeColors) return normalized;
     return { ...normalized, askColor: settings.upColor, bidColor: settings.downColor, neutralColor: settings.gridColor };
   }, [settings.downColor, settings.gridColor, settings.upColor, stackedImbalanceIndicator]);
+  const pocAuctionSettings = useMemo(() => {
+    const normalized = normalizePocAuctionSuiteSettings(pocAuctionIndicator?.settings);
+    if (!normalized.useThemeColors) return normalized;
+    return {
+      ...normalized,
+      barPocColor: settings.borderUpColor,
+      sessionPocColor: settings.upColor,
+      nakedPocColor: settings.borderDownColor,
+      excessHighColor: settings.downColor,
+      excessLowColor: settings.upColor,
+      neutralColor: settings.gridColor,
+    };
+  }, [pocAuctionIndicator, settings.borderDownColor, settings.borderUpColor, settings.downColor, settings.gridColor, settings.upColor]);
+
+  useEffect(() => {
+    if (!pocAuctionIndicator) {
+      pocAuctionEngineRef.current.reset();
+      pocAuctionAlertIdsRef.current.clear();
+      pocAuctionPrimitiveRef.current?.update(null);
+      setPocAuctionFrame(null);
+      setPocAuctionTooltip(null);
+      return;
+    }
+    const frame = pocAuctionEngineRef.current.update(
+      liveFootprintRenderBars,
+      rawPocAuctionBars,
+      instrument,
+      priceFormat.minMove,
+      resolvedFootprintGroupTicks,
+      pocAuctionSettings,
+    );
+    setPocAuctionFrame(frame);
+    pocAuctionPrimitiveRef.current?.update({ frame, settings: pocAuctionSettings, backgroundColor: settings.backgroundColor });
+    if (pocAuctionSettings.alertsEnabled) for (const alert of frame.alerts) {
+      if (pocAuctionAlertIdsRef.current.has(alert.id)) continue;
+      pocAuctionAlertIdsRef.current.add(alert.id);
+      window.dispatchEvent(new CustomEvent("kwantdesk:chart-indicator-alert", { detail: {
+        indicatorId: "poc-auction-suite",
+        instanceId: pocAuctionIndicator.instanceId,
+        instrument,
+        title: alert.type.replaceAll("-", " "),
+        event: alert,
+      } }));
+    }
+  }, [instrument, liveFootprintRenderBars, pocAuctionIndicator, pocAuctionSettings, priceFormat.minMove, rawPocAuctionBars, resolvedFootprintGroupTicks, settings.backgroundColor]);
+
+  useEffect(() => {
+    const container = chartContainerRef.current;
+    if (!container || !pocAuctionIndicator || !pocAuctionSettings.showTooltips) return;
+    let frameId: number | null = null;
+    let pending: PointerEvent | null = null;
+    const flush = () => {
+      frameId = null;
+      const event = pending;
+      pending = null;
+      if (!event) return;
+      const rect = container.getBoundingClientRect();
+      setPocAuctionTooltip(pocAuctionPrimitiveRef.current?.queryHit(event.clientX - rect.left, event.clientY - rect.top) ?? null);
+    };
+    const move = (event: PointerEvent) => { pending = event; if (frameId === null) frameId = window.requestAnimationFrame(flush); };
+    const leave = () => { pending = null; if (frameId !== null) window.cancelAnimationFrame(frameId); frameId = null; setPocAuctionTooltip(null); };
+    container.addEventListener("pointermove", move, { passive: true });
+    container.addEventListener("pointerleave", leave);
+    return () => { container.removeEventListener("pointermove", move); container.removeEventListener("pointerleave", leave); if (frameId !== null) window.cancelAnimationFrame(frameId); };
+  }, [pocAuctionIndicator, pocAuctionSettings.showTooltips]);
 
   useEffect(() => {
     if (!stackedImbalanceIndicator) {
@@ -8609,6 +8700,9 @@ export default function Chart({
     const liquidityStopSweepPrimitive = new LiquidityStopSweepPrimitive();
     candleSeries.attachPrimitive(liquidityStopSweepPrimitive);
     liquidityStopSweepPrimitiveRef.current = liquidityStopSweepPrimitive;
+    const pocAuctionPrimitive = new PocAuctionPrimitive();
+    candleSeries.attachPrimitive(pocAuctionPrimitive);
+    pocAuctionPrimitiveRef.current = pocAuctionPrimitive;
     const netGammaExposurePrimitive = new NetGammaExposurePrimitive();
     candleSeries.attachPrimitive(netGammaExposurePrimitive);
     netGammaExposurePrimitiveRef.current = netGammaExposurePrimitive;
@@ -9437,6 +9531,9 @@ export default function Chart({
       if (candleSeriesRef.current && liquidityStopSweepPrimitiveRef.current) {
         try { candleSeriesRef.current.detachPrimitive(liquidityStopSweepPrimitiveRef.current); } catch { /* chart may already be disposed */ }
       }
+      if (candleSeriesRef.current && pocAuctionPrimitiveRef.current) {
+        try { candleSeriesRef.current.detachPrimitive(pocAuctionPrimitiveRef.current); } catch { /* chart may already be disposed */ }
+      }
       candleSeriesRef.current = null;
       gameplanUnderlayRef.current = null;
       fixedPriceLevelLabelsRef.current = null;
@@ -9450,6 +9547,7 @@ export default function Chart({
       stackedImbalancePrimitiveRef.current = null;
       icebergRefreshPrimitiveRef.current = null;
       liquidityStopSweepPrimitiveRef.current = null;
+      pocAuctionPrimitiveRef.current = null;
       netGammaExposurePrimitiveRef.current = null;
       gexIntervalMapPrimitiveRef.current = null;
       netGammaReservedRightOffsetRef.current = null;
@@ -10690,6 +10788,51 @@ export default function Chart({
               <span>State / retests</span><span className="text-foreground">{stackedImbalanceTooltip.item.state} / {stackedImbalanceTooltip.item.retestCount}</span>
             </div>
           )}
+        </div>
+      ) : null}
+      {pocAuctionIndicator && pocAuctionSettings.showHeader ? (
+        <div
+          className="pointer-events-none absolute right-2 top-2 z-[72] flex max-w-[min(760px,calc(100%-80px))] items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur"
+          title={pocAuctionFrame?.limitations.join(" · ") || "Shared execution-volume POC and exact one-tick auction analysis"}
+        >
+          <span className={`h-1.5 w-1.5 rounded-full ${!pocAuctionFrame || pocAuctionFrame.status === "WAITING_FOR_VOLUME_AT_PRICE" ? "animate-pulse bg-warning" : pocAuctionFrame.status === "TRADE_DATA_STALE" || pocAuctionFrame.status === "GROUPED_EXTREMES" ? "bg-warning" : "bg-primary"}`} />
+          <span className="text-foreground">POC &amp; Auction</span>
+          <span>{pocAuctionFrame?.status.replaceAll("_", " ") ?? "CALCULATING"}</span>
+          <span>POC {pocAuctionFrame?.activePocs.length ?? 0}</span>
+          <span>UA {pocAuctionFrame?.auctions.filter((item) => item.completionState === "unfinished").length ?? 0}</span>
+          <span>EXCESS {pocAuctionFrame?.auctions.filter((item) => item.completionState === "excess").length ?? 0}</span>
+        </div>
+      ) : null}
+      {pocAuctionTooltip ? (
+        <div
+          className="pointer-events-none absolute z-[73] min-w-[260px] border border-border bg-panel/96 p-2 font-mono text-[8px] shadow-2xl backdrop-blur"
+          style={{ left: Math.min(Math.max(8, pocAuctionTooltip.x + 14), Math.max(8, overlaySize.width - 280)), top: Math.min(Math.max(34, pocAuctionTooltip.y + 14), Math.max(34, overlaySize.height - 260)) }}
+        >
+          {pocAuctionTooltip.kind === "poc" && "metricValue" in pocAuctionTooltip.item ? (
+            <>
+              <div className="flex items-center justify-between gap-4 border-b border-border pb-1 text-foreground"><span>POC</span><span>{pocAuctionTooltip.item.scope.toUpperCase()} · {pocAuctionTooltip.item.state.toUpperCase()}</span></div>
+              <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-1 text-muted">
+                <span>Price / band</span><span className="text-foreground">{(pocAuctionTooltip.item.centreTick * (pocAuctionFrame?.tickSize ?? priceFormat.minMove)).toFixed(priceFormat.precision)} · {pocAuctionTooltip.item.lowTick}–{pocAuctionTooltip.item.highTick}t</span>
+                <span>Metric / value</span><span className="text-foreground">{pocAuctionTooltip.item.metric.replaceAll("-", " ")} / {Math.round(pocAuctionTooltip.item.metricValue).toLocaleString()}</span>
+                <span>Bid / ask</span><span className="text-foreground">{Math.round(pocAuctionTooltip.item.bidVolume).toLocaleString()} / {Math.round(pocAuctionTooltip.item.askVolume).toLocaleString()}</span>
+                <span>Delta / trades</span><span className="text-foreground">{Math.round(pocAuctionTooltip.item.delta).toLocaleString()} / {Math.round(pocAuctionTooltip.item.tradeCount).toLocaleString()}</span>
+                <span>Migration</span><span className="text-foreground">{pocAuctionTooltip.item.migrationTicks.toFixed(1)}t · {pocAuctionTooltip.item.migrationVelocityTicksPerMinute.toFixed(1)}t/min</span>
+                <span>Touches / accepted</span><span className="text-foreground">{pocAuctionTooltip.item.touchCount} / {Math.round(pocAuctionTooltip.item.acceptedVolumeAfterTouch).toLocaleString()}</span>
+              </div>
+            </>
+          ) : pocAuctionTooltip.kind === "auction" && "completionState" in pocAuctionTooltip.item ? (
+            <>
+              <div className="flex items-center justify-between gap-4 border-b border-border pb-1 text-foreground"><span>Auction extreme</span><span>{pocAuctionTooltip.item.extremeSide.toUpperCase()} · {pocAuctionTooltip.item.completionState.toUpperCase()}</span></div>
+              <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-1 text-muted">
+                <span>Price</span><span className="text-foreground">{(pocAuctionTooltip.item.extremeTick * (pocAuctionFrame?.tickSize ?? priceFormat.minMove)).toFixed(priceFormat.precision)}</span>
+                <span>Lifecycle</span><span className="text-foreground">{pocAuctionTooltip.item.lifecycleState.replaceAll("-", " ")}</span>
+                <span>Bid / ask</span><span className="text-foreground">{Math.round(pocAuctionTooltip.item.bidVolume).toLocaleString()} / {Math.round(pocAuctionTooltip.item.askVolume).toLocaleString()}</span>
+                <span>Trades / volume</span><span className="text-foreground">{pocAuctionTooltip.item.bidTradeCount + pocAuctionTooltip.item.askTradeCount} / {Math.round(pocAuctionTooltip.item.totalVolume).toLocaleString()}</span>
+                <span>Taper / score</span><span className="text-foreground">{pocAuctionTooltip.item.taperStepCount} / {pocAuctionTooltip.item.score}</span>
+                <span>Revisits</span><span className="text-foreground">{pocAuctionTooltip.item.revisitCount}</span>
+              </div>
+            </>
+          ) : null}
         </div>
       ) : null}
       {icebergRefreshIndicator && icebergRefreshSettings.showHeader ? (
