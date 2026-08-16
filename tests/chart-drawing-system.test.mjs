@@ -103,6 +103,15 @@ test("fib retracement is free-dragged and has persistent Kwant Fib settings", ()
   assert.match(fibRetracementPane, /showRatios/);
 });
 
+test("the full visible body of every drawing is selectable, movable and deletable", () => {
+  assert.match(drawingManager, /hitTestGeometries\(point, drawing\.computeGeometry\(viewport\), 8\)/);
+  assert.match(drawingGeometry, /export function hitTestGeometry/);
+  assert.match(drawingGeometry, /geometry\.type === 'rectangle'/);
+  assert.match(drawingGeometry, /geometry\.type === 'polygon'/);
+  assert.match(fibRetracement, /The shaded Fib band is part of the tool/);
+  assert.match(fibRetracement, /point\.y >= minY && point\.y <= maxY/);
+});
+
 test("control-drag marquee selects, moves and deletes drawing groups without chart panning", () => {
   assert.match(drawingManager, /event\.ctrlKey && event\.button === 0/);
   assert.match(drawingManager, /updateMarqueeElement\(point, point\)/);

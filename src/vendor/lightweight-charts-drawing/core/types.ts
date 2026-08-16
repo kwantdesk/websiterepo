@@ -7,6 +7,7 @@ import type {
   Logical,
   IPrimitivePaneView,
 } from 'lightweight-charts';
+import type { Geometry } from './geometry';
 
 /**
  * Anchor point in chart coordinates (time/price)
@@ -243,6 +244,7 @@ export interface IDrawing {
   testHit(point: Point, viewport: Viewport): boolean;
   hitTestAnchor(point: Point, viewport: Viewport): number | null;
   getControlPoints(viewport: Viewport): ControlPoint[];
+  computeGeometry(viewport: Viewport): Geometry[];
 
   // Serialization
   toJSON(): SerializedDrawing;

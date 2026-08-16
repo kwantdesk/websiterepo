@@ -1,4 +1,4 @@
-import { distanceToSegment } from "./math";
+import { distanceToSegment, extendRay, fibPrice } from "./math";
 import type { PrecisionChartAdapter, PrecisionHit, PrecisionObject, PrecisionScreenPoint } from "./types";
 
 export function objectScreenAnchors(object: PrecisionObject, adapter: PrecisionChartAdapter): PrecisionScreenPoint[] {
@@ -22,6 +22,19 @@ export function hitTestObjects(objects: PrecisionObject[], point: PrecisionScree
       const distance = Math.abs(point.x - anchors[0].x);
       if (distance <= tolerance) return { objectId: object.id, kind: "body", distance };
     }
+    const plotWidth = Math.max(0, adapter.width - adapter.priceScaleWidth);
+    const plotHeight = Math.max(0, adapter.height - adapter.timeScaleHeight);
+    if (object.toolId === "precision-ray" && anchors.length >= 2) {
+      const distance = distanceToSegment(point, anchors[0], extendRay(anchors[0], anchors[1], plotWidth, plotHeight));
+      if (distance <= tolerance) return { objectId: object.id, kind: "body", distance };
+    }
+    if (object.toolId === "precision-parallel-line" && anchors.length >= 3) {
+      const translated = { x: anchors[1].x + anchors[2].x - anchors[0].x, y: anchors[1].y + anchors[2].y - anchors[0].y };
+      for (const [start, end] of [[anchors[0], anchors[1]], [anchors[2], translated]] as const) {
+        const distance = distanceToSegment(point, start, end);
+        if (distance <= tolerance) return { objectId: object.id, kind: "body", distance };
+      }
+    }
     if ((object.toolId === "precision-rectangle" || object.toolId === "precision-ellipse") && anchors.length >= 2) {
       const left = Math.min(anchors[0].x, anchors[1].x), right = Math.max(anchors[0].x, anchors[1].x), top = Math.min(anchors[0].y, anchors[1].y), bottom = Math.max(anchors[0].y, anchors[1].y);
       const handles = [{ x: left, y: top }, { x: (left + right) / 2, y: top }, { x: right, y: top }, { x: right, y: (top + bottom) / 2 }, { x: right, y: bottom }, { x: (left + right) / 2, y: bottom }, { x: left, y: bottom }, { x: left, y: (top + bottom) / 2 }];
@@ -36,6 +49,36 @@ export function hitTestObjects(objects: PrecisionObject[], point: PrecisionScree
       const right = Math.max(...anchors.map((anchor) => anchor.x));
       const top = Math.min(...anchors.map((anchor) => anchor.y));
       const bottom = Math.max(...anchors.map((anchor) => anchor.y));
+      if (point.x >= left - tolerance && point.x <= right + tolerance && point.y >= top - tolerance && point.y <= bottom + tolerance) {
+        return { objectId: object.id, kind: "body", distance: 0 };
+      }
+    }
+    if ((object.toolId === "precision-fibonacci-retracement" || object.toolId === "precision-fibonacci-projection") && anchors.length >= 2) {
+      const x1 = Math.min(anchors[0].x, anchors[1].x);
+      const x2 = object.options.extendRight ? plotWidth : Math.max(anchors[0].x, anchors[1].x);
+      const baseStart = object.toolId === "precision-fibonacci-projection" && object.anchors[2] ? object.anchors[2].price : object.anchors[0].price;
+      const baseEnd = object.toolId === "precision-fibonacci-projection" && object.anchors[2]
+        ? object.anchors[2].price + (object.anchors[1].price - object.anchors[0].price)
+        : object.anchors[1].price;
+      const ys = ((object.options.levels as number[] | undefined) ?? []).flatMap((ratio) => {
+        const y = adapter.priceToY(fibPrice(baseStart, baseEnd, ratio, Boolean(object.options.reverse)));
+        return y == null ? [] : [y];
+      });
+      if (ys.length > 0 && point.x >= x1 - tolerance && point.x <= x2 + tolerance &&
+        point.y >= Math.min(...ys) - tolerance && point.y <= Math.max(...ys) + tolerance) {
+        return { objectId: object.id, kind: "body", distance: 0 };
+      }
+    }
+    if (object.toolId === "precision-fibonacci-fan" && anchors.length >= 2) {
+      for (const ratio of (object.options.levels as number[] | undefined) ?? []) {
+        const target = { x: anchors[1].x, y: anchors[0].y + (anchors[1].y - anchors[0].y) * ratio };
+        const distance = distanceToSegment(point, anchors[0], extendRay(anchors[0], target, plotWidth, plotHeight));
+        if (distance <= tolerance) return { objectId: object.id, kind: "body", distance };
+      }
+    }
+    if (object.toolId === "precision-volume-profile" && anchors.length >= 2) {
+      const left = Math.min(anchors[0].x, anchors[1].x), right = Math.max(anchors[0].x, anchors[1].x);
+      const top = Math.min(anchors[0].y, anchors[1].y), bottom = Math.max(anchors[0].y, anchors[1].y);
       if (point.x >= left - tolerance && point.x <= right + tolerance && point.y >= top - tolerance && point.y <= bottom + tolerance) {
         return { objectId: object.id, kind: "body", distance: 0 };
       }

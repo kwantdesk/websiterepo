@@ -75,6 +75,15 @@ test("price snap and ray extension are deterministic", () => {
   assert.equal(fibPrice(100, 200, 0.618, true), 138.2);
 });
 
+test("precision drawings can be selected anywhere on their rendered geometry", () => {
+  const hitTesting = read("src/chart/precision-tools/hitTesting.ts");
+  assert.match(hitTesting, /precision-fibonacci-retracement/);
+  assert.match(hitTesting, /Math\.min\(\.\.\.ys\)/);
+  assert.match(hitTesting, /precision-fibonacci-fan/);
+  assert.match(hitTesting, /precision-volume-profile/);
+  assert.match(hitTesting, /precision-parallel-line/);
+});
+
 test("pencil RDP removes redundant points while preserving endpoints", () => {
   const result = simplifyRdp([{ x: 0, y: 0 }, { x: 5, y: 0.1 }, { x: 10, y: 0 }], 0.2);
   assert.deepEqual(result, [{ x: 0, y: 0 }, { x: 10, y: 0 }]);

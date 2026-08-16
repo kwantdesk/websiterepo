@@ -16,6 +16,7 @@ import type {
   SerializedDrawing,
 } from './types';
 import { coordinateToNumericTime } from './coordinate-utils';
+import { hitTestGeometries } from './geometry';
 
 /**
  * DrawingManager - Central orchestration system for managing drawings.
@@ -292,7 +293,7 @@ export class DrawingManager {
 
     for (const drawing of drawings) {
       if (!drawing.options.visible) continue;
-      if (drawing.testHit(point, viewport)) {
+      if (drawing.testHit(point, viewport) || hitTestGeometries(point, drawing.computeGeometry(viewport), 8)) {
         return drawing;
       }
     }

@@ -77,6 +77,75 @@ export type Geometry =
   | TextGeometry;
 
 /**
+ * Hit-test the geometry that is actually painted for a drawing.
+ *
+ * Individual tools can keep specialised hit testing, but this provides a
+ * consistent interaction surface for every visible line, body, label and
+ * shape. That prevents drawings from only being selectable by an anchor or
+ * another tiny implementation-specific hotspot.
+ */
+export function hitTestGeometry(
+  point: Point,
+  geometry: Geometry,
+  tolerance = 8
+): boolean {
+  if (geometry.type === 'line') {
+    return distanceToLineSegment(point, geometry.start, geometry.end) <=
+      tolerance + Math.max(0, (geometry.lineWidth ?? 1) / 2);
+  }
+
+  if (geometry.type === 'rectangle') {
+    const left = Math.min(geometry.topLeft.x, geometry.topLeft.x + geometry.width);
+    const right = Math.max(geometry.topLeft.x, geometry.topLeft.x + geometry.width);
+    const top = Math.min(geometry.topLeft.y, geometry.topLeft.y + geometry.height);
+    const bottom = Math.max(geometry.topLeft.y, geometry.topLeft.y + geometry.height);
+    return point.x >= left - tolerance && point.x <= right + tolerance &&
+      point.y >= top - tolerance && point.y <= bottom + tolerance;
+  }
+
+  if (geometry.type === 'arc') {
+    const distance = Math.hypot(point.x - geometry.center.x, point.y - geometry.center.y);
+    return Math.abs(distance - geometry.radius) <= tolerance;
+  }
+
+  if (geometry.type === 'polygon') {
+    if (geometry.points.length === 0) return false;
+    for (let index = 0; index < geometry.points.length - 1; index += 1) {
+      if (distanceToLineSegment(point, geometry.points[index], geometry.points[index + 1]) <= tolerance) return true;
+    }
+    if (geometry.closed && geometry.points.length > 2) {
+      if (distanceToLineSegment(point, geometry.points.at(-1)!, geometry.points[0]) <= tolerance) return true;
+      let inside = false;
+      for (let current = 0, previous = geometry.points.length - 1; current < geometry.points.length; previous = current++) {
+        const a = geometry.points[current];
+        const b = geometry.points[previous];
+        if (((a.y > point.y) !== (b.y > point.y)) &&
+          point.x < ((b.x - a.x) * (point.y - a.y)) / ((b.y - a.y) || Number.EPSILON) + a.x) {
+          inside = !inside;
+        }
+      }
+      if (inside) return true;
+    }
+    return false;
+  }
+
+  // Canvas text metrics are not available in the manager, so use a slightly
+  // generous label box. It is still bounded to the visible label itself.
+  const fontSize = Number.parseFloat(geometry.font ?? '') || 12;
+  const width = Math.max(12, geometry.text.length * fontSize * 0.68);
+  return Math.abs(point.x - geometry.position.x) <= width + tolerance &&
+    Math.abs(point.y - geometry.position.y) <= fontSize + tolerance;
+}
+
+export function hitTestGeometries(
+  point: Point,
+  geometries: Geometry[],
+  tolerance = 8
+): boolean {
+  return geometries.some((geometry) => hitTestGeometry(point, geometry, tolerance));
+}
+
+/**
  * Calculate distance from point to line segment
  */
 export function distanceToLineSegment(

@@ -2,6 +2,7 @@ import type { IPrimitivePaneView } from 'lightweight-charts';
 
 import { Drawing } from '../../core/drawing';
 import type { Anchor, Point, Viewport, DrawingStyle, DrawingOptions, IDrawing } from '../../core/types';
+import { distanceToLineSegment } from '../../core/geometry';
 import type { Geometry, LineGeometry } from '../../core/geometry';
 import { FibRetracementPaneView } from './fib-retracement-pane-view';
 
@@ -146,6 +147,8 @@ export class FibRetracement extends Drawing {
     const minX = this.fibOptions.extendLines ? 0 : Math.min(p1.x, p2.x);
     const maxX = this.fibOptions.extendLines ? viewport.width : Math.max(p1.x, p2.x);
 
+    const renderedLevelYs: number[] = [];
+
     // Check if near any level line
     for (const level of levels) {
       const price = this.fibOptions.reverseDirection
@@ -154,11 +157,23 @@ export class FibRetracement extends Drawing {
 
       const y = viewport.priceScale.priceToCoordinate(price);
       if (y === null) continue;
+      renderedLevelYs.push(y);
 
       if (point.x >= minX && point.x <= maxX && Math.abs(point.y - y) <= FibRetracement.HIT_THRESHOLD) {
         return true;
       }
     }
+
+    // The shaded Fib band is part of the tool, so clicking anywhere inside it
+    // must select the Fib—not only a five-pixel strip around a level line.
+    if (renderedLevelYs.length > 1) {
+      const minY = Math.min(...renderedLevelYs);
+      const maxY = Math.max(...renderedLevelYs);
+      if (point.x >= minX && point.x <= maxX && point.y >= minY && point.y <= maxY) return true;
+    }
+
+    // The diagonal anchor guide is visible too and owns the same interaction.
+    if (distanceToLineSegment(point, p1, p2) <= 8) return true;
 
     return false;
   }
