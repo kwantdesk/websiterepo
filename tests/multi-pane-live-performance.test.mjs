@@ -45,6 +45,9 @@ test("each pane losslessly coalesces execution work before copying tape and cand
   assert.match(workspace, /const flushExecutionRecords = \(\) =>/);
   assert.match(workspace, /pendingExecutionRecords\.push\(\.\.\.records\)/);
   assert.match(workspace, /footprintLiveActive \? 125 : 200/);
+  assert.match(workspace, /LIVE_CHART_EXECUTION_EVENT/);
+  assert.match(workspace, /tape: next/);
+  assert.match(workspace, /footprintLiveActive[\s\S]{0,120}\? 1_500/);
   assert.match(workspace, /onTrades: \(records\) => \{[\s\S]{0,160}queueExecutionUpdate\(records\)/);
 });
 
@@ -113,15 +116,17 @@ test("plain multi-day charts aggregate ticks on a bounded tail before React reco
   assert.match(workspace, /Math\.max\(0, previous\.length - 32\)/);
   assert.match(workspace, /const mergedTail = ticks\.reduce/);
   assert.match(workspace, /detail: \{ key: pane\.id, candle: latest \}/);
-  assert.match(workspace, /activeRef\.current \? 750 : 2_500/);
+  assert.match(workspace, /activeRef\.current \? 5_000 : 10_000/);
   assert.match(workspace, /previous\.slice\(0, tailStart\)/);
 });
 
 test("background studies and drawings cannot consume foreground cadence", () => {
   const chart = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
-  assert.match(chart, /keyboardActive \? 100 : 500/);
+  assert.match(chart, /keyboardActive \? 250 : 750/);
   assert.match(chart, /Math\.max\(750, FOOTPRINT_DATA_REFRESH_INTERVAL_MS\)/);
   assert.match(chart, /Math\.max\(1_000, ORDER_FLOW_DATA_REFRESH_INTERVAL_MS\)/);
+  assert.match(chart, /LIVE_CHART_EXECUTION_EVENT/);
+  assert.match(chart, /primitive\.update\(nextBars, primitiveOptions\)/);
 });
 
 test("the five-minute chart stream proves the canonical selected symbol before warm takeover", () => {

@@ -77,9 +77,11 @@ import { Candle, Trade } from "@/lib/backtester";
 import {
   DATABENTO_LIVE_TICK_EVENT,
   LIVE_CHART_CANDLE_EVENT,
+  LIVE_CHART_EXECUTION_EVENT,
   mergeLiveIndicatorCandle,
   type DatabentoLiveTick,
   type LiveChartCandleDetail,
+  type LiveChartExecutionDetail,
 } from "@/lib/chartLiveEvents";
 import {
   CHART_INDICATOR_BY_ID,
@@ -2745,6 +2747,14 @@ function Chart({
   const bigBlocksPrimitiveRef = useRef<BigBlocksPrimitive | null>(null);
   const smtDivergencePrimitiveRef = useRef<SmtDivergencePrimitive | null>(null);
   const footprintPrimitiveRef = useRef<FootprintPrimitive | null>(null);
+  const liveFootprintSourceCandlesRef = useRef<Candle[]>([]);
+  const liveFootprintBuildSettingsRef = useRef<FootprintBuildSettings | null>(null);
+  const liveFootprintPrimitiveOptionsRef = useRef<FootprintPrimitiveOptions | null>(null);
+  const liveFootprintProfileGroupTicksRef = useRef(1);
+  const liveFootprintEnabledRef = useRef(false);
+  const liveFootprintRenderBarsRef = useRef<FootprintRenderBar[]>([]);
+  const liveFootprintTapeRef = useRef<InstitutionalTrade[]>([]);
+  const liveFootprintRefreshTimerRef = useRef<number | null>(null);
   const retainedFootprintBarsRef = useRef<{ key: string; bars: FootprintRenderBar[] } | null>(null);
   const paperFillMarkersPrimitiveRef = useRef<PaperFillMarkersPrimitive | null>(null);
   const paperPositionOverlayPrimitiveRef = useRef<PaperPositionOverlayPrimitive | null>(null);
@@ -3136,11 +3146,11 @@ function Chart({
       if (!detail || detail.key !== liveCandleEventKey) return;
       pendingCandle = detail.candle;
       latestCandleRef.current = detail.candle;
-      if (volumeIndicatorEnabled || footprintSamplingEnabled) {
+      if (volumeIndicatorEnabled) {
         pendingLiveVolumeCandleRef.current = detail.candle;
         if (liveVolumeSampleTimerRef.current === null) {
-          // Volume and footprint geometry should visibly develop with the
-          // live candle, while heavier tape aggregation stays independently sampled.
+          // The Volume pane needs a React snapshot. Footprint geometry is
+          // updated directly above and its live tape bypasses React entirely.
           liveVolumeSampleTimerRef.current = window.setTimeout(() => {
             liveVolumeSampleTimerRef.current = null;
             const liveVolumeCandle = pendingLiveVolumeCandleRef.current;
@@ -3149,7 +3159,7 @@ function Chart({
               setSampledIndicatorCandles((current) =>
                 mergeLiveIndicatorCandle(current, liveVolumeCandle));
             }
-          }, keyboardActive ? 100 : 500);
+          }, keyboardActive ? 250 : 750);
         }
       }
       if (frame === null) frame = window.requestAnimationFrame(flush);
@@ -3165,6 +3175,82 @@ function Chart({
       pendingLiveVolumeCandleRef.current = null;
     };
   }, [footprintSamplingEnabled, instrument, keyboardActive, liveCandleEventKey, timeframe, volumeIndicatorEnabled]);
+
+  useEffect(() => {
+    if (!liveCandleEventKey) return;
+    const lowerBound = (records: InstitutionalTrade[], timestamp: number) => {
+      let low = 0;
+      let high = records.length;
+      while (low < high) {
+        const middle = (low + high) >>> 1;
+        if (records[middle].timestamp < timestamp) low = middle + 1;
+        else high = middle;
+      }
+      return low;
+    };
+    const refreshVisibleFootprint = () => {
+      liveFootprintRefreshTimerRef.current = null;
+      if (!liveFootprintEnabledRef.current) return;
+      const sourceCandles = liveFootprintSourceCandlesRef.current;
+      const buildSettings = liveFootprintBuildSettingsRef.current;
+      const primitiveOptions = liveFootprintPrimitiveOptionsRef.current;
+      const tape = liveFootprintTapeRef.current;
+      const primitive = footprintPrimitiveRef.current;
+      if (!sourceCandles.length || !buildSettings || !primitiveOptions || !primitive || !tape.length) return;
+
+      const firstTimestamp = sourceCandles[0].timestamp;
+      const finalCandle = sourceCandles.at(-1)!;
+      const approximateInterval = timeframeToMs(timeframe)
+        ?? Math.max(1, finalCandle.timestamp - (sourceCandles.at(-2)?.timestamp ?? finalCandle.timestamp - 60_000));
+      const visibleTape = tape.slice(
+        lowerBound(tape, firstTimestamp),
+        lowerBound(tape, finalCandle.timestamp + approximateInterval),
+      );
+      const bars = buildFootprintBars(sourceCandles, visibleTape, buildSettings);
+      const profileGroupTicks = liveFootprintProfileGroupTicksRef.current;
+      const needsSeparateProfile = (
+        primitiveOptions.showPerBarVolumeProfile || primitiveOptions.showPerBarDeltaProfile
+      ) && profileGroupTicks !== buildSettings.groupTicks;
+      const profileRows = needsSeparateProfile
+        ? new Map(buildFootprintBars(sourceCandles, visibleTape, {
+            ...buildSettings,
+            groupTicks: profileGroupTicks,
+          }).map((bar) => [bar.timestamp, bar.rows]))
+        : null;
+      const nextBars = retainLiveFootprintRows(
+        bars.map((bar) => ({
+          ...bar,
+          profileRows: profileRows?.get(bar.timestamp) ?? bar.rows,
+          time: (eventChartTimeBySourceTimeRef.current.get(bar.timestamp)
+            ?? Math.floor(bar.timestamp / 1_000)) as Time,
+        })),
+        liveFootprintRenderBarsRef.current,
+      );
+      liveFootprintRenderBarsRef.current = nextBars;
+      primitive.update(nextBars, primitiveOptions);
+    };
+    const receive = (event: Event) => {
+      const detail = (event as CustomEvent<LiveChartExecutionDetail>).detail;
+      if (!detail || detail.key !== liveCandleEventKey || !liveFootprintEnabledRef.current) return;
+      // The tape is the shared canonical reference; assigning it is O(1).
+      // Only the visible bars are rebuilt, directly into the canvas primitive.
+      liveFootprintTapeRef.current = detail.tape;
+      if (liveFootprintRefreshTimerRef.current !== null) return;
+      liveFootprintRefreshTimerRef.current = window.setTimeout(
+        refreshVisibleFootprint,
+        keyboardActive ? FOOTPRINT_DATA_REFRESH_INTERVAL_MS : 500,
+      );
+    };
+    window.addEventListener(LIVE_CHART_EXECUTION_EVENT, receive);
+    return () => {
+      window.removeEventListener(LIVE_CHART_EXECUTION_EVENT, receive);
+      if (liveFootprintRefreshTimerRef.current !== null) {
+        window.clearTimeout(liveFootprintRefreshTimerRef.current);
+        liveFootprintRefreshTimerRef.current = null;
+      }
+      liveFootprintTapeRef.current = [];
+    };
+  }, [keyboardActive, liveCandleEventKey, timeframe]);
 
   useEffect(() => {
     updateIndicatorSettingRef.current = onUpdateIndicatorSetting;
@@ -4467,6 +4553,25 @@ function Chart({
       backgroundColor: settings.backgroundColor,
     };
   }, [footprintSettings, settings]);
+  useEffect(() => {
+    liveFootprintEnabledRef.current = Boolean(footprintIndicator);
+    liveFootprintSourceCandlesRef.current = footprintSourceCandles;
+    liveFootprintBuildSettingsRef.current = footprintBuildSettings;
+    liveFootprintPrimitiveOptionsRef.current = footprintPrimitiveOptions;
+    liveFootprintProfileGroupTicksRef.current = footprintProfileGroupTicks;
+    liveFootprintRenderBarsRef.current = liveFootprintRenderBars;
+    if (sampledIndicatorMarketTrades.length) {
+      liveFootprintTapeRef.current = sampledIndicatorMarketTrades;
+    }
+  }, [
+    footprintBuildSettings,
+    footprintIndicator,
+    footprintPrimitiveOptions,
+    footprintProfileGroupTicks,
+    footprintSourceCandles,
+    liveFootprintRenderBars,
+    sampledIndicatorMarketTrades,
+  ]);
   const footprintHasPriceLevelFlow = liveFootprintRenderBars.some((bar) => bar.hasPriceLevelFlow);
   const footprintHasClassifiedFlow = liveFootprintRenderBars.some((bar) =>
     bar.classifiedVolume > 0);

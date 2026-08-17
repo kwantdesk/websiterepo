@@ -122,7 +122,7 @@ import {
   type InstitutionalVolumeProfile,
 } from "@/lib/institutionalMarketData";
 import { mergeInstitutionalTradeTape } from "@/lib/liveExecutionTape";
-import { FOOTPRINT_DATA_REFRESH_INTERVAL_MS, ORDER_FLOW_DATA_REFRESH_INTERVAL_MS } from "@/lib/footprintRuntime";
+import { ORDER_FLOW_DATA_REFRESH_INTERVAL_MS } from "@/lib/footprintRuntime";
 import { subscribeRithmicIndicatorTrades } from "@/lib/rithmicIndicatorStream";
 import {
   currentGameplanSession,
@@ -238,6 +238,7 @@ import type { ValueAreaProfile } from "@/lib/valueArea";
 import {
   DATABENTO_LIVE_TICK_EVENT,
   LIVE_CHART_CANDLE_EVENT,
+  LIVE_CHART_EXECUTION_EVENT,
   publishDatabentoLiveStatus,
   readDatabentoLiveTail,
   recordDatabentoLiveTick,
@@ -4615,8 +4616,12 @@ function WorkspaceChartPaneComponent({
     let executionSyncTimer: number | null = null;
     let marketTradeStateSyncTimer: number | null = null;
     const scheduleMarketTradeStateSync = () => {
+      // Footprint receives live batches through its canvas primitive below.
+      // React only needs an occasional checkpoint for history-dependent
+      // analytics; sending the complete tape through the component tree at
+      // 10 fps was the dominant multi-chart memory/CPU bottleneck.
       const baseCadence = footprintLiveActive
-        ? FOOTPRINT_DATA_REFRESH_INTERVAL_MS
+        ? 1_500
         : ORDER_FLOW_DATA_REFRESH_INTERVAL_MS;
       const cadence = activeRef.current ? baseCadence : Math.max(750, baseCadence);
       const elapsed = Date.now() - lastMarketTradeStateSyncRef.current;
@@ -4667,6 +4672,15 @@ function WorkspaceChartPaneComponent({
           records,
         );
         latestMarketTradesRef.current = next;
+        if (footprintLiveActive) {
+          window.dispatchEvent(new CustomEvent(LIVE_CHART_EXECUTION_EVENT, {
+            detail: {
+              key: pane.id,
+              records,
+              tape: next,
+            },
+          }));
+        }
         scheduleMarketTradeStateSync();
       }
 
@@ -4708,7 +4722,7 @@ function WorkspaceChartPaneComponent({
       }));
       const now = Date.now();
       const newBar = previousCandles.at(-1)?.timestamp !== latest.timestamp;
-      const reconciliationCadence = activeRef.current ? 750 : 2_000;
+      const reconciliationCadence = activeRef.current ? 2_000 : 5_000;
       if (newBar || now - lastCandleStateSyncRef.current >= reconciliationCadence) {
         lastCandleStateSyncRef.current = now;
         // The selected pane is the trader's price display, so its candle
@@ -6060,7 +6074,7 @@ function WorkspaceChartPaneComponent({
             );
             latestMarketTradesRef.current = nextTape;
             const now = Date.now();
-            const tapeCadence = activeRef.current ? 250 : 750;
+            const tapeCadence = activeRef.current ? 1_000 : 2_500;
             if (now - lastMarketTradeStateSyncRef.current >= tapeCadence) {
               lastMarketTradeStateSyncRef.current = now;
               setMarketTrades(nextTape);
@@ -6127,7 +6141,7 @@ function WorkspaceChartPaneComponent({
           }));
           const newBar = previous.at(-1)?.timestamp !== latest.timestamp;
           const now = Date.now();
-          const reconciliationCadence = activeRef.current ? 750 : 2_500;
+          const reconciliationCadence = activeRef.current ? 5_000 : 10_000;
           if (newBar || now - lastCandleStateSyncRef.current >= reconciliationCadence) {
             const committed = [
               ...previous.slice(0, tailStart),
@@ -6180,7 +6194,7 @@ function WorkspaceChartPaneComponent({
         }));
         const newBar = previous.at(-1)?.timestamp !== latest.timestamp;
         const now = Date.now();
-        const reconciliationCadence = activeRef.current ? 750 : 2_000;
+        const reconciliationCadence = activeRef.current ? 2_000 : 5_000;
         if (newBar || now - lastCandleStateSyncRef.current >= reconciliationCadence) {
           lastCandleStateSyncRef.current = now;
           // A transition can be starved indefinitely while several live

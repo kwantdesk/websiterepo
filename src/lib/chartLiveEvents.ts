@@ -1,12 +1,26 @@
 import type { Candle } from "@/lib/backtester";
+import type { InstitutionalTrade } from "@/lib/institutionalMarketData";
 
 export const LIVE_CHART_CANDLE_EVENT = "kwantdesk:live-chart-candle";
+export const LIVE_CHART_EXECUTION_EVENT = "kwantdesk:live-chart-executions";
 export const DATABENTO_LIVE_TICK_EVENT = "kwantdesk:databento-tick";
 export const DATABENTO_LIVE_STATUS_EVENT = "kwantdesk:databento-status";
 
 export type LiveChartCandleDetail = {
   key: string;
   candle: Candle;
+};
+
+/**
+ * Live execution batches bypass React props/state. The canonical tape is a
+ * shared immutable array reference, so chart primitives can refresh only the
+ * visible order-flow window without copying the complete archive through
+ * every workspace pane.
+ */
+export type LiveChartExecutionDetail = {
+  key: string;
+  records: InstitutionalTrade[];
+  tape: InstitutionalTrade[];
 };
 
 export type DatabentoLiveStatus = "connecting" | "live" | "reconnecting";

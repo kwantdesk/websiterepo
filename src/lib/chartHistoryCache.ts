@@ -38,9 +38,41 @@ const MAX_PERSISTENT_CACHE_RECORDS = 36;
 const CACHE_PRUNE_INTERVAL_MS = 60_000;
 const memoryCache = new Map<string, CachedHistory>();
 const executionTapeMemoryCache = new Map<string, CachedExecutionTape>();
+const lastWriteFingerprintByKey = new Map<string, string>();
 let databasePromise: Promise<IDBDatabase> | null = null;
 let lastCachePruneAt = 0;
 let cachePrunePromise: Promise<void> | null = null;
+
+function candleFingerprint(candles: Candle[]) {
+  const first = candles[0];
+  const last = candles.at(-1);
+  if (!first || !last) return "empty";
+  return [
+    candles.length,
+    first.timestamp,
+    last.timestamp,
+    last.open,
+    last.high,
+    last.low,
+    last.close,
+    last.volume ?? 0,
+  ].join(":");
+}
+
+function executionFingerprint(records: InstitutionalTrade[]) {
+  const first = records[0];
+  const last = records.at(-1);
+  if (!first || !last) return "empty";
+  return [
+    records.length,
+    first.timestamp,
+    last.timestamp,
+    last.close,
+    last.volume ?? 0,
+    last.delta ?? 0,
+    last.trades ?? 0,
+  ].join(":");
+}
 
 function cacheKey(symbol: string, timeframe: string) {
   // Event-bar schema v6 stores one authoritative reconstruction instead of
@@ -442,7 +474,19 @@ export async function readCompatibleChartHistoryCache(symbol: string, timeframe:
 
 export async function writeChartHistoryCache(symbol: string, timeframe: string, candles: Candle[]) {
   const key = cacheKey(symbol, timeframe);
+  const writeKey = `candles:${key}`;
+  const inputFingerprint = candleFingerprint(candles);
+  if (lastWriteFingerprintByKey.get(writeKey) === inputFingerprint) {
+    const existing = memoryCache.get(key);
+    if (existing) return existing;
+  }
+  // Claim this snapshot before any IndexedDB await. Sibling panes commonly
+  // flush the same shared series together; only the first should serialize it.
+  lastWriteFingerprintByKey.set(writeKey, inputFingerprint);
   const previous = await readChartHistoryCache(symbol, timeframe);
+  if (previous && candleFingerprint(previous.candles) === inputFingerprint) {
+    return previous;
+  }
   const normalizedCandles = mergeAuthoritativeChartHistory(
     previous?.candles ?? [],
     candles,
@@ -507,8 +551,31 @@ export async function writeExecutionTapeCache(
   records: InstitutionalTrade[],
 ) {
   const key = executionTapeCacheKey(symbol, timeframe);
+  const writeKey = `executions:${key}`;
+  const inputFingerprint = executionFingerprint(records);
+  if (lastWriteFingerprintByKey.get(writeKey) === inputFingerprint) {
+    const existing = executionTapeMemoryCache.get(key);
+    if (existing) return existing;
+  }
+  lastWriteFingerprintByKey.set(writeKey, inputFingerprint);
   const previous = await readExecutionTapeCache(symbol, timeframe);
-  const normalizedRecords = normalizeExecutionTape([...(previous?.records ?? []), ...records]);
+  if (previous && executionFingerprint(previous.records) === inputFingerprint) {
+    return previous;
+  }
+  const incoming = normalizeExecutionTape(records);
+  const previousRecords = previous?.records ?? [];
+  const incomingContainsPrevious = Boolean(
+    previousRecords.length
+    && incoming.length >= previousRecords.length
+    && incoming[0].timestamp <= previousRecords[0].timestamp
+    && incoming.at(-1)!.timestamp >= previousRecords.at(-1)!.timestamp
+  );
+  // Workspace callers provide the complete canonical tape. Do not append the
+  // stored copy to that complete array again; doing so briefly doubled tens of
+  // thousands of records per pane during every persistence cycle.
+  const normalizedRecords = incomingContainsPrevious
+    ? incoming
+    : normalizeExecutionTape([...previousRecords, ...incoming]);
   if (!normalizedRecords.length) return null;
   const record: CachedExecutionTape = {
     key,
