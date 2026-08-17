@@ -43,6 +43,7 @@ import {
   ChevronUp,
   Code2,
   Copy,
+  Crown,
   Download,
   Eye,
   EyeOff,
@@ -4284,6 +4285,8 @@ function WorkspaceChartPaneComponent({
   period,
   settings,
   crosshairSyncScope = "matching",
+  viewportSyncGroup = "",
+  viewportSyncRole = "independent",
   trades,
   indicators,
   onActivate,
@@ -4330,6 +4333,8 @@ function WorkspaceChartPaneComponent({
   period: string;
   settings: ChartSettings;
   crosshairSyncScope?: "matching" | "gamvue";
+  viewportSyncGroup?: string;
+  viewportSyncRole?: "independent" | "king" | "follower";
   trades?: (Trade & { markerVisible?: boolean })[];
   indicators: ChartIndicatorInstance[];
   onActivate: () => void;
@@ -6715,6 +6720,8 @@ function WorkspaceChartPaneComponent({
           instrument={displayCmeSymbol(pane.symbol)}
           chartInstanceId={pane.id}
           crosshairSyncScope={crosshairSyncScope}
+          viewportSyncGroup={viewportSyncGroup}
+          viewportSyncRole={viewportSyncRole}
           keyboardActive={active}
           contractSymbol={resolvedContractSymbol}
           timeframe={pane.timeframe}
@@ -7261,6 +7268,24 @@ export default function KwantifyWorkspace({
   const [workspaceSplitRatio, setWorkspaceSplitRatio] = useState<number>(initialChartWorkspaceRuntime.splitRatio);
   const [workspaceQuadSplit, setWorkspaceQuadSplit] = useState<{ x: number; y: number }>(initialChartWorkspaceRuntime.quadSplit);
   const [workspacePanes, setWorkspacePanes] = useState<WorkspacePane[]>(initialChartWorkspaceRuntime.panes);
+  const [kingViewportPaneId, setKingViewportPaneId] = useState<string | null>(null);
+  const [kingViewportFollowerPaneIds, setKingViewportFollowerPaneIds] = useState<Set<string>>(() => new Set());
+  useEffect(() => {
+    if (chartWorkspaceScope !== "gamma") return;
+    const chartPaneIds = new Set(
+      workspacePanes.filter((pane) => isWorkspaceChartKind(pane.content)).map((pane) => pane.id),
+    );
+    if (kingViewportPaneId && !chartPaneIds.has(kingViewportPaneId)) {
+      setKingViewportPaneId(null);
+      setKingViewportFollowerPaneIds(new Set());
+      return;
+    }
+    setKingViewportFollowerPaneIds((current) => {
+      const next = new Set([...current].filter((paneId) => chartPaneIds.has(paneId) && paneId !== kingViewportPaneId));
+      if (next.size === current.size && [...next].every((paneId) => current.has(paneId))) return current;
+      return next;
+    });
+  }, [chartWorkspaceScope, kingViewportPaneId, workspacePanes]);
   const [workspaceTree, setWorkspaceTree] = useState<WorkspaceLayoutNode>(initialChartWorkspaceRuntime.tree);
   const [workspaceFloatingWindows, setWorkspaceFloatingWindows] = useState<WorkspaceFloatingWindow[]>(initialChartWorkspaceRuntime.floatingWindows);
   const [workspacePresets, setWorkspacePresets] = useState<WorkspacePreset[]>(initialChartWorkspaceRuntime.presets);
@@ -12179,6 +12204,41 @@ export default function KwantifyWorkspace({
       pane.id === paneId ? { ...pane, locked: !pane.locked } : pane));
   };
 
+  const toggleKingViewportConnection = (paneId: string) => {
+    if (chartWorkspaceScopeRef.current !== "gamma") return;
+    const pane = workspacePanes.find((candidate) => candidate.id === paneId);
+    if (!pane || !isWorkspaceChartKind(pane.content)) return;
+    if (!kingViewportPaneId) {
+      setKingViewportPaneId(paneId);
+      setKingViewportFollowerPaneIds(new Set());
+      showReportToast("success", `${displayCmeSymbol(pane.symbol)} is now the King viewport`, 1800);
+      return;
+    }
+    if (kingViewportPaneId === paneId) {
+      setKingViewportPaneId(null);
+      setKingViewportFollowerPaneIds(new Set());
+      showReportToast("success", "King viewport link cleared", 1500);
+      return;
+    }
+    const kingPane = workspacePanes.find((candidate) => candidate.id === kingViewportPaneId);
+    if (!kingPane) {
+      setKingViewportPaneId(paneId);
+      setKingViewportFollowerPaneIds(new Set());
+      return;
+    }
+    setKingViewportFollowerPaneIds((current) => {
+      const next = new Set(current);
+      if (next.has(paneId)) {
+        next.delete(paneId);
+      } else {
+        next.add(paneId);
+        updateWorkspacePane(paneId, { timeframe: kingPane.timeframe });
+        if (activePaneId === paneId) setSelectedTimeframe(kingPane.timeframe);
+      }
+      return next;
+    });
+  };
+
   const activateFloatingWorkspacePane = (paneId: string) => {
     activateWorkspacePane(paneId);
     setWorkspaceFloatingWindows((current) => {
@@ -13363,6 +13423,19 @@ export default function KwantifyWorkspace({
 
   const selectTimeframe = (timeframe: string) => {
     clearBacktest();
+    if (
+      chartWorkspaceScopeRef.current === "gamma"
+      && kingViewportPaneId
+      && (activePaneId === kingViewportPaneId || kingViewportFollowerPaneIds.has(activePaneId))
+    ) {
+      setWorkspacePanes((current) => current.map((pane) => (
+        pane.id === kingViewportPaneId || kingViewportFollowerPaneIds.has(pane.id)
+          ? { ...pane, timeframe }
+          : pane
+      )));
+      setSelectedTimeframe(timeframe);
+      return;
+    }
     if (activeWorkspacePane.broker === "Databento") {
       void warmDatabentoChartHistory(activeWorkspacePane.symbol, timeframe);
     }
@@ -13374,6 +13447,21 @@ export default function KwantifyWorkspace({
     const pane = workspacePanes.find((candidate) => candidate.id === paneId);
     if (!pane || !supportsChartInterval(timeframe, pane.broker)) return false;
     clearBacktest();
+    if (
+      chartWorkspaceScopeRef.current === "gamma"
+      && kingViewportPaneId
+      && (paneId === kingViewportPaneId || kingViewportFollowerPaneIds.has(paneId))
+    ) {
+      setWorkspacePanes((current) => current.map((candidate) => (
+        candidate.id === kingViewportPaneId || kingViewportFollowerPaneIds.has(candidate.id)
+          ? { ...candidate, timeframe }
+          : candidate
+      )));
+      if (kingViewportPaneId === activePaneId || kingViewportFollowerPaneIds.has(activePaneId)) {
+        setSelectedTimeframe(timeframe);
+      }
+      return true;
+    }
     if (pane.broker === "Databento") {
       void warmDatabentoChartHistory(pane.symbol, timeframe);
     }
@@ -14107,6 +14195,14 @@ export default function KwantifyWorkspace({
         period={pane.period}
         settings={chartSettings}
         crosshairSyncScope={chartWorkspaceScope === "gamma" ? "gamvue" : "matching"}
+        viewportSyncGroup={chartWorkspaceScope === "gamma" ? "gex-vue-king-viewport" : ""}
+        viewportSyncRole={chartWorkspaceScope === "gamma"
+          ? kingViewportPaneId === pane.id
+            ? "king"
+            : kingViewportFollowerPaneIds.has(pane.id)
+              ? "follower"
+              : "independent"
+          : "independent"}
         trades={activePaneId === pane.id ? chartTrades : []}
         indicators={paneIndicators[pane.id] ?? []}
         paperPositions={selectedPaperAccountLedger?.positions ?? []}
@@ -14203,6 +14299,32 @@ export default function KwantifyWorkspace({
             >
               {pane.locked ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
             </button>
+            {chartWorkspaceScope === "gamma" ? (
+              <button
+                type="button"
+                onClick={() => toggleKingViewportConnection(pane.id)}
+                className={`relative flex h-7 w-7 items-center justify-center rounded-lg transition-colors ${
+                  kingViewportPaneId === pane.id
+                    ? "bg-primary text-background shadow-[0_0_14px_color-mix(in_srgb,var(--primary)_50%,transparent)]"
+                    : kingViewportFollowerPaneIds.has(pane.id)
+                      ? "bg-primary/15 text-primary"
+                      : "text-muted hover:bg-surface hover:text-primary"
+                }`}
+                title={kingViewportPaneId === pane.id
+                  ? "King viewport — click to clear the group"
+                  : kingViewportFollowerPaneIds.has(pane.id)
+                    ? "Locked to the King viewport — click to unlink"
+                    : kingViewportPaneId
+                      ? "Lock this chart to the King viewport"
+                      : "Make this the King viewport"}
+                aria-label={kingViewportPaneId === pane.id ? "Clear King viewport" : "Toggle King viewport link"}
+              >
+                <Crown className="h-3.5 w-3.5" />
+                {kingViewportFollowerPaneIds.has(pane.id) ? (
+                  <Lock className="absolute bottom-0.5 right-0.5 h-2 w-2" />
+                ) : null}
+              </button>
+            ) : null}
             {hasStandaloneWorkspaceSettings(pane) ? (
               <button
                 type="button"
@@ -14308,6 +14430,31 @@ export default function KwantifyWorkspace({
             >
               {floating.locked ? <Lock className="h-3 w-3" /> : <Unlock className="h-3 w-3" />}
             </button>
+            {chartWorkspaceScope === "gamma" && isWorkspaceChartKind(pane.content) ? (
+              <button
+                type="button"
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={() => toggleKingViewportConnection(pane.id)}
+                className={`relative flex h-6 w-6 items-center justify-center border transition-colors ${
+                  kingViewportPaneId === pane.id
+                    ? "border-primary bg-primary text-background"
+                    : kingViewportFollowerPaneIds.has(pane.id)
+                      ? "border-primary/40 bg-primary/15 text-primary"
+                      : "border-transparent text-muted hover:border-border hover:text-primary"
+                }`}
+                title={kingViewportPaneId === pane.id
+                  ? "King viewport — click to clear the group"
+                  : kingViewportFollowerPaneIds.has(pane.id)
+                    ? "Locked to the King viewport — click to unlink"
+                    : kingViewportPaneId
+                      ? "Lock this chart to the King viewport"
+                      : "Make this the King viewport"}
+                aria-label="Toggle King viewport link"
+              >
+                <Crown className="h-3 w-3" />
+                {kingViewportFollowerPaneIds.has(pane.id) ? <Lock className="absolute bottom-0 right-0 h-1.5 w-1.5" /> : null}
+              </button>
+            ) : null}
             {hasStandaloneWorkspaceSettings(pane) ? (
               <button
                 type="button"
