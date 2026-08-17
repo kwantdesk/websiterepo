@@ -5,11 +5,37 @@ export function objectScreenAnchors(object: PrecisionObject, adapter: PrecisionC
   return object.anchors.map((anchor) => ({ x: adapter.timeToX(anchor.time, anchor.logicalIndex) ?? NaN, y: adapter.priceToY(anchor.price) ?? NaN })).filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
 }
 
+export function tradeCalculatorResizeHandles(anchors: PrecisionScreenPoint[]): PrecisionScreenPoint[] {
+  if (anchors.length < 3) return [];
+  const left = Math.min(...anchors.map((anchor) => anchor.x));
+  const right = Math.max(...anchors.map((anchor) => anchor.x), left + 80);
+  const top = Math.min(...anchors.map((anchor) => anchor.y));
+  const bottom = Math.max(...anchors.map((anchor) => anchor.y));
+  return [
+    { x: left, y: top },
+    { x: (left + right) / 2, y: top },
+    { x: right, y: top },
+    { x: right, y: (top + bottom) / 2 },
+    { x: right, y: bottom },
+    { x: (left + right) / 2, y: bottom },
+    { x: left, y: bottom },
+    { x: left, y: (top + bottom) / 2 },
+  ];
+}
+
 export function hitTestObjects(objects: PrecisionObject[], point: PrecisionScreenPoint, adapter: PrecisionChartAdapter, tolerance = 8): PrecisionHit | null {
   const candidates = [...objects].sort((a, b) => b.zIndex - a.zIndex);
   for (const object of candidates) {
     if (!object.visibility.visible) continue;
     const anchors = objectScreenAnchors(object, adapter);
+    const isTradeCalculator = object.toolId === "precision-buy-calculator" || object.toolId === "precision-sell-calculator";
+    if (isTradeCalculator) {
+      const handles = tradeCalculatorResizeHandles(anchors);
+      for (let index = 0; index < handles.length; index += 1) {
+        const distance = Math.hypot(point.x - handles[index].x, point.y - handles[index].y);
+        if (distance <= tolerance + 3) return { objectId: object.id, kind: "resize", handleIndex: index, distance };
+      }
+    }
     for (let index = 0; index < anchors.length; index += 1) {
       const distance = Math.hypot(point.x - anchors[index].x, point.y - anchors[index].y);
       if (distance <= tolerance + 2) return { objectId: object.id, kind: "anchor", handleIndex: index, distance };
@@ -44,7 +70,7 @@ export function hitTestObjects(objects: PrecisionObject[], point: PrecisionScree
       }
       if (point.x >= left - tolerance && point.x <= right + tolerance && point.y >= top - tolerance && point.y <= bottom + tolerance) return { objectId: object.id, kind: "body", distance: 0 };
     }
-    if ((object.toolId === "precision-buy-calculator" || object.toolId === "precision-sell-calculator") && anchors.length >= 3) {
+    if (isTradeCalculator && anchors.length >= 3) {
       const left = Math.min(...anchors.map((anchor) => anchor.x));
       const right = Math.max(...anchors.map((anchor) => anchor.x));
       const top = Math.min(...anchors.map((anchor) => anchor.y));

@@ -152,6 +152,22 @@ test("trade calculators respect futures tick size and point value", () => {
   assert.equal(tickOnly.monetaryAvailable, false);
 });
 
+test("buy and sell calculators expose a complete draggable resize frame", () => {
+  const hitTesting = read("src/chart/precision-tools/hitTesting.ts");
+  const renderer = read("src/chart/precision-tools/renderer.ts");
+  assert.match(hitTesting, /export function tradeCalculatorResizeHandles/);
+  assert.match(hitTesting, /\{ x: left, y: top \}/);
+  assert.match(hitTesting, /\{ x: right, y: bottom \}/);
+  assert.match(hitTesting, /kind: "resize", handleIndex: index/);
+  assert.match(renderer, /tradeCalculatorResizeHandles\(anchors\)/);
+  const layer = read("src/chart/precision-tools/PrecisionToolsLayer.tsx");
+  assert.match(layer, /isTradeCalculator && drag\.original\.anchors\.length >= 3/);
+  assert.match(layer, /changesLeft/);
+  assert.match(layer, /changesRight/);
+  assert.match(layer, /changesTop/);
+  assert.match(layer, /changesBottom/);
+});
+
 test("Precision renderer has all analytical and geometry branches", () => {
   const renderer = read("src/chart/precision-tools/renderer.ts");
   for (const toolId of PRECISION_TOOL_REGISTRY.keys()) assert.match(renderer, new RegExp(toolId));

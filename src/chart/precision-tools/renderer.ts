@@ -1,5 +1,5 @@
 import { buildExecutedVolumeProfile, calculateAnchoredVwap, calculateTradeRisk, clamp, extendRay, fibPrice } from "./math";
-import { objectScreenAnchors } from "./hitTesting";
+import { objectScreenAnchors, tradeCalculatorResizeHandles } from "./hitTesting";
 import type { PrecisionChartAdapter, PrecisionMetrics, PrecisionObject, PrecisionScreenPoint, PrecisionTheme } from "./types";
 
 const analyticalProfileCache = new Map<string, { key: string; value: ReturnType<typeof buildExecutedVolumeProfile> }>();
@@ -305,7 +305,12 @@ export function renderPrecisionCanvas(
   [...objects, ...(draft ? [draft] : [])].sort((a, b) => a.zIndex - b.zIndex).forEach((object) => renderObject(ctx, object, adapter, theme));
   objects.filter((object) => selectedIds.includes(object.id) && object.visibility.visible).forEach((object) => {
     const anchors = objectScreenAnchors(object, adapter);
-    const handles = (object.toolId === "precision-rectangle" || object.toolId === "precision-ellipse") && anchors.length >= 2 ? shapeHandles(anchors[0], anchors[1]) : anchors;
+    const isTradeCalculator = object.toolId === "precision-buy-calculator" || object.toolId === "precision-sell-calculator";
+    const handles = isTradeCalculator
+      ? tradeCalculatorResizeHandles(anchors)
+      : (object.toolId === "precision-rectangle" || object.toolId === "precision-ellipse") && anchors.length >= 2
+        ? shapeHandles(anchors[0], anchors[1])
+        : anchors;
     drawHandles(ctx, handles, theme);
   });
 }

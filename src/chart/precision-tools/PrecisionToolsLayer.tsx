@@ -482,6 +482,28 @@ export default function PrecisionToolsLayer({
           };
         });
       } else if (drag.kind === "resize" && drag.original.anchors.length >= 2) {
+        const isTradeCalculator = drag.original.toolId === "precision-buy-calculator" || drag.original.toolId === "precision-sell-calculator";
+        if (isTradeCalculator && drag.original.anchors.length >= 3) {
+          const index = drag.handleIndex ?? 0;
+          const changesLeft = [0, 6, 7].includes(index);
+          const changesRight = [2, 3, 4].includes(index);
+          const changesTop = [0, 1, 2].includes(index);
+          const changesBottom = [4, 5, 6].includes(index);
+          const topAnchorIndex = drag.original.toolId === "precision-buy-calculator" ? 2 : 1;
+          const bottomAnchorIndex = drag.original.toolId === "precision-buy-calculator" ? 1 : 2;
+          store.updateObjectLive(drag.objectId, (object) => ({
+            ...object,
+            anchors: object.anchors.map((candidate, anchorIndex) => {
+              let next = candidate;
+              if (changesLeft && anchorIndex === 0) next = { ...next, time: anchor.time, logicalIndex: anchor.logicalIndex };
+              if (changesRight && anchorIndex > 0) next = { ...next, time: anchor.time, logicalIndex: anchor.logicalIndex };
+              if (changesTop && anchorIndex === topAnchorIndex) next = { ...next, price: anchor.price };
+              if (changesBottom && anchorIndex === bottomAnchorIndex) next = { ...next, price: anchor.price };
+              return next;
+            }),
+          }));
+          return;
+        }
         const [a, b] = drag.original.anchors; let left = a.time < b.time ? a : b; let right = a.time < b.time ? b : a;
         let minTime = left.time, maxTime = right.time, maxPrice = Math.max(a.price, b.price), minPrice = Math.min(a.price, b.price);
         const index = drag.handleIndex ?? 0;
