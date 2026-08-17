@@ -30,6 +30,7 @@ import { mergeGammaLevelsAtSamePrice } from "@/lib/chartGammaLevels";
 import type { GameplanPayload, GameplanRole } from "@/lib/gameplan";
 import { CHART_SETTINGS_CHANGE_EVENT, CHART_SETTINGS_STORAGE_KEY, chartSettingsEqual, defaultChartSettings, loadStoredChartSettings, type ChartSettings } from "@/lib/chartSettings";
 import KwantLoader from "@/components/KwantLoader";
+import ChartIndicatorsControl, { type ChartLevelControl } from "@/components/ChartIndicatorsControl";
 import HistoricalGexPanel from "@/components/backtesting/HistoricalGexPanel";
 import HistoricalZyonPanel from "@/components/backtesting/HistoricalZyonPanel";
 import ReplayDatePicker from "@/components/backtesting/ReplayDatePicker";
@@ -45,6 +46,8 @@ import {
   supportsChartInterval,
   type ChartIntervalKind,
 } from "@/lib/chartIntervals";
+import type { ChartIndicatorInstance } from "@/lib/chartIndicatorCatalog";
+import { defaultIndicatorSettings, normalizeStoredIndicator } from "@/lib/chartIndicatorConfig";
 
 const Chart = dynamic(() => import("@/components/Chart"), {
   ssr: false,
@@ -55,6 +58,48 @@ type ReplayInstrument = "NQ" | "MNQ" | "ES" | "MES";
 type ReplayTimeframe = string;
 type LevelFamily = "gamma" | "quant" | "valueArea";
 type ReplayDockKind = "gex" | "zyon";
+
+const REPLAY_INDICATORS_STORAGE_KEY = "kwantdesk:historical-replay:indicators:v1";
+
+function defaultReplayIndicators(theme: ChartSettings): ChartIndicatorInstance[] {
+  return [{
+    instanceId: "historical-replay-ib-levels",
+    indicatorId: "ib-levels",
+    enabled: true,
+    settings: {
+      ...defaultIndicatorSettings("ib-levels", theme),
+      durationMinutes: 30,
+      showGlobex: false,
+      showTokyo: false,
+      showLondon: false,
+      showNewYork: true,
+      showSydney: false,
+      newYorkLabel: "New York",
+      newYorkStart: "09:30",
+      newYorkEnd: "16:00",
+      followSessionsStudy: false,
+    },
+  }];
+}
+
+function loadReplayIndicators(theme: ChartSettings): ChartIndicatorInstance[] {
+  if (typeof window === "undefined") return defaultReplayIndicators(theme);
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(REPLAY_INDICATORS_STORAGE_KEY) ?? "null") as unknown;
+    if (!Array.isArray(parsed)) return defaultReplayIndicators(theme);
+    const normalized = parsed
+      .filter((value): value is ChartIndicatorInstance => Boolean(
+        value
+        && typeof value === "object"
+        && typeof (value as ChartIndicatorInstance).instanceId === "string"
+        && typeof (value as ChartIndicatorInstance).indicatorId === "string",
+      ))
+      .map(normalizeStoredIndicator);
+    return normalized;
+  } catch {
+    return defaultReplayIndicators(theme);
+  }
+}
 
 const DEFAULT_REPLAY_DOCK_WIDTH = 380;
 const MIN_REPLAY_DOCK_WIDTH = 240;
@@ -562,6 +607,12 @@ async function requestJson<T extends { error?: string }>(
 
 export default function BacktestingWorkspace() {
   const [settings, setSettings] = useState<ChartSettings>(defaultChartSettings);
+  const [replayIndicators, setReplayIndicators] = useState<ChartIndicatorInstance[]>(() =>
+    loadReplayIndicators(defaultChartSettings));
+  const [indicatorSettingsOpenRequest, setIndicatorSettingsOpenRequest] = useState<{
+    instanceId: string;
+    requestId: number;
+  } | null>(null);
   const [showSetup, setShowSetup] = useState(false);
   const [instrument, setInstrument] = useState<ReplayInstrument>("NQ");
   const [timeframe, setTimeframe] = useState<ReplayTimeframe>("1m");
@@ -569,6 +620,7 @@ export default function BacktestingWorkspace() {
   const [date, setDate] = useState(defaultReplayDate);
   const [time, setTime] = useState("09:30");
   const [candles, setCandles] = useState<Candle[]>([]);
+  const [replayStudyCandles, setReplayStudyCandles] = useState<Candle[]>([]);
   const [oneSecondBars, setOneSecondBars] = useState<Candle[]>([]);
   const [sessionStartAt, setSessionStartAt] = useState<number | null>(null);
   const [replayStartIndex, setReplayStartIndex] = useState(0);
@@ -673,6 +725,10 @@ export default function BacktestingWorkspace() {
     window.localStorage.setItem("olisa-chart-favourite-intervals", JSON.stringify(favouriteTimeframes));
   }, [favouriteTimeframes]);
 
+  useEffect(() => {
+    window.localStorage.setItem(REPLAY_INDICATORS_STORAGE_KEY, JSON.stringify(replayIndicators));
+  }, [replayIndicators]);
+
   const selectedDefinition = INSTRUMENTS.find((item) => item.id === instrument) ?? INSTRUMENTS[0];
   const root = instrument === "NQ" || instrument === "MNQ" ? "NQ" : "ES";
   const replayClock = playbackClock;
@@ -681,6 +737,10 @@ export default function BacktestingWorkspace() {
   const visibleCandles = useMemo(
     () => historicalCandlesAtClock(candles, oneSecondBars, timeframe, replayDataClock),
     [candles, oneSecondBars, replayDataClock, timeframe],
+  );
+  const visibleReplayStudyCandles = useMemo(
+    () => historicalCandlesAtClock(replayStudyCandles, oneSecondBars, "1m", replayDataClock),
+    [oneSecondBars, replayDataClock, replayStudyCandles],
   );
   const historicalZyonContext = useMemo<HistoricalZyonReplayInput | null>(() => {
     if (replayClock === null || sessionStartAt === null || !visibleCandles.length) return null;
@@ -996,6 +1056,7 @@ export default function BacktestingWorkspace() {
     setQuantLevels([]);
     setQuantZones([]);
     setValueAreaLevels([]);
+    setReplayStudyCandles([]);
     setOneSecondBars([]);
     setTickerCoverageStart(0);
     setTickerCoverageEnd(0);
@@ -1007,9 +1068,13 @@ export default function BacktestingWorkspace() {
     setSnapshotDate("");
     setLevelSnapshotKey("");
     try {
-      const { ordered } = await loadReplayCandles(timeframe, startAt);
+      const [{ ordered }, studyPayload] = await Promise.all([
+        loadReplayCandles(timeframe, startAt),
+        timeframe === "1m" ? Promise.resolve(null) : loadReplayCandles("1m", startAt),
+      ]);
       const index = candleIndexAt(ordered, startAt);
       setCandles(ordered);
+      setReplayStudyCandles(studyPayload?.ordered ?? ordered);
       setSessionStartAt(startAt);
       setReplayStartIndex(index);
       setVisibleIndex(index);
@@ -1270,6 +1335,39 @@ export default function BacktestingWorkspace() {
     setLevelState((current) => ({ ...current, [family]: !current[family] }));
   };
 
+  const replayLevelControls: ChartLevelControl[] = [
+    {
+      id: "gamma",
+      label: "Gamma levels",
+      description: "Point-in-time historical Gamma levels with no lookahead",
+      badge: "Γ",
+      enabled: levelState.gamma,
+      available: true,
+      loading: levelLoading && levelState.gamma,
+      onToggle: () => toggleLevel("gamma"),
+    },
+    {
+      id: "kwant",
+      label: "Kwant levels",
+      description: "The Kwant edition available at this replay timestamp",
+      badge: "K",
+      enabled: levelState.quant,
+      available: true,
+      loading: levelLoading && levelState.quant,
+      onToggle: () => toggleLevel("quant"),
+    },
+    {
+      id: "value-area",
+      label: "Value area",
+      description: "Historical VAH, VAL, POC and VWAP references",
+      badge: "VA",
+      enabled: levelState.valueArea,
+      available: true,
+      loading: levelLoading && levelState.valueArea,
+      onToggle: () => toggleLevel("valueArea"),
+    },
+  ];
+
   const changeReplayTimeZone = (nextTimeZone: string) => {
     const normalized = normalizeTimeZone(nextTimeZone);
     setError("");
@@ -1359,6 +1457,15 @@ export default function BacktestingWorkspace() {
         <div className="ml-auto flex flex-wrap items-center gap-2">
           {started ? (
             <>
+              <ChartIndicatorsControl
+                instrument={selectedDefinition.id}
+                timeframe={timeframe}
+                indicators={replayIndicators}
+                chartSettings={settings}
+                levelControls={replayLevelControls}
+                settingsOpenRequest={indicatorSettingsOpenRequest}
+                onChange={setReplayIndicators}
+              />
               <span className="rounded-lg border border-border bg-background/45 px-2.5 py-1.5 font-mono text-[9px] text-muted">
                 {selectedDefinition.id}
               </span>
@@ -1574,6 +1681,8 @@ export default function BacktestingWorkspace() {
             candles={visibleCandles}
             levels={activeLevels}
             zones={activeZones}
+            indicators={replayIndicators}
+            initialBalanceCandles={visibleReplayStudyCandles}
             instrument={selectedDefinition.id}
             timeframe={timeframe}
             marketIsActive={false}
@@ -1592,6 +1701,16 @@ export default function BacktestingWorkspace() {
             valueAreaLevelsError={levelError.valueArea || null}
             valueAreaLevelsDescription="Historical prior-session and prior-week VAH, VAL, POC and VWAP"
             onToggleValueAreaLevels={() => toggleLevel("valueArea")}
+            onUpdateIndicatorSetting={(instanceId, key, value) => {
+              setReplayIndicators((current) => current.map((indicator) =>
+                indicator.instanceId === instanceId
+                  ? { ...indicator, settings: { ...(indicator.settings ?? {}), [key]: value } }
+                  : indicator));
+            }}
+            onOpenIndicatorSettings={(instanceId) => {
+              setIndicatorSettingsOpenRequest({ instanceId, requestId: Date.now() });
+            }}
+            onRemoveAllIndicators={() => setReplayIndicators([])}
           />
           ) : null}
 

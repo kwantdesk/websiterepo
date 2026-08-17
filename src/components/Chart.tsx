@@ -439,6 +439,7 @@ interface ChartProps {
   onCreateAlertAtPrice?: (price: string) => void;
   onRemoveAllIndicators?: () => void;
   indicators?: ChartIndicatorInstance[];
+  initialBalanceCandles?: Candle[];
   classicGexProfile?: ClassicGexProfilePayload | null;
   classicGexHistory?: ClassicGexHistorySnapshot[];
   classicGexLoading?: boolean;
@@ -2714,6 +2715,7 @@ function Chart({
   onCreateAlertAtPrice,
   onRemoveAllIndicators,
   indicators = [],
+  initialBalanceCandles,
   classicGexProfile = null,
   classicGexHistory = [],
   classicGexLoading = false,
@@ -8168,12 +8170,12 @@ function Chart({
   const initialBalanceLevels = useMemo(
     () => initialBalanceIndicator
       ? buildInitialBalanceLevels(
-          indicatorCandles,
+          initialBalanceCandles ?? indicatorCandles,
           initialBalanceSettings,
-          candleIntervalMs ?? 60_000,
+          initialBalanceCandles ? 60_000 : candleIntervalMs ?? 60_000,
         )
       : [],
-    [candleIntervalMs, indicatorCandles, initialBalanceIndicator, initialBalanceSettings],
+    [candleIntervalMs, indicatorCandles, initialBalanceCandles, initialBalanceIndicator, initialBalanceSettings],
   );
   const sessionHighLowRenderData = useMemo<SessionHighLowRenderLevel[]>(() => {
     const useSessionColors = sessionHighLowSettings.useSessionColors !== false;
