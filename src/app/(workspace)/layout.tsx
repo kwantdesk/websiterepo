@@ -12,6 +12,7 @@ const SECTION_BY_PATH: Record<string, PrimaryWorkspaceSection> = {
   "/charts": "charts",
   "/gamvue": "gamvue",
   "/gex-cal": "gexcal",
+  "/gex-box": "gexbot",
   "/gex-flow": "gexflow",
   "/gamma": "gamma",
   "/levelz": "levelz",
@@ -32,6 +33,10 @@ const SECTION_BY_PATH: Record<string, PrimaryWorkspaceSection> = {
 function workspaceLocation(pathname: string) {
   const direct = SECTION_BY_PATH[pathname];
   if (direct) return { section: direct, socialProfileHandle: "" };
+
+  if (pathname.startsWith("/gex-box/")) {
+    return { section: "gexbot" as const, socialProfileHandle: "" };
+  }
 
   if (pathname.startsWith("/socials/")) {
     const encodedHandle = pathname.slice("/socials/".length).split("/")[0] ?? "";

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { memo, useEffect, type ComponentType, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import {
   BarChart3,
+  Boxes,
   BookOpen,
   CalendarDays,
   CalendarRange,
@@ -94,6 +95,7 @@ const navItems: Array<{
   { key: "charts", href: "/charts", label: "Charts", title: "Charts", icon: LineChart },
   { key: "gamvue", href: "/gamvue", label: "GEX VUE", title: "GEX charting", icon: BarChart3 },
   { key: "gexcal", href: "/gex-cal", label: "GEX CAL", title: "Expiration by strike exposure", icon: CalendarRange },
+  { key: "gexbot", href: "/gex-box", label: "GEX BOX", title: "Classic, state, order-flow and research exposure", icon: Boxes },
   { key: "gexflow", href: "/gex-flow", label: "GEX FLOW", title: "Live and historical options flow", icon: Workflow },
   { key: "gamma", href: "/gamma", label: "GAMMA", title: "Options Flow Gamma", icon: Crosshair },
   { key: "gexmap", href: "/gexmap", label: "GEX MAP", title: "GEX Map", icon: ScanLine },

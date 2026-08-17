@@ -25,6 +25,7 @@
     "test:economic-calendar-forward": "node --experimental-strip-types scripts/test-economic-calendar-forward.mjs",
     "test:initial-balance": "node --experimental-strip-types scripts/test-initial-balance.mjs",
     "test:zero-gamma-line": "node --experimental-strip-types scripts/test-zero-gamma-line.mjs",
+    "test:gex-box": "node --experimental-strip-types scripts/test-gex-box.mjs",
     "test:themes": "node --test tests/feminine-theme-presets.test.mjs tests/mr-quant-theme.test.mjs",
     "desktop:build": "powershell -ExecutionPolicy Bypass -File desktop/package-windows.ps1"
   },

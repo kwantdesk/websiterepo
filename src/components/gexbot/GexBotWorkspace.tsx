@@ -3,6 +3,7 @@
 import {
   Activity,
   BarChart3,
+  BookOpen,
   CircleHelp,
   Dna,
   Gauge,
@@ -11,14 +12,18 @@ import {
   Play,
   Radio,
   RefreshCw,
+  Search,
   Settings2,
+  ShieldCheck,
   SlidersHorizontal,
   Waves,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { ProfessionalOrderflowDesk, ProfessionalProfileChart, ProfessionalStateChart } from "@/components/gexbot/GexBotCharts";
+import { ProfessionalOrderflowChart, ProfessionalProfileChart, ProfessionalStateChart } from "@/components/gexbot/GexBotCharts";
 import KwantSelect from "@/components/ui/KwantSelect";
+import { GEX_BOX_ORDERFLOW_METRICS, type OrderflowMetric } from "@/lib/gex-box/domain";
+import { parseGexResearchCommand, serializeGexResearchCommand, type GexResearchRequest } from "@/lib/gex-box/research";
 import type {
   GexBotMaxChangeFrame,
   GexBotOrderflowFrame,
@@ -28,7 +33,7 @@ import type {
 } from "@/lib/gexBotTypes";
 import { readWorkspaceData, writeWorkspaceData } from "@/lib/workspaceDataCache";
 
-type View = "classic" | "state" | "orderflow";
+type View = "classic" | "state" | "orderflow" | "research";
 type Expiry = "full" | "zero" | "one";
 type Dataset = "volume" | "oi" | "both";
 type StateMetric = "gex" | "gamma" | "delta" | "vanna" | "charm";
@@ -53,7 +58,8 @@ type Appearance = {
 
 type SpotSample = { timestamp: number; spot: number; zeroGamma?: number | null };
 
-const STORAGE_KEY = "kwantdesk:gexbot:workspace:v2";
+const STORAGE_KEY = "kwantdesk:gex-box:workspace:v1";
+const LEGACY_STORAGE_KEY = "kwantdesk:gexbot:workspace:v2";
 const SPOT_STORAGE_KEY = "kwantdesk:gexbot:spot-tape:v1";
 const ORDERFLOW_STORAGE_KEY = "kwantdesk:gexbot:orderflow-tape:v1";
 const FRAME_STORAGE_PREFIX = "kwantdesk:gexbot:last-verified:v1:";
@@ -73,23 +79,27 @@ const DEFAULT_APPEARANCE: Appearance = {
   multiplier: 1,
 };
 
-const TICKERS = ["NQ_NDX", "ES_SPX", "NDX", "QQQ", "SPX", "SPY", "RUT", "IWM"];
+const TICKERS = ["NQ_NDX", "ES_SPX", "NDX", "QQQ", "SPX", "SPY", "RUT", "IWM", "VIX"];
 const VIEW_META = {
-  classic: { label: "Classic", icon: BarChart3, detail: "GEX profile by strike" },
-  state: { label: "State", icon: Layers3, detail: "Classified exposure state" },
-  orderflow: { label: "Orderflow", icon: Waves, detail: "Live exposure flow" },
+  classic: { label: "CLASSIC", icon: BarChart3, detail: "GEX profile by strike" },
+  state: { label: "STATE", icon: Layers3, detail: "Exposure state profiles" },
+  orderflow: { label: "ORDER FLOW", icon: Waves, detail: "Three synchronized flow panels" },
+  research: { label: "RESEARCH", icon: BookOpen, detail: "Validated chart command builder" },
 } satisfies Record<View, { label: string; icon: typeof BarChart3; detail: string }>;
 
 const ORDERFLOW_METRICS = [
-  { id: "dexoflow", one: "one_dexoflow", label: "DEX orderflow", color: "#70e9ff", description: "Directional options pressure expressed in delta-weighted terms." },
-  { id: "gexoflow", one: "one_gexoflow", label: "GEX orderflow", color: "#8dff62", description: "The gamma sensitivity carried by current directional flow." },
-  { id: "cvroflow", one: "one_cvroflow", label: "Convexity orderflow", color: "#bd8cff", description: "Whether participants are acquiring or supplying convexity." },
-  { id: "agg_dex", one: "one_agg_dex", label: "Aggregate DEX", color: "#ffb347", description: "Cumulative underlying-equivalent delta exposure." },
-  { id: "zgr", one: "ogr", label: "Gamma ratio", color: "#ffdc5f", description: "Current 0DTE and 1DTE gamma balance." },
-  { id: "zcvr", one: "ocvr", label: "Net convexity", color: "#ff79bf", description: "Customer long-versus-short convexity state." },
-] as const;
+  { key: "dex_orderflow", id: "dexoflow", one: "one_dexoflow", label: "DEX orderflow", color: "#70e9ff", description: "Directional options pressure expressed in delta-weighted terms." },
+  { key: "gex_orderflow", id: "gexoflow", one: "one_gexoflow", label: "GEX orderflow", color: "#8dff62", description: "The gamma sensitivity carried by current directional flow." },
+  { key: "convexity_orderflow", id: "cvroflow", one: "one_cvroflow", label: "Convexity orderflow", color: "#bd8cff", description: "Whether participants are acquiring or supplying convexity." },
+  { key: "net_gex", id: "zgr", one: "ogr", label: "Net GEX", color: "#ffdc5f", description: "Provider-native current and next-expiry net gamma state." },
+  { key: "net_convexity", id: "zcvr", one: "ocvr", label: "Net convexity", color: "#ff79bf", description: "Current and next-expiry convexity state." },
+  { key: "aggregate_dex", id: "agg_dex", one: "one_agg_dex", label: "Aggregate DEX", color: "#ffb347", description: "Cumulative underlying-equivalent delta exposure." },
+  { key: "net_negative_vanna", id: "zvanna", one: "ovanna", label: "Net negative Vanna", color: "#59d9b4", description: "Provider-native negative-Vanna state by expiry bucket." },
+  { key: "net_charm", id: "zcharm", one: "ocharm", label: "Net Charm", color: "#ff8b6b", description: "Provider-native Charm state by expiry bucket." },
+] as const satisfies ReadonlyArray<{ key: OrderflowMetric; id: string; one: string; label: string; color: string; description: string }>;
 
 function categoryFor(view: View, expiry: Expiry, metric: StateMetric) {
+  if (view === "research") return "research";
   if (view === "orderflow") return "orderflow";
   if (view === "classic") return expiry === "full" ? "gex_full" : expiry === "zero" ? "gex_zero" : "gex_one";
   if (metric === "gex") return `gex_${expiry}`;
@@ -169,7 +179,7 @@ function EmptyState({ envelope, loading }: { envelope: ProfileEnvelope | null; l
       <div className="flex min-h-[420px] flex-1 items-center justify-center bg-[radial-gradient(circle_at_center,color-mix(in_srgb,var(--primary)_8%,transparent),transparent_42%)]">
         <div className="text-center">
           <Dna className="mx-auto h-8 w-8 animate-pulse text-primary drop-shadow-[0_0_18px_var(--primary)]" />
-          <p className="mt-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-foreground">Loading GEX BOT</p>
+          <p className="mt-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-foreground">Loading GEX BOX</p>
           <p className="mt-1 text-[10px] text-muted">Restoring the latest verified options frame.</p>
         </div>
       </div>
@@ -180,11 +190,11 @@ function EmptyState({ envelope, loading }: { envelope: ProfileEnvelope | null; l
       <div className="max-w-md rounded-3xl border border-border bg-background/55 p-7 text-center shadow-[0_22px_80px_rgba(0,0,0,.28)]">
         <CircleHelp className="mx-auto h-8 w-8 text-primary" />
         <h3 className="mt-4 text-sm font-semibold text-foreground">
-          {envelope?.entitlementRequired ? "This GEXBot package is not enabled" : "GEXBot frame unavailable"}
+          {envelope?.entitlementRequired ? "This provider package is not enabled" : "GEX BOX frame unavailable"}
         </h3>
         <p className="mt-2 text-[11px] leading-5 text-muted">
           {envelope?.entitlementRequired
-            ? "The navigation and visual engine are ready, but the current GEXBot key does not include this product. Classic, State, and Orderflow access can be enabled independently."
+            ? "The workspace is ready, but the connected provider entitlement does not include this product. Classic, State, and Order Flow access can be enabled independently."
             : envelope?.error ?? "The last verified frame will appear here as soon as the server reconnects."}
         </p>
       </div>
@@ -381,6 +391,32 @@ function ProfileSummary({ envelope, dataset, hover }: { envelope: ProfileEnvelop
   );
 }
 
+function SourceDiagnostics({ envelope }: { envelope: ProfileEnvelope | null }) {
+  const providerTimestamp = envelope?.frame?.timestamp;
+  const freshnessMs = providerTimestamp && envelope
+    ? Math.max(0, envelope.checkedAt - providerTimestamp)
+    : null;
+  const freshness = freshnessMs === null
+    ? "Unavailable"
+    : freshnessMs < 1_000
+      ? "< 1 second"
+      : freshnessMs < 60_000
+        ? `${Math.round(freshnessMs / 1_000)} seconds`
+        : `${Math.round(freshnessMs / 60_000)} minutes`;
+  return (
+    <div className="space-y-2">
+      <SectionTitle>Source diagnostics</SectionTitle>
+      <SummaryRow label="Provider" value="GEXBOT" />
+      <SummaryRow label="Provider frame" value={timeLabel(providerTimestamp)} />
+      <SummaryRow label="Received" value={timeLabel(envelope?.checkedAt)} />
+      <SummaryRow label="Freshness" value={freshness} />
+      <SummaryRow label="Session" value={envelope?.session ?? "UNAVAILABLE"} />
+      <SummaryRow label="History" value={envelope?.historyStatus ?? "UNAVAILABLE"} />
+      <SummaryRow label="Entitlement" value={envelope?.entitlementRequired ? "REQUIRED" : envelope?.ok ? "ACTIVE" : "UNKNOWN"} />
+    </div>
+  );
+}
+
 function Stat({ label, value, tone }: { label: string; value: string; tone?: "amber" }) {
   return (
     <div className="rounded-2xl border border-border bg-background/55 p-3">
@@ -453,7 +489,7 @@ function OrderflowPanel({
 }
 
 function OrderflowSnapshot({ frame, visibleMetrics }: { frame: GexBotOrderflowFrame; visibleMetrics: string[] }) {
-  const metrics = ORDERFLOW_METRICS.filter((metric) => visibleMetrics.includes(metric.id));
+  const metrics = ORDERFLOW_METRICS.filter((metric) => visibleMetrics.includes(metric.key));
   const values = metrics.flatMap((metric) => [number(frame[metric.id]), number(frame[metric.one])]).filter((value): value is number => value !== null);
   const maximum = Math.max(1, ...values.map(Math.abs));
   return (
@@ -498,6 +534,84 @@ function OrderflowSnapshot({ frame, visibleMetrics }: { frame: GexBotOrderflowFr
   );
 }
 
+type ResearchResponse = {
+  ok: boolean;
+  request?: GexResearchRequest;
+  source?: { provider: string; providerTimestamp: number; checkedAt: number; session: string; simulated: boolean };
+  spot?: number;
+  rows?: Array<{ strike: number; volumeExposure: number; openInterestExposure: number; priors: number[] }>;
+  error?: string;
+};
+
+function ResearchSurface({ ticker }: { ticker: string }) {
+  const initialSymbol = ticker === "NQ_NDX" ? "NQ" : ticker === "ES_SPX" ? "ES" : ticker;
+  const [builder, setBuilder] = useState<GexResearchRequest>({ chart: "gex", symbol: initialSymbol, strikes: 15, dteMin: 0, dteMax: 90, view: "profile", calls: "all", puts: "all", combine: true });
+  const [command, setCommand] = useState(() => serializeGexResearchCommand({ chart: "gex", symbol: initialSymbol, strikes: 15, dteMin: 0, dteMax: 90, view: "profile", calls: "all", puts: "all", combine: true }));
+  const [result, setResult] = useState<ResearchResponse | null>(null);
+  const [working, setWorking] = useState(false);
+  const [watchlist, setWatchlist] = useState<string[]>([initialSymbol]);
+
+  const patchBuilder = <K extends keyof GexResearchRequest>(key: K, value: GexResearchRequest[K]) => {
+    const next = { ...builder, [key]: value };
+    setBuilder(next);
+    setCommand(serializeGexResearchCommand(next));
+  };
+  const run = async () => {
+    setWorking(true);
+    try {
+      const parsed = parseGexResearchCommand(command);
+      setBuilder(parsed);
+      const response = await fetch(`/api/gex-box/research?command=${encodeURIComponent(serializeGexResearchCommand(parsed))}`, { cache: "no-store" });
+      setResult(await response.json() as ResearchResponse);
+    } catch (error) {
+      setResult({ ok: false, error: error instanceof Error ? error.message : "Research request failed." });
+    } finally {
+      setWorking(false);
+    }
+  };
+  const rows = result?.rows ?? [];
+  const max = Math.max(1, ...rows.map((row) => Math.abs(builder.chart === "oi" ? row.openInterestExposure : row.volumeExposure)));
+
+  return (
+    <div className="grid min-h-full grid-cols-1 gap-3 p-3 xl:grid-cols-[220px_minmax(0,1fr)_300px]">
+      <aside className="border border-border bg-panel p-3">
+        <p className="text-[9px] font-semibold uppercase tracking-[.18em] text-muted">Watchlists</p>
+        <div className="mt-3 space-y-1">
+          {watchlist.map((symbol) => <button key={symbol} type="button" onClick={() => patchBuilder("symbol", symbol)} className={`flex w-full items-center justify-between border px-3 py-2 text-left font-mono text-[10px] ${builder.symbol === symbol ? "border-primary/45 bg-primary/10 text-primary" : "border-border text-muted hover:text-foreground"}`}><span>{symbol}</span><span>›</span></button>)}
+        </div>
+        <div className="mt-3 flex gap-1">
+          <input aria-label="Add research symbol" className="h-8 min-w-0 flex-1 border border-border bg-background px-2 font-mono text-[9px] uppercase outline-none focus:border-primary" placeholder="SPX" onKeyDown={(event) => { if (event.key !== "Enter") return; const symbol = event.currentTarget.value.trim().toUpperCase(); if (/^[A-Z][A-Z0-9._-]{0,11}$/.test(symbol)) { setWatchlist((current) => [...new Set([...current, symbol])]); event.currentTarget.value = ""; } }} />
+          <span className="flex h-8 items-center border border-border px-2 text-[8px] text-muted">ENTER</span>
+        </div>
+      </aside>
+      <section className="min-w-0 border border-border bg-[#050607]">
+        <div className="flex flex-wrap items-center gap-2 border-b border-border p-3">
+          <Search className="h-3.5 w-3.5 text-primary" />
+          <input value={command} onChange={(event) => setCommand(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void run(); }} className="h-9 min-w-[260px] flex-1 border border-border bg-background px-3 font-mono text-[10px] text-foreground outline-none focus:border-primary/55" aria-label="GEX BOX research command" />
+          <button type="button" onClick={() => void run()} disabled={working} className="h-9 border border-primary/45 bg-primary/15 px-4 text-[9px] font-bold uppercase tracking-[.16em] text-primary disabled:opacity-50">{working ? "RUNNING" : "RUN"}</button>
+        </div>
+        {!result ? <div className="flex min-h-[500px] items-center justify-center text-center"><div><BookOpen className="mx-auto h-7 w-7 text-primary" /><p className="mt-3 text-[10px] font-semibold uppercase tracking-[.18em]">Validated research workspace</p><p className="mt-2 max-w-md text-[9px] leading-5 text-muted">Commands are parsed into a strict structured request before any provider call. Unsupported tokens are rejected; no model calls the provider directly.</p></div></div>
+          : !result.ok ? <div className="flex min-h-[500px] items-center justify-center px-8 text-center"><div><p className="text-[10px] font-semibold uppercase tracking-[.16em] text-amber-400">Research unavailable</p><p className="mt-2 max-w-lg text-[9px] leading-5 text-muted">{result.error}</p></div></div>
+            : <div className="min-h-[500px] p-4">
+              <div className="mb-5 flex items-end justify-between border-b border-border pb-3"><div><p className="text-[8px] uppercase tracking-[.18em] text-muted">{result.request?.chart.toUpperCase()} · {result.request?.view.toUpperCase()}</p><h2 className="mt-1 font-mono text-lg text-foreground">{result.request?.symbol} <span className="text-primary">{price(result.spot)}</span></h2></div><p className="text-right text-[8px] uppercase tracking-[.13em] text-muted">{result.source?.provider}<br />{timeLabel(result.source?.providerTimestamp)}</p></div>
+              <div className="space-y-1.5">{rows.map((row) => { const value = builder.chart === "oi" ? row.openInterestExposure : row.volumeExposure; return <div key={row.strike} className="grid grid-cols-[70px_1fr_90px] items-center gap-3"><span className="font-mono text-[9px] text-muted">{price(row.strike)}</span><div className="relative h-4 border border-border/60 bg-background"><span className="absolute bottom-0 top-0" style={{ width: `${Math.max(1, Math.abs(value) / max * 50)}%`, left: value >= 0 ? "50%" : `${50 - Math.abs(value) / max * 50}%`, background: value >= 0 ? "#67de66" : "#ed5264", opacity: .82 }} /><span className="absolute bottom-0 left-1/2 top-0 w-px bg-muted/50" /></div><span className={value >= 0 ? "text-right font-mono text-[9px] text-emerald-400" : "text-right font-mono text-[9px] text-rose-400"}>{compact(value)}</span></div>; })}</div>
+            </div>}
+      </section>
+      <aside className="border border-border bg-panel p-4">
+        <p className="text-[10px] font-semibold uppercase tracking-[.17em]">Research builder</p>
+        <p className="mt-1 text-[8px] leading-4 text-muted">Every control round-trips to the command grammar.</p>
+        <div className="mt-4 space-y-3">
+          <label className="block text-[8px] uppercase tracking-[.14em] text-muted">Chart<KwantSelect value={builder.chart} onChange={(event) => patchBuilder("chart", event.target.value as GexResearchRequest["chart"])} className="mt-1 h-9 w-full border border-border bg-background px-2 text-[9px]"><option value="oi">Open interest</option><option value="gex">GEX</option><option value="dex">DEX</option><option value="vanna">Vanna</option><option value="charm">Charm</option></KwantSelect></label>
+          <label className="block text-[8px] uppercase tracking-[.14em] text-muted">Symbol<input value={builder.symbol} onChange={(event) => patchBuilder("symbol", event.target.value.toUpperCase())} className="mt-1 h-9 w-full border border-border bg-background px-2 font-mono text-[9px] outline-none" /></label>
+          <label className="block text-[8px] uppercase tracking-[.14em] text-muted">Strikes<input type="number" min="1" max="100" value={builder.strikes} onChange={(event) => patchBuilder("strikes", Math.max(1, Math.min(100, Number(event.target.value))))} className="mt-1 h-9 w-full border border-border bg-background px-2 font-mono text-[9px] outline-none" /></label>
+          <div className="grid grid-cols-2 gap-2"><label className="block text-[8px] uppercase tracking-[.14em] text-muted">DTE min<input type="number" min="0" max="730" value={builder.dteMin} onChange={(event) => patchBuilder("dteMin", Number(event.target.value))} className="mt-1 h-9 w-full border border-border bg-background px-2 font-mono text-[9px]" /></label><label className="block text-[8px] uppercase tracking-[.14em] text-muted">DTE max<input type="number" min="0" max="730" value={builder.dteMax} onChange={(event) => patchBuilder("dteMax", Number(event.target.value))} className="mt-1 h-9 w-full border border-border bg-background px-2 font-mono text-[9px]" /></label></div>
+          <Toggle checked={builder.combine} label="Combine expirations" onChange={(value) => patchBuilder("combine", value)} />
+        </div>
+      </aside>
+    </div>
+  );
+}
+
 function SettingsRail({
   view,
   expiry,
@@ -530,7 +644,11 @@ function SettingsRail({
         <Settings2 className="h-4 w-4 text-primary" />
         <div><p className="text-[11px] font-semibold uppercase tracking-[.15em] text-foreground">Adjustments</p><p className="text-[9px] text-muted">Visual and exposure controls</p></div>
       </div>
-      {view !== "orderflow" ? (
+      {view === "research" ? (
+        <div className="border border-border bg-background p-3 text-[9px] leading-5 text-muted">
+          Research commands are validated before provider access. This surface does not expose visual profile controls.
+        </div>
+      ) : view !== "orderflow" ? (
         <>
           <div>
             <label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[.16em] text-muted">Expiry set</label>
@@ -591,10 +709,12 @@ function SettingsRail({
           <p className="mb-2 text-[8px] font-semibold uppercase tracking-[.16em] text-muted">Visible panels</p>
           {ORDERFLOW_METRICS.map((item) => (
             <Toggle
-              key={item.id}
-              checked={visibleMetrics.includes(item.id)}
+              key={item.key}
+              checked={visibleMetrics.includes(item.key)}
               label={item.label}
-              onChange={(checked) => setVisibleMetrics((current) => checked ? [...new Set([...current, item.id])] : current.filter((id) => id !== item.id))}
+              onChange={(checked) => setVisibleMetrics((current) => checked
+                ? [...current.filter((id) => id !== item.key), item.key].slice(-3)
+                : current.filter((id) => id !== item.key))}
             />
           ))}
         </div>
@@ -604,17 +724,33 @@ function SettingsRail({
 }
 
 export default function GexBotWorkspace() {
+  const urlState = useMemo(() => {
+    if (typeof window === "undefined") return null;
+    const segments = window.location.pathname.split("/").filter(Boolean);
+    const candidate = segments[0] === "gex-box" ? segments[1] : null;
+    const params = new URLSearchParams(window.location.search);
+    return {
+      view: candidate && Object.prototype.hasOwnProperty.call(VIEW_META, candidate) ? candidate as View : null,
+      ticker: params.get("ticker"),
+    };
+  }, []);
   const restored = useMemo(() => {
     if (typeof window === "undefined") return null;
-    try { return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null") as Record<string, unknown> | null; } catch { return null; }
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? localStorage.getItem(LEGACY_STORAGE_KEY) ?? "null") as Record<string, unknown> | null; } catch { return null; }
   }, []);
-  const [view, setView] = useState<View>((restored?.view as View) || "classic");
-  const [ticker, setTicker] = useState<string>(typeof restored?.ticker === "string" ? restored.ticker : "NQ_NDX");
+  const restoredView = typeof restored?.view === "string" && Object.prototype.hasOwnProperty.call(VIEW_META, restored.view) ? restored.view as View : "classic";
+  const restoredTicker = typeof restored?.ticker === "string" && TICKERS.includes(restored.ticker) ? restored.ticker : "NQ_NDX";
+  const [view, setView] = useState<View>(urlState?.view ?? restoredView);
+  const [ticker, setTicker] = useState<string>(urlState?.ticker && TICKERS.includes(urlState.ticker) ? urlState.ticker : restoredTicker);
   const [expiry, setExpiry] = useState<Expiry>((restored?.expiry as Expiry) || "full");
   const [stateMetric, setStateMetric] = useState<StateMetric>((restored?.stateMetric as StateMetric) || "gamma");
   const [dataset, setDataset] = useState<Dataset>((restored?.dataset as Dataset) || "both");
   const [appearance, setAppearance] = useState<Appearance>({ ...DEFAULT_APPEARANCE, ...(restored?.appearance as Partial<Appearance> | undefined) });
-  const [visibleMetrics, setVisibleMetrics] = useState<string[]>(Array.isArray(restored?.visibleMetrics) ? restored.visibleMetrics as string[] : ["dexoflow", "gexoflow", "cvroflow", "agg_dex"]);
+  const [visibleMetrics, setVisibleMetrics] = useState<string[]>(() => {
+    const restoredMetrics = Array.isArray(restored?.visibleMetrics) ? restored.visibleMetrics as string[] : [];
+    const migrated = restoredMetrics.map((metric) => ORDERFLOW_METRICS.find((item) => item.key === metric || item.id === metric)?.key).filter((metric): metric is OrderflowMetric => Boolean(metric));
+    return (migrated.length ? migrated : ["dex_orderflow", "gex_orderflow", "convexity_orderflow"]).slice(-3);
+  });
   const [envelope, setEnvelope] = useState<ProfileEnvelope | null>(null);
   const [loading, setLoading] = useState(true);
   const [hover, setHover] = useState<GexBotStrike | null>(null);
@@ -627,7 +763,15 @@ export default function GexBotWorkspace() {
   const requestSequence = useRef(0);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ view, ticker, expiry, stateMetric, dataset, appearance, visibleMetrics }));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ version: 1, view, ticker, expiry, stateMetric, dataset, appearance, visibleMetrics }));
+    if (window.location.pathname === "/gexbot" || window.location.pathname === "/gex-box" || window.location.pathname.startsWith("/gex-box/")) {
+      const params = new URLSearchParams({
+        ticker,
+        mode: expiry === "full" ? "90d" : expiry === "zero" ? "0dte" : "1dte",
+        metric: view === "state" ? stateMetric : dataset,
+      });
+      window.history.replaceState(window.history.state, "", `/gex-box/${view}?${params.toString()}`);
+    }
   }, [appearance, dataset, expiry, stateMetric, ticker, view, visibleMetrics]);
 
   useEffect(() => {
@@ -679,6 +823,10 @@ export default function GexBotWorkspace() {
   }, [ticker]);
 
   useEffect(() => {
+    if (view === "research") {
+      setLoading(false);
+      return;
+    }
     let disposed = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const sequence = ++requestSequence.current;
@@ -689,17 +837,20 @@ export default function GexBotWorkspace() {
         retained = JSON.parse(localStorage.getItem(`${FRAME_STORAGE_PREFIX}${cacheKey(view, ticker, category)}`) ?? "null") as ProfileEnvelope | null;
       } catch {}
     }
-    if (cached ?? retained) { applyEnvelope((cached ?? retained)!); setLoading(false); } else setLoading(true);
+    const restored = cached ?? retained;
+    if (restored && restored.historySimulated !== true) { applyEnvelope(restored); setLoading(false); } else setLoading(true);
     const poll = async () => {
       try {
-        const query = new URLSearchParams({
-          view,
-          ticker,
-          category,
-          history: view === "orderflow" ? "1" : "0",
-        });
-        const response = await fetch(`/api/gexbot-terminal?${query}`, { cache: "no-store" });
-        const payload = await response.json() as ProfileEnvelope;
+        const query = new URLSearchParams({ ticker, category });
+        if (view !== "orderflow") query.set("view", view);
+        const endpoint = view === "orderflow" ? "/api/gex-box/history" : "/api/gex-box/snapshot";
+        const response = await fetch(`${endpoint}?${query}`, { cache: "no-store" });
+        const result = await response.json() as { provider?: ProfileEnvelope; error?: string };
+        const payload = result.provider ?? {
+          ok: false, view, ticker, category, session: "DELAYED", marketOpen: false,
+          checkedAt: Date.now(), frame: null, majors: null, maxChange: null,
+          error: result.error ?? "GEX BOX provider frame was unavailable.",
+        } satisfies ProfileEnvelope;
         if (disposed || requestSequence.current !== sequence) return;
         applyEnvelope(payload);
         if (payload.ok) writeWorkspaceData(cacheKey(view, ticker, category), payload);
@@ -729,8 +880,14 @@ export default function GexBotWorkspace() {
   }, [envelope?.frame, playingHistory]);
 
   const frame = envelope?.ok ? envelope.frame : null;
-  const isProfile = view !== "orderflow" && frame;
-  const sessionLabel = envelope?.session === "LIVE_RTH" ? "LIVE · NEW YORK RTH" : envelope?.session === "DELAYED" ? "DELAYED FRAME" : "FROZEN · NEW YORK CLOSE";
+  const isProfile = view !== "orderflow" && view !== "research" && frame;
+  const sessionLabel = view === "research"
+    ? "VALIDATED REQUESTS"
+    : envelope?.session === "LIVE_RTH"
+      ? "LIVE · NEW YORK RTH"
+      : envelope?.session === "DELAYED"
+        ? "DELAYED FRAME"
+        : "FROZEN · NEW YORK CLOSE";
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background text-foreground">
@@ -738,14 +895,14 @@ export default function GexBotWorkspace() {
         <div className="flex min-h-16 flex-wrap items-center justify-between gap-3 px-4 py-2.5 lg:px-6">
           <div className="flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 shadow-[0_0_20px_color-mix(in_srgb,var(--primary)_12%,transparent)]"><Dna className="h-4 w-4 text-primary" /></div>
-            <div><h1 className="text-[12px] font-bold uppercase tracking-[.2em]">GEX BOT</h1><p className="mt-0.5 text-[9px] text-muted">Options exposure terminal · official API frames</p></div>
+            <div><h1 className="text-[12px] font-bold uppercase tracking-[.2em]">GEX BOX</h1><p className="mt-0.5 text-[9px] text-muted">Options exposure workstation · verified provider frames</p></div>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
             <KwantSelect value={ticker} onChange={(event) => setTicker(event.target.value)} className="h-9 min-w-[112px] rounded-xl border border-border bg-background px-3 font-mono text-[10px] font-semibold" menuLabel="Options underlying">
               {TICKERS.map((item) => <option key={item} value={item}>{tickerLabel(item)}</option>)}
             </KwantSelect>
-            <div className={`flex h-9 items-center gap-2 rounded-xl border px-3 text-[9px] font-semibold uppercase tracking-[.12em] ${envelope?.session === "LIVE_RTH" ? "border-emerald-400/25 bg-emerald-400/[.07] text-emerald-400" : "border-border bg-background text-muted"}`}>
-              {envelope?.session === "LIVE_RTH" ? <Radio className="h-3 w-3 animate-pulse" /> : <Pause className="h-3 w-3" />}{sessionLabel}
+            <div className={`flex h-9 items-center gap-2 rounded-xl border px-3 text-[9px] font-semibold uppercase tracking-[.12em] ${envelope?.session === "LIVE_RTH" && view !== "research" ? "border-emerald-400/25 bg-emerald-400/[.07] text-emerald-400" : "border-border bg-background text-muted"}`}>
+              {envelope?.session === "LIVE_RTH" && view !== "research" ? <Radio className="h-3 w-3 animate-pulse" /> : view === "research" ? <ShieldCheck className="h-3 w-3 text-primary" /> : <Pause className="h-3 w-3" />}{sessionLabel}
             </div>
             <button type="button" onClick={() => setShowSettings((current) => !current)} className={`flex h-9 items-center gap-2 rounded-xl border px-3 text-[9px] font-semibold uppercase tracking-[.12em] transition ${showSettings ? "border-primary/30 bg-primary/10 text-primary" : "border-border bg-background text-muted hover:text-foreground"}`}><SlidersHorizontal className="h-3.5 w-3.5" />Adjust</button>
           </div>
@@ -761,16 +918,15 @@ export default function GexBotWorkspace() {
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <main className="flex min-w-0 flex-1 flex-col overflow-auto bg-[radial-gradient(circle_at_55%_30%,color-mix(in_srgb,var(--primary)_3%,transparent),transparent_42%)]">
           <div className="flex min-h-11 shrink-0 items-center justify-between gap-3 border-b border-border px-4">
-            <div className="flex items-center gap-3 text-[9px] text-muted"><span className="font-semibold uppercase tracking-[.15em] text-foreground">{tickerLabel(ticker)} · {VIEW_META[view].label}</span><span>{timeLabel(frame?.timestamp)}</span>{loading && envelope ? <RefreshCw className="h-3 w-3 animate-spin text-primary" /> : null}</div>
-            {view !== "orderflow" ? <div className="flex items-center gap-2"><button type="button" onClick={() => setPlayingHistory((value) => !value)} className="flex h-7 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-[8px] font-semibold uppercase text-muted hover:text-foreground">{playingHistory ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}Playback</button><span className="font-mono text-[9px] text-primary">Lookback {priorIndex === 0 ? "now" : `-${priorIndex}`}</span></div> : <div className="flex items-center gap-3 text-[8px] uppercase tracking-[.14em] text-muted"><span className={envelope?.historyStatus === "LOADED" ? "text-primary" : "text-amber-400"}>{envelope?.historyStatus === "LOADED" && envelope.historyDate ? `Replay · ${envelope.historyDate}` : envelope?.historyStatus === "SIMULATED" && envelope.historyDate ? `Simulated preview · ${envelope.historyDate}` : "Previous session loading"}</span><span>0DTE</span><span>1DTE dashed</span></div>}
+            <div className="flex items-center gap-3 text-[9px] text-muted"><span className="font-semibold uppercase tracking-[.15em] text-foreground">{tickerLabel(ticker)} · {VIEW_META[view].label}</span><span>{view === "research" ? "Strict builder · server-side provider access" : timeLabel(frame?.timestamp)}</span>{loading && envelope ? <RefreshCw className="h-3 w-3 animate-spin text-primary" /> : null}</div>
+            {view === "classic" || view === "state" ? <div className="flex items-center gap-2"><button type="button" onClick={() => setPlayingHistory((value) => !value)} className="flex h-7 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-[8px] font-semibold uppercase text-muted hover:text-foreground">{playingHistory ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}Playback</button><span className="font-mono text-[9px] text-primary">Lookback {priorIndex === 0 ? "now" : `-${priorIndex}`}</span></div> : view === "orderflow" ? <div className="flex items-center gap-3 text-[8px] uppercase tracking-[.14em] text-muted"><span className={envelope?.historyStatus === "LOADED" ? "text-primary" : "text-amber-400"}>{envelope?.historyStatus === "LOADED" && envelope.historyDate ? `Replay · ${envelope.historyDate}` : envelope?.historyStatus === "UNAVAILABLE" ? "Previous session unavailable" : "Previous session loading"}</span><span>0DTE</span><span>1DTE dashed</span></div> : <div className="flex items-center gap-2 text-[8px] uppercase tracking-[.14em] text-primary"><ShieldCheck className="h-3 w-3" />Validated grammar</div>}
           </div>
-          {!frame ? <EmptyState envelope={envelope} loading={loading} /> : view === "orderflow" ? (
+          {view === "research" ? <ResearchSurface ticker={ticker} /> : !frame ? <EmptyState envelope={envelope} loading={loading} /> : view === "orderflow" ? (
             <div className="mx-auto w-full max-w-[1680px] overflow-x-auto px-3 py-3">
               {visibleMetrics.length ? (
                 <div className="relative">
-                  {envelope?.historySimulated ? <div className="pointer-events-none absolute right-3 top-3 z-20 rounded-md border border-amber-300/35 bg-[#0b0c0e]/92 px-3 py-2 text-right shadow-[0_10px_35px_rgba(0,0,0,.5)]"><p className="text-[8px] font-bold uppercase tracking-[.18em] text-amber-300">Simulated preview</p><p className="mt-0.5 text-[7px] uppercase tracking-[.12em] text-[#8e96a1]">Not market data</p></div> : null}
-                  <ProfessionalOrderflowDesk
-                    metrics={ORDERFLOW_METRICS.filter((metric) => visibleMetrics.includes(metric.id))}
+                  <ProfessionalOrderflowChart
+                    metrics={ORDERFLOW_METRICS.filter((metric) => visibleMetrics.includes(metric.key)).slice(0, 3)}
                     points={orderflowTape.length ? orderflowTape : [frame as GexBotOrderflowFrame]}
                   />
                   {envelope?.historyStatus === "UNAVAILABLE" && orderflowTape.length < 2 ? <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-background/72 backdrop-blur-[2px]"><div className="rounded-xl border border-amber-400/25 bg-panel px-5 py-4 text-center shadow-2xl"><p className="text-[10px] font-semibold uppercase tracking-[.16em] text-amber-400">Previous session unavailable</p><p className="mt-1 max-w-sm text-[9px] text-muted">The live frame is connected, but GEXBot did not return an entitled archive for the last completed New York sessions.</p></div></div> : null}
@@ -789,11 +945,11 @@ export default function GexBotWorkspace() {
             </div>
           )}
         </main>
-        {showSettings ? <aside className="w-[272px] shrink-0 overflow-y-auto border-l border-border bg-panel p-4">{isProfile ? <><ProfileSummary envelope={envelope!} dataset={dataset} hover={hover} /><div className="my-4 border-t border-border" /></> : null}<SettingsRail view={view} expiry={expiry} setExpiry={setExpiry} metric={stateMetric} setMetric={setStateMetric} dataset={dataset} setDataset={setDataset} appearance={appearance} setAppearance={setAppearance} visibleMetrics={visibleMetrics} setVisibleMetrics={setVisibleMetrics} /></aside> : null}
+        {showSettings ? <aside className="w-[272px] shrink-0 overflow-y-auto border-l border-border bg-panel p-4">{isProfile ? <><ProfileSummary envelope={envelope!} dataset={dataset} hover={hover} /><div className="my-4 border-t border-border" /></> : null}{view !== "research" ? <><SourceDiagnostics envelope={envelope} /><div className="my-4 border-t border-border" /></> : null}<SettingsRail view={view} expiry={expiry} setExpiry={setExpiry} metric={stateMetric} setMetric={setStateMetric} dataset={dataset} setDataset={setDataset} appearance={appearance} setAppearance={setAppearance} visibleMetrics={visibleMetrics} setVisibleMetrics={setVisibleMetrics} /></aside> : null}
       </div>
       <footer className="flex min-h-8 shrink-0 items-center justify-between gap-4 border-t border-border bg-panel px-4 text-[8px] uppercase tracking-[.13em] text-muted">
-        <span className="flex items-center gap-2"><Gauge className="h-3 w-3 text-primary" />{envelope?.historySimulated ? "Synthetic orderflow preview for visual evaluation only; not market data or trading evidence." : "Values are rendered directly from GEXBot API frames; classified-flow methodology remains provider-calculated."}</span>
-        <span>{envelope?.marketOpen ? "Polling every 3 seconds" : "Frozen outside New York RTH"}</span>
+        <span className="flex items-center gap-2"><Gauge className="h-3 w-3 text-primary" />{view === "research" ? "Structured research requests · provider access remains server-side." : "Values are rendered from verified provider frames; classified-flow methodology remains provider-calculated."}</span>
+        <span>{view === "research" ? "Strict command grammar" : envelope?.marketOpen ? "Polling every 3 seconds" : "Frozen outside New York RTH"}</span>
       </footer>
     </div>
   );

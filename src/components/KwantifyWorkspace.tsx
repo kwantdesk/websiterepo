@@ -925,13 +925,13 @@ const BOTTOM_WORKSPACE_SECTIONS = [
   { id: "charts" as const, label: "Charts" },
   { id: "gamvue" as const, label: "GEX Vue" },
   { id: "gexcal" as const, label: "GEX CAL" },
+  { id: "gexbot" as const, label: "GEX BOX" },
   { id: "gexflow" as const, label: "GEX FLOW" },
   { id: "gamma" as const, label: "Gamma" },
   { id: "levelz" as const, label: "LEVELZ" },
   { id: "gexmap" as const, label: "GEXMAP" },
   { id: "liqmap" as const, label: "LIQ MAP" },
   { id: "heatmap" as const, label: "Heat Map" },
-  { id: "gexbot" as const, label: "GEX Bot" },
   { id: "gexdesk" as const, label: "Gexdesk" },
   { id: "gameplan" as const, label: "Gameplan" },
   { id: "kwantbot" as const, label: "KwantBot" },
@@ -15640,7 +15640,7 @@ export default function KwantifyWorkspace({
             ) : null}
             {visitedWorkspaceSections.has("gexbot") ? (
               <ReactActivity mode={bottomWorkspaceSection === "gexbot" ? "visible" : "hidden"}>
-                <WorkspaceFailureBoundary resetKey="gexbot" label="GEX Bot">
+                <WorkspaceFailureBoundary resetKey="gexbot" label="GEX BOX">
                   <GexBotWorkspace />
                 </WorkspaceFailureBoundary>
               </ReactActivity>
