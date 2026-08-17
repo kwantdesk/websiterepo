@@ -9,15 +9,12 @@ import {
   mergeCashLevelOneCandle,
   parseMassiveCashLevelOne,
 } from "@/lib/optionsLevelOne";
+import {
+  vendorMarketDataConfigured,
+  vendorMarketDataFetch,
+} from "@/lib/vendorMarketData.server";
 
-const MASSIVE_API_BASE = "https://api.massive.com";
 const CASH_LIVE_MAX_AGE_MS = 30_000;
-
-function getMassiveApiKey() {
-  return process.env.MASSIVE_API_KEY?.trim()
-    || process.env.POLYGON_API_KEY?.trim()
-    || "";
-}
 
 export async function resolveCashLevelOne(args: {
   symbol: string;
@@ -71,8 +68,7 @@ export async function resolveCashLevelOne(args: {
     }
   }
 
-  const apiKey = getMassiveApiKey();
-  if (!apiKey) return null;
+  if (!vendorMarketDataConfigured("massive")) return null;
 
   const indexTicker = args.symbol === "SPX" || args.symbol === "SPXW"
     ? "I:SPX"
@@ -81,12 +77,11 @@ export async function resolveCashLevelOne(args: {
       : null;
   const kind = indexTicker ? "INDEX" : "STOCK";
   const endpoint = indexTicker
-    ? `${MASSIVE_API_BASE}/v3/snapshot/indices?ticker=${encodeURIComponent(indexTicker)}`
-    : `${MASSIVE_API_BASE}/v2/snapshot/locale/us/markets/stocks/tickers/${encodeURIComponent(args.symbol)}`;
+    ? `/v3/snapshot/indices?ticker=${encodeURIComponent(indexTicker)}`
+    : `/v2/snapshot/locale/us/markets/stocks/tickers/${encodeURIComponent(args.symbol)}`;
 
   try {
-    const response = await fetch(endpoint, {
-      headers: { Authorization: `Bearer ${apiKey}` },
+    const response = await vendorMarketDataFetch("massive", endpoint, {
       cache: "no-store",
       signal: AbortSignal.timeout(5_000),
     });

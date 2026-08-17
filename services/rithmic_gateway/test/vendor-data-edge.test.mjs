@@ -38,6 +38,9 @@ function responseCapture() {
 const config = {
   databentoApiKey: "db-test",
   quantDataApiKey: "qd-test",
+  massiveApiKey: "massive-test",
+  massiveRestOrigin: "https://api.massive.com",
+  massiveRequestTimeoutMs: 1_000,
   vendorRequestTimeoutMs: 1_000,
   quantDataMinSpacingMs: 1,
   quantDataCacheMs: 2_500,
@@ -89,6 +92,34 @@ test("Databento history is streamed and the browser-facing request never supplie
   await capture.finished;
   assert.match(upstreamAuthorization, /^Basic /);
   assert.match(capture.body(), /"close":"100"/);
+});
+
+test("Massive credentials stay on the VPS edge and approved market data is streamed", async () => {
+  let upstreamAuthorization = "";
+  let upstreamUrl = "";
+  const edge = new VendorDataEdge(config, async (url, init) => {
+    upstreamUrl = String(url);
+    upstreamAuthorization = init.headers.Authorization;
+    return new Response('{"results":[{"ticker":"I:SPX"}]}', {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  });
+  const req = request("");
+  req.method = "GET";
+  req.headers = { accept: "application/json" };
+  const capture = responseCapture();
+  await edge.handle(
+    req,
+    capture.stream,
+    new URL("http://gateway/v1/vendors/massive/v3/snapshot?ticker.any_of=I%3ASPX&apiKey=browser-must-not-win"),
+  );
+  await capture.finished;
+  assert.equal(upstreamAuthorization, "Bearer massive-test");
+  assert.match(upstreamUrl, /api\.massive\.com\/v3\/snapshot/);
+  assert.doesNotMatch(upstreamUrl, /apiKey=/);
+  assert.match(capture.body(), /I:SPX/);
+  assert.equal(edge.health().massiveRequests, 1);
 });
 
 test("rolling Databento chart restores coalesce behind the VPS cache", async () => {

@@ -26,6 +26,14 @@ foreach ($required in @("vendor\proto\request_login.proto", "operator.env")) {
 Write-Output "==> creating $RemoteDir on $target"
 ssh $target "mkdir -p $RemoteDir"
 
+# The VM is the authority for paid vendor credentials. A developer's local
+# operator.env may intentionally contain only the Rithmic login, so preserve
+# the provider keys before copying the release and merge them back afterwards.
+# This avoids a routine gateway deploy silently disabling the centralized
+# Databento, QuantData, or Massive edge.
+Write-Output "==> preserving VPS-owned provider credentials"
+ssh $target "if [ -f '$RemoteDir/operator.env' ]; then cp '$RemoteDir/operator.env' '$RemoteDir/operator.env.before-ship'; chmod 600 '$RemoteDir/operator.env.before-ship'; fi"
+
 # scp -r is used rather than rsync so this works from a stock Windows box.
 # node_modules and recordings are excluded: the image installs its own
 # dependencies, and recordings belong to the VM's own volume.
@@ -41,6 +49,9 @@ try {
 
     Write-Output "==> copying service (SDK + credentials travel here, never via git)"
     scp -r "$staging/*" "${target}:$RemoteDir/"
+
+    Write-Output "==> restoring VPS-owned provider credentials"
+    ssh $target "python3 '$RemoteDir/deploy/preserve-provider-env.py' '$RemoteDir/operator.env.before-ship' '$RemoteDir/operator.env'"
 
     Write-Output "==> bootstrapping"
     ssh $target "chmod +x $RemoteDir/deploy/bootstrap-vm.sh && $RemoteDir/deploy/bootstrap-vm.sh"

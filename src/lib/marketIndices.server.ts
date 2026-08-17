@@ -1,7 +1,6 @@
 import "server-only";
 
 import type { Candle } from "@/lib/backtester";
-import { fetchGexBotVixSpot, hasGexBotVixAccess } from "@/lib/gexBotVix.server";
 import { getMarketIndexDefinition } from "@/lib/marketIndices";
 import { parseMassiveCashLevelOne } from "@/lib/optionsLevelOne";
 import {
@@ -9,6 +8,10 @@ import {
   getOptionsMarketPulse,
   getOptionsUnderlyingHistory,
 } from "@/lib/quantData.server";
+import {
+  vendorMarketDataConfigured,
+  vendorMarketDataFetch,
+} from "@/lib/vendorMarketData.server";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -30,26 +33,12 @@ const MASSIVE_API_BASE = "https://api.massive.com";
 const CBOE_VIX_DAILY_HISTORY_URL =
   "https://cdn.cboe.com/api/global/us_indices/daily_prices/VIX_History.csv";
 
-function getMassiveApiKey() {
-  return process.env.MASSIVE_API_KEY?.trim()
-    || process.env.POLYGON_API_KEY?.trim()
-    || "";
-}
-
-function requireMassiveApiKey() {
-  const key = getMassiveApiKey();
-  if (!key) {
-    throw new Error("Market indices are not configured. Add MASSIVE_API_KEY in Vercel.");
-  }
-  return key;
-}
-
 export function hasLiveMarketIndexAccess() {
-  return Boolean(getMassiveApiKey()) || hasGexBotVixAccess();
+  return vendorMarketDataConfigured("massive");
 }
 
 export function hasIntradayMarketIndexHistoryAccess() {
-  return Boolean(getMassiveApiKey()) || Boolean(getConfiguredQuantDataApiKey());
+  return vendorMarketDataConfigured("massive") || Boolean(getConfiguredQuantDataApiKey());
 }
 
 function isRecord(value: unknown): value is JsonRecord {
@@ -185,40 +174,6 @@ function newYorkMarketOpen(timestamp = Date.now()) {
   return weekday !== "Sat" && weekday !== "Sun" && minute >= 9 * 60 + 30 && minute < 16 * 60;
 }
 
-async function fetchGexBotVixSnapshot(): Promise<MarketIndexSnapshot> {
-  const spot = await fetchGexBotVixSpot();
-  const marketSessionOpen = newYorkMarketOpen();
-  let previousClose = spot.price;
-  try {
-    const daily = await fetchCboeVixDailyCandles();
-    const latest = daily.at(-1);
-    const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" });
-    const latestDate = latest ? new Date(latest.timestamp).toISOString().slice(0, 10) : "";
-    previousClose = latestDate === today
-      ? daily.at(-2)?.close ?? latest?.open ?? spot.price
-      : latest?.close ?? spot.price;
-  } catch {
-    // The live VIX remains usable when the official EOD archive is temporarily unavailable.
-  }
-  const change = spot.price - previousClose;
-  return {
-    symbol: "VIX",
-    broker: "Market Index",
-    exchange: "CBOE",
-    lastPrice: spot.price,
-    openPrice: previousClose,
-    change,
-    changePercent: previousClose ? change / previousClose * 100 : 0,
-    timestamp: spot.timestamp,
-    // VIX is intentionally marked delayed while New York is closed. At the
-    // open, the warning clears only after GEXBot has supplied a fresh frame,
-    // so an overnight close can never be presented as a live print.
-    delayed: !marketSessionOpen || spot.stale,
-    marketOpen: marketSessionOpen && !spot.stale,
-    provider: "GEXBot",
-  };
-}
-
 async function fetchKwantDataUnderlyingSnapshot(symbol: string): Promise<MarketIndexSnapshot | null> {
   const definition = getMarketIndexDefinition(symbol);
   if (!definition || definition.group !== "Options Underlyings") return null;
@@ -245,8 +200,10 @@ async function fetchKwantDataUnderlyingSnapshot(symbol: string): Promise<MarketI
 }
 
 async function fetchMassiveJson(url: string, timeoutMs = 12_000) {
-  const response = await fetch(url, {
-    headers: { Authorization: `Bearer ${requireMassiveApiKey()}` },
+  const parsed = new URL(url, MASSIVE_API_BASE);
+  parsed.searchParams.delete("apiKey");
+  const response = await vendorMarketDataFetch("massive", `${parsed.pathname}${parsed.search}`, {
+    headers: { Accept: "application/json" },
     cache: "no-store",
     signal: AbortSignal.timeout(timeoutMs),
   });
@@ -393,10 +350,10 @@ export async function fetchMarketIndexCandles(options: {
       const candles = await getOptionsUnderlyingHistory(options);
       if (candles.length) return candles;
     } catch (error) {
-      if (!getMassiveApiKey()) throw error;
+      if (!vendorMarketDataConfigured("massive")) throw error;
     }
   }
-  if (!getMassiveApiKey()) {
+  if (!vendorMarketDataConfigured("massive")) {
     if (definition.symbol !== "VIX") {
       throw new Error(`${definition.symbol} market history is not configured.`);
     }
@@ -454,18 +411,11 @@ export async function fetchMarketIndexCandles(options: {
 export async function fetchMarketIndexSnapshots(symbols: string[]) {
   const requested = [...new Set(symbols.map((symbol) => symbol.trim().toUpperCase()))];
   const snapshots: MarketIndexSnapshot[] = [];
-  if (requested.includes("VIX") && hasGexBotVixAccess()) {
-    try {
-      snapshots.push(await fetchGexBotVixSnapshot());
-    } catch {
-      // Massive and then the official Cboe EOD archive remain the resilience path.
-    }
-  }
 
   const resolved = new Set(snapshots.map((snapshot) => snapshot.symbol));
   const unresolved = requested.filter((symbol) => !resolved.has(symbol));
   if (!unresolved.length) return snapshots;
-  if (!getMassiveApiKey()) {
+  if (!vendorMarketDataConfigured("massive")) {
     const quantDataResults = getConfiguredQuantDataApiKey()
       ? await Promise.allSettled(unresolved.map(fetchKwantDataUnderlyingSnapshot))
       : [];

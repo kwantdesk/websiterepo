@@ -1,4 +1,5 @@
 import { getMassiveFuturesSymbolDefinition, MASSIVE_FUTURES_MAJOR_TIMEFRAMES } from "@/lib/massiveFutures";
+import { vendorMarketDataFetch } from "@/lib/vendorMarketData.server";
 
 type MassiveContractRow = {
   ticker?: string;
@@ -44,24 +45,6 @@ export type MassiveSnapshot = {
 
 const MASSIVE_API_BASE = "https://api.massive.com";
 
-function getMassiveApiKey() {
-  return process.env.MASSIVE_API_KEY?.trim() || process.env.POLYGON_API_KEY?.trim() || "";
-}
-
-function getMassiveRestHeaders() {
-  const apiKey = getMassiveApiKey();
-  if (!apiKey) {
-    throw new Error(
-      "Massive futures REST access is not configured. Add MASSIVE_API_KEY for delayed snapshots/contracts, and keep flat-file S3 credentials separate for bulk history.",
-    );
-  }
-
-  return {
-    Authorization: `Bearer ${apiKey}`,
-    "Content-Type": "application/json",
-  };
-}
-
 function normalizeMassiveWindowStart(value: number) {
   if (!Number.isFinite(value)) return value;
   return value > 10_000_000_000_000 ? Math.floor(value / 1_000_000) : value;
@@ -86,8 +69,10 @@ function timeframeToMassiveResolution(timeframe: string) {
 }
 
 async function fetchMassiveJson<T>(url: string) {
-  const response = await fetch(url, {
-    headers: getMassiveRestHeaders(),
+  const parsed = new URL(url, MASSIVE_API_BASE);
+  parsed.searchParams.delete("apiKey");
+  const response = await vendorMarketDataFetch("massive", `${parsed.pathname}${parsed.search}`, {
+    headers: { Accept: "application/json" },
     cache: "no-store",
   });
   const payload = (await response.json().catch(() => ({}))) as T & { error?: string; message?: string; status?: string };

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { getDatabentoBars, type DatabentoBar } from "@/lib/databento";
-import { vendorMarketDataConfigured } from "@/lib/vendorMarketData.server";
+import { vendorMarketDataConfigured, vendorMarketDataFetch } from "@/lib/vendorMarketData.server";
 import type { EconomicCalendarEvent } from "@/lib/economicCalendar";
 import { getEconomicCalendar } from "@/lib/economicCalendar.server";
 import type {
@@ -134,16 +134,14 @@ async function fetchOfficialFeed(feed: (typeof OFFICIAL_FEEDS)[number]) {
 }
 
 async function fetchLiveNews() {
-  const massiveApiKey = process.env.MASSIVE_API_KEY?.trim() || process.env.POLYGON_API_KEY?.trim();
-  if (massiveApiKey) {
-    const massiveUrl = new URL("https://api.massive.com/v2/reference/news");
+  if (vendorMarketDataConfigured("massive")) {
+    const massiveUrl = new URL("https://vps.invalid/v2/reference/news");
     massiveUrl.searchParams.set("published_utc.gte", new Date(Date.now() - 72 * 60 * 60_000).toISOString());
     massiveUrl.searchParams.set("order", "desc");
     massiveUrl.searchParams.set("sort", "published_utc");
     massiveUrl.searchParams.set("limit", "100");
-    massiveUrl.searchParams.set("apiKey", massiveApiKey);
     try {
-      const response = await fetch(massiveUrl, {
+      const response = await vendorMarketDataFetch("massive", `${massiveUrl.pathname}${massiveUrl.search}`, {
         next: { revalidate: 300 },
         signal: AbortSignal.timeout(14_000),
       });

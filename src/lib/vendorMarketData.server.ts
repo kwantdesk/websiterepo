@@ -3,22 +3,24 @@ import {
   marketDataGatewayUrlCandidates,
 } from "@/lib/marketDataGatewayEnv";
 
-export type VendorMarketDataProvider = "databento" | "quantdata";
+export type VendorMarketDataProvider = "databento" | "quantdata" | "massive";
 
 const DIRECT_ORIGINS: Record<VendorMarketDataProvider, string> = {
   databento: "https://api.databento.com",
   quantdata: "https://api.quantdata.us",
+  massive: "https://api.massive.com",
 };
 
 function directKey(provider: VendorMarketDataProvider) {
-  return provider === "databento"
-    ? process.env.DATABENTO_API_KEY?.trim() || ""
-    : process.env.QUANTDATA_API_KEY?.trim() || "";
+  if (provider === "databento") return process.env.DATABENTO_API_KEY?.trim() || "";
+  if (provider === "quantdata") return process.env.QUANTDATA_API_KEY?.trim() || "";
+  return process.env.MASSIVE_API_KEY?.trim() || "";
 }
 
 export function directVendorFallbackAllowed() {
-  if (process.env.KWANTDESK_ALLOW_DIRECT_VENDOR_FALLBACK === "1") return true;
-  return !process.env.VERCEL && process.env.NODE_ENV !== "production";
+  return process.env.KWANTDESK_ALLOW_DIRECT_VENDOR_FALLBACK === "1"
+    && !process.env.VERCEL
+    && process.env.NODE_ENV !== "production";
 }
 
 export function vendorMarketDataTransport(provider: VendorMarketDataProvider) {
@@ -55,9 +57,9 @@ function gatewayHeaders(token: string, headers: HeadersInit | undefined) {
 }
 
 /**
- * Server-only vendor transport. Production prefers the always-on VPS edge;
- * direct credentials are disabled on Vercel by default. They are available
- * only as an explicit emergency rollback switch.
+ * Server-only vendor transport. Production uses the always-on VPS edge only.
+ * A direct connection exists solely for explicitly opted-in local development;
+ * Vercel cannot silently bypass the VPS when the gateway is unhealthy.
  */
 export async function vendorMarketDataFetch(
   provider: VendorMarketDataProvider,
@@ -84,12 +86,7 @@ export async function vendorMarketDataFetch(
   }
 
   const key = directKey(provider);
-  // The VPS remains the primary/only steady-state vendor connection. If its
-  // vendor edge explicitly fails, use the still server-only Vercel credential
-  // as an emergency bridge rather than taking charts and Gamma offline. The
-  // fallback is never reached while the edge answers normally and is never
-  // exposed to the browser.
-  if (key && (directVendorFallbackAllowed() || lastGatewayError)) {
+  if (key && directVendorFallbackAllowed()) {
     return fetch(`${DIRECT_ORIGINS[provider]}${normalizedPath}`, {
       ...init,
       headers: directHeaders(provider, key, init.headers),
@@ -97,5 +94,6 @@ export async function vendorMarketDataFetch(
   }
 
   if (lastGatewayError instanceof Error) throw lastGatewayError;
-  throw new Error(`${provider === "databento" ? "Databento" : "KwantData"} is not configured.`);
+  const label = provider === "databento" ? "Databento" : provider === "quantdata" ? "KwantData" : "Massive";
+  throw new Error(`${label} is not configured on the VPS market-data edge.`);
 }

@@ -3,11 +3,13 @@ import { Readable } from "node:stream";
 
 const DATABENTO_ORIGIN = "https://api.databento.com";
 const QUANTDATA_ORIGIN = "https://api.quantdata.us";
+const MASSIVE_ORIGIN = "https://api.massive.com";
 const MAX_BODY_BYTES = 8 * 1024 * 1024;
 const ROLLING_DATABENTO_CACHE_MS = 12_000;
 const EVENT_HISTORY_DATABENTO_CACHE_MS = 5 * 60_000;
 const SAFE_DATABENTO_PATH = /^\/v0\/(timeseries\.get_range|metadata\.[A-Za-z0-9_.-]+)$/;
 const SAFE_QUANTDATA_PATH = /^\/v1\/[A-Za-z0-9_./-]+$/;
+const SAFE_MASSIVE_PATH = /^\/(?:v2\/reference\/news|futures\/v1\/(?:contracts|aggs\/[A-Za-z0-9%:._-]+)|v3\/snapshot(?:\/indices)?|v2\/snapshot\/locale\/us\/markets\/stocks\/tickers\/[A-Za-z0-9%:._-]+|v2\/aggs\/ticker\/[A-Za-z0-9%:._-]+\/range\/\d+\/(?:minute|hour|day|week|month)\/\d{4}-\d{2}-\d{2}\/\d{4}-\d{2}-\d{2})$/;
 
 async function requestBody(request) {
   const chunks = [];
@@ -87,8 +89,10 @@ export class VendorDataEdge {
       databentoCoalescedRequests: 0,
       quantDataRequests: 0,
       quantDataCacheHits: 0,
+      massiveRequests: 0,
       lastDatabentoAt: null,
       lastQuantDataAt: null,
+      lastMassiveAt: null,
       lastError: null,
     };
   }
@@ -97,12 +101,15 @@ export class VendorDataEdge {
     return {
       databentoConfigured: Boolean(this.config.databentoApiKey),
       quantDataConfigured: Boolean(this.config.quantDataApiKey),
+      massiveConfigured: Boolean(this.config.massiveApiKey),
       ...this.metrics,
     };
   }
 
   canHandle(pathname) {
-    return pathname.startsWith("/v1/vendors/databento/") || pathname.startsWith("/v1/vendors/quantdata/");
+    return pathname.startsWith("/v1/vendors/databento/")
+      || pathname.startsWith("/v1/vendors/quantdata/")
+      || pathname.startsWith("/v1/vendors/massive/");
   }
 
   async handle(request, response, url) {
@@ -113,6 +120,10 @@ export class VendorDataEdge {
       }
       if (url.pathname.startsWith("/v1/vendors/quantdata/")) {
         await this.#quantData(request, response, url);
+        return true;
+      }
+      if (url.pathname.startsWith("/v1/vendors/massive/")) {
+        await this.#massive(request, response, url);
         return true;
       }
       return false;
@@ -293,5 +304,40 @@ export class VendorDataEdge {
     }
     response.writeHead(upstream.status, headers);
     response.end(payload);
+  }
+
+  async #massive(request, response, url) {
+    if (!this.config.massiveApiKey) throw Object.assign(new Error("Massive is not configured on the market-data gateway."), { status: 503 });
+    if (request.method !== "GET") throw Object.assign(new Error("Method not allowed."), { status: 405 });
+    const path = gatewayPath(url.pathname, "/v1/vendors/massive", SAFE_MASSIVE_PATH);
+    const controller = new AbortController();
+    const timeout = setTimeout(
+      () => controller.abort(),
+      this.config.massiveRequestTimeoutMs || this.config.vendorRequestTimeoutMs,
+    );
+    let upstream;
+    try {
+      const origin = this.config.massiveRestOrigin || MASSIVE_ORIGIN;
+      const search = new URLSearchParams(url.searchParams);
+      // The caller can select data, but only the VPS owns and supplies the
+      // Massive credential. Never forward an apiKey received over HTTP.
+      search.delete("apiKey");
+      const query = search.toString();
+      upstream = await this.fetch(`${origin}${path}${query ? `?${query}` : ""}`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${this.config.massiveApiKey}`,
+          Accept: request.headers.accept || "application/json",
+        },
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+    this.metrics.massiveRequests += 1;
+    this.metrics.lastMassiveAt = new Date().toISOString();
+    copyResponseHeaders(upstream, response, { "X-KwantDesk-Data-Edge": "Massive" });
+    if (!upstream.body) return response.end();
+    Readable.fromWeb(upstream.body).pipe(response);
   }
 }
