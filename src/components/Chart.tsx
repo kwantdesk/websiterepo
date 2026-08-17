@@ -2876,8 +2876,8 @@ export default function Chart({
   const [darkPoolMapTooltip, setDarkPoolMapTooltip] = useState<DarkPoolMapHit | null>(null);
   const [darkPoolGexPayload, setDarkPoolGexPayload] = useState<DarkPoolMapPayload | null>(null);
   const [darkPoolGexSnapshot, setDarkPoolGexSnapshot] = useState<BounceLevelsSnapshot | null>(null);
-  const [darkPoolGexLoading, setDarkPoolGexLoading] = useState(false);
-  const [darkPoolGexError, setDarkPoolGexError] = useState<string | null>(null);
+  const [, setDarkPoolGexLoading] = useState(false);
+  const [, setDarkPoolGexError] = useState<string | null>(null);
   const [darkPoolGexTooltip, setDarkPoolGexTooltip] = useState<DarkPoolGexHit | null>(null);
   const [ivRankByInstance, setIvRankByInstance] = useState<Record<string, IvRankResourceState>>({});
   const [tpoPayload, setTpoPayload] = useState<TpoLevelsPayload | null>(null);
@@ -12109,28 +12109,6 @@ export default function Chart({
           ) : null}
         </div>
       ) : null}
-      {darkPoolGexIndicator ? (
-        <div
-          className="pointer-events-none absolute left-2 z-[25] flex max-w-[min(760px,calc(100%-80px))] items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg"
-          style={{ top: 8 + (gammaHeatmapIndicator ? 30 : 0) + (gexIntervalMapIndicator ? 30 : 0) + (netGammaIndicator ? 30 : 0) }}
-          title={darkPoolGexFrame?.limitations.join(" ") ?? darkPoolGexError ?? "Loading real off-exchange prints and GEX context"}
-        >
-          <span className={`h-1.5 w-1.5 rounded-full ${darkPoolGexError && !darkPoolGexFrame ? "bg-danger" : darkPoolGexLoading ? "animate-pulse bg-warning" : "bg-primary"}`} />
-          <span className="text-foreground">Dark Pool (GEX)</span>
-          {darkPoolGexFrame ? (
-            <>
-              <span>{darkPoolGexFrame.sourceTicker}→{darkPoolGexFrame.displayInstrument}</span>
-              <span className={darkPoolGexFrame.status === "LIVE" ? "text-primary" : "text-warning"}>{darkPoolGexFrame.status.replaceAll("_", " ")}</span>
-              <span>RAW TOP-{darkPoolGexFrame.rawEvents.length} / {darkPoolGexFrame.eligibleEventCount}</span>
-              {darkPoolGexIndicator.settings?.clusterEnabled === true ? <span>{darkPoolGexFrame.clusters.length} derived clusters</span> : null}
-              <span>{darkPoolGexFrame.lookbackMode.replace("-", " ")}</span>
-              {darkPoolGexFrame.status === "MARKET_CLOSED" ? <span>last valid {new Date(darkPoolGexFrame.lastValidSnapshotMs).toLocaleTimeString()}</span> : null}
-              <span>direction neutral</span>
-            </>
-          ) : darkPoolGexLoading ? <span>Loading off-exchange prints…</span> : <span className="text-danger">{darkPoolGexError ?? "Dark Pool (GEX) unavailable"}</span>}
-          {darkPoolGexError && darkPoolGexFrame ? <span className="text-warning">Partial context · raw prints retained</span> : null}
-        </div>
-      ) : null}
       {darkPoolGexTooltip ? (
         <div
           className="pointer-events-none absolute z-[65] max-h-[70%] min-w-[340px] overflow-hidden border border-border bg-panel/98 p-2 font-mono text-[8px] shadow-2xl"
@@ -12228,7 +12206,7 @@ export default function Chart({
       {darkPoolMapIndicator ? (
         <div
           className="pointer-events-none absolute left-2 z-[25] flex max-w-[min(720px,calc(100%-80px))] items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur"
-          style={{ top: 8 + (gammaHeatmapIndicator ? 30 : 0) + (gexIntervalMapIndicator ? 30 : 0) + (netGammaIndicator ? 30 : 0) + (darkPoolGexIndicator ? 30 : 0) }}
+          style={{ top: 8 + (gammaHeatmapIndicator ? 30 : 0) + (gexIntervalMapIndicator ? 30 : 0) + (netGammaIndicator ? 30 : 0) }}
           title={darkPoolMapPayload?.limitations.join(" ") ?? darkPoolMapError ?? "Loading real off-exchange prints"}
         >
           <span className={`h-1.5 w-1.5 rounded-full ${darkPoolMapError && !darkPoolMapPayload ? "bg-danger" : darkPoolMapLoading ? "animate-pulse bg-warning" : "bg-primary"}`} />

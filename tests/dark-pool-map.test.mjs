@@ -116,6 +116,15 @@ test("renderer is Canvas-native, timestamped, chart-projected and below candles"
   assert.doesNotMatch(primitive, /createElement|appendChild/);
 });
 
+test("Dark Pool GEX renders without a chart-top information banner", async () => {
+  const chart = await read("src/components/Chart.tsx");
+  assert.doesNotMatch(
+    chart,
+    /\{darkPoolGexIndicator \? \(\s*<div\s*className="pointer-events-none absolute left-2/,
+  );
+  assert.doesNotMatch(chart, /\+ \(darkPoolGexIndicator \? 30 : 0\)/);
+});
+
 test("QuantData adapter uses the documented cursor contract and shared history cache", async () => {
   const adapter = await read("src/lib/quantData.server.ts");
   const darkPoolSection = adapter.slice(
