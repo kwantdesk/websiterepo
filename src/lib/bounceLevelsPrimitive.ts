@@ -28,6 +28,12 @@ export type BounceLevelsHit = { x: number; y: number; node: BounceExposureNode; 
 type RenderedHit = BounceLevelsHit & { left: number; right: number; top: number; bottom: number };
 
 const clamp = (value: number, minimum: number, maximum: number) => Math.max(minimum, Math.min(maximum, value));
+export const BOUNCE_LEVELS_HEAT_THICKNESS_SCALE = 0.75;
+
+export function calculateBounceNodeHeight(minimum: number, maximum: number, visualStrength: number) {
+  return (minimum + (maximum - minimum) * clamp(visualStrength, 0, 1)) * BOUNCE_LEVELS_HEAT_THICKNESS_SCALE;
+}
+
 const rgb = (color: string) => {
   const value = color.replace("#", "");
   const full = value.length === 3 ? value.split("").map((part) => part + part).join("") : value;
@@ -235,7 +241,7 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
           const growth = clamp(node.rateOfChangePercent / 100, -0.55, 0.75);
           const persistenceBrightness = clamp(Math.sqrt(node.bucketShare * 5), 0.15, 1);
           const brightness = clamp(Math.max(visualStrength, persistenceBrightness * 0.72) * (1 + growth * 0.18), 0.08, 1);
-          const height = data.minimumNodeHeight + (data.maximumNodeHeight - data.minimumNodeHeight) * visualStrength;
+          const height = calculateBounceNodeHeight(data.minimumNodeHeight, data.maximumNodeHeight, visualStrength);
           const opacity = clamp(data.opacity * (data.minimumOpacity + (1 - data.minimumOpacity) * brightness), 0.02, 1);
           const color = node.signedExposure >= 0 ? data.positiveColor : data.negativeColor;
 
@@ -277,19 +283,24 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
           const maximumOpacity = Math.max(...points.map((point) => point.opacity));
           const last = points.at(-1)!;
 
-          const halo = traceRibbon(context, points, 1.72, 1.25 + data.glowStrength * 0.18);
+          const halo = traceRibbon(
+            context,
+            points,
+            1.72,
+            (1.25 + data.glowStrength * 0.18) * BOUNCE_LEVELS_HEAT_THICKNESS_SCALE,
+          );
           context.save();
           context.shadowColor = rgba(last.color, maximumOpacity * 0.52);
-          context.shadowBlur = data.glowStrength + maximumStrength * 11;
+          context.shadowBlur = (data.glowStrength + maximumStrength * 11) * BOUNCE_LEVELS_HEAT_THICKNESS_SCALE;
           context.fillStyle = ribbonGradient(context, points, halo.edgeX, 0.2 + maximumStrength * 0.16);
           context.fill();
           context.restore();
 
-          const body = traceRibbon(context, points, 1, 0.9);
+          const body = traceRibbon(context, points, 1, 0.9 * BOUNCE_LEVELS_HEAT_THICKNESS_SCALE);
           context.fillStyle = ribbonGradient(context, points, body.edgeX, 0.72 + maximumStrength * 0.24);
           context.fill();
 
-          traceRibbon(context, points, 0.62, 0.7);
+          traceRibbon(context, points, 0.62, 0.7 * BOUNCE_LEVELS_HEAT_THICKNESS_SCALE);
           context.fillStyle = ribbonGradient(context, points, body.edgeX, 0.36 + maximumStrength * 0.28);
           context.fill();
 
@@ -300,14 +311,14 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
           context.strokeStyle = rgba(last.color, clamp(maximumOpacity * (0.76 + maximumStrength * 0.34), 0.2, 1));
           context.lineWidth = 0.9 + maximumStrength * 1.8;
           context.shadowColor = rgba(last.color, maximumOpacity * 0.8);
-          context.shadowBlur = 1.5 + data.glowStrength * 0.4;
+          context.shadowBlur = (1.5 + data.glowStrength * 0.4) * BOUNCE_LEVELS_HEAT_THICKNESS_SCALE;
           context.stroke();
           context.shadowBlur = 0;
 
           if (data.microOrbTexture) {
             for (const point of points) {
               const density = Math.max(1, Math.round(1 + point.strength * 4));
-              const halfHeight = Math.max(0.75, point.height * 0.42);
+              const halfHeight = Math.max(0.75 * BOUNCE_LEVELS_HEAT_THICKNESS_SCALE, point.height * 0.42);
               for (let orbIndex = 0; orbIndex < density; orbIndex += 1) {
                 const xSeed = deterministicUnit(`${point.node.id}:x:${orbIndex}`);
                 const ySeed = deterministicUnit(`${point.node.id}:y:${orbIndex}`);
@@ -324,7 +335,8 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
           }
 
           for (const point of points) {
-            const haloHeight = point.height * 1.72 + Math.max(2.5, data.glowStrength * 0.36);
+            const haloHeight = point.height * 1.72
+              + Math.max(2.5, data.glowStrength * 0.36) * BOUNCE_LEVELS_HEAT_THICKNESS_SCALE;
             hits.push({
               x: point.x,
               y: point.y,

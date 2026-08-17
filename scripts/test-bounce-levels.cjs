@@ -26,7 +26,15 @@ const {
   mergeBounceLevelsSnapshots,
   selectLookaheadSafeBounceBucket,
 } = require("../src/lib/bounceLevels.ts");
-const { classifyBounceNodeMomentum } = require("../src/lib/bounceLevelsPrimitive.ts");
+const {
+  BOUNCE_LEVELS_HEAT_THICKNESS_SCALE,
+  calculateBounceNodeHeight,
+  classifyBounceNodeMomentum,
+} = require("../src/lib/bounceLevelsPrimitive.ts");
+
+assert.equal(BOUNCE_LEVELS_HEAT_THICKNESS_SCALE, 0.75, "Bounce Levels heat ribbons render at three quarters thickness");
+assert.equal(calculateBounceNodeHeight(2, 18, 0), 1.5, "minimum heat thickness is reduced proportionally");
+assert.equal(calculateBounceNodeHeight(2, 18, 1), 13.5, "maximum heat thickness is reduced proportionally");
 
 const now = Date.parse("2026-08-14T15:00:00.000Z");
 const mapping = {
