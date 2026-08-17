@@ -17,6 +17,13 @@ import { parseGexResearchCommand, serializeGexResearchCommand } from "../src/lib
 import { DEFAULT_GEX_BOX_SETTINGS, migrateGexBoxSettings } from "../src/lib/gex-box/settings.ts";
 import { normalizeGexBotEnvelope } from "../src/lib/gex-box/normalize.ts";
 import {
+  appendRithmicClassicTrade,
+  appendRithmicClassicTick,
+  buildRithmicClassicCandles,
+  rithmicContractForRoot,
+  rithmicRootForGexTicker,
+} from "../src/lib/gex-box/rithmicCandles.ts";
+import {
   historyRowsFromPayload,
   providerHistoryCategory,
   signedHistoryUrlFromPayload,
@@ -133,6 +140,29 @@ test("previous-session replay is ordered, deduplicated and never reads ahead", (
   assert.deepEqual(replayFramesAtOrBefore(frames, 200).map((frame) => frame.timestamp), [100, 200]);
 });
 
+test("Classic maps combined index products to Rithmic futures and builds exact one-minute OHLC", () => {
+  assert.equal(rithmicRootForGexTicker("NQ_NDX"), "NQ");
+  assert.equal(rithmicRootForGexTicker("ES_SPX"), "ES");
+  assert.equal(rithmicRootForGexTicker("SPX"), null);
+  assert.equal(rithmicContractForRoot("NQ", new Date("2026-08-18T00:00:00Z")), "NQU6");
+  assert.equal(rithmicContractForRoot("ES", new Date("2026-12-20T00:00:00Z")), "ESZ6");
+  const candles = [];
+  appendRithmicClassicTick(candles, 60_001, 100);
+  appendRithmicClassicTick(candles, 60_500, 104);
+  appendRithmicClassicTick(candles, 61_000, 98);
+  appendRithmicClassicTick(candles, 120_001, 101);
+  assert.deepEqual(candles, [
+    { timestamp: 60_000, open: 100, high: 104, low: 98, close: 98 },
+    { timestamp: 120_000, open: 101, high: 101, low: 101, close: 101 },
+  ]);
+  appendRithmicClassicTrade(candles, { timestamp: 120_500, open: 101, high: 106, low: 99, close: 105 });
+  assert.deepEqual(candles.at(-1), { timestamp: 120_000, open: 101, high: 106, low: 99, close: 105 });
+  assert.equal(buildRithmicClassicCandles([
+    { timestamp: 180_500, open: 110, high: 112, low: 109, close: 111 },
+    { timestamp: 180_100, open: 100, high: 110, low: 98, close: 109 },
+  ]).at(-1)?.open, 100);
+});
+
 test("provider history categories use the archive contract rather than live category names", () => {
   assert.equal(providerHistoryCategory("classic", "gex_full"), "full");
   assert.equal(providerHistoryCategory("classic", "gex_zero"), "zero");
@@ -223,6 +253,7 @@ test("canonical deep-link route supports all four surfaces", async () => {
 test("profile and order-flow controls are wired to their renderers and persisted", async () => {
   const workspace = await readFile(new URL("../src/components/gexbot/GexBotWorkspace.tsx", import.meta.url), "utf8");
   const charts = await readFile(new URL("../src/components/gexbot/GexBotCharts.tsx", import.meta.url), "utf8");
+  const lightweightCharts = await readFile(new URL("../src/components/gexbot/GexBotLightweightCharts.tsx", import.meta.url), "utf8");
 
   assert.match(workspace, /chartType: "line" \| "candles"/);
   assert.match(workspace, /profileAlignment: "left" \| "center" \| "right"/);
@@ -231,6 +262,9 @@ test("profile and order-flow controls are wired to their renderers and persisted
   assert.match(workspace, /Underlying spot overlay/);
   assert.match(workspace, /windowMinutes/);
   assert.match(workspace, /version: 3[\s\S]*orderflowPanels/);
+  assert.match(workspace, /subscribeRithmicIndicatorTrades/);
+  assert.match(workspace, /buildRithmicClassicCandles/);
+  assert.match(lightweightCharts, /priceCandles\.length/);
 
   assert.match(charts, /CandlestickChart/);
   assert.match(charts, /appearance\.profileAlignment === "left"/);

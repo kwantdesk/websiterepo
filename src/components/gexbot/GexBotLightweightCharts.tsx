@@ -5,6 +5,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { MouseEventParams, Time } from "lightweight-charts";
 
 import { createChart, LineStyle, type IChartApi, type ISeriesApi } from "@/lib/lightweightChartsCompat";
+import type { RithmicClassicCandle } from "@/lib/gex-box/rithmicCandles";
 import type { GexBotOrderflowFrame, GexBotProfileFrame, GexBotStrike } from "@/lib/gexBotTypes";
 
 type SpotSample = { timestamp: number; spot: number; zeroGamma?: number | null };
@@ -237,9 +238,10 @@ function ProfileCanvas({
 }
 
 function LightweightProfile({
-  frame, frames = [], dataset, appearance, spotTape, onHover, palette,
+  frame, frames = [], dataset, appearance, spotTape, priceCandles = [], onHover, palette,
 }: {
   frame: GexBotProfileFrame; frames?: GexBotProfileFrame[]; dataset: Dataset; appearance: Appearance; spotTape: SpotSample[];
+  priceCandles?: RithmicClassicCandle[];
   onHover: (strike: GexBotStrike | null) => void; palette?: { primary: string; secondary: string; call: string; put: string };
 }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -292,7 +294,9 @@ function LightweightProfile({
     chart.applyOptions({ layout: { background: { color: background.enabled ? background.color : BG }, textColor: TEXT } });
     const samples = spotTape.length ? spotTape.slice(-12_000) : [{ timestamp: frame.timestamp, spot: frame.spot }];
     line.setData(samples.map((sample) => ({ time: time(sample.timestamp), value: sample.spot })));
-    candle.setData(candles(samples));
+    candle.setData(priceCandles.length
+      ? priceCandles.map((entry) => ({ time: time(entry.timestamp), open: entry.open, high: entry.high, low: entry.low, close: entry.close }))
+      : candles(samples));
     zero.setData(appearance.showZero && zeroHistory.enabled ? samples.flatMap((sample) => finite(sample.zeroGamma) ? [{ time: time(sample.timestamp), value: sample.zeroGamma }] : []) : []);
     line.applyOptions({ visible: appearance.chartType === "line" && spotHistory.enabled, color: spotHistory.color, lineWidth: Math.max(1, Math.min(4, Math.round(spotHistory.size))) as 1 | 2 | 3 | 4 });
     candle.applyOptions({ visible: appearance.chartType === "candles" && (candleUp.enabled || candleDown.enabled), upColor: candleUp.color, downColor: candleDown.color, wickUpColor: candleUp.color, wickDownColor: candleDown.color });
@@ -314,7 +318,7 @@ function LightweightProfile({
     ].filter(Boolean) as Array<{ price: number; color: string; title: string; style: LineStyle; width: number }>;
     const created = priceLines.map((item) => active.createPriceLine({ price: item.price, color: item.color, title: item.title, lineStyle: item.style, lineWidth: Math.max(1, Math.min(4, Math.round(item.width))) as 1 | 2 | 3 | 4, axisLabelVisible: Boolean(item.title) }));
     return () => created.forEach((priceLine) => active.removePriceLine(priceLine));
-  }, [appearance, dataset, frame, spotTape]);
+  }, [appearance, dataset, frame, priceCandles, spotTape]);
 
   useEffect(() => {
     const chart = chartRef.current;
@@ -352,7 +356,7 @@ const STATE_PALETTES: Record<GexBotStateMetric, { primary: string; secondary: st
   negative_vanna: { primary: "#59d9b4", secondary: "#ef668b", call: "#59d9b4", put: "#ef668b" }, open_interest: { primary: "#73b7ff", secondary: "#ffb347", call: "#73b7ff", put: "#ffb347" },
 };
 
-export function ProfessionalProfileChart(props: { frame: GexBotProfileFrame; frames?: GexBotProfileFrame[]; dataset: Dataset; appearance: Appearance; spotTape: SpotSample[]; priorIndex: number; maxChange?: Array<{ label: string; value: [number, number] }>; onHover: (strike: GexBotStrike | null) => void }) {
+export function ProfessionalProfileChart(props: { frame: GexBotProfileFrame; frames?: GexBotProfileFrame[]; dataset: Dataset; appearance: Appearance; spotTape: SpotSample[]; priceCandles?: RithmicClassicCandle[]; priorIndex: number; maxChange?: Array<{ label: string; value: [number, number] }>; onHover: (strike: GexBotStrike | null) => void }) {
   return <LightweightProfile {...props} />;
 }
 export function ProfessionalStateChart(props: { frame: GexBotProfileFrame; metric: GexBotStateMetric; appearance: Appearance; spotTape: SpotSample[]; priorIndex: number; onHover: (strike: GexBotStrike | null) => void }) {

@@ -26,6 +26,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ProfessionalOrderflowChart, ProfessionalProfileChart, ProfessionalStateChart, type OrderflowPanelConfig } from "@/components/gexbot/GexBotLightweightCharts";
 import KwantSelect from "@/components/ui/KwantSelect";
 import { GEX_BOX_ORDERFLOW_METRICS, type OrderflowMetric } from "@/lib/gex-box/domain";
+import { appendRithmicClassicTrade, buildRithmicClassicCandles, rithmicContractForRoot, rithmicRootForGexTicker, type RithmicClassicCandle } from "@/lib/gex-box/rithmicCandles";
 import { normalizeReplayFrames, replayFrameAtOrBefore, replayFramesAtOrBefore } from "@/lib/gex-box/replay";
 import { parseGexResearchCommand, serializeGexResearchCommand, type GexResearchRequest } from "@/lib/gex-box/research";
 import type {
@@ -35,6 +36,7 @@ import type {
   GexBotStrike,
   GexBotTerminalEnvelope,
 } from "@/lib/gexBotTypes";
+import { subscribeRithmicIndicatorTrades, type RithmicIndicatorStreamStatus } from "@/lib/rithmicIndicatorStream";
 import { readWorkspaceData, writeWorkspaceData } from "@/lib/workspaceDataCache";
 
 type View = "classic" | "state" | "orderflow" | "research";
@@ -942,6 +944,8 @@ export default function GexBotWorkspace() {
   const [showSettings, setShowSettings] = useState(true);
   const [showAdjustments, setShowAdjustments] = useState(false);
   const [spotTape, setSpotTape] = useState<SpotSample[]>([]);
+  const [rithmicCandles, setRithmicCandles] = useState<RithmicClassicCandle[]>([]);
+  const [rithmicStatus, setRithmicStatus] = useState<RithmicIndicatorStreamStatus>("checking");
   const [orderflowTape, setOrderflowTape] = useState<GexBotOrderflowFrame[]>([]);
   const [replayActive, setReplayActive] = useState(false);
   const [replayPlaying, setReplayPlaying] = useState(false);
@@ -955,6 +959,10 @@ export default function GexBotWorkspace() {
   const requestSequence = useRef(0);
   const replaySequence = useRef(0);
   const replayCache = useRef(new Map<string, ReplayData>());
+  const rithmicCandleBuffer = useRef<RithmicClassicCandle[]>([]);
+  const rithmicPublishFrame = useRef<number | null>(null);
+  const rithmicRoot = rithmicRootForGexTicker(ticker);
+  const rithmicContract = rithmicRoot ? rithmicContractForRoot(rithmicRoot) : null;
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ version: 3, view, ticker, expiry, stateMetric, dataset, appearance, orderflowPanels }));
@@ -967,6 +975,40 @@ export default function GexBotWorkspace() {
       window.history.replaceState(window.history.state, "", `/gex-box/${view}?${params.toString()}`);
     }
   }, [appearance, dataset, expiry, orderflowPanels, stateMetric, ticker, view]);
+
+  useEffect(() => {
+    rithmicCandleBuffer.current = [];
+    setRithmicCandles([]);
+    setRithmicStatus(rithmicContract ? "checking" : "unavailable");
+    if (!rithmicRoot || !rithmicContract) return;
+    let disposed = false;
+    const publish = () => {
+      rithmicPublishFrame.current = null;
+      if (!disposed) setRithmicCandles([...rithmicCandleBuffer.current]);
+    };
+    const schedulePublish = () => {
+      if (rithmicPublishFrame.current === null) rithmicPublishFrame.current = window.requestAnimationFrame(publish);
+    };
+    const unsubscribe = subscribeRithmicIndicatorTrades({
+      symbol: rithmicRoot,
+      contractSymbol: rithmicContract,
+      onStatus: (status) => { if (!disposed) setRithmicStatus(status); },
+      onSeed: (records) => {
+        rithmicCandleBuffer.current = buildRithmicClassicCandles(records);
+        schedulePublish();
+      },
+      onTrades: (records) => {
+        records.forEach((record) => appendRithmicClassicTrade(rithmicCandleBuffer.current, record));
+        schedulePublish();
+      },
+    });
+    return () => {
+      disposed = true;
+      unsubscribe();
+      if (rithmicPublishFrame.current !== null) window.cancelAnimationFrame(rithmicPublishFrame.current);
+      rithmicPublishFrame.current = null;
+    };
+  }, [rithmicContract, rithmicRoot]);
 
   useEffect(() => {
     try {
@@ -1222,9 +1264,10 @@ export default function GexBotWorkspace() {
         <div className="flex min-h-16 flex-wrap items-center justify-between gap-3 px-4 py-2.5 lg:px-6">
           <div className="flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 shadow-[0_0_20px_color-mix(in_srgb,var(--primary)_12%,transparent)]"><Dna className="h-4 w-4 text-primary" /></div>
-            <div><h1 className="text-[12px] font-bold uppercase tracking-[.2em]">GEX BOX</h1><p className="mt-0.5 text-[9px] text-muted">QuantData exposure · Databento underlying prices</p></div>
+            <div><h1 className="text-[12px] font-bold uppercase tracking-[.2em]">GEX BOX</h1><p className="mt-0.5 text-[9px] text-muted">QuantData exposure · {rithmicContract ? `Rithmic ${rithmicContract} execution candles` : "native underlying prices"}</p></div>
           </div>
-          <div className="flex flex-wrap items-center justify-end gap-2">
+            <div className="flex flex-wrap items-center justify-end gap-2">
+            {view === "classic" && rithmicRoot ? <div className={`flex h-9 items-center gap-2 rounded-xl border px-3 text-[9px] font-semibold uppercase tracking-[.12em] ${rithmicStatus === "connected" ? "border-emerald-400/25 bg-emerald-400/[.07] text-emerald-400" : rithmicStatus === "checking" ? "border-amber-400/25 bg-amber-400/[.07] text-amber-300" : "border-danger/25 bg-danger/[.07] text-danger"}`}><Radio className={`h-3 w-3 ${rithmicStatus === "connected" ? "animate-pulse" : ""}`} />Rithmic {rithmicStatus}</div> : null}
             <KwantSelect value={ticker} onChange={(event) => setTicker(event.target.value)} className="h-9 min-w-[112px] rounded-xl border border-border bg-background px-3 font-mono text-[10px] font-semibold" menuLabel="Options underlying">
               {TICKERS.map((item) => <option key={item} value={item}>{tickerLabel(item)}</option>)}
             </KwantSelect>
@@ -1294,7 +1337,7 @@ export default function GexBotWorkspace() {
                 {view === "state" ? (
                   <ProfessionalStateChart frame={frame as GexBotProfileFrame} metric={stateMetric} appearance={appearance} spotTape={displaySpotTape} priorIndex={0} onHover={setHover} />
                 ) : (
-                  <ProfessionalProfileChart frame={frame as GexBotProfileFrame} frames={displayProfileFrames} dataset={dataset} appearance={appearance} spotTape={displaySpotTape} priorIndex={0} maxChange={maxChangeDots} onHover={setHover} />
+                  <ProfessionalProfileChart frame={frame as GexBotProfileFrame} frames={displayProfileFrames} dataset={dataset} appearance={appearance} spotTape={displaySpotTape} priceCandles={replayActive ? [] : rithmicCandles} priorIndex={0} maxChange={maxChangeDots} onHover={setHover} />
                 )}
               </div>
             </div>
