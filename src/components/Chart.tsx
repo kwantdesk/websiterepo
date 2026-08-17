@@ -2527,19 +2527,6 @@ function getToolbarButtonTone(active: boolean) {
     : "border-transparent bg-transparent text-muted hover:bg-surface hover:text-foreground";
 }
 
-function getToolbarDockStyle(dock: ToolbarDock): CSSProperties {
-  switch (dock) {
-    case "right":
-      return { right: 12, top: 64 };
-    case "top":
-      return { top: 12, left: "50%", transform: "translateX(-50%)" };
-    case "bottom":
-      return { bottom: 12, left: "50%", transform: "translateX(-50%)" };
-    default:
-      return { left: 12, top: 64 };
-  }
-}
-
 function getToolbarMenuPositionClasses(dock: ToolbarDock) {
   switch (dock) {
     case "right":
@@ -2829,7 +2816,6 @@ export default function Chart({
   const [drawingHistoryRevision, setDrawingHistoryRevision] = useState(0);
   const [precisionClearRevision, setPrecisionClearRevision] = useState(0);
   const [toolbarDock, setToolbarDock] = useState<ToolbarDock>("left");
-  const [toolbarDragPosition, setToolbarDragPosition] = useState<{ x: number; y: number } | null>(null);
   const [showObjectsPanel, setShowObjectsPanel] = useState(false);
   const [toolbarCollapsed, setToolbarCollapsed] = useState(false);
   const [textEditor, setTextEditor] = useState<{ x: number; y: number; time: number; price: number; value: string; tool: DrawingToolId } | null>(null);
@@ -2926,8 +2912,6 @@ export default function Chart({
   const viewportFrameRef = useRef<number | null>(null);
   const viewportRefreshTimerRef = useRef<number | null>(null);
   const viewportRefreshLastAtRef = useRef(0);
-  const toolbarDragStateRef = useRef<{ offsetX: number; offsetY: number; startClientX: number; startClientY: number; hasMoved: boolean } | null>(null);
-  const toolbarToggleSuppressedRef = useRef(false);
   const latestCandleRef = useRef<Candle | null>(candles.at(-1) ?? null);
   const drawingCandlesRef = useRef(candles);
   const drawingMarketTradesRef = useRef(marketTrades);
@@ -7878,8 +7862,6 @@ export default function Chart({
       iconSize,
       gap,
       radius: smooth(5.25, 2.25),
-      dockOffset: smooth(9, 2.25),
-      dockStart: Math.max(buttonSize + 2, smooth(48, 15)),
       menuWidth: Math.max(180, Number((420 * scale).toFixed(2))),
       menuMaxHeight: `${Number((46 + 28 * scale).toFixed(2))}vh`,
       objectsPanelWidth: Math.max(170, Number((288 * scale).toFixed(2))),
@@ -7894,20 +7876,10 @@ export default function Chart({
   } as CSSProperties;
   const toolbarIconClassName = "h-[var(--chart-toolbar-icon)] w-[var(--chart-toolbar-icon)]";
   const toolbarToolIconClassName = "h-[var(--chart-toolbar-tool-icon)] w-[var(--chart-toolbar-tool-icon)]";
-  const toolbarDockStyle = toolbarDragPosition
-    ? { left: toolbarDragPosition.x, top: toolbarDragPosition.y }
-    : (() => {
-        switch (toolbarDock) {
-          case "right":
-            return { right: toolbarMetrics.dockOffset, top: toolbarMetrics.dockStart };
-          case "top":
-            return { top: toolbarMetrics.dockOffset, left: "50%", transform: "translateX(-50%)" };
-          case "bottom":
-            return { bottom: toolbarMetrics.dockOffset, left: "50%", transform: "translateX(-50%)" };
-          default:
-            return { left: toolbarMetrics.dockOffset, top: toolbarMetrics.dockStart };
-        }
-      })();
+  // The drawing tools are a chart-owned navigation rail, not a floating
+  // overlay. Keep the rail flush to the left edge and spanning the chart so it
+  // remains in the same place through resize, layout and timeframe changes.
+  const toolbarDockStyle = { left: 0, top: 0, bottom: 0 } as CSSProperties;
   const toolbarMenuStyle = {
     width: toolbarMetrics.menuWidth,
     maxHeight: toolbarMetrics.menuMaxHeight,
@@ -8344,11 +8316,9 @@ export default function Chart({
   useEffect(() => {
     if (typeof window === "undefined") return;
     try {
-      const raw = window.localStorage.getItem(toolbarDockStorageKey()) as ToolbarDock | null;
-      if (raw === "left" || raw === "right" || raw === "top" || raw === "bottom") {
-        setToolbarDock(raw);
-        return;
-      }
+      // Retire saved floating/docked positions from the previous toolbar.
+      // Every chart now owns a fixed left-side tool rail.
+      window.localStorage.setItem(toolbarDockStorageKey(), "left");
       setToolbarDock("left");
     } catch {
       setToolbarDock("left");
@@ -11204,55 +11174,6 @@ export default function Chart({
     [activeToolbarTool, favoriteToolIds, favoriteTools, selectedTool],
   );
 
-  useEffect(() => {
-    const onPointerMove = (event: PointerEvent) => {
-      const drag = toolbarDragStateRef.current;
-      const container = chartContainerRef.current;
-      if (!drag || !container) return;
-      const movedX = event.clientX - drag.startClientX;
-      const movedY = event.clientY - drag.startClientY;
-      if (!drag.hasMoved && Math.hypot(movedX, movedY) < 4) return;
-      if (!drag.hasMoved) {
-        drag.hasMoved = true;
-        toolbarToggleSuppressedRef.current = true;
-      }
-      const rect = container.getBoundingClientRect();
-      setToolbarDragPosition({
-        x: event.clientX - rect.left - drag.offsetX,
-        y: event.clientY - rect.top - drag.offsetY,
-      });
-    };
-
-    const onPointerUp = (event: PointerEvent) => {
-      const drag = toolbarDragStateRef.current;
-      const container = chartContainerRef.current;
-      if (!drag || !container) return;
-      if (!drag.hasMoved) {
-        toolbarDragStateRef.current = null;
-        setToolbarDragPosition(null);
-        return;
-      }
-      const rect = container.getBoundingClientRect();
-      const distances: Record<ToolbarDock, number> = {
-        left: Math.abs(event.clientX - rect.left),
-        right: Math.abs(rect.right - event.clientX),
-        top: Math.abs(event.clientY - rect.top),
-        bottom: Math.abs(rect.bottom - event.clientY),
-      };
-      const nextDock = (Object.entries(distances).sort((a, b) => a[1] - b[1])[0]?.[0] ?? "left") as ToolbarDock;
-      toolbarDragStateRef.current = null;
-      setToolbarDragPosition(null);
-      setToolbarDock(nextDock);
-    };
-
-    window.addEventListener("pointermove", onPointerMove);
-    window.addEventListener("pointerup", onPointerUp);
-    return () => {
-      window.removeEventListener("pointermove", onPointerMove);
-      window.removeEventListener("pointerup", onPointerUp);
-    };
-  }, []);
-
   const rightAlignedZoneLabelYs = new Map<string, number>();
   const rightAlignedZoneLabels = zones
     .filter((zone) => zone.labelAlign === "right")
@@ -13209,7 +13130,7 @@ export default function Chart({
       {toolbarEnabled && (
       <div
         ref={toolbarRef}
-        className={`absolute z-20 flex rounded-md border border-border/80 bg-panel/92 p-[2px] shadow-xl backdrop-blur-xl ${toolbarDock === "top" || toolbarDock === "bottom" ? "flex-row items-center" : "flex-col"}`}
+        className="absolute z-20 flex flex-col items-center overflow-visible border-y-0 border-l-0 border-r border-border/80 bg-panel/96 p-[2px] shadow-none backdrop-blur-xl"
         style={{
           ...toolbarDockStyle,
           gap: toolbarMetrics.gap,
@@ -13221,42 +13142,13 @@ export default function Chart({
         <button
           type="button"
           onClick={() => {
-            if (toolbarToggleSuppressedRef.current) {
-              toolbarToggleSuppressedRef.current = false;
-              return;
-            }
             setOpenToolbarGroup(null);
             setShowObjectsPanel(false);
             setToolbarCollapsed((current) => !current);
           }}
-          onPointerDown={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            const container = chartContainerRef.current;
-            const toolbar = toolbarRef.current;
-            if (!container || !toolbar) return;
-            const rect = container.getBoundingClientRect();
-            const toolbarRect = toolbar.getBoundingClientRect();
-            const currentStyle = {
-              x: toolbarRect.left - rect.left,
-              y: toolbarRect.top - rect.top,
-            };
-            toolbarDragStateRef.current = {
-              offsetX: event.clientX - toolbarRect.left,
-              offsetY: event.clientY - toolbarRect.top,
-              startClientX: event.clientX,
-              startClientY: event.clientY,
-              hasMoved: false,
-            };
-            setOpenToolbarGroup(null);
-            setToolbarDragPosition({
-              x: currentStyle.x,
-              y: currentStyle.y,
-            });
-          }}
           className="flex items-center justify-center border border-transparent bg-transparent text-muted transition-all hover:bg-surface hover:text-foreground"
           style={toolbarButtonStyle}
-          title={toolbarCollapsed ? "Expand toolbar" : "Collapse toolbar. Drag to dock on another chart edge"}
+          title={toolbarCollapsed ? "Expand toolbar" : "Collapse toolbar"}
           aria-pressed={toolbarCollapsed}
         >
           <span className="grid grid-cols-2" style={{ gap: Math.max(2, Math.round(toolbarMetrics.gap / 2)) }} aria-hidden="true">
