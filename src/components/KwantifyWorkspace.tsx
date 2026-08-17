@@ -239,6 +239,7 @@ import {
   DATABENTO_LIVE_TICK_EVENT,
   LIVE_CHART_CANDLE_EVENT,
   LIVE_CHART_EXECUTION_EVENT,
+  WORKSPACE_LAYOUT_SETTLED_EVENT,
   publishDatabentoLiveStatus,
   readDatabentoLiveTail,
   recordDatabentoLiveTick,
@@ -1437,12 +1438,15 @@ function installWorkspaceResizeShield(root: HTMLElement, axis: "x" | "y") {
     userSelect: "none",
   });
   root.appendChild(shield);
+  root.dataset.workspaceLayoutInteracting = "true";
 
   return () => {
     frames.forEach((frame, index) => {
       frame.style.pointerEvents = previousFramePointerEvents[index] ?? "";
     });
     shield.remove();
+    delete root.dataset.workspaceLayoutInteracting;
+    window.dispatchEvent(new CustomEvent(WORKSPACE_LAYOUT_SETTLED_EVENT));
   };
 }
 
@@ -12070,22 +12074,49 @@ export default function KwantifyWorkspace({
     event: React.PointerEvent<HTMLDivElement>,
   ) => {
     const floating = workspaceFloatingWindows.find((entry) => entry.paneId === paneId);
-    const areaRect = workspaceAreaRef.current?.getBoundingClientRect();
-    if (!floating || floating.locked || !areaRect) return;
+    const workspaceRoot = workspaceAreaRef.current;
+    const areaRect = workspaceRoot?.getBoundingClientRect();
+    const floatingElement = workspaceRoot?.querySelector<HTMLElement>(
+      `[data-floating-workspace-pane-id="${paneId}"]`,
+    );
+    if (!floating || floating.locked || !workspaceRoot || !areaRect || !floatingElement) return;
     event.preventDefault();
     event.stopPropagation();
+    const source = event.currentTarget;
+    const pointerId = event.pointerId;
+    source.setPointerCapture(pointerId);
     const startX = event.clientX;
     const startY = event.clientY;
+    const removeMoveShield = installWorkspaceResizeShield(workspaceRoot, "x");
+    let nextX = floating.x;
+    let nextY = floating.y;
+    let moveFrame: number | null = null;
+    floatingElement.style.willChange = "transform";
+    const paintMove = () => {
+      moveFrame = null;
+      const translateX = (nextX - floating.x) * areaRect.width;
+      const translateY = (nextY - floating.y) * areaRect.height;
+      floatingElement.style.transform = `translate3d(${translateX}px, ${translateY}px, 0)`;
+    };
     const handleMove = (moveEvent: PointerEvent) => {
-      const x = Math.min(1 - floating.width, Math.max(0, floating.x + (moveEvent.clientX - startX) / areaRect.width));
-      const y = Math.min(1 - floating.height, Math.max(0, floating.y + (moveEvent.clientY - startY) / areaRect.height));
-      setWorkspaceFloatingWindows((current) => current.map((entry) =>
-        entry.paneId === paneId ? { ...entry, x, y } : entry));
+      if (moveEvent.pointerId !== pointerId) return;
+      nextX = Math.min(1 - floating.width, Math.max(0, floating.x + (moveEvent.clientX - startX) / areaRect.width));
+      nextY = Math.min(1 - floating.height, Math.max(0, floating.y + (moveEvent.clientY - startY) / areaRect.height));
+      if (moveFrame === null) moveFrame = window.requestAnimationFrame(paintMove);
     };
     const finishMove = () => {
       window.removeEventListener("pointermove", handleMove);
       window.removeEventListener("pointerup", finishMove);
       window.removeEventListener("pointercancel", finishMove);
+      if (source.hasPointerCapture(pointerId)) source.releasePointerCapture(pointerId);
+      if (moveFrame !== null) window.cancelAnimationFrame(moveFrame);
+      floatingElement.style.left = `${nextX * 100}%`;
+      floatingElement.style.top = `${nextY * 100}%`;
+      floatingElement.style.transform = "";
+      floatingElement.style.willChange = "";
+      setWorkspaceFloatingWindows((current) => current.map((entry) =>
+        entry.paneId === paneId ? { ...entry, x: nextX, y: nextY } : entry));
+      removeMoveShield();
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
     };
@@ -12102,10 +12133,17 @@ export default function KwantifyWorkspace({
     event: React.PointerEvent<HTMLDivElement>,
   ) => {
     const floating = workspaceFloatingWindows.find((entry) => entry.paneId === paneId);
-    const areaRect = workspaceAreaRef.current?.getBoundingClientRect();
-    if (!floating || !areaRect) return;
+    const workspaceRoot = workspaceAreaRef.current;
+    const areaRect = workspaceRoot?.getBoundingClientRect();
+    const floatingElement = workspaceRoot?.querySelector<HTMLElement>(
+      `[data-floating-workspace-pane-id="${paneId}"]`,
+    );
+    if (!floating || !workspaceRoot || !areaRect || !floatingElement) return;
     event.preventDefault();
     event.stopPropagation();
+    const source = event.currentTarget;
+    const pointerId = event.pointerId;
+    source.setPointerCapture(pointerId);
     const startX = event.clientX;
     const startY = event.clientY;
     // Floating panels are terminal tiles rather than desktop pages. Keep a
@@ -12120,30 +12158,65 @@ export default function KwantifyWorkspace({
     const resizeEast = direction.includes("e");
     const resizeNorth = direction.includes("n");
     const resizeSouth = direction.includes("s");
+    let nextLeft = startingLeft;
+    let nextTop = startingTop;
+    let nextRight = startingRight;
+    let nextBottom = startingBottom;
+    let resizeFrame: number | null = null;
+    const removeResizeShield = installWorkspaceResizeShield(
+      workspaceRoot,
+      resizeWest || resizeEast ? "x" : "y",
+    );
+    floatingElement.style.transformOrigin = "top left";
+    floatingElement.style.willChange = "transform";
+    const paintResize = () => {
+      resizeFrame = null;
+      const width = Math.max(nextRight - nextLeft, Number.EPSILON);
+      const height = Math.max(nextBottom - nextTop, Number.EPSILON);
+      const translateX = (nextLeft - startingLeft) * areaRect.width;
+      const translateY = (nextTop - startingTop) * areaRect.height;
+      const scaleX = width / Math.max(floating.width, Number.EPSILON);
+      const scaleY = height / Math.max(floating.height, Number.EPSILON);
+      floatingElement.style.transform = `translate3d(${translateX}px, ${translateY}px, 0) scale(${scaleX}, ${scaleY})`;
+    };
     const handleResize = (moveEvent: PointerEvent) => {
+      if (moveEvent.pointerId !== pointerId) return;
       const deltaX = (moveEvent.clientX - startX) / areaRect.width;
       const deltaY = (moveEvent.clientY - startY) / areaRect.height;
-      const left = resizeWest
+      nextLeft = resizeWest
         ? Math.min(startingRight - minimumWidth, Math.max(0, startingLeft + deltaX))
         : startingLeft;
-      const right = resizeEast
+      nextRight = resizeEast
         ? Math.max(startingLeft + minimumWidth, Math.min(1, startingRight + deltaX))
         : startingRight;
-      const top = resizeNorth
+      nextTop = resizeNorth
         ? Math.min(startingBottom - minimumHeight, Math.max(0, startingTop + deltaY))
         : startingTop;
-      const bottom = resizeSouth
+      nextBottom = resizeSouth
         ? Math.max(startingTop + minimumHeight, Math.min(1, startingBottom + deltaY))
         : startingBottom;
-      setWorkspaceFloatingWindows((current) => current.map((entry) =>
-        entry.paneId === paneId
-          ? { ...entry, x: left, y: top, width: right - left, height: bottom - top }
-          : entry));
+      if (resizeFrame === null) resizeFrame = window.requestAnimationFrame(paintResize);
     };
     const finishResize = () => {
       window.removeEventListener("pointermove", handleResize);
       window.removeEventListener("pointerup", finishResize);
       window.removeEventListener("pointercancel", finishResize);
+      if (source.hasPointerCapture(pointerId)) source.releasePointerCapture(pointerId);
+      if (resizeFrame !== null) window.cancelAnimationFrame(resizeFrame);
+      const nextWidth = nextRight - nextLeft;
+      const nextHeight = nextBottom - nextTop;
+      floatingElement.style.left = `${nextLeft * 100}%`;
+      floatingElement.style.top = `${nextTop * 100}%`;
+      floatingElement.style.width = `${nextWidth * 100}%`;
+      floatingElement.style.height = `${nextHeight * 100}%`;
+      floatingElement.style.transform = "";
+      floatingElement.style.transformOrigin = "";
+      floatingElement.style.willChange = "";
+      setWorkspaceFloatingWindows((current) => current.map((entry) =>
+        entry.paneId === paneId
+          ? { ...entry, x: nextLeft, y: nextTop, width: nextWidth, height: nextHeight }
+          : entry));
+      removeResizeShield();
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
     };
@@ -12278,7 +12351,6 @@ export default function KwantifyWorkspace({
       if (divider.hasPointerCapture(pointerId)) divider.releasePointerCapture(pointerId);
       document.body.style.cursor = previousCursor;
       document.body.style.userSelect = previousUserSelect;
-      removeResizeShield();
       if (animationFrame !== null) {
         window.cancelAnimationFrame(animationFrame);
         animationFrame = null;
@@ -12287,6 +12359,10 @@ export default function KwantifyWorkspace({
       paintTargetedSplit();
       setWorkspaceTree(paintedTree);
       setWorkspaceLayout("custom");
+      // Release chart resize observers only after the final split geometry is
+      // painted. Every chart then performs one authoritative resize instead
+      // of competing with the divider's animation frames.
+      removeResizeShield();
     };
 
     window.addEventListener("pointermove", handlePointerMove);
@@ -12534,6 +12610,7 @@ export default function KwantifyWorkspace({
       previewFrame = null;
       if (!workspaceDragGhostRef.current) return;
       workspaceDragGhostRef.current.style.transform = `translate3d(${previewX + 14}px, ${previewY + 14}px, 0)`;
+      updateDropTarget(previewX, previewY);
     };
 
     const updateDropTarget = (clientX: number, clientY: number) => {
@@ -12579,7 +12656,6 @@ export default function KwantifyWorkspace({
       previewX = moveEvent.clientX;
       previewY = moveEvent.clientY;
       if (previewFrame === null) previewFrame = window.requestAnimationFrame(paintPreview);
-      updateDropTarget(moveEvent.clientX, moveEvent.clientY);
     };
 
     const finishPointerDrag = (commit: boolean) => {

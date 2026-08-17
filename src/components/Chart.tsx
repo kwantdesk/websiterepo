@@ -78,6 +78,7 @@ import {
   DATABENTO_LIVE_TICK_EVENT,
   LIVE_CHART_CANDLE_EVENT,
   LIVE_CHART_EXECUTION_EVENT,
+  WORKSPACE_LAYOUT_SETTLED_EVENT,
   mergeLiveIndicatorCandle,
   type DatabentoLiveTick,
   type LiveChartCandleDetail,
@@ -10351,6 +10352,12 @@ function Chart({
     };
 
     const handleResize = () => {
+      // Workspace walls and floating windows paint an imperative preview while
+      // the pointer is held. Resizing every chart canvas and React overlay on
+      // every preview frame is both invisible work and the primary source of
+      // multi-pane drag stalls. The settled event performs one authoritative
+      // resize after the user releases the pointer.
+      if (container.closest('[data-workspace-layout-interacting="true"]')) return;
       if (chartContainerRef.current && chartRef.current) {
         cachedContainerRect = container.getBoundingClientRect();
         const width = chartContainerRef.current.clientWidth;
@@ -10494,6 +10501,7 @@ function Chart({
     container.addEventListener("contextmenu", handleContextMenu);
     container.addEventListener("wheel", handlePriceScaleWheel, { capture: true, passive: false });
     window.addEventListener("resize", handleResize);
+    window.addEventListener(WORKSPACE_LAYOUT_SETTLED_EVENT, handleResize);
     chart.timeScale().subscribeVisibleLogicalRangeChange(scheduleViewportRefresh);
     const resizeObserver = new ResizeObserver(handleResize);
     resizeObserver.observe(container);
@@ -10515,6 +10523,7 @@ function Chart({
       container.removeEventListener("contextmenu", handleContextMenu);
       container.removeEventListener("wheel", handlePriceScaleWheel, { capture: true });
       window.removeEventListener("resize", handleResize);
+      window.removeEventListener(WORKSPACE_LAYOUT_SETTLED_EVENT, handleResize);
       chart.unsubscribeCrosshairMove(handleNativeCrosshairMove);
       window.removeEventListener(CHART_CROSSHAIR_SYNC_MOVE_EVENT, handleSynchronizedCrosshair);
       if (crosshairDispatchFrame !== null) {

@@ -28,3 +28,15 @@ test("embedded liquidity maps cannot capture a workspace-divider drag", () => {
   assert.match(workspace, /const removeResizeShield = installWorkspaceResizeShield\(workspaceRoot, axis\)/);
   assert.match(workspace, /removeResizeShield\(\)/);
 });
+
+test("chart canvases defer expensive resize work until workspace interaction settles", () => {
+  const chart = readFileSync(
+    new URL("../src/components/Chart.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(workspace, /root\.dataset\.workspaceLayoutInteracting = "true"/);
+  assert.match(workspace, /delete root\.dataset\.workspaceLayoutInteracting/);
+  assert.match(workspace, /WORKSPACE_LAYOUT_SETTLED_EVENT/);
+  assert.match(chart, /container\.closest\('\[data-workspace-layout-interacting="true"\]'\)/);
+  assert.match(chart, /addEventListener\(WORKSPACE_LAYOUT_SETTLED_EVENT, handleResize\)/);
+});
