@@ -50,3 +50,18 @@ test("identical Bounce panels share refresh work and Dark Pool mutates only live
   assert.match(chart, /window\.setTimeout\(\(\) => void load\(false\), refreshMs\)/);
   assert.match(darkPoolPrimitive, /updateCurrentPrice\(price: number \| null\)/);
 });
+
+test("unchanged polling heads do not invalidate four heavy overlay panels", () => {
+  assert.match(chart, /bounceLevelsSnapshotsHaveSameHead\(current, snapshot\)/);
+  assert.match(chart, /darkPoolPayloadsHaveSameHead\(previous, incoming\)/);
+  assert.match(chart, /setDarkPoolGexSnapshot\(\(current\) =>/);
+});
+
+test("Dark Pool GEX composites and transforms a retained render layer", () => {
+  assert.match(darkPoolPrimitive, /const cachedLayer = this\.primitive\.cachedLayer\(layerKey\)/);
+  assert.match(darkPoolPrimitive, /const transformedLayer = this\.primitive\.transformedLayer\(viewport\)/);
+  assert.match(darkPoolPrimitive, /targetContext\.translate\(transformedLayer\.translateX, transformedLayer\.translateY\)/);
+  assert.match(darkPoolPrimitive, /this\.primitive\.storeLayer\(layerKey, layer\.canvas, viewport\)/);
+  assert.match(darkPoolPrimitive, /activePanels >= 4 \? 1\.25/);
+  assert.match(darkPoolPrimitive, /pixelBudgetRatio/);
+});

@@ -146,6 +146,29 @@ export type DarkPoolMapPayload = {
   limitations: string[];
 };
 
+/** Returns true when a polling response contains no observable book change. */
+export function darkPoolPayloadsHaveSameHead(previous: DarkPoolMapPayload | null, next: DarkPoolMapPayload | null) {
+  if (!previous || !next) return previous === next;
+  if (
+    previous.sourceTicker !== next.sourceTicker
+    || previous.displayInstrument !== next.displayInstrument
+    || previous.direct !== next.direct
+    || previous.status !== next.status
+  ) return false;
+  const previousById = new Map(previous.prints.map((print) => [print.id, print]));
+  return next.prints.every((print) => {
+    const current = previousById.get(print.id);
+    return Boolean(current)
+      && current!.tradeTimeMs === print.tradeTimeMs
+      && current!.observableTimestampMs === print.observableTimestampMs
+      && current!.mappedPrice === print.mappedPrice
+      && current!.mappedTick === print.mappedTick
+      && current!.notionalValue === print.notionalValue
+      && current!.cancellationState === print.cancellationState
+      && current!.correctionState === print.correctionState;
+  });
+}
+
 export type DarkPoolMapSettings = {
   preset: string;
   sourceTicker: string;

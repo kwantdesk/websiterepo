@@ -264,7 +264,7 @@ import {
   type MappedStrikeAggregationMode,
   type NetGammaProfileSnapshot,
 } from "@/lib/netGammaExposureByStrike";
-import { filterBounceLevelsSnapshot, isBounceLevelsSnapshot, mergeBounceLevelsSnapshots, type BounceLevelsSnapshot } from "@/lib/bounceLevels";
+import { bounceLevelsSnapshotsHaveSameHead, filterBounceLevelsSnapshot, isBounceLevelsSnapshot, mergeBounceLevelsSnapshots, type BounceLevelsSnapshot } from "@/lib/bounceLevels";
 import {
   BounceLevelsPrimitive,
   type BounceLevelsHit,
@@ -289,6 +289,7 @@ import {
 import { subscribeGexIntervalMap } from "@/lib/gexIntervalMapCache";
 import {
   deduplicateDarkPoolPrints,
+  darkPoolPayloadsHaveSameHead,
   defaultDarkPoolSource,
   isDarkPoolMapPayload,
   normalizeDarkPoolInstrument,
@@ -5923,7 +5924,7 @@ function Chart({
         // The shared request cache deliberately returns the same verified
         // object to every identical panel. Do not clone and invalidate the
         // expensive Canvas layer when a refresh cycle is only a cache hit.
-        if (current === snapshot) return current;
+        if (current === snapshot || bounceLevelsSnapshotsHaveSameHead(current, snapshot)) return current;
         return mergeBounceLevelsSnapshots(current, snapshot);
       });
       hasCommittedSnapshot = true;
@@ -6432,6 +6433,7 @@ function Chart({
           writeWorkspaceData(darkPoolCacheKey, incoming);
           return incoming;
         }
+        if (darkPoolPayloadsHaveSameHead(previous, incoming)) return previous;
         const prints = deduplicateDarkPoolPrints([...previous.prints, ...incoming.prints])
           .sort((left, right) => left.tradeTimeMs - right.tradeTimeMs)
           .slice(-2_500);
@@ -6491,7 +6493,9 @@ function Chart({
         return payload;
       });
       const trackedGexPromise = gexPromise.then((snapshot) => {
-        if (!cancelled) setDarkPoolGexSnapshot(snapshot);
+        if (!cancelled) setDarkPoolGexSnapshot((current) => (
+          bounceLevelsSnapshotsHaveSameHead(current, snapshot) ? current : snapshot
+        ));
         return snapshot;
       }).catch(() => null);
       // Paint the verified one-page head immediately. The GEX request is

@@ -480,6 +480,24 @@ export function selectLookaheadSafeBounceBucket(surface: GexIntervalProviderSurf
 }
 
 /**
+ * Provider refreshes frequently return a new object containing the same live
+ * head. Treat that as a no-op so multi-panel workspaces do not rebuild every
+ * retained exposure canvas at the polling cadence.
+ */
+export function bounceLevelsSnapshotsHaveSameHead(
+  previous: BounceLevelsSnapshot | null,
+  next: BounceLevelsSnapshot | null,
+) {
+  if (!previous || !next) return previous === next;
+  return previous.sourceTicker === next.sourceTicker
+    && previous.displayInstrument === next.displayInstrument
+    && previous.greekMode === next.greekMode
+    && previous.expirationLabel === next.expirationLabel
+    && previous.snapshotTimeMs === next.snapshotTimeMs
+    && previous.mapSignature === next.mapSignature;
+}
+
+/**
  * Preserves every valid live head returned to this browser between provider
  * history refreshes. Samples with the same identity and timestamp are treated
  * as provider corrections; the newer payload wins without touching any other

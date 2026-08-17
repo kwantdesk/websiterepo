@@ -30,6 +30,14 @@ export type DarkPoolGexHit = {
 };
 
 type RenderedHit = DarkPoolGexHit & { left: number; right: number; top: number; bottom: number };
+type DarkPoolRenderViewport = {
+  width: number;
+  height: number;
+  firstX: number | null;
+  lastX: number | null;
+  firstY: number | null;
+  lastY: number | null;
+};
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
 const darkPoolDateFormatter = new Intl.DateTimeFormat("en-US", { month: "numeric", day: "numeric", timeZone: "America/New_York" });
 
@@ -61,8 +69,67 @@ class DarkPoolGexRenderer implements ISeriesPrimitivePaneRenderer {
     const chart = this.primitive.chart();
     const series = this.primitive.series();
     if (!data || !chart || !series) return;
-    target.useMediaCoordinateSpace(({ context, mediaSize }) => {
+    target.useMediaCoordinateSpace(({ context: targetContext, mediaSize }) => {
       if (mediaSize.width < 80 || mediaSize.height < 60) return;
+      const firstTime = data.timelineMs[0] ?? 0;
+      const lastTime = data.timelineMs.at(-1) ?? firstTime;
+      const firstX = firstTime ? chart.timeScale().timeToCoordinate(Math.floor(firstTime / 1_000) as Time) : null;
+      const lastX = lastTime ? chart.timeScale().timeToCoordinate(Math.floor(lastTime / 1_000) as Time) : null;
+      let minimumPrice = Number.POSITIVE_INFINITY;
+      let maximumPrice = Number.NEGATIVE_INFINITY;
+      for (const event of data.frame.rawEvents) {
+        minimumPrice = Math.min(minimumPrice, event.price);
+        maximumPrice = Math.max(maximumPrice, event.price);
+      }
+      for (const cluster of data.frame.clusters) {
+        minimumPrice = Math.min(minimumPrice, cluster.weightedPrice);
+        maximumPrice = Math.max(maximumPrice, cluster.weightedPrice);
+      }
+      if (!Number.isFinite(minimumPrice)) minimumPrice = data.currentPrice ?? 0;
+      if (!Number.isFinite(maximumPrice)) maximumPrice = data.currentPrice ?? minimumPrice;
+      if (Math.abs(maximumPrice - minimumPrice) < 1e-9) maximumPrice = minimumPrice + 1;
+      const firstY = series.priceToCoordinate(minimumPrice);
+      const lastY = series.priceToCoordinate(maximumPrice);
+      const viewport: DarkPoolRenderViewport = {
+        width: mediaSize.width,
+        height: mediaSize.height,
+        firstX: firstX === null ? null : Number(firstX),
+        lastX: lastX === null ? null : Number(lastX),
+        firstY: firstY === null ? null : Number(firstY),
+        lastY: lastY === null ? null : Number(lastY),
+      };
+      const layerKey = this.primitive.renderLayerKey(viewport);
+      const cachedLayer = this.primitive.cachedLayer(layerKey);
+      if (cachedLayer) {
+        targetContext.drawImage(cachedLayer, 0, 0, cachedLayer.width, cachedLayer.height, 0, 0, mediaSize.width, mediaSize.height);
+        return;
+      }
+      const transformedLayer = this.primitive.transformedLayer(viewport);
+      if (transformedLayer) {
+        targetContext.save();
+        targetContext.beginPath();
+        targetContext.rect(0, 0, mediaSize.width, mediaSize.height);
+        targetContext.clip();
+        targetContext.translate(transformedLayer.translateX, transformedLayer.translateY);
+        targetContext.scale(transformedLayer.scaleX, transformedLayer.scaleY);
+        targetContext.drawImage(
+          transformedLayer.canvas,
+          0,
+          0,
+          transformedLayer.canvas.width,
+          transformedLayer.canvas.height,
+          0,
+          0,
+          transformedLayer.sourceViewport.width,
+          transformedLayer.sourceViewport.height,
+        );
+        targetContext.restore();
+        this.primitive.setHits([]);
+        this.primitive.scheduleRefinement(layerKey);
+        return;
+      }
+      const layer = this.primitive.createLayer(mediaSize.width, mediaSize.height);
+      const context = layer.context;
       const settings = data.settings;
       const hits: RenderedHit[] = [];
       context.save();
@@ -246,6 +313,8 @@ class DarkPoolGexRenderer implements ISeriesPrimitivePaneRenderer {
       }
       context.restore();
       this.primitive.setHits(hits);
+      this.primitive.storeLayer(layerKey, layer.canvas, viewport);
+      targetContext.drawImage(layer.canvas, 0, 0, layer.canvas.width, layer.canvas.height, 0, 0, mediaSize.width, mediaSize.height);
     });
   }
 }
@@ -257,22 +326,132 @@ class DarkPoolGexView implements ISeriesPrimitivePaneView {
   renderer() { return this.paneRenderer; }
 }
 
+const activeDarkPoolGexPrimitives = new Set<DarkPoolGexPrimitive>();
+
 export class DarkPoolGexPrimitive implements ISeriesPrimitive<Time> {
   private candleSeries: CandleSeriesApi | null = null;
   private chartApi: IChartApi | null = null;
   private requestRedraw: (() => void) | null = null;
   private renderData: DarkPoolGexPrimitiveData | null = null;
   private renderedHits: RenderedHit[] = [];
+  private renderRevision = 0;
+  private layerKey = "";
+  private layerCanvas: HTMLCanvasElement | null = null;
+  private layerViewport: DarkPoolRenderViewport | null = null;
+  private layerRevision = -1;
+  private layerPanelCount = 0;
+  private refinementTimer: ReturnType<typeof setTimeout> | null = null;
+  private refinementKey = "";
   private readonly paneView = new DarkPoolGexView(this);
 
   attached(param: SeriesAttachedParameter<Time, "Candlestick">) { this.candleSeries = param.series; this.chartApi = param.chart as IChartApi; this.requestRedraw = param.requestUpdate; }
-  detached() { this.candleSeries = null; this.chartApi = null; this.requestRedraw = null; this.renderedHits = []; }
-  update(data: DarkPoolGexPrimitiveData | null) { this.renderData = data; if (!data) this.renderedHits = []; this.requestRedraw?.(); }
+  detached() {
+    activeDarkPoolGexPrimitives.delete(this);
+    if (this.refinementTimer !== null) clearTimeout(this.refinementTimer);
+    this.refinementTimer = null;
+    this.candleSeries = null;
+    this.chartApi = null;
+    this.requestRedraw = null;
+    this.renderedHits = [];
+    this.layerCanvas = null;
+    this.layerViewport = null;
+    this.layerKey = "";
+  }
+  update(data: DarkPoolGexPrimitiveData | null) {
+    if (this.renderData !== data) {
+      if (this.refinementTimer !== null) clearTimeout(this.refinementTimer);
+      this.refinementTimer = null;
+      this.refinementKey = "";
+      this.renderRevision += 1;
+      this.layerCanvas = null;
+      this.layerViewport = null;
+      this.layerKey = "";
+    }
+    this.renderData = data;
+    if (data) activeDarkPoolGexPrimitives.add(this);
+    else activeDarkPoolGexPrimitives.delete(this);
+    if (!data) this.renderedHits = [];
+    this.requestRedraw?.();
+  }
   updateCurrentPrice(price: number | null) {
     // The candle series already schedules the live redraw. Mutating this one
     // scalar keeps proximity emphasis current without replacing the complete
     // frame and forcing a second canvas pass for every trade.
     if (this.renderData) this.renderData.currentPrice = price;
+  }
+  activePanelCount() { return Math.max(1, activeDarkPoolGexPrimitives.size); }
+  renderLayerKey(viewport: DarkPoolRenderViewport) {
+    const rounded = (value: number | null) => value === null ? "x" : Math.round(value * 4) / 4;
+    return [
+      this.renderRevision,
+      this.activePanelCount(),
+      Math.round(viewport.width),
+      Math.round(viewport.height),
+      rounded(viewport.firstX),
+      rounded(viewport.lastX),
+      rounded(viewport.firstY),
+      rounded(viewport.lastY),
+    ].join(":");
+  }
+  cachedLayer(key: string) { return key === this.layerKey ? this.layerCanvas : null; }
+  transformedLayer(viewport: DarkPoolRenderViewport) {
+    if (!this.layerCanvas || !this.layerViewport || this.layerRevision !== this.renderRevision || this.layerPanelCount !== this.activePanelCount()) return null;
+    const axisTransform = (sourceStart: number | null, sourceEnd: number | null, targetStart: number | null, targetEnd: number | null) => {
+      if (sourceStart === null || targetStart === null) return { scale: 1, translate: 0 };
+      const sourceSpan = sourceEnd === null ? 0 : sourceEnd - sourceStart;
+      const targetSpan = targetEnd === null ? 0 : targetEnd - targetStart;
+      const scale = Math.abs(sourceSpan) > 0.001 && Number.isFinite(targetSpan) ? targetSpan / sourceSpan : 1;
+      if (!Number.isFinite(scale) || scale < 0.04 || scale > 25) return null;
+      return { scale, translate: targetStart - sourceStart * scale };
+    };
+    const horizontal = axisTransform(this.layerViewport.firstX, this.layerViewport.lastX, viewport.firstX, viewport.lastX);
+    const vertical = axisTransform(this.layerViewport.firstY, this.layerViewport.lastY, viewport.firstY, viewport.lastY);
+    if (!horizontal || !vertical) return null;
+    return {
+      canvas: this.layerCanvas,
+      sourceViewport: this.layerViewport,
+      scaleX: horizontal.scale,
+      scaleY: vertical.scale,
+      translateX: horizontal.translate,
+      translateY: vertical.translate,
+    };
+  }
+  scheduleRefinement(key: string) {
+    if (this.refinementTimer !== null && this.refinementKey === key) return;
+    if (this.refinementTimer !== null) clearTimeout(this.refinementTimer);
+    this.refinementKey = key;
+    this.refinementTimer = setTimeout(() => {
+      this.refinementTimer = null;
+      this.refinementKey = "";
+      this.layerCanvas = null;
+      this.layerViewport = null;
+      this.layerKey = "";
+      this.requestRedraw?.();
+    }, 140);
+  }
+  createLayer(width: number, height: number) {
+    const devicePixelRatio = typeof window === "undefined" ? 1 : Math.max(1, window.devicePixelRatio || 1);
+    const activePanels = this.activePanelCount();
+    const maximumRatio = activePanels >= 4 ? 1.25 : activePanels >= 2 ? 1.5 : 2;
+    const pixelBudgetRatio = Math.sqrt(2_000_000 / Math.max(1, width * height));
+    const pixelRatio = Math.max(1, Math.min(maximumRatio, devicePixelRatio, pixelBudgetRatio));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.ceil(width * pixelRatio));
+    canvas.height = Math.max(1, Math.ceil(height * pixelRatio));
+    const context = canvas.getContext("2d", { alpha: true });
+    if (!context) throw new Error("Dark Pool GEX could not allocate its render layer.");
+    context.scale(pixelRatio, pixelRatio);
+    return { canvas, context };
+  }
+  storeLayer(key: string, canvas: HTMLCanvasElement, viewport: DarkPoolRenderViewport) {
+    if (this.refinementTimer !== null) clearTimeout(this.refinementTimer);
+    this.refinementTimer = null;
+    this.refinementKey = "";
+    this.layerKey = key;
+    this.layerCanvas = canvas;
+    this.layerViewport = viewport;
+    this.layerRevision = this.renderRevision;
+    this.layerPanelCount = this.activePanelCount();
   }
   series() { return this.candleSeries; }
   chart() { return this.chartApi; }
