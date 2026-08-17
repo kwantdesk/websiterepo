@@ -8028,6 +8028,63 @@ export default function KwantifyWorkspace({
     () => collectWorkspacePaneIds(workspaceTree),
     [workspaceTree],
   );
+  const [mountedWorkspacePaneIds, setMountedWorkspacePaneIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const workspacePaneHydrationKey = useMemo(
+    () => [
+      ...visibleWorkspacePaneIds,
+      ...workspaceFloatingWindows.map((entry) => entry.paneId),
+    ].join("|"),
+    [visibleWorkspacePaneIds, workspaceFloatingWindows],
+  );
+  useEffect(() => {
+    const availablePaneIds = new Set([
+      ...visibleWorkspacePaneIds,
+      ...workspaceFloatingWindows.map((entry) => entry.paneId),
+    ]);
+    const orderedPaneIds = [
+      activePaneId,
+      ...visibleWorkspacePaneIds,
+      ...workspaceFloatingWindows.map((entry) => entry.paneId),
+    ].filter((paneId, index, values) => availablePaneIds.has(paneId) && values.indexOf(paneId) === index);
+    setMountedWorkspacePaneIds((current) => {
+      const next = new Set([...current].filter((paneId) => availablePaneIds.has(paneId)));
+      if (availablePaneIds.has(activePaneId)) next.add(activePaneId);
+      if (next.size === current.size && [...next].every((paneId) => current.has(paneId))) return current;
+      return next;
+    });
+
+    let cancelled = false;
+    let hydrationTimer: number | null = null;
+    let cursor = 0;
+    const hydrateNextPane = () => {
+      if (cancelled) return;
+      if (cursor >= orderedPaneIds.length) return;
+      const paneId = orderedPaneIds[cursor];
+      cursor += 1;
+      setMountedWorkspacePaneIds((current) => {
+        if (current.has(paneId)) return current;
+        const next = new Set(current);
+        next.add(paneId);
+        return next;
+      });
+      if (cursor < orderedPaneIds.length) {
+        // Mount one heavyweight surface per turn. Restoring six charts, GEX
+        // and LIQ simultaneously creates a CPU/memory thundering herd before
+        // the first frame can paint; sequential hydration keeps the UI live.
+        hydrationTimer = window.setTimeout(hydrateNextPane, 250);
+      }
+    };
+    hydrationTimer = window.setTimeout(hydrateNextPane, 120);
+    return () => {
+      cancelled = true;
+      if (hydrationTimer !== null) window.clearTimeout(hydrationTimer);
+    };
+  }, [activePaneId, visibleWorkspacePaneIds, workspaceFloatingWindows, workspacePaneHydrationKey]);
+  const workspacePaneIsMounted = useCallback((paneId: string) =>
+    paneId === activePaneId || mountedWorkspacePaneIds.has(paneId),
+  [activePaneId, mountedWorkspacePaneIds]);
   // Visibility is the request intent. Basing this key on successful overlays
   // meant an initial network miss never started the repair poller, leaving the
   // toggle stranded until it was clicked again.
@@ -14095,7 +14152,13 @@ export default function KwantifyWorkspace({
           className="absolute inset-x-0 bottom-0 min-h-0 overflow-hidden"
           style={{ top: "var(--kwant-shell-bar-height)" }}
         >
-          {renderWorkspacePane(floating.paneId, true)}
+          {workspacePaneIsMounted(floating.paneId) ? renderWorkspacePane(floating.paneId, true) : (
+            <KwantLoader
+              title="Loading workspace"
+              detail="Starting this live panel without blocking the others."
+              className="h-full w-full bg-chart-background"
+            />
+          )}
         </div>
         <>
           <div onPointerDown={(event) => startFloatingWorkspaceResize(floating.paneId, "n", event)} className="absolute inset-x-3 top-0 z-[180] h-1.5 touch-none cursor-ns-resize" title="Resize from top" />
@@ -14157,7 +14220,13 @@ export default function KwantifyWorkspace({
                   : "opacity-[0.94]"
           }`}
         >
-          {renderWorkspacePane(node.paneId)}
+          {workspacePaneIsMounted(node.paneId) ? renderWorkspacePane(node.paneId) : (
+            <KwantLoader
+              title="Loading workspace"
+              detail="Starting this live panel without blocking the others."
+              className="h-full w-full bg-chart-background"
+            />
+          )}
           {nodePane && isWorkspaceChartKind(nodePane.content) && workspacePanelPickerPaneId === node.paneId
             ? renderWorkspacePanelPicker(nodePane, true)
             : null}

@@ -153,3 +153,10 @@ test("unrelated shell state cannot rerender every heavyweight chart surface", ()
   assert.match(gexMap, /export default memo\(GexMapWorkspace\)/);
   assert.match(liquidityMap, /export default memo\([\s\S]{0,280}previous\.instrument === next\.instrument/);
 });
+
+test("saved multi-panel workspaces hydrate one heavyweight surface per turn", () => {
+  assert.match(workspace, /const \[mountedWorkspacePaneIds, setMountedWorkspacePaneIds\] = useState<Set<string>>/);
+  assert.match(workspace, /hydrationTimer = window\.setTimeout\(hydrateNextPane, 250\)/);
+  assert.match(workspace, /workspacePaneIsMounted\(node\.paneId\) \? renderWorkspacePane\(node\.paneId\)/);
+  assert.match(workspace, /Starting this live panel without blocking the others\./);
+});
