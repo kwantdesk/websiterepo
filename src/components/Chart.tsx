@@ -2391,6 +2391,11 @@ function withAlpha(color: string, alpha: number) {
 
 const DEFAULT_VISIBLE_CANDLE_COUNT = 140;
 const DEFAULT_RIGHT_CANDLE_PADDING = 8;
+// Keep the native price rail geometrically stable while live values repaint.
+// Lightweight Charts otherwise recomputes the rail from the widest current
+// label. A one-pixel width change is enough to make the plot in every visible
+// workspace pane appear to wobble horizontally on each market tick.
+const STABLE_RIGHT_PRICE_SCALE_WIDTH = 76;
 // Lightweight Charts already moves its canvases at the browser refresh rate.
 // React only needs a bounded refresh cadence for the SVG/HTML studies that
 // read coordinates from that native viewport. Re-rendering this very large
@@ -2990,7 +2995,7 @@ function Chart({
   const [clearConfirm, setClearConfirm] = useState(false);
   const [resetPaperTradingConfirm, setResetPaperTradingConfirm] = useState(false);
   const [overlaySize, setOverlaySize] = useState({ width: 0, height: 0 });
-  const [nativePriceScaleWidth, setNativePriceScaleWidth] = useState(64);
+  const [nativePriceScaleWidth, setNativePriceScaleWidth] = useState(STABLE_RIGHT_PRICE_SCALE_WIDTH);
   const [viewportVersion, setViewportVersion] = useState(0);
   // Footprint row construction is materially heavier than coordinate-only
   // overlays. Keep it off the 64 ms interaction lane used by the native chart
@@ -10154,6 +10159,7 @@ function Chart({
       rightPriceScale: {
         borderColor: "#1A1A1D",
         scaleMargins: { top: 0.1, bottom: 0.1 },
+        minimumWidth: STABLE_RIGHT_PRICE_SCALE_WIDTH,
       },
       timeScale: {
         borderColor: "#1A1A1D",
@@ -10187,8 +10193,15 @@ function Chart({
 
     chartRef.current = chart;
     const syncNativePriceScaleWidth = () => {
-      const nextWidth = Math.max(44, Math.ceil(chart.priceScale("right").width() || 64));
-      setNativePriceScaleWidth((current) => current === nextWidth ? current : nextWidth);
+      const nextWidth = Math.max(
+        STABLE_RIGHT_PRICE_SCALE_WIDTH,
+        Math.ceil(chart.priceScale("right").width() || STABLE_RIGHT_PRICE_SCALE_WIDTH),
+      );
+      // The native rail may legitimately need more room (for example after a
+      // symbol switch), but it must never contract again on a later tick. That
+      // contraction was also moving the paper-position rail and every overlay
+      // anchored to the plot's right edge.
+      setNativePriceScaleWidth((current) => nextWidth > current ? nextWidth : current);
     };
     window.requestAnimationFrame(syncNativePriceScaleWidth);
     setChartReadyRevision((current) => current + 1);
