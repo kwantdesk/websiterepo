@@ -7296,7 +7296,7 @@ export default function KwantifyWorkspace({
           : section.id === "options-underlyings"
             ? { ...section, name: "Options" }
             : section);
-      return (hasOptionsUnderlyings
+      const withOptionsSection = (hasOptionsUnderlyings
         ? migrated
         : [...migrated, defaultWatchlistSections.find((section) => section.id === "options-underlyings")!])
         .map((section: WatchlistSection) => section.id === "default"
@@ -7304,6 +7304,15 @@ export default function KwantifyWorkspace({
           : section.id === "options-underlyings"
             ? { ...section, name: "Options" }
             : section);
+      const spxKey = makeWatchlistKey("SPX", "Market Index");
+      const spxwKey = makeWatchlistKey("SPXW", "Market Index");
+      return withOptionsSection.map((section: WatchlistSection) => {
+        if (section.id !== "options-underlyings" || section.symbols.includes(spxwKey)) return section;
+        const symbols = [...section.symbols];
+        const spxIndex = symbols.indexOf(spxKey);
+        symbols.splice(spxIndex >= 0 ? spxIndex + 1 : 0, 0, spxwKey);
+        return { ...section, symbols };
+      });
     } catch {
       return defaultWatchlistSections;
     }
