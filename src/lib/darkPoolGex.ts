@@ -139,7 +139,7 @@ export const DEFAULT_DARK_POOL_GEX_SETTINGS: DarkPoolGexSettings = {
   minimumClusterNotional: 5_000_000,
   proxyMode: false,
   showOriginMarker: false,
-  showForwardMemory: true,
+  showForwardMemory: false,
   showExactLine: true,
   showLabels: true,
   labelExtended: false,
@@ -195,9 +195,9 @@ export const DEFAULT_DARK_POOL_GEX_SETTINGS: DarkPoolGexSettings = {
   proximityEmphasis: true,
   proximityDistance: 0.15,
   bandThickness: 2,
-  bandOpacity: 12,
+  bandOpacity: 90,
   originMarkerSize: 7,
-  haloIntensity: 20,
+  haloIntensity: 18,
   kingBoost: 30,
   performanceQuality: "auto",
 };
@@ -244,6 +244,23 @@ export type DarkPoolGexEvent = {
   ageFade: number;
   reaction: DarkPoolGexReactionAnalytics | null;
 };
+
+export type DarkPoolGexLineLifecycle = {
+  invalidated: boolean;
+  invalidatedAtMs: number | null;
+};
+
+/** A confirmed break invalidates a level until a later reclaim reactivates it. */
+export function resolveDarkPoolGexLineLifecycle(
+  reaction: DarkPoolGexEvent["reaction"],
+): DarkPoolGexLineLifecycle {
+  const latest = reaction?.latestInteraction;
+  const invalidated = latest?.outcome === "BREAK" && latest.reclaimTimestampMs === null;
+  return {
+    invalidated,
+    invalidatedAtMs: invalidated ? latest.breakTimestampMs : null,
+  };
+}
 
 export type DarkPoolGexPriceSample = DarkPoolReactionPriceSample;
 export type DarkPoolGexTouch = DarkPoolInteraction;

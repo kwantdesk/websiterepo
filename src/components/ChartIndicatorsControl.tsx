@@ -1769,8 +1769,8 @@ export default function ChartIndicatorsControl({
                           const value = event.target.value;
                           const preset: Record<string, string | number | boolean> = String(key) === "viewPreset"
                             ? value === "raw-dp-levels"
-                              ? { displayMode: "raw", clusterEnabled: false, haloIntensity: 20, showReactionMarkers: false, precisionMode: true, showExactLine: true, showLabels: true }
-                              : { displayMode: "raw-and-clusters", clusterEnabled: true, haloIntensity: 70, showReactionMarkers: true, precisionMode: true, showExactLine: true, showLabels: true }
+                              ? { displayMode: "raw", clusterEnabled: false, haloIntensity: 18, showReactionMarkers: false, precisionMode: true, showExactLine: true, showLabels: true }
+                              : { displayMode: "raw-and-clusters", clusterEnabled: true, haloIntensity: 22, showReactionMarkers: true, precisionMode: true, showExactLine: true, showLabels: true }
                             : {};
                           return { ...current, settings: { ...(current.settings ?? {}), ...preset, [String(key)]: value } };
                         })}
@@ -1782,7 +1782,7 @@ export default function ChartIndicatorsControl({
                     </label>
                   ))}
                   <div className="border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
-                    Raw Top-N membership is always ranked by individual print notional. Exact prices are never rounded or replaced by clusters. QuantData validates off-exchange reporting; a specific ATS is claimed only when venue metadata exists. Gamma remains a separate halo and never changes the DP price or Top-N selection.
+                    Raw Top-N membership is always ranked by individual print notional. Exact prices are never rounded or replaced by clusters. QuantData validates off-exchange reporting; a specific ATS is claimed only when venue metadata exists. GEX confluence selects the theme colour without moving the Dark Pool price. Levels render as dotted lines only: active levels stay bright, while confirmed breaks fade until reclaimed.
                     <span className="mt-1 block">This tool flags measured order-book and price-interaction patterns. It does not determine trader identity or legally establish intent, and it does not represent a dark-pool level as guaranteed support or resistance.</span>
                   </div>
                 </div>

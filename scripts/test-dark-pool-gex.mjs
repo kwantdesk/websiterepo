@@ -3,6 +3,7 @@ import {
   buildDarkPoolGexFrame,
   calculateDarkPoolGexReaction,
   DEFAULT_DARK_POOL_GEX_SETTINGS,
+  resolveDarkPoolGexLineLifecycle,
   resolveDarkPoolGexCoordinate,
   summarizeDarkPoolGexResearch,
 } from "../src/lib/darkPoolGex.ts";
@@ -12,8 +13,16 @@ import {
   mapDarkPoolPrint,
   normalizeDarkPoolPrint,
 } from "../src/lib/darkPoolMap.ts";
-
 const NOW = Date.UTC(2026, 7, 14, 15, 0, 0); // Friday 11:00 New York.
+
+assert.deepEqual(resolveDarkPoolGexLineLifecycle(null), { invalidated: false, invalidatedAtMs: null });
+assert.deepEqual(resolveDarkPoolGexLineLifecycle({
+  latestInteraction: { outcome: "BREAK", breakTimestampMs: NOW - 60_000, reclaimTimestampMs: null },
+}), { invalidated: true, invalidatedAtMs: NOW - 60_000 });
+assert.deepEqual(resolveDarkPoolGexLineLifecycle({
+  latestInteraction: { outcome: "RECLAIM", breakTimestampMs: NOW - 120_000, reclaimTimestampMs: NOW - 60_000 },
+}), { invalidated: false, invalidatedAtMs: null });
+
 const mapping = createMappingReceipt({ mode: "direct", direct: true, sourceMid: 737, displayMid: 737, calculatedAtMs: NOW });
 assert.ok(mapping);
 
