@@ -5744,8 +5744,18 @@ function Chart({
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "bounce-levels") ?? null,
     [indicators],
   );
+  // A live candle object changes on every trade, but its timestamp grid only
+  // changes when a new bar opens. Keep the expensive overlay geometry keyed to
+  // that grid instead of rebuilding thousands of anchors on every price tick.
+  const overlayTimelineKey = `${candles.length}:${candles[0]?.timestamp ?? 0}:${candles.at(-1)?.timestamp ?? 0}`;
+  const overlayTimelineMs = useMemo(
+    () => candles.map((candle) => candle.timestamp),
+    // `overlayTimelineKey` deliberately represents the only candle fields this
+    // value consumes. OHLC mutations inside the live bar do not change it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [overlayTimelineKey],
+  );
   const bounceLevelsDataSignature = bounceLevelsIndicator ? JSON.stringify({
-    instanceId: bounceLevelsIndicator.instanceId,
     sourceTicker: String(bounceLevelsIndicator.settings?.sourceTicker ?? "AUTO"),
     greekMode: String(bounceLevelsIndicator.settings?.greekMode ?? "GAMMA"),
     refreshSeconds: Number(bounceLevelsIndicator.settings?.refreshSeconds ?? 5),
@@ -5908,7 +5918,10 @@ function Chart({
       } catch (error) {
         if (!cancelled) setBounceLevelsError(error instanceof Error ? error.message : "Bounce Levels could not refresh.");
       } finally {
-        if (!cancelled) { setBounceLevelsLoading(false); timer = window.setTimeout(() => void load(true), refreshMs); }
+        // Re-enter through the shared freshness cache so several charts with
+        // identical data settings elect one network refresh instead of each
+        // forcing its own provider request.
+        if (!cancelled) { setBounceLevelsLoading(false); timer = window.setTimeout(() => void load(false), refreshMs); }
       }
     };
     void load(false);
@@ -5938,7 +5951,7 @@ function Chart({
     );
     return {
       snapshot: visibleSnapshot,
-      timeAnchors: candles.map((candle) => candle.timestamp),
+      timeAnchors: overlayTimelineMs,
       opacity: Number(indicatorSettings.lineOpacity ?? 78) / 100,
       intensity: Number(indicatorSettings.exposureIntensity ?? 1),
       minimumNodeHeight: Number(indicatorSettings.minimumNodeThickness ?? 2),
@@ -5967,8 +5980,8 @@ function Chart({
       positiveColor: useThemeColors ? settings.upColor : String(indicatorSettings.positiveColor ?? settings.upColor),
       negativeColor: useThemeColors ? settings.downColor : String(indicatorSettings.negativeColor ?? settings.downColor),
     };
-  }, [bounceLevelsIndicator, bounceLevelsSnapshot, candles, settings.downColor, settings.upColor]);
-  useEffect(() => { bounceLevelsPrimitiveRef.current?.update(bounceLevelsPrimitiveData); }, [bounceLevelsPrimitiveData, viewportVersion]);
+  }, [bounceLevelsIndicator, bounceLevelsSnapshot, overlayTimelineMs, settings.downColor, settings.upColor]);
+  useEffect(() => { bounceLevelsPrimitiveRef.current?.update(bounceLevelsPrimitiveData); }, [bounceLevelsPrimitiveData]);
   useEffect(() => {
     const container = chartContainerRef.current;
     if (!container || !bounceLevelsIndicator || bounceLevelsIndicator.settings?.tooltipsEnabled === false) { setBounceLevelsTooltip(null); return; }
@@ -5976,7 +5989,11 @@ function Chart({
     const move = (event: PointerEvent) => {
       if (frame !== null) window.cancelAnimationFrame(frame);
       const rect = container.getBoundingClientRect();
-      frame = window.requestAnimationFrame(() => { frame = null; setBounceLevelsTooltip(bounceLevelsPrimitiveRef.current?.queryHit(event.clientX - rect.left, event.clientY - rect.top) ?? null); });
+      frame = window.requestAnimationFrame(() => {
+        frame = null;
+        const next = bounceLevelsPrimitiveRef.current?.queryHit(event.clientX - rect.left, event.clientY - rect.top) ?? null;
+        setBounceLevelsTooltip((current) => current?.node.id === next?.node.id && current?.x === next?.x && current?.y === next?.y ? current : next);
+      });
     };
     const leave = () => setBounceLevelsTooltip(null);
     container.addEventListener("pointermove", move, { passive: true });
@@ -6366,7 +6383,8 @@ function Chart({
       if (gexResult.status === "rejected") errors.push(gexResult.reason instanceof Error ? gexResult.reason.message : "GEX context unavailable.");
       setDarkPoolGexError(errors.length ? errors.join(" ") : null);
       setDarkPoolGexLoading(false);
-      timer = window.setTimeout(() => void load(true), refreshMs);
+      // Shared cache age coordinates refreshes across workspace panels.
+      timer = window.setTimeout(() => void load(false), refreshMs);
     };
     void load(false);
     return () => {
@@ -6376,8 +6394,25 @@ function Chart({
   }, [darkPoolGexIndicator, darkPoolGexReplayMinute, instrument]);
 
   const darkPoolGexAsOfMs = darkPoolGexIndicator?.settings?.contextMode === "current"
-    ? (darkPoolGexPayload?.checkedAtMs ?? Date.now())
-    : (candles.at(-1)?.timestamp ?? darkPoolGexPayload?.checkedAtMs ?? Date.now());
+    ? (darkPoolGexPayload?.checkedAtMs ?? candles.at(-1)?.timestamp ?? 0)
+    : (candles.at(-1)?.timestamp ?? darkPoolGexPayload?.checkedAtMs ?? 0);
+  // Reaction analytics are historical and only need a new sample when a new
+  // candle opens. Recomputing every event against the entire candle history on
+  // every trade was the dominant four-chart GEX VUE stall.
+  const darkPoolGexPriceSamples = useMemo(
+    () => candles.map((candle) => ({
+      timestampMs: candle.timestamp,
+      open: candle.open,
+      high: candle.high,
+      low: candle.low,
+      close: candle.close,
+      resolution: (["1m", "3m", "5m", "15m", "1h", "4h", "1D", "1W"].includes(String(timeframe)) ? timeframe : "chart") as DarkPoolGexInteractionResolution,
+    })),
+    // The current bar may mutate in place many times per second; a finalized
+    // reaction sample is captured when the next timestamp arrives.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [overlayTimelineKey, timeframe],
+  );
   const darkPoolGexFrame = useMemo<DarkPoolGexFrame | null>(() => {
     if (!darkPoolGexIndicator || !darkPoolGexPayload) return null;
     const indicatorSettings = { ...DEFAULT_DARK_POOL_GEX_SETTINGS, ...(darkPoolGexIndicator.settings ?? {}) } as DarkPoolGexSettings;
@@ -6387,16 +6422,9 @@ function Chart({
       settings: indicatorSettings,
       asOfMs: darkPoolGexAsOfMs,
       tickSize: priceFormat.minMove,
-      priceSamples: candles.map((candle) => ({
-        timestampMs: candle.timestamp,
-        open: candle.open,
-        high: candle.high,
-        low: candle.low,
-        close: candle.close,
-        resolution: (["1m", "3m", "5m", "15m", "1h", "4h", "1D", "1W"].includes(String(timeframe)) ? timeframe : "chart") as DarkPoolGexInteractionResolution,
-      })),
+      priceSamples: darkPoolGexPriceSamples,
     });
-  }, [candles, darkPoolGexAsOfMs, darkPoolGexIndicator, darkPoolGexPayload, darkPoolGexSnapshot, priceFormat.minMove, timeframe]);
+  }, [darkPoolGexAsOfMs, darkPoolGexIndicator, darkPoolGexPayload, darkPoolGexPriceSamples, darkPoolGexSnapshot, priceFormat.minMove]);
   const darkPoolGexCurrentPrice = candles.at(-1)?.close ?? null;
   const darkPoolGexResearch = useMemo(() => darkPoolGexFrame ? summarizeDarkPoolGexResearch(darkPoolGexFrame) : null, [darkPoolGexFrame]);
   const darkPoolGexPrimitiveData = useMemo<DarkPoolGexPrimitiveData | null>(() => {
@@ -6411,12 +6439,15 @@ function Chart({
       negativeGexColor: useThemeColors ? settings.downColor : String(darkPoolGexIndicator.settings?.negativeGexColor ?? settings.downColor),
       backgroundColor: settings.backgroundColor,
       currentPrice: darkPoolGexCurrentPrice,
-      timelineMs: candles.map((candle) => candle.timestamp),
+      timelineMs: overlayTimelineMs,
     };
-  }, [candles, darkPoolGexCurrentPrice, darkPoolGexFrame, darkPoolGexIndicator, settings.backgroundColor, settings.downColor, settings.gridColor, settings.upColor]);
+  }, [darkPoolGexFrame, darkPoolGexIndicator, overlayTimelineMs, settings.backgroundColor, settings.downColor, settings.gridColor, settings.upColor]);
   useEffect(() => {
     darkPoolGexPrimitiveRef.current?.update(darkPoolGexPrimitiveData);
-  }, [darkPoolGexPrimitiveData, viewportVersion]);
+  }, [darkPoolGexPrimitiveData]);
+  useEffect(() => {
+    darkPoolGexPrimitiveRef.current?.updateCurrentPrice(darkPoolGexCurrentPrice);
+  }, [darkPoolGexCurrentPrice]);
   useEffect(() => {
     const container = chartContainerRef.current;
     if (!container || !darkPoolGexIndicator || darkPoolGexIndicator.settings?.showTooltip === false) {
@@ -6429,7 +6460,12 @@ function Chart({
       const rect = container.getBoundingClientRect();
       frame = window.requestAnimationFrame(() => {
         frame = null;
-        setDarkPoolGexTooltip(darkPoolGexPrimitiveRef.current?.queryHit(event.clientX - rect.left, event.clientY - rect.top) ?? null);
+        const next = darkPoolGexPrimitiveRef.current?.queryHit(event.clientX - rect.left, event.clientY - rect.top) ?? null;
+        setDarkPoolGexTooltip((current) => {
+          const currentId = current?.event?.id ?? current?.cluster?.id ?? null;
+          const nextId = next?.event?.id ?? next?.cluster?.id ?? null;
+          return currentId === nextId && current?.x === next?.x && current?.y === next?.y ? current : next;
+        });
       });
     };
     const leave = () => setDarkPoolGexTooltip(null);

@@ -31,6 +31,7 @@ export type DarkPoolGexHit = {
 
 type RenderedHit = DarkPoolGexHit & { left: number; right: number; top: number; bottom: number };
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
+const darkPoolDateFormatter = new Intl.DateTimeFormat("en-US", { month: "numeric", day: "numeric", timeZone: "America/New_York" });
 
 function rgba(color: string, opacity: number) {
   const hex = /^#([0-9a-f]{6})$/i.exec(color)?.[1];
@@ -222,7 +223,7 @@ class DarkPoolGexRenderer implements ISeriesPrimitivePaneRenderer {
             context.fill();
           }
           if (settings.showLabels) {
-            const date = new Intl.DateTimeFormat("en-US", { month: "numeric", day: "numeric", timeZone: "America/New_York" }).format(new Date(event.executionTimestampMs));
+            const date = darkPoolDateFormatter.format(new Date(event.executionTimestampMs));
             const label = settings.labelExtended
               ? `DP ${formatDarkPoolNotional(event.notional)} · ${date} · ${event.price}`
               : `DP ${formatDarkPoolNotional(event.notional)} · ${date}`;
@@ -267,6 +268,12 @@ export class DarkPoolGexPrimitive implements ISeriesPrimitive<Time> {
   attached(param: SeriesAttachedParameter<Time, "Candlestick">) { this.candleSeries = param.series; this.chartApi = param.chart as IChartApi; this.requestRedraw = param.requestUpdate; }
   detached() { this.candleSeries = null; this.chartApi = null; this.requestRedraw = null; this.renderedHits = []; }
   update(data: DarkPoolGexPrimitiveData | null) { this.renderData = data; if (!data) this.renderedHits = []; this.requestRedraw?.(); }
+  updateCurrentPrice(price: number | null) {
+    // The candle series already schedules the live redraw. Mutating this one
+    // scalar keeps proximity emphasis current without replacing the complete
+    // frame and forcing a second canvas pass for every trade.
+    if (this.renderData) this.renderData.currentPrice = price;
+  }
   series() { return this.candleSeries; }
   chart() { return this.chartApi; }
   data() { return this.renderData; }

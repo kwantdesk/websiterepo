@@ -251,7 +251,15 @@ function ribbonGradient(
     rgba(point.color, point.opacity * opacityScale * multiplier),
   );
   add(0, first, 0.72);
-  points.forEach((point) => add((point.x - first.left) / span, point));
+  // Canvas gradients become extremely expensive with hundreds of colour
+  // stops. Preserve the temporal shape while bounding the GPU/CPU work.
+  const maximumStops = 48;
+  const stopStride = Math.max(1, Math.ceil(points.length / maximumStops));
+  for (let index = 0; index < points.length; index += stopStride) {
+    const point = points[index];
+    add((point.x - first.left) / span, point);
+  }
+  if (points.length > 1) add((last.x - first.left) / span, last);
   const edgeMultiplier = last.momentum === "building"
     ? 1
     : last.momentum === "stable"
@@ -274,11 +282,26 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
       if (mediaSize.width < 80 || mediaSize.height < 80) { this.primitive.setHits([]); return; }
       const anchors = [...data.timeAnchors].sort((left, right) => left - right);
       const coordinateCache = new Map<number, number | null>();
-      const slices = data.snapshot.exposureField
+      let slices = data.snapshot.exposureField
         .map((slice) => ({ ...slice, x: coordinateForTimestamp(chart, slice.timestamp, anchors, coordinateCache) }))
         .filter((slice): slice is typeof slice & { x: number } => slice.x !== null && slice.x > -80 && slice.x < mediaSize.width + 80)
         .sort((left, right) => left.timestamp - right.timestamp);
       if (!slices.length) { this.primitive.setHits([]); return; }
+
+      // Level-of-detail is based on available pixels, not an arbitrary history
+      // cutoff. A compact four-panel workspace cannot display 1,440 distinct
+      // temporal slices, so sampling them all only burns the interaction thread
+      // without adding visible information.
+      const maximumVisibleSlices = Math.max(96, Math.min(360, Math.floor(mediaSize.width / 3)));
+      if (slices.length > maximumVisibleSlices) {
+        const source = slices;
+        const lastIndex = source.length - 1;
+        const selected = new Set<number>([0, lastIndex]);
+        for (let index = 1; index < maximumVisibleSlices - 1; index += 1) {
+          selected.add(Math.round((index / (maximumVisibleSlices - 1)) * lastIndex));
+        }
+        slices = [...selected].sort((left, right) => left - right).map((index) => source[index]);
+      }
 
       const hits: RenderedHit[] = [];
       const prepared: PreparedNode[] = [];
@@ -370,8 +393,12 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
           // If the node vanishes before the latest exposure frame, render a
           // real collapse rather than leaving a blunt, permanent heat band.
           if (lastPoint.sliceIndex < slices.length - 1) lastPoint.momentum = "dumped";
-          const maximumStrength = Math.max(...points.map((point) => point.strength));
-          const maximumOpacity = Math.max(...points.map((point) => point.opacity));
+          let maximumStrength = 0;
+          let maximumOpacity = 0;
+          for (const point of points) {
+            maximumStrength = Math.max(maximumStrength, point.strength);
+            maximumOpacity = Math.max(maximumOpacity, point.opacity);
+          }
           const last = points.at(-1)!;
 
           const halo = traceRibbon(
@@ -380,9 +407,12 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
             1.72,
             (1.25 + data.glowStrength * 0.18) * BOUNCE_LEVELS_HEAT_THICKNESS_SCALE,
           );
+          const detailedRendering = prepared.length <= 2_200;
           context.save();
-          context.shadowColor = rgba(last.color, maximumOpacity * 0.52);
-          context.shadowBlur = (data.glowStrength + maximumStrength * 11) * BOUNCE_LEVELS_HEAT_THICKNESS_SCALE;
+          if (detailedRendering) {
+            context.shadowColor = rgba(last.color, maximumOpacity * 0.52);
+            context.shadowBlur = (data.glowStrength + maximumStrength * 11) * BOUNCE_LEVELS_HEAT_THICKNESS_SCALE;
+          }
           context.fillStyle = ribbonGradient(context, points, halo.edgeX, 0.2 + maximumStrength * 0.16);
           context.fill();
           context.restore();
@@ -395,10 +425,10 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
           context.fillStyle = ribbonGradient(context, points, body.edgeX, 0.36 + maximumStrength * 0.28);
           context.fill();
 
-          // Local exposure cells make accumulation and decay legible at each
-          // provider frame. Their dimensions and opacity vary continuously;
-          // these are not repeated, equal-sized decorative pills.
-          for (const point of points) {
+          // Local cells are high-detail texture. At compact zoom the continuous
+          // core/body/halo remains authoritative and avoids thousands of
+          // invisible ellipses on every live repaint.
+          if (detailedRendering) for (const point of points) {
             const sampleWidth = Math.max(2, point.right - point.left);
             const momentumWidth = point.momentum === "building"
               ? 1.18
@@ -442,7 +472,7 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
           context.stroke();
           context.shadowBlur = 0;
 
-          if (data.microOrbTexture) {
+          if (data.microOrbTexture && prepared.length <= 1_600) {
             for (const point of points) {
               const density = Math.max(1, Math.round(1 + point.strength * 4));
               const halfHeight = Math.max(0.75 * BOUNCE_LEVELS_HEAT_THICKNESS_SCALE, point.height * 0.42);
@@ -461,7 +491,9 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
             }
           }
 
-          for (const point of points) {
+          const hitStride = Math.max(1, Math.ceil(points.length / 120));
+          for (let hitIndex = 0; hitIndex < points.length; hitIndex += hitStride) {
+            const point = points[hitIndex];
             const haloHeight = point.height * 1.72
               + Math.max(2.5, data.glowStrength * 0.36) * BOUNCE_LEVELS_HEAT_THICKNESS_SCALE;
             hits.push({
@@ -471,6 +503,21 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
               snapshot: data.snapshot,
               left: point.left,
               right: point === last ? body.edgeX : point.right,
+              top: point.y - haloHeight / 2,
+              bottom: point.y + haloHeight / 2,
+            });
+          }
+          if ((points.length - 1) % hitStride !== 0) {
+            const point = points.at(-1)!;
+            const haloHeight = point.height * 1.72
+              + Math.max(2.5, data.glowStrength * 0.36) * BOUNCE_LEVELS_HEAT_THICKNESS_SCALE;
+            hits.push({
+              x: point.x,
+              y: point.y,
+              node: point.node,
+              snapshot: data.snapshot,
+              left: point.left,
+              right: body.edgeX,
               top: point.y - haloHeight / 2,
               bottom: point.y + haloHeight / 2,
             });
