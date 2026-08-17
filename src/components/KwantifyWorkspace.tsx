@@ -9878,6 +9878,12 @@ export default function KwantifyWorkspace({
     let warmHandoffTimer: number | null = null;
     let warmReadyTimer: number | null = null;
     let warmingAuthenticated = false;
+    let warmingHasFreshMarketPayload = false;
+    // Vercel's streaming request has a five-minute ceiling. Start a verified
+    // replacement well before that boundary and retire the old request before
+    // the platform can sever it underneath every open chart pane.
+    const warmHandoffDelayMs = 150_000;
+    const maximumStreamAgeMs = 240_000;
     const publishDatabentoStatus = (status: DatabentoLiveStatus) => {
       if (!usingDatabentoFeed) return;
       publishDatabentoLiveStatus(status);
@@ -9928,7 +9934,7 @@ export default function KwantifyWorkspace({
         publishDatabentoStatus("connecting");
         openEventSource(false);
         scheduleWarmHandoff();
-      }, 750);
+      }, 250);
     };
     const healthTimer = window.setInterval(() => {
       if (!usingDatabentoFeed || document.visibilityState !== "visible") return;
@@ -9936,7 +9942,7 @@ export default function KwantifyWorkspace({
       if (
         now - lastServerSignalAt > 18_000
         || (receivedPriceMessage && now - lastPriceMessageAt > 24_000)
-        || now - activeStreamOpenedAt > 270_000
+        || now - activeStreamOpenedAt > maximumStreamAgeMs
         || (
           canonicalPriorityLiveSymbols.has(selectedLiveInstrument)
           && now - activeStreamOpenedAt > 30_000
@@ -10067,7 +10073,7 @@ export default function KwantifyWorkspace({
       } catch {}
     };
 
-    const scheduleWarmHandoff = (delayMs = 210_000) => {
+    const scheduleWarmHandoff = (delayMs = warmHandoffDelayMs) => {
       if (!usingDatabentoFeed || disposed || reconnecting) return;
       if (warmHandoffTimer !== null) window.clearTimeout(warmHandoffTimer);
       warmHandoffTimer = window.setTimeout(() => {
@@ -10081,6 +10087,7 @@ export default function KwantifyWorkspace({
       source.close();
       warmingEventSource = null;
       warmingAuthenticated = false;
+      warmingHasFreshMarketPayload = false;
       if (warmReadyTimer !== null) {
         window.clearTimeout(warmReadyTimer);
         warmReadyTimer = null;
@@ -10094,6 +10101,7 @@ export default function KwantifyWorkspace({
       activeEventSource = source;
       warmingEventSource = null;
       warmingAuthenticated = false;
+      warmingHasFreshMarketPayload = false;
       activeStreamOpenedAt = Date.now();
       if (warmReadyTimer !== null) {
         window.clearTimeout(warmReadyTimer);
@@ -10111,6 +10119,7 @@ export default function KwantifyWorkspace({
         warmingEventSource?.close();
         warmingEventSource = source;
         warmingAuthenticated = false;
+        warmingHasFreshMarketPayload = false;
         warmReadyTimer = window.setTimeout(() => discardWarmingSource(source), 20_000);
       } else {
         activeEventSource?.close();
@@ -10122,7 +10131,10 @@ export default function KwantifyWorkspace({
         if (source === activeEventSource) lastServerSignalAt = Date.now();
       });
       source.addEventListener("status", () => {
-        if (source === warmingEventSource) warmingAuthenticated = true;
+        if (source === warmingEventSource) {
+          warmingAuthenticated = true;
+          if (warmingHasFreshMarketPayload) promoteWarmingSource(source);
+        }
         else if (source === activeEventSource) markStreamAlive();
       });
       source.addEventListener("heartbeat", () => {
@@ -10153,19 +10165,26 @@ export default function KwantifyWorkspace({
       });
       source.onmessage = (event) => {
         if (source === warmingEventSource) {
-          // The route can replay one cached quote before Databento has
-          // authenticated. Only promote after status + a subsequent market
-          // payload for the selected chart prove that the replacement is
-          // genuinely producing the price the trader is watching. Promoting
-          // on some other watchlist symbol caused the selected chart to freeze
-          // when the five-minute Vercel stream lifetime was reached.
-          if (!warmingAuthenticated) return;
+          // The route can replay cached quotes before the upstream stream is
+          // authenticated. A replacement becomes eligible only after a fresh
+          // market payload for any visible priority pane. Requiring the one
+          // currently selected pane made multi-chart handoffs miss the
+          // five-minute boundary whenever that exact contract was momentarily
+          // quiet, leaving every pane pinned to its final quote.
           try {
             const warmingPrice = JSON.parse(event.data) as LiveFeedPrice;
-            if (warmingPrice.error || !sameLiveInstrument(warmingPrice.instrument, selectedInstrument)) return;
+            if (
+              warmingPrice.error
+              || warmingPrice.cached
+              || !Number.isFinite(Number(warmingPrice.mid))
+              || Number(warmingPrice.mid) <= 0
+              || !isPriorityLiveSymbol(warmingPrice.instrument)
+            ) return;
+            warmingHasFreshMarketPayload = true;
           } catch {
             return;
           }
+          if (!warmingAuthenticated) return;
           promoteWarmingSource(source);
         }
         if (source === activeEventSource) handlePriceMessage(event);
