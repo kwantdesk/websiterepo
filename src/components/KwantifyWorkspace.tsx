@@ -519,6 +519,7 @@ type ChartExecutionQuote = {
   ask: number;
   mid: number;
   timestamp: number;
+  receivedAt: number;
 };
 
 const liveExecutionQuotesBySymbol = new Map<string, ChartExecutionQuote>();
@@ -526,12 +527,36 @@ const liveExecutionQuoteSubscribers = new Set<() => void>();
 let liveExecutionQuoteNotifyFrame: number | null = null;
 
 function publishLiveExecutionQuote(quote: ChartExecutionQuote) {
-  liveExecutionQuotesBySymbol.set(normalizePaperSymbol(quote.symbol), quote);
-  if (liveExecutionQuoteNotifyFrame !== null) return;
+  const key = normalizePaperSymbol(quote.symbol);
+  const previous = liveExecutionQuotesBySymbol.get(key);
+  const previousIsStillArriving = previous && quote.receivedAt - previous.receivedAt < 5_000;
+
+  // Several panes can display the same contract and therefore receive the
+  // same shared market packet. Keep one monotonic mark per symbol so a slower
+  // background pane cannot overwrite the live P&L with an older quote. After
+  // a genuine reconnect gap, allow the new stream to establish its watermark
+  // even if its provider timestamp restarted slightly behind the old stream.
+  if (
+    previous
+    && previousIsStillArriving
+    && (
+      quote.timestamp < previous.timestamp
+      || (
+        quote.timestamp === previous.timestamp
+        && quote.bid === previous.bid
+        && quote.ask === previous.ask
+        && quote.mid === previous.mid
+      )
+    )
+  ) return false;
+
+  liveExecutionQuotesBySymbol.set(key, quote);
+  if (liveExecutionQuoteNotifyFrame !== null) return true;
   liveExecutionQuoteNotifyFrame = window.requestAnimationFrame(() => {
     liveExecutionQuoteNotifyFrame = null;
     liveExecutionQuoteSubscribers.forEach((notify) => notify());
   });
+  return true;
 }
 
 function subscribeLiveExecutionQuote(notify: () => void) {
@@ -553,7 +578,7 @@ function livePaperPositionMark(
   quotesBySymbol: ReadonlyMap<string, ChartExecutionQuote>,
 ) {
   const quote = quotesBySymbol.get(normalizePaperSymbol(position.symbol)) ?? null;
-  return paperPositionMarkPrice(position, quote);
+  return paperPositionMarkPrice(position, quote ? { ...quote, timestamp: quote.receivedAt } : null);
 }
 
 function livePaperPositionPnl(
@@ -561,7 +586,7 @@ function livePaperPositionPnl(
   quotesBySymbol: ReadonlyMap<string, ChartExecutionQuote>,
 ) {
   const quote = quotesBySymbol.get(normalizePaperSymbol(position.symbol)) ?? null;
-  return paperPositionLivePnl(position, quote);
+  return paperPositionLivePnl(position, quote ? { ...quote, timestamp: quote.receivedAt } : null);
 }
 
 function LivePaperPositionPnl({ position }: { position: PaperPosition }) {
@@ -6186,9 +6211,15 @@ function WorkspaceChartPaneComponent({
           ask: bookIsCoherent ? snapPaperPrice(pane.symbol, rawAsk) : mid,
           mid,
           timestamp: tickTimestamp,
+          receivedAt: Date.now(),
         } satisfies ChartExecutionQuote;
         onLiveExecutionQuote(executionQuote);
-        window.dispatchEvent(new CustomEvent(PAPER_MARK_QUOTE_EVENT, { detail: executionQuote }));
+        // Chart overlays care about packet freshness, while the execution
+        // engine below retains the provider timestamp for deterministic
+        // ordering. Never let a delayed provider clock freeze a live P&L label.
+        window.dispatchEvent(new CustomEvent(PAPER_MARK_QUOTE_EVENT, {
+          detail: { ...executionQuote, timestamp: executionQuote.receivedAt },
+        }));
       }
       pendingLiveTicksRef.current.push({
         mid: price.mid,
@@ -7646,8 +7677,12 @@ export default function KwantifyWorkspace({
   const handleActiveChartExecutionQuote = useCallback((quote: ChartExecutionQuote) => {
     const quoteBelongsToActivePane = quote.paneId === activePaneId;
     if (quoteBelongsToActivePane) activeChartExecutionQuoteRef.current = quote;
-    publishLiveExecutionQuote(quote);
+    const acceptedForMarking = publishLiveExecutionQuote(quote);
     if (quoteBelongsToActivePane && quote.mid > 0) liveGexCalibrationPriceRef.current = quote.mid;
+    // Every visible chart may publish, but the arbiter above admits a packet
+    // only once per symbol/timestamp. This gives paper trading automatic
+    // failover when the selected pane stalls without multiplying executions.
+    if (!acceptedForMarking) return;
     const currentLedger = paperLedgerRef.current;
     const nextLedger = processPaperQuote(
       currentLedger,
@@ -8622,39 +8657,6 @@ export default function KwantifyWorkspace({
   );
   const selectedPaperOpenPositions = selectedPaperAccountLedger?.positions.filter((position) => position.status === "open") ?? [];
   const selectedPaperWorkingOrders = selectedPaperAccountLedger?.orders.filter((order) => order.status === "working") ?? [];
-  const paperExecutionTrackedSymbols = useMemo(() => {
-    const symbols = new Set<string>();
-    Object.values(paperLedger.accounts).forEach((account) => {
-      account.positions.forEach((position) => {
-        if (position.status === "open") symbols.add(normalizePaperSymbol(position.symbol));
-      });
-      account.orders.forEach((order) => {
-        if (order.status === "working") symbols.add(normalizePaperSymbol(order.symbol));
-      });
-    });
-    return symbols;
-  }, [paperLedger]);
-  const paperExecutionAuthorityPaneIds = useMemo(() => {
-    // One chart per symbol owns paper-order evaluation. Previously every NQ
-    // pane processed the same quote whenever an NQ position/order existed,
-    // multiplying ledger work and allowing sibling callbacks to race the
-    // same SL/TP transition. The selected chart remains authoritative for its
-    // symbol; a single visible fallback owns every other tracked symbol.
-    const paneIds = new Set<string>([activePaneId]);
-    const activePane = workspacePanes.find((pane) => pane.id === activePaneId);
-    const activeSymbol = activePane ? normalizePaperSymbol(activePane.symbol) : "";
-    paperExecutionTrackedSymbols.forEach((symbol) => {
-      if (symbol === activeSymbol) return;
-      const owner = workspacePanes.find((pane) => (
-        visibleWorkspacePaneIds.includes(pane.id)
-        &&
-        isWorkspaceChartKind(pane.content)
-        && normalizePaperSymbol(pane.symbol) === symbol
-      ));
-      if (owner) paneIds.add(owner.id);
-    });
-    return paneIds;
-  }, [activePaneId, paperExecutionTrackedSymbols, visibleWorkspacePaneIds, workspacePanes]);
   const selectedPaperDailyPnl = dailyRealizedPaperPnl(selectedPaperAccountLedger);
   const orderPanelLockTone =
     activeBrokerHealth.state === "broken"
@@ -14323,9 +14325,7 @@ export default function KwantifyWorkspace({
         onClosePaperPosition={handleFlattenPaperPosition}
         onRemovePaperFills={handleRemovePaperFillMarkers}
         onResetPaperTrading={selectedPaperTradingAccount ? handleResetPaperTrading : undefined}
-        onLiveExecutionQuote={paperExecutionAuthorityPaneIds.has(pane.id)
-          ? handleActiveChartExecutionQuote
-          : undefined}
+        onLiveExecutionQuote={handleActiveChartExecutionQuote}
         onActivate={() => activateWorkspacePane(pane.id)}
         onOpenSettings={openChartSettings}
         onCreateAlertAtPrice={openCreateAlert}
