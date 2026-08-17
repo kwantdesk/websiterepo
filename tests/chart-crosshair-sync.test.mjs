@@ -34,8 +34,8 @@ test("crosshair synchronization is exposed beside the mouse selection tool", asy
   assert.ok(linkedButton > mouseButton);
   assert.match(chart, /chart\.subscribeCrosshairMove\(handleNativeCrosshairMove\)/);
   assert.match(chart, /chart\.setCrosshairPosition\(synchronizedPrice, targetTime as Time, candleSeries\)/);
-  assert.match(chart, /crosshairSyncScope === "matching" && detail\.instrumentKey !== crosshairSyncInstrumentKey/);
-  assert.match(chart, /Link equivalent prices across GEX VUE charts/);
+  assert.match(chart, /detail\.syncGroupId !== syncGroupId/);
+  assert.match(chart, /Link equivalent prices across linked GEX VUE charts/);
 });
 
 test("a synchronized timestamp resolves to the containing candle on the receiving timeframe", () => {
@@ -64,6 +64,12 @@ test("GEX VUE maps a pointer to the equivalent percentage price on another instr
   assert.equal(sync.resolveEquivalentCrosshairPrice(731, 730, 30_000), 30_000 * (731 / 730));
   assert.equal(sync.resolveEquivalentCrosshairPrice(5_300, 5_300, 530), 530);
   assert.equal(sync.resolveEquivalentCrosshairPrice(1, 0, 100), null);
+});
+
+test("GEX VUE crosshairs only join the explicitly linked viewport group", () => {
+  assert.equal(sync.chartCrosshairSyncGroup("gamvue", "SPX", "gex-vue", true), "gex-vue");
+  assert.equal(sync.chartCrosshairSyncGroup("gamvue", "SPX", "gex-vue", false), "");
+  assert.equal(sync.chartCrosshairSyncGroup("matching", "NQ", "", false), "NQ");
 });
 
 test("the synchronized candle supplies the receiving instrument reference price", () => {

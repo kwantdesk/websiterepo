@@ -413,6 +413,7 @@ import {
   CHART_CROSSHAIR_SYNC_MOVE_EVENT,
   CHART_CROSSHAIR_SYNC_TOGGLE_EVENT,
   chartCrosshairInstrumentKey,
+  chartCrosshairSyncGroup,
   readChartCrosshairSyncEnabled,
   resolveEquivalentCrosshairPrice,
   resolveSyncedChartCandle,
@@ -2857,6 +2858,8 @@ function Chart({
   const candleSeriesRef = useRef<ReturnType<IChartApi["addCandlestickSeries"]> | null>(null);
   const viewportSyncApplyingRef = useRef(false);
   const viewportSyncPublishFrameRef = useRef<number | null>(null);
+  const viewportSyncGroupRef = useRef(viewportSyncGroup);
+  const viewportSyncRoleRef = useRef(viewportSyncRole);
   const viewportSyncCandlesRef = useRef(candles);
   viewportSyncCandlesRef.current = candles;
   const prevCandlesLengthRef = useRef<number>(0);
@@ -3238,6 +3241,11 @@ function Chart({
   }, []);
 
   useEffect(() => {
+    viewportSyncGroupRef.current = viewportSyncGroup;
+    viewportSyncRoleRef.current = viewportSyncRole;
+  }, [viewportSyncGroup, viewportSyncRole]);
+
+  useEffect(() => {
     drawingCandlesRef.current = candles;
     drawingMarketTradesRef.current = marketTrades;
     if (drawingDataRefreshTimerRef.current !== null) return;
@@ -3283,6 +3291,13 @@ function Chart({
       if (priceLabelRef.current) priceLabelRef.current.style.display = "none";
     }
   }, [crosshairSyncEnabled]);
+
+  useEffect(() => {
+    if (crosshairSyncScope !== "gamvue" || viewportSyncRole === "peer") return;
+    chartRef.current?.clearCrosshairPosition();
+    if (horzLineRef.current) horzLineRef.current.style.display = "none";
+    if (priceLabelRef.current) priceLabelRef.current.style.display = "none";
+  }, [crosshairSyncScope, viewportSyncGroup, viewportSyncRole]);
 
   useEffect(() => {
     if (selectedTool !== "cursor" && selectedTool !== "selection" && !precisionToolForDrawingTool(selectedTool)) {
@@ -10455,8 +10470,15 @@ function Chart({
       }
     };
     const handleNativeCrosshairMove: Parameters<IChartApi["subscribeCrosshairMove"]>[0] = (param) => {
+      const syncGroupId = chartCrosshairSyncGroup(
+        crosshairSyncScope,
+        crosshairSyncInstrumentKey,
+        viewportSyncGroupRef.current,
+        viewportSyncRoleRef.current === "peer",
+      );
       if (
         !crosshairSyncEnabledRef.current
+        || !syncGroupId
         || !nativeCrosshairPointerActive
         || applyingSynchronizedCrosshair
       ) return;
@@ -10464,6 +10486,7 @@ function Chart({
         queueCrosshairMove({
           sourceChartId: chartInstanceId,
           scope: crosshairSyncScope,
+          syncGroupId,
           instrumentKey: crosshairSyncInstrumentKey,
           sourceTimestampMs: null,
           price: null,
@@ -10480,6 +10503,7 @@ function Chart({
       queueCrosshairMove({
         sourceChartId: chartInstanceId,
         scope: crosshairSyncScope,
+        syncGroupId,
         instrumentKey: crosshairSyncInstrumentKey,
         sourceTimestampMs,
         price,
@@ -10494,12 +10518,19 @@ function Chart({
     const handleSynchronizedCrosshair = (event: Event) => {
       if (!crosshairSyncEnabledRef.current) return;
       const detail = (event as CustomEvent<ChartCrosshairSyncMove>).detail;
+      const syncGroupId = chartCrosshairSyncGroup(
+        crosshairSyncScope,
+        crosshairSyncInstrumentKey,
+        viewportSyncGroupRef.current,
+        viewportSyncRoleRef.current === "peer",
+      );
       if (
         !detail
+        || !syncGroupId
+        || detail.syncGroupId !== syncGroupId
         || nativeCrosshairPointerActive
         || detail.sourceChartId === chartInstanceId
         || detail.scope !== crosshairSyncScope
-        || (crosshairSyncScope === "matching" && detail.instrumentKey !== crosshairSyncInstrumentKey)
       ) return;
 
       applyingSynchronizedCrosshair = true;
@@ -11394,15 +11425,37 @@ function Chart({
     const handlePointerInteraction = (event: PointerEvent) => {
       if (event.buttons !== 0) publishSnapshot();
     };
-    const handleWheelInteraction = () => publishSnapshot();
+    let pointerInteractionActive = false;
+    let trailingPublishTimer: number | null = null;
+    const publishTrailingSnapshot = () => {
+      publishSnapshot();
+      if (trailingPublishTimer !== null) window.clearTimeout(trailingPublishTimer);
+      trailingPublishTimer = window.setTimeout(publishSnapshot, 48);
+    };
+    const beginPointerInteraction = () => {
+      pointerInteractionActive = true;
+      publishSnapshot();
+    };
+    const handleWindowPointerMove = () => {
+      if (pointerInteractionActive) publishSnapshot();
+    };
+    const finishPointerInteraction = () => {
+      if (!pointerInteractionActive) return;
+      pointerInteractionActive = false;
+      publishTrailingSnapshot();
+    };
+    const handleWheelInteraction = () => publishTrailingSnapshot();
     const timeScale = chart.timeScale();
 
     let initialPublishTimer: number | null = null;
     if (canPublishSnapshots) {
       timeScale.subscribeVisibleTimeRangeChange(publishSnapshot);
+      container.addEventListener("pointerdown", beginPointerInteraction, { passive: true });
       container.addEventListener("pointermove", handlePointerInteraction, { passive: true });
-      container.addEventListener("pointerup", publishSnapshot, { passive: true });
       container.addEventListener("wheel", handleWheelInteraction, { passive: true });
+      window.addEventListener("pointermove", handleWindowPointerMove, { passive: true });
+      window.addEventListener("pointerup", finishPointerInteraction, { passive: true });
+      window.addEventListener("pointercancel", finishPointerInteraction, { passive: true });
       initialPublishTimer = window.setTimeout(publishSnapshot, 80);
     }
 
@@ -11418,13 +11471,17 @@ function Chart({
     const retryTimer = window.setTimeout(retryLatest, 120);
     return () => {
       if (initialPublishTimer !== null) window.clearTimeout(initialPublishTimer);
+      if (trailingPublishTimer !== null) window.clearTimeout(trailingPublishTimer);
       window.clearTimeout(retryTimer);
       unsubscribe();
       if (canPublishSnapshots) {
         timeScale.unsubscribeVisibleTimeRangeChange(publishSnapshot);
+        container.removeEventListener("pointerdown", beginPointerInteraction);
         container.removeEventListener("pointermove", handlePointerInteraction);
-        container.removeEventListener("pointerup", publishSnapshot);
         container.removeEventListener("wheel", handleWheelInteraction);
+        window.removeEventListener("pointermove", handleWindowPointerMove);
+        window.removeEventListener("pointerup", finishPointerInteraction);
+        window.removeEventListener("pointercancel", finishPointerInteraction);
       }
       if (viewportSyncPublishFrameRef.current !== null) {
         window.cancelAnimationFrame(viewportSyncPublishFrameRef.current);
@@ -14097,13 +14154,13 @@ function Chart({
             style={toolbarButtonStyle}
             title={crosshairSyncScope === "gamvue"
               ? crosshairSyncEnabled
-                ? "Universal GEX VUE crosshair on: equivalent prices move together"
-                : "Link equivalent prices across every GEX VUE chart"
+                ? "Universal GEX VUE crosshair on: linked equivalent prices move together"
+                : "Link equivalent prices across linked GEX VUE charts"
               : crosshairSyncEnabled
                 ? "Linked crosshair on: matching instruments move together"
                 : "Link the crosshair across charts using the same instrument"}
             aria-label={crosshairSyncScope === "gamvue"
-              ? "Link equivalent prices across GEX VUE charts"
+              ? "Link equivalent prices across linked GEX VUE charts"
               : "Link crosshair across matching charts"}
             aria-pressed={crosshairSyncEnabled}
           >

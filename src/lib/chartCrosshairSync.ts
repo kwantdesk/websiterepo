@@ -15,12 +15,23 @@ export type ChartCrosshairSyncToggle = {
 export type ChartCrosshairSyncMove = {
   sourceChartId: string;
   scope: ChartCrosshairSyncScope;
+  syncGroupId: string;
   instrumentKey: string;
   sourceTimestampMs: number | null;
   price: number | null;
   referencePrice: number | null;
   visible: boolean;
 };
+
+export function chartCrosshairSyncGroup(
+  scope: ChartCrosshairSyncScope,
+  instrumentKey: string,
+  viewportGroup: string,
+  viewportLinked: boolean,
+) {
+  if (scope === "gamvue") return viewportLinked ? viewportGroup.trim() : "";
+  return instrumentKey.trim();
+}
 
 export function chartCrosshairInstrumentKey(symbol: string | null | undefined) {
   return normalizePaperSymbol(symbol ?? "");

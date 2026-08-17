@@ -18,6 +18,7 @@ import { useGexBotFlow } from "@/hooks/useGexBotFlow";
 import { ACTIVITY_STREAK_TIME_ZONE } from "@/lib/activityStreak";
 import { STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT } from "@/lib/volumeProfileMath";
 import { clearChartViewportGroup } from "@/lib/chartViewportSync";
+import { saveChartCrosshairSyncEnabled } from "@/lib/chartCrosshairSync";
 
 import { Activity as ReactActivity, memo, startTransition, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
@@ -12406,6 +12407,7 @@ export default function KwantifyWorkspace({
       if (activePaneId === paneId) setSelectedTimeframe(referencePane.timeframe);
     }
     setLinkedViewportPaneIds((current) => new Set(current).add(paneId));
+    saveChartCrosshairSyncEnabled(true, "gamvue");
     showReportToast(
       "success",
       `${displayCmeSymbol(pane.symbol)} joined the shared viewport — any linked chart can lead`,
