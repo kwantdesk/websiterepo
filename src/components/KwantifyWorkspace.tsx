@@ -2021,7 +2021,7 @@ const presetColors = [
 const defaultWatchlistSections: WatchlistSection[] = [
   {
     id: "default",
-    name: "Main",
+    name: "Futures",
     symbols: DATABENTO_DEFAULT_SYMBOLS.map((symbol) => makeWatchlistKey(symbol, "Databento")),
   },
   {
@@ -2033,7 +2033,7 @@ const defaultWatchlistSections: WatchlistSection[] = [
   },
   {
     id: "options-underlyings",
-    name: "Options Underlyings",
+    name: "Options",
     symbols: MARKET_INDEX_DEFINITIONS
       .filter((instrument) => instrument.group === "Options Underlyings")
       .map((instrument) => makeWatchlistKey(instrument.symbol, "Market Index")),
@@ -7159,12 +7159,22 @@ export default function KwantifyWorkspace({
             .filter((instrument) => instrument.group === "Options Underlyings")
             .some((instrument) => key === makeWatchlistKey(instrument.symbol, "Market Index"))),
       );
-      const migrated = hasMarketIndices
+      const migrated = (hasMarketIndices
         ? saved
-        : [...saved, defaultWatchlistSections.find((section) => section.id === "macro")!];
-      return hasOptionsUnderlyings
+        : [...saved, defaultWatchlistSections.find((section) => section.id === "macro")!])
+        .map((section: WatchlistSection) => section.id === "default"
+          ? { ...section, name: "Futures" }
+          : section.id === "options-underlyings"
+            ? { ...section, name: "Options" }
+            : section);
+      return (hasOptionsUnderlyings
         ? migrated
-        : [...migrated, defaultWatchlistSections.find((section) => section.id === "options-underlyings")!];
+        : [...migrated, defaultWatchlistSections.find((section) => section.id === "options-underlyings")!])
+        .map((section: WatchlistSection) => section.id === "default"
+          ? { ...section, name: "Futures" }
+          : section.id === "options-underlyings"
+            ? { ...section, name: "Options" }
+            : section);
     } catch {
       return defaultWatchlistSections;
     }
@@ -11487,7 +11497,7 @@ export default function KwantifyWorkspace({
       if (current.length <= 1) return current;
       const section = current.find((item) => item.id === sectionId);
       if (!section) return current;
-      if (section.symbols.length > 0 && !window.confirm("Move symbols to Main?")) return current;
+      if (section.symbols.length > 0 && !window.confirm("Move symbols to Futures?")) return current;
 
       const targetSection = current.find((item) => item.id !== sectionId);
       return current
