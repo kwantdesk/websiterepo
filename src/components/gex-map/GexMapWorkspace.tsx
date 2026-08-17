@@ -60,6 +60,11 @@ type GexMapMarket = "NQ" | "ES";
 
 type GexMapWorkspaceProps = {
   market?: GexMapMarket | null;
+  externalReplay?: {
+    active: boolean;
+    sessionDate: string;
+    timestampMs: number;
+  } | null;
 };
 
 const DEFAULT_PANELS: PanelConfig[] = [
@@ -1033,7 +1038,7 @@ function StarViewSettings({
   );
 }
 
-function GexMapWorkspace({ market = null }: GexMapWorkspaceProps = {}) {
+function GexMapWorkspace({ market = null, externalReplay = null }: GexMapWorkspaceProps = {}) {
   // Keep the server and first browser render identical. Reading window.location or
   // sessionStorage in a state initializer can make React discard the hydrated GEX
   // tree, which previously left an otherwise healthy map blank on some page loads.
@@ -1055,7 +1060,7 @@ function GexMapWorkspace({ market = null }: GexMapWorkspaceProps = {}) {
     centre: true,
     right: true,
   });
-  const [replayMode, setReplayMode] = useState(false);
+  const [internalReplayMode, setReplayMode] = useState(false);
   const [replayDate, setReplayDate] = useState("");
   const [cursor, setCursor] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -1069,7 +1074,8 @@ function GexMapWorkspace({ market = null }: GexMapWorkspaceProps = {}) {
   const [starSettingsOpen, setStarSettingsOpen] = useState(false);
   const starPreferencesHydratedRef = useRef(false);
   const forceRefreshRef = useRef(false);
-  const requestedReplayDate = replayMode ? replayDate : "";
+  const replayMode = externalReplay?.active ?? internalReplayMode;
+  const requestedReplayDate = replayMode ? (externalReplay?.sessionDate || replayDate) : "";
 
   useEffect(() => {
     setLocationMarket(market ?? linkedMarketFromLocation());
@@ -1247,14 +1253,14 @@ function GexMapWorkspace({ market = null }: GexMapWorkspaceProps = {}) {
     const timestamps = new Set<number>();
     for (const panel of panels) {
       const payload = panelData[panel.id];
-      if (!payload || (replayMode && replayDate && payload.sessionDate !== replayDate)) continue;
+      if (!payload || (replayMode && requestedReplayDate && payload.sessionDate !== requestedReplayDate)) continue;
       for (const frame of payload.frames) timestamps.add(frame.timestamp);
     }
     const ordered = [...timestamps].sort((a, b) => a - b);
     if (stepMinutes === 1 || !ordered.length) return ordered;
     const anchor = ordered[0];
     return ordered.filter((timestamp) => Math.round((timestamp - anchor) / 60_000) % stepMinutes === 0);
-  }, [panelData, panels, replayDate, replayMode, stepMinutes]);
+  }, [panelData, panels, replayMode, requestedReplayDate, stepMinutes]);
 
   useEffect(() => {
     if (!replayMode || !playing || timeline.length < 2) return;
@@ -1270,7 +1276,9 @@ function GexMapWorkspace({ market = null }: GexMapWorkspaceProps = {}) {
     return () => window.clearInterval(timer);
   }, [playing, replayMode, speed, timeline.length]);
 
-  const selectedTimestamp = replayMode ? timeline[Math.min(cursor, Math.max(0, timeline.length - 1))] ?? null : null;
+  const selectedTimestamp = replayMode
+    ? externalReplay?.timestampMs ?? timeline[Math.min(cursor, Math.max(0, timeline.length - 1))] ?? null
+    : null;
   const live = !replayMode && panels.every((panel) => panelData[panel.id]?.status === "LIVE");
   const dataAsOf = panels.reduce<number | null>((oldest, panel) => {
     const timestamp = Date.parse(panelData[panel.id]?.asOf ?? "");
@@ -1425,14 +1433,14 @@ function GexMapWorkspace({ market = null }: GexMapWorkspaceProps = {}) {
             >
               <RefreshCw className="h-3 w-3" />
             </button>
-            <button
+            {!externalReplay ? <button
               type="button"
               onClick={replayMode ? exitReplay : enterReplay}
               className={`flex h-7 items-center gap-1.5 rounded-[3px] border px-2 text-[8px] font-semibold transition ${replayMode ? "border-primary/25 bg-primary/10 text-primary" : "border-border bg-surface text-foreground hover:border-primary/30"}`}
             >
               {replayMode ? <Radio className="h-3 w-3" /> : <RotateCcw className="h-3 w-3" />}
               {replayMode ? "Exit Replay" : "Replay"}
-            </button>
+            </button> : null}
           </div>
         </header>
 
@@ -1446,7 +1454,7 @@ function GexMapWorkspace({ market = null }: GexMapWorkspaceProps = {}) {
               const validPayload = payload
                 && payload.symbol === panel.symbol
                 && payload.greekMode === panel.greekMode
-                && (!replayMode || !replayDate || payload.sessionDate === replayDate)
+                && (!replayMode || !requestedReplayDate || payload.sessionDate === requestedReplayDate)
                 ? payload
                 : null;
               return (
@@ -1468,7 +1476,7 @@ function GexMapWorkspace({ market = null }: GexMapWorkspaceProps = {}) {
           </div>
         </div>
 
-        {replayMode ? (
+        {replayMode && !externalReplay ? (
           <footer className="shrink-0 overflow-x-auto border-t border-border bg-panel px-3 py-2">
             <div className="flex min-w-max items-center gap-2">
               <label className="flex h-9 items-center gap-2 rounded-lg border border-border bg-surface px-3 text-[9px] text-muted">

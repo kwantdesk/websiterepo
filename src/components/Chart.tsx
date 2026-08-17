@@ -452,6 +452,7 @@ interface ChartProps {
   contractSymbol?: string | null;
   timeframe?: string;
   marketIsActive?: boolean;
+  replayTimestampMs?: number | null;
   orderFlowHistoryReady?: boolean;
   onOpenSettings?: () => void;
   onCreateAlertAtPrice?: (price: string) => void;
@@ -2801,6 +2802,7 @@ function Chart({
   contractSymbol = null,
   timeframe,
   marketIsActive,
+  replayTimestampMs = null,
   orderFlowHistoryReady = true,
   onOpenSettings,
   onCreateAlertAtPrice,
@@ -6205,6 +6207,7 @@ function Chart({
     maxRollDistance: Number(bounceLevelsIndicator.settings?.maxRollDistance ?? 5),
     rollWindowSeconds: Number(bounceLevelsIndicator.settings?.rollWindowSeconds ?? 120),
   }) : "";
+  const bounceLevelsReplayMinute = replayTimestampMs ? Math.floor(replayTimestampMs / 60_000) : 0;
   useEffect(() => {
     if (!bounceLevelsDataSignature) {
       bounceLevelsDataSignatureRef.current = "";
@@ -6248,7 +6251,7 @@ function Chart({
       ? /^(RTY|M2K)$/.test(display) ? "IWM" : defaultGexIntervalMapSource(display)
       : requestedSource;
     const refreshMs = BOUNCE_LEVELS_REFRESH_INTERVAL_MS;
-    const bounceCacheKey = `bounce-levels:${display}:${source}:${bounceLevelsDataSignature}`;
+    const bounceCacheKey = `bounce-levels:${display}:${source}:${bounceLevelsDataSignature}:${bounceLevelsReplayMinute || "live"}`;
     const cachedBounce = readWorkspaceData<BounceLevelsSnapshot>(bounceCacheKey);
     if (cachedBounce && isBounceLevelsSnapshot(cachedBounce)) {
       commitSnapshot(cachedBounce);
@@ -6316,6 +6319,7 @@ function Chart({
         maxRollDistance: String(indicatorSettings.maxRollDistance),
         rollWindowSeconds: String(indicatorSettings.rollWindowSeconds),
       });
+      if (replayTimestampMs) query.set("asOf", new Date(replayTimestampMs).toISOString());
       try {
         const payload = await fetchWorkspaceData<BounceLevelsSnapshot>(
           bounceCacheKey,
@@ -6329,7 +6333,10 @@ function Chart({
         // Re-enter through the shared freshness cache so several charts with
         // identical data settings elect one network refresh instead of each
         // forcing its own provider request.
-        if (!cancelled) { setBounceLevelsLoading(false); timer = window.setTimeout(() => void load(false), refreshMs); }
+        if (!cancelled) {
+          setBounceLevelsLoading(false);
+          if (!replayTimestampMs) timer = window.setTimeout(() => void load(false), refreshMs);
+        }
       }
     };
     // Data-shaping sliders can emit dozens of values during one drag. Resolve
@@ -6340,7 +6347,7 @@ function Chart({
     return () => { cancelled = true; if (timer !== null) window.clearTimeout(timer); };
   // The last-good snapshot is intentionally not a dependency: refreshes update it silently.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bounceLevelsDataSignature, instrument]);
+  }, [bounceLevelsDataSignature, instrument, bounceLevelsReplayMinute]);
   const bounceLevelsPrimitiveData = useMemo<BounceLevelsPrimitiveData | null>(() => {
     if (!bounceLevelsIndicator || !bounceLevelsSnapshot) return null;
     const indicatorSettings = bounceLevelsIndicator.settings ?? {};
@@ -6689,8 +6696,8 @@ function Chart({
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "dark-pool-gex") ?? null,
     [indicators],
   );
-  const darkPoolGexReplayMinute = darkPoolGexIndicator && darkPoolGexIndicator.settings?.contextMode !== "current"
-    ? Math.floor((candles.at(-1)?.timestamp ?? 0) / 60_000)
+  const darkPoolGexReplayMinute = darkPoolGexIndicator && (replayTimestampMs || darkPoolGexIndicator.settings?.contextMode !== "current")
+    ? Math.floor((replayTimestampMs ?? candles.at(-1)?.timestamp ?? 0) / 60_000)
     : 0;
   useEffect(() => {
     if (!darkPoolGexIndicator) {
@@ -6712,8 +6719,8 @@ function Chart({
     const requiresMappedSource = mappedSource !== display;
     const source = requiresMappedSource || indicatorSettings.proxyMode ? mappedSource : display;
     const refreshMs = Math.max(1_000, Math.min(60_000, Number(darkPoolGexIndicator.settings?.refreshSeconds ?? 5) * 1_000));
-    const historicalAsOf = drawingCandlesRef.current.at(-1)?.timestamp ?? Date.now();
-    const asOfMs = indicatorSettings.contextMode === "current" ? Date.now() : historicalAsOf;
+    const historicalAsOf = replayTimestampMs ?? drawingCandlesRef.current.at(-1)?.timestamp ?? Date.now();
+    const asOfMs = replayTimestampMs ?? (indicatorSettings.contextMode === "current" ? Date.now() : historicalAsOf);
     const darkPoolCacheKey = `dark-pool-gex:prints:${display}:${source}:${indicatorSettings.lookbackDays}:${indicatorSettings.minimumNotional}:${indicatorSettings.maximumNotional}:${indicatorSettings.minimumShares}:${indicatorSettings.maximumShares}`;
     const darkPoolHeadCacheKey = `${darkPoolCacheKey}:head`;
     const darkPoolHistoryCacheKey = `${darkPoolCacheKey}:history`;
@@ -6723,7 +6730,8 @@ function Chart({
           : /^(SPX|SPXW)$/.test(display) ? display
             : /^(RTY|M2K|IWM)$/.test(display) ? "IWM"
               : null;
-    const gexCacheKey = `dark-pool-gex:gex:${display}:${gexSource ?? "none"}:${indicatorSettings.contextMode}:${indicatorSettings.contextMode === "current" ? "live" : Math.floor(asOfMs / 60_000)}`;
+    const historicalContext = Boolean(replayTimestampMs || indicatorSettings.contextMode !== "current");
+    const gexCacheKey = `dark-pool-gex:gex:${display}:${gexSource ?? "none"}:${historicalContext ? "historical" : "current"}:${historicalContext ? Math.floor(asOfMs / 60_000) : "live"}`;
     const cachedDarkPool = readWorkspaceData<DarkPoolMapPayload>(darkPoolCacheKey)
       ?? readWorkspaceData<DarkPoolMapPayload>(darkPoolHistoryCacheKey)
       ?? readWorkspaceData<DarkPoolMapPayload>(darkPoolHeadCacheKey);
@@ -6784,7 +6792,7 @@ function Chart({
         historyBuckets: "390",
         maximumNodesPerSlice: "30",
       });
-      if (indicatorSettings.contextMode !== "current") gexQuery.set("asOf", new Date(asOfMs).toISOString());
+      if (historicalContext) gexQuery.set("asOf", new Date(asOfMs).toISOString());
       const darkPoolPromise = fetchWorkspaceData<DarkPoolMapPayload>(
         darkPoolHeadCacheKey,
         `/api/dark-pool-map?${darkPoolHeadQuery}`,
@@ -6832,7 +6840,7 @@ function Chart({
       }
       void trackedGexPromise;
       // Shared cache age coordinates refreshes across workspace panels.
-      timer = window.setTimeout(() => void load(), refreshMs);
+      if (!replayTimestampMs) timer = window.setTimeout(() => void load(), refreshMs);
     };
     void load();
     return () => {
@@ -6841,9 +6849,9 @@ function Chart({
     };
   }, [darkPoolGexIndicator, darkPoolGexReplayMinute, instrument]);
 
-  const darkPoolGexAsOfMs = darkPoolGexIndicator?.settings?.contextMode === "current"
+  const darkPoolGexAsOfMs = replayTimestampMs ?? (darkPoolGexIndicator?.settings?.contextMode === "current"
     ? (darkPoolGexPayload?.checkedAtMs ?? candles.at(-1)?.timestamp ?? 0)
-    : (candles.at(-1)?.timestamp ?? darkPoolGexPayload?.checkedAtMs ?? 0);
+    : (candles.at(-1)?.timestamp ?? darkPoolGexPayload?.checkedAtMs ?? 0));
   // Reaction analytics are historical and only need a new sample when a new
   // candle opens. Recomputing every event against the entire candle history on
   // every trade was the dominant four-chart GEX VUE stall.
