@@ -116,3 +116,10 @@ export function buildRithmicClassicCandles(
     .forEach((trade) => appendRithmicClassicTrade(candles, trade, limit));
   return candles;
 }
+
+export function replayCandlesAtOrBefore(
+  candles: RithmicClassicCandle[],
+  timestamp: number,
+) {
+  return candles.filter((candle) => candle.timestamp <= timestamp);
+}

@@ -20,6 +20,7 @@ import {
   appendRithmicClassicTrade,
   appendRithmicClassicTick,
   buildRithmicClassicCandles,
+  replayCandlesAtOrBefore,
   rithmicContractForRoot,
   rithmicRootForGexTicker,
 } from "../src/lib/gex-box/rithmicCandles.ts";
@@ -161,6 +162,10 @@ test("Classic maps combined index products to Rithmic futures and builds exact o
     { timestamp: 180_500, open: 110, high: 112, low: 109, close: 111 },
     { timestamp: 180_100, open: 100, high: 110, low: 98, close: 109 },
   ]).at(-1)?.open, 100);
+  assert.deepEqual(replayCandlesAtOrBefore([
+    { timestamp: 60_000, open: 1, high: 1, low: 1, close: 1 },
+    { timestamp: 120_000, open: 2, high: 2, low: 2, close: 2 },
+  ], 90_000).map((candle) => candle.timestamp), [60_000]);
 });
 
 test("provider history categories use the archive contract rather than live category names", () => {
@@ -264,6 +269,8 @@ test("profile and order-flow controls are wired to their renderers and persisted
   assert.match(workspace, /version: 3[\s\S]*orderflowPanels/);
   assert.match(workspace, /subscribeRithmicIndicatorTrades/);
   assert.match(workspace, /buildRithmicClassicCandles/);
+  assert.match(workspace, /replayCandlesAtOrBefore/);
+  assert.match(workspace, /timeframe=1m&days=7/);
   assert.match(lightweightCharts, /priceCandles\.length/);
 
   assert.match(charts, /CandlestickChart/);

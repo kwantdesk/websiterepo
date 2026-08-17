@@ -26,7 +26,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ProfessionalOrderflowChart, ProfessionalProfileChart, ProfessionalStateChart, type OrderflowPanelConfig } from "@/components/gexbot/GexBotLightweightCharts";
 import KwantSelect from "@/components/ui/KwantSelect";
 import { GEX_BOX_ORDERFLOW_METRICS, type OrderflowMetric } from "@/lib/gex-box/domain";
-import { appendRithmicClassicTrade, buildRithmicClassicCandles, rithmicContractForRoot, rithmicRootForGexTicker, type RithmicClassicCandle } from "@/lib/gex-box/rithmicCandles";
+import { appendRithmicClassicTrade, buildRithmicClassicCandles, replayCandlesAtOrBefore, rithmicContractForRoot, rithmicRootForGexTicker, type RithmicClassicCandle } from "@/lib/gex-box/rithmicCandles";
 import { normalizeReplayFrames, replayFrameAtOrBefore, replayFramesAtOrBefore } from "@/lib/gex-box/replay";
 import { parseGexResearchCommand, serializeGexResearchCommand, type GexResearchRequest } from "@/lib/gex-box/research";
 import type {
@@ -50,6 +50,7 @@ type ReplayData = {
   key: string;
   date: string | null;
   frames: Array<GexBotProfileFrame | GexBotOrderflowFrame>;
+  candles: RithmicClassicCandle[];
   error: string | null;
 };
 
@@ -1132,18 +1133,33 @@ export default function GexBotWorkspace() {
     try {
       const query = new URLSearchParams({ ticker, view, category });
       if (replayDate) query.set("date", replayDate);
-      const response = await fetch(`/api/gex-box/history?${query}`, { cache: "no-store" });
+      const [response, candleResponse] = await Promise.all([
+        fetch(`/api/gex-box/history?${query}`, { cache: "no-store" }),
+        rithmicRoot
+          ? fetch(`/api/cme-history?symbol=${encodeURIComponent(`${rithmicRoot}.c.0`)}&timeframe=1m&days=7`, { cache: "no-store" })
+          : Promise.resolve(null),
+      ]);
       const result = await response.json() as {
         date?: string | null;
         frames?: Array<GexBotProfileFrame | GexBotOrderflowFrame>;
         error?: string;
       };
+      const candlePayload = candleResponse?.ok
+        ? await candleResponse.json() as { candles?: RithmicClassicCandle[] }
+        : null;
       if (sequence !== replaySequence.current) return;
       const frames = normalizeReplayFrames(Array.isArray(result.frames) ? result.frames : []);
+      const sessionStart = frames[0]?.timestamp ?? Number.NEGATIVE_INFINITY;
+      const sessionEnd = frames.at(-1)?.timestamp ?? Number.POSITIVE_INFINITY;
+      const candles = buildRithmicClassicCandles(
+        (Array.isArray(candlePayload?.candles) ? candlePayload.candles : [])
+          .filter((candle) => candle.timestamp >= sessionStart && candle.timestamp <= sessionEnd),
+      );
       const data: ReplayData = {
         key: replayKey,
         date: result.date ?? null,
         frames,
+        candles,
         error: frames.length ? null : result.error ?? "The previous New York session archive is unavailable.",
       };
       if (frames.length) replayCache.current.set(replayKey, data);
@@ -1160,13 +1176,14 @@ export default function GexBotWorkspace() {
         key: replayKey,
         date: null,
         frames: [],
+        candles: [],
         error: error instanceof Error ? error.message : "The previous New York session archive is unavailable.",
       });
       setReplayTimestamp(null);
     } finally {
       if (sequence === replaySequence.current) setReplayLoading(false);
     }
-  }, [category, replayDate, replayKey, ticker, view]);
+  }, [category, replayDate, replayKey, rithmicRoot, ticker, view]);
 
   useEffect(() => {
     if (!replayActive || view === "research") return;
@@ -1208,6 +1225,13 @@ export default function GexBotWorkspace() {
   const displaySpotTape = replayActive
     ? replayVisibleFrames.map((entry) => ({ timestamp: entry.timestamp, spot: entry.spot, zeroGamma: entry.zero_gamma }))
     : spotTape;
+  const displayPriceCandles = useMemo(() => (
+    replayActive
+      ? replayTimestamp === null
+        ? []
+        : replayCandlesAtOrBefore(replayData?.candles ?? [], replayTimestamp)
+      : rithmicCandles
+  ), [replayActive, replayData?.candles, replayTimestamp, rithmicCandles]);
   const displayOrderflowTape = replayActive
     ? replayVisibleFrames as GexBotOrderflowFrame[]
     : orderflowTape;
@@ -1337,7 +1361,7 @@ export default function GexBotWorkspace() {
                 {view === "state" ? (
                   <ProfessionalStateChart frame={frame as GexBotProfileFrame} metric={stateMetric} appearance={appearance} spotTape={displaySpotTape} priorIndex={0} onHover={setHover} />
                 ) : (
-                  <ProfessionalProfileChart frame={frame as GexBotProfileFrame} frames={displayProfileFrames} dataset={dataset} appearance={appearance} spotTape={displaySpotTape} priceCandles={replayActive ? [] : rithmicCandles} priorIndex={0} maxChange={maxChangeDots} onHover={setHover} />
+                  <ProfessionalProfileChart frame={frame as GexBotProfileFrame} frames={displayProfileFrames} dataset={dataset} appearance={appearance} spotTape={displaySpotTape} priceCandles={displayPriceCandles} priorIndex={0} maxChange={maxChangeDots} onHover={setHover} />
                 )}
               </div>
             </div>
