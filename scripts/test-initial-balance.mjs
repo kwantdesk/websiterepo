@@ -73,4 +73,16 @@ assert.equal(globex.length, 2, "Globex produces its own IBH and IBL pair");
 assert.match(globex.find((level) => level.side === "low")?.label ?? "", /^Globex IBL 30m/, "Globex uses the intended compact chart label");
 assert.equal(globex.find((level) => level.side === "high")?.startTimestamp, globexBase + 5 * 60_000, "Globex IBH starts at its forming wick");
 
+const nextNewYorkBase = Date.parse("2026-01-06T14:30:00.000Z");
+const nextSessionCandles = [
+  { ...candle(0, 200, 201, 199, 200.5), timestamp: nextNewYorkBase },
+  { ...candle(5, 200.5, 204, 198, 203), timestamp: nextNewYorkBase + 5 * 60_000 },
+  { ...candle(15, 203, 210, 190, 205), timestamp: nextNewYorkBase + 15 * 60_000 },
+];
+const replaced = buildInitialBalanceLevels([...candles, ...nextSessionCandles], settings, 5 * 60_000);
+assert.equal(replaced.length, 2, "A new session replaces the previous session's IB pair");
+assert.ok(replaced.every((level) => level.session.startTimestamp === nextNewYorkBase), "No stale prior-session IB levels remain");
+assert.equal(replaced.find((level) => level.side === "high")?.price, 204, "The replacement IBH uses only the newest opening window");
+assert.equal(replaced.find((level) => level.side === "low")?.price, 198, "The replacement IBL uses only the newest opening window");
+
 console.log("Initial Balance levels tests passed.");

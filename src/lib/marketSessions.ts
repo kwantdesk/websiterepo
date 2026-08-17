@@ -232,8 +232,10 @@ function normalizeInitialBalanceDuration(value: unknown): InitialBalanceDuration
  *
  * During the configured formation window the returned prices develop with
  * each completed/live candle. Once that window ends the same two prices are
- * retained for the rest of the session. Session discovery is shared with the
- * Sessions study, so exchange-local clocks remain DST aware.
+ * retained until the next window for that session type begins. At that point
+ * the new IBH/IBL pair replaces the old pair instead of leaving stale levels
+ * on the chart. Session discovery is shared with the Sessions study, so
+ * exchange-local clocks remain DST aware.
  */
 export function buildInitialBalanceLevels(
   candles: Candle[],
@@ -246,8 +248,17 @@ export function buildInitialBalanceLevels(
   const latestTimestamp = candles.at(-1)!.timestamp;
   const candlesByTimestamp = new Map(candles.map((candle) => [candle.timestamp, candle]));
   const windows = buildMarketSessionWindows(candles, settings, intervalMs);
+  const latestWindowBySession = new Map<MarketSessionDefinition["key"], MarketSessionWindow>();
+  for (const window of windows) {
+    const current = latestWindowBySession.get(window.key);
+    if (!current || window.startTimestamp > current.startTimestamp) {
+      latestWindowBySession.set(window.key, window);
+    }
+  }
+  const latestWindows = [...latestWindowBySession.values()]
+    .sort((left, right) => left.startTimestamp - right.startTimestamp);
 
-  return windows.flatMap((session) => {
+  return latestWindows.flatMap((session) => {
     const formationEndTimestamp = session.startTimestamp + formationDurationMs;
     const formationCandles = candles.filter((candle) =>
       candle.timestamp >= session.startTimestamp
