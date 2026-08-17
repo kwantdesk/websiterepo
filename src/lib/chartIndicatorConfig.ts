@@ -14,6 +14,7 @@ import { DEFAULT_TAPE_SPEED_SETTINGS, normalizeTapeSpeedSettings } from "@/lib/t
 
 export const LIVE_CHART_INDICATOR_IDS = new Set([
   "gamma-environment",
+  "zero-gamma-line",
   "gamma-heatmap",
   "net-gamma-exposure-by-strike",
   "gex-interval-map",
@@ -102,6 +103,12 @@ export type IndicatorNumericSetting = {
 };
 
 export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[]> = {
+  "zero-gamma-line": [
+    { key: "historySessions", label: "Trading sessions of history", defaultValue: 5, min: 1, max: 5, step: 1 },
+    { key: "refreshSeconds", label: "Live refresh (seconds)", defaultValue: 10, min: 5, max: 60, step: 1 },
+    { key: "opacity", label: "Line visibility (%)", defaultValue: 72, min: 5, max: 100, step: 1 },
+    { key: "lineWidth", label: "Line width", defaultValue: 2, min: 1, max: 4, step: 1 },
+  ],
   "tape-speed-order-flow-burst": [
     { key: "rollingWindowMs", label: "Rolling window (ms)", defaultValue: 1000, min: 50, max: 60000, step: 50 },
     { key: "updateStepMs", label: "Update step (ms)", defaultValue: 100, min: 16, max: 10000, step: 10 },
@@ -911,6 +918,17 @@ export const KWANT_STATS_COMPACT_VISIBILITY = {
 } as const;
 
 export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSettings) => ({
+  ...(indicatorId === "zero-gamma-line" ? {
+    historySessions: 5,
+    refreshSeconds: 10,
+    opacity: 72,
+    lineWidth: 2,
+    lineStyle: "dotted",
+    useThemeColors: true,
+    lineColor: theme?.borderUpColor ?? theme?.upColor ?? "#A3FF12",
+    showCurrentValue: true,
+    showRegimeHint: true,
+  } : {}),
   ...Object.fromEntries(
     (INDICATOR_NUMERIC_SETTINGS[indicatorId] ?? []).map((setting) => [setting.key, setting.defaultValue]),
   ),
@@ -1796,6 +1814,17 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         }),
       },
     };
+  }
+  if (normalizedInstance.indicatorId === "zero-gamma-line") {
+    const defaults: Record<string, number | string | boolean> = defaultIndicatorSettings("zero-gamma-line");
+    const settings: Record<string, number | string | boolean> = { ...defaults, ...(normalizedInstance.settings ?? {}) };
+    for (const definition of INDICATOR_NUMERIC_SETTINGS["zero-gamma-line"] ?? []) {
+      const parsed = Number(settings[definition.key]);
+      settings[definition.key] = Math.min(definition.max, Math.max(definition.min, Number.isFinite(parsed) ? parsed : definition.defaultValue));
+    }
+    if (!["solid", "dashed", "dotted"].includes(String(settings.lineStyle))) settings.lineStyle = "dotted";
+    for (const unsafeKey of ["apiKey", "credential", "credentials", "snapshot", "points", "history"]) delete settings[unsafeKey];
+    return { ...normalizedInstance, settings };
   }
   if (normalizedInstance.indicatorId === "implied-volatility-rank") {
     const defaults: Record<string, number | string | boolean> = defaultIndicatorSettings("implied-volatility-rank");

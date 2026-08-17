@@ -12,6 +12,7 @@ export type CalculatedIndicatorSeries = {
   color: string;
   lineWidth?: 1 | 2 | 3 | 4;
   lineStyle?: "solid" | "dashed" | "dotted";
+  lineType?: "simple" | "with-steps";
   lastValueVisible?: boolean;
   independentScale?: boolean;
   priceScaleId?: string;

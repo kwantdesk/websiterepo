@@ -4,6 +4,7 @@ import { memo, startTransition, useCallback, useEffect, useMemo, useRef, useStat
 import {
   createChart,
   LineStyle,
+  LineType,
   type IChartApi,
   type ISeriesPrimitive,
   type ISeriesPrimitivePaneRenderer,
@@ -315,6 +316,7 @@ import {
   type DarkPoolGexPrimitiveData,
 } from "@/lib/darkPoolGexPrimitive";
 import { fetchWorkspaceData, readWorkspaceData, writeWorkspaceData } from "@/lib/workspaceDataCache";
+import { isZeroGammaLinePayload, zeroGammaRootForInstrument, type ZeroGammaLinePayload } from "@/lib/zeroGammaLine";
 import { STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT } from "@/lib/volumeProfileMath";
 import {
   buildInitialBalanceLevels,
@@ -2990,6 +2992,7 @@ function Chart({
   const [, setDarkPoolGexError] = useState<string | null>(null);
   const [darkPoolGexTooltip, setDarkPoolGexTooltip] = useState<DarkPoolGexHit | null>(null);
   const [ivRankByInstance, setIvRankByInstance] = useState<Record<string, IvRankResourceState>>({});
+  const [zeroGammaLinePayload, setZeroGammaLinePayload] = useState<ZeroGammaLinePayload | null>(null);
   const [tpoPayload, setTpoPayload] = useState<TpoLevelsPayload | null>(null);
   const [tpoLoading, setTpoLoading] = useState(false);
   const [tpoError, setTpoError] = useState<string | null>(null);
@@ -4902,6 +4905,35 @@ function Chart({
       }));
     return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
   }, [ivRankSubscriptions]);
+  const zeroGammaLineIndicator = useMemo(
+    () => indicators.find((instance) => instance.enabled && instance.indicatorId === "zero-gamma-line") ?? null,
+    [indicatorSignature, indicators],
+  );
+  useEffect(() => {
+    if (!zeroGammaLineIndicator || !zeroGammaRootForInstrument(instrument)) {
+      setZeroGammaLinePayload(null);
+      return;
+    }
+    let cancelled = false;
+    const historySessions = Math.max(1, Math.min(5, Math.round(Number(zeroGammaLineIndicator.settings?.historySessions ?? 5))));
+    const refreshMs = Math.max(5_000, Number(zeroGammaLineIndicator.settings?.refreshSeconds ?? 10) * 1_000);
+    const cacheKey = `zero-gamma-line:${instrument.toUpperCase()}:${historySessions}`;
+    const load = async (force = false) => {
+      try {
+        const payload = await fetchWorkspaceData<ZeroGammaLinePayload>(
+          cacheKey,
+          `/api/zero-gamma-line?instrument=${encodeURIComponent(instrument)}&sessions=${historySessions}`,
+          { force, maxAgeMs: refreshMs, timeoutMs: 45_000, validate: isZeroGammaLinePayload, invalidMessage: "Zero Gamma Line returned an incomplete history." },
+        );
+        if (!cancelled) setZeroGammaLinePayload(payload);
+      } catch {
+        // Keep the last verified line visible through a transient provider refresh.
+      }
+    };
+    void load(false);
+    const intervalId = window.setInterval(() => void load(true), refreshMs);
+    return () => { cancelled = true; window.clearInterval(intervalId); };
+  }, [indicatorSignature, instrument, zeroGammaLineIndicator]);
   const baseCalculatedIndicatorSeries = useMemo(
     () => indicators.flatMap((instance) => {
       if (
@@ -4942,6 +4974,32 @@ function Chart({
   const calculatedIndicatorSeries = useMemo(() => [
     ...baseCalculatedIndicatorSeries,
     ...indicators.flatMap((instance): CalculatedIndicatorSeries[] => {
+      if (!instance.enabled || instance.indicatorId !== "zero-gamma-line" || !zeroGammaLinePayload?.points.length) return [];
+      const useThemeColors = instance.settings?.useThemeColors !== false;
+      const color = colorWithOpacity(
+        useThemeColors ? settings.borderUpColor : String(instance.settings?.lineColor ?? settings.borderUpColor),
+        Number(instance.settings?.opacity ?? 72),
+      );
+      const requestedLineWidth = Math.round(Number(instance.settings?.lineWidth ?? 2));
+      const lineWidth = Math.max(1, Math.min(4, requestedLineWidth)) as 1 | 2 | 3 | 4;
+      const lineStyle = ["solid", "dashed", "dotted"].includes(String(instance.settings?.lineStyle))
+        ? String(instance.settings?.lineStyle) as "solid" | "dashed" | "dotted"
+        : "dotted";
+      return [{
+        key: `${instance.instanceId}-zero-gamma-line`,
+        groupKey: instance.instanceId,
+        label: "Zero Gamma",
+        kind: "line",
+        placement: "overlay",
+        color,
+        lineWidth,
+        lineStyle,
+        lineType: "with-steps",
+        lastValueVisible: instance.settings?.showCurrentValue !== false,
+        data: zeroGammaLinePayload.points.map((point) => ({ time: Math.floor(point.timestampMs / 1_000), value: point.value })),
+      }];
+    }),
+    ...indicators.flatMap((instance): CalculatedIndicatorSeries[] => {
       if (!instance.enabled || instance.indicatorId !== "implied-volatility-rank" || instance.settings?.placement !== "main-chart-overlay") return [];
       const snapshot = ivRankByInstance[instance.instanceId]?.snapshot;
       if (!snapshot) return [];
@@ -4972,7 +5030,7 @@ function Chart({
         data: rankData,
       }];
     }),
-  ], [baseCalculatedIndicatorSeries, indicatorSignature, indicators, ivRankByInstance, settings.downColor, settings.upColor]);
+  ], [baseCalculatedIndicatorSeries, indicatorSignature, indicators, ivRankByInstance, settings.borderUpColor, settings.downColor, settings.upColor, zeroGammaLinePayload]);
   const calculatedIndicatorPanes = useMemo(() => {
     return indicators.flatMap((instance): IndicatorPaneGroup[] => {
       if (!instance.enabled) return [];
@@ -11307,6 +11365,7 @@ function Chart({
               : definition.lineStyle === "dotted"
                 ? LineStyle.Dotted
                 : LineStyle.Solid,
+            lineType: definition.lineType === "with-steps" ? LineType.WithSteps : LineType.Simple,
             lastValueVisible: definition.lastValueVisible !== false,
             priceLineVisible: false,
             crosshairMarkerVisible: false,
@@ -14779,6 +14838,14 @@ function Chart({
       ) : null}
     </div>
   );
+}
+
+function colorWithOpacity(color: string, opacityPercent: number) {
+  const alpha = Math.max(0.05, Math.min(1, opacityPercent / 100));
+  const match = color.trim().match(/^#([\da-f]{6})$/i);
+  if (!match) return color;
+  const value = Number.parseInt(match[1], 16);
+  return `rgba(${(value >> 16) & 255}, ${(value >> 8) & 255}, ${value & 255}, ${alpha})`;
 }
 
 function shallowChartArrayEqual(left: unknown[], right: unknown[]) {

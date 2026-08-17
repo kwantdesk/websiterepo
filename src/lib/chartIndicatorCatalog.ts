@@ -58,6 +58,7 @@ export const CHART_INDICATOR_CATEGORIES: ChartIndicatorCategory[] = [
 
 export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
   indicator("Gamma Environment", "Options Flow", "Compact live gamma-regime status box with configurable chart-corner placement.", false, "Kwantify"),
+  indicator("Zero Gamma Line", "Options Flow", "True scenario-repriced dealer Gamma zero crossing with live updates and five completed trading sessions of no-lookahead history.", false, "Kwantify"),
   indicator("Gamma Heatmap", "Options Flow", "Historical and live gamma, delta, vanna and charm exposure ribbons mapped onto the futures price chart.", false, "Kwantify"),
   indicator("Net Gamma Exposure By Strike", "Options Flow", "Current signed Net GEX by source strike, mapped precisely onto the futures price scale around a zero spine.", false, "Kwantify"),
   indicator("GEX Interval Map", "Options Flow", "Live and historical signed Gamma exposure by strike and time, mapped onto the active chart without lookahead.", false, "Kwantify"),

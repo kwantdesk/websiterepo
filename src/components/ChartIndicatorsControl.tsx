@@ -2874,6 +2874,30 @@ export default function ChartIndicatorsControl({
                 </div>
               ) : null}
 
+              {settingsDefinition.id === "zero-gamma-line" ? (
+                <div className="grid gap-3 border border-primary/20 bg-primary/[0.035] p-3 sm:grid-cols-2">
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                    <span>Line type</span>
+                    <KwantSelect
+                      value={String(settingsInstance.settings?.lineStyle ?? "dotted")}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                        ...current,
+                        settings: { ...(current.settings ?? {}), lineStyle: event.target.value },
+                      }))}
+                      className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                      menuLabel="Zero Gamma line type"
+                    >
+                      <option value="dotted">Dotted</option>
+                      <option value="dashed">Dashed</option>
+                      <option value="solid">Solid</option>
+                    </KwantSelect>
+                  </label>
+                  <div className="flex items-end text-[8px] leading-4 text-muted">
+                    Positive Gamma sits above the crossing and negative Gamma below when the repriced curve has its standard upward orientation. The line uses native futures-options OI and never back-paints a later snapshot.
+                  </div>
+                </div>
+              ) : null}
+
               {(INDICATOR_NUMERIC_SETTINGS[settingsDefinition.id] ?? []).map((setting) => {
                 const value = Number(settingsInstance.settings?.[setting.key] ?? setting.defaultValue);
                 return (
