@@ -19,6 +19,25 @@ test("rapid GEX Bounce slider input composes against the latest indicator state"
   assert.match(controls, /indicatorsRef\.current = next/);
 });
 
+test("Bounce Levels settings refresh keeps the last verified surface visible", () => {
+  assert.doesNotMatch(chart, /if \(settingsChanged\) setBounceLevelsSnapshot\(null\)/);
+  assert.match(chart, /Retain the last verified Bounce Levels surface while a changed setting/);
+  assert.match(chart, /The next valid snapshot is committed atomically below/);
+  assert.match(chart, /if \(settingsChanged\) timer = window\.setTimeout\(\(\) => void load\(false\), 140\)/);
+});
+
+test("Bounce Levels paired controls cannot create an empty or invalid surface", () => {
+  assert.match(controls, /function applyNumericIndicatorSetting\(/);
+  assert.match(controls, /key === "minimumDte".*next\.maximumDte = value/);
+  assert.match(controls, /key === "maximumDte".*next\.minimumDte = value/);
+  assert.match(controls, /key === "minimumNodeThickness".*next\.maximumNodeThickness = value/);
+  assert.match(controls, /key === "maximumNodeThickness".*next\.minimumNodeThickness = value/);
+  assert.match(controls, /key === "activeEnterThreshold".*next\.activeExitThreshold = value/);
+  assert.match(controls, /key === "activeExitThreshold".*next\.activeEnterThreshold = value/);
+  assert.match(config, /maximumNodeThickness\) < Number\(settings\.minimumNodeThickness/);
+  assert.match(config, /activeEnterThreshold\) < Number\(settings\.activeExitThreshold/);
+});
+
 test("GEX Bounce role toggles filter the exposure field that is actually painted", () => {
   assert.match(chart, /const roleVisibility: Record<string, boolean> =/);
   assert.match(chart, /filterBounceLevelsSnapshot\(/);

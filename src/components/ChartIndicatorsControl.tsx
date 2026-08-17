@@ -333,6 +333,30 @@ const bounceThemeColours = (chartSettings: ChartSettings) => ({
   airPocketColor: chartSettings.gridColor,
 });
 
+function applyNumericIndicatorSetting(
+  indicatorId: string,
+  currentSettings: ChartIndicatorInstance["settings"],
+  key: string,
+  value: number,
+) {
+  const next: NonNullable<ChartIndicatorInstance["settings"]> = {
+    ...(currentSettings ?? {}),
+    [key]: value,
+  };
+  if (indicatorId !== "bounce-levels") return next;
+
+  // Bounce Levels has paired controls. Keep them valid while the user drags a
+  // slider rather than waiting for a workspace reload to normalise them. An
+  // inverted pair can otherwise ask the API for an empty surface.
+  if (key === "minimumDte" && value > Number(next.maximumDte ?? 7)) next.maximumDte = value;
+  if (key === "maximumDte" && value < Number(next.minimumDte ?? 0)) next.minimumDte = value;
+  if (key === "minimumNodeThickness" && value > Number(next.maximumNodeThickness ?? 18)) next.maximumNodeThickness = value;
+  if (key === "maximumNodeThickness" && value < Number(next.minimumNodeThickness ?? 2)) next.minimumNodeThickness = value;
+  if (key === "activeEnterThreshold" && value < Number(next.activeExitThreshold ?? 8)) next.activeExitThreshold = value;
+  if (key === "activeExitThreshold" && value > Number(next.activeEnterThreshold ?? 15)) next.activeEnterThreshold = value;
+  return next;
+}
+
 function divergenceMarketPair(instrument: string) {
   const normalized = instrument.trim().toUpperCase();
   if (/^M?NQ/.test(normalized)) return { primary: "NQ", comparison: "ES" };
@@ -2949,8 +2973,7 @@ export default function ChartIndicatorsControl({
                           replace(settingsInstance.instanceId, (current) => ({
                             ...current,
                             settings: {
-                              ...(current.settings ?? {}),
-                              [setting.key]: nextValue,
+                              ...applyNumericIndicatorSetting(settingsDefinition.id, current.settings, setting.key, nextValue),
                               ...(settingsDefinition.id === "big-trades" && setting.key === "manualFilter"
                                 ? { filterMode: "manual" }
                                 : {}),
@@ -2972,8 +2995,7 @@ export default function ChartIndicatorsControl({
                         replace(settingsInstance.instanceId, (current) => ({
                           ...current,
                           settings: {
-                            ...(current.settings ?? {}),
-                            [setting.key]: nextValue,
+                            ...applyNumericIndicatorSetting(settingsDefinition.id, current.settings, setting.key, nextValue),
                             ...(settingsDefinition.id === "big-trades" && setting.key === "manualFilter"
                               ? { filterMode: "manual" }
                               : {}),

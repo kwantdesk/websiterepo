@@ -6203,9 +6203,13 @@ function Chart({
       return;
     }
     const requestSignature = bounceLevelsDataSignature;
-    const settingsChanged = bounceLevelsDataSignatureRef.current !== requestSignature;
+    const settingsChanged = bounceLevelsDataSignatureRef.current.length > 0
+      && bounceLevelsDataSignatureRef.current !== requestSignature;
     bounceLevelsDataSignatureRef.current = requestSignature;
-    if (settingsChanged) setBounceLevelsSnapshot(null);
+    // Retain the last verified Bounce Levels surface while a changed setting
+    // is being resolved. Clearing it here made every slider/dropdown blank the
+    // chart until the provider round-trip completed (or indefinitely on an
+    // error). The next valid snapshot is committed atomically below.
     let cancelled = false;
     let hasCommittedSnapshot = false;
     const commitSnapshot = (snapshot: BounceLevelsSnapshot) => {
@@ -6317,7 +6321,11 @@ function Chart({
         if (!cancelled) { setBounceLevelsLoading(false); timer = window.setTimeout(() => void load(false), refreshMs); }
       }
     };
-    void load(false);
+    // Data-shaping sliders can emit dozens of values during one drag. Resolve
+    // only the settled value instead of flooding the options provider, while
+    // visual-only settings continue to repaint immediately in the primitive.
+    if (settingsChanged) timer = window.setTimeout(() => void load(false), 140);
+    else void load(false);
     return () => { cancelled = true; if (timer !== null) window.clearTimeout(timer); };
   // The last-good snapshot is intentionally not a dependency: refreshes update it silently.
   // eslint-disable-next-line react-hooks/exhaustive-deps

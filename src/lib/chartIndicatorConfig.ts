@@ -1960,6 +1960,8 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
       delete settings[unsafeKey];
     }
     if (Number(settings.maximumDte) < Number(settings.minimumDte)) settings.maximumDte = settings.minimumDte;
+    if (Number(settings.maximumNodeThickness) < Number(settings.minimumNodeThickness)) settings.maximumNodeThickness = settings.minimumNodeThickness;
+    if (Number(settings.activeEnterThreshold) < Number(settings.activeExitThreshold)) settings.activeEnterThreshold = settings.activeExitThreshold;
     return { ...normalizedInstance, settings: { ...settings, bounceLevelsSettingsVersion: 5 } };
   }
   if (
