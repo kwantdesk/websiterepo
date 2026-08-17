@@ -29,7 +29,7 @@ test("verified Rithmic seed and live buckets release CVD if the archive backfill
 test("CVD and Volume repaint immediately with hydrated candle history", () => {
   assert.match(chart, /const historyShapeChanged = \([\s\S]*?previousCandles\.length !== candles\.length/);
   assert.match(chart, /const orderFlowHydrated = \([\s\S]*?orderFlowHistoryReady/);
-  assert.match(chart, /if \(historyShapeChanged \|\| orderFlowHydrated\)[\s\S]*?setSampledIndicatorCandles\(candles\)[\s\S]*?setSampledIndicatorMarketTrades\(marketTrades\)/);
+  assert.match(chart, /if \(historyShapeChanged \|\| orderFlowHydrated \|\| executionTapeHydrated\)[\s\S]*?setSampledIndicatorCandles\(candles\)[\s\S]*?setSampledIndicatorMarketTrades\(marketTrades\)/);
 });
 
 test("an early order-flow response is reapplied when base candles arrive and survive tail repair", () => {

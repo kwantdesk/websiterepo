@@ -3127,6 +3127,7 @@ function Chart({
   const chartVisualReadyTokenRef = useRef(0);
   const pendingIndicatorCandlesRef = useRef(candles);
   const pendingIndicatorMarketTradesRef = useRef(marketTrades);
+  const sampledIndicatorMarketTradesRef = useRef(marketTrades);
   const sampledOrderFlowHistoryReadyRef = useRef(orderFlowHistoryReady);
   const updateIndicatorSettingRef = useRef(onUpdateIndicatorSetting);
   const openIndicatorSettingsRef = useRef(onOpenIndicatorSettings);
@@ -3512,6 +3513,16 @@ function Chart({
       orderFlowHistoryReady
       && !sampledOrderFlowHistoryReadyRef.current
     );
+    const previousSampledTrades = sampledIndicatorMarketTradesRef.current;
+    const executionTapeHydrated = (
+      orderFlowIndicatorEnabled
+      && marketTrades.length > 0
+      && (
+        previousSampledTrades.length === 0
+        || marketTrades[0]?.timestamp < previousSampledTrades[0]?.timestamp
+        || marketTrades.length - previousSampledTrades.length >= 250
+      )
+    );
     pendingIndicatorCandlesRef.current = candles;
     pendingIndicatorMarketTradesRef.current = marketTrades;
     sampledOrderFlowHistoryReadyRef.current = orderFlowHistoryReady;
@@ -3520,16 +3531,21 @@ function Chart({
     // the same completed candle snapshot immediately, otherwise the price
     // chart appears first and CVD remains as its old flat/live-only sample for
     // another timer cycle after refresh.
-    if (historyShapeChanged || orderFlowHydrated) {
+    if (historyShapeChanged || orderFlowHydrated || executionTapeHydrated) {
       if (indicatorSampleTimerRef.current !== null) {
         window.clearTimeout(indicatorSampleTimerRef.current);
         indicatorSampleTimerRef.current = null;
       }
       queueChartFrameWork(`indicators:${chartFrameWorkKey}`, () => {
-        startTransition(() => {
-          setSampledIndicatorCandles(candles);
-          if (orderFlowIndicatorEnabled) setSampledIndicatorMarketTrades(marketTrades);
-        });
+        // Initial and historical execution hydration is user-visible content,
+        // not background live-tick maintenance. Commit it on the next paint
+        // without a transition so Big Contracts cannot remain empty while a
+        // busy multi-pane workspace keeps deprioritising the React update.
+        setSampledIndicatorCandles(candles);
+        if (orderFlowIndicatorEnabled) {
+          sampledIndicatorMarketTradesRef.current = marketTrades;
+          setSampledIndicatorMarketTrades(marketTrades);
+        }
       });
       return;
     }
@@ -3548,6 +3564,7 @@ function Chart({
             ? mergeLiveIndicatorCandle(pendingCandles, liveIndicatorCandle)
             : pendingCandles);
           if (nonFootprintOrderFlowIndicatorEnabled) {
+            sampledIndicatorMarketTradesRef.current = pendingIndicatorMarketTradesRef.current;
             setSampledIndicatorMarketTrades(pendingIndicatorMarketTradesRef.current);
           }
         });
@@ -3593,6 +3610,7 @@ function Chart({
     // in component state. Price continues to paint through the direct candle
     // event, while the shared bounded cache keeps a fast re-enable path.
     setSampledIndicatorCandles([]);
+    sampledIndicatorMarketTradesRef.current = [];
     setSampledIndicatorMarketTrades([]);
   }, [indicatorSamplingEnabled]);
 

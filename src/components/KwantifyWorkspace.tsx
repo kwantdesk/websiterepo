@@ -5586,6 +5586,17 @@ function WorkspaceChartPaneComponent({
       applyFlow(latestOrderFlowCandlesRef.current, memoryTape);
     }
 
+    // IndexedDB restoration must not wait behind the live seam or either
+    // network archive. On a cold React mount the in-memory LRU is empty even
+    // though the browser already has the exact execution tape; restoring it
+    // independently makes Big Contracts visible as soon as the chart opens.
+    void readExecutionTapeCache(pane.symbol, pane.timeframe).then((cachedTape) => {
+      if (!cachedTape?.records.length) return;
+      applyFlow(latestOrderFlowCandlesRef.current, cachedTape.records);
+    }).catch(() => {
+      // The live collector and canonical archive below remain authoritative.
+    });
+
     const persistAppliedFlow = () => {
       const tape = latestMarketTradesRef.current;
       if (tape.length) void writeExecutionTapeCache(pane.symbol, pane.timeframe, tape);
