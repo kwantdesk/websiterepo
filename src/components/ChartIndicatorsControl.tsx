@@ -212,6 +212,7 @@ function persistGexIntervalUserPresets(presets: GexIntervalUserPreset[]) {
 // Kwant Desk today. The complete catalogue stays visible so no study or
 // favourite is lost while feed-specific studies are connected and validated.
 export const RENDERED_CHART_INDICATOR_IDS = new Set([
+  "gamma-environment",
   "gamma-heatmap",
   "net-gamma-exposure-by-strike",
   "gex-interval-map",
@@ -2808,6 +2809,33 @@ export default function ChartIndicatorsControl({
                     <label className="space-y-1.5 text-[8px] uppercase tracking-[0.1em] text-muted"><span>Confirmed alerts</span><KwantSelect value={settingsInstance.settings?.alertsEnabled === true ? "on" : "off"} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), alertsEnabled: event.target.value === "on", preset: "custom" } }))} className="h-9 w-full"><option value="off">Off</option><option value="on">On</option></KwantSelect></label>
                   </div>
                   <p className="text-[8px] leading-4 text-muted">Uses the shared direct Rithmic execution tape. Unknown-side contracts remain in total speed but are excluded from directional speed and delta; OHLCV is never substituted for missing executions.</p>
+                </div>
+              ) : null}
+
+              {settingsDefinition.id === "gamma-environment" ? (
+                <div className="grid gap-3 border border-primary/20 bg-primary/[0.035] p-3 sm:grid-cols-2">
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">
+                    <span>Box position</span>
+                    <KwantSelect
+                      value={String(settingsInstance.settings?.position ?? "top-right")}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                        ...current,
+                        settings: { ...(current.settings ?? {}), position: event.target.value },
+                      }))}
+                      className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                      menuLabel="Gamma Environment position"
+                    >
+                      <option value="top-left">Top left</option>
+                      <option value="top-middle">Top middle</option>
+                      <option value="top-right">Top right</option>
+                      <option value="bottom-left">Bottom left</option>
+                      <option value="bottom-middle">Bottom middle</option>
+                      <option value="bottom-right">Bottom right</option>
+                    </KwantSelect>
+                  </label>
+                  <p className="text-[8px] leading-4 text-muted sm:col-span-2">
+                    Uses the same authoritative gamma-environment frame as Kwant Levels and keeps the latest good snapshot visible between refreshes.
+                  </p>
                 </div>
               ) : null}
 

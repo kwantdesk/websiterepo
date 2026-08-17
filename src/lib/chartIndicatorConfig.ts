@@ -13,6 +13,7 @@ import { DEFAULT_POC_AUCTION_SUITE_SETTINGS, POC_AUCTION_SUITE_SETTINGS_VERSION,
 import { DEFAULT_TAPE_SPEED_SETTINGS, normalizeTapeSpeedSettings } from "@/lib/tapeSpeedOrderFlowBurst";
 
 export const LIVE_CHART_INDICATOR_IDS = new Set([
+  "gamma-environment",
   "gamma-heatmap",
   "net-gamma-exposure-by-strike",
   "gex-interval-map",
@@ -913,6 +914,12 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
   ...Object.fromEntries(
     (INDICATOR_NUMERIC_SETTINGS[indicatorId] ?? []).map((setting) => [setting.key, setting.defaultValue]),
   ),
+  ...(indicatorId === "gamma-environment" ? {
+    position: "top-right",
+    showFreshness: true,
+    showSource: false,
+    gammaEnvironmentSettingsVersion: 1,
+  } : {}),
   ...(indicatorId === "pulling-stacking" ? {
     ...DEFAULT_PULLING_STACKING_SETTINGS,
     bidStackColor: theme?.upColor ?? DEFAULT_PULLING_STACKING_SETTINGS.bidStackColor,
@@ -2064,6 +2071,23 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         ...(normalizedInstance.settings ?? {}),
         gammaSettingsVersion: 2,
       },
+    };
+  }
+  if (normalizedInstance.indicatorId === "gamma-environment") {
+    const defaults = defaultIndicatorSettings("gamma-environment");
+    const settings = { ...defaults, ...(normalizedInstance.settings ?? {}) };
+    const allowedPositions = new Set([
+      "top-left",
+      "top-middle",
+      "top-right",
+      "bottom-left",
+      "bottom-middle",
+      "bottom-right",
+    ]);
+    if (!allowedPositions.has(String(settings.position))) settings.position = "top-right";
+    return {
+      ...normalizedInstance,
+      settings: { ...settings, gammaEnvironmentSettingsVersion: 1 },
     };
   }
   if (normalizedInstance.indicatorId === "ib-levels") {

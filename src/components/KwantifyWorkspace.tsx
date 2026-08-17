@@ -4411,6 +4411,8 @@ function WorkspaceChartPaneComponent({
     instance.enabled && instance.indicatorId === "classic-gex-profile") ?? null;
   const expectedMoveIndicator = indicators.find((instance) =>
     instance.enabled && instance.indicatorId === "expected-move") ?? null;
+  const gammaEnvironmentIndicator = indicators.find((instance) =>
+    instance.enabled && instance.indicatorId === "gamma-environment") ?? null;
   const classicGexSettings = classicGexIndicator?.settings ?? {};
   const classicGexSettingsSignature = classicGexIndicator
     ? JSON.stringify(classicGexSettings)
@@ -5562,7 +5564,11 @@ function WorkspaceChartPaneComponent({
     const cachedGammaOverlay = cachedGammaOverlayDirect ?? cachedGammaOverlayFromPayload;
     setGammaOverlay(cachedGammaOverlay);
     setGammaLevelsError(null);
-    setGammaLevelsLoading(gammaLevelsEnabled && gammaLevelsAvailable && !cachedGammaOverlay);
+    setGammaLevelsLoading(
+      (gammaLevelsEnabled || Boolean(gammaEnvironmentIndicator))
+      && gammaLevelsAvailable
+      && !cachedGammaOverlay,
+    );
     // Value-area data for micros is intentionally sourced from the parent
     // NQ/ES book. Read that same canonical key on startup; looking under
     // MNQ/MES forced an unnecessary 15-120 second cold rebuild after refresh.
@@ -5670,7 +5676,7 @@ function WorkspaceChartPaneComponent({
   }, [classicGexIndicator?.instanceId, classicGexSettingsSignature, gammaInstrument, pane.broker]);
 
   useEffect(() => {
-    if ((!gammaLevelsEnabled && !levelExportRequested && !classicGexIndicator && !expectedMoveIndicator) || !gammaLevelsAvailable || !primaryGammaConversion) {
+    if ((!gammaLevelsEnabled && !levelExportRequested && !classicGexIndicator && !expectedMoveIndicator && !gammaEnvironmentIndicator) || !gammaLevelsAvailable || !primaryGammaConversion) {
       setGammaLevelsLoading(false);
       setGammaLevelsError(null);
       if (!gammaLevelsAvailable) setGammaOverlay(null);
@@ -5678,7 +5684,7 @@ function WorkspaceChartPaneComponent({
       return;
     }
     if (!gammaDataReady) {
-      setGammaLevelsLoading(gammaLevelsEnabled);
+      setGammaLevelsLoading(gammaLevelsEnabled || Boolean(gammaEnvironmentIndicator));
       setGammaLevelsError(null);
       return;
     }
@@ -5729,7 +5735,7 @@ function WorkspaceChartPaneComponent({
     };
 
     const loadGamma = async () => {
-      setGammaLevelsLoading(gammaLevelsEnabled && !retainedOverlay);
+      setGammaLevelsLoading((gammaLevelsEnabled || Boolean(gammaEnvironmentIndicator)) && !retainedOverlay);
       const conversions = [
         fallbackGammaConversion,
         primaryGammaConversion,
@@ -5769,6 +5775,7 @@ function WorkspaceChartPaneComponent({
     gammaDataReady,
     gammaLevelsAvailable,
     gammaLevelsEnabled,
+    gammaEnvironmentIndicator?.instanceId,
     classicGexIndicator?.instanceId,
     expectedMoveConversion?.id,
     expectedMoveIndicator?.instanceId,
@@ -6683,6 +6690,9 @@ function WorkspaceChartPaneComponent({
           gammaLevelsAvailable={gammaLevelsAvailable}
           gammaLevelsLoading={gammaLevelsLoading}
           gammaLevelsError={gammaLevelsError}
+          gammaEnvironment={gammaEnvironmentIndicator ? currentGammaOverlay : null}
+          gammaEnvironmentLoading={Boolean(gammaEnvironmentIndicator && gammaLevelsLoading)}
+          gammaEnvironmentError={gammaEnvironmentIndicator ? gammaLevelsError : null}
           onToggleGammaLevels={onToggleGammaLevels}
           kwantLevelsEnabled={kwantLevelsEnabled}
           kwantLevelsAvailable={kwantLevelsAvailable}

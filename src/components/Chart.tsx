@@ -450,6 +450,15 @@ interface ChartProps {
   gammaLevelsAvailable?: boolean;
   gammaLevelsLoading?: boolean;
   gammaLevelsError?: string | null;
+  gammaEnvironment?: {
+    label: string;
+    regime: "POSITIVE" | "NEGATIVE" | "NEUTRAL";
+    checkedAt: string;
+    sourceLabel: string;
+    stale: boolean;
+  } | null;
+  gammaEnvironmentLoading?: boolean;
+  gammaEnvironmentError?: string | null;
   onToggleGammaLevels?: () => void;
   kwantLevelsEnabled?: boolean;
   kwantLevelsAvailable?: boolean;
@@ -2635,6 +2644,9 @@ function Chart({
   gammaLevelsAvailable = false,
   gammaLevelsLoading = false,
   gammaLevelsError = null,
+  gammaEnvironment = null,
+  gammaEnvironmentLoading = false,
+  gammaEnvironmentError = null,
   onToggleGammaLevels,
   kwantLevelsEnabled = false,
   kwantLevelsAvailable = false,
@@ -6543,6 +6555,24 @@ function Chart({
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "classic-gex-profile") ?? null,
     [indicatorSignature, indicators],
   );
+  const gammaEnvironmentIndicator = useMemo(
+    () => indicators.find((instance) => instance.enabled && instance.indicatorId === "gamma-environment") ?? null,
+    [indicatorSignature, indicators],
+  );
+  const gammaEnvironmentPosition = String(gammaEnvironmentIndicator?.settings?.position ?? "top-right");
+  const gammaEnvironmentPositionClass = ({
+    "top-left": "left-3 top-3",
+    "top-middle": "left-1/2 top-3 -translate-x-1/2",
+    "top-right": "right-[70px] top-3",
+    "bottom-left": "bottom-8 left-3",
+    "bottom-middle": "bottom-8 left-1/2 -translate-x-1/2",
+    "bottom-right": "bottom-8 right-[70px]",
+  } as Record<string, string>)[gammaEnvironmentPosition] ?? "right-[70px] top-3";
+  const gammaEnvironmentColor = gammaEnvironment?.regime === "POSITIVE"
+    ? settings.upColor
+    : gammaEnvironment?.regime === "NEGATIVE"
+      ? settings.downColor
+      : settings.borderUpColor;
   const classicGexOverlay = useMemo(() => {
     if (!classicGexIndicator || !classicGexProfile || !candleSeriesRef.current) return null;
     const profileSettings = classicGexIndicator.settings ?? {};
@@ -11829,6 +11859,45 @@ function Chart({
             title="Loading chart"
             detail={`${instrument} · fitting history and price scale`}
           />
+        </div>
+      ) : null}
+      {gammaEnvironmentIndicator ? (
+        <div
+          className={`pointer-events-none absolute z-[32] min-w-[142px] border bg-panel/94 px-3 py-2 font-mono shadow-xl backdrop-blur ${gammaEnvironmentPositionClass}`}
+          style={{
+            borderColor: `color-mix(in srgb, ${gammaEnvironmentColor} 58%, transparent)`,
+            boxShadow: `0 0 18px color-mix(in srgb, ${gammaEnvironmentColor} 14%, transparent)`,
+          }}
+          aria-label="Gamma Environment"
+        >
+          <div className="flex items-center gap-2 text-[7px] uppercase tracking-[0.15em] text-muted">
+            <span
+              className={`h-1.5 w-1.5 rounded-full ${gammaEnvironmentLoading && !gammaEnvironment ? "animate-pulse" : ""}`}
+              style={{ backgroundColor: gammaEnvironmentError && !gammaEnvironment ? settings.downColor : gammaEnvironmentColor }}
+            />
+            <span>Gamma Environment</span>
+          </div>
+          <div
+            className="mt-1 whitespace-nowrap text-[11px] font-semibold uppercase tracking-[0.04em]"
+            style={{ color: gammaEnvironmentColor }}
+          >
+            {gammaEnvironment?.label
+              ?? (gammaEnvironmentLoading ? "Synchronising" : gammaEnvironmentError ? "Unavailable" : "Waiting for data")}
+          </div>
+          {gammaEnvironmentIndicator.settings?.showFreshness !== false && gammaEnvironment ? (
+            <div className="mt-1 flex items-center gap-1.5 text-[7px] uppercase tracking-[0.1em] text-muted">
+              <span className={gammaEnvironment.stale ? "text-warning" : "text-primary"}>
+                {gammaEnvironment.stale ? "Last session" : "Live"}
+              </span>
+              <span>·</span>
+              <span>{new Date(gammaEnvironment.checkedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+            </div>
+          ) : null}
+          {gammaEnvironmentIndicator.settings?.showSource === true && gammaEnvironment ? (
+            <div className="mt-1 max-w-[240px] truncate text-[7px] uppercase tracking-[0.08em] text-muted">
+              {gammaEnvironment.sourceLabel}
+            </div>
+          ) : null}
         </div>
       ) : null}
       {pullingStackingIndicator && pullingStackingSettings.showHeader ? (
