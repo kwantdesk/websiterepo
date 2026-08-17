@@ -5,6 +5,8 @@ import {
   BarChart3,
   BookOpen,
   CircleHelp,
+  ChevronLeft,
+  ChevronRight,
   Dna,
   Download,
   Gauge,
@@ -40,6 +42,7 @@ type Expiry = "full" | "zero" | "one";
 type Dataset = "volume" | "oi" | "both";
 type StateMetric = "gex" | "gamma" | "delta" | "vanna" | "charm" | "convexity" | "negative_vanna" | "open_interest";
 type LineStyle = "solid" | "short" | "dash" | "dot";
+type ClassicElementSetting = { enabled: boolean; color: string; size: number; lineStyle: LineStyle };
 type ProfileEnvelope = GexBotTerminalEnvelope<GexBotProfileFrame | GexBotOrderflowFrame>;
 type ReplayData = {
   key: string;
@@ -74,6 +77,7 @@ type Appearance = {
   lookbackCount: number;
   multiplier: number;
   timeZone: string;
+  classicElements: Record<string, ClassicElementSetting>;
 };
 
 type SpotSample = { timestamp: number; spot: number; zeroGamma?: number | null };
@@ -83,6 +87,39 @@ const LEGACY_STORAGE_KEY = "kwantdesk:gexbot:workspace:v2";
 const SPOT_STORAGE_KEY = "kwantdesk:gex-box:spot-tape:native-v1";
 const ORDERFLOW_STORAGE_KEY = "kwantdesk:gex-box:orderflow-tape:native-v1";
 const FRAME_STORAGE_PREFIX = "kwantdesk:gex-box:last-native:v1:";
+const CLASSIC_ELEMENT_DEFAULTS: Record<string, ClassicElementSetting> = {
+  chartBackground: { enabled: false, color: "#000000", size: 1, lineStyle: "solid" },
+  zeroGamma: { enabled: true, color: "#f59e0b", size: 1, lineStyle: "dash" },
+  majorPositiveVolume: { enabled: true, color: "#4caf50", size: 1, lineStyle: "dash" },
+  majorNegativeVolume: { enabled: true, color: "#f23645", size: 1, lineStyle: "dash" },
+  majorPositiveOi: { enabled: false, color: "#2fc86f", size: 1, lineStyle: "dash" },
+  majorNegativeOi: { enabled: false, color: "#9f2432", size: 1, lineStyle: "dash" },
+  lookback1: { enabled: true, color: "#d9f2ff", size: 2.4, lineStyle: "solid" },
+  lookback5: { enabled: true, color: "#a8dcff", size: 2.4, lineStyle: "solid" },
+  lookback10: { enabled: true, color: "#73b7ff", size: 2.4, lineStyle: "solid" },
+  lookback15: { enabled: true, color: "#438fe2", size: 2.4, lineStyle: "solid" },
+  lookback30: { enabled: true, color: "#245a9e", size: 2.4, lineStyle: "solid" },
+  positiveGexVolume: { enabled: true, color: "#4caf50", size: 1, lineStyle: "solid" },
+  negativeGexVolume: { enabled: true, color: "#ff6676", size: 1, lineStyle: "solid" },
+  positiveGexOi: { enabled: true, color: "#2fc86f", size: .7, lineStyle: "solid" },
+  negativeGexOi: { enabled: true, color: "#9f2432", size: .7, lineStyle: "solid" },
+  showGexVolume: { enabled: true, color: "#4caf50", size: 1, lineStyle: "solid" },
+  showGexOi: { enabled: true, color: "#2fc86f", size: 1, lineStyle: "solid" },
+  spotHistory: { enabled: true, color: "#22d3ee", size: 1, lineStyle: "solid" },
+  candleUp: { enabled: true, color: "#4d9fff", size: 1, lineStyle: "solid" },
+  candleDown: { enabled: true, color: "#9ca3af", size: 1, lineStyle: "solid" },
+  zeroGammaHistory: { enabled: true, color: "#f59e0b", size: 1, lineStyle: "solid" },
+  majorPositiveHistory: { enabled: true, color: "#4caf50", size: 1, lineStyle: "solid" },
+  majorNegativeHistory: { enabled: true, color: "#f23645", size: 1, lineStyle: "solid" },
+};
+const CLASSIC_ELEMENT_LABELS: Array<[string, string]> = [
+  ["chartBackground", "Chart Background"], ["zeroGamma", "Zero Gamma"], ["majorPositiveVolume", "Major Positive Volume"], ["majorNegativeVolume", "Major Negative Volume"],
+  ["majorPositiveOi", "Major Positive OI"], ["majorNegativeOi", "Major Negative OI"], ["lookback1", "1 Min"], ["lookback5", "5 Min"], ["lookback10", "10 Min"],
+  ["lookback15", "15 Min"], ["lookback30", "30 Min"], ["positiveGexVolume", "Pos GEX by Volume"], ["negativeGexVolume", "Neg GEX by Volume"],
+  ["positiveGexOi", "Pos GEX by OI"], ["negativeGexOi", "Neg GEX by OI"], ["showGexVolume", "Show GEX Volume"], ["showGexOi", "Show GEX OI"],
+  ["spotHistory", "Spot History"], ["candleUp", "Candle Up"], ["candleDown", "Candle Down"], ["zeroGammaHistory", "Zero Gamma History"],
+  ["majorPositiveHistory", "Major Positive History"], ["majorNegativeHistory", "Major Negative History"],
+];
 const DEFAULT_APPEARANCE: Appearance = {
   positive: "#6fe36a",
   negative: "#ff4f62",
@@ -109,6 +146,7 @@ const DEFAULT_APPEARANCE: Appearance = {
   lookbackCount: 3,
   multiplier: 1,
   timeZone: "America/New_York",
+  classicElements: CLASSIC_ELEMENT_DEFAULTS,
 };
 
 const TICKERS = ["NQ_NDX", "ES_SPX", "NDX", "QQQ", "SPX", "SPY", "RUT", "IWM", "VIX"];
@@ -718,6 +756,44 @@ function SettingsRail({
         <div className="border border-border bg-background p-3 text-[9px] leading-5 text-muted">
           Research commands are validated before provider access. This surface does not expose visual profile controls.
         </div>
+      ) : view === "classic" ? (
+        <>
+          <div className="space-y-1">
+            {CLASSIC_ELEMENT_LABELS.map(([id, label]) => {
+              const setting = appearance.classicElements[id] ?? CLASSIC_ELEMENT_DEFAULTS[id];
+              const patchSetting = (patch: Partial<ClassicElementSetting>) => setAppearance((current) => ({
+                ...current,
+                classicElements: { ...current.classicElements, [id]: { ...setting, ...patch } },
+              }));
+              const isLine = !id.startsWith("lookback") && !["chartBackground", "showGexVolume", "showGexOi", "candleUp", "candleDown"].includes(id);
+              return <div key={id} className="border border-border bg-background px-2 py-2">
+                <div className="flex items-center gap-2">
+                  <input aria-label={`${label} colour`} type="color" value={setting.color} onChange={(event) => patchSetting({ color: event.target.value })} className="h-6 w-7 cursor-pointer border-0 bg-transparent p-0" />
+                  <span className="min-w-0 flex-1 text-[8px] font-semibold uppercase tracking-[.1em] text-foreground">{label}</span>
+                  <input aria-label={`Toggle ${label}`} type="checkbox" checked={setting.enabled} onChange={(event) => patchSetting({ enabled: event.target.checked })} className="h-3.5 w-3.5 accent-[var(--primary)]" />
+                </div>
+                <div className="mt-2 flex items-center gap-2">
+                  <input aria-label={`${label} size`} type="range" min="0.5" max="4" step="0.1" value={setting.size} onChange={(event) => patchSetting({ size: Number(event.target.value) })} className="h-1 min-w-0 flex-1 accent-[var(--primary)]" />
+                  <span className="w-7 font-mono text-[7px] text-muted">{setting.size.toFixed(1)}</span>
+                  {isLine ? <KwantSelect aria-label={`${label} line style`} value={setting.lineStyle} onChange={(event) => patchSetting({ lineStyle: event.target.value as LineStyle })} className="h-6 w-20 border border-border bg-panel px-1 text-[7px] text-foreground"><option value="solid">Solid</option><option value="short">Simple dash</option><option value="dash">Dashed</option><option value="dot">Dotted</option></KwantSelect> : null}
+                </div>
+              </div>;
+            })}
+          </div>
+          <div>
+            <label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[.16em] text-muted">Chart type</label>
+            <div className="grid grid-cols-2 border border-border bg-background p-1">{(["line", "candles"] as const).map((item) => <button key={item} type="button" onClick={() => update("chartType", item)} className={`h-8 text-[8px] font-semibold uppercase ${appearance.chartType === item ? "bg-primary/15 text-primary" : "text-muted"}`}>{item}</button>)}</div>
+          </div>
+          <div>
+            <label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[.16em] text-muted">Profile alignment</label>
+            <div className="grid grid-cols-3 border border-border bg-background p-1">{(["left", "center", "right"] as const).map((item) => <button key={item} type="button" onClick={() => update("profileAlignment", item)} className={`h-8 text-[8px] font-semibold uppercase ${appearance.profileAlignment === item ? "bg-primary/15 text-primary" : "text-muted"}`}>{item}</button>)}</div>
+          </div>
+          <label className="block text-[8px] font-semibold uppercase tracking-[.14em] text-muted">Time zone<KwantSelect value={appearance.timeZone} onChange={(event) => update("timeZone", event.target.value)} className="mt-1 h-9 w-full border border-border bg-background px-2 text-[9px] text-foreground"><option value="America/New_York">New York</option><option value="Australia/Brisbane">Brisbane</option><option value="UTC">UTC</option></KwantSelect></label>
+          <div className="grid grid-cols-2 gap-2 border-t border-border pt-3">
+            <button type="button" onClick={() => setAppearance(DEFAULT_APPEARANCE)} className="h-9 border border-border bg-background text-[8px] font-semibold uppercase tracking-[.14em] text-muted">Reset</button>
+            <button type="button" onClick={() => setAppearance((current) => ({ ...current }))} className="h-9 border border-primary/40 bg-primary/10 text-[8px] font-semibold uppercase tracking-[.14em] text-primary">Save</button>
+          </div>
+        </>
       ) : view !== "orderflow" ? (
         <>
           <div>
@@ -844,7 +920,14 @@ export default function GexBotWorkspace() {
   const [expiry, setExpiry] = useState<Expiry>((restored?.expiry as Expiry) || "full");
   const [stateMetric, setStateMetric] = useState<StateMetric>((restored?.stateMetric as StateMetric) || "gamma");
   const [dataset, setDataset] = useState<Dataset>((restored?.dataset as Dataset) || "both");
-  const [appearance, setAppearance] = useState<Appearance>({ ...DEFAULT_APPEARANCE, ...(restored?.appearance as Partial<Appearance> | undefined) });
+  const [appearance, setAppearance] = useState<Appearance>(() => {
+    const saved = restored?.appearance as Partial<Appearance> | undefined;
+    return {
+      ...DEFAULT_APPEARANCE,
+      ...saved,
+      classicElements: { ...CLASSIC_ELEMENT_DEFAULTS, ...(saved?.classicElements ?? {}) },
+    };
+  });
   const [orderflowPanels, setOrderflowPanels] = useState<OrderflowPanelState[]>(() => {
     if (Array.isArray(restored?.orderflowPanels) && restored.orderflowPanels.length) {
       return (restored.orderflowPanels as Partial<OrderflowPanelState>[]).slice(0, 3).map((panel, index) => ({ ...DEFAULT_ORDERFLOW_PANELS[index], ...panel }));
@@ -857,6 +940,7 @@ export default function GexBotWorkspace() {
   const [loading, setLoading] = useState(true);
   const [hover, setHover] = useState<GexBotStrike | null>(null);
   const [showSettings, setShowSettings] = useState(true);
+  const [showAdjustments, setShowAdjustments] = useState(false);
   const [spotTape, setSpotTape] = useState<SpotSample[]>([]);
   const [orderflowTape, setOrderflowTape] = useState<GexBotOrderflowFrame[]>([]);
   const [replayActive, setReplayActive] = useState(false);
@@ -907,7 +991,9 @@ export default function GexBotWorkspace() {
     setSpotTape((current) => {
       const source = historicalSamples.length ? historicalSamples : current;
       const merged = source.at(-1)?.timestamp === sample.timestamp ? [...source.slice(0, -1), sample] : [...source, sample];
-      const limited = merged.slice(-480);
+      // Keep a complete RTH session at the live polling cadence. Classic's
+      // trails, lookback field and playback share this canonical tape.
+      const limited = merged.slice(-12_000);
       try {
         const stored = JSON.parse(sessionStorage.getItem(SPOT_STORAGE_KEY) ?? "{}") as Record<string, SpotSample[]>;
         stored[ticker] = limited;
@@ -1064,20 +1150,33 @@ export default function GexBotWorkspace() {
   }, [replayActive, replayData, replayPlaying, replaySpeed]);
 
   const liveFrame = envelope?.ok ? envelope.frame : null;
-  const replayFrames = replayData?.key === replayKey ? replayData.frames : [];
+  const replayFrames = useMemo(
+    () => replayData?.key === replayKey ? replayData.frames : [],
+    [replayData, replayKey],
+  );
   const replayFrame = replayActive && replayTimestamp !== null
     ? replayFrameAtOrBefore(replayFrames, replayTimestamp)
     : null;
   const frame = replayActive ? replayFrame : liveFrame;
-  const replayVisibleFrames = replayActive && replayTimestamp !== null
-    ? replayFramesAtOrBefore(replayFrames, replayTimestamp)
-    : [];
+  const replayVisibleFrames = useMemo(() => (
+    replayActive && replayTimestamp !== null
+      ? replayFramesAtOrBefore(replayFrames, replayTimestamp)
+      : []
+  ), [replayActive, replayFrames, replayTimestamp]);
   const displaySpotTape = replayActive
     ? replayVisibleFrames.map((entry) => ({ timestamp: entry.timestamp, spot: entry.spot, zeroGamma: entry.zero_gamma }))
     : spotTape;
   const displayOrderflowTape = replayActive
     ? replayVisibleFrames as GexBotOrderflowFrame[]
     : orderflowTape;
+  const displayProfileFrames = useMemo(() => {
+    const source = replayActive
+      ? replayVisibleFrames as GexBotProfileFrame[]
+      : [...((envelope?.history ?? []) as GexBotProfileFrame[]), ...(liveFrame ? [liveFrame as GexBotProfileFrame] : [])];
+    return [...new Map(source.filter((entry) => Array.isArray(entry.strikes)).map((entry) => [entry.timestamp, entry])).values()]
+      .sort((a, b) => a.timestamp - b.timestamp)
+      .slice(-12_000);
+  }, [envelope?.history, liveFrame, replayActive, replayVisibleFrames]);
   const replayStart = replayFrames[0]?.timestamp ?? null;
   const replayEnd = replayFrames.at(-1)?.timestamp ?? null;
   const replayProgress = replayTimestamp !== null && replayStart !== null && replayEnd !== null && replayEnd > replayStart
@@ -1133,7 +1232,7 @@ export default function GexBotWorkspace() {
             <div className={`flex h-9 items-center gap-2 rounded-xl border px-3 text-[9px] font-semibold uppercase tracking-[.12em] ${envelope?.session === "LIVE_RTH" && view !== "research" ? "border-emerald-400/25 bg-emerald-400/[.07] text-emerald-400" : "border-border bg-background text-muted"}`}>
               {envelope?.session === "LIVE_RTH" && view !== "research" ? <Radio className="h-3 w-3 animate-pulse" /> : view === "research" ? <ShieldCheck className="h-3 w-3 text-primary" /> : <Pause className="h-3 w-3" />}{sessionLabel}
             </div>
-            <button type="button" onClick={() => setShowSettings((current) => !current)} className={`flex h-9 items-center gap-2 rounded-xl border px-3 text-[9px] font-semibold uppercase tracking-[.12em] transition ${showSettings ? "border-primary/30 bg-primary/10 text-primary" : "border-border bg-background text-muted hover:text-foreground"}`}><SlidersHorizontal className="h-3.5 w-3.5" />Adjust</button>
+            <button type="button" onClick={() => { setShowSettings(true); setShowAdjustments((current) => !current); }} className={`flex h-9 items-center gap-2 rounded-xl border px-3 text-[9px] font-semibold uppercase tracking-[.12em] transition ${showSettings && showAdjustments ? "border-primary/30 bg-primary/10 text-primary" : "border-border bg-background text-muted hover:text-foreground"}`}><SlidersHorizontal className="h-3.5 w-3.5" />Adjust</button>
           </div>
         </div>
         <div className="flex items-center gap-1 overflow-x-auto px-4 pb-2 lg:px-6">
@@ -1144,8 +1243,8 @@ export default function GexBotWorkspace() {
         </div>
       </header>
 
-      <div className="flex min-h-0 flex-1 overflow-hidden">
-        <main className="flex min-w-0 flex-1 flex-col overflow-auto bg-[radial-gradient(circle_at_55%_30%,color-mix(in_srgb,var(--primary)_3%,transparent),transparent_42%)]">
+      <div className="relative flex min-h-0 flex-1 overflow-hidden">
+        <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-[radial-gradient(circle_at_55%_30%,color-mix(in_srgb,var(--primary)_3%,transparent),transparent_42%)]">
           <div className="flex min-h-11 shrink-0 items-center justify-between gap-3 border-b border-border px-4">
             <div className="flex items-center gap-3 text-[9px] text-muted"><span className="font-semibold uppercase tracking-[.15em] text-foreground">{tickerLabel(ticker)} · {VIEW_META[view].label}</span>{view === "research" ? <span>Strict builder · server-side provider access</span> : <><span className="font-mono">UPDATE {updateDateLabel(frame?.timestamp, appearance.timeZone)} · {timeLabel(frame?.timestamp)}</span><span className="border-l border-border pl-3 font-mono text-foreground">SPOT {price(frame?.spot)}</span></>}{loading && envelope ? <RefreshCw className="h-3 w-3 animate-spin text-primary" /> : null}</div>
             {view !== "research" ? (
@@ -1190,23 +1289,24 @@ export default function GexBotWorkspace() {
               ) : <div className="flex min-h-[420px] items-center justify-center text-[10px] text-muted">Choose at least one orderflow panel from Adjustments.</div>}
             </div>
           ) : (
-            <div className="flex min-h-[560px] flex-1 items-start overflow-auto">
-              <div className="mx-auto min-w-0 flex-1 p-2">
+            <div className="flex min-h-0 flex-1 overflow-hidden">
+              <div className="mx-auto flex h-full min-h-0 min-w-0 flex-1">
                 {view === "state" ? (
                   <ProfessionalStateChart frame={frame as GexBotProfileFrame} metric={stateMetric} appearance={appearance} spotTape={displaySpotTape} priorIndex={0} onHover={setHover} />
                 ) : (
-                  <ProfessionalProfileChart frame={frame as GexBotProfileFrame} dataset={dataset} appearance={appearance} spotTape={displaySpotTape} priorIndex={0} maxChange={maxChangeDots} onHover={setHover} />
+                  <ProfessionalProfileChart frame={frame as GexBotProfileFrame} frames={displayProfileFrames} dataset={dataset} appearance={appearance} spotTape={displaySpotTape} priorIndex={0} maxChange={maxChangeDots} onHover={setHover} />
                 )}
               </div>
             </div>
           )}
         </main>
-        {showSettings ? <aside className="w-[272px] shrink-0 overflow-y-auto border-l border-border bg-panel p-4">{isProfile ? <><ProfileSummary envelope={envelope!} dataset={dataset} hover={hover} /><div className="my-4 border-t border-border" /></> : null}{view !== "research" ? <><SourceDiagnostics envelope={envelope} /><div className="my-4 border-t border-border" /></> : null}<SettingsRail view={view} expiry={expiry} setExpiry={setExpiry} metric={stateMetric} setMetric={setStateMetric} dataset={dataset} setDataset={setDataset} appearance={appearance} setAppearance={setAppearance} orderflowPanels={orderflowPanels} setOrderflowPanels={setOrderflowPanels} /></aside> : null}
+        <button type="button" onClick={() => setShowSettings((current) => !current)} className={`absolute top-2 z-20 flex h-8 w-5 items-center justify-center border border-border bg-panel text-muted hover:text-primary ${showSettings ? "right-[260px]" : "right-0"}`} aria-label={showSettings ? "Collapse Classic panel" : "Expand Classic panel"}>{showSettings ? <ChevronRight className="h-3 w-3" /> : <ChevronLeft className="h-3 w-3" />}</button>
+        {showSettings ? <aside className="w-[260px] shrink-0 overflow-y-auto border-l border-border bg-panel p-3">{view === "classic" ? <><div className="mb-3 flex h-8 items-center justify-between border-b border-border"><span className="text-[10px] font-semibold uppercase tracking-[.16em] text-foreground">{showAdjustments ? "Settings" : "Classic"}</span><div className="flex items-center gap-1"><button type="button" className="flex h-6 w-6 items-center justify-center text-muted hover:text-primary" aria-label="Classic help"><CircleHelp className="h-3.5 w-3.5" /></button><button type="button" onClick={() => setShowAdjustments((current) => !current)} className="flex h-6 w-6 items-center justify-center text-muted hover:text-primary" aria-label={showAdjustments ? "Back to Classic summary" : "Classic settings"}>{showAdjustments ? <ChevronLeft className="h-3.5 w-3.5" /> : <Settings2 className="h-3.5 w-3.5" />}</button></div></div>{showAdjustments ? <SettingsRail view={view} expiry={expiry} setExpiry={setExpiry} metric={stateMetric} setMetric={setStateMetric} dataset={dataset} setDataset={setDataset} appearance={appearance} setAppearance={setAppearance} orderflowPanels={orderflowPanels} setOrderflowPanels={setOrderflowPanels} /> : <>{isProfile ? <><ProfileSummary envelope={envelope!} dataset={dataset} hover={hover} /><div className="my-3 border-t border-border" /></> : null}<SourceDiagnostics envelope={envelope} /></>}</> : <>{isProfile ? <><ProfileSummary envelope={envelope!} dataset={dataset} hover={hover} /><div className="my-3 border-t border-border" /></> : null}{view !== "research" ? <><SourceDiagnostics envelope={envelope} /><div className="my-3 border-t border-border" /></> : null}<SettingsRail view={view} expiry={expiry} setExpiry={setExpiry} metric={stateMetric} setMetric={setStateMetric} dataset={dataset} setDataset={setDataset} appearance={appearance} setAppearance={setAppearance} orderflowPanels={orderflowPanels} setOrderflowPanels={setOrderflowPanels} /></>}</aside> : null}
       </div>
-      <footer className="flex min-h-8 shrink-0 items-center justify-between gap-4 border-t border-border bg-panel px-4 text-[8px] uppercase tracking-[.13em] text-muted">
+      {view !== "classic" ? <footer className="flex min-h-8 shrink-0 items-center justify-between gap-4 border-t border-border bg-panel px-4 text-[8px] uppercase tracking-[.13em] text-muted">
         <span className="flex items-center gap-2"><Gauge className="h-3 w-3 text-primary" />{view === "research" ? "Structured research requests · provider access remains server-side." : "Values are rendered from verified provider frames; classified-flow methodology remains provider-calculated."}</span>
         <span>{view === "research" ? "Strict command grammar" : envelope?.marketOpen ? "Polling every 3 seconds" : "Frozen outside New York RTH"}</span>
-      </footer>
+      </footer> : null}
     </div>
   );
 }

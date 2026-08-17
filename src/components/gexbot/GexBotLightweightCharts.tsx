@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Camera, Maximize2, RotateCcw } from "lucide-react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { MouseEventParams, Time } from "lightweight-charts";
 
 import { createChart, LineStyle, type IChartApi, type ISeriesApi } from "@/lib/lightweightChartsCompat";
@@ -19,6 +20,7 @@ type Appearance = {
   lineStyle: LineStyleName; zeroLineStyle: LineStyleName; majorLineStyle: LineStyleName;
   chartType: "line" | "candles"; profileAlignment: "left" | "center" | "right";
   dotSize: number; lookbackCount: number; multiplier: number; timeZone: string;
+  classicElements: Record<string, { enabled: boolean; color: string; size: number; lineStyle: LineStyleName }>;
 };
 
 export type OrderflowMetricConfig = { id: string; one: string; label: string; color: string; description: string };
@@ -36,6 +38,10 @@ function lwLineStyle(value: LineStyleName) {
   if (value === "dot") return LineStyle.Dotted;
   if (value === "dash" || value === "short") return LineStyle.Dashed;
   return LineStyle.Solid;
+}
+
+function element(appearance: Appearance, id: string, fallback: { enabled: boolean; color: string; size?: number; lineStyle?: LineStyleName }) {
+  return appearance.classicElements?.[id] ?? { ...fallback, size: fallback.size ?? 1, lineStyle: fallback.lineStyle ?? "solid" };
 }
 
 function visibleStrikes(frame: GexBotProfileFrame, count = 76) {
@@ -60,11 +66,12 @@ function candles(samples: SpotSample[]) {
 }
 
 function ProfileCanvas({
-  frame, strikes, dataset, appearance, priceSeries, chart, palette,
+  frame, frames, strikes, dataset, appearance, priceSeries, chart, palette, profileScale,
 }: {
-  frame: GexBotProfileFrame; strikes: GexBotStrike[]; dataset: Dataset; appearance: Appearance;
+  frame: GexBotProfileFrame; frames: GexBotProfileFrame[]; strikes: GexBotStrike[]; dataset: Dataset; appearance: Appearance;
   priceSeries: ISeriesApi<"Line"> | ISeriesApi<"Candlestick"> | null; chart: IChartApi | null;
   palette?: { primary: string; secondary: string; call: string; put: string };
+  profileScale: number;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
@@ -88,7 +95,10 @@ function ProfileCanvas({
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctx.clearRect(0, 0, rect.width, rect.height);
         const plotRight = Math.max(40, rect.width - 58);
-        const origin = appearance.profileAlignment === "left" ? rect.width * .20 : appearance.profileAlignment === "right" ? rect.width * .80 : rect.width * .50;
+        const spotHistory = element(appearance, "spotHistory", { enabled: true, color: appearance.spot });
+        const latestX = chart.timeScale().timeToCoordinate(time(frame.timestamp));
+        const fallbackOrigin = appearance.profileAlignment === "left" ? rect.width * .20 : appearance.profileAlignment === "right" ? rect.width * .80 : rect.width * .68;
+        const origin = latestX === null ? fallbackOrigin : Math.max(80, Math.min(plotRight - 40, latestX));
         const available = Math.max(80, Math.min(origin - 10, plotRight - origin - 10));
         const values = strikes.flatMap((row) => dataset === "volume" ? [row[1]] : dataset === "oi" ? [row[2]] : [row[1], row[2]]);
         const max = Math.max(1, ...values.map((value) => Math.abs(value * appearance.multiplier)));
@@ -99,7 +109,7 @@ function ProfileCanvas({
           if ((value >= 0 && !appearance.showPositive) || (value < 0 && !appearance.showNegative)) return;
           const y = priceSeries.priceToCoordinate(strike);
           if (y === null || y < -20 || y > rect.height + 20) return;
-          const width = Math.max(1, Math.abs(value * appearance.multiplier) / max * available);
+          const width = Math.max(1, Math.abs(value * appearance.multiplier) / max * available * profileScale);
           const x = value >= 0 ? origin : origin - width;
           const color = value >= 0 ? colorUp : colorDown;
           ctx.globalAlpha = alpha;
@@ -108,9 +118,60 @@ function ProfileCanvas({
           ctx.fillStyle = color;
           ctx.fillRect(x, y - height / 2, width, height);
         };
+        const rawHistory = frames.length ? frames : [frame];
+        // Preserve the full time domain while bounding per-frame canvas work.
+        const stride = Math.max(1, Math.ceil(rawHistory.length / 1_200));
+        const history = rawHistory.filter((_, index) => index % stride === 0 || index === rawHistory.length - 1);
+        const trail = (field: "zero_gamma" | "major_pos_vol" | "major_neg_vol", settingId: string, fallbackColor: string, enabled: boolean) => {
+          const setting = element(appearance, settingId, { enabled, color: fallbackColor });
+          if (!setting.enabled) return;
+          const points = history.flatMap((entry) => {
+            const value = entry[field];
+            const x = chart.timeScale().timeToCoordinate(time(entry.timestamp));
+            const y = finite(value) ? priceSeries.priceToCoordinate(value) : null;
+            return x === null || y === null ? [] : [{ x, y }];
+          });
+          if (points.length < 2) return;
+          ctx.globalAlpha = .82; ctx.shadowBlur = 0; ctx.strokeStyle = setting.color; ctx.lineWidth = setting.size;
+          ctx.setLineDash(setting.lineStyle === "dot" ? [1, 3] : setting.lineStyle === "dash" ? [7, 5] : setting.lineStyle === "short" ? [3, 3] : []);
+          ctx.beginPath(); ctx.moveTo(points[0].x, points[0].y);
+          points.slice(1).forEach((point, index) => { const previous = points[index]; ctx.lineTo(point.x, previous.y); ctx.lineTo(point.x, point.y); });
+          ctx.stroke();
+          ctx.setLineDash([]);
+        };
+        trail("zero_gamma", "zeroGammaHistory", "#f59e0b", appearance.showZero);
+        trail("major_pos_vol", "majorPositiveHistory", palette?.primary ?? appearance.positive, appearance.showMajors && appearance.showVolumeMajors);
+        trail("major_neg_vol", "majorNegativeHistory", palette?.secondary ?? appearance.negative, appearance.showMajors && appearance.showVolumeMajors);
+
+        if (appearance.showPriors) history.forEach((entry) => {
+          const x = chart.timeScale().timeToCoordinate(time(entry.timestamp));
+          if (x === null) return;
+          const windows = [0, 1, 2, 3, 4];
+          windows.forEach((windowIndex) => {
+            const lookback = element(appearance, `lookback${[1, 5, 10, 15, 30][windowIndex]}`, { enabled: true, color: ["#d9f2ff", "#a8dcff", "#73b7ff", "#438fe2", "#245a9e"][windowIndex], size: appearance.dotSize });
+            if (!lookback.enabled) return;
+            const candidate = entry.strikes.reduce<GexBotStrike | null>((best, row) => {
+              const value = Math.abs(row[3]?.[windowIndex] ?? 0);
+              const bestValue = Math.abs(best?.[3]?.[windowIndex] ?? 0);
+              return value > bestValue ? row : best;
+            }, null);
+            if (!candidate) return;
+            const y = priceSeries.priceToCoordinate(candidate[0]);
+            if (y === null) return;
+            ctx.beginPath(); ctx.globalAlpha = .7; ctx.fillStyle = lookback.color;
+            ctx.arc(x, y, Math.max(1.2, lookback.size), 0, Math.PI * 2); ctx.fill();
+          });
+        });
+
         strikes.forEach((row) => {
-          if (dataset === "volume" || dataset === "both") drawBar(row[1], row[0], palette?.primary ?? appearance.positive, palette?.secondary ?? appearance.negative, dataset === "both" ? rowHeight * .62 : rowHeight, .9);
-          if (dataset === "oi" || dataset === "both") drawBar(row[2], row[0], palette?.call ?? appearance.oiPositive, palette?.put ?? appearance.oiNegative, dataset === "both" ? rowHeight * .28 : rowHeight, dataset === "both" ? .58 : .9);
+          const showVolume = element(appearance, "showGexVolume", { enabled: true, color: appearance.positive }).enabled;
+          const showOi = element(appearance, "showGexOi", { enabled: true, color: appearance.oiPositive }).enabled;
+          const posVolume = element(appearance, "positiveGexVolume", { enabled: true, color: palette?.primary ?? appearance.positive });
+          const negVolume = element(appearance, "negativeGexVolume", { enabled: true, color: palette?.secondary ?? appearance.negative });
+          const posOi = element(appearance, "positiveGexOi", { enabled: true, color: palette?.call ?? appearance.oiPositive });
+          const negOi = element(appearance, "negativeGexOi", { enabled: true, color: palette?.put ?? appearance.oiNegative });
+          if (showVolume && (dataset === "volume" || dataset === "both") && (row[1] >= 0 ? posVolume.enabled : negVolume.enabled)) drawBar(row[1], row[0], posVolume.color, negVolume.color, (dataset === "both" ? rowHeight * .62 : rowHeight) * posVolume.size, .9);
+          if (showOi && (dataset === "oi" || dataset === "both") && (row[2] >= 0 ? posOi.enabled : negOi.enabled)) drawBar(row[2], row[0], posOi.color, negOi.color, (dataset === "both" ? rowHeight * .28 : rowHeight) * posOi.size, dataset === "both" ? .58 : .9);
           if (appearance.showPriors) row[3].slice(0, appearance.lookbackCount).forEach((prior, index) => {
             const y = priceSeries.priceToCoordinate(row[0]);
             if (y === null) return;
@@ -121,6 +182,34 @@ function ProfileCanvas({
         });
         ctx.globalAlpha = .7; ctx.shadowBlur = 0; ctx.strokeStyle = "rgba(238,242,247,.55)"; ctx.lineWidth = 1;
         ctx.beginPath(); ctx.moveTo(origin, 0); ctx.lineTo(origin, rect.height - 26); ctx.stroke();
+        ctx.globalAlpha = .8; ctx.strokeStyle = palette?.primary ?? appearance.positive; ctx.setLineDash([3, 4]);
+        ctx.beginPath(); ctx.moveTo(origin, 0); ctx.lineTo(origin, rect.height - 26); ctx.stroke();
+        ctx.setLineDash([]); ctx.strokeStyle = spotHistory.color; ctx.globalAlpha = .7;
+        ctx.beginPath(); ctx.moveTo(Math.min(plotRight, origin + 2), 0); ctx.lineTo(Math.min(plotRight, origin + 2), rect.height - 26); ctx.stroke();
+
+        const chip = (value: number | null | undefined, color: string, side: "left" | "right") => {
+          if (!finite(value)) return;
+          const y = priceSeries.priceToCoordinate(value);
+          if (y === null || y < 12 || y > rect.height - 30) return;
+          const label = value.toFixed(2); ctx.font = "700 9px JetBrains Mono, monospace";
+          const width = ctx.measureText(label).width + 12; const x = side === "left" ? 2 : rect.width - width - 2;
+          ctx.globalAlpha = .96; ctx.fillStyle = color; ctx.fillRect(x, y - 9, width, 18);
+          ctx.fillStyle = "#050607"; ctx.textBaseline = "middle"; ctx.fillText(label, x + 6, y);
+        };
+        if (appearance.showMajors && appearance.showVolumeMajors) {
+          const majorPositive = element(appearance, "majorPositiveVolume", { enabled: true, color: palette?.primary ?? appearance.positive });
+          const majorNegative = element(appearance, "majorNegativeVolume", { enabled: true, color: palette?.secondary ?? appearance.negative });
+          if (majorPositive.enabled) chip(frame.major_pos_vol, majorPositive.color, "left");
+          if (majorNegative.enabled) chip(frame.major_neg_vol, majorNegative.color, "left");
+        }
+        const zeroGamma = element(appearance, "zeroGamma", { enabled: true, color: "#f59e0b" });
+        if (appearance.showZero && zeroGamma.enabled) chip(frame.zero_gamma, zeroGamma.color, "right");
+        if (appearance.showSpot && spotHistory.enabled) chip(frame.spot, spotHistory.color, "right");
+
+        ctx.globalAlpha = .65; ctx.fillStyle = TEXT; ctx.font = "8px JetBrains Mono, monospace"; ctx.textBaseline = "top";
+        ctx.fillText(`${(-max / profileScale).toFixed(0)}.00`, Math.max(4, origin - available), 4);
+        ctx.fillText("0.00", origin - 10, 4);
+        ctx.fillText(`${(max / profileScale).toFixed(0)}.00`, Math.min(rect.width - 76, origin + available - 48), 4);
       });
     };
     const resize = new ResizeObserver(draw);
@@ -142,15 +231,15 @@ function ProfileCanvas({
       parent.removeEventListener("pointermove", movePointer);
       window.removeEventListener("pointerup", endPointer);
     };
-  }, [appearance, chart, dataset, frame.timestamp, palette, priceSeries, strikes]);
+  }, [appearance, chart, dataset, frame, frames, palette, priceSeries, profileScale, strikes]);
 
   return <canvas ref={canvasRef} className="pointer-events-none absolute inset-0 z-[2]" aria-hidden="true" />;
 }
 
 function LightweightProfile({
-  frame, dataset, appearance, spotTape, onHover, palette,
+  frame, frames = [], dataset, appearance, spotTape, onHover, palette,
 }: {
-  frame: GexBotProfileFrame; dataset: Dataset; appearance: Appearance; spotTape: SpotSample[];
+  frame: GexBotProfileFrame; frames?: GexBotProfileFrame[]; dataset: Dataset; appearance: Appearance; spotTape: SpotSample[];
   onHover: (strike: GexBotStrike | null) => void; palette?: { primary: string; secondary: string; call: string; put: string };
 }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -159,6 +248,7 @@ function LightweightProfile({
   const candleRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const zeroRef = useRef<ISeriesApi<"Line"> | null>(null);
   const [surface, setSurface] = useState<{ chart: IChartApi; series: ISeriesApi<"Line"> | ISeriesApi<"Candlestick"> } | null>(null);
+  const [profileScale, setProfileScale] = useState(1);
   const strikes = useMemo(() => visibleStrikes(frame), [frame]);
 
   useLayoutEffect(() => {
@@ -168,10 +258,11 @@ function LightweightProfile({
       autoSize: true, layout: { background: { color: BG }, textColor: TEXT, fontFamily: "JetBrains Mono, monospace", fontSize: 10 },
       grid: { vertLines: { color: GRID }, horzLines: { color: GRID } },
       crosshair: { mode: 0, vertLine: { color: "rgba(235,240,248,.5)", style: LineStyle.Dashed }, horzLine: { color: "rgba(235,240,248,.5)", style: LineStyle.Dashed } },
-      rightPriceScale: { visible: true, borderColor: "rgba(121,132,151,.28)", autoScale: true },
-      timeScale: { borderColor: "rgba(121,132,151,.28)", timeVisible: true, secondsVisible: false, rightOffset: 14, barSpacing: 7, shiftVisibleRangeOnNewBar: true },
-      handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: true },
-      handleScale: { mouseWheel: true, pinch: true, axisPressedMouseMove: true },
+      leftPriceScale: { visible: true, borderColor: "rgba(121,132,151,.28)", autoScale: true },
+      rightPriceScale: { visible: false },
+      timeScale: { borderColor: "rgba(121,132,151,.28)", timeVisible: true, secondsVisible: false, rightOffset: 90, barSpacing: 7, shiftVisibleRangeOnNewBar: true },
+      handleScroll: { mouseWheel: false, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: true },
+      handleScale: { mouseWheel: false, pinch: true, axisPressedMouseMove: true },
     });
     const line = chart.addLineSeries({ color: "#f4f6f8", lineWidth: 2, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: true });
     const candle = chart.addCandlestickSeries({ upColor: appearance.positive, downColor: appearance.negative, wickUpColor: appearance.positive, wickDownColor: appearance.negative, borderVisible: false, priceLineVisible: false, lastValueVisible: false });
@@ -193,23 +284,35 @@ function LightweightProfile({
   useEffect(() => {
     const chart = chartRef.current, line = lineRef.current, candle = candleRef.current, zero = zeroRef.current;
     if (!chart || !line || !candle || !zero) return;
-    const samples = spotTape.length ? spotTape.slice(-720) : [{ timestamp: frame.timestamp, spot: frame.spot }];
+    const background = element(appearance, "chartBackground", { enabled: false, color: BG });
+    const spotHistory = element(appearance, "spotHistory", { enabled: true, color: appearance.spot, size: 1 });
+    const candleUp = element(appearance, "candleUp", { enabled: true, color: appearance.positive });
+    const candleDown = element(appearance, "candleDown", { enabled: true, color: appearance.negative });
+    const zeroHistory = element(appearance, "zeroGammaHistory", { enabled: true, color: "#f59e0b", size: 1, lineStyle: appearance.zeroLineStyle });
+    chart.applyOptions({ layout: { background: { color: background.enabled ? background.color : BG }, textColor: TEXT } });
+    const samples = spotTape.length ? spotTape.slice(-12_000) : [{ timestamp: frame.timestamp, spot: frame.spot }];
     line.setData(samples.map((sample) => ({ time: time(sample.timestamp), value: sample.spot })));
     candle.setData(candles(samples));
-    zero.setData(appearance.showZero ? samples.flatMap((sample) => finite(sample.zeroGamma) ? [{ time: time(sample.timestamp), value: sample.zeroGamma }] : []) : []);
-    line.applyOptions({ visible: appearance.chartType === "line", color: "#f4f6f8" });
-    candle.applyOptions({ visible: appearance.chartType === "candles", upColor: appearance.positive, downColor: appearance.negative, wickUpColor: appearance.positive, wickDownColor: appearance.negative });
-    zero.applyOptions({ visible: appearance.showZero, lineStyle: lwLineStyle(appearance.zeroLineStyle) });
+    zero.setData(appearance.showZero && zeroHistory.enabled ? samples.flatMap((sample) => finite(sample.zeroGamma) ? [{ time: time(sample.timestamp), value: sample.zeroGamma }] : []) : []);
+    line.applyOptions({ visible: appearance.chartType === "line" && spotHistory.enabled, color: spotHistory.color, lineWidth: Math.max(1, Math.min(4, Math.round(spotHistory.size))) as 1 | 2 | 3 | 4 });
+    candle.applyOptions({ visible: appearance.chartType === "candles" && (candleUp.enabled || candleDown.enabled), upColor: candleUp.color, downColor: candleDown.color, wickUpColor: candleUp.color, wickDownColor: candleDown.color });
+    zero.applyOptions({ visible: appearance.showZero && zeroHistory.enabled, color: zeroHistory.color, lineWidth: Math.max(1, Math.min(4, Math.round(zeroHistory.size))) as 1 | 2 | 3 | 4, lineStyle: lwLineStyle(zeroHistory.lineStyle) });
     const active = appearance.chartType === "candles" ? candle : line;
+    const spotLive = element(appearance, "spotHistory", { enabled: true, color: appearance.spot, size: 2 });
+    const zeroLive = element(appearance, "zeroGamma", { enabled: true, color: "#f59e0b", size: 1, lineStyle: appearance.zeroLineStyle });
+    const posVol = element(appearance, "majorPositiveVolume", { enabled: true, color: appearance.positive, size: 1, lineStyle: appearance.majorLineStyle });
+    const negVol = element(appearance, "majorNegativeVolume", { enabled: true, color: appearance.negative, size: 1, lineStyle: appearance.majorLineStyle });
+    const posOi = element(appearance, "majorPositiveOi", { enabled: false, color: appearance.oiPositive, size: 1, lineStyle: appearance.majorLineStyle });
+    const negOi = element(appearance, "majorNegativeOi", { enabled: false, color: appearance.oiNegative, size: 1, lineStyle: appearance.majorLineStyle });
     const priceLines = [
-      appearance.showSpot ? { price: frame.spot, color: appearance.spot, title: "SPOT", style: LineStyle.Solid, width: 2 } : null,
-      appearance.showZero && finite(frame.zero_gamma) ? { price: frame.zero_gamma, color: "#d4ad45", title: "ZERO", style: lwLineStyle(appearance.zeroLineStyle), width: 1 } : null,
-      appearance.showMajors && appearance.showVolumeMajors && dataset !== "oi" && finite(frame.major_pos_vol) ? { price: frame.major_pos_vol, color: appearance.positive, title: "", style: lwLineStyle(appearance.majorLineStyle), width: 1 } : null,
-      appearance.showMajors && appearance.showVolumeMajors && dataset !== "oi" && finite(frame.major_neg_vol) ? { price: frame.major_neg_vol, color: appearance.negative, title: "", style: lwLineStyle(appearance.majorLineStyle), width: 1 } : null,
-      appearance.showMajors && appearance.showOiMajors && dataset !== "volume" && finite(frame.major_pos_oi) ? { price: frame.major_pos_oi, color: appearance.oiPositive, title: "", style: lwLineStyle(appearance.majorLineStyle), width: 1 } : null,
-      appearance.showMajors && appearance.showOiMajors && dataset !== "volume" && finite(frame.major_neg_oi) ? { price: frame.major_neg_oi, color: appearance.oiNegative, title: "", style: lwLineStyle(appearance.majorLineStyle), width: 1 } : null,
+      appearance.showSpot && spotLive.enabled ? { price: frame.spot, color: spotLive.color, title: "SPOT", style: LineStyle.Solid, width: spotLive.size } : null,
+      appearance.showZero && zeroLive.enabled && finite(frame.zero_gamma) ? { price: frame.zero_gamma, color: zeroLive.color, title: "ZERO", style: lwLineStyle(zeroLive.lineStyle), width: zeroLive.size } : null,
+      appearance.showMajors && appearance.showVolumeMajors && dataset !== "oi" && posVol.enabled && finite(frame.major_pos_vol) ? { price: frame.major_pos_vol, color: posVol.color, title: "", style: lwLineStyle(posVol.lineStyle), width: posVol.size } : null,
+      appearance.showMajors && appearance.showVolumeMajors && dataset !== "oi" && negVol.enabled && finite(frame.major_neg_vol) ? { price: frame.major_neg_vol, color: negVol.color, title: "", style: lwLineStyle(negVol.lineStyle), width: negVol.size } : null,
+      appearance.showMajors && appearance.showOiMajors && dataset !== "volume" && posOi.enabled && finite(frame.major_pos_oi) ? { price: frame.major_pos_oi, color: posOi.color, title: "", style: lwLineStyle(posOi.lineStyle), width: posOi.size } : null,
+      appearance.showMajors && appearance.showOiMajors && dataset !== "volume" && negOi.enabled && finite(frame.major_neg_oi) ? { price: frame.major_neg_oi, color: negOi.color, title: "", style: lwLineStyle(negOi.lineStyle), width: negOi.size } : null,
     ].filter(Boolean) as Array<{ price: number; color: string; title: string; style: LineStyle; width: number }>;
-    const created = priceLines.map((item) => active.createPriceLine({ price: item.price, color: item.color, title: item.title, lineStyle: item.style, lineWidth: item.width as 1 | 2, axisLabelVisible: Boolean(item.title) }));
+    const created = priceLines.map((item) => active.createPriceLine({ price: item.price, color: item.color, title: item.title, lineStyle: item.style, lineWidth: Math.max(1, Math.min(4, Math.round(item.width))) as 1 | 2 | 3 | 4, axisLabelVisible: Boolean(item.title) }));
     return () => created.forEach((priceLine) => active.removePriceLine(priceLine));
   }, [appearance, dataset, frame, spotTape]);
 
@@ -219,10 +322,26 @@ function LightweightProfile({
     if (chart && series) setSurface({ chart, series });
   }, [appearance.chartType]);
 
-  return <div className="relative min-h-[600px] w-full" data-gex-box-chart="true">
+  const reset = useCallback(() => { chartRef.current?.timeScale().fitContent(); setProfileScale(1); }, []);
+  const snapshot = useCallback(() => {
+    const root = hostRef.current?.parentElement; if (!root) return;
+    const layers = [...root.querySelectorAll("canvas")]; if (!layers.length) return;
+    const rect = root.getBoundingClientRect(); const output = document.createElement("canvas");
+    output.width = Math.max(1, Math.round(rect.width * devicePixelRatio)); output.height = Math.max(1, Math.round(rect.height * devicePixelRatio));
+    const context = output.getContext("2d"); if (!context) return;
+    layers.forEach((layer) => context.drawImage(layer, 0, 0, output.width, output.height));
+    const link = document.createElement("a"); link.download = `gex-box-classic-${frame.ticker}-${frame.timestamp}.png`; link.href = output.toDataURL("image/png"); link.click();
+  }, [frame]);
+  return <div className="relative h-full min-h-0 w-full flex-1 bg-black" data-gex-box-chart="true" onDoubleClick={reset}>
     <div ref={hostRef} className="absolute inset-0" />
-    <ProfileCanvas frame={frame} strikes={strikes} dataset={dataset} appearance={appearance} priceSeries={surface?.series ?? null} chart={surface?.chart ?? null} palette={palette} />
-    <div className="pointer-events-none absolute left-3 top-3 z-[3] border border-white/10 bg-black/70 px-2 py-1 font-mono text-[8px] uppercase tracking-[.14em] text-white/65">Lightweight Charts · native pan / zoom / crosshair</div>
+    <ProfileCanvas frame={frame} frames={frames} strikes={strikes} dataset={dataset} appearance={appearance} priceSeries={surface?.series ?? null} chart={surface?.chart ?? null} palette={palette} profileScale={profileScale} />
+    <div aria-label="GEX magnitude axis" className="absolute inset-x-0 top-0 z-[4] h-6 cursor-ew-resize" onWheel={(event) => { event.preventDefault(); setProfileScale((value) => Math.max(.25, Math.min(5, value * (event.deltaY < 0 ? 1.12 : .89)))); }} />
+    <div className="absolute right-3 top-3 z-[6] flex flex-col gap-1">
+      <button type="button" onClick={() => hostRef.current?.parentElement?.requestFullscreen()} className="flex h-7 w-7 items-center justify-center border border-white/15 bg-black/75 text-white/65 hover:text-white" aria-label="Fullscreen Classic chart"><Maximize2 className="h-3.5 w-3.5" /></button>
+      <button type="button" onClick={snapshot} className="flex h-7 w-7 items-center justify-center border border-white/15 bg-black/75 text-white/65 hover:text-white" aria-label="Snapshot Classic chart"><Camera className="h-3.5 w-3.5" /></button>
+      <button type="button" onClick={reset} className="flex h-7 w-7 items-center justify-center border border-white/15 bg-black/75 text-white/65 hover:text-white" aria-label="Reset Classic chart"><RotateCcw className="h-3.5 w-3.5" /></button>
+      <span className="flex h-7 min-w-7 items-center justify-center border border-white/15 bg-black/75 px-1.5 font-mono text-[8px] text-white/65">1m</span>
+    </div>
   </div>;
 }
 
@@ -233,7 +352,7 @@ const STATE_PALETTES: Record<GexBotStateMetric, { primary: string; secondary: st
   negative_vanna: { primary: "#59d9b4", secondary: "#ef668b", call: "#59d9b4", put: "#ef668b" }, open_interest: { primary: "#73b7ff", secondary: "#ffb347", call: "#73b7ff", put: "#ffb347" },
 };
 
-export function ProfessionalProfileChart(props: { frame: GexBotProfileFrame; dataset: Dataset; appearance: Appearance; spotTape: SpotSample[]; priorIndex: number; maxChange?: Array<{ label: string; value: [number, number] }>; onHover: (strike: GexBotStrike | null) => void }) {
+export function ProfessionalProfileChart(props: { frame: GexBotProfileFrame; frames?: GexBotProfileFrame[]; dataset: Dataset; appearance: Appearance; spotTape: SpotSample[]; priorIndex: number; maxChange?: Array<{ label: string; value: [number, number] }>; onHover: (strike: GexBotStrike | null) => void }) {
   return <LightweightProfile {...props} />;
 }
 export function ProfessionalStateChart(props: { frame: GexBotProfileFrame; metric: GexBotStateMetric; appearance: Appearance; spotTape: SpotSample[]; priorIndex: number; onHover: (strike: GexBotStrike | null) => void }) {
