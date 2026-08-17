@@ -1238,7 +1238,10 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     displayMode: "raw",
     clusterEnabled: false,
     clusterDistanceMode: "percentage",
-    proxyMode: false,
+    // Indexes and futures automatically use their documented tradable ETF
+    // source (QQQ or SPY). This remains configurable for directly traded
+    // equities, but a fresh futures indicator must work immediately.
+    proxyMode: true,
     showOriginMarker: false,
     showForwardMemory: false,
     showExactLine: true,

@@ -155,3 +155,15 @@ test("Dark Pool GEX paints a one-page head before background history enrichment"
   assert.match(adapter, /quantdata-dark-pool-print-history-v1/);
   assert.match(adapter, /getDurableDarkPoolPrintHistory/);
 });
+
+test("Dark Pool GEX automatically projects options-underlying prints onto futures", async () => {
+  const [chart, config] = await Promise.all([
+    read("src/components/Chart.tsx"),
+    read("src/lib/chartIndicatorConfig.ts"),
+  ]);
+  assert.match(chart, /const mappedSource = defaultDarkPoolSource\(display\)/);
+  assert.match(chart, /const requiresMappedSource = mappedSource !== display/);
+  assert.match(chart, /const source = requiresMappedSource \|\| indicatorSettings\.proxyMode \? mappedSource : display/);
+  assert.doesNotMatch(chart, /Enable explicit proxy mode to use its documented ETF mapping/);
+  assert.match(config, /proxyMode: true/);
+});

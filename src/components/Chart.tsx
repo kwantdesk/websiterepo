@@ -6702,15 +6702,15 @@ function Chart({
     }
     const display = normalizeDarkPoolInstrument(instrument);
     const indicatorSettings = { ...DEFAULT_DARK_POOL_GEX_SETTINGS, ...(darkPoolGexIndicator.settings ?? {}) } as DarkPoolGexSettings;
-    const requiresExplicitProxy = /^(NQ|MNQ|ES|MES|RTY|M2K|YM|MYM|NDX|SPX|SPXW)$/.test(display);
-    if (!indicatorSettings.proxyMode && requiresExplicitProxy) {
-      setDarkPoolGexPayload(null);
-      setDarkPoolGexSnapshot(null);
-      setDarkPoolGexLoading(false);
-      setDarkPoolGexError(`${display} has no direct off-exchange print tape. Enable explicit proxy mode to use its documented ETF mapping.`);
-      return;
-    }
-    const source = indicatorSettings.proxyMode ? defaultDarkPoolSource(display) : display;
+    // Futures and cash indices do not publish their own off-exchange tape.
+    // Always project the validated ETF print tape into their native price
+    // space: QQQ -> NQ/MNQ/NDX and SPY -> ES/MES/SPX/SPXW.  Requiring a
+    // hidden per-instance proxy switch left existing/saved indicators blank
+    // and, worse, allowed an NQ chart to request a fictitious NQ dark-pool
+    // tape. Directly traded equities may still opt into their native tape.
+    const mappedSource = defaultDarkPoolSource(display);
+    const requiresMappedSource = mappedSource !== display;
+    const source = requiresMappedSource || indicatorSettings.proxyMode ? mappedSource : display;
     const refreshMs = Math.max(1_000, Math.min(60_000, Number(darkPoolGexIndicator.settings?.refreshSeconds ?? 5) * 1_000));
     const historicalAsOf = drawingCandlesRef.current.at(-1)?.timestamp ?? Date.now();
     const asOfMs = indicatorSettings.contextMode === "current" ? Date.now() : historicalAsOf;
