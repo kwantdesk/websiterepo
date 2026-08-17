@@ -213,6 +213,7 @@ function persistGexIntervalUserPresets(presets: GexIntervalUserPreset[]) {
 // favourite is lost while feed-specific studies are connected and validated.
 export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "gamma-environment",
+  "zero-gamma-line",
   "gamma-heatmap",
   "net-gamma-exposure-by-strike",
   "gex-interval-map",

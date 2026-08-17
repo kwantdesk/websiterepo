@@ -1,8 +1,24 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import {
   isZeroGammaLinePayload,
   zeroGammaRootForInstrument,
 } from "../src/lib/zeroGammaLine.ts";
+
+const [catalog, config, controls, chart, route] = await Promise.all([
+  readFile(new URL("../src/lib/chartIndicatorCatalog.ts", import.meta.url), "utf8"),
+  readFile(new URL("../src/lib/chartIndicatorConfig.ts", import.meta.url), "utf8"),
+  readFile(new URL("../src/components/ChartIndicatorsControl.tsx", import.meta.url), "utf8"),
+  readFile(new URL("../src/components/Chart.tsx", import.meta.url), "utf8"),
+  readFile(new URL("../src/app/api/zero-gamma-line/route.ts", import.meta.url), "utf8"),
+]);
+
+assert.match(catalog, /indicator\("Zero Gamma Line", "Options Flow"/);
+assert.match(config, /LIVE_CHART_INDICATOR_IDS[\s\S]*?"zero-gamma-line"/);
+assert.match(controls, /RENDERED_CHART_INDICATOR_IDS[\s\S]*?"zero-gamma-line"/);
+assert.match(chart, /indicatorId === "zero-gamma-line"/);
+assert.match(chart, /\/api\/zero-gamma-line\?instrument=/);
+assert.match(route, /getZeroGammaLinePayload/);
 
 assert.equal(zeroGammaRootForInstrument("NQ"), "NQ");
 assert.equal(zeroGammaRootForInstrument("MNQU6"), "NQ");
