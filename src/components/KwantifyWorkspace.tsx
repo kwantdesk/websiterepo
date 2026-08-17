@@ -5724,23 +5724,37 @@ function WorkspaceChartPaneComponent({
       liveFrameRef.current = null;
     }
     const cachedGammaOverlayDirect = readGammaOverlayCache(gammaInstrument, settings);
-    const cachedGammaPayload = primaryGammaConversion
-      ? readGammaSessionPayload(primaryGammaConversion)
-      : null;
-    const restoredGammaOverlay = cachedGammaPayload && primaryGammaConversion
-      ? buildGammaChartOverlay({
-          payload: cachedGammaPayload,
-          conversion: primaryGammaConversion,
-          candles: latestCandlesRef.current,
-          futuresPrice: latestFuturesRef.current.price,
-          futuresAsOfMs: latestFuturesRef.current.asOfMs,
-          futuresContract: contractSymbol ?? primaryGammaConversion.futuresRoot,
-          tickSize: futuresTickSize(pane.symbol),
-          settings,
-        })
-      : null;
-    const cachedGammaCheckedAt = cachedGammaPayload
-      ? Date.parse(cachedGammaPayload.checkedAt)
+    // Cash-mapped SPY/QQQ is the preferred chart overlay, but it needs a
+    // valid futures calibration. Restore the native ES/NQ frame as the
+    // immediate fallback instead of showing a loader while candle history
+    // and the cash calibration are still hydrating.
+    const cachedGammaCandidates = [primaryGammaConversion, fallbackGammaConversion]
+      .filter((conversion): conversion is GammaConversionDefinition => Boolean(conversion))
+      .filter((conversion, index, rows) => rows.findIndex((candidate) => candidate.id === conversion.id) === index)
+      .map((conversion) => ({
+        conversion,
+        payload: readGammaSessionPayload(conversion),
+      }));
+    const restoredGammaCandidate = cachedGammaCandidates
+      .map(({ conversion, payload }) => ({
+        payload,
+        overlay: payload
+          ? buildGammaChartOverlay({
+              payload,
+              conversion,
+              candles: latestCandlesRef.current,
+              futuresPrice: latestFuturesRef.current.price,
+              futuresAsOfMs: latestFuturesRef.current.asOfMs,
+              futuresContract: contractSymbol ?? conversion.futuresRoot,
+              tickSize: futuresTickSize(pane.symbol),
+              settings,
+            })
+          : null,
+      }))
+      .find((candidate) => candidate.overlay);
+    const restoredGammaOverlay = restoredGammaCandidate?.overlay ?? null;
+    const cachedGammaCheckedAt = restoredGammaCandidate?.payload
+      ? Date.parse(restoredGammaCandidate.payload.checkedAt)
       : Number.NaN;
     const cachedGammaOverlayFromPayload = restoredGammaOverlay
       ? {
@@ -5748,7 +5762,7 @@ function WorkspaceChartPaneComponent({
           // A stored frame is an immediate visual bridge, not permission to
           // label old options data live. Fresh responses replace it silently.
           stale: !Number.isFinite(cachedGammaCheckedAt)
-            || Date.now() - cachedGammaCheckedAt > Math.max(60_000, gammaRefreshDelay(cachedGammaPayload?.refreshAfterMs) * 2),
+            || Date.now() - cachedGammaCheckedAt > Math.max(60_000, gammaRefreshDelay(restoredGammaCandidate?.payload?.refreshAfterMs) * 2),
         }
       : null;
     const cachedGammaOverlay = cachedGammaOverlayDirect ?? cachedGammaOverlayFromPayload;
@@ -5769,6 +5783,66 @@ function WorkspaceChartPaneComponent({
     setValueAreaLevelsError(null);
     setValueAreaLevelsLoading(valueAreaLevelsEnabled && valueAreaLevelsAvailable && !cachedValueAreaOverlay);
   }, [pane.broker, pane.symbol]);
+
+  useEffect(() => {
+    if (
+      (!gammaLevelsEnabled && !levelExportRequested && !gammaEnvironmentIndicator)
+      || !gammaLevelsAvailable
+      || !fallbackGammaConversion
+    ) return;
+
+    let cancelled = false;
+    // Native futures gamma is independent of cash/futures calibration and can
+    // start as soon as the pane knows its symbol. This request is shared with
+    // the full loader below, so it removes the candle-history waterfall
+    // without creating another provider request.
+    void fetchGammaPayload(fallbackGammaConversion)
+      .then((payload) => {
+        if (cancelled) return;
+        const future = latestFuturesRef.current;
+        const overlay = buildGammaChartOverlay({
+          payload,
+          conversion: fallbackGammaConversion,
+          candles: latestCandlesRef.current,
+          futuresPrice: future.price,
+          futuresAsOfMs: future.asOfMs,
+          futuresContract: future.contractSymbol ?? currentCmeContract(pane.symbol) ?? fallbackGammaConversion.futuresRoot,
+          tickSize: future.tickSize,
+          settings,
+        });
+        if (!overlay) return;
+        writeGammaOverlayCache(overlay);
+        setGammaOverlay((current) => {
+          // Never replace an already-calibrated SPY/QQQ overlay with the
+          // fallback. Native is the fast first paint and transition source.
+          if (
+            current?.instrument === gammaInstrument
+            && current.calibration.sourceSymbol !== fallbackGammaConversion.source
+          ) return current;
+          return overlay;
+        });
+        setGammaLevelsError(null);
+        setGammaLevelsLoading(false);
+      })
+      .catch(() => {
+        // The normal loader owns error/retry UI. A failed speculative warm-up
+        // must not blank a last-good overlay or surface a duplicate warning.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    fallbackGammaConversion?.id,
+    gammaEnvironmentIndicator?.instanceId,
+    gammaInstrument,
+    gammaLevelsAvailable,
+    gammaLevelsEnabled,
+    levelExportRequested,
+    pane.symbol,
+    settings.downColor,
+    settings.upColor,
+  ]);
 
   useEffect(() => {
     const supported = pane.broker === "Databento" && (gammaInstrument === "NQ" || gammaInstrument === "MNQ");

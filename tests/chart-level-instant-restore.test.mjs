@@ -15,8 +15,17 @@ test("chart levels restore last-good overlays before background refresh", () => 
   assert.match(workspace, /useState<ValueAreaChartOverlay \| null>\(\(\) =>[\s\S]*?readValueAreaOverlayCache\(pane\.symbol, settings\)\)/);
   assert.match(workspace, /const cachedGammaOverlayDirect = readGammaOverlayCache\(gammaInstrument, settings\)[\s\S]*?setGammaOverlay\(cachedGammaOverlay\)/);
   assert.match(workspace, /const cachedValueAreaOverlay = valueAreaLevelsAvailable[\s\S]*?readValueAreaOverlayCache\(pane\.symbol, settings\)[\s\S]*?setValueAreaOverlay\(cachedValueAreaOverlay\)/);
-  assert.match(workspace, /setGammaLevelsLoading\(gammaLevelsEnabled && gammaLevelsAvailable && !cachedGammaOverlay\)/);
+  assert.match(workspace, /setGammaLevelsLoading\([\s\S]*?gammaLevelsAvailable[\s\S]*?&& !cachedGammaOverlay,[\s\S]*?\)/);
   assert.match(workspace, /setValueAreaLevelsLoading\(valueAreaLevelsEnabled && valueAreaLevelsAvailable && !cachedValueAreaOverlay\)/);
+});
+
+test("ES gamma restores native levels and starts them before candle history is ready", () => {
+  assert.match(workspace, /const cachedGammaCandidates = \[primaryGammaConversion, fallbackGammaConversion\]/);
+  assert.match(workspace, /readGammaSessionPayload\(conversion\)/);
+  assert.match(workspace, /Native futures gamma is independent of cash\/futures calibration/);
+  const warmupIndex = workspace.indexOf("void fetchGammaPayload(fallbackGammaConversion)");
+  const readinessGateIndex = workspace.indexOf("if (!gammaDataReady)");
+  assert.ok(warmupIndex > 0 && readinessGateIndex > warmupIndex);
 });
 
 test("value-area restore uses the parent CME book and survives a page reload", () => {
