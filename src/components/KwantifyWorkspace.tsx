@@ -10134,7 +10134,11 @@ export default function KwantifyWorkspace({
   }, [activeChartBrokerLabel, bottomWorkspaceSection, priorityLiveSymbolsCsv, selectedInstrument, streamReconnectNonce, usingCTraderFeed, usingDatabentoFeed, watchlistSymbolsCsv]);
 
   useEffect(() => {
-    if (section !== "charts") return;
+    // GEX VUE owns an independent chart workspace, but its watchlist is still
+    // backed by the same normalized quote stores as Charts. Keeping this
+    // refresher Charts-only left Market Index rows (SPX/NDX/SPY/QQQ, etc.)
+    // permanently stale whenever GEX VUE was the active route.
+    if (section !== "charts" && section !== "gamvue") return;
     if (activeChartBrokerLabel === "Massive" || activeChartBrokerLabel === "Databento") {
       return;
     }
@@ -10262,7 +10266,10 @@ export default function KwantifyWorkspace({
   }, [activeChartBrokerLabel, chartTrades.length, section, selectedInstrument, selectedTimeframe, streamHealthyByBroker, usingCTraderFeed, watchlistSymbolsCsv]);
 
   useEffect(() => {
-    if (section !== "charts") return;
+    // Refresh broker groups that are not driving the selected pane as well.
+    // This is especially important in GEX VUE, where a CME futures chart and
+    // options-underlying watchlist rows are commonly visible together.
+    if (section !== "charts" && section !== "gamvue") return;
     const nameMap: Record<string, string> = {
       EUR_USD: "EURUSD",
       GBP_USD: "GBPUSD",
