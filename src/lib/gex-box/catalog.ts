@@ -14,13 +14,13 @@ export function gexBoxCatalog() {
     orderflowMetrics: GEX_BOX_ORDERFLOW_METRICS,
     expiryModes: GEX_BOX_EXPIRY_MODES,
     capabilities: {
-      liveProfiles: { available: true, source: "gexbot", entitlementDependent: true },
-      stateProfiles: { available: true, source: "gexbot", entitlementDependent: true },
-      orderflow: { available: true, source: "gexbot", entitlementDependent: true },
-      historicalOrderflow: { available: true, source: "kwantdesk_archive", configurationDependent: true },
+      liveProfiles: { available: true, source: "quantdata", entitlementDependent: false },
+      stateProfiles: { available: true, source: "quantdata", entitlementDependent: false },
+      orderflow: { available: true, source: "quantdata", entitlementDependent: false },
+      historicalOrderflow: { available: true, source: "quantdata", configurationDependent: false },
       contractReconstruction: { available: false, reason: "Normalized option contracts are not supplied to this workspace yet." },
       durableServerAlerts: { available: false, reason: "A durable server-side alert store is not configured for GEX BOX." },
-      providerStream: { available: false, reason: "The connected provider surface is a deduplicated poller, not a resumable stream." },
+      providerStream: { available: false, reason: "QuantData exposure frames are polled and aligned to Databento underlying prices." },
     },
   };
 }

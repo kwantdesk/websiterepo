@@ -80,9 +80,9 @@ type SpotSample = { timestamp: number; spot: number; zeroGamma?: number | null }
 
 const STORAGE_KEY = "kwantdesk:gex-box:workspace:v1";
 const LEGACY_STORAGE_KEY = "kwantdesk:gexbot:workspace:v2";
-const SPOT_STORAGE_KEY = "kwantdesk:gexbot:spot-tape:v1";
-const ORDERFLOW_STORAGE_KEY = "kwantdesk:gexbot:orderflow-tape:v1";
-const FRAME_STORAGE_PREFIX = "kwantdesk:gexbot:last-verified:v1:";
+const SPOT_STORAGE_KEY = "kwantdesk:gex-box:spot-tape:native-v1";
+const ORDERFLOW_STORAGE_KEY = "kwantdesk:gex-box:orderflow-tape:native-v1";
+const FRAME_STORAGE_PREFIX = "kwantdesk:gex-box:last-native:v1:";
 const DEFAULT_APPEARANCE: Appearance = {
   positive: "#6fe36a",
   negative: "#ff4f62",
@@ -153,7 +153,7 @@ function categoryFor(view: View, expiry: Expiry, metric: StateMetric) {
 }
 
 function cacheKey(view: View, ticker: string, category: string) {
-  return `gexbot:${view}:${ticker}:${category}`;
+  return `gex-box-native:${view}:${ticker}:${category}`;
 }
 
 function tickerLabel(ticker: string) {
@@ -475,13 +475,14 @@ function SourceDiagnostics({ envelope }: { envelope: ProfileEnvelope | null }) {
   return (
     <div className="space-y-2">
       <SectionTitle>Source diagnostics</SectionTitle>
-      <SummaryRow label="Provider" value="GEXBOT" />
+      <SummaryRow label="Exposure" value="QUANTDATA" />
+      <SummaryRow label="Underlying" value={envelope?.dataSource?.underlying?.toUpperCase() ?? "QUANTDATA"} />
       <SummaryRow label="Provider frame" value={timeLabel(providerTimestamp)} />
       <SummaryRow label="Received" value={timeLabel(envelope?.checkedAt)} />
       <SummaryRow label="Freshness" value={freshness} />
       <SummaryRow label="Session" value={envelope?.session ?? "UNAVAILABLE"} />
       <SummaryRow label="History" value={envelope?.historyStatus ?? "UNAVAILABLE"} />
-      <SummaryRow label="Entitlement" value={envelope?.entitlementRequired ? "REQUIRED" : envelope?.ok ? "ACTIVE" : "UNKNOWN"} />
+      <SummaryRow label="Feed" value={envelope?.ok ? "ACTIVE" : "UNAVAILABLE"} />
     </div>
   );
 }
@@ -971,7 +972,7 @@ export default function GexBotWorkspace() {
         setEnvelope((current) => current ?? {
           ok: false, view, ticker, category, session: "DELAYED", marketOpen: false,
           checkedAt: Date.now(), frame: null, majors: null, maxChange: null,
-          error: error instanceof Error ? error.message : "GEXBot could not be reached.",
+          error: error instanceof Error ? error.message : "The native QuantData exposure backend could not be reached.",
         });
         timer = setTimeout(poll, 12_000);
       } finally {
@@ -1122,7 +1123,7 @@ export default function GexBotWorkspace() {
         <div className="flex min-h-16 flex-wrap items-center justify-between gap-3 px-4 py-2.5 lg:px-6">
           <div className="flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 shadow-[0_0_20px_color-mix(in_srgb,var(--primary)_12%,transparent)]"><Dna className="h-4 w-4 text-primary" /></div>
-            <div><h1 className="text-[12px] font-bold uppercase tracking-[.2em]">GEX BOX</h1><p className="mt-0.5 text-[9px] text-muted">Options exposure workstation · verified provider frames</p></div>
+            <div><h1 className="text-[12px] font-bold uppercase tracking-[.2em]">GEX BOX</h1><p className="mt-0.5 text-[9px] text-muted">QuantData exposure · Databento underlying prices</p></div>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
             <KwantSelect value={ticker} onChange={(event) => setTicker(event.target.value)} className="h-9 min-w-[112px] rounded-xl border border-border bg-background px-3 font-mono text-[10px] font-semibold" menuLabel="Options underlying">

@@ -8,12 +8,12 @@ export function normalizeGexBotEnvelope(envelope: GexBotTerminalEnvelope<GexBotP
   const instrument = GEX_BOX_INSTRUMENTS.find((item) => item.providerTicker === envelope.ticker) ?? GEX_BOX_INSTRUMENTS[0];
   const receivedAt = envelope.checkedAt;
   const source: SourceStamp = {
-    provider: "gexbot",
+    provider: "quantdata",
     providerTimestamp: frame.timestamp,
     receivedAt,
     session: envelope.session,
     freshnessMs: Math.max(0, receivedAt - frame.timestamp),
-    formulaVersion: null,
+    formulaVersion: envelope.dataSource?.formulaVersion ?? null,
     simulated: envelope.historySimulated === true,
   };
   const strikes: StrikeExposure[] = frame.strikes.map(([strike, volumeExposure, openInterestExposure, priors]) => ({

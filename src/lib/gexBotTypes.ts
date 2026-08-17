@@ -102,4 +102,14 @@ export type GexBotTerminalEnvelope<TFrame> = {
   maxChange: GexBotMaxChangeFrame | null;
   error?: string;
   entitlementRequired?: boolean;
+  /**
+   * Native KwantDesk provenance. The legacy GexBot-prefixed transport types
+   * remain only to avoid rewriting the chart renderer; the GEX Box routes do
+   * not call, proxy, or depend on GEXBot.
+   */
+  dataSource?: {
+    exposure: "QuantData";
+    underlying: "Databento" | "QuantData";
+    formulaVersion: string;
+  };
 };

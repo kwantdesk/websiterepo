@@ -101,7 +101,7 @@ test("provider normalization preserves native levels, provenance and raw strike 
   });
   assert.ok(normalized);
   assert.equal(normalized.instrument.id, "ES_SPX");
-  assert.equal(normalized.source.provider, "gexbot");
+  assert.equal(normalized.source.provider, "quantdata");
   assert.equal(normalized.source.freshnessMs, 500);
   assert.equal(normalized.source.formulaVersion, null);
   assert.equal(normalized.levels.zeroGamma?.price, 6450);
@@ -192,17 +192,24 @@ test("navigation exposes GEX BOX immediately after GEX CAL and preserves GEX CAL
   assert.match(layout, /"\/gex-box": "gexbot"/);
 });
 
-test("workspace uses only canonical GEX BOX APIs and production history cannot request simulation", async () => {
+test("GEX BOX routes use the native QuantData and Databento adapter without GEXBot or simulation", async () => {
   const workspace = await readFile(new URL("../src/components/gexbot/GexBotWorkspace.tsx", import.meta.url), "utf8");
   assert.doesNotMatch(workspace, /\/api\/gexbot-terminal/);
   assert.match(workspace, /\/api\/gex-box\/snapshot/);
   assert.match(workspace, /\/api\/gex-box\/history/);
   assert.match(workspace, /\/api\/gex-box\/research/);
   const historyRoute = await readFile(new URL("../src/app/api/gex-box/history/route.ts", import.meta.url), "utf8");
+  const snapshotRoute = await readFile(new URL("../src/app/api/gex-box/snapshot/route.ts", import.meta.url), "utf8");
+  const researchRoute = await readFile(new URL("../src/app/api/gex-box/research/route.ts", import.meta.url), "utf8");
+  const nativeServer = await readFile(new URL("../src/lib/gex-box/native.server.ts", import.meta.url), "utf8");
   assert.match(historyRoute, /validViews = new Set\(\["classic", "state", "orderflow"\]\)/);
-  assert.match(historyRoute, /fetchGexBotReplay\(view as "classic" \| "state" \| "orderflow", ticker, category, requestedDate\)/);
+  assert.match(historyRoute, /getNativeGexBoxReplay\(view as "classic" \| "state" \| "orderflow", ticker, category, requestedDate\)/);
   assert.match(historyRoute, /History date must use YYYY-MM-DD/);
   assert.doesNotMatch(historyRoute, /searchParams\.get\("preview"\)/);
+  assert.doesNotMatch(`${historyRoute}\n${snapshotRoute}\n${researchRoute}`, /fetchGexBot|gexBot\.server/);
+  assert.match(nativeServer, /getGexMapPanel/);
+  assert.match(nativeServer, /getDatabentoBars/);
+  assert.match(nativeServer, /getGexDeskReplaySessionDates/);
   assert.match(workspace, /Replay previous NY/);
   assert.match(workspace, /replayFrameAtOrBefore/);
   assert.match(workspace, /replayFramesAtOrBefore/);

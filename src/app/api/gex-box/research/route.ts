@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { GEX_BOX_INSTRUMENTS } from "@/lib/gex-box/domain";
+import { getNativeGexBoxEnvelope } from "@/lib/gex-box/native.server";
 import { parseGexResearchCommand } from "@/lib/gex-box/research";
-import { fetchGexBotTerminal } from "@/lib/gexBot.server";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
     }
     const category = parsed.chart === "gex" || parsed.chart === "oi" ? "gex_full" : parsed.chart === "dex" ? "delta" : parsed.chart;
     const view = parsed.chart === "gex" || parsed.chart === "oi" ? "classic" : "state";
-    const envelope = await fetchGexBotTerminal(view, ticker, category, false);
+    const envelope = await getNativeGexBoxEnvelope(view, ticker, category);
     if (!envelope.ok || !envelope.frame) {
       return NextResponse.json({ ok: false, request: parsed, error: envelope.error ?? "Research source is unavailable." }, { status: envelope.entitlementRequired ? 403 : 503 });
     }
@@ -38,7 +38,15 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       ok: true,
       request: parsed,
-      source: { provider: "gexbot", providerTimestamp: envelope.frame.timestamp, checkedAt: envelope.checkedAt, session: envelope.session, simulated: false },
+      source: {
+        provider: "quantdata",
+        underlyingProvider: envelope.dataSource?.underlying ?? "QuantData",
+        providerTimestamp: envelope.frame.timestamp,
+        checkedAt: envelope.checkedAt,
+        session: envelope.session,
+        simulated: false,
+        formulaVersion: envelope.dataSource?.formulaVersion,
+      },
       spot: envelope.frame.spot,
       rows: rows.map(([strike, volumeExposure, openInterestExposure, priors]) => ({ strike, volumeExposure, openInterestExposure, priors })),
     }, { headers: { "Cache-Control": "private, no-store, max-age=0", Vary: "Cookie" } });
