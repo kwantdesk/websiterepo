@@ -23,6 +23,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ProfessionalOrderflowChart, ProfessionalProfileChart, ProfessionalStateChart } from "@/components/gexbot/GexBotCharts";
 import KwantSelect from "@/components/ui/KwantSelect";
 import { GEX_BOX_ORDERFLOW_METRICS, type OrderflowMetric } from "@/lib/gex-box/domain";
+import { normalizeReplayFrames, replayFrameAtOrBefore, replayFramesAtOrBefore } from "@/lib/gex-box/replay";
 import { parseGexResearchCommand, serializeGexResearchCommand, type GexResearchRequest } from "@/lib/gex-box/research";
 import type {
   GexBotMaxChangeFrame,
@@ -39,6 +40,12 @@ type Dataset = "volume" | "oi" | "both";
 type StateMetric = "gex" | "gamma" | "delta" | "vanna" | "charm";
 type LineStyle = "solid" | "short" | "dash" | "dot";
 type ProfileEnvelope = GexBotTerminalEnvelope<GexBotProfileFrame | GexBotOrderflowFrame>;
+type ReplayData = {
+  key: string;
+  date: string | null;
+  frames: Array<GexBotProfileFrame | GexBotOrderflowFrame>;
+  error: string | null;
+};
 
 type Appearance = {
   positive: string;
@@ -114,6 +121,17 @@ function tickerLabel(ticker: string) {
   if (ticker === "NQ_NDX") return "NQ / NDX";
   if (ticker === "ES_SPX") return "ES / SPX";
   return ticker;
+}
+
+function newYorkReplayTime(timestamp: number | null) {
+  if (!timestamp) return "--:--:-- ET";
+  return `${new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).format(timestamp)} ET`;
 }
 
 function number(value: unknown) {
@@ -754,13 +772,20 @@ export default function GexBotWorkspace() {
   const [envelope, setEnvelope] = useState<ProfileEnvelope | null>(null);
   const [loading, setLoading] = useState(true);
   const [hover, setHover] = useState<GexBotStrike | null>(null);
-  const [priorIndex, setPriorIndex] = useState(0);
-  const [playingHistory, setPlayingHistory] = useState(false);
   const [showSettings, setShowSettings] = useState(true);
   const [spotTape, setSpotTape] = useState<SpotSample[]>([]);
   const [orderflowTape, setOrderflowTape] = useState<GexBotOrderflowFrame[]>([]);
+  const [replayActive, setReplayActive] = useState(false);
+  const [replayPlaying, setReplayPlaying] = useState(false);
+  const [replayLoading, setReplayLoading] = useState(false);
+  const [replaySpeed, setReplaySpeed] = useState(60);
+  const [replayTimestamp, setReplayTimestamp] = useState<number | null>(null);
+  const [replayData, setReplayData] = useState<ReplayData | null>(null);
   const category = categoryFor(view, expiry, stateMetric);
+  const replayKey = `${ticker}:${view}:${category}`;
   const requestSequence = useRef(0);
+  const replaySequence = useRef(0);
+  const replayCache = useRef(new Map<string, ReplayData>());
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ version: 1, view, ticker, expiry, stateMetric, dataset, appearance, visibleMetrics }));
@@ -841,10 +866,8 @@ export default function GexBotWorkspace() {
     if (restored && restored.historySimulated !== true) { applyEnvelope(restored); setLoading(false); } else setLoading(true);
     const poll = async () => {
       try {
-        const query = new URLSearchParams({ ticker, category });
-        if (view !== "orderflow") query.set("view", view);
-        const endpoint = view === "orderflow" ? "/api/gex-box/history" : "/api/gex-box/snapshot";
-        const response = await fetch(`${endpoint}?${query}`, { cache: "no-store" });
+        const query = new URLSearchParams({ ticker, category, view });
+        const response = await fetch(`/api/gex-box/snapshot?${query}`, { cache: "no-store" });
         const result = await response.json() as { provider?: ProfileEnvelope; error?: string };
         const payload = result.provider ?? {
           ok: false, view, ticker, category, session: "DELAYED", marketOpen: false,
@@ -871,17 +894,109 @@ export default function GexBotWorkspace() {
     return () => { disposed = true; if (timer) clearTimeout(timer); };
   }, [applyEnvelope, category, ticker, view]);
 
-  useEffect(() => {
-    if (!playingHistory) return;
-    const maximum = Math.max(0, Math.min(5, ...((envelope?.frame as GexBotProfileFrame | undefined)?.strikes.map((entry) => entry[3].length - 1) ?? [0])));
-    if (maximum <= 0) { setPlayingHistory(false); return; }
-    const timer = setInterval(() => setPriorIndex((current) => current >= maximum ? 0 : current + 1), 900);
-    return () => clearInterval(timer);
-  }, [envelope?.frame, playingHistory]);
+  const loadReplay = useCallback(async (resetClock: boolean) => {
+    if (view === "research") return;
+    const cached = replayCache.current.get(replayKey);
+    if (cached) {
+      setReplayData(cached);
+      setReplayTimestamp((current) => {
+        const start = cached.frames[0]?.timestamp;
+        const end = cached.frames.at(-1)?.timestamp;
+        if (start === undefined || end === undefined) return null;
+        if (resetClock || current === null) return start;
+        return Math.max(start, Math.min(end, current));
+      });
+      return;
+    }
+    const sequence = ++replaySequence.current;
+    setReplayLoading(true);
+    setReplayPlaying(false);
+    setReplayData(null);
+    try {
+      const query = new URLSearchParams({ ticker, view, category });
+      const response = await fetch(`/api/gex-box/history?${query}`, { cache: "no-store" });
+      const result = await response.json() as {
+        date?: string | null;
+        frames?: Array<GexBotProfileFrame | GexBotOrderflowFrame>;
+        error?: string;
+      };
+      if (sequence !== replaySequence.current) return;
+      const frames = normalizeReplayFrames(Array.isArray(result.frames) ? result.frames : []);
+      const data: ReplayData = {
+        key: replayKey,
+        date: result.date ?? null,
+        frames,
+        error: frames.length ? null : result.error ?? "The previous New York session archive is unavailable.",
+      };
+      if (frames.length) replayCache.current.set(replayKey, data);
+      setReplayData(data);
+      setReplayTimestamp((current) => {
+        if (resetClock || current === null) return frames[0]?.timestamp ?? null;
+        const start = frames[0]?.timestamp;
+        const end = frames.at(-1)?.timestamp;
+        return start === undefined || end === undefined ? null : Math.max(start, Math.min(end, current));
+      });
+    } catch (error) {
+      if (sequence !== replaySequence.current) return;
+      setReplayData({
+        key: replayKey,
+        date: null,
+        frames: [],
+        error: error instanceof Error ? error.message : "The previous New York session archive is unavailable.",
+      });
+      setReplayTimestamp(null);
+    } finally {
+      if (sequence === replaySequence.current) setReplayLoading(false);
+    }
+  }, [category, replayKey, ticker, view]);
 
-  const frame = envelope?.ok ? envelope.frame : null;
+  useEffect(() => {
+    if (!replayActive || view === "research") return;
+    void loadReplay(false);
+  }, [loadReplay, replayActive, view]);
+
+  useEffect(() => {
+    if (!replayActive || !replayPlaying || !replayData?.frames.length) return;
+    const end = replayData.frames.at(-1)?.timestamp ?? replayData.frames[0].timestamp;
+    let previous = performance.now();
+    const timer = window.setInterval(() => {
+      const now = performance.now();
+      const elapsed = now - previous;
+      previous = now;
+      setReplayTimestamp((current) => {
+        if (current === null) return replayData.frames[0]?.timestamp ?? null;
+        const next = Math.min(end, current + elapsed * replaySpeed);
+        if (next >= end) setReplayPlaying(false);
+        return next;
+      });
+    }, 100);
+    return () => window.clearInterval(timer);
+  }, [replayActive, replayData, replayPlaying, replaySpeed]);
+
+  const liveFrame = envelope?.ok ? envelope.frame : null;
+  const replayFrames = replayData?.key === replayKey ? replayData.frames : [];
+  const replayFrame = replayActive && replayTimestamp !== null
+    ? replayFrameAtOrBefore(replayFrames, replayTimestamp)
+    : null;
+  const frame = replayActive ? replayFrame : liveFrame;
+  const replayVisibleFrames = replayActive && replayTimestamp !== null
+    ? replayFramesAtOrBefore(replayFrames, replayTimestamp)
+    : [];
+  const displaySpotTape = replayActive
+    ? replayVisibleFrames.map((entry) => ({ timestamp: entry.timestamp, spot: entry.spot, zeroGamma: entry.zero_gamma }))
+    : spotTape;
+  const displayOrderflowTape = replayActive
+    ? replayVisibleFrames as GexBotOrderflowFrame[]
+    : orderflowTape;
+  const replayStart = replayFrames[0]?.timestamp ?? null;
+  const replayEnd = replayFrames.at(-1)?.timestamp ?? null;
+  const replayProgress = replayTimestamp !== null && replayStart !== null && replayEnd !== null && replayEnd > replayStart
+    ? ((replayTimestamp - replayStart) / (replayEnd - replayStart)) * 100
+    : 0;
   const isProfile = view !== "orderflow" && view !== "research" && frame;
-  const sessionLabel = view === "research"
+  const sessionLabel = replayActive && view !== "research"
+    ? "REPLAY · PREVIOUS NEW YORK"
+    : view === "research"
     ? "VALIDATED REQUESTS"
     : envelope?.session === "LIVE_RTH"
       ? "LIVE · NEW YORK RTH"
@@ -919,17 +1034,36 @@ export default function GexBotWorkspace() {
         <main className="flex min-w-0 flex-1 flex-col overflow-auto bg-[radial-gradient(circle_at_55%_30%,color-mix(in_srgb,var(--primary)_3%,transparent),transparent_42%)]">
           <div className="flex min-h-11 shrink-0 items-center justify-between gap-3 border-b border-border px-4">
             <div className="flex items-center gap-3 text-[9px] text-muted"><span className="font-semibold uppercase tracking-[.15em] text-foreground">{tickerLabel(ticker)} · {VIEW_META[view].label}</span><span>{view === "research" ? "Strict builder · server-side provider access" : timeLabel(frame?.timestamp)}</span>{loading && envelope ? <RefreshCw className="h-3 w-3 animate-spin text-primary" /> : null}</div>
-            {view === "classic" || view === "state" ? <div className="flex items-center gap-2"><button type="button" onClick={() => setPlayingHistory((value) => !value)} className="flex h-7 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-[8px] font-semibold uppercase text-muted hover:text-foreground">{playingHistory ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}Playback</button><span className="font-mono text-[9px] text-primary">Lookback {priorIndex === 0 ? "now" : `-${priorIndex}`}</span></div> : view === "orderflow" ? <div className="flex items-center gap-3 text-[8px] uppercase tracking-[.14em] text-muted"><span className={envelope?.historyStatus === "LOADED" ? "text-primary" : "text-amber-400"}>{envelope?.historyStatus === "LOADED" && envelope.historyDate ? `Replay · ${envelope.historyDate}` : envelope?.historyStatus === "UNAVAILABLE" ? "Previous session unavailable" : "Previous session loading"}</span><span>0DTE</span><span>1DTE dashed</span></div> : <div className="flex items-center gap-2 text-[8px] uppercase tracking-[.14em] text-primary"><ShieldCheck className="h-3 w-3" />Validated grammar</div>}
+            {view !== "research" ? (
+              <div className="flex min-w-0 items-center gap-2">
+                {!replayActive ? (
+                  <button type="button" onClick={() => { setReplayTimestamp(null); setReplayActive(true); }} className="flex h-7 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-[8px] font-semibold uppercase text-muted hover:border-primary/30 hover:text-primary"><Play className="h-3 w-3" />Replay previous NY</button>
+                ) : (
+                  <>
+                    <button type="button" disabled={replayLoading || !replayFrames.length} onClick={() => setReplayPlaying((current) => !current)} className="flex h-7 items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-2.5 text-[8px] font-semibold uppercase text-primary disabled:opacity-40">{replayPlaying ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}{replayPlaying ? "Pause" : "Play"}</button>
+                    <input aria-label="Previous New York session replay position" type="range" min="0" max="1000" value={Math.round(replayProgress * 10)} disabled={!replayFrames.length} onChange={(event) => {
+                      if (replayStart === null || replayEnd === null) return;
+                      setReplayPlaying(false);
+                      setReplayTimestamp(replayStart + (Number(event.target.value) / 1000) * (replayEnd - replayStart));
+                    }} className="h-1 w-28 accent-[var(--primary)]" />
+                    <KwantSelect aria-label="Replay speed" value={String(replaySpeed)} onChange={(event) => setReplaySpeed(Number(event.target.value))} className="h-7 rounded-lg border border-border bg-background px-2 font-mono text-[8px] text-foreground">
+                      {[1, 5, 15, 60, 120, 300].map((speed) => <option key={speed} value={speed}>{speed}×</option>)}
+                    </KwantSelect>
+                    <span className="whitespace-nowrap font-mono text-[9px] text-primary">{replayLoading ? "Loading session…" : replayData?.error ? "Replay unavailable" : `${replayData?.date ?? "Previous NY"} · ${newYorkReplayTime(replayTimestamp)}`}</span>
+                    <button type="button" onClick={() => { setReplayActive(false); setReplayPlaying(false); }} className="h-7 rounded-lg border border-border bg-background px-2 text-[8px] font-semibold uppercase text-muted hover:text-foreground">Live</button>
+                  </>
+                )}
+              </div>
+            ) : <div className="flex items-center gap-2 text-[8px] uppercase tracking-[.14em] text-primary"><ShieldCheck className="h-3 w-3" />Validated grammar</div>}
           </div>
-          {view === "research" ? <ResearchSurface ticker={ticker} /> : !frame ? <EmptyState envelope={envelope} loading={loading} /> : view === "orderflow" ? (
+          {view === "research" ? <ResearchSurface ticker={ticker} /> : !frame ? (replayActive ? <div className="flex min-h-[420px] flex-1 items-center justify-center"><div className="rounded-xl border border-border bg-panel px-6 py-5 text-center">{replayLoading ? <RefreshCw className="mx-auto h-5 w-5 animate-spin text-primary" /> : null}<p className="mt-2 text-[10px] font-semibold uppercase tracking-[.16em] text-foreground">{replayLoading ? "Loading previous New York session" : "Replay unavailable"}</p><p className="mt-1 max-w-md text-[9px] text-muted">{replayData?.error ?? "Restoring the complete verified session archive."}</p>{!replayLoading ? <button type="button" onClick={() => void loadReplay(true)} className="mt-4 h-8 rounded-lg border border-primary/30 bg-primary/10 px-3 text-[8px] font-semibold uppercase tracking-[.14em] text-primary">Try again</button> : null}</div></div> : <EmptyState envelope={envelope} loading={loading} />) : view === "orderflow" ? (
             <div className="mx-auto w-full max-w-[1680px] overflow-x-auto px-3 py-3">
               {visibleMetrics.length ? (
                 <div className="relative">
                   <ProfessionalOrderflowChart
                     metrics={ORDERFLOW_METRICS.filter((metric) => visibleMetrics.includes(metric.key)).slice(0, 3)}
-                    points={orderflowTape.length ? orderflowTape : [frame as GexBotOrderflowFrame]}
+                    points={displayOrderflowTape.length ? displayOrderflowTape : [frame as GexBotOrderflowFrame]}
                   />
-                  {envelope?.historyStatus === "UNAVAILABLE" && orderflowTape.length < 2 ? <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-background/72 backdrop-blur-[2px]"><div className="rounded-xl border border-amber-400/25 bg-panel px-5 py-4 text-center shadow-2xl"><p className="text-[10px] font-semibold uppercase tracking-[.16em] text-amber-400">Previous session unavailable</p><p className="mt-1 max-w-sm text-[9px] text-muted">The live frame is connected, but GEXBot did not return an entitled archive for the last completed New York sessions.</p></div></div> : null}
                 </div>
               ) : <div className="flex min-h-[420px] items-center justify-center text-[10px] text-muted">Choose at least one orderflow panel from Adjustments.</div>}
             </div>
@@ -937,9 +1071,9 @@ export default function GexBotWorkspace() {
             <div className="flex min-h-[560px] flex-1 items-start overflow-auto">
               <div className="mx-auto min-w-0 flex-1 p-2">
                 {view === "state" ? (
-                  <ProfessionalStateChart frame={frame as GexBotProfileFrame} metric={stateMetric} appearance={appearance} spotTape={spotTape} priorIndex={priorIndex} onHover={setHover} />
+                  <ProfessionalStateChart frame={frame as GexBotProfileFrame} metric={stateMetric} appearance={appearance} spotTape={displaySpotTape} priorIndex={0} onHover={setHover} />
                 ) : (
-                  <ProfessionalProfileChart frame={frame as GexBotProfileFrame} dataset={dataset} appearance={appearance} spotTape={spotTape} priorIndex={priorIndex} onHover={setHover} />
+                  <ProfessionalProfileChart frame={frame as GexBotProfileFrame} dataset={dataset} appearance={appearance} spotTape={displaySpotTape} priorIndex={0} onHover={setHover} />
                 )}
               </div>
             </div>

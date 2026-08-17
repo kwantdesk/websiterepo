@@ -547,6 +547,29 @@ async function readOrderflowArchiveHistory(ticker: string): Promise<HistoryResul
   }
 }
 
+/** Loads one verified previous-session archive without coupling replay to the live-frame endpoint. */
+export async function fetchGexBotReplay(view: View, ticker: string, category: string) {
+  const providerHistory = await requestHistory(ticker, view, category, isNewYorkRth());
+  const history = providerHistory.rows.length || view !== "orderflow"
+    ? providerHistory
+    : await readOrderflowArchiveHistory(ticker).then((deskHistory) => deskHistory.rows.length ? deskHistory : providerHistory);
+  const frames = sampleCompleteSession(history.rows.flatMap((entry) => {
+    try { return [view === "orderflow" ? normalizeOrderflow(entry) : normalizeProfile(entry)]; }
+    catch { return []; }
+  }));
+  return {
+    ok: frames.length > 0,
+    view,
+    ticker,
+    category,
+    status: frames.length ? "LOADED" as const : "UNAVAILABLE" as const,
+    date: history.date,
+    frames,
+    simulated: false,
+    error: frames.length ? undefined : history.error ?? "The previous New York session archive is unavailable.",
+  };
+}
+
 export async function fetchGexBotTerminal(
   view: View,
   ticker: string,
@@ -564,16 +587,21 @@ export async function fetchGexBotTerminal(
       requestJson(`${base}/${encodeURIComponent(category)}`, marketOpen),
       view === "orderflow" ? Promise.resolve(null) : requestJson(`${base}/majors`, marketOpen),
       view === "orderflow" ? Promise.resolve(null) : requestJson(`${base}/maxchange`, marketOpen),
-      // History comes from the desk's own archive: raw frames persisted by the
-      // 60s flow poller. The provider archive stays disconnected; an empty or
-      // unconfigured archive is reported honestly, never simulated over.
-      includeHistory && view === "orderflow"
-        ? readOrderflowArchiveHistory(ticker)
+      // Replay is loaded only on demand. Classic, State, and Orderflow each
+      // request the provider's signed archive for the last completed New York
+      // session. Orderflow may fall back to the desk archive when the provider
+      // archive is unavailable; no replay path fabricates frames.
+      includeHistory
+        ? requestHistory(ticker, view, category, marketOpen).then(async (providerHistory) => {
+            if (providerHistory.rows.length || view !== "orderflow") return providerHistory;
+            const deskHistory = await readOrderflowArchiveHistory(ticker);
+            return deskHistory.rows.length ? deskHistory : providerHistory;
+          })
         : Promise.resolve<HistoryResult>({
             rows: [],
             date: null,
             attemptedDates: [],
-            error: includeHistory ? "History is archived for the orderflow view only." : undefined,
+            error: undefined,
           }),
     ]);
     if (frameResult.status === "rejected") throw frameResult.reason;

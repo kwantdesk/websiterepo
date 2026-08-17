@@ -1,31 +1,35 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { GEX_BOX_INSTRUMENTS } from "@/lib/gex-box/domain";
-import { fetchGexBotTerminal } from "@/lib/gexBot.server";
+import { fetchGexBotReplay } from "@/lib/gexBot.server";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 const validTickers = new Set(GEX_BOX_INSTRUMENTS.map((item) => item.providerTicker));
+const validViews = new Set(["classic", "state", "orderflow"]);
 
 export async function GET(request: NextRequest) {
   const ticker = (request.nextUrl.searchParams.get("ticker") ?? "NQ_NDX").toUpperCase();
-  if (!validTickers.has(ticker)) return NextResponse.json({ error: "Unsupported GEX BOX history ticker." }, { status: 400 });
+  const view = (request.nextUrl.searchParams.get("view") ?? "classic").toLowerCase();
+  const category = (request.nextUrl.searchParams.get("category") ?? (view === "classic" ? "gex_full" : view === "state" ? "gamma" : "orderflow")).toLowerCase();
+  if (!validTickers.has(ticker) || !validViews.has(view)) return NextResponse.json({ error: "Unsupported GEX BOX history request." }, { status: 400 });
   // GEX BOX never substitutes generated preview frames for unavailable
   // provider history. A missing archive must remain an explicit unavailable
   // state in production.
-  const envelope = await fetchGexBotTerminal("orderflow", ticker, "orderflow", true, false);
+  const replay = await fetchGexBotReplay(view as "classic" | "state" | "orderflow", ticker, category);
   return NextResponse.json({
-    ok: envelope.ok,
+    ok: replay.ok,
     ticker,
-    status: envelope.historyStatus,
-    date: envelope.historyDate,
-    simulated: envelope.historySimulated === true,
-    error: envelope.historyError ?? envelope.error,
-    frames: envelope.history ?? [],
-    provider: envelope,
+    view,
+    category,
+    status: replay.status,
+    date: replay.date,
+    simulated: replay.simulated,
+    error: replay.error,
+    frames: replay.frames,
   }, {
-    status: envelope.ok ? 200 : envelope.entitlementRequired ? 403 : 503,
+    status: replay.ok ? 200 : 503,
     headers: { "Cache-Control": "private, no-store, max-age=0", Vary: "Cookie" },
   });
 }

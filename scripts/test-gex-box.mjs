@@ -16,6 +16,11 @@ import {
 import { parseGexResearchCommand, serializeGexResearchCommand } from "../src/lib/gex-box/research.ts";
 import { DEFAULT_GEX_BOX_SETTINGS, migrateGexBoxSettings } from "../src/lib/gex-box/settings.ts";
 import { normalizeGexBotEnvelope } from "../src/lib/gex-box/normalize.ts";
+import {
+  normalizeReplayFrames,
+  replayFrameAtOrBefore,
+  replayFramesAtOrBefore,
+} from "../src/lib/gex-box/replay.ts";
 
 const contract = {
   symbol: "SPXW",
@@ -109,6 +114,20 @@ test("max change never reads a frame after the requested timestamp", () => {
   assert.deepEqual(maxChangeAtOrBefore(history, 300_000, 5), { strike: 100, change: 25 });
 });
 
+test("previous-session replay is ordered, deduplicated and never reads ahead", () => {
+  const frames = normalizeReplayFrames([
+    { timestamp: 300, value: "late" },
+    { timestamp: 100, value: "open" },
+    { timestamp: 200, value: "old" },
+    { timestamp: 200, value: "replacement" },
+  ]);
+  assert.deepEqual(frames.map((frame) => frame.timestamp), [100, 200, 300]);
+  assert.equal(frames[1].value, "replacement");
+  assert.equal(replayFrameAtOrBefore(frames, 250)?.value, "replacement");
+  assert.equal(replayFrameAtOrBefore(frames, 99), null);
+  assert.deepEqual(replayFramesAtOrBefore(frames, 200).map((frame) => frame.timestamp), [100, 200]);
+});
+
 test("research grammar round-trips and rejects unknown tokens", () => {
   const command = "!gex SPX strikes=25 dte=0..7 view=profile calls=otm puts=all combine";
   assert.equal(serializeGexResearchCommand(parseGexResearchCommand(command)), command);
@@ -161,8 +180,12 @@ test("workspace uses only canonical GEX BOX APIs and production history cannot r
   assert.match(workspace, /\/api\/gex-box\/history/);
   assert.match(workspace, /\/api\/gex-box\/research/);
   const historyRoute = await readFile(new URL("../src/app/api/gex-box/history/route.ts", import.meta.url), "utf8");
-  assert.match(historyRoute, /fetchGexBotTerminal\("orderflow", ticker, "orderflow", true, false\)/);
+  assert.match(historyRoute, /validViews = new Set\(\["classic", "state", "orderflow"\]\)/);
+  assert.match(historyRoute, /fetchGexBotReplay\(view as "classic" \| "state" \| "orderflow", ticker, category\)/);
   assert.doesNotMatch(historyRoute, /searchParams\.get\("preview"\)/);
+  assert.match(workspace, /Replay previous NY/);
+  assert.match(workspace, /replayFrameAtOrBefore/);
+  assert.match(workspace, /replayFramesAtOrBefore/);
 });
 
 test("canonical deep-link route supports all four surfaces", async () => {
