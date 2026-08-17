@@ -3,6 +3,7 @@ import { URL } from "node:url";
 
 import { buildArchivedValueAreaProfile } from "./archive-value-area.mjs";
 import { replayArchiveIntoBook } from "./archive-replay.mjs";
+import { RithmicBookStore } from "./book-store.mjs";
 import { loadConfig } from "./config.mjs";
 import { DatabentoEquitiesTradeStream } from "./databento-equities-stream.mjs";
 import { MassiveIndicesStream } from "./massive-indices-stream.mjs";
@@ -1747,28 +1748,29 @@ server.listen(config.port, config.host, () => {
     process.stdout.write("[recorder] DISABLED - live data is not being archived\n");
   }
   if (config.configured) {
-    // Rebuild this session's tape from our own archive before going live, so
-    // a restart does not leave the volume profile and effort indicators
-    // holding only the minutes since the process started.
+    // The live connection must win the startup race. The old sequence waited
+    // for every archived trade to replay before starting Rithmic, leaving all
+    // charts frozen for minutes after a gateway restart. Replay into an
+    // isolated book in parallel, then merge only historical tape fields.
+    client.start().catch((error) => {
+      process.stderr.write(`[rithmic] initial connection failed: ${error.message}\n`);
+    });
+    const archiveBook = new RithmicBookStore({ maxTrades: client.book?.maxTrades || 250_000 });
     replayArchiveIntoBook({
       dir: config.recordDir,
-      book: client.book,
+      book: archiveBook,
       log: (line) => process.stdout.write(`${line}\n`),
     })
       .then((result) => {
+        const merged = client.book.mergeHistoricalTradesFrom(archiveBook);
         process.stdout.write(
           result.reason
             ? `[replay] skipped: ${result.reason}\n`
-            : `[replay] restored ${result.replayed} trades from ${result.files} file(s) for ${result.tradingDate}\n`,
+            : `[replay] restored ${result.replayed} trades and merged ${merged} historical trades from ${result.files} file(s) for ${result.tradingDate}\n`,
         );
       })
       .catch((error) => {
         process.stderr.write(`[replay] failed: ${error.message}\n`);
-      })
-      .finally(() => {
-        client.start().catch((error) => {
-          process.stderr.write(`[rithmic] initial connection failed: ${error.message}\n`);
-        });
       });
   }
   if (config.databentoApiKey) databentoEquities.start();

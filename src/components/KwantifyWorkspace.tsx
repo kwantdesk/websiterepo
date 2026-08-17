@@ -10371,13 +10371,6 @@ export default function KwantifyWorkspace({
             || now - (lastPriceMessageAtBySymbol.get(selectedLiveInstrument) ?? 0) > 30_000
           )
         )
-        || (
-          now - activeStreamOpenedAt > 24_000
-          && [...canonicalPriorityLiveSymbols].some((symbol) => {
-            const lastSymbolTick = lastPriceMessageAtBySymbol.get(symbol);
-            return lastSymbolTick !== undefined && now - lastSymbolTick > 24_000;
-          })
-        )
       ) reconnect();
     }, 3_000);
     const handlePriceMessage = (event: MessageEvent<string>) => {

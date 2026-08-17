@@ -89,3 +89,17 @@ test("a missing archive is reported, never fatal", async () => {
   assert.equal(result.replayed, 0);
   assert.ok(result.reason, "the reason is stated rather than failing silently");
 });
+
+test("historical replay merges without overwriting the live quote or sequence", () => {
+  const archive = new RithmicBookStore({ maxTrades: 1000 });
+  archive.applyTrade({ exchange: "CME", symbol: "NQU6", tradePrice: 29500, tradeSize: 2, aggressor: 1, sourceTradeId: "old", ssboe: 100 });
+  const live = new RithmicBookStore({ maxTrades: 1000 });
+  live.applyTrade({ exchange: "CME", symbol: "NQU6", tradePrice: 30125, tradeSize: 1, aggressor: 2, sourceTradeId: "live", ssboe: 200 });
+  const before = live.snapshot("CME", "NQU6");
+
+  assert.equal(live.mergeHistoricalTradesFrom(archive), 1);
+  const after = live.snapshot("CME", "NQU6");
+  assert.equal(after.lastPrice, 30125, "archive price cannot replace the live quote");
+  assert.equal(after.sequence, before.sequence, "archive sequence cannot advance the live cursor");
+  assert.deepEqual(live.trades("CME", "NQU6").map((trade) => trade.price), [29500, 30125]);
+});

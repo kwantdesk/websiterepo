@@ -58,6 +58,8 @@ type SharedPoll = {
   watchdog: number | null;
   eventSource: EventSource | null;
   latestSnapshot: RithmicLiquiditySnapshot | null;
+  lastActivityAt: number;
+  generation: number;
   root: string;
   contractSymbol: string;
   exchange: string;
@@ -65,6 +67,8 @@ type SharedPoll = {
 
 const streams = new Map<string, SharedPoll>();
 const INITIAL_BOOK_TIMEOUT_MS = 8_000;
+const STREAM_STALE_TIMEOUT_MS = 15_000;
+const STREAM_WATCHDOG_INTERVAL_MS = 3_000;
 
 function publishStatus(stream: SharedPoll, status: RithmicLiquidityStatus) {
   if (stream.status === status) return;
@@ -221,16 +225,25 @@ function updateTrackers(
 }
 
 function clearWatchdog(stream: SharedPoll) {
-  if (stream.watchdog !== null) window.clearTimeout(stream.watchdog);
+  if (stream.watchdog !== null) window.clearInterval(stream.watchdog);
   stream.watchdog = null;
 }
 
-function markBookFrameReceived(stream: SharedPoll) {
-  clearWatchdog(stream);
+function markStreamActivity(stream: SharedPoll) {
+  stream.lastActivityAt = Date.now();
+}
+
+function scheduleReconnect(stream: SharedPoll, delayMs = 1_000) {
+  if (!stream.subscribers.size || stream.timer !== null) return;
+  stream.timer = window.setTimeout(() => {
+    stream.timer = null;
+    connectStream(stream);
+  }, delayMs);
 }
 
 function connectStream(stream: SharedPoll) {
   if (stream.eventSource || !stream.subscribers.size) return;
+  const generation = ++stream.generation;
   const query = new URLSearchParams({
     exchange: stream.exchange,
     symbol: stream.root,
@@ -240,10 +253,12 @@ function connectStream(stream: SharedPoll) {
   if (stream.contractSymbol) query.set("contractSymbol", stream.contractSymbol);
   const source = new EventSource(`/api/institutional-market-data/v1/heatmap/stream?${query}`);
   stream.eventSource = source;
+  markStreamActivity(stream);
   source.addEventListener("depth", (event) => {
+    if (stream.generation !== generation || stream.eventSource !== source) return;
     try {
       const payload = JSON.parse((event as MessageEvent<string>).data) as RawPayload;
-      markBookFrameReceived(stream);
+      markStreamActivity(stream);
       updateTrackers(stream, payload);
       publishStatus(stream, payload.status?.connected ? "connected" : "checking");
     } catch {
@@ -251,6 +266,7 @@ function connectStream(stream: SharedPoll) {
     }
   });
   source.addEventListener("history", (event) => {
+    if (stream.generation !== generation || stream.eventSource !== source) return;
     try {
       const payload = JSON.parse((event as MessageEvent<string>).data) as {
         status?: RawPayload["status"];
@@ -258,6 +274,7 @@ function connectStream(stream: SharedPoll) {
         final?: boolean;
       };
       const snapshots = payload.snapshots ?? [];
+      markStreamActivity(stream);
       const replayRecipients = [...stream.subscribers].filter((subscriber) => subscriber.replayHistory);
       if (replayRecipients.length) {
         for (const snapshot of snapshots) {
@@ -270,7 +287,6 @@ function connectStream(stream: SharedPoll) {
       // DOM Pro must still receive the newest frame or they wait forever for
       // another book mutation during quiet markets.
       if (payload.final && snapshots.length) {
-        markBookFrameReceived(stream);
         const liveRecipients = [...stream.subscribers].filter((subscriber) => !subscriber.replayHistory);
         if (liveRecipients.length) {
           if (replayRecipients.length && stream.latestSnapshot) {
@@ -288,24 +304,58 @@ function connectStream(stream: SharedPoll) {
       publishStatus(stream, "unavailable");
     }
   });
-  source.addEventListener("ready", () => publishStatus(stream, "checking"));
+  source.addEventListener("ready", () => {
+    if (stream.generation !== generation || stream.eventSource !== source) return;
+    markStreamActivity(stream);
+    publishStatus(stream, "checking");
+  });
+  source.addEventListener("heartbeat", () => {
+    if (stream.generation !== generation || stream.eventSource !== source) return;
+    markStreamActivity(stream);
+  });
+  source.addEventListener("tick", (event) => {
+    if (stream.generation !== generation || stream.eventSource !== source) return;
+    markStreamActivity(stream);
+    try {
+      const payload = JSON.parse((event as MessageEvent<string>).data) as {
+        timestamp?: number;
+        tick?: number;
+        contractSymbol?: string;
+      };
+      const tick = Number(payload.tick);
+      if (!stream.latestSnapshot || !Number.isFinite(tick) || tick <= 0) return;
+      const snapshot: RithmicLiquiditySnapshot = {
+        ...stream.latestSnapshot,
+        asOf: new Date(Number(payload.timestamp) || Date.now()).toISOString(),
+        contractSymbol: String(payload.contractSymbol || stream.latestSnapshot.contractSymbol),
+        lastPrice: tick * stream.latestSnapshot.tickSize,
+        ageMs: 0,
+      };
+      stream.latestSnapshot = snapshot;
+      for (const subscriber of stream.subscribers) subscriber.onSnapshot(snapshot);
+    } catch {
+      // A malformed tick must not discard the last good book frame.
+    }
+  });
   source.onerror = () => {
+    if (stream.generation !== generation || stream.eventSource !== source) return;
     source.close();
     if (stream.eventSource === source) stream.eventSource = null;
     clearWatchdog(stream);
     publishStatus(stream, "unavailable");
-    if (stream.subscribers.size && stream.timer === null) {
-      stream.timer = window.setTimeout(() => {
-        stream.timer = null;
-        connectStream(stream);
-      }, 1_500);
-    }
+    scheduleReconnect(stream);
   };
   clearWatchdog(stream);
-  stream.watchdog = window.setTimeout(() => {
-    stream.watchdog = null;
-    if (!stream.latestSnapshot) publishStatus(stream, "unavailable");
-  }, INITIAL_BOOK_TIMEOUT_MS);
+  stream.watchdog = window.setInterval(() => {
+    if (stream.generation !== generation || stream.eventSource !== source) return;
+    const timeout = stream.latestSnapshot ? STREAM_STALE_TIMEOUT_MS : INITIAL_BOOK_TIMEOUT_MS;
+    if (Date.now() - stream.lastActivityAt <= timeout) return;
+    source.close();
+    if (stream.eventSource === source) stream.eventSource = null;
+    clearWatchdog(stream);
+    publishStatus(stream, "unavailable");
+    scheduleReconnect(stream, 250);
+  }, STREAM_WATCHDOG_INTERVAL_MS);
 }
 
 export function subscribeRithmicLiquidity(args: {
@@ -330,6 +380,8 @@ export function subscribeRithmicLiquidity(args: {
       watchdog: null,
       eventSource: null,
       latestSnapshot: null,
+      lastActivityAt: Date.now(),
+      generation: 0,
       root,
       contractSymbol,
       exchange,

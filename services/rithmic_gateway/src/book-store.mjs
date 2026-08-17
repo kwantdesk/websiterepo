@@ -236,6 +236,46 @@ export class RithmicBookStore {
     return instrument;
   }
 
+  /**
+   * Prepend an isolated archive replay to the live tape without allowing old
+   * records to overwrite the current quote, depth, or exchange sequence.
+   * Replaying directly into the live book during startup used to pin every
+   * chart to old prices and delayed the Rithmic connection for several
+   * minutes on large archives.
+   */
+  mergeHistoricalTradesFrom(historyBook) {
+    let merged = 0;
+    for (const [key, historyInstrument] of historyBook?.instruments || []) {
+      const instrument = this.instruments.get(key)
+        || this.ensure(historyInstrument.exchange, historyInstrument.symbol);
+      const liveTrades = instrument.trades.slice();
+      let earliestLiveMs = Number.POSITIVE_INFINITY;
+      for (const trade of liveTrades) {
+        const timestampMs = Number(trade.timestampMs);
+        if (Number.isFinite(timestampMs)) earliestLiveMs = Math.min(earliestLiveMs, timestampMs);
+      }
+      const liveIds = new Set(liveTrades.map((trade) => String(trade.id)));
+      const historical = historyInstrument.trades
+        .filter((trade) => Number(trade.timestampMs) < earliestLiveMs && !liveIds.has(String(trade.id)))
+        .slice(-Math.max(0, instrument.maxTrades - liveTrades.length));
+      if (!historical.length) continue;
+
+      // Historical sequence numbers must never outrank the live exchange
+      // cursor used by incremental clients.
+      const normalizedHistory = historical.map((trade, index) => ({
+        ...trade,
+        sequence: index - historical.length,
+      }));
+      instrument.trades = [...normalizedHistory, ...liveTrades].slice(-instrument.maxTrades);
+      instrument.flowCandles = new Map();
+      instrument.askVolumeTotal = 0;
+      instrument.bidVolumeTotal = 0;
+      for (const trade of instrument.trades) recordTradeFlow(instrument, trade);
+      merged += normalizedHistory.length;
+    }
+    return merged;
+  }
+
   resetDepth(exchange, symbol) {
     const instrument = this.ensure(exchange, symbol);
     instrument.bids.clear();
