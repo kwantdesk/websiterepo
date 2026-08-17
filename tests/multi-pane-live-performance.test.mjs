@@ -123,10 +123,34 @@ test("plain multi-day charts aggregate ticks on a bounded tail before React reco
 test("background studies and drawings cannot consume foreground cadence", () => {
   const chart = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
   assert.match(chart, /keyboardActive \? 250 : 750/);
-  assert.match(chart, /Math\.max\(750, FOOTPRINT_DATA_REFRESH_INTERVAL_MS\)/);
-  assert.match(chart, /Math\.max\(1_000, ORDER_FLOW_DATA_REFRESH_INTERVAL_MS\)/);
+  assert.match(chart, /queueChartFrameWork\(footprintWorkKey, refreshVisibleFootprint\)/);
+  assert.match(chart, /footprintSamplingEnabled && !nonFootprintIndicatorSamplingEnabled/);
+  assert.match(chart, /nonFootprintOrderFlowIndicatorEnabled[\s\S]*ORDER_FLOW_DATA_REFRESH_INTERVAL_MS/);
   assert.match(chart, /LIVE_CHART_EXECUTION_EVENT/);
   assert.match(chart, /primitive\.update\(nextBars, primitiveOptions\)/);
+});
+
+test("heavy studies from sibling panes are serialized across animation frames", () => {
+  const chart = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
+  const scheduler = readFileSync(new URL("../src/lib/chartFrameWork.ts", import.meta.url), "utf8");
+  assert.match(chart, /queueChartFrameWork\(`indicators:\$\{chartFrameWorkKey\}`/);
+  assert.match(chart, /cancelChartFrameWork\(`indicators:\$\{chartFrameWorkKey\}`\)/);
+  assert.match(scheduler, /const pendingTasks = new Map/);
+  assert.match(scheduler, /pendingTasks\.set\(key, task\)/);
+  assert.match(scheduler, /window\.requestAnimationFrame/);
+  assert.doesNotMatch(chart, /\? 10_000\s*:/);
+});
+
+test("footprint viewport folding cannot run at the native chart interaction cadence", () => {
+  const chart = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
+  assert.match(chart, /const \[footprintViewportVersion, setFootprintViewportVersion\]/);
+  assert.match(chart, /keyboardActive \? 200 : 500/);
+  assert.match(chart, /queueChartFrameWork\(`footprint-viewport:\$\{chartFrameWorkKey\}`/);
+  assert.match(chart, /footprintDataConsumer, footprintViewportVersion/);
+  assert.doesNotMatch(
+    chart,
+    /\[candles\.length, footprintCandles, footprintDataConsumer, viewportVersion\]/,
+  );
 });
 
 test("the five-minute chart stream proves the canonical selected symbol before warm takeover", () => {

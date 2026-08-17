@@ -46,22 +46,28 @@ function tradeCandidates(
 ): TradeCandidate[] {
   // This is an execution-tape study. Candle volume is never treated as one
   // large order; only real CME trade records are eligible.
-  const liveCandidates = marketTrades.flatMap((trade) => {
+  const liveCandidates: TradeCandidate[] = [];
+  let monotonic = true;
+  let previousTimestamp = Number.NEGATIVE_INFINITY;
+  for (const trade of marketTrades) {
     if (
       trade.flowOnly
       || trade.timestamp < cutoff
       || trade.volume <= 0
       || trade.aggressor === "UNKNOWN"
-    ) return [];
-    return [{
+    ) continue;
+    monotonic = monotonic && trade.timestamp >= previousTimestamp;
+    previousTimestamp = trade.timestamp;
+    liveCandidates.push({
       id: trade.eventId ?? `record-${trade.recordIndex}`,
       timestamp: trade.timestamp,
       price: trade.close,
       volume: trade.volume,
       executions: Math.max(1, trade.trades),
       side: trade.aggressor === "BUY" ? "ASK" as const : "BID" as const,
-    }];
-  });
+    });
+  }
+  if (!monotonic) liveCandidates.sort((left, right) => left.timestamp - right.timestamp);
   if (settings.enableClustering === false || liveCandidates.length < 2) {
     return liveCandidates;
   }
@@ -71,9 +77,7 @@ function tradeCandidates(
   const tickSize = Math.max(Number(settings.tickSize ?? 0.25), Number.EPSILON);
   const priceTolerance = clusterPriceTicks * tickSize + Number.EPSILON;
   const clustered: TradeCandidate[] = [];
-  liveCandidates
-    .sort((left, right) => left.timestamp - right.timestamp)
-    .forEach((candidate) => {
+  liveCandidates.forEach((candidate) => {
       const previous = clustered.at(-1);
       if (
         previous
@@ -108,12 +112,13 @@ export function calculateBigTradePrints(
   // can erase Friday's entire tape on Sunday even though it is still the most
   // recent market session. During live trading the newest execution tracks
   // `now`, while closed markets retain the final completed session.
-  const latestExecutionTimestamp = marketTrades.reduce(
-    (latest, trade) => Number.isFinite(trade.timestamp)
-      ? Math.max(latest, trade.timestamp)
-      : latest,
-    0,
-  );
+  let latestExecutionTimestamp = 0;
+  for (let index = marketTrades.length - 1; index >= 0; index -= 1) {
+    const timestamp = marketTrades[index].timestamp;
+    if (!Number.isFinite(timestamp)) continue;
+    latestExecutionTimestamp = timestamp;
+    break;
+  }
   const marketTapeIsClosed = latestExecutionTimestamp > 0
     && now - latestExecutionTimestamp > 6 * 60 * 60_000;
   const historyAnchor = marketTapeIsClosed
@@ -179,20 +184,15 @@ export function anchorBigTradePrintsToCandles(
 ): AnchoredBigTradePrint[] {
   if (!candles.length || !prints.length) return [];
   const firstTimestamp = candles[0].timestamp;
-  return prints.flatMap((print): AnchoredBigTradePrint[] => {
-    if (print.timestamp < firstTimestamp) return [];
-    let low = 0;
-    let high = candles.length - 1;
-    let anchorIndex = 0;
-    while (low <= high) {
-      const middle = Math.floor((low + high) / 2);
-      if (candles[middle].timestamp <= print.timestamp) {
-        anchorIndex = middle;
-        low = middle + 1;
-      } else {
-        high = middle - 1;
-      }
-    }
-    return [{ ...print, chartTimestamp: candles[anchorIndex].timestamp }];
-  });
+  const anchored: AnchoredBigTradePrint[] = [];
+  let candleIndex = 0;
+  for (const print of prints) {
+    if (print.timestamp < firstTimestamp) continue;
+    while (
+      candleIndex + 1 < candles.length
+      && candles[candleIndex + 1].timestamp <= print.timestamp
+    ) candleIndex += 1;
+    anchored.push({ ...print, chartTimestamp: candles[candleIndex].timestamp });
+  }
+  return anchored;
 }

@@ -142,6 +142,7 @@ import { retainLiveFootprintRows } from "@/lib/footprintLive";
 import { FOOTPRINT_DATA_REFRESH_INTERVAL_MS, ORDER_FLOW_DATA_REFRESH_INTERVAL_MS } from "@/lib/footprintRuntime";
 import { footprintProfileGranularityTicks } from "@/lib/footprintSettings";
 import { calculateDeepEffort } from "@/lib/deepEffort";
+import { cancelChartFrameWork, queueChartFrameWork } from "@/lib/chartFrameWork";
 import { calculateImbalanceRejectorSignals } from "@/lib/imbalanceRejector";
 import { calculateImbalanceZones } from "@/lib/imbalanceTracker";
 import {
@@ -2941,6 +2942,10 @@ function Chart({
   const [overlaySize, setOverlaySize] = useState({ width: 0, height: 0 });
   const [nativePriceScaleWidth, setNativePriceScaleWidth] = useState(64);
   const [viewportVersion, setViewportVersion] = useState(0);
+  // Footprint row construction is materially heavier than coordinate-only
+  // overlays. Keep it off the 64 ms interaction lane used by the native chart
+  // so panning and zooming remain responsive in multi-panel workspaces.
+  const [footprintViewportVersion, setFootprintViewportVersion] = useState(0);
   const [chartVisualReady, setChartVisualReady] = useState(false);
   const [themeVersion, setThemeVersion] = useState(0);
   const [classicGexTooltip, setClassicGexTooltip] = useState<{
@@ -3031,6 +3036,7 @@ function Chart({
   const viewportFrameRef = useRef<number | null>(null);
   const viewportRefreshTimerRef = useRef<number | null>(null);
   const viewportRefreshLastAtRef = useRef(0);
+  const footprintViewportRefreshTimerRef = useRef<number | null>(null);
   const latestCandleRef = useRef<Candle | null>(candles.at(-1) ?? null);
   const drawingCandlesRef = useRef(candles);
   const drawingMarketTradesRef = useRef(marketTrades);
@@ -3054,6 +3060,7 @@ function Chart({
   const updateIndicatorSettingRef = useRef(onUpdateIndicatorSetting);
   const openIndicatorSettingsRef = useRef(onOpenIndicatorSettings);
   const crosshairSyncInstrumentKey = chartCrosshairInstrumentKey(contractSymbol ?? instrument);
+  const chartFrameWorkKey = liveCandleEventKey ?? `${instrument}:${timeframe}`;
   const volumeIndicatorEnabled = useMemo(
     () => indicators.some((instance) => instance.enabled && instance.indicatorId === "volume"),
     [indicators],
@@ -3070,6 +3077,18 @@ function Chart({
   const footprintSamplingEnabled = useMemo(
     () => indicators.some((instance) =>
       instance.enabled && instance.indicatorId === "deep-print-footprint"),
+    [indicators],
+  );
+  const nonFootprintIndicatorSamplingEnabled = useMemo(
+    () => indicators.some((instance) =>
+      instance.enabled && instance.indicatorId !== "deep-print-footprint"),
+    [indicators],
+  );
+  const nonFootprintOrderFlowIndicatorEnabled = useMemo(
+    () => indicators.some((instance) =>
+      instance.enabled
+      && instance.indicatorId !== "deep-print-footprint"
+      && CHART_INDICATOR_BY_ID.get(instance.indicatorId)?.requiresOrderFlow),
     [indicators],
   );
   const tpoSamplingEnabled = useMemo(
@@ -3277,6 +3296,7 @@ function Chart({
 
   useEffect(() => {
     if (!liveCandleEventKey) return;
+    const footprintWorkKey = `footprint:${chartFrameWorkKey}`;
     const lowerBound = (records: InstitutionalTrade[], timestamp: number) => {
       let low = 0;
       let high = records.length;
@@ -3336,7 +3356,10 @@ function Chart({
       liveFootprintTapeRef.current = detail.tape;
       if (liveFootprintRefreshTimerRef.current !== null) return;
       liveFootprintRefreshTimerRef.current = window.setTimeout(
-        refreshVisibleFootprint,
+        () => {
+          liveFootprintRefreshTimerRef.current = null;
+          queueChartFrameWork(footprintWorkKey, refreshVisibleFootprint);
+        },
         keyboardActive ? FOOTPRINT_DATA_REFRESH_INTERVAL_MS : 500,
       );
     };
@@ -3347,9 +3370,10 @@ function Chart({
         window.clearTimeout(liveFootprintRefreshTimerRef.current);
         liveFootprintRefreshTimerRef.current = null;
       }
+      cancelChartFrameWork(footprintWorkKey);
       liveFootprintTapeRef.current = [];
     };
-  }, [keyboardActive, liveCandleEventKey, timeframe]);
+  }, [chartFrameWorkKey, keyboardActive, liveCandleEventKey, timeframe]);
 
   useEffect(() => {
     updateIndicatorSettingRef.current = onUpdateIndicatorSetting;
@@ -3413,39 +3437,51 @@ function Chart({
         window.clearTimeout(indicatorSampleTimerRef.current);
         indicatorSampleTimerRef.current = null;
       }
-      setSampledIndicatorCandles(candles);
-      if (orderFlowIndicatorEnabled) setSampledIndicatorMarketTrades(marketTrades);
+      queueChartFrameWork(`indicators:${chartFrameWorkKey}`, () => {
+        startTransition(() => {
+          setSampledIndicatorCandles(candles);
+          if (orderFlowIndicatorEnabled) setSampledIndicatorMarketTrades(marketTrades);
+        });
+      });
       return;
     }
+    // Footprint already owns a direct execution-event-to-canvas path. Sending
+    // the same tape through React rebuilt its visible rows a second time and
+    // was the main source of periodic whole-workspace freezes.
+    if (footprintSamplingEnabled && !nonFootprintIndicatorSamplingEnabled) return;
     if (indicatorSampleTimerRef.current !== null) return;
     indicatorSampleTimerRef.current = window.setTimeout(() => {
       indicatorSampleTimerRef.current = null;
-      const pendingCandles = pendingIndicatorCandlesRef.current;
-      const liveIndicatorCandle = volumeIndicatorEnabled || footprintSamplingEnabled
-        ? latestCandleRef.current
-        : null;
-      setSampledIndicatorCandles(liveIndicatorCandle
-        ? mergeLiveIndicatorCandle(pendingCandles, liveIndicatorCandle)
-        : pendingCandles);
-      if (orderFlowIndicatorEnabled) {
-        setSampledIndicatorMarketTrades(pendingIndicatorMarketTradesRef.current);
-      }
-    // The candle itself continues to render tick-by-tick. Footprint FPS is a
-    // canvas paint preference, not permission to copy and aggregate a 55k
-    // execution tape 30/60/120 times per second.
+      queueChartFrameWork(`indicators:${chartFrameWorkKey}`, () => {
+        const pendingCandles = pendingIndicatorCandlesRef.current;
+        const liveIndicatorCandle = volumeIndicatorEnabled ? latestCandleRef.current : null;
+        startTransition(() => {
+          setSampledIndicatorCandles(liveIndicatorCandle
+            ? mergeLiveIndicatorCandle(pendingCandles, liveIndicatorCandle)
+            : pendingCandles);
+          if (nonFootprintOrderFlowIndicatorEnabled) {
+            setSampledIndicatorMarketTrades(pendingIndicatorMarketTradesRef.current);
+          }
+        });
+      });
+    // Price and the active candle keep painting through the imperative live
+    // path. These snapshots only update historical study models.
     }, keyboardActive
-      ? footprintSamplingEnabled
-        ? FOOTPRINT_DATA_REFRESH_INTERVAL_MS
-        : ORDER_FLOW_DATA_REFRESH_INTERVAL_MS
-      : footprintSamplingEnabled
-        ? Math.max(750, FOOTPRINT_DATA_REFRESH_INTERVAL_MS)
-        : Math.max(1_000, ORDER_FLOW_DATA_REFRESH_INTERVAL_MS));
+      ? nonFootprintOrderFlowIndicatorEnabled
+        ? ORDER_FLOW_DATA_REFRESH_INTERVAL_MS
+        : 1_000
+      : nonFootprintOrderFlowIndicatorEnabled
+        ? 1_500
+        : 2_000);
   }, [
+    chartFrameWorkKey,
     candles,
     footprintSamplingEnabled,
     indicatorSamplingEnabled,
     keyboardActive,
     marketTrades,
+    nonFootprintIndicatorSamplingEnabled,
+    nonFootprintOrderFlowIndicatorEnabled,
     orderFlowHistoryReady,
     orderFlowIndicatorEnabled,
     volumeIndicatorEnabled,
@@ -3460,7 +3496,8 @@ function Chart({
       window.clearTimeout(professionalUpdateHistoryTimerRef.current);
       professionalUpdateHistoryTimerRef.current = null;
     }
-  }, []);
+    cancelChartFrameWork(`indicators:${chartFrameWorkKey}`);
+  }, [chartFrameWorkKey]);
 
   useEffect(() => {
     if (indicatorSamplingEnabled) return;
@@ -4174,15 +4211,18 @@ function Chart({
     const timer = window.setTimeout(() => setSettledTpoIndicators(latestIndicatorsRef.current), 90);
     return () => window.clearTimeout(timer);
   }, [tpoCalculationSignature]);
-  const indicatorHistoryLimit = useMemo(
-    () => indicators.some((instance) =>
+  const indicatorHistoryLimit = useMemo(() => {
+    const intervalMs = timeframeToMs(timeframe);
+    const orderFlowLimit = intervalMs === null
+      ? 6_000
+      : Math.max(1_500, Math.min(4_000, Math.ceil(172_800_000 / intervalMs)));
+    return indicators.some((instance) =>
       instance.enabled && CHART_INDICATOR_BY_ID.get(instance.indicatorId)?.requiresOrderFlow)
-      ? 10_000
+      ? orderFlowLimit
       : smtDivergenceEnabled
         ? Math.max(1_500, Math.min(5_000, smtDivergenceSettings.maximumLookbackBars))
-        : 1_500,
-    [indicators, smtDivergenceEnabled, smtDivergenceSettings.maximumLookbackBars],
-  );
+        : 1_500;
+  }, [indicators, smtDivergenceEnabled, smtDivergenceSettings.maximumLookbackBars, timeframe]);
   const indicatorWindowCandles = useMemo(
     () => sampledIndicatorCandles.slice(-indicatorHistoryLimit),
     [indicatorHistoryLimit, sampledIndicatorCandles],
@@ -4341,6 +4381,24 @@ function Chart({
     [indicatorSignature, indicators],
   );
   const footprintDataConsumer = footprintIndicator ?? stackedImbalanceIndicator ?? pocAuctionIndicator;
+  useEffect(() => {
+    if (!footprintDataConsumer || footprintViewportRefreshTimerRef.current !== null) return;
+    footprintViewportRefreshTimerRef.current = window.setTimeout(() => {
+      footprintViewportRefreshTimerRef.current = null;
+      queueChartFrameWork(`footprint-viewport:${chartFrameWorkKey}`, () => {
+        startTransition(() => {
+          setFootprintViewportVersion((current) => current + 1);
+        });
+      });
+    }, keyboardActive ? 200 : 500);
+  }, [chartFrameWorkKey, footprintDataConsumer, keyboardActive, viewportVersion]);
+  useEffect(() => () => {
+    if (footprintViewportRefreshTimerRef.current !== null) {
+      window.clearTimeout(footprintViewportRefreshTimerRef.current);
+      footprintViewportRefreshTimerRef.current = null;
+    }
+    cancelChartFrameWork(`footprint-viewport:${chartFrameWorkKey}`);
+  }, [chartFrameWorkKey]);
   const footprintSettings = useMemo(
     () => footprintIndicator?.settings ?? {},
     [footprintIndicator],
@@ -4357,7 +4415,7 @@ function Chart({
     const first = Math.max(0, Math.floor(Number(logical.from)) - sourceOffset - 8);
     const last = Math.min(footprintCandles.length, Math.ceil(Number(logical.to)) - sourceOffset + 9);
     return first < last ? footprintCandles.slice(first, last) : footprintCandles.slice(-160);
-  }, [candles.length, footprintCandles, footprintDataConsumer, viewportVersion]);
+  }, [candles.length, footprintCandles, footprintDataConsumer, footprintViewportVersion]);
   const footprintSourceCandles = useMemo(() => {
     if (!footprintDataConsumer) return [];
     return footprintVisibleCandles;
@@ -4411,7 +4469,7 @@ function Chart({
     footprintSettings.manualTicks,
     footprintVisibleCandles,
     priceFormat.minMove,
-    viewportVersion,
+    footprintViewportVersion,
   ]);
   const footprintBuildSettings = useMemo((): FootprintBuildSettings => ({
       tickSize: priceFormat.minMove,
@@ -4444,8 +4502,6 @@ function Chart({
     footprintSettings.unfinishedAuctionEnabled,
     footprintSettings.unfinishedAuctionMinimumVolume,
     footprintSettings.valueAreaPercent,
-    footprintSourceCandles,
-    footprintMarketTrades,
     instrument,
     priceFormat.minMove,
     resolvedFootprintGroupTicks,

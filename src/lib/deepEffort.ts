@@ -38,6 +38,14 @@ export type EffortInstrumentProfile = {
   rangeThicknessFactor: number;
 };
 
+const deepEffortCache = new WeakMap<Candle[], Map<string, DeepEffortResult>>();
+
+function cacheDeepEffort(candles: Candle[], key: string, result: DeepEffortResult) {
+  const entries = deepEffortCache.get(candles) ?? new Map<string, DeepEffortResult>();
+  entries.set(key, result);
+  deepEffortCache.set(candles, entries);
+}
+
 const finite = (value: unknown, fallback = 0) => {
   const number = Number(value);
   return Number.isFinite(number) ? number : fallback;
@@ -132,6 +140,9 @@ export function calculateDeepEffort(
   candles: Candle[],
   options: { zoneBars?: number; tickSize?: number; instrument?: string } = {},
 ): DeepEffortResult {
+  const cacheKey = `${options.instrument ?? ""}:${options.tickSize ?? ""}:${options.zoneBars ?? 22}`;
+  const cached = deepEffortCache.get(candles)?.get(cacheKey);
+  if (cached) return cached;
   const profile = resolveEffortInstrumentProfile(options.instrument, options.tickSize);
   const zoneBars = Math.max(4, Math.min(120, Math.round(options.zoneBars ?? 22)));
   const tickSize = profile.tickSize;
@@ -142,7 +153,9 @@ export function calculateDeepEffort(
     return ask + bid > 0;
   });
   if (!hasOrderFlow || candles.length < 20) {
-    return { average, zones: [], hasOrderFlow, instrumentRoot: profile.root, profileLabel: profile.label };
+    const result = { average, zones: [], hasOrderFlow, instrumentRoot: profile.root, profileLabel: profile.label };
+    cacheDeepEffort(candles, cacheKey, result);
+    return result;
   }
 
   const lookback = profile.lookback;
@@ -221,11 +234,13 @@ export function calculateDeepEffort(
     lastSignalIndex = index;
   });
 
-  return {
+  const result = {
     average,
     zones: zones.slice(-120),
     hasOrderFlow,
     instrumentRoot: profile.root,
     profileLabel: profile.label,
   };
+  cacheDeepEffort(candles, cacheKey, result);
+  return result;
 }

@@ -74,7 +74,7 @@ test("previously disconnected footprint controls now change renderer behavior", 
   assert.match(primitive, /if \(options\.colorMode === "none"\) return 0/);
   assert.match(primitive, /1_000 \/ this\.renderOptions\.fpsLimit/);
   assert.match(chart, /return footprintVisibleCandles/);
-  assert.match(runtime, /FOOTPRINT_DATA_REFRESH_INTERVAL_MS = 100/);
+  assert.match(runtime, /FOOTPRINT_DATA_REFRESH_INTERVAL_MS = 250/);
   assert.match(chart, /\? FOOTPRINT_DATA_REFRESH_INTERVAL_MS/);
   assert.match(workspace, /scheduleMarketTradeStateSync\(\)/);
   assert.match(workspace, /setMarketTrades\(latestMarketTradesRef\.current\)/);
