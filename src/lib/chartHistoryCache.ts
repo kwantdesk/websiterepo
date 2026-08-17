@@ -95,11 +95,12 @@ function executionFingerprint(records: InstitutionalTrade[]) {
 }
 
 function cacheKey(symbol: string, timeframe: string) {
-  // Event-bar schema v6 stores one authoritative reconstruction instead of
-  // merging successive rebuilds whose sequence timestamps can differ. Keep
-  // the earlier overlapping event caches isolated from corrected charts.
+  // Event-bar schema v7 is built from the ordered native execution tape and
+  // carries source watermarks into live continuation. Keep v6's approximate
+  // one-second reconstructions isolated so returning browsers cannot restore
+  // the malformed volume/range/Renko history this pipeline replaces.
   return isEventBasedChartInterval(timeframe)
-    ? `event-v6::${symbol}::${timeframe}`
+    ? `event-v7::${symbol}::${timeframe}`
     // Time-flow v2 replaces the old six-hour-only aggressor enrichment. Keep
     // the partial cache isolated so returning browsers cannot restore a CVD
     // line that begins in the middle of the visible chart.
@@ -450,7 +451,7 @@ async function readAllCachedHistory(symbol: string) {
       .map(String)
       .filter((key) => (
         key.startsWith(`time-v2::${symbol}::`)
-        || key.startsWith(`event-v6::${symbol}::`)
+        || key.startsWith(`event-v7::${symbol}::`)
       ));
     // Read only this symbol's candle series, sequentially. The former getAll
     // path also cloned every execution tape and every unrelated symbol merely
