@@ -111,7 +111,10 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
   private attachedParams: SeriesAttachedParameter<Time> | null = null;
   private models: NativeVolumeProfileModel[] = [];
   private readonly paneView = {
-    zOrder: () => "top" as const,
+    // Volume distributions are chart context, not foreground annotations.
+    // Paint them below the candlestick series so candle bodies and wicks stay
+    // completely legible even where the developing daily profile overlaps.
+    zOrder: () => "bottom" as const,
     renderer: () => ({
       draw: (target: CanvasRenderingTarget2D) => this.draw(target),
     }),

@@ -18,6 +18,15 @@ const marketDataSource = readFileSync(
   new URL("../src/lib/institutionalMarketData.ts", import.meta.url),
   "utf8",
 );
+const volumeProfilePrimitive = readFileSync(
+  new URL("../src/lib/nativeVolumeProfilePrimitive.ts", import.meta.url),
+  "utf8",
+);
+
+test("daily volume profiles render behind the chart candles", () => {
+  assert.match(volumeProfilePrimitive, /zOrder:\s*\(\)\s*=>\s*"bottom"\s+as const/);
+  assert.doesNotMatch(volumeProfilePrimitive, /zOrder:\s*\(\)\s*=>\s*"top"\s+as const/);
+});
 
 test("all native profiles restore only execution-backed snapshots", () => {
   assert.match(workspace, /readCachedInstitutionalVolumeProfiles\(activeRoot, "daily"\)/);
