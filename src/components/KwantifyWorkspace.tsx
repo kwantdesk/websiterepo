@@ -4627,9 +4627,9 @@ function WorkspaceChartPaneComponent({
   const gammaEnvironmentIndicator = indicators.find((instance) =>
     instance.enabled && instance.indicatorId === "gamma-environment") ?? null;
   const directGammaEnvironmentConversion = gammaEnvironmentIndicator
-    && (pane.broker === "Market Index" || isMarketIndexSymbol(gammaInstrument))
     ? resolveDirectGammaEnvironmentConversion(gammaInstrument)
     : null;
+  const directGammaEnvironmentInstrument = directGammaEnvironmentConversion?.source ?? null;
   const classicGexSettings = classicGexIndicator?.settings ?? {};
   const classicGexSettingsSignature = classicGexIndicator
     ? JSON.stringify(classicGexSettings)
@@ -4722,7 +4722,7 @@ function WorkspaceChartPaneComponent({
   const currentGammaOverlay =
     gammaOverlay?.instrument === gammaInstrument ? gammaOverlay : null;
   const currentDirectGammaEnvironment =
-    directGammaEnvironment?.instrument === gammaInstrument ? directGammaEnvironment : null;
+    directGammaEnvironment?.instrument === directGammaEnvironmentInstrument ? directGammaEnvironment : null;
   const currentGammaEnvironment = directGammaEnvironmentConversion
     ? currentDirectGammaEnvironment
     : currentGammaOverlay;
@@ -5857,7 +5857,7 @@ function WorkspaceChartPaneComponent({
     let retained = (() => {
       const restored = readGammaSessionPayload(directGammaEnvironmentConversion);
       return restored
-        ? buildDirectGammaEnvironment(restored, gammaInstrument, true)
+        ? buildDirectGammaEnvironment(restored, directGammaEnvironmentConversion.source, true)
         : null;
     })();
     setDirectGammaEnvironment(retained);
@@ -5875,7 +5875,7 @@ function WorkspaceChartPaneComponent({
           refreshMinimumMs: 15_000,
         });
         if (cancelled) return;
-        const next = buildDirectGammaEnvironment(payload, gammaInstrument);
+        const next = buildDirectGammaEnvironment(payload, directGammaEnvironmentConversion.source);
         if (!next) throw new Error("The options gamma frame did not match this chart.");
         retained = next;
         setDirectGammaEnvironment(next);
@@ -5907,8 +5907,8 @@ function WorkspaceChartPaneComponent({
     };
   }, [
     directGammaEnvironmentConversion?.id,
+    directGammaEnvironmentInstrument,
     gammaEnvironmentIndicator?.instanceId,
-    gammaInstrument,
   ]);
 
   useEffect(() => {

@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextRequest, NextResponse } from "next/server";
 import { getZeroGammaLinePayload } from "@/lib/zeroGammaLine.server";
-import { zeroGammaRootForInstrument } from "@/lib/zeroGammaLine";
+import { zeroGammaRootForInstrument, zeroGammaSourceForInstrument } from "@/lib/zeroGammaLine";
 
 async function isAuthenticated(request: NextRequest) {
   if (process.env.KWANTIFY_DEV_AUTH_BYPASS === "1" && ["localhost", "127.0.0.1", "::1"].includes(request.nextUrl.hostname)) return true;
@@ -16,10 +16,11 @@ export async function GET(request: NextRequest) {
   if (!(await isAuthenticated(request))) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
   const instrument = request.nextUrl.searchParams.get("instrument")?.trim().toUpperCase() || "NQ";
   const root = zeroGammaRootForInstrument(instrument);
-  if (!root) return NextResponse.json({ error: "Zero Gamma Line currently supports native NQ, MNQ, ES and MES futures charts." }, { status: 400 });
+  const source = zeroGammaSourceForInstrument(instrument);
+  if (!root || !source) return NextResponse.json({ error: "Zero Gamma Line requires a supported futures or options-underlying Gamma family." }, { status: 400 });
   const sessions = Math.max(1, Math.min(5, Number(request.nextUrl.searchParams.get("sessions") ?? 5)));
   try {
-    return NextResponse.json(await getZeroGammaLinePayload(root, instrument, sessions), {
+    return NextResponse.json(await getZeroGammaLinePayload(root, source, instrument, sessions), {
       headers: { "Cache-Control": "private, max-age=5, stale-while-revalidate=30" },
     });
   } catch (error) {

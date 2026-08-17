@@ -920,9 +920,9 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
   ...(indicatorId === "zero-gamma-line" ? {
     historySessions: 5,
     refreshSeconds: 10,
-    opacity: 72,
-    lineWidth: 2,
-    lineStyle: "dotted",
+      opacity: 72,
+      lineWidth: 2,
+      lineStyle: "solid",
     useThemeColors: true,
     lineColor: theme?.borderUpColor ?? theme?.upColor ?? "#A3FF12",
     showCurrentValue: true,
@@ -1820,7 +1820,7 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
       const parsed = Number(settings[definition.key]);
       settings[definition.key] = Math.min(definition.max, Math.max(definition.min, Number.isFinite(parsed) ? parsed : definition.defaultValue));
     }
-    if (!["solid", "dashed", "dotted"].includes(String(settings.lineStyle))) settings.lineStyle = "dotted";
+      if (!["solid", "dashed", "dotted"].includes(String(settings.lineStyle))) settings.lineStyle = "solid";
     for (const unsafeKey of ["apiKey", "credential", "credentials", "snapshot", "points", "history"]) delete settings[unsafeKey];
     return { ...normalizedInstance, settings };
   }

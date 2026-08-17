@@ -322,7 +322,7 @@ import {
   type DarkPoolGexPrimitiveData,
 } from "@/lib/darkPoolGexPrimitive";
 import { fetchWorkspaceData, readWorkspaceData, writeWorkspaceData } from "@/lib/workspaceDataCache";
-import { isZeroGammaLinePayload, zeroGammaRootForInstrument, type ZeroGammaLinePayload } from "@/lib/zeroGammaLine";
+import { isZeroGammaLinePayload, paintZeroGammaLine, zeroGammaRootForInstrument, type ZeroGammaLinePayload } from "@/lib/zeroGammaLine";
 import { STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT } from "@/lib/volumeProfileMath";
 import {
   buildInitialBalanceLevels,
@@ -5154,7 +5154,14 @@ function Chart({
           `/api/zero-gamma-line?instrument=${encodeURIComponent(instrument)}&sessions=${historySessions}`,
           { force, maxAgeMs: refreshMs, timeoutMs: 45_000, validate: isZeroGammaLinePayload, invalidMessage: "Zero Gamma Line returned an incomplete history." },
         );
-        if (!cancelled) setZeroGammaLinePayload(payload);
+        if (!cancelled) setZeroGammaLinePayload((current) => {
+          if (!current || current.sourceSymbol !== payload.sourceSymbol) return payload;
+          const points = [...new Map([...current.points, ...payload.points]
+            .map((point) => [`${point.timestampMs}:${point.sessionDate}`, point])).values()]
+            .sort((left, right) => left.timestampMs - right.timestampMs)
+            .slice(-2_000);
+          return { ...payload, points };
+        });
       } catch {
         // Keep the last verified line visible through a transient provider refresh.
       }
@@ -5225,9 +5232,9 @@ function Chart({
         color,
         lineWidth,
         lineStyle,
-        lineType: "with-steps",
+        lineType: "simple",
         lastValueVisible: instance.settings?.showCurrentValue !== false,
-        data: zeroGammaLinePayload.points.map((point) => ({ time: Math.floor(point.timestampMs / 1_000), value: point.value })),
+        data: paintZeroGammaLine(zeroGammaLinePayload.points, indicatorCandles.map((candle) => candle.timestamp)),
       }];
     }),
     ...indicators.flatMap((instance): CalculatedIndicatorSeries[] => {

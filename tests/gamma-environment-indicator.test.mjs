@@ -24,6 +24,8 @@ test("Gamma Environment reuses the authoritative chart gamma snapshot", () => {
   assert.match(workspace, /gammaEnvironment=\{gammaEnvironmentIndicator \? currentGammaEnvironment : null\}/);
   assert.match(workspace, /!expectedMoveIndicator && !gammaEnvironmentIndicator/);
   assert.match(workspace, /buildDirectGammaEnvironment/);
+  assert.doesNotMatch(workspace, /gammaEnvironmentIndicator\s*&&\s*\(pane\.broker === "Market Index"/);
+  assert.match(workspace, /directGammaEnvironmentConversion\.source/);
   assert.match(workspace, /payload\.marketOpen \? "LIVE NY OPTIONS" : "NEW YORK EOD"/);
   assert.match(conversion, /resolveDirectGammaEnvironmentConversion/);
   for (const ticker of ["SPX", "SPXW", "SPY", "NDX", "QQQ"]) {
@@ -43,7 +45,7 @@ test("options charts share a batched low-latency quote feed and paint imperative
   assert.match(workspace, /window\.dispatchEvent\(new CustomEvent\(LIVE_CHART_CANDLE_EVENT/);
   assert.match(workspace, /timestamp <= previousTimestamp/);
   assert.match(workspace, /marketIndexChartStateSyncAtRef\.current >= 5_000/);
-  assert.match(client, /symbols\.join\(","\)/);
+  assert.match(client, /(?:vpsSymbols|legacySymbols|symbols)\.join\(","\)/);
   assert.match(client, /const LIVE_POLL_MS = 750/);
   assert.match(client, /let pollInFlight = false/);
   assert.match(client, /const pollStartedAt = Date\.now\(\)/);

@@ -103,7 +103,13 @@ export function resolveGammaConversion(
 export function resolveDirectGammaEnvironmentConversion(
   instrument: string,
 ): GammaConversionDefinition | null {
-  const source = instrument.trim().toUpperCase() as DirectGammaEnvironmentInstrument;
+  const source = instrument
+    .trim()
+    .toUpperCase()
+    .split(":")
+    .at(-1)
+    ?.replace(/\.V\.0$/, "")
+    .replace(/[^A-Z]/g, "") as DirectGammaEnvironmentInstrument;
   const target = source === "NDX" || source === "QQQ"
     ? "NQ"
     : source === "SPX" || source === "SPXW" || source === "SPY"

@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import {
   isZeroGammaLinePayload,
+  paintZeroGammaLine,
   zeroGammaRootForInstrument,
+  zeroGammaSourceForInstrument,
 } from "../src/lib/zeroGammaLine.ts";
 
 const [catalog, config, controls, chart, route] = await Promise.all([
@@ -24,10 +26,25 @@ assert.equal(zeroGammaRootForInstrument("NQ"), "NQ");
 assert.equal(zeroGammaRootForInstrument("MNQU6"), "NQ");
 assert.equal(zeroGammaRootForInstrument("ES"), "ES");
 assert.equal(zeroGammaRootForInstrument("MESU6"), "ES");
-assert.equal(zeroGammaRootForInstrument("QQQ"), null, "cash scales must not receive an unconverted futures zero-gamma value");
+assert.equal(zeroGammaRootForInstrument("QQQ"), "NQ");
+assert.equal(zeroGammaRootForInstrument("I:SPX"), "ES");
+assert.equal(zeroGammaSourceForInstrument("NDX"), "NDX");
+assert.equal(zeroGammaSourceForInstrument("I:SPX"), "SPX");
+assert.equal(zeroGammaSourceForInstrument("MNQU6"), "NQ");
+
+assert.deepEqual(paintZeroGammaLine([
+  { timestampMs: 1_000, sessionDate: "2026-08-17", value: 100, status: "HISTORICAL" },
+  { timestampMs: 3_000, sessionDate: "2026-08-18", value: 105, status: "LIVE" },
+], [0, 1_000, 2_000, 3_000, 4_000]), [
+  { time: 1, value: 100 },
+  { time: 2, value: 100 },
+  { time: 3, value: 105 },
+  { time: 4, value: 105 },
+]);
 
 assert.equal(isZeroGammaLinePayload({
   root: "NQ",
+  sourceSymbol: "NQ",
   displayInstrument: "MNQ",
   asOf: "2026-08-17T00:00:00.000Z",
   status: "EOD",

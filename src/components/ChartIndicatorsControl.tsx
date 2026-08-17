@@ -2936,7 +2936,7 @@ export default function ChartIndicatorsControl({
                   <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
                     <span>Line type</span>
                     <KwantSelect
-                      value={String(settingsInstance.settings?.lineStyle ?? "dotted")}
+                      value={String(settingsInstance.settings?.lineStyle ?? "solid")}
                       onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
                         ...current,
                         settings: { ...(current.settings ?? {}), lineStyle: event.target.value },
@@ -2950,7 +2950,7 @@ export default function ChartIndicatorsControl({
                     </KwantSelect>
                   </label>
                   <div className="flex items-end text-[8px] leading-4 text-muted">
-                    Positive Gamma sits above the crossing and negative Gamma below when the repriced curve has its standard upward orientation. The line uses native futures-options OI and never back-paints a later snapshot.
+                    Paints the verified zero-Gamma crossing forward beside price like a running VWAP. Futures use their native options family; SPX, SPXW, SPY, NDX and QQQ use their own options exposure without cross-market scaling.
                   </div>
                 </div>
               ) : null}

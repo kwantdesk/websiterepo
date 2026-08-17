@@ -1,11 +1,9 @@
 import {
-  getNativeFuturesSessionClose,
-  getNativeFuturesSpot,
-  getNativeGammaSnapshot,
   newYorkCashCloseIso,
   type NativeGammaRoot,
 } from "@/lib/databentoGamma.server";
-import type { ZeroGammaLinePayload, ZeroGammaLinePoint } from "@/lib/zeroGammaLine";
+import { getChartGammaLevels } from "@/lib/quantData.server";
+import type { ZeroGammaLinePayload, ZeroGammaLinePoint, ZeroGammaLineSource } from "@/lib/zeroGammaLine";
 
 function previousTradingDay(sessionDate: string) {
   const value = new Date(`${sessionDate}T12:00:00.000Z`);
@@ -40,16 +38,16 @@ function newYorkMarketOpen(now = new Date()) {
   return !["Sat", "Sun"].includes(String(parts.weekday)) && minutes >= 570 && minutes < 960;
 }
 
-function positiveAbove(curve: Array<{ price: number; netGex: number }>, zeroGamma: number | null) {
-  if (zeroGamma === null || curve.length < 2) return null;
-  const below = [...curve].filter((point) => point.price < zeroGamma).at(-1);
-  const above = curve.find((point) => point.price > zeroGamma);
-  if (!below || !above || Math.sign(below.netGex) === Math.sign(above.netGex)) return null;
-  return above.netGex > below.netGex;
+function zeroGammaFromPayload(payload: Awaited<ReturnType<typeof getChartGammaLevels>>) {
+  const source = payload.sources.find((candidate) => candidate.symbol === payload.requestedSource);
+  return source?.cage?.flip
+    ?? source?.levels.find((level) => level.kind === "ZERO_GAMMA")?.price
+    ?? null;
 }
 
 export async function getZeroGammaLinePayload(
   root: NativeGammaRoot,
+  sourceSymbol: ZeroGammaLineSource,
   displayInstrument: string,
   historySessions = 5,
 ): Promise<ZeroGammaLinePayload> {
@@ -65,14 +63,13 @@ export async function getZeroGammaLinePayload(
 
   const historical = await Promise.all(completedDates.map(async (date): Promise<ZeroGammaLinePoint | null> => {
     try {
-      const close = await getNativeFuturesSessionClose(root, date);
-      if (close === null) return null;
-      const snapshot = await getNativeGammaSnapshot(root, date, close);
-      if (snapshot.zeroGamma === null) return null;
+      const snapshot = await getChartGammaLevels(root, sourceSymbol, date);
+      const zeroGamma = zeroGammaFromPayload(snapshot);
+      if (zeroGamma === null) return null;
       return {
         timestampMs: Date.parse(newYorkCashCloseIso(snapshot.sessionDate)),
         sessionDate: snapshot.sessionDate,
-        value: snapshot.zeroGamma,
+        value: zeroGamma,
         status: "HISTORICAL",
       };
     } catch {
@@ -80,14 +77,14 @@ export async function getZeroGammaLinePayload(
     }
   }));
 
-  const spot = await getNativeFuturesSpot(root).catch(() => null);
-  const current = spot === null ? null : await getNativeGammaSnapshot(root, sessionDate, spot).catch(() => null);
+  const current = await getChartGammaLevels(root, sourceSymbol, sessionDate).catch(() => null);
   const points = historical.filter((point): point is ZeroGammaLinePoint => point !== null);
-  if (current?.zeroGamma !== null && current?.zeroGamma !== undefined) {
+  const currentZeroGamma = current ? zeroGammaFromPayload(current) : null;
+  if (current && currentZeroGamma !== null) {
     points.push({
       timestampMs: marketOpen ? now.getTime() : Date.parse(newYorkCashCloseIso(current.sessionDate)),
       sessionDate: current.sessionDate,
-      value: current.zeroGamma,
+      value: currentZeroGamma,
       status: marketOpen ? "LIVE" : "EOD",
     });
   }
@@ -97,12 +94,17 @@ export async function getZeroGammaLinePayload(
   if (!deduplicated.length) throw new Error(`No verified ${root} zero-Gamma snapshots are currently available.`);
   return {
     root,
+    sourceSymbol,
     displayInstrument,
     asOf: now.toISOString(),
     status: marketOpen ? "LIVE" : "EOD",
-    positiveAbove: current ? positiveAbove(current.gammaFlipCurve, current.zeroGamma) : null,
+    positiveAbove: current?.environment.gammaRegime === "POSITIVE"
+      ? true
+      : current?.environment.gammaRegime === "NEGATIVE"
+        ? false
+        : null,
     points: deduplicated,
-    method: "TRUE_OI_SCENARIO",
-    disclosure: "Zero Gamma is the nearest aggregate dealer-Gamma zero crossing after repricing the native futures-options chain across hypothetical futures prices. Historical points become available only at their completed-session timestamp; no future snapshot is painted backward.",
+    method: sourceSymbol === root ? "TRUE_OI_SCENARIO" : "OPTIONS_GAMMA_CROSSING",
+    disclosure: "Zero Gamma is the verified aggregate dealer-Gamma sign crossing for the chart's own options family. Each observation paints forward from its timestamp like a running VWAP; completed-session values are never painted backward.",
   };
 }
