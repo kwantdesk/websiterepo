@@ -8223,6 +8223,7 @@ export default function KwantifyWorkspace({
   const pendingLiveQuoteCacheRef = useRef<Map<string, LiveFeedPrice & { openPrice?: number }>>(new Map());
   const watchlistLiveFrameRef = useRef<number | null>(null);
   const watchlistReactSyncAtRef = useRef(0);
+  const marketIndexChartStateSyncAtRef = useRef(0);
   const liveQuoteCacheTimerRef = useRef<number | null>(null);
   const watchlistRef = useRef(watchlist);
 
@@ -10675,7 +10676,10 @@ export default function KwantifyWorkspace({
       const symbol = snapshot.symbol.trim().toUpperCase();
       const timestamp = marketTimestamp(snapshot.timestamp);
       const previousTimestamp = latestTimestampBySymbol.get(symbol) ?? 0;
-      if (timestamp < previousTimestamp) return;
+      // REST snapshots often repeat the exact same provider frame between
+      // genuine prints. Re-applying those duplicates forced the entire
+      // workspace tree to render every 750ms even though no price changed.
+      if (timestamp <= previousTimestamp) return;
       latestTimestampBySymbol.set(symbol, timestamp);
 
       setFeedErrorByBroker((current) => {
@@ -10716,13 +10720,21 @@ export default function KwantifyWorkspace({
         && chartTrades.length === 0
         && snapshot.marketOpen
       ) {
-        setChartCandles((previous) => mergeLiveMidIntoCandles(
-          previous,
-          snapshot.lastPrice,
-          selectedInstrument,
-          selectedTimeframe,
-          timestamp,
-        ));
+        // Every visible pane paints the verified frame directly through
+        // LIVE_CHART_CANDLE_EVENT. This slower reconciliation keeps the legacy
+        // workspace/trading state current without re-rendering every chart on
+        // every options print.
+        const now = Date.now();
+        if (now - marketIndexChartStateSyncAtRef.current >= 5_000) {
+          marketIndexChartStateSyncAtRef.current = now;
+          setChartCandles((previous) => mergeLiveMidIntoCandles(
+            previous,
+            snapshot.lastPrice,
+            selectedInstrument,
+            selectedTimeframe,
+            timestamp,
+          ));
+        }
       }
 
       if (flashTimer !== null) window.clearTimeout(flashTimer);

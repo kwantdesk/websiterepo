@@ -53,6 +53,7 @@ async function pollMarketIndices() {
   if (!symbols.length) return;
   pollInFlight = true;
   requestedImmediatePoll = false;
+  const pollStartedAt = Date.now();
   let anyLive = false;
   let requestTimeout: number | null = null;
   try {
@@ -82,12 +83,16 @@ async function pollMarketIndices() {
     if (requestTimeout !== null) window.clearTimeout(requestTimeout);
     pollInFlight = false;
     if (subscribers.size) {
+      const targetCadence = anyLive || lastSuccessfulPollHadLiveMarket
+        ? LIVE_POLL_MS
+        : IDLE_POLL_MS;
       schedulePoll(
         requestedImmediatePoll
           ? 0
-          : anyLive || lastSuccessfulPollHadLiveMarket
-            ? LIVE_POLL_MS
-            : IDLE_POLL_MS,
+          // Keep the cadence start-to-start. Waiting another full interval
+          // after the network response made a 500ms request behave like a
+          // 1.25s feed even though LIVE_POLL_MS is 750ms.
+          : Math.max(0, targetCadence - (Date.now() - pollStartedAt)),
       );
     }
   }

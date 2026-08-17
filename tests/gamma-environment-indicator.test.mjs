@@ -37,10 +37,19 @@ test("Gamma Environment reuses the authoritative chart gamma snapshot", () => {
 test("options charts share a batched low-latency quote feed and paint imperatively", () => {
   const workspace = read("src/components/KwantifyWorkspace.tsx");
   const client = read("src/lib/marketIndexLiveClient.ts");
+  const server = read("src/lib/marketIndices.server.ts");
 
   assert.match(workspace, /subscribeMarketIndexSnapshot/);
   assert.match(workspace, /window\.dispatchEvent\(new CustomEvent\(LIVE_CHART_CANDLE_EVENT/);
+  assert.match(workspace, /timestamp <= previousTimestamp/);
+  assert.match(workspace, /marketIndexChartStateSyncAtRef\.current >= 5_000/);
   assert.match(client, /symbols\.join\(","\)/);
   assert.match(client, /const LIVE_POLL_MS = 750/);
   assert.match(client, /let pollInFlight = false/);
+  assert.match(client, /const pollStartedAt = Date\.now\(\)/);
+  assert.match(client, /targetCadence - \(Date\.now\(\) - pollStartedAt\)/);
+  assert.match(server, /MASSIVE_API_BASE}\/v3\/snapshot/);
+  assert.match(server, /searchParams\.set\("ticker\.any_of", providerTickers\.join\(","\)\)/);
+  assert.match(server, /new Set\(definitions\.map\(\(definition\) => definition\.providerTicker\)\)/);
+  assert.match(server, /fetchMassiveMarketIndexFallback\(missingDefinitions\)/);
 });

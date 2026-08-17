@@ -259,6 +259,118 @@ async function fetchMassiveJson(url: string, timeoutMs = 12_000) {
   return payload;
 }
 
+type MarketIndexDefinition = NonNullable<ReturnType<typeof getMarketIndexDefinition>>;
+
+function buildMassiveMarketIndexSnapshot(
+  definition: MarketIndexDefinition,
+  result: JsonRecord,
+): MarketIndexSnapshot | null {
+  const quotePayload = definition.providerKind === "INDEX"
+    ? { results: [result] }
+    : { ticker: result };
+  const quote = parseMassiveCashLevelOne(
+    definition.symbol,
+    definition.providerKind,
+    quotePayload,
+  );
+  if (!quote) return null;
+
+  const session = isRecord(result.session) ? result.session : null;
+  const previousDay = isRecord(result.prevDay ?? result.previousDay)
+    ? result.prevDay ?? result.previousDay
+    : null;
+  const currentDay = isRecord(result.day) ? result.day : null;
+  const previousClose = finiteNumber(
+    session?.previous_close
+    ?? session?.previousClose
+    ?? (isRecord(previousDay) ? previousDay.c ?? previousDay.close : null)
+    ?? result.previous_close
+    ?? result.previousClose,
+  );
+  const sessionOpen = finiteNumber(
+    session?.open
+    ?? (isRecord(currentDay) ? currentDay.o ?? currentDay.open : null)
+    ?? result.open,
+  );
+  const openPrice = previousClose ?? sessionOpen ?? quote.lastPrice;
+  const change = quote.lastPrice - openPrice;
+  const suppliedChange = finiteNumber(session?.change ?? result.todaysChange ?? result.change);
+  const suppliedChangePercent = finiteNumber(
+    session?.change_percent
+    ?? session?.changePercent
+    ?? result.todaysChangePerc
+    ?? result.change_percent
+    ?? result.changePercent,
+  );
+
+  return {
+    symbol: definition.symbol,
+    broker: "Market Index",
+    exchange: definition.exchange,
+    lastPrice: quote.lastPrice,
+    openPrice,
+    change: suppliedChange ?? change,
+    changePercent: suppliedChangePercent ?? (openPrice ? (change / openPrice) * 100 : 0),
+    timestamp: quote.asOfMs,
+    delayed: quote.delayed,
+    marketOpen: definition.providerKind === "STOCK"
+      ? newYorkMarketOpen(quote.asOfMs)
+      : quote.marketOpen,
+    provider: "Massive",
+  };
+}
+
+async function fetchMassiveMarketIndexBatch(definitions: MarketIndexDefinition[]) {
+  const providerTickers = [...new Set(definitions.map((definition) => definition.providerTicker))];
+  if (!providerTickers.length) return [];
+
+  // Massive's unified snapshot accepts ticker.any_of, so every visible SPX,
+  // SPXW, NDX, SPY and QQQ pane is served by one upstream request. The old
+  // per-symbol fan-out made every browser poll wait for the slowest REST call.
+  const endpoint = new URL(`${MASSIVE_API_BASE}/v3/snapshot`);
+  endpoint.searchParams.set("ticker.any_of", providerTickers.join(","));
+  endpoint.searchParams.set("limit", String(Math.max(10, providerTickers.length)));
+  const payload = await fetchMassiveJson(endpoint.toString(), 2_500);
+  const results = Array.isArray(payload.results) ? payload.results.filter(isRecord) : [];
+  const resultByTicker = new Map(
+    results.flatMap((result) => {
+      const ticker = typeof result.ticker === "string" ? result.ticker.trim().toUpperCase() : "";
+      return ticker ? [[ticker, result] as const] : [];
+    }),
+  );
+
+  return definitions.flatMap((definition) => {
+    const result = resultByTicker.get(definition.providerTicker.toUpperCase());
+    if (!result) return [];
+    const snapshot = buildMassiveMarketIndexSnapshot(definition, result);
+    return snapshot ? [snapshot] : [];
+  });
+}
+
+async function fetchMassiveMarketIndexFallback(definitions: MarketIndexDefinition[]) {
+  const groups = new Map<string, MarketIndexDefinition[]>();
+  for (const definition of definitions) {
+    const key = `${definition.providerKind}:${definition.providerTicker}`;
+    groups.set(key, [...(groups.get(key) ?? []), definition]);
+  }
+  const results = await Promise.allSettled([...groups.values()].map(async (group) => {
+    const representative = group[0];
+    const endpoint = representative.providerKind === "INDEX"
+      ? `${MASSIVE_API_BASE}/v3/snapshot/indices?ticker=${encodeURIComponent(representative.providerTicker)}`
+      : `${MASSIVE_API_BASE}/v2/snapshot/locale/us/markets/stocks/tickers/${encodeURIComponent(representative.providerTicker)}`;
+    const payload = await fetchMassiveJson(endpoint, 2_000);
+    const result = representative.providerKind === "INDEX"
+      ? Array.isArray(payload.results) && isRecord(payload.results[0]) ? payload.results[0] : null
+      : isRecord(payload.ticker) ? payload.ticker : null;
+    if (!result) return [];
+    return group.flatMap((definition) => {
+      const snapshot = buildMassiveMarketIndexSnapshot(definition, result);
+      return snapshot ? [snapshot] : [];
+    });
+  }));
+  return results.flatMap((result) => result.status === "fulfilled" ? result.value : []);
+}
+
 export async function fetchMarketIndexCandles(options: {
   symbol: string;
   timeframe: string;
@@ -366,75 +478,24 @@ export async function fetchMarketIndexSnapshots(symbols: string[]) {
     ];
   }
 
-  const results = await Promise.allSettled(unresolved.map(async (symbol): Promise<MarketIndexSnapshot | null> => {
+  const definitions = unresolved.flatMap((symbol) => {
     const definition = getMarketIndexDefinition(symbol);
-    if (!definition) return null;
-    const endpoint = definition.providerKind === "INDEX"
-      ? `${MASSIVE_API_BASE}/v3/snapshot/indices?ticker=${encodeURIComponent(definition.providerTicker)}`
-      : `${MASSIVE_API_BASE}/v2/snapshot/locale/us/markets/stocks/tickers/${encodeURIComponent(definition.providerTicker)}`;
-    // A live batch must not wait twelve seconds because one upstream ticker is
-    // slow. The browser retains the last verified frame and retries the full
-    // batch, so a short snapshot deadline is both smoother and more honest.
-    const payload = await fetchMassiveJson(endpoint, 2_500);
-    const quote = parseMassiveCashLevelOne(definition.symbol, definition.providerKind, payload);
-    if (!quote) return null;
-
-    const result = definition.providerKind === "INDEX"
-      ? Array.isArray(payload.results) && isRecord(payload.results[0])
-        ? payload.results[0]
-        : null
-      : isRecord(payload.ticker)
-        ? payload.ticker
-        : null;
-    const session = result && isRecord(result.session) ? result.session : null;
-    const previousDay = result && isRecord(result.prevDay ?? result.previousDay)
-      ? result.prevDay ?? result.previousDay
-      : null;
-    const currentDay = result && isRecord(result.day)
-      ? result.day
-      : null;
-    const previousClose = finiteNumber(
-      session?.previous_close
-      ?? session?.previousClose
-      ?? (isRecord(previousDay) ? previousDay.c ?? previousDay.close : null)
-      ?? result?.previous_close
-      ?? result?.previousClose,
-    );
-    const sessionOpen = finiteNumber(
-      session?.open
-      ?? (isRecord(currentDay) ? currentDay.o ?? currentDay.open : null)
-      ?? result?.open,
-    );
-    const openPrice = previousClose ?? sessionOpen ?? quote.lastPrice;
-    const change = quote.lastPrice - openPrice;
-    const suppliedChange = finiteNumber(session?.change ?? result?.todaysChange ?? result?.change);
-    const suppliedChangePercent = finiteNumber(
-      session?.change_percent
-      ?? session?.changePercent
-      ?? result?.todaysChangePerc
-      ?? result?.change_percent
-      ?? result?.changePercent,
-    );
-
-    return {
-      symbol: definition.symbol,
-      broker: "Market Index",
-      exchange: definition.exchange,
-      lastPrice: quote.lastPrice,
-      openPrice,
-      change: suppliedChange ?? change,
-      changePercent: suppliedChangePercent ?? (openPrice ? (change / openPrice) * 100 : 0),
-      timestamp: quote.asOfMs,
-      delayed: quote.delayed,
-      marketOpen: definition.providerKind === "STOCK"
-        ? newYorkMarketOpen(quote.asOfMs)
-        : quote.marketOpen,
-      provider: "Massive",
-    };
-  }));
-
-  snapshots.push(...results.flatMap((result) =>
-    result.status === "fulfilled" && result.value ? [result.value] : []));
+    return definition ? [definition] : [];
+  });
+  let massiveSnapshots: MarketIndexSnapshot[] = [];
+  try {
+    massiveSnapshots = await fetchMassiveMarketIndexBatch(definitions);
+    const missingDefinitions = definitions.filter((definition) =>
+      !massiveSnapshots.some((snapshot) => snapshot.symbol === definition.symbol));
+    if (missingDefinitions.length) {
+      massiveSnapshots.push(...await fetchMassiveMarketIndexFallback(missingDefinitions));
+    }
+  } catch {
+    // Keep compatibility with older Massive entitlements while still
+    // deduplicating aliases such as SPX and SPXW onto one provider request.
+    massiveSnapshots = await fetchMassiveMarketIndexFallback(definitions);
+  }
+  snapshots.push(...massiveSnapshots);
   const stillUnresolved = unresolved.filter((symbol) =>
     !snapshots.some((snapshot) => snapshot.symbol === symbol));
   if (stillUnresolved.length && getConfiguredQuantDataApiKey()) {
