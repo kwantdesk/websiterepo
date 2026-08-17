@@ -1,8 +1,11 @@
 import type { GexIntervalProviderBucket, GexIntervalProviderSurface } from "@/lib/gexIntervalMap";
 import type { NetGammaProfileSnapshot, NetGammaStrikeRow } from "@/lib/netGammaExposureByStrike";
+import { expirationMatchesFilter } from "@/lib/netGammaExposureMath";
 
 export const BOUNCE_LEVELS_ID = "bounce-levels";
 export const BOUNCE_LEVELS_SCHEMA_VERSION = 3;
+export const BOUNCE_LEVELS_HISTORY_DAYS = 7;
+export const BOUNCE_LEVELS_HISTORY_BUCKET_LIMIT = 1_440;
 
 export type BounceGreekMode = "GAMMA" | "DELTA" | "VANNA" | "CHARM";
 export type BounceLevelRole = "KING" | "FLOOR" | "CEILING" | "GATEKEEPER" | "MAJOR" | "CLUSTER" | "DEVELOPING" | "WEAKENING" | "RETIRED" | "AIR_POCKET";
@@ -135,6 +138,13 @@ export type BounceLevelsSnapshot = {
 
 export type BounceLevelsBuildSettings = {
   greekMode: BounceGreekMode;
+  expirationMode: "zero-dte" | "zero-to-one-dte" | "zero-to-seven-dte" | "front-expiration" | "all-expirations" | "custom-dte-range" | "specific-expirations";
+  minimumDte: number;
+  maximumDte: number;
+  expirationDates: string[];
+  includeWeeklies: boolean;
+  includeMonthlies: boolean;
+  includeQuarterlies: boolean;
   maximumLevels: number;
   maximumGatekeepers: number;
   maximumMajorNodes: number;
@@ -180,6 +190,13 @@ export type BounceLevelsBuildSettings = {
 
 export const DEFAULT_BOUNCE_LEVELS_SETTINGS: BounceLevelsBuildSettings = {
   greekMode: "GAMMA",
+  expirationMode: "zero-to-one-dte",
+  minimumDte: 0,
+  maximumDte: 7,
+  expirationDates: [],
+  includeWeeklies: true,
+  includeMonthlies: true,
+  includeQuarterlies: true,
   maximumLevels: 8,
   maximumGatekeepers: 2,
   maximumMajorNodes: 4,
@@ -191,7 +208,7 @@ export const DEFAULT_BOUNCE_LEVELS_SETTINGS: BounceLevelsBuildSettings = {
   minimumClusterNodes: 2,
   airPocketRatio: 0.2,
   minimumAirPocketWidthPercent: 0.003,
-  historyBuckets: 120,
+  historyBuckets: BOUNCE_LEVELS_HISTORY_BUCKET_LIMIT,
   maximumNodesPerSlice: 24,
   magnitudeWeight: 0.45,
   proximityWeight: 0.15,
@@ -226,13 +243,40 @@ export const DEFAULT_BOUNCE_LEVELS_SETTINGS: BounceLevelsBuildSettings = {
 type StrikeHistory = { values: number[]; timestamps: number[]; sourcePrices: Array<number | null> };
 type Candidate = Omit<BounceLevel, "role" | "explanation"> & { active: boolean; developing: boolean; weakening: boolean; retired: boolean };
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
+const NEW_YORK_DATE = new Intl.DateTimeFormat("en-US", {
+  timeZone: "America/New_York",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+const newYorkSessionDate = (timestamp: number) => {
+  const parts = Object.fromEntries(NEW_YORK_DATE.formatToParts(new Date(timestamp)).map((part) => [part.type, part.value]));
+  return `${parts.year}-${parts.month}-${parts.day}`;
+};
+const rowsForExpirationScope = <T extends { expirationDate?: string }>(
+  rows: T[],
+  timestamp: number,
+  settings: BounceLevelsBuildSettings,
+) => {
+  const sessionDate = newYorkSessionDate(timestamp);
+  const availableExpirations = [...new Set(rows.map((row) => row.expirationDate).filter((value): value is string => Boolean(value)))];
+  const frontExpiration = availableExpirations.filter((expiration) => expiration >= sessionDate).sort()[0] ?? null;
+  return rows.filter((row) => !row.expirationDate || expirationMatchesFilter(row.expirationDate, sessionDate, {
+    mode: settings.expirationMode,
+    minimumDte: settings.minimumDte,
+    maximumDte: settings.maximumDte,
+    expirationDates: settings.expirationDates,
+    includeWeeklies: settings.includeWeeklies,
+    includeMonthlies: settings.includeMonthlies,
+    includeQuarterlies: settings.includeQuarterlies,
+  }, frontExpiration));
+};
 
 function buildExposureField(
   profile: NetGammaProfileSnapshot,
   surface: GexIntervalProviderSurface | null,
   settings: BounceLevelsBuildSettings,
 ) {
-  const selectedExpirations = new Set(profile.expirationDates);
   const maximumBuckets = Math.max(2, Math.round(settings.historyBuckets));
   const maximumNodes = Math.max(4, Math.min(64, Math.round(settings.maximumNodesPerSlice)));
   const displayTick = /^(NQ|MNQ|ES|MES|RTY|M2K)$/.test(profile.displayInstrument) ? 0.25 : 0.01;
@@ -240,9 +284,15 @@ function buildExposureField(
   const eligibleBuckets = (surface?.buckets ?? [])
     .filter((bucket) => bucket.timestamp <= profile.snapshotTimeMs)
     .slice(-maximumBuckets);
-  const expiryScopeSignature = profile.expirationDates.length
-    ? [...profile.expirationDates].sort().join(",")
-    : profile.expirationLabel;
+  const expiryScopeSignature = [
+    settings.expirationMode,
+    settings.minimumDte,
+    settings.maximumDte,
+    [...settings.expirationDates].sort().join(","),
+    settings.includeWeeklies ? "W" : "",
+    settings.includeMonthlies ? "M" : "",
+    settings.includeQuarterlies ? "Q" : "",
+  ].join(":");
   const nodeKeyFor = (strike: number) => `${profile.sourceTicker}|${settings.greekMode}|${expiryScopeSignature}|${strike}`;
   const seriesByStrike = new Map<number, BounceExposureSeries>();
   const activeByStrike = new Map<number, { active: boolean; belowExitCount: number }>();
@@ -271,8 +321,7 @@ function buildExposureField(
     rows: Array<{ sourceStrike: number; callExposure: number; putExposure: number; expirationDate?: string }>,
   ) => {
     const aggregate = new Map<number, { call: number; put: number }>();
-    for (const row of rows) {
-      if (row.expirationDate && selectedExpirations.size && !selectedExpirations.has(row.expirationDate)) continue;
+    for (const row of rowsForExpirationScope(rows, timestamp, settings)) {
       const current = aggregate.get(row.sourceStrike) ?? { call: 0, put: 0 };
       current.call += Number(row.callExposure) || 0;
       current.put += Number(row.putExposure) || 0;
@@ -438,25 +487,63 @@ export function selectLookaheadSafeBounceBucket(surface: GexIntervalProviderSurf
  */
 export function mergeBounceLevelsSnapshots(previous: BounceLevelsSnapshot | null, next: BounceLevelsSnapshot): BounceLevelsSnapshot {
   if (!previous || previous.sourceTicker !== next.sourceTicker || previous.displayInstrument !== next.displayInstrument || previous.greekMode !== next.greekMode || previous.expirationLabel !== next.expirationLabel) return next;
+  const historyCutoff = next.snapshotTimeMs - BOUNCE_LEVELS_HISTORY_DAYS * 24 * 60 * 60_000;
   const slices = new Map(previous.exposureField.map((slice) => [slice.timestamp, slice]));
   for (const slice of next.exposureField) slices.set(slice.timestamp, slice);
-  const exposureField = [...slices.values()].sort((left, right) => left.timestamp - right.timestamp).slice(-720);
+  const exposureField = [...slices.values()]
+    .filter((slice) => slice.timestamp >= historyCutoff && slice.timestamp <= next.snapshotTimeMs)
+    .sort((left, right) => left.timestamp - right.timestamp)
+    .slice(-BOUNCE_LEVELS_HISTORY_BUCKET_LIMIT);
   const series = new Map(previous.exposureSeries.map((item) => [item.nodeKey, { ...item, samples: [...item.samples] }]));
   for (const incoming of next.exposureSeries) {
     const current = series.get(incoming.nodeKey) ?? { ...incoming, samples: [] };
     const samples = new Map(current.samples.map((sample) => [sample.timestamp, sample]));
     for (const sample of incoming.samples) samples.set(sample.timestamp, sample);
-    series.set(incoming.nodeKey, { ...incoming, samples: [...samples.values()].sort((left, right) => left.timestamp - right.timestamp).slice(-720) });
+    series.set(incoming.nodeKey, {
+      ...incoming,
+      samples: [...samples.values()]
+        .filter((sample) => sample.timestamp >= historyCutoff && sample.timestamp <= next.snapshotTimeMs)
+        .sort((left, right) => left.timestamp - right.timestamp)
+        .slice(-BOUNCE_LEVELS_HISTORY_BUCKET_LIMIT),
+    });
   }
   const rolls = new Map(previous.rolls.map((roll) => [roll.id, roll]));
   for (const roll of next.rolls) rolls.set(roll.id, roll);
   const deltas = exposureField.slice(1).map((slice, index) => slice.timestamp - exposureField[index].timestamp).filter((value) => value > 0).sort((a, b) => a - b);
+  const exposureSeries = [...series.values()]
+    .map((item) => ({
+      ...item,
+      samples: item.samples.filter((sample) => sample.timestamp >= historyCutoff && sample.timestamp <= next.snapshotTimeMs),
+    }))
+    .filter((item) => item.samples.length > 0);
   return {
     ...next,
     exposureField,
-    exposureSeries: [...series.values()],
+    exposureSeries,
     exposureRefreshIntervalMs: deltas.length ? deltas[Math.floor(deltas.length / 2)] : next.exposureRefreshIntervalMs,
-    rolls: [...rolls.values()].sort((left, right) => left.timestamp - right.timestamp),
+    rolls: [...rolls.values()]
+      .filter((roll) => roll.timestamp >= historyCutoff && roll.timestamp <= next.snapshotTimeMs)
+      .sort((left, right) => left.timestamp - right.timestamp),
+  };
+}
+
+export function mergeBounceIntervalSurfaces(
+  historical: GexIntervalProviderSurface | null,
+  current: GexIntervalProviderSurface,
+): GexIntervalProviderSurface {
+  if (!historical || historical.sourceTicker !== current.sourceTicker) return current;
+  const buckets = new Map(historical.buckets.map((bucket) => [bucket.timestamp, bucket]));
+  for (const bucket of current.buckets) buckets.set(bucket.timestamp, bucket);
+  const newestTimestamp = Math.max(0, ...buckets.keys());
+  const historyCutoff = newestTimestamp - BOUNCE_LEVELS_HISTORY_DAYS * 24 * 60 * 60_000;
+  return {
+    ...current,
+    aggregationPeriod: `${historical.aggregationPeriod}+${current.aggregationPeriod}`,
+    buckets: [...buckets.values()]
+      .filter((bucket) => bucket.timestamp >= historyCutoff && bucket.timestamp <= newestTimestamp)
+      .sort((left, right) => left.timestamp - right.timestamp)
+      .slice(-BOUNCE_LEVELS_HISTORY_BUCKET_LIMIT),
+    limitations: [...new Set([...historical.limitations, ...current.limitations])],
   };
 }
 
@@ -467,13 +554,15 @@ function percentileRanks(rows: NetGammaStrikeRow[]) {
   return ranks;
 }
 
-function buildHistory(surface: GexIntervalProviderSurface | null, maximumBuckets: number, asOfMs: number) {
+function buildHistory(surface: GexIntervalProviderSurface | null, settings: BounceLevelsBuildSettings, asOfMs: number) {
   const byStrike = new Map<number, StrikeHistory>();
   if (!surface) return byStrike;
-  const eligible = surface.buckets.filter((bucket) => bucket.timestamp <= asOfMs).slice(-Math.max(2, maximumBuckets));
+  const eligible = surface.buckets.filter((bucket) => bucket.timestamp <= asOfMs).slice(-Math.max(2, settings.historyBuckets));
   for (const bucket of eligible) {
     const aggregate = new Map<number, number>();
-    for (const row of bucket.rows) aggregate.set(row.sourceStrike, (aggregate.get(row.sourceStrike) ?? 0) + row.callExposure + row.putExposure);
+    for (const row of rowsForExpirationScope(bucket.rows, bucket.timestamp, settings)) {
+      aggregate.set(row.sourceStrike, (aggregate.get(row.sourceStrike) ?? 0) + row.callExposure + row.putExposure);
+    }
     for (const [strike, value] of aggregate) {
       const history = byStrike.get(strike) ?? { values: [], timestamps: [], sourcePrices: [] };
       history.values.push(value);
@@ -574,7 +663,7 @@ export function buildBounceLevelsSnapshot(profile: NetGammaProfileSnapshot, hist
   const kingRow = nonZeroRows.reduce<NetGammaStrikeRow | null>((best, row) => !best || Math.abs(row.netExposure) > Math.abs(best.netExposure) ? row : best, null);
   const kingMagnitude = Math.abs(kingRow?.netExposure ?? 0);
   const ranks = percentileRanks(rows);
-  const histories = buildHistory(historySurface, settings.historyBuckets, profile.snapshotTimeMs);
+  const histories = buildHistory(historySurface, settings, profile.snapshotTimeMs);
   const clusters = clusterMembership(rows, profile.sourceSpotPrice, settings);
   const totalWeight = Math.max(0.0001, settings.magnitudeWeight + settings.proximityWeight + settings.accumulationWeight + settings.persistenceWeight + settings.freshnessWeight + settings.clusterWeight);
   const dataQuality = Math.max(0.5, clamp01((profile.mapping.mappingConfidence / 100) * (profile.status === "stale" ? 0.65 : profile.status === "delayed" ? 0.8 : 1)));

@@ -19,7 +19,13 @@ require.extensions[".ts"] = (module, filename) => {
   module._compile(output.outputText, filename);
 };
 
-const { buildBounceLevelsSnapshot, selectLookaheadSafeBounceBucket } = require("../src/lib/bounceLevels.ts");
+const {
+  BOUNCE_LEVELS_HISTORY_BUCKET_LIMIT,
+  buildBounceLevelsSnapshot,
+  mergeBounceIntervalSurfaces,
+  mergeBounceLevelsSnapshots,
+  selectLookaheadSafeBounceBucket,
+} = require("../src/lib/bounceLevels.ts");
 const { classifyBounceNodeMomentum } = require("../src/lib/bounceLevelsPrimitive.ts");
 
 const now = Date.parse("2026-08-14T15:00:00.000Z");
@@ -130,6 +136,43 @@ assert.equal(classifyBounceNodeMomentum(18), "building", "positive node momentum
 assert.equal(classifyBounceNodeMomentum(2), "stable", "small node changes keep a flat live edge");
 assert.equal(classifyBounceNodeMomentum(-18), "weakening", "moderate unwinds taper the live edge");
 assert.equal(classifyBounceNodeMomentum(-60), "dumped", "rapid unwinds collapse into a short decay tail");
+
+const priorSessionTime = Date.parse("2026-08-13T15:00:00.000Z");
+const priorSessionSurface = {
+  ...history,
+  sessionDate: "2026-08-13",
+  status: "HISTORICAL",
+  aggregationPeriod: "5m",
+  buckets: [{
+    timestamp: priorSessionTime,
+    sourcePrice: 733,
+    rows: [{ expirationDate: "2026-08-13", sourceStrike: 733, callExposure: 250, putExposure: 0 }],
+  }],
+};
+const mergedWeeklySurface = mergeBounceIntervalSurfaces(priorSessionSurface, history);
+assert.deepEqual(
+  mergedWeeklySurface.buckets.map((bucket) => bucket.timestamp),
+  [priorSessionTime, now - 120000, now - 60000, now + 60000],
+  "weekly history and the current one-minute session are merged chronologically",
+);
+const weeklySnapshot = buildBounceLevelsSnapshot(profile, mergedWeeklySurface, {
+  maximumNodesPerSlice: 8,
+  historyBuckets: BOUNCE_LEVELS_HISTORY_BUCKET_LIMIT,
+});
+assert.ok(
+  weeklySnapshot.exposureField.some((slice) => slice.timestamp === priorSessionTime && slice.nodes.some((node) => node.sourceStrike === 733)),
+  "historical 0DTE rows are filtered against their own New York session date rather than today's expiration",
+);
+
+const oldSlices = Array.from({ length: 900 }, (_, index) => ({
+  ...snapshot.exposureField[0],
+  timestamp: now - (900 - index) * 300_000,
+}));
+const retainedWeeklySnapshot = mergeBounceLevelsSnapshots(
+  { ...snapshot, exposureField: oldSlices },
+  snapshot,
+);
+assert.ok(retainedWeeklySnapshot.exposureField.length > 720, "browser snapshot merging no longer truncates weekly history at the old 720-bucket ceiling");
 
 const zeroRows = rows.map((row) => makeRow(`zero-${row.id}`, row.sourceStrike, row.mappedDisplayPrice, 0, 0, 0));
 const zeroSnapshot = buildBounceLevelsSnapshot({ ...profile, id: "zero-profile", rows: zeroRows }, null, { maximumLevels: 8, minimumExposurePercentile: 0, minimumPercentOfKing: 0, minimumRelevanceScore: 0 });

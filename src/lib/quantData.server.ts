@@ -3903,7 +3903,8 @@ export async function getGexIntervalMapSurface(input: {
   const scope = input.startTime && input.endTime
     ? { timeRange: { startTime: input.startTime, endTime: input.endTime } }
     : { sessionDate };
-  const ttl = sessionDate === session.sessionDate && session.marketOpen ? 5_000 : 6 * 60 * 60_000;
+  const customHistoryRange = Boolean(input.startTime && input.endTime);
+  const ttl = !customHistoryRange && sessionDate === session.sessionDate && session.marketOpen ? 5_000 : 6 * 60 * 60_000;
   const [interval, pricesResult] = await Promise.all([
     quantDataPost("/options/tool/interval-map", {
       ...scope,

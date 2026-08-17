@@ -1,6 +1,12 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextRequest, NextResponse } from "next/server";
-import { buildBounceLevelsSnapshot, selectLookaheadSafeBounceBucket } from "@/lib/bounceLevels";
+import {
+  BOUNCE_LEVELS_HISTORY_BUCKET_LIMIT,
+  BOUNCE_LEVELS_HISTORY_DAYS,
+  buildBounceLevelsSnapshot,
+  mergeBounceIntervalSurfaces,
+  selectLookaheadSafeBounceBucket,
+} from "@/lib/bounceLevels";
 import { defaultGexIntervalMapSource } from "@/lib/gexIntervalMap";
 import { normalizeGammaHeatmapInstrument } from "@/lib/gammaHeatmap";
 import {
@@ -96,12 +102,36 @@ export async function GET(request: NextRequest) {
   if (cached && cached.expiresAt > Date.now()) return NextResponse.json(cached.payload, { headers: { "Cache-Control": "private, no-store" } });
   try {
     const intervalPromise = getGexIntervalMapSurface({ sourceTicker: source, sessionDate, aggregationPeriod: "1m", greekMode });
+    const historyReferenceMs = asOf ?? (sessionDate ? Date.parse(`${sessionDate}T12:00:00.000Z`) : Date.now());
+    // The historical range ends at the start of the selected UTC day. This
+    // keeps its provider cache key stable all day; the separate one-minute
+    // surface below supplies the selected/current session live.
+    const historyEndMs = Date.parse(`${new Date(historyReferenceMs).toISOString().slice(0, 10)}T00:00:00.000Z`);
+    const historyStartMs = historyEndMs - BOUNCE_LEVELS_HISTORY_DAYS * 24 * 60 * 60_000;
+    // A five-minute historical surface covers the full rolling week without
+    // multiplying live canvas work by 10,080 one-minute buckets. The current
+    // session remains one-minute resolution and wins timestamp collisions.
+    const historicalIntervalPromise = getGexIntervalMapSurface({
+      sourceTicker: source,
+      startTime: new Date(historyStartMs).toISOString(),
+      endTime: new Date(historyEndMs).toISOString(),
+      aggregationPeriod: "5m",
+      greekMode,
+    }).catch(() => null);
     // The live profile and interval history are independent provider surfaces.
     // Start them together so first paint takes one network round instead of two.
     const profilePromise = asOf
       ? intervalPromise.then((interval) => historicalSurface({ sourceTicker: source, displayInstrument: display, displayPrice, asOf, interval }))
       : getNetGammaExposureSurface({ sourceTicker: source, displayInstrument: display, displayPrice, greekMode });
-    const [interval, profileSurface] = await Promise.all([intervalPromise, profilePromise]);
+    const [currentInterval, historicalInterval, profileSurface] = await Promise.all([
+      intervalPromise,
+      historicalIntervalPromise,
+      profilePromise,
+    ]);
+    const interval = mergeBounceIntervalSurfaces(historicalInterval, currentInterval);
+    if (!historicalInterval) {
+      interval.limitations = [...interval.limitations, "The rolling one-week Bounce history could not refresh; the current session remains available."];
+    }
     const profile = buildNetGammaProfile(profileSurface, {
       expiration: {
         mode: expirationMode,
@@ -116,6 +146,13 @@ export async function GET(request: NextRequest) {
     });
     const payload = buildBounceLevelsSnapshot(profile, interval, {
       greekMode,
+      expirationMode,
+      minimumDte: finite(request, "minimumDte", 0),
+      maximumDte: finite(request, "maximumDte", 7),
+      expirationDates: (request.nextUrl.searchParams.get("expirationDates") || "").split(",").map((value) => value.trim()).filter(Boolean),
+      includeWeeklies: request.nextUrl.searchParams.get("includeWeeklies") !== "false",
+      includeMonthlies: request.nextUrl.searchParams.get("includeMonthlies") !== "false",
+      includeQuarterlies: request.nextUrl.searchParams.get("includeQuarterlies") !== "false",
       maximumLevels: finite(request, "maximumLevels", 8),
       maximumGatekeepers: finite(request, "maximumGatekeepers", 2),
       maximumMajorNodes: finite(request, "maximumMajorNodes", 4),
@@ -125,7 +162,7 @@ export async function GET(request: NextRequest) {
       maximumDistancePoints: finite(request, "maximumDistancePoints", 0),
       clusterDistancePoints: finite(request, "clusterDistancePoints", /^(NQ|MNQ)$/.test(display) ? 25 : 6),
       airPocketRatio: finite(request, "airPocketRatio", 20) / 100,
-      historyBuckets: finite(request, "historyBuckets", 120),
+      historyBuckets: Math.max(finite(request, "historyBuckets", BOUNCE_LEVELS_HISTORY_BUCKET_LIMIT), BOUNCE_LEVELS_HISTORY_BUCKET_LIMIT),
       maximumNodesPerSlice: finite(request, "maximumNodesPerSlice", 24),
       magnitudeWeight: finite(request, "magnitudeWeight", 45) / 100,
       proximityWeight: finite(request, "proximityWeight", 15) / 100,

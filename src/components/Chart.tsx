@@ -5649,7 +5649,7 @@ export default function Chart({
     maximumDistancePoints: Number(bounceLevelsIndicator.settings?.maximumDistancePoints ?? 0),
     clusterDistancePoints: Number(bounceLevelsIndicator.settings?.clusterDistancePoints ?? 25),
     airPocketRatio: Number(bounceLevelsIndicator.settings?.airPocketRatio ?? 20),
-    historyBuckets: Number(bounceLevelsIndicator.settings?.historyBuckets ?? 120),
+    historyBuckets: Number(bounceLevelsIndicator.settings?.historyBuckets ?? 1440),
     maximumNodesPerSlice: Number(bounceLevelsIndicator.settings?.maximumNodesPerSlice ?? 24),
     maximumGatekeepers: Number(bounceLevelsIndicator.settings?.maximumGatekeepers ?? 2),
     maximumMajorNodes: Number(bounceLevelsIndicator.settings?.maximumMajorNodes ?? 4),

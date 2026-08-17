@@ -486,7 +486,6 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "maximumDistancePoints", label: "Maximum distance from price · 0 = all", defaultValue: 0, min: 0, max: 10000, step: 1 },
     { key: "clusterDistancePoints", label: "Cluster distance (points)", defaultValue: 25, min: 0.25, max: 500, step: 0.25 },
     { key: "airPocketRatio", label: "Air-pocket maximum density (%)", defaultValue: 20, min: 0, max: 100, step: 1 },
-    { key: "historyBuckets", label: "Exposure history (1-minute slices)", defaultValue: 120, min: 2, max: 720, step: 1 },
     { key: "maximumNodesPerSlice", label: "Maximum nodes per time slice", defaultValue: 24, min: 4, max: 64, step: 1 },
     { key: "activeEnterThreshold", label: "Node activation · % of King", defaultValue: 15, min: 0, max: 100, step: 1 },
     { key: "activeExitThreshold", label: "Node retention · % of King", defaultValue: 8, min: 0, max: 100, step: 1 },
@@ -1122,6 +1121,7 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     greekMode: "GAMMA",
     expirationMode: "zero-to-one-dte",
     expirationDates: "",
+    historyBuckets: 1440,
     includeWeeklies: true,
     includeMonthlies: true,
     includeQuarterlies: true,
@@ -1163,7 +1163,7 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     developingColor: theme?.upColor ?? "#22C55E",
     weakeningColor: theme?.downColor ?? "#EF4444",
     airPocketColor: theme?.gridColor ?? "#71717A",
-    bounceLevelsSettingsVersion: 2,
+    bounceLevelsSettingsVersion: 3,
   } : {}),
   ...(indicatorId === "dark-pool-map" ? {
     preset: "balanced",
@@ -1905,10 +1905,14 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
     for (const [key, allowed] of Object.entries(enumValues)) {
       if (!allowed.includes(String(settings[key]))) settings[key] = defaults[key];
     }
+    // Version 3 makes the rolling week part of the indicator contract. Older
+    // saved workspaces retained only 120–720 intraday buckets and therefore
+    // silently discarded prior sessions.
+    settings.historyBuckets = 1440;
     for (const unsafeKey of ["apiKey", "credential", "credentials", "providerCredential", "liveSnapshot", "snapshotData", "levels", "history"]) {
       delete settings[unsafeKey];
     }
-    return { ...normalizedInstance, settings: { ...settings, bounceLevelsSettingsVersion: 2 } };
+    return { ...normalizedInstance, settings: { ...settings, bounceLevelsSettingsVersion: 3 } };
   }
   if (
     normalizedInstance.indicatorId === "depth-of-market"
