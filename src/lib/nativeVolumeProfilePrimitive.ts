@@ -110,6 +110,7 @@ export type NativeVolumeProfileModel = {
 export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
   private attachedParams: SeriesAttachedParameter<Time> | null = null;
   private models: NativeVolumeProfileModel[] = [];
+  private paneInsets = { left: 0, right: 0 };
   private readonly paneView = {
     // Volume distributions are chart context, not foreground annotations.
     // Paint them below the candlestick series so candle bodies and wicks stay
@@ -148,6 +149,16 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
     this.attachedParams?.requestUpdate();
   }
 
+  setPaneInsets(insets: { left?: number; right?: number }) {
+    const next = {
+      left: Math.max(0, Number.isFinite(insets.left) ? Number(insets.left) : 0),
+      right: Math.max(0, Number.isFinite(insets.right) ? Number(insets.right) : 0),
+    };
+    if (next.left === this.paneInsets.left && next.right === this.paneInsets.right) return;
+    this.paneInsets = next;
+    this.attachedParams?.requestUpdate();
+  }
+
   private timeToCoordinate(model: NativeVolumeProfileModel, timestamp: number) {
     const timeScale = this.attachedParams?.chart.timeScale();
     if (!timeScale) return null;
@@ -171,6 +182,13 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
     const params = this.attachedParams;
     if (!params || !this.models.length) return;
     target.useMediaCoordinateSpace(({ context, mediaSize }) => {
+      const leftEdge = clamp(this.paneInsets.left, 0, Math.max(0, mediaSize.width - 4));
+      const rightEdge = clamp(
+        mediaSize.width - this.paneInsets.right,
+        leftEdge + 4,
+        mediaSize.width,
+      );
+      const usablePaneWidth = Math.max(4, rightEdge - leftEdge);
       const addBar = (
         path: Path2D,
         x: number,
@@ -203,7 +221,10 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
       };
       context.save();
       context.beginPath();
-      context.rect(0, 0, mediaSize.width, mediaSize.height);
+      // The fixed drawing rail is now part of the chart chrome. Treat its
+      // right edge as the true start of the drawable pane so docked profiles
+      // can never paint underneath the controls.
+      context.rect(leftEdge, 0, usablePaneWidth, mediaSize.height);
       context.clip();
 
       const weeklyProfileOccupiesLeftEdge = this.models.some((model) => {
@@ -213,7 +234,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           model,
           model.drawingBounds?.startTime ?? profile.startMs / 1_000,
         );
-        return anchorX != null && anchorX < 2;
+        return anchorX != null && anchorX < leftEdge + 2;
       });
       const latestDailyEndMs = this.models.reduce((latestEndMs, model) => {
         const { profile } = model;
@@ -246,14 +267,18 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
         const rawCustomRight = Math.max(sessionAnchorX, sessionEndX);
         const customCenterX = (rawCustomLeft + rawCustomRight) / 2;
         const customWidth = Math.max(120, rawCustomRight - rawCustomLeft);
-        const customLeft = clamp(customCenterX - customWidth / 2, 2, Math.max(2, mediaSize.width - 122));
-        const customRight = Math.min(mediaSize.width - 2, customLeft + customWidth);
+        const customLeft = clamp(
+          customCenterX - customWidth / 2,
+          leftEdge + 2,
+          Math.max(leftEdge + 2, rightEdge - 122),
+        );
+        const customRight = Math.min(rightEdge - 2, customLeft + customWidth);
         // Keep the newest daily execution profile visible when its Globex
         // open has moved off the left edge. The old renderer only pinned once
         // the *entire* session was off-screen, so a cash-session viewport had
         // real profile data loaded but drew every bar beyond the canvas.
         const autoPinnedDailyLeft = profile.period === "daily"
-          && sessionAnchorX < 2
+          && sessionAnchorX < leftEdge + 2
           && profile.endMs === latestDailyEndMs;
         const latestDailyProfile = profile.period === "daily"
           && profile.endMs === latestDailyEndMs;
@@ -265,17 +290,17 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
         const pinnedRight = style.snapMode === "right"
           && (profile.period !== "daily" || latestDailyProfile);
         const pinnedLeft = style.snapMode === "left"
-          && (profile.period === "daily" ? autoPinnedDailyLeft : sessionAnchorX < 2);
+          && (profile.period === "daily" ? autoPinnedDailyLeft : sessionAnchorX < leftEdge + 2);
         const pinned = pinnedLeft || pinnedRight;
         const rawAnchorX = customProfile
           ? (customLeft + customRight) / 2
           : pinned
-          ? pinnedRight ? mediaSize.width - 2 : 2
+          ? pinnedRight ? rightEdge - 2 : leftEdge + 2
           : sessionAnchorX;
         const endX = customProfile
           ? customRight
           : pinned
-          ? pinnedRight ? 0 : mediaSize.width
+          ? pinnedRight ? leftEdge : rightEdge
           : sessionEndX;
 
         const sessionWidth = Math.max(0.5, Math.abs(sessionEndX - sessionAnchorX));
@@ -294,7 +319,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           || referenceLogicalBars == null
           ? null
           : zoomScaledVolumeProfileWidth({
-              paneWidth: mediaSize.width,
+              paneWidth: usablePaneWidth,
               visibleLogicalFrom: Number(visibleLogicalRange.from),
               visibleLogicalTo: Number(visibleLogicalRange.to),
               referenceLogicalBars,
@@ -304,7 +329,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           ?? (style.widthPercent <= 0
             ? 0
             : Math.min(
-                mediaSize.width * MAX_PROFILE_PANE_FRACTION,
+                usablePaneWidth * MAX_PROFILE_PANE_FRACTION,
                 Math.max(0.5, sessionWidth * style.widthPercent / 100),
               ));
         // A daily profile has two independent halves: volume to the right of
@@ -316,11 +341,11 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
         const anchorX = volumeOnlyPinnedDaily
           ? rawAnchorX
           : splitPinnedDaily
-            ? Math.min(mediaSize.width - 2, profileWidth + 2)
+            ? Math.min(rightEdge - 2, leftEdge + profileWidth + 2)
             : rawAnchorX;
         if (!pinned && (
-          Math.max(anchorX, endX) + profileWidth < 0
-          || Math.min(anchorX, endX) - profileWidth > mediaSize.width
+          Math.max(anchorX, endX) + profileWidth < leftEdge
+          || Math.min(anchorX, endX) - profileWidth > rightEdge
         )) continue;
         const sourceLevels = profile.levels;
         const referencePrice = profile.poc ?? sourceLevels[Math.floor(sourceLevels.length / 2)]?.price;

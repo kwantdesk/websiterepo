@@ -8454,6 +8454,10 @@ function Chart({
     borderRadius: toolbarMetrics.radius,
     transition: "width 70ms linear, height 70ms linear, border-radius 70ms linear",
   } as CSSProperties;
+  // p-[2px] contributes four pixels and the right border contributes one.
+  // Keep native left-docked studies aligned to the rail's real responsive
+  // edge instead of the underlying canvas origin.
+  const toolbarPlotLeftInset = toolbarEnabled ? toolbarMetrics.buttonSize + 5 : 0;
   const toolbarIconClassName = "h-[var(--chart-toolbar-icon)] w-[var(--chart-toolbar-icon)]";
   const toolbarToolIconClassName = "h-[var(--chart-toolbar-tool-icon)] w-[var(--chart-toolbar-tool-icon)]";
   // The drawing tools are a chart-owned navigation rail, not a floating
@@ -11400,6 +11404,7 @@ function Chart({
   useEffect(() => {
     const primitive = volumeProfilePrimitiveRef.current;
     if (!primitive) return;
+    primitive.setPaneInsets({ left: toolbarPlotLeftInset });
     const dailyInstance = indicators.find((instance) =>
       instance.enabled
       && [
@@ -11476,6 +11481,7 @@ function Chart({
     settings.borderUpColor,
     settings.downColor,
     settings.upColor,
+    toolbarPlotLeftInset,
     volumeProfileLastCandleTimestamp,
     volumeProfiles,
   ]);
