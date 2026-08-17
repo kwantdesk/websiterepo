@@ -99,6 +99,50 @@ export function classifyBounceNodeMomentum(rateOfChangePercent: number): BounceN
   return "stable";
 }
 
+export type BounceNodeVisualStructure = {
+  strength: number;
+  brightness: number;
+  fade: number;
+  momentum: BounceNodeMomentum;
+};
+
+export function calculateBounceNodeVisualStructure({
+  visualStrength,
+  bucketShare,
+  rateOfChangePercent,
+  retirementCount,
+  intensity,
+}: {
+  visualStrength: number;
+  bucketShare: number;
+  rateOfChangePercent: number;
+  retirementCount: number;
+  intensity: number;
+}): BounceNodeVisualStructure {
+  const normalizedMagnitude = clamp(visualStrength * intensity, 0, 1);
+  // Do not inflate weak nodes with a square-root curve. Strong nodes should
+  // dominate while low-exposure nodes become genuinely thin and faint.
+  const magnitude = Math.pow(normalizedMagnitude, 1.08);
+  const shareSupport = Math.pow(clamp(bucketShare * 8, 0, 1), 0.7);
+  const structuralStrength = clamp(magnitude * 0.86 + shareSupport * 0.14, 0, 1);
+  const momentum = classifyBounceNodeMomentum(rateOfChangePercent);
+  const momentumScale = momentum === "building"
+    ? 1 + Math.min(0.34, Math.max(0, rateOfChangePercent) / 240)
+    : momentum === "weakening"
+      ? Math.max(0.3, 1 - Math.abs(rateOfChangePercent) / 155)
+      : momentum === "dumped"
+        ? 0.16
+        : 1;
+  const retirementFade = clamp(1 - Math.max(0, retirementCount) * 0.22, 0.18, 1);
+  const fade = clamp(momentumScale * retirementFade, 0.08, 1.34);
+  return {
+    strength: clamp(structuralStrength * fade, 0, 1),
+    brightness: clamp((0.08 + Math.pow(structuralStrength, 0.78) * 0.92) * Math.min(1, fade), 0.025, 1),
+    fade,
+    momentum,
+  };
+}
+
 type PreparedNode = {
   sliceIndex: number;
   x: number;
@@ -108,6 +152,7 @@ type PreparedNode = {
   height: number;
   opacity: number;
   strength: number;
+  brightness: number;
   color: string;
   momentum: BounceNodeMomentum;
   node: BounceExposureNode;
@@ -149,8 +194,12 @@ function traceRibbon(
         ? Math.max(0.35, finalHalfHeight * 0.08)
         : finalHalfHeight;
 
+  const entryExtension = first.sliceIndex > 0 ? clamp(Math.max(3, first.right - first.left) * 0.38, 2, 12) : 0;
+  const entryX = first.left - entryExtension;
+  const entryHalfHeight = entryExtension > 0 ? Math.max(0.25, halfHeight(first) * 0.08) : halfHeight(first);
+
   context.beginPath();
-  context.moveTo(first.left, first.y - halfHeight(first));
+  context.moveTo(entryX, first.y - entryHalfHeight);
   for (const point of points) context.lineTo(point.right, point.y - halfHeight(point));
   if (edgeExtension > 0) {
     const controlX = last.right + edgeExtension * (last.momentum === "dumped" ? 0.18 : 0.55);
@@ -165,6 +214,7 @@ function traceRibbon(
     const point = points[index];
     context.lineTo(point.left, point.y + halfHeight(point));
   }
+  if (entryExtension > 0) context.lineTo(entryX, first.y + entryHalfHeight);
   context.closePath();
   return { edgeX, edgeY: last.y, edgeHalfHeight };
 }
@@ -236,13 +286,15 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
           if (y < -40 || y > mediaSize.height + 40) continue;
           // Strength is finalized against the King (or configured absolute basis)
           // at this exact snapshot. Never renormalize historical samples here.
-          const normalized = clamp(node.visualStrength * data.intensity, 0, 1);
-          const visualStrength = Math.sqrt(normalized);
-          const growth = clamp(node.rateOfChangePercent / 100, -0.55, 0.75);
-          const persistenceBrightness = clamp(Math.sqrt(node.bucketShare * 5), 0.15, 1);
-          const brightness = clamp(Math.max(visualStrength, persistenceBrightness * 0.72) * (1 + growth * 0.18), 0.08, 1);
-          const height = calculateBounceNodeHeight(data.minimumNodeHeight, data.maximumNodeHeight, visualStrength);
-          const opacity = clamp(data.opacity * (data.minimumOpacity + (1 - data.minimumOpacity) * brightness), 0.02, 1);
+          const structure = calculateBounceNodeVisualStructure({
+            visualStrength: node.visualStrength,
+            bucketShare: node.bucketShare,
+            rateOfChangePercent: node.rateOfChangePercent,
+            retirementCount: node.retirementCount,
+            intensity: data.intensity,
+          });
+          const height = calculateBounceNodeHeight(data.minimumNodeHeight, data.maximumNodeHeight, structure.strength);
+          const opacity = clamp(data.opacity * (data.minimumOpacity + (1 - data.minimumOpacity) * structure.brightness), 0.012, 1);
           const color = node.signedExposure >= 0 ? data.positiveColor : data.negativeColor;
 
           prepared.push({
@@ -253,9 +305,10 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
             y,
             height,
             opacity,
-            strength: visualStrength,
+            strength: structure.strength,
+            brightness: structure.brightness,
             color,
-            momentum: classifyBounceNodeMomentum(node.rateOfChangePercent),
+            momentum: structure.momentum,
             node,
           });
         }
@@ -275,10 +328,18 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
         const runs: PreparedNode[][] = [];
         for (const point of groupedPoints) {
           const current = runs.at(-1);
-          if (!current || point.sliceIndex - current.at(-1)!.sliceIndex > 1) runs.push([point]);
+          if (
+            !current
+            || point.sliceIndex - current.at(-1)!.sliceIndex > 1
+            || Math.sign(point.node.signedExposure) !== Math.sign(current.at(-1)!.node.signedExposure)
+          ) runs.push([point]);
           else current.push(point);
         }
         for (const points of runs) {
+          const lastPoint = points.at(-1)!;
+          // If the node vanishes before the latest exposure frame, render a
+          // real collapse rather than leaving a blunt, permanent heat band.
+          if (lastPoint.sliceIndex < slices.length - 1) lastPoint.momentum = "dumped";
           const maximumStrength = Math.max(...points.map((point) => point.strength));
           const maximumOpacity = Math.max(...points.map((point) => point.opacity));
           const last = points.at(-1)!;
@@ -303,6 +364,42 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
           traceRibbon(context, points, 0.62, 0.7 * BOUNCE_LEVELS_HEAT_THICKNESS_SCALE);
           context.fillStyle = ribbonGradient(context, points, body.edgeX, 0.36 + maximumStrength * 0.28);
           context.fill();
+
+          // Local exposure cells make accumulation and decay legible at each
+          // provider frame. Their dimensions and opacity vary continuously;
+          // these are not repeated, equal-sized decorative pills.
+          for (const point of points) {
+            const sampleWidth = Math.max(2, point.right - point.left);
+            const momentumWidth = point.momentum === "building"
+              ? 1.18
+              : point.momentum === "weakening"
+                ? 0.72
+                : point.momentum === "dumped"
+                  ? 0.42
+                  : 1;
+            const radiusX = Math.max(0.8, sampleWidth * (0.2 + point.strength * 0.34) * momentumWidth);
+            const radiusY = Math.max(0.3, point.height * (0.2 + point.brightness * 0.3));
+            context.beginPath();
+            context.ellipse(point.x, point.y, radiusX * 1.5, radiusY * 1.65, 0, 0, Math.PI * 2);
+            context.fillStyle = rgba(point.color, point.opacity * (0.1 + point.brightness * 0.18));
+            context.fill();
+            context.beginPath();
+            context.ellipse(point.x, point.y, radiusX, radiusY, 0, 0, Math.PI * 2);
+            context.fillStyle = rgba(point.color, point.opacity * (0.42 + point.brightness * 0.44));
+            context.fill();
+            context.beginPath();
+            context.ellipse(
+              point.x,
+              point.y,
+              Math.max(0.35, radiusX * 0.48),
+              Math.max(0.22, radiusY * 0.34),
+              0,
+              0,
+              Math.PI * 2,
+            );
+            context.fillStyle = rgba(point.color, point.opacity * (0.58 + point.brightness * 0.38));
+            context.fill();
+          }
 
           context.beginPath();
           context.moveTo(points[0].left, points[0].y);

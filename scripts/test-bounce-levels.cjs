@@ -29,12 +29,22 @@ const {
 const {
   BOUNCE_LEVELS_HEAT_THICKNESS_SCALE,
   calculateBounceNodeHeight,
+  calculateBounceNodeVisualStructure,
   classifyBounceNodeMomentum,
 } = require("../src/lib/bounceLevelsPrimitive.ts");
 
 assert.equal(BOUNCE_LEVELS_HEAT_THICKNESS_SCALE, 0.75, "Bounce Levels heat ribbons render at three quarters thickness");
 assert.equal(calculateBounceNodeHeight(2, 18, 0), 1.5, "minimum heat thickness is reduced proportionally");
 assert.equal(calculateBounceNodeHeight(2, 18, 1), 13.5, "maximum heat thickness is reduced proportionally");
+const stableStructure = calculateBounceNodeVisualStructure({ visualStrength: 0.5, bucketShare: 0.05, rateOfChangePercent: 0, retirementCount: 0, intensity: 1 });
+const buildingStructure = calculateBounceNodeVisualStructure({ visualStrength: 0.5, bucketShare: 0.05, rateOfChangePercent: 50, retirementCount: 0, intensity: 1 });
+const weakeningStructure = calculateBounceNodeVisualStructure({ visualStrength: 0.5, bucketShare: 0.05, rateOfChangePercent: -25, retirementCount: 0, intensity: 1 });
+const dumpedStructure = calculateBounceNodeVisualStructure({ visualStrength: 0.5, bucketShare: 0.05, rateOfChangePercent: -60, retirementCount: 0, intensity: 1 });
+const retiredStructure = calculateBounceNodeVisualStructure({ visualStrength: 0.5, bucketShare: 0.05, rateOfChangePercent: 0, retirementCount: 3, intensity: 1 });
+assert.ok(buildingStructure.strength > stableStructure.strength, "building exposure grows wider than stable exposure");
+assert.ok(weakeningStructure.strength < stableStructure.strength, "weakening exposure visibly contracts");
+assert.ok(dumpedStructure.brightness < weakeningStructure.brightness, "dumped exposure fades rapidly");
+assert.ok(retiredStructure.brightness < stableStructure.brightness, "retiring nodes fade instead of remaining as permanent bands");
 
 const now = Date.parse("2026-08-14T15:00:00.000Z");
 const mapping = {
