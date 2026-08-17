@@ -73,6 +73,8 @@ Do not chase it and do not lower the healthcheck thresholds because of it.
    KWANTIFY_MARKET_DATA_GATEWAY_TOKEN=...   # long random string
    DATABENTO_API_KEY=...                    # VPS-only vendor credential
    QUANTDATA_API_KEY=...                    # VPS-only vendor credential
+   MASSIVE_API_KEY=...                      # VPS-only cash-index credential
+   MASSIVE_INDICES_WS_URL=wss://socket.massive.com/indices
    ```
 
    `RITHMIC_GATEWAY_HOST` is overridden to `0.0.0.0` by compose; the
@@ -99,6 +101,9 @@ Do not chase it and do not lower the healthcheck thresholds because of it.
    Also require `vendorData.databentoConfigured: true` and
    `vendorData.quantDataConfigured: true` before removing the temporary direct
    vendor-key fallback from Vercel.
+   Cash indices additionally require `massiveIndices.configured: true` and a
+   fresh `massiveIndices.lastValueAt`. The website never opens a Massive
+   session itself; the single VPS WebSocket fans out through the shared SSE.
    `connected: true` with a frozen `lastMessageAt` is a dead feed wearing a
    live label — treat it as an outage.
 

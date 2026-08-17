@@ -5,6 +5,7 @@ import { buildArchivedValueAreaProfile } from "./archive-value-area.mjs";
 import { replayArchiveIntoBook } from "./archive-replay.mjs";
 import { loadConfig } from "./config.mjs";
 import { DatabentoEquitiesTradeStream } from "./databento-equities-stream.mjs";
+import { MassiveIndicesStream } from "./massive-indices-stream.mjs";
 import { QuantDataMarketSnapshotStream } from "./quantdata-market-snapshot-stream.mjs";
 import { discoverRithmicSystems, RithmicMarketDataClient } from "./rithmic-client.mjs";
 import { RTraderExcelMarketDataClient } from "./rtrader-excel-client.mjs";
@@ -45,6 +46,16 @@ const quantDataMarketSnapshots = new QuantDataMarketSnapshotStream({
   timeoutMs: Math.min(10_000, config.vendorRequestTimeoutMs),
   equitySymbols: ["SPY", "QQQ", "IWM", "AAPL", "NVDA", "TSLA", "MSFT", "AMZN", "META", "AMD"],
   indexSymbols: ["SPX", "NDX"],
+});
+const massiveIndices = new MassiveIndicesStream({
+  apiKey: config.massiveApiKey,
+  websocketUrl: config.massiveWebsocketUrl,
+  restOrigin: config.massiveRestOrigin,
+  requestTimeoutMs: config.massiveRequestTimeoutMs,
+  staleMs: config.massiveStaleMs,
+  reconnectMinMs: config.reconnectMinMs,
+  reconnectMaxMs: config.reconnectMaxMs,
+  symbols: ["SPX", "SPXW", "NDX", "VIX", "VXN", "RUT", "DJI"],
 });
 const rawSseClients = new Set();
 const tradeSseClients = new Set();
@@ -929,11 +940,19 @@ function emitMarketIndexQuote(snapshot) {
 }
 
 function marketIndexStatus() {
+  const massive = massiveIndices.status();
   const databento = databentoEquities.status();
   const quantData = quantDataMarketSnapshots.status();
   return {
-    connected: databento.connected || quantData.connected,
-    source: databento.connected ? "Databento" : quantData.connected ? "QuantData" : "VPS market-data edge",
+    connected: massive.connected || databento.connected || quantData.connected,
+    source: massive.connected
+      ? "Massive"
+      : databento.connected
+        ? "Databento"
+        : quantData.connected
+          ? "QuantData"
+          : "VPS market-data edge",
+    massive,
     databento,
     quantData,
   };
@@ -948,11 +967,24 @@ function emitMarketIndexStatus() {
 }
 
 function marketIndexSnapshot(symbol) {
+  const massive = massiveIndices.snapshot(symbol);
+  // Massive is authoritative for supported cash indices. During RTH, never
+  // let a dead socket pin the chart to an old frame: a newer VPS fallback may
+  // temporarily win until the one persistent Massive connection recovers.
+  if (massive && (!massive.marketOpen || Date.now() - massive.timestamp < 60_000)) {
+    return massive;
+  }
   const direct = databentoEquities.snapshot(symbol);
   const fallback = quantDataMarketSnapshots.snapshot(symbol);
-  return direct && (!fallback || direct.timestamp >= fallback.timestamp) ? direct : fallback;
+  const alternate = direct && (!fallback || direct.timestamp >= fallback.timestamp) ? direct : fallback;
+  return massive && (!alternate || massive.timestamp >= alternate.timestamp) ? massive : alternate;
 }
 
+massiveIndices.on("quote", emitMarketIndexQuote);
+massiveIndices.on("status", emitMarketIndexStatus);
+massiveIndices.on("streamError", (error) => {
+  process.stderr.write(`[massive-indices] ${error instanceof Error ? error.message : String(error)}\n`);
+});
 databentoEquities.on("quote", emitMarketIndexQuote);
 databentoEquities.on("status", emitMarketIndexStatus);
 databentoEquities.on("streamError", (error) => {
@@ -962,6 +994,8 @@ quantDataMarketSnapshots.on("quote", (snapshot) => {
   // A genuine Databento trade is the preferred source when the account is
   // entitled. The REST snapshot only fills symbols whose direct stream is
   // unavailable or stale; it can never rewind a newer live trade.
+  const massive = massiveIndices.snapshot(snapshot.symbol);
+  if (massive && (!massive.marketOpen || Date.now() - massive.timestamp < 60_000)) return;
   const direct = databentoEquities.snapshot(snapshot.symbol);
   if (direct && Date.now() - direct.timestamp < 5_000) return;
   emitMarketIndexQuote(snapshot);
@@ -980,6 +1014,7 @@ const server = createServer(async (request, response) => {
       ...client.health(),
       recorder: recorder.status(),
       vendorData: vendorDataEdge.health(),
+      massiveIndices: massiveIndices.status(),
       databentoEquities: databentoEquities.status(),
       quantDataMarketSnapshots: quantDataMarketSnapshots.status(),
     });
@@ -1164,7 +1199,7 @@ const server = createServer(async (request, response) => {
       return;
     }
     if (request.method === "GET" && url.pathname === "/v1/market-data/index-stream") {
-      if (!config.databentoApiKey && !config.quantDataApiKey) {
+      if (!config.massiveApiKey && !config.databentoApiKey && !config.quantDataApiKey) {
         return json(response, 503, { error: "No options-underlying provider is configured on the market-data gateway." });
       }
       const symbols = new Set(
@@ -1200,7 +1235,7 @@ const server = createServer(async (request, response) => {
       return;
     }
     if (request.method === "GET" && url.pathname === "/v1/market-data/index-snapshot") {
-      if (!config.databentoApiKey && !config.quantDataApiKey) {
+      if (!config.massiveApiKey && !config.databentoApiKey && !config.quantDataApiKey) {
         return json(response, 503, { error: "No options-underlying provider is configured on the market-data gateway." });
       }
       const symbols = [...new Set(
@@ -1219,6 +1254,23 @@ const server = createServer(async (request, response) => {
         snapshots,
         status: marketIndexStatus(),
         asOf: Date.now(),
+      });
+    }
+    if (request.method === "GET" && url.pathname === "/v1/market-data/index-history") {
+      if (!config.massiveApiKey) {
+        return json(response, 503, { error: "Massive index history is not configured on the VPS." });
+      }
+      const symbol = String(url.searchParams.get("symbol") || "").trim().toUpperCase();
+      const timeframe = String(url.searchParams.get("timeframe") || "5m").trim();
+      const from = Number(url.searchParams.get("from"));
+      const to = Number(url.searchParams.get("to"));
+      const candles = await massiveIndices.history({ symbol, timeframe, from, to });
+      return json(response, 200, {
+        candles,
+        symbol,
+        source: "Massive (VPS)",
+        from,
+        to,
       });
     }
     if (request.method === "GET" && url.pathname === "/v1/market-data/trades") {
@@ -1721,6 +1773,7 @@ server.listen(config.port, config.host, () => {
   }
   if (config.databentoApiKey) databentoEquities.start();
   if (config.quantDataApiKey) quantDataMarketSnapshots.start();
+  if (config.massiveApiKey) massiveIndices.start();
 });
 
 // Flush the manifest and close files cleanly on shutdown so a restart never
@@ -1732,6 +1785,7 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
 }
 
 async function shutdown() {
+  massiveIndices.stop();
   databentoEquities.stop();
   quantDataMarketSnapshots.stop();
   await client.stop();

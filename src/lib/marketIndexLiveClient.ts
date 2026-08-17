@@ -29,7 +29,7 @@ const LIVE_POLL_MS = 750;
 const IDLE_POLL_MS = 5_000;
 const STREAM_STALE_MS = 5_000;
 const VPS_STREAM_SYMBOLS = new Set([
-  "SPX", "SPXW", "SPY", "NDX", "QQQ", "IWM",
+  "VIX", "VXN", "SPX", "SPXW", "SPY", "NDX", "QQQ", "IWM", "RUT", "DJI",
   "AAPL", "NVDA", "TSLA", "MSFT", "AMZN", "META", "AMD",
 ]);
 

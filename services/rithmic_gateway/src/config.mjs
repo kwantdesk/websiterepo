@@ -62,6 +62,7 @@ export function loadConfig(env = process.env) {
   const gatewayToken = String(env.KWANTIFY_MARKET_DATA_GATEWAY_TOKEN || "").trim();
   const databentoApiKey = String(env.DATABENTO_API_KEY || "").trim();
   const quantDataApiKey = String(env.QUANTDATA_API_KEY || "").trim();
+  const massiveApiKey = String(env.MASSIVE_API_KEY || "").trim();
   return {
     serviceRoot: SERVICE_ROOT,
     protoDir: sourceMode === "protocol" ? resolveProtoDirectory(env) : null,
@@ -79,6 +80,15 @@ export function loadConfig(env = process.env) {
     gatewayToken,
     databentoApiKey,
     quantDataApiKey,
+    massiveApiKey,
+    massiveWebsocketUrl: String(
+      env.MASSIVE_INDICES_WS_URL || "wss://socket.massive.com/indices",
+    ).trim(),
+    massiveRestOrigin: String(
+      env.MASSIVE_REST_ORIGIN || "https://api.massive.com",
+    ).trim(),
+    massiveRequestTimeoutMs: positiveInteger(env.MASSIVE_REQUEST_TIMEOUT_MS, 15_000),
+    massiveStaleMs: positiveInteger(env.MASSIVE_STALE_MS, 30_000),
     vendorRequestTimeoutMs: positiveInteger(env.VENDOR_REQUEST_TIMEOUT_MS, 30_000),
     quantDataMinSpacingMs: positiveInteger(env.QUANTDATA_MIN_SPACING_MS, 80),
     quantDataCacheMs: positiveInteger(env.QUANTDATA_EDGE_CACHE_MS, 2_500),

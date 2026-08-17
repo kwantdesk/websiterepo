@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 
 import {
+  fetchInstitutionalMarketData,
+  isInstitutionalMarketDataConfigured,
+} from "@/lib/institutionalMarketData.server";
+import {
   fetchMarketIndexCandles,
   fetchMarketIndexSnapshots,
   hasIntradayMarketIndexHistoryAccess,
@@ -26,6 +30,23 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: "At least one supported market instrument is required." }, { status: 400 });
     }
     try {
+      if (isInstitutionalMarketDataConfigured()) {
+        const upstream = await fetchInstitutionalMarketData(
+          `v1/market-data/index-snapshot?symbols=${encodeURIComponent(symbols.join(","))}`,
+          { method: "GET" },
+          10_000,
+        );
+        const payload = await upstream.json().catch(() => null) as unknown;
+        if (!upstream.ok) {
+          const message = payload && typeof payload === "object" && "error" in payload
+            ? String((payload as { error?: unknown }).error || "VPS index snapshot failed.")
+            : "VPS index snapshot failed.";
+          throw new Error(message);
+        }
+        return NextResponse.json(payload, {
+          headers: { "Cache-Control": "private, no-store, max-age=0" },
+        });
+      }
       const snapshots = await fetchMarketIndexSnapshots(symbols);
       const source = [...new Set(snapshots.map((snapshot) => snapshot.provider))].join(" + ") || "UNAVAILABLE";
       return NextResponse.json(
@@ -60,6 +81,30 @@ export async function GET(request: Request) {
   const to = Number.isFinite(requestedTo) ? Math.min(now, requestedTo) : now;
 
   try {
+    const definition = getMarketIndexDefinition(symbol);
+    if (definition?.providerKind === "INDEX" && isInstitutionalMarketDataConfigured()) {
+      const params = new URLSearchParams({
+        symbol,
+        timeframe,
+        from: String(from),
+        to: String(to),
+      });
+      const upstream = await fetchInstitutionalMarketData(
+        `v1/market-data/index-history?${params.toString()}`,
+        { method: "GET" },
+        20_000,
+      );
+      const payload = await upstream.json().catch(() => null) as unknown;
+      if (!upstream.ok) {
+        const message = payload && typeof payload === "object" && "error" in payload
+          ? String((payload as { error?: unknown }).error || "VPS index history failed.")
+          : "VPS index history failed.";
+        throw new Error(message);
+      }
+      return NextResponse.json(payload, {
+        headers: { "Cache-Control": "private, no-store, max-age=0" },
+      });
+    }
     const candles = await fetchMarketIndexCandles({ symbol, timeframe, from, to });
     return NextResponse.json(
       {

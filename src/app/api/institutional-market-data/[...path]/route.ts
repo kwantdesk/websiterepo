@@ -24,6 +24,7 @@ const ALLOWED_PATHS = new Set([
   "v1/market-data/trades",
   "v1/market-data/index-stream",
   "v1/market-data/index-snapshot",
+  "v1/market-data/index-history",
   "v1/heatmap/snapshot",
   "v1/heatmap/stream",
 ]);
