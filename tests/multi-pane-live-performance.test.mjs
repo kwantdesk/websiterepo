@@ -52,6 +52,7 @@ test("each pane losslessly coalesces execution work before copying tape and cand
   assert.match(workspace, /LIVE_CHART_EXECUTION_EVENT/);
   assert.match(workspace, /tape: next/);
   assert.match(workspace, /footprintLiveActive[\s\S]{0,120}\? 1_500/);
+  assert.match(workspace, /footprintLiveActive && !nonFootprintOrderFlowActive\) return/);
   assert.match(workspace, /onTrades: \(records\) => \{[\s\S]{0,160}queueExecutionUpdate\(records\)/);
 });
 
@@ -60,6 +61,10 @@ test("sibling panes share one bounded execution tape instead of retaining duplic
   assert.match(workspace, /function storeWorkspaceExecutionTape/);
   assert.match(workspace, /while \(workspaceExecutionTape\.size > MAX_WORKSPACE_EXECUTION_TAPES\)/);
   assert.match(workspace, /function mergeSharedWorkspaceExecutionTape/);
+  assert.match(workspace, /workspaceExecutionBatchResults = new WeakMap/);
+  assert.match(workspace, /completedBatch\?\.key === key/);
+  assert.match(workspace, /incomingTail\.timestamp <= sharedTailRecord\.timestamp/);
+  assert.match(workspace, /workspaceExecutionIdentity\(sharedTape\[index\]\)/);
   assert.match(workspace, /const records = pendingExecutionRecords;[\s\S]{0,520}mergeSharedWorkspaceExecutionTape\([\s\S]{0,180}records/);
   assert.match(workspace, /if \(requiresExecutionStream\) return;[\s\S]{0,520}setMarketTrades/);
 });
@@ -126,7 +131,8 @@ test("a live candle frame clones history once while every tick still reaches exe
   assert.match(workspace, /\), \[\.\.\.previous\]\);/);
   assert.match(workspace, /const currentLedger = paperLedgerRef\.current/);
   assert.match(workspace, /if \(executionChanged\) \{\s*syncPaperLedgerUi\(true\)/);
-  assert.match(workspace, /showTradesMenu \|\| rightPanel === "order"[\s\S]{0,80}syncPaperLedgerUi\(false, 250\)/);
+  assert.match(workspace, /showTradesMenu \|\| rightPanel === "order"[\s\S]{0,480}syncPaperLedgerUi\(false, 1_000\)/);
+  assert.match(workspace, /activeChartExecutionQuoteUiAtRef\.current >= 1_000/);
   assert.match(
     readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8"),
     /paperPositionOverlayPrimitiveRef\.current\?\.updateMarketQuote\(detail\)/,
@@ -192,6 +198,16 @@ test("exchange quotes do not continuously reconcile the full workspace shell", (
   assert.match(workspace, /watchlistRef\.current = next/);
   assert.match(workspace, /now - watchlistReactSyncAtRef\.current < 15_000/);
   assert.doesNotMatch(workspace, /setWatchlist\(\(current\) => \{[\s\S]{0,120}updates\.get/);
+});
+
+test("one pane per symbol owns paper execution instead of racing sibling charts", () => {
+  assert.match(workspace, /const paperExecutionAuthorityPaneIds = useMemo/);
+  assert.match(workspace, /const paneIds = new Set<string>\(\[activePaneId\]\)/);
+  assert.match(workspace, /paperExecutionAuthorityPaneIds\.has\(pane\.id\)/);
+  assert.doesNotMatch(
+    workspace,
+    /activePaneId === pane\.id \|\| paperExecutionTrackedSymbols\.has\(normalizePaperSymbol\(pane\.symbol\)\)/,
+  );
 });
 
 test("unrelated shell state cannot rerender every heavyweight chart surface", () => {

@@ -2789,6 +2789,20 @@ function reanchorLiveMidIntoCandles(candles: Candle[], mid: number, symbol: stri
 const workspaceCandleRequests = new Map<string, Promise<Candle[]>>();
 const workspaceLiveSeamRequests = new Map<string, Promise<Candle[]>>();
 const workspaceExecutionTape = new Map<string, InstitutionalTrade[]>();
+// The shared Rithmic stream fans one immutable batch out to every chart pane
+// subscribed to the same contract. Remember the result for that exact batch
+// object so sibling panes do not each merge/sort the same 25k-record tape.
+// WeakMap keeps the cache bounded by the stream batch lifetime.
+const workspaceExecutionBatchResults = new WeakMap<
+  InstitutionalTrade[],
+  { key: string; tape: InstitutionalTrade[] }
+>();
+
+function workspaceExecutionIdentity(record: InstitutionalTrade | undefined) {
+  if (!record) return "";
+  return record.eventId
+    || `${record.timestamp}:${record.recordIndex}:${record.close}:${record.volume}`;
+}
 const MAX_WORKSPACE_EXECUTION_TAPES = 8;
 const workspaceOrderFlowRequests = new Map<string, Promise<InstitutionalOrderFlowResult | null>>();
 const workspaceHistoricalExecutionRequests = new Map<string, Promise<{
@@ -2826,17 +2840,41 @@ function mergeSharedWorkspaceExecutionTape(
   incoming: InstitutionalTrade[],
 ) {
   const key = workspaceOrderFlowKey(symbol, timeframe);
+  const completedBatch = workspaceExecutionBatchResults.get(incoming);
+  if (completedBatch?.key === key) return completedBatch.tape;
   const sharedTape = workspaceExecutionTape.get(key) ?? [];
+  const incomingTail = incoming.at(-1);
+  const sharedTailRecord = sharedTape.at(-1);
+  // Background panes intentionally coalesce for longer than the active pane.
+  // By the time they flush, their newest print is normally already present in
+  // the canonical tape. Detect that ordered-prefix case from a bounded tail
+  // window and reuse the shared array rather than scanning/allocating 25k+
+  // records once again for every sibling chart.
+  if (
+    incomingTail
+    && sharedTailRecord
+    && incomingTail.timestamp <= sharedTailRecord.timestamp
+  ) {
+    const incomingTailIdentity = workspaceExecutionIdentity(incomingTail);
+    const searchStart = Math.max(0, sharedTape.length - Math.max(512, incoming.length * 4));
+    for (let index = sharedTape.length - 1; index >= searchStart; index -= 1) {
+      if (workspaceExecutionIdentity(sharedTape[index]) !== incomingTailIdentity) continue;
+      workspaceExecutionBatchResults.set(incoming, { key, tape: sharedTape });
+      return sharedTape;
+    }
+  }
   const localTail = localTape.at(-1)?.timestamp ?? 0;
   const sharedTail = sharedTape.at(-1)?.timestamp ?? 0;
   const baseTape = sharedTail > localTail
     || (sharedTail === localTail && sharedTape.length >= localTape.length)
     ? sharedTape
     : localTape;
-  return storeWorkspaceExecutionTape(
+  const tape = storeWorkspaceExecutionTape(
     key,
     mergeInstitutionalTradeTape(baseTape, incoming),
   );
+  workspaceExecutionBatchResults.set(incoming, { key, tape });
+  return tape;
 }
 
 function fetchWorkspaceLiveSeam(
@@ -4421,6 +4459,10 @@ function WorkspaceChartPaneComponent({
     instance.enabled && CHART_INDICATOR_BY_ID.get(instance.indicatorId)?.requiresOrderFlow);
   const footprintLiveActive = indicators.some((instance) =>
     instance.enabled && instance.indicatorId === "deep-print-footprint");
+  const nonFootprintOrderFlowActive = indicators.some((instance) =>
+    instance.enabled
+    && instance.indicatorId !== "deep-print-footprint"
+    && CHART_INDICATOR_BY_ID.get(instance.indicatorId)?.requiresOrderFlow);
   const dailyProfileInstance = indicators.find((instance) =>
     instance.enabled
     && [
@@ -4623,9 +4665,11 @@ function WorkspaceChartPaneComponent({
     let marketTradeStateSyncTimer: number | null = null;
     const scheduleMarketTradeStateSync = () => {
       // Footprint receives live batches through its canvas primitive below.
-      // React only needs an occasional checkpoint for history-dependent
-      // analytics; sending the complete tape through the component tree at
-      // 10 fps was the dominant multi-chart memory/CPU bottleneck.
+      // A Footprint-only pane already received its initial history through
+      // onSeed/applyFlow and paints every incremental batch imperatively. It
+      // must not keep pushing the growing tape back through React afterwards.
+      // Other order-flow studies still receive a sampled checkpoint.
+      if (footprintLiveActive && !nonFootprintOrderFlowActive) return;
       const baseCadence = footprintLiveActive
         ? 1_500
         : ORDER_FLOW_DATA_REFRESH_INTERVAL_MS;
@@ -4828,6 +4872,7 @@ function WorkspaceChartPaneComponent({
     needsLiveVolumeProfiles,
     needsOrderFlowHistory,
     footprintLiveActive,
+    nonFootprintOrderFlowActive,
     pane.broker,
     pane.symbol,
     pane.timeframe,
@@ -7488,7 +7533,11 @@ export default function KwantifyWorkspace({
       if (executionChanged) {
         syncPaperLedgerUi(true);
       } else if (showTradesMenu || rightPanel === "order") {
-        syncPaperLedgerUi(false, 250);
+        // Live P&L and marks are driven by the small external quote store.
+        // The full account ledger only needs a low-rate reconciliation while
+        // the ticket is visible; four updates per second rerendered this
+        // 14k-line workspace shell and caused multi-chart input stalls.
+        syncPaperLedgerUi(false, 1_000);
       }
     }
     // The chart and GEX calibration consume the ref-backed quote directly.
@@ -7501,7 +7550,7 @@ export default function KwantifyWorkspace({
     if (
       previous?.paneId !== quote.paneId
       || previous?.symbol !== quote.symbol
-      || now - activeChartExecutionQuoteUiAtRef.current >= 250
+      || now - activeChartExecutionQuoteUiAtRef.current >= 1_000
     ) {
       activeChartExecutionQuoteUiAtRef.current = now;
       activeChartExecutionQuoteUiRef.current = quote;
@@ -8450,6 +8499,27 @@ export default function KwantifyWorkspace({
     });
     return symbols;
   }, [paperLedger]);
+  const paperExecutionAuthorityPaneIds = useMemo(() => {
+    // One chart per symbol owns paper-order evaluation. Previously every NQ
+    // pane processed the same quote whenever an NQ position/order existed,
+    // multiplying ledger work and allowing sibling callbacks to race the
+    // same SL/TP transition. The selected chart remains authoritative for its
+    // symbol; a single visible fallback owns every other tracked symbol.
+    const paneIds = new Set<string>([activePaneId]);
+    const activePane = workspacePanes.find((pane) => pane.id === activePaneId);
+    const activeSymbol = activePane ? normalizePaperSymbol(activePane.symbol) : "";
+    paperExecutionTrackedSymbols.forEach((symbol) => {
+      if (symbol === activeSymbol) return;
+      const owner = workspacePanes.find((pane) => (
+        visibleWorkspacePaneIds.includes(pane.id)
+        &&
+        isWorkspaceChartKind(pane.content)
+        && normalizePaperSymbol(pane.symbol) === symbol
+      ));
+      if (owner) paneIds.add(owner.id);
+    });
+    return paneIds;
+  }, [activePaneId, paperExecutionTrackedSymbols, visibleWorkspacePaneIds, workspacePanes]);
   const selectedPaperDailyPnl = dailyRealizedPaperPnl(selectedPaperAccountLedger);
   const orderPanelLockTone =
     activeBrokerHealth.state === "broken"
@@ -14028,11 +14098,9 @@ export default function KwantifyWorkspace({
         onClosePaperPosition={handleFlattenPaperPosition}
         onRemovePaperFills={handleRemovePaperFillMarkers}
         onResetPaperTrading={selectedPaperTradingAccount ? handleResetPaperTrading : undefined}
-        onLiveExecutionQuote={
-          activePaneId === pane.id || paperExecutionTrackedSymbols.has(normalizePaperSymbol(pane.symbol))
-            ? handleActiveChartExecutionQuote
-            : undefined
-        }
+        onLiveExecutionQuote={paperExecutionAuthorityPaneIds.has(pane.id)
+          ? handleActiveChartExecutionQuote
+          : undefined}
         onActivate={() => activateWorkspacePane(pane.id)}
         onOpenSettings={openChartSettings}
         onCreateAlertAtPrice={openCreateAlert}
