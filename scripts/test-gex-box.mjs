@@ -193,3 +193,24 @@ test("canonical deep-link route supports all four surfaces", async () => {
   const route = await readFile(new URL("../src/app/(workspace)/gex-box/[surface]/page.tsx", import.meta.url), "utf8");
   for (const surface of ["classic", "state", "orderflow", "research"]) assert.match(route, new RegExp(`\\b${surface}\\b`));
 });
+
+test("profile and order-flow controls are wired to their renderers and persisted", async () => {
+  const workspace = await readFile(new URL("../src/components/gexbot/GexBotWorkspace.tsx", import.meta.url), "utf8");
+  const charts = await readFile(new URL("../src/components/gexbot/GexBotCharts.tsx", import.meta.url), "utf8");
+
+  assert.match(workspace, /chartType: "line" \| "candles"/);
+  assert.match(workspace, /profileAlignment: "left" \| "center" \| "right"/);
+  assert.match(workspace, /Independent order-flow panels/);
+  assert.match(workspace, /Combine 0DTE \+ 1DTE/);
+  assert.match(workspace, /Underlying spot overlay/);
+  assert.match(workspace, /windowMinutes/);
+  assert.match(workspace, /version: 3[\s\S]*orderflowPanels/);
+
+  assert.match(charts, /CandlestickChart/);
+  assert.match(charts, /appearance\.profileAlignment === "left"/);
+  assert.match(charts, /metric\.combine/);
+  assert.match(charts, /metric\.expiry === "next"/);
+  assert.match(charts, /metric\.showSpot/);
+  assert.match(charts, /metric\.windowMinutes \* 60_000/);
+  assert.match(charts, /axisPointer: \{ link: \[\{ xAxisIndex: "all" \}\]/);
+});

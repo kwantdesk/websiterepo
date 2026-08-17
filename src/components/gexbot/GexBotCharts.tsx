@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart, CustomChart, LineChart, ScatterChart } from "echarts/charts";
+import { BarChart, CandlestickChart, CustomChart, LineChart, ScatterChart } from "echarts/charts";
 import {
   AxisPointerComponent,
   DataZoomComponent,
@@ -23,6 +23,7 @@ import type { GexBotOrderflowFrame, GexBotProfileFrame, GexBotStrike } from "@/l
 echarts.use([
   AxisPointerComponent,
   BarChart,
+  CandlestickChart,
   CanvasRenderer,
   CustomChart,
   DataZoomComponent,
@@ -57,6 +58,10 @@ type Appearance = {
   showVolumeMajors: boolean;
   showOiMajors: boolean;
   lineStyle: LineStyle;
+  zeroLineStyle: LineStyle;
+  majorLineStyle: LineStyle;
+  chartType: "line" | "candles";
+  profileAlignment: "left" | "center" | "right";
   dotSize: number;
   lookbackCount: number;
   multiplier: number;
@@ -69,6 +74,13 @@ export type OrderflowMetricConfig = {
   label: string;
   color: string;
   description: string;
+};
+
+export type OrderflowPanelConfig = OrderflowMetricConfig & {
+  expiry: "latest" | "next";
+  combine: boolean;
+  showSpot: boolean;
+  windowMinutes: 5 | 15 | 30 | 60 | 390;
 };
 
 type ChartEvent = {
@@ -206,12 +218,12 @@ function levelLines(frame: GexBotProfileFrame, dataset: Dataset, appearance: App
   if (appearance.showZero && frame.zero_gamma !== null) data.push({
     name: "Zero gamma",
     yAxis: frame.zero_gamma,
-    lineStyle: { color: "#e5b94b", width: 1.2, type: echartsLineStyle(appearance.lineStyle) },
+    lineStyle: { color: "#e5b94b", width: 1.2, type: echartsLineStyle(appearance.zeroLineStyle) },
     label: { show: true, formatter: `ZERO  ${price(frame.zero_gamma)}`, color: "#080a0d", backgroundColor: "#e5b94b", borderRadius: 4, padding: [4, 7], fontFamily: MONO, fontWeight: 700, fontSize: 9 },
   });
   const addMajor = (name: string, value: number | null, color: string, width: number) => {
     if (value === null) return;
-    data.push({ name, yAxis: value, lineStyle: { color, width, type: echartsLineStyle(appearance.lineStyle), opacity: 0.84 }, label: { show: false } });
+    data.push({ name, yAxis: value, lineStyle: { color, width, type: echartsLineStyle(appearance.majorLineStyle), opacity: 0.84 }, label: { show: false } });
   };
   if (appearance.showMajors && appearance.showVolumeMajors && dataset !== "oi") {
     addMajor("Volume major positive", frame.major_pos_vol, appearance.positive, 1.25);
@@ -270,17 +282,29 @@ export function ProfessionalProfileChart({
     const lines = levelLines(frame, dataset, appearance);
     const series: Record<string, unknown>[] = [];
 
+    const candleData = (() => {
+      const buckets = new Map<number, number[]>();
+      spotTape.forEach((entry) => {
+        if (entry.spot < minStrike || entry.spot > maxStrike) return;
+        const bucket = Math.floor(entry.timestamp / 60_000) * 60_000;
+        const values = buckets.get(bucket) ?? [];
+        values.push(entry.spot);
+        buckets.set(bucket, values);
+      });
+      return [...buckets.entries()].slice(-480).map(([timestamp, values]) => [timestamp, values[0], values.at(-1), Math.min(...values), Math.max(...values)]);
+    })();
     series.push({
       name: "Price",
-      type: "line",
+      type: appearance.chartType === "candles" && candleData.length > 1 ? "candlestick" : "line",
       xAxisIndex: 0,
       yAxisIndex: 0,
-      data: priceData,
+      data: appearance.chartType === "candles" && candleData.length > 1 ? candleData : priceData,
       showSymbol: priceData.length < 2,
       symbolSize: 4,
       smooth: 0.04,
       sampling: "lttb",
       lineStyle: { color: "#f4f6f8", width: 1.65, shadowBlur: 5, shadowColor: "rgba(255,255,255,.32)" },
+      itemStyle: { color: appearance.positive, color0: appearance.negative, borderColor: appearance.positive, borderColor0: appearance.negative },
       markLine: { silent: true, symbol: "none", animation: false, data: lines },
       emphasis: { focus: "series" },
       z: 9,
@@ -371,6 +395,10 @@ export function ProfessionalProfileChart({
       z: 3,
     });
 
+    const alignment = appearance.profileAlignment === "left" ? 0.18 : appearance.profileAlignment === "right" ? 0.82 : 0.5;
+    const exposureRange = exposureMax / Math.max(alignment, 1 - alignment);
+    const exposureMin = -alignment * exposureRange;
+    const exposureMaxAligned = (1 - alignment) * exposureRange;
     return {
       backgroundColor: "#050607",
       animationDuration: 220,
@@ -388,7 +416,7 @@ export function ProfessionalProfileChart({
           splitLine: { show: true, lineStyle: { color: GRID } }, axisPointer: { show: true, snap: false },
         },
         {
-          gridIndex: 0, type: "value", min: -exposureMax, max: exposureMax, position: "top",
+          gridIndex: 0, type: "value", min: exposureMin, max: exposureMaxAligned, position: "top",
           axisLine: { show: true, onZero: true, lineStyle: { color: GRID_STRONG } }, axisTick: { show: false },
           axisLabel: { color: MUTED, fontFamily: MONO, fontSize: 9, formatter: (value: number) => value === 0 ? "NOW / 0" : compact(value) },
           splitLine: { show: false }, axisPointer: { show: true, snap: false },
@@ -607,13 +635,13 @@ function orderflowTooltip(raw: unknown) {
 }
 
 export function ProfessionalOrderflowChart({
-  metrics,
+  panels,
   points,
 }: {
-  metrics: readonly OrderflowMetricConfig[];
+  panels: readonly OrderflowPanelConfig[];
   points: GexBotOrderflowFrame[];
 }) {
-  const height = Math.max(430, metrics.length * 204 + 32);
+  const height = Math.max(430, panels.length * 204 + 32);
   const option = useMemo<EChartsCoreOption>(() => {
     const panelHeight = 164;
     const panelGap = 40;
@@ -622,42 +650,39 @@ export function ProfessionalOrderflowChart({
     const xAxes: Record<string, unknown>[] = [];
     const yAxes: Record<string, unknown>[] = [];
     const series: Record<string, unknown>[] = [];
-    metrics.forEach((metric, index) => {
+    panels.forEach((metric, index) => {
+      const latestTimestamp = points.at(-1)?.timestamp ?? Date.now();
+      const panelPoints = points.filter((point) => point.timestamp >= latestTimestamp - metric.windowMinutes * 60_000);
       const top = 24 + index * (panelHeight + panelGap);
       grids.push({ left: 64, right: 58, top, height: panelHeight, containLabel: false, show: true, borderColor: GRID_STRONG, backgroundColor: "#050607" });
-      titles.push({ text: metric.label.toUpperCase(), left: 66, top: top + 7, textStyle: { color: metric.color, fontFamily: UI, fontSize: 10, fontWeight: 700, letterSpacing: 1.3 } });
+      titles.push({ text: `${metric.label.toUpperCase()} · ${metric.combine ? "0+1DTE" : metric.expiry === "next" ? "1DTE" : "0DTE"} · ${metric.windowMinutes === 390 ? "SESSION" : `${metric.windowMinutes}M`}`, left: 66, top: top + 7, textStyle: { color: metric.color, fontFamily: UI, fontSize: 10, fontWeight: 700, letterSpacing: 1.3 } });
       xAxes.push({ gridIndex: index, type: "time", boundaryGap: true, axisLine: { lineStyle: { color: GRID_STRONG } }, axisTick: { show: false }, axisLabel: { show: true, color: MUTED, fontFamily: MONO, fontSize: 8, hideOverlap: true, formatter: (value: number) => new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(value)) }, splitLine: { show: true, lineStyle: { color: GRID } }, axisPointer: { show: true } });
       yAxes.push({ gridIndex: index, type: "value", scale: true, position: "left", axisLine: { show: true, lineStyle: { color: GRID_STRONG } }, axisTick: { show: false }, axisLabel: { color: MUTED, fontFamily: MONO, fontSize: 8, formatter: (value: number) => compact(value) }, splitLine: { show: true, lineStyle: { color: GRID } }, axisPointer: { show: true } });
       yAxes.push({ gridIndex: index, type: "value", scale: true, position: "right", axisLine: { show: true, lineStyle: { color: GRID_STRONG } }, axisTick: { show: false }, axisLabel: { color: "rgba(230,234,241,.56)", fontFamily: MONO, fontSize: 8, formatter: (value: number) => value.toFixed(0) }, splitLine: { show: false }, axisPointer: { show: false } });
       const value = (point: GexBotOrderflowFrame, field: string) => finite(point[field as keyof GexBotOrderflowFrame]);
+      const selectedValue = (point: GexBotOrderflowFrame, primary: string, secondary: string) => {
+        const first = value(point, primary);
+        const second = value(point, secondary);
+        if (metric.combine) return first === null && second === null ? null : (first ?? 0) + (second ?? 0);
+        return metric.expiry === "next" ? second : first;
+      };
       const eventBars = metric.id === "dexoflow" || metric.id === "gexoflow" || metric.id === "cvroflow";
       if (eventBars) {
         series.push({
           name: `${metric.label} · 0DTE`, type: "bar", xAxisIndex: index, yAxisIndex: index * 2,
-          data: points.flatMap((point) => { const next = value(point, metric.id); return next === null ? [] : [[point.timestamp, next]]; }),
+          data: panelPoints.flatMap((point) => { const next = selectedValue(point, metric.id, metric.one); return next === null ? [] : [[point.timestamp, next]]; }),
           barWidth: 2, barGap: "-100%", itemStyle: { color: metric.color, opacity: 0.92, shadowBlur: 3, shadowColor: `${metric.color}48` },
           markLine: { silent: true, symbol: "none", data: [{ yAxis: 0, lineStyle: { color: "rgba(236,240,246,.34)", width: 1 }, label: { show: false } }] },
           emphasis: { itemStyle: { opacity: 1, shadowBlur: 7 } }, z: 5,
         });
-        series.push({
-          name: `${metric.label} · 1DTE`, type: "bar", xAxisIndex: index, yAxisIndex: index * 2,
-          data: points.flatMap((point) => { const next = value(point, metric.one); return next === null ? [] : [[point.timestamp, next]]; }),
-          barWidth: 1, barGap: "-100%", itemStyle: { color: "#e0baff", opacity: 0.52 }, z: 6,
-        });
       } else {
         series.push({
           name: `${metric.label} · 0DTE`, type: "line", xAxisIndex: index, yAxisIndex: index * 2,
-          data: points.flatMap((point) => { const next = value(point, metric.id); return next === null ? [] : [[point.timestamp, next]]; }),
+          data: panelPoints.flatMap((point) => { const next = selectedValue(point, metric.id, metric.one); return next === null ? [] : [[point.timestamp, next]]; }),
           showSymbol: false, smooth: false, connectNulls: false, sampling: "lttb",
           lineStyle: { color: metric.color, width: 1.5, shadowBlur: 4, shadowColor: `${metric.color}46` },
           markLine: { silent: true, symbol: "none", data: [{ yAxis: 0, lineStyle: { color: "rgba(236,240,246,.30)", width: 1 }, label: { show: false } }] },
           emphasis: { focus: "series" }, z: 5,
-        });
-        series.push({
-          name: `${metric.label} · 1DTE`, type: "line", xAxisIndex: index, yAxisIndex: index * 2,
-          data: points.flatMap((point) => { const next = value(point, metric.one); return next === null ? [] : [[point.timestamp, next]]; }),
-          showSymbol: false, smooth: false, connectNulls: false, sampling: "lttb",
-          lineStyle: { color: "#e0baff", width: 1.05, type: "dashed", opacity: 0.74 }, emphasis: { focus: "series" }, z: 6,
         });
       }
       if (metric.id === "agg_dex") {
@@ -667,14 +692,14 @@ export function ProfessionalOrderflowChart({
           { field: "net_dex", name: "Net DEX", color: "#ffffff" },
         ].forEach((item) => series.push({
           name: item.name, type: "line", xAxisIndex: index, yAxisIndex: index * 2,
-          data: points.flatMap((point) => { const next = value(point, item.field); return next === null ? [] : [[point.timestamp, next]]; }),
+          data: panelPoints.flatMap((point) => { const secondary = `one_${item.field}`; const next = selectedValue(point, item.field, secondary); return next === null ? [] : [[point.timestamp, next]]; }),
           showSymbol: false, smooth: false, connectNulls: false,
           lineStyle: { color: item.color, width: item.field === "net_dex" ? 1.25 : 1, opacity: 0.8 }, z: 6,
         }));
       }
-      series.push({
+      if (metric.showSpot) series.push({
         name: "Underlying", type: "line", xAxisIndex: index, yAxisIndex: index * 2 + 1,
-        data: points.map((point) => [point.timestamp, point.spot]), showSymbol: false, smooth: false,
+        data: panelPoints.map((point) => [point.timestamp, point.spot]), showSymbol: false, smooth: false,
         lineStyle: { color: "rgba(247,249,252,.78)", width: 1.15, shadowBlur: 3, shadowColor: "rgba(255,255,255,.22)" }, emphasis: { disabled: true }, silent: true, z: 3,
       });
     });
@@ -690,10 +715,10 @@ export function ProfessionalOrderflowChart({
       yAxis: yAxes,
       tooltip: { trigger: "axis", confine: true, axisPointer: { type: "cross" }, backgroundColor: TOOLTIP_BG, borderColor: GRID_STRONG, borderWidth: 1, padding: [10, 12], textStyle: { color: TEXT, fontFamily: UI, fontSize: 10 }, extraCssText: "box-shadow:0 18px 60px rgba(0,0,0,.45);backdrop-filter:blur(12px);border-radius:10px", formatter: orderflowTooltip },
       axisPointer: { link: [{ xAxisIndex: "all" }], label: { show: true, color: "#080a0d", backgroundColor: "#e9edf3", fontFamily: MONO, fontSize: 9 }, lineStyle: { color: "rgba(226,232,240,.58)", width: 1, type: "dashed" } },
-      dataZoom: [{ type: "inside", xAxisIndex: metrics.map((_, index) => index), filterMode: "none", zoomOnMouseWheel: true, moveOnMouseWheel: true, moveOnMouseMove: true }],
+      dataZoom: [{ type: "inside", xAxisIndex: panels.map((_, index) => index), filterMode: "none", zoomOnMouseWheel: true, moveOnMouseWheel: true, moveOnMouseMove: true }],
       series,
     };
-  }, [metrics, points]);
+  }, [panels, points]);
 
   return <EChartSurface option={option} height={height} className="min-w-[720px]" />;
 }

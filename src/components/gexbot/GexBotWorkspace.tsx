@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { ProfessionalOrderflowChart, ProfessionalProfileChart, ProfessionalStateChart } from "@/components/gexbot/GexBotCharts";
+import { ProfessionalOrderflowChart, ProfessionalProfileChart, ProfessionalStateChart, type OrderflowPanelConfig } from "@/components/gexbot/GexBotCharts";
 import KwantSelect from "@/components/ui/KwantSelect";
 import { GEX_BOX_ORDERFLOW_METRICS, type OrderflowMetric } from "@/lib/gex-box/domain";
 import { normalizeReplayFrames, replayFrameAtOrBefore, replayFramesAtOrBefore } from "@/lib/gex-box/replay";
@@ -66,6 +66,10 @@ type Appearance = {
   showVolumeMajors: boolean;
   showOiMajors: boolean;
   lineStyle: LineStyle;
+  zeroLineStyle: LineStyle;
+  majorLineStyle: LineStyle;
+  chartType: "line" | "candles";
+  profileAlignment: "left" | "center" | "right";
   dotSize: number;
   lookbackCount: number;
   multiplier: number;
@@ -97,6 +101,10 @@ const DEFAULT_APPEARANCE: Appearance = {
   showVolumeMajors: true,
   showOiMajors: false,
   lineStyle: "dash",
+  zeroLineStyle: "dash",
+  majorLineStyle: "dash",
+  chartType: "line",
+  profileAlignment: "center",
   dotSize: 3.2,
   lookbackCount: 3,
   multiplier: 1,
@@ -121,6 +129,20 @@ const ORDERFLOW_METRICS = [
   { key: "net_negative_vanna", id: "zvanna", one: "ovanna", label: "Net negative Vanna", color: "#59d9b4", description: "Provider-native negative-Vanna state by expiry bucket." },
   { key: "net_charm", id: "zcharm", one: "ocharm", label: "Net Charm", color: "#ff8b6b", description: "Provider-native Charm state by expiry bucket." },
 ] as const satisfies ReadonlyArray<{ key: OrderflowMetric; id: string; one: string; label: string; color: string; description: string }>;
+
+type OrderflowPanelState = {
+  metric: OrderflowMetric;
+  expiry: "latest" | "next";
+  combine: boolean;
+  showSpot: boolean;
+  windowMinutes: 5 | 15 | 30 | 60 | 390;
+};
+
+const DEFAULT_ORDERFLOW_PANELS: OrderflowPanelState[] = [
+  { metric: "dex_orderflow", expiry: "latest", combine: false, showSpot: true, windowMinutes: 390 },
+  { metric: "gex_orderflow", expiry: "latest", combine: false, showSpot: true, windowMinutes: 390 },
+  { metric: "convexity_orderflow", expiry: "latest", combine: false, showSpot: true, windowMinutes: 390 },
+];
 
 function categoryFor(view: View, expiry: Expiry, metric: StateMetric) {
   if (view === "research") return "research";
@@ -669,8 +691,8 @@ function SettingsRail({
   setDataset,
   appearance,
   setAppearance,
-  visibleMetrics,
-  setVisibleMetrics,
+  orderflowPanels,
+  setOrderflowPanels,
 }: {
   view: View;
   expiry: Expiry;
@@ -681,8 +703,8 @@ function SettingsRail({
   setDataset: (value: Dataset) => void;
   appearance: Appearance;
   setAppearance: React.Dispatch<React.SetStateAction<Appearance>>;
-  visibleMetrics: string[];
-  setVisibleMetrics: React.Dispatch<React.SetStateAction<string[]>>;
+  orderflowPanels: OrderflowPanelState[];
+  setOrderflowPanels: React.Dispatch<React.SetStateAction<OrderflowPanelState[]>>;
 }) {
   const update = <K extends keyof Appearance>(key: K, value: Appearance[K]) => setAppearance((current) => ({ ...current, [key]: value }));
   return (
@@ -741,10 +763,26 @@ function SettingsRail({
             ))}
           </div>
           <div>
-            <label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[.16em] text-muted">Line style</label>
+            <label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[.16em] text-muted">Price display</label>
+            <div className="grid grid-cols-2 gap-1 border border-border bg-background p-1">
+              {(["line", "candles"] as const).map((item) => <button key={item} type="button" onClick={() => update("chartType", item)} className={`h-8 text-[8px] font-semibold uppercase ${appearance.chartType === item ? "bg-primary/15 text-primary" : "text-muted"}`}>{item}</button>)}
+            </div>
+          </div>
+          <div>
+            <label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[.16em] text-muted">Profile alignment</label>
+            <div className="grid grid-cols-3 gap-1 border border-border bg-background p-1">
+              {(["left", "center", "right"] as const).map((item) => <button key={item} type="button" onClick={() => update("profileAlignment", item)} className={`h-8 text-[8px] font-semibold uppercase ${appearance.profileAlignment === item ? "bg-primary/15 text-primary" : "text-muted"}`}>{item}</button>)}
+            </div>
+          </div>
+          <div>
+            <label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[.16em] text-muted">Exposure line style</label>
             <KwantSelect value={appearance.lineStyle} onChange={(event) => update("lineStyle", event.target.value as LineStyle)} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[10px] text-foreground" menuLabel="Line style">
               <option value="solid">Solid</option><option value="short">Short dash</option><option value="dash">Dashed</option><option value="dot">Dotted</option>
             </KwantSelect>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <label className="text-[8px] font-semibold uppercase tracking-[.12em] text-muted">Zero gamma<KwantSelect value={appearance.zeroLineStyle} onChange={(event) => update("zeroLineStyle", event.target.value as LineStyle)} className="mt-1 h-9 w-full border border-border bg-background px-2 text-[9px]" menuLabel="Zero gamma line style"><option value="solid">Solid</option><option value="short">Short dash</option><option value="dash">Dashed</option><option value="dot">Dotted</option></KwantSelect></label>
+            <label className="text-[8px] font-semibold uppercase tracking-[.12em] text-muted">Major levels<KwantSelect value={appearance.majorLineStyle} onChange={(event) => update("majorLineStyle", event.target.value as LineStyle)} className="mt-1 h-9 w-full border border-border bg-background px-2 text-[9px]" menuLabel="Major level line style"><option value="solid">Solid</option><option value="short">Short dash</option><option value="dash">Dashed</option><option value="dot">Dotted</option></KwantSelect></label>
           </div>
           <label className="block text-[8px] font-semibold uppercase tracking-[.16em] text-muted">Lookback dot size
             <input type="range" min="1.5" max="7" step=".5" value={appearance.dotSize} onChange={(event) => update("dotSize", Number(event.target.value))} className="mt-2 w-full accent-[var(--primary)]" />
@@ -764,18 +802,19 @@ function SettingsRail({
           <button type="button" onClick={() => setAppearance(DEFAULT_APPEARANCE)} className="h-9 w-full border border-border bg-background text-[8px] font-semibold uppercase tracking-[.14em] text-muted hover:border-primary/30 hover:text-primary">Reset visual defaults</button>
         </>
       ) : (
-        <div className="space-y-1">
-          <p className="mb-2 text-[8px] font-semibold uppercase tracking-[.16em] text-muted">Visible panels</p>
-          {ORDERFLOW_METRICS.map((item) => (
-            <Toggle
-              key={item.key}
-              checked={visibleMetrics.includes(item.key)}
-              label={item.label}
-              onChange={(checked) => setVisibleMetrics((current) => checked
-                ? [...current.filter((id) => id !== item.key), item.key].slice(-3)
-                : current.filter((id) => id !== item.key))}
-            />
-          ))}
+        <div className="space-y-3">
+          <p className="text-[8px] font-semibold uppercase tracking-[.16em] text-muted">Independent order-flow panels</p>
+          {orderflowPanels.map((panel, index) => {
+            const patchPanel = (patch: Partial<OrderflowPanelState>) => setOrderflowPanels((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item));
+            return <div key={index} className="space-y-2 border border-border bg-background p-3">
+              <div className="flex items-center justify-between"><span className="text-[8px] font-semibold uppercase tracking-[.14em] text-primary">Panel {index + 1}</span></div>
+              <KwantSelect value={panel.metric} onChange={(event) => patchPanel({ metric: event.target.value as OrderflowMetric })} className="h-9 w-full border border-border bg-panel px-2 text-[9px]" menuLabel={`Panel ${index + 1} metric`}>{ORDERFLOW_METRICS.map((metricItem) => <option key={metricItem.key} value={metricItem.key}>{metricItem.label}</option>)}</KwantSelect>
+              <div className="grid grid-cols-2 gap-1 border border-border bg-panel p-1">{(["latest", "next"] as const).map((item) => <button key={item} type="button" disabled={panel.combine} onClick={() => patchPanel({ expiry: item })} className={`h-7 text-[8px] font-semibold uppercase disabled:opacity-35 ${panel.expiry === item && !panel.combine ? "bg-primary/15 text-primary" : "text-muted"}`}>{item === "latest" ? "0DTE" : "1DTE"}</button>)}</div>
+              <KwantSelect value={panel.windowMinutes} onChange={(event) => patchPanel({ windowMinutes: Number(event.target.value) as OrderflowPanelState["windowMinutes"] })} className="h-9 w-full border border-border bg-panel px-2 text-[9px]" menuLabel={`Panel ${index + 1} rolling window`}><option value={5}>5 minutes</option><option value={15}>15 minutes</option><option value={30}>30 minutes</option><option value={60}>60 minutes</option><option value={390}>Full session</option></KwantSelect>
+              <Toggle checked={panel.combine} label="Combine 0DTE + 1DTE" onChange={(value) => patchPanel({ combine: value })} />
+              <Toggle checked={panel.showSpot} label="Underlying spot overlay" onChange={(value) => patchPanel({ showSpot: value })} />
+            </div>;
+          })}
         </div>
       )}
     </div>
@@ -805,10 +844,13 @@ export default function GexBotWorkspace() {
   const [stateMetric, setStateMetric] = useState<StateMetric>((restored?.stateMetric as StateMetric) || "gamma");
   const [dataset, setDataset] = useState<Dataset>((restored?.dataset as Dataset) || "both");
   const [appearance, setAppearance] = useState<Appearance>({ ...DEFAULT_APPEARANCE, ...(restored?.appearance as Partial<Appearance> | undefined) });
-  const [visibleMetrics, setVisibleMetrics] = useState<string[]>(() => {
+  const [orderflowPanels, setOrderflowPanels] = useState<OrderflowPanelState[]>(() => {
+    if (Array.isArray(restored?.orderflowPanels) && restored.orderflowPanels.length) {
+      return (restored.orderflowPanels as Partial<OrderflowPanelState>[]).slice(0, 3).map((panel, index) => ({ ...DEFAULT_ORDERFLOW_PANELS[index], ...panel }));
+    }
     const restoredMetrics = Array.isArray(restored?.visibleMetrics) ? restored.visibleMetrics as string[] : [];
     const migrated = restoredMetrics.map((metric) => ORDERFLOW_METRICS.find((item) => item.key === metric || item.id === metric)?.key).filter((metric): metric is OrderflowMetric => Boolean(metric));
-    return (migrated.length ? migrated : ["dex_orderflow", "gex_orderflow", "convexity_orderflow"]).slice(-3);
+    return DEFAULT_ORDERFLOW_PANELS.map((panel, index) => ({ ...panel, metric: migrated[index] ?? panel.metric }));
   });
   const [envelope, setEnvelope] = useState<ProfileEnvelope | null>(null);
   const [loading, setLoading] = useState(true);
@@ -830,7 +872,7 @@ export default function GexBotWorkspace() {
   const replayCache = useRef(new Map<string, ReplayData>());
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ version: 2, view, ticker, expiry, stateMetric, dataset, appearance, visibleMetrics }));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ version: 3, view, ticker, expiry, stateMetric, dataset, appearance, orderflowPanels }));
     if (window.location.pathname === "/gexbot" || window.location.pathname === "/gex-box" || window.location.pathname.startsWith("/gex-box/")) {
       const params = new URLSearchParams({
         ticker,
@@ -839,7 +881,7 @@ export default function GexBotWorkspace() {
       });
       window.history.replaceState(window.history.state, "", `/gex-box/${view}?${params.toString()}`);
     }
-  }, [appearance, dataset, expiry, stateMetric, ticker, view, visibleMetrics]);
+  }, [appearance, dataset, expiry, orderflowPanels, stateMetric, ticker, view]);
 
   useEffect(() => {
     try {
@@ -1134,10 +1176,13 @@ export default function GexBotWorkspace() {
           </div>
           {view === "research" ? <ResearchSurface ticker={ticker} /> : !hasRenderableFrame ? (replayActive ? <div className="flex min-h-[420px] flex-1 items-center justify-center"><div className="rounded-xl border border-border bg-panel px-6 py-5 text-center">{replayLoading ? <RefreshCw className="mx-auto h-5 w-5 animate-spin text-primary" /> : null}<p className="mt-2 text-[10px] font-semibold uppercase tracking-[.16em] text-foreground">{replayLoading ? "Loading verified New York session" : "Replay unavailable"}</p><p className="mt-1 max-w-md text-[9px] text-muted">{replayData?.error ?? "No renderable strike or flow rows were returned for this session."}</p>{!replayLoading ? <button type="button" onClick={() => void loadReplay(true)} className="mt-4 h-8 rounded-lg border border-primary/30 bg-primary/10 px-3 text-[8px] font-semibold uppercase tracking-[.14em] text-primary">Try again</button> : null}</div></div> : frame ? <div className="flex min-h-[420px] flex-1 items-center justify-center"><div className="border border-border bg-panel px-6 py-5 text-center"><p className="text-[10px] font-semibold uppercase tracking-[.16em] text-foreground">No renderable provider rows</p><p className="mt-2 max-w-md text-[9px] leading-5 text-muted">GEX BOX received a frame header, but this metric contained no strike or orderflow rows. No synthetic values were substituted.</p></div></div> : <EmptyState envelope={envelope} loading={loading} />) : view === "orderflow" ? (
             <div className="mx-auto w-full max-w-[1680px] overflow-x-auto px-3 py-3">
-              {visibleMetrics.length ? (
+              {orderflowPanels.length ? (
                 <div className="relative">
                   <ProfessionalOrderflowChart
-                    metrics={ORDERFLOW_METRICS.filter((metric) => visibleMetrics.includes(metric.key)).slice(0, 3)}
+                    panels={orderflowPanels.flatMap((panel) => {
+                      const metricConfig = ORDERFLOW_METRICS.find((metric) => metric.key === panel.metric);
+                      return metricConfig ? [{ ...metricConfig, ...panel } satisfies OrderflowPanelConfig] : [];
+                    })}
                     points={displayOrderflowTape.length ? displayOrderflowTape : [frame as GexBotOrderflowFrame]}
                   />
                 </div>
@@ -1155,7 +1200,7 @@ export default function GexBotWorkspace() {
             </div>
           )}
         </main>
-        {showSettings ? <aside className="w-[272px] shrink-0 overflow-y-auto border-l border-border bg-panel p-4">{isProfile ? <><ProfileSummary envelope={envelope!} dataset={dataset} hover={hover} /><div className="my-4 border-t border-border" /></> : null}{view !== "research" ? <><SourceDiagnostics envelope={envelope} /><div className="my-4 border-t border-border" /></> : null}<SettingsRail view={view} expiry={expiry} setExpiry={setExpiry} metric={stateMetric} setMetric={setStateMetric} dataset={dataset} setDataset={setDataset} appearance={appearance} setAppearance={setAppearance} visibleMetrics={visibleMetrics} setVisibleMetrics={setVisibleMetrics} /></aside> : null}
+        {showSettings ? <aside className="w-[272px] shrink-0 overflow-y-auto border-l border-border bg-panel p-4">{isProfile ? <><ProfileSummary envelope={envelope!} dataset={dataset} hover={hover} /><div className="my-4 border-t border-border" /></> : null}{view !== "research" ? <><SourceDiagnostics envelope={envelope} /><div className="my-4 border-t border-border" /></> : null}<SettingsRail view={view} expiry={expiry} setExpiry={setExpiry} metric={stateMetric} setMetric={setStateMetric} dataset={dataset} setDataset={setDataset} appearance={appearance} setAppearance={setAppearance} orderflowPanels={orderflowPanels} setOrderflowPanels={setOrderflowPanels} /></aside> : null}
       </div>
       <footer className="flex min-h-8 shrink-0 items-center justify-between gap-4 border-t border-border bg-panel px-4 text-[8px] uppercase tracking-[.13em] text-muted">
         <span className="flex items-center gap-2"><Gauge className="h-3 w-3 text-primary" />{view === "research" ? "Structured research requests · provider access remains server-side." : "Values are rendered from verified provider frames; classified-flow methodology remains provider-calculated."}</span>
