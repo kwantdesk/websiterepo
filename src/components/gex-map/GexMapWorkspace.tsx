@@ -9,6 +9,7 @@ import {
   ChevronRight,
   CircleStop,
   Gauge,
+  ListOrdered,
   Pause,
   Play,
   Plus,
@@ -18,6 +19,7 @@ import {
   ScanLine,
   SkipBack,
   SkipForward,
+  SlidersHorizontal,
   Star,
   X,
 } from "lucide-react";
@@ -29,6 +31,14 @@ import {
   selectGexMapStarNode,
   type GexMapPanelPayload,
 } from "@/lib/gexMap";
+import {
+  RECOMMENDED_GEX_MAP_STAR_SETTINGS,
+  deriveGexMapStarModel,
+  formatMagnitudeVelocity,
+  formatMapControl,
+  type GexMapStarSettings,
+  type GexMapViewMode,
+} from "@/lib/gexMapStar";
 import {
   OPTIONS_FLOW_INSTRUMENTS,
   type ExposureStrike,
@@ -72,6 +82,24 @@ const MARKET_PANELS: Record<GexMapMarket, PanelConfig[]> = {
 const SPEEDS = [1, 2, 5, 10] as const;
 const FRAME_STEPS = [1, 2, 5, 10] as const;
 const MAX_GEX_MAP_PANELS = 4;
+const GEX_MAP_STAR_PREFERENCES_KEY = "kwantdesk:gex-map:star-preferences:v1";
+
+function readGexMapStarPreferences() {
+  if (typeof window === "undefined") return null;
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(GEX_MAP_STAR_PREFERENCES_KEY) ?? "null") as {
+      viewMode?: GexMapViewMode;
+      settings?: Partial<GexMapStarSettings>;
+    } | null;
+    if (!stored) return null;
+    return {
+      viewMode: stored.viewMode === "star" ? "star" as const : "raw" as const,
+      settings: { ...RECOMMENDED_GEX_MAP_STAR_SETTINGS, ...stored.settings },
+    };
+  } catch {
+    return null;
+  }
+}
 
 type GexMapDropdownOption<T extends string> = {
   value: T;
@@ -420,6 +448,8 @@ function ExposurePanel({
   error,
   selectedTimestamp,
   stepMinutes,
+  viewMode,
+  starSettings,
   onChange,
   onRemove,
 }: {
@@ -429,6 +459,8 @@ function ExposurePanel({
   error: string | null;
   selectedTimestamp: number | null;
   stepMinutes: number;
+  viewMode: GexMapViewMode;
+  starSettings: GexMapStarSettings;
   onChange: (patch: Partial<Pick<PanelConfig, "symbol" | "greekMode">>) => void;
   onRemove?: () => void;
 }) {
@@ -450,6 +482,11 @@ function ExposurePanel({
   // `rows` is the complete reconstructed/filtered strike surface, not the
   // visible scroll window. Keep Star selection independent from presentation.
   const starNode = useMemo(() => selectGexMapStarNode(rows), [rows]);
+  const starModel = useMemo(() => deriveGexMapStarModel({ rows, previous, spot, settings: starSettings }), [previous, rows, spot, starSettings]);
+  const starRows = useMemo(() => new Map(starModel.rows.map((row) => [row.strike, row])), [starModel.rows]);
+  const focusedStar = starModel.starStrike === null ? null : starRows.get(starModel.starStrike) ?? null;
+  const maxHighlightedControl = Math.max(0.001, ...starModel.rows.filter((row) => row.isHighlighted).map((row) => row.mapControlPct));
+  const airPocketStarts = useMemo(() => new Set(starModel.airPockets.map((pocket) => pocket.fromStrike)), [starModel.airPockets]);
   const spotStrike = spot === null || !rows.length
     ? null
     : rows.reduce((best, row) => Math.abs(row.strike - spot) < Math.abs(best.strike - spot) ? row : best).strike;
@@ -683,11 +720,15 @@ function ExposurePanel({
                 "--gex-star-text": starPalette.text,
                 "--gex-star-outline": starPalette.outline,
               } as CSSProperties}
-              title="Scroll to the Star Node"
+              title={viewMode === "star" && focusedStar
+                ? `Raw ${formatCompact(focusedStar.net)} · ${focusedStar.polarity} exposure · click to centre the Star node`
+                : "Scroll to the Star Node"}
             >
               <Star className="h-2.5 w-2.5 shrink-0" fill="currentColor" />
               <span className="truncate">
-                STAR {starNode.strike.toLocaleString("en-US", { maximumFractionDigits: 2 })} · {formatCompact(starNode.net)}
+                {viewMode === "star" && focusedStar
+                  ? `STAR ${focusedStar.strike.toLocaleString("en-US", { maximumFractionDigits: 2 })} · ${formatMapControl(focusedStar.mapControlPct)} · ${formatMagnitudeVelocity(focusedStar, stepMinutes)}`
+                  : `STAR ${starNode.strike.toLocaleString("en-US", { maximumFractionDigits: 2 })} · ${formatCompact(starNode.net)}`}
               </span>
             </button>
           ) : null}
@@ -697,8 +738,8 @@ function ExposurePanel({
 
       <div className="gex-map-strike-row grid h-7 grid-cols-[96px_minmax(0,1fr)_86px] items-center border-b border-border bg-surface/60 px-2 text-[8px] font-semibold uppercase tracking-[0.14em] text-muted">
         <span>Strike</span>
-        <span>Signed exposure</span>
-        <span className="gex-map-change-column text-right">{stepMinutes}m change</span>
+        <span>{viewMode === "star" ? "Structural node" : "Signed exposure"}</span>
+        <span className="gex-map-change-column text-right">{viewMode === "star" ? "Control · velocity" : `${stepMinutes}m change`}</span>
       </div>
 
       <div className="relative flex min-h-0 flex-1 bg-chart-background">
@@ -739,6 +780,89 @@ function ExposurePanel({
               const nearSpot = row.strike === spotStrike;
               const isStar = row.strike === starNode?.strike;
               const strength = Math.min(1, Math.abs(row.net) / magnitudeCap);
+              const derived = starRows.get(row.strike);
+              if (viewMode === "star" && derived) {
+                const isFocusedStar = derived.roles.includes("star");
+                const highlighted = derived.isHighlighted;
+                const barWidth = Math.sqrt(derived.mapControlPct / maxHighlightedControl) * 100;
+                const roleText = derived.roles.filter((role) => role !== "normal").map((role) => role.toUpperCase());
+                const distanceLabel = Math.abs(derived.distanceFromSpotPct) < 0.0001
+                  ? "AT SPOT"
+                  : `${Math.abs(derived.distanceFromSpotPct).toFixed(2)}% ${derived.distanceFromSpotPct > 0 ? "ABOVE" : "BELOW"}`;
+                const tooltip = [
+                  `${config.symbol} · ${greek.label}`,
+                  `Strike ${derived.strike} · Spot ${spot === null ? "—" : formatPrice(spot)} · ${distanceLabel}`,
+                  `Raw signed exposure ${formatCompact(derived.net)} · absolute ${formatCompact(derived.absValue)}`,
+                  `${formatMapControl(derived.mapControlPct)} · share of total absolute exposure in this active map`,
+                  `${stepMinutes}m magnitude velocity ${formatMagnitudeVelocity(derived, stepMinutes)}`,
+                  `Baseline ${derived.previousValue === null ? "—" : formatCompact(derived.previousValue)} · signed delta ${derived.signedDelta === null ? "—" : formatCompact(derived.signedDelta)}`,
+                  `Absolute rank ${derived.absoluteRank} · local peak ratio ${derived.localPeakRatio.toFixed(2)}`,
+                  `Roles ${roleText.join(", ") || "NORMAL"}`,
+                  highlighted ? derived.highlightReason.join(" · ") : `Normal node · rank ${derived.absoluteRank} · below structural threshold`,
+                  payload ? `Snapshot ${payload.asOf} · ${payload.status}` : "Snapshot unavailable",
+                ].join("\n");
+                return (
+                  <div
+                    key={row.strike}
+                    data-near-spot={nearSpot ? "true" : undefined}
+                    data-star-node={isFocusedStar ? "true" : undefined}
+                    data-gex-strike-node="true"
+                    data-star-highlighted={highlighted ? "true" : "false"}
+                    className={`gex-map-strike-row relative grid grid-cols-[96px_minmax(0,1fr)_86px] items-center overflow-hidden border-b border-border/30 px-2 font-mono text-[9px] ${nearSpot ? "mx-1 my-1 h-[35px]" : highlighted ? "mx-1 my-0.5 h-[30px]" : "h-[25px]"} ${isFocusedStar ? `gex-star-node z-[3] ${nearSpot ? "gex-star-is-current" : ""}` : nearSpot ? "gex-current-price-marker z-[2]" : ""} ${starSettings.animateChanges ? "transition-[height,margin,background-color,opacity] duration-200" : ""}`}
+                    style={{
+                      opacity: highlighted || nearSpot ? 1 : Math.max(0.02, starSettings.dimOpacity),
+                      backgroundColor: highlighted
+                        ? heatColor(derived.net, Math.max(0.2, derived.mapControlPct / maxHighlightedControl))
+                        : "var(--chart-background)",
+                      ...(isFocusedStar ? {
+                        "--gex-star-accent": starPalette.accent,
+                        "--gex-star-text": starPalette.text,
+                        "--gex-star-outline": starPalette.outline,
+                      } : {}),
+                    } as CSSProperties}
+                    title={tooltip}
+                  >
+                    {highlighted ? (
+                      <span
+                        aria-hidden="true"
+                        className={`pointer-events-none absolute inset-y-1 left-0 rounded-r-sm ${starSettings.animateChanges ? "transition-[width,opacity] duration-200" : ""}`}
+                        style={{
+                          width: `${Math.max(4, Math.min(100, barWidth))}%`,
+                          opacity: isFocusedStar ? 0.34 : 0.2,
+                          background: derived.net >= 0
+                            ? "linear-gradient(90deg,var(--primary),transparent)"
+                            : "linear-gradient(90deg,var(--danger),transparent)",
+                        }}
+                      />
+                    ) : null}
+                    <span className={`relative z-[1] flex min-w-0 items-center gap-1 font-semibold ${nearSpot ? "text-foreground" : "text-foreground/90"}`}>
+                      {nearSpot ? <span className="gex-current-price-dash absolute -left-2 h-6 w-1.5" /> : null}
+                      <span className={`${nearSpot ? "gex-current-price-pill" : ""} shrink-0`}>
+                        {row.strike.toLocaleString("en-US", { maximumFractionDigits: 2 })}
+                      </span>
+                      {isFocusedStar ? (
+                        <span className="gex-star-badge inline-flex min-w-0 items-center gap-0.5 border px-1 py-0.5 font-sans text-[7px] font-black tracking-[0.08em]">
+                          <Star className="h-2.5 w-2.5 shrink-0" fill="currentColor" />
+                          <span className="gex-star-badge-label">STAR</span>
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className="relative z-[1] flex min-w-0 items-center justify-end gap-1 overflow-hidden">
+                      {starSettings.showRoleLabels ? roleText.filter((role) => role !== "STAR").slice(0, 2).map((role) => (
+                        <span key={role} className="truncate border border-current/25 bg-panel/50 px-1 py-0.5 font-sans text-[7px] font-bold tracking-[0.06em] text-foreground">{role}</span>
+                      )) : null}
+                      {starSettings.showRawValues ? <span className="truncate text-[8px] text-muted">{formatCompact(derived.net)}</span> : null}
+                      {starSettings.showAirPocketLabels && airPocketStarts.has(row.strike) ? <span className="text-[7px] text-muted">AIR POCKET</span> : null}
+                    </span>
+                    <span className="gex-map-change-column relative z-[1] flex min-w-0 flex-col items-end justify-center leading-tight">
+                      <span className="font-semibold text-foreground">{formatMapControl(derived.mapControlPct)}</span>
+                      <span className={derived.magnitudeVelocityPct === null ? "text-muted" : derived.magnitudeVelocityPct >= 0 ? "text-primary" : "text-danger"}>
+                        {formatMagnitudeVelocity(derived, stepMinutes)}
+                      </span>
+                    </span>
+                  </div>
+                );
+              }
               return (
                 <div
                   key={row.strike}
@@ -822,6 +946,93 @@ function ExposurePanel({
   );
 }
 
+function StarViewSettings({
+  open,
+  settings,
+  onChange,
+  onClose,
+}: {
+  open: boolean;
+  settings: GexMapStarSettings;
+  onChange: (next: GexMapStarSettings) => void;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    if (!open) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [onClose, open]);
+  if (!open || typeof document === "undefined") return null;
+
+  const update = <K extends keyof GexMapStarSettings>(key: K, value: GexMapStarSettings[K]) => onChange({ ...settings, [key]: value });
+  const rowClass = "grid grid-cols-[minmax(0,1fr)_160px] items-center gap-4 border-b border-border/60 py-3";
+  return createPortal(
+    <div className="fixed inset-0 z-[270] flex items-start justify-center bg-black/20 px-4 pt-[10vh]" onPointerDown={onClose}>
+      <section className="max-h-[80vh] w-full max-w-[620px] overflow-y-auto border border-border bg-panel shadow-[0_24px_90px_rgba(0,0,0,0.65)]" onPointerDown={(event) => event.stopPropagation()}>
+        <header className="sticky top-0 z-10 flex h-11 items-center border-b border-border bg-panel px-4">
+          <div>
+            <div className="text-[11px] font-semibold text-foreground">STAR VIEW SETTINGS</div>
+            <div className="text-[8px] uppercase tracking-[0.12em] text-muted">Applied to every GEX Map panel</div>
+          </div>
+          <button type="button" onClick={onClose} className="ml-auto flex h-7 w-7 items-center justify-center border border-border text-muted hover:text-foreground" aria-label="Close Star view settings"><X className="h-3.5 w-3.5" /></button>
+        </header>
+        <div className="px-4 pb-4">
+          <label className={rowClass}>
+            <span><span className="block text-[10px] text-foreground">Highlighted nodes</span><span className="text-[8px] text-muted">Unique structural strikes per panel</span></span>
+            <input type="range" min="2" max="8" step="1" value={settings.highlightedNodes} onChange={(event) => update("highlightedNodes", Number(event.target.value))} className="w-full accent-[var(--primary)]" />
+          </label>
+          <label className={rowClass}>
+            <span><span className="block text-[10px] text-foreground">Selection strategy</span><span className="text-[8px] text-muted">Changes the deterministic node ranking</span></span>
+            <select value={settings.selectionStrategy} onChange={(event) => update("selectionStrategy", event.target.value as GexMapStarSettings["selectionStrategy"])} className="h-8 border border-border bg-surface px-2 text-[9px] text-foreground outline-none">
+              <option value="structural">Structural</option><option value="magnitude">Magnitude</option><option value="velocity">Velocity</option>
+            </select>
+          </label>
+          <label className={rowClass}>
+            <span><span className="block text-[10px] text-foreground">Dimmed-row intensity</span><span className="text-[8px] text-muted">{Math.round(settings.dimOpacity * 100)}%</span></span>
+            <input type="range" min="0.02" max="0.3" step="0.01" value={settings.dimOpacity} onChange={(event) => update("dimOpacity", Number(event.target.value))} className="w-full accent-[var(--primary)]" />
+          </label>
+          {([
+            ["showRawValues", "Show raw exposure values"],
+            ["showRoleLabels", "Show role labels"],
+            ["showAirPocketLabels", "Show air-pocket labels"],
+            ["animateChanges", "Animate live changes"],
+          ] as const).map(([key, label]) => (
+            <label key={key} className={rowClass}>
+              <span className="text-[10px] text-foreground">{label}</span>
+              <input type="checkbox" checked={settings[key]} onChange={(event) => update(key, event.target.checked)} className="ml-auto h-4 w-4 accent-[var(--primary)]" />
+            </label>
+          ))}
+          <div className={rowClass}>
+            <span><span className="block text-[10px] text-foreground">Minimum map control</span><span className="text-[8px] text-muted">Auto adapts to strike density</span></span>
+            <div className="flex items-center gap-2">
+              <button type="button" onClick={() => update("minimumControlPct", settings.minimumControlPct === null ? 0.5 : null)} className={`h-7 border px-2 text-[8px] ${settings.minimumControlPct === null ? "border-primary bg-primary/10 text-primary" : "border-border text-muted"}`}>{settings.minimumControlPct === null ? "AUTO" : "MANUAL"}</button>
+              {settings.minimumControlPct !== null ? <input type="number" min="0" max="25" step="0.1" value={settings.minimumControlPct} onChange={(event) => update("minimumControlPct", Number(event.target.value))} className="h-7 min-w-0 flex-1 border border-border bg-surface px-2 text-[9px] text-foreground" /> : null}
+            </div>
+          </div>
+          <div className="pt-4 text-[8px] font-semibold uppercase tracking-[0.14em] text-muted">Air-pocket calculation</div>
+          <label className={rowClass}>
+            <span className="text-[10px] text-foreground">Row control threshold</span>
+            <input type="number" min="0" max="20" step="0.05" value={settings.airPocketRowThresholdPct} onChange={(event) => update("airPocketRowThresholdPct", Number(event.target.value))} className="h-8 border border-border bg-surface px-2 text-[9px] text-foreground" />
+          </label>
+          <label className={rowClass}>
+            <span className="text-[10px] text-foreground">Combined pocket threshold</span>
+            <input type="number" min="0" max="50" step="0.1" value={settings.airPocketCombinedThresholdPct} onChange={(event) => update("airPocketCombinedThresholdPct", Number(event.target.value))} className="h-8 border border-border bg-surface px-2 text-[9px] text-foreground" />
+          </label>
+          <label className={rowClass}>
+            <span><span className="block text-[10px] text-foreground">Spot-proximity weighting</span><span className="text-[8px] text-muted">{Math.round(settings.proximityWeight * 100)}%</span></span>
+            <input type="range" min="0" max="0.3" step="0.01" value={settings.proximityWeight} onChange={(event) => update("proximityWeight", Number(event.target.value))} className="w-full accent-[var(--primary)]" />
+          </label>
+          <button type="button" onClick={() => onChange({ ...RECOMMENDED_GEX_MAP_STAR_SETTINGS })} className="mt-4 h-8 border border-primary/40 px-3 text-[9px] font-semibold text-primary hover:bg-primary/10">RESET RECOMMENDED DEFAULTS</button>
+        </div>
+      </section>
+    </div>,
+    document.body,
+  );
+}
+
 function GexMapWorkspace({ market = null }: GexMapWorkspaceProps = {}) {
   // Keep the server and first browser render identical. Reading window.location or
   // sessionStorage in a state initializer can make React discard the hydrated GEX
@@ -853,12 +1064,42 @@ function GexMapWorkspace({ market = null }: GexMapWorkspaceProps = {}) {
   const [lastSync, setLastSync] = useState<number | null>(null);
   const [latestSessionDate, setLatestSessionDate] = useState("");
   const [refreshToken, setRefreshToken] = useState(0);
+  const [viewMode, setViewMode] = useState<GexMapViewMode>("raw");
+  const [starSettings, setStarSettings] = useState<GexMapStarSettings>({ ...RECOMMENDED_GEX_MAP_STAR_SETTINGS });
+  const [starSettingsOpen, setStarSettingsOpen] = useState(false);
+  const starPreferencesHydratedRef = useRef(false);
   const forceRefreshRef = useRef(false);
   const requestedReplayDate = replayMode ? replayDate : "";
 
   useEffect(() => {
     setLocationMarket(market ?? linkedMarketFromLocation());
   }, [market]);
+
+  useEffect(() => {
+    const stored = readGexMapStarPreferences();
+    if (stored) {
+      setViewMode(stored.viewMode);
+      setStarSettings(stored.settings);
+    }
+    starPreferencesHydratedRef.current = true;
+  }, []);
+
+  useEffect(() => {
+    if (!starPreferencesHydratedRef.current) return;
+    window.localStorage.setItem(GEX_MAP_STAR_PREFERENCES_KEY, JSON.stringify({ viewMode, settings: starSettings }));
+  }, [starSettings, viewMode]);
+
+  useEffect(() => {
+    const toggleView = (event: KeyboardEvent) => {
+      if (!event.shiftKey || event.key.toLowerCase() !== "v" || event.ctrlKey || event.metaKey || event.altKey) return;
+      const target = event.target as HTMLElement | null;
+      if (target?.matches("input, textarea, select, [contenteditable='true']")) return;
+      event.preventDefault();
+      setViewMode((current) => current === "raw" ? "star" : "raw");
+    };
+    window.addEventListener("keydown", toggleView);
+    return () => window.removeEventListener("keydown", toggleView);
+  }, []);
 
   useEffect(() => {
     const nextPanels = initialPanelsForMarket(linkedMarket);
@@ -1105,6 +1346,38 @@ function GexMapWorkspace({ market = null }: GexMapWorkspaceProps = {}) {
             <p className="hidden">Signed front-expiry exposure by strike</p>
           </div>
 
+          <div className="ml-1 flex h-7 shrink-0 items-center border border-border bg-surface p-0.5" role="group" aria-label="GEX Map view mode">
+            <button
+              type="button"
+              aria-label="Raw exposure view"
+              aria-pressed={viewMode === "raw"}
+              title="Show every strike, raw exposure and raw change."
+              onClick={() => setViewMode("raw")}
+              className={`flex h-5 items-center gap-1 px-1.5 text-[8px] font-semibold focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary ${viewMode === "raw" ? "bg-panel text-primary" : "text-muted hover:text-foreground"}`}
+            >
+              <ListOrdered className="h-3 w-3" /><span>(123)</span>
+            </button>
+            <button
+              type="button"
+              aria-label="Star focus view"
+              aria-pressed={viewMode === "star"}
+              title="Focus on Star, structural nodes, map control and live growth."
+              onClick={() => setViewMode("star")}
+              className={`flex h-5 items-center gap-1 px-1.5 text-[8px] font-semibold focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary ${viewMode === "star" ? "bg-panel text-primary" : "text-muted hover:text-foreground"}`}
+            >
+              <Star className="h-3 w-3" fill={viewMode === "star" ? "currentColor" : "none"} /><span>(★)</span>
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={() => setStarSettingsOpen(true)}
+            className="flex h-7 w-7 shrink-0 items-center justify-center border border-border bg-surface text-muted hover:border-primary/30 hover:text-primary"
+            title="STAR view settings"
+            aria-label="Open Star view settings"
+          >
+            <SlidersHorizontal className="h-3 w-3" />
+          </button>
+
           <div className="gex-map-frame-steps ml-1 flex h-7 shrink-0 items-center gap-0.5 rounded-[3px] border border-border bg-surface p-0.5">
             {FRAME_STEPS.map((value) => (
               <button
@@ -1185,6 +1458,8 @@ function GexMapWorkspace({ market = null }: GexMapWorkspaceProps = {}) {
                   error={panelErrors[panel.id]}
                   selectedTimestamp={selectedTimestamp}
                   stepMinutes={stepMinutes}
+                  viewMode={viewMode}
+                  starSettings={starSettings}
                   onChange={(patch) => updatePanel(panel.id, patch)}
                   onRemove={panelIndex >= DEFAULT_PANELS.length ? () => removePanel(panel.id) : undefined}
                 />
@@ -1278,6 +1553,12 @@ function GexMapWorkspace({ market = null }: GexMapWorkspaceProps = {}) {
           />
         </div>
       ) : null}
+      <StarViewSettings
+        open={starSettingsOpen}
+        settings={starSettings}
+        onChange={setStarSettings}
+        onClose={() => setStarSettingsOpen(false)}
+      />
     </div>
   );
 }
