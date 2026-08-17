@@ -5837,7 +5837,14 @@ function Chart({
     let hasCommittedSnapshot = false;
     const commitSnapshot = (snapshot: BounceLevelsSnapshot) => {
       if (cancelled || bounceLevelsDataSignatureRef.current !== requestSignature) return;
-      setBounceLevelsSnapshot((current) => hasCommittedSnapshot ? mergeBounceLevelsSnapshots(current, snapshot) : snapshot);
+      setBounceLevelsSnapshot((current) => {
+        if (!hasCommittedSnapshot) return snapshot;
+        // The shared request cache deliberately returns the same verified
+        // object to every identical panel. Do not clone and invalidate the
+        // expensive Canvas layer when a refresh cycle is only a cache hit.
+        if (current === snapshot) return current;
+        return mergeBounceLevelsSnapshots(current, snapshot);
+      });
       hasCommittedSnapshot = true;
     };
     const indicatorSettings = JSON.parse(bounceLevelsDataSignature) as Record<string, string | number | boolean>;

@@ -241,6 +241,7 @@ function ribbonGradient(
   points: PreparedNode[],
   edgeX: number,
   opacityScale: number,
+  maximumStops = 48,
 ) {
   const first = points[0];
   const last = points[points.length - 1];
@@ -253,7 +254,6 @@ function ribbonGradient(
   add(0, first, 0.72);
   // Canvas gradients become extremely expensive with hundreds of colour
   // stops. Preserve the temporal shape while bounding the GPU/CPU work.
-  const maximumStops = 48;
   const stopStride = Math.max(1, Math.ceil(points.length / maximumStops));
   for (let index = 0; index < points.length; index += stopStride) {
     const point = points[index];
@@ -278,9 +278,43 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
     const chart = this.primitive.chart();
     const data = this.primitive.data();
     if (!series || !chart || !data?.snapshot.exposureField.length) { this.primitive.setHits([]); return; }
-    target.useMediaCoordinateSpace(({ context, mediaSize }) => {
+    target.useMediaCoordinateSpace(({ context: targetContext, mediaSize }) => {
       if (mediaSize.width < 80 || mediaSize.height < 80) { this.primitive.setHits([]); return; }
-      const anchors = [...data.timeAnchors].sort((left, right) => left - right);
+      const anchors = data.timeAnchors;
+      const firstAnchor = anchors[0] ?? 0;
+      const lastAnchor = anchors.at(-1) ?? firstAnchor;
+      const firstX = firstAnchor ? chart.timeScale().timeToCoordinate(Math.floor(firstAnchor / 1_000) as Time) : null;
+      const lastX = lastAnchor ? chart.timeScale().timeToCoordinate(Math.floor(lastAnchor / 1_000) as Time) : null;
+      const firstLevelPrice = data.snapshot.levels[0]?.mappedPrice ?? data.snapshot.exposureField[0]?.nodes[0]?.mappedPrice ?? 0;
+      const lastLevelPrice = data.snapshot.levels.at(-1)?.mappedPrice ?? data.snapshot.exposureField.at(-1)?.nodes.at(-1)?.mappedPrice ?? firstLevelPrice;
+      const firstY = firstLevelPrice ? series.priceToCoordinate(firstLevelPrice) : null;
+      const lastY = lastLevelPrice ? series.priceToCoordinate(lastLevelPrice) : null;
+      const layerKey = this.primitive.renderLayerKey({
+        width: mediaSize.width,
+        height: mediaSize.height,
+        firstX: firstX === null ? null : Number(firstX),
+        lastX: lastX === null ? null : Number(lastX),
+        firstY: firstY === null ? null : Number(firstY),
+        lastY: lastY === null ? null : Number(lastY),
+      });
+      const cachedLayer = this.primitive.cachedLayer(layerKey);
+      if (cachedLayer) {
+        targetContext.drawImage(
+          cachedLayer,
+          0,
+          0,
+          cachedLayer.width,
+          cachedLayer.height,
+          0,
+          0,
+          mediaSize.width,
+          mediaSize.height,
+        );
+        return;
+      }
+      const layer = this.primitive.createLayer(mediaSize.width, mediaSize.height);
+      const context = layer.context;
+      const activePanelCount = this.primitive.activePanelCount();
       const coordinateCache = new Map<number, number | null>();
       let slices = data.snapshot.exposureField
         .map((slice) => ({ ...slice, x: coordinateForTimestamp(chart, slice.timestamp, anchors, coordinateCache) }))
@@ -292,7 +326,11 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
       // cutoff. A compact four-panel workspace cannot display 1,440 distinct
       // temporal slices, so sampling them all only burns the interaction thread
       // without adding visible information.
-      const maximumVisibleSlices = Math.max(96, Math.min(360, Math.floor(mediaSize.width / 3)));
+      const maximumVisibleSlices = activePanelCount >= 4
+        ? Math.max(72, Math.min(180, Math.floor(mediaSize.width / 5)))
+        : activePanelCount >= 2
+          ? Math.max(84, Math.min(240, Math.floor(mediaSize.width / 4)))
+          : Math.max(96, Math.min(360, Math.floor(mediaSize.width / 3)));
       if (slices.length > maximumVisibleSlices) {
         const source = slices;
         const lastIndex = source.length - 1;
@@ -407,22 +445,23 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
             1.72,
             (1.25 + data.glowStrength * 0.18) * BOUNCE_LEVELS_HEAT_THICKNESS_SCALE,
           );
-          const detailedRendering = prepared.length <= 2_200;
+          const detailedRendering = activePanelCount <= 2 && prepared.length <= 2_200;
+          const maximumGradientStops = activePanelCount >= 4 ? 20 : activePanelCount >= 2 ? 32 : 48;
           context.save();
           if (detailedRendering) {
             context.shadowColor = rgba(last.color, maximumOpacity * 0.52);
             context.shadowBlur = (data.glowStrength + maximumStrength * 11) * BOUNCE_LEVELS_HEAT_THICKNESS_SCALE;
           }
-          context.fillStyle = ribbonGradient(context, points, halo.edgeX, 0.2 + maximumStrength * 0.16);
+          context.fillStyle = ribbonGradient(context, points, halo.edgeX, 0.2 + maximumStrength * 0.16, maximumGradientStops);
           context.fill();
           context.restore();
 
           const body = traceRibbon(context, points, 1, 0.9 * BOUNCE_LEVELS_HEAT_THICKNESS_SCALE);
-          context.fillStyle = ribbonGradient(context, points, body.edgeX, 0.72 + maximumStrength * 0.24);
+          context.fillStyle = ribbonGradient(context, points, body.edgeX, 0.72 + maximumStrength * 0.24, maximumGradientStops);
           context.fill();
 
           traceRibbon(context, points, 0.62, 0.7 * BOUNCE_LEVELS_HEAT_THICKNESS_SCALE);
-          context.fillStyle = ribbonGradient(context, points, body.edgeX, 0.36 + maximumStrength * 0.28);
+          context.fillStyle = ribbonGradient(context, points, body.edgeX, 0.36 + maximumStrength * 0.28, maximumGradientStops);
           context.fill();
 
           // Local cells are high-detail texture. At compact zoom the continuous
@@ -472,7 +511,7 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
           context.stroke();
           context.shadowBlur = 0;
 
-          if (data.microOrbTexture && prepared.length <= 1_600) {
+          if (data.microOrbTexture && activePanelCount === 1 && prepared.length <= 1_600) {
             for (const point of points) {
               const density = Math.max(1, Math.round(1 + point.strength * 4));
               const halfHeight = Math.max(0.75 * BOUNCE_LEVELS_HEAT_THICKNESS_SCALE, point.height * 0.42);
@@ -599,6 +638,18 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
       }
       context.restore();
       this.primitive.setHits(hits);
+      this.primitive.storeLayer(layerKey, layer.canvas);
+      targetContext.drawImage(
+        layer.canvas,
+        0,
+        0,
+        layer.canvas.width,
+        layer.canvas.height,
+        0,
+        0,
+        mediaSize.width,
+        mediaSize.height,
+      );
     });
   }
 }
@@ -610,16 +661,59 @@ class BounceLevelsView implements ISeriesPrimitivePaneView {
   renderer() { return this.paneRenderer; }
 }
 
+const activeBouncePrimitives = new Set<BounceLevelsPrimitive>();
+
 export class BounceLevelsPrimitive implements ISeriesPrimitive<Time> {
   private candleSeries: CandleSeriesApi | null = null;
   private chartApi: IChartApi | null = null;
   private requestRedraw: (() => void) | null = null;
   private renderData: BounceLevelsPrimitiveData | null = null;
   private hits: RenderedHit[] = [];
+  private renderRevision = 0;
+  private layerKey = "";
+  private layerCanvas: HTMLCanvasElement | null = null;
   private readonly paneView = new BounceLevelsView(this);
   attached(param: SeriesAttachedParameter<Time, "Candlestick">) { this.candleSeries = param.series; this.chartApi = param.chart as IChartApi; this.requestRedraw = param.requestUpdate; }
-  detached() { this.candleSeries = null; this.chartApi = null; this.requestRedraw = null; this.hits = []; }
-  update(data: BounceLevelsPrimitiveData | null) { this.renderData = data; this.requestRedraw?.(); }
+  detached() { activeBouncePrimitives.delete(this); this.candleSeries = null; this.chartApi = null; this.requestRedraw = null; this.hits = []; this.layerCanvas = null; this.layerKey = ""; }
+  update(data: BounceLevelsPrimitiveData | null) {
+    if (this.renderData !== data) {
+      this.renderRevision += 1;
+      this.layerCanvas = null;
+      this.layerKey = "";
+    }
+    this.renderData = data;
+    if (data) activeBouncePrimitives.add(this);
+    else activeBouncePrimitives.delete(this);
+    this.requestRedraw?.();
+  }
+  activePanelCount() { return Math.max(1, activeBouncePrimitives.size); }
+  renderLayerKey(viewport: { width: number; height: number; firstX: number | null; lastX: number | null; firstY: number | null; lastY: number | null }) {
+    const rounded = (value: number | null) => value === null ? "x" : Math.round(value * 4) / 4;
+    return [
+      this.renderRevision,
+      this.activePanelCount(),
+      Math.round(viewport.width),
+      Math.round(viewport.height),
+      rounded(viewport.firstX),
+      rounded(viewport.lastX),
+      rounded(viewport.firstY),
+      rounded(viewport.lastY),
+    ].join(":");
+  }
+  cachedLayer(key: string) { return key === this.layerKey ? this.layerCanvas : null; }
+  createLayer(width: number, height: number) {
+    const devicePixelRatio = typeof window === "undefined" ? 1 : Math.max(1, window.devicePixelRatio || 1);
+    const pixelBudgetRatio = Math.sqrt(4_000_000 / Math.max(1, width * height));
+    const pixelRatio = Math.max(1, Math.min(2, devicePixelRatio, pixelBudgetRatio));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.ceil(width * pixelRatio));
+    canvas.height = Math.max(1, Math.ceil(height * pixelRatio));
+    const context = canvas.getContext("2d", { alpha: true });
+    if (!context) throw new Error("Bounce Levels could not allocate its render layer.");
+    context.scale(pixelRatio, pixelRatio);
+    return { canvas, context };
+  }
+  storeLayer(key: string, canvas: HTMLCanvasElement) { this.layerKey = key; this.layerCanvas = canvas; }
   series() { return this.candleSeries; }
   chart() { return this.chartApi; }
   data() { return this.renderData; }

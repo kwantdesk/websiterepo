@@ -20,10 +20,19 @@ test("GEX overlays keep full-history analytics off the live tick path", () => {
 });
 
 test("Bounce Levels uses pixel-aware detail and bounded gradients", () => {
-  assert.match(bouncePrimitive, /const maximumVisibleSlices = Math\.max\(96, Math\.min\(360, Math\.floor\(mediaSize\.width \/ 3\)\)\)/);
-  assert.match(bouncePrimitive, /const maximumStops = 48/);
-  assert.match(bouncePrimitive, /const detailedRendering = prepared\.length <= 2_200/);
-  assert.match(bouncePrimitive, /data\.microOrbTexture && prepared\.length <= 1_600/);
+  assert.match(bouncePrimitive, /activePanelCount >= 4/);
+  assert.match(bouncePrimitive, /Math\.min\(180, Math\.floor\(mediaSize\.width \/ 5\)\)/);
+  assert.match(bouncePrimitive, /const maximumGradientStops = activePanelCount >= 4 \? 20/);
+  assert.match(bouncePrimitive, /const detailedRendering = activePanelCount <= 2 && prepared\.length <= 2_200/);
+  assert.match(bouncePrimitive, /data\.microOrbTexture && activePanelCount === 1 && prepared\.length <= 1_600/);
+});
+
+test("Bounce Levels composites a retained render layer instead of rebuilding it on every market tick", () => {
+  assert.match(bouncePrimitive, /const cachedLayer = this\.primitive\.cachedLayer\(layerKey\)/);
+  assert.match(bouncePrimitive, /targetContext\.drawImage/);
+  assert.match(bouncePrimitive, /this\.primitive\.storeLayer\(layerKey, layer\.canvas\)/);
+  assert.match(bouncePrimitive, /private renderRevision = 0/);
+  assert.match(bouncePrimitive, /pixelBudgetRatio/);
 });
 
 test("identical Bounce panels share refresh work and Dark Pool mutates only live price", () => {
