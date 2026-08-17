@@ -407,6 +407,18 @@ async function walkDarkPoolPrintHistory(
   return { rows: rows.slice(0, maximumRows), truncated };
 }
 
+const getDurableDarkPoolPrintHistory = unstable_cache(
+  async (
+    sourceTicker: string,
+    startDate: string,
+    endDate: string,
+    maximumRows: number,
+    minimumNotional: number,
+  ) => walkDarkPoolPrintHistory(sourceTicker, startDate, endDate, maximumRows, minimumNotional),
+  ["quantdata-dark-pool-print-history-v1"],
+  { revalidate: 300 },
+);
+
 export async function getDarkPoolPrintsPayload(
   sourceTicker: string,
   startDate: string,
@@ -420,7 +432,7 @@ export async function getDarkPoolPrintsPayload(
   const now = Date.now();
   let history = darkPoolPrintHistoryCache.get(historyKey);
   if (!history || history.expiresAt <= now) {
-    const promise = walkDarkPoolPrintHistory(
+    const promise = getDurableDarkPoolPrintHistory(
       sourceTicker,
       startDate,
       endDate,

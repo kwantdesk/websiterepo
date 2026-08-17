@@ -288,6 +288,7 @@ import {
 } from "@/lib/gexIntervalMap";
 import { subscribeGexIntervalMap } from "@/lib/gexIntervalMapCache";
 import {
+  deduplicateDarkPoolPrints,
   defaultDarkPoolSource,
   isDarkPoolMapPayload,
   normalizeDarkPoolInstrument,
@@ -312,7 +313,7 @@ import {
   type DarkPoolGexHit,
   type DarkPoolGexPrimitiveData,
 } from "@/lib/darkPoolGexPrimitive";
-import { fetchWorkspaceData, readWorkspaceData } from "@/lib/workspaceDataCache";
+import { fetchWorkspaceData, readWorkspaceData, writeWorkspaceData } from "@/lib/workspaceDataCache";
 import { STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT } from "@/lib/volumeProfileMath";
 import {
   buildInitialBalanceLevels,
@@ -6316,6 +6317,8 @@ function Chart({
     const historicalAsOf = drawingCandlesRef.current.at(-1)?.timestamp ?? Date.now();
     const asOfMs = indicatorSettings.contextMode === "current" ? Date.now() : historicalAsOf;
     const darkPoolCacheKey = `dark-pool-gex:prints:${display}:${source}:${indicatorSettings.lookbackDays}:${indicatorSettings.minimumNotional}:${indicatorSettings.maximumNotional}:${indicatorSettings.minimumShares}:${indicatorSettings.maximumShares}`;
+    const darkPoolHeadCacheKey = `${darkPoolCacheKey}:head`;
+    const darkPoolHistoryCacheKey = `${darkPoolCacheKey}:history`;
     const gexSource = /^(NQ|MNQ|QQQ)$/.test(display) ? "QQQ"
       : display === "NDX" ? "NDX"
         : /^(ES|MES|SPY)$/.test(display) ? "SPY"
@@ -6323,37 +6326,55 @@ function Chart({
             : /^(RTY|M2K|IWM)$/.test(display) ? "IWM"
               : null;
     const gexCacheKey = `dark-pool-gex:gex:${display}:${gexSource ?? "none"}:${indicatorSettings.contextMode}:${indicatorSettings.contextMode === "current" ? "live" : Math.floor(asOfMs / 60_000)}`;
-    const cachedDarkPool = readWorkspaceData<DarkPoolMapPayload>(darkPoolCacheKey);
+    const cachedDarkPool = readWorkspaceData<DarkPoolMapPayload>(darkPoolCacheKey)
+      ?? readWorkspaceData<DarkPoolMapPayload>(darkPoolHistoryCacheKey)
+      ?? readWorkspaceData<DarkPoolMapPayload>(darkPoolHeadCacheKey);
     const cachedGex = gexSource ? readWorkspaceData<BounceLevelsSnapshot>(gexCacheKey) : null;
     if (cachedDarkPool && isDarkPoolMapPayload(cachedDarkPool)) setDarkPoolGexPayload(cachedDarkPool);
     if (cachedGex && isBounceLevelsSnapshot(cachedGex)) setDarkPoolGexSnapshot(cachedGex);
     if (cachedDarkPool) setDarkPoolGexLoading(false);
     let cancelled = false;
     let timer: number | null = null;
-    const load = async (force = false) => {
+    let hasPaintablePayload = Boolean(cachedDarkPool && isDarkPoolMapPayload(cachedDarkPool));
+    let historyStarted = false;
+    const mergePayload = (incoming: DarkPoolMapPayload) => {
+      if (cancelled) return;
+      setDarkPoolGexPayload((previous) => {
+        if (!previous || previous.displayInstrument !== incoming.displayInstrument || previous.sourceTicker !== incoming.sourceTicker) {
+          writeWorkspaceData(darkPoolCacheKey, incoming);
+          return incoming;
+        }
+        const prints = deduplicateDarkPoolPrints([...previous.prints, ...incoming.prints])
+          .sort((left, right) => left.tradeTimeMs - right.tradeTimeMs)
+          .slice(-2_500);
+        const merged = { ...incoming, prints };
+        writeWorkspaceData(darkPoolCacheKey, merged);
+        return merged;
+      });
+      hasPaintablePayload = true;
+      setDarkPoolGexLoading(false);
+    };
+    const load = async () => {
       const displayPrice = drawingCandlesRef.current.at(-1)?.close;
       if (!(displayPrice && displayPrice > 0)) {
-        setDarkPoolGexLoading(true);
-        timer = window.setTimeout(() => void load(force), 500);
+        if (!hasPaintablePayload) setDarkPoolGexLoading(true);
+        timer = window.setTimeout(() => void load(), 500);
         return;
       }
-      if (!cachedDarkPool) setDarkPoolGexLoading(true);
-      const darkPoolQuery = new URLSearchParams({
+      if (!hasPaintablePayload) setDarkPoolGexLoading(true);
+      const makeDarkPoolQuery = (maximumHistoricalPrints: number) => new URLSearchParams({
         display,
         source,
         mappingMode: source === display ? "direct" : "rolling-affine",
         historyDays: String(Math.max(1, Math.min(365, indicatorSettings.lookbackDays))),
         minimumPrintNotional: String(Math.max(0, indicatorSettings.minimumNotional)),
         minimumPrintShares: String(Math.max(0, indicatorSettings.minimumShares)),
-        // Dark Pool (GEX) displays a ranked handful of prints. Loading a
-        // bounded raw set prevents its first paint from waiting on a 50-page
-        // cursor walk while the aggregate levels endpoint still supplies the
-        // complete level context.
-        maximumHistoricalPrints: String(Math.max(500, Math.min(2_000, indicatorSettings.topN * 100))),
+        maximumHistoricalPrints: String(maximumHistoricalPrints),
         displayPrice: String(displayPrice),
       });
-      if (indicatorSettings.maximumNotional > 0) darkPoolQuery.set("maximumPrintNotional", String(indicatorSettings.maximumNotional));
-      if (indicatorSettings.maximumShares > 0) darkPoolQuery.set("maximumPrintShares", String(indicatorSettings.maximumShares));
+      const darkPoolHeadQuery = makeDarkPoolQuery(100);
+      if (indicatorSettings.maximumNotional > 0) darkPoolHeadQuery.set("maximumPrintNotional", String(indicatorSettings.maximumNotional));
+      if (indicatorSettings.maximumShares > 0) darkPoolHeadQuery.set("maximumPrintShares", String(indicatorSettings.maximumShares));
       const gexQuery = new URLSearchParams({
         display,
         ...(gexSource ? { source: gexSource } : {}),
@@ -6366,39 +6387,53 @@ function Chart({
       });
       if (indicatorSettings.contextMode !== "current") gexQuery.set("asOf", new Date(asOfMs).toISOString());
       const darkPoolPromise = fetchWorkspaceData<DarkPoolMapPayload>(
-        darkPoolCacheKey,
-        `/api/dark-pool-map?${darkPoolQuery}`,
-        { force, maxAgeMs: refreshMs, timeoutMs: 40_000, validate: isDarkPoolMapPayload, invalidMessage: "Dark Pool (GEX) received an incomplete off-exchange print snapshot." },
+        darkPoolHeadCacheKey,
+        `/api/dark-pool-map?${darkPoolHeadQuery}`,
+        { maxAgeMs: refreshMs, timeoutMs: 15_000, validate: isDarkPoolMapPayload, invalidMessage: "Dark Pool (GEX) received an incomplete off-exchange print snapshot." },
       );
       const gexPromise = gexSource
         ? fetchWorkspaceData<BounceLevelsSnapshot>(
           gexCacheKey,
           `/api/bounce-levels?${gexQuery}`,
-          { force, maxAgeMs: refreshMs, timeoutMs: 40_000, validate: isBounceLevelsSnapshot, invalidMessage: "Dark Pool (GEX) received an incomplete GEX snapshot." },
+          { maxAgeMs: refreshMs, timeoutMs: 25_000, validate: isBounceLevelsSnapshot, invalidMessage: "Dark Pool (GEX) received an incomplete GEX snapshot." },
         )
         : Promise.reject(new Error(`No validated GEX source is configured for ${display}; raw off-exchange prints remain available.`));
       const trackedDarkPoolPromise = darkPoolPromise.then((payload) => {
-        if (!cancelled) setDarkPoolGexPayload(payload);
+        mergePayload(payload);
         return payload;
       });
       const trackedGexPromise = gexPromise.then((snapshot) => {
         if (!cancelled) setDarkPoolGexSnapshot(snapshot);
         return snapshot;
-      }).catch((error) => {
-        if (!cancelled) setDarkPoolGexSnapshot(null);
-        throw error;
-      });
-      const [darkPoolResult, gexResult] = await Promise.allSettled([trackedDarkPoolPromise, trackedGexPromise]);
+      }).catch(() => null);
+      // Paint the verified one-page head immediately. The GEX request is
+      // independent context and must never hold the Dark Pool overlay blank.
+      const darkPoolResult = await Promise.allSettled([trackedDarkPoolPromise]).then(([result]) => result);
       if (cancelled) return;
       const errors: string[] = [];
       if (darkPoolResult.status === "rejected") errors.push(darkPoolResult.reason instanceof Error ? darkPoolResult.reason.message : "Off-exchange prints unavailable.");
-      if (gexResult.status === "rejected") errors.push(gexResult.reason instanceof Error ? gexResult.reason.message : "GEX context unavailable.");
       setDarkPoolGexError(errors.length ? errors.join(" ") : null);
-      setDarkPoolGexLoading(false);
+      if (!hasPaintablePayload) setDarkPoolGexLoading(false);
+
+      // Enrich the retained browser frame once in the background. A full
+      // cursor walk is useful for historical ranking, but it is never allowed
+      // to delay first paint or the live head refresh cadence.
+      if (!historyStarted) {
+        historyStarted = true;
+        const historyQuery = makeDarkPoolQuery(Math.max(500, Math.min(2_000, indicatorSettings.topN * 100)));
+        if (indicatorSettings.maximumNotional > 0) historyQuery.set("maximumPrintNotional", String(indicatorSettings.maximumNotional));
+        if (indicatorSettings.maximumShares > 0) historyQuery.set("maximumPrintShares", String(indicatorSettings.maximumShares));
+        void fetchWorkspaceData<DarkPoolMapPayload>(
+          darkPoolHistoryCacheKey,
+          `/api/dark-pool-map?${historyQuery}`,
+          { maxAgeMs: 10 * 60_000, timeoutMs: 40_000, validate: isDarkPoolMapPayload, invalidMessage: "Dark Pool (GEX) received an incomplete historical snapshot." },
+        ).then(mergePayload).catch(() => undefined);
+      }
+      void trackedGexPromise;
       // Shared cache age coordinates refreshes across workspace panels.
-      timer = window.setTimeout(() => void load(false), refreshMs);
+      timer = window.setTimeout(() => void load(), refreshMs);
     };
-    void load(false);
+    void load();
     return () => {
       cancelled = true;
       if (timer !== null) window.clearTimeout(timer);

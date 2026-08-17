@@ -140,3 +140,18 @@ test("QuantData adapter uses the documented cursor contract and shared history c
   assert.doesNotMatch(darkPoolSection, /pagination\s*:/);
   assert.doesNotMatch(darkPoolSection, /sessionDateRange/);
 });
+
+test("Dark Pool GEX paints a one-page head before background history enrichment", async () => {
+  const [chart, route, adapter] = await Promise.all([
+    read("src/components/Chart.tsx"),
+    read("src/app/api/dark-pool-map/route.ts"),
+    read("src/lib/quantData.server.ts"),
+  ]);
+  assert.match(chart, /const darkPoolHeadQuery = makeDarkPoolQuery\(100\)/);
+  assert.match(chart, /darkPoolHistoryCacheKey/);
+  assert.match(chart, /Paint the verified one-page head immediately/);
+  assert.match(chart, /\.then\(mergePayload\)/);
+  assert.match(route, /Math\.max\(100, Math\.min\(100_000/);
+  assert.match(adapter, /quantdata-dark-pool-print-history-v1/);
+  assert.match(adapter, /getDurableDarkPoolPrintHistory/);
+});

@@ -169,7 +169,10 @@ export async function GET(request: NextRequest) {
   const nowMs = Date.now();
   const endDate = nyDate(new Date(nowMs));
   const startDate = nyDate(new Date(nowMs - settings.historyDays * 86_400_000));
-  const maximumRows = Math.max(1_000, Math.min(100_000, Math.round(finite(query.get("maximumHistoricalPrints")) ?? 100_000)));
+  // Dark Pool GEX uses a one-page request for first paint and enriches it with
+  // deeper history in the background. Do not silently turn that fast path
+  // back into a ten-page cursor walk.
+  const maximumRows = Math.max(100, Math.min(100_000, Math.round(finite(query.get("maximumHistoricalPrints")) ?? 100_000)));
 
   try {
     const [levelsPayload, printsPayload] = await Promise.all([
