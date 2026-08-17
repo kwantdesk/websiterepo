@@ -4,6 +4,8 @@ import { URL } from "node:url";
 import { buildArchivedValueAreaProfile } from "./archive-value-area.mjs";
 import { replayArchiveIntoBook } from "./archive-replay.mjs";
 import { loadConfig } from "./config.mjs";
+import { DatabentoEquitiesTradeStream } from "./databento-equities-stream.mjs";
+import { QuantDataMarketSnapshotStream } from "./quantdata-market-snapshot-stream.mjs";
 import { discoverRithmicSystems, RithmicMarketDataClient } from "./rithmic-client.mjs";
 import { RTraderExcelMarketDataClient } from "./rtrader-excel-client.mjs";
 import { MarketDataRecorder } from "./recorder.mjs";
@@ -26,10 +28,29 @@ const recorder = new MarketDataRecorder({
 });
 recorder.attach(client);
 const vendorDataEdge = new VendorDataEdge(config);
+const databentoEquities = new DatabentoEquitiesTradeStream({
+  apiKey: config.databentoApiKey,
+  reconnectMinMs: config.reconnectMinMs,
+  reconnectMaxMs: config.reconnectMaxMs,
+  symbols: ["SPY", "QQQ", "IWM", "AAPL", "NVDA", "TSLA", "MSFT", "AMZN", "META", "AMD"],
+});
+const quantDataMarketSnapshots = new QuantDataMarketSnapshotStream({
+  apiKey: config.quantDataApiKey,
+  pollMs: 2_500,
+  // Poll one cash index per cycle. SPX and NDX therefore each refresh every
+  // five seconds without either symbol being able to starve the other.
+  indexPollMs: 2_500,
+  idlePollMs: 15_000,
+  requestSpacingMs: Math.max(100, config.quantDataMinSpacingMs),
+  timeoutMs: Math.min(10_000, config.vendorRequestTimeoutMs),
+  equitySymbols: ["SPY", "QQQ", "IWM", "AAPL", "NVDA", "TSLA", "MSFT", "AMZN", "META", "AMD"],
+  indexSymbols: ["SPX", "NDX"],
+});
 const rawSseClients = new Set();
 const tradeSseClients = new Set();
 const heatmapSseClients = new Set();
 const quoteSseClients = new Set();
+const marketIndexSseClients = new Set();
 const heatmapHistoryByInstrument = new Map();
 const liveQuoteCache = new Map();
 const quoteBatchesByInstrument = new Map();
@@ -892,6 +913,64 @@ client.on("gatewayError", (error) => {
   process.stderr.write(`[rithmic] ${error instanceof Error ? error.message : String(error)}\n`);
 });
 
+function emitMarketIndexQuote(snapshot) {
+  for (const subscriber of [...marketIndexSseClients]) {
+    if (
+      subscriber.response.destroyed
+      || subscriber.response.writableEnded
+      || !subscriber.response.writable
+    ) {
+      subscriber.cleanup?.();
+      continue;
+    }
+    if (subscriber.symbols.size && !subscriber.symbols.has(snapshot.symbol)) continue;
+    subscriber.response.write(`data: ${JSON.stringify(snapshot)}\n\n`);
+  }
+}
+
+function marketIndexStatus() {
+  const databento = databentoEquities.status();
+  const quantData = quantDataMarketSnapshots.status();
+  return {
+    connected: databento.connected || quantData.connected,
+    source: databento.connected ? "Databento" : quantData.connected ? "QuantData" : "VPS market-data edge",
+    databento,
+    quantData,
+  };
+}
+
+function emitMarketIndexStatus() {
+  const status = marketIndexStatus();
+  for (const subscriber of [...marketIndexSseClients]) {
+    if (!subscriber.response.writable || subscriber.response.writableEnded) continue;
+    subscriber.response.write(`event: status\ndata: ${JSON.stringify(status)}\n\n`);
+  }
+}
+
+function marketIndexSnapshot(symbol) {
+  const direct = databentoEquities.snapshot(symbol);
+  const fallback = quantDataMarketSnapshots.snapshot(symbol);
+  return direct && (!fallback || direct.timestamp >= fallback.timestamp) ? direct : fallback;
+}
+
+databentoEquities.on("quote", emitMarketIndexQuote);
+databentoEquities.on("status", emitMarketIndexStatus);
+databentoEquities.on("streamError", (error) => {
+  process.stderr.write(`[databento-equities] ${error instanceof Error ? error.message : String(error)}\n`);
+});
+quantDataMarketSnapshots.on("quote", (snapshot) => {
+  // A genuine Databento trade is the preferred source when the account is
+  // entitled. The REST snapshot only fills symbols whose direct stream is
+  // unavailable or stale; it can never rewind a newer live trade.
+  const direct = databentoEquities.snapshot(snapshot.symbol);
+  if (direct && Date.now() - direct.timestamp < 5_000) return;
+  emitMarketIndexQuote(snapshot);
+});
+quantDataMarketSnapshots.on("status", emitMarketIndexStatus);
+quantDataMarketSnapshots.on("streamError", (error) => {
+  process.stderr.write(`[quantdata-market-snapshots] ${error instanceof Error ? error.message : String(error)}\n`);
+});
+
 const server = createServer(async (request, response) => {
   const url = new URL(request.url || "/", `http://${request.headers.host || "localhost"}`);
   if (request.method === "GET" && url.pathname === "/health") {
@@ -901,6 +980,8 @@ const server = createServer(async (request, response) => {
       ...client.health(),
       recorder: recorder.status(),
       vendorData: vendorDataEdge.health(),
+      databentoEquities: databentoEquities.status(),
+      quantDataMarketSnapshots: quantDataMarketSnapshots.status(),
     });
   }
   if (!authorized(request)) {
@@ -1081,6 +1162,64 @@ const server = createServer(async (request, response) => {
       response.on("close", cleanup);
       response.on("error", cleanup);
       return;
+    }
+    if (request.method === "GET" && url.pathname === "/v1/market-data/index-stream") {
+      if (!config.databentoApiKey && !config.quantDataApiKey) {
+        return json(response, 503, { error: "No options-underlying provider is configured on the market-data gateway." });
+      }
+      const symbols = new Set(
+        String(url.searchParams.get("symbols") || "")
+          .split(",")
+          .map((symbol) => symbol.trim().toUpperCase())
+          .filter(Boolean)
+          .slice(0, 40),
+      );
+      response.writeHead(200, {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache, no-transform",
+        Connection: "keep-alive",
+        "X-Accel-Buffering": "no",
+      });
+      response.write("retry: 1000\n\n");
+      response.write(`event: status\ndata: ${JSON.stringify(marketIndexStatus())}\n\n`);
+      for (const symbol of symbols) {
+        const cached = marketIndexSnapshot(symbol);
+        if (cached) response.write(`data: ${JSON.stringify(cached)}\n\n`);
+      }
+      const subscriber = { response, symbols, cleanup: null };
+      marketIndexSseClients.add(subscriber);
+      const keepalive = setInterval(() => response.write(": keepalive\n\n"), 8_000);
+      const cleanup = () => {
+        clearInterval(keepalive);
+        marketIndexSseClients.delete(subscriber);
+      };
+      subscriber.cleanup = cleanup;
+      request.on("close", cleanup);
+      response.on("close", cleanup);
+      response.on("error", cleanup);
+      return;
+    }
+    if (request.method === "GET" && url.pathname === "/v1/market-data/index-snapshot") {
+      if (!config.databentoApiKey && !config.quantDataApiKey) {
+        return json(response, 503, { error: "No options-underlying provider is configured on the market-data gateway." });
+      }
+      const symbols = [...new Set(
+        String(url.searchParams.get("symbols") || "")
+          .split(",")
+          .map((symbol) => symbol.trim().toUpperCase())
+          .filter(Boolean)
+          .slice(0, 40),
+      )];
+      if (!symbols.length) return json(response, 400, { error: "Select at least one market instrument." });
+      const snapshots = symbols.flatMap((symbol) => {
+        const snapshot = marketIndexSnapshot(symbol);
+        return snapshot ? [snapshot] : [];
+      });
+      return json(response, 200, {
+        snapshots,
+        status: marketIndexStatus(),
+        asOf: Date.now(),
+      });
     }
     if (request.method === "GET" && url.pathname === "/v1/market-data/trades") {
       const instrument = requestedInstrument(url);
@@ -1580,6 +1719,8 @@ server.listen(config.port, config.host, () => {
         });
       });
   }
+  if (config.databentoApiKey) databentoEquities.start();
+  if (config.quantDataApiKey) quantDataMarketSnapshots.start();
 });
 
 // Flush the manifest and close files cleanly on shutdown so a restart never
@@ -1591,6 +1732,8 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
 }
 
 async function shutdown() {
+  databentoEquities.stop();
+  quantDataMarketSnapshots.stop();
   await client.stop();
   server.close(() => process.exit(0));
 }

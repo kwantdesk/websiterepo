@@ -19,9 +19,19 @@ let pollTimer: number | null = null;
 let pollInFlight = false;
 let requestedImmediatePoll = false;
 let lastSuccessfulPollHadLiveMarket = false;
+let indexEventSource: EventSource | null = null;
+let indexEventSourceKey = "";
+let streamConnected = false;
+const lastStreamFrameAt = new Map<string, number>();
+const lastDeliveredTimestamp = new Map<string, number>();
 
 const LIVE_POLL_MS = 750;
 const IDLE_POLL_MS = 5_000;
+const STREAM_STALE_MS = 5_000;
+const VPS_STREAM_SYMBOLS = new Set([
+  "SPX", "SPXW", "SPY", "NDX", "QQQ", "IWM",
+  "AAPL", "NVDA", "TSLA", "MSFT", "AMZN", "META", "AMD",
+]);
 
 function supportedSnapshot(value: unknown): value is MarketIndexLiveSnapshot {
   if (!value || typeof value !== "object") return false;
@@ -44,13 +54,78 @@ function schedulePoll(delay: number) {
   }, Math.max(0, delay));
 }
 
+function deliverSnapshot(snapshot: MarketIndexLiveSnapshot, streamed = false) {
+  const symbol = snapshot.symbol.trim().toUpperCase();
+  const previousTimestamp = lastDeliveredTimestamp.get(symbol) ?? 0;
+  // A slower route fallback must never rewind a chart after a newer VPS frame
+  // has already painted it. Equal timestamps remain valid because more than
+  // one execution can occur inside the same millisecond.
+  if (snapshot.timestamp < previousTimestamp) return;
+  lastDeliveredTimestamp.set(symbol, snapshot.timestamp);
+  if (streamed) lastStreamFrameAt.set(symbol, Date.now());
+  subscribers.get(symbol)?.forEach((subscriber) => subscriber.onSnapshot(snapshot));
+}
+
+function activeVpsStreamSymbols() {
+  return [...subscribers.keys()].filter((symbol) => VPS_STREAM_SYMBOLS.has(symbol));
+}
+
+function restartIndexStream() {
+  if (typeof window === "undefined") return;
+  const symbols = activeVpsStreamSymbols();
+  const key = symbols.sort().join(",");
+  if (key === indexEventSourceKey && indexEventSource) return;
+  indexEventSource?.close();
+  indexEventSource = null;
+  indexEventSourceKey = key;
+  streamConnected = false;
+  if (!key) return;
+
+  const source = new EventSource(
+    `/api/institutional-market-data/v1/market-data/index-stream?symbols=${encodeURIComponent(key)}`,
+  );
+  indexEventSource = source;
+  source.addEventListener("status", (event) => {
+    try {
+      const status = JSON.parse((event as MessageEvent<string>).data) as { connected?: boolean };
+      streamConnected = status.connected === true;
+      if (!streamConnected) schedulePoll(0);
+    } catch {
+      streamConnected = false;
+    }
+  });
+  source.onmessage = (event) => {
+    try {
+      const snapshot = JSON.parse(event.data) as unknown;
+      if (!supportedSnapshot(snapshot)) return;
+      streamConnected = true;
+      deliverSnapshot(snapshot, true);
+    } catch {
+      // A malformed provider frame is isolated; EventSource remains live.
+    }
+  };
+  source.onerror = () => {
+    streamConnected = false;
+    schedulePoll(0);
+  };
+}
+
 async function pollMarketIndices() {
   if (pollInFlight) {
     requestedImmediatePoll = true;
     return;
   }
-  const symbols = [...subscribers.keys()];
-  if (!symbols.length) return;
+  const now = Date.now();
+  const symbols = [...subscribers.keys()].filter((symbol) => (
+    !VPS_STREAM_SYMBOLS.has(symbol)
+    || !streamConnected
+    || now - (lastStreamFrameAt.get(symbol) ?? 0) > STREAM_STALE_MS
+  ));
+  if (!subscribers.size) return;
+  if (!symbols.length) {
+    schedulePoll(LIVE_POLL_MS);
+    return;
+  }
   pollInFlight = true;
   requestedImmediatePoll = false;
   const pollStartedAt = Date.now();
@@ -59,21 +134,33 @@ async function pollMarketIndices() {
   try {
     const requestController = new AbortController();
     requestTimeout = window.setTimeout(() => requestController.abort(), 4_000);
-    const response = await fetch(
-      `/api/market-indices?snapshot=1&symbols=${encodeURIComponent(symbols.join(","))}`,
-      { cache: "no-store", signal: requestController.signal },
-    );
+    const vpsSymbols = symbols.filter((symbol) => VPS_STREAM_SYMBOLS.has(symbol));
+    const legacySymbols = symbols.filter((symbol) => !VPS_STREAM_SYMBOLS.has(symbol));
+    const requests = [
+      ...(vpsSymbols.length ? [fetch(
+        `/api/institutional-market-data/v1/market-data/index-snapshot?symbols=${encodeURIComponent(vpsSymbols.join(","))}`,
+        { cache: "no-store", signal: requestController.signal },
+      )] : []),
+      ...(legacySymbols.length ? [fetch(
+        `/api/market-indices?snapshot=1&symbols=${encodeURIComponent(legacySymbols.join(","))}`,
+        { cache: "no-store", signal: requestController.signal },
+      )] : []),
+    ];
+    const responses = await Promise.all(requests);
     window.clearTimeout(requestTimeout);
     requestTimeout = null;
-    const payload = await response.json() as { snapshots?: unknown[]; error?: string };
-    if (!response.ok) throw new Error(payload.error || `Options quote feed failed (${response.status}).`);
-    const snapshots = Array.isArray(payload.snapshots)
+    const payloads = await Promise.all(responses.map(async (response) => ({
+      response,
+      payload: await response.json() as { snapshots?: unknown[]; error?: string },
+    })));
+    const failed = payloads.find(({ response }) => !response.ok);
+    if (failed) throw new Error(failed.payload.error || `Options quote feed failed (${failed.response.status}).`);
+    const snapshots = payloads.flatMap(({ payload }) => Array.isArray(payload.snapshots)
       ? payload.snapshots.filter(supportedSnapshot)
-      : [];
+      : []);
     for (const snapshot of snapshots) {
-      const symbol = snapshot.symbol.trim().toUpperCase();
       anyLive ||= snapshot.marketOpen;
-      subscribers.get(symbol)?.forEach((subscriber) => subscriber.onSnapshot(snapshot));
+      deliverSnapshot(snapshot);
     }
     if (snapshots.length) lastSuccessfulPollHadLiveMarket = anyLive;
   } catch (error) {
@@ -113,15 +200,25 @@ export function subscribeMarketIndexSnapshot(
   const rows = subscribers.get(normalized) ?? new Set<Subscriber>();
   rows.add(subscriber);
   subscribers.set(normalized, rows);
+  restartIndexStream();
   schedulePoll(0);
 
   return () => {
     const current = subscribers.get(normalized);
     current?.delete(subscriber);
     if (current && !current.size) subscribers.delete(normalized);
+    restartIndexStream();
     if (!subscribers.size && pollTimer !== null && typeof window !== "undefined") {
       window.clearTimeout(pollTimer);
       pollTimer = null;
+    }
+    if (!subscribers.size) {
+      indexEventSource?.close();
+      indexEventSource = null;
+      indexEventSourceKey = "";
+      streamConnected = false;
+      lastStreamFrameAt.clear();
+      lastDeliveredTimestamp.clear();
     }
   };
 }

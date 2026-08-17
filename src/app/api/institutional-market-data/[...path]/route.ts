@@ -22,6 +22,8 @@ const ALLOWED_PATHS = new Set([
   "v1/market-data/order-flow-levels",
   "v1/market-data/volume-profile",
   "v1/market-data/trades",
+  "v1/market-data/index-stream",
+  "v1/market-data/index-snapshot",
   "v1/heatmap/snapshot",
   "v1/heatmap/stream",
 ]);
