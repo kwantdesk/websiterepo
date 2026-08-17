@@ -53,6 +53,14 @@ function GexCalendarMatrix({ matrix, differenceMode, normalization, selected, on
     return { values: nextValues, byKey: nextByKey, columnMax: nextColumnMax, rowMax: nextRowMax };
   }, [differenceMode, matrix.cells]);
   const starKey = matrix.globalStar ? `${matrix.globalStar.strike}:${matrix.globalStar.expiration}` : "";
+  const currentStrike = useMemo(() => {
+    if (!Number.isFinite(matrix.spot) || matrix.spot === null || matrix.strikes.length === 0) return null;
+    return matrix.strikes.reduce((nearest, strike) => {
+      const nearestDistance = Math.abs(nearest - matrix.spot!);
+      const strikeDistance = Math.abs(strike - matrix.spot!);
+      return strikeDistance < nearestDistance ? strike : nearest;
+    });
+  }, [matrix.spot, matrix.strikes]);
 
   useEffect(() => {
     const node = viewportRef.current;
@@ -136,8 +144,18 @@ function GexCalendarMatrix({ matrix, differenceMode, normalization, selected, on
         <div className="relative" style={{ width: totalWidth, height: totalHeight }}>
           {visibleRows.map((strike, rowIndex) => {
             const actualRow = startRow + rowIndex;
+            const isCurrentStrike = strike === currentStrike;
             return <div key={strike} className="absolute left-0" style={{ top: actualRow * ROW_HEIGHT, width: totalWidth, height: ROW_HEIGHT }}>
-              <div className="sticky left-0 z-10 flex items-center justify-end border-b border-r border-border bg-panel px-3 font-mono text-[10px] text-foreground" style={{ width: STRIKE_WIDTH, height: ROW_HEIGHT }}>{strike.toLocaleString()}</div>
+              <div
+                aria-current={isCurrentStrike ? "true" : undefined}
+                className={`sticky left-0 z-10 flex items-center justify-end border-b border-r px-3 font-mono text-[10px] transition-[background-color,color,border-color,box-shadow] ${isCurrentStrike
+                  ? "border-primary bg-[color-mix(in_srgb,var(--primary)_24%,var(--panel))] font-semibold text-primary shadow-[inset_3px_0_0_var(--primary),0_0_18px_color-mix(in_srgb,var(--primary)_38%,transparent)]"
+                  : "border-border bg-panel text-foreground"}`}
+                style={{ width: STRIKE_WIDTH, height: ROW_HEIGHT }}
+                title={isCurrentStrike ? `Current strike nearest ${matrix.spot?.toLocaleString()}` : undefined}
+              >
+                {strike.toLocaleString()}
+              </div>
               {visibleColumns.map((expiration, columnIndex) => {
                 const cell = byKey.get(`${strike}:${expiration}`);
                 const value = cell ? (differenceMode ? cell.change : cell.value) : null;
