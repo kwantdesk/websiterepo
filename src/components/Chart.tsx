@@ -5803,9 +5803,19 @@ export default function Chart({
       WEAKENING: indicatorSettings.showWeakeningNodes !== false,
       RETIRED: indicatorSettings.showRetiredHistory !== false,
     };
+    const roleByStrike = new Map(
+      bounceLevelsSnapshot.levels.map((level) => [level.sourceStrike, level.role]),
+    );
     const visibleSnapshot = {
       ...bounceLevelsSnapshot,
       levels: bounceLevelsSnapshot.levels.filter((level) => roleVisibility[level.role] !== false),
+      exposureField: bounceLevelsSnapshot.exposureField.map((slice) => ({
+        ...slice,
+        nodes: slice.nodes.filter((node) => {
+          const role = roleByStrike.get(node.sourceStrike);
+          return !role || roleVisibility[role] !== false;
+        }),
+      })),
       airPockets: indicatorSettings.showAirPockets !== false ? bounceLevelsSnapshot.airPockets : [],
     };
     return {

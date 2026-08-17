@@ -1858,7 +1858,7 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
     for (const unsafeKey of ["apiKey", "credential", "credentials", "providerCredential", "liveSnapshot", "snapshotData", "levels", "history"]) {
       delete settings[unsafeKey];
     }
-    return { ...normalizedInstance, settings: { ...settings, bounceLevelsSettingsVersion: 1 } };
+    return { ...normalizedInstance, settings: { ...settings, bounceLevelsSettingsVersion: 2 } };
   }
   if (
     normalizedInstance.indicatorId === "depth-of-market"
@@ -2049,13 +2049,17 @@ export const linkPaneIndicatorStateToTheme = (state: Record<string, ChartIndicat
   Object.fromEntries(
     Object.entries(state).map(([paneId, instances]) => [
       paneId,
-      instances.map((instance) => ({
-        ...instance,
-        settings: {
-          ...(instance.settings ?? {}),
-          useThemeColors: true,
-        },
-      })),
+      instances.map((instance) => {
+        const preserveBounceOverride = instance.indicatorId === "bounce-levels"
+          && instance.settings?.useThemeColors === false;
+        return {
+          ...instance,
+          settings: {
+            ...(instance.settings ?? {}),
+            useThemeColors: preserveBounceOverride ? false : true,
+          },
+        };
+      }),
     ]),
   );
 

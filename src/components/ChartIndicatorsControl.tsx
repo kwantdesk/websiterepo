@@ -321,6 +321,15 @@ function isColourSetting(key: string, value: unknown) {
   return /color$/i.test(key) && typeof value === "string";
 }
 
+const bounceThemeColours = (chartSettings: ChartSettings) => ({
+  positiveColor: chartSettings.upColor,
+  negativeColor: chartSettings.downColor,
+  kingColor: chartSettings.borderUpColor,
+  developingColor: chartSettings.upColor,
+  weakeningColor: chartSettings.downColor,
+  airPocketColor: chartSettings.gridColor,
+});
+
 function divergenceMarketPair(instrument: string) {
   const normalized = instrument.trim().toUpperCase();
   if (/^M?NQ/.test(normalized)) return { primary: "NQ", comparison: "ES" };
@@ -610,9 +619,16 @@ export default function ChartIndicatorsControl({
     : null;
   const activeLayerCount = indicators.length + levelControls.filter((control) => control.enabled).length;
 
+  const indicatorsRef = useRef(indicators);
+  useEffect(() => {
+    indicatorsRef.current = indicators;
+  }, [indicators]);
+
   const replace = useCallback((instanceId: string, update: (current: ChartIndicatorInstance) => ChartIndicatorInstance) => {
-    onChange(indicators.map((instance) => instance.instanceId === instanceId ? update(instance) : instance));
-  }, [indicators, onChange]);
+    const next = indicatorsRef.current.map((instance) => instance.instanceId === instanceId ? update(instance) : instance);
+    indicatorsRef.current = next;
+    onChange(next);
+  }, [onChange]);
 
   const closeSettingsDialog = useCallback(() => {
     if (settingsInstance?.indicatorId === "deep-print-footprint") {
@@ -2832,10 +2848,19 @@ export default function ChartIndicatorsControl({
                         <span>{titleFromKey(key)}</span>
                         <input
                           type="color"
-                          value={String(value)}
+                          value={settingsDefinition.id === "bounce-levels" && settingsInstance.settings?.useThemeColors !== false
+                            ? String(bounceThemeColours(chartSettings)[key as keyof ReturnType<typeof bounceThemeColours>] ?? value)
+                            : String(value)}
                           onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
                             ...current,
-                            settings: { ...(current.settings ?? {}), [key]: event.target.value },
+                            settings: {
+                              ...(current.settings ?? {}),
+                              ...(settingsDefinition.id === "bounce-levels" && current.settings?.useThemeColors !== false
+                                ? bounceThemeColours(chartSettings)
+                                : {}),
+                              ...(settingsDefinition.id === "bounce-levels" ? { useThemeColors: false } : {}),
+                              [key]: event.target.value,
+                            },
                           }))}
                           className="h-6 w-8 cursor-pointer rounded border-0 bg-transparent"
                         />
@@ -2844,7 +2869,11 @@ export default function ChartIndicatorsControl({
                   ))}
               </div>
               <div className="rounded-xl border border-primary/15 bg-primary/6 px-4 py-3 text-[9px] leading-4 text-muted">
-                Theme colours remain linked by default. Turn off <span className="text-foreground">Use Theme Colors</span> before setting custom study colours.
+                {settingsDefinition.id === "bounce-levels" ? (
+                  <>Bounce colours follow the active chart theme by default. Changing any colour automatically creates a workspace-specific palette; turn <span className="text-foreground">Use Theme Colors</span> back on to relink it.</>
+                ) : (
+                  <>Theme colours remain linked by default. Turn off <span className="text-foreground">Use Theme Colors</span> before setting custom study colours.</>
+                )}
               </div>
             </div>
             {settingsDefinition.id === "deep-print-footprint" ? (
