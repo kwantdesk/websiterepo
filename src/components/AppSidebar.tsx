@@ -177,6 +177,15 @@ function AppSidebar({
     // subsequent click. The click still owns the URL update and keyboard users
     // retain the same path through navigate().
     beginNavigation(key);
+
+    // Home lives outside the persistent market workspace. Leave that shell on
+    // pointer-down so a busy chart/render loop cannot swallow or indefinitely
+    // delay the later click. Modifier clicks still retain normal browser
+    // behaviour because they return above.
+    if (navigationMode === "persistent" && key === "home") {
+      event.preventDefault();
+      window.location.assign("/");
+    }
   };
 
   const navigate = (
@@ -186,6 +195,16 @@ function AppSidebar({
   ) => {
     if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || event.button !== 0) return;
     beginNavigation(key);
+
+    // Keyboard activation does not emit pointer-down, so keep a deterministic
+    // hard-navigation fallback here as well. Home remounts the lightweight
+    // dashboard instead of asking the live workspace shell for an RSC swap.
+    if (navigationMode === "persistent" && key === "home") {
+      event.preventDefault();
+      window.location.assign(href);
+      return;
+    }
+
     if (navigationMode !== "persistent" || !PERSISTENT_WORKSPACE_KEYS.has(key)) return;
 
     // Every primary workspace lives inside the same persistent client shell;
