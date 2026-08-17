@@ -155,8 +155,9 @@ function AppSidebar({
     const body = document.body;
     body.classList.add("kwant-cockpit-ui");
 
-    // This is a one-time visual migration. Once applied, the normal theme
-    // controls continue to own the palette and account preference sync.
+    // Keep the legacy one-time migration marker so existing traders are not
+    // repainted. Fresh browsers receive the current defaultTheme, while the
+    // normal controls and account preference sync own all later selections.
     const migrationKey = "kwantdesk:midnight-cockpit-theme:v1";
     if (window.localStorage.getItem(migrationKey) !== "applied") {
       saveTheme(defaultTheme);
