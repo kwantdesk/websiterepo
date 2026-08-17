@@ -2858,6 +2858,8 @@ function Chart({
   const candleSeriesRef = useRef<ReturnType<IChartApi["addCandlestickSeries"]> | null>(null);
   const viewportSyncApplyingRef = useRef(false);
   const viewportSyncPublishFrameRef = useRef<number | null>(null);
+  const viewportSyncUserInteractionRef = useRef(false);
+  const viewportSyncReleaseTimerRef = useRef<number | null>(null);
   const viewportSyncGroupRef = useRef(viewportSyncGroup);
   const viewportSyncRoleRef = useRef(viewportSyncRole);
   const viewportSyncCandlesRef = useRef(candles);
@@ -11409,8 +11411,16 @@ function Chart({
       }
     };
 
-    const publishSnapshot = () => {
-      if (!canPublishSnapshots || viewportSyncApplyingRef.current) return;
+    const publishSnapshot = (allowWithoutInteraction = false) => {
+      // Visible-range callbacks also fire after setVisibleRange() on follower
+      // charts. Only a chart receiving direct pointer/wheel input is allowed to
+      // lead the group, otherwise followers echo the applied range back and a
+      // pan can be reinterpreted as a zoom by the rest of the group.
+      if (
+        !canPublishSnapshots
+        || viewportSyncApplyingRef.current
+        || (!allowWithoutInteraction && !viewportSyncUserInteractionRef.current)
+      ) return;
       if (viewportSyncPublishFrameRef.current !== null) return;
       viewportSyncPublishFrameRef.current = window.requestAnimationFrame(() => {
         viewportSyncPublishFrameRef.current = null;
@@ -11437,9 +11447,8 @@ function Chart({
     };
 
     const handlePointerInteraction = (event: PointerEvent) => {
-      if (event.buttons !== 0) publishSnapshot();
+      if (event.buttons !== 0 && viewportSyncUserInteractionRef.current) publishSnapshot();
     };
-    let pointerInteractionActive = false;
     let trailingPublishTimer: number | null = null;
     const publishTrailingSnapshot = () => {
       publishSnapshot();
@@ -11447,30 +11456,55 @@ function Chart({
       trailingPublishTimer = window.setTimeout(publishSnapshot, 48);
     };
     const beginPointerInteraction = () => {
-      pointerInteractionActive = true;
+      viewportSyncUserInteractionRef.current = true;
+      if (viewportSyncReleaseTimerRef.current !== null) {
+        window.clearTimeout(viewportSyncReleaseTimerRef.current);
+        viewportSyncReleaseTimerRef.current = null;
+      }
       publishSnapshot();
     };
     const handleWindowPointerMove = () => {
-      if (pointerInteractionActive) publishSnapshot();
+      if (viewportSyncUserInteractionRef.current) publishSnapshot();
     };
     const finishPointerInteraction = () => {
-      if (!pointerInteractionActive) return;
-      pointerInteractionActive = false;
+      if (!viewportSyncUserInteractionRef.current) return;
       publishTrailingSnapshot();
+      // Keep ownership through Lightweight Charts' final inertial/range event,
+      // then release it. Followers never acquire ownership from an applied
+      // snapshot, so whichever chart the user touches remains the sole leader.
+      viewportSyncReleaseTimerRef.current = window.setTimeout(() => {
+        viewportSyncUserInteractionRef.current = false;
+        viewportSyncReleaseTimerRef.current = null;
+      }, 96);
     };
-    const handleWheelInteraction = () => publishTrailingSnapshot();
+    const handleWheelInteraction = () => {
+      viewportSyncUserInteractionRef.current = true;
+      if (viewportSyncReleaseTimerRef.current !== null) {
+        window.clearTimeout(viewportSyncReleaseTimerRef.current);
+      }
+      publishTrailingSnapshot();
+      viewportSyncReleaseTimerRef.current = window.setTimeout(() => {
+        viewportSyncUserInteractionRef.current = false;
+        viewportSyncReleaseTimerRef.current = null;
+      }, 140);
+    };
+    const handleVisibleTimeRangeChange = () => publishSnapshot();
     const timeScale = chart.timeScale();
 
     let initialPublishTimer: number | null = null;
     if (canPublishSnapshots) {
-      timeScale.subscribeVisibleTimeRangeChange(publishSnapshot);
+      timeScale.subscribeVisibleTimeRangeChange(handleVisibleTimeRangeChange);
       container.addEventListener("pointerdown", beginPointerInteraction, { passive: true });
       container.addEventListener("pointermove", handlePointerInteraction, { passive: true });
       container.addEventListener("wheel", handleWheelInteraction, { passive: true });
       window.addEventListener("pointermove", handleWindowPointerMove, { passive: true });
       window.addEventListener("pointerup", finishPointerInteraction, { passive: true });
       window.addEventListener("pointercancel", finishPointerInteraction, { passive: true });
-      initialPublishTimer = window.setTimeout(publishSnapshot, 80);
+      initialPublishTimer = window.setTimeout(() => {
+        // Seed an empty group once. Never let every mounting chart race to
+        // become the initial leader and overwrite another chart's viewport.
+        if (!readLatestChartViewport(viewportSyncGroup)) publishSnapshot(true);
+      }, 80);
     }
 
     const unsubscribe = canApplySnapshots
@@ -11489,7 +11523,7 @@ function Chart({
       window.clearTimeout(retryTimer);
       unsubscribe();
       if (canPublishSnapshots) {
-        timeScale.unsubscribeVisibleTimeRangeChange(publishSnapshot);
+        timeScale.unsubscribeVisibleTimeRangeChange(handleVisibleTimeRangeChange);
         container.removeEventListener("pointerdown", beginPointerInteraction);
         container.removeEventListener("pointermove", handlePointerInteraction);
         container.removeEventListener("wheel", handleWheelInteraction);
@@ -11501,6 +11535,11 @@ function Chart({
         window.cancelAnimationFrame(viewportSyncPublishFrameRef.current);
         viewportSyncPublishFrameRef.current = null;
       }
+      if (viewportSyncReleaseTimerRef.current !== null) {
+        window.clearTimeout(viewportSyncReleaseTimerRef.current);
+        viewportSyncReleaseTimerRef.current = null;
+      }
+      viewportSyncUserInteractionRef.current = false;
     };
   }, [chartInstanceId, chartReadyRevision, instrument, timeframe, viewportSyncGroup, viewportSyncRole]);
 

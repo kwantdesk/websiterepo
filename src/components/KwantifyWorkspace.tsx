@@ -13920,6 +13920,7 @@ export default function KwantifyWorkspace({
       chartWorkspaceScopeRef.current === "gamma"
       && linkedViewportPaneIds.has(activePaneId)
     ) {
+      clearChartViewportGroup(GEX_VUE_VIEWPORT_SYNC_GROUP);
       setWorkspacePanes((current) => current.map((pane) => (
         linkedViewportPaneIds.has(pane.id)
           ? { ...pane, timeframe }
@@ -13943,6 +13944,7 @@ export default function KwantifyWorkspace({
       chartWorkspaceScopeRef.current === "gamma"
       && linkedViewportPaneIds.has(paneId)
     ) {
+      clearChartViewportGroup(GEX_VUE_VIEWPORT_SYNC_GROUP);
       setWorkspacePanes((current) => current.map((candidate) => (
         linkedViewportPaneIds.has(candidate.id)
           ? { ...candidate, timeframe }
