@@ -1002,15 +1002,97 @@ const DEFAULT_WORKSPACE_PANES: WorkspacePane[] = [
   { id: "pane-4", symbol: "GC.v.0", broker: "Databento", timeframe: "5m", period: "5D", watchlistKey: makeWatchlistKey("GC.v.0", "Databento"), content: "charts", locked: false },
 ];
 
-// Gamma charting deliberately starts as a clean, independent workspace. Its
-// pane ids are namespaced as well, so Chart's own drawing persistence can
-// never collide with the ordinary Charts page.
+// GEX VUE is an independent charting surface. Its pane ids are namespaced so
+// drawings and indicators can never collide with the ordinary Charts page.
 const DEFAULT_GAMMA_WORKSPACE_PANES: WorkspacePane[] = [
-  { id: "gamma-pane-1", symbol: "NQ.v.0", broker: "Databento", timeframe: "5m", period: "5D", watchlistKey: makeWatchlistKey("NQ.v.0", "Databento"), content: "charts", locked: false },
+  { id: "gex-standard-spx", symbol: "SPX", broker: "Market Index", timeframe: "5m", period: "5D", watchlistKey: makeWatchlistKey("SPX", "Market Index"), content: "charts", locked: false },
+  { id: "gex-standard-ndx", symbol: "NDX", broker: "Market Index", timeframe: "5m", period: "5D", watchlistKey: makeWatchlistKey("NDX", "Market Index"), content: "charts", locked: false },
+  { id: "gex-standard-spy", symbol: "SPY", broker: "Market Index", timeframe: "5m", period: "5D", watchlistKey: makeWatchlistKey("SPY", "Market Index"), content: "charts", locked: false },
+  { id: "gex-standard-qqq", symbol: "QQQ", broker: "Market Index", timeframe: "5m", period: "5D", watchlistKey: makeWatchlistKey("QQQ", "Market Index"), content: "charts", locked: false },
 ];
+
+const GEX_STANDARD_WORKSPACE_ID = "gex-standard";
+const GEX_STANDARD_WORKSPACE_NAME = "GEX STANDARD";
+const GEX_STANDARD_WORKSPACE_UPDATED_AT = "2026-08-17T00:00:00.000Z";
 
 function defaultWorkspacePanes(scope: ChartWorkspaceScope) {
   return scope === "gamma" ? DEFAULT_GAMMA_WORKSPACE_PANES : DEFAULT_WORKSPACE_PANES;
+}
+
+function createGexStandardLayout(panes: WorkspacePane[]): WorkspaceLayoutNode {
+  const pane = (index: number): WorkspaceLayoutNode => ({
+    type: "pane",
+    paneId: (panes[index] ?? DEFAULT_GAMMA_WORKSPACE_PANES[index] ?? DEFAULT_GAMMA_WORKSPACE_PANES[0]).id,
+  });
+  return {
+    type: "split",
+    id: "gex-standard-root",
+    axis: "x",
+    ratio: 50,
+    first: {
+      type: "split",
+      id: "gex-standard-left",
+      axis: "x",
+      ratio: 50,
+      first: pane(0),
+      second: pane(1),
+    },
+    second: {
+      type: "split",
+      id: "gex-standard-right",
+      axis: "x",
+      ratio: 50,
+      first: pane(2),
+      second: pane(3),
+    },
+  };
+}
+
+function createGexStandardIndicators(chartSettings: ChartSettings) {
+  return Object.fromEntries(
+    DEFAULT_GAMMA_WORKSPACE_PANES.map((pane) => [pane.id, [
+      {
+        instanceId: `${pane.id}-bounce-levels-standard`,
+        indicatorId: "bounce-levels",
+        enabled: true,
+        settings: defaultIndicatorSettings("bounce-levels", chartSettings),
+      },
+      {
+        instanceId: `${pane.id}-dark-pool-gex-standard`,
+        indicatorId: "dark-pool-gex",
+        enabled: true,
+        settings: defaultIndicatorSettings("dark-pool-gex", chartSettings),
+      },
+    ] satisfies ChartIndicatorInstance[]]),
+  );
+}
+
+function createGexStandardPreset(chartSettings: ChartSettings): WorkspacePreset {
+  const panes = DEFAULT_GAMMA_WORKSPACE_PANES.map((pane) => ({ ...pane }));
+  return {
+    id: GEX_STANDARD_WORKSPACE_ID,
+    name: GEX_STANDARD_WORKSPACE_NAME,
+    layout: createGexStandardLayout(panes),
+    panes,
+    chartSettings: normalizeChartSettings(chartSettings),
+    indicators: createGexStandardIndicators(chartSettings),
+    levelVisibility: {},
+    floatingWindows: [],
+    updatedAt: GEX_STANDARD_WORKSPACE_UPDATED_AT,
+  };
+}
+
+function includeGexStandardPreset(
+  presets: WorkspacePreset[],
+  chartSettings: ChartSettings,
+) {
+  if (presets.some((preset) =>
+    preset.id === GEX_STANDARD_WORKSPACE_ID
+    || preset.name.trim().toUpperCase() === GEX_STANDARD_WORKSPACE_NAME)) {
+    return presets;
+  }
+  return [...presets, createGexStandardPreset(chartSettings)]
+    .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 type WorkspacePanelOption<T extends WorkspacePanelKind = WorkspacePanelKind> = {
@@ -1820,26 +1902,40 @@ function saveScopedChartSettings(scope: ChartWorkspaceScope, settings: ChartSett
 
 function loadChartWorkspaceRuntime(scope: ChartWorkspaceScope): ChartWorkspaceRuntime {
   const fallbackPanes = defaultWorkspacePanes(scope);
+  const scopedChartSettings = loadScopedChartSettings(scope);
+  const scopedTemplates = loadScopedChartTemplates(scope);
+  const gexStandardPreset = scope === "gamma"
+    ? createGexStandardPreset(scopedChartSettings)
+    : null;
   const defaults: ChartWorkspaceRuntime = {
-    layout: "single",
+    layout: gexStandardPreset ? "custom" : "single",
     locked: false,
     splitRatio: 50,
     quadSplit: { x: 50, y: 50 },
     panes: fallbackPanes,
-    tree: createWorkspaceLayoutTree("single", fallbackPanes),
+    tree: gexStandardPreset?.layout ?? createWorkspaceLayoutTree("single", fallbackPanes),
     floatingWindows: [],
-    presets: [],
-    activePresetId: null,
+    presets: gexStandardPreset ? [gexStandardPreset] : [],
+    activePresetId: gexStandardPreset?.id ?? null,
     activePaneId: fallbackPanes[0].id,
-    indicators: {},
+    indicators: gexStandardPreset?.indicators ?? {},
     levelVisibility: {},
     favouriteTimeframes: ["1m", "5m", "15m", "1h", "4h", "1D"],
-    chartSettings: loadScopedChartSettings(scope),
-    templates: loadScopedChartTemplates(scope),
+    chartSettings: scopedChartSettings,
+    templates: scopedTemplates,
   };
   if (typeof window === "undefined") return defaults;
 
   const read = (key: string) => window.localStorage.getItem(workspaceScopeStorageKey(scope, key));
+  const hasStoredWorkspaceState = scope !== "gamma" || [
+    "olisa-chart-workspace-layout",
+    "olisa-chart-workspace-panes",
+    "olisa-chart-workspace-tree",
+    CHART_INDICATORS_STORAGE_KEY,
+    WORKSPACE_PRESETS_STORAGE_KEY,
+  ].some((key) => read(key) !== null);
+  if (!hasStoredWorkspaceState) return defaults;
+
   const layoutValue = read("olisa-chart-workspace-layout");
   const layout: WorkspaceLayout = layoutValue === "split-vertical"
     || layoutValue === "split-horizontal"
@@ -1904,7 +2000,10 @@ function loadChartWorkspaceRuntime(scope: ChartWorkspaceScope): ChartWorkspaceRu
   const activePaneId = panes.some((pane) => pane.id === requestedActivePaneId)
     ? requestedActivePaneId as string
     : collectWorkspacePaneIds(tree)[0] ?? panes[0].id;
-  const presets = loadLocalWorkspacePresets(scope);
+  const storedPresets = loadLocalWorkspacePresets(scope);
+  const presets = scope === "gamma"
+    ? includeGexStandardPreset(storedPresets, scopedChartSettings)
+    : storedPresets;
   const requestedPresetId = read(ACTIVE_WORKSPACE_PRESET_STORAGE_KEY);
   const activePresetId = requestedPresetId && presets.some((preset) => preset.id === requestedPresetId)
     ? requestedPresetId
@@ -1925,8 +2024,8 @@ function loadChartWorkspaceRuntime(scope: ChartWorkspaceScope): ChartWorkspaceRu
     indicators,
     levelVisibility,
     favouriteTimeframes,
-    chartSettings: loadScopedChartSettings(scope),
-    templates: loadScopedChartTemplates(scope),
+    chartSettings: scopedChartSettings,
+    templates: scopedTemplates,
   };
 }
 
