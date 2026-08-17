@@ -249,8 +249,16 @@ export function buildInitialBalanceLevels(
       && candle.timestamp < session.endTimestamp);
     if (!formationCandles.length) return [];
 
-    const high = Math.max(...formationCandles.map((candle) => candle.high));
-    const low = Math.min(...formationCandles.map((candle) => candle.low));
+    // Anchor each side to the first candle whose wick actually established
+    // the final opening-range extreme. The high and low can be formed by
+    // different candles, so the two level lines must not share the session
+    // start as an arbitrary origin.
+    const highCandle = formationCandles.reduce((current, candle) =>
+      candle.high > current.high ? candle : current);
+    const lowCandle = formationCandles.reduce((current, candle) =>
+      candle.low < current.low ? candle : current);
+    const high = highCandle.high;
+    const low = lowCandle.low;
     if (!Number.isFinite(high) || !Number.isFinite(low)) return [];
 
     // Keep the developing line attached to the latest real chart bar. Once
@@ -269,7 +277,7 @@ export function buildInitialBalanceLevels(
         side: "high" as const,
         session,
         price: high,
-        startTimestamp: session.startTimestamp,
+        startTimestamp: highCandle.timestamp,
         endTimestamp,
         formationEndTimestamp,
         durationMinutes,
@@ -281,7 +289,7 @@ export function buildInitialBalanceLevels(
         side: "low" as const,
         session,
         price: low,
-        startTimestamp: session.startTimestamp,
+        startTimestamp: lowCandle.timestamp,
         endTimestamp,
         formationEndTimestamp,
         durationMinutes,

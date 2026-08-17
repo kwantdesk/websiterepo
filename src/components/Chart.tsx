@@ -7754,10 +7754,8 @@ export default function Chart({
         eventChartTimeBySourceTimeRef.current.get(level.startTimestamp)
         ?? Math.floor(level.startTimestamp / 1_000)
       ) as Time,
-      endTime: (
-        eventChartTimeBySourceTimeRef.current.get(level.endTimestamp)
-        ?? Math.floor(level.endTimestamp / 1_000)
-      ) as Time,
+      // IB levels are forward levels: begin at the exact wick that formed the
+      // extreme and continue through all future/right-side chart space.
       price: level.price,
       label: initialBalanceSettings.showLabels === false ? "" : level.label,
       color: useIbSessionColors

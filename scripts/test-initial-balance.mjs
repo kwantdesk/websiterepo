@@ -36,6 +36,8 @@ const frozen = buildInitialBalanceLevels(candles, settings, 5 * 60_000);
 assert.equal(frozen.length, 2, "IB returns one high and one low");
 assert.equal(frozen.find((level) => level.side === "high")?.price, 103, "IBH ignores later session highs");
 assert.equal(frozen.find((level) => level.side === "low")?.price, 98, "IBL ignores later session lows");
+assert.equal(frozen.find((level) => level.side === "high")?.startTimestamp, base + 10 * 60_000, "IBH begins at the wick that established the high");
+assert.equal(frozen.find((level) => level.side === "low")?.startTimestamp, base + 5 * 60_000, "IBL begins at the wick that established the low");
 assert.equal(frozen[0].developing, false, "IB freezes after its formation window");
 assert.match(frozen[0].label, /15m/, "IB label states the selected formation window");
 
