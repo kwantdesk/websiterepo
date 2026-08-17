@@ -253,8 +253,8 @@ export default function WorkspaceHome({ username = "" }: { username?: string }) 
         </div>
 
         <div className="pointer-events-none absolute inset-0 z-[4] bg-[linear-gradient(180deg,rgba(0,0,0,.16),rgba(0,0,0,.02)_35%,rgba(0,0,0,.34))]" />
-        <section className="kwant-scrollbar relative z-10 h-full overflow-y-auto px-3 py-3 sm:px-4 lg:px-5 lg:py-4" aria-label="Workspace launcher">
-          <div className="mx-auto grid w-full max-w-[1560px] grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <section className="kwant-scrollbar relative z-10 h-full w-full overflow-y-auto p-2" aria-label="Workspace launcher">
+          <div className="grid min-h-full w-full auto-rows-[minmax(190px,1fr)] grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
             {destinations.map((destination) => <LaunchCard key={destination.href + destination.title} destination={destination} />)}
           </div>
         </section>
