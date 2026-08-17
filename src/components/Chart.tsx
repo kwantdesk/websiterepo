@@ -7763,6 +7763,10 @@ function Chart({
     [candles, timeframe],
   );
   const tpoSourceBars = useMemo<TpoBar[]>(() => {
+    // Building TPO source rows duplicates the complete sampled candle history.
+    // Most workspace panes do not contain a TPO study, so doing this eagerly
+    // multiplied retained objects across every chart in a multi-panel layout.
+    if (!tpoSamplingEnabled) return [];
     const tickSize = priceFormat.minMove;
     return sampledIndicatorCandles.map((candle, index) => ({
       instrumentId: instrument,
@@ -7779,7 +7783,13 @@ function Chart({
       tradeCount: candle.trades,
       tickSize,
     }));
-  }, [candleIntervalMs, instrument, priceFormat.minMove, sampledIndicatorCandles]);
+  }, [
+    candleIntervalMs,
+    instrument,
+    priceFormat.minMove,
+    sampledIndicatorCandles,
+    tpoSamplingEnabled,
+  ]);
   const deepEffortIndicator = useMemo(
     () => indicators.find((instance) =>
       instance.enabled && instance.indicatorId === "deep-m-effort-nq") ?? null,

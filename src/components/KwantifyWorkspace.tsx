@@ -5484,16 +5484,20 @@ function WorkspaceChartPaneComponent({
       if (latestCandlesRef.current.length) {
         void writeChartHistoryCache(pane.symbol, pane.timeframe, latestCandlesRef.current);
       }
-      if (latestMarketTradesRef.current.length) {
+      // Execution history is shared by every timeframe of a contract. Only
+      // the selected pane persists it; otherwise four open panels serialize
+      // the same 25k+ record tape together and create a large periodic GC/OOM
+      // spike. Background panes still persist their distinct candle geometry.
+      if (activeRef.current && latestMarketTradesRef.current.length) {
         void writeExecutionTapeCache(pane.symbol, pane.timeframe, latestMarketTradesRef.current);
       }
-    }, 30_000);
+    }, 120_000);
     return () => {
       window.clearInterval(interval);
       if (latestCandlesRef.current.length) {
         void writeChartHistoryCache(pane.symbol, pane.timeframe, latestCandlesRef.current);
       }
-      if (latestMarketTradesRef.current.length) {
+      if (activeRef.current && latestMarketTradesRef.current.length) {
         void writeExecutionTapeCache(pane.symbol, pane.timeframe, latestMarketTradesRef.current);
       }
     };

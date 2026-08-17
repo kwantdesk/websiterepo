@@ -14,6 +14,10 @@ const renderer = readFileSync(
   new URL("../public/heatmap-app/src/renderer.js", import.meta.url),
   "utf8",
 );
+const chartHistoryCache = readFileSync(
+  new URL("../src/lib/chartHistoryCache.ts", import.meta.url),
+  "utf8",
+);
 
 test("plain time charts do not duplicate the shared Rithmic execution workload", () => {
   assert.match(
@@ -64,8 +68,28 @@ test("inactive TPO and removed studies release large derived execution arrays", 
   const chart = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
   assert.match(chart, /const tpoSamplingEnabled = useMemo/);
   assert.match(chart, /if \(!tpoSamplingEnabled\) return \[\]/);
+  assert.match(
+    chart,
+    /const tpoSourceBars = useMemo<TpoBar\[\]>\(\(\) => \{\s*\/\/[\s\S]{0,360}if \(!tpoSamplingEnabled\) return \[\]/,
+  );
   assert.match(chart, /return indicatorMarketTrades[\s\S]{0,520}aggressorSide/);
   assert.match(chart, /if \(indicatorSamplingEnabled\) return;[\s\S]{0,520}setSampledIndicatorMarketTrades\(\[\]\)/);
+});
+
+test("multi-timeframe panes share one bounded execution cache without full-store clones", () => {
+  assert.match(chartHistoryCache, /return `tape-v3::\$\{symbol\}`/);
+  assert.match(chartHistoryCache, /MAX_MEMORY_HISTORY_RECORDS = 12/);
+  assert.match(chartHistoryCache, /MAX_MEMORY_EXECUTION_RECORDS = 6/);
+  assert.match(chartHistoryCache, /transaction\.objectStore\(STORE_NAME\)\.openCursor\(\)/);
+  assert.doesNotMatch(
+    chartHistoryCache.slice(
+      chartHistoryCache.indexOf("export async function pruneChartHistoryCache"),
+      chartHistoryCache.indexOf("export async function readChartHistoryCache"),
+    ),
+    /\.getAll\(\)/,
+  );
+  assert.match(workspace, /activeRef\.current && latestMarketTradesRef\.current\.length/);
+  assert.match(workspace, /\}, 120_000\)/);
 });
 
 test("chart teardown detaches every heavy primitive before disposing its canvas", () => {

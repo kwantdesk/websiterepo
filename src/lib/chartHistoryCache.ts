@@ -36,12 +36,32 @@ const MAX_EXACT_EXECUTIONS_PER_SERIES = 25_000;
 const MAX_PERSISTENT_CACHE_BYTES = 48 * 1024 * 1024;
 const MAX_PERSISTENT_CACHE_RECORDS = 36;
 const CACHE_PRUNE_INTERVAL_MS = 60_000;
+const MAX_MEMORY_HISTORY_RECORDS = 12;
+const MAX_MEMORY_EXECUTION_RECORDS = 6;
+const MAX_WRITE_FINGERPRINTS = 48;
 const memoryCache = new Map<string, CachedHistory>();
 const executionTapeMemoryCache = new Map<string, CachedExecutionTape>();
 const lastWriteFingerprintByKey = new Map<string, string>();
 let databasePromise: Promise<IDBDatabase> | null = null;
 let lastCachePruneAt = 0;
 let cachePrunePromise: Promise<void> | null = null;
+
+function storeBounded<K, V>(map: Map<K, V>, key: K, value: V, limit: number) {
+  // Map insertion order gives us a tiny allocation-free LRU. Refresh an
+  // existing key so actively used series survive while abandoned workspace
+  // panes release their large arrays.
+  map.delete(key);
+  map.set(key, value);
+  while (map.size > limit) {
+    const oldest = map.keys().next().value as K | undefined;
+    if (oldest === undefined) break;
+    map.delete(oldest);
+  }
+}
+
+function rememberWriteFingerprint(key: string, fingerprint: string) {
+  storeBounded(lastWriteFingerprintByKey, key, fingerprint, MAX_WRITE_FINGERPRINTS);
+}
 
 function candleFingerprint(candles: Candle[]) {
   const first = candles[0];
@@ -86,12 +106,19 @@ function cacheKey(symbol: string, timeframe: string) {
     : `time-v2::${symbol}::${timeframe}`;
 }
 
-function executionTapeCacheKey(symbol: string, timeframe: string) {
-  // Tape v2 keeps compact historical flow separately from exact executions.
+function executionTapeCacheKey(symbol: string, _timeframe: string) {
+  // Execution prints are contract-level data, not timeframe-level data. Tape
+  // v3 deliberately shares one warm cache across 1m, 5m and Footprint panes,
+  // avoiding several identical 25k-55k arrays in IndexedDB and browser RAM.
+  // Tape v2 kept compact historical flow separately from exact executions.
   // Post-halt subscription snapshots are retained in the raw tape for audit,
   // then rejected by the event-bar execution boundary during enrichment.
   // Ignore older tail-only records, otherwise a returning browser can restore
   // the broken cache and make CVD appear only on the newest candle again.
+  return `tape-v3::${symbol}`;
+}
+
+function legacyExecutionTapeCacheKey(symbol: string, timeframe: string) {
   return `tape-v2::${symbol}::${timeframe}`;
 }
 
@@ -308,12 +335,26 @@ export async function pruneChartHistoryCache(force = false) {
   cachePrunePromise = (async () => {
     try {
       const database = await openDatabase();
-      const records = await new Promise<Array<CachedHistory | CachedExecutionTape>>((resolve, reject) => {
+      const records = await new Promise<Array<{ key: string; updatedAt: number; bytes: number }>>((resolve, reject) => {
         const transaction = database.transaction(STORE_NAME, "readonly");
-        const request = transaction.objectStore(STORE_NAME).getAll();
-        request.onsuccess = () => resolve(
-          (request.result as Array<CachedHistory | CachedExecutionTape> | undefined) ?? [],
-        );
+        const request = transaction.objectStore(STORE_NAME).openCursor();
+        const metadata: Array<{ key: string; updatedAt: number; bytes: number }> = [];
+        request.onsuccess = () => {
+          const cursor = request.result;
+          if (!cursor) {
+            resolve(metadata);
+            return;
+          }
+          const record = cursor.value as CachedHistory | CachedExecutionTape;
+          metadata.push({
+            key: record.key,
+            updatedAt: Number(record.updatedAt ?? 0),
+            bytes: estimatedRecordBytes(record),
+          });
+          // Do not retain the candle/execution arrays. getAll() previously
+          // cloned the entire ~48MB cache into one JS array during live use.
+          cursor.continue();
+        };
         request.onerror = () => reject(request.error ?? new Error("Unable to inspect market cache."));
       });
 
@@ -322,7 +363,7 @@ export async function pruneChartHistoryCache(force = false) {
       let retainedBytes = 0;
       const keysToDelete: string[] = [];
       newestFirst.forEach((record, index) => {
-        const bytes = estimatedRecordBytes(record);
+        const bytes = record.bytes;
         if (
           index >= MAX_PERSISTENT_CACHE_RECORDS
           || (retainedBytes > 0 && retainedBytes + bytes > MAX_PERSISTENT_CACHE_BYTES)
@@ -370,29 +411,42 @@ export async function readChartHistoryCache(symbol: string, timeframe: string) {
     if (!record) return null;
     const normalized = { ...record, candles: normalizeCandles(record.candles ?? []) };
     if (!normalized.candles.length) return null;
-    memoryCache.set(key, normalized);
+    storeBounded(memoryCache, key, normalized, MAX_MEMORY_HISTORY_RECORDS);
     return normalized;
   } catch {
     return memoryRecord ?? null;
   }
 }
 
-async function readAllCachedHistory() {
-  const records = new Map<string, CachedHistory>(memoryCache);
+async function readAllCachedHistory(symbol: string) {
+  const records = new Map<string, CachedHistory>(
+    [...memoryCache].filter(([, record]) => record.symbol === symbol),
+  );
   try {
     const database = await openDatabase();
-    const storedRecords = await new Promise<Array<CachedHistory | CachedExecutionTape>>((resolve, reject) => {
+    const storedKeys = await new Promise<IDBValidKey[]>((resolve, reject) => {
       const transaction = database.transaction(STORE_NAME, "readonly");
-      const request = transaction.objectStore(STORE_NAME).getAll();
-      request.onsuccess = () => resolve(
-        (request.result as Array<CachedHistory | CachedExecutionTape> | undefined) ?? [],
-      );
+      const request = transaction.objectStore(STORE_NAME).getAllKeys();
+      request.onsuccess = () => resolve(request.result ?? []);
       request.onerror = () => reject(request.error ?? new Error("Unable to read cached market data."));
     });
-    for (const record of storedRecords) {
-      if ("candles" in record && Array.isArray(record.candles)) {
-        records.set(record.key, record);
-      }
+    const matchingKeys = storedKeys
+      .map(String)
+      .filter((key) => (
+        key.startsWith(`time-v2::${symbol}::`)
+        || key.startsWith(`event-v6::${symbol}::`)
+      ));
+    // Read only this symbol's candle series, sequentially. The former getAll
+    // path also cloned every execution tape and every unrelated symbol merely
+    // to resample one chart timeframe.
+    for (const key of matchingKeys) {
+      const record = await new Promise<CachedHistory | null>((resolve, reject) => {
+        const transaction = database.transaction(STORE_NAME, "readonly");
+        const request = transaction.objectStore(STORE_NAME).get(key);
+        request.onsuccess = () => resolve((request.result as CachedHistory | undefined) ?? null);
+        request.onerror = () => reject(request.error ?? new Error("Unable to read cached market data."));
+      });
+      if (record && Array.isArray(record.candles)) records.set(record.key, record);
     }
   } catch {
     // The in-memory records can still supply a compatible timeframe.
@@ -449,7 +503,7 @@ export function peekCompatibleChartHistoryCache(symbol: string, timeframe: strin
   if (exact?.candles.length) return exact;
 
   const compatible = buildCompatibleRecord([...memoryCache.values()], symbol, timeframe);
-  if (compatible) memoryCache.set(compatible.key, compatible);
+  if (compatible) storeBounded(memoryCache, compatible.key, compatible, MAX_MEMORY_HISTORY_RECORDS);
   return compatible;
 }
 
@@ -466,9 +520,9 @@ export async function readCompatibleChartHistoryCache(symbol: string, timeframe:
   const exact = await readChartHistoryCache(symbol, timeframe);
   if (exact?.candles.length) return exact;
 
-  const record = buildCompatibleRecord(await readAllCachedHistory(), symbol, timeframe);
+  const record = buildCompatibleRecord(await readAllCachedHistory(symbol), symbol, timeframe);
   if (!record) return null;
-  memoryCache.set(record.key, record);
+  storeBounded(memoryCache, record.key, record, MAX_MEMORY_HISTORY_RECORDS);
   return record;
 }
 
@@ -482,7 +536,7 @@ export async function writeChartHistoryCache(symbol: string, timeframe: string, 
   }
   // Claim this snapshot before any IndexedDB await. Sibling panes commonly
   // flush the same shared series together; only the first should serialize it.
-  lastWriteFingerprintByKey.set(writeKey, inputFingerprint);
+  rememberWriteFingerprint(writeKey, inputFingerprint);
   const previous = await readChartHistoryCache(symbol, timeframe);
   if (previous && candleFingerprint(previous.candles) === inputFingerprint) {
     return previous;
@@ -501,7 +555,7 @@ export async function writeChartHistoryCache(symbol: string, timeframe: string, 
     candles: normalizedCandles,
     updatedAt: Date.now(),
   };
-  memoryCache.set(key, record);
+  storeBounded(memoryCache, key, record, MAX_MEMORY_HISTORY_RECORDS);
 
   try {
     const database = await openDatabase();
@@ -529,16 +583,34 @@ export async function readExecutionTapeCache(symbol: string, timeframe: string) 
   if (memoryRecord?.records.length) return memoryRecord;
   try {
     const database = await openDatabase();
-    const record = await new Promise<CachedExecutionTape | null>((resolve, reject) => {
+    let record = await new Promise<CachedExecutionTape | null>((resolve, reject) => {
       const transaction = database.transaction(STORE_NAME, "readonly");
       const request = transaction.objectStore(STORE_NAME).get(key);
       request.onsuccess = () => resolve((request.result as CachedExecutionTape | undefined) ?? null);
       request.onerror = () => reject(request.error ?? new Error("Unable to read cached executions."));
     });
+    // One-release migration keeps an existing warm tape useful, then the next
+    // write stores it under the shared v3 key. Old per-timeframe entries are
+    // naturally removed by the bounded persistent-cache pruner.
+    if (!record) {
+      record = await new Promise<CachedExecutionTape | null>((resolve, reject) => {
+        const transaction = database.transaction(STORE_NAME, "readonly");
+        const request = transaction.objectStore(STORE_NAME).get(
+          legacyExecutionTapeCacheKey(symbol, timeframe),
+        );
+        request.onsuccess = () => resolve((request.result as CachedExecutionTape | undefined) ?? null);
+        request.onerror = () => reject(request.error ?? new Error("Unable to read cached executions."));
+      });
+    }
     if (!record || record.kind !== "execution-tape") return null;
-    const normalized = { ...record, records: normalizeExecutionTape(record.records ?? []) };
+    const normalized = {
+      ...record,
+      key,
+      symbol,
+      records: normalizeExecutionTape(record.records ?? []),
+    };
     if (!normalized.records.length) return null;
-    executionTapeMemoryCache.set(key, normalized);
+    storeBounded(executionTapeMemoryCache, key, normalized, MAX_MEMORY_EXECUTION_RECORDS);
     return normalized;
   } catch {
     return memoryRecord ?? null;
@@ -557,7 +629,7 @@ export async function writeExecutionTapeCache(
     const existing = executionTapeMemoryCache.get(key);
     if (existing) return existing;
   }
-  lastWriteFingerprintByKey.set(writeKey, inputFingerprint);
+  rememberWriteFingerprint(writeKey, inputFingerprint);
   const previous = await readExecutionTapeCache(symbol, timeframe);
   if (previous && executionFingerprint(previous.records) === inputFingerprint) {
     return previous;
@@ -585,7 +657,7 @@ export async function writeExecutionTapeCache(
     updatedAt: Date.now(),
     kind: "execution-tape",
   };
-  executionTapeMemoryCache.set(key, record);
+  storeBounded(executionTapeMemoryCache, key, record, MAX_MEMORY_EXECUTION_RECORDS);
   try {
     const database = await openDatabase();
     await new Promise<void>((resolve, reject) => {
