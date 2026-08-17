@@ -87,6 +87,8 @@ test("completed line tools open their style and template editor on double-click"
 test("fib retracement is free-dragged and has persistent Kwant Fib settings", () => {
   assert.match(chart, /const KWANT_FIB_LEVELS = \[1, 0\.786, 0\.618, 0\.5, 0\.382\]/);
   assert.match(chart, /name: "Kwant Fib"/);
+  assert.match(chart, /name: "Kwant Fib"[\s\S]*?reverseDirection: true/);
+  assert.match(chart, /template\.id === KWANT_FIB_TEMPLATE_ID[\s\S]*?reverseDirection: true/);
   assert.match(chart, /selectedToolRef\.current === "fibRetracement"/);
   assert.match(chart, /"fib-retracement",[\s\S]*?"fixed-market-profile"/);
   assert.match(chart, /Fib levels/);

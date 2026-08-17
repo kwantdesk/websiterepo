@@ -1977,7 +1977,7 @@ function createKwantFibTemplate(): DrawingTemplate {
       showRatios: true,
       showPercentages: false,
       extendLines: false,
-      reverseDirection: false,
+      reverseDirection: true,
       fibLabelPosition: "right",
       fibBackgroundVisible: true,
       visible: true,
@@ -8954,11 +8954,20 @@ function Chart({
           isDefault: candidate.isDefault === true,
         } satisfies DrawingTemplate];
       });
-      const hasKwantFib = restored.some((template) => template.id === KWANT_FIB_TEMPLATE_ID);
-      const hasDefaultFib = restored.some((template) => template.toolType === "fib-retracement" && template.isDefault);
+      const migrated = restored.map((template) => template.id === KWANT_FIB_TEMPLATE_ID
+        ? {
+            ...template,
+            options: {
+              ...template.options,
+              reverseDirection: true,
+            },
+          }
+        : template);
+      const hasKwantFib = migrated.some((template) => template.id === KWANT_FIB_TEMPLATE_ID);
+      const hasDefaultFib = migrated.some((template) => template.toolType === "fib-retracement" && template.isDefault);
       setDrawingTemplates(hasKwantFib
-        ? restored
-        : [...restored, { ...kwantFib, isDefault: !hasDefaultFib }]);
+        ? migrated
+        : [...migrated, { ...kwantFib, isDefault: !hasDefaultFib }]);
     } catch {
       setDrawingTemplates([kwantFib]);
     }
