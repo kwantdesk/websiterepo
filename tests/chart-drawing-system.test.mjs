@@ -101,6 +101,10 @@ test("fib retracement is free-dragged and has persistent Kwant Fib settings", ()
   assert.doesNotMatch(fibRetracement, /private _fibOptions/);
   assert.match(fibRetracementPane, /fibLevelStyles/);
   assert.match(fibRetracementPane, /showRatios/);
+  assert.match(fibRetracementPane, /const bottomAnchorY = Math\.max\(p1\.y, p2\.y\)/);
+  assert.match(fibRetracementPane, /\{ x: 0, y: bottomAnchorY \}/);
+  assert.match(fibRetracementPane, /\{ x: viewport\.width, y: bottomAnchorY \}/);
+  assert.match(fibRetracementPane, /\[2, 4\]/);
 });
 
 test("the full visible body of every drawing is selectable, movable and deletable", () => {

@@ -3,7 +3,7 @@ import type { CanvasRenderingTarget2D, BitmapCoordinatesRenderingScope } from 'f
 
 import type { FibRetracement } from './fib-retracement';
 import { FIBONACCI_LEVELS } from './fib-retracement';
-import { applyStyle, drawLine, drawControlPoints, drawLabel, formatPrice } from '../../rendering/canvas-utils';
+import { applyStyle, drawLine, drawDashedLine, drawControlPoints, drawLabel, formatPrice } from '../../rendering/canvas-utils';
 
 // Colors for different Fib levels
 const FIB_COLORS: Record<number, string> = {
@@ -153,6 +153,23 @@ class FibRetracementPaneRenderer implements IPrimitivePaneRenderer {
       }
       ctx.setLineDash([]);
     }
+
+    // Keep the lower placement anchor visually traceable across the entire
+    // pane. The Fib's configured levels may stop at its local time width, so
+    // without this guide it is difficult to see the exact bottom price while
+    // placing or adjusting the retracement.
+    const bottomAnchorY = Math.max(p1.y, p2.y);
+    ctx.save();
+    applyStyle(ctx, this._drawing.style, pixelRatio);
+    ctx.globalAlpha = 0.9;
+    drawDashedLine(
+      ctx,
+      { x: 0, y: bottomAnchorY },
+      { x: viewport.width, y: bottomAnchorY },
+      [2, 4],
+      pixelRatio
+    );
+    ctx.restore();
 
     // Draw the main trend line connecting anchors
     applyStyle(ctx, this._drawing.style, pixelRatio);
