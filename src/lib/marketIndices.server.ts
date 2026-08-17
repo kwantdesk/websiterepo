@@ -23,7 +23,7 @@ export type MarketIndexSnapshot = {
   timestamp: number;
   delayed: boolean;
   marketOpen: boolean;
-  provider: "GEXBot" | "Massive" | "KwantData" | "CBOE EOD";
+  provider: string;
 };
 
 const MASSIVE_API_BASE = "https://api.massive.com";

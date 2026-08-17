@@ -4,6 +4,8 @@ import {
   marketDataGatewayUrlCandidates,
   marketDataProvider,
 } from "@/lib/marketDataGatewayEnv";
+import { getMarketIndexDefinition } from "@/lib/marketIndices";
+import type { MarketIndexSnapshot } from "@/lib/marketIndices.server";
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 const HEALTH_CACHE_MS = 15_000;
@@ -128,4 +130,67 @@ export async function fetchInstitutionalMarketData(
       lastError instanceof Error ? lastError.message : String(lastError)
     }`,
   );
+}
+
+function finiteNumber(value: unknown) {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+/**
+ * Reads the shared VPS market-index cache and normalizes its provider-neutral
+ * payload for server-side consumers such as Zyon and options context. Keeping
+ * this here prevents those consumers from opening their own vendor sessions
+ * from Vercel and makes the browser, API routes and AI context observe the
+ * same authoritative frame.
+ */
+export async function fetchInstitutionalMarketIndexSnapshots(
+  symbols: string[],
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+): Promise<MarketIndexSnapshot[]> {
+  const requested = [...new Set(symbols
+    .map((symbol) => symbol.trim().toUpperCase())
+    .filter((symbol) => Boolean(getMarketIndexDefinition(symbol))))];
+  if (!requested.length) return [];
+
+  const response = await fetchInstitutionalMarketData(
+    `v1/market-data/index-snapshot?symbols=${encodeURIComponent(requested.join(","))}`,
+    { method: "GET" },
+    timeoutMs,
+  );
+  const payload = await response.json().catch(() => null) as {
+    snapshots?: unknown;
+    error?: unknown;
+  } | null;
+  if (!response.ok) {
+    throw new Error(String(payload?.error || `VPS index snapshot failed (${response.status}).`));
+  }
+  const rows = Array.isArray(payload?.snapshots) ? payload.snapshots : [];
+  return rows.flatMap((value): MarketIndexSnapshot[] => {
+    if (!value || typeof value !== "object") return [];
+    const row = value as Record<string, unknown>;
+    const symbol = String(row.symbol || "").trim().toUpperCase();
+    const definition = getMarketIndexDefinition(symbol);
+    const lastPrice = finiteNumber(row.lastPrice);
+    const timestamp = finiteNumber(row.timestamp);
+    if (!definition || lastPrice === null || lastPrice <= 0 || timestamp === null) return [];
+    const openPrice = finiteNumber(row.openPrice) ?? lastPrice;
+    const calculatedChange = lastPrice - openPrice;
+    const change = finiteNumber(row.change) ?? calculatedChange;
+    const changePercent = finiteNumber(row.changePercent)
+      ?? (openPrice ? calculatedChange / openPrice * 100 : 0);
+    return [{
+      symbol,
+      broker: "Market Index",
+      exchange: definition.exchange,
+      lastPrice,
+      openPrice,
+      change,
+      changePercent,
+      timestamp,
+      delayed: row.delayed === true,
+      marketOpen: row.marketOpen === true,
+      provider: String(row.provider || "VPS market-data edge"),
+    }];
+  });
 }

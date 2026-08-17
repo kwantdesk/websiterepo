@@ -11,6 +11,10 @@ import type {
   KwantBotMarketRoot,
   KwantBotMemoryEvent,
 } from "@/lib/kwantBotInterpreter";
+import {
+  fetchInstitutionalMarketIndexSnapshots,
+  isInstitutionalMarketDataConfigured,
+} from "@/lib/institutionalMarketData.server";
 import { fetchMarketIndexSnapshots } from "@/lib/marketIndices.server";
 import { createClient } from "@/lib/supabase/server";
 import { buildZyonPriceAnalytics } from "@/lib/zyonPriceContext";
@@ -342,15 +346,19 @@ export async function getZyonMarketContext(
 ) {
   const now = Date.now();
   const gammaFocused = focus === "GAMMA";
+  const relatedMarketSymbols = root === "NQ" ? ["VXN", "VIX"] : ["VIX", "VXN"];
+  const relatedMarketsPromise = gammaFocused
+    ? Promise.resolve([])
+    : isInstitutionalMarketDataConfigured()
+      ? fetchInstitutionalMarketIndexSnapshots(relatedMarketSymbols, 3_000)
+      : fetchMarketIndexSnapshots(relatedMarketSymbols);
   const results = await Promise.allSettled([
     timeout(getKwantBotMarketContext(root), gammaFocused ? 2_600 : 4_500, "options context"),
     timeout(marketHistory(root), gammaFocused ? 3_500 : 8_500, "CME history"),
     gammaFocused
       ? Promise.resolve(null)
       : timeout(archivedMarketMemory(actorId, root), 2_500, "market memory"),
-    gammaFocused
-      ? Promise.resolve([])
-      : timeout(fetchMarketIndexSnapshots(root === "NQ" ? ["VXN", "VIX"] : ["VIX", "VXN"]), 3_500, "market indices"),
+    timeout(relatedMarketsPromise, 3_500, "market indices"),
     gammaFocused
       ? Promise.resolve(null)
       : timeout(getEconomicCalendar(
