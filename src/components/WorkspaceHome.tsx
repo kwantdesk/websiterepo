@@ -254,7 +254,7 @@ export default function WorkspaceHome({ username = "" }: { username?: string }) 
 
         <div className="pointer-events-none absolute inset-0 z-[4] bg-[linear-gradient(180deg,rgba(0,0,0,.16),rgba(0,0,0,.02)_35%,rgba(0,0,0,.34))]" />
         <section
-          className="kwant-scrollbar relative z-10 h-full w-full overflow-y-auto p-[clamp(14px,1.5vw,28px)]"
+          className="kwant-scrollbar relative z-10 h-full w-full overflow-y-auto px-[clamp(28px,4vw,88px)] py-[clamp(16px,2vw,32px)]"
           aria-label="Workspace launcher"
         >
           <div className="grid min-h-full w-full auto-rows-[minmax(190px,1fr)] grid-cols-1 gap-[clamp(12px,1vw,18px)] sm:grid-cols-2 lg:grid-cols-4">
