@@ -721,7 +721,7 @@ class SessionHighLowRenderer implements ISeriesPrimitivePaneRenderer {
           // wick has moved fully outside the viewport, leave its forward line
           // visible but do not clamp every historical label onto the same left
           // edge -- that was the source of the unreadable overprint.
-          const toolbarClearance = 36;
+          const toolbarClearance = this.primitive.leftInset() + 4;
           const measuredWidth = context.measureText(labelText).width;
           const maximumLabelX = Math.max(toolbarClearance, mediaSize.width - measuredWidth - 6);
           const labelX = Math.min(maximumLabelX, Math.max(toolbarClearance, startX + 6));
@@ -828,6 +828,7 @@ class SessionHighLowPrimitive implements ISeriesPrimitive<Time> {
   private candleSeries: CandleSeriesApi | null = null;
   private requestRedraw: (() => void) | null = null;
   private renderLevels: SessionHighLowRenderLevel[] = [];
+  private plotLeftInset = 0;
   private readonly sessionView = new SessionHighLowView(this);
 
   attached(param: SeriesAttachedParameter<Time, "Candlestick">) {
@@ -845,6 +846,15 @@ class SessionHighLowPrimitive implements ISeriesPrimitive<Time> {
   update(levels: SessionHighLowRenderLevel[]) {
     this.renderLevels = levels;
     this.requestRedraw?.();
+  }
+
+  setPaneInsets(insets: { left: number }) {
+    this.plotLeftInset = Math.max(0, insets.left);
+    this.requestRedraw?.();
+  }
+
+  leftInset() {
+    return this.plotLeftInset;
   }
 
   chart() {
@@ -1401,8 +1411,14 @@ class FixedPriceLevelLabelsRenderer implements ISeriesPrimitivePaneRenderer {
         const label = level.axisTitleVisible === false
           ? price
           : `${level.label}  ${price}`;
-        const width = Math.min(320, Math.max(58, context.measureText(label).width + 14));
-        const left = 4;
+        const left = this.primitive.leftInset() + 4;
+        const availableWidth = mediaSize.width - left - 4;
+        if (availableWidth < 24) continue;
+        const width = Math.min(
+          320,
+          availableWidth,
+          Math.max(58, context.measureText(label).width + 14),
+        );
 
         // Deliberately draw at the exact price coordinate. Native price-axis
         // labels are collision-resolved by moving the level chip whenever the
@@ -1445,6 +1461,7 @@ class FixedPriceLevelLabelsPrimitive implements ISeriesPrimitive<Time> {
   private renderLevels: ChartLevel[] = [];
   private chartBackground = "rgba(8, 10, 12, 0.94)";
   private pricePrecision = 2;
+  private plotLeftInset = 0;
   private readonly levelView = new FixedPriceLevelLabelsView(this);
 
   attached(param: SeriesAttachedParameter<Time, "Candlestick">) {
@@ -1462,6 +1479,15 @@ class FixedPriceLevelLabelsPrimitive implements ISeriesPrimitive<Time> {
     this.chartBackground = backgroundColor;
     this.pricePrecision = precision;
     this.requestRedraw?.();
+  }
+
+  setPaneInsets(insets: { left: number }) {
+    this.plotLeftInset = Math.max(0, insets.left);
+    this.requestRedraw?.();
+  }
+
+  leftInset() {
+    return this.plotLeftInset;
   }
 
   series() {
@@ -10159,12 +10185,19 @@ function Chart({
   useEffect(() => {
     levelsRef.current = resolvedLevelLayers.foreground;
     applyLevels(levelsRef.current);
-    fixedPriceLevelLabelsRef.current?.update(
+    const fixedLevelLabels = fixedPriceLevelLabelsRef.current;
+    fixedLevelLabels?.setPaneInsets({ left: toolbarPlotLeftInset });
+    fixedLevelLabels?.update(
       levelsRef.current,
       settings.backgroundColor,
       priceFormat.precision,
     );
-  }, [priceFormat.precision, resolvedLevelLayers.foreground, settings.backgroundColor]);
+  }, [
+    priceFormat.precision,
+    resolvedLevelLayers.foreground,
+    settings.backgroundColor,
+    toolbarPlotLeftInset,
+  ]);
 
   useEffect(() => {
     backgroundLevelsRef.current = resolvedLevelLayers.background;
@@ -10177,8 +10210,10 @@ function Chart({
   }, [backgroundZones, resolvedLevelLayers.background, settings.backgroundColor]);
 
   useEffect(() => {
-    sessionHighLowPrimitiveRef.current?.update(sessionHighLowRenderData);
-  }, [sessionHighLowRenderData]);
+    const sessionHighLow = sessionHighLowPrimitiveRef.current;
+    sessionHighLow?.setPaneInsets({ left: toolbarPlotLeftInset });
+    sessionHighLow?.update(sessionHighLowRenderData);
+  }, [sessionHighLowRenderData, toolbarPlotLeftInset]);
 
   useEffect(() => {
     sessionWindowPrimitiveRef.current?.update(sessionWindowRenderData);
@@ -10305,10 +10340,12 @@ function Chart({
       settings.backgroundColor,
       priceFormat.precision,
     );
+    fixedPriceLevelLabels.setPaneInsets({ left: toolbarPlotLeftInset });
     candleSeries.attachPrimitive(fixedPriceLevelLabels);
     fixedPriceLevelLabelsRef.current = fixedPriceLevelLabels;
     const sessionHighLowPrimitive = new SessionHighLowPrimitive();
     sessionHighLowPrimitive.update(sessionHighLowRenderDataRef.current);
+    sessionHighLowPrimitive.setPaneInsets({ left: toolbarPlotLeftInset });
     candleSeries.attachPrimitive(sessionHighLowPrimitive);
     sessionHighLowPrimitiveRef.current = sessionHighLowPrimitive;
     const sessionWindowPrimitive = new SessionWindowPrimitive();
