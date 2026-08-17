@@ -2361,6 +2361,11 @@ const DEFAULT_RIGHT_CANDLE_PADDING = 8;
 // component for every raw pan/zoom event makes pointer input monopolise the
 // main thread, especially with several workspace charts mounted.
 const VIEWPORT_REACT_REFRESH_INTERVAL_MS = 64;
+// Native chart primitives may consume every provider update, but React must
+// not reconcile this very large component for every Level 3 packet. A single
+// summary update per second keeps badges/tooltips current without allowing a
+// collection of live indicators to starve chart input and price painting.
+const LIVE_INDICATOR_REACT_SUMMARY_INTERVAL_MS = 1_000;
 let activeChartKeyboardTargetId: string | null = null;
 
 function resetChartViewport(
@@ -2808,6 +2813,7 @@ function Chart({
   const stackedImbalancePrimitiveRef = useRef<StackedImbalancePrimitive | null>(null);
   const stackedImbalanceEngineRef = useRef(new StackedImbalanceEngine());
   const stackedImbalanceAlertIdsRef = useRef(new Set<string>());
+  const stackedImbalanceLastReactPublishRef = useRef(0);
   const icebergRefreshPrimitiveRef = useRef<IcebergRefreshPrimitive | null>(null);
   const icebergRefreshEngineRef = useRef(new IcebergRefreshDetectorEngine());
   const icebergRefreshFrameRef = useRef<IcebergRefreshFrame | null>(null);
@@ -2822,6 +2828,7 @@ function Chart({
   const tapeSpeedAlertIdsRef = useRef(new Set<string>());
   const pocAuctionEngineRef = useRef(new PocAuctionSuiteEngine());
   const pocAuctionAlertIdsRef = useRef(new Set<string>());
+  const pocAuctionLastReactPublishRef = useRef(0);
   const netGammaExposurePrimitiveRef = useRef<NetGammaExposurePrimitive | null>(null);
   const bounceLevelsPrimitiveRef = useRef<BounceLevelsPrimitive | null>(null);
   const bounceLevelsAlertStateRef = useRef<{ key: string; states: Map<string, string>; lastFired: Map<string, number> }>({ key: "", states: new Map(), lastFired: new Map() });
@@ -3628,11 +3635,11 @@ function Chart({
           }
         }
         const elapsed = performance.now() - lastPublishedAt;
-        if (elapsed >= 200) publishSummary(frame);
+        if (elapsed >= LIVE_INDICATOR_REACT_SUMMARY_INTERVAL_MS) publishSummary(frame);
         else if (summaryTimer === null) summaryTimer = window.setTimeout(() => {
           summaryTimer = null;
           if (pullingStackingFrameRef.current) publishSummary(pullingStackingFrameRef.current);
-        }, Math.max(16, 200 - elapsed));
+        }, Math.max(16, LIVE_INDICATOR_REACT_SUMMARY_INTERVAL_MS - elapsed));
       },
     });
     return () => {
@@ -3648,7 +3655,7 @@ function Chart({
       settings: pullingStackingSettings,
       backgroundColor: settings.backgroundColor,
     } : null);
-  }, [chartReadyRevision, pullingStackingSettings, settings.backgroundColor, viewportVersion]);
+  }, [chartReadyRevision, pullingStackingSettings, settings.backgroundColor]);
 
   useEffect(() => {
     const container = chartContainerRef.current;
@@ -3742,11 +3749,11 @@ function Chart({
           }
         }
         const elapsed = performance.now() - lastPublishedAt;
-        if (elapsed >= 200) publishSummary(frame);
+        if (elapsed >= LIVE_INDICATOR_REACT_SUMMARY_INTERVAL_MS) publishSummary(frame);
         else if (summaryTimer === null) summaryTimer = window.setTimeout(() => {
           summaryTimer = null;
           if (absorptionFrameRef.current) publishSummary(absorptionFrameRef.current);
-        }, Math.max(16, 200 - elapsed));
+        }, Math.max(16, LIVE_INDICATOR_REACT_SUMMARY_INTERVAL_MS - elapsed));
       },
     });
     return () => {
@@ -3762,7 +3769,7 @@ function Chart({
       settings: absorptionSettings,
       backgroundColor: settings.backgroundColor,
     } : null);
-  }, [absorptionSettings, chartReadyRevision, settings.backgroundColor, viewportVersion]);
+  }, [absorptionSettings, chartReadyRevision, settings.backgroundColor]);
 
   useEffect(() => {
     const container = chartContainerRef.current;
@@ -3854,8 +3861,8 @@ function Chart({
           }
         }
         const elapsed = performance.now() - lastPublishedAt;
-        if (elapsed >= 200) publish(frame);
-        else if (summaryTimer === null) summaryTimer = window.setTimeout(() => { summaryTimer = null; if (icebergRefreshFrameRef.current) publish(icebergRefreshFrameRef.current); }, Math.max(16, 200 - elapsed));
+        if (elapsed >= LIVE_INDICATOR_REACT_SUMMARY_INTERVAL_MS) publish(frame);
+        else if (summaryTimer === null) summaryTimer = window.setTimeout(() => { summaryTimer = null; if (icebergRefreshFrameRef.current) publish(icebergRefreshFrameRef.current); }, Math.max(16, LIVE_INDICATOR_REACT_SUMMARY_INTERVAL_MS - elapsed));
       },
     });
     return () => { unsubscribe(); if (summaryTimer !== null) window.clearTimeout(summaryTimer); };
@@ -3864,7 +3871,7 @@ function Chart({
   useEffect(() => {
     const frame = icebergRefreshFrameRef.current;
     icebergRefreshPrimitiveRef.current?.update(frame && icebergRefreshSettings.preset !== "native-only" ? { frame, settings: icebergRefreshSettings, backgroundColor: settings.backgroundColor } : null);
-  }, [chartReadyRevision, icebergRefreshSettings, settings.backgroundColor, viewportVersion]);
+  }, [chartReadyRevision, icebergRefreshSettings, settings.backgroundColor]);
 
   useEffect(() => {
     const container = chartContainerRef.current;
@@ -3896,9 +3903,17 @@ function Chart({
   }, [liquidityStopSweepIndicator, settings.borderDownColor, settings.borderUpColor, settings.downColor, settings.gridColor, settings.upColor]);
 
   useEffect(() => {
-    const candleReferences = buildSweepReferencesFromCandles(candles, priceFormat.minMove);
-    const currentPrice = candles.at(-1)?.close ?? 0;
-    const validFromMs = candles[0]?.timestamp ?? Date.now();
+    if (!liquidityStopSweepIndicator) {
+      liquidityStopSweepReferencesRef.current = [];
+      return;
+    }
+    // Reference discovery never needs the complete archive. Keeping this
+    // bounded prevents the sweep detector from rebuilding years of candle
+    // structure on every live bar (including while the indicator is off).
+    const referenceCandles = candles.length > 4_000 ? candles.slice(-4_000) : candles;
+    const candleReferences = buildSweepReferencesFromCandles(referenceCandles, priceFormat.minMove);
+    const currentPrice = referenceCandles.at(-1)?.close ?? 0;
+    const validFromMs = referenceCandles[0]?.timestamp ?? Date.now();
     const chartReferences: SweepReferenceLevel[] = [...resolvedLevelLayers.foreground, ...resolvedLevelLayers.background].map((level) => ({
       id: `chart-level:${level.id}`,
       type: "user-horizontal-level",
@@ -3910,7 +3925,7 @@ function Chart({
       isUserLevel: true,
     }));
     liquidityStopSweepReferencesRef.current = [...candleReferences, ...chartReferences];
-  }, [candles, priceFormat.minMove, resolvedLevelLayers.background, resolvedLevelLayers.foreground]);
+  }, [candles, liquidityStopSweepIndicator, priceFormat.minMove, resolvedLevelLayers.background, resolvedLevelLayers.foreground]);
 
   useEffect(() => {
     if (!liquidityStopSweepIndicator) {
@@ -3963,11 +3978,11 @@ function Chart({
           }
         }
         const elapsed = performance.now() - lastPublishedAt;
-        if (elapsed >= 200) publish(frame);
+        if (elapsed >= LIVE_INDICATOR_REACT_SUMMARY_INTERVAL_MS) publish(frame);
         else if (summaryTimer === null) summaryTimer = window.setTimeout(() => {
           summaryTimer = null;
           if (liquidityStopSweepFrameRef.current) publish(liquidityStopSweepFrameRef.current);
-        }, Math.max(16, 200 - elapsed));
+        }, Math.max(16, LIVE_INDICATOR_REACT_SUMMARY_INTERVAL_MS - elapsed));
       },
     });
     return () => {
@@ -3979,7 +3994,7 @@ function Chart({
   useEffect(() => {
     const frame = liquidityStopSweepFrameRef.current;
     liquidityStopSweepPrimitiveRef.current?.update(frame ? { frame, settings: liquidityStopSweepSettings, backgroundColor: settings.backgroundColor } : null);
-  }, [chartReadyRevision, liquidityStopSweepSettings, settings.backgroundColor, viewportVersion]);
+  }, [chartReadyRevision, liquidityStopSweepSettings, settings.backgroundColor]);
 
   useEffect(() => {
     const container = chartContainerRef.current;
@@ -4302,7 +4317,7 @@ function Chart({
   }, [contractSymbol, indicatorMarketTrades, indicatorWindowCandles, instrument, priceFormat.minMove, tapeSpeedContextEvents, tapeSpeedIndicator, tapeSpeedSettings]);
   useEffect(() => {
     tapeSpeedPrimitiveRef.current?.update(tapeSpeedFrame ? { frame: tapeSpeedFrame, settings: tapeSpeedSettings, backgroundColor: settings.backgroundColor } : null);
-  }, [chartReadyRevision, settings.backgroundColor, tapeSpeedFrame, tapeSpeedSettings, viewportVersion]);
+  }, [chartReadyRevision, settings.backgroundColor, tapeSpeedFrame, tapeSpeedSettings]);
   useEffect(() => {
     if (!tapeSpeedIndicator) {
       tapeSpeedAlertIdsRef.current.clear();
@@ -4768,7 +4783,11 @@ function Chart({
       resolvedFootprintGroupTicks,
       pocAuctionSettings,
     );
-    setPocAuctionFrame(frame);
+    const now = performance.now();
+    if (now - pocAuctionLastReactPublishRef.current >= LIVE_INDICATOR_REACT_SUMMARY_INTERVAL_MS) {
+      pocAuctionLastReactPublishRef.current = now;
+      setPocAuctionFrame(frame);
+    }
     pocAuctionPrimitiveRef.current?.update({ frame, settings: pocAuctionSettings, backgroundColor: settings.backgroundColor });
     if (pocAuctionSettings.alertsEnabled) for (const alert of frame.alerts) {
       if (pocAuctionAlertIdsRef.current.has(alert.id)) continue;
@@ -4819,7 +4838,11 @@ function Chart({
       resolvedFootprintGroupTicks,
       stackedImbalanceSettings,
     );
-    setStackedImbalanceFrame(frame);
+    const now = performance.now();
+    if (now - stackedImbalanceLastReactPublishRef.current >= LIVE_INDICATOR_REACT_SUMMARY_INTERVAL_MS) {
+      stackedImbalanceLastReactPublishRef.current = now;
+      setStackedImbalanceFrame(frame);
+    }
     stackedImbalancePrimitiveRef.current?.update({ frame, settings: stackedImbalanceSettings, backgroundColor: settings.backgroundColor });
     if (stackedImbalanceSettings.enableAlerts) for (const alert of frame.alerts) {
       if (stackedImbalanceAlertIdsRef.current.has(alert.id)) continue;
@@ -4989,7 +5012,9 @@ function Chart({
       }
     };
     void load(false);
-    const intervalId = window.setInterval(() => void load(true), refreshMs);
+    // Shared cache + in-flight deduplication allows every pane to observe the
+    // same refresh. Forcing each pane here defeats that protection.
+    const intervalId = window.setInterval(() => void load(false), refreshMs);
     return () => { cancelled = true; window.clearInterval(intervalId); };
   }, [indicatorSignature, instrument, zeroGammaLineIndicator]);
   const baseCalculatedIndicatorSeries = useMemo(
@@ -5440,7 +5465,7 @@ function Chart({
       } finally {
         if (!cancelled) {
           setGammaHeatmapLoading(false);
-          timer = window.setTimeout(() => void load(true), refreshMs);
+          timer = window.setTimeout(() => void load(false), refreshMs);
         }
       }
     };
@@ -5473,7 +5498,7 @@ function Chart({
   }, [gammaHeatmapIndicator, gammaHeatmapPayload, priceFormat.precision, settings.backgroundColor, settings.downColor, settings.gridColor, settings.upColor]);
   useEffect(() => {
     gammaHeatmapPrimitiveRef.current?.update(gammaHeatmapPrimitiveData);
-  }, [gammaHeatmapPrimitiveData, viewportVersion]);
+  }, [gammaHeatmapPrimitiveData]);
   useEffect(() => {
     const container = chartContainerRef.current;
     if (!container || !gammaHeatmapIndicator) {
@@ -5552,7 +5577,10 @@ function Chart({
   const gexIntervalSnapshot = useMemo<GexIntervalMapSnapshot | null>(() => {
     if (!gexIntervalMapIndicator || !gexIntervalSurface) return null;
     const indicatorSettings = gexIntervalMapIndicator.settings ?? {};
-    const displayPrices = candles.map((candle) => ({ timestamp: candle.timestamp, price: candle.close }));
+    // Interval-map alignment only needs the bounded indicator history. Using
+    // the raw live candle array here rebuilt the complete exposure surface on
+    // every tick in every pane.
+    const displayPrices = indicatorCandles.map((candle) => ({ timestamp: candle.timestamp, price: candle.close }));
     const expirationDates = String(indicatorSettings.expirationDates ?? "").split(",").map((value) => value.trim()).filter(Boolean);
     return buildGexIntervalMapSnapshot(
       gexIntervalSurface,
@@ -5581,7 +5609,7 @@ function Chart({
         hideZeroValues: indicatorSettings.hideZeroValues !== false,
       },
     );
-  }, [candles, gexIntervalMapIndicator, gexIntervalSurface, instrument]);
+  }, [gexIntervalMapIndicator, gexIntervalSurface, indicatorCandles, instrument]);
   const gexIntervalPrimitiveData = useMemo<GexIntervalMapPrimitiveData | null>(() => {
     if (!gexIntervalMapIndicator || !gexIntervalSnapshot) return null;
     const indicatorSettings = gexIntervalMapIndicator.settings ?? {};
@@ -5589,7 +5617,7 @@ function Chart({
     const negativeExposurePalette = String(indicatorSettings.negativeExposurePalette ?? "neutral");
     return {
       snapshot: gexIntervalSnapshot,
-      timeAnchors: candles.map((candle) => candle.timestamp),
+      timeAnchors: indicatorCandles.map((candle) => candle.timestamp),
       visualMode: String(indicatorSettings.visualMode ?? "bubbles") as GexIntervalMapVisual,
       opacity: Math.max(0.05, Math.min(1, Number(indicatorSettings.opacity ?? 68) / 100)),
       intensity: Math.max(0.25, Math.min(4, Number(indicatorSettings.intensity ?? 1))),
@@ -5633,10 +5661,10 @@ function Chart({
       backgroundColor: settings.backgroundColor,
       precision: priceFormat.precision,
     };
-  }, [candles, gexIntervalMapIndicator, gexIntervalSnapshot, priceFormat.precision, settings.backgroundColor, settings.downColor, settings.upColor]);
+  }, [gexIntervalMapIndicator, gexIntervalSnapshot, indicatorCandles, priceFormat.precision, settings.backgroundColor, settings.downColor, settings.upColor]);
   useEffect(() => {
     gexIntervalMapPrimitiveRef.current?.update(gexIntervalPrimitiveData);
-  }, [gexIntervalPrimitiveData, viewportVersion]);
+  }, [gexIntervalPrimitiveData]);
   useEffect(() => {
     const container = chartContainerRef.current;
     if (!container || !gexIntervalMapIndicator || gexIntervalMapIndicator.settings?.tooltipsEnabled === false) {
@@ -5809,7 +5837,7 @@ function Chart({
       } finally {
         if (!cancelled) {
           setNetGammaLoading(false);
-          timer = window.setTimeout(() => void load(true), refreshMs);
+          timer = window.setTimeout(() => void load(false), refreshMs);
         }
       }
     };
@@ -5891,7 +5919,7 @@ function Chart({
   }, [netGammaIndicator, netGammaProfile, priceFormat.precision, settings.backgroundColor, settings.borderUpColor, settings.downColor, settings.gridColor, settings.upColor]);
   useEffect(() => {
     netGammaExposurePrimitiveRef.current?.update(netGammaPrimitiveData);
-  }, [netGammaPrimitiveData, viewportVersion]);
+  }, [netGammaPrimitiveData]);
   useEffect(() => {
     const chart = chartRef.current;
     if (!chart) return;
@@ -6373,7 +6401,7 @@ function Chart({
       } finally {
         if (!cancelled) {
           setDarkPoolMapLoading(false);
-          timer = window.setTimeout(() => void load(true), refreshMs);
+          timer = window.setTimeout(() => void load(false), refreshMs);
         }
       }
     };
@@ -6411,7 +6439,7 @@ function Chart({
   }, [darkPoolMapIndicator, darkPoolMapPayload, priceFormat.precision, settings.backgroundColor, settings.downColor, settings.gridColor, settings.upColor]);
   useEffect(() => {
     darkPoolMapPrimitiveRef.current?.update(darkPoolMapPrimitiveData);
-  }, [darkPoolMapPrimitiveData, viewportVersion]);
+  }, [darkPoolMapPrimitiveData]);
   useEffect(() => {
     if (!darkPoolMapIndicator || !darkPoolMapPayload || darkPoolMapIndicator.settings?.enableAlerts !== true) return;
     if (darkPoolMapPayload.status === "MAPPING_STALE" || darkPoolMapPayload.status === "UNAVAILABLE" || darkPoolMapPayload.status === "RATE_LIMITED") return;
@@ -7293,7 +7321,10 @@ function Chart({
       }
     }
     void load();
-    const ageTimer = window.setInterval(() => setHedgeLevelsNow(Date.now()), 1_000);
+    // This timestamp is only used for stale/age presentation. Updating it
+    // every second reconciled the complete chart (and every other indicator)
+    // despite no market geometry changing.
+    const ageTimer = window.setInterval(() => setHedgeLevelsNow(Date.now()), 15_000);
     return () => {
       cancelled = true;
       controller?.abort();
@@ -11112,6 +11143,7 @@ function Chart({
     );
   }, [candles, instrument, paperFills]);
 
+  const volumeProfileLastCandleTimestamp = candles.at(-1)?.timestamp ?? null;
   useEffect(() => {
     const primitive = volumeProfilePrimitiveRef.current;
     if (!primitive) return;
@@ -11124,9 +11156,9 @@ function Chart({
       ].includes(instance.indicatorId));
     const weeklyInstance = indicators.find((instance) =>
       instance.enabled && instance.indicatorId === "weekly-volume-profile");
-    const lastCandleTime = candles.length
-      ? Math.floor(candles[candles.length - 1].timestamp / 1_000)
-      : null;
+    const lastCandleTime = volumeProfileLastCandleTimestamp === null
+      ? null
+      : Math.floor(volumeProfileLastCandleTimestamp / 1_000);
     const intervalSeconds = candleIntervalMs ? candleIntervalMs / 1_000 : null;
     const models = volumeProfiles.flatMap((profile): NativeVolumeProfileModel[] => {
       const instance = profile.period === "weekly" ? weeklyInstance : dailyInstance;
@@ -11184,7 +11216,6 @@ function Chart({
     primitive.setModels(models);
   }, [
     candleIntervalMs,
-    candles,
     chartReadyRevision,
     indicatorSignature,
     indicators,
@@ -11192,6 +11223,7 @@ function Chart({
     settings.borderUpColor,
     settings.downColor,
     settings.upColor,
+    volumeProfileLastCandleTimestamp,
     volumeProfiles,
   ]);
 

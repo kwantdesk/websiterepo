@@ -229,3 +229,62 @@ test("saved multi-panel workspaces hydrate one heavyweight surface per turn", ()
   assert.match(workspace, /workspacePaneIsMounted\(node\.paneId\) \? renderWorkspacePane\(node\.paneId\)/);
   assert.match(workspace, /Starting this live panel without blocking the others\./);
 });
+
+test("live indicator summaries cannot reconcile the chart tree at packet cadence", () => {
+  const chart = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
+  assert.match(chart, /LIVE_INDICATOR_REACT_SUMMARY_INTERVAL_MS = 1_000/);
+  assert.ok(
+    chart.match(/LIVE_INDICATOR_REACT_SUMMARY_INTERVAL_MS/g)?.length >= 9,
+    "every Level 3 summary publisher should share the bounded React cadence",
+  );
+  assert.doesNotMatch(chart, /elapsed >= 200/);
+  assert.match(chart, /stackedImbalanceLastReactPublishRef/);
+  assert.match(chart, /pocAuctionLastReactPublishRef/);
+});
+
+test("liquidity sweep discovery is disabled when hidden and bounded when visible", () => {
+  const chart = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
+  assert.match(chart, /if \(!liquidityStopSweepIndicator\) \{\s*liquidityStopSweepReferencesRef\.current = \[\]/);
+  assert.match(chart, /candles\.length > 4_000 \? candles\.slice\(-4_000\) : candles/);
+  assert.match(chart, /buildSweepReferencesFromCandles\(referenceCandles/);
+});
+
+test("options indicators share cached refreshes instead of force-fetching per pane", () => {
+  const chart = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(chart, /setInterval\(\(\) => void load\(true\)/);
+  assert.doesNotMatch(chart, /setTimeout\(\(\) => void load\(true\)/);
+  assert.match(chart, /setInterval\(\(\) => void load\(false\), refreshMs\)/);
+  assert.ok(
+    chart.match(/setTimeout\(\(\) => void load\(false\), refreshMs\)/g)?.length >= 3,
+    "gamma heatmap, net gamma and dark-pool refreshes should use shared cache dedupe",
+  );
+});
+
+test("native overlay payloads are not reassigned during every pan and zoom event", () => {
+  const chart = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(chart, /\[gammaHeatmapPrimitiveData, viewportVersion\]/);
+  assert.doesNotMatch(chart, /\[gexIntervalPrimitiveData, viewportVersion\]/);
+  assert.doesNotMatch(chart, /\[netGammaPrimitiveData, viewportVersion\]/);
+  assert.doesNotMatch(chart, /\[darkPoolMapPrimitiveData, viewportVersion\]/);
+  assert.doesNotMatch(chart, /pullingStackingSettings, settings\.backgroundColor, viewportVersion/);
+  assert.doesNotMatch(chart, /absorptionSettings, chartReadyRevision, settings\.backgroundColor, viewportVersion/);
+});
+
+test("GEX interval and volume-profile work use bounded scalar inputs", () => {
+  const chart = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
+  assert.match(chart, /const displayPrices = indicatorCandles\.map/);
+  assert.match(chart, /timeAnchors: indicatorCandles\.map/);
+  assert.match(chart, /const volumeProfileLastCandleTimestamp = candles\.at\(-1\)\?\.timestamp/);
+  const profileEffect = chart.slice(
+    chart.indexOf("const volumeProfileLastCandleTimestamp"),
+    chart.indexOf("const primitive = tpoProfilePrimitiveRef.current", chart.indexOf("const volumeProfileLastCandleTimestamp")),
+  );
+  assert.doesNotMatch(profileEffect, /^\s+candles,\s*$/m);
+  assert.match(profileEffect, /volumeProfileLastCandleTimestamp/);
+});
+
+test("status-only indicator clocks cannot reconcile the full chart every second", () => {
+  const chart = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(chart, /setInterval\(\(\) => setHedgeLevelsNow\(Date\.now\(\)\), 1_000\)/);
+  assert.match(chart, /setInterval\(\(\) => setHedgeLevelsNow\(Date\.now\(\)\), 15_000\)/);
+});
