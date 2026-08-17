@@ -1636,32 +1636,67 @@ export default function ChartIndicatorsControl({
                       <option value="research">Research</option>
                     </KwantSelect>
                   </label>
-                  {[
-                    ["Options source", "sourceTicker", [["AUTO", "Automatic"], ["QQQ", "QQQ"], ["NDX", "NDX"], ["SPY", "SPY"], ["SPX", "SPX"], ["SPXW", "SPXW"], ["IWM", "IWM"]]],
-                    ["Exposure Greek", "greekMode", [["GAMMA", "Gamma"], ["DELTA", "Delta"], ["VANNA", "Vanna"], ["CHARM", "Charm"]]],
-                    ["Expiration", "expirationMode", [["zero-dte", "0DTE"], ["zero-to-one-dte", "0–1 DTE"], ["zero-to-seven-dte", "0–7 DTE"], ["front-expiration", "Front expiration"], ["all-expirations", "All expirations"], ["custom-dte-range", "Custom DTE range"], ["specific-expirations", "Specific expirations"]]],
-                  ].map(([label, key, options]) => (
+                  {([
+                    ["Options source", "sourceTicker", "AUTO", [["AUTO", "Automatic for chart"], ["QQQ", "QQQ"], ["NDX", "NDX"], ["SPY", "SPY"], ["SPX", "SPX"], ["SPXW", "SPXW"], ["IWM", "IWM"]]],
+                    ["Exposure Greek", "greekMode", "GAMMA", [["GAMMA", "Gamma"], ["DELTA", "Delta"], ["VANNA", "Vanna"], ["CHARM", "Charm"]]],
+                    ["Expiration window", "expirationMode", "zero-to-one-dte", [["zero-dte", "0DTE"], ["zero-to-one-dte", "0–1 DTE"], ["zero-to-seven-dte", "0–7 DTE"], ["front-expiration", "Front expiration"], ["all-expirations", "All expirations"], ["custom-dte-range", "Custom DTE range"], ["specific-expirations", "Specific expirations"]]],
+                    ["Exposure sizing", "visualStrengthBasis", "percent-of-king", [["percent-of-king", "Relative to strongest node"], ["absolute-exposure", "Absolute exposure"], ["hybrid", "Hybrid · absolute + relative"]]],
+                  ] as const).map(([label, key, fallback, options]) => (
                     <label key={String(key)} className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
                       <span>{String(label)}</span>
                       <KwantSelect
-                        value={String(settingsInstance.settings?.[String(key)] ?? "")}
+                        value={String(settingsInstance.settings?.[String(key)] ?? fallback)}
                         onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [String(key)]: event.target.value } }))}
                         className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
                         menuLabel={String(label)}
                       >
-                        {(options as string[][]).map(([value, optionLabel]) => <option key={value} value={value}>{optionLabel}</option>)}
+                        {options.map(([value, optionLabel]) => <option key={value} value={value}>{optionLabel}</option>)}
                       </KwantSelect>
                     </label>
                   ))}
                   <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">
-                    <span>Specific expirations · comma separated YYYY-MM-DD</span>
-                    <input
-                      value={String(settingsInstance.settings?.expirationDates ?? "")}
-                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), expirationDates: event.target.value } }))}
-                      className="h-9 w-full border border-border bg-background px-3 font-mono text-[10px] normal-case tracking-normal text-foreground outline-none focus:border-primary/40"
-                      placeholder="2026-08-21, 2026-08-28"
-                    />
+                    <span>Contract universe</span>
+                    <KwantSelect
+                      value={settingsInstance.settings?.includeWeeklies === false
+                        ? settingsInstance.settings?.includeMonthlies === false
+                          ? "quarterlies-only"
+                          : settingsInstance.settings?.includeQuarterlies === false ? "monthlies-only" : "monthly-quarterly"
+                        : settingsInstance.settings?.includeMonthlies === false && settingsInstance.settings?.includeQuarterlies === false
+                          ? "weeklies-only"
+                          : "all-contracts"}
+                      onChange={(event) => {
+                        const universe = event.target.value;
+                        replace(settingsInstance.instanceId, (current) => ({
+                          ...current,
+                          settings: {
+                            ...(current.settings ?? {}),
+                            includeWeeklies: universe === "all-contracts" || universe === "weeklies-only",
+                            includeMonthlies: universe === "all-contracts" || universe === "monthlies-only" || universe === "monthly-quarterly",
+                            includeQuarterlies: universe === "all-contracts" || universe === "quarterlies-only" || universe === "monthly-quarterly",
+                          },
+                        }));
+                      }}
+                      className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                      menuLabel="Contract universe"
+                    >
+                      <option value="all-contracts">Weeklies + monthlies + quarterlies</option>
+                      <option value="weeklies-only">Weeklies only</option>
+                      <option value="monthlies-only">Monthlies only</option>
+                      <option value="quarterlies-only">Quarterlies only</option>
+                      <option value="monthly-quarterly">Monthlies + quarterlies</option>
+                    </KwantSelect>
                   </label>
+                  {settingsInstance.settings?.expirationMode === "specific-expirations" ? (
+                    <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">
+                      <span>Specific expirations · comma separated YYYY-MM-DD</span>
+                      <input
+                        value={String(settingsInstance.settings?.expirationDates ?? "")}
+                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), expirationDates: event.target.value } }))}
+                        className="h-9 w-full border border-border bg-background px-3 font-mono text-[10px] normal-case tracking-normal text-foreground outline-none focus:border-primary/40"
+                        placeholder="2026-08-21, 2026-08-28"
+                      />
+                    </label>
+                  ) : null}
                   <div className="border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
                     KING is always calculated from the full filtered strike list using the largest absolute signed exposure. Centre price and KING remain independent. Historical snapshots never read beyond replay time.
                   </div>

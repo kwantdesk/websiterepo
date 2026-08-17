@@ -212,7 +212,7 @@ export default function KwantSelect({
             ref={menuRef}
             role="listbox"
             aria-label={ariaProps["aria-label"] ?? menuLabel}
-            className="fixed z-[2200] overflow-hidden rounded-2xl border border-border bg-panel/95 p-1.5 shadow-[0_22px_70px_rgba(0,0,0,0.58)] backdrop-blur-xl"
+            className="fixed z-[12000] overflow-hidden rounded-2xl border border-border bg-panel/95 p-1.5 shadow-[0_22px_70px_rgba(0,0,0,0.58)] backdrop-blur-xl"
             style={{ left: position.left, top: position.top, width: position.width }}
           >
             <div className="flex items-center justify-between px-2.5 pb-1.5 pt-1 text-[8px] font-semibold uppercase tracking-[0.16em] text-muted">

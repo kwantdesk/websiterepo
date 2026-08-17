@@ -20,14 +20,27 @@ test("rapid GEX Bounce slider input composes against the latest indicator state"
 });
 
 test("GEX Bounce role toggles filter the exposure field that is actually painted", () => {
-  assert.match(chart, /const roleByStrike = new Map/);
-  assert.match(chart, /exposureField: bounceLevelsSnapshot\.exposureField\.map/);
-  assert.match(chart, /nodes: slice\.nodes\.filter/);
-  assert.match(chart, /roleVisibility\[role\] !== false/);
+  assert.match(chart, /const roleVisibility: Record<string, boolean> =/);
+  assert.match(chart, /filterBounceLevelsSnapshot\(/);
+  assert.match(chart, /bounceLevelsSnapshot,/);
+  assert.match(chart, /roleVisibility,/);
 });
 
 test("saved custom GEX Bounce colours survive workspace theme relinking", () => {
   assert.match(config, /const preserveBounceOverride = instance\.indicatorId === "bounce-levels"/);
   assert.match(config, /useThemeColors: preserveBounceOverride \? false : true/);
-  assert.match(config, /bounceLevelsSettingsVersion: 2/);
+  assert.match(config, /bounceLevelsSettingsVersion: 4/);
+});
+
+test("Bounce Levels exposes every data-shaping dropdown above the settings dialog", () => {
+  const select = readFileSync(new URL("../src/components/ui/KwantSelect.tsx", import.meta.url), "utf8");
+  assert.match(select, /z-\[12000\]/, "select menus must render above the indicator settings dialog");
+  assert.match(controls, /\["Options source", "sourceTicker", "AUTO"/);
+  assert.match(controls, /\["Exposure Greek", "greekMode", "GAMMA"/);
+  assert.match(controls, /\["Expiration window", "expirationMode", "zero-to-one-dte"/);
+  assert.match(controls, /\["Exposure sizing", "visualStrengthBasis", "percent-of-king"/);
+  assert.match(controls, /menuLabel="Contract universe"/);
+  assert.match(controls, /includeWeeklies: universe === "all-contracts" \|\| universe === "weeklies-only"/);
+  assert.match(chart, /visualStrengthBasis: String\(indicatorSettings\.visualStrengthBasis\)/);
+  assert.match(config, /visualStrengthBasis: \["absolute-exposure", "percent-of-king", "hybrid"\]/);
 });

@@ -1913,6 +1913,7 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
       sourceTicker: ["AUTO", "QQQ", "NDX", "SPY", "SPX", "SPXW", "IWM"],
       greekMode: ["GAMMA", "DELTA", "VANNA", "CHARM"],
       expirationMode: ["zero-dte", "zero-to-one-dte", "zero-to-seven-dte", "front-expiration", "all-expirations", "custom-dte-range", "specific-expirations"],
+      visualStrengthBasis: ["absolute-exposure", "percent-of-king", "hybrid"],
       preset: ["balanced-intraday", "zero-dte-scalper", "major-nodes-only", "fresh-bounce-levels", "node-momentum", "clean-chart", "research"],
     };
     for (const [key, allowed] of Object.entries(enumValues)) {
