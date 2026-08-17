@@ -1,4 +1,4 @@
-export type ChartViewportSyncRole = "independent" | "king" | "follower";
+export type ChartViewportSyncRole = "independent" | "peer";
 
 export type ChartViewportSnapshot = {
   groupId: string;
@@ -24,6 +24,10 @@ export function readLatestChartViewport(groupId: string) {
   return latestByGroup.get(groupId) ?? null;
 }
 
+export function clearChartViewportGroup(groupId: string) {
+  latestByGroup.delete(groupId);
+}
+
 export function subscribeChartViewport(
   groupId: string,
   listener: (snapshot: ChartViewportSnapshot) => void,
@@ -37,24 +41,24 @@ export function subscribeChartViewport(
   return () => window.removeEventListener(VIEWPORT_SYNC_EVENT, handle);
 }
 
-export function resolveFollowerPriceRange(
+export function resolveLinkedPriceRange(
   snapshot: ChartViewportSnapshot,
-  followerInstrument: string,
-  followerAnchorPrice: number,
+  linkedInstrument: string,
+  linkedAnchorPrice: number,
 ) {
   if (
-    snapshot.instrument.trim().toUpperCase() === followerInstrument.trim().toUpperCase()
+    snapshot.instrument.trim().toUpperCase() === linkedInstrument.trim().toUpperCase()
     || !Number.isFinite(snapshot.anchorPrice)
     || snapshot.anchorPrice <= 0
-    || !Number.isFinite(followerAnchorPrice)
-    || followerAnchorPrice <= 0
+    || !Number.isFinite(linkedAnchorPrice)
+    || linkedAnchorPrice <= 0
   ) {
     return snapshot.priceRange;
   }
   const lowerOffset = (snapshot.priceRange.from - snapshot.anchorPrice) / snapshot.anchorPrice;
   const upperOffset = (snapshot.priceRange.to - snapshot.anchorPrice) / snapshot.anchorPrice;
   return {
-    from: followerAnchorPrice * (1 + lowerOffset),
-    to: followerAnchorPrice * (1 + upperOffset),
+    from: linkedAnchorPrice * (1 + lowerOffset),
+    to: linkedAnchorPrice * (1 + upperOffset),
   };
 }

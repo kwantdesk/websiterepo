@@ -425,7 +425,7 @@ import {
 import {
   publishChartViewport,
   readLatestChartViewport,
-  resolveFollowerPriceRange,
+  resolveLinkedPriceRange,
   subscribeChartViewport,
   type ChartViewportSyncRole,
   type ChartViewportSnapshot,
@@ -11319,6 +11319,9 @@ function Chart({
     const container = chartContainerRef.current;
     if (!chart || !container || !viewportSyncGroup || viewportSyncRole === "independent") return;
 
+    const canApplySnapshots = viewportSyncRole === "peer";
+    const canPublishSnapshots = viewportSyncRole === "peer";
+
     const latestAnchor = () => {
       const currentCandles = viewportSyncCandlesRef.current;
       for (let index = currentCandles.length - 1; index >= 0; index -= 1) {
@@ -11330,7 +11333,7 @@ function Chart({
 
     const applySnapshot = (snapshot: ChartViewportSnapshot) => {
       if (
-        viewportSyncRole !== "follower"
+        !canApplySnapshots
         || snapshot.sourceChartId === chartInstanceId
         || snapshot.timeframe !== (timeframe ?? "")
       ) return;
@@ -11342,7 +11345,7 @@ function Chart({
           from: snapshot.visibleTimeRange.from as Time,
           to: snapshot.visibleTimeRange.to as Time,
         });
-        const targetRange = resolveFollowerPriceRange(snapshot, instrument, anchorPrice);
+        const targetRange = resolveLinkedPriceRange(snapshot, instrument, anchorPrice);
         const priceScale = chart.priceScale("right") as ReturnType<IChartApi["priceScale"]> & {
           setVisibleRange?: (range: { from: number; to: number } | null) => void;
           setAutoScale?: (enabled: boolean) => void;
@@ -11352,8 +11355,8 @@ function Chart({
           priceScale.setVisibleRange?.(targetRange);
         }
       } catch {
-        // A follower can receive the King's range while its candles are still
-        // restoring. The cached snapshot is retried below after data settles.
+        // A linked chart can receive another chart's range while its candles
+        // are still restoring. The cached snapshot is retried below.
       } finally {
         window.requestAnimationFrame(() => {
           viewportSyncApplyingRef.current = false;
@@ -11362,7 +11365,7 @@ function Chart({
     };
 
     const publishSnapshot = () => {
-      if (viewportSyncRole !== "king" || viewportSyncApplyingRef.current) return;
+      if (!canPublishSnapshots || viewportSyncApplyingRef.current) return;
       if (viewportSyncPublishFrameRef.current !== null) return;
       viewportSyncPublishFrameRef.current = window.requestAnimationFrame(() => {
         viewportSyncPublishFrameRef.current = null;
@@ -11394,35 +11397,39 @@ function Chart({
     const handleWheelInteraction = () => publishSnapshot();
     const timeScale = chart.timeScale();
 
-    if (viewportSyncRole === "king") {
+    let initialPublishTimer: number | null = null;
+    if (canPublishSnapshots) {
       timeScale.subscribeVisibleTimeRangeChange(publishSnapshot);
       container.addEventListener("pointermove", handlePointerInteraction, { passive: true });
       container.addEventListener("pointerup", publishSnapshot, { passive: true });
       container.addEventListener("wheel", handleWheelInteraction, { passive: true });
-      const initialPublishTimer = window.setTimeout(publishSnapshot, 80);
-      return () => {
-        window.clearTimeout(initialPublishTimer);
-        timeScale.unsubscribeVisibleTimeRangeChange(publishSnapshot);
-        container.removeEventListener("pointermove", handlePointerInteraction);
-        container.removeEventListener("pointerup", publishSnapshot);
-        container.removeEventListener("wheel", handleWheelInteraction);
-        if (viewportSyncPublishFrameRef.current !== null) {
-          window.cancelAnimationFrame(viewportSyncPublishFrameRef.current);
-          viewportSyncPublishFrameRef.current = null;
-        }
-      };
+      initialPublishTimer = window.setTimeout(publishSnapshot, 80);
     }
 
-    const unsubscribe = subscribeChartViewport(viewportSyncGroup, applySnapshot);
+    const unsubscribe = canApplySnapshots
+      ? subscribeChartViewport(viewportSyncGroup, applySnapshot)
+      : () => undefined;
     const retryLatest = () => {
+      if (!canApplySnapshots) return;
       const latest = readLatestChartViewport(viewportSyncGroup);
       if (latest) applySnapshot(latest);
     };
     retryLatest();
     const retryTimer = window.setTimeout(retryLatest, 120);
     return () => {
+      if (initialPublishTimer !== null) window.clearTimeout(initialPublishTimer);
       window.clearTimeout(retryTimer);
       unsubscribe();
+      if (canPublishSnapshots) {
+        timeScale.unsubscribeVisibleTimeRangeChange(publishSnapshot);
+        container.removeEventListener("pointermove", handlePointerInteraction);
+        container.removeEventListener("pointerup", publishSnapshot);
+        container.removeEventListener("wheel", handleWheelInteraction);
+      }
+      if (viewportSyncPublishFrameRef.current !== null) {
+        window.cancelAnimationFrame(viewportSyncPublishFrameRef.current);
+        viewportSyncPublishFrameRef.current = null;
+      }
     };
   }, [chartInstanceId, chartReadyRevision, instrument, timeframe, viewportSyncGroup, viewportSyncRole]);
 

@@ -17,6 +17,7 @@ import { useStructureLevels } from "@/hooks/useStructureLevels";
 import { useGexBotFlow } from "@/hooks/useGexBotFlow";
 import { ACTIVITY_STREAK_TIME_ZONE } from "@/lib/activityStreak";
 import { STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT } from "@/lib/volumeProfileMath";
+import { clearChartViewportGroup } from "@/lib/chartViewportSync";
 
 import { Activity as ReactActivity, memo, startTransition, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
@@ -43,7 +44,6 @@ import {
   ChevronUp,
   Code2,
   Copy,
-  Crown,
   Download,
   Eye,
   EyeOff,
@@ -937,6 +937,7 @@ const CHART_TEMPLATES_STORAGE_KEY = "olisa-chart-templates";
 const CHART_WORKSPACE_SETTINGS_STORAGE_KEY = "kwantdesk:chart-workspace-settings:v1";
 type ChartWorkspaceScope = "charts" | "gamma";
 const GAMMA_CHART_WORKSPACE_STORAGE_PREFIX = "kwantdesk:gamma-charting";
+const GEX_VUE_VIEWPORT_SYNC_GROUP = "gex-vue-linked-viewport";
 const workspaceScopeStorageKey = (scope: ChartWorkspaceScope, chartKey: string) =>
   scope === "charts" ? chartKey : `${GAMMA_CHART_WORKSPACE_STORAGE_PREFIX}:${chartKey}`;
 const WORKSPACE_BACKUP_FORMAT = "kwantdesk-chart-workspaces";
@@ -4458,7 +4459,7 @@ function WorkspaceChartPaneComponent({
   settings: ChartSettings;
   crosshairSyncScope?: "matching" | "gamvue";
   viewportSyncGroup?: string;
-  viewportSyncRole?: "independent" | "king" | "follower";
+  viewportSyncRole?: "independent" | "peer";
   trades?: (Trade & { markerVisible?: boolean })[];
   indicators: ChartIndicatorInstance[];
   onActivate: () => void;
@@ -7409,24 +7410,19 @@ export default function KwantifyWorkspace({
   const [workspaceSplitRatio, setWorkspaceSplitRatio] = useState<number>(initialChartWorkspaceRuntime.splitRatio);
   const [workspaceQuadSplit, setWorkspaceQuadSplit] = useState<{ x: number; y: number }>(initialChartWorkspaceRuntime.quadSplit);
   const [workspacePanes, setWorkspacePanes] = useState<WorkspacePane[]>(initialChartWorkspaceRuntime.panes);
-  const [kingViewportPaneId, setKingViewportPaneId] = useState<string | null>(null);
-  const [kingViewportFollowerPaneIds, setKingViewportFollowerPaneIds] = useState<Set<string>>(() => new Set());
+  const [linkedViewportPaneIds, setLinkedViewportPaneIds] = useState<Set<string>>(() => new Set());
   useEffect(() => {
     if (chartWorkspaceScope !== "gamma") return;
     const chartPaneIds = new Set(
       workspacePanes.filter((pane) => isWorkspaceChartKind(pane.content)).map((pane) => pane.id),
     );
-    if (kingViewportPaneId && !chartPaneIds.has(kingViewportPaneId)) {
-      setKingViewportPaneId(null);
-      setKingViewportFollowerPaneIds(new Set());
-      return;
-    }
-    setKingViewportFollowerPaneIds((current) => {
-      const next = new Set([...current].filter((paneId) => chartPaneIds.has(paneId) && paneId !== kingViewportPaneId));
+    setLinkedViewportPaneIds((current) => {
+      const next = new Set([...current].filter((paneId) => chartPaneIds.has(paneId)));
       if (next.size === current.size && [...next].every((paneId) => current.has(paneId))) return current;
+      if (next.size === 0) clearChartViewportGroup(GEX_VUE_VIEWPORT_SYNC_GROUP);
       return next;
     });
-  }, [chartWorkspaceScope, kingViewportPaneId, workspacePanes]);
+  }, [chartWorkspaceScope, workspacePanes]);
   const [workspaceTree, setWorkspaceTree] = useState<WorkspaceLayoutNode>(initialChartWorkspaceRuntime.tree);
   const [workspaceFloatingWindows, setWorkspaceFloatingWindows] = useState<WorkspaceFloatingWindow[]>(initialChartWorkspaceRuntime.floatingWindows);
   const [workspacePresets, setWorkspacePresets] = useState<WorkspacePreset[]>(initialChartWorkspaceRuntime.presets);
@@ -12316,39 +12312,31 @@ export default function KwantifyWorkspace({
       pane.id === paneId ? { ...pane, locked: !pane.locked } : pane));
   };
 
-  const toggleKingViewportConnection = (paneId: string) => {
+  const toggleSharedViewportConnection = (paneId: string) => {
     if (chartWorkspaceScopeRef.current !== "gamma") return;
     const pane = workspacePanes.find((candidate) => candidate.id === paneId);
     if (!pane || !isWorkspaceChartKind(pane.content)) return;
-    if (!kingViewportPaneId) {
-      setKingViewportPaneId(paneId);
-      setKingViewportFollowerPaneIds(new Set());
-      showReportToast("success", `${displayCmeSymbol(pane.symbol)} is now the King viewport`, 1800);
+    if (linkedViewportPaneIds.has(paneId)) {
+      const next = new Set(linkedViewportPaneIds);
+      next.delete(paneId);
+      setLinkedViewportPaneIds(next);
+      if (next.size === 0) clearChartViewportGroup(GEX_VUE_VIEWPORT_SYNC_GROUP);
+      showReportToast("success", `${displayCmeSymbol(pane.symbol)} unlinked from the shared viewport`, 1500);
       return;
     }
-    if (kingViewportPaneId === paneId) {
-      setKingViewportPaneId(null);
-      setKingViewportFollowerPaneIds(new Set());
-      showReportToast("success", "King viewport link cleared", 1500);
-      return;
+
+    const referencePane = workspacePanes.find((candidate) => linkedViewportPaneIds.has(candidate.id));
+    if (linkedViewportPaneIds.size === 0) clearChartViewportGroup(GEX_VUE_VIEWPORT_SYNC_GROUP);
+    if (referencePane && pane.timeframe !== referencePane.timeframe) {
+      updateWorkspacePane(paneId, { timeframe: referencePane.timeframe });
+      if (activePaneId === paneId) setSelectedTimeframe(referencePane.timeframe);
     }
-    const kingPane = workspacePanes.find((candidate) => candidate.id === kingViewportPaneId);
-    if (!kingPane) {
-      setKingViewportPaneId(paneId);
-      setKingViewportFollowerPaneIds(new Set());
-      return;
-    }
-    setKingViewportFollowerPaneIds((current) => {
-      const next = new Set(current);
-      if (next.has(paneId)) {
-        next.delete(paneId);
-      } else {
-        next.add(paneId);
-        updateWorkspacePane(paneId, { timeframe: kingPane.timeframe });
-        if (activePaneId === paneId) setSelectedTimeframe(kingPane.timeframe);
-      }
-      return next;
-    });
+    setLinkedViewportPaneIds((current) => new Set(current).add(paneId));
+    showReportToast(
+      "success",
+      `${displayCmeSymbol(pane.symbol)} joined the shared viewport — any linked chart can lead`,
+      1800,
+    );
   };
 
   const activateFloatingWorkspacePane = (paneId: string) => {
@@ -13537,11 +13525,10 @@ export default function KwantifyWorkspace({
     clearBacktest();
     if (
       chartWorkspaceScopeRef.current === "gamma"
-      && kingViewportPaneId
-      && (activePaneId === kingViewportPaneId || kingViewportFollowerPaneIds.has(activePaneId))
+      && linkedViewportPaneIds.has(activePaneId)
     ) {
       setWorkspacePanes((current) => current.map((pane) => (
-        pane.id === kingViewportPaneId || kingViewportFollowerPaneIds.has(pane.id)
+        linkedViewportPaneIds.has(pane.id)
           ? { ...pane, timeframe }
           : pane
       )));
@@ -13561,15 +13548,14 @@ export default function KwantifyWorkspace({
     clearBacktest();
     if (
       chartWorkspaceScopeRef.current === "gamma"
-      && kingViewportPaneId
-      && (paneId === kingViewportPaneId || kingViewportFollowerPaneIds.has(paneId))
+      && linkedViewportPaneIds.has(paneId)
     ) {
       setWorkspacePanes((current) => current.map((candidate) => (
-        candidate.id === kingViewportPaneId || kingViewportFollowerPaneIds.has(candidate.id)
+        linkedViewportPaneIds.has(candidate.id)
           ? { ...candidate, timeframe }
           : candidate
       )));
-      if (kingViewportPaneId === activePaneId || kingViewportFollowerPaneIds.has(activePaneId)) {
+      if (linkedViewportPaneIds.has(activePaneId)) {
         setSelectedTimeframe(timeframe);
       }
       return true;
@@ -14307,13 +14293,11 @@ export default function KwantifyWorkspace({
         period={pane.period}
         settings={chartSettings}
         crosshairSyncScope={chartWorkspaceScope === "gamma" ? "gamvue" : "matching"}
-        viewportSyncGroup={chartWorkspaceScope === "gamma" ? "gex-vue-king-viewport" : ""}
+        viewportSyncGroup={chartWorkspaceScope === "gamma" ? GEX_VUE_VIEWPORT_SYNC_GROUP : ""}
         viewportSyncRole={chartWorkspaceScope === "gamma"
-          ? kingViewportPaneId === pane.id
-            ? "king"
-            : kingViewportFollowerPaneIds.has(pane.id)
-              ? "follower"
-              : "independent"
+          ? linkedViewportPaneIds.has(pane.id)
+            ? "peer"
+            : "independent"
           : "independent"}
         trades={activePaneId === pane.id ? chartTrades : []}
         indicators={paneIndicators[pane.id] ?? []}
@@ -14412,27 +14396,18 @@ export default function KwantifyWorkspace({
             {chartWorkspaceScope === "gamma" ? (
               <button
                 type="button"
-                onClick={() => toggleKingViewportConnection(pane.id)}
-                className={`relative flex h-7 w-7 items-center justify-center rounded-lg transition-colors ${
-                  kingViewportPaneId === pane.id
-                    ? "bg-primary text-background shadow-[0_0_14px_color-mix(in_srgb,var(--primary)_50%,transparent)]"
-                    : kingViewportFollowerPaneIds.has(pane.id)
-                      ? "bg-primary/15 text-primary"
-                      : "text-muted hover:bg-surface hover:text-primary"
+                onClick={() => toggleSharedViewportConnection(pane.id)}
+                className={`flex h-7 w-7 items-center justify-center rounded-lg transition-colors ${
+                  linkedViewportPaneIds.has(pane.id)
+                    ? "bg-primary/15 text-primary shadow-[0_0_14px_color-mix(in_srgb,var(--primary)_35%,transparent)]"
+                    : "text-muted hover:bg-surface hover:text-primary"
                 }`}
-                title={kingViewportPaneId === pane.id
-                  ? "King viewport — click to clear the group"
-                  : kingViewportFollowerPaneIds.has(pane.id)
-                    ? "Locked to the King viewport — click to unlink"
-                    : kingViewportPaneId
-                      ? "Lock this chart to the King viewport"
-                      : "Make this the King viewport"}
-                aria-label={kingViewportPaneId === pane.id ? "Clear King viewport" : "Toggle King viewport link"}
+                title={linkedViewportPaneIds.has(pane.id)
+                  ? "Shared viewport linked — drag or zoom any linked chart; click to unlink"
+                  : "Link this chart to the shared viewport"}
+                aria-label={linkedViewportPaneIds.has(pane.id) ? "Unlink shared viewport" : "Link shared viewport"}
               >
-                <Crown className="h-3.5 w-3.5" />
-                {kingViewportFollowerPaneIds.has(pane.id) ? (
-                  <Lock className="absolute bottom-0.5 right-0.5 h-2 w-2" />
-                ) : null}
+                <ArrowLeftRight className="h-3.5 w-3.5" />
               </button>
             ) : null}
             {hasStandaloneWorkspaceSettings(pane) ? (
@@ -14544,25 +14519,18 @@ export default function KwantifyWorkspace({
               <button
                 type="button"
                 onPointerDown={(event) => event.stopPropagation()}
-                onClick={() => toggleKingViewportConnection(pane.id)}
-                className={`relative flex h-6 w-6 items-center justify-center border transition-colors ${
-                  kingViewportPaneId === pane.id
-                    ? "border-primary bg-primary text-background"
-                    : kingViewportFollowerPaneIds.has(pane.id)
-                      ? "border-primary/40 bg-primary/15 text-primary"
-                      : "border-transparent text-muted hover:border-border hover:text-primary"
+                onClick={() => toggleSharedViewportConnection(pane.id)}
+                className={`flex h-6 w-6 items-center justify-center border transition-colors ${
+                  linkedViewportPaneIds.has(pane.id)
+                    ? "border-primary/40 bg-primary/15 text-primary"
+                    : "border-transparent text-muted hover:border-border hover:text-primary"
                 }`}
-                title={kingViewportPaneId === pane.id
-                  ? "King viewport — click to clear the group"
-                  : kingViewportFollowerPaneIds.has(pane.id)
-                    ? "Locked to the King viewport — click to unlink"
-                    : kingViewportPaneId
-                      ? "Lock this chart to the King viewport"
-                      : "Make this the King viewport"}
-                aria-label="Toggle King viewport link"
+                title={linkedViewportPaneIds.has(pane.id)
+                  ? "Shared viewport linked — drag or zoom any linked chart; click to unlink"
+                  : "Link this chart to the shared viewport"}
+                aria-label={linkedViewportPaneIds.has(pane.id) ? "Unlink shared viewport" : "Link shared viewport"}
               >
-                <Crown className="h-3 w-3" />
-                {kingViewportFollowerPaneIds.has(pane.id) ? <Lock className="absolute bottom-0 right-0 h-1.5 w-1.5" /> : null}
+                <ArrowLeftRight className="h-3 w-3" />
               </button>
             ) : null}
             {hasStandaloneWorkspaceSettings(pane) ? (
