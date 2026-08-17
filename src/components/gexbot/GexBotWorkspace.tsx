@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { ProfessionalOrderflowChart, ProfessionalProfileChart, ProfessionalStateChart, type OrderflowPanelConfig } from "@/components/gexbot/GexBotCharts";
+import { ProfessionalOrderflowChart, ProfessionalProfileChart, ProfessionalStateChart, type OrderflowPanelConfig } from "@/components/gexbot/GexBotLightweightCharts";
 import KwantSelect from "@/components/ui/KwantSelect";
 import { GEX_BOX_ORDERFLOW_METRICS, type OrderflowMetric } from "@/lib/gex-box/domain";
 import { normalizeReplayFrames, replayFrameAtOrBefore, replayFramesAtOrBefore } from "@/lib/gex-box/replay";
