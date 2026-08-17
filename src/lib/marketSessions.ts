@@ -30,6 +30,22 @@ export type PreviousSessionHighLowLevel = {
   label: string;
 };
 
+export const INITIAL_BALANCE_DURATIONS = [15, 30, 45, 60] as const;
+export type InitialBalanceDuration = (typeof INITIAL_BALANCE_DURATIONS)[number];
+
+export type InitialBalanceLevel = {
+  id: string;
+  side: "high" | "low";
+  session: MarketSessionWindow;
+  price: number;
+  startTimestamp: number;
+  endTimestamp: number;
+  formationEndTimestamp: number;
+  durationMinutes: InitialBalanceDuration;
+  developing: boolean;
+  label: string;
+};
+
 export const DEFAULT_MARKET_SESSIONS: MarketSessionDefinition[] = [
   { key: "tokyo", label: "Tokyo", timezone: "Asia/Tokyo", start: "09:00", end: "18:00", color: "#FF9900" },
   { key: "london", label: "London", timezone: "Europe/London", start: "08:00", end: "17:00", color: "#4CAF50" },
@@ -195,5 +211,83 @@ export function buildPreviousSessionHighLowLevels(
       });
     }
     return levels;
+  });
+}
+
+function normalizeInitialBalanceDuration(value: unknown): InitialBalanceDuration {
+  const requested = Number(value);
+  return INITIAL_BALANCE_DURATIONS.includes(requested as InitialBalanceDuration)
+    ? requested as InitialBalanceDuration
+    : 60;
+}
+
+/**
+ * Builds the opening-range high and low for every enabled market session.
+ *
+ * During the configured formation window the returned prices develop with
+ * each completed/live candle. Once that window ends the same two prices are
+ * retained for the rest of the session. Session discovery is shared with the
+ * Sessions study, so exchange-local clocks remain DST aware.
+ */
+export function buildInitialBalanceLevels(
+  candles: Candle[],
+  settings: SessionSettings,
+  intervalMs = 60_000,
+): InitialBalanceLevel[] {
+  if (!candles.length) return [];
+  const durationMinutes = normalizeInitialBalanceDuration(settings.durationMinutes);
+  const formationDurationMs = durationMinutes * 60_000;
+  const latestTimestamp = candles.at(-1)!.timestamp;
+  const candlesByTimestamp = new Map(candles.map((candle) => [candle.timestamp, candle]));
+  const windows = buildMarketSessionWindows(candles, settings, intervalMs);
+
+  return windows.flatMap((session) => {
+    const formationEndTimestamp = session.startTimestamp + formationDurationMs;
+    const formationCandles = candles.filter((candle) =>
+      candle.timestamp >= session.startTimestamp
+      && candle.timestamp < formationEndTimestamp
+      && candle.timestamp < session.endTimestamp);
+    if (!formationCandles.length) return [];
+
+    const high = Math.max(...formationCandles.map((candle) => candle.high));
+    const low = Math.min(...formationCandles.map((candle) => candle.low));
+    if (!Number.isFinite(high) || !Number.isFinite(low)) return [];
+
+    // Keep the developing line attached to the latest real chart bar. Once
+    // the session is historical, its own end timestamp freezes the extent.
+    const finalCandle = candlesByTimestamp.get(session.endTimestamp - intervalMs);
+    const endTimestamp = finalCandle
+      ? finalCandle.timestamp
+      : Math.max(session.startTimestamp, session.endTimestamp - intervalMs);
+    const developing = latestTimestamp < formationEndTimestamp
+      && latestTimestamp < session.endTimestamp;
+    const suffix = developing ? " · BUILDING" : "";
+
+    return [
+      ...(settings.showHighs === false ? [] : [{
+        id: `${session.key}-${session.startTimestamp}-ib-high-${durationMinutes}`,
+        side: "high" as const,
+        session,
+        price: high,
+        startTimestamp: session.startTimestamp,
+        endTimestamp,
+        formationEndTimestamp,
+        durationMinutes,
+        developing,
+        label: `${session.label} IBH ${durationMinutes}m${suffix}`,
+      }]),
+      ...(settings.showLows === false ? [] : [{
+        id: `${session.key}-${session.startTimestamp}-ib-low-${durationMinutes}`,
+        side: "low" as const,
+        session,
+        price: low,
+        startTimestamp: session.startTimestamp,
+        endTimestamp,
+        formationEndTimestamp,
+        durationMinutes,
+        developing,
+        label: `${session.label} IBL ${durationMinutes}m${suffix}`,
+      }]),
+    ];
   });
 }

@@ -23,6 +23,7 @@
     "test:poc-auction-suite": "node --experimental-strip-types scripts/test-poc-auction-suite.mjs",
     "test:tape-speed-order-flow-burst": "node --experimental-strip-types scripts/test-tape-speed-order-flow-burst.mjs",
     "test:economic-calendar-forward": "node --experimental-strip-types scripts/test-economic-calendar-forward.mjs",
+    "test:initial-balance": "node --experimental-strip-types scripts/test-initial-balance.mjs",
     "desktop:build": "powershell -ExecutionPolicy Bypass -File desktop/package-windows.ps1"
   },
   "dependencies": {

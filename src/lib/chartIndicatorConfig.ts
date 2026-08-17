@@ -64,6 +64,7 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "delta-profile",
   "sessions",
   "session-highs-lows",
+  "ib-levels",
   "big-trades",
   "deep-m-effort-nq",
   "depth-of-market",
@@ -650,6 +651,11 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
   "session-highs-lows": [
     { key: "lookbackDays", label: "Session search lookback (days)", defaultValue: 30, min: 7, max: 365 },
     { key: "lineOpacity", label: "Line opacity (%)", defaultValue: 82, min: 5, max: 100 },
+    { key: "lineWidth", label: "Line width", defaultValue: 1, min: 1, max: 4, step: 1 },
+  ],
+  "ib-levels": [
+    { key: "lookbackDays", label: "Lookback (days)", defaultValue: 7, min: 1, max: 30 },
+    { key: "lineOpacity", label: "Line opacity (%)", defaultValue: 88, min: 5, max: 100 },
     { key: "lineWidth", label: "Line width", defaultValue: 1, min: 1, max: 4, step: 1 },
   ],
   "kwant-profile": [
@@ -1434,6 +1440,45 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     labelSize: "small",
     sessionHighLowSettingsVersion: 1,
   } : {}),
+  ...(indicatorId === "ib-levels" ? {
+    durationMinutes: 60,
+    showTokyo: true,
+    showLondon: true,
+    showNewYork: true,
+    showSydney: true,
+    tokyoLabel: "Tokyo",
+    londonLabel: "London",
+    newYorkLabel: "New York",
+    sydneyLabel: "Sydney",
+    tokyoStart: "09:00",
+    tokyoEnd: "18:00",
+    londonStart: "08:00",
+    londonEnd: "17:00",
+    newYorkStart: "09:30",
+    newYorkEnd: "16:00",
+    sydneyStart: "08:00",
+    sydneyEnd: "17:00",
+    tokyoColor: "#FF9900",
+    londonColor: "#4CAF50",
+    newYorkColor: "#2196F3",
+    sydneyColor: "#A461BB",
+    followSessionsStudy: false,
+    showHighs: true,
+    showLows: true,
+    showLabels: true,
+    hideWeekends: true,
+    useSessionColors: false,
+    useThemeColors: true,
+    highColor: theme?.upColor ?? "#22C55E",
+    lowColor: theme?.downColor ?? "#EF4444",
+    developingLineStyle: "solid",
+    fixedLineStyle: "dashed",
+    labelSize: "small",
+    lookbackDays: 7,
+    lineOpacity: 88,
+    lineWidth: 1,
+    initialBalanceSettingsVersion: 1,
+  } : {}),
   ...(indicatorId === "big-trades" ? {
     daysToLoad: 1,
     filterMode: "manual",
@@ -2003,6 +2048,34 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         ...(normalizedInstance.settings ?? {}),
         gammaSettingsVersion: 2,
       },
+    };
+  }
+  if (normalizedInstance.indicatorId === "ib-levels") {
+    const defaults = defaultIndicatorSettings("ib-levels");
+    const settings: Record<string, number | string | boolean> = {
+      ...defaults,
+      ...(normalizedInstance.settings ?? {}),
+    };
+    const requestedDuration = Number(settings.durationMinutes);
+    settings.durationMinutes = [15, 30, 45, 60].includes(requestedDuration)
+      ? requestedDuration
+      : 60;
+    for (const definition of INDICATOR_NUMERIC_SETTINGS["ib-levels"] ?? []) {
+      const parsed = Number(settings[definition.key]);
+      settings[definition.key] = Math.min(
+        definition.max,
+        Math.max(definition.min, Number.isFinite(parsed) ? parsed : definition.defaultValue),
+      );
+    }
+    if (!["solid", "dashed", "dotted"].includes(String(settings.developingLineStyle))) {
+      settings.developingLineStyle = "solid";
+    }
+    if (!["solid", "dashed", "dotted"].includes(String(settings.fixedLineStyle))) {
+      settings.fixedLineStyle = "dashed";
+    }
+    return {
+      ...normalizedInstance,
+      settings: { ...settings, initialBalanceSettingsVersion: 1 },
     };
   }
   if (normalizedInstance.indicatorId !== "cumulative-volume-delta") return normalizedInstance;

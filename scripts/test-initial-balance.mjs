@@ -1,0 +1,51 @@
+import assert from "node:assert/strict";
+import { buildInitialBalanceLevels } from "../src/lib/marketSessions.ts";
+
+const base = Date.parse("2026-01-05T14:30:00.000Z"); // 09:30 New York (EST)
+const candle = (offsetMinutes, open, high, low, close) => ({
+  timestamp: base + offsetMinutes * 60_000,
+  open,
+  high,
+  low,
+  close,
+  volume: 100,
+});
+
+const candles = [
+  candle(0, 100, 101, 99, 100.5),
+  candle(5, 100.5, 102, 98, 101),
+  candle(10, 101, 103, 100, 102),
+  candle(15, 102, 110, 97, 109),
+  candle(20, 109, 111, 96, 108),
+  candle(75, 108, 112, 95, 111),
+];
+
+const settings = {
+  durationMinutes: 15,
+  showTokyo: false,
+  showLondon: false,
+  showNewYork: true,
+  showSydney: false,
+  newYorkStart: "09:30",
+  newYorkEnd: "16:00",
+  lookbackDays: 7,
+  hideWeekends: true,
+};
+
+const frozen = buildInitialBalanceLevels(candles, settings, 5 * 60_000);
+assert.equal(frozen.length, 2, "IB returns one high and one low");
+assert.equal(frozen.find((level) => level.side === "high")?.price, 103, "IBH ignores later session highs");
+assert.equal(frozen.find((level) => level.side === "low")?.price, 98, "IBL ignores later session lows");
+assert.equal(frozen[0].developing, false, "IB freezes after its formation window");
+assert.match(frozen[0].label, /15m/, "IB label states the selected formation window");
+
+const developing = buildInitialBalanceLevels(candles.slice(0, 2), settings, 5 * 60_000);
+assert.equal(developing.length, 2);
+assert.equal(developing[0].developing, true, "IB develops while the formation window is open");
+assert.match(developing[0].label, /BUILDING/, "Developing state is visible on-chart");
+
+const fallback = buildInitialBalanceLevels(candles, { ...settings, durationMinutes: 17 }, 5 * 60_000);
+assert.equal(fallback[0].durationMinutes, 60, "Unsupported durations normalize to 60 minutes");
+assert.equal(fallback.find((level) => level.side === "high")?.price, 111, "60-minute fallback uses the complete first hour only");
+
+console.log("Initial Balance levels tests passed.");

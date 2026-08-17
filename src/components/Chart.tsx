@@ -312,6 +312,7 @@ import {
 import { fetchWorkspaceData, readWorkspaceData } from "@/lib/workspaceDataCache";
 import { STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT } from "@/lib/volumeProfileMath";
 import {
+  buildInitialBalanceLevels,
   buildMarketSessionWindows,
   buildPreviousSessionHighLowLevels,
 } from "@/lib/marketSessions";
@@ -611,6 +612,7 @@ const TPO_LEVEL_QUERY_KEYS = [
 type SessionHighLowRenderLevel = {
   id: string;
   startTime: Time;
+  endTime?: Time;
   price: number;
   label: string;
   color: string;
@@ -652,7 +654,13 @@ class SessionHighLowRenderer implements ISeriesPrimitivePaneRenderer {
         );
         context.beginPath();
         context.moveTo(startX, y + 0.5);
-        context.lineTo(mediaSize.width, y + 0.5);
+        const rawEndX = level.endTime === undefined
+          ? null
+          : chart.timeScale().timeToCoordinate(level.endTime);
+        const endX = rawEndX === null
+          ? mediaSize.width
+          : Math.min(mediaSize.width, Math.max(startX, rawEndX));
+        context.lineTo(endX, y + 0.5);
         context.stroke();
 
         if (level.label) {
@@ -7653,6 +7661,11 @@ export default function Chart({
       candidate.enabled && candidate.indicatorId === "session-highs-lows") ?? null,
     [indicatorSignature, indicators],
   );
+  const initialBalanceIndicator = useMemo(
+    () => indicators.find((candidate) =>
+      candidate.enabled && candidate.indicatorId === "ib-levels") ?? null,
+    [indicatorSignature, indicators],
+  );
   const sessionHighLowSettings = useMemo(() => {
     const own = sessionHighLowIndicator?.settings ?? {};
     if (!sessionHighLowIndicator || own.followSessionsStudy === false || !sessionsIndicator) return own;
@@ -7670,6 +7683,23 @@ export default function Chart({
       return result;
     }, { ...own });
   }, [sessionHighLowIndicator, sessionsIndicator]);
+  const initialBalanceSettings = useMemo(() => {
+    const own = initialBalanceIndicator?.settings ?? {};
+    if (!initialBalanceIndicator || own.followSessionsStudy !== true || !sessionsIndicator) return own;
+    const linked = sessionsIndicator.settings ?? {};
+    const keys = [
+      "showTokyo", "showLondon", "showNewYork", "showSydney",
+      "tokyoLabel", "tokyoStart", "tokyoEnd", "tokyoColor",
+      "londonLabel", "londonStart", "londonEnd", "londonColor",
+      "newYorkLabel", "newYorkStart", "newYorkEnd", "newYorkColor",
+      "sydneyLabel", "sydneyStart", "sydneyEnd", "sydneyColor",
+      "hideWeekends",
+    ] as const;
+    return keys.reduce<Record<string, number | string | boolean>>((result, key) => {
+      if (linked[key] !== undefined) result[key] = linked[key]!;
+      return result;
+    }, { ...own });
+  }, [initialBalanceIndicator, sessionsIndicator]);
   const marketSessionWindows = useMemo(
     () => sessionsIndicator
       ? buildMarketSessionWindows(
@@ -7690,6 +7720,16 @@ export default function Chart({
       : [],
     [candleIntervalMs, indicatorCandles, sessionHighLowIndicator, sessionHighLowSettings],
   );
+  const initialBalanceLevels = useMemo(
+    () => initialBalanceIndicator
+      ? buildInitialBalanceLevels(
+          indicatorCandles,
+          initialBalanceSettings,
+          candleIntervalMs ?? 60_000,
+        )
+      : [],
+    [candleIntervalMs, indicatorCandles, initialBalanceIndicator, initialBalanceSettings],
+  );
   const sessionHighLowRenderData = useMemo<SessionHighLowRenderLevel[]>(() => {
     const useSessionColors = sessionHighLowSettings.useSessionColors !== false;
     const opacity = clamp(Number(sessionHighLowSettings.lineOpacity ?? 82) / 100, 0.05, 1);
@@ -7700,7 +7740,7 @@ export default function Chart({
       ? requestedStyle
       : "dashed";
 
-    return previousSessionLevels.map((level) => ({
+    const previousLevels: SessionHighLowRenderLevel[] = previousSessionLevels.map((level) => ({
       id: level.id,
       startTime: (
         eventChartTimeBySourceTimeRef.current.get(level.startTimestamp)
@@ -7719,8 +7759,41 @@ export default function Chart({
       fontSize,
       precision: priceFormat.precision,
     }));
+    const ibOpacity = clamp(Number(initialBalanceSettings.lineOpacity ?? 88) / 100, 0.05, 1);
+    const ibLabelSize = String(initialBalanceSettings.labelSize ?? "small");
+    const ibFontSize = ibLabelSize === "tiny" ? 8 : ibLabelSize === "normal" ? 11 : 9;
+    const useIbSessionColors = initialBalanceSettings.useSessionColors === true;
+    const useIbThemeColors = initialBalanceSettings.useThemeColors !== false;
+    const ibLevels: SessionHighLowRenderLevel[] = initialBalanceLevels.map((level) => ({
+      id: level.id,
+      startTime: (
+        eventChartTimeBySourceTimeRef.current.get(level.startTimestamp)
+        ?? Math.floor(level.startTimestamp / 1_000)
+      ) as Time,
+      endTime: (
+        eventChartTimeBySourceTimeRef.current.get(level.endTimestamp)
+        ?? Math.floor(level.endTimestamp / 1_000)
+      ) as Time,
+      price: level.price,
+      label: initialBalanceSettings.showLabels === false ? "" : level.label,
+      color: useIbSessionColors
+        ? level.session.color
+        : level.side === "high"
+          ? useIbThemeColors ? settings.upColor : String(initialBalanceSettings.highColor ?? settings.upColor)
+          : useIbThemeColors ? settings.downColor : String(initialBalanceSettings.lowColor ?? settings.downColor),
+      opacity: ibOpacity,
+      lineWidth: clamp(Number(initialBalanceSettings.lineWidth ?? 1), 1, 4),
+      lineStyle: level.developing
+        ? String(initialBalanceSettings.developingLineStyle ?? "solid") === "dotted" ? "dotted" as const : String(initialBalanceSettings.developingLineStyle ?? "solid") === "dashed" ? "dashed" as const : "solid" as const
+        : String(initialBalanceSettings.fixedLineStyle ?? "dashed") === "dotted" ? "dotted" as const : String(initialBalanceSettings.fixedLineStyle ?? "dashed") === "solid" ? "solid" as const : "dashed" as const,
+      fontSize: ibFontSize,
+      precision: priceFormat.precision,
+    }));
+    return [...previousLevels, ...ibLevels];
   }, [
     chartReadyRevision,
+    initialBalanceLevels,
+    initialBalanceSettings,
     previousSessionLevels,
     priceFormat.precision,
     sessionHighLowSettings,

@@ -256,6 +256,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "keltner-channel",
   "sessions",
   "session-highs-lows",
+  "ib-levels",
   "divergence-detector",
   "big-trades",
   "depth-of-market",
@@ -1186,6 +1187,40 @@ export default function ChartIndicatorsControl({
                   </div>
                   <div className="rounded-lg border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
                     IV Rank uses the exact current/min/max formula. IV Percentile is calculated independently from historical observations and is never approximated from rank. QuantData credentials remain server-side.
+                  </div>
+                </div>
+              ) : null}
+
+              {settingsDefinition.id === "ib-levels" ? (
+                <div className="space-y-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3">
+                  <div>
+                    <div className="text-[10px] font-medium text-foreground">Initial balance formation window</div>
+                    <div className="mt-1 text-[8px] leading-4 text-muted">
+                      IBH and IBL move with price during this opening window, then freeze for the remainder of that session.
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-4 gap-2" role="group" aria-label="Initial balance duration">
+                    {([15, 30, 45, 60] as const).map((minutes) => {
+                      const selected = Number(settingsInstance.settings?.durationMinutes ?? 60) === minutes;
+                      return (
+                        <button
+                          key={minutes}
+                          type="button"
+                          aria-pressed={selected}
+                          onClick={() => replace(settingsInstance.instanceId, (current) => ({
+                            ...current,
+                            settings: { ...(current.settings ?? {}), durationMinutes: minutes },
+                          }))}
+                          className={`h-9 rounded-lg border font-mono text-[9px] transition-colors ${
+                            selected
+                              ? "border-primary/50 bg-primary/15 text-primary"
+                              : "border-border bg-background text-muted hover:border-primary/30 hover:text-foreground"
+                          }`}
+                        >
+                          {minutes}m
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               ) : null}
