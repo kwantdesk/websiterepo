@@ -371,19 +371,18 @@ function buildExposureField(
 
       const state = activeByStrike.get(row.sourceStrike) ?? { active: false, belowExitCount: 0 };
       const inExposurePopulation = absoluteExposure >= populationThreshold;
-      if (!inExposurePopulation) {
-        state.active = false;
-        state.belowExitCount = 0;
-      } else if (!state.active && rank < maximumNodes && percentOfKing >= settings.activeEnterThreshold) {
+      if (!state.active && inExposurePopulation && rank < maximumNodes && percentOfKing >= settings.activeEnterThreshold) {
         state.active = true;
         state.belowExitCount = 0;
-      } else if (state.active && percentOfKing < settings.activeExitThreshold) {
-        state.belowExitCount += 1;
       } else if (state.active) {
-        state.belowExitCount = 0;
+        // Leaving the configured exposure population is not an instantaneous
+        // deletion. Preserve the node for a few confirmed observations so the
+        // renderer can visibly taper liquidity that is rolling elsewhere.
+        if (!inExposurePopulation || percentOfKing < settings.activeExitThreshold) state.belowExitCount += 1;
+        else state.belowExitCount = 0;
       }
-      const visible = inExposurePopulation && state.active;
       if (state.active && state.belowExitCount >= Math.max(1, Math.round(settings.retirementConfirmationSnapshots))) state.active = false;
+      const visible = state.active;
       activeByStrike.set(row.sourceStrike, state);
       const normalizedAbsoluteMagnitude = absoluteExposure / Math.max(1, absoluteExposure + settings.absoluteExposureScale);
       const visualStrength = settings.visualStrengthBasis === "absolute-exposure"
@@ -502,7 +501,24 @@ export function bounceLevelsSnapshotsHaveSameHead(
     && previous.greekMode === next.greekMode
     && previous.expirationLabel === next.expirationLabel
     && previous.snapshotTimeMs === next.snapshotTimeMs
-    && previous.mapSignature === next.mapSignature;
+    && previous.mapSignature === next.mapSignature
+    && bounceLevelsExposureHeadSignature(previous) === bounceLevelsExposureHeadSignature(next);
+}
+
+/**
+ * A provider can correct exposure values while retaining its snapshot time and
+ * structural floor/ceiling signature. Include the raw latest strike values in
+ * live-head equality so those corrections repaint instead of being discarded
+ * as duplicate polling responses.
+ */
+export function bounceLevelsExposureHeadSignature(snapshot: BounceLevelsSnapshot) {
+  return snapshot.exposureSeries
+    .map((series) => {
+      const sample = series.samples.at(-1);
+      return sample ? `${series.nodeKey}:${sample.signedExposure}:${sample.absoluteExposure}` : `${series.nodeKey}:empty`;
+    })
+    .sort()
+    .join("|");
 }
 
 /**

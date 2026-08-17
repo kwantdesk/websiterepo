@@ -183,8 +183,11 @@ export function calculateBounceNodeVisualStructure({
       : momentum === "dumped"
         ? 0.16
         : 1;
-  const retirementFade = clamp(1 - Math.max(0, retirementCount) * 0.22, 0.18, 1);
-  const fade = clamp(momentumScale * retirementFade, 0.08, 1.34);
+  // Each confirmed weak observation halves the remaining authority. That
+  // leaves a readable decay trail without allowing stale exposure to look as
+  // important as the strike where the book is now rebuilding.
+  const retirementFade = clamp(Math.pow(0.5, Math.max(0, retirementCount)), 0.06, 1);
+  const fade = clamp(momentumScale * retirementFade, 0.04, 1.34);
   return {
     strength: clamp(structuralStrength * fade, 0, 1),
     brightness: clamp((0.08 + Math.pow(structuralStrength, 0.78) * 0.92) * Math.min(1, fade), 0.025, 1),

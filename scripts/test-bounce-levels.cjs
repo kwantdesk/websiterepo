@@ -21,6 +21,7 @@ require.extensions[".ts"] = (module, filename) => {
 
 const {
   BOUNCE_LEVELS_HISTORY_BUCKET_LIMIT,
+  bounceLevelsSnapshotsHaveSameHead,
   buildBounceLevelsSnapshot,
   filterBounceLevelsSnapshot,
   mergeBounceIntervalSurfaces,
@@ -47,6 +48,7 @@ assert.ok(buildingStructure.strength > stableStructure.strength, "building expos
 assert.ok(weakeningStructure.strength < stableStructure.strength, "weakening exposure visibly contracts");
 assert.ok(dumpedStructure.brightness < weakeningStructure.brightness, "dumped exposure fades rapidly");
 assert.ok(retiredStructure.brightness < stableStructure.brightness, "retiring nodes fade instead of remaining as permanent bands");
+assert.ok(retiredStructure.strength < weakeningStructure.strength, "confirmed roll-off decay yields visual authority to the newly building strike");
 assert.equal(
   calculateSameSideLeaderStrength({ absoluteExposure: 500, sameSideLeaderExposure: 500, providerStrength: 0.4 }),
   1,
@@ -242,6 +244,19 @@ const migratedRows = rows.map((row) => row.id === "far-positive" ? { ...row, net
 const migrated = buildBounceLevelsSnapshot({ ...profile, id: "migrated-profile", rows: migratedRows }, history, { maximumLevels: 4, minimumExposurePercentile: 0, minimumPercentOfKing: 0, minimumRelevanceScore: 0 });
 assert.equal(migrated.king.id, "far-positive", "KING migrates deterministically when another absolute signed exposure becomes dominant");
 assert.notEqual(migrated.mapSignature, snapshot.mapSignature, "KING migration changes the structural map signature used by alerts");
+
+const correctedRows = rows.map((row) => row.id === "near-positive" ? {
+  ...row,
+  netExposure: row.netExposure + 1,
+  callExposure: row.callExposure + 1,
+  absoluteCallExposure: row.absoluteCallExposure + 1,
+  absoluteTotalExposure: row.absoluteTotalExposure + 1,
+} : row);
+const correctedSameTimestamp = buildBounceLevelsSnapshot({ ...profile, id: "corrected-same-time", rows: correctedRows }, history, { maximumLevels: 3, minimumExposurePercentile: 0, minimumPercentOfKing: 0, minimumRelevanceScore: 0 });
+assert.equal(correctedSameTimestamp.snapshotTimeMs, snapshot.snapshotTimeMs, "fixture keeps the provider timestamp unchanged");
+assert.equal(correctedSameTimestamp.mapSignature, snapshot.mapSignature, "minor exposure corrections can retain the same structural map");
+assert.equal(bounceLevelsSnapshotsHaveSameHead(snapshot, correctedSameTimestamp), false, "same-timestamp raw exposure corrections are never discarded as duplicate live heads");
+assert.equal(bounceLevelsSnapshotsHaveSameHead(snapshot, snapshot), true, "an identical live exposure head remains a no-op");
 
 const directMapping = { ...mapping, method: "same-underlying-direct", sourceTicker: "SPY", displayInstrument: "SPY", alpha: 0, beta: 1, sourceSpotPrice: 600, displayMidPrice: 600, mappedSourceSpotPrice: 600 };
 const directRows = [makeRow("spy-600", 600, 600, 250), makeRow("spy-605", 605, 605, -150)].map((row) => ({ ...row, sourceTicker: "SPY", displayInstrument: "SPY", mapping: directMapping }));
