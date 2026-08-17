@@ -164,12 +164,17 @@ import {
   isGammaChartInstrument,
   isNativeGammaConversion,
   loadChartGammaCalibration,
+  resolveDirectGammaEnvironmentConversion,
   resolveGammaConversion,
   roundedGammaPrice,
   saveChartGammaCalibration,
   type ChartGammaCalibration,
   type GammaConversionDefinition,
 } from "@/lib/chartGammaConversion";
+import {
+  subscribeMarketIndexSnapshot,
+  type MarketIndexLiveSnapshot,
+} from "@/lib/marketIndexLiveClient";
 import {
   createPaperTradingAccount,
   loadPaperTradingAccounts,
@@ -3560,6 +3565,11 @@ type GammaChartOverlay = {
   stale: boolean;
 };
 
+type GammaEnvironmentSnapshot = Pick<
+  GammaChartOverlay,
+  "instrument" | "label" | "regime" | "checkedAt" | "sourceLabel" | "stale"
+>;
+
 type GammaPayloadCacheEntry = {
   expiresAt: number;
   promise: Promise<ChartGammaLevelsPayload>;
@@ -3612,7 +3622,11 @@ function isRenderableGammaPayload(value: unknown): value is ChartGammaLevelsPayl
   if (typeof value.checkedAt !== "string" || !Number.isFinite(Date.parse(value.checkedAt))) return false;
   if (typeof value.sessionDate !== "string" || typeof value.revision !== "string") return false;
   if (!isFiniteGammaNumber(value.refreshAfterMs) || typeof value.marketOpen !== "boolean") return false;
-  if (!isGammaRecord(value.environment) || typeof value.environment.gammaStateLabel !== "string") return false;
+  if (
+    !isGammaRecord(value.environment)
+    || typeof value.environment.gammaStateLabel !== "string"
+    || !["POSITIVE", "NEGATIVE", "NEUTRAL"].includes(String(value.environment.gammaRegime))
+  ) return false;
   if (!Array.isArray(value.sources) || !value.sources.length) return false;
   const sourcesAreSafe = value.sources.every((source) => (
     isGammaRecord(source)
@@ -4070,16 +4084,21 @@ function lastVerifiedGammaPayload(conversion: GammaConversionDefinition) {
   return cached?.payload?.positioning ? cached.payload : null;
 }
 
-function gammaRefreshDelay(value: unknown) {
+function gammaRefreshDelay(value: unknown, minimumMs = 60_000) {
   const delay = Number(value);
   return Number.isFinite(delay) && delay > 0
-    ? Math.max(60_000, Math.min(5 * 60_000, delay))
-    : 60_000;
+    ? Math.max(minimumMs, Math.min(5 * 60_000, delay))
+    : minimumMs;
 }
 
 function fetchGammaPayload(
   conversion: GammaConversionDefinition,
-  options: { allowStale?: boolean; calibrated?: boolean; calibrationPrice?: number | null } = {},
+  options: {
+    allowStale?: boolean;
+    calibrated?: boolean;
+    calibrationPrice?: number | null;
+    refreshMinimumMs?: number;
+  } = {},
 ) {
   const cacheKey = gammaPayloadCacheKey(conversion, options.calibrated === true);
   const now = Date.now();
@@ -4152,7 +4171,10 @@ function fetchGammaPayload(
     .then((payload) => {
       const current = gammaPayloadCache.get(cacheKey);
       if (current?.promise === promise) {
-        current.expiresAt = Date.now() + gammaRefreshDelay(payload.refreshAfterMs);
+        current.expiresAt = Date.now() + gammaRefreshDelay(
+          payload.refreshAfterMs,
+          options.refreshMinimumMs ?? 60_000,
+        );
         current.payload = payload;
       }
       writeGammaSessionPayload(conversion, options.calibrated === true, payload);
@@ -4182,6 +4204,25 @@ function fetchGammaPayload(
     return Promise.resolve(previous.payload);
   }
   return promise;
+}
+
+function buildDirectGammaEnvironment(
+  payload: ChartGammaLevelsPayload,
+  instrument: string,
+  restored = false,
+): GammaEnvironmentSnapshot | null {
+  const normalized = instrument.trim().toUpperCase();
+  if (payload.requestedSource !== normalized) return null;
+  return {
+    instrument: normalized,
+    label: payload.environment.gammaStateLabel,
+    regime: payload.environment.gammaRegime,
+    checkedAt: payload.checkedAt,
+    sourceLabel: `${payload.requestedSource} options · ${payload.marketOpen ? "LIVE NY OPTIONS" : "NEW YORK EOD"}`,
+    // Browser storage is only an immediate visual bridge. It cannot claim to
+    // be live until the server has confirmed the current New York session.
+    stale: restored || !payload.marketOpen,
+  };
 }
 
 function gammaLevelColor(kind: string, settings: ChartSettings) {
@@ -4527,6 +4568,9 @@ function WorkspaceChartPaneComponent({
   const [intervalCommandError, setIntervalCommandError] = useState("");
   const [gammaOverlay, setGammaOverlay] = useState<GammaChartOverlay | null>(() =>
     readGammaOverlayCache(gammaInstrument, settings));
+  const [directGammaEnvironment, setDirectGammaEnvironment] = useState<GammaEnvironmentSnapshot | null>(null);
+  const [directGammaEnvironmentLoading, setDirectGammaEnvironmentLoading] = useState(false);
+  const [directGammaEnvironmentError, setDirectGammaEnvironmentError] = useState<string | null>(null);
   const [expectedMoveCalibration, setExpectedMoveCalibration] = useState<ChartGammaCalibration | null>(null);
   const [gammaLevelsLoading, setGammaLevelsLoading] = useState(false);
   const [gammaLevelsError, setGammaLevelsError] = useState<string | null>(null);
@@ -4582,6 +4626,10 @@ function WorkspaceChartPaneComponent({
     instance.enabled && instance.indicatorId === "expected-move") ?? null;
   const gammaEnvironmentIndicator = indicators.find((instance) =>
     instance.enabled && instance.indicatorId === "gamma-environment") ?? null;
+  const directGammaEnvironmentConversion = gammaEnvironmentIndicator
+    && (pane.broker === "Market Index" || isMarketIndexSymbol(gammaInstrument))
+    ? resolveDirectGammaEnvironmentConversion(gammaInstrument)
+    : null;
   const classicGexSettings = classicGexIndicator?.settings ?? {};
   const classicGexSettingsSignature = classicGexIndicator
     ? JSON.stringify(classicGexSettings)
@@ -4673,6 +4721,17 @@ function WorkspaceChartPaneComponent({
   );
   const currentGammaOverlay =
     gammaOverlay?.instrument === gammaInstrument ? gammaOverlay : null;
+  const currentDirectGammaEnvironment =
+    directGammaEnvironment?.instrument === gammaInstrument ? directGammaEnvironment : null;
+  const currentGammaEnvironment = directGammaEnvironmentConversion
+    ? currentDirectGammaEnvironment
+    : currentGammaOverlay;
+  const currentGammaEnvironmentLoading = directGammaEnvironmentConversion
+    ? directGammaEnvironmentLoading
+    : gammaLevelsLoading;
+  const currentGammaEnvironmentError = directGammaEnvironmentConversion
+    ? directGammaEnvironmentError
+    : gammaLevelsError;
   const flowConfirmedGammaLevels = useMemo(() => {
     const base = currentGammaOverlay?.levels ?? [];
     if (gexBotFlow?.status !== "LIVE" || !gexBotFlow.sample) return base;
@@ -5786,6 +5845,73 @@ function WorkspaceChartPaneComponent({
   }, [pane.broker, pane.symbol]);
 
   useEffect(() => {
+    if (!gammaEnvironmentIndicator || !directGammaEnvironmentConversion) {
+      setDirectGammaEnvironment(null);
+      setDirectGammaEnvironmentLoading(false);
+      setDirectGammaEnvironmentError(null);
+      return;
+    }
+
+    let cancelled = false;
+    let timer: number | null = null;
+    let retained = (() => {
+      const restored = readGammaSessionPayload(directGammaEnvironmentConversion);
+      return restored
+        ? buildDirectGammaEnvironment(restored, gammaInstrument, true)
+        : null;
+    })();
+    setDirectGammaEnvironment(retained);
+    setDirectGammaEnvironmentLoading(!retained);
+    setDirectGammaEnvironmentError(null);
+
+    const schedule = (delay: number) => {
+      if (cancelled) return;
+      if (timer !== null) window.clearTimeout(timer);
+      timer = window.setTimeout(() => void load(), delay);
+    };
+    const load = async () => {
+      try {
+        const payload = await fetchGammaPayload(directGammaEnvironmentConversion, {
+          refreshMinimumMs: 15_000,
+        });
+        if (cancelled) return;
+        const next = buildDirectGammaEnvironment(payload, gammaInstrument);
+        if (!next) throw new Error("The options gamma frame did not match this chart.");
+        retained = next;
+        setDirectGammaEnvironment(next);
+        setDirectGammaEnvironmentError(null);
+        setDirectGammaEnvironmentLoading(false);
+        schedule(payload.marketOpen
+          ? gammaRefreshDelay(payload.refreshAfterMs, 15_000)
+          : 60_000);
+      } catch (loadError) {
+        if (cancelled) return;
+        if (retained) {
+          retained = { ...retained, stale: true };
+          setDirectGammaEnvironment(retained);
+          setDirectGammaEnvironmentError(null);
+        } else {
+          setDirectGammaEnvironmentError(loadError instanceof Error
+            ? loadError.message
+            : "Gamma Environment is temporarily unavailable.");
+        }
+        setDirectGammaEnvironmentLoading(false);
+        schedule(10_000);
+      }
+    };
+
+    schedule(retained ? 1_100 : 20);
+    return () => {
+      cancelled = true;
+      if (timer !== null) window.clearTimeout(timer);
+    };
+  }, [
+    directGammaEnvironmentConversion?.id,
+    gammaEnvironmentIndicator?.instanceId,
+    gammaInstrument,
+  ]);
+
+  useEffect(() => {
     if (
       (!gammaLevelsEnabled && !levelExportRequested && !gammaEnvironmentIndicator)
       || !gammaLevelsAvailable
@@ -6531,6 +6657,89 @@ function WorkspaceChartPaneComponent({
     const usingMarketIndexPaneFeed = pane.broker === "Market Index" || isMarketIndexSymbol(pane.symbol);
     if (!usingMassivePaneFeed && !usingMarketIndexPaneFeed) return;
 
+    if (usingMarketIndexPaneFeed) {
+      return subscribeMarketIndexSnapshot(
+        pane.symbol,
+        (snapshot) => {
+          setLiveFeedError(null);
+          // Outside New York RTH the historical close remains on screen. The
+          // chart must never animate an EOD snapshot as though it were live.
+          if (!snapshot.marketOpen) return;
+          const tickTimestamp = marketTimestamp(snapshot.timestamp);
+          const previousTimestamp = latestFuturesRef.current.asOfMs;
+          const previousPrice = latestFuturesRef.current.price;
+          if (
+            previousTimestamp !== null
+            && tickTimestamp < previousTimestamp
+          ) return;
+          if (
+            previousTimestamp === tickTimestamp
+            && previousPrice === snapshot.lastPrice
+          ) return;
+          latestFuturesRef.current = {
+            ...latestFuturesRef.current,
+            price: snapshot.lastPrice,
+            asOfMs: tickTimestamp,
+          };
+          markMarketActive();
+
+          const previous = latestCandlesRef.current;
+          const retained = lightweightLiveTailRef.current;
+          const tailStart = retained?.source === previous
+            ? retained.start
+            : Math.max(0, previous.length - 32);
+          const tailRows = retained?.source === previous
+            ? retained.rows
+            : previous.slice(tailStart);
+          const mergedTail = mergeLiveMidIntoCandles(
+            [...tailRows],
+            snapshot.lastPrice,
+            pane.symbol,
+            pane.timeframe,
+            tickTimestamp,
+          );
+          if (!mergedTail.length) return;
+          lightweightLiveTailRef.current = {
+            source: previous,
+            start: tailStart,
+            rows: mergedTail,
+          };
+          const latest = mergedTail.at(-1)!;
+          // Paint the new options print directly into Lightweight Charts.
+          // React reconciles studies on a slower cadence below, preventing
+          // four SPX/NDX/SPY/QQQ panes from blocking one another.
+          window.dispatchEvent(new CustomEvent(LIVE_CHART_CANDLE_EVENT, {
+            detail: { key: pane.id, candle: latest },
+          }));
+          if (historyHydratedRef.current) {
+            setLoading(false);
+            setError(null);
+          }
+          const newBar = previous.at(-1)?.timestamp !== latest.timestamp;
+          const now = Date.now();
+          const reconciliationCadence = activeRef.current ? 5_000 : 10_000;
+          if (newBar || now - lastCandleStateSyncRef.current >= reconciliationCadence) {
+            const committed = [
+              ...previous.slice(0, tailStart),
+              ...mergedTail,
+            ];
+            lastCandleStateSyncRef.current = now;
+            latestCandlesRef.current = committed;
+            lightweightLiveTailRef.current = null;
+            if (activeRef.current) setCandles(committed);
+            else startTransition(() => setCandles(committed));
+          }
+        },
+        () => {
+          // Retain and continue painting the last verified frame. A transient
+          // upstream miss must not blank or remount an options chart.
+          if (latestFuturesRef.current.price === null) {
+            setLiveFeedError("Options quote feed is reconnecting.");
+          }
+        },
+      );
+    }
+
     let cancelled = false;
     let requestInFlight = false;
 
@@ -6538,16 +6747,13 @@ function WorkspaceChartPaneComponent({
       if (requestInFlight) return;
       requestInFlight = true;
       try {
-        const response = await fetch(usingMarketIndexPaneFeed
-          ? `/api/market-indices?snapshot=1&symbols=${encodeURIComponent(pane.symbol)}`
-          : `/api/massive-futures/snapshot?symbols=${encodeURIComponent(pane.symbol)}`, {
+        const response = await fetch(`/api/massive-futures/snapshot?symbols=${encodeURIComponent(pane.symbol)}`, {
           cache: "no-store",
         });
         const payload = await response.json();
         const snapshot = Array.isArray(payload.snapshots) ? payload.snapshots[0] : null;
         if (cancelled || !snapshot || typeof snapshot.lastPrice !== "number") return;
         setLiveFeedError(null);
-        if (usingMarketIndexPaneFeed && snapshot.marketOpen !== true) return;
         const tickTimestamp = marketTimestamp(snapshot.timestamp);
         const previousTimestamp = latestFuturesRef.current.asOfMs;
         if (previousTimestamp !== null && tickTimestamp < previousTimestamp) return;
@@ -6566,9 +6772,7 @@ function WorkspaceChartPaneComponent({
         ));
       } catch {
         if (!cancelled) {
-          setLiveFeedError(usingMarketIndexPaneFeed
-            ? "Cboe index snapshot is unavailable right now."
-            : "Massive delayed futures snapshot is unavailable right now.");
+          setLiveFeedError("Massive delayed futures snapshot is unavailable right now.");
         }
       } finally {
         requestInFlight = false;
@@ -6576,7 +6780,7 @@ function WorkspaceChartPaneComponent({
     };
 
     void loadSnapshots();
-    const interval = window.setInterval(loadSnapshots, usingMarketIndexPaneFeed ? 2_000 : 20_000);
+    const interval = window.setInterval(loadSnapshots, 20_000);
     return () => {
       cancelled = true;
       window.clearInterval(interval);
@@ -6963,9 +7167,9 @@ function WorkspaceChartPaneComponent({
           gammaLevelsAvailable={gammaLevelsAvailable}
           gammaLevelsLoading={gammaLevelsLoading}
           gammaLevelsError={gammaLevelsError}
-          gammaEnvironment={gammaEnvironmentIndicator ? currentGammaOverlay : null}
-          gammaEnvironmentLoading={Boolean(gammaEnvironmentIndicator && gammaLevelsLoading)}
-          gammaEnvironmentError={gammaEnvironmentIndicator ? gammaLevelsError : null}
+          gammaEnvironment={gammaEnvironmentIndicator ? currentGammaEnvironment : null}
+          gammaEnvironmentLoading={Boolean(gammaEnvironmentIndicator && currentGammaEnvironmentLoading)}
+          gammaEnvironmentError={gammaEnvironmentIndicator ? currentGammaEnvironmentError : null}
           onToggleGammaLevels={onToggleGammaLevels}
           kwantLevelsEnabled={kwantLevelsEnabled}
           kwantLevelsAvailable={kwantLevelsAvailable}
@@ -8781,6 +8985,13 @@ export default function KwantifyWorkspace({
       }, {}),
     [watchlist],
   );
+  const marketIndexWatchSymbolsCsv = useMemo(() => {
+    const symbols = new Set(watchlistBrokerSymbols["Market Index"] ?? []);
+    if (activeChartBrokerLabel === "Market Index" && selectedInstrument) {
+      symbols.add(selectedInstrument);
+    }
+    return [...symbols].join(",");
+  }, [activeChartBrokerLabel, selectedInstrument, watchlistBrokerSymbols]);
   const watchlistSectionSymbolKeys = useMemo(
     () => new Set(watchlistSections.flatMap((section) => section.symbols)),
     [watchlistSections],
@@ -10454,12 +10665,108 @@ export default function KwantifyWorkspace({
   }, [activeChartBrokerLabel, bottomWorkspaceSection, priorityLiveSymbolsCsv, selectedInstrument, streamReconnectNonce, usingCTraderFeed, usingDatabentoFeed, watchlistSymbolsCsv]);
 
   useEffect(() => {
+    if (section !== "charts" && section !== "gamvue") return;
+    const symbols = marketIndexWatchSymbolsCsv.split(",").filter(Boolean);
+    if (!symbols.length) return;
+
+    const latestTimestampBySymbol = new Map<string, number>();
+    let flashTimer: number | null = null;
+    const applySnapshot = (snapshot: MarketIndexLiveSnapshot) => {
+      const symbol = snapshot.symbol.trim().toUpperCase();
+      const timestamp = marketTimestamp(snapshot.timestamp);
+      const previousTimestamp = latestTimestampBySymbol.get(symbol) ?? 0;
+      if (timestamp < previousTimestamp) return;
+      latestTimestampBySymbol.set(symbol, timestamp);
+
+      setFeedErrorByBroker((current) => {
+        if (!current["Market Index"]) return current;
+        const next = { ...current };
+        delete next["Market Index"];
+        return next;
+      });
+      setWatchlist((current) => current.map((item) => {
+        if (item.broker !== "Market Index" || item.symbol !== symbol) return item;
+        const mid = snapshot.lastPrice;
+        const previousMid = item.lastPrice || mid;
+        const moveRatio = previousMid > 0 ? Math.abs(mid - previousMid) / previousMid : 0;
+        if (moveRatio > 0.2) return item;
+        const openPrice = snapshot.openPrice || item.openPrice || mid;
+        const change = Number.isFinite(snapshot.change) ? snapshot.change! : mid - openPrice;
+        const changePercent = Number.isFinite(snapshot.changePercent)
+          ? snapshot.changePercent!
+          : openPrice ? (change / openPrice) * 100 : 0;
+        return {
+          ...item,
+          broker: "Market Index",
+          delayed: snapshot.delayed ?? item.delayed,
+          lastPrice: mid,
+          openPrice,
+          bid: mid,
+          ask: mid,
+          mid,
+          change,
+          changePercent,
+          flash: mid > previousMid ? "up" : mid < previousMid ? "down" : null,
+        };
+      }));
+
+      if (
+        activeChartBrokerLabel === "Market Index"
+        && symbol === selectedInstrument
+        && chartTrades.length === 0
+        && snapshot.marketOpen
+      ) {
+        setChartCandles((previous) => mergeLiveMidIntoCandles(
+          previous,
+          snapshot.lastPrice,
+          selectedInstrument,
+          selectedTimeframe,
+          timestamp,
+        ));
+      }
+
+      if (flashTimer !== null) window.clearTimeout(flashTimer);
+      flashTimer = window.setTimeout(() => {
+        flashTimer = null;
+        setWatchlist((current) => current.some((item) => item.broker === "Market Index" && item.flash)
+          ? current.map((item) => item.broker === "Market Index" && item.flash ? { ...item, flash: null } : item)
+          : current);
+      }, 300);
+    };
+
+    const unsubscribers = symbols.map((symbol) => subscribeMarketIndexSnapshot(
+      symbol,
+      applySnapshot,
+      (error) => {
+        setFeedErrorByBroker((current) => current["Market Index"]
+          ? current
+          : { ...current, "Market Index": error.message });
+      },
+    ));
+    return () => {
+      unsubscribers.forEach((unsubscribe) => unsubscribe());
+      if (flashTimer !== null) window.clearTimeout(flashTimer);
+    };
+  }, [
+    activeChartBrokerLabel,
+    chartTrades.length,
+    marketIndexWatchSymbolsCsv,
+    section,
+    selectedInstrument,
+    selectedTimeframe,
+  ]);
+
+  useEffect(() => {
     // GEX VUE owns an independent chart workspace, but its watchlist is still
     // backed by the same normalized quote stores as Charts. Keeping this
     // refresher Charts-only left Market Index rows (SPX/NDX/SPY/QQQ, etc.)
     // permanently stale whenever GEX VUE was the active route.
     if (section !== "charts" && section !== "gamvue") return;
-    if (activeChartBrokerLabel === "Massive" || activeChartBrokerLabel === "Databento") {
+    if (
+      activeChartBrokerLabel === "Massive"
+      || activeChartBrokerLabel === "Databento"
+      || activeChartBrokerLabel === "Market Index"
+    ) {
       return;
     }
 
@@ -10609,7 +10916,8 @@ export default function KwantifyWorkspace({
     };
 
     const updateInactiveFeeds = async () => {
-      const brokers = Object.keys(watchlistBrokerSymbols).filter((broker) => broker !== activeChartBrokerLabel);
+      const brokers = Object.keys(watchlistBrokerSymbols).filter((broker) =>
+        broker !== activeChartBrokerLabel && broker !== "Market Index");
       if (brokers.length === 0) return;
       await Promise.all(
         brokers.map(async (broker) => {
@@ -10784,6 +11092,10 @@ export default function KwantifyWorkspace({
     if (section !== "charts") return;
     if (!selectedInstrument) return;
     if (chartTrades.length > 0) return;
+    // Market Index charts are already driven by the shared batched live client.
+    // A second five-second REST loop caused delayed frames to overwrite newer
+    // prices, producing the visible backwards jump and intermittent stall.
+    if (activeChartBrokerLabel === "Market Index") return;
 
     let requestInFlight = false;
 

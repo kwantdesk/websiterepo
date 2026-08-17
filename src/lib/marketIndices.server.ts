@@ -244,11 +244,11 @@ async function fetchKwantDataUnderlyingSnapshot(symbol: string): Promise<MarketI
   };
 }
 
-async function fetchMassiveJson(url: string) {
+async function fetchMassiveJson(url: string, timeoutMs = 12_000) {
   const response = await fetch(url, {
     headers: { Authorization: `Bearer ${requireMassiveApiKey()}` },
     cache: "no-store",
-    signal: AbortSignal.timeout(12_000),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   const payload = (await response.json().catch(() => ({}))) as JsonRecord;
   if (!response.ok) {
@@ -372,7 +372,10 @@ export async function fetchMarketIndexSnapshots(symbols: string[]) {
     const endpoint = definition.providerKind === "INDEX"
       ? `${MASSIVE_API_BASE}/v3/snapshot/indices?ticker=${encodeURIComponent(definition.providerTicker)}`
       : `${MASSIVE_API_BASE}/v2/snapshot/locale/us/markets/stocks/tickers/${encodeURIComponent(definition.providerTicker)}`;
-    const payload = await fetchMassiveJson(endpoint);
+    // A live batch must not wait twelve seconds because one upstream ticker is
+    // slow. The browser retains the last verified frame and retries the full
+    // batch, so a short snapshot deadline is both smoother and more honest.
+    const payload = await fetchMassiveJson(endpoint, 2_500);
     const quote = parseMassiveCashLevelOne(definition.symbol, definition.providerKind, payload);
     if (!quote) return null;
 

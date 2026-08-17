@@ -8,6 +8,7 @@ import {
 
 export type GammaSourceSymbol = ChartGammaSourceSnapshot["symbol"];
 export type GammaChartInstrument = "NQ" | "MNQ" | "ES" | "MES";
+export type DirectGammaEnvironmentInstrument = "SPX" | "SPXW" | "SPY" | "NDX" | "QQQ";
 export type GammaConversionId =
   | "NQ-NQ"
   | "NQ-MNQ"
@@ -92,6 +93,26 @@ export function resolveGammaConversion(
     ?? options.find((conversion) => conversion.source === (instrument === "NQ" || instrument === "MNQ" ? "QQQ" : "SPY"))
     ?? options[0]
     ?? null;
+}
+
+/**
+ * Gamma Environment on a cash/index chart must read that underlying's own
+ * options frame. It does not need (and must not wait for) the futures-price
+ * calibration used to project strikes onto an NQ/ES chart.
+ */
+export function resolveDirectGammaEnvironmentConversion(
+  instrument: string,
+): GammaConversionDefinition | null {
+  const source = instrument.trim().toUpperCase() as DirectGammaEnvironmentInstrument;
+  const target = source === "NDX" || source === "QQQ"
+    ? "NQ"
+    : source === "SPX" || source === "SPXW" || source === "SPY"
+      ? "ES"
+      : null;
+  if (!target) return null;
+  return GAMMA_CONVERSIONS.find((conversion) => (
+    conversion.source === source && conversion.target === target
+  )) ?? null;
 }
 
 export function cashFallbackGammaConversion(
