@@ -15793,8 +15793,9 @@ export default function KwantifyWorkspace({
           </div>
           <div
             aria-disabled={!activePaneIsChart}
-            className={`col-start-3 row-start-2 flex min-w-0 items-center justify-end gap-2 overflow-x-auto px-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${!activePaneIsChart ? "pointer-events-none opacity-30" : ""}`}
+            className={`col-start-3 row-start-2 flex min-w-0 items-center justify-end gap-2 overflow-hidden px-3 ${!activePaneIsChart ? "pointer-events-none opacity-30" : ""}`}
           >
+          <div className="flex shrink-0 items-center gap-2">
           <ChartIndicatorsControl
             instrument={displayCmeSymbol(activeWorkspacePane.symbol)}
             timeframe={formatChartInterval(activeWorkspacePane.timeframe)}
@@ -15874,6 +15875,8 @@ export default function KwantifyWorkspace({
               Replay
             </button>
           ) : null}
+          </div>
+          <div className="flex min-w-0 items-center gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <TimeZoneSelect
             value={chartSettings.timezone}
             onChange={changeChartTimeZone}
@@ -15891,6 +15894,7 @@ export default function KwantifyWorkspace({
             <Download className="h-3.5 w-3.5" />
           </button>
           <button onClick={signOut} title={currentUsername ? `@${currentUsername}` : "Account"} className="kwant-chart-row-control flex h-7 w-7 items-center justify-center overflow-hidden rounded-[3px] border border-border bg-surface/50 transition-colors hover:border-primary/30 hover:bg-card"><UserAvatar label={currentUsername || "Kwant Trader"} avatarUrl={currentAvatarUrl} size="xs" /></button>
+          </div>
           </div>
         </header>
         )}
