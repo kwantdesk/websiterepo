@@ -22,6 +22,7 @@ require.extensions[".ts"] = (module, filename) => {
 const {
   BOUNCE_LEVELS_HISTORY_BUCKET_LIMIT,
   buildBounceLevelsSnapshot,
+  filterBounceLevelsSnapshot,
   mergeBounceIntervalSurfaces,
   mergeBounceLevelsSnapshots,
   selectLookaheadSafeBounceBucket,
@@ -197,6 +198,25 @@ const zeroSnapshot = buildBounceLevelsSnapshot({ ...profile, id: "zero-profile",
 assert.equal(zeroSnapshot.king, null, "an all-zero filtered surface has no KING");
 assert.equal(zeroSnapshot.mapSignature.startsWith("none|"), true, "the structural signature explicitly records no KING");
 
+const visibilitySnapshot = {
+  ...snapshot,
+  levels: snapshot.levels.filter((level) => level.role !== "RETIRED"),
+  exposureField: [{
+    ...snapshot.exposureField[0],
+    nodes: [
+      { ...snapshot.exposureField[0].nodes[0], sourceStrike: snapshot.levels[0].sourceStrike },
+      { ...snapshot.exposureField[0].nodes[0], id: "retired-history", nodeKey: "retired-history", sourceStrike: 9999 },
+    ],
+  }],
+  airPockets: [{ id: "air", lowerPrice: 30000, upperPrice: 30010, magnitudeRatio: 0.1 }],
+};
+const hiddenHistory = filterBounceLevelsSnapshot(visibilitySnapshot, { RETIRED: false }, false);
+assert.equal(hiddenHistory.exposureField[0].nodes.some((node) => node.sourceStrike === 9999), false, "the retired-history toggle removes strikes absent from the current ranked surface");
+assert.equal(hiddenHistory.airPockets.length, 0, "the air-pocket toggle removes air-pocket bands from the render snapshot");
+const shownHistory = filterBounceLevelsSnapshot(visibilitySnapshot, { RETIRED: true }, true);
+assert.equal(shownHistory.exposureField[0].nodes.some((node) => node.sourceStrike === 9999), true, "retired history can be restored without refetching provider data");
+assert.equal(shownHistory.airPockets.length, 1, "air-pocket bands can be restored without refetching provider data");
+
 const migratedRows = rows.map((row) => row.id === "far-positive" ? { ...row, netExposure: 900, callExposure: 900, absoluteCallExposure: 900, absoluteTotalExposure: 900 } : row);
 const migrated = buildBounceLevelsSnapshot({ ...profile, id: "migrated-profile", rows: migratedRows }, history, { maximumLevels: 4, minimumExposurePercentile: 0, minimumPercentOfKing: 0, minimumRelevanceScore: 0 });
 assert.equal(migrated.king.id, "far-positive", "KING migrates deterministically when another absolute signed exposure becomes dominant");
@@ -212,6 +232,10 @@ assert.ok(directSnapshot.exposureField.flatMap((slice) => slice.nodes).some((nod
 const source = fs.readFileSync(path.join(root, "src/app/api/bounce-levels/route.ts"), "utf8");
 assert.doesNotMatch(source, /NEXT_PUBLIC_(?:QUANTDATA|GEX)[A-Z_]*(?:KEY|TOKEN|SECRET)/, "provider credentials remain server-only");
 assert.match(source, /selectLookaheadSafeBounceBucket/, "the API uses the tested lookahead-safe selector");
+const chartSource = fs.readFileSync(path.join(root, "src/components/Chart.tsx"), "utf8");
+assert.match(chartSource, /minimumDte: String\(indicatorSettings\.minimumDte\)/, "custom minimum DTE is sent from Bounce Levels settings to the API");
+assert.match(chartSource, /maximumDte: String\(indicatorSettings\.maximumDte\)/, "custom maximum DTE is sent from Bounce Levels settings to the API");
+assert.match(chartSource, /bounceLevelsDataSignatureRef/, "settings changes replace the old Bounce Levels snapshot instead of merging incompatible filters");
 
 const migrationTimes = [0, 1, 2, 3, 4].map((minute) => now + minute * 60_000);
 const migrationValues = [[100, 10], [80, 25], [55, 60], [25, 100], [5, 130]].map(([left, right]) => [left * 1_000_000, right * 1_000_000]);

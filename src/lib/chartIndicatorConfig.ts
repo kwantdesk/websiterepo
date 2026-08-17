@@ -479,6 +479,8 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
   ],
   "bounce-levels": [
     { key: "refreshSeconds", label: "Refresh interval (seconds)", defaultValue: 5, min: 2, max: 60, step: 1 },
+    { key: "minimumDte", label: "Minimum DTE", defaultValue: 0, min: 0, max: 365, step: 1 },
+    { key: "maximumDte", label: "Maximum DTE", defaultValue: 7, min: 0, max: 365, step: 1 },
     { key: "maximumLevels", label: "Maximum active levels", defaultValue: 8, min: 1, max: 24, step: 1 },
     { key: "minimumExposurePercentile", label: "Minimum exposure percentile (%)", defaultValue: 90, min: 0, max: 100, step: 1 },
     { key: "minimumPercentOfKing", label: "Minimum KING magnitude (%)", defaultValue: 15, min: 0, max: 100, step: 1 },
@@ -1022,6 +1024,8 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     sourceTicker: "AUTO",
     representation: "per-one-percent-move",
     expirationMode: "zero-to-one-dte",
+    minimumDte: 0,
+    maximumDte: 7,
     expirationDates: "",
     includeWeeklies: true,
     includeMonthlies: true,
@@ -1120,6 +1124,8 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     sourceTicker: "AUTO",
     greekMode: "GAMMA",
     expirationMode: "zero-to-one-dte",
+    minimumDte: 0,
+    maximumDte: 7,
     expirationDates: "",
     historyBuckets: 1440,
     includeWeeklies: true,
@@ -1163,7 +1169,7 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     developingColor: theme?.upColor ?? "#22C55E",
     weakeningColor: theme?.downColor ?? "#EF4444",
     airPocketColor: theme?.gridColor ?? "#71717A",
-    bounceLevelsSettingsVersion: 3,
+    bounceLevelsSettingsVersion: 4,
   } : {}),
   ...(indicatorId === "dark-pool-map" ? {
     preset: "balanced",
@@ -1912,7 +1918,8 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
     for (const unsafeKey of ["apiKey", "credential", "credentials", "providerCredential", "liveSnapshot", "snapshotData", "levels", "history"]) {
       delete settings[unsafeKey];
     }
-    return { ...normalizedInstance, settings: { ...settings, bounceLevelsSettingsVersion: 3 } };
+    if (Number(settings.maximumDte) < Number(settings.minimumDte)) settings.maximumDte = settings.minimumDte;
+    return { ...normalizedInstance, settings: { ...settings, bounceLevelsSettingsVersion: 4 } };
   }
   if (
     normalizedInstance.indicatorId === "depth-of-market"

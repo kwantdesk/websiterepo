@@ -20,6 +20,15 @@ export type BounceLevelsPrimitiveData = {
   minimumOpacity: number;
   glowStrength: number;
   microOrbTexture: boolean;
+  showHeader: boolean;
+  showLabels: boolean;
+  showValues: boolean;
+  showTouchCount: boolean;
+  showRocArrows: boolean;
+  showAirPockets: boolean;
+  showRolls: boolean;
+  neutralColor: string;
+  roleColors: Record<string, string>;
   positiveColor: string;
   negativeColor: string;
 };
@@ -104,6 +113,14 @@ export type BounceNodeVisualStructure = {
   brightness: number;
   fade: number;
   momentum: BounceNodeMomentum;
+};
+const compactExposure = (value: number) => {
+  const absolute = Math.abs(value);
+  const sign = value < 0 ? "-" : value > 0 ? "+" : "";
+  if (absolute >= 1_000_000_000) return `${sign}${(absolute / 1_000_000_000).toFixed(1)}B`;
+  if (absolute >= 1_000_000) return `${sign}${(absolute / 1_000_000).toFixed(1)}M`;
+  if (absolute >= 1_000) return `${sign}${(absolute / 1_000).toFixed(1)}K`;
+  return `${sign}${absolute.toFixed(0)}`;
 };
 
 export function calculateBounceNodeVisualStructure({
@@ -270,6 +287,18 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
       context.rect(0, 0, mediaSize.width, mediaSize.height);
       context.clip();
 
+      if (data.showAirPockets) {
+        for (const pocket of data.snapshot.airPockets) {
+          const upper = series.priceToCoordinate(pocket.upperPrice);
+          const lower = series.priceToCoordinate(pocket.lowerPrice);
+          if (upper === null || lower === null) continue;
+          const top = Math.min(Number(upper), Number(lower));
+          const height = Math.max(1, Math.abs(Number(lower) - Number(upper)));
+          context.fillStyle = rgba(data.neutralColor, clamp(0.025 + (1 - pocket.magnitudeRatio) * 0.055, 0.025, 0.08));
+          context.fillRect(0, top, mediaSize.width, height);
+        }
+      }
+
       slices.forEach((slice, sliceIndex) => {
         const previousX = slices[sliceIndex - 1]?.x;
         const nextX = slices[sliceIndex + 1]?.x;
@@ -295,7 +324,8 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
           });
           const height = calculateBounceNodeHeight(data.minimumNodeHeight, data.maximumNodeHeight, structure.strength);
           const opacity = clamp(data.opacity * (data.minimumOpacity + (1 - data.minimumOpacity) * structure.brightness), 0.012, 1);
-          const color = node.signedExposure >= 0 ? data.positiveColor : data.negativeColor;
+          const color = data.roleColors[String(node.sourceStrike)]
+            || (node.signedExposure >= 0 ? data.positiveColor : data.negativeColor);
 
           prepared.push({
             sliceIndex,
@@ -446,6 +476,79 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
             });
           }
         }
+      }
+
+      if (data.showRolls) {
+        context.save();
+        context.setLineDash([4, 4]);
+        for (const roll of data.snapshot.rolls) {
+          const x = coordinateForTimestamp(chart, roll.timestamp, anchors, coordinateCache);
+          if (x === null || x < 0 || x > mediaSize.width) continue;
+          const fromPrice = data.snapshot.mapping.alpha + data.snapshot.mapping.beta * roll.fromStrike;
+          const toPrice = data.snapshot.mapping.alpha + data.snapshot.mapping.beta * roll.toStrike;
+          const fromY = series.priceToCoordinate(fromPrice);
+          const toY = series.priceToCoordinate(toPrice);
+          if (fromY === null || toY === null) continue;
+          const color = roll.direction === "UP" ? data.positiveColor : data.negativeColor;
+          context.beginPath();
+          context.moveTo(x, Number(fromY));
+          context.lineTo(x, Number(toY));
+          context.strokeStyle = rgba(color, clamp(0.25 + roll.score / 180, 0.25, 0.72));
+          context.lineWidth = 1;
+          context.stroke();
+          context.beginPath();
+          context.moveTo(x - 3, Number(toY) + (roll.direction === "UP" ? 4 : -4));
+          context.lineTo(x, Number(toY));
+          context.lineTo(x + 3, Number(toY) + (roll.direction === "UP" ? 4 : -4));
+          context.stroke();
+        }
+        context.restore();
+      }
+
+      const latestByStrike = new Map<number, PreparedNode>();
+      for (const point of prepared) {
+        const current = latestByStrike.get(point.node.sourceStrike);
+        if (!current || point.node.timestamp > current.node.timestamp) latestByStrike.set(point.node.sourceStrike, point);
+      }
+      const levelByStrike = new Map(data.snapshot.levels.map((level) => [level.sourceStrike, level]));
+      for (const point of latestByStrike.values()) {
+        const level = levelByStrike.get(point.node.sourceStrike);
+        if (data.showRocArrows && Math.abs(point.node.rateOfChangePercent) >= 5) {
+          const up = point.node.rateOfChangePercent > 0;
+          const markerX = Math.min(mediaSize.width - 5, point.right + 4);
+          context.beginPath();
+          context.moveTo(markerX, point.y + (up ? 3 : -3));
+          context.lineTo(markerX + 3, point.y + (up ? -3 : 3));
+          context.lineTo(markerX + 6, point.y + (up ? 3 : -3));
+          context.closePath();
+          context.fillStyle = rgba(point.color, clamp(point.opacity + 0.18, 0.25, 1));
+          context.fill();
+        }
+        if (!data.showLabels && !data.showValues) continue;
+        const parts = [
+          data.showLabels ? `${level?.role ?? "NODE"} ${point.node.mappedPrice.toFixed(2)}` : "",
+          data.showValues ? compactExposure(point.node.signedExposure) : "",
+          data.showTouchCount && level ? `${level.touches}T` : "",
+        ].filter(Boolean);
+        if (!parts.length) continue;
+        const label = parts.join(" · ");
+        context.font = "10px JetBrains Mono, monospace";
+        const width = context.measureText(label).width + 8;
+        const x = clamp(point.right + 10, 4, mediaSize.width - width - 4);
+        context.fillStyle = rgba("#000000", 0.78);
+        context.fillRect(x, point.y - 8, width, 16);
+        context.fillStyle = rgba(point.color, 0.96);
+        context.fillText(label, x + 4, point.y + 3.5);
+      }
+
+      if (data.showHeader) {
+        const title = `${data.snapshot.displayInstrument} ${data.snapshot.greekMode} BOUNCE · ${data.snapshot.levels.length} ACTIVE`;
+        context.font = "10px JetBrains Mono, monospace";
+        const width = context.measureText(title).width + 12;
+        context.fillStyle = rgba("#000000", 0.78);
+        context.fillRect(8, 8, width, 20);
+        context.fillStyle = rgba(data.positiveColor, 0.96);
+        context.fillText(title, 14, 21.5);
       }
       context.restore();
       this.primitive.setHits(hits);

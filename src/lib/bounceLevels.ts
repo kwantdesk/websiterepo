@@ -527,6 +527,29 @@ export function mergeBounceLevelsSnapshots(previous: BounceLevelsSnapshot | null
   };
 }
 
+/**
+ * Applies display-only role controls without mutating the provider snapshot.
+ * Historical strikes that are no longer present in the current ranked surface
+ * are retired history, rather than silently bypassing the retired toggle.
+ */
+export function filterBounceLevelsSnapshot(
+  snapshot: BounceLevelsSnapshot,
+  visibility: Partial<Record<BounceLevelRole, boolean>>,
+  showAirPockets: boolean,
+): BounceLevelsSnapshot {
+  const roleByStrike = new Map(snapshot.levels.map((level) => [level.sourceStrike, level.role]));
+  const isVisible = (role: BounceLevelRole) => visibility[role] !== false;
+  return {
+    ...snapshot,
+    levels: snapshot.levels.filter((level) => isVisible(level.role)),
+    exposureField: snapshot.exposureField.map((slice) => ({
+      ...slice,
+      nodes: slice.nodes.filter((node) => isVisible(roleByStrike.get(node.sourceStrike) ?? "RETIRED")),
+    })),
+    airPockets: showAirPockets ? snapshot.airPockets : [],
+  };
+}
+
 export function mergeBounceIntervalSurfaces(
   historical: GexIntervalProviderSurface | null,
   current: GexIntervalProviderSurface,

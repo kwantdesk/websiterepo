@@ -1612,8 +1612,16 @@ export default function ChartIndicatorsControl({
                                   ? { glowStrength: 0, showAirPockets: false, showTouchCount: false, showRocArrows: false, showRetiredHistory: false, showValues: false }
                                   : preset === "research"
                                     ? { maximumLevels: 24, minimumExposurePercentile: 0, minimumPercentOfKing: 0, minimumRelevanceScore: 0, showAirPockets: true, showTouchCount: true, showRocArrows: true, showRetiredHistory: true, showDevelopingNodes: true, showWeakeningNodes: true, showClusters: true }
-                                    : { greekMode: "GAMMA", expirationMode: "front-expiration", maximumLevels: 8, minimumExposurePercentile: 90, minimumPercentOfKing: 15, minimumRelevanceScore: 55, magnitudeWeight: 45, proximityWeight: 15, accumulationWeight: 15, persistenceWeight: 10, freshnessWeight: 10, clusterWeight: 5, showDevelopingNodes: true, showClusters: true, showAirPockets: true, refreshSeconds: 5 };
-                        replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), preset, ...presetSettings } }));
+                                    : { greekMode: "GAMMA", expirationMode: "zero-to-one-dte", maximumLevels: 8, minimumExposurePercentile: 90, minimumPercentOfKing: 15, minimumRelevanceScore: 55, magnitudeWeight: 45, proximityWeight: 15, accumulationWeight: 15, persistenceWeight: 10, freshnessWeight: 10, clusterWeight: 5, showDevelopingNodes: true, showClusters: true, showAirPockets: true, refreshSeconds: 5 };
+                        replace(settingsInstance.instanceId, (current) => {
+                          const currentSettings = current.settings ?? {};
+                          const defaults = defaultIndicatorSettings("bounce-levels", chartSettings);
+                          const preserved = Object.fromEntries([
+                            "provider", "sourceTicker", "useThemeColors", "positiveColor", "negativeColor", "kingColor",
+                            "developingColor", "weakeningColor", "airPocketColor", "browserNotifications", "inAppSound",
+                          ].map((key) => [key, currentSettings[key]]).filter(([, value]) => value !== undefined));
+                          return { ...current, settings: { ...defaults, ...preserved, preset, ...presetSettings } };
+                        });
                       }}
                       className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
                       menuLabel="Bounce Levels preset"

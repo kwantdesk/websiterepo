@@ -261,7 +261,7 @@ import {
   type MappedStrikeAggregationMode,
   type NetGammaProfileSnapshot,
 } from "@/lib/netGammaExposureByStrike";
-import { isBounceLevelsSnapshot, mergeBounceLevelsSnapshots, type BounceLevelsSnapshot } from "@/lib/bounceLevels";
+import { filterBounceLevelsSnapshot, isBounceLevelsSnapshot, mergeBounceLevelsSnapshots, type BounceLevelsSnapshot } from "@/lib/bounceLevels";
 import {
   BounceLevelsPrimitive,
   type BounceLevelsHit,
@@ -2866,6 +2866,7 @@ export default function Chart({
   const [netGammaError, setNetGammaError] = useState<string | null>(null);
   const [netGammaTooltip, setNetGammaTooltip] = useState<NetGammaExposureHit | null>(null);
   const [bounceLevelsSnapshot, setBounceLevelsSnapshot] = useState<BounceLevelsSnapshot | null>(null);
+  const bounceLevelsDataSignatureRef = useRef("");
   const [, setBounceLevelsLoading] = useState(false);
   const [, setBounceLevelsError] = useState<string | null>(null);
   const [bounceLevelsTooltip, setBounceLevelsTooltip] = useState<BounceLevelsHit | null>(null);
@@ -5638,6 +5639,8 @@ export default function Chart({
     greekMode: String(bounceLevelsIndicator.settings?.greekMode ?? "GAMMA"),
     refreshSeconds: Number(bounceLevelsIndicator.settings?.refreshSeconds ?? 5),
     expirationMode: String(bounceLevelsIndicator.settings?.expirationMode ?? "zero-to-one-dte"),
+    minimumDte: Number(bounceLevelsIndicator.settings?.minimumDte ?? 0),
+    maximumDte: Number(bounceLevelsIndicator.settings?.maximumDte ?? 7),
     expirationDates: String(bounceLevelsIndicator.settings?.expirationDates ?? ""),
     includeWeeklies: bounceLevelsIndicator.settings?.includeWeeklies !== false,
     includeMonthlies: bounceLevelsIndicator.settings?.includeMonthlies !== false,
@@ -5686,11 +5689,23 @@ export default function Chart({
   }) : "";
   useEffect(() => {
     if (!bounceLevelsDataSignature) {
+      bounceLevelsDataSignatureRef.current = "";
       setBounceLevelsSnapshot(null);
       setBounceLevelsLoading(false);
       setBounceLevelsError(null);
       return;
     }
+    const requestSignature = bounceLevelsDataSignature;
+    const settingsChanged = bounceLevelsDataSignatureRef.current !== requestSignature;
+    bounceLevelsDataSignatureRef.current = requestSignature;
+    if (settingsChanged) setBounceLevelsSnapshot(null);
+    let cancelled = false;
+    let hasCommittedSnapshot = false;
+    const commitSnapshot = (snapshot: BounceLevelsSnapshot) => {
+      if (cancelled || bounceLevelsDataSignatureRef.current !== requestSignature) return;
+      setBounceLevelsSnapshot((current) => hasCommittedSnapshot ? mergeBounceLevelsSnapshots(current, snapshot) : snapshot);
+      hasCommittedSnapshot = true;
+    };
     const indicatorSettings = JSON.parse(bounceLevelsDataSignature) as Record<string, string | number | boolean>;
     const display = normalizeGammaHeatmapInstrument(instrument);
     if (!/^(NQ|MNQ|ES|MES|RTY|M2K|QQQ|NDX|SPY|SPX|SPXW|IWM)$/.test(display)) {
@@ -5707,10 +5722,9 @@ export default function Chart({
     const bounceCacheKey = `bounce-levels:${display}:${source}:${bounceLevelsDataSignature}`;
     const cachedBounce = readWorkspaceData<BounceLevelsSnapshot>(bounceCacheKey);
     if (cachedBounce && isBounceLevelsSnapshot(cachedBounce)) {
-      setBounceLevelsSnapshot((current) => mergeBounceLevelsSnapshots(current, cachedBounce));
+      commitSnapshot(cachedBounce);
       setBounceLevelsLoading(false);
     }
-    let cancelled = false;
     let timer: number | null = null;
     const load = async (force = false) => {
       const displayPrice = drawingCandlesRef.current.at(-1)?.close;
@@ -5725,6 +5739,8 @@ export default function Chart({
         displayPrice: String(displayPrice),
         greekMode: String(indicatorSettings.greekMode),
         expirationMode: String(indicatorSettings.expirationMode),
+        minimumDte: String(indicatorSettings.minimumDte),
+        maximumDte: String(indicatorSettings.maximumDte),
         expirationDates: String(indicatorSettings.expirationDates),
         includeWeeklies: String(indicatorSettings.includeWeeklies),
         includeMonthlies: String(indicatorSettings.includeMonthlies),
@@ -5777,7 +5793,7 @@ export default function Chart({
           `/api/bounce-levels?${query}`,
           { force, maxAgeMs: refreshMs, timeoutMs: 35_000, validate: isBounceLevelsSnapshot, invalidMessage: "Bounce Levels returned an incomplete ranked surface." },
         );
-        if (!cancelled) { setBounceLevelsSnapshot((current) => mergeBounceLevelsSnapshots(current, payload)); setBounceLevelsError(null); }
+        if (!cancelled) { commitSnapshot(payload); setBounceLevelsError(null); }
       } catch (error) {
         if (!cancelled) setBounceLevelsError(error instanceof Error ? error.message : "Bounce Levels could not refresh.");
       } finally {
@@ -5804,21 +5820,11 @@ export default function Chart({
       WEAKENING: indicatorSettings.showWeakeningNodes !== false,
       RETIRED: indicatorSettings.showRetiredHistory !== false,
     };
-    const roleByStrike = new Map(
-      bounceLevelsSnapshot.levels.map((level) => [level.sourceStrike, level.role]),
+    const visibleSnapshot = filterBounceLevelsSnapshot(
+      bounceLevelsSnapshot,
+      roleVisibility,
+      indicatorSettings.showAirPockets !== false,
     );
-    const visibleSnapshot = {
-      ...bounceLevelsSnapshot,
-      levels: bounceLevelsSnapshot.levels.filter((level) => roleVisibility[level.role] !== false),
-      exposureField: bounceLevelsSnapshot.exposureField.map((slice) => ({
-        ...slice,
-        nodes: slice.nodes.filter((node) => {
-          const role = roleByStrike.get(node.sourceStrike);
-          return !role || roleVisibility[role] !== false;
-        }),
-      })),
-      airPockets: indicatorSettings.showAirPockets !== false ? bounceLevelsSnapshot.airPockets : [],
-    };
     return {
       snapshot: visibleSnapshot,
       timeAnchors: candles.map((candle) => candle.timestamp),
@@ -5829,6 +5835,24 @@ export default function Chart({
       minimumOpacity: Number(indicatorSettings.minimumNodeOpacity ?? 8) / 100,
       glowStrength: Number(indicatorSettings.glowStrength ?? 5),
       microOrbTexture: indicatorSettings.microOrbTexture !== false,
+      showHeader: indicatorSettings.showHeader === true,
+      showLabels: indicatorSettings.showLabels === true,
+      showValues: indicatorSettings.showValues === true,
+      showTouchCount: indicatorSettings.showTouchCount !== false,
+      showRocArrows: indicatorSettings.showRocArrows !== false && indicatorSettings.chartMarkers !== false,
+      showAirPockets: indicatorSettings.showAirPockets !== false,
+      showRolls: indicatorSettings.rollVisualizationEnabled === true,
+      neutralColor: useThemeColors ? settings.gridColor : String(indicatorSettings.airPocketColor ?? settings.gridColor),
+      roleColors: Object.fromEntries(visibleSnapshot.levels.map((level) => [
+        String(level.sourceStrike),
+        level.role === "KING"
+          ? (useThemeColors ? settings.borderUpColor : String(indicatorSettings.kingColor ?? settings.borderUpColor))
+          : level.role === "DEVELOPING"
+            ? (useThemeColors ? settings.upColor : String(indicatorSettings.developingColor ?? settings.upColor))
+            : level.role === "WEAKENING" || level.role === "RETIRED"
+              ? (useThemeColors ? settings.downColor : String(indicatorSettings.weakeningColor ?? settings.downColor))
+              : "",
+      ])),
       positiveColor: useThemeColors ? settings.upColor : String(indicatorSettings.positiveColor ?? settings.upColor),
       negativeColor: useThemeColors ? settings.downColor : String(indicatorSettings.negativeColor ?? settings.downColor),
     };
@@ -12039,6 +12063,7 @@ export default function Chart({
             <span>Call / Put</span><span className="text-foreground">{formatGammaValue(bounceLevelsTooltip.node.callExposure, "per-one-percent-move")} / {formatGammaValue(bounceLevelsTooltip.node.putExposure, "per-one-percent-move")}</span>
             <span>Percent of King</span><span className="text-foreground">{(bounceLevelsTooltip.node.percentOfKing * 100).toFixed(1)}%</span>
             <span>Slice share</span><span className="text-foreground">{(bounceLevelsTooltip.node.bucketShare * 100).toFixed(1)}%</span>
+            {bounceLevelsIndicator?.settings?.showTouchCount !== false ? <><span>Confirmed touches</span><span className="text-foreground">{bounceLevelsTooltip.snapshot.levels.find((level) => level.sourceStrike === bounceLevelsTooltip.node.sourceStrike)?.touches ?? 0}</span></> : null}
             <span>Last snapshot ROC</span><span className={bounceLevelsTooltip.node.shortRateOfChange >= 0 ? "text-primary" : "text-danger"}>{bounceLevelsTooltip.node.shortRateOfChange >= 0 ? "+" : ""}{bounceLevelsTooltip.node.shortRateOfChange.toFixed(1)}%</span>
             <span>1m / 5m / 15m ROC</span><span className="text-foreground">{bounceLevelsTooltip.node.oneMinuteRateOfChange.toFixed(1)}% / {bounceLevelsTooltip.node.fiveMinuteRateOfChange.toFixed(1)}% / {bounceLevelsTooltip.node.fifteenMinuteRateOfChange.toFixed(1)}%</span>
             <span>Exposure cadence</span><span className="text-foreground">{bounceLevelsTooltip.snapshot.exposureRefreshIntervalMs ? `${(bounceLevelsTooltip.snapshot.exposureRefreshIntervalMs / 1_000).toFixed(0)}s` : "Awaiting second snapshot"}</span>
