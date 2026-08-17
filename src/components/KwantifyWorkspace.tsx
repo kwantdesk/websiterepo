@@ -4367,6 +4367,11 @@ function WorkspaceChartPane({
   const intervalCommandInputRef = useRef<HTMLInputElement>(null);
   const intervalCommandPanelRef = useRef<HTMLDivElement>(null);
   const latestCandlesRef = useRef<Candle[]>([]);
+  const lightweightLiveTailRef = useRef<{
+    source: Candle[];
+    start: number;
+    rows: Candle[];
+  } | null>(null);
   const latestMarketTradesRef = useRef<InstitutionalTrade[]>([]);
   const latestOrderFlowCandlesRef = useRef<Candle[]>([]);
   const lastCandleStateSyncRef = useRef(0);
@@ -4471,6 +4476,12 @@ function WorkspaceChartPane({
   useEffect(() => {
     activeRef.current = active;
   }, [active]);
+
+  useEffect(() => {
+    // A live tail is deliberately detached from React's historical array.
+    // Never carry it across an instrument or interval switch.
+    lightweightLiveTailRef.current = null;
+  }, [pane.broker, pane.symbol, pane.timeframe]);
 
   useEffect(() => {
     if (!chartIsLoading) onInitialSettled?.();
@@ -4697,7 +4708,7 @@ function WorkspaceChartPane({
       }));
       const now = Date.now();
       const newBar = previousCandles.at(-1)?.timestamp !== latest.timestamp;
-      const reconciliationCadence = activeRef.current ? 250 : 750;
+      const reconciliationCadence = activeRef.current ? 750 : 2_000;
       if (newBar || now - lastCandleStateSyncRef.current >= reconciliationCadence) {
         lastCandleStateSyncRef.current = now;
         // The selected pane is the trader's price display, so its candle
@@ -4714,8 +4725,8 @@ function WorkspaceChartPane({
       // Footprint remains visually live at 10 fps while multiple panes share
       // one bounded main-thread workload. Background panes reconcile slower.
       const delay = activeRef.current
-        ? footprintLiveActive ? 100 : 160
-        : 500;
+        ? footprintLiveActive ? 125 : 200
+        : 750;
       executionSyncTimer = window.setTimeout(flushExecutionRecords, delay);
     };
 
@@ -6078,6 +6089,59 @@ function WorkspaceChartPane({
           // the seam in the background while the current candle keeps painting.
           requestTailReconciliationRef.current?.();
         }
+        const useLightweightLiveTail = usingDatabentoPaneFeed
+          && !isEventBasedChartInterval(pane.timeframe)
+          && !requiresExecutionStream;
+        if (useLightweightLiveTail) {
+          // The chart series is painted from LIVE_CHART_CANDLE_EVENT on every
+          // animation frame. Rebuilding a 5-day candle array on that same
+          // cadence served no visual purpose, but forced every React study,
+          // drawing and overlay to recalculate in every visible pane. Keep a
+          // tiny private tail for tick aggregation and reconcile the complete
+          // history only on a new bar or a low-frequency study checkpoint.
+          const retained = lightweightLiveTailRef.current;
+          const tailStart = retained?.source === previous
+            ? retained.start
+            : Math.max(0, previous.length - 32);
+          const tailRows = retained?.source === previous
+            ? retained.rows
+            : previous.slice(tailStart);
+          const mergedTail = ticks.reduce((current, tick) => mergeLiveMidIntoCandles(
+            current,
+            tick.mid,
+            pane.symbol,
+            pane.timeframe,
+            tick.timestamp,
+            rithmicConnectedRef.current ? undefined : tick,
+            true,
+          ), [...tailRows]);
+          if (!mergedTail.length) return;
+          lightweightLiveTailRef.current = {
+            source: previous,
+            start: tailStart,
+            rows: mergedTail,
+          };
+          const latest = mergedTail.at(-1)!;
+          window.dispatchEvent(new CustomEvent(LIVE_CHART_CANDLE_EVENT, {
+            detail: { key: pane.id, candle: latest },
+          }));
+          const newBar = previous.at(-1)?.timestamp !== latest.timestamp;
+          const now = Date.now();
+          const reconciliationCadence = activeRef.current ? 750 : 2_500;
+          if (newBar || now - lastCandleStateSyncRef.current >= reconciliationCadence) {
+            const committed = [
+              ...previous.slice(0, tailStart),
+              ...mergedTail,
+            ];
+            lastCandleStateSyncRef.current = now;
+            latestCandlesRef.current = committed;
+            lightweightLiveTailRef.current = null;
+            if (activeRef.current) setCandles(committed);
+            else startTransition(() => setCandles(committed));
+          }
+          return;
+        }
+
         const next = usingDatabentoPaneFeed && isEventBasedChartInterval(pane.timeframe)
           ? (() => {
               // Rithmic is the authoritative execution source whenever it is
@@ -6116,7 +6180,7 @@ function WorkspaceChartPane({
         }));
         const newBar = previous.at(-1)?.timestamp !== latest.timestamp;
         const now = Date.now();
-        const reconciliationCadence = activeRef.current ? 250 : 1_000;
+        const reconciliationCadence = activeRef.current ? 750 : 2_000;
         if (newBar || now - lastCandleStateSyncRef.current >= reconciliationCadence) {
           lastCandleStateSyncRef.current = now;
           // A transition can be starved indefinitely while several live
@@ -6164,7 +6228,7 @@ function WorkspaceChartPane({
       stream.close();
       clearPendingFrame();
     };
-  }, [markMarketActive, needsOrderFlowHistory, onLiveExecutionQuote, pane.broker, pane.id, pane.symbol, pane.timeframe, streamReconnectNonce]);
+  }, [markMarketActive, needsOrderFlowHistory, onLiveExecutionQuote, pane.broker, pane.id, pane.symbol, pane.timeframe, requiresExecutionStream, streamReconnectNonce]);
 
   useEffect(() => {
     const usingMassivePaneFeed = pane.broker === "Massive" || isMassiveFuturesSymbol(pane.symbol);

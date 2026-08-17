@@ -3022,8 +3022,8 @@ export default function Chart({
     drawingDataRefreshTimerRef.current = window.setTimeout(() => {
       drawingDataRefreshTimerRef.current = null;
       professionalDrawingManagerRef.current?.getAllDrawings().forEach((drawing) => drawing.requestUpdate());
-    }, 200);
-  }, [candles, marketTrades]);
+    }, keyboardActive ? 250 : 1_000);
+  }, [candles, keyboardActive, marketTrades]);
 
   useEffect(() => () => {
     if (drawingDataRefreshTimerRef.current !== null) {
@@ -3149,7 +3149,7 @@ export default function Chart({
               setSampledIndicatorCandles((current) =>
                 mergeLiveIndicatorCandle(current, liveVolumeCandle));
             }
-          }, 80);
+          }, keyboardActive ? 100 : 500);
         }
       }
       if (frame === null) frame = window.requestAnimationFrame(flush);
@@ -3164,7 +3164,7 @@ export default function Chart({
       }
       pendingLiveVolumeCandleRef.current = null;
     };
-  }, [footprintSamplingEnabled, instrument, liveCandleEventKey, timeframe, volumeIndicatorEnabled]);
+  }, [footprintSamplingEnabled, instrument, keyboardActive, liveCandleEventKey, timeframe, volumeIndicatorEnabled]);
 
   useEffect(() => {
     updateIndicatorSettingRef.current = onUpdateIndicatorSetting;
@@ -3248,13 +3248,18 @@ export default function Chart({
     // The candle itself continues to render tick-by-tick. Footprint FPS is a
     // canvas paint preference, not permission to copy and aggregate a 55k
     // execution tape 30/60/120 times per second.
-    }, footprintSamplingEnabled
-      ? FOOTPRINT_DATA_REFRESH_INTERVAL_MS
-      : ORDER_FLOW_DATA_REFRESH_INTERVAL_MS);
+    }, keyboardActive
+      ? footprintSamplingEnabled
+        ? FOOTPRINT_DATA_REFRESH_INTERVAL_MS
+        : ORDER_FLOW_DATA_REFRESH_INTERVAL_MS
+      : footprintSamplingEnabled
+        ? Math.max(750, FOOTPRINT_DATA_REFRESH_INTERVAL_MS)
+        : Math.max(1_000, ORDER_FLOW_DATA_REFRESH_INTERVAL_MS));
   }, [
     candles,
     footprintSamplingEnabled,
     indicatorSamplingEnabled,
+    keyboardActive,
     marketTrades,
     orderFlowHistoryReady,
     orderFlowIndicatorEnabled,

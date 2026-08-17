@@ -1331,7 +1331,12 @@ class DepthForgeApp {
         this.accumulator = Math.min(this.accumulator, this.market.intervalMs);
       }
 
-      const canvasPaintInterval = this.workspaceEmbedded && !this.workspacePresentationActive ? 100 : 0;
+      // A workspace map remains visible when another pane is selected. The
+      // previous "inactive" budget capped that visible canvas at 10 FPS and
+      // made it look frozen beside live charts. Genuine depth frames arrive
+      // at roughly 20 FPS, so 50 ms preserves every market frame without
+      // performing redundant paints between updates.
+      const canvasPaintInterval = this.workspaceEmbedded && !this.workspacePresentationActive ? 50 : 0;
       const canvasPaintDue = timestamp - this.lastCanvasPaintAt >= canvasPaintInterval;
       if (this.renderRequested && canvasPaintDue) {
         const current = this.history[this.viewEnd];
@@ -1391,7 +1396,7 @@ class DepthForgeApp {
       // The ladder used to refresh every 180 ms, which is only 5.5 Hz and was
       // the most obvious source of the map's low-frame-rate feel. DOM writes
       // are already diffed, so a 50 ms presentation cadence is sustainable.
-      const uiUpdateInterval = this.workspaceEmbedded && !this.workspacePresentationActive ? 250 : 100;
+      const uiUpdateInterval = 100;
       if (timestamp - this.lastUiUpdate > uiUpdateInterval) {
         this.#updateUi(false);
         this.lastUiUpdate = timestamp;

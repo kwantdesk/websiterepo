@@ -44,7 +44,7 @@ test("each pane losslessly coalesces execution work before copying tape and cand
   assert.match(workspace, /let pendingExecutionRecords: InstitutionalTrade\[\] = \[\]/);
   assert.match(workspace, /const flushExecutionRecords = \(\) =>/);
   assert.match(workspace, /pendingExecutionRecords\.push\(\.\.\.records\)/);
-  assert.match(workspace, /footprintLiveActive \? 100 : 160/);
+  assert.match(workspace, /footprintLiveActive \? 125 : 200/);
   assert.match(workspace, /onTrades: \(records\) => \{[\s\S]{0,160}queueExecutionUpdate\(records\)/);
 });
 
@@ -77,7 +77,7 @@ test("professional drawing invalidations are coalesced away from the live tape c
   const chart = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
   assert.match(chart, /drawingDataRefreshTimerRef/);
   assert.match(chart, /window\.setTimeout\(\(\) => \{[\s\S]{0,240}drawing\.requestUpdate\(\)/);
-  assert.match(chart, /\}, 200\)/);
+  assert.match(chart, /keyboardActive \? 250 : 1_000/);
 });
 
 test("live profiles and heatmap style work are throttled independently", () => {
@@ -106,6 +106,22 @@ test("a live candle frame clones history once while every tick still reaches exe
   );
   assert.match(workspace, /if \(activeRef\.current\) setCandles\(\[\.\.\.next\]\)/);
   assert.match(workspace, /if \(activeRef\.current\) setCandles\(nextCandles\)/);
+});
+
+test("plain multi-day charts aggregate ticks on a bounded tail before React reconciliation", () => {
+  assert.match(workspace, /const lightweightLiveTailRef = useRef/);
+  assert.match(workspace, /Math\.max\(0, previous\.length - 32\)/);
+  assert.match(workspace, /const mergedTail = ticks\.reduce/);
+  assert.match(workspace, /detail: \{ key: pane\.id, candle: latest \}/);
+  assert.match(workspace, /activeRef\.current \? 750 : 2_500/);
+  assert.match(workspace, /previous\.slice\(0, tailStart\)/);
+});
+
+test("background studies and drawings cannot consume foreground cadence", () => {
+  const chart = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
+  assert.match(chart, /keyboardActive \? 100 : 500/);
+  assert.match(chart, /Math\.max\(750, FOOTPRINT_DATA_REFRESH_INTERVAL_MS\)/);
+  assert.match(chart, /Math\.max\(1_000, ORDER_FLOW_DATA_REFRESH_INTERVAL_MS\)/);
 });
 
 test("the five-minute chart stream proves the canonical selected symbol before warm takeover", () => {
