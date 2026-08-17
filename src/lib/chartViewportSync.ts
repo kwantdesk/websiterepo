@@ -43,12 +43,11 @@ export function subscribeChartViewport(
 
 export function resolveLinkedPriceRange(
   snapshot: ChartViewportSnapshot,
-  linkedInstrument: string,
+  _linkedInstrument: string,
   linkedAnchorPrice: number,
 ) {
   if (
-    snapshot.instrument.trim().toUpperCase() === linkedInstrument.trim().toUpperCase()
-    || !Number.isFinite(snapshot.anchorPrice)
+    !Number.isFinite(snapshot.anchorPrice)
     || snapshot.anchorPrice <= 0
     || !Number.isFinite(linkedAnchorPrice)
     || linkedAnchorPrice <= 0
@@ -60,5 +59,27 @@ export function resolveLinkedPriceRange(
   return {
     from: linkedAnchorPrice * (1 + lowerOffset),
     to: linkedAnchorPrice * (1 + upperOffset),
+  };
+}
+
+export function centerPriceRangeOnAnchor(
+  priceRange: { from: number; to: number },
+  anchorPrice: number,
+) {
+  const from = Number(priceRange.from);
+  const to = Number(priceRange.to);
+  if (
+    !Number.isFinite(from)
+    || !Number.isFinite(to)
+    || to <= from
+    || !Number.isFinite(anchorPrice)
+    || anchorPrice <= 0
+  ) {
+    return priceRange;
+  }
+  const halfSpan = (to - from) / 2;
+  return {
+    from: anchorPrice - halfSpan,
+    to: anchorPrice + halfSpan,
   };
 }

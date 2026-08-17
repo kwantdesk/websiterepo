@@ -42,7 +42,15 @@ test("linked price height preserves both percentage offsets across differently p
   assert.ok(Math.abs(range.to - 535) < 1e-9);
 });
 
-test("the same instrument keeps its exact manually selected vertical range", () => {
+test("the same instrument still aligns its latest price if its local feed is a tick apart", () => {
   const range = viewport.resolveLinkedPriceRange(snapshot(), "SPX", 5_310);
-  assert.deepEqual(range, { from: 5_250, to: 5_350 });
+  assert.ok(Math.abs(range.from - (5_310 * (5_250 / 5_300))) < 1e-9);
+  assert.ok(Math.abs(range.to - (5_310 * (5_350 / 5_300))) < 1e-9);
+});
+
+test("a newly linked group centers its reference price without changing visible height", () => {
+  const range = viewport.centerPriceRangeOnAnchor({ from: 5_200, to: 5_350 }, 5_300);
+  assert.deepEqual(range, { from: 5_225, to: 5_375 });
+  assert.equal(range.to - range.from, 150);
+  assert.equal((range.from + range.to) / 2, 5_300);
 });

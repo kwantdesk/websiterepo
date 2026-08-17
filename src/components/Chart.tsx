@@ -425,6 +425,7 @@ import {
   type ChartCrosshairSyncMove,
 } from "@/lib/chartCrosshairSync";
 import {
+  centerPriceRangeOnAnchor,
   publishChartViewport,
   readLatestChartViewport,
   resolveLinkedPriceRange,
@@ -11397,7 +11398,7 @@ function Chart({
       }
     };
 
-    const publishSnapshot = (allowWithoutInteraction = false) => {
+    const publishSnapshot = (allowWithoutInteraction = false, centerOnAnchor = false) => {
       // Visible-range callbacks also fire after setVisibleRange() on follower
       // charts. Only a chart receiving direct pointer/wheel input is allowed to
       // lead the group, otherwise followers echo the applied range back and a
@@ -11413,12 +11414,23 @@ function Chart({
         const timeRange = chart.timeScale().getVisibleRange();
         const priceScale = chart.priceScale("right") as ReturnType<IChartApi["priceScale"]> & {
           getVisibleRange?: () => { from: number; to: number } | null;
+          setVisibleRange?: (range: { from: number; to: number }) => void;
+          setAutoScale?: (enabled: boolean) => void;
         };
-        const priceRange = priceScale.getVisibleRange?.() ?? null;
+        let priceRange = priceScale.getVisibleRange?.() ?? null;
         const anchorPrice = latestAnchor();
         const from = Number(timeRange?.from);
         const to = Number(timeRange?.to);
         if (!timeRange || !priceRange || !anchorPrice || !Number.isFinite(from) || !Number.isFinite(to)) return;
+        if (centerOnAnchor) {
+          // A newly linked group always begins from a common visual origin:
+          // the current/reference price sits at the vertical midpoint. The
+          // percentage offsets are then translated for SPX, NDX, SPY, QQQ,
+          // or any other differently priced linked instrument.
+          priceRange = centerPriceRangeOnAnchor(priceRange, anchorPrice);
+          priceScale.setAutoScale?.(false);
+          priceScale.setVisibleRange?.(priceRange);
+        }
         publishChartViewport({
           groupId: viewportSyncGroup,
           sourceChartId: chartInstanceId,
@@ -11489,7 +11501,7 @@ function Chart({
       initialPublishTimer = window.setTimeout(() => {
         // Seed an empty group once. Never let every mounting chart race to
         // become the initial leader and overwrite another chart's viewport.
-        if (!readLatestChartViewport(viewportSyncGroup)) publishSnapshot(true);
+        if (!readLatestChartViewport(viewportSyncGroup)) publishSnapshot(true, true);
       }, 80);
     }
 
