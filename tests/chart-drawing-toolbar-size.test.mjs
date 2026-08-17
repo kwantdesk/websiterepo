@@ -8,6 +8,6 @@ test("the shared per-chart drawing toolbar is one quarter smaller", () => {
   assert.match(chart, /const buttonSize = smooth\(28\.5, 9\.9\)/);
   assert.match(chart, /const iconSize = smooth\(12\.75, 5\.25\)/);
   assert.match(chart, /const gap = smooth\(2\.25, 1\.1\)/);
-  assert.match(chart, /rounded-md border border-border\/80 bg-panel\/92 p-\[2px\]/);
+  assert.match(chart, /border-y-0 border-l-0 border-r border-border\/80 bg-panel\/96 p-\[2px\]/);
   assert.doesNotMatch(chart, /const buttonSize = smooth\(38,/);
 });

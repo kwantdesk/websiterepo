@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const chart = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
+const toolbarCatalog = readFileSync(new URL("../src/lib/tradingViewToolbarCatalog.ts", import.meta.url), "utf8");
 const engine = readFileSync(new URL("../src/lib/professionalDrawingEngine.ts", import.meta.url), "utf8");
 const registry = readFileSync(new URL("../src/vendor/lightweight-charts-drawing/registry/tool-registry.ts", import.meta.url), "utf8");
 const kwantTools = readFileSync(new URL("../src/vendor/lightweight-charts-drawing/tools/kwant/kwant-tool-drawing.ts", import.meta.url), "utf8");
@@ -28,15 +29,14 @@ const expectedTools = [
   "Dot", "Diamond", "Square", "Up Arrow", "Down Arrow",
 ];
 
-test("the live chart rail exposes the requested drawing actions", () => {
-  const activeSection = chart.slice(
-    chart.indexOf("const ACTIVE_DRAWING_TOOLBAR_GROUPS"),
-    chart.indexOf("const ALL_DRAWING_TOOLS"),
-  );
+test("the live chart rail preserves the legacy actions inside the reconstructed 93-tool catalog", () => {
   assert.equal(expectedTools.length, 42);
-  for (const label of expectedTools) assert.match(activeSection, new RegExp(`"${label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`));
-  assert.equal((activeSection.match(/activeDrawingTool\(/g) ?? []).length, 42);
-  assert.doesNotMatch(activeSection, /Soon/);
+  for (const label of expectedTools) assert.match(chart, new RegExp(`"${label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`));
+  assert.match(toolbarCatalog, /TRADINGVIEW_TOOLBAR_TOOL_COUNT = 93/);
+  assert.match(chart, /const ACTIVE_DRAWING_TOOLBAR_GROUPS: ToolbarGroup\[\] = RECONSTRUCTED_GROUP_ORDER\.flatMap/);
+  assert.match(chart, /TRADINGVIEW_TOOLBAR_TOOL_IDS\.has\(tool\.id\)/);
+  assert.match(chart, /TRADINGVIEW_TOOLBAR_BY_APP_TOOL\.get\(tool\.id\)/);
+  assert.doesNotMatch(toolbarCatalog, /Soon/);
 });
 
 test("all 41 actions resolve through the authoritative canvas registry", () => {

@@ -21,6 +21,7 @@ import {
   Brush,
   Calculator,
   ChartColumnIncreasing,
+  ChevronDown,
   Circle,
   Copy,
   Crosshair,
@@ -89,6 +90,10 @@ import {
   CHART_INDICATOR_BY_ID,
   type ChartIndicatorInstance,
 } from "@/lib/chartIndicatorCatalog";
+import {
+  TRADINGVIEW_TOOLBAR_BY_APP_TOOL,
+  TRADINGVIEW_TOOLBAR_TOOL_IDS,
+} from "@/lib/tradingViewToolbarCatalog";
 import {
   calculateDeltaPercentHighlights,
   calculateIndicatorSeries,
@@ -2166,8 +2171,8 @@ function activeDrawingTool(
   };
 }
 
-/** The bounded, production drawing surface specified for KwantDesk. */
-const ACTIVE_DRAWING_TOOLBAR_GROUPS: ToolbarGroup[] = [
+/** The former bounded surface is retained only as migration documentation. */
+const LEGACY_ACTIVE_DRAWING_TOOLBAR_GROUPS: ToolbarGroup[] = [
   {
     id: "cursorTools",
     label: "Lines",
@@ -2275,6 +2280,36 @@ const ACTIVE_DRAWING_TOOLBAR_GROUPS: ToolbarGroup[] = [
   },
 ];
 
+/**
+ * Complete 93-tool reconstruction.  The visual definitions remain colocated
+ * with their Lucide icons above, while the architecture catalog is the source
+ * of truth for membership and ordering.  Product-only legacy tools therefore
+ * cannot silently leak back into the reconstructed flyouts.
+ */
+const RECONSTRUCTED_GROUP_ORDER: ToolbarGroupId[] = [
+  "cursorTools",
+  "trend",
+  "fib",
+  "patterns",
+  "forecast",
+  "shapes",
+  "annotation",
+];
+
+const ACTIVE_DRAWING_TOOLBAR_GROUPS: ToolbarGroup[] = RECONSTRUCTED_GROUP_ORDER.flatMap((groupId) => {
+  const source = DRAWING_TOOLBAR_GROUPS.find((group) => group.id === groupId);
+  if (!source) return [];
+  const tools = source.tools
+    .filter((tool) => TRADINGVIEW_TOOLBAR_TOOL_IDS.has(tool.id))
+    .sort((a, b) => {
+      const left = TRADINGVIEW_TOOLBAR_BY_APP_TOOL.get(a.id)?.specId ?? "";
+      const right = TRADINGVIEW_TOOLBAR_BY_APP_TOOL.get(b.id)?.specId ?? "";
+      return left.localeCompare(right);
+    })
+    .map((tool) => ({ ...tool, implemented: true }));
+  return [{ ...source, tools }];
+});
+
 const ALL_DRAWING_TOOLS = ACTIVE_DRAWING_TOOLBAR_GROUPS.flatMap((group) => group.tools);
 const DOUBLE_CLICK_STYLE_DRAWING_TYPES = new Set([
   "trend-line",
@@ -2299,6 +2334,7 @@ function precisionToolForDrawingTool(tool: DrawingToolId): PrecisionToolId | nul
 }
 const DRAWING_TOOL_FAVORITES_STORAGE_KEY = "kwantdesk:drawing-favourites:v1";
 const DRAWING_TOOL_FAVORITES_EVENT = "kwantify-chart-tool-favorites-change";
+const DRAWING_TOOL_LAST_USED_STORAGE_KEY = "kwantdesk:drawing-last-used:v1";
 const DRAWING_TEMPLATES_STORAGE_KEY = "kwantdesk:drawing-templates:v1";
 
 const TOOLBAR_ICON_MAP: Record<ToolbarGroupId, ComponentType<{ className?: string }>> = {
@@ -2909,6 +2945,7 @@ function Chart({
   const [crosshairSyncEnabled, setCrosshairSyncEnabled] = useState(false);
   const [openToolbarGroup, setOpenToolbarGroup] = useState<ToolbarGroupId | null>(null);
   const [favoriteToolIds, setFavoriteToolIds] = useState<DrawingToolId[]>([]);
+  const [lastUsedToolByGroup, setLastUsedToolByGroup] = useState<Partial<Record<ToolbarGroupId, DrawingToolId>>>({});
   const [drawings, setDrawings] = useState<ChartDrawing[]>([]);
   const drawingsHydrationRef = useRef<{ instrument: string; ready: boolean }>({ instrument: "", ready: false });
   const [professionalDrawings, setProfessionalDrawings] = useState<ProfessionalDrawingRecord[]>([]);
@@ -8907,6 +8944,23 @@ function Chart({
   }, []);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const parsed = JSON.parse(window.localStorage.getItem(DRAWING_TOOL_LAST_USED_STORAGE_KEY) ?? "{}") as Record<string, unknown>;
+      const restored: Partial<Record<ToolbarGroupId, DrawingToolId>> = {};
+      for (const group of ACTIVE_DRAWING_TOOLBAR_GROUPS) {
+        const candidate = parsed[group.id];
+        if (typeof candidate === "string" && group.tools.some((tool) => tool.id === candidate)) {
+          restored[group.id] = candidate as DrawingToolId;
+        }
+      }
+      setLastUsedToolByGroup(restored);
+    } catch {
+      setLastUsedToolByGroup({});
+    }
+  }, []);
+
+  useEffect(() => {
     drawingTemplatesRef.current = drawingTemplates;
     if (typeof window === "undefined") return;
     try {
@@ -8930,6 +8984,25 @@ function Chart({
   }
 
   function activateToolbarTool(toolId: DrawingToolId) {
+    const ownerGroup = ACTIVE_DRAWING_TOOLBAR_GROUPS.find((group) => group.tools.some((tool) => tool.id === toolId));
+    if (ownerGroup) {
+      setLastUsedToolByGroup((current) => {
+        const next = { ...current, [ownerGroup.id]: toolId };
+        try {
+          window.localStorage.setItem(DRAWING_TOOL_LAST_USED_STORAGE_KEY, JSON.stringify(next));
+        } catch {
+          // Tool activation must never depend on browser storage availability.
+        }
+        return next;
+      });
+    }
+
+    if (toolId === "arrowCursor" || toolId === "demonstration" || toolId === "magic") {
+      selectedToolRef.current = "cursor";
+      setOpenToolbarGroup(null);
+      setSelectedTool("cursor");
+      return;
+    }
     const precisionTool = precisionToolForDrawingTool(toolId);
 
     // Tool selection must take ownership immediately. Waiting for the React
@@ -13792,9 +13865,47 @@ function Chart({
             <Crosshair className={toolbarIconClassName} />
           </button>
         )}
+        {!toolbarCollapsed && (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              activateToolbarTool("measure");
+            }}
+            className={`flex items-center justify-center border backdrop-blur ${getToolbarButtonTone(selectedTool === "measure")}`}
+            style={toolbarButtonStyle}
+            title="Measure"
+            aria-label="Measure"
+            aria-pressed={selectedTool === "measure"}
+          >
+            <Ruler className={toolbarIconClassName} />
+          </button>
+        )}
+        {!toolbarCollapsed && (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              const chart = chartRef.current;
+              if (!chart) return;
+              const timeScale = chart.timeScale();
+              const spacing = Number(timeScale.options().barSpacing ?? 6);
+              timeScale.applyOptions({ barSpacing: Math.min(80, spacing * 1.2) });
+            }}
+            className="flex items-center justify-center border border-transparent bg-transparent text-muted transition-all hover:bg-surface hover:text-foreground"
+            style={toolbarButtonStyle}
+            title="Zoom in"
+            aria-label="Zoom in"
+          >
+            <Plus className={toolbarIconClassName} />
+          </button>
+        )}
         {!toolbarCollapsed &&
           toolbarGroups.map((group) => {
-          const GroupIcon = group.icon;
+          const lastUsedTool = group.id === "favorites"
+            ? null
+            : group.tools.find((tool) => tool.id === lastUsedToolByGroup[group.id]) ?? group.tools[0] ?? null;
+          const GroupIcon = lastUsedTool?.icon ?? group.icon;
           const groupedSections = groupToolsBySection(group.tools);
           return (
             <div key={group.id} className="relative">
@@ -13803,11 +13914,17 @@ function Chart({
                 onClick={(event) => {
                   event.stopPropagation();
                   setShowObjectsPanel(false);
-                  setOpenToolbarGroup((current) => (current === group.id ? null : group.id));
+                  if (group.id === "favorites" || !lastUsedTool) {
+                    setOpenToolbarGroup((current) => (current === group.id ? null : group.id));
+                  } else {
+                    activateToolbarTool(lastUsedTool.id);
+                  }
                 }}
                 className={`flex items-center justify-center border backdrop-blur ${getToolbarButtonTone(group.isActive || openToolbarGroup === group.id)}`}
                 style={toolbarButtonStyle}
-                title={group.label}
+                title={lastUsedTool ? `${lastUsedTool.label} · ${group.label}` : group.label}
+                data-tool-group={group.id}
+                data-last-used-tool={lastUsedTool?.id}
               >
                 <GroupIcon
                   className={`${toolbarIconClassName} ${
@@ -13819,6 +13936,21 @@ function Chart({
                   }`}
                 />
               </button>
+              {group.id !== "favorites" ? (
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setShowObjectsPanel(false);
+                    setOpenToolbarGroup((current) => (current === group.id ? null : group.id));
+                  }}
+                  className="absolute bottom-0 right-0 z-[1] flex h-[9px] w-[9px] items-center justify-center text-muted hover:text-primary"
+                  aria-label={`Open ${group.label}`}
+                  title={`Open ${group.label}`}
+                >
+                  <ChevronDown className="h-[7px] w-[7px]" />
+                </button>
+              ) : null}
               {openToolbarGroup === group.id && (
                 <div
                   className={`absolute z-30 overflow-hidden rounded-2xl border border-border bg-panel/95 shadow-2xl backdrop-blur ${getToolbarMenuPositionClasses(toolbarDock)}`}
@@ -13853,6 +13985,8 @@ function Chart({
                           return (
                             <div
                               key={tool.id}
+                              data-tool-id={tool.id}
+                              data-name={TRADINGVIEW_TOOLBAR_BY_APP_TOOL.get(tool.id)?.dataName}
                               onClick={() => {
                                 if (implemented) activateToolbarTool(tool.id);
                               }}

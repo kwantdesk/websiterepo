@@ -30,6 +30,19 @@ export type KwantToolKind =
   | "elliott-triangle"
   | "elliott-double-combo"
   | "elliott-triple-combo"
+  | "xabcd-pattern"
+  | "cypher-pattern"
+  | "head-and-shoulders"
+  | "abcd-pattern"
+  | "triangle-pattern"
+  | "three-drives-pattern"
+  | "cyclic-lines"
+  | "time-cycles"
+  | "sine-line"
+  | "ghost-feed"
+  | "image-content"
+  | "post-content"
+  | "idea-content"
   | "label"
   | "right-price-label"
   | "left-price-label"
@@ -86,6 +99,15 @@ const ELLIOTT_LABELS: Partial<Record<KwantToolKind, string[]>> = {
   "elliott-triangle": ["", "A", "B", "C", "D", "E"],
   "elliott-double-combo": ["", "W", "X", "Y"],
   "elliott-triple-combo": ["", "W", "X", "Y", "X", "Z"],
+};
+
+const PATTERN_LABELS: Partial<Record<KwantToolKind, string[]>> = {
+  "xabcd-pattern": ["X", "A", "B", "C", "D"],
+  "cypher-pattern": ["X", "A", "B", "C", "D"],
+  "head-and-shoulders": ["L", "S", "N", "H", "N", "S", "R"],
+  "abcd-pattern": ["A", "B", "C", "D"],
+  "triangle-pattern": ["A", "B", "C", "D"],
+  "three-drives-pattern": ["0", "1", "A", "2", "B", "3", "C"],
 };
 
 const ANALYTICAL_TOOLS = new Set<KwantToolKind>([
@@ -421,6 +443,65 @@ export class KwantToolDrawing extends Drawing {
       return [
         { type: "polygon", points: p, closed: false },
         ...p.slice(1).map((point, index) => text({ x: point.x, y: point.y - 10 }, ELLIOTT_LABELS[this.type]?.[index + 1] ?? "", color, "center")),
+      ];
+    }
+    if (PATTERN_LABELS[this.type]) {
+      const labels = PATTERN_LABELS[this.type] ?? [];
+      return [
+        { type: "polygon", points: p, closed: false },
+        ...p.map((point, index) => text({ x: point.x, y: point.y - 10 }, labels[index] ?? "", color, "center")),
+      ];
+    }
+    if (this.type === "cyclic-lines") {
+      const spacing = Math.max(8, Math.abs(p[1].x - p[0].x));
+      const geometry: Geometry[] = [];
+      for (let x = p[0].x; x <= viewport.width + spacing; x += spacing) {
+        geometry.push({ ...line({ x, y: 0 }, { x, y: viewport.height }), opacity: 0.72 });
+      }
+      for (let x = p[0].x - spacing; x >= -spacing; x -= spacing) {
+        geometry.push({ ...line({ x, y: 0 }, { x, y: viewport.height }), opacity: 0.72 });
+      }
+      return geometry;
+    }
+    if (this.type === "time-cycles") {
+      const radius = Math.max(8, Math.abs(p[1].x - p[0].x));
+      const geometry: Geometry[] = [];
+      for (let x = p[0].x; x <= viewport.width + radius; x += radius * 2) {
+        geometry.push({ type: "arc", center: { x, y: p[0].y }, radius, startAngle: 0, endAngle: Math.PI * 2 });
+      }
+      return geometry;
+    }
+    if (this.type === "sine-line") {
+      const left = Math.min(p[0].x, p[1].x);
+      const right = Math.max(p[0].x, p[1].x);
+      const center = (p[0].y + p[1].y) / 2;
+      const amplitude = Math.max(4, Math.abs(p[1].y - p[0].y) / 2);
+      const points = Array.from({ length: 65 }, (_, index) => {
+        const progress = index / 64;
+        return { x: left + (right - left) * progress, y: center + Math.sin(progress * Math.PI * 4) * amplitude };
+      });
+      return [{ type: "polygon", points, closed: false }];
+    }
+    if (this.type === "ghost-feed") {
+      const midpoint = { x: (p[0].x + p[1].x) / 2, y: p[0].y + (p[1].y - p[0].y) * 0.28 };
+      return [
+        { ...line(p[0], midpoint), lineDash: [5, 4], opacity: 0.58 },
+        { ...line(midpoint, p[1]), lineDash: [5, 4], opacity: 0.58 },
+      ];
+    }
+    if (this.type === "image-content" || this.type === "post-content" || this.type === "idea-content") {
+      const label = this.type === "image-content" ? "IMAGE" : this.type === "post-content" ? "POST" : "IDEA";
+      const width = Math.max(64, label.length * 9 + 24);
+      return [
+        {
+          type: "rectangle",
+          topLeft: { x: p[0].x - width / 2, y: p[0].y - 18 },
+          width,
+          height: 36,
+          borderRadius: 4,
+          opacity: 0.18,
+        },
+        text(p[0], this.kwantOptions.text?.trim() || label, color, "center"),
       ];
     }
     if (this.type === "dot") {
