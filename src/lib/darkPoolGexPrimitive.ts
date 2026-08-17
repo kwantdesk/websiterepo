@@ -40,6 +40,12 @@ type DarkPoolRenderViewport = {
 };
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
 const darkPoolDateFormatter = new Intl.DateTimeFormat("en-US", { month: "numeric", day: "numeric", timeZone: "America/New_York" });
+const DARK_POOL_LABEL_EDGE_INSET = 10;
+
+export function pinnedDarkPoolLabelLeft(viewportWidth: number, labelWidth: number, edgeInset = DARK_POOL_LABEL_EDGE_INSET) {
+  const safeInset = Math.max(4, Math.min(Math.max(4, viewportWidth / 4), edgeInset));
+  return Math.max(safeInset, viewportWidth - Math.max(0, labelWidth) - safeInset);
+}
 
 function rgba(color: string, opacity: number) {
   const hex = /^#([0-9a-f]{6})$/i.exec(color)?.[1];
@@ -59,6 +65,50 @@ function timeCoordinate(chart: IChartApi, timestampMs: number, timelineMs: numbe
   }
   const visibleStart = timelineMs[Math.min(low, timelineMs.length - 1)];
   return Number.isFinite(visibleStart) ? chart.timeScale().timeToCoordinate(Math.floor(visibleStart / 1_000) as Time) : null;
+}
+
+function drawPinnedDarkPoolLabels(
+  context: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  series: CandleSeriesApi,
+  data: DarkPoolGexPrimitiveData,
+) {
+  if (!data.settings.showLabels) return;
+  context.save();
+  context.beginPath();
+  context.rect(0, 0, width, height);
+  context.clip();
+  context.font = "10px ui-monospace, SFMono-Regular, Menlo, monospace";
+  context.textBaseline = "middle";
+  for (const event of data.frame.rawEvents) {
+    const y = series.priceToCoordinate(event.price);
+    if (y === null || Number(y) < -8 || Number(y) > height + 8) continue;
+    const lifecycle = resolveDarkPoolGexLineLifecycle(event.reaction);
+    const confluence = event.primaryConfluence;
+    const lineColor = confluence?.signedExposure
+      ? confluence.signedExposure >= 0 ? data.positiveGexColor : data.negativeGexColor
+      : data.neutralColor;
+    const date = darkPoolDateFormatter.format(new Date(event.executionTimestampMs));
+    const fullLabel = data.settings.labelExtended
+      ? `DP ${formatDarkPoolNotional(event.notional)} · ${date} · ${event.price}`
+      : `DP ${formatDarkPoolNotional(event.notional)} · ${date}`;
+    const compactLabel = `DP ${formatDarkPoolNotional(event.notional)}`;
+    const availableWidth = Math.max(24, width - DARK_POOL_LABEL_EDGE_INSET * 2 - 10);
+    const label = context.measureText(fullLabel).width <= availableWidth ? fullLabel : compactLabel;
+    const labelWidth = Math.min(availableWidth + 10, Math.ceil(context.measureText(label).width) + 10);
+    const left = pinnedDarkPoolLabelLeft(width, labelWidth);
+    const labelY = Math.max(8, Math.min(height - 8, Number(y)));
+    const opacity = lifecycle.invalidated ? Math.max(0.45, data.settings.haloIntensity / 100) : 1;
+    context.fillStyle = rgba(data.backgroundColor, 0.94);
+    context.fillRect(left, labelY - 8, labelWidth, 16);
+    context.strokeStyle = rgba(lineColor, opacity);
+    context.lineWidth = 1;
+    context.strokeRect(left + 0.5, labelY - 7.5, labelWidth - 1, 15);
+    context.fillStyle = rgba(lineColor, opacity);
+    context.fillText(label, left + 5, labelY, Math.max(1, labelWidth - 10));
+  }
+  context.restore();
 }
 
 class DarkPoolGexRenderer implements ISeriesPrimitivePaneRenderer {
@@ -102,6 +152,7 @@ class DarkPoolGexRenderer implements ISeriesPrimitivePaneRenderer {
       const cachedLayer = this.primitive.cachedLayer(layerKey);
       if (cachedLayer) {
         targetContext.drawImage(cachedLayer, 0, 0, cachedLayer.width, cachedLayer.height, 0, 0, mediaSize.width, mediaSize.height);
+        drawPinnedDarkPoolLabels(targetContext, mediaSize.width, mediaSize.height, series, data);
         return;
       }
       const transformedLayer = this.primitive.transformedLayer(viewport);
@@ -124,6 +175,7 @@ class DarkPoolGexRenderer implements ISeriesPrimitivePaneRenderer {
           transformedLayer.sourceViewport.height,
         );
         targetContext.restore();
+        drawPinnedDarkPoolLabels(targetContext, mediaSize.width, mediaSize.height, series, data);
         this.primitive.setHits([]);
         this.primitive.scheduleRefinement(layerKey);
         return;
@@ -289,25 +341,6 @@ class DarkPoolGexRenderer implements ISeriesPrimitivePaneRenderer {
             context.arc(originX, originY, Math.max(1.5, radius * 0.38), 0, Math.PI * 2);
             context.fill();
           }
-          if (settings.showLabels) {
-            const date = darkPoolDateFormatter.format(new Date(event.executionTimestampMs));
-            const label = settings.labelExtended
-              ? `DP ${formatDarkPoolNotional(event.notional)} · ${date} · ${event.price}`
-              : `DP ${formatDarkPoolNotional(event.notional)} · ${date}`;
-            context.save();
-            context.font = "10px ui-monospace, SFMono-Regular, Menlo, monospace";
-            context.textBaseline = "middle";
-            const width = Math.ceil(context.measureText(label).width) + 10;
-            const left = Math.max(originX + 6, mediaSize.width - width - 4);
-            context.fillStyle = rgba(data.backgroundColor, 0.9);
-            context.fillRect(left, originY - 8, width, 16);
-            context.strokeStyle = rgba(lineColor, lifecycle.invalidated ? invalidatedOpacity : activeOpacity);
-            context.lineWidth = 1;
-            context.strokeRect(left + 0.5, originY - 7.5, width - 1, 15);
-            context.fillStyle = rgba(lineColor, lifecycle.invalidated ? Math.max(0.45, invalidatedOpacity) : 1);
-            context.fillText(label, left + 5, originY);
-            context.restore();
-          }
           hits.push({ x: originX, y: originY, event, frame: data.frame, left: originX - radius * 2, right: mediaSize.width, top: originY - 8, bottom: originY + 8 });
         }
       }
@@ -315,6 +348,7 @@ class DarkPoolGexRenderer implements ISeriesPrimitivePaneRenderer {
       this.primitive.setHits(hits);
       this.primitive.storeLayer(layerKey, layer.canvas, viewport);
       targetContext.drawImage(layer.canvas, 0, 0, layer.canvas.width, layer.canvas.height, 0, 0, mediaSize.width, mediaSize.height);
+      drawPinnedDarkPoolLabels(targetContext, mediaSize.width, mediaSize.height, series, data);
     });
   }
 }
