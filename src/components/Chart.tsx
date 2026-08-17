@@ -648,7 +648,24 @@ class SessionHighLowRenderer implements ISeriesPrimitivePaneRenderer {
       context.save();
       context.textBaseline = "alphabetic";
 
+      type LevelLabel = {
+        text: string;
+        x: number;
+        y: number;
+        width: number;
+        fontSize: number;
+        color: string;
+        opacity: number;
+      };
+      type LabelBounds = { left: number; top: number; right: number; bottom: number };
+      const labels: LevelLabel[] = [];
+      const seenLevelIds = new Set<string>();
+
       for (const level of this.primitive.levels()) {
+        // A live settings/data refresh can briefly deliver the same logical
+        // level twice. Never paint duplicate lines or labels in that frame.
+        if (seenLevelIds.has(level.id)) continue;
+        seenLevelIds.add(level.id);
         const rawX = chart.timeScale().timeToCoordinate(level.startTime);
         const y = series.priceToCoordinate(level.price);
         if (rawX === null || y === null) continue;
@@ -676,30 +693,94 @@ class SessionHighLowRenderer implements ISeriesPrimitivePaneRenderer {
         context.lineTo(endX, y + 0.5);
         context.stroke();
 
-        if (level.label) {
+        if (level.label && rawX >= -8 && rawX < mediaSize.width - 8) {
           const labelText = `${level.label} ${level.price.toFixed(level.precision)}`;
-          const labelY = Math.max(10, y - 4);
           context.setLineDash([]);
-          context.fillStyle = level.color;
           context.font = `700 ${level.fontSize}px 'JetBrains Mono', monospace`;
-          // Labels belong to the wick/line that created the level. Previously
-          // every label was hardcoded at x=7, underneath the fixed drawing
-          // rail, which cut the session name off and stacked unrelated labels
-          // at the pane edge. Anchor at the real line origin while retaining a
-          // small rail-safe gutter for historical origins left of the viewport.
+          // Keep the label attached to the wick that created the level. If the
+          // wick has moved fully outside the viewport, leave its forward line
+          // visible but do not clamp every historical label onto the same left
+          // edge -- that was the source of the unreadable overprint.
           const toolbarClearance = 36;
           const measuredWidth = context.measureText(labelText).width;
           const maximumLabelX = Math.max(toolbarClearance, mediaSize.width - measuredWidth - 6);
           const labelX = Math.min(maximumLabelX, Math.max(toolbarClearance, startX + 6));
-          context.fillText(
-            labelText,
-            labelX,
-            labelY,
-            Math.max(40, mediaSize.width - labelX - 6),
-          );
+          labels.push({
+            text: labelText,
+            x: labelX,
+            y: Math.max(level.fontSize + 3, Math.min(mediaSize.height - 3, y - 4)),
+            width: measuredWidth,
+            fontSize: level.fontSize,
+            color: level.color,
+            opacity: level.opacity,
+          });
         }
         context.restore();
       }
+
+      // Labels are laid out after all exact-price lines have been rendered.
+      // Prefer moving a colliding label horizontally so its baseline remains
+      // tied to the correct price; use a small vertical slot only when the row
+      // has no horizontal room. A label is omitted rather than painted on top
+      // of another one when the pane is exceptionally crowded.
+      const occupied: LabelBounds[] = [];
+      const overlaps = (left: LabelBounds, right: LabelBounds) => !(
+        left.right + 4 <= right.left
+        || right.right + 4 <= left.left
+        || left.bottom + 2 <= right.top
+        || right.bottom + 2 <= left.top
+      );
+      const boundsFor = (label: LevelLabel, x: number, y: number): LabelBounds => ({
+        left: x,
+        top: y - label.fontSize - 2,
+        right: x + label.width,
+        bottom: y + 2,
+      });
+
+      labels
+        .sort((left, right) => left.y - right.y || left.x - right.x)
+        .forEach((label) => {
+          let placed: { x: number; y: number; bounds: LabelBounds } | null = null;
+          let candidateX = label.x;
+          const baselineY = label.y;
+
+          for (let attempt = 0; attempt <= occupied.length; attempt += 1) {
+            const bounds = boundsFor(label, candidateX, baselineY);
+            const collisions = occupied.filter((other) => overlaps(bounds, other));
+            if (!collisions.length && bounds.right <= mediaSize.width - 6) {
+              placed = { x: candidateX, y: baselineY, bounds };
+              break;
+            }
+            if (!collisions.length) break;
+            candidateX = Math.max(...collisions.map((collision) => collision.right)) + 8;
+          }
+
+          if (!placed) {
+            const verticalStep = label.fontSize + 6;
+            for (let slot = 1; slot <= 4 && !placed; slot += 1) {
+              for (const direction of [-1, 1]) {
+                const candidateY = Math.max(
+                  label.fontSize + 3,
+                  Math.min(mediaSize.height - 3, baselineY + direction * slot * verticalStep),
+                );
+                const bounds = boundsFor(label, label.x, candidateY);
+                if (bounds.right <= mediaSize.width - 6 && !occupied.some((other) => overlaps(bounds, other))) {
+                  placed = { x: label.x, y: candidateY, bounds };
+                  break;
+                }
+              }
+            }
+          }
+
+          if (!placed) return;
+          context.save();
+          context.globalAlpha = label.opacity;
+          context.fillStyle = label.color;
+          context.font = `700 ${label.fontSize}px 'JetBrains Mono', monospace`;
+          context.fillText(label.text, placed.x, placed.y);
+          context.restore();
+          occupied.push(placed.bounds);
+        });
 
       context.restore();
     });
