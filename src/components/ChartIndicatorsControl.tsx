@@ -1627,17 +1627,17 @@ export default function ChartIndicatorsControl({
                       onChange={(event) => {
                         const preset = event.target.value;
                         const presetSettings: Record<string, string | number | boolean> = preset === "zero-dte-scalper"
-                          ? { greekMode: "GAMMA", expirationMode: "zero-dte", maximumLevels: 5, proximityWeight: 25, accumulationWeight: 25, persistenceWeight: 5, freshnessWeight: 15, refreshSeconds: 2, showDevelopingNodes: true, showRocArrows: true }
+                          ? { greekMode: "GAMMA", expirationMode: "zero-dte", maximumLevels: 5, proximityWeight: 25, accumulationWeight: 25, persistenceWeight: 5, freshnessWeight: 15, refreshSeconds: 2, showDevelopingNodes: true }
                           : preset === "major-nodes-only"
                             ? { maximumLevels: 8, maximumMajorNodes: 0, showKing: true, showFloor: true, showCeiling: true, showGatekeepers: true, showMajorNodes: false, showClusters: false, showDevelopingNodes: false, showWeakeningNodes: false, showRetiredHistory: false, showAirPockets: false }
                             : preset === "fresh-bounce-levels"
                               ? { freshnessWeight: 30, persistenceWeight: 5, touchDecayFactor: 60, showTouchCount: true, showDevelopingNodes: true }
                               : preset === "node-momentum"
-                                ? { accumulationWeight: 30, freshnessWeight: 5, showRocArrows: true, showDevelopingNodes: true, showWeakeningNodes: true, enableAlerts: true }
+                                ? { accumulationWeight: 30, freshnessWeight: 5, showDevelopingNodes: true, showWeakeningNodes: true, enableAlerts: true }
                                 : preset === "clean-chart"
-                                  ? { glowStrength: 0, showAirPockets: false, showTouchCount: false, showRocArrows: false, showRetiredHistory: false, showValues: false }
+                                  ? { glowStrength: 0, showAirPockets: false, showTouchCount: false, showRetiredHistory: false, showValues: false }
                                   : preset === "research"
-                                    ? { maximumLevels: 24, topExposurePercent: 100, minimumPercentOfKing: 0, minimumRelevanceScore: 0, showAirPockets: true, showTouchCount: true, showRocArrows: true, showRetiredHistory: true, showDevelopingNodes: true, showWeakeningNodes: true, showClusters: true }
+                                    ? { maximumLevels: 24, topExposurePercent: 100, minimumPercentOfKing: 0, minimumRelevanceScore: 0, showAirPockets: true, showTouchCount: true, showRetiredHistory: true, showDevelopingNodes: true, showWeakeningNodes: true, showClusters: true }
                                     : { greekMode: "GAMMA", expirationMode: "zero-to-one-dte", maximumLevels: 8, topExposurePercent: 10, minimumPercentOfKing: 15, minimumRelevanceScore: 55, magnitudeWeight: 45, proximityWeight: 15, accumulationWeight: 15, persistenceWeight: 10, freshnessWeight: 10, clusterWeight: 5, showDevelopingNodes: true, showClusters: true, showAirPockets: true, refreshSeconds: 5 };
                         replace(settingsInstance.instanceId, (current) => {
                           const currentSettings = current.settings ?? {};

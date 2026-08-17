@@ -5,6 +5,14 @@ import test from "node:test";
 const controls = readFileSync(new URL("../src/components/ChartIndicatorsControl.tsx", import.meta.url), "utf8");
 const chart = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
 const config = readFileSync(new URL("../src/lib/chartIndicatorConfig.ts", import.meta.url), "utf8");
+const primitive = readFileSync(new URL("../src/lib/bounceLevelsPrimitive.ts", import.meta.url), "utf8");
+
+test("Bounce Levels never draw endpoint arrows", () => {
+  assert.doesNotMatch(primitive, /showRocArrows/);
+  assert.doesNotMatch(chart, /showRocArrows/);
+  assert.doesNotMatch(controls, /showRocArrows/);
+  assert.match(config, /delete settings\.showRocArrows/);
+});
 
 test("GEX Bounce colour controls reflect the active theme and create a custom override on edit", () => {
   assert.match(controls, /const bounceThemeColours = \(chartSettings: ChartSettings\)/);

@@ -1169,7 +1169,6 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     showWeakeningNodes: true,
     showRetiredHistory: true,
     showTouchCount: true,
-    showRocArrows: true,
     microOrbTexture: true,
     visualStrengthBasis: "percent-of-king",
     rollDetectionEnabled: true,
@@ -1929,6 +1928,7 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
   if (normalizedInstance.indicatorId === "bounce-levels") {
     const defaults: Record<string, number | string | boolean> = defaultIndicatorSettings("bounce-levels");
     const settings: Record<string, number | string | boolean> = { ...defaults, ...(normalizedInstance.settings ?? {}) };
+    delete settings.showRocArrows;
     if (normalizedInstance.settings?.topExposurePercent === undefined) {
       const legacyMinimumPercentile = Number(normalizedInstance.settings?.minimumExposurePercentile ?? 90);
       settings.topExposurePercent = Math.max(1, Math.min(100, 100 - legacyMinimumPercentile));

@@ -6364,7 +6364,6 @@ function Chart({
       showLabels: indicatorSettings.showLabels === true,
       showValues: indicatorSettings.showValues === true,
       showTouchCount: indicatorSettings.showTouchCount !== false,
-      showRocArrows: indicatorSettings.showRocArrows !== false && indicatorSettings.chartMarkers !== false,
       showAirPockets: indicatorSettings.showAirPockets !== false,
       showRolls: indicatorSettings.rollVisualizationEnabled === true,
       neutralColor: useThemeColors ? settings.gridColor : String(indicatorSettings.airPocketColor ?? settings.gridColor),

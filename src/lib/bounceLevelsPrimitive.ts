@@ -24,7 +24,6 @@ export type BounceLevelsPrimitiveData = {
   showLabels: boolean;
   showValues: boolean;
   showTouchCount: boolean;
-  showRocArrows: boolean;
   showAirPockets: boolean;
   showRolls: boolean;
   neutralColor: string;
@@ -675,17 +674,6 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
       const levelByStrike = new Map(data.snapshot.levels.map((level) => [level.sourceStrike, level]));
       for (const point of latestByStrike.values()) {
         const level = levelByStrike.get(point.node.sourceStrike);
-        if (data.showRocArrows && Math.abs(point.node.rateOfChangePercent) >= 5) {
-          const up = point.node.rateOfChangePercent > 0;
-          const markerX = Math.min(mediaSize.width - 5, point.right + 4);
-          context.beginPath();
-          context.moveTo(markerX, point.y + (up ? 3 : -3));
-          context.lineTo(markerX + 3, point.y + (up ? -3 : 3));
-          context.lineTo(markerX + 6, point.y + (up ? 3 : -3));
-          context.closePath();
-          context.fillStyle = rgba(point.color, clamp(point.opacity + 0.18, 0.25, 1));
-          context.fill();
-        }
         if (!data.showLabels && !data.showValues) continue;
         const parts = [
           data.showLabels ? `${level?.role ?? "NODE"} ${point.node.mappedPrice.toFixed(2)}` : "",
