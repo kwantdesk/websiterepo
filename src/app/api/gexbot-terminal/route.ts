@@ -12,6 +12,9 @@ const STATE_CATEGORIES = new Set([
   "charm", "charm_one", "charm_zero", "delta", "delta_one", "delta_zero",
   "gamma", "gamma_one", "gamma_zero", "onecharm", "onedelta", "onegamma",
   "onevanna", "vanna", "vanna_one", "vanna_zero",
+  "convexity", "convexity_one", "convexity_zero",
+  "negative_vanna", "negative_vanna_one", "negative_vanna_zero",
+  "open_interest", "open_interest_one", "open_interest_zero",
 ]);
 
 export async function GET(request: NextRequest) {

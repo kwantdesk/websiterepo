@@ -6,6 +6,7 @@ import {
   BookOpen,
   CircleHelp,
   Dna,
+  Download,
   Gauge,
   Layers3,
   Pause,
@@ -37,7 +38,7 @@ import { readWorkspaceData, writeWorkspaceData } from "@/lib/workspaceDataCache"
 type View = "classic" | "state" | "orderflow" | "research";
 type Expiry = "full" | "zero" | "one";
 type Dataset = "volume" | "oi" | "both";
-type StateMetric = "gex" | "gamma" | "delta" | "vanna" | "charm";
+type StateMetric = "gex" | "gamma" | "delta" | "vanna" | "charm" | "convexity" | "negative_vanna" | "open_interest";
 type LineStyle = "solid" | "short" | "dash" | "dot";
 type ProfileEnvelope = GexBotTerminalEnvelope<GexBotProfileFrame | GexBotOrderflowFrame>;
 type ReplayData = {
@@ -50,7 +51,11 @@ type ReplayData = {
 type Appearance = {
   positive: string;
   negative: string;
+  oiPositive: string;
+  oiNegative: string;
   prior: string;
+  prior2: string;
+  prior3: string;
   spot: string;
   showPositive: boolean;
   showNegative: boolean;
@@ -58,9 +63,13 @@ type Appearance = {
   showSpot: boolean;
   showZero: boolean;
   showMajors: boolean;
+  showVolumeMajors: boolean;
+  showOiMajors: boolean;
   lineStyle: LineStyle;
   dotSize: number;
+  lookbackCount: number;
   multiplier: number;
+  timeZone: string;
 };
 
 type SpotSample = { timestamp: number; spot: number; zeroGamma?: number | null };
@@ -73,7 +82,11 @@ const FRAME_STORAGE_PREFIX = "kwantdesk:gexbot:last-verified:v1:";
 const DEFAULT_APPEARANCE: Appearance = {
   positive: "#6fe36a",
   negative: "#ff4f62",
+  oiPositive: "#37d9ff",
+  oiNegative: "#ff9f43",
   prior: "#8bcfff",
+  prior2: "#d8b6ff",
+  prior3: "#f4f6f8",
   spot: "#ffffff",
   showPositive: true,
   showNegative: true,
@@ -81,9 +94,13 @@ const DEFAULT_APPEARANCE: Appearance = {
   showSpot: true,
   showZero: true,
   showMajors: true,
+  showVolumeMajors: true,
+  showOiMajors: false,
   lineStyle: "dash",
   dotSize: 3.2,
+  lookbackCount: 3,
   multiplier: 1,
+  timeZone: "America/New_York",
 };
 
 const TICKERS = ["NQ_NDX", "ES_SPX", "NDX", "QQQ", "SPX", "SPY", "RUT", "IWM", "VIX"];
@@ -165,6 +182,24 @@ function timeLabel(timestamp: number | undefined) {
     second: "2-digit",
     timeZoneName: "short",
   }).format(new Date(timestamp));
+}
+
+function updateDateLabel(timestamp: number | undefined, timeZone = "America/New_York") {
+  if (!timestamp) return "—";
+  return new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(timestamp));
+}
+
+function humanDuration(milliseconds: number | null) {
+  if (milliseconds === null) return "Unavailable";
+  if (milliseconds < 1_000) return "< 1 second";
+  const seconds = Math.floor(milliseconds / 1_000);
+  if (seconds < 60) return `${seconds} second${seconds === 1 ? "" : "s"}`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"}`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"}`;
+  const days = Math.floor(hours / 24);
+  return `${days} day${days === 1 ? "" : "s"}`;
 }
 
 function dashArray(style: LineStyle) {
@@ -414,13 +449,7 @@ function SourceDiagnostics({ envelope }: { envelope: ProfileEnvelope | null }) {
   const freshnessMs = providerTimestamp && envelope
     ? Math.max(0, envelope.checkedAt - providerTimestamp)
     : null;
-  const freshness = freshnessMs === null
-    ? "Unavailable"
-    : freshnessMs < 1_000
-      ? "< 1 second"
-      : freshnessMs < 60_000
-        ? `${Math.round(freshnessMs / 1_000)} seconds`
-        : `${Math.round(freshnessMs / 60_000)} minutes`;
+  const freshness = humanDuration(freshnessMs);
   return (
     <div className="space-y-2">
       <SectionTitle>Source diagnostics</SectionTitle>
@@ -682,7 +711,7 @@ function SettingsRail({
             <div>
               <label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[.16em] text-muted">State profile</label>
               <KwantSelect value={metric} onChange={(event) => setMetric(event.target.value as StateMetric)} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[10px] text-foreground" menuLabel="State profile">
-                <option value="gex">GEX profile</option><option value="gamma">Gamma</option><option value="delta">Delta</option><option value="vanna">Vanna</option><option value="charm">Charm</option>
+                <option value="gex">GEX profile</option><option value="gamma">Gamma</option><option value="delta">DEX / Delta</option><option value="vanna">Vanna</option><option value="negative_vanna">Negative Vanna</option><option value="charm">Charm</option><option value="convexity">Convexity</option><option value="open_interest">Open interest</option>
               </KwantSelect>
             </div>
           ) : (
@@ -700,12 +729,14 @@ function SettingsRail({
             <Toggle checked={appearance.showSpot} label="Spot line" onChange={(value) => update("showSpot", value)} />
             <Toggle checked={appearance.showZero} label="Zero gamma" onChange={(value) => update("showZero", value)} />
             <Toggle checked={appearance.showMajors} label="Major levels" onChange={(value) => update("showMajors", value)} />
+            <Toggle checked={appearance.showVolumeMajors} label="Volume major lines" onChange={(value) => update("showVolumeMajors", value)} />
+            <Toggle checked={appearance.showOiMajors} label="Open-interest major lines" onChange={(value) => update("showOiMajors", value)} />
           </div>
-          <div className="grid grid-cols-3 gap-2">
-            {(["positive", "negative", "prior"] as const).map((color) => (
+          <div className="grid grid-cols-2 gap-2">
+            {(["positive", "negative", "oiPositive", "oiNegative", "prior", "prior2", "prior3"] as const).map((color) => (
               <label key={color} className="rounded-xl border border-border bg-background p-2 text-center text-[8px] uppercase text-muted">
                 <input type="color" value={appearance[color]} onChange={(event) => update(color, event.target.value)} className="mb-1 h-6 w-full cursor-pointer rounded-md border-0 bg-transparent" />
-                {color}
+                {color === "positive" ? "Volume +" : color === "negative" ? "Volume −" : color === "oiPositive" ? "OI +" : color === "oiNegative" ? "OI −" : color.replace("prior", "Trail ")}
               </label>
             ))}
           </div>
@@ -718,9 +749,19 @@ function SettingsRail({
           <label className="block text-[8px] font-semibold uppercase tracking-[.16em] text-muted">Lookback dot size
             <input type="range" min="1.5" max="7" step=".5" value={appearance.dotSize} onChange={(event) => update("dotSize", Number(event.target.value))} className="mt-2 w-full accent-[var(--primary)]" />
           </label>
+          <label className="block text-[8px] font-semibold uppercase tracking-[.16em] text-muted">History trails · {appearance.lookbackCount}
+            <input type="range" min="0" max="3" step="1" value={appearance.lookbackCount} onChange={(event) => update("lookbackCount", Number(event.target.value))} className="mt-2 w-full accent-[var(--primary)]" />
+          </label>
+          <div>
+            <label className="mb-1.5 block text-[8px] font-semibold uppercase tracking-[.16em] text-muted">Chart timezone</label>
+            <KwantSelect value={appearance.timeZone} onChange={(event) => update("timeZone", event.target.value)} className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[10px] text-foreground" menuLabel="Chart timezone">
+              <option value="America/New_York">New York</option><option value="Australia/Brisbane">Brisbane</option><option value="UTC">UTC</option><option value="Europe/London">London</option><option value="Asia/Tokyo">Tokyo</option>
+            </KwantSelect>
+          </div>
           <label className="block text-[8px] font-semibold uppercase tracking-[.16em] text-muted">Price multiplier
             <input type="number" min=".01" max="100" step=".01" value={appearance.multiplier} onChange={(event) => update("multiplier", Math.max(.01, Number(event.target.value) || 1))} className="mt-2 h-10 w-full rounded-xl border border-border bg-background px-3 font-mono text-[10px] text-foreground outline-none focus:border-primary/40" />
           </label>
+          <button type="button" onClick={() => setAppearance(DEFAULT_APPEARANCE)} className="h-9 w-full border border-border bg-background text-[8px] font-semibold uppercase tracking-[.14em] text-muted hover:border-primary/30 hover:text-primary">Reset visual defaults</button>
         </>
       ) : (
         <div className="space-y-1">
@@ -779,16 +820,17 @@ export default function GexBotWorkspace() {
   const [replayPlaying, setReplayPlaying] = useState(false);
   const [replayLoading, setReplayLoading] = useState(false);
   const [replaySpeed, setReplaySpeed] = useState(60);
+  const [replayDate, setReplayDate] = useState("");
   const [replayTimestamp, setReplayTimestamp] = useState<number | null>(null);
   const [replayData, setReplayData] = useState<ReplayData | null>(null);
   const category = categoryFor(view, expiry, stateMetric);
-  const replayKey = `${ticker}:${view}:${category}`;
+  const replayKey = `${ticker}:${view}:${category}:${replayDate || "previous"}`;
   const requestSequence = useRef(0);
   const replaySequence = useRef(0);
   const replayCache = useRef(new Map<string, ReplayData>());
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ version: 1, view, ticker, expiry, stateMetric, dataset, appearance, visibleMetrics }));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ version: 2, view, ticker, expiry, stateMetric, dataset, appearance, visibleMetrics }));
     if (window.location.pathname === "/gexbot" || window.location.pathname === "/gex-box" || window.location.pathname.startsWith("/gex-box/")) {
       const params = new URLSearchParams({
         ticker,
@@ -854,6 +896,7 @@ export default function GexBotWorkspace() {
     }
     let disposed = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let activeController: AbortController | null = null;
     const sequence = ++requestSequence.current;
     const cached = readWorkspaceData<ProfileEnvelope>(cacheKey(view, ticker, category));
     let retained: ProfileEnvelope | null = null;
@@ -866,8 +909,10 @@ export default function GexBotWorkspace() {
     if (restored && restored.historySimulated !== true) { applyEnvelope(restored); setLoading(false); } else setLoading(true);
     const poll = async () => {
       try {
+        activeController?.abort();
+        activeController = new AbortController();
         const query = new URLSearchParams({ ticker, category, view });
-        const response = await fetch(`/api/gex-box/snapshot?${query}`, { cache: "no-store" });
+        const response = await fetch(`/api/gex-box/snapshot?${query}`, { cache: "no-store", signal: activeController.signal });
         const result = await response.json() as { provider?: ProfileEnvelope; error?: string };
         const payload = result.provider ?? {
           ok: false, view, ticker, category, session: "DELAYED", marketOpen: false,
@@ -880,6 +925,7 @@ export default function GexBotWorkspace() {
         timer = setTimeout(poll, payload.marketOpen ? 3_000 : 60_000);
       } catch (error) {
         if (disposed || requestSequence.current !== sequence) return;
+        if (error instanceof DOMException && error.name === "AbortError") return;
         setEnvelope((current) => current ?? {
           ok: false, view, ticker, category, session: "DELAYED", marketOpen: false,
           checkedAt: Date.now(), frame: null, majors: null, maxChange: null,
@@ -891,7 +937,7 @@ export default function GexBotWorkspace() {
       }
     };
     void poll();
-    return () => { disposed = true; if (timer) clearTimeout(timer); };
+    return () => { disposed = true; activeController?.abort(); if (timer) clearTimeout(timer); };
   }, [applyEnvelope, category, ticker, view]);
 
   const loadReplay = useCallback(async (resetClock: boolean) => {
@@ -914,6 +960,7 @@ export default function GexBotWorkspace() {
     setReplayData(null);
     try {
       const query = new URLSearchParams({ ticker, view, category });
+      if (replayDate) query.set("date", replayDate);
       const response = await fetch(`/api/gex-box/history?${query}`, { cache: "no-store" });
       const result = await response.json() as {
         date?: string | null;
@@ -948,7 +995,7 @@ export default function GexBotWorkspace() {
     } finally {
       if (sequence === replaySequence.current) setReplayLoading(false);
     }
-  }, [category, replayKey, ticker, view]);
+  }, [category, replayDate, replayKey, ticker, view]);
 
   useEffect(() => {
     if (!replayActive || view === "research") return;
@@ -993,6 +1040,29 @@ export default function GexBotWorkspace() {
   const replayProgress = replayTimestamp !== null && replayStart !== null && replayEnd !== null && replayEnd > replayStart
     ? ((replayTimestamp - replayStart) / (replayEnd - replayStart)) * 100
     : 0;
+  const maxChangeDots = useMemo(() => {
+    const source = envelope?.maxChange;
+    if (!source) return [];
+    return [
+      ["1m", source.one], ["5m", source.five], ["10m", source.ten], ["15m", source.fifteen], ["30m", source.thirty],
+    ].flatMap(([label, value]) => Array.isArray(value) ? [{ label: String(label), value: value as [number, number] }] : []);
+  }, [envelope?.maxChange]);
+  const hasRenderableFrame = Boolean(frame && (view === "orderflow"
+    ? displayOrderflowTape.some((entry) => ORDERFLOW_METRICS.some((metric) => number(entry[metric.id as keyof GexBotOrderflowFrame]) !== null))
+    : Array.isArray((frame as GexBotProfileFrame).strikes) && (frame as GexBotProfileFrame).strikes.length));
+  const moveReplay = (milliseconds: number) => {
+    if (replayStart === null || replayEnd === null) return;
+    setReplayPlaying(false);
+    setReplayTimestamp((current) => Math.max(replayStart, Math.min(replayEnd, (current ?? replayStart) + milliseconds)));
+  };
+  const downloadSnapshot = () => {
+    const canvas = document.querySelector<HTMLElement>("[data-gex-box-chart='true'] canvas");
+    if (!(canvas instanceof HTMLCanvasElement)) return;
+    const link = document.createElement("a");
+    link.download = `gex-box-${view}-${ticker}-${new Date().toISOString().replace(/[:.]/g, "-")}.png`;
+    link.href = canvas.toDataURL("image/png");
+    link.click();
+  };
   const isProfile = view !== "orderflow" && view !== "research" && frame;
   const sessionLabel = replayActive && view !== "research"
     ? "REPLAY · PREVIOUS NEW YORK"
@@ -1016,6 +1086,7 @@ export default function GexBotWorkspace() {
             <KwantSelect value={ticker} onChange={(event) => setTicker(event.target.value)} className="h-9 min-w-[112px] rounded-xl border border-border bg-background px-3 font-mono text-[10px] font-semibold" menuLabel="Options underlying">
               {TICKERS.map((item) => <option key={item} value={item}>{tickerLabel(item)}</option>)}
             </KwantSelect>
+            {view !== "research" ? <button type="button" onClick={downloadSnapshot} className="flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-background text-muted hover:border-primary/30 hover:text-primary" aria-label="Download GEX BOX PNG snapshot"><Download className="h-3.5 w-3.5" /></button> : null}
             <div className={`flex h-9 items-center gap-2 rounded-xl border px-3 text-[9px] font-semibold uppercase tracking-[.12em] ${envelope?.session === "LIVE_RTH" && view !== "research" ? "border-emerald-400/25 bg-emerald-400/[.07] text-emerald-400" : "border-border bg-background text-muted"}`}>
               {envelope?.session === "LIVE_RTH" && view !== "research" ? <Radio className="h-3 w-3 animate-pulse" /> : view === "research" ? <ShieldCheck className="h-3 w-3 text-primary" /> : <Pause className="h-3 w-3" />}{sessionLabel}
             </div>
@@ -1033,14 +1104,19 @@ export default function GexBotWorkspace() {
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <main className="flex min-w-0 flex-1 flex-col overflow-auto bg-[radial-gradient(circle_at_55%_30%,color-mix(in_srgb,var(--primary)_3%,transparent),transparent_42%)]">
           <div className="flex min-h-11 shrink-0 items-center justify-between gap-3 border-b border-border px-4">
-            <div className="flex items-center gap-3 text-[9px] text-muted"><span className="font-semibold uppercase tracking-[.15em] text-foreground">{tickerLabel(ticker)} · {VIEW_META[view].label}</span><span>{view === "research" ? "Strict builder · server-side provider access" : timeLabel(frame?.timestamp)}</span>{loading && envelope ? <RefreshCw className="h-3 w-3 animate-spin text-primary" /> : null}</div>
+            <div className="flex items-center gap-3 text-[9px] text-muted"><span className="font-semibold uppercase tracking-[.15em] text-foreground">{tickerLabel(ticker)} · {VIEW_META[view].label}</span>{view === "research" ? <span>Strict builder · server-side provider access</span> : <><span className="font-mono">UPDATE {updateDateLabel(frame?.timestamp, appearance.timeZone)} · {timeLabel(frame?.timestamp)}</span><span className="border-l border-border pl-3 font-mono text-foreground">SPOT {price(frame?.spot)}</span></>}{loading && envelope ? <RefreshCw className="h-3 w-3 animate-spin text-primary" /> : null}</div>
             {view !== "research" ? (
               <div className="flex min-w-0 items-center gap-2">
                 {!replayActive ? (
                   <button type="button" onClick={() => { setReplayTimestamp(null); setReplayActive(true); }} className="flex h-7 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-[8px] font-semibold uppercase text-muted hover:border-primary/30 hover:text-primary"><Play className="h-3 w-3" />Replay previous NY</button>
                 ) : (
                   <>
+                    <input type="date" aria-label="Replay session date" value={replayDate} max={new Date().toISOString().slice(0, 10)} onChange={(event) => { setReplayPlaying(false); setReplayData(null); setReplayTimestamp(null); setReplayDate(event.target.value); }} className="h-7 border border-border bg-background px-2 font-mono text-[8px] text-foreground" />
+                    <button type="button" disabled={!replayFrames.length} onClick={() => { setReplayPlaying(false); setReplayTimestamp(replayStart); }} className="h-7 border border-border bg-background px-2 font-mono text-[8px] text-muted disabled:opacity-40" aria-label="Replay start">|&lt;</button>
+                    <button type="button" disabled={!replayFrames.length} onClick={() => moveReplay(-60_000)} className="h-7 border border-border bg-background px-2 font-mono text-[8px] text-muted disabled:opacity-40" aria-label="Replay back one minute">−1m</button>
                     <button type="button" disabled={replayLoading || !replayFrames.length} onClick={() => setReplayPlaying((current) => !current)} className="flex h-7 items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-2.5 text-[8px] font-semibold uppercase text-primary disabled:opacity-40">{replayPlaying ? <Pause className="h-3 w-3" /> : <Play className="h-3 w-3" />}{replayPlaying ? "Pause" : "Play"}</button>
+                    <button type="button" disabled={!replayFrames.length} onClick={() => moveReplay(60_000)} className="h-7 border border-border bg-background px-2 font-mono text-[8px] text-muted disabled:opacity-40" aria-label="Replay forward one minute">+1m</button>
+                    <button type="button" disabled={!replayFrames.length} onClick={() => { setReplayPlaying(false); setReplayTimestamp(replayEnd); }} className="h-7 border border-border bg-background px-2 font-mono text-[8px] text-muted disabled:opacity-40" aria-label="Replay end">&gt;|</button>
                     <input aria-label="Previous New York session replay position" type="range" min="0" max="1000" value={Math.round(replayProgress * 10)} disabled={!replayFrames.length} onChange={(event) => {
                       if (replayStart === null || replayEnd === null) return;
                       setReplayPlaying(false);
@@ -1056,7 +1132,7 @@ export default function GexBotWorkspace() {
               </div>
             ) : <div className="flex items-center gap-2 text-[8px] uppercase tracking-[.14em] text-primary"><ShieldCheck className="h-3 w-3" />Validated grammar</div>}
           </div>
-          {view === "research" ? <ResearchSurface ticker={ticker} /> : !frame ? (replayActive ? <div className="flex min-h-[420px] flex-1 items-center justify-center"><div className="rounded-xl border border-border bg-panel px-6 py-5 text-center">{replayLoading ? <RefreshCw className="mx-auto h-5 w-5 animate-spin text-primary" /> : null}<p className="mt-2 text-[10px] font-semibold uppercase tracking-[.16em] text-foreground">{replayLoading ? "Loading previous New York session" : "Replay unavailable"}</p><p className="mt-1 max-w-md text-[9px] text-muted">{replayData?.error ?? "Restoring the complete verified session archive."}</p>{!replayLoading ? <button type="button" onClick={() => void loadReplay(true)} className="mt-4 h-8 rounded-lg border border-primary/30 bg-primary/10 px-3 text-[8px] font-semibold uppercase tracking-[.14em] text-primary">Try again</button> : null}</div></div> : <EmptyState envelope={envelope} loading={loading} />) : view === "orderflow" ? (
+          {view === "research" ? <ResearchSurface ticker={ticker} /> : !hasRenderableFrame ? (replayActive ? <div className="flex min-h-[420px] flex-1 items-center justify-center"><div className="rounded-xl border border-border bg-panel px-6 py-5 text-center">{replayLoading ? <RefreshCw className="mx-auto h-5 w-5 animate-spin text-primary" /> : null}<p className="mt-2 text-[10px] font-semibold uppercase tracking-[.16em] text-foreground">{replayLoading ? "Loading verified New York session" : "Replay unavailable"}</p><p className="mt-1 max-w-md text-[9px] text-muted">{replayData?.error ?? "No renderable strike or flow rows were returned for this session."}</p>{!replayLoading ? <button type="button" onClick={() => void loadReplay(true)} className="mt-4 h-8 rounded-lg border border-primary/30 bg-primary/10 px-3 text-[8px] font-semibold uppercase tracking-[.14em] text-primary">Try again</button> : null}</div></div> : frame ? <div className="flex min-h-[420px] flex-1 items-center justify-center"><div className="border border-border bg-panel px-6 py-5 text-center"><p className="text-[10px] font-semibold uppercase tracking-[.16em] text-foreground">No renderable provider rows</p><p className="mt-2 max-w-md text-[9px] leading-5 text-muted">GEX BOX received a frame header, but this metric contained no strike or orderflow rows. No synthetic values were substituted.</p></div></div> : <EmptyState envelope={envelope} loading={loading} />) : view === "orderflow" ? (
             <div className="mx-auto w-full max-w-[1680px] overflow-x-auto px-3 py-3">
               {visibleMetrics.length ? (
                 <div className="relative">
@@ -1073,7 +1149,7 @@ export default function GexBotWorkspace() {
                 {view === "state" ? (
                   <ProfessionalStateChart frame={frame as GexBotProfileFrame} metric={stateMetric} appearance={appearance} spotTape={displaySpotTape} priorIndex={0} onHover={setHover} />
                 ) : (
-                  <ProfessionalProfileChart frame={frame as GexBotProfileFrame} dataset={dataset} appearance={appearance} spotTape={displaySpotTape} priorIndex={0} onHover={setHover} />
+                  <ProfessionalProfileChart frame={frame as GexBotProfileFrame} dataset={dataset} appearance={appearance} spotTape={displaySpotTape} priorIndex={0} maxChange={maxChangeDots} onHover={setHover} />
                 )}
               </div>
             </div>

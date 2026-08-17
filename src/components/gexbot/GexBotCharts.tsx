@@ -37,12 +37,16 @@ echarts.use([
 type SpotSample = { timestamp: number; spot: number; zeroGamma?: number | null };
 type Dataset = "volume" | "oi" | "both";
 type LineStyle = "solid" | "short" | "dash" | "dot";
-export type GexBotStateMetric = "gex" | "gamma" | "delta" | "vanna" | "charm";
+export type GexBotStateMetric = "gex" | "gamma" | "delta" | "vanna" | "charm" | "convexity" | "negative_vanna" | "open_interest";
 
 type Appearance = {
   positive: string;
   negative: string;
+  oiPositive: string;
+  oiNegative: string;
   prior: string;
+  prior2: string;
+  prior3: string;
   spot: string;
   showPositive: boolean;
   showNegative: boolean;
@@ -50,9 +54,13 @@ type Appearance = {
   showSpot: boolean;
   showZero: boolean;
   showMajors: boolean;
+  showVolumeMajors: boolean;
+  showOiMajors: boolean;
   lineStyle: LineStyle;
   dotSize: number;
+  lookbackCount: number;
   multiplier: number;
+  timeZone: string;
 };
 
 export type OrderflowMetricConfig = {
@@ -141,7 +149,7 @@ function EChartSurface({
     chartRef.current?.setOption(option, { notMerge: true, lazyUpdate: true });
   }, [option]);
 
-  return <div ref={elementRef} className={`w-full ${className}`} style={{ height }} />;
+  return <div ref={elementRef} data-gex-box-chart="true" className={`w-full ${className}`} style={{ height }} />;
 }
 
 function profileTooltip(raw: unknown) {
@@ -188,8 +196,6 @@ function exposureRenderer(colorPositive: string, colorNegative: string, heightRa
 }
 
 function levelLines(frame: GexBotProfileFrame, dataset: Dataset, appearance: Appearance) {
-  const positive = dataset === "oi" ? frame.major_pos_oi : frame.major_pos_vol;
-  const negative = dataset === "oi" ? frame.major_neg_oi : frame.major_neg_vol;
   const data: Array<Record<string, unknown>> = [];
   if (appearance.showSpot) data.push({
     name: "Spot",
@@ -203,18 +209,18 @@ function levelLines(frame: GexBotProfileFrame, dataset: Dataset, appearance: App
     lineStyle: { color: "#e5b94b", width: 1.2, type: echartsLineStyle(appearance.lineStyle) },
     label: { show: true, formatter: `ZERO  ${price(frame.zero_gamma)}`, color: "#080a0d", backgroundColor: "#e5b94b", borderRadius: 4, padding: [4, 7], fontFamily: MONO, fontWeight: 700, fontSize: 9 },
   });
-  if (appearance.showMajors && positive !== null) data.push({
-    name: "Major positive",
-    yAxis: positive,
-    lineStyle: { color: appearance.positive, width: 1.1, type: echartsLineStyle(appearance.lineStyle), opacity: 0.78 },
-    label: { show: false },
-  });
-  if (appearance.showMajors && negative !== null) data.push({
-    name: "Major negative",
-    yAxis: negative,
-    lineStyle: { color: appearance.negative, width: 1.1, type: echartsLineStyle(appearance.lineStyle), opacity: 0.78 },
-    label: { show: false },
-  });
+  const addMajor = (name: string, value: number | null, color: string, width: number) => {
+    if (value === null) return;
+    data.push({ name, yAxis: value, lineStyle: { color, width, type: echartsLineStyle(appearance.lineStyle), opacity: 0.84 }, label: { show: false } });
+  };
+  if (appearance.showMajors && appearance.showVolumeMajors && dataset !== "oi") {
+    addMajor("Volume major positive", frame.major_pos_vol, appearance.positive, 1.25);
+    addMajor("Volume major negative", frame.major_neg_vol, appearance.negative, 1.25);
+  }
+  if (appearance.showMajors && appearance.showOiMajors && dataset !== "volume") {
+    addMajor("OI major positive", frame.major_pos_oi, appearance.oiPositive, 1);
+    addMajor("OI major negative", frame.major_neg_oi, appearance.oiNegative, 1);
+  }
   return data;
 }
 
@@ -224,6 +230,7 @@ export function ProfessionalProfileChart({
   appearance,
   spotTape,
   priorIndex,
+  maxChange,
   onHover,
 }: {
   frame: GexBotProfileFrame;
@@ -231,6 +238,7 @@ export function ProfessionalProfileChart({
   appearance: Appearance;
   spotTape: SpotSample[];
   priorIndex: number;
+  maxChange?: Array<{ label: string; value: [number, number] }>;
   onHover: (strike: GexBotStrike | null) => void;
 }) {
   const strikes = useMemo(() => {
@@ -311,7 +319,7 @@ export function ProfessionalProfileChart({
       type: "custom",
       xAxisIndex: 1,
       yAxisIndex: 0,
-      renderItem: exposureRenderer(appearance.positive, appearance.negative, dataset === "both" ? 0.18 : 0.64, dataset === "both" ? 0.44 : 0.95),
+      renderItem: exposureRenderer(appearance.oiPositive, appearance.oiNegative, dataset === "both" ? 0.18 : 0.64, dataset === "both" ? 0.44 : 0.95),
       data: exposureData(2),
       encode: { x: 0, y: 1, tooltip: [1, 0] },
       clip: true,
@@ -319,7 +327,8 @@ export function ProfessionalProfileChart({
     });
 
     if (appearance.showPriors) {
-      const priorCount = Math.max(0, ...strikes.map((entry) => entry[3].length));
+      const priorCount = Math.min(appearance.lookbackCount, Math.max(0, ...strikes.map((entry) => entry[3].length)));
+      const trailColors = [appearance.prior, appearance.prior2, appearance.prior3];
       for (let index = 0; index < priorCount; index += 1) {
         series.push({
           name: `Lookback ${index + 1}`,
@@ -329,10 +338,25 @@ export function ProfessionalProfileChart({
           data: strikes.flatMap((entry, strikeIndex) => entry[3][index] === undefined ? [] : [{ name: price(entry[0]), value: [entry[3][index] * appearance.multiplier, entry[0], index, strikeIndex] }]),
           symbol: "circle",
           symbolSize: index === priorIndex ? appearance.dotSize * 2.2 : appearance.dotSize * 1.5,
-          itemStyle: { color: index === priorIndex ? "#ffffff" : appearance.prior, opacity: index === priorIndex ? 1 : Math.max(0.18, 0.62 - index * 0.08), shadowBlur: index === priorIndex ? 8 : 2, shadowColor: appearance.prior },
+          itemStyle: { color: index === priorIndex ? "#ffffff" : trailColors[index] ?? appearance.prior, opacity: index === priorIndex ? 1 : Math.max(0.18, 0.62 - index * 0.08), shadowBlur: index === priorIndex ? 8 : 2, shadowColor: trailColors[index] ?? appearance.prior },
           z: index === priorIndex ? 8 : 6,
         });
       }
+    }
+
+    if (maxChange?.length) {
+      series.push({
+        name: "Max change GEX",
+        type: "scatter",
+        xAxisIndex: 0,
+        yAxisIndex: 0,
+        data: maxChange.map((entry, index) => ({ name: entry.label, value: [lastTime + elapsed * (0.06 + index * 0.035), entry.value[0], entry.value[1]] })),
+        symbol: "circle",
+        symbolSize: (value: unknown[]) => Math.max(5, Math.min(14, 5 + Math.log10(Math.abs(Number(value?.[2])) + 1))),
+        itemStyle: { color: (params: { value?: unknown[] }) => Number(params.value?.[2]) >= 0 ? appearance.positive : appearance.negative, borderColor: "#050607", borderWidth: 1, shadowBlur: 8 },
+        label: { show: true, position: "right", formatter: (params: { name?: string }) => params.name ?? "", color: "#dce2eb", fontFamily: MONO, fontSize: 8 },
+        z: 12,
+      });
     }
 
     series.push({
@@ -360,7 +384,7 @@ export function ProfessionalProfileChart({
         {
           gridIndex: 0, type: "time", min: firstTime, max: futureEdge, position: "bottom", boundaryGap: false,
           axisLine: { show: true, lineStyle: { color: GRID_STRONG } }, axisTick: { show: false },
-          axisLabel: { color: MUTED, fontFamily: MONO, fontSize: 9, hideOverlap: true, formatter: (value: number) => new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(value)) },
+          axisLabel: { color: MUTED, fontFamily: MONO, fontSize: 9, hideOverlap: true, formatter: (value: number) => new Intl.DateTimeFormat("en-US", { timeZone: appearance.timeZone, hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(value)) },
           splitLine: { show: true, lineStyle: { color: GRID } }, axisPointer: { show: true, snap: false },
         },
         {
@@ -379,7 +403,7 @@ export function ProfessionalProfileChart({
       dataZoom: [{ type: "inside", yAxisIndex: 0, filterMode: "none", zoomOnMouseWheel: "shift", moveOnMouseWheel: true, moveOnMouseMove: true }],
       series,
     };
-  }, [appearance, dataset, frame, priorIndex, spotTape, strikes]);
+  }, [appearance, dataset, frame, maxChange, priorIndex, spotTape, strikes]);
 
   return (
     <EChartSurface
@@ -404,6 +428,9 @@ const STATE_PALETTES: Record<GexBotStateMetric, { primary: string; secondary: st
   delta: { primary: "#38d3ee", secondary: "#ff667a", call: "#38d3ee", put: "#ff667a" },
   vanna: { primary: "#87ed58", secondary: "#cb72ff", call: "#87ed58", put: "#cb72ff" },
   charm: { primary: "#ffc557", secondary: "#778bff", call: "#ffc557", put: "#778bff" },
+  convexity: { primary: "#bd8cff", secondary: "#ff79bf", call: "#bd8cff", put: "#ff79bf" },
+  negative_vanna: { primary: "#59d9b4", secondary: "#ef668b", call: "#59d9b4", put: "#ef668b" },
+  open_interest: { primary: "#73b7ff", secondary: "#ffb347", call: "#73b7ff", put: "#ffb347" },
 };
 
 /** State has its own strike-state grammar; it is not a recoloured Classic chart. */
@@ -543,7 +570,7 @@ export function ProfessionalStateChart({
       tooltip: { trigger: "item", confine: true, backgroundColor: TOOLTIP_BG, borderColor: GRID_STRONG, borderWidth: 1, padding: [10, 12], textStyle: { color: TEXT, fontFamily: UI, fontSize: 10 }, extraCssText: "box-shadow:0 18px 60px rgba(0,0,0,.45);border-radius:8px", formatter: profileTooltip },
       axisPointer: { label: { show: true, color: "#080a0d", backgroundColor: "#e9edf3", fontFamily: MONO, fontSize: 9 }, lineStyle: { color: "rgba(226,232,240,.52)", type: "dashed" } },
       xAxis: [
-        { gridIndex: 0, type: "time", min: firstTime, max: lastTime + elapsed, position: "bottom", boundaryGap: false, axisLine: { lineStyle: { color: GRID_STRONG } }, axisTick: { show: false }, axisLabel: { color: MUTED, fontFamily: MONO, fontSize: 9, hideOverlap: true, formatter: (value: number) => new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(value)) }, splitLine: { show: true, lineStyle: { color: GRID } } },
+        { gridIndex: 0, type: "time", min: firstTime, max: lastTime + elapsed, position: "bottom", boundaryGap: false, axisLine: { lineStyle: { color: GRID_STRONG } }, axisTick: { show: false }, axisLabel: { color: MUTED, fontFamily: MONO, fontSize: 9, hideOverlap: true, formatter: (value: number) => new Intl.DateTimeFormat("en-US", { timeZone: appearance.timeZone, hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(value)) }, splitLine: { show: true, lineStyle: { color: GRID } } },
         { gridIndex: 0, type: "value", min: -exposureMax, max: exposureMax, position: "top", axisLine: { show: true, onZero: true, lineStyle: { color: GRID_STRONG } }, axisTick: { show: false }, axisLabel: { color: MUTED, fontFamily: MONO, fontSize: 9, formatter: (value: number) => value === 0 ? "NOW / 0" : compact(value) }, splitLine: { show: false } },
       ],
       yAxis: { gridIndex: 0, type: "value", min: minStrike - step, max: maxStrike + step, scale: true, position: "right", axisLine: { show: true, lineStyle: { color: GRID_STRONG } }, axisTick: { show: false }, axisLabel: { color: "#a5adba", fontFamily: MONO, fontSize: 9, formatter: (value: number) => value.toFixed(0) }, splitLine: { show: true, lineStyle: { color: GRID } } },

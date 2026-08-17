@@ -181,7 +181,8 @@ test("workspace uses only canonical GEX BOX APIs and production history cannot r
   assert.match(workspace, /\/api\/gex-box\/research/);
   const historyRoute = await readFile(new URL("../src/app/api/gex-box/history/route.ts", import.meta.url), "utf8");
   assert.match(historyRoute, /validViews = new Set\(\["classic", "state", "orderflow"\]\)/);
-  assert.match(historyRoute, /fetchGexBotReplay\(view as "classic" \| "state" \| "orderflow", ticker, category\)/);
+  assert.match(historyRoute, /fetchGexBotReplay\(view as "classic" \| "state" \| "orderflow", ticker, category, requestedDate\)/);
+  assert.match(historyRoute, /History date must use YYYY-MM-DD/);
   assert.doesNotMatch(historyRoute, /searchParams\.get\("preview"\)/);
   assert.match(workspace, /Replay previous NY/);
   assert.match(workspace, /replayFrameAtOrBefore/);

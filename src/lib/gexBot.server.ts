@@ -548,8 +548,17 @@ async function readOrderflowArchiveHistory(ticker: string): Promise<HistoryResul
 }
 
 /** Loads one verified previous-session archive without coupling replay to the live-frame endpoint. */
-export async function fetchGexBotReplay(view: View, ticker: string, category: string) {
-  const providerHistory = await requestHistory(ticker, view, category, isNewYorkRth());
+export async function fetchGexBotReplay(view: View, ticker: string, category: string, requestedDate?: string | null) {
+  const providerHistory = requestedDate
+    ? await requestHistoryDate(ticker, view, category, requestedDate, isNewYorkRth())
+      .then((rows): HistoryResult => ({ rows, date: requestedDate, attemptedDates: [requestedDate] }))
+      .catch((error): HistoryResult => ({
+        rows: [],
+        date: requestedDate,
+        attemptedDates: [requestedDate],
+        error: error instanceof Error ? error.message : `GEXBot history was unavailable for ${requestedDate}.`,
+      }))
+    : await requestHistory(ticker, view, category, isNewYorkRth());
   const history = providerHistory.rows.length || view !== "orderflow"
     ? providerHistory
     : await readOrderflowArchiveHistory(ticker).then((deskHistory) => deskHistory.rows.length ? deskHistory : providerHistory);
