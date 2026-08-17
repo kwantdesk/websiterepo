@@ -489,7 +489,7 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "minimumDte", label: "Minimum DTE", defaultValue: 0, min: 0, max: 365, step: 1 },
     { key: "maximumDte", label: "Maximum DTE", defaultValue: 7, min: 0, max: 365, step: 1 },
     { key: "maximumLevels", label: "Maximum active levels", defaultValue: 8, min: 1, max: 24, step: 1 },
-    { key: "minimumExposurePercentile", label: "Minimum exposure percentile (%)", defaultValue: 90, min: 0, max: 100, step: 1 },
+    { key: "topExposurePercent", label: "Strongest exposure shown (%)", defaultValue: 10, min: 1, max: 100, step: 1 },
     { key: "minimumPercentOfKing", label: "Minimum KING magnitude (%)", defaultValue: 15, min: 0, max: 100, step: 1 },
     { key: "minimumRelevanceScore", label: "Minimum relevance score", defaultValue: 55, min: 0, max: 100, step: 1 },
     { key: "maximumDistancePoints", label: "Maximum distance from price · 0 = all", defaultValue: 0, min: 0, max: 10000, step: 1 },
@@ -1193,7 +1193,7 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     developingColor: theme?.upColor ?? "#22C55E",
     weakeningColor: theme?.downColor ?? "#EF4444",
     airPocketColor: theme?.gridColor ?? "#71717A",
-    bounceLevelsSettingsVersion: 4,
+    bounceLevelsSettingsVersion: 5,
   } : {}),
   ...(indicatorId === "dark-pool-map" ? {
     preset: "balanced",
@@ -1929,6 +1929,11 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
   if (normalizedInstance.indicatorId === "bounce-levels") {
     const defaults: Record<string, number | string | boolean> = defaultIndicatorSettings("bounce-levels");
     const settings: Record<string, number | string | boolean> = { ...defaults, ...(normalizedInstance.settings ?? {}) };
+    if (normalizedInstance.settings?.topExposurePercent === undefined) {
+      const legacyMinimumPercentile = Number(normalizedInstance.settings?.minimumExposurePercentile ?? 90);
+      settings.topExposurePercent = Math.max(1, Math.min(100, 100 - legacyMinimumPercentile));
+    }
+    delete settings.minimumExposurePercentile;
     for (const definition of INDICATOR_NUMERIC_SETTINGS["bounce-levels"] ?? []) {
       const parsed = Number(settings[definition.key]);
       settings[definition.key] = Math.min(
@@ -1955,7 +1960,7 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
       delete settings[unsafeKey];
     }
     if (Number(settings.maximumDte) < Number(settings.minimumDte)) settings.maximumDte = settings.minimumDte;
-    return { ...normalizedInstance, settings: { ...settings, bounceLevelsSettingsVersion: 4 } };
+    return { ...normalizedInstance, settings: { ...settings, bounceLevelsSettingsVersion: 5 } };
   }
   if (
     normalizedInstance.indicatorId === "depth-of-market"

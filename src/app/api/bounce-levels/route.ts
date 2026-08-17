@@ -156,7 +156,7 @@ export async function GET(request: NextRequest) {
       maximumLevels: finite(request, "maximumLevels", 8),
       maximumGatekeepers: finite(request, "maximumGatekeepers", 2),
       maximumMajorNodes: finite(request, "maximumMajorNodes", 4),
-      minimumExposurePercentile: finite(request, "minimumExposurePercentile", 90) / 100,
+      minimumExposurePercentile: 1 - Math.max(1, Math.min(100, finite(request, "topExposurePercent", 10))) / 100,
       minimumPercentOfKing: finite(request, "minimumPercentOfKing", 15) / 100,
       minimumRelevanceScore: finite(request, "minimumRelevanceScore", 55),
       maximumDistancePoints: finite(request, "maximumDistancePoints", 0),

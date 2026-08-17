@@ -29,7 +29,7 @@ test("GEX Bounce role toggles filter the exposure field that is actually painted
 test("saved custom GEX Bounce colours survive workspace theme relinking", () => {
   assert.match(config, /const preserveBounceOverride = instance\.indicatorId === "bounce-levels"/);
   assert.match(config, /useThemeColors: preserveBounceOverride \? false : true/);
-  assert.match(config, /bounceLevelsSettingsVersion: 4/);
+  assert.match(config, /bounceLevelsSettingsVersion: 5/);
 });
 
 test("Bounce Levels exposes every data-shaping dropdown above the settings dialog", () => {
@@ -43,4 +43,17 @@ test("Bounce Levels exposes every data-shaping dropdown above the settings dialo
   assert.match(controls, /includeWeeklies: universe === "all-contracts" \|\| universe === "weeklies-only"/);
   assert.match(chart, /visualStrengthBasis: String\(indicatorSettings\.visualStrengthBasis\)/);
   assert.match(config, /visualStrengthBasis: \["absolute-exposure", "percent-of-king", "hybrid"\]/);
+});
+
+test("Bounce Levels exposes a hard strongest-exposure population control", () => {
+  const engine = readFileSync(new URL("../src/lib/bounceLevels.ts", import.meta.url), "utf8");
+  const route = readFileSync(new URL("../src/app/api/bounce-levels/route.ts", import.meta.url), "utf8");
+  assert.match(controls, /Exposure population/);
+  assert.match(controls, /topExposurePercent/);
+  assert.match(controls, /\[5, 10, 25, 50, 100\]/);
+  assert.match(config, /Strongest exposure shown \(%\)/);
+  assert.match(config, /100 - legacyMinimumPercentile/);
+  assert.match(route, /topExposurePercent/);
+  assert.match(engine, /exposurePopulationThreshold/);
+  assert.match(engine, /node\.absoluteExposure >= populationThreshold/);
 });

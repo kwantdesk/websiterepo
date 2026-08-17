@@ -342,6 +342,10 @@ function buildExposureField(
     const maximumAbsoluteExposure = Math.max(0, ...ranked.map((row) => Math.abs(row.signedExposure)));
     const totalAbsoluteExposure = ranked.reduce((sum, row) => sum + Math.abs(row.signedExposure), 0);
     if (!ranked.length) return;
+    const populationThreshold = exposurePopulationThreshold(
+      ranked.map((row) => Math.abs(row.signedExposure)),
+      settings.minimumExposurePercentile,
+    );
     snapshotTimes.push(timestamp);
     const allNodes = ranked.map((row, rank): BounceExposureNode => {
       const absoluteExposure = Math.abs(row.signedExposure);
@@ -366,7 +370,11 @@ function buildExposureField(
       seriesByStrike.set(row.sourceStrike, series);
 
       const state = activeByStrike.get(row.sourceStrike) ?? { active: false, belowExitCount: 0 };
-      if (!state.active && rank < maximumNodes && percentOfKing >= settings.activeEnterThreshold) {
+      const inExposurePopulation = absoluteExposure >= populationThreshold;
+      if (!inExposurePopulation) {
+        state.active = false;
+        state.belowExitCount = 0;
+      } else if (!state.active && rank < maximumNodes && percentOfKing >= settings.activeEnterThreshold) {
         state.active = true;
         state.belowExitCount = 0;
       } else if (state.active && percentOfKing < settings.activeExitThreshold) {
@@ -374,7 +382,7 @@ function buildExposureField(
       } else if (state.active) {
         state.belowExitCount = 0;
       }
-      const visible = state.active;
+      const visible = inExposurePopulation && state.active;
       if (state.active && state.belowExitCount >= Math.max(1, Math.round(settings.retirementConfirmationSnapshots))) state.active = false;
       activeByStrike.set(row.sourceStrike, state);
       const normalizedAbsoluteMagnitude = absoluteExposure / Math.max(1, absoluteExposure + settings.absoluteExposureScale);
@@ -421,8 +429,8 @@ function buildExposureField(
     });
 
     if (settings.rollDetectionEnabled) {
-      const weakening = allNodes.filter((node) => node.rollWindowRateOfChange <= -Math.abs(settings.rollWeakeningThreshold));
-      const building = allNodes.filter((node) => node.rollWindowRateOfChange >= Math.abs(settings.rollBuildingThreshold));
+      const weakening = allNodes.filter((node) => node.active && node.rollWindowRateOfChange <= -Math.abs(settings.rollWeakeningThreshold));
+      const building = allNodes.filter((node) => node.active && node.rollWindowRateOfChange >= Math.abs(settings.rollBuildingThreshold));
       for (const from of weakening) for (const to of building) {
         const distance = Math.abs(to.sourceStrike - from.sourceStrike);
         if (from.nodeKey === to.nodeKey || distance > settings.maxRollDistance) continue;
@@ -595,6 +603,16 @@ function percentileRanks(rows: NetGammaStrikeRow[]) {
   return ranks;
 }
 
+function exposurePopulationThreshold(magnitudes: number[], minimumPercentile: number) {
+  const ranked = magnitudes
+    .filter((value) => Number.isFinite(value) && value > Number.EPSILON)
+    .sort((left, right) => right - left);
+  if (!ranked.length) return Number.POSITIVE_INFINITY;
+  const topFraction = clamp01(1 - clamp01(minimumPercentile));
+  const visibleCount = Math.max(1, Math.ceil(ranked.length * topFraction));
+  return ranked[Math.min(ranked.length - 1, visibleCount - 1)];
+}
+
 function buildHistory(surface: GexIntervalProviderSurface | null, settings: BounceLevelsBuildSettings, asOfMs: number) {
   const byStrike = new Map<number, StrikeHistory>();
   if (!surface) return byStrike;
@@ -704,6 +722,10 @@ export function buildBounceLevelsSnapshot(profile: NetGammaProfileSnapshot, hist
   const kingRow = nonZeroRows.reduce<NetGammaStrikeRow | null>((best, row) => !best || Math.abs(row.netExposure) > Math.abs(best.netExposure) ? row : best, null);
   const kingMagnitude = Math.abs(kingRow?.netExposure ?? 0);
   const ranks = percentileRanks(rows);
+  const populationThreshold = exposurePopulationThreshold(
+    rows.map((row) => Math.abs(row.netExposure)),
+    settings.minimumExposurePercentile,
+  );
   const histories = buildHistory(historySurface, settings, profile.snapshotTimeMs);
   const clusters = clusterMembership(rows, profile.sourceSpotPrice, settings);
   const totalWeight = Math.max(0.0001, settings.magnitudeWeight + settings.proximityWeight + settings.accumulationWeight + settings.persistenceWeight + settings.freshnessWeight + settings.clusterWeight);
@@ -723,7 +745,7 @@ export function buildBounceLevelsSnapshot(profile: NetGammaProfileSnapshot, hist
     const clusterScore = cluster && kingMagnitude > 0 ? clamp01(cluster.score / kingMagnitude) * 0.5 : 0;
     const baseRelevance = (settings.magnitudeWeight * magnitudeScore + settings.proximityWeight * proximity + settings.accumulationWeight * history.accumulation + settings.persistenceWeight * history.persistence + settings.freshnessWeight * history.freshness + settings.clusterWeight * clusterScore) / totalWeight;
     const relevanceScore = 100 * baseRelevance * dataQuality;
-    const active = magnitudePercentile >= settings.minimumExposurePercentile || percentOfKingFraction >= settings.minimumPercentOfKing || relevanceScore >= settings.minimumRelevanceScore;
+    const active = percentOfKingFraction >= settings.minimumPercentOfKing || relevanceScore >= settings.minimumRelevanceScore;
     const developing = !active && magnitudePercentile >= settings.developingMinimumPercentile && history.magnitudeChangePercent >= settings.developingMinimumGrowthPercent;
     const weakening = active && (history.magnitudeChangePercent <= settings.weakeningThresholdPercent || relevanceScore < settings.weakeningRelevanceThreshold);
     const retired = relevanceScore < settings.retirementRelevanceThreshold && magnitudePercentile < settings.retirementExposurePercentile && history.persistenceSnapshots >= 2;
@@ -764,7 +786,10 @@ export function buildBounceLevelsSnapshot(profile: NetGammaProfileSnapshot, hist
     };
   });
 
-  const eligible = candidates.filter((node) => node.id === kingRow?.id || node.active || node.developing || node.weakening || node.retired).filter((node) => settings.maximumDistancePoints <= 0 || node.id === kingRow?.id || node.distancePoints <= settings.maximumDistancePoints);
+  const eligible = candidates
+    .filter((node) => node.absoluteExposure >= populationThreshold)
+    .filter((node) => node.id === kingRow?.id || node.active || node.developing || node.weakening || node.retired)
+    .filter((node) => settings.maximumDistancePoints <= 0 || node.id === kingRow?.id || node.distancePoints <= settings.maximumDistancePoints);
   const structural = [...eligible].sort((left, right) => right.relevanceScore - left.relevanceScore);
   const below = structural.find((node) => node.sourceStrike < profile.sourceSpotPrice && node.active && node.id !== kingRow?.id) ?? null;
   const above = structural.find((node) => node.sourceStrike > profile.sourceSpotPrice && node.active && node.id !== kingRow?.id) ?? null;

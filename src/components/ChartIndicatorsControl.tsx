@@ -1612,8 +1612,8 @@ export default function ChartIndicatorsControl({
                                 : preset === "clean-chart"
                                   ? { glowStrength: 0, showAirPockets: false, showTouchCount: false, showRocArrows: false, showRetiredHistory: false, showValues: false }
                                   : preset === "research"
-                                    ? { maximumLevels: 24, minimumExposurePercentile: 0, minimumPercentOfKing: 0, minimumRelevanceScore: 0, showAirPockets: true, showTouchCount: true, showRocArrows: true, showRetiredHistory: true, showDevelopingNodes: true, showWeakeningNodes: true, showClusters: true }
-                                    : { greekMode: "GAMMA", expirationMode: "zero-to-one-dte", maximumLevels: 8, minimumExposurePercentile: 90, minimumPercentOfKing: 15, minimumRelevanceScore: 55, magnitudeWeight: 45, proximityWeight: 15, accumulationWeight: 15, persistenceWeight: 10, freshnessWeight: 10, clusterWeight: 5, showDevelopingNodes: true, showClusters: true, showAirPockets: true, refreshSeconds: 5 };
+                                    ? { maximumLevels: 24, topExposurePercent: 100, minimumPercentOfKing: 0, minimumRelevanceScore: 0, showAirPockets: true, showTouchCount: true, showRocArrows: true, showRetiredHistory: true, showDevelopingNodes: true, showWeakeningNodes: true, showClusters: true }
+                                    : { greekMode: "GAMMA", expirationMode: "zero-to-one-dte", maximumLevels: 8, topExposurePercent: 10, minimumPercentOfKing: 15, minimumRelevanceScore: 55, magnitudeWeight: 45, proximityWeight: 15, accumulationWeight: 15, persistenceWeight: 10, freshnessWeight: 10, clusterWeight: 5, showDevelopingNodes: true, showClusters: true, showAirPockets: true, refreshSeconds: 5 };
                         replace(settingsInstance.instanceId, (current) => {
                           const currentSettings = current.settings ?? {};
                           const defaults = defaultIndicatorSettings("bounce-levels", chartSettings);
@@ -1699,6 +1699,38 @@ export default function ChartIndicatorsControl({
                   ) : null}
                   <div className="border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
                     KING is always calculated from the full filtered strike list using the largest absolute signed exposure. Centre price and KING remain independent. Historical snapshots never read beyond replay time.
+                  </div>
+                  <div className="space-y-3 border border-primary/20 bg-background/70 p-3 sm:col-span-2">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-[9px] uppercase tracking-[0.14em] text-foreground">Exposure population</div>
+                        <div className="mt-1 text-[9px] leading-4 text-muted">Only populate the strongest gamma nodes by absolute signed exposure. Positive and negative exposure are ranked equally.</div>
+                      </div>
+                      <span className="shrink-0 border border-primary/30 bg-primary/10 px-2 py-1 font-mono text-[9px] text-primary">
+                        Top {Math.round(Number(settingsInstance.settings?.topExposurePercent ?? 10))}%
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={1}
+                      max={100}
+                      step={1}
+                      value={Number(settingsInstance.settings?.topExposurePercent ?? 10)}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), topExposurePercent: Number(event.target.value) } }))}
+                      className="w-full accent-primary"
+                    />
+                    <div className="grid grid-cols-5 gap-1.5">
+                      {[5, 10, 25, 50, 100].map((percent) => (
+                        <button
+                          key={percent}
+                          type="button"
+                          onClick={() => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), topExposurePercent: percent } }))}
+                          className={`h-8 border text-[8px] uppercase tracking-[0.08em] ${Number(settingsInstance.settings?.topExposurePercent ?? 10) === percent ? "border-primary bg-primary/15 text-primary" : "border-border bg-background text-muted hover:text-foreground"}`}
+                        >
+                          {percent === 100 ? "All" : `Top ${percent}%`}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
               ) : null}
@@ -2898,7 +2930,7 @@ export default function ChartIndicatorsControl({
                 </div>
               ) : null}
 
-              {(INDICATOR_NUMERIC_SETTINGS[settingsDefinition.id] ?? []).map((setting) => {
+              {(INDICATOR_NUMERIC_SETTINGS[settingsDefinition.id] ?? []).filter((setting) => !(settingsDefinition.id === "bounce-levels" && setting.key === "topExposurePercent")).map((setting) => {
                 const value = Number(settingsInstance.settings?.[setting.key] ?? setting.defaultValue);
                 return (
                   <label key={setting.key} className="block rounded-xl border border-border bg-surface/30 p-3">

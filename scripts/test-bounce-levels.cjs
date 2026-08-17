@@ -166,6 +166,17 @@ assert.equal(classifyBounceNodeMomentum(2), "stable", "small node changes keep a
 assert.equal(classifyBounceNodeMomentum(-18), "weakening", "moderate unwinds taper the live edge");
 assert.equal(classifyBounceNodeMomentum(-60), "dumped", "rapid unwinds collapse into a short decay tail");
 
+const topQuarterSnapshot = buildBounceLevelsSnapshot(profile, history, {
+  maximumLevels: 24,
+  maximumNodesPerSlice: 64,
+  minimumExposurePercentile: 0.75,
+  minimumPercentOfKing: 0,
+  minimumRelevanceScore: 0,
+  activeEnterThreshold: 0,
+});
+assert.deepEqual(topQuarterSnapshot.levels.map((level) => level.id), ["negative-king"], "top 25% exposure population retains only the strongest absolute signed-exposure node");
+assert.ok(topQuarterSnapshot.exposureField.every((slice) => slice.nodes.length === 1 && slice.nodes[0].sourceStrike === 735), "every historical slice applies the same lookahead-safe top-percent population filter");
+
 const priorSessionTime = Date.parse("2026-08-13T15:00:00.000Z");
 const priorSessionSurface = {
   ...history,
@@ -322,7 +333,7 @@ const negativeProfile = {
   receivedTimeMs: migrationTimes[2],
   rows: [742, 743].map((strike, index) => migrationRow(strike, negativeValues[2][index], migrationTimes[2])),
 };
-const negativeSnapshot = buildBounceLevelsSnapshot(negativeProfile, negativeSurface, { maximumNodesPerSlice: 2, activeEnterThreshold: 0.05, activeExitThreshold: 0.02 });
+const negativeSnapshot = buildBounceLevelsSnapshot(negativeProfile, negativeSurface, { maximumNodesPerSlice: 2, minimumExposurePercentile: 0, activeEnterThreshold: 0.05, activeExitThreshold: 0.02 });
 const negativeFinal = negativeSnapshot.exposureField.at(-1).nodes;
 assert.ok(negativeFinal.find((node) => node.sourceStrike === 742).shortRateOfChange < 0, "negative 742 exposure is weakening by absolute magnitude");
 assert.ok(negativeFinal.find((node) => node.sourceStrike === 743).shortRateOfChange > 0, "more-negative 743 exposure is correctly classified as building by absolute magnitude");
