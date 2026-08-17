@@ -17,6 +17,11 @@ import { parseGexResearchCommand, serializeGexResearchCommand } from "../src/lib
 import { DEFAULT_GEX_BOX_SETTINGS, migrateGexBoxSettings } from "../src/lib/gex-box/settings.ts";
 import { normalizeGexBotEnvelope } from "../src/lib/gex-box/normalize.ts";
 import {
+  historyRowsFromPayload,
+  providerHistoryCategory,
+  signedHistoryUrlFromPayload,
+} from "../src/lib/gex-box/history.ts";
+import {
   normalizeReplayFrames,
   replayFrameAtOrBefore,
   replayFramesAtOrBefore,
@@ -126,6 +131,20 @@ test("previous-session replay is ordered, deduplicated and never reads ahead", (
   assert.equal(replayFrameAtOrBefore(frames, 250)?.value, "replacement");
   assert.equal(replayFrameAtOrBefore(frames, 99), null);
   assert.deepEqual(replayFramesAtOrBefore(frames, 200).map((frame) => frame.timestamp), [100, 200]);
+});
+
+test("provider history categories use the archive contract rather than live category names", () => {
+  assert.equal(providerHistoryCategory("classic", "gex_full"), "full");
+  assert.equal(providerHistoryCategory("classic", "gex_zero"), "zero");
+  assert.equal(providerHistoryCategory("classic", "gex_one"), "one");
+  assert.equal(providerHistoryCategory("state", "gex_full"), "gex_full");
+  assert.equal(providerHistoryCategory("orderflow", "anything"), "orderflow");
+});
+
+test("history decoder accepts signed URLs, nested frames and timestamp-keyed archives", () => {
+  assert.equal(signedHistoryUrlFromPayload({ data: { signed_url: "https://archive.test/frame.json" } }), "https://archive.test/frame.json");
+  assert.deepEqual(historyRowsFromPayload({ payload: { frames: [{ timestamp: 1, spot: 2 }] } }), [{ timestamp: 1, spot: 2 }]);
+  assert.deepEqual(historyRowsFromPayload({ "1720000000000": { spot: 2, strikes: [] } }), [{ timestamp: 1720000000000, spot: 2, strikes: [] }]);
 });
 
 test("research grammar round-trips and rejects unknown tokens", () => {

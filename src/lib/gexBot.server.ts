@@ -3,6 +3,13 @@ import "server-only";
 import { gunzipSync } from "node:zlib";
 
 import {
+  historyRowsFromPayload,
+  providerHistoryCategory,
+  signedHistoryUrlFromPayload,
+} from "@/lib/gex-box/history";
+import { normalizeReplayFrames } from "@/lib/gex-box/replay";
+
+import {
   isOrderflowArchiveConfigured,
   latestArchivedSessionKey,
   readArchivedSessionFrames,
@@ -348,32 +355,6 @@ async function requestJson(path: string, marketOpen: boolean): Promise<unknown> 
   return request;
 }
 
-function rowsFromHistoryPayload(payload: unknown): unknown[] | null {
-  if (Array.isArray(payload)) {
-    if (payload.length === 0 || typeof payload[0] !== "string") return payload;
-    return null;
-  }
-  if (!payload || typeof payload !== "object") return null;
-  const source = payload as Record<string, unknown>;
-  for (const key of ["data", "history", "frames", "results"]) {
-    if (Array.isArray(source[key])) return source[key] as unknown[];
-  }
-  return null;
-}
-
-function signedHistoryUrl(payload: unknown) {
-  if (Array.isArray(payload)) {
-    const candidate = payload.find((value) => typeof value === "string" && value.startsWith("https://"));
-    return typeof candidate === "string" ? candidate : null;
-  }
-  if (!payload || typeof payload !== "object") return null;
-  const source = payload as Record<string, unknown>;
-  for (const key of ["url", "download_url", "signed_url"]) {
-    if (typeof source[key] === "string" && source[key].startsWith("https://")) return source[key] as string;
-  }
-  return null;
-}
-
 function parseHistoryBytes(input: Buffer) {
   let bytes = input;
   if (bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b) bytes = gunzipSync(bytes);
@@ -381,13 +362,19 @@ function parseHistoryBytes(input: Buffer) {
   if (!text) return [];
   try {
     const parsed = JSON.parse(text) as unknown;
-    return rowsFromHistoryPayload(parsed) ?? [];
+    return historyRowsFromPayload(parsed) ?? [];
   } catch {
-    // Some archive builds are newline-delimited JSON rather than one JSON array.
+    // Older archive builds may be concatenated or newline-delimited JSON.
+    try {
+      const parsed = JSON.parse(`[${text.replace(/}\s*{/g, "},{")}]`) as unknown;
+      return historyRowsFromPayload(parsed) ?? [];
+    } catch {
+      // Continue with NDJSON below.
+    }
     return text.split(/\r?\n/).flatMap((line) => {
       const trimmed = line.trim();
       if (!trimmed) return [];
-      try { return [JSON.parse(trimmed) as unknown]; } catch { return []; }
+      try { return historyRowsFromPayload(JSON.parse(trimmed) as unknown) ?? []; } catch { return []; }
     });
   }
 }
@@ -403,7 +390,8 @@ function sampleCompleteSession<T>(items: T[], maximum = 6_000) {
 }
 
 async function requestHistoryDate(ticker: string, view: View, category: string, date: string, marketOpen: boolean) {
-  const cacheKey = `${ticker}:${view}:${category}:${date}`;
+  const archiveCategory = providerHistoryCategory(view, category);
+  const cacheKey = `${ticker}:${view}:${archiveCategory}:${date}`;
   const cached = historyCache.get(cacheKey);
   const ttl = marketOpen ? 60_000 : 10 * 60_000;
   if (cached && Date.now() - cached.receivedAt <= ttl) return cached.value;
@@ -413,7 +401,7 @@ async function requestHistoryDate(ticker: string, view: View, category: string, 
   if (!key) throw new Error("GEXBot is not configured on this deployment.");
 
   const request = (async () => {
-    const path = `${API_ROOT}/hist/${encodeURIComponent(ticker)}/${view}/${encodeURIComponent(category)}/${date}?noredirect`;
+    const path = `${API_ROOT}/hist/${encodeURIComponent(ticker)}/${view}/${encodeURIComponent(archiveCategory)}/${date}?noredirect`;
     const signedResponse = await fetch(path, {
       headers: {
         Accept: "application/json",
@@ -423,7 +411,7 @@ async function requestHistoryDate(ticker: string, view: View, category: string, 
         "User-Agent": "KwantDesk/1.0",
       },
       cache: "no-store",
-      signal: AbortSignal.timeout(8_000),
+      signal: AbortSignal.timeout(15_000),
     });
     const signedPayload = await signedResponse.json().catch(() => null) as unknown;
     if (!signedResponse.ok) {
@@ -434,14 +422,14 @@ async function requestHistoryDate(ticker: string, view: View, category: string, 
       throw new Error(detail || `GEXBot history request failed (${signedResponse.status}) for ${date}.`);
     }
 
-    const directRows = rowsFromHistoryPayload(signedPayload);
+    const directRows = historyRowsFromPayload(signedPayload);
     let rows: unknown[];
     if (directRows) {
       rows = directRows;
     } else {
-      const downloadUrl = signedHistoryUrl(signedPayload);
+      const downloadUrl = signedHistoryUrlFromPayload(signedPayload);
       if (!downloadUrl) throw new Error(`GEXBot did not return a history archive for ${date}.`);
-      const fileResponse = await fetch(downloadUrl, { cache: "no-store", signal: AbortSignal.timeout(15_000) });
+      const fileResponse = await fetch(downloadUrl, { cache: "no-store", signal: AbortSignal.timeout(30_000) });
       if (!fileResponse.ok) throw new Error(`GEXBot history archive failed (${fileResponse.status}) for ${date}.`);
       rows = parseHistoryBytes(Buffer.from(await fileResponse.arrayBuffer()));
     }
@@ -511,7 +499,7 @@ function frameSession(frameTimestamp: number, marketOpen: boolean) {
 
 // Serves orderflow history from the desk's own archive of flow-poller frames.
 // Every failure mode returns an explicit reason; none of them invents rows.
-async function readOrderflowArchiveHistory(ticker: string): Promise<HistoryResult> {
+async function readOrderflowArchiveHistory(ticker: string, requestedDate?: string | null): Promise<HistoryResult> {
   try {
     if (!isOrderflowArchiveConfigured()) {
       return {
@@ -521,7 +509,7 @@ async function readOrderflowArchiveHistory(ticker: string): Promise<HistoryResul
         error: "Orderflow archive is not configured on this deployment.",
       };
     }
-    const sessionKey = await latestArchivedSessionKey(ticker);
+    const sessionKey = requestedDate ?? await latestArchivedSessionKey(ticker);
     if (!sessionKey) {
       return {
         rows: [],
@@ -561,11 +549,11 @@ export async function fetchGexBotReplay(view: View, ticker: string, category: st
     : await requestHistory(ticker, view, category, isNewYorkRth());
   const history = providerHistory.rows.length || view !== "orderflow"
     ? providerHistory
-    : await readOrderflowArchiveHistory(ticker).then((deskHistory) => deskHistory.rows.length ? deskHistory : providerHistory);
-  const frames = sampleCompleteSession(history.rows.flatMap((entry) => {
+    : await readOrderflowArchiveHistory(ticker, requestedDate).then((deskHistory) => deskHistory.rows.length ? deskHistory : providerHistory);
+  const frames = sampleCompleteSession(normalizeReplayFrames(history.rows.flatMap((entry) => {
     try { return [view === "orderflow" ? normalizeOrderflow(entry) : normalizeProfile(entry)]; }
     catch { return []; }
-  }));
+  })));
   return {
     ok: frames.length > 0,
     view,
