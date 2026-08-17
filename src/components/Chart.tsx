@@ -2361,6 +2361,10 @@ const DEFAULT_RIGHT_CANDLE_PADDING = 8;
 // component for every raw pan/zoom event makes pointer input monopolise the
 // main thread, especially with several workspace charts mounted.
 const VIEWPORT_REACT_REFRESH_INTERVAL_MS = 64;
+// Bounce Levels uses one platform-owned cadence across every pane. Exposing
+// this as a user setting allowed individual charts to create competing fetch
+// loops, so it intentionally cannot be overridden by saved indicator state.
+const BOUNCE_LEVELS_REFRESH_INTERVAL_MS = 5_000;
 // Native chart primitives may consume every provider update, but React must
 // not reconcile this very large component for every Level 3 packet. A single
 // summary update per second keeps badges/tooltips current without allowing a
@@ -5997,7 +6001,6 @@ function Chart({
   const bounceLevelsDataSignature = bounceLevelsIndicator ? JSON.stringify({
     sourceTicker: String(bounceLevelsIndicator.settings?.sourceTicker ?? "AUTO"),
     greekMode: String(bounceLevelsIndicator.settings?.greekMode ?? "GAMMA"),
-    refreshSeconds: Number(bounceLevelsIndicator.settings?.refreshSeconds ?? 5),
     expirationMode: String(bounceLevelsIndicator.settings?.expirationMode ?? "zero-to-one-dte"),
     minimumDte: Number(bounceLevelsIndicator.settings?.minimumDte ?? 0),
     maximumDte: Number(bounceLevelsIndicator.settings?.maximumDte ?? 7),
@@ -6085,7 +6088,7 @@ function Chart({
     const source = requestedSource === "AUTO"
       ? /^(RTY|M2K)$/.test(display) ? "IWM" : defaultGexIntervalMapSource(display)
       : requestedSource;
-    const refreshMs = Math.max(2_000, Math.min(60_000, Number(indicatorSettings.refreshSeconds) * 1_000));
+    const refreshMs = BOUNCE_LEVELS_REFRESH_INTERVAL_MS;
     const bounceCacheKey = `bounce-levels:${display}:${source}:${bounceLevelsDataSignature}`;
     const cachedBounce = readWorkspaceData<BounceLevelsSnapshot>(bounceCacheKey);
     if (cachedBounce && isBounceLevelsSnapshot(cachedBounce)) {

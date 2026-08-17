@@ -288,3 +288,15 @@ test("status-only indicator clocks cannot reconcile the full chart every second"
   assert.doesNotMatch(chart, /setInterval\(\(\) => setHedgeLevelsNow\(Date\.now\(\)\), 1_000\)/);
   assert.match(chart, /setInterval\(\(\) => setHedgeLevelsNow\(Date\.now\(\)\), 15_000\)/);
 });
+
+test("Bounce Levels refresh cadence is platform-managed rather than user configurable", () => {
+  const chart = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
+  const config = readFileSync(new URL("../src/lib/chartIndicatorConfig.ts", import.meta.url), "utf8");
+  const bounceConfig = config.slice(
+    config.indexOf('"bounce-levels": ['),
+    config.indexOf('"divergence-detector": [', config.indexOf('"bounce-levels": [')),
+  );
+  assert.match(chart, /BOUNCE_LEVELS_REFRESH_INTERVAL_MS = 5_000/);
+  assert.doesNotMatch(chart, /bounceLevelsIndicator\.settings\?\.refreshSeconds/);
+  assert.doesNotMatch(bounceConfig, /refreshSeconds|Refresh interval/);
+});
