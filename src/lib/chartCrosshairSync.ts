@@ -23,6 +23,53 @@ export type ChartCrosshairSyncMove = {
   visible: boolean;
 };
 
+type ChartCrosshairSyncSubscriber = {
+  getSyncGroupId: () => string;
+  listener: (move: ChartCrosshairSyncMove) => void;
+};
+
+const crosshairSubscribers = new Set<ChartCrosshairSyncSubscriber>();
+const pendingCrosshairMoves = new Map<string, ChartCrosshairSyncMove>();
+let crosshairDeliveryFrame: number | null = null;
+
+function flushChartCrosshairMoves() {
+  crosshairDeliveryFrame = null;
+  if (pendingCrosshairMoves.size === 0) return;
+  const moves = new Map(pendingCrosshairMoves);
+  pendingCrosshairMoves.clear();
+  crosshairSubscribers.forEach((subscriber) => {
+    const move = moves.get(subscriber.getSyncGroupId());
+    if (move) subscriber.listener(move);
+  });
+}
+
+/**
+ * Coalesce pointer traffic to one delivery per display frame. Keeping this bus
+ * in memory avoids a synchronous DOM CustomEvent broadcast through every chart
+ * for every raw pointer sample (high-refresh mice can emit far above 144 Hz).
+ */
+export function publishChartCrosshairMove(move: ChartCrosshairSyncMove) {
+  if (typeof window === "undefined" || !move.syncGroupId) return;
+  pendingCrosshairMoves.set(move.syncGroupId, move);
+  if (crosshairDeliveryFrame === null) {
+    crosshairDeliveryFrame = window.requestAnimationFrame(flushChartCrosshairMoves);
+  }
+}
+
+export function subscribeChartCrosshairMove(
+  getSyncGroupId: () => string,
+  listener: (move: ChartCrosshairSyncMove) => void,
+) {
+  const subscriber = { getSyncGroupId, listener };
+  crosshairSubscribers.add(subscriber);
+  return () => crosshairSubscribers.delete(subscriber);
+}
+
+export function snapCrosshairCoordinate(coordinate: number, pixelRatio = 1) {
+  const ratio = Number.isFinite(pixelRatio) && pixelRatio > 0 ? pixelRatio : 1;
+  return Math.round(coordinate * ratio) / ratio;
+}
+
 export function chartCrosshairSyncGroup(
   scope: ChartCrosshairSyncScope,
   instrumentKey: string,

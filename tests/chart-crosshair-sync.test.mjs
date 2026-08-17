@@ -80,3 +80,9 @@ test("the synchronized candle supplies the receiving instrument reference price"
   assert.equal(sync.resolveSyncedChartCandle(2_500, candles)?.close, 13);
   assert.equal(sync.resolveSyncedChartCandle(500, candles), null);
 });
+
+test("crosshair guide coordinates snap to the physical pixel grid", () => {
+  assert.equal(sync.snapCrosshairCoordinate(10.26, 2), 10.5);
+  assert.equal(sync.snapCrosshairCoordinate(10.24, 2), 10);
+  assert.equal(sync.snapCrosshairCoordinate(10.6, 0), 11);
+});

@@ -410,15 +410,16 @@ import {
   type SmtDivergencePrimitiveOptions,
 } from "@/lib/smtDivergencePrimitive";
 import {
-  CHART_CROSSHAIR_SYNC_MOVE_EVENT,
   CHART_CROSSHAIR_SYNC_TOGGLE_EVENT,
   chartCrosshairInstrumentKey,
   chartCrosshairSyncGroup,
+  publishChartCrosshairMove,
   readChartCrosshairSyncEnabled,
   resolveEquivalentCrosshairPrice,
   resolveSyncedChartCandle,
-  resolveSyncedChartTime,
   saveChartCrosshairSyncEnabled,
+  snapCrosshairCoordinate,
+  subscribeChartCrosshairMove,
   type ChartCrosshairSyncScope,
   type ChartCrosshairSyncToggle,
   type ChartCrosshairSyncMove,
@@ -10468,23 +10469,7 @@ function Chart({
     // the hard boundary that prevents those moves echoing back to the source.
     let nativeCrosshairPointerActive = false;
     let synchronizedCrosshairReleaseFrame: number | null = null;
-    let crosshairDispatchFrame: number | null = null;
-    let pendingCrosshairMove: ChartCrosshairSyncMove | null = null;
-    const dispatchPendingCrosshairMove = () => {
-      crosshairDispatchFrame = null;
-      const detail = pendingCrosshairMove;
-      pendingCrosshairMove = null;
-      if (!detail || !crosshairSyncEnabledRef.current) return;
-      window.dispatchEvent(new CustomEvent<ChartCrosshairSyncMove>(CHART_CROSSHAIR_SYNC_MOVE_EVENT, {
-        detail,
-      }));
-    };
-    const queueCrosshairMove = (detail: ChartCrosshairSyncMove) => {
-      pendingCrosshairMove = detail;
-      if (crosshairDispatchFrame === null) {
-        crosshairDispatchFrame = window.requestAnimationFrame(dispatchPendingCrosshairMove);
-      }
-    };
+    let lastAppliedCrosshairKey = "";
     const handleNativeCrosshairMove: Parameters<IChartApi["subscribeCrosshairMove"]>[0] = (param) => {
       const syncGroupId = chartCrosshairSyncGroup(
         crosshairSyncScope,
@@ -10499,7 +10484,7 @@ function Chart({
         || applyingSynchronizedCrosshair
       ) return;
       if (!param.point || param.time === undefined) {
-        queueCrosshairMove({
+        publishChartCrosshairMove({
           sourceChartId: chartInstanceId,
           scope: crosshairSyncScope,
           syncGroupId,
@@ -10516,7 +10501,7 @@ function Chart({
       if (!Number.isFinite(chartTime) || price === null || !Number.isFinite(price)) return;
       const sourceTimestampMs = eventSourceTimeByChartTimeRef.current.get(chartTime) ?? chartTime * 1_000;
       const referencePrice = resolveSyncedChartCandle(sourceTimestampMs, drawingCandlesRef.current)?.close ?? null;
-      queueCrosshairMove({
+      publishChartCrosshairMove({
         sourceChartId: chartInstanceId,
         scope: crosshairSyncScope,
         syncGroupId,
@@ -10531,15 +10516,15 @@ function Chart({
       if (horzLineRef.current) horzLineRef.current.style.display = "none";
       if (priceLabelRef.current) priceLabelRef.current.style.display = "none";
     };
-    const handleSynchronizedCrosshair = (event: Event) => {
+    const synchronizedCrosshairGroup = () => chartCrosshairSyncGroup(
+      crosshairSyncScope,
+      crosshairSyncInstrumentKey,
+      viewportSyncGroupRef.current,
+      viewportSyncRoleRef.current === "peer",
+    );
+    const handleSynchronizedCrosshair = (detail: ChartCrosshairSyncMove) => {
       if (!crosshairSyncEnabledRef.current) return;
-      const detail = (event as CustomEvent<ChartCrosshairSyncMove>).detail;
-      const syncGroupId = chartCrosshairSyncGroup(
-        crosshairSyncScope,
-        crosshairSyncInstrumentKey,
-        viewportSyncGroupRef.current,
-        viewportSyncRoleRef.current === "peer",
-      );
+      const syncGroupId = synchronizedCrosshairGroup();
       if (
         !detail
         || !syncGroupId
@@ -10562,22 +10547,20 @@ function Chart({
         ) {
           chart.clearCrosshairPosition();
           hideSynchronizedPriceGuide();
-          return;
-        }
-        const targetTime = resolveSyncedChartTime(
-          detail.sourceTimestampMs,
-          drawingCandlesRef.current,
-          eventChartTimeBySourceTimeRef.current,
-        );
-        if (targetTime === null) {
-          chart.clearCrosshairPosition();
-          hideSynchronizedPriceGuide();
+          lastAppliedCrosshairKey = "";
           return;
         }
         const targetCandle = resolveSyncedChartCandle(
           detail.sourceTimestampMs,
           drawingCandlesRef.current,
         );
+        if (!targetCandle) {
+          chart.clearCrosshairPosition();
+          hideSynchronizedPriceGuide();
+          return;
+        }
+        const targetTime = eventChartTimeBySourceTimeRef.current.get(targetCandle.timestamp)
+          ?? Math.floor(targetCandle.timestamp / 1_000);
         const synchronizedPrice = crosshairSyncScope === "gamvue"
           ? resolveEquivalentCrosshairPrice(
               detail.price,
@@ -10590,15 +10573,19 @@ function Chart({
           hideSynchronizedPriceGuide();
           return;
         }
+        const crosshairKey = `${targetTime}:${synchronizedPrice}`;
+        if (crosshairKey === lastAppliedCrosshairKey) return;
+        lastAppliedCrosshairKey = crosshairKey;
         chart.setCrosshairPosition(synchronizedPrice, targetTime as Time, candleSeries);
         const y = candleSeries.priceToCoordinate(synchronizedPrice);
         if (y !== null) {
+          const sharpY = snapCrosshairCoordinate(y, window.devicePixelRatio);
           if (horzLineRef.current) {
-            horzLineRef.current.style.top = `${y}px`;
+            horzLineRef.current.style.transform = `translate3d(0, ${sharpY}px, 0)`;
             horzLineRef.current.style.display = "block";
           }
           if (priceLabelRef.current) {
-            priceLabelRef.current.style.top = `${y - 10}px`;
+            priceLabelRef.current.style.transform = `translate3d(0, ${sharpY - 10}px, 0)`;
             priceLabelRef.current.style.display = "block";
             priceLabelRef.current.textContent = synchronizedPrice.toFixed(priceFormat.precision);
           }
@@ -10611,7 +10598,10 @@ function Chart({
       }
     };
     chart.subscribeCrosshairMove(handleNativeCrosshairMove);
-    window.addEventListener(CHART_CROSSHAIR_SYNC_MOVE_EVENT, handleSynchronizedCrosshair);
+    const unsubscribeSynchronizedCrosshair = subscribeChartCrosshairMove(
+      synchronizedCrosshairGroup,
+      handleSynchronizedCrosshair,
+    );
     const drawingColor = themeStyles.getPropertyValue("--primary").trim() || settings.upColor;
     const drawingStyle = {
       lineColor: drawingColor,
@@ -10901,15 +10891,16 @@ function Chart({
 
       if (pending.buttons !== 0) scheduleViewportRefresh();
 
+      const sharpY = snapCrosshairCoordinate(y, window.devicePixelRatio);
       if (horzLineRef.current) {
-        horzLineRef.current.style.top = `${y}px`;
+        horzLineRef.current.style.transform = `translate3d(0, ${sharpY}px, 0)`;
         horzLineRef.current.style.display = "block";
       }
 
       if (priceLabelRef.current) {
         const price = candleSeries.coordinateToPrice(y);
         if (price !== null) {
-          priceLabelRef.current.style.top = `${y - 10}px`;
+          priceLabelRef.current.style.transform = `translate3d(0, ${sharpY - 10}px, 0)`;
           priceLabelRef.current.style.display = "block";
           priceLabelRef.current.textContent = price.toFixed(priceFormat.precision);
         }
@@ -11122,16 +11113,11 @@ function Chart({
       window.removeEventListener("resize", handleResize);
       window.removeEventListener(WORKSPACE_LAYOUT_SETTLED_EVENT, handleResize);
       chart.unsubscribeCrosshairMove(handleNativeCrosshairMove);
-      window.removeEventListener(CHART_CROSSHAIR_SYNC_MOVE_EVENT, handleSynchronizedCrosshair);
-      if (crosshairDispatchFrame !== null) {
-        window.cancelAnimationFrame(crosshairDispatchFrame);
-        crosshairDispatchFrame = null;
-      }
+      unsubscribeSynchronizedCrosshair();
       if (synchronizedCrosshairReleaseFrame !== null) {
         window.cancelAnimationFrame(synchronizedCrosshairReleaseFrame);
         synchronizedCrosshairReleaseFrame = null;
       }
-      pendingCrosshairMove = null;
       chart.timeScale().unsubscribeVisibleLogicalRangeChange(scheduleViewportRefresh);
       resizeObserver.disconnect();
       if (viewportFrameRef.current != null) {
@@ -13396,12 +13382,15 @@ function Chart({
         style={{
           display: "none",
           position: "absolute",
+          top: 0,
           left: 0,
           right: 60,
           height: "1px",
           backgroundColor: "var(--crosshair-color)",
           pointerEvents: "none",
           zIndex: 5,
+          willChange: "transform",
+          contain: "layout style paint",
         }}
       />
       <div
@@ -13409,6 +13398,7 @@ function Chart({
         style={{
           display: "none",
           position: "absolute",
+          top: 0,
           right: 0,
           width: 60,
           height: 20,
@@ -13420,6 +13410,8 @@ function Chart({
           lineHeight: "20px",
           pointerEvents: "none",
           zIndex: 5,
+          willChange: "transform",
+          contain: "layout style paint",
         }}
       />
 
