@@ -3311,15 +3311,28 @@ function Chart({
           low: candle.low,
           close: candle.close,
         });
-        footprintPrimitiveRef.current?.updateLiveCandle({
-          time: candleTime as Time,
-          timestamp: candle.timestamp,
-          open: candle.open,
-          high: candle.high,
-          low: candle.low,
-          close: candle.close,
-          tickSize: getPriceFormat(instrument).minMove,
-        });
+        if (liveFootprintEnabledRef.current && footprintPrimitiveRef.current) {
+          liveFootprintSourceCandlesRef.current = mergeLiveIndicatorCandle(
+            liveFootprintSourceCandlesRef.current,
+            candle,
+          );
+          const nextFootprintBars = footprintPrimitiveRef.current.updateLiveCandle({
+            time: candleTime as Time,
+            timestamp: candle.timestamp,
+            open: candle.open,
+            high: candle.high,
+            low: candle.low,
+            close: candle.close,
+            tickSize: getPriceFormat(instrument).minMove,
+          });
+          liveFootprintRenderBarsRef.current = nextFootprintBars;
+          if (nextFootprintBars.some((bar) => bar.hasPriceLevelFlow)) {
+            retainedFootprintBarsRef.current = {
+              key: `${instrument}:${timeframe}`,
+              bars: nextFootprintBars,
+            };
+          }
+        }
         lastRenderedCandleTimeRef.current = candleTime;
         lastRenderedSourceTimestampRef.current = candle.timestamp;
         if (eventBased) {
@@ -3417,6 +3430,10 @@ function Chart({
         liveFootprintRenderBarsRef.current,
       );
       liveFootprintRenderBarsRef.current = nextBars;
+      retainedFootprintBarsRef.current = {
+        key: `${instrument}:${timeframe}`,
+        bars: nextBars,
+      };
       primitive.update(nextBars, primitiveOptions);
     };
     const receive = (event: Event) => {
@@ -4789,11 +4806,20 @@ function Chart({
   }, [footprintSettings, settings]);
   useEffect(() => {
     liveFootprintEnabledRef.current = Boolean(footprintIndicator);
-    liveFootprintSourceCandlesRef.current = footprintSourceCandles;
+    const sourceTailTimestamp = footprintSourceCandles.at(-1)?.timestamp ?? Number.NEGATIVE_INFINITY;
+    const imperativeTail = liveFootprintSourceCandlesRef.current.filter(
+      (candle) => candle.timestamp > sourceTailTimestamp,
+    );
+    liveFootprintSourceCandlesRef.current = imperativeTail.length
+      ? [...footprintSourceCandles, ...imperativeTail]
+      : footprintSourceCandles;
     liveFootprintBuildSettingsRef.current = footprintBuildSettings;
     liveFootprintPrimitiveOptionsRef.current = footprintPrimitiveOptions;
     liveFootprintProfileGroupTicksRef.current = footprintProfileGroupTicks;
-    liveFootprintRenderBarsRef.current = liveFootprintRenderBars;
+    liveFootprintRenderBarsRef.current = retainLiveFootprintRows(
+      liveFootprintRenderBars,
+      liveFootprintRenderBarsRef.current,
+    );
     if (sampledIndicatorMarketTrades.length) {
       liveFootprintTapeRef.current = sampledIndicatorMarketTrades;
     }
@@ -4941,10 +4967,11 @@ function Chart({
     const series = candleSeriesRef.current;
     const chart = chartRef.current;
     if (!primitive || !series || !chart) return;
-    primitive.update(
-      footprintIndicator && footprintHasPriceLevelFlow ? liveFootprintRenderBars : [],
-      footprintPrimitiveOptions,
-    );
+    const stableFootprintBars = footprintIndicator && footprintHasPriceLevelFlow
+      ? retainLiveFootprintRows(liveFootprintRenderBars, liveFootprintRenderBarsRef.current)
+      : [];
+    liveFootprintRenderBarsRef.current = stableFootprintBars;
+    primitive.update(stableFootprintBars, footprintPrimitiveOptions);
 
     const replaceCandles = Boolean(footprintIndicator && footprintHasPriceLevelFlow);
     series.applyOptions(replaceCandles ? {

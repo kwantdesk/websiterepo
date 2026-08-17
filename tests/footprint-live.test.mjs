@@ -6,7 +6,7 @@ const source = readFileSync(new URL("../src/lib/footprintLive.ts", import.meta.u
   .replace(/export type[\s\S]*?};\r?\n\r?\n/g, "")
   .replace("export function applyLiveFootprintCandleGeometry<T extends LiveFootprintBarShape>", "function applyLiveFootprintCandleGeometry")
   .replace(/\n  bars: T\[\],\n  candle: LiveFootprintCandleGeometry,\n  tickSize: number,\n\): T\[\] \{/, "\n  bars,\n  candle,\n  tickSize,\n) {")
-  .replace("const priceTick = (price: number)", "const priceTick = (price)")
+  .replaceAll("const priceTick = (price: number)", "const priceTick = (price)")
   .replace("export function retainLiveFootprintRows<T extends LiveFootprintBarShape>", "function retainLiveFootprintRows")
   .replace(/\n  current: T\[\],\n  retained: T\[\],\n\): T\[\] \{/, "\n  current,\n  retained,\n) {");
 const retainLiveFootprintRows = Function(`${source}; return retainLiveFootprintRows;`)();
@@ -70,7 +70,7 @@ test("moves live footprint OHLC immediately without replacing execution rows", (
   assert.equal(result[0].hasPriceLevelFlow, true);
 });
 
-test("does not move a historical footprint bar for an unrelated live candle", () => {
+test("appends a new forming candle without deleting the completed footprint", () => {
   const current = [bar(1, true, 100)];
   const result = applyLiveFootprintCandleGeometry(current, {
     time: 5,
@@ -80,5 +80,36 @@ test("does not move a historical footprint bar for an unrelated live candle", ()
     low: 109,
     close: 111,
   }, 0.25);
-  assert.equal(result, current);
+  assert.notEqual(result, current);
+  assert.equal(result.length, 2);
+  assert.equal(result[0].hasPriceLevelFlow, true);
+  assert.equal(result[0].rows.length, 1);
+  assert.equal(result[0].isClosed, true);
+  assert.equal(result[1].timestamp, 5);
+  assert.equal(result[1].close, 111);
+  assert.equal(result[1].hasPriceLevelFlow, false);
+  assert.equal(result[1].rows.length, 0);
+});
+
+test("retains rows by source timestamp when chart coordinates are remapped", () => {
+  const retained = [{ ...bar(1, true, 100), time: 500 }];
+  const current = [{ ...bar(1, false, 101), time: 900 }];
+  const result = retainLiveFootprintRows(current, retained);
+  assert.equal(result[0].time, 900);
+  assert.equal(result[0].close, 101);
+  assert.equal(result[0].hasPriceLevelFlow, true);
+  assert.equal(result[0].rows.length, 1);
+});
+
+test("a stale sampled render cannot delete the forming live candle", () => {
+  const current = [{ ...bar(1, true, 100), isClosed: false }];
+  const retained = [
+    { ...bar(1, true, 100), isClosed: true },
+    { ...bar(2, false, 101), isClosed: false },
+  ];
+  const result = retainLiveFootprintRows(current, retained);
+  assert.equal(result.length, 2);
+  assert.equal(result[0].timestamp, 1);
+  assert.equal(result[1].timestamp, 2);
+  assert.equal(result[1].close, 101);
 });

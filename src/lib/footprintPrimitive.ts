@@ -883,15 +883,16 @@ export class FootprintPrimitive implements ISeriesPrimitive<Time> {
     low: number;
     close: number;
     tickSize: number;
-  }) {
+  }): FootprintRenderBar[] {
     const nextBars = applyLiveFootprintCandleGeometry(
       this.renderBars,
       candle,
       candle.tickSize,
     );
-    if (nextBars === this.renderBars) return;
+    if (nextBars === this.renderBars) return this.renderBars;
     this.renderBars = nextBars;
     this.requestPaint();
+    return this.renderBars;
   }
   update(bars: FootprintRenderBar[], options: FootprintPrimitiveOptions) {
     this.renderBars = bars;
