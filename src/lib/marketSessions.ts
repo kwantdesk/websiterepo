@@ -1,7 +1,7 @@
 import type { Candle } from "@/lib/backtester";
 
 export type MarketSessionDefinition = {
-  key: "tokyo" | "london" | "newYork" | "sydney";
+  key: "globex" | "tokyo" | "london" | "newYork" | "sydney";
   label: string;
   timezone: string;
   start: string;
@@ -47,6 +47,7 @@ export type InitialBalanceLevel = {
 };
 
 export const DEFAULT_MARKET_SESSIONS: MarketSessionDefinition[] = [
+  { key: "globex", label: "Globex", timezone: "America/New_York", start: "18:00", end: "17:00", color: "#A461BB" },
   { key: "tokyo", label: "Tokyo", timezone: "Asia/Tokyo", start: "09:00", end: "18:00", color: "#FF9900" },
   { key: "london", label: "London", timezone: "Europe/London", start: "08:00", end: "17:00", color: "#4CAF50" },
   { key: "newYork", label: "New York", timezone: "America/New_York", start: "09:00", end: "18:00", color: "#2196F3" },
@@ -101,8 +102,13 @@ export function resolveMarketSessions(settings: SessionSettings) {
     start: String(settings[`${session.key}Start`] ?? session.start),
     end: String(settings[`${session.key}End`] ?? session.end),
     color: String(settings[`${session.key}Color`] ?? session.color),
-  })).filter((session) =>
-    settings[`show${session.key[0].toUpperCase()}${session.key.slice(1)}`] !== false);
+  })).filter((session) => {
+    const visibility = settings[`show${session.key[0].toUpperCase()}${session.key.slice(1)}`];
+    // Globex is an IB-specific addition. Keep it opt-in so the existing
+    // Sessions and Previous Session studies do not unexpectedly gain a fifth
+    // overlapping session when their saved settings are restored.
+    return session.key === "globex" ? visibility === true : visibility !== false;
+  });
 }
 
 export function buildMarketSessionWindows(

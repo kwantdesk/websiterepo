@@ -1442,14 +1442,18 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
   } : {}),
   ...(indicatorId === "ib-levels" ? {
     durationMinutes: 60,
+    showGlobex: true,
     showTokyo: true,
     showLondon: true,
     showNewYork: true,
-    showSydney: true,
-    tokyoLabel: "Tokyo",
+    showSydney: false,
+    globexLabel: "Globex",
+    tokyoLabel: "Asia",
     londonLabel: "London",
     newYorkLabel: "New York",
     sydneyLabel: "Sydney",
+    globexStart: "18:00",
+    globexEnd: "17:00",
     tokyoStart: "09:00",
     tokyoEnd: "18:00",
     londonStart: "08:00",
@@ -1458,6 +1462,7 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     newYorkEnd: "16:00",
     sydneyStart: "08:00",
     sydneyEnd: "17:00",
+    globexColor: "#A461BB",
     tokyoColor: "#FF9900",
     londonColor: "#4CAF50",
     newYorkColor: "#2196F3",
@@ -1477,7 +1482,7 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     lookbackDays: 7,
     lineOpacity: 88,
     lineWidth: 1,
-    initialBalanceSettingsVersion: 1,
+    initialBalanceSettingsVersion: 2,
   } : {}),
   ...(indicatorId === "big-trades" ? {
     daysToLoad: 1,
@@ -2052,10 +2057,25 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
   }
   if (normalizedInstance.indicatorId === "ib-levels") {
     const defaults = defaultIndicatorSettings("ib-levels");
+    const persistedSettings = normalizedInstance.settings ?? {};
     const settings: Record<string, number | string | boolean> = {
       ...defaults,
-      ...(normalizedInstance.settings ?? {}),
+      ...persistedSettings,
     };
+    if (Number(persistedSettings.initialBalanceSettingsVersion ?? 0) < 2) {
+      // Migrate the old Tokyo/Sydney layout to the intended futures sessions.
+      // Globex is a real 18:00 New York opening range; Sydney is not relabelled
+      // because that would make the line mathematically incorrect.
+      settings.showGlobex = true;
+      settings.globexLabel = "Globex";
+      settings.globexStart = "18:00";
+      settings.globexEnd = "17:00";
+      settings.globexColor = "#A461BB";
+      settings.showSydney = false;
+      if (persistedSettings.tokyoLabel === undefined || persistedSettings.tokyoLabel === "Tokyo") {
+        settings.tokyoLabel = "Asia";
+      }
+    }
     const requestedDuration = Number(settings.durationMinutes);
     settings.durationMinutes = [15, 30, 45, 60].includes(requestedDuration)
       ? requestedDuration
@@ -2075,7 +2095,7 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
     }
     return {
       ...normalizedInstance,
-      settings: { ...settings, initialBalanceSettingsVersion: 1 },
+      settings: { ...settings, initialBalanceSettingsVersion: 2 },
     };
   }
   if (normalizedInstance.indicatorId !== "cumulative-volume-delta") return normalizedInstance;

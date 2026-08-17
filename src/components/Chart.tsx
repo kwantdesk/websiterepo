@@ -664,13 +664,22 @@ class SessionHighLowRenderer implements ISeriesPrimitivePaneRenderer {
         context.stroke();
 
         if (level.label) {
-          const labelX = 7;
+          const labelText = `${level.label} ${level.price.toFixed(level.precision)}`;
           const labelY = Math.max(10, y - 4);
           context.setLineDash([]);
           context.fillStyle = level.color;
           context.font = `700 ${level.fontSize}px 'JetBrains Mono', monospace`;
+          // Labels belong to the wick/line that created the level. Previously
+          // every label was hardcoded at x=7, underneath the fixed drawing
+          // rail, which cut the session name off and stacked unrelated labels
+          // at the pane edge. Anchor at the real line origin while retaining a
+          // small rail-safe gutter for historical origins left of the viewport.
+          const toolbarClearance = 36;
+          const measuredWidth = context.measureText(labelText).width;
+          const maximumLabelX = Math.max(toolbarClearance, mediaSize.width - measuredWidth - 6);
+          const labelX = Math.min(maximumLabelX, Math.max(toolbarClearance, startX + 6));
           context.fillText(
-            `${level.label} ${level.price.toFixed(level.precision)}`,
+            labelText,
             labelX,
             labelY,
             Math.max(40, mediaSize.width - labelX - 6),

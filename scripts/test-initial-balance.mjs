@@ -50,4 +50,27 @@ const fallback = buildInitialBalanceLevels(candles, { ...settings, durationMinut
 assert.equal(fallback[0].durationMinutes, 60, "Unsupported durations normalize to 60 minutes");
 assert.equal(fallback.find((level) => level.side === "high")?.price, 111, "60-minute fallback uses the complete first hour only");
 
+const globexBase = Date.parse("2026-01-05T23:00:00.000Z"); // 18:00 New York (EST)
+const globexCandles = [
+  { ...candle(0, 100, 101, 99, 100.5), timestamp: globexBase },
+  { ...candle(5, 100.5, 103, 98, 102), timestamp: globexBase + 5 * 60_000 },
+  { ...candle(30, 102, 104, 97, 103), timestamp: globexBase + 30 * 60_000 },
+];
+const globex = buildInitialBalanceLevels(globexCandles, {
+  durationMinutes: 30,
+  showGlobex: true,
+  showTokyo: false,
+  showLondon: false,
+  showNewYork: false,
+  showSydney: false,
+  globexLabel: "Globex",
+  globexStart: "18:00",
+  globexEnd: "17:00",
+  lookbackDays: 7,
+  hideWeekends: true,
+}, 5 * 60_000);
+assert.equal(globex.length, 2, "Globex produces its own IBH and IBL pair");
+assert.match(globex.find((level) => level.side === "low")?.label ?? "", /^Globex IBL 30m/, "Globex uses the intended compact chart label");
+assert.equal(globex.find((level) => level.side === "high")?.startTimestamp, globexBase + 5 * 60_000, "Globex IBH starts at its forming wick");
+
 console.log("Initial Balance levels tests passed.");
