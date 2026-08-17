@@ -14,6 +14,10 @@ export type EventCandle = Candle & {
   delta?: number;
   askVolume?: number;
   bidVolume?: number;
+  /** First source execution assigned to this event bar. */
+  sourceStartTimestamp?: number;
+  /** Latest source execution already consumed by this event bar. */
+  sourceEndTimestamp?: number;
 };
 
 type EventThreshold = {
@@ -103,6 +107,8 @@ function makeCandle(
     delta,
     askVolume: delta > 0 ? volume : 0,
     bidVolume: delta < 0 ? volume : 0,
+    sourceStartTimestamp: record.timestamp,
+    sourceEndTimestamp: record.timestamp,
   };
 }
 
@@ -345,8 +351,22 @@ export function applyMarketTradesToEventBars(
   const bars = [...current] as EventCandle[];
   if (bars.length) bars[bars.length - 1] = { ...bars[bars.length - 1] };
 
+  // Reconnect seeds and provider history commonly overlap the already-built
+  // forming bar. Replaying that overlap inflates volume/trade thresholds and
+  // appends a second copy of the same price path. Preserve the exact source
+  // watermark on new bars, while using the legacy bar timestamp as a safe
+  // fallback for caches written before the watermark existed. Keep records
+  // at the exact boundary: separate executions can legitimately share one
+  // millisecond and upstream live batches are ordered/non-overlapping.
+  const processedThrough = Number(
+    bars.at(-1)?.sourceEndTimestamp
+    ?? bars.at(-1)?.timestamp
+    ?? Number.NEGATIVE_INFINITY,
+  );
+
   for (const record of records) {
     if (!Number.isFinite(record.timestamp) || !Number.isFinite(record.price) || record.price <= 0) continue;
+    if (record.timestamp < processedThrough) continue;
     if (threshold.kind === "volume" || threshold.kind === "trade" || threshold.kind === "delta") {
       addThresholdTrade(bars, record, threshold);
     } else if (threshold.kind === "renko") {
@@ -355,6 +375,16 @@ export function applyMarketTradesToEventBars(
       addPointFigureTrade(bars, record, threshold);
     } else {
       addRangeTrade(bars, record, threshold);
+    }
+    const forming = bars.at(-1);
+    if (forming) {
+      forming.sourceStartTimestamp = Number.isFinite(Number(forming.sourceStartTimestamp))
+        ? Number(forming.sourceStartTimestamp)
+        : record.timestamp;
+      forming.sourceEndTimestamp = Math.max(
+        Number(forming.sourceEndTimestamp ?? record.timestamp),
+        record.timestamp,
+      );
     }
     if (bars.length > limit * 2) bars.splice(0, bars.length - limit);
   }

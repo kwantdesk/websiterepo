@@ -15,6 +15,9 @@ export interface Candle {
   deltaHigh?: number;
   deltaLow?: number;
   deltaClose?: number;
+  /** Source-execution watermark used by non-time bar continuations. */
+  sourceStartTimestamp?: number;
+  sourceEndTimestamp?: number;
 }
 
 export interface Trade {

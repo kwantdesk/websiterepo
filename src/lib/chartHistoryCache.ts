@@ -181,6 +181,14 @@ function normalizeCandles(candles: Candle[]) {
       const value = Number(candle[key]);
       if (Number.isFinite(value)) normalized[key] = value;
     });
+    const sourceStartTimestamp = Number(candle.sourceStartTimestamp);
+    const sourceEndTimestamp = Number(candle.sourceEndTimestamp);
+    if (Number.isFinite(sourceStartTimestamp)) {
+      normalized.sourceStartTimestamp = sourceStartTimestamp;
+    }
+    if (Number.isFinite(sourceEndTimestamp)) {
+      normalized.sourceEndTimestamp = sourceEndTimestamp;
+    }
 
     // A fast OHLC/volume refresh and the slower aggressor-flow enrichment are
     // deliberately loaded on separate clocks. Never let the fast base candle
@@ -197,6 +205,14 @@ function normalizeCandles(candles: Candle[]) {
           normalized[key] = existing[key];
         }
       });
+      if (
+        !Number.isFinite(Number(normalized.sourceStartTimestamp))
+        && Number.isFinite(Number(existing.sourceStartTimestamp))
+      ) normalized.sourceStartTimestamp = existing.sourceStartTimestamp;
+      if (
+        !Number.isFinite(Number(normalized.sourceEndTimestamp))
+        && Number.isFinite(Number(existing.sourceEndTimestamp))
+      ) normalized.sourceEndTimestamp = existing.sourceEndTimestamp;
     }
     byTimestamp.set(timestamp, normalized);
   }

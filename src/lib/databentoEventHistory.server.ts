@@ -30,7 +30,7 @@ const EVENT_BAR_FLUSH_SIZE = 16_384;
 const MAX_EVENT_FLOW_BUCKETS = 30_000;
 const EVENT_FLOW_BUCKET_MS = 1_000;
 const EVENT_EXECUTION_LOOKBACK_MS = 6 * 60 * 60_000;
-type EventHistorySchema = "trades" | "ohlcv-1s";
+type EventHistorySchema = "trades";
 
 export type DatabentoEventExecutionTuple = [
   timestamp: number,
@@ -71,29 +71,26 @@ function availableEnd(detail: string) {
 }
 
 function eventHistorySchema(timeframe: string): EventHistorySchema {
-  const interval = getChartInterval(timeframe);
-  // Price-, range- and volume-shaped bars do not need millions of individual
-  // executions merely to restore their historical geometry. Databento's
-  // one-second OHLCV stream preserves the complete one-second price envelope
-  // and traded volume, then the live trade stream continues the forming bar.
-  // Trade-count and delta bars still require the native execution tape.
-  return interval?.kind === "trade" || interval?.kind === "delta"
-    ? "trades"
-    : "ohlcv-1s";
+  // Every non-time interval is defined by the ordered execution tape. A
+  // one-second OHLCV candle cannot reveal the order in which its high/low
+  // printed or how volume was distributed along that path. Reconstructing a
+  // 500V/range/Renko bar from four invented pseudo-trades therefore changes
+  // opens, closes and threshold boundaries. Stream native trades for every
+  // event interval so history and the live Rithmic continuation use one
+  // deterministic bar builder.
+  void timeframe;
+  return "trades";
 }
 
 function adaptiveEventStart(timeframe: string, requestedStart: number, end: number, schema: EventHistorySchema) {
   const interval = getChartInterval(timeframe);
   if (!interval || !isEventBasedChartInterval(timeframe)) return requestedStart;
-  if (schema === "ohlcv-1s") return requestedStart;
-  const hour = 60 * 60_000;
-  // Native trades are much denser than one-second bars. Keep enough recent
-  // tape to render a useful event chart without making a Vercel request parse
-  // several million JSON records before it can paint its first candle.
-  const lookback = interval.kind === "trade"
-    ? Math.min(24 * hour, Math.max(8 * hour, interval.value / 50 * 8 * hour))
-    : 12 * hour;
-  return Math.max(requestedStart, end - lookback);
+  // The stream is processed incrementally and keeps only bounded finished
+  // bars, so retaining the requested five-session window does not require
+  // holding the raw tape in server memory.
+  void end;
+  void schema;
+  return requestedStart;
 }
 
 function decodeTrade(row: Record<string, unknown>): MarketTrade | null {
@@ -115,37 +112,6 @@ function decodeTrade(row: Record<string, unknown>): MarketTrade | null {
     // BID is a buy aggressor.
     delta: aggressor === "BUY" ? size : aggressor === "SELL" ? -size : 0,
   };
-}
-
-function decodeAggregate(row: Record<string, unknown>): MarketTrade[] {
-  const timestamp = eventTime(
-    row.ts_event
-    ?? row.ts_recv
-    ?? (row.hd as Record<string, unknown> | undefined)?.ts_event,
-  );
-  const open = fixedPrice(row.open);
-  const high = fixedPrice(row.high);
-  const low = fixedPrice(row.low);
-  const close = fixedPrice(row.close);
-  const volume = Math.max(0, Number(row.volume ?? 0));
-  if (timestamp <= 0 || open <= 0 || high <= 0 || low <= 0 || close <= 0 || volume <= 0) return [];
-
-  // OHLCV does not expose the exact order of the intrasecond high and low.
-  // Use the conventional direction-aware path while preserving the exact
-  // one-second open, extremes, close and total volume. Repeated prices are
-  // removed so a flat second remains one compact event.
-  const prices = close >= open
-    ? [open, low, high, close]
-    : [open, high, low, close];
-  const path = prices.filter((price, index) => index === 0 || price !== prices[index - 1]);
-  const size = volume / Math.max(1, path.length);
-  return path.map((price, index) => ({
-    timestamp: timestamp + Math.floor(index * 1_000 / Math.max(1, path.length)),
-    price,
-    size,
-    trades: 1,
-    delta: 0,
-  }));
 }
 
 async function streamEventBars(args: {
@@ -214,12 +180,8 @@ async function streamEventBars(args: {
       rows.forEach((row) => {
         if (!row || typeof row !== "object" || Array.isArray(row)) return;
         const record = row as Record<string, unknown>;
-        if (schema === "ohlcv-1s") {
-          batch.push(...decodeAggregate(record));
-        } else {
-          const trade = decodeTrade(record);
-          if (trade) batch.push(trade);
-        }
+        const trade = decodeTrade(record);
+        if (trade) batch.push(trade);
       });
       if (batch.length >= EVENT_BAR_FLUSH_SIZE) flush();
     } catch {
@@ -248,11 +210,9 @@ async function streamEventBars(args: {
 /**
  * Fetch the recent native execution tape alongside event-built candles.
  *
- * Range/Renko/volume history is reconstructed efficiently from one-second
- * OHLCV. That is sufficient for bar geometry, but it cannot power execution
- * studies: it has no aggressor side and no individual prints. Keep a bounded
- * native trade tape so Big Trades stays attached to the bar where each print
- * happened and Big Blocks receives real ask/bid participation immediately.
+ * Keep a bounded recent native tape so Big Contracts stays attached to the
+ * bar where each print happened. Event-bar geometry itself is already built
+ * from the complete ordered execution stream above.
  */
 async function streamEventFlow(args: {
   symbol: string;
@@ -305,19 +265,7 @@ async function streamEventFlow(args: {
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   const executions: DatabentoEventExecutionTuple[] = [];
-  const flows = Array.from({ length: args.candles.length }, () => ({
-    volume: 0,
-    trades: 0,
-    askVolume: 0,
-    bidVolume: 0,
-    askTrades: 0,
-    bidTrades: 0,
-    delta: 0,
-    deltaHigh: 0,
-    deltaLow: 0,
-  }));
   const recentExecutionStart = args.end - EVENT_EXECUTION_LOOKBACK_MS;
-  let candleIndex = 0;
   let buffer = "";
   const append = (row: Record<string, unknown>) => {
     const timestamp = eventTime(
@@ -333,30 +281,6 @@ async function streamEventFlow(args: {
     const bidVolume = aggressor === "SELL" ? size : 0;
     const delta = askVolume - bidVolume;
     if (timestamp <= 0 || tradePrice <= 0 || size <= 0 || delta === 0 || !args.candles.length) return;
-
-    while (
-      candleIndex + 1 < args.candles.length
-      && args.candles[candleIndex + 1].timestamp <= timestamp
-    ) {
-      candleIndex += 1;
-    }
-    const candle = args.candles[candleIndex];
-    const nextTimestamp = args.candles[candleIndex + 1]?.timestamp;
-    if (
-      !candle
-      || timestamp < candle.timestamp
-      || (nextTimestamp !== undefined && timestamp >= nextTimestamp)
-    ) return;
-    const flow = flows[candleIndex];
-    flow.volume += size;
-    flow.trades += 1;
-    flow.askVolume += askVolume;
-    flow.bidVolume += bidVolume;
-    if (askVolume > 0) flow.askTrades += 1;
-    if (bidVolume > 0) flow.bidTrades += 1;
-    flow.delta += delta;
-    flow.deltaHigh = Math.max(flow.deltaHigh, flow.delta);
-    flow.deltaLow = Math.min(flow.deltaLow, flow.delta);
 
     // Big Trades and live seam repair only need the recent compact tape. CVD
     // has already received the full-history flow above.
@@ -416,24 +340,11 @@ async function streamEventFlow(args: {
   buffer += decoder.decode();
   consume(buffer);
   return {
-    candles: args.candles.map((candle, index) => {
-      const flow = flows[index];
-      if (!flow || flow.askVolume + flow.bidVolume <= 0) return candle;
-      return {
-        ...candle,
-        volume: flow.volume,
-        trades: flow.trades,
-        askVolume: flow.askVolume,
-        bidVolume: flow.bidVolume,
-        askTrades: flow.askTrades,
-        bidTrades: flow.bidTrades,
-        delta: flow.delta,
-        deltaOpen: 0,
-        deltaHigh: flow.deltaHigh,
-        deltaLow: flow.deltaLow,
-        deltaClose: flow.delta,
-      };
-    }),
+    // Geometry and full-window order flow were already calculated from the
+    // exact same native execution stream. Never overwrite a threshold bar
+    // with a second-pass aggregate: one large execution can legitimately be
+    // split across several volume bars at the same source timestamp.
+    candles: args.candles,
     executions,
   };
 }
@@ -491,7 +402,10 @@ export async function getDatabentoEventHistory(
   const flow = await streamEventFlow({
     symbol,
     candles,
-    start: requestedStart,
+    // Event candles already contain exact full-window volume/delta. This
+    // second pass exists only to return the compact recent indicator tape;
+    // do not download and parse the same five sessions twice.
+    start: Math.max(requestedStart, executionEnd - EVENT_EXECUTION_LOOKBACK_MS),
     end: executionEnd,
   }).catch(() => ({ candles, executions: [] as DatabentoEventExecutionTuple[] }));
   return flow;
