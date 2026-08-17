@@ -25,6 +25,8 @@ test("Bounce Levels uses pixel-aware detail and bounded gradients", () => {
   assert.match(bouncePrimitive, /const maximumGradientStops = activePanelCount >= 4 \? 20/);
   assert.match(bouncePrimitive, /const detailedRendering = activePanelCount <= 2 && prepared\.length <= 2_200/);
   assert.match(bouncePrimitive, /data\.microOrbTexture && activePanelCount === 1 && prepared\.length <= 1_600/);
+  assert.match(bouncePrimitive, /calculateSameSideLeaderStrength/);
+  assert.match(bouncePrimitive, /Math\.pow\(ratio, 4\)/);
 });
 
 test("Bounce Levels composites a retained render layer instead of rebuilding it on every market tick", () => {

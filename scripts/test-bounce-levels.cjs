@@ -31,6 +31,7 @@ const {
   BOUNCE_LEVELS_HEAT_THICKNESS_SCALE,
   calculateBounceNodeHeight,
   calculateBounceNodeVisualStructure,
+  calculateSameSideLeaderStrength,
   classifyBounceNodeMomentum,
 } = require("../src/lib/bounceLevelsPrimitive.ts");
 
@@ -46,6 +47,15 @@ assert.ok(buildingStructure.strength > stableStructure.strength, "building expos
 assert.ok(weakeningStructure.strength < stableStructure.strength, "weakening exposure visibly contracts");
 assert.ok(dumpedStructure.brightness < weakeningStructure.brightness, "dumped exposure fades rapidly");
 assert.ok(retiredStructure.brightness < stableStructure.brightness, "retiring nodes fade instead of remaining as permanent bands");
+assert.equal(
+  calculateSameSideLeaderStrength({ absoluteExposure: 500, sameSideLeaderExposure: 500, providerStrength: 0.4 }),
+  1,
+  "the strongest node on each sign receives maximum live authority",
+);
+assert.ok(
+  calculateSameSideLeaderStrength({ absoluteExposure: 250, sameSideLeaderExposure: 500, providerStrength: 0.8 }) < 0.2,
+  "secondary nodes compress sharply relative to their same-side leader",
+);
 
 const now = Date.parse("2026-08-14T15:00:00.000Z");
 const mapping = {

@@ -122,6 +122,31 @@ export type BounceNodeVisualStructure = {
   fade: number;
   momentum: BounceNodeMomentum;
 };
+
+/**
+ * Ranks a node against the strongest node on its own side at this exact
+ * snapshot. The positive and negative leaders each receive full authority;
+ * the rest fall away quickly instead of all becoming similarly thick bands.
+ */
+export function calculateSameSideLeaderStrength({
+  absoluteExposure,
+  sameSideLeaderExposure,
+  providerStrength,
+}: {
+  absoluteExposure: number;
+  sameSideLeaderExposure: number;
+  providerStrength: number;
+}) {
+  const ratio = sameSideLeaderExposure > 0
+    ? clamp(Math.abs(absoluteExposure) / sameSideLeaderExposure, 0, 1)
+    : 0;
+  if (ratio >= 0.999999) return 1;
+  // The fourth-power curve deliberately separates a genuine leader from a
+  // cluster of merely large nodes while retaining a faint structural trace.
+  const competitiveStrength = Math.pow(ratio, 4) * 0.78;
+  return clamp(0.025 + competitiveStrength + clamp(providerStrength, 0, 1) * 0.08, 0.025, 0.62);
+}
+
 const compactExposure = (value: number) => {
   const absolute = Math.abs(value);
   const sign = value < 0 ? "-" : value > 0 ? "+" : "";
@@ -404,15 +429,28 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
         const left = previousX === undefined ? slice.x - nominalWidth / 2 : (previousX + slice.x) / 2;
         const right = nextX === undefined ? slice.x + nominalWidth / 2 : (slice.x + nextX) / 2;
         const width = Math.max(3, right - left + 0.75);
+        let positiveLeaderExposure = 0;
+        let negativeLeaderExposure = 0;
+        for (const node of slice.nodes) {
+          if (node.signedExposure >= 0) positiveLeaderExposure = Math.max(positiveLeaderExposure, Math.abs(node.signedExposure));
+          else negativeLeaderExposure = Math.max(negativeLeaderExposure, Math.abs(node.signedExposure));
+        }
         for (const node of slice.nodes) {
           const coordinate = series.priceToCoordinate(node.mappedPrice);
           if (coordinate === null) continue;
           const y = Number(coordinate);
           if (y < -40 || y > mediaSize.height + 40) continue;
-          // Strength is finalized against the King (or configured absolute basis)
-          // at this exact snapshot. Never renormalize historical samples here.
+          const sameSideLeaderExposure = node.signedExposure >= 0 ? positiveLeaderExposure : negativeLeaderExposure;
+          const leaderRelativeStrength = calculateSameSideLeaderStrength({
+            absoluteExposure: Math.abs(node.signedExposure),
+            sameSideLeaderExposure,
+            providerStrength: node.visualStrength,
+          });
+          // Every historical slice is ranked independently, so leadership
+          // changes begin painting at the actual switch timestamp rather than
+          // retroactively widening an entire old ribbon.
           const structure = calculateBounceNodeVisualStructure({
-            visualStrength: node.visualStrength,
+            visualStrength: leaderRelativeStrength,
             bucketShare: node.bucketShare,
             rateOfChangePercent: node.rateOfChangePercent,
             retirementCount: node.retirementCount,
