@@ -21,6 +21,10 @@ const panelSource = await fs.readFile(
   new URL("../src/components/DepthOfMarketPanel.tsx", import.meta.url),
   "utf8",
 );
+const liquidityStreamSource = await fs.readFile(
+  new URL("../src/lib/rithmicLiquidityStream.ts", import.meta.url),
+  "utf8",
+);
 
 test("DOM Pro workspace renders the live ladder without attaching a chart", () => {
   assert.match(workspaceSource, /value !== "tool-depth-of-market"/);
@@ -28,6 +32,14 @@ test("DOM Pro workspace renders the live ladder without attaching a chart", () =
   assert.match(workspaceSource, /<DepthOfMarketPanel[\s\S]*?standalone/);
   assert.match(panelSource, /standalone\?: boolean/);
   assert.match(panelSource, /collapsed && !standalone/);
+});
+
+test("DOM Pro hydrates from the newest retained book instead of waiting for another live mutation", () => {
+  assert.match(liquidityStreamSource, /if \(payload\.final && snapshots\.length\)/);
+  assert.match(liquidityStreamSource, /filter\(\(subscriber\) => !subscriber\.replayHistory\)/);
+  assert.match(liquidityStreamSource, /subscriber\.onSnapshot\(stream\.latestSnapshot\)/);
+  assert.match(liquidityStreamSource, /INITIAL_BOOK_TIMEOUT_MS = 8_000/);
+  assert.match(panelSource, /DOM FEED UNAVAILABLE/);
 });
 
 test("DOM Pro ships the exact six-column professional default", () => {

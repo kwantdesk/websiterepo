@@ -55,13 +55,16 @@ type SharedPoll = {
   trackers: Map<string, Tracker>;
   status: RithmicLiquidityStatus;
   timer: number | null;
+  watchdog: number | null;
   eventSource: EventSource | null;
+  latestSnapshot: RithmicLiquiditySnapshot | null;
   root: string;
   contractSymbol: string;
   exchange: string;
 };
 
 const streams = new Map<string, SharedPoll>();
+const INITIAL_BOOK_TIMEOUT_MS = 8_000;
 
 function publishStatus(stream: SharedPoll, status: RithmicLiquidityStatus) {
   if (stream.status === status) return;
@@ -213,7 +216,17 @@ function updateTrackers(
       .filter((tracker) => tracker.size > 0)
       .map(({ firstSeenAt: _firstSeenAt, lastSeenAt: _lastSeenAt, lastSize: _lastSize, ...tracker }) => tracker),
   };
+  stream.latestSnapshot = snapshot;
   for (const subscriber of recipients) subscriber.onSnapshot(snapshot);
+}
+
+function clearWatchdog(stream: SharedPoll) {
+  if (stream.watchdog !== null) window.clearTimeout(stream.watchdog);
+  stream.watchdog = null;
+}
+
+function markBookFrameReceived(stream: SharedPoll) {
+  clearWatchdog(stream);
 }
 
 function connectStream(stream: SharedPoll) {
@@ -230,6 +243,7 @@ function connectStream(stream: SharedPoll) {
   source.addEventListener("depth", (event) => {
     try {
       const payload = JSON.parse((event as MessageEvent<string>).data) as RawPayload;
+      markBookFrameReceived(stream);
       updateTrackers(stream, payload);
       publishStatus(stream, payload.status?.connected ? "connected" : "checking");
     } catch {
@@ -241,11 +255,34 @@ function connectStream(stream: SharedPoll) {
       const payload = JSON.parse((event as MessageEvent<string>).data) as {
         status?: RawPayload["status"];
         snapshots?: RawPayload["snapshot"][];
+        final?: boolean;
       };
-      const recipients = [...stream.subscribers].filter((subscriber) => subscriber.replayHistory);
-      if (!recipients.length) return;
-      for (const snapshot of payload.snapshots ?? []) {
-        updateTrackers(stream, { status: payload.status, snapshot }, recipients);
+      const snapshots = payload.snapshots ?? [];
+      const replayRecipients = [...stream.subscribers].filter((subscriber) => subscriber.replayHistory);
+      if (replayRecipients.length) {
+        for (const snapshot of snapshots) {
+          updateTrackers(stream, { status: payload.status, snapshot }, replayRecipients);
+        }
+      }
+
+      // The gateway sends retained frames instead of a separate initial
+      // `depth` event whenever history exists. Live-only consumers such as
+      // DOM Pro must still receive the newest frame or they wait forever for
+      // another book mutation during quiet markets.
+      if (payload.final && snapshots.length) {
+        markBookFrameReceived(stream);
+        const liveRecipients = [...stream.subscribers].filter((subscriber) => !subscriber.replayHistory);
+        if (liveRecipients.length) {
+          if (replayRecipients.length && stream.latestSnapshot) {
+            // The final replay frame already advanced the shared trackers.
+            // Deliver that normalized snapshot directly so the same book
+            // mutation is not counted twice when both consumer types exist.
+            for (const subscriber of liveRecipients) subscriber.onSnapshot(stream.latestSnapshot);
+          } else {
+            updateTrackers(stream, { status: payload.status, snapshot: snapshots[snapshots.length - 1] }, liveRecipients);
+          }
+        }
+        publishStatus(stream, payload.status?.connected ? "connected" : "checking");
       }
     } catch {
       publishStatus(stream, "unavailable");
@@ -255,6 +292,7 @@ function connectStream(stream: SharedPoll) {
   source.onerror = () => {
     source.close();
     if (stream.eventSource === source) stream.eventSource = null;
+    clearWatchdog(stream);
     publishStatus(stream, "unavailable");
     if (stream.subscribers.size && stream.timer === null) {
       stream.timer = window.setTimeout(() => {
@@ -263,6 +301,11 @@ function connectStream(stream: SharedPoll) {
       }, 1_500);
     }
   };
+  clearWatchdog(stream);
+  stream.watchdog = window.setTimeout(() => {
+    stream.watchdog = null;
+    if (!stream.latestSnapshot) publishStatus(stream, "unavailable");
+  }, INITIAL_BOOK_TIMEOUT_MS);
 }
 
 export function subscribeRithmicLiquidity(args: {
@@ -284,7 +327,9 @@ export function subscribeRithmicLiquidity(args: {
       trackers: new Map(),
       status: "checking",
       timer: null,
+      watchdog: null,
       eventSource: null,
+      latestSnapshot: null,
       root,
       contractSymbol,
       exchange,
@@ -298,6 +343,7 @@ export function subscribeRithmicLiquidity(args: {
   };
   stream.subscribers.add(subscriber);
   subscriber.onStatus?.(stream.status);
+  if (stream.latestSnapshot) subscriber.onSnapshot(stream.latestSnapshot);
   connectStream(stream);
 
   return () => {
@@ -306,6 +352,7 @@ export function subscribeRithmicLiquidity(args: {
     current.subscribers.delete(subscriber);
     if (current.subscribers.size) return;
     if (current.timer !== null) window.clearTimeout(current.timer);
+    clearWatchdog(current);
     current.eventSource?.close();
     current.eventSource = null;
     streams.delete(key);
