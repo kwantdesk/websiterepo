@@ -27,6 +27,7 @@ import {
   type VolatilitySkewPoint,
 } from "@/lib/optionsFlow";
 import {
+  gexMapProviderTicker,
   latestGexMapStrikesFromFrames,
   type GexMapFrame,
   type GexMapPanelPayload,
@@ -2456,6 +2457,7 @@ async function buildGexMapPanel(
   requestedSessionDate?: string,
 ): Promise<GexMapPanelPayload> {
   const symbol = symbolInput.trim().toUpperCase();
+  const providerTicker = gexMapProviderTicker(symbol);
   const currentSession = getUsOptionsSession();
   const sessionDate = requestedSessionDate || currentSession.sessionDate;
   const historical = sessionDate !== currentSession.sessionDate;
@@ -2466,16 +2468,16 @@ async function buildGexMapPanel(
       sessionDate,
       greekMode: greekModeInput,
       representationMode: "PER_ONE_PERCENT_MOVE",
-      filter: { ticker: symbol },
+      filter: { ticker: providerTicker },
     }, endpointTtl),
     quantDataPost("/equities/tool/stock-price-over-time", {
       sessionDate,
       aggregationPeriod: "1m",
-      filter: { ticker: symbol },
+      filter: { ticker: providerTicker },
     }, historical ? 300_000 : 2_000),
   ]);
 
-  const fullExposure = parseExposure(exposureResult.payload, symbol, greekModeInput);
+  const fullExposure = parseExposure(exposureResult.payload, providerTicker, greekModeInput);
   const expiration = fullExposure?.expiries
     .map((row) => row.expiration)
     .filter((value) => value >= sessionDate)
@@ -2484,13 +2486,13 @@ async function buildGexMapPanel(
     throw new QuantDataError(`No ${greekModeInput} exposure is available for ${symbol} on ${sessionDate}.`, 422, exposureResult.remaining);
   }
 
-  const frontExposure = parseExposure(exposureResult.payload, symbol, greekModeInput, expiration);
+  const frontExposure = parseExposure(exposureResult.payload, providerTicker, greekModeInput, expiration);
   const intervalResult = await quantDataPost("/options/tool/interval-map", {
     sessionDate,
     aggregationPeriod: "1m",
     greekMode: greekModeInput,
     filter: {
-      ticker: symbol,
+      ticker: providerTicker,
       expirationDate: expiration,
     },
   }, endpointTtl);
@@ -2498,7 +2500,7 @@ async function buildGexMapPanel(
   const candles = parseCandles(candleResult.payload, true);
   const latestCandle = candles.at(-1) ?? null;
   const firstCandle = candles[0] ?? null;
-  const stockPrice = readStockPrice(exposureResult.payload, symbol) ?? latestCandle?.close ?? null;
+  const stockPrice = readStockPrice(exposureResult.payload, providerTicker) ?? latestCandle?.close ?? null;
   const sessionChangePercent = firstCandle && stockPrice !== null && firstCandle.open > 0
     ? stockPrice / firstCandle.open - 1
     : null;
@@ -2564,7 +2566,7 @@ export async function getGexMapPanel(
     const payload = completedSession
       ? await unstable_cache(
         () => buildGexMapPanel(symbol, greekModeInput, sessionDate),
-        ["completed-gex-map-panel-v3", symbol, greekModeInput, sessionDate],
+        ["completed-gex-map-panel-v4", symbol, greekModeInput, sessionDate],
         { revalidate: 6 * 60 * 60 },
       )()
       : await buildGexMapPanel(symbol, greekModeInput, sessionDate);

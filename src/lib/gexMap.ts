@@ -39,6 +39,19 @@ export type GexMapPanelPayload = {
 };
 
 /**
+ * QuantData exposes the S&P index option chain and its cash history beneath
+ * the SPX underlying. SPXW is the weekly option class, not a separately
+ * quoted cash underlying, so requesting SPXW directly returns a successful
+ * but empty payload. Keep SPXW as the product-facing symbol while reading the
+ * front-expiry surface from SPX (which is the weekly/0DTE surface in this
+ * workspace).
+ */
+export function gexMapProviderTicker(symbol: string) {
+  const normalized = symbol.trim().toUpperCase();
+  return normalized === "SPXW" ? "SPX" : normalized;
+}
+
+/**
  * Reconstruct the most recent complete strike surface from interval updates.
  * KwantData can clear the expired front-expiry node in exposure-by-strike
  * shortly after the cash close while retaining the session's interval map.
