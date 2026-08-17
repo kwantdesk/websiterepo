@@ -35,6 +35,14 @@ export type BounceLevelsPrimitiveData = {
 
 export type BounceLevelsHit = { x: number; y: number; node: BounceExposureNode; snapshot: BounceLevelsSnapshot };
 type RenderedHit = BounceLevelsHit & { left: number; right: number; top: number; bottom: number };
+type BounceRenderViewport = {
+  width: number;
+  height: number;
+  firstX: number | null;
+  lastX: number | null;
+  firstY: number | null;
+  lastY: number | null;
+};
 
 const clamp = (value: number, minimum: number, maximum: number) => Math.max(minimum, Math.min(maximum, value));
 export const BOUNCE_LEVELS_HEAT_THICKNESS_SCALE = 0.75;
@@ -289,14 +297,15 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
       const lastLevelPrice = data.snapshot.levels.at(-1)?.mappedPrice ?? data.snapshot.exposureField.at(-1)?.nodes.at(-1)?.mappedPrice ?? firstLevelPrice;
       const firstY = firstLevelPrice ? series.priceToCoordinate(firstLevelPrice) : null;
       const lastY = lastLevelPrice ? series.priceToCoordinate(lastLevelPrice) : null;
-      const layerKey = this.primitive.renderLayerKey({
+      const viewport: BounceRenderViewport = {
         width: mediaSize.width,
         height: mediaSize.height,
         firstX: firstX === null ? null : Number(firstX),
         lastX: lastX === null ? null : Number(lastX),
         firstY: firstY === null ? null : Number(firstY),
         lastY: lastY === null ? null : Number(lastY),
-      });
+      };
+      const layerKey = this.primitive.renderLayerKey(viewport);
       const cachedLayer = this.primitive.cachedLayer(layerKey);
       if (cachedLayer) {
         targetContext.drawImage(
@@ -310,6 +319,32 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
           mediaSize.width,
           mediaSize.height,
         );
+        return;
+      }
+      const transformedLayer = this.primitive.transformedLayer(viewport);
+      if (transformedLayer) {
+        targetContext.save();
+        targetContext.beginPath();
+        targetContext.rect(0, 0, mediaSize.width, mediaSize.height);
+        targetContext.clip();
+        targetContext.translate(transformedLayer.translateX, transformedLayer.translateY);
+        targetContext.scale(transformedLayer.scaleX, transformedLayer.scaleY);
+        targetContext.drawImage(
+          transformedLayer.canvas,
+          0,
+          0,
+          transformedLayer.canvas.width,
+          transformedLayer.canvas.height,
+          0,
+          0,
+          transformedLayer.sourceViewport.width,
+          transformedLayer.sourceViewport.height,
+        );
+        targetContext.restore();
+        // Hit regions belong to the precise coordinate pass. Suppress stale
+        // tooltips during a gesture, then restore them with the settled draw.
+        this.primitive.setHits([]);
+        this.primitive.scheduleRefinement(layerKey);
         return;
       }
       const layer = this.primitive.createLayer(mediaSize.width, mediaSize.height);
@@ -638,7 +673,7 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
       }
       context.restore();
       this.primitive.setHits(hits);
-      this.primitive.storeLayer(layerKey, layer.canvas);
+      this.primitive.storeLayer(layerKey, layer.canvas, viewport);
       targetContext.drawImage(
         layer.canvas,
         0,
@@ -672,13 +707,34 @@ export class BounceLevelsPrimitive implements ISeriesPrimitive<Time> {
   private renderRevision = 0;
   private layerKey = "";
   private layerCanvas: HTMLCanvasElement | null = null;
+  private layerViewport: BounceRenderViewport | null = null;
+  private layerRevision = -1;
+  private layerPanelCount = 0;
+  private refinementTimer: ReturnType<typeof setTimeout> | null = null;
+  private refinementKey = "";
   private readonly paneView = new BounceLevelsView(this);
   attached(param: SeriesAttachedParameter<Time, "Candlestick">) { this.candleSeries = param.series; this.chartApi = param.chart as IChartApi; this.requestRedraw = param.requestUpdate; }
-  detached() { activeBouncePrimitives.delete(this); this.candleSeries = null; this.chartApi = null; this.requestRedraw = null; this.hits = []; this.layerCanvas = null; this.layerKey = ""; }
+  detached() {
+    activeBouncePrimitives.delete(this);
+    if (this.refinementTimer !== null) clearTimeout(this.refinementTimer);
+    this.refinementTimer = null;
+    this.refinementKey = "";
+    this.candleSeries = null;
+    this.chartApi = null;
+    this.requestRedraw = null;
+    this.hits = [];
+    this.layerCanvas = null;
+    this.layerViewport = null;
+    this.layerKey = "";
+  }
   update(data: BounceLevelsPrimitiveData | null) {
     if (this.renderData !== data) {
+      if (this.refinementTimer !== null) clearTimeout(this.refinementTimer);
+      this.refinementTimer = null;
+      this.refinementKey = "";
       this.renderRevision += 1;
       this.layerCanvas = null;
+      this.layerViewport = null;
       this.layerKey = "";
     }
     this.renderData = data;
@@ -687,7 +743,7 @@ export class BounceLevelsPrimitive implements ISeriesPrimitive<Time> {
     this.requestRedraw?.();
   }
   activePanelCount() { return Math.max(1, activeBouncePrimitives.size); }
-  renderLayerKey(viewport: { width: number; height: number; firstX: number | null; lastX: number | null; firstY: number | null; lastY: number | null }) {
+  renderLayerKey(viewport: BounceRenderViewport) {
     const rounded = (value: number | null) => value === null ? "x" : Math.round(value * 4) / 4;
     return [
       this.renderRevision,
@@ -701,6 +757,51 @@ export class BounceLevelsPrimitive implements ISeriesPrimitive<Time> {
     ].join(":");
   }
   cachedLayer(key: string) { return key === this.layerKey ? this.layerCanvas : null; }
+  transformedLayer(viewport: BounceRenderViewport) {
+    if (
+      !this.layerCanvas
+      || !this.layerViewport
+      || this.layerRevision !== this.renderRevision
+      || this.layerPanelCount !== this.activePanelCount()
+    ) return null;
+    const axisTransform = (sourceStart: number | null, sourceEnd: number | null, targetStart: number | null, targetEnd: number | null) => {
+      if (sourceStart === null || targetStart === null) return { scale: 1, translate: 0 };
+      const sourceSpan = sourceEnd === null ? 0 : sourceEnd - sourceStart;
+      const targetSpan = targetEnd === null ? 0 : targetEnd - targetStart;
+      const scale = Math.abs(sourceSpan) > 0.001 && Number.isFinite(targetSpan)
+        ? targetSpan / sourceSpan
+        : 1;
+      if (!Number.isFinite(scale) || scale < 0.04 || scale > 25) return null;
+      return { scale, translate: targetStart - sourceStart * scale };
+    };
+    const horizontal = axisTransform(this.layerViewport.firstX, this.layerViewport.lastX, viewport.firstX, viewport.lastX);
+    const vertical = axisTransform(this.layerViewport.firstY, this.layerViewport.lastY, viewport.firstY, viewport.lastY);
+    if (!horizontal || !vertical) return null;
+    return {
+      canvas: this.layerCanvas,
+      sourceViewport: this.layerViewport,
+      scaleX: horizontal.scale,
+      scaleY: vertical.scale,
+      translateX: horizontal.translate,
+      translateY: vertical.translate,
+    };
+  }
+  scheduleRefinement(key: string) {
+    // Repeated chart paints at the same viewport (for example live ticks) must
+    // not postpone the settled render forever. Only restart when the gesture
+    // actually moves to a different viewport.
+    if (this.refinementTimer !== null && this.refinementKey === key) return;
+    if (this.refinementTimer !== null) clearTimeout(this.refinementTimer);
+    this.refinementKey = key;
+    this.refinementTimer = setTimeout(() => {
+      this.refinementTimer = null;
+      this.refinementKey = "";
+      this.layerCanvas = null;
+      this.layerViewport = null;
+      this.layerKey = "";
+      this.requestRedraw?.();
+    }, 120);
+  }
   createLayer(width: number, height: number) {
     const devicePixelRatio = typeof window === "undefined" ? 1 : Math.max(1, window.devicePixelRatio || 1);
     const pixelBudgetRatio = Math.sqrt(4_000_000 / Math.max(1, width * height));
@@ -713,7 +814,16 @@ export class BounceLevelsPrimitive implements ISeriesPrimitive<Time> {
     context.scale(pixelRatio, pixelRatio);
     return { canvas, context };
   }
-  storeLayer(key: string, canvas: HTMLCanvasElement) { this.layerKey = key; this.layerCanvas = canvas; }
+  storeLayer(key: string, canvas: HTMLCanvasElement, viewport: BounceRenderViewport) {
+    if (this.refinementTimer !== null) clearTimeout(this.refinementTimer);
+    this.refinementTimer = null;
+    this.refinementKey = "";
+    this.layerKey = key;
+    this.layerCanvas = canvas;
+    this.layerViewport = viewport;
+    this.layerRevision = this.renderRevision;
+    this.layerPanelCount = this.activePanelCount();
+  }
   series() { return this.candleSeries; }
   chart() { return this.chartApi; }
   data() { return this.renderData; }
