@@ -4234,7 +4234,7 @@ function readValueAreaOverlayCache(
     : null;
 }
 
-function WorkspaceChartPane({
+function WorkspaceChartPaneComponent({
   pane,
   active,
   embedded = false,
@@ -6764,6 +6764,43 @@ function WorkspaceChartPane({
     </div>
   );
 }
+
+type WorkspaceChartPaneProps = Parameters<typeof WorkspaceChartPaneComponent>[0];
+
+function shallowWorkspacePaneArrayEqual(left: unknown[], right: unknown[]) {
+  if (left === right) return true;
+  if (left.length !== right.length) return false;
+  for (let index = 0; index < left.length; index += 1) {
+    if (!Object.is(left[index], right[index])) return false;
+  }
+  return true;
+}
+
+function areWorkspaceChartPanePropsEqual(
+  previous: Readonly<WorkspaceChartPaneProps>,
+  next: Readonly<WorkspaceChartPaneProps>,
+) {
+  const keys = new Set<keyof WorkspaceChartPaneProps>([
+    ...(Object.keys(previous) as Array<keyof WorkspaceChartPaneProps>),
+    ...(Object.keys(next) as Array<keyof WorkspaceChartPaneProps>),
+  ]);
+  for (const key of keys) {
+    const previousValue = previous[key];
+    const nextValue = next[key];
+    // The workspace shell recreates pane-scoped closures whenever unrelated
+    // live UI state changes. Those closures do not make the chart visually
+    // different and must not fan one quote update out into every chart pane.
+    if (typeof previousValue === "function" && typeof nextValue === "function") continue;
+    if (Array.isArray(previousValue) && Array.isArray(nextValue)) {
+      if (!shallowWorkspacePaneArrayEqual(previousValue, nextValue)) return false;
+      continue;
+    }
+    if (!Object.is(previousValue, nextValue)) return false;
+  }
+  return true;
+}
+
+const WorkspaceChartPane = memo(WorkspaceChartPaneComponent, areWorkspaceChartPanePropsEqual);
 
 const demoStrategies: StrategyItem[] = [
   {

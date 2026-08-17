@@ -1,6 +1,6 @@
 "use client";
 
-import { startTransition, useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
+import { memo, startTransition, useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
 import {
   createChart,
   LineStyle,
@@ -2595,7 +2595,7 @@ function lightweightIndicatorData(definition: CalculatedIndicatorSeries) {
   }) as any[];
 }
 
-export default function Chart({
+function Chart({
   candles,
   marketTrades = [],
   trades,
@@ -14434,3 +14434,37 @@ export default function Chart({
     </div>
   );
 }
+
+function shallowChartArrayEqual(left: unknown[], right: unknown[]) {
+  if (left === right) return true;
+  if (left.length !== right.length) return false;
+  for (let index = 0; index < left.length; index += 1) {
+    if (!Object.is(left[index], right[index])) return false;
+  }
+  return true;
+}
+
+function areChartPropsEqual(previous: Readonly<ChartProps>, next: Readonly<ChartProps>) {
+  const keys = new Set<keyof ChartProps>([
+    ...(Object.keys(previous) as Array<keyof ChartProps>),
+    ...(Object.keys(next) as Array<keyof ChartProps>),
+  ]);
+  for (const key of keys) {
+    const previousValue = previous[key];
+    const nextValue = next[key];
+    // Workspace actions are deliberately ignored here. The live chart must not
+    // execute its 14k-line render path just because the shell recreated an
+    // equivalent closure while updating a watchlist quote, badge or clock.
+    // Every action that changes chart semantics also changes a data/boolean prop
+    // and therefore still commits a fresh render with the current callbacks.
+    if (typeof previousValue === "function" && typeof nextValue === "function") continue;
+    if (Array.isArray(previousValue) && Array.isArray(nextValue)) {
+      if (!shallowChartArrayEqual(previousValue, nextValue)) return false;
+      continue;
+    }
+    if (!Object.is(previousValue, nextValue)) return false;
+  }
+  return true;
+}
+
+export default memo(Chart, areChartPropsEqual);

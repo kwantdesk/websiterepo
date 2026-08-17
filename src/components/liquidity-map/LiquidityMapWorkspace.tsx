@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import KwantLoader from "@/components/KwantLoader";
 import { readStoredTheme, THEME_STORAGE_KEY } from "@/lib/theme";
 
@@ -17,7 +17,7 @@ function liquidityMapInstrument(root: unknown) {
   return /^[A-Z0-9]{1,4}$/.test(normalized) ? `${normalized}.v.0` : null;
 }
 
-export default function LiquidityMapWorkspace({
+function LiquidityMapWorkspace({
   instrument,
   onInstrumentChange,
   onActivate,
@@ -211,3 +211,11 @@ export default function LiquidityMapWorkspace({
     </div>
   );
 }
+
+export default memo(
+  LiquidityMapWorkspace,
+  (previous, next) => previous.instrument === next.instrument
+    && previous.embedded === next.embedded
+    && previous.active === next.active
+    && previous.onInstrumentChange === next.onInstrumentChange,
+);

@@ -140,3 +140,16 @@ test("exchange quotes do not continuously reconcile the full workspace shell", (
   assert.match(workspace, /now - watchlistReactSyncAtRef\.current < 15_000/);
   assert.doesNotMatch(workspace, /setWatchlist\(\(current\) => \{[\s\S]{0,120}updates\.get/);
 });
+
+test("unrelated shell state cannot rerender every heavyweight chart surface", () => {
+  const chart = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
+  const gexMap = readFileSync(new URL("../src/components/gex-map/GexMapWorkspace.tsx", import.meta.url), "utf8");
+  const liquidityMap = readFileSync(new URL("../src/components/liquidity-map/LiquidityMapWorkspace.tsx", import.meta.url), "utf8");
+
+  assert.match(workspace, /const WorkspaceChartPane = memo\(WorkspaceChartPaneComponent, areWorkspaceChartPanePropsEqual\)/);
+  assert.match(workspace, /typeof previousValue === "function" && typeof nextValue === "function"/);
+  assert.match(chart, /export default memo\(Chart, areChartPropsEqual\)/);
+  assert.match(chart, /shallowChartArrayEqual/);
+  assert.match(gexMap, /export default memo\(GexMapWorkspace\)/);
+  assert.match(liquidityMap, /export default memo\([\s\S]{0,280}previous\.instrument === next\.instrument/);
+});

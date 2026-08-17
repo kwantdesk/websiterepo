@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import {
   CalendarDays,
@@ -822,7 +822,7 @@ function ExposurePanel({
   );
 }
 
-export default function GexMapWorkspace({ market = null }: GexMapWorkspaceProps = {}) {
+function GexMapWorkspace({ market = null }: GexMapWorkspaceProps = {}) {
   // Keep the server and first browser render identical. Reading window.location or
   // sessionStorage in a state initializer can make React discard the hydrated GEX
   // tree, which previously left an otherwise healthy map blank on some page loads.
@@ -1281,3 +1281,5 @@ export default function GexMapWorkspace({ market = null }: GexMapWorkspaceProps 
     </div>
   );
 }
+
+export default memo(GexMapWorkspace);
