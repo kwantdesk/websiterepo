@@ -455,6 +455,7 @@ function ExposurePanel({
   stepMinutes,
   viewMode,
   starSettings,
+  unavailableReason = null,
   onChange,
   onRemove,
 }: {
@@ -466,6 +467,7 @@ function ExposurePanel({
   stepMinutes: number;
   viewMode: GexMapViewMode;
   starSettings: GexMapStarSettings;
+  unavailableReason?: string | null;
   onChange: (patch: Partial<Pick<PanelConfig, "symbol" | "greekMode">>) => void;
   onRemove?: () => void;
 }) {
@@ -771,8 +773,24 @@ function ExposurePanel({
             <div className="mt-1 text-[10px] leading-4 text-muted">{error}</div>
           </div>
         ) : !rows.length ? (
-          <div className="flex h-full items-center justify-center px-6 text-center text-[11px] text-muted">
-            No recorded strike frames for this session.
+          <div className="flex h-full items-center justify-center px-6 text-center text-[11px] leading-4 text-muted">
+            {(() => {
+              // The empty state must say exactly why the ladder is empty —
+              // a blanket "no frames" hides whether the replay clock simply
+              // sits before the first recorded frame, the recorded session
+              // does not match the requested one, or frames truly are absent.
+              if (unavailableReason) return unavailableReason;
+              const firstFrameMs = payload?.frames[0]?.timestamp ?? null;
+              if (
+                payload
+                && selectedTimestamp !== null
+                && firstFrameMs !== null
+                && selectedTimestamp < firstFrameMs
+              ) {
+                return `Replay is before the first recorded frame — exposure starts at ${easternTime.format(firstFrameMs)} ET.`;
+              }
+              return "No recorded strike frames for this session.";
+            })()}
           </div>
         ) : (
           <div ref={ladderRef} className="py-1" data-gex-strike-ladder="true">
@@ -1451,12 +1469,16 @@ function GexMapWorkspace({ market = null, externalReplay = null }: GexMapWorkspa
           >
             {panels.map((panel, panelIndex) => {
               const payload = panelData[panel.id];
-              const validPayload = payload
+              const matchesPanel = payload
                 && payload.symbol === panel.symbol
-                && payload.greekMode === panel.greekMode
-                && (!replayMode || !requestedReplayDate || payload.sessionDate === requestedReplayDate)
-                ? payload
-                : null;
+                && payload.greekMode === panel.greekMode;
+              const replaySessionMismatch = Boolean(
+                matchesPanel
+                && replayMode
+                && requestedReplayDate
+                && payload.sessionDate !== requestedReplayDate,
+              );
+              const validPayload = matchesPanel && !replaySessionMismatch ? payload : null;
               return (
                 <ExposurePanel
                   key={panel.id}
@@ -1468,6 +1490,9 @@ function GexMapWorkspace({ market = null, externalReplay = null }: GexMapWorkspa
                   stepMinutes={stepMinutes}
                   viewMode={viewMode}
                   starSettings={starSettings}
+                  unavailableReason={replaySessionMismatch
+                    ? `Recorded frames are for ${payload?.sessionDate}, but the replay session is ${requestedReplayDate}. Exposure frames are only retained for the latest completed session.`
+                    : null}
                   onChange={(patch) => updatePanel(panel.id, patch)}
                   onRemove={panelIndex >= DEFAULT_PANELS.length ? () => removePanel(panel.id) : undefined}
                 />
