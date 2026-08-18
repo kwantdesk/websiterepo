@@ -209,9 +209,12 @@ async function fetchMassiveJson(url: string, timeoutMs = 12_000) {
   });
   const payload = (await response.json().catch(() => ({}))) as JsonRecord;
   if (!response.ok) {
-    throw new Error(
-      String(payload.error ?? payload.message ?? `Market-index request failed (${response.status}).`),
-    );
+    const raw = String(payload.error ?? payload.message ?? `Market-index request failed (${response.status}).`);
+    // Entitlement refusals must read as product truth, not a vendor's
+    // upgrade pitch with internal provider URLs.
+    throw new Error(/not entitled|upgrade your plan/i.test(raw)
+      ? "The current market-data plan does not include this instrument's history."
+      : raw);
   }
   return payload;
 }

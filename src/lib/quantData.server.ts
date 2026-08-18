@@ -754,6 +754,21 @@ function weekdaySessionDates(from: number, to: number) {
   return dates;
 }
 
+/**
+ * A completed New York cash session ends at 16:00 ET. A provider response for
+ * a completed date whose bars stop long before the close is a truncated
+ * upstream recording; caching it for six hours would freeze every multi-day
+ * chart at the truncation point even after the provider repairs the session.
+ */
+function sessionHistoryLooksComplete(payload: unknown, sessionDate: string) {
+  const bars = parseUnderlyingHistoryCandles(payload);
+  if (!bars.length) return false;
+  const lastBar = bars[bars.length - 1].timestamp;
+  const sessionCloseUtc = Date.parse(`${sessionDate}T20:00:00.000Z`);
+  const dstAdjustedEarliestClose = sessionCloseUtc - 90 * 60_000;
+  return lastBar >= dstAdjustedEarliestClose;
+}
+
 async function getOptionsUnderlyingSessionHistory(
   symbol: string,
   aggregationPeriod: string,
@@ -776,13 +791,24 @@ async function getOptionsUnderlyingSessionHistory(
   // timeout restoring thousands of buckets and could return an empty chart.
   // Completed sessions are immutable enough to share through Next's data
   // cache, while today's session keeps its short live cache above.
-  return sessionDate === marketDateKey(Date.now())
-    ? load()
-    : unstable_cache(
-        load,
-        ["options-underlying-session-history-v1", symbol, aggregationPeriod, sessionDate],
-        { revalidate: UNDERLYING_COMPLETED_SESSION_REVALIDATE_SECONDS },
-      )();
+  if (sessionDate === marketDateKey(Date.now())) return load();
+  try {
+    return await unstable_cache(
+      async () => {
+        const payload = await load();
+        if (!sessionHistoryLooksComplete(payload, sessionDate)) {
+          throw new Error(`The ${symbol} ${sessionDate} session recording is incomplete upstream.`);
+        }
+        return payload;
+      },
+      ["options-underlying-session-history-v2", symbol, aggregationPeriod, sessionDate],
+      { revalidate: UNDERLYING_COMPLETED_SESSION_REVALIDATE_SECONDS },
+    )();
+  } catch {
+    // Serve whatever partial truth the provider has right now, uncached, so
+    // the session repairs itself the moment the upstream recording does.
+    return load();
+  }
 }
 
 /**
