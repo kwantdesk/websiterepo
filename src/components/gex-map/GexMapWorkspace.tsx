@@ -857,7 +857,9 @@ function ExposurePanel({
                 const isFocusedStar = derived.roles.includes("star");
                 const highlighted = derived.isHighlighted;
                 const barWidth = Math.sqrt(derived.mapControlPct / maxHighlightedControl) * 100;
-                const roleText = derived.roles.filter((role) => role !== "normal").map((role) => role.toUpperCase());
+                // "Gatekeeper" is displayed as SPARKY; the internal role id
+                // stays stable so derivations and saved state are untouched.
+                const roleText = derived.roles.filter((role) => role !== "normal").map((role) => role === "gatekeeper" ? "SPARKY" : role.toUpperCase());
                 const distanceLabel = Math.abs(derived.distanceFromSpotPct) < 0.0001
                   ? "AT SPOT"
                   : `${Math.abs(derived.distanceFromSpotPct).toFixed(2)}% ${derived.distanceFromSpotPct > 0 ? "ABOVE" : "BELOW"}`;
