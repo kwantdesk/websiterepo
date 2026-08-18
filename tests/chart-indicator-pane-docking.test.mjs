@@ -22,7 +22,14 @@ test("minus handle drags panes to all four dock targets", () => {
 
 test("right dock terminates before the native chart price scale", () => {
   assert.match(panes, /renderSideSurface\("right"[\s\S]*?\{ right: priceScaleWidth, top: topHeight \}/);
-  assert.match(panes, /renderSideSurface\("left"[\s\S]*?\{ left: 0, top: topHeight \}/);
+  assert.match(panes, /renderSideSurface\("left"[\s\S]*?\{ left: boundedLeftInset, top: topHeight \}/);
+});
+
+test("all left-origin indicator panes begin at the drawing toolbar boundary", () => {
+  assert.match(chart, /<ChartIndicatorPanes[\s\S]*?leftInset=\{toolbarPlotLeftInset\}/);
+  assert.match(panes, /horizontalPaneWidth = Math\.max\(1, width - boundedLeftInset\)/);
+  assert.match(panes, /renderSurface\("bottom"[\s\S]*?\{ left: boundedLeftInset, bottom \}/);
+  assert.match(panes, /return globalX === null \? null : globalX - boundedLeftInset/);
 });
 
 test("side-docked indicators reconfigure into a full-height vertical rail", () => {

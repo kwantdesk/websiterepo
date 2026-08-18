@@ -14053,6 +14053,7 @@ function Chart({
       <ChartIndicatorPanes
         groups={orderedIndicatorPanes}
         width={overlaySize.width}
+        leftInset={toolbarPlotLeftInset}
         priceScaleWidth={nativePriceScaleWidth}
         height={indicatorPaneHeight}
         chartHeight={overlaySize.height}

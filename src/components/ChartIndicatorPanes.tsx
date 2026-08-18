@@ -1295,6 +1295,7 @@ function ChartVerticalIndicatorPaneSurface({
 function ChartIndicatorPanes({
   groups,
   width,
+  leftInset = 0,
   priceScaleWidth,
   height,
   chartHeight,
@@ -1312,6 +1313,7 @@ function ChartIndicatorPanes({
 }: {
   groups: IndicatorPaneGroup[];
   width: number;
+  leftInset?: number;
   priceScaleWidth: number;
   height: number;
   chartHeight: number;
@@ -1368,6 +1370,8 @@ function ChartIndicatorPanes({
     Math.max(150, width - priceScaleWidth - 80),
     Math.max(150, Math.min(width * 0.42, count * 180)),
   );
+  const boundedLeftInset = Math.max(0, Math.min(leftInset, Math.max(0, width - priceScaleWidth - 1)));
+  const horizontalPaneWidth = Math.max(1, width - boundedLeftInset);
 
   const guardedToggle = (key: string) => {
     if (suppressToggleRef.current === key) {
@@ -1456,11 +1460,12 @@ function ChartIndicatorPanes({
   ) => {
     if (!surfaceGroups.length || surfacePaneHeight <= 0) return null;
     const localValueScaleWidth = Math.min(priceScaleWidth, Math.max(44, surfaceWidth * 0.24));
-    const globalPlotWidth = Math.max(1, width - priceScaleWidth);
-    const localPlotWidth = Math.max(1, surfaceWidth - localValueScaleWidth);
     const surfaceTimeToX = (time: number) => {
       const globalX = timeToX(time);
-      return globalX === null ? null : (globalX / globalPlotWidth) * localPlotWidth;
+      // Top and bottom panes share the native chart's horizontal coordinates.
+      // Their DOM surface begins at the drawing rail's right edge, so translate
+      // the coordinate into that local surface instead of stretching the tape.
+      return globalX === null ? null : globalX - boundedLeftInset;
     };
     return <ChartIndicatorPaneSurface
       key={dock}
@@ -1510,9 +1515,9 @@ function ChartIndicatorPanes({
 
   return (
     <div ref={rootRef} className="pointer-events-none absolute inset-0 z-[9] overflow-hidden" data-testid="indicator-pane-dock-root">
-      {renderSurface("top", groupsByDock.top, width, topHeight, { left: 0, top: 0 })}
-      {renderSurface("bottom", groupsByDock.bottom, width, bottomHeight, { left: 0, bottom })}
-      {renderSideSurface("left", groupsByDock.left, leftHeight, { left: 0, top: topHeight })}
+      {renderSurface("top", groupsByDock.top, horizontalPaneWidth, topHeight, { left: boundedLeftInset, top: 0 })}
+      {renderSurface("bottom", groupsByDock.bottom, horizontalPaneWidth, bottomHeight, { left: boundedLeftInset, bottom })}
+      {renderSideSurface("left", groupsByDock.left, leftHeight, { left: boundedLeftInset, top: topHeight })}
       {renderSideSurface("right", groupsByDock.right, rightHeight, { right: priceScaleWidth, top: topHeight })}
       {drag ? (
         <div className="pointer-events-none absolute inset-0 z-[120] bg-background/10" aria-label="Indicator docking targets">
