@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   subscribeMarketIndexSnapshot,
   type MarketIndexLiveSnapshot,
@@ -120,35 +120,65 @@ const STATUS_DOT_COLOR: Record<ReturnType<typeof quoteStatus>, string> = {
   stale: "#71717A",
 };
 
+const PAGE_VIEWPORT_WIDTH = 1280;
+
 /**
- * Compact real-quote readout. Renders nothing until an honest provider frame
- * has arrived — the chip never shows placeholder or invented values.
+ * A literal live viewport of the real application route. The page renders in
+ * a same-origin iframe at desktop width and is scaled to the tile, so the
+ * tile shows exactly what the open page is doing right now. Pointer events
+ * are disabled so the tile's own link handles the click, and the frame is
+ * removed from the accessibility/focus order.
  */
-export function LiveQuoteChip({ quote }: { quote: HomeLiveQuote | undefined }) {
-  if (!quote) return null;
-  const change = quoteChangePercent(quote.snapshot);
-  const status = quoteStatus(quote);
-  const changeColor = change === undefined || change === 0
-    ? "#A1A1AA"
-    : change > 0 ? "#22C55E" : "#EF4444";
+export function LivePageViewport({
+  href,
+  title,
+  active,
+}: {
+  href: string;
+  title: string;
+  active: boolean;
+}) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [scale, setScale] = useState(0);
+  const [frameHeight, setFrameHeight] = useState(0);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    const node = containerRef.current;
+    if (!node) return;
+    const measure = () => {
+      const width = node.clientWidth;
+      const height = node.clientHeight;
+      if (width <= 0 || height <= 0) return;
+      const nextScale = width / PAGE_VIEWPORT_WIDTH;
+      setScale(nextScale);
+      setFrameHeight(Math.ceil(height / nextScale));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
   return (
-    <span className="pointer-events-none absolute right-2 top-2 z-[2] flex h-[18px] items-center gap-1.5 rounded-[3px] border border-white/10 bg-black/62 px-1.5 backdrop-blur-md">
-      <span
-        className={status === "live" ? "kwant-home-live-dot h-1 w-1 rounded-full" : "h-1 w-1 rounded-full"}
-        style={{ background: STATUS_DOT_COLOR[status] }}
-      />
-      <span className="text-[7px] font-semibold uppercase tracking-[0.14em] text-white/60">
-        {quote.snapshot.symbol}
-      </span>
-      <span className="font-mono text-[8px] leading-none text-white/88">
-        {formatIndexPrice(quote.snapshot.lastPrice)}
-      </span>
-      {change !== undefined && (
-        <span className="font-mono text-[8px] leading-none" style={{ color: changeColor }}>
-          {change > 0 ? "+" : ""}{change.toFixed(2)}%
-        </span>
+    <div ref={containerRef} className="absolute inset-0 overflow-hidden" aria-hidden="true">
+      {active && scale > 0 && frameHeight > 0 && (
+        <iframe
+          src={href}
+          title={`${title} live preview`}
+          tabIndex={-1}
+          scrolling="no"
+          className={`pointer-events-none select-none border-0 bg-transparent transition-opacity duration-500 ${loaded ? "opacity-100" : "opacity-0"}`}
+          style={{
+            width: PAGE_VIEWPORT_WIDTH,
+            height: frameHeight,
+            transform: `scale(${scale})`,
+            transformOrigin: "top left",
+          }}
+          onLoad={() => setLoaded(true)}
+        />
       )}
-    </span>
+    </div>
   );
 }
 
@@ -656,12 +686,3 @@ export function HomeWorkspacePreview({
   );
 }
 
-/** Which real index quote each launch tile surfaces in its corner chip. */
-export const PREVIEW_QUOTE_SYMBOL: Partial<Record<HomeLaunchPreview, HomeLiveSymbol>> = {
-  chart: "NDX",
-  vue: "SPX",
-  flow: "SPX",
-  gamma: "VIX",
-  gexmap: "SPX",
-  liquidity: "NDX",
-};

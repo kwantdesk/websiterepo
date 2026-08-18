@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { memo, useCallback, useState, type ComponentType } from "react";
+import { memo, useCallback, useEffect, useState, type ComponentType } from "react";
 import {
   ArrowUpRight,
   BarChart3,
@@ -27,12 +27,10 @@ import AppSidebar from "@/components/AppSidebar";
 import {
   HomeWorkspacePreview,
   LiveIndexTape,
-  LiveQuoteChip,
-  PREVIEW_QUOTE_SYMBOL,
+  LivePageViewport,
   useHomeLiveIndices,
   type HomeLaunchPreview,
   type HomeLiveIndices,
-  type HomeLiveQuote,
 } from "@/components/home/HomeLivePreviews";
 import { createClient } from "@/lib/supabase";
 
@@ -71,26 +69,29 @@ const destinations: LaunchDestination[] = [
 const LaunchCard = memo(function LaunchCard({
   destination,
   live,
-  quote,
+  viewportActive,
 }: {
   destination: LaunchDestination;
   live: HomeLiveIndices;
-  quote: HomeLiveQuote | undefined;
+  viewportActive: boolean;
 }) {
   const Icon = destination.icon;
+  const isViewportTile = destination.href !== "/";
   return (
     <Link
       href={destination.href}
       prefetch={false}
-      className="group relative flex min-h-[190px] flex-col overflow-hidden rounded-[7px] border border-white/[0.11] bg-black/55 text-left shadow-[0_22px_70px_rgba(0,0,0,.28)] backdrop-blur-[18px] transition duration-300 hover:-translate-y-1 hover:border-primary/65 hover:bg-black/72 hover:shadow-[0_24px_80px_rgba(0,0,0,.55),0_0_30px_color-mix(in_srgb,var(--primary)_18%,transparent)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
+      className="group relative flex min-h-[216px] flex-col overflow-hidden rounded-[7px] border border-white/[0.11] bg-black/55 text-left shadow-[0_22px_70px_rgba(0,0,0,.28)] backdrop-blur-[18px] transition duration-300 hover:-translate-y-1 hover:border-primary/65 hover:bg-black/72 hover:shadow-[0_24px_80px_rgba(0,0,0,.55),0_0_30px_color-mix(in_srgb,var(--primary)_18%,transparent)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
     >
-      <div className="relative h-[112px] shrink-0 overflow-hidden border-b border-white/[0.08] bg-black/35">
-        <div className="absolute inset-0 opacity-85 transition duration-500 group-hover:scale-[1.035] group-hover:opacity-100">
+      <div className="relative h-[140px] shrink-0 overflow-hidden border-b border-white/[0.08] bg-black/35">
+        <div className="absolute inset-0 opacity-85 transition duration-500 group-hover:opacity-100">
           <HomeWorkspacePreview type={destination.preview} live={live} />
         </div>
+        {isViewportTile && (
+          <LivePageViewport href={destination.href} title={destination.title} active={viewportActive} />
+        )}
         {destination.preview === "home" && <LiveIndexTape live={live} />}
-        <LiveQuoteChip quote={quote} />
-        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,transparent_55%,rgba(0,0,0,.5)_100%)]" />
+        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,transparent_72%,rgba(0,0,0,.45)_100%)]" />
         <span className="absolute left-3 top-3 flex h-7 w-7 items-center justify-center rounded-[4px] border border-white/10 bg-black/55 text-primary backdrop-blur-md transition group-hover:border-primary/45 group-hover:shadow-[0_0_18px_color-mix(in_srgb,var(--primary)_30%,transparent)]">
           <Icon className="h-3.5 w-3.5" strokeWidth={1.55} />
         </span>
@@ -117,6 +118,14 @@ export default function WorkspaceHome({ username = "" }: { username?: string }) 
   const [heroReady, setHeroReady] = useState(false);
   const revealHero = useCallback(() => setHeroReady(true), []);
   const liveIndices = useHomeLiveIndices();
+  // Live page viewports boot one at a time so fifteen full routes never
+  // initialise in the same instant on an ordinary laptop.
+  const [viewportBudget, setViewportBudget] = useState(1);
+  useEffect(() => {
+    if (viewportBudget >= destinations.length) return;
+    const timer = window.setTimeout(() => setViewportBudget((count) => count + 1), 450);
+    return () => window.clearTimeout(timer);
+  }, [viewportBudget]);
 
   async function signOut() {
     const supabase = createClient();
@@ -165,23 +174,15 @@ export default function WorkspaceHome({ username = "" }: { username?: string }) 
           className="kwant-scrollbar relative z-10 h-full w-full overflow-y-auto px-[clamp(28px,4vw,88px)] py-[clamp(16px,2vw,32px)]"
           aria-label="Workspace launcher"
         >
-          <div className="grid min-h-full w-full auto-rows-[minmax(190px,1fr)] grid-cols-1 gap-[clamp(12px,1vw,18px)] sm:grid-cols-2 lg:grid-cols-4">
-            {destinations.map((destination) => {
-              const quoteSymbol = PREVIEW_QUOTE_SYMBOL[destination.preview];
-              const usesLive = destination.preview === "home"
-                || destination.preview === "chart"
-                || destination.preview === "vue"
-                || destination.preview === "liquidity"
-                || quoteSymbol !== undefined;
-              return (
-                <LaunchCard
-                  key={destination.href + destination.title}
-                  destination={destination}
-                  live={usesLive ? liveIndices : EMPTY_LIVE_INDICES}
-                  quote={quoteSymbol ? liveIndices[quoteSymbol] : undefined}
-                />
-              );
-            })}
+          <div className="grid min-h-full w-full auto-rows-[minmax(216px,1fr)] grid-cols-1 gap-[clamp(12px,1vw,18px)] sm:grid-cols-2 lg:grid-cols-4">
+            {destinations.map((destination, index) => (
+              <LaunchCard
+                key={destination.href + destination.title}
+                destination={destination}
+                live={destination.preview === "home" ? liveIndices : EMPTY_LIVE_INDICES}
+                viewportActive={index < viewportBudget}
+              />
+            ))}
           </div>
         </section>
       </main>
