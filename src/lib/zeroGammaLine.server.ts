@@ -40,9 +40,18 @@ function newYorkMarketOpen(now = new Date()) {
 
 function zeroGammaFromPayload(payload: Awaited<ReturnType<typeof getChartGammaLevels>>) {
   const source = payload.sources.find((candidate) => candidate.symbol === payload.requestedSource);
-  return source?.cage?.flip
-    ?? source?.levels.find((level) => level.kind === "ZERO_GAMMA")?.price
+  if (!source) return null;
+  const candidate = source.cage?.flip
+    ?? source.levels.find((level) => level.kind === "ZERO_GAMMA")?.price
     ?? null;
+  if (candidate === null || !Number.isFinite(candidate)) return null;
+  // A zero-gamma crossing sits near the session's own trading range. An
+  // observation far outside it is a broken or mis-scaled provider value, and
+  // painting it would drag the line thousands of points off the chart —
+  // drop the observation instead.
+  const spot = source.stockPrice;
+  if (Number.isFinite(spot) && spot > 0 && Math.abs(candidate - spot) / spot > 0.25) return null;
+  return candidate;
 }
 
 export async function getZeroGammaLinePayload(

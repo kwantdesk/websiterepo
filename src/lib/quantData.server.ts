@@ -4072,7 +4072,17 @@ export async function getCashCalibratedChartGammaLevels(
     stockPrice: futuresPrice,
     revision,
     validationStrikes: cashSource.validationStrikes.map(toFuturesPrice),
-    cage: cashSource.cage,
+    // The cage's flip and crossings are prices in the cash source's scale and
+    // must be calibrated to futures exactly like every level and strike.
+    cage: cashSource.cage
+      ? {
+          ...cashSource.cage,
+          flip: typeof cashSource.cage.flip === "number" && Number.isFinite(cashSource.cage.flip)
+            ? toFuturesPrice(cashSource.cage.flip)
+            : cashSource.cage.flip,
+          crossings: cashSource.cage.crossings.map(toFuturesPrice),
+        }
+      : undefined,
     levels: mergeGammaLevelsAtSamePrice(cashSource.levels.map((level) => ({
       ...level,
       id: `calibrated-${calibrationSource.toLowerCase()}-${level.id}`,

@@ -7,12 +7,14 @@ import {
   zeroGammaSourceForInstrument,
 } from "../src/lib/zeroGammaLine.ts";
 
-const [catalog, config, controls, chart, route] = await Promise.all([
+const [catalog, config, controls, chart, route, server, quantData] = await Promise.all([
   readFile(new URL("../src/lib/chartIndicatorCatalog.ts", import.meta.url), "utf8"),
   readFile(new URL("../src/lib/chartIndicatorConfig.ts", import.meta.url), "utf8"),
   readFile(new URL("../src/components/ChartIndicatorsControl.tsx", import.meta.url), "utf8"),
   readFile(new URL("../src/components/Chart.tsx", import.meta.url), "utf8"),
   readFile(new URL("../src/app/api/zero-gamma-line/route.ts", import.meta.url), "utf8"),
+  readFile(new URL("../src/lib/zeroGammaLine.server.ts", import.meta.url), "utf8"),
+  readFile(new URL("../src/lib/quantData.server.ts", import.meta.url), "utf8"),
 ]);
 
 assert.match(catalog, /indicator\("Zero Gamma Line", "Options Flow"/);
@@ -21,6 +23,15 @@ assert.match(controls, /RENDERED_CHART_INDICATOR_IDS[\s\S]*?"zero-gamma-line"/);
 assert.match(chart, /indicatorId === "zero-gamma-line"/);
 assert.match(chart, /\/api\/zero-gamma-line\?instrument=/);
 assert.match(route, /getZeroGammaLinePayload/);
+
+// The cash-calibrated futures source must convert the cage's flip and
+// crossings to futures scale exactly like every level. An unconverted cage
+// once painted the NQ zero-gamma line at QQQ prices (~730 instead of ~30k).
+assert.match(quantData, /cage: cashSource\.cage\s*\?\s*\{[\s\S]*?toFuturesPrice\(cashSource\.cage\.flip\)[\s\S]*?crossings: cashSource\.cage\.crossings\.map\(toFuturesPrice\)/);
+
+// Broken or mis-scaled provider observations far outside the session's own
+// range must be dropped, not painted.
+assert.match(server, /Math\.abs\(candidate - spot\) \/ spot > 0\.25/);
 
 assert.equal(zeroGammaRootForInstrument("NQ"), "NQ");
 assert.equal(zeroGammaRootForInstrument("MNQU6"), "NQ");
