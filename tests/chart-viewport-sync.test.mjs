@@ -29,6 +29,8 @@ function snapshot(overrides = {}) {
     instrument: "SPX",
     timeframe: "5m",
     visibleTimeRange: { from: 1, to: 2 },
+    visibleLogicalRange: { from: 50, to: 150 },
+    sourceDataLength: 200,
     priceRange: { from: 5_250, to: 5_350 },
     anchorPrice: 5_300,
     updatedAt: 1,
@@ -53,4 +55,25 @@ test("a newly linked group centers its reference price without changing visible 
   assert.deepEqual(range, { from: 5_225, to: 5_375 });
   assert.equal(range.to - range.from, 150);
   assert.equal((range.from + range.to) / 2, 5_300);
+});
+
+test("horizontal pan preserves viewport width instead of stretching a follower", () => {
+  const range = viewport.resolveLinkedLogicalRange(snapshot(), 500);
+  assert.deepEqual(range, { from: 350, to: 450 });
+  assert.equal(range.to - range.from, 100);
+});
+
+test("whitespace beyond the latest bar is preserved on every linked chart", () => {
+  const range = viewport.resolveLinkedLogicalRange(snapshot({
+    visibleLogicalRange: { from: 140, to: 240 },
+  }), 500);
+  assert.deepEqual(range, { from: 440, to: 540 });
+  assert.equal(range.to - 499, 41);
+});
+
+test("invalid logical ranges fall back to timestamp synchronization", () => {
+  const range = viewport.resolveLinkedLogicalRange(snapshot({
+    visibleLogicalRange: { from: 10, to: 10 },
+  }), 500);
+  assert.equal(range, null);
 });

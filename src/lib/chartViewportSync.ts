@@ -6,10 +6,43 @@ export type ChartViewportSnapshot = {
   instrument: string;
   timeframe: string;
   visibleTimeRange: { from: number; to: number };
+  visibleLogicalRange: { from: number; to: number };
+  sourceDataLength: number;
   priceRange: { from: number; to: number };
   anchorPrice: number;
   updatedAt: number;
 };
+
+/**
+ * Rebase a source chart's logical viewport onto another chart's data tail.
+ *
+ * Lightweight Charts clips getVisibleRange() to available timestamps. When a
+ * user pans near either edge, copying that clipped time range makes a follower
+ * pin one side and stretch the other. Logical ranges include whitespace, so
+ * preserving both their span and their offset from the latest bar keeps a pan
+ * as a translation and reserves span changes for real zoom gestures.
+ */
+export function resolveLinkedLogicalRange(
+  snapshot: Pick<ChartViewportSnapshot, "visibleLogicalRange" | "sourceDataLength">,
+  linkedDataLength: number,
+) {
+  const from = Number(snapshot.visibleLogicalRange.from);
+  const to = Number(snapshot.visibleLogicalRange.to);
+  const sourceLength = Math.max(0, Math.trunc(Number(snapshot.sourceDataLength)));
+  const targetLength = Math.max(0, Math.trunc(Number(linkedDataLength)));
+  if (
+    !Number.isFinite(from)
+    || !Number.isFinite(to)
+    || to <= from
+    || sourceLength === 0
+    || targetLength === 0
+  ) return null;
+
+  const span = to - from;
+  const rightOffset = to - (sourceLength - 1);
+  const targetTo = (targetLength - 1) + rightOffset;
+  return { from: targetTo - span, to: targetTo };
+}
 
 const VIEWPORT_SYNC_EVENT = "kwantdesk:chart-viewport-sync";
 const latestByGroup = new Map<string, ChartViewportSnapshot>();

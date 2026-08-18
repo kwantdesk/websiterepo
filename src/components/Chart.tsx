@@ -428,6 +428,7 @@ import {
   centerPriceRangeOnAnchor,
   publishChartViewport,
   readLatestChartViewport,
+  resolveLinkedLogicalRange,
   resolveLinkedPriceRange,
   subscribeChartViewport,
   type ChartViewportSyncRole,
@@ -11379,14 +11380,20 @@ function Chart({
         || snapshot.sourceChartId === chartInstanceId
         || snapshot.timeframe !== (timeframe ?? "")
       ) return;
+      const currentCandles = viewportSyncCandlesRef.current;
       const anchorPrice = latestAnchor();
       if (!anchorPrice) return;
       viewportSyncApplyingRef.current = true;
       try {
-        chart.timeScale().setVisibleRange({
-          from: snapshot.visibleTimeRange.from as Time,
-          to: snapshot.visibleTimeRange.to as Time,
-        });
+        const logicalRange = resolveLinkedLogicalRange(snapshot, currentCandles.length);
+        if (logicalRange) {
+          chart.timeScale().setVisibleLogicalRange(logicalRange);
+        } else {
+          chart.timeScale().setVisibleRange({
+            from: snapshot.visibleTimeRange.from as Time,
+            to: snapshot.visibleTimeRange.to as Time,
+          });
+        }
         const targetRange = resolveLinkedPriceRange(snapshot, instrument, anchorPrice);
         const priceScale = chart.priceScale("right") as ReturnType<IChartApi["priceScale"]> & {
           setVisibleRange?: (range: { from: number; to: number } | null) => void;
@@ -11420,6 +11427,7 @@ function Chart({
       viewportSyncPublishFrameRef.current = window.requestAnimationFrame(() => {
         viewportSyncPublishFrameRef.current = null;
         const timeRange = chart.timeScale().getVisibleRange();
+        const logicalRange = chart.timeScale().getVisibleLogicalRange();
         const priceScale = chart.priceScale("right") as ReturnType<IChartApi["priceScale"]> & {
           getVisibleRange?: () => { from: number; to: number } | null;
           setVisibleRange?: (range: { from: number; to: number }) => void;
@@ -11429,7 +11437,14 @@ function Chart({
         const anchorPrice = latestAnchor();
         const from = Number(timeRange?.from);
         const to = Number(timeRange?.to);
-        if (!timeRange || !priceRange || !anchorPrice || !Number.isFinite(from) || !Number.isFinite(to)) return;
+        if (
+          !timeRange
+          || !logicalRange
+          || !priceRange
+          || !anchorPrice
+          || !Number.isFinite(from)
+          || !Number.isFinite(to)
+        ) return;
         if (centerOnAnchor) {
           // A newly linked group always begins from a common visual origin:
           // the current/reference price sits at the vertical midpoint. The
@@ -11445,6 +11460,11 @@ function Chart({
           instrument,
           timeframe: timeframe ?? "",
           visibleTimeRange: { from, to },
+          visibleLogicalRange: {
+            from: Number(logicalRange.from),
+            to: Number(logicalRange.to),
+          },
+          sourceDataLength: viewportSyncCandlesRef.current.length,
           priceRange,
           anchorPrice,
           updatedAt: Date.now(),
