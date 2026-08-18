@@ -105,6 +105,24 @@ export function mergeWorkspaceChartSettingsWithActiveTheme(
   return merged;
 }
 
+/**
+ * A deliberate account-level theme change is authoritative for every mounted
+ * chart, including a workspace that previously owned a custom palette. Normal
+ * workspace hydration still uses mergeWorkspaceChartSettingsWithActiveTheme so
+ * a saved custom chart remains intact until the trader actually changes the
+ * website theme.
+ */
+export function applyActiveThemeToWorkspaceChartSettings(
+  workspaceSettings: unknown,
+  activeSettings: unknown,
+): ChartSettings {
+  const merged = normalizeChartSettings(workspaceSettings);
+  const active = normalizeChartSettings(activeSettings);
+  merged.themeLinked = true;
+  for (const field of CHART_THEME_COLOR_FIELDS) merged[field] = active[field];
+  return merged;
+}
+
 export function loadStoredChartSettings() {
   if (typeof window === "undefined") return defaultChartSettings;
 

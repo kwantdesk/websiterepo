@@ -42,6 +42,9 @@ test("chart colour templates are shared by Charts and GEX Vue", () => {
 test("theme changes repaint every mounted chart surface immediately", () => {
   assert.match(chartSettings, /CHART_SETTINGS_CHANGE_EVENT = "kwantdesk:chart-settings-change"/);
   assert.match(chartSettings, /new CustomEvent<ChartSettings>\(CHART_SETTINGS_CHANGE_EVENT/);
+  assert.match(chartSettings, /function applyActiveThemeToWorkspaceChartSettings/);
+  assert.match(chartSettings, /merged\.themeLinked = true/);
+  assert.match(workspace, /applyActiveThemeToWorkspaceChartSettings\(current, activeThemeSettings\)/);
   assert.match(workspace, /addEventListener\(CHART_SETTINGS_CHANGE_EVENT, syncChartPalette\)/);
   assert.match(backtesting, /addEventListener\(CHART_SETTINGS_CHANGE_EVENT, syncSettings\)/);
   assert.match(levelz, /addEventListener\(CHART_SETTINGS_CHANGE_EVENT, syncSettings\)/);
@@ -56,6 +59,8 @@ test("account themes override linked indicators and theme-linked chart colours",
   assert.match(indicatorConfig, /linkPaneIndicatorStateToTheme/);
   assert.match(indicatorConfig, /useThemeColors: true/);
   assert.match(workspace, /addEventListener\("kwantdesk:theme-change", relinkIndicators\)/);
+  assert.match(settings, /themeLinked: true,[\s\S]*?backgroundColor: color/);
+  assert.match(settings, /const next = \{ \.\.\.current, themeLinked: true, \[key\]: color \}/);
 });
 
 test("legacy chart migration never overwrites the selected account palette", () => {

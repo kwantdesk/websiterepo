@@ -103,7 +103,7 @@ import { useAccountPreferenceSync } from "@/hooks/useAccountPreferenceSync";
 import { compactLegacyAuthPreferenceMetadata, hydrateUserPreferences } from "@/lib/userPreferences";
 import { normalizeTimeZone } from "@/lib/timeZones";
 import { clearSavedStrategiesRaw, loadSavedStrategiesRaw, saveSavedStrategiesRaw } from "@/lib/automation";
-import { CHART_SETTINGS_CHANGE_EVENT, CHART_SETTINGS_STORAGE_KEY, chartSettingsEqual, defaultChartSettings, extractUserChartSettings, loadStoredChartSettings, mergeWorkspaceChartSettingsWithActiveTheme, normalizeChartSettings, saveStoredChartSettings, type ChartSettings } from "@/lib/chartSettings";
+import { CHART_SETTINGS_CHANGE_EVENT, CHART_SETTINGS_STORAGE_KEY, applyActiveThemeToWorkspaceChartSettings, chartSettingsEqual, defaultChartSettings, extractUserChartSettings, loadStoredChartSettings, mergeWorkspaceChartSettingsWithActiveTheme, normalizeChartSettings, saveStoredChartSettings, type ChartSettings } from "@/lib/chartSettings";
 import type { ChartLevel, ChartZone } from "@/components/Chart";
 import {
   CHART_INDICATOR_BY_ID,
@@ -11617,13 +11617,13 @@ export default function KwantifyWorkspace({
   useEffect(() => {
     const syncChartPalette = () => {
       const activeThemeSettings = loadStoredChartSettings();
-      const mergeLinkedPalette = (current: ChartSettings) => {
-        const next = mergeWorkspaceChartSettingsWithActiveTheme(current, activeThemeSettings);
+      const applyGlobalPalette = (current: ChartSettings) => {
+        const next = applyActiveThemeToWorkspaceChartSettings(current, activeThemeSettings);
         return chartSettingsEqual(current, next) ? current : next;
       };
-      setChartSettings(mergeLinkedPalette);
-      setDraftChartSettings(mergeLinkedPalette);
-      setChartSettingsSnapshot(mergeLinkedPalette);
+      setChartSettings(applyGlobalPalette);
+      setDraftChartSettings(applyGlobalPalette);
+      setChartSettingsSnapshot(applyGlobalPalette);
     };
     const syncChartPaletteAcrossTabs = (event: StorageEvent) => {
       if (event.key === CHART_SETTINGS_STORAGE_KEY) syncChartPalette();

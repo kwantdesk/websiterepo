@@ -622,6 +622,7 @@ export default function SettingsPage() {
     if (key === "background" || key === "primary" || key === "danger") {
       setChartSettings((current) => ({
         ...current,
+        themeLinked: true,
         ...(key === "background" ? { backgroundColor: color } : {}),
         ...(key === "primary" ? {
           upColor: color,
@@ -640,7 +641,7 @@ export default function SettingsPage() {
   function updateChartColor(key: keyof ChartSettings, color: string) {
     linkStoredPaneIndicatorsToTheme();
     setChartSettings((current) => {
-      const next = { ...current, [key]: color };
+      const next = { ...current, themeLinked: true, [key]: color };
       setThemeSettings((theme) => mergeChartSettingsIntoTheme(theme, next));
       return next;
     });
@@ -649,6 +650,7 @@ export default function SettingsPage() {
   function applyThemePreset(theme: ThemeColors) {
     const nextChartSettings: ChartSettings = {
       ...chartSettings,
+      themeLinked: true,
       backgroundColor: theme.chartBackground,
       gridColor: theme.gridColor,
       upColor: theme.candleUp,
@@ -666,11 +668,13 @@ export default function SettingsPage() {
   }
 
   async function saveThemeSettings() {
-    const syncedTheme = mergeChartSettingsIntoTheme(themeSettings, chartSettings);
+    const linkedChartSettings = { ...chartSettings, themeLinked: true };
+    const syncedTheme = mergeChartSettingsIntoTheme(themeSettings, linkedChartSettings);
     setThemeSettings(syncedTheme);
+    setChartSettings(linkedChartSettings);
     linkStoredPaneIndicatorsToTheme();
     saveAppTheme(syncedTheme);
-    saveStoredChartSettings(chartSettings);
+    saveStoredChartSettings(linkedChartSettings);
   }
 
   function resetThemeSettings() {
