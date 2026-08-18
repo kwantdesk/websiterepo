@@ -11234,7 +11234,6 @@ export default function KwantifyWorkspace({
 
     const loadData = async () => {
       try {
-        showReportToast("loading", "Updating report...");
         const periodConfig = getPeriodConfig(selectedPeriod);
         if (isTooManyCandles(selectedPeriod, selectedTimeframe)) {
           setChartLoadingMessage("Too many candles for this timeframe/period combination. Reduce the period or increase the timeframe.");
@@ -11259,7 +11258,6 @@ export default function KwantifyWorkspace({
             setBacktestResult(result);
             setChartTrades(result.trades);
           }
-          showReportToast("success", `Report updated — ${displayCmeSymbol(selectedInstrument)} ${selectedTimeframe}`, 2000);
           setChartLoadingMessage(`Loaded ${candles.length.toLocaleString()} candles`);
         } else {
           // Never substitute fabricated candles for a feed that returned
@@ -11287,11 +11285,7 @@ export default function KwantifyWorkspace({
   }, [section, selectedInstrument, selectedTimeframe, selectedPeriod]);
 
   useEffect(() => {
-    if (!backtestResult || backtestResult.error) {
-      showReportToast("loading", "Updating report...");
-      window.setTimeout(() => showReportToast("success", `Report updated — ${displayCmeSymbol(selectedInstrument)} ${selectedTimeframe}`, 2000), 300);
-      return;
-    }
+    if (!backtestResult || backtestResult.error) return;
 
     const reportPeriod = equityPeriod === "7d" ? "5D" : equityPeriod === "30d" ? "1M" : equityPeriod === "90d" ? "3M" : equityPeriod === "365d" ? "1Y" : "All";
     const outputsize = getHistoricalCandleLimit(reportPeriod, selectedTimeframe, equityPeriod === "7d" ? 2000 : 5000);
@@ -11299,7 +11293,6 @@ export default function KwantifyWorkspace({
     const loadAndBacktest = async () => {
       try {
         setBacktesting(true);
-        showReportToast("loading", "Updating report...");
         const candles = await fetchChartCandles(outputsize, reportPeriod);
         if (candles.length > 0) {
           const cleanCandles = sanitizeCandles(candles, selectedInstrument);
@@ -11312,7 +11305,6 @@ export default function KwantifyWorkspace({
           setChartCandles(cleanCandles);
           setBacktestResult(result);
           setChartTrades(result.trades);
-          showReportToast("success", `Report updated — ${displayCmeSymbol(selectedInstrument)} ${selectedTimeframe}`, 2000);
         }
       } catch {
         showReportToast("error", "Failed to update report", 3000);

@@ -3398,11 +3398,13 @@ function Chart({
       if (!detail || detail.key !== liveCandleEventKey) return;
       pendingCandle = detail.candle;
       latestCandleRef.current = detail.candle;
-      if (volumeIndicatorEnabled) {
+      if (volumeIndicatorEnabled || nonFootprintOrderFlowIndicatorEnabled) {
         pendingLiveVolumeCandleRef.current = detail.candle;
         if (liveVolumeSampleTimerRef.current === null) {
-          // The Volume pane needs a React snapshot. Footprint geometry is
-          // updated directly above and its live tape bypasses React entirely.
+          // Volume and the order-flow panes (CVD, delta studies) need a React
+          // snapshot of the forming candle, which carries its live aggressor
+          // fields. Footprint geometry is updated directly above and its live
+          // tape bypasses React entirely.
           liveVolumeSampleTimerRef.current = window.setTimeout(() => {
             liveVolumeSampleTimerRef.current = null;
             const liveVolumeCandle = pendingLiveVolumeCandleRef.current;
@@ -3426,7 +3428,7 @@ function Chart({
       }
       pendingLiveVolumeCandleRef.current = null;
     };
-  }, [footprintSamplingEnabled, instrument, keyboardActive, liveCandleEventKey, timeframe, volumeIndicatorEnabled]);
+  }, [footprintSamplingEnabled, instrument, keyboardActive, liveCandleEventKey, nonFootprintOrderFlowIndicatorEnabled, timeframe, volumeIndicatorEnabled]);
 
   useEffect(() => {
     if (!liveCandleEventKey) return;
@@ -3607,7 +3609,9 @@ function Chart({
       indicatorSampleTimerRef.current = null;
       queueChartFrameWork(`indicators:${chartFrameWorkKey}`, () => {
         const pendingCandles = pendingIndicatorCandlesRef.current;
-        const liveIndicatorCandle = volumeIndicatorEnabled ? latestCandleRef.current : null;
+        const liveIndicatorCandle = volumeIndicatorEnabled || nonFootprintOrderFlowIndicatorEnabled
+          ? latestCandleRef.current
+          : null;
         startTransition(() => {
           setSampledIndicatorCandles(liveIndicatorCandle
             ? mergeLiveIndicatorCandle(pendingCandles, liveIndicatorCandle)
