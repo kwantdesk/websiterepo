@@ -40,6 +40,7 @@ import {
   loadGexMapPalette,
   normalizeGexMapPalette,
   saveGexMapPalette,
+  type GexMapHeatTones,
   type GexMapPalette,
 } from "@/lib/gexMapPalette";
 import {
@@ -205,15 +206,28 @@ function priceAt(payload: GexMapPanelPayload, timestamp: number | null) {
   return value ?? payload.stockPrice;
 }
 
+const THEME_HEAT_TONES: GexMapHeatTones = {
+  positive: "var(--primary)",
+  positiveSoft: "var(--primary)",
+  negative: "var(--danger)",
+  negativeSoft: "var(--danger)",
+};
+
 function heatColor(
   value: number,
   strength: number,
-  positiveTone = "var(--primary)",
-  negativeTone = "var(--danger)",
+  tones: GexMapHeatTones = THEME_HEAT_TONES,
 ) {
   if (Math.abs(value) < Number.EPSILON) return "var(--surface)";
-  const tone = value > 0 ? positiveTone : negativeTone;
-  const intensity = Math.round(14 + Math.min(1, strength) * 78);
+  const strong = value > 0 ? tones.positive : tones.negative;
+  const soft = value > 0 ? tones.positiveSoft : tones.negativeSoft;
+  const bounded = Math.min(1, strength);
+  // True gradient: low heat sits at the soft stop and ramps toward the
+  // strong stop, then the blended tone fades into the chart background.
+  const tone = soft === strong
+    ? strong
+    : `color-mix(in srgb, ${strong} ${Math.round(bounded * 100)}%, ${soft})`;
+  const intensity = Math.round(14 + bounded * 78);
   return `color-mix(in srgb, ${tone} ${intensity}%, var(--chart-background))`;
 }
 
@@ -870,7 +884,7 @@ function ExposurePanel({
                     style={{
                       opacity: highlighted || nearSpot ? 1 : Math.max(0.02, starSettings.dimOpacity),
                       backgroundColor: highlighted
-                        ? heatColor(derived.net, Math.max(0.2, derived.mapControlPct / maxHighlightedControl), tones.positive, tones.negative)
+                        ? heatColor(derived.net, Math.max(0.2, derived.mapControlPct / maxHighlightedControl), tones)
                         : "var(--chart-background)",
                       ...(isFocusedStar ? {
                         "--gex-star-accent": starPalette.accent,
@@ -929,7 +943,7 @@ function ExposurePanel({
                   data-gex-strike-node="true"
                   className={`gex-map-strike-row relative grid grid-cols-[96px_minmax(0,1fr)_86px] items-center border-b border-black/10 px-2 font-mono text-[9px] transition-[height,margin,background-color] ${nearSpot ? "mx-1 my-1 h-[35px]" : isStar ? "mx-1 my-0.5 h-[29px]" : "h-[25px]"} ${isStar ? `gex-star-node z-[3] ${nearSpot ? "gex-star-is-current" : ""}` : nearSpot ? "gex-current-price-marker z-[2]" : ""}`}
                   style={{
-                    backgroundColor: heatColor(row.net, strength, tones.positive, tones.negative),
+                    backgroundColor: heatColor(row.net, strength, tones),
                     ...(isStar ? {
                       "--gex-star-accent": starPalette.accent,
                       "--gex-star-text": starPalette.text,
@@ -1098,7 +1112,9 @@ function StarViewSettings({
               {GEX_MAP_PALETTE_PRESETS.map((preset) => {
                 const active = !palette.useThemeColors
                   && palette.positive === preset.positive
+                  && palette.positiveSoft === preset.positiveSoft
                   && palette.negative === preset.negative
+                  && palette.negativeSoft === preset.negativeSoft
                   && palette.star === preset.star;
                 return (
                   <button
@@ -1110,13 +1126,15 @@ function StarViewSettings({
                     onClick={() => onPaletteChange({
                       useThemeColors: false,
                       positive: preset.positive,
+                      positiveSoft: preset.positiveSoft,
                       negative: preset.negative,
+                      negativeSoft: preset.negativeSoft,
                       star: preset.star,
                     })}
-                    className={`relative h-7 w-7 overflow-hidden rounded-[4px] border transition-transform hover:scale-110 ${
+                    className={`relative h-7 w-9 overflow-hidden rounded-[4px] border transition-transform hover:scale-110 ${
                       active ? "border-primary shadow-[0_0_10px_color-mix(in_srgb,var(--primary)_45%,transparent)]" : "border-border"
                     }`}
-                    style={{ background: `linear-gradient(135deg, ${preset.positive} 0%, ${preset.positive} 42%, ${preset.negative} 58%, ${preset.negative} 100%)` }}
+                    style={{ background: `linear-gradient(135deg, ${preset.positive} 0%, ${preset.positiveSoft} 30%, ${preset.negativeSoft} 70%, ${preset.negative} 100%)` }}
                   >
                     <span
                       className="absolute bottom-0.5 right-0.5 h-1.5 w-1.5 rounded-full border border-black/30"
@@ -1137,8 +1155,10 @@ function StarViewSettings({
             />
           </label>
           {!palette.useThemeColors ? ([
-            ["positive", "Positive exposure", "Call-side heat and bars"],
-            ["negative", "Negative exposure", "Put-side heat and bars"],
+            ["positive", "Positive strong", "Full-heat call-side tone"],
+            ["positiveSoft", "Positive soft", "Low-heat call-side tone"],
+            ["negative", "Negative strong", "Full-heat put-side tone"],
+            ["negativeSoft", "Negative soft", "Low-heat put-side tone"],
             ["star", "Star node", "Star accent, badge and outline"],
           ] as const).map(([key, label, detail]) => (
             <div key={key} className={rowClass}>
