@@ -116,7 +116,7 @@ import ChartIndicatorPanes, {
   type IndicatorPaneGroup,
   type IndicatorPaneLayoutMap,
 } from "@/components/ChartIndicatorPanes";
-import ChartColorField from "@/components/ChartColorField";
+import ChartColorField, { isInsideChartColorPopover } from "@/components/ChartColorField";
 import DepthOfMarketPanel from "@/components/DepthOfMarketPanel";
 import GexBotFlowStrip from "@/components/GexBotFlowStrip";
 import KwantLoader from "@/components/KwantLoader";
@@ -12128,6 +12128,9 @@ function Chart({
       if (!(target instanceof Element)) return;
       if (target.closest("[data-position-drawing-id]")) return;
       if (target.closest("[data-position-settings-panel]")) return;
+      // The colour picker popover is portaled to the body but belongs to the
+      // settings panel; picking a colour must not deselect the drawing.
+      if (isInsideChartColorPopover(target)) return;
       setSelectedDrawingId(null);
       setPositionSettingsDrawingId(null);
     };

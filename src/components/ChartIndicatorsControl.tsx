@@ -45,7 +45,7 @@ import {
   type FootprintPresetName,
   type FootprintTemplate,
 } from "@/lib/footprintSettings";
-import ChartColorField from "@/components/ChartColorField";
+import ChartColorField, { isInsideChartColorPopover } from "@/components/ChartColorField";
 import KwantSelect from "@/components/ui/KwantSelect";
 import { PULLING_STACKING_PRESETS } from "@/lib/pullingStacking";
 import { ABSORPTION_PRESETS } from "@/lib/absorptionDetector";
@@ -677,6 +677,9 @@ export default function ChartIndicatorsControl({
     const closeOnOutsidePointer = (event: PointerEvent) => {
       const target = event.target as Node | null;
       if (target && settingsDialogRef.current?.contains(target)) return;
+      // The colour picker popover is portaled outside the dialog DOM but
+      // belongs to it — interacting with it must not close the settings.
+      if (isInsideChartColorPopover(target)) return;
       closeSettingsDialog();
     };
     const closeOnEscape = (event: KeyboardEvent) => {

@@ -6,6 +6,19 @@ import { Check, ChevronDown, Copy } from "lucide-react";
 
 const RECENT_COLORS_STORAGE_KEY = "olisa-recent-colors";
 const POPOVER_WIDTH = 224;
+const POPOVER_MARKER = "data-kwant-color-popover";
+
+/**
+ * The picker popover is portaled to document.body, so a host dialog's
+ * DOM-containment outside-click check sees interactions with it as "outside"
+ * and closes the whole dialog mid-pick. Every outside-close handler that can
+ * host a colour field must treat the popover as inside.
+ */
+export function isInsideChartColorPopover(target: EventTarget | null) {
+  if (!(target instanceof Node)) return false;
+  const element = target instanceof Element ? target : target.parentElement;
+  return Boolean(element?.closest(`[${POPOVER_MARKER}]`));
+}
 
 export function normalizeHexColor(value: string): string | null {
   const raw = value.trim().replace(/^#/, "");
@@ -154,13 +167,16 @@ export default function ChartColorField({
       setOpen(false);
     };
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key !== "Escape") return;
+      // Escape closes only the picker; the host dialog underneath stays open.
+      event.stopPropagation();
+      setOpen(false);
     };
     document.addEventListener("pointerdown", handlePointerDown, true);
-    document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("keydown", handleKeyDown, true);
     return () => {
       document.removeEventListener("pointerdown", handlePointerDown, true);
-      document.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("keydown", handleKeyDown, true);
     };
   }, [open]);
 
@@ -237,6 +253,8 @@ export default function ChartColorField({
             ref={popoverRef}
             role="dialog"
             aria-label={`${ariaLabel} picker`}
+            {...{ [POPOVER_MARKER]: "true" }}
+            onPointerDown={(event) => event.stopPropagation()}
             // The picker opens from inside settings dialogs that stack as high
             // as z-[10000]; it must always sit above whichever surface hosts it.
             className="fixed z-[10050] rounded-xl border border-border bg-panel/95 p-2.5 shadow-[0_22px_70px_rgba(0,0,0,0.58)] backdrop-blur-xl"
