@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   subscribeMarketIndexSnapshot,
   type MarketIndexLiveSnapshot,
@@ -29,7 +29,7 @@ export type HomeLiveSymbol = (typeof HOME_LIVE_SYMBOLS)[number];
 
 export type HomeLiveQuote = {
   snapshot: MarketIndexLiveSnapshot;
-  /** Real received last prices only â€” never interpolated or invented. */
+  /** Real received last prices only — never interpolated or invented. */
   series: number[];
   receivedAt: number;
 };
@@ -120,68 +120,6 @@ const STATUS_DOT_COLOR: Record<ReturnType<typeof quoteStatus>, string> = {
   stale: "#71717A",
 };
 
-const PAGE_VIEWPORT_WIDTH = 1280;
-
-/**
- * A literal live viewport of the real application route. The page renders in
- * a same-origin iframe at desktop width and is scaled to the tile, so the
- * tile shows exactly what the open page is doing right now. Pointer events
- * are disabled so the tile's own link handles the click, and the frame is
- * removed from the accessibility/focus order.
- */
-export function LivePageViewport({
-  href,
-  title,
-  active,
-}: {
-  href: string;
-  title: string;
-  active: boolean;
-}) {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const [scale, setScale] = useState(0);
-  const [frameHeight, setFrameHeight] = useState(0);
-  const [loaded, setLoaded] = useState(false);
-
-  useEffect(() => {
-    const node = containerRef.current;
-    if (!node) return;
-    const measure = () => {
-      const width = node.clientWidth;
-      const height = node.clientHeight;
-      if (width <= 0 || height <= 0) return;
-      const nextScale = width / PAGE_VIEWPORT_WIDTH;
-      setScale(nextScale);
-      setFrameHeight(Math.ceil(height / nextScale));
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, []);
-
-  return (
-    <div ref={containerRef} className="absolute inset-0 overflow-hidden" aria-hidden="true">
-      {active && scale > 0 && frameHeight > 0 && (
-        <iframe
-          src={href}
-          title={`${title} live preview`}
-          tabIndex={-1}
-          scrolling="no"
-          className={`pointer-events-none select-none border-0 bg-transparent transition-opacity duration-500 ${loaded ? "opacity-100" : "opacity-0"}`}
-          style={{
-            width: PAGE_VIEWPORT_WIDTH,
-            height: frameHeight,
-            transform: `scale(${scale})`,
-            transformOrigin: "top left",
-          }}
-          onLoad={() => setLoaded(true)}
-        />
-      )}
-    </div>
-  );
-}
-
 /** Three-row real index tape used on the Home tile. */
 export function LiveIndexTape({ live }: { live: HomeLiveIndices }) {
   const rows = HOME_LIVE_SYMBOLS
@@ -262,7 +200,7 @@ function sparklineGeometry(
 
 /**
  * Real-price sparkline drawn only from received provider frames. While the
- * first frames are still arriving it renders a quiet shimmer baseline â€”
+ * first frames are still arriving it renders a quiet shimmer baseline —
  * never a synthetic price path.
  */
 function LiveSparkline({
@@ -316,35 +254,33 @@ function LiveSparkline({
   );
 }
 
-function PreviewGrid() {
-  return (
-    <g stroke="rgba(255,255,255,.07)" strokeWidth=".75">
-      {[24, 48, 72, 96].map((y) => <line key={`y-${y}`} x1="0" y1={y} x2="176" y2={y} />)}
-      {[35, 70, 105, 140].map((x) => <line key={`x-${x}`} x1={x} y1="0" x2={x} y2="112" />)}
-    </g>
-  );
-}
-
 const candleData = [
   [19, 42, 12, 49], [39, 33, 26, 45], [31, 55, 28, 59], [53, 47, 41, 58],
   [45, 63, 43, 68], [61, 57, 50, 65], [55, 72, 52, 76], [70, 66, 61, 75],
   [64, 79, 60, 82], [77, 69, 65, 81], [67, 84, 64, 88], [82, 76, 71, 87],
 ];
 
-/** Decorative structural candle motif â€” illustration only, carries no labels. */
-function CandleMotif({ compact = false }: { compact?: boolean }) {
-  const scale = compact ? 0.72 : 1;
+/** Structural candle illustration — carries no symbol or price labels. */
+function CandleMotif({
+  x = 0,
+  y = 0,
+  scale = 1,
+}: {
+  x?: number;
+  y?: number;
+  scale?: number;
+}) {
   return (
-    <g transform={compact ? "translate(22 15) scale(.72)" : undefined} opacity=".82">
+    <g transform={`translate(${x} ${y}) scale(${scale})`} opacity=".85">
       {candleData.map(([open, close, low, high], index) => {
         const up = close >= open;
-        const x = 13 + index * 13;
-        const y = 92 - Math.max(open, close) * scale;
-        const height = Math.max(3, Math.abs(close - open) * scale);
+        const cx = 13 + index * 13;
+        const top = 92 - Math.max(open, close);
+        const height = Math.max(3, Math.abs(close - open));
         return (
-          <g key={x}>
-            <line x1={x + 3} y1={92 - high * scale} x2={x + 3} y2={92 - low * scale} stroke={up ? "var(--primary)" : "rgba(255,255,255,.85)"} strokeWidth="1" />
-            <rect x={x} y={y} width="6" height={height} fill={up ? "var(--primary)" : "rgba(255,255,255,.88)"} />
+          <g key={cx}>
+            <line x1={cx + 3} y1={92 - high} x2={cx + 3} y2={92 - low} stroke={up ? "var(--primary)" : "rgba(255,255,255,.8)"} strokeWidth="1" />
+            <rect x={cx} y={top} width="6" height={height} fill={up ? "var(--primary)" : "rgba(255,255,255,.82)"} />
           </g>
         );
       })}
@@ -352,10 +288,617 @@ function CandleMotif({ compact = false }: { compact?: boolean }) {
   );
 }
 
-function pulseDelay(index: number, step = 0.35) {
-  return { animationDelay: `${(index * step).toFixed(2)}s` };
+/* ------------------------------------------------------------------ */
+/* Shared page-chrome pieces for the 3D lookalike renders               */
+/* ------------------------------------------------------------------ */
+
+/** Dense rows of muted text bars — reads as data without inventing values. */
+function UiRows({
+  x,
+  y,
+  width,
+  count,
+  gap = 6,
+  height = 2,
+  color = "rgba(255,255,255,.15)",
+}: {
+  x: number;
+  y: number;
+  width: number;
+  count: number;
+  gap?: number;
+  height?: number;
+  color?: string;
+}) {
+  return (
+    <g fill={color}>
+      {Array.from({ length: count }, (_, index) => (
+        <rect
+          key={index}
+          x={x}
+          y={y + index * gap}
+          width={width * (0.55 + ((index * 37) % 45) / 100)}
+          height={height}
+        />
+      ))}
+    </g>
+  );
 }
 
+/** Application chrome: top command bar, tab strip, and right-side rail. */
+function PageChrome({ children }: { children: ReactNode }) {
+  return (
+    <>
+      <rect x="0" y="0" width="176" height="112" fill="#0a0d11" />
+      <rect x="0" y="0" width="176" height="11" fill="#10141a" />
+      <line x1="0" y1="11.4" x2="176" y2="11.4" stroke="rgba(255,255,255,.09)" strokeWidth=".8" />
+      <circle cx="6" cy="5.5" r="1.3" fill="rgba(255,255,255,.26)" />
+      <circle cx="11" cy="5.5" r="1.3" fill="rgba(255,255,255,.18)" />
+      <circle cx="16" cy="5.5" r="1.3" fill="rgba(255,255,255,.12)" />
+      <rect x="26" y="3" width="22" height="5" rx="1" fill="color-mix(in srgb, var(--primary) 32%, transparent)" />
+      <rect x="52" y="3" width="17" height="5" rx="1" fill="rgba(255,255,255,.08)" />
+      <rect x="73" y="3" width="17" height="5" rx="1" fill="rgba(255,255,255,.08)" />
+      <rect x="94" y="3" width="17" height="5" rx="1" fill="rgba(255,255,255,.08)" />
+      <rect x="157" y="3" width="13" height="5" rx="1" fill="rgba(255,255,255,.13)" />
+      <rect x="166" y="12" width="10" height="100" fill="#0d1015" />
+      <line x1="166" y1="12" x2="166" y2="112" stroke="rgba(255,255,255,.07)" strokeWidth=".8" />
+      {[18, 30, 42, 54, 66].map((y, index) => (
+        <rect
+          key={y}
+          x="168.5"
+          y={y}
+          width="5"
+          height="5"
+          rx="1"
+          fill={index === 0 ? "var(--primary)" : "rgba(255,255,255,.16)"}
+          opacity={index === 0 ? 0.85 : 1}
+        />
+      ))}
+      {children}
+    </>
+  );
+}
+
+function ChartAxes({ bottom = 104 }: { bottom?: number }) {
+  return (
+    <g>
+      <line x1="152" y1="14" x2="152" y2={bottom} stroke="rgba(255,255,255,.1)" strokeWidth=".8" />
+      {[22, 36, 50, 64, 78, 92].map((y) => (
+        <g key={y}>
+          <line x1="2" y1={y} x2="152" y2={y} stroke="rgba(255,255,255,.05)" strokeWidth=".7" />
+          <rect x="155" y={y - 1.5} width="8" height="3" fill="rgba(255,255,255,.14)" />
+        </g>
+      ))}
+      {[18, 46, 74, 102, 130].map((x) => (
+        <rect key={x} x={x} y={bottom + 2} width="10" height="2.6" fill="rgba(255,255,255,.12)" />
+      ))}
+    </g>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Per-page lookalike bodies                                           */
+/* ------------------------------------------------------------------ */
+
+function PageArt({ type, live }: { type: HomeLaunchPreview; live: HomeLiveIndices }) {
+  switch (type) {
+    case "home":
+      return (
+        <>
+          <rect x="0" y="0" width="176" height="112" fill="#080a0d" />
+          <path className="kwant-home-pulse-soft" d="M0 78 C28 72 42 52 66 62 S104 76 128 56 S158 50 176 58" fill="none" stroke="var(--primary)" strokeWidth="1.3" />
+          <path className="kwant-home-pulse-soft" style={{ animationDelay: "1.4s" }} d="M0 90 C26 82 44 74 68 80 S112 90 138 74 S162 68 176 73" fill="none" stroke="rgba(255,255,255,.24)" />
+          <path className="kwant-home-pulse-soft" style={{ animationDelay: "2.8s" }} d="M0 100 C30 94 48 88 72 92 S118 100 144 88 S166 82 176 85" fill="none" stroke="rgba(255,255,255,.12)" />
+        </>
+      );
+    case "chart":
+      return (
+        <PageChrome>
+          <ChartAxes />
+          <rect x="4" y="15" width="14" height="4" rx="1" fill="color-mix(in srgb, var(--primary) 45%, transparent)" />
+          <rect x="21" y="15" width="11" height="4" rx="1" fill="rgba(255,255,255,.1)" />
+          <rect x="35" y="15" width="11" height="4" rx="1" fill="rgba(255,255,255,.1)" />
+          {Array.from({ length: 30 }, (_, index) => (
+            <rect
+              key={index}
+              x={4 + index * 5}
+              y={104 - 2 - ((index * 29) % 9)}
+              width="3.4"
+              height={2 + ((index * 29) % 9)}
+              fill={index % 3 ? "rgba(255,255,255,.1)" : "color-mix(in srgb, var(--primary) 30%, transparent)"}
+            />
+          ))}
+          <LiveSparkline quote={live.NDX} x={4} y={22} width={146} height={68} gradientId="home3d-chart" />
+        </PageChrome>
+      );
+    case "vue":
+      return (
+        <PageChrome>
+          {[
+            { x: 2, y: 14, w: 80, h: 48 },
+            { x: 84, y: 14, w: 80, h: 48 },
+            { x: 2, y: 64, w: 80, h: 46 },
+            { x: 84, y: 64, w: 80, h: 46 },
+          ].map((panel, index) => (
+            <g key={index}>
+              <rect x={panel.x} y={panel.y} width={panel.w} height={panel.h} fill="rgba(0,0,0,.28)" stroke="rgba(255,255,255,.1)" strokeWidth=".8" />
+              <rect x={panel.x + 3} y={panel.y + 3} width="16" height="3" rx="1" fill={index === 0 ? "color-mix(in srgb, var(--primary) 45%, transparent)" : "rgba(255,255,255,.14)"} />
+            </g>
+          ))}
+          <LiveSparkline quote={live.SPX} x={5} y={22} width={74} height={37} gradientId="home3d-vue-a" />
+          <LiveSparkline quote={live.NDX} x={87} y={22} width={74} height={37} gradientId="home3d-vue-b" />
+          <LiveSparkline quote={live.VIX} x={5} y={72} width={74} height={35} gradientId="home3d-vue-c" />
+          <path d="M89 96 L98 90 106 93 116 84 126 88 138 78 150 82 160 74" fill="none" stroke="rgba(255,255,255,.35)" strokeWidth="1.1" />
+        </PageChrome>
+      );
+    case "calendar":
+      return (
+        <PageChrome>
+          {[0, 1, 2, 3, 4, 5, 6].map((column) => (
+            <rect key={column} x={4 + column * 23} y="15" width="14" height="2.6" fill="rgba(255,255,255,.18)" />
+          ))}
+          {[0, 1, 2, 3].map((row) => [0, 1, 2, 3, 4, 5, 6].map((column) => {
+            const accent = column === 3 || (row * 7 + column) % 9 === 4;
+            return (
+              <g key={`${row}-${column}`}>
+                <rect
+                  x={4 + column * 23}
+                  y={21 + row * 22}
+                  width="21"
+                  height="20"
+                  fill={accent ? "color-mix(in srgb, var(--primary) 16%, rgba(255,255,255,.02))" : "rgba(255,255,255,.025)"}
+                  stroke={accent ? "color-mix(in srgb, var(--primary) 45%, transparent)" : "rgba(255,255,255,.08)"}
+                  strokeWidth=".7"
+                />
+                <rect x={6 + column * 23} y={24 + row * 22} width="6" height="2" fill="rgba(255,255,255,.22)" />
+                <rect
+                  className={accent ? "kwant-home-pulse" : undefined}
+                  x={6 + column * 23}
+                  y={30 + row * 22}
+                  width={8 + ((row * 7 + column) * 13) % 9}
+                  height="3.4"
+                  fill={accent ? "var(--primary)" : "rgba(255,255,255,.14)"}
+                  opacity={accent ? 0.75 : 1}
+                />
+                {(row * 5 + column) % 4 === 1 && (
+                  <rect x={6 + column * 23} y={35.4 + row * 22} width={5 + ((row + column) * 11) % 7} height="2.6" fill="rgba(255,255,255,.1)" />
+                )}
+              </g>
+            );
+          }))}
+        </PageChrome>
+      );
+    case "flow":
+      return (
+        <PageChrome>
+          <ChartAxes bottom={102} />
+          <path d="M2 96 C22 90 34 62 56 68 S90 84 108 62 S140 36 152 30 L152 104 L2 104 Z" fill="color-mix(in srgb, var(--primary) 14%, transparent)" />
+          <path className="kwant-home-flow" d="M2 96 C22 90 34 62 56 68 S90 84 108 62 S140 36 152 30" fill="none" stroke="var(--primary)" strokeWidth="1.6" strokeDasharray="7 9" />
+          <path d="M2 78 C26 72 40 82 62 74 S96 46 116 56 S142 64 152 50" fill="none" stroke="rgba(255,255,255,.4)" strokeWidth="1" />
+          <path d="M2 60 C28 56 46 64 70 58 S108 34 130 42 S148 48 152 40" fill="none" stroke="rgba(255,255,255,.18)" strokeWidth="1" />
+          {[24, 52, 80, 108, 134].map((x, index) => (
+            <circle key={x} className="kwant-home-pulse" style={{ animationDelay: `${index * 0.45}s` }} cx={x} cy={88 - index * 11} r={1.8 + index * 0.3} fill="var(--primary)" opacity=".7" />
+          ))}
+        </PageChrome>
+      );
+    case "gamma":
+      return (
+        <PageChrome>
+          <line x1="82" y1="14" x2="82" y2="106" stroke="rgba(255,255,255,.22)" strokeWidth=".9" />
+          {Array.from({ length: 12 }, (_, index) => {
+            const width = [12, 20, 31, 44, 58, 66, 61, 49, 38, 27, 18, 10][index];
+            const positive = index >= 5;
+            return (
+              <rect
+                key={index}
+                className="kwant-home-pulse"
+                style={{ animationDelay: `${index * 0.22}s` }}
+                x={positive ? 82 : 82 - width}
+                y={15 + index * 7.6}
+                width={width}
+                height="5.2"
+                fill={positive ? "var(--primary)" : "rgba(255,255,255,.32)"}
+                opacity={0.42 + (width / 66) * 0.5}
+              />
+            );
+          })}
+          <path d="M30 104 C48 96 60 62 82 58 S128 40 148 22" fill="none" stroke="color-mix(in srgb, var(--primary) 70%, #ffffff)" strokeWidth="1.2" opacity=".8" />
+          <UiRows x={140} y={16} width={22} count={6} gap={5.4} />
+        </PageChrome>
+      );
+    case "gexmap":
+      return (
+        <PageChrome>
+          {[0, 1, 2].map((panel) => (
+            <g key={panel} transform={`translate(${2 + panel * 55} 14)`}>
+              <rect width="53" height="96" fill="rgba(0,0,0,.26)" stroke="rgba(255,255,255,.09)" strokeWidth=".8" />
+              <rect x="3" y="3" width="20" height="3.4" rx="1" fill={panel === 0 ? "color-mix(in srgb, var(--primary) 50%, transparent)" : "rgba(255,255,255,.14)"} />
+              {Array.from({ length: 10 }, (_, row) => {
+                const center = row === 5;
+                const width = center ? 45 : 12 + ((row * 17 + panel * 7) % 30);
+                return (
+                  <g key={row}>
+                    <rect x="3" y={10 + row * 8.6} width="10" height="2.6" fill="rgba(255,255,255,.16)" />
+                    <rect
+                      className={center ? "kwant-home-pulse" : undefined}
+                      x="15"
+                      y={9 + row * 8.6}
+                      width={Math.min(width, 35)}
+                      height="5"
+                      fill={center ? "var(--primary)" : row % 2 ? "color-mix(in srgb, var(--primary) 34%, transparent)" : "rgba(255,255,255,.1)"}
+                      opacity={center ? 0.85 : 0.72}
+                    />
+                  </g>
+                );
+              })}
+            </g>
+          ))}
+        </PageChrome>
+      );
+    case "liquidity":
+      return (
+        <PageChrome>
+          {Array.from({ length: 11 }, (_, index) => (
+            <rect
+              key={index}
+              className="kwant-home-pulse-soft"
+              style={{ animationDelay: `${index * 0.3}s` }}
+              x="2"
+              y={14 + index * 8.8}
+              width="162"
+              height={index % 4 === 0 ? 6.4 : 3.6}
+              fill="var(--primary)"
+              opacity={[0.08, 0.2, 0.1, 0.42, 0.14, 0.3, 0.09, 0.24, 0.12, 0.34, 0.1][index]}
+            />
+          ))}
+          <path d="M2 70 L20 64 38 68 54 54 72 58 92 44 112 49 130 34 146 40 164 28" fill="none" stroke="rgba(255,255,255,.85)" strokeWidth="1.4" />
+          {[[34, 66, 4], [76, 55, 7], [116, 46, 3.6], [146, 38, 8.5]].map(([x, y, r]) => (
+            <circle key={x} cx={x} cy={y} r={r} fill="var(--primary)" opacity=".62" stroke="rgba(255,255,255,.5)" strokeWidth=".8" />
+          ))}
+        </PageChrome>
+      );
+    case "levels":
+      return (
+        <PageChrome>
+          <ChartAxes />
+          <CandleMotif x={16} y={12} scale={0.78} />
+          {[[26, 0.35], [48, 0.75], [70, 0.45], [92, 0.9]].map(([y, opacity], index) => (
+            <g key={y} className="kwant-home-pulse" style={{ animationDelay: `${index * 0.55}s` }}>
+              <line x1="2" y1={y} x2="150" y2={y} stroke="var(--primary)" strokeWidth={opacity > 0.8 ? 1.6 : 1} opacity={opacity} strokeDasharray={opacity < 0.5 ? "3 3" : undefined} />
+              <rect x="128" y={y - 4} width="22" height="8" rx="1" fill="var(--primary)" opacity={opacity} />
+              <rect x="131" y={y - 1.4} width="16" height="2.6" fill="rgba(0,0,0,.55)" />
+            </g>
+          ))}
+        </PageChrome>
+      );
+    case "gameplan":
+      return (
+        <PageChrome>
+          {[0, 1, 2].map((column) => (
+            <g key={column} transform={`translate(${3 + column * 54} 14)`}>
+              <rect width="51" height="96" fill="rgba(255,255,255,.02)" stroke="rgba(255,255,255,.09)" strokeWidth=".8" />
+              <rect x="4" y="4" width={24 + column * 5} height="3.4" fill="var(--primary)" opacity=".8" />
+              <rect x="4" y="12" width="40" height="2" fill="rgba(255,255,255,.2)" />
+              {[19, 44, 69].map((cardY, cardIndex) => {
+                const active = cardIndex === column;
+                return (
+                  <g key={cardY}>
+                    <rect
+                      x="4"
+                      y={cardY}
+                      width="43"
+                      height="21"
+                      rx="1.5"
+                      fill={active ? "color-mix(in srgb, var(--primary) 14%, rgba(255,255,255,.02))" : "rgba(255,255,255,.035)"}
+                      stroke={active ? "color-mix(in srgb, var(--primary) 45%, transparent)" : "rgba(255,255,255,.08)"}
+                      strokeWidth=".7"
+                    />
+                    <circle cx="10" cy={cardY + 6} r="2.2" fill="none" stroke={active ? "var(--primary)" : "rgba(255,255,255,.3)"} strokeWidth=".9" />
+                    {active && <path d={`M8.8 ${cardY + 6} l1 1.2 2-2.6`} fill="none" stroke="var(--primary)" strokeWidth=".9" />}
+                    <rect x="15" y={cardY + 4.4} width={26 - cardIndex * 4} height="2.4" fill="rgba(255,255,255,.32)" />
+                    <rect x="8" y={cardY + 11} width="33" height="2" fill="rgba(255,255,255,.14)" />
+                    <rect x="8" y={cardY + 15.4} width={22 + cardIndex * 4} height="2" fill="rgba(255,255,255,.1)" />
+                  </g>
+                );
+              })}
+            </g>
+          ))}
+        </PageChrome>
+      );
+    case "zyon":
+      return (
+        <PageChrome>
+          <rect x="96" y="14" width="68" height="96" fill="rgba(0,0,0,.24)" stroke="rgba(255,255,255,.08)" strokeWidth=".8" />
+          <path d="M100 52 C110 48 116 34 126 38 S146 46 160 32" fill="none" stroke="var(--primary)" strokeWidth="1.1" opacity=".8" />
+          <UiRows x={100} y={60} width={58} count={7} gap={6.4} />
+          <circle className="kwant-home-pulse-soft" cx="16" cy="26" r="9" fill="none" stroke="var(--primary)" strokeWidth="1.2" />
+          <circle className="kwant-home-pulse" cx="16" cy="26" r="4" fill="var(--primary)" opacity=".5" />
+          <rect x="30" y="17" width="60" height="17" rx="2.5" fill="rgba(255,255,255,.05)" stroke="rgba(255,255,255,.09)" strokeWidth=".7" />
+          <rect x="34" y="22" width="49" height="2.2" fill="rgba(255,255,255,.34)" />
+          <rect x="34" y="27" width="38" height="2" fill="rgba(255,255,255,.16)" />
+          <rect x="6" y="44" width="72" height="20" rx="2.5" fill="color-mix(in srgb, var(--primary) 13%, transparent)" stroke="color-mix(in srgb, var(--primary) 36%, transparent)" strokeWidth=".7" />
+          <rect x="11" y="49" width="58" height="2.2" fill="rgba(255,255,255,.4)" />
+          <rect x="11" y="54" width="45" height="2" fill="rgba(255,255,255,.2)" />
+          <rect x="30" y="74" width="60" height="15" rx="2.5" fill="rgba(255,255,255,.045)" />
+          <rect x="34" y="79" width="43" height="2.2" fill="rgba(255,255,255,.3)" />
+          {[0, 1, 2].map((index) => (
+            <circle key={index} className="kwant-home-typing" style={{ animationDelay: `${index * 0.22}s` }} cx={14 + index * 7} cy="100" r="1.7" fill="rgba(255,255,255,.55)" />
+          ))}
+        </PageChrome>
+      );
+    case "news":
+      return (
+        <PageChrome>
+          {[0, 1, 2, 3, 4].map((row) => {
+            const hot = row === 1;
+            return (
+              <g key={row} transform={`translate(3 ${14 + row * 19.4})`}>
+                <rect width="161" height="17.4" fill={hot ? "color-mix(in srgb, var(--primary) 8%, rgba(255,255,255,.02))" : "rgba(255,255,255,.02)"} stroke={hot ? "color-mix(in srgb, var(--primary) 35%, transparent)" : "rgba(255,255,255,.07)"} strokeWidth=".7" />
+                <rect x="4" y="5" width="12" height="3" fill="rgba(255,255,255,.24)" />
+                <circle className={hot ? "kwant-home-live-dot" : undefined} cx="24" cy="8.7" r="2.4" fill={hot ? "var(--primary)" : "rgba(255,255,255,.2)"} />
+                <rect x="31" y="4" width={62 + (row * 23) % 40} height="2.6" fill="rgba(255,255,255,.4)" />
+                <rect x="31" y="10" width="84" height="2" fill="rgba(255,255,255,.13)" />
+                <rect x="141" y="4.6" width="15" height="7.4" rx="1" fill={hot ? "var(--primary)" : "rgba(255,255,255,.08)"} opacity={hot ? 0.75 : 1} />
+              </g>
+            );
+          })}
+        </PageChrome>
+      );
+    case "socials":
+      return (
+        <PageChrome>
+          <rect x="3" y="14" width="102" height="96" fill="rgba(255,255,255,.02)" stroke="rgba(255,255,255,.09)" strokeWidth=".8" />
+          <circle cx="14" cy="26" r="6" fill="var(--primary)" opacity=".55" />
+          <rect x="24" y="21" width="38" height="3" fill="rgba(255,255,255,.4)" />
+          <rect x="24" y="27" width="24" height="2.2" fill="rgba(255,255,255,.16)" />
+          <rect x="9" y="38" width="90" height="42" fill="color-mix(in srgb, var(--primary) 9%, transparent)" stroke="rgba(255,255,255,.06)" strokeWidth=".7" />
+          <path className="kwant-home-draw" d="M14 72 L28 60 42 65 58 48 74 55 94 42" fill="none" stroke="var(--primary)" strokeWidth="1.3" strokeDasharray="120" />
+          <rect x="9" y="86" width="18" height="4" rx="1" fill="rgba(255,255,255,.14)" />
+          <rect x="31" y="86" width="18" height="4" rx="1" fill="rgba(255,255,255,.14)" />
+          <rect x="53" y="86" width="18" height="4" rx="1" fill="rgba(255,255,255,.14)" />
+          <UiRows x={9} y={96} width={86} count={2} gap={5.6} />
+          {[14, 64].map((y, index) => (
+            <g key={y}>
+              <rect x="109" y={y} width="55" height="46" fill="rgba(255,255,255,.02)" stroke="rgba(255,255,255,.09)" strokeWidth=".8" />
+              <circle cx="118" cy={y + 9} r="4" fill={index === 0 ? "var(--primary)" : "rgba(255,255,255,.3)"} opacity=".6" />
+              <rect x="126" y={y + 7} width="26" height="2.6" fill="rgba(255,255,255,.32)" />
+              <UiRows x={113} y={y + 18} width={46} count={4} gap={6.4} />
+            </g>
+          ))}
+        </PageChrome>
+      );
+    case "journal":
+      return (
+        <PageChrome>
+          {[0, 1, 2, 3].map((index) => (
+            <g key={index} transform={`translate(${3 + index * 41} 14)`}>
+              <rect width="38" height="20" fill="rgba(255,255,255,.025)" stroke="rgba(255,255,255,.08)" strokeWidth=".7" />
+              <rect x="4" y="4" width="16" height="2.2" fill="rgba(255,255,255,.22)" />
+              <rect x="4" y="10" width={20 + (index * 7) % 12} height="4.6" fill={index % 2 ? "rgba(255,255,255,.5)" : "var(--primary)"} opacity=".75" />
+            </g>
+          ))}
+          <ChartAxes bottom={106} />
+          <path
+            className="kwant-home-draw"
+            d="M4 100 L20 92 36 95 52 76 68 80 84 60 100 65 116 45 132 50 150 30"
+            fill="none"
+            stroke="var(--primary)"
+            strokeWidth="1.8"
+            strokeDasharray="260"
+          />
+          <path d="M4 100 L20 92 36 95 52 76 68 80 84 60 100 65 116 45 132 50 150 30 L150 106 L4 106 Z" fill="url(#home3dJournalFade)" />
+          <defs>
+            <linearGradient id="home3dJournalFade" x1="0" y1="0" x2="0" y2="1">
+              <stop stopColor="var(--primary)" stopOpacity=".2" />
+              <stop offset="1" stopColor="var(--primary)" stopOpacity="0" />
+            </linearGradient>
+          </defs>
+        </PageChrome>
+      );
+    case "backtest":
+      return (
+        <PageChrome>
+          <ChartAxes bottom={92} />
+          <CandleMotif x={10} y={6} scale={0.82} />
+          <g className="kwant-home-sweep">
+            <line x1="18" y1="14" x2="18" y2="90" stroke="var(--primary)" strokeWidth="1" strokeDasharray="3 3" />
+            <circle cx="18" cy="50" r="3.2" fill="var(--primary)" />
+          </g>
+          <rect x="3" y="98" width="161" height="10" rx="1.5" fill="rgba(255,255,255,.03)" stroke="rgba(255,255,255,.08)" strokeWidth=".7" />
+          <path d="M9 100.6 L14 103 9 105.4 Z" fill="var(--primary)" />
+          <rect x="19" y="102" width="120" height="2.4" fill="rgba(255,255,255,.12)" />
+          <rect className="kwant-home-progress" x="19" y="102" width="120" height="2.4" fill="var(--primary)" />
+          <rect x="144" y="100.6" width="8" height="4.8" rx="1" fill="rgba(255,255,255,.14)" />
+          <rect x="154" y="100.6" width="8" height="4.8" rx="1" fill="rgba(255,255,255,.14)" />
+        </PageChrome>
+      );
+    case "accounts":
+      return (
+        <PageChrome>
+          {[0, 1, 2, 3].map((index) => (
+            <g key={index} transform={`translate(${3 + (index % 2) * 82} ${14 + Math.floor(index / 2) * 49})`}>
+              <rect width="79" height="46" fill="rgba(255,255,255,.02)" stroke="rgba(255,255,255,.09)" strokeWidth=".8" />
+              <rect x="5" y="5" width="22" height="2.4" fill="rgba(255,255,255,.24)" />
+              <rect x="60" y="4" width="14" height="5" rx="1" fill={index === 0 ? "color-mix(in srgb, var(--primary) 45%, transparent)" : "rgba(255,255,255,.08)"} />
+              <rect
+                className="kwant-home-pulse-soft"
+                style={{ animationDelay: `${index * 0.6}s` }}
+                x="5"
+                y="13"
+                width={36 + index * 4}
+                height="6"
+                fill={index === 0 || index === 3 ? "var(--primary)" : "rgba(255,255,255,.6)"}
+                opacity=".75"
+              />
+              <path d={`M5 38 L20 ${35 - index * 2} 34 ${39 - index} 48 ${31 - index * 2} 62 ${33 - index} 74 ${26 - index}`} fill="none" stroke="var(--primary)" strokeWidth="1" opacity=".8" />
+              <line x1="5" y1="41.5" x2="74" y2="41.5" stroke="rgba(255,255,255,.08)" strokeWidth=".7" />
+            </g>
+          ))}
+        </PageChrome>
+      );
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Floating detail card per page                                       */
+/* ------------------------------------------------------------------ */
+
+function FloatArt({ type }: { type: HomeLaunchPreview }) {
+  switch (type) {
+    case "home":
+      return null;
+    case "chart":
+      return (
+        <>
+          {[[6, 14, 26, 10], [16, 24, 34, 18], [26, 18, 30, 12], [36, 10, 22, 6], [46, 16, 28, 9]].map(([x, top, low, bodyTop]) => (
+            <g key={x}>
+              <line x1={x + 2.5} y1={top} x2={x + 2.5} y2={low} stroke="var(--primary)" strokeWidth=".9" />
+              <rect x={x} y={bodyTop + 4} width="5" height="9" fill={x % 20 === 6 ? "var(--primary)" : "rgba(255,255,255,.82)"} />
+            </g>
+          ))}
+          <line x1="2" y1="20" x2="62" y2="20" stroke="rgba(255,255,255,.25)" strokeWidth=".6" strokeDasharray="2 2" />
+          <line x1="41" y1="4" x2="41" y2="40" stroke="rgba(255,255,255,.25)" strokeWidth=".6" strokeDasharray="2 2" />
+        </>
+      );
+    case "vue":
+      return (
+        <>
+          <rect x="3" y="4" width="58" height="17" rx="1.5" fill="rgba(0,0,0,.3)" stroke="rgba(255,255,255,.12)" strokeWidth=".7" />
+          <path d="M6 17 L15 11 24 14 33 8 42 11 51 6 58 8" fill="none" stroke="var(--primary)" strokeWidth="1.1" />
+          <rect x="3" y="24" width="58" height="16" rx="1.5" fill="rgba(0,0,0,.3)" stroke="rgba(255,255,255,.12)" strokeWidth=".7" />
+          <path d="M6 36 L15 32 24 34 33 28 42 31 51 26 58 28" fill="none" stroke="rgba(255,255,255,.5)" strokeWidth="1" />
+        </>
+      );
+    case "calendar":
+      return (
+        <>
+          <rect x="8" y="6" width="48" height="32" rx="2" fill="color-mix(in srgb, var(--primary) 12%, transparent)" stroke="color-mix(in srgb, var(--primary) 50%, transparent)" strokeWidth=".8" />
+          <rect x="13" y="11" width="12" height="3" fill="rgba(255,255,255,.4)" />
+          <rect x="13" y="19" width="26" height="5" fill="var(--primary)" opacity=".8" />
+          <rect x="13" y="28" width="18" height="3" fill="rgba(255,255,255,.2)" />
+          <circle cx="48" cy="13" r="2.4" fill="var(--primary)" className="kwant-home-live-dot" />
+        </>
+      );
+    case "flow":
+      return (
+        <>
+          <path d="M6 36 C18 32 24 16 38 20 S52 26 56 12" fill="none" stroke="var(--primary)" strokeWidth="1.6" />
+          <path d="M56 12 l-4.6 1 2.6 4z" fill="var(--primary)" />
+          <path d="M6 28 C20 24 30 30 42 24" fill="none" stroke="rgba(255,255,255,.4)" strokeWidth="1" />
+        </>
+      );
+    case "gamma":
+      return (
+        <>
+          <line x1="32" y1="4" x2="32" y2="40" stroke="rgba(255,255,255,.3)" strokeWidth=".8" />
+          {[[10, 6], [16, 12], [26, 18], [22, 24], [14, 30]].map(([width, y], index) => (
+            <rect key={y} x={index < 2 ? 32 - width : 32} y={y} width={width} height="4.4" fill={index < 2 ? "rgba(255,255,255,.4)" : "var(--primary)"} opacity=".85" />
+          ))}
+        </>
+      );
+    case "gexmap":
+      return (
+        <>
+          {[6, 14, 22, 30].map((y, index) => (
+            <g key={y}>
+              <rect x="6" y={y} width="9" height="3" fill="rgba(255,255,255,.3)" />
+              <rect x="18" y={y - 1} width={index === 2 ? 40 : 14 + index * 6} height="5.4" fill={index === 2 ? "var(--primary)" : "color-mix(in srgb, var(--primary) 35%, transparent)"} opacity={index === 2 ? 0.9 : 0.7} />
+            </g>
+          ))}
+        </>
+      );
+    case "liquidity":
+      return (
+        <>
+          <circle cx="32" cy="22" r="13" fill="var(--primary)" opacity=".28" />
+          <circle cx="32" cy="22" r="8" fill="var(--primary)" opacity=".5" />
+          <circle cx="32" cy="22" r="3.4" fill="var(--primary)" />
+          <circle className="kwant-home-pulse-soft" cx="32" cy="22" r="16.5" fill="none" stroke="var(--primary)" strokeWidth=".8" />
+        </>
+      );
+    case "levels":
+      return (
+        <>
+          <line x1="4" y1="22" x2="60" y2="22" stroke="var(--primary)" strokeWidth="1.4" />
+          <rect x="36" y="14" width="24" height="12" rx="1.5" fill="var(--primary)" opacity=".9" />
+          <rect x="40" y="18.5" width="16" height="3" fill="rgba(0,0,0,.55)" />
+          <line x1="4" y1="34" x2="60" y2="34" stroke="rgba(255,255,255,.35)" strokeWidth=".9" strokeDasharray="3 3" />
+        </>
+      );
+    case "gameplan":
+      return (
+        <>
+          {[7, 19, 31].map((y, index) => (
+            <g key={y}>
+              <circle cx="10" cy={y + 3} r="3" fill="none" stroke={index < 2 ? "var(--primary)" : "rgba(255,255,255,.3)"} strokeWidth="1" />
+              {index < 2 && <path d={`M8.4 ${y + 3} l1.3 1.5 2.6-3.2`} fill="none" stroke="var(--primary)" strokeWidth="1" />}
+              <rect x="18" y={y + 1} width={38 - index * 8} height="3.4" fill={index < 2 ? "rgba(255,255,255,.45)" : "rgba(255,255,255,.2)"} />
+            </g>
+          ))}
+        </>
+      );
+    case "zyon":
+      return (
+        <>
+          <rect x="6" y="8" width="52" height="22" rx="4" fill="color-mix(in srgb, var(--primary) 16%, transparent)" stroke="color-mix(in srgb, var(--primary) 45%, transparent)" strokeWidth=".8" />
+          <path d="M14 30 L14 36 22 30" fill="color-mix(in srgb, var(--primary) 16%, transparent)" stroke="color-mix(in srgb, var(--primary) 45%, transparent)" strokeWidth=".8" />
+          {[0, 1, 2].map((index) => (
+            <circle key={index} className="kwant-home-typing" style={{ animationDelay: `${index * 0.22}s` }} cx={24 + index * 8} cy="19" r="2" fill="rgba(255,255,255,.7)" />
+          ))}
+        </>
+      );
+    case "news":
+      return (
+        <>
+          <circle className="kwant-home-live-dot" cx="10" cy="10" r="3.4" fill="var(--primary)" />
+          <rect x="18" y="7.4" width="38" height="4.6" fill="rgba(255,255,255,.5)" />
+          <rect x="8" y="20" width="48" height="3" fill="rgba(255,255,255,.25)" />
+          <rect x="8" y="27" width="40" height="3" fill="rgba(255,255,255,.16)" />
+          <rect x="8" y="34" width="30" height="3" fill="rgba(255,255,255,.1)" />
+        </>
+      );
+    case "socials":
+      return (
+        <>
+          <circle cx="13" cy="12" r="5.4" fill="var(--primary)" opacity=".6" />
+          <rect x="22" y="8" width="28" height="3.4" fill="rgba(255,255,255,.4)" />
+          <rect x="22" y="14" width="18" height="2.6" fill="rgba(255,255,255,.2)" />
+          <path d="M8 34 L20 27 30 30 42 22 54 26" fill="none" stroke="var(--primary)" strokeWidth="1.3" />
+        </>
+      );
+    case "journal":
+      return (
+        <>
+          <path d="M6 36 L18 30 28 32 40 20 50 23 58 10" fill="none" stroke="var(--primary)" strokeWidth="1.6" />
+          <circle className="kwant-home-live-dot" cx="58" cy="10" r="2.6" fill="var(--primary)" />
+          <rect x="6" y="4" width="18" height="4" fill="rgba(255,255,255,.3)" />
+        </>
+      );
+    case "backtest":
+      return (
+        <>
+          <path d="M22 12 L36 20 22 28 Z" fill="var(--primary)" />
+          <circle cx="28" cy="20" r="13.5" fill="none" stroke="color-mix(in srgb, var(--primary) 55%, transparent)" strokeWidth="1.2" />
+          <rect x="44" y="18" width="14" height="3.4" fill="rgba(255,255,255,.3)" />
+        </>
+      );
+    case "accounts":
+      return (
+        <>
+          <rect x="6" y="8" width="26" height="6" fill="var(--primary)" opacity=".8" />
+          <rect x="6" y="18" width="18" height="3" fill="rgba(255,255,255,.28)" />
+          <path d="M6 34 L18 30 28 32 40 25 52 28 58 22" fill="none" stroke="var(--primary)" strokeWidth="1.2" />
+        </>
+      );
+  }
+}
+
+/**
+ * Professional 3D lookalike render of a workspace page: a perspective-tilted
+ * page plane with dense UI chrome, a floating detail card lifted above it,
+ * and a floor glow. Chart tiles embed the real shared-index sparklines, so
+ * the render is both an illustration and genuinely live.
+ */
 export function HomeWorkspacePreview({
   type,
   live,
@@ -363,325 +906,22 @@ export function HomeWorkspacePreview({
   type: HomeLaunchPreview;
   live: HomeLiveIndices;
 }) {
-  let content: ReactNode;
-
-  switch (type) {
-    case "home":
-      content = (
-        <>
-          <path className="kwant-home-pulse-soft" d="M0 88 C28 83 35 61 63 71 S103 84 126 62 S157 57 176 66" fill="none" stroke="var(--primary)" strokeWidth="1.3" />
-          <path className="kwant-home-pulse-soft" style={pulseDelay(3)} d="M0 97 C26 89 43 80 67 86 S112 97 137 80 S160 74 176 79" fill="none" stroke="rgba(255,255,255,.28)" />
-        </>
-      );
-      break;
-    case "chart":
-      content = (
-        <>
-          <PreviewGrid />
-          <LiveSparkline quote={live.NDX} gradientId="home-spark-chart" />
-        </>
-      );
-      break;
-    case "vue":
-      content = (
-        <>
-          <rect x="6" y="7" width="101" height="98" fill="rgba(0,0,0,.2)" stroke="rgba(255,255,255,.1)" />
-          <rect x="113" y="7" width="57" height="47" fill="rgba(0,0,0,.2)" stroke="rgba(255,255,255,.1)" />
-          <rect x="113" y="58" width="57" height="47" fill="rgba(0,0,0,.2)" stroke="rgba(255,255,255,.1)" />
-          <LiveSparkline quote={live.SPX} x={10} y={12} width={93} height={88} gradientId="home-spark-vue-main" />
-          <LiveSparkline quote={live.NDX} x={117} y={11} width={49} height={39} gradientId="home-spark-vue-top" />
-          <LiveSparkline quote={live.VIX} x={117} y={62} width={49} height={39} gradientId="home-spark-vue-bottom" />
-        </>
-      );
-      break;
-    case "calendar":
-      content = (
-        <>
-          {[0, 1, 2, 3, 4].map((row) => [0, 1, 2, 3, 4, 5, 6].map((column) => {
-            const active = (row * 5 + column * 3) % 7 < 3;
-            return (
-              <rect
-                key={`${row}-${column}`}
-                className={active ? "kwant-home-pulse" : undefined}
-                style={active ? pulseDelay(row + column, 0.45) : undefined}
-                x={8 + column * 24}
-                y={8 + row * 20}
-                width="19"
-                height="15"
-                fill={active ? "color-mix(in srgb, var(--primary) 45%, transparent)" : "rgba(255,255,255,.035)"}
-                stroke={active ? "var(--primary)" : "rgba(255,255,255,.09)"}
-                opacity={0.42 + ((row + column) % 3) * 0.2}
-              />
-            );
-          }))}
-        </>
-      );
-      break;
-    case "flow":
-      content = (
-        <>
-          <PreviewGrid />
-          <path className="kwant-home-flow" d="M0 89 C21 82 24 49 49 57 S78 79 95 54 S127 31 176 22" fill="none" stroke="var(--primary)" strokeWidth="1.8" strokeDasharray="7 9" />
-          <path className="kwant-home-flow" style={pulseDelay(4)} d="M0 71 C27 64 34 75 57 67 S92 37 111 49 S141 60 176 42" fill="none" stroke="rgba(255,255,255,.42)" strokeDasharray="5 11" />
-          <g fill="var(--primary)">
-            {[20, 48, 74, 98, 125, 150].map((x, index) => (
-              <circle
-                key={x}
-                className="kwant-home-pulse"
-                style={pulseDelay(index, 0.5)}
-                cx={x}
-                cy={78 - index * 8}
-                r={2 + index * 0.35}
-                opacity={0.4 + index * 0.1}
-              />
-            ))}
-          </g>
-        </>
-      );
-      break;
-    case "gamma":
-      content = (
-        <>
-          {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((index) => {
-            const width = [31, 49, 66, 91, 122, 103, 78, 51, 28][index];
-            return (
-              <g key={index}>
-                <rect
-                  className="kwant-home-pulse"
-                  style={pulseDelay(index, 0.28)}
-                  x={88 - width / 2}
-                  y={8 + index * 11}
-                  width={width}
-                  height="6"
-                  fill={index < 4 ? "rgba(255,255,255,.36)" : "var(--primary)"}
-                  opacity={0.3 + index * 0.07}
-                />
-                <line x1="88" y1={6 + index * 11} x2="88" y2={17 + index * 11} stroke="rgba(255,255,255,.18)" />
-              </g>
-            );
-          })}
-        </>
-      );
-      break;
-    case "gexmap":
-      content = (
-        <>
-          {[0, 1, 2].map((panel) => (
-            <g key={panel} transform={`translate(${4 + panel * 57} 5)`}>
-              <rect width="53" height="102" fill="rgba(0,0,0,.2)" stroke="rgba(255,255,255,.1)" />
-              {[0, 1, 2, 3, 4, 5, 6].map((row) => (
-                <rect
-                  key={row}
-                  className="kwant-home-pulse"
-                  style={pulseDelay(row + panel * 2, 0.3)}
-                  x="4"
-                  y={7 + row * 13}
-                  width="45"
-                  height="9"
-                  fill={row === 4 ? "var(--primary)" : row % 2 ? "color-mix(in srgb, var(--primary) 32%, transparent)" : "rgba(255,255,255,.05)"}
-                  opacity={row === 4 ? 0.8 : 0.65}
-                />
-              ))}
-            </g>
-          ))}
-        </>
-      );
-      break;
-    case "liquidity":
-      content = (
-        <>
-          {[10, 22, 35, 49, 62, 76, 90, 103].map((y, index) => (
-            <rect
-              key={y}
-              className="kwant-home-pulse"
-              style={pulseDelay(index, 0.4)}
-              x="0"
-              y={y}
-              width="176"
-              height={index % 3 === 0 ? 7 : 4}
-              fill="var(--primary)"
-              opacity={[0.1, 0.28, 0.13, 0.55, 0.2, 0.38, 0.12, 0.22][index]}
-            />
-          ))}
-          <LiveSparkline quote={live.NDX} gradientId="home-spark-liquidity" />
-        </>
-      );
-      break;
-    case "levels":
-      content = (
-        <>
-          <PreviewGrid />
-          <CandleMotif compact />
-          {[[25, 0.3], [46, 0.7], [69, 0.4], [91, 0.85]].map(([y, opacity], index) => (
-            <g key={y} className="kwant-home-pulse" style={pulseDelay(index, 0.6)}>
-              <line x1="0" y1={y} x2="176" y2={y} stroke="var(--primary)" strokeWidth={opacity > 0.8 ? 2 : 1} opacity={opacity} strokeDasharray={opacity < 0.5 ? "3 3" : undefined} />
-              <rect x="145" y={y - 4} width="27" height="8" fill="var(--primary)" opacity={opacity} />
-            </g>
-          ))}
-        </>
-      );
-      break;
-    case "gameplan":
-      content = (
-        <>
-          {[0, 1, 2].map((column) => (
-            <g key={column} transform={`translate(${6 + column * 57} 7)`}>
-              <rect width="51" height="98" fill="rgba(255,255,255,.025)" stroke="rgba(255,255,255,.1)" />
-              <rect x="6" y="8" width={26 + column * 5} height="3" fill="var(--primary)" />
-              <rect x="6" y="19" width="38" height="2" fill="rgba(255,255,255,.25)" />
-              {[34, 49, 64, 79].map((y, index) => (
-                <rect
-                  key={y}
-                  className={index === column ? "kwant-home-pulse" : undefined}
-                  style={index === column ? pulseDelay(column, 0.8) : undefined}
-                  x="6"
-                  y={y}
-                  width={38 - index * 4}
-                  height="6"
-                  fill={index === column ? "color-mix(in srgb, var(--primary) 35%, transparent)" : "rgba(255,255,255,.06)"}
-                />
-              ))}
-            </g>
-          ))}
-        </>
-      );
-      break;
-    case "zyon":
-      content = (
-        <>
-          <circle className="kwant-home-pulse-soft" cx="31" cy="29" r="13" fill="none" stroke="var(--primary)" strokeWidth="1.5" />
-          <circle className="kwant-home-pulse" cx="31" cy="29" r="6" fill="var(--primary)" opacity=".5" />
-          <rect x="53" y="14" width="108" height="25" rx="3" fill="rgba(255,255,255,.055)" stroke="rgba(255,255,255,.1)" />
-          <rect x="15" y="51" width="124" height="22" rx="3" fill="color-mix(in srgb, var(--primary) 14%, transparent)" stroke="color-mix(in srgb, var(--primary) 35%, transparent)" />
-          <rect x="42" y="84" width="119" height="18" rx="3" fill="rgba(255,255,255,.045)" />
-          <g fill="rgba(255,255,255,.4)">
-            <rect x="60" y="22" width="75" height="2" />
-            <rect x="22" y="59" width="92" height="2" />
-          </g>
-          <g fill="rgba(255,255,255,.55)">
-            {[0, 1, 2].map((index) => (
-              <circle
-                key={index}
-                className="kwant-home-typing"
-                style={pulseDelay(index, 0.22)}
-                cx={54 + index * 8}
-                cy="93"
-                r="1.8"
-              />
-            ))}
-          </g>
-        </>
-      );
-      break;
-    case "news":
-      content = (
-        <>
-          {[0, 1, 2, 3].map((row) => (
-            <g key={row} transform={`translate(7 ${8 + row * 25})`}>
-              <rect width="162" height="20" fill="rgba(255,255,255,.025)" stroke="rgba(255,255,255,.08)" />
-              <circle
-                className={row === 1 ? "kwant-home-live-dot" : undefined}
-                cx="10"
-                cy="10"
-                r="3"
-                fill={row === 1 ? "var(--primary)" : "rgba(255,255,255,.28)"}
-              />
-              <rect x="20" y="6" width={54 + row * 12} height="3" fill="rgba(255,255,255,.42)" />
-              <rect x="20" y="12" width="92" height="2" fill="rgba(255,255,255,.13)" />
-              <rect
-                className={row === 1 ? "kwant-home-pulse" : undefined}
-                x="139"
-                y="6"
-                width="16"
-                height="8"
-                fill={row === 1 ? "var(--primary)" : "rgba(255,255,255,.08)"}
-                opacity=".7"
-              />
-            </g>
-          ))}
-        </>
-      );
-      break;
-    case "socials":
-      content = (
-        <>
-          <rect x="8" y="7" width="102" height="98" fill="rgba(255,255,255,.025)" stroke="rgba(255,255,255,.1)" />
-          <circle cx="22" cy="22" r="7" fill="var(--primary)" opacity=".55" />
-          <rect x="34" y="17" width="47" height="3" fill="rgba(255,255,255,.45)" />
-          <rect x="16" y="37" width="86" height="40" fill="color-mix(in srgb, var(--primary) 10%, transparent)" />
-          <path className="kwant-home-draw" d="M20 68 L33 57 46 62 61 48 76 55 97 43" fill="none" stroke="var(--primary)" strokeDasharray="120" />
-          <rect x="16" y="86" width="20" height="4" fill="rgba(255,255,255,.18)" />
-          <rect x="44" y="86" width="20" height="4" fill="rgba(255,255,255,.18)" />
-          <rect x="118" y="7" width="50" height="46" fill="rgba(255,255,255,.025)" stroke="rgba(255,255,255,.1)" />
-          <rect x="118" y="59" width="50" height="46" fill="rgba(255,255,255,.025)" stroke="rgba(255,255,255,.1)" />
-        </>
-      );
-      break;
-    case "journal":
-      content = (
-        <>
-          <PreviewGrid />
-          <path
-            className="kwant-home-draw"
-            d="M6 86 L24 79 41 82 59 61 78 66 97 45 114 50 132 31 151 37 170 18"
-            fill="none"
-            stroke="var(--primary)"
-            strokeWidth="2"
-            strokeDasharray="260"
-          />
-          <path d="M6 86 L24 79 41 82 59 61 78 66 97 45 114 50 132 31 151 37 170 18 L170 106 L6 106 Z" fill="url(#homeJournalFade)" />
-          <defs>
-            <linearGradient id="homeJournalFade" x1="0" y1="0" x2="0" y2="1">
-              <stop stopColor="var(--primary)" stopOpacity=".22" />
-              <stop offset="1" stopColor="var(--primary)" stopOpacity="0" />
-            </linearGradient>
-          </defs>
-        </>
-      );
-      break;
-    case "backtest":
-      content = (
-        <>
-          <PreviewGrid />
-          <CandleMotif />
-          <g className="kwant-home-sweep">
-            <line x1="20" y1="5" x2="20" y2="94" stroke="var(--primary)" strokeDasharray="3 3" />
-            <circle cx="20" cy="48" r="4" fill="var(--primary)" />
-          </g>
-          <rect x="12" y="101" width="150" height="3" fill="rgba(255,255,255,.12)" />
-          <rect className="kwant-home-progress" x="12" y="101" width="150" height="3" fill="var(--primary)" />
-          <path d="M168 98 L174 102.5 168 107 Z" fill="var(--primary)" />
-        </>
-      );
-      break;
-    case "accounts":
-      content = (
-        <>
-          {[0, 1, 2, 3].map((index) => (
-            <g key={index} transform={`translate(${7 + (index % 2) * 84} ${7 + Math.floor(index / 2) * 52})`}>
-              <rect width="78" height="45" fill="rgba(255,255,255,.025)" stroke="rgba(255,255,255,.1)" />
-              <rect x="8" y="8" width="25" height="2" fill="rgba(255,255,255,.26)" />
-              <rect
-                className="kwant-home-pulse-soft"
-                style={pulseDelay(index, 0.7)}
-                x="8"
-                y="18"
-                width={42 + index * 4}
-                height="6"
-                fill={index === 0 || index === 3 ? "var(--primary)" : "rgba(255,255,255,.68)"}
-                opacity=".75"
-              />
-              <path d={`M8 36 L22 ${34 - index * 2} 35 ${37 - index} 48 ${29 - index * 2} 68 ${25 - index}`} fill="none" stroke="var(--primary)" />
-            </g>
-          ))}
-        </>
-      );
-      break;
-  }
-
+  const floatContent = FloatArt({ type });
   return (
-    <svg viewBox="0 0 176 112" preserveAspectRatio="none" className="h-full w-full" aria-hidden="true">
-      {content}
-    </svg>
+    <div className="kwant-home-scene" aria-hidden="true">
+      <div className="kwant-home-scene-glow" />
+      <div className="kwant-home-plane-base">
+        <svg viewBox="0 0 176 112" preserveAspectRatio="none" className="h-full w-full">
+          <PageArt type={type} live={live} />
+        </svg>
+      </div>
+      {floatContent && (
+        <div className="kwant-home-plane-float">
+          <svg viewBox="0 0 64 44" preserveAspectRatio="xMidYMid meet" className="h-full w-full">
+            {floatContent}
+          </svg>
+        </div>
+      )}
+    </div>
   );
 }
