@@ -672,3 +672,38 @@ Do not hand back an unexplained dirty tree. Commit completed work; leave incompl
 - [ ] Any live-session caveat is reported honestly.
 
 This file is operational guidance, not permission to rewrite the platform. Preserve the product, fix the actual problem, and leave the next engineer a cleaner and more truthful system than you found.
+
+## Temporary engineering log — 2026-08-18
+
+### Completed
+- Home launcher redesigned: theme-token 3D workspace renders, live NDX/SPX/VIX tape via the shared index client, side gutters, smaller tiles (`WorkspaceHome.tsx`, `home/HomeLivePreviews.tsx`, `globals.css`).
+- Shared viewport linking (drag/zoom/crosshair peer sync) enabled on the Charts workspace with a charts-scoped sync group (`KwantifyWorkspace.tsx`).
+- Zero Gamma Line repaired end to end: cash-calibrated cage flip/crossings now convert to futures scale; ±25%-of-spot outlier guard; `maxDuration = 120` on the route (the production 504 killer); pre-open session-boundary fix; server memo of completed sessions; fast-first paint then history; smooth dashed observation line (GEX BOX style) instead of carry-forward steps (`quantData.server.ts`, `zeroGammaLine*.ts`, `api/zero-gamma-line/route.ts`, `Chart.tsx`).
+- Workspace persistence: Quick Save/Save As sync to the account immediately; sign-in hydration no longer rolls back newer unsynced local state (`userPreferences.ts`, `KwantifyWorkspace.tsx`; new `test:preference-hydration`). Presets now capture the overall theme + GEX Map palette and restore them on apply.
+- CVD updates live: order-flow pane indicators join the throttled live-candle snapshot path (750ms cap); "Updating report..." toast removed (`Chart.tsx`, `KwantifyWorkspace.tsx`).
+- Gamma heatmap obeys the GEX Vue replay clock (no lookahead; levels hidden in replay).
+- GEX Map: replay empty-states name the exact cause; columns never auto-hide on shrink (X only); five-colour gradient palettes with nine curated presets, themed pickers, Save-to-persist, account sync (`gexMapPalette.ts`, `GexMapWorkspace.tsx`).
+- Site-wide themed colour picker `ChartColorField` (HSV surface, hue rail, hex entry, click-to-copy, shared recents) replacing every native `type="color"`; always renders above host dialogs and never closes them mid-pick.
+- New Options Delta pane indicator (`options-delta`): per-minute signed net DEX bars for the chart's own options family, sharing the GEX Map DELTA cache (`optionsDelta.ts`, registrations, `test:options-delta`).
+- Browser OOM mitigations: options-delta series memoised per payload; order-flow live sampling capped at 750ms.
+- Cash-index symbols (SPX/SPY/NDX/QQQ/VIX...) route to the Market Index feed on selection, and saved panes wrongly paired with the CME feed self-repair on load.
+
+### Commits pushed
+`8f8f8341` home tiles → `00377af2`, `1fdd42a9`, `ee27866d`, `7a53989b`, `bc70fbf9` (launcher series); `9dd22a6b` charts viewport linking; `92323263` zero gamma calibration; `5763ac7e` workspace sign-in persistence; `4b65c8c6` CVD live + toast; `c49aee60` heatmap replay sync; `5fe9373e` GEX Map replay diagnostics; `4ed23d64`, `ff3e04ef`, `aee4aeea` colour picker series; `9bc313f3` GEX Map column visibility; `6bb88b29` pickers everywhere + workspace themes; `36ca059c` zero gamma reliability; `480c728f` zero gamma line style; `85fce915`, `ead97019`, `880ffeb8` GEX Map palettes; `51cb2273` Options Delta; `fc586d87` allocation churn; `502a40f4` cash-index routing.
+
+### Verification
+Per change: relevant `npm run test:*` (gex-box, gex-vue-replay, gex-map-star, bounce-levels, zero-gamma-line, preference-hydration, options-delta), `npx eslint <changed files>`, `npx tsc --noEmit`, `npm run build` — all green before each push. Zero gamma and GEX Map replay data verified against the live VPS gateway via local dev (`KWANTIFY_DEV_AUTH_BYPASS`).
+
+### Production/VPS actions
+Website only (Vercel via `origin/main` pushes). No VPS/gateway deployments. Deployed CSS spot-checked once via the public landing bundle (GEX Map column fix confirmed live).
+
+### Remaining risks
+- Native gamma gateway env appears unconfigured (local `/api/native-gamma` → "not configured"); zero gamma/NQ-ES gamma runs on cash-calibrated QuantData. Verify Vercel env if native TRUE_OI is expected.
+- SPX/SPY QuantData snapshots for 2026-08-14 and 08-17 are corrupted upstream (outlier guard drops them) — those sessions stay honestly absent.
+- Browser OOM ("Aw, Snap" code 5): two churn sources fixed, but the pattern predates today; if it recurs, get workspace layout + time-to-crash + single-vs-all-tabs, then heap-profile that path.
+- Live RTH soak of today's changes not yet observed; owner-side visual checks pending on several UI changes.
+- `tmp/pdfs/*` modified/untracked files and `gexcal-*.png` in repo root belong to another workstream (owner/Codex licensing report) — untouched, left in the worktree.
+- Interrupted investigation: owner reported the gamma environment indicator not mapping to the pane's asset; code review shows the direct path already resolves QQQ→QQQ etc. — needs the owner's exact repro before further work.
+
+### Worktree state
+`?? ALGO/`, `?? gexcal-*.png/tmp`, `M/?? tmp/pdfs/*` (other workstream) — no uncommitted engineering work.
