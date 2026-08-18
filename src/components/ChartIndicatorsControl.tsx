@@ -215,6 +215,7 @@ function persistGexIntervalUserPresets(presets: GexIntervalUserPreset[]) {
 export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "gamma-environment",
   "zero-gamma-line",
+  "options-delta",
   "gamma-heatmap",
   "net-gamma-exposure-by-strike",
   "gex-interval-map",

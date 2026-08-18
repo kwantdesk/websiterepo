@@ -323,7 +323,9 @@ import {
   type DarkPoolGexHit,
   type DarkPoolGexPrimitiveData,
 } from "@/lib/darkPoolGexPrimitive";
-import { fetchWorkspaceData, readWorkspaceData, writeWorkspaceData } from "@/lib/workspaceDataCache";
+import { fetchWorkspaceData, gexMapCacheKey, readWorkspaceData, writeWorkspaceData } from "@/lib/workspaceDataCache";
+import { hasRenderableGexMapSurface, type GexMapPanelPayload } from "@/lib/gexMap";
+import { buildOptionsDeltaSeries, optionsDeltaSourceForInstrument } from "@/lib/optionsDelta";
 import { isZeroGammaLinePayload, paintZeroGammaLine, zeroGammaRootForInstrument, type ZeroGammaLinePayload } from "@/lib/zeroGammaLine";
 import { STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT } from "@/lib/volumeProfileMath";
 import {
@@ -5151,6 +5153,42 @@ function Chart({
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "zero-gamma-line") ?? null,
     [indicatorSignature, indicators],
   );
+  const optionsDeltaIndicator = useMemo(
+    () => indicators.find((instance) => instance.enabled && instance.indicatorId === "options-delta") ?? null,
+    [indicatorSignature, indicators],
+  );
+  const [optionsDeltaPayload, setOptionsDeltaPayload] = useState<GexMapPanelPayload | null>(null);
+  useEffect(() => {
+    const source = optionsDeltaSourceForInstrument(instrument);
+    if (!optionsDeltaIndicator || !source) {
+      setOptionsDeltaPayload(null);
+      return;
+    }
+    let cancelled = false;
+    const refreshMs = Math.max(15_000, Number(optionsDeltaIndicator.settings?.refreshSeconds ?? 60) * 1_000);
+    const load = async () => {
+      try {
+        // Shares the exact cache entry the GEX Map DEX panels use, so an open
+        // map panel and this pane cost one provider request between them.
+        const payload = await fetchWorkspaceData<GexMapPanelPayload>(
+          gexMapCacheKey(source, "DELTA", ""),
+          `/api/gex-map?symbol=${encodeURIComponent(source)}&greekMode=DELTA`,
+          {
+            maxAgeMs: refreshMs,
+            timeoutMs: 45_000,
+            validate: (value) => hasRenderableGexMapSurface(value as GexMapPanelPayload),
+            invalidMessage: "The Delta surface did not contain a strike ladder.",
+          },
+        );
+        if (!cancelled) setOptionsDeltaPayload(payload);
+      } catch {
+        // Keep the last verified Delta series through a transient refresh.
+      }
+    };
+    void load();
+    const intervalId = window.setInterval(() => void load(), refreshMs);
+    return () => { cancelled = true; window.clearInterval(intervalId); };
+  }, [indicatorSignature, instrument, optionsDeltaIndicator]);
   useEffect(() => {
     if (!zeroGammaLineIndicator || !zeroGammaRootForInstrument(instrument)) {
       setZeroGammaLinePayload(null);
@@ -5259,6 +5297,27 @@ function Chart({
       }];
     }),
     ...indicators.flatMap((instance): CalculatedIndicatorSeries[] => {
+      if (!instance.enabled || instance.indicatorId !== "options-delta" || !optionsDeltaPayload) return [];
+      const points = buildOptionsDeltaSeries(optionsDeltaPayload);
+      if (!points.length) return [];
+      const useThemeColors = instance.settings?.useThemeColors !== false;
+      const positiveColor = useThemeColors ? settings.upColor : String(instance.settings?.positiveColor ?? settings.upColor);
+      const negativeColor = useThemeColors ? settings.downColor : String(instance.settings?.negativeColor ?? settings.downColor);
+      return [{
+        key: `${instance.instanceId}-options-delta`,
+        groupKey: instance.instanceId,
+        label: `Options Delta · ${optionsDeltaPayload.symbol}`,
+        kind: "histogram",
+        placement: "pane",
+        color: positiveColor,
+        data: points.map((point) => ({
+          time: Math.floor(point.timestampMs / 1_000),
+          value: point.net,
+          color: point.net >= 0 ? positiveColor : negativeColor,
+        })),
+      }];
+    }),
+    ...indicators.flatMap((instance): CalculatedIndicatorSeries[] => {
       if (!instance.enabled || instance.indicatorId !== "implied-volatility-rank" || instance.settings?.placement !== "main-chart-overlay") return [];
       const snapshot = ivRankByInstance[instance.instanceId]?.snapshot;
       if (!snapshot) return [];
@@ -5289,7 +5348,7 @@ function Chart({
         data: rankData,
       }];
     }),
-  ], [baseCalculatedIndicatorSeries, indicatorSignature, indicators, ivRankByInstance, settings.borderUpColor, settings.downColor, settings.upColor, zeroGammaLinePayload]);
+  ], [baseCalculatedIndicatorSeries, indicatorSignature, indicators, ivRankByInstance, optionsDeltaPayload, settings.borderUpColor, settings.downColor, settings.upColor, zeroGammaLinePayload]);
   const calculatedIndicatorPanes = useMemo(() => {
     return indicators.flatMap((instance): IndicatorPaneGroup[] => {
       if (!instance.enabled) return [];

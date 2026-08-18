@@ -15,6 +15,7 @@ import { DEFAULT_TAPE_SPEED_SETTINGS, normalizeTapeSpeedSettings } from "@/lib/t
 export const LIVE_CHART_INDICATOR_IDS = new Set([
   "gamma-environment",
   "zero-gamma-line",
+  "options-delta",
   "gamma-heatmap",
   "net-gamma-exposure-by-strike",
   "gex-interval-map",
@@ -108,6 +109,9 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "refreshSeconds", label: "Live refresh (seconds)", defaultValue: 10, min: 5, max: 60, step: 1 },
     { key: "opacity", label: "Line visibility (%)", defaultValue: 72, min: 5, max: 100, step: 1 },
     { key: "lineWidth", label: "Line width", defaultValue: 2, min: 1, max: 4, step: 1 },
+  ],
+  "options-delta": [
+    { key: "refreshSeconds", label: "Live refresh (seconds)", defaultValue: 60, min: 15, max: 300, step: 5 },
   ],
   "tape-speed-order-flow-burst": [
     { key: "rollingWindowMs", label: "Rolling window (ms)", defaultValue: 1000, min: 50, max: 60000, step: 50 },
@@ -927,6 +931,12 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     lineColor: theme?.borderUpColor ?? theme?.upColor ?? "#A3FF12",
     showCurrentValue: true,
     showRegimeHint: true,
+  } : {}),
+  ...(indicatorId === "options-delta" ? {
+    refreshSeconds: 60,
+    useThemeColors: true,
+    positiveColor: theme?.upColor ?? "#22C55E",
+    negativeColor: theme?.downColor ?? "#EF4444",
   } : {}),
   ...Object.fromEntries(
     (INDICATOR_NUMERIC_SETTINGS[indicatorId] ?? []).map((setting) => [setting.key, setting.defaultValue]),
@@ -1824,6 +1834,17 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
       settings[definition.key] = Math.min(definition.max, Math.max(definition.min, Number.isFinite(parsed) ? parsed : definition.defaultValue));
     }
       if (!["solid", "dashed", "dotted"].includes(String(settings.lineStyle))) settings.lineStyle = "solid";
+    for (const unsafeKey of ["apiKey", "credential", "credentials", "snapshot", "points", "history"]) delete settings[unsafeKey];
+    return { ...normalizedInstance, settings };
+  }
+  if (normalizedInstance.indicatorId === "options-delta") {
+    const defaults: Record<string, number | string | boolean> = defaultIndicatorSettings("options-delta");
+    const settings: Record<string, number | string | boolean> = { ...defaults, ...(normalizedInstance.settings ?? {}) };
+    for (const definition of INDICATOR_NUMERIC_SETTINGS["options-delta"] ?? []) {
+      const parsed = Number(settings[definition.key]);
+      settings[definition.key] = Math.min(definition.max, Math.max(definition.min, Number.isFinite(parsed) ? parsed : definition.defaultValue));
+    }
+    settings.useThemeColors = settings.useThemeColors !== false;
     for (const unsafeKey of ["apiKey", "credential", "credentials", "snapshot", "points", "history"]) delete settings[unsafeKey];
     return { ...normalizedInstance, settings };
   }
