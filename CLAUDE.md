@@ -707,3 +707,30 @@ Website only (Vercel via `origin/main` pushes). No VPS/gateway deployments. Depl
 
 ### Worktree state
 `?? ALGO/`, `?? gexcal-*.png/tmp`, `M/?? tmp/pdfs/*` (other workstream) — no uncommitted engineering work.
+
+## Temporary engineering log — 2026-08-19
+
+### Completed
+- QuantData quota burn stopped: zero-gamma completed-session points persist in the cross-instance data cache (`unstable_cache`), the recurring client refresh only re-requests the live session, default cadence 10s→30s (floor 15s), and the route coalesces bursts. Root cause: the 08-18 `maxDuration` fix let formerly-dying 5-session chains complete, polled at 10s per pane fleet-wide (`zeroGammaLine.server.ts`, `api/zero-gamma-line/route.ts`, `Chart.tsx`, `chartIndicatorConfig.ts`).
+- Massive subscription ended (owner refunded): `/api/market-indices` now falls through the dead VPS/Massive proxy to the existing local provider chain (KwantData session tape for options underlyings + stocks, official Cboe EOD for VIX); browser client no longer polls the dead VPS index endpoints (one failing batch killed all quotes) and polls at 4s/15s against a 10s route cache (`api/market-indices/route.ts`, `marketIndexLiveClient.ts`). Verified live: SPX 5m returned 609 session candles; snapshot batch served all symbols. VXN/RUT/DJI and intraday VIX have no fallback provider.
+- SPX pane fix preceding the entitlement discovery: cash-index symbols route to the Market Index feed on selection and saved panes self-repair (`502a40f4`).
+- Aw-Snap mitigations: options-delta series memoised per payload; order-flow live sampling capped at 750ms (`fc586d87`).
+- Options Delta pane indicator shipped (`51cb2273`); zero gamma drawn as smooth dashed observation line (`480c728f`); GEX Map five-colour gradient palettes (`880ffeb8`, `ead97019`).
+
+### Commits pushed
+`88f05d73` quota fix; `a11610cc` index ticker fallback chain; (plus late-08-18 tail: `51cb2273`, `fc586d87`, `502a40f4`, `e09caff3`).
+
+### Verification
+`test:zero-gamma-line` (extended), `test:options-delta`, eslint, `tsc --noEmit`, `npm run build` green before each push. Massive entitlement failure and QuantData fallback verified against live providers via local dev.
+
+### Production/VPS actions
+Website only. **Owner action pending:** remove `MASSIVE_API_KEY` from Vercel env and the VPS operator env once residual Massive quote access lapses — the code then skips Massive attempts entirely. The VPS `massive-indices-stream` is dead weight until an index entitlement returns.
+
+### Remaining risks
+- Residual Massive quote access may lapse at any moment; per-symbol fallback engages automatically but wastes failing-call latency until the env keys are removed.
+- QuantData is now the primary index-quote source: watch its quota after a full RTH day with the fleet online.
+- Intraday VIX/VXN/RUT/DJI unavailable without a new provider; VX futures via CME is the honest VIX proxy if wanted.
+- Prior open items from 08-18 stand (native gamma env, SPX/SPY corrupted provider sessions, OOM tail, gamma-environment repro).
+
+### Worktree state
+`?? ALGO/`, `?? gexcal-*.png/tmp`, `M/?? tmp/pdfs/*` (other workstream) — no uncommitted engineering work.
