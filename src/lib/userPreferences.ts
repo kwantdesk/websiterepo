@@ -1,5 +1,5 @@
 import type { SupabaseClient, User } from "@supabase/supabase-js";
-import { applyTheme } from "@/lib/theme";
+import { applyTheme } from "./theme.ts";
 
 const USER_PREFERENCES_TABLE = "user_preferences";
 const USER_PREFERENCES_METADATA_KEY = "kwantdesk_preferences";
@@ -313,6 +313,20 @@ export async function hydrateUserPreferences(
         values: {},
       };
     }
+    await saveUserPreferences(supabase, user.id, selected);
+  } else if (
+    activePreferenceOwner === user.id
+    && scoped
+    && !(cloud && Date.parse(cloud.updatedAt) > Date.parse(scoped.updatedAt))
+    && preferenceSnapshotFingerprint(current) !== preferenceSnapshotFingerprint(selected)
+  ) {
+    // This browser is the account's active preference owner and no other
+    // device has written a newer account snapshot since this browser last
+    // synced. Any difference in live storage is therefore unsynced local work
+    // — for example a workspace quick-saved moments before the app closed,
+    // before the debounced upload could complete. Applying the older snapshot
+    // would destroy that work, so keep the live state and upload it instead.
+    selected = { ...current, updatedAt: new Date().toISOString() };
     await saveUserPreferences(supabase, user.id, selected);
   }
 

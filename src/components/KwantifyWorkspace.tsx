@@ -13101,6 +13101,10 @@ export default function KwantifyWorkspace({
       workspaceScopeStorageKey(chartWorkspaceScopeRef.current, WORKSPACE_PRESETS_STORAGE_KEY),
       JSON.stringify(normalizedPresets),
     );
+    // A saved workspace is an explicit user action. Push it to the account
+    // store immediately instead of waiting for the next interval sync, so
+    // closing the app right after Quick Save cannot lose the workspace.
+    window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
     return normalizedPresets;
   };
 
