@@ -1770,3 +1770,74 @@ body.kwant-cockpit-ui .kwant-one-liner-glow {
     scroll-behavior: auto !important;
   }
 }
+
+/* Home launcher tile previews. Every animation is opacity/transform-only so
+   sixteen simultaneously animated tiles stay off the layout/paint path. */
+@keyframes kwant-home-pulse {
+  0%, 100% { opacity: .32; }
+  50% { opacity: .88; }
+}
+
+@keyframes kwant-home-pulse-soft {
+  0%, 100% { opacity: .22; }
+  50% { opacity: .52; }
+}
+
+@keyframes kwant-home-flow {
+  to { stroke-dashoffset: -128; }
+}
+
+@keyframes kwant-home-draw {
+  0% { stroke-dashoffset: 260; opacity: 0; }
+  6% { opacity: 1; }
+  58% { stroke-dashoffset: 0; opacity: 1; }
+  92% { stroke-dashoffset: 0; opacity: 1; }
+  100% { stroke-dashoffset: 0; opacity: 0; }
+}
+
+@keyframes kwant-home-sweep {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(136px); }
+}
+
+@keyframes kwant-home-progress {
+  0% { transform: scaleX(0); }
+  100% { transform: scaleX(1); }
+}
+
+@keyframes kwant-home-live-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .35; }
+}
+
+@keyframes kwant-home-shimmer {
+  0%, 100% { opacity: .16; }
+  50% { opacity: .45; }
+}
+
+.kwant-home-pulse { animation: kwant-home-pulse 3.4s ease-in-out infinite; }
+.kwant-home-pulse-soft { animation: kwant-home-pulse-soft 5.2s ease-in-out infinite; }
+.kwant-home-flow { animation: kwant-home-flow 9s linear infinite; }
+.kwant-home-draw { animation: kwant-home-draw 7s ease-in-out infinite; }
+.kwant-home-sweep { animation: kwant-home-sweep 8s linear infinite; }
+.kwant-home-progress {
+  transform-origin: left center;
+  animation: kwant-home-progress 8s linear infinite;
+}
+.kwant-home-typing { animation: kwant-home-pulse 1.15s ease-in-out infinite; }
+.kwant-home-live-dot { animation: kwant-home-live-dot 2s ease-in-out infinite; }
+.kwant-home-shimmer { animation: kwant-home-shimmer 2.6s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .kwant-home-pulse,
+  .kwant-home-pulse-soft,
+  .kwant-home-flow,
+  .kwant-home-draw,
+  .kwant-home-sweep,
+  .kwant-home-progress,
+  .kwant-home-typing,
+  .kwant-home-live-dot,
+  .kwant-home-shimmer {
+    animation: none;
+  }
+}
