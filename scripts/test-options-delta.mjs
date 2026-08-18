@@ -15,7 +15,8 @@ const [catalog, config, controls, chart] = await Promise.all([
 assert.match(catalog, /indicator\("Options Delta", "Options Flow"/);
 assert.match(config, /LIVE_CHART_INDICATOR_IDS[\s\S]*?"options-delta"/);
 assert.match(controls, /RENDERED_CHART_INDICATOR_IDS[\s\S]*?"options-delta"/);
-assert.match(chart, /indicatorId !== "options-delta"/);
+assert.match(chart, /indicatorId === "options-delta"/);
+assert.match(chart, /buildOptionsDeltaSeries\(optionsDeltaPayload\)/);
 assert.match(chart, /greekMode=DELTA/);
 
 // The pane maps to the chart's own options family.

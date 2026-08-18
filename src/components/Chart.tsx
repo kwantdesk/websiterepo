@@ -3416,7 +3416,12 @@ function Chart({
               setSampledIndicatorCandles((current) =>
                 mergeLiveIndicatorCandle(current, liveVolumeCandle));
             }
-          }, keyboardActive ? 250 : 750);
+          // Every sampled snapshot triggers a full study recompute across the
+          // pane's indicators. The faster keyboard cadence is affordable for
+          // the Volume pane alone, but with CVD/delta studies enabled a
+          // 4-per-second engine pass on every pane creates enough allocation
+          // churn to starve the GC in large multi-chart workspaces.
+          }, keyboardActive && !nonFootprintOrderFlowIndicatorEnabled ? 250 : 750);
         }
       }
       if (frame === null) frame = window.requestAnimationFrame(flush);
@@ -5268,6 +5273,31 @@ function Chart({
       settings.upColor,
     ],
   );
+  // The Delta surface changes at most once per refresh interval, while the
+  // series list recomputes on every live indicator sample. Deriving these
+  // bars in their own memo keeps the per-tick recompute from re-walking the
+  // full strike-frame history and reallocating the bar array each sample.
+  const optionsDeltaSeries = useMemo<CalculatedIndicatorSeries | null>(() => {
+    if (!optionsDeltaIndicator || !optionsDeltaPayload) return null;
+    const points = buildOptionsDeltaSeries(optionsDeltaPayload);
+    if (!points.length) return null;
+    const useThemeColors = optionsDeltaIndicator.settings?.useThemeColors !== false;
+    const positiveColor = useThemeColors ? settings.upColor : String(optionsDeltaIndicator.settings?.positiveColor ?? settings.upColor);
+    const negativeColor = useThemeColors ? settings.downColor : String(optionsDeltaIndicator.settings?.negativeColor ?? settings.downColor);
+    return {
+      key: `${optionsDeltaIndicator.instanceId}-options-delta`,
+      groupKey: optionsDeltaIndicator.instanceId,
+      label: `Options Delta · ${optionsDeltaPayload.symbol}`,
+      kind: "histogram",
+      placement: "pane",
+      color: positiveColor,
+      data: points.map((point) => ({
+        time: Math.floor(point.timestampMs / 1_000),
+        value: point.net,
+        color: point.net >= 0 ? positiveColor : negativeColor,
+      })),
+    };
+  }, [optionsDeltaIndicator, optionsDeltaPayload, settings.downColor, settings.upColor]);
   const calculatedIndicatorSeries = useMemo(() => [
     ...baseCalculatedIndicatorSeries,
     ...indicators.flatMap((instance): CalculatedIndicatorSeries[] => {
@@ -5296,27 +5326,7 @@ function Chart({
         data: paintZeroGammaLine(zeroGammaLinePayload.points),
       }];
     }),
-    ...indicators.flatMap((instance): CalculatedIndicatorSeries[] => {
-      if (!instance.enabled || instance.indicatorId !== "options-delta" || !optionsDeltaPayload) return [];
-      const points = buildOptionsDeltaSeries(optionsDeltaPayload);
-      if (!points.length) return [];
-      const useThemeColors = instance.settings?.useThemeColors !== false;
-      const positiveColor = useThemeColors ? settings.upColor : String(instance.settings?.positiveColor ?? settings.upColor);
-      const negativeColor = useThemeColors ? settings.downColor : String(instance.settings?.negativeColor ?? settings.downColor);
-      return [{
-        key: `${instance.instanceId}-options-delta`,
-        groupKey: instance.instanceId,
-        label: `Options Delta · ${optionsDeltaPayload.symbol}`,
-        kind: "histogram",
-        placement: "pane",
-        color: positiveColor,
-        data: points.map((point) => ({
-          time: Math.floor(point.timestampMs / 1_000),
-          value: point.net,
-          color: point.net >= 0 ? positiveColor : negativeColor,
-        })),
-      }];
-    }),
+    ...(optionsDeltaSeries ? [optionsDeltaSeries] : []),
     ...indicators.flatMap((instance): CalculatedIndicatorSeries[] => {
       if (!instance.enabled || instance.indicatorId !== "implied-volatility-rank" || instance.settings?.placement !== "main-chart-overlay") return [];
       const snapshot = ivRankByInstance[instance.instanceId]?.snapshot;
@@ -5348,7 +5358,7 @@ function Chart({
         data: rankData,
       }];
     }),
-  ], [baseCalculatedIndicatorSeries, indicatorSignature, indicators, ivRankByInstance, optionsDeltaPayload, settings.borderUpColor, settings.downColor, settings.upColor, zeroGammaLinePayload]);
+  ], [baseCalculatedIndicatorSeries, indicatorSignature, indicators, ivRankByInstance, optionsDeltaSeries, settings.borderUpColor, settings.downColor, settings.upColor, zeroGammaLinePayload]);
   const calculatedIndicatorPanes = useMemo(() => {
     return indicators.flatMap((instance): IndicatorPaneGroup[] => {
       if (!instance.enabled) return [];
