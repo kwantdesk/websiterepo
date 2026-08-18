@@ -2212,20 +2212,19 @@ export default function ChartIndicatorsControl({
                       ["Negative delta", "perBarNegativeDeltaColor", "#F06A70"],
                       ["POC", "perBarProfilePocColor", "#E4BF5A"],
                     ].map(([label, key, fallback]) => (
-                      <label key={String(key)} className="flex min-h-9 items-center justify-between rounded-lg border border-border bg-surface/30 px-3 text-[9px] text-muted">
-                        <span>{String(label)}</span>
-                        <input
-                          type="color"
+                      <div key={String(key)} className="flex min-h-9 items-center justify-between gap-2 rounded-lg border border-border bg-surface/30 px-3 text-[9px] text-muted">
+                        <span className="truncate">{String(label)}</span>
+                        <ChartColorField
+                          ariaLabel={`${String(label)} colour`}
                           value={String(settingsInstance.settings?.[String(key)] ?? fallback)}
-                          onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                          onChange={(hex) => replace(settingsInstance.instanceId, (current) => ({
                             ...current,
-                            settings: { ...(current.settings ?? {}), [String(key)]: event.target.value },
+                            settings: { ...(current.settings ?? {}), [String(key)]: hex },
                           }))}
                           disabled={settingsInstance.settings?.useThemeColors !== false}
-                          className="h-6 w-8 cursor-pointer border-0 bg-transparent disabled:cursor-not-allowed disabled:opacity-35"
                           title={settingsInstance.settings?.useThemeColors !== false ? "Turn off Use Theme Colors to set a custom colour" : undefined}
                         />
-                      </label>
+                      </div>
                     ))}
                   </div>
                 </section>

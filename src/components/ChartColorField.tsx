@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ChevronDown } from "lucide-react";
+import { Check, ChevronDown, Copy } from "lucide-react";
 
 const RECENT_COLORS_STORAGE_KEY = "olisa-recent-colors";
 const POPOVER_WIDTH = 224;
@@ -105,6 +105,26 @@ export default function ChartColorField({
   const [hsv, setHsv] = useState(() => hexToHsv(normalizedValue));
   const [hexDraft, setHexDraft] = useState(normalizedValue.replace("#", ""));
   const [recentColors, setRecentColors] = useState<string[]>([]);
+  const [copied, setCopied] = useState(false);
+  const copiedTimerRef = useRef<number | null>(null);
+
+  const copyHex = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(normalizedValue);
+      setCopied(true);
+      if (copiedTimerRef.current !== null) window.clearTimeout(copiedTimerRef.current);
+      copiedTimerRef.current = window.setTimeout(() => {
+        copiedTimerRef.current = null;
+        setCopied(false);
+      }, 1_200);
+    } catch {
+      // Clipboard access can be denied; the hex remains selectable in the field.
+    }
+  }, [normalizedValue]);
+
+  useEffect(() => () => {
+    if (copiedTimerRef.current !== null) window.clearTimeout(copiedTimerRef.current);
+  }, []);
 
   const applyColor = useCallback((hex: string) => {
     const normalized = normalizeHexColor(hex);
@@ -266,6 +286,17 @@ export default function ChartColorField({
                 className="w-full bg-transparent font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-foreground outline-none"
               />
               <span className="h-4 w-4 shrink-0 rounded-[3px] border border-border" style={{ background: normalizedValue }} />
+              <button
+                type="button"
+                onClick={() => void copyHex()}
+                aria-label={`Copy ${normalizedValue}`}
+                title={copied ? "Copied" : `Copy ${normalizedValue}`}
+                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-[4px] border transition-colors ${
+                  copied ? "border-primary/40 bg-primary/10 text-primary" : "border-border text-muted hover:text-primary"
+                }`}
+              >
+                {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+              </button>
             </label>
             {recentColors.length ? (
               <div className="mt-2">

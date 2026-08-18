@@ -24,6 +24,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ProfessionalOrderflowChart, ProfessionalProfileChart, ProfessionalStateChart, type OrderflowPanelConfig } from "@/components/gexbot/GexBotLightweightCharts";
+import ChartColorField from "@/components/ChartColorField";
 import KwantSelect from "@/components/ui/KwantSelect";
 import { GEX_BOX_ORDERFLOW_METRICS, type OrderflowMetric } from "@/lib/gex-box/domain";
 import { appendRithmicClassicTrade, buildRithmicClassicCandles, replayCandlesAtOrBefore, rithmicContractForRoot, rithmicRootForGexTicker, type RithmicClassicCandle } from "@/lib/gex-box/rithmicCandles";
@@ -771,7 +772,7 @@ function SettingsRail({
               const isLine = !id.startsWith("lookback") && !["chartBackground", "showGexVolume", "showGexOi", "candleUp", "candleDown"].includes(id);
               return <div key={id} className="border border-border bg-background px-2 py-2">
                 <div className="flex items-center gap-2">
-                  <input aria-label={`${label} colour`} type="color" value={setting.color} onChange={(event) => patchSetting({ color: event.target.value })} className="h-6 w-7 cursor-pointer border-0 bg-transparent p-0" />
+                  <ChartColorField ariaLabel={`${label} colour`} value={setting.color} onChange={(hex) => patchSetting({ color: hex })} />
                   <span className="min-w-0 flex-1 text-[8px] font-semibold uppercase tracking-[.1em] text-foreground">{label}</span>
                   <input aria-label={`Toggle ${label}`} type="checkbox" checked={setting.enabled} onChange={(event) => patchSetting({ enabled: event.target.checked })} className="h-3.5 w-3.5 accent-[var(--primary)]" />
                 </div>
@@ -836,10 +837,14 @@ function SettingsRail({
           </div>
           <div className="grid grid-cols-2 gap-2">
             {(["positive", "negative", "oiPositive", "oiNegative", "prior", "prior2", "prior3"] as const).map((color) => (
-              <label key={color} className="rounded-xl border border-border bg-background p-2 text-center text-[8px] uppercase text-muted">
-                <input type="color" value={appearance[color]} onChange={(event) => update(color, event.target.value)} className="mb-1 h-6 w-full cursor-pointer rounded-md border-0 bg-transparent" />
+              <div key={color} className="flex flex-col items-center gap-1 rounded-xl border border-border bg-background p-2 text-center text-[8px] uppercase text-muted">
+                <ChartColorField
+                  ariaLabel={`${color === "positive" ? "Volume positive" : color === "negative" ? "Volume negative" : color === "oiPositive" ? "Open interest positive" : color === "oiNegative" ? "Open interest negative" : color.replace("prior", "Trail ")} colour`}
+                  value={appearance[color]}
+                  onChange={(hex) => update(color, hex)}
+                />
                 {color === "positive" ? "Volume +" : color === "negative" ? "Volume −" : color === "oiPositive" ? "OI +" : color === "oiNegative" ? "OI −" : color.replace("prior", "Trail ")}
-              </label>
+              </div>
             ))}
           </div>
           <div>

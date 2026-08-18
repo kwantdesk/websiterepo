@@ -23,6 +23,7 @@ import {
   Star,
   X,
 } from "lucide-react";
+import ChartColorField from "@/components/ChartColorField";
 import KwantLoader from "@/components/KwantLoader";
 import {
   GEX_MAP_GREEKS,
@@ -31,6 +32,15 @@ import {
   selectGexMapStarNode,
   type GexMapPanelPayload,
 } from "@/lib/gexMap";
+import {
+  GEX_MAP_PALETTE_CHANGE_EVENT,
+  gexMapPaletteTones,
+  gexMapPalettesEqual,
+  loadGexMapPalette,
+  normalizeGexMapPalette,
+  saveGexMapPalette,
+  type GexMapPalette,
+} from "@/lib/gexMapPalette";
 import {
   RECOMMENDED_GEX_MAP_STAR_SETTINGS,
   deriveGexMapStarModel,
@@ -194,9 +204,14 @@ function priceAt(payload: GexMapPanelPayload, timestamp: number | null) {
   return value ?? payload.stockPrice;
 }
 
-function heatColor(value: number, strength: number) {
+function heatColor(
+  value: number,
+  strength: number,
+  positiveTone = "var(--primary)",
+  negativeTone = "var(--danger)",
+) {
   if (Math.abs(value) < Number.EPSILON) return "var(--surface)";
-  const tone = value > 0 ? "var(--primary)" : "var(--danger)";
+  const tone = value > 0 ? positiveTone : negativeTone;
   const intensity = Math.round(14 + Math.min(1, strength) * 78);
   return `color-mix(in srgb, ${tone} ${intensity}%, var(--chart-background))`;
 }
@@ -309,6 +324,16 @@ function resolveStarPalette(host: HTMLElement): StarPalette {
   const text = contrastRatio(accent, black) >= contrastRatio(accent, white) ? black : white;
   const outline = contrastRatio(accent, black) >= contrastRatio(accent, white) ? black : white;
   return { accent: rgbHex(accent), text: rgbHex(text), outline: rgbHex(outline) };
+}
+
+/** A saved custom Star colour keeps readable text via the same contrast math. */
+function starPaletteFromAccent(accentHex: string): StarPalette {
+  const accent = parseResolvedColor(accentHex);
+  if (!accent) return DEFAULT_STAR_PALETTE;
+  const white = { r: 255, g: 255, b: 255 };
+  const black = { r: 0, g: 0, b: 0 };
+  const text = contrastRatio(accent, black) >= contrastRatio(accent, white) ? black : white;
+  return { accent: rgbHex(accent), text: rgbHex(text), outline: rgbHex(text) };
 }
 
 function GexMapDropdown<T extends string>({
@@ -455,6 +480,7 @@ function ExposurePanel({
   stepMinutes,
   viewMode,
   starSettings,
+  palette,
   unavailableReason = null,
   onChange,
   onRemove,
@@ -467,6 +493,7 @@ function ExposurePanel({
   stepMinutes: number;
   viewMode: GexMapViewMode;
   starSettings: GexMapStarSettings;
+  palette: GexMapPalette;
   unavailableReason?: string | null;
   onChange: (patch: Partial<Pick<PanelConfig, "symbol" | "greekMode">>) => void;
   onRemove?: () => void;
@@ -482,6 +509,7 @@ function ExposurePanel({
     [payload, selectedTimestamp, stepMinutes],
   );
   const spot = payload ? priceAt(payload, selectedTimestamp) : null;
+  const tones = gexMapPaletteTones(palette);
   const rows = useMemo(
     () => [...current.values()].sort((a, b) => b.strike - a.strike),
     [current],
@@ -564,6 +592,12 @@ function ExposurePanel({
   useLayoutEffect(() => {
     const host = panelRef.current;
     if (!host) return;
+    // A saved custom Star colour replaces the automatic contrast search
+    // entirely; theme changes stop repainting it until the palette relinks.
+    if (!palette.useThemeColors) {
+      setStarPalette(starPaletteFromAccent(palette.star));
+      return;
+    }
 
     let frame = 0;
     const updatePalette = () => {
@@ -582,7 +616,7 @@ function ExposurePanel({
       window.removeEventListener("kwantdesk:theme-change", updatePalette);
       window.cancelAnimationFrame(frame);
     };
-  }, [viewIdentity]);
+  }, [palette.star, palette.useThemeColors, viewIdentity]);
 
   useLayoutEffect(() => {
     const container = scrollRef.current;
@@ -835,7 +869,7 @@ function ExposurePanel({
                     style={{
                       opacity: highlighted || nearSpot ? 1 : Math.max(0.02, starSettings.dimOpacity),
                       backgroundColor: highlighted
-                        ? heatColor(derived.net, Math.max(0.2, derived.mapControlPct / maxHighlightedControl))
+                        ? heatColor(derived.net, Math.max(0.2, derived.mapControlPct / maxHighlightedControl), tones.positive, tones.negative)
                         : "var(--chart-background)",
                       ...(isFocusedStar ? {
                         "--gex-star-accent": starPalette.accent,
@@ -853,8 +887,8 @@ function ExposurePanel({
                           width: `${Math.max(4, Math.min(100, barWidth))}%`,
                           opacity: isFocusedStar ? 0.34 : 0.2,
                           background: derived.net >= 0
-                            ? "linear-gradient(90deg,var(--primary),transparent)"
-                            : "linear-gradient(90deg,var(--danger),transparent)",
+                            ? `linear-gradient(90deg,${tones.positive},transparent)`
+                            : `linear-gradient(90deg,${tones.negative},transparent)`,
                         }}
                       />
                     ) : null}
@@ -894,7 +928,7 @@ function ExposurePanel({
                   data-gex-strike-node="true"
                   className={`gex-map-strike-row relative grid grid-cols-[96px_minmax(0,1fr)_86px] items-center border-b border-black/10 px-2 font-mono text-[9px] transition-[height,margin,background-color] ${nearSpot ? "mx-1 my-1 h-[35px]" : isStar ? "mx-1 my-0.5 h-[29px]" : "h-[25px]"} ${isStar ? `gex-star-node z-[3] ${nearSpot ? "gex-star-is-current" : ""}` : nearSpot ? "gex-current-price-marker z-[2]" : ""}`}
                   style={{
-                    backgroundColor: heatColor(row.net, strength),
+                    backgroundColor: heatColor(row.net, strength, tones.positive, tones.negative),
                     ...(isStar ? {
                       "--gex-star-accent": starPalette.accent,
                       "--gex-star-text": starPalette.text,
@@ -972,12 +1006,20 @@ function ExposurePanel({
 function StarViewSettings({
   open,
   settings,
+  palette,
+  paletteDirty,
   onChange,
+  onPaletteChange,
+  onPaletteSave,
   onClose,
 }: {
   open: boolean;
   settings: GexMapStarSettings;
+  palette: GexMapPalette;
+  paletteDirty: boolean;
   onChange: (next: GexMapStarSettings) => void;
+  onPaletteChange: (next: GexMapPalette) => void;
+  onPaletteSave: () => void;
   onClose: () => void;
 }) {
   useEffect(() => {
@@ -1048,8 +1090,51 @@ function StarViewSettings({
             <span><span className="block text-[10px] text-foreground">Spot-proximity weighting</span><span className="text-[8px] text-muted">{Math.round(settings.proximityWeight * 100)}%</span></span>
             <input type="range" min="0" max="0.3" step="0.01" value={settings.proximityWeight} onChange={(event) => update("proximityWeight", Number(event.target.value))} className="w-full accent-[var(--primary)]" />
           </label>
+          <div className="pt-4 text-[8px] font-semibold uppercase tracking-[0.14em] text-muted">Colours</div>
+          <label className={rowClass}>
+            <span><span className="block text-[10px] text-foreground">Use theme colours</span><span className="text-[8px] text-muted">Follow the overall KwantDesk theme</span></span>
+            <input
+              type="checkbox"
+              checked={palette.useThemeColors}
+              onChange={(event) => onPaletteChange({ ...palette, useThemeColors: event.target.checked })}
+              className="ml-auto h-4 w-4 accent-[var(--primary)]"
+            />
+          </label>
+          {!palette.useThemeColors ? ([
+            ["positive", "Positive exposure", "Call-side heat and bars"],
+            ["negative", "Negative exposure", "Put-side heat and bars"],
+            ["star", "Star node", "Star accent, badge and outline"],
+          ] as const).map(([key, label, detail]) => (
+            <div key={key} className={rowClass}>
+              <span><span className="block text-[10px] text-foreground">{label}</span><span className="text-[8px] text-muted">{detail}</span></span>
+              <div className="flex justify-end">
+                <ChartColorField
+                  ariaLabel={`${label} colour`}
+                  value={palette[key]}
+                  onChange={(hex) => onPaletteChange({ ...palette, [key]: hex })}
+                />
+              </div>
+            </div>
+          )) : null}
           <button type="button" onClick={() => onChange({ ...RECOMMENDED_GEX_MAP_STAR_SETTINGS })} className="mt-4 h-8 border border-primary/40 px-3 text-[9px] font-semibold text-primary hover:bg-primary/10">RESET RECOMMENDED DEFAULTS</button>
         </div>
+        <footer className="sticky bottom-0 z-10 flex h-12 items-center justify-between gap-3 border-t border-border bg-panel px-4">
+          <span className="text-[8px] text-muted">
+            {paletteDirty ? "Colour changes preview live — Save to keep them." : "Saved colours stay until you relink the theme."}
+          </span>
+          <button
+            type="button"
+            onClick={onPaletteSave}
+            disabled={!paletteDirty}
+            className={`h-8 border px-4 text-[9px] font-semibold transition ${
+              paletteDirty
+                ? "border-primary bg-primary/10 text-primary hover:bg-primary/20"
+                : "border-border text-muted"
+            }`}
+          >
+            SAVE
+          </button>
+        </footer>
       </section>
     </div>,
     document.body,
@@ -1090,6 +1175,19 @@ function GexMapWorkspace({ market = null, externalReplay = null }: GexMapWorkspa
   const [viewMode, setViewMode] = useState<GexMapViewMode>("raw");
   const [starSettings, setStarSettings] = useState<GexMapStarSettings>({ ...RECOMMENDED_GEX_MAP_STAR_SETTINGS });
   const [starSettingsOpen, setStarSettingsOpen] = useState(false);
+  // The saved palette is the committed truth; edits inside the settings
+  // dialog preview live and either commit on Save or revert on close.
+  const [savedPalette, setSavedPalette] = useState<GexMapPalette>(() => loadGexMapPalette());
+  const [palettePreview, setPalettePreview] = useState<GexMapPalette | null>(null);
+  const activePalette = palettePreview ?? savedPalette;
+  useEffect(() => {
+    const applyExternalPalette = (event: Event) => {
+      const next = normalizeGexMapPalette((event as CustomEvent).detail);
+      setSavedPalette((currentSaved) => gexMapPalettesEqual(currentSaved, next) ? currentSaved : next);
+    };
+    window.addEventListener(GEX_MAP_PALETTE_CHANGE_EVENT, applyExternalPalette);
+    return () => window.removeEventListener(GEX_MAP_PALETTE_CHANGE_EVENT, applyExternalPalette);
+  }, []);
   const starPreferencesHydratedRef = useRef(false);
   const forceRefreshRef = useRef(false);
   const replayMode = externalReplay?.active ?? internalReplayMode;
@@ -1490,6 +1588,7 @@ function GexMapWorkspace({ market = null, externalReplay = null }: GexMapWorkspa
                   stepMinutes={stepMinutes}
                   viewMode={viewMode}
                   starSettings={starSettings}
+                  palette={activePalette}
                   unavailableReason={replaySessionMismatch
                     ? `Recorded frames are for ${payload?.sessionDate}, but the replay session is ${requestedReplayDate}. Exposure frames are only retained for the latest completed session.`
                     : null}
@@ -1589,8 +1688,21 @@ function GexMapWorkspace({ market = null, externalReplay = null }: GexMapWorkspa
       <StarViewSettings
         open={starSettingsOpen}
         settings={starSettings}
+        palette={activePalette}
+        paletteDirty={palettePreview !== null && !gexMapPalettesEqual(palettePreview, savedPalette)}
         onChange={setStarSettings}
-        onClose={() => setStarSettingsOpen(false)}
+        onPaletteChange={setPalettePreview}
+        onPaletteSave={() => {
+          const next = palettePreview ?? savedPalette;
+          saveGexMapPalette(next);
+          setSavedPalette(next);
+          setPalettePreview(null);
+        }}
+        onClose={() => {
+          // Closing without saving discards the colour preview.
+          setPalettePreview(null);
+          setStarSettingsOpen(false);
+        }}
       />
     </div>
   );

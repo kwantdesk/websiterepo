@@ -116,6 +116,7 @@ import ChartIndicatorPanes, {
   type IndicatorPaneGroup,
   type IndicatorPaneLayoutMap,
 } from "@/components/ChartIndicatorPanes";
+import ChartColorField from "@/components/ChartColorField";
 import DepthOfMarketPanel from "@/components/DepthOfMarketPanel";
 import GexBotFlowStrip from "@/components/GexBotFlowStrip";
 import KwantLoader from "@/components/KwantLoader";
@@ -14682,15 +14683,14 @@ function Chart({
           <div className="space-y-5 p-4">
             <section className="space-y-3">
               <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted">Style</div>
-              <label className="flex items-center justify-between gap-4 text-[12px] text-muted">
+              <div className="flex items-center justify-between gap-4 text-[12px] text-muted">
                 Line colour
-                <input
-                  type="color"
+                <ChartColorField
+                  ariaLabel="Drawing line colour"
                   value={selectedProfessionalDrawing.style.lineColor}
-                  onChange={(event) => updateSelectedProfessionalDrawing({ lineColor: event.target.value, labelColor: event.target.value })}
-                  className="h-8 w-12 border border-border bg-surface"
+                  onChange={(hex) => updateSelectedProfessionalDrawing({ lineColor: hex, labelColor: hex })}
                 />
-              </label>
+              </div>
               <label className="block text-[12px] text-muted">
                 <span className="mb-2 flex justify-between"><span>Line width</span><span>{selectedProfessionalDrawing.style.lineWidth.toFixed(1)} px</span></span>
                 <input
@@ -14768,12 +14768,10 @@ function Chart({
                           className="h-7 min-w-0 border border-border bg-background px-1.5 font-mono text-[10px] text-foreground outline-none focus:border-primary"
                           aria-label={`Fibonacci level ${index + 1}`}
                         />
-                        <input
-                          type="color"
+                        <ChartColorField
+                          ariaLabel={`Colour for Fibonacci level ${level}`}
                           value={levelStyle.color ?? selectedProfessionalDrawing.style.lineColor}
-                          onChange={(event) => updateSelectedFibLevelStyle(level, { color: event.target.value })}
-                          className="h-7 w-8 border border-border bg-background p-0.5"
-                          aria-label={`Colour for Fibonacci level ${level}`}
+                          onChange={(hex) => updateSelectedFibLevelStyle(level, { color: hex })}
                         />
                         <select
                           value={levelStyle.lineWidth ?? selectedProfessionalDrawing.style.lineWidth}
@@ -15068,19 +15066,17 @@ function Chart({
                 ["Entry line", "entryLineColor"],
                 ["Label text", "textColor"],
               ] as const).map(([label, key]) => (
-                <label key={key} className="flex items-center gap-2 rounded-xl border border-border bg-background/45 px-2.5 py-2">
-                  <input
-                    type="color"
+                <div key={key} className="flex items-center gap-2 rounded-xl border border-border bg-background/45 px-2.5 py-2">
+                  <ChartColorField
+                    ariaLabel={`${label} colour`}
                     value={activePositionStyle[key]}
-                    onChange={(event) => updatePositionVisualSettings({ [key]: event.target.value })}
-                    className="h-6 w-6 cursor-pointer rounded-md border-0 bg-transparent p-0"
-                    aria-label={`${label} color`}
+                    onChange={(hex) => updatePositionVisualSettings({ [key]: hex })}
                   />
                   <span>
                     <span className="block text-[9px] font-medium text-foreground">{label}</span>
                     <span className="block font-mono text-[8px] uppercase text-muted">{activePositionStyle[key]}</span>
                   </span>
-                </label>
+                </div>
               ))}
             </div>
 

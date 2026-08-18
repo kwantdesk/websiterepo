@@ -101,6 +101,8 @@ import type { FriendsPayload } from "@/lib/friends";
 import { cacheProfileIdentity, readProfileIdentityCache } from "@/lib/profileIdentityCache";
 import { useAccountPreferenceSync } from "@/hooks/useAccountPreferenceSync";
 import { compactLegacyAuthPreferenceMetadata, hydrateUserPreferences } from "@/lib/userPreferences";
+import { readStoredTheme, saveTheme, type ThemeColors } from "@/lib/theme";
+import { loadGexMapPalette, saveGexMapPalette, type GexMapPalette } from "@/lib/gexMapPalette";
 import { normalizeTimeZone } from "@/lib/timeZones";
 import { clearSavedStrategiesRaw, loadSavedStrategiesRaw, saveSavedStrategiesRaw } from "@/lib/automation";
 import { CHART_SETTINGS_CHANGE_EVENT, CHART_SETTINGS_STORAGE_KEY, applyActiveThemeToWorkspaceChartSettings, chartSettingsEqual, defaultChartSettings, extractUserChartSettings, loadStoredChartSettings, mergeWorkspaceChartSettingsWithActiveTheme, normalizeChartSettings, saveStoredChartSettings, type ChartSettings } from "@/lib/chartSettings";
@@ -887,6 +889,10 @@ type WorkspacePreset = {
   indicators?: Record<string, ChartIndicatorInstance[]>;
   levelVisibility?: Record<string, PaneLevelVisibility>;
   floatingWindows?: WorkspaceFloatingWindow[];
+  /** Overall theme at save time, so applying the workspace restores its full look. */
+  theme?: ThemeColors;
+  /** GEX Map exposure palette at save time. */
+  gexMapPalette?: GexMapPalette;
   updatedAt: string;
 };
 type WorkspaceBackupFile = {
@@ -13112,6 +13118,11 @@ export default function KwantifyWorkspace({
     indicators: clonePaneIndicatorState(paneIndicators),
     levelVisibility: clonePaneLevelVisibility(paneLevelVisibility),
     floatingWindows: workspaceFloatingWindows,
+    // A workspace is its complete look: the overall theme and every custom
+    // palette are captured with it, so applying it later restores the exact
+    // colours even after the trader has changed themes in between.
+    theme: readStoredTheme(),
+    gexMapPalette: loadGexMapPalette(),
     updatedAt: new Date().toISOString(),
   });
 
@@ -13151,6 +13162,11 @@ export default function KwantifyWorkspace({
   };
 
   const applyWorkspacePreset = (preset: WorkspacePreset) => {
+    // Restore the workspace's saved look first: the overall theme and custom
+    // palettes it was saved with win over whatever theme is currently active,
+    // so an old workspace always comes back exactly as it was designed.
+    if (preset.theme) saveTheme(preset.theme);
+    if (preset.gexMapPalette) saveGexMapPalette(preset.gexMapPalette);
     const panes = preset.panes.length ? preset.panes : defaultWorkspacePanes(chartWorkspaceScopeRef.current);
     const normalizedTree = normalizeWorkspaceLayoutNode(
       preset.layout,
