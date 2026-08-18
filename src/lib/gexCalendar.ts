@@ -65,14 +65,17 @@ export function buildGexCalMatrix(input: {
   asOfTimestamp?: number | null;
   baselineTimestamp?: number | null;
   baselineSurface?: GexIntervalProviderSurface | null;
+  disableAutomaticBaseline?: boolean;
   side?: GexCalOptionSide;
 }): GexCalMatrix {
   const side = input.side ?? "NET";
   const selected = bucketAtOrBefore(input.surface.buckets, input.asOfTimestamp);
   if (!selected) throw new Error("No exposure bucket exists at or before the selected time.");
   const baselineSource = input.baselineSurface ?? input.surface;
-  let baseline = bucketAtOrBefore(baselineSource.buckets, input.baselineTimestamp);
-  if (!input.baselineTimestamp && !input.baselineSurface) {
+  let baseline = input.disableAutomaticBaseline
+    ? null
+    : bucketAtOrBefore(baselineSource.buckets, input.baselineTimestamp);
+  if (!input.disableAutomaticBaseline && !input.baselineTimestamp && !input.baselineSurface) {
     const sorted = [...input.surface.buckets].sort((a, b) => a.timestamp - b.timestamp);
     const index = sorted.findIndex((bucket) => bucket.timestamp === selected.timestamp);
     baseline = index > 0 ? sorted[index - 1] : null;

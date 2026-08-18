@@ -54,16 +54,25 @@ export async function GET(request: NextRequest) {
   if (hit && hit.expiresAt > Date.now()) return NextResponse.json(hit.payload, { headers: { "Cache-Control": "private, no-store" } });
   try {
     const surface = await getGexIntervalMapSurface({ sourceTicker: source, sessionDate, aggregationPeriod: "1m", greekMode: greek, representationMode: representation });
-    const baselineSurface = baselineMode === "previous-close"
-      ? await getGexIntervalMapSurface({ sourceTicker: source, sessionDate: previousBusinessDate(surface.sessionDate), aggregationPeriod: "1m", greekMode: greek, representationMode: representation })
-      : null;
+    let baselineSurface = null;
+    let baselineLimitation: string | null = null;
+    if (baselineMode === "previous-close") {
+      try {
+        baselineSurface = await getGexIntervalMapSurface({ sourceTicker: source, sessionDate: previousBusinessDate(surface.sessionDate), aggregationPeriod: "1m", greekMode: greek, representationMode: representation });
+      } catch (error) {
+        const problem = getQuantDataHttpError(error);
+        baselineLimitation = `Previous-close comparison unavailable: ${problem.message}`;
+      }
+    }
     const payload = buildGexCalMatrix({
       surface,
       asOfTimestamp,
       baselineTimestamp: baselineSurface ? null : baselineTimestamp,
       baselineSurface,
+      disableAutomaticBaseline: baselineMode === "previous-close" && !baselineSurface,
       side,
     });
+    if (baselineLimitation) payload.limitations = [...payload.limitations, baselineLimitation];
     const expiresIn = payload.status === "LIVE" ? 4_000 : 60_000;
     if (cache.size > 80) for (const [cacheKey, entry] of cache) if (entry.expiresAt <= Date.now()) cache.delete(cacheKey);
     cache.set(key, { expiresAt: Date.now() + expiresIn, payload });

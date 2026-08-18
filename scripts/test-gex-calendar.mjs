@@ -34,6 +34,11 @@ assert.equal(replay.cells.find((cell) => cell.strike === 5050)?.previousValue, 0
 const currentOnly = buildGexCalMatrix({ surface: { ...surface, buckets: [surface.buckets[0]] }, side: "NET" });
 assert.equal(currentOnly.cells[0].previousValue, null, "missing baseline remains missing");
 
+const comparisonUnavailable = buildGexCalMatrix({ surface, asOfTimestamp: 2_500, side: "NET", disableAutomaticBaseline: true });
+assert.equal(comparisonUnavailable.cells[0].previousValue, null, "an unavailable optional comparison must not fall back to a different baseline");
+assert.equal(comparisonUnavailable.cells[0].change, null, "an unavailable optional comparison must leave change unknown");
+assert.equal(comparisonUnavailable.cells.length, 2, "an unavailable optional comparison must preserve the current surface");
+
 const largeRows = [];
 for (let expiry = 0; expiry < 120; expiry += 1) {
   const expirationDate = new Date(Date.UTC(2026, 7, 14 + expiry)).toISOString().slice(0, 10);

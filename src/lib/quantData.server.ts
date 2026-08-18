@@ -3919,18 +3919,23 @@ export async function getGexIntervalMapSurface(input: {
     : { sessionDate };
   const customHistoryRange = Boolean(input.startTime && input.endTime);
   const ttl = !customHistoryRange && sessionDate === session.sessionDate && session.marketOpen ? 5_000 : 6 * 60 * 60_000;
+  // SPXW is an option-class root rather than a separately quoted underlying in
+  // KwantData's interval-map tool. The SPX surface contains the weekly/0DTE
+  // series used by this workspace, while the product-facing identity remains
+  // SPXW so saved workspaces and labels do not silently change instruments.
+  const providerTicker = sourceTicker === "SPXW" ? "SPX" : sourceTicker;
   const [interval, pricesResult] = await Promise.all([
     quantDataPost("/options/tool/interval-map", {
       ...scope,
       aggregationPeriod,
       greekMode,
       representationMode,
-      filter: { ticker: sourceTicker },
+      filter: { ticker: providerTicker },
     }, ttl),
     quantDataPost("/equities/tool/stock-price-over-time", {
       ...scope,
       aggregationPeriod,
-      filter: { ticker: sourceTicker === "SPXW" ? "SPX" : sourceTicker },
+      filter: { ticker: providerTicker },
     }, ttl).then((result) => result.payload).catch(() => null),
   ]);
   const historical = sessionDate !== session.sessionDate || Boolean(input.startTime && input.endTime);
