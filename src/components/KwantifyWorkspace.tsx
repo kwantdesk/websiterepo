@@ -951,6 +951,11 @@ const CHART_WORKSPACE_SETTINGS_STORAGE_KEY = "kwantdesk:chart-workspace-settings
 type ChartWorkspaceScope = "charts" | "gamma";
 const GAMMA_CHART_WORKSPACE_STORAGE_PREFIX = "kwantdesk:gamma-charting";
 const GEX_VUE_VIEWPORT_SYNC_GROUP = "gex-vue-linked-viewport";
+const CHARTS_VIEWPORT_SYNC_GROUP = "charts-linked-viewport";
+// Charts and GEX Vue each own a distinct sync group so linked charts never
+// bleed viewport state across workspaces.
+const viewportSyncGroupForScope = (scope: ChartWorkspaceScope) =>
+  scope === "gamma" ? GEX_VUE_VIEWPORT_SYNC_GROUP : CHARTS_VIEWPORT_SYNC_GROUP;
 const workspaceScopeStorageKey = (scope: ChartWorkspaceScope, chartKey: string) =>
   scope === "charts" ? chartKey : `${GAMMA_CHART_WORKSPACE_STORAGE_PREFIX}:${chartKey}`;
 const WORKSPACE_BACKUP_FORMAT = "kwantdesk-chart-workspaces";
@@ -7715,14 +7720,13 @@ export default function KwantifyWorkspace({
   const [workspacePanes, setWorkspacePanes] = useState<WorkspacePane[]>(initialChartWorkspaceRuntime.panes);
   const [linkedViewportPaneIds, setLinkedViewportPaneIds] = useState<Set<string>>(() => new Set());
   useEffect(() => {
-    if (chartWorkspaceScope !== "gamma") return;
     const chartPaneIds = new Set(
       workspacePanes.filter((pane) => isWorkspaceChartKind(pane.content)).map((pane) => pane.id),
     );
     setLinkedViewportPaneIds((current) => {
       const next = new Set([...current].filter((paneId) => chartPaneIds.has(paneId)));
       if (next.size === current.size && [...next].every((paneId) => current.has(paneId))) return current;
-      if (next.size === 0) clearChartViewportGroup(GEX_VUE_VIEWPORT_SYNC_GROUP);
+      if (next.size === 0) clearChartViewportGroup(viewportSyncGroupForScope(chartWorkspaceScope));
       return next;
     });
   }, [chartWorkspaceScope, workspacePanes]);
@@ -12753,20 +12757,20 @@ export default function KwantifyWorkspace({
   };
 
   const toggleSharedViewportConnection = (paneId: string) => {
-    if (chartWorkspaceScopeRef.current !== "gamma") return;
+    const syncGroup = viewportSyncGroupForScope(chartWorkspaceScopeRef.current);
     const pane = workspacePanes.find((candidate) => candidate.id === paneId);
     if (!pane || !isWorkspaceChartKind(pane.content)) return;
     if (linkedViewportPaneIds.has(paneId)) {
       const next = new Set(linkedViewportPaneIds);
       next.delete(paneId);
       setLinkedViewportPaneIds(next);
-      if (next.size === 0) clearChartViewportGroup(GEX_VUE_VIEWPORT_SYNC_GROUP);
+      if (next.size === 0) clearChartViewportGroup(syncGroup);
       showReportToast("success", `${displayCmeSymbol(pane.symbol)} unlinked from the shared viewport`, 1500);
       return;
     }
 
     const referencePane = workspacePanes.find((candidate) => linkedViewportPaneIds.has(candidate.id));
-    if (linkedViewportPaneIds.size === 0) clearChartViewportGroup(GEX_VUE_VIEWPORT_SYNC_GROUP);
+    if (linkedViewportPaneIds.size === 0) clearChartViewportGroup(syncGroup);
     if (referencePane && pane.timeframe !== referencePane.timeframe) {
       updateWorkspacePane(paneId, { timeframe: referencePane.timeframe });
       if (activePaneId === paneId) setSelectedTimeframe(referencePane.timeframe);
@@ -13964,11 +13968,8 @@ export default function KwantifyWorkspace({
 
   const selectTimeframe = (timeframe: string) => {
     clearBacktest();
-    if (
-      chartWorkspaceScopeRef.current === "gamma"
-      && linkedViewportPaneIds.has(activePaneId)
-    ) {
-      clearChartViewportGroup(GEX_VUE_VIEWPORT_SYNC_GROUP);
+    if (linkedViewportPaneIds.has(activePaneId)) {
+      clearChartViewportGroup(viewportSyncGroupForScope(chartWorkspaceScopeRef.current));
       setWorkspacePanes((current) => current.map((pane) => (
         linkedViewportPaneIds.has(pane.id)
           ? { ...pane, timeframe }
@@ -13988,11 +13989,8 @@ export default function KwantifyWorkspace({
     const pane = workspacePanes.find((candidate) => candidate.id === paneId);
     if (!pane || !supportsChartInterval(timeframe, pane.broker)) return false;
     clearBacktest();
-    if (
-      chartWorkspaceScopeRef.current === "gamma"
-      && linkedViewportPaneIds.has(paneId)
-    ) {
-      clearChartViewportGroup(GEX_VUE_VIEWPORT_SYNC_GROUP);
+    if (linkedViewportPaneIds.has(paneId)) {
+      clearChartViewportGroup(viewportSyncGroupForScope(chartWorkspaceScopeRef.current));
       setWorkspacePanes((current) => current.map((candidate) => (
         linkedViewportPaneIds.has(candidate.id)
           ? { ...candidate, timeframe }
@@ -14739,13 +14737,11 @@ export default function KwantifyWorkspace({
         embedded
         period={chartWorkspaceScope === "gamma" && gexVueReplay.active ? "5D" : pane.period}
         settings={chartSettings}
-        crosshairSyncScope={chartWorkspaceScope === "gamma" ? "gamvue" : "matching"}
-        viewportSyncGroup={chartWorkspaceScope === "gamma" ? GEX_VUE_VIEWPORT_SYNC_GROUP : ""}
-        viewportSyncRole={chartWorkspaceScope === "gamma"
-          ? linkedViewportPaneIds.has(pane.id)
-            ? "peer"
-            : "independent"
-          : "independent"}
+        crosshairSyncScope={chartWorkspaceScope === "gamma" || linkedViewportPaneIds.has(pane.id)
+          ? "gamvue"
+          : "matching"}
+        viewportSyncGroup={viewportSyncGroupForScope(chartWorkspaceScope)}
+        viewportSyncRole={linkedViewportPaneIds.has(pane.id) ? "peer" : "independent"}
         replayTimestampMs={chartWorkspaceScope === "gamma" && gexVueReplay.active
           ? gexVueReplay.timestampMs
           : null}
@@ -14843,7 +14839,7 @@ export default function KwantifyWorkspace({
             >
               {pane.locked ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
             </button>
-            {chartWorkspaceScope === "gamma" ? (
+            {isWorkspaceChartKind(pane.content) ? (
               <button
                 type="button"
                 onClick={() => toggleSharedViewportConnection(pane.id)}
@@ -14965,7 +14961,7 @@ export default function KwantifyWorkspace({
             >
               {floating.locked ? <Lock className="h-3 w-3" /> : <Unlock className="h-3 w-3" />}
             </button>
-            {chartWorkspaceScope === "gamma" && isWorkspaceChartKind(pane.content) ? (
+            {isWorkspaceChartKind(pane.content) ? (
               <button
                 type="button"
                 onPointerDown={(event) => event.stopPropagation()}
