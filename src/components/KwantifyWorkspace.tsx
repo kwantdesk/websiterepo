@@ -1343,7 +1343,23 @@ function contractMatchesChartInstrument(chartSymbol: string, contractSymbol: str
   return parentCmeRoot(chartSymbol) === parentCmeRoot(contractSymbol);
 }
 
+// Options-family index charts derive value-area levels from the CME futures
+// book that hedges them: NDX/QQQ from NQ, SPX/SPY from ES. The futures
+// profile prices are projected onto the cash scale with a live basis ratio.
+const VALUE_AREA_INDEX_SOURCE_ROOTS: Record<string, "NQ" | "ES"> = {
+  NDX: "NQ",
+  QQQ: "NQ",
+  SPX: "ES",
+  SPY: "ES",
+};
+
+function valueAreaIndexSourceRoot(chartSymbol: string): "NQ" | "ES" | null {
+  return VALUE_AREA_INDEX_SOURCE_ROOTS[displayCmeSymbol(chartSymbol).toUpperCase()] ?? null;
+}
+
 function valueAreaSourceSymbol(chartSymbol: string) {
+  const indexRoot = valueAreaIndexSourceRoot(chartSymbol);
+  if (indexRoot) return `${indexRoot}.v.0`;
   const parent = parentCmeRoot(chartSymbol);
   return `${parent}.v.0`;
 }
@@ -3925,6 +3941,76 @@ function fetchValueAreaPayload(symbol: string) {
   return promise;
 }
 
+type ValueAreaFuturesReferenceBar = { timestamp: number; close: number };
+
+const valueAreaFuturesReferenceCache = new Map<string, {
+  expiresAt: number;
+  promise: Promise<ValueAreaFuturesReferenceBar[]>;
+}>();
+
+function fetchValueAreaFuturesReference(root: "NQ" | "ES") {
+  const now = Date.now();
+  const cached = valueAreaFuturesReferenceCache.get(root);
+  if (cached && cached.expiresAt > now) return cached.promise;
+  const promise = fetch(
+    `/api/cme-history?symbol=${encodeURIComponent(`${root}.c.0`)}&timeframe=1m&days=2`,
+    { cache: "no-store" },
+  )
+    .then(async (response) => {
+      if (!response.ok) throw new Error(`The CME ${root} reference history is unavailable.`);
+      const payload = await response.json() as { candles?: Array<{ timestamp?: number; close?: number }> };
+      const bars = (Array.isArray(payload.candles) ? payload.candles : [])
+        .map((candle) => ({ timestamp: Number(candle.timestamp), close: Number(candle.close) }))
+        .filter((bar) => Number.isFinite(bar.timestamp) && bar.timestamp > 0
+          && Number.isFinite(bar.close) && bar.close > 0);
+      if (!bars.length) throw new Error(`The CME ${root} reference history returned no candles.`);
+      return bars;
+    })
+    .catch((error: unknown) => {
+      if (valueAreaFuturesReferenceCache.get(root)?.promise === promise) {
+        valueAreaFuturesReferenceCache.delete(root);
+      }
+      throw error;
+    });
+  valueAreaFuturesReferenceCache.set(root, { expiresAt: now + 120_000, promise });
+  return promise;
+}
+
+// The futures→cash projection anchors on the futures bar closest to the cash
+// chart's latest candle so the live basis is measured, never assumed. A match
+// farther than 45 minutes away means one of the two feeds is stale — refuse
+// to paint rather than draw levels on the wrong scale.
+function valueAreaFuturesToCashRatio(
+  bars: ValueAreaFuturesReferenceBar[],
+  cashCandle: { timestamp: number; close: number } | null,
+): number | null {
+  if (!cashCandle || !Number.isFinite(cashCandle.close) || cashCandle.close <= 0) return null;
+  let best: ValueAreaFuturesReferenceBar | null = null;
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (const bar of bars) {
+    const distance = Math.abs(bar.timestamp - cashCandle.timestamp);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = bar;
+    }
+  }
+  if (!best || bestDistance > 45 * 60_000) return null;
+  return cashCandle.close / best.close;
+}
+
+function convertValueAreaProfilePrices(
+  profile: CompletedValueAreaProfile,
+  convert: (price: number) => number,
+): CompletedValueAreaProfile {
+  return {
+    ...profile,
+    vah: convert(profile.vah),
+    val: convert(profile.val),
+    poc: convert(profile.poc),
+    vwap: convert(profile.vwap),
+  };
+}
+
 function validValueAreaProfile(profile: CompletedValueAreaProfile) {
   return [
     profile.vah,
@@ -4455,6 +4541,10 @@ function readValueAreaOverlayCache(
   instrument: string,
   settings: ChartSettings,
 ): ValueAreaChartOverlay | null {
+  // Index charts need a live futures→cash ratio before any level may paint;
+  // the cached payload holds futures prices, so a cold restore would draw
+  // them on the wrong scale. Let the loader convert and paint instead.
+  if (valueAreaIndexSourceRoot(instrument)) return null;
   const sourceKey = valueAreaSourceSymbol(instrument).toUpperCase();
   const sourcePayload = readValueAreaSessionPayload(sourceKey);
   if (!sourcePayload) return null;
@@ -4712,10 +4802,23 @@ function WorkspaceChartPaneComponent({
     return [...dates].sort().slice(-6);
   }, [candles, currentDailyTradingDate]);
   const dailyTradingDateSignature = dailyTradingDates.join(",");
+  // The futures→cash value-area projection reads the latest cash candle
+  // through a ref so the refresh loop never re-arms on every candle update.
+  const latestCashCandleRef = useRef<{ timestamp: number; close: number } | null>(null);
+  useEffect(() => {
+    const last = candles[candles.length - 1];
+    latestCashCandleRef.current = last && Number.isFinite(last.close) && last.close > 0
+      ? { timestamp: last.timestamp, close: last.close }
+      : null;
+  }, [candles]);
   const gammaLevelsAvailable =
     pane.broker === "Databento" && isGammaChartInstrument(gammaInstrument);
+  const valueAreaIndexRoot = pane.broker === "Market Index"
+    ? valueAreaIndexSourceRoot(pane.symbol)
+    : null;
   const valueAreaLevelsAvailable =
-    pane.broker === "Databento" && isContinuousFuture(pane.symbol);
+    (pane.broker === "Databento" && isContinuousFuture(pane.symbol))
+    || valueAreaIndexRoot !== null;
   const primaryGammaConversion = gammaLevelsAvailable
     ? cashFallbackGammaConversion(gammaInstrument)
     : null;
@@ -6246,13 +6349,33 @@ function WorkspaceChartPaneComponent({
       let nextDelay = 15_000;
       try {
         const sourceSymbol = valueAreaSourceSymbol(pane.symbol);
+        // Index charts (NDX/QQQ/SPX/SPY) project the NQ/ES profile onto the
+        // cash scale using the live basis between the latest cash candle and
+        // the futures bar at the same minute. No ratio, no levels — painting
+        // futures prices on a cash chart would be a wrong-scale fabrication.
+        let convertPrice: ((price: number) => number) | null = null;
+        if (valueAreaIndexRoot) {
+          const referenceBars = await fetchValueAreaFuturesReference(valueAreaIndexRoot);
+          const ratio = valueAreaFuturesToCashRatio(referenceBars, latestCashCandleRef.current);
+          if (!ratio) {
+            throw new Error(`A live ${valueAreaIndexRoot} futures reference is unavailable to project value-area levels onto ${displayCmeSymbol(pane.symbol)}.`);
+          }
+          convertPrice = (price: number) => price * ratio;
+        }
         const sourcePayload = await fetchValueAreaPayload(sourceSymbol);
         // Micro charts deliberately consume their parent book on the VPS. Use
         // the same parent profile, but retain the selected chart identity so
         // overlay validation and exports remain attached to MES/MNQ/etc.
-        const payload = sourcePayload.symbol.toUpperCase() === pane.symbol.toUpperCase()
-          ? sourcePayload
-          : { ...sourcePayload, symbol: pane.symbol };
+        const scaledPayload = convertPrice
+          ? {
+            ...sourcePayload,
+            daily: convertValueAreaProfilePrices(sourcePayload.daily, convertPrice),
+            weekly: convertValueAreaProfilePrices(sourcePayload.weekly, convertPrice),
+          }
+          : sourcePayload;
+        const payload = scaledPayload.symbol.toUpperCase() === pane.symbol.toUpperCase()
+          ? scaledPayload
+          : { ...scaledPayload, symbol: pane.symbol };
         if (cancelled) return;
         const overlay = buildValueAreaChartOverlay(
           payload,
@@ -6270,18 +6393,32 @@ function WorkspaceChartPaneComponent({
         // The developing profile is useful, but it is not allowed to hold the
         // completed prior-session/prior-week levels hostage. Fetch it in the
         // background and merge it when ready.
-        if (resolvedContractSymbol && !developingRunning) {
+        const developingContract = valueAreaIndexRoot
+          ? currentCmeContract(`${valueAreaIndexRoot}.c.0`)
+          : resolvedContractSymbol;
+        if (developingContract && !developingRunning) {
           developingRunning = true;
           void fetchInstitutionalVolumeProfile({
-            symbol: displayCmeSymbol(pane.symbol),
-            contractSymbol: resolvedContractSymbol,
+            symbol: valueAreaIndexRoot ?? displayCmeSymbol(pane.symbol),
+            contractSymbol: developingContract,
             period: "daily",
             tradingDate: chicagoTradingDate(Date.now()),
             groupTicks: 1,
             valueAreaPercent: STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
           })
-            .then((developing) => {
-              if (cancelled || !developing) return;
+            .then((rawDeveloping) => {
+              if (cancelled || !rawDeveloping) return;
+              const developing = convertPrice
+                && Number.isFinite(rawDeveloping.vah) && Number.isFinite(rawDeveloping.val)
+                && Number.isFinite(rawDeveloping.poc) && Number.isFinite(rawDeveloping.vwap)
+                ? {
+                  ...rawDeveloping,
+                  vah: convertPrice(Number(rawDeveloping.vah)),
+                  val: convertPrice(Number(rawDeveloping.val)),
+                  poc: convertPrice(Number(rawDeveloping.poc)),
+                  vwap: convertPrice(Number(rawDeveloping.vwap)),
+                }
+                : rawDeveloping;
               const updated = buildValueAreaChartOverlay(
                 payload,
                 pane.symbol,
@@ -6334,6 +6471,7 @@ function WorkspaceChartPaneComponent({
     levelExportRequested,
     resolvedContractSymbol,
     settings.upColor,
+    valueAreaIndexRoot,
     valueAreaLevelsAvailable,
     valueAreaLevelsEnabled,
   ]);
@@ -15866,8 +16004,10 @@ export default function KwantifyWorkspace({
                 description: "VAH, VAL, POC and VWAP levels",
                 badge: "VA",
                 enabled: valueAreaLevelsEnabled,
-                available: activeWorkspacePane.broker === "Databento"
-                  && isContinuousFuture(activeWorkspacePane.symbol),
+                available: (activeWorkspacePane.broker === "Databento"
+                  && isContinuousFuture(activeWorkspacePane.symbol))
+                  || (activeWorkspacePane.broker === "Market Index"
+                    && valueAreaIndexSourceRoot(activeWorkspacePane.symbol) !== null),
                 onToggle: () => togglePaneLevelVisibility(activePaneId, "valueArea"),
               },
             ]}
