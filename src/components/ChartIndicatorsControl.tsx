@@ -45,6 +45,7 @@ import {
   type FootprintPresetName,
   type FootprintTemplate,
 } from "@/lib/footprintSettings";
+import ChartColorField from "@/components/ChartColorField";
 import KwantSelect from "@/components/ui/KwantSelect";
 import { PULLING_STACKING_PRESETS } from "@/lib/pullingStacking";
 import { ABSORPTION_PRESETS } from "@/lib/absorptionDetector";
@@ -3029,14 +3030,14 @@ export default function ChartIndicatorsControl({
                         <span>{titleFromKey(key)}</span>
                       </label>
                     ) : (
-                      <label key={key} className="flex min-h-10 items-center justify-between rounded-lg border border-border bg-surface/30 px-3 text-[9px] text-muted">
-                        <span>{titleFromKey(key)}</span>
-                        <input
-                          type="color"
+                      <div key={key} className="flex min-h-10 items-center justify-between gap-2 rounded-lg border border-border bg-surface/30 px-3 text-[9px] text-muted">
+                        <span className="truncate">{titleFromKey(key)}</span>
+                        <ChartColorField
+                          ariaLabel={`${titleFromKey(key)} colour`}
                           value={settingsDefinition.id === "bounce-levels" && settingsInstance.settings?.useThemeColors !== false
                             ? String(bounceThemeColours(chartSettings)[key as keyof ReturnType<typeof bounceThemeColours>] ?? value)
                             : String(value)}
-                          onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                          onChange={(hex) => replace(settingsInstance.instanceId, (current) => ({
                             ...current,
                             settings: {
                               ...(current.settings ?? {}),
@@ -3044,12 +3045,11 @@ export default function ChartIndicatorsControl({
                                 ? bounceThemeColours(chartSettings)
                                 : {}),
                               ...(settingsDefinition.id === "bounce-levels" ? { useThemeColors: false } : {}),
-                              [key]: event.target.value,
+                              [key]: hex,
                             },
                           }))}
-                          className="h-6 w-8 cursor-pointer rounded border-0 bg-transparent"
                         />
-                      </label>
+                      </div>
                     )
                   ))}
               </div>
