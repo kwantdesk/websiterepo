@@ -1092,9 +1092,9 @@ function StarViewSettings({
             <input type="range" min="0" max="0.3" step="0.01" value={settings.proximityWeight} onChange={(event) => update("proximityWeight", Number(event.target.value))} className="w-full accent-[var(--primary)]" />
           </label>
           <div className="pt-4 text-[8px] font-semibold uppercase tracking-[0.14em] text-muted">Colours</div>
-          <div className={rowClass}>
+          <div className="border-b border-border/60 py-3">
             <span><span className="block text-[10px] text-foreground">Gradient palettes</span><span className="text-[8px] text-muted">One click recolours the whole map</span></span>
-            <div className="flex items-center justify-end gap-1.5">
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
               {GEX_MAP_PALETTE_PRESETS.map((preset) => {
                 const active = !palette.useThemeColors
                   && palette.positive === preset.positive
