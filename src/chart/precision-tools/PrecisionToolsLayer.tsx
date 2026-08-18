@@ -37,6 +37,9 @@ type DragState = {
   handleIndex?: number;
   start: PrecisionAnchor;
   original: PrecisionObject;
+  // A drag that started from the pointer-transparent (dormant) canvas must
+  // hand the chart back its crosshair and panning the moment it ends.
+  dormantGrab?: boolean;
 };
 
 type SelectionBox = { start: PrecisionScreenPoint; end: PrecisionScreenPoint };
@@ -399,7 +402,7 @@ export default function PrecisionToolsLayer({
       store.setToolbar((toolbar) => ({ ...toolbar, mode: "select", activeTool: null, activeGroup: null }));
       store.select([target.id]);
       store.beginObjectEdit();
-      dragRef.current = { objectId: hit.objectId, kind: hit.kind, handleIndex: hit.handleIndex, start: anchor, original: copyObject(target) };
+      dragRef.current = { objectId: hit.objectId, kind: hit.kind, handleIndex: hit.handleIndex, start: anchor, original: copyObject(target), dormantGrab: true };
       canvas.style.pointerEvents = "auto";
       canvas.setPointerCapture(event.pointerId);
     };
@@ -618,7 +621,18 @@ export default function PrecisionToolsLayer({
       if (end && Math.abs(end.time - zoomStartRef.current.time) > 1_000) adapter.setVisibleTimeRange(zoomStartRef.current.time, end.time);
       zoomStartRef.current = null;
     }
-    if (dragRef.current) { dragRef.current = null; store.finishObjectEdit(); }
+    if (dragRef.current) {
+      const wasDormantGrab = dragRef.current.dormantGrab === true;
+      dragRef.current = null;
+      store.finishObjectEdit();
+      if (wasDormantGrab && !externalActiveTool && !externalSelectionMode) {
+        // The grab borrowed the chart's pointer for one edit; give the normal
+        // crosshair and panning straight back instead of staying in select mode.
+        releaseChartInteraction("precision-tools");
+        setEngaged(false);
+        if (interactionCanvasRef.current) interactionCanvasRef.current.style.pointerEvents = "none";
+      }
+    }
     if (snapshot.draft?.toolId === "precision-pencil") {
       const path = snapshot.draft.path ?? [];
       const screen = pencilScreenPathRef.current;

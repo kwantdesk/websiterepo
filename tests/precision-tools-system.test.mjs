@@ -201,14 +201,19 @@ test("the old movable rail owns the selected Precision tools and hides the secon
   const chart = read("src/components/Chart.tsx");
   const layer = read("src/chart/precision-tools/PrecisionToolsLayer.tsx");
   assert.match(chart, /brush: "precision-pencil"/);
-  assert.match(chart, /longPosition: "precision-buy-calculator"/);
-  assert.match(chart, /shortPosition: "precision-sell-calculator"/);
   assert.match(chart, /volumeProfile: "precision-volume-profile"/);
+  // Buy/Sell Calculator intentionally runs on the Kwantify SVG position engine,
+  // not the precision layer: pill labels, R:R readout, double-click style panel.
+  assert.doesNotMatch(chart, /longPosition: "precision-buy-calculator"/);
+  assert.doesNotMatch(chart, /shortPosition: "precision-sell-calculator"/);
+  assert.match(chart, /isSvgPositionTool/);
+  assert.match(chart, /onDoubleClick=\{handleDrawingDoubleClick\}/);
   assert.match(chart, /activeDrawingTool\("volumeProfile", "Volume Profile"/);
   assert.match(chart, /showChrome=\{false\}/);
   assert.match(chart, /externalSelectionMode=\{selectedTool === "selection"\}/);
   assert.match(chart, /Select drawings with a drag box/);
-  assert.match(chart, /selectedToolRef\.current = tool\.id;\s+setSelectedTool\(tool\.id\);/);
+  assert.match(chart, /selectedToolRef\.current = toolId;/);
+  assert.match(chart, /setSelectedTool\(toolId\);/);
   assert.match(layer, /onExternalSelectionBox/);
   assert.match(layer, /mergeHydratedPrecisionObjects\(payload\.objects, objectsChangedDuringHydration\)/);
   assert.match(layer, /useLayoutEffect\(\(\) => \{\s+if \(externalActiveTool\)/);

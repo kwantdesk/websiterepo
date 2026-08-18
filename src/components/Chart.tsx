@@ -2370,13 +2370,17 @@ const DOUBLE_CLICK_STYLE_DRAWING_TYPES = new Set([
 ]);
 const PRECISION_TOOL_BY_DRAWING_TOOL: Partial<Record<DrawingToolId, PrecisionToolId>> = {
   brush: "precision-pencil",
-  longPosition: "precision-buy-calculator",
-  shortPosition: "precision-sell-calculator",
   volumeProfile: "precision-volume-profile",
 };
 
 function precisionToolForDrawingTool(tool: DrawingToolId): PrecisionToolId | null {
   return PRECISION_TOOL_BY_DRAWING_TOOL[tool] ?? null;
+}
+
+// Buy/Sell Calculator runs on the original Kwantify SVG position engine:
+// pill labels, R:R readout, four resize handles, double-click style panel.
+function isSvgPositionTool(tool: DrawingToolId): boolean {
+  return tool === "longPosition" || tool === "shortPosition";
 }
 const DRAWING_TOOL_FAVORITES_STORAGE_KEY = "kwantdesk:drawing-favourites:v1";
 const DRAWING_TOOL_FAVORITES_EVENT = "kwantify-chart-tool-favorites-change";
@@ -2487,6 +2491,25 @@ function createId(prefix: string) {
 
 function drawingsStorageKey(instrument: string, chartInstanceId: string) {
   return `kwantdesk:chart-drawings:v1:${chartInstanceId}:${instrument}`;
+}
+
+function positionDrawingsStorageKey(instrument: string, chartInstanceId: string) {
+  return `kwantdesk:position-drawings:v1:${chartInstanceId}:${instrument}`;
+}
+
+function normalizePositionDrawings(value: unknown): ChartDrawing[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is ChartDrawing => {
+    if (!item || typeof item !== "object") return false;
+    const candidate = item as Partial<ChartDrawing>;
+    return (candidate.tool === "longPosition" || candidate.tool === "shortPosition")
+      && typeof candidate.id === "string"
+      && Array.isArray(candidate.points)
+      && candidate.points.length >= 2
+      && candidate.points.every((point) => point
+        && typeof point.time === "number" && Number.isFinite(point.time)
+        && typeof point.price === "number" && Number.isFinite(point.price));
+  });
 }
 
 function toolbarDockStorageKey() {
@@ -3013,6 +3036,7 @@ function Chart({
   const [professionalDrawings, setProfessionalDrawings] = useState<ProfessionalDrawingRecord[]>([]);
   const professionalDrawingsRef = useRef<ProfessionalDrawingRecord[]>([]);
   const professionalDrawingsHydrationRef = useRef<{ instrument: string; ready: boolean }>({ instrument: "", ready: false });
+  const positionDrawingsHydrationRef = useRef<{ key: string; ready: boolean }>({ key: "", ready: false });
   const professionalDrawingsLoadGenerationRef = useRef(0);
   const professionalDrawingManagerRef = useRef<DrawingManager | null>(null);
   const professionalDrawingPreviewRef = useRef<ProfessionalDrawing | null>(null);
@@ -8992,7 +9016,17 @@ function Chart({
     } catch {
       cached = [];
     }
-    setDrawings([]);
+    const positionKey = positionDrawingsStorageKey(instrument, chartInstanceId);
+    positionDrawingsHydrationRef.current = { key: positionKey, ready: false };
+    try {
+      const rawPositions = window.localStorage.getItem(positionKey);
+      setDrawings(normalizePositionDrawings(rawPositions ? JSON.parse(rawPositions) : []));
+    } catch {
+      setDrawings([]);
+    }
+    const positionHydrationTimer = window.setTimeout(() => {
+      positionDrawingsHydrationRef.current = { key: positionKey, ready: true };
+    }, 0);
     setProfessionalDrawings(cached);
     replaceProfessionalManagerDrawings(cached);
 
@@ -9032,7 +9066,10 @@ function Chart({
           professionalDrawingsHydrationRef.current = { instrument, ready: true };
         }
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      window.clearTimeout(positionHydrationTimer);
+    };
   // Manager replacement reads refs intentionally; the instrument owns hydration.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chartInstanceId, drawingPersistenceInstrument, instrument]);
@@ -9058,9 +9095,22 @@ function Chart({
   }, [chartInstanceId, drawingPersistenceInstrument, instrument, professionalDrawings]);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    const key = positionDrawingsStorageKey(instrument, chartInstanceId);
+    const hydration = positionDrawingsHydrationRef.current;
+    if (!hydration.ready || hydration.key !== key) return;
+    try {
+      window.localStorage.setItem(key, JSON.stringify(drawings));
+    } catch {
+      // Keep the calculator responsive when browser storage is unavailable.
+    }
+    window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
+  }, [chartInstanceId, drawings, instrument]);
+
+  useEffect(() => {
     selectedToolRef.current = selectedTool;
     const manager = professionalDrawingManagerRef.current;
-    const activeType = selectedTool === "selection" || precisionToolForDrawingTool(selectedTool)
+    const activeType = selectedTool === "selection" || precisionToolForDrawingTool(selectedTool) || isSvgPositionTool(selectedTool)
       ? null
       : professionalDrawingType(selectedTool);
     manager?.setActiveTool(activeType);
@@ -9271,7 +9321,7 @@ function Chart({
     setOpenToolbarGroup(null);
     if (!precisionTool && toolId !== "selection") {
       claimChartInteraction("legacy-tools");
-      professionalDrawingManagerRef.current?.setActiveTool(professionalDrawingType(toolId));
+      professionalDrawingManagerRef.current?.setActiveTool(isSvgPositionTool(toolId) ? null : professionalDrawingType(toolId));
     }
     setSelectedTool(toolId);
   }
@@ -10738,7 +10788,7 @@ function Chart({
     drawingManager.attach(chart, candleSeries, chartContainerRef.current);
     professionalDrawingManagerRef.current = drawingManager;
     drawingManager.setActiveTool(
-      selectedToolRef.current === "selection" || precisionToolForDrawingTool(selectedToolRef.current)
+      selectedToolRef.current === "selection" || precisionToolForDrawingTool(selectedToolRef.current) || isSvgPositionTool(selectedToolRef.current)
         ? null
         : professionalDrawingType(selectedToolRef.current),
     );
@@ -15246,12 +15296,17 @@ function Chart({
 
       <svg
         ref={overlayRef}
-        className="pointer-events-none absolute inset-0 z-[12]"
+        className={`absolute inset-0 z-[12] ${isSvgPositionTool(selectedTool) ? "pointer-events-auto" : "pointer-events-none"}`}
         width={overlaySize.width || undefined}
         height={overlaySize.height || undefined}
         viewBox={`0 0 ${Math.max(overlaySize.width, 1)} ${Math.max(overlaySize.height, 1)}`}
         preserveAspectRatio="none"
         style={{ touchAction: "none" }}
+        onPointerDown={handleDrawingPointerDown}
+        onPointerMove={handleDrawingPointerMove}
+        onPointerUp={handleDrawingPointerUp}
+        onPointerCancel={handleDrawingPointerCancel}
+        onDoubleClick={handleDrawingDoubleClick}
       >
         <rect
           x={0}
@@ -15259,9 +15314,11 @@ function Chart({
           width="100%"
           height="100%"
           fill="transparent"
-          pointerEvents="none"
+          pointerEvents={isSvgPositionTool(selectedTool) ? "all" : "none"}
         />
         {zones.map((zone) => renderChartZone(zone))}
+        {renderableDrawings.map((drawing) => renderDrawing(drawing))}
+        {draftDrawing && renderDrawing(draftDrawing, "draft")}
       </svg>
 
       {toolbarEnabled && activeToolbarTool && selectedTool !== "cursor" && (
