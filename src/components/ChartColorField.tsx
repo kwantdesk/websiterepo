@@ -237,7 +237,9 @@ export default function ChartColorField({
             ref={popoverRef}
             role="dialog"
             aria-label={`${ariaLabel} picker`}
-            className="fixed z-[300] rounded-xl border border-border bg-panel/95 p-2.5 shadow-[0_22px_70px_rgba(0,0,0,0.58)] backdrop-blur-xl"
+            // The picker opens from inside settings dialogs that stack as high
+            // as z-[10000]; it must always sit above whichever surface hosts it.
+            className="fixed z-[10050] rounded-xl border border-border bg-panel/95 p-2.5 shadow-[0_22px_70px_rgba(0,0,0,0.58)] backdrop-blur-xl"
             style={{ left: position.left, top: position.top, width: POPOVER_WIDTH }}
           >
             <div
