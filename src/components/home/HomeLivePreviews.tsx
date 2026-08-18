@@ -29,7 +29,7 @@ export type HomeLiveSymbol = (typeof HOME_LIVE_SYMBOLS)[number];
 
 export type HomeLiveQuote = {
   snapshot: MarketIndexLiveSnapshot;
-  /** Real received last prices only — never interpolated or invented. */
+  /** Real received last prices only â€” never interpolated or invented. */
   series: number[];
   receivedAt: number;
 };
@@ -262,7 +262,7 @@ function sparklineGeometry(
 
 /**
  * Real-price sparkline drawn only from received provider frames. While the
- * first frames are still arriving it renders a quiet shimmer baseline —
+ * first frames are still arriving it renders a quiet shimmer baseline â€”
  * never a synthetic price path.
  */
 function LiveSparkline({
@@ -331,7 +331,7 @@ const candleData = [
   [64, 79, 60, 82], [77, 69, 65, 81], [67, 84, 64, 88], [82, 76, 71, 87],
 ];
 
-/** Decorative structural candle motif — illustration only, carries no labels. */
+/** Decorative structural candle motif â€” illustration only, carries no labels. */
 function CandleMotif({ compact = false }: { compact?: boolean }) {
   const scale = compact ? 0.72 : 1;
   return (
@@ -685,4 +685,3 @@ export function HomeWorkspacePreview({
     </svg>
   );
 }
-
