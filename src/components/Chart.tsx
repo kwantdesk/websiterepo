@@ -5748,27 +5748,37 @@ function Chart({
     };
   }, [gammaHeatmapIndicator, instrument]);
 
+  // During session replay the heat surface follows the replay clock at the
+  // same granularity as candles. A candle is fully revealed the moment the
+  // clock enters its bar, so heat frames captured inside that same bar must
+  // be revealed with it — gating them on the raw clock left the newest heat
+  // column one bar behind the price, which never happens live. Rounding the
+  // boundary up to the bar close keeps heat inline with the forming candle
+  // without leaking anything beyond what the revealed candle already shows,
+  // and re-filters once per bar instead of on every 200ms clock tick.
+  const replayHeatBoundaryMs = useMemo(() => {
+    if (!replayTimestampMs) return null;
+    const intervalMs = timeframeToMs(timeframe) ?? 60_000;
+    return Math.ceil(replayTimestampMs / intervalMs) * intervalMs;
+  }, [replayTimestampMs, timeframe]);
   const gammaHeatmapPrimitiveData = useMemo<GammaHeatmapPrimitiveData | null>(() => {
     if (!gammaHeatmapIndicator || !gammaHeatmapPayload) return null;
     const indicatorSettings = gammaHeatmapIndicator.settings ?? {};
     const useThemeColors = indicatorSettings.useThemeColors !== false;
-    // During session replay the heat surface obeys the replay clock exactly
-    // like candles: only snapshots at or before the clock are revealed, so
-    // the heat populates in lockstep with price and never leaks a future
-    // exposure column into an earlier frame. The level overlay is derived
-    // from the latest live surface, so it stays hidden inside a replay.
-    const replayVisibleSnapshots = replayTimestampMs
-      ? gammaHeatmapPayload.snapshots.filter((snapshot) => snapshot.timestamp <= replayTimestampMs)
+    // The level overlay is derived from the latest live surface, so it stays
+    // hidden inside a replay.
+    const replayVisibleSnapshots = replayHeatBoundaryMs
+      ? gammaHeatmapPayload.snapshots.filter((snapshot) => snapshot.timestamp <= replayHeatBoundaryMs)
       : gammaHeatmapPayload.snapshots;
-    if (replayTimestampMs && !replayVisibleSnapshots.length) return null;
+    if (replayHeatBoundaryMs && !replayVisibleSnapshots.length) return null;
     return {
       snapshots: replayVisibleSnapshots,
-      levels: replayTimestampMs ? [] : gammaHeatmapPayload.levels,
+      levels: replayHeatBoundaryMs ? [] : gammaHeatmapPayload.levels,
       viewMode: String(indicatorSettings.viewMode ?? "net") as GammaHeatmapViewMode,
       opacity: Math.max(0.05, Math.min(1, Number(indicatorSettings.opacity ?? 68) / 100)),
       intensity: Math.max(0.25, Math.min(4, Number(indicatorSettings.intensity ?? 1))),
       showHistorical: indicatorSettings.showHistorical !== false,
-      showLevels: !replayTimestampMs && indicatorSettings.showLevels !== false,
+      showLevels: !replayHeatBoundaryMs && indicatorSettings.showLevels !== false,
       carryForwardFade: indicatorSettings.carryForwardFade !== false,
       positiveColor: useThemeColors ? settings.upColor : String(indicatorSettings.positiveColor ?? settings.upColor),
       negativeColor: useThemeColors ? settings.downColor : String(indicatorSettings.negativeColor ?? settings.downColor),
@@ -5776,7 +5786,7 @@ function Chart({
       backgroundColor: settings.backgroundColor,
       precision: priceFormat.precision,
     };
-  }, [gammaHeatmapIndicator, gammaHeatmapPayload, priceFormat.precision, replayTimestampMs, settings.backgroundColor, settings.downColor, settings.gridColor, settings.upColor]);
+  }, [gammaHeatmapIndicator, gammaHeatmapPayload, priceFormat.precision, replayHeatBoundaryMs, settings.backgroundColor, settings.downColor, settings.gridColor, settings.upColor]);
   useEffect(() => {
     gammaHeatmapPrimitiveRef.current?.update(gammaHeatmapPrimitiveData);
   }, [gammaHeatmapPrimitiveData]);

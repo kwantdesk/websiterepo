@@ -4666,19 +4666,47 @@ function WorkspaceChartPaneComponent({
     () => compressCmeClosedSessionCandles(candles, pane.timeframe),
     [candles, pane.timeframe],
   );
+  // The replay clock ticks every 200ms, but the revealed candle set only
+  // changes when the clock crosses a bar boundary. Deriving a count first and
+  // memoising the slice on it keeps the candle array identity stable between
+  // bar reveals — otherwise every tick forced a full series replacement in
+  // every pane, which is what made high replay speeds stutter and stall.
+  const replayActive = replayTimestampMs !== null && replayTimestampMs > 0;
+  const replayVisibleCandleCount = useMemo(() => {
+    if (!replayActive || !replayTimestampMs) return -1;
+    let count = 0;
+    for (let index = plottedCandles.length - 1; index >= 0; index -= 1) {
+      if (plottedCandles[index].timestamp <= replayTimestampMs) {
+        count = index + 1;
+        break;
+      }
+    }
+    return count;
+  }, [plottedCandles, replayActive, replayTimestampMs]);
   const replayCandles = useMemo(
-    () => replayTimestampMs
-      ? plottedCandles.filter((candle) => candle.timestamp <= replayTimestampMs)
-      : plottedCandles,
-    [plottedCandles, replayTimestampMs],
+    () => (replayActive
+      ? plottedCandles.slice(0, Math.max(0, replayVisibleCandleCount))
+      : plottedCandles),
+    [plottedCandles, replayActive, replayVisibleCandleCount],
   );
   const [lowerIndicatorHeight, setLowerIndicatorHeight] = useState(0);
   const [marketTrades, setMarketTrades] = useState<InstitutionalTrade[]>([]);
+  const replayVisibleTradeCount = useMemo(() => {
+    if (!replayActive || !replayTimestampMs) return -1;
+    let count = 0;
+    for (let index = marketTrades.length - 1; index >= 0; index -= 1) {
+      if (marketTrades[index].timestamp <= replayTimestampMs) {
+        count = index + 1;
+        break;
+      }
+    }
+    return count;
+  }, [marketTrades, replayActive, replayTimestampMs]);
   const replayMarketTrades = useMemo(
-    () => replayTimestampMs
-      ? marketTrades.filter((trade) => trade.timestamp <= replayTimestampMs)
-      : marketTrades,
-    [marketTrades, replayTimestampMs],
+    () => (replayActive
+      ? marketTrades.slice(0, Math.max(0, replayVisibleTradeCount))
+      : marketTrades),
+    [marketTrades, replayActive, replayVisibleTradeCount],
   );
   const [orderFlowHistoryReady, setOrderFlowHistoryReady] = useState(false);
   const [volumeProfiles, setVolumeProfiles] = useState<InstitutionalVolumeProfile[]>([]);
