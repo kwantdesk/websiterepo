@@ -5159,13 +5159,12 @@ function Chart({
     let cancelled = false;
     const historySessions = Math.max(1, Math.min(5, Math.round(Number(zeroGammaLineIndicator.settings?.historySessions ?? 5))));
     const refreshMs = Math.max(5_000, Number(zeroGammaLineIndicator.settings?.refreshSeconds ?? 10) * 1_000);
-    const cacheKey = `zero-gamma-line:${instrument.toUpperCase()}:${historySessions}`;
-    const load = async (force = false) => {
+    const load = async (sessions: number, timeoutMs: number, force = false) => {
       try {
         const payload = await fetchWorkspaceData<ZeroGammaLinePayload>(
-          cacheKey,
-          `/api/zero-gamma-line?instrument=${encodeURIComponent(instrument)}&sessions=${historySessions}`,
-          { force, maxAgeMs: refreshMs, timeoutMs: 45_000, validate: isZeroGammaLinePayload, invalidMessage: "Zero Gamma Line returned an incomplete history." },
+          `zero-gamma-line:${instrument.toUpperCase()}:${sessions}`,
+          `/api/zero-gamma-line?instrument=${encodeURIComponent(instrument)}&sessions=${sessions}`,
+          { force, maxAgeMs: refreshMs, timeoutMs, validate: isZeroGammaLinePayload, invalidMessage: "Zero Gamma Line returned an incomplete history." },
         );
         if (!cancelled) setZeroGammaLinePayload((current) => {
           if (!current || current.sourceSymbol !== payload.sourceSymbol) return payload;
@@ -5179,10 +5178,19 @@ function Chart({
         // Keep the last verified line visible through a transient provider refresh.
       }
     };
-    void load(false);
+    // Paint the newest verified sessions first — two sessions resolve far
+    // faster than a cold five-session provider chain, which previously could
+    // outlive the request timeout and leave the line blank, and the second
+    // session covers a latest session whose provider snapshot was rejected.
+    // The complete history streams in behind it and merges into the points.
+    const quickSessions = Math.min(2, historySessions);
+    void (async () => {
+      await load(quickSessions, 45_000);
+      if (!cancelled && historySessions > quickSessions) await load(historySessions, 120_000);
+    })();
     // Shared cache + in-flight deduplication allows every pane to observe the
     // same refresh. Forcing each pane here defeats that protection.
-    const intervalId = window.setInterval(() => void load(false), refreshMs);
+    const intervalId = window.setInterval(() => void load(historySessions, 120_000), refreshMs);
     return () => { cancelled = true; window.clearInterval(intervalId); };
   }, [indicatorSignature, instrument, zeroGammaLineIndicator]);
   const baseCalculatedIndicatorSeries = useMemo(

@@ -3,6 +3,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { getZeroGammaLinePayload } from "@/lib/zeroGammaLine.server";
 import { zeroGammaRootForInstrument, zeroGammaSourceForInstrument } from "@/lib/zeroGammaLine";
 
+// A cold request derives up to six provider-backed session snapshots. The
+// platform default function timeout cut that chain off mid-flight, which is
+// why the line could stay blank on SPX/SPY/NDX/QQQ charts in production.
+export const maxDuration = 120;
+
 async function isAuthenticated(request: NextRequest) {
   if (process.env.KWANTIFY_DEV_AUTH_BYPASS === "1" && ["localhost", "127.0.0.1", "::1"].includes(request.nextUrl.hostname)) return true;
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;

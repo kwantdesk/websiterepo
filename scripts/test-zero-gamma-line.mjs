@@ -33,6 +33,19 @@ assert.match(quantData, /cage: cashSource\.cage\s*\?\s*\{[\s\S]*?toFuturesPrice\
 // range must be dropped, not painted.
 assert.match(server, /Math\.abs\(candidate - spot\) \/ spot > 0\.25/);
 
+// A cold multi-session request must survive on the deployment platform and
+// not recompute immutable completed sessions on every call.
+assert.match(route, /export const maxDuration/);
+assert.match(server, /historicalPointCache/);
+
+// Before the open, the newest completed session is the previous trading day;
+// today's untraded date must never occupy a history slot.
+assert.match(server, /newYorkSessionCompleted\(now\) \? sessionDate : previousTradingDay\(sessionDate\)/);
+
+// The chart paints the newest sessions first and streams the rest of the
+// history in behind them.
+assert.match(chart, /await load\(quickSessions, 45_000\)/);
+
 assert.equal(zeroGammaRootForInstrument("NQ"), "NQ");
 assert.equal(zeroGammaRootForInstrument("MNQU6"), "NQ");
 assert.equal(zeroGammaRootForInstrument("ES"), "ES");

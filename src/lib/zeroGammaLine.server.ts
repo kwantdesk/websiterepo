@@ -26,7 +26,7 @@ function currentNewYorkSessionDate(now = new Date()) {
   return value;
 }
 
-function newYorkMarketOpen(now = new Date()) {
+function newYorkClockParts(now = new Date()) {
   const parts = Object.fromEntries(new Intl.DateTimeFormat("en-US", {
     timeZone: "America/New_York",
     weekday: "short",
@@ -34,8 +34,26 @@ function newYorkMarketOpen(now = new Date()) {
     minute: "2-digit",
     hourCycle: "h23",
   }).formatToParts(now).filter((part) => part.type !== "literal").map((part) => [part.type, part.value]));
-  const minutes = Number(parts.hour) * 60 + Number(parts.minute);
-  return !["Sat", "Sun"].includes(String(parts.weekday)) && minutes >= 570 && minutes < 960;
+  return {
+    weekday: String(parts.weekday),
+    minutes: Number(parts.hour) * 60 + Number(parts.minute),
+  };
+}
+
+function newYorkMarketOpen(now = new Date()) {
+  const clock = newYorkClockParts(now);
+  return !["Sat", "Sun"].includes(clock.weekday) && clock.minutes >= 570 && clock.minutes < 960;
+}
+
+/**
+ * Today only counts as a completed session after the 16:00 New York close.
+ * Before the open, the newest completed session is the previous trading day —
+ * starting the history at today's untraded date made a one-session request
+ * return nothing at all overnight.
+ */
+function newYorkSessionCompleted(now = new Date()) {
+  const clock = newYorkClockParts(now);
+  return !["Sat", "Sun"].includes(clock.weekday) && clock.minutes >= 960;
 }
 
 function zeroGammaFromPayload(payload: Awaited<ReturnType<typeof getChartGammaLevels>>) {
@@ -54,6 +72,13 @@ function zeroGammaFromPayload(payload: Awaited<ReturnType<typeof getChartGammaLe
   return candidate;
 }
 
+// Completed sessions are immutable, so their derived zero-Gamma points are
+// memoized for the life of the server instance. A cold five-session request
+// previously recomputed every session through the provider chain and could
+// outlive the browser's timeout, which left the chart line permanently blank.
+const historicalPointCache = new Map<string, ZeroGammaLinePoint>();
+const HISTORICAL_POINT_CACHE_LIMIT = 400;
+
 export async function getZeroGammaLinePayload(
   root: NativeGammaRoot,
   sourceSymbol: ZeroGammaLineSource,
@@ -64,23 +89,32 @@ export async function getZeroGammaLinePayload(
   const sessionDate = currentNewYorkSessionDate(now);
   const marketOpen = newYorkMarketOpen(now);
   const completedDates: string[] = [];
-  let cursor = marketOpen ? previousTradingDay(sessionDate) : sessionDate;
+  let cursor = newYorkSessionCompleted(now) ? sessionDate : previousTradingDay(sessionDate);
   while (completedDates.length < Math.max(1, Math.min(5, Math.round(historySessions)))) {
     completedDates.unshift(cursor);
     cursor = previousTradingDay(cursor);
   }
 
   const historical = await Promise.all(completedDates.map(async (date): Promise<ZeroGammaLinePoint | null> => {
+    const cacheKey = `${root}:${sourceSymbol}:${date}`;
+    const cached = historicalPointCache.get(cacheKey);
+    if (cached) return cached;
     try {
       const snapshot = await getChartGammaLevels(root, sourceSymbol, date);
       const zeroGamma = zeroGammaFromPayload(snapshot);
       if (zeroGamma === null) return null;
-      return {
+      const point: ZeroGammaLinePoint = {
         timestampMs: Date.parse(newYorkCashCloseIso(snapshot.sessionDate)),
         sessionDate: snapshot.sessionDate,
         value: zeroGamma,
         status: "HISTORICAL",
       };
+      if (historicalPointCache.size >= HISTORICAL_POINT_CACHE_LIMIT) {
+        const oldest = historicalPointCache.keys().next().value;
+        if (oldest !== undefined) historicalPointCache.delete(oldest);
+      }
+      historicalPointCache.set(cacheKey, point);
+      return point;
     } catch {
       return null;
     }
