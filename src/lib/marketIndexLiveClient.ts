@@ -25,13 +25,19 @@ let streamConnected = false;
 const lastStreamFrameAt = new Map<string, number>();
 const lastDeliveredTimestamp = new Map<string, number>();
 
-const LIVE_POLL_MS = 750;
-const IDLE_POLL_MS = 5_000;
+// Index quotes now come from the KwantData session tape (per-minute bars with
+// a short server cache) after the Massive subscription ended, so polling
+// faster than a few seconds only re-reads identical values.
+const LIVE_POLL_MS = 4_000;
+const IDLE_POLL_MS = 15_000;
 const STREAM_STALE_MS = 5_000;
-const VPS_STREAM_SYMBOLS = new Set([
-  "VIX", "VXN", "SPX", "SPXW", "SPY", "NDX", "QQQ", "IWM", "RUT", "DJI",
-  "AAPL", "NVDA", "TSLA", "MSFT", "AMZN", "META", "AMD",
-]);
+// The VPS index stream and snapshot endpoints were Massive-backed. With that
+// subscription ended they refuse every symbol, and a single failing VPS batch
+// rejected the whole poll — including symbols other providers can serve. All
+// symbols now flow through the website route, which owns the provider
+// fallback chain. Restore entries here only when the VPS regains a live
+// index entitlement.
+const VPS_STREAM_SYMBOLS = new Set<string>([]);
 
 function supportedSnapshot(value: unknown): value is MarketIndexLiveSnapshot {
   if (!value || typeof value !== "object") return false;
