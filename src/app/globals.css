@@ -1673,21 +1673,11 @@ body.kwant-cockpit-ui canvas {
 }
 
 .gex-map-panel-grid {
-  /* Keep the exposure surfaces horizontal inside workspace panes. Narrowing a
-     pane progressively clips the rightmost surface instead of wrapping it
-     underneath the others and turning the workspace into a tall stack. */
+  /* Keep every chosen exposure surface visible at any pane width. Narrowing a
+     pane shrinks the columns together; a column only leaves the grid when the
+     trader removes it with its own close button. */
   grid-template-columns: repeat(var(--gex-map-panel-count, 3), minmax(0, 1fr));
   grid-auto-rows: minmax(250px, 1fr);
-}
-
-@container (max-width: 859px) {
-  .gex-map-panel-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .gex-map-panel-grid > :nth-child(n + 3) {
-    display: none;
-  }
 }
 
 @container (max-width: 720px) {
@@ -1720,14 +1710,6 @@ body.kwant-cockpit-ui canvas {
 
   .gex-map-frame-steps button {
     padding-inline: 6px;
-  }
-
-  .gex-map-panel-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .gex-map-panel-grid > :nth-child(n + 2) {
-    display: none;
   }
 }
 
