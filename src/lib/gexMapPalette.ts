@@ -45,6 +45,25 @@ export function saveGexMapPalette(palette: GexMapPalette) {
   window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
 }
 
+/**
+ * Curated full-map palettes. Each recolours the complete exposure surface —
+ * positive heat, negative heat and the Star accent — with combinations that
+ * stay readable against the dark chart background at every heat intensity.
+ */
+export const GEX_MAP_PALETTE_PRESETS: Array<{
+  id: string;
+  label: string;
+  positive: string;
+  negative: string;
+  star: string;
+}> = [
+  { id: "aurora", label: "Aurora", positive: "#2DD4BF", negative: "#FB7185", star: "#FBBF24" },
+  { id: "ocean", label: "Ocean", positive: "#38BDF8", negative: "#F59E0B", star: "#F1F5F9" },
+  { id: "ember", label: "Ember", positive: "#FACC15", negative: "#EF4444", star: "#FDE68A" },
+  { id: "ultraviolet", label: "Ultraviolet", positive: "#A3E635", negative: "#A855F7", star: "#F5F3FF" },
+  { id: "forest", label: "Forest", positive: "#22C55E", negative: "#FB923C", star: "#FEF08A" },
+];
+
 /** Resolved exposure tones: theme-linked palettes follow the live theme vars. */
 export function gexMapPaletteTones(palette: GexMapPalette) {
   return palette.useThemeColors

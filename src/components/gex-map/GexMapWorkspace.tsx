@@ -34,6 +34,7 @@ import {
 } from "@/lib/gexMap";
 import {
   GEX_MAP_PALETTE_CHANGE_EVENT,
+  GEX_MAP_PALETTE_PRESETS,
   gexMapPaletteTones,
   gexMapPalettesEqual,
   loadGexMapPalette,
@@ -1091,6 +1092,41 @@ function StarViewSettings({
             <input type="range" min="0" max="0.3" step="0.01" value={settings.proximityWeight} onChange={(event) => update("proximityWeight", Number(event.target.value))} className="w-full accent-[var(--primary)]" />
           </label>
           <div className="pt-4 text-[8px] font-semibold uppercase tracking-[0.14em] text-muted">Colours</div>
+          <div className={rowClass}>
+            <span><span className="block text-[10px] text-foreground">Gradient palettes</span><span className="text-[8px] text-muted">One click recolours the whole map</span></span>
+            <div className="flex items-center justify-end gap-1.5">
+              {GEX_MAP_PALETTE_PRESETS.map((preset) => {
+                const active = !palette.useThemeColors
+                  && palette.positive === preset.positive
+                  && palette.negative === preset.negative
+                  && palette.star === preset.star;
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    title={preset.label}
+                    aria-label={`${preset.label} palette`}
+                    aria-pressed={active}
+                    onClick={() => onPaletteChange({
+                      useThemeColors: false,
+                      positive: preset.positive,
+                      negative: preset.negative,
+                      star: preset.star,
+                    })}
+                    className={`relative h-7 w-7 overflow-hidden rounded-[4px] border transition-transform hover:scale-110 ${
+                      active ? "border-primary shadow-[0_0_10px_color-mix(in_srgb,var(--primary)_45%,transparent)]" : "border-border"
+                    }`}
+                    style={{ background: `linear-gradient(135deg, ${preset.positive} 0%, ${preset.positive} 42%, ${preset.negative} 58%, ${preset.negative} 100%)` }}
+                  >
+                    <span
+                      className="absolute bottom-0.5 right-0.5 h-1.5 w-1.5 rounded-full border border-black/30"
+                      style={{ background: preset.star }}
+                    />
+                  </button>
+                );
+              })}
+            </div>
+          </div>
           <label className={rowClass}>
             <span><span className="block text-[10px] text-foreground">Use theme colours</span><span className="text-[8px] text-muted">Follow the overall KwantDesk theme</span></span>
             <input
