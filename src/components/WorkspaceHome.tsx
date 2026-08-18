@@ -77,9 +77,9 @@ const LaunchCard = memo(function LaunchCard({
     <Link
       href={destination.href}
       prefetch={false}
-      className="group relative flex min-h-[216px] flex-col overflow-hidden rounded-[7px] border border-[color-mix(in_srgb,var(--foreground)_11%,transparent)] bg-[color-mix(in_srgb,var(--background)_55%,transparent)] text-left shadow-[0_22px_70px_rgba(0,0,0,.28)] backdrop-blur-[18px] transition duration-300 hover:-translate-y-1 hover:border-primary/65 hover:bg-[color-mix(in_srgb,var(--background)_72%,transparent)] hover:shadow-[0_24px_80px_rgba(0,0,0,.55),0_0_30px_color-mix(in_srgb,var(--primary)_18%,transparent)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
+      className="group relative flex min-h-[162px] flex-col overflow-hidden rounded-[7px] border border-[color-mix(in_srgb,var(--foreground)_11%,transparent)] bg-[color-mix(in_srgb,var(--background)_55%,transparent)] text-left shadow-[0_22px_70px_rgba(0,0,0,.28)] backdrop-blur-[18px] transition duration-300 hover:-translate-y-1 hover:border-primary/65 hover:bg-[color-mix(in_srgb,var(--background)_72%,transparent)] hover:shadow-[0_24px_80px_rgba(0,0,0,.55),0_0_30px_color-mix(in_srgb,var(--primary)_18%,transparent)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
     >
-      <div className="relative h-[140px] shrink-0 overflow-hidden border-b border-[color-mix(in_srgb,var(--foreground)_8%,transparent)] bg-[color-mix(in_srgb,var(--background)_35%,transparent)]">
+      <div className="relative h-[105px] shrink-0 overflow-hidden border-b border-[color-mix(in_srgb,var(--foreground)_8%,transparent)] bg-[color-mix(in_srgb,var(--background)_35%,transparent)]">
         <HomeWorkspacePreview type={destination.preview} live={live} />
         {destination.preview === "home" && <LiveIndexTape live={live} />}
         <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,transparent_72%,color-mix(in_srgb,var(--background)_45%,transparent)_100%)]" />
@@ -154,10 +154,10 @@ export default function WorkspaceHome({ username = "" }: { username?: string }) 
 
         <div className="pointer-events-none absolute inset-0 z-[4] bg-[linear-gradient(180deg,rgba(0,0,0,.16),rgba(0,0,0,.02)_35%,rgba(0,0,0,.34))]" />
         <section
-          className="kwant-scrollbar relative z-10 h-full w-full overflow-y-auto px-[clamp(28px,4vw,88px)] py-[clamp(16px,2vw,32px)]"
+          className="kwant-scrollbar relative z-10 h-full w-full overflow-y-auto px-[clamp(48px,10vw,220px)] py-[clamp(20px,2.6vw,44px)]"
           aria-label="Workspace launcher"
         >
-          <div className="grid min-h-full w-full auto-rows-[minmax(216px,1fr)] grid-cols-1 gap-[clamp(12px,1vw,18px)] sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid min-h-full w-full auto-rows-[minmax(162px,1fr)] grid-cols-1 gap-[clamp(16px,1.6vw,26px)] sm:grid-cols-2 lg:grid-cols-4">
             {destinations.map((destination) => (
               <LaunchCard
                 key={destination.href + destination.title}
