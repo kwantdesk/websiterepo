@@ -325,19 +325,7 @@ export default function PrecisionToolsLayer({
     store.setToolbar((toolbar) => ({ ...toolbar, activeConfigSlot: slot, activeConfigSlots: toolId ? { ...toolbar.activeConfigSlots, [toolId]: slot } : toolbar.activeConfigSlots }));
   }, [selectedObject?.toolId, store]);
 
-  const pointerAnchor = (event: React.PointerEvent<HTMLCanvasElement>): PrecisionAnchor | null => {
-    const rect = event.currentTarget.getBoundingClientRect();
-    let x = event.clientX - rect.left;
-    let y = event.clientY - rect.top;
-    if (event.shiftKey && snapshot.draft?.anchors[0] && placedCountRef.current > 0) {
-      const startX = adapter.timeToX(snapshot.draft.anchors[0].time, snapshot.draft.anchors[0].logicalIndex);
-      const startY = adapter.priceToY(snapshot.draft.anchors[0].price);
-      if (startX != null && startY != null) {
-        const dx = x - startX, dy = y - startY, length = Math.hypot(dx, dy);
-        const angle = Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) * (Math.PI / 4);
-        x = startX + Math.cos(angle) * length; y = startY + Math.sin(angle) * length;
-      }
-    }
+  const anchorAtPoint = useCallback((x: number, y: number): PrecisionAnchor | null => {
     const raw = adapter.xToAnchor(x, y);
     if (raw) return normalizeAnchor(raw, adapter, snapDisabledRef.current ? "off" : snapshot.toolbar.snapMode);
 
@@ -366,7 +354,58 @@ export default function PrecisionToolsLayer({
       adapter,
       snapDisabledRef.current ? "off" : snapshot.toolbar.snapMode,
     );
+  }, [adapter, snapshot.toolbar.snapMode]);
+
+  const pointerAnchor = (event: React.PointerEvent<HTMLCanvasElement>): PrecisionAnchor | null => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    let x = event.clientX - rect.left;
+    let y = event.clientY - rect.top;
+    if (event.shiftKey && snapshot.draft?.anchors[0] && placedCountRef.current > 0) {
+      const startX = adapter.timeToX(snapshot.draft.anchors[0].time, snapshot.draft.anchors[0].logicalIndex);
+      const startY = adapter.priceToY(snapshot.draft.anchors[0].price);
+      if (startX != null && startY != null) {
+        const dx = x - startX, dy = y - startY, length = Math.hypot(dx, dy);
+        const angle = Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) * (Math.PI / 4);
+        x = startX + Math.cos(angle) * length; y = startY + Math.sin(angle) * length;
+      }
+    }
+    return anchorAtPoint(x, y);
   };
+
+  // Placed drawings stay grabbable after the toolbar disengages. The
+  // interaction canvas is pointer-transparent while dormant, so a press that
+  // lands on an object is intercepted here, claims the chart interaction,
+  // selects the object and hands the very same press to the normal
+  // select-mode drag handlers through pointer capture — the Buy/Sell
+  // Calculator and every other drawing can then be moved at any time.
+  useEffect(() => {
+    if (engaged || snapshot.toolbar.hidden || !snapshot.objects.length) return;
+    const handleDormantGrab = (event: PointerEvent) => {
+      if (event.button !== 0) return;
+      const canvas = interactionCanvasRef.current;
+      if (!canvas) return;
+      const rect = canvas.getBoundingClientRect();
+      const point = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+      if (point.x < 0 || point.y < 0 || point.x > rect.width || point.y > rect.height) return;
+      const hit = hitTestObjects(snapshot.objects, point, adapter);
+      if (!hit) return;
+      const target = snapshot.objects.find((object) => object.id === hit.objectId);
+      if (!target || target.visibility.locked) return;
+      const anchor = anchorAtPoint(point.x, point.y);
+      if (!anchor) return;
+      event.preventDefault();
+      event.stopPropagation();
+      claim();
+      store.setToolbar((toolbar) => ({ ...toolbar, mode: "select", activeTool: null, activeGroup: null }));
+      store.select([target.id]);
+      store.beginObjectEdit();
+      dragRef.current = { objectId: hit.objectId, kind: hit.kind, handleIndex: hit.handleIndex, start: anchor, original: copyObject(target) };
+      canvas.style.pointerEvents = "auto";
+      canvas.setPointerCapture(event.pointerId);
+    };
+    document.addEventListener("pointerdown", handleDormantGrab, true);
+    return () => document.removeEventListener("pointerdown", handleDormantGrab, true);
+  }, [adapter, anchorAtPoint, claim, engaged, snapshot.objects, snapshot.toolbar.hidden, store]);
 
   const onPointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
     if (!engaged || event.button !== 0) return;
