@@ -5243,7 +5243,7 @@ function Chart({
       const lineWidth = Math.max(1, Math.min(4, requestedLineWidth)) as 1 | 2 | 3 | 4;
       const lineStyle = ["solid", "dashed", "dotted"].includes(String(instance.settings?.lineStyle))
         ? String(instance.settings?.lineStyle) as "solid" | "dashed" | "dotted"
-        : "dotted";
+        : "dashed";
       return [{
         key: `${instance.instanceId}-zero-gamma-line`,
         groupKey: instance.instanceId,
@@ -5255,7 +5255,7 @@ function Chart({
         lineStyle,
         lineType: "simple",
         lastValueVisible: instance.settings?.showCurrentValue !== false,
-        data: paintZeroGammaLine(zeroGammaLinePayload.points, indicatorCandles.map((candle) => candle.timestamp)),
+        data: paintZeroGammaLine(zeroGammaLinePayload.points),
       }];
     }),
     ...indicators.flatMap((instance): CalculatedIndicatorSeries[] => {

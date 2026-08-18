@@ -48,38 +48,25 @@ export function zeroGammaSourceForInstrument(instrument: string): ZeroGammaLineS
 }
 
 /**
- * Expands sparse verified Gamma observations onto the chart's own timestamps.
- * Values are only carried forward, never backward, so the overlay behaves like
- * a running VWAP while preserving the no-lookahead boundary of each snapshot.
+ * Draws the verified Gamma observations as one continuous running line, the
+ * same way GEX BOX renders its zero-Gamma trail: each observation is a point
+ * and the chart connects them directly. Carrying values forward per candle
+ * produced a stepped, block-like line instead of a smooth path. Live
+ * observations accumulate intraday, so during the session the line runs at
+ * the refresh cadence.
  */
 export function paintZeroGammaLine(
   points: ZeroGammaLinePoint[],
-  timestampsMs: number[],
 ): Array<{ time: number; value: number }> {
-  const observations = [...points]
-    .filter((point) => Number.isFinite(point.timestampMs) && Number.isFinite(point.value))
-    .sort((left, right) => left.timestampMs - right.timestampMs);
-  const timestamps = [...new Set(timestampsMs.filter(Number.isFinite))].sort((left, right) => left - right);
-  if (!observations.length || !timestamps.length) return [];
-
-  const result: Array<{ time: number; value: number }> = [];
-  let observationIndex = 0;
-  let active: ZeroGammaLinePoint | null = null;
-  for (const timestamp of timestamps) {
-    while (observationIndex < observations.length && observations[observationIndex].timestampMs <= timestamp) {
-      active = observations[observationIndex];
-      observationIndex += 1;
-    }
-    if (active) result.push({ time: Math.floor(timestamp / 1_000), value: active.value });
+  const bySecond = new Map<number, number>();
+  for (const point of [...points]
+    .filter((item) => Number.isFinite(item.timestampMs) && Number.isFinite(item.value))
+    .sort((left, right) => left.timestampMs - right.timestampMs)) {
+    bySecond.set(Math.floor(point.timestampMs / 1_000), point.value);
   }
-
-  // A newly observed live value may be newer than the latest completed candle.
-  // Append it explicitly so the line reaches the live edge immediately.
-  const latest = observations.at(-1);
-  if (latest && (!result.length || Math.floor(latest.timestampMs / 1_000) > (result.at(-1)?.time ?? 0))) {
-    result.push({ time: Math.floor(latest.timestampMs / 1_000), value: latest.value });
-  }
-  return result;
+  return [...bySecond.entries()]
+    .sort((left, right) => left[0] - right[0])
+    .map(([time, value]) => ({ time, value }));
 }
 
 export function isZeroGammaLinePayload(value: unknown): value is ZeroGammaLinePayload {

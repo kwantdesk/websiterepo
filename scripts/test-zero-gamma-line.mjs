@@ -56,14 +56,16 @@ assert.equal(zeroGammaSourceForInstrument("NDX"), "NDX");
 assert.equal(zeroGammaSourceForInstrument("I:SPX"), "SPX");
 assert.equal(zeroGammaSourceForInstrument("MNQU6"), "NQ");
 
+// Observations connect directly into one continuous running line — the GEX
+// BOX zero-Gamma trail behaviour — instead of stepping per candle. Duplicate
+// seconds keep only the newest observation.
 assert.deepEqual(paintZeroGammaLine([
+  { timestampMs: 3_000, sessionDate: "2026-08-18", value: 104, status: "LIVE" },
   { timestampMs: 1_000, sessionDate: "2026-08-17", value: 100, status: "HISTORICAL" },
-  { timestampMs: 3_000, sessionDate: "2026-08-18", value: 105, status: "LIVE" },
-], [0, 1_000, 2_000, 3_000, 4_000]), [
+  { timestampMs: 3_400, sessionDate: "2026-08-18", value: 105, status: "LIVE" },
+]), [
   { time: 1, value: 100 },
-  { time: 2, value: 100 },
   { time: 3, value: 105 },
-  { time: 4, value: 105 },
 ]);
 
 assert.equal(isZeroGammaLinePayload({
