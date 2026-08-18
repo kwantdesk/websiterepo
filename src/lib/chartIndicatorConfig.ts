@@ -1158,6 +1158,10 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     preset: "balanced-intraday",
     provider: "quantdata",
     sourceTicker: "AUTO",
+    // "live" tracks the current session; "eod" pins the previous completed
+    // session's levels exactly as they closed, converted to the chart.
+    priceMode: "live",
+    extendRight: false,
     greekMode: "GAMMA",
     expirationMode: "zero-to-one-dte",
     minimumDte: 0,
@@ -1974,6 +1978,7 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
       expirationMode: ["zero-dte", "zero-to-one-dte", "zero-to-seven-dte", "front-expiration", "all-expirations", "custom-dte-range", "specific-expirations"],
       visualStrengthBasis: ["absolute-exposure", "percent-of-king", "hybrid"],
       preset: ["balanced-intraday", "zero-dte-scalper", "major-nodes-only", "fresh-bounce-levels", "node-momentum", "clean-chart", "research"],
+      priceMode: ["live", "eod"],
     };
     for (const [key, allowed] of Object.entries(enumValues)) {
       if (!allowed.includes(String(settings[key]))) settings[key] = defaults[key];

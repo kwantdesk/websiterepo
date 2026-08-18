@@ -1668,6 +1668,7 @@ export default function ChartIndicatorsControl({
                   </label>
                   {([
                     ["Options source", "sourceTicker", "AUTO", [["AUTO", "Automatic for chart"], ["QQQ", "QQQ"], ["NDX", "NDX"], ["SPY", "SPY"], ["SPX", "SPX"], ["SPXW", "SPXW"], ["IWM", "IWM"]]],
+                    ["Level mode", "priceMode", "live", [["live", "Live · current session"], ["eod", "EOD · previous session close"]]],
                     ["Exposure Greek", "greekMode", "GAMMA", [["GAMMA", "Gamma"], ["DELTA", "Delta"], ["VANNA", "Vanna"], ["CHARM", "Charm"]]],
                     ["Expiration window", "expirationMode", "zero-to-one-dte", [["zero-dte", "0DTE"], ["zero-to-one-dte", "0–1 DTE"], ["zero-to-seven-dte", "0–7 DTE"], ["front-expiration", "Front expiration"], ["all-expirations", "All expirations"], ["custom-dte-range", "Custom DTE range"], ["specific-expirations", "Specific expirations"]]],
                     ["Exposure sizing", "visualStrengthBasis", "percent-of-king", [["percent-of-king", "Relative to strongest node"], ["absolute-exposure", "Absolute exposure"], ["hybrid", "Hybrid · absolute + relative"]]],

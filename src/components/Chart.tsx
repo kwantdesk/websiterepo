@@ -326,6 +326,7 @@ import {
 import { fetchWorkspaceData, gexMapCacheKey, readWorkspaceData, writeWorkspaceData } from "@/lib/workspaceDataCache";
 import { hasRenderableGexMapSurface, type GexMapPanelPayload } from "@/lib/gexMap";
 import { buildOptionsDeltaSeries, optionsDeltaSourceForInstrument } from "@/lib/optionsDelta";
+import { latestCompletedNewYorkSession, newYorkSessionTimestamp } from "@/lib/gexVueReplay";
 import { isZeroGammaLinePayload, paintZeroGammaLine, zeroGammaRootForInstrument, type ZeroGammaLinePayload } from "@/lib/zeroGammaLine";
 import { STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT } from "@/lib/volumeProfileMath";
 import {
@@ -6260,6 +6261,7 @@ function Chart({
     includeWeeklies: bounceLevelsIndicator.settings?.includeWeeklies !== false,
     includeMonthlies: bounceLevelsIndicator.settings?.includeMonthlies !== false,
     includeQuarterlies: bounceLevelsIndicator.settings?.includeQuarterlies !== false,
+    priceMode: String(bounceLevelsIndicator.settings?.priceMode ?? "live"),
     maximumLevels: Number(bounceLevelsIndicator.settings?.maximumLevels ?? 8),
     topExposurePercent: Number(bounceLevelsIndicator.settings?.topExposurePercent ?? 10),
     minimumPercentOfKing: Number(bounceLevelsIndicator.settings?.minimumPercentOfKing ?? 15),
@@ -6345,8 +6347,13 @@ function Chart({
     const source = requestedSource === "AUTO"
       ? /^(RTY|M2K)$/.test(display) ? "IWM" : defaultGexIntervalMapSource(display)
       : requestedSource;
+    // EOD mode pins the previous completed New York session's levels exactly
+    // as they closed, using the same historical asOf contract replay uses.
+    const eodAsOfMs = !replayTimestampMs && String(indicatorSettings.priceMode) === "eod"
+      ? newYorkSessionTimestamp(latestCompletedNewYorkSession(), 16 * 60)
+      : null;
     const refreshMs = BOUNCE_LEVELS_REFRESH_INTERVAL_MS;
-    const bounceCacheKey = `bounce-levels:${display}:${source}:${bounceLevelsDataSignature}:${bounceLevelsReplayMinute || "live"}`;
+    const bounceCacheKey = `bounce-levels:${display}:${source}:${bounceLevelsDataSignature}:${bounceLevelsReplayMinute || eodAsOfMs || "live"}`;
     const cachedBounce = readWorkspaceData<BounceLevelsSnapshot>(bounceCacheKey);
     if (cachedBounce && isBounceLevelsSnapshot(cachedBounce)) {
       commitSnapshot(cachedBounce);
@@ -6415,11 +6422,12 @@ function Chart({
         rollWindowSeconds: String(indicatorSettings.rollWindowSeconds),
       });
       if (replayTimestampMs) query.set("asOf", new Date(replayTimestampMs).toISOString());
+      else if (eodAsOfMs) query.set("asOf", new Date(eodAsOfMs).toISOString());
       try {
         const payload = await fetchWorkspaceData<BounceLevelsSnapshot>(
           bounceCacheKey,
           `/api/bounce-levels?${query}`,
-          { force, maxAgeMs: refreshMs, timeoutMs: 35_000, validate: isBounceLevelsSnapshot, invalidMessage: "Bounce Levels returned an incomplete ranked surface." },
+          { force, maxAgeMs: eodAsOfMs ? 6 * 60 * 60_000 : refreshMs, timeoutMs: 35_000, validate: isBounceLevelsSnapshot, invalidMessage: "Bounce Levels returned an incomplete ranked surface." },
         );
         if (!cancelled) { commitSnapshot(payload); setBounceLevelsError(null); }
       } catch (error) {
@@ -6427,10 +6435,11 @@ function Chart({
       } finally {
         // Re-enter through the shared freshness cache so several charts with
         // identical data settings elect one network refresh instead of each
-        // forcing its own provider request.
+        // forcing its own provider request. A pinned EOD snapshot is static
+        // and needs no recurring refresh.
         if (!cancelled) {
           setBounceLevelsLoading(false);
-          if (!replayTimestampMs) timer = window.setTimeout(() => void load(false), refreshMs);
+          if (!replayTimestampMs && !eodAsOfMs) timer = window.setTimeout(() => void load(false), refreshMs);
         }
       }
     };
@@ -6492,6 +6501,7 @@ function Chart({
       ])),
       positiveColor: useThemeColors ? settings.upColor : String(indicatorSettings.positiveColor ?? settings.upColor),
       negativeColor: useThemeColors ? settings.downColor : String(indicatorSettings.negativeColor ?? settings.downColor),
+      extendRight: indicatorSettings.extendRight === true,
     };
   }, [bounceLevelsIndicator, bounceLevelsSnapshot, overlayTimelineMs, settings.downColor, settings.upColor]);
   useEffect(() => { bounceLevelsPrimitiveRef.current?.update(bounceLevelsPrimitiveData); }, [bounceLevelsPrimitiveData]);

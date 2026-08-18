@@ -30,6 +30,8 @@ export type BounceLevelsPrimitiveData = {
   roleColors: Record<string, string>;
   positiveColor: string;
   negativeColor: string;
+  /** Continue every level line from its last observation to the right edge. */
+  extendRight: boolean;
 };
 
 export type BounceLevelsHit = { x: number; y: number; node: BounceExposureNode; snapshot: BounceLevelsSnapshot };
@@ -585,6 +587,20 @@ class BounceLevelsRenderer implements ISeriesPrimitivePaneRenderer {
           context.shadowBlur = (1.5 + data.glowStrength * 0.4) * BOUNCE_LEVELS_HEAT_THICKNESS_SCALE;
           context.stroke();
           context.shadowBlur = 0;
+
+          if (data.extendRight && body.edgeX < mediaSize.width) {
+            // Project the level's final price to the right edge as a quiet
+            // dashed continuation — the ribbon stays anchored to when the
+            // level actually existed; the projection is presentation only.
+            context.beginPath();
+            context.moveTo(body.edgeX, body.edgeY);
+            context.lineTo(mediaSize.width, body.edgeY);
+            context.setLineDash([6, 5]);
+            context.strokeStyle = rgba(last.color, clamp(maximumOpacity * 0.7, 0.18, 0.9));
+            context.lineWidth = Math.max(1, 0.9 + maximumStrength * 1.2);
+            context.stroke();
+            context.setLineDash([]);
+          }
 
           if (data.microOrbTexture && activePanelCount === 1 && prepared.length <= 1_600) {
             for (const point of points) {
