@@ -12221,7 +12221,7 @@ function Chart({
         return Math.max(0, (overlaySize.width - nativePriceScaleWidth) / (logicalRange.to - logicalRange.from));
       })(),
       candles,
-      trades: marketTrades,
+      trades: drawingMarketTradesRef.current,
       timeToX: (timeMs, logicalIndex) => {
         const timeScale = chartRef.current?.timeScale();
         if (!timeScale) return null;
@@ -12248,7 +12248,7 @@ function Chart({
       }),
       requestChartRender: () => setViewportVersion((current) => current + 1),
     };
-  }, [candles, candleIntervalMs, contractSymbol, indicatorPaneHeight, instrument, marketTrades, nativePriceScaleWidth, overlaySize.height, overlaySize.width, priceFormat.minMove, priceFormat.precision, timeframe, viewportVersion]);
+  }, [candles, candleIntervalMs, contractSymbol, indicatorPaneHeight, instrument, nativePriceScaleWidth, overlaySize.height, overlaySize.width, priceFormat.minMove, priceFormat.precision, timeframe, viewportVersion]);
 
   const selectProfessionalDrawingInScreenBox = useCallback((bounds: { left: number; right: number; top: number; bottom: number }) => {
     const chart = chartRef.current;

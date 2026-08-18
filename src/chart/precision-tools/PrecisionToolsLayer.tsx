@@ -13,6 +13,7 @@ import PrecisionSettingsDrawer from "./PrecisionSettingsDrawer";
 import { requiredPrecisionAnchors } from "./registry";
 import { renderPrecisionCanvas, renderPrecisionInteractionCanvas } from "./renderer";
 import { PrecisionToolsStore } from "./store";
+import { releaseCanvasBackingStore, resolvePrecisionCanvasBackingStore } from "./canvasBudget";
 import type { PrecisionAnchor, PrecisionChartAdapter, PrecisionObject, PrecisionScreenPoint, PrecisionTheme, PrecisionToolConfig, PrecisionToolId, PrecisionToolbarState } from "./types";
 
 interface Props {
@@ -180,17 +181,30 @@ export default function PrecisionToolsLayer({
       store.cancelDraft();
     }
   }), [store]);
-  const resizeCanvas = useCallback((canvas: HTMLCanvasElement | null) => {
+  const resizeCanvas = useCallback((canvas: HTMLCanvasElement | null, allocate = true) => {
     if (!canvas) return null;
-    const dpr = Math.max(1, window.devicePixelRatio || 1);
-    const pixelWidth = Math.max(1, Math.round(adapter.width * dpr));
-    const pixelHeight = Math.max(1, Math.round(adapter.height * dpr));
-    if (canvas.width !== pixelWidth || canvas.height !== pixelHeight) { canvas.width = pixelWidth; canvas.height = pixelHeight; canvas.style.width = `${adapter.width}px`; canvas.style.height = `${adapter.height}px`; }
+    canvas.style.width = `${adapter.width}px`;
+    canvas.style.height = `${adapter.height}px`;
+    if (!allocate) {
+      releaseCanvasBackingStore(canvas);
+      return null;
+    }
+    const backingStore = resolvePrecisionCanvasBackingStore(adapter.width, adapter.height, window.devicePixelRatio || 1);
+    if (canvas.width !== backingStore.pixelWidth || canvas.height !== backingStore.pixelHeight) {
+      canvas.width = backingStore.pixelWidth;
+      canvas.height = backingStore.pixelHeight;
+    }
     const context = canvas.getContext("2d");
     if (!context) return null;
-    context.setTransform(dpr, 0, 0, dpr, 0, 0);
+    context.setTransform(backingStore.scale, 0, 0, backingStore.scale, 0, 0);
     return context;
   }, [adapter.height, adapter.width]);
+
+  useEffect(() => () => {
+    if (interactionFrameRef.current != null) cancelAnimationFrame(interactionFrameRef.current);
+    releaseCanvasBackingStore(canvasRef.current);
+    releaseCanvasBackingStore(interactionCanvasRef.current);
+  }, []);
 
   useEffect(() => {
     const handleGlobalCrosshair = (event: Event) => {
@@ -200,7 +214,7 @@ export default function PrecisionToolsLayer({
       const y = adapter.priceToY(detail.price);
       if (x != null && y != null) {
         pointerRef.current = { x, y };
-        const interaction = resizeCanvas(interactionCanvasRef.current);
+        const interaction = resizeCanvas(interactionCanvasRef.current, true);
         if (interaction) renderPrecisionInteractionCanvas(interaction, adapter, pointerRef.current, engaged, theme);
       }
     };
@@ -210,10 +224,12 @@ export default function PrecisionToolsLayer({
 
   useEffect(() => {
     let frame = requestAnimationFrame(() => {
-      const context = resizeCanvas(canvasRef.current);
+      const hasStaticContent = !snapshot.toolbar.hidden && (snapshot.objects.length > 0 || snapshot.draft != null);
+      const hasInteractionContent = engaged && (snapshot.toolbar.mode === "crosshair" || snapshot.toolbar.mode === "global-crosshair" || snapshot.toolbar.mode === "place");
+      const context = resizeCanvas(canvasRef.current, hasStaticContent);
       if (context) renderPrecisionCanvas(context, snapshot.toolbar.hidden ? [] : snapshot.objects, snapshot.toolbar.hidden ? null : snapshot.draft, snapshot.selectedIds, adapter, theme);
-      const interaction = resizeCanvas(interactionCanvasRef.current);
-      if (interaction) renderPrecisionInteractionCanvas(interaction, adapter, pointerRef.current, engaged && (snapshot.toolbar.mode === "crosshair" || snapshot.toolbar.mode === "global-crosshair" || snapshot.toolbar.mode === "place"), theme);
+      const interaction = resizeCanvas(interactionCanvasRef.current, hasInteractionContent);
+      if (interaction) renderPrecisionInteractionCanvas(interaction, adapter, pointerRef.current, true, theme);
     });
     return () => cancelAnimationFrame(frame);
   }, [adapter, engaged, resizeCanvas, revision, snapshot.draft, snapshot.objects, snapshot.selectedIds, snapshot.toolbar.hidden, snapshot.toolbar.mode, theme]);
@@ -452,10 +468,12 @@ export default function PrecisionToolsLayer({
     if (interactionFrameRef.current == null) interactionFrameRef.current = requestAnimationFrame(() => {
       interactionFrameRef.current = null;
       const live = store.getSnapshot();
-      const staticContext = resizeCanvas(canvasRef.current);
+      const hasStaticContent = !live.toolbar.hidden && (live.objects.length > 0 || live.draft != null);
+      const hasInteractionContent = engaged && (live.toolbar.mode === "crosshair" || live.toolbar.mode === "global-crosshair" || live.toolbar.mode === "place");
+      const staticContext = resizeCanvas(canvasRef.current, hasStaticContent);
       if (staticContext) renderPrecisionCanvas(staticContext, live.toolbar.hidden ? [] : live.objects, live.toolbar.hidden ? null : live.draft, live.selectedIds, adapter, theme);
-      const interaction = resizeCanvas(interactionCanvasRef.current);
-      if (interaction) renderPrecisionInteractionCanvas(interaction, adapter, pointerRef.current, engaged && (live.toolbar.mode === "crosshair" || live.toolbar.mode === "global-crosshair" || live.toolbar.mode === "place"), theme);
+      const interaction = resizeCanvas(interactionCanvasRef.current, hasInteractionContent);
+      if (interaction) renderPrecisionInteractionCanvas(interaction, adapter, pointerRef.current, true, theme);
     });
     const anchor = pointerAnchor(event); if (!anchor) return;
     if (snapshot.toolbar.mode === "global-crosshair") window.dispatchEvent(new CustomEvent("kwantdesk:precision-global-crosshair", { detail: { chartId, time: anchor.time, price: anchor.price } }));
@@ -612,7 +630,7 @@ export default function PrecisionToolsLayer({
   if (!enabled) return null;
   return <div className="pointer-events-none absolute inset-0 z-[66] overflow-hidden" data-precision-tools-root data-revision={revision}>
     <canvas ref={canvasRef} className="pointer-events-none absolute inset-0" aria-label="Precision Tools rendering layer" />
-    <canvas ref={interactionCanvasRef} className="absolute inset-0 touch-none" style={{ pointerEvents: engaged ? "auto" : "none", cursor: snapshot.toolbar.mode === "select" ? "crosshair" : snapshot.toolbar.mode === "hand" ? "grab" : "crosshair" }} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} onPointerLeave={() => { pointerRef.current = null; const interaction = resizeCanvas(interactionCanvasRef.current); if (interaction) renderPrecisionInteractionCanvas(interaction, adapter, null, false, theme); }} aria-label="Precision Tools interaction layer" />
+    <canvas ref={interactionCanvasRef} className="absolute inset-0 touch-none" style={{ pointerEvents: engaged ? "auto" : "none", cursor: snapshot.toolbar.mode === "select" ? "crosshair" : snapshot.toolbar.mode === "hand" ? "grab" : "crosshair" }} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} onPointerLeave={() => { pointerRef.current = null; resizeCanvas(interactionCanvasRef.current, false); }} aria-label="Precision Tools interaction layer" />
     {showChrome ? <PrecisionRail snapshot={snapshot} engaged={engaged} onMode={setMode} onTool={selectTool} onGroup={(activeGroup) => store.setToolbar((toolbar) => ({ ...toolbar, activeGroup }))} onCollapse={() => store.setToolbar((toolbar) => ({ ...toolbar, collapsed: !toolbar.collapsed }))} onToggleHidden={() => { const hidden = !snapshot.toolbar.hidden; store.setToolbar((toolbar) => ({ ...toolbar, hidden })); store.setAllVisible(!hidden); }} onToggleLocked={() => { const locked = !snapshot.toolbar.locked; store.setToolbar((toolbar) => ({ ...toolbar, locked })); store.setAllLocked(locked); }} onObjects={() => setObjectsOpen((value) => !value)} onSettings={() => setSettingsOpen(true)} onImport={() => fileInputRef.current?.click()} onExport={exportObjects} onClear={() => setClearOpen(true)} onDismiss={release} /> : null}
     {showChrome ? <input ref={fileInputRef} type="file" accept="application/json,.json" className="hidden" onChange={(event) => { void importObjects(event.target.files?.[0]); event.currentTarget.value = ""; }} /> : null}
     {selectionBox ? <div className="pointer-events-none absolute z-[72] border border-dashed border-[#78b1ff] bg-[#4f91e9]/10" style={{ left: Math.min(selectionBox.start.x, selectionBox.end.x), top: Math.min(selectionBox.start.y, selectionBox.end.y), width: Math.abs(selectionBox.end.x - selectionBox.start.x), height: Math.abs(selectionBox.end.y - selectionBox.start.y) }} /> : null}

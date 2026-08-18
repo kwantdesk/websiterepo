@@ -12,10 +12,24 @@ import {
   snapPrice,
 } from "../src/chart/precision-tools/math.ts";
 import { PRECISION_TOOL_GROUPS, PRECISION_TOOL_REGISTRY } from "../src/chart/precision-tools/registry.ts";
+import {
+  PRECISION_CANVAS_MAX_DEVICE_PIXELS,
+  resolvePrecisionCanvasBackingStore,
+} from "../src/chart/precision-tools/canvasBudget.ts";
 
 const root = process.cwd();
 const precisionRoot = join(root, "src", "chart", "precision-tools");
 const read = (file) => readFileSync(join(root, file), "utf8");
+
+test("Precision canvas backing stores stay inside the GPU memory budget", () => {
+  const regular = resolvePrecisionCanvasBackingStore(1920, 1080, 2);
+  assert.ok(regular.pixelWidth * regular.pixelHeight <= PRECISION_CANVAS_MAX_DEVICE_PIXELS + regular.pixelWidth);
+  assert.ok(regular.scale <= 1.5);
+
+  const ultrawide = resolvePrecisionCanvasBackingStore(7680, 2160, 2);
+  assert.ok(ultrawide.pixelWidth * ultrawide.pixelHeight <= PRECISION_CANVAS_MAX_DEVICE_PIXELS + ultrawide.pixelWidth);
+  assert.ok(ultrawide.scale < 1);
+});
 
 test("Precision Tools registry contains exactly the 17 specified independent tools", () => {
   const expected = [
