@@ -1848,7 +1848,11 @@ function loadLocalWorkspacePresets(scope: ChartWorkspaceScope = "charts"): Works
 
 function normalizeWorkspacePane(pane: Partial<WorkspacePane>, fallback: WorkspacePane): WorkspacePane {
   if (pane.broker !== "Databento" && pane.broker !== "Market Index") return fallback;
-  const broker = pane.broker ?? fallback.broker;
+  // A saved pane can carry a cash-index symbol wrongly paired with the CME
+  // feed; repair it to the Market Index feed instead of loading nothing.
+  const broker = pane.symbol && isMarketIndexSymbol(pane.symbol)
+    ? "Market Index"
+    : pane.broker ?? fallback.broker;
   const requestedTimeframe = pane.timeframe ?? fallback.timeframe;
   const timeframe = broker === "Market Index" && !supportsChartInterval(requestedTimeframe, broker)
     ? "1D"
@@ -13952,7 +13956,11 @@ export default function KwantifyWorkspace({
       return;
     }
     clearBacktest();
-    const nextBroker = broker ?? connectedBroker ?? "OANDA";
+    // A cash index or options underlying only exists on the Market Index
+    // feed. Inheriting the connected futures broker paired SPX with the CME
+    // history route, which has no such instrument and left the pane blank.
+    const inferredBroker = !broker && isMarketIndexSymbol(symbol) ? "Market Index" : null;
+    const nextBroker = broker ?? inferredBroker ?? connectedBroker ?? "OANDA";
     const nextTimeframe = nextBroker === "Market Index" && !supportsChartInterval(selectedTimeframe, nextBroker)
       ? "1D"
       : selectedTimeframe;
