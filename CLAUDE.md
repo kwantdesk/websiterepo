@@ -734,3 +734,25 @@ Website only. **Owner action pending:** remove `MASSIVE_API_KEY` from Vercel env
 
 ### Worktree state
 `?? ALGO/`, `?? gexcal-*.png/tmp`, `M/?? tmp/pdfs/*` (other workstream) — no uncommitted engineering work.
+
+## Temporary engineering log — 2026-08-19 (later session)
+
+### Completed
+- Journal wins/losses paint fixed semantic green `#22C55E` / red `#EF4444` on every theme (calendar days, trade logs, LONG/SHORT chips, equity curve, metric cards). Display-only; no journal data touched (`journal/JournalWorkspace.tsx`).
+- Buy/Sell Calculator restored to the original Kwantify SVG position engine (pill TP/SL/R:R labels, four resize handles, theme colours, double-click style panel with colour pickers, opacity, line style, labels toggle). Root cause: the 08-13 drawing refactor unbound the SVG overlay and 08-15 remapped the tools to the precision engine. Unmapped `longPosition`/`shortPosition` from `PRECISION_TOOL_BY_DRAWING_TOOL`, excluded them from the professional engine, rebound the overlay handlers, and added per-chart persistence (`kwantdesk:position-drawings:v1:*`, account-synced via a new tracked prefix). The kwantify-redesign repo's version was inspected and is an older, simpler cut — not imported (`Chart.tsx`, `userPreferences.ts`).
+- Crosshair/select-tool hijack fixed: a dormant-grab edit of a precision object left the layer engaged in select mode with its canvas eating all chart events (frozen crosshair, dead panning). The grab is now tagged and releases chart interaction the moment the drag ends (`precision-tools/PrecisionToolsLayer.tsx`).
+- Value-area levels on options index charts: NDX/QQQ derive from the NQ profile, SPX/SPY from ES, projected to cash scale via a live basis ratio (latest cash candle vs the NQ/ES 1-minute bar at the same minute, bounded `/api/cme-history` fetch, 2-min cache). Developing session profile resolves the front NQ/ES contract itself. Refuses to paint without a fresh ratio (>45-min gap) rather than draw futures prices on a cash chart; index panes skip the futures-priced cold-cache restore (`KwantifyWorkspace.tsx`).
+
+### Commits pushed
+`376de191` journal semantic colours; `5b928b45` Kwantify P&L calculator + crosshair release; `c58b0110` index value-area derivation.
+
+### Verification
+Per change: `tests/precision-tools-system.test.mjs` + `tests/chart-drawing-system.test.mjs` (29/29; one pre-existing stale assertion repaired), `test:preference-hydration`, eslint on changed files (`NODE_OPTIONS=--max-old-space-size=8192` for the huge components), `npx tsc --noEmit`, `npm run build` — all green before each push.
+
+### Remaining risks
+- Index value-area conversion not yet observed against live RTH; owner check: Value Area on NDX beside NQ should mark the same market locations at cash prices.
+- Restored SVG calculator drawings persist per chart instance via preference sync only (not the `/api/chart-drawings` document channel); precision calculator objects placed during the interim still render via the precision layer.
+- Prior open items from earlier 08-19/08-18 sections stand.
+
+### Worktree state
+`?? ALGO/`, `?? gexcal-*.png/tmp`, `M/?? tmp/pdfs/*` (other workstream) — no uncommitted engineering work.
