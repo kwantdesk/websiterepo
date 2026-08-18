@@ -121,6 +121,7 @@ import GexBotFlowStrip from "@/components/GexBotFlowStrip";
 import KwantLoader from "@/components/KwantLoader";
 import {
   anchorBigTradePrintsToCandles,
+  buildEventBarChartTimeMap,
   calculateBigTradePrints,
   type AnchoredBigTradePrint,
 } from "@/lib/bigTrades";
@@ -8121,14 +8122,21 @@ function Chart({
       };
     }).sort((left, right) => left.timestamp - right.timestamp);
   }, [bigTradePrints, bigTradesIndicator?.settings, candleIntervalMs, indicatorCandles]);
+  const bigTradeEventChartTimes = useMemo(
+    () => timeframe && isEventBasedChartInterval(timeframe)
+      ? buildEventBarChartTimeMap(sampledIndicatorCandles)
+      : null,
+    [sampledIndicatorCandles, timeframe],
+  );
   const bigTradePrimitiveMarkers = useMemo<BigTradePrimitiveMarker[]>(() =>
     anchoredBigTradePrints.map((print) => ({
       ...print,
       time: (
-        eventChartTimeBySourceTimeRef.current.get(print.chartTimestamp)
+        bigTradeEventChartTimes?.get(print.chartTimestamp)
+        ?? eventChartTimeBySourceTimeRef.current.get(print.chartTimestamp)
         ?? Math.floor(print.chartTimestamp / 1_000)
       ) as Time,
-    })), [anchoredBigTradePrints, chartReadyRevision]);
+    })), [anchoredBigTradePrints, bigTradeEventChartTimes, chartReadyRevision]);
 
   useEffect(() => {
     const primitive = bigTradesPrimitiveRef.current;

@@ -14,6 +14,32 @@ export type BigTradePrint = {
 
 export type AnchoredBigTradePrint = BigTradePrint & { chartTimestamp: number };
 
+/**
+ * Reproduce the chart's unique time coordinate for event bars.
+ *
+ * Volume/range/tick bars can start inside the same wall-clock second. The
+ * chart separates those bars by one synthetic second so Lightweight Charts
+ * can retain every candle. Markers must use that same projection; using the
+ * raw rounded second can otherwise attach a print to the preceding candle.
+ */
+export function buildEventBarChartTimeMap(
+  candles: Pick<Candle, "timestamp">[],
+) {
+  const chartTimeBySourceTime = new Map<number, number>();
+  let previousChartTime = Number.NEGATIVE_INFINITY;
+
+  for (const candle of candles) {
+    const sourceTimestamp = Number(candle.timestamp);
+    const naturalTime = Math.floor(sourceTimestamp / 1_000);
+    if (!Number.isFinite(sourceTimestamp) || !Number.isFinite(naturalTime)) continue;
+    const chartTime = Math.max(naturalTime, previousChartTime + 1);
+    previousChartTime = chartTime;
+    chartTimeBySourceTime.set(sourceTimestamp, chartTime);
+  }
+
+  return chartTimeBySourceTime;
+}
+
 type BigTradeSettings = Record<string, number | string | boolean>;
 
 type TradeCandidate = {

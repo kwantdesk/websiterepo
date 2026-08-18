@@ -4,6 +4,7 @@ import test from "node:test";
 
 import {
   anchorBigTradePrintsToCandles,
+  buildEventBarChartTimeMap,
   calculateBigTradePrints,
 } from "../src/lib/bigTrades.ts";
 
@@ -99,6 +100,26 @@ test("the same tape anchors to irregular 200-volume bar boundaries", () => {
   assert.deepEqual(
     anchorBigTradePrintsToCandles(prints, candles).map((print) => print.chartTimestamp),
     [1_000, 2_750, 9_400],
+  );
+});
+
+test("Big Contracts stay centered when several 200-volume candles share one second", () => {
+  const candles = [
+    { timestamp: 1_000 },
+    { timestamp: 1_180 },
+    { timestamp: 1_640 },
+    { timestamp: 2_100 },
+  ];
+  const chartTimes = buildEventBarChartTimeMap(candles);
+
+  assert.deepEqual(
+    candles.map((candle) => chartTimes.get(candle.timestamp)),
+    [1, 2, 3, 4],
+  );
+  assert.notEqual(
+    chartTimes.get(candles[2].timestamp),
+    Math.floor(candles[2].timestamp / 1_000),
+    "the third print must use its candle's synthetic coordinate, not the first candle's raw second",
   );
 });
 
