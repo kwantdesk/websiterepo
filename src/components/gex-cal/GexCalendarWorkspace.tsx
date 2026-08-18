@@ -51,6 +51,63 @@ const DEFAULTS: Settings = {
 };
 const STORAGE_KEY = "kwantdesk:gex-cal:settings:v2";
 const ALERTS_KEY = "kwantdesk:gex-cal:alerts:v1";
+const OPTION_SOURCES = new Set(OPTIONS_FLOW_INSTRUMENTS.map((instrument) => instrument.symbol));
+const GREEKS = new Set<Settings["greek"]>(["GAMMA", "VANNA", "DELTA", "CHARM"]);
+const REPRESENTATIONS = new Set<Settings["representation"]>(["RAW", "PER_ONE_DOLLAR_MOVE", "PER_ONE_PERCENT_MOVE"]);
+const SIDES = new Set<Settings["side"]>(["NET", "CALL", "PUT", "GROSS"]);
+const EXPIRY_PRESETS = new Set<Settings["expiryPreset"]>(["ALL", "0DTE", "WEEKLY", "MONTHLY", "CUSTOM"]);
+const NORMALIZATIONS = new Set<Settings["normalization"]>(["GLOBAL", "COLUMN", "ROW", "PERCENTILE"]);
+const BASELINES = new Set<Settings["baselineMode"]>(["previous-bucket", "previous-close"]);
+
+const finiteNumber = (value: unknown, fallback: number, minimum: number, maximum: number) => {
+  const numeric = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(numeric) ? Math.min(maximum, Math.max(minimum, numeric)) : fallback;
+};
+const booleanValue = (value: unknown, fallback: boolean) => typeof value === "boolean" ? value : fallback;
+const dateValue = (value: unknown) => typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : "";
+
+function normalizeSettings(value: unknown): Settings {
+  const candidate = value && typeof value === "object" ? value as Partial<Record<keyof Settings, unknown>> : {};
+  const minDte = finiteNumber(candidate.minDte, DEFAULTS.minDte, 0, 3_650);
+  const maxDte = finiteNumber(candidate.maxDte, DEFAULTS.maxDte, minDte, 3_650);
+  return {
+    source: typeof candidate.source === "string" && OPTION_SOURCES.has(candidate.source as never) ? candidate.source : DEFAULTS.source,
+    greek: GREEKS.has(candidate.greek as Settings["greek"]) ? candidate.greek as Settings["greek"] : DEFAULTS.greek,
+    representation: REPRESENTATIONS.has(candidate.representation as Settings["representation"]) ? candidate.representation as Settings["representation"] : DEFAULTS.representation,
+    side: SIDES.has(candidate.side as Settings["side"]) ? candidate.side as Settings["side"] : DEFAULTS.side,
+    expiryPreset: EXPIRY_PRESETS.has(candidate.expiryPreset as Settings["expiryPreset"]) ? candidate.expiryPreset as Settings["expiryPreset"] : DEFAULTS.expiryPreset,
+    minDte,
+    maxDte,
+    strikeRadius: finiteNumber(candidate.strikeRadius, DEFAULTS.strikeRadius, 0, 1_000_000),
+    minimumMagnitude: finiteNumber(candidate.minimumMagnitude, DEFAULTS.minimumMagnitude, 0, Number.MAX_SAFE_INTEGER),
+    normalization: NORMALIZATIONS.has(candidate.normalization as Settings["normalization"]) ? candidate.normalization as Settings["normalization"] : DEFAULTS.normalization,
+    differenceMode: booleanValue(candidate.differenceMode, DEFAULTS.differenceMode),
+    baselineMode: BASELINES.has(candidate.baselineMode as Settings["baselineMode"]) ? candidate.baselineMode as Settings["baselineMode"] : DEFAULTS.baselineMode,
+    showStars: booleanValue(candidate.showStars, DEFAULTS.showStars),
+    showZeros: booleanValue(candidate.showZeros, DEFAULTS.showZeros),
+    rightPanelOpen: booleanValue(candidate.rightPanelOpen, DEFAULTS.rightPanelOpen),
+    rightPanelWidth: finiteNumber(candidate.rightPanelWidth, DEFAULTS.rightPanelWidth, 180, 520),
+    expirationStart: dateValue(candidate.expirationStart),
+    expirationEnd: dateValue(candidate.expirationEnd),
+  };
+}
+
+function isGexCalMatrix(value: unknown): value is GexCalMatrix {
+  if (!value || typeof value !== "object") return false;
+  const matrix = value as Partial<GexCalMatrix>;
+  return typeof matrix.source === "string"
+    && typeof matrix.sessionDate === "string"
+    && typeof matrix.selectedTimestamp === "number"
+    && Number.isFinite(matrix.selectedTimestamp)
+    && Array.isArray(matrix.cells)
+    && Array.isArray(matrix.expirations)
+    && Array.isArray(matrix.strikes)
+    && Array.isArray(matrix.availableTimestamps)
+    && Array.isArray(matrix.expirationStars)
+    && Array.isArray(matrix.strikeStars)
+    && Array.isArray(matrix.totalsByExpiration)
+    && Array.isArray(matrix.limitations);
+}
 
 const compact = (value: number) => {
   const absolute = Math.abs(value);
@@ -70,7 +127,7 @@ const thirdFriday = (expiration: string) => {
 
 function savedSettings() {
   if (typeof window === "undefined") return DEFAULTS;
-  try { return { ...DEFAULTS, ...JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}") } as Settings; } catch { return DEFAULTS; }
+  try { return normalizeSettings(JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}")); } catch { return DEFAULTS; }
 }
 
 function download(name: string, content: string, type: string) {
@@ -120,18 +177,23 @@ export default function GexCalendarWorkspace() {
       const response = await fetch(`/api/gex-cal?${query}`, { cache: "no-store", signal: controller.signal });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(typeof payload.error === "string" ? payload.error : "GEX CAL data did not complete.");
-      setMatrix(payload as GexCalMatrix);
+      if (!isGexCalMatrix(payload)) throw new Error("GEX CAL received an incomplete market-data frame.");
+      setMatrix(payload);
     } catch (reason) {
       if ((reason as Error).name !== "AbortError") setError(reason instanceof Error ? reason.message : "GEX CAL data did not complete.");
     } finally { if (!controller.signal.aborted) setLoading(false); }
   }, [asOf, sessionDate, settings.baselineMode, settings.greek, settings.representation, settings.side, settings.source]);
 
-  useEffect(() => { void load(); return () => requestRef.current?.abort(); }, [load]);
   useEffect(() => {
-    if (!matrix || matrix.status !== "LIVE") return;
+    if (!persistenceReady) return;
+    void load();
+    return () => requestRef.current?.abort();
+  }, [load, persistenceReady]);
+  useEffect(() => {
+    if (!persistenceReady || !matrix || matrix.status !== "LIVE") return;
     const timer = window.setInterval(() => void load(true), Math.max(4_000, matrix.refreshAfterMs));
     return () => window.clearInterval(timer);
-  }, [load, matrix]);
+  }, [load, matrix, persistenceReady]);
   useEffect(() => {
     if (!playing || !matrix?.availableTimestamps.length) return;
     const timer = window.setInterval(() => {
