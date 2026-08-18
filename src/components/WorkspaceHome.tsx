@@ -77,23 +77,23 @@ const LaunchCard = memo(function LaunchCard({
     <Link
       href={destination.href}
       prefetch={false}
-      className="group relative flex min-h-[216px] flex-col overflow-hidden rounded-[7px] border border-white/[0.11] bg-black/55 text-left shadow-[0_22px_70px_rgba(0,0,0,.28)] backdrop-blur-[18px] transition duration-300 hover:-translate-y-1 hover:border-primary/65 hover:bg-black/72 hover:shadow-[0_24px_80px_rgba(0,0,0,.55),0_0_30px_color-mix(in_srgb,var(--primary)_18%,transparent)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
+      className="group relative flex min-h-[216px] flex-col overflow-hidden rounded-[7px] border border-[color-mix(in_srgb,var(--foreground)_11%,transparent)] bg-[color-mix(in_srgb,var(--background)_55%,transparent)] text-left shadow-[0_22px_70px_rgba(0,0,0,.28)] backdrop-blur-[18px] transition duration-300 hover:-translate-y-1 hover:border-primary/65 hover:bg-[color-mix(in_srgb,var(--background)_72%,transparent)] hover:shadow-[0_24px_80px_rgba(0,0,0,.55),0_0_30px_color-mix(in_srgb,var(--primary)_18%,transparent)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
     >
-      <div className="relative h-[140px] shrink-0 overflow-hidden border-b border-white/[0.08] bg-black/35">
+      <div className="relative h-[140px] shrink-0 overflow-hidden border-b border-[color-mix(in_srgb,var(--foreground)_8%,transparent)] bg-[color-mix(in_srgb,var(--background)_35%,transparent)]">
         <HomeWorkspacePreview type={destination.preview} live={live} />
         {destination.preview === "home" && <LiveIndexTape live={live} />}
-        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,transparent_72%,rgba(0,0,0,.45)_100%)]" />
-        <span className="absolute left-3 top-3 flex h-7 w-7 items-center justify-center rounded-[4px] border border-white/10 bg-black/55 text-primary backdrop-blur-md transition group-hover:border-primary/45 group-hover:shadow-[0_0_18px_color-mix(in_srgb,var(--primary)_30%,transparent)]">
+        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,transparent_72%,color-mix(in_srgb,var(--background)_45%,transparent)_100%)]" />
+        <span className="absolute left-3 top-3 flex h-7 w-7 items-center justify-center rounded-[4px] border border-[color-mix(in_srgb,var(--foreground)_10%,transparent)] bg-[color-mix(in_srgb,var(--background)_55%,transparent)] text-primary backdrop-blur-md transition group-hover:border-primary/45 group-hover:shadow-[0_0_18px_color-mix(in_srgb,var(--primary)_30%,transparent)]">
           <Icon className="h-3.5 w-3.5" strokeWidth={1.55} />
         </span>
       </div>
       <div className="flex min-h-0 flex-1 items-end gap-3 px-3.5 py-3">
         <div className="min-w-0 flex-1">
           <div className="mb-1 text-[7px] font-semibold uppercase tracking-[0.18em] text-primary/75">{destination.eyebrow}</div>
-          <h2 className="text-[14px] font-semibold uppercase leading-none tracking-[0.065em] text-white">{destination.title}</h2>
-          <p className="mt-1.5 line-clamp-1 text-[8px] leading-4 text-white/48 transition group-hover:text-white/67">{destination.description}</p>
+          <h2 className="text-[14px] font-semibold uppercase leading-none tracking-[0.065em] text-foreground">{destination.title}</h2>
+          <p className="mt-1.5 line-clamp-1 text-[8px] leading-4 text-[color-mix(in_srgb,var(--foreground)_48%,transparent)] transition group-hover:text-[color-mix(in_srgb,var(--foreground)_67%,transparent)]">{destination.description}</p>
         </div>
-        <span className="mb-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-[4px] border border-white/10 text-white/38 transition group-hover:border-primary/45 group-hover:bg-primary/10 group-hover:text-primary">
+        <span className="mb-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-[4px] border border-[color-mix(in_srgb,var(--foreground)_10%,transparent)] text-[color-mix(in_srgb,var(--foreground)_38%,transparent)] transition group-hover:border-primary/45 group-hover:bg-primary/10 group-hover:text-primary">
           <ArrowUpRight className="h-3.5 w-3.5 transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5" strokeWidth={1.5} />
         </span>
       </div>
@@ -127,7 +127,7 @@ export default function WorkspaceHome({ username = "" }: { username?: string }) 
         orientation="horizontal"
       />
       <main
-        className="relative min-h-0 flex-1 overflow-hidden bg-black"
+        className="relative min-h-0 flex-1 overflow-hidden bg-background"
         aria-label="Home workspace"
       >
         <div

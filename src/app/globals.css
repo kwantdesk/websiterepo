@@ -1850,8 +1850,8 @@ body.kwant-cockpit-ui .kwant-one-liner-glow {
   transform-style: preserve-3d;
   transform: rotateX(24deg) rotateY(-11deg) rotateZ(2.5deg);
   border-radius: 4px;
-  border: 1px solid rgba(255,255,255,.13);
-  background: linear-gradient(155deg, #12161c 0%, #080a0d 72%);
+  border: 1px solid color-mix(in srgb, var(--foreground) 13%, transparent);
+  background: linear-gradient(155deg, var(--surface) 0%, var(--panel) 72%);
   box-shadow:
     0 26px 40px rgba(0,0,0,.62),
     0 0 26px color-mix(in srgb, var(--primary) 9%, transparent),
@@ -1872,8 +1872,8 @@ body.kwant-cockpit-ui .kwant-one-liner-glow {
   height: 40%;
   transform: rotateX(24deg) rotateY(-11deg) rotateZ(2.5deg) translateZ(46px);
   border-radius: 3px;
-  border: 1px solid color-mix(in srgb, var(--primary) 34%, rgba(255,255,255,.16));
-  background: linear-gradient(155deg, #181d25 0%, #0a0d11 78%);
+  border: 1px solid color-mix(in srgb, var(--primary) 34%, color-mix(in srgb, var(--foreground) 16%, transparent));
+  background: linear-gradient(155deg, color-mix(in srgb, var(--foreground) 7%, var(--surface)) 0%, var(--panel) 78%);
   box-shadow:
     0 18px 28px rgba(0,0,0,.68),
     0 0 18px color-mix(in srgb, var(--primary) 15%, transparent);
