@@ -8,6 +8,11 @@ import { zeroGammaRootForInstrument, zeroGammaSourceForInstrument } from "@/lib/
 // why the line could stay blank on SPX/SPY/NDX/QQQ charts in production.
 export const maxDuration = 120;
 
+// Several panes and machines poll the same instrument; a short instance-local
+// payload cache collapses those bursts into one provider computation.
+const payloadCache = new Map<string, { expiresAt: number; payload: unknown }>();
+const PAYLOAD_CACHE_TTL_MS = 10_000;
+
 async function isAuthenticated(request: NextRequest) {
   if (process.env.KWANTIFY_DEV_AUTH_BYPASS === "1" && ["localhost", "127.0.0.1", "::1"].includes(request.nextUrl.hostname)) return true;
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -24,8 +29,20 @@ export async function GET(request: NextRequest) {
   const source = zeroGammaSourceForInstrument(instrument);
   if (!root || !source) return NextResponse.json({ error: "Zero Gamma Line requires a supported futures or options-underlying Gamma family." }, { status: 400 });
   const sessions = Math.max(1, Math.min(5, Number(request.nextUrl.searchParams.get("sessions") ?? 5)));
+  const cacheKey = `${root}:${source}:${instrument}:${sessions}`;
+  const cached = payloadCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return NextResponse.json(cached.payload, {
+      headers: { "Cache-Control": "private, max-age=5, stale-while-revalidate=30" },
+    });
+  }
   try {
-    return NextResponse.json(await getZeroGammaLinePayload(root, source, instrument, sessions), {
+    const payload = await getZeroGammaLinePayload(root, source, instrument, sessions);
+    if (payloadCache.size > 64) {
+      for (const [key, entry] of payloadCache) if (entry.expiresAt <= Date.now()) payloadCache.delete(key);
+    }
+    payloadCache.set(cacheKey, { expiresAt: Date.now() + PAYLOAD_CACHE_TTL_MS, payload });
+    return NextResponse.json(payload, {
       headers: { "Cache-Control": "private, max-age=5, stale-while-revalidate=30" },
     });
   } catch (error) {

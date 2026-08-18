@@ -1,3 +1,4 @@
+import { unstable_cache } from "next/cache";
 import {
   newYorkCashCloseIso,
   type NativeGammaRoot,
@@ -79,6 +80,37 @@ function zeroGammaFromPayload(payload: Awaited<ReturnType<typeof getChartGammaLe
 const historicalPointCache = new Map<string, ZeroGammaLinePoint>();
 const HISTORICAL_POINT_CACHE_LIMIT = 400;
 
+async function computeHistoricalPoint(
+  root: NativeGammaRoot,
+  sourceSymbol: ZeroGammaLineSource,
+  date: string,
+): Promise<ZeroGammaLinePoint> {
+  const snapshot = await getChartGammaLevels(root, sourceSymbol, date);
+  const zeroGamma = zeroGammaFromPayload(snapshot);
+  if (zeroGamma === null) throw new Error(`No verified ${root} zero-Gamma point for ${date}.`);
+  return {
+    timestampMs: Date.parse(newYorkCashCloseIso(snapshot.sessionDate)),
+    sessionDate: snapshot.sessionDate,
+    value: zeroGamma,
+    status: "HISTORICAL",
+  };
+}
+
+// The instance memo dies with every cold serverless start, and a fleet of
+// polling browsers lands on many instances at once. Persist each verified
+// completed-session point in the cross-instance data cache so the provider
+// chain runs once per session per source across the whole deployment —
+// failures throw and are never cached, so a transient gap can still heal.
+const cachedHistoricalPoint = (
+  root: NativeGammaRoot,
+  sourceSymbol: ZeroGammaLineSource,
+  date: string,
+) => unstable_cache(
+  () => computeHistoricalPoint(root, sourceSymbol, date),
+  ["zero-gamma-point-v1", root, sourceSymbol, date],
+  { revalidate: 6 * 60 * 60 },
+)();
+
 export async function getZeroGammaLinePayload(
   root: NativeGammaRoot,
   sourceSymbol: ZeroGammaLineSource,
@@ -100,15 +132,7 @@ export async function getZeroGammaLinePayload(
     const cached = historicalPointCache.get(cacheKey);
     if (cached) return cached;
     try {
-      const snapshot = await getChartGammaLevels(root, sourceSymbol, date);
-      const zeroGamma = zeroGammaFromPayload(snapshot);
-      if (zeroGamma === null) return null;
-      const point: ZeroGammaLinePoint = {
-        timestampMs: Date.parse(newYorkCashCloseIso(snapshot.sessionDate)),
-        sessionDate: snapshot.sessionDate,
-        value: zeroGamma,
-        status: "HISTORICAL",
-      };
+      const point = await cachedHistoricalPoint(root, sourceSymbol, date);
       if (historicalPointCache.size >= HISTORICAL_POINT_CACHE_LIMIT) {
         const oldest = historicalPointCache.keys().next().value;
         if (oldest !== undefined) historicalPointCache.delete(oldest);

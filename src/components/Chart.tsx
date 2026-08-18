@@ -5232,8 +5232,10 @@ function Chart({
       if (!cancelled && historySessions > quickSessions) await load(historySessions, 120_000);
     })();
     // Shared cache + in-flight deduplication allows every pane to observe the
-    // same refresh. Forcing each pane here defeats that protection.
-    const intervalId = window.setInterval(() => void load(historySessions, 120_000), refreshMs);
+    // same refresh. Completed sessions never change, so the recurring refresh
+    // only asks for the live session — repeatedly re-requesting the full
+    // history burned provider quota fleet-wide for identical answers.
+    const intervalId = window.setInterval(() => void load(1, 45_000), refreshMs);
     return () => { cancelled = true; window.clearInterval(intervalId); };
   }, [indicatorSignature, instrument, zeroGammaLineIndicator]);
   const baseCalculatedIndicatorSeries = useMemo(

@@ -106,7 +106,9 @@ export type IndicatorNumericSetting = {
 export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[]> = {
   "zero-gamma-line": [
     { key: "historySessions", label: "Trading sessions of history", defaultValue: 5, min: 1, max: 5, step: 1 },
-    { key: "refreshSeconds", label: "Live refresh (seconds)", defaultValue: 10, min: 5, max: 60, step: 1 },
+    // The crossing moves slowly; refreshing faster than ~30s multiplied the
+    // shared provider quota across panes and machines for identical values.
+    { key: "refreshSeconds", label: "Live refresh (seconds)", defaultValue: 30, min: 15, max: 120, step: 5 },
     { key: "opacity", label: "Line visibility (%)", defaultValue: 72, min: 5, max: 100, step: 1 },
     { key: "lineWidth", label: "Line width", defaultValue: 2, min: 1, max: 4, step: 1 },
   ],
@@ -923,7 +925,7 @@ export const KWANT_STATS_COMPACT_VISIBILITY = {
 export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSettings) => ({
   ...(indicatorId === "zero-gamma-line" ? {
     historySessions: 5,
-    refreshSeconds: 10,
+    refreshSeconds: 30,
       opacity: 72,
       lineWidth: 2,
       lineStyle: "solid",

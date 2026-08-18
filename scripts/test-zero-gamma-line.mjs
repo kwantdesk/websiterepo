@@ -43,8 +43,17 @@ assert.match(server, /historicalPointCache/);
 assert.match(server, /newYorkSessionCompleted\(now\) \? sessionDate : previousTradingDay\(sessionDate\)/);
 
 // The chart paints the newest sessions first and streams the rest of the
-// history in behind them.
+// history in behind them. The recurring refresh only re-requests the live
+// session — completed sessions are immutable and re-fetching them multiplied
+// provider quota fleet-wide.
 assert.match(chart, /await load\(quickSessions, 45_000\)/);
+assert.match(chart, /window\.setInterval\(\(\) => void load\(1, 45_000\)/);
+
+// Completed-session points persist in the cross-instance data cache and the
+// route coalesces polling bursts, so a fleet of machines cannot multiply the
+// provider chain for identical answers.
+assert.match(server, /unstable_cache/);
+assert.match(route, /payloadCache/);
 
 assert.equal(zeroGammaRootForInstrument("NQ"), "NQ");
 assert.equal(zeroGammaRootForInstrument("MNQU6"), "NQ");
