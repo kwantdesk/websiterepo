@@ -3137,6 +3137,20 @@ function Chart({
   const [drawTool, setDrawTool] = useState<DrawToolId>("cursor");
   const [drawSelectedId, setDrawSelectedId] = useState<string | null>(null);
   const [drawKeepDrawing, setDrawKeepDrawing] = useState(false);
+  const [drawMagnet, setDrawMagnet] = useState(false);
+  useEffect(() => {
+    try { setDrawMagnet(window.localStorage.getItem("kwantdesk:chart-magnet:v1") === "true"); } catch {}
+  }, []);
+  const toggleDrawMagnet = useCallback(() => {
+    setDrawMagnet((current) => {
+      const next = !current;
+      try {
+        window.localStorage.setItem("kwantdesk:chart-magnet:v1", String(next));
+        window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
+      } catch {}
+      return next;
+    });
+  }, []);
   const [drawTextInput, setDrawTextInput] = useState<{ points: DrawPoint[]; tool: DrawToolId; x: number; y: number; value: string } | null>(null);
   const [drawSettingsOpen, setDrawSettingsOpen] = useState(false);
   const chartingDrawCandles = useMemo(
@@ -13073,8 +13087,10 @@ function Chart({
           <ChartDrawToolbar
             activeTool={drawTool}
             keepDrawing={drawKeepDrawing}
+            magnet={drawMagnet}
             onSelectTool={(tool) => { setDrawTool(tool); if (tool !== "cursor") setDrawSelectedId(null); }}
             onToggleKeepDrawing={() => setDrawKeepDrawing((value) => !value)}
+            onToggleMagnet={toggleDrawMagnet}
             onOpenSettings={() => setDrawSettingsOpen(true)}
             hasSelection={Boolean(drawSelectedId)}
             onDeleteSelection={() => {
@@ -13100,6 +13116,7 @@ function Chart({
               return time != null && price != null && Number.isFinite(price) ? { time, price: Number(price) } : null;
             }}
             candles={chartingDrawCandles}
+            magnet={drawMagnet}
             viewportVersion={viewportVersion}
             onOpenSettings={(id) => { setDrawSelectedId(id); setDrawTool("cursor"); setDrawSettingsOpen(true); }}
             onCommit={(drawing) => { commitDrawings([...chartingDrawings, drawing]); setDrawSelectedId(drawing.id); }}

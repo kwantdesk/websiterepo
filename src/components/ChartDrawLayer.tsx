@@ -28,6 +28,7 @@ type Props = {
   toY: (price: number) => number | null;
   fromXY: (x: number, y: number) => DrawPoint | null;
   candles: DrawCandle[];
+  magnet: boolean;
   viewportVersion: number;
   onCommit: (drawing: Drawing) => void;
   onUpdate: (drawing: Drawing) => void;
@@ -48,7 +49,7 @@ const TEXT_INPUT_TOOLS: DrawToolId[] = ["text", "note", "callout", "signpost"];
 
 export default function ChartDrawLayer({
   width, height, activeTool, keepDrawing, drawings, selectedId,
-  toX, toY, fromXY, candles, viewportVersion, onCommit, onUpdate, onDelete, onSelect, onToolConsumed, onRequestText, onOpenSettings,
+  toX, toY, fromXY, candles, magnet, viewportVersion, onCommit, onUpdate, onDelete, onSelect, onToolConsumed, onRequestText, onOpenSettings,
 }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [pending, setPending] = useState<{ tool: DrawToolId; points: DrawPoint[] } | null>(null);
@@ -62,10 +63,30 @@ export default function ChartDrawLayer({
 
   const active = activeTool !== "cursor" && activeTool !== "eraser";
   const spec = DRAW_TOOL_SPECS[activeTool];
+  // Magnet: snap a raw point to the nearest candle's closest OHLC value, so a
+  // trend line / fib / gann / ray anchor locks to the wick or body it is drawn
+  // beside. Applies to placement and dragging, for every tool.
+  const snap = (point: DrawPoint | null): DrawPoint | null => {
+    if (!point || !magnet || candles.length === 0) return point;
+    let nearest = candles[0];
+    let nearestDist = Infinity;
+    for (const candle of candles) {
+      const distance = Math.abs(candle.time - point.time);
+      if (distance < nearestDist) { nearestDist = distance; nearest = candle; }
+    }
+    const ohlc = [nearest.open, nearest.high, nearest.low, nearest.close];
+    let snappedPrice = ohlc[0];
+    let priceDist = Infinity;
+    for (const value of ohlc) {
+      const distance = Math.abs(value - point.price);
+      if (distance < priceDist) { priceDist = distance; snappedPrice = value; }
+    }
+    return { time: nearest.time, price: snappedPrice };
+  };
   const localPoint = (event: ReactPointerEvent) => {
     const rect = svgRef.current?.getBoundingClientRect();
     if (!rect) return null;
-    return fromXY(event.clientX - rect.left, event.clientY - rect.top);
+    return snap(fromXY(event.clientX - rect.left, event.clientY - rect.top));
   };
 
   const finish = (tool: DrawToolId, points: DrawPoint[]) => {
@@ -80,7 +101,7 @@ export default function ChartDrawLayer({
   const windowPoint = (clientX: number, clientY: number) => {
     const rect = svgRef.current?.getBoundingClientRect();
     if (!rect) return null;
-    return fromXY(clientX - rect.left, clientY - rect.top);
+    return snap(fromXY(clientX - rect.left, clientY - rect.top));
   };
   const dragCleanupRef = useRef<(() => void) | null>(null);
   useEffect(() => () => { dragCleanupRef.current?.(); }, []);

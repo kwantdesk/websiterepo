@@ -90,8 +90,10 @@ const toolsOf = (group: DrawToolGroupId): DrawToolId[] => DRAW_TOOL_LIST.filter(
 type Props = {
   activeTool: DrawToolId;
   keepDrawing: boolean;
+  magnet: boolean;
   onSelectTool: (tool: DrawToolId) => void;
   onToggleKeepDrawing: () => void;
+  onToggleMagnet: () => void;
   onOpenSettings: () => void;
   hasSelection: boolean;
   onDeleteSelection: () => void;
@@ -99,7 +101,7 @@ type Props = {
 };
 
 export default function ChartDrawToolbar({
-  activeTool, keepDrawing, onSelectTool, onToggleKeepDrawing, onOpenSettings, hasSelection, onDeleteSelection, onClearAll,
+  activeTool, keepDrawing, magnet, onSelectTool, onToggleKeepDrawing, onToggleMagnet, onOpenSettings, hasSelection, onDeleteSelection, onClearAll,
 }: Props) {
   const [openGroup, setOpenGroup] = useState<DrawToolGroupId | null>(null);
   const [menuPos, setMenuPos] = useState<{ left: number; top: number } | null>(null);
@@ -163,6 +165,17 @@ export default function ChartDrawToolbar({
       })}
 
       <span className="h-4 w-px shrink-0 bg-border/70" />
+      <button
+        type="button"
+        onClick={onToggleMagnet}
+        className={`${chip} ${magnet ? "border-primary/40 bg-primary/[0.10] text-primary" : "border-transparent text-muted hover:bg-surface hover:text-foreground"}`}
+        title="Magnet — snap drawing points to the nearest candle wick/body"
+        aria-pressed={magnet}
+      >
+        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+          <path d="M6 4v7a6 6 0 0 0 12 0V4" /><path d="M6 8h4" /><path d="M14 8h4" />
+        </svg>
+      </button>
       <button type="button" onClick={onToggleKeepDrawing} className={`${chip} text-[9px] font-semibold uppercase tracking-[0.05em] ${keepDrawing ? "border-primary/40 bg-primary/[0.10] text-primary" : "border-transparent text-muted hover:bg-surface hover:text-foreground"}`} title="Keep the tool active after drawing">Stay</button>
       <button type="button" onClick={onOpenSettings} disabled={!hasSelection} className={`${chip} text-[9px] font-semibold uppercase tracking-[0.05em] ${hasSelection ? "border-transparent text-muted hover:bg-surface hover:text-foreground" : "border-transparent text-muted/30"}`} title="Selected drawing style">Style</button>
       <button type="button" onClick={onDeleteSelection} disabled={!hasSelection} className={`${chip} text-[9px] font-semibold uppercase tracking-[0.05em] ${hasSelection ? "border-transparent text-muted hover:bg-surface hover:text-danger" : "border-transparent text-muted/30"}`} title="Delete selected drawing">Del</button>
