@@ -76,6 +76,7 @@ import {
   Play,
   PictureInPicture2,
   Plus,
+  RefreshCw,
   Repeat,
   Save,
   Search,
@@ -7924,6 +7925,13 @@ export default function KwantifyWorkspace({
   const [linkedViewportPaneIds, setLinkedViewportPaneIds] = useState<Set<string>>(
     () => new Set(initialChartWorkspaceRuntime.linkedPaneIds),
   );
+  // Per-pane refresh: bumping a pane's nonce remounts ONLY that chart pane,
+  // refetching its history and rebuilding its indicators without touching the
+  // other panes or reloading the page.
+  const [paneRefreshNonces, setPaneRefreshNonces] = useState<Record<string, number>>({});
+  const refreshWorkspacePane = useCallback((paneId: string) => {
+    setPaneRefreshNonces((current) => ({ ...current, [paneId]: (current[paneId] ?? 0) + 1 }));
+  }, []);
   useEffect(() => {
     const chartPaneIds = new Set(
       workspacePanes.filter((pane) => isWorkspaceChartKind(pane.content)).map((pane) => pane.id),
@@ -14951,6 +14959,7 @@ export default function KwantifyWorkspace({
     const paneLevelState = paneLevelVisibility[pane.id] ?? EMPTY_PANE_LEVEL_VISIBILITY;
     const chartPane = (
       <WorkspaceChartPane
+        key={`${pane.id}:refresh-${paneRefreshNonces[pane.id] ?? 0}`}
         pane={pane}
         active={activePaneId === pane.id}
         embedded
@@ -15064,6 +15073,17 @@ export default function KwantifyWorkspace({
                 aria-label={linkedViewportPaneIds.has(pane.id) ? "Unlink shared viewport" : "Link shared viewport"}
               >
                 <ArrowLeftRight className="h-3.5 w-3.5" />
+              </button>
+            ) : null}
+            {isWorkspaceChartKind(pane.content) ? (
+              <button
+                type="button"
+                onClick={() => refreshWorkspacePane(pane.id)}
+                className="flex h-7 w-7 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface hover:text-primary"
+                title="Refresh this chart only — reloads its data and every indicator"
+                aria-label="Refresh this chart"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
               </button>
             ) : null}
             {hasStandaloneWorkspaceSettings(pane) ? (
@@ -15187,6 +15207,18 @@ export default function KwantifyWorkspace({
                 aria-label={linkedViewportPaneIds.has(pane.id) ? "Unlink shared viewport" : "Link shared viewport"}
               >
                 <ArrowLeftRight className="h-3 w-3" />
+              </button>
+            ) : null}
+            {isWorkspaceChartKind(pane.content) ? (
+              <button
+                type="button"
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={() => refreshWorkspacePane(pane.id)}
+                className="flex h-6 w-6 items-center justify-center border border-transparent text-muted transition-colors hover:border-border hover:text-primary"
+                title="Refresh this chart only — reloads its data and every indicator"
+                aria-label="Refresh this chart"
+              >
+                <RefreshCw className="h-3 w-3" />
               </button>
             ) : null}
             {hasStandaloneWorkspaceSettings(pane) ? (
