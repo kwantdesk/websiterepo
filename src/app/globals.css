@@ -1409,8 +1409,10 @@ header.kwant-command-rail .kwant-primary-nav-control {
 }
 
 .kwant-chart-command-deck {
-  height: calc(var(--kwant-shell-bar-height) * 2);
-  grid-template-rows: repeat(2, var(--kwant-shell-bar-height));
+  /* One consolidated control row: the deck reserves exactly one bar height,
+     returning the old second row's space to the charts. */
+  height: var(--kwant-shell-bar-height);
+  grid-template-rows: var(--kwant-shell-bar-height);
 }
 
 .kwant-chart-command-deck > div,
