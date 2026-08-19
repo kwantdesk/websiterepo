@@ -64,6 +64,7 @@ import {
   List,
   Loader2,
   Lock,
+  LockOpen,
   Maximize2,
   MessageCircle,
   Minus,
@@ -15803,9 +15804,9 @@ export default function KwantifyWorkspace({
             <button
               onClick={() => setWorkspaceLocked((current) => !current)}
               className={`ml-1 flex h-7 w-7 items-center justify-center rounded-[3px] border text-[10px] font-semibold uppercase tracking-[0.075em] transition-colors ${workspaceLocked ? "border-primary/35 bg-primary/[0.08] text-primary" : "border-transparent text-muted hover:bg-surface hover:text-foreground"}`}
-              title={workspaceLocked ? "Unlock layout" : "Lock layout"}
+              title={workspaceLocked ? "Layout is locked — click to unlock" : "Layout is unlocked — click to lock"}
             >
-              <Lock className="h-3.5 w-3.5" />
+              {workspaceLocked ? <Lock className="h-3.5 w-3.5" /> : <LockOpen className="h-3.5 w-3.5" />}
             </button>
             <div className="mx-1 h-4 w-px bg-border" />
             <div className="relative">
