@@ -319,6 +319,8 @@ const loadGammaWorkspace = () => import("@/components/options-flow/GammaWorkspac
 const loadGexCalendarWorkspace = () => import("@/components/gex-cal/GexCalendarWorkspace");
 const loadGexFlowWorkspace = () => import("@/components/gex-flow/GexFlowWorkspace");
 const loadGexMapWorkspace = () => import("@/components/gex-map/GexMapWorkspace");
+// eslint-disable-next-line @typescript-eslint/consistent-type-imports
+type GexMapEmbedState = import("@/components/gex-map/GexMapWorkspace").GexMapEmbedState;
 const loadLiquidityMapWorkspace = () => import("@/components/liquidity-map/LiquidityMapWorkspace");
 const loadDepthOfMarketWorkspace = () => import("@/components/DepthOfMarketPanel");
 const loadSpoofingDetectorWorkspace = () => import("@/components/order-flow/SpoofingDetectorWorkspace");
@@ -844,6 +846,9 @@ type WorkspacePane = {
   content: WorkspacePanelKind | null;
   /** A pane lock only pins this pane; it must never lock the whole workspace. */
   locked: boolean;
+  /** Embedded GEX Map configuration (columns, exposure metrics, view mode),
+   * saved and restored with the workspace. */
+  gexMapState?: GexMapEmbedState;
 };
 type WorkspaceFloatingWindow = {
   paneId: string;
@@ -1883,6 +1888,9 @@ function normalizeWorkspacePane(pane: Partial<WorkspacePane>, fallback: Workspac
     // Existing saved workspaces predate mixed panels and are chart panes.
     content: pane.content === null || isWorkspacePanelKind(pane.content) ? pane.content : "charts",
     locked: pane.locked === true,
+    // The embedded GEX Map validates this itself on mount; carry it through
+    // so saved column/metric/view choices survive workspace loads.
+    ...(pane.gexMapState && typeof pane.gexMapState === "object" ? { gexMapState: pane.gexMapState } : {}),
   };
 }
 
@@ -14712,7 +14720,13 @@ export default function KwantifyWorkspace({
         return <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-gamma`} label="Gamma"><GammaWorkspace /></WorkspaceFailureBoundary>;
       case "gexmap": {
         const gexMarket = ["ES", "MES"].includes(normalizePaperSymbol(pane.symbol)) ? "ES" : "NQ";
-        return <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-gexmap-${gexMarket}`} label="GEX Map"><GexMapWorkspace key={`${pane.id}-${gexMarket}`} market={gexMarket} externalReplay={chartWorkspaceScope === "gamma" && gexVueReplay.active ? {
+        return <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-gexmap-${gexMarket}`} label="GEX Map"><GexMapWorkspace key={`${pane.id}-${gexMarket}`} market={gexMarket} persistedState={pane.gexMapState ?? null} onStateChange={(state) => {
+          setWorkspacePanes((current) => current.map((candidate) => {
+            if (candidate.id !== pane.id) return candidate;
+            if (JSON.stringify(candidate.gexMapState) === JSON.stringify(state)) return candidate;
+            return { ...candidate, gexMapState: state };
+          }));
+        }} externalReplay={chartWorkspaceScope === "gamma" && gexVueReplay.active ? {
           active: true,
           sessionDate: gexVueReplay.sessionDate,
           timestampMs: gexVueReplay.timestampMs,

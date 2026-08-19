@@ -76,6 +76,14 @@ type PanelConfig = {
 
 type GexMapMarket = "NQ" | "ES";
 
+/** Serializable snapshot of an embedded map's user configuration, owned by
+ * the host workspace pane so it saves and restores with the workspace. */
+export type GexMapEmbedState = {
+  panels: PanelConfig[];
+  viewMode: GexMapViewMode;
+  stepMinutes: number;
+};
+
 type GexMapWorkspaceProps = {
   market?: GexMapMarket | null;
   externalReplay?: {
@@ -83,6 +91,10 @@ type GexMapWorkspaceProps = {
     sessionDate: string;
     timestampMs: number;
   } | null;
+  /** Saved configuration from the host workspace pane; wins over market defaults. */
+  persistedState?: GexMapEmbedState | null;
+  /** Reports configuration changes so the host can persist them with the workspace. */
+  onStateChange?: (state: GexMapEmbedState) => void;
 };
 
 const DEFAULT_PANELS: PanelConfig[] = [
@@ -159,6 +171,33 @@ function linkedMarketFromLocation(): GexMapMarket | null {
 
 function initialPanelsForMarket(market: GexMapMarket | null) {
   return (market ? MARKET_PANELS[market] : DEFAULT_PANELS).map((panel) => ({ ...panel }));
+}
+
+function normalizeGexMapEmbedState(value: unknown): GexMapEmbedState | null {
+  if (!value || typeof value !== "object") return null;
+  const parsed = value as Partial<GexMapEmbedState>;
+  const validModes = new Set(GEX_MAP_GREEKS.map((greek) => greek.mode));
+  const panels = Array.isArray(parsed.panels)
+    ? parsed.panels
+      .filter((panel): panel is PanelConfig => Boolean(
+        panel
+        && typeof panel === "object"
+        && typeof (panel as PanelConfig).id === "string"
+        && typeof (panel as PanelConfig).symbol === "string"
+        && (panel as PanelConfig).symbol.length > 0
+        && validModes.has((panel as PanelConfig).greekMode),
+      ))
+      .slice(0, MAX_GEX_MAP_PANELS)
+      .map((panel) => ({ id: panel.id, symbol: panel.symbol.toUpperCase(), greekMode: panel.greekMode }))
+    : [];
+  if (!panels.length) return null;
+  return {
+    panels,
+    viewMode: parsed.viewMode === "star" ? "star" : "raw",
+    stepMinutes: (FRAME_STEPS as readonly number[]).includes(Number(parsed.stepMinutes))
+      ? Number(parsed.stepMinutes) as (typeof FRAME_STEPS)[number]
+      : 1,
+  };
 }
 
 function formatPrice(value: number | null) {
@@ -1365,13 +1404,26 @@ function StarViewSettings({
   );
 }
 
-function GexMapWorkspace({ market = null, externalReplay = null }: GexMapWorkspaceProps = {}) {
+function GexMapWorkspace({ market = null, externalReplay = null, persistedState = null, onStateChange }: GexMapWorkspaceProps = {}) {
   // Keep the server and first browser render identical. Reading window.location or
   // sessionStorage in a state initializer can make React discard the hydrated GEX
   // tree, which previously left an otherwise healthy map blank on some page loads.
   const [locationMarket, setLocationMarket] = useState<GexMapMarket | null>(null);
   const linkedMarket = market ?? locationMarket;
-  const [panels, setPanels] = useState<PanelConfig[]>(() => initialPanelsForMarket(market));
+  // A host-workspace pane owns this embed's saved configuration: it must win
+  // over market defaults on mount and survive the pane being switched away
+  // and back. Only the value present at mount matters.
+  const initialEmbedStateRef = useRef<GexMapEmbedState | null | undefined>(undefined);
+  if (initialEmbedStateRef.current === undefined) {
+    initialEmbedStateRef.current = normalizeGexMapEmbedState(persistedState);
+  }
+  const onStateChangeRef = useRef(onStateChange);
+  useEffect(() => {
+    onStateChangeRef.current = onStateChange;
+  }, [onStateChange]);
+  const [panels, setPanels] = useState<PanelConfig[]>(() =>
+    initialEmbedStateRef.current?.panels.map((panel) => ({ ...panel })) ?? initialPanelsForMarket(market));
+  const panelsRef = useRef(panels);
   const [panelData, setPanelData] = useState<Record<string, GexMapPanelPayload | null>>({
     left: null,
     centre: null,
@@ -1392,7 +1444,10 @@ function GexMapWorkspace({ market = null, externalReplay = null }: GexMapWorkspa
   const [cursor, setCursor] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState<(typeof SPEEDS)[number]>(1);
-  const [stepMinutes, setStepMinutes] = useState<(typeof FRAME_STEPS)[number]>(1);
+  const [stepMinutes, setStepMinutes] = useState<(typeof FRAME_STEPS)[number]>(
+    // normalizeGexMapEmbedState only admits FRAME_STEPS members.
+    () => (initialEmbedStateRef.current?.stepMinutes ?? 1) as (typeof FRAME_STEPS)[number],
+  );
   // Node zoom: SSR-safe default first, stored value applied after hydration.
   const [ladderZoom, setLadderZoom] = useState(1);
   useEffect(() => {
@@ -1422,7 +1477,9 @@ function GexMapWorkspace({ market = null, externalReplay = null }: GexMapWorkspa
   const [lastSync, setLastSync] = useState<number | null>(null);
   const [latestSessionDate, setLatestSessionDate] = useState("");
   const [refreshToken, setRefreshToken] = useState(0);
-  const [viewMode, setViewMode] = useState<GexMapViewMode>("raw");
+  const [viewMode, setViewMode] = useState<GexMapViewMode>(
+    () => initialEmbedStateRef.current?.viewMode ?? "raw",
+  );
   const [starSettings, setStarSettings] = useState<GexMapStarSettings>({ ...RECOMMENDED_GEX_MAP_STAR_SETTINGS });
   const [starSettingsOpen, setStarSettingsOpen] = useState(false);
   // The saved palette is the committed truth; edits inside the settings
@@ -1450,7 +1507,8 @@ function GexMapWorkspace({ market = null, externalReplay = null }: GexMapWorkspa
   useEffect(() => {
     const stored = readGexMapStarPreferences();
     if (stored) {
-      setViewMode(stored.viewMode);
+      // A pane-saved view mode outranks the global preference.
+      if (!initialEmbedStateRef.current) setViewMode(stored.viewMode);
       setStarSettings(stored.settings);
     }
     starPreferencesHydratedRef.current = true;
@@ -1474,7 +1532,11 @@ function GexMapWorkspace({ market = null, externalReplay = null }: GexMapWorkspa
   }, []);
 
   useEffect(() => {
-    const nextPanels = initialPanelsForMarket(linkedMarket);
+    // A pane-saved configuration owns the panel set; the market link only
+    // provides defaults for embeds without one.
+    const nextPanels = initialEmbedStateRef.current
+      ? panelsRef.current.map((panel) => ({ ...panel }))
+      : initialPanelsForMarket(linkedMarket);
     const cachedData = Object.fromEntries(nextPanels.map((panel) => [
       panel.id,
       (() => {
@@ -1487,11 +1549,21 @@ function GexMapWorkspace({ market = null, externalReplay = null }: GexMapWorkspa
       panel.id === nextPanels[index]?.id
       && panel.symbol === nextPanels[index]?.symbol
       && panel.greekMode === nextPanels[index]?.greekMode
-    )) ? current : nextPanels);
+    )) && current.length === nextPanels.length ? current : nextPanels);
     setPanelData(cachedData);
     setPanelErrors({ left: null, centre: null, right: null });
     setLoading(Object.fromEntries(nextPanels.map((panel) => [panel.id, !cachedData[panel.id]])));
   }, [linkedMarket]);
+  // Report configuration changes to the host workspace so quick-save and
+  // presets capture exactly what the user configured on this pane.
+  useEffect(() => {
+    panelsRef.current = panels;
+    onStateChangeRef.current?.({
+      panels: panels.map((panel) => ({ ...panel })),
+      viewMode,
+      stepMinutes,
+    });
+  }, [panels, stepMinutes, viewMode]);
 
   useEffect(() => {
     let cancelled = false;
