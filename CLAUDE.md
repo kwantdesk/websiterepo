@@ -819,3 +819,10 @@ Per task: eslint on changed files (heap-bumped for Chart/KwantifyWorkspace), `np
 - `6da72b8b` on-chart 1D/5D/... load-range bar removed — the control lives only in the timeframe menu.
 - `7b7db943` star node strike price: no pill/box, bare text in the star's contrast accent, both views, including star-at-current-price rows.
 - GEX Map price lock verified live on production via the owner's Chrome (offset 1013px → 0 on lock press) — the owner's "not centring" report was a deployment-pinned tab.
+
+### Options-ticker volume profiles — root cause and resolution
+- Owner reported profiles still dead on options tickers after `620a184c`. Verified against LIVE providers: KwantData `/equities/tool/stock-price-over-time` returns OHLC ONLY (no volume field of any name — probed the raw gateway payload for SPY), so production serves `volume: 0` on every cash candle and the candle-profile path was correct code with no data. Databento equities datasets (EQUS.MINI, DBEQ.BASIC) return 402 insufficient funds through the gateway — no honest cash-volume source is configured.
+- `2b5183dc` theme change now overrides the GEX Map palette (relink in saveTheme/resetTheme only — hydration paths untouched so refreshes can't wipe custom colours).
+- `46982672` NDX/QQQ/SPX/SPY volume profiles now project the REAL NQ/ES execution profiles onto the cash scale via the existing value-area basis-ratio machinery (daily + weekly, real aggressor delta so ask/bid and delta modes work, 60s refresh, source labelled "projected from NQ/ES futures"). Candle-volume fallback retained for volume-bearing cash tickers outside the options family.
+- **Owner action if native SPY/QQQ share-volume is wanted** (also unlocks VWAP/Volume on cash tickers): fund Databento equities (account 402s today); the parse path (`quantData.server.ts` volume mapping + client candle profiles) is already in place.
+- Live RTH visual check of projected profiles pending owner reload.
