@@ -3,7 +3,6 @@
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { memo, useCallback, useState, type ComponentType } from "react";
 import {
   ArrowUpRight,
@@ -31,7 +30,6 @@ import {
   type HomeLaunchPreview,
   type HomeLiveIndices,
 } from "@/components/home/HomeLivePreviews";
-import { createClient } from "@/lib/supabase";
 
 const ParticleTerrain = dynamic(() => import("@/components/landing/ParticleTerrain"), {
   ssr: false,
@@ -105,25 +103,18 @@ const LaunchCard = memo(function LaunchCard({
 const EMPTY_LIVE_INDICES: HomeLiveIndices = {};
 
 export default function WorkspaceHome({ username = "" }: { username?: string }) {
-  const router = useRouter();
   const [heroReady, setHeroReady] = useState(false);
   const revealHero = useCallback(() => setHeroReady(true), []);
   const liveIndices = useHomeLiveIndices();
 
-  async function signOut() {
-    const supabase = createClient();
-    if (supabase) await supabase.auth.signOut();
-    router.replace("/login?returnTo=/");
-    router.refresh();
-  }
 
   return (
     <div className="flex h-screen min-h-0 flex-col overflow-hidden bg-background text-foreground">
       <AppSidebar
         activeItem="home"
-        accountLabel="Account"
-        accountTitle={username ? `Sign out @${username}` : "Sign out"}
-        onAccountClick={signOut}
+        accountLabel="Profile"
+        accountTitle={username ? `@${username} · your profile` : "Your profile"}
+        onAccountClick={() => { window.location.href = username ? `/socials/${encodeURIComponent(username)}` : "/socials"; }}
         orientation="horizontal"
       />
       <main

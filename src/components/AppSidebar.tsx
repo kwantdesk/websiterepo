@@ -60,6 +60,8 @@ type AppSidebarProps = {
   activeItem: SidebarKey;
   accountLabel?: string;
   accountTitle?: string;
+  /** When set, the account button shows this profile picture instead of the generic icon. */
+  accountAvatarUrl?: string;
   navigationMode?: "native" | "persistent";
   onAccountClick?: () => void;
   onTradesClick?: () => void;
@@ -143,6 +145,7 @@ function AppSidebar({
   activeItem,
   accountLabel = "Account",
   accountTitle = "Account",
+  accountAvatarUrl = "",
   navigationMode = "native",
   onAccountClick,
   onTradesClick,
@@ -231,7 +234,9 @@ function AppSidebar({
             className={`${verticalItemInactive} mb-4`}
             title={accountTitle}
           >
-            <User className="h-[18px] w-[18px] shrink-0" />
+            {accountAvatarUrl
+              ? <img src={accountAvatarUrl} alt="" className="h-[18px] w-[18px] shrink-0 rounded-full object-cover" />
+              : <User className="h-[18px] w-[18px] shrink-0" />}
             <span className={verticalItemLabel}>{accountLabel}</span>
           </button>
 
@@ -329,7 +334,9 @@ function AppSidebar({
           title={accountTitle}
           aria-label={accountTitle}
         >
-          <User className="h-3.5 w-3.5" strokeWidth={1.55} />
+          {accountAvatarUrl
+            ? <img src={accountAvatarUrl} alt="" className="h-4 w-4 rounded-full object-cover" />
+            : <User className="h-3.5 w-3.5" strokeWidth={1.55} />}
         </button>
         <a
           href="/settings"

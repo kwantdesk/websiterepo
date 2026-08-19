@@ -11974,14 +11974,6 @@ export default function KwantifyWorkspace({
     };
   }, [isResizingAI]);
 
-  const signOut = useCallback(async () => {
-    await supabase?.auth?.signOut();
-    setCurrentUsername("Account");
-    setCurrentDisplayName("");
-    setShowUsernameModal(false);
-    router.replace("/login?returnTo=/");
-  }, [router, supabase]);
-
   const handleWorkspaceNavigationStart = useCallback((target: string) => {
     const nextSection = BOTTOM_WORKSPACE_SECTIONS.some(({ id }) => id === target)
       ? target as PrimaryWorkspaceSection
@@ -15398,9 +15390,10 @@ export default function KwantifyWorkspace({
         <AppSidebar
           activeItem={bottomWorkspaceSection}
           accountLabel="Account"
-          accountTitle={currentUsername ? `Sign out @${currentUsername}` : "Account"}
+          accountTitle={currentUsername ? `@${currentUsername} · your profile` : "Your profile"}
           navigationMode="persistent"
-          onAccountClick={signOut}
+          accountAvatarUrl={currentAvatarUrl || ""}
+          onAccountClick={() => router.push(currentUsername ? `/socials/${encodeURIComponent(currentUsername)}` : "/socials")}
           onTradesClick={() => {
             setShowTradesMenu((current) => {
               if (current) setTradesMenuView("root");
@@ -16094,7 +16087,6 @@ export default function KwantifyWorkspace({
           >
             <Download className="h-3.5 w-3.5" />
           </button>
-          <button onClick={signOut} title={currentUsername ? `@${currentUsername}` : "Account"} className="kwant-chart-row-control flex h-7 w-7 items-center justify-center overflow-hidden rounded-[3px] border border-transparent transition-colors hover:bg-surface"><UserAvatar label={currentUsername || "Kwant Trader"} avatarUrl={currentAvatarUrl} size="xs" /></button>
           </div>
           </div>
         </header>
