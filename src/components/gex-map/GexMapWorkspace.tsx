@@ -57,6 +57,8 @@ import {
   formatMagnitudeVelocity,
   formatMapControl,
   type GexMapStarSettings,
+  normalizeGexMapViewMode,
+  type GexMapValueMode,
   type GexMapViewMode,
 } from "@/lib/gexMapStar";
 import {
@@ -135,7 +137,7 @@ function readGexMapStarPreferences() {
     } | null;
     if (!stored) return null;
     return {
-      viewMode: stored.viewMode === "star" ? "star" as const : "raw" as const,
+      viewMode: normalizeGexMapViewMode(stored.viewMode),
       settings: { ...RECOMMENDED_GEX_MAP_STAR_SETTINGS, ...stored.settings },
     };
   } catch {
@@ -196,7 +198,7 @@ function normalizeGexMapEmbedState(value: unknown): GexMapEmbedState | null {
   if (!panels.length) return null;
   return {
     panels,
-    viewMode: parsed.viewMode === "star" ? "star" : "raw",
+    viewMode: normalizeGexMapViewMode(parsed.viewMode),
     stepMinutes: (FRAME_STEPS as readonly number[]).includes(Number(parsed.stepMinutes))
       ? Number(parsed.stepMinutes) as (typeof FRAME_STEPS)[number]
       : 1,
@@ -628,6 +630,8 @@ function ExposurePanel({
   const spot = payload ? priceAt(payload, selectedTimestamp) : null;
   const tones = gexMapPaletteTones(palette);
   const signedScale = useMemo(() => gexMapSignedScale(palette), [palette]);
+  const valueMode: GexMapValueMode = starSettings.valueMode ?? "signed";
+  const valueHeading = valueMode === "star-percent" ? "% of Star" : "Signed exposure";
   const rows = useMemo(
     // Strikes with zero call AND zero put exposure carry no positioning at
     // all — the provider lists them merely because the strike exists on the
@@ -665,6 +669,14 @@ function ExposurePanel({
   const heatStrength = useCallback(
     (net: number) => 0.5 + 0.5 * Math.max(-1, Math.min(1, net / starMagnitude)),
     [starMagnitude],
+  );
+  // Numbers beside each strike: raw signed exposure, or the node's share of
+  // the Star node's magnitude. Colours are untouched — only the text changes.
+  const formatRowValue = useCallback(
+    (net: number) => valueMode === "star-percent"
+      ? `${((net / starMagnitude) * 100).toFixed(1)}%`
+      : formatCompact(net),
+    [starMagnitude, valueMode],
   );
   // The Star marker always wears the OPPOSITE end of the active gradient to
   // the node's own colour: a node sitting in the dark half gets the scale's
@@ -879,6 +891,7 @@ function ExposurePanel({
             onChange={(greekMode) => onChange({ greekMode })}
           />
           <div className="gex-map-panel-spot ml-auto shrink-0 text-right">
+            <div className="text-[7px] font-semibold uppercase leading-none tracking-[0.1em] text-muted">{valueHeading}</div>
             <div className="font-mono text-[11px] font-semibold text-foreground">{formatPrice(spot)}</div>
             <div className={`font-mono text-[9px] ${payload && (payload.sessionChangePercent ?? 0) >= 0 ? "text-primary" : "text-danger"}`}>
               {payload?.sessionChangePercent === null || payload?.sessionChangePercent === undefined
@@ -902,8 +915,8 @@ function ExposurePanel({
 
       <div className="gex-map-strike-row grid h-7 grid-cols-[96px_minmax(72px,1fr)_minmax(0,86px)] items-center border-b border-border bg-surface/60 px-2 text-[8px] font-semibold uppercase tracking-[0.14em] text-muted">
         <span>Strike</span>
-        <span>{viewMode === "star" ? "Structural node" : "Signed exposure"}</span>
-        <span className="gex-map-change-column text-right">{viewMode === "star" ? "Control · velocity" : `${stepMinutes}m change`}</span>
+        <span>{viewMode !== "full" ? "Structural node" : valueHeading}</span>
+        <span className="gex-map-change-column text-right">{viewMode !== "full" ? "Control · velocity" : `${stepMinutes}m change`}</span>
       </div>
 
       <div className="relative flex min-h-0 flex-1 bg-chart-background">
@@ -996,9 +1009,11 @@ function ExposurePanel({
               const isStar = row.strike === starNode?.strike;
               const strength = heatStrength(row.net);
               const derived = starRows.get(row.strike);
-              if (viewMode === "star" && derived) {
+              if (viewMode !== "full" && derived) {
                 const isFocusedStar = derived.roles.includes("star");
-                const highlighted = derived.isHighlighted;
+                // STAR view: only the Star node itself stays lit; NINJA keeps
+                // the full structural highlight set.
+                const highlighted = viewMode === "star" ? isFocusedStar : derived.isHighlighted;
                 const barWidth = Math.sqrt(derived.mapControlPct / maxHighlightedControl) * 100;
                 // "Gatekeeper" is displayed as SPARKY; the internal role id
                 // stays stable so derivations and saved state are untouched.
@@ -1069,7 +1084,7 @@ function ExposurePanel({
                       {starSettings.showRoleLabels ? roleText.filter((role) => role !== "STAR").slice(0, 2).map((role) => (
                         <span key={role} className="truncate border border-current/25 bg-panel/50 px-1 py-0.5 font-sans text-[7px] font-bold tracking-[0.06em] text-foreground">{role}</span>
                       )) : null}
-                      {starSettings.showRawValues ? <span className="truncate text-[8px] text-muted">{formatCompact(derived.net)}</span> : null}
+                      {starSettings.showRawValues ? <span className="truncate text-[8px] text-muted">{formatRowValue(derived.net)}</span> : null}
                       {starSettings.showAirPocketLabels && airPocketStarts.has(row.strike) ? <span className="text-[7px] text-muted">AIR POCKET</span> : null}
                     </span>
                     <span className="gex-map-change-column relative z-[1] flex min-w-0 flex-col items-end justify-center leading-tight">
@@ -1111,7 +1126,7 @@ function ExposurePanel({
                       </span>
                     ) : null}
                   </span>
-                  <span className="truncate text-right font-semibold text-foreground drop-shadow-sm">{formatCompact(row.net)}</span>
+                  <span className="truncate text-right font-semibold text-foreground drop-shadow-sm">{formatRowValue(row.net)}</span>
                   <span className="gex-map-change-column flex items-center justify-end gap-1">
                     {changeRatio !== null ? (
                       <span className={`rounded px-1 py-0.5 text-[8px] font-semibold ${changeRatio >= 0 ? "bg-primary/15 text-primary" : "bg-danger/15 text-danger"}`}>
@@ -1172,6 +1187,8 @@ function StarViewSettings({
   settings,
   palette,
   paletteDirty,
+  viewMode,
+  onViewModeChange,
   onChange,
   onPaletteChange,
   onPaletteSave,
@@ -1181,6 +1198,8 @@ function StarViewSettings({
   settings: GexMapStarSettings;
   palette: GexMapPalette;
   paletteDirty: boolean;
+  viewMode: GexMapViewMode;
+  onViewModeChange: (next: GexMapViewMode) => void;
   onChange: (next: GexMapStarSettings) => void;
   onPaletteChange: (next: GexMapPalette) => void;
   onPaletteSave: () => void;
@@ -1244,6 +1263,38 @@ function StarViewSettings({
           <button type="button" onClick={onClose} className="ml-auto flex h-7 w-7 items-center justify-center border border-border text-muted hover:text-foreground" aria-label="Close Star view settings"><X className="h-3.5 w-3.5" /></button>
         </header>
         <div className="px-4 pb-4">
+          <div className={rowClass}>
+            <span><span className="block text-[10px] text-foreground">View</span><span className="text-[8px] text-muted">Full = every strike raw · Ninja = structural nodes · Star = only the Star node</span></span>
+            <div className="flex h-7 items-center rounded-[3px] border border-border/70 bg-background/35 p-0.5" role="group" aria-label="GEX Map view">
+              {([["full", "Full"], ["ninja", "Ninja"], ["star", "Star"]] as const).map(([mode, label]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  aria-pressed={viewMode === mode}
+                  onClick={() => onViewModeChange(mode)}
+                  className={`flex h-5 flex-1 items-center justify-center rounded-[2px] px-2 text-[9px] font-semibold uppercase leading-none tracking-[0.075em] ${viewMode === mode ? "bg-surface text-primary" : "text-muted hover:text-foreground"}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className={rowClass}>
+            <span><span className="block text-[10px] text-foreground">Values</span><span className="text-[8px] text-muted">The numbers beside each strike — colours stay identical</span></span>
+            <div className="flex h-7 items-center rounded-[3px] border border-border/70 bg-background/35 p-0.5" role="group" aria-label="GEX Map value mode">
+              {([["signed", "Signed"], ["star-percent", "% of Star"]] as const).map(([mode, label]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  aria-pressed={(settings.valueMode ?? "signed") === mode}
+                  onClick={() => update("valueMode", mode)}
+                  className={`flex h-5 flex-1 items-center justify-center rounded-[2px] px-2 text-[9px] font-semibold uppercase leading-none tracking-[0.075em] ${(settings.valueMode ?? "signed") === mode ? "bg-surface text-primary" : "text-muted hover:text-foreground"}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
           <label className={rowClass}>
             <span><span className="block text-[10px] text-foreground">Highlighted nodes</span><span className="text-[8px] text-muted">Unique structural strikes per panel</span></span>
             <input type="range" min="2" max="8" step="1" value={settings.highlightedNodes} onChange={(event) => update("highlightedNodes", Number(event.target.value))} className="w-full accent-[var(--primary)]" />
@@ -1542,7 +1593,7 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
   const [latestSessionDate, setLatestSessionDate] = useState("");
   const [refreshToken, setRefreshToken] = useState(0);
   const [viewMode, setViewMode] = useState<GexMapViewMode>(
-    () => initialEmbedStateRef.current?.viewMode ?? "raw",
+    () => initialEmbedStateRef.current?.viewMode ?? "star",
   );
   const [starSettings, setStarSettings] = useState<GexMapStarSettings>({ ...RECOMMENDED_GEX_MAP_STAR_SETTINGS });
   const [starSettingsOpen, setStarSettingsOpen] = useState(false);
@@ -1589,7 +1640,7 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
       const target = event.target as HTMLElement | null;
       if (target?.matches("input, textarea, select, [contenteditable='true']")) return;
       event.preventDefault();
-      setViewMode((current) => current === "raw" ? "star" : "raw");
+      setViewMode((current) => current === "full" ? "ninja" : current === "ninja" ? "star" : "full");
     };
     window.addEventListener("keydown", toggleView);
     return () => window.removeEventListener("keydown", toggleView);
@@ -1839,28 +1890,6 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <header className="gex-map-header sticky top-0 z-40 flex h-9 min-h-9 shrink-0 items-center gap-1.5 overflow-x-auto overflow-y-hidden border-b border-border bg-panel px-2">
 
-          <div className="flex h-7 shrink-0 items-center rounded-[3px] border border-border/70 bg-background/35 p-0.5" role="group" aria-label="GEX Map view mode">
-            <button
-              type="button"
-              aria-label="Raw exposure view"
-              aria-pressed={viewMode === "raw"}
-              title="Show every strike, raw exposure and raw change."
-              onClick={() => setViewMode("raw")}
-              className={`flex h-5 items-center gap-1 rounded-[2px] px-2 text-[9px] font-semibold uppercase leading-none tracking-[0.075em] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary ${viewMode === "raw" ? "bg-surface text-primary" : "text-muted hover:text-foreground"}`}
-            >
-              <ListOrdered className="h-3 w-3" /><span>Raw</span>
-            </button>
-            <button
-              type="button"
-              aria-label="Star focus view"
-              aria-pressed={viewMode === "star"}
-              title="Focus on Star, structural nodes, map control and live growth."
-              onClick={() => setViewMode("star")}
-              className={`flex h-5 items-center gap-1 rounded-[2px] px-2 text-[9px] font-semibold uppercase leading-none tracking-[0.075em] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary ${viewMode === "star" ? "bg-surface text-primary" : "text-muted hover:text-foreground"}`}
-            >
-              <Star className="h-3 w-3" fill={viewMode === "star" ? "currentColor" : "none"} /><span>Star</span>
-            </button>
-          </div>
           <button
             type="button"
             onClick={() => setStarSettingsOpen(true)}
@@ -2077,6 +2106,8 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
       <StarViewSettings
         open={starSettingsOpen}
         settings={starSettings}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
         palette={activePalette}
         paletteDirty={palettePreview !== null && !gexMapPalettesEqual(palettePreview, savedPalette)}
         onChange={setStarSettings}

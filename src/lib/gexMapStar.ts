@@ -1,6 +1,19 @@
 import type { ExposureStrike } from "@/lib/optionsFlow";
 
-export type GexMapViewMode = "raw" | "star";
+// Full = every strike with raw exposure (the old "raw"). Ninja = the
+// structural node view (the old "star"). Star = only the Star node itself is
+// highlighted; everything else fades to the dim floor.
+export type GexMapViewMode = "full" | "ninja" | "star";
+
+export function normalizeGexMapViewMode(value: unknown): GexMapViewMode {
+  if (value === "full" || value === "raw") return "full";
+  if (value === "ninja") return "ninja";
+  return "star";
+}
+
+// Controls the numbers printed beside each strike: raw signed exposure, or
+// each node's exposure as a percentage of the Star node's magnitude.
+export type GexMapValueMode = "signed" | "star-percent";
 export type GexMapSelectionStrategy = "structural" | "magnitude" | "velocity";
 export type GexMapNodeRole = "star" | "floor" | "ceiling" | "gatekeeper" | "fast" | "significant" | "normal";
 
@@ -18,6 +31,7 @@ export type GexMapStarSettings = {
   airPocketRowThresholdPct: number;
   airPocketCombinedThresholdPct: number;
   proximityWeight: number;
+  valueMode: GexMapValueMode;
 };
 
 export const RECOMMENDED_GEX_MAP_STAR_SETTINGS: GexMapStarSettings = {
@@ -34,6 +48,7 @@ export const RECOMMENDED_GEX_MAP_STAR_SETTINGS: GexMapStarSettings = {
   airPocketRowThresholdPct: 0.75,
   airPocketCombinedThresholdPct: 3,
   proximityWeight: 0.1,
+  valueMode: "signed",
 };
 
 export type GexMapAirPocket = {
