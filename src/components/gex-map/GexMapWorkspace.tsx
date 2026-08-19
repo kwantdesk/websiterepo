@@ -1710,7 +1710,6 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
   const selectedTimestamp = replayMode
     ? externalReplay?.timestampMs ?? timeline[Math.min(cursor, Math.max(0, timeline.length - 1))] ?? null
     : null;
-  const live = !replayMode && panels.every((panel) => panelData[panel.id]?.status === "LIVE");
   const currentSessionDate = latestSessionDate
     || panels.map((panel) => panelData[panel.id]?.sessionDate).find(Boolean)
     || "";
@@ -1983,13 +1982,7 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
               </div>
             </div>
           </footer>
-        ) : (
-          <footer className="gex-map-live-footer flex h-7 min-w-0 shrink-0 items-center gap-2 overflow-hidden border-t border-border bg-panel px-3 text-[8px] text-muted">
-            <Radio className={`h-3 w-3 ${live ? "text-primary" : "text-muted"}`} />
-            <span>KwantData Interval Map · front expiry · per 1% underlying move</span>
-            <span className="ml-auto">Every node is coloured by its percentage of the Star node’s exposure — zero at the scale’s middle, the Star alone at its end: darkest when negative, lightest when positive.</span>
-          </footer>
-        )}
+        ) : null}
       </main>
       {initialSurfacePending ? (
         <div className="pointer-events-none absolute inset-0 z-50">

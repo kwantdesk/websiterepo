@@ -1680,12 +1680,6 @@ body.kwant-cockpit-ui canvas {
     align-content: center;
   }
 
-  .gex-map-header > span,
-  .gex-map-header > div:nth-child(2) p,
-  .gex-map-live-footer > span:last-child {
-    display: none;
-  }
-
   .gex-map-frame-steps {
     margin-left: 0;
   }
