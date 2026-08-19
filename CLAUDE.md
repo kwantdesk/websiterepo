@@ -767,3 +767,14 @@ Per change: `tests/precision-tools-system.test.mjs` + `tests/chart-drawing-syste
 
 ### Worktree state
 `?? ALGO/`, `?? gexcal-*.png/tmp`, `M/?? tmp/pdfs/*` (other workstream) — no uncommitted engineering work.
+
+## Temporary engineering log — 2026-08-19 (12-task autonomous run)
+
+### Completed (one commit per task, all pushed)
+1. `edb89279` command-deck empty space removed. 2. `264fabcc` GEX Map wheel steps one strike row. 3. toolbar Lock/Unlock pin (persisted `kwantdesk:chart-toolbar-pinned:v1`). 4. `6509faac` top-bar account button → profile avatar → `/socials/<handle>`; sign-out relocated to Settings → Account settings. 5. bare star glyph in contrast colour (no box). 6. `3aa03f4a` toolbar groups fan out on hover. 7. `d0872061` crosshair thickness/visibility moved out of the right-click menu into Chart Settings → Scales and lines (new shared `src/lib/crosshairStyle.ts`, live-applies to every chart via `kwantdesk:crosshair-style-change`). 8. `0c491684` per-panel meta row removed (greek · exp · STAR · Net) plus dead CSS/vars. 9. `3cc79139` GEXMAP title block removed. 10. `3d477e27` header actions trimmed to add / refresh / Replay (LIVE-chip + Provider-data removed; dead `lastSync`/`dataAsOf` cleaned). 11. `96a9ff33` bottom footer bar removed. 12. `5dd3cfed` price-lock button beside refresh: locked = both wheel handlers consumed, pointer/scrollbar scrolling off (`overflow-y-hidden`), `followingSpot` forced on so the existing centering effects pin spot mid-panel on every price move; persisted `kwantdesk:gex-map-price-lock:v1`, account-synced.
+
+### Verification
+Per task: eslint on changed files (heap-bumped for Chart/KwantifyWorkspace), `npx tsc --noEmit`, `npm run build`, `test:gex-map-star` where GEX Map touched — all green before each push. Live production spot-check pending owner reload (deployment-pinned tabs).
+
+### Worktree state
+`?? ALGO/`, `?? gexcal-*.png/tmp`, `M/?? tmp/pdfs/*` (other workstream) — no uncommitted engineering work.
