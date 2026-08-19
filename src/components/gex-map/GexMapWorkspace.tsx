@@ -890,6 +890,25 @@ function ExposurePanel({
               const changeRatio = prior && Math.abs(prior.net) > 0
                 ? (row.net - prior.net) / Math.abs(prior.net)
                 : null;
+              // Live growth ticker beside the strike: percentage change of the
+              // node's exposure magnitude since the previous frame. Green ▲ =
+              // the node is growing, red ▼ = shrinking; re-ticks on every data
+              // refresh. Fixed semantic colours by design, on any theme.
+              const growthPct = prior && Math.abs(prior.net) > 0
+                ? ((Math.abs(row.net) - Math.abs(prior.net)) / Math.abs(prior.net)) * 100
+                : null;
+              const growthTick = growthPct === null || !Number.isFinite(growthPct)
+                ? null
+                : (
+                  <span
+                    className="shrink-0 font-mono text-[7px] font-bold tracking-tight"
+                    style={{ color: growthPct > 0 ? "#22C55E" : growthPct < 0 ? "#EF4444" : "#71717A" }}
+                    title={`Exposure magnitude ${growthPct >= 0 ? "grew" : "shrank"} ${Math.abs(growthPct).toFixed(1)}% over the last ${stepMinutes}m step`}
+                  >
+                    {growthPct > 0 ? "▲" : growthPct < 0 ? "▼" : "•"}
+                    {Math.min(999, Math.abs(growthPct)).toFixed(1)}%
+                  </span>
+                );
               const nearSpot = row.strike === spotStrike;
               const isStar = row.strike === starNode?.strike;
               const strength = heatStrength(row.net);
@@ -956,6 +975,7 @@ function ExposurePanel({
                       <span className={`${nearSpot ? "gex-current-price-pill" : ""} shrink-0`}>
                         {row.strike.toLocaleString("en-US", { maximumFractionDigits: 2 })}
                       </span>
+                      {growthTick}
                       {isFocusedStar ? (
                         <span className="gex-star-badge inline-flex min-w-0 items-center gap-0.5 border px-1 py-0.5 font-sans text-[7px] font-black tracking-[0.08em]">
                           <Star className="h-2.5 w-2.5 shrink-0" fill="currentColor" />
@@ -1002,6 +1022,7 @@ function ExposurePanel({
                     <span className={`${nearSpot ? "gex-current-price-pill" : ""} shrink-0`}>
                       {row.strike.toLocaleString("en-US", { maximumFractionDigits: 2 })}
                     </span>
+                    {growthTick}
                     {isStar ? (
                       <span className="gex-star-badge inline-flex min-w-0 items-center gap-0.5 border px-1 py-0.5 font-sans text-[7px] font-black tracking-[0.08em]">
                         <Star className="h-2.5 w-2.5 shrink-0" fill="currentColor" />
