@@ -227,6 +227,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "delta-bar",
   "delta-highlight",
   "cumulative-volume-delta",
+  "cvd-divergence",
   "pulling-stacking",
   "absorption-detector",
   "stacked-imbalance-suite",

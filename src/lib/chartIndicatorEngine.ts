@@ -1,6 +1,7 @@
 import type { Candle } from "@/lib/backtester";
 import type { ChartIndicatorInstance } from "@/lib/chartIndicatorCatalog";
 import { calculateDeepEffort } from "@/lib/deepEffort";
+import { detectCvdDivergence, sessionCvdPoints } from "@/lib/cvdDivergence";
 import { runSourceIndicator, type SourceIndicatorLanguage } from "@/lib/indicatorSourceAdapters";
 
 export type CalculatedIndicatorSeries = {
@@ -394,6 +395,49 @@ export function calculateIndicatorSeries(
         };
       }),
     }];
+  }
+
+  if (key === "cvd-divergence") {
+    if (!orderFlowAvailable(candles)) return [];
+    const flowCandles = candles.filter(hasVerifiedOrderFlow);
+    const cvd = sessionCvdPoints(flowCandles);
+    if (!cvd.length) return [];
+    const useThemeColors = settingBoolean(instance, "useThemeColors", true);
+    const bullishColor = useThemeColors ? theme.positive : settingString(instance, "bullishColor", theme.positive);
+    const bearishColor = useThemeColors ? theme.negative : settingString(instance, "bearishColor", theme.negative);
+    const lineWidth = Math.min(4, Math.max(1, Math.round(settingNumber(instance, "lineWidth", 2)))) as 1 | 2 | 3 | 4;
+    const divergence = detectCvdDivergence(flowCandles, cvd, {
+      pivotStrength: settingNumber(instance, "pivotStrength", 2),
+      lookbackBars: settingNumber(instance, "lookbackBars", 80),
+      recentBars: settingNumber(instance, "recentBars", 12),
+    });
+    const series: CalculatedIndicatorSeries[] = [{
+      key,
+      label: "CVD",
+      kind: "line",
+      placement: "pane",
+      color: theme.primary,
+      lineWidth: 2,
+      includeZeroInScale: false,
+      data: cvd.map((point) => ({ time: point.time, value: point.value })),
+    }];
+    if (divergence) {
+      series.push({
+        key: `${key}-signal`,
+        label: divergence.kind === "bullish" ? "Bullish divergence" : "Bearish divergence",
+        kind: "line",
+        placement: "pane",
+        color: divergence.kind === "bullish" ? bullishColor : bearishColor,
+        lineWidth,
+        lineStyle: "dashed",
+        lastValueVisible: false,
+        data: [
+          { time: divergence.fromTime, value: divergence.fromCvd },
+          { time: divergence.toTime, value: divergence.toCvd },
+        ],
+      });
+    }
+    return series;
   }
 
   if (

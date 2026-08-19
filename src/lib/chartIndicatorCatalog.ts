@@ -68,6 +68,7 @@ export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
   indicator("Dark Pool (GEX)", "Options Flow", "Direction-neutral off-exchange block prints anchored at exact event time and price, with separate dealer-Gamma confluence.", false, "Kwantify"),
   indicator("Implied Volatility Rank", "Options Flow", "QuantData IV Rank and true IV Percentile across configurable lookback, maturity and call/put modes.", false, "Kwantify"),
   indicator("Cumulative Volume Delta", "Order Flow", "Running aggressive buy volume minus aggressive sell volume.", true),
+  indicator("CVD Divergence", "Order Flow", "Flags live price/CVD divergence on the recent candles: a wick-to-wick line on price and the matching line on the CVD pane, disappearing when CVD catches back up.", true, "Kwantify"),
   indicator("Pulling & Stacking", "Order Flow", "Displayed Bid and Ask liquidity being added, pulled, moved and reposted through time using Level 3 order-book events.", true, "Kwantify"),
   indicator("Delta Bar", "Order Flow", "Per-bar bid/ask aggression and delta.", true),
   indicator("Delta % Highlight", "Order Flow", "Highlights bars whose delta percentage exceeds configured thresholds.", true),

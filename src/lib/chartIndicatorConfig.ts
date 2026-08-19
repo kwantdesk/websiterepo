@@ -115,6 +115,12 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
   "options-delta": [
     { key: "refreshSeconds", label: "Live refresh (seconds)", defaultValue: 60, min: 15, max: 300, step: 5 },
   ],
+  "cvd-divergence": [
+    { key: "pivotStrength", label: "Swing pivot strength (bars)", defaultValue: 2, min: 1, max: 5, step: 1 },
+    { key: "lookbackBars", label: "Lookback (bars)", defaultValue: 80, min: 20, max: 300, step: 5 },
+    { key: "recentBars", label: "Recent anchor window (bars)", defaultValue: 12, min: 3, max: 60, step: 1 },
+    { key: "lineWidth", label: "Divergence line width", defaultValue: 2, min: 1, max: 4, step: 1 },
+  ],
   "tape-speed-order-flow-burst": [
     { key: "rollingWindowMs", label: "Rolling window (ms)", defaultValue: 1000, min: 50, max: 60000, step: 50 },
     { key: "updateStepMs", label: "Update step (ms)", defaultValue: 100, min: 16, max: 10000, step: 10 },
@@ -942,6 +948,11 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     useThemeColors: true,
     positiveColor: theme?.upColor ?? "#22C55E",
     negativeColor: theme?.downColor ?? "#EF4444",
+  } : {}),
+  ...(indicatorId === "cvd-divergence" ? {
+    useThemeColors: true,
+    bullishColor: theme?.upColor ?? "#22C55E",
+    bearishColor: theme?.downColor ?? "#EF4444",
   } : {}),
   ...Object.fromEntries(
     (INDICATOR_NUMERIC_SETTINGS[indicatorId] ?? []).map((setting) => [setting.key, setting.defaultValue]),
@@ -1850,6 +1861,17 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
     const defaults: Record<string, number | string | boolean> = defaultIndicatorSettings("options-delta");
     const settings: Record<string, number | string | boolean> = { ...defaults, ...(normalizedInstance.settings ?? {}) };
     for (const definition of INDICATOR_NUMERIC_SETTINGS["options-delta"] ?? []) {
+      const parsed = Number(settings[definition.key]);
+      settings[definition.key] = Math.min(definition.max, Math.max(definition.min, Number.isFinite(parsed) ? parsed : definition.defaultValue));
+    }
+    settings.useThemeColors = settings.useThemeColors !== false;
+    for (const unsafeKey of ["apiKey", "credential", "credentials", "snapshot", "points", "history"]) delete settings[unsafeKey];
+    return { ...normalizedInstance, settings };
+  }
+  if (normalizedInstance.indicatorId === "cvd-divergence") {
+    const defaults: Record<string, number | string | boolean> = defaultIndicatorSettings("cvd-divergence");
+    const settings: Record<string, number | string | boolean> = { ...defaults, ...(normalizedInstance.settings ?? {}) };
+    for (const definition of INDICATOR_NUMERIC_SETTINGS["cvd-divergence"] ?? []) {
       const parsed = Number(settings[definition.key]);
       settings[definition.key] = Math.min(definition.max, Math.max(definition.min, Number.isFinite(parsed) ? parsed : definition.defaultValue));
     }

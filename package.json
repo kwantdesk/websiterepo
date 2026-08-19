@@ -26,6 +26,7 @@
     "test:initial-balance": "node --experimental-strip-types scripts/test-initial-balance.mjs",
     "test:zero-gamma-line": "node --experimental-strip-types scripts/test-zero-gamma-line.mjs",
     "test:options-delta": "node --experimental-strip-types scripts/test-options-delta.mjs",
+    "test:cvd-divergence": "node --experimental-strip-types scripts/test-cvd-divergence.mjs",
     "test:preference-hydration": "node --experimental-strip-types scripts/test-preference-hydration.mjs",
     "test:gex-box": "node --experimental-strip-types scripts/test-gex-box.mjs",
     "test:gex-map-star": "node --experimental-strip-types scripts/test-gex-map-star.mjs",
