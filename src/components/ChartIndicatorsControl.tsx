@@ -289,7 +289,6 @@ type Props = {
   chartSettings: ChartSettings;
   levelControls?: ChartLevelControl[];
   settingsOpenRequest?: { instanceId: string; requestId: number } | null;
-  libraryOpenRequest?: number;
   onChange: (next: ChartIndicatorInstance[]) => void;
 };
 
@@ -376,7 +375,6 @@ export default function ChartIndicatorsControl({
   chartSettings,
   levelControls = [],
   settingsOpenRequest = null,
-  libraryOpenRequest = 0,
   onChange,
 }: Props) {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -418,15 +416,6 @@ export default function ChartIndicatorsControl({
   useEffect(() => {
     setClientHydrated(true);
   }, []);
-
-  const handledLibraryOpenRequestRef = useRef(0);
-  useEffect(() => {
-    if (!libraryOpenRequest || handledLibraryOpenRequestRef.current === libraryOpenRequest) return;
-    handledLibraryOpenRequestRef.current = libraryOpenRequest;
-    setSettingsInstanceId(null);
-    setLibraryOpen(true);
-    setOpen(true);
-  }, [libraryOpenRequest]);
 
   useEffect(() => {
     if (!settingsOpenRequest) return;
