@@ -961,6 +961,10 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     position: "top-right",
     showFreshness: true,
     showSource: false,
+    useThemeColors: true,
+    positiveColor: theme?.upColor ?? "#22C55E",
+    negativeColor: theme?.downColor ?? "#EF4444",
+    badgeScale: 1,
     gammaEnvironmentSettingsVersion: 1,
   } : {}),
   ...(indicatorId === "pulling-stacking" ? {
@@ -2177,6 +2181,9 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
       "bottom-right",
     ]);
     if (!allowedPositions.has(String(settings.position))) settings.position = "top-right";
+    const parsedScale = Number(settings.badgeScale);
+    settings.badgeScale = Number.isFinite(parsedScale) ? Math.min(2, Math.max(0.6, parsedScale)) : 1;
+    settings.useThemeColors = settings.useThemeColors !== false;
     return {
       ...normalizedInstance,
       settings: { ...settings, gammaEnvironmentSettingsVersion: 1 },

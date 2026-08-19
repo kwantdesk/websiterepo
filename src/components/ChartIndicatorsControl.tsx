@@ -2931,6 +2931,63 @@ export default function ChartIndicatorsControl({
                       <option value="bottom-right">Bottom right</option>
                     </KwantSelect>
                   </label>
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">
+                    <span className="flex items-center justify-between">
+                      <span>Box size</span>
+                      <span className="font-mono normal-case text-foreground">{Math.round(Number(settingsInstance.settings?.badgeScale ?? 1) * 100)}%</span>
+                    </span>
+                    <input
+                      type="range"
+                      min={0.6}
+                      max={2}
+                      step={0.05}
+                      value={Number(settingsInstance.settings?.badgeScale ?? 1)}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                        ...current,
+                        settings: { ...(current.settings ?? {}), badgeScale: Number(event.target.value) },
+                      }))}
+                      className="w-full accent-primary"
+                      aria-label="Gamma Environment box size"
+                    />
+                  </label>
+                  <label className="flex items-center gap-2 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">
+                    <input
+                      type="checkbox"
+                      checked={settingsInstance.settings?.useThemeColors !== false}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                        ...current,
+                        settings: { ...(current.settings ?? {}), useThemeColors: event.target.checked },
+                      }))}
+                      className="h-3.5 w-3.5 accent-primary"
+                    />
+                    Use theme colours
+                  </label>
+                  {settingsInstance.settings?.useThemeColors === false ? (
+                    <>
+                      <div className="flex items-center justify-between gap-2 text-[9px] uppercase tracking-[0.12em] text-muted">
+                        <span>Positive gamma</span>
+                        <ChartColorField
+                          ariaLabel="Positive gamma colour"
+                          value={String(settingsInstance.settings?.positiveColor ?? "#22C55E")}
+                          onChange={(hex) => replace(settingsInstance.instanceId, (current) => ({
+                            ...current,
+                            settings: { ...(current.settings ?? {}), positiveColor: hex },
+                          }))}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between gap-2 text-[9px] uppercase tracking-[0.12em] text-muted">
+                        <span>Negative gamma</span>
+                        <ChartColorField
+                          ariaLabel="Negative gamma colour"
+                          value={String(settingsInstance.settings?.negativeColor ?? "#EF4444")}
+                          onChange={(hex) => replace(settingsInstance.instanceId, (current) => ({
+                            ...current,
+                            settings: { ...(current.settings ?? {}), negativeColor: hex },
+                          }))}
+                        />
+                      </div>
+                    </>
+                  ) : null}
                   <p className="text-[8px] leading-4 text-muted sm:col-span-2">
                     Uses the same authoritative gamma-environment frame as Kwant Levels and keeps the latest good snapshot visible between refreshes.
                   </p>

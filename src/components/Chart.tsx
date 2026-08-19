@@ -7270,11 +7270,21 @@ function Chart({
     "bottom-middle": "bottom-8 left-1/2 -translate-x-1/2",
     "bottom-right": "bottom-8 right-[70px]",
   } as Record<string, string>)[gammaEnvironmentPosition] ?? "right-[70px] top-3";
+  const gammaEnvironmentSettings = gammaEnvironmentIndicator?.settings ?? {};
+  const gammaEnvironmentUseThemeColors = gammaEnvironmentSettings.useThemeColors !== false;
+  const gammaEnvironmentScale = Math.min(2, Math.max(0.6, Number(gammaEnvironmentSettings.badgeScale ?? 1)));
   const gammaEnvironmentColor = gammaEnvironment?.regime === "POSITIVE"
-    ? settings.upColor
+    ? (gammaEnvironmentUseThemeColors ? settings.upColor : String(gammaEnvironmentSettings.positiveColor ?? settings.upColor))
     : gammaEnvironment?.regime === "NEGATIVE"
-      ? settings.downColor
+      ? (gammaEnvironmentUseThemeColors ? settings.downColor : String(gammaEnvironmentSettings.negativeColor ?? settings.downColor))
       : settings.borderUpColor;
+  // At small badge sizes the qualifier ("… - EXTREME") no longer fits; the
+  // label gracefully shortens to the regime alone.
+  const gammaEnvironmentLabel = (() => {
+    const label = gammaEnvironment?.label;
+    if (!label) return null;
+    return gammaEnvironmentScale <= 0.85 ? label.split(/\s[-·]\s/)[0] : label;
+  })();
   const classicGexOverlay = useMemo(() => {
     if (!classicGexIndicator || !classicGexProfile || !candleSeriesRef.current) return null;
     const profileSettings = classicGexIndicator.settings ?? {};
@@ -12902,6 +12912,7 @@ function Chart({
           style={{
             borderColor: `color-mix(in srgb, ${gammaEnvironmentColor} 58%, transparent)`,
             boxShadow: `0 0 18px color-mix(in srgb, ${gammaEnvironmentColor} 14%, transparent)`,
+            ...(gammaEnvironmentScale !== 1 ? { zoom: gammaEnvironmentScale } as CSSProperties : {}),
           }}
           aria-label="Gamma Environment"
         >
@@ -12916,7 +12927,7 @@ function Chart({
             className="mt-1 whitespace-nowrap text-[11px] font-semibold uppercase tracking-[0.04em]"
             style={{ color: gammaEnvironmentColor }}
           >
-            {gammaEnvironment?.label
+            {gammaEnvironmentLabel
               ?? (gammaEnvironmentLoading ? "Synchronising" : gammaEnvironmentError ? "Unavailable" : "Waiting for data")}
           </div>
           {gammaEnvironmentIndicator.settings?.showFreshness !== false && gammaEnvironment ? (
