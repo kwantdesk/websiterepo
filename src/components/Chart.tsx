@@ -3157,9 +3157,21 @@ function Chart({
     () => candles.map((candle) => ({
       time: Math.floor(candle.timestamp / 1000),
       open: candle.open, high: candle.high, low: candle.low, close: candle.close,
+      volume: candle.volume ?? 0,
     })),
     [candles],
   );
+  // Lets the drawing overlay redraw in lockstep with the chart's own viewport
+  // changes (read chartRef at call time so chart recreation is handled).
+  const subscribeDrawViewport = useCallback((callback: () => void) => {
+    const chart = chartRef.current;
+    if (!chart) return () => {};
+    const timeScale = chart.timeScale();
+    timeScale.subscribeVisibleLogicalRangeChange(callback);
+    return () => {
+      try { timeScale.unsubscribeVisibleLogicalRangeChange(callback); } catch {}
+    };
+  }, []);
   const commitDrawings = useCallback((next: Drawing[]) => {
     onChartingDrawingsChange?.(normalizeDrawings(next));
   }, [onChartingDrawingsChange]);
@@ -13133,6 +13145,8 @@ function Chart({
             candles={chartingDrawCandles}
             magnet={drawMagnet}
             viewportVersion={viewportVersion}
+            chartReady={chartReadyRevision}
+            subscribeViewport={subscribeDrawViewport}
             onOpenSettings={(id) => { setDrawSelectedId(id); setDrawTool("cursor"); setDrawSettingsOpen(true); }}
             onCommit={(drawing) => { commitDrawings([...chartingDrawings, drawing]); setDrawSelectedId(drawing.id); }}
             onUpdate={(drawing) => commitDrawings(chartingDrawings.map((d) => d.id === drawing.id ? drawing : d))}

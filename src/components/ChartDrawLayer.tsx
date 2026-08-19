@@ -30,6 +30,8 @@ type Props = {
   candles: DrawCandle[];
   magnet: boolean;
   viewportVersion: number;
+  chartReady: number;
+  subscribeViewport: (callback: () => void) => (() => void);
   onCommit: (drawing: Drawing) => void;
   onUpdate: (drawing: Drawing) => void;
   onDelete: (id: string) => void;
@@ -40,7 +42,7 @@ type Props = {
 };
 
 type XY = { x: number | null; y: number | null };
-export type DrawCandle = { time: number; open: number; high: number; low: number; close: number };
+export type DrawCandle = { time: number; open: number; high: number; low: number; close: number; volume: number };
 
 const dashFor = (style: DrawLineStyle, width: number) =>
   style === "dashed" ? `${width * 3} ${width * 2}` : style === "dotted" ? `${width} ${width * 2}` : undefined;
@@ -49,7 +51,7 @@ const TEXT_INPUT_TOOLS: DrawToolId[] = ["text", "note", "callout", "signpost"];
 
 export default function ChartDrawLayer({
   width, height, activeTool, keepDrawing, drawings, selectedId,
-  toX, toY, fromXY, candles, magnet, viewportVersion, onCommit, onUpdate, onDelete, onSelect, onToolConsumed, onRequestText, onOpenSettings,
+  toX, toY, fromXY, candles, magnet, viewportVersion, chartReady, subscribeViewport, onCommit, onUpdate, onDelete, onSelect, onToolConsumed, onRequestText, onOpenSettings,
 }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [pending, setPending] = useState<{ tool: DrawToolId; points: DrawPoint[] } | null>(null);
@@ -105,6 +107,20 @@ export default function ChartDrawLayer({
   };
   const dragCleanupRef = useRef<(() => void) | null>(null);
   useEffect(() => () => { dragCleanupRef.current?.(); }, []);
+  // Redraw the overlay in lockstep with the chart's OWN viewport changes,
+  // coalesced to one repaint per animation frame. Relying on the chart's
+  // throttled ~15fps React signal made drawings lag and wobble behind the
+  // candles during a fast pan; this tracks the candles at frame rate.
+  const [, forceRedraw] = useState(0);
+  useEffect(() => {
+    let frame = 0;
+    const onViewport = () => {
+      if (frame) return;
+      frame = window.requestAnimationFrame(() => { frame = 0; forceRedraw((value) => value + 1); });
+    };
+    const unsubscribe = subscribeViewport(onViewport);
+    return () => { unsubscribe(); if (frame) window.cancelAnimationFrame(frame); };
+  }, [subscribeViewport, chartReady]);
   const beginDrag = (drawing: Drawing, mode: "move" | number, event: ReactPointerEvent) => {
     event.stopPropagation();
     onSelect(drawing.id);
@@ -529,6 +545,51 @@ export default function ChartDrawLayer({
             return <g key={i}>{line(cx, hy, cx, ly, col, 1)}<rect x={cx - bw / 2} y={Math.min(oy, cyy)} width={bw} height={Math.max(1, Math.abs(cyy - oy))} fill={col} /></g>;
           })}</g>;
         }
+        case "fixedRangeVolumeProfile":
+        case "anchoredVolumeProfile": {
+          const anchored = drawing.tool === "anchoredVolumeProfile";
+          if (a.x == null) return null;
+          const t0 = anchored ? pr[0].time : Math.min(pr[0].time, pr[1].time);
+          const t1 = anchored ? (candles[candles.length - 1]?.time ?? pr[0].time) : Math.max(pr[0].time, pr[1].time);
+          const x0 = toX(t0); const x1 = toX(t1);
+          if (x0 == null || x1 == null) return null;
+          const prof = volumeProfile(candles, t0, t1);
+          if (!prof) return null;
+          const boxRight = anchored ? x1 : Math.max(x0, x1);
+          const boxLeft = Math.min(x0, x1);
+          const maxBarW = Math.max(30, (boxRight - boxLeft) * 0.32);
+          return <g>
+            {prof.bins.map((bin, i) => {
+              const yTop = toY(bin.priceHigh); const yBot = toY(bin.priceLow);
+              if (yTop == null || yBot == null || prof.maxVol <= 0) return null;
+              const w = (bin.volume / prof.maxVol) * maxBarW;
+              const inVA = bin.priceLow >= prof.valLow && bin.priceHigh <= prof.vahHigh;
+              const isPoc = i === prof.pocIndex;
+              return <rect key={i} x={boxLeft} y={Math.min(yTop, yBot)} width={Math.max(0, w)} height={Math.max(1, Math.abs(yBot - yTop) - 1)}
+                fill={isPoc ? "#2962FF" : inVA ? stroke : "#787B86"} fillOpacity={isPoc ? 0.85 : inVA ? 0.5 : 0.3} />;
+            })}
+            {line(boxLeft, toY(prof.poc) ?? 0, boxRight, toY(prof.poc) ?? 0, "#2962FF", 1)}
+            {style.showLabels ? label(boxLeft + 3, (toY(prof.poc) ?? 0) - 2, `POC ${prof.poc.toFixed(2)}`, "#2962FF") : null}
+          </g>;
+        }
+        case "anchoredVwap": {
+          if (a.x == null) return null;
+          const from = pr[0].time;
+          const inRange = candles.filter((cd) => cd.time >= from);
+          if (inRange.length < 2) return null;
+          let cumPV = 0; let cumV = 0;
+          const pts: string[] = [];
+          for (const cd of inRange) {
+            const v = Math.max(0, cd.volume ?? 0);
+            const typical = (cd.high + cd.low + cd.close) / 3;
+            if (v > 0) { cumPV += typical * v; cumV += v; }
+            const vwap = cumV > 0 ? cumPV / cumV : typical;
+            const px = toX(cd.time); const py = toY(vwap);
+            if (px != null && py != null) pts.push(`${px},${py}`);
+          }
+          if (pts.length < 2) return null;
+          return <g><polyline points={pts.join(" ")} fill="none" stroke={stroke} strokeWidth={w} strokeDasharray={dash} />{style.showLabels ? label(a.x, a.y! - 4, "AVWAP") : null}</g>;
+        }
         case "gannFan": {
           if (!b || a.x == null || b.x == null) return null;
           const dxp = pr[1].time - pr[0].time; const dyp = pr[1].price - pr[0].price;
@@ -668,6 +729,47 @@ function previewStyle(tool: DrawToolId) {
   if (tool === "longPosition") return { ...base, color: "#089981" };
   if (tool === "shortPosition") return { ...base, color: "#F23645" };
   return base;
+}
+
+function volumeProfile(candles: DrawCandle[], t0: number, t1: number, binCount = 24) {
+  const inRange = candles.filter((c) => c.time >= t0 && c.time <= t1);
+  if (inRange.length < 2) return null;
+  let priceMin = Infinity; let priceMax = -Infinity;
+  for (const c of inRange) { if (c.low < priceMin) priceMin = c.low; if (c.high > priceMax) priceMax = c.high; }
+  if (!Number.isFinite(priceMin) || !Number.isFinite(priceMax) || priceMax <= priceMin) return null;
+  const binSize = (priceMax - priceMin) / binCount;
+  const bins = Array.from({ length: binCount }, (_, i) => ({
+    priceLow: priceMin + i * binSize,
+    priceHigh: priceMin + (i + 1) * binSize,
+    volume: 0,
+  }));
+  let totalVol = 0;
+  for (const c of inRange) {
+    const v = Math.max(0, c.volume ?? 0);
+    if (v <= 0) continue;
+    totalVol += v;
+    const span = Math.max(binSize, c.high - c.low);
+    const perPrice = v / span;
+    for (const bin of bins) {
+      const overlap = Math.max(0, Math.min(c.high, bin.priceHigh) - Math.max(c.low, bin.priceLow));
+      if (overlap > 0) bin.volume += perPrice * overlap;
+    }
+  }
+  if (totalVol <= 0) return null;
+  let pocIndex = 0; let maxVol = 0;
+  bins.forEach((bin, i) => { if (bin.volume > maxVol) { maxVol = bin.volume; pocIndex = i; } });
+  const poc = (bins[pocIndex].priceLow + bins[pocIndex].priceHigh) / 2;
+  // 70% value area around the POC.
+  const target = totalVol * 0.7;
+  let vaVol = bins[pocIndex].volume; let lo = pocIndex; let hi = pocIndex;
+  while (vaVol < target && (lo > 0 || hi < bins.length - 1)) {
+    const below = lo > 0 ? bins[lo - 1].volume : -1;
+    const above = hi < bins.length - 1 ? bins[hi + 1].volume : -1;
+    if (above >= below && hi < bins.length - 1) { hi += 1; vaVol += bins[hi].volume; }
+    else if (lo > 0) { lo -= 1; vaVol += bins[lo].volume; }
+    else break;
+  }
+  return { bins, poc, pocIndex, maxVol, valLow: bins[lo].priceLow, vahHigh: bins[hi].priceHigh };
 }
 
 function extend(x1: number, y1: number, x2: number, y2: number, w: number, h: number) {
