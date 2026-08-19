@@ -812,3 +812,10 @@ Per task: eslint on changed files (heap-bumped for Chart/KwantifyWorkspace), `np
 
 ### Worktree state
 `?? ALGO/`, `?? gexcal-*.png/tmp`, `M/?? tmp/pdfs/*` (other workstream) — no uncommitted engineering work.
+
+### Follow-up fixes (same day, owner-driven)
+- `8de3a277` position calculator floated/vanished: `timeToX` only resolved exact visible bar times; moved anchors (arbitrary times, beyond last bar, session gaps) returned null and erased the drawing. Now interpolates between neighbouring bars on the logical scale and extrapolates past the ends.
+- `9ce32123` GEX Map growth ticker: prior-magnitude floor at 0.5% of the Star node (dividing by near-zero priors manufactured 999% readings); >500% renders as ">500%" instead of a fabricated cap. Window remains step-anchored.
+- `6da72b8b` on-chart 1D/5D/... load-range bar removed — the control lives only in the timeframe menu.
+- `7b7db943` star node strike price: no pill/box, bare text in the star's contrast accent, both views, including star-at-current-price rows.
+- GEX Map price lock verified live on production via the owner's Chrome (offset 1013px → 0 on lock press) — the owner's "not centring" report was a deployment-pinned tab.
