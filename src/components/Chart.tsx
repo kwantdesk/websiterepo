@@ -3149,6 +3149,23 @@ function Chart({
   const commitDrawings = useCallback((next: Drawing[]) => {
     onChartingDrawingsChange?.(normalizeDrawings(next));
   }, [onChartingDrawingsChange]);
+  // Backspace / Delete removes the selected charting drawing (only on the
+  // focused pane, and never while typing into a field).
+  useEffect(() => {
+    if (!drawSelectedId) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Backspace" && event.key !== "Delete") return;
+      const target = event.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase();
+      if (tag === "input" || tag === "textarea" || tag === "select" || target?.isContentEditable) return;
+      event.preventDefault();
+      commitDrawings(chartingDrawings.filter((drawing) => drawing.id !== drawSelectedId));
+      setDrawSelectedId(null);
+      setDrawSettingsOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [drawSelectedId, chartingDrawings, commitDrawings]);
   const [crosshairStyle, setCrosshairStyle] = useState<CrosshairStyle>(() => ({ ...DEFAULT_CROSSHAIR_STYLE }));
   useEffect(() => {
     setCrosshairStyle(loadCrosshairStyle());
