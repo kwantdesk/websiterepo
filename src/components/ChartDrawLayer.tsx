@@ -518,18 +518,26 @@ export default function ChartDrawLayer({
             );
           };
           const midX = (xL + xR) / 2;
-          const profitH = Math.abs(targetY - entryY);
-          const riskH = Math.abs(stopY - entryY);
+          // TradingView layout (from their docs/tutorial): plain translucent
+          // zone fills, the Target pill riding ON the target boundary, the
+          // Stop pill ON the stop boundary, and a grey stats pill on the entry
+          // line showing open P&L (real last close, in points) and the
+          // risk/reward ratio.
+          const lastClose = candles.length ? candles[candles.length - 1].close : null;
+          const openPnl = lastClose == null ? null : (long ? lastClose - entryP : entryP - lastClose);
+          const stats = `${openPnl == null ? "" : `Open P&L: ${openPnl >= 0 ? "+" : ""}${openPnl.toFixed(2)} · `}Risk/Reward Ratio: ${rr.toFixed(2)}`;
           return (
             <g>
-              <rect x={xL} y={Math.min(entryY, targetY)} width={xR - xL} height={Math.max(1, profitH)} fill={green} fillOpacity={0.16} stroke={green} strokeOpacity={0.6} strokeWidth={1} />
-              <rect x={xL} y={Math.min(entryY, stopY)} width={xR - xL} height={Math.max(1, riskH)} fill={red} fillOpacity={0.16} stroke={red} strokeOpacity={0.6} strokeWidth={1} />
-              <line x1={xL} y1={entryY} x2={xR} y2={entryY} stroke="#B2B5BE" strokeWidth={1} />
+              <rect x={xL} y={Math.min(entryY, targetY)} width={xR - xL} height={Math.max(1, Math.abs(targetY - entryY))} fill={green} fillOpacity={0.18} />
+              <rect x={xL} y={Math.min(entryY, stopY)} width={xR - xL} height={Math.max(1, Math.abs(stopY - entryY))} fill={red} fillOpacity={0.18} />
+              <line x1={xL} y1={targetY} x2={xR} y2={targetY} stroke={green} strokeOpacity={0.55} strokeWidth={1} />
+              <line x1={xL} y1={stopY} x2={xR} y2={stopY} stroke={red} strokeOpacity={0.55} strokeWidth={1} />
+              <line x1={xL} y1={entryY} x2={xR} y2={entryY} stroke="#B2B5BE" strokeOpacity={0.8} strokeWidth={1} />
               {style.showLabels ? (
                 <g>
-                  {profitH >= 22 ? chip(midX, (entryY + targetY) / 2, `Target: ${targetP.toFixed(2)} (${long ? "+" : "-"}${reward.toFixed(2)}, ${pct(reward)})`, green) : null}
-                  {riskH >= 22 ? chip(midX, (entryY + stopY) / 2, `Stop: ${stopP.toFixed(2)} (${long ? "-" : "+"}${risk.toFixed(2)}, ${pct(risk)})`, red) : null}
-                  {chip(midX, entryY, `${long ? "Long" : "Short"} ${entryP.toFixed(2)} · R/R: ${rr.toFixed(2)}`, "#5A6270")}
+                  {chip(midX, targetY, `Target: ${targetP.toFixed(2)} (${long ? "+" : "-"}${reward.toFixed(2)} · ${pct(reward)})`, green)}
+                  {chip(midX, stopY, `Stop: ${stopP.toFixed(2)} (${long ? "-" : "+"}${risk.toFixed(2)} · ${pct(risk)})`, red)}
+                  {chip(midX, entryY, stats, "#5A6270")}
                 </g>
               ) : null}
             </g>
