@@ -53,6 +53,24 @@ function binValue(bin: GammaHeatmapBin, mode: GammaHeatmapViewMode) {
   return bin.net;
 }
 
+// Records the exact viewport the offscreen surface was rendered in, so that a
+// later frame that only panned or rescaled the price axis can re-project the
+// cached bitmap with a single drawImage instead of repainting 100k+ bins.
+type SurfaceMeta = {
+  dataVersion: number;
+  width: number;
+  height: number;
+  pixelRatio: number;
+  t0: Time;
+  tN: Time;
+  pMax: number;
+  pMin: number;
+  renderedXFirst: number;
+  renderedXLast: number;
+  renderedTop: number;
+  renderedBottom: number;
+};
+
 class GammaHeatmapRenderer implements ISeriesPrimitivePaneRenderer {
   // The exposure surface commonly holds 400-720 snapshots × ~300 bins. It was
   // repainted bin-by-bin on every chart invalidation — live ticks invalidate
@@ -62,8 +80,8 @@ class GammaHeatmapRenderer implements ISeriesPrimitivePaneRenderer {
   // once into an offscreen canvas and blitted per frame; it re-renders only
   // when the data, viewport, scale or size actually change.
   private surface: HTMLCanvasElement | null = null;
-  private surfaceKey = "";
-  dispose() { this.surface = null; this.surfaceKey = ""; }
+  private surfaceMeta: SurfaceMeta | null = null;
+  dispose() { this.surface = null; this.surfaceMeta = null; }
   private maxValueKey = "";
   private maxValue = 1;
 
@@ -101,30 +119,50 @@ class GammaHeatmapRenderer implements ISeriesPrimitivePaneRenderer {
       context.rect(0, 0, mediaSize.width, mediaSize.height);
       context.clip();
       if (data.viewMode !== "levels-only") {
-        const range = timeScale.getVisibleLogicalRange();
-        const latest = snapshots[snapshots.length - 1];
-        const anchorTop = latest?.bins.length ? series.priceToCoordinate(latest.bins[0].price) : null;
-        const anchorBottom = latest?.bins.length
-          ? series.priceToCoordinate(latest.bins[latest.bins.length - 1].price)
-          : null;
         const pixelRatio = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
-        const surfaceKey = [
-          this.primitive.dataVersion(),
-          snapshots.length,
-          mediaSize.width,
-          mediaSize.height,
-          pixelRatio,
-          range ? range.from.toFixed(3) : "",
-          range ? range.to.toFixed(3) : "",
-          anchorTop === null ? "" : Number(anchorTop).toFixed(2),
-          anchorBottom === null ? "" : Number(anchorBottom).toFixed(2),
-        ].join("|");
-        if (!this.surface || this.surfaceKey !== surfaceKey) {
-          this.surface = this.renderSurface(snapshots, data, series, timeScale, mediaSize.width, mediaSize.height, pixelRatio);
-          this.surfaceKey = surfaceKey;
+        // Try to reuse the cached surface. Repainting the bins is the expensive
+        // work; a live chart pans/rescales every frame but the DATA only changes
+        // on a refresh. When the data, size and horizontal zoom are unchanged we
+        // re-project the existing bitmap with one drawImage: a pure pan is a
+        // uniform horizontal shift (dx), and an auto price-scale is a linear
+        // vertical scale (both exact for the chart's linear price axis). Only a
+        // genuine data change, resize, or horizontal zoom repaints the bins —
+        // the fix for the main-thread starvation that froze the tab ("Aw Snap").
+        let painted = false;
+        const meta = this.surfaceMeta;
+        if (this.surface && meta
+          && meta.dataVersion === this.primitive.dataVersion()
+          && meta.width === mediaSize.width
+          && meta.height === mediaSize.height
+          && meta.pixelRatio === pixelRatio) {
+          const xFirst = timeScale.timeToCoordinate(meta.t0);
+          const xLast = timeScale.timeToCoordinate(meta.tN);
+          const top = series.priceToCoordinate(meta.pMax);
+          const bottom = series.priceToCoordinate(meta.pMin);
+          if (xFirst !== null && xLast !== null && top !== null && bottom !== null) {
+            const currentSpan = Number(xLast) - Number(xFirst);
+            const renderedSpan = meta.renderedXLast - meta.renderedXFirst;
+            const renderedVSpan = meta.renderedBottom - meta.renderedTop;
+            const currentVSpan = Number(bottom) - Number(top);
+            // Horizontal zoom (bar spacing) changed → the shift is no longer
+            // uniform, so a translate would smear the columns; repaint instead.
+            if (Math.abs(currentSpan - renderedSpan) <= 0.5
+              && Math.abs(renderedVSpan) > 0.5 && Math.abs(currentVSpan) > 0.5) {
+              const dx = Number(xFirst) - meta.renderedXFirst;
+              const scaleY = currentVSpan / renderedVSpan;
+              const destTop = Number(top) - meta.renderedTop * scaleY;
+              context.drawImage(this.surface, dx, destTop, mediaSize.width, mediaSize.height * scaleY);
+              painted = true;
+            }
+          }
         }
-        if (this.surface) {
-          context.drawImage(this.surface, 0, 0, mediaSize.width, mediaSize.height);
+        if (!painted) {
+          const rendered = this.renderSurface(snapshots, data, series, timeScale, mediaSize.width, mediaSize.height, pixelRatio);
+          if (rendered) {
+            this.surface = rendered.canvas;
+            this.surfaceMeta = rendered.meta;
+            context.drawImage(this.surface, 0, 0, mediaSize.width, mediaSize.height);
+          }
         }
       }
       if (data.showLevels) {
@@ -171,7 +209,7 @@ class GammaHeatmapRenderer implements ISeriesPrimitivePaneRenderer {
     width: number,
     height: number,
     pixelRatio: number,
-  ): HTMLCanvasElement | null {
+  ): { canvas: HTMLCanvasElement; meta: SurfaceMeta } | null {
     if (typeof document === "undefined") return null;
     // Reuse a single canvas element across renders. Allocating a fresh
     // ~13 MB high-DPI canvas on every pan frame (the surface key includes the
@@ -209,6 +247,9 @@ class GammaHeatmapRenderer implements ISeriesPrimitivePaneRenderer {
     positionedRaw.forEach((value) => byPixel.set(Math.round(value.x), value));
     const positioned = [...byPixel.values()].sort((left, right) => left.x - right.x);
 
+    // Data price extremes drive the vertical re-projection transform on reuse.
+    let pMax = Number.NEGATIVE_INFINITY;
+    let pMin = Number.POSITIVE_INFINITY;
     positioned.forEach(({ snapshot, x, nextX }, snapshotIndex) => {
       // Columns that fall outside the rendered viewport cost the same as
       // visible ones in fill work; skip them entirely.
@@ -218,6 +259,8 @@ class GammaHeatmapRenderer implements ISeriesPrimitivePaneRenderer {
       const columnWidth = Math.max(2, Math.min(28, nextX === null ? 10 : Math.abs(nextX - x) + 1));
       const bins = snapshot.bins;
       bins.forEach((bin, binIndex) => {
+        if (bin.price > pMax) pMax = bin.price;
+        if (bin.price < pMin) pMin = bin.price;
         const y = series.priceToCoordinate(bin.price);
         if (y === null || y < -20 || y > height + 20) return;
         const adjacent = bins[binIndex + 1] ?? bins[binIndex - 1];
@@ -239,7 +282,27 @@ class GammaHeatmapRenderer implements ISeriesPrimitivePaneRenderer {
         }
       });
     });
-    return canvas;
+    if (!positioned.length || pMax <= pMin) return null;
+    const first = positioned[0];
+    const last = positioned[positioned.length - 1];
+    const renderedTop = series.priceToCoordinate(pMax);
+    const renderedBottom = series.priceToCoordinate(pMin);
+    if (renderedTop === null || renderedBottom === null) return null;
+    const meta: SurfaceMeta = {
+      dataVersion: this.primitive.dataVersion(),
+      width,
+      height,
+      pixelRatio,
+      t0: Math.floor(first.snapshot.timestamp / 1_000) as Time,
+      tN: Math.floor(last.snapshot.timestamp / 1_000) as Time,
+      pMax,
+      pMin,
+      renderedXFirst: first.x,
+      renderedXLast: last.x,
+      renderedTop: Number(renderedTop),
+      renderedBottom: Number(renderedBottom),
+    };
+    return { canvas, meta };
   }
 }
 
