@@ -1469,7 +1469,6 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
       return next;
     });
   }, []);
-  const [lastSync, setLastSync] = useState<number | null>(null);
   const [latestSessionDate, setLatestSessionDate] = useState("");
   const [refreshToken, setRefreshToken] = useState(0);
   const [viewMode, setViewMode] = useState<GexMapViewMode>(
@@ -1645,7 +1644,6 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
         });
         setPanelErrors((current) => ({ ...current, ...nextErrors }));
         setLoading(Object.fromEntries(panels.map((panel) => [panel.id, false])));
-        setLastSync(Date.now());
 
         const firstSuccess = results.find((result) => result.status === "fulfilled");
         if (!replayMode && firstSuccess?.status === "fulfilled") {
@@ -1713,11 +1711,6 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
     ? externalReplay?.timestampMs ?? timeline[Math.min(cursor, Math.max(0, timeline.length - 1))] ?? null
     : null;
   const live = !replayMode && panels.every((panel) => panelData[panel.id]?.status === "LIVE");
-  const dataAsOf = panels.reduce<number | null>((oldest, panel) => {
-    const timestamp = Date.parse(panelData[panel.id]?.asOf ?? "");
-    if (!Number.isFinite(timestamp)) return oldest;
-    return oldest === null ? timestamp : Math.min(oldest, timestamp);
-  }, null);
   const currentSessionDate = latestSessionDate
     || panels.map((panel) => panelData[panel.id]?.sessionDate).find(Boolean)
     || "";
@@ -1859,14 +1852,6 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
             >
               <Plus className="h-3.5 w-3.5" />
             </button>
-            <div className={`flex h-7 items-center gap-1.5 rounded-[3px] border px-2 text-[9px] font-semibold uppercase leading-none tracking-[0.075em] ${replayMode ? "border-accent/25 bg-accent/10 text-accent" : live ? "border-primary/20 bg-primary/10 text-primary" : "border-border bg-surface text-muted"}`}>
-              <span className={`h-1.5 w-1.5 rounded-full ${replayMode ? "bg-accent" : live ? "animate-pulse bg-primary" : "bg-muted"}`} />
-              {replayMode ? "REPLAY" : live ? "LIVE" : "LAST SESSION"}
-            </div>
-            <div className="hidden text-right text-[8px] text-muted xl:block">
-              <div>Provider data</div>
-              <div className="font-mono text-foreground">{dataAsOf ? easternTime.format(dataAsOf) : lastSync ? easternTime.format(lastSync) : "—"} ET</div>
-            </div>
             <button
               type="button"
               onClick={() => {
