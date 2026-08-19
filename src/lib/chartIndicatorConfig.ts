@@ -1545,6 +1545,8 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     lookbackDays: 7,
     lineOpacity: 88,
     lineWidth: 1,
+    showFib: false,
+    fibDirection: "long",
     initialBalanceSettingsVersion: 2,
   } : {}),
   ...(indicatorId === "big-trades" ? {

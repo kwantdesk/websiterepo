@@ -8727,7 +8727,49 @@ function Chart({
       fontSize: ibFontSize,
       precision: priceFormat.precision,
     }));
-    return [...previousLevels, ...ibLevels];
+    // Optional fib over the MOST RECENT initial balance only: 50% / 61.8% /
+    // 78.6% between IBH and IBL, mirrored by the Long/Short direction.
+    const fibLevels: SessionHighLowRenderLevel[] = [];
+    if (initialBalanceSettings.showFib === true && initialBalanceLevels.length) {
+      const bySession = new Map<string, { high?: (typeof initialBalanceLevels)[number]; low?: (typeof initialBalanceLevels)[number] }>();
+      for (const level of initialBalanceLevels) {
+        const key = `${level.session.key}-${level.session.startTimestamp}`;
+        const entry = bySession.get(key) ?? {};
+        entry[level.side] = level;
+        bySession.set(key, entry);
+      }
+      const latest = [...bySession.values()]
+        .filter((entry) => entry.high && entry.low)
+        .sort((a, b) => b.high!.session.startTimestamp - a.high!.session.startTimestamp)[0];
+      const range = latest ? latest.high!.price - latest.low!.price : 0;
+      if (latest && range > 0) {
+        const long = String(initialBalanceSettings.fibDirection ?? "long") !== "short";
+        const color = long ? settings.upColor : settings.downColor;
+        const fibStart = Math.max(latest.high!.startTimestamp, latest.low!.startTimestamp);
+        for (const ratio of [0.5, 0.618, 0.786]) {
+          fibLevels.push({
+            id: `${latest.high!.id}-fib-${ratio}-${long ? "long" : "short"}`,
+            startTime: (
+              eventChartTimeBySourceTimeRef.current.get(fibStart)
+              ?? Math.floor(fibStart / 1_000)
+            ) as Time,
+            price: long
+              ? latest.high!.price - range * ratio
+              : latest.low!.price + range * ratio,
+            label: initialBalanceSettings.showLabels === false
+              ? ""
+              : `IB Fib ${(ratio * 100).toFixed(1).replace(".0", "")}% · ${long ? "LONG" : "SHORT"}`,
+            color,
+            opacity: ibOpacity,
+            lineWidth: clamp(Number(initialBalanceSettings.lineWidth ?? 1), 1, 4),
+            lineStyle: "dotted",
+            fontSize: ibFontSize,
+            precision: priceFormat.precision,
+          });
+        }
+      }
+    }
+    return [...previousLevels, ...ibLevels, ...fibLevels];
   }, [
     chartReadyRevision,
     initialBalanceLevels,

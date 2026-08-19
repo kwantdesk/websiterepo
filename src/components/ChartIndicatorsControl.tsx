@@ -1259,6 +1259,54 @@ export default function ChartIndicatorsControl({
                       );
                     })}
                   </div>
+                  <div className="border-t border-border/60 pt-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <div className="text-[10px] font-medium text-foreground">Fibonacci on the latest IB</div>
+                        <div className="mt-1 text-[8px] leading-4 text-muted">
+                          Draws the 50%, 61.8% and 78.6% retracements across the most recent IB high/low. Flip Long/Short to mirror the fib.
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={settingsInstance.settings?.showFib === true}
+                        onClick={() => replace(settingsInstance.instanceId, (current) => ({
+                          ...current,
+                          settings: { ...(current.settings ?? {}), showFib: current.settings?.showFib !== true },
+                        }))}
+                        className={`h-6 w-11 shrink-0 rounded-full border transition-colors ${settingsInstance.settings?.showFib === true ? "border-primary/50 bg-primary/25" : "border-border bg-background"}`}
+                        aria-label="Toggle IB Fibonacci levels"
+                      >
+                        <span className={`block h-4 w-4 rounded-full bg-foreground transition-transform ${settingsInstance.settings?.showFib === true ? "translate-x-6" : "translate-x-1"}`} />
+                      </button>
+                    </div>
+                    {settingsInstance.settings?.showFib === true ? (
+                      <div className="mt-2 grid grid-cols-2 gap-2" role="group" aria-label="IB Fibonacci direction">
+                        {(["long", "short"] as const).map((direction) => {
+                          const selected = String(settingsInstance.settings?.fibDirection ?? "long") === direction;
+                          return (
+                            <button
+                              key={direction}
+                              type="button"
+                              aria-pressed={selected}
+                              onClick={() => replace(settingsInstance.instanceId, (current) => ({
+                                ...current,
+                                settings: { ...(current.settings ?? {}), fibDirection: direction },
+                              }))}
+                              className={`h-9 rounded-lg border font-mono text-[9px] uppercase transition-colors ${
+                                selected
+                                  ? "border-primary/50 bg-primary/15 text-primary"
+                                  : "border-border bg-background text-muted hover:border-primary/30 hover:text-foreground"
+                              }`}
+                            >
+                              {direction}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
               ) : null}
 
