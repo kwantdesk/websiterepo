@@ -3138,6 +3138,13 @@ function Chart({
   const [drawKeepDrawing, setDrawKeepDrawing] = useState(false);
   const [drawTextInput, setDrawTextInput] = useState<{ points: DrawPoint[]; tool: DrawToolId; x: number; y: number; value: string } | null>(null);
   const [drawSettingsOpen, setDrawSettingsOpen] = useState(false);
+  const chartingDrawCandles = useMemo(
+    () => candles.map((candle) => ({
+      time: Math.floor(candle.timestamp / 1000),
+      open: candle.open, high: candle.high, low: candle.low, close: candle.close,
+    })),
+    [candles],
+  );
   const commitDrawings = useCallback((next: Drawing[]) => {
     onChartingDrawingsChange?.(normalizeDrawings(next));
   }, [onChartingDrawingsChange]);
@@ -13074,6 +13081,7 @@ function Chart({
               const price = candleSeriesRef.current?.coordinateToPrice(y);
               return time != null && price != null && Number.isFinite(price) ? { time, price: Number(price) } : null;
             }}
+            candles={chartingDrawCandles}
             onCommit={(drawing) => { commitDrawings([...chartingDrawings, drawing]); setDrawSelectedId(drawing.id); }}
             onUpdate={(drawing) => commitDrawings(chartingDrawings.map((d) => d.id === drawing.id ? drawing : d))}
             onSelect={setDrawSelectedId}

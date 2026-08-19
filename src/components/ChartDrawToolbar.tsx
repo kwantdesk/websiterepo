@@ -69,6 +69,17 @@ const ICONS: Partial<Record<DrawToolId, ToolIcon>> = {
   arrowMarker: svg(<><line x1="4" y1="20" x2="18" y2="6" /><path d="M13 5h6v6" /></>),
   flagMark: svg(<><line x1="6" y1="4" x2="6" y2="20" /><path d="M6 5h11l-3 4 3 4H6z" /></>),
   measure: svg(<><rect x="4" y="7" width="16" height="10" /><line x1="8" y1="7" x2="8" y2="11" /><line x1="12" y1="7" x2="12" y2="11" /><line x1="16" y1="7" x2="16" y2="11" /></>),
+  regressionTrend: svg(<><line x1="4" y1="17" x2="20" y2="7" /><line x1="4" y1="20" x2="20" y2="10" strokeDasharray="2 2" /><line x1="4" y1="14" x2="20" y2="4" strokeDasharray="2 2" /></>),
+  gannFan: svg(<><line x1="4" y1="20" x2="20" y2="4" /><line x1="4" y1="20" x2="20" y2="12" /><line x1="4" y1="20" x2="12" y2="4" /><line x1="4" y1="20" x2="20" y2="18" /></>),
+  gannBox: svg(<><rect x="4" y="5" width="16" height="14" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="12" y1="5" x2="12" y2="19" /></>),
+  pitchfork: svg(<><line x1="4" y1="12" x2="20" y2="12" /><line x1="8" y1="5" x2="20" y2="5" /><line x1="8" y1="19" x2="20" y2="19" /><line x1="4" y1="12" x2="8" y2="5" /><line x1="4" y1="12" x2="8" y2="19" /></>),
+  schiffPitchfork: svg(<><line x1="4" y1="12" x2="20" y2="12" /><line x1="8" y1="6" x2="20" y2="6" /><line x1="8" y1="18" x2="20" y2="18" /></>),
+  modifiedSchiffPitchfork: svg(<><line x1="4" y1="12" x2="20" y2="10" /><line x1="8" y1="6" x2="20" y2="5" /><line x1="8" y1="18" x2="20" y2="16" /></>),
+  insidePitchfork: svg(<><line x1="6" y1="12" x2="20" y2="12" /><line x1="9" y1="8" x2="20" y2="8" /><line x1="9" y1="16" x2="20" y2="16" /></>),
+  cypher: svg(<><path d="M4 16l4-9 4 6 4-9 4 8" /></>),
+  elliottImpulse: svg(<><path d="M3 19l3-5 3 3 3-8 3 5 4-9" /></>),
+  elliottCorrection: svg(<><path d="M5 8l4 8 4-6 5 7" /></>),
+  barsPattern: svg(<><line x1="7" y1="5" x2="7" y2="19" /><rect x="5.5" y="9" width="3" height="6" fill="currentColor" stroke="none" /><line x1="14" y1="5" x2="14" y2="19" /><rect x="12.5" y="7" width="3" height="8" fill="currentColor" stroke="none" /></>),
 };
 
 const fallbackIcon = svg(<circle cx="12" cy="12" r="7" />);

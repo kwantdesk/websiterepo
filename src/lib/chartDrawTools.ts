@@ -23,6 +23,14 @@ export type DrawToolId =
   | "crossLine"
   | "parallelChannel"
   | "flatChannel"
+  | "regressionTrend"
+  // gann & pitchfork
+  | "gannFan"
+  | "gannBox"
+  | "pitchfork"
+  | "schiffPitchfork"
+  | "modifiedSchiffPitchfork"
+  | "insidePitchfork"
   // fib
   | "fibRetracement"
   | "fibExtension"
@@ -36,6 +44,9 @@ export type DrawToolId =
   | "trianglePattern"
   | "headShoulders"
   | "threeDrivers"
+  | "cypher"
+  | "elliottImpulse"
+  | "elliottCorrection"
   // forecast / measurement
   | "longPosition"
   | "shortPosition"
@@ -43,6 +54,7 @@ export type DrawToolId =
   | "priceRange"
   | "dateRange"
   | "datePriceRange"
+  | "barsPattern"
   // shapes
   | "rectangle"
   | "rotatedRectangle"
@@ -67,6 +79,7 @@ export type DrawToolId =
 export type DrawToolGroupId =
   | "cursor"
   | "trend"
+  | "gann"
   | "fib"
   | "patterns"
   | "forecast"
@@ -120,6 +133,14 @@ export const DRAW_TOOL_LIST: DrawToolSpec[] = [
   T("crossLine", "trend", "Cross Line", 1),
   T("parallelChannel", "trend", "Parallel Channel", 3),
   T("flatChannel", "trend", "Flat Channel", 3),
+  T("regressionTrend", "trend", "Regression Trend", 2),
+
+  T("gannFan", "gann", "Gann Fan", 2),
+  T("gannBox", "gann", "Gann Box", 2),
+  T("pitchfork", "gann", "Pitchfork", 3),
+  T("schiffPitchfork", "gann", "Schiff Pitchfork", 3),
+  T("modifiedSchiffPitchfork", "gann", "Modified Schiff Pitchfork", 3),
+  T("insidePitchfork", "gann", "Inside Pitchfork", 3),
 
   T("fibRetracement", "fib", "Fib Retracement", 2),
   T("fibExtension", "fib", "Trend-Based Fib Extension", 3),
@@ -133,6 +154,9 @@ export const DRAW_TOOL_LIST: DrawToolSpec[] = [
   T("trianglePattern", "patterns", "Triangle Pattern", 4),
   T("headShoulders", "patterns", "Head & Shoulders", 5),
   T("threeDrivers", "patterns", "Three Drivers", 7),
+  T("cypher", "patterns", "Cypher Pattern", 5),
+  T("elliottImpulse", "patterns", "Elliott Impulse (12345)", 6),
+  T("elliottCorrection", "patterns", "Elliott Correction (ABC)", 4),
 
   T("longPosition", "forecast", "Long Position", 3),
   T("shortPosition", "forecast", "Short Position", 3),
@@ -140,6 +164,7 @@ export const DRAW_TOOL_LIST: DrawToolSpec[] = [
   T("priceRange", "forecast", "Price Range", 2),
   T("dateRange", "forecast", "Date Range", 2),
   T("datePriceRange", "forecast", "Date & Price Range", 2),
+  T("barsPattern", "forecast", "Bars Pattern", 2),
 
   T("rectangle", "shapes", "Rectangle", 2),
   T("rotatedRectangle", "shapes", "Rotated Rectangle", 3),
@@ -169,6 +194,7 @@ export const DRAW_TOOL_SPECS: Record<DrawToolId, DrawToolSpec> = Object.fromEntr
 export const DRAW_TOOL_GROUPS: { id: DrawToolGroupId; label: string }[] = [
   { id: "cursor", label: "Cursor" },
   { id: "trend", label: "Lines" },
+  { id: "gann", label: "Gann" },
   { id: "fib", label: "Fib" },
   { id: "patterns", label: "Patterns" },
   { id: "forecast", label: "Forecast" },

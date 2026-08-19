@@ -27,6 +27,7 @@ type Props = {
   toX: (time: number) => number | null;
   toY: (price: number) => number | null;
   fromXY: (x: number, y: number) => DrawPoint | null;
+  candles: DrawCandle[];
   onCommit: (drawing: Drawing) => void;
   onUpdate: (drawing: Drawing) => void;
   onDelete: (id: string) => void;
@@ -36,6 +37,7 @@ type Props = {
 };
 
 type XY = { x: number | null; y: number | null };
+export type DrawCandle = { time: number; open: number; high: number; low: number; close: number };
 
 const dashFor = (style: DrawLineStyle, width: number) =>
   style === "dashed" ? `${width * 3} ${width * 2}` : style === "dotted" ? `${width} ${width * 2}` : undefined;
@@ -44,7 +46,7 @@ const TEXT_INPUT_TOOLS: DrawToolId[] = ["text", "note", "callout", "signpost"];
 
 export default function ChartDrawLayer({
   width, height, activeTool, keepDrawing, drawings, selectedId,
-  toX, toY, fromXY, onCommit, onUpdate, onDelete, onSelect, onToolConsumed, onRequestText,
+  toX, toY, fromXY, candles, onCommit, onUpdate, onDelete, onSelect, onToolConsumed, onRequestText,
 }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [pending, setPending] = useState<{ tool: DrawToolId; points: DrawPoint[] } | null>(null);
@@ -425,6 +427,93 @@ export default function ChartDrawLayer({
         }
         case "text":
           return a.x == null ? null : <text x={a.x} y={a.y!} fill={stroke} fontSize={13} fontFamily="Inter, sans-serif">{drawing.text ?? ""}</text>;
+        case "regressionTrend": {
+          if (!b || a.x == null || b.x == null) return null;
+          const t0 = Math.min(pr[0].time, pr[1].time); const t1 = Math.max(pr[0].time, pr[1].time);
+          const inRange = candles.filter((cd) => cd.time >= t0 && cd.time <= t1);
+          if (inRange.length < 2) return line(a.x!, a.y!, b.x, b.y!);
+          const n = inRange.length;
+          let sx = 0, sy = 0, sxy = 0, sxx = 0;
+          inRange.forEach((cd, i) => { sx += i; sy += cd.close; sxy += i * cd.close; sxx += i * i; });
+          const slope = (n * sxy - sx * sy) / Math.max(1e-9, n * sxx - sx * sx);
+          const intercept = (sy - slope * sx) / n;
+          let ssd = 0; inRange.forEach((cd, i) => { const e = cd.close - (intercept + slope * i); ssd += e * e; });
+          const sd = Math.sqrt(ssd / n);
+          const startPrice = intercept; const endPrice = intercept + slope * (n - 1);
+          const sx0 = toX(inRange[0].time); const sx1 = toX(inRange[n - 1].time);
+          if (sx0 == null || sx1 == null) return null;
+          const py = (price: number) => toY(price);
+          const cy0 = py(startPrice); const cy1 = py(endPrice);
+          const u0 = py(startPrice + 2 * sd); const u1 = py(endPrice + 2 * sd);
+          const l0 = py(startPrice - 2 * sd); const l1 = py(endPrice - 2 * sd);
+          return <g>
+            {cy0 != null && cy1 != null ? line(sx0, cy0, sx1, cy1) : null}
+            {u0 != null && u1 != null ? line(sx0, u0, sx1, u1, stroke, 1) : null}
+            {l0 != null && l1 != null ? line(sx0, l0, sx1, l1, stroke, 1) : null}
+            {u0 != null && l1 != null ? <path d={`M${sx0},${u0} L${sx1},${u1} L${sx1},${l1} L${sx0},${l0} Z`} fill={stroke} fillOpacity={style.fillOpacity} stroke="none" /> : null}
+          </g>;
+        }
+        case "barsPattern": {
+          if (!b || a.x == null || b.x == null) return null;
+          const t0 = Math.min(pr[0].time, pr[1].time); const t1 = Math.max(pr[0].time, pr[1].time);
+          const inRange = candles.filter((cd) => cd.time >= t0 && cd.time <= t1);
+          const bw = inRange.length > 1 ? Math.max(1, (Math.abs(b.x - a.x!) / inRange.length) * 0.6) : 3;
+          return <g>{inRange.map((cd, i) => {
+            const cx = toX(cd.time); const oy = toY(cd.open); const cyy = toY(cd.close); const hy = toY(cd.high); const ly = toY(cd.low);
+            if (cx == null || oy == null || cyy == null || hy == null || ly == null) return null;
+            const up = cd.close >= cd.open; const col = up ? "#089981" : "#F23645";
+            return <g key={i}>{line(cx, hy, cx, ly, col, 1)}<rect x={cx - bw / 2} y={Math.min(oy, cyy)} width={bw} height={Math.max(1, Math.abs(cyy - oy))} fill={col} /></g>;
+          })}</g>;
+        }
+        case "gannFan": {
+          if (!b || a.x == null || b.x == null) return null;
+          const dxp = pr[1].time - pr[0].time; const dyp = pr[1].price - pr[0].price;
+          const ratios = [1/8, 1/4, 1/3, 1/2, 1, 2, 3, 4, 8];
+          return <g>{ratios.map((r, i) => {
+            const ex = toX(pr[0].time + dxp); const ey = toY(pr[0].price + dyp * r);
+            if (ex == null || ey == null) return null;
+            const e = extend(a.x!, a.y!, ex, ey, width, height);
+            return line(a.x!, a.y!, e.x, e.y, i === 4 ? stroke : "#787B86", i === 4 ? w : 1);
+          })}</g>;
+        }
+        case "gannBox": {
+          if (!b || a.x == null || b.x == null) return null;
+          const x0 = Math.min(a.x!, b.x); const x1 = Math.max(a.x!, b.x); const y0 = Math.min(a.y!, b.y!); const y1 = Math.max(a.y!, b.y!);
+          const fr = [0, 0.25, 0.382, 0.5, 0.618, 0.75, 1];
+          return <g>
+            <rect x={x0} y={y0} width={x1 - x0} height={y1 - y0} fill={stroke} fillOpacity={style.fillOpacity} stroke={stroke} strokeWidth={w} />
+            {fr.map((f) => <g key={`h${f}`}>{line(x0, y0 + (y1 - y0) * f, x1, y0 + (y1 - y0) * f, "#787B86", 1)}</g>)}
+            {fr.map((f) => <g key={`v${f}`}>{line(x0 + (x1 - x0) * f, y0, x0 + (x1 - x0) * f, y1, "#787B86", 1)}</g>)}
+          </g>;
+        }
+        case "pitchfork":
+        case "schiffPitchfork":
+        case "modifiedSchiffPitchfork":
+        case "insidePitchfork": {
+          if (!b || !c || a.x == null || b.x == null || c.x == null) return null;
+          let ox = a.x!; let oy = a.y!;
+          if (drawing.tool === "schiffPitchfork") { oy = (a.y! + b.y!) / 2; }
+          else if (drawing.tool === "modifiedSchiffPitchfork") { ox = (a.x! + b.x) / 2; oy = (a.y! + b.y!) / 2; }
+          else if (drawing.tool === "insidePitchfork") { ox = (a.x! + b.x) / 2; oy = (a.y! + b.y!) / 2; }
+          const mx = (b.x + c.x) / 2; const my = (b.y! + c.y!) / 2;
+          const med = extend(ox, oy, mx, my, width, height);
+          const dxm = mx - ox; const dym = my - oy;
+          const tine = (hx: number, hy: number) => { const e = extend(hx, hy, hx + dxm, hy + dym, width, height); return line(hx, hy, e.x, e.y, stroke, 1); };
+          return <g>{line(ox, oy, med.x, med.y)}{line(b.x, b.y!, c.x, c.y!, "#787B86", 1)}{tine(b.x, b.y!)}{tine(c.x, c.y!)}</g>;
+        }
+        case "cypher":
+        case "elliottImpulse":
+        case "elliottCorrection": {
+          const valid = coords.filter((p) => p.x != null);
+          const pts = valid.map((p) => `${p.x},${p.y}`).join(" ");
+          const labels = drawing.tool === "cypher" ? ["X", "A", "B", "C", "D"]
+            : drawing.tool === "elliottImpulse" ? ["", "1", "2", "3", "4", "5"]
+            : ["", "A", "B", "C"];
+          return <g>
+            <polyline points={pts} fill={drawing.tool === "cypher" ? stroke : "none"} fillOpacity={drawing.tool === "cypher" ? style.fillOpacity : 0} stroke={stroke} strokeWidth={w} strokeDasharray={dash} />
+            {style.showLabels ? valid.map((p, i) => labels[i] ? label(p.x! + 3, p.y! - 3, labels[i]) : null) : null}
+          </g>;
+        }
         default:
           return null;
       }
