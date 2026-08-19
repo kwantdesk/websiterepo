@@ -13537,8 +13537,10 @@ export default function KwantifyWorkspace({
     paneId: string,
     event: React.PointerEvent<HTMLElement>,
   ) => {
-    const paneLocked = workspacePanes.find((pane) => pane.id === paneId)?.locked === true;
-    if (workspaceLocked || paneLocked || visibleWorkspacePaneIds.length <= 1 || event.button !== 0) return;
+    // Per-pane locks were removed: only the workspace lock blocks dragging.
+    // Saved panes (notably GEX Vue's) can still carry a stale locked:true,
+    // which used to silently swallow every header drag on those workspaces.
+    if (workspaceLocked || visibleWorkspacePaneIds.length <= 1 || event.button !== 0) return;
     const source = event.currentTarget;
     const pointerId = event.pointerId;
     const startX = event.clientX;
