@@ -340,6 +340,9 @@ import { CROSSHAIR_STYLE_EVENT, DEFAULT_CROSSHAIR_STYLE, loadCrosshairStyle, nor
 // other pane alone, and each pane remembers its own pin across sessions.
 const TOOLBAR_PINNED_STORAGE_KEY = "kwantdesk:chart-toolbar-pinned:v1";
 const EMPTY_CHARTING_DRAWINGS: Drawing[] = [];
+// Retained gamma-heatmap history columns per pane. Bounds per-pane memory and
+// the per-render surface build cost (the GEX Vue OOM/freeze driver).
+const GAMMA_HEATMAP_MAX_SNAPSHOTS = 300;
 import { latestCompletedNewYorkSession, newYorkSessionTimestamp } from "@/lib/gexVueReplay";
 import { isZeroGammaLinePayload, paintZeroGammaLine, zeroGammaRootForInstrument, type ZeroGammaLinePayload } from "@/lib/zeroGammaLine";
 import { STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT } from "@/lib/volumeProfileMath";
@@ -5962,7 +5965,15 @@ function Chart({
           invalidMessage: "Gamma Heatmap returned an incomplete exposure surface.",
         });
         if (cancelled) return;
-        setGammaHeatmapPayload(payload);
+        // Retain only the most recent snapshots. A full 720-column history is
+        // ~25-50 MB of bin objects PER PANE and forces the surface build to
+        // walk every column each render — on a 4-pane GEX Vue workspace that
+        // was the memory + CPU load that froze the tab into an "Aw Snap". 300
+        // one-minute columns is still 5h of history.
+        const cappedPayload = payload.snapshots.length > GAMMA_HEATMAP_MAX_SNAPSHOTS
+          ? { ...payload, snapshots: payload.snapshots.slice(-GAMMA_HEATMAP_MAX_SNAPSHOTS) }
+          : payload;
+        setGammaHeatmapPayload(cappedPayload);
         setGammaHeatmapError(null);
       } catch (error) {
         if (!cancelled) setGammaHeatmapError(error instanceof Error ? error.message : "Gamma Heatmap could not refresh.");
