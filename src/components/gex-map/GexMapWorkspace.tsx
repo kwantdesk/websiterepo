@@ -686,12 +686,15 @@ function ExposurePanel({
   ), [heatStrength, signedScale]);
   // The growth ticker stays readable by marking only the movers that matter:
   // the eight fastest-growing and eight fastest-shrinking nodes by percentage
-  // change of exposure magnitude since the previous frame.
+  // change of exposure magnitude over the selected step window. Nodes whose
+  // PRIOR exposure was a rounding error against the Star node are skipped —
+  // dividing by a near-zero base is what manufactured 999% readings.
   const growthTickStrikes = useMemo(() => {
+    const priorFloor = starMagnitude * 0.005;
     const entries: Array<{ strike: number; pct: number }> = [];
     for (const row of rows) {
       const prior = previous.get(row.strike);
-      if (!prior || Math.abs(prior.net) <= 0) continue;
+      if (!prior || Math.abs(prior.net) < priorFloor) continue;
       const pct = ((Math.abs(row.net) - Math.abs(prior.net)) / Math.abs(prior.net)) * 100;
       if (!Number.isFinite(pct) || pct === 0) continue;
       entries.push({ strike: row.strike, pct });
@@ -699,7 +702,7 @@ function ExposurePanel({
     const growing = entries.filter((entry) => entry.pct > 0).sort((a, b) => b.pct - a.pct).slice(0, 8);
     const shrinking = entries.filter((entry) => entry.pct < 0).sort((a, b) => a.pct - b.pct).slice(0, 8);
     return new Set([...growing, ...shrinking].map((entry) => entry.strike));
-  }, [previous, rows]);
+  }, [previous, rows, starMagnitude]);
   const greek = GEX_MAP_GREEKS.find((item) => item.mode === config.greekMode) ?? GEX_MAP_GREEKS[0];
   const viewIdentity = `${config.symbol}:${config.greekMode}:${payload?.expiration ?? "pending"}:${payload?.sessionDate ?? "pending"}`;
   const centeringIdentity = `${viewIdentity}:${selectedTimestamp ?? "live"}:${spotStrike ?? "pending"}`;
@@ -1002,7 +1005,7 @@ function ExposurePanel({
                     title={`Exposure magnitude ${growthPct >= 0 ? "grew" : "shrank"} ${Math.abs(growthPct).toFixed(1)}% over the last ${stepMinutes}m step`}
                   >
                     {growthPct > 0 ? "▲" : growthPct < 0 ? "▼" : "•"}
-                    {Math.min(999, Math.abs(growthPct)).toFixed(1)}%
+                    {Math.abs(growthPct) > 500 ? ">500" : Math.abs(growthPct).toFixed(1)}%
                   </span>
                 );
               const nearSpot = row.strike === spotStrike;
