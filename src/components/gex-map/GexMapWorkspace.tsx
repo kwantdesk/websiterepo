@@ -577,6 +577,22 @@ function ExposurePanel({
     if (net >= 0) return 0.5 + 0.5 * Math.min(1, net / heatRange.maxPositive);
     return 0.5 - 0.5 * Math.min(1, -net / heatRange.maxNegative);
   }, [heatRange]);
+  // The growth ticker stays readable by marking only the movers that matter:
+  // the eight fastest-growing and eight fastest-shrinking nodes by percentage
+  // change of exposure magnitude since the previous frame.
+  const growthTickStrikes = useMemo(() => {
+    const entries: Array<{ strike: number; pct: number }> = [];
+    for (const row of rows) {
+      const prior = previous.get(row.strike);
+      if (!prior || Math.abs(prior.net) <= 0) continue;
+      const pct = ((Math.abs(row.net) - Math.abs(prior.net)) / Math.abs(prior.net)) * 100;
+      if (!Number.isFinite(pct) || pct === 0) continue;
+      entries.push({ strike: row.strike, pct });
+    }
+    const growing = entries.filter((entry) => entry.pct > 0).sort((a, b) => b.pct - a.pct).slice(0, 8);
+    const shrinking = entries.filter((entry) => entry.pct < 0).sort((a, b) => a.pct - b.pct).slice(0, 8);
+    return new Set([...growing, ...shrinking].map((entry) => entry.strike));
+  }, [previous, rows]);
   const net = rows.reduce((sum, row) => sum + row.net, 0);
   const greek = GEX_MAP_GREEKS.find((item) => item.mode === config.greekMode) ?? GEX_MAP_GREEKS[0];
   const viewIdentity = `${config.symbol}:${config.greekMode}:${payload?.expiration ?? "pending"}:${payload?.sessionDate ?? "pending"}`;
@@ -897,7 +913,7 @@ function ExposurePanel({
               const growthPct = prior && Math.abs(prior.net) > 0
                 ? ((Math.abs(row.net) - Math.abs(prior.net)) / Math.abs(prior.net)) * 100
                 : null;
-              const growthTick = growthPct === null || !Number.isFinite(growthPct)
+              const growthTick = growthPct === null || !Number.isFinite(growthPct) || !growthTickStrikes.has(row.strike)
                 ? null
                 : (
                   <span
