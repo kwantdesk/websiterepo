@@ -735,6 +735,9 @@ Website only. **Owner action pending:** remove `MASSIVE_API_KEY` from Vercel env
 ### Worktree state
 `?? ALGO/`, `?? gexcal-*.png/tmp`, `M/?? tmp/pdfs/*` (other workstream) — no uncommitted engineering work.
 
+### Later additions (owner-driven, same session)
+- Star-relative scale refinement `5d62728a`; growth ticker beside strikes `763ade0a` capped to top-8 movers/side `51c5269c`; chart toolbar 2× with hover-reveal + right-click crosshair thickness/visibility `00e8dd17`; embedded GEX Map config saved per workspace pane `9133eb7a`; CVD Divergence indicator with tests `19db31e7`; gamma-environment colours/box-size/adaptive label `805f2dcc`; linked viewports saved in presets `697372b1`; GEX Map step-window anchored to newest frame + zero-call/zero-put strikes dropped + per-column compact headers `589bc784`. All verified live on production through the owner's Chrome (toolbar sizes, ticker data, zero-row removal confirmed empirically).
+
 ## Temporary engineering log — 2026-08-19 (later session)
 
 ### Completed
