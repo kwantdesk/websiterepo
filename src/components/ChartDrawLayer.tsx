@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type PointerEvent as ReactPointerEvent, type ReactElement } from "react";
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactElement } from "react";
 import {
   DRAW_TOOL_SPECS,
   FIB_CIRCLE_COEFFS,
@@ -28,12 +28,14 @@ type Props = {
   toY: (price: number) => number | null;
   fromXY: (x: number, y: number) => DrawPoint | null;
   candles: DrawCandle[];
+  viewportVersion: number;
   onCommit: (drawing: Drawing) => void;
   onUpdate: (drawing: Drawing) => void;
   onDelete: (id: string) => void;
   onSelect: (id: string | null) => void;
   onToolConsumed: () => void;
   onRequestText: (points: DrawPoint[], tool: DrawToolId) => void;
+  onOpenSettings: (id: string) => void;
 };
 
 type XY = { x: number | null; y: number | null };
@@ -46,7 +48,7 @@ const TEXT_INPUT_TOOLS: DrawToolId[] = ["text", "note", "callout", "signpost"];
 
 export default function ChartDrawLayer({
   width, height, activeTool, keepDrawing, drawings, selectedId,
-  toX, toY, fromXY, candles, onCommit, onUpdate, onDelete, onSelect, onToolConsumed, onRequestText,
+  toX, toY, fromXY, candles, viewportVersion, onCommit, onUpdate, onDelete, onSelect, onToolConsumed, onRequestText, onOpenSettings,
 }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [pending, setPending] = useState<{ tool: DrawToolId; points: DrawPoint[] } | null>(null);
@@ -70,6 +72,46 @@ export default function ChartDrawLayer({
     onCommit(createDrawing(tool, points));
     setPending(null);
     if (!keepDrawing) onToolConsumed();
+  };
+
+  // Dragging is driven by window-level listeners so the pointer never
+  // "escapes" the drawing and the chart cannot repaint mid-drag — the source
+  // of the previous glitchy, wobbling movement.
+  const windowPoint = (clientX: number, clientY: number) => {
+    const rect = svgRef.current?.getBoundingClientRect();
+    if (!rect) return null;
+    return fromXY(clientX - rect.left, clientY - rect.top);
+  };
+  const dragCleanupRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => { dragCleanupRef.current?.(); }, []);
+  const beginDrag = (drawing: Drawing, mode: "move" | number, event: ReactPointerEvent) => {
+    event.stopPropagation();
+    onSelect(drawing.id);
+    const origin = drawing.points.map((point) => ({ ...point }));
+    const start = windowPoint(event.clientX, event.clientY);
+    if (!start) return;
+    const onMove = (moveEvent: PointerEvent) => {
+      const point = windowPoint(moveEvent.clientX, moveEvent.clientY);
+      if (!point) return;
+      if (mode === "move") {
+        const dt = point.time - start.time;
+        const dp = point.price - start.price;
+        onUpdate({ ...drawing, points: origin.map((p) => ({ time: p.time + dt, price: p.price + dp })) });
+      } else {
+        onUpdate({ ...drawing, points: origin.map((p, i) => (i === mode ? point : p)) });
+      }
+    };
+    const cleanup = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      dragCleanupRef.current = null;
+    };
+    const onUp = () => cleanup();
+    // A single stored cleanup guarantees the window listeners are removed even
+    // if the pane unmounts mid-drag (the previous leak).
+    dragCleanupRef.current = cleanup;
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
   };
 
   const handlePointerDown = (event: ReactPointerEvent) => {
@@ -214,6 +256,7 @@ export default function ChartDrawLayer({
   // ---- rendering ----
   const renderDrawing = (drawing: Drawing, preview = false): ReactElement | null => {
     const { style } = drawing;
+    if (!preview && style.visible === false) return null;
     const dash = dashFor(style.lineStyle, style.width);
     const stroke = style.color;
     const w = style.width;
@@ -426,7 +469,7 @@ export default function ChartDrawLayer({
           return <g><circle cx={a.x} cy={a.y!} r={7} fill={stroke} /><text x={a.x - 2} y={a.y! + 3} fill="#fff" fontSize={9}>N</text>{drawing.text ? label(a.x + 10, a.y! + 3, drawing.text) : null}</g>;
         }
         case "text":
-          return a.x == null ? null : <text x={a.x} y={a.y!} fill={stroke} fontSize={13} fontFamily="Inter, sans-serif">{drawing.text ?? ""}</text>;
+          return a.x == null ? null : <text x={a.x} y={a.y!} fill={stroke} fontSize={style.fontSize ?? 13} fontFamily="Inter, sans-serif">{drawing.text ?? ""}</text>;
         case "regressionTrend": {
           if (!b || a.x == null || b.x == null) return null;
           const t0 = Math.min(pr[0].time, pr[1].time); const t1 = Math.max(pr[0].time, pr[1].time);
@@ -520,31 +563,80 @@ export default function ChartDrawLayer({
     })();
 
     if (!body) return null;
+    const interactive = !preview && !active && activeTool !== "eraser";
+    const valid = coords.filter((p) => p.x != null && p.y != null) as { x: number; y: number }[];
+    const xs = valid.map((p) => p.x); const ys = valid.map((p) => p.y);
+    // Transparent fat hit layer so thin lines and shape interiors are easy to
+    // grab; single-anchor tools get a hit line/dot instead.
+    const hit = interactive ? (
+      <g style={{ pointerEvents: "all" }}>
+        {["horizontalLine", "horizontalRay"].includes(drawing.tool) && a.y != null
+          ? <line x1={0} y1={a.y} x2={width} y2={a.y} stroke="transparent" strokeWidth={12} />
+          : ["verticalLine", "crossLine"].includes(drawing.tool) && a.x != null
+            ? <>{<line x1={a.x} y1={0} x2={a.x} y2={height} stroke="transparent" strokeWidth={12} />}{drawing.tool === "crossLine" && a.y != null ? <line x1={0} y1={a.y} x2={width} y2={a.y} stroke="transparent" strokeWidth={12} /> : null}</>
+            : valid.length >= 2
+              ? <>
+                  <polyline points={valid.map((p) => `${p.x},${p.y}`).join(" ")} fill="none" stroke="transparent" strokeWidth={12} />
+                  <rect x={Math.min(...xs)} y={Math.min(...ys)} width={Math.max(1, Math.max(...xs) - Math.min(...xs))} height={Math.max(1, Math.max(...ys) - Math.min(...ys))} fill="transparent" />
+                </>
+              : valid.length === 1
+                ? <circle cx={valid[0].x} cy={valid[0].y} r={12} fill="transparent" />
+                : null}
+      </g>
+    ) : null;
     const handles = selected
-      ? coords.filter((p) => p.x != null && p.y != null).map((p, i) => <circle key={`h${i}`} cx={p.x!} cy={p.y!} r={4} fill="#fff" stroke={stroke} strokeWidth={1.5} />)
+      ? valid.map((p, i) => (
+        <circle key={`h${i}`} cx={p.x} cy={p.y} r={4.5} fill="#fff" stroke={stroke} strokeWidth={1.5}
+          style={{ pointerEvents: "all", cursor: "grab" }}
+          onPointerDown={(event) => beginDrag(drawing, i, event)} />
+      ))
       : null;
-    return <g key={drawing.id} opacity={preview ? 0.75 : 1}>{body}{handles}</g>;
+    return (
+      <g
+        key={drawing.id}
+        opacity={preview ? 0.75 : 1}
+        style={interactive ? { pointerEvents: "auto", cursor: "move" } : { pointerEvents: "none" }}
+        onPointerDown={interactive ? (event) => beginDrag(drawing, "move", event) : undefined}
+        onDoubleClick={interactive ? () => onOpenSettings(drawing.id) : undefined}
+      >
+        {body}
+        {hit}
+        {handles}
+      </g>
+    );
   };
 
   const previewDrawing: Drawing | null = pending && cursor
     ? { id: "__preview__", tool: pending.tool, points: freehandRef.current ? pending.points : [...pending.points, cursor], style: previewStyle(pending.tool) }
     : null;
 
+  const captureActive = active || activeTool === "eraser";
   return (
     <svg
       ref={svgRef}
       className="absolute inset-0 z-[24]"
       width={width}
       height={height}
-      style={{ pointerEvents: active || activeTool === "eraser" || selectedId ? "auto" : "none", cursor: active ? "crosshair" : activeTool === "eraser" ? "cell" : "default" }}
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
-      onDoubleClick={handleDoubleClick}
-      onPointerLeave={() => setCursor(null)}
+      data-viewport={viewportVersion}
+      style={{ pointerEvents: "none" }}
     >
       {drawings.map((drawing) => renderDrawing(drawing))}
       {previewDrawing ? renderDrawing(previewDrawing, true) : null}
+      {captureActive ? (
+        <rect
+          x={0}
+          y={0}
+          width={width}
+          height={height}
+          fill="transparent"
+          style={{ pointerEvents: "all", cursor: active ? "crosshair" : "cell" }}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onDoubleClick={handleDoubleClick}
+          onPointerLeave={() => setCursor(null)}
+        />
+      ) : null}
     </svg>
   );
 }

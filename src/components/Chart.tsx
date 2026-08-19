@@ -332,7 +332,8 @@ import { isMarketIndexSymbol } from "@/lib/marketIndices";
 import { detectCvdDivergence, sessionCvdPoints, type CvdCandleLike } from "@/lib/cvdDivergence";
 import ChartDrawToolbar from "@/components/ChartDrawToolbar";
 import ChartDrawLayer from "@/components/ChartDrawLayer";
-import { createDrawing, normalizeDrawings, type DrawToolId, type Drawing, type DrawPoint, type DrawLineStyle } from "@/lib/chartDrawTools";
+import ChartDrawSettings from "@/components/ChartDrawSettings";
+import { createDrawing, normalizeDrawings, type DrawToolId, type Drawing, type DrawPoint } from "@/lib/chartDrawTools";
 import { CROSSHAIR_STYLE_EVENT, DEFAULT_CROSSHAIR_STYLE, loadCrosshairStyle, normalizeCrosshairStyle, type CrosshairStyle } from "@/lib/crosshairStyle";
 
 // Toolbar pin state is PER CHART: locking one pane's toolbar leaves every
@@ -13082,6 +13083,8 @@ function Chart({
               return time != null && price != null && Number.isFinite(price) ? { time, price: Number(price) } : null;
             }}
             candles={chartingDrawCandles}
+            viewportVersion={viewportVersion}
+            onOpenSettings={(id) => { setDrawSelectedId(id); setDrawTool("cursor"); setDrawSettingsOpen(true); }}
             onCommit={(drawing) => { commitDrawings([...chartingDrawings, drawing]); setDrawSelectedId(drawing.id); }}
             onUpdate={(drawing) => commitDrawings(chartingDrawings.map((d) => d.id === drawing.id ? drawing : d))}
             onSelect={setDrawSelectedId}
@@ -13111,33 +13114,11 @@ function Chart({
               placeholder="Text"
             />
           ) : null}
-          {drawSettingsOpen && drawSelectedId ? (() => {
-            const selected = chartingDrawings.find((drawing) => drawing.id === drawSelectedId);
-            if (!selected) return null;
-            const patch = (next: Partial<typeof selected.style>) =>
-              commitDrawings(chartingDrawings.map((d) => d.id === selected.id ? { ...d, style: { ...d.style, ...next } } : d));
-            return (
-              <div className="absolute right-[72px] top-9 z-[30] w-[188px] space-y-2 rounded-lg border border-border bg-panel/97 p-2.5 shadow-2xl backdrop-blur">
-                <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.1em] text-muted">
-                  <span>Drawing style</span>
-                  <button type="button" onClick={() => setDrawSettingsOpen(false)} className="text-muted hover:text-foreground">✕</button>
-                </div>
-                <label className="flex items-center justify-between text-[11px] text-foreground">Colour
-                  <input type="color" value={selected.style.color} onChange={(event) => patch({ color: event.target.value })} className="h-6 w-9 cursor-pointer rounded border border-border bg-background" />
-                </label>
-                <label className="flex items-center justify-between text-[11px] text-foreground">Width
-                  <select value={String(selected.style.width)} onChange={(event) => patch({ width: Number(event.target.value) })} className="h-7 w-16 rounded border border-border bg-background px-1 text-[11px]">
-                    {[1,2,3,4].map((w) => <option key={w} value={w}>{w}px</option>)}
-                  </select>
-                </label>
-                <label className="flex items-center justify-between text-[11px] text-foreground">Line
-                  <select value={selected.style.lineStyle} onChange={(event) => patch({ lineStyle: event.target.value as DrawLineStyle })} className="h-7 w-20 rounded border border-border bg-background px-1 text-[11px]">
-                    <option value="solid">Solid</option><option value="dashed">Dashed</option><option value="dotted">Dotted</option>
-                  </select>
-                </label>
-              </div>
-            );
-          })() : null}
+          <ChartDrawSettings
+            drawing={drawSettingsOpen && drawSelectedId ? (chartingDrawings.find((drawing) => drawing.id === drawSelectedId) ?? null) : null}
+            onChange={(next) => commitDrawings(chartingDrawings.map((d) => d.id === next.id ? next : d))}
+            onClose={() => setDrawSettingsOpen(false)}
+          />
         </>
       ) : null}
       {!chartVisualReady ? (

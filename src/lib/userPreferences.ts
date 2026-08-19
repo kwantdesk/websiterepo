@@ -44,6 +44,7 @@ const TRACKED_STORAGE_KEYS = new Set([
   "kwantdesk:chart-crosshair-style:v1",
   "kwantdesk:chart-toolbar-pinned:v1",
   "kwantdesk:chart-drawtools:v1",
+  "kwantdesk:chart-drawtool-templates:v1",
   "kwantdesk:gameplan-chart-overlays:v1",
   "kwantdesk-right-panel-state",
   "kwantdesk-bottom-panel-minimized",

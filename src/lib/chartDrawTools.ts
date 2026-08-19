@@ -95,6 +95,8 @@ export type DrawStyle = {
   lineStyle: DrawLineStyle;
   fillOpacity: number;  // 0..1, used by shapes
   showLabels: boolean;
+  fontSize?: number;    // text tools
+  visible?: boolean;    // hide without deleting
 };
 
 export const DEFAULT_DRAW_STYLE: DrawStyle = {
@@ -103,6 +105,8 @@ export const DEFAULT_DRAW_STYLE: DrawStyle = {
   lineStyle: "solid",
   fillOpacity: 0.12,
   showLabels: true,
+  fontSize: 13,
+  visible: true,
 };
 
 // pointsMode: fixed number, or a freehand/multi behaviour.

@@ -1,0 +1,148 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
+import { X } from "lucide-react";
+import { DRAW_TOOL_SPECS, type DrawLineStyle, type Drawing } from "@/lib/chartDrawTools";
+import { deleteDrawTemplate, loadDrawTemplates, saveDrawTemplate, type DrawTemplateStore } from "@/lib/chartDrawTemplates";
+
+// Tabbed settings dialog for a charting drawing — Style, Text, Coordinates and
+// Visibility — with save/load style templates per tool type. Clean-room UI; the
+// fields are the standard appearance controls every charting tool exposes.
+const SHAPE_TOOLS = ["rectangle", "rotatedRectangle", "ellipse", "circle", "triangleShape", "gannBox", "datePriceRange", "longPosition", "shortPosition"];
+const TEXT_TOOLS = ["text", "note", "callout", "signpost", "priceLabel", "flagMark"];
+
+type Props = {
+  drawing: Drawing | null;
+  onChange: (drawing: Drawing) => void;
+  onClose: () => void;
+};
+
+export default function ChartDrawSettings({ drawing, onChange, onClose }: Props) {
+  const [tab, setTab] = useState<"style" | "text" | "coordinates" | "visibility">("style");
+  const [templates, setTemplates] = useState<DrawTemplateStore>({});
+  const [templateName, setTemplateName] = useState("");
+
+  useEffect(() => {
+    if (!drawing) return;
+    setTab("style");
+    setTemplates(loadDrawTemplates());
+    const onEscape = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onEscape);
+    return () => document.removeEventListener("keydown", onEscape);
+  }, [drawing, onClose]);
+
+  if (!drawing || typeof document === "undefined") return null;
+  const spec = DRAW_TOOL_SPECS[drawing.tool];
+  const isShape = SHAPE_TOOLS.includes(drawing.tool);
+  const isText = TEXT_TOOLS.includes(drawing.tool);
+  const toolTemplates = templates[drawing.tool] ?? {};
+
+  const patchStyle = (next: Partial<Drawing["style"]>) => onChange({ ...drawing, style: { ...drawing.style, ...next } });
+  const patchPoint = (index: number, price: number) =>
+    onChange({ ...drawing, points: drawing.points.map((p, i) => (i === index ? { ...p, price } : p)) });
+
+  const tabs: { key: typeof tab; label: string; show: boolean }[] = [
+    { key: "style", label: "Style", show: true },
+    { key: "text", label: "Text", show: isText },
+    { key: "coordinates", label: "Coordinates", show: true },
+    { key: "visibility", label: "Visibility", show: true },
+  ];
+
+  return createPortal(
+    <div className="fixed inset-0 z-[290] flex items-start justify-center bg-black/30 px-4 pt-[12vh]" onPointerDown={onClose}>
+      <section className="w-full max-w-[420px] overflow-hidden rounded-xl border border-border bg-panel shadow-[0_24px_90px_rgba(0,0,0,0.6)]" onPointerDown={(event) => event.stopPropagation()}>
+        <header className="flex h-11 items-center gap-3 border-b border-border px-4">
+          <div className="text-[12px] font-semibold text-foreground">{spec.label}</div>
+          <button type="button" onClick={onClose} className="ml-auto flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-surface hover:text-foreground" aria-label="Close">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </header>
+
+        <div className="flex border-b border-border px-2">
+          {tabs.filter((t) => t.show).map((t) => (
+            <button key={t.key} type="button" onClick={() => setTab(t.key)} className={`h-9 px-3 text-[11px] font-semibold uppercase tracking-[0.08em] transition-colors ${tab === t.key ? "text-primary shadow-[inset_0_-2px_0_var(--primary)]" : "text-muted hover:text-foreground"}`}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="max-h-[50vh] space-y-3 overflow-y-auto p-4">
+          {tab === "style" ? (
+            <>
+              <Row label="Colour"><input type="color" value={drawing.style.color} onChange={(e) => patchStyle({ color: e.target.value })} className="h-7 w-10 cursor-pointer rounded border border-border bg-background" /></Row>
+              <Row label="Line width"><Select value={String(drawing.style.width)} onChange={(v) => patchStyle({ width: Number(v) })} options={[["1", "1px"], ["2", "2px"], ["3", "3px"], ["4", "4px"]]} /></Row>
+              <Row label="Line style"><Select value={drawing.style.lineStyle} onChange={(v) => patchStyle({ lineStyle: v as DrawLineStyle })} options={[["solid", "Solid"], ["dashed", "Dashed"], ["dotted", "Dotted"]]} /></Row>
+              {isShape ? (
+                <Row label="Fill opacity">
+                  <input type="range" min={0} max={0.6} step={0.02} value={drawing.style.fillOpacity} onChange={(e) => patchStyle({ fillOpacity: Number(e.target.value) })} className="w-40 accent-primary" />
+                </Row>
+              ) : null}
+              <Row label="Show labels"><input type="checkbox" checked={drawing.style.showLabels} onChange={(e) => patchStyle({ showLabels: e.target.checked })} className="h-4 w-4 accent-primary" /></Row>
+
+              <div className="border-t border-border pt-3">
+                <div className="mb-1.5 text-[10px] uppercase tracking-[0.1em] text-muted">Templates</div>
+                {Object.keys(toolTemplates).length ? (
+                  <div className="mb-2 flex flex-wrap gap-1.5">
+                    {Object.keys(toolTemplates).map((name) => (
+                      <span key={name} className="flex items-center gap-1 rounded-md border border-border bg-surface/60 px-2 py-1 text-[10px]">
+                        <button type="button" className="text-foreground hover:text-primary" onClick={() => onChange({ ...drawing, style: { ...toolTemplates[name] } })}>{name}</button>
+                        <button type="button" className="text-muted hover:text-danger" aria-label={`Delete ${name}`} onClick={() => setTemplates(deleteDrawTemplate(drawing.tool, name))}>×</button>
+                      </span>
+                    ))}
+                  </div>
+                ) : <div className="mb-2 text-[10px] text-muted">No saved templates for {spec.label}.</div>}
+                <div className="flex gap-2">
+                  <input value={templateName} onChange={(e) => setTemplateName(e.target.value)} placeholder="Template name" className="h-8 min-w-0 flex-1 rounded-lg border border-border bg-background px-2 text-[11px] outline-none focus:border-primary/40" />
+                  <button type="button" disabled={!templateName.trim()} onClick={() => { setTemplates(saveDrawTemplate(drawing.tool, templateName.trim(), drawing.style)); setTemplateName(""); }} className={`h-8 rounded-lg px-3 text-[11px] font-semibold ${templateName.trim() ? "bg-primary text-background" : "bg-surface text-muted"}`}>Save</button>
+                </div>
+              </div>
+            </>
+          ) : null}
+
+          {tab === "text" ? (
+            <>
+              <label className="block">
+                <span className="mb-1 block text-[11px] text-muted">Text</span>
+                <textarea value={drawing.text ?? ""} onChange={(e) => onChange({ ...drawing, text: e.target.value })} rows={3} className="w-full rounded-lg border border-border bg-background p-2 text-[12px] outline-none focus:border-primary/40" />
+              </label>
+              <Row label="Font size"><Select value={String(drawing.style.fontSize)} onChange={(v) => patchStyle({ fontSize: Number(v) })} options={[["10", "10"], ["11", "11"], ["12", "12"], ["13", "13"], ["14", "14"], ["16", "16"], ["18", "18"], ["22", "22"]]} /></Row>
+            </>
+          ) : null}
+
+          {tab === "coordinates" ? (
+            <div className="space-y-2">
+              {drawing.points.map((point, index) => (
+                <Row key={index} label={`Point ${index + 1} price`}>
+                  <input type="number" value={point.price} step="any" onChange={(e) => patchPoint(index, Number(e.target.value))} className="h-8 w-32 rounded-lg border border-border bg-background px-2 font-mono text-[12px] outline-none focus:border-primary/40" />
+                </Row>
+              ))}
+              <p className="text-[10px] leading-4 text-muted">Time anchors follow the bars you placed; drag the handles on the chart to move them.</p>
+            </div>
+          ) : null}
+
+          {tab === "visibility" ? (
+            <Row label="Visible on chart"><input type="checkbox" checked={drawing.style.visible} onChange={(e) => patchStyle({ visible: e.target.checked })} className="h-4 w-4 accent-primary" /></Row>
+          ) : null}
+        </div>
+
+        <footer className="flex justify-end border-t border-border px-4 py-2.5">
+          <button type="button" onClick={onClose} className="rounded-lg bg-primary px-4 py-2 text-[12px] font-semibold text-background">Done</button>
+        </footer>
+      </section>
+    </div>,
+    document.body,
+  );
+}
+
+function Row({ label, children }: { label: string; children: React.ReactNode }) {
+  return <label className="flex items-center justify-between gap-4"><span className="text-[12px] text-foreground">{label}</span>{children}</label>;
+}
+
+function Select({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: [string, string][] }) {
+  return (
+    <select value={value} onChange={(e) => onChange(e.target.value)} className="h-8 w-32 rounded-lg border border-border bg-background px-2 text-[12px] text-foreground outline-none focus:border-primary/40">
+      {options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+    </select>
+  );
+}
