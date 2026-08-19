@@ -231,17 +231,18 @@ function heatColor(
   scale: string[] = THEME_SIGNED_SCALE,
 ) {
   if (Math.abs(value) < Number.EPSILON) return "var(--surface)";
-  // One diverging ten-colour scale across signed exposure: slot one is the
-  // most extreme negative (the darkest colour on the map), the middle slots
-  // hold average noise, slot ten is the most extreme positive (the lightest).
-  // Presence grows with distance from the middle, so both extremes stand
-  // fully solid while the noise stays washed into the background.
+  // The ten user-set colours are anchors on one continuous sequential scale.
+  // `strength` is the row's linear position in the panel's signed exposure
+  // range; the colour interpolates smoothly between the two neighbouring
+  // anchors and paints SOLID — the reference-map look where the noise floor
+  // shares one quiet colour and only the extremes climb to the end colours.
   const bounded = Math.min(1, Math.max(0, strength));
-  const half = Math.min(4, Math.floor(bounded * 5));
-  const slot = value > 0 ? 5 + half : 4 - half;
-  const extremeness = Math.abs(slot - 4.5) / 4.5;
-  const presence = Math.round(38 + extremeness * 60);
-  return `color-mix(in srgb, ${scale[slot]} ${presence}%, var(--chart-background))`;
+  const position = bounded * (scale.length - 1);
+  const lower = Math.min(scale.length - 1, Math.floor(position));
+  const upper = Math.min(scale.length - 1, lower + 1);
+  const fraction = Math.round((position - lower) * 100);
+  if (lower === upper || fraction === 0) return scale[lower];
+  return `color-mix(in srgb, ${scale[upper]} ${fraction}%, ${scale[lower]})`;
 }
 
 type RgbColor = { r: number; g: number; b: number };
@@ -556,29 +557,26 @@ function ExposurePanel({
   const spotStrike = spot === null || !rows.length
     ? null
     : rows.reduce((best, row) => Math.abs(row.strike - spot) < Math.abs(best.strike - spot) ? row : best).strike;
-  // Heat brightness is a direct function of signed-exposure magnitude on a
-  // log scale. Exposure spans four orders of magnitude in one panel — a
-  // linear ramp painted $11M identically to $5B. Log scaling separates the
-  // decades, the same scale serves both sign sides so equal magnitudes read
-  // and heatColor places the row on the diverging ten-colour signed scale.
-  const heatScale = useMemo(() => {
-    const magnitudes = rows
-      .map((row) => Math.abs(row.net))
-      .filter((value) => value > 0)
-      .sort((a, b) => a - b);
-    if (!magnitudes.length) return { floorLog: 0, spanLog: 1 };
-    const floor = magnitudes[Math.floor((magnitudes.length - 1) * 0.05)] ?? magnitudes[0];
-    const max = magnitudes[magnitudes.length - 1];
-    const floorLog = Math.log10(Math.max(1, floor));
-    const maxLog = Math.log10(Math.max(10, max));
-    return { floorLog, spanLog: Math.max(0.5, maxLog - floorLog) };
+  // Colour position is LINEAR over the panel's signed exposure range, exactly
+  // like the reference map: t = (net − min) / (max − min). Most strikes sit
+  // within a few percent of the range, so the noise collapses into one quiet
+  // colour, structural rows visibly jump bands, and only the panel's extreme
+  // reaches the scale's end colour. Log scaling was deliberately removed —
+  // it spread the noise across the ramp and erased that separation.
+  const heatRange = useMemo(() => {
+    if (!rows.length) return { min: 0, span: 1 };
+    let min = Number.POSITIVE_INFINITY;
+    let max = Number.NEGATIVE_INFINITY;
+    for (const row of rows) {
+      if (row.net < min) min = row.net;
+      if (row.net > max) max = row.net;
+    }
+    return { min, span: Math.max(1, max - min) };
   }, [rows]);
-  const heatStrength = useCallback((net: number) => {
-    const magnitude = Math.abs(net);
-    if (magnitude <= 0) return 0;
-    const t = (Math.log10(Math.max(1, magnitude)) - heatScale.floorLog) / heatScale.spanLog;
-    return Math.min(1, Math.max(0, t));
-  }, [heatScale]);
+  const heatStrength = useCallback(
+    (net: number) => Math.min(1, Math.max(0, (net - heatRange.min) / heatRange.span)),
+    [heatRange],
+  );
   const net = rows.reduce((sum, row) => sum + row.net, 0);
   const greek = GEX_MAP_GREEKS.find((item) => item.mode === config.greekMode) ?? GEX_MAP_GREEKS[0];
   const viewIdentity = `${config.symbol}:${config.greekMode}:${payload?.expiration ?? "pending"}:${payload?.sessionDate ?? "pending"}`;
@@ -928,6 +926,7 @@ function ExposurePanel({
                     className={`gex-map-strike-row relative grid grid-cols-[96px_minmax(0,1fr)_86px] items-center overflow-hidden border-b border-border/30 px-2 font-mono text-[9px] ${nearSpot ? "mx-1 my-1 h-[35px]" : highlighted ? "mx-1 my-0.5 h-[30px]" : "h-[25px]"} ${isFocusedStar ? `gex-star-node z-[3] ${nearSpot ? "gex-star-is-current" : ""}` : nearSpot ? "gex-current-price-marker z-[2]" : ""} ${starSettings.animateChanges ? "transition-[height,margin,background-color,opacity] duration-200" : ""}`}
                     style={{
                       opacity: highlighted || nearSpot ? 1 : Math.max(0.02, starSettings.dimOpacity),
+                      textShadow: "0 1px 2px rgba(0,0,0,0.72)",
                       backgroundColor: highlighted
                         ? heatColor(derived.net, heatStrength(derived.net), signedScale)
                         : "var(--chart-background)",
@@ -988,6 +987,7 @@ function ExposurePanel({
                   data-gex-strike-node="true"
                   className={`gex-map-strike-row relative grid grid-cols-[96px_minmax(0,1fr)_86px] items-center border-b border-black/10 px-2 font-mono text-[9px] transition-[height,margin,background-color] ${nearSpot ? "mx-1 my-1 h-[35px]" : isStar ? "mx-1 my-0.5 h-[29px]" : "h-[25px]"} ${isStar ? `gex-star-node z-[3] ${nearSpot ? "gex-star-is-current" : ""}` : nearSpot ? "gex-current-price-marker z-[2]" : ""}`}
                   style={{
+                    textShadow: "0 1px 2px rgba(0,0,0,0.72)",
                     backgroundColor: heatColor(row.net, strength, signedScale),
                     ...(isStar ? {
                       "--gex-star-accent": starPalette.accent,
@@ -1054,9 +1054,10 @@ function ExposurePanel({
       </div>
 
       <div className="border-t border-border bg-panel px-3 py-2">
-        <div className="h-1.5 rounded-full" style={{ background: "linear-gradient(90deg, var(--danger), var(--surface), var(--primary))" }} />
+        <div className="h-1.5 rounded-full" style={{ background: `linear-gradient(90deg, ${signedScale.join(", ")})` }} />
         <div className="mt-1 flex justify-between font-mono text-[8px] text-muted">
-          <span>Negative</span><span>Neutral</span><span>Positive</span>
+          <span>{rows.length ? formatCompact(heatRange.min) : "Min"}</span>
+          <span>{rows.length ? formatCompact(heatRange.min + heatRange.span) : "Max"}</span>
         </div>
       </div>
     </section>
@@ -1182,7 +1183,7 @@ function StarViewSettings({
             <span><span className="block text-[10px] text-foreground">Gradient palettes</span><span className="text-[8px] text-muted">One click recolours the whole map</span></span>
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
               {GEX_MAP_PALETTE_PRESETS.map((preset) => {
-                const presetScale = buildGexMapSignedScale(preset.negative, preset.positive);
+                const presetScale = preset.scale ?? buildGexMapSignedScale(preset.negative, preset.positive);
                 const presetPalette: GexMapPalette = {
                   useThemeColors: false,
                   positive: preset.positive,
@@ -1190,7 +1191,7 @@ function StarViewSettings({
                   negative: preset.negative,
                   negativeSoft: preset.negativeSoft,
                   star: preset.star,
-                  scaleStops: presetScale,
+                  scaleStops: [...presetScale],
                 };
                 const active = gexMapPalettesEqual(palette, presetPalette);
                 return (
@@ -1907,7 +1908,7 @@ function GexMapWorkspace({ market = null, externalReplay = null }: GexMapWorkspa
           <footer className="gex-map-live-footer flex h-7 min-w-0 shrink-0 items-center gap-2 overflow-hidden border-t border-border bg-panel px-3 text-[8px] text-muted">
             <Radio className={`h-3 w-3 ${live ? "text-primary" : "text-muted"}`} />
             <span>KwantData Interval Map · front expiry · per 1% underlying move</span>
-            <span className="ml-auto">One ten-colour scale maps signed exposure — darkest is the most extreme negative, the middle is average, lightest is the most extreme positive.</span>
+            <span className="ml-auto">Colours run linearly across each panel’s signed exposure range — the noise floor shares the scale’s quiet end, only the extremes reach its end colours.</span>
           </footer>
         )}
       </main>

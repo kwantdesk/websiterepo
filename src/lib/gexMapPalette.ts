@@ -225,7 +225,19 @@ export const GEX_MAP_PALETTE_PRESETS: Array<{
   negative: string;
   negativeSoft: string;
   star: string;
+  /** Explicit ten-anchor signed scale for colormaps the two-tone generator cannot reproduce. */
+  scale?: string[];
 }> = [
+  {
+    id: "viridis",
+    label: "Viridis",
+    positive: "#FDE725",
+    positiveSoft: "#35B779",
+    negative: "#31688E",
+    negativeSoft: "#440154",
+    star: "#FFFFFF",
+    scale: ["#440154", "#482878", "#3E4989", "#31688E", "#26828E", "#1F9E89", "#35B779", "#6DCD59", "#B4DE2C", "#FDE725"],
+  },
   { id: "ultraviolet", label: "Ultraviolet", positive: "#A3E635", positiveSoft: "#365314", negative: "#A855F7", negativeSoft: "#4C1D95", star: "#F5F3FF" },
   { id: "forest", label: "Forest", positive: "#22C55E", positiveSoft: "#14532D", negative: "#FB923C", negativeSoft: "#7C2D12", star: "#FEF08A" },
   { id: "rocket", label: "Rocket", positive: "#F37651", positiveSoft: "#7A1E48", negative: "#C9366F", negativeSoft: "#43123B", star: "#F6B48F" },
