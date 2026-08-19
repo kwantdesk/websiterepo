@@ -14542,11 +14542,18 @@ function Chart({
             ? "translate-x-0 opacity-100"
             : "pointer-events-none -translate-x-full opacity-0"
         }`}
-        onPointerEnter={() => setToolbarRevealed(true)}
+        onPointerEnter={() => {
+          setToolbarRevealed(true);
+          // Hovering the toolbar must never read as hovering the chart under
+          // it — any open level popup (bounce levels etc.) closes here.
+          setBounceLevelsTooltip(null);
+        }}
         onPointerLeave={() => {
           setToolbarRevealed(false);
           setOpenToolbarGroup(null);
         }}
+        onPointerMove={(event) => event.stopPropagation()}
+        onMouseMove={(event) => event.stopPropagation()}
         style={{
           ...toolbarDockStyle,
           gap: toolbarMetrics.gap,
