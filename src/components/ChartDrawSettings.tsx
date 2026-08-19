@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { DRAW_TOOL_SPECS, type DrawLineStyle, type Drawing } from "@/lib/chartDrawTools";
@@ -22,15 +22,28 @@ export default function ChartDrawSettings({ drawing, onChange, onClose }: Props)
   const [tab, setTab] = useState<"style" | "text" | "coordinates" | "visibility">("style");
   const [templates, setTemplates] = useState<DrawTemplateStore>({});
   const [templateName, setTemplateName] = useState("");
+  const openedIdRef = useRef<string | null>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
+  // Reset the tab and reload templates ONLY when a different drawing is opened
+  // — not on every edit/chart re-render (which was resetting the active tab and
+  // making tab switching and adjustments feel broken).
+  const drawingId = drawing?.id ?? null;
   useEffect(() => {
-    if (!drawing) return;
+    if (!drawingId) { openedIdRef.current = null; return; }
+    if (openedIdRef.current === drawingId) return;
+    openedIdRef.current = drawingId;
     setTab("style");
     setTemplates(loadDrawTemplates());
-    const onEscape = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+  }, [drawingId]);
+
+  useEffect(() => {
+    if (!drawingId) return;
+    const onEscape = (event: KeyboardEvent) => { if (event.key === "Escape") onCloseRef.current(); };
     document.addEventListener("keydown", onEscape);
     return () => document.removeEventListener("keydown", onEscape);
-  }, [drawing, onClose]);
+  }, [drawingId]);
 
   if (!drawing || typeof document === "undefined") return null;
   const spec = DRAW_TOOL_SPECS[drawing.tool];
