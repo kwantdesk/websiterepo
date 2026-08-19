@@ -16352,19 +16352,19 @@ export default function KwantifyWorkspace({
         <WorkspaceFailureBoundary resetKey={`charting-${chartWorkspaceScope}`} label={chartWorkspaceScope === "gamma" ? "GEX Vue charting" : "Charts"}>
         {!preferencesReady ? (
           workspaceLoader("Opening charts", "Restoring your saved workspace before the market feed starts.")
-        ) : <div className="min-h-0 flex-1 overflow-hidden">
+        ) : <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <div
             key={chartWorkspaceScope}
             ref={workspaceAreaRef}
             data-chart-workspace-scope={chartWorkspaceScope}
-            className="relative h-full min-w-0"
+            className="relative min-h-0 min-w-0 flex-1"
           >
             {renderWorkspaceNode(workspaceTree)}
             {workspaceFloatingWindows.map((floating, index) =>
               renderFloatingWorkspaceWindow(floating, index))}
-            {chartWorkspaceScope === "gamma" && gexVueReplay.active ? (
-              <div className="pointer-events-none fixed inset-x-0 bottom-3 z-[210] flex justify-center px-3">
-                <div className="pointer-events-auto flex max-w-[calc(100vw-24px)] items-center gap-2 overflow-x-auto border border-primary/25 bg-panel/95 px-3 py-2 shadow-[0_18px_55px_rgba(0,0,0,.55)] backdrop-blur-xl [scrollbar-width:thin]">
+          </div>
+          {chartWorkspaceScope === "gamma" && gexVueReplay.active ? (
+            <div className="flex w-full shrink-0 items-center gap-2 overflow-x-auto border-t border-primary/25 bg-panel/95 px-3 py-2 backdrop-blur-xl [scrollbar-width:thin]">
                   <span className="shrink-0 font-mono text-[8px] font-semibold uppercase tracking-[0.14em] text-primary">GEX Replay</span>
                   <input
                     type="date"
@@ -16402,7 +16402,7 @@ export default function KwantifyWorkspace({
                       ...current,
                       timestampMs: clampGexVueReplayTimestamp(current, Number(event.target.value)),
                     }))}
-                    className="h-1.5 w-[min(42vw,560px)] min-w-48 shrink accent-primary"
+                    className="h-1.5 min-w-48 flex-1 accent-primary"
                     aria-label="Replay timeline"
                   />
                   <span className="w-[74px] shrink-0 text-center font-mono text-[9px] font-semibold text-foreground">
@@ -16440,10 +16440,8 @@ export default function KwantifyWorkspace({
                   >
                     <X className="h-3.5 w-3.5" />
                   </button>
-                </div>
-              </div>
-            ) : null}
-          </div>
+            </div>
+          ) : null}
           {false && rightPanel && (
             <div style={{ width: rightPanelWidth }} className="relative flex min-w-0 shrink-0 flex-col overflow-hidden border-l border-border bg-panel">
               <div onMouseDown={startRightPanelResize} className="absolute bottom-0 left-0 top-0 z-10 w-1 cursor-col-resize bg-transparent transition-colors hover:w-1.5 hover:bg-primary/30" />
