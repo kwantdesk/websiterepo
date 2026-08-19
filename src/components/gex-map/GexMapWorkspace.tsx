@@ -10,6 +10,7 @@ import {
   CircleStop,
   Gauge,
   ListOrdered,
+  Minus,
   Pause,
   Play,
   Plus,
@@ -103,6 +104,10 @@ const MARKET_PANELS: Record<GexMapMarket, PanelConfig[]> = {
 };
 const SPEEDS = [1, 2, 5, 10] as const;
 const FRAME_STEPS = [1, 2, 5, 10] as const;
+const GEX_MAP_ZOOM_STORAGE_KEY = "kwantdesk:gex-map-zoom:v1";
+const GEX_MAP_ZOOM_MIN = 0.5;
+const GEX_MAP_ZOOM_MAX = 1.5;
+const GEX_MAP_ZOOM_STEP = 0.1;
 const MAX_GEX_MAP_PANELS = 4;
 const GEX_MAP_STAR_PREFERENCES_KEY = "kwantdesk:gex-map:star-preferences:v1";
 
@@ -502,6 +507,7 @@ function ExposurePanel({
   viewMode,
   starSettings,
   palette,
+  ladderZoom = 1,
   unavailableReason = null,
   onChange,
   onRemove,
@@ -515,6 +521,7 @@ function ExposurePanel({
   viewMode: GexMapViewMode;
   starSettings: GexMapStarSettings;
   palette: GexMapPalette;
+  ladderZoom?: number;
   unavailableReason?: string | null;
   onChange: (patch: Partial<Pick<PanelConfig, "symbol" | "greekMode">>) => void;
   onRemove?: () => void;
@@ -868,7 +875,15 @@ function ExposurePanel({
             })()}
           </div>
         ) : (
-          <div ref={ladderRef} className="py-1" data-gex-strike-ladder="true">
+          <div
+            ref={ladderRef}
+            className="py-1"
+            data-gex-strike-ladder="true"
+            // CSS zoom reflows heights and typography together, so the +/-
+            // clicker genuinely fits more strike nodes on screen when zoomed
+            // out and fewer, larger nodes when zoomed in.
+            style={ladderZoom !== 1 ? ({ zoom: ladderZoom } as CSSProperties) : undefined}
+          >
             {rows.map((row) => {
               const prior = previous.get(row.strike);
               const change = prior ? row.net - prior.net : null;
@@ -1344,6 +1359,32 @@ function GexMapWorkspace({ market = null, externalReplay = null }: GexMapWorkspa
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState<(typeof SPEEDS)[number]>(1);
   const [stepMinutes, setStepMinutes] = useState<(typeof FRAME_STEPS)[number]>(1);
+  // Node zoom: SSR-safe default first, stored value applied after hydration.
+  const [ladderZoom, setLadderZoom] = useState(1);
+  useEffect(() => {
+    try {
+      const stored = Number(window.localStorage.getItem(GEX_MAP_ZOOM_STORAGE_KEY));
+      if (Number.isFinite(stored) && stored >= GEX_MAP_ZOOM_MIN && stored <= GEX_MAP_ZOOM_MAX) {
+        setLadderZoom(Math.round(stored * 10) / 10);
+      }
+    } catch {
+      // Zoom stays at 100% when browser storage is unavailable.
+    }
+  }, []);
+  const adjustLadderZoom = useCallback((direction: 1 | -1) => {
+    setLadderZoom((current) => {
+      const next = Math.round(
+        Math.min(GEX_MAP_ZOOM_MAX, Math.max(GEX_MAP_ZOOM_MIN, current + direction * GEX_MAP_ZOOM_STEP)) * 10,
+      ) / 10;
+      try {
+        window.localStorage.setItem(GEX_MAP_ZOOM_STORAGE_KEY, String(next));
+        window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
+      } catch {
+        // Zoom still applies for this session without storage.
+      }
+      return next;
+    });
+  }, []);
   const [lastSync, setLastSync] = useState<number | null>(null);
   const [latestSessionDate, setLatestSessionDate] = useState("");
   const [refreshToken, setRefreshToken] = useState(0);
@@ -1694,6 +1735,28 @@ function GexMapWorkspace({ market = null, externalReplay = null }: GexMapWorkspa
             ))}
           </div>
 
+          <div className="ml-1 flex h-7 shrink-0 items-center gap-0.5 rounded-[3px] border border-border bg-surface p-0.5" title={`Node zoom ${Math.round(ladderZoom * 100)}% — zoom in for fewer, larger nodes; out for more, smaller ones`}>
+            <button
+              type="button"
+              onClick={() => adjustLadderZoom(-1)}
+              disabled={ladderZoom <= GEX_MAP_ZOOM_MIN}
+              className="flex h-5 w-5 items-center justify-center rounded-[2px] text-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-35"
+              aria-label="Zoom strike nodes out (show more)"
+            >
+              <Minus className="h-3 w-3" />
+            </button>
+            <span className="min-w-[26px] text-center font-mono text-[8px] font-semibold text-foreground">{Math.round(ladderZoom * 100)}%</span>
+            <button
+              type="button"
+              onClick={() => adjustLadderZoom(1)}
+              disabled={ladderZoom >= GEX_MAP_ZOOM_MAX}
+              className="flex h-5 w-5 items-center justify-center rounded-[2px] text-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-35"
+              aria-label="Zoom strike nodes in (show fewer)"
+            >
+              <Plus className="h-3 w-3" />
+            </button>
+          </div>
+
           <div className="gex-map-header-actions ml-auto flex shrink-0 items-center gap-1">
             <button
               type="button"
@@ -1764,6 +1827,7 @@ function GexMapWorkspace({ market = null, externalReplay = null }: GexMapWorkspa
                   viewMode={viewMode}
                   starSettings={starSettings}
                   palette={activePalette}
+                  ladderZoom={ladderZoom}
                   unavailableReason={replaySessionMismatch
                     ? `Recorded frames are for ${payload?.sessionDate}, but the replay session is ${requestedReplayDate}. Exposure frames are only retained for the latest completed session.`
                     : null}
