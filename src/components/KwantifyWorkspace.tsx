@@ -5081,6 +5081,33 @@ function WorkspaceChartPaneComponent({
     let profileSyncTimer: number | null = null;
     let executionSyncTimer: number | null = null;
     let marketTradeStateSyncTimer: number | null = null;
+    let lastFlowReconcileAt = 0;
+    // The incremental candle path adds each execution batch onto the forming
+    // bar forever. If any upstream ever replays a print (proxy-rotation
+    // reconnects, a burst past the stream's dedup tail), the bar closes with
+    // inflated bid/ask/delta and nothing repairs it until a full history
+    // refetch — measured live as closed candles carrying ~70x their true delta,
+    // which is what made CVD paint a flat history with a violent right-edge
+    // spike. Periodically rebuild the recent candles' flow from the canonical
+    // deduped tape (exact prints only), replacing the accumulated values with
+    // tape truth so any double-count self-heals within one reconcile.
+    const reconcileCandleFlowFromTape = (candles: Candle[]): Candle[] => {
+      if (!needsOrderFlowHistory || isEventBasedChartInterval(pane.timeframe)) return candles;
+      if (!candles.length) return candles;
+      const tape = latestMarketTradesRef.current;
+      if (!tape.length) return candles;
+      const exact = tape.filter((record) => !record.flowOnly);
+      if (!exact.length) return candles;
+      const firstExactTimestamp = exact[0].timestamp;
+      const rebuilt = enrichCandlesWithInstitutionalTrades(candles, exact, candles.length);
+      if (rebuilt === candles) return candles;
+      // The oldest bar the tape touches may only be partially covered (prints
+      // before the tape's retention start are gone), so its rebuilt flow would
+      // undercount. Keep the original values for any bar that opened at or
+      // before the first retained print.
+      return rebuilt.map((candle, index) =>
+        candle.timestamp <= firstExactTimestamp ? candles[index] : candle);
+    };
     const scheduleMarketTradeStateSync = () => {
       // Footprint receives live batches through its canvas primitive below.
       // A Footprint-only pane already received its initial history through
@@ -5180,24 +5207,34 @@ function WorkspaceChartPaneComponent({
           );
       if (nextCandles === previousCandles || !nextCandles.length) return;
 
-      latestCandlesRef.current = nextCandles;
-      if (hasUsableOrderFlowHistory(nextCandles)) {
+      const flushNow = Date.now();
+      const flushedNewBar = previousCandles.at(-1)?.timestamp !== nextCandles.at(-1)!.timestamp;
+      // Self-heal accumulated flow against the deduped tape on every bar close
+      // and at a bounded cadence in between (the forming bar benefits too).
+      let reconciledCandles = nextCandles;
+      if (flushedNewBar || flushNow - lastFlowReconcileAt >= 45_000) {
+        lastFlowReconcileAt = flushNow;
+        reconciledCandles = reconcileCandleFlowFromTape(nextCandles);
+      }
+
+      latestCandlesRef.current = reconciledCandles;
+      if (hasUsableOrderFlowHistory(reconciledCandles)) {
         setOrderFlowHistoryReady(true);
       }
-      const latest = nextCandles.at(-1)!;
+      const latest = reconciledCandles.at(-1)!;
       window.dispatchEvent(new CustomEvent(LIVE_CHART_CANDLE_EVENT, {
         detail: { key: pane.id, candle: latest },
       }));
-      const now = Date.now();
-      const newBar = previousCandles.at(-1)?.timestamp !== latest.timestamp;
+      const now = flushNow;
+      const newBar = flushedNewBar;
       const reconciliationCadence = activeRef.current ? 2_000 : 5_000;
       if (newBar || now - lastCandleStateSyncRef.current >= reconciliationCadence) {
         lastCandleStateSyncRef.current = now;
         // The selected pane is the trader's price display, so its candle
         // commit must never sit behind lower-priority React work. Background
         // panes can still reconcile as transitions to protect shell latency.
-        if (activeRef.current) setCandles(nextCandles);
-        else startTransition(() => setCandles(nextCandles));
+        if (activeRef.current) setCandles(reconciledCandles);
+        else startTransition(() => setCandles(reconciledCandles));
       }
     };
     const queueExecutionUpdate = (records: InstitutionalTrade[]) => {

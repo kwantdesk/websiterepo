@@ -45,9 +45,12 @@ function recordKey(record: InstitutionalTrade) {
 
 function unseenRecords(current: InstitutionalTrade[], incoming: InstitutionalTrade[]) {
   if (!incoming.length) return [];
+  // The dedup window must exceed the worst reconnect replay. A 512-record
+  // floor let a busy-session replay slip duplicate prints past dedup and into
+  // the candle accumulators, permanently inflating the bars they landed in.
   const seen = new Set(
     current
-      .slice(-Math.max(512, incoming.length * 4))
+      .slice(-Math.max(4_096, incoming.length * 4))
       .map(recordKey),
   );
   return incoming.filter((record) => {
@@ -94,7 +97,7 @@ function mergeRecords(current: InstitutionalTrade[], incoming: InstitutionalTrad
   // where a reconnect can repeat records.
   const recentKeys = new Set(
     current
-      .slice(-Math.max(512, incoming.length * 4))
+      .slice(-Math.max(4_096, incoming.length * 4))
       .map(recordKey),
   );
   const additions = incoming.filter((record) => !recentKeys.has(recordKey(record)));
