@@ -61,6 +61,13 @@ function normalizedValue(value: string | readonly string[] | number | undefined)
   return value === undefined ? "" : String(value);
 }
 
+/** True when the target sits inside a KwantSelect dropdown menu. The menu is
+ * portaled to document.body, so host dialogs with outside-pointer close
+ * handlers must treat it as their own content. */
+export function isInsideKwantSelectMenu(target: EventTarget | Node | null): boolean {
+  return target instanceof Element ? Boolean(target.closest("[data-kwant-select-menu]")) : false;
+}
+
 export default function KwantSelect({
   children,
   className = "",
@@ -211,6 +218,7 @@ export default function KwantSelect({
           <div
             ref={menuRef}
             role="listbox"
+            data-kwant-select-menu
             aria-label={ariaProps["aria-label"] ?? menuLabel}
             className="fixed z-[12000] overflow-hidden rounded-2xl border border-border bg-panel/95 p-1.5 shadow-[0_22px_70px_rgba(0,0,0,0.58)] backdrop-blur-xl"
             style={{ left: position.left, top: position.top, width: position.width }}

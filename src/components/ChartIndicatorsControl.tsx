@@ -46,6 +46,7 @@ import {
   type FootprintTemplate,
 } from "@/lib/footprintSettings";
 import ChartColorField, { isInsideChartColorPopover } from "@/components/ChartColorField";
+import { isInsideKwantSelectMenu } from "@/components/ui/KwantSelect";
 import KwantSelect from "@/components/ui/KwantSelect";
 import { PULLING_STACKING_PRESETS } from "@/lib/pullingStacking";
 import { ABSORPTION_PRESETS } from "@/lib/absorptionDetector";
@@ -437,6 +438,7 @@ export default function ChartIndicatorsControl({
       const target = event.target as Node | null;
       if (target && rootRef.current?.contains(target)) return;
       if (target && menuRef.current?.contains(target)) return;
+      if (isInsideChartColorPopover(target) || isInsideKwantSelectMenu(target)) return;
       setOpen(false);
     };
     const escape = (event: KeyboardEvent) => {
@@ -679,9 +681,12 @@ export default function ChartIndicatorsControl({
     const closeOnOutsidePointer = (event: PointerEvent) => {
       const target = event.target as Node | null;
       if (target && settingsDialogRef.current?.contains(target)) return;
-      // The colour picker popover is portaled outside the dialog DOM but
-      // belongs to it — interacting with it must not close the settings.
+      // The colour picker popover and KwantSelect menus are portaled outside
+      // the dialog DOM but belong to it — interacting with them must not
+      // close the settings (this silently swallowed dropdown choices like
+      // the Gamma Environment position).
       if (isInsideChartColorPopover(target)) return;
+      if (isInsideKwantSelectMenu(target)) return;
       closeSettingsDialog();
     };
     const closeOnEscape = (event: KeyboardEvent) => {
