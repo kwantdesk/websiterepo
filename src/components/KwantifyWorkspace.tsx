@@ -12782,11 +12782,9 @@ export default function KwantifyWorkspace({
     }
     const sourcePane = workspacePanes.find((pane) => pane.id === paneId);
     if (!sourcePane) return;
-    const paneElement = workspaceAreaRef.current?.querySelector<HTMLElement>(
-      `[data-workspace-pane-id="${paneId}"]`,
-    );
-    const paneRect = paneElement?.getBoundingClientRect();
-    const splitAxis: "x" | "y" = !paneRect || paneRect.width >= paneRect.height ? "x" : "y";
+    // A duplicated panel always lands directly to the RIGHT of its source,
+    // regardless of the source pane's aspect ratio.
+    const splitAxis: "x" | "y" = "x";
     const nextPaneId = `${chartWorkspaceScopeRef.current}-pane-${crypto.randomUUID()}`;
     const nextPane: WorkspacePane = {
       ...sourcePane,
