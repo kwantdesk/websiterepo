@@ -750,7 +750,7 @@ Website only. **Owner action pending:** remove `MASSIVE_API_KEY` from Vercel env
 - GEX Map node zoom: `− % +` clicker beside the frame-step buttons scales the strike ladder via CSS zoom (50–150%, 10%/click), persisted in `kwantdesk:gex-map-zoom:v1` and account-synced. Verified live: owner's own zoom clicks synced to a fresh session.
 
 ### Commits pushed
-`376de191` journal semantic colours; `5b928b45` Kwantify P&L calculator + crosshair release; `c58b0110` index value-area derivation; `e7f534f5` GEX Vue replay speed/heat; `e82b9bb3` gamma heatmap OOM fix; `778d3cdb`/`5d436a07`/`498dbbb0`/`167e95cf` GEX Map colour-scale series; `947494d7` node zoom.
+`376de191` journal semantic colours; `5b928b45` Kwantify P&L calculator + crosshair release; `c58b0110` index value-area derivation; `e7f534f5` GEX Vue replay speed/heat; `e82b9bb3` gamma heatmap OOM fix; `778d3cdb`/`5d436a07`/`498dbbb0`/`167e95cf` GEX Map colour-scale series; `947494d7` node zoom; `69a912c4` reference linear scale + Viridis preset + solid fills; `474e7038` twenty more palettes (30 total); `dfc75c28` zero pinned to scale middle (per-side linear to each extreme, $0 rows paint the average colour, legend −max·0·+max). Final model verified live: noise floor one quiet middle colour, biggest negative alone darkest, biggest positive alone lightest.
 
 ### Verification
 Per change: `tests/precision-tools-system.test.mjs` + `tests/chart-drawing-system.test.mjs` (29/29; one pre-existing stale assertion repaired), `test:preference-hydration`, eslint on changed files (`NODE_OPTIONS=--max-old-space-size=8192` for the huge components), `npx tsc --noEmit`, `npm run build` — all green before each push.
