@@ -7293,14 +7293,6 @@ function Chart({
     [indicatorSignature, indicators],
   );
   const gammaEnvironmentPosition = String(gammaEnvironmentIndicator?.settings?.position ?? "top-right");
-  const gammaEnvironmentPositionClass = ({
-    "top-left": "left-3 top-3",
-    "top-middle": "left-1/2 top-3 -translate-x-1/2",
-    "top-right": "right-[70px] top-3",
-    "bottom-left": "bottom-8 left-3",
-    "bottom-middle": "bottom-8 left-1/2 -translate-x-1/2",
-    "bottom-right": "bottom-8 right-[70px]",
-  } as Record<string, string>)[gammaEnvironmentPosition] ?? "right-[70px] top-3";
   const gammaEnvironmentSettings = gammaEnvironmentIndicator?.settings ?? {};
   const gammaEnvironmentUseThemeColors = gammaEnvironmentSettings.useThemeColors !== false;
   const gammaEnvironmentScale = Math.min(2, Math.max(0.6, Number(gammaEnvironmentSettings.badgeScale ?? 1)));
@@ -8884,6 +8876,24 @@ function Chart({
       dragDotSize: smooth(9, 3.8),
     };
   }, [overlaySize.height, overlaySize.width]);
+  // The badge sits INSIDE the chart plot: clear of the measured price scale on
+  // the right, the time axis at the bottom, and the pinned drawing toolbar on
+  // the left. CSS zoom scales offset values too, so they are divided back out.
+  const gammaEnvironmentPositionStyle = (() => {
+    const unzoom = (value: number) => value / gammaEnvironmentScale;
+    const rightInsetPx = unzoom(nativePriceScaleWidth + 10);
+    const bottomInsetPx = unzoom(26 + 8);
+    const leftInsetPx = unzoom(toolbarPinned && toolbarDock === "left" ? toolbarMetrics.buttonSize + 22 : 12);
+    const topInsetPx = unzoom(12);
+    switch (gammaEnvironmentPosition) {
+      case "top-left": return { left: leftInsetPx, top: topInsetPx } as CSSProperties;
+      case "top-middle": return { left: "50%", top: topInsetPx, transform: "translateX(-50%)" } as CSSProperties;
+      case "bottom-left": return { left: leftInsetPx, bottom: bottomInsetPx } as CSSProperties;
+      case "bottom-middle": return { left: "50%", bottom: bottomInsetPx, transform: "translateX(-50%)" } as CSSProperties;
+      case "bottom-right": return { right: rightInsetPx, bottom: bottomInsetPx } as CSSProperties;
+      default: return { right: rightInsetPx, top: topInsetPx } as CSSProperties;
+    }
+  })();
   const toolbarButtonStyle = {
     width: toolbarMetrics.buttonSize,
     height: toolbarMetrics.buttonSize,
@@ -12986,8 +12996,9 @@ function Chart({
       ) : null}
       {gammaEnvironmentIndicator ? (
         <div
-          className={`pointer-events-none absolute z-[32] min-w-[142px] border bg-panel/94 px-3 py-2 font-mono shadow-xl backdrop-blur ${gammaEnvironmentPositionClass}`}
+          className="pointer-events-none absolute z-[32] min-w-[142px] border bg-panel/94 px-3 py-2 font-mono shadow-xl backdrop-blur"
           style={{
+            ...gammaEnvironmentPositionStyle,
             borderColor: `color-mix(in srgb, ${gammaEnvironmentColor} 58%, transparent)`,
             boxShadow: `0 0 18px color-mix(in srgb, ${gammaEnvironmentColor} 14%, transparent)`,
             ...(gammaEnvironmentScale !== 1 ? { zoom: gammaEnvironmentScale } as CSSProperties : {}),
