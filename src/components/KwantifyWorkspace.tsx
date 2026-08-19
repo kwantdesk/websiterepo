@@ -15802,6 +15802,24 @@ export default function KwantifyWorkspace({
                   </button>
                 </div>
                 <div className="max-h-[560px] overflow-y-auto p-2">
+                  <div className="mb-1 flex flex-wrap items-center gap-2 border-b border-border/60 px-2 pb-2.5">
+                    <div>
+                      <div className="text-[11px] font-medium text-foreground">Load range</div>
+                      <div className="text-[9px] text-muted">How much history loads into this chart · standard is 5D</div>
+                    </div>
+                    <div className="ml-auto flex flex-wrap items-center gap-1">
+                      {["1D", "5D", "1W", "1M", "3M", "6M", "1Y", "All"].map((range) => (
+                        <button
+                          key={range}
+                          type="button"
+                          onClick={() => handleChartPeriod(activePaneId, range)}
+                          className={`rounded-lg border px-2 py-1.5 font-mono text-[10px] transition-colors ${selectedPeriod === range ? "border-primary/30 bg-primary/10 text-primary" : "border-transparent text-foreground hover:border-border hover:bg-surface"}`}
+                        >
+                          {range}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                   {availableChartIntervalGroups.map((group) => {
                     const draft = intervalDrafts[group.kind];
                     return (
