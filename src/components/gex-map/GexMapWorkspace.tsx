@@ -208,9 +208,9 @@ function priceAt(payload: GexMapPanelPayload, timestamp: number | null) {
 
 const THEME_HEAT_TONES: GexMapHeatTones = {
   positive: "var(--primary)",
-  positiveSoft: "var(--primary)",
+  positiveSoft: "color-mix(in srgb, var(--primary) 34%, black)",
   negative: "var(--danger)",
-  negativeSoft: "var(--danger)",
+  negativeSoft: "color-mix(in srgb, var(--danger) 34%, black)",
 };
 
 function heatColor(
@@ -221,14 +221,17 @@ function heatColor(
   if (Math.abs(value) < Number.EPSILON) return "var(--surface)";
   const strong = value > 0 ? tones.positive : tones.negative;
   const soft = value > 0 ? tones.positiveSoft : tones.negativeSoft;
-  const bounded = Math.min(1, strength);
-  // True gradient: low heat sits at the soft stop and ramps toward the
-  // strong stop, then the blended tone fades into the chart background.
-  const tone = soft === strong
-    ? strong
-    : `color-mix(in srgb, ${strong} ${Math.round(bounded * 100)}%, ${soft})`;
-  const intensity = Math.round(14 + bounded * 78);
-  return `color-mix(in srgb, ${tone} ${intensity}%, var(--chart-background))`;
+  const bounded = Math.min(1, Math.max(0, strength));
+  // Strict brightness ramp: the lowest exposure sits at a near-black shade of
+  // the side's dark stop, mid heat reaches the dark stop, and only the
+  // highest exposure earns the full bright tone. Three stops give the ramp
+  // real granularity in the low-mid range where two-stop mixing washed out.
+  const darkest = `color-mix(in srgb, ${soft} 32%, black)`;
+  const tone = bounded < 0.5
+    ? `color-mix(in srgb, ${soft} ${Math.round(bounded * 200)}%, ${darkest})`
+    : `color-mix(in srgb, ${strong} ${Math.round((bounded - 0.5) * 200)}%, ${soft})`;
+  const presence = Math.round(30 + bounded * 62);
+  return `color-mix(in srgb, ${tone} ${presence}%, var(--chart-background))`;
 }
 
 type RgbColor = { r: number; g: number; b: number };
@@ -544,6 +547,33 @@ function ExposurePanel({
     const magnitudes = rows.map((row) => Math.abs(row.net)).sort((a, b) => a - b);
     return Math.max(1, magnitudes[Math.floor((magnitudes.length - 1) * 0.95)] ?? 1);
   }, [rows]);
+  // Heat is anchored half on each row's percentile rank within its own sign
+  // side and half on its magnitude ratio. Rank keeps the brightness ordering
+  // strictly aligned with where a node sits in the map's percentile brackets
+  // (brightest = highest exposure, darkest = lowest, evenly spread); the
+  // magnitude half preserves how dominant a node truly is.
+  const classicHeatRank = useMemo(() => {
+    const map = new Map<number, number>();
+    for (const positiveSide of [true, false]) {
+      const side = rows
+        .filter((row) => (positiveSide ? row.net > 0 : row.net < 0))
+        .sort((a, b) => Math.abs(a.net) - Math.abs(b.net));
+      side.forEach((row, index) => {
+        map.set(row.strike, side.length > 1 ? index / (side.length - 1) : 1);
+      });
+    }
+    return map;
+  }, [rows]);
+  const highlightedHeatRank = useMemo(() => {
+    const highlighted = starModel.rows
+      .filter((row) => row.isHighlighted)
+      .sort((a, b) => a.mapControlPct - b.mapControlPct);
+    const map = new Map<number, number>();
+    highlighted.forEach((row, index) => {
+      map.set(row.strike, highlighted.length > 1 ? index / (highlighted.length - 1) : 1);
+    });
+    return map;
+  }, [starModel.rows]);
   const net = rows.reduce((sum, row) => sum + row.net, 0);
   const greek = GEX_MAP_GREEKS.find((item) => item.mode === config.greekMode) ?? GEX_MAP_GREEKS[0];
   const viewIdentity = `${config.symbol}:${config.greekMode}:${payload?.expiration ?? "pending"}:${payload?.sessionDate ?? "pending"}`;
@@ -851,7 +881,8 @@ function ExposurePanel({
                 : null;
               const nearSpot = row.strike === spotStrike;
               const isStar = row.strike === starNode?.strike;
-              const strength = Math.min(1, Math.abs(row.net) / magnitudeCap);
+              const magnitudeRatio = Math.min(1, Math.abs(row.net) / magnitudeCap);
+              const strength = 0.5 * (classicHeatRank.get(row.strike) ?? magnitudeRatio) + 0.5 * magnitudeRatio;
               const derived = starRows.get(row.strike);
               if (viewMode === "star" && derived) {
                 const isFocusedStar = derived.roles.includes("star");
@@ -886,7 +917,15 @@ function ExposurePanel({
                     style={{
                       opacity: highlighted || nearSpot ? 1 : Math.max(0.02, starSettings.dimOpacity),
                       backgroundColor: highlighted
-                        ? heatColor(derived.net, Math.max(0.2, derived.mapControlPct / maxHighlightedControl), tones)
+                        ? heatColor(
+                          derived.net,
+                          Math.max(
+                            0.12,
+                            0.5 * (highlightedHeatRank.get(derived.strike) ?? 0)
+                              + 0.5 * Math.min(1, derived.mapControlPct / maxHighlightedControl),
+                          ),
+                          tones,
+                        )
                         : "var(--chart-background)",
                       ...(isFocusedStar ? {
                         "--gex-star-accent": starPalette.accent,
@@ -1136,7 +1175,7 @@ function StarViewSettings({
                     className={`relative h-7 w-9 overflow-hidden rounded-[4px] border transition-transform hover:scale-110 ${
                       active ? "border-primary shadow-[0_0_10px_color-mix(in_srgb,var(--primary)_45%,transparent)]" : "border-border"
                     }`}
-                    style={{ background: `linear-gradient(135deg, ${preset.positive} 0%, ${preset.positiveSoft} 30%, ${preset.negativeSoft} 70%, ${preset.negative} 100%)` }}
+                    style={{ background: `linear-gradient(135deg, ${preset.positive} 0%, ${preset.positiveSoft} 32%, black 50%, ${preset.negativeSoft} 68%, ${preset.negative} 100%)` }}
                   >
                     <span
                       className="absolute bottom-0.5 right-0.5 h-1.5 w-1.5 rounded-full border border-black/30"
