@@ -1082,9 +1082,8 @@ function ExposurePanel({
                       </span>
                       {growthTick}
                       {isFocusedStar ? (
-                        <span className="gex-star-badge inline-flex min-w-0 items-center gap-0.5 border px-1 py-0.5 font-sans text-[7px] font-black tracking-[0.08em]">
-                          <Star className="h-2.5 w-2.5 shrink-0" fill="currentColor" />
-                          <span className="gex-star-badge-label">STAR</span>
+                        <span className="gex-star-badge inline-flex shrink-0 items-center" title="Star node">
+                          <Star className="h-3 w-3 shrink-0" fill="currentColor" />
                         </span>
                       ) : null}
                     </span>
@@ -1129,9 +1128,8 @@ function ExposurePanel({
                     </span>
                     {growthTick}
                     {isStar ? (
-                      <span className="gex-star-badge inline-flex min-w-0 items-center gap-0.5 border px-1 py-0.5 font-sans text-[7px] font-black tracking-[0.08em]">
-                        <Star className="h-2.5 w-2.5 shrink-0" fill="currentColor" />
-                        <span className="gex-star-badge-label">STAR</span>
+                      <span className="gex-star-badge inline-flex shrink-0 items-center" title="Star node">
+                        <Star className="h-3 w-3 shrink-0" fill="currentColor" />
                       </span>
                     ) : null}
                   </span>
