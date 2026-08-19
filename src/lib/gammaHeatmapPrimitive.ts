@@ -173,11 +173,18 @@ class GammaHeatmapRenderer implements ISeriesPrimitivePaneRenderer {
     pixelRatio: number,
   ): HTMLCanvasElement | null {
     if (typeof document === "undefined") return null;
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.max(1, Math.round(width * pixelRatio));
-    canvas.height = Math.max(1, Math.round(height * pixelRatio));
+    // Reuse a single canvas element across renders. Allocating a fresh
+    // ~13 MB high-DPI canvas on every pan frame (the surface key includes the
+    // visible range) was a large per-frame allocation while the heatmap was on.
+    const canvas = this.surface ?? document.createElement("canvas");
+    const nextW = Math.max(1, Math.round(width * pixelRatio));
+    const nextH = Math.max(1, Math.round(height * pixelRatio));
     const context = canvas.getContext("2d");
     if (!context) return null;
+    if (canvas.width !== nextW) canvas.width = nextW;
+    if (canvas.height !== nextH) canvas.height = nextH;
+    context.setTransform(1, 0, 0, 1, 0, 0);
+    context.clearRect(0, 0, canvas.width, canvas.height);
     context.scale(pixelRatio, pixelRatio);
 
     const maxValue = this.maxAbsValue(snapshots, data.viewMode);

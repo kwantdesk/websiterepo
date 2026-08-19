@@ -1,22 +1,70 @@
 type WorkspaceCacheEntry = {
   value: unknown;
   updatedAt: number;
+  bytes?: number;
 };
 
 const workspaceDataCache = new Map<string, WorkspaceCacheEntry>();
-// Some entries (gamma-heatmap surfaces, gex-map frame sets) are 8 MB+ each.
-// Unbounded, this Map grew one permanent entry per view/variant visited and
-// helped exhaust the tab's memory. LRU-cap it; sessionStorage/last-good keep a
-// durable copy so eviction only costs a re-fetch.
-const WORKSPACE_DATA_CACHE_MAX = 10;
+// Some entries (gamma-heatmap surfaces, gex-map frame sets) are 25-50 MB in
+// heap each. A flat entry-count cap of 10 still allowed ~500 MB of standing
+// retention — the baseline that made live allocation churn fatal. Evict by an
+// approximate BYTE budget instead; sessionStorage/last-good keep a durable
+// copy so eviction only costs a re-fetch. A small entry-count cap bounds the
+// many-small-entries case.
+const WORKSPACE_DATA_CACHE_MAX = 8;
+const WORKSPACE_DATA_CACHE_MAX_BYTES = 64 * 1024 * 1024;
+
+// Cheap heap-size estimate for the known-large payload shapes — never a full
+// JSON.stringify (that alone churned ~8 MB strings per refresh).
+function estimateEntryBytes(value: unknown): number {
+  if (!value || typeof value !== "object") return 2_048;
+  const record = value as Record<string, unknown>;
+  const snapshots = record.snapshots;
+  if (Array.isArray(snapshots)) {
+    const first = snapshots[0] as Record<string, unknown> | undefined;
+    const bins = Array.isArray(first?.bins) ? (first!.bins as unknown[]).length : 0;
+    return snapshots.length * Math.max(1, bins) * 120;
+  }
+  const frames = record.frames;
+  if (Array.isArray(frames)) {
+    const first = frames[0] as Record<string, unknown> | undefined;
+    const strikes = Array.isArray(first?.strikes)
+      ? (first!.strikes as unknown[]).length
+      : Array.isArray(first?.rows) ? (first!.rows as unknown[]).length : 0;
+    return frames.length * Math.max(1, strikes) * 120;
+  }
+  const levels = record.levels;
+  if (Array.isArray(levels)) return levels.length * 96;
+  return 64 * 1024;
+}
+
+function workspaceCacheBytes(): number {
+  let total = 0;
+  for (const entry of workspaceDataCache.values()) total += entry.bytes ?? 64 * 1024;
+  return total;
+}
+
 function setWorkspaceCacheEntry(key: string, entry: WorkspaceCacheEntry) {
+  if (entry.bytes === undefined) entry.bytes = estimateEntryBytes(entry.value);
   if (workspaceDataCache.has(key)) workspaceDataCache.delete(key);
   workspaceDataCache.set(key, entry);
-  while (workspaceDataCache.size > WORKSPACE_DATA_CACHE_MAX) {
+  while (
+    workspaceDataCache.size > 1
+    && (workspaceDataCache.size > WORKSPACE_DATA_CACHE_MAX || workspaceCacheBytes() > WORKSPACE_DATA_CACHE_MAX_BYTES)
+  ) {
     const oldest = workspaceDataCache.keys().next().value;
-    if (oldest === undefined) break;
+    if (oldest === undefined || oldest === key) break;
     workspaceDataCache.delete(oldest);
   }
+}
+
+// Payload shapes that are too large to be worth mirroring into sessionStorage;
+// serializing them (JSON.stringify) allocated a multi-MB throwaway string on
+// every refresh for a write that then fails the size gate anyway.
+function isLargeWorkspacePayload(value: unknown): boolean {
+  if (!value || typeof value !== "object") return false;
+  const record = value as Record<string, unknown>;
+  return Array.isArray(record.snapshots) || Array.isArray(record.frames);
 }
 const workspaceDataRequests = new Map<string, Promise<unknown>>();
 const SESSION_CACHE_PREFIX = "kwantdesk:workspace-view:v1:";
@@ -136,6 +184,9 @@ export function writeWorkspaceData<T>(key: string, value: T) {
   setWorkspaceCacheEntry(key, entry);
   writeLastGoodGexMap(key, value, entry.updatedAt);
   if (typeof window === "undefined") return;
+  // Large heatmap/gex-map payloads are never mirrored to sessionStorage (they
+  // exceed the size gate) — do not allocate the multi-MB throwaway string.
+  if (isLargeWorkspacePayload(value)) return;
   try {
     const serialized = JSON.stringify(entry);
     if (serialized.length <= SESSION_CACHE_MAX_CHARS) {

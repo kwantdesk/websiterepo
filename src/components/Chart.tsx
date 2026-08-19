@@ -4596,6 +4596,16 @@ function Chart({
     () => sampledIndicatorCandles.slice(-indicatorHistoryLimit),
     [indicatorHistoryLimit, sampledIndicatorCandles],
   );
+  // Non-order-flow studies (MA, RSI, VWAP...) never need the 48h order-flow
+  // lookback. When an order-flow indicator inflates the window to 4-6k candles,
+  // simple studies stay on a 1.5k window so they don't pay a 4x recompute cost
+  // every sample — the dominant multi-indicator OOM/churn multiplier.
+  const indicatorWindowCandlesLite = useMemo(
+    () => indicatorHistoryLimit <= 1_500
+      ? indicatorWindowCandles
+      : sampledIndicatorCandles.slice(-1_500),
+    [indicatorHistoryLimit, indicatorWindowCandles, sampledIndicatorCandles],
+  );
   const indicatorMarketTrades = useMemo(() => {
     if (!indicatorWindowCandles.length || !sampledIndicatorMarketTrades.length) return [];
     const firstTimestamp = indicatorWindowCandles[0].timestamp;
@@ -4721,6 +4731,7 @@ function Chart({
   // must never be folded back into CVD or it will replace exact history with a
   // biased subset of large prints.
   const indicatorCandles = indicatorWindowCandles;
+  const indicatorCandlesLite = indicatorWindowCandlesLite;
   const tpoSourceTrades = useMemo<TpoTrade[]>(() => {
     if (!tpoSamplingEnabled) return [];
     const tickSize = priceFormat.minMove;
@@ -5465,9 +5476,10 @@ function Chart({
           "delta-bar",
         ].includes(instance.indicatorId)
       ) return [];
+      const requiresOrderFlowWindow = CHART_INDICATOR_BY_ID.get(instance.indicatorId)?.requiresOrderFlow === true;
       return calculateIndicatorSeries(
         instance,
-        indicatorCandles,
+        requiresOrderFlowWindow ? indicatorCandles : indicatorCandlesLite,
         {
           primary: settings.upColor,
           secondary: settings.borderUpColor,
@@ -5480,6 +5492,7 @@ function Chart({
     }),
     [
       indicatorCandles,
+      indicatorCandlesLite,
       indicatorSignature,
       indicators,
       instrument,
@@ -6285,7 +6298,9 @@ function Chart({
     const indicatorSettings = netGammaDataSettings;
     const requestedSource = indicatorSettings.sourceTicker.toUpperCase();
     const source = requestedSource === "AUTO" ? defaultNetGammaSource(display) : requestedSource;
-    const refreshMs = Math.max(2_000, Math.min(60_000, Number(indicatorSettings.refreshSeconds ?? 5) * 1_000));
+    // Net gamma only produces a new column per minute; a 5s refresh churned the
+    // same heavy fetch/parse path 6x more often than the heatmap for no benefit.
+    const refreshMs = Math.max(15_000, Math.min(60_000, Number(indicatorSettings.refreshSeconds ?? 30) * 1_000));
     let cancelled = false;
     let timer: number | null = null;
     const load = async (force = false) => {
