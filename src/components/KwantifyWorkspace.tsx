@@ -4627,6 +4627,9 @@ function WorkspaceChartPaneComponent({
   onCreateAlertAtPrice,
   onRemoveAllIndicators,
   onUpdateIndicatorSetting,
+  onQuickToggleIndicator,
+  onOpenIndicatorLibrary,
+  onOpenIndicatorSettings,
   onSelectTimeframe,
   onDetach,
   detachDisabled,
@@ -4675,6 +4678,9 @@ function WorkspaceChartPaneComponent({
   onCreateAlertAtPrice: (price: string) => void;
   onRemoveAllIndicators: () => void;
   onUpdateIndicatorSetting: (instanceId: string, key: string, value: number | string | boolean) => void;
+  onQuickToggleIndicator: (indicatorId: string) => void;
+  onOpenIndicatorLibrary: () => void;
+  onOpenIndicatorSettings: (instanceId: string) => void;
   onSelectPeriod: (period: string) => void;
   onSelectTimeframe: (timeframe: string) => boolean;
   onDetach?: () => void;
@@ -7558,6 +7564,9 @@ function WorkspaceChartPaneComponent({
           expectedMoveCalibration={expectedMoveCalibration}
           volumeProfiles={volumeProfiles}
           onUpdateIndicatorSetting={onUpdateIndicatorSetting}
+          onQuickToggleIndicator={onQuickToggleIndicator}
+          onOpenIndicatorLibrary={onOpenIndicatorLibrary}
+          onOpenIndicatorSettings={onOpenIndicatorSettings}
           toolbarEnabled
           chartDragEnabled={chartDragEnabled}
           onChartDragStart={onChartDragStart}
@@ -8146,6 +8155,7 @@ export default function KwantifyWorkspace({
     instanceId: string;
     requestId: number;
   } | null>(null);
+  const [indicatorLibraryOpenRequest, setIndicatorLibraryOpenRequest] = useState(0);
   const [draggedWorkspacePaneId, setDraggedWorkspacePaneId] = useState<string | null>(null);
   const [workspaceDropTargetPaneId, setWorkspaceDropTargetPaneId] = useState<string | null>(null);
   const [workspaceDropZone, setWorkspaceDropZone] = useState<WorkspaceDropZone>("center");
@@ -12571,6 +12581,28 @@ export default function KwantifyWorkspace({
     }));
   }, []);
 
+  // Quick-add from the chart's top toolbar: toggle a common indicator on the
+  // pane exactly as the full library would, so the two stay in lockstep.
+  const toggleQuickPaneIndicator = useCallback((paneId: string, indicatorId: string) => {
+    setChartIndicatorsSuppressed(false);
+    setPaneIndicators((current) => {
+      const list = current[paneId] ?? [];
+      const existing = list.find((instance) => instance.indicatorId === indicatorId && instance.enabled);
+      if (existing) {
+        return { ...current, [paneId]: list.filter((instance) => instance !== existing) };
+      }
+      return {
+        ...current,
+        [paneId]: [...list, {
+          instanceId: `${indicatorId}-${crypto.randomUUID()}`,
+          indicatorId,
+          enabled: true,
+          settings: defaultIndicatorSettings(indicatorId, chartSettings),
+        }],
+      };
+    });
+  }, [chartSettings]);
+
   const togglePaneLevelVisibility = useCallback((
     paneId: string,
     key: keyof PaneLevelVisibility,
@@ -15189,6 +15221,15 @@ export default function KwantifyWorkspace({
         onRemoveAllIndicators={() => removeAllIndicatorsFromPane(pane.id)}
         onUpdateIndicatorSetting={(instanceId, key, value) =>
           updatePaneIndicatorSetting(pane.id, instanceId, key, value)}
+        onQuickToggleIndicator={(indicatorId) => toggleQuickPaneIndicator(pane.id, indicatorId)}
+        onOpenIndicatorLibrary={() => {
+          activateWorkspacePane(pane.id);
+          setIndicatorLibraryOpenRequest((value) => value + 1);
+        }}
+        onOpenIndicatorSettings={(instanceId) => {
+          activateWorkspacePane(pane.id);
+          setIndicatorSettingsOpenRequest({ paneId: pane.id, instanceId, requestId: Date.now() });
+        }}
         onSelectPeriod={(period) => handleChartPeriod(pane.id, period)}
         onSelectTimeframe={(timeframe) => selectWorkspacePaneTimeframe(pane.id, timeframe)}
         chartDragEnabled={!floating && !paneMoveLocked && visibleWorkspacePaneIds.length > 1}
@@ -16303,6 +16344,7 @@ export default function KwantifyWorkspace({
             settingsOpenRequest={indicatorSettingsOpenRequest?.paneId === activePaneId
               ? indicatorSettingsOpenRequest
               : null}
+            libraryOpenRequest={indicatorLibraryOpenRequest}
             levelControls={[
               {
                 id: "gamma",

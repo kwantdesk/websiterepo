@@ -330,6 +330,7 @@ import { hasRenderableGexMapSurface, type GexMapPanelPayload } from "@/lib/gexMa
 import { buildOptionsDeltaSeries, optionsDeltaSourceForInstrument } from "@/lib/optionsDelta";
 import { isMarketIndexSymbol } from "@/lib/marketIndices";
 import { detectCvdDivergence, sessionCvdPoints, type CvdCandleLike } from "@/lib/cvdDivergence";
+import ChartTopToolbar from "@/components/ChartTopToolbar";
 import { CROSSHAIR_STYLE_EVENT, DEFAULT_CROSSHAIR_STYLE, loadCrosshairStyle, normalizeCrosshairStyle, type CrosshairStyle } from "@/lib/crosshairStyle";
 
 // Toolbar pin state is PER CHART: locking one pane's toolbar leaves every
@@ -482,6 +483,8 @@ interface ChartProps {
   volumeProfiles?: InstitutionalVolumeProfile[];
   onUpdateIndicatorSetting?: (instanceId: string, key: string, value: number | string | boolean) => void;
   onOpenIndicatorSettings?: (instanceId: string) => void;
+  onQuickToggleIndicator?: (indicatorId: string) => void;
+  onOpenIndicatorLibrary?: () => void;
   settings?: ChartSettings;
   toolbarEnabled?: boolean;
   chartDragEnabled?: boolean;
@@ -2878,6 +2881,8 @@ function Chart({
   volumeProfiles = [],
   onUpdateIndicatorSetting,
   onOpenIndicatorSettings,
+  onQuickToggleIndicator,
+  onOpenIndicatorLibrary,
   settings = defaultChartSettings,
   toolbarEnabled = true,
   gammaLevelsEnabled = false,
@@ -13027,6 +13032,14 @@ function Chart({
           activeChartKeyboardTargetId = chartInstanceId;
         }}
       >
+      {toolbarEnabled && onQuickToggleIndicator && onOpenIndicatorLibrary ? (
+        <ChartTopToolbar
+          indicators={indicators}
+          onToggle={onQuickToggleIndicator}
+          onOpenSettings={(instanceId) => openIndicatorSettingsRef.current?.(instanceId)}
+          onOpenLibrary={onOpenIndicatorLibrary}
+        />
+      ) : null}
       {!chartVisualReady ? (
         <div className="pointer-events-auto absolute inset-0 z-[90]" style={{ backgroundColor: settings.backgroundColor }}>
           <KwantLoader
