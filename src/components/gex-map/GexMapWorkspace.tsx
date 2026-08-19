@@ -1776,18 +1776,8 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
     <div className="gex-map-workspace relative flex h-full min-h-0 min-w-0 overflow-hidden bg-background text-foreground">
       <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <header className="gex-map-header sticky top-0 z-40 flex h-9 min-h-9 shrink-0 items-center gap-1.5 overflow-x-auto overflow-y-hidden border-b border-border bg-panel px-2">
-          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[3px] bg-primary/10 text-primary">
-            <ScanLine className="h-3.5 w-3.5" />
-          </span>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <h1 className="text-[11px] font-semibold tracking-tight">GEXMAP</h1>
-              <span className="rounded-[3px] border border-border/70 bg-background/35 px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.14em] text-muted">{linkedMarket ? `${linkedMarket} context` : `${panels.length} panels`}</span>
-            </div>
-            <p className="hidden">Signed front-expiry exposure by strike</p>
-          </div>
 
-          <div className="ml-1 flex h-7 shrink-0 items-center rounded-[3px] border border-border/70 bg-background/35 p-0.5" role="group" aria-label="GEX Map view mode">
+          <div className="flex h-7 shrink-0 items-center rounded-[3px] border border-border/70 bg-background/35 p-0.5" role="group" aria-label="GEX Map view mode">
             <button
               type="button"
               aria-label="Raw exposure view"
