@@ -292,12 +292,9 @@ html[data-theme-updating="true"] *::after {
 }
 
 .gex-star-node {
+  /* No box around the Star node: the contrast-coloured star badge is the
+     only marker, so the row's own heat colour stays untouched. */
   isolation: isolate;
-  border-bottom-color: transparent;
-  box-shadow:
-    inset 0 0 0 3px var(--gex-star-accent),
-    inset 0 0 0 4px var(--gex-star-outline),
-    0 0 12px color-mix(in srgb, var(--gex-star-accent) 32%, transparent);
 }
 
 /* A shared centre/Star row keeps the live dash and price pill, but the Star
@@ -306,7 +303,17 @@ html[data-theme-updating="true"] *::after {
   --gex-live-fluor: color-mix(in srgb, var(--primary) 84%, white 16%);
 }
 
-.gex-star-badge,
+/* The in-row Star badge is just the star icon and the word, coloured with
+   the OPPOSITE end of the active gradient to the node's own colour — a
+   purple node carries a yellow star, a yellow node a purple one. */
+.gex-star-badge {
+  border-color: transparent;
+  background: transparent;
+  color: var(--gex-star-accent);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+  box-shadow: none;
+}
+
 .gex-star-header {
   border-color: var(--gex-star-outline);
   color: var(--gex-star-text);

@@ -627,6 +627,12 @@ function ExposurePanel({
     (net: number) => 0.5 + 0.5 * Math.max(-1, Math.min(1, net / starMagnitude)),
     [starMagnitude],
   );
+  // The Star marker always wears the OPPOSITE end of the active gradient to
+  // the node's own colour: a node sitting in the dark half gets the scale's
+  // lightest colour, a node in the light half gets its darkest.
+  const starContrastFor = useCallback((net: number) => (
+    heatStrength(net) >= 0.5 ? signedScale[0] : signedScale[signedScale.length - 1]
+  ), [heatStrength, signedScale]);
   // The growth ticker stays readable by marking only the movers that matter:
   // the eight fastest-growing and eight fastest-shrinking nodes by percentage
   // change of exposure magnitude since the previous frame.
@@ -1026,9 +1032,9 @@ function ExposurePanel({
                         ? heatColor(derived.net, heatStrength(derived.net), signedScale)
                         : "var(--chart-background)",
                       ...(isFocusedStar ? {
-                        "--gex-star-accent": starPalette.accent,
+                        "--gex-star-accent": starContrastFor(derived.net),
                         "--gex-star-text": starPalette.text,
-                        "--gex-star-outline": starPalette.outline,
+                        "--gex-star-outline": "transparent",
                       } : {}),
                     } as CSSProperties}
                     title={tooltip}
@@ -1086,9 +1092,9 @@ function ExposurePanel({
                     textShadow: "0 1px 2px rgba(0,0,0,0.72)",
                     backgroundColor: heatColor(row.net, strength, signedScale),
                     ...(isStar ? {
-                      "--gex-star-accent": starPalette.accent,
+                      "--gex-star-accent": starContrastFor(row.net),
                       "--gex-star-text": starPalette.text,
-                      "--gex-star-outline": starPalette.outline,
+                      "--gex-star-outline": "transparent",
                     } : {}),
                   } as CSSProperties}
                   title={`${greek.short} ${formatCompact(row.net)} · Call ${formatCompact(row.call)} · Put ${formatCompact(row.put)}`}
