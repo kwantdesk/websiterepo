@@ -102,6 +102,7 @@ import { cacheProfileIdentity, readProfileIdentityCache } from "@/lib/profileIde
 import { useAccountPreferenceSync } from "@/hooks/useAccountPreferenceSync";
 import { compactLegacyAuthPreferenceMetadata, hydrateUserPreferences } from "@/lib/userPreferences";
 import { readStoredTheme, saveTheme, type ThemeColors } from "@/lib/theme";
+import { DEFAULT_CROSSHAIR_STYLE, loadCrosshairStyle, normalizeCrosshairStyle, saveCrosshairStyle, type CrosshairStyle } from "@/lib/crosshairStyle";
 import { loadGexMapPalette, saveGexMapPalette, type GexMapPalette } from "@/lib/gexMapPalette";
 import { normalizeTimeZone } from "@/lib/timeZones";
 import { clearSavedStrategiesRaw, loadSavedStrategiesRaw, saveSavedStrategiesRaw } from "@/lib/automation";
@@ -8348,6 +8349,17 @@ export default function KwantifyWorkspace({
   const [tradeSort, setTradeSort] = useState<{ key: string; direction: "asc" | "desc" }>({ key: "entryTime", direction: "desc" });
   const [showSettings, setShowSettings] = useState(false);
   const [settingsTab, setSettingsTab] = useState("Symbol");
+  // Crosshair styling lives in Chart Settings → Scales and lines and applies
+  // to every chart live as the sliders move.
+  const [crosshairStyleDraft, setCrosshairStyleDraft] = useState<CrosshairStyle>(() => ({ ...DEFAULT_CROSSHAIR_STYLE }));
+  useEffect(() => {
+    setCrosshairStyleDraft(loadCrosshairStyle());
+  }, []);
+  const updateCrosshairStyle = (patch: Partial<CrosshairStyle>) => {
+    const next = normalizeCrosshairStyle({ ...crosshairStyleDraft, ...patch });
+    setCrosshairStyleDraft(next);
+    saveCrosshairStyle(next);
+  };
   const [colorPicker, setColorPicker] = useState<keyof ChartSettings | null>(null);
   const [colorDraft, setColorDraft] = useState("#00F5A0");
   const [hexDraft, setHexDraft] = useState("00F5A0");
@@ -18298,7 +18310,31 @@ export default function KwantifyWorkspace({
                     <section className="space-y-3"><h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted">Data</h3><TimeZoneSelect value={draftChartSettings.timezone} onChange={(timeZone) => setDraftChartSettings((current) => ({ ...current, timezone: timeZone }))} menuLabel="Chart timezone" /><KwantSelect value={draftChartSettings.precision} onChange={(event) => setDraftChartSettings((current) => ({ ...current, precision: event.target.value }))} className="w-full rounded-xl border border-border bg-surface px-3 py-2 text-[13px]"><option>Default</option><option>0</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></KwantSelect></section>
                   </>
                 )}
-                {settingsTab !== "Symbol" && <div className="text-[13px] text-muted">Settings for {settingsTab.toLowerCase()} will be available soon.</div>}
+                {settingsTab === "Scales and lines" && (
+                  <section className="space-y-3 rounded-xl border border-border bg-surface/40 p-3">
+                    <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted">Crosshair</h3>
+                    <label className="block">
+                      <span className="mb-1.5 flex items-center justify-between text-[12px] text-muted">
+                        <span>Thickness</span>
+                        <span className="font-mono text-foreground">{crosshairStyleDraft.width.toFixed(2)}px</span>
+                      </span>
+                      <input type="range" min={0.25} max={3} step={0.25} value={crosshairStyleDraft.width}
+                        onChange={(event) => updateCrosshairStyle({ width: Number(event.target.value) })}
+                        className="w-full accent-primary" aria-label="Crosshair thickness" />
+                    </label>
+                    <label className="block">
+                      <span className="mb-1.5 flex items-center justify-between text-[12px] text-muted">
+                        <span>Visibility</span>
+                        <span className="font-mono text-foreground">{Math.round(crosshairStyleDraft.opacity * 100)}%</span>
+                      </span>
+                      <input type="range" min={0.1} max={1} step={0.05} value={crosshairStyleDraft.opacity}
+                        onChange={(event) => updateCrosshairStyle({ opacity: Number(event.target.value) })}
+                        className="w-full accent-primary" aria-label="Crosshair visibility" />
+                    </label>
+                    <p className="text-[10px] leading-4 text-muted">Applies to every chart immediately. Thickness reaches a 0.25px hairline.</p>
+                  </section>
+                )}
+                {settingsTab === "Trading" && <div className="text-[13px] text-muted">Settings for trading will be available soon.</div>}
               </div>
             </div>
             <div className="flex items-center justify-between border-t border-border p-4">

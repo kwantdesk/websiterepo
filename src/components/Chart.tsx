@@ -328,6 +328,12 @@ import { fetchWorkspaceData, gexMapCacheKey, readWorkspaceData, writeWorkspaceDa
 import { hasRenderableGexMapSurface, type GexMapPanelPayload } from "@/lib/gexMap";
 import { buildOptionsDeltaSeries, optionsDeltaSourceForInstrument } from "@/lib/optionsDelta";
 import { detectCvdDivergence, sessionCvdPoints, type CvdCandleLike } from "@/lib/cvdDivergence";
+import { CROSSHAIR_STYLE_EVENT, DEFAULT_CROSSHAIR_STYLE, loadCrosshairStyle, normalizeCrosshairStyle, type CrosshairStyle } from "@/lib/crosshairStyle";
+
+// Toolbar pin state is shared by every chart so locking one toolbar keeps the
+// whole workspace's toolbars revealed, remembered across sessions.
+const TOOLBAR_PINNED_STORAGE_KEY = "kwantdesk:chart-toolbar-pinned:v1";
+const TOOLBAR_PINNED_EVENT = "kwantdesk:chart-toolbar-pinned-change";
 import { latestCompletedNewYorkSession, newYorkSessionTimestamp } from "@/lib/gexVueReplay";
 import { isZeroGammaLinePayload, paintZeroGammaLine, zeroGammaRootForInstrument, type ZeroGammaLinePayload } from "@/lib/zeroGammaLine";
 import { STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT } from "@/lib/volumeProfileMath";
@@ -2493,50 +2499,6 @@ function createId(prefix: string) {
 
 function drawingsStorageKey(instrument: string, chartInstanceId: string) {
   return `kwantdesk:chart-drawings:v1:${chartInstanceId}:${instrument}`;
-}
-
-// Crosshair styling is shared by every chart pane and adjusted from the
-// right-click menu: thickness down to a 0.25px hairline plus a visibility
-// level. Changes broadcast live so all open charts restyle together.
-const TOOLBAR_PINNED_STORAGE_KEY = "kwantdesk:chart-toolbar-pinned:v1";
-const TOOLBAR_PINNED_EVENT = "kwantdesk:chart-toolbar-pinned-change";
-
-const CROSSHAIR_STYLE_STORAGE_KEY = "kwantdesk:chart-crosshair-style:v1";
-const CROSSHAIR_STYLE_EVENT = "kwantdesk:crosshair-style-change";
-
-type CrosshairStyle = { width: number; opacity: number };
-
-const DEFAULT_CROSSHAIR_STYLE: CrosshairStyle = { width: 1, opacity: 1 };
-
-function normalizeCrosshairStyle(value: unknown): CrosshairStyle {
-  const parsed = value && typeof value === "object" ? value as Partial<CrosshairStyle> : {};
-  const width = Number(parsed.width);
-  const opacity = Number(parsed.opacity);
-  return {
-    width: Number.isFinite(width) ? Math.min(3, Math.max(0.25, width)) : DEFAULT_CROSSHAIR_STYLE.width,
-    opacity: Number.isFinite(opacity) ? Math.min(1, Math.max(0.1, opacity)) : DEFAULT_CROSSHAIR_STYLE.opacity,
-  };
-}
-
-function loadCrosshairStyle(): CrosshairStyle {
-  if (typeof window === "undefined") return { ...DEFAULT_CROSSHAIR_STYLE };
-  try {
-    return normalizeCrosshairStyle(JSON.parse(window.localStorage.getItem(CROSSHAIR_STYLE_STORAGE_KEY) ?? "null"));
-  } catch {
-    return { ...DEFAULT_CROSSHAIR_STYLE };
-  }
-}
-
-function saveCrosshairStyle(style: CrosshairStyle) {
-  if (typeof window === "undefined") return;
-  const normalized = normalizeCrosshairStyle(style);
-  try {
-    window.localStorage.setItem(CROSSHAIR_STYLE_STORAGE_KEY, JSON.stringify(normalized));
-  } catch {
-    // The style still applies this session without storage.
-  }
-  window.dispatchEvent(new CustomEvent(CROSSHAIR_STYLE_EVENT, { detail: normalized }));
-  window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
 }
 
 // Canvas colours cannot use color-mix; derive a real rgba with the requested
@@ -15688,46 +15650,6 @@ function Chart({
             <span className="flex-1 text-left">Reset chart view</span>
             <span className="text-[11px] text-muted">Alt+R</span>
           </button>
-          <div className="my-1 border-t border-border" />
-          <div className="px-4 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">Crosshair</div>
-          <div className="px-4 py-1.5" onMouseDown={(event) => event.stopPropagation()}>
-            <div className="flex items-center justify-between text-[11px] text-muted">
-              <span>Thickness</span>
-              <span className="font-mono text-foreground">{crosshairStyle.width.toFixed(2)}px</span>
-            </div>
-            <input
-              type="range"
-              min={0.25}
-              max={3}
-              step={0.25}
-              value={crosshairStyle.width}
-              onChange={(event) => {
-                const next = normalizeCrosshairStyle({ ...crosshairStyle, width: Number(event.target.value) });
-                setCrosshairStyle(next);
-                saveCrosshairStyle(next);
-              }}
-              className="w-full accent-primary"
-              aria-label="Crosshair thickness"
-            />
-            <div className="mt-2 flex items-center justify-between text-[11px] text-muted">
-              <span>Visibility</span>
-              <span className="font-mono text-foreground">{Math.round(crosshairStyle.opacity * 100)}%</span>
-            </div>
-            <input
-              type="range"
-              min={0.1}
-              max={1}
-              step={0.05}
-              value={crosshairStyle.opacity}
-              onChange={(event) => {
-                const next = normalizeCrosshairStyle({ ...crosshairStyle, opacity: Number(event.target.value) });
-                setCrosshairStyle(next);
-                saveCrosshairStyle(next);
-              }}
-              className="w-full accent-primary"
-              aria-label="Crosshair visibility"
-            />
-          </div>
           <button
             onMouseDown={(e) => {
               e.stopPropagation();
