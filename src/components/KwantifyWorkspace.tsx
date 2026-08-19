@@ -3,6 +3,7 @@
 import KwantSelect from "@/components/ui/KwantSelect";
 import TimeZoneSelect from "@/components/ui/TimeZoneSelect";
 import ChartIndicatorsControl from "@/components/ChartIndicatorsControl";
+import { createTvInstance, normalizeTvInstances, type TvIndicatorInstance } from "@/lib/tvIndicators";
 import KwantLoader from "@/components/KwantLoader";
 import ImpliedVolatilityRankIcon from "@/components/icons/ImpliedVolatilityRankIcon";
 import LiveGexPanelBoundary from "@/components/backtesting/LiveGexPanelBoundary";
@@ -964,6 +965,8 @@ const WORKSPACE_PRESETS_STORAGE_KEY = "kwantdesk-chart-workspace-presets";
 const ACTIVE_WORKSPACE_PRESET_STORAGE_KEY = "kwantdesk-chart-workspace-active-preset";
 const WORKSPACE_FLOATING_WINDOWS_STORAGE_KEY = "olisa-chart-workspace-floating-windows";
 const WORKSPACE_LAYOUT_LOCK_STORAGE_KEY = "olisa-chart-workspace-layout-locked-v2";
+const TV_INDICATORS_STORAGE_KEY = "kwantdesk:chart-tv-indicators:v1";
+const EMPTY_TV_INDICATOR_LIST: TvIndicatorInstance[] = [];
 const CHART_TEMPLATES_STORAGE_KEY = "olisa-chart-templates";
 const CHART_WORKSPACE_SETTINGS_STORAGE_KEY = "kwantdesk:chart-workspace-settings:v1";
 type ChartWorkspaceScope = "charts" | "gamma";
@@ -4630,6 +4633,9 @@ function WorkspaceChartPaneComponent({
   onQuickToggleIndicator,
   onOpenIndicatorLibrary,
   onOpenIndicatorSettings,
+  tvIndicators,
+  onAddTvIndicator,
+  onUpdateTvIndicator,
   onSelectTimeframe,
   onDetach,
   detachDisabled,
@@ -4681,6 +4687,9 @@ function WorkspaceChartPaneComponent({
   onQuickToggleIndicator: (indicatorId: string) => void;
   onOpenIndicatorLibrary: () => void;
   onOpenIndicatorSettings: (instanceId: string) => void;
+  tvIndicators: TvIndicatorInstance[];
+  onAddTvIndicator: (specId: string) => void;
+  onUpdateTvIndicator: (instance: TvIndicatorInstance) => void;
   onSelectPeriod: (period: string) => void;
   onSelectTimeframe: (timeframe: string) => boolean;
   onDetach?: () => void;
@@ -7567,6 +7576,9 @@ function WorkspaceChartPaneComponent({
           onQuickToggleIndicator={onQuickToggleIndicator}
           onOpenIndicatorLibrary={onOpenIndicatorLibrary}
           onOpenIndicatorSettings={onOpenIndicatorSettings}
+          tvIndicators={tvIndicators}
+          onAddTvIndicator={onAddTvIndicator}
+          onUpdateTvIndicator={onUpdateTvIndicator}
           toolbarEnabled
           chartDragEnabled={chartDragEnabled}
           onChartDragStart={onChartDragStart}
@@ -8480,6 +8492,48 @@ export default function KwantifyWorkspace({
   const [paneLevelVisibility, setPaneLevelVisibility] = useState<Record<string, PaneLevelVisibility>>(
     initialChartWorkspaceRuntime.levelVisibility,
   );
+  // TradingView-identical studies per pane. Stored separately from the legacy
+  // indicator engine so the two subsystems never collide, and synced to the
+  // account through the tracked preferences key below.
+  const [paneTvIndicators, setPaneTvIndicators] = useState<Record<string, TvIndicatorInstance[]>>({});
+  const paneTvHydratedRef = useRef(false);
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(TV_INDICATORS_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Record<string, unknown>;
+        const next: Record<string, TvIndicatorInstance[]> = {};
+        for (const [paneId, value] of Object.entries(parsed ?? {})) {
+          const instances = normalizeTvInstances(value);
+          if (instances.length) next[paneId] = instances;
+        }
+        setPaneTvIndicators(next);
+      }
+    } catch {
+      // A missing/corrupt store simply starts with no TradingView studies.
+    }
+    paneTvHydratedRef.current = true;
+  }, []);
+  useEffect(() => {
+    if (!paneTvHydratedRef.current) return;
+    try {
+      window.localStorage.setItem(TV_INDICATORS_STORAGE_KEY, JSON.stringify(paneTvIndicators));
+      window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
+    } catch {
+      // The studies still apply this session without persistence.
+    }
+  }, [paneTvIndicators]);
+  const addTvIndicatorToPane = useCallback((paneId: string, specId: string) => {
+    const instance = createTvInstance(specId);
+    if (!instance) return;
+    setPaneTvIndicators((current) => ({ ...current, [paneId]: [...(current[paneId] ?? []), instance] }));
+  }, []);
+  const updateTvIndicatorInPane = useCallback((paneId: string, instance: TvIndicatorInstance) => {
+    setPaneTvIndicators((current) => ({
+      ...current,
+      [paneId]: (current[paneId] ?? []).map((existing) => existing.instanceId === instance.instanceId ? instance : existing),
+    }));
+  }, []);
   const [liveGexSnapshot, setLiveGexSnapshot] = useState<ChartGammaLevelsPayload | null>(null);
   const [liveGexLoading, setLiveGexLoading] = useState(false);
   const [liveGexError, setLiveGexError] = useState("");
@@ -15230,6 +15284,9 @@ export default function KwantifyWorkspace({
           activateWorkspacePane(pane.id);
           setIndicatorSettingsOpenRequest({ paneId: pane.id, instanceId, requestId: Date.now() });
         }}
+        tvIndicators={paneTvIndicators[pane.id] ?? EMPTY_TV_INDICATOR_LIST}
+        onAddTvIndicator={(specId) => addTvIndicatorToPane(pane.id, specId)}
+        onUpdateTvIndicator={(instance) => updateTvIndicatorInPane(pane.id, instance)}
         onSelectPeriod={(period) => handleChartPeriod(pane.id, period)}
         onSelectTimeframe={(timeframe) => selectWorkspacePaneTimeframe(pane.id, timeframe)}
         chartDragEnabled={!floating && !paneMoveLocked && visibleWorkspacePaneIds.length > 1}

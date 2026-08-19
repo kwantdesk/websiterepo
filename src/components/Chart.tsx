@@ -331,11 +331,15 @@ import { buildOptionsDeltaSeries, optionsDeltaSourceForInstrument } from "@/lib/
 import { isMarketIndexSymbol } from "@/lib/marketIndices";
 import { detectCvdDivergence, sessionCvdPoints, type CvdCandleLike } from "@/lib/cvdDivergence";
 import ChartTopToolbar from "@/components/ChartTopToolbar";
+import type { ISeriesApi } from "lightweight-charts";
+import { TV_SPEC_BY_ID, type TvIndicatorInstance } from "@/lib/tvIndicators";
+import TvIndicatorSettings from "@/components/TvIndicatorSettings";
 import { CROSSHAIR_STYLE_EVENT, DEFAULT_CROSSHAIR_STYLE, loadCrosshairStyle, normalizeCrosshairStyle, type CrosshairStyle } from "@/lib/crosshairStyle";
 
 // Toolbar pin state is PER CHART: locking one pane's toolbar leaves every
 // other pane alone, and each pane remembers its own pin across sessions.
 const TOOLBAR_PINNED_STORAGE_KEY = "kwantdesk:chart-toolbar-pinned:v1";
+const EMPTY_TV_INDICATORS: TvIndicatorInstance[] = [];
 import { latestCompletedNewYorkSession, newYorkSessionTimestamp } from "@/lib/gexVueReplay";
 import { isZeroGammaLinePayload, paintZeroGammaLine, zeroGammaRootForInstrument, type ZeroGammaLinePayload } from "@/lib/zeroGammaLine";
 import { STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT } from "@/lib/volumeProfileMath";
@@ -485,6 +489,9 @@ interface ChartProps {
   onOpenIndicatorSettings?: (instanceId: string) => void;
   onQuickToggleIndicator?: (indicatorId: string) => void;
   onOpenIndicatorLibrary?: () => void;
+  tvIndicators?: TvIndicatorInstance[];
+  onAddTvIndicator?: (specId: string) => void;
+  onUpdateTvIndicator?: (instance: TvIndicatorInstance) => void;
   settings?: ChartSettings;
   toolbarEnabled?: boolean;
   chartDragEnabled?: boolean;
@@ -2883,6 +2890,9 @@ function Chart({
   onOpenIndicatorSettings,
   onQuickToggleIndicator,
   onOpenIndicatorLibrary,
+  tvIndicators = EMPTY_TV_INDICATORS,
+  onAddTvIndicator,
+  onUpdateTvIndicator,
   settings = defaultChartSettings,
   toolbarEnabled = true,
   gammaLevelsEnabled = false,
@@ -2946,6 +2956,9 @@ function Chart({
       applyOptions: (options: Record<string, unknown>) => void;
     };
   }>>([]);
+  // TradingView-identical overlay studies keep their own series pool, fully
+  // separate from the legacy indicator engine above.
+  const tvSeriesRef = useRef<Map<string, ISeriesApi<"Line">>>(new Map());
   const backgroundLevelsRef = useRef<ChartLevel[]>([]);
   const backgroundZonesRef = useRef<ChartZone[]>([]);
   const gameplanUnderlayRef = useRef<GameplanUnderlayPrimitive | null>(null);
@@ -3130,6 +3143,7 @@ function Chart({
       return next;
     });
   }, [toolbarPinnedStorageKey]);
+  const [tvSettingsInstanceId, setTvSettingsInstanceId] = useState<string | null>(null);
   const [crosshairStyle, setCrosshairStyle] = useState<CrosshairStyle>(() => ({ ...DEFAULT_CROSSHAIR_STYLE }));
   useEffect(() => {
     setCrosshairStyle(loadCrosshairStyle());
@@ -12393,6 +12407,58 @@ function Chart({
     });
   }, [calculatedIndicatorSeries, chartReadyRevision]);
 
+  // TradingView-identical overlay studies: compute each instance from the
+  // chart candles and paint it as its own line series on the main price
+  // scale, mapping study time to the chart's event-time axis so overlays sit
+  // exactly on the candles. Oscillator (separate-pane) studies are handled in
+  // a later stage; only overlay specs render here.
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    const pool = tvSeriesRef.current;
+    const activeKeys = new Set<string>();
+    const chartTimeFor = (sourceSeconds: number) =>
+      (eventChartTimeBySourceTimeRef.current.get(sourceSeconds * 1000) ?? sourceSeconds) as Time;
+
+    for (const instance of tvIndicators) {
+      const spec = TV_SPEC_BY_ID.get(instance.specId);
+      if (!spec || !spec.overlay) continue;
+      let computed;
+      try {
+        computed = spec.compute(drawingCandlesRef.current, instance.inputs);
+      } catch {
+        continue;
+      }
+      for (const plot of computed.plots) {
+        const style = instance.style[plot.key] ?? { color: "#2962FF", width: 2, visible: true };
+        const key = `${instance.instanceId}:${plot.key}`;
+        activeKeys.add(key);
+        let series = pool.get(key);
+        if (!series) {
+          series = chart.addLineSeries({
+            priceScaleId: "right",
+            lastValueVisible: false,
+            priceLineVisible: false,
+            crosshairMarkerVisible: false,
+          });
+          pool.set(key, series);
+        }
+        series.applyOptions({
+          color: style.color,
+          lineWidth: Math.max(1, Math.min(4, Math.round(style.width))) as 1 | 2 | 3 | 4,
+          visible: style.visible !== false,
+        });
+        series.setData(plot.data.map((point) => ({ time: chartTimeFor(point.time), value: point.value })));
+      }
+    }
+
+    for (const [key, series] of [...pool.entries()]) {
+      if (activeKeys.has(key)) continue;
+      try { chart.removeSeries(series as never); } catch { /* chart disposed */ }
+      pool.delete(key);
+    }
+  }, [tvIndicators, chartReadyRevision, viewportVersion]);
+
   useEffect(() => {
     const series = candleSeriesRef.current;
     if (!series) return;
@@ -13034,12 +13100,19 @@ function Chart({
       >
       {toolbarEnabled && onQuickToggleIndicator && onOpenIndicatorLibrary ? (
         <ChartTopToolbar
-          indicators={indicators}
-          onToggle={onQuickToggleIndicator}
-          onOpenSettings={(instanceId) => openIndicatorSettingsRef.current?.(instanceId)}
+          legacyIndicators={indicators}
+          tvIndicators={tvIndicators}
+          onAddTv={(specId) => onAddTvIndicator?.(specId)}
+          onOpenTvSettings={(instanceId) => setTvSettingsInstanceId(instanceId)}
+          onToggleLegacy={onQuickToggleIndicator}
           onOpenLibrary={onOpenIndicatorLibrary}
         />
       ) : null}
+      <TvIndicatorSettings
+        instance={tvIndicators.find((instance) => instance.instanceId === tvSettingsInstanceId) ?? null}
+        onChange={(next) => onUpdateTvIndicator?.(next)}
+        onClose={() => setTvSettingsInstanceId(null)}
+      />
       {!chartVisualReady ? (
         <div className="pointer-events-auto absolute inset-0 z-[90]" style={{ backgroundColor: settings.backgroundColor }}>
           <KwantLoader
