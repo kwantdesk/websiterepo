@@ -277,6 +277,7 @@ import {
   cmeSessionStartMs,
   cmeChartTailNeedsReconciliation,
   compressCmeClosedSessionCandles,
+  compressNewYorkClosedSessionCandles,
   DEFAULT_CHART_HISTORY_CALENDAR_DAYS,
   hasMinimumChartHistory,
   trimToRecentChartSessions,
@@ -4685,8 +4686,10 @@ function WorkspaceChartPaneComponent({
   const gammaInstrument = displayCmeSymbol(pane.symbol);
   const [candles, setCandles] = useState<Candle[]>([]);
   const plottedCandles = useMemo(
-    () => compressCmeClosedSessionCandles(candles, pane.timeframe),
-    [candles, pane.timeframe],
+    () => (pane.broker === "Market Index"
+      ? compressNewYorkClosedSessionCandles(candles, pane.timeframe)
+      : compressCmeClosedSessionCandles(candles, pane.timeframe)),
+    [candles, pane.broker, pane.timeframe],
   );
   // The replay clock ticks every 200ms, but the revealed candle set only
   // changes when the clock crosses a bar boundary. Deriving a count first and
@@ -12953,11 +12956,6 @@ export default function KwantifyWorkspace({
       pane.id === paneId ? { ...pane, locked } : pane));
   };
 
-  const toggleWorkspacePaneLock = (paneId: string) => {
-    setWorkspacePanes((current) => current.map((pane) =>
-      pane.id === paneId ? { ...pane, locked: !pane.locked } : pane));
-  };
-
   const toggleSharedViewportConnection = (paneId: string) => {
     const syncGroup = viewportSyncGroupForScope(chartWorkspaceScopeRef.current);
     const pane = workspacePanes.find((candidate) => candidate.id === paneId);
@@ -14890,7 +14888,10 @@ export default function KwantifyWorkspace({
   function renderWorkspacePane(paneId: string, floating = false) {
     const pane = workspacePanes.find((candidate) => candidate.id === paneId)
       ?? activeWorkspacePane;
-    const paneMoveLocked = workspaceLocked || pane.locked;
+    // Per-pane lock buttons were removed: the workspace lock is the single
+    // control. Saved panes may still carry locked:true; ignoring it here
+    // keeps them movable instead of stuck with no way to unlock.
+    const paneMoveLocked = workspaceLocked;
     if (pane.content === null) return renderWorkspacePanelPicker(pane);
     if (!isWorkspaceChartKind(pane.content)) {
       const option = ALL_WORKSPACE_PANEL_OPTIONS.find((candidate) => candidate.id === pane.content);
@@ -14917,15 +14918,6 @@ export default function KwantifyWorkspace({
             </button>
             {!floating ? (
               <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => toggleWorkspacePaneLock(pane.id)}
-                  className={`flex h-7 w-7 items-center justify-center rounded-lg transition-colors ${pane.locked ? "bg-primary/10 text-primary" : "text-muted hover:bg-surface hover:text-primary"}`}
-                  title={pane.locked ? "Unlock this panel" : "Lock this panel in place"}
-                  aria-label={pane.locked ? "Unlock this panel" : "Lock this panel"}
-                >
-                  {pane.locked ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
-                </button>
                 {hasStandaloneWorkspaceSettings(pane) ? (
                   <button
                     type="button"
@@ -15065,15 +15057,6 @@ export default function KwantifyWorkspace({
             <ChevronDown className="h-3 w-3 shrink-0 text-muted" />
           </button>
           <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={() => toggleWorkspacePaneLock(pane.id)}
-              className={`flex h-7 w-7 items-center justify-center rounded-lg transition-colors ${pane.locked ? "bg-primary/10 text-primary" : "text-muted hover:bg-surface hover:text-primary"}`}
-              title={pane.locked ? "Unlock this chart" : "Lock this chart in place"}
-              aria-label={pane.locked ? "Unlock this chart" : "Lock this chart"}
-            >
-              {pane.locked ? <Lock className="h-3.5 w-3.5" /> : <Unlock className="h-3.5 w-3.5" />}
-            </button>
             {isWorkspaceChartKind(pane.content) ? (
               <button
                 type="button"
