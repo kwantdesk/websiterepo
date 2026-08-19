@@ -795,3 +795,20 @@ Per task: eslint on changed files (heap-bumped for Chart/KwantifyWorkspace), `np
 
 ### Worktree state
 `?? ALGO/`, `?? gexcal-*.png/tmp`, `M/?? tmp/pdfs/*` (other workstream) — no uncommitted engineering work.
+
+## Temporary engineering log — 2026-08-19 (9-task autonomous run)
+
+### Completed (one commit per task, all pushed)
+1+2 (duplicate items). `9410336b` toolbar pin is now PER CHART: key `kwantdesk:chart-toolbar-pinned:v1:<paneId>`, legacy global key seeds unchosen panes, prefix tracked for account sync; the cross-chart broadcast event removed. 3. `620a184c` candle-backed volume profiles on options tickers: revived the dormant `buildChartVolumeProfile` (provider "Chart", neutral delta, honest source text), new `isCandleBackedVolumeProfile` guard accepted by Chart.tsx + the profile primitive, and a market-index-pane effect building per-NY-date daily + weekly profiles from real provider bar volume (SPY/QQQ...). SPX/NDX/VIX and delta-labelled profile variants stay honestly absent. The execution-only guard is untouched. 4. `dcae759e` hovering the left toolbar no longer trips chart hover hit-tests underneath (pointer/mouse-move propagation stopped at the toolbar root; open bounce-level popups close on toolbar enter). 5. `60395420` GEX Map price lock: zoom changes ladder content height without resizing the scroll container, so no ResizeObserver fired and locked panels drifted out of frame — recenter effect on ladderZoom + priceLocked; engaging the lock always snaps price to centre. 6. `e7da4349` star settings: verified LIVE on production that sliders/checkboxes/persistence work (13→25 highlighted rows on slider change); real defects fixed — native Windows `<select>` replaced with the site's GexMapDropdown, portaled menu z bumped to 280 with a dialog outside-close whitelist (`data-gex-map-dropdown-menu`), and `kwantdesk:gex-map:star-preferences:v1` added to account sync. 7. `59765aba` "Load range" (1D/5D/1W/1M/3M/6M/1Y/All, standard 5D) added to the top of the interval picker, wired to handleChartPeriod for the active pane. 8. `1c5f72bb` GEX Map views moved into settings: `GexMapViewMode` is now full | ninja | star (raw→full, legacy star→star via `normalizeGexMapViewMode`); header Raw/Star toggle removed; default view = star (only the Star node highlighted; ninja = old structural view; full = old raw); Shift+V cycles all three. New `valueMode` (signed | star-percent) changes ONLY the numbers (right-side values + showRawValues text) to % of Star magnitude; the value heading renders directly above the spot price in each panel header and drives the column label. 9. `39c48dc6` GEX Vue watchlist froze because the live stream only runs for the ACTIVE pane's broker (Market Index panes → no CME stream; the effect bailed at `activeChartBrokerLabel === "Market Index"`); a bounded companion `/api/databento/live` EventSource now runs whenever the active feed is index-based and Databento symbols exist in the watchlist/panes, painting rows via `publishLiveWatchlistQuote`.
+
+### Verification
+Per task: eslint on changed files (heap-bumped for Chart/KwantifyWorkspace), `npx tsc --noEmit`, `npm run build`, plus `test:gex-map-star` for GEX Map changes — green before each push. Task 6 additionally verified live on production through the owner's Chrome session.
+
+### Remaining risks
+- Candle profiles on SPY/QQQ not yet visually inspected live; bin size is range/140 auto — owner may want grouping controls later.
+- The companion watchlist stream duplicates the main stream when the user quickly switches between brokers (both effects re-run; each closes on cleanup so no leak, but watch for double ticks during transitions).
+- GEX Map legacy stored viewMode "star" now loads as the NEW star (only Star highlighted) — owners wanting the old star view pick Ninja in settings.
+- Deployment-pinned tabs: hard reload before checking.
+
+### Worktree state
+`?? ALGO/`, `?? gexcal-*.png/tmp`, `M/?? tmp/pdfs/*` (other workstream) — no uncommitted engineering work.
