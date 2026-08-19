@@ -223,7 +223,14 @@ function buildSnapshots(payload: GexMapPanelPayload, timestamp: number | null, s
       ? payload.latestStrikes
       : latestGexMapStrikesFromFrames(payload.frames);
     const current = new Map(latestStrikes.map((row) => [row.strike, row]));
-    const previousTarget = Date.parse(payload.asOf) - stepMinutes * 60_000;
+    // The comparison window anchors on the NEWEST RECORDED FRAME, not asOf:
+    // after the session, asOf keeps drifting past the final frame, which made
+    // every step selection collapse onto the same stale comparison. Anchored
+    // here, 1m/2m/5m/10m each measure exactly that much recorded change.
+    const lastFrameMs = payload.frames.length
+      ? payload.frames[payload.frames.length - 1].timestamp
+      : Date.parse(payload.asOf);
+    const previousTarget = lastFrameMs - stepMinutes * 60_000;
     const previous = new Map<number, ExposureStrike>();
     for (const frame of payload.frames) {
       if (frame.timestamp > previousTarget) break;
@@ -582,7 +589,12 @@ function ExposurePanel({
   const tones = gexMapPaletteTones(palette);
   const signedScale = useMemo(() => gexMapSignedScale(palette), [palette]);
   const rows = useMemo(
-    () => [...current.values()].sort((a, b) => b.strike - a.strike),
+    // Strikes with zero call AND zero put exposure carry no positioning at
+    // all — the provider lists them merely because the strike exists on the
+    // exchange. They are noise on the ladder and are dropped entirely.
+    () => [...current.values()]
+      .filter((row) => row.call !== 0 || row.put !== 0)
+      .sort((a, b) => b.strike - a.strike),
     [current],
   );
   // `rows` is the complete reconstructed/filtered strike surface, not the
@@ -800,7 +812,7 @@ function ExposurePanel({
   return (
     <section ref={panelRef} className="gex-map-exposure-panel flex min-h-[250px] min-w-0 flex-col overflow-hidden rounded-xl border border-border bg-panel">
       <div className="sticky top-0 z-20 shrink-0 border-b border-border bg-panel/95 px-3 py-2.5 shadow-[0_8px_18px_rgba(0,0,0,0.16)] backdrop-blur-xl">
-        <div className="flex min-w-0 items-center gap-2">
+        <div className="gex-map-panel-controls flex min-w-0 items-center gap-2">
           <GexMapDropdown
             ariaLabel={`${config.id} panel instrument`}
             value={config.symbol}
@@ -845,11 +857,13 @@ function ExposurePanel({
             </button>
           ) : null}
         </div>
-        <div className="mt-2 flex items-center gap-2 text-[9px] text-muted">
+        <div className="gex-map-panel-meta mt-2 flex items-center gap-2 text-[9px] text-muted">
           <span className={`h-1.5 w-1.5 rounded-full ${payload?.status === "LIVE" ? "animate-pulse bg-primary" : "bg-muted"}`} />
-          <span>{greek.label}</span>
+          <span className="gex-map-meta-full whitespace-nowrap">{greek.label}</span>
+          <span className="gex-map-meta-short whitespace-nowrap">{greek.short}</span>
           <span className="text-border">•</span>
-          <span>{payload ? `Exp ${payload.expiration}` : "Loading expiry"}</span>
+          <span className="gex-map-meta-full whitespace-nowrap">{payload ? `Exp ${payload.expiration}` : "Loading expiry"}</span>
+          <span className="gex-map-meta-short whitespace-nowrap">{payload ? payload.expiration.slice(5) : "…"}</span>
           {starNode ? (
             <button
               type="button"

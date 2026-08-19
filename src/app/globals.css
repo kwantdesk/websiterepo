@@ -1713,6 +1713,44 @@ body.kwant-cockpit-ui canvas {
   }
 }
 
+/* Each exposure column is its own container so the compact rules below react
+   to the COLUMN's width, not the whole workspace — three columns squeezed
+   into a small pane each tidy themselves up independently. */
+.gex-map-exposure-panel {
+  container-type: inline-size;
+}
+
+.gex-map-meta-short {
+  display: none;
+}
+
+@container (max-width: 320px) {
+  .gex-map-exposure-panel .gex-map-panel-meta,
+  .gex-map-exposure-panel .gex-map-panel-controls {
+    gap: 4px;
+  }
+
+  .gex-map-meta-full {
+    display: none;
+  }
+
+  .gex-map-meta-short {
+    display: inline;
+  }
+
+  .gex-map-panel-spot div:first-child {
+    font-size: 10px;
+  }
+
+  .gex-map-panel-spot div:last-child {
+    font-size: 8px;
+  }
+
+  .gex-map-dropdown {
+    padding-inline: 5px;
+  }
+}
+
 @container (max-width: 235px) {
   .gex-map-panel-spot,
   .gex-map-change-column {
