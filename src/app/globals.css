@@ -314,20 +314,6 @@ html[data-theme-updating="true"] *::after {
   box-shadow: none;
 }
 
-.gex-star-header {
-  border-color: var(--gex-star-outline);
-  color: var(--gex-star-text);
-  background: var(--gex-star-accent);
-  text-shadow: none;
-  box-shadow:
-    0 0 0 1px var(--gex-star-accent),
-    0 0 9px color-mix(in srgb, var(--gex-star-accent) 30%, transparent);
-}
-
-.gex-star-header:focus-visible {
-  --tw-ring-color: var(--gex-star-accent);
-}
-
 @media (prefers-reduced-motion: reduce) {
   .gex-current-price-marker,
   .gex-current-price-dash {
@@ -1729,10 +1715,6 @@ body.kwant-cockpit-ui canvas {
   container-type: inline-size;
 }
 
-.gex-map-meta-short {
-  display: none;
-}
-
 /* The change column compresses before it disappears; it must clip rather
    than bleed into the signed-exposure cell. */
 .gex-map-change-column {
@@ -1740,17 +1722,8 @@ body.kwant-cockpit-ui canvas {
 }
 
 @container (max-width: 320px) {
-  .gex-map-exposure-panel .gex-map-panel-meta,
   .gex-map-exposure-panel .gex-map-panel-controls {
     gap: 4px;
-  }
-
-  .gex-map-meta-full {
-    display: none;
-  }
-
-  .gex-map-meta-short {
-    display: inline;
   }
 
   .gex-map-panel-spot div:first-child {

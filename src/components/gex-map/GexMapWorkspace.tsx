@@ -625,7 +625,6 @@ function ExposurePanel({
   const starNode = useMemo(() => selectGexMapStarNode(rows), [rows]);
   const starModel = useMemo(() => deriveGexMapStarModel({ rows, previous, spot, settings: starSettings }), [previous, rows, spot, starSettings]);
   const starRows = useMemo(() => new Map(starModel.rows.map((row) => [row.strike, row])), [starModel.rows]);
-  const focusedStar = starModel.starStrike === null ? null : starRows.get(starModel.starStrike) ?? null;
   const maxHighlightedControl = Math.max(0.001, ...starModel.rows.filter((row) => row.isHighlighted).map((row) => row.mapControlPct));
   const airPocketStarts = useMemo(() => new Set(starModel.airPockets.map((pocket) => pocket.fromStrike)), [starModel.airPockets]);
   const spotStrike = spot === null || !rows.length
@@ -672,7 +671,6 @@ function ExposurePanel({
     const shrinking = entries.filter((entry) => entry.pct < 0).sort((a, b) => a.pct - b.pct).slice(0, 8);
     return new Set([...growing, ...shrinking].map((entry) => entry.strike));
   }, [previous, rows]);
-  const net = rows.reduce((sum, row) => sum + row.net, 0);
   const greek = GEX_MAP_GREEKS.find((item) => item.mode === config.greekMode) ?? GEX_MAP_GREEKS[0];
   const viewIdentity = `${config.symbol}:${config.greekMode}:${payload?.expiration ?? "pending"}:${payload?.sessionDate ?? "pending"}`;
   const centeringIdentity = `${viewIdentity}:${selectedTimestamp ?? "live"}:${spotStrike ?? "pending"}`;
@@ -713,24 +711,6 @@ function ExposurePanel({
       && paintedTargetRect.top < paintedContainerRect.bottom;
   }, []);
 
-  const centerStarStrike = useCallback(() => {
-    const container = scrollRef.current;
-    const ladder = ladderRef.current;
-    const target = ladder?.querySelector<HTMLElement>("[data-star-node='true']");
-    if (!container || !target || container.clientHeight <= 0) return;
-
-    const maximumScroll = Math.max(0, container.scrollHeight - container.clientHeight);
-    const containerRect = container.getBoundingClientRect();
-    const targetRect = target.getBoundingClientRect();
-    const targetCenterInContent = targetRect.top - containerRect.top
-      + container.scrollTop
-      + targetRect.height / 2;
-    const nextScroll = Math.max(0, Math.min(
-      maximumScroll,
-      targetCenterInContent - container.clientHeight / 2,
-    ));
-    container.scrollTo({ top: nextScroll, behavior: "smooth" });
-  }, []);
 
   useLayoutEffect(() => {
     const host = panelRef.current;
@@ -885,40 +865,6 @@ function ExposurePanel({
               <X className="h-3 w-3" />
             </button>
           ) : null}
-        </div>
-        <div className="gex-map-panel-meta mt-2 flex items-center gap-2 text-[9px] text-muted">
-          <span className={`h-1.5 w-1.5 rounded-full ${payload?.status === "LIVE" ? "animate-pulse bg-primary" : "bg-muted"}`} />
-          <span className="gex-map-meta-full whitespace-nowrap">{greek.label}</span>
-          <span className="gex-map-meta-short whitespace-nowrap">{greek.short}</span>
-          <span className="text-border">•</span>
-          <span className="gex-map-meta-full whitespace-nowrap">{payload ? `Exp ${payload.expiration}` : "Loading expiry"}</span>
-          <span className="gex-map-meta-short whitespace-nowrap">{payload ? payload.expiration.slice(5) : "…"}</span>
-          {starNode ? (
-            <button
-              type="button"
-              onClick={() => {
-                setFollowingSpot(false);
-                window.requestAnimationFrame(centerStarStrike);
-              }}
-              className="gex-star-header ml-auto flex min-w-0 items-center gap-1 border px-1.5 py-0.5 font-mono text-[8px] font-bold tracking-[0.06em] transition hover:brightness-110 focus-visible:outline-none focus-visible:ring-1"
-              style={{
-                "--gex-star-accent": starPalette.accent,
-                "--gex-star-text": starPalette.text,
-                "--gex-star-outline": starPalette.outline,
-              } as CSSProperties}
-              title={viewMode === "star" && focusedStar
-                ? `Raw ${formatCompact(focusedStar.net)} · ${focusedStar.polarity} exposure · click to centre the Star node`
-                : "Scroll to the Star Node"}
-            >
-              <Star className="h-2.5 w-2.5 shrink-0" fill="currentColor" />
-              <span className="truncate">
-                {viewMode === "star" && focusedStar
-                  ? `STAR ${focusedStar.strike.toLocaleString("en-US", { maximumFractionDigits: 2 })} · ${formatMapControl(focusedStar.mapControlPct)} · ${formatMagnitudeVelocity(focusedStar, stepMinutes)}`
-                  : `STAR ${starNode.strike.toLocaleString("en-US", { maximumFractionDigits: 2 })} · ${formatCompact(starNode.net)}`}
-              </span>
-            </button>
-          ) : null}
-          <span className={`font-mono ${starNode ? "" : "ml-auto"} ${net >= 0 ? "text-primary" : "text-danger"}`}>Net {formatCompact(net)}</span>
         </div>
       </div>
 
