@@ -230,12 +230,12 @@ function heatColor(
   strength: number,
   scale: string[] = THEME_SIGNED_SCALE,
 ) {
-  if (Math.abs(value) < Number.EPSILON) return "var(--surface)";
-  // The ten user-set colours are anchors on one continuous sequential scale.
-  // `strength` is the row's linear position in the panel's signed exposure
-  // range; the colour interpolates smoothly between the two neighbouring
-  // anchors and paints SOLID — the reference-map look where the noise floor
-  // shares one quiet colour and only the extremes climb to the end colours.
+  // The ten user-set colours are anchors on one continuous scale with zero
+  // pinned to its middle. `strength` is the row's per-side linear position;
+  // the colour interpolates smoothly between the two neighbouring anchors and
+  // paints SOLID — the reference-map look where the noise floor (zero rows
+  // included: zero is average, never the dark extreme) shares the quiet
+  // middle colours and only the extremes climb to the end colours.
   const bounded = Math.min(1, Math.max(0, strength));
   const position = bounded * (scale.length - 1);
   const lower = Math.min(scale.length - 1, Math.floor(position));
@@ -557,26 +557,26 @@ function ExposurePanel({
   const spotStrike = spot === null || !rows.length
     ? null
     : rows.reduce((best, row) => Math.abs(row.strike - spot) < Math.abs(best.strike - spot) ? row : best).strike;
-  // Colour position is LINEAR over the panel's signed exposure range, exactly
-  // like the reference map: t = (net − min) / (max − min). Most strikes sit
-  // within a few percent of the range, so the noise collapses into one quiet
-  // colour, structural rows visibly jump bands, and only the panel's extreme
-  // reaches the scale's end colour. Log scaling was deliberately removed —
-  // it spread the noise across the ramp and erased that separation.
+  // Zero exposure is neutral, so it is pinned to the exact middle of the
+  // colour scale — never the dark end. Each sign side then runs LINEARLY to
+  // its own extreme: the biggest negative alone reaches the darkest colour,
+  // the biggest positive alone reaches the lightest, and the near-zero noise
+  // floor shares the quiet middle colours regardless of which side dominates
+  // the panel. Linear per side keeps the reference look: noise in one colour,
+  // structural rows jumping bands, extremes unmistakable.
   const heatRange = useMemo(() => {
-    if (!rows.length) return { min: 0, span: 1 };
-    let min = Number.POSITIVE_INFINITY;
-    let max = Number.NEGATIVE_INFINITY;
+    let maxPositive = 0;
+    let maxNegative = 0;
     for (const row of rows) {
-      if (row.net < min) min = row.net;
-      if (row.net > max) max = row.net;
+      if (row.net > maxPositive) maxPositive = row.net;
+      if (-row.net > maxNegative) maxNegative = -row.net;
     }
-    return { min, span: Math.max(1, max - min) };
+    return { maxPositive: Math.max(1, maxPositive), maxNegative: Math.max(1, maxNegative) };
   }, [rows]);
-  const heatStrength = useCallback(
-    (net: number) => Math.min(1, Math.max(0, (net - heatRange.min) / heatRange.span)),
-    [heatRange],
-  );
+  const heatStrength = useCallback((net: number) => {
+    if (net >= 0) return 0.5 + 0.5 * Math.min(1, net / heatRange.maxPositive);
+    return 0.5 - 0.5 * Math.min(1, -net / heatRange.maxNegative);
+  }, [heatRange]);
   const net = rows.reduce((sum, row) => sum + row.net, 0);
   const greek = GEX_MAP_GREEKS.find((item) => item.mode === config.greekMode) ?? GEX_MAP_GREEKS[0];
   const viewIdentity = `${config.symbol}:${config.greekMode}:${payload?.expiration ?? "pending"}:${payload?.sessionDate ?? "pending"}`;
@@ -1056,8 +1056,9 @@ function ExposurePanel({
       <div className="border-t border-border bg-panel px-3 py-2">
         <div className="h-1.5 rounded-full" style={{ background: `linear-gradient(90deg, ${signedScale.join(", ")})` }} />
         <div className="mt-1 flex justify-between font-mono text-[8px] text-muted">
-          <span>{rows.length ? formatCompact(heatRange.min) : "Min"}</span>
-          <span>{rows.length ? formatCompact(heatRange.min + heatRange.span) : "Max"}</span>
+          <span>{rows.length ? `-${formatCompact(heatRange.maxNegative)}` : "Negative"}</span>
+          <span>0</span>
+          <span>{rows.length ? formatCompact(heatRange.maxPositive) : "Positive"}</span>
         </div>
       </div>
     </section>
@@ -1908,7 +1909,7 @@ function GexMapWorkspace({ market = null, externalReplay = null }: GexMapWorkspa
           <footer className="gex-map-live-footer flex h-7 min-w-0 shrink-0 items-center gap-2 overflow-hidden border-t border-border bg-panel px-3 text-[8px] text-muted">
             <Radio className={`h-3 w-3 ${live ? "text-primary" : "text-muted"}`} />
             <span>KwantData Interval Map · front expiry · per 1% underlying move</span>
-            <span className="ml-auto">Colours run linearly across each panel’s signed exposure range — the noise floor shares the scale’s quiet end, only the extremes reach its end colours.</span>
+            <span className="ml-auto">Zero exposure sits at the scale’s middle; each side runs linearly to its own extreme — darkest is the panel’s biggest negative, lightest its biggest positive.</span>
           </footer>
         )}
       </main>
