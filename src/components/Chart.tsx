@@ -330,11 +330,15 @@ import { hasRenderableGexMapSurface, type GexMapPanelPayload } from "@/lib/gexMa
 import { buildOptionsDeltaSeries, optionsDeltaSourceForInstrument } from "@/lib/optionsDelta";
 import { isMarketIndexSymbol } from "@/lib/marketIndices";
 import { detectCvdDivergence, sessionCvdPoints, type CvdCandleLike } from "@/lib/cvdDivergence";
+import ChartDrawToolbar from "@/components/ChartDrawToolbar";
+import ChartDrawLayer from "@/components/ChartDrawLayer";
+import { normalizeDrawings, type DrawToolId, type Drawing, type DrawPoint, type DrawLineStyle } from "@/lib/chartDrawTools";
 import { CROSSHAIR_STYLE_EVENT, DEFAULT_CROSSHAIR_STYLE, loadCrosshairStyle, normalizeCrosshairStyle, type CrosshairStyle } from "@/lib/crosshairStyle";
 
 // Toolbar pin state is PER CHART: locking one pane's toolbar leaves every
 // other pane alone, and each pane remembers its own pin across sessions.
 const TOOLBAR_PINNED_STORAGE_KEY = "kwantdesk:chart-toolbar-pinned:v1";
+const EMPTY_CHARTING_DRAWINGS: Drawing[] = [];
 import { latestCompletedNewYorkSession, newYorkSessionTimestamp } from "@/lib/gexVueReplay";
 import { isZeroGammaLinePayload, paintZeroGammaLine, zeroGammaRootForInstrument, type ZeroGammaLinePayload } from "@/lib/zeroGammaLine";
 import { STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT } from "@/lib/volumeProfileMath";
@@ -472,6 +476,8 @@ interface ChartProps {
   onOpenSettings?: () => void;
   onCreateAlertAtPrice?: (price: string) => void;
   onRemoveAllIndicators?: () => void;
+  chartingDrawings?: Drawing[];
+  onChartingDrawingsChange?: (drawings: Drawing[]) => void;
   indicators?: ChartIndicatorInstance[];
   initialBalanceCandles?: Candle[];
   classicGexProfile?: ClassicGexProfilePayload | null;
@@ -2868,6 +2874,8 @@ function Chart({
   onOpenSettings,
   onCreateAlertAtPrice,
   onRemoveAllIndicators,
+  chartingDrawings = EMPTY_CHARTING_DRAWINGS,
+  onChartingDrawingsChange,
   indicators = [],
   initialBalanceCandles,
   classicGexProfile = null,
@@ -3125,6 +3133,14 @@ function Chart({
       return next;
     });
   }, [toolbarPinnedStorageKey]);
+  const [drawTool, setDrawTool] = useState<DrawToolId>("cursor");
+  const [drawSelectedId, setDrawSelectedId] = useState<string | null>(null);
+  const [drawKeepDrawing, setDrawKeepDrawing] = useState(false);
+  const [drawTextInput, setDrawTextInput] = useState<{ point: DrawPoint; x: number; y: number; value: string } | null>(null);
+  const [drawSettingsOpen, setDrawSettingsOpen] = useState(false);
+  const commitDrawings = useCallback((next: Drawing[]) => {
+    onChartingDrawingsChange?.(normalizeDrawings(next));
+  }, [onChartingDrawingsChange]);
   const [crosshairStyle, setCrosshairStyle] = useState<CrosshairStyle>(() => ({ ...DEFAULT_CROSSHAIR_STYLE }));
   useEffect(() => {
     setCrosshairStyle(loadCrosshairStyle());
@@ -13027,6 +13043,92 @@ function Chart({
           activeChartKeyboardTargetId = chartInstanceId;
         }}
       >
+      {toolbarEnabled ? (
+        <>
+          <ChartDrawToolbar
+            activeTool={drawTool}
+            keepDrawing={drawKeepDrawing}
+            onSelectTool={(tool) => { setDrawTool(tool); if (tool !== "cursor") setDrawSelectedId(null); }}
+            onToggleKeepDrawing={() => setDrawKeepDrawing((value) => !value)}
+            onOpenSettings={() => setDrawSettingsOpen(true)}
+            hasSelection={Boolean(drawSelectedId)}
+            onDeleteSelection={() => {
+              if (!drawSelectedId) return;
+              commitDrawings(chartingDrawings.filter((drawing) => drawing.id !== drawSelectedId));
+              setDrawSelectedId(null);
+              setDrawSettingsOpen(false);
+            }}
+          />
+          <ChartDrawLayer
+            width={overlaySize.width}
+            height={overlaySize.height}
+            activeTool={drawTool}
+            keepDrawing={drawKeepDrawing}
+            drawings={chartingDrawings}
+            selectedId={drawSelectedId}
+            toX={(time) => timeToX(time)}
+            toY={(price) => priceToY(price)}
+            fromXY={(x, y) => {
+              const time = xToTime(x);
+              const price = candleSeriesRef.current?.coordinateToPrice(y);
+              return time != null && price != null && Number.isFinite(price) ? { time, price: Number(price) } : null;
+            }}
+            onCommit={(drawing) => { commitDrawings([...chartingDrawings, drawing]); setDrawSelectedId(drawing.id); }}
+            onUpdate={(drawing) => commitDrawings(chartingDrawings.map((d) => d.id === drawing.id ? drawing : d))}
+            onSelect={setDrawSelectedId}
+            onToolConsumed={() => setDrawTool("cursor")}
+            onRequestText={(point) => {
+              const x = timeToX(point.time);
+              const y = priceToY(point.price);
+              if (x == null || y == null) return;
+              setDrawTextInput({ point, x, y, value: "" });
+            }}
+          />
+          {drawTextInput ? (
+            <input
+              autoFocus
+              value={drawTextInput.value}
+              onChange={(event) => setDrawTextInput({ ...drawTextInput, value: event.target.value })}
+              onBlur={() => {
+                const value = drawTextInput.value.trim();
+                if (value) commitDrawings([...chartingDrawings, { id: `draw-${crypto.randomUUID()}`, tool: "text", points: [drawTextInput.point], style: { color: "#EAB308", width: 2, lineStyle: "solid" as DrawLineStyle, fillOpacity: 0.12, showLabels: true }, text: value }]);
+                setDrawTextInput(null);
+              }}
+              onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); if (event.key === "Escape") setDrawTextInput(null); }}
+              className="absolute z-[30] rounded border border-primary bg-panel px-1.5 py-0.5 text-[13px] text-foreground outline-none"
+              style={{ left: drawTextInput.x, top: drawTextInput.y - 10 }}
+              placeholder="Text"
+            />
+          ) : null}
+          {drawSettingsOpen && drawSelectedId ? (() => {
+            const selected = chartingDrawings.find((drawing) => drawing.id === drawSelectedId);
+            if (!selected) return null;
+            const patch = (next: Partial<typeof selected.style>) =>
+              commitDrawings(chartingDrawings.map((d) => d.id === selected.id ? { ...d, style: { ...d.style, ...next } } : d));
+            return (
+              <div className="absolute right-[72px] top-9 z-[30] w-[188px] space-y-2 rounded-lg border border-border bg-panel/97 p-2.5 shadow-2xl backdrop-blur">
+                <div className="flex items-center justify-between text-[10px] uppercase tracking-[0.1em] text-muted">
+                  <span>Drawing style</span>
+                  <button type="button" onClick={() => setDrawSettingsOpen(false)} className="text-muted hover:text-foreground">✕</button>
+                </div>
+                <label className="flex items-center justify-between text-[11px] text-foreground">Colour
+                  <input type="color" value={selected.style.color} onChange={(event) => patch({ color: event.target.value })} className="h-6 w-9 cursor-pointer rounded border border-border bg-background" />
+                </label>
+                <label className="flex items-center justify-between text-[11px] text-foreground">Width
+                  <select value={String(selected.style.width)} onChange={(event) => patch({ width: Number(event.target.value) })} className="h-7 w-16 rounded border border-border bg-background px-1 text-[11px]">
+                    {[1,2,3,4].map((w) => <option key={w} value={w}>{w}px</option>)}
+                  </select>
+                </label>
+                <label className="flex items-center justify-between text-[11px] text-foreground">Line
+                  <select value={selected.style.lineStyle} onChange={(event) => patch({ lineStyle: event.target.value as DrawLineStyle })} className="h-7 w-20 rounded border border-border bg-background px-1 text-[11px]">
+                    <option value="solid">Solid</option><option value="dashed">Dashed</option><option value="dotted">Dotted</option>
+                  </select>
+                </label>
+              </div>
+            );
+          })() : null}
+        </>
+      ) : null}
       {!chartVisualReady ? (
         <div className="pointer-events-auto absolute inset-0 z-[90]" style={{ backgroundColor: settings.backgroundColor }}>
           <KwantLoader

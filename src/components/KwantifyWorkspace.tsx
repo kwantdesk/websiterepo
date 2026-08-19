@@ -3,6 +3,7 @@
 import KwantSelect from "@/components/ui/KwantSelect";
 import TimeZoneSelect from "@/components/ui/TimeZoneSelect";
 import ChartIndicatorsControl from "@/components/ChartIndicatorsControl";
+import { normalizeDrawings, type Drawing } from "@/lib/chartDrawTools";
 import KwantLoader from "@/components/KwantLoader";
 import ImpliedVolatilityRankIcon from "@/components/icons/ImpliedVolatilityRankIcon";
 import LiveGexPanelBoundary from "@/components/backtesting/LiveGexPanelBoundary";
@@ -964,6 +965,8 @@ const WORKSPACE_PRESETS_STORAGE_KEY = "kwantdesk-chart-workspace-presets";
 const ACTIVE_WORKSPACE_PRESET_STORAGE_KEY = "kwantdesk-chart-workspace-active-preset";
 const WORKSPACE_FLOATING_WINDOWS_STORAGE_KEY = "olisa-chart-workspace-floating-windows";
 const WORKSPACE_LAYOUT_LOCK_STORAGE_KEY = "olisa-chart-workspace-layout-locked-v2";
+const CHARTING_DRAWINGS_STORAGE_KEY = "kwantdesk:chart-drawtools:v1";
+const EMPTY_CHART_DRAWINGS: Drawing[] = [];
 const CHART_TEMPLATES_STORAGE_KEY = "olisa-chart-templates";
 const CHART_WORKSPACE_SETTINGS_STORAGE_KEY = "kwantdesk:chart-workspace-settings:v1";
 type ChartWorkspaceScope = "charts" | "gamma";
@@ -4627,6 +4630,8 @@ function WorkspaceChartPaneComponent({
   onCreateAlertAtPrice,
   onRemoveAllIndicators,
   onUpdateIndicatorSetting,
+  chartingDrawings,
+  onChartingDrawingsChange,
   onSelectTimeframe,
   onDetach,
   detachDisabled,
@@ -4675,6 +4680,8 @@ function WorkspaceChartPaneComponent({
   onCreateAlertAtPrice: (price: string) => void;
   onRemoveAllIndicators: () => void;
   onUpdateIndicatorSetting: (instanceId: string, key: string, value: number | string | boolean) => void;
+  chartingDrawings: Drawing[];
+  onChartingDrawingsChange: (drawings: Drawing[]) => void;
   onSelectPeriod: (period: string) => void;
   onSelectTimeframe: (timeframe: string) => boolean;
   onDetach?: () => void;
@@ -7550,6 +7557,8 @@ function WorkspaceChartPaneComponent({
           onOpenSettings={onOpenSettings}
           onCreateAlertAtPrice={onCreateAlertAtPrice}
           onRemoveAllIndicators={onRemoveAllIndicators}
+          chartingDrawings={chartingDrawings}
+          onChartingDrawingsChange={onChartingDrawingsChange}
           indicators={indicators}
           classicGexProfile={classicGexProfileWithZero}
           classicGexHistory={classicGexHistory}
@@ -8470,6 +8479,39 @@ export default function KwantifyWorkspace({
   const [paneLevelVisibility, setPaneLevelVisibility] = useState<Record<string, PaneLevelVisibility>>(
     initialChartWorkspaceRuntime.levelVisibility,
   );
+  // New charting-tool drawings per pane, stored separately from every legacy
+  // drawing store and synced to the account through the tracked key below.
+  const [paneChartDrawings, setPaneChartDrawings] = useState<Record<string, Drawing[]>>({});
+  const paneChartDrawingsHydratedRef = useRef(false);
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(CHARTING_DRAWINGS_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Record<string, unknown>;
+        const next: Record<string, Drawing[]> = {};
+        for (const [paneId, value] of Object.entries(parsed ?? {})) {
+          const drawings = normalizeDrawings(value);
+          if (drawings.length) next[paneId] = drawings;
+        }
+        setPaneChartDrawings(next);
+      }
+    } catch {
+      // A missing/corrupt store starts with no charting drawings.
+    }
+    paneChartDrawingsHydratedRef.current = true;
+  }, []);
+  useEffect(() => {
+    if (!paneChartDrawingsHydratedRef.current) return;
+    try {
+      window.localStorage.setItem(CHARTING_DRAWINGS_STORAGE_KEY, JSON.stringify(paneChartDrawings));
+      window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
+    } catch {
+      // Drawings still apply this session without persistence.
+    }
+  }, [paneChartDrawings]);
+  const setChartDrawingsForPane = useCallback((paneId: string, drawings: Drawing[]) => {
+    setPaneChartDrawings((current) => ({ ...current, [paneId]: drawings }));
+  }, []);
   const [liveGexSnapshot, setLiveGexSnapshot] = useState<ChartGammaLevelsPayload | null>(null);
   const [liveGexLoading, setLiveGexLoading] = useState(false);
   const [liveGexError, setLiveGexError] = useState("");
@@ -15187,6 +15229,8 @@ export default function KwantifyWorkspace({
         onOpenSettings={openChartSettings}
         onCreateAlertAtPrice={openCreateAlert}
         onRemoveAllIndicators={() => removeAllIndicatorsFromPane(pane.id)}
+        chartingDrawings={paneChartDrawings[pane.id] ?? EMPTY_CHART_DRAWINGS}
+        onChartingDrawingsChange={(drawings) => setChartDrawingsForPane(pane.id, drawings)}
         onUpdateIndicatorSetting={(instanceId, key, value) =>
           updatePaneIndicatorSetting(pane.id, instanceId, key, value)}
         onSelectPeriod={(period) => handleChartPeriod(pane.id, period)}
