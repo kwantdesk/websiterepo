@@ -77,8 +77,14 @@ function zonedParts(timestamp: number, timezone: string) {
   );
   return {
     weekday: parts.weekday,
+    date: `${parts.year}-${parts.month}-${parts.day}`,
     minute: Number(parts.hour) * 60 + Number(parts.minute),
   };
+}
+
+function previousDateKey(date: string) {
+  const parsed = Date.parse(`${date}T12:00:00Z`);
+  return Number.isFinite(parsed) ? new Date(parsed - 86_400_000).toISOString().slice(0, 10) : date;
 }
 
 function parseClock(value: unknown, fallback: string) {
@@ -128,7 +134,9 @@ export function buildMarketSessionWindows(
     const startMinute = parseClock(session.start, preset.start);
     const endMinute = parseClock(session.end, preset.end);
     let active: MarketSessionWindow | null = null;
+    let activeOccurrence = "";
     let previousTimestamp = 0;
+    const wrapsMidnight = startMinute > endMinute;
 
     candles.forEach((candle) => {
       if (candle.timestamp < cutoff) return;
@@ -136,13 +144,23 @@ export function buildMarketSessionWindows(
       const weekend = parts.weekday === "Sat" || parts.weekday === "Sun";
       const isActive = (!hideWeekends || !weekend)
         && inClockRange(parts.minute, startMinute, endMinute);
-      const contiguous = active && candle.timestamp - previousTimestamp <= maximumGap;
+      // Each window belongs to ONE dated session occurrence. Gap tolerance
+      // alone let higher-timeframe candles bridge the CME maintenance break
+      // (a 30m chart's 2h tolerance swallowed the 17:00-18:00 halt), merging
+      // days of Globex into one window whose opening range never reset.
+      const occurrence = !wrapsMidnight || parts.minute >= startMinute
+        ? parts.date
+        : previousDateKey(parts.date);
+      const contiguous = active
+        && candle.timestamp - previousTimestamp <= maximumGap
+        && activeOccurrence === occurrence;
       if (!isActive || !contiguous) {
         if (active) windows.push(active);
         active = null;
       }
       if (!isActive) return;
       if (!active) {
+        activeOccurrence = occurrence;
         active = {
           ...session,
           startTimestamp: candle.timestamp,
@@ -256,6 +274,8 @@ export function buildInitialBalanceLevels(
     }
   }
   const latestWindows = [...latestWindowBySession.values()]
+    // The IB study never draws a Sydney range: Globex is the futures reopen.
+    .filter((session) => session.key !== "sydney")
     .sort((left, right) => left.startTimestamp - right.startTimestamp);
 
   return latestWindows.flatMap((session) => {

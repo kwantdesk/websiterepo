@@ -1512,12 +1512,10 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     showTokyo: true,
     showLondon: true,
     showNewYork: true,
-    showSydney: false,
     globexLabel: "Globex",
     tokyoLabel: "Asia",
     londonLabel: "London",
     newYorkLabel: "New York",
-    sydneyLabel: "Sydney",
     globexStart: "18:00",
     globexEnd: "17:00",
     tokyoStart: "09:00",
@@ -1526,13 +1524,10 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     londonEnd: "17:00",
     newYorkStart: "09:30",
     newYorkEnd: "16:00",
-    sydneyStart: "08:00",
-    sydneyEnd: "17:00",
     globexColor: "#A461BB",
     tokyoColor: "#FF9900",
     londonColor: "#4CAF50",
     newYorkColor: "#2196F3",
-    sydneyColor: "#A461BB",
     followSessionsStudy: false,
     showHighs: true,
     showLows: true,
@@ -2196,6 +2191,11 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
       ...defaults,
       ...persistedSettings,
     };
+    // Sydney was removed from the IB study: Globex IS the 18:00 New York
+    // reopen, so a separate Sydney range double-labelled the same idea.
+    for (const sydneyKey of ["showSydney", "sydneyLabel", "sydneyStart", "sydneyEnd", "sydneyColor"]) {
+      delete settings[sydneyKey];
+    }
     if (Number(persistedSettings.initialBalanceSettingsVersion ?? 0) < 2) {
       // Migrate the old Tokyo/Sydney layout to the intended futures sessions.
       // Globex is a real 18:00 New York opening range; Sydney is not relabelled
