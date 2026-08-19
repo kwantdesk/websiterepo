@@ -327,6 +327,7 @@ import {
 import { fetchWorkspaceData, gexMapCacheKey, readWorkspaceData, writeWorkspaceData } from "@/lib/workspaceDataCache";
 import { hasRenderableGexMapSurface, type GexMapPanelPayload } from "@/lib/gexMap";
 import { buildOptionsDeltaSeries, optionsDeltaSourceForInstrument } from "@/lib/optionsDelta";
+import { isMarketIndexSymbol } from "@/lib/marketIndices";
 import { detectCvdDivergence, sessionCvdPoints, type CvdCandleLike } from "@/lib/cvdDivergence";
 import { CROSSHAIR_STYLE_EVENT, DEFAULT_CROSSHAIR_STYLE, loadCrosshairStyle, normalizeCrosshairStyle, type CrosshairStyle } from "@/lib/crosshairStyle";
 
@@ -5736,11 +5737,27 @@ function Chart({
           settings: instance.settings,
           series: [],
           showLegend: instance.indicatorId === "delta-bar" ? false : undefined,
-          unavailableReason: orderFlowHistoryReady
-            ? "Waiting for executed CME bid/ask volume."
-            : instance.indicatorId === "delta-bar"
-              ? "Restoring delta bar history."
-              : "Restoring cumulative volume delta history.",
+          unavailableReason: isMarketIndexSymbol(instrument)
+            ? "This index feed publishes no executed bid/ask volume — order-flow studies need a CME futures chart."
+            : orderFlowHistoryReady
+              ? "Waiting for executed CME bid/ask volume."
+              : instance.indicatorId === "delta-bar"
+                ? "Restoring delta bar history."
+                : "Restoring cumulative volume delta history.",
+        }];
+      }
+      if (["volume", "chaikin-accumulation-distribution"].includes(instance.indicatorId)) {
+        // The engine returns no series when the feed has no real traded
+        // volume (cash indices) — surface that honestly instead of nothing.
+        return [{
+          key: instance.instanceId,
+          title: instance.indicatorId === "volume" ? "Volume" : "Chaikin A/D",
+          indicatorId: instance.indicatorId,
+          settings: instance.settings,
+          series: [],
+          unavailableReason: indicatorCandles.length
+            ? "This instrument publishes no traded volume."
+            : "Waiting for chart history.",
         }];
       }
       return [];

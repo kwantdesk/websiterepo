@@ -280,6 +280,13 @@ function orderFlowAvailable(candles: Candle[]) {
   return candles.some(hasVerifiedOrderFlow);
 }
 
+// Cash indices (SPX, NDX, VIX...) publish no traded volume at all. Volume
+// studies must vanish honestly on such feeds instead of silently degrading
+// (e.g. VWAP collapsing into a typical-price line), which would be fake data.
+function volumeAvailable(candles: Candle[]) {
+  return candles.some((candle) => Number.isFinite(Number(candle.volume)) && Number(candle.volume) > 0);
+}
+
 export function calculateDeltaPercentHighlights(
   instance: ChartIndicatorInstance,
   candles: Candle[],
@@ -364,6 +371,7 @@ export function calculateIndicatorSeries(
   }
 
   if (key === "volume") {
+    if (!volumeAvailable(candles)) return [];
     return [{
       key,
       label: "Volume",
@@ -693,6 +701,7 @@ export function calculateIndicatorSeries(
   }
 
   if (key === "rolling-vwap") {
+    if (!volumeAvailable(candles)) return [];
     const length = Math.max(2, Math.round(settingNumber(instance, "length", 60)));
     const sessionStartHour = settingNumber(instance, "sessionStartHour", 17);
     const bandMultipliers = [
@@ -1064,6 +1073,7 @@ export function calculateIndicatorSeries(
   }
 
   if (key === "chaikin-accumulation-distribution") {
+    if (!volumeAvailable(candles)) return [];
     let cumulative = 0;
     const values = candles.map((candle) => {
       const range = candle.high - candle.low;
@@ -1083,6 +1093,7 @@ export function calculateIndicatorSeries(
   }
 
   if (key === "vwap" || key === "vwap-envelopes") {
+    if (!volumeAvailable(candles)) return [];
     const startHour = settingNumber(instance, "sessionStartHour", 17);
     const rows = sessionVwap(candles, startHour);
     const series: CalculatedIndicatorSeries[] = [{
