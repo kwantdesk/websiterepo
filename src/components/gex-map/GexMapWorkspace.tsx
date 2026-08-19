@@ -10,6 +10,8 @@ import {
   CircleStop,
   Gauge,
   ListOrdered,
+  Lock,
+  LockOpen,
   Minus,
   Pause,
   Play,
@@ -117,6 +119,7 @@ const MARKET_PANELS: Record<GexMapMarket, PanelConfig[]> = {
 const SPEEDS = [1, 2, 5, 10] as const;
 const FRAME_STEPS = [1, 2, 5, 10] as const;
 const GEX_MAP_ZOOM_STORAGE_KEY = "kwantdesk:gex-map-zoom:v1";
+const GEX_MAP_PRICE_LOCK_STORAGE_KEY = "kwantdesk:gex-map-price-lock:v1";
 const GEX_MAP_ZOOM_MIN = 0.5;
 const GEX_MAP_ZOOM_MAX = 1.5;
 const GEX_MAP_ZOOM_STEP = 0.1;
@@ -557,6 +560,7 @@ function ExposurePanel({
   starSettings,
   palette,
   ladderZoom = 1,
+  priceLocked = false,
   unavailableReason = null,
   onChange,
   onRemove,
@@ -571,6 +575,7 @@ function ExposurePanel({
   starSettings: GexMapStarSettings;
   palette: GexMapPalette;
   ladderZoom?: number;
+  priceLocked?: boolean;
   unavailableReason?: string | null;
   onChange: (patch: Partial<Pick<PanelConfig, "symbol" | "greekMode">>) => void;
   onRemove?: () => void;
@@ -587,6 +592,12 @@ function ExposurePanel({
     if (!container) return;
     const onWheel = (event: WheelEvent) => {
       if (event.ctrlKey || event.metaKey) return;
+      if (priceLockedRef.current) {
+        // Price lock: the ladder is a slot machine pinned to spot — wheel
+        // input is consumed so nothing behind the panel scrolls either.
+        event.preventDefault();
+        return;
+      }
       const ladder = ladderRef.current;
       const referenceRow = ladder?.querySelector<HTMLElement>("[data-gex-strike-node]:not([data-near-spot])")
         ?? ladder?.querySelector<HTMLElement>("[data-gex-strike-node]");
@@ -602,6 +613,11 @@ function ExposurePanel({
     container.addEventListener("wheel", onWheel, { passive: false });
     return () => container.removeEventListener("wheel", onWheel);
   }, []);
+  const priceLockedRef = useRef(priceLocked);
+  priceLockedRef.current = priceLocked;
+  useEffect(() => {
+    if (priceLocked) setFollowingSpot(true);
+  }, [priceLocked]);
   const [surfacePainted, setSurfacePainted] = useState(false);
   const [starPalette, setStarPalette] = useState<StarPalette>(DEFAULT_STAR_PALETTE);
   const { current, previous } = useMemo(
@@ -791,6 +807,11 @@ function ExposurePanel({
 
     const routeExposureWheel = (event: WheelEvent) => {
       if (event.ctrlKey || event.metaKey) return;
+      if (priceLockedRef.current) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
 
       const maximumScroll = Math.max(0, container.scrollHeight - container.clientHeight);
       if (maximumScroll <= 0) return;
@@ -878,9 +899,9 @@ function ExposurePanel({
         <div
           key={viewIdentity}
           ref={scrollRef}
-          onPointerDown={() => setFollowingSpot(false)}
-          onTouchStart={() => setFollowingSpot(false)}
-          className="gex-map-strike-viewport relative min-h-px min-w-0 flex-1 touch-pan-y overscroll-contain overflow-y-auto bg-chart-background"
+          onPointerDown={() => { if (!priceLockedRef.current) setFollowingSpot(false); }}
+          onTouchStart={() => { if (!priceLockedRef.current) setFollowingSpot(false); }}
+          className={`gex-map-strike-viewport relative min-h-px min-w-0 flex-1 touch-pan-y overscroll-contain bg-chart-background ${priceLocked ? "overflow-y-hidden" : "overflow-y-auto"}`}
           style={{ overflowAnchor: "none" }}
         >
         {loading && !payload ? (
@@ -1469,6 +1490,27 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
       return next;
     });
   }, []);
+  // Price lock: SSR-safe default first, stored value applied after hydration.
+  const [priceLocked, setPriceLocked] = useState(false);
+  useEffect(() => {
+    try {
+      setPriceLocked(window.localStorage.getItem(GEX_MAP_PRICE_LOCK_STORAGE_KEY) === "true");
+    } catch {
+      // The lock simply starts open when browser storage is unavailable.
+    }
+  }, []);
+  const togglePriceLock = useCallback(() => {
+    setPriceLocked((current) => {
+      const next = !current;
+      try {
+        window.localStorage.setItem(GEX_MAP_PRICE_LOCK_STORAGE_KEY, String(next));
+        window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
+      } catch {
+        // The lock still applies for this session without storage.
+      }
+      return next;
+    });
+  }, []);
   const [latestSessionDate, setLatestSessionDate] = useState("");
   const [refreshToken, setRefreshToken] = useState(0);
   const [viewMode, setViewMode] = useState<GexMapViewMode>(
@@ -1853,6 +1895,16 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
             </button>
             <button
               type="button"
+              onClick={togglePriceLock}
+              aria-pressed={priceLocked}
+              className={`flex h-7 w-7 items-center justify-center rounded-[3px] border transition-colors ${priceLocked ? "border-primary/30 bg-primary/10 text-primary" : "border-border/70 bg-background/35 text-muted hover:border-primary/30 hover:bg-surface hover:text-foreground"}`}
+              title={priceLocked ? "Price lock on — scrolling is off and price stays centred. Click to unlock." : "Lock price to the centre — scrolling turns off and every column follows spot like a slot machine."}
+              aria-label={priceLocked ? "Unlock GEX Map scrolling" : "Lock GEX Map price to centre"}
+            >
+              {priceLocked ? <Lock className="h-3 w-3" /> : <LockOpen className="h-3 w-3" />}
+            </button>
+            <button
+              type="button"
               onClick={() => {
                 forceRefreshRef.current = true;
                 setRefreshToken((value) => value + 1);
@@ -1902,6 +1954,7 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
                   viewMode={viewMode}
                   starSettings={starSettings}
                   palette={activePalette}
+                  priceLocked={priceLocked}
                   ladderZoom={ladderZoom}
                   unavailableReason={replaySessionMismatch
                     ? `Recorded frames are for ${payload?.sessionDate}, but the replay session is ${requestedReplayDate}. Exposure frames are only retained for the latest completed session.`
