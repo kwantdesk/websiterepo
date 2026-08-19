@@ -8786,7 +8786,10 @@ function Chart({
     const availableWidth = overlaySize.width > 0 ? Math.max(180, overlaySize.width - 16) : 920;
     const availableHeight = overlaySize.height > 0 ? Math.max(150, overlaySize.height - 16) : 700;
     const widthScale = availableWidth / 884;
-    const heightScale = availableHeight / 684;
+    // The full tool stack at 2× needs ~1400px of rail; the height scale must
+    // shrink the buttons until every tool fits INSIDE the pane instead of
+    // running off the bottom of the page.
+    const heightScale = availableHeight / 1400;
     const scale = clamp(Math.min(widthScale, heightScale), 0.3, 1);
     const smooth = (value: number, minimum: number) =>
       Math.max(minimum, Number((value * scale).toFixed(2)));
@@ -8822,7 +8825,9 @@ function Chart({
   // The drawing tools are a chart-owned navigation rail, not a floating
   // overlay. Keep the rail flush to the left edge and spanning the chart so it
   // remains in the same place through resize, layout and timeframe changes.
-  const toolbarDockStyle = { left: 0, top: 0, bottom: 0 } as CSSProperties;
+  // The rail ends just above the time axis / interval row instead of running
+  // to the pane's bottom edge.
+  const toolbarDockStyle = { left: 0, top: 0, bottom: 26 } as CSSProperties;
   const toolbarMenuStyle = {
     width: toolbarMetrics.menuWidth,
     maxHeight: toolbarMetrics.menuMaxHeight,
