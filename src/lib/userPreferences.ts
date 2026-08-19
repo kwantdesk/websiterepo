@@ -40,6 +40,7 @@ const TRACKED_STORAGE_KEYS = new Set([
   "kwantdesk:gex-map-palette:v1",
   "kwantdesk:gex-map-zoom:v1",
   "kwantdesk:chart-crosshair-style:v1",
+  "kwantdesk:chart-toolbar-pinned:v1",
   "kwantdesk:gameplan-chart-overlays:v1",
   "kwantdesk-right-panel-state",
   "kwantdesk-bottom-panel-minimized",

@@ -38,6 +38,7 @@ import {
   Layers3,
   Link2,
   Lock,
+  Unlock,
   Magnet,
   MapPin,
   MessageCircle,
@@ -2497,6 +2498,9 @@ function drawingsStorageKey(instrument: string, chartInstanceId: string) {
 // Crosshair styling is shared by every chart pane and adjusted from the
 // right-click menu: thickness down to a 0.25px hairline plus a visibility
 // level. Changes broadcast live so all open charts restyle together.
+const TOOLBAR_PINNED_STORAGE_KEY = "kwantdesk:chart-toolbar-pinned:v1";
+const TOOLBAR_PINNED_EVENT = "kwantdesk:chart-toolbar-pinned-change";
+
 const CROSSHAIR_STYLE_STORAGE_KEY = "kwantdesk:chart-crosshair-style:v1";
 const CROSSHAIR_STYLE_EVENT = "kwantdesk:crosshair-style-change";
 
@@ -2913,8 +2917,6 @@ function Chart({
   onOpenIndicatorSettings,
   settings = defaultChartSettings,
   toolbarEnabled = true,
-  chartDragEnabled = false,
-  onChartDragStart,
   gammaLevelsEnabled = false,
   gammaLevelsAvailable = false,
   gammaLevelsLoading = false,
@@ -3135,8 +3137,29 @@ function Chart({
   const [drawingHistoryRevision, setDrawingHistoryRevision] = useState(0);
   const [precisionClearRevision, setPrecisionClearRevision] = useState(0);
   const [toolbarDock, setToolbarDock] = useState<ToolbarDock>("left");
-  // The drawing rail hides until the pointer reaches the pane's left edge.
+  // The drawing rail hides until the pointer reaches the pane's left edge —
+  // unless the trader pins it with the lock, which keeps it fixed in place.
   const [toolbarRevealed, setToolbarRevealed] = useState(false);
+  const [toolbarPinned, setToolbarPinned] = useState(false);
+  useEffect(() => {
+    try {
+      setToolbarPinned(window.localStorage.getItem(TOOLBAR_PINNED_STORAGE_KEY) === "true");
+    } catch {}
+    const onPinChange = (event: Event) => setToolbarPinned(Boolean((event as CustomEvent).detail));
+    window.addEventListener(TOOLBAR_PINNED_EVENT, onPinChange);
+    return () => window.removeEventListener(TOOLBAR_PINNED_EVENT, onPinChange);
+  }, []);
+  const toggleToolbarPinned = useCallback(() => {
+    setToolbarPinned((current) => {
+      const next = !current;
+      try {
+        window.localStorage.setItem(TOOLBAR_PINNED_STORAGE_KEY, String(next));
+      } catch {}
+      window.dispatchEvent(new CustomEvent(TOOLBAR_PINNED_EVENT, { detail: next }));
+      window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
+      return next;
+    });
+  }, []);
   const [crosshairStyle, setCrosshairStyle] = useState<CrosshairStyle>(() => ({ ...DEFAULT_CROSSHAIR_STYLE }));
   useEffect(() => {
     setCrosshairStyle(loadCrosshairStyle());
@@ -14481,7 +14504,7 @@ function Chart({
       <div
         ref={toolbarRef}
         className={`absolute z-20 flex flex-col items-center overflow-visible border-y-0 border-l-0 border-r border-border/80 bg-panel/96 p-[2px] shadow-none backdrop-blur-xl transition-[transform,opacity] duration-150 ${
-          toolbarRevealed || openToolbarGroup !== null || showObjectsPanel
+          toolbarPinned || toolbarRevealed || openToolbarGroup !== null || showObjectsPanel
             ? "translate-x-0 opacity-100"
             : "pointer-events-none -translate-x-full opacity-0"
         }`}
@@ -14519,22 +14542,21 @@ function Chart({
         </button>
         <button
           type="button"
-          onPointerDown={chartDragEnabled ? onChartDragStart : undefined}
           onMouseDown={(event) => event.stopPropagation()}
-          onClick={(event) => event.stopPropagation()}
-          className={`flex items-center justify-center border backdrop-blur transition-all ${
-            chartDragEnabled
-              ? "cursor-grab border-transparent bg-transparent text-muted hover:bg-surface hover:text-primary active:cursor-grabbing"
-              : "cursor-not-allowed border-transparent bg-transparent text-muted/30"
+          onClick={(event) => {
+            event.stopPropagation();
+            toggleToolbarPinned();
+          }}
+          className={`flex items-center justify-center border border-transparent bg-transparent transition-all ${
+            toolbarPinned ? "text-primary" : "text-muted hover:bg-surface hover:text-foreground"
           }`}
           style={toolbarButtonStyle}
-          title={chartDragEnabled ? "Drag to dock left, right, above, below, or swap with another panel" : "Unlock the workspace and add another panel to arrange it"}
-          aria-label="Move and dock chart"
+          title={toolbarPinned ? "Unlock the toolbar so it hides when the mouse leaves" : "Lock the toolbar so it stays visible"}
+          aria-label={toolbarPinned ? "Unlock toolbar" : "Lock toolbar"}
+          aria-pressed={toolbarPinned}
         >
-          <span className="grid grid-cols-2 gap-[2px]" aria-hidden="true">
-            {Array.from({ length: 6 }).map((_, index) => (
-              <span key={index} className="h-[2px] w-[2px] rounded-full bg-current" />
-            ))}
+          <span className="transition-transform duration-150" style={{ transform: toolbarPinned ? "scale(1.05)" : "none" }} aria-hidden="true">
+            {toolbarPinned ? <Lock className={toolbarIconClassName} /> : <Unlock className={toolbarIconClassName} />}
           </span>
         </button>
         {!toolbarCollapsed && (
