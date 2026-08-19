@@ -743,8 +743,11 @@ Website only. **Owner action pending:** remove `MASSIVE_API_KEY` from Vercel env
 - Crosshair/select-tool hijack fixed: a dormant-grab edit of a precision object left the layer engaged in select mode with its canvas eating all chart events (frozen crosshair, dead panning). The grab is now tagged and releases chart interaction the moment the drag ends (`precision-tools/PrecisionToolsLayer.tsx`).
 - Value-area levels on options index charts: NDX/QQQ derive from the NQ profile, SPX/SPY from ES, projected to cash scale via a live basis ratio (latest cash candle vs the NQ/ES 1-minute bar at the same minute, bounded `/api/cme-history` fetch, 2-min cache). Developing session profile resolves the front NQ/ES contract itself. Refuses to paint without a fresh ratio (>45-min gap) rather than draw futures prices on a cash chart; index panes skip the futures-priced cold-cache restore (`KwantifyWorkspace.tsx`).
 
+- GEX Vue replay: revealed candle/trade sets are now derived by count so array identity only changes when a bar actually crosses the clock (was a full series replacement per 200ms tick per pane — the reason 15x looked broken); heat frames reveal up to the forming bar's close so exposure prints inline with price exactly like live (`KwantifyWorkspace.tsx`, `Chart.tsx`).
+- **Browser OOM root cause found and fixed** (measured on live production through the owner's session): the Gamma Heatmap payload is ~8.4MB JSON per source (391×~280 bins mid-evening, growing to a 720-snapshot cap) and was refetched every 5s per pane while new columns only exist every 60s; the renderer repainted all ~108k bins with fresh temporaries on every chart invalidation (several/sec live). Fix: offscreen-canvas surface cache blitted per frame (re-rendered only when data/viewport/scale/size change), allocation-free max scan (the old `Math.max(...spread)` over 100k+ values was also a latent V8 argument-limit RangeError late in the session), palette parsed once per render, off-screen column culling, refresh default 5s→30s floor 15s (`gammaHeatmapPrimitive.ts`, `chartIndicatorConfig.ts`, `Chart.tsx`).
+
 ### Commits pushed
-`376de191` journal semantic colours; `5b928b45` Kwantify P&L calculator + crosshair release; `c58b0110` index value-area derivation.
+`376de191` journal semantic colours; `5b928b45` Kwantify P&L calculator + crosshair release; `c58b0110` index value-area derivation; `e7f534f5` GEX Vue replay speed/heat; `e82b9bb3` gamma heatmap OOM fix.
 
 ### Verification
 Per change: `tests/precision-tools-system.test.mjs` + `tests/chart-drawing-system.test.mjs` (29/29; one pre-existing stale assertion repaired), `test:preference-hydration`, eslint on changed files (`NODE_OPTIONS=--max-old-space-size=8192` for the huge components), `npx tsc --noEmit`, `npm run build` — all green before each push.
@@ -752,6 +755,8 @@ Per change: `tests/precision-tools-system.test.mjs` + `tests/chart-drawing-syste
 ### Remaining risks
 - Index value-area conversion not yet observed against live RTH; owner check: Value Area on NDX beside NQ should mark the same market locations at cash prices.
 - Restored SVG calculator drawings persist per chart instance via preference sync only (not the `/api/chart-drawings` document channel); precision calculator objects placed during the interim still render via the precision layer.
+- Heatmap OOM fix needs a full-RTH multi-device soak to declare the Aw-Snap pattern closed; every open tab must be reloaded onto `e82b9bb3` first (deployment pinning). If crashes persist after that, the next step is a DevTools heap profile on the crashing workspace during RTH.
+- Gamma heatmap surface re-renders once per new bar/pan frame — visually identical; if any heat visual difference is reported, compare against a pre-`e82b9bb3` deployment first.
 - Prior open items from earlier 08-19/08-18 sections stand.
 
 ### Worktree state
