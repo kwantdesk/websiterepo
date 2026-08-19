@@ -8680,6 +8680,7 @@ export default function KwantifyWorkspace({
   const watchlistLiveFrameRef = useRef<number | null>(null);
   const watchlistReactSyncAtRef = useRef(0);
   const marketIndexChartStateSyncAtRef = useRef(0);
+  const marketIndexWatchlistSyncAtRef = useRef(0);
   const liveQuoteCacheTimerRef = useRef<number | null>(null);
   const watchlistRef = useRef(watchlist);
 
@@ -11177,7 +11178,6 @@ export default function KwantifyWorkspace({
     if (!symbols.length) return;
 
     const latestTimestampBySymbol = new Map<string, number>();
-    let flashTimer: number | null = null;
     const applySnapshot = (snapshot: MarketIndexLiveSnapshot) => {
       const symbol = snapshot.symbol.trim().toUpperCase();
       const timestamp = marketTimestamp(snapshot.timestamp);
@@ -11194,31 +11194,45 @@ export default function KwantifyWorkspace({
         delete next["Market Index"];
         return next;
       });
-      setWatchlist((current) => current.map((item) => {
-        if (item.broker !== "Market Index" || item.symbol !== symbol) return item;
-        const mid = snapshot.lastPrice;
-        const previousMid = item.lastPrice || mid;
-        const moveRatio = previousMid > 0 ? Math.abs(mid - previousMid) / previousMid : 0;
-        if (moveRatio > 0.2) return item;
-        const openPrice = snapshot.openPrice || item.openPrice || mid;
+      const mid = snapshot.lastPrice;
+      const key = makeWatchlistKey(symbol, "Market Index");
+      const previousItem = watchlistRef.current.find(
+        (item) => item.broker === "Market Index" && item.symbol === symbol,
+      );
+      const previousMid = previousItem?.lastPrice || mid;
+      const moveRatio = previousMid > 0 ? Math.abs(mid - previousMid) / previousMid : 0;
+      if (moveRatio > 0.2) return;
+      const openPrice = snapshot.openPrice || previousItem?.openPrice || mid;
+
+      // Visible watchlist numbers and their flash update through the isolated
+      // live-quote store (a memoized leaf component), NOT through workspace
+      // state. Writing setWatchlist on every index frame re-rendered the whole
+      // 18k-line shell — twice per tick with the 300ms flash timer — and was
+      // the dominant multi-chart freeze, worst on GEX Vue's four index panes.
+      publishLiveWatchlistQuote(
+        key,
+        { instrument: symbol, bid: mid, ask: mid, mid, broker: "Market Index" },
+        openPrice,
+      );
+
+      // Reconcile the React watchlist (for fallback/execution reads) at most
+      // once every 15s inside a transition, mirroring the Databento path.
+      if (previousItem) {
         const change = Number.isFinite(snapshot.change) ? snapshot.change! : mid - openPrice;
         const changePercent = Number.isFinite(snapshot.changePercent)
           ? snapshot.changePercent!
           : openPrice ? (change / openPrice) * 100 : 0;
-        return {
-          ...item,
-          broker: "Market Index",
-          delayed: snapshot.delayed ?? item.delayed,
-          lastPrice: mid,
-          openPrice,
-          bid: mid,
-          ask: mid,
-          mid,
-          change,
-          changePercent,
-          flash: mid > previousMid ? "up" : mid < previousMid ? "down" : null,
-        };
-      }));
+        watchlistRef.current = watchlistRef.current.map((item) =>
+          item.broker === "Market Index" && item.symbol === symbol
+            ? { ...item, broker: "Market Index" as const, delayed: snapshot.delayed ?? item.delayed, lastPrice: mid, openPrice, bid: mid, ask: mid, mid, change, changePercent, flash: null }
+            : item);
+        const nowSync = performance.now();
+        if (nowSync - marketIndexWatchlistSyncAtRef.current >= 15_000) {
+          marketIndexWatchlistSyncAtRef.current = nowSync;
+          const snapshotList = watchlistRef.current;
+          startTransition(() => setWatchlist(snapshotList));
+        }
+      }
 
       if (
         activeChartBrokerLabel === "Market Index"
@@ -11243,13 +11257,6 @@ export default function KwantifyWorkspace({
         }
       }
 
-      if (flashTimer !== null) window.clearTimeout(flashTimer);
-      flashTimer = window.setTimeout(() => {
-        flashTimer = null;
-        setWatchlist((current) => current.some((item) => item.broker === "Market Index" && item.flash)
-          ? current.map((item) => item.broker === "Market Index" && item.flash ? { ...item, flash: null } : item)
-          : current);
-      }, 300);
     };
 
     const unsubscribers = symbols.map((symbol) => subscribeMarketIndexSnapshot(
@@ -11263,7 +11270,6 @@ export default function KwantifyWorkspace({
     ));
     return () => {
       unsubscribers.forEach((unsubscribe) => unsubscribe());
-      if (flashTimer !== null) window.clearTimeout(flashTimer);
     };
   }, [
     activeChartBrokerLabel,

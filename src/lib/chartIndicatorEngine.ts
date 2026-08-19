@@ -200,6 +200,31 @@ function ema(values: number[], length: number) {
   return output;
 }
 
+// Loop-based window extremes. Spreading a slice into Math.max/min
+// (`Math.max(...slice)`) throws V8's argument-limit RangeError once the window
+// grows large (order-flow charts can hold thousands of candles), and it is the
+// same crash that already bit the gamma heatmap. These are allocation-free.
+function windowMax(values: number[], start: number, endInclusive: number): number {
+  let max = -Infinity;
+  for (let i = start; i <= endInclusive; i += 1) if (values[i] > max) max = values[i];
+  return max;
+}
+function windowMin(values: number[], start: number, endInclusive: number): number {
+  let min = Infinity;
+  for (let i = start; i <= endInclusive; i += 1) if (values[i] < min) min = values[i];
+  return min;
+}
+function windowArgMax(values: number[], start: number, endInclusive: number): number {
+  let idx = start; let max = values[start];
+  for (let i = start; i <= endInclusive; i += 1) if (values[i] >= max) { max = values[i]; idx = i; }
+  return idx;
+}
+function windowArgMin(values: number[], start: number, endInclusive: number): number {
+  let idx = start; let min = values[start];
+  for (let i = start; i <= endInclusive; i += 1) if (values[i] <= min) { min = values[i]; idx = i; }
+  return idx;
+}
+
 function rollingMean(values: number[], length: number) {
   const output = Array<number | null>(values.length).fill(null);
   let sum = 0;
@@ -911,8 +936,8 @@ export function calculateIndicatorSeries(
 
   if (key === "donchian-channel") {
     const length = Math.max(2, Math.round(settingNumber(instance, "length", 20)));
-    const upper = highs.map((_, index) => index < length - 1 ? null : Math.max(...highs.slice(index - length + 1, index + 1)));
-    const lower = lows.map((_, index) => index < length - 1 ? null : Math.min(...lows.slice(index - length + 1, index + 1)));
+    const upper = highs.map((_, index) => index < length - 1 ? null : windowMax(highs, index - length + 1, index));
+    const lower = lows.map((_, index) => index < length - 1 ? null : windowMin(lows, index - length + 1, index));
     return [
       {
         key: `${key}-upper`,
@@ -1005,14 +1030,12 @@ export function calculateIndicatorSeries(
     const length = Math.max(2, Math.round(settingNumber(instance, "length", 25)));
     const up = highs.map((_, index) => {
       if (index < length) return null;
-      const window = highs.slice(index - length, index + 1);
-      const periodsSince = window.length - 1 - window.lastIndexOf(Math.max(...window));
+      const periodsSince = index - windowArgMax(highs, index - length, index);
       return ((length - periodsSince) / length) * 100;
     });
     const down = lows.map((_, index) => {
       if (index < length) return null;
-      const window = lows.slice(index - length, index + 1);
-      const periodsSince = window.length - 1 - window.lastIndexOf(Math.min(...window));
+      const periodsSince = index - windowArgMin(lows, index - length, index);
       return ((length - periodsSince) / length) * 100;
     });
     if (key === "aroon-oscillator") {
@@ -1054,8 +1077,8 @@ export function calculateIndicatorSeries(
     const smooth = Math.max(1, Math.round(settingNumber(instance, "smooth", 3)));
     const raw = closes.map((close, index) => {
       if (index < length - 1) return null;
-      const highest = Math.max(...highs.slice(index - length + 1, index + 1));
-      const lowest = Math.min(...lows.slice(index - length + 1, index + 1));
+      const highest = windowMax(highs, index - length + 1, index);
+      const lowest = windowMin(lows, index - length + 1, index);
       if (highest === lowest) return 0;
       return key === "williams-r"
         ? -100 * ((highest - close) / (highest - lowest))

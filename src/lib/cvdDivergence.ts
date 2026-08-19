@@ -48,16 +48,22 @@ function candleDelta(candle: CvdCandleLike): number | null {
   return null;
 }
 
+// One shared formatter for the whole module. Constructing an
+// Intl.DateTimeFormat is one of the most expensive calls in V8; building a
+// fresh one per candle (thousands per live tick, per chart) was a dominant
+// main-thread stall and GC-churn source behind the multi-chart freeze.
+const CHICAGO_SESSION_FORMAT = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "America/Chicago",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  hourCycle: "h23",
+});
+
 /** CME futures session key: the trading day rolls at 17:00 Chicago. */
 function chicagoSessionKey(timestampMs: number): string {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Chicago",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(new Date(timestampMs));
+  const parts = CHICAGO_SESSION_FORMAT.formatToParts(new Date(timestampMs));
   const read = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? "";
   const hour = Number(read("hour"));
   const date = `${read("year")}-${read("month")}-${read("day")}`;
