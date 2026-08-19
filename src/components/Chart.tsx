@@ -9630,7 +9630,49 @@ function Chart({
   };
 
   function timeToX(time: number) {
-    return chartRef.current?.timeScale().timeToCoordinate(time as Time) ?? null;
+    const timeScale = chartRef.current?.timeScale();
+    if (!timeScale) return null;
+    const direct = timeScale.timeToCoordinate(time as Time);
+    if (direct != null) return direct;
+    // timeToCoordinate only answers for exact visible bar times. A moved
+    // position calculator carries arbitrary anchor times (and anchors can sit
+    // beyond the last bar or inside a session gap), which made the whole
+    // drawing vanish. Resolve those through the logical scale instead:
+    // interpolate between the neighbouring bars, or extrapolate past the ends
+    // by the bar interval.
+    if (!candles.length) return null;
+    const barTime = (index: number) => Math.floor(candles[index].timestamp / 1000);
+    const logicalFor = (index: number) => {
+      const coordinate = timeScale.timeToCoordinate(barTime(index) as Time);
+      if (coordinate == null) return null;
+      const logical = timeScale.coordinateToLogical(coordinate);
+      return logical == null ? null : Number(logical);
+    };
+    const intervalSeconds = candleIntervalMs && candleIntervalMs > 0
+      ? candleIntervalMs / 1000
+      : Math.max(1, candles.length > 1 ? barTime(1) - barTime(0) : 60);
+    let low = 0;
+    let high = candles.length - 1;
+    while (low < high) {
+      const mid = (low + high + 1) >> 1;
+      if (barTime(mid) <= time) low = mid;
+      else high = mid - 1;
+    }
+    const anchorIndex = low;
+    const anchorTime = barTime(anchorIndex);
+    const anchorLogical = logicalFor(anchorIndex);
+    if (anchorLogical == null) return null;
+    let logical: number;
+    if (time >= anchorTime && anchorIndex < candles.length - 1) {
+      const nextTime = barTime(anchorIndex + 1);
+      const nextLogical = logicalFor(anchorIndex + 1);
+      if (nextLogical == null) return null;
+      logical = anchorLogical
+        + ((time - anchorTime) / Math.max(1, nextTime - anchorTime)) * (nextLogical - anchorLogical);
+    } else {
+      logical = anchorLogical + (time - anchorTime) / intervalSeconds;
+    }
+    return timeScale.logicalToCoordinate(logical as Parameters<typeof timeScale.logicalToCoordinate>[0]) ?? null;
   }
 
   function xToTime(x: number) {
