@@ -6,6 +6,7 @@ import type {
   Time,
 } from "@/lib/lightweightChartsCompat";
 import {
+  isCandleBackedVolumeProfile,
   isExecutionBackedVolumeProfile,
   type InstitutionalVolumeProfile,
 } from "@/lib/institutionalMarketData";
@@ -142,7 +143,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
     // A refreshed profile can briefly arrive alongside the previous snapshot.
     // Keep one canvas model per session so a docked profile can never leave a
     // second, session-anchored copy behind it.
-    this.models = [...models.filter((model) => isExecutionBackedVolumeProfile(model.profile)).reduce((unique, model) => {
+    this.models = [...models.filter((model) => isExecutionBackedVolumeProfile(model.profile) || isCandleBackedVolumeProfile(model.profile)).reduce((unique, model) => {
       unique.set(model.id, model);
       return unique;
     }, new Map<string, NativeVolumeProfileModel>()).values()];

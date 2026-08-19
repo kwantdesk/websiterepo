@@ -123,6 +123,7 @@ import {
 import { mergeGammaLevelsAtSamePrice, type ChartGammaLevelsPayload } from "@/lib/chartGammaLevels";
 import {
   applyInstitutionalTradesToCandles,
+  buildChartVolumeProfile,
   applyInstitutionalTradesToVolumeProfile,
   enrichCandlesWithInstitutionalCandleFlow,
   enrichCandlesWithInstitutionalTrades,
@@ -7042,6 +7043,73 @@ function WorkspaceChartPaneComponent({
       window.clearInterval(interval);
     };
   }, [markMarketActive, pane.broker, pane.symbol, pane.timeframe]);
+
+  // Cash-index / options-underlying panes have no execution tape but DO carry
+  // real provider bar volume for stocks and ETFs (SPY, QQQ...). Daily and
+  // weekly profiles are built from those candles with a neutral buy/sell
+  // split; delta-labelled profile variants stay honestly absent, as do all
+  // profiles on volumeless indices (SPX, NDX, VIX).
+  useEffect(() => {
+    const usingMarketIndexPaneFeed = pane.broker === "Market Index" || isMarketIndexSymbol(pane.symbol);
+    if (!usingMarketIndexPaneFeed) return;
+    const wantsDaily = dailyProfileInstance?.indicatorId === "kwant-profile";
+    const wantsWeekly = Boolean(weeklyProfileInstance);
+    if (!wantsDaily && !wantsWeekly) return;
+    const volumeCandles = candles.filter((candle) => Number(candle.volume ?? 0) > 0);
+    if (!volumeCandles.length) return;
+    const newYorkDate = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/New_York",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
+    const byDate = new Map<string, typeof volumeCandles>();
+    for (const candle of volumeCandles) {
+      const key = newYorkDate.format(candle.timestamp);
+      const bucket = byDate.get(key);
+      if (bucket) bucket.push(candle);
+      else byDate.set(key, [candle]);
+    }
+    const intervalMs = Math.max(60_000, getTimeframeMs(pane.timeframe));
+    const root = displayCmeSymbol(pane.symbol);
+    const binSizeFor = (group: typeof volumeCandles) => {
+      let high = -Infinity;
+      let low = Infinity;
+      for (const candle of group) {
+        if (candle.high > high) high = candle.high;
+        if (candle.low < low) low = candle.low;
+      }
+      if (!Number.isFinite(high) || !Number.isFinite(low) || high <= low) return null;
+      return Math.max(high * 0.00005, (high - low) / 140);
+    };
+    const buildFor = (group: typeof volumeCandles, period: "daily" | "weekly") => {
+      const tickSize = binSizeFor(group);
+      if (!tickSize) return null;
+      const profile = buildChartVolumeProfile({
+        candles: group,
+        root,
+        contractSymbol: root,
+        startMs: group[0].timestamp,
+        endMs: group[group.length - 1].timestamp + intervalMs,
+        tickSize,
+      });
+      return profile ? { ...profile, period } : null;
+    };
+    const nextProfiles: InstitutionalVolumeProfile[] = [];
+    if (wantsDaily) {
+      for (const key of [...byDate.keys()].sort()) {
+        const profile = buildFor(byDate.get(key)!, "daily");
+        if (profile) nextProfiles.push({ ...profile, tradingDate: key });
+      }
+    }
+    if (wantsWeekly) {
+      const lastWeekDates = [...byDate.keys()].sort().slice(-5);
+      const weekCandles = lastWeekDates.flatMap((key) => byDate.get(key)!);
+      const profile = buildFor(weekCandles, "weekly");
+      if (profile) nextProfiles.push(profile);
+    }
+    if (nextProfiles.length) setVolumeProfiles(nextProfiles);
+  }, [candles, dailyProfileInstance, pane.broker, pane.symbol, pane.timeframe, weeklyProfileInstance]);
 
   useEffect(() => {
     if (!dailyProfileInstance && !weeklyProfileInstance) {

@@ -103,6 +103,19 @@ export type InstitutionalVolumeProfile = {
   asOf: string;
 };
 
+// Candle-backed profiles are the honest primary for feeds that can never
+// have an execution tape (cash indices / options underlyings): they are built
+// from real provider bar volume, carry a neutral buy/sell split, and must
+// never masquerade as execution data. They are only accepted through this
+// explicit guard, never through isExecutionBackedVolumeProfile.
+export function isCandleBackedVolumeProfile(
+  profile: InstitutionalVolumeProfile | null | undefined,
+): profile is InstitutionalVolumeProfile {
+  if (!profile || profile.schemaVersion !== "kwantify-volume-profile-v1") return false;
+  if (profile.provider !== "Chart") return false;
+  return Array.isArray(profile.levels) && profile.levels.length > 0;
+}
+
 export function isExecutionBackedVolumeProfile(
   profile: InstitutionalVolumeProfile | null | undefined,
 ): profile is InstitutionalVolumeProfile {
@@ -475,7 +488,7 @@ export function buildChartVolumeProfile(args: {
   return {
     schemaVersion: "kwantify-volume-profile-v1",
     provider: "Chart",
-    source: "Chart OHLCV approximation (execution tape unavailable)",
+    source: "Candle volume · this feed has no execution tape",
     root: args.root,
     contractSymbol: args.contractSymbol,
     period: "custom",
