@@ -194,7 +194,14 @@ async function fetchKwantDataUnderlyingSnapshot(symbol: string): Promise<MarketI
     changePercent: openPrice ? change / openPrice * 100 : 0,
     timestamp: Number.isFinite(timestamp) ? timestamp : Date.now(),
     delayed: marketData.stale || marketData.status !== "LIVE",
-    marketOpen: marketData.status === "LIVE" && !marketData.stale,
+    // The options feed keeps stamping quotes long after the cash close (SPX
+    // prints past midnight ET). Charts gate live candle creation on this
+    // flag, so it must reflect the actual New York cash session — otherwise
+    // overnight quotes print a flat run of after-hours candles and the next
+    // morning opens with a visual gap ahead of the real session.
+    marketOpen: marketData.status === "LIVE"
+      && !marketData.stale
+      && newYorkMarketOpen(Number.isFinite(timestamp) ? timestamp : Date.now()),
     provider: "KwantData",
   };
 }

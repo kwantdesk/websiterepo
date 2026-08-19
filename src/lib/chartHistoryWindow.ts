@@ -64,6 +64,42 @@ export function compressCmeClosedSessionCandles(candles: Candle[], timeframe: st
   return candles.filter((candle) => !isCmeClosedSessionTimestamp(candle.timestamp));
 }
 
+const NEW_YORK_SESSION_CLOCK = new Intl.DateTimeFormat("en-US", {
+  timeZone: "America/New_York",
+  weekday: "short",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+
+function isNewYorkClosedSessionTimestamp(timestamp: number) {
+  if (!Number.isFinite(timestamp)) return false;
+  const parts = Object.fromEntries(
+    NEW_YORK_SESSION_CLOCK
+      .formatToParts(new Date(timestamp))
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value]),
+  ) as Record<"weekday" | "hour" | "minute", string>;
+  if (parts.weekday === "Sat" || parts.weekday === "Sun") return true;
+  const minutes = Number(parts.hour) * 60 + Number(parts.minute);
+  if (!Number.isFinite(minutes)) return false;
+  // Cash-index sessions run 09:30–16:00 ET; the closing auction settles by
+  // 16:15, which several index tapes stamp as the final bars of the session.
+  return minutes < 9 * 60 + 30 || minutes > 16 * 60 + 15;
+}
+
+/**
+ * Cash-index charts trade one New York session per day. Off-session bars —
+ * whether provider placeholders or quotes stamped deep into the night — must
+ * not paint: they stretch a flat run ahead of the close and make the next
+ * morning open with a visual gap instead of printing beside the prior candle.
+ */
+export function compressNewYorkClosedSessionCandles(candles: Candle[], timeframe: string) {
+  const durationMs = timeframeDurationMs(timeframe);
+  if (durationMs === null || durationMs > 60 * 60_000) return candles;
+  return candles.filter((candle) => !isNewYorkClosedSessionTimestamp(candle.timestamp));
+}
+
 function chicagoWallClockMs(
   year: number,
   month: number,
