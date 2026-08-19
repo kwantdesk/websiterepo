@@ -1,3 +1,5 @@
+import { relinkGexMapPaletteToTheme } from "./gexMapPalette";
+
 export const defaultTheme = {
   background: "#000000",
   foreground: "#FFFFFF",
@@ -84,6 +86,9 @@ export function saveTheme(theme: ThemeColors) {
   const normalized = normalizeTheme(theme);
   localStorage.setItem(THEME_STORAGE_KEY, JSON.stringify(normalized));
   applyTheme(normalized);
+  // A deliberate theme choice overrides every themed surface, including a
+  // custom GEX Map palette (which stays theme-linked until re-customised).
+  relinkGexMapPaletteToTheme();
   window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
 }
 
@@ -91,5 +96,6 @@ export function resetTheme() {
   if (typeof window === "undefined") return;
   localStorage.removeItem(THEME_STORAGE_KEY);
   applyTheme(defaultTheme);
+  relinkGexMapPaletteToTheme();
   window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
 }

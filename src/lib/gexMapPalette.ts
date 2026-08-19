@@ -210,6 +210,18 @@ export function saveGexMapPalette(palette: GexMapPalette) {
 }
 
 /**
+ * Choosing a site theme overrides every surface, the GEX Map included: a
+ * saved custom palette relinks to the theme until the trader customises the
+ * colours again. Called from deliberate theme changes only (saveTheme /
+ * resetTheme) — never from hydration, which must not erase saved colours.
+ */
+export function relinkGexMapPaletteToTheme() {
+  if (typeof window === "undefined") return;
+  if (loadGexMapPalette().useThemeColors) return;
+  saveGexMapPalette({ ...DEFAULT_GEX_MAP_PALETTE });
+}
+
+/**
  * Curated gradient palettes following classic scientific heat colormaps.
  * Every side of the surface is a strict brightness ramp: the soft stop is the
  * DARK shade the lowest signed exposure sits at, the strong stop is the
