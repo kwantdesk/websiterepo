@@ -3071,6 +3071,45 @@ export default function ChartIndicatorsControl({
                 </div>
               ) : null}
 
+              {settingsDefinition.id === "cumulative-volume-delta" ? (
+                <div className="grid gap-3 border border-primary/20 bg-primary/[0.035] p-3 sm:grid-cols-2">
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                    <span>Display style</span>
+                    <KwantSelect
+                      value={String(settingsInstance.settings?.displayStyle ?? "candles")}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                        ...current,
+                        settings: { ...(current.settings ?? {}), displayStyle: event.target.value },
+                      }))}
+                      className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                      menuLabel="CVD display style"
+                    >
+                      <option value="candles">CVD candles</option>
+                      <option value="line">CVD line</option>
+                      <option value="bars">CVD bars</option>
+                    </KwantSelect>
+                  </label>
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                    <span>Input data</span>
+                    <KwantSelect
+                      value={String(settingsInstance.settings?.inputData ?? "Volumes")}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                        ...current,
+                        settings: { ...(current.settings ?? {}), inputData: event.target.value },
+                      }))}
+                      className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                      menuLabel="CVD input data"
+                    >
+                      <option value="Volumes">Volumes</option>
+                      <option value="Aggregate Trades">Aggregate trades</option>
+                    </KwantSelect>
+                  </label>
+                  <p className="text-[8px] leading-4 text-muted sm:col-span-2">
+                    CVD resets at the 17:00 Chicago futures-session boundary and accumulates real aggressor-side executions. Display and colour choices moved here from the chart pane.
+                  </p>
+                </div>
+              ) : null}
+
               {(INDICATOR_NUMERIC_SETTINGS[settingsDefinition.id] ?? []).filter((setting) => !(settingsDefinition.id === "bounce-levels" && setting.key === "topExposurePercent")).map((setting) => {
                 const value = Number(settingsInstance.settings?.[setting.key] ?? setting.defaultValue);
                 return (

@@ -952,82 +952,9 @@ function ChartIndicatorPaneSurface({
           />
         );
       })}
-      {groups.map((group, groupIndex) => {
-        if (!isCvdIndicator(group.indicatorId) || paneLayouts[groupIndex].collapsed) return null;
-        const top = paneLayouts[groupIndex].top + 5;
-        const displayStyle = String(group.settings?.displayStyle ?? "candles");
-        const styleMenuKey = `${group.key}:style`;
-        const styleOptions = [
-          { value: "candles", label: "CVD candles" },
-          { value: "line", label: "CVD line" },
-          { value: "bars", label: "CVD bars" },
-        ];
-        return (
-          <div
-            key={`controls-${group.key}`}
-            className="pointer-events-auto absolute left-2 right-[96px] z-20 flex h-7 items-center gap-1"
-            style={{ top }}
-            onMouseDown={(event) => event.stopPropagation()}
-            onPointerDown={(event) => event.stopPropagation()}
-            onPointerUp={(event) => event.stopPropagation()}
-            onClick={(event) => event.stopPropagation()}
-            onDoubleClick={(event) => event.stopPropagation()}
-            onWheel={(event) => event.stopPropagation()}
-          >
-            <div className="ml-auto flex items-center gap-1">
-              <div className="relative">
-                <button
-                  type="button"
-                  aria-label="CVD display style"
-                  aria-expanded={openMenu === styleMenuKey}
-                  data-testid={`cvd-style-${group.key}`}
-                  onClick={() => setOpenMenu((current) => current === styleMenuKey ? null : styleMenuKey)}
-                  className="flex h-6 min-w-[84px] items-center justify-between gap-2 rounded-lg border border-border bg-panel/95 px-2 text-[9px] text-muted shadow-sm outline-none transition hover:border-foreground/15 hover:text-foreground focus:border-primary/60"
-                >
-                  <span>{styleOptions.find((option) => option.value === displayStyle)?.label ?? styleOptions[0].label}</span>
-                  <ChevronDown className={`h-3 w-3 transition-transform ${openMenu === styleMenuKey ? "rotate-180" : ""}`} />
-                </button>
-                {openMenu === styleMenuKey ? (
-                  <div
-                    role="menu"
-                    aria-label="CVD display choices"
-                    className="absolute bottom-full right-0 z-50 mb-1 w-32 overflow-hidden rounded-xl border border-border bg-panel/98 p-1 shadow-2xl shadow-black/50 backdrop-blur-xl"
-                  >
-                    {styleOptions.map((option) => (
-                      <button
-                        key={option.value}
-                        type="button"
-                        role="menuitemradio"
-                        aria-checked={displayStyle === option.value}
-                        onClick={() => {
-                          onUpdateSetting?.(group.key, "displayStyle", option.value);
-                          setOpenMenu(null);
-                        }}
-                        className={`flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left text-[10px] transition ${
-                          displayStyle === option.value
-                            ? "bg-primary/10 text-foreground"
-                            : "text-muted hover:bg-foreground/[0.04] hover:text-foreground"
-                        }`}
-                      >
-                        <span>{option.label.replace("CVD ", "")}</span>
-                        {displayStyle === option.value ? <Check className="h-3 w-3 text-primary" /> : null}
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-              <button
-                type="button"
-                onClick={() => onOpenSettings?.(group.key)}
-                className="flex h-6 w-6 items-center justify-center rounded-md border border-border bg-panel/95 text-muted hover:text-foreground"
-                title="CVD settings"
-              >
-                <Settings2 className="h-3 w-3" />
-              </button>
-            </div>
-          </div>
-        );
-      })}
+      {/* The on-pane CVD display-style dropdown and settings gear were
+          removed: those controls live in the indicator's own settings dialog
+          (Indicators menu → CVD → settings) now. */}
     </div>
   );
 }
