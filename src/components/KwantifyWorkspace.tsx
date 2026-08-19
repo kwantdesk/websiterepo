@@ -1912,6 +1912,7 @@ type ChartWorkspaceRuntime = {
   favouriteTimeframes: string[];
   chartSettings: ChartSettings;
   templates: ChartTemplate[];
+  linkedPaneIds: string[];
 };
 
 function loadScopedChartTemplates(scope: ChartWorkspaceScope): ChartTemplate[] {
@@ -2003,6 +2004,7 @@ function loadChartWorkspaceRuntime(scope: ChartWorkspaceScope): ChartWorkspaceRu
     favouriteTimeframes: ["1m", "5m", "15m", "1h", "4h", "1D"],
     chartSettings: scopedChartSettings,
     templates: scopedTemplates,
+    linkedPaneIds: [],
   };
   if (typeof window === "undefined") return defaults;
 
@@ -2030,6 +2032,14 @@ function loadChartWorkspaceRuntime(scope: ChartWorkspaceScope): ChartWorkspaceRu
     if (parsed?.length) {
       panes = parsed.map((pane, index) =>
         normalizeWorkspacePane(pane, fallbackPanes[index] ?? fallbackPanes[0]));
+    }
+  } catch {}
+  let linkedPaneIds: string[] = [];
+  try {
+    const parsedLinks = JSON.parse(read("olisa-chart-workspace-linked-panes") ?? "null") as unknown;
+    if (Array.isArray(parsedLinks)) {
+      const paneIdSet = new Set(panes.map((pane) => pane.id));
+      linkedPaneIds = parsedLinks.filter((id): id is string => typeof id === "string" && paneIdSet.has(id));
     }
   } catch {}
   let tree = createWorkspaceLayoutTree(layout === "custom" ? "single" : layout, panes);
@@ -2106,6 +2116,7 @@ function loadChartWorkspaceRuntime(scope: ChartWorkspaceScope): ChartWorkspaceRu
     favouriteTimeframes,
     chartSettings: scopedChartSettings,
     templates: scopedTemplates,
+    linkedPaneIds,
   };
 }
 
@@ -2130,6 +2141,7 @@ function persistChartWorkspaceRuntime(
   write(CHART_INDICATORS_STORAGE_KEY, JSON.stringify(clonePaneIndicatorState(runtime.indicators)));
   write(PANE_LEVEL_VISIBILITY_STORAGE_KEY, JSON.stringify(clonePaneLevelVisibility(runtime.levelVisibility)));
   write("olisa-chart-favourite-intervals", JSON.stringify(runtime.favouriteTimeframes));
+  write("olisa-chart-workspace-linked-panes", JSON.stringify(runtime.linkedPaneIds));
   window.localStorage.setItem(CHART_TEMPLATES_STORAGE_KEY, JSON.stringify(runtime.templates));
   saveScopedChartSettings(scope, runtime.chartSettings);
 }
@@ -7904,7 +7916,9 @@ export default function KwantifyWorkspace({
   const [workspaceSplitRatio, setWorkspaceSplitRatio] = useState<number>(initialChartWorkspaceRuntime.splitRatio);
   const [workspaceQuadSplit, setWorkspaceQuadSplit] = useState<{ x: number; y: number }>(initialChartWorkspaceRuntime.quadSplit);
   const [workspacePanes, setWorkspacePanes] = useState<WorkspacePane[]>(initialChartWorkspaceRuntime.panes);
-  const [linkedViewportPaneIds, setLinkedViewportPaneIds] = useState<Set<string>>(() => new Set());
+  const [linkedViewportPaneIds, setLinkedViewportPaneIds] = useState<Set<string>>(
+    () => new Set(initialChartWorkspaceRuntime.linkedPaneIds),
+  );
   useEffect(() => {
     const chartPaneIds = new Set(
       workspacePanes.filter((pane) => isWorkspaceChartKind(pane.content)).map((pane) => pane.id),
@@ -8381,6 +8395,7 @@ export default function KwantifyWorkspace({
       favouriteTimeframes: favTFs,
       chartSettings,
       templates,
+      linkedPaneIds: [...linkedViewportPaneIds],
     });
 
     workspaceScopeHydratingRef.current = true;
@@ -8400,6 +8415,7 @@ export default function KwantifyWorkspace({
     setPaneIndicators(next.indicators);
     setPaneLevelVisibility(next.levelVisibility);
     setFavTFs(next.favouriteTimeframes);
+    setLinkedViewportPaneIds(new Set(next.linkedPaneIds));
     setChartSettings(next.chartSettings);
     setDraftChartSettings(next.chartSettings);
     setChartSettingsSnapshot(next.chartSettings);
@@ -10182,6 +10198,14 @@ export default function KwantifyWorkspace({
     if (workspaceScopeHydratingRef.current) return;
     window.localStorage.setItem(workspaceScopeStorageKey(chartWorkspaceScopeRef.current, "olisa-chart-workspace-tree"), JSON.stringify(workspaceTree));
   }, [workspaceTree]);
+
+  useEffect(() => {
+    if (workspaceScopeHydratingRef.current) return;
+    window.localStorage.setItem(
+      workspaceScopeStorageKey(chartWorkspaceScopeRef.current, "olisa-chart-workspace-linked-panes"),
+      JSON.stringify([...linkedViewportPaneIds]),
+    );
+  }, [linkedViewportPaneIds]);
 
   useEffect(() => {
     if (!preferencesReady || workspaceScopeHydratingRef.current) return;
