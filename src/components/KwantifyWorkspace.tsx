@@ -8081,41 +8081,27 @@ export default function KwantifyWorkspace({
   const [streamReconnectNonce, setStreamReconnectNonce] = useState(0);
   const [orderSide, setOrderSide] = useState<"buy" | "sell">("buy");
   const [orderType, setOrderType] = useState<"market" | "limit" | "stop">("market");
-  const [rightPanel, setRightPanel] = useState<RightPanel | null>(() => {
-    if (typeof window === "undefined") return "watchlist";
-    const saved = window.localStorage.getItem("kwantdesk-right-panel-state");
-    return saved === "order"
-      || saved === "watchlist"
-      || saved === "gex"
-      || saved === "zyon"
-      || saved === "kwantbot"
-      || saved === "optionstape"
-      || saved === "alerts"
-      || saved === "alertslog"
-      || saved === "friends"
-      || saved === "messages"
-      ? saved
-      : saved === ""
-        ? null
-        : "watchlist";
-  });
+  // The right panel starts CLOSED on both the server and the first client
+  // render, then the saved preference is applied after mount. Reading
+  // localStorage in the initializer produced a server/client hydration
+  // mismatch: a refresh painted the server's default-open watchlist for the
+  // seconds hydration took, then snapped it shut.
+  const [rightPanel, setRightPanel] = useState<RightPanel | null>(null);
   const [friendsInitialFriendId, setFriendsInitialFriendId] = useState("");
-  const [lastOpenRightPanel, setLastOpenRightPanel] = useState<RightPanel>(() => {
-    if (typeof window === "undefined") return "watchlist";
+  const [lastOpenRightPanel, setLastOpenRightPanel] = useState<RightPanel>("watchlist");
+  const rightPanelHydratedRef = useRef(false);
+  useEffect(() => {
     const saved = window.localStorage.getItem("kwantdesk-right-panel-state");
-    return saved === "order"
-      || saved === "watchlist"
-      || saved === "gex"
-      || saved === "zyon"
-      || saved === "kwantbot"
-      || saved === "optionstape"
-      || saved === "alerts"
-      || saved === "alertslog"
-      || saved === "friends"
-      || saved === "messages"
-      ? saved
-      : "watchlist";
-  });
+    const validPanels: RightPanel[] = ["order", "watchlist", "gex", "zyon", "kwantbot", "optionstape", "alerts", "alertslog", "friends", "messages"];
+    if (saved !== null && (validPanels as string[]).includes(saved)) {
+      setRightPanel(saved as RightPanel);
+      setLastOpenRightPanel(saved as RightPanel);
+    } else if (saved === null) {
+      // First visit: the watchlist is the default companion panel.
+      setRightPanel("watchlist");
+    }
+    rightPanelHydratedRef.current = true;
+  }, []);
   const [kwantBotMessages, setKwantBotMessages] = useState<KwantBotMessage[]>(() => {
     if (typeof window === "undefined") return DEFAULT_KWANTBOT_MESSAGES;
     try {
@@ -9844,6 +9830,9 @@ export default function KwantifyWorkspace({
   }, []);
 
   useEffect(() => {
+    // Never write before the saved preference has been restored, or the
+    // closed initial state would clobber a saved open panel on every load.
+    if (!rightPanelHydratedRef.current) return;
     window.localStorage.setItem("kwantdesk-right-panel-state", rightPanel ?? "");
     window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
   }, [rightPanel]);
