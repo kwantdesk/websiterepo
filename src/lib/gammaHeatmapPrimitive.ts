@@ -63,6 +63,7 @@ class GammaHeatmapRenderer implements ISeriesPrimitivePaneRenderer {
   // when the data, viewport, scale or size actually change.
   private surface: HTMLCanvasElement | null = null;
   private surfaceKey = "";
+  dispose() { this.surface = null; this.surfaceKey = ""; }
   private maxValueKey = "";
   private maxValue = 1;
 
@@ -240,6 +241,7 @@ class GammaHeatmapView implements ISeriesPrimitivePaneView {
   constructor(primitive: GammaHeatmapPrimitive) { this.paneRenderer = new GammaHeatmapRenderer(primitive); }
   zOrder() { return "bottom" as const; }
   renderer() { return this.paneRenderer; }
+  dispose() { this.paneRenderer.dispose(); }
 }
 
 export class GammaHeatmapPrimitive implements ISeriesPrimitive<Time> {
@@ -255,7 +257,14 @@ export class GammaHeatmapPrimitive implements ISeriesPrimitive<Time> {
     this.chartApi = param.chart as IChartApi;
     this.requestRedraw = param.requestUpdate;
   }
-  detached() { this.candleSeries = null; this.chartApi = null; this.requestRedraw = null; }
+  detached() {
+    // Release the offscreen surface immediately (its backing store is ~13 MB
+    // per pane at high-DPI) rather than waiting for GC.
+    this.paneView.dispose();
+    this.candleSeries = null;
+    this.chartApi = null;
+    this.requestRedraw = null;
+  }
   update(data: GammaHeatmapPrimitiveData | null) {
     this.renderData = data;
     this.renderDataVersion += 1;

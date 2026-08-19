@@ -134,6 +134,9 @@ const volumeProfileResponseCache = new Map<string, {
 }>();
 const volumeProfileRequests = new Map<string, Promise<InstitutionalVolumeProfile | null>>();
 const VOLUME_PROFILE_RESPONSE_CACHE_MS = 10_000;
+// Each profile holds a full per-tick level array; cap the in-memory response
+// cache so distinct sessions/symbols cannot accumulate for the tab lifetime.
+const VOLUME_PROFILE_RESPONSE_CACHE_MAX = 16;
 const INDICATOR_CACHE_NAME = "kwantify-indicator-data-v3";
 const INDICATOR_IDB_NAME = "kwantify-indicator-data-v3";
 const INDICATOR_IDB_STORE = "entries";
@@ -562,6 +565,19 @@ export function clipVolumeProfileToPriceRange(
 const LOCAL_GATEWAY_ORIGIN = "/api/institutional-market-data";
 const ORDER_FLOW_CACHE_SCHEMA = "v6";
 const orderFlowRecordCache = new Map<string, InstitutionalTrade[]>();
+// Each entry is a fully-merged execution tape (~7-15 MB). Unbounded, this Map
+// accumulated one permanent entry per symbol/timeframe visited and was the
+// dominant "out of memory" driver across a long session. LRU-cap it.
+const ORDER_FLOW_RECORD_CACHE_MAX = 6;
+function setOrderFlowRecordCache(key: string, records: InstitutionalTrade[]) {
+  if (orderFlowRecordCache.has(key)) orderFlowRecordCache.delete(key);
+  orderFlowRecordCache.set(key, records);
+  while (orderFlowRecordCache.size > ORDER_FLOW_RECORD_CACHE_MAX) {
+    const oldest = orderFlowRecordCache.keys().next().value;
+    if (oldest === undefined) break;
+    orderFlowRecordCache.delete(oldest);
+  }
+}
 const orderFlowCacheMergeQueue = new Map<
   string,
   Promise<InstitutionalOrderFlowResult>
@@ -578,7 +594,14 @@ export function getCachedInstitutionalOrderFlowRecords(
   timeframe: string,
   contractSymbol?: string,
 ) {
-  return orderFlowRecordCache.get(orderFlowRecordCacheKey(symbol, timeframe, contractSymbol)) ?? [];
+  const key = orderFlowRecordCacheKey(symbol, timeframe, contractSymbol);
+  const records = orderFlowRecordCache.get(key);
+  if (records) {
+    // Refresh recency so an actively-used tape is not evicted first.
+    orderFlowRecordCache.delete(key);
+    orderFlowRecordCache.set(key, records);
+  }
+  return records ?? [];
 }
 
 function isRecord(value: unknown): value is JsonRecord {
@@ -915,7 +938,13 @@ export async function fetchInstitutionalVolumeProfile(args: {
         vah: valueArea.vah,
         val: valueArea.val,
       };
+      if (volumeProfileResponseCache.has(cacheKey)) volumeProfileResponseCache.delete(cacheKey);
       volumeProfileResponseCache.set(cacheKey, { profile: normalizedPayload, storedAt: Date.now() });
+      while (volumeProfileResponseCache.size > VOLUME_PROFILE_RESPONSE_CACHE_MAX) {
+        const oldest = volumeProfileResponseCache.keys().next().value;
+        if (oldest === undefined) break;
+        volumeProfileResponseCache.delete(oldest);
+      }
       void writePersistentIndicatorCache(`volume-profile:${cacheKey}`, normalizedPayload);
       return normalizedPayload;
     } catch (error) {
@@ -1724,7 +1753,7 @@ export async function fetchInstitutionalOrderFlowLevels(args: {
       `order-flow:${ORDER_FLOW_CACHE_SCHEMA}:${orderFlowRecordCacheKey(args.symbol, args.timeframe, args.contractSymbol)}`;
     const merged = await persistMergedInstitutionalOrderFlowResult(persistentKey, result);
     if (merged.records.length) {
-      orderFlowRecordCache.set(
+      setOrderFlowRecordCache(
         orderFlowRecordCacheKey(args.symbol, args.timeframe, args.contractSymbol),
         merged.records,
       );

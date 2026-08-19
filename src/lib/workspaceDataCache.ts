@@ -4,6 +4,20 @@ type WorkspaceCacheEntry = {
 };
 
 const workspaceDataCache = new Map<string, WorkspaceCacheEntry>();
+// Some entries (gamma-heatmap surfaces, gex-map frame sets) are 8 MB+ each.
+// Unbounded, this Map grew one permanent entry per view/variant visited and
+// helped exhaust the tab's memory. LRU-cap it; sessionStorage/last-good keep a
+// durable copy so eviction only costs a re-fetch.
+const WORKSPACE_DATA_CACHE_MAX = 10;
+function setWorkspaceCacheEntry(key: string, entry: WorkspaceCacheEntry) {
+  if (workspaceDataCache.has(key)) workspaceDataCache.delete(key);
+  workspaceDataCache.set(key, entry);
+  while (workspaceDataCache.size > WORKSPACE_DATA_CACHE_MAX) {
+    const oldest = workspaceDataCache.keys().next().value;
+    if (oldest === undefined) break;
+    workspaceDataCache.delete(oldest);
+  }
+}
 const workspaceDataRequests = new Map<string, Promise<unknown>>();
 const SESSION_CACHE_PREFIX = "kwantdesk:workspace-view:v1:";
 const SESSION_CACHE_MAX_AGE_MS = 6 * 60 * 60 * 1_000;
@@ -35,7 +49,7 @@ function readLastGoodGexMap<T>(key: string): T | null {
       window.localStorage.removeItem(`${GEX_MAP_LAST_GOOD_PREFIX}${key}`);
       return null;
     }
-    workspaceDataCache.set(key, entry);
+    setWorkspaceCacheEntry(key, entry);
     return entry.value as T;
   } catch {
     return null;
@@ -84,7 +98,10 @@ async function fetchWorkspaceResponse(url: string, timeoutMs = WORKSPACE_REQUEST
 
 export function readWorkspaceData<T>(key: string): T | null {
   const memoryEntry = workspaceDataCache.get(key);
-  if (memoryEntry) return memoryEntry.value as T;
+  if (memoryEntry) {
+    setWorkspaceCacheEntry(key, memoryEntry);
+    return memoryEntry.value as T;
+  }
   if (typeof window === "undefined") return null;
 
   try {
@@ -95,7 +112,7 @@ export function readWorkspaceData<T>(key: string): T | null {
       window.sessionStorage.removeItem(`${SESSION_CACHE_PREFIX}${key}`);
       return readLastGoodGexMap<T>(key);
     }
-    workspaceDataCache.set(key, entry);
+    setWorkspaceCacheEntry(key, entry);
     return entry.value as T;
   } catch {
     return readLastGoodGexMap<T>(key);
@@ -116,7 +133,7 @@ export function writeWorkspaceData<T>(key: string, value: T) {
     value,
     updatedAt: Date.now(),
   };
-  workspaceDataCache.set(key, entry);
+  setWorkspaceCacheEntry(key, entry);
   writeLastGoodGexMap(key, value, entry.updatedAt);
   if (typeof window === "undefined") return;
   try {
