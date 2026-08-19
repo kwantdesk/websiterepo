@@ -16066,10 +16066,10 @@ export default function KwantifyWorkspace({
                 : { ...createGexVueReplayState(), active: true })}
               aria-pressed={gexVueReplay.active}
               title={gexVueReplay.active ? "Exit synchronized GEX Vue replay" : "Replay the latest completed New York session"}
-              className={`kwant-chart-row-control flex h-7 shrink-0 items-center gap-1.5 rounded-[3px] border px-2.5 font-mono text-[8px] font-semibold uppercase tracking-[0.12em] transition-colors ${
+              className={`kwant-chart-row-control flex h-7 shrink-0 items-center gap-1.5 rounded-[3px] border border-transparent px-2.5 text-[10px] font-semibold uppercase leading-none tracking-[0.075em] transition-colors ${
                 gexVueReplay.active
-                  ? "border-primary/45 bg-primary/12 text-primary"
-                  : "border-border bg-surface/50 text-muted hover:border-primary/30 hover:text-primary"
+                  ? "text-primary"
+                  : "text-muted hover:bg-surface hover:text-foreground"
               }`}
             >
               <Repeat className="h-3.5 w-3.5" />
@@ -16083,18 +16083,18 @@ export default function KwantifyWorkspace({
             onChange={changeChartTimeZone}
             menuLabel="Chart timezone"
             compact
-            className="w-auto min-w-[118px] max-w-[164px] shrink-0 bg-surface/50 px-2.5"
+            className="w-auto min-w-[118px] max-w-[164px] shrink-0 px-2.5"
           />
           <button
             type="button"
             onClick={openLevelsExport}
             title="Export chart levels"
             aria-label="Export chart levels"
-            className="kwant-chart-row-control flex h-7 w-7 items-center justify-center rounded-[3px] border border-border bg-surface/50 text-muted transition-colors hover:border-primary/30 hover:bg-card hover:text-primary"
+            className="kwant-chart-row-control flex h-7 w-7 items-center justify-center rounded-[3px] border border-transparent text-muted transition-colors hover:bg-surface hover:text-foreground"
           >
             <Download className="h-3.5 w-3.5" />
           </button>
-          <button onClick={signOut} title={currentUsername ? `@${currentUsername}` : "Account"} className="kwant-chart-row-control flex h-7 w-7 items-center justify-center overflow-hidden rounded-[3px] border border-border bg-surface/50 transition-colors hover:border-primary/30 hover:bg-card"><UserAvatar label={currentUsername || "Kwant Trader"} avatarUrl={currentAvatarUrl} size="xs" /></button>
+          <button onClick={signOut} title={currentUsername ? `@${currentUsername}` : "Account"} className="kwant-chart-row-control flex h-7 w-7 items-center justify-center overflow-hidden rounded-[3px] border border-transparent transition-colors hover:bg-surface"><UserAvatar label={currentUsername || "Kwant Trader"} avatarUrl={currentAvatarUrl} size="xs" /></button>
           </div>
           </div>
         </header>

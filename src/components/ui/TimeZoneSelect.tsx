@@ -100,11 +100,13 @@ export default function TimeZoneSelect({
         aria-haspopup="listbox"
         aria-expanded={open}
         title={compactTimeZoneLabel(normalizedValue)}
-        className={`group inline-flex items-center justify-between gap-2 border bg-surface text-left outline-none transition-colors ${
+        className={`group inline-flex items-center justify-between gap-2 border text-left outline-none transition-colors ${
           open
-            ? "border-primary/40 text-primary"
-            : "border-border text-muted hover:border-primary/25 hover:text-foreground"
-        } ${compact ? "kwant-chart-row-control h-7 rounded-[3px] px-2.5 text-[10px]" : "h-10 w-full rounded-xl px-3 text-[12px]"} ${className}`}
+            ? compact ? "border-transparent text-primary" : "border-primary/40 bg-surface text-primary"
+            : compact
+              ? "border-transparent text-muted hover:bg-surface hover:text-foreground"
+              : "border-border bg-surface text-muted hover:border-primary/25 hover:text-foreground"
+        } ${compact ? "kwant-chart-row-control h-7 rounded-[3px] px-2.5 text-[10px] leading-none" : "h-10 w-full rounded-xl px-3 text-[12px]"} ${className}`}
       >
         <Clock3 className={`h-3.5 w-3.5 shrink-0 ${compact ? "text-current" : "text-primary"}`} />
         <span className={`min-w-0 flex-1 truncate ${compact ? "font-semibold uppercase tracking-[0.075em]" : "font-mono"}`}>
