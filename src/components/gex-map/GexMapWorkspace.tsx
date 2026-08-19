@@ -1073,7 +1073,10 @@ function ExposurePanel({
                     ) : null}
                     <span className={`relative z-[1] flex min-w-0 items-center gap-1 font-semibold ${nearSpot ? "text-foreground" : "text-foreground/90"}`}>
                       {nearSpot ? <span className="gex-current-price-dash absolute -left-2 h-6 w-1.5" /> : null}
-                      <span className={`${nearSpot ? "gex-current-price-pill" : ""} shrink-0`}>
+                      <span
+                        className={`${nearSpot && !isFocusedStar ? "gex-current-price-pill" : ""} shrink-0`}
+                        style={isFocusedStar ? { color: "var(--gex-star-accent)" } : undefined}
+                      >
                         {row.strike.toLocaleString("en-US", { maximumFractionDigits: 2 })}
                       </span>
                       {growthTick}
@@ -1119,7 +1122,10 @@ function ExposurePanel({
                 >
                   <span className={`relative flex min-w-0 items-center gap-1 font-semibold ${nearSpot ? "text-foreground" : "text-foreground/90"}`}>
                     {nearSpot ? <span className="gex-current-price-dash absolute -left-2 h-6 w-1.5" /> : null}
-                    <span className={`${nearSpot ? "gex-current-price-pill" : ""} shrink-0`}>
+                    <span
+                      className={`${nearSpot && !isStar ? "gex-current-price-pill" : ""} shrink-0`}
+                      style={isStar ? { color: "var(--gex-star-accent)" } : undefined}
+                    >
                       {row.strike.toLocaleString("en-US", { maximumFractionDigits: 2 })}
                     </span>
                     {growthTick}
