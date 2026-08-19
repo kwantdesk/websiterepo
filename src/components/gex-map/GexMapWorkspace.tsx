@@ -579,6 +579,29 @@ function ExposurePanel({
   const scrollRef = useRef<HTMLDivElement>(null);
   const ladderRef = useRef<HTMLDivElement>(null);
   const [followingSpot, setFollowingSpot] = useState(true);
+  // Wheel scrolling moves EXACTLY one strike row per notch and lands on row
+  // boundaries, so side-by-side columns stay row-aligned instead of drifting
+  // by arbitrary pixel amounts.
+  useEffect(() => {
+    const container = scrollRef.current;
+    if (!container) return;
+    const onWheel = (event: WheelEvent) => {
+      if (event.ctrlKey || event.metaKey) return;
+      const ladder = ladderRef.current;
+      const referenceRow = ladder?.querySelector<HTMLElement>("[data-gex-strike-node]:not([data-near-spot])")
+        ?? ladder?.querySelector<HTMLElement>("[data-gex-strike-node]");
+      const rowHeight = referenceRow?.getBoundingClientRect().height || 25;
+      if (!Number.isFinite(rowHeight) || rowHeight <= 0) return;
+      event.preventDefault();
+      setFollowingSpot(false);
+      const direction = event.deltaY > 0 ? 1 : event.deltaY < 0 ? -1 : 0;
+      if (!direction) return;
+      const next = Math.max(0, (Math.round(container.scrollTop / rowHeight) + direction) * rowHeight);
+      container.scrollTop = next;
+    };
+    container.addEventListener("wheel", onWheel, { passive: false });
+    return () => container.removeEventListener("wheel", onWheel);
+  }, []);
   const [surfacePainted, setSurfacePainted] = useState(false);
   const [starPalette, setStarPalette] = useState<StarPalette>(DEFAULT_STAR_PALETTE);
   const { current, previous } = useMemo(
