@@ -480,13 +480,13 @@ function GexMapDropdown<T extends string>({
         aria-haspopup="listbox"
         aria-expanded={open}
         onClick={toggleMenu}
-        className={`gex-map-dropdown group flex h-8 min-w-0 flex-1 items-center justify-between gap-1.5 rounded-xl border px-2 text-left transition-all duration-200 ${
+        className={`gex-map-dropdown group flex h-7 min-w-0 flex-1 items-center justify-between gap-1.5 rounded-[3px] border px-2 text-left transition-colors ${
           open
-            ? "border-primary/40 bg-primary/[0.08] text-primary shadow-[0_0_0_1px_color-mix(in_srgb,var(--color-primary)_12%,transparent)]"
-            : "border-border bg-surface text-foreground hover:border-primary/25 hover:bg-card"
+            ? "border-primary/40 bg-primary/[0.08] text-primary"
+            : "border-border/70 bg-background/35 text-foreground hover:border-primary/30 hover:bg-surface"
         }`}
       >
-        <span className="font-mono text-[10px] font-semibold tracking-[0.04em]">{selected?.label ?? value}</span>
+        <span className="text-[10px] font-semibold uppercase leading-none tracking-[0.075em]">{selected?.label ?? value}</span>
         <ChevronDown className={`h-3.5 w-3.5 shrink-0 text-muted transition-transform duration-200 ${open ? "rotate-180 text-primary" : "group-hover:text-foreground"}`} />
       </button>
 
@@ -968,9 +968,17 @@ function ExposurePanel({
               const growthTick = growthPct === null || !Number.isFinite(growthPct) || !growthTickStrikes.has(row.strike)
                 ? null
                 : (
+                  // A solid pill keeps the reading legible on top of any heat
+                  // colour: green bubble for growth, red for shrink, white
+                  // number either way.
                   <span
-                    className="shrink-0 font-mono text-[7px] font-bold tracking-tight"
-                    style={{ color: growthPct > 0 ? "#22C55E" : growthPct < 0 ? "#EF4444" : "#71717A" }}
+                    className="inline-flex shrink-0 items-center rounded-full px-1.5 font-mono text-[7px] font-bold leading-[11px] tracking-tight"
+                    style={{
+                      backgroundColor: growthPct > 0 ? "#16A34A" : growthPct < 0 ? "#DC2626" : "#52525B",
+                      color: "#FFFFFF",
+                      textShadow: "none",
+                      boxShadow: "0 1px 3px rgba(0,0,0,0.45)",
+                    }}
                     title={`Exposure magnitude ${growthPct >= 0 ? "grew" : "shrank"} ${Math.abs(growthPct).toFixed(1)}% over the last ${stepMinutes}m step`}
                   >
                     {growthPct > 0 ? "▲" : growthPct < 0 ? "▼" : "•"}
@@ -1801,21 +1809,21 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <h1 className="text-[11px] font-semibold tracking-tight">GEXMAP</h1>
-              <span className="rounded-md border border-border bg-surface px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.14em] text-muted">{linkedMarket ? `${linkedMarket} context` : `${panels.length} panels`}</span>
+              <span className="rounded-[3px] border border-border/70 bg-background/35 px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[0.14em] text-muted">{linkedMarket ? `${linkedMarket} context` : `${panels.length} panels`}</span>
             </div>
             <p className="hidden">Signed front-expiry exposure by strike</p>
           </div>
 
-          <div className="ml-1 flex h-7 shrink-0 items-center border border-border bg-surface p-0.5" role="group" aria-label="GEX Map view mode">
+          <div className="ml-1 flex h-7 shrink-0 items-center rounded-[3px] border border-border/70 bg-background/35 p-0.5" role="group" aria-label="GEX Map view mode">
             <button
               type="button"
               aria-label="Raw exposure view"
               aria-pressed={viewMode === "raw"}
               title="Show every strike, raw exposure and raw change."
               onClick={() => setViewMode("raw")}
-              className={`flex h-5 items-center gap-1 px-1.5 text-[8px] font-semibold focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary ${viewMode === "raw" ? "bg-panel text-primary" : "text-muted hover:text-foreground"}`}
+              className={`flex h-5 items-center gap-1 rounded-[2px] px-2 text-[9px] font-semibold uppercase leading-none tracking-[0.075em] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary ${viewMode === "raw" ? "bg-surface text-primary" : "text-muted hover:text-foreground"}`}
             >
-              <ListOrdered className="h-3 w-3" /><span>(123)</span>
+              <ListOrdered className="h-3 w-3" /><span>Raw</span>
             </button>
             <button
               type="button"
@@ -1823,22 +1831,22 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
               aria-pressed={viewMode === "star"}
               title="Focus on Star, structural nodes, map control and live growth."
               onClick={() => setViewMode("star")}
-              className={`flex h-5 items-center gap-1 px-1.5 text-[8px] font-semibold focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary ${viewMode === "star" ? "bg-panel text-primary" : "text-muted hover:text-foreground"}`}
+              className={`flex h-5 items-center gap-1 rounded-[2px] px-2 text-[9px] font-semibold uppercase leading-none tracking-[0.075em] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary ${viewMode === "star" ? "bg-surface text-primary" : "text-muted hover:text-foreground"}`}
             >
-              <Star className="h-3 w-3" fill={viewMode === "star" ? "currentColor" : "none"} /><span>(★)</span>
+              <Star className="h-3 w-3" fill={viewMode === "star" ? "currentColor" : "none"} /><span>Star</span>
             </button>
           </div>
           <button
             type="button"
             onClick={() => setStarSettingsOpen(true)}
-            className="flex h-7 w-7 shrink-0 items-center justify-center border border-border bg-surface text-muted hover:border-primary/30 hover:text-primary"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[3px] border border-border/70 bg-background/35 text-muted transition-colors hover:border-primary/30 hover:bg-surface hover:text-foreground"
             title="STAR view settings"
             aria-label="Open Star view settings"
           >
             <SlidersHorizontal className="h-3 w-3" />
           </button>
 
-          <div className="gex-map-frame-steps ml-1 flex h-7 shrink-0 items-center gap-0.5 rounded-[3px] border border-border bg-surface p-0.5">
+          <div className="gex-map-frame-steps ml-1 flex h-7 shrink-0 items-center gap-0.5 rounded-[3px] border border-border/70 bg-background/35 p-0.5">
             {FRAME_STEPS.map((value) => (
               <button
                 key={value}
@@ -1848,14 +1856,14 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
                   setCursor(0);
                   setPlaying(false);
                 }}
-                className={`h-5 rounded-[2px] px-1.5 text-[8px] font-semibold ${stepMinutes === value ? "bg-panel text-primary shadow-sm" : "text-muted hover:text-foreground"}`}
+                className={`h-5 rounded-[2px] px-2 text-[9px] font-semibold uppercase leading-none tracking-[0.075em] ${stepMinutes === value ? "bg-surface text-primary" : "text-muted hover:text-foreground"}`}
               >
                 {value}m
               </button>
             ))}
           </div>
 
-          <div className="ml-1 flex h-7 shrink-0 items-center gap-0.5 rounded-[3px] border border-border bg-surface p-0.5" title={`Node zoom ${Math.round(ladderZoom * 100)}% — zoom in for fewer, larger nodes; out for more, smaller ones`}>
+          <div className="ml-1 flex h-7 shrink-0 items-center gap-0.5 rounded-[3px] border border-border/70 bg-background/35 p-0.5" title={`Node zoom ${Math.round(ladderZoom * 100)}% — zoom in for fewer, larger nodes; out for more, smaller ones`}>
             <button
               type="button"
               onClick={() => adjustLadderZoom(-1)}
@@ -1865,7 +1873,7 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
             >
               <Minus className="h-3 w-3" />
             </button>
-            <span className="min-w-[26px] text-center font-mono text-[8px] font-semibold text-foreground">{Math.round(ladderZoom * 100)}%</span>
+            <span className="min-w-[30px] text-center text-[9px] font-semibold uppercase leading-none tracking-[0.075em] text-foreground">{Math.round(ladderZoom * 100)}%</span>
             <button
               type="button"
               onClick={() => adjustLadderZoom(1)}
@@ -1882,13 +1890,13 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
               type="button"
               onClick={addPanel}
               disabled={panels.length >= MAX_GEX_MAP_PANELS}
-              className="flex h-7 w-7 items-center justify-center rounded-[3px] border border-border bg-surface text-foreground transition hover:border-primary/35 hover:bg-primary/10 hover:text-primary disabled:cursor-not-allowed disabled:opacity-35"
+              className="flex h-7 w-7 items-center justify-center rounded-[3px] border border-border/70 bg-background/35 text-muted transition-colors hover:border-primary/30 hover:bg-surface hover:text-foreground disabled:cursor-not-allowed disabled:opacity-35"
               title={panels.length >= MAX_GEX_MAP_PANELS ? "Four GEX columns are already open" : "Add another GEX column"}
               aria-label="Add another GEX column"
             >
               <Plus className="h-3.5 w-3.5" />
             </button>
-            <div className={`flex h-7 items-center gap-1.5 rounded-[3px] border px-2 text-[8px] font-semibold ${replayMode ? "border-accent/25 bg-accent/10 text-accent" : live ? "border-primary/20 bg-primary/10 text-primary" : "border-border bg-surface text-muted"}`}>
+            <div className={`flex h-7 items-center gap-1.5 rounded-[3px] border px-2 text-[9px] font-semibold uppercase leading-none tracking-[0.075em] ${replayMode ? "border-accent/25 bg-accent/10 text-accent" : live ? "border-primary/20 bg-primary/10 text-primary" : "border-border bg-surface text-muted"}`}>
               <span className={`h-1.5 w-1.5 rounded-full ${replayMode ? "bg-accent" : live ? "animate-pulse bg-primary" : "bg-muted"}`} />
               {replayMode ? "REPLAY" : live ? "LIVE" : "LAST SESSION"}
             </div>
@@ -1902,7 +1910,7 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
                 forceRefreshRef.current = true;
                 setRefreshToken((value) => value + 1);
               }}
-              className="flex h-7 w-7 items-center justify-center rounded-[3px] border border-border bg-surface text-muted transition hover:text-foreground"
+              className="flex h-7 w-7 items-center justify-center rounded-[3px] border border-border/70 bg-background/35 text-muted transition-colors hover:border-primary/30 hover:bg-surface hover:text-foreground"
               title="Sync now"
             >
               <RefreshCw className="h-3 w-3" />
@@ -1910,7 +1918,7 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
             {!externalReplay ? <button
               type="button"
               onClick={replayMode ? exitReplay : enterReplay}
-              className={`flex h-7 items-center gap-1.5 rounded-[3px] border px-2 text-[8px] font-semibold transition ${replayMode ? "border-primary/25 bg-primary/10 text-primary" : "border-border bg-surface text-foreground hover:border-primary/30"}`}
+              className={`flex h-7 items-center gap-1.5 rounded-[3px] border px-2.5 text-[10px] font-semibold uppercase leading-none tracking-[0.075em] transition-colors ${replayMode ? "border-primary/25 bg-primary/10 text-primary" : "border-border/70 bg-background/35 text-muted hover:border-primary/30 hover:bg-surface hover:text-foreground"}`}
             >
               {replayMode ? <Radio className="h-3 w-3" /> : <RotateCcw className="h-3 w-3" />}
               {replayMode ? "Exit Replay" : "Replay"}
