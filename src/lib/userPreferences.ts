@@ -65,6 +65,7 @@ const TRACKED_STORAGE_PREFIXES = [
   "kwantdesk:gamma-charting:",
   "kwantify-chart-drawings:",
   "kwantdesk:position-drawings:v1:",
+  "kwantdesk:chart-toolbar-pinned:v1:",
   "kwantdesk:precision-tools:v1:",
   "kwantdesk:precision-tool-configs:v1:",
   "kwantdesk:precision-toolbar:v1:",

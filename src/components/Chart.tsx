@@ -331,10 +331,9 @@ import { isMarketIndexSymbol } from "@/lib/marketIndices";
 import { detectCvdDivergence, sessionCvdPoints, type CvdCandleLike } from "@/lib/cvdDivergence";
 import { CROSSHAIR_STYLE_EVENT, DEFAULT_CROSSHAIR_STYLE, loadCrosshairStyle, normalizeCrosshairStyle, type CrosshairStyle } from "@/lib/crosshairStyle";
 
-// Toolbar pin state is shared by every chart so locking one toolbar keeps the
-// whole workspace's toolbars revealed, remembered across sessions.
+// Toolbar pin state is PER CHART: locking one pane's toolbar leaves every
+// other pane alone, and each pane remembers its own pin across sessions.
 const TOOLBAR_PINNED_STORAGE_KEY = "kwantdesk:chart-toolbar-pinned:v1";
-const TOOLBAR_PINNED_EVENT = "kwantdesk:chart-toolbar-pinned-change";
 import { latestCompletedNewYorkSession, newYorkSessionTimestamp } from "@/lib/gexVueReplay";
 import { isZeroGammaLinePayload, paintZeroGammaLine, zeroGammaRootForInstrument, type ZeroGammaLinePayload } from "@/lib/zeroGammaLine";
 import { STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT } from "@/lib/volumeProfileMath";
@@ -3104,25 +3103,27 @@ function Chart({
   // unless the trader pins it with the lock, which keeps it fixed in place.
   const [toolbarRevealed, setToolbarRevealed] = useState(false);
   const [toolbarPinned, setToolbarPinned] = useState(false);
+  const toolbarPinnedStorageKey = `${TOOLBAR_PINNED_STORAGE_KEY}:${chartInstanceId}`;
   useEffect(() => {
     try {
-      setToolbarPinned(window.localStorage.getItem(TOOLBAR_PINNED_STORAGE_KEY) === "true");
+      // A pane-scoped pin wins; the legacy global key seeds panes that have
+      // never chosen, so an existing locked setup stays locked after upgrade.
+      const scoped = window.localStorage.getItem(toolbarPinnedStorageKey);
+      setToolbarPinned(scoped !== null
+        ? scoped === "true"
+        : window.localStorage.getItem(TOOLBAR_PINNED_STORAGE_KEY) === "true");
     } catch {}
-    const onPinChange = (event: Event) => setToolbarPinned(Boolean((event as CustomEvent).detail));
-    window.addEventListener(TOOLBAR_PINNED_EVENT, onPinChange);
-    return () => window.removeEventListener(TOOLBAR_PINNED_EVENT, onPinChange);
-  }, []);
+  }, [toolbarPinnedStorageKey]);
   const toggleToolbarPinned = useCallback(() => {
     setToolbarPinned((current) => {
       const next = !current;
       try {
-        window.localStorage.setItem(TOOLBAR_PINNED_STORAGE_KEY, String(next));
+        window.localStorage.setItem(toolbarPinnedStorageKey, String(next));
       } catch {}
-      window.dispatchEvent(new CustomEvent(TOOLBAR_PINNED_EVENT, { detail: next }));
       window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
       return next;
     });
-  }, []);
+  }, [toolbarPinnedStorageKey]);
   const [crosshairStyle, setCrosshairStyle] = useState<CrosshairStyle>(() => ({ ...DEFAULT_CROSSHAIR_STYLE }));
   useEffect(() => {
     setCrosshairStyle(loadCrosshairStyle());
