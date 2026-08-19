@@ -5704,7 +5704,7 @@ function Chart({
     const sourceMode = String(indicatorSettings.sourceMode ?? "hybrid");
     const historyHours = Math.max(1, Number(indicatorSettings.historyHours ?? 24));
     const binSize = Math.max(0.25, Number(indicatorSettings.binSize ?? (display === "ES" || display === "MES" ? 1 : 5)));
-    const refreshMs = Math.max(2_000, Number(indicatorSettings.refreshSeconds ?? 5) * 1_000);
+    const refreshMs = Math.max(15_000, Number(indicatorSettings.refreshSeconds ?? 30) * 1_000);
     let cancelled = false;
     let timer: number | null = null;
     const load = async (force = false) => {

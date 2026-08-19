@@ -430,7 +430,10 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "binSize", label: "Display price bin", defaultValue: 5, min: 0.25, max: 100, step: 0.25 },
     { key: "opacity", label: "Heat opacity (%)", defaultValue: 68, min: 5, max: 100, step: 1 },
     { key: "intensity", label: "Heat intensity", defaultValue: 1, min: 0.25, max: 4, step: 0.05 },
-    { key: "refreshSeconds", label: "Refresh interval (seconds)", defaultValue: 5, min: 2, max: 60, step: 1 },
+    // The exposure surface gains a new historical column once a minute and the
+    // payload is several megabytes. Re-downloading it every few seconds parsed
+    // 30MB+/min of JSON per workspace, which was a primary browser OOM driver.
+    { key: "refreshSeconds", label: "Refresh interval (seconds)", defaultValue: 30, min: 15, max: 120, step: 5 },
   ],
   "net-gamma-exposure-by-strike": [
     { key: "refreshSeconds", label: "Refresh interval (seconds)", defaultValue: 5, min: 2, max: 60, step: 1 },
