@@ -4627,7 +4627,6 @@ function WorkspaceChartPaneComponent({
   onCreateAlertAtPrice,
   onRemoveAllIndicators,
   onUpdateIndicatorSetting,
-  onSelectPeriod,
   onSelectTimeframe,
   onDetach,
   detachDisabled,
@@ -7537,23 +7536,6 @@ function WorkspaceChartPaneComponent({
           {loadingMessage}
         </div>
       ) : null}
-      <div
-        className="absolute left-3 z-20 flex h-4 items-center gap-px rounded-[3px] border border-border bg-panel/80 px-0.5 backdrop-blur"
-        style={{ bottom: 56 + lowerIndicatorHeight }}
-      >
-        {["1D", "5D", "1W", "1M", "3M", "6M", "1Y", "All"].map((range) => (
-          <button
-            key={range}
-            onClick={(event) => {
-              event.stopPropagation();
-              onSelectPeriod(range);
-            }}
-            className={"rounded-[2px] px-1 py-0 text-[6px] leading-none transition-all " + (period === range ? "bg-surface text-foreground font-medium" : "text-muted hover:text-foreground")}
-          >
-            {range}
-          </button>
-        ))}
-      </div>
       {intervalCommandOpen && (
         <div className="pointer-events-none absolute inset-0 z-50 flex items-center justify-center">
           <div
