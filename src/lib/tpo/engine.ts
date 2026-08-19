@@ -394,6 +394,7 @@ export function detectSinglePrints(
   rows: TpoProfileRow[],
   minimumTicks: number,
   includeExtremes: boolean,
+  quality = 0,
 ) {
   const result: TpoSinglePrintZone[] = [];
   let start: TpoProfileRow | null = null;
@@ -416,6 +417,16 @@ export function detectSinglePrints(
     }
   });
   flush();
+  // The quality filter ranks zones by tick height: 0 keeps every single
+  // print, 100 keeps only the tallest one, in between keeps the top share.
+  if (quality > 0 && result.length > 1) {
+    const keep = Math.max(1, Math.round(result.length * (1 - quality / 100)));
+    const threshold = [...result]
+      .sort((a, b) => (b.highTick - b.lowTick) - (a.highTick - a.lowTick))
+      .slice(0, keep);
+    const kept = new Set(threshold);
+    return result.filter((zone) => kept.has(zone));
+  }
   return result;
 }
 
@@ -604,7 +615,7 @@ function buildOneProfile(
     if (barTouch === null) return tradeTouch;
     return Math.min(tradeTouch, barTouch);
   };
-  const singlePrints = detectSinglePrints(finalRows, settings.minimumSinglePrintTicks, settings.includeExtremesInSinglePrints)
+  const singlePrints = detectSinglePrints(finalRows, settings.minimumSinglePrintTicks, settings.includeExtremesInSinglePrints, settings.singlePrintQuality)
     .map((zone) => {
       const firstInteractionMs = firstInteraction(zone.lowTick, zone.highTick);
       return { ...zone, tested: firstInteractionMs !== null, firstInteractionMs };
@@ -769,7 +780,7 @@ export function mergeTpoProfileModels(
     pocTick,
     vahTick: valueArea.vahTick,
     valTick: valueArea.valTick,
-    singlePrints: detectSinglePrints(finalRows, settings.minimumSinglePrintTicks, settings.includeExtremesInSinglePrints),
+    singlePrints: detectSinglePrints(finalRows, settings.minimumSinglePrintTicks, settings.includeExtremesInSinglePrints, settings.singlePrintQuality),
     peaksValleys: detectPeaksValleys(finalRows, settings.peakValleyRadius, settings.peakMinimumProminence),
     totalVolume: finalRows.some((row) => row.volume !== null) ? finalRows.reduce((sum, row) => sum + (row.volume ?? 0), 0) : null,
     totalTrades: finalRows.some((row) => row.trades !== null) ? finalRows.reduce((sum, row) => sum + (row.trades ?? 0), 0) : null,

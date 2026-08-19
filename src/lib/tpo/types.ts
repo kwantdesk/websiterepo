@@ -83,6 +83,7 @@ export interface TpoIndicatorSettings {
   initialBalanceSubperiods: number;
   showSinglePrints: boolean;
   minimumSinglePrintTicks: number;
+  singlePrintQuality: number;
   includeExtremesInSinglePrints: boolean;
   showPeaks: boolean;
   showValleys: boolean;
