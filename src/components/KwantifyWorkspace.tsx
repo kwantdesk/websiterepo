@@ -15579,24 +15579,22 @@ export default function KwantifyWorkspace({
         )}
 
         {chartSurfaceActive && (
-        <header className="kwant-chart-command-deck relative grid shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] border-b border-border bg-panel">
-          {chartTrades.length > 0 && (
-            <div className="col-start-1 row-start-2 flex min-w-0 items-center justify-self-start gap-2 overflow-hidden px-3">
-              <div className="flex shrink-0 items-center gap-2 rounded-lg bg-primary/10 px-2 py-1">
-                <div className="h-2 w-2 rounded-full bg-primary" />
-                <span className="text-[11px] text-primary">Backtest Active</span>
-                <button onClick={clearBacktest} className="ml-1 text-[10px] text-muted hover:text-foreground">Clear</button>
-              </div>
-            </div>
-          )}
+        <header className="kwant-chart-command-deck relative grid shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center border-b border-border bg-panel py-1">
           <div
             aria-disabled={!activePaneIsChart}
             title={activePaneIsChart ? "Controls apply to the selected chart" : `${ALL_WORKSPACE_PANEL_OPTIONS.find((option) => option.id === activeWorkspacePane.content)?.label ?? "Panel"} selected — choose a chart to use chart controls`}
-            className={`relative col-start-2 row-start-2 flex min-w-0 items-center justify-self-center px-1 ${!activePaneIsChart ? "pointer-events-none opacity-30" : ""} ${
+            className={`relative col-start-1 row-start-1 flex min-w-0 items-center justify-self-start pl-2 pr-1 ${!activePaneIsChart ? "pointer-events-none opacity-30" : ""} ${
             showAllTF
               ? "overflow-visible"
               : "overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           }`}>
+          {chartTrades.length > 0 && (
+            <div className="mr-2 flex shrink-0 items-center gap-2 rounded-lg bg-primary/10 px-2 py-1">
+              <div className="h-2 w-2 rounded-full bg-primary" />
+              <span className="text-[11px] text-primary">Backtest Active</span>
+              <button onClick={clearBacktest} className="ml-1 text-[10px] text-muted hover:text-foreground">Clear</button>
+            </div>
+          )}
           <div ref={timeframeMenuRef} className="relative flex items-center gap-0.5">
             {visibleFavouriteIntervals.map((tf) => (
               <button
@@ -15740,8 +15738,7 @@ export default function KwantifyWorkspace({
             )}
           </div>
           </div>
-          <div className="col-span-3 col-start-1 row-start-1 grid min-w-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-1 overflow-x-auto border-b border-border/70 px-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            <div className="col-start-2 flex h-7 shrink-0 items-center justify-self-center gap-1">
+          <div className="col-start-2 row-start-1 flex h-8 min-w-0 shrink-0 items-center justify-self-center gap-1 overflow-x-auto px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {[
               {
                 layout: "single" as Exclude<WorkspaceLayout, "custom">,
@@ -16004,10 +16001,9 @@ export default function KwantifyWorkspace({
               ) : null}
             </div>
           </div>
-          </div>
           <div
             aria-disabled={!activePaneIsChart}
-            className={`col-start-3 row-start-2 flex min-w-0 items-center justify-end gap-2 overflow-hidden px-3 ${!activePaneIsChart ? "pointer-events-none opacity-30" : ""}`}
+            className={`col-start-3 row-start-1 flex min-w-0 items-center justify-end gap-2 overflow-hidden px-3 ${!activePaneIsChart ? "pointer-events-none opacity-30" : ""}`}
           >
           <div className="flex shrink-0 items-center gap-2">
           <ChartIndicatorsControl
