@@ -55,6 +55,10 @@ export type DrawToolId =
   | "dateRange"
   | "datePriceRange"
   | "barsPattern"
+  // volume
+  | "fixedRangeVolumeProfile"
+  | "anchoredVolumeProfile"
+  | "anchoredVwap"
   // shapes
   | "rectangle"
   | "rotatedRectangle"
@@ -83,6 +87,7 @@ export type DrawToolGroupId =
   | "fib"
   | "patterns"
   | "forecast"
+  | "volume"
   | "shapes"
   | "annotation"
   | "measure";
@@ -170,6 +175,10 @@ export const DRAW_TOOL_LIST: DrawToolSpec[] = [
   T("datePriceRange", "forecast", "Date & Price Range", 2),
   T("barsPattern", "forecast", "Bars Pattern", 2),
 
+  T("fixedRangeVolumeProfile", "volume", "Fixed Range Volume Profile", 2),
+  T("anchoredVolumeProfile", "volume", "Anchored Volume Profile", 1),
+  T("anchoredVwap", "volume", "Anchored VWAP", 1),
+
   T("rectangle", "shapes", "Rectangle", 2),
   T("rotatedRectangle", "shapes", "Rotated Rectangle", 3),
   T("ellipse", "shapes", "Ellipse", 2),
@@ -202,6 +211,7 @@ export const DRAW_TOOL_GROUPS: { id: DrawToolGroupId; label: string }[] = [
   { id: "fib", label: "Fib" },
   { id: "patterns", label: "Patterns" },
   { id: "forecast", label: "Forecast" },
+  { id: "volume", label: "Volume" },
   { id: "shapes", label: "Shapes" },
   { id: "annotation", label: "Text" },
   { id: "measure", label: "Measure" },

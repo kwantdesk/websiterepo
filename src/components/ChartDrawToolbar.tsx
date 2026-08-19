@@ -80,6 +80,9 @@ const ICONS: Partial<Record<DrawToolId, ToolIcon>> = {
   elliottImpulse: svg(<><path d="M3 19l3-5 3 3 3-8 3 5 4-9" /></>),
   elliottCorrection: svg(<><path d="M5 8l4 8 4-6 5 7" /></>),
   barsPattern: svg(<><line x1="7" y1="5" x2="7" y2="19" /><rect x="5.5" y="9" width="3" height="6" fill="currentColor" stroke="none" /><line x1="14" y1="5" x2="14" y2="19" /><rect x="12.5" y="7" width="3" height="8" fill="currentColor" stroke="none" /></>),
+  fixedRangeVolumeProfile: svg(<><line x1="4" y1="4" x2="4" y2="20" /><rect x="4" y="5" width="10" height="2.4" fill="currentColor" stroke="none" /><rect x="4" y="9" width="14" height="2.4" fill="currentColor" stroke="none" /><rect x="4" y="13" width="7" height="2.4" fill="currentColor" stroke="none" /><rect x="4" y="17" width="4" height="2.4" fill="currentColor" stroke="none" /></>),
+  anchoredVolumeProfile: svg(<><path d="M4 4v16" /><rect x="4" y="6" width="8" height="2.2" fill="currentColor" stroke="none" /><rect x="4" y="10" width="13" height="2.2" fill="currentColor" stroke="none" /><rect x="4" y="14" width="6" height="2.2" fill="currentColor" stroke="none" /></>),
+  anchoredVwap: svg(<><path d="M4 18v2" /><path d="M4 18c4 0 6-9 9-9s3 5 7-4" strokeDasharray="1 0" /></>),
 };
 
 const fallbackIcon = svg(<circle cx="12" cy="12" r="7" />);
