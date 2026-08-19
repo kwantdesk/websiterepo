@@ -783,6 +783,16 @@ function ExposurePanel({
     setFollowingSpot(true);
   }, [viewIdentity]);
 
+  // Zoom clicks change the ladder's content height without resizing the
+  // scroll container, so the ResizeObserver never fires and a locked panel
+  // drifted out of frame. Engaging the lock (or zooming while following)
+  // always snaps the live price row back to the centre.
+  useEffect(() => {
+    if (!priceLocked && !followingSpot) return;
+    const frame = window.requestAnimationFrame(() => centerLiveStrike());
+    return () => window.cancelAnimationFrame(frame);
+  }, [centerLiveStrike, followingSpot, ladderZoom, priceLocked]);
+
   useEffect(() => {
     const container = scrollRef.current;
     if (!container || typeof ResizeObserver === "undefined") return;
