@@ -2493,6 +2493,70 @@ function drawingsStorageKey(instrument: string, chartInstanceId: string) {
   return `kwantdesk:chart-drawings:v1:${chartInstanceId}:${instrument}`;
 }
 
+// Crosshair styling is shared by every chart pane and adjusted from the
+// right-click menu: thickness down to a 0.25px hairline plus a visibility
+// level. Changes broadcast live so all open charts restyle together.
+const CROSSHAIR_STYLE_STORAGE_KEY = "kwantdesk:chart-crosshair-style:v1";
+const CROSSHAIR_STYLE_EVENT = "kwantdesk:crosshair-style-change";
+
+type CrosshairStyle = { width: number; opacity: number };
+
+const DEFAULT_CROSSHAIR_STYLE: CrosshairStyle = { width: 1, opacity: 1 };
+
+function normalizeCrosshairStyle(value: unknown): CrosshairStyle {
+  const parsed = value && typeof value === "object" ? value as Partial<CrosshairStyle> : {};
+  const width = Number(parsed.width);
+  const opacity = Number(parsed.opacity);
+  return {
+    width: Number.isFinite(width) ? Math.min(3, Math.max(0.25, width)) : DEFAULT_CROSSHAIR_STYLE.width,
+    opacity: Number.isFinite(opacity) ? Math.min(1, Math.max(0.1, opacity)) : DEFAULT_CROSSHAIR_STYLE.opacity,
+  };
+}
+
+function loadCrosshairStyle(): CrosshairStyle {
+  if (typeof window === "undefined") return { ...DEFAULT_CROSSHAIR_STYLE };
+  try {
+    return normalizeCrosshairStyle(JSON.parse(window.localStorage.getItem(CROSSHAIR_STYLE_STORAGE_KEY) ?? "null"));
+  } catch {
+    return { ...DEFAULT_CROSSHAIR_STYLE };
+  }
+}
+
+function saveCrosshairStyle(style: CrosshairStyle) {
+  if (typeof window === "undefined") return;
+  const normalized = normalizeCrosshairStyle(style);
+  try {
+    window.localStorage.setItem(CROSSHAIR_STYLE_STORAGE_KEY, JSON.stringify(normalized));
+  } catch {
+    // The style still applies this session without storage.
+  }
+  window.dispatchEvent(new CustomEvent(CROSSHAIR_STYLE_EVENT, { detail: normalized }));
+  window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
+}
+
+// Canvas colours cannot use color-mix; derive a real rgba with the requested
+// alpha from whatever colour string the theme supplies.
+function colorWithCrosshairAlpha(color: string, alpha: number) {
+  const bounded = Math.max(0, Math.min(1, alpha));
+  const trimmed = color.trim();
+  const rgba = trimmed.match(/^rgba?\(([^)]+)\)$/i);
+  if (rgba) {
+    const parts = rgba[1].split(",").map((part) => part.trim());
+    const baseAlpha = parts.length > 3 ? Number(parts[3]) : 1;
+    return `rgba(${parts[0]},${parts[1]},${parts[2]},${Math.max(0, Math.min(1, (Number.isFinite(baseAlpha) ? baseAlpha : 1) * bounded))})`;
+  }
+  const hex = trimmed.match(/^#([0-9a-f]{6})$/i)?.[1];
+  if (hex) {
+    return `rgba(${parseInt(hex.slice(0, 2), 16)},${parseInt(hex.slice(2, 4), 16)},${parseInt(hex.slice(4, 6), 16)},${bounded})`;
+  }
+  const short = trimmed.match(/^#([0-9a-f]{3})$/i)?.[1];
+  if (short) {
+    const [r, g, b] = [...short].map((part) => parseInt(`${part}${part}`, 16));
+    return `rgba(${r},${g},${b},${bounded})`;
+  }
+  return trimmed;
+}
+
 function positionDrawingsStorageKey(instrument: string, chartInstanceId: string) {
   return `kwantdesk:position-drawings:v1:${chartInstanceId}:${instrument}`;
 }
@@ -3070,6 +3134,16 @@ function Chart({
   const [drawingHistoryRevision, setDrawingHistoryRevision] = useState(0);
   const [precisionClearRevision, setPrecisionClearRevision] = useState(0);
   const [toolbarDock, setToolbarDock] = useState<ToolbarDock>("left");
+  // The drawing rail hides until the pointer reaches the pane's left edge.
+  const [toolbarRevealed, setToolbarRevealed] = useState(false);
+  const [crosshairStyle, setCrosshairStyle] = useState<CrosshairStyle>(() => ({ ...DEFAULT_CROSSHAIR_STYLE }));
+  useEffect(() => {
+    setCrosshairStyle(loadCrosshairStyle());
+    const onStyleChange = (event: Event) =>
+      setCrosshairStyle(normalizeCrosshairStyle((event as CustomEvent).detail));
+    window.addEventListener(CROSSHAIR_STYLE_EVENT, onStyleChange);
+    return () => window.removeEventListener(CROSSHAIR_STYLE_EVENT, onStyleChange);
+  }, []);
   const [showObjectsPanel, setShowObjectsPanel] = useState(false);
   const [toolbarCollapsed, setToolbarCollapsed] = useState(false);
   const [textEditor, setTextEditor] = useState<{ x: number; y: number; time: number; price: number; value: string; tool: DrawingToolId } | null>(null);
@@ -3152,6 +3226,28 @@ function Chart({
   const [hedgeLevelsTooltip, setHedgeLevelsTooltip] = useState<{ x: number; y: number; level: HedgeChartLevel } | null>(null);
   const previousHedgeLevelsRef = useRef<HedgeChartLevel[] | null>(null);
   const [chartReadyRevision, setChartReadyRevision] = useState(0);
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart || typeof window === "undefined") return;
+    const themeStyles = window.getComputedStyle(document.documentElement);
+    const baseColor = themeStyles.getPropertyValue("--crosshair-color").trim() || "rgba(182,255,0,.78)";
+    // The native vertical line cannot go below one pixel; sub-pixel thickness
+    // is emulated there by fading the line, while the DOM horizontal line
+    // renders a genuine fractional-pixel hairline.
+    const effectiveAlpha = crosshairStyle.opacity * Math.min(1, crosshairStyle.width);
+    chart.applyOptions({
+      crosshair: {
+        vertLine: {
+          width: Math.max(1, Math.min(4, Math.round(crosshairStyle.width))) as 1 | 2 | 3 | 4,
+          color: colorWithCrosshairAlpha(baseColor, effectiveAlpha),
+        },
+      },
+    });
+    if (horzLineRef.current) {
+      horzLineRef.current.style.height = `${crosshairStyle.width}px`;
+      horzLineRef.current.style.opacity = String(crosshairStyle.opacity);
+    }
+  }, [chartReadyRevision, crosshairStyle]);
   const [sampledIndicatorCandles, setSampledIndicatorCandles] = useState(candles);
   const [sampledIndicatorMarketTrades, setSampledIndicatorMarketTrades] = useState(marketTrades);
   const [smtComparisonCandles, setSmtComparisonCandles] = useState<Candle[]>([]);
@@ -8661,22 +8757,22 @@ function Chart({
     const scale = clamp(Math.min(widthScale, heightScale), 0.3, 1);
     const smooth = (value: number, minimum: number) =>
       Math.max(minimum, Number((value * scale).toFixed(2)));
-    // Keep the drawing rail compact enough to live on every chart pane without
-    // covering useful price action. These dimensions are 25% smaller than the
-    // original 38px / 17px toolbar while preserving the responsive scale-down.
-    const buttonSize = smooth(28.5, 9.9);
-    const iconSize = smooth(12.75, 5.25);
-    const gap = smooth(2.25, 1.1);
+    // The rail auto-hides until the pointer reaches the left edge, so it can
+    // afford to be twice the old size: the icons were too small to read. The
+    // responsive scale-down for small panes is preserved.
+    const buttonSize = smooth(57, 19.8);
+    const iconSize = smooth(25.5, 10.5);
+    const gap = smooth(4.5, 2.2);
     return {
       scale,
       buttonSize,
       iconSize,
       gap,
-      radius: smooth(5.25, 2.25),
+      radius: smooth(10.5, 4.5),
       menuWidth: Math.max(180, Number((420 * scale).toFixed(2))),
       menuMaxHeight: `${Number((46 + 28 * scale).toFixed(2))}vh`,
       objectsPanelWidth: Math.max(170, Number((288 * scale).toFixed(2))),
-      dragDotSize: smooth(4.5, 1.9),
+      dragDotSize: smooth(9, 3.8),
     };
   }, [overlaySize.height, overlaySize.width]);
   const toolbarButtonStyle = {
@@ -8685,10 +8781,9 @@ function Chart({
     borderRadius: toolbarMetrics.radius,
     transition: "width 70ms linear, height 70ms linear, border-radius 70ms linear",
   } as CSSProperties;
-  // p-[2px] contributes four pixels and the right border contributes one.
-  // Keep native left-docked studies aligned to the rail's real responsive
-  // edge instead of the underlying canvas origin.
-  const toolbarPlotLeftInset = toolbarEnabled ? toolbarMetrics.buttonSize + 5 : 0;
+  // The rail is a transient hover overlay now: it must not reserve plot
+  // width, or the chart would reflow every time it slides in and out.
+  const toolbarPlotLeftInset = 0;
   const toolbarIconClassName = "h-[var(--chart-toolbar-icon)] w-[var(--chart-toolbar-icon)]";
   const toolbarToolIconClassName = "h-[var(--chart-toolbar-tool-icon)] w-[var(--chart-toolbar-tool-icon)]";
   // The drawing tools are a chart-owned navigation rail, not a floating
@@ -14309,12 +14404,25 @@ function Chart({
 
       {toolbarEnabled && (
       <div
+        aria-hidden="true"
+        className="absolute inset-y-0 left-0 z-[19] w-3"
+        onPointerEnter={() => setToolbarRevealed(true)}
+      />
+      )}
+      {toolbarEnabled && (
+      <div
         ref={toolbarRef}
-        className="absolute z-20 flex flex-col items-center overflow-visible border-y-0 border-l-0 border-r border-border/80 bg-panel/96 p-[2px] shadow-none backdrop-blur-xl"
+        className={`absolute z-20 flex flex-col items-center overflow-visible border-y-0 border-l-0 border-r border-border/80 bg-panel/96 p-[2px] shadow-none backdrop-blur-xl transition-[transform,opacity] duration-150 ${
+          toolbarRevealed || openToolbarGroup !== null || showObjectsPanel
+            ? "translate-x-0 opacity-100"
+            : "pointer-events-none -translate-x-full opacity-0"
+        }`}
+        onPointerEnter={() => setToolbarRevealed(true)}
+        onPointerLeave={() => setToolbarRevealed(false)}
         style={{
           ...toolbarDockStyle,
           gap: toolbarMetrics.gap,
-          transition: "gap 70ms linear",
+          transition: "gap 70ms linear, transform 150ms ease, opacity 150ms ease",
           "--chart-toolbar-icon": `${toolbarMetrics.iconSize}px`,
           "--chart-toolbar-tool-icon": `${Math.max(8, Math.round(toolbarMetrics.iconSize * 0.9))}px`,
         } as CSSProperties & Record<"--chart-toolbar-icon" | "--chart-toolbar-tool-icon", string>}
@@ -15452,6 +15560,46 @@ function Chart({
             <span className="flex-1 text-left">Reset chart view</span>
             <span className="text-[11px] text-muted">Alt+R</span>
           </button>
+          <div className="my-1 border-t border-border" />
+          <div className="px-4 pb-1 pt-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">Crosshair</div>
+          <div className="px-4 py-1.5" onMouseDown={(event) => event.stopPropagation()}>
+            <div className="flex items-center justify-between text-[11px] text-muted">
+              <span>Thickness</span>
+              <span className="font-mono text-foreground">{crosshairStyle.width.toFixed(2)}px</span>
+            </div>
+            <input
+              type="range"
+              min={0.25}
+              max={3}
+              step={0.25}
+              value={crosshairStyle.width}
+              onChange={(event) => {
+                const next = normalizeCrosshairStyle({ ...crosshairStyle, width: Number(event.target.value) });
+                setCrosshairStyle(next);
+                saveCrosshairStyle(next);
+              }}
+              className="w-full accent-primary"
+              aria-label="Crosshair thickness"
+            />
+            <div className="mt-2 flex items-center justify-between text-[11px] text-muted">
+              <span>Visibility</span>
+              <span className="font-mono text-foreground">{Math.round(crosshairStyle.opacity * 100)}%</span>
+            </div>
+            <input
+              type="range"
+              min={0.1}
+              max={1}
+              step={0.05}
+              value={crosshairStyle.opacity}
+              onChange={(event) => {
+                const next = normalizeCrosshairStyle({ ...crosshairStyle, opacity: Number(event.target.value) });
+                setCrosshairStyle(next);
+                saveCrosshairStyle(next);
+              }}
+              className="w-full accent-primary"
+              aria-label="Crosshair visibility"
+            />
+          </div>
           <button
             onMouseDown={(e) => {
               e.stopPropagation();
