@@ -7043,14 +7043,88 @@ function WorkspaceChartPaneComponent({
     };
   }, [markMarketActive, pane.broker, pane.symbol, pane.timeframe]);
 
-  // Cash-index / options-underlying panes have no execution tape but DO carry
-  // real provider bar volume for stocks and ETFs (SPY, QQQ...). Daily and
-  // weekly profiles are built from those candles with a neutral buy/sell
-  // split; delta-labelled profile variants stay honestly absent, as do all
-  // profiles on volumeless indices (SPX, NDX, VIX).
+  // Options-family index charts (NDX/QQQ/SPX/SPY) have no execution tape and
+  // the cash provider publishes no volume at all (verified against the live
+  // endpoint: OHLC only). Their volume profiles therefore come from the REAL
+  // CME execution profiles of the futures book that hedges them — NQ for
+  // NDX/QQQ, ES for SPX/SPY — projected onto the cash scale with the same
+  // live basis ratio the value-area levels already use. Genuine traded-at-
+  // price volume and aggressor delta, honestly labelled as projected.
   useEffect(() => {
     const usingMarketIndexPaneFeed = pane.broker === "Market Index" || isMarketIndexSymbol(pane.symbol);
     if (!usingMarketIndexPaneFeed) return;
+    const projectionRoot = valueAreaIndexSourceRoot(pane.symbol);
+    if (!projectionRoot) return;
+    const wantsDaily = Boolean(dailyProfileInstance);
+    const wantsWeekly = Boolean(weeklyProfileInstance);
+    if (!wantsDaily && !wantsWeekly) return;
+    let cancelled = false;
+    const displayRoot = displayCmeSymbol(pane.symbol);
+    const scaleProfile = (profile: InstitutionalVolumeProfile, ratio: number): InstitutionalVolumeProfile => ({
+      ...profile,
+      root: displayRoot,
+      source: `${profile.source} · projected from ${projectionRoot} futures`,
+      tickSize: profile.tickSize * ratio,
+      poc: profile.poc === null ? null : profile.poc * ratio,
+      vah: profile.vah === null ? null : profile.vah * ratio,
+      val: profile.val === null ? null : profile.val * ratio,
+      vwap: profile.vwap === null ? null : profile.vwap * ratio,
+      standardDeviation: profile.standardDeviation * ratio,
+      levels: profile.levels.map((level) => ({ ...level, price: level.price * ratio })),
+      developingPoc: profile.developingPoc.map((point) => ({ ...point, price: point.price * ratio })),
+    });
+    const load = async () => {
+      try {
+        const referenceBars = await fetchValueAreaFuturesReference(projectionRoot);
+        const ratio = valueAreaFuturesToCashRatio(referenceBars, latestCashCandleRef.current);
+        if (!ratio || cancelled) return;
+        const contractSymbol = currentCmeContract(`${projectionRoot}.c.0`) ?? undefined;
+        const requests: Promise<InstitutionalVolumeProfile | null>[] = [];
+        if (wantsDaily) {
+          requests.push(fetchInstitutionalVolumeProfile({
+            symbol: projectionRoot,
+            contractSymbol,
+            period: "daily",
+            tradingDate: chicagoTradingDate(Date.now()),
+            groupTicks: 1,
+            valueAreaPercent: STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
+          }));
+        }
+        if (wantsWeekly) {
+          requests.push(fetchInstitutionalVolumeProfile({
+            symbol: projectionRoot,
+            contractSymbol,
+            period: "weekly",
+            groupTicks: 4,
+            valueAreaPercent: STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
+          }));
+        }
+        const results = await Promise.allSettled(requests);
+        if (cancelled) return;
+        const projected = results
+          .flatMap((result) => result.status === "fulfilled" && result.value ? [result.value] : [])
+          .filter((profile) => isExecutionBackedVolumeProfile(profile))
+          .map((profile) => scaleProfile(profile, ratio));
+        if (projected.length) {
+          setVolumeProfiles(projected.sort((left, right) => left.startMs - right.startMs));
+        }
+      } catch {
+        // The next interval retries; the last projected profile stays painted.
+      }
+    };
+    void load();
+    const interval = window.setInterval(() => void load(), 60_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [dailyProfileInstance, pane.broker, pane.symbol, weeklyProfileInstance]);
+
+  // Volume-bearing cash tickers outside the options family keep the candle-
+  // volume fallback: real provider bar volume, neutral buy/sell split.
+  useEffect(() => {
+    const usingMarketIndexPaneFeed = pane.broker === "Market Index" || isMarketIndexSymbol(pane.symbol);
+    if (!usingMarketIndexPaneFeed || valueAreaIndexSourceRoot(pane.symbol)) return;
     const wantsDaily = dailyProfileInstance?.indicatorId === "kwant-profile";
     const wantsWeekly = Boolean(weeklyProfileInstance);
     if (!wantsDaily && !wantsWeekly) return;
