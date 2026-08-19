@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, Bell, CalendarClock, ChevronLeft, ChevronRight, Download, ExternalLink, GripVertical, HelpCircle, Pause, Play, RefreshCw, SlidersHorizontal, Star } from "lucide-react";
+import { AlertTriangle, Bell, ChevronLeft, ChevronRight, Download, ExternalLink, GripVertical, Pause, Play, RefreshCw, SlidersHorizontal, Star } from "lucide-react";
 import GexCalendarMatrix from "@/components/gex-cal/GexCalendarMatrix";
 import KwantLoader from "@/components/KwantLoader";
 import KwantSelect from "@/components/ui/KwantSelect";
@@ -149,7 +149,6 @@ export default function GexCalendarWorkspace() {
   const [inspectorTab, setInspectorTab] = useState<"STARS" | "EXPIRIES" | "STRIKES" | "TERM" | "CLUSTERS" | "DETAIL">("STARS");
   const [filtersOpen, setFiltersOpen] = useState(true);
   const [rightPanelWidth, setRightPanelWidth] = useState(DEFAULTS.rightPanelWidth);
-  const [helpOpen, setHelpOpen] = useState(false);
   const [context, setContext] = useState<{ x: number; y: number; cell: GexCalCell } | null>(null);
   const [persistenceReady, setPersistenceReady] = useState(false);
   const requestRef = useRef<AbortController | null>(null);
@@ -258,9 +257,9 @@ export default function GexCalendarWorkspace() {
     const next = matrix.availableTimestamps.find((timestamp) => timestamp > current);
     if (next) setAsOf(new Date(next).toISOString());
   };
-  const exportMatrix = (format: "csv" | "json") => {
+  const exportMatrix = (format: "csv") => {
     if (!visibleMatrix) return;
-    if (format === "json") return download(`gex-cal-${visibleMatrix.source}.json`, JSON.stringify(visibleMatrix, null, 2), "application/json");
+    void format;
     const rows = ["expiration,strike,call,put,net,gross,value,previous,change", ...visibleMatrix.cells.map((cell) => [cell.expiration, cell.strike, cell.call, cell.put, cell.net, cell.gross, cell.value, cell.previousValue ?? "", cell.change ?? ""].join(","))];
     download(`gex-cal-${visibleMatrix.source}.csv`, rows.join("\n"), "text/csv");
   };
@@ -322,15 +321,6 @@ export default function GexCalendarWorkspace() {
   };
 
   return <div className="flex h-full min-h-0 flex-col bg-background text-foreground" onClick={() => context && setContext(null)}>
-    <header className="flex h-9 shrink-0 items-center justify-between border-b border-border bg-panel px-3">
-      <div className="flex items-center gap-2"><CalendarClock className="h-4 w-4 text-primary" /><h1 className="text-[11px] font-semibold uppercase tracking-[0.14em]">GEX CAL</h1><span className="border border-border px-2 py-0.5 font-mono text-[9px] text-muted">EXPIRATION × STRIKE</span></div>
-      <div className="flex items-center gap-1">
-        <span className={`border px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.12em] ${matrix?.status === "LIVE" ? "border-candle-up/40 text-candle-up" : "border-border text-muted"}`}>{matrix?.status ?? "CONNECTING"}</span>
-        <button className="h-7 border border-border px-2 text-muted hover:text-foreground" onClick={() => setHelpOpen((value) => !value)} title="Methodology and diagnostics"><HelpCircle className="h-3.5 w-3.5" /></button>
-        <button className="h-7 border border-border px-2 text-muted hover:text-foreground" onClick={() => void load()} title="Refresh"><RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} /></button>
-      </div>
-    </header>
-
     <div data-gex-cal-workspace-row className="relative flex min-h-0 flex-1">
       {filtersOpen ? <aside className="w-[244px] shrink-0 overflow-hidden border-r border-border bg-panel">
         <div className="flex h-9 w-full items-center gap-2 border-b border-border pl-3 text-[9px] font-semibold uppercase tracking-[0.14em] text-muted">
@@ -368,7 +358,7 @@ export default function GexCalendarWorkspace() {
           <button onClick={() => { setAsOf(""); setSessionDate(""); }} className="h-7 border border-border px-2 text-[9px] font-semibold text-primary">LIVE</button>
           <span className="ml-auto font-mono text-[9px] text-muted">{matrix ? `${matrix.source} · ${new Date(matrix.selectedTimestamp).toLocaleString()} · ${matrix.cells.length.toLocaleString()} CELLS` : ""}</span>
           <button onClick={() => exportMatrix("csv")} className="h-7 border border-border px-2 text-muted hover:text-foreground" title="Export CSV"><Download className="h-3.5 w-3.5" /></button>
-          <button onClick={() => exportMatrix("json")} className="h-7 border border-border px-2 font-mono text-[9px] text-muted hover:text-foreground">JSON</button>
+          <button onClick={() => void load()} className="h-7 border border-border px-2 text-muted hover:text-foreground" title="Refresh"><RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} /></button>
         </div>
         {error && matrix ? <div className="flex h-7 shrink-0 items-center gap-2 border-b border-danger/30 bg-danger/5 px-3 text-[9px] text-danger"><AlertTriangle className="h-3 w-3" />Refresh delayed · showing the latest valid surface · {error}</div> : null}
         <div className="relative flex min-h-0 flex-1">
@@ -393,11 +383,6 @@ export default function GexCalendarWorkspace() {
         </div>
       </aside> : <button className="absolute right-0 top-1/2 z-30 flex h-14 w-5 -translate-y-1/2 items-center justify-center border border-r-0 border-border bg-panel text-muted shadow-lg hover:text-primary" onClick={openRightPanel} title="Restore Stars and expiry inspector" aria-label="Restore GEX Calendar inspector"><ChevronLeft className="h-3.5 w-3.5" /></button>}
     </div>
-
-    {helpOpen ? <div className="absolute right-4 top-14 z-50 w-[380px] border border-border bg-panel p-4 shadow-2xl">
-      <div className="flex items-center justify-between"><h2 className="text-[11px] font-semibold uppercase tracking-[0.14em]">Methodology & diagnostics</h2><button onClick={() => setHelpOpen(false)} className="text-muted">×</button></div>
-      <div className="mt-3 space-y-2 text-[10px] leading-5 text-muted"><p>Each cell is provider-signed call and put exposure for one exact strike and expiration. NET is CALL + PUT; GROSS is |CALL| + |PUT|.</p><p>Missing cells use a hatched state and are never converted to zero. Difference mode subtracts the selected baseline bucket. Replay selects only data at or before its timestamp.</p><p>Star = maximum absolute raw cell value after the active filters. Spot is an independent reference and does not select the Star.</p><p>Source: KwantData server adapter · no browser credential · {matrix?.cells.length.toLocaleString() ?? 0} current cells.</p>{matrix?.limitations.map((item) => <p key={item}>• {item}</p>)}</div>
-    </div> : null}
 
     {context ? <div className="fixed z-[1000] w-56 border border-border bg-panel p-1 shadow-2xl" style={{ left: context.x, top: context.y }} onClick={(event) => event.stopPropagation()}>
       <ContextButton label="Inspect cell" onClick={() => { setSelected(context.cell); setInspectorTab("DETAIL"); setContext(null); }} />

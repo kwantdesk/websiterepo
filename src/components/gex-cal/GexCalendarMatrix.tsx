@@ -33,6 +33,7 @@ function GexCalendarMatrix({ matrix, differenceMode, normalization, selected, on
   const viewportRef = useRef<HTMLDivElement>(null);
   const headerTrackRef = useRef<HTMLDivElement>(null);
   const cellWidthRef = useRef(MIN_CELL_WIDTH);
+  const rowHeightRef = useRef(ROW_HEIGHT);
   const scrollFrameRef = useRef<number | null>(null);
   const pendingScrollRef = useRef({ top: 0, left: 0 });
   const [viewport, setViewport] = useState({ top: 0, left: 0, width: 900, height: 500 });
@@ -91,7 +92,8 @@ function GexCalendarMatrix({ matrix, differenceMode, normalization, selected, on
       scrollFrameRef.current = null;
       const next = pendingScrollRef.current;
       const cellWidth = cellWidthRef.current;
-      const top = Math.floor(next.top / ROW_HEIGHT) * ROW_HEIGHT;
+      const liveRowHeight = rowHeightRef.current;
+      const top = Math.floor(next.top / liveRowHeight) * liveRowHeight;
       const left = Math.floor(next.left / cellWidth) * cellWidth;
       if (headerTrackRef.current) {
         headerTrackRef.current.style.transform = `translate3d(${-next.left}px, 0, 0)`;
@@ -102,11 +104,19 @@ function GexCalendarMatrix({ matrix, differenceMode, normalization, selected, on
     });
   }, []);
 
-  const startRow = Math.max(0, Math.floor(viewport.top / ROW_HEIGHT) - 5);
-  const endRow = Math.min(matrix.strikes.length, Math.ceil((viewport.top + viewport.height) / ROW_HEIGHT) + 5);
+  // The surface always reaches the right and bottom edges: columns divide the
+  // viewport across however many expirations exist (up to the visible cap),
+  // and rows stretch taller when the strike list is shorter than the pane.
+  const columnCount = Math.max(1, Math.min(VISIBLE_EXPIRATION_COLUMNS, matrix.expirations.length));
+  const rowHeight = matrix.strikes.length > 0 && matrix.strikes.length * ROW_HEIGHT < viewport.height
+    ? viewport.height / matrix.strikes.length
+    : ROW_HEIGHT;
+  rowHeightRef.current = rowHeight;
+  const startRow = Math.max(0, Math.floor(viewport.top / rowHeight) - 5);
+  const endRow = Math.min(matrix.strikes.length, Math.ceil((viewport.top + viewport.height) / rowHeight) + 5);
   const cellWidth = Math.max(
     MIN_CELL_WIDTH,
-    (viewport.width - STRIKE_WIDTH) / VISIBLE_EXPIRATION_COLUMNS,
+    (viewport.width - STRIKE_WIDTH) / columnCount,
   );
   cellWidthRef.current = cellWidth;
   const startColumn = Math.max(0, Math.floor(viewport.left / cellWidth) - 2);
@@ -125,7 +135,7 @@ function GexCalendarMatrix({ matrix, differenceMode, normalization, selected, on
     return Math.min(1, absolute / Math.max(1, values.at(-1) ?? 1));
   };
   const totalWidth = STRIKE_WIDTH + matrix.expirations.length * cellWidth;
-  const totalHeight = matrix.strikes.length * ROW_HEIGHT;
+  const totalHeight = matrix.strikes.length * rowHeight;
 
   return (
     <div className="relative min-h-0 flex-1 overflow-hidden border border-border bg-background [contain:layout_paint]" aria-label="GEX expiration by strike matrix">
@@ -145,13 +155,13 @@ function GexCalendarMatrix({ matrix, differenceMode, normalization, selected, on
           {visibleRows.map((strike, rowIndex) => {
             const actualRow = startRow + rowIndex;
             const isCurrentStrike = strike === currentStrike;
-            return <div key={strike} className="absolute left-0" style={{ top: actualRow * ROW_HEIGHT, width: totalWidth, height: ROW_HEIGHT }}>
+            return <div key={strike} className="absolute left-0" style={{ top: actualRow * rowHeight, width: totalWidth, height: rowHeight }}>
               <div
                 aria-current={isCurrentStrike ? "true" : undefined}
                 className={`sticky left-0 z-10 flex items-center justify-end border-b border-r px-3 font-mono text-[10px] transition-[background-color,color,border-color,box-shadow] ${isCurrentStrike
                   ? "border-primary bg-[color-mix(in_srgb,var(--primary)_24%,var(--panel))] font-semibold text-primary shadow-[inset_3px_0_0_var(--primary),0_0_18px_color-mix(in_srgb,var(--primary)_38%,transparent)]"
                   : "border-border bg-panel text-foreground"}`}
-                style={{ width: STRIKE_WIDTH, height: ROW_HEIGHT }}
+                style={{ width: STRIKE_WIDTH, height: rowHeight }}
                 title={isCurrentStrike ? `Current strike nearest ${matrix.spot?.toLocaleString()}` : undefined}
               >
                 {strike.toLocaleString()}
@@ -175,7 +185,7 @@ function GexCalendarMatrix({ matrix, differenceMode, normalization, selected, on
                     left: STRIKE_WIDTH + (startColumn + columnIndex) * cellWidth,
                     top: 0,
                     width: cellWidth,
-                    height: ROW_HEIGHT,
+                    height: rowHeight,
                     color: cell ? "var(--foreground)" : undefined,
                     background: cell ? `color-mix(in srgb, ${positive ? "var(--candle-up)" : "var(--candle-down)"} ${Math.round(10 + magnitude * 76)}%, var(--background))` : undefined,
                     boxShadow: isStar ? "inset 0 0 0 2px var(--primary), 0 0 12px color-mix(in srgb, var(--primary) 42%, transparent)" : undefined,
