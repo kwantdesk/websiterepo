@@ -15770,7 +15770,11 @@ export default function KwantifyWorkspace({
           tradesActive={showTradesMenu || rightPanel === "order"}
         />
 
-        {showTradesMenu && (
+        {/* Portaled to <body>: this menu used to render inside the main
+            column's `relative z-0` stacking context, so any later sibling
+            (watchlist / right panels) painted over it regardless of its own
+            z-index. */}
+        {showTradesMenu && typeof document !== "undefined" ? createPortal(
           <>
             <button
               type="button"
@@ -15779,9 +15783,9 @@ export default function KwantifyWorkspace({
                 setShowTradesMenu(false);
                 setTradesMenuView("root");
               }}
-              className="fixed inset-0 z-[78] cursor-default bg-transparent"
+              className="fixed inset-0 z-[190] cursor-default bg-transparent"
             />
-            <section className="fixed right-2 top-[35px] z-[79] w-[330px] overflow-hidden rounded-[5px] border border-border bg-panel shadow-[0_18px_55px_rgba(0,0,0,0.62)]">
+            <section className="fixed right-2 top-[35px] z-[191] w-[330px] overflow-hidden rounded-[5px] border border-border bg-panel shadow-[0_18px_55px_rgba(0,0,0,0.62)]">
               <header className="flex h-9 items-center justify-between border-b border-border px-3">
                 <div className="flex items-center gap-2">
                   {tradesMenuView === "paper" && (
@@ -15921,8 +15925,9 @@ export default function KwantifyWorkspace({
                 </div>
               )}
             </section>
-          </>
-        )}
+          </>,
+          document.body,
+        ) : null}
 
         {chartSurfaceActive && (
         <header className="kwant-chart-command-deck relative grid shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center border-b border-border bg-panel">
