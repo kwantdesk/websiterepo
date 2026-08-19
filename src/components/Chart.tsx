@@ -14509,7 +14509,10 @@ function Chart({
             : "pointer-events-none -translate-x-full opacity-0"
         }`}
         onPointerEnter={() => setToolbarRevealed(true)}
-        onPointerLeave={() => setToolbarRevealed(false)}
+        onPointerLeave={() => {
+          setToolbarRevealed(false);
+          setOpenToolbarGroup(null);
+        }}
         style={{
           ...toolbarDockStyle,
           gap: toolbarMetrics.gap,
@@ -14668,7 +14671,16 @@ function Chart({
           const GroupIcon = lastUsedTool?.icon ?? group.icon;
           const groupedSections = groupToolsBySection(group.tools);
           return (
-            <div key={group.id} className="relative">
+            <div
+              key={group.id}
+              className="relative"
+              // Hovering a group fans its tools out immediately, so the whole
+              // toolbar can be scanned without clicking each little chevron.
+              onPointerEnter={() => {
+                setShowObjectsPanel(false);
+                setOpenToolbarGroup(group.id);
+              }}
+            >
               <button
                 type="button"
                 onClick={(event) => {
