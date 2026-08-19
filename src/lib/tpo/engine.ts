@@ -14,6 +14,31 @@ const DAY_MS = 86_400_000;
 const WEEK_MS = DAY_MS * 7;
 const MARKERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
+// Allocation-free min/max reducers. TPO source arrays (executions on a 4-6k
+// order-flow window) can hold tens of thousands of entries; `Math.max(...arr)`
+// spreads every element as a function argument and throws a RangeError past
+// V8's argument limit — a real "Aw, Snap" crash vector — besides being slow.
+function reduceMax(values: readonly number[], seed = Number.NEGATIVE_INFINITY) {
+  let max = seed;
+  for (let i = 0; i < values.length; i += 1) if (values[i] > max) max = values[i];
+  return max;
+}
+function reduceMin(values: readonly number[], seed = Number.POSITIVE_INFINITY) {
+  let min = seed;
+  for (let i = 0; i < values.length; i += 1) if (values[i] < min) min = values[i];
+  return min;
+}
+function mapMax<T>(items: readonly T[], get: (item: T) => number, seed = Number.NEGATIVE_INFINITY) {
+  let max = seed;
+  for (let i = 0; i < items.length; i += 1) { const v = get(items[i]); if (v > max) max = v; }
+  return max;
+}
+function mapMin<T>(items: readonly T[], get: (item: T) => number, seed = Number.POSITIVE_INFINITY) {
+  let min = seed;
+  for (let i = 0; i < items.length; i += 1) { const v = get(items[i]); if (v < min) min = v; }
+  return min;
+}
+
 type ZonedParts = {
   year: number;
   month: number;
@@ -228,7 +253,7 @@ function chooseTicksPerRow(
     ...bars.flatMap((bar) => [priceToTick(bar.low, bar.tickSize), priceToTick(bar.high, bar.tickSize)]),
   ];
   if (!ticks.length) return 1;
-  const range = Math.max(...ticks) - Math.min(...ticks) + 1;
+  const range = reduceMax(ticks) - reduceMin(ticks) + 1;
   return Math.max(1, Math.ceil(range / Math.max(20, settings.autoTargetRows) * settings.autoGroupFactor));
 }
 
@@ -252,13 +277,13 @@ function hasCompleteExactCoverage(
   if (!periodTrades.length) return false;
   const periodBars = bars.filter((bar) => bar.endTimeMs > period.startMs && bar.startTimeMs < period.endMs);
   if (!periodBars.length) return true;
-  const expectedStartMs = Math.max(period.startMs, Math.min(...periodBars.map((bar) => bar.startTimeMs)));
+  const expectedStartMs = Math.max(period.startMs, mapMin(periodBars, (bar) => bar.startTimeMs));
   const expectedEndMs = Math.min(
     Number.isFinite(period.endMs) ? period.endMs : nowMs + 1,
-    Math.max(...periodBars.map((bar) => bar.endTimeMs)),
+    mapMax(periodBars, (bar) => bar.endTimeMs),
   );
-  const firstTradeMs = Math.min(...periodTrades.map((trade) => trade.timestampMs));
-  const lastTradeMs = Math.max(...periodTrades.map((trade) => trade.timestampMs));
+  const firstTradeMs = mapMin(periodTrades, (trade) => trade.timestampMs);
+  const lastTradeMs = mapMax(periodTrades, (trade) => trade.timestampMs);
   const toleranceMs = Math.max(60_000, settings.subperiodMinutes * 60_000);
   return firstTradeMs <= expectedStartMs + toleranceMs && lastTradeMs >= expectedEndMs - toleranceMs;
 }
@@ -343,7 +368,7 @@ function profileRows(rows: Map<number, MutableRow>) {
 
 export function calculateTpoPoc(rows: TpoProfileRow[], closeTick: number | null) {
   if (!rows.length) return null;
-  const maxCount = Math.max(...rows.map((row) => row.tpoCount));
+  const maxCount = mapMax(rows, (row) => row.tpoCount);
   const candidates = rows.filter((row) => row.tpoCount === maxCount);
   if (candidates.length === 1) return (candidates[0].lowTick + candidates[0].highTick) / 2;
   const midpoint = (rows[0].lowTick + rows[rows.length - 1].highTick) / 2;
@@ -466,9 +491,8 @@ function buildOneProfile(
   const periodBars = bars.filter((bar) => bar.endTimeMs > period.startMs && bar.startTimeMs < period.endMs && isInsideSession(bar.startTimeMs, settings));
   if (!periodTrades.length && !periodBars.length) return null;
   const latestSourceMs = Math.max(
-    period.startMs + 1,
-    ...periodTrades.map((trade) => trade.timestampMs + 1),
-    ...periodBars.map((bar) => bar.endTimeMs),
+    mapMax(periodTrades, (trade) => trade.timestampMs + 1, period.startMs + 1),
+    mapMax(periodBars, (bar) => bar.endTimeMs, period.startMs + 1),
   );
   const effectiveEndMs = Number.isFinite(period.endMs)
     ? period.endMs
@@ -582,12 +606,37 @@ function buildOneProfile(
   const developingPoc: Array<{ timeMs: number; tick: number }> = [];
   const developingVah: Array<{ timeMs: number; tick: number }> = [];
   const developingVal: Array<{ timeMs: number; tick: number }> = [];
+  // Developing POC/VA per subperiod. The naive version cloned every price-row
+  // (cells + marker arrays and all) for every subperiod — O(subperiods×rows)
+  // full-object allocations per rebuild, and this whole profile rebuilds on
+  // every live sample. Instead keep a running per-row TPO count advanced by a
+  // pointer (both subperiods and each row's subperiodIndexes are ascending) and
+  // build only the three numeric fields the POC/VA math actually reads.
+  const developingRows = finalRows.map((row) => ({
+    rowTick: row.rowTick,
+    lowTick: row.lowTick,
+    highTick: row.highTick,
+    indexes: row.subperiodIndexes,
+    ptr: 0,
+    count: 0,
+  }));
   subperiods.forEach((current) => {
-    const partial = finalRows.map((row) => ({
-      ...row,
-      subperiodIndexes: row.subperiodIndexes.filter((index) => index <= current.index),
-      tpoCount: row.subperiodIndexes.filter((index) => index <= current.index).length,
-    })).filter((row) => row.tpoCount > 0);
+    const partial: TpoProfileRow[] = [];
+    for (const developingRow of developingRows) {
+      while (developingRow.ptr < developingRow.indexes.length
+        && developingRow.indexes[developingRow.ptr] <= current.index) {
+        developingRow.ptr += 1;
+        developingRow.count += 1;
+      }
+      if (developingRow.count > 0) {
+        partial.push({
+          rowTick: developingRow.rowTick,
+          lowTick: developingRow.lowTick,
+          highTick: developingRow.highTick,
+          tpoCount: developingRow.count,
+        } as TpoProfileRow);
+      }
+    }
     const partialPoc = calculateTpoPoc(partial, current.closeTick);
     const partialVa = calculateTpoValueArea(partial, partialPoc, settings.valueAreaPercent);
     if (partialPoc !== null) developingPoc.push({ timeMs: current.endTimeMs, tick: partialPoc });
@@ -682,8 +731,8 @@ export function buildTpoProfiles({
       : [...trades.map((trade) => trade.timestampMs), ...bars.map((bar) => bar.startTimeMs)];
   if (!timestamps.length) return [];
   if (settings.periodMode === "all-loaded-bars") {
-    const startMs = Math.min(...timestamps);
-    const endMs = Math.max(nowMs + 1, ...timestamps.map((timestamp) => timestamp + 1));
+    const startMs = reduceMin(timestamps);
+    const endMs = mapMax(timestamps, (timestamp) => timestamp + 1, nowMs + 1);
     const profile = buildOneProfile({ startMs, endMs, id: `loaded:${startMs}` }, trades, bars, settings, preferredSource, nowMs);
     return profile ? [profile] : [];
   }

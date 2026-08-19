@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactElement } from "react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactElement } from "react";
 import {
   DRAW_TOOL_SPECS,
   FIB_CIRCLE_COEFFS,
@@ -121,6 +121,35 @@ export default function ChartDrawLayer({
     const unsubscribe = subscribeViewport(onViewport);
     return () => { unsubscribe(); if (frame) window.cancelAnimationFrame(frame); };
   }, [subscribeViewport, chartReady]);
+  // Volume-profile histograms and anchored-VWAP series live in price/time space
+  // — they do NOT change when the user pans or zooms, only the pixel projection
+  // does. Computing them inside renderDrawing meant a full candle scan per
+  // profile on every rAF pan frame (the "hella laggy" volume profiles). Memoize
+  // the price-space result on the data; the per-frame render only re-projects.
+  const volumeProfileCache = useMemo(() => {
+    const cache = new Map<string, ReturnType<typeof volumeProfile>>();
+    for (const drawing of drawings) {
+      if (drawing.tool !== "fixedRangeVolumeProfile" && drawing.tool !== "anchoredVolumeProfile") continue;
+      const pr = drawing.points;
+      const anchored = drawing.tool === "anchoredVolumeProfile";
+      if (pr.length < (anchored ? 1 : 2)) continue;
+      const t0 = anchored ? pr[0].time : Math.min(pr[0].time, pr[1].time);
+      const t1 = anchored ? (candles[candles.length - 1]?.time ?? pr[0].time) : Math.max(pr[0].time, pr[1].time);
+      cache.set(drawing.id, volumeProfile(candles, t0, t1));
+    }
+    return cache;
+  }, [drawings, candles]);
+  const vwapCache = useMemo(() => {
+    const cache = new Map<string, Array<{ time: number; vwap: number }>>();
+    for (const drawing of drawings) {
+      if (drawing.tool !== "anchoredVwap") continue;
+      const pr = drawing.points;
+      if (pr.length < 1) continue;
+      cache.set(drawing.id, anchoredVwapSeries(candles, pr[0].time));
+    }
+    return cache;
+  }, [drawings, candles]);
+
   const beginDrag = (drawing: Drawing, mode: "move" | number, event: ReactPointerEvent) => {
     event.stopPropagation();
     onSelect(drawing.id);
@@ -553,7 +582,9 @@ export default function ChartDrawLayer({
           const t1 = anchored ? (candles[candles.length - 1]?.time ?? pr[0].time) : Math.max(pr[0].time, pr[1].time);
           const x0 = toX(t0); const x1 = toX(t1);
           if (x0 == null || x1 == null) return null;
-          const prof = volumeProfile(candles, t0, t1);
+          // Committed drawings read the memoized histogram (recomputed only when
+          // candles/anchors change); a live preview computes directly.
+          const prof = preview ? volumeProfile(candles, t0, t1) : (volumeProfileCache.get(drawing.id) ?? volumeProfile(candles, t0, t1));
           if (!prof) return null;
           const boxRight = anchored ? x1 : Math.max(x0, x1);
           const boxLeft = Math.min(x0, x1);
@@ -575,16 +606,11 @@ export default function ChartDrawLayer({
         case "anchoredVwap": {
           if (a.x == null) return null;
           const from = pr[0].time;
-          const inRange = candles.filter((cd) => cd.time >= from);
-          if (inRange.length < 2) return null;
-          let cumPV = 0; let cumV = 0;
+          const series = preview ? anchoredVwapSeries(candles, from) : (vwapCache.get(drawing.id) ?? anchoredVwapSeries(candles, from));
+          if (series.length < 2) return null;
           const pts: string[] = [];
-          for (const cd of inRange) {
-            const v = Math.max(0, cd.volume ?? 0);
-            const typical = (cd.high + cd.low + cd.close) / 3;
-            if (v > 0) { cumPV += typical * v; cumV += v; }
-            const vwap = cumV > 0 ? cumPV / cumV : typical;
-            const px = toX(cd.time); const py = toY(vwap);
+          for (const point of series) {
+            const px = toX(point.time); const py = toY(point.vwap);
             if (px != null && py != null) pts.push(`${px},${py}`);
           }
           if (pts.length < 2) return null;
@@ -729,6 +755,22 @@ function previewStyle(tool: DrawToolId) {
   if (tool === "longPosition") return { ...base, color: "#089981" };
   if (tool === "shortPosition") return { ...base, color: "#F23645" };
   return base;
+}
+
+// Price-space anchored-VWAP series (viewport-invariant): one cumulative pass
+// over the candles from the anchor time forward, returning {time, vwap} pairs.
+// The per-frame render maps these to pixels; it does not recompute the sum.
+function anchoredVwapSeries(candles: DrawCandle[], from: number) {
+  const series: Array<{ time: number; vwap: number }> = [];
+  let cumPV = 0; let cumV = 0;
+  for (const cd of candles) {
+    if (cd.time < from) continue;
+    const v = Math.max(0, cd.volume ?? 0);
+    const typical = (cd.high + cd.low + cd.close) / 3;
+    if (v > 0) { cumPV += typical * v; cumV += v; }
+    series.push({ time: cd.time, vwap: cumV > 0 ? cumPV / cumV : typical });
+  }
+  return series;
 }
 
 function volumeProfile(candles: DrawCandle[], t0: number, t1: number, binCount = 24) {
