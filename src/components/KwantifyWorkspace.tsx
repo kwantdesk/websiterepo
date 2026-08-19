@@ -15354,26 +15354,61 @@ export default function KwantifyWorkspace({
             : null}
           {draggedWorkspacePaneId && draggedWorkspacePaneId !== node.paneId ? (
             <div
-              className={`pointer-events-none absolute inset-0 z-[90] grid grid-cols-3 grid-rows-3 gap-2 rounded-2xl p-[7%] backdrop-blur-[2px] transition-colors ${workspaceDropTargetPaneId === node.paneId ? "bg-background/48" : "bg-background/28"}`}
+              className={`pointer-events-none absolute inset-0 z-[90] rounded-2xl backdrop-blur-[2px] transition-colors ${workspaceDropTargetPaneId === node.paneId ? "bg-background/48" : "bg-background/28"}`}
               aria-label="Workspace docking positions"
             >
-              {([
-                ["top", "TOP", "col-start-2 row-start-1"],
-                ["left", "LEFT", "col-start-1 row-start-2"],
-                ["center", "SWAP", "col-start-2 row-start-2"],
-                ["right", "RIGHT", "col-start-3 row-start-2"],
-                ["bottom", "BOTTOM", "col-start-2 row-start-3"],
-              ] as const).map(([zone, label, position]) => {
-                const selected = workspaceDropTargetPaneId === node.paneId && workspaceDropZone === zone;
-                return (
-                  <div
-                    key={zone}
-                    className={`${position} pointer-events-none flex min-h-10 items-center justify-center rounded-[4px] border text-[8px] font-semibold uppercase tracking-[0.12em] shadow-lg transition-all ${selected ? "scale-[1.04] border-primary bg-primary text-background shadow-[0_0_24px_color-mix(in_srgb,var(--primary)_30%,transparent)]" : "border-border/80 bg-panel/88 text-muted"}`}
-                  >
-                    {label}
-                  </div>
-                );
-              })}
+              {/* Preview the REAL outcome: the highlighted region is exactly
+                  where the dropped chart will live (half the pane, or the
+                  whole pane for a swap). */}
+              {workspaceDropTargetPaneId === node.paneId && workspaceDropZone !== "center" ? (
+                <div
+                  className="absolute rounded-xl border-2 border-primary bg-primary/15 shadow-[0_0_24px_color-mix(in_srgb,var(--primary)_25%,transparent)] transition-all"
+                  style={workspaceDropZone === "left"
+                    ? { left: 4, top: 4, bottom: 4, width: "calc(50% - 6px)" }
+                    : workspaceDropZone === "right"
+                      ? { right: 4, top: 4, bottom: 4, width: "calc(50% - 6px)" }
+                      : workspaceDropZone === "top"
+                        ? { left: 4, right: 4, top: 4, height: "calc(50% - 6px)" }
+                        : { left: 4, right: 4, bottom: 4, height: "calc(50% - 6px)" }}
+                />
+              ) : null}
+              {workspaceDropTargetPaneId === node.paneId && workspaceDropZone === "center" ? (
+                <div className="absolute inset-1 rounded-xl border-2 border-dashed border-primary bg-primary/10 transition-all" />
+              ) : null}
+              <div className="absolute left-1/2 top-1/2 grid -translate-x-1/2 -translate-y-1/2 grid-cols-3 grid-rows-3 gap-1">
+                {([
+                  ["top", "col-start-2 row-start-1"],
+                  ["left", "col-start-1 row-start-2"],
+                  ["center", "col-start-2 row-start-2"],
+                  ["right", "col-start-3 row-start-2"],
+                  ["bottom", "col-start-2 row-start-3"],
+                ] as const).map(([zone, position]) => {
+                  const selected = workspaceDropTargetPaneId === node.paneId && workspaceDropZone === zone;
+                  // Each cell is a miniature of the resulting layout: the
+                  // filled bar sits where the dropped chart would go.
+                  const glyph = zone === "center"
+                    ? <span className={`block h-4 w-4 rounded-[2px] border border-dashed ${selected ? "border-background" : "border-muted"}`} />
+                    : <span
+                        className={`block rounded-[1px] ${selected ? "bg-background" : "bg-muted"}`}
+                        style={zone === "left"
+                          ? { width: 8, height: 16, marginRight: 8 }
+                          : zone === "right"
+                            ? { width: 8, height: 16, marginLeft: 8 }
+                            : zone === "top"
+                              ? { width: 16, height: 8, marginBottom: 8 }
+                              : { width: 16, height: 8, marginTop: 8 }}
+                      />;
+                  return (
+                    <div
+                      key={zone}
+                      className={`${position} pointer-events-none flex h-9 w-9 items-center justify-center rounded-[4px] border shadow-lg transition-all ${selected ? "scale-110 border-primary bg-primary" : "border-border/80 bg-panel/92"}`}
+                      title={zone === "center" ? "Swap" : zone}
+                    >
+                      {glyph}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           ) : null}
         </div>
