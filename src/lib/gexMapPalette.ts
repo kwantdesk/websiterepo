@@ -9,7 +9,95 @@ export type GexMapPalette = {
   /** Weak negative tone — the gradient's low-intensity put-side stop. */
   negativeSoft: string;
   star: string;
+  /** Ten explicit call-side colours, index 0 = 10th percentile (darkest) through index 9 = 100th (brightest). */
+  positiveStops?: string[];
+  /** Ten explicit put-side colours, same percentile ordering. */
+  negativeStops?: string[];
 };
+
+export const GEX_MAP_STOP_COUNT = 10;
+
+function clamp01(value: number) {
+  return Math.min(1, Math.max(0, value));
+}
+
+function channelHex(value: number) {
+  return Math.round(Math.min(255, Math.max(0, value))).toString(16).padStart(2, "0").toUpperCase();
+}
+
+export function hexLerp(from: string, to: string, ratio: number): string {
+  const parse = (hex: string) => [
+    Number.parseInt(hex.slice(1, 3), 16),
+    Number.parseInt(hex.slice(3, 5), 16),
+    Number.parseInt(hex.slice(5, 7), 16),
+  ];
+  const t = clamp01(ratio);
+  const [r1, g1, b1] = parse(from);
+  const [r2, g2, b2] = parse(to);
+  return `#${channelHex(r1 + (r2 - r1) * t)}${channelHex(g1 + (g2 - g1) * t)}${channelHex(b1 + (b2 - b1) * t)}`;
+}
+
+export function hslToHex(hue: number, saturation: number, lightness: number): string {
+  const s = clamp01(saturation / 100);
+  const l = clamp01(lightness / 100);
+  const k = (n: number) => (n + hue / 30) % 12;
+  const a = s * Math.min(l, 1 - l);
+  const channel = (n: number) => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+  return `#${channelHex(channel(0) * 255)}${channelHex(channel(8) * 255)}${channelHex(channel(4) * 255)}`;
+}
+
+/**
+ * Colour for a position on the drag bar: black at the far left, a full hue
+ * sweep through the middle, white at the far right — every colour reachable
+ * with one horizontal drag.
+ */
+export function gexMapDragBarColor(ratio: number): string {
+  const r = clamp01(ratio);
+  if (r < 0.08) return hexLerp("#000000", hslToHex(0, 95, 52), r / 0.08);
+  if (r > 0.92) return hexLerp(hslToHex(300, 95, 52), "#FFFFFF", (r - 0.92) / 0.08);
+  return hslToHex(((r - 0.08) / 0.84) * 300, 95, 52);
+}
+
+/** CSS track background matching gexMapDragBarColor's mapping. */
+export const GEX_MAP_DRAG_BAR_TRACK =
+  "linear-gradient(90deg, #000000 0%, #F62D2D 8%, #F6F62D 24.8%, #2DF62D 41.6%, #2DF6F6 58.4%, #2D2DF6 75.2%, #F62DF6 92%, #FFFFFF 100%)";
+
+/**
+ * Ten-step monochromatic ramp for one exposure side: near-black at the 10th
+ * percentile, through the dark stop, up to the bright stop at the 100th.
+ * Staying inside one hue family keeps purples purple and greens green.
+ */
+export function buildGexMapStops(dark: string, bright: string): string[] {
+  const darkest = hexLerp("#000000", dark, 0.5);
+  return Array.from({ length: GEX_MAP_STOP_COUNT }, (_, index) => {
+    const t = index / (GEX_MAP_STOP_COUNT - 1);
+    return t < 0.5 ? hexLerp(darkest, dark, t * 2) : hexLerp(dark, bright, (t - 0.5) * 2);
+  });
+}
+
+/**
+ * The ten renderable colours per side. Custom-edited slots win; otherwise the
+ * ramp is generated from the palette's dark/bright stops. Theme mode derives
+ * ten brightness steps from the live theme accents.
+ */
+export function gexMapPaletteStops(palette: GexMapPalette): { positive: string[]; negative: string[] } {
+  if (palette.useThemeColors) {
+    const themed = (variable: string) => Array.from({ length: GEX_MAP_STOP_COUNT }, (_, index) => (
+      index === GEX_MAP_STOP_COUNT - 1
+        ? `var(${variable})`
+        : `color-mix(in srgb, var(${variable}) ${Math.round(18 + (index / (GEX_MAP_STOP_COUNT - 1)) * 82)}%, black)`
+    ));
+    return { positive: themed("--primary"), negative: themed("--danger") };
+  }
+  const explicit = (stops?: string[]) =>
+    Array.isArray(stops) && stops.length === GEX_MAP_STOP_COUNT && stops.every((stop) => /^#[0-9a-fA-F]{6}$/.test(stop))
+      ? stops.map((stop) => stop.toUpperCase())
+      : null;
+  return {
+    positive: explicit(palette.positiveStops) ?? buildGexMapStops(palette.positiveSoft, palette.positive),
+    negative: explicit(palette.negativeStops) ?? buildGexMapStops(palette.negativeSoft, palette.negative),
+  };
+}
 
 export const DEFAULT_GEX_MAP_PALETTE: GexMapPalette = {
   useThemeColors: true,
@@ -48,8 +136,18 @@ export function normalizeGexMapPalette(value: unknown): GexMapPalette {
   const positiveSoft = hex(parsed.positiveSoft, positive);
   const negativeSoft = hex(parsed.negativeSoft, negative);
   const star = hex(parsed.star, DEFAULT_GEX_MAP_PALETTE.star);
+  const stops = (candidate: unknown): string[] | undefined =>
+    Array.isArray(candidate)
+      && candidate.length === GEX_MAP_STOP_COUNT
+      && candidate.every((stop) => typeof stop === "string" && /^#[0-9a-fA-F]{6}$/.test(stop))
+      ? candidate.map((stop) => (stop as string).toUpperCase())
+      : undefined;
+  const positiveStops = stops(parsed.positiveStops);
+  const negativeStops = stops(parsed.negativeStops);
   const legacyId = LEGACY_PRESET_SIGNATURES[`${positive}|${positiveSoft}|${negative}|${negativeSoft}`];
-  const upgraded = legacyId ? GEX_MAP_PALETTE_PRESETS.find((preset) => preset.id === legacyId) : undefined;
+  const upgraded = !positiveStops && !negativeStops && legacyId
+    ? GEX_MAP_PALETTE_PRESETS.find((preset) => preset.id === legacyId)
+    : undefined;
   if (upgraded) {
     return {
       useThemeColors: parsed.useThemeColors !== false,
@@ -67,6 +165,8 @@ export function normalizeGexMapPalette(value: unknown): GexMapPalette {
     negative,
     negativeSoft,
     star,
+    ...(positiveStops ? { positiveStops } : {}),
+    ...(negativeStops ? { negativeStops } : {}),
   };
 }
 
@@ -142,10 +242,15 @@ export function gexMapPaletteTones(palette: GexMapPalette): GexMapHeatTones {
 }
 
 export function gexMapPalettesEqual(left: GexMapPalette, right: GexMapPalette) {
+  const stopsEqual = (a?: string[], b?: string[]) =>
+    (a === undefined && b === undefined)
+    || (Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((stop, index) => stop === b[index]));
   return left.useThemeColors === right.useThemeColors
     && left.positive === right.positive
     && left.positiveSoft === right.positiveSoft
     && left.negative === right.negative
     && left.negativeSoft === right.negativeSoft
-    && left.star === right.star;
+    && left.star === right.star
+    && stopsEqual(left.positiveStops, right.positiveStops)
+    && stopsEqual(left.negativeStops, right.negativeStops);
 }
