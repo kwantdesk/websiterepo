@@ -339,6 +339,11 @@ import { CROSSHAIR_STYLE_EVENT, DEFAULT_CROSSHAIR_STYLE, loadCrosshairStyle, nor
 // Toolbar pin state is PER CHART: locking one pane's toolbar leaves every
 // other pane alone, and each pane remembers its own pin across sessions.
 const TOOLBAR_PINNED_STORAGE_KEY = "kwantdesk:chart-toolbar-pinned:v1";
+// The OLD left drawing toolbar is hidden for now while the NEW top charting
+// toolbar (ChartDrawToolbar) is the one being developed. The precision layer
+// stays mounted so previously placed drawings keep rendering; flip this back
+// to true to restore the old toolbar UI.
+const LEGACY_LEFT_TOOLBAR_ENABLED = false;
 const EMPTY_CHARTING_DRAWINGS: Drawing[] = [];
 // Retained gamma-heatmap history columns per pane. Bounds per-pane memory and
 // the per-render surface build cost (the GEX Vue OOM/freeze driver).
@@ -8982,7 +8987,7 @@ function Chart({
     const unzoom = (value: number) => value / gammaEnvironmentScale;
     const rightInsetPx = unzoom(nativePriceScaleWidth + 10);
     const bottomInsetPx = unzoom(26 + 8);
-    const leftInsetPx = unzoom(toolbarPinned && toolbarDock === "left" ? toolbarMetrics.buttonSize + 22 : 12);
+    const leftInsetPx = unzoom(LEGACY_LEFT_TOOLBAR_ENABLED && toolbarPinned && toolbarDock === "left" ? toolbarMetrics.buttonSize + 22 : 12);
     const topInsetPx = unzoom(12);
     switch (gammaEnvironmentPosition) {
       case "top-left": return { left: leftInsetPx, top: topInsetPx } as CSSProperties;
@@ -14741,14 +14746,14 @@ function Chart({
         </PrecisionToolsBoundary>
       ) : null}
 
-      {toolbarEnabled && (
+      {toolbarEnabled && LEGACY_LEFT_TOOLBAR_ENABLED && (
       <div
         aria-hidden="true"
         className="absolute inset-y-0 left-0 z-[19] w-3"
         onPointerEnter={() => setToolbarRevealed(true)}
       />
       )}
-      {toolbarEnabled && (
+      {toolbarEnabled && LEGACY_LEFT_TOOLBAR_ENABLED && (
       <div
         ref={toolbarRef}
         className={`absolute z-20 flex flex-col items-center overflow-visible border-y-0 border-l-0 border-r border-border/80 bg-panel/96 p-[2px] shadow-none backdrop-blur-xl transition-[transform,opacity] duration-150 ${
@@ -15190,7 +15195,7 @@ function Chart({
       </div>
       )}
 
-      {toolbarEnabled && !toolbarCollapsed && showObjectsPanel && (
+      {toolbarEnabled && LEGACY_LEFT_TOOLBAR_ENABLED && !toolbarCollapsed && showObjectsPanel && (
         <div className="absolute z-20 overflow-hidden rounded-2xl border border-border bg-panel/96 shadow-2xl backdrop-blur" style={objectsPanelStyle}>
           <div className="flex items-center justify-between border-b border-border px-4 py-3">
             <div>
