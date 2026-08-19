@@ -893,7 +893,7 @@ function ExposurePanel({
         </div>
       </div>
 
-      <div className="gex-map-strike-row grid h-7 grid-cols-[96px_minmax(0,1fr)_86px] items-center border-b border-border bg-surface/60 px-2 text-[8px] font-semibold uppercase tracking-[0.14em] text-muted">
+      <div className="gex-map-strike-row grid h-7 grid-cols-[96px_minmax(72px,1fr)_minmax(0,86px)] items-center border-b border-border bg-surface/60 px-2 text-[8px] font-semibold uppercase tracking-[0.14em] text-muted">
         <span>Strike</span>
         <span>{viewMode === "star" ? "Structural node" : "Signed exposure"}</span>
         <span className="gex-map-change-column text-right">{viewMode === "star" ? "Control · velocity" : `${stepMinutes}m change`}</span>
@@ -1010,7 +1010,7 @@ function ExposurePanel({
                     data-star-node={isFocusedStar ? "true" : undefined}
                     data-gex-strike-node="true"
                     data-star-highlighted={highlighted ? "true" : "false"}
-                    className={`gex-map-strike-row relative grid grid-cols-[96px_minmax(0,1fr)_86px] items-center overflow-hidden border-b border-border/30 px-2 font-mono text-[9px] ${nearSpot ? "mx-1 my-1 h-[35px]" : highlighted ? "mx-1 my-0.5 h-[30px]" : "h-[25px]"} ${isFocusedStar ? `gex-star-node z-[3] ${nearSpot ? "gex-star-is-current" : ""}` : nearSpot ? "gex-current-price-marker z-[2]" : ""} ${starSettings.animateChanges ? "transition-[height,margin,background-color,opacity] duration-200" : ""}`}
+                    className={`gex-map-strike-row relative grid grid-cols-[96px_minmax(72px,1fr)_minmax(0,86px)] items-center overflow-hidden border-b border-border/30 px-2 font-mono text-[9px] ${nearSpot ? "mx-1 my-1 h-[35px]" : highlighted ? "mx-1 my-0.5 h-[30px]" : "h-[25px]"} ${isFocusedStar ? `gex-star-node z-[3] ${nearSpot ? "gex-star-is-current" : ""}` : nearSpot ? "gex-current-price-marker z-[2]" : ""} ${starSettings.animateChanges ? "transition-[height,margin,background-color,opacity] duration-200" : ""}`}
                     style={{
                       opacity: highlighted || nearSpot ? 1 : Math.max(0.02, starSettings.dimOpacity),
                       textShadow: "0 1px 2px rgba(0,0,0,0.72)",
@@ -1073,7 +1073,7 @@ function ExposurePanel({
                   data-near-spot={nearSpot ? "true" : undefined}
                   data-star-node={isStar ? "true" : undefined}
                   data-gex-strike-node="true"
-                  className={`gex-map-strike-row relative grid grid-cols-[96px_minmax(0,1fr)_86px] items-center border-b border-black/10 px-2 font-mono text-[9px] transition-[height,margin,background-color] ${nearSpot ? "mx-1 my-1 h-[35px]" : isStar ? "mx-1 my-0.5 h-[29px]" : "h-[25px]"} ${isStar ? `gex-star-node z-[3] ${nearSpot ? "gex-star-is-current" : ""}` : nearSpot ? "gex-current-price-marker z-[2]" : ""}`}
+                  className={`gex-map-strike-row relative grid grid-cols-[96px_minmax(72px,1fr)_minmax(0,86px)] items-center border-b border-black/10 px-2 font-mono text-[9px] transition-[height,margin,background-color] ${nearSpot ? "mx-1 my-1 h-[35px]" : isStar ? "mx-1 my-0.5 h-[29px]" : "h-[25px]"} ${isStar ? `gex-star-node z-[3] ${nearSpot ? "gex-star-is-current" : ""}` : nearSpot ? "gex-current-price-marker z-[2]" : ""}`}
                   style={{
                     textShadow: "0 1px 2px rgba(0,0,0,0.72)",
                     backgroundColor: heatColor(row.net, strength, signedScale),

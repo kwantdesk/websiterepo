@@ -1724,6 +1724,12 @@ body.kwant-cockpit-ui canvas {
   display: none;
 }
 
+/* The change column compresses before it disappears; it must clip rather
+   than bleed into the signed-exposure cell. */
+.gex-map-change-column {
+  overflow: hidden;
+}
+
 @container (max-width: 320px) {
   .gex-map-exposure-panel .gex-map-panel-meta,
   .gex-map-exposure-panel .gex-map-panel-controls {
@@ -1748,6 +1754,19 @@ body.kwant-cockpit-ui canvas {
 
   .gex-map-dropdown {
     padding-inline: 5px;
+  }
+}
+
+/* Strike and signed exposure are the column's most important content: when a
+   column narrows, the change column is what leaves first — never the signed
+   exposure, which previously collapsed because it was the flexible track. */
+@container (max-width: 300px) {
+  .gex-map-change-column {
+    display: none;
+  }
+
+  .gex-map-strike-row {
+    grid-template-columns: 78px minmax(0, 1fr);
   }
 }
 
