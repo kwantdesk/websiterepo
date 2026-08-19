@@ -13,6 +13,12 @@ export type GexMapPalette = {
   positiveStops?: string[];
   /** Ten explicit put-side colours, same percentile ordering. */
   negativeStops?: string[];
+  /**
+   * Ten explicit colours forming one diverging signed-exposure scale:
+   * index 0 = most extreme negative (darkest) … index 9 = most extreme
+   * positive (lightest), with the middle slots holding the average noise.
+   */
+  scaleStops?: string[];
 };
 
 export const GEX_MAP_STOP_COUNT = 10;
@@ -63,40 +69,54 @@ export const GEX_MAP_DRAG_BAR_TRACK =
   "linear-gradient(90deg, #000000 0%, #F62D2D 8%, #F6F62D 24.8%, #2DF62D 41.6%, #2DF6F6 58.4%, #2D2DF6 75.2%, #F62DF6 92%, #FFFFFF 100%)";
 
 /**
- * Ten-step monochromatic ramp for one exposure side: near-black at the 10th
- * percentile, through the dark stop, up to the bright stop at the 100th.
- * Staying inside one hue family keeps purples purple and greens green.
+ * One diverging ten-colour scale across signed exposure. Slot one is the
+ * most extreme negative — the darkest colour on the map, barely off black.
+ * Slots ramp brighter toward the middle where average/noise exposure sits
+ * muted, then the positive side climbs to the palette's full bright tone,
+ * and slot ten is lifted toward white so the most extreme positive is
+ * unmistakably the lightest thing on the surface.
  */
-export function buildGexMapStops(dark: string, bright: string): string[] {
-  const darkest = hexLerp("#000000", dark, 0.5);
-  return Array.from({ length: GEX_MAP_STOP_COUNT }, (_, index) => {
-    const t = index / (GEX_MAP_STOP_COUNT - 1);
-    return t < 0.5 ? hexLerp(darkest, dark, t * 2) : hexLerp(dark, bright, (t - 0.5) * 2);
-  });
+export function buildGexMapSignedScale(negative: string, positive: string): string[] {
+  return [
+    hexLerp("#000000", negative, 0.26),
+    hexLerp("#000000", negative, 0.42),
+    hexLerp("#000000", negative, 0.58),
+    hexLerp("#000000", negative, 0.72),
+    hexLerp("#000000", negative, 0.86),
+    hexLerp("#000000", positive, 0.58),
+    hexLerp("#000000", positive, 0.72),
+    hexLerp("#000000", positive, 0.86),
+    positive.toUpperCase(),
+    hexLerp(positive, "#FFFFFF", 0.38),
+  ];
 }
 
 /**
- * The ten renderable colours per side. Custom-edited slots win; otherwise the
- * ramp is generated from the palette's dark/bright stops. Theme mode derives
- * ten brightness steps from the live theme accents.
+ * The ten renderable signed-scale colours. Custom-edited slots win; otherwise
+ * the scale is generated from the palette's strong tones. Theme mode derives
+ * the same shape from the live theme accents.
  */
-export function gexMapPaletteStops(palette: GexMapPalette): { positive: string[]; negative: string[] } {
+export function gexMapSignedScale(palette: GexMapPalette): string[] {
   if (palette.useThemeColors) {
-    const themed = (variable: string) => Array.from({ length: GEX_MAP_STOP_COUNT }, (_, index) => (
-      index === GEX_MAP_STOP_COUNT - 1
-        ? `var(${variable})`
-        : `color-mix(in srgb, var(${variable}) ${Math.round(18 + (index / (GEX_MAP_STOP_COUNT - 1)) * 82)}%, black)`
-    ));
-    return { positive: themed("--primary"), negative: themed("--danger") };
+    return [
+      "color-mix(in srgb, var(--danger) 26%, black)",
+      "color-mix(in srgb, var(--danger) 42%, black)",
+      "color-mix(in srgb, var(--danger) 58%, black)",
+      "color-mix(in srgb, var(--danger) 72%, black)",
+      "color-mix(in srgb, var(--danger) 86%, black)",
+      "color-mix(in srgb, var(--primary) 58%, black)",
+      "color-mix(in srgb, var(--primary) 72%, black)",
+      "color-mix(in srgb, var(--primary) 86%, black)",
+      "var(--primary)",
+      "color-mix(in srgb, var(--primary) 62%, white)",
+    ];
   }
-  const explicit = (stops?: string[]) =>
-    Array.isArray(stops) && stops.length === GEX_MAP_STOP_COUNT && stops.every((stop) => /^#[0-9a-fA-F]{6}$/.test(stop))
-      ? stops.map((stop) => stop.toUpperCase())
-      : null;
-  return {
-    positive: explicit(palette.positiveStops) ?? buildGexMapStops(palette.positiveSoft, palette.positive),
-    negative: explicit(palette.negativeStops) ?? buildGexMapStops(palette.negativeSoft, palette.negative),
-  };
+  const explicit = Array.isArray(palette.scaleStops)
+    && palette.scaleStops.length === GEX_MAP_STOP_COUNT
+    && palette.scaleStops.every((stop) => /^#[0-9a-fA-F]{6}$/.test(stop))
+    ? palette.scaleStops.map((stop) => stop.toUpperCase())
+    : null;
+  return explicit ?? buildGexMapSignedScale(palette.negative, palette.positive);
 }
 
 export const DEFAULT_GEX_MAP_PALETTE: GexMapPalette = {
@@ -144,8 +164,9 @@ export function normalizeGexMapPalette(value: unknown): GexMapPalette {
       : undefined;
   const positiveStops = stops(parsed.positiveStops);
   const negativeStops = stops(parsed.negativeStops);
+  const scaleStops = stops(parsed.scaleStops);
   const legacyId = LEGACY_PRESET_SIGNATURES[`${positive}|${positiveSoft}|${negative}|${negativeSoft}`];
-  const upgraded = !positiveStops && !negativeStops && legacyId
+  const upgraded = !positiveStops && !negativeStops && !scaleStops && legacyId
     ? GEX_MAP_PALETTE_PRESETS.find((preset) => preset.id === legacyId)
     : undefined;
   if (upgraded) {
@@ -167,6 +188,7 @@ export function normalizeGexMapPalette(value: unknown): GexMapPalette {
     star,
     ...(positiveStops ? { positiveStops } : {}),
     ...(negativeStops ? { negativeStops } : {}),
+    ...(scaleStops ? { scaleStops } : {}),
   };
 }
 
@@ -252,5 +274,6 @@ export function gexMapPalettesEqual(left: GexMapPalette, right: GexMapPalette) {
     && left.negativeSoft === right.negativeSoft
     && left.star === right.star
     && stopsEqual(left.positiveStops, right.positiveStops)
-    && stopsEqual(left.negativeStops, right.negativeStops);
+    && stopsEqual(left.negativeStops, right.negativeStops)
+    && stopsEqual(left.scaleStops, right.scaleStops);
 }

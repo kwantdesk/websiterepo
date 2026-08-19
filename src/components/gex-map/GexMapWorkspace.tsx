@@ -38,10 +38,10 @@ import {
   GEX_MAP_PALETTE_CHANGE_EVENT,
   GEX_MAP_PALETTE_PRESETS,
   GEX_MAP_STOP_COUNT,
-  buildGexMapStops,
+  buildGexMapSignedScale,
   gexMapDragBarColor,
-  gexMapPaletteStops,
   gexMapPaletteTones,
+  gexMapSignedScale,
   gexMapPalettesEqual,
   loadGexMapPalette,
   normalizeGexMapPalette,
@@ -223,23 +223,25 @@ const THEME_HEAT_TONES: GexMapHeatTones = {
   negativeSoft: "color-mix(in srgb, var(--danger) 34%, black)",
 };
 
-const THEME_HEAT_STOPS = gexMapPaletteStops({ ...DEFAULT_GEX_MAP_PALETTE, useThemeColors: true });
+const THEME_SIGNED_SCALE = gexMapSignedScale({ ...DEFAULT_GEX_MAP_PALETTE, useThemeColors: true });
 
 function heatColor(
   value: number,
   strength: number,
-  stops: { positive: string[]; negative: string[] } = THEME_HEAT_STOPS,
+  scale: string[] = THEME_SIGNED_SCALE,
 ) {
   if (Math.abs(value) < Number.EPSILON) return "var(--surface)";
-  // Each side is exactly ten colours ordered by exposure percentile: slot one
-  // (darkest) holds the smallest signed exposures, slot ten (brightest) the
-  // largest. The row's strength picks its slot directly, so every visible
-  // colour is one of the ten the user set in GEX Map colour settings.
-  const ramp = value > 0 ? stops.positive : stops.negative;
+  // One diverging ten-colour scale across signed exposure: slot one is the
+  // most extreme negative (the darkest colour on the map), the middle slots
+  // hold average noise, slot ten is the most extreme positive (the lightest).
+  // Presence grows with distance from the middle, so both extremes stand
+  // fully solid while the noise stays washed into the background.
   const bounded = Math.min(1, Math.max(0, strength));
-  const band = Math.min(ramp.length - 1, Math.floor(bounded * ramp.length));
-  const presence = Math.round(42 + (band / Math.max(1, ramp.length - 1)) * 52);
-  return `color-mix(in srgb, ${ramp[band]} ${presence}%, var(--chart-background))`;
+  const half = Math.min(4, Math.floor(bounded * 5));
+  const slot = value > 0 ? 5 + half : 4 - half;
+  const extremeness = Math.abs(slot - 4.5) / 4.5;
+  const presence = Math.round(38 + extremeness * 60);
+  return `color-mix(in srgb, ${scale[slot]} ${presence}%, var(--chart-background))`;
 }
 
 type RgbColor = { r: number; g: number; b: number };
@@ -538,7 +540,7 @@ function ExposurePanel({
   );
   const spot = payload ? priceAt(payload, selectedTimestamp) : null;
   const tones = gexMapPaletteTones(palette);
-  const paletteStops = useMemo(() => gexMapPaletteStops(palette), [palette]);
+  const signedScale = useMemo(() => gexMapSignedScale(palette), [palette]);
   const rows = useMemo(
     () => [...current.values()].sort((a, b) => b.strike - a.strike),
     [current],
@@ -558,7 +560,7 @@ function ExposurePanel({
   // log scale. Exposure spans four orders of magnitude in one panel — a
   // linear ramp painted $11M identically to $5B. Log scaling separates the
   // decades, the same scale serves both sign sides so equal magnitudes read
-  // equally bright, and heatColor picks one of the ten percentile colours.
+  // and heatColor places the row on the diverging ten-colour signed scale.
   const heatScale = useMemo(() => {
     const magnitudes = rows
       .map((row) => Math.abs(row.net))
@@ -927,7 +929,7 @@ function ExposurePanel({
                     style={{
                       opacity: highlighted || nearSpot ? 1 : Math.max(0.02, starSettings.dimOpacity),
                       backgroundColor: highlighted
-                        ? heatColor(derived.net, Math.max(0.08, heatStrength(derived.net)), paletteStops)
+                        ? heatColor(derived.net, heatStrength(derived.net), signedScale)
                         : "var(--chart-background)",
                       ...(isFocusedStar ? {
                         "--gex-star-accent": starPalette.accent,
@@ -986,7 +988,7 @@ function ExposurePanel({
                   data-gex-strike-node="true"
                   className={`gex-map-strike-row relative grid grid-cols-[96px_minmax(0,1fr)_86px] items-center border-b border-black/10 px-2 font-mono text-[9px] transition-[height,margin,background-color] ${nearSpot ? "mx-1 my-1 h-[35px]" : isStar ? "mx-1 my-0.5 h-[29px]" : "h-[25px]"} ${isStar ? `gex-star-node z-[3] ${nearSpot ? "gex-star-is-current" : ""}` : nearSpot ? "gex-current-price-marker z-[2]" : ""}`}
                   style={{
-                    backgroundColor: heatColor(row.net, strength, paletteStops),
+                    backgroundColor: heatColor(row.net, strength, signedScale),
                     ...(isStar ? {
                       "--gex-star-accent": starPalette.accent,
                       "--gex-star-text": starPalette.text,
@@ -1088,27 +1090,27 @@ function StarViewSettings({
     document.addEventListener("keydown", closeOnEscape);
     return () => document.removeEventListener("keydown", closeOnEscape);
   }, [onClose, open]);
-  const [editSlot, setEditSlot] = useState<{ side: "positive" | "negative" | "star"; index: number }>({
-    side: "positive",
+  const [editSlot, setEditSlot] = useState<{ side: "scale" | "star"; index: number }>({
+    side: "scale",
     index: GEX_MAP_STOP_COUNT - 1,
   });
   if (!open || typeof document === "undefined") return null;
 
   const update = <K extends keyof GexMapStarSettings>(key: K, value: GexMapStarSettings[K]) => onChange({ ...settings, [key]: value });
-  const paletteSlotStops = gexMapPaletteStops(palette);
+  const paletteScale = gexMapSignedScale(palette);
   const applySlotColor = (hex: string) => {
     if (editSlot.side === "star") {
       onPaletteChange({ ...palette, useThemeColors: false, star: hex });
       return;
     }
-    const ramp = [...(editSlot.side === "positive" ? paletteSlotStops.positive : paletteSlotStops.negative)];
+    const ramp = [...paletteScale];
     ramp[editSlot.index] = hex;
+    // Keep the legacy strong tones in sync so preview bars and preset
+    // detection stay coherent with the edited scale.
     onPaletteChange({
       ...palette,
       useThemeColors: false,
-      ...(editSlot.side === "positive"
-        ? { positiveStops: ramp, positive: ramp[ramp.length - 1], positiveSoft: ramp[4] }
-        : { negativeStops: ramp, negative: ramp[ramp.length - 1], negativeSoft: ramp[4] }),
+      scaleStops: ramp,
     });
   };
   const handleDragBar = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -1116,9 +1118,8 @@ function StarViewSettings({
     if (rect.width <= 0) return;
     applySlotColor(gexMapDragBarColor((event.clientX - rect.left) / rect.width));
   };
-  const selectedSlotColor = editSlot.side === "star"
-    ? palette.star
-    : (editSlot.side === "positive" ? paletteSlotStops.positive : paletteSlotStops.negative)[editSlot.index];
+  const selectedSlotColor = editSlot.side === "star" ? palette.star : paletteScale[editSlot.index];
+  const scaleSlotLabel = (index: number) => (index < 5 ? `-${(5 - index) * 20}` : `+${(index - 4) * 20}`);
   const rowClass = "grid grid-cols-[minmax(0,1fr)_160px] items-center gap-4 border-b border-border/60 py-3";
   return createPortal(
     <div className="fixed inset-0 z-[270] flex items-start justify-center bg-black/20 px-4 pt-[10vh]" onPointerDown={onClose}>
@@ -1181,6 +1182,7 @@ function StarViewSettings({
             <span><span className="block text-[10px] text-foreground">Gradient palettes</span><span className="text-[8px] text-muted">One click recolours the whole map</span></span>
             <div className="mt-2 flex flex-wrap items-center gap-1.5">
               {GEX_MAP_PALETTE_PRESETS.map((preset) => {
+                const presetScale = buildGexMapSignedScale(preset.negative, preset.positive);
                 const presetPalette: GexMapPalette = {
                   useThemeColors: false,
                   positive: preset.positive,
@@ -1188,8 +1190,7 @@ function StarViewSettings({
                   negative: preset.negative,
                   negativeSoft: preset.negativeSoft,
                   star: preset.star,
-                  positiveStops: buildGexMapStops(preset.positiveSoft, preset.positive),
-                  negativeStops: buildGexMapStops(preset.negativeSoft, preset.negative),
+                  scaleStops: presetScale,
                 };
                 const active = gexMapPalettesEqual(palette, presetPalette);
                 return (
@@ -1203,7 +1204,7 @@ function StarViewSettings({
                     className={`relative h-7 w-9 overflow-hidden rounded-[4px] border transition-transform hover:scale-110 ${
                       active ? "border-primary shadow-[0_0_10px_color-mix(in_srgb,var(--primary)_45%,transparent)]" : "border-border"
                     }`}
-                    style={{ background: `linear-gradient(135deg, ${preset.positive} 0%, ${preset.positiveSoft} 32%, black 50%, ${preset.negativeSoft} 68%, ${preset.negative} 100%)` }}
+                    style={{ background: `linear-gradient(90deg, ${presetScale.join(", ")})` }}
                   >
                     <span
                       className="absolute bottom-0.5 right-0.5 h-1.5 w-1.5 rounded-full border border-black/30"
@@ -1225,43 +1226,38 @@ function StarViewSettings({
           </label>
           {!palette.useThemeColors ? (
             <div className="border-b border-border/60 py-3">
-              <span className="block text-[10px] text-foreground">Exposure colours · 10% → 100% percentile</span>
-              <span className="text-[8px] text-muted">Ten colours per side, darkest to brightest. Tap a slot, then drag the bar — the map recolours live.</span>
-              {(["positive", "negative"] as const).map((side) => (
-                <div key={side} className="mt-2.5">
-                  <span className="text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">
-                    {side === "positive" ? "Positive exposure" : "Negative exposure"}
-                  </span>
-                  <div className="mt-1 grid grid-cols-10 gap-1">
-                    {(side === "positive" ? paletteSlotStops.positive : paletteSlotStops.negative).map((color, index) => {
-                      const selected = editSlot.side === side && editSlot.index === index;
-                      return (
-                        <button
-                          key={index}
-                          type="button"
-                          title={`${(index + 1) * 10}th percentile`}
-                          aria-label={`${side === "positive" ? "Positive" : "Negative"} ${(index + 1) * 10}th percentile colour`}
-                          aria-pressed={selected}
-                          onClick={() => setEditSlot({ side, index })}
-                          className={`relative h-7 rounded-[3px] border transition-transform hover:scale-110 ${
-                            selected
-                              ? "border-primary shadow-[0_0_8px_color-mix(in_srgb,var(--primary)_45%,transparent)]"
-                              : "border-border/70"
-                          }`}
-                          style={{ background: color }}
+              <span className="block text-[10px] text-foreground">Signed-exposure scale · extreme negative → extreme positive</span>
+              <span className="text-[8px] text-muted">One ten-colour gradient: slot one paints the biggest negative (darkest), the middle is average noise, slot ten the biggest positive (lightest). Tap a slot, then drag the bar — the map recolours live.</span>
+              <div className="mt-2.5">
+                <div className="grid grid-cols-10 gap-1">
+                  {paletteScale.map((color, index) => {
+                    const selected = editSlot.side === "scale" && editSlot.index === index;
+                    return (
+                      <button
+                        key={index}
+                        type="button"
+                        title={`${scaleSlotLabel(index)}% signed-exposure slot`}
+                        aria-label={`Signed exposure ${scaleSlotLabel(index)}% colour`}
+                        aria-pressed={selected}
+                        onClick={() => setEditSlot({ side: "scale", index })}
+                        className={`relative h-7 rounded-[3px] border transition-transform hover:scale-110 ${
+                          selected
+                            ? "border-primary shadow-[0_0_8px_color-mix(in_srgb,var(--primary)_45%,transparent)]"
+                            : "border-border/70"
+                        }`}
+                        style={{ background: color }}
+                      >
+                        <span
+                          className="absolute inset-x-0 bottom-0 text-center font-mono text-[6px] leading-[9px]"
+                          style={{ color: "#FFFFFF", textShadow: "0 1px 2px rgba(0,0,0,0.9)" }}
                         >
-                          <span
-                            className="absolute inset-x-0 bottom-0 text-center font-mono text-[6px] leading-[9px]"
-                            style={{ color: "#FFFFFF", textShadow: "0 1px 2px rgba(0,0,0,0.9)" }}
-                          >
-                            {(index + 1) * 10}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
+                          {scaleSlotLabel(index)}
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
-              ))}
+              </div>
               <div className="mt-2.5">
                 <span className="text-[8px] font-semibold uppercase tracking-[0.1em] text-muted">Star node</span>
                 <div className="mt-1 flex items-center gap-2">
@@ -1911,7 +1907,7 @@ function GexMapWorkspace({ market = null, externalReplay = null }: GexMapWorkspa
           <footer className="gex-map-live-footer flex h-7 min-w-0 shrink-0 items-center gap-2 overflow-hidden border-t border-border bg-panel px-3 text-[8px] text-muted">
             <Radio className={`h-3 w-3 ${live ? "text-primary" : "text-muted"}`} />
             <span>KwantData Interval Map · front expiry · per 1% underlying move</span>
-            <span className="ml-auto">Colours map signed exposure on a log scale across ten percentile slots — darkest is the panel’s smallest exposure, brightest its largest.</span>
+            <span className="ml-auto">One ten-colour scale maps signed exposure — darkest is the most extreme negative, the middle is average, lightest is the most extreme positive.</span>
           </footer>
         )}
       </main>
