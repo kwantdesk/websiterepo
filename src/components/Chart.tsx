@@ -7389,13 +7389,17 @@ function Chart({
   );
   const gammaEnvironmentPosition = String(gammaEnvironmentIndicator?.settings?.position ?? "top-right");
   const gammaEnvironmentSettings = gammaEnvironmentIndicator?.settings ?? {};
-  const gammaEnvironmentUseThemeColors = gammaEnvironmentSettings.useThemeColors !== false;
+  // Positive vs negative gamma is a SEMANTIC signal — green/red by default on
+  // every theme (like the journal). Following the candle up/down colours made
+  // it indistinguishable on monochrome themes (Mono Protocol: white vs grey,
+  // and positive was identical to neutral). Theme colours are now opt-in.
+  const gammaEnvironmentUseThemeColors = gammaEnvironmentSettings.useThemeColors === true;
   const gammaEnvironmentScale = Math.min(2, Math.max(0.6, Number(gammaEnvironmentSettings.badgeScale ?? 1)));
   const gammaEnvironmentColor = gammaEnvironment?.regime === "POSITIVE"
-    ? (gammaEnvironmentUseThemeColors ? settings.upColor : String(gammaEnvironmentSettings.positiveColor ?? settings.upColor))
+    ? (gammaEnvironmentUseThemeColors ? settings.upColor : String(gammaEnvironmentSettings.positiveColor ?? "#22C55E"))
     : gammaEnvironment?.regime === "NEGATIVE"
-      ? (gammaEnvironmentUseThemeColors ? settings.downColor : String(gammaEnvironmentSettings.negativeColor ?? settings.downColor))
-      : settings.borderUpColor;
+      ? (gammaEnvironmentUseThemeColors ? settings.downColor : String(gammaEnvironmentSettings.negativeColor ?? "#EF4444"))
+      : "#9CA3AF";
   // At small badge sizes the qualifier ("… - EXTREME") no longer fits; the
   // label gracefully shortens to the regime alone.
   const gammaEnvironmentLabel = (() => {

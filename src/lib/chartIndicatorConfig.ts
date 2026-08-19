@@ -963,11 +963,13 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     position: "top-right",
     showFreshness: true,
     showSource: false,
-    useThemeColors: true,
-    positiveColor: theme?.upColor ?? "#22C55E",
-    negativeColor: theme?.downColor ?? "#EF4444",
+    // Semantic green/red by default so positive vs negative gamma is always
+    // distinguishable (theme candle colours are monochrome on some themes).
+    useThemeColors: false,
+    positiveColor: "#22C55E",
+    negativeColor: "#EF4444",
     badgeScale: 1,
-    gammaEnvironmentSettingsVersion: 1,
+    gammaEnvironmentSettingsVersion: 2,
   } : {}),
   ...(indicatorId === "pulling-stacking" ? {
     ...DEFAULT_PULLING_STACKING_SETTINGS,
@@ -2182,10 +2184,21 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
     if (!allowedPositions.has(String(settings.position))) settings.position = "top-right";
     const parsedScale = Number(settings.badgeScale);
     settings.badgeScale = Number.isFinite(parsedScale) ? Math.min(2, Math.max(0.6, parsedScale)) : 1;
-    settings.useThemeColors = settings.useThemeColors !== false;
+    // v2 migration: positive/negative gamma is a semantic signal, so default to
+    // green/red rather than the theme candle colours (which were white/grey on
+    // monochrome themes, making the regime indistinguishable). Migrate once;
+    // then respect the user's explicit choices.
+    const savedVersion = Number(normalizedInstance.settings?.gammaEnvironmentSettingsVersion);
+    if (!(savedVersion >= 2)) {
+      settings.useThemeColors = false;
+      settings.positiveColor = "#22C55E";
+      settings.negativeColor = "#EF4444";
+    } else {
+      settings.useThemeColors = settings.useThemeColors === true;
+    }
     return {
       ...normalizedInstance,
-      settings: { ...settings, gammaEnvironmentSettingsVersion: 1 },
+      settings: { ...settings, gammaEnvironmentSettingsVersion: 2 },
     };
   }
   if (normalizedInstance.indicatorId === "ib-levels") {
