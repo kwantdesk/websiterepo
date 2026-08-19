@@ -557,26 +557,25 @@ function ExposurePanel({
   const spotStrike = spot === null || !rows.length
     ? null
     : rows.reduce((best, row) => Math.abs(row.strike - spot) < Math.abs(best.strike - spot) ? row : best).strike;
-  // Zero exposure is neutral, so it is pinned to the exact middle of the
-  // colour scale — never the dark end. Each sign side then runs LINEARLY to
-  // its own extreme: the biggest negative alone reaches the darkest colour,
-  // the biggest positive alone reaches the lightest, and the near-zero noise
-  // floor shares the quiet middle colours regardless of which side dominates
-  // the panel. Linear per side keeps the reference look: noise in one colour,
-  // structural rows jumping bands, extremes unmistakable.
-  const heatRange = useMemo(() => {
-    let maxPositive = 0;
-    let maxNegative = 0;
+  // Every node's colour is its signed exposure as a PERCENTAGE OF THE STAR
+  // NODE — the panel's largest absolute exposure, the same yardstick on both
+  // sides. Zero is neutral and pinned to the scale's middle; the Star alone
+  // reaches its end of the scale (lightest when positive, darkest when
+  // negative); a node at 30% of the Star sits 30% of the way toward its end
+  // regardless of sign. Noise stays in the quiet middle, structure jumps
+  // bands, and the Star is unmistakable.
+  const starMagnitude = useMemo(() => {
+    let max = 0;
     for (const row of rows) {
-      if (row.net > maxPositive) maxPositive = row.net;
-      if (-row.net > maxNegative) maxNegative = -row.net;
+      const magnitude = Math.abs(row.net);
+      if (magnitude > max) max = magnitude;
     }
-    return { maxPositive: Math.max(1, maxPositive), maxNegative: Math.max(1, maxNegative) };
+    return Math.max(1, max);
   }, [rows]);
-  const heatStrength = useCallback((net: number) => {
-    if (net >= 0) return 0.5 + 0.5 * Math.min(1, net / heatRange.maxPositive);
-    return 0.5 - 0.5 * Math.min(1, -net / heatRange.maxNegative);
-  }, [heatRange]);
+  const heatStrength = useCallback(
+    (net: number) => 0.5 + 0.5 * Math.max(-1, Math.min(1, net / starMagnitude)),
+    [starMagnitude],
+  );
   // The growth ticker stays readable by marking only the movers that matter:
   // the eight fastest-growing and eight fastest-shrinking nodes by percentage
   // change of exposure magnitude since the previous frame.
@@ -1093,9 +1092,9 @@ function ExposurePanel({
       <div className="border-t border-border bg-panel px-3 py-2">
         <div className="h-1.5 rounded-full" style={{ background: `linear-gradient(90deg, ${signedScale.join(", ")})` }} />
         <div className="mt-1 flex justify-between font-mono text-[8px] text-muted">
-          <span>{rows.length ? `-${formatCompact(heatRange.maxNegative)}` : "Negative"}</span>
+          <span>{rows.length ? `-${formatCompact(starMagnitude)}` : "Negative"}</span>
           <span>0</span>
-          <span>{rows.length ? formatCompact(heatRange.maxPositive) : "Positive"}</span>
+          <span>{rows.length ? formatCompact(starMagnitude) : "Positive"}</span>
         </div>
       </div>
     </section>
@@ -1946,7 +1945,7 @@ function GexMapWorkspace({ market = null, externalReplay = null }: GexMapWorkspa
           <footer className="gex-map-live-footer flex h-7 min-w-0 shrink-0 items-center gap-2 overflow-hidden border-t border-border bg-panel px-3 text-[8px] text-muted">
             <Radio className={`h-3 w-3 ${live ? "text-primary" : "text-muted"}`} />
             <span>KwantData Interval Map · front expiry · per 1% underlying move</span>
-            <span className="ml-auto">Zero exposure sits at the scale’s middle; each side runs linearly to its own extreme — darkest is the panel’s biggest negative, lightest its biggest positive.</span>
+            <span className="ml-auto">Every node is coloured by its percentage of the Star node’s exposure — zero at the scale’s middle, the Star alone at its end: darkest when negative, lightest when positive.</span>
           </footer>
         )}
       </main>
