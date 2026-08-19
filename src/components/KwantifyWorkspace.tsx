@@ -8768,6 +8768,52 @@ export default function KwantifyWorkspace({
       .forEach((item) => unique.add(item.symbol));
     return Array.from(unique).join(",");
   }, [activeChartBrokerLabel, gammaChartSymbols, selectedInstrument, watchlist, workspacePanes]);
+  // Databento symbols in the watchlist and panes, independent of the ACTIVE
+  // pane's broker. GEX Vue's default workspace runs four Market Index panes,
+  // which previously meant no CME live stream at all — futures watchlist rows
+  // froze until the trader happened to open an NQ/ES chart.
+  const databentoWatchlistSymbolsCsv = useMemo(() => {
+    const unique = new Set<string>();
+    workspacePanes
+      .filter((pane) => pane.broker === "Databento")
+      .forEach((pane) => unique.add(pane.symbol));
+    watchlist
+      .filter((item) => item.broker === "Databento")
+      .forEach((item) => unique.add(item.symbol));
+    return Array.from(unique).join(",");
+  }, [watchlist, workspacePanes]);
+
+  useEffect(() => {
+    const indexFeedActive = activeChartBrokerLabel === "Market Index" || activeChartBrokerLabel === "Massive";
+    if (!indexFeedActive || !databentoWatchlistSymbolsCsv) return;
+    if (bottomWorkspaceSection !== "charts" && bottomWorkspaceSection !== "gameplan" && bottomWorkspaceSection !== "heatmap" && bottomWorkspaceSection !== "gamvue") return;
+    // The main live stream only runs for the active broker; this bounded
+    // companion stream keeps CME watchlist rows ticking while every pane is
+    // on the index feed. One EventSource per workspace, closed on cleanup.
+    const source = new EventSource(`/api/databento/live?symbols=${encodeURIComponent(databentoWatchlistSymbolsCsv)}`);
+    const onMessage = (event: MessageEvent) => {
+      try {
+        const price = JSON.parse(event.data) as LiveFeedPrice & { openPrice?: number };
+        if (!price || typeof price !== "object" || price.error || !price.instrument) return;
+        const mid = Number(price.mid);
+        if (!Number.isFinite(mid) || mid <= 0) return;
+        recordDatabentoLiveTick(price);
+        window.dispatchEvent(new CustomEvent(DATABENTO_LIVE_TICK_EVENT, { detail: price }));
+        publishLiveWatchlistQuote(
+          makeWatchlistKey(price.instrument, "Databento"),
+          price,
+          Number(price.openPrice) || 0,
+        );
+      } catch {
+        // Malformed frames are dropped; the stream keeps running.
+      }
+    };
+    source.addEventListener("message", onMessage);
+    return () => {
+      source.removeEventListener("message", onMessage);
+      source.close();
+    };
+  }, [activeChartBrokerLabel, bottomWorkspaceSection, databentoWatchlistSymbolsCsv]);
   const priorityLiveSymbolsCsv = useMemo(() => {
     const unique = new Set<string>();
     if (selectedInstrument) unique.add(selectedInstrument);
