@@ -499,7 +499,8 @@ function GexMapDropdown<T extends string>({
             ref={menuRef}
             role="listbox"
             aria-label={ariaLabel}
-            className="fixed z-[260] overflow-hidden rounded-2xl border border-border bg-panel/95 p-1.5 shadow-[0_22px_70px_rgba(0,0,0,0.58)] backdrop-blur-xl"
+            data-gex-map-dropdown-menu=""
+            className="fixed z-[280] overflow-hidden rounded-2xl border border-border bg-panel/95 p-1.5 shadow-[0_22px_70px_rgba(0,0,0,0.58)] backdrop-blur-xl"
             style={{ left: position.left, top: position.top, width: menuWidth }}
           >
             <div className="flex items-center justify-between px-2.5 pb-1.5 pt-1 text-[8px] font-semibold uppercase tracking-[0.16em] text-muted">
@@ -1225,7 +1226,15 @@ function StarViewSettings({
   const scaleSlotLabel = (index: number) => (index < 5 ? `-${(5 - index) * 20}` : `+${(index - 4) * 20}`);
   const rowClass = "grid grid-cols-[minmax(0,1fr)_160px] items-center gap-4 border-b border-border/60 py-3";
   return createPortal(
-    <div className="fixed inset-0 z-[270] flex items-start justify-center bg-black/20 px-4 pt-[10vh]" onPointerDown={onClose}>
+    <div
+      className="fixed inset-0 z-[270] flex items-start justify-center bg-black/20 px-4 pt-[10vh]"
+      onPointerDown={(event) => {
+        // Portaled dropdown menus live outside this overlay's DOM subtree;
+        // choosing an option must not close the whole settings dialog.
+        if ((event.target as HTMLElement).closest?.("[data-gex-map-dropdown-menu]")) return;
+        onClose();
+      }}
+    >
       <section className="max-h-[80vh] w-full max-w-[620px] overflow-y-auto border border-border bg-panel shadow-[0_24px_90px_rgba(0,0,0,0.65)]" onPointerDown={(event) => event.stopPropagation()}>
         <header className="sticky top-0 z-10 flex h-11 items-center border-b border-border bg-panel px-4">
           <div>
@@ -1241,9 +1250,18 @@ function StarViewSettings({
           </label>
           <label className={rowClass}>
             <span><span className="block text-[10px] text-foreground">Selection strategy</span><span className="text-[8px] text-muted">Changes the deterministic node ranking</span></span>
-            <select value={settings.selectionStrategy} onChange={(event) => update("selectionStrategy", event.target.value as GexMapStarSettings["selectionStrategy"])} className="h-8 border border-border bg-surface px-2 text-[9px] text-foreground outline-none">
-              <option value="structural">Structural</option><option value="magnitude">Magnitude</option><option value="velocity">Velocity</option>
-            </select>
+            <GexMapDropdown
+              ariaLabel="Structural node selection strategy"
+              value={settings.selectionStrategy}
+              options={[
+                { value: "structural", label: "Structural", detail: "Balanced structural ranking" },
+                { value: "magnitude", label: "Magnitude", detail: "Largest absolute exposure first" },
+                { value: "velocity", label: "Velocity", detail: "Fastest-changing nodes first" },
+              ]}
+              menuLabel="Selection strategy"
+              menuWidth={230}
+              onChange={(selectionStrategy) => update("selectionStrategy", selectionStrategy)}
+            />
           </label>
           <label className={rowClass}>
             <span><span className="block text-[10px] text-foreground">Dimmed-row intensity</span><span className="text-[8px] text-muted">{Math.round(settings.dimOpacity * 100)}%</span></span>
