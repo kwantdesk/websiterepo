@@ -167,8 +167,11 @@ export const DRAW_TOOL_LIST: DrawToolSpec[] = [
   T("elliottImpulse", "patterns", "Elliott Impulse (12345)", 6),
   T("elliottCorrection", "patterns", "Elliott Correction (ABC)", 4),
 
-  T("longPosition", "forecast", "Long Position", 3),
-  T("shortPosition", "forecast", "Short Position", 3),
+  // TradingView-style: one click places the tool with default target/stop
+  // zones; the three stored points (entry, stop+right edge, target) are
+  // synthesized at commit time and then adjusted by dragging their handles.
+  T("longPosition", "forecast", "Long Position", 1),
+  T("shortPosition", "forecast", "Short Position", 1),
   T("forecast", "forecast", "Forecast", 2),
   T("priceRange", "forecast", "Price Range", 2),
   T("dateRange", "forecast", "Date Range", 2),

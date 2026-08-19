@@ -92,7 +92,29 @@ export default function ChartDrawLayer({
   };
 
   const finish = (tool: DrawToolId, points: DrawPoint[]) => {
-    onCommit(createDrawing(tool, points));
+    let committed = points;
+    // TradingView-style position tools: one click places the whole tool.
+    // Synthesize the stop (below/above) and target (above/below) points plus a
+    // bounded right edge from pixel offsets so the default shape reads the
+    // same at any zoom; the user then drags the handles to fit the trade.
+    if ((tool === "longPosition" || tool === "shortPosition") && points.length === 1) {
+      const p = points[0];
+      const px = toX(p.time); const py = toY(p.price);
+      if (px != null && py != null) {
+        const dir = tool === "longPosition" ? 1 : -1;
+        const targetPt = fromXY(px, py - dir * 90);
+        const stopPt = fromXY(px, py + dir * 60);
+        const rightPt = fromXY(Math.min(px + 180, width - 8), py);
+        if (targetPt && stopPt && rightPt) {
+          committed = [
+            p,
+            { time: rightPt.time, price: stopPt.price },
+            { time: rightPt.time, price: targetPt.price },
+          ];
+        }
+      }
+    }
+    onCommit(createDrawing(tool, committed));
     setPending(null);
     if (!keepDrawing) onToolConsumed();
   };
@@ -305,7 +327,7 @@ export default function ChartDrawLayer({
     if (drawing.tool === "verticalLine" || drawing.tool === "crossLine") {
       return Math.abs(px - a.x) <= 6 || (drawing.tool === "crossLine" && Math.abs(py - a.y) <= 6);
     }
-    if (["rectangle", "ellipse", "circle", "fibRetracement", "priceRange", "dateRange", "datePriceRange", "brush", "highlighter"].includes(drawing.tool)) {
+    if (["rectangle", "ellipse", "circle", "fibRetracement", "priceRange", "dateRange", "datePriceRange", "brush", "highlighter", "longPosition", "shortPosition"].includes(drawing.tool)) {
       const xs = coords.map((c) => c.x).filter((v): v is number => v != null);
       const ys = coords.map((c) => c.y).filter((v): v is number => v != null);
       if (!xs.length) return false;
@@ -471,19 +493,45 @@ export default function ChartDrawLayer({
         }
         case "longPosition":
         case "shortPosition": {
+          // TradingView-style position tool: two bordered zones (profit above
+          // entry for a long, risk below) bounded left by the entry anchor and
+          // right by the stop/target points' time, with centred price chips
+          // and a risk/reward readout riding the entry line.
           if (!b || !c || a.x == null) return null;
           const long = drawing.tool === "longPosition";
-          const x1 = a.x!; const x2 = width; const entry = a.y!;
-          const stop = b.y!; const target = c.y!;
+          const entryY = a.y!; const stopY = b.y!; const targetY = c.y!;
+          const xL = a.x!;
+          const xrCandidates = [b.x, c.x].filter((v): v is number => v != null);
+          const xR = Math.max(xL + 40, ...(xrCandidates.length ? xrCandidates : [xL + 180]));
           const green = "#089981"; const red = "#F23645";
+          const entryP = pr[0].price; const stopP = pr[1].price; const targetP = pr[2].price;
+          const reward = Math.abs(targetP - entryP); const risk = Math.abs(entryP - stopP);
+          const rr = risk > 0 ? reward / risk : 0;
+          const pct = (v: number) => (entryP ? `${((v / entryP) * 100).toFixed(2)}%` : "");
+          const chip = (cx: number, cy: number, text: string, bg: string) => {
+            const wd = text.length * 6 + 14;
+            return (
+              <g>
+                <rect x={cx - wd / 2} y={cy - 9} width={wd} height={18} rx={3} fill={bg} fillOpacity={0.92} />
+                <text x={cx} y={cy + 3.5} fill="#FFFFFF" fontSize={10} fontFamily="monospace" textAnchor="middle">{text}</text>
+              </g>
+            );
+          };
+          const midX = (xL + xR) / 2;
+          const profitH = Math.abs(targetY - entryY);
+          const riskH = Math.abs(stopY - entryY);
           return (
             <g>
-              <rect x={x1} y={Math.min(entry, target)} width={x2 - x1} height={Math.abs(target - entry)} fill={green} fillOpacity={0.12} />
-              <rect x={x1} y={Math.min(entry, stop)} width={x2 - x1} height={Math.abs(stop - entry)} fill={red} fillOpacity={0.12} />
-              {line(x1, entry, x2, entry, "#787B86")}
-              {line(x1, target, x2, target, green)}
-              {line(x1, stop, x2, stop, red)}
-              {style.showLabels ? <g>{label(x1 + 4, target - 3, `Target ${pr[2].price.toFixed(2)}`, green)}{label(x1 + 4, stop + 11, `Stop ${pr[1].price.toFixed(2)}`, red)}{label(x1 + 4, entry - 3, `${long ? "Long" : "Short"} ${pr[0].price.toFixed(2)}`)}</g> : null}
+              <rect x={xL} y={Math.min(entryY, targetY)} width={xR - xL} height={Math.max(1, profitH)} fill={green} fillOpacity={0.16} stroke={green} strokeOpacity={0.6} strokeWidth={1} />
+              <rect x={xL} y={Math.min(entryY, stopY)} width={xR - xL} height={Math.max(1, riskH)} fill={red} fillOpacity={0.16} stroke={red} strokeOpacity={0.6} strokeWidth={1} />
+              <line x1={xL} y1={entryY} x2={xR} y2={entryY} stroke="#B2B5BE" strokeWidth={1} />
+              {style.showLabels ? (
+                <g>
+                  {profitH >= 22 ? chip(midX, (entryY + targetY) / 2, `Target: ${targetP.toFixed(2)} (${long ? "+" : "-"}${reward.toFixed(2)}, ${pct(reward)})`, green) : null}
+                  {riskH >= 22 ? chip(midX, (entryY + stopY) / 2, `Stop: ${stopP.toFixed(2)} (${long ? "-" : "+"}${risk.toFixed(2)}, ${pct(risk)})`, red) : null}
+                  {chip(midX, entryY, `${long ? "Long" : "Short"} ${entryP.toFixed(2)} · R/R: ${rr.toFixed(2)}`, "#5A6270")}
+                </g>
+              ) : null}
             </g>
           );
         }
