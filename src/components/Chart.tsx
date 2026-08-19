@@ -332,7 +332,7 @@ import { isMarketIndexSymbol } from "@/lib/marketIndices";
 import { detectCvdDivergence, sessionCvdPoints, type CvdCandleLike } from "@/lib/cvdDivergence";
 import ChartDrawToolbar from "@/components/ChartDrawToolbar";
 import ChartDrawLayer from "@/components/ChartDrawLayer";
-import { normalizeDrawings, type DrawToolId, type Drawing, type DrawPoint, type DrawLineStyle } from "@/lib/chartDrawTools";
+import { createDrawing, normalizeDrawings, type DrawToolId, type Drawing, type DrawPoint, type DrawLineStyle } from "@/lib/chartDrawTools";
 import { CROSSHAIR_STYLE_EVENT, DEFAULT_CROSSHAIR_STYLE, loadCrosshairStyle, normalizeCrosshairStyle, type CrosshairStyle } from "@/lib/crosshairStyle";
 
 // Toolbar pin state is PER CHART: locking one pane's toolbar leaves every
@@ -3136,7 +3136,7 @@ function Chart({
   const [drawTool, setDrawTool] = useState<DrawToolId>("cursor");
   const [drawSelectedId, setDrawSelectedId] = useState<string | null>(null);
   const [drawKeepDrawing, setDrawKeepDrawing] = useState(false);
-  const [drawTextInput, setDrawTextInput] = useState<{ point: DrawPoint; x: number; y: number; value: string } | null>(null);
+  const [drawTextInput, setDrawTextInput] = useState<{ points: DrawPoint[]; tool: DrawToolId; x: number; y: number; value: string } | null>(null);
   const [drawSettingsOpen, setDrawSettingsOpen] = useState(false);
   const commitDrawings = useCallback((next: Drawing[]) => {
     onChartingDrawingsChange?.(normalizeDrawings(next));
@@ -13058,6 +13058,7 @@ function Chart({
               setDrawSelectedId(null);
               setDrawSettingsOpen(false);
             }}
+            onClearAll={() => { commitDrawings([]); setDrawSelectedId(null); setDrawSettingsOpen(false); }}
           />
           <ChartDrawLayer
             width={overlaySize.width}
@@ -13076,12 +13077,14 @@ function Chart({
             onCommit={(drawing) => { commitDrawings([...chartingDrawings, drawing]); setDrawSelectedId(drawing.id); }}
             onUpdate={(drawing) => commitDrawings(chartingDrawings.map((d) => d.id === drawing.id ? drawing : d))}
             onSelect={setDrawSelectedId}
+            onDelete={(id) => { commitDrawings(chartingDrawings.filter((drawing) => drawing.id !== id)); if (drawSelectedId === id) setDrawSelectedId(null); }}
             onToolConsumed={() => setDrawTool("cursor")}
-            onRequestText={(point) => {
-              const x = timeToX(point.time);
-              const y = priceToY(point.price);
+            onRequestText={(points, tool) => {
+              const anchor = points[points.length - 1];
+              const x = timeToX(anchor.time);
+              const y = priceToY(anchor.price);
               if (x == null || y == null) return;
-              setDrawTextInput({ point, x, y, value: "" });
+              setDrawTextInput({ points, tool, x, y, value: "" });
             }}
           />
           {drawTextInput ? (
@@ -13091,7 +13094,7 @@ function Chart({
               onChange={(event) => setDrawTextInput({ ...drawTextInput, value: event.target.value })}
               onBlur={() => {
                 const value = drawTextInput.value.trim();
-                if (value) commitDrawings([...chartingDrawings, { id: `draw-${crypto.randomUUID()}`, tool: "text", points: [drawTextInput.point], style: { color: "#EAB308", width: 2, lineStyle: "solid" as DrawLineStyle, fillOpacity: 0.12, showLabels: true }, text: value }]);
+                if (value) commitDrawings([...chartingDrawings, createDrawing(drawTextInput.tool, drawTextInput.points, value)]);
                 setDrawTextInput(null);
               }}
               onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); if (event.key === "Escape") setDrawTextInput(null); }}

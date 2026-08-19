@@ -8,18 +8,71 @@
  */
 
 export type DrawToolId =
+  // cursors
   | "cursor"
+  | "eraser"
+  // trend / lines
   | "trendLine"
   | "ray"
   | "extendedLine"
+  | "trendAngle"
+  | "infoLine"
   | "horizontalLine"
   | "horizontalRay"
   | "verticalLine"
-  | "rectangle"
+  | "crossLine"
+  | "parallelChannel"
+  | "flatChannel"
+  // fib
   | "fibRetracement"
-  | "text";
+  | "fibExtension"
+  | "fibChannel"
+  | "fibTimeZone"
+  | "fibCircles"
+  | "fibSpeedFan"
+  // patterns
+  | "xabcd"
+  | "abcd"
+  | "trianglePattern"
+  | "headShoulders"
+  | "threeDrivers"
+  // forecast / measurement
+  | "longPosition"
+  | "shortPosition"
+  | "forecast"
+  | "priceRange"
+  | "dateRange"
+  | "datePriceRange"
+  // shapes
+  | "rectangle"
+  | "rotatedRectangle"
+  | "ellipse"
+  | "circle"
+  | "triangleShape"
+  | "polyline"
+  | "path"
+  | "brush"
+  | "highlighter"
+  // annotation
+  | "text"
+  | "note"
+  | "callout"
+  | "priceLabel"
+  | "signpost"
+  | "arrowMarker"
+  | "flagMark"
+  // measure
+  | "measure";
 
-export type DrawToolGroupId = "cursor" | "trend" | "fib" | "shapes" | "annotation";
+export type DrawToolGroupId =
+  | "cursor"
+  | "trend"
+  | "fib"
+  | "patterns"
+  | "forecast"
+  | "shapes"
+  | "annotation"
+  | "measure";
 
 export type DrawLineStyle = "solid" | "dashed" | "dotted";
 
@@ -39,29 +92,92 @@ export const DEFAULT_DRAW_STYLE: DrawStyle = {
   showLabels: true,
 };
 
+// pointsMode: fixed number, or a freehand/multi behaviour.
+export type DrawPointsMode = number | "freehand" | "poly";
+
 export type DrawToolSpec = {
   id: DrawToolId;
   group: DrawToolGroupId;
   label: string;
-  points: number;          // anchors required to finish the drawing
-  overlay?: boolean;       // reserved
+  points: DrawPointsMode;
 };
 
-export const DRAW_TOOL_SPECS: Record<DrawToolId, DrawToolSpec> = {
-  cursor: { id: "cursor", group: "cursor", label: "Cursor", points: 0 },
-  trendLine: { id: "trendLine", group: "trend", label: "Trend Line", points: 2 },
-  ray: { id: "ray", group: "trend", label: "Ray", points: 2 },
-  extendedLine: { id: "extendedLine", group: "trend", label: "Extended Line", points: 2 },
-  horizontalLine: { id: "horizontalLine", group: "trend", label: "Horizontal Line", points: 1 },
-  horizontalRay: { id: "horizontalRay", group: "trend", label: "Horizontal Ray", points: 1 },
-  verticalLine: { id: "verticalLine", group: "trend", label: "Vertical Line", points: 1 },
-  rectangle: { id: "rectangle", group: "shapes", label: "Rectangle", points: 2 },
-  fibRetracement: { id: "fibRetracement", group: "fib", label: "Fib Retracement", points: 2 },
-  text: { id: "text", group: "annotation", label: "Text", points: 1 },
-};
+const T = (id: DrawToolId, group: DrawToolGroupId, label: string, points: DrawPointsMode): DrawToolSpec =>
+  ({ id, group, label, points });
 
-// Standard Fibonacci retracement levels and TradingView's conventional colour
-// per level (well-known values, reproduced as facts).
+export const DRAW_TOOL_LIST: DrawToolSpec[] = [
+  T("cursor", "cursor", "Cursor", 0),
+  T("eraser", "cursor", "Eraser", 0),
+
+  T("trendLine", "trend", "Trend Line", 2),
+  T("ray", "trend", "Ray", 2),
+  T("extendedLine", "trend", "Extended Line", 2),
+  T("trendAngle", "trend", "Trend Angle", 2),
+  T("infoLine", "trend", "Info Line", 2),
+  T("horizontalLine", "trend", "Horizontal Line", 1),
+  T("horizontalRay", "trend", "Horizontal Ray", 1),
+  T("verticalLine", "trend", "Vertical Line", 1),
+  T("crossLine", "trend", "Cross Line", 1),
+  T("parallelChannel", "trend", "Parallel Channel", 3),
+  T("flatChannel", "trend", "Flat Channel", 3),
+
+  T("fibRetracement", "fib", "Fib Retracement", 2),
+  T("fibExtension", "fib", "Trend-Based Fib Extension", 3),
+  T("fibChannel", "fib", "Fib Channel", 3),
+  T("fibTimeZone", "fib", "Fib Time Zone", 2),
+  T("fibCircles", "fib", "Fib Circles", 2),
+  T("fibSpeedFan", "fib", "Fib Speed/Resistance Fan", 2),
+
+  T("xabcd", "patterns", "XABCD Pattern", 5),
+  T("abcd", "patterns", "ABCD Pattern", 4),
+  T("trianglePattern", "patterns", "Triangle Pattern", 4),
+  T("headShoulders", "patterns", "Head & Shoulders", 5),
+  T("threeDrivers", "patterns", "Three Drivers", 7),
+
+  T("longPosition", "forecast", "Long Position", 3),
+  T("shortPosition", "forecast", "Short Position", 3),
+  T("forecast", "forecast", "Forecast", 2),
+  T("priceRange", "forecast", "Price Range", 2),
+  T("dateRange", "forecast", "Date Range", 2),
+  T("datePriceRange", "forecast", "Date & Price Range", 2),
+
+  T("rectangle", "shapes", "Rectangle", 2),
+  T("rotatedRectangle", "shapes", "Rotated Rectangle", 3),
+  T("ellipse", "shapes", "Ellipse", 2),
+  T("circle", "shapes", "Circle", 2),
+  T("triangleShape", "shapes", "Triangle", 3),
+  T("polyline", "shapes", "Polyline", "poly"),
+  T("path", "shapes", "Path", "poly"),
+  T("brush", "shapes", "Brush", "freehand"),
+  T("highlighter", "shapes", "Highlighter", "freehand"),
+
+  T("text", "annotation", "Text", 1),
+  T("note", "annotation", "Note", 1),
+  T("callout", "annotation", "Callout", 2),
+  T("priceLabel", "annotation", "Price Label", 1),
+  T("signpost", "annotation", "Signpost", 2),
+  T("arrowMarker", "annotation", "Arrow", 2),
+  T("flagMark", "annotation", "Flag", 1),
+
+  T("measure", "measure", "Measure", 2),
+];
+
+export const DRAW_TOOL_SPECS: Record<DrawToolId, DrawToolSpec> = Object.fromEntries(
+  DRAW_TOOL_LIST.map((spec) => [spec.id, spec]),
+) as Record<DrawToolId, DrawToolSpec>;
+
+export const DRAW_TOOL_GROUPS: { id: DrawToolGroupId; label: string }[] = [
+  { id: "cursor", label: "Cursor" },
+  { id: "trend", label: "Lines" },
+  { id: "fib", label: "Fib" },
+  { id: "patterns", label: "Patterns" },
+  { id: "forecast", label: "Forecast" },
+  { id: "shapes", label: "Shapes" },
+  { id: "annotation", label: "Text" },
+  { id: "measure", label: "Measure" },
+];
+
+// Standard Fibonacci levels and TradingView's conventional colour per level.
 export type FibLevel = { coeff: number; color: string };
 export const FIB_LEVELS: FibLevel[] = [
   { coeff: 0, color: "#787B86" },
@@ -73,7 +189,12 @@ export const FIB_LEVELS: FibLevel[] = [
   { coeff: 1, color: "#787B86" },
   { coeff: 1.618, color: "#2962FF" },
   { coeff: 2.618, color: "#F23645" },
+  { coeff: 3.618, color: "#9C27B0" },
+  { coeff: 4.236, color: "#787B86" },
 ];
+
+export const FIB_TIME_COEFFS = [0, 1, 2, 3, 5, 8, 13, 21, 34];
+export const FIB_CIRCLE_COEFFS = [0.236, 0.382, 0.5, 0.618, 1];
 
 export type DrawPoint = { time: number; price: number };
 
@@ -85,14 +206,18 @@ export type Drawing = {
   text?: string;
 };
 
+const defaultStyleFor = (tool: DrawToolId): DrawStyle => {
+  if (tool === "highlighter") return { ...DEFAULT_DRAW_STYLE, color: "#FFEB3B", width: 4, fillOpacity: 0.25 };
+  if (tool === "longPosition") return { ...DEFAULT_DRAW_STYLE, color: "#089981" };
+  if (tool === "shortPosition") return { ...DEFAULT_DRAW_STYLE, color: "#F23645" };
+  if (tool === "text" || tool === "note" || tool === "callout" || tool === "priceLabel" || tool === "signpost" || tool === "flagMark") {
+    return { ...DEFAULT_DRAW_STYLE, color: "#EAB308" };
+  }
+  return { ...DEFAULT_DRAW_STYLE };
+};
+
 export function createDrawing(tool: DrawToolId, points: DrawPoint[], text?: string): Drawing {
-  return {
-    id: `draw-${crypto.randomUUID()}`,
-    tool,
-    points,
-    style: { ...DEFAULT_DRAW_STYLE },
-    text,
-  };
+  return { id: `draw-${crypto.randomUUID()}`, tool, points, style: defaultStyleFor(tool), text };
 }
 
 export function normalizeDrawings(value: unknown): Drawing[] {
@@ -108,10 +233,11 @@ export function normalizeDrawings(value: unknown): Drawing[] {
         && Number.isFinite(Number((point as DrawPoint).time))
         && Number.isFinite(Number((point as DrawPoint).price)))
       .map((point) => ({ time: Number(point.time), price: Number(point.price) }));
-    if (points.length < spec.points) continue;
+    const minPoints = typeof spec.points === "number" ? spec.points : 2;
+    if (points.length < minPoints) continue;
     const style = candidate.style && typeof candidate.style === "object"
-      ? { ...DEFAULT_DRAW_STYLE, ...candidate.style }
-      : { ...DEFAULT_DRAW_STYLE };
+      ? { ...defaultStyleFor(candidate.tool!), ...candidate.style }
+      : defaultStyleFor(candidate.tool!);
     out.push({
       id: candidate.id,
       tool: candidate.tool!,
