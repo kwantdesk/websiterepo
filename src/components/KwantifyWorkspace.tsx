@@ -799,7 +799,7 @@ type StrategyItem = {
   totalPnl?: number;
 };
 
-type WorkspaceLayout = "single" | "split-vertical" | "split-horizontal" | "quad" | "custom";
+type WorkspaceLayout = "single" | "split-vertical" | "split-horizontal" | "quad" | "columns" | "custom";
 type WorkspacePagePanelKind = "charts" | "zyon" | "gameplan" | "gamma" | "gexmap" | "liqmap" | "news" | "socials" | "journal";
 type WorkspaceToolKind =
   | "tool-gamma-heatmap"
@@ -1388,6 +1388,31 @@ function createWorkspaceLayoutTree(
   }
   if (layout === "split-horizontal") {
     return { type: "split", id: "root-y", axis: "y", ratio: 50, first: pane(0), second: pane(1) };
+  }
+  if (layout === "columns") {
+    // Four equal columns left to right: nested x-splits at 25 / 33.33 / 50.
+    return {
+      type: "split",
+      id: "root-x",
+      axis: "x",
+      ratio: 25,
+      first: pane(0),
+      second: {
+        type: "split",
+        id: "columns-2",
+        axis: "x",
+        ratio: 100 / 3,
+        first: pane(1),
+        second: {
+          type: "split",
+          id: "columns-3",
+          axis: "x",
+          ratio: 50,
+          first: pane(2),
+          second: pane(3),
+        },
+      },
+    };
   }
   if (layout === "quad") {
     return {
@@ -2026,6 +2051,7 @@ function loadChartWorkspaceRuntime(scope: ChartWorkspaceScope): ChartWorkspaceRu
   const layout: WorkspaceLayout = layoutValue === "split-vertical"
     || layoutValue === "split-horizontal"
     || layoutValue === "quad"
+    || layoutValue === "columns"
     || layoutValue === "custom"
     || layoutValue === "single"
     ? layoutValue
@@ -11657,6 +11683,7 @@ export default function KwantifyWorkspace({
           const nextLayout: WorkspaceLayout = nextLayoutValue === "split-vertical"
             || nextLayoutValue === "split-horizontal"
             || nextLayoutValue === "quad"
+            || nextLayoutValue === "columns"
             || nextLayoutValue === "custom"
             || nextLayoutValue === "single"
             ? nextLayoutValue
@@ -12715,7 +12742,7 @@ export default function KwantifyWorkspace({
   }, [brokerMode, workspacePanes]);
 
   const applyWorkspaceLayoutTemplate = (layout: Exclude<WorkspaceLayout, "custom">) => {
-    const requiredPaneCount = layout === "quad" ? 4 : layout === "single" ? 1 : 2;
+    const requiredPaneCount = layout === "quad" || layout === "columns" ? 4 : layout === "single" ? 1 : 2;
     const nextPanes = [...workspacePanes];
     const scopedDefaults = defaultWorkspacePanes(chartWorkspaceScopeRef.current);
     for (const defaultPane of scopedDefaults) {
@@ -15818,6 +15845,18 @@ export default function KwantifyWorkspace({
                   <span className="grid h-4 w-4 grid-cols-2 gap-0.5">
                     <span className="rounded-[2px] border border-current/70 bg-current/15" />
                     <span className="rounded-[2px] border border-current/70 bg-current/15" />
+                  </span>
+                ),
+              },
+              {
+                layout: "columns" as Exclude<WorkspaceLayout, "custom">,
+                title: "Four panels side by side",
+                icon: (
+                  <span className="grid h-4 w-4 grid-cols-4 gap-0.5">
+                    <span className="rounded-[1px] border border-current/70 bg-current/15" />
+                    <span className="rounded-[1px] border border-current/70 bg-current/15" />
+                    <span className="rounded-[1px] border border-current/70 bg-current/15" />
+                    <span className="rounded-[1px] border border-current/70 bg-current/15" />
                   </span>
                 ),
               },
