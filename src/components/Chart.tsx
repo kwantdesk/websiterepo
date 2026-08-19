@@ -3405,6 +3405,35 @@ function Chart({
     return () => window.removeEventListener("kwantdesk:theme-change", handleThemeChange);
   }, []);
 
+  // Drawing tools are linked to the selected theme: new drawings already
+  // default to the theme accent, and a theme change re-links every existing
+  // drawing (Fibonacci tools included) to the new accent. Custom per-drawing
+  // colours therefore persist exactly until the next theme change overrides
+  // them, matching how indicators and chart palettes behave.
+  const drawingThemeRelinkReadyRef = useRef(false);
+  useEffect(() => {
+    if (!drawingThemeRelinkReadyRef.current) {
+      drawingThemeRelinkReadyRef.current = true;
+      return;
+    }
+    const manager = professionalDrawingManagerRef.current;
+    if (!manager || typeof window === "undefined") return;
+    const themeStyles = window.getComputedStyle(document.documentElement);
+    const themeColor = themeStyles.getPropertyValue("--primary").trim() || settings.upColor;
+    manager.getAllDrawings().forEach((drawing) => {
+      if (drawing.id === "__kwantdesk_drawing_preview__") return;
+      const fillOpacity = Number(drawing.style?.fillOpacity);
+      drawing.updateStyle({
+        lineColor: themeColor,
+        labelColor: themeColor,
+        fillColor: withAlpha(themeColor, Number.isFinite(fillOpacity) && fillOpacity > 0 ? fillOpacity : 0.12),
+      });
+    });
+    syncProfessionalManagerNow();
+  // The relink applies only when the THEME changes, never on style edits.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [themeVersion]);
+
   useEffect(() => {
     const handleToggle = (event: Event) => {
       const detail = (event as CustomEvent<ChartCrosshairSyncToggle>).detail;
