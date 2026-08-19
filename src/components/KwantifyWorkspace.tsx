@@ -898,6 +898,8 @@ type WorkspacePreset = {
   theme?: ThemeColors;
   /** GEX Map exposure palette at save time. */
   gexMapPalette?: GexMapPalette;
+  /** Panes that were viewport-linked when the workspace was saved. */
+  linkedPaneIds?: string[];
   updatedAt: string;
 };
 type WorkspaceBackupFile = {
@@ -13301,6 +13303,7 @@ export default function KwantifyWorkspace({
     // colours even after the trader has changed themes in between.
     theme: readStoredTheme(),
     gexMapPalette: loadGexMapPalette(),
+    linkedPaneIds: [...linkedViewportPaneIds],
     updatedAt: new Date().toISOString(),
   });
 
@@ -13356,6 +13359,14 @@ export default function KwantifyWorkspace({
       preset.floatingWindows,
       new Set(panes.map((pane) => pane.id)),
     ));
+    // Viewport links are part of the saved workspace: restore exactly the
+    // panes that were linked at save time instead of resetting them.
+    {
+      const paneIdSet = new Set(panes.map((pane) => pane.id));
+      setLinkedViewportPaneIds(new Set(
+        (preset.linkedPaneIds ?? []).filter((paneId) => paneIdSet.has(paneId)),
+      ));
+    }
     setWorkspaceLayout("custom");
     if (preset.chartSettings) {
       // Theme-linked workspaces follow the active account palette. A workspace
