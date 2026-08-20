@@ -4012,6 +4012,59 @@ const valueAreaFuturesReferenceCache = new Map<string, {
   promise: Promise<ValueAreaFuturesReferenceBar[]>;
 }>();
 
+// Options-family cash feeds publish OHLC only — no traded volume, no
+// aggressor sides (verified against the live provider). Volume, TPO and every
+// flow study on NDX/QQQ/SPX/SPY therefore consume the REAL per-minute
+// execution flow of the CME future that hedges them (NQ or ES): genuine
+// contract volume and bid/ask aggressor splits, time-aligned onto the cash
+// bars. Prices stay cash; only the flow fields are projected — the same desk
+// convention the projected volume profiles and value areas already use.
+type IndexFuturesFlowRow = {
+  timestamp: number;
+  volume: number;
+  bidVolume: number;
+  askVolume: number;
+  delta: number;
+  trades: number;
+};
+const indexFuturesFlowCache = new Map<string, { expiresAt: number; promise: Promise<IndexFuturesFlowRow[]> }>();
+function fetchIndexFuturesFlowRows(root: "NQ" | "ES") {
+  const now = Date.now();
+  const cached = indexFuturesFlowCache.get(root);
+  if (cached && cached.expiresAt > now) return cached.promise;
+  const promise = fetch(
+    `/api/cme-history?symbol=${encodeURIComponent(`${root}.c.0`)}&timeframe=1m&days=9`,
+    { cache: "no-store" },
+  )
+    .then(async (response) => {
+      if (!response.ok) throw new Error(`The CME ${root} flow history is unavailable.`);
+      const payload = await response.json() as { candles?: Array<Record<string, unknown>> };
+      const rows = (Array.isArray(payload.candles) ? payload.candles : [])
+        .map((candle): IndexFuturesFlowRow => ({
+          timestamp: Number(candle.timestamp),
+          volume: Math.max(0, Number(candle.volume ?? 0)),
+          bidVolume: Math.max(0, Number(candle.bidVolume ?? 0)),
+          askVolume: Math.max(0, Number(candle.askVolume ?? 0)),
+          delta: Number.isFinite(Number(candle.deltaClose ?? candle.delta))
+            ? Number(candle.deltaClose ?? candle.delta)
+            : Math.max(0, Number(candle.askVolume ?? 0)) - Math.max(0, Number(candle.bidVolume ?? 0)),
+          trades: Math.max(0, Number(candle.trades ?? 0)),
+        }))
+        .filter((row) => Number.isFinite(row.timestamp) && row.timestamp > 0 && row.volume > 0)
+        .sort((left, right) => left.timestamp - right.timestamp);
+      if (!rows.length) throw new Error(`The CME ${root} flow history returned no volume bars.`);
+      return rows;
+    })
+    .catch((error: unknown) => {
+      if (indexFuturesFlowCache.get(root)?.promise === promise) {
+        indexFuturesFlowCache.delete(root);
+      }
+      throw error;
+    });
+  indexFuturesFlowCache.set(root, { expiresAt: now + 120_000, promise });
+  return promise;
+}
+
 function fetchValueAreaFuturesReference(root: "NQ" | "ES") {
   const now = Date.now();
   const cached = valueAreaFuturesReferenceCache.get(root);
@@ -4729,11 +4782,83 @@ function WorkspaceChartPaneComponent({
 }) {
   const gammaInstrument = displayCmeSymbol(pane.symbol);
   const [candles, setCandles] = useState<Candle[]>([]);
+  // Real futures flow projected onto options-family cash bars: Volume, TPO,
+  // volume profiles and every flow study need genuine traded volume and
+  // aggressor sides, which the cash provider does not publish at all.
+  const [indexFuturesFlowRows, setIndexFuturesFlowRows] = useState<IndexFuturesFlowRow[] | null>(null);
+  const paneWantsIndicatorData = indicators.some((instance) => instance.enabled);
+  useEffect(() => {
+    const usingMarketIndexPaneFeed = pane.broker === "Market Index" || isMarketIndexSymbol(pane.symbol);
+    const flowRoot = usingMarketIndexPaneFeed ? valueAreaIndexSourceRoot(pane.symbol) : null;
+    if (!flowRoot || !paneWantsIndicatorData || isEventBasedChartInterval(pane.timeframe)) {
+      setIndexFuturesFlowRows(null);
+      return;
+    }
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const rows = await fetchIndexFuturesFlowRows(flowRoot);
+        if (!cancelled) setIndexFuturesFlowRows(rows);
+      } catch {
+        // The next cycle retries; enriched candles keep their last real flow.
+      }
+    };
+    void load();
+    const timer = window.setInterval(() => void load(), 60_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [pane.broker, pane.symbol, pane.timeframe, paneWantsIndicatorData]);
+  const flowEnrichedCandles = useMemo(() => {
+    if (!indexFuturesFlowRows?.length || !candles.length) return candles;
+    const bucketMs = Math.max(60_000, getTimeframeMs(pane.timeframe));
+    const rows = indexFuturesFlowRows;
+    // Sum the futures' one-minute flow into each cash bar's own time window,
+    // so any timeframe (1m through 4h, session-anchored or not) aligns
+    // exactly without assuming matching bucket grids.
+    let cursor = 0;
+    let enrichedAny = false;
+    const next = candles.map((candle) => {
+      const startMs = candle.timestamp;
+      const endMs = startMs + bucketMs;
+      while (cursor > 0 && rows[cursor - 1].timestamp >= startMs) cursor -= 1;
+      while (cursor < rows.length && rows[cursor].timestamp < startMs) cursor += 1;
+      let volume = 0;
+      let bidVolume = 0;
+      let askVolume = 0;
+      let delta = 0;
+      let trades = 0;
+      let index = cursor;
+      while (index < rows.length && rows[index].timestamp < endMs) {
+        const row = rows[index];
+        volume += row.volume;
+        bidVolume += row.bidVolume;
+        askVolume += row.askVolume;
+        delta += row.delta;
+        trades += row.trades;
+        index += 1;
+      }
+      if (volume <= 0) return candle;
+      enrichedAny = true;
+      return {
+        ...candle,
+        volume,
+        bidVolume,
+        askVolume,
+        trades,
+        delta,
+        deltaOpen: 0,
+        deltaClose: delta,
+      };
+    });
+    return enrichedAny ? next : candles;
+  }, [candles, indexFuturesFlowRows, pane.timeframe]);
   const plottedCandles = useMemo(
     () => (pane.broker === "Market Index"
-      ? compressNewYorkClosedSessionCandles(candles, pane.timeframe)
-      : compressCmeClosedSessionCandles(candles, pane.timeframe)),
-    [candles, pane.broker, pane.timeframe],
+      ? compressNewYorkClosedSessionCandles(flowEnrichedCandles, pane.timeframe)
+      : compressCmeClosedSessionCandles(flowEnrichedCandles, pane.timeframe)),
+    [flowEnrichedCandles, pane.broker, pane.timeframe],
   );
   // The replay clock ticks every 200ms, but the revealed candle set only
   // changes when the clock crosses a bar boundary. Deriving a count first and
