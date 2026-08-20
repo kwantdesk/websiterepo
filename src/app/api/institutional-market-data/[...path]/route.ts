@@ -157,7 +157,16 @@ async function proxy(request: NextRequest, context: RouteContext) {
     // browser UNCOMPRESSED. Those transfers monopolised the one shared HTTP/2
     // connection to this origin for a minute-plus and every other request on
     // the site queued behind them. JSON tapes compress ~10x; gzip everything
-    // that is not a live SSE stream.
+    // that is not a live stream. Streams are decided by CONTENT TYPE, not the
+    // path suffix: `index-stream` does not end in "/stream", and compressing
+    // an SSE feed buffers its events inside the gzip window indefinitely —
+    // quotes freeze and pages hang waiting on them.
+    const upstreamType = upstream.headers.get("content-type") || "";
+    const isEventStream = upstreamType.includes("text/event-stream") || path.includes("stream");
+    if (isEventStream) {
+      headers.set("X-Accel-Buffering", "no");
+      return new Response(upstream.body, { status: upstream.status, headers });
+    }
     const acceptsGzip = (request.headers.get("accept-encoding") || "").includes("gzip");
     if (acceptsGzip && upstream.body && !upstream.headers.get("content-encoding") && typeof CompressionStream !== "undefined") {
       headers.set("Content-Encoding", "gzip");
