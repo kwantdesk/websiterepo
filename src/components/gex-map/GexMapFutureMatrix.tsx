@@ -201,8 +201,11 @@ export default function GexMapFutureMatrix({ palette, zoom = 1 }: { palette: Gex
     const row = spotRowRef.current;
     if (!container || !row) return;
     centeredKeyRef.current = key;
+    // scrollIntoView is CSS-zoom-aware; manual offsetTop math undershot by
+    // the zoom factor. Horizontal scroll is pinned back to zero afterwards so
+    // the sticky strike column never sits detached with a gap on its left.
+    row.scrollIntoView({ block: "center" });
     container.scrollLeft = 0;
-    container.scrollTop = Math.max(0, row.offsetTop - container.clientHeight / 2 + row.clientHeight / 2);
   }, [chain?.greekMode, chain?.symbol, settings.lookaheadDays, spotStrike, view]);
 
   const chip = "flex h-6 items-center rounded-[3px] border border-border/70 bg-background/35 px-2 text-[9px] font-semibold uppercase leading-none tracking-[0.075em]";
