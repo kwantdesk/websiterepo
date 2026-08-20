@@ -350,7 +350,7 @@ const EMPTY_CHARTING_DRAWINGS: Drawing[] = [];
 // the per-render surface build cost (the GEX Vue OOM/freeze driver).
 const GAMMA_HEATMAP_MAX_SNAPSHOTS = 300;
 import { latestCompletedNewYorkSession, newYorkSessionTimestamp } from "@/lib/gexVueReplay";
-import { isZeroGammaLinePayload, paintZeroGammaLine, zeroGammaRootForInstrument, type ZeroGammaLinePayload } from "@/lib/zeroGammaLine";
+import { isZeroGammaLinePayload, paintZeroGammaLineOnBars, zeroGammaRootForInstrument, type ZeroGammaLinePayload } from "@/lib/zeroGammaLine";
 import { STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT } from "@/lib/volumeProfileMath";
 import {
   buildInitialBalanceLevels,
@@ -5636,6 +5636,15 @@ function Chart({
     () => buildOptionsSurfacePaneSeries(zeroGammaBarsIndicator, zeroGammaBarsPayload, "zero-gamma-bars", "Zero Gamma Bars"),
     [buildOptionsSurfacePaneSeries, zeroGammaBarsIndicator, zeroGammaBarsPayload],
   );
+  // The zero-gamma trail must paint on the chart's OWN bar times: any other
+  // time inserts whitespace slots into the shared time scale and spreads the
+  // candles apart (reported on 5m; true for every timeframe and event chart).
+  const zeroGammaChartBarTimes = useMemo(() => {
+    if (!zeroGammaLinePayload) return [] as number[];
+    return candles.map((candle) =>
+      Number(eventChartTimeBySourceTimeRef.current.get(candle.timestamp)
+        ?? Math.floor(candle.timestamp / 1_000)));
+  }, [candles, zeroGammaLinePayload]);
   const calculatedIndicatorSeries = useMemo(() => [
     ...baseCalculatedIndicatorSeries,
     ...indicators.flatMap((instance): CalculatedIndicatorSeries[] => {
@@ -5661,7 +5670,13 @@ function Chart({
         lineStyle,
         lineType: "simple",
         lastValueVisible: instance.settings?.showCurrentValue !== false,
-        data: paintZeroGammaLine(zeroGammaLinePayload.points),
+        data: paintZeroGammaLineOnBars(
+          zeroGammaLinePayload.points,
+          zeroGammaChartBarTimes,
+          timeframe && !isEventBasedChartInterval(timeframe)
+            ? (timeframeToMs(timeframe) ?? 60_000) / 1_000
+            : null,
+        ),
       }];
     }),
     ...(optionsDeltaSeries ? [optionsDeltaSeries] : []),
@@ -5697,7 +5712,7 @@ function Chart({
         data: rankData,
       }];
     }),
-  ], [baseCalculatedIndicatorSeries, indicatorSignature, indicators, ivRankByInstance, optionsDeltaSeries, settings.borderUpColor, settings.downColor, settings.upColor, zeroGammaBarsSeries, zeroGammaLinePayload]);
+  ], [baseCalculatedIndicatorSeries, indicatorSignature, indicators, ivRankByInstance, optionsDeltaSeries, settings.borderUpColor, settings.downColor, settings.upColor, timeframe, zeroGammaBarsSeries, zeroGammaChartBarTimes, zeroGammaLinePayload]);
   const calculatedIndicatorPanes = useMemo(() => {
     return indicators.flatMap((instance): IndicatorPaneGroup[] => {
       if (!instance.enabled) return [];

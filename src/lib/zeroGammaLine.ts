@@ -69,6 +69,40 @@ export function paintZeroGammaLine(
     .map(([time, value]) => ({ time, value }));
 }
 
+/**
+ * Resamples the observation trail onto the chart's own bar times. A series
+ * whose times are not existing bar times makes Lightweight Charts insert a
+ * whitespace slot for every such point — with a one-minute trail on a 5m
+ * chart that pushed hundreds of empty slots between candles and visibly
+ * spread them apart. Each bar takes the newest observation at or before its
+ * close, so the line stays a per-bar trace with zero extra time slots on any
+ * timeframe.
+ */
+export function paintZeroGammaLineOnBars(
+  points: ZeroGammaLinePoint[],
+  barTimesSeconds: number[],
+  barIntervalSeconds: number | null,
+): Array<{ time: number; value: number }> {
+  if (!barTimesSeconds.length) return paintZeroGammaLine(points);
+  const trail = paintZeroGammaLine(points);
+  if (!trail.length) return [];
+  const interval = barIntervalSeconds !== null && barIntervalSeconds > 0
+    ? barIntervalSeconds
+    : barTimesSeconds.length > 1
+      ? Math.max(1, barTimesSeconds[1] - barTimesSeconds[0])
+      : 60;
+  const painted: Array<{ time: number; value: number }> = [];
+  let cursor = 0;
+  for (const barTime of barTimesSeconds) {
+    const barClose = barTime + interval;
+    while (cursor + 1 < trail.length && trail[cursor + 1].time < barClose) cursor += 1;
+    const observation = trail[cursor];
+    if (observation.time >= barClose) continue;
+    painted.push({ time: barTime, value: observation.value });
+  }
+  return painted;
+}
+
 export function isZeroGammaLinePayload(value: unknown): value is ZeroGammaLinePayload {
   if (!value || typeof value !== "object") return false;
   const payload = value as Partial<ZeroGammaLinePayload>;
