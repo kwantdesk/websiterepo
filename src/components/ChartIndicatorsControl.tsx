@@ -628,19 +628,79 @@ export default function ChartIndicatorsControl({
 
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase();
-    return CHART_INDICATOR_CATALOG
+    const pool = CHART_INDICATOR_CATALOG
       .filter((definition) => definition.id !== "source-code-indicator")
-      .filter((definition) => category === "All" || definition.category === category)
-      .filter((definition) =>
-        !needle
-        || definition.name.toLowerCase().includes(needle)
-        || definition.description.toLowerCase().includes(needle)
-        || definition.category.toLowerCase().includes(needle))
-      .sort((left, right) => {
+      .filter((definition) => category === "All" || definition.category === category);
+    if (!needle) {
+      return pool.sort((left, right) => {
         const favouriteDifference =
           Number(favourites.includes(right.id)) - Number(favourites.includes(left.id));
         return favouriteDifference || left.name.localeCompare(right.name);
       });
+    }
+    // Relevance-ranked search: the closest name matches surface FIRST, and
+    // trader abbreviations (CVD, VP, TPO, DOM, IB...) resolve to their
+    // studies — both from a curated alias table and from each name's own
+    // initials, so "cvd" beats a description that merely mentions volume.
+    const aliasesFor = (definition: typeof pool[number]) => {
+      const curated: Record<string, string[]> = {
+        "cumulative-volume-delta": ["cvd"],
+        "cvd-divergence": ["cvd", "cvd div"],
+        "delta-cumulative-candlestick": ["cvd", "cdc"],
+        "delta-cumulative-histogram": ["cvd", "cdh"],
+        "kwant-profile": ["vp", "volume profile", "profile"],
+        "weekly-volume-profile": ["vp", "wvp", "volume profile"],
+        "ask-bid-volume-profile": ["vp", "volume profile"],
+        "delta-profile": ["vp", "volume profile"],
+        "tpo-chart": ["tpo", "market profile"],
+        "weekly-tpo": ["tpo", "wtpo", "market profile"],
+        "tpo-levels": ["tpo"],
+        "depth-of-market": ["dom", "ladder"],
+        "ib-levels": ["ib", "initial balance"],
+        "vwap": ["vwap"],
+        "rolling-vwap": ["vwap", "rvwap"],
+        "vwap-envelopes": ["vwap"],
+        "relative-strength-index-rsi": ["rsi"],
+        "macd-indicator": ["macd"],
+        "average-true-range-atr": ["atr"],
+        "commodity-channel-index-cci": ["cci"],
+        "poc-auction-suite": ["poc"],
+        "big-trades": ["big prints", "blocks"],
+        "deep-print-footprint": ["fp", "footprint"],
+        "gamma-heatmap": ["heat", "gex heat"],
+        "net-gamma-exposure-by-strike": ["gex", "net gamma"],
+        "dark-pool-map": ["dp", "dark pool"],
+        "dark-pool-gex": ["dp", "dpg"],
+        "session-highs-lows": ["hod", "lod"],
+        "williams-r": ["%r", "wpr"],
+      };
+      const initials = definition.name
+        .split(/[^A-Za-z0-9]+/)
+        .filter(Boolean)
+        .map((word) => word[0])
+        .join("")
+        .toLowerCase();
+      return [...(curated[definition.id] ?? []), ...(initials.length >= 2 ? [initials] : [])];
+    };
+    const scored = pool.flatMap((definition) => {
+      const name = definition.name.toLowerCase();
+      const aliases = aliasesFor(definition);
+      let score = 0;
+      if (name === needle) score = 120;
+      else if (aliases.includes(needle)) score = 110;
+      else if (name.startsWith(needle)) score = 100;
+      else if (aliases.some((alias) => alias.startsWith(needle))) score = 90;
+      else if (name.split(/[^a-z0-9%]+/).some((word) => word.startsWith(needle))) score = 80;
+      else if (name.includes(needle)) score = 60;
+      else if (definition.category.toLowerCase().includes(needle)) score = 30;
+      else if (definition.description.toLowerCase().includes(needle)) score = 20;
+      return score > 0 ? [{ definition, score }] : [];
+    });
+    return scored
+      .sort((left, right) => right.score - left.score
+        || Number(favourites.includes(right.definition.id)) - Number(favourites.includes(left.definition.id))
+        || left.definition.name.localeCompare(right.definition.name))
+      .map((entry) => entry.definition);
   }, [category, favourites, search]);
 
   const settingsInstance = settingsInstanceId
@@ -936,18 +996,17 @@ export default function ChartIndicatorsControl({
               <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
                 <BarChart3 className="h-4 w-4" />
               </span>
-              <div>
-                <div className="text-[15px] font-semibold text-foreground">Indicator library</div>
-                <div className="mt-0.5 text-[9px] uppercase tracking-[0.12em] text-muted">{instrument} Â· {timeframe}</div>
-              </div>
-              <div className="ml-auto flex w-[360px] items-center gap-2 rounded-xl border border-border bg-surface px-3 focus-within:border-primary/40">
+              <div className="text-[15px] font-semibold text-foreground">Indicator library</div>
+              <div className="ml-auto flex h-8 w-[360px] items-center gap-2 border border-border bg-surface px-2.5 transition-colors focus-within:border-primary/50">
                 <Search className="h-3.5 w-3.5 text-muted" />
                 <input
                   autoFocus
                   value={search}
                   onChange={(event) => setSearch(event.target.value)}
                   placeholder="Search CVD, volume, VWAP..."
-                  className="h-10 min-w-0 flex-1 bg-transparent text-[12px] text-foreground outline-none placeholder:text-muted/55"
+                  spellCheck={false}
+                  autoComplete="off"
+                  className="h-full min-w-0 flex-1 appearance-none border-0 bg-transparent font-mono text-[11px] text-foreground outline-none placeholder:text-muted/55"
                 />
               </div>
               <button type="button" onClick={() => setLibraryOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground">
