@@ -420,25 +420,39 @@ export function detectSinglePrints(
   minimumTicks: number,
   includeExtremes: boolean,
   quality = 0,
+  volumeSensitivity = 0,
 ) {
-  const result: TpoSinglePrintZone[] = [];
+  let result: TpoSinglePrintZone[] = [];
   let start: TpoProfileRow | null = null;
   let previous: TpoProfileRow | null = null;
+  let zoneVolume = 0;
+  let zoneHasVolume = false;
   const flush = () => {
     if (!start || !previous) return;
     const length = previous.highTick - start.lowTick + 1;
     const atExtreme = start === rows[0] || previous === rows.at(-1);
     if (length >= minimumTicks && (includeExtremes || !atExtreme)) {
-      result.push({ lowTick: start.lowTick, highTick: previous.highTick, tested: false });
+      result.push({
+        lowTick: start.lowTick,
+        highTick: previous.highTick,
+        tested: false,
+        volumePerTick: zoneHasVolume ? zoneVolume / length : null,
+      });
     }
     start = null;
     previous = null;
+    zoneVolume = 0;
+    zoneHasVolume = false;
   };
   rows.forEach((row) => {
     if (row.tpoCount !== 1 || (previous && row.lowTick > previous.highTick + 1)) flush();
     if (row.tpoCount === 1) {
       if (!start) start = row;
       previous = row;
+      if (row.volume !== null) {
+        zoneVolume += row.volume;
+        zoneHasVolume = true;
+      }
     }
   });
   flush();
@@ -446,11 +460,26 @@ export function detectSinglePrints(
   // print, 100 keeps only the tallest one, in between keeps the top share.
   if (quality > 0 && result.length > 1) {
     const keep = Math.max(1, Math.round(result.length * (1 - quality / 100)));
-    const threshold = [...result]
+    const kept = new Set([...result]
       .sort((a, b) => (b.highTick - b.lowTick) - (a.highTick - a.lowTick))
-      .slice(0, keep);
-    const kept = new Set(threshold);
-    return result.filter((zone) => kept.has(zone));
+      .slice(0, keep));
+    result = result.filter((zone) => kept.has(zone));
+  }
+  // Low-volume sensitivity: single prints are structural LOW-VOLUME extremes,
+  // so ranking is by traded volume per tick ascending — 0 keeps every zone,
+  // dragging toward 100 drops the noisier (higher-volume) zones first until
+  // only the true low-volume shelves remain. When the source carries no
+  // volume at all, taller zones (more price traversed on a single visit)
+  // stand in as the honest proxy so the slider still filters sensibly.
+  if (volumeSensitivity > 0 && result.length > 1) {
+    const keep = Math.max(1, Math.round(result.length * (1 - volumeSensitivity / 100)));
+    const anyVolume = result.some((zone) => zone.volumePerTick != null);
+    const kept = new Set([...result]
+      .sort((a, b) => (anyVolume
+        ? (a.volumePerTick ?? Number.POSITIVE_INFINITY) - (b.volumePerTick ?? Number.POSITIVE_INFINITY)
+        : (b.highTick - b.lowTick) - (a.highTick - a.lowTick)))
+      .slice(0, keep));
+    result = result.filter((zone) => kept.has(zone));
   }
   return result;
 }
@@ -664,7 +693,7 @@ function buildOneProfile(
     if (barTouch === null) return tradeTouch;
     return Math.min(tradeTouch, barTouch);
   };
-  const singlePrints = detectSinglePrints(finalRows, settings.minimumSinglePrintTicks, settings.includeExtremesInSinglePrints, settings.singlePrintQuality)
+  const singlePrints = detectSinglePrints(finalRows, settings.minimumSinglePrintTicks, settings.includeExtremesInSinglePrints, settings.singlePrintQuality, settings.singlePrintVolumeSensitivity)
     .map((zone) => {
       const firstInteractionMs = firstInteraction(zone.lowTick, zone.highTick);
       return { ...zone, tested: firstInteractionMs !== null, firstInteractionMs };
@@ -829,7 +858,7 @@ export function mergeTpoProfileModels(
     pocTick,
     vahTick: valueArea.vahTick,
     valTick: valueArea.valTick,
-    singlePrints: detectSinglePrints(finalRows, settings.minimumSinglePrintTicks, settings.includeExtremesInSinglePrints, settings.singlePrintQuality),
+    singlePrints: detectSinglePrints(finalRows, settings.minimumSinglePrintTicks, settings.includeExtremesInSinglePrints, settings.singlePrintQuality, settings.singlePrintVolumeSensitivity),
     peaksValleys: detectPeaksValleys(finalRows, settings.peakValleyRadius, settings.peakMinimumProminence),
     totalVolume: finalRows.some((row) => row.volume !== null) ? finalRows.reduce((sum, row) => sum + (row.volume ?? 0), 0) : null,
     totalTrades: finalRows.some((row) => row.trades !== null) ? finalRows.reduce((sum, row) => sum + (row.trades ?? 0), 0) : null,

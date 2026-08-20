@@ -84,6 +84,10 @@ export interface TpoIndicatorSettings {
   showSinglePrints: boolean;
   minimumSinglePrintTicks: number;
   singlePrintQuality: number;
+  // 0 keeps every single-print zone; dragging toward 100 keeps only the zones
+  // with the LOWEST traded volume per tick — the true low-volume structural
+  // extremes — and drops the noisy ones first.
+  singlePrintVolumeSensitivity: number;
   includeExtremesInSinglePrints: boolean;
   showPeaks: boolean;
   showValleys: boolean;
@@ -254,6 +258,9 @@ export interface TpoSinglePrintZone {
   highTick: number;
   tested: boolean;
   firstInteractionMs?: number | null;
+  // Average traded volume per tick inside the zone; null when the source
+  // carries no volume. Drives the low-volume sensitivity ranking.
+  volumePerTick?: number | null;
 }
 
 export interface TpoPeakValley {

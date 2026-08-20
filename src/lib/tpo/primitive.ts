@@ -413,9 +413,21 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
             const top = params.series.priceToCoordinate(tickToPrice(zone.highTick + 0.5, profile.tickSize));
             const bottom = params.series.priceToCoordinate(tickToPrice(zone.lowTick - 0.5, profile.tickSize));
             if (top == null || bottom == null) return;
+            // These are structural low-volume extremes: with an extension mode
+            // set, the filled square itself prints rightward across the
+            // screen as a level band — to the first interaction that tested
+            // it, or to the window edge — not just inside the profile.
+            const interactionX = zone.firstInteractionMs == null
+              ? null
+              : this.timeToCoordinate(model, zone.firstInteractionMs / 1_000);
+            const fillEnd = settings.singlePrintExtensionMode === "to-window-end" && !pinnedRight
+              ? mediaSize.width
+              : settings.singlePrintExtensionMode === "until-first-interaction" && !pinnedRight
+                ? interactionX ?? mediaSize.width
+                : profileLineEnd;
             context.globalAlpha = settings.singlePrintFillZone ? settings.singlePrintFillOpacity / 100 : 0;
             context.fillStyle = settings.inheritThemeColours ? theme.singlePrint : settings.singlePrintColor;
-            context.fillRect(Math.min(anchorX, profileLineEnd), Math.min(top, bottom), Math.abs(profileLineEnd - anchorX), Math.abs(bottom - top));
+            context.fillRect(Math.min(anchorX, fillEnd), Math.min(top, bottom), Math.abs(fillEnd - anchorX), Math.abs(bottom - top));
             if (settings.singlePrintLineWidth > 0) {
               drawLevel(zone.lowTick, settings.inheritThemeColours ? theme.singlePrint : settings.singlePrintColor, [2, 2], settings.singlePrintShowLabel ? "SINGLE" : "", settings.singlePrintLineWidth, settings.singlePrintExtensionMode, settings.singlePrintShowLabel, zone.firstInteractionMs ?? null);
             }
