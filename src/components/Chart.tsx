@@ -5455,37 +5455,61 @@ function Chart({
     });
   }, [candles, cvdDivergenceIndicator]);
   const [optionsDeltaPayload, setOptionsDeltaPayload] = useState<GexMapPanelPayload | null>(null);
-  useEffect(() => {
+  const [zeroGammaBarsPayload, setZeroGammaBarsPayload] = useState<GexMapPanelPayload | null>(null);
+  const optionsSurfacePaneEffect = (
+    indicatorInstance: typeof optionsDeltaIndicator,
+    greekMode: "DELTA" | "GAMMA",
+    setPayload: typeof setOptionsDeltaPayload,
+  ) => {
     const source = optionsDeltaSourceForInstrument(instrument);
-    if (!optionsDeltaIndicator || !source) {
-      setOptionsDeltaPayload(null);
+    if (!indicatorInstance || !source) {
+      setPayload(null);
       return;
     }
     let cancelled = false;
-    const refreshMs = Math.max(15_000, Number(optionsDeltaIndicator.settings?.refreshSeconds ?? 60) * 1_000);
+    const refreshMs = Math.max(15_000, Number(indicatorInstance.settings?.refreshSeconds ?? 60) * 1_000);
     const load = async () => {
       try {
-        // Shares the exact cache entry the GEX Map DEX panels use, so an open
+        // Shares the exact cache entry the GEX Map panels use, so an open
         // map panel and this pane cost one provider request between them.
         const payload = await fetchWorkspaceData<GexMapPanelPayload>(
-          gexMapCacheKey(source, "DELTA", ""),
-          `/api/gex-map?symbol=${encodeURIComponent(source)}&greekMode=DELTA`,
+          gexMapCacheKey(source, greekMode, ""),
+          `/api/gex-map?symbol=${encodeURIComponent(source)}&greekMode=${greekMode}`,
           {
             maxAgeMs: refreshMs,
             timeoutMs: 45_000,
             validate: (value) => hasRenderableGexMapSurface(value as GexMapPanelPayload),
-            invalidMessage: "The Delta surface did not contain a strike ladder.",
+            invalidMessage: `The ${greekMode} surface did not contain a strike ladder.`,
           },
         );
-        if (!cancelled) setOptionsDeltaPayload(payload);
+        // A fresh session (or a briefly frame-less panel) must never blank an
+        // already painted pane: keep the current payload until the incoming
+        // one carries frames again.
+        if (!cancelled) setPayload((current) =>
+          payload.frames.length || !current?.frames.length ? payload : current);
       } catch {
-        // Keep the last verified Delta series through a transient refresh.
+        // Keep the last verified series through a transient refresh.
       }
     };
     void load();
     const intervalId = window.setInterval(() => void load(), refreshMs);
     return () => { cancelled = true; window.clearInterval(intervalId); };
-  }, [indicatorSignature, instrument, optionsDeltaIndicator]);
+  };
+  useEffect(
+    () => optionsSurfacePaneEffect(optionsDeltaIndicator, "DELTA", setOptionsDeltaPayload),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [indicatorSignature, instrument, optionsDeltaIndicator],
+  );
+  const zeroGammaBarsIndicator = useMemo(
+    () => indicators.find((instance) => instance.enabled && instance.indicatorId === "zero-gamma-bars") ?? null,
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [indicatorSignature, indicators],
+  );
+  useEffect(
+    () => optionsSurfacePaneEffect(zeroGammaBarsIndicator, "GAMMA", setZeroGammaBarsPayload),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [indicatorSignature, instrument, zeroGammaBarsIndicator],
+  );
   useEffect(() => {
     if (!zeroGammaLineIndicator || !zeroGammaRootForInstrument(instrument)) {
       setZeroGammaLinePayload(null);
@@ -5575,27 +5599,43 @@ function Chart({
   // series list recomputes on every live indicator sample. Deriving these
   // bars in their own memo keeps the per-tick recompute from re-walking the
   // full strike-frame history and reallocating the bar array each sample.
-  const optionsDeltaSeries = useMemo<CalculatedIndicatorSeries | null>(() => {
-    if (!optionsDeltaIndicator || !optionsDeltaPayload) return null;
-    const points = buildOptionsDeltaSeries(optionsDeltaPayload);
+  const buildOptionsSurfacePaneSeries = useCallback((
+    indicatorInstance: typeof optionsDeltaIndicator,
+    payload: GexMapPanelPayload | null,
+    slug: string,
+    labelPrefix: string,
+  ): CalculatedIndicatorSeries | null => {
+    if (!indicatorInstance || !payload) return null;
+    const points = buildOptionsDeltaSeries(payload);
     if (!points.length) return null;
-    const useThemeColors = optionsDeltaIndicator.settings?.useThemeColors !== false;
-    const positiveColor = useThemeColors ? settings.upColor : String(optionsDeltaIndicator.settings?.positiveColor ?? settings.upColor);
-    const negativeColor = useThemeColors ? settings.downColor : String(optionsDeltaIndicator.settings?.negativeColor ?? settings.downColor);
+    const useThemeColors = indicatorInstance.settings?.useThemeColors !== false;
+    const positiveColor = useThemeColors ? settings.upColor : String(indicatorInstance.settings?.positiveColor ?? settings.upColor);
+    const negativeColor = useThemeColors ? settings.downColor : String(indicatorInstance.settings?.negativeColor ?? settings.downColor);
     return {
-      key: `${optionsDeltaIndicator.instanceId}-options-delta`,
-      groupKey: optionsDeltaIndicator.instanceId,
-      label: `Options Delta · ${optionsDeltaPayload.symbol}`,
+      key: `${indicatorInstance.instanceId}-${slug}`,
+      groupKey: indicatorInstance.instanceId,
+      label: `${labelPrefix} · ${payload.symbol}`,
       kind: "histogram",
       placement: "pane",
       color: positiveColor,
+      // The zero baseline is the reading: bars above it are the positive
+      // regime, below negative, so zero must always stay in frame.
+      includeZeroInScale: true,
       data: points.map((point) => ({
         time: Math.floor(point.timestampMs / 1_000),
         value: point.net,
         color: point.net >= 0 ? positiveColor : negativeColor,
       })),
     };
-  }, [optionsDeltaIndicator, optionsDeltaPayload, settings.downColor, settings.upColor]);
+  }, [settings.downColor, settings.upColor]);
+  const optionsDeltaSeries = useMemo<CalculatedIndicatorSeries | null>(
+    () => buildOptionsSurfacePaneSeries(optionsDeltaIndicator, optionsDeltaPayload, "options-delta", "Options Delta"),
+    [buildOptionsSurfacePaneSeries, optionsDeltaIndicator, optionsDeltaPayload],
+  );
+  const zeroGammaBarsSeries = useMemo<CalculatedIndicatorSeries | null>(
+    () => buildOptionsSurfacePaneSeries(zeroGammaBarsIndicator, zeroGammaBarsPayload, "zero-gamma-bars", "Zero Gamma Bars"),
+    [buildOptionsSurfacePaneSeries, zeroGammaBarsIndicator, zeroGammaBarsPayload],
+  );
   const calculatedIndicatorSeries = useMemo(() => [
     ...baseCalculatedIndicatorSeries,
     ...indicators.flatMap((instance): CalculatedIndicatorSeries[] => {
@@ -5625,6 +5665,7 @@ function Chart({
       }];
     }),
     ...(optionsDeltaSeries ? [optionsDeltaSeries] : []),
+    ...(zeroGammaBarsSeries ? [zeroGammaBarsSeries] : []),
     ...indicators.flatMap((instance): CalculatedIndicatorSeries[] => {
       if (!instance.enabled || instance.indicatorId !== "implied-volatility-rank" || instance.settings?.placement !== "main-chart-overlay") return [];
       const snapshot = ivRankByInstance[instance.instanceId]?.snapshot;
@@ -5656,7 +5697,7 @@ function Chart({
         data: rankData,
       }];
     }),
-  ], [baseCalculatedIndicatorSeries, indicatorSignature, indicators, ivRankByInstance, optionsDeltaSeries, settings.borderUpColor, settings.downColor, settings.upColor, zeroGammaLinePayload]);
+  ], [baseCalculatedIndicatorSeries, indicatorSignature, indicators, ivRankByInstance, optionsDeltaSeries, settings.borderUpColor, settings.downColor, settings.upColor, zeroGammaBarsSeries, zeroGammaLinePayload]);
   const calculatedIndicatorPanes = useMemo(() => {
     return indicators.flatMap((instance): IndicatorPaneGroup[] => {
       if (!instance.enabled) return [];

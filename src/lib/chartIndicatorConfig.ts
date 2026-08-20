@@ -16,6 +16,7 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "gamma-environment",
   "zero-gamma-line",
   "options-delta",
+  "zero-gamma-bars",
   "gamma-heatmap",
   "net-gamma-exposure-by-strike",
   "gex-interval-map",
@@ -114,6 +115,9 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "lineWidth", label: "Line width", defaultValue: 2, min: 1, max: 4, step: 1 },
   ],
   "options-delta": [
+    { key: "refreshSeconds", label: "Live refresh (seconds)", defaultValue: 60, min: 15, max: 300, step: 5 },
+  ],
+  "zero-gamma-bars": [
     { key: "refreshSeconds", label: "Live refresh (seconds)", defaultValue: 60, min: 15, max: 300, step: 5 },
   ],
   "cvd-divergence": [
@@ -948,7 +952,7 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     showCurrentValue: true,
     showRegimeHint: true,
   } : {}),
-  ...(indicatorId === "options-delta" ? {
+  ...(indicatorId === "options-delta" || indicatorId === "zero-gamma-bars" ? {
     refreshSeconds: 60,
     useThemeColors: true,
     positiveColor: theme?.upColor ?? "#22C55E",
@@ -1865,10 +1869,10 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
     for (const unsafeKey of ["apiKey", "credential", "credentials", "snapshot", "points", "history"]) delete settings[unsafeKey];
     return { ...normalizedInstance, settings };
   }
-  if (normalizedInstance.indicatorId === "options-delta") {
-    const defaults: Record<string, number | string | boolean> = defaultIndicatorSettings("options-delta");
+  if (normalizedInstance.indicatorId === "options-delta" || normalizedInstance.indicatorId === "zero-gamma-bars") {
+    const defaults: Record<string, number | string | boolean> = defaultIndicatorSettings(normalizedInstance.indicatorId);
     const settings: Record<string, number | string | boolean> = { ...defaults, ...(normalizedInstance.settings ?? {}) };
-    for (const definition of INDICATOR_NUMERIC_SETTINGS["options-delta"] ?? []) {
+    for (const definition of INDICATOR_NUMERIC_SETTINGS[normalizedInstance.indicatorId] ?? []) {
       const parsed = Number(settings[definition.key]);
       settings[definition.key] = Math.min(definition.max, Math.max(definition.min, Number.isFinite(parsed) ? parsed : definition.defaultValue));
     }
