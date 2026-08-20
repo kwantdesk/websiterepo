@@ -863,6 +863,9 @@ Per task: eslint on changed files (heap-bumped for Chart/KwantifyWorkspace), `np
 - `104a0d60` GEX Map STAR view previously lit only the Star node, silently no-opping Highlighted nodes / Selection strategy / Spot-proximity weighting / Minimum map control; the structural highlight set now renders in star view too.
 - `997cbc6a` first CVD flow-heal pass at 60s after pane load (steady state 240s). RTH soak of the heal loop still pending.
 
+### Footprint render cache (2026-08-20, latest)
+- `8422c1ef` the footprint primitive repainted every visible cell — thousands of fillRect/fillText plus per-bar flatMap allocations and percentile sorts — on EVERY chart invalidation (crosshair moves, live ticks, sibling indicator updates), the reported "footprint lags the whole site". It now paints once into an offscreen canvas and re-projects with a single drawImage; repaints only on data/options/size/h-zoom change or a price rescale beyond 2% (same pattern as the gamma-heatmap `a3072862` fix). `renderVersion` on the primitive tracks staleness; surface released on detach. Verified live: cells/POC/value-area/live-bar outline render correctly on NQ 5m; console clean. RTH interaction soak pending (remote rAF sampling was background-throttled, so no jank numbers from here).
+
 ### LIQ MAP session replay (2026-08-20, later)
 - `219886f1` gateway: HeatmapReplayStore distils a completed session's raw L3 archive (recorder NDJSON.gz) once into a replay pack — heatmap-shaped frames every 2s of market time, 30-min gzip chunks + manifest; routes `/v1/heatmap/replay` (manifest / building / honest 404) and `/v1/heatmap/replay/chunk`. Tests: heatmap-replay.test.mjs; suite 58/58.
 - `240d5241` browser: heatmap-app replay mode (parent clock via postMessage, live feed stopped, bounded 4-chunk cache, scrub-back rebuild, per-asset packs on tab switch); LiquidityMapWorkspace forwards the GEX Vue clock at 1/s + status overlays; proxy allowlists the new paths.
