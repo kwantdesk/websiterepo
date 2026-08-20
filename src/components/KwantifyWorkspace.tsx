@@ -7362,7 +7362,62 @@ function WorkspaceChartPaneComponent({
     if (!wantsDaily && !wantsWeekly) return;
     let cancelled = false;
     const displayRoot = displayCmeSymbol(pane.symbol);
-    const scaleProfile = (profile: InstitutionalVolumeProfile, ratio: number): InstitutionalVolumeProfile => ({
+    const newYorkDateOfProjection = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/New_York",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
+    // The futures profile carries CME session anchors (17:00 Chicago the
+    // previous evening). Those instants do not exist on an RTH-only cash
+    // chart, so the renderer's wall-clock fallback counted the entire
+    // overnight gap as bars and painted the histogram at an arbitrary spot.
+    // Re-anchor every projected profile onto the pane's own candle timeline.
+    const anchorToCashSession = (
+      profile: InstitutionalVolumeProfile,
+    ): InstitutionalVolumeProfile => {
+      const paneCandles = latestCandlesRef.current;
+      if (!paneCandles.length) return profile;
+      const intervalMs = Math.max(60_000, getTimeframeMs(pane.timeframe));
+      const lastCandle = paneCandles[paneCandles.length - 1];
+      const dateOf = (timestamp: number) => newYorkDateOfProjection.format(timestamp);
+      let startMs: number;
+      let endMs: number;
+      if (profile.period === "weekly") {
+        const dates = [...new Set(paneCandles.map((candle) => dateOf(candle.timestamp)))]
+          .sort()
+          .slice(-5);
+        const firstDate = dates[0];
+        const first = paneCandles.find((candle) => dateOf(candle.timestamp) >= firstDate)
+          ?? paneCandles[0];
+        startMs = first.timestamp;
+        endMs = lastCandle.timestamp + intervalMs;
+      } else {
+        const lastDate = dateOf(lastCandle.timestamp);
+        const profileDate = dateOf(profile.endMs - 1);
+        if (profileDate > lastDate) {
+          // Pre-open: today's Globex session is developing but the cash chart
+          // has no bars for it yet. Pin the profile just past the live edge;
+          // the renderer projects future times linearly from the last bar.
+          startMs = lastCandle.timestamp + intervalMs;
+          endMs = startMs + 390 * 60_000;
+        } else {
+          const first = paneCandles.find((candle) => dateOf(candle.timestamp) === profileDate);
+          startMs = first?.timestamp ?? lastCandle.timestamp;
+          endMs = lastCandle.timestamp + intervalMs;
+        }
+      }
+      return {
+        ...profile,
+        startMs,
+        endMs,
+        coverageStartMs: startMs,
+        coverageEndMs: endMs,
+        developingPoc: profile.developingPoc.filter((point) =>
+          point.timestamp >= startMs && point.timestamp <= endMs),
+      };
+    };
+    const scaleProfile = (profile: InstitutionalVolumeProfile, ratio: number): InstitutionalVolumeProfile => anchorToCashSession({
       ...profile,
       root: displayRoot,
       source: `${profile.source} · projected from ${projectionRoot} futures`,
