@@ -253,21 +253,30 @@ export async function getZeroGammaLinePayload(
   // one rebuild a minute); the initial multi-session load also restores the
   // newest completed session's trail, whose durable cache converges even if
   // the first cold browser request times out client-side.
+  const softTimeout = (work: Promise<ZeroGammaLinePoint[]>, ms: number) => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    return Promise.race([
+      work.finally(() => { if (timer !== null) clearTimeout(timer); }),
+      new Promise<ZeroGammaLinePoint[]>((resolve) => {
+        timer = setTimeout(() => resolve([]), ms);
+      }),
+    ]);
+  };
   if (historySessions > 1) {
     const newestCompleted = completedDates.at(-1);
     if (newestCompleted) {
       points.push(...await intradayTrailSafe(root, sourceSymbol, newestCompleted, true));
     }
   }
-  if (!completedDates.includes(sessionDate) || historySessions === 1) {
-    const liveTrailDate = completedDates.includes(sessionDate) ? completedDates.at(-1)! : sessionDate;
-    const liveTrail = await intradayTrailSafe(root, sourceSymbol, liveTrailDate, completedDates.includes(liveTrailDate));
-    points.push(...liveTrail.map((point) => ({
-      ...point,
-      status: point.status === "HISTORICAL" && !completedDates.includes(liveTrailDate)
-        ? (marketOpen ? "LIVE" as const : "EOD" as const)
-        : point.status,
-    })));
+  if (marketOpen) {
+    // The live trace only exists while the session is producing buckets. The
+    // soft budget keeps a cold panel build from ever holding the recurring
+    // poll hostage — the next poll simply finds the memo warm.
+    const liveTrail = await softTimeout(intradayTrailSafe(root, sourceSymbol, sessionDate, false), 15_000);
+    points.push(...liveTrail.map((point) => ({ ...point, status: "LIVE" as const })));
+  } else if (historySessions === 1 && completedDates.includes(sessionDate)) {
+    // After the close, the one-session poll restores today's completed trace.
+    points.push(...await softTimeout(intradayTrailSafe(root, sourceSymbol, sessionDate, true), 20_000));
   }
   const currentZeroGamma = current ? zeroGammaFromPayload(current) : null;
   if (current && currentZeroGamma !== null) {
