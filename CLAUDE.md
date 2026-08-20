@@ -847,3 +847,9 @@ Per task: eslint on changed files (heap-bumped for Chart/KwantifyWorkspace), `np
 
 ### Worktree state
 `?? ALGO/`, `gexcal-*.png/tmp`, `M tmp/pdfs/*` (other workstream) — no uncommitted engineering work.
+
+### LIQ MAP session replay (2026-08-20, later)
+- `219886f1` gateway: HeatmapReplayStore distils a completed session's raw L3 archive (recorder NDJSON.gz) once into a replay pack — heatmap-shaped frames every 2s of market time, 30-min gzip chunks + manifest; routes `/v1/heatmap/replay` (manifest / building / honest 404) and `/v1/heatmap/replay/chunk`. Tests: heatmap-replay.test.mjs; suite 58/58.
+- `240d5241` browser: heatmap-app replay mode (parent clock via postMessage, live feed stopped, bounded 4-chunk cache, scrub-back rebuild, per-asset packs on tab switch); LiquidityMapWorkspace forwards the GEX Vue clock at 1/s + status overlays; proxy allowlists the new paths.
+- **OWNER ACTION: the gateway half needs a VPS deploy (`deploy/ship-to-vm.ps1`) before replay works end-to-end. Deploy outside RTH — restarting the collector writes a GAP marker into that session's archive.** First replay request per session/instrument triggers the one-time pack build (minutes); the UI reports build progress honestly.
+- Replay coverage = whatever the recorder captured (NQ/ES etc. from its subscription list). No new data purchasable — Rithmic sells no L3 history; our archive is the only copy.
