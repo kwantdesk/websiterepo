@@ -1,4 +1,5 @@
 import { unstable_cache } from "next/cache";
+import { after } from "next/server";
 import { getDatabentoBars } from "@/lib/databento";
 import {
   newYorkCashCloseIso,
@@ -155,24 +156,50 @@ const cachedHistoricalTrail = (
 const liveTrailCache = new Map<string, { at: number; points: ZeroGammaLinePoint[] }>();
 const LIVE_TRAIL_MEMO_MS = 45_000;
 
+// A cold trail rebuilds a full interval-map panel and can outlive a request
+// waiting on the centrally spaced provider queue. Never let it hold a
+// response: race a short budget, and on a miss finish the SAME in-flight
+// build after the response is sent (`after` keeps the invocation alive), so
+// its durable cache commits and the next poll serves it instantly.
+const TRAIL_BUDGET_TIMEOUT = Symbol("trail-budget-timeout");
+const backgroundTrailBuilds = new Set<string>();
+
 async function intradayTrailSafe(
   root: NativeGammaRoot,
   sourceSymbol: ZeroGammaLineSource,
   date: string,
   completed: boolean,
+  budgetMs = 12_000,
 ): Promise<ZeroGammaLinePoint[]> {
+  const key = `${root}:${sourceSymbol}:${date}:${completed ? "h" : "l"}`;
   try {
-    if (completed) return await cachedHistoricalTrail(root, sourceSymbol, date);
-    const key = `${root}:${sourceSymbol}:${date}`;
-    const cached = liveTrailCache.get(key);
-    if (cached && Date.now() - cached.at < LIVE_TRAIL_MEMO_MS) return cached.points;
-    const points = await computeIntradayTrail(root, sourceSymbol, date);
-    liveTrailCache.set(key, { at: Date.now(), points });
-    if (liveTrailCache.size > 64) {
-      const oldest = liveTrailCache.keys().next().value;
-      if (oldest !== undefined) liveTrailCache.delete(oldest);
+    if (!completed) {
+      const memo = liveTrailCache.get(key);
+      if (memo && Date.now() - memo.at < LIVE_TRAIL_MEMO_MS) return memo.points;
     }
-    return points;
+    const work = completed
+      ? cachedHistoricalTrail(root, sourceSymbol, date)
+      : computeIntradayTrail(root, sourceSymbol, date).then((points) => {
+          liveTrailCache.set(key, { at: Date.now(), points });
+          if (liveTrailCache.size > 64) {
+            const oldest = liveTrailCache.keys().next().value;
+            if (oldest !== undefined) liveTrailCache.delete(oldest);
+          }
+          return points;
+        });
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const result = await Promise.race([
+      work.finally(() => { if (timer !== null) clearTimeout(timer); }),
+      new Promise<typeof TRAIL_BUDGET_TIMEOUT>((resolve) => {
+        timer = setTimeout(() => resolve(TRAIL_BUDGET_TIMEOUT), budgetMs);
+      }),
+    ]);
+    if (result !== TRAIL_BUDGET_TIMEOUT) return result;
+    if (!backgroundTrailBuilds.has(key)) {
+      backgroundTrailBuilds.add(key);
+      after(() => work.catch(() => undefined).finally(() => backgroundTrailBuilds.delete(key)));
+    }
+    return [];
   } catch {
     // The session anchors below still paint; the trail heals on a later poll.
     return [];
@@ -253,30 +280,19 @@ export async function getZeroGammaLinePayload(
   // one rebuild a minute); the initial multi-session load also restores the
   // newest completed session's trail, whose durable cache converges even if
   // the first cold browser request times out client-side.
-  const softTimeout = (work: Promise<ZeroGammaLinePoint[]>, ms: number) => {
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    return Promise.race([
-      work.finally(() => { if (timer !== null) clearTimeout(timer); }),
-      new Promise<ZeroGammaLinePoint[]>((resolve) => {
-        timer = setTimeout(() => resolve([]), ms);
-      }),
-    ]);
-  };
   if (historySessions > 1) {
     const newestCompleted = completedDates.at(-1);
     if (newestCompleted) {
-      points.push(...await intradayTrailSafe(root, sourceSymbol, newestCompleted, true));
+      points.push(...await intradayTrailSafe(root, sourceSymbol, newestCompleted, true, 20_000));
     }
   }
   if (marketOpen) {
-    // The live trace only exists while the session is producing buckets. The
-    // soft budget keeps a cold panel build from ever holding the recurring
-    // poll hostage — the next poll simply finds the memo warm.
-    const liveTrail = await softTimeout(intradayTrailSafe(root, sourceSymbol, sessionDate, false), 15_000);
+    // The live trace only exists while the session is producing buckets.
+    const liveTrail = await intradayTrailSafe(root, sourceSymbol, sessionDate, false);
     points.push(...liveTrail.map((point) => ({ ...point, status: "LIVE" as const })));
   } else if (historySessions === 1 && completedDates.includes(sessionDate)) {
     // After the close, the one-session poll restores today's completed trace.
-    points.push(...await softTimeout(intradayTrailSafe(root, sourceSymbol, sessionDate, true), 20_000));
+    points.push(...await intradayTrailSafe(root, sourceSymbol, sessionDate, true));
   }
   const currentZeroGamma = current ? zeroGammaFromPayload(current) : null;
   if (current && currentZeroGamma !== null) {
