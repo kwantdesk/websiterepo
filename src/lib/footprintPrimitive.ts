@@ -350,7 +350,33 @@ function renderMode(options: FootprintPrimitiveOptions): FootprintContentMode {
   return options.type;
 }
 
+// Records the exact viewport the offscreen surface was rendered in, so a
+// frame that only panned (or auto-scaled the price axis within tolerance)
+// re-projects the cached bitmap with one drawImage instead of repainting
+// every cell, histogram and number again. Same pattern as the gamma-heatmap
+// starvation fix: the footprint repainted thousands of fillRect/fillText
+// calls plus percentile sorts on EVERY chart invalidation (crosshair moves,
+// live ticks, sibling indicator updates), which lagged the whole site.
+type FootprintSurfaceMeta = {
+  dataVersion: number;
+  optionsRef: FootprintPrimitiveOptions;
+  width: number;
+  height: number;
+  pixelRatio: number;
+  t0: Time;
+  tN: Time;
+  pMax: number;
+  pMin: number;
+  renderedXFirst: number;
+  renderedXLast: number;
+  renderedTop: number;
+  renderedBottom: number;
+};
+
 class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
+  private surface: HTMLCanvasElement | null = null;
+  private surfaceMeta: FootprintSurfaceMeta | null = null;
+
   constructor(private readonly primitive: FootprintPrimitive) {}
 
   draw(target: CanvasRenderingTarget2D) {
@@ -360,7 +386,7 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
     const options = this.primitive.options();
     if (!bars.length) return;
 
-    target.useMediaCoordinateSpace(({ context, mediaSize }) => {
+    target.useMediaCoordinateSpace(({ context: screenContext, mediaSize }) => {
       const timeScale = params.chart.timeScale();
       const visible = timeScale.getVisibleRange();
       let fromIndex = 0;
@@ -372,6 +398,101 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
         fromIndex = Math.max(0, fromIndex - 1);
         toIndex = Math.min(bars.length, toIndex + 1);
       }
+      const visibleBars = bars.slice(fromIndex, toIndex);
+      if (!visibleBars.length) return;
+      const pixelRatio = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
+
+      const meta = this.surfaceMeta;
+      if (this.surface && meta
+        && meta.dataVersion === this.primitive.dataVersion()
+        && meta.optionsRef === options
+        && meta.width === mediaSize.width
+        && meta.height === mediaSize.height
+        && meta.pixelRatio === pixelRatio) {
+        const xFirst = timeScale.timeToCoordinate(meta.t0);
+        const xLast = timeScale.timeToCoordinate(meta.tN);
+        const top = params.series.priceToCoordinate(meta.pMax);
+        const bottom = params.series.priceToCoordinate(meta.pMin);
+        if (xFirst !== null && xLast !== null && top !== null && bottom !== null) {
+          const currentSpan = Number(xLast) - Number(xFirst);
+          const renderedSpan = meta.renderedXLast - meta.renderedXFirst;
+          const renderedVSpan = meta.renderedBottom - meta.renderedTop;
+          const currentVSpan = Number(bottom) - Number(top);
+          const scaleY = Math.abs(renderedVSpan) > 0.5 ? currentVSpan / renderedVSpan : 1;
+          // Horizontal zoom changed → per-bar widths differ, repaint. A price
+          // rescale beyond 2% would visibly stretch the numbers → repaint.
+          if (Math.abs(currentSpan - renderedSpan) <= 0.5 && Math.abs(scaleY - 1) <= 0.02) {
+            const dx = Number(xFirst) - meta.renderedXFirst;
+            const destTop = Number(top) - meta.renderedTop * scaleY;
+            screenContext.save();
+            screenContext.beginPath();
+            screenContext.rect(0, 0, mediaSize.width, mediaSize.height);
+            screenContext.clip();
+            screenContext.drawImage(this.surface, dx, destTop, mediaSize.width, mediaSize.height * scaleY);
+            screenContext.restore();
+            return;
+          }
+        }
+      }
+
+      const canvas = this.surface ?? document.createElement("canvas");
+      const deviceWidth = Math.max(1, Math.round(mediaSize.width * pixelRatio));
+      const deviceHeight = Math.max(1, Math.round(mediaSize.height * pixelRatio));
+      if (canvas.width !== deviceWidth || canvas.height !== deviceHeight) {
+        canvas.width = deviceWidth;
+        canvas.height = deviceHeight;
+      }
+      const surfaceContext = canvas.getContext("2d");
+      if (!surfaceContext) return;
+      surfaceContext.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+      surfaceContext.clearRect(0, 0, mediaSize.width, mediaSize.height);
+      this.paintBars(surfaceContext, mediaSize, params, bars, options, fromIndex, toIndex);
+
+      const t0 = visibleBars[0].time;
+      const tN = visibleBars[visibleBars.length - 1].time;
+      const xFirst = timeScale.timeToCoordinate(t0);
+      const xLast = timeScale.timeToCoordinate(tN);
+      let pMax = visibleBars[0].high;
+      let pMin = visibleBars[0].low;
+      for (const bar of visibleBars) {
+        if (bar.high > pMax) pMax = bar.high;
+        if (bar.low < pMin) pMin = bar.low;
+      }
+      const top = params.series.priceToCoordinate(pMax);
+      const bottom = params.series.priceToCoordinate(pMin);
+      this.surface = canvas;
+      this.surfaceMeta = xFirst !== null && xLast !== null && top !== null && bottom !== null
+        && Math.abs(Number(bottom) - Number(top)) > 0.5
+        ? {
+            dataVersion: this.primitive.dataVersion(),
+            optionsRef: options,
+            width: mediaSize.width,
+            height: mediaSize.height,
+            pixelRatio,
+            t0,
+            tN,
+            pMax,
+            pMin,
+            renderedXFirst: Number(xFirst),
+            renderedXLast: Number(xLast),
+            renderedTop: Number(top),
+            renderedBottom: Number(bottom),
+          }
+        : null;
+      screenContext.drawImage(canvas, 0, 0, mediaSize.width, mediaSize.height);
+    });
+  }
+
+  private paintBars(
+    context: CanvasRenderingContext2D,
+    mediaSize: { width: number; height: number },
+    params: SeriesAttachedParameter<Time>,
+    bars: FootprintRenderBar[],
+    options: FootprintPrimitiveOptions,
+    fromIndex: number,
+    toIndex: number,
+  ) {
+      const timeScale = params.chart.timeScale();
       const visibleBars = bars.slice(fromIndex, toIndex);
       const visibleCeiling = footprintScaleCeiling(bars, visibleBars, options);
       const detailedBarCountAllowed = visibleBars.length <= options.maximumDetailedVisibleBars;
@@ -839,7 +960,11 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
         }
       }
       context.restore();
-    });
+  }
+
+  dispose() {
+    this.surface = null;
+    this.surfaceMeta = null;
   }
 }
 
@@ -850,6 +975,7 @@ class FootprintView implements ISeriesPrimitivePaneView {
   }
   zOrder() { return "top" as const; }
   renderer() { return this.footprintRenderer; }
+  release() { this.footprintRenderer.dispose(); }
 }
 
 export class FootprintPrimitive implements ISeriesPrimitive<Time> {
@@ -859,6 +985,9 @@ export class FootprintPrimitive implements ISeriesPrimitive<Time> {
   private readonly paneView = new FootprintView(this);
   private lastUpdateRequest = 0;
   private pendingUpdate: ReturnType<typeof setTimeout> | null = null;
+  // Bumped whenever the render bars or options actually change, so the
+  // renderer's offscreen surface knows when its cached pixels are stale.
+  private renderVersion = 0;
   private loadedScaleByTime = new Map<string, number>();
   private loadedScaleInput: FootprintPrimitiveOptions["inputType"] = DEFAULT_OPTIONS.inputType;
 
@@ -870,11 +999,14 @@ export class FootprintPrimitive implements ISeriesPrimitive<Time> {
     this.attachedParams = null;
     if (this.pendingUpdate !== null) clearTimeout(this.pendingUpdate);
     this.pendingUpdate = null;
+    // Release the offscreen surface's multi-megabyte backing store.
+    this.paneView.release();
   }
   paneViews() { return [this.paneView]; }
   params() { return this.attachedParams; }
   bars() { return this.renderBars; }
   options() { return this.renderOptions; }
+  dataVersion() { return this.renderVersion; }
   updateLiveCandle(candle: {
     time: Time;
     timestamp: number;
@@ -891,6 +1023,7 @@ export class FootprintPrimitive implements ISeriesPrimitive<Time> {
     );
     if (nextBars === this.renderBars) return this.renderBars;
     this.renderBars = nextBars;
+    this.renderVersion += 1;
     this.requestPaint();
     return this.renderBars;
   }
@@ -916,6 +1049,7 @@ export class FootprintPrimitive implements ISeriesPrimitive<Time> {
     }
     nextOptions.allLoadedScaleMaximum = Math.max(0, ...this.loadedScaleByTime.values());
     this.renderOptions = nextOptions;
+    this.renderVersion += 1;
     this.requestPaint();
   }
   private requestPaint() {
