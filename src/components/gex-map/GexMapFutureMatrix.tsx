@@ -244,7 +244,7 @@ export default function GexMapFutureMatrix({ palette }: { palette: GexMapPalette
         </div>
       ) : (
         <div className="min-h-0 flex-1 overflow-auto bg-chart-background">
-          <table className="border-separate border-spacing-0 font-mono text-[10px]">
+          <table className="w-full min-w-max border-separate border-spacing-0 font-mono text-[10px]">
             <thead>
               <tr>
                 <th className="sticky left-0 top-0 z-30 border-b border-r border-border bg-panel px-2 py-1 text-left text-[8px] font-semibold uppercase tracking-[0.14em] text-muted">Strike</th>
