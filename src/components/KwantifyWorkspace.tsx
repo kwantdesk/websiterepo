@@ -4769,6 +4769,69 @@ function WorkspaceChartPaneComponent({
       : marketTrades),
     [marketTrades, replayActive, replayVisibleTradeCount],
   );
+  // TradingView-like replay: the newest revealed bar BUILDS tick by tick from
+  // the session's real executions instead of appearing fully formed the moment
+  // the clock enters its bucket. Only the last array slot changes per clock
+  // tick, so the chart's incremental series.update path keeps it smooth. When
+  // the bucket has no recorded executions (no order-flow coverage) the full
+  // bar is shown as before rather than inventing a partial one.
+  const replayDisplayCandles = useMemo(() => {
+    if (!replayActive || !replayTimestampMs || !replayCandles.length) return replayCandles;
+    if (isEventBasedChartInterval(pane.timeframe)) return replayCandles;
+    const last = replayCandles[replayCandles.length - 1];
+    const bucketMs = getTimeframeMs(pane.timeframe);
+    if (bucketMs <= 0) return replayCandles;
+    const bucketStart = getTimeframeBucketStart(last.timestamp, pane.timeframe);
+    if (replayTimestampMs >= bucketStart + bucketMs) return replayCandles;
+    // Binary search the first trade inside the forming bucket, then fold the
+    // prints up to the replay clock into a partial bar.
+    const trades = replayMarketTrades;
+    let low = 0;
+    let high = trades.length;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (trades[middle].timestamp < bucketStart) low = middle + 1;
+      else high = middle;
+    }
+    if (low >= trades.length) return replayCandles;
+    let open: number | null = null;
+    let highP = Number.NEGATIVE_INFINITY;
+    let lowP = Number.POSITIVE_INFINITY;
+    let close = 0;
+    let volume = 0;
+    let tradeCount = 0;
+    let delta = 0;
+    for (let index = low; index < trades.length; index += 1) {
+      const trade = trades[index];
+      if (trade.timestamp > replayTimestampMs) break;
+      if (trade.flowOnly) continue;
+      const price = trade.close;
+      if (!Number.isFinite(price) || price <= 0) continue;
+      if (open === null) open = price;
+      if (price > highP) highP = price;
+      if (price < lowP) lowP = price;
+      close = price;
+      volume += Math.max(0, Number(trade.volume ?? 0));
+      tradeCount += Math.max(1, Number(trade.trades ?? 1));
+      delta += Number.isFinite(Number(trade.delta))
+        ? Number(trade.delta)
+        : Number(trade.askVolume ?? 0) - Number(trade.bidVolume ?? 0);
+    }
+    if (open === null) return replayCandles;
+    const forming: Candle = {
+      ...last,
+      open,
+      high: highP,
+      low: lowP,
+      close,
+      volume,
+      trades: tradeCount,
+      delta,
+      deltaOpen: 0,
+      deltaClose: delta,
+    };
+    return [...replayCandles.slice(0, -1), forming];
+  }, [pane.timeframe, replayActive, replayCandles, replayMarketTrades, replayTimestampMs]);
   const [orderFlowHistoryReady, setOrderFlowHistoryReady] = useState(false);
   const [volumeProfiles, setVolumeProfiles] = useState<InstitutionalVolumeProfile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -7572,7 +7635,7 @@ function WorkspaceChartPaneComponent({
         <div className="flex h-full items-center justify-center text-[13px] text-muted">{error}</div>
       ) : (
         <Chart
-          candles={replayCandles}
+          candles={replayDisplayCandles}
           marketTrades={replayMarketTrades}
           trades={trades}
           levels={chartLevels}
@@ -8034,6 +8097,28 @@ export default function KwantifyWorkspace({
   const [chartWorkspaceScope, setChartWorkspaceScope] = useState<ChartWorkspaceScope>(initialChartWorkspaceScope);
   const [gexVueReplay, setGexVueReplay] = useState<GexVueReplayState>(() => createGexVueReplayState());
   const gexVueReplayTickRef = useRef<number | null>(null);
+  // Scrubbing the replay slider fires dozens of input events per second; each
+  // one re-rendered the entire workspace and every pane's reveal pipeline,
+  // which is what made fast scrubs hang. Coalesce to one commit per frame.
+  const replayScrubFrameRef = useRef<number | null>(null);
+  const replayScrubValueRef = useRef<number | null>(null);
+  const commitReplayScrub = useCallback((value: number) => {
+    replayScrubValueRef.current = value;
+    if (replayScrubFrameRef.current !== null) return;
+    replayScrubFrameRef.current = window.requestAnimationFrame(() => {
+      replayScrubFrameRef.current = null;
+      const pending = replayScrubValueRef.current;
+      replayScrubValueRef.current = null;
+      if (pending === null) return;
+      setGexVueReplay((current) => ({
+        ...current,
+        timestampMs: clampGexVueReplayTimestamp(current, pending),
+      }));
+    });
+  }, []);
+  useEffect(() => () => {
+    if (replayScrubFrameRef.current !== null) window.cancelAnimationFrame(replayScrubFrameRef.current);
+  }, []);
   const workspaceScopeHydratingRef = useRef(false);
   const initialChartWorkspaceRuntimeRef = useRef<ChartWorkspaceRuntime | null>(null);
   if (initialChartWorkspaceRuntimeRef.current === null) {
@@ -15050,7 +15135,21 @@ export default function KwantifyWorkspace({
         } : null} /></WorkspaceFailureBoundary>;
       }
       case "liqmap":
-        return <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-liqmap`} label="Liquidity Map"><LiquidityMapWorkspace instrument={selectedLiquidityMapInstrument} onInstrumentChange={setSelectedLiquidityMapInstrument} onActivate={() => activateWorkspacePane(pane.id)} embedded active={activePaneId === pane.id} /></WorkspaceFailureBoundary>;
+        return (
+          <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-liqmap`} label="Liquidity Map">
+            <div className="relative h-full min-h-0 w-full">
+              <LiquidityMapWorkspace instrument={selectedLiquidityMapInstrument} onInstrumentChange={setSelectedLiquidityMapInstrument} onActivate={() => activateWorkspacePane(pane.id)} embedded active={activePaneId === pane.id} />
+              {/* The liquidity map is a live L3 surface with no recorded-book
+                  replay yet. During GEX Vue replay it must not masquerade as
+                  the replayed session — flag it honestly instead. */}
+              {chartWorkspaceScope === "gamma" && gexVueReplay.active ? (
+                <div className="pointer-events-none absolute left-2 top-2 z-10 border border-warning/50 bg-panel/90 px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.1em] text-warning">
+                  Live depth · not part of replay
+                </div>
+              ) : null}
+            </div>
+          </WorkspaceFailureBoundary>
+        );
       case "tool-depth-of-market": {
         const installedDom = (paneIndicators[pane.id] ?? []).find(
           (instance) => instance.indicatorId === "depth-of-market",
@@ -16757,10 +16856,7 @@ export default function KwantifyWorkspace({
                     step={1_000}
                     value={Math.round(gexVueReplay.timestampMs)}
                     onPointerDown={() => setGexVueReplay((current) => ({ ...current, playing: false }))}
-                    onChange={(event) => setGexVueReplay((current) => ({
-                      ...current,
-                      timestampMs: clampGexVueReplayTimestamp(current, Number(event.target.value)),
-                    }))}
+                    onChange={(event) => commitReplayScrub(Number(event.target.value))}
                     className="h-1.5 min-w-48 flex-1 accent-primary"
                     aria-label="Replay timeline"
                   />

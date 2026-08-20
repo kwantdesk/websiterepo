@@ -10675,6 +10675,10 @@ function Chart({
     const previousCandleCount = prevCandlesLengthRef.current;
     const needsFullRedraw =
       prevCandlesLengthRef.current === 0 ||
+      // ANY shrink must redraw: series.update() can never remove bars, so a
+      // small backward replay scrub (1-5 bars) previously left ghost future
+      // candles on screen until the next big jump.
+      candles.length < prevCandlesLengthRef.current ||
       Math.abs(candles.length - prevCandlesLengthRef.current) > 5 ||
       (prevFirstTimestampRef.current !== null && candles[0]?.timestamp !== prevFirstTimestampRef.current);
 
