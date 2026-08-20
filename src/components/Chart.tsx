@@ -3254,6 +3254,15 @@ function Chart({
   const [netGammaTooltip, setNetGammaTooltip] = useState<NetGammaExposureHit | null>(null);
   const [bounceLevelsSnapshot, setBounceLevelsSnapshot] = useState<BounceLevelsSnapshot | null>(null);
   const bounceLevelsDataSignatureRef = useRef("");
+  // Replay follows the clock with ONE request in flight at a time, latest
+  // minute wins. The old pattern re-ran the effect every replay minute and
+  // cancelled the in-flight request each time, so at 15-60x speed no request
+  // ever lived long enough to land — levels appeared only while paused, then
+  // "stopped" as soon as the clock moved again.
+  const bounceLevelsScopeRef = useRef("");
+  const bounceReplayInFlightRef = useRef(false);
+  const bounceReplayNextMinuteRef = useRef<number | null>(null);
+  const bounceReplayLoaderRef = useRef<((minute: number) => Promise<void>) | null>(null);
   const [, setBounceLevelsLoading] = useState(false);
   const [, setBounceLevelsError] = useState<string | null>(null);
   const [bounceLevelsTooltip, setBounceLevelsTooltip] = useState<BounceLevelsHit | null>(null);
@@ -3266,6 +3275,9 @@ function Chart({
   const [darkPoolMapError, setDarkPoolMapError] = useState<string | null>(null);
   const [darkPoolMapTooltip, setDarkPoolMapTooltip] = useState<DarkPoolMapHit | null>(null);
   const [darkPoolGexPayload, setDarkPoolGexPayload] = useState<DarkPoolMapPayload | null>(null);
+  // Scope = instrument + indicator settings, deliberately excluding the replay
+  // bucket: a request superseded only by clock movement must still paint.
+  const darkPoolGexScopeRef = useRef("");
   const [darkPoolGexSnapshot, setDarkPoolGexSnapshot] = useState<BounceLevelsSnapshot | null>(null);
   const [, setDarkPoolGexLoading] = useState(false);
   const [, setDarkPoolGexError] = useState<string | null>(null);
@@ -6601,14 +6613,21 @@ function Chart({
     const settingsChanged = bounceLevelsDataSignatureRef.current.length > 0
       && bounceLevelsDataSignatureRef.current !== requestSignature;
     bounceLevelsDataSignatureRef.current = requestSignature;
+    const requestScope = `${instrument}|${requestSignature}`;
+    bounceLevelsScopeRef.current = requestScope;
     // Retain the last verified Bounce Levels surface while a changed setting
     // is being resolved. Clearing it here made every slider/dropdown blank the
     // chart until the provider round-trip completed (or indefinitely on an
     // error). The next valid snapshot is committed atomically below.
     let cancelled = false;
     let hasCommittedSnapshot = false;
-    const commitSnapshot = (snapshot: BounceLevelsSnapshot) => {
-      if (cancelled || bounceLevelsDataSignatureRef.current !== requestSignature) return;
+    const commitSnapshot = (snapshot: BounceLevelsSnapshot, fromReplay = false) => {
+      // Replay commits survive the per-minute effect re-run (latest-wins,
+      // guarded by instrument+settings scope); live commits still cancel with
+      // their effect instance.
+      if (fromReplay
+        ? bounceLevelsScopeRef.current !== requestScope
+        : cancelled || bounceLevelsDataSignatureRef.current !== requestSignature) return;
       setBounceLevelsSnapshot((current) => {
         if (!hasCommittedSnapshot) return snapshot;
         // The shared request cache deliberately returns the same verified
@@ -6644,13 +6663,15 @@ function Chart({
       setBounceLevelsLoading(false);
     }
     let timer: number | null = null;
-    const load = async (force = false) => {
+    const load = async (force = false, replayAsOfMs: number | null = null) => {
       const displayPrice = drawingCandlesRef.current.at(-1)?.close;
       if (!(displayPrice && displayPrice > 0)) {
-        if (!cancelled) timer = window.setTimeout(() => void load(force), 300);
+        // The serialized replay drain retries on the next clock tick instead
+        // of arming its own timer inside a superseded closure.
+        if (!cancelled && !replayAsOfMs) timer = window.setTimeout(() => void load(force), 300);
         return;
       }
-      if (!bounceLevelsSnapshot) setBounceLevelsLoading(true);
+      if (!bounceLevelsSnapshot && !replayAsOfMs) setBounceLevelsLoading(true);
       const query = new URLSearchParams({
         display,
         source,
@@ -6705,28 +6726,56 @@ function Chart({
         maxRollDistance: String(indicatorSettings.maxRollDistance),
         rollWindowSeconds: String(indicatorSettings.rollWindowSeconds),
       });
-      if (replayTimestampMs) query.set("asOf", new Date(replayTimestampMs).toISOString());
+      if (replayAsOfMs) query.set("asOf", new Date(replayAsOfMs).toISOString());
       else if (eodAsOfMs) query.set("asOf", new Date(eodAsOfMs).toISOString());
+      const requestCacheKey = replayAsOfMs
+        ? `bounce-levels:${display}:${source}:${requestSignature}:${Math.floor(replayAsOfMs / 60_000)}`
+        : bounceCacheKey;
+      const fromReplay = Boolean(replayAsOfMs);
+      const scopeAlive = () => (fromReplay ? bounceLevelsScopeRef.current === requestScope : !cancelled);
       try {
         const payload = await fetchWorkspaceData<BounceLevelsSnapshot>(
-          bounceCacheKey,
+          requestCacheKey,
           `/api/bounce-levels?${query}`,
-          { force, maxAgeMs: eodAsOfMs ? 6 * 60 * 60_000 : refreshMs, timeoutMs: 35_000, validate: isBounceLevelsSnapshot, invalidMessage: "Bounce Levels returned an incomplete ranked surface." },
+          { force, maxAgeMs: replayAsOfMs || eodAsOfMs ? 6 * 60 * 60_000 : refreshMs, timeoutMs: 35_000, validate: isBounceLevelsSnapshot, invalidMessage: "Bounce Levels returned an incomplete ranked surface." },
         );
-        if (!cancelled) { commitSnapshot(payload); setBounceLevelsError(null); }
+        if (scopeAlive()) { commitSnapshot(payload, fromReplay); setBounceLevelsError(null); }
       } catch (error) {
-        if (!cancelled) setBounceLevelsError(error instanceof Error ? error.message : "Bounce Levels could not refresh.");
+        if (scopeAlive()) setBounceLevelsError(error instanceof Error ? error.message : "Bounce Levels could not refresh.");
       } finally {
         // Re-enter through the shared freshness cache so several charts with
         // identical data settings elect one network refresh instead of each
         // forcing its own provider request. A pinned EOD snapshot is static
         // and needs no recurring refresh.
-        if (!cancelled) {
+        if (scopeAlive()) {
           setBounceLevelsLoading(false);
-          if (!replayTimestampMs && !eodAsOfMs) timer = window.setTimeout(() => void load(false), refreshMs);
+          if (!fromReplay && !replayTimestampMs && !eodAsOfMs) timer = window.setTimeout(() => void load(false), refreshMs);
         }
       }
     };
+    if (replayTimestampMs) {
+      // Serialized latest-wins drain: exactly one asOf request in flight, the
+      // newest replay minute replaces any queued one, and commits are scoped
+      // to instrument+settings so a completed request lands even though this
+      // effect instance was already replaced by a newer clock tick.
+      bounceReplayLoaderRef.current = (minute: number) => load(false, minute * 60_000);
+      bounceReplayNextMinuteRef.current = bounceLevelsReplayMinute;
+      if (!bounceReplayInFlightRef.current) {
+        bounceReplayInFlightRef.current = true;
+        void (async () => {
+          try {
+            while (bounceReplayNextMinuteRef.current !== null) {
+              const minute = bounceReplayNextMinuteRef.current;
+              bounceReplayNextMinuteRef.current = null;
+              await bounceReplayLoaderRef.current?.(minute);
+            }
+          } finally {
+            bounceReplayInFlightRef.current = false;
+          }
+        })();
+      }
+      return () => { cancelled = true; };
+    }
     // Data-shaping sliders can emit dozens of values during one drag. Resolve
     // only the settled value instead of flooding the options provider, while
     // visual-only settings continue to repaint immediately in the primitive.
@@ -7085,8 +7134,12 @@ function Chart({
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "dark-pool-gex") ?? null,
     [indicators],
   );
+  // During replay the dark-pool GEX context follows the clock in FIVE-minute
+  // buckets: per-minute re-requests at 15-60x speed produced a new provider
+  // round-trip every couple of real seconds, none of which survived long
+  // enough to paint.
   const darkPoolGexReplayMinute = darkPoolGexIndicator && (replayTimestampMs || darkPoolGexIndicator.settings?.contextMode !== "current")
-    ? Math.floor((replayTimestampMs ?? candles.at(-1)?.timestamp ?? 0) / 60_000)
+    ? Math.floor((replayTimestampMs ?? candles.at(-1)?.timestamp ?? 0) / (replayTimestampMs ? 300_000 : 60_000))
     : 0;
   useEffect(() => {
     if (!darkPoolGexIndicator) {
@@ -7098,6 +7151,9 @@ function Chart({
     }
     const display = normalizeDarkPoolInstrument(instrument);
     const indicatorSettings = { ...DEFAULT_DARK_POOL_GEX_SETTINGS, ...(darkPoolGexIndicator.settings ?? {}) } as DarkPoolGexSettings;
+    const requestScope = `${instrument}|${JSON.stringify(darkPoolGexIndicator.settings ?? {})}`;
+    darkPoolGexScopeRef.current = requestScope;
+    const scopeAlive = () => darkPoolGexScopeRef.current === requestScope;
     // Futures and cash indices do not publish their own off-exchange tape.
     // Always project the validated ETF print tape into their native price
     // space: QQQ -> NQ/MNQ/NDX and SPY -> ES/MES/SPX/SPXW.  Requiring a
@@ -7133,7 +7189,7 @@ function Chart({
     let hasPaintablePayload = Boolean(cachedDarkPool && isDarkPoolMapPayload(cachedDarkPool));
     let historyStarted = false;
     const mergePayload = (incoming: DarkPoolMapPayload) => {
-      if (cancelled) return;
+      if (!scopeAlive()) return;
       setDarkPoolGexPayload((previous) => {
         if (!previous || previous.displayInstrument !== incoming.displayInstrument || previous.sourceTicker !== incoming.sourceTicker) {
           writeWorkspaceData(darkPoolCacheKey, incoming);
@@ -7199,7 +7255,7 @@ function Chart({
         return payload;
       });
       const trackedGexPromise = gexPromise.then((snapshot) => {
-        if (!cancelled) setDarkPoolGexSnapshot((current) => (
+        if (scopeAlive()) setDarkPoolGexSnapshot((current) => (
           bounceLevelsSnapshotsHaveSameHead(current, snapshot) ? current : snapshot
         ));
         return snapshot;
@@ -7207,7 +7263,7 @@ function Chart({
       // Paint the verified one-page head immediately. The GEX request is
       // independent context and must never hold the Dark Pool overlay blank.
       const darkPoolResult = await Promise.allSettled([trackedDarkPoolPromise]).then(([result]) => result);
-      if (cancelled) return;
+      if (!scopeAlive()) return;
       const errors: string[] = [];
       if (darkPoolResult.status === "rejected") errors.push(darkPoolResult.reason instanceof Error ? darkPoolResult.reason.message : "Off-exchange prints unavailable.");
       setDarkPoolGexError(errors.length ? errors.join(" ") : null);
@@ -7228,8 +7284,10 @@ function Chart({
         ).then(mergePayload).catch(() => undefined);
       }
       void trackedGexPromise;
-      // Shared cache age coordinates refreshes across workspace panels.
-      if (!replayTimestampMs) timer = window.setTimeout(() => void load(), refreshMs);
+      // Shared cache age coordinates refreshes across workspace panels. Only
+      // the live effect instance may arm the next refresh — a superseded
+      // replay-bucket closure finishing late must not resurrect its timer.
+      if (!cancelled && !replayTimestampMs) timer = window.setTimeout(() => void load(), refreshMs);
     };
     void load();
     return () => {
