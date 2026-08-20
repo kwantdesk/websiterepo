@@ -3215,6 +3215,9 @@ function Chart({
   const [resetPaperTradingConfirm, setResetPaperTradingConfirm] = useState(false);
   const [overlaySize, setOverlaySize] = useState({ width: 0, height: 0 });
   const [nativePriceScaleWidth, setNativePriceScaleWidth] = useState(STABLE_RIGHT_PRICE_SCALE_WIDTH);
+  // One shared SVG clip per chart instance keeps every overlay (drawings, TPO
+  // zones, Expected Move rails) inside the price pane, under the price scale.
+  const chartPaneClipId = `chart-pane-clip-${chartInstanceId.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
   const [viewportVersion, setViewportVersion] = useState(0);
   // Footprint row construction is materially heavier than coordinate-only
   // overlays. Keep it off the 64 ms interaction lane used by the native chart
@@ -14385,6 +14388,7 @@ function Chart({
           aria-label="Expected Move one-sigma rails"
           style={{ opacity: expectedMovePayload?.stale ? 0.55 : 1 }}
         >
+          <g clipPath={`url(#${chartPaneClipId})`}>
           {expectedMoveOverlay.showBandFill
             && expectedMoveOverlay.oneHighY !== null
             && expectedMoveOverlay.oneLowY !== null ? (
@@ -14451,6 +14455,7 @@ function Chart({
               ) : null}
             </g>
           ))}
+          </g>
         </svg>
       ) : null}
 
@@ -14490,6 +14495,7 @@ function Chart({
           preserveAspectRatio="none"
           aria-label="TPO Levels zones"
         >
+          <g clipPath={`url(#${chartPaneClipId})`}>
           {tpoOverlay.positioned.map((item) => (
             <g key={item.zone.id}>
               <rect
@@ -14529,6 +14535,7 @@ function Chart({
               ) : null}
             </g>
           ))}
+          </g>
         </svg>
       ) : null}
 
@@ -15902,6 +15909,19 @@ function Chart({
         onPointerCancel={handleDrawingPointerCancel}
         onDoubleClick={handleDrawingDoubleClick}
       >
+        <defs>
+          {/* Drawings and indicator overlays are price-pane content: they must
+              slide underneath the price scale at the pane's right edge exactly
+              like candles do, never paint on top of the axis. */}
+          <clipPath id={chartPaneClipId}>
+            <rect
+              x={0}
+              y={0}
+              width={Math.max(1, overlaySize.width - nativePriceScaleWidth)}
+              height={Math.max(1, overlaySize.height)}
+            />
+          </clipPath>
+        </defs>
         <rect
           x={0}
           y={0}
@@ -15910,6 +15930,7 @@ function Chart({
           fill="transparent"
           pointerEvents={isSvgPositionTool(selectedTool) ? "all" : "none"}
         />
+        <g clipPath={`url(#${chartPaneClipId})`}>
         {zones.map((zone) => renderChartZone(zone))}
         {renderableDrawings.map((drawing) => renderDrawing(drawing))}
         {draftDrawing && renderDrawing(draftDrawing, "draft")}
@@ -15939,6 +15960,7 @@ function Chart({
             </g>
           );
         })() : null}
+        </g>
       </svg>
 
       {toolbarEnabled && activeToolbarTool && selectedTool !== "cursor" && (
