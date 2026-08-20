@@ -151,6 +151,21 @@ async function proxy(request: NextRequest, context: RouteContext) {
     });
     if (path.endsWith("/trades") || path.endsWith("/stream")) {
       headers.set("X-Accel-Buffering", "no");
+      return new Response(upstream.body, { status: upstream.status, headers });
+    }
+    // Bulk JSON (order-flow backfills reach tens of MB) was streamed to the
+    // browser UNCOMPRESSED. Those transfers monopolised the one shared HTTP/2
+    // connection to this origin for a minute-plus and every other request on
+    // the site queued behind them. JSON tapes compress ~10x; gzip everything
+    // that is not a live SSE stream.
+    const acceptsGzip = (request.headers.get("accept-encoding") || "").includes("gzip");
+    if (acceptsGzip && upstream.body && !upstream.headers.get("content-encoding") && typeof CompressionStream !== "undefined") {
+      headers.set("Content-Encoding", "gzip");
+      headers.set("Vary", "Accept-Encoding");
+      return new Response(
+        upstream.body.pipeThrough(new CompressionStream("gzip")),
+        { status: upstream.status, headers },
+      );
     }
     return new Response(upstream.body, { status: upstream.status, headers });
   } catch (error) {

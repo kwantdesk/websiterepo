@@ -3215,7 +3215,13 @@ function fetchWorkspaceOrderFlow(
     timeframe: archiveInterval,
     fromMs,
     toMs: now,
-    includeTrades: true,
+    // The `trades` array duplicates the exact prints already carried in
+    // `records` and the consumer only reads it when records is EMPTY (which
+    // means the gateway had nothing for trades either). Requesting it doubled
+    // a payload that already reaches hundreds of thousands of rows, and that
+    // multi-minute download monopolised the browser's single shared HTTP/2
+    // connection — every page, chunk and API on the site queued behind it.
+    includeTrades: false,
     // A full session of executions is a much larger payload than six hours;
     // 25s was tuned for the smaller window and would abort the backfill.
     timeoutMs: 120_000,
