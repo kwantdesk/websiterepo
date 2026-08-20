@@ -89,6 +89,8 @@ import {
   Store,
   Trash2,
   Trophy,
+  SkipBack,
+  SkipForward,
   Upload,
   Unlock,
   User,
@@ -9119,6 +9121,26 @@ export default function KwantifyWorkspace({
     [activePaneId, workspacePanes],
   );
   const activePaneIsChart = isWorkspaceChartKind(activeWorkspacePane.content);
+  // Step the GEX Vue replay clock by exactly one candle of the ACTIVE chart's
+  // timeframe. Forward lands on the next bar's open (the previous bar fully
+  // reveals, the next starts forming from its first recorded trades); back
+  // lands on the previous bar's open. Works on any timeframe because the step
+  // is derived from the selected chart, not a fixed interval. Manual stepping
+  // pauses playback so the jump target holds.
+  const stepGexVueReplayCandle = useCallback((direction: 1 | -1) => {
+    const timeframe = activePaneIsChart ? activeWorkspacePane.timeframe : selectedTimeframe;
+    const stepMs = Math.max(60_000, getTimeframeMs(timeframe));
+    setGexVueReplay((current) => {
+      if (!current.active) return current;
+      const bucketStart = getTimeframeBucketStart(current.timestampMs, timeframe);
+      const target = direction === 1 ? bucketStart + stepMs : bucketStart - stepMs;
+      return {
+        ...current,
+        playing: false,
+        timestampMs: clampGexVueReplayTimestamp(current, target),
+      };
+    });
+  }, [activePaneIsChart, activeWorkspacePane.timeframe, selectedTimeframe]);
   const activePaneLevelVisibility = paneLevelVisibility[activePaneId] ?? EMPTY_PANE_LEVEL_VISIBILITY;
   const gammaLevelsEnabled = activePaneLevelVisibility.gamma;
   const historicalStructureEnabled = activePaneLevelVisibility.structure;
@@ -16849,11 +16871,29 @@ export default function KwantifyWorkspace({
                   </button>
                   <button
                     type="button"
+                    onClick={() => stepGexVueReplayCandle(-1)}
+                    className="flex h-7 w-7 shrink-0 items-center justify-center border border-border text-muted hover:border-primary/40 hover:text-primary"
+                    title={`Back one ${activePaneIsChart ? activeWorkspacePane.timeframe : selectedTimeframe} candle`}
+                    aria-label="Step back one candle"
+                  >
+                    <SkipBack className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => setGexVueReplay((current) => ({ ...current, playing: !current.playing }))}
                     className="flex h-7 w-7 shrink-0 items-center justify-center border border-primary/35 bg-primary/10 text-primary hover:bg-primary/20"
                     aria-label={gexVueReplay.playing ? "Pause replay" : "Play replay"}
                   >
                     {gexVueReplay.playing ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => stepGexVueReplayCandle(1)}
+                    className="flex h-7 w-7 shrink-0 items-center justify-center border border-border text-muted hover:border-primary/40 hover:text-primary"
+                    title={`Forward one ${activePaneIsChart ? activeWorkspacePane.timeframe : selectedTimeframe} candle`}
+                    aria-label="Step forward one candle"
+                  >
+                    <SkipForward className="h-3.5 w-3.5" />
                   </button>
                   <input
                     type="range"
