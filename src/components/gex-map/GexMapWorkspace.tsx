@@ -570,6 +570,7 @@ function ExposurePanel({
   unavailableReason = null,
   onChange,
   onRemove,
+  onReplayCoverageGap = null,
 }: {
   config: PanelConfig;
   payload: GexMapPanelPayload | null;
@@ -585,6 +586,7 @@ function ExposurePanel({
   unavailableReason?: string | null;
   onChange: (patch: Partial<Pick<PanelConfig, "symbol" | "greekMode">>) => void;
   onRemove?: () => void;
+  onReplayCoverageGap?: (() => void) | null;
 }) {
   const panelRef = useRef<HTMLElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -626,11 +628,39 @@ function ExposurePanel({
   }, [priceLocked]);
   const [surfacePainted, setSurfacePainted] = useState(false);
   const [starPalette, setStarPalette] = useState<StarPalette>(DEFAULT_STAR_PALETTE);
+  // A replay clock can legitimately start before the session's first recorded
+  // exposure bucket (candles begin at the open; the first interval-map bucket
+  // completes a minute later). The first recorded frame IS the session's
+  // opening surface, so the ladder clamps to it instead of sitting empty on
+  // the first replay bars.
+  const firstFrameTimestamp = useMemo(() => {
+    if (!payload?.frames.length) return null;
+    let first = Number.POSITIVE_INFINITY;
+    for (const frame of payload.frames) {
+      if (Number.isFinite(frame.timestamp) && frame.timestamp < first) first = frame.timestamp;
+    }
+    return Number.isFinite(first) ? first : null;
+  }, [payload]);
+  const effectiveTimestamp = selectedTimestamp !== null && firstFrameTimestamp !== null
+    ? Math.max(selectedTimestamp, firstFrameTimestamp)
+    : selectedTimestamp;
+  // A payload whose recording starts long after the replay clock is usually a
+  // stale live-session capture served from the long replay cache, not the
+  // complete archived session — ask the workspace for one forced refetch.
+  useEffect(() => {
+    if (
+      !onReplayCoverageGap
+      || selectedTimestamp === null
+      || firstFrameTimestamp === null
+      || selectedTimestamp >= firstFrameTimestamp - 20 * 60_000
+    ) return;
+    onReplayCoverageGap();
+  }, [firstFrameTimestamp, onReplayCoverageGap, selectedTimestamp]);
   const { current, previous } = useMemo(
-    () => payload ? buildSnapshots(payload, selectedTimestamp, stepMinutes) : { current: new Map(), previous: new Map() },
-    [payload, selectedTimestamp, stepMinutes],
+    () => payload ? buildSnapshots(payload, effectiveTimestamp, stepMinutes) : { current: new Map(), previous: new Map() },
+    [payload, effectiveTimestamp, stepMinutes],
   );
-  const spot = payload ? priceAt(payload, selectedTimestamp) : null;
+  const spot = payload ? priceAt(payload, effectiveTimestamp) : null;
   const tones = gexMapPaletteTones(palette);
   const signedScale = useMemo(() => gexMapSignedScale(palette), [palette]);
   const valueMode: GexMapValueMode = starSettings.valueMode ?? "signed";
@@ -1639,6 +1669,20 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
   }, []);
   const [latestSessionDate, setLatestSessionDate] = useState("");
   const [refreshToken, setRefreshToken] = useState(0);
+  // One forced refetch per replay session when a panel reports that its
+  // recorded frames start long after the replay clock — the long replay
+  // cache may hold a partial live-session capture instead of the complete
+  // archived session. The guard prevents a refetch loop when the archive
+  // genuinely starts late.
+  const replayCoverageRefetchRef = useRef(new Set<string>());
+  const requestedReplayDateRef = useRef("");
+  const handleReplayCoverageGap = useCallback(() => {
+    const key = requestedReplayDateRef.current || "live";
+    if (replayCoverageRefetchRef.current.has(key)) return;
+    replayCoverageRefetchRef.current.add(key);
+    forceRefreshRef.current = true;
+    setRefreshToken((value) => value + 1);
+  }, []);
   const [viewMode, setViewMode] = useState<GexMapViewMode>(
     () => initialEmbedStateRef.current?.viewMode ?? "star",
   );
@@ -1661,6 +1705,7 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
   const forceRefreshRef = useRef(false);
   const replayMode = externalReplay?.active ?? internalReplayMode;
   const requestedReplayDate = replayMode ? (externalReplay?.sessionDate || replayDate) : "";
+  requestedReplayDateRef.current = requestedReplayDate;
 
   useEffect(() => {
     setLocationMarket(market ?? linkedMarketFromLocation());
@@ -2092,6 +2137,7 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
                     : null}
                   onChange={(patch) => updatePanel(panel.id, patch)}
                   onRemove={panelIndex >= DEFAULT_PANELS.length ? () => removePanel(panel.id) : undefined}
+                  onReplayCoverageGap={replayMode ? handleReplayCoverageGap : null}
                 />
               );
             })}
