@@ -826,3 +826,24 @@ Per task: eslint on changed files (heap-bumped for Chart/KwantifyWorkspace), `np
 - `46982672` NDX/QQQ/SPX/SPY volume profiles now project the REAL NQ/ES execution profiles onto the cash scale via the existing value-area basis-ratio machinery (daily + weekly, real aggressor delta so ask/bid and delta modes work, 60s refresh, source labelled "projected from NQ/ES futures"). Candle-volume fallback retained for volume-bearing cash tickers outside the options family.
 - **Owner action if native SPY/QQQ share-volume is wanted** (also unlocks VWAP/Volume on cash tickers): fund Databento equities (account 402s today); the parse path (`quantData.server.ts` volume mapping + client candle profiles) is already in place.
 - Live RTH visual check of projected profiles pending owner reload.
+
+## Temporary engineering log — 2026-08-20
+
+### Completed (each pushed as its own commit)
+- `862eedb0` CVD self-heal: measured live that closed candles carried ~70x true delta (client +25,820 vs gateway -123 for the same hour); recent candle flow now rebuilds from the deduped tape on bar close + 45s cadence; stream dedup tail floor 512→4096.
+- `49ba2a65` old left drawing toolbar hidden behind `LEGACY_LEFT_TOOLBAR_ENABLED` (Chart.tsx) while the NEW top toolbar is developed; precision layer still renders existing drawings.
+- `10bb0294` Trade menu portaled to document.body — it rendered inside the main column's `relative z-0` stacking context so the watchlist painted over it.
+- `6a04e7e1` CVD display style + input data moved into the indicator settings dialog; on-pane dropdown/gear removed.
+- `8cee352a`+`8cb7f795` Long/Short Position tools rebuilt TradingView-style (studied TV's docs + tutorial): one-click placement, pill-on-line layout, live Open P&L (points, from real last close) + R/R in a grey entry pill.
+- `453a6602` GEX Vue replay: forming bar builds tick-by-tick from recorded executions; scrub commits coalesced to one per frame; backward scrubs ≤5 bars now force a redraw (ghost-bar fix). Liq map pane carries an explicit "Live depth · not part of replay" flag during replay.
+- `f59b89b2` site-wide high-impact USD news countdown chip in the top bar (calendar API: TradingView primary, Forex Factory weekly feed fallback).
+- Earlier same day: `a3072862` gamma-heatmap surface re-projection (the measured "Aw Snap" main-thread starvation fix), `b41b780e` TPO spread-RangeError + per-frame volume-profile recompute fixes.
+
+### Remaining risks / next steps
+- Liq map true L3 replay is NOT built — needs the gateway `archive-replay` book stream wired into `public/heatmap-app` (source is readable, `src/*.js`) plus clock sync with `gexVueReplay`.
+- gamvue still has a ~30-60s main-thread stall at initial LOAD (separate from the fixed steady-state freeze).
+- CVD reconcile + forming-bar replay verified by build/tests only; owner-side live RTH check pending (hard reload required — deployment-pinned tabs).
+- Aw-Snap diagnosis method (event-loop lag sampler) recorded in the project memory: crash is main-thread starvation at low heap, NOT OOM.
+
+### Worktree state
+`?? ALGO/`, `gexcal-*.png/tmp`, `M tmp/pdfs/*` (other workstream) — no uncommitted engineering work.
