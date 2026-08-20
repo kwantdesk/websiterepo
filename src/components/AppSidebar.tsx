@@ -23,6 +23,7 @@ import {
   Workflow,
 } from "lucide-react";
 import { defaultTheme, saveTheme } from "@/lib/theme";
+import HighImpactNewsChip from "@/components/HighImpactNewsChip";
 type SidebarKey =
   | "ai"
   | "agent"
@@ -316,6 +317,7 @@ function AppSidebar({
       </nav>
 
       <div className="kwant-primary-workspace-utilities relative z-10 ml-auto flex shrink-0 items-center gap-1.5 bg-panel">
+        <HighImpactNewsChip />
         <button
           type="button"
           onClick={onTradesClick}
