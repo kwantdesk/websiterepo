@@ -1017,9 +1017,12 @@ function ExposurePanel({
               const derived = starRows.get(row.strike);
               if (viewMode !== "full" && derived) {
                 const isFocusedStar = derived.roles.includes("star");
-                // STAR view: only the Star node itself stays lit; NINJA keeps
-                // the full structural highlight set.
-                const highlighted = viewMode === "star" ? isFocusedStar : derived.isHighlighted;
+                // Both structural views honour the settings-driven highlight
+                // set (Highlighted nodes, Selection strategy, Spot-proximity
+                // weighting, Minimum map control). The previous STAR view lit
+                // only the Star itself, which silently no-opped every one of
+                // those settings; the Star keeps its dedicated ring styling.
+                const highlighted = derived.isHighlighted || isFocusedStar;
                 const barWidth = Math.sqrt(derived.mapControlPct / maxHighlightedControl) * 100;
                 // "Gatekeeper" is displayed as SPARKY; the internal role id
                 // stays stable so derivations and saved state are untouched.
