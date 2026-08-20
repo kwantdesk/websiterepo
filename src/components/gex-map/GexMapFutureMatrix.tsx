@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RefreshCw } from "lucide-react";
-import type { GexCalMatrix } from "@/lib/gexCalendar";
 import { gexMapSignedScale, type GexMapPalette } from "@/lib/gexMapPalette";
 import { OPTIONS_FLOW_INSTRUMENTS } from "@/lib/optionsFlow";
 
@@ -14,6 +13,17 @@ import { OPTIONS_FLOW_INSTRUMENTS } from "@/lib/optionsFlow";
 // the Star cell alone reaching its end of the gradient, everything else
 // placed by its share of the Star's magnitude, so noise sits quiet and the
 // forward structure jumps out.
+
+type FutureChain = {
+  symbol: string;
+  greekMode: string;
+  sessionDate: string;
+  asOf: string;
+  status: "LIVE" | "LAST_SESSION";
+  stockPrice: number | null;
+  expiries: Array<{ expiration: string; net: number }>;
+  expiryStrikes: Array<{ expiration: string; strike: number; call: number; put: number; net: number }>;
+};
 
 const FUTURE_SETTINGS_KEY = "kwantdesk:gex-map-future:v1";
 const LOOKAHEAD_CHOICES = [7, 14, 21, 30, 60] as const;
@@ -73,7 +83,7 @@ function expirationHeading(expiration: string) {
 
 export default function GexMapFutureMatrix({ palette }: { palette: GexMapPalette }) {
   const [settings, setSettings] = useState<FutureSettings>(() => loadFutureSettings());
-  const [matrix, setMatrix] = useState<GexCalMatrix | null>(null);
+  const [chain, setChain] = useState<FutureChain | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const requestSeqRef = useRef(0);
@@ -97,20 +107,18 @@ export default function GexMapFutureMatrix({ palette }: { palette: GexMapPalette
     const load = async () => {
       try {
         const query = new URLSearchParams({
-          source: settings.symbol,
-          greek: settings.greek,
-          side: "NET",
-          representation: "PER_ONE_PERCENT_MOVE",
+          symbol: settings.symbol,
+          greekMode: settings.greek,
         });
-        const response = await fetch(`/api/gex-cal?${query}`, { cache: "no-store", credentials: "include" });
-        const payload = await response.json().catch(() => null) as (GexCalMatrix & { error?: string }) | null;
+        const response = await fetch(`/api/gex-map/future?${query}`, { cache: "no-store", credentials: "include" });
+        const payload = await response.json().catch(() => null) as (FutureChain & { error?: string }) | null;
         if (cancelled || requestSeqRef.current !== sequence) return;
-        if (!response.ok || !payload || !Array.isArray(payload.cells)) {
-          setError(payload?.error || "The forward exposure surface is unavailable.");
+        if (!response.ok || !payload || !Array.isArray(payload.expiryStrikes)) {
+          setError(payload?.error || "The forward exposure chain is unavailable.");
           setLoading(false);
           return;
         }
-        setMatrix(payload);
+        setChain(payload);
         setError(null);
         setLoading(false);
       } catch {
@@ -132,38 +140,43 @@ export default function GexMapFutureMatrix({ palette }: { palette: GexMapPalette
   const signedScale = useMemo(() => gexMapSignedScale(palette), [palette]);
 
   const view = useMemo(() => {
-    if (!matrix) return null;
+    if (!chain) return null;
     const horizonMs = Date.now() + settings.lookaheadDays * 24 * 60 * 60_000;
-    const expirations = matrix.expirations
-      .filter((expiration) => Date.parse(`${expiration}T21:00:00Z`) <= horizonMs);
+    // Every listed expiration from the session forward, inside the window —
+    // dailies, weeklies and monthlies alike, straight from the full chain.
+    const expirations = [...new Set(chain.expiryStrikes.map((row) => row.expiration))]
+      .filter((expiration) => expiration >= chain.sessionDate
+        && Date.parse(`${expiration}T21:00:00Z`) <= horizonMs)
+      .sort();
     if (!expirations.length) return { expirations: [], strikes: [], cells: new Map<string, number>(), starKey: "", starMagnitude: 1 };
     const included = new Set(expirations);
     const cells = new Map<string, number>();
+    const strikeSet = new Set<number>();
     let starMagnitude = 0;
     let starKey = "";
-    const strikeHasExposure = new Set<number>();
-    for (const cell of matrix.cells) {
-      if (!included.has(cell.expiration) || cell.value === 0) continue;
-      const key = `${cell.expiration}:${cell.strike}`;
-      cells.set(key, cell.value);
-      strikeHasExposure.add(cell.strike);
-      const magnitude = Math.abs(cell.value);
+    for (const row of chain.expiryStrikes) {
+      if (!included.has(row.expiration)) continue;
+      // EVERY listed strike stays in the ladder — a continuous scroll with no
+      // jumps. Zero cells render dim, they are never dropped as rows.
+      strikeSet.add(row.strike);
+      if (row.net === 0) continue;
+      const key = `${row.expiration}:${row.strike}`;
+      cells.set(key, row.net);
+      const magnitude = Math.abs(row.net);
       if (magnitude > starMagnitude) {
         starMagnitude = magnitude;
         starKey = key;
       }
     }
-    // Strikes carrying zero exposure at every included expiry are exchange
-    // listings without positioning — noise rows, dropped like the ladder does.
-    const strikes = matrix.strikes.filter((strike) => strikeHasExposure.has(strike));
+    const strikes = [...strikeSet].sort((a, b) => b - a);
     return { expirations, strikes, cells, starKey, starMagnitude: Math.max(1, starMagnitude) };
-  }, [matrix, settings.lookaheadDays]);
+  }, [chain, settings.lookaheadDays]);
 
   const spotStrike = useMemo(() => {
-    if (!matrix?.spot || !view?.strikes.length) return null;
+    if (!chain?.stockPrice || !view?.strikes.length) return null;
     return view.strikes.reduce((best, strike) =>
-      Math.abs(strike - matrix.spot!) < Math.abs(best - matrix.spot!) ? strike : best);
-  }, [matrix, view]);
+      Math.abs(strike - chain.stockPrice!) < Math.abs(best - chain.stockPrice!) ? strike : best);
+  }, [chain, view]);
 
   const chip = "flex h-6 items-center rounded-[3px] border border-border/70 bg-background/35 px-2 text-[9px] font-semibold uppercase leading-none tracking-[0.075em]";
 
@@ -229,14 +242,14 @@ export default function GexMapFutureMatrix({ palette }: { palette: GexMapPalette
           <span className="font-mono text-foreground">{settings.highlightPercent}%</span>
         </label>
         <div className="ml-auto flex items-center gap-2 text-[9px] text-muted">
-          {matrix?.spot ? (
-            <span className="font-mono text-foreground">Spot {matrix.spot.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+          {chain?.stockPrice ? (
+            <span className="font-mono text-foreground">Spot {chain.stockPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
           ) : null}
           {loading ? <RefreshCw className="h-3 w-3 animate-spin" /> : null}
         </div>
       </div>
 
-      {error && !matrix ? (
+      {error && !chain ? (
         <div className="flex flex-1 items-center justify-center p-6 text-center text-[11px] text-muted">{error}</div>
       ) : !view || !view.expirations.length ? (
         <div className="flex flex-1 items-center justify-center p-6 text-center text-[11px] text-muted">
@@ -303,7 +316,7 @@ export default function GexMapFutureMatrix({ palette }: { palette: GexMapPalette
           </table>
         </div>
       )}
-      {error && matrix ? (
+      {error && chain ? (
         <div className="shrink-0 border-t border-border bg-panel px-2 py-1 text-[9px] text-warning">Refresh delayed · showing the last good surface</div>
       ) : null}
     </div>

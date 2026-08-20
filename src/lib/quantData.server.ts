@@ -2674,6 +2674,56 @@ export async function getGexMapPanel(
   }
 }
 
+export type GexMapFutureChain = {
+  symbol: string;
+  greekMode: GreekMode;
+  sessionDate: string;
+  asOf: string;
+  status: "LIVE" | "LAST_SESSION";
+  stockPrice: number | null;
+  representation: "PER_ONE_PERCENT_MOVE";
+  expiries: Array<{ expiration: string; call: number; put: number; net: number }>;
+  expiryStrikes: Array<{ expiration: string; strike: number; call: number; put: number; net: number }>;
+  refreshAfterMs: number;
+};
+
+/**
+ * The FULL exposure chain: every listed expiration with its complete strike
+ * ladder, per greek. exposure-by-strike already returns this in one provider
+ * call — the ladder panels merely discard everything past the front expiry.
+ * The GEX Map FUTURE matrix consumes it whole.
+ */
+export async function getGexMapFutureChain(
+  symbolInput: string,
+  greekModeInput: GreekMode,
+): Promise<GexMapFutureChain> {
+  const symbol = symbolInput.trim().toUpperCase();
+  const providerTicker = gexMapProviderTicker(symbol);
+  const currentSession = getUsOptionsSession();
+  const exposureResult = await quantDataPost("/options/tool/exposure-by-strike", {
+    sessionDate: currentSession.sessionDate,
+    greekMode: greekModeInput,
+    representationMode: "PER_ONE_PERCENT_MOVE",
+    filter: { ticker: providerTicker },
+  }, currentSession.marketOpen ? 15_000 : 300_000);
+  const full = parseExposure(exposureResult.payload, providerTicker, greekModeInput);
+  if (!full || !full.expiryStrikes?.length) {
+    throw new QuantDataError(`No ${greekModeInput} exposure chain is available for ${symbol}.`, 422, exposureResult.remaining);
+  }
+  return {
+    symbol,
+    greekMode: greekModeInput,
+    sessionDate: currentSession.sessionDate,
+    asOf: new Date().toISOString(),
+    status: currentSession.marketOpen ? "LIVE" : "LAST_SESSION",
+    stockPrice: readStockPrice(exposureResult.payload, providerTicker),
+    representation: "PER_ONE_PERCENT_MOVE",
+    expiries: full.expiries,
+    expiryStrikes: full.expiryStrikes,
+    refreshAfterMs: currentSession.marketOpen ? 60_000 : 5 * 60_000,
+  };
+}
+
 export type HistoricalPositioningWallFrames = {
   symbol: string;
   sessionDate: string;
