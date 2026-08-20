@@ -226,7 +226,7 @@ export async function getZeroGammaLinePayload(
     cursor = previousTradingDay(cursor);
   }
 
-  const [historical, historicalTrails, currentTrail, current] = await Promise.all([
+  const [historical, current] = await Promise.all([
     Promise.all(completedDates.map(async (date): Promise<ZeroGammaLinePoint | null> => {
       const cacheKey = `${root}:${sourceSymbol}:${date}`;
       const cached = historicalPointCache.get(cacheKey);
@@ -243,18 +243,32 @@ export async function getZeroGammaLinePayload(
         return null;
       }
     })),
-    Promise.all(completedDates.map((date) => intradayTrailSafe(root, sourceSymbol, date, true))),
-    completedDates.includes(sessionDate)
-      ? Promise.resolve([] as ZeroGammaLinePoint[])
-      : intradayTrailSafe(root, sourceSymbol, sessionDate, false),
     getChartGammaLevels(root, sourceSymbol, sessionDate).catch(() => null),
   ]);
   const points = historical.filter((point): point is ZeroGammaLinePoint => point !== null);
-  points.push(...historicalTrails.flat());
-  points.push(...currentTrail.map((point) => ({
-    ...point,
-    status: marketOpen ? "LIVE" as const : "EOD" as const,
-  })));
+  // Trails are computed sequentially and only where they pay for themselves:
+  // a cold interval-map rebuild for several sessions in parallel stampedes
+  // the centrally spaced provider queue and can outlive the whole request.
+  // The recurring one-session poll only refreshes the live trail (memoized to
+  // one rebuild a minute); the initial multi-session load also restores the
+  // newest completed session's trail, whose durable cache converges even if
+  // the first cold browser request times out client-side.
+  if (historySessions > 1) {
+    const newestCompleted = completedDates.at(-1);
+    if (newestCompleted) {
+      points.push(...await intradayTrailSafe(root, sourceSymbol, newestCompleted, true));
+    }
+  }
+  if (!completedDates.includes(sessionDate) || historySessions === 1) {
+    const liveTrailDate = completedDates.includes(sessionDate) ? completedDates.at(-1)! : sessionDate;
+    const liveTrail = await intradayTrailSafe(root, sourceSymbol, liveTrailDate, completedDates.includes(liveTrailDate));
+    points.push(...liveTrail.map((point) => ({
+      ...point,
+      status: point.status === "HISTORICAL" && !completedDates.includes(liveTrailDate)
+        ? (marketOpen ? "LIVE" as const : "EOD" as const)
+        : point.status,
+    })));
+  }
   const currentZeroGamma = current ? zeroGammaFromPayload(current) : null;
   if (current && currentZeroGamma !== null) {
     points.push({
