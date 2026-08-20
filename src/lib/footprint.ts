@@ -276,6 +276,91 @@ export function buildFootprintBars(
   });
 }
 
+export type FootprintBuildCache = {
+  key: string;
+  bars: FootprintBar[];
+  builtAt: number;
+  lastBarTimestamp: number;
+};
+
+// Late prints and dedupe corrections can retouch a closed bar, so the
+// incremental path still reconciles everything on a bounded clock.
+const FOOTPRINT_FULL_REBUILD_MS = 30_000;
+
+function footprintWindowKey(candles: Candle[], settings: FootprintBuildSettings) {
+  return [
+    settings.tickSize,
+    settings.groupTicks,
+    settings.minimumTradeVolume,
+    settings.maximumTradeVolume,
+    settings.imbalanceMode,
+    settings.minimumImbalancePercent,
+    settings.minimumDelta,
+    settings.includeZero,
+    settings.showEmptyPriceRows,
+    settings.instrument,
+    settings.valueAreaPercent,
+    settings.minimumDominantVolume,
+    settings.stackedImbalanceLevels,
+    settings.unfinishedAuctionEnabled,
+    settings.unfinishedAuctionMinimumVolume,
+    candles.length,
+    candles[0]?.timestamp,
+    candles.length > 1 ? candles[candles.length - 2].timestamp : 0,
+  ].join("|");
+}
+
+/**
+ * Incremental wrapper around {@link buildFootprintBars}. Rebuilding every
+ * visible bar from a six-figure RTH tape several times a second — from the
+ * live refresh AND the React sampling path, twice each when the per-bar
+ * profile uses its own grouping — pegged the main thread and froze the whole
+ * site. Closed bars are immutable between full reconciles: while the candle
+ * window and settings are unchanged, only the forming bar is rebuilt from its
+ * own prints; a full rebuild runs on window/settings change, bar roll, or the
+ * bounded reconcile clock.
+ */
+export function buildFootprintBarsCached(
+  cache: { current: FootprintBuildCache | null },
+  candlesInput: Candle[],
+  records: InstitutionalTrade[],
+  settings: FootprintBuildSettings,
+): FootprintBar[] {
+  if (!candlesInput.length) return [];
+  const lastCandle = candlesInput[candlesInput.length - 1];
+  const windowKey = footprintWindowKey(candlesInput, settings);
+  const now = Date.now();
+  const entry = cache.current;
+  if (
+    entry
+    && entry.key === windowKey
+    && entry.lastBarTimestamp === lastCandle.timestamp
+    && entry.bars.length === candlesInput.length
+    && now - entry.builtAt < FOOTPRINT_FULL_REBUILD_MS
+  ) {
+    // Only the forming bar can have gained prints; the tape is ordered, so
+    // its slice starts at the bar's own open.
+    let low = 0;
+    let high = records.length;
+    while (low < high) {
+      const middle = (low + high) >>> 1;
+      if (records[middle].timestamp < lastCandle.timestamp) low = middle + 1;
+      else high = middle;
+    }
+    const tail = candlesInput.length > 1 ? candlesInput.slice(-2) : candlesInput;
+    const rebuilt = buildFootprintBars(tail, records.slice(low), settings);
+    const formingBar = rebuilt[rebuilt.length - 1];
+    if (formingBar && formingBar.timestamp === lastCandle.timestamp) {
+      const bars = [...entry.bars.slice(0, -1), formingBar];
+      cache.current = { ...entry, bars };
+      return bars;
+    }
+  }
+  const bars = buildFootprintBars(candlesInput, records, settings);
+  cache.current = { key: windowKey, bars, builtAt: now, lastBarTimestamp: lastCandle.timestamp };
+  return bars;
+}
+
 export function formatFootprintValue(
   value: number,
   format: FootprintNumberFormat | "normal" | "thousands" = "automatic",

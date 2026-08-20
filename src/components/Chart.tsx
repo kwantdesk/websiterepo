@@ -137,7 +137,8 @@ import {
   type BigBlockRenderZone,
 } from "@/lib/bigBlocksPrimitive";
 import {
-  buildFootprintBars,
+  buildFootprintBarsCached,
+  type FootprintBuildCache,
   type FootprintBuildSettings,
   type FootprintImbalanceMode,
 } from "@/lib/footprint";
@@ -3036,6 +3037,13 @@ function Chart({
   const liveFootprintTapeRef = useRef<InstitutionalTrade[]>([]);
   const liveFootprintRefreshTimerRef = useRef<number | null>(null);
   const retainedFootprintBarsRef = useRef<{ key: string; bars: FootprintRenderBar[] } | null>(null);
+  // Incremental build caches — one per consumer per grouping, so each path
+  // reuses its own closed bars and rebuilds only the forming bar per refresh.
+  const liveFootprintBaseBuildCacheRef = useRef<FootprintBuildCache | null>(null);
+  const liveFootprintProfileBuildCacheRef = useRef<FootprintBuildCache | null>(null);
+  const footprintBarsBuildCacheRef = useRef<FootprintBuildCache | null>(null);
+  const footprintProfileBuildCacheRef = useRef<FootprintBuildCache | null>(null);
+  const pocAuctionBuildCacheRef = useRef<FootprintBuildCache | null>(null);
   const paperFillMarkersPrimitiveRef = useRef<PaperFillMarkersPrimitive | null>(null);
   const paperPositionOverlayPrimitiveRef = useRef<PaperPositionOverlayPrimitive | null>(null);
   const footprintActiveRef = useRef(false);
@@ -3720,13 +3728,13 @@ function Chart({
         lowerBound(tape, firstTimestamp),
         lowerBound(tape, finalCandle.timestamp + approximateInterval),
       );
-      const bars = buildFootprintBars(sourceCandles, visibleTape, buildSettings);
+      const bars = buildFootprintBarsCached(liveFootprintBaseBuildCacheRef, sourceCandles, visibleTape, buildSettings);
       const profileGroupTicks = liveFootprintProfileGroupTicksRef.current;
       const needsSeparateProfile = (
         primitiveOptions.showPerBarVolumeProfile || primitiveOptions.showPerBarDeltaProfile
       ) && profileGroupTicks !== buildSettings.groupTicks;
       const profileRows = needsSeparateProfile
-        ? new Map(buildFootprintBars(sourceCandles, visibleTape, {
+        ? new Map(buildFootprintBarsCached(liveFootprintProfileBuildCacheRef, sourceCandles, visibleTape, {
             ...buildSettings,
             groupTicks: profileGroupTicks,
           }).map((bar) => [bar.timestamp, bar.rows]))
@@ -4945,7 +4953,7 @@ function Chart({
   ]);
   const footprintBars = useMemo(() => {
     if (!footprintDataConsumer || !footprintSourceCandles.length) return [];
-    return buildFootprintBars(footprintSourceCandles, footprintMarketTrades, footprintBuildSettings);
+    return buildFootprintBarsCached(footprintBarsBuildCacheRef, footprintSourceCandles, footprintMarketTrades, footprintBuildSettings);
   }, [
     footprintBuildSettings,
     footprintDataConsumer,
@@ -4960,7 +4968,7 @@ function Chart({
       || footprintSettings.showPerBarDeltaProfile === true;
     if (!profileEnabled || !footprintIndicator || !footprintSourceCandles.length) return footprintBars;
     if (footprintProfileGroupTicks === resolvedFootprintGroupTicks) return footprintBars;
-    return buildFootprintBars(footprintSourceCandles, footprintMarketTrades, {
+    return buildFootprintBarsCached(footprintProfileBuildCacheRef, footprintSourceCandles, footprintMarketTrades, {
       ...footprintBuildSettings,
       groupTicks: footprintProfileGroupTicks,
     });
@@ -4998,7 +5006,7 @@ function Chart({
   );
   const rawPocAuctionBars = useMemo(() => {
     if (!pocAuctionIndicator || !footprintSourceCandles.length) return [];
-    return buildFootprintBars(footprintSourceCandles, footprintMarketTrades, {
+    return buildFootprintBarsCached(pocAuctionBuildCacheRef, footprintSourceCandles, footprintMarketTrades, {
       ...footprintBuildSettings,
       groupTicks: 1,
       showEmptyPriceRows: false,
