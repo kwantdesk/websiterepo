@@ -23,6 +23,7 @@ import {
   Workflow,
 } from "lucide-react";
 import { defaultTheme, saveTheme } from "@/lib/theme";
+import { startRendererHealthRecorder } from "@/lib/rendererHealth";
 import HighImpactNewsChip from "@/components/HighImpactNewsChip";
 type SidebarKey =
   | "ai"
@@ -156,6 +157,9 @@ function AppSidebar({
   tradesActive = false,
 }: AppSidebarProps) {
   useEffect(() => {
+    // Crash forensics: records main-thread health so the next "Aw, Snap"
+    // leaves a final snapshot behind instead of an empty tab.
+    startRendererHealthRecorder();
     const body = document.body;
     body.classList.add("kwant-cockpit-ui");
 
