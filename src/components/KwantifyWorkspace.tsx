@@ -15137,17 +15137,23 @@ export default function KwantifyWorkspace({
       case "liqmap":
         return (
           <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-liqmap`} label="Liquidity Map">
-            <div className="relative h-full min-h-0 w-full">
-              <LiquidityMapWorkspace instrument={selectedLiquidityMapInstrument} onInstrumentChange={setSelectedLiquidityMapInstrument} onActivate={() => activateWorkspacePane(pane.id)} embedded active={activePaneId === pane.id} />
-              {/* The liquidity map is a live L3 surface with no recorded-book
-                  replay yet. During GEX Vue replay it must not masquerade as
-                  the replayed session — flag it honestly instead. */}
-              {chartWorkspaceScope === "gamma" && gexVueReplay.active ? (
-                <div className="pointer-events-none absolute left-2 top-2 z-10 border border-warning/50 bg-panel/90 px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.1em] text-warning">
-                  Live depth · not part of replay
-                </div>
-              ) : null}
-            </div>
+            <LiquidityMapWorkspace
+              instrument={selectedLiquidityMapInstrument}
+              onInstrumentChange={setSelectedLiquidityMapInstrument}
+              onActivate={() => activateWorkspacePane(pane.id)}
+              embedded
+              active={activePaneId === pane.id}
+              // During GEX Vue replay the map renders the collector's own
+              // archived L3 for the session, following the shared replay
+              // clock (quantised to the pack's 2s frame cadence so the pane
+              // is not re-rendered by every 200ms clock tick).
+              replay={chartWorkspaceScope === "gamma" && gexVueReplay.active
+                ? {
+                    tradingDate: gexVueReplay.sessionDate,
+                    timestampMs: Math.floor(gexVueReplay.timestampMs / 2_000) * 2_000,
+                  }
+                : null}
+            />
           </WorkspaceFailureBoundary>
         );
       case "tool-depth-of-market": {

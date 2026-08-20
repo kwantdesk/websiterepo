@@ -3,11 +3,13 @@ import { BOOKMAP_VISUAL_DEFAULTS, RollingDepthEngine } from './depth-engine.js?v
 import { DepthRenderer, priceLabel, timeLabel } from './renderer.js?v=20260817-live-stability';
 import {
   DepthMarketFeed,
+  INSTITUTIONAL_MARKET_DATA_ORIGIN,
   isFullDepthSource,
   LIQUIDITY_MAP_ROOTS,
   LIQUIDITY_MAP_SYMBOLS,
   liveInstrumentCatalogUrl,
   liveInstrumentResolveUrl,
+  normalizeLiveSnapshot,
   normalizeLiquidityMapSymbol,
   symbolMatchesSnapshot,
   updateLivePresentationEdge,
@@ -160,6 +162,20 @@ class DepthForgeApp {
     this.depthLadderHtml = '';
     this.tapeHtml = '';
     this.lastRenderFailureAt = 0;
+    // GEX Vue session replay driven by the parent workspace's clock. Frames
+    // come from the collector's archive replay packs — genuine recorded L3,
+    // never simulated — fetched as bounded 30-minute chunks around the clock.
+    this.replay = {
+      active: false,
+      tradingDate: '',
+      clockMs: 0,
+      manifest: null,
+      chunks: new Map(),
+      appliedThroughMs: 0,
+      syncing: false,
+      pending: false,
+      retryTimer: null,
+    };
     this.#bindControls();
     this.#enhanceInspectorSelects();
     this.#syncPaletteControls();
@@ -334,6 +350,10 @@ class DepthForgeApp {
         this.workspaceEmbedded = event.data.embedded === true;
         this.workspacePresentationActive = event.data.active !== false;
         this.requestRender();
+        return;
+      }
+      if (event.data?.type === 'kwantdesk:liquidity-map-replay') {
+        this.#handleReplayMessage(event.data);
         return;
       }
       if (event.data?.type === 'kwantify:heatmap-workspace-settings') {
@@ -787,6 +807,18 @@ class DepthForgeApp {
     this.#updatePlaybackUi();
     this.#updateUi(true);
     this.requestRender();
+    // Switching asset during a session replay swaps to that instrument's own
+    // archive pack (built on demand) instead of resuming the live stream —
+    // the feed stays stopped, so setSymbol above did not reconnect it.
+    if (this.replay.active) {
+      this.sourceMode = 'replay';
+      this.playing = false;
+      this.replay.manifest = null;
+      this.replay.chunks = new Map();
+      this.replay.appliedThroughMs = 0;
+      this.#postReplayStatus('loading');
+      void this.#syncReplay();
+    }
   }
 
   async #loadInstrumentCatalog() {
@@ -1130,7 +1162,225 @@ class DepthForgeApp {
     this.#updateSymbolUi();
   }
 
+  // ---- session replay (archive replay packs) ----
+
+  #postReplayStatus(state, detail = '') {
+    if (window.parent === window) return;
+    window.parent.postMessage(
+      { type: 'kwantdesk:liquidity-map-replay-status', state, detail, symbol: this.symbol },
+      window.location.origin,
+    );
+  }
+
+  #handleReplayMessage(data) {
+    if (data.active !== true) {
+      this.#exitReplay();
+      return;
+    }
+    const tradingDate = String(data.tradingDate || '');
+    const clockMs = Number(data.timestampMs) || 0;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(tradingDate) || clockMs <= 0) return;
+    const dateChanged = this.replay.tradingDate !== tradingDate;
+    this.replay.tradingDate = tradingDate;
+    this.replay.clockMs = clockMs;
+    if (!this.replay.active || dateChanged) this.#enterReplay();
+    else void this.#syncReplay();
+  }
+
+  #enterReplay() {
+    clearTimeout(this.replay.retryTimer);
+    this.replay.active = true;
+    this.replay.manifest = null;
+    this.replay.chunks = new Map();
+    this.replay.appliedThroughMs = 0;
+    this.replay.syncing = false;
+    this.replay.pending = false;
+    this.liveFeed.stop();
+    this.sourceMode = 'replay';
+    this.depthEngine.reset();
+    this.history = this.depthEngine.frames;
+    this.tape = [];
+    this.viewEnd = 0;
+    this.eventCount = 0;
+    this.indicatorAnalysis = null;
+    this.indicatorAnalysisKey = '';
+    this.indicatorTradeRevision = 0;
+    this.atLive = true;
+    this.playing = false;
+    this.#updateSymbolUi();
+    this.requestRender();
+    this.#postReplayStatus('loading');
+    void this.#syncReplay();
+  }
+
+  #exitReplay() {
+    if (!this.replay.active) return;
+    clearTimeout(this.replay.retryTimer);
+    this.replay = {
+      active: false,
+      tradingDate: '',
+      clockMs: 0,
+      manifest: null,
+      chunks: new Map(),
+      appliedThroughMs: 0,
+      syncing: false,
+      pending: false,
+      retryTimer: null,
+    };
+    this.sourceMode = 'connecting';
+    this.depthEngine.reset();
+    this.history = this.depthEngine.frames;
+    this.tape = [];
+    this.viewEnd = 0;
+    this.eventCount = 0;
+    this.indicatorAnalysis = null;
+    this.indicatorAnalysisKey = '';
+    this.indicatorTradeRevision = 0;
+    this.atLive = true;
+    this.playing = true;
+    this.liveFeed.start();
+    this.#updateSymbolUi();
+    this.requestRender();
+  }
+
+  async #syncReplay() {
+    if (!this.replay.active) return;
+    if (this.replay.syncing) {
+      this.replay.pending = true;
+      return;
+    }
+    this.replay.syncing = true;
+    try {
+      const symbol = this.symbol;
+      const tradingDate = this.replay.tradingDate;
+      if (!this.replay.manifest) {
+        const query = new URLSearchParams({ symbol, tradingDate });
+        const response = await fetch(
+          `${INSTITUTIONAL_MARKET_DATA_ORIGIN}/v1/heatmap/replay?${query}`,
+          { cache: 'no-store', headers: { Accept: 'application/json' } },
+        );
+        const body = await response.json().catch(() => null);
+        if (!this.replay.active || this.symbol !== symbol || this.replay.tradingDate !== tradingDate) return;
+        if (!response.ok) {
+          this.#postReplayStatus('unavailable', body?.error || 'No recorded session archive.');
+          return;
+        }
+        if (body?.building) {
+          // The one-time pack build for a full session takes minutes. Report
+          // progress honestly and check back rather than pretending.
+          this.#postReplayStatus('building', `${Number(body.frames || 0).toLocaleString()} frames prepared`);
+          clearTimeout(this.replay.retryTimer);
+          this.replay.retryTimer = setTimeout(() => {
+            if (this.replay.active) void this.#syncReplay();
+          }, 5_000);
+          return;
+        }
+        if (!body?.manifest) {
+          this.#postReplayStatus('unavailable', body?.error || 'Replay pack unavailable.');
+          return;
+        }
+        this.replay.manifest = body.manifest;
+      }
+      await this.#applyReplayWindow();
+    } catch {
+      if (this.replay.active) this.#postReplayStatus('unavailable', 'Replay data could not be loaded.');
+    } finally {
+      this.replay.syncing = false;
+      if (this.replay.pending) {
+        this.replay.pending = false;
+        void this.#syncReplay();
+      }
+    }
+  }
+
+  async #fetchReplayChunk(startMs) {
+    const cached = this.replay.chunks.get(startMs);
+    if (cached) return cached;
+    const query = new URLSearchParams({
+      symbol: this.symbol,
+      tradingDate: this.replay.tradingDate,
+      chunk: String(startMs),
+    });
+    const response = await fetch(
+      `${INSTITUTIONAL_MARKET_DATA_ORIGIN}/v1/heatmap/replay/chunk?${query}`,
+      { cache: 'no-store', headers: { Accept: 'application/json' } },
+    );
+    if (!response.ok) return null;
+    const body = await response.json().catch(() => null);
+    const frames = Array.isArray(body?.frames) ? body.frames : null;
+    if (!frames) return null;
+    this.replay.chunks.set(startMs, frames);
+    // Hold only the window around the clock; a whole session of packed books
+    // is exactly the heap pattern that used to freeze embedded maps.
+    if (this.replay.chunks.size > 4) {
+      const keys = [...this.replay.chunks.keys()].sort((a, b) => a - b);
+      for (const key of keys) {
+        if (this.replay.chunks.size <= 4) break;
+        if (key !== startMs) this.replay.chunks.delete(key);
+      }
+    }
+    return frames;
+  }
+
+  async #applyReplayWindow() {
+    const manifest = this.replay.manifest;
+    if (!manifest || !Array.isArray(manifest.chunks) || !manifest.chunks.length) {
+      this.#postReplayStatus('unavailable', 'The replay pack holds no frames.');
+      return;
+    }
+    const clockMs = this.replay.clockMs;
+    const frameMs = Number(manifest.frameMs) || 2_000;
+    const windowStartMs = clockMs - MAX_HISTORY * frameMs;
+    const wanted = manifest.chunks.filter(chunk => chunk.endMs > windowStartMs && chunk.startMs <= clockMs);
+    const scrubbedBack = clockMs < this.replay.appliedThroughMs;
+    const frames = [];
+    for (const chunk of wanted) {
+      const rows = await this.#fetchReplayChunk(chunk.startMs);
+      if (!this.replay.active || this.replay.clockMs !== clockMs) return;
+      if (!rows) continue;
+      for (const row of rows) {
+        const timestamp = Number(row?.snapshot?.timestamp) || 0;
+        if (timestamp <= 0 || timestamp > clockMs || timestamp <= windowStartMs) continue;
+        if (!scrubbedBack && timestamp <= this.replay.appliedThroughMs) continue;
+        frames.push(row);
+      }
+    }
+    if (scrubbedBack) {
+      // series-style appends cannot remove columns; rebuild the bounded
+      // window so scrubbing backwards shows the true earlier book.
+      this.depthEngine.reset();
+      this.history = this.depthEngine.frames;
+      this.tape = [];
+      this.indicatorAnalysis = null;
+      this.indicatorAnalysisKey = '';
+      this.indicatorTradeRevision = 0;
+    } else if (!frames.length) {
+      if (!this.history.length) this.#postReplayStatus('ready', 'Waiting for the first recorded frame in range.');
+      return;
+    }
+    frames.sort((left, right) => Number(left.snapshot.timestamp) - Number(right.snapshot.timestamp));
+    for (const row of frames) {
+      const snapshot = normalizeLiveSnapshot(row.snapshot);
+      if (!snapshot) continue;
+      this.depthEngine.append(snapshot);
+      if (snapshot.trades.length) {
+        this.indicatorTradeRevision += 1;
+        this.#appendTrades(snapshot.trades);
+      }
+      this.eventCount += snapshot.eventsSince || 1;
+    }
+    this.replay.appliedThroughMs = clockMs;
+    this.viewEnd = Math.max(0, this.history.length - 1);
+    this.atLive = true;
+    if (this.settings.autoCenter) this.view.centerTick = null;
+    this.renderRequested = true;
+    this.#postReplayStatus('ready');
+  }
+
   #ingestDepthSnapshot(snapshot, metadata = {}) {
+    // While the parent drives a session replay, the archive is the only
+    // permitted source; a stray live probe frame must not corrupt it.
+    if (this.replay.active) return;
     // Two separate gates rejected the Rithmic feed here. The source check was
     // pinned to Databento, and the symbol had to match literally - but the
     // collector serves micros from the parent book and answers with the
@@ -1213,6 +1463,7 @@ class DepthForgeApp {
   }
 
   #ingestPresentationTick(tick, timestamp) {
+    if (this.replay.active) return;
     if (!this.atLive || !this.history.length) return;
     updateLivePresentationEdge(this.history, { lastTick: tick, timestamp });
     this.viewEnd = this.history.length - 1;

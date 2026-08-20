@@ -27,6 +27,9 @@ const ALLOWED_PATHS = new Set([
   "v1/market-data/index-history",
   "v1/heatmap/snapshot",
   "v1/heatmap/stream",
+  // Session replay packs distilled from the collector's own raw L3 archive.
+  "v1/heatmap/replay",
+  "v1/heatmap/replay/chunk",
 ]);
 
 type RouteContext = { params: Promise<{ path: string[] }> };

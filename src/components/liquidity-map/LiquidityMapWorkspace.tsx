@@ -4,12 +4,20 @@ import { memo, useCallback, useEffect, useRef, useState } from "react";
 import KwantLoader from "@/components/KwantLoader";
 import { readStoredTheme, THEME_STORAGE_KEY } from "@/lib/theme";
 
+type LiquidityMapReplayControl = {
+  tradingDate: string;
+  timestampMs: number;
+};
+
 type LiquidityMapWorkspaceProps = {
   instrument: string;
   onInstrumentChange?: (instrument: string) => void;
   onActivate?: () => void;
   embedded?: boolean;
   active?: boolean;
+  // GEX Vue session replay: when set, the map leaves the live stream and
+  // renders the collector's archived book for this session up to this clock.
+  replay?: LiquidityMapReplayControl | null;
 };
 
 function liquidityMapInstrument(root: unknown) {
@@ -23,12 +31,16 @@ function LiquidityMapWorkspace({
   onActivate,
   embedded = false,
   active = true,
+  replay = null,
 }: LiquidityMapWorkspaceProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const styleCheckTimerRef = useRef<number | null>(null);
   const stylesReadyRef = useRef(false);
   const marketFrameReadyRef = useRef(false);
   const [isReady, setIsReady] = useState(false);
+  const [replayStatus, setReplayStatus] = useState<{ state: string; detail: string } | null>(null);
+  const lastReplayPostAtRef = useRef(0);
+  const replayPostTimerRef = useRef<number | null>(null);
   const syncReadyState = useCallback(() => {
     setIsReady(stylesReadyRef.current && marketFrameReadyRef.current);
   }, []);
@@ -58,6 +70,47 @@ function LiquidityMapWorkspace({
   useEffect(() => {
     if (isReady) syncInstrument();
   }, [isReady, syncInstrument]);
+
+  // Forward the replay clock, coalesced to at most one message per second —
+  // the map's archive frames are 2s columns, so a faster drip is pure waste.
+  useEffect(() => {
+    const post = (payload: { active: boolean; tradingDate?: string; timestampMs?: number }) => {
+      iframeRef.current?.contentWindow?.postMessage(
+        { type: "kwantdesk:liquidity-map-replay", ...payload },
+        window.location.origin,
+      );
+    };
+    if (!replay) {
+      if (replayPostTimerRef.current !== null) {
+        window.clearTimeout(replayPostTimerRef.current);
+        replayPostTimerRef.current = null;
+      }
+      setReplayStatus(null);
+      if (isReady) post({ active: false });
+      return;
+    }
+    if (!isReady) return;
+    const send = () => {
+      lastReplayPostAtRef.current = Date.now();
+      post({ active: true, tradingDate: replay.tradingDate, timestampMs: replay.timestampMs });
+    };
+    const elapsed = Date.now() - lastReplayPostAtRef.current;
+    if (elapsed >= 1_000) {
+      send();
+      return;
+    }
+    if (replayPostTimerRef.current !== null) window.clearTimeout(replayPostTimerRef.current);
+    replayPostTimerRef.current = window.setTimeout(() => {
+      replayPostTimerRef.current = null;
+      send();
+    }, 1_000 - elapsed);
+    return () => {
+      if (replayPostTimerRef.current !== null) {
+        window.clearTimeout(replayPostTimerRef.current);
+        replayPostTimerRef.current = null;
+      }
+    };
+  }, [isReady, replay]);
 
   useEffect(() => {
     syncPerformancePriority();
@@ -116,6 +169,13 @@ function LiquidityMapWorkspace({
       }
       if (event.data?.type === "kwantdesk:liquidity-map-theme-request") {
         syncTheme();
+        return;
+      }
+      if (event.data?.type === "kwantdesk:liquidity-map-replay-status") {
+        setReplayStatus({
+          state: String(event.data.state || ""),
+          detail: String(event.data.detail || ""),
+        });
         return;
       }
       if (event.data?.type === "kwantdesk:liquidity-map-styles-pending") {
@@ -208,6 +268,25 @@ function LiquidityMapWorkspace({
           />
         </div>
       ) : null}
+      {replay && replayStatus && replayStatus.state !== "ready" ? (
+        <div className={`pointer-events-none absolute left-2 top-2 z-10 border px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.1em] ${
+          replayStatus.state === "unavailable"
+            ? "border-danger/50 bg-panel/90 text-danger"
+            : "border-warning/50 bg-panel/90 text-warning"
+        }`}
+        >
+          {replayStatus.state === "building"
+            ? `Replay pack building from the session archive · ${replayStatus.detail || "preparing"}`
+            : replayStatus.state === "unavailable"
+              ? `Replay unavailable · ${replayStatus.detail || "no recorded archive for this session"}`
+              : "Loading recorded session…"}
+        </div>
+      ) : null}
+      {replay && replayStatus?.state === "ready" ? (
+        <div className="pointer-events-none absolute left-2 top-2 z-10 border border-primary/40 bg-panel/90 px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.1em] text-primary">
+          Replay · recorded L3
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -217,5 +296,7 @@ export default memo(
   (previous, next) => previous.instrument === next.instrument
     && previous.embedded === next.embedded
     && previous.active === next.active
-    && previous.onInstrumentChange === next.onInstrumentChange,
+    && previous.onInstrumentChange === next.onInstrumentChange
+    && previous.replay?.tradingDate === next.replay?.tradingDate
+    && previous.replay?.timestampMs === next.replay?.timestampMs,
 );
