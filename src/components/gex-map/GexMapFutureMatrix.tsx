@@ -184,6 +184,7 @@ export default function GexMapFutureMatrix({ palette, zoom = 1 }: { palette: Gex
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col">
       <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-border bg-panel px-2 py-1.5">
+        <div className="w-[104px] shrink-0">
         <GexMapDropdown
           ariaLabel="Forward matrix underlying"
           value={settings.symbol}
@@ -196,6 +197,7 @@ export default function GexMapFutureMatrix({ palette, zoom = 1 }: { palette: Gex
           menuWidth={224}
           onChange={(symbol) => patchSettings({ symbol })}
         />
+        </div>
         <div className="flex h-6 items-center rounded-[3px] border border-border/70 bg-background/35 p-0.5">
           {(["GAMMA", "VANNA"] as const).map((greek) => (
             <button
@@ -209,6 +211,7 @@ export default function GexMapFutureMatrix({ palette, zoom = 1 }: { palette: Gex
             </button>
           ))}
         </div>
+        <div className="w-[76px] shrink-0">
         <GexMapDropdown
           ariaLabel="Forward window"
           value={String(settings.lookaheadDays)}
@@ -221,6 +224,7 @@ export default function GexMapFutureMatrix({ palette, zoom = 1 }: { palette: Gex
           menuWidth={190}
           onChange={(days) => patchSettings({ lookaheadDays: Number(days) })}
         />
+        </div>
         <div className="flex h-6 items-center rounded-[3px] border border-border/70 bg-background/35 p-0.5">
           {([["star-percent", "% Star"], ["signed", "$"]] as const).map(([mode, label]) => (
             <button
