@@ -157,10 +157,32 @@ export default function ChartDrawLayer({
       if (pr.length < (anchored ? 1 : 2)) continue;
       const t0 = anchored ? pr[0].time : Math.min(pr[0].time, pr[1].time);
       const t1 = anchored ? (candles[candles.length - 1]?.time ?? pr[0].time) : Math.max(pr[0].time, pr[1].time);
-      cache.set(drawing.id, volumeProfile(candles, t0, t1));
+      cache.set(drawing.id, volumeProfile(
+        candles,
+        t0,
+        t1,
+        drawing.style.profileRows ?? 80,
+        drawing.style.valueAreaPercent ?? 70,
+      ));
     }
     return cache;
   }, [drawings, candles]);
+  // Between the first and second placement click the preview histogram used to
+  // recompute on EVERY mousemove — a full candle scan per pixel of cursor
+  // travel, which is what made drawing the fixed range feel glitchy. The
+  // preview now recomputes only when the cursor crosses into a new bar.
+  const previewProfileRef = useRef<{ key: string; prof: ReturnType<typeof volumeProfile> } | null>(null);
+  const previewVolumeProfile = (t0: number, t1: number, rows: number, valueArea: number) => {
+    let snappedEnd = t1;
+    for (let index = candles.length - 1; index >= 0; index -= 1) {
+      if (candles[index].time <= t1) { snappedEnd = candles[index].time; break; }
+    }
+    const key = `${t0}:${snappedEnd}:${rows}:${valueArea}:${candles.length}`;
+    if (previewProfileRef.current?.key === key) return previewProfileRef.current.prof;
+    const prof = volumeProfile(candles, t0, t1, rows, valueArea);
+    previewProfileRef.current = { key, prof };
+    return prof;
+  };
   const vwapCache = useMemo(() => {
     const cache = new Map<string, Array<{ time: number; vwap: number }>>();
     for (const drawing of drawings) {
@@ -638,25 +660,37 @@ export default function ChartDrawLayer({
           const t1 = anchored ? (candles[candles.length - 1]?.time ?? pr[0].time) : Math.max(pr[0].time, pr[1].time);
           const x0 = toX(t0); const x1 = toX(t1);
           if (x0 == null || x1 == null) return null;
+          const rows = style.profileRows ?? 80;
+          const valueArea = style.valueAreaPercent ?? 70;
           // Committed drawings read the memoized histogram (recomputed only when
-          // candles/anchors change); a live preview computes directly.
-          const prof = preview ? volumeProfile(candles, t0, t1) : (volumeProfileCache.get(drawing.id) ?? volumeProfile(candles, t0, t1));
+          // candles/anchors/settings change); the live preview recomputes only
+          // when the cursor crosses a bar, never per pixel.
+          const prof = preview
+            ? previewVolumeProfile(t0, t1, rows, valueArea)
+            : (volumeProfileCache.get(drawing.id) ?? volumeProfile(candles, t0, t1, rows, valueArea));
           if (!prof) return null;
           const boxRight = anchored ? x1 : Math.max(x0, x1);
           const boxLeft = Math.min(x0, x1);
-          const maxBarW = Math.max(30, (boxRight - boxLeft) * 0.32);
+          const widthPercent = Math.max(10, Math.min(80, style.profileWidthPercent ?? 32));
+          const maxBarW = Math.max(30, (boxRight - boxLeft) * (widthPercent / 100));
+          const outside = style.outsideColor ?? "#787B86";
+          const showPoc = style.showPoc !== false;
+          const pocY = toY(prof.poc);
           return <g>
             {prof.bins.map((bin, i) => {
               const yTop = toY(bin.priceHigh); const yBot = toY(bin.priceLow);
-              if (yTop == null || yBot == null || prof.maxVol <= 0) return null;
+              if (yTop == null || yBot == null || prof.maxVol <= 0 || bin.volume <= 0) return null;
               const w = (bin.volume / prof.maxVol) * maxBarW;
-              const inVA = bin.priceLow >= prof.valLow && bin.priceHigh <= prof.vahHigh;
+              const inVA = bin.priceLow >= prof.valLow - 1e-9 && bin.priceHigh <= prof.vahHigh + 1e-9;
               const isPoc = i === prof.pocIndex;
-              return <rect key={i} x={boxLeft} y={Math.min(yTop, yBot)} width={Math.max(0, w)} height={Math.max(1, Math.abs(yBot - yTop) - 1)}
-                fill={isPoc ? "#2962FF" : inVA ? stroke : "#787B86"} fillOpacity={isPoc ? 0.85 : inVA ? 0.5 : 0.3} />;
+              const rowHeight = Math.max(0.7, Math.abs(yBot - yTop) - 0.35);
+              // The rows share a left spine and keep a hairline separation like
+              // the native profile renderer, staying legible at 200 rows.
+              return <rect key={i} x={boxLeft} y={Math.min(yTop, yBot) + 0.175} width={Math.max(0.5, w)} height={rowHeight} rx={Math.min(1.5, rowHeight / 2)}
+                fill={isPoc ? style.color : inVA ? stroke : outside} fillOpacity={isPoc ? 0.95 : inVA ? 0.62 : 0.32} />;
             })}
-            {line(boxLeft, toY(prof.poc) ?? 0, boxRight, toY(prof.poc) ?? 0, "#2962FF", 1)}
-            {style.showLabels ? label(boxLeft + 3, (toY(prof.poc) ?? 0) - 2, `POC ${prof.poc.toFixed(2)}`, "#2962FF") : null}
+            {showPoc && pocY != null ? line(boxLeft, pocY, boxRight, pocY, style.color, 1) : null}
+            {showPoc && style.showLabels && pocY != null ? label(boxLeft + 3, pocY - 2, `POC ${prof.poc.toFixed(2)}`, style.color) : null}
           </g>;
         }
         case "anchoredVwap": {
@@ -728,6 +762,11 @@ export default function ChartDrawLayer({
 
     if (!body) return null;
     const interactive = !preview && !active && activeTool !== "eraser";
+    // Volume profiles anchor to the exact wicks the trader clicked. A body
+    // drag silently shifting both anchors was how profiles "wandered"; the
+    // body now only selects, and repositioning happens through the two
+    // anchor dots alone.
+    const bodyMovable = drawing.tool !== "fixedRangeVolumeProfile" && drawing.tool !== "anchoredVolumeProfile";
     const valid = coords.filter((p) => p.x != null && p.y != null) as { x: number; y: number }[];
     const xs = valid.map((p) => p.x); const ys = valid.map((p) => p.y);
     // Transparent fat hit layer so thin lines and shape interiors are easy to
@@ -759,8 +798,13 @@ export default function ChartDrawLayer({
       <g
         key={drawing.id}
         opacity={preview ? 0.75 : 1}
-        style={interactive ? { pointerEvents: "auto", cursor: "move" } : { pointerEvents: "none" }}
-        onPointerDown={interactive ? (event) => beginDrag(drawing, "move", event) : undefined}
+        style={interactive ? { pointerEvents: "auto", cursor: bodyMovable ? "move" : "pointer" } : { pointerEvents: "none" }}
+        onPointerDown={interactive
+          ? (event) => {
+              if (bodyMovable) beginDrag(drawing, "move", event);
+              else { event.stopPropagation(); onSelect(drawing.id); }
+            }
+          : undefined}
         onDoubleClick={interactive ? () => onOpenSettings(drawing.id) : undefined}
       >
         {body}
@@ -829,12 +873,13 @@ function anchoredVwapSeries(candles: DrawCandle[], from: number) {
   return series;
 }
 
-function volumeProfile(candles: DrawCandle[], t0: number, t1: number, binCount = 24) {
+function volumeProfile(candles: DrawCandle[], t0: number, t1: number, binCount = 80, valueAreaPercent = 70) {
   const inRange = candles.filter((c) => c.time >= t0 && c.time <= t1);
   if (inRange.length < 2) return null;
   let priceMin = Infinity; let priceMax = -Infinity;
   for (const c of inRange) { if (c.low < priceMin) priceMin = c.low; if (c.high > priceMax) priceMax = c.high; }
   if (!Number.isFinite(priceMin) || !Number.isFinite(priceMax) || priceMax <= priceMin) return null;
+  binCount = Math.max(20, Math.min(200, Math.round(binCount)));
   const binSize = (priceMax - priceMin) / binCount;
   const bins = Array.from({ length: binCount }, (_, i) => ({
     priceLow: priceMin + i * binSize,
@@ -857,8 +902,7 @@ function volumeProfile(candles: DrawCandle[], t0: number, t1: number, binCount =
   let pocIndex = 0; let maxVol = 0;
   bins.forEach((bin, i) => { if (bin.volume > maxVol) { maxVol = bin.volume; pocIndex = i; } });
   const poc = (bins[pocIndex].priceLow + bins[pocIndex].priceHigh) / 2;
-  // 70% value area around the POC.
-  const target = totalVol * 0.7;
+  const target = totalVol * (Math.max(50, Math.min(95, valueAreaPercent)) / 100);
   let vaVol = bins[pocIndex].volume; let lo = pocIndex; let hi = pocIndex;
   while (vaVol < target && (lo > 0 || hi < bins.length - 1)) {
     const below = lo > 0 ? bins[lo - 1].volume : -1;

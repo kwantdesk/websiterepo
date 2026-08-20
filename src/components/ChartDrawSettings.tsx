@@ -11,6 +11,7 @@ import { deleteDrawTemplate, loadDrawTemplates, saveDrawTemplate, type DrawTempl
 // fields are the standard appearance controls every charting tool exposes.
 const SHAPE_TOOLS = ["rectangle", "rotatedRectangle", "ellipse", "circle", "triangleShape", "gannBox", "datePriceRange", "longPosition", "shortPosition"];
 const TEXT_TOOLS = ["text", "note", "callout", "signpost", "priceLabel", "flagMark"];
+const PROFILE_TOOLS = ["fixedRangeVolumeProfile", "anchoredVolumeProfile"];
 
 type Props = {
   drawing: Drawing | null;
@@ -49,6 +50,7 @@ export default function ChartDrawSettings({ drawing, onChange, onClose }: Props)
   const spec = DRAW_TOOL_SPECS[drawing.tool];
   const isShape = SHAPE_TOOLS.includes(drawing.tool);
   const isText = TEXT_TOOLS.includes(drawing.tool);
+  const isProfile = PROFILE_TOOLS.includes(drawing.tool);
   const toolTemplates = templates[drawing.tool] ?? {};
 
   const patchStyle = (next: Partial<Drawing["style"]>) => onChange({ ...drawing, style: { ...drawing.style, ...next } });
@@ -92,6 +94,23 @@ export default function ChartDrawSettings({ drawing, onChange, onClose }: Props)
                 </Row>
               ) : null}
               <Row label="Show labels"><input type="checkbox" checked={drawing.style.showLabels} onChange={(e) => patchStyle({ showLabels: e.target.checked })} className="h-4 w-4 accent-primary" /></Row>
+
+              {isProfile ? (
+                <div className="space-y-3 border-t border-border pt-3">
+                  <div className="text-[10px] uppercase tracking-[0.1em] text-muted">Profile</div>
+                  <Row label={`Rows · ${drawing.style.profileRows ?? 80}`}>
+                    <input type="range" min={20} max={200} step={5} value={drawing.style.profileRows ?? 80} onChange={(e) => patchStyle({ profileRows: Number(e.target.value) })} className="w-40 accent-primary" />
+                  </Row>
+                  <Row label={`Value area · ${drawing.style.valueAreaPercent ?? 70}%`}>
+                    <input type="range" min={50} max={95} step={1} value={drawing.style.valueAreaPercent ?? 70} onChange={(e) => patchStyle({ valueAreaPercent: Number(e.target.value) })} className="w-40 accent-primary" />
+                  </Row>
+                  <Row label={`Profile width · ${drawing.style.profileWidthPercent ?? 32}%`}>
+                    <input type="range" min={10} max={80} step={2} value={drawing.style.profileWidthPercent ?? 32} onChange={(e) => patchStyle({ profileWidthPercent: Number(e.target.value) })} className="w-40 accent-primary" />
+                  </Row>
+                  <Row label="Show POC line"><input type="checkbox" checked={drawing.style.showPoc !== false} onChange={(e) => patchStyle({ showPoc: e.target.checked })} className="h-4 w-4 accent-primary" /></Row>
+                  <Row label="Outside value area"><input type="color" value={drawing.style.outsideColor ?? "#787B86"} onChange={(e) => patchStyle({ outsideColor: e.target.value })} className="h-7 w-10 cursor-pointer rounded border border-border bg-background" /></Row>
+                </div>
+              ) : null}
 
               <div className="border-t border-border pt-3">
                 <div className="mb-1.5 text-[10px] uppercase tracking-[0.1em] text-muted">Templates</div>

@@ -102,6 +102,13 @@ export type DrawStyle = {
   showLabels: boolean;
   fontSize?: number;    // text tools
   visible?: boolean;    // hide without deleting
+  // Volume-profile tools (fixed range / anchored). Optional so drawings saved
+  // before these settings existed keep rendering with the defaults.
+  profileRows?: number;        // row count, 20..200 (default 80)
+  valueAreaPercent?: number;   // 50..95 (default 70)
+  showPoc?: boolean;           // POC line + label (default true)
+  outsideColor?: string;       // rows outside the value area (default #787B86)
+  profileWidthPercent?: number; // widest row as % of the range width, 10..80
 };
 
 export const DEFAULT_DRAW_STYLE: DrawStyle = {
