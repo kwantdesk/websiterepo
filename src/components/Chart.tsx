@@ -3594,6 +3594,13 @@ function Chart({
     }
   }), []);
 
+  // During a synchronized replay the pane's candles are the revealed replay
+  // series; the live stream keeps running for the watchlist, but its ticks
+  // must never paint into a replayed chart. A ref (not an effect dep) because
+  // the replay clock advances every 200ms and must not resubscribe listeners.
+  const liveReplayActiveRef = useRef(false);
+  liveReplayActiveRef.current = replayTimestampMs !== null && replayTimestampMs > 0;
+
   useEffect(() => {
     if (!liveCandleEventKey) return;
     let pendingCandle: Candle | null = null;
@@ -3658,6 +3665,7 @@ function Chart({
     const receive = (event: Event) => {
       const detail = (event as CustomEvent<LiveChartCandleDetail>).detail;
       if (!detail || detail.key !== liveCandleEventKey) return;
+      if (liveReplayActiveRef.current) return;
       pendingCandle = detail.candle;
       latestCandleRef.current = detail.candle;
       if (volumeIndicatorEnabled || nonFootprintOrderFlowIndicatorEnabled) {
@@ -3758,6 +3766,7 @@ function Chart({
     const receive = (event: Event) => {
       const detail = (event as CustomEvent<LiveChartExecutionDetail>).detail;
       if (!detail || detail.key !== liveCandleEventKey || !liveFootprintEnabledRef.current) return;
+      if (liveReplayActiveRef.current) return;
       // The tape is the shared canonical reference; assigning it is O(1).
       // Only the visible bars are rebuilt, directly into the canvas primitive.
       liveFootprintTapeRef.current = detail.tape;
