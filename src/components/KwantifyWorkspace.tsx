@@ -8479,7 +8479,7 @@ export default function KwantifyWorkspace({
     });
   }, [chartWorkspaceScope, workspacePanes]);
   useEffect(() => {
-    if (chartWorkspaceScope !== "gamma" || !gexVueReplay.active || !gexVueReplay.playing) {
+    if ((chartWorkspaceScope !== "gamma" && chartWorkspaceScope !== "charts") || !gexVueReplay.active || !gexVueReplay.playing) {
       gexVueReplayTickRef.current = null;
       return;
     }
@@ -15402,7 +15402,7 @@ export default function KwantifyWorkspace({
             if (JSON.stringify(candidate.gexMapState) === JSON.stringify(state)) return candidate;
             return { ...candidate, gexMapState: state };
           }));
-        }} externalReplay={chartWorkspaceScope === "gamma" && gexVueReplay.active ? {
+        }} externalReplay={(chartWorkspaceScope === "gamma" || chartWorkspaceScope === "charts") && gexVueReplay.active ? {
           active: true,
           sessionDate: gexVueReplay.sessionDate,
           timestampMs: gexVueReplay.timestampMs,
@@ -15421,7 +15421,7 @@ export default function KwantifyWorkspace({
               // archived L3 for the session, following the shared replay
               // clock (quantised to the pack's 2s frame cadence so the pane
               // is not re-rendered by every 200ms clock tick).
-              replay={chartWorkspaceScope === "gamma" && gexVueReplay.active
+              replay={(chartWorkspaceScope === "gamma" || chartWorkspaceScope === "charts") && gexVueReplay.active
                 ? {
                     tradingDate: gexVueReplay.sessionDate,
                     timestampMs: Math.floor(gexVueReplay.timestampMs / 2_000) * 2_000,
@@ -15626,14 +15626,14 @@ export default function KwantifyWorkspace({
         pane={pane}
         active={activePaneId === pane.id}
         embedded
-        period={chartWorkspaceScope === "gamma" && gexVueReplay.active ? "5D" : pane.period}
+        period={(chartWorkspaceScope === "gamma" || chartWorkspaceScope === "charts") && gexVueReplay.active ? "5D" : pane.period}
         settings={chartSettings}
         crosshairSyncScope={chartWorkspaceScope === "gamma" || linkedViewportPaneIds.has(pane.id)
           ? "gamvue"
           : "matching"}
         viewportSyncGroup={viewportSyncGroupForScope(chartWorkspaceScope)}
         viewportSyncRole={linkedViewportPaneIds.has(pane.id) ? "peer" : "independent"}
-        replayTimestampMs={chartWorkspaceScope === "gamma" && gexVueReplay.active
+        replayTimestampMs={(chartWorkspaceScope === "gamma" || chartWorkspaceScope === "charts") && gexVueReplay.active
           ? gexVueReplay.timestampMs
           : null}
         trades={activePaneId === pane.id ? chartTrades : []}
@@ -16856,6 +16856,24 @@ export default function KwantifyWorkspace({
             compact
             className="w-auto min-w-[118px] max-w-[164px] shrink-0 px-2.5"
           />
+          {chartWorkspaceScope === "charts" ? (
+            <button
+              type="button"
+              onClick={() => setGexVueReplay((current) => current.active
+                ? { ...current, active: false, playing: false }
+                : { ...createGexVueReplayState(), active: true })}
+              aria-pressed={gexVueReplay.active}
+              title={gexVueReplay.active ? "Exit synchronized replay" : "Replay the latest completed New York session"}
+              className={`kwant-chart-row-control flex h-7 shrink-0 items-center gap-1.5 rounded-[3px] border border-transparent px-2.5 text-[10px] font-semibold uppercase leading-none tracking-[0.075em] transition-colors ${
+                gexVueReplay.active
+                  ? "text-primary"
+                  : "text-muted hover:bg-surface hover:text-foreground"
+              }`}
+            >
+              <Repeat className="h-3.5 w-3.5" />
+              Replay
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={openLevelsExport}
@@ -17101,7 +17119,7 @@ export default function KwantifyWorkspace({
             {workspaceFloatingWindows.map((floating, index) =>
               renderFloatingWorkspaceWindow(floating, index))}
           </div>
-          {chartWorkspaceScope === "gamma" && gexVueReplay.active ? (
+          {(chartWorkspaceScope === "gamma" || chartWorkspaceScope === "charts") && gexVueReplay.active ? (
             <div className="flex w-full shrink-0 items-center gap-2 overflow-x-auto border-t border-primary/25 bg-panel/95 px-3 py-2 backdrop-blur-xl [scrollbar-width:thin]">
                   <span className="shrink-0 font-mono text-[8px] font-semibold uppercase tracking-[0.14em] text-primary">GEX Replay</span>
                   <input
