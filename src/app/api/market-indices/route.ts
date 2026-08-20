@@ -13,7 +13,14 @@ import { getMarketIndexDefinition } from "@/lib/marketIndices";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-export const maxDuration = 30;
+// A single COLD session restore from the underlying-history provider was
+// measured at 33 seconds; a multi-day (5D) request walks several sessions.
+// With the previous 30s ceiling Vercel killed exactly those cold restores, so
+// charts never received the provider's real OHLC and silently kept their
+// locally cached quote-built candles — bars with no wicks that looked nothing
+// like the true session (the "suspicious historical data" report). Same
+// failure class and fix as the zero-gamma-line route.
+export const maxDuration = 300;
 
 const MAX_HISTORY_DAYS = 370;
 const CBOE_VIX_HISTORY_START = Date.UTC(1990, 0, 1);
