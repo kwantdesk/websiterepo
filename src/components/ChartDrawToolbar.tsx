@@ -126,15 +126,21 @@ export default function ChartDrawToolbar({
   const openFlyout = (group: DrawToolGroupId) => {
     const rect = triggers.current[group]?.getBoundingClientRect();
     if (!rect) return;
-    setMenuPos({ left: Math.max(8, Math.min(rect.left, window.innerWidth - 226)), top: rect.bottom + 4 });
+    // The rail sits on the chart's left edge, so flyouts open to the RIGHT of
+    // their trigger, clamped inside the viewport vertically.
+    setMenuPos({
+      left: Math.min(rect.right + 6, window.innerWidth - 226),
+      top: Math.max(8, Math.min(rect.top, window.innerHeight - 340)),
+    });
     setOpenGroup(group);
   };
 
-  const chip = "flex h-6 shrink-0 items-center gap-0.5 rounded-[3px] border px-1.5 transition-colors";
+  const chip = "relative flex h-7 w-7 shrink-0 items-center justify-center rounded-[3px] border transition-colors";
+  const textChip = "flex h-5 w-7 shrink-0 items-center justify-center rounded-[3px] border text-[8px] font-semibold uppercase tracking-[0.02em] transition-colors";
   const flyoutTools = openGroup ? toolsOf(openGroup) : [];
 
   return (
-    <div className="pointer-events-auto absolute left-0 right-[var(--chart-price-axis-inset,64px)] top-0 z-[26] flex h-7 min-w-0 items-center gap-0.5 overflow-x-auto border-b border-border/70 bg-panel/85 px-1.5 backdrop-blur [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    <div className="pointer-events-auto z-[26] flex h-full w-9 shrink-0 flex-col items-center gap-0.5 overflow-y-auto border-r border-border/70 bg-panel/85 py-1 backdrop-blur [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {DRAW_TOOL_GROUPS.map((group) => {
         const primary = primaryOf(group.id);
         const groupTools = toolsOf(group.id);
@@ -143,7 +149,7 @@ export default function ChartDrawToolbar({
         const groupActive = groupTools.includes(activeTool);
         const multi = groupTools.length > 1;
         return (
-          <div key={group.id} className="flex shrink-0 items-center">
+          <div key={group.id} className="relative shrink-0">
             <button
               type="button"
               onClick={() => onSelectTool(shown)}
@@ -157,17 +163,17 @@ export default function ChartDrawToolbar({
                 type="button"
                 ref={(node) => { triggers.current[group.id] = node; }}
                 onClick={() => (openGroup === group.id ? setOpenGroup(null) : openFlyout(group.id))}
-                className="flex h-6 w-3 items-center justify-center rounded-[3px] text-muted hover:text-foreground"
+                className="absolute -right-0.5 bottom-0 flex h-3 w-3 items-center justify-center rounded-[2px] text-muted hover:text-foreground"
                 aria-label={`${group.label} tools`}
               >
-                <ChevronDown className="h-3 w-3" />
+                <ChevronDown className="h-2.5 w-2.5 -rotate-90" />
               </button>
             ) : null}
           </div>
         );
       })}
 
-      <span className="h-4 w-px shrink-0 bg-border/70" />
+      <span className="my-0.5 h-px w-4 shrink-0 bg-border/70" />
       <button
         type="button"
         onClick={onToggleMagnet}
@@ -179,10 +185,10 @@ export default function ChartDrawToolbar({
           <path d="M6 4v7a6 6 0 0 0 12 0V4" /><path d="M6 8h4" /><path d="M14 8h4" />
         </svg>
       </button>
-      <button type="button" onClick={onToggleKeepDrawing} className={`${chip} text-[9px] font-semibold uppercase tracking-[0.05em] ${keepDrawing ? "border-primary/40 bg-primary/[0.10] text-primary" : "border-transparent text-muted hover:bg-surface hover:text-foreground"}`} title="Keep the tool active after drawing">Stay</button>
-      <button type="button" onClick={onOpenSettings} disabled={!hasSelection} className={`${chip} text-[9px] font-semibold uppercase tracking-[0.05em] ${hasSelection ? "border-transparent text-muted hover:bg-surface hover:text-foreground" : "border-transparent text-muted/30"}`} title="Selected drawing style">Style</button>
-      <button type="button" onClick={onDeleteSelection} disabled={!hasSelection} className={`${chip} text-[9px] font-semibold uppercase tracking-[0.05em] ${hasSelection ? "border-transparent text-muted hover:bg-surface hover:text-danger" : "border-transparent text-muted/30"}`} title="Delete selected drawing">Del</button>
-      <button type="button" onClick={onClearAll} className={`${chip} text-[9px] font-semibold uppercase tracking-[0.05em] border-transparent text-muted hover:bg-surface hover:text-danger`} title="Remove every drawing on this chart">Clear</button>
+      <button type="button" onClick={onToggleKeepDrawing} className={`${textChip} ${keepDrawing ? "border-primary/40 bg-primary/[0.10] text-primary" : "border-transparent text-muted hover:bg-surface hover:text-foreground"}`} title="Keep the tool active after drawing">Stay</button>
+      <button type="button" onClick={onOpenSettings} disabled={!hasSelection} className={`${textChip} ${hasSelection ? "border-transparent text-muted hover:bg-surface hover:text-foreground" : "border-transparent text-muted/30"}`} title="Selected drawing style">Sty</button>
+      <button type="button" onClick={onDeleteSelection} disabled={!hasSelection} className={`${textChip} ${hasSelection ? "border-transparent text-muted hover:bg-surface hover:text-danger" : "border-transparent text-muted/30"}`} title="Delete selected drawing">Del</button>
+      <button type="button" onClick={onClearAll} className={`${textChip} border-transparent text-muted hover:bg-surface hover:text-danger`} title="Remove every drawing on this chart">Clr</button>
 
       {openGroup && menuPos && typeof document !== "undefined"
         ? createPortal(

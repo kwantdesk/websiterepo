@@ -13228,6 +13228,28 @@ function Chart({
 
   return (
     <div className="flex h-full w-full min-w-0 overflow-hidden">
+      {/* The charting toolbar is the chart's LEFT EDGE: a static flex column
+          that owns its own layout space, so chart content, candles and
+          overlays begin to its right instead of rendering underneath it. */}
+      {toolbarEnabled ? (
+        <ChartDrawToolbar
+          activeTool={drawTool}
+          keepDrawing={drawKeepDrawing}
+          magnet={drawMagnet}
+          onSelectTool={(tool) => { setDrawTool(tool); if (tool !== "cursor") setDrawSelectedId(null); }}
+          onToggleKeepDrawing={() => setDrawKeepDrawing((value) => !value)}
+          onToggleMagnet={toggleDrawMagnet}
+          onOpenSettings={() => setDrawSettingsOpen(true)}
+          hasSelection={Boolean(drawSelectedId)}
+          onDeleteSelection={() => {
+            if (!drawSelectedId) return;
+            commitDrawings(chartingDrawings.filter((drawing) => drawing.id !== drawSelectedId));
+            setDrawSelectedId(null);
+            setDrawSettingsOpen(false);
+          }}
+          onClearAll={() => { commitDrawings([]); setDrawSelectedId(null); setDrawSettingsOpen(false); }}
+        />
+      ) : null}
       <div
         ref={chartContainerRef}
         className="relative h-full min-w-0 flex-1 overflow-hidden"
@@ -13240,23 +13262,6 @@ function Chart({
       >
       {toolbarEnabled ? (
         <>
-          <ChartDrawToolbar
-            activeTool={drawTool}
-            keepDrawing={drawKeepDrawing}
-            magnet={drawMagnet}
-            onSelectTool={(tool) => { setDrawTool(tool); if (tool !== "cursor") setDrawSelectedId(null); }}
-            onToggleKeepDrawing={() => setDrawKeepDrawing((value) => !value)}
-            onToggleMagnet={toggleDrawMagnet}
-            onOpenSettings={() => setDrawSettingsOpen(true)}
-            hasSelection={Boolean(drawSelectedId)}
-            onDeleteSelection={() => {
-              if (!drawSelectedId) return;
-              commitDrawings(chartingDrawings.filter((drawing) => drawing.id !== drawSelectedId));
-              setDrawSelectedId(null);
-              setDrawSettingsOpen(false);
-            }}
-            onClearAll={() => { commitDrawings([]); setDrawSelectedId(null); setDrawSettingsOpen(false); }}
-          />
           <ChartDrawLayer
             width={overlaySize.width}
             height={overlaySize.height}
