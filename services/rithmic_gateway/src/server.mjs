@@ -3,6 +3,7 @@ import { URL } from "node:url";
 
 import { buildArchivedValueAreaProfile } from "./archive-value-area.mjs";
 import { replayArchiveIntoBook } from "./archive-replay.mjs";
+import { HeatmapReplayStore } from "./heatmap-replay.mjs";
 import { RithmicBookStore } from "./book-store.mjs";
 import { loadConfig } from "./config.mjs";
 import { DatabentoEquitiesTradeStream } from "./databento-equities-stream.mjs";
@@ -29,6 +30,13 @@ const recorder = new MarketDataRecorder({
   enabled: config.recordEnabled,
 });
 recorder.attach(client);
+// Session LIQ MAP replay served from the recorder's own archive — the only
+// depth-by-order history that exists anywhere (Rithmic sells none).
+const heatmapReplay = new HeatmapReplayStore({
+  dir: config.recordDir,
+  tickSizeFor: (symbol) => tickSize(symbol),
+  log: (line) => process.stdout.write(`${line}\n`),
+});
 const vendorDataEdge = new VendorDataEdge(config);
 const databentoEquities = new DatabentoEquitiesTradeStream({
   apiKey: config.databentoApiKey,
@@ -1715,6 +1723,31 @@ const server = createServer(async (request, response) => {
         });
       }
       return json(response, 200, profile);
+    }
+    if (request.method === "GET" && url.pathname === "/v1/heatmap/replay") {
+      // Manifest for a completed session's replay pack, building it from the
+      // archive on first request. The response is one of: {manifest},
+      // {building, events, frames}, or {error} — never invented data.
+      const tradingDate = String(url.searchParams.get("tradingDate") || "").trim();
+      const root = String(url.searchParams.get("symbol") || "").trim().toUpperCase();
+      const exchange = String(url.searchParams.get("exchange") || "CME").trim().toUpperCase();
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(tradingDate) || !root) {
+        return json(response, 400, { error: "tradingDate (YYYY-MM-DD) and symbol are required." });
+      }
+      const result = await heatmapReplay.manifestOrBuild(tradingDate, exchange, root);
+      return json(response, result.error ? 404 : 200, result);
+    }
+    if (request.method === "GET" && url.pathname === "/v1/heatmap/replay/chunk") {
+      const tradingDate = String(url.searchParams.get("tradingDate") || "").trim();
+      const root = String(url.searchParams.get("symbol") || "").trim().toUpperCase();
+      const exchange = String(url.searchParams.get("exchange") || "CME").trim().toUpperCase();
+      const chunkStartMs = Number(url.searchParams.get("chunk"));
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(tradingDate) || !root || !Number.isFinite(chunkStartMs)) {
+        return json(response, 400, { error: "tradingDate, symbol and chunk are required." });
+      }
+      const chunk = await heatmapReplay.readChunk(tradingDate, exchange, root, chunkStartMs);
+      if (!chunk) return json(response, 404, { error: "No replay chunk for that window." });
+      return json(response, 200, chunk);
     }
     if (request.method === "GET" && url.pathname === "/v1/heatmap/snapshot") {
       const instrument = requestedInstrument(url);
