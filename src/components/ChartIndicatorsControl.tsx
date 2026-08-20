@@ -628,9 +628,13 @@ export default function ChartIndicatorsControl({
 
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase();
+    // Typing in the search box always browses the ENTIRE library. The
+    // category selection only scopes the browse view when no search is
+    // active — searching "volume" from the Trend tab must still surface
+    // every volume study.
     const pool = CHART_INDICATOR_CATALOG
       .filter((definition) => definition.id !== "source-code-indicator")
-      .filter((definition) => category === "All" || definition.category === category);
+      .filter((definition) => Boolean(needle) || category === "All" || definition.category === category);
     if (!needle) {
       return pool.sort((left, right) => {
         const favouriteDifference =
@@ -1033,7 +1037,7 @@ export default function ChartIndicatorsControl({
               </aside>
               <section className="min-w-0 flex-1 overflow-y-auto p-3">
                 <div className="mb-2 px-2 text-[9px] font-medium uppercase tracking-[0.14em] text-muted">
-                  {category}
+                  {search.trim() ? "Search" : category}
                 </div>
                 <div className="space-y-1">
                   {filtered.map((definition) => {
