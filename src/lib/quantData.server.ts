@@ -769,6 +769,69 @@ function sessionHistoryLooksComplete(payload: unknown, sessionDate: string) {
   return lastBar >= dstAdjustedEarliestClose;
 }
 
+/**
+ * The collector archives every completed cash-index session's real minute
+ * bars to its own disk minutes after the close. Serve completed sessions from
+ * that archive first: it is our permanent copy, it answers in milliseconds
+ * instead of a 30-40s provider restore, and replays stop depending on how
+ * long the provider keeps history.
+ */
+async function archivedCashIndexSessionPayload(
+  symbol: string,
+  aggregationPeriod: string,
+  sessionDate: string,
+): Promise<unknown | null> {
+  const minutes = Number(/^(\d+)m$/.exec(aggregationPeriod)?.[1]);
+  if (!Number.isInteger(minutes) || minutes < 1) return null;
+  try {
+    const { fetchInstitutionalMarketData, isInstitutionalMarketDataConfigured } =
+      await import("@/lib/institutionalMarketData.server");
+    if (!isInstitutionalMarketDataConfigured()) return null;
+    const response = await fetchInstitutionalMarketData(
+      `v1/market-data/cash-index-history?symbol=${encodeURIComponent(symbol)}&sessionDate=${encodeURIComponent(sessionDate)}`,
+      { method: "GET" },
+      8_000,
+    );
+    if (!response.ok) return null;
+    const body = await response.json() as {
+      complete?: boolean;
+      candles?: Array<{ timestamp: number; open: number; high: number; low: number; close: number; volume: number }>;
+    };
+    if (body?.complete !== true || !Array.isArray(body.candles) || !body.candles.length) return null;
+    // The archive stores 1m; aggregate to the requested native bucket anchored
+    // to the session's first print, matching the provider's session shape.
+    const bucketMs = minutes * 60_000;
+    const anchor = body.candles[0].timestamp;
+    const buckets = new Map<number, { open: number; high: number; low: number; close: number; volume: number }>();
+    for (const candle of body.candles) {
+      if (![candle.timestamp, candle.open, candle.high, candle.low, candle.close].every(Number.isFinite)) continue;
+      const bucket = anchor + Math.floor((candle.timestamp - anchor) / bucketMs) * bucketMs;
+      const existing = buckets.get(bucket);
+      if (!existing) {
+        buckets.set(bucket, { open: candle.open, high: candle.high, low: candle.low, close: candle.close, volume: candle.volume || 0 });
+      } else {
+        existing.high = Math.max(existing.high, candle.high);
+        existing.low = Math.min(existing.low, candle.low);
+        existing.close = candle.close;
+        existing.volume += candle.volume || 0;
+      }
+    }
+    const data: Record<string, { openPrice: number; highPrice: number; lowPrice: number; closePrice: number; volume: number }> = {};
+    for (const [timestamp, candle] of buckets) {
+      data[String(timestamp)] = {
+        openPrice: candle.open,
+        highPrice: candle.high,
+        lowPrice: candle.low,
+        closePrice: candle.close,
+        volume: candle.volume,
+      };
+    }
+    return { data };
+  } catch {
+    return null;
+  }
+}
+
 async function getOptionsUnderlyingSessionHistory(
   symbol: string,
   aggregationPeriod: string,
@@ -792,6 +855,8 @@ async function getOptionsUnderlyingSessionHistory(
   // Completed sessions are immutable enough to share through Next's data
   // cache, while today's session keeps its short live cache above.
   if (sessionDate === marketDateKey(Date.now())) return load();
+  const archived = await archivedCashIndexSessionPayload(symbol, aggregationPeriod, sessionDate);
+  if (archived) return archived;
   try {
     return await unstable_cache(
       async () => {

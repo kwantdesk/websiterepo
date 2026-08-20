@@ -3,6 +3,7 @@ import { URL } from "node:url";
 
 import { buildArchivedValueAreaProfile } from "./archive-value-area.mjs";
 import { replayArchiveIntoBook } from "./archive-replay.mjs";
+import { CashIndexArchiver } from "./cash-index-archiver.mjs";
 import { HeatmapReplayStore } from "./heatmap-replay.mjs";
 import { RithmicBookStore } from "./book-store.mjs";
 import { loadConfig } from "./config.mjs";
@@ -35,6 +36,19 @@ recorder.attach(client);
 const heatmapReplay = new HeatmapReplayStore({
   dir: config.recordDir,
   tickSizeFor: (symbol) => tickSize(symbol),
+  log: (line) => process.stdout.write(`${line}\n`),
+});
+// Our OWN daily copy of each completed cash-index session's real minute OHLC
+// (the provider only serves it after the close, and keeps it on its own
+// terms). Archived minutes after every close, retried until complete,
+// backfilled on startup — replays never depend on the provider again.
+const cashIndexArchiver = new CashIndexArchiver({
+  dir: config.recordDir,
+  apiKey: config.quantDataApiKey,
+  tickers: String(process.env.CASH_INDEX_ARCHIVE_TICKERS || "")
+    .split(",")
+    .map((ticker) => ticker.trim())
+    .filter(Boolean),
   log: (line) => process.stdout.write(`${line}\n`),
 });
 const vendorDataEdge = new VendorDataEdge(config);
@@ -1724,6 +1738,21 @@ const server = createServer(async (request, response) => {
       }
       return json(response, 200, profile);
     }
+    if (request.method === "GET" && url.pathname === "/v1/market-data/cash-index-history") {
+      const symbol = String(url.searchParams.get("symbol") || "").trim().toUpperCase();
+      const sessionDate = String(url.searchParams.get("sessionDate") || "").trim();
+      if (!symbol || !/^\d{4}-\d{2}-\d{2}$/.test(sessionDate)) {
+        return json(response, 400, { error: "symbol and sessionDate (YYYY-MM-DD) are required." });
+      }
+      const archived = await cashIndexArchiver.readSession(symbol, sessionDate);
+      if (!archived) {
+        return json(response, 404, {
+          error: `No archived ${symbol} session for ${sessionDate}.`,
+          archiver: cashIndexArchiver.status(),
+        });
+      }
+      return json(response, 200, archived);
+    }
     if (request.method === "GET" && url.pathname === "/v1/heatmap/replay") {
       // Manifest for a completed session's replay pack, building it from the
       // archive on first request. The response is one of: {manifest},
@@ -1809,6 +1838,12 @@ server.listen(config.port, config.host, () => {
   if (config.databentoApiKey) databentoEquities.start();
   if (config.quantDataApiKey) quantDataMarketSnapshots.start();
   if (config.massiveApiKey) massiveIndices.start();
+  if (cashIndexArchiver.enabled) {
+    cashIndexArchiver.start();
+    process.stdout.write(`[cash-index] archiving ${cashIndexArchiver.tickers.join(", ")} after every cash close\n`);
+  } else {
+    process.stdout.write("[cash-index] DISABLED - needs recordDir and the QuantData key\n");
+  }
 });
 
 // Flush the manifest and close files cleanly on shutdown so a restart never
