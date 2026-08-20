@@ -149,10 +149,14 @@ export default function GexMapFutureMatrix({ palette, zoom = 1 }: { palette: Gex
       .filter((expiration) => expiration >= chain.sessionDate
         && Date.parse(`${expiration}T21:00:00Z`) <= horizonMs)
       .sort();
-    if (!expirations.length) return { expirations: [], strikes: [], cells: new Map<string, number>(), starKey: "", starMagnitude: 1 };
+    if (!expirations.length) return { expirations: [], strikes: [], cells: new Map<string, number>(), starKey: "", starMagnitude: 1, columnStars: new Map<string, number>() };
     const included = new Set(expirations);
     const cells = new Map<string, number>();
     const strikeSet = new Set<number>();
+    // Each expiry column gets its own star (largest absolute exposure in that
+    // column) so the forward structure highlights per DAY, not one lone cell.
+    const columnStars = new Map<string, number>();
+    const columnStarMagnitudes = new Map<string, number>();
     let starMagnitude = 0;
     let starKey = "";
     for (const row of chain.expiryStrikes) {
@@ -168,9 +172,13 @@ export default function GexMapFutureMatrix({ palette, zoom = 1 }: { palette: Gex
         starMagnitude = magnitude;
         starKey = key;
       }
+      if (magnitude > (columnStarMagnitudes.get(row.expiration) ?? 0)) {
+        columnStarMagnitudes.set(row.expiration, magnitude);
+        columnStars.set(row.expiration, row.strike);
+      }
     }
     const strikes = [...strikeSet].sort((a, b) => b - a);
-    return { expirations, strikes, cells, starKey, starMagnitude: Math.max(1, starMagnitude) };
+    return { expirations, strikes, cells, starKey, starMagnitude: Math.max(1, starMagnitude), columnStars };
   }, [chain, settings.lookaheadDays]);
 
   const spotStrike = useMemo(() => {
@@ -178,6 +186,24 @@ export default function GexMapFutureMatrix({ palette, zoom = 1 }: { palette: Gex
     return view.strikes.reduce((best, strike) =>
       Math.abs(strike - chain.stockPrice!) < Math.abs(best - chain.stockPrice!) ? strike : best);
   }, [chain, view]);
+
+  // Every load, refresh, or window change: pin horizontal scroll back to zero
+  // (a leftover offset detached the sticky strike column and left a gap on
+  // its left) and centre the spot strike vertically, like the ladder panels.
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const spotRowRef = useRef<HTMLTableRowElement>(null);
+  const centeredKeyRef = useRef("");
+  useEffect(() => {
+    if (!view?.strikes.length || spotStrike === null) return;
+    const key = `${chain?.symbol}:${chain?.greekMode}:${settings.lookaheadDays}`;
+    if (centeredKeyRef.current === key) return;
+    const container = scrollRef.current;
+    const row = spotRowRef.current;
+    if (!container || !row) return;
+    centeredKeyRef.current = key;
+    container.scrollLeft = 0;
+    container.scrollTop = Math.max(0, row.offsetTop - container.clientHeight / 2 + row.clientHeight / 2);
+  }, [chain?.greekMode, chain?.symbol, settings.lookaheadDays, spotStrike, view]);
 
   const chip = "flex h-6 items-center rounded-[3px] border border-border/70 bg-background/35 px-2 text-[9px] font-semibold uppercase leading-none tracking-[0.075em]";
 
@@ -267,7 +293,7 @@ export default function GexMapFutureMatrix({ palette, zoom = 1 }: { palette: Gex
           {loading ? "Loading the forward exposure surface…" : "No expirations publish inside the selected window."}
         </div>
       ) : (
-        <div className="min-h-0 flex-1 overflow-auto bg-chart-background" style={zoom !== 1 ? ({ zoom } as React.CSSProperties) : undefined}>
+        <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto bg-chart-background" style={zoom !== 1 ? ({ zoom } as React.CSSProperties) : undefined}>
           <table className="w-full min-w-max border-separate border-spacing-0 font-mono text-[10px]">
             <thead>
               <tr>
@@ -285,7 +311,7 @@ export default function GexMapFutureMatrix({ palette, zoom = 1 }: { palette: Gex
             </thead>
             <tbody>
               {view.strikes.map((strike) => (
-                <tr key={strike}>
+                <tr key={strike} ref={strike === spotStrike ? spotRowRef : undefined}>
                   <td className={`sticky left-0 z-10 whitespace-nowrap border-r border-border bg-panel px-2 py-0.5 text-right font-semibold ${strike === spotStrike ? "text-primary" : "text-foreground"}`}>
                     {strike === spotStrike ? "▸ " : ""}{strike.toLocaleString(undefined, { maximumFractionDigits: 2 })}
                   </td>
@@ -296,11 +322,22 @@ export default function GexMapFutureMatrix({ palette, zoom = 1 }: { palette: Gex
                       return <td key={key} className="px-1.5 py-0.5 text-center text-[9px] text-muted/25">0%</td>;
                     }
                     const share = value / view.starMagnitude;
-                    const strength = 0.5 + 0.5 * Math.max(-1, Math.min(1, share));
+                    // The full chain spans orders of magnitude; a linear share
+                    // crushed everything into the dim middle of the gradient
+                    // ("three colours"). Per-side LOG scaling spreads the whole
+                    // palette exactly like the Present ladder's slot picking:
+                    // $11M and $5B land in clearly different bands, zero stays
+                    // pinned to the scale middle, the Star alone reaches its end.
+                    const logShare = Math.log1p(Math.abs(value)) / Math.log1p(view.starMagnitude);
+                    const strength = 0.5 + 0.5 * Math.sign(value) * logShare;
                     const colour = signedScale[Math.max(0, Math.min(signedScale.length - 1, Math.round(strength * (signedScale.length - 1))))];
                     const magnitudeShare = Math.abs(share);
                     const focused = magnitudeShare * 100 >= settings.highlightPercent;
                     const isStar = key === view.starKey;
+                    const isColumnStar = view.columnStars.get(expiration) === strike;
+                    // Bright ends of the gradient need dark text for contrast,
+                    // matching how the Present ladder prints over solid bands.
+                    const brightCell = strength >= 0.72 || strength <= 0.28;
                     const text = settings.valueMode === "star-percent"
                       ? `${(share * 100).toFixed(share * 100 >= 10 || share * 100 <= -10 ? 0 : 1)}%`
                       : formatCompactDollars(value);
@@ -308,13 +345,17 @@ export default function GexMapFutureMatrix({ palette, zoom = 1 }: { palette: Gex
                       <td
                         key={key}
                         title={`${settings.symbol} ${strike} · ${expiration} · ${formatCompactDollars(value)} (${(share * 100).toFixed(1)}% of Star)`}
-                        className={`whitespace-nowrap px-1.5 py-0.5 text-center ${isStar ? "font-bold" : ""}`}
+                        className={`whitespace-nowrap px-1.5 py-0.5 text-center ${isStar || isColumnStar ? "font-bold" : ""}`}
                         style={{
                           backgroundColor: colour,
-                          opacity: focused ? Math.max(0.32, magnitudeShare) : 0.08,
-                          color: "var(--foreground)",
-                          outline: isStar ? "1.5px solid var(--foreground)" : undefined,
-                          outlineOffset: isStar ? "-1.5px" : undefined,
+                          opacity: focused ? 1 : 0.1,
+                          color: brightCell ? "#0A0D14" : "var(--foreground)",
+                          outline: isStar
+                            ? "2px solid var(--foreground)"
+                            : isColumnStar
+                              ? "1px solid color-mix(in srgb, var(--foreground) 65%, transparent)"
+                              : undefined,
+                          outlineOffset: isStar || isColumnStar ? "-1.5px" : undefined,
                         }}
                       >
                         {isStar ? "★ " : ""}{text}
