@@ -6239,10 +6239,14 @@ function WorkspaceChartPaneComponent({
         // exceed the request timeout until it finishes in the background.
       }
     };
+    // First pass early so a pane whose live stream dropped prints during the
+    // load seam repairs within a minute; steady-state stays at four minutes.
+    const firstTimer = window.setTimeout(() => { void heal(); }, 60_000);
     const timer = window.setInterval(() => { void heal(); }, 240_000);
     return () => {
       cancelled = true;
       controller.abort();
+      window.clearTimeout(firstTimer);
       window.clearInterval(timer);
     };
   }, [needsOrderFlowHistory, pane.broker, pane.symbol, pane.timeframe, period]);
