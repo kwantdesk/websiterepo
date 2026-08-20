@@ -419,7 +419,7 @@ function starPaletteFromAccent(accentHex: string): StarPalette {
   return { accent: rgbHex(accent), text: rgbHex(text), outline: rgbHex(text) };
 }
 
-function GexMapDropdown<T extends string>({
+export function GexMapDropdown<T extends string>({
   ariaLabel,
   value,
   options,
@@ -1587,6 +1587,32 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
       return next;
     });
   }, []);
+  // FUTURE matrix zoom is independent of the ladder zoom and starts at 100%.
+  const [futureZoom, setFutureZoom] = useState(1);
+  useEffect(() => {
+    try {
+      const stored = Number(window.localStorage.getItem("kwantdesk:gex-map-future-zoom:v1"));
+      if (Number.isFinite(stored) && stored >= GEX_MAP_ZOOM_MIN && stored <= GEX_MAP_ZOOM_MAX) {
+        setFutureZoom(Math.round(stored * 10) / 10);
+      }
+    } catch {
+      // Zoom stays at 100% when browser storage is unavailable.
+    }
+  }, []);
+  const adjustFutureZoom = useCallback((direction: 1 | -1) => {
+    setFutureZoom((current) => {
+      const next = Math.round(
+        Math.min(GEX_MAP_ZOOM_MAX, Math.max(GEX_MAP_ZOOM_MIN, current + direction * GEX_MAP_ZOOM_STEP)) * 10,
+      ) / 10;
+      try {
+        window.localStorage.setItem("kwantdesk:gex-map-future-zoom:v1", String(next));
+        window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
+      } catch {
+        // Zoom still applies for this session without storage.
+      }
+      return next;
+    });
+  }, []);
   // Price lock: SSR-safe default first, stored value applied after hydration.
   const [priceLocked, setPriceLocked] = useState(false);
   useEffect(() => {
@@ -1960,18 +1986,18 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
           <div className="ml-1 flex h-7 shrink-0 items-center gap-0.5 rounded-[3px] border border-border/70 bg-background/35 p-0.5" title={`Node zoom ${Math.round(ladderZoom * 100)}% — zoom in for fewer, larger nodes; out for more, smaller ones`}>
             <button
               type="button"
-              onClick={() => adjustLadderZoom(-1)}
-              disabled={ladderZoom <= GEX_MAP_ZOOM_MIN}
+              onClick={() => (timeHorizon === "future" ? adjustFutureZoom(-1) : adjustLadderZoom(-1))}
+              disabled={(timeHorizon === "future" ? futureZoom : ladderZoom) <= GEX_MAP_ZOOM_MIN}
               className="flex h-5 w-5 items-center justify-center rounded-[2px] text-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-35"
               aria-label="Zoom strike nodes out (show more)"
             >
               <Minus className="h-3 w-3" />
             </button>
-            <span className="min-w-[30px] text-center text-[9px] font-semibold uppercase leading-none tracking-[0.075em] text-foreground">{Math.round(ladderZoom * 100)}%</span>
+            <span className="min-w-[30px] text-center text-[9px] font-semibold uppercase leading-none tracking-[0.075em] text-foreground">{Math.round((timeHorizon === "future" ? futureZoom : ladderZoom) * 100)}%</span>
             <button
               type="button"
-              onClick={() => adjustLadderZoom(1)}
-              disabled={ladderZoom >= GEX_MAP_ZOOM_MAX}
+              onClick={() => (timeHorizon === "future" ? adjustFutureZoom(1) : adjustLadderZoom(1))}
+              disabled={(timeHorizon === "future" ? futureZoom : ladderZoom) >= GEX_MAP_ZOOM_MAX}
               className="flex h-5 w-5 items-center justify-center rounded-[2px] text-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-35"
               aria-label="Zoom strike nodes in (show fewer)"
             >
@@ -2024,7 +2050,7 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
 
         {timeHorizon === "future" ? (
           <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
-            <GexMapFutureMatrix palette={activePalette} />
+            <GexMapFutureMatrix palette={activePalette} zoom={futureZoom} />
           </div>
         ) : (
         <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-2 pb-1.5 pt-0">

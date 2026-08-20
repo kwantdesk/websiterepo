@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RefreshCw } from "lucide-react";
+import { GexMapDropdown } from "@/components/gex-map/GexMapWorkspace";
 import { gexMapSignedScale, type GexMapPalette } from "@/lib/gexMapPalette";
 import { OPTIONS_FLOW_INSTRUMENTS } from "@/lib/optionsFlow";
 
@@ -81,7 +82,7 @@ function expirationHeading(expiration: string) {
   return { date: expiration.slice(5), weekday };
 }
 
-export default function GexMapFutureMatrix({ palette }: { palette: GexMapPalette }) {
+export default function GexMapFutureMatrix({ palette, zoom = 1 }: { palette: GexMapPalette; zoom?: number }) {
   const [settings, setSettings] = useState<FutureSettings>(() => loadFutureSettings());
   const [chain, setChain] = useState<FutureChain | null>(null);
   const [loading, setLoading] = useState(true);
@@ -183,16 +184,18 @@ export default function GexMapFutureMatrix({ palette }: { palette: GexMapPalette
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col">
       <div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-border bg-panel px-2 py-1.5">
-        <select
+        <GexMapDropdown
+          ariaLabel="Forward matrix underlying"
           value={settings.symbol}
-          onChange={(event) => patchSettings({ symbol: event.target.value })}
-          aria-label="Forward matrix underlying"
-          className="h-6 rounded-[3px] border border-border/70 bg-background/35 px-1.5 text-[10px] font-semibold text-foreground outline-none"
-        >
-          {OPTIONS_FLOW_INSTRUMENTS.map((instrument) => (
-            <option key={instrument.symbol} value={instrument.symbol}>{instrument.symbol}</option>
-          ))}
-        </select>
+          options={OPTIONS_FLOW_INSTRUMENTS.map((instrument) => ({
+            value: instrument.symbol,
+            label: instrument.symbol,
+            detail: instrument.label,
+          }))}
+          menuLabel="Underlying"
+          menuWidth={224}
+          onChange={(symbol) => patchSettings({ symbol })}
+        />
         <div className="flex h-6 items-center rounded-[3px] border border-border/70 bg-background/35 p-0.5">
           {(["GAMMA", "VANNA"] as const).map((greek) => (
             <button
@@ -206,14 +209,18 @@ export default function GexMapFutureMatrix({ palette }: { palette: GexMapPalette
             </button>
           ))}
         </div>
-        <select
+        <GexMapDropdown
+          ariaLabel="Forward window"
           value={String(settings.lookaheadDays)}
-          onChange={(event) => patchSettings({ lookaheadDays: Number(event.target.value) })}
-          aria-label="Forward window"
-          className="h-6 rounded-[3px] border border-border/70 bg-background/35 px-1.5 text-[10px] font-semibold text-foreground outline-none"
-        >
-          {LOOKAHEAD_CHOICES.map((days) => <option key={days} value={days}>{days}d</option>)}
-        </select>
+          options={LOOKAHEAD_CHOICES.map((days) => ({
+            value: String(days),
+            label: `${days}d`,
+            detail: `Expiries within ${days} days`,
+          }))}
+          menuLabel="Forward window"
+          menuWidth={190}
+          onChange={(days) => patchSettings({ lookaheadDays: Number(days) })}
+        />
         <div className="flex h-6 items-center rounded-[3px] border border-border/70 bg-background/35 p-0.5">
           {([["star-percent", "% Star"], ["signed", "$"]] as const).map(([mode, label]) => (
             <button
@@ -256,7 +263,7 @@ export default function GexMapFutureMatrix({ palette }: { palette: GexMapPalette
           {loading ? "Loading the forward exposure surface…" : "No expirations publish inside the selected window."}
         </div>
       ) : (
-        <div className="min-h-0 flex-1 overflow-auto bg-chart-background">
+        <div className="min-h-0 flex-1 overflow-auto bg-chart-background" style={zoom !== 1 ? ({ zoom } as React.CSSProperties) : undefined}>
           <table className="w-full min-w-max border-separate border-spacing-0 font-mono text-[10px]">
             <thead>
               <tr>
