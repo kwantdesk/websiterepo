@@ -5498,7 +5498,9 @@ function Chart({
           const points = [...new Map([...current.points, ...payload.points]
             .map((point) => [`${point.timestampMs}:${point.sessionDate}`, point])).values()]
             .sort((left, right) => left.timestampMs - right.timestampMs)
-            .slice(-2_000);
+            // Five sessions of one-minute trail buckets is ~2,000 points on
+            // its own; the cap only exists to bound a runaway merge.
+            .slice(-4_000);
           return { ...payload, points };
         });
       } catch {

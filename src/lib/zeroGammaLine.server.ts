@@ -1,9 +1,15 @@
 import { unstable_cache } from "next/cache";
+import { getDatabentoBars } from "@/lib/databento";
 import {
   newYorkCashCloseIso,
   type NativeGammaRoot,
 } from "@/lib/databentoGamma.server";
-import { getChartGammaLevels } from "@/lib/quantData.server";
+import {
+  nativeProfileFrames,
+  replayWindow,
+  type NativePricePoint,
+} from "@/lib/gex-box/native";
+import { getChartGammaLevels, getGexMapPanel } from "@/lib/quantData.server";
 import type { ZeroGammaLinePayload, ZeroGammaLinePoint, ZeroGammaLineSource } from "@/lib/zeroGammaLine";
 
 function previousTradingDay(sessionDate: string) {
@@ -80,6 +86,95 @@ function zeroGammaFromPayload(payload: Awaited<ReturnType<typeof getChartGammaLe
 const historicalPointCache = new Map<string, ZeroGammaLinePoint>();
 const HISTORICAL_POINT_CACHE_LIMIT = 400;
 
+// The intraday trail derives one zero-Gamma crossing per completed
+// one-minute interval-map bucket — the same surface reconstruction and
+// cumulative-sign crossing GEX BOX paints as its zero-Gamma trail. This is
+// what turns the chart line from straight segments between daily closes into
+// a sensitive trace of where the crossing actually travelled all session.
+const TRAIL_EXPOSURE_TICKER: Record<ZeroGammaLineSource, string> = {
+  NQ: "NDX",
+  ES: "SPX",
+  NDX: "NDX",
+  QQQ: "QQQ",
+  SPX: "SPX",
+  SPXW: "SPX",
+  SPY: "SPY",
+};
+
+async function computeIntradayTrail(
+  root: NativeGammaRoot,
+  sourceSymbol: ZeroGammaLineSource,
+  date: string,
+): Promise<ZeroGammaLinePoint[]> {
+  const exposureSymbol = TRAIL_EXPOSURE_TICKER[sourceSymbol] ?? (root === "NQ" ? "NDX" : "SPX");
+  const panel = await getGexMapPanel(exposureSymbol, "GAMMA", date);
+  // Futures charts display the crossing on the futures scale. Databento 1m
+  // closes over the session window give a per-minute cash→futures basis, the
+  // same calibration the value-area and gamma-level projections use. Cash
+  // sources keep their own option chain's scale untouched.
+  let displayPoints: NativePricePoint[] = [];
+  if (sourceSymbol === root) {
+    const frameWindow = replayWindow(panel.frames);
+    if (frameWindow) {
+      const bars = await getDatabentoBars(`${root}.v.0`, "1m", frameWindow.start, frameWindow.end);
+      displayPoints = bars
+        .filter((bar) => Number.isFinite(bar.timestamp) && Number.isFinite(bar.close) && bar.close > 0)
+        .map((bar) => ({ timestamp: bar.timestamp, price: bar.close }));
+    }
+  }
+  const frames = nativeProfileFrames(panel, exposureSymbol, displayPoints);
+  return frames.flatMap((frame): ZeroGammaLinePoint[] => {
+    const value = frame.zero_gamma;
+    if (value === null || !Number.isFinite(value) || !Number.isFinite(frame.timestamp)) return [];
+    // The same outlier guard as the session points: a crossing far outside
+    // the traded range is a broken surface, not a level worth painting.
+    const spot = frame.spot;
+    if (Number.isFinite(spot) && spot > 0 && Math.abs(value - spot) / spot > 0.25) return [];
+    return [{ timestampMs: frame.timestamp, sessionDate: date, value, status: "HISTORICAL" }];
+  });
+}
+
+// Completed-session trails are immutable → durable cross-instance cache.
+const cachedHistoricalTrail = (
+  root: NativeGammaRoot,
+  sourceSymbol: ZeroGammaLineSource,
+  date: string,
+) => unstable_cache(
+  () => computeIntradayTrail(root, sourceSymbol, date),
+  ["zero-gamma-trail-v1", root, sourceSymbol, date],
+  { revalidate: 6 * 60 * 60 },
+)();
+
+// The live session gains at most one new bucket per minute; a short
+// process-local memo keeps a polling pane fleet from rebuilding the same
+// trail on every refresh tick.
+const liveTrailCache = new Map<string, { at: number; points: ZeroGammaLinePoint[] }>();
+const LIVE_TRAIL_MEMO_MS = 45_000;
+
+async function intradayTrailSafe(
+  root: NativeGammaRoot,
+  sourceSymbol: ZeroGammaLineSource,
+  date: string,
+  completed: boolean,
+): Promise<ZeroGammaLinePoint[]> {
+  try {
+    if (completed) return await cachedHistoricalTrail(root, sourceSymbol, date);
+    const key = `${root}:${sourceSymbol}:${date}`;
+    const cached = liveTrailCache.get(key);
+    if (cached && Date.now() - cached.at < LIVE_TRAIL_MEMO_MS) return cached.points;
+    const points = await computeIntradayTrail(root, sourceSymbol, date);
+    liveTrailCache.set(key, { at: Date.now(), points });
+    if (liveTrailCache.size > 64) {
+      const oldest = liveTrailCache.keys().next().value;
+      if (oldest !== undefined) liveTrailCache.delete(oldest);
+    }
+    return points;
+  } catch {
+    // The session anchors below still paint; the trail heals on a later poll.
+    return [];
+  }
+}
+
 async function computeHistoricalPoint(
   root: NativeGammaRoot,
   sourceSymbol: ZeroGammaLineSource,
@@ -127,25 +222,35 @@ export async function getZeroGammaLinePayload(
     cursor = previousTradingDay(cursor);
   }
 
-  const historical = await Promise.all(completedDates.map(async (date): Promise<ZeroGammaLinePoint | null> => {
-    const cacheKey = `${root}:${sourceSymbol}:${date}`;
-    const cached = historicalPointCache.get(cacheKey);
-    if (cached) return cached;
-    try {
-      const point = await cachedHistoricalPoint(root, sourceSymbol, date);
-      if (historicalPointCache.size >= HISTORICAL_POINT_CACHE_LIMIT) {
-        const oldest = historicalPointCache.keys().next().value;
-        if (oldest !== undefined) historicalPointCache.delete(oldest);
+  const [historical, historicalTrails, currentTrail, current] = await Promise.all([
+    Promise.all(completedDates.map(async (date): Promise<ZeroGammaLinePoint | null> => {
+      const cacheKey = `${root}:${sourceSymbol}:${date}`;
+      const cached = historicalPointCache.get(cacheKey);
+      if (cached) return cached;
+      try {
+        const point = await cachedHistoricalPoint(root, sourceSymbol, date);
+        if (historicalPointCache.size >= HISTORICAL_POINT_CACHE_LIMIT) {
+          const oldest = historicalPointCache.keys().next().value;
+          if (oldest !== undefined) historicalPointCache.delete(oldest);
+        }
+        historicalPointCache.set(cacheKey, point);
+        return point;
+      } catch {
+        return null;
       }
-      historicalPointCache.set(cacheKey, point);
-      return point;
-    } catch {
-      return null;
-    }
-  }));
-
-  const current = await getChartGammaLevels(root, sourceSymbol, sessionDate).catch(() => null);
+    })),
+    Promise.all(completedDates.map((date) => intradayTrailSafe(root, sourceSymbol, date, true))),
+    completedDates.includes(sessionDate)
+      ? Promise.resolve([] as ZeroGammaLinePoint[])
+      : intradayTrailSafe(root, sourceSymbol, sessionDate, false),
+    getChartGammaLevels(root, sourceSymbol, sessionDate).catch(() => null),
+  ]);
   const points = historical.filter((point): point is ZeroGammaLinePoint => point !== null);
+  points.push(...historicalTrails.flat());
+  points.push(...currentTrail.map((point) => ({
+    ...point,
+    status: marketOpen ? "LIVE" as const : "EOD" as const,
+  })));
   const currentZeroGamma = current ? zeroGammaFromPayload(current) : null;
   if (current && currentZeroGamma !== null) {
     points.push({
@@ -172,6 +277,6 @@ export async function getZeroGammaLinePayload(
         : null,
     points: deduplicated,
     method: sourceSymbol === root ? "TRUE_OI_SCENARIO" : "OPTIONS_GAMMA_CROSSING",
-    disclosure: "Zero Gamma is the verified aggregate dealer-Gamma sign crossing for the chart's own options family. Each observation paints forward from its timestamp like a running VWAP; completed-session values are never painted backward.",
+    disclosure: "Zero Gamma is the verified aggregate dealer-Gamma sign crossing for the chart's own options family. The intraday trail derives one crossing per completed one-minute positioning bucket; completed-session values are never painted backward. Price above the line is the positive-Gamma environment, below is negative.",
   };
 }
