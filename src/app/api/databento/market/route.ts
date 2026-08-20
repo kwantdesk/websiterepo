@@ -211,6 +211,9 @@ export async function GET(request: Request) {
   const symbol = url.searchParams.get("symbol")?.trim();
   const timeframe = url.searchParams.get("timeframe")?.trim() || "5m";
   const includeOrderFlow = url.searchParams.get("orderFlow") === "1";
+  // Flow-heal polling only needs the flow-baked candles; the multi-megabyte
+  // execution tuple tape is skippable per request without a separate cache.
+  const includeExecutions = includeOrderFlow && url.searchParams.get("exec") !== "0";
   const forceFresh = url.searchParams.get("fresh") === "1";
   const requestedDays = Number(url.searchParams.get("days") ?? DEFAULT_HISTORY_DAYS);
   const historyDays = Number.isFinite(requestedDays)
@@ -233,7 +236,7 @@ export async function GET(request: Request) {
     return NextResponse.json(
       {
         candles: cached.candles,
-        executions: includeOrderFlow ? cached.executions : [],
+        executions: includeExecutions ? cached.executions : [],
         source: "CME",
         dataset: "GLBX.MDP3",
         range: `${historyDays}D`,
@@ -279,7 +282,7 @@ export async function GET(request: Request) {
     return NextResponse.json(
       {
         candles,
-        executions,
+        executions: includeExecutions ? executions : [],
         source: "CME",
         dataset: "GLBX.MDP3",
         range: `${historyDays}D`,
@@ -293,7 +296,7 @@ export async function GET(request: Request) {
       return NextResponse.json(
         {
           candles: cached.candles,
-          executions: includeOrderFlow ? cached.executions : [],
+          executions: includeExecutions ? cached.executions : [],
           source: "CME",
           dataset: "GLBX.MDP3",
           range: `${historyDays}D`,

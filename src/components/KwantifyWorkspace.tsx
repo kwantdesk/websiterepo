@@ -3356,6 +3356,9 @@ async function fetchWorkspaceCandles(
   includeOrderFlow = false,
   signal?: AbortSignal,
   forceFresh = false,
+  // The periodic flow-heal only needs the route's flow-baked candles. It must
+  // not re-download the gateway execution archive or replace the shared tape.
+  healOnly = false,
 ) {
   const periodConfig = getPeriodConfig(period);
   const usingCTraderFeed = FALLBACK_CTRADER_BROKER_NAMES.includes(broker as (typeof FALLBACK_CTRADER_BROKER_NAMES)[number]);
@@ -3366,18 +3369,18 @@ async function fetchWorkspaceCandles(
   const historicalLimit = getHistoricalCandleLimit(period, timeframe, outputsize);
 
   if (broker === "Databento") {
-    const requestKey = `${symbol}::${timeframe}::${includeOrderFlow ? "flow" : "bars"}${forceFresh ? "::fresh" : ""}`;
+    const requestKey = `${symbol}::${timeframe}::${includeOrderFlow ? "flow" : "bars"}${forceFresh ? "::fresh" : ""}${healOnly ? "::heal" : ""}`;
     const pending = workspaceCandleRequests.get(requestKey);
     if (pending) return pending;
 
     const request = (async () => {
       const eventBased = isEventBasedChartInterval(timeframe);
       const contractSymbol = currentCmeContract(symbol);
-      const orderFlowRequest = includeOrderFlow && contractSymbol
+      const orderFlowRequest = includeOrderFlow && contractSymbol && !healOnly
         ? fetchWorkspaceOrderFlow(symbol, timeframe, contractSymbol)
         : Promise.resolve(null);
       const response = await fetch(
-        `/api/cme-history?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&days=${DEFAULT_CHART_HISTORY_CALENDAR_DAYS}${includeOrderFlow ? "&orderFlow=1" : ""}${forceFresh ? `&fresh=1&t=${Date.now()}` : ""}`,
+        `/api/cme-history?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&days=${DEFAULT_CHART_HISTORY_CALENDAR_DAYS}${includeOrderFlow ? "&orderFlow=1" : ""}${healOnly ? "&exec=0" : ""}${forceFresh ? `&fresh=1&t=${Date.now()}` : ""}`,
         {
           cache: "no-store",
           // Keep a history request alive across rapid timeframe switches. Its
@@ -3409,7 +3412,7 @@ async function fetchWorkspaceCandles(
         providerExecutionTape,
         compactIndicatorExecutionHistory(privateExecutionTape),
       );
-      if (includeOrderFlow) {
+      if (includeOrderFlow && !healOnly) {
         storeWorkspaceExecutionTape(
           workspaceOrderFlowKey(symbol, timeframe),
           executionTape,
@@ -3422,7 +3425,7 @@ async function fetchWorkspaceCandles(
         downloaded.length
           ? writeChartHistoryCache(symbol, timeframe, downloaded)
           : Promise.resolve(null),
-        executionTape.length
+        executionTape.length && !healOnly
           ? writeExecutionTapeCache(symbol, timeframe, executionTape)
           : Promise.resolve(null),
       ]);
@@ -6184,6 +6187,65 @@ function WorkspaceChartPaneComponent({
       cancelled = true;
     };
   }, [needsOrderFlowHistory, pane.broker, pane.symbol, pane.timeframe, resolvedContractSymbol]);
+
+  // Flow-heal loop. Enriched history is otherwise consumed exactly once at
+  // pane load, so any execution the live stream drops during a busy session
+  // leaves that bar without bid/ask volume forever — CVD then skips it and the
+  // series degrades into disconnected dots the longer the pane stays open
+  // (measured: IndexedDB flow runs fragmenting from the RTH open while the
+  // server's flow-baked history for the same window was complete). Re-consume
+  // the route's baked flow at a low cadence and back-fill closed bars; the
+  // live edge past the provider's availability lag stays with the stream.
+  useEffect(() => {
+    if (
+      pane.broker !== "Databento"
+      || !needsOrderFlowHistory
+      || isEventBasedChartInterval(pane.timeframe)
+    ) return;
+    let cancelled = false;
+    const controller = new AbortController();
+    const heal = async () => {
+      try {
+        const downloaded = await fetchWorkspaceCandles(
+          pane.symbol,
+          pane.timeframe,
+          pane.broker,
+          period,
+          500,
+          true,
+          controller.signal,
+          false,
+          true,
+        );
+        if (cancelled || !downloaded.length) return;
+        const previous = latestCandlesRef.current;
+        const healed = enrichCandlesWithInstitutionalCandleFlow(previous, downloaded);
+        if (healed === previous || healed.length !== previous.length) return;
+        // Commit only when a bar that had no aggressor split gained one.
+        // Baked values for already-covered bars change marginally on every
+        // poll and are not worth a full series rebuild.
+        const filledGap = healed.some((candle, index) => {
+          const before = previous[index];
+          return Number(before.askVolume ?? 0) + Number(before.bidVolume ?? 0) <= 0
+            && Number(candle.askVolume ?? 0) + Number(candle.bidVolume ?? 0) > 0;
+        });
+        if (!filledGap) return;
+        latestCandlesRef.current = healed;
+        if (hasUsableOrderFlowHistory(healed)) setOrderFlowHistoryReady(true);
+        startTransition(() => setCandles(healed));
+        void writeChartHistoryCache(pane.symbol, pane.timeframe, healed);
+      } catch {
+        // The next beat retries; a cold durable-cache build on the server can
+        // exceed the request timeout until it finishes in the background.
+      }
+    };
+    const timer = window.setInterval(() => { void heal(); }, 240_000);
+    return () => {
+      cancelled = true;
+      controller.abort();
+      window.clearInterval(timer);
+    };
+  }, [needsOrderFlowHistory, pane.broker, pane.symbol, pane.timeframe, period]);
 
   useEffect(() => {
     if (pane.broker !== "Databento") return;
