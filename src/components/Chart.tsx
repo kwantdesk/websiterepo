@@ -275,7 +275,7 @@ import {
   type MappedStrikeAggregationMode,
   type NetGammaProfileSnapshot,
 } from "@/lib/netGammaExposureByStrike";
-import { bounceLevelsSnapshotsHaveSameHead, filterBounceLevelsSnapshot, isBounceLevelsSnapshot, mergeBounceLevelsSnapshots, type BounceLevelsSnapshot } from "@/lib/bounceLevels";
+import { bounceLevelsSnapshotsHaveSameHead, filterBounceLevelsSnapshot, isBounceLevelsSnapshot, mergeBounceLevelsSnapshots, type BounceExposureSlice, type BounceLevelsSnapshot } from "@/lib/bounceLevels";
 import {
   BounceLevelsPrimitive,
   type BounceLevelsHit,
@@ -3262,7 +3262,19 @@ function Chart({
   const bounceLevelsScopeRef = useRef("");
   const bounceReplayInFlightRef = useRef(false);
   const bounceReplayNextMinuteRef = useRef<number | null>(null);
-  const bounceReplayLoaderRef = useRef<((minute: number) => Promise<void>) | null>(null);
+  const bounceReplayLoaderRef = useRef<((minute: number, checkpoint?: boolean) => Promise<void>) | null>(null);
+  // The trail slices are fetched at FORWARD 15-minute checkpoints and clipped
+  // to the replay clock client-side. Each slice is a historical fact computed
+  // at its own timestamp, so clipping shows exactly what live showed with no
+  // lookahead — and the trail advances every clock tick instead of waiting a
+  // 3-7s provider round-trip per replay minute (the "levels stuck lagging
+  // behind price" report at high replay speeds).
+  const bounceReplayCheckpointMsRef = useRef(0);
+  const [bounceReplayCheckpoint, setBounceReplayCheckpoint] = useState<{
+    scope: string;
+    asOfMs: number;
+    slices: BounceExposureSlice[];
+  } | null>(null);
   const [, setBounceLevelsLoading] = useState(false);
   const [, setBounceLevelsError] = useState<string | null>(null);
   const [bounceLevelsTooltip, setBounceLevelsTooltip] = useState<BounceLevelsHit | null>(null);
@@ -6663,7 +6675,7 @@ function Chart({
       setBounceLevelsLoading(false);
     }
     let timer: number | null = null;
-    const load = async (force = false, replayAsOfMs: number | null = null) => {
+    const load = async (force = false, replayAsOfMs: number | null = null, checkpoint = false) => {
       const displayPrice = drawingCandlesRef.current.at(-1)?.close;
       if (!(displayPrice && displayPrice > 0)) {
         // The serialized replay drain retries on the next clock tick instead
@@ -6739,7 +6751,14 @@ function Chart({
           `/api/bounce-levels?${query}`,
           { force, maxAgeMs: replayAsOfMs || eodAsOfMs ? 6 * 60 * 60_000 : refreshMs, timeoutMs: 35_000, validate: isBounceLevelsSnapshot, invalidMessage: "Bounce Levels returned an incomplete ranked surface." },
         );
-        if (scopeAlive()) { commitSnapshot(payload, fromReplay); setBounceLevelsError(null); }
+        if (scopeAlive()) {
+          if (checkpoint && replayAsOfMs) {
+            setBounceReplayCheckpoint({ scope: requestScope, asOfMs: replayAsOfMs, slices: payload.exposureField });
+          } else {
+            commitSnapshot(payload, fromReplay);
+          }
+          setBounceLevelsError(null);
+        }
       } catch (error) {
         if (scopeAlive()) setBounceLevelsError(error instanceof Error ? error.message : "Bounce Levels could not refresh.");
       } finally {
@@ -6758,7 +6777,8 @@ function Chart({
       // newest replay minute replaces any queued one, and commits are scoped
       // to instrument+settings so a completed request lands even though this
       // effect instance was already replaced by a newer clock tick.
-      bounceReplayLoaderRef.current = (minute: number) => load(false, minute * 60_000);
+      bounceReplayLoaderRef.current = (minute: number, checkpoint = false) =>
+        load(false, minute * 60_000, checkpoint);
       bounceReplayNextMinuteRef.current = bounceLevelsReplayMinute;
       if (!bounceReplayInFlightRef.current) {
         bounceReplayInFlightRef.current = true;
@@ -6767,6 +6787,14 @@ function Chart({
             while (bounceReplayNextMinuteRef.current !== null) {
               const minute = bounceReplayNextMinuteRef.current;
               bounceReplayNextMinuteRef.current = null;
+              // The trail checkpoint sits at the NEXT 15-minute boundary so
+              // clipped slices always cover the clock; it refetches only when
+              // the clock crosses into a new checkpoint window.
+              const checkpointMinute = Math.ceil((minute + 1) / 15) * 15;
+              if (bounceReplayCheckpointMsRef.current !== checkpointMinute) {
+                await bounceReplayLoaderRef.current?.(checkpointMinute, true);
+                bounceReplayCheckpointMsRef.current = checkpointMinute;
+              }
               await bounceReplayLoaderRef.current?.(minute);
             }
           } finally {
@@ -6775,6 +6803,12 @@ function Chart({
         })();
       }
       return () => { cancelled = true; };
+    }
+    // Leaving replay: drop the checkpoint trail so live mode renders its own
+    // snapshot's history untouched.
+    if (bounceReplayCheckpointMsRef.current !== 0) {
+      bounceReplayCheckpointMsRef.current = 0;
+      setBounceReplayCheckpoint(null);
     }
     // Data-shaping sliders can emit dozens of values during one drag. Resolve
     // only the settled value instead of flooding the options provider, while
@@ -6800,8 +6834,21 @@ function Chart({
       WEAKENING: indicatorSettings.showWeakeningNodes !== false,
       RETIRED: indicatorSettings.showRetiredHistory !== false,
     };
+    // During replay the trail comes from the forward checkpoint's slices
+    // clipped to the clock — each slice is the surface AT its own timestamp,
+    // so this shows exactly what live showed, advancing with every clock tick
+    // instead of trailing a provider round-trip behind price. Level lines and
+    // role states stay on the at-clock snapshot (no lookahead).
+    let sourceSnapshot = bounceLevelsSnapshot;
+    if (replayTimestampMs && bounceReplayCheckpoint
+      && bounceReplayCheckpoint.scope === bounceLevelsScopeRef.current) {
+      const clipped = bounceReplayCheckpoint.slices.filter((slice) => slice.timestamp <= replayTimestampMs);
+      if (clipped.length >= sourceSnapshot.exposureField.length) {
+        sourceSnapshot = { ...sourceSnapshot, exposureField: clipped };
+      }
+    }
     const visibleSnapshot = filterBounceLevelsSnapshot(
-      bounceLevelsSnapshot,
+      sourceSnapshot,
       roleVisibility,
       indicatorSettings.showAirPockets !== false,
     );
@@ -6836,7 +6883,7 @@ function Chart({
       negativeColor: useThemeColors ? settings.downColor : String(indicatorSettings.negativeColor ?? settings.downColor),
       extendRight: indicatorSettings.extendRight === true,
     };
-  }, [bounceLevelsIndicator, bounceLevelsSnapshot, overlayTimelineMs, settings.downColor, settings.upColor]);
+  }, [bounceLevelsIndicator, bounceLevelsSnapshot, bounceReplayCheckpoint, overlayTimelineMs, replayTimestampMs, settings.downColor, settings.upColor]);
   useEffect(() => { bounceLevelsPrimitiveRef.current?.update(bounceLevelsPrimitiveData); }, [bounceLevelsPrimitiveData]);
   useEffect(() => {
     const container = chartContainerRef.current;
