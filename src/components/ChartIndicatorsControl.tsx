@@ -840,21 +840,7 @@ export default function ChartIndicatorsControl({
             style={{ left: menuPosition.left, top: menuPosition.top, width: menuPosition.width }}
           >
             <div className="flex items-center justify-between border-b border-border px-4 py-3">
-              <div>
-                <div className="text-[12px] font-semibold text-foreground">Chart indicators</div>
-                <div className="mt-0.5 flex items-center gap-2 text-[9px] uppercase tracking-[0.12em] text-muted">
-                  <span>{instrument} Â· {timeframe} Â· this chart</span>
-                  {rithmicStatus === "connected" ? (
-                    <span className="rounded-full border border-primary/25 bg-primary/10 px-1.5 py-0.5 text-[7px] font-semibold text-primary">
-                      Rithmic L3
-                    </span>
-                  ) : rithmicStatus === "checking" ? (
-                    <span className="rounded-full border border-border bg-background px-1.5 py-0.5 text-[7px] font-semibold text-muted">
-                      Checking feed
-                    </span>
-                  ) : null}
-                </div>
-              </div>
+              <div className="text-[12px] font-semibold text-foreground">Chart indicators</div>
               <button
                 type="button"
                 onClick={() => {
