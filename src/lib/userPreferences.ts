@@ -39,6 +39,8 @@ const TRACKED_STORAGE_KEYS = new Set([
   "kwantdesk:chart-pane-level-visibility:v1",
   "kwantdesk:gex-map-palette:v1",
   "kwantdesk:gex-map-zoom:v1",
+  "kwantdesk:gex-map-future:v1",
+  "kwantdesk:gex-map-time-horizon:v1",
   "kwantdesk:gex-map-price-lock:v1",
   "kwantdesk:gex-map:star-preferences:v1",
   "kwantdesk:chart-crosshair-style:v1",

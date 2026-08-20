@@ -27,6 +27,7 @@ import {
   X,
 } from "lucide-react";
 import KwantLoader from "@/components/KwantLoader";
+import GexMapFutureMatrix from "@/components/gex-map/GexMapFutureMatrix";
 import {
   GEX_MAP_GREEKS,
   hasRenderableGexMapSurface,
@@ -71,6 +72,8 @@ import {
   gexMapCacheKey,
   readWorkspaceData,
 } from "@/lib/workspaceDataCache";
+
+const GEX_MAP_TIME_HORIZON_KEY = "kwantdesk:gex-map-time-horizon:v1";
 
 type PanelConfig = {
   id: string;
@@ -1554,6 +1557,12 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
   );
   // Node zoom: SSR-safe default first, stored value applied after hydration.
   const [ladderZoom, setLadderZoom] = useState(1);
+  // PRESENT (live per-strike ladders) vs FUTURE (forward expiry×strike
+  // matrix). Persisted so the map reopens on the horizon last worked in.
+  const [timeHorizon, setTimeHorizon] = useState<"present" | "future">(() => {
+    if (typeof window === "undefined") return "present";
+    return window.localStorage.getItem(GEX_MAP_TIME_HORIZON_KEY) === "future" ? "future" : "present";
+  });
   useEffect(() => {
     try {
       const stored = Number(window.localStorage.getItem(GEX_MAP_ZOOM_STORAGE_KEY));
@@ -1926,6 +1935,28 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
             ))}
           </div>
 
+          {/* PRESENT = the live per-strike ladders; FUTURE = the forward
+              expiry×strike matrix built from the same options surface. */}
+          <div className="ml-1 flex h-7 shrink-0 items-center gap-0.5 rounded-[3px] border border-border/70 bg-background/35 p-0.5">
+            {(["present", "future"] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => {
+                  setTimeHorizon(mode);
+                  try {
+                    window.localStorage.setItem(GEX_MAP_TIME_HORIZON_KEY, mode);
+                    window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
+                  } catch { /* persistence is best-effort */ }
+                }}
+                aria-pressed={timeHorizon === mode}
+                className={`h-5 rounded-[2px] px-2.5 text-[9px] font-semibold uppercase leading-none tracking-[0.075em] ${timeHorizon === mode ? "bg-surface text-primary" : "text-muted hover:text-foreground"}`}
+              >
+                {mode}
+              </button>
+            ))}
+          </div>
+
           <div className="ml-1 flex h-7 shrink-0 items-center gap-0.5 rounded-[3px] border border-border/70 bg-background/35 p-0.5" title={`Node zoom ${Math.round(ladderZoom * 100)}% — zoom in for fewer, larger nodes; out for more, smaller ones`}>
             <button
               type="button"
@@ -1991,6 +2022,11 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
           </div>
         </header>
 
+        {timeHorizon === "future" ? (
+          <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
+            <GexMapFutureMatrix palette={activePalette} />
+          </div>
+        ) : (
         <div className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-2 pb-1.5 pt-0">
           <div
             className="gex-map-panel-grid grid h-full min-w-0 gap-2"
@@ -2032,6 +2068,7 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
             })}
           </div>
         </div>
+        )}
 
         {replayMode && !externalReplay ? (
           <footer className="shrink-0 overflow-x-auto border-t border-border bg-panel px-3 py-2">
