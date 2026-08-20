@@ -31,6 +31,7 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "imbalance-tracker",
   "imbalance-rejector",
   "cumulative-volume-delta",
+  "cvd-divergence",
   "pulling-stacking",
   "absorption-detector",
   "stacked-imbalance-suite",

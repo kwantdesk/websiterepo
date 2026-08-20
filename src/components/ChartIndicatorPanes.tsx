@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
-import { Check, ChevronDown, GripHorizontal, Minus, Plus, Settings2 } from "lucide-react";
+import { Check, ChevronDown, GripHorizontal, Minus, Plus, RefreshCw, Settings2 } from "lucide-react";
 import type { CalculatedIndicatorSeries } from "@/lib/chartIndicatorEngine";
 import type { KwantStatsTable } from "@/lib/kwantStats";
 
@@ -768,6 +768,35 @@ function ChartIndicatorPaneSurface({
           >
             {collapsed ? <Plus className="h-3 w-3" /> : <Minus className="h-3 w-3" />}
           </button>
+          {!collapsed ? (
+            <button
+              type="button"
+              aria-label={`Recenter ${group.title} pane`}
+              title={`Recenter ${group.title} · resets manual scale and drag`}
+              onClick={(event) => {
+                event.stopPropagation();
+                setOpenMenu(null);
+                const drop = (current: Record<string, number>) => {
+                  if (!(group.key in current)) return current;
+                  const next = { ...current };
+                  delete next[group.key];
+                  return next;
+                };
+                setVerticalScaleByPane(drop);
+                setVerticalPanByPane(drop);
+                setLockedVerticalDomainByPane((current) => {
+                  if (!(group.key in current)) return current;
+                  const next = { ...current };
+                  delete next[group.key];
+                  return next;
+                });
+              }}
+              className="pointer-events-auto absolute right-[66px] z-30 flex h-6 w-6 items-center justify-center rounded-md border border-border bg-panel/95 text-muted shadow-sm hover:text-foreground"
+              style={{ top: top + 32 }}
+            >
+              <RefreshCw className="h-3 w-3" />
+            </button>
+          ) : null}
           {!collapsed && group.indicatorId === "kwant-stats" ? (
             <button
               type="button"
