@@ -126,10 +126,14 @@ async function computeIntradayTrail(
   return frames.flatMap((frame): ZeroGammaLinePoint[] => {
     const value = frame.zero_gamma;
     if (value === null || !Number.isFinite(value) || !Number.isFinite(frame.timestamp)) return [];
-    // The same outlier guard as the session points: a crossing far outside
-    // the traded range is a broken surface, not a level worth painting.
+    // Early buckets carry a partially accumulated surface whose cumulative
+    // crossing lands thousands of points from price (measured 13% below spot
+    // on NQ). A real index zero-Gamma crossing hugs the traded range, so the
+    // trail is stricter than the 25% session-anchor guard and also requires
+    // a materially populated surface before trusting the crossing at all.
+    if (frame.strikes.length < 20) return [];
     const spot = frame.spot;
-    if (Number.isFinite(spot) && spot > 0 && Math.abs(value - spot) / spot > 0.25) return [];
+    if (Number.isFinite(spot) && spot > 0 && Math.abs(value - spot) / spot > 0.1) return [];
     return [{ timestampMs: frame.timestamp, sessionDate: date, value, status: "HISTORICAL" }];
   });
 }
@@ -141,7 +145,7 @@ const cachedHistoricalTrail = (
   date: string,
 ) => unstable_cache(
   () => computeIntradayTrail(root, sourceSymbol, date),
-  ["zero-gamma-trail-v1", root, sourceSymbol, date],
+  ["zero-gamma-trail-v2", root, sourceSymbol, date],
   { revalidate: 6 * 60 * 60 },
 )();
 
