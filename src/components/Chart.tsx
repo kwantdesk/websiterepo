@@ -3068,7 +3068,17 @@ function Chart({
     bars: TpoBar[];
     calculationKey: string;
     profiles: TpoProfileModel[];
+    builtAt: number;
   }>());
+  // The live tape and candle snapshots change identity several times a second
+  // during RTH. Rebuilding a full weekly TPO letter grid from seven days of
+  // history on every batch starved the main thread (the reported "chart
+  // glitches and hangs" when a weekly TPO is added). Serve the cached grid
+  // between rebuilds and refresh it on a trailing clock instead.
+  const [tpoRebuildNonce, setTpoRebuildNonce] = useState(0);
+  const tpoRebuildTimerRef = useRef<number | null>(null);
+  const tpoProfileIdentityRef = useRef({ map: new WeakMap<object, number>(), next: 1 });
+  const tpoModelsSignatureRef = useRef("");
   const tpoMergeSelectionRef = useRef(tpoMergeSelection);
   const tpoMergeStorageKey = `kwantdesk:tpo-merges:v1:${chartInstanceId}:${instrument}`;
   const drawingPersistenceInstrument = `${instrument}::${chartInstanceId.slice(-16)}`;
@@ -12336,6 +12346,7 @@ function Chart({
       instance.enabled && (instance.indicatorId === "tpo-chart" || instance.indicatorId === "weekly-tpo"));
     if (!instances.length) {
       primitive.setModels([]);
+      tpoModelsSignatureRef.current = "";
       setTpoDataStatus(null);
       return;
     }
@@ -12344,11 +12355,13 @@ function Chart({
     const requestsExactTrades = instances.some((instance) => instance.settings?.visitSource === "exact-trades");
     if (!sourceTrades.length && requestsExactTrades) {
       primitive.setModels([]);
+      tpoModelsSignatureRef.current = "";
       setTpoDataStatus("TPO · WAITING FOR EXACT EXECUTIONS");
       return;
     }
     if (!sourceTrades.length && !sourceBars.length) {
       primitive.setModels([]);
+      tpoModelsSignatureRef.current = "";
       setTpoDataStatus("TPO · WAITING FOR MARKET DATA");
       return;
     }
@@ -12376,6 +12389,9 @@ function Chart({
     for (const cachedInstanceId of tpoProfileCacheRef.current.keys()) {
       if (!activeInstanceIds.has(cachedInstanceId)) tpoProfileCacheRef.current.delete(cachedInstanceId);
     }
+    const rebuildThrottleMs = 5_000;
+    const now = Date.now();
+    let earliestStaleBuiltAt: number | null = null;
     const baseModels = instances.flatMap((instance): TpoPrimitiveModel[] => {
       const variant = instance.indicatorId === "weekly-tpo" ? "weekly-tpo" : "daily-tpo";
       const renderSettings = validateTpoSettings(instance.settings, variant, settings);
@@ -12383,10 +12399,22 @@ function Chart({
       const calculationSettings = validateTpoSettings(calculationSource.settings, variant);
       const calculationKey = tpoCalculationSettingsKey(calculationSettings);
       const cached = tpoProfileCacheRef.current.get(instance.instanceId);
-      const profiles = cached
+      const exactHit = cached
         && cached.trades === sourceTrades
         && cached.bars === sourceBars
+        && cached.calculationKey === calculationKey;
+      // A settings change rebuilds immediately; a live-data identity change
+      // reuses the recent grid and rebuilds on the trailing clock below.
+      const throttledHit = !exactHit
+        && cached
         && cached.calculationKey === calculationKey
+        && now - cached.builtAt < rebuildThrottleMs;
+      if (throttledHit) {
+        earliestStaleBuiltAt = earliestStaleBuiltAt === null
+          ? cached.builtAt
+          : Math.min(earliestStaleBuiltAt, cached.builtAt);
+      }
+      const profiles = exactHit || throttledHit
         ? cached.profiles
         : buildTpoProfiles({ trades: sourceTrades, bars: sourceBars, settings: calculationSettings });
       if (profiles !== cached?.profiles) {
@@ -12395,6 +12423,7 @@ function Chart({
           bars: sourceBars,
           calculationKey,
           profiles,
+          builtAt: now,
         });
       }
       return profiles.map((profile) => ({
@@ -12456,8 +12485,40 @@ function Chart({
           && tpoMergeSelection?.instanceId === model.instanceId
           && !model.profile.id.startsWith("composite:"),
       }));
-    primitive.setModels(models);
+    // Repainting an unchanged weekly letter grid on every live tape batch is
+    // wasted main-thread work; only push models when something visible moved.
+    const identity = tpoProfileIdentityRef.current;
+    const identityOf = (profile: object) => {
+      let id = identity.map.get(profile);
+      if (id === undefined) {
+        id = identity.next++;
+        identity.map.set(profile, id);
+      }
+      return id;
+    };
+    const modelsSignature = models
+      .map((model) => `${model.instanceId}:${identityOf(model.profile)}:${model.selected ? 1 : 0}:${model.mergeEligible ? 1 : 0}:${JSON.stringify(model.settings)}`)
+      .join("|") + `#${JSON.stringify(theme)}#${lastCandleTime}#${intervalSeconds}`;
+    if (modelsSignature !== tpoModelsSignatureRef.current) {
+      tpoModelsSignatureRef.current = modelsSignature;
+      primitive.setModels(models);
+    }
     setTpoDataStatus(models.length ? null : "TPO · NO PROFILE IN THE SELECTED RANGE");
+    // Trailing rebuild: when the run above served a throttled grid, re-enter
+    // once the throttle window closes so the letters catch up to the tape.
+    if (earliestStaleBuiltAt !== null && tpoRebuildTimerRef.current === null) {
+      const delay = Math.max(250, earliestStaleBuiltAt + rebuildThrottleMs - now);
+      tpoRebuildTimerRef.current = window.setTimeout(() => {
+        tpoRebuildTimerRef.current = null;
+        setTpoRebuildNonce((current) => current + 1);
+      }, delay);
+    }
+    return () => {
+      if (tpoRebuildTimerRef.current !== null) {
+        window.clearTimeout(tpoRebuildTimerRef.current);
+        tpoRebuildTimerRef.current = null;
+      }
+    };
   }, [
     candleIntervalMs,
     chartReadyRevision,
@@ -12466,6 +12527,7 @@ function Chart({
     settledTpoIndicators,
     settings,
     themeVersion,
+    tpoRebuildNonce,
     tpoSourceBars,
     tpoSourceTrades,
     tpoMergeRecords,
