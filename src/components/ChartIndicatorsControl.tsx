@@ -929,7 +929,7 @@ export default function ChartIndicatorsControl({
                           {displayName}
                         </div>
                         <div className="mt-0.5 truncate text-[8px] uppercase tracking-[0.12em] text-muted/70">
-                          {definition.category} Â· live
+                          {definition.category} · live
                         </div>
                       </div>
                       <button
@@ -1025,11 +1025,6 @@ export default function ChartIndicatorsControl({
                     }`}
                   >
                     <span>{item}</span>
-                    <span className="font-mono text-[8px] opacity-70">
-                      {item === "All"
-                        ? CHART_INDICATOR_CATALOG.length
-                        : CHART_INDICATOR_CATALOG.filter((definition) => definition.category === item).length}
-                    </span>
                   </button>
                 ))}
                 <div className="mt-4 rounded-xl border border-border bg-surface/35 p-3 text-[9px] leading-4 text-muted">
@@ -1038,7 +1033,7 @@ export default function ChartIndicatorsControl({
               </aside>
               <section className="min-w-0 flex-1 overflow-y-auto p-3">
                 <div className="mb-2 px-2 text-[9px] font-medium uppercase tracking-[0.14em] text-muted">
-                  {category} Â· {filtered.length}
+                  {category}
                 </div>
                 <div className="space-y-1">
                   {filtered.map((definition) => {
@@ -1121,7 +1116,7 @@ export default function ChartIndicatorsControl({
             >
               <div>
                 <div className="text-[15px] font-semibold text-foreground">{settingsInstance.indicatorId === "source-code-indicator" ? String(settingsInstance.settings?.scriptName ?? settingsDefinition.name) : settingsDefinition.name}</div>
-                <div className="mt-0.5 text-[9px] uppercase tracking-[0.12em] text-muted">{settingsDefinition.category} Â· live calculation</div>
+                <div className="mt-0.5 text-[9px] uppercase tracking-[0.12em] text-muted">{settingsDefinition.category} · live calculation</div>
               </div>
               <button type="button" onClick={closeSettingsDialog} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground">
                 <X className="h-4 w-4" />
@@ -2059,7 +2054,7 @@ export default function ChartIndicatorsControl({
               {settingsDefinition.id === "expected-move" ? (
                 <div className="grid gap-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
                   {[
-                    ["Mode", "mode", [["SESSION", "Session Â· fixed rails"], ["LIVE", "Live Â· time-decaying"]]],
+                    ["Mode", "mode", [["SESSION", "Session · fixed rails"], ["LIVE", "Live · time-decaying"]]],
                     ["Options source", "mappingSource", [["QQQ", "QQQ â†’ NQ / MNQ"], ["NDX", "NDX â†’ NQ / MNQ"]]],
                   ].map(([label, key, options]) => (
                     <label key={String(key)} className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
