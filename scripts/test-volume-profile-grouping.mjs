@@ -58,4 +58,46 @@ assert.doesNotMatch(
 );
 assert.match(primitive, /groupingFloorFactor/);
 
-console.log("volume profile grouping: 5/5 checks passed");
+// 6. The value area must be measured at the PROFILE's grouping, never at the
+//    display-collapsed grouping. Row size genuinely changes the answer, so
+//    deriving it from the zoom-collapsed rows made VAH/VAL/POC move by points
+//    as the chart was zoomed and disagree with the server's own profile.
+const { execSync } = await import("node:child_process");
+const { mkdtempSync, rmSync } = await import("node:fs");
+const { join } = await import("node:path");
+const outDir = mkdtempSync(join(process.cwd(), ".vp-va-test-"));
+const bundle = join(outDir, "math.mjs");
+execSync(
+  `npx esbuild src/lib/volumeProfileMath.ts --bundle --format=esm --platform=node --alias:@=./src --outfile="${bundle}"`,
+  { stdio: "pipe" },
+);
+const { calculateVolumeProfileValueArea } = await import(`file://${bundle.replaceAll("\\", "/")}`);
+
+const TICK = 0.25;
+const levels = Array.from({ length: 120 }, (_, i) => ({
+  price: Number((20_000 + i * TICK).toFixed(2)),
+  volume: 100 + Math.round(900 * Math.exp(-((i - 61) ** 2) / 240)),
+}));
+const atProfileGrouping = calculateVolumeProfileValueArea(levels, TICK * 4, 68);
+const atCollapsedGrouping = calculateVolumeProfileValueArea(levels, TICK * 8, 68);
+assert.ok(atProfileGrouping.vah != null && atCollapsedGrouping.vah != null);
+assert.notEqual(
+  `${atProfileGrouping.vah}:${atProfileGrouping.val}`,
+  `${atCollapsedGrouping.vah}:${atCollapsedGrouping.val}`,
+  "fixture must actually be sensitive to row size, or check 6 proves nothing",
+);
+const vaCall = primitive.slice(
+  primitive.indexOf("const valueArea = calculateVolumeProfileValueArea("),
+  primitive.indexOf("const groupedPoc"),
+);
+assert.ok(
+  vaCall.includes("sourceLevels") && vaCall.includes("profile.tickSize * profile.groupTicks"),
+  "the value area must be measured at the profile's own grouping",
+);
+assert.ok(
+  !vaCall.includes("groupedTicks,"),
+  "the value area must not follow the display-collapsed grouping",
+);
+rmSync(outDir, { recursive: true, force: true });
+
+console.log("volume profile grouping: 6/6 checks passed");

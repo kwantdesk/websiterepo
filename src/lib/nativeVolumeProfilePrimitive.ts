@@ -609,9 +609,18 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           : pinned && !splitPinnedDaily
             ? groupedMaxVolume
             : groupedMaxAbsDelta;
+        // The value area describes the session's volume distribution. It is
+        // NOT a function of how far the chart happens to be zoomed.
+        //
+        // This used to measure the display-collapsed rows at their collapsed
+        // size, so every time the renderer merged rows for legibility the POC,
+        // VAH and VAL jumped by whole rows — the levels visibly drifted while
+        // zooming and disagreed with the profile the server had computed at
+        // the requested grouping. Always measure at the profile's own binning;
+        // `levels` stays purely a drawing concern.
         const valueArea = calculateVolumeProfileValueArea(
-          levels,
-          profile.tickSize * groupedTicks,
+          sourceLevels,
+          profile.tickSize * profile.groupTicks,
           // The trader's own % Value Area. Falls back to the 70% convention
           // only when the setting is absent.
           Number.isFinite(style.valueAreaPercent) && style.valueAreaPercent > 0
