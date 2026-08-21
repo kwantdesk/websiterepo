@@ -12683,6 +12683,9 @@ function Chart({
             ? "till-interaction"
             : "none") as "none" | "till-interaction",
           levelDash: PROFILE_LEVEL_DASH[String(profileSettings.levelLineStyle ?? "dash")] ?? [2, 3],
+          showLevelLabels: profileSettings.showLevelLabels !== false,
+          levelLabelSide: String(profileSettings.levelLabelSide) === "left" ? "left" : "right",
+          showLevelLabelPrice: profileSettings.showLevelLabelPrice !== false,
           visualStyle: (["automatic", "solid", "hollow", "line", "combined"]
             .includes(String(profileSettings.visualStyle))
             ? String(profileSettings.visualStyle)

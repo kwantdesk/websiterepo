@@ -1789,6 +1789,10 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     // histogram itself is painted.
     extendMode: "none",
     levelLineStyle: "dash",
+    // VAH / POC / VAL are named on the plot by default, the way IB levels are.
+    showLevelLabels: true,
+    levelLabelSide: "right",
+    showLevelLabelPrice: true,
     visualStyle: "automatic",
     borderWidth: 1,
     numberOfProfiles: 0,
@@ -1815,7 +1819,7 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     showVwapLine: false,
     showVwapBands: false,
     showSummary: false,
-    profileSettingsVersion: 10,
+    profileSettingsVersion: 11,
     align: indicatorId === "kwant-profile"
       ? "session"
       : indicatorId === "weekly-volume-profile" ? "left" : "right",
@@ -2148,7 +2152,7 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
   }
   if (
     normalizedInstance.indicatorId === "kwant-profile"
-    && Number(normalizedInstance.settings?.profileSettingsVersion) < 10
+    && Number(normalizedInstance.settings?.profileSettingsVersion) < 11
   ) {
     return {
       ...normalizedInstance,
@@ -2187,6 +2191,9 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         showSummaryTrades: normalizedInstance.settings?.showSummaryTrades ?? false,
         filterMode: normalizedInstance.settings?.filterMode ?? "none",
         extendMode: normalizedInstance.settings?.extendMode ?? "none",
+        showLevelLabels: normalizedInstance.settings?.showLevelLabels ?? true,
+        levelLabelSide: normalizedInstance.settings?.levelLabelSide ?? "right",
+        showLevelLabelPrice: normalizedInstance.settings?.showLevelLabelPrice ?? true,
         levelLineStyle: normalizedInstance.settings?.levelLineStyle ?? "dash",
         visualStyle: normalizedInstance.settings?.visualStyle ?? "automatic",
         borderWidth: normalizedInstance.settings?.borderWidth ?? 1,
@@ -2195,14 +2202,14 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         sessionStartMinutes: normalizedInstance.settings?.sessionStartMinutes ?? 8 * 60 + 30,
         sessionEndMinutes: normalizedInstance.settings?.sessionEndMinutes ?? 15 * 60 + 15,
         useEndSessionAsStartDay: normalizedInstance.settings?.useEndSessionAsStartDay ?? false,
-        profileSettingsVersion: 10,
+        profileSettingsVersion: 11,
       },
     };
   }
   if (
     ["weekly-volume-profile", "custom-draw-on-volume-profile", "ask-bid-volume-profile", "delta-profile"]
       .includes(normalizedInstance.indicatorId)
-    && Number(normalizedInstance.settings?.profileSettingsVersion) < 10
+    && Number(normalizedInstance.settings?.profileSettingsVersion) < 11
   ) {
     return {
       ...normalizedInstance,
@@ -2231,6 +2238,9 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         showSummaryTrades: normalizedInstance.settings?.showSummaryTrades ?? false,
         filterMode: normalizedInstance.settings?.filterMode ?? "none",
         extendMode: normalizedInstance.settings?.extendMode ?? "none",
+        showLevelLabels: normalizedInstance.settings?.showLevelLabels ?? true,
+        levelLabelSide: normalizedInstance.settings?.levelLabelSide ?? "right",
+        showLevelLabelPrice: normalizedInstance.settings?.showLevelLabelPrice ?? true,
         levelLineStyle: normalizedInstance.settings?.levelLineStyle ?? "dash",
         visualStyle: normalizedInstance.settings?.visualStyle ?? "automatic",
         borderWidth: normalizedInstance.settings?.borderWidth ?? 1,
@@ -2239,7 +2249,7 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         sessionStartMinutes: normalizedInstance.settings?.sessionStartMinutes ?? 8 * 60 + 30,
         sessionEndMinutes: normalizedInstance.settings?.sessionEndMinutes ?? 15 * 60 + 15,
         useEndSessionAsStartDay: normalizedInstance.settings?.useEndSessionAsStartDay ?? false,
-        profileSettingsVersion: 10,
+        profileSettingsVersion: 11,
       },
     };
   }

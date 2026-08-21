@@ -139,6 +139,12 @@ export type NativeVolumeProfileStyle = {
   extendMode?: "none" | "till-interaction";
   /** Dash pattern shared by the level lines, from the Line style dropdown. */
   levelDash?: number[];
+  /** Name the POC and value area on the plot, the way IB levels are named. */
+  showLevelLabels?: boolean;
+  /** Which end of the level line the label sits at. */
+  levelLabelSide?: "right" | "left";
+  /** Print the level's price beside its name. */
+  showLevelLabelPrice?: boolean;
   /** Bars after the profile, used to resolve `till-interaction`. */
   interactionBars?: readonly { time: number; high: number; low: number }[];
   /** Histogram appearance: filled, outlined, or a single edge line. */
@@ -420,6 +426,12 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
         const levelChainEndX = nextProfileStartX == null
           ? mediaSize.width
           : Math.max(endX, nextProfileStartX);
+
+        // Decimals come from the contract's own tick, so a level never prints
+        // more precision than the instrument actually trades in.
+        const pricePrecision = profile.tickSize >= 1
+          ? 0
+          : Math.min(6, Math.max(0, Math.ceil(-Math.log10(profile.tickSize))));
 
         const sessionWidth = Math.max(0.5, Math.abs(sessionEndX - sessionAnchorX));
         const visibleLogicalRange = params.chart.timeScale().getVisibleLogicalRange();
@@ -780,18 +792,36 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           context.moveTo(anchorX, y);
           context.lineTo(lineEndX, y);
           context.stroke();
-          if (style.showText && label) {
-            const lineRight = Math.max(anchorX, lineEndX);
-            context.globalAlpha = 0.88;
+          // Named levels, matching how IB levels are labelled: the name and its
+          // price at the line's terminus, which for a forward level is the
+          // screen edge. Left keeps them beside the profile that produced them.
+          if (style.showLevelLabels !== false && label) {
+            const labelText = style.showLevelLabelPrice === false
+              ? label
+              : `${label} ${price.toFixed(pricePrecision)}`;
+            context.globalAlpha = 0.9;
             context.fillStyle = color;
-            context.font = "600 8px 'JetBrains Mono', monospace";
-            context.textAlign = "right";
+            context.font = "700 9px 'JetBrains Mono', monospace";
             context.textBaseline = "bottom";
-            context.fillText(
-              label,
-              clamp(lineRight - 4, 18, mediaSize.width - 5),
-              Math.max(9, y - 3),
-            );
+            const measured = context.measureText(labelText).width;
+            const labelY = Math.max(11, Math.min(mediaSize.height - 3, y - 3));
+            if ((style.levelLabelSide ?? "right") === "left") {
+              context.textAlign = "left";
+              context.fillText(
+                labelText,
+                clamp(Math.min(anchorX, lineEndX) + 5, leftEdge + 4, mediaSize.width - measured - 4),
+                labelY,
+              );
+            } else {
+              context.textAlign = "right";
+              // Sit just inside the line's own end, never past the plot edge
+              // and never underneath the fixed drawing rail.
+              context.fillText(
+                labelText,
+                clamp(Math.max(anchorX, lineEndX) - 5, leftEdge + measured + 4, mediaSize.width - 4),
+                labelY,
+              );
+            }
           }
         };
         // Developing POC: where control sat at each recorded minute. Drawn as

@@ -1677,6 +1677,50 @@ export default function ChartIndicatorsControl({
                     </label>
                   ))}
                   <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                    <span>Level labels</span>
+                    <KwantSelect
+                      value={
+                        settingsInstance.settings?.showLevelLabels === false
+                          ? "off"
+                          : String(settingsInstance.settings?.levelLabelSide) === "left" ? "left" : "right"
+                      }
+                      onChange={(event) => {
+                        const choice = event.target.value;
+                        replace(settingsInstance.instanceId, (current) => ({
+                          ...current,
+                          settings: {
+                            ...(current.settings ?? {}),
+                            showLevelLabels: choice !== "off",
+                            ...(choice === "off" ? {} : { levelLabelSide: choice }),
+                          },
+                        }));
+                      }}
+                      className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                      menuLabel="Level labels"
+                    >
+                      <option value="right">Right of the line</option>
+                      <option value="left">Left, beside the profile</option>
+                      <option value="off">Hidden</option>
+                    </KwantSelect>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => replace(settingsInstance.instanceId, (current) => ({
+                      ...current,
+                      settings: {
+                        ...(current.settings ?? {}),
+                        showLevelLabelPrice: current.settings?.showLevelLabelPrice === false,
+                      },
+                    }))}
+                    className={`mt-auto h-9 border px-2 text-[8px] uppercase tracking-[0.1em] ${
+                      settingsInstance.settings?.showLevelLabelPrice === false
+                        ? "border-border bg-background text-muted"
+                        : "border-primary/55 bg-primary/10 text-primary"
+                    }`}
+                  >
+                    Label price · {settingsInstance.settings?.showLevelLabelPrice === false ? "OFF" : "ON"}
+                  </button>
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
                     <span>Border width</span>
                     <input
                       type="number"
@@ -1695,7 +1739,7 @@ export default function ChartIndicatorsControl({
                     />
                   </label>
                   <div className="border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
-                    POC, value area, peak, valley and VWAP lines carry on to the back of the profile in front — the live edge for the newest one — and are never drawn underneath it, whatever the split settings. Till interaction stops a level earlier, at the first later bar that traded back through it. Visual style paints the histogram filled, outlined, as an edge line, or both.
+                    VAH, POC and VAL are named on the plot like IB levels — set Level labels to move them beside the profile or hide them. POC, value area, peak, valley and VWAP lines carry on to the back of the profile in front — the live edge for the newest one — and are never drawn underneath it, whatever the split settings. Till interaction stops a level earlier, at the first later bar that traded back through it. Visual style paints the histogram filled, outlined, as an edge line, or both.
                   </div>
                 </div>
               ) : null}
