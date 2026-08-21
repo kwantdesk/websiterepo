@@ -903,3 +903,74 @@ Per task: eslint on changed files (heap-bumped for Chart/KwantifyWorkspace), `np
 - `240d5241` browser: heatmap-app replay mode (parent clock via postMessage, live feed stopped, bounded 4-chunk cache, scrub-back rebuild, per-asset packs on tab switch); LiquidityMapWorkspace forwards the GEX Vue clock at 1/s + status overlays; proxy allowlists the new paths.
 - **OWNER ACTION: the gateway half needs a VPS deploy (`deploy/ship-to-vm.ps1`) before replay works end-to-end. Deploy outside RTH — restarting the collector writes a GAP marker into that session's archive.** First replay request per session/instrument triggers the one-time pack build (minutes); the UI reports build progress honestly.
 - Replay coverage = whatever the recorder captured (NQ/ES etc. from its subscription list). No new data purchasable — Rithmic sells no L3 history; our archive is the only copy.
+
+## Temporary engineering log — 2026-08-21 (volume profile ↔ DeepChart parity)
+
+### Why
+The owner wants the Daily Volume Profile to carry DeepChart's full `DP: DeltaVol`
+settings surface so institutional users can tune it. DeepChart's parameters were
+read out of its compiled assembly (`C:\Program Files\Volumetrica Trading\Deepchart\Deepchart.dll`,
+.NET 10, class `Deepchart.Collections.EnumeratorCalcMatcher`) with a metadata
+parser: **107 direct properties + 36 in four nested settings classes = 143**.
+Property signatures were decoded to resolve every dropdown's backing enum, so
+the option lists are exact rather than inferred. Reference doc (artifact):
+`DeltaVol Parameter Map`. Internally the feature is **VbP**, never "volume
+profile" — searching the binary for the visible name finds nothing.
+
+### Completed (each pushed as its own commit)
+- `4fa05c67` **Data Settings tab.** `inputData` (Volume | Number of trades),
+  `minTradeVolume`/`maxTradeVolume` (trade-size band), `groupingMode`,
+  `autoGroupFactor`, `groupTicks`, with UI. Two real defects fixed: automatic
+  tick grouping was hardcoded to **1 tick per row** (1,600 hairlines on a
+  400-point NQ day) and now derives row height from the range the profile covers
+  (`automaticVolumeProfileGroupTicks`, targets ~140 rows) × the factor; and
+  `valueAreaPercent` was **discarded** in the render path, pinned to the 70%
+  constant. Filters/manual ticks already existed server-side but had no defaults
+  or UI, so they were permanently inert.
+- `97a45234` **Peak and Valley, VWAP, Summary.** New pure module
+  `src/lib/volumeProfileStructure.ts`: peak/valley detection over the grouped
+  rows (sensitivity inverted into a comparison window, volume thresholds,
+  exclude-high/low, outside-value-area filters, flat shelves collapse to one
+  node), business zone = band between the outermost peaks, profile VWAP +
+  volume-weighted standard-deviation envelopes, and summary totals. Rendered in
+  `nativeVolumeProfilePrimitive.ts`; the renderer also stopped pinning the value
+  area to 70%.
+- `f8ca2763` **Developing POC.** The server already recorded POC per minute
+  (`profile.developingPoc`, capped 2,000 points) but nothing drew it, so
+  `showDevelopingPoc` was a dead switch. Drawn as a **step** trail — the POC
+  holds a price until volume moves it, so interpolation would invent migration.
+
+Settings schema is at `profileSettingsVersion: 8` with migrations that add new
+keys only when absent, so saved workspaces keep their look. All new structure
+features default **off**.
+
+### Verification
+`npm run test:volume-profile-data` and `test:volume-profile-structure` (both new:
+grouping density, factor scaling, bin boundaries incl. negative ticks, filter
+edges; peak/valley detection, thresholds, VA filters, shelf collapse, VWAP band
+symmetry, degenerate input), plus `tests/chart-drawing-system.test.mjs` +
+`precision-tools-system` 29/29, ESLint 0 errors, `tsc --noEmit`, `npm run build`
+— green before each push. **No live RTH visual check yet.**
+
+### Remaining (not started)
+- **Filter/Split Time** (`FilterMode` None|Filter|Splitted|Triple, `FilterTime`
+  Rth|Custom|Eth, session start/end, `UseEndSessionAsStartDay`). Needs server-side
+  session windowing — this is what makes Asia/overnight profiles land on the
+  right trading date.
+- **General** (`VbpPeriod` AllBars|MultipleProfile|VisibleBars|CustomTime|LastsProfile,
+  `LengthType`, custom date range). Also server-side.
+- **Plot Settings** width/offset/visual-style variants (`WidthType`, `VisualStyle`
+  Automatic|Solid|Hollow|Line|Combined, current/previous offsets).
+- POC shifted-POC grouping + shift alerts; VA extend modes and developing style.
+- Nested dialogs not built: `ColorSettings` (12), `TextSettings` (4),
+  `VWapDevSettings` (5 bands × 4 — we ship 3 simple σ bands instead).
+
+### Concurrency note
+Another engineer was working in this repo throughout. Their `KwantifyWorkspace.tsx`
+(pane-header favourites) was left untouched and unstaged; every commit above was
+staged file-by-file, never `git add .`. Note their commit `baa864e8` swept up an
+uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
+
+### Worktree state
+`M src/components/KwantifyWorkspace.tsx` (theirs, in flight), plus the usual
+`?? ALGO/`, `gexcal-*`, `tmp/pdfs/*` from other workstreams.
