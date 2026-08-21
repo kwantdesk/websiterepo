@@ -106,7 +106,12 @@ export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
   indicator("Volume", "Volume & Profiles", "Total volume with filtering and delta-aware colouring."),
   indicator("Volume Swing", "Volume & Profiles", "Volume measured across detected price swings.", true),
   indicator("Daily Profile", "Volume & Profiles", "Configurable daily volume, bid/ask and delta profile.", true, "Reference", "KWANT Profile"),
-  indicator("TPO Daily", "Volume & Profiles", "Daily time-price-opportunity profiles with square blocks, POC, value area, initial balance and auction analytics.", true, "Kwantify"),
+  // The display name is "TPO Daily", but the stable id must stay "tpo-chart":
+  // every registry, settings block and engine check keys off it, and saved
+  // workspaces store it. Renaming without this argument silently produced the
+  // id "tpo-daily", which matched nothing — the indicator showed as "In
+  // development" and could not be added.
+  indicator("TPO Daily", "Volume & Profiles", "Daily time-price-opportunity profiles with square blocks, POC, value area, initial balance and auction analytics.", true, "Kwantify", "TPO Chart"),
   indicator("Weekly TPO", "Volume & Profiles", "Weekly time-price-opportunity profiles using the shared auction-market profile engine.", true, "Kwantify"),
   indicator("Weekly Volume Profile", "Volume & Profiles", "Separate volume profile for each trading week.", true, "Kwantify"),
   indicator("Monthly Volume Profile", "Volume & Profiles", "Separate volume profile for each calendar month.", true, "Kwantify"),
