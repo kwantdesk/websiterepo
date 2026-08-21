@@ -120,7 +120,23 @@ export function paintZeroGammaLineOnBars(
     while (cursor + 1 < trail.length && trail[cursor + 1].time < barClose) cursor += 1;
     const observation = trail[cursor];
     if (observation.time >= barClose) continue;
-    painted.push({ time: barTime, value: observation.value });
+    // Straight-line the level between two verified observations. Holding the
+    // earlier value until the next one lands claims the flip point stood
+    // perfectly still and then teleported, and with observations minutes (or
+    // on a thin session, hours) apart that is what drew the staircase of flat
+    // shelves and vertical jumps instead of a level drifting with the market.
+    // Every vertex is still a verified observation; only the path between two
+    // of them is drawn as the gradual move it was.
+    const next = trail[cursor + 1];
+    const span = next ? next.time - observation.time : 0;
+    const value = next && span > 0
+      ? observation.value
+        + (next.value - observation.value)
+          * Math.min(1, Math.max(0, (barClose - observation.time) / span))
+      // Past the newest observation the last verified level stands: there is
+      // no later reading to move toward.
+      : observation.value;
+    painted.push({ time: barTime, value });
   }
   return painted;
 }

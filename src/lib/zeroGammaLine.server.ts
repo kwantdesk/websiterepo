@@ -193,10 +193,11 @@ const cachedHistoricalTrail = (
   () => computeIntradayTrail(root, sourceSymbol, date, displayScale),
   // The key carries the acceptance bound: a completed session is immutable
   // for six hours, so tightening the guard without renaming the key would
-  // keep serving trails built under the old, looser one.
+  // keep serving trails built under the old, looser one. v4 is the crossing
+  // nearest spot rather than the lowest-strike crossing.
   // The scale is part of the identity: the same chain on a futures chart and
   // on a cash chart are two different price series.
-  ["zero-gamma-trail-v3", root, sourceSymbol, date, displayScale, String(ZERO_GAMMA_MAX_SPOT_DEVIATION), String(ZERO_GAMMA_ARTIFACT_DEVIATION)],
+  ["zero-gamma-trail-v4", root, sourceSymbol, date, displayScale, String(ZERO_GAMMA_MAX_SPOT_DEVIATION), String(ZERO_GAMMA_ARTIFACT_DEVIATION)],
   { revalidate: 6 * 60 * 60 },
 )();
 

@@ -5777,6 +5777,7 @@ function Chart({
     ...indicators.flatMap((instance): CalculatedIndicatorSeries[] => {
       if (!instance.enabled || instance.indicatorId !== "zero-gamma-line" || !zeroGammaLinePayload?.points.length) return [];
       const useThemeColors = instance.settings?.useThemeColors !== false;
+      const opacity = Number(instance.settings?.opacity ?? 72);
       const painted = paintZeroGammaLineOnBars(
         zeroGammaLinePayload.points,
         zeroGammaChartBarTimes,
@@ -5785,28 +5786,33 @@ function Chart({
           : null,
       );
       // The crossing is the boundary between the two dealer-Gamma
-      // environments: price above it is the positive-Gamma regime, below it
-      // the negative one. The line reports which side the market is on by
-      // taking the up colour while price sits above it and the down colour
-      // while it sits below, so the regime is readable without comparing two
-      // numbers by eye. Neither side is known until both the line and a close
-      // exist, and then it stays on the neutral colour rather than guessing.
-      const latestLineValue = painted.at(-1)?.value ?? null;
-      const latestClose = candles.at(-1)?.close ?? null;
-      const regimePositive = instance.settings?.showRegimeHint !== false
-        && latestLineValue !== null
-        && latestClose !== null
-        && Number.isFinite(latestClose)
-        ? latestClose >= latestLineValue
-        : null;
+      // environments: while price holds above it market makers are net long
+      // Gamma and hedge against the move, below it they are net short and
+      // hedge with it. So the line is drawn in the up colour over the
+      // stretches price spent above it and the down colour over the stretches
+      // it spent below, which reads the regime straight off the chart instead
+      // of leaving the trader to compare two numbers bar by bar.
+      const closeByBarTime = new Map<number, number>();
+      zeroGammaChartBarTimes.forEach((barTime, index) => {
+        const close = candles[index]?.close;
+        if (Number.isFinite(close)) closeByBarTime.set(barTime, Number(close));
+      });
+      const showRegime = instance.settings?.showRegimeHint !== false;
+      const positiveColor = colorWithOpacity(settings.upColor, opacity);
+      const negativeColor = colorWithOpacity(settings.downColor, opacity);
       const baseColor = useThemeColors
-        ? regimePositive === null
-          ? settings.borderUpColor
-          : regimePositive
-            ? settings.upColor
-            : settings.downColor
+        ? settings.borderUpColor
         : String(instance.settings?.lineColor ?? settings.borderUpColor);
-      const color = colorWithOpacity(baseColor, Number(instance.settings?.opacity ?? 72));
+      const color = colorWithOpacity(baseColor, opacity);
+      // A bar with no close of its own cannot say which side price was on, so
+      // that segment keeps the neutral colour rather than inheriting a guess.
+      const data = showRegime
+        ? painted.map((point) => {
+          const close = closeByBarTime.get(point.time);
+          if (close === undefined) return point;
+          return { ...point, color: close >= point.value ? positiveColor : negativeColor };
+        })
+        : painted;
       const requestedLineWidth = Math.round(Number(instance.settings?.lineWidth ?? 2));
       const lineWidth = Math.max(1, Math.min(4, requestedLineWidth)) as 1 | 2 | 3 | 4;
       const lineStyle = ["solid", "dashed", "dotted"].includes(String(instance.settings?.lineStyle))
@@ -5823,7 +5829,7 @@ function Chart({
         lineStyle,
         lineType: "simple",
         lastValueVisible: instance.settings?.showCurrentValue !== false,
-        data: painted,
+        data,
       }];
     }),
     ...(optionsDeltaSeries ? [optionsDeltaSeries] : []),

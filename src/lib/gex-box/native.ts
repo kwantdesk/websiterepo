@@ -65,8 +65,25 @@ function completeSurfaces(panel: GexMapPanelPayload): CompleteSurface[] {
   return completed;
 }
 
-function zeroCrossing(rows: Array<{ strike: number; exposure: number }>) {
+/**
+ * The strike where cumulative dealer Gamma changes sign.
+ *
+ * A cumulative curve can cross zero several times across a wide strike
+ * ladder, and this used to return the first crossing found scanning strikes
+ * upward — the lowest one, wherever price happened to be. On a deep ladder
+ * that is routinely thousands of points below spot, and the level jumped
+ * whenever a far crossing appeared or vanished, which is not a Gamma flip
+ * moving but the scan selecting a different crossing.
+ *
+ * The flip that describes the market is the one price is sitting next to:
+ * the boundary between the regime it is in and the opposite one. So collect
+ * every crossing and take the one nearest spot. Without a usable spot the
+ * old first-crossing answer is kept, so callers that have no price reference
+ * behave exactly as before.
+ */
+function zeroCrossing(rows: Array<{ strike: number; exposure: number }>, spot?: number | null) {
   const sorted = [...rows].sort((left, right) => left.strike - right.strike);
+  const crossings: number[] = [];
   let cumulative = 0;
   for (let index = 0; index < sorted.length; index += 1) {
     const previous = cumulative;
@@ -75,10 +92,13 @@ function zeroCrossing(rows: Array<{ strike: number; exposure: number }>) {
     if ((previous < 0 && cumulative >= 0) || (previous > 0 && cumulative <= 0)) {
       const denominator = Math.abs(previous) + Math.abs(cumulative);
       const ratio = denominator === 0 ? 0.5 : Math.abs(previous) / denominator;
-      return sorted[index - 1].strike + (sorted[index].strike - sorted[index - 1].strike) * ratio;
+      crossings.push(sorted[index - 1].strike + (sorted[index].strike - sorted[index - 1].strike) * ratio);
     }
   }
-  return null;
+  if (!crossings.length) return null;
+  if (!Number.isFinite(spot) || !((spot as number) > 0)) return crossings[0];
+  return crossings.reduce((best, crossing) =>
+    Math.abs(crossing - (spot as number)) < Math.abs(best - (spot as number)) ? crossing : best);
 }
 
 function strongest(rows: Array<[number, number]>, direction: "positive" | "negative") {
@@ -137,7 +157,7 @@ export function nativeProfileFrames(
       timestamp: surface.timestamp,
       ticker,
       spot: displaySpot,
-      zero_gamma: zeroCrossing(oiPairs.map(([strike, exposure]) => ({ strike, exposure }))),
+      zero_gamma: zeroCrossing(oiPairs.map(([strike, exposure]) => ({ strike, exposure })), displaySpot),
       major_pos_vol: positiveVolume?.[0] ?? null,
       major_pos_oi: positiveOi?.[0] ?? null,
       major_neg_vol: negativeVolume?.[0] ?? null,

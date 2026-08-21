@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import {
   isZeroGammaLinePayload,
   paintZeroGammaLine,
+  paintZeroGammaLineOnBars,
   isZeroGammaLineSource,
   zeroGammaRootForInstrument,
   zeroGammaSourceChoices,
@@ -241,25 +242,84 @@ console.log("Zero Gamma Line contract tests passed.");
   assert.match(server, /zeroGammaSourceForInstrument\(displayInstrument\) === root \? "futures" : "cash"/);
   // Same chain, two scales, two different price series — the durable cache
   // must not serve one for the other.
-  assert.match(server, /"zero-gamma-trail-v3", root, sourceSymbol, date, displayScale/);
+  assert.match(server, /"zero-gamma-trail-v4", root, sourceSymbol, date, displayScale/);
   assert.match(server, /\$\{date\}:\$\{displayScale\}:\$\{completed \? "h" : "l"\}/);
 }
 
-// --- the line reports which Gamma environment price is in ---
+console.log("Zero Gamma Line source-pinning and display-scale tests passed.");
+
+// --- the line drifts between observations instead of stepping ---
 {
-  // Above the crossing is the positive-Gamma environment and below it the
-  // negative one, so the line takes the up or down colour accordingly rather
-  // than making the trader compare two numbers by eye.
-  assert.match(chart, /latestClose >= latestLineValue/);
+  // Two verified observations ten minutes apart, one bar a minute.
+  const points = [
+    { timestampMs: 0, sessionDate: "2026-08-20", value: 100, status: "HISTORICAL" },
+    { timestampMs: 600_000, sessionDate: "2026-08-20", value: 200, status: "HISTORICAL" },
+  ];
+  const bars = Array.from({ length: 11 }, (_, index) => index * 60);
+  const painted = paintZeroGammaLineOnBars(points, bars, 60);
+
+  // Holding 100 for ten bars and then jumping to 200 is the staircase the
+  // trader sees as flat shelves with vertical steps. The level moved over
+  // those ten minutes, so the line has to move over them too.
+  const values = painted.map((point) => point.value);
   assert.ok(
-    chart.includes("? settings.borderUpColor"),
-    "an unknown side stays on the neutral colour instead of guessing",
+    new Set(values).size > 2,
+    `expected a drifting line between observations, got ${JSON.stringify(values)}`,
   );
+  for (let index = 1; index < values.length; index += 1) {
+    assert.ok(values[index] >= values[index - 1], "a monotonic move never doubles back");
+  }
+  // Vertices stay exactly on the verified observations.
+  assert.equal(painted.at(-1).value, 200, "the line lands on the later observation");
+  assert.ok(values[0] > 100 && values[0] < 200, "the first bar has already begun moving");
+  // Nothing is invented outside the observed range.
+  assert.ok(Math.min(...values) >= 100 && Math.max(...values) <= 200);
+
+  // Past the newest observation the last verified level stands — there is no
+  // later reading to move toward, so it must not extrapolate.
+  const trailing = paintZeroGammaLineOnBars(points, [...bars, 660, 720], 60);
+  assert.equal(trailing.at(-1).value, 200, "the last verified level stands, it is not extended");
+  assert.equal(trailing.at(-2).value, 200);
+
+  // Bars that precede the whole trail stay empty rather than back-painting.
+  const later = paintZeroGammaLineOnBars(
+    [{ timestampMs: 3_600_000, sessionDate: "2026-08-20", value: 150, status: "HISTORICAL" }],
+    [0, 60, 120],
+    60,
+  );
+  assert.equal(later.length, 0, "a completed value is never painted backward");
+}
+
+// --- the crossing nearest price, not the lowest strike ---
+{
+  const native = readFileSync(new URL("../src/lib/gex-box/native.ts", import.meta.url), "utf8");
+  // A cumulative curve can cross zero several times across a wide ladder.
+  // Returning the first crossing found scanning upward picked the lowest one
+  // wherever price was, which put the level thousands of points away and made
+  // it jump whenever a far crossing appeared or vanished.
   assert.ok(
-    chart.includes("latestLineValue !== null")
-      && chart.includes("&& latestClose !== null"),
-    "the regime needs both a line value and a close before it claims a side",
+    !native.includes("      return sorted[index - 1].strike + (sorted[index].strike - sorted[index - 1].strike) * ratio;"),
+    "the scan must collect crossings rather than return the first one",
+  );
+  assert.match(native, /crossings\.push\(/);
+  assert.match(native, /Math\.abs\(crossing - \(spot as number\)\) < Math\.abs\(best - \(spot as number\)\)/);
+  // Callers without a price reference keep the previous answer exactly.
+  assert.match(native, /if \(!Number\.isFinite\(spot\) \|\| !\(\(spot as number\) > 0\)\) return crossings\[0\];/);
+  assert.match(native, /zeroCrossing\(oiPairs\.map\(\(\[strike, exposure\]\) => \(\{ strike, exposure \}\)\), displaySpot\)/);
+}
+
+// --- above the line is positive Gamma, below is negative ---
+{
+  // Per-point colours segment the one line, so the stretches price spent
+  // above the crossing and below it are readable straight off the chart.
+  assert.match(chart, /close >= point\.value \? positiveColor : negativeColor/);
+  assert.match(chart, /const positiveColor = colorWithOpacity\(settings\.upColor, opacity\)/);
+  assert.match(chart, /const negativeColor = colorWithOpacity\(settings\.downColor, opacity\)/);
+  // A bar with no close cannot say which side price was on.
+  assert.ok(
+    chart.includes("if (close === undefined) return point;"),
+    "a bar without a close keeps the neutral colour instead of guessing a side",
   );
 }
 
-console.log("Zero Gamma Line source-pinning, display-scale and regime tests passed.");
+console.log("Zero Gamma Line drift, crossing-selection and regime-shading tests passed.");
