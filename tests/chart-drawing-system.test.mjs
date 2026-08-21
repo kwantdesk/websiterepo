@@ -16,6 +16,7 @@ const horizontalLine = readFileSync(new URL("../src/vendor/lightweight-charts-dr
 const horizontalLinePane = readFileSync(new URL("../src/vendor/lightweight-charts-drawing/tools/lines/horizontal-line-pane-view.ts", import.meta.url), "utf8");
 const verticalLine = readFileSync(new URL("../src/vendor/lightweight-charts-drawing/tools/lines/vertical-line.ts", import.meta.url), "utf8");
 const verticalLinePane = readFileSync(new URL("../src/vendor/lightweight-charts-drawing/tools/lines/vertical-line-pane-view.ts", import.meta.url), "utf8");
+const coordinateUtils = readFileSync(new URL("../src/vendor/lightweight-charts-drawing/core/coordinate-utils.ts", import.meta.url), "utf8");
 const fibRetracement = readFileSync(new URL("../src/vendor/lightweight-charts-drawing/tools/channels/fib-retracement.ts", import.meta.url), "utf8");
 const fibRetracementPane = readFileSync(new URL("../src/vendor/lightweight-charts-drawing/tools/channels/fib-retracement-pane-view.ts", import.meta.url), "utf8");
 
@@ -117,8 +118,26 @@ test("the full visible body of every drawing is selectable, movable and deletabl
   assert.match(drawingGeometry, /export function hitTestGeometry/);
   assert.match(drawingGeometry, /geometry\.type === 'rectangle'/);
   assert.match(drawingGeometry, /geometry\.type === 'polygon'/);
-  assert.match(fibRetracement, /The shaded Fib band is part of the tool/);
-  assert.match(fibRetracement, /point\.y >= minY && point\.y <= maxY/);
+  // Only the level lines select a Fib. Treating the shaded band as a handle
+  // made the whole rectangle answer the hit test, so a Fib drawn over price
+  // hijacked every hover inside it.
+  assert.doesNotMatch(
+    fibRetracement,
+    /point\.y >= minY && point\.y <= maxY/,
+    "the shaded band must not be selectable",
+  );
+  assert.match(
+    fibRetracement,
+    /Math\.abs\(point\.y - y\) <= FibRetracement\.HIT_THRESHOLD/,
+    "a level line is still selectable within its threshold",
+  );
+  // Anchors must not drift when the chart is panned: the extrapolation
+  // reference cannot be derived from the current viewport edge.
+  assert.doesNotMatch(
+    coordinateUtils,
+    /coordinateToLogical\(Math\.max\(0, viewport\.width - 1\)\)/,
+    "extrapolation must not reference the viewport edge",
+  );
 });
 
 test("control-drag marquee selects, moves and deletes drawing groups without chart panning", () => {

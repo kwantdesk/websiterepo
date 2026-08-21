@@ -48,7 +48,9 @@ test("every Precision tool owns exactly nine complete configuration slots", () =
   const defaults = read("src/chart/precision-tools/defaults.ts");
   assert.match(defaults, /Array\.from\(\{ length: 9 \}/);
   assert.match(defaults, /mode: "volume-and-delta"/);
-  assert.match(defaults, /valueAreaPercent: 70/);
+  // a5ae6acc deliberately moved every profile to a 68% value area to match the
+  // reference platform; this assertion was left on the old 70% convention.
+  assert.match(defaults, /valueAreaPercent: 68/);
   assert.match(defaults, /band5Multiplier: 5/);
   assert.match(defaults, /band5Enabled: false/);
 });

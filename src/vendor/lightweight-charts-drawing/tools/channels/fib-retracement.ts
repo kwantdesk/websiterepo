@@ -2,7 +2,7 @@ import type { IPrimitivePaneView } from 'lightweight-charts';
 
 import { Drawing } from '../../core/drawing';
 import type { Anchor, Point, Viewport, DrawingStyle, DrawingOptions, IDrawing } from '../../core/types';
-import { distanceToLineSegment } from '../../core/geometry';
+import {} from '../../core/geometry';
 import type { Geometry, LineGeometry } from '../../core/geometry';
 import { FibRetracementPaneView } from './fib-retracement-pane-view';
 
@@ -164,17 +164,12 @@ export class FibRetracement extends Drawing {
       }
     }
 
-    // The shaded Fib band is part of the tool, so clicking anywhere inside it
-    // must select the Fib—not only a five-pixel strip around a level line.
-    if (renderedLevelYs.length > 1) {
-      const minY = Math.min(...renderedLevelYs);
-      const maxY = Math.max(...renderedLevelYs);
-      if (point.x >= minX && point.x <= maxX && point.y >= minY && point.y <= maxY) return true;
-    }
-
-    // The diagonal anchor guide is visible too and owns the same interaction.
-    if (distanceToLineSegment(point, p1, p2) <= 8) return true;
-
+    // Only the level lines select the Fib. Treating the shaded band as part of
+    // the tool meant the whole rectangle answered the hit test, so moving the
+    // pointer across the middle of the chart looked like it was selecting the
+    // drawing — and a Fib drawn over price made that area unusable. The band is
+    // a fill, not a handle; the lines are what a trader points at.
+    void renderedLevelYs;
     return false;
   }
 

@@ -5,8 +5,14 @@ import type { Viewport } from './types';
 type TimeLogicalReference = { time: number; logical: number };
 
 function referencePair(viewport: Viewport, preferredLogical: number | null): [TimeLogicalReference, TimeLogicalReference] | null {
-  const fallbackLogical = viewport.timeScale.coordinateToLogical(Math.max(0, viewport.width - 1));
-  const origin = Number(preferredLogical ?? fallbackLogical ?? 0);
+  // The reference bars must NOT depend on where the chart is currently
+  // scrolled. Deriving them from the viewport's right edge meant that panning
+  // chose different bars, which changed the measured cadence, which moved every
+  // extrapolated anchor — a drawing placed in whitespace visibly slid around as
+  // the chart was dragged. A caller that knows the logical it cares about still
+  // passes one; otherwise the scan starts at the series origin so the mapping
+  // from time to logical is the same at every scroll position.
+  const origin = Number(preferredLogical ?? 0);
   const references: TimeLogicalReference[] = [];
   const visited = new Set<number>();
 
