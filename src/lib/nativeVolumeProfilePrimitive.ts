@@ -378,6 +378,21 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
         if (profile.period !== "daily") return latestEndMs;
         return Math.max(latestEndMs, profile.endMs);
       }, Number.NEGATIVE_INFINITY);
+      // The newest profile of each kind, per instrument.
+      //
+      // Only that one is allowed to dock to a screen edge. Docking is a way to
+      // keep the CURRENT profile reachable once its anchor scrolls away — it
+      // is not a parking space. Every older profile of the same kind used to
+      // dock to the same two pixels as well, so scrolling forward piled them
+      // onto one another and they read as a single combined profile.
+      const latestEndMsByKind = new Map<string, number>();
+      for (const model of this.models) {
+        const kind = `${model.profile.period}:${model.profile.root}`;
+        latestEndMsByKind.set(
+          kind,
+          Math.max(latestEndMsByKind.get(kind) ?? Number.NEGATIVE_INFINITY, model.profile.endMs),
+        );
+      }
 
       // A session's POC and value area stay live until the next session takes
       // over, so their lines run on to the START of the profile in front and
@@ -466,9 +481,15 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           && style.snapMode === "left"
           && autoPinnedDailyLeft;
         if (pinnedDailyLeft && weeklyProfileOccupiesLeftEdge) continue;
+        // Docking is reserved for the newest profile of this kind; an older one
+        // whose anchor has scrolled past simply leaves the screen with it.
+        const isNewestOfKind = profile.endMs
+          >= (latestEndMsByKind.get(`${profile.period}:${profile.root}`) ?? profile.endMs);
         const pinnedRight = style.snapMode === "right"
+          && isNewestOfKind
           && (profile.period !== "daily" || latestDailyProfile);
         const pinnedLeft = style.snapMode === "left"
+          && isNewestOfKind
           && (profile.period === "daily" ? autoPinnedDailyLeft : sessionAnchorX < leftEdge + 2);
         const pinned = pinnedLeft || pinnedRight;
         const rawAnchorX = customProfile
