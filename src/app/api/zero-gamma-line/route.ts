@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextRequest, NextResponse } from "next/server";
 import { getZeroGammaLinePayload } from "@/lib/zeroGammaLine.server";
-import { zeroGammaRootForInstrument, zeroGammaSourceForInstrument } from "@/lib/zeroGammaLine";
+import { isZeroGammaLineSource, zeroGammaRootForInstrument, zeroGammaSourceForInstrument } from "@/lib/zeroGammaLine";
 
 // A cold request derives up to six provider-backed session snapshots plus
 // their intraday trails. The platform default function timeout cut that chain
@@ -27,7 +27,15 @@ export async function GET(request: NextRequest) {
   if (!(await isAuthenticated(request))) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
   const instrument = request.nextUrl.searchParams.get("instrument")?.trim().toUpperCase() || "NQ";
   const root = zeroGammaRootForInstrument(instrument);
-  const source = zeroGammaSourceForInstrument(instrument);
+  // A pinned source lets a desk read the crossing off a specific chain
+  // (NQ's own options, NDX, or QQQ) instead of the automatic pick. It is
+  // honoured only within the chart's own Gamma family — anything else would
+  // paint another market's dealer positioning onto this price.
+  const requestedSource = request.nextUrl.searchParams.get("source")?.trim().toUpperCase();
+  const source = isZeroGammaLineSource(requestedSource)
+    && zeroGammaRootForInstrument(requestedSource) === zeroGammaRootForInstrument(instrument)
+    ? requestedSource
+    : zeroGammaSourceForInstrument(instrument);
   if (!root || !source) return NextResponse.json({ error: "Zero Gamma Line requires a supported futures or options-underlying Gamma family." }, { status: 400 });
   const sessions = Math.max(1, Math.min(5, Number(request.nextUrl.searchParams.get("sessions") ?? 5)));
   const cacheKey = `${root}:${source}:${instrument}:${sessions}`;

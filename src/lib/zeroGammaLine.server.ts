@@ -11,7 +11,7 @@ import {
   type NativePricePoint,
 } from "@/lib/gex-box/native";
 import { getChartGammaLevels, getGexMapPanel } from "@/lib/quantData.server";
-import { ZERO_GAMMA_ARTIFACT_DEVIATION, rejectZeroGammaArtifacts } from "./zeroGammaLine";
+import { ZERO_GAMMA_ARTIFACT_DEVIATION, rejectZeroGammaArtifacts, zeroGammaSourceForInstrument } from "./zeroGammaLine";
 import type { ZeroGammaLinePayload, ZeroGammaLinePoint, ZeroGammaLineSource } from "@/lib/zeroGammaLine";
 
 function previousTradingDay(sessionDate: string) {
@@ -93,6 +93,13 @@ const HISTORICAL_POINT_CACHE_LIMIT = 400;
 // cumulative-sign crossing GEX BOX paints as its zero-Gamma trail. This is
 // what turns the chart line from straight segments between daily closes into
 // a sensitive trace of where the crossing actually travelled all session.
+/**
+ * Which price scale the chart itself is drawn on. A futures pane needs every
+ * crossing converted to the futures scale regardless of which option chain it
+ * was read from; a cash pane already shares the chain's scale.
+ */
+type ZeroGammaDisplayScale = "futures" | "cash";
+
 const TRAIL_EXPOSURE_TICKER: Record<ZeroGammaLineSource, string> = {
   NQ: "NDX",
   ES: "SPX",
@@ -116,15 +123,22 @@ async function computeIntradayTrail(
   root: NativeGammaRoot,
   sourceSymbol: ZeroGammaLineSource,
   date: string,
+  displayScale: ZeroGammaDisplayScale,
 ): Promise<ZeroGammaLinePoint[]> {
   const exposureSymbol = TRAIL_EXPOSURE_TICKER[sourceSymbol] ?? (root === "NQ" ? "NDX" : "SPX");
   const panel = await getGexMapPanel(exposureSymbol, "GAMMA", date);
   // Futures charts display the crossing on the futures scale. Databento 1m
   // closes over the session window give a per-minute cash→futures basis, the
   // same calibration the value-area and gamma-level projections use. Cash
-  // sources keep their own option chain's scale untouched.
+  // charts keep their own option chain's scale untouched.
+  //
+  // The scale belongs to the CHART, not to the chain being read. This used to
+  // test `sourceSymbol === root`, which held only while the source was always
+  // the automatic pick for the instrument; once a chart can pin a different
+  // chain in its family, that test would leave a pinned NDX crossing on the
+  // cash scale and plot it on a futures axis, out by the basis.
   let displayPoints: NativePricePoint[] = [];
-  if (sourceSymbol === root) {
+  if (displayScale === "futures") {
     const frameWindow = replayWindow(panel.frames);
     if (frameWindow) {
       const bars = await getDatabentoBars(`${root}.v.0`, "1m", frameWindow.start, frameWindow.end);
@@ -174,12 +188,15 @@ const cachedHistoricalTrail = (
   root: NativeGammaRoot,
   sourceSymbol: ZeroGammaLineSource,
   date: string,
+  displayScale: ZeroGammaDisplayScale,
 ) => unstable_cache(
-  () => computeIntradayTrail(root, sourceSymbol, date),
+  () => computeIntradayTrail(root, sourceSymbol, date, displayScale),
   // The key carries the acceptance bound: a completed session is immutable
   // for six hours, so tightening the guard without renaming the key would
   // keep serving trails built under the old, looser one.
-  ["zero-gamma-trail-v3", root, sourceSymbol, date, String(ZERO_GAMMA_MAX_SPOT_DEVIATION), String(ZERO_GAMMA_ARTIFACT_DEVIATION)],
+  // The scale is part of the identity: the same chain on a futures chart and
+  // on a cash chart are two different price series.
+  ["zero-gamma-trail-v3", root, sourceSymbol, date, displayScale, String(ZERO_GAMMA_MAX_SPOT_DEVIATION), String(ZERO_GAMMA_ARTIFACT_DEVIATION)],
   { revalidate: 6 * 60 * 60 },
 )();
 
@@ -208,17 +225,18 @@ async function intradayTrailSafe(
   sourceSymbol: ZeroGammaLineSource,
   date: string,
   completed: boolean,
+  displayScale: ZeroGammaDisplayScale,
   budgetMs = 12_000,
 ): Promise<ZeroGammaLinePoint[]> {
-  const key = `${root}:${sourceSymbol}:${date}:${completed ? "h" : "l"}`;
+  const key = `${root}:${sourceSymbol}:${date}:${displayScale}:${completed ? "h" : "l"}`;
   try {
     if (!completed) {
       const memo = liveTrailCache.get(key);
       if (memo && Date.now() - memo.at < LIVE_TRAIL_MEMO_MS) return memo.points;
     }
     const work = completed
-      ? cachedHistoricalTrail(root, sourceSymbol, date)
-      : computeIntradayTrail(root, sourceSymbol, date).then((points) => {
+      ? cachedHistoricalTrail(root, sourceSymbol, date, displayScale)
+      : computeIntradayTrail(root, sourceSymbol, date, displayScale).then((points) => {
           liveTrailCache.set(key, { at: Date.now(), points });
           if (liveTrailCache.size > 64) {
             const oldest = liveTrailCache.keys().next().value;
@@ -282,6 +300,10 @@ export async function getZeroGammaLinePayload(
   displayInstrument: string,
   historySessions = 5,
 ): Promise<ZeroGammaLinePayload> {
+  // The display instrument decides the scale: NQ/MNQ/ES/MES panes are futures
+  // charts, the cash and ETF panes are not.
+  const displayScale: ZeroGammaDisplayScale =
+    zeroGammaSourceForInstrument(displayInstrument) === root ? "futures" : "cash";
   const now = new Date();
   const sessionDate = currentNewYorkSessionDate(now);
   const marketOpen = newYorkMarketOpen(now);
@@ -333,6 +355,7 @@ export async function getZeroGammaLinePayload(
       sourceSymbol,
       date,
       true,
+      displayScale,
       // A warm durable cache answers in milliseconds; the floor exists so a
       // late session in the list cannot lose the race to an expired budget
       // and drop a trail that was already built.
@@ -341,7 +364,7 @@ export async function getZeroGammaLinePayload(
   }
   if (marketOpen) {
     // The live trace only exists while the session is producing buckets.
-    const liveTrail = await intradayTrailSafe(root, sourceSymbol, sessionDate, false);
+    const liveTrail = await intradayTrailSafe(root, sourceSymbol, sessionDate, false, displayScale);
     points.push(...liveTrail.map((point) => ({ ...point, status: "LIVE" as const })));
   }
   const currentZeroGamma = current ? zeroGammaFromPayload(current) : null;

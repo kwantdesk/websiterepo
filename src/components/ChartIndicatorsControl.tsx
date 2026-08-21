@@ -54,6 +54,7 @@ import {
 import { isInsideKwantSelectMenu } from "@/components/ui/KwantSelect";
 import KwantSelect from "@/components/ui/KwantSelect";
 import { PULLING_STACKING_PRESETS } from "@/lib/pullingStacking";
+import { zeroGammaSourceChoices } from "@/lib/zeroGammaLine";
 import { ABSORPTION_PRESETS } from "@/lib/absorptionDetector";
 import { STACKED_IMBALANCE_PRESETS } from "@/lib/stackedImbalanceSuite";
 import { ICEBERG_REFRESH_PRESETS } from "@/lib/icebergRefreshDetector";
@@ -4655,8 +4656,25 @@ export default function ChartIndicatorsControl({
                       <option value="solid">Solid</option>
                     </KwantSelect>
                   </label>
-                  <div className="flex items-end text-[8px] leading-4 text-muted">
-                    Paints the verified zero-Gamma crossing forward beside price like a running VWAP. Futures use their native options family; SPX, SPXW, SPY, NDX and QQQ use their own options exposure without cross-market scaling.
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                    <span>Options chain</span>
+                    <KwantSelect
+                      value={String(settingsInstance.settings?.sourceTicker ?? "AUTO")}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                        ...current,
+                        settings: { ...(current.settings ?? {}), sourceTicker: event.target.value },
+                      }))}
+                      className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                      menuLabel="Zero Gamma options chain"
+                    >
+                      <option value="AUTO">Automatic (this chart&apos;s family)</option>
+                      {zeroGammaSourceChoices(instrument).map((source) => (
+                        <option key={source} value={source}>{source}</option>
+                      ))}
+                    </KwantSelect>
+                  </label>
+                  <div className="text-[8px] leading-4 text-muted sm:col-span-2">
+                    Paints the verified zero-Gamma crossing forward beside price like a running VWAP. Automatic uses the chart&apos;s own options family; pinning a chain reads the crossing off that chain instead. Only chains in this chart&apos;s Gamma family are offered, so the line never plots another market&apos;s dealer positioning on this price.
                   </div>
                 </div>
               ) : null}

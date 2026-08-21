@@ -369,7 +369,7 @@ const EMPTY_CHARTING_DRAWINGS: Drawing[] = [];
 // the per-render surface build cost (the GEX Vue OOM/freeze driver).
 const GAMMA_HEATMAP_MAX_SNAPSHOTS = 300;
 import { latestCompletedNewYorkSession, newYorkSessionTimestamp } from "@/lib/gexVueReplay";
-import { isZeroGammaLinePayload, paintZeroGammaLineOnBars, zeroGammaRootForInstrument, type ZeroGammaLinePayload } from "@/lib/zeroGammaLine";
+import { isZeroGammaLinePayload, paintZeroGammaLineOnBars, zeroGammaRootForInstrument, zeroGammaSourceChoices, type ZeroGammaLinePayload, type ZeroGammaLineSource } from "@/lib/zeroGammaLine";
 import { STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT } from "@/lib/volumeProfileMath";
 import {
   buildInitialBalanceLevels,
@@ -5608,11 +5608,19 @@ function Chart({
     let painted = false;
     const historySessions = Math.max(1, Math.min(5, Math.round(Number(zeroGammaLineIndicator.settings?.historySessions ?? 5))));
     const refreshMs = Math.max(5_000, Number(zeroGammaLineIndicator.settings?.refreshSeconds ?? 10) * 1_000);
+    // AUTO follows the chart's own options family; a pinned chain reads the
+    // crossing off that chain instead. The server re-validates it against the
+    // chart's family, so a stale saved value can never cross markets.
+    const pinnedSource = zeroGammaSourceChoices(instrument)
+      .includes(String(zeroGammaLineIndicator.settings?.sourceTicker) as ZeroGammaLineSource)
+      ? String(zeroGammaLineIndicator.settings?.sourceTicker)
+      : null;
+    const sourceQuery = pinnedSource ? `&source=${encodeURIComponent(pinnedSource)}` : "";
     const load = async (sessions: number, timeoutMs: number, force = false) => {
       try {
         const payload = await fetchWorkspaceData<ZeroGammaLinePayload>(
-          `zero-gamma-line:${instrument.toUpperCase()}:${sessions}`,
-          `/api/zero-gamma-line?instrument=${encodeURIComponent(instrument)}&sessions=${sessions}`,
+          `zero-gamma-line:${instrument.toUpperCase()}:${pinnedSource ?? "AUTO"}:${sessions}`,
+          `/api/zero-gamma-line?instrument=${encodeURIComponent(instrument)}&sessions=${sessions}${sourceQuery}`,
           { force, maxAgeMs: refreshMs, timeoutMs, validate: isZeroGammaLinePayload, invalidMessage: "Zero Gamma Line returned an incomplete history." },
         );
         if (payload.points.length) painted = true;
@@ -5769,10 +5777,36 @@ function Chart({
     ...indicators.flatMap((instance): CalculatedIndicatorSeries[] => {
       if (!instance.enabled || instance.indicatorId !== "zero-gamma-line" || !zeroGammaLinePayload?.points.length) return [];
       const useThemeColors = instance.settings?.useThemeColors !== false;
-      const color = colorWithOpacity(
-        useThemeColors ? settings.borderUpColor : String(instance.settings?.lineColor ?? settings.borderUpColor),
-        Number(instance.settings?.opacity ?? 72),
+      const painted = paintZeroGammaLineOnBars(
+        zeroGammaLinePayload.points,
+        zeroGammaChartBarTimes,
+        timeframe && !isEventBasedChartInterval(timeframe)
+          ? (timeframeToMs(timeframe) ?? 60_000) / 1_000
+          : null,
       );
+      // The crossing is the boundary between the two dealer-Gamma
+      // environments: price above it is the positive-Gamma regime, below it
+      // the negative one. The line reports which side the market is on by
+      // taking the up colour while price sits above it and the down colour
+      // while it sits below, so the regime is readable without comparing two
+      // numbers by eye. Neither side is known until both the line and a close
+      // exist, and then it stays on the neutral colour rather than guessing.
+      const latestLineValue = painted.at(-1)?.value ?? null;
+      const latestClose = candles.at(-1)?.close ?? null;
+      const regimePositive = instance.settings?.showRegimeHint !== false
+        && latestLineValue !== null
+        && latestClose !== null
+        && Number.isFinite(latestClose)
+        ? latestClose >= latestLineValue
+        : null;
+      const baseColor = useThemeColors
+        ? regimePositive === null
+          ? settings.borderUpColor
+          : regimePositive
+            ? settings.upColor
+            : settings.downColor
+        : String(instance.settings?.lineColor ?? settings.borderUpColor);
+      const color = colorWithOpacity(baseColor, Number(instance.settings?.opacity ?? 72));
       const requestedLineWidth = Math.round(Number(instance.settings?.lineWidth ?? 2));
       const lineWidth = Math.max(1, Math.min(4, requestedLineWidth)) as 1 | 2 | 3 | 4;
       const lineStyle = ["solid", "dashed", "dotted"].includes(String(instance.settings?.lineStyle))
@@ -5789,13 +5823,7 @@ function Chart({
         lineStyle,
         lineType: "simple",
         lastValueVisible: instance.settings?.showCurrentValue !== false,
-        data: paintZeroGammaLineOnBars(
-          zeroGammaLinePayload.points,
-          zeroGammaChartBarTimes,
-          timeframe && !isEventBasedChartInterval(timeframe)
-            ? (timeframeToMs(timeframe) ?? 60_000) / 1_000
-            : null,
-        ),
+        data: painted,
       }];
     }),
     ...(optionsDeltaSeries ? [optionsDeltaSeries] : []),
@@ -5831,7 +5859,7 @@ function Chart({
         data: rankData,
       }];
     }),
-  ], [baseCalculatedIndicatorSeries, indicatorSignature, indicators, ivRankByInstance, optionsDeltaSeries, settings.borderUpColor, settings.downColor, settings.upColor, timeframe, zeroGammaBarsSeries, zeroGammaChartBarTimes, zeroGammaLinePayload]);
+  ], [baseCalculatedIndicatorSeries, candles, indicatorSignature, indicators, ivRankByInstance, optionsDeltaSeries, settings.borderUpColor, settings.downColor, settings.upColor, timeframe, zeroGammaBarsSeries, zeroGammaChartBarTimes, zeroGammaLinePayload]);
   const calculatedIndicatorPanes = useMemo(() => {
     return indicators.flatMap((instance): IndicatorPaneGroup[] => {
       if (!instance.enabled) return [];

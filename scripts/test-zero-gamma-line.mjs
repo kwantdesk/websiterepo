@@ -4,7 +4,9 @@ import { readFile } from "node:fs/promises";
 import {
   isZeroGammaLinePayload,
   paintZeroGammaLine,
+  isZeroGammaLineSource,
   zeroGammaRootForInstrument,
+  zeroGammaSourceChoices,
   zeroGammaSourceForInstrument,
 } from "../src/lib/zeroGammaLine.ts";
 
@@ -200,3 +202,64 @@ assert.equal(isZeroGammaLinePayload({ root: "NQ", points: [{ timestampMs: 1, val
 }
 
 console.log("Zero Gamma Line contract tests passed.");
+
+// --- pinning the option chain the crossing is read from ---
+{
+  // Only the chart's OWN Gamma family is offered. Reading the SPX crossing on
+  // an NQ chart would plot one market's dealer positioning on another
+  // market's price.
+  assert.deepEqual(zeroGammaSourceChoices("NQ.v.0"), ["NQ", "NDX", "QQQ"]);
+  assert.deepEqual(zeroGammaSourceChoices("MNQ"), ["NQ", "NDX", "QQQ"]);
+  assert.deepEqual(zeroGammaSourceChoices("ES.v.0"), ["ES", "SPX", "SPXW", "SPY"]);
+  assert.deepEqual(zeroGammaSourceChoices("NDX"), ["NQ", "NDX", "QQQ"]);
+  assert.deepEqual(zeroGammaSourceChoices("CL"), [], "unsupported families offer nothing");
+
+  assert.equal(isZeroGammaLineSource("SPXW"), true);
+  assert.equal(isZeroGammaLineSource("AUTO"), false, "AUTO is the absence of a pin");
+  assert.equal(isZeroGammaLineSource("TSLA"), false);
+  assert.equal(isZeroGammaLineSource(undefined), false);
+
+  // The route re-validates the pin against the chart's own family, so a saved
+  // setting carried onto another instrument cannot cross markets.
+  assert.match(route, /zeroGammaRootForInstrument\(requestedSource\) === zeroGammaRootForInstrument\(instrument\)/);
+  // The client only sends a pin it can justify, and the cache key separates
+  // chains so two panes on one instrument cannot serve each other's line.
+  assert.match(chart, /zero-gamma-line:\$\{instrument\.toUpperCase\(\)\}:\$\{pinnedSource \?\? "AUTO"\}/);
+}
+
+// --- the display scale belongs to the chart, not to the chain ---
+{
+  // A futures pane needs every crossing converted to the futures scale
+  // whichever chain it came from. Testing `sourceSymbol === root` only held
+  // while the source was always the automatic pick; with pinning it would
+  // leave a pinned cash chain on the cash scale under futures prices.
+  assert.match(server, /if \(displayScale === "futures"\)/);
+  assert.ok(
+    !server.includes("if (sourceSymbol === root) {"),
+    "the futures conversion must not key off the source symbol",
+  );
+  assert.match(server, /zeroGammaSourceForInstrument\(displayInstrument\) === root \? "futures" : "cash"/);
+  // Same chain, two scales, two different price series — the durable cache
+  // must not serve one for the other.
+  assert.match(server, /"zero-gamma-trail-v3", root, sourceSymbol, date, displayScale/);
+  assert.match(server, /\$\{date\}:\$\{displayScale\}:\$\{completed \? "h" : "l"\}/);
+}
+
+// --- the line reports which Gamma environment price is in ---
+{
+  // Above the crossing is the positive-Gamma environment and below it the
+  // negative one, so the line takes the up or down colour accordingly rather
+  // than making the trader compare two numbers by eye.
+  assert.match(chart, /latestClose >= latestLineValue/);
+  assert.ok(
+    chart.includes("? settings.borderUpColor"),
+    "an unknown side stays on the neutral colour instead of guessing",
+  );
+  assert.ok(
+    chart.includes("latestLineValue !== null")
+      && chart.includes("&& latestClose !== null"),
+    "the regime needs both a line value and a close before it claims a side",
+  );
+}
+
+console.log("Zero Gamma Line source-pinning, display-scale and regime tests passed.");

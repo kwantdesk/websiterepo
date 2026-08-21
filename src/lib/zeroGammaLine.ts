@@ -39,6 +39,28 @@ export function zeroGammaRootForInstrument(instrument: string): ZeroGammaLineRoo
   return null;
 }
 
+export const ZERO_GAMMA_LINE_SOURCES: readonly ZeroGammaLineSource[] =
+  ["NQ", "ES", "NDX", "QQQ", "SPX", "SPXW", "SPY"] as const;
+
+export function isZeroGammaLineSource(value: unknown): value is ZeroGammaLineSource {
+  return typeof value === "string" && (ZERO_GAMMA_LINE_SOURCES as readonly string[]).includes(value);
+}
+
+/**
+ * The option chains a chart may derive its crossing from, in offer order.
+ * Only the chart's OWN Gamma family is offered: an NQ chart drawing the SPX
+ * crossing would paint one market's dealer positioning on another market's
+ * price, which is not a view of anything. Within a family the chains are
+ * different measurements of the same positioning, so choosing between them
+ * is a real analytical choice.
+ */
+export function zeroGammaSourceChoices(instrument: string): ZeroGammaLineSource[] {
+  const root = zeroGammaRootForInstrument(instrument);
+  if (root === "NQ") return ["NQ", "NDX", "QQQ"];
+  if (root === "ES") return ["ES", "SPX", "SPXW", "SPY"];
+  return [];
+}
+
 export function zeroGammaSourceForInstrument(instrument: string): ZeroGammaLineSource | null {
   const normalized = normalizedGammaInstrument(instrument);
   if (normalized === "NDX" || normalized === "QQQ") return normalized;
