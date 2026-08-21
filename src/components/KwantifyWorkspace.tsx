@@ -803,7 +803,7 @@ type StrategyItem = {
   totalPnl?: number;
 };
 
-type WorkspaceLayout = "single" | "split-vertical" | "split-horizontal" | "quad" | "columns" | "gexmap-columns" | "custom";
+type WorkspaceLayout = "single" | "split-vertical" | "split-horizontal" | "quad" | "columns" | "gexmap-columns" | "gexmap-columns-4" | "custom";
 type WorkspacePagePanelKind = "charts" | "zyon" | "gameplan" | "gamma" | "gexmap" | "liqmap" | "news" | "socials" | "journal";
 type WorkspaceToolKind =
   | "tool-gamma-heatmap"
@@ -1452,7 +1452,13 @@ function PaneHeaderDropdown({
       if (event.key === "Escape") setOpen(false);
     };
     const closeOnScroll = (event: Event) => {
-      if (menuRef.current && event.target instanceof Node && menuRef.current.contains(event.target)) return;
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (menuRef.current?.contains(target)) return;
+      // Close only when an ANCESTOR of the trigger scrolls (the menu would
+      // detach from it). Sibling panes — the GEX Map ladder recentres itself
+      // continuously — must not dismiss the menu.
+      if (target instanceof Element && triggerRef.current && !target.contains(triggerRef.current)) return;
       setOpen(false);
     };
     document.addEventListener("pointerdown", closeOnOutside);
@@ -1600,6 +1606,39 @@ function createWorkspaceLayoutTree(
         },
       },
       second: pane(3),
+    };
+  }
+  if (layout === "gexmap-columns-4") {
+    // Same auto layout with four charts: they share the left 65% evenly
+    // (16.25% of the workspace each) and the GEX Map owns the right 35%.
+    return {
+      type: "split",
+      id: "root-x",
+      axis: "x",
+      ratio: 65,
+      first: {
+        type: "split",
+        id: "gexmap-columns4-1",
+        axis: "x",
+        ratio: 25,
+        first: pane(0),
+        second: {
+          type: "split",
+          id: "gexmap-columns4-2",
+          axis: "x",
+          ratio: 100 / 3,
+          first: pane(1),
+          second: {
+            type: "split",
+            id: "gexmap-columns4-3",
+            axis: "x",
+            ratio: 50,
+            first: pane(2),
+            second: pane(3),
+          },
+        },
+      },
+      second: pane(4),
     };
   }
   if (layout === "quad") {
@@ -2241,6 +2280,7 @@ function loadChartWorkspaceRuntime(scope: ChartWorkspaceScope): ChartWorkspaceRu
     || layoutValue === "quad"
     || layoutValue === "columns"
     || layoutValue === "gexmap-columns"
+    || layoutValue === "gexmap-columns-4"
     || layoutValue === "custom"
     || layoutValue === "single"
     ? layoutValue
@@ -12491,6 +12531,7 @@ export default function KwantifyWorkspace({
             || nextLayoutValue === "quad"
             || nextLayoutValue === "columns"
             || nextLayoutValue === "gexmap-columns"
+            || nextLayoutValue === "gexmap-columns-4"
             || nextLayoutValue === "custom"
             || nextLayoutValue === "single"
             ? nextLayoutValue
@@ -13549,7 +13590,12 @@ export default function KwantifyWorkspace({
   }, [brokerMode, workspacePanes]);
 
   const applyWorkspaceLayoutTemplate = (layout: Exclude<WorkspaceLayout, "custom">) => {
-    const requiredPaneCount = layout === "quad" || layout === "columns" || layout === "gexmap-columns" ? 4 : layout === "single" ? 1 : 2;
+    // Auto layouts pin the embedded GEX Map to the right 35% behind this many
+    // evenly split charts.
+    const gexMapAutoChartCount = layout === "gexmap-columns" ? 3 : layout === "gexmap-columns-4" ? 4 : 0;
+    const requiredPaneCount = gexMapAutoChartCount
+      ? gexMapAutoChartCount + 1
+      : layout === "quad" || layout === "columns" ? 4 : layout === "single" ? 1 : 2;
     const nextPanes = [...workspacePanes];
     const scopedDefaults = defaultWorkspacePanes(chartWorkspaceScopeRef.current);
     for (const defaultPane of scopedDefaults) {
@@ -13574,13 +13620,13 @@ export default function KwantifyWorkspace({
         ? pane
         : { ...pane, content: null }
     ));
-    if (layout === "gexmap-columns") {
-      // The auto layout fixes content, not just geometry: three charts on the
-      // left, the embedded GEX Map on the right 35%.
+    if (gexMapAutoChartCount) {
+      // The auto layouts fix content, not just geometry: charts on the left,
+      // the embedded GEX Map on the right 35%.
       orderedPanes = orderedPanes.map((pane, index) => (
-        index < 3
+        index < gexMapAutoChartCount
           ? { ...pane, content: "charts" as WorkspacePanelKind }
-          : index === 3
+          : index === gexMapAutoChartCount
             ? { ...pane, content: "gexmap" as WorkspacePanelKind }
             : pane
       ));
@@ -13589,8 +13635,8 @@ export default function KwantifyWorkspace({
     setWorkspaceLayout(layout);
     setWorkspaceTree(createWorkspaceLayoutTree(layout, orderedPanes));
     setWorkspaceFloatingWindows([]);
-    if (layout === "gexmap-columns") {
-      const mapPane = orderedPanes[3];
+    if (gexMapAutoChartCount) {
+      const mapPane = orderedPanes[gexMapAutoChartCount];
       if (mapPane && mapPane.content === "gexmap") {
         // Panel type replacement, not an indicator-library add: a chart's
         // indicator stack must not leak into the map pane.
@@ -16828,6 +16874,18 @@ export default function KwantifyWorkspace({
                 title: "Three charts + GEX Map at 35%",
                 icon: (
                   <span className="grid h-4 w-4 grid-cols-[1fr_1fr_1fr_1.7fr] gap-0.5">
+                    <span className="rounded-[1px] border border-current/70 bg-current/15" />
+                    <span className="rounded-[1px] border border-current/70 bg-current/15" />
+                    <span className="rounded-[1px] border border-current/70 bg-current/15" />
+                    <span className="rounded-[1px] border border-current/70 bg-current/45" />
+                  </span>
+                ),
+              }, {
+                layout: "gexmap-columns-4" as Exclude<WorkspaceLayout, "custom">,
+                title: "Four charts + GEX Map at 35%",
+                icon: (
+                  <span className="grid h-4 w-4 grid-cols-[1fr_1fr_1fr_1fr_1.9fr] gap-px">
+                    <span className="rounded-[1px] border border-current/70 bg-current/15" />
                     <span className="rounded-[1px] border border-current/70 bg-current/15" />
                     <span className="rounded-[1px] border border-current/70 bg-current/15" />
                     <span className="rounded-[1px] border border-current/70 bg-current/15" />
