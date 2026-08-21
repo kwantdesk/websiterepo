@@ -112,7 +112,7 @@ export function objectMetrics(object: PrecisionObject, adapter: PrecisionChartAd
   return null;
 }
 
-function renderObject(ctx: CanvasRenderingContext2D, object: PrecisionObject, adapter: PrecisionChartAdapter, theme: PrecisionTheme): void {
+function renderObject(ctx: CanvasRenderingContext2D, object: PrecisionObject, adapter: PrecisionChartAdapter, theme: PrecisionTheme, selected = false): void {
   if (!object.visibility.visible || (object.visibility.timeframes.length && !object.visibility.timeframes.includes(adapter.timeframe))) return;
   if (object.visibility.minZoom != null && adapter.pixelsPerBar < object.visibility.minZoom) return;
   if (object.visibility.maxZoom != null && adapter.pixelsPerBar > object.visibility.maxZoom) return;
@@ -281,10 +281,18 @@ function renderObject(ctx: CanvasRenderingContext2D, object: PrecisionObject, ad
         const ratio = result.rMultiple.toFixed(2).replace(/\.00$/, "").replace(/(\.\d)0$/, "$1");
         const entryText = `${result.direction} · ${result.quantity} · R:R 1:${ratio}`;
         const centerX = left + boxWidth / 2;
-        positionLabel(ctx, object, theme, centerX, targetY, targetText, object.style.positiveColor, plotWidth);
-        positionLabel(ctx, object, theme, centerX, stopY, stopText, object.style.negativeColor, plotWidth);
-        if (object.options.showRiskReward !== false) positionLabel(ctx, object, theme, centerX, entryY, entryText, object.style.neutralColor, plotWidth);
-      } else {
+        // The readout belongs to the calculator being WORKED ON. Drawn for
+        // every calculator on the chart it buried the price action under
+        // permanent TP/SL/R:R pills; deselected, the tool should be just its
+        // red and green boxes. This matches the SVG calculator, which already
+        // gates its pills on selection.
+        if (selected) {
+          positionLabel(ctx, object, theme, centerX, targetY, targetText, object.style.positiveColor, plotWidth);
+          positionLabel(ctx, object, theme, centerX, stopY, stopText, object.style.negativeColor, plotWidth);
+          if (object.options.showRiskReward !== false) positionLabel(ctx, object, theme, centerX, entryY, entryText, object.style.neutralColor, plotWidth);
+        }
+      } else if (selected) {
+        // A broken setup is only worth reporting while the tool is being used.
         positionLabel(ctx, object, theme, left + boxWidth / 2, entryY, result.warning ?? "INVALID SETUP", object.style.negativeColor, plotWidth);
       }
       break;
@@ -302,7 +310,17 @@ export function renderPrecisionCanvas(
   theme: PrecisionTheme,
 ): void {
   ctx.clearRect(0, 0, adapter.width, adapter.height);
-  [...objects, ...(draft ? [draft] : [])].sort((a, b) => a.zIndex - b.zIndex).forEach((object) => renderObject(ctx, object, adapter, theme));
+  // A draft is the object under the cursor, so it counts as selected.
+  const selectedSet = new Set(selectedIds);
+  [...objects, ...(draft ? [draft] : [])]
+    .sort((a, b) => a.zIndex - b.zIndex)
+    .forEach((object) => renderObject(
+      ctx,
+      object,
+      adapter,
+      theme,
+      selectedSet.has(object.id) || object.id === draft?.id,
+    ));
   objects.filter((object) => selectedIds.includes(object.id) && object.visibility.visible).forEach((object) => {
     const anchors = objectScreenAnchors(object, adapter);
     const isTradeCalculator = object.toolId === "precision-buy-calculator" || object.toolId === "precision-sell-calculator";
