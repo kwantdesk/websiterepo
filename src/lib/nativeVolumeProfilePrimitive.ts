@@ -75,7 +75,14 @@ export function zoomScaledVolumeProfileWidth({
 }
 
 export type NativeVolumeProfileStyle = {
-  mode: "delta-volume" | "bid-ask" | "delta";
+  /**
+   * What the bars measure. `volume` is the plain traded-volume profile;
+   * `delta-volume` adds the signed delta bar beside it; `bid-ask` splits
+   * the row into its aggressor sides; `delta` shows signed delta alone;
+   * `delta-percentage` scales that delta by the row's own volume, so a
+   * thin row that traded one-sided reads as strongly as a heavy one.
+   */
+  mode: "volume" | "delta-volume" | "bid-ask" | "delta" | "delta-percentage";
   widthBasis: "chart" | "session";
   widthPercent: number;
   opacity: number;
@@ -467,7 +474,8 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
         // moved beyond the viewport, dock the volume-only half to the left
         // edge. Delta returns automatically when the anchor is visible again.
         const splitPinnedDaily = pinnedLeft && !pinnedRight && profile.period === "daily";
-        const volumeOnlyPinnedDaily = splitPinnedDaily && style.mode === "delta-volume";
+        const volumeOnlyPinnedDaily = splitPinnedDaily
+          && (style.mode === "delta-volume" || style.mode === "volume");
         const anchorX = volumeOnlyPinnedDaily
           ? rawAnchorX
           : splitPinnedDaily
@@ -592,9 +600,15 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           const y = Math.min(top, bottom);
           const height = Math.max(0.72, Math.abs(bottom - top) - 0.12);
           const volumeWidth = Math.max(0, volume / groupedMaxVolume * profileWidth);
+          // Delta percentage measures how one-sided a row was rather than how
+          // big its delta was, so a thin row that traded entirely on the offer
+          // reads as strongly as a heavy balanced one.
+          const deltaShare = volume > 0 ? Math.abs(delta) / volume : 0;
           const deltaWidth = profileWidth <= 0
             ? 0
-            : Math.max(0.5, Math.abs(delta) / deltaScaleMaximum * deltaScaleWidth);
+            : style.mode === "delta-percentage"
+              ? Math.max(0.5, deltaShare * deltaScaleWidth)
+              : Math.max(0.5, Math.abs(delta) / deltaScaleMaximum * deltaScaleWidth);
           const askWidth = Math.max(0, level.askVolume / groupedMaxSideVolume * profileWidth);
           const bidWidth = Math.max(0, level.bidVolume / groupedMaxSideVolume * profileWidth);
           const inValueArea = groupedVah !== null && groupedVal !== null
@@ -603,7 +617,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
             && Math.abs(level.price - groupedPoc) < profile.tickSize * groupedTicks / 2;
 
           const valueAreaActive = inValueArea && style.showValueArea;
-          if (style.mode === "delta-volume") {
+          if (style.mode === "delta-volume" || style.mode === "volume") {
             addBar(
               valueAreaActive ? valueAreaPath : outsideValueAreaPath,
               pinnedRight ? anchorX - volumeWidth : anchorX,
@@ -622,7 +636,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
                 pinnedRight ? [radius, 0, 0, radius] : [0, radius, radius, 0],
               );
             }
-            if (style.showDelta && !volumeOnlyPinnedDaily) {
+            if (style.mode !== "volume" && style.showDelta && !volumeOnlyPinnedDaily) {
               addBar(
                 delta >= 0 ? positiveDeltaPath : negativeDeltaPath,
                 pinned && !splitPinnedDaily
@@ -676,12 +690,12 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           if (style.showPocHighlight && isPoc) {
             const leftExtent = style.mode === "bid-ask"
               ? bidWidth
-              : style.mode === "delta"
+              : (style.mode === "delta" || style.mode === "delta-percentage")
                 ? delta < 0 ? deltaWidth : 0
                 : style.showDelta && !volumeOnlyPinnedDaily ? deltaWidth : 0;
             const rightExtent = style.mode === "bid-ask"
               ? askWidth
-              : style.mode === "delta"
+              : (style.mode === "delta" || style.mode === "delta-percentage")
                 ? delta >= 0 ? deltaWidth : 0
                 : volumeWidth;
             addBar(

@@ -12631,10 +12631,10 @@ function Chart({
       ) as "off" | "left" | "right";
       const requestedProfileMode = String(profileSettings.profileMode);
       const profileMode = (
-        ["delta-volume", "bid-ask", "delta"].includes(requestedProfileMode)
+        ["volume", "delta-volume", "bid-ask", "delta", "delta-percentage"].includes(requestedProfileMode)
           ? requestedProfileMode
-          : "delta-volume"
-      ) as "delta-volume" | "bid-ask" | "delta";
+          : "volume"
+      ) as "volume" | "delta-volume" | "bid-ask" | "delta" | "delta-percentage";
       // Data Settings > Input data. Trades mode re-expresses each row as its
       // executed trade count; volume mode returns the profile untouched, so
       // the reference stays stable for the render memo below.
@@ -12697,6 +12697,9 @@ function Chart({
             : undefined,
           pocLineWidth: clamp(Number(profileSettings.pocLineWidth ?? 1), 0.5, 6),
           showDevelopingPoc: profileSettings.showDevelopingPoc === true,
+          developingPocStartMs: Number(profileSettings.developingPocStartMinutes ?? 0) > 0
+            ? Number(profileSettings.developingPocStartMinutes) * 60_000
+            : 0,
           valueAreaLineWidth: clamp(Number(profileSettings.valueAreaLineWidth ?? 1), 0.5, 6),
           // Peak and Valley
           showPeaks: profileSettings.showPeaks === true,

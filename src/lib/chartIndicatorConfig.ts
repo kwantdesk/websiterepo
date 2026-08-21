@@ -1755,9 +1755,15 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     maxTradeVolume: 0,
     autoGroupFactor: 1,
     groupTicks: 4,
-    // Point of Control / Value Area line weights.
+    // Point of Control
     pocLineWidth: 1,
+    pocHighlightOpacity: 55,
+    developingPocStartMinutes: 0,
+    shiftedPocTicks: 4,
+    shiftedPocOpacity: 35,
+    // Value Area
     valueAreaLineWidth: 1,
+    valueAreaDeveloping: "no",
     // Peak and Valley: high- and low-volume nodes plus the band between the
     // outermost peaks. Off by default so existing profiles look unchanged.
     showPeaks: false,
@@ -1799,11 +1805,14 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     sessionStartMinutes: 8 * 60 + 30,
     sessionEndMinutes: 15 * 60 + 15,
     useEndSessionAsStartDay: false,
+    // A volume profile measures volume. Delta is an overlay the trader turns
+    // on, not part of the standard picture — the dedicated delta and bid/ask
+    // variants still open in their own mode.
     profileMode: indicatorId === "ask-bid-volume-profile"
       ? "bid-ask"
       : indicatorId === "delta-profile"
         ? "delta"
-        : "delta-volume",
+        : "volume",
     groupingMode: "automatic",
     snapMode: indicatorId === "custom-draw-on-volume-profile" ? "off" : "left",
     useThemeColors: true,
@@ -1819,7 +1828,7 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     showVwapLine: false,
     showVwapBands: false,
     showSummary: false,
-    profileSettingsVersion: 11,
+    profileSettingsVersion: 12,
     align: indicatorId === "kwant-profile"
       ? "session"
       : indicatorId === "weekly-volume-profile" ? "left" : "right",
@@ -2152,13 +2161,12 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
   }
   if (
     normalizedInstance.indicatorId === "kwant-profile"
-    && Number(normalizedInstance.settings?.profileSettingsVersion) < 11
+    && Number(normalizedInstance.settings?.profileSettingsVersion) < 12
   ) {
     return {
       ...normalizedInstance,
       settings: {
         ...(normalizedInstance.settings ?? {}),
-        profileMode: "delta-volume",
         align: "session",
         showText: false,
         showPocHighlight: true,
@@ -2192,6 +2200,15 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         filterMode: normalizedInstance.settings?.filterMode ?? "none",
         extendMode: normalizedInstance.settings?.extendMode ?? "none",
         showLevelLabels: normalizedInstance.settings?.showLevelLabels ?? true,
+        pocHighlightOpacity: normalizedInstance.settings?.pocHighlightOpacity ?? 55,
+        developingPocStartMinutes: normalizedInstance.settings?.developingPocStartMinutes ?? 0,
+        shiftedPocTicks: normalizedInstance.settings?.shiftedPocTicks ?? 4,
+        shiftedPocOpacity: normalizedInstance.settings?.shiftedPocOpacity ?? 35,
+        valueAreaDeveloping: normalizedInstance.settings?.valueAreaDeveloping ?? "no",
+        // A profile shows volume as standard; delta is opt-in.
+        profileMode: normalizedInstance.settings?.profileMode === "delta-volume"
+          ? "volume"
+          : normalizedInstance.settings?.profileMode ?? "volume",
         levelLabelSide: normalizedInstance.settings?.levelLabelSide ?? "right",
         showLevelLabelPrice: normalizedInstance.settings?.showLevelLabelPrice ?? true,
         levelLineStyle: normalizedInstance.settings?.levelLineStyle ?? "dash",
@@ -2202,14 +2219,14 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         sessionStartMinutes: normalizedInstance.settings?.sessionStartMinutes ?? 8 * 60 + 30,
         sessionEndMinutes: normalizedInstance.settings?.sessionEndMinutes ?? 15 * 60 + 15,
         useEndSessionAsStartDay: normalizedInstance.settings?.useEndSessionAsStartDay ?? false,
-        profileSettingsVersion: 11,
+        profileSettingsVersion: 12,
       },
     };
   }
   if (
     ["weekly-volume-profile", "custom-draw-on-volume-profile", "ask-bid-volume-profile", "delta-profile"]
       .includes(normalizedInstance.indicatorId)
-    && Number(normalizedInstance.settings?.profileSettingsVersion) < 11
+    && Number(normalizedInstance.settings?.profileSettingsVersion) < 12
   ) {
     return {
       ...normalizedInstance,
@@ -2239,6 +2256,15 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         filterMode: normalizedInstance.settings?.filterMode ?? "none",
         extendMode: normalizedInstance.settings?.extendMode ?? "none",
         showLevelLabels: normalizedInstance.settings?.showLevelLabels ?? true,
+        pocHighlightOpacity: normalizedInstance.settings?.pocHighlightOpacity ?? 55,
+        developingPocStartMinutes: normalizedInstance.settings?.developingPocStartMinutes ?? 0,
+        shiftedPocTicks: normalizedInstance.settings?.shiftedPocTicks ?? 4,
+        shiftedPocOpacity: normalizedInstance.settings?.shiftedPocOpacity ?? 35,
+        valueAreaDeveloping: normalizedInstance.settings?.valueAreaDeveloping ?? "no",
+        // A profile shows volume as standard; delta is opt-in.
+        profileMode: normalizedInstance.settings?.profileMode === "delta-volume"
+          ? "volume"
+          : normalizedInstance.settings?.profileMode ?? "volume",
         levelLabelSide: normalizedInstance.settings?.levelLabelSide ?? "right",
         showLevelLabelPrice: normalizedInstance.settings?.showLevelLabelPrice ?? true,
         levelLineStyle: normalizedInstance.settings?.levelLineStyle ?? "dash",
@@ -2249,7 +2275,7 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         sessionStartMinutes: normalizedInstance.settings?.sessionStartMinutes ?? 8 * 60 + 30,
         sessionEndMinutes: normalizedInstance.settings?.sessionEndMinutes ?? 15 * 60 + 15,
         useEndSessionAsStartDay: normalizedInstance.settings?.useEndSessionAsStartDay ?? false,
-        profileSettingsVersion: 11,
+        profileSettingsVersion: 12,
       },
     };
   }
