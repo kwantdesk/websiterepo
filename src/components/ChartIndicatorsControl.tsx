@@ -479,6 +479,41 @@ const bounceThemeColours = (chartSettings: ChartSettings) => ({
   airPocketColor: chartSettings.gridColor,
 });
 
+/**
+ * The colours a volume profile actually paints with while it is following the
+ * theme. Mirrors the renderer's own mapping, so the pickers show what is on
+ * the chart rather than a stale stored value.
+ */
+const volumeProfileThemeColours = (chartSettings: ChartSettings) => ({
+  askColor: chartSettings.upColor,
+  bidColor: chartSettings.downColor,
+  volumeColor: chartSettings.borderDownColor,
+  valueAreaColor: chartSettings.borderUpColor,
+  pocColor: chartSettings.upColor,
+  peakColor: chartSettings.upColor,
+  valleyColor: chartSettings.downColor,
+  businessZoneColor: chartSettings.borderUpColor,
+  vwapColor: chartSettings.borderUpColor,
+  summaryTextColor: chartSettings.upColor,
+});
+
+/**
+ * Indicators whose renderer honours `useThemeColors`.
+ *
+ * While that flag is on, the renderer substitutes theme colours and every
+ * stored colour is ignored — so picking one appeared to do nothing at all.
+ * Picking a colour is an unambiguous request for THAT colour, so it drops the
+ * instance out of theme mode, seeding the other keys with the theme values
+ * already on screen so nothing else visibly jumps.
+ */
+const themeColourMapFor = (indicatorId: string, chartSettings: ChartSettings) => {
+  if (indicatorId === "bounce-levels") return bounceThemeColours(chartSettings) as Record<string, string>;
+  if (VOLUME_PROFILE_INDICATOR_IDS.has(indicatorId)) {
+    return volumeProfileThemeColours(chartSettings) as Record<string, string>;
+  }
+  return null;
+};
+
 function applyNumericIndicatorSetting(
   indicatorId: string,
   currentSettings: ChartIndicatorInstance["settings"],
@@ -4682,6 +4717,7 @@ export default function ChartIndicatorsControl({
                 for (const entry of entries) {
                   bySection.set(entry[2], [...(bySection.get(entry[2]) ?? []), entry]);
                 }
+                const themeColours = themeColourMapFor(settingsDefinition.id, chartSettings);
                 const control = ([key, value]: readonly [string, unknown, string]) => (
                     typeof value === "boolean" ? (
                       <label key={key} className="flex min-h-10 items-center gap-2 rounded-lg border border-border bg-surface/30 px-3 text-[9px] text-muted">
@@ -4701,17 +4737,15 @@ export default function ChartIndicatorsControl({
                         <span className="truncate">{titleFromKey(key)}</span>
                         <ChartColorField
                           ariaLabel={`${titleFromKey(key)} colour`}
-                          value={settingsDefinition.id === "bounce-levels" && settingsInstance.settings?.useThemeColors !== false
-                            ? String(bounceThemeColours(chartSettings)[key as keyof ReturnType<typeof bounceThemeColours>] ?? value)
+                          value={themeColours && settingsInstance.settings?.useThemeColors !== false
+                            ? String(themeColours[key] ?? value)
                             : String(value)}
                           onChange={(hex) => replace(settingsInstance.instanceId, (current) => ({
                             ...current,
                             settings: {
                               ...(current.settings ?? {}),
-                              ...(settingsDefinition.id === "bounce-levels" && current.settings?.useThemeColors !== false
-                                ? bounceThemeColours(chartSettings)
-                                : {}),
-                              ...(settingsDefinition.id === "bounce-levels" ? { useThemeColors: false } : {}),
+                              ...(themeColours && current.settings?.useThemeColors !== false ? themeColours : {}),
+                              ...(themeColours ? { useThemeColors: false } : {}),
                               [key]: hex,
                             },
                           }))}
