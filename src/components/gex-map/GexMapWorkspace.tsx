@@ -1054,9 +1054,16 @@ function ExposurePanel({
                 // those settings; the Star keeps its dedicated ring styling.
                 const highlighted = derived.isHighlighted || isFocusedStar;
                 const barWidth = Math.sqrt(derived.mapControlPct / maxHighlightedControl) * 100;
-                // "Gatekeeper" is displayed as SPARKY; the internal role id
-                // stays stable so derivations and saved state are untouched.
-                const roleText = derived.roles.filter((role) => role !== "normal").map((role) => role === "gatekeeper" ? "SPARKY" : role.toUpperCase());
+                // Desk names for two roles: the gatekeeper between spot and the
+                // Star reads as SIDETING, and the fastest-growing significant
+                // node reads as SPARKY. Only the LABEL changes — the internal
+                // role ids stay stable so derivations, settings and saved state
+                // are untouched, the same way KING kept its id after becoming
+                // STAR.
+                const roleLabels: Record<string, string> = { gatekeeper: "SIDETING", fast: "SPARKY" };
+                const roleText = derived.roles
+                  .filter((role) => role !== "normal")
+                  .map((role) => roleLabels[role] ?? role.toUpperCase());
                 const distanceLabel = Math.abs(derived.distanceFromSpotPct) < 0.0001
                   ? "AT SPOT"
                   : `${Math.abs(derived.distanceFromSpotPct).toFixed(2)}% ${derived.distanceFromSpotPct > 0 ? "ABOVE" : "BELOW"}`;
