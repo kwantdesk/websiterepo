@@ -256,6 +256,7 @@ import {
 } from "@/lib/chartIntervals";
 import { applyMarketTradesToEventBars, futuresTickSize } from "@/lib/eventBars";
 import { automaticVolumeProfileGroupTicks } from "@/lib/volumeProfileMath";
+import { RTH_END_MINUTES, RTH_START_MINUTES } from "@/lib/volumeProfileSessions";
 import type { ValueAreaProfile } from "@/lib/valueArea";
 import {
   DATABENTO_LIVE_TICK_EVENT,
@@ -7805,6 +7806,16 @@ function WorkspaceChartPaneComponent({
     if (nextProfiles.length) setVolumeProfiles(nextProfiles);
   }, [candles, dailyProfileInstance, pane.broker, pane.symbol, pane.timeframe, weeklyProfileInstance]);
 
+  // Filter/Split Time settings normalised once for both profile requests.
+  const sessionFilterModeFor = (settings: Record<string, unknown>) => {
+    const requested = String(settings.filterMode ?? "none").toLowerCase();
+    return (["none", "filter", "splitted", "triple"].includes(requested) ? requested : "none") as
+      "none" | "filter" | "splitted" | "triple";
+  };
+  const sessionFilterTimeFor = (settings: Record<string, unknown>) => {
+    const requested = String(settings.filterTime ?? "rth").toLowerCase();
+    return (["rth", "eth", "custom"].includes(requested) ? requested : "rth") as "rth" | "eth" | "custom";
+  };
   useEffect(() => {
     if (!dailyProfileInstance && !weeklyProfileInstance) {
       setVolumeProfiles([]);
@@ -7985,9 +7996,14 @@ function WorkspaceChartPaneComponent({
             period: "daily",
             tradingDate,
             groupTicks: requestedDailyGroupTicks,
-            valueAreaPercent: STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
+            valueAreaPercent: Number(dailyProfileSettings.valueAreaPercent ?? STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT),
             minTradeVolume: requestedDailyMinVolume,
             maxTradeVolume: requestedDailyMaxVolume,
+            filterMode: sessionFilterModeFor(dailyProfileSettings),
+            filterTime: sessionFilterTimeFor(dailyProfileSettings),
+            sessionStartMinutes: Number(dailyProfileSettings.sessionStartMinutes ?? RTH_START_MINUTES),
+            sessionEndMinutes: Number(dailyProfileSettings.sessionEndMinutes ?? RTH_END_MINUTES),
+            useEndSessionAsStartDay: dailyProfileSettings.useEndSessionAsStartDay === true,
           }).then((profile) => {
             if (tradingDate === currentDailyTradingDate && profile) {
               currentDailyProfileLoaded = true;
@@ -8009,9 +8025,14 @@ function WorkspaceChartPaneComponent({
             ? weeklyCandles[weeklyCandles.length - 1].timestamp + chartStepMs
             : undefined,
           groupTicks: requestedWeeklyGroupTicks,
-          valueAreaPercent: STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
+          valueAreaPercent: Number(weeklyProfileSettings.valueAreaPercent ?? STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT),
           minTradeVolume: requestedWeeklyMinVolume,
           maxTradeVolume: requestedWeeklyMaxVolume,
+          filterMode: sessionFilterModeFor(weeklyProfileSettings),
+          filterTime: sessionFilterTimeFor(weeklyProfileSettings),
+          sessionStartMinutes: Number(weeklyProfileSettings.sessionStartMinutes ?? RTH_START_MINUTES),
+          sessionEndMinutes: Number(weeklyProfileSettings.sessionEndMinutes ?? RTH_END_MINUTES),
+          useEndSessionAsStartDay: weeklyProfileSettings.useEndSessionAsStartDay === true,
         }).then(replaceExactProfile));
       }
       await Promise.allSettled(requests);
@@ -8036,6 +8057,12 @@ function WorkspaceChartPaneComponent({
     dailyProfileInstance?.instanceId,
     dailyProfileInstance?.indicatorId,
     dailyProfileSettings.autoGroupFactor,
+    dailyProfileSettings.filterMode,
+    dailyProfileSettings.filterTime,
+    dailyProfileSettings.sessionStartMinutes,
+    dailyProfileSettings.sessionEndMinutes,
+    dailyProfileSettings.useEndSessionAsStartDay,
+    dailyProfileSettings.valueAreaPercent,
     dailyProfileSettings.groupTicks,
     dailyProfileSettings.groupingMode,
     dailyProfileSettings.maxTradeVolume,
@@ -8047,6 +8074,12 @@ function WorkspaceChartPaneComponent({
     resolvedContractSymbol,
     weeklyProfileInstance?.instanceId,
     weeklyProfileSettings.autoGroupFactor,
+    weeklyProfileSettings.filterMode,
+    weeklyProfileSettings.filterTime,
+    weeklyProfileSettings.sessionStartMinutes,
+    weeklyProfileSettings.sessionEndMinutes,
+    weeklyProfileSettings.useEndSessionAsStartDay,
+    weeklyProfileSettings.valueAreaPercent,
     weeklyProfileSettings.groupTicks,
     weeklyProfileSettings.groupingMode,
     weeklyProfileSettings.maxTradeVolume,

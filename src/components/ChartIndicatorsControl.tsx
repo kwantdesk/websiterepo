@@ -1424,6 +1424,107 @@ export default function ChartIndicatorsControl({
                 </div>
               ) : null}
 
+              {VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) ? (
+                <div className="grid gap-3 border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
+                  <div className="text-[9px] uppercase tracking-[0.14em] text-foreground sm:col-span-2">Filter / split time</div>
+                  {([
+                    ["Filter mode", "filterMode", "none", [
+                      ["none", "None · whole session"],
+                      ["filter", "Filter · keep the window"],
+                      ["splitted", "Splitted · per session"],
+                      ["triple", "Triple · Asia / London / NY"],
+                    ]],
+                    ["Filter time", "filterTime", "rth", [
+                      ["rth", "RTH · cash session"],
+                      ["eth", "Overnight"],
+                      ["custom", "Custom window"],
+                    ]],
+                  ] as const).map(([label, key, fallback, options]) => (
+                    <label key={key} className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                      <span>{label}</span>
+                      <KwantSelect
+                        value={String(settingsInstance.settings?.[key] ?? fallback)}
+                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                          ...current,
+                          settings: { ...(current.settings ?? {}), [key]: event.target.value },
+                        }))}
+                        className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                        menuLabel={label}
+                      >
+                        {options.map(([value, optionLabel]) => (
+                          <option key={value} value={value}>{optionLabel}</option>
+                        ))}
+                      </KwantSelect>
+                    </label>
+                  ))}
+                  {([
+                    ["Session start", "sessionStartMinutes", 8 * 60 + 30],
+                    ["Session end", "sessionEndMinutes", 15 * 60 + 15],
+                  ] as const).map(([label, key, fallback]) => {
+                    const minutes = Number(settingsInstance.settings?.[key] ?? fallback);
+                    const value = `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+                    const custom = String(settingsInstance.settings?.filterTime ?? "rth") === "custom";
+                    return (
+                      <label key={key} className={`space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted ${custom ? "" : "opacity-40"}`}>
+                        <span>{label} · exchange time</span>
+                        <input
+                          type="time"
+                          disabled={!custom}
+                          value={value}
+                          onChange={(event) => {
+                            const [hours, mins] = event.target.value.split(":").map(Number);
+                            if (!Number.isFinite(hours) || !Number.isFinite(mins)) return;
+                            replace(settingsInstance.instanceId, (current) => ({
+                              ...current,
+                              settings: { ...(current.settings ?? {}), [key]: hours * 60 + mins },
+                            }));
+                          }}
+                          className="h-9 w-full border border-border bg-background px-3 font-mono text-[10px] text-foreground outline-none focus:border-primary/40 disabled:cursor-not-allowed"
+                        />
+                      </label>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    onClick={() => replace(settingsInstance.instanceId, (current) => ({
+                      ...current,
+                      settings: {
+                        ...(current.settings ?? {}),
+                        useEndSessionAsStartDay: current.settings?.useEndSessionAsStartDay !== true,
+                      },
+                    }))}
+                    className={`h-9 border px-2 text-[8px] uppercase tracking-[0.1em] sm:col-span-2 ${
+                      settingsInstance.settings?.useEndSessionAsStartDay === true
+                        ? "border-primary/55 bg-primary/10 text-primary"
+                        : "border-border bg-background text-muted"
+                    }`}
+                  >
+                    Use end session as start day · {settingsInstance.settings?.useEndSessionAsStartDay === true ? "ON" : "OFF"}
+                  </button>
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">
+                    <span>% value area</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={100}
+                      step={1}
+                      value={Number(settingsInstance.settings?.valueAreaPercent ?? 70)}
+                      onChange={(event) => {
+                        const next = Math.min(100, Math.max(1, Math.round(Number(event.target.value) || 70)));
+                        replace(settingsInstance.instanceId, (current) => ({
+                          ...current,
+                          settings: { ...(current.settings ?? {}), valueAreaPercent: next },
+                        }));
+                      }}
+                      className="h-9 w-full border border-border bg-background px-3 text-right font-mono text-[10px] text-foreground outline-none focus:border-primary/40"
+                    />
+                  </label>
+                  <div className="border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
+                    Filter keeps only the executions inside the chosen window. Triple splits the day into Asia, London and New York. A custom window may run past midnight — set an end earlier than the start. Use end session as start day attributes an overnight window to the date it finished on, which is what puts an Asia profile on the right trading day.
+                  </div>
+                </div>
+              ) : null}
+
               {settingsDefinition.id === "implied-volatility-rank" ? (
                 <div className="grid gap-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
                   <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">
@@ -2269,6 +2370,163 @@ export default function ChartIndicatorsControl({
                   </div>
                 </div>
               ) : null}
+
+              {settingsDefinition.id === "imbalance-tracker" ? (() => {
+                const trackerSettings = settingsInstance.settings ?? {};
+                const patch = (next: Record<string, number | string | boolean>) =>
+                  replace(settingsInstance.instanceId, (current) => ({
+                    ...current,
+                    settings: { ...(current.settings ?? {}), ...next },
+                  }));
+                const toggleRow = (label: string, settingKey: string, hint?: string, defaultOn = false) => {
+                  const on = trackerSettings[settingKey] === undefined
+                    ? defaultOn
+                    : trackerSettings[settingKey] === true;
+                  return (
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <div className="text-[10px] font-medium text-foreground">{label}</div>
+                        {hint ? <div className="mt-0.5 text-[8px] leading-4 text-muted">{hint}</div> : null}
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={on}
+                        aria-label={label}
+                        onClick={() => patch({ [settingKey]: !on })}
+                        className={`h-6 w-11 shrink-0 rounded-full border transition-colors ${on ? "border-primary/50 bg-primary/25" : "border-border bg-background"}`}
+                      >
+                        <span className={`block h-4 w-4 rounded-full bg-foreground transition-transform ${on ? "translate-x-6" : "translate-x-1"}`} />
+                      </button>
+                    </div>
+                  );
+                };
+                const choiceRow = (
+                  label: string,
+                  settingKey: string,
+                  fallback: string,
+                  options: ReadonlyArray<readonly [string, string]>,
+                  hint?: string,
+                ) => (
+                  <div>
+                    <div className="text-[10px] font-medium text-foreground">{label}</div>
+                    {hint ? <div className="mt-0.5 text-[8px] leading-4 text-muted">{hint}</div> : null}
+                    <div
+                      className="mt-1.5 grid gap-1.5"
+                      style={{ gridTemplateColumns: `repeat(${Math.min(3, options.length)}, minmax(0, 1fr))` }}
+                      role="group"
+                      aria-label={label}
+                    >
+                      {options.map(([value, optionLabel]) => {
+                        const selected = String(trackerSettings[settingKey] ?? fallback) === value;
+                        return (
+                          <button
+                            key={value}
+                            type="button"
+                            aria-pressed={selected}
+                            onClick={() => patch({ [settingKey]: value })}
+                            className={`h-9 rounded-lg border px-2 text-[9px] transition-colors ${
+                              selected
+                                ? "border-primary/50 bg-primary/15 text-primary"
+                                : "border-border bg-background text-muted hover:border-primary/30 hover:text-foreground"
+                            }`}
+                          >
+                            {optionLabel}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+                return (
+                  <div className="space-y-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-foreground">Data settings</div>
+                    {choiceRow(
+                      "Calculation mode",
+                      "calculationMode",
+                      "diagonal",
+                      [
+                        ["diagonal", "Imbalance diagonal"],
+                        ["horizontal", "Imbalance horizontal"],
+                        ["delta-percentage-horizontal", "Delta % horizontal"],
+                      ] as const,
+                      "Diagonal compares each ask against the bid one tick below (and the reverse); horizontal compares the two sides of the same level.",
+                    )}
+                    {toggleRow(
+                      "Include zero on imbalance",
+                      "includeZero",
+                      "Count a level whose opposing side traded nothing at all.",
+                    )}
+
+                    <div className="border-t border-border/60 pt-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-foreground">Plot settings</div>
+                    {choiceRow(
+                      "Reset mode",
+                      "resetMode",
+                      "none",
+                      [["none", "None"], ["session", "Session"], ["week", "Week"]] as const,
+                      "Ends every zone at this boundary instead of running the full extension.",
+                    )}
+                    {toggleRow(
+                      "Enable triggered zone",
+                      "showTriggered",
+                      "Keep zones on the chart after price trades through them.",
+                      true,
+                    )}
+                    {toggleRow(
+                      "Trigger only touch",
+                      "triggerOnlyTouch",
+                      "A touch triggers the zone; otherwise a close beyond it is required.",
+                    )}
+
+                    <div className="border-t border-border/60 pt-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-foreground">Alerts</div>
+                    {toggleRow("Enable sound", "enableAlertSound")}
+                    <label className="block">
+                      <span className="text-[10px] font-medium text-foreground">Alert name</span>
+                      <input
+                        value={String(trackerSettings.alertName ?? "Imbalance detected")}
+                        onChange={(event) => patch({ alertName: event.target.value })}
+                        className="mt-1 h-8 w-full rounded-lg border border-border bg-background px-2 text-[11px] text-foreground outline-none focus:border-primary/40"
+                      />
+                    </label>
+                    {toggleRow("Enable popup", "enablePopup")}
+                    <label className="block">
+                      <span className="text-[10px] font-medium text-foreground">Message text</span>
+                      <input
+                        value={String(trackerSettings.popupMessage ?? "Imbalance tracker")}
+                        onChange={(event) => patch({ popupMessage: event.target.value })}
+                        className="mt-1 h-8 w-full rounded-lg border border-border bg-background px-2 text-[11px] text-foreground outline-none focus:border-primary/40"
+                      />
+                    </label>
+
+                    <div className="border-t border-border/60 pt-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-foreground">Filter time</div>
+                    {choiceRow(
+                      "Filter time",
+                      "filterTime",
+                      "none",
+                      [["none", "None"], ["custom", "Custom time"]] as const,
+                      "Restrict detection to a window of the exchange session.",
+                    )}
+                    {String(trackerSettings.filterTime ?? "none") === "custom" ? (
+                      <div className="grid grid-cols-2 gap-2">
+                        {([["sessionStart", "Start", "09:30"], ["sessionEnd", "End", "16:00"]] as const).map(([key, label, fallback]) => (
+                          <label key={key} className="block">
+                            <span className="text-[9px] uppercase tracking-[0.1em] text-muted">{label} · exchange time</span>
+                            <input
+                              type="time"
+                              value={String(trackerSettings[key] ?? fallback)}
+                              onChange={(event) => patch({ [key]: event.target.value })}
+                              className="mt-1 h-8 w-full rounded-lg border border-border bg-background px-2 font-mono text-[11px] text-foreground outline-none focus:border-primary/40"
+                            />
+                          </label>
+                        ))}
+                        <div className="col-span-2 text-[8px] leading-4 text-muted">
+                          Times are America/Chicago (CME exchange time). An end before the start wraps midnight for overnight windows.
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })() : null}
 
               {settingsDefinition.id === "divergence-detector" ? (
                 <div className="grid gap-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">

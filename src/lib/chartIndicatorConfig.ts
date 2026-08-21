@@ -575,12 +575,16 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "opacity", label: "Marker opacity (%)", defaultValue: 82, min: 5, max: 100, step: 1 },
     { key: "markerSize", label: "Marker size", defaultValue: 1, min: 0.5, max: 4, step: 0.25 },
   ],
+  // Data Settings / Tick Grouping / Plot Settings, matching the reference
+  // desktop tracker's fields, defaults and units one for one.
   "imbalance-tracker": [
-    { key: "minimumPercent", label: "Minimum imbalance (%)", defaultValue: 300, min: 0, max: 10000, step: 25 },
-    { key: "minimumDelta", label: "Minimum delta value", defaultValue: 10, min: 0, max: 1000000, step: 1 },
-    { key: "minimumConsecutive", label: "Minimum consecutive levels", defaultValue: 3, min: 1, max: 50, step: 1 },
-    { key: "extendedBars", label: "Extended bars", defaultValue: 40, min: 1, max: 5000, step: 1 },
-    { key: "lineWidth", label: "Zone line width", defaultValue: 1.5, min: 0.5, max: 5, step: 0.5 },
+    { key: "minimumPercent", label: "Minimum %", defaultValue: 400, min: 0, max: 10000, step: 25 },
+    { key: "minimumDelta", label: "Minimum Delta Value", defaultValue: 0, min: 0, max: 1000000, step: 1 },
+    { key: "minimumConsecutive", label: "Min. Num. of Consecutive", defaultValue: 3, min: 1, max: 50, step: 1 },
+    { key: "tickGroupingTicks", label: "Tick grouping ticks", defaultValue: 1, min: 1, max: 100, step: 1 },
+    { key: "extendedBars", label: "Num. Extended Bars", defaultValue: 10, min: 1, max: 5000, step: 1 },
+    { key: "lineWidth", label: "Line width", defaultValue: 1, min: 0.5, max: 5, step: 0.5 },
+    { key: "zonesExtraTicks", label: "Zones extra ticks", defaultValue: 0, min: 0, max: 100, step: 1 },
     { key: "opacity", label: "Zone opacity (%)", defaultValue: 78, min: 5, max: 100, step: 1 },
   ],
   "imbalance-rejector": [
@@ -1368,16 +1372,25 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     calculationMode: "diagonal",
     includeZero: false,
     useThemeColors: true,
+    // Plot Settings
+    resetMode: "none",
     showTriggered: true,
     triggerOnlyTouch: false,
+    // Alerts
     enableAlertSound: false,
     alertName: "Imbalance detected",
-    popupMessage: "A new stacked imbalance zone was detected.",
+    enablePopup: false,
+    popupMessage: "Imbalance tracker",
+    // Filter Time — "none" keeps every session; "custom" honours the
+    // session window below in exchange (America/Chicago) time.
+    filterTime: "none",
+    sessionStart: "09:30",
+    sessionEnd: "16:00",
     buyColor: theme?.upColor ?? "#22C55E",
     sellColor: theme?.downColor ?? "#EF4444",
     buyTriggeredColor: theme?.borderUpColor ?? theme?.upColor ?? "#86EFAC",
     sellTriggeredColor: theme?.borderDownColor ?? theme?.downColor ?? "#FCA5A5",
-    imbalanceTrackerSettingsVersion: 1,
+    imbalanceTrackerSettingsVersion: 2,
   } : {}),
   ...(indicatorId === "imbalance-rejector" ? {
     includeZero: false,
@@ -1768,6 +1781,13 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     // Summary totals printed beside the profile.
     showSummaryVolume: true,
     showSummaryTrades: false,
+    // Filter/Split Time. "none" counts the whole session, which is the
+    // behaviour every existing profile already has.
+    filterMode: "none",
+    filterTime: "rth",
+    sessionStartMinutes: 8 * 60 + 30,
+    sessionEndMinutes: 15 * 60 + 15,
+    useEndSessionAsStartDay: false,
     profileMode: indicatorId === "ask-bid-volume-profile"
       ? "bid-ask"
       : indicatorId === "delta-profile"
@@ -1788,7 +1808,7 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     showVwapLine: false,
     showVwapBands: false,
     showSummary: false,
-    profileSettingsVersion: 8,
+    profileSettingsVersion: 9,
     align: indicatorId === "kwant-profile"
       ? "session"
       : indicatorId === "weekly-volume-profile" ? "left" : "right",
@@ -2121,7 +2141,7 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
   }
   if (
     normalizedInstance.indicatorId === "kwant-profile"
-    && Number(normalizedInstance.settings?.profileSettingsVersion) < 8
+    && Number(normalizedInstance.settings?.profileSettingsVersion) < 9
   ) {
     return {
       ...normalizedInstance,
@@ -2158,14 +2178,19 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         valleyMaxVolumePercent: normalizedInstance.settings?.valleyMaxVolumePercent ?? 100,
         showSummaryVolume: normalizedInstance.settings?.showSummaryVolume ?? true,
         showSummaryTrades: normalizedInstance.settings?.showSummaryTrades ?? false,
-        profileSettingsVersion: 8,
+        filterMode: normalizedInstance.settings?.filterMode ?? "none",
+        filterTime: normalizedInstance.settings?.filterTime ?? "rth",
+        sessionStartMinutes: normalizedInstance.settings?.sessionStartMinutes ?? 8 * 60 + 30,
+        sessionEndMinutes: normalizedInstance.settings?.sessionEndMinutes ?? 15 * 60 + 15,
+        useEndSessionAsStartDay: normalizedInstance.settings?.useEndSessionAsStartDay ?? false,
+        profileSettingsVersion: 9,
       },
     };
   }
   if (
     ["weekly-volume-profile", "custom-draw-on-volume-profile", "ask-bid-volume-profile", "delta-profile"]
       .includes(normalizedInstance.indicatorId)
-    && Number(normalizedInstance.settings?.profileSettingsVersion) < 8
+    && Number(normalizedInstance.settings?.profileSettingsVersion) < 9
   ) {
     return {
       ...normalizedInstance,
@@ -2192,7 +2217,12 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         valleyMaxVolumePercent: normalizedInstance.settings?.valleyMaxVolumePercent ?? 100,
         showSummaryVolume: normalizedInstance.settings?.showSummaryVolume ?? true,
         showSummaryTrades: normalizedInstance.settings?.showSummaryTrades ?? false,
-        profileSettingsVersion: 8,
+        filterMode: normalizedInstance.settings?.filterMode ?? "none",
+        filterTime: normalizedInstance.settings?.filterTime ?? "rth",
+        sessionStartMinutes: normalizedInstance.settings?.sessionStartMinutes ?? 8 * 60 + 30,
+        sessionEndMinutes: normalizedInstance.settings?.sessionEndMinutes ?? 15 * 60 + 15,
+        useEndSessionAsStartDay: normalizedInstance.settings?.useEndSessionAsStartDay ?? false,
+        profileSettingsVersion: 9,
       },
     };
   }

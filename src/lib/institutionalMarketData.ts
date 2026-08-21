@@ -873,16 +873,38 @@ export async function fetchInstitutionalVolumeProfile(args: {
   valueAreaPercent?: number;
   minTradeVolume?: number;
   maxTradeVolume?: number;
+  /** Filter/Split Time. Defaults reproduce the unfiltered whole-session profile. */
+  filterMode?: "none" | "filter" | "splitted" | "triple";
+  filterTime?: "rth" | "eth" | "custom";
+  sessionStartMinutes?: number;
+  sessionEndMinutes?: number;
+  useEndSessionAsStartDay?: boolean;
 }): Promise<InstitutionalVolumeProfile | null> {
+  const requestedValueArea = Number(args.valueAreaPercent);
   const query = new URLSearchParams({
     profileSchema: "2",
     symbol: args.symbol,
     period: args.period,
     groupTicks: String(Math.max(1, Math.round(args.groupTicks ?? 1))),
-    valueAreaPercent: String(STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT),
+    // The trader's own % Value Area. This was previously pinned to the 70%
+    // convention here as well as on the route, so the setting never arrived.
+    valueAreaPercent: String(
+      Number.isFinite(requestedValueArea) && requestedValueArea > 0
+        ? Math.min(100, requestedValueArea)
+        : STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
+    ),
     minTradeVolume: String(Math.max(0, args.minTradeVolume ?? 0)),
     maxTradeVolume: String(Math.max(0, args.maxTradeVolume ?? 0)),
+    filterMode: args.filterMode ?? "none",
+    filterTime: args.filterTime ?? "rth",
   });
+  if (Number.isFinite(args.sessionStartMinutes)) {
+    query.set("sessionStartMinutes", String(args.sessionStartMinutes));
+  }
+  if (Number.isFinite(args.sessionEndMinutes)) {
+    query.set("sessionEndMinutes", String(args.sessionEndMinutes));
+  }
+  if (args.useEndSessionAsStartDay) query.set("useEndSessionAsStartDay", "true");
   if (args.contractSymbol) query.set("contractSymbol", args.contractSymbol);
   if (/^\d{4}-\d{2}-\d{2}$/.test(args.tradingDate ?? "")) query.set("tradingDate", args.tradingDate!);
   if (Number.isFinite(args.startMs)) query.set("startMs", String(args.startMs));
