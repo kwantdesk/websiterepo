@@ -147,6 +147,7 @@ import {
   type FootprintPrimitiveOptions,
   type FootprintRenderBar,
 } from "@/lib/footprintPrimitive";
+import { ChartRepaintNotifierPrimitive } from "@/lib/chartRepaintNotifier";
 import { ImbalanceZonesPrimitive, type ImbalanceZoneModel } from "@/lib/imbalanceZonesPrimitive";
 import { retainLiveFootprintRows } from "@/lib/footprintLive";
 import { FOOTPRINT_DATA_REFRESH_INTERVAL_MS, ORDER_FLOW_DATA_REFRESH_INTERVAL_MS } from "@/lib/footprintRuntime";
@@ -3012,6 +3013,7 @@ function Chart({
   const fixedPriceLevelLabelsRef = useRef<FixedPriceLevelLabelsPrimitive | null>(null);
   const sessionHighLowPrimitiveRef = useRef<SessionHighLowPrimitive | null>(null);
   const imbalanceZonesPrimitiveRef = useRef<ImbalanceZonesPrimitive | null>(null);
+  const repaintNotifierRef = useRef<ChartRepaintNotifierPrimitive | null>(null);
   const imbalanceZoneModelsRef = useRef<ImbalanceZoneModel[]>([]);
   const sessionWindowPrimitiveRef = useRef<SessionWindowPrimitive | null>(null);
   const hedgeLevelsPrimitiveRef = useRef<HedgeLevelsPrimitive | null>(null);
@@ -3246,8 +3248,15 @@ function Chart({
     if (!chart) return () => {};
     const timeScale = chart.timeScale();
     timeScale.subscribeVisibleLogicalRangeChange(callback);
+    // The visible-range event only fires for HORIZONTAL movement. Price-scale
+    // rescaling (auto-scale on a new bar, dragging the price axis) changes the
+    // vertical transform silently, which left every drawing painting at stale
+    // Y pixels until some later pan — the drift the trader sees. The repaint
+    // notifier fires on every chart paint, so overlays re-project on both axes.
+    const unsubscribeRepaint = repaintNotifierRef.current?.subscribe(callback);
     return () => {
       try { timeScale.unsubscribeVisibleLogicalRangeChange(callback); } catch {}
+      unsubscribeRepaint?.();
     };
   }, []);
   const commitDrawings = useCallback((next: Drawing[]) => {
@@ -11350,6 +11359,9 @@ function Chart({
     sessionHighLowPrimitive.setPaneInsets({ left: toolbarPlotLeftInset });
     candleSeries.attachPrimitive(sessionHighLowPrimitive);
     sessionHighLowPrimitiveRef.current = sessionHighLowPrimitive;
+    const repaintNotifier = new ChartRepaintNotifierPrimitive();
+    candleSeries.attachPrimitive(repaintNotifier);
+    repaintNotifierRef.current = repaintNotifier;
     const imbalanceZonesPrimitive = new ImbalanceZonesPrimitive();
     imbalanceZonesPrimitive.update(imbalanceZoneModelsRef.current);
     candleSeries.attachPrimitive(imbalanceZonesPrimitive);
@@ -12104,6 +12116,26 @@ function Chart({
     window.addEventListener("resize", handleResize);
     window.addEventListener(WORKSPACE_LAYOUT_SETTLED_EVENT, handleResize);
     chart.timeScale().subscribeVisibleLogicalRangeChange(scheduleViewportRefresh);
+    // Every coordinate overlay (drawings, TPO zones, Expected Move rails,
+    // imbalance markers) is positioned from this refresh. The visible-range
+    // event only covers HORIZONTAL movement, so a price-scale rescale — which
+    // happens on every new bar under auto-scale — moved the candles while the
+    // overlays kept their old Y pixels, and the lines visibly drifted off the
+    // levels they were placed on. The repaint notifier fires on any chart
+    // paint; a cheap transform signature keeps an idle chart from looping.
+    let lastTransformSignature = "";
+    const refreshOnRepaint = () => {
+      const timeScale = chart.timeScale();
+      const logical = timeScale.getVisibleLogicalRange();
+      const series = candleSeriesRef.current;
+      const topPrice = series?.coordinateToPrice(0) ?? null;
+      const bottomPrice = series?.coordinateToPrice(container.clientHeight) ?? null;
+      const signature = `${logical?.from ?? ""}:${logical?.to ?? ""}:${topPrice ?? ""}:${bottomPrice ?? ""}`;
+      if (signature === lastTransformSignature) return;
+      lastTransformSignature = signature;
+      scheduleViewportRefresh();
+    };
+    const unsubscribeRepaintRefresh = repaintNotifierRef.current?.subscribe(refreshOnRepaint);
     const resizeObserver = new ResizeObserver(handleResize);
     resizeObserver.observe(container);
 
@@ -12134,6 +12166,7 @@ function Chart({
         synchronizedCrosshairReleaseFrame = null;
       }
       chart.timeScale().unsubscribeVisibleLogicalRangeChange(scheduleViewportRefresh);
+      unsubscribeRepaintRefresh?.();
       resizeObserver.disconnect();
       if (viewportFrameRef.current != null) {
         window.cancelAnimationFrame(viewportFrameRef.current);
@@ -12327,6 +12360,7 @@ function Chart({
       fixedPriceLevelLabelsRef.current = null;
       sessionHighLowPrimitiveRef.current = null;
       imbalanceZonesPrimitiveRef.current = null;
+      repaintNotifierRef.current = null;
       sessionWindowPrimitiveRef.current = null;
       hedgeLevelsPrimitiveRef.current = null;
       classicGexProfilePrimitiveRef.current = null;
