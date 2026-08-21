@@ -48,7 +48,27 @@ assert.match(server, /newYorkSessionCompleted\(now\) \? sessionDate : previousTr
 // session — completed sessions are immutable and re-fetching them multiplied
 // provider quota fleet-wide.
 assert.match(chart, /await load\(quickSessions, 45_000\)/);
-assert.match(chart, /window\.setInterval\(\(\) => void load\(1, 45_000\)/);
+// ...but only once something is actually on the chart. Polling the live
+// session alone while the pane is still blank leaves it blank forever when
+// the first load misses its budget, or outside RTH when that session has
+// produced no positioning buckets yet — the measured cause of the line being
+// invisible on NQ before the open.
+assert.match(chart, /painted \? load\(1, 45_000\) : load\(historySessions, 120_000\)/);
+assert.match(chart, /if \(payload\.points\.length\) painted = true;/);
+
+// Every requested completed session gets its own intraday trail. Building
+// only the newest left older sessions as a single closing anchor each, so the
+// "history" was straight segments between days.
+assert.match(server, /for \(const date of \[\.\.\.completedDates\]\.reverse\(\)\)/);
+assert.match(server, /Math\.max\(MIN_TRAIL_BUDGET_MS, trailDeadline - Date\.now\(\)\)/);
+// The trails share one budget so a cold multi-session load cannot stack a
+// full budget per session and outlive the request.
+assert.match(server, /const HISTORY_TRAIL_BUDGET_MS = 20_000;/);
+// A session with no trail must not throw the whole payload away.
+assert.ok(
+  !/historySessions === 1 && completedDates\.includes\(sessionDate\)/.test(server),
+  "the one-session poll no longer depends on today already being completed",
+);
 
 // Completed-session points persist in the cross-instance data cache and the
 // route coalesces polling bursts, so a fleet of machines cannot multiply the

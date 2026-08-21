@@ -194,6 +194,12 @@ const LIVE_TRAIL_MEMO_MS = 45_000;
 // response: race a short budget, and on a miss finish the SAME in-flight
 // build after the response is sent (`after` keeps the invocation alive), so
 // its durable cache commits and the next poll serves it instantly.
+// Trails for the requested completed sessions share this budget, newest
+// first, so a cold multi-session load cannot stack one full budget per
+// session and outlive the request.
+const HISTORY_TRAIL_BUDGET_MS = 20_000;
+const MIN_TRAIL_BUDGET_MS = 2_500;
+
 const TRAIL_BUDGET_TIMEOUT = Symbol("trail-budget-timeout");
 const backgroundTrailBuilds = new Set<string>();
 
@@ -313,19 +319,30 @@ export async function getZeroGammaLinePayload(
   // one rebuild a minute); the initial multi-session load also restores the
   // newest completed session's trail, whose durable cache converges even if
   // the first cold browser request times out client-side.
-  if (historySessions > 1) {
-    const newestCompleted = completedDates.at(-1);
-    if (newestCompleted) {
-      points.push(...await intradayTrailSafe(root, sourceSymbol, newestCompleted, true, 20_000));
-    }
+  // Every requested completed session gets its real intraday trail, newest
+  // first, sharing one overall budget. Completed trails are immutable and
+  // durably cached, so this is one build per session for the entire fleet,
+  // and a session that misses the budget finishes in the background for the
+  // next poll. Building only the newest session's trail left every older
+  // session as a single closing anchor, which drew as straight segments
+  // between days instead of the historical trace the line is meant to show.
+  const trailDeadline = Date.now() + HISTORY_TRAIL_BUDGET_MS;
+  for (const date of [...completedDates].reverse()) {
+    points.push(...await intradayTrailSafe(
+      root,
+      sourceSymbol,
+      date,
+      true,
+      // A warm durable cache answers in milliseconds; the floor exists so a
+      // late session in the list cannot lose the race to an expired budget
+      // and drop a trail that was already built.
+      Math.max(MIN_TRAIL_BUDGET_MS, trailDeadline - Date.now()),
+    ));
   }
   if (marketOpen) {
     // The live trace only exists while the session is producing buckets.
     const liveTrail = await intradayTrailSafe(root, sourceSymbol, sessionDate, false);
     points.push(...liveTrail.map((point) => ({ ...point, status: "LIVE" as const })));
-  } else if (historySessions === 1 && completedDates.includes(sessionDate)) {
-    // After the close, the one-session poll restores today's completed trace.
-    points.push(...await intradayTrailSafe(root, sourceSymbol, sessionDate, true));
   }
   const currentZeroGamma = current ? zeroGammaFromPayload(current) : null;
   if (current && currentZeroGamma !== null) {

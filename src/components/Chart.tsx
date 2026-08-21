@@ -5600,6 +5600,12 @@ function Chart({
       return;
     }
     let cancelled = false;
+    // Until a payload with points has landed there is nothing on the chart to
+    // preserve, so the recurring poll must keep asking for the whole history.
+    // Asking only for the live session leaves the pane permanently blank when
+    // the first load misses its budget, or outside RTH when that session has
+    // produced no buckets yet.
+    let painted = false;
     const historySessions = Math.max(1, Math.min(5, Math.round(Number(zeroGammaLineIndicator.settings?.historySessions ?? 5))));
     const refreshMs = Math.max(5_000, Number(zeroGammaLineIndicator.settings?.refreshSeconds ?? 10) * 1_000);
     const load = async (sessions: number, timeoutMs: number, force = false) => {
@@ -5609,6 +5615,7 @@ function Chart({
           `/api/zero-gamma-line?instrument=${encodeURIComponent(instrument)}&sessions=${sessions}`,
           { force, maxAgeMs: refreshMs, timeoutMs, validate: isZeroGammaLinePayload, invalidMessage: "Zero Gamma Line returned an incomplete history." },
         );
+        if (payload.points.length) painted = true;
         if (!cancelled) setZeroGammaLinePayload((current) => {
           if (!current || current.sourceSymbol !== payload.sourceSymbol) return payload;
           const points = [...new Map([...current.points, ...payload.points]
@@ -5637,7 +5644,10 @@ function Chart({
     // same refresh. Completed sessions never change, so the recurring refresh
     // only asks for the live session — repeatedly re-requesting the full
     // history burned provider quota fleet-wide for identical answers.
-    const intervalId = window.setInterval(() => void load(1, 45_000), refreshMs);
+    const intervalId = window.setInterval(
+      () => void (painted ? load(1, 45_000) : load(historySessions, 120_000)),
+      refreshMs,
+    );
     return () => { cancelled = true; window.clearInterval(intervalId); };
   }, [indicatorSignature, instrument, zeroGammaLineIndicator]);
   // orderFlowHistoryReady flips as soon as a TOKEN slice of bars carries
