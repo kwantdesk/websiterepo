@@ -1,4 +1,5 @@
 import type { ChartSettings } from "@/lib/chartSettings";
+import { VOLUME_PROFILE_GRADIENT_OFF } from "@/lib/volumeProfileGradients";
 import {
   TPO_SETTINGS_SCHEMA_VERSION,
   type TpoIndicatorSettings,
@@ -94,6 +95,7 @@ export function defaultTpoSettings(
     blockGap: 1,
     minimumTextSize: 7,
     maximumTextSize: 11,
+    gradientPreset: VOLUME_PROFILE_GRADIENT_OFF,
     colourCalculation: "time",
     colourReference: "fixed",
     fixedVolumeColor: theme?.borderUpColor ?? "#22D3EE",

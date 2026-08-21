@@ -129,6 +129,12 @@ export interface TpoIndicatorSettings {
   blockGap: number;
   minimumTextSize: number;
   maximumTextSize: number;
+  /**
+   * Gradient scheme id, or "off". A scheme overrides every block colour and
+   * fades the profile across its own price range, matching the schemes on the
+   * volume profiles so a TPO and a VP on the same chart read as one system.
+   */
+  gradientPreset: string;
   colourCalculation: TpoColourCalculation;
   colourReference: TpoColourReference;
   fixedVolumeColor: string;

@@ -1,4 +1,5 @@
 import type { CanvasRenderingTarget2D } from "fancy-canvas";
+import { resolveVolumeProfileGradient } from "@/lib/volumeProfileGradients";
 import type { ISeriesPrimitive, Logical, SeriesAttachedParameter, Time } from "@/lib/lightweightChartsCompat";
 import type { TpoExtensionMode, TpoIndicatorSettings, TpoProfileModel } from "@/lib/tpo/types";
 import { tickToPrice } from "@/lib/tpo/types";
@@ -228,6 +229,23 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
           }
         }
 
+        // A gradient scheme replaces every block colour and fades the profile
+        // across its own price range — the same treatment the volume profiles
+        // get, so a TPO and a VP on one chart read as a single system.
+        const scheme = resolveVolumeProfileGradient(settings.gradientPreset);
+        let schemeFill: CanvasGradient | null = null;
+        if (scheme && profile.rows.length) {
+          const highestTick = Math.max(...profile.rows.map((row) => row.highTick));
+          const lowestTick = Math.min(...profile.rows.map((row) => row.lowTick));
+          const schemeTop = params.series.priceToCoordinate(tickToPrice(highestTick + 0.5, profile.tickSize));
+          const schemeBottom = params.series.priceToCoordinate(tickToPrice(lowestTick - 0.5, profile.tickSize));
+          if (schemeTop != null && schemeBottom != null && Math.abs(schemeTop - schemeBottom) > 0.5) {
+            schemeFill = context.createLinearGradient(0, schemeBottom, 0, schemeTop);
+            schemeFill.addColorStop(0, scheme.from);
+            schemeFill.addColorStop(1, scheme.to);
+          }
+        }
+
         profile.rows.forEach((row) => {
           const top = params.series.priceToCoordinate(tickToPrice(row.highTick + 0.5, profile.tickSize));
           const bottom = params.series.priceToCoordinate(tickToPrice(row.lowTick - 0.5, profile.tickSize));
@@ -300,7 +318,7 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
             context.globalAlpha = opacity
               * (settings.colourReference === "fading" ? 0.28 + clamp(normalized, 0, 1) * 0.72 : 1)
               * (inValueArea ? 0.92 : 0.68);
-            context.fillStyle = cellColor;
+            context.fillStyle = schemeFill ?? cellColor;
             context.fillRect(x + gap / 2, rowTop + (rowHeight - size) / 2, size, size);
             if (settings.borderWidth > 0 && size >= 2.5) {
               context.globalAlpha = opacity * 0.62;

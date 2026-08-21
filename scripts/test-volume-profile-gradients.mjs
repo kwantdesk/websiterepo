@@ -59,8 +59,17 @@ assert.match(primitive, /bodyColor\(style\.outsideValueAreaColor\)/);
 
 // 7. The pickers must be locked while a scheme owns the colours.
 const control = readFileSync("src/components/ChartIndicatorsControl.tsx", "utf8");
-assert.match(control, /const gradientLocked = VOLUME_PROFILE_INDICATOR_IDS\.has/);
+assert.match(control, /const gradientLocked = \(/);
 assert.match(control, /disabled=\{gradientLocked\}/);
+// Both profile families share the schemes, so a TPO and a volume profile on
+// one chart can be given the same look.
+assert.ok(
+  /isTpoIndicator\(settingsDefinition\.id\)\s+\) && isVolumeProfileGradientActive/.test(control),
+  "TPO must share the gradient schemes with the volume profiles",
+);
+const tpo = readFileSync("src/lib/tpo/primitive.ts", "utf8");
+assert.match(tpo, /resolveVolumeProfileGradient\(settings\.gradientPreset\)/);
+assert.match(tpo, /context\.fillStyle = schemeFill \?\? cellColor;/);
 
 rmSync(outDir, { recursive: true, force: true });
-console.log("volume profile gradients: 7/7 checks passed");
+console.log("volume profile gradients: 8/8 checks passed");

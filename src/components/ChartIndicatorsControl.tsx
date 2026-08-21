@@ -1380,7 +1380,8 @@ export default function ChartIndicatorsControl({
                 </button>
               </label>
 
-              {VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) ? (
+              {VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id)
+                || isTpoIndicator(settingsDefinition.id) ? (
                 <div className="space-y-2 rounded-xl border border-primary/15 bg-primary/[0.035] p-3">
                   <div>
                     <span className="block text-[11px] font-medium text-foreground">Gradient scheme</span>
@@ -4828,8 +4829,10 @@ export default function ChartIndicatorsControl({
                 const themeColours = themeColourMapFor(settingsDefinition.id, chartSettings);
                 // A gradient scheme replaces every profile body colour, so the
                 // pickers would silently do nothing while one is selected.
-                const gradientLocked = VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id)
-                  && isVolumeProfileGradientActive(settingsInstance.settings?.gradientPreset);
+                const gradientLocked = (
+                  VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id)
+                  || isTpoIndicator(settingsDefinition.id)
+                ) && isVolumeProfileGradientActive(settingsInstance.settings?.gradientPreset);
                 const control = ([key, value]: readonly [string, unknown, string]) => (
                     typeof value === "boolean" ? (
                       <label key={key} className="flex min-h-10 items-center gap-2 rounded-lg border border-border bg-surface/30 px-3 text-[9px] text-muted">
