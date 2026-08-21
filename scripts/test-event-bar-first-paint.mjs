@@ -5,7 +5,6 @@ const route = readFileSync("src/app/api/databento/market/route.ts", "utf8");
 const workspace = readFileSync("src/components/KwantifyWorkspace.tsx", "utf8");
 
 // 1. A short history window must be honoured, not clamped up to the default.
-//    This is what made a one-session first paint impossible.
 assert.match(route, /Math\.max\(1, Math\.min\(MAX_HISTORY_DAYS, Math\.round\(requestedDays\)\)\)/);
 assert.doesNotMatch(
   route,
@@ -16,23 +15,35 @@ assert.doesNotMatch(
 // 2. An unspecified window still defaults to the full ten days.
 assert.match(route, /: DEFAULT_HISTORY_DAYS;/);
 
-// 3. The window must reach the provider request AND the cache key, or every
-//    window would share one cached payload.
-assert.match(route, /\["cme-event-bars-v2", symbol, timeframe, `\$\{historyDays\}d`\]/);
-assert.match(route, /\["cme-event-flow-v2", symbol, timeframe, `\$\{historyDays\}d`\]/);
+// 3. The window must reach the durable cache key, or every window would share
+//    one cached payload.
+assert.ok(route.includes('"cme-event-bars-v2", symbol, timeframe, `${historyDays}d`'));
+assert.ok(route.includes('"cme-event-flow-v2", symbol, timeframe, `${historyDays}d`'));
 
-// 4. The client asks for one session first, only for event-based intervals.
-assert.match(workspace, /const EVENT_BAR_FIRST_PAINT_DAYS = 1;/);
-assert.match(workspace, /isEventBasedChartInterval\(pane\.timeframe\)\s*\r?\n\s*&& !cachedBase\.length/);
+// 4. The live stream must never BUILD event bars from an empty series. Volume,
+//    range and tick bars close on cumulative traded size, so starting from
+//    nothing accumulates from whenever the stream happened to connect and
+//    produces bars belonging to no real window — a chart with gaps that jumps
+//    once the authoritative history lands.
+assert.match(workspace, /const canExtendEventBars = latestCandlesRef\.current\.length > 0;/);
+assert.ok(
+  /\? !canExtendEventBars\s+\? latestCandlesRef\.current/.test(workspace),
+  "an empty series must not be extended into invented bars",
+);
 
-// 5. The request key must carry the window, or the short and full requests
-//    would deduplicate onto each other and only one would ever run.
-assert.match(workspace, /\$\{healOnly \? "::heal" : ""\}::\$\{historyDays\}d/);
+// 5. The short-window first paint must be gone: a one-day and a ten-day build
+//    bin the tape differently, so painting one and replacing it with the other
+//    is itself a visible glitch.
+assert.doesNotMatch(workspace, /EVENT_BAR_FIRST_PAINT_DAYS/);
 
-// 6. The short window must never replace a fuller series already committed.
-assert.match(workspace, /quickCandles\.length > latestCandlesRef\.current\.length/);
+// 6. Time-based intervals keep their flow-first fast path.
+assert.ok(
+  /&& !isEventBasedChartInterval\(pane\.timeframe\)\s+&& !cachedBase\.length/.test(workspace),
+  "time-based intervals must keep the flow-first fast path",
+);
 
-// 7. Time-based intervals keep the original flow-first fast path.
-assert.match(workspace, /&& !isEventBasedChartInterval\(pane\.timeframe\)\s*\r?\n\s*&& !cachedBase\.length/);
+// 7. The request key must still carry the window so distinct windows do not
+//    deduplicate onto each other.
+assert.ok(workspace.includes('${healOnly ? "::heal" : ""}::${historyDays}d'));
 
 console.log("event bar first paint: 7/7 checks passed");

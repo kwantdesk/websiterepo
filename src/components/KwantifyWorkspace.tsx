@@ -1100,14 +1100,6 @@ const GEX_STANDARD_WORKSPACE_ID = "gex-standard";
 const GEX_STANDARD_WORKSPACE_NAME = "GEX STANDARD";
 const GEX_STANDARD_WORKSPACE_UPDATED_AT = "2026-08-17T00:00:00.000Z";
 
-/**
- * Calendar days requested for an event-bar chart's FIRST paint.
- *
- * One session is enough to fill the screen and returns in seconds, where the
- * full window has to replay days of one-second tape before it can answer.
- */
-const EVENT_BAR_FIRST_PAINT_DAYS = 1;
-
 function defaultWorkspacePanes(scope: ChartWorkspaceScope) {
   return scope === "gamma" ? DEFAULT_GAMMA_WORKSPACE_PANES : DEFAULT_WORKSPACE_PANES;
 }
@@ -5818,8 +5810,22 @@ function WorkspaceChartPaneComponent({
         // aggressor fields and keeping CVD locked indefinitely. Fold the seed
         // into the exact chart boundaries immediately; the later historical
         // response still merges and supersedes it without double counting.
+        // Event bars accumulate CONTINUOUSLY — a volume/range/tick bar closes
+        // on cumulative traded size, never on a clock boundary. Building them
+        // from an empty series therefore starts accumulating from whatever
+        // moment the stream happened to connect, producing bars whose
+        // boundaries and prices belong to no real window: the "random chart
+        // with gaps" that then jumped when the authoritative history landed.
+        //
+        // The live stream may EXTEND an authoritative series; it may not
+        // invent one. Until history arrives the records are still captured in
+        // the shared execution tape above, so nothing is lost — they fold onto
+        // the correct boundaries the moment the real bars exist.
+        const canExtendEventBars = latestCandlesRef.current.length > 0;
         const seededCandles = isEventBasedChartInterval(pane.timeframe)
-          ? applyMarketTradesToEventBars(
+          ? !canExtendEventBars
+            ? latestCandlesRef.current
+            : applyMarketTradesToEventBars(
               latestCandlesRef.current,
               records.map((record) => ({
                 timestamp: record.timestamp,
@@ -6158,47 +6164,6 @@ function WorkspaceChartPaneComponent({
       // on every CME interval instead of holding both panes behind the
       // aggressor-tape reconstruction. The durable flow request below then
       // merges into the same chart-bar boundaries.
-      // Event bars (500v, 40R, Renko...) are CONSTRUCTED from the raw tape, so
-      // a cold ten-day request is minutes of server work. Until it lands the
-      // pane has no history at all and shows the single live bar the stream is
-      // building — the "one candle then it takes ages" load. Ask for one day
-      // first, which returns quickly and is real data, paint it, and let the
-      // full window merge in behind it.
-      if (
-        pane.broker === "Databento"
-        && isEventBasedChartInterval(pane.timeframe)
-        && !cachedBase.length
-      ) {
-        try {
-          const quickHistory = await fetchWorkspaceCandles(
-            pane.symbol,
-            pane.timeframe,
-            pane.broker,
-            period,
-            500,
-            needsOrderFlowHistory,
-            requestController.signal,
-            false,
-            false,
-            EVENT_BAR_FIRST_PAINT_DAYS,
-          );
-          if (cancelled) return;
-          const quickCandles = trimCandlesAfterActiveBucket(
-            sanitizeCandles(quickHistory, pane.symbol),
-            pane.timeframe,
-          );
-          // Never let the short window overwrite a fuller series that the main
-          // request may already have committed.
-          if (quickCandles.length > latestCandlesRef.current.length) {
-            latestCandlesRef.current = quickCandles;
-            setCandles(quickCandles);
-            setLoading(false);
-            setError(null);
-          }
-        } catch {
-          // The full request below is still running and remains the authority.
-        }
-      }
       if (
         pane.broker === "Databento"
         && needsOrderFlowHistory
