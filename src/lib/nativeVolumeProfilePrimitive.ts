@@ -881,20 +881,32 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
         // When a day is split into session windows, several profiles sit side
         // by side on the same date. Name each one at its top, otherwise the
         // split is invisible and the chart just looks like more profiles.
-        if (profile.sessionLabel && top != null && bottom != null) {
-          const labelY = Math.max(9, Math.min(top, bottom) - 4);
+        // Only while the profile itself is still on screen. Clamping an
+        // off-screen profile's name back into view stacked every scrolled-past
+        // session on the same few pixels, so panning right built a pile of
+        // overlapping words in the corner.
+        const sessionLabelVisible = profile.sessionLabel
+          && top != null
+          && bottom != null
+          && Math.max(anchorX, endX) > leftEdge
+          && Math.min(anchorX, endX) - profileWidth < mediaSize.width
+          && Math.min(top, bottom) > 0
+          && Math.max(top, bottom) < mediaSize.height;
+        if (sessionLabelVisible && profile.sessionLabel && top != null && bottom != null) {
+          const sessionLabel = profile.sessionLabel;
+          const labelY = Math.min(top, bottom) - 4;
           context.globalAlpha = 0.92;
           context.font = "600 9px 'JetBrains Mono', monospace";
           context.textAlign = pinnedRight ? "right" : "left";
           context.textBaseline = "alphabetic";
-          const measured = context.measureText(profile.sessionLabel).width;
+          const measured = context.measureText(sessionLabel).width;
           const labelX = clamp(
             pinnedRight ? anchorX - 2 : anchorX + 2,
             leftEdge + (pinnedRight ? measured + 4 : 4),
             mediaSize.width - (pinnedRight ? 4 : measured + 4),
           );
           context.fillStyle = style.pocColor;
-          context.fillText(profile.sessionLabel, labelX, labelY);
+          context.fillText(sessionLabel, labelX, labelY);
         }
 
         const drawLevel = (
@@ -947,22 +959,21 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
             context.textBaseline = "bottom";
             const measured = context.measureText(labelText).width;
             const labelY = Math.max(11, Math.min(mediaSize.height - 3, y - 3));
-            if ((style.levelLabelSide ?? "right") === "left") {
-              context.textAlign = "left";
-              context.fillText(
-                labelText,
-                clamp(Math.min(anchorX, lineEndX) + 5, leftEdge + 4, mediaSize.width - measured - 4),
-                labelY,
-              );
-            } else {
-              context.textAlign = "right";
-              // Sit just inside the line's own end, never past the plot edge
-              // and never underneath the fixed drawing rail.
-              context.fillText(
-                labelText,
-                clamp(Math.max(anchorX, lineEndX) - 5, leftEdge + measured + 4, mediaSize.width - 4),
-                labelY,
-              );
+            const labelOnLeft = (style.levelLabelSide ?? "right") === "left";
+            // Where the label naturally belongs: at the line's own terminus.
+            const naturalX = labelOnLeft
+              ? Math.min(anchorX, lineEndX) + 5
+              : Math.max(anchorX, lineEndX) - 5;
+            // The clamp exists so a partly visible level keeps its label clear
+            // of the fixed drawing rail. It must NOT drag a label belonging to
+            // a level that has scrolled away back into view: doing that piled
+            // every previous session's VAH, VAL and POC into one unreadable
+            // column against the left edge as soon as the chart was panned.
+            const labelLow = leftEdge + (labelOnLeft ? 4 : measured + 4);
+            const labelHigh = mediaSize.width - (labelOnLeft ? measured + 4 : 4);
+            if (naturalX >= leftEdge && naturalX <= mediaSize.width) {
+              context.textAlign = labelOnLeft ? "left" : "right";
+              context.fillText(labelText, clamp(naturalX, labelLow, labelHigh), labelY);
             }
           }
         };
