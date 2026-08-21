@@ -1,5 +1,5 @@
 import { createServerClient } from "@supabase/ssr";
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import {
   DARK_POOL_MAP_SCHEMA_VERSION,
   aggregateDarkPoolLevels,
@@ -26,6 +26,27 @@ import {
 import { SITE_ACCESS_COOKIE, isSiteAccessConfigured, isValidSiteAccessToken } from "@/lib/siteAccess";
 
 export const maxDuration = 60;
+
+/**
+ * Provider payloads, cached away from the per-chart mapping.
+ *
+ * The slow half of a Dark Pool request is the provider round trip: an
+ * aggregate levels call plus a bounded cursor walk over the print history.
+ * That result depends only on the SOURCE ticker, the date window and the
+ * print filters — not on the chart being drawn — yet it used to be refetched
+ * for every request, so the dark-pool levels landed long after the candles.
+ * The mapping and aggregation below stay per-request, because they depend on
+ * the chart's own price.
+ */
+type DarkPoolProviderPayloads = { levelsPayload: unknown; printsPayload: unknown };
+const providerCache = new Map<string, { expiresAt: number; value: DarkPoolProviderPayloads }>();
+const providerRefreshes = new Map<string, Promise<unknown>>();
+/** Prints only advance as fast as the provider publishes them. */
+const PROVIDER_FRESH_MS = 20_000;
+/** A stale window is still real recorded tape; serve it and refresh behind. */
+const PROVIDER_STALE_SERVE_MS = 10 * 60_000;
+/** Print payloads are large, so the cache stays deliberately tiny. */
+const PROVIDER_CACHE_LIMIT = 3;
 
 const mappingSamples = new Map<string, Array<{ source: number; display: number; timeMs: number }>>();
 const frozenPrintMappings = new Map<string, DarkPoolMappingReceipt>();
@@ -155,6 +176,28 @@ function addMappingSample(key: string, source: number | null, display: number | 
   return samples.map(({ source: nextSource, display: nextDisplay }) => ({ source: nextSource, display: nextDisplay }));
 }
 
+async function loadDarkPoolProviderPayloads(
+  cacheKey: string,
+  sourceTicker: string,
+  startDate: string,
+  endDate: string,
+  maximumRows: number,
+  minimumPrintNotional: number,
+): Promise<DarkPoolProviderPayloads> {
+  const [levelsPayload, printsPayload] = await Promise.all([
+    getDarkPoolLevelsPayload(sourceTicker, startDate, endDate),
+    getDarkPoolPrintsPayload(sourceTicker, startDate, endDate, maximumRows, minimumPrintNotional),
+  ]);
+  const value = { levelsPayload, printsPayload };
+  providerCache.set(cacheKey, { expiresAt: Date.now() + PROVIDER_FRESH_MS, value });
+  while (providerCache.size > PROVIDER_CACHE_LIMIT) {
+    const oldest = providerCache.keys().next();
+    if (oldest.done) break;
+    providerCache.delete(oldest.value);
+  }
+  return value;
+}
+
 export async function GET(request: NextRequest) {
   if (!(await isAuthenticated(request))) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
   if (!getConfiguredQuantDataApiKey()) return NextResponse.json({ error: "Dark Pool Map requires the configured QuantData equity-print entitlement." }, { status: 503 });
@@ -174,11 +217,30 @@ export async function GET(request: NextRequest) {
   // back into a ten-page cursor walk.
   const maximumRows = Math.max(100, Math.min(100_000, Math.round(finite(query.get("maximumHistoricalPrints")) ?? 100_000)));
 
+  const providerKey = [sourceTicker, startDate, endDate, maximumRows, settings.minimumPrintNotional].join(":");
+  const cachedProvider = providerCache.get(providerKey);
+
   try {
-    const [levelsPayload, printsPayload] = await Promise.all([
-      getDarkPoolLevelsPayload(sourceTicker, startDate, endDate),
-      getDarkPoolPrintsPayload(sourceTicker, startDate, endDate, maximumRows, settings.minimumPrintNotional),
-    ]);
+    const fresh = cachedProvider != null && cachedProvider.expiresAt > nowMs;
+    const servableStale = cachedProvider != null
+      && !fresh
+      && cachedProvider.expiresAt + PROVIDER_STALE_SERVE_MS > nowMs;
+    if (servableStale && !providerRefreshes.has(providerKey)) {
+      // Answer from the retained tape immediately and refresh behind the
+      // response, so the levels paint with the candles.
+      const refresh = loadDarkPoolProviderPayloads(
+        providerKey, sourceTicker, startDate, endDate, maximumRows, settings.minimumPrintNotional,
+      )
+        .catch(() => undefined)
+        .finally(() => providerRefreshes.delete(providerKey));
+      providerRefreshes.set(providerKey, refresh);
+      after(() => refresh);
+    }
+    const { levelsPayload, printsPayload } = fresh || servableStale
+      ? cachedProvider!.value
+      : await loadDarkPoolProviderPayloads(
+          providerKey, sourceTicker, startDate, endDate, maximumRows, settings.minimumPrintNotional,
+        );
     const baseline = readBaseline(levelsPayload);
     const prints = deduplicateDarkPoolPrints(collectRows(printsPayload).map(normalizeDarkPoolPrint).filter((print): print is DarkPoolPrint => Boolean(print)));
     const sourceMid = baseline?.latestStockPrice ?? prints.at(-1)?.price ?? null;
