@@ -4711,13 +4711,26 @@ function Chart({
     const orderFlowLimit = intervalMs === null
       ? 6_000
       : Math.max(1_500, Math.min(4_000, Math.ceil(172_800_000 / intervalMs)));
+    // Big Contracts anchors every print to a candle, so a print older than the
+    // first candle in this window can never be drawn. Its "Days to load"
+    // therefore has to widen the window, or raising it silently showed nothing
+    // beyond the default 48-hour order-flow lookback. Bounded so a 30-day
+    // request on a one-minute chart cannot explode the recompute cost.
+    const bigTradeDays = indicators.reduce((days, instance) => (
+      instance.enabled && instance.indicatorId === "big-trades"
+        ? Math.max(days, Math.min(30, Math.max(1, Number(instance.settings?.daysToLoad ?? 1))))
+        : days
+    ), 0);
+    const bigTradeLimit = bigTradeDays > 0 && intervalMs !== null
+      ? Math.max(1_500, Math.min(20_000, Math.ceil((bigTradeDays * 86_400_000) / intervalMs)))
+      : 0;
     return indicators.some((instance) =>
       instance.enabled && CHART_INDICATOR_BY_ID.get(instance.indicatorId)?.requiresOrderFlow)
-      ? orderFlowLimit
+      ? Math.max(orderFlowLimit, bigTradeLimit)
       : smtDivergenceEnabled
         ? Math.max(1_500, Math.min(5_000, smtDivergenceSettings.maximumLookbackBars))
         : 1_500;
-  }, [indicators, smtDivergenceEnabled, smtDivergenceSettings.maximumLookbackBars, timeframe]);
+  }, [indicatorSignature, indicators, smtDivergenceEnabled, smtDivergenceSettings.maximumLookbackBars, timeframe]);
   const indicatorWindowCandles = useMemo(
     () => sampledIndicatorCandles.slice(-indicatorHistoryLimit),
     [indicatorHistoryLimit, sampledIndicatorCandles],

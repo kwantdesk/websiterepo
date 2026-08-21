@@ -3507,14 +3507,21 @@ function fetchWorkspaceOrderFlow(
  * The provider-backed 1m history keeps the strongest exact executions from
  * every minute and is deliberately canonical for every chart aggregation.
  */
-function fetchWorkspaceHistoricalExecutions(symbol: string) {
-  const key = `${symbol}::${currentCmeContract(symbol) ?? "ROOT"}::historical-executions`;
+function fetchWorkspaceHistoricalExecutions(symbol: string, days = DEFAULT_CHART_HISTORY_CALENDAR_DAYS) {
+  // Studies that look further back than the default window (Big Contracts'
+  // "Days to load") must be able to ask for more history, or their extra days
+  // simply contain no executions to mark.
+  const requestedDays = Math.max(
+    DEFAULT_CHART_HISTORY_CALENDAR_DAYS,
+    Math.min(30, Math.round(Number.isFinite(days) ? days : DEFAULT_CHART_HISTORY_CALENDAR_DAYS)),
+  );
+  const key = `${symbol}::${currentCmeContract(symbol) ?? "ROOT"}::historical-executions::${requestedDays}`;
   const pending = workspaceHistoricalExecutionRequests.get(key);
   if (pending) return pending;
 
   const request = (async () => {
     const response = await fetch(
-      `/api/cme-history?symbol=${encodeURIComponent(symbol)}&timeframe=1m&days=${DEFAULT_CHART_HISTORY_CALENDAR_DAYS}&orderFlow=1`,
+      `/api/cme-history?symbol=${encodeURIComponent(symbol)}&timeframe=1m&days=${requestedDays}&orderFlow=1`,
       {
         cache: "no-store",
         signal: AbortSignal.timeout(120_000),
@@ -5330,6 +5337,13 @@ function WorkspaceChartPaneComponent({
     : "";
   const needsOrderFlowHistory = indicators.some((instance) =>
     instance.enabled && CHART_INDICATOR_BY_ID.get(instance.indicatorId)?.requiresOrderFlow);
+  // Big Contracts is the one study with an explicit lookback in days; the
+  // execution archive request has to cover it.
+  const historicalExecutionDays = indicators.reduce((days, instance) => (
+    instance.enabled && instance.indicatorId === "big-trades"
+      ? Math.max(days, Math.min(30, Math.max(1, Number(instance.settings?.daysToLoad ?? 1))))
+      : days
+  ), DEFAULT_CHART_HISTORY_CALENDAR_DAYS);
   const footprintLiveActive = indicators.some((instance) =>
     instance.enabled && instance.indicatorId === "deep-print-footprint");
   const nonFootprintOrderFlowActive = indicators.some((instance) =>
@@ -6465,7 +6479,7 @@ function WorkspaceChartPaneComponent({
       // restarting or outside the active CME session.
     });
 
-    void fetchWorkspaceHistoricalExecutions(pane.symbol).then((result) => {
+    void fetchWorkspaceHistoricalExecutions(pane.symbol, historicalExecutionDays).then((result) => {
       applyFlow(result.candles, result.records);
       persistAppliedFlow();
     }).catch(() => {

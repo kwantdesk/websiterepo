@@ -126,6 +126,10 @@ function tradeCandidates(
   return clustered;
 }
 
+// Mirrors the workspace tape's own compaction window: beyond this the retained
+// history is a strongest-prints-per-minute sample, not a complete record.
+const COMPLETE_TAPE_WINDOW_MS = 15 * 60_000;
+
 export function calculateBigTradePrints(
   orderFlowCandles: Candle[],
   marketTrades: InstitutionalTrade[],
@@ -153,7 +157,18 @@ export function calculateBigTradePrints(
   const cutoff = historyAnchor - daysToLoad * 86_400_000;
   const candidates = tradeCandidates(orderFlowCandles, marketTrades, cutoff, settings);
   if (!candidates.length) return [];
-  const volumes = candidates.map((candidate) => candidate.volume).sort((left, right) => left - right);
+  // The automatic threshold must be measured against FULL-FIDELITY prints.
+  // Beyond the browser's complete-tape window the retained history keeps only
+  // the strongest prints per minute, so widening "Days to load" fed the
+  // percentile a sample made almost entirely of large prints — the threshold
+  // rocketed and nothing qualified any more, which is why raising the setting
+  // made every marker disappear. Measure on the recent complete region and
+  // apply that threshold across the whole window.
+  const newestCandidate = candidates[candidates.length - 1]?.timestamp ?? historyAnchor;
+  const completeFrom = newestCandidate - COMPLETE_TAPE_WINDOW_MS;
+  const completeCandidates = candidates.filter((candidate) => candidate.timestamp >= completeFrom);
+  const thresholdSample = completeCandidates.length >= 50 ? completeCandidates : candidates;
+  const volumes = thresholdSample.map((candidate) => candidate.volume).sort((left, right) => left - right);
   const filterMode = String(settings.filterMode ?? "automatic");
   const intensity = String(settings.automaticIntensity ?? "medium");
   const automaticPercentile = intensity === "low" ? 0.8 : intensity === "strong" ? 0.975 : 0.9;

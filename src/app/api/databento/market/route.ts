@@ -38,7 +38,11 @@ const historyCache = globalHistoryCache.__kwantdeskCmeHistory
 const FRESH_CACHE_MS = 12_000;
 const EVENT_HISTORY_CACHE_MS = 5 * 60_000;
 const DEFAULT_HISTORY_DAYS = DEFAULT_CHART_HISTORY_CALENDAR_DAYS;
-const MAX_HISTORY_DAYS = 14;
+// Big Contracts can be asked for up to 30 days of executions. The ceiling has
+// to match what the UI offers, or the setting silently tops out and the study
+// shows nothing for the extra days. Payloads stay bounded by gzip on the wire
+// and by the browser tape's own compaction once decoded.
+const MAX_HISTORY_DAYS = 30;
 const DURABLE_EVENT_HISTORY_REVALIDATE_SECONDS = 5 * 60;
 // Time bars form continuously. Reusing a five-minute-old durable order-flow
 // payload leaves several closed candles missing at the live seam. Keep the
