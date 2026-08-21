@@ -952,16 +952,44 @@ symmetry, degenerate input), plus `tests/chart-drawing-system.test.mjs` +
 `precision-tools-system` 29/29, ESLint 0 errors, `tsc --noEmit`, `npm run build`
 — green before each push. **No live RTH visual check yet.**
 
+### Completed in the second pass
+- `0fa2b306` **Filter/Split Time (server).** New pure `volumeProfileSessions.ts`:
+  RTH, overnight, custom windows (including ones that wrap midnight) and a
+  triple Asia/London/New York split. Windows resolve ONCE per profile and are
+  compared numerically — asking Intl for the exchange-local time of every
+  execution would run a timezone lookup hundreds of thousands of times a
+  session. `sessionTradingDate` implements the end-session-as-start-day
+  convention that puts an overnight profile on the date it finished on.
+- `db43a404` **Filter/Split Time (client + UI)** wired through the profile
+  request, with filter mode, window, custom session times and the trading-date
+  convention exposed.
+- `11812bea` **Plot Settings.** Extend modes (none / till-interaction /
+  till-end-window), the five line-style dash patterns, and the Automatic /
+  Solid / Hollow / Line / Combined histogram appearance plus border width.
+  `till-interaction` stops a level at the first later bar whose range traded
+  back through it.
+
+**The value-area percentage was discarded in FOUR separate places** between the
+settings dialog and the tape — the render path, the primitive, the API route and
+the client fetch all pinned it to the 70% constant. All four now honour it.
+
+Schema is at `profileSettingsVersion: 10`; every migration only fills absent
+keys, and all new behaviour defaults to the previous look.
+
 ### Remaining (not started)
-- **Filter/Split Time** (`FilterMode` None|Filter|Splitted|Triple, `FilterTime`
-  Rth|Custom|Eth, session start/end, `UseEndSessionAsStartDay`). Needs server-side
-  session windowing — this is what makes Asia/overnight profiles land on the
-  right trading date.
-- **General** (`VbpPeriod` AllBars|MultipleProfile|VisibleBars|CustomTime|LastsProfile,
-  `LengthType`, custom date range). Also server-side.
-- **Plot Settings** width/offset/visual-style variants (`WidthType`, `VisualStyle`
-  Automatic|Solid|Hollow|Line|Combined, current/previous offsets).
-- POC shifted-POC grouping + shift alerts; VA extend modes and developing style.
+- **General tab** (`VbpPeriod` AllBars|MultipleProfile|VisibleBars|CustomTime|
+  LastsProfile, `LengthType`/`LengthValue`, custom date range). Our profiles are
+  built per CME trading date; arbitrary periods need the request layer to accept
+  a span rather than a date, and `numberOfProfiles` is stored but not yet used to
+  bound how many historical profiles render.
+- `FilterMode` **Splitted/Triple currently filter rather than split** — the
+  windows are resolved and applied, but one profile object is still produced per
+  period, so the segments are not drawn as separate profiles. Selecting them
+  behaves as Filter over the union of the windows. Splitting needs the request
+  layer to emit one profile per segment.
+- Plot width/offset (`WidthType`, current/previous offsets) beyond the existing
+  width percentage.
+- POC shifted-POC grouping + shift alerts.
 - Nested dialogs not built: `ColorSettings` (12), `TextSettings` (4),
   `VWapDevSettings` (5 bands × 4 — we ship 3 simple σ bands instead).
 
