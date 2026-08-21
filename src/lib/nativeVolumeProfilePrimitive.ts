@@ -406,11 +406,11 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
       }, Number.NEGATIVE_INFINITY);
       // The newest profile of each kind, per instrument.
       //
-      // Only that one is allowed to dock to a screen edge. Docking is a way to
-      // keep the CURRENT profile reachable once its anchor scrolls away — it
-      // is not a parking space. Every older profile of the same kind used to
-      // dock to the same two pixels as well, so scrolling forward piled them
-      // onto one another and they read as a single combined profile.
+      // Only that one is allowed to dock to a screen edge. Docking keeps the
+      // CURRENT profile reachable once its anchor scrolls away — it is not a
+      // parking space. Every older profile of the same kind used to dock to the
+      // same two pixels as well, so scrolling forward piled them onto one
+      // another and they read as a single combined profile.
       const latestEndMsByKind = new Map<string, number>();
       for (const model of this.models) {
         const kind = `${model.profile.period}:${model.profile.root}`;
@@ -419,6 +419,32 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           Math.max(latestEndMsByKind.get(kind) ?? Number.NEGATIVE_INFINITY, model.profile.endMs),
         );
       }
+
+      // Which profile owns the LEFT dock, per kind.
+      //
+      // The dock belongs to the most recent profile that has actually scrolled
+      // past the left edge — not to the newest profile in the pane. Those are
+      // the same thing at the live edge, but they diverge the moment the chart
+      // is scrolled back through history, and using the newest one meant an
+      // older profile kept the dock after a newer one had passed it. As each
+      // profile slides off, it takes the dock from the one before it and that
+      // one simply leaves the screen.
+      const leftDockByKind = new Map<string, { id: string; endMs: number }>();
+      for (const model of this.models) {
+        if (model.style.snapMode !== "left") continue;
+        const anchorX = this.timeToCoordinate(
+          model,
+          model.drawingBounds?.startTime ?? model.profile.startMs / 1_000,
+        );
+        if (anchorX == null || anchorX >= leftEdge + 2) continue;
+        const kind = `${model.profile.period}:${model.profile.root}`;
+        const current = leftDockByKind.get(kind);
+        if (!current || model.profile.endMs > current.endMs) {
+          leftDockByKind.set(kind, { id: model.id, endMs: model.profile.endMs });
+        }
+      }
+      const ownsLeftDock = (model: NativeVolumeProfileModel) =>
+        leftDockByKind.get(`${model.profile.period}:${model.profile.root}`)?.id === model.id;
 
       // A session's POC and value area stay live until the next session takes
       // over, so their lines run on to the START of the profile in front and
@@ -499,7 +525,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
         // real profile data loaded but drew every bar beyond the canvas.
         const autoPinnedDailyLeft = profile.period === "daily"
           && sessionAnchorX < leftEdge + 2
-          && profile.endMs === latestDailyEndMs;
+          && ownsLeftDock(model);
         const latestDailyProfile = profile.period === "daily"
           && profile.endMs === latestDailyEndMs;
         const pinnedDailyLeft = profile.period === "daily"
@@ -515,7 +541,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           && isNewestOfKind
           && (profile.period !== "daily" || latestDailyProfile);
         const pinnedLeft = style.snapMode === "left"
-          && isNewestOfKind
+          && ownsLeftDock(model)
           && (profile.period === "daily" ? autoPinnedDailyLeft : sessionAnchorX < leftEdge + 2);
         const pinned = pinnedLeft || pinnedRight;
         const rawAnchorX = customProfile
