@@ -43,8 +43,10 @@ test("daily profiles honour off and right instead of forcing the left edge", () 
 test("profile width follows horizontal zoom without changing during horizontal panning", () => {
   assert.match(primitive, /function zoomScaledVolumeProfileWidth/);
   assert.match(primitive, /getVisibleLogicalRange\(\)/);
-  assert.match(primitive, /paneWidth \/ visibleLogicalSpan/);
-  assert.match(primitive, /referenceLogicalBars \* widthPercent \/ 100/);
+  // Width is derived from the visible SPAN only, never from where that span
+  // sits, which is what keeps a profile still while the chart is panned.
+  assert.match(primitive, /referenceLogicalBars \/ visibleLogicalSpan/);
+  assert.match(primitive, /paneWidth \* widthPercent \/ 100/);
   assert.match(primitive, /MAX_PROFILE_PANE_FRACTION/);
   assert.doesNotMatch(primitive, /viewportWidthLimit/);
 });
@@ -58,13 +60,15 @@ test("the consolidated Daily Profile retains the KWANT chart-width renderer", ()
   assert.match(primitive, /CHART_PROFILE_REFERENCE_BARS/);
 });
 
-test("profiles shrink as the chart zooms out but stop at a readable floor", () => {
-  assert.match(primitive, /PROFILE_MIN_READABLE_WIDTH_PX = 50/);
+test("profiles shrink to half width then grow back out", () => {
+  // Behaviour is proven by `npm run test:volume-profile-zoom`; these pins keep
+  // the mechanism from being quietly reverted.
+  assert.match(primitive, /PROFILE_REBOUND_FLOOR_SCALE = 0\.5/);
+  assert.match(primitive, /naturalScale >= PROFILE_REBOUND_FLOOR_SCALE/);
   // The floor must be capped by the pane ceiling so a narrow pane is never
   // overrun by a profile that refuses to shrink.
   assert.match(
     primitive,
     /Math\.min\(PROFILE_MIN_READABLE_WIDTH_PX, maxWidth\)/,
   );
-  assert.doesNotMatch(primitive, /profileLogicalBars \* pixelsPerLogicalBar,\s*0\.5,/);
 });

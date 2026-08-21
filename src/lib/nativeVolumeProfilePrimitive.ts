@@ -42,6 +42,13 @@ const MAX_PROFILE_PANE_FRACTION = 0.36;
  */
 const PROFILE_MIN_READABLE_WIDTH_PX = 50;
 
+/**
+ * How far a profile is allowed to shrink as the chart zooms out, as a fraction
+ * of its configured width. At this point the scaling reverses and the profile
+ * grows back toward full width the further out the chart goes.
+ */
+const PROFILE_REBOUND_FLOOR_SCALE = 0.5;
+
 export function zoomScaledVolumeProfileWidth({
   paneWidth,
   visibleLogicalFrom,
@@ -73,11 +80,26 @@ export function zoomScaledVolumeProfileWidth({
   // visible-range span is unchanged by horizontal panning, so dragging left
   // or right can only translate the profile. Zooming changes that span and
   // therefore scales the profile in exactly the same direction as candles.
-  const pixelsPerLogicalBar = paneWidth / visibleLogicalSpan;
-  const profileLogicalBars = referenceLogicalBars * widthPercent / 100;
+  // Width at the reference zoom, i.e. the profile drawn at 100% of its setting.
+  const referenceWidth = paneWidth * widthPercent / 100;
+  // How far the current zoom is from that reference. 1 = reference zoom,
+  // below 1 = zoomed out, above 1 = zoomed in.
+  const naturalScale = referenceLogicalBars / visibleLogicalSpan;
+  // Scrolling out shrinks the profile with the candles, but only down to half
+  // width. Past that the profile turns around and grows back toward its full
+  // width, so a chart zoomed right out still shows a readable auction instead
+  // of a sliver. The rebound is gradual — full width is reached once the view
+  // spans eight times the reference — so the turn is not a visible jump.
+  const effectiveScale = naturalScale >= PROFILE_REBOUND_FLOOR_SCALE
+    ? naturalScale
+    : clamp(
+        PROFILE_REBOUND_FLOOR_SCALE * Math.sqrt(PROFILE_REBOUND_FLOOR_SCALE / naturalScale),
+        PROFILE_REBOUND_FLOOR_SCALE,
+        1,
+      );
   const maxWidth = paneWidth * clamp(maxPaneFraction, 0.05, 0.5);
   return clamp(
-    profileLogicalBars * pixelsPerLogicalBar,
+    referenceWidth * effectiveScale,
     Math.min(PROFILE_MIN_READABLE_WIDTH_PX, maxWidth),
     maxWidth,
   );
