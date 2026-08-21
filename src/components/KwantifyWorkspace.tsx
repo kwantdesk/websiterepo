@@ -257,6 +257,7 @@ import {
   type ChartIntervalKind,
 } from "@/lib/chartIntervals";
 import { applyMarketTradesToEventBars, futuresTickSize } from "@/lib/eventBars";
+import { automaticVolumeProfileGroupTicks } from "@/lib/volumeProfileMath";
 import type { ValueAreaProfile } from "@/lib/valueArea";
 import {
   DATABENTO_LIVE_TICK_EVENT,
@@ -7790,12 +7791,37 @@ function WorkspaceChartPaneComponent({
     const activeRoot = displayCmeSymbol(pane.symbol);
     const activeTradingDates = new Set(tradingDates);
     const normalizedContractSymbol = resolvedContractSymbol.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    // Automatic tick grouping sizes a profile row from the range the profile
+    // actually covers, so a 400-point day does not become 1,600 hairlines.
+    // Manual pins it to the trader's own ticks-per-row.
+    const profileTickSize = futuresTickSize(pane.symbol);
+    const priceRangeOver = (dayCount: number) => {
+      if (!candles.length) return 0;
+      const cutoff = candles[candles.length - 1].timestamp - dayCount * 24 * 60 * 60_000;
+      let high = Number.NEGATIVE_INFINITY;
+      let low = Number.POSITIVE_INFINITY;
+      for (let index = candles.length - 1; index >= 0; index -= 1) {
+        const candle = candles[index];
+        if (candle.timestamp < cutoff) break;
+        if (candle.high > high) high = candle.high;
+        if (candle.low < low) low = candle.low;
+      }
+      return Number.isFinite(high) && Number.isFinite(low) && high > low ? high - low : 0;
+    };
     const requestedDailyGroupTicks = dailyProfileSettings.groupingMode === "manual"
-      ? Math.max(1, Math.round(Number(dailyProfileSettings.groupTicks ?? 1) || 1))
-      : 1;
+      ? Math.max(1, Math.round(Number(dailyProfileSettings.groupTicks ?? 4) || 4))
+      : automaticVolumeProfileGroupTicks(
+        priceRangeOver(1),
+        profileTickSize,
+        Number(dailyProfileSettings.autoGroupFactor ?? 1) || 1,
+      );
     const requestedWeeklyGroupTicks = weeklyProfileSettings.groupingMode === "manual"
       ? Math.max(1, Math.round(Number(weeklyProfileSettings.groupTicks ?? 4) || 4))
-      : 1;
+      : automaticVolumeProfileGroupTicks(
+        priceRangeOver(5),
+        profileTickSize,
+        Number(weeklyProfileSettings.autoGroupFactor ?? 1) || 1,
+      );
     const requestedDailyMinVolume = Math.max(0, Number(dailyProfileSettings.minTradeVolume ?? 0) || 0);
     const requestedDailyMaxVolume = Math.max(0, Number(dailyProfileSettings.maxTradeVolume ?? 0) || 0);
     const requestedWeeklyMinVolume = Math.max(0, Number(weeklyProfileSettings.minTradeVolume ?? 0) || 0);
@@ -7973,6 +7999,7 @@ function WorkspaceChartPaneComponent({
   }, [
     dailyProfileInstance?.instanceId,
     dailyProfileInstance?.indicatorId,
+    dailyProfileSettings.autoGroupFactor,
     dailyProfileSettings.groupTicks,
     dailyProfileSettings.groupingMode,
     dailyProfileSettings.maxTradeVolume,
@@ -7983,6 +8010,7 @@ function WorkspaceChartPaneComponent({
     pane.timeframe,
     resolvedContractSymbol,
     weeklyProfileInstance?.instanceId,
+    weeklyProfileSettings.autoGroupFactor,
     weeklyProfileSettings.groupTicks,
     weeklyProfileSettings.groupingMode,
     weeklyProfileSettings.maxTradeVolume,

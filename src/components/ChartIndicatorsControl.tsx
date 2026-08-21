@@ -1197,6 +1197,95 @@ export default function ChartIndicatorsControl({
                 </div>
               ) : null}
 
+              {VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) ? (
+                <div className="grid gap-3 border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
+                  <div className="text-[9px] uppercase tracking-[0.14em] text-foreground sm:col-span-2">Data settings</div>
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">
+                    <span>Input data</span>
+                    <KwantSelect
+                      value={String(settingsInstance.settings?.inputData ?? "volume")}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                        ...current,
+                        settings: { ...(current.settings ?? {}), inputData: event.target.value },
+                      }))}
+                      className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                      menuLabel="Input data"
+                    >
+                      <option value="volume">Volume</option>
+                      <option value="trades">Number of trades</option>
+                    </KwantSelect>
+                  </label>
+                  {([
+                    ["Filter min", "minTradeVolume", 0],
+                    ["Filter max", "maxTradeVolume", 0],
+                  ] as const).map(([label, key, fallback]) => (
+                    <label key={key} className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                      <span>{label}</span>
+                      <input
+                        type="number"
+                        min={0}
+                        step={1}
+                        value={Number(settingsInstance.settings?.[key] ?? fallback)}
+                        onChange={(event) => {
+                          const next = Math.max(0, Math.round(Number(event.target.value) || 0));
+                          replace(settingsInstance.instanceId, (current) => ({
+                            ...current,
+                            settings: { ...(current.settings ?? {}), [key]: next },
+                          }));
+                        }}
+                        className="h-9 w-full border border-border bg-background px-3 text-right font-mono text-[10px] text-foreground outline-none focus:border-primary/40"
+                      />
+                    </label>
+                  ))}
+                  <div className="text-[9px] uppercase tracking-[0.14em] text-foreground sm:col-span-2">Tick grouping</div>
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">
+                    <span>Auto grouping</span>
+                    <KwantSelect
+                      value={String(settingsInstance.settings?.groupingMode ?? "automatic")}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                        ...current,
+                        settings: { ...(current.settings ?? {}), groupingMode: event.target.value },
+                      }))}
+                      className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                      menuLabel="Auto grouping"
+                    >
+                      <option value="automatic">Automatic</option>
+                      <option value="manual">Manual</option>
+                    </KwantSelect>
+                  </label>
+                  {([
+                    ["Auto group factory", "autoGroupFactor", 1, "automatic"],
+                    ["Manual ticks", "groupTicks", 4, "manual"],
+                  ] as const).map(([label, key, fallback, mode]) => {
+                    const activeMode = String(settingsInstance.settings?.groupingMode ?? "automatic");
+                    const applies = activeMode === mode;
+                    return (
+                      <label key={key} className={`space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted ${applies ? "" : "opacity-40"}`}>
+                        <span>{label}</span>
+                        <input
+                          type="number"
+                          min={1}
+                          step={1}
+                          disabled={!applies}
+                          value={Number(settingsInstance.settings?.[key] ?? fallback)}
+                          onChange={(event) => {
+                            const next = Math.max(1, Math.round(Number(event.target.value) || fallback));
+                            replace(settingsInstance.instanceId, (current) => ({
+                              ...current,
+                              settings: { ...(current.settings ?? {}), [key]: next },
+                            }));
+                          }}
+                          className="h-9 w-full border border-border bg-background px-3 text-right font-mono text-[10px] text-foreground outline-none focus:border-primary/40 disabled:cursor-not-allowed"
+                        />
+                      </label>
+                    );
+                  })}
+                  <div className="border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
+                    Filter min and max bound the trade sizes that reach the profile; max 0 means no upper bound. Automatic sizes each row from the range the profile covers and multiplies it by the group factory. Manual pins every row to a fixed number of ticks.
+                  </div>
+                </div>
+              ) : null}
+
               {settingsDefinition.id === "implied-volatility-rank" ? (
                 <div className="grid gap-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
                   <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">

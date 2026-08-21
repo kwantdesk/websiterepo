@@ -1734,6 +1734,14 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
   ...(indicatorId === "weekly-tpo" ? tpoSettingsToRecord(defaultTpoSettings("weekly-tpo", theme)) : {}),
   ...(["kwant-profile", "weekly-volume-profile", "custom-draw-on-volume-profile", "ask-bid-volume-profile", "delta-profile"].includes(indicatorId) ? {
     valueAreaPercent: STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
+    // Data Settings — the input series, the trade-size band applied before
+    // binning, and how many ticks share a profile row. Automatic derives the
+    // row height from the session range; Manual pins it to groupTicks.
+    inputData: "volume",
+    minTradeVolume: 0,
+    maxTradeVolume: 0,
+    autoGroupFactor: 1,
+    groupTicks: 4,
     profileMode: indicatorId === "ask-bid-volume-profile"
       ? "bid-ask"
       : indicatorId === "delta-profile"
@@ -1754,7 +1762,7 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     showVwapLine: false,
     showVwapBands: false,
     showSummary: false,
-    profileSettingsVersion: 6,
+    profileSettingsVersion: 7,
     align: indicatorId === "kwant-profile"
       ? "session"
       : indicatorId === "weekly-volume-profile" ? "left" : "right",
@@ -2081,7 +2089,7 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
   }
   if (
     normalizedInstance.indicatorId === "kwant-profile"
-    && Number(normalizedInstance.settings?.profileSettingsVersion) < 6
+    && Number(normalizedInstance.settings?.profileSettingsVersion) < 7
   ) {
     return {
       ...normalizedInstance,
@@ -2100,14 +2108,21 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         snapMode: normalizedInstance.settings?.snapMode === "right" ? "right" : "left",
         profileWidth: 24,
         opacity: 72,
-        profileSettingsVersion: 6,
+        // Data Settings arrived in v7. Existing values always win so a
+        // migration never silently re-tunes a saved profile.
+        inputData: normalizedInstance.settings?.inputData ?? "volume",
+        minTradeVolume: normalizedInstance.settings?.minTradeVolume ?? 0,
+        maxTradeVolume: normalizedInstance.settings?.maxTradeVolume ?? 0,
+        autoGroupFactor: normalizedInstance.settings?.autoGroupFactor ?? 1,
+        groupTicks: normalizedInstance.settings?.groupTicks ?? 4,
+        profileSettingsVersion: 7,
       },
     };
   }
   if (
     ["weekly-volume-profile", "custom-draw-on-volume-profile", "ask-bid-volume-profile", "delta-profile"]
       .includes(normalizedInstance.indicatorId)
-    && Number(normalizedInstance.settings?.profileSettingsVersion) < 6
+    && Number(normalizedInstance.settings?.profileSettingsVersion) < 7
   ) {
     return {
       ...normalizedInstance,
@@ -2116,7 +2131,14 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         snapMode: normalizedInstance.indicatorId === "custom-draw-on-volume-profile"
           ? "off"
           : normalizedInstance.settings?.snapMode === "right" ? "right" : "left",
-        profileSettingsVersion: 6,
+        // Data Settings arrived in v7. Existing values always win so a
+        // migration never silently re-tunes a saved profile.
+        inputData: normalizedInstance.settings?.inputData ?? "volume",
+        minTradeVolume: normalizedInstance.settings?.minTradeVolume ?? 0,
+        maxTradeVolume: normalizedInstance.settings?.maxTradeVolume ?? 0,
+        autoGroupFactor: normalizedInstance.settings?.autoGroupFactor ?? 1,
+        groupTicks: normalizedInstance.settings?.groupTicks ?? 4,
+        profileSettingsVersion: 7,
       },
     };
   }

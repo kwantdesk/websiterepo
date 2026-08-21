@@ -91,3 +91,63 @@ export function calculateVolumeProfileValueArea(
     val: priceForIndex(lowIndex),
   };
 }
+
+/**
+ * Rows a profile aims for when tick grouping is left on Automatic. The chart's
+ * candle-backed profiles already bin to roughly range/140, so automatic
+ * grouping targets the same density and stays visually consistent with them.
+ */
+export const AUTOMATIC_VOLUME_PROFILE_TARGET_ROWS = 140;
+
+/**
+ * Ticks per profile row when grouping is Automatic.
+ *
+ * The row count is derived from the session's own price range rather than a
+ * fixed tick count, so a 400-point NQ day and a 40-point day both produce a
+ * readable profile instead of 1,600 hairlines or a dozen fat blocks. `factor`
+ * is the user's Auto group factory: 1 keeps the derived value, 2 halves the
+ * row count, and so on. Returns 1 (no grouping) when the range is not yet
+ * known, which is the honest state before any candles have loaded.
+ */
+export function automaticVolumeProfileGroupTicks(
+  priceRange: number,
+  tickSize: number,
+  factor = 1,
+  targetRows = AUTOMATIC_VOLUME_PROFILE_TARGET_ROWS,
+): number {
+  const safeFactor = Math.max(1, Math.round(Number.isFinite(factor) ? factor : 1));
+  if (!Number.isFinite(priceRange) || priceRange <= 0) return safeFactor;
+  if (!Number.isFinite(tickSize) || tickSize <= 0) return safeFactor;
+  const rows = Math.max(1, Math.round(targetRows));
+  const rangeTicks = priceRange / tickSize;
+  if (!Number.isFinite(rangeTicks) || rangeTicks <= 0) return safeFactor;
+  const derived = Math.ceil(rangeTicks / rows);
+  return Math.max(1, derived) * safeFactor;
+}
+
+export type VolumeProfileInputData = "volume" | "trades";
+
+/**
+ * Applies the Data Settings "Input data" choice to a profile.
+ *
+ * Volume mode is the profile as recorded. Trades mode re-expresses every row
+ * as its executed trade COUNT, which answers "where did the most transactions
+ * happen" rather than "where did the most contracts trade" — the two disagree
+ * whenever size is concentrated in a few large prints. Aggressor split and
+ * delta are left untouched because they remain true either way.
+ *
+ * The original object is returned unchanged in volume mode so referential
+ * equality — and the render memoisation built on it — is preserved.
+ */
+export function volumeProfileWithInputData<
+  Level extends { volume: number; trades: number },
+  Profile extends { levels: Level[]; totalVolume: number },
+>(profile: Profile, inputData: VolumeProfileInputData): Profile {
+  if (inputData !== "trades") return profile;
+  const levels = profile.levels.map((level) => ({ ...level, volume: Math.max(0, level.trades) }));
+  return {
+    ...profile,
+    levels,
+    totalVolume: levels.reduce((sum, level) => sum + level.volume, 0),
+  };
+}

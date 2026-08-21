@@ -339,6 +339,7 @@ import {
 } from "@/lib/gexMapPalette";
 import { buildOptionsDeltaSeries, optionsDeltaSourceForInstrument } from "@/lib/optionsDelta";
 import { isMarketIndexSymbol } from "@/lib/marketIndices";
+import { volumeProfileWithInputData } from "@/lib/volumeProfileMath";
 import {
   createMagnetResolver,
   magnetRadiusPx,
@@ -12532,15 +12533,22 @@ function Chart({
           ? requestedProfileMode
           : "delta-volume"
       ) as "delta-volume" | "bid-ask" | "delta";
+      // Data Settings > Input data. Trades mode re-expresses each row as its
+      // executed trade count; volume mode returns the profile untouched, so
+      // the reference stays stable for the render memo below.
+      const rendered = volumeProfileWithInputData(
+        profile,
+        String(profileSettings.inputData) === "trades" ? "trades" : "volume",
+      );
       return [{
         id: `${profile.root}:${profile.period}:${profile.startMs}`,
-        profile,
+        profile: rendered,
         lastCandleTime,
         intervalSeconds,
-        maxVolume: Math.max(1, ...profile.levels.map((level) => level.volume)),
-        maxAbsDelta: Math.max(1, ...profile.levels.map((level) => Math.abs(level.delta))),
-        lowPrice: profile.levels[0]?.price ?? Number.POSITIVE_INFINITY,
-        highPrice: profile.levels[profile.levels.length - 1]?.price ?? Number.NEGATIVE_INFINITY,
+        maxVolume: Math.max(1, ...rendered.levels.map((level) => level.volume)),
+        maxAbsDelta: Math.max(1, ...rendered.levels.map((level) => Math.abs(level.delta))),
+        lowPrice: rendered.levels[0]?.price ?? Number.POSITIVE_INFINITY,
+        highPrice: rendered.levels[rendered.levels.length - 1]?.price ?? Number.NEGATIVE_INFINITY,
         style: {
           mode: profileMode,
           widthBasis: "chart",
@@ -12561,7 +12569,11 @@ function Chart({
           showProfileOutline: profileSettings.showProfileOutline !== false,
           automaticGrouping: profileSettings.groupingMode !== "manual",
           autoGroupFactor: clamp(Number(profileSettings.autoGroupFactor ?? 1), 0.5, 4),
-          valueAreaPercent: STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
+          valueAreaPercent: clamp(
+            Number(profileSettings.valueAreaPercent ?? STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT),
+            1,
+            100,
+          ),
           snapMode: requestedSnapMode,
         },
       }];
