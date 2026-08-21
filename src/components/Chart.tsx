@@ -7112,11 +7112,17 @@ function Chart({
               // clipped slices always cover the clock; it refetches only when
               // the clock crosses into a new checkpoint window.
               const checkpointMinute = Math.ceil((minute + 1) / 15) * 15;
+              // The checkpoint and the clock minute are independent requests.
+              // Awaiting them in series meant every checkpoint crossing cost
+              // two full provider round trips before anything repainted, which
+              // is the stall right after pressing play. They now run together.
+              const pending: Array<Promise<void> | undefined> = [];
               if (bounceReplayCheckpointMsRef.current !== checkpointMinute) {
-                await bounceReplayLoaderRef.current?.(checkpointMinute, true);
                 bounceReplayCheckpointMsRef.current = checkpointMinute;
+                pending.push(bounceReplayLoaderRef.current?.(checkpointMinute, true));
               }
-              await bounceReplayLoaderRef.current?.(minute);
+              pending.push(bounceReplayLoaderRef.current?.(minute));
+              await Promise.allSettled(pending);
             }
           } finally {
             bounceReplayInFlightRef.current = false;

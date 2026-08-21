@@ -40,6 +40,8 @@ const backgroundRefreshes = new Map<string, Promise<unknown>>();
  * identical, so it is returned immediately and rebuilt behind the response.
  */
 const STALE_SERVE_WINDOW_MS = 10 * 60_000;
+/** A replayed minute is immutable, so it is worth retaining for a session. */
+const REPLAY_PAYLOAD_CACHE_MS = 6 * 60 * 60_000;
 /**
  * The rolling week always ends at 00:00Z, so its key is stable for the whole
  * day and the result can be shared across serverless instances instead of
@@ -225,8 +227,26 @@ async function buildBounceLevelsPayload(
     maxRollDistance: finite(request, "maxRollDistance", 5),
     rollWindowMs: finite(request, "rollWindowSeconds", 120) * 1_000,
   });
-  if (payloadCache.size > 64) for (const [key, entry] of payloadCache) if (entry.expiresAt <= Date.now()) payloadCache.delete(key);
-  payloadCache.set(cacheKey, { expiresAt: Date.now() + Math.max(2_000, Math.min(15_000, payload.refreshAfterMs)), payload });
+  // Replay fills this with one entry per minute, so the sweep needs a real
+  // ceiling rather than only dropping expired entries.
+  if (payloadCache.size > 512) {
+    const now = Date.now();
+    for (const [key, entry] of payloadCache) if (entry.expiresAt <= now) payloadCache.delete(key);
+    while (payloadCache.size > 512) {
+      const oldest = payloadCache.keys().next();
+      if (oldest.done) break;
+      payloadCache.delete(oldest.value);
+    }
+  }
+  // A replay surface describes a FIXED past instant, so it can never change.
+  // Capping it at the live cadence meant every replay minute was rebuilt from
+  // the provider on each pass, and scrubbing back refetched the whole session
+  // again — the long stall after pressing play. Live surfaces keep the short
+  // window because they genuinely do move.
+  const cacheMs = asOf
+    ? REPLAY_PAYLOAD_CACHE_MS
+    : Math.max(2_000, Math.min(15_000, payload.refreshAfterMs));
+  payloadCache.set(cacheKey, { expiresAt: Date.now() + cacheMs, payload });
   return payload;
 }
 
