@@ -277,7 +277,7 @@ export function trimToRecentChartSessions(
   return sorted.slice(startIndex);
 }
 
-function timeframeDurationMs(timeframe: string) {
+export function timeframeDurationMs(timeframe: string) {
   const match = timeframe.match(/^(\d+)(s|m|h|D|W|M)$/);
   if (!match) return null;
   const value = Math.max(1, Number(match[1]));

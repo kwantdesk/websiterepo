@@ -40,7 +40,8 @@
     "test:themes": "node --test tests/feminine-theme-presets.test.mjs tests/mono-default-theme.test.mjs tests/mr-quant-theme.test.mjs",
     "desktop:build": "powershell -ExecutionPolicy Bypass -File desktop/package-windows.ps1",
     "test:big-trades-filter": "node scripts/test-big-trades-filter.mjs",
-    "test:volume-profile-zoom": "node scripts/test-volume-profile-zoom.mjs"
+    "test:volume-profile-zoom": "node scripts/test-volume-profile-zoom.mjs",
+    "test:cvd-flow-heal": "node scripts/test-cvd-flow-heal.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",

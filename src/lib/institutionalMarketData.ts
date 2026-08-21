@@ -1512,6 +1512,60 @@ export function enrichCandlesWithInstitutionalCandleFlow(
   });
 }
 
+/**
+ * How far a held bar may differ from the exchange-baked bar before it is
+ * treated as under-counted, as a fraction of the baked bar and as an
+ * absolute contract count. Baked totals wobble slightly between polls, so a
+ * bar within these margins is left alone rather than forcing a series rebuild.
+ */
+export const FLOW_HEAL_RELATIVE_TOLERANCE = 0.02;
+export const FLOW_HEAL_ABSOLUTE_TOLERANCE = 25;
+
+/**
+ * Repair closed bars whose aggressor flow disagrees with the exchange-baked
+ * history, and report whether anything actually needed repairing.
+ *
+ * A live stream that fragments during a busy session leaves closed bars
+ * holding a FRACTION of the executions that really traded in them. Those bars
+ * are not empty, so a repair that only looks for empty bars never touches
+ * them. CVD is a cumulative sum, so every one of those under-counted bars
+ * shifts the entire remainder of the series: the session collapses onto the
+ * zero line while the live edge — which does carry full flow — prints a
+ * vertical jump at the right-hand end.
+ *
+ * Bars at or after `liveEdgeFromMs` keep whatever the live stream gave them.
+ * The baked history lags the tape, so adopting its partial view of the
+ * forming bar would drag the live edge backwards on every poll.
+ *
+ * Returns null when nothing is materially wrong, so the caller can skip the
+ * commit entirely.
+ */
+export function healClosedCandleFlow(
+  held: Candle[],
+  baked: Candle[],
+  liveEdgeFromMs: number,
+): Candle[] | null {
+  if (!held.length || !baked.length) return null;
+  const enriched = enrichCandlesWithInstitutionalCandleFlow(held, baked);
+  if (enriched === held || enriched.length !== held.length) return null;
+
+  let repaired = false;
+  const healed = enriched.map((candle, index) => {
+    const before = held[index];
+    // The live edge is the stream's to own.
+    if (Number(before.timestamp) >= liveEdgeFromMs) return before;
+    const bakedTotal = Math.max(0, Number(candle.askVolume ?? 0)) + Math.max(0, Number(candle.bidVolume ?? 0));
+    if (bakedTotal <= 0) return before;
+    const heldTotal = Math.max(0, Number(before.askVolume ?? 0)) + Math.max(0, Number(before.bidVolume ?? 0));
+    const margin = Math.max(FLOW_HEAL_ABSOLUTE_TOLERANCE, bakedTotal * FLOW_HEAL_RELATIVE_TOLERANCE);
+    const volumeDrift = Math.abs(bakedTotal - heldTotal);
+    const deltaDrift = Math.abs(Number(candle.delta ?? 0) - Number(before.delta ?? 0));
+    if (heldTotal > 0 && volumeDrift <= margin && deltaDrift <= margin) return before;
+    repaired = true;
+    return candle;
+  });
+  return repaired ? healed : null;
+}
 function normalizeInstitutionalTradeRecords(value: unknown): InstitutionalTrade[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((item) => {

@@ -129,6 +129,7 @@ import {
   buildChartVolumeProfile,
   applyInstitutionalTradesToVolumeProfile,
   enrichCandlesWithInstitutionalCandleFlow,
+  healClosedCandleFlow,
   enrichCandlesWithInstitutionalTrades,
   fetchInstitutionalSnapshot,
   fetchInstitutionalOrderFlowLevels,
@@ -286,6 +287,7 @@ import {
   compressNewYorkClosedSessionCandles,
   DEFAULT_CHART_HISTORY_CALENDAR_DAYS,
   hasMinimumChartHistory,
+  timeframeDurationMs,
   trimToRecentChartSessions,
 } from "@/lib/chartHistoryWindow";
 import { readLiveQuoteCache, writeLiveQuoteCache } from "@/lib/liveQuoteCache";
@@ -6540,17 +6542,17 @@ function WorkspaceChartPaneComponent({
         );
         if (cancelled || !downloaded.length) return;
         const previous = latestCandlesRef.current;
-        const healed = enrichCandlesWithInstitutionalCandleFlow(previous, downloaded);
-        if (healed === previous || healed.length !== previous.length) return;
-        // Commit only when a bar that had no aggressor split gained one.
-        // Baked values for already-covered bars change marginally on every
-        // poll and are not worth a full series rebuild.
-        const filledGap = healed.some((candle, index) => {
-          const before = previous[index];
-          return Number(before.askVolume ?? 0) + Number(before.bidVolume ?? 0) <= 0
-            && Number(candle.askVolume ?? 0) + Number(candle.bidVolume ?? 0) > 0;
-        });
-        if (!filledGap) return;
+        // Closed bars belong to the exchange-baked history, whether they are
+        // empty OR merely under-counted by a stream that dropped prints. The
+        // live edge past the provider's availability lag stays with the
+        // stream, so a partial baked bar cannot drag it backwards.
+        const barMs = timeframeDurationMs(pane.timeframe) ?? 60_000;
+        const healed = healClosedCandleFlow(
+          previous,
+          downloaded,
+          Date.now() - Math.max(90_000, barMs * 2),
+        );
+        if (!healed) return;
         latestCandlesRef.current = healed;
         if (hasUsableOrderFlowHistory(healed)) setOrderFlowHistoryReady(true);
         startTransition(() => setCandles(healed));
