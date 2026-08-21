@@ -1,5 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { buildDatabentoExecutionProfile } from "@/lib/databentoExecutionProfile.server";
+import {
+  RTH_END_MINUTES,
+  RTH_START_MINUTES,
+  resolveSessionSegments,
+  type SessionFilterMode,
+  type SessionWindowKind,
+} from "@/lib/volumeProfileSessions";
 import { futuresTickSize } from "@/lib/eventBars";
 import {
   configuredInstitutionalProvider,
@@ -75,6 +82,14 @@ async function executionProfileResponse(request: NextRequest) {
   // Databento rejects the whole request if `end` runs past the dataset's
   // available edge, which is minutes behind live. Never ask beyond it.
   const endMs = Math.min(requestedEnd, now);
+  const requestedFilterMode = String(params.get("filterMode") ?? "none").toLowerCase();
+  const sessionFilterMode = (["none", "filter", "splitted", "triple"].includes(requestedFilterMode)
+    ? requestedFilterMode
+    : "none") as SessionFilterMode;
+  const requestedWindow = String(params.get("filterTime") ?? "rth").toLowerCase();
+  const sessionWindow = (["rth", "eth", "custom"].includes(requestedWindow)
+    ? requestedWindow
+    : "rth") as SessionWindowKind;
 
   try {
     const profile = await buildDatabentoExecutionProfile({
@@ -84,11 +99,22 @@ async function executionProfileResponse(request: NextRequest) {
       endMs,
       tickSize: futuresTickSize(contractSymbol || symbol),
       groupTicks: Number(params.get("groupTicks") ?? 1),
-      valueAreaPercent: STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
+      // The trader's own % Value Area, not the 70% convention.
+      valueAreaPercent: Number(params.get("valueAreaPercent"))
+        > 0
+        ? Number(params.get("valueAreaPercent"))
+        : STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
       minTradeVolume: Number(params.get("minTradeVolume") ?? 0),
       maxTradeVolume: Number(params.get("maxTradeVolume") ?? 0),
       period,
       tradingDate: params.get("tradingDate"),
+      sessionSegments: resolveSessionSegments(startMs, endMs, {
+        mode: sessionFilterMode,
+        window: sessionWindow,
+        customStartMinutes: Number(params.get("sessionStartMinutes") ?? RTH_START_MINUTES),
+        customEndMinutes: Number(params.get("sessionEndMinutes") ?? RTH_END_MINUTES),
+        useEndSessionAsStartDay: params.get("useEndSessionAsStartDay") === "true",
+      }),
     });
     if (!profile) return null;
     return NextResponse.json(profile, { headers: { "Cache-Control": "no-store" } });

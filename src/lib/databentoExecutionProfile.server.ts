@@ -1,5 +1,7 @@
 import "server-only";
 
+import { isWithinSessionSegments, type SessionSegment } from "@/lib/volumeProfileSessions";
+
 import { streamHistoricalTradeRows } from "@/lib/databento";
 import {
   calculateVolumeProfileValueArea,
@@ -41,6 +43,11 @@ type ProfileArgs = {
   maxTradeVolume?: number;
   period?: InstitutionalVolumeProfile["period"];
   tradingDate?: string | null;
+  /**
+   * Session windows this profile is restricted to. Empty (the default) counts
+   * every execution in the range, which is the untouched behaviour.
+   */
+  sessionSegments?: readonly SessionSegment[];
 };
 
 const CACHE_MS = 60_000;
@@ -130,6 +137,7 @@ export async function buildDatabentoExecutionProfile(
       }
     };
 
+    const sessionSegments = args.sessionSegments ?? [];
     const onRow =
       (row: Record<string, unknown>) => {
         const timestampMs = eventMs(row);
@@ -137,6 +145,9 @@ export async function buildDatabentoExecutionProfile(
         const size = numeric(row.size);
         if (timestampMs === null || price === null || size === null) return;
         if (timestampMs < args.startMs || timestampMs >= args.endMs) return;
+        // Filter/Split Time: outside the requested session windows an
+        // execution is simply not part of this profile.
+        if (sessionSegments.length && !isWithinSessionSegments(timestampMs, sessionSegments)) return;
         if (size <= 0 || size < minTradeVolume) return;
         if (maxTradeVolume > 0 && size > maxTradeVolume) return;
 
