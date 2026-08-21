@@ -33,6 +33,14 @@ const PROFILE_MIN_ROW_PIXELS = 0.55;
 
 const CHART_PROFILE_REFERENCE_BARS = 80;
 const MAX_PROFILE_PANE_FRACTION = 0.36;
+/**
+ * Profiles shrink with the candles as the chart is zoomed out, but a profile
+ * that has shrunk to a few pixels is a coloured smear, not a readable auction.
+ * Shrinking stops here, so scrolling out keeps every profile legible instead of
+ * dissolving it. The floor never overrides the pane-fraction ceiling, so a
+ * narrow pane still bounds the profile rather than being taken over by it.
+ */
+const PROFILE_MIN_READABLE_WIDTH_PX = 50;
 
 export function zoomScaledVolumeProfileWidth({
   paneWidth,
@@ -67,10 +75,11 @@ export function zoomScaledVolumeProfileWidth({
   // therefore scales the profile in exactly the same direction as candles.
   const pixelsPerLogicalBar = paneWidth / visibleLogicalSpan;
   const profileLogicalBars = referenceLogicalBars * widthPercent / 100;
+  const maxWidth = paneWidth * clamp(maxPaneFraction, 0.05, 0.5);
   return clamp(
     profileLogicalBars * pixelsPerLogicalBar,
-    0.5,
-    paneWidth * clamp(maxPaneFraction, 0.05, 0.5),
+    Math.min(PROFILE_MIN_READABLE_WIDTH_PX, maxWidth),
+    maxWidth,
   );
 }
 
@@ -467,7 +476,13 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
             ? 0
             : Math.min(
                 usablePaneWidth * MAX_PROFILE_PANE_FRACTION,
-                Math.max(0.5, sessionWidth * style.widthPercent / 100),
+                Math.max(
+                  Math.min(
+                    PROFILE_MIN_READABLE_WIDTH_PX,
+                    usablePaneWidth * MAX_PROFILE_PANE_FRACTION,
+                  ),
+                  sessionWidth * style.widthPercent / 100,
+                ),
               ));
         // A daily profile has two independent halves: volume to the right of
         // its spine and signed delta to the left. Once its session anchor has

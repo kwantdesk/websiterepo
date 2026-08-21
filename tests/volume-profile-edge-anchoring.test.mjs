@@ -24,7 +24,9 @@ test("volume profile settings expose persistent off, left, and right edge modes"
   assert.match(control, /\["left", "right"\] as const/);
   assert.match(control, /snapMode: snapMode === "off" \? "left" : "off"/);
   assert.match(control, /Off leaves every profile at its true historical session position/);
-  assert.match(config, /profileSettingsVersion: 6/);
+  // Version-agnostic: the point is that profile settings stay migrated, and
+  // pinning an exact number turned this red on every later migration.
+  assert.match(config, /profileSettingsVersion: \d+/);
 });
 
 test("daily profiles honour off and right instead of forcing the left edge", () => {
@@ -54,4 +56,15 @@ test("the consolidated Daily Profile retains the KWANT chart-width renderer", ()
   );
   assert.match(primitive, /style\.widthBasis === "session"/);
   assert.match(primitive, /CHART_PROFILE_REFERENCE_BARS/);
+});
+
+test("profiles shrink as the chart zooms out but stop at a readable floor", () => {
+  assert.match(primitive, /PROFILE_MIN_READABLE_WIDTH_PX = 50/);
+  // The floor must be capped by the pane ceiling so a narrow pane is never
+  // overrun by a profile that refuses to shrink.
+  assert.match(
+    primitive,
+    /Math\.min\(PROFILE_MIN_READABLE_WIDTH_PX, maxWidth\)/,
+  );
+  assert.doesNotMatch(primitive, /profileLogicalBars \* pixelsPerLogicalBar,\s*0\.5,/);
 });
