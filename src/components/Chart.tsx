@@ -149,6 +149,7 @@ import {
 } from "@/lib/footprintPrimitive";
 import { ChartRepaintNotifierPrimitive } from "@/lib/chartRepaintNotifier";
 import { resolveVolumeProfileGradient } from "@/lib/volumeProfileGradients";
+import { PositionCalculatorPrimitive, type PositionCalculatorModel } from "@/lib/positionCalculatorPrimitive";
 import { ImbalanceZonesPrimitive, type ImbalanceZoneModel } from "@/lib/imbalanceZonesPrimitive";
 import { retainLiveFootprintRows } from "@/lib/footprintLive";
 import { FOOTPRINT_DATA_REFRESH_INTERVAL_MS, ORDER_FLOW_DATA_REFRESH_INTERVAL_MS } from "@/lib/footprintRuntime";
@@ -3014,6 +3015,7 @@ function Chart({
   const fixedPriceLevelLabelsRef = useRef<FixedPriceLevelLabelsPrimitive | null>(null);
   const sessionHighLowPrimitiveRef = useRef<SessionHighLowPrimitive | null>(null);
   const imbalanceZonesPrimitiveRef = useRef<ImbalanceZonesPrimitive | null>(null);
+  const positionCalculatorPrimitiveRef = useRef<PositionCalculatorPrimitive | null>(null);
   const repaintNotifierRef = useRef<ChartRepaintNotifierPrimitive | null>(null);
   const imbalanceZoneModelsRef = useRef<ImbalanceZoneModel[]>([]);
   const sessionWindowPrimitiveRef = useRef<SessionWindowPrimitive | null>(null);
@@ -9555,6 +9557,59 @@ function Chart({
     showLabels: positionSettingsDrawing?.positionStyle?.showLabels ?? positionStyleDefaults.showLabels,
   };
 
+  // The calculator draws inside the chart's own paint pass, so its models
+  // carry PRICES and TIMES only — never screen coordinates. Projection happens
+  // in the same frame as the candles, which is what stops it drifting.
+  useEffect(() => {
+    const primitive = positionCalculatorPrimitiveRef.current;
+    if (!primitive) return;
+    const models: PositionCalculatorModel[] = [];
+    for (const drawing of drawings) {
+      if (drawing.tool !== "longPosition" && drawing.tool !== "shortPosition") continue;
+      const a = drawing.points[0];
+      const b = drawing.points[1];
+      if (!a || !b) continue;
+      const isLong = drawing.tool === "longPosition";
+      const entryPrice = a.price;
+      const stopPrice = b.price;
+      const risk = Math.max(Math.abs(entryPrice - stopPrice), priceFormat.minMove);
+      const targetPrice = drawing.points[2]?.price
+        ?? (isLong ? entryPrice + risk * 2 : entryPrice - risk * 2);
+      const stopDistance = Math.max(Math.abs(entryPrice - stopPrice), priceFormat.minMove);
+      const targetDistance = Math.max(Math.abs(targetPrice - entryPrice), priceFormat.minMove);
+      const rewardRisk = targetDistance / stopDistance;
+      const rewardRiskLabel = (rewardRisk >= 10 ? rewardRisk.toFixed(1) : rewardRisk.toFixed(2))
+        .replace(/\.0+$/, "")
+        .replace(/(\.\d*[1-9])0+$/, "$1");
+      const visualStyle = drawing.positionStyle ?? {};
+      const lineStyle = visualStyle.lineStyle;
+      models.push({
+        id: drawing.id,
+        startTime: Math.min(a.time, b.time),
+        endTime: Math.max(a.time, b.time),
+        entryPrice,
+        stopPrice,
+        targetPrice,
+        selected: selectedDrawingId === drawing.id,
+        showLabels: visualStyle.showLabels ?? true,
+        targetText: `Target ${targetDistance.toFixed(priceFormat.precision)} pts · ${Math.round(targetDistance / priceFormat.minMove)} ticks`,
+        stopText: `Stop ${stopDistance.toFixed(priceFormat.precision)} pts · ${Math.round(stopDistance / priceFormat.minMove)} ticks`,
+        rewardRiskText: `1:${rewardRiskLabel} R:R`,
+        profitColor: visualStyle.targetColor ?? settings.upColor,
+        lossColor: visualStyle.stopColor ?? settings.downColor,
+        entryLineColor: visualStyle.entryLineColor ?? "#A1A1AA",
+        labelTextColor: visualStyle.textColor ?? "#050505",
+        handleFill: settings.backgroundColor ?? "#0A0A0A",
+        handleStroke: settings.upColor,
+        fillOpacity: clamp(visualStyle.fillOpacity ?? 0.14, 0, 0.6),
+        borderOpacity: clamp(visualStyle.borderOpacity ?? 0.72, 0.1, 1),
+        lineWidth: clamp(visualStyle.lineWidth ?? 1.25, 0.5, 4),
+        lineDash: lineStyle === "dashed" ? [7, 5] : lineStyle === "dotted" ? [2, 4] : null,
+      });
+    }
+    primitive.setModels(models);
+  }, [drawings, priceFormat.minMove, priceFormat.precision, selectedDrawingId, settings, chartReadyRevision]);
+
   function updatePositionVisualSettings(patch: Partial<PositionVisualSettings>) {
     if (!positionSettingsDrawingId) return;
     setDrawings((current) => current.map((drawing) => drawing.id === positionSettingsDrawingId
@@ -10977,119 +11032,28 @@ function Chart({
         }
       case "longPosition":
       case "shortPosition":
+        // Drawn by PositionCalculatorPrimitive inside the chart's own paint
+        // pass. Rendering it here as SVG meant its geometry was produced
+        // during a React render, which sits behind a throttle, a transition
+        // and a very large component — so the boxes were always at least a
+        // frame behind the candles and visibly floated while panning. Only
+        // the invisible hit target remains, so the tool stays clickable.
         if (bx == null || by == null) return null;
         {
           const geometry = getLongShortGeometry(drawing);
           if (!geometry) return null;
-          const isSelected = selectedDrawingId === drawing.id;
-          const stopDistance = Math.max(Math.abs(a.price - geometry.stopPrice), priceFormat.minMove);
-          const targetDistance = Math.max(Math.abs(geometry.targetPrice - a.price), priceFormat.minMove);
-          const targetTicks = Math.round(targetDistance / priceFormat.minMove);
-          const stopTicks = Math.round(stopDistance / priceFormat.minMove);
-          const targetText = `Target ${targetDistance.toFixed(priceFormat.precision)} pts · ${targetTicks} ticks`;
-          const stopText = `Stop ${stopDistance.toFixed(priceFormat.precision)} pts · ${stopTicks} ticks`;
-          const rewardRisk = targetDistance / stopDistance;
-          const rewardRiskLabel = (rewardRisk >= 10 ? rewardRisk.toFixed(1) : rewardRisk.toFixed(2))
-            .replace(/\.0+$/, "")
-            .replace(/(\.\d*[1-9])0+$/, "$1");
-          const rewardRiskText = `1:${rewardRiskLabel} R:R`;
-          const targetLabelWidth = Math.min(Math.max(156, targetText.length * 6.15 + 18), Math.max(156, overlaySize.width - geometry.x - 8));
-          const stopLabelWidth = Math.min(Math.max(156, stopText.length * 6.15 + 18), Math.max(156, overlaySize.width - geometry.x - 8));
-          const rewardRiskLabelWidth = Math.max(76, rewardRiskText.length * 6.4 + 20);
-          const profitTop = Math.min(geometry.profitTop, geometry.profitBottom);
-          const centredLabelX = (labelWidth: number) => clamp(
-            geometry.x + geometry.boxWidth / 2 - labelWidth / 2,
-            4,
-            Math.max(4, overlaySize.width - labelWidth - 4),
-          );
-          const targetLabelX = centredLabelX(targetLabelWidth);
-          const stopLabelX = centredLabelX(stopLabelWidth);
-          const rewardRiskLabelX = centredLabelX(rewardRiskLabelWidth);
-          const targetLabelY = clamp(geometry.targetY - 10.5, 4, Math.max(4, overlaySize.height - 25));
-          const stopLabelY = clamp(geometry.stopY - 10.5, 4, Math.max(4, overlaySize.height - 25));
-          const rewardRiskLabelY = clamp(geometry.entryY - 10.5, 4, Math.max(4, overlaySize.height - 25));
-          const visualStyle = drawing.positionStyle ?? {};
-          const profitColor = visualStyle.targetColor ?? settings.upColor;
-          const lossColor = visualStyle.stopColor ?? settings.downColor;
-          const entryLineColor = visualStyle.entryLineColor ?? "var(--foreground)";
-          const labelTextColor = visualStyle.textColor ?? "var(--background)";
-          const fillOpacity = clamp(visualStyle.fillOpacity ?? 0.14, 0, 0.6);
-          const borderOpacity = clamp(visualStyle.borderOpacity ?? 0.72, 0.1, 1);
-          const lineWidth = clamp(visualStyle.lineWidth ?? 1.25, 0.5, 4);
-          const lineDash = visualStyle.lineStyle === "dashed"
-            ? "7 5"
-            : visualStyle.lineStyle === "dotted"
-              ? "2 4"
-              : undefined;
-          const showLabels = visualStyle.showLabels ?? true;
           return (
-            <g
+            <rect
               key={`${keyPrefix}-${drawing.id}`}
               data-position-drawing-id={drawing.id}
+              x={geometry.x}
+              y={Math.min(geometry.profitTop, geometry.profitBottom, geometry.riskTop, geometry.riskBottom)}
+              width={geometry.boxWidth}
+              height={Math.abs(Math.max(geometry.profitTop, geometry.profitBottom, geometry.riskTop, geometry.riskBottom)
+                - Math.min(geometry.profitTop, geometry.profitBottom, geometry.riskTop, geometry.riskBottom))}
+              fill="transparent"
               style={{ pointerEvents: "all", cursor: drawingsLocked ? "default" : "move" }}
-            >
-              <rect
-                x={geometry.x}
-                y={profitTop}
-                width={geometry.boxWidth}
-                height={Math.abs(geometry.profitBottom - geometry.profitTop)}
-                fill={withAlpha(profitColor, fillOpacity)}
-                stroke={withAlpha(profitColor, borderOpacity)}
-                strokeWidth={lineWidth}
-                strokeDasharray={lineDash}
-              />
-              <rect
-                x={geometry.x}
-                y={Math.min(geometry.riskTop, geometry.riskBottom)}
-                width={geometry.boxWidth}
-                height={Math.abs(geometry.riskBottom - geometry.riskTop)}
-                fill={withAlpha(lossColor, fillOpacity)}
-                stroke={withAlpha(lossColor, borderOpacity)}
-                strokeWidth={lineWidth}
-                strokeDasharray={lineDash}
-              />
-              <line x1={geometry.x} y1={geometry.targetY} x2={geometry.x + geometry.boxWidth} y2={geometry.targetY} stroke={profitColor} strokeWidth={lineWidth} strokeDasharray={lineDash} />
-              <line x1={geometry.x} y1={geometry.entryY} x2={geometry.x + geometry.boxWidth} y2={geometry.entryY} stroke={entryLineColor} strokeOpacity={borderOpacity} strokeWidth={lineWidth} strokeDasharray={lineDash ?? "4 3"} />
-              <line x1={geometry.x} y1={geometry.stopY} x2={geometry.x + geometry.boxWidth} y2={geometry.stopY} stroke={lossColor} strokeWidth={lineWidth} strokeDasharray={lineDash} />
-
-              {showLabels && isSelected ? <g pointerEvents="none">
-                <rect x={targetLabelX} y={targetLabelY} width={targetLabelWidth} height={21} rx={10.5} fill={profitColor} />
-                <text x={targetLabelX + targetLabelWidth / 2} y={targetLabelY + 14} textAnchor="middle" fill={labelTextColor} fontSize="10" fontWeight="650" fontFamily="'JetBrains Mono', monospace">
-                  {targetText}
-                </text>
-                <rect x={stopLabelX} y={stopLabelY} width={stopLabelWidth} height={21} rx={10.5} fill={lossColor} />
-                <text x={stopLabelX + stopLabelWidth / 2} y={stopLabelY + 14} textAnchor="middle" fill={labelTextColor} fontSize="10" fontWeight="650" fontFamily="'JetBrains Mono', monospace">
-                  {stopText}
-                </text>
-                <rect x={rewardRiskLabelX} y={rewardRiskLabelY} width={rewardRiskLabelWidth} height={21} rx={10.5} fill={entryLineColor} />
-                <text x={rewardRiskLabelX + rewardRiskLabelWidth / 2} y={rewardRiskLabelY + 14} textAnchor="middle" fill={labelTextColor} fontSize="10" fontWeight="700" fontFamily="'JetBrains Mono', monospace">
-                  {rewardRiskText}
-                </text>
-              </g> : null}
-              {isSelected ? (
-                <g>
-                  {[
-                    geometry.targetLeftHandle,
-                    geometry.targetRightHandle,
-                    geometry.stopLeftHandle,
-                    geometry.stopRightHandle,
-                  ].map((handle, index) => (
-                    <rect
-                      key={index}
-                      x={handle.x - 4.5}
-                      y={handle.y - 4.5}
-                      width={9}
-                      height={9}
-                      rx={2}
-                      fill="var(--panel)"
-                      stroke="var(--primary)"
-                      strokeWidth={1.5}
-                      style={{ cursor: index === 0 || index === 3 ? "nwse-resize" : "nesw-resize" }}
-                    />
-                  ))}
-                </g>
-              ) : null}
-            </g>
+            />
           );
         }
       case "priceRange":
@@ -11424,6 +11388,9 @@ function Chart({
     const repaintNotifier = new ChartRepaintNotifierPrimitive();
     candleSeries.attachPrimitive(repaintNotifier);
     repaintNotifierRef.current = repaintNotifier;
+    const positionCalculatorPrimitive = new PositionCalculatorPrimitive();
+    candleSeries.attachPrimitive(positionCalculatorPrimitive);
+    positionCalculatorPrimitiveRef.current = positionCalculatorPrimitive;
     const imbalanceZonesPrimitive = new ImbalanceZonesPrimitive();
     imbalanceZonesPrimitive.update(imbalanceZoneModelsRef.current);
     candleSeries.attachPrimitive(imbalanceZonesPrimitive);
@@ -12454,6 +12421,7 @@ function Chart({
       fixedPriceLevelLabelsRef.current = null;
       sessionHighLowPrimitiveRef.current = null;
       imbalanceZonesPrimitiveRef.current = null;
+      positionCalculatorPrimitiveRef.current = null;
       repaintNotifierRef.current = null;
       sessionWindowPrimitiveRef.current = null;
       hedgeLevelsPrimitiveRef.current = null;
