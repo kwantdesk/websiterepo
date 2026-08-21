@@ -147,6 +147,7 @@ import {
   type FootprintPrimitiveOptions,
   type FootprintRenderBar,
 } from "@/lib/footprintPrimitive";
+import { ImbalanceZonesPrimitive, type ImbalanceZoneModel } from "@/lib/imbalanceZonesPrimitive";
 import { retainLiveFootprintRows } from "@/lib/footprintLive";
 import { FOOTPRINT_DATA_REFRESH_INTERVAL_MS, ORDER_FLOW_DATA_REFRESH_INTERVAL_MS } from "@/lib/footprintRuntime";
 import { footprintProfileGranularityTicks } from "@/lib/footprintSettings";
@@ -3010,6 +3011,8 @@ function Chart({
   const gameplanUnderlayRef = useRef<GameplanUnderlayPrimitive | null>(null);
   const fixedPriceLevelLabelsRef = useRef<FixedPriceLevelLabelsPrimitive | null>(null);
   const sessionHighLowPrimitiveRef = useRef<SessionHighLowPrimitive | null>(null);
+  const imbalanceZonesPrimitiveRef = useRef<ImbalanceZonesPrimitive | null>(null);
+  const imbalanceZoneModelsRef = useRef<ImbalanceZoneModel[]>([]);
   const sessionWindowPrimitiveRef = useRef<SessionWindowPrimitive | null>(null);
   const hedgeLevelsPrimitiveRef = useRef<HedgeLevelsPrimitive | null>(null);
   const sessionHighLowRenderDataRef = useRef<SessionHighLowRenderLevel[]>([]);
@@ -9032,30 +9035,57 @@ function Chart({
     priceFormat.minMove,
     indicatorMarketTrades,
   ]);
-  const positionedImbalanceZones = useMemo(() =>
-    (imbalanceTracker?.zones ?? []).flatMap((zone) => {
+  // Zones are built in PRICE/TIME space only. The canvas primitive projects
+  // them through the chart's own scales every frame, so they never drift
+  // behind the candles during a pan (the old SVG projection was keyed on a
+  // throttled viewport counter and visibly swam around).
+  const imbalanceZoneModels = useMemo<ImbalanceZoneModel[]>(() => {
+    const tracker = imbalanceTracker;
+    if (!tracker) return [];
+    const trackerSettings = tracker.instance.settings ?? {};
+    const useThemeColors = trackerSettings.useThemeColors !== false;
+    // Fresh and triggered zones are drawn identically apart from colour, and
+    // triggered defaults to the SAME colour as fresh — no dashes, no fading.
+    const buyColor = useThemeColors ? settings.upColor : String(trackerSettings.buyColor ?? settings.upColor);
+    const sellColor = useThemeColors ? settings.downColor : String(trackerSettings.sellColor ?? settings.downColor);
+    const buyTriggeredColor = useThemeColors
+      ? settings.upColor
+      : String(trackerSettings.buyTriggeredColor ?? trackerSettings.buyColor ?? settings.upColor);
+    const sellTriggeredColor = useThemeColors
+      ? settings.downColor
+      : String(trackerSettings.sellTriggeredColor ?? trackerSettings.sellColor ?? settings.downColor);
+    const opacity = clamp(Number(trackerSettings.opacity ?? 78) / 100, 0.05, 1);
+    const lineWidth = clamp(Number(trackerSettings.lineWidth ?? 1), 0.5, 5);
+    const chartTimeFor = (timestamp: number) => (
+      eventChartTimeBySourceTimeRef.current.get(timestamp) ?? Math.floor(timestamp / 1_000)
+    ) as Time;
+    return tracker.zones.flatMap((zone) => {
       const startCandle = indicatorCandles[zone.startIndex];
       const endCandle = indicatorCandles[Math.min(zone.endIndex, indicatorCandles.length - 1)];
       if (!startCandle || !endCandle) return [];
-      const startX = indicatorTimeToX(Math.floor(startCandle.timestamp / 1_000));
-      const endX = indicatorTimeToX(Math.floor(endCandle.timestamp / 1_000));
-      const topY = candleSeriesRef.current?.priceToCoordinate(zone.top) ?? null;
-      const bottomY = candleSeriesRef.current?.priceToCoordinate(zone.bottom) ?? null;
-      if (startX === null || endX === null || topY === null || bottomY === null) return [];
       return [{
-        ...zone,
-        x: startX,
-        width: Math.max(2, endX - startX),
-        y: Math.min(topY, bottomY),
-        height: Math.max(2, Math.abs(bottomY - topY)),
+        id: zone.id,
+        startTime: chartTimeFor(startCandle.timestamp),
+        endTime: chartTimeFor(endCandle.timestamp),
+        top: zone.top,
+        bottom: zone.bottom,
+        color: zone.side === "BUY"
+          ? zone.triggered ? buyTriggeredColor : buyColor
+          : zone.triggered ? sellTriggeredColor : sellColor,
+        opacity,
+        lineWidth,
       }];
-    }), [
-    chartReadyRevision,
+    });
+  }, [
     imbalanceTracker,
     indicatorCandles,
-    indicatorTimeToX,
-    viewportVersion,
+    settings.downColor,
+    settings.upColor,
   ]);
+  useEffect(() => {
+    imbalanceZoneModelsRef.current = imbalanceZoneModels;
+    imbalanceZonesPrimitiveRef.current?.update(imbalanceZoneModels);
+  }, [imbalanceZoneModels]);
   const positionedImbalanceSignals = useMemo(() =>
     (imbalanceRejector?.signals ?? []).flatMap((signal) => {
       const x = indicatorTimeToX(Math.floor(signal.timestamp / 1_000));
@@ -11307,6 +11337,10 @@ function Chart({
     sessionHighLowPrimitive.setPaneInsets({ left: toolbarPlotLeftInset });
     candleSeries.attachPrimitive(sessionHighLowPrimitive);
     sessionHighLowPrimitiveRef.current = sessionHighLowPrimitive;
+    const imbalanceZonesPrimitive = new ImbalanceZonesPrimitive();
+    imbalanceZonesPrimitive.update(imbalanceZoneModelsRef.current);
+    candleSeries.attachPrimitive(imbalanceZonesPrimitive);
+    imbalanceZonesPrimitiveRef.current = imbalanceZonesPrimitive;
     const sessionWindowPrimitive = new SessionWindowPrimitive();
     sessionWindowPrimitive.update(sessionWindowRenderDataRef.current);
     candleSeries.attachPrimitive(sessionWindowPrimitive);
@@ -12279,6 +12313,7 @@ function Chart({
       gameplanUnderlayRef.current = null;
       fixedPriceLevelLabelsRef.current = null;
       sessionHighLowPrimitiveRef.current = null;
+      imbalanceZonesPrimitiveRef.current = null;
       sessionWindowPrimitiveRef.current = null;
       hedgeLevelsPrimitiveRef.current = null;
       classicGexProfilePrimitiveRef.current = null;
@@ -15151,43 +15186,13 @@ function Chart({
         </div>
       ) : null}
 
-      {(
-        positionedImbalanceZones.length > 0
-        || positionedImbalanceSignals.length > 0
-      ) ? (
+      {positionedImbalanceSignals.length > 0 ? (
         <svg
           aria-hidden="true"
           className="pointer-events-none absolute inset-0 z-[8] h-full w-full overflow-hidden"
           viewBox={`0 0 ${Math.max(overlaySize.width, 1)} ${Math.max(overlaySize.height, 1)}`}
           preserveAspectRatio="none"
         >
-          {positionedImbalanceZones.map((zone) => {
-            const trackerSettings = imbalanceTracker?.instance.settings ?? {};
-            const useThemeColors = trackerSettings.useThemeColors !== false;
-            const color = zone.side === "BUY"
-              ? zone.triggered
-                ? useThemeColors ? settings.borderUpColor : String(trackerSettings.buyTriggeredColor ?? settings.borderUpColor)
-                : useThemeColors ? settings.upColor : String(trackerSettings.buyColor ?? settings.upColor)
-              : zone.triggered
-                ? useThemeColors ? settings.borderDownColor : String(trackerSettings.sellTriggeredColor ?? settings.borderDownColor)
-                : useThemeColors ? settings.downColor : String(trackerSettings.sellColor ?? settings.downColor);
-            const opacity = clamp(Number(trackerSettings.opacity ?? 78) / 100, 0.05, 1);
-            return (
-              <rect
-                key={zone.id}
-                x={zone.x}
-                y={zone.y}
-                width={zone.width}
-                height={zone.height}
-                fill={color}
-                fillOpacity={opacity * 0.14}
-                stroke={color}
-                strokeOpacity={opacity}
-                strokeWidth={clamp(Number(trackerSettings.lineWidth ?? 1.5), 0.5, 5)}
-                strokeDasharray={zone.triggered ? "3 4" : undefined}
-              />
-            );
-          })}
           {positionedImbalanceSignals.map((signal) => {
             const rejectorSettings = imbalanceRejector?.instance.settings ?? {};
             const useThemeColors = rejectorSettings.useThemeColors !== false;
