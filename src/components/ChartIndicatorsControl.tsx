@@ -1641,9 +1641,8 @@ export default function ChartIndicatorsControl({
                   <div className="text-[9px] uppercase tracking-[0.14em] text-foreground sm:col-span-2">Plot settings</div>
                   {([
                     ["Extend line", "extendMode", "none", [
-                      ["none", "None"],
+                      ["none", "To the next session"],
                       ["till-interaction", "Till interaction"],
-                      ["till-end-window", "Till end of window"],
                     ]],
                     ["Line style", "levelLineStyle", "dash", [
                       ["solid", "Solid"],
@@ -1696,7 +1695,7 @@ export default function ChartIndicatorsControl({
                     />
                   </label>
                   <div className="border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
-                    Extend line controls how far POC, value area, peak, valley and VWAP lines run: till interaction stops at the first later bar that traded back through the level. Visual style paints the histogram filled, outlined, as an edge line, or both.
+                    POC, value area, peak, valley and VWAP lines carry on to the back of the profile in front — the live edge for the newest one — and are never drawn underneath it, whatever the split settings. Till interaction stops a level earlier, at the first later bar that traded back through it. Visual style paints the histogram filled, outlined, as an edge line, or both.
                   </div>
                 </div>
               ) : null}
@@ -3211,7 +3210,7 @@ export default function ChartIndicatorsControl({
               ) : null}
 
               {(settingsDefinition.id === "tpo-chart" || settingsDefinition.id === "weekly-tpo") ? (
-                <div className="space-y-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3">
+                <div data-settings-section="General" className="space-y-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3">
                   <div>
                     <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-foreground">Profile &amp; Auction Market Theory</div>
                     <p className="mt-1 text-[9px] leading-4 text-muted">
@@ -3375,15 +3374,6 @@ export default function ChartIndicatorsControl({
                       ["Length unit", "lengthUnit", [["minute", "Minutes"], ["day", "Days"], ["week", "Weeks"], ["month", "Months"]]],
                       ["Daily end", "dailyEndMode", [["next-daily-start", "Next daily start"], ["explicit-time", "Explicit time"]]],
                       ["Weekly end", "weekEndMode", [["next-week-start", "Next week start"], ["explicit-day-time", "Explicit day/time"]]],
-                      ["Colour calculation", "colourCalculation", [["time", "Time"], ["volume", "Volume"], ["delta", "Delta"]]],
-                      ["Colour reference", "colourReference", [["fixed", "Fixed"], ["fading", "Fading"], ["multiple-ranges", "Multiple ranges"]]],
-                      ["OHLC markers", "barMarkerStyle", [["body", "Body"], ["candle", "Candlestick"]]],
-                      ["POC mode", "pocLineMode", [["none", "None"], ["final", "Final"], ["developing", "Developing"], ["extend-shifted", "Extend shifted"]]],
-                      ["POC extension", "pocExtensionMode", [["none", "None"], ["to-window-end", "To window end"], ["until-first-interaction", "Until first interaction"]]],
-                      ["Value Area extension", "valueAreaExtensionMode", [["none", "None"], ["to-window-end", "To window end"], ["until-first-interaction", "Until first interaction"]]],
-                      ["Single Print extension", "singlePrintExtensionMode", [["none", "None"], ["to-window-end", "To window end"], ["until-first-interaction", "Until first interaction"]]],
-                      ["Summary layout", "summaryLayout", [["compact", "Compact"], ["full", "Full"]]],
-                      ["Summary location", "summaryLocation", [["top-left", "Top left"], ["top-right", "Top right"], ["bottom-left", "Bottom left"], ["bottom-right", "Bottom right"]]],
                     ] as const).map(([label, key, options]) => (
                       <label key={key} className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
                         <span>{label}</span>
@@ -3562,6 +3552,139 @@ export default function ChartIndicatorsControl({
                   </button>
                 </div>
               ) : null}
+
+              {(settingsDefinition.id === "tpo-chart" || settingsDefinition.id === "weekly-tpo") ? (() => {
+                const pick = (key: string, fallback: string) => String(settingsInstance.settings?.[key] ?? fallback);
+                const setValue = (key: string, value: string | number | boolean) =>
+                  replace(settingsInstance.instanceId, (current) => ({
+                    ...current,
+                    settings: { ...(current.settings ?? {}), [key]: value },
+                  }));
+                const dropdown = (label: string, key: string, options: ReadonlyArray<readonly [string, string]>) => (
+                  <label key={key} className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                    <span>{label}</span>
+                    <KwantSelect
+                      value={pick(key, options[0][0])}
+                      onChange={(event) => setValue(key, event.target.value)}
+                      className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                      menuLabel={label}
+                    >
+                      {options.map(([value, optionLabel]) => <option key={value} value={value}>{optionLabel}</option>)}
+                    </KwantSelect>
+                  </label>
+                );
+                const slider = (label: string, key: string, fallback: number, min: number, max: number, step = 1) => (
+                  <label key={key} className="block space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                    <span className="flex items-center justify-between">
+                      <span>{label}</span>
+                      <span className="font-mono text-foreground">{Number(settingsInstance.settings?.[key] ?? fallback)}</span>
+                    </span>
+                    <input
+                      type="range"
+                      min={min}
+                      max={max}
+                      step={step}
+                      value={Number(settingsInstance.settings?.[key] ?? fallback)}
+                      onChange={(event) => setValue(key, Number(event.target.value))}
+                      className="w-full accent-primary"
+                    />
+                  </label>
+                );
+                const toggle = (label: string, key: string, defaultOn: boolean, hint?: string) => {
+                  const on = settingsInstance.settings?.[key] === undefined
+                    ? defaultOn
+                    : settingsInstance.settings?.[key] === true;
+                  return (
+                    <div key={key} className="flex items-center justify-between gap-2">
+                      <div>
+                        <div className="text-[10px] font-medium text-foreground">{label}</div>
+                        {hint ? <div className="mt-0.5 text-[8px] leading-4 text-muted">{hint}</div> : null}
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={on}
+                        aria-label={label}
+                        onClick={() => setValue(key, !on)}
+                        className={`h-6 w-11 shrink-0 rounded-full border transition-colors ${on ? "border-primary/50 bg-primary/25" : "border-border bg-background"}`}
+                      >
+                        <span className={`block h-4 w-4 rounded-full bg-foreground transition-transform ${on ? "translate-x-6" : "translate-x-1"}`} />
+                      </button>
+                    </div>
+                  );
+                };
+                const page = (section: string, children: React.ReactNode) => (
+                  <div data-settings-section={section} className="space-y-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3">
+                    {children}
+                  </div>
+                );
+                return (
+                  <>
+                    {page("Background/Text", (
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {dropdown("Color mode", "colourCalculation", [["time", "Time"], ["volume", "Volume"], ["delta", "Delta"]] as const)}
+                        {dropdown("Color reference", "colourReference", [["fixed", "Fixed"], ["fading", "Fading color"], ["multiple-ranges", "Multiple ranges"]] as const)}
+                      </div>
+                    ))}
+                    {page("Plot settings", (
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {dropdown("Bar market style", "barMarkerStyle", [["body", "Body"], ["candle", "Candle"]] as const)}
+                        {dropdown("Width mode", "widthMode", [["automatic", "Automatic"], ["period-percent", "Period percent"], ["window-percent", "Window percent"], ["fixed-bars", "Fixed bars"]] as const)}
+                      </div>
+                    ))}
+                    {page("Point of control", (
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {dropdown("Show line", "pocLineMode", [["none", "None"], ["final", "Final"], ["developing", "Developing"], ["extend-shifted", "Extend shifted"]] as const)}
+                        {dropdown("Extend line", "pocExtensionMode", [["none", "None"], ["to-window-end", "To window end"], ["until-first-interaction", "Until first interaction"]] as const)}
+                      </div>
+                    ))}
+                    {page("Value area", (
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {dropdown("Extend line", "valueAreaExtensionMode", [["none", "None"], ["to-window-end", "To window end"], ["until-first-interaction", "Until first interaction"]] as const)}
+                      </div>
+                    ))}
+                    {page("Peak and valley", (
+                      <>
+                        {slider("Sensitivity", "peakValleySensitivity", 40, 0, 100)}
+                        {toggle(
+                          "Exclude High/Low",
+                          "peakValleyExcludeExtremes",
+                          true,
+                          "Never mark the profile's own high or low row as a peak or valley — those are the auction's edges, not structure inside it.",
+                        )}
+                        <p className="text-[8px] leading-4 text-muted">
+                          Lower sensitivity marks only the most pronounced structures; higher marks subtler ones. The threshold scales with the profile's own tallest row, so one setting behaves the same on a thin overnight profile and a heavy RTH one.
+                        </p>
+                      </>
+                    ))}
+                    {page("Single prints", (
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {dropdown("Extended", "singlePrintExtensionMode", [["none", "None"], ["to-window-end", "To window end"], ["until-first-interaction", "Until first interaction"]] as const)}
+                      </div>
+                    ))}
+                    {page("Summary", (
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {dropdown("Summary layout", "summaryLayout", [["compact", "Compact"], ["full", "Full"]] as const)}
+                        {dropdown("Summary location", "summaryLocation", [["top-left", "Top left"], ["top-right", "Top right"], ["bottom-left", "Bottom left"], ["bottom-right", "Bottom right"]] as const)}
+                      </div>
+                    ))}
+                    {page("Filter/split time", (
+                      <>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          {dropdown("Filter mode", "filterMode", [["none", "None"], ["filter", "Filter"], ["split-two", "Split two"], ["split-three", "Split three"]] as const)}
+                          {dropdown("Filter time", "sessionPreset", [["eth", "ETH"], ["rth", "RTH"], ["custom", "Custom"]] as const)}
+                        </div>
+                        {toggle(
+                          "Use end session as start day",
+                          "useEndSessionAsStartDay",
+                          false,
+                          "Opens each profile at the custom session's END time, so an overnight market's day is bounded by its own close. Applies with Filter mode on a Custom session.",
+                        )}
+                      </>
+                    ))}
+                  </>
+                );
+              })() : null}
 
               {settingsDefinition.id === "pulling-stacking" ? (
                 <div className="space-y-3 rounded-xl border border-primary/20 bg-primary/[0.04] p-3">

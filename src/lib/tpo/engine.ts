@@ -157,9 +157,21 @@ function dateKey(timestampMs: number, timeZone: string) {
 function dailyBoundary(timestampMs: number, settings: TpoIndicatorSettings): PeriodBoundary {
   const timeZone = settings.timezone;
   const now = zonedParts(timestampMs, timeZone);
-  const startClock = parseClock(settings.dailyStartTime);
+  // "Use end session as start day": the custom session's END time opens the
+  // next profile, so an overnight market's day is bounded by its own close
+  // rather than by the configured daily start.
+  const startClock = parseClock(
+    settings.useEndSessionAsStartDay && settings.filterMode === "filter" && settings.sessionPreset === "custom"
+      ? settings.customSessionEnd
+      : settings.dailyStartTime,
+  );
+  const effectiveStartTime = settings.useEndSessionAsStartDay
+    && settings.filterMode === "filter"
+    && settings.sessionPreset === "custom"
+    ? settings.customSessionEnd
+    : settings.dailyStartTime;
   const localSeconds = now.hour * 3_600 + now.minute * 60 + now.second;
-  let startDate = localDateShift(now, localSeconds < clockSeconds(settings.dailyStartTime) ? -1 : 0);
+  let startDate = localDateShift(now, localSeconds < clockSeconds(effectiveStartTime) ? -1 : 0);
   let startWeekday = zonedParts(zonedDateTimeToUtc({ ...startDate, ...startClock }, timeZone), timeZone).weekday;
   const enabled = settings.enabledWeekdays.length ? new Set(settings.enabledWeekdays) : new Set([0, 1, 2, 3, 4]);
   for (let safety = 0; safety < 7 && !enabled.has(startWeekday); safety += 1) {
@@ -170,7 +182,7 @@ function dailyBoundary(timestampMs: number, settings: TpoIndicatorSettings): Per
   let endMs: number;
   if (settings.dailyEndMode === "explicit-time") {
     const endClock = parseClock(settings.dailyEndTime);
-    const crossesMidnight = clockSeconds(settings.dailyEndTime) <= clockSeconds(settings.dailyStartTime);
+    const crossesMidnight = clockSeconds(settings.dailyEndTime) <= clockSeconds(effectiveStartTime);
     const endDate = localDateShift({ ...now, ...startDate }, crossesMidnight ? 1 : 0);
     endMs = zonedDateTimeToUtc({ ...endDate, ...endClock }, timeZone);
   } else {
@@ -484,8 +496,36 @@ export function detectSinglePrints(
   return result;
 }
 
-export function detectPeaksValleys(rows: TpoProfileRow[], radius: number, prominence: number) {
+/**
+ * Peak/valley detection.
+ *
+ * `sensitivity` (0-100) is the single control the desktop reference exposes:
+ * it scales how strongly a row must stand out from its neighbours. Low values
+ * mark only the most pronounced structures, high values mark subtle ones. It
+ * is applied on top of the explicit radius/prominence inputs by scaling the
+ * required prominence against the profile's own peak count, so the same
+ * setting behaves the same on a thin overnight profile and a heavy RTH one.
+ *
+ * `excludeExtremes` drops peaks/valleys sitting on the profile's own high or
+ * low row — those are the auction's edges, not structure inside it.
+ */
+export function detectPeaksValleys(
+  rows: TpoProfileRow[],
+  radius: number,
+  prominence: number,
+  sensitivity = 40,
+  excludeExtremes = true,
+) {
   const result: TpoPeakValley[] = [];
+  if (rows.length < 3) return result;
+  let tallest = 0;
+  for (const row of rows) if (row.tpoCount > tallest) tallest = row.tpoCount;
+  // sensitivity 0 → demand a full 25% of the tallest row; 100 → demand nothing
+  // beyond the explicit prominence input.
+  const scaled = Math.max(0, Math.min(100, sensitivity));
+  const required = Math.max(prominence, (tallest * 0.25) * (1 - scaled / 100));
+  const firstTick = rows[0].rowTick;
+  const lastTick = rows[rows.length - 1].rowTick;
   for (let index = 1; index < rows.length - 1; index += 1) {
     const value = rows[index].tpoCount;
     let plateauEnd = index;
@@ -496,10 +536,13 @@ export function detectPeaksValleys(rows: TpoProfileRow[], radius: number, promin
       const centre = rows[Math.floor((index + plateauEnd) / 2)];
       const peakFloor = Math.max(Math.min(...left), Math.min(...right));
       const valleyCeiling = Math.min(Math.max(...left), Math.max(...right));
-      if (left.every((candidate) => value > candidate) && right.every((candidate) => value > candidate) && value - peakFloor >= prominence) {
-        result.push({ kind: "peak", rowTick: centre.rowTick, value });
-      } else if (left.every((candidate) => value < candidate) && right.every((candidate) => value < candidate) && valleyCeiling - value >= prominence) {
-        result.push({ kind: "valley", rowTick: centre.rowTick, value });
+      const atExtreme = centre.rowTick === firstTick || centre.rowTick === lastTick;
+      if (!(excludeExtremes && atExtreme)) {
+        if (left.every((candidate) => value > candidate) && right.every((candidate) => value > candidate) && value - peakFloor >= required) {
+          result.push({ kind: "peak", rowTick: centre.rowTick, value });
+        } else if (left.every((candidate) => value < candidate) && right.every((candidate) => value < candidate) && valleyCeiling - value >= required) {
+          result.push({ kind: "valley", rowTick: centre.rowTick, value });
+        }
       }
     }
     index = plateauEnd;
@@ -726,7 +769,13 @@ function buildOneProfile(
     initialBalanceHighTick: ibRows.at(-1)?.highTick ?? null,
     initialBalanceLowTick: ibRows[0]?.lowTick ?? null,
     singlePrints,
-    peaksValleys: detectPeaksValleys(finalRows, settings.peakValleyRadius, settings.peakMinimumProminence),
+    peaksValleys: detectPeaksValleys(
+      finalRows,
+      settings.peakValleyRadius,
+      settings.peakMinimumProminence,
+      settings.peakValleySensitivity,
+      settings.peakValleyExcludeExtremes,
+    ),
     totalVolume: total("volume"),
     totalTrades: total("trades"),
     bidVolume,
@@ -859,7 +908,13 @@ export function mergeTpoProfileModels(
     vahTick: valueArea.vahTick,
     valTick: valueArea.valTick,
     singlePrints: detectSinglePrints(finalRows, settings.minimumSinglePrintTicks, settings.includeExtremesInSinglePrints, settings.singlePrintQuality, settings.singlePrintVolumeSensitivity),
-    peaksValleys: detectPeaksValleys(finalRows, settings.peakValleyRadius, settings.peakMinimumProminence),
+    peaksValleys: detectPeaksValleys(
+      finalRows,
+      settings.peakValleyRadius,
+      settings.peakMinimumProminence,
+      settings.peakValleySensitivity,
+      settings.peakValleyExcludeExtremes,
+    ),
     totalVolume: finalRows.some((row) => row.volume !== null) ? finalRows.reduce((sum, row) => sum + (row.volume ?? 0), 0) : null,
     totalTrades: finalRows.some((row) => row.trades !== null) ? finalRows.reduce((sum, row) => sum + (row.trades ?? 0), 0) : null,
     bidVolume: finalRows.some((row) => row.bidVolume !== null) ? bidVolume : null,

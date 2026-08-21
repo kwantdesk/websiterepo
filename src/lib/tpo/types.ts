@@ -93,6 +93,10 @@ export interface TpoIndicatorSettings {
   showValleys: boolean;
   peakValleyRadius: number;
   peakMinimumProminence: number;
+  /** 0-100 single control for peak/valley detection strength. */
+  peakValleySensitivity: number;
+  /** Never mark the profile's own extremes as a peak or valley. */
+  peakValleyExcludeExtremes: boolean;
   showSummary: boolean;
   widthMode: TpoWidthMode;
   currentWidth: number;
@@ -199,6 +203,8 @@ export interface TpoIndicatorSettings {
   sessionPreset: TpoSessionPreset;
   customSessionStart: string;
   customSessionEnd: string;
+  /** Treat the session end as the start of the next trading day. */
+  useEndSessionAsStartDay: boolean;
   inheritThemeColours: boolean;
   profileColor: string;
   pocColor: string;
