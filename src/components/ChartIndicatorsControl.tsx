@@ -57,6 +57,26 @@ import { POC_AUCTION_PRESETS } from "@/lib/pocAuctionSuite";
 import { TAPE_SPEED_PRESETS } from "@/lib/tapeSpeedOrderFlowBurst";
 
 const FAVOURITES_STORAGE_KEY = "kwantdesk-chart-indicator-favourites";
+
+type VolumeProfileSettingsTab =
+  | "general"
+  | "data"
+  | "plot"
+  | "value-area"
+  | "peak-valley"
+  | "vwap"
+  | "sessions";
+
+const VOLUME_PROFILE_SETTINGS_TABS: { id: VolumeProfileSettingsTab; label: string }[] = [
+  { id: "general", label: "General" },
+  { id: "data", label: "Data settings" },
+  { id: "plot", label: "Plot settings" },
+  { id: "value-area", label: "Value area" },
+  { id: "peak-valley", label: "Peak and valley" },
+  { id: "vwap", label: "VWAP / summary" },
+  { id: "sessions", label: "Filter / split time" },
+];
+
 const FOOTPRINT_PROFILE_MANAGED_SETTINGS = new Set([
   "showPerBarVolumeProfile",
   "showPerBarDeltaProfile",
@@ -758,6 +778,13 @@ export default function ChartIndicatorsControl({
       .map((entry) => entry.definition);
   }, [category, favourites, search]);
 
+  // Volume profiles carry far too many settings for one scrolling page, so the
+  // dialog splits them the way the reference platform does: a row of section
+  // tabs, one panel at a time. Resets to the first tab whenever a different
+  // indicator's settings are opened.
+  const [volumeProfileTab, setVolumeProfileTab] = useState<VolumeProfileSettingsTab>("data");
+  useEffect(() => { setVolumeProfileTab("data"); }, [settingsInstanceId]);
+
   const settingsInstance = settingsInstanceId
     ? indicators.find((instance) => instance.instanceId === settingsInstanceId) ?? null
     : null;
@@ -1178,7 +1205,28 @@ export default function ChartIndicatorsControl({
                 </button>
               </label>
 
+              {VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) ? (
+                <div className="flex gap-1 overflow-x-auto border-b border-border pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  {VOLUME_PROFILE_SETTINGS_TABS.map((tab) => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setVolumeProfileTab(tab.id)}
+                      aria-pressed={volumeProfileTab === tab.id}
+                      className={`h-8 shrink-0 whitespace-nowrap border px-3 text-[9px] font-semibold uppercase tracking-[0.1em] transition-colors ${
+                        volumeProfileTab === tab.id
+                          ? "border-primary/55 bg-primary/10 text-primary"
+                          : "border-transparent bg-background text-muted hover:border-border hover:text-foreground"
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+
               {VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id)
+                && volumeProfileTab === "general"
                 && settingsDefinition.id !== "custom-draw-on-volume-profile" ? (
                 <div className="space-y-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3">
                   <div className="flex items-center justify-between gap-4">
@@ -1244,7 +1292,7 @@ export default function ChartIndicatorsControl({
                 </div>
               ) : null}
 
-              {VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) ? (
+              {VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) && volumeProfileTab === "data" ? (
                 <div className="grid gap-3 border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
                   <div className="text-[9px] uppercase tracking-[0.14em] text-foreground sm:col-span-2">Data settings</div>
                   <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">
@@ -1333,7 +1381,7 @@ export default function ChartIndicatorsControl({
                 </div>
               ) : null}
 
-              {VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) ? (
+              {VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) && volumeProfileTab === "peak-valley" ? (
                 <div className="grid gap-3 border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
                   <div className="text-[9px] uppercase tracking-[0.14em] text-foreground sm:col-span-2">Peak and valley</div>
                   <div className="grid grid-cols-2 gap-2 sm:col-span-2">
@@ -1413,6 +1461,11 @@ export default function ChartIndicatorsControl({
                     })}
                   </div>
 
+                </div>
+              ) : null}
+
+              {VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) && volumeProfileTab === "vwap" ? (
+                <div className="grid gap-3 border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
                   <div className="text-[9px] uppercase tracking-[0.14em] text-foreground sm:col-span-2">VWAP and summary</div>
                   {([
                     ["VWAP band 1 (σ)", "vwapBand1", 1],
@@ -1471,7 +1524,7 @@ export default function ChartIndicatorsControl({
                 </div>
               ) : null}
 
-              {VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) ? (
+              {VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) && volumeProfileTab === "sessions" ? (
                 <div className="grid gap-3 border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
                   <div className="text-[9px] uppercase tracking-[0.14em] text-foreground sm:col-span-2">Filter / split time</div>
                   {([
@@ -1548,6 +1601,12 @@ export default function ChartIndicatorsControl({
                   >
                     Use end session as start day · {settingsInstance.settings?.useEndSessionAsStartDay === true ? "ON" : "OFF"}
                   </button>
+                </div>
+              ) : null}
+
+              {VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) && volumeProfileTab === "value-area" ? (
+                <div className="grid gap-3 border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
+                  <div className="text-[9px] uppercase tracking-[0.14em] text-foreground sm:col-span-2">Value area</div>
                   <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">
                     <span>% value area</span>
                     <input
@@ -1566,13 +1625,18 @@ export default function ChartIndicatorsControl({
                       className="h-9 w-full border border-border bg-background px-3 text-right font-mono text-[10px] text-foreground outline-none focus:border-primary/40"
                     />
                   </label>
+                </div>
+              ) : null}
+
+              {VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) && volumeProfileTab === "sessions" ? (
+                <div className="grid gap-3 border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
                   <div className="border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
                     Filter keeps only the executions inside the chosen window. Triple splits the day into Asia, London and New York. A custom window may run past midnight — set an end earlier than the start. Use end session as start day attributes an overnight window to the date it finished on, which is what puts an Asia profile on the right trading day.
                   </div>
                 </div>
               ) : null}
 
-              {VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) ? (
+              {VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) && volumeProfileTab === "plot" ? (
                 <div className="grid gap-3 border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
                   <div className="text-[9px] uppercase tracking-[0.14em] text-foreground sm:col-span-2">Plot settings</div>
                   {([
