@@ -1742,6 +1742,32 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     maxTradeVolume: 0,
     autoGroupFactor: 1,
     groupTicks: 4,
+    // Point of Control / Value Area line weights.
+    pocLineWidth: 1,
+    valueAreaLineWidth: 1,
+    // Peak and Valley: high- and low-volume nodes plus the band between the
+    // outermost peaks. Off by default so existing profiles look unchanged.
+    showPeaks: false,
+    showValleys: false,
+    pvSensitivity: 40,
+    pvExcludeHighLow: true,
+    peakMinVolumePercent: 0,
+    valleyMaxVolumePercent: 100,
+    peakOnlyOutsideValueArea: false,
+    valleyOnlyOutsideValueArea: false,
+    peakLineWidth: 1,
+    valleyLineWidth: 1,
+    showBusinessZone: false,
+    businessZoneOpacity: 18,
+    businessZoneLineWidth: 1,
+    // VWAP of the profile itself, with up to three deviation envelopes.
+    vwapLineWidth: 1,
+    vwapBand1: 1,
+    vwapBand2: 2,
+    vwapBand3: 0,
+    // Summary totals printed beside the profile.
+    showSummaryVolume: true,
+    showSummaryTrades: false,
     profileMode: indicatorId === "ask-bid-volume-profile"
       ? "bid-ask"
       : indicatorId === "delta-profile"
@@ -1762,7 +1788,7 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     showVwapLine: false,
     showVwapBands: false,
     showSummary: false,
-    profileSettingsVersion: 7,
+    profileSettingsVersion: 8,
     align: indicatorId === "kwant-profile"
       ? "session"
       : indicatorId === "weekly-volume-profile" ? "left" : "right",
@@ -1771,6 +1797,12 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     bidColor: theme?.downColor ?? "#EF4444",
     pocColor: theme?.upColor ?? "#22C55E",
     valueAreaColor: theme?.borderUpColor ?? theme?.upColor ?? "#22C55E",
+    peakColor: theme?.upColor ?? "#22C55E",
+    valleyColor: theme?.downColor ?? "#EF4444",
+    businessZoneColor: theme?.borderUpColor ?? theme?.upColor ?? "#22C55E",
+    vwapColor: theme?.borderUpColor ?? "#F59E0B",
+    vwapBandColor: theme?.gridColor ?? "#71717A",
+    summaryTextColor: theme?.upColor ?? "#22C55E",
   } : {}),
 });
 
@@ -2089,7 +2121,7 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
   }
   if (
     normalizedInstance.indicatorId === "kwant-profile"
-    && Number(normalizedInstance.settings?.profileSettingsVersion) < 7
+    && Number(normalizedInstance.settings?.profileSettingsVersion) < 8
   ) {
     return {
       ...normalizedInstance,
@@ -2115,14 +2147,25 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         maxTradeVolume: normalizedInstance.settings?.maxTradeVolume ?? 0,
         autoGroupFactor: normalizedInstance.settings?.autoGroupFactor ?? 1,
         groupTicks: normalizedInstance.settings?.groupTicks ?? 4,
-        profileSettingsVersion: 7,
+        // Structure settings arrived in v8, defaulted off so a saved profile
+        // keeps the exact look it had before the upgrade.
+        showPeaks: normalizedInstance.settings?.showPeaks ?? false,
+        showValleys: normalizedInstance.settings?.showValleys ?? false,
+        showBusinessZone: normalizedInstance.settings?.showBusinessZone ?? false,
+        pvSensitivity: normalizedInstance.settings?.pvSensitivity ?? 40,
+        pvExcludeHighLow: normalizedInstance.settings?.pvExcludeHighLow ?? true,
+        peakMinVolumePercent: normalizedInstance.settings?.peakMinVolumePercent ?? 0,
+        valleyMaxVolumePercent: normalizedInstance.settings?.valleyMaxVolumePercent ?? 100,
+        showSummaryVolume: normalizedInstance.settings?.showSummaryVolume ?? true,
+        showSummaryTrades: normalizedInstance.settings?.showSummaryTrades ?? false,
+        profileSettingsVersion: 8,
       },
     };
   }
   if (
     ["weekly-volume-profile", "custom-draw-on-volume-profile", "ask-bid-volume-profile", "delta-profile"]
       .includes(normalizedInstance.indicatorId)
-    && Number(normalizedInstance.settings?.profileSettingsVersion) < 7
+    && Number(normalizedInstance.settings?.profileSettingsVersion) < 8
   ) {
     return {
       ...normalizedInstance,
@@ -2138,7 +2181,18 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         maxTradeVolume: normalizedInstance.settings?.maxTradeVolume ?? 0,
         autoGroupFactor: normalizedInstance.settings?.autoGroupFactor ?? 1,
         groupTicks: normalizedInstance.settings?.groupTicks ?? 4,
-        profileSettingsVersion: 7,
+        // Structure settings arrived in v8, defaulted off so a saved profile
+        // keeps the exact look it had before the upgrade.
+        showPeaks: normalizedInstance.settings?.showPeaks ?? false,
+        showValleys: normalizedInstance.settings?.showValleys ?? false,
+        showBusinessZone: normalizedInstance.settings?.showBusinessZone ?? false,
+        pvSensitivity: normalizedInstance.settings?.pvSensitivity ?? 40,
+        pvExcludeHighLow: normalizedInstance.settings?.pvExcludeHighLow ?? true,
+        peakMinVolumePercent: normalizedInstance.settings?.peakMinVolumePercent ?? 0,
+        valleyMaxVolumePercent: normalizedInstance.settings?.valleyMaxVolumePercent ?? 100,
+        showSummaryVolume: normalizedInstance.settings?.showSummaryVolume ?? true,
+        showSummaryTrades: normalizedInstance.settings?.showSummaryTrades ?? false,
+        profileSettingsVersion: 8,
       },
     };
   }

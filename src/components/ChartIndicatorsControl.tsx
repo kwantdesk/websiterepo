@@ -1286,6 +1286,144 @@ export default function ChartIndicatorsControl({
                 </div>
               ) : null}
 
+              {VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) ? (
+                <div className="grid gap-3 border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
+                  <div className="text-[9px] uppercase tracking-[0.14em] text-foreground sm:col-span-2">Peak and valley</div>
+                  <div className="grid grid-cols-2 gap-2 sm:col-span-2">
+                    {([
+                      ["showPeaks", "Peaks"],
+                      ["showValleys", "Valleys"],
+                      ["showBusinessZone", "Business zone"],
+                      ["pvExcludeHighLow", "Exclude high/low"],
+                    ] as const).map(([key, label]) => {
+                      const defaultOn = key === "pvExcludeHighLow";
+                      const enabled = defaultOn
+                        ? settingsInstance.settings?.[key] !== false
+                        : settingsInstance.settings?.[key] === true;
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => replace(settingsInstance.instanceId, (current) => ({
+                            ...current,
+                            settings: { ...(current.settings ?? {}), [key]: !enabled },
+                          }))}
+                          className={`h-8 border px-2 text-[8px] uppercase tracking-[0.1em] ${
+                            enabled ? "border-primary/55 bg-primary/10 text-primary" : "border-border bg-background text-muted"
+                          }`}
+                        >
+                          {label} · {enabled ? "ON" : "OFF"}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {([
+                    ["Sensitivity", "pvSensitivity", 40, 0, 100],
+                    ["Peak min volume %", "peakMinVolumePercent", 0, 0, 100],
+                    ["Valley max volume %", "valleyMaxVolumePercent", 100, 0, 100],
+                    ["Business zone opacity", "businessZoneOpacity", 18, 2, 100],
+                  ] as const).map(([label, key, fallback, min, max]) => (
+                    <label key={key} className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                      <span>{label}</span>
+                      <input
+                        type="number"
+                        min={min}
+                        max={max}
+                        step={1}
+                        value={Number(settingsInstance.settings?.[key] ?? fallback)}
+                        onChange={(event) => {
+                          const next = Math.min(max, Math.max(min, Math.round(Number(event.target.value) || 0)));
+                          replace(settingsInstance.instanceId, (current) => ({
+                            ...current,
+                            settings: { ...(current.settings ?? {}), [key]: next },
+                          }));
+                        }}
+                        className="h-9 w-full border border-border bg-background px-3 text-right font-mono text-[10px] text-foreground outline-none focus:border-primary/40"
+                      />
+                    </label>
+                  ))}
+                  <div className="grid grid-cols-2 gap-2 sm:col-span-2">
+                    {([
+                      ["peakOnlyOutsideValueArea", "Peaks outside VA only"],
+                      ["valleyOnlyOutsideValueArea", "Valleys outside VA only"],
+                    ] as const).map(([key, label]) => {
+                      const enabled = settingsInstance.settings?.[key] === true;
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => replace(settingsInstance.instanceId, (current) => ({
+                            ...current,
+                            settings: { ...(current.settings ?? {}), [key]: !enabled },
+                          }))}
+                          className={`h-8 border px-2 text-[8px] uppercase tracking-[0.1em] ${
+                            enabled ? "border-primary/55 bg-primary/10 text-primary" : "border-border bg-background text-muted"
+                          }`}
+                        >
+                          {label} · {enabled ? "ON" : "OFF"}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="text-[9px] uppercase tracking-[0.14em] text-foreground sm:col-span-2">VWAP and summary</div>
+                  {([
+                    ["VWAP band 1 (σ)", "vwapBand1", 1],
+                    ["VWAP band 2 (σ)", "vwapBand2", 2],
+                    ["VWAP band 3 (σ)", "vwapBand3", 0],
+                    ["Line width", "vwapLineWidth", 1],
+                  ] as const).map(([label, key, fallback]) => (
+                    <label key={key} className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                      <span>{label}</span>
+                      <input
+                        type="number"
+                        min={0}
+                        max={10}
+                        step={key === "vwapLineWidth" ? 1 : 0.5}
+                        value={Number(settingsInstance.settings?.[key] ?? fallback)}
+                        onChange={(event) => {
+                          const raw = Number(event.target.value);
+                          const next = Math.min(10, Math.max(0, Number.isFinite(raw) ? raw : fallback));
+                          replace(settingsInstance.instanceId, (current) => ({
+                            ...current,
+                            settings: { ...(current.settings ?? {}), [key]: next },
+                          }));
+                        }}
+                        className="h-9 w-full border border-border bg-background px-3 text-right font-mono text-[10px] text-foreground outline-none focus:border-primary/40"
+                      />
+                    </label>
+                  ))}
+                  <div className="grid grid-cols-2 gap-2 sm:col-span-2">
+                    {([
+                      ["showSummaryVolume", "Summary volume", true],
+                      ["showSummaryTrades", "Summary trades", false],
+                    ] as const).map(([key, label, defaultOn]) => {
+                      const enabled = defaultOn
+                        ? settingsInstance.settings?.[key] !== false
+                        : settingsInstance.settings?.[key] === true;
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => replace(settingsInstance.instanceId, (current) => ({
+                            ...current,
+                            settings: { ...(current.settings ?? {}), [key]: !enabled },
+                          }))}
+                          className={`h-8 border px-2 text-[8px] uppercase tracking-[0.1em] ${
+                            enabled ? "border-primary/55 bg-primary/10 text-primary" : "border-border bg-background text-muted"
+                          }`}
+                        >
+                          {label} · {enabled ? "ON" : "OFF"}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
+                    Peaks are high-volume nodes and valleys are low-volume ones; sensitivity raises how fine a feature counts. The business zone is the band between the outermost peaks. VWAP is this profile&apos;s own volume-weighted average price — set a band to 0 to hide it, and enable Show Vwap Bands to draw them. Summary needs Show Summary switched on.
+                  </div>
+                </div>
+              ) : null}
+
               {settingsDefinition.id === "implied-volatility-rank" ? (
                 <div className="grid gap-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
                   <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">

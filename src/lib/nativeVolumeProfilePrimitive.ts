@@ -11,6 +11,11 @@ import {
   type InstitutionalVolumeProfile,
 } from "@/lib/institutionalMarketData";
 import {
+  calculateVolumeProfileStructure,
+  calculateVolumeProfileVwap,
+  summarizeVolumeProfile,
+} from "./volumeProfileStructure";
+import {
   calculateVolumeProfileValueArea,
   STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
   volumeProfileBinTick,
@@ -88,6 +93,42 @@ export type NativeVolumeProfileStyle = {
   autoGroupFactor: number;
   valueAreaPercent: number;
   snapMode: "off" | "left" | "right";
+  /** Point of Control line weight. */
+  pocLineWidth?: number;
+  /** Value Area boundary line weight. */
+  valueAreaLineWidth?: number;
+  /** Peak and Valley tab. Peaks are high-volume nodes, valleys low-volume ones. */
+  showPeaks?: boolean;
+  showValleys?: boolean;
+  peakColor?: string;
+  valleyColor?: string;
+  peakLineWidth?: number;
+  valleyLineWidth?: number;
+  pvSensitivity?: number;
+  pvExcludeHighLow?: boolean;
+  peakMinVolumePercent?: number;
+  valleyMaxVolumePercent?: number;
+  peakOnlyOutsideValueArea?: boolean;
+  valleyOnlyOutsideValueArea?: boolean;
+  /** The band bounded by the outermost peaks. */
+  showBusinessZone?: boolean;
+  businessZoneColor?: string;
+  businessZoneOpacity?: number;
+  businessZoneLineWidth?: number;
+  /** VWAP tab: the profile's own volume-weighted average price. */
+  showVwap?: boolean;
+  vwapColor?: string;
+  vwapLineWidth?: number;
+  vwapDash?: number[];
+  /** Standard deviations to draw as envelopes around VWAP. */
+  vwapBandDeviations?: number[];
+  vwapBandColor?: string;
+  /** Summary tab: totals printed beside the profile. */
+  showSummaryVolume?: boolean;
+  showSummaryTrades?: boolean;
+  summaryTextColor?: string;
+  summaryAskColor?: string;
+  summaryBidColor?: string;
 };
 
 export type NativeVolumeProfileModel = {
@@ -401,7 +442,11 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
         const valueArea = calculateVolumeProfileValueArea(
           levels,
           profile.tickSize * groupedTicks,
-          STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
+          // The trader's own % Value Area. Falls back to the 70% convention
+          // only when the setting is absent.
+          Number.isFinite(style.valueAreaPercent) && style.valueAreaPercent > 0
+            ? style.valueAreaPercent
+            : STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
         );
         const groupedPoc = valueArea.poc ?? profile.poc;
         const groupedVah = valueArea.vah ?? profile.vah;
@@ -612,20 +657,21 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           price: number | null,
           color: string,
           dash: number[],
-          label: "VAH" | "VAL" | "POC",
+          label: string | null,
+          lineWidth?: number,
         ) => {
           if (price == null) return;
           const y = params.series.priceToCoordinate(price);
           if (y == null) return;
           context.globalAlpha = 0.82;
           context.strokeStyle = color;
-          context.lineWidth = 1;
+          context.lineWidth = Math.max(0.5, Number.isFinite(lineWidth) ? Number(lineWidth) : 1);
           context.setLineDash(dash);
           context.beginPath();
           context.moveTo(anchorX, y);
           context.lineTo(endX, y);
           context.stroke();
-          if (style.showText) {
+          if (style.showText && label) {
             const lineRight = Math.max(anchorX, endX);
             context.globalAlpha = 0.88;
             context.fillStyle = color;
@@ -639,10 +685,113 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
             );
           }
         };
-        if (style.showPocLine) drawLevel(groupedPoc, style.pocColor, [2, 3], "POC");
+        if (style.showPocLine) {
+          drawLevel(groupedPoc, style.pocColor, [2, 3], "POC", style.pocLineWidth);
+        }
         if (style.showValueAreaLines) {
-          drawLevel(groupedVah, style.valueAreaColor, [3, 3], "VAH");
-          drawLevel(groupedVal, style.valueAreaColor, [3, 3], "VAL");
+          drawLevel(groupedVah, style.valueAreaColor, [3, 3], "VAH", style.valueAreaLineWidth);
+          drawLevel(groupedVal, style.valueAreaColor, [3, 3], "VAL", style.valueAreaLineWidth);
+        }
+
+        // Peak and Valley: high- and low-volume nodes read off the same grouped
+        // rows the histogram is drawn from, so a node always lines up with the
+        // bar that produced it.
+        if (style.showPeaks || style.showValleys || style.showBusinessZone) {
+          const structure = calculateVolumeProfileStructure(
+            levels,
+            {
+              sensitivity: style.pvSensitivity ?? 40,
+              excludeHighLow: style.pvExcludeHighLow !== false,
+              peakMinVolumePercent: style.peakMinVolumePercent ?? 0,
+              valleyMaxVolumePercent: style.valleyMaxVolumePercent ?? 100,
+              peakOnlyOutsideValueArea: style.peakOnlyOutsideValueArea === true,
+              valleyOnlyOutsideValueArea: style.valleyOnlyOutsideValueArea === true,
+            },
+            { vah: groupedVah ?? null, val: groupedVal ?? null },
+          );
+          if (style.showBusinessZone && structure.businessZone) {
+            const highY = params.series.priceToCoordinate(structure.businessZone.high);
+            const lowY = params.series.priceToCoordinate(structure.businessZone.low);
+            if (highY != null && lowY != null) {
+              const zoneTop = Math.min(highY, lowY);
+              const zoneHeight = Math.abs(lowY - highY);
+              context.globalAlpha = clamp((style.businessZoneOpacity ?? 18) / 100, 0.02, 1);
+              context.fillStyle = style.businessZoneColor ?? style.valueAreaColor;
+              context.fillRect(
+                Math.min(anchorX, endX),
+                zoneTop,
+                Math.abs(endX - anchorX),
+                Math.max(1, zoneHeight),
+              );
+              context.globalAlpha = 0.7;
+              context.strokeStyle = style.businessZoneColor ?? style.valueAreaColor;
+              context.lineWidth = Math.max(0.5, style.businessZoneLineWidth ?? 1);
+              context.setLineDash([4, 3]);
+              context.strokeRect(
+                Math.min(anchorX, endX),
+                zoneTop,
+                Math.abs(endX - anchorX),
+                Math.max(1, zoneHeight),
+              );
+            }
+          }
+          if (style.showPeaks) {
+            for (const peak of structure.peaks) {
+              drawLevel(peak.price, style.peakColor ?? style.positiveDeltaColor, [1, 2], "PEAK", style.peakLineWidth);
+            }
+          }
+          if (style.showValleys) {
+            for (const valley of structure.valleys) {
+              drawLevel(valley.price, style.valleyColor ?? style.negativeDeltaColor, [1, 2], "VLY", style.valleyLineWidth);
+            }
+          }
+        }
+
+        // VWAP of this profile, with optional standard-deviation envelopes.
+        if (style.showVwap) {
+          const vwap = calculateVolumeProfileVwap(levels, style.vwapBandDeviations ?? []);
+          if (vwap.vwap !== null) {
+            drawLevel(vwap.vwap, style.vwapColor ?? style.pocColor, style.vwapDash ?? [6, 3], "VWAP", style.vwapLineWidth);
+            for (const band of vwap.bands) {
+              const bandColor = style.vwapBandColor ?? style.vwapColor ?? style.pocColor;
+              drawLevel(band.upper, bandColor, [2, 4], null, style.vwapLineWidth);
+              drawLevel(band.lower, bandColor, [2, 4], null, style.vwapLineWidth);
+            }
+          }
+        }
+
+        // Summary block: the totals behind the picture.
+        if (style.showSummaryVolume || style.showSummaryTrades) {
+          const summary = summarizeVolumeProfile(levels);
+          const lines: { text: string; color: string }[] = [];
+          if (style.showSummaryVolume) {
+            lines.push({
+              text: `V ${Math.round(summary.totalVolume).toLocaleString("en-US")}`,
+              color: style.summaryTextColor ?? style.pocColor,
+            });
+            lines.push({
+              text: `${summary.delta >= 0 ? "+" : "−"}${Math.abs(Math.round(summary.delta)).toLocaleString("en-US")}`,
+              color: summary.delta >= 0
+                ? (style.summaryAskColor ?? style.positiveDeltaColor)
+                : (style.summaryBidColor ?? style.negativeDeltaColor),
+            });
+          }
+          if (style.showSummaryTrades) {
+            lines.push({
+              text: `T ${Math.round(summary.trades).toLocaleString("en-US")}`,
+              color: style.summaryTextColor ?? style.pocColor,
+            });
+          }
+          context.globalAlpha = 0.9;
+          context.font = "600 8px 'JetBrains Mono', monospace";
+          context.textAlign = "left";
+          context.textBaseline = "top";
+          let summaryY = 6;
+          for (const line of lines) {
+            context.fillStyle = line.color;
+            context.fillText(line.text, clamp(Math.min(anchorX, endX) + 4, 4, mediaSize.width - 60), summaryY);
+            summaryY += 10;
+          }
         }
 
       }
