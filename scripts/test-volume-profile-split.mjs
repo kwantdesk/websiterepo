@@ -12,6 +12,13 @@ execSync(
 const { resolveSessionSegments, sessionTradingDate } = await import(
   `file://${bundle.replaceAll("\\", "/")}`
 );
+execSync(
+  `npx esbuild src/lib/chartHistoryWindow.ts --bundle --format=esm --platform=node --alias:@=./src --outfile="${join(outDir, "window.mjs")}"`,
+  { stdio: "pipe" },
+);
+const { cmeSessionDateKey } = await import(
+  `file://${join(outDir, "window.mjs").replaceAll("\\", "/")}`
+);
 
 /**
  * Mirrors the workspace's own per-trading-date resolution so the segments the
@@ -25,7 +32,9 @@ function segmentsForTradingDate(tradingDate, useEndSessionAsStartDay) {
     customStartMinutes: 8 * 60 + 30,
     customEndMinutes: 15 * 60 + 15,
     useEndSessionAsStartDay,
-  }).filter((segment) => sessionTradingDate(segment, useEndSessionAsStartDay) === tradingDate);
+    // The three desk sessions belong to the CME trading day, which already
+    // begins at the 17:00 Globex open — matching the workspace's own rule.
+  }).filter((segment) => cmeSessionDateKey(segment.startMs) === tradingDate);
 }
 
 // A plain mid-week CME trading date.
@@ -65,6 +74,24 @@ assert.ok(
 );
 assert.equal(sessionTradingDate(asia, true), DATE);
 
+// 4b. The overnight window must land on this trading date under BOTH settings
+//     of the end-session toggle. Attributing it by its own calendar date threw
+//     it onto the next day, so the day being drawn silently lost its overnight
+//     profile and only London and New York appeared.
+for (const useEnd of [false, true]) {
+  const both = segmentsForTradingDate(DATE, useEnd);
+  assert.equal(both.length, 3, `toggle=${useEnd} produced ${both.length} windows`);
+  assert.deepEqual(
+    both.map((s) => s.id),
+    ["asia", "london", "newyork"],
+    `toggle=${useEnd} lost or reordered a session`,
+  );
+  assert.ok(
+    both[0].startMs < Date.parse(`${DATE}T00:00:00.000Z`),
+    `toggle=${useEnd} attributed the wrong overnight window`,
+  );
+}
+
 // 5. Every trading date must resolve its own three windows — no date may
 //    borrow another's, or profiles would stack on one day.
 for (const date of ["2026-08-17", "2026-08-18", "2026-08-19", "2026-08-20"]) {
@@ -92,4 +119,4 @@ const workspace = readFileSync("src/components/KwantifyWorkspace.tsx", "utf8");
 assert.match(workspace, /candidate\.sessionId \?\? ""\) !== \(replacement\.sessionId \?\? ""/);
 
 rmSync(outDir, { recursive: true, force: true });
-console.log("volume profile session split: 8/8 checks passed");
+console.log("volume profile session split: 9/9 checks passed");

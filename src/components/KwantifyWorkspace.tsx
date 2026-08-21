@@ -7896,13 +7896,26 @@ function WorkspaceChartPaneComponent({
     const dayStartMs = midnight - 12 * 60 * 60_000;
     const dayEndMs = midnight + 36 * 60 * 60_000;
     const useEndSessionAsStartDay = settings.useEndSessionAsStartDay === true;
+    const mode = sessionFilterModeFor(settings);
     return resolveSessionSegments(dayStartMs, dayEndMs, {
-      mode: sessionFilterModeFor(settings),
+      mode,
       window: sessionFilterTimeFor(settings),
       customStartMinutes: Number(settings.sessionStartMinutes ?? RTH_START_MINUTES),
       customEndMinutes: Number(settings.sessionEndMinutes ?? RTH_END_MINUTES),
       useEndSessionAsStartDay,
-    }).filter((segment) => sessionTradingDate(segment, useEndSessionAsStartDay) === tradingDate);
+    }).filter((segment) => (
+      // The three desk sessions are subdivisions of a CME trading day, and a
+      // CME day already begins at the 17:00 Globex open. Attributing them by
+      // the segment's own calendar date pushed the overnight window onto the
+      // NEXT date, so the day that was actually being drawn only ever received
+      // London and New York and the overnight profile went missing. The CME
+      // session key encodes that 17:00 roll, so it is the correct owner here
+      // whatever the end-session toggle says — that toggle governs custom
+      // windows, whose day boundary is the trader's to define.
+      mode === "triple"
+        ? chicagoTradingDate(segment.startMs) === tradingDate
+        : sessionTradingDate(segment, useEndSessionAsStartDay) === tradingDate
+    ));
   };
   const sessionFilterTimeFor = (settings: Record<string, unknown>) => {
     const requested = String(settings.filterTime ?? "rth").toLowerCase();
