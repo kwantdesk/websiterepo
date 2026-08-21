@@ -2526,6 +2526,10 @@ const STABLE_RIGHT_PRICE_SCALE_WIDTH = 76;
 // component for every raw pan/zoom event makes pointer input monopolise the
 // main thread, especially with several workspace charts mounted.
 const VIEWPORT_REACT_REFRESH_INTERVAL_MS = 64;
+// Height of the time axis strip beneath every pane. The precision-tools
+// adapter already models the non-price-pane region at the bottom of the
+// chart as this plus the docked pane stack.
+const CHART_TIME_AXIS_HEIGHT = 24;
 // Bounce Levels uses one platform-owned cadence across every pane. Exposing
 // this as a user setting allowed individual charts to create competing fetch
 // loops, so it intentionally cannot be overridden by saved indicator state.
@@ -13437,13 +13441,17 @@ function Chart({
   // xToTime is a local chart-coordinate adapter whose closure is intentionally
   // refreshed by the concrete market/viewport dependencies below.
   // eslint-disable-next-line react-hooks/exhaustive-deps
+  // Stable across renders so the layer never has to re-subscribe.
+  const subscribePrecisionViewport = useCallback((listener: () => void) => (
+    repaintNotifierRef.current?.subscribe(listener) ?? (() => {})
+  ), []);
   const precisionAdapter = useMemo<PrecisionChartAdapter>(() => {
     const contract = paperContractSpec(contractSymbol ?? instrument);
     return {
       width: overlaySize.width,
       height: overlaySize.height,
       priceScaleWidth: nativePriceScaleWidth,
-      timeScaleHeight: 24 + indicatorPaneHeight,
+      timeScaleHeight: CHART_TIME_AXIS_HEIGHT + indicatorPaneHeight,
       minMove: priceFormat.minMove,
       precision: priceFormat.precision,
       pointValue: contract.pointValue,
@@ -13481,8 +13489,9 @@ function Chart({
         to: Math.floor(Math.max(startMs, endMs) / 1_000) as Time,
       }),
       requestChartRender: () => setViewportVersion((current) => current + 1),
+      subscribeViewport: subscribePrecisionViewport,
     };
-  }, [candles, candleIntervalMs, contractSymbol, indicatorPaneHeight, instrument, nativePriceScaleWidth, overlaySize.height, overlaySize.width, priceFormat.minMove, priceFormat.precision, timeframe, viewportVersion]);
+  }, [candles, candleIntervalMs, contractSymbol, indicatorPaneHeight, instrument, nativePriceScaleWidth, overlaySize.height, overlaySize.width, priceFormat.minMove, priceFormat.precision, subscribePrecisionViewport, timeframe, viewportVersion]);
 
   const selectProfessionalDrawingInScreenBox = useCallback((bounds: { left: number; right: number; top: number; bottom: number }) => {
     const chart = chartRef.current;
@@ -16475,13 +16484,27 @@ function Chart({
         <defs>
           {/* Drawings and indicator overlays are price-pane content: they must
               slide underneath the price scale at the pane's right edge exactly
-              like candles do, never paint on top of the axis. */}
+              like candles do, never paint on top of the axis.
+
+              The same is true vertically. This SVG spans the whole chart
+              container, which includes the stacked indicator panes, so
+              clipping only the right edge let a position calculator's target
+              and stop boxes wash straight down over the Volume and CVD panes
+              — a price-pane drawing rendering on top of other indicators'
+              content. The clip is now the price pane itself: below any panes
+              docked above, and stopping at the first pane docked below. */}
           <clipPath id={chartPaneClipId}>
             <rect
               x={0}
-              y={0}
+              y={topIndicatorPaneHeight}
               width={Math.max(1, overlaySize.width - nativePriceScaleWidth)}
-              height={Math.max(1, overlaySize.height)}
+              height={Math.max(
+                1,
+                overlaySize.height
+                  - topIndicatorPaneHeight
+                  - indicatorPaneHeight
+                  - CHART_TIME_AXIS_HEIGHT,
+              )}
             />
           </clipPath>
         </defs>

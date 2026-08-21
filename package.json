@@ -54,7 +54,8 @@
     "bench:volume-profile-draw": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/bench-volume-profile-draw.mjs",
     "test:position-calculator-labels": "node scripts/test-position-calculator-labels.mjs",
     "test:overlay-refresh": "node scripts/test-overlay-refresh.mjs",
-    "test:position-calculator-primitive": "node scripts/test-position-calculator-primitive.mjs"
+    "test:position-calculator-primitive": "node scripts/test-position-calculator-primitive.mjs",
+    "test:overlay-clip": "node --experimental-strip-types scripts/test-chart-overlay-clip.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",
