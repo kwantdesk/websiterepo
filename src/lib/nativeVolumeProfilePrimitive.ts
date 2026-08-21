@@ -221,9 +221,28 @@ export type NativeVolumeProfileModel = {
   };
 };
 
+type ProfileDerived = {
+  levels: InstitutionalVolumeProfile["levels"];
+  maxVolume: number;
+  maxAbsDelta: number;
+  maxSideVolume: number;
+  valueArea: ReturnType<typeof calculateVolumeProfileValueArea>;
+};
+
 export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
   private attachedParams: SeriesAttachedParameter<Time> | null = null;
   private models: NativeVolumeProfileModel[] = [];
+  /**
+   * Per-profile derived data, keyed by everything that can change it.
+   *
+   * `draw()` runs on EVERY chart repaint — crosshair moves, live ticks, a
+   * sibling indicator updating — and this work does not depend on any of
+   * those. Recomputing it per frame meant regrouping every row into a fresh
+   * Map, three full scans for the bar scales and a complete value-area
+   * expansion, per profile, several times a second. With a daily, a weekly and
+   * the split sessions on one chart that is the bulk of the profile's cost.
+   */
+  private derived = new Map<string, { key: string; value: ProfileDerived }>();
   private paneInsets = { left: 0, right: 0 };
   private readonly paneView = {
     // Volume distributions are chart context, not foreground annotations.
@@ -260,6 +279,13 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
       unique.set(model.id, model);
       return unique;
     }, new Map<string, NativeVolumeProfileModel>()).values()];
+    // Drop derived data for profiles that are no longer drawn. Switching
+    // instrument or scrolling through trading dates would otherwise retain a
+    // grouped copy of every profile the pane had ever shown.
+    if (this.derived.size) {
+      const live = new Set(this.models.map((model) => model.id));
+      for (const id of this.derived.keys()) if (!live.has(id)) this.derived.delete(id);
+    }
     this.attachedParams?.requestUpdate();
   }
 
@@ -571,6 +597,12 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           || Math.min(anchorX, endX) - profileWidth > rightEdge
         )) continue;
         const sourceLevels = profile.levels;
+        // The trader's own % Value Area. Falls back to the 70% convention only
+        // when the setting is absent.
+        const requestedValueAreaPercent = Number.isFinite(style.valueAreaPercent)
+          && style.valueAreaPercent > 0
+          ? style.valueAreaPercent
+          : STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT;
         const referencePrice = profile.poc ?? sourceLevels[Math.floor(sourceLevels.length / 2)]?.price;
         const referenceY = referencePrice == null ? null : params.series.priceToCoordinate(referencePrice);
         const nextReferenceY = referencePrice == null ? null : params.series.priceToCoordinate(
@@ -599,7 +631,21 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           Math.ceil((PROFILE_MIN_ROW_PIXELS * groupingFloorFactor) / sourceRowPixels),
         );
         const groupedTicks = profile.groupTicks * automaticMultiplier;
-        const levels = automaticMultiplier === 1
+        // Everything below depends only on the profile, its grouping and the
+        // value-area percentage — never on the viewport — so it is computed
+        // once per change instead of once per repaint.
+        const derivedKey = [
+          profile.asOf,
+          profile.levels.length,
+          groupedTicks,
+          profile.groupTicks,
+          profile.tickSize,
+          requestedValueAreaPercent,
+        ].join(":");
+        const cachedDerived = this.derived.get(model.id);
+        let derived = cachedDerived?.key === derivedKey ? cachedDerived.value : null;
+        if (!derived) {
+          const levels = automaticMultiplier === 1
           ? sourceLevels
           : [...sourceLevels.reduce((buckets, level) => {
               const sourceTick = Math.round(level.price / profile.tickSize);
@@ -624,39 +670,45 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
               return buckets;
             }, new Map<number, InstitutionalVolumeProfile["levels"][number]>()).values()]
             .sort((a, b) => a.price - b.price);
-        const groupedMaxVolume = Math.max(1, ...levels.map((level) => level.volume));
-        const groupedMaxAbsDelta = Math.max(1, ...levels.map((level) => Math.abs(level.delta)));
-        const groupedMaxSideVolume = Math.max(
-          1,
-          ...levels.map((level) => Math.max(level.askVolume, level.bidVolume)),
-        );
+          let maxVolume = 1;
+          let maxAbsDelta = 1;
+          let maxSideVolume = 1;
+          // Allocation-free scans: spreading a few hundred rows into
+          // Math.max three times per profile per frame is both garbage and a
+          // latent argument-limit failure on a dense profile.
+          for (const level of levels) {
+            if (level.volume > maxVolume) maxVolume = level.volume;
+            const absDelta = Math.abs(level.delta);
+            if (absDelta > maxAbsDelta) maxAbsDelta = absDelta;
+            const side = Math.max(level.askVolume, level.bidVolume);
+            if (side > maxSideVolume) maxSideVolume = side;
+          }
+          derived = {
+            levels,
+            maxVolume,
+            maxAbsDelta,
+            maxSideVolume,
+            valueArea: calculateVolumeProfileValueArea(
+              sourceLevels,
+              profile.tickSize * profile.groupTicks,
+              requestedValueAreaPercent,
+            ),
+          };
+          this.derived.set(model.id, { key: derivedKey, value: derived });
+        }
+        const levels = derived.levels;
+        const groupedMaxVolume = derived.maxVolume;
+        const groupedMaxAbsDelta = derived.maxAbsDelta;
+        const groupedMaxSideVolume = derived.maxSideVolume;
         const deltaScaleWidth = profile.period === "weekly" ? profileWidth * 0.5 : profileWidth;
         const deltaScaleMaximum = profile.period === "weekly"
           ? groupedMaxAbsDelta
           : pinned && !splitPinnedDaily
             ? groupedMaxVolume
             : groupedMaxAbsDelta;
-        // The value area describes the session's volume distribution. It is
-        // NOT a function of how far the chart happens to be zoomed.
-        //
-        // This used to measure the display-collapsed rows at their collapsed
-        // size, so every time the renderer merged rows for legibility the POC,
-        // VAH and VAL jumped by whole rows — the levels visibly drifted while
-        // zooming and disagreed with the profile the server had computed at
-        // the requested grouping. Always measure at the profile's own binning;
-        // `levels` stays purely a drawing concern.
-        const valueArea = calculateVolumeProfileValueArea(
-          sourceLevels,
-          profile.tickSize * profile.groupTicks,
-          // The trader's own % Value Area. Falls back to the 70% convention
-          // only when the setting is absent.
-          Number.isFinite(style.valueAreaPercent) && style.valueAreaPercent > 0
-            ? style.valueAreaPercent
-            : STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
-        );
-        const groupedPoc = valueArea.poc ?? profile.poc;
-        const groupedVah = valueArea.vah ?? profile.vah;
-        const groupedVal = valueArea.val ?? profile.val;
+        const groupedPoc = derived.valueArea.poc ?? profile.poc;
+        const groupedVah = derived.valueArea.vah ?? profile.vah;
+        const groupedVal = derived.valueArea.val ?? profile.val;
         let firstVisible = 0;
         let lastVisible = levels.length;
         if (Number.isFinite(visibleLow) && Number.isFinite(visibleHigh)) {

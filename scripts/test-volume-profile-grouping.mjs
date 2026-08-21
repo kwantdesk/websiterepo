@@ -87,8 +87,8 @@ assert.notEqual(
   "fixture must actually be sensitive to row size, or check 6 proves nothing",
 );
 const vaCall = primitive.slice(
-  primitive.indexOf("const valueArea = calculateVolumeProfileValueArea("),
-  primitive.indexOf("const groupedPoc"),
+  primitive.indexOf("valueArea: calculateVolumeProfileValueArea("),
+  primitive.indexOf("this.derived.set(model.id"),
 );
 assert.ok(
   vaCall.includes("sourceLevels") && vaCall.includes("profile.tickSize * profile.groupTicks"),
@@ -98,6 +98,20 @@ assert.ok(
   !vaCall.includes("groupedTicks,"),
   "the value area must not follow the display-collapsed grouping",
 );
+
+// 7. The derived data must be cached per change, not recomputed per repaint.
+//    draw() runs on every crosshair move and every live tick.
+assert.match(primitive, /private derived = new Map<string, \{ key: string; value: ProfileDerived \}>\(\);/);
+assert.match(primitive, /cachedDerived\?\.key === derivedKey/);
+// The cache key must carry everything that can change the result.
+for (const part of ["profile.asOf", "groupedTicks", "profile.groupTicks", "requestedValueAreaPercent"]) {
+  assert.ok(primitive.includes(part), `derived cache key must include ${part}`);
+}
+// And it must be pruned, or every profile ever drawn is retained.
+assert.match(primitive, /if \(!live\.has\(id\)\) this\.derived\.delete\(id\);/);
+// The allocation-heavy spread scans must be gone from the draw path.
+assert.doesNotMatch(primitive, /Math\.max\(1, \.\.\.levels\.map/);
+
 rmSync(outDir, { recursive: true, force: true });
 
-console.log("volume profile grouping: 6/6 checks passed");
+console.log("volume profile grouping: 7/7 checks passed");

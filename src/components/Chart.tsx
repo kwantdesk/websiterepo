@@ -12131,7 +12131,27 @@ function Chart({
       const series = candleSeriesRef.current;
       const topPrice = series?.coordinateToPrice(0) ?? null;
       const bottomPrice = series?.coordinateToPrice(container.clientHeight) ?? null;
-      const signature = `${logical?.from ?? ""}:${logical?.to ?? ""}:${topPrice ?? ""}:${bottomPrice ?? ""}`;
+      // This refresh re-renders the whole chart component, so it must describe
+      // a transform the eye can actually resolve — NOT every price tick.
+      //
+      // Comparing raw prices meant that under auto-scale the visible range
+      // drifted on essentially every trade, so a live market drove a full React
+      // render several times a second forever. With a heavy indicator stack
+      // that alone pegs the main thread, which is what a renderer crash looks
+      // like from the outside. Quantising to roughly a twentieth of the visible
+      // range keeps overlays projected correctly while a tick that moves the
+      // scale by a pixel costs nothing.
+      const span = topPrice != null && bottomPrice != null ? Math.abs(topPrice - bottomPrice) : 0;
+      const quantum = span > 0 ? span / 120 : 0;
+      const step = (value: number | null) => (
+        value == null ? "" : quantum > 0 ? Math.round(value / quantum) : value
+      );
+      const signature = [
+        logical == null ? "" : Math.round(Number(logical.from) * 4) / 4,
+        logical == null ? "" : Math.round(Number(logical.to) * 4) / 4,
+        step(topPrice),
+        step(bottomPrice),
+      ].join(":");
       if (signature === lastTransformSignature) return;
       lastTransformSignature = signature;
       scheduleViewportRefresh();
