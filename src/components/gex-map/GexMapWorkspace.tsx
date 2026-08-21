@@ -1047,12 +1047,17 @@ function ExposurePanel({
               const derived = starRows.get(row.strike);
               if (viewMode !== "full" && derived) {
                 const isFocusedStar = derived.roles.includes("star");
-                // Both structural views honour the settings-driven highlight
-                // set (Highlighted nodes, Selection strategy, Spot-proximity
-                // weighting, Minimum map control). The previous STAR view lit
-                // only the Star itself, which silently no-opped every one of
-                // those settings; the Star keeps its dedicated ring styling.
-                const highlighted = derived.isHighlighted || isFocusedStar;
+                // STAR lights the Star node and nothing else — that is the
+                // whole point of the view, and sharing NINJA's highlight set
+                // made the two indistinguishable.
+                //
+                // NINJA is where the settings-driven structural set lives
+                // (Highlighted nodes, Selection strategy, Spot-proximity
+                // weighting, Minimum map control); those settings describe that
+                // set, so they belong to the view that renders it.
+                const highlighted = viewMode === "star"
+                  ? isFocusedStar
+                  : derived.isHighlighted || isFocusedStar;
                 const barWidth = Math.sqrt(derived.mapControlPct / maxHighlightedControl) * 100;
                 // Desk names for two roles: the gatekeeper between spot and the
                 // Star reads as SIDETING, and the fastest-growing significant
@@ -1130,7 +1135,7 @@ function ExposurePanel({
                       ) : null}
                     </span>
                     <span className="relative z-[1] flex min-w-0 items-center justify-end gap-1 overflow-hidden">
-                      {starSettings.showRoleLabels ? roleText.filter((role) => role !== "STAR").slice(0, 2).map((role) => (
+                      {starSettings.showRoleLabels && (viewMode !== "star" || isFocusedStar) ? roleText.filter((role) => role !== "STAR").slice(0, 2).map((role) => (
                         <span key={role} className="truncate border border-current/25 bg-panel/50 px-1 py-0.5 font-sans text-[7px] font-bold tracking-[0.06em] text-foreground">{role}</span>
                       )) : null}
                       {starSettings.showRawValues ? <span className="truncate text-[8px] text-muted">{formatRowValue(derived.net)}</span> : null}
