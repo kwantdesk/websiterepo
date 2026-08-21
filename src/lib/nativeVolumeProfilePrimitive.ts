@@ -380,17 +380,38 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
       // jumping to an unrelated one, and the newest profile has nothing in
       // front of it and runs to the live edge.
       const nextProfileStartMsById = new Map<string, number>();
-      const chainGroups = new Map<string, { id: string; startMs: number }[]>();
+      const chainGroups = new Map<string, { id: string; startMs: number; endMs: number }[]>();
       for (const model of this.models) {
-        const key = `${model.profile.period}:${model.profile.root}`;
-        const group = chainGroups.get(key) ?? [];
-        group.push({ id: model.id, startMs: model.profile.startMs });
-        chainGroups.set(key, group);
+        // Every profile on the same instrument competes for the same space, so
+        // they all share one chain: daily, weekly, split sessions and fixed
+        // ranges alike. Chaining per profile KIND meant a level only ever
+        // yielded to another of its own kind and ran straight underneath
+        // anything else standing in front of it.
+        const group = chainGroups.get(model.profile.root) ?? [];
+        group.push({
+          id: model.id,
+          startMs: model.drawingBounds ? model.drawingBounds.startTime * 1_000 : model.profile.startMs,
+          endMs: model.drawingBounds ? model.drawingBounds.endTime * 1_000 : model.profile.endMs,
+        });
+        chainGroups.set(model.profile.root, group);
       }
       for (const group of chainGroups.values()) {
         group.sort((left, right) => left.startMs - right.startMs);
-        for (let index = 0; index < group.length - 1; index += 1) {
-          nextProfileStartMsById.set(group[index].id, group[index + 1].startMs);
+        for (const entry of group) {
+          // "In front" means starting at or after this profile ENDS, never
+          // merely after it starts. Comparing against the end is what lets a
+          // weekly keep its levels running across the dailies drawn inside its
+          // own span while still stopping at the week in front of it, and it
+          // is what makes a split session stop at the back of the next session
+          // rather than painting underneath it.
+          let blockerStartMs: number | null = null;
+          for (const candidate of group) {
+            if (candidate.id === entry.id || candidate.startMs < entry.endMs) continue;
+            if (blockerStartMs === null || candidate.startMs < blockerStartMs) {
+              blockerStartMs = candidate.startMs;
+            }
+          }
+          if (blockerStartMs !== null) nextProfileStartMsById.set(entry.id, blockerStartMs);
         }
       }
 
