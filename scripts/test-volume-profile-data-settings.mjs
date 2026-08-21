@@ -1,53 +1,59 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
-import {
-  AUTOMATIC_VOLUME_PROFILE_TARGET_ROWS,
-  automaticVolumeProfileGroupTicks,
-  volumeProfileBinTick,
-} from "../src/lib/volumeProfileMath.ts";
+import { volumeProfileBinTick } from "../src/lib/volumeProfileMath.ts";
 
 /**
  * Data Settings parity with DeepChart's DP: DeltaVol tab — tick grouping
- * (Automatic with a group factor, or Manual ticks) and the trade-size filter.
+ * (Automatic, or Manual ticks) and the trade-size filter.
  */
 
-const NQ_TICK = 0.25;
-
-// --- automatic grouping tracks the session range, not a fixed tick count ---
+/**
+ * Automatic grouping belongs to the RENDERER, which knows how many pixels a
+ * tick row occupies and collapses rows only as far as the zoom requires — so
+ * zooming in recovers per-tick detail. Pre-grouping the REQUEST destroys that:
+ * the renderer multiplies an already-coarsened row and the fine data was never
+ * fetched, which shows up as permanently fat bars. This guard exists because
+ * that regression shipped once.
+ */
 {
-  // A 400-point NQ day is 1,600 ticks. Ungrouped that is 1,600 hairline rows.
-  const wide = automaticVolumeProfileGroupTicks(400, NQ_TICK);
-  assert.ok(wide > 1, "a wide session must group ticks rather than draw every one");
-  const rows = (400 / NQ_TICK) / wide;
-  assert.ok(
-    rows <= AUTOMATIC_VOLUME_PROFILE_TARGET_ROWS,
-    `expected at most ${AUTOMATIC_VOLUME_PROFILE_TARGET_ROWS} rows, got ${rows}`,
+  const workspace = readFileSync(
+    new URL("../src/components/KwantifyWorkspace.tsx", import.meta.url),
+    "utf8",
   );
-  assert.ok(rows > AUTOMATIC_VOLUME_PROFILE_TARGET_ROWS / 2, "grouping must not over-coarsen a wide day");
 
-  // A quiet 20-point day is only 80 ticks — well under the target, so it stays ungrouped.
-  assert.equal(automaticVolumeProfileGroupTicks(20, NQ_TICK), 1, "a narrow session needs no grouping");
-}
-
-// --- the auto group factor multiplies the derived value ---
-{
-  const base = automaticVolumeProfileGroupTicks(400, NQ_TICK, 1);
-  assert.equal(automaticVolumeProfileGroupTicks(400, NQ_TICK, 2), base * 2, "factor 2 doubles the ticks per row");
-  assert.equal(automaticVolumeProfileGroupTicks(400, NQ_TICK, 3), base * 3, "factor 3 triples the ticks per row");
-  // A factor never produces a sub-tick row.
-  assert.equal(automaticVolumeProfileGroupTicks(20, NQ_TICK, 4), 4, "factor still applies on a narrow session");
-}
-
-// --- unknown range is honest, not invented ---
-{
-  for (const bad of [0, -10, Number.NaN, Number.POSITIVE_INFINITY]) {
-    assert.equal(automaticVolumeProfileGroupTicks(bad, NQ_TICK), 1, `range ${bad} falls back to no grouping`);
+  for (const scope of ["daily", "weekly"]) {
+    const pattern = new RegExp(
+      `const requested${scope[0].toUpperCase()}${scope.slice(1)}GroupTicks = ${scope}ProfileSettings\\.groupingMode === "manual"\\s*\\?[^:]+:\\s*([^;]+);`,
+    );
+    const match = workspace.match(pattern);
+    assert.ok(match, `${scope} group-ticks request not found — update this guard`);
+    assert.equal(
+      match[1].trim(),
+      "1",
+      `${scope} profiles must request tick resolution in Automatic mode, not a pre-grouped row size`,
+    );
   }
-  assert.equal(automaticVolumeProfileGroupTicks(400, 0), 1, "an unknown tick size falls back to no grouping");
-  assert.equal(
-    automaticVolumeProfileGroupTicks(400, NQ_TICK, 0),
-    automaticVolumeProfileGroupTicks(400, NQ_TICK, 1),
-    "a zero/absent factor behaves as 1 rather than collapsing the profile",
+
+  assert.ok(
+    !workspace.includes("automaticVolumeProfileGroupTicks"),
+    "the request must not derive its own automatic row size",
+  );
+
+  // The renderer's adaptive multiplier is the one true automatic grouping.
+  const primitive = readFileSync(
+    new URL("../src/lib/nativeVolumeProfilePrimitive.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    primitive,
+    /automaticMultiplier = style\.automaticGrouping/,
+    "the renderer still owns automatic grouping",
+  );
+  assert.match(
+    primitive,
+    /style\.autoGroupFactor\) \/ sourceRowPixels/,
+    "Auto group factory scales the renderer's pixel-derived multiplier",
   );
 }
 
@@ -62,6 +68,10 @@ const NQ_TICK = 0.25;
   // toward zero, or two adjacent rows would merge across the boundary.
   assert.equal(volumeProfileBinTick(-1, 4), -4);
   assert.equal(volumeProfileBinTick(-4, 4), -4);
+  // A grouping of 1 is the identity, which is what Automatic requests.
+  for (let tick = -5; tick <= 5; tick += 1) {
+    assert.equal(volumeProfileBinTick(tick, 1), tick, "tick resolution is preserved exactly");
+  }
 
   // Every tick in a run lands in exactly one bucket, so no volume is dropped.
   const seen = new Map();

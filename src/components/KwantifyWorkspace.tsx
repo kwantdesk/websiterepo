@@ -255,7 +255,6 @@ import {
   supportsChartInterval,
 } from "@/lib/chartIntervals";
 import { applyMarketTradesToEventBars, futuresTickSize } from "@/lib/eventBars";
-import { automaticVolumeProfileGroupTicks } from "@/lib/volumeProfileMath";
 import { RTH_END_MINUTES, RTH_START_MINUTES } from "@/lib/volumeProfileSessions";
 import type { ValueAreaProfile } from "@/lib/valueArea";
 import {
@@ -7868,37 +7867,19 @@ function WorkspaceChartPaneComponent({
     const activeRoot = displayCmeSymbol(pane.symbol);
     const activeTradingDates = new Set(tradingDates);
     const normalizedContractSymbol = resolvedContractSymbol.toUpperCase().replace(/[^A-Z0-9]/g, "");
-    // Automatic tick grouping sizes a profile row from the range the profile
-    // actually covers, so a 400-point day does not become 1,600 hairlines.
-    // Manual pins it to the trader's own ticks-per-row.
-    const profileTickSize = futuresTickSize(pane.symbol);
-    const priceRangeOver = (dayCount: number) => {
-      if (!candles.length) return 0;
-      const cutoff = candles[candles.length - 1].timestamp - dayCount * 24 * 60 * 60_000;
-      let high = Number.NEGATIVE_INFINITY;
-      let low = Number.POSITIVE_INFINITY;
-      for (let index = candles.length - 1; index >= 0; index -= 1) {
-        const candle = candles[index];
-        if (candle.timestamp < cutoff) break;
-        if (candle.high > high) high = candle.high;
-        if (candle.low < low) low = candle.low;
-      }
-      return Number.isFinite(high) && Number.isFinite(low) && high > low ? high - low : 0;
-    };
+    // Automatic tick grouping is resolved by the RENDERER, not here: it knows
+    // how many pixels one tick row occupies and collapses rows only as far as
+    // the current zoom requires, so zooming in recovers per-tick detail. The
+    // request must therefore stay at tick resolution — pre-grouping it here
+    // once produced permanently fat bars, because the renderer multiplied an
+    // already-coarsened row and the fine data had never been fetched.
+    // Auto group factory scales that renderer-side multiplier.
     const requestedDailyGroupTicks = dailyProfileSettings.groupingMode === "manual"
       ? Math.max(1, Math.round(Number(dailyProfileSettings.groupTicks ?? 4) || 4))
-      : automaticVolumeProfileGroupTicks(
-        priceRangeOver(1),
-        profileTickSize,
-        Number(dailyProfileSettings.autoGroupFactor ?? 1) || 1,
-      );
+      : 1;
     const requestedWeeklyGroupTicks = weeklyProfileSettings.groupingMode === "manual"
       ? Math.max(1, Math.round(Number(weeklyProfileSettings.groupTicks ?? 4) || 4))
-      : automaticVolumeProfileGroupTicks(
-        priceRangeOver(5),
-        profileTickSize,
-        Number(weeklyProfileSettings.autoGroupFactor ?? 1) || 1,
-      );
+      : 1;
     const requestedDailyMinVolume = Math.max(0, Number(dailyProfileSettings.minTradeVolume ?? 0) || 0);
     const requestedDailyMaxVolume = Math.max(0, Number(dailyProfileSettings.maxTradeVolume ?? 0) || 0);
     const requestedWeeklyMinVolume = Math.max(0, Number(weeklyProfileSettings.minTradeVolume ?? 0) || 0);
