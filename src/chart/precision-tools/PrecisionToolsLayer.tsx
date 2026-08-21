@@ -225,17 +225,46 @@ export default function PrecisionToolsLayer({
     return () => window.removeEventListener("kwantdesk:precision-global-crosshair", handleGlobalCrosshair);
   }, [adapter, chartId, engaged, resizeCanvas, snapshot.toolbar.mode, theme]);
 
+  // Held in a ref so the repaint subscription below never has to re-bind.
+  // The adapter's projections read the chart live, so drawing with the latest
+  // captured adapter still lands on the current viewport.
+  const paintRef = useRef<() => void>(() => {});
+  paintRef.current = () => {
+    const hasStaticContent = !snapshot.toolbar.hidden && (snapshot.objects.length > 0 || snapshot.draft != null);
+    const hasInteractionContent = engaged && (snapshot.toolbar.mode === "crosshair" || snapshot.toolbar.mode === "global-crosshair" || snapshot.toolbar.mode === "place");
+    const context = resizeCanvas(canvasRef.current, hasStaticContent);
+    if (context) renderPrecisionCanvas(context, snapshot.toolbar.hidden ? [] : snapshot.objects, snapshot.toolbar.hidden ? null : snapshot.draft, snapshot.selectedIds, adapter, theme);
+    const interaction = resizeCanvas(interactionCanvasRef.current, hasInteractionContent);
+    if (interaction) renderPrecisionInteractionCanvas(interaction, adapter, pointerRef.current, true, theme);
+  };
+
   useEffect(() => {
-    let frame = requestAnimationFrame(() => {
-      const hasStaticContent = !snapshot.toolbar.hidden && (snapshot.objects.length > 0 || snapshot.draft != null);
-      const hasInteractionContent = engaged && (snapshot.toolbar.mode === "crosshair" || snapshot.toolbar.mode === "global-crosshair" || snapshot.toolbar.mode === "place");
-      const context = resizeCanvas(canvasRef.current, hasStaticContent);
-      if (context) renderPrecisionCanvas(context, snapshot.toolbar.hidden ? [] : snapshot.objects, snapshot.toolbar.hidden ? null : snapshot.draft, snapshot.selectedIds, adapter, theme);
-      const interaction = resizeCanvas(interactionCanvasRef.current, hasInteractionContent);
-      if (interaction) renderPrecisionInteractionCanvas(interaction, adapter, pointerRef.current, true, theme);
-    });
+    const frame = requestAnimationFrame(() => paintRef.current());
     return () => cancelAnimationFrame(frame);
   }, [adapter, engaged, resizeCanvas, revision, snapshot.draft, snapshot.objects, snapshot.selectedIds, snapshot.toolbar.hidden, snapshot.toolbar.mode, theme]);
+
+  // Repaint with the chart, not with React.
+  //
+  // Waiting on a state-driven effect meant the canvas was rebuilt only after a
+  // throttle, a low-priority transition and a very large component had all
+  // finished — by which time the candles had already moved, so every precision
+  // drawing floated behind them. This redraws in the same beat as the chart.
+  useEffect(() => {
+    const subscribe = adapter.subscribeViewport;
+    if (!subscribe) return;
+    let frame: number | null = null;
+    const unsubscribe = subscribe(() => {
+      if (frame != null) return;
+      frame = requestAnimationFrame(() => {
+        frame = null;
+        paintRef.current();
+      });
+    });
+    return () => {
+      if (frame != null) cancelAnimationFrame(frame);
+      unsubscribe();
+    };
+  }, [adapter.subscribeViewport]);
 
   useEffect(() => {
     const latest = adapter.candles.at(-1)?.close ?? null;

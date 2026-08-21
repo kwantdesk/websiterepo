@@ -55,7 +55,8 @@
     "test:position-calculator-labels": "node scripts/test-position-calculator-labels.mjs",
     "test:overlay-refresh": "node scripts/test-overlay-refresh.mjs",
     "test:position-calculator-primitive": "node scripts/test-position-calculator-primitive.mjs",
-    "test:overlay-clip": "node --experimental-strip-types scripts/test-chart-overlay-clip.mjs"
+    "test:overlay-clip": "node --experimental-strip-types scripts/test-chart-overlay-clip.mjs",
+    "test:precision-repaint": "node scripts/test-precision-repaint.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",

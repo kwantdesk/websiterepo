@@ -173,6 +173,16 @@ export interface PrecisionChartAdapter {
   yToPrice: (y: number) => number | null;
   setVisibleTimeRange: (startMs: number, endMs: number) => void;
   requestChartRender: () => void;
+  /**
+   * Subscribe to the chart's own paint pass.
+   *
+   * The layer's canvas used to redraw from a React effect keyed on the
+   * adapter, which is rebuilt from throttled state — so every drawing was a
+   * frame or more behind the candles and visibly floated while the chart was
+   * panned. Redrawing on this signal puts the canvas back in step with the
+   * bars, because the adapter's projections read the chart live.
+   */
+  subscribeViewport?: (listener: () => void) => () => void;
 }
 
 export interface PrecisionScreenPoint { x: number; y: number }
