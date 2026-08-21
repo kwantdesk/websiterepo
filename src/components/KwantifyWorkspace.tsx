@@ -1100,6 +1100,14 @@ const GEX_STANDARD_WORKSPACE_ID = "gex-standard";
 const GEX_STANDARD_WORKSPACE_NAME = "GEX STANDARD";
 const GEX_STANDARD_WORKSPACE_UPDATED_AT = "2026-08-17T00:00:00.000Z";
 
+/**
+ * Calendar days requested for an event-bar chart's FIRST paint.
+ *
+ * One session is enough to fill the screen and returns in seconds, where the
+ * full window has to replay days of one-second tape before it can answer.
+ */
+const EVENT_BAR_FIRST_PAINT_DAYS = 1;
+
 function defaultWorkspacePanes(scope: ChartWorkspaceScope) {
   return scope === "gamma" ? DEFAULT_GAMMA_WORKSPACE_PANES : DEFAULT_WORKSPACE_PANES;
 }
@@ -3665,6 +3673,10 @@ async function fetchWorkspaceCandles(
   // The periodic flow-heal only needs the route's flow-baked candles. It must
   // not re-download the gateway execution archive or replace the shared tape.
   healOnly = false,
+  // How much calendar history to ask the route for. Event-based bars have to
+  // be BUILT from the raw tape, so a full ten-day window is minutes of work on
+  // a cold cache; the first paint asks for a short window instead.
+  historyDays = DEFAULT_CHART_HISTORY_CALENDAR_DAYS,
 ) {
   const periodConfig = getPeriodConfig(period);
   const usingCTraderFeed = FALLBACK_CTRADER_BROKER_NAMES.includes(broker as (typeof FALLBACK_CTRADER_BROKER_NAMES)[number]);
@@ -3675,7 +3687,7 @@ async function fetchWorkspaceCandles(
   const historicalLimit = getHistoricalCandleLimit(period, timeframe, outputsize);
 
   if (broker === "Databento") {
-    const requestKey = `${symbol}::${timeframe}::${includeOrderFlow ? "flow" : "bars"}${forceFresh ? "::fresh" : ""}${healOnly ? "::heal" : ""}`;
+    const requestKey = `${symbol}::${timeframe}::${includeOrderFlow ? "flow" : "bars"}${forceFresh ? "::fresh" : ""}${healOnly ? "::heal" : ""}::${historyDays}d`;
     const pending = workspaceCandleRequests.get(requestKey);
     if (pending) return pending;
 
@@ -3686,7 +3698,7 @@ async function fetchWorkspaceCandles(
         ? fetchWorkspaceOrderFlow(symbol, timeframe, contractSymbol)
         : Promise.resolve(null);
       const response = await fetch(
-        `/api/cme-history?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&days=${DEFAULT_CHART_HISTORY_CALENDAR_DAYS}${includeOrderFlow ? "&orderFlow=1" : ""}${healOnly ? "&exec=0" : ""}${forceFresh ? `&fresh=1&t=${Date.now()}` : ""}`,
+        `/api/cme-history?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&days=${historyDays}${includeOrderFlow ? "&orderFlow=1" : ""}${healOnly ? "&exec=0" : ""}${forceFresh ? `&fresh=1&t=${Date.now()}` : ""}`,
         {
           cache: "no-store",
           // Keep a history request alive across rapid timeframe switches. Its
@@ -6146,9 +6158,51 @@ function WorkspaceChartPaneComponent({
       // on every CME interval instead of holding both panes behind the
       // aggressor-tape reconstruction. The durable flow request below then
       // merges into the same chart-bar boundaries.
+      // Event bars (500v, 40R, Renko...) are CONSTRUCTED from the raw tape, so
+      // a cold ten-day request is minutes of server work. Until it lands the
+      // pane has no history at all and shows the single live bar the stream is
+      // building — the "one candle then it takes ages" load. Ask for one day
+      // first, which returns quickly and is real data, paint it, and let the
+      // full window merge in behind it.
+      if (
+        pane.broker === "Databento"
+        && isEventBasedChartInterval(pane.timeframe)
+        && !cachedBase.length
+      ) {
+        try {
+          const quickHistory = await fetchWorkspaceCandles(
+            pane.symbol,
+            pane.timeframe,
+            pane.broker,
+            period,
+            500,
+            needsOrderFlowHistory,
+            requestController.signal,
+            false,
+            false,
+            EVENT_BAR_FIRST_PAINT_DAYS,
+          );
+          if (cancelled) return;
+          const quickCandles = trimCandlesAfterActiveBucket(
+            sanitizeCandles(quickHistory, pane.symbol),
+            pane.timeframe,
+          );
+          // Never let the short window overwrite a fuller series that the main
+          // request may already have committed.
+          if (quickCandles.length > latestCandlesRef.current.length) {
+            latestCandlesRef.current = quickCandles;
+            setCandles(quickCandles);
+            setLoading(false);
+            setError(null);
+          }
+        } catch {
+          // The full request below is still running and remains the authority.
+        }
+      }
       if (
         pane.broker === "Databento"
         && needsOrderFlowHistory
+        && !isEventBasedChartInterval(pane.timeframe)
         && !cachedBase.length
       ) {
         try {

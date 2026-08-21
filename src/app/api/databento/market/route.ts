@@ -220,8 +220,13 @@ export async function GET(request: Request) {
   const includeExecutions = includeOrderFlow && url.searchParams.get("exec") !== "0";
   const forceFresh = url.searchParams.get("fresh") === "1";
   const requestedDays = Number(url.searchParams.get("days") ?? DEFAULT_HISTORY_DAYS);
+  // The floor used to be the ten-day default, so a caller asking for a SHORT
+  // window silently received the full one. Event-based bars have to be built
+  // from the raw tape, and a chart that wants one session for its first paint
+  // was therefore made to wait for ten days of reconstruction before it could
+  // show anything. A request for less history is now honoured.
   const historyDays = Number.isFinite(requestedDays)
-    ? Math.max(DEFAULT_HISTORY_DAYS, Math.min(MAX_HISTORY_DAYS, Math.round(requestedDays)))
+    ? Math.max(1, Math.min(MAX_HISTORY_DAYS, Math.round(requestedDays)))
     : DEFAULT_HISTORY_DAYS;
   if (!symbol || symbol.length > 90) {
     return NextResponse.json({ error: "A valid CME instrument is required." }, { status: 400 });

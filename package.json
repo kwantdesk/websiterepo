@@ -45,7 +45,8 @@
     "test:volume-profile-split": "node scripts/test-volume-profile-split.mjs",
     "test:volume-profile-grouping": "node scripts/test-volume-profile-grouping.mjs",
     "test:volume-profile-chain": "node scripts/test-volume-profile-chain.mjs",
-    "test:volume-profile-gradients": "node scripts/test-volume-profile-gradients.mjs"
+    "test:volume-profile-gradients": "node scripts/test-volume-profile-gradients.mjs",
+    "test:event-bar-first-paint": "node scripts/test-event-bar-first-paint.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",
