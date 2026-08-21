@@ -40,12 +40,25 @@ function candleIndexForTimestamp(candles: Candle[], timestamp: number) {
   return nextTimestamp == null || timestamp < nextTimestamp ? result : -1;
 }
 
-function priceLevelRecords(candles: Candle[], records: InstitutionalTrade[], tickSize: number) {
+/**
+ * Buckets executions into per-bar price levels. `groupingTicks` merges N
+ * adjacent ticks into one level before any imbalance test — the reference
+ * tracker's "Tick grouping ticks", which is how a 1-tick book is read at the
+ * granularity the trader actually watches.
+ */
+function priceLevelRecords(
+  candles: Candle[],
+  records: InstitutionalTrade[],
+  tickSize: number,
+  groupingTicks: number,
+) {
   const levelsByBar = new Map<number, Map<number, Level>>();
+  const group = Math.max(1, Math.round(groupingTicks));
   records.forEach((record) => {
     const candleIndex = candleIndexForTimestamp(candles, record.timestamp);
     if (candleIndex < 0) return;
-    const tick = Math.round(record.close / tickSize);
+    const rawTick = Math.round(record.close / tickSize);
+    const tick = group > 1 ? Math.floor(rawTick / group) * group : rawTick;
     const bar = levelsByBar.get(candleIndex) ?? new Map<number, Level>();
     const level = bar.get(tick) ?? { tick, bid: 0, ask: 0 };
     level.bid += Math.max(0, finite(record.bidVolume));
@@ -69,12 +82,12 @@ function qualifies(
   return (numerator / denominator) * 100 >= minimumPercent;
 }
 
-function consecutiveRuns(ticks: number[], minimumLength: number) {
+function consecutiveRuns(ticks: number[], minimumLength: number, step = 1) {
   const sorted = [...new Set(ticks)].sort((left, right) => left - right);
   const runs: number[][] = [];
   let run: number[] = [];
   sorted.forEach((tick) => {
-    if (!run.length || tick === run.at(-1)! + 1) {
+    if (!run.length || tick === run.at(-1)! + step) {
       run.push(tick);
     } else {
       if (run.length >= minimumLength) runs.push(run);
@@ -83,6 +96,45 @@ function consecutiveRuns(ticks: number[], minimumLength: number) {
   });
   if (run.length >= minimumLength) runs.push(run);
   return runs;
+}
+
+/** Chicago (exchange) wall-clock minutes for a timestamp. */
+function exchangeMinutes(timestamp: number) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Chicago",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(timestamp);
+  const hour = Number(parts.find((part) => part.type === "hour")?.value ?? "0");
+  const minute = Number(parts.find((part) => part.type === "minute")?.value ?? "0");
+  return hour * 60 + minute;
+}
+
+function clockMinutes(value: unknown, fallback: number) {
+  const match = /^(\d{1,2}):(\d{2})$/.exec(String(value ?? ""));
+  if (!match) return fallback;
+  const minutes = Number(match[1]) * 60 + Number(match[2]);
+  return Number.isFinite(minutes) ? minutes : fallback;
+}
+
+/** The exchange-session key a bar belongs to, for reset modes. */
+function sessionKeyFor(timestamp: number, mode: string) {
+  if (mode === "session" || mode === "day") {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Chicago",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(timestamp);
+  }
+  if (mode === "week") {
+    const date = new Date(timestamp);
+    const week = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+    week.setUTCDate(week.getUTCDate() - ((week.getUTCDay() + 6) % 7));
+    return week.toISOString().slice(0, 10);
+  }
+  return "";
 }
 
 function zoneLifecycle(
@@ -121,13 +173,28 @@ export function calculateImbalanceZones(
   ));
   const minimumDelta = Math.max(0, finite(settings.minimumDelta, 10));
   const minimumConsecutive = Math.max(1, Math.round(finite(settings.minimumConsecutive, 3)));
-  const extendedBars = Math.max(1, Math.round(finite(settings.extendedBars, 40)));
+  const extendedBars = Math.max(1, Math.round(finite(settings.extendedBars, 10)));
+  const groupingTicks = Math.max(1, Math.round(finite(settings.tickGroupingTicks, 1)));
+  const zonesExtraTicks = Math.max(0, Math.round(finite(settings.zonesExtraTicks, 0)));
   const includeZero = settings.includeZero === true;
   const showTriggered = settings.showTriggered !== false;
-  const levelsByBar = priceLevelRecords(candles, records, tickSize);
+  const resetMode = String(settings.resetMode ?? "none");
+  const filterTime = String(settings.filterTime ?? "none");
+  const sessionStart = clockMinutes(settings.sessionStart, 9 * 60 + 30);
+  const sessionEnd = clockMinutes(settings.sessionEnd, 16 * 60);
+  const levelsByBar = priceLevelRecords(candles, records, tickSize, groupingTicks);
   const output: ImbalanceZone[] = [];
 
   levelsByBar.forEach((bar, candleIndex) => {
+    // Filter Time: only bars inside the configured exchange-time window may
+    // create zones. An overnight window (end before start) wraps midnight.
+    if (filterTime === "custom") {
+      const minutes = exchangeMinutes(candles[candleIndex].timestamp);
+      const inWindow = sessionStart <= sessionEnd
+        ? minutes >= sessionStart && minutes < sessionEnd
+        : minutes >= sessionStart || minutes < sessionEnd;
+      if (!inWindow) return;
+    }
     const buyTicks: number[] = [];
     const sellTicks: number[] = [];
     bar.forEach((level) => {
@@ -155,12 +222,26 @@ export function calculateImbalanceZones(
     });
 
     (["BUY", "SELL"] as const).forEach((side) => {
-      consecutiveRuns(side === "BUY" ? buyTicks : sellTicks, minimumConsecutive).forEach((run) => {
+      consecutiveRuns(side === "BUY" ? buyTicks : sellTicks, minimumConsecutive, groupingTicks).forEach((run) => {
         const firstTick = run[0];
         const lastTick = run.at(-1)!;
-        const bottom = (firstTick - 0.5) * tickSize;
-        const top = (lastTick + 0.5) * tickSize;
-        const intendedEnd = Math.min(candles.length - 1, candleIndex + extendedBars);
+        // A grouped level spans `groupingTicks` ticks; "Zones extra ticks"
+        // then pads the drawn zone symmetrically.
+        const bottom = (firstTick - 0.5 - zonesExtraTicks) * tickSize;
+        const top = (lastTick + groupingTicks - 0.5 + zonesExtraTicks) * tickSize;
+        // Reset mode ends every zone at its session/day/week boundary rather
+        // than letting it run the full extension.
+        const extensionEnd = Math.min(candles.length - 1, candleIndex + extendedBars);
+        let intendedEnd = extensionEnd;
+        if (resetMode !== "none") {
+          const originKey = sessionKeyFor(candles[candleIndex].timestamp, resetMode);
+          for (let index = candleIndex + 1; index <= extensionEnd; index += 1) {
+            if (sessionKeyFor(candles[index].timestamp, resetMode) !== originKey) {
+              intendedEnd = index - 1;
+              break;
+            }
+          }
+        }
         const lifecycle = zoneLifecycle(
           candles,
           candleIndex,
