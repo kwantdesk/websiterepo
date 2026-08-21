@@ -13,6 +13,13 @@ export type VolumeProfileValueArea = {
 // This is a measurement convention, not a visual preference.
 export const STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT = 70;
 
+/**
+ * The desk's own value area. 70% is the textbook figure and stays available as
+ * the standard constant above for anything that must express it, but every
+ * profile on KwantDesk opens at 68%.
+ */
+export const DEFAULT_VOLUME_PROFILE_VALUE_AREA_PERCENT = 68;
+
 export function volumeProfileBinTick(tick: number, groupTicks: number) {
   const size = Math.max(1, Math.round(groupTicks));
   return Math.floor(tick / size) * size;

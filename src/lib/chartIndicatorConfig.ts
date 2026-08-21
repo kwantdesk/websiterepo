@@ -1,6 +1,6 @@
 import type { ChartSettings } from "@/lib/chartSettings";
 import type { ChartIndicatorInstance } from "@/lib/chartIndicatorCatalog";
-import { STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT } from "@/lib/volumeProfileMath";
+import { DEFAULT_VOLUME_PROFILE_VALUE_AREA_PERCENT } from "@/lib/volumeProfileMath";
 import { DEFAULT_FOOTPRINT_SETTINGS, FOOTPRINT_SETTINGS_SCHEMA_VERSION } from "@/lib/footprintSettings";
 import { defaultTpoSettings, tpoSettingsToRecord, validateTpoSettings } from "@/lib/tpo/settings";
 import { DEFAULT_DOM_PRO_VISIBLE_ROWS, DOM_PRO_SETTINGS_VERSION } from "@/lib/domPro";
@@ -693,7 +693,7 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "lineWidth", label: "Line width", defaultValue: 1, min: 1, max: 4, step: 1 },
   ],
   "kwant-profile": [
-    { key: "groupTicks", label: "Price grouping (ticks)", defaultValue: 1, min: 1, max: 500 },
+    { key: "groupTicks", label: "Price grouping (ticks)", defaultValue: 4, min: 1, max: 500 },
     { key: "autoGroupFactor", label: "Automatic grouping factor", defaultValue: 1, min: 0.5, max: 4, step: 0.25 },
     { key: "profileWidth", label: "Profile width (% of chart)", defaultValue: 24, min: 0, max: 60, step: 0.5 },
     { key: "opacity", label: "Profile opacity (%)", defaultValue: 72, min: 10, max: 100 },
@@ -799,7 +799,7 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "maxTradeVolume", label: "Maximum execution size (0 = no maximum)", defaultValue: 0, min: 0, max: 1000000 },
   ],
   "custom-draw-on-volume-profile": [
-    { key: "groupTicks", label: "Price grouping (ticks)", defaultValue: 1, min: 1, max: 500 },
+    { key: "groupTicks", label: "Price grouping (ticks)", defaultValue: 4, min: 1, max: 500 },
     { key: "autoGroupFactor", label: "Automatic grouping factor", defaultValue: 1, min: 0.5, max: 4, step: 0.25 },
     { key: "profileWidth", label: "Profile width (% of selected range)", defaultValue: 45, min: 0, max: 100, step: 0.5 },
     { key: "opacity", label: "Profile opacity (%)", defaultValue: 76, min: 10, max: 100 },
@@ -807,7 +807,7 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "maxTradeVolume", label: "Maximum execution size (0 = no maximum)", defaultValue: 0, min: 0, max: 1000000 },
   ],
   "ask-bid-volume-profile": [
-    { key: "groupTicks", label: "Price grouping (ticks)", defaultValue: 1, min: 1, max: 500 },
+    { key: "groupTicks", label: "Price grouping (ticks)", defaultValue: 4, min: 1, max: 500 },
     { key: "autoGroupFactor", label: "Automatic grouping factor", defaultValue: 1, min: 0.5, max: 4, step: 0.25 },
     { key: "profileWidth", label: "Profile width (% of chart)", defaultValue: 28, min: 0, max: 60, step: 0.5 },
     { key: "opacity", label: "Profile opacity (%)", defaultValue: 78, min: 10, max: 100 },
@@ -815,7 +815,7 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "maxTradeVolume", label: "Maximum execution size (0 = no maximum)", defaultValue: 0, min: 0, max: 1000000 },
   ],
   "delta-profile": [
-    { key: "groupTicks", label: "Price grouping (ticks)", defaultValue: 1, min: 1, max: 500 },
+    { key: "groupTicks", label: "Price grouping (ticks)", defaultValue: 4, min: 1, max: 500 },
     { key: "autoGroupFactor", label: "Automatic grouping factor", defaultValue: 1, min: 0.5, max: 4, step: 0.25 },
     { key: "profileWidth", label: "Profile width (% of chart)", defaultValue: 24, min: 0, max: 60, step: 0.5 },
     { key: "opacity", label: "Profile opacity (%)", defaultValue: 78, min: 10, max: 100 },
@@ -1754,7 +1754,7 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
   ...(indicatorId === "tpo-chart" ? tpoSettingsToRecord(defaultTpoSettings("daily-tpo", theme)) : {}),
   ...(indicatorId === "weekly-tpo" ? tpoSettingsToRecord(defaultTpoSettings("weekly-tpo", theme)) : {}),
   ...(["kwant-profile", "weekly-volume-profile", "custom-draw-on-volume-profile", "ask-bid-volume-profile", "delta-profile"].includes(indicatorId) ? {
-    valueAreaPercent: STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
+    valueAreaPercent: DEFAULT_VOLUME_PROFILE_VALUE_AREA_PERCENT,
     // Data Settings — the input series, the trade-size band applied before
     // binning, and how many ticks share a profile row. Automatic derives the
     // row height from the session range; Manual pins it to groupTicks.
@@ -1821,7 +1821,10 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
       : indicatorId === "delta-profile"
         ? "delta"
         : "volume",
-    groupingMode: "automatic",
+    // Manual 4-tick rows are the desk standard: automatic grouping re-derived
+    // the row height from each session's range, so the same instrument drew a
+    // different profile granularity day to day.
+    groupingMode: "manual",
     snapMode: indicatorId === "custom-draw-on-volume-profile" ? "off" : "left",
     useThemeColors: true,
     showText: false,
@@ -1836,7 +1839,7 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     showVwapLine: false,
     showVwapBands: false,
     showSummary: false,
-    profileSettingsVersion: 12,
+    profileSettingsVersion: 13,
     align: indicatorId === "kwant-profile"
       ? "session"
       : indicatorId === "weekly-volume-profile" ? "left" : "right",
@@ -2159,17 +2162,23 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
     ["kwant-profile", "weekly-volume-profile", "custom-draw-on-volume-profile", "ask-bid-volume-profile", "delta-profile"]
       .includes(normalizedInstance.indicatorId)
   ) {
-    normalizedInstance = {
-      ...normalizedInstance,
-      settings: {
-        ...(normalizedInstance.settings ?? {}),
-        valueAreaPercent: STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
-      },
-    };
+    // This used to overwrite valueAreaPercent on every normalize, which pinned
+    // every profile to the constant and quietly discarded the trader's own
+    // setting. It now only fills the value in when a saved profile has none.
+    const storedValueArea = Number(normalizedInstance.settings?.valueAreaPercent);
+    if (!Number.isFinite(storedValueArea) || storedValueArea <= 0 || storedValueArea > 100) {
+      normalizedInstance = {
+        ...normalizedInstance,
+        settings: {
+          ...(normalizedInstance.settings ?? {}),
+          valueAreaPercent: DEFAULT_VOLUME_PROFILE_VALUE_AREA_PERCENT,
+        },
+      };
+    }
   }
   if (
     normalizedInstance.indicatorId === "kwant-profile"
-    && Number(normalizedInstance.settings?.profileSettingsVersion) < 12
+    && Number(normalizedInstance.settings?.profileSettingsVersion) < 13
   ) {
     return {
       ...normalizedInstance,
@@ -2193,7 +2202,6 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         minTradeVolume: normalizedInstance.settings?.minTradeVolume ?? 0,
         maxTradeVolume: normalizedInstance.settings?.maxTradeVolume ?? 0,
         autoGroupFactor: normalizedInstance.settings?.autoGroupFactor ?? 1,
-        groupTicks: normalizedInstance.settings?.groupTicks ?? 4,
         // Structure settings arrived in v8, defaulted off so a saved profile
         // keeps the exact look it had before the upgrade.
         showPeaks: normalizedInstance.settings?.showPeaks ?? false,
@@ -2227,14 +2235,20 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         sessionStartMinutes: normalizedInstance.settings?.sessionStartMinutes ?? 8 * 60 + 30,
         sessionEndMinutes: normalizedInstance.settings?.sessionEndMinutes ?? 15 * 60 + 15,
         useEndSessionAsStartDay: normalizedInstance.settings?.useEndSessionAsStartDay ?? false,
-        profileSettingsVersion: 12,
+        // Desk standard (v13): manual 4-tick rows and a 68% value area on
+        // every profile. Forced, not defaulted — this is a deliberate reset of
+        // the granularity and value area across saved charts.
+        groupingMode: "manual",
+        groupTicks: 4,
+        valueAreaPercent: DEFAULT_VOLUME_PROFILE_VALUE_AREA_PERCENT,
+        profileSettingsVersion: 13,
       },
     };
   }
   if (
     ["weekly-volume-profile", "custom-draw-on-volume-profile", "ask-bid-volume-profile", "delta-profile"]
       .includes(normalizedInstance.indicatorId)
-    && Number(normalizedInstance.settings?.profileSettingsVersion) < 12
+    && Number(normalizedInstance.settings?.profileSettingsVersion) < 13
   ) {
     return {
       ...normalizedInstance,
@@ -2249,7 +2263,6 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         minTradeVolume: normalizedInstance.settings?.minTradeVolume ?? 0,
         maxTradeVolume: normalizedInstance.settings?.maxTradeVolume ?? 0,
         autoGroupFactor: normalizedInstance.settings?.autoGroupFactor ?? 1,
-        groupTicks: normalizedInstance.settings?.groupTicks ?? 4,
         // Structure settings arrived in v8, defaulted off so a saved profile
         // keeps the exact look it had before the upgrade.
         showPeaks: normalizedInstance.settings?.showPeaks ?? false,
@@ -2283,7 +2296,13 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         sessionStartMinutes: normalizedInstance.settings?.sessionStartMinutes ?? 8 * 60 + 30,
         sessionEndMinutes: normalizedInstance.settings?.sessionEndMinutes ?? 15 * 60 + 15,
         useEndSessionAsStartDay: normalizedInstance.settings?.useEndSessionAsStartDay ?? false,
-        profileSettingsVersion: 12,
+        // Desk standard (v13): manual 4-tick rows and a 68% value area on
+        // every profile. Forced, not defaulted — this is a deliberate reset of
+        // the granularity and value area across saved charts.
+        groupingMode: "manual",
+        groupTicks: 4,
+        valueAreaPercent: DEFAULT_VOLUME_PROFILE_VALUE_AREA_PERCENT,
+        profileSettingsVersion: 13,
       },
     };
   }

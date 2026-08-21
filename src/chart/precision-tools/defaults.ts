@@ -44,7 +44,7 @@ export function defaultToolOptions(toolId: PrecisionToolId): PrecisionObject["op
         automaticGroupingFactor: 1, manualTicksPerRow: 1, showValues: false,
         numberFormat: "automatic", summaryEnabled: true, showPoc: true,
         pocLineEnabled: true, pocExtendMode: "selection", displayPocValue: true,
-        showValueArea: true, valueAreaPercent: 70, valueAreaLines: true,
+        showValueArea: true, valueAreaPercent: 68, valueAreaLines: true,
         valueAreaExtendMode: "selection", peakValleyEnabled: false,
         peakSensitivity: 0.65, peakMinimumVolume: 0, valleyMaximumVolume: 0,
       };

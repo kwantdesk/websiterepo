@@ -204,7 +204,7 @@ export default function ChartDrawLayer({
         t0,
         t1,
         drawing.style.profileRows ?? 80,
-        drawing.style.valueAreaPercent ?? 70,
+        drawing.style.valueAreaPercent ?? 68,
       ));
     }
     return cache;
@@ -703,7 +703,7 @@ export default function ChartDrawLayer({
           const x0 = toX(t0); const x1 = toX(t1);
           if (x0 == null || x1 == null) return null;
           const rows = style.profileRows ?? 80;
-          const valueArea = style.valueAreaPercent ?? 70;
+          const valueArea = style.valueAreaPercent ?? 68;
           // Committed drawings read the memoized histogram (recomputed only when
           // candles/anchors/settings change); the live preview recomputes only
           // when the cursor crosses a bar, never per pixel.

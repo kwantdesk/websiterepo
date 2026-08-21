@@ -182,7 +182,7 @@ function renderObject(ctx: CanvasRenderingContext2D, object: PrecisionObject, ad
       const automaticRows = Math.round(48 / Math.max(0.25, Number(object.options.automaticGroupingFactor ?? 1)));
       const profileKey = `${start}:${end}:${adapter.minMove}:${automaticRows}:${manualTicks}:${object.options.valueAreaPercent}:${adapter.trades.length}:${adapter.trades.at(-1)?.timestamp ?? 0}`;
       let profile = analyticalProfileCache.get(object.id)?.key === profileKey ? analyticalProfileCache.get(object.id)!.value : null;
-      if (!profile) { profile = buildExecutedVolumeProfile(adapter.trades, start, end, adapter.minMove, automaticRows, Number(object.options.valueAreaPercent ?? 70), manualTicks); boundedCacheSet(analyticalProfileCache, object.id, { key: profileKey, value: profile }); }
+      if (!profile) { profile = buildExecutedVolumeProfile(adapter.trades, start, end, adapter.minMove, automaticRows, Number(object.options.valueAreaPercent ?? 68), manualTicks); boundedCacheSet(analyticalProfileCache, object.id, { key: profileKey, value: profile }); }
       const left = Math.min(a[0].x, a[1].x), right = Math.max(a[0].x, a[1].x), profileWidth = Math.max(40, (right - left) * clamp(Number(object.options.widthPercent ?? 28) / 100, 0.1, 1));
       if (profile.source === "unavailable") { label(ctx, object, right, Math.min(a[0].y, a[1].y), "Executed volume-at-price data is required.", "right"); break; }
       const lowerPrice = Math.min(object.anchors[0].price, object.anchors[1].price);

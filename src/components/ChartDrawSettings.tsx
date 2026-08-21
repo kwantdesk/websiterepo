@@ -101,8 +101,8 @@ export default function ChartDrawSettings({ drawing, onChange, onClose }: Props)
                   <Row label={`Rows · ${drawing.style.profileRows ?? 80}`}>
                     <input type="range" min={20} max={200} step={5} value={drawing.style.profileRows ?? 80} onChange={(e) => patchStyle({ profileRows: Number(e.target.value) })} className="w-40 accent-primary" />
                   </Row>
-                  <Row label={`Value area · ${drawing.style.valueAreaPercent ?? 70}%`}>
-                    <input type="range" min={50} max={95} step={1} value={drawing.style.valueAreaPercent ?? 70} onChange={(e) => patchStyle({ valueAreaPercent: Number(e.target.value) })} className="w-40 accent-primary" />
+                  <Row label={`Value area · ${drawing.style.valueAreaPercent ?? 68}%`}>
+                    <input type="range" min={50} max={95} step={1} value={drawing.style.valueAreaPercent ?? 68} onChange={(e) => patchStyle({ valueAreaPercent: Number(e.target.value) })} className="w-40 accent-primary" />
                   </Row>
                   <Row label={`Profile width · ${drawing.style.profileWidthPercent ?? 32}%`}>
                     <input type="range" min={10} max={80} step={2} value={drawing.style.profileWidthPercent ?? 32} onChange={(e) => patchStyle({ profileWidthPercent: Number(e.target.value) })} className="w-40 accent-primary" />

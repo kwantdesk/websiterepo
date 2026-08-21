@@ -1024,8 +1024,8 @@ async function buildLevelSnapshot(config: PanelConfig, settings: ChartSettings) 
     symbol: config.instrument,
     period: "daily",
     tradingDate: chicagoTradingDate(Date.now()),
-    groupTicks: 1,
-    valueAreaPercent: 70,
+    groupTicks: 4,
+    valueAreaPercent: 68,
   });
   const [payload, cachedDeveloping] = await Promise.all([
     requestJson<ValueAreaPayload>(

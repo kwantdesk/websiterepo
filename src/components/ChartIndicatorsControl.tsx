@@ -2055,9 +2055,9 @@ export default function ChartIndicatorsControl({
                       min={1}
                       max={100}
                       step={1}
-                      value={Number(settingsInstance.settings?.valueAreaPercent ?? 70)}
+                      value={Number(settingsInstance.settings?.valueAreaPercent ?? 68)}
                       onChange={(event) => {
-                        const next = Math.min(100, Math.max(1, Math.round(Number(event.target.value) || 70)));
+                        const next = Math.min(100, Math.max(1, Math.round(Number(event.target.value) || 68)));
                         replace(settingsInstance.instanceId, (current) => ({
                           ...current,
                           settings: { ...(current.settings ?? {}), valueAreaPercent: next },
