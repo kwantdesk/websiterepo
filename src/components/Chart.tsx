@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, startTransition, useCallback, useEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
+import { memo, startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
 import {
   createChart,
   LineStyle,
@@ -3304,6 +3304,92 @@ function Chart({
   // zones, Expected Move rails) inside the price pane, under the price scale.
   const chartPaneClipId = `chart-pane-clip-${chartInstanceId.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
   const [viewportVersion, setViewportVersion] = useState(0);
+  // Price-pane drawings are laid out by React, which commits viewport changes
+  // at most every VIEWPORT_REACT_REFRESH_INTERVAL_MS and does it inside a
+  // low-priority transition. The candles move on the canvas every frame, so
+  // between commits a position calculator sits where the chart used to be —
+  // the drawing visibly floating away from its own bars during a pan.
+  //
+  // The basis captured at each commit lets the overlay be re-projected onto
+  // the live viewport every frame, exactly like the gamma heatmap re-projects
+  // its cached surface. Both axes are linear, so two reference points per
+  // axis describe the move exactly.
+  const drawingLayerRef = useRef<SVGGElement | null>(null);
+  const drawingProjectionRef = useRef<{
+    fromX: number; toX: number; fromLogical: number; toLogical: number;
+    topY: number; bottomY: number; topPrice: number; bottomPrice: number;
+  } | null>(null);
+
+  const logicalToX = (
+    timeScale: ReturnType<NonNullable<typeof chartRef.current>["timeScale"]>,
+    logical: number,
+    ) => timeScale.logicalToCoordinate(
+    logical as Parameters<typeof timeScale.logicalToCoordinate>[0],
+    );
+
+  const captureDrawingProjection = useCallback(() => {
+    const chart = chartRef.current;
+    const series = candleSeriesRef.current;
+    if (!chart || !series) return;
+    const paneHeight = chartContainerRef.current?.clientHeight ?? 0;
+    if (paneHeight < 2) return;
+    const range = chart.timeScale().getVisibleLogicalRange();
+    if (!range) return;
+    const fromX = logicalToX(chart.timeScale(), Number(range.from));
+    const toX = logicalToX(chart.timeScale(), Number(range.to));
+    const topPrice = series.coordinateToPrice(0);
+    const bottomPrice = series.coordinateToPrice(paneHeight);
+    if (fromX == null || toX == null || topPrice == null || bottomPrice == null) return;
+    drawingProjectionRef.current = {
+      fromX: Number(fromX), toX: Number(toX),
+      fromLogical: Number(range.from), toLogical: Number(range.to),
+      topY: 0, bottomY: paneHeight,
+      topPrice: Number(topPrice), bottomPrice: Number(bottomPrice),
+    };
+    if (drawingLayerRef.current) drawingLayerRef.current.removeAttribute("transform");
+  }, []);
+
+  const reprojectDrawingLayer = useCallback(() => {
+    const layer = drawingLayerRef.current;
+    const basis = drawingProjectionRef.current;
+    const chart = chartRef.current;
+    const series = candleSeriesRef.current;
+    if (!layer || !basis || !chart || !series) return;
+    const fromX = logicalToX(chart.timeScale(), basis.fromLogical);
+    const toX = logicalToX(chart.timeScale(), basis.toLogical);
+    const topY = series.priceToCoordinate(basis.topPrice);
+    const bottomY = series.priceToCoordinate(basis.bottomPrice);
+    if (fromX == null || toX == null || topY == null || bottomY == null) return;
+    const spanX = basis.toX - basis.fromX;
+    const spanY = basis.bottomY - basis.topY;
+    if (Math.abs(spanX) < 1 || Math.abs(spanY) < 1) return;
+    const scaleX = (Number(toX) - Number(fromX)) / spanX;
+    const scaleY = (Number(bottomY) - Number(topY)) / spanY;
+    if (!Number.isFinite(scaleX) || !Number.isFinite(scaleY) || scaleX <= 0 || scaleY <= 0) return;
+    const translateX = Number(fromX) - scaleX * basis.fromX;
+    const translateY = Number(topY) - scaleY * basis.topY;
+    // Identity between commits is the common case; skip the DOM write.
+    if (
+      Math.abs(scaleX - 1) < 0.0005 && Math.abs(scaleY - 1) < 0.0005
+      && Math.abs(translateX) < 0.5 && Math.abs(translateY) < 0.5
+    ) {
+      layer.removeAttribute("transform");
+      return;
+    }
+    layer.setAttribute(
+      "transform",
+      `translate(${translateX.toFixed(2)} ${translateY.toFixed(2)}) scale(${scaleX.toFixed(5)} ${scaleY.toFixed(5)})`,
+    );
+    }, []);
+
+  // After every commit that repositions the drawings, the layer matches the
+  // live viewport again: clear the interim transform and take a fresh basis
+  // for the frames that follow. useLayoutEffect so this lands before paint
+  // and the drawing never shows one frame at the stale offset.
+  useLayoutEffect(() => {
+    captureDrawingProjection();
+  });
+
   // Footprint row construction is materially heavier than coordinate-only
   // overlays. Keep it off the 64 ms interaction lane used by the native chart
   // so panning and zooming remain responsive in multi-panel workspaces.
@@ -12032,6 +12118,8 @@ function Chart({
       viewportFrameRef.current = window.requestAnimationFrame(() => {
         viewportFrameRef.current = null;
         syncNativePriceScaleWidth();
+        // Every frame of the pan, not every React commit.
+        reprojectDrawingLayer();
         const elapsed = performance.now() - viewportRefreshLastAtRef.current;
         if (elapsed >= VIEWPORT_REACT_REFRESH_INTERVAL_MS) {
           if (viewportRefreshTimerRef.current !== null) {
@@ -16516,7 +16604,7 @@ function Chart({
           fill="transparent"
           pointerEvents={isSvgPositionTool(selectedTool) ? "all" : "none"}
         />
-        <g clipPath={`url(#${chartPaneClipId})`}>
+        <g ref={drawingLayerRef} clipPath={`url(#${chartPaneClipId})`}>
         {zones.map((zone) => renderChartZone(zone))}
         {renderableDrawings.map((drawing) => renderDrawing(drawing))}
         {draftDrawing && renderDrawing(draftDrawing, "draft")}

@@ -31,4 +31,37 @@ assert.match(chart, /timeScaleHeight: CHART_TIME_AXIS_HEIGHT \+ indicatorPaneHei
 const groups = chart.match(/clipPath=\{`url\(#\$\{chartPaneClipId\}\)`\}/g) ?? [];
 assert.ok(groups.length >= 3, `expected every price-pane overlay group to be clipped, found ${groups.length}`);
 
-console.log("Chart overlay clip tests passed.");
+/**
+ * Drawings are laid out by React, which commits viewport changes at most once
+ * per VIEWPORT_REACT_REFRESH_INTERVAL_MS and does it inside a low-priority
+ * transition, while the candles move on the canvas every frame. Between
+ * commits the position calculators sat where the chart used to be — floating
+ * away from their own bars during a pan.
+ */
+{
+  // Re-projection runs in the per-frame rAF, not on the throttled commit.
+  const raf = chart.slice(chart.indexOf("viewportFrameRef.current = window.requestAnimationFrame"));
+  const frameBody = raf.slice(0, raf.indexOf("const scheduleViewportRefresh"));
+  assert.match(frameBody, /reprojectDrawingLayer\(\)/, "the overlay re-projects every frame of the pan");
+
+  // Both axes are linear, so two reference points per axis describe the move
+  // exactly — the same reasoning the gamma heatmap re-projection uses.
+  assert.match(chart, /const scaleX = \(Number\(toX\) - Number\(fromX\)\) \/ spanX;/);
+  assert.match(chart, /const scaleY = \(Number\(bottomY\) - Number\(topY\)\) \/ spanY;/);
+  assert.match(chart, /const translateX = Number\(fromX\) - scaleX \* basis\.fromX;/);
+  assert.match(chart, /const translateY = Number\(topY\) - scaleY \* basis\.topY;/);
+
+  // The basis is retaken after the DOM is updated, so it always describes the
+  // viewport the drawings were actually laid out for.
+  assert.ok(
+    /useLayoutEffect\(\(\) => \{[^}]*captureDrawingProjection\(\);/.test(chart),
+    "the basis is retaken after the DOM is updated",
+  );
+  assert.match(chart, /if \(drawingLayerRef\.current\) drawingLayerRef\.current\.removeAttribute\("transform"\);/);
+  // The layer the transform is applied to is the clipped drawing group.
+  assert.match(chart, /<g ref=\{drawingLayerRef\} clipPath=/);
+  // A degenerate or inverted basis must never produce a transform.
+  assert.match(chart, /if \(!Number\.isFinite\(scaleX\) \|\| !Number\.isFinite\(scaleY\) \|\| scaleX <= 0 \|\| scaleY <= 0\) return;/);
+}
+
+console.log("Chart overlay clip and re-projection tests passed.");
