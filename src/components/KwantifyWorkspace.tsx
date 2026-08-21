@@ -803,7 +803,7 @@ type StrategyItem = {
   totalPnl?: number;
 };
 
-type WorkspaceLayout = "single" | "split-vertical" | "split-horizontal" | "quad" | "columns" | "custom";
+type WorkspaceLayout = "single" | "split-vertical" | "split-horizontal" | "quad" | "columns" | "gexmap-columns" | "custom";
 type WorkspacePagePanelKind = "charts" | "zyon" | "gameplan" | "gamma" | "gexmap" | "liqmap" | "news" | "socials" | "journal";
 type WorkspaceToolKind =
   | "tool-gamma-heatmap"
@@ -1418,6 +1418,32 @@ function createWorkspaceLayoutTree(
           second: pane(3),
         },
       },
+    };
+  }
+  if (layout === "gexmap-columns") {
+    // GEX VUE auto layout: three charts share the left 65% evenly
+    // (21.67% of the workspace each) and the GEX Map owns the right 35%.
+    return {
+      type: "split",
+      id: "root-x",
+      axis: "x",
+      ratio: 65,
+      first: {
+        type: "split",
+        id: "gexmap-columns-1",
+        axis: "x",
+        ratio: 100 / 3,
+        first: pane(0),
+        second: {
+          type: "split",
+          id: "gexmap-columns-2",
+          axis: "x",
+          ratio: 50,
+          first: pane(1),
+          second: pane(2),
+        },
+      },
+      second: pane(3),
     };
   }
   if (layout === "quad") {
@@ -2058,6 +2084,7 @@ function loadChartWorkspaceRuntime(scope: ChartWorkspaceScope): ChartWorkspaceRu
     || layoutValue === "split-horizontal"
     || layoutValue === "quad"
     || layoutValue === "columns"
+    || layoutValue === "gexmap-columns"
     || layoutValue === "custom"
     || layoutValue === "single"
     ? layoutValue
@@ -12298,6 +12325,7 @@ export default function KwantifyWorkspace({
             || nextLayoutValue === "split-horizontal"
             || nextLayoutValue === "quad"
             || nextLayoutValue === "columns"
+            || nextLayoutValue === "gexmap-columns"
             || nextLayoutValue === "custom"
             || nextLayoutValue === "single"
             ? nextLayoutValue
@@ -13356,7 +13384,7 @@ export default function KwantifyWorkspace({
   }, [brokerMode, workspacePanes]);
 
   const applyWorkspaceLayoutTemplate = (layout: Exclude<WorkspaceLayout, "custom">) => {
-    const requiredPaneCount = layout === "quad" || layout === "columns" ? 4 : layout === "single" ? 1 : 2;
+    const requiredPaneCount = layout === "quad" || layout === "columns" || layout === "gexmap-columns" ? 4 : layout === "single" ? 1 : 2;
     const nextPanes = [...workspacePanes];
     const scopedDefaults = defaultWorkspacePanes(chartWorkspaceScopeRef.current);
     for (const defaultPane of scopedDefaults) {
@@ -13373,7 +13401,7 @@ export default function KwantifyWorkspace({
       });
     }
     const currentlyVisible = new Set(collectWorkspacePaneIds(workspaceTree));
-    const orderedPanes = [
+    let orderedPanes = [
       activeWorkspacePane,
       ...nextPanes.filter((pane) => pane.id !== activeWorkspacePane.id),
     ].map((pane, index) => (
@@ -13381,10 +13409,36 @@ export default function KwantifyWorkspace({
         ? pane
         : { ...pane, content: null }
     ));
+    if (layout === "gexmap-columns") {
+      // The auto layout fixes content, not just geometry: three charts on the
+      // left, the embedded GEX Map on the right 35%.
+      orderedPanes = orderedPanes.map((pane, index) => (
+        index < 3
+          ? { ...pane, content: "charts" as WorkspacePanelKind }
+          : index === 3
+            ? { ...pane, content: "gexmap" as WorkspacePanelKind }
+            : pane
+      ));
+    }
     setWorkspacePanes(orderedPanes);
     setWorkspaceLayout(layout);
     setWorkspaceTree(createWorkspaceLayoutTree(layout, orderedPanes));
     setWorkspaceFloatingWindows([]);
+    if (layout === "gexmap-columns") {
+      const mapPane = orderedPanes[3];
+      if (mapPane && mapPane.content === "gexmap") {
+        // Panel type replacement, not an indicator-library add: a chart's
+        // indicator stack must not leak into the map pane.
+        setPaneIndicators((current) => ({ ...current, [mapPane.id]: [] }));
+        setPaneLevelVisibility((current) => ({
+          ...current,
+          [mapPane.id]: { ...EMPTY_PANE_LEVEL_VISIBILITY },
+        }));
+        void preloadWorkspaceModule("gexmap").catch(() => null);
+      }
+      setWorkspacePanelPickerPaneId(null);
+      return;
+    }
     const firstEmptyPane = orderedPanes.slice(0, requiredPaneCount).find((pane) => pane.content === null);
     setWorkspacePanelPickerPaneId(firstEmptyPane?.id ?? null);
   };
@@ -16519,6 +16573,18 @@ export default function KwantifyWorkspace({
                   </span>
                 ),
               },
+              ...(chartWorkspaceScope === "gamma" ? [{
+                layout: "gexmap-columns" as Exclude<WorkspaceLayout, "custom">,
+                title: "Three charts + GEX Map at 35%",
+                icon: (
+                  <span className="grid h-4 w-4 grid-cols-[1fr_1fr_1fr_1.7fr] gap-0.5">
+                    <span className="rounded-[1px] border border-current/70 bg-current/15" />
+                    <span className="rounded-[1px] border border-current/70 bg-current/15" />
+                    <span className="rounded-[1px] border border-current/70 bg-current/15" />
+                    <span className="rounded-[1px] border border-current/70 bg-current/45" />
+                  </span>
+                ),
+              }] : []),
               {
                 layout: "split-horizontal" as Exclude<WorkspaceLayout, "custom">,
                 title: "Two panels stacked",

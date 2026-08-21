@@ -1,4 +1,4 @@
-import { relinkGexMapPaletteToTheme } from "./gexMapPalette";
+import { relinkGexMapPaletteToTheme } from "./gexMapPalette.ts";
 
 export const defaultTheme = {
   background: "#000000",
