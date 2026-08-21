@@ -105,7 +105,7 @@ export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
 
   indicator("Volume", "Volume & Profiles", "Total volume with filtering and delta-aware colouring."),
   indicator("Volume Swing", "Volume & Profiles", "Volume measured across detected price swings.", true),
-  indicator("Daily Profile", "Volume & Profiles", "Configurable daily volume, bid/ask and delta profile.", true, "Reference", "KWANT Profile"),
+  indicator("Daily Volume Profile", "Volume & Profiles", "Configurable daily volume, bid/ask and delta profile.", true, "Reference", "KWANT Profile"),
   // The display name is "TPO Daily", but the stable id must stay "tpo-chart":
   // every registry, settings block and engine check keys off it, and saved
   // workspaces store it. Renaming without this argument silently produced the
