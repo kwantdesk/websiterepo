@@ -31,6 +31,7 @@
     "test:gex-box": "node --experimental-strip-types scripts/test-gex-box.mjs",
     "test:gex-map-star": "node --experimental-strip-types scripts/test-gex-map-star.mjs",
     "test:gex-vue-replay": "node --experimental-strip-types scripts/test-gex-vue-replay.mjs",
+    "test:spxw": "node --test --experimental-strip-types tests/gex-map-spxw-provider.test.mjs",
     "test:themes": "node --test tests/feminine-theme-presets.test.mjs tests/mono-default-theme.test.mjs tests/mr-quant-theme.test.mjs",
     "desktop:build": "powershell -ExecutionPolicy Bypass -File desktop/package-windows.ps1"
   },

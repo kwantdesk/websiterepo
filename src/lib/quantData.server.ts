@@ -2086,11 +2086,17 @@ function errorMessage(result: PromiseSettledResult<unknown>, label: string) {
 }
 
 async function buildOptionsFlowPayload(
-  symbol: string,
+  requestedSymbol: string,
   requestedPriceMode: OptionsPriceMode,
   requestedSessionDate?: string,
   detailMode: "CORE" | "GAMEPLAN" | "FULL" = "FULL",
 ): Promise<OptionsFlowPayload> {
+  // SPXW is an option-class root, not a separately quoted underlying: every
+  // provider read below (exposure, open interest, flow board, cash price) must
+  // address the SPX surface that carries the weekly/0DTE series. The payload's
+  // own identity keeps the requested symbol so labels and saved workspaces do
+  // not silently change instruments.
+  const symbol = gexMapProviderTicker(requestedSymbol);
   const currentSession = getUsOptionsSession();
   const historical = Boolean(requestedSessionDate && requestedSessionDate !== currentSession.sessionDate);
   const session = historical
@@ -2386,7 +2392,7 @@ async function buildOptionsFlowPayload(
   }
 
   return {
-    symbol,
+    symbol: requestedSymbol,
     source: "KwantData",
     // Outside New York options hours this payload is the last completed
     // options book, not a new live snapshot. Keep the source timestamp pinned
@@ -3750,36 +3756,41 @@ export async function getChartGammaLevels(
     ? currentSession
     : { marketOpen: false, sessionDate };
   const symbol = symbols[0];
+  // SPXW is an option-class root with no separately quoted underlying, so its
+  // provider reads address the SPX surface that carries the weekly/0DTE
+  // series. `symbol` remains the trader's chosen source for the reported
+  // identity below.
+  const providerSymbol = gexMapProviderTicker(symbol) as ChartGammaSourceSnapshot["symbol"];
   const [exposureResult, deltaResult, flowResult] = await Promise.allSettled([
     quantDataPost("/options/tool/exposure-by-strike", {
       sessionDate: session.sessionDate,
       greekMode: "GAMMA",
       representationMode: "PER_ONE_PERCENT_MOVE",
-      filter: { ticker: symbol },
+      filter: { ticker: providerSymbol },
     }, session.marketOpen ? CHART_GAMMA_CACHE_TTL_MS : 300_000),
     quantDataPost("/options/tool/exposure-by-strike", {
       sessionDate: session.sessionDate,
       greekMode: "DELTA",
       representationMode: "PER_ONE_PERCENT_MOVE",
-      filter: { ticker: symbol },
+      filter: { ticker: providerSymbol },
     }, session.marketOpen ? CHART_GAMMA_CACHE_TTL_MS : 300_000),
     quantDataPost("/options/tool/order-flow/consolidated", {
       sessionDate: session.sessionDate,
-      filter: { ticker: symbol },
+      filter: { ticker: providerSymbol },
       size: 100,
       sort: { field: "tradeTime", direction: "DESCENDING" },
     }, session.marketOpen ? CHART_GAMMA_CACHE_TTL_MS : 300_000),
   ]);
   const exposurePayload = exposureResult.status === "fulfilled" ? exposureResult.value.payload : null;
-  const parsedGamma = parseExposure(exposurePayload, symbol, "GAMMA");
+  const parsedGamma = parseExposure(exposurePayload, providerSymbol, "GAMMA");
   const parsedDelta = parseExposure(
     deltaResult.status === "fulfilled" ? deltaResult.value.payload : null,
-    symbol,
+    providerSymbol,
     "DELTA",
   );
-  const stockPrice = readStockPrice(exposurePayload, symbol);
+  const stockPrice = readStockPrice(exposurePayload, providerSymbol);
   const parsedSource = chartGammaSourceSnapshot(
-    symbol,
+    providerSymbol,
     exposurePayload,
     session.sessionDate,
     parsedDelta,
@@ -3952,14 +3963,21 @@ export async function getNetGammaExposureSurface(input: {
     throw new QuantDataError("This source is not supported by the shared Gamma exposure adapter.", 400, null);
   }
   const greekMode = input.greekMode ?? "GAMMA";
+  // SPXW is an option-class root, not a separately quoted underlying: asking
+  // exposure-by-strike for it returns a successful but EMPTY payload, which
+  // surfaced as a 422 on every live SPXW Bounce Levels request. Read the SPX
+  // surface (which carries the weekly/0DTE series) exactly like the GEX Map
+  // and interval-map adapters already do, while the returned identity below
+  // stays SPXW so labels, cache keys and the interval-merge guard still match.
+  const providerTicker = gexMapProviderTicker(sourceTicker);
   const response = await quantDataPost("/options/tool/exposure-by-strike", {
     sessionDate: session.sessionDate,
     greekMode,
     representationMode: "PER_ONE_PERCENT_MOVE",
-    filter: { ticker: sourceTicker },
+    filter: { ticker: providerTicker },
   }, session.marketOpen ? 5_000 : 6 * 60 * 60_000);
-  const exposure = parseExposure(response.payload, sourceTicker, greekMode);
-  const sourceSpotPrice = readStockPrice(response.payload, sourceTicker);
+  const exposure = parseExposure(response.payload, providerTicker, greekMode);
+  const sourceSpotPrice = readStockPrice(response.payload, providerTicker);
   if (!exposure?.strikes.length || !sourceSpotPrice || sourceSpotPrice <= 0) {
     throw new QuantDataError(`No signed ${greekMode.toLowerCase()} exposure is available for ${sourceTicker}.`, 422, response.remaining);
   }
