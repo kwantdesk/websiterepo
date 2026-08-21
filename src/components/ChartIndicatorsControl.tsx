@@ -68,7 +68,7 @@ type VolumeProfileSettingsTab =
   | "sessions";
 
 const VOLUME_PROFILE_SETTINGS_TABS: { id: VolumeProfileSettingsTab; label: string }[] = [
-  { id: "general", label: "General" },
+  { id: "general", label: "Placement" },
   { id: "data", label: "Data settings" },
   { id: "plot", label: "Plot settings" },
   { id: "value-area", label: "Value area" },
