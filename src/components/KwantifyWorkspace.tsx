@@ -1077,6 +1077,23 @@ const DEFAULT_GAMMA_WORKSPACE_PANES: WorkspacePane[] = [
   { id: "gex-standard-qqq", symbol: "QQQ", broker: "Market Index", timeframe: "5m", period: "5D", watchlistKey: makeWatchlistKey("QQQ", "Market Index"), content: "charts", locked: false },
 ];
 
+/**
+ * The GEX VUE "charts + GEX Map at 35%" layouts are presets, not just
+ * geometry: picking one stocks the charts and the embedded map with the desk's
+ * standard options surface so the workspace is usable the moment it appears.
+ * The four-chart layout is the one the desk runs; the three-chart layout takes
+ * the first three of the same roster so the two stay consistent.
+ */
+const GEX_MAP_AUTO_CHART_SYMBOLS = ["SPXW", "SPY", "NDX", "NDX"] as const;
+const GEX_MAP_AUTO_CHART_TIMEFRAME = "5m";
+const GEX_MAP_AUTO_CHART_PERIOD = "5D";
+/** SPXW GEX, SPY GEX, QQQ GEX — GAMMA is the mode the map labels "GEX". */
+const GEX_MAP_AUTO_MAP_PANELS = [
+  { id: "left", symbol: "SPXW", greekMode: "GAMMA" as const },
+  { id: "centre", symbol: "SPY", greekMode: "GAMMA" as const },
+  { id: "right", symbol: "QQQ", greekMode: "GAMMA" as const },
+];
+
 const GEX_STANDARD_WORKSPACE_ID = "gex-standard";
 const GEX_STANDARD_WORKSPACE_NAME = "GEX STANDARD";
 const GEX_STANDARD_WORKSPACE_UPDATED_AT = "2026-08-17T00:00:00.000Z";
@@ -13755,15 +13772,38 @@ export default function KwantifyWorkspace({
         : { ...pane, content: null }
     ));
     if (gexMapAutoChartCount) {
-      // The auto layouts fix content, not just geometry: charts on the left,
-      // the embedded GEX Map on the right 35%.
-      orderedPanes = orderedPanes.map((pane, index) => (
-        index < gexMapAutoChartCount
-          ? { ...pane, content: "charts" as WorkspacePanelKind }
-          : index === gexMapAutoChartCount
-            ? { ...pane, content: "gexmap" as WorkspacePanelKind }
-            : pane
-      ));
+      // The auto layouts fix content AND the instruments, not just geometry:
+      // the stock options surface on the left, the embedded GEX Map on the
+      // right 35% carrying the matching exposure columns.
+      orderedPanes = orderedPanes.map((pane, index) => {
+        if (index < gexMapAutoChartCount) {
+          const symbol = GEX_MAP_AUTO_CHART_SYMBOLS[index]
+            ?? GEX_MAP_AUTO_CHART_SYMBOLS[GEX_MAP_AUTO_CHART_SYMBOLS.length - 1];
+          return {
+            ...pane,
+            content: "charts" as WorkspacePanelKind,
+            symbol,
+            // SPXW/SPY/NDX/QQQ are cash-index instruments: they must ride the
+            // Market Index feed, never the CME broker the pane may have held.
+            broker: "Market Index",
+            timeframe: GEX_MAP_AUTO_CHART_TIMEFRAME,
+            period: GEX_MAP_AUTO_CHART_PERIOD,
+            watchlistKey: makeWatchlistKey(symbol, "Market Index"),
+          };
+        }
+        if (index === gexMapAutoChartCount) {
+          return {
+            ...pane,
+            content: "gexmap" as WorkspacePanelKind,
+            gexMapState: {
+              panels: GEX_MAP_AUTO_MAP_PANELS.map((panel) => ({ ...panel })),
+              viewMode: pane.gexMapState?.viewMode ?? "star",
+              stepMinutes: pane.gexMapState?.stepMinutes ?? 1,
+            },
+          };
+        }
+        return pane;
+      });
     }
     setWorkspacePanes(orderedPanes);
     setWorkspaceLayout(layout);
