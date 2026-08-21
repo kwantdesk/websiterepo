@@ -84,15 +84,18 @@ test("completed line tools open their style and template editor on double-click"
   assert.match(chart, /saveSelectedDrawingTemplate/);
 });
 
-test("fib retracement is free-dragged and has persistent Kwant Fib settings", () => {
+test("fib retracement honours the magnet and has persistent Kwant Fib settings", () => {
   assert.match(chart, /const KWANT_FIB_LEVELS = \[1, 0\.786, 0\.618, 0\.5, 0\.382\]/);
   assert.match(chart, /name: "Kwant Fib"/);
   assert.match(chart, /name: "Kwant Fib"[\s\S]*?reverseDirection: true/);
   assert.match(chart, /template\.id === KWANT_FIB_TEMPLATE_ID[\s\S]*?reverseDirection: true/);
-  assert.match(chart, /selectedToolRef\.current === "fibRetracement"/);
+  // The fib magnet exclusion WAS the bug; it must use the shared resolver.
+  assert.doesNotMatch(chart, /=== "fibRetracement" \|\| event\.altKey/);
+  assert.match(chart, /magnetResolverRef\.current\.resolve/);
+  assert.match(chart, /setAnchorSnapResolver/);
   assert.match(chart, /"fib-retracement",[\s\S]*?"fixed-market-profile"/);
   assert.match(chart, /Fib levels/);
-  assert.match(chart, /Free-drag anchors · no candle snapping/);
+  assert.match(chart, /Magnet locks anchors to candle highs and lows/);
   assert.match(chart, /updateSelectedFibLevel/);
   assert.match(chart, /updateSelectedFibLevelStyle/);
   assert.match(chart, /addSelectedFibLevel/);

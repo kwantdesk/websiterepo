@@ -29,6 +29,9 @@ import { hitTestGeometries } from './geometry';
  * - JSON import/export
  * - Event emission
  */
+/** Host magnet hook: maps a pane-pixel point to a snapped anchor, or null. */
+export type AnchorSnapResolver = (point: Point) => { time: number; price: number } | null;
+
 export class DrawingManager {
   private _drawings: Map<string, IDrawing> = new Map();
   private _selectedId: string | null = null;
@@ -53,6 +56,10 @@ export class DrawingManager {
   private _suppressNextClick: boolean = false;
   private _pendingDragPoint: Point | null = null;
   private _dragAnimationFrame: number | null = null;
+  // Optional host-supplied magnet. The host owns candle data and the user's
+  // magnet setting, so anchor snapping is injected rather than reimplemented
+  // here. Returning null means "follow the raw pointer".
+  private _anchorSnap: AnchorSnapResolver | null = null;
 
   constructor() {
     this.handleMouseDown = this.handleMouseDown.bind(this);
@@ -267,6 +274,14 @@ export class DrawingManager {
   /**
    * Set the active drawing tool
    */
+  /**
+   * Install (or clear with null) the magnet used while dragging an anchor or a
+   * whole drawing. `intent` lets the host apply velocity gating only to drags.
+   */
+  setAnchorSnapResolver(resolver: AnchorSnapResolver | null): void {
+    this._anchorSnap = resolver;
+  }
+
   setActiveTool(toolType: string | null): void {
     this._activeTool = toolType;
     this.emit('tool:changed', { toolType: toolType || undefined });
@@ -461,8 +476,14 @@ export class DrawingManager {
 
     // Lightweight Charts has no native time value in future whitespace. Use
     // logical-bar cadence so drawings remain draggable beyond the latest bar.
-    const time = coordinateToNumericTime(viewport, point.x);
-    const price = viewport.priceScale.coordinateToPrice(point.y);
+    const rawTime = coordinateToNumericTime(viewport, point.x);
+    const rawPrice = viewport.priceScale.coordinateToPrice(point.y);
+    // Magnet: a moving drag runs free and locks once the pointer slows near a
+    // candle value, so an anchor can be placed precisely without the cursor
+    // fighting it. The host resolver owns that policy.
+    const snapped = this._anchorSnap ? this._anchorSnap(point) : null;
+    const time = snapped ? snapped.time : rawTime;
+    const price = snapped ? snapped.price : rawPrice;
 
     if (this._dragWholeDrawing && this._dragStartAnchor && typeof time === 'number' && price !== null) {
       const timeDelta = time - this._dragStartAnchor.time;

@@ -65,30 +65,72 @@ export default function ChartDrawLayer({
 
   const active = activeTool !== "cursor" && activeTool !== "eraser";
   const spec = DRAW_TOOL_SPECS[activeTool];
-  // Magnet: snap a raw point to the nearest candle's closest OHLC value, so a
-  // trend line / fib / gann / ray anchor locks to the wick or body it is drawn
-  // beside. Applies to placement and dragging, for every tool.
-  const snap = (point: DrawPoint | null): DrawPoint | null => {
-    if (!point || !magnet || candles.length === 0) return point;
-    let nearest = candles[0];
-    let nearestDist = Infinity;
-    for (const candle of candles) {
-      const distance = Math.abs(candle.time - point.time);
-      if (distance < nearestDist) { nearestDist = distance; nearest = candle; }
+  // Magnet. Snaps in PIXEL space to the nearest OHLC value of the bar under
+  // the cursor, and only when that value is within reach — the old version
+  // snapped unconditionally in price space, so hovering anywhere near a bar
+  // yanked the anchor to some far-off close and every pixel of drag re-snapped
+  // to a different candidate ("spazzing"). Two further rules make it usable:
+  //  - velocity: a fast drag moves freely; snapping engages as the pointer
+  //    slows near the wick it is aiming for;
+  //  - hysteresis: once locked, the anchor stays locked until the pointer
+  //    clearly leaves the target, so it cannot flicker between neighbours.
+  const SNAP_RADIUS_PX = 18;
+  const SNAP_RELEASE_PX = 30;
+  const SNAP_FAST_PX_PER_MS = 0.9;
+  const snapStateRef = useRef<{ lastX: number; lastY: number; lastAt: number; lock: DrawPoint | null }>({
+    lastX: 0, lastY: 0, lastAt: 0, lock: null,
+  });
+  const nearestCandleByTime = (time: number) => {
+    let low = 0;
+    let high = candles.length - 1;
+    while (low < high) {
+      const middle = (low + high) >>> 1;
+      if (candles[middle].time < time) low = middle + 1;
+      else high = middle;
     }
-    const ohlc = [nearest.open, nearest.high, nearest.low, nearest.close];
-    let snappedPrice = ohlc[0];
-    let priceDist = Infinity;
-    for (const value of ohlc) {
-      const distance = Math.abs(value - point.price);
-      if (distance < priceDist) { priceDist = distance; snappedPrice = value; }
+    const after = candles[low];
+    const before = candles[low - 1];
+    if (!before) return after;
+    return Math.abs(after.time - time) < Math.abs(before.time - time) ? after : before;
+  };
+  const snapAt = (x: number, y: number, options: { velocityAware: boolean }): DrawPoint | null => {
+    const raw = fromXY(x, y);
+    if (!raw || !magnet || candles.length === 0) return raw;
+    const state = snapStateRef.current;
+    const now = performance.now();
+    const elapsed = Math.max(1, now - state.lastAt);
+    const speed = Math.hypot(x - state.lastX, y - state.lastY) / elapsed;
+    state.lastX = x; state.lastY = y; state.lastAt = now;
+
+    // Hysteresis: a held lock survives until the pointer clearly leaves it.
+    if (state.lock) {
+      const lx = toX(state.lock.time); const ly = toY(state.lock.price);
+      if (lx != null && ly != null && Math.hypot(lx - x, ly - y) <= SNAP_RELEASE_PX) return state.lock;
+      state.lock = null;
     }
-    return { time: nearest.time, price: snappedPrice };
+    if (options.velocityAware && speed > SNAP_FAST_PX_PER_MS) return raw;
+
+    const candle = nearestCandleByTime(raw.time);
+    const cx = toX(candle.time);
+    if (cx == null || Math.abs(cx - x) > SNAP_RADIUS_PX) return raw;
+    let best: DrawPoint | null = null;
+    let bestDist = SNAP_RADIUS_PX;
+    for (const value of [candle.high, candle.low, candle.open, candle.close]) {
+      const vy = toY(value);
+      if (vy == null) continue;
+      const distance = Math.abs(vy - y);
+      if (distance <= bestDist) { bestDist = distance; best = { time: candle.time, price: value }; }
+    }
+    if (!best) return raw;
+    state.lock = best;
+    return best;
   };
   const localPoint = (event: ReactPointerEvent) => {
     const rect = svgRef.current?.getBoundingClientRect();
     if (!rect) return null;
-    return snap(fromXY(event.clientX - rect.left, event.clientY - rect.top));
+    // Placement clicks must lock decisively; only pointer MOVES are velocity
+    // aware, so "click the high, click the low" always lands on the wick.
+    return snapAt(event.clientX - rect.left, event.clientY - rect.top, { velocityAware: event.type === "pointermove" });
   };
 
   const finish = (tool: DrawToolId, points: DrawPoint[]) => {
@@ -125,7 +167,7 @@ export default function ChartDrawLayer({
   const windowPoint = (clientX: number, clientY: number) => {
     const rect = svgRef.current?.getBoundingClientRect();
     if (!rect) return null;
-    return snap(fromXY(clientX - rect.left, clientY - rect.top));
+    return snapAt(clientX - rect.left, clientY - rect.top, { velocityAware: true });
   };
   const dragCleanupRef = useRef<(() => void) | null>(null);
   useEffect(() => () => { dragCleanupRef.current?.(); }, []);

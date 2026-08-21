@@ -339,6 +339,12 @@ import {
 } from "@/lib/gexMapPalette";
 import { buildOptionsDeltaSeries, optionsDeltaSourceForInstrument } from "@/lib/optionsDelta";
 import { isMarketIndexSymbol } from "@/lib/marketIndices";
+import {
+  createMagnetResolver,
+  magnetRadiusPx,
+  type MagnetCandidate,
+  type MagnetIntent,
+} from "@/lib/chartMagnet";
 import { detectCvdDivergence, sessionCvdPoints, type CvdCandleLike } from "@/lib/cvdDivergence";
 import ChartDrawToolbar from "@/components/ChartDrawToolbar";
 import ChartDrawLayer from "@/components/ChartDrawLayer";
@@ -3133,6 +3139,9 @@ function Chart({
   const [drawingsLocked, setDrawingsLocked] = useState(false);
   const [magnetMode, setMagnetMode] = useState<"off" | "weak" | "medium" | "strong">("medium");
   const magnetModeRef = useRef<"off" | "weak" | "medium" | "strong">("medium");
+  // Holds pointer-speed history and the current lock so the magnet stays
+  // sticky across events instead of re-deciding on every mouse move.
+  const magnetResolverRef = useRef(createMagnetResolver());
   const [keepDrawingMode, setKeepDrawingMode] = useState(false);
   const keepDrawingModeRef = useRef(false);
   const [selectedProfessionalDrawingId, setSelectedProfessionalDrawingId] = useState<string | null>(null);
@@ -11502,7 +11511,36 @@ function Chart({
     ];
     replaceProfessionalManagerDrawings(professionalDrawingsRef.current);
 
-    const drawingPointFromMouse = (event: MouseEvent): ProfessionalDrawingAnchor | null => {
+    // Every visible candle's O/H/L/C in pane pixels, limited to bars near the
+    // pointer so a long history does not cost a full scan per mouse move.
+    const magnetCandidates = (x: number, radius: number): MagnetCandidate[] => {
+      const found: MagnetCandidate[] = [];
+      for (const candle of candles) {
+        const sourceTime = Math.floor(candle.timestamp / 1_000);
+        const chartTime = eventChartTimeBySourceTimeRef.current.get(sourceTime) ?? sourceTime;
+        const candidateX = chart.timeScale().timeToCoordinate(chartTime as Time);
+        if (candidateX === null || Math.abs(candidateX - x) > radius) continue;
+        for (const [field, candidatePrice] of [
+          ["open", candle.open],
+          ["high", candle.high],
+          ["low", candle.low],
+          ["close", candle.close],
+        ] as const) {
+          const candidateY = candleSeries.priceToCoordinate(candidatePrice);
+          if (candidateY === null) continue;
+          found.push({
+            key: `${chartTime}:${field}`,
+            time: chartTime,
+            price: candidatePrice,
+            x: candidateX,
+            y: candidateY,
+          });
+        }
+      }
+      return found;
+    };
+
+    const drawingPointFromMouse = (event: MouseEvent, intent: MagnetIntent = "place"): ProfessionalDrawingAnchor | null => {
       const rect = chartContainerRef.current?.getBoundingClientRect();
       if (!rect) return null;
       const x = event.clientX - rect.left;
@@ -11512,29 +11550,39 @@ function Chart({
       const price = candleSeries.coordinateToPrice(y);
       if (time === null || price === null) return null;
       const activeMagnet = magnetModeRef.current;
-      // Fib anchors are deliberately free-form. Their geometry must follow the
-      // pointer rather than jumping between candle OHLC values; users can still
-      // hold Alt to bypass the magnet for every other drawing tool.
-      if (selectedToolRef.current === "fibRetracement" || event.altKey || activeMagnet === "off") return { time, price };
-
-      const radius = activeMagnet === "weak" ? 6 : activeMagnet === "medium" ? 12 : 20;
-      let best: { anchor: ProfessionalDrawingAnchor; distance: number } | null = null;
-      for (const candle of candles) {
-        const sourceTime = Math.floor(candle.timestamp / 1_000);
-        const chartTime = eventChartTimeBySourceTimeRef.current.get(sourceTime) ?? sourceTime;
-        const candidateX = chart.timeScale().timeToCoordinate(chartTime as Time);
-        if (candidateX === null || Math.abs(candidateX - x) > radius) continue;
-        for (const candidatePrice of [candle.open, candle.high, candle.low, candle.close]) {
-          const candidateY = candleSeries.priceToCoordinate(candidatePrice);
-          if (candidateY === null) continue;
-          const distance = Math.hypot(candidateX - x, candidateY - y);
-          if (distance <= radius && (!best || distance < best.distance)) {
-            best = { anchor: { time: chartTime as Time, price: candidatePrice }, distance };
-          }
-        }
-      }
-      return best?.anchor ?? { time, price };
+      // Alt still bypasses the magnet for a deliberately free-form anchor.
+      if (event.altKey || activeMagnet === "off") return { time, price };
+      const snapped = magnetResolverRef.current.resolve({
+        x,
+        y,
+        timestampMs: event.timeStamp,
+        mode: activeMagnet,
+        intent,
+        candidates: magnetCandidates(x, magnetRadiusPx(activeMagnet)),
+      });
+      return snapped ? { time: snapped.time as Time, price: snapped.price } : { time, price };
     };
+
+    // Dragging an existing anchor is resolved inside the drawing manager, so
+    // the same magnet is injected there. Velocity gating applies: a moving
+    // drag follows the pointer and only locks once the hand settles.
+    drawingManager.setAnchorSnapResolver((point) => {
+      const activeMagnet = magnetModeRef.current;
+      if (activeMagnet === "off") return null;
+      const snapped = magnetResolverRef.current.resolve({
+        x: point.x,
+        y: point.y,
+        timestampMs: performance.now(),
+        mode: activeMagnet,
+        intent: "drag",
+        candidates: magnetCandidates(point.x, magnetRadiusPx(activeMagnet)),
+      });
+      return snapped ? { time: snapped.time, price: snapped.price } : null;
+    });
+
+    // A finished gesture must not leak its pointer speed into the next one.
+    const resetMagnetGesture = () => magnetResolverRef.current.reset();
+    window.addEventListener("mouseup", resetMagnetGesture, true);
 
     const isDrawingUiTarget = (event: MouseEvent) => {
       const target = event.target instanceof Element ? event.target : null;
@@ -11639,7 +11687,7 @@ function Chart({
       const preview = professionalDrawingPreviewRef.current;
       const pending = professionalPendingAnchorsRef.current;
       if (!preview || !pending.length || !isProfessionalDrawingTool(tool)) return;
-      const point = drawingPointFromMouse(event);
+      const point = drawingPointFromMouse(event, "drag");
       if (!point) return;
       const required = requiredProfessionalAnchors(tool);
       const updateIndex = Math.min(pending.length, required - 1);
@@ -11944,6 +11992,8 @@ function Chart({
       chartContainerRef.current?.removeEventListener("mousemove", handleProfessionalDrawingMove, true);
       chartContainerRef.current?.removeEventListener("mousedown", handleProfessionalDrawingPointerDown, true);
       window.removeEventListener("mouseup", handleProfessionalDrawingPointerUp, true);
+      window.removeEventListener("mouseup", resetMagnetGesture, true);
+      drawingManager.setAnchorSnapResolver(null);
       professionalBrushDrawingRef.current = null;
       removeProfessionalPreview();
       drawingUnsubscribers.forEach((unsubscribe) => unsubscribe());
@@ -15720,7 +15770,7 @@ function Chart({
                 <div className="flex items-center justify-between">
                   <div>
                     <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted">Fib levels</div>
-                    <div className="mt-1 text-[10px] text-muted">Free-drag anchors · no candle snapping</div>
+                    <div className="mt-1 text-[10px] text-muted">Magnet locks anchors to candle highs and lows · hold Alt for free placement</div>
                   </div>
                   <button
                     type="button"
