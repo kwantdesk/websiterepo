@@ -16,6 +16,23 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Snapshot too large." }, { status: 413 });
     }
     const snapshot = JSON.parse(body) as Record<string, unknown>;
+    // A stall is reported by the health worker FROM ITS OWN THREAD while the
+    // page is still wedged, so it arrives during the freeze rather than after
+    // a recovery that may never come. Tagged separately because a stall is a
+    // live symptom, whereas a crash report is always about a session that is
+    // already gone.
+    if (snapshot.kind === "stall") {
+      // eslint-disable-next-line no-console
+      console.error("[renderer-stall]", JSON.stringify({
+        url: snapshot.url,
+        ongoingGapMs: snapshot.ongoingGapMs,
+        heapUsedMB: snapshot.heapUsedMB,
+        heapLimitMB: snapshot.heapLimitMB,
+        uptimeSeconds: snapshot.uptimeSeconds,
+        userAgent: request.headers.get("user-agent") ?? undefined,
+      }));
+      return new NextResponse(null, { status: 204 });
+    }
     // eslint-disable-next-line no-console
     console.error("[renderer-crash]", JSON.stringify({
       at: snapshot.at,

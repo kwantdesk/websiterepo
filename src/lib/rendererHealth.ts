@@ -25,6 +25,7 @@ type RendererHealthSnapshot = {
 };
 
 const ACTIVE_KEY = "kwantdesk:renderer-health:active:v1";
+const STALL_KEY = "kwantdesk:renderer-health:stalls:v1";
 const CRASH_KEY = "kwantdesk:renderer-health:last-crash:v1";
 const SNAPSHOT_INTERVAL_MS = 5_000;
 const SAMPLE_INTERVAL_MS = 1_000;
@@ -70,6 +71,106 @@ function reportPreviousCrash() {
 
 let started = false;
 
+/**
+ * Watchdog that survives the failure it is watching for.
+ *
+ * Everything above samples on the main thread, so a hard freeze — the exact
+ * case worth capturing — stops the sampler too. The last snapshot then
+ * describes the healthy seconds BEFORE the block, which is why a frozen tab
+ * has repeatedly reported single-digit lag and a calm heap.
+ *
+ * A worker keeps its own thread. The page beats twice a second; the worker
+ * notices when the beats stop, reports the stall from its own thread while
+ * the page is still wedged, and reports the true duration once beats resume.
+ */
+const STALL_WORKER_SOURCE = `
+let lastBeat = 0, state = null, stallFrom = 0, reported = false, endpoint = "";
+self.onmessage = (event) => {
+  const message = event.data;
+  if (message.type === "config") { endpoint = message.endpoint; return; }
+  if (message.type !== "beat") return;
+  if (stallFrom) {
+    self.postMessage({ type: "recovered", stalledMs: message.at - stallFrom, state });
+    stallFrom = 0; reported = false;
+  }
+  lastBeat = message.at; state = message.state;
+};
+setInterval(() => {
+  if (!lastBeat) return;
+  const gap = Date.now() - lastBeat;
+  if (gap < 2000) return;
+  if (!stallFrom) stallFrom = lastBeat;
+  // Report from this thread while the page is still blocked, so a stall that
+  // ends in a dead tab still leaves evidence.
+  if (!reported && gap > 5000 && endpoint) {
+    reported = true;
+    fetch(endpoint, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ kind: "stall", ongoingGapMs: Math.round(gap), ...state }),
+      keepalive: true,
+    }).catch(() => {});
+  }
+}, 500);
+`;
+
+const STALL_BEAT_INTERVAL_MS = 500;
+/** Stalls shorter than this are ordinary jank, not the reported freeze. */
+const STALL_RECORD_FLOOR_MS = 1_500;
+
+function startStallWatchdog(startedAt: number, longestTaskRef: { value: number }) {
+  let worker: Worker;
+  try {
+    const url = URL.createObjectURL(new Blob([STALL_WORKER_SOURCE], { type: "text/javascript" }));
+    worker = new Worker(url);
+    URL.revokeObjectURL(url);
+  } catch {
+    // A CSP without blob: workers leaves the main-thread recorder in place.
+    return;
+  }
+  worker.postMessage({ type: "config", endpoint: "/api/telemetry/renderer" });
+  worker.addEventListener("message", (event: MessageEvent) => {
+    const message = event.data as { type?: string; stalledMs?: number };
+    if (message?.type !== "recovered") return;
+    const stalledMs = Math.round(message.stalledMs ?? 0);
+    if (stalledMs < STALL_RECORD_FLOOR_MS) return;
+    try {
+      const heap = heapNow();
+      const previous = JSON.parse(window.localStorage.getItem(STALL_KEY) ?? "[]") as unknown[];
+      const record = {
+        at: Date.now(),
+        url: window.location.pathname,
+        stalledMs,
+        // The browser still records long tasks while JS cannot run, and the
+        // observer callback fires on recovery — so this names the task that
+        // did the blocking rather than merely its duration.
+        longestTaskMs: Math.round(longestTaskRef.value),
+        heapUsedMB: heap.used,
+        uptimeSeconds: Math.round((Date.now() - startedAt) / 1_000),
+      };
+      const next = [record, ...previous].slice(0, 20);
+      window.localStorage.setItem(STALL_KEY, JSON.stringify(next));
+      // eslint-disable-next-line no-console
+      console.error("[renderer-stall]", JSON.stringify(record));
+    } catch {
+      // Best-effort: a full quota must not break the page.
+    }
+  });
+  window.setInterval(() => {
+    const heap = heapNow();
+    worker.postMessage({
+      type: "beat",
+      at: Date.now(),
+      state: {
+        url: window.location.pathname,
+        heapUsedMB: heap.used,
+        heapLimitMB: heap.limit,
+        uptimeSeconds: Math.round((Date.now() - startedAt) / 1_000),
+      },
+    });
+  }, STALL_BEAT_INTERVAL_MS);
+}
+
 export function startRendererHealthRecorder() {
   if (started || typeof window === "undefined") return;
   started = true;
@@ -80,6 +181,7 @@ export function startRendererHealthRecorder() {
   let worstLagMs = 0;
   let longTasks = 0;
   let longestTaskMs = 0;
+  const longestTaskRef = { value: 0 };
   let lastSample = performance.now();
 
   try {
@@ -87,6 +189,7 @@ export function startRendererHealthRecorder() {
       for (const entry of list.getEntries()) {
         longTasks += 1;
         if (entry.duration > longestTaskMs) longestTaskMs = entry.duration;
+        if (entry.duration > longestTaskRef.value) longestTaskRef.value = entry.duration;
       }
     });
     observer.observe({ type: "longtask", buffered: false });
@@ -121,10 +224,13 @@ export function startRendererHealthRecorder() {
       worstLagMs = 0;
       longTasks = 0;
       longestTaskMs = 0;
+      longestTaskRef.value = 0;
     } catch {
       // Storage may be full or blocked; recording is best-effort.
     }
   }, SNAPSHOT_INTERVAL_MS);
+
+  startStallWatchdog(startedAt, longestTaskRef);
 
   const clearFlag = () => {
     try {
