@@ -537,9 +537,19 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
         // has its own row. Requiring a full pixel per row silently doubled the
         // grouping at ordinary zoom and flattened that structure into blocks.
         // Auto group factory scales this, so raising it deliberately coarsens.
-        const automaticMultiplier = style.automaticGrouping
-          ? Math.max(1, Math.ceil((PROFILE_MIN_ROW_PIXELS * style.autoGroupFactor) / sourceRowPixels))
-          : 1;
+        //
+        // Manual grouping sets the DATA bin size — it does not mean "draw rows
+        // thinner than a pixel". Manual used to skip this collapse entirely, so
+        // a manually binned profile lost every shelf, notch and single print
+        // the moment the rows fell under a pixel and smeared into a solid
+        // block. The legibility floor now applies in both modes; only the
+        // trader's coarsening factor is exclusive to automatic, so at ordinary
+        // zoom a manual profile still draws exactly the rows it was asked for.
+        const groupingFloorFactor = style.automaticGrouping ? style.autoGroupFactor : 1;
+        const automaticMultiplier = Math.max(
+          1,
+          Math.ceil((PROFILE_MIN_ROW_PIXELS * groupingFloorFactor) / sourceRowPixels),
+        );
         const groupedTicks = profile.groupTicks * automaticMultiplier;
         const levels = automaticMultiplier === 1
           ? sourceLevels
