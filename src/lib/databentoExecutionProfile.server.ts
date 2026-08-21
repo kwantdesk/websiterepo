@@ -1,5 +1,6 @@
 import "server-only";
 
+import { after } from "next/server";
 import { isWithinSessionSegments, type SessionSegment } from "@/lib/volumeProfileSessions";
 
 import { streamHistoricalTradeRows } from "@/lib/databento";
@@ -51,8 +52,20 @@ type ProfileArgs = {
 };
 
 const CACHE_MS = 60_000;
+/**
+ * How long a profile may still be SERVED after it goes stale.
+ *
+ * Building one is a replay of the session's whole execution tape — the weekly
+ * composite covers five days of it — so recomputing before answering made
+ * every reopened profile workspace sit on a spinner while the tape was walked
+ * again. A profile a few minutes past its refresh window is the same auction;
+ * it is returned immediately and rebuilt behind the response.
+ */
+const STALE_SERVE_MS = 15 * 60_000;
 const cache = new Map<string, { storedAt: number; profile: InstitutionalVolumeProfile }>();
 const inFlight = new Map<string, Promise<InstitutionalVolumeProfile | null>>();
+/** One background rebuild per key; extra hits ride the same promise. */
+const backgroundRebuilds = new Map<string, Promise<unknown>>();
 
 function numeric(value: unknown): number | null {
   const parsed = typeof value === "number" ? value : Number(value);
@@ -93,10 +106,10 @@ export async function buildDatabentoExecutionProfile(
     args.tickSize, groupTicks, valueAreaPercent, minTradeVolume, maxTradeVolume,
   ].join(":");
   const cached = cache.get(key);
-  if (cached && Date.now() - cached.storedAt <= CACHE_MS) return cached.profile;
+  const age = cached ? Date.now() - cached.storedAt : Number.POSITIVE_INFINITY;
+  if (cached && age <= CACHE_MS) return cached.profile;
   const pending = inFlight.get(key);
   if (pending) return pending;
-
   const request = (async (): Promise<InstitutionalVolumeProfile | null> => {
     const rows = new Map<number, InstitutionalVolumeProfileLevel>();
     let totalVolume = 0;
@@ -231,5 +244,24 @@ export async function buildDatabentoExecutionProfile(
   })().finally(() => inFlight.delete(key));
 
   inFlight.set(key, request);
+  if (cached && age <= CACHE_MS + STALE_SERVE_MS) {
+    // A rebuild is now under way. Answer from the retained profile straight
+    // away and let it finish behind the response, so reopening a profile never
+    // waits on a full tape replay.
+    if (!backgroundRebuilds.has(key)) {
+      const rebuild = request
+        .catch(() => null)
+        .finally(() => backgroundRebuilds.delete(key));
+      backgroundRebuilds.set(key, rebuild);
+      // `after` needs a request context. Local scripts and tests call this
+      // builder directly, where the rebuild simply runs unattached.
+      try {
+        after(() => rebuild);
+      } catch {
+        void rebuild;
+      }
+    }
+    return cached.profile;
+  }
   return request;
 }

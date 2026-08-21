@@ -21,6 +21,11 @@ import {
   STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
   volumeProfileBinTick,
 } from "@/lib/volumeProfileMath";
+import {
+  VOLUME_PROFILE_GRADIENTS,
+  VOLUME_PROFILE_GRADIENT_OFF,
+  resolveVolumeProfileGradient,
+} from "@/lib/volumeProfileGradients";
 
 type ProfileKind = "tpo" | "volume";
 type ProfilePreset =
@@ -57,6 +62,8 @@ type WorkspaceSettings = {
   volumeDisplay: "total" | "bid-ask" | "delta-volume";
   volumeScale: "linear" | "sqrt" | "log";
   opacityPercent: number;
+  /** Gradient scheme id, or "off" to use the individual colours. */
+  gradientPreset: string;
   showVwap: boolean;
   showRowValues: boolean;
 };
@@ -111,6 +118,7 @@ const DEFAULT_SETTINGS: WorkspaceSettings = {
   volumeDisplay: "total",
   volumeScale: "linear",
   opacityPercent: 86,
+  gradientPreset: VOLUME_PROFILE_GRADIENT_OFF,
   showVwap: true,
   showRowValues: false,
 };
@@ -409,7 +417,10 @@ function ProfileCanvas({ kind, profile, livePrice, settings }: { kind: ProfileKi
     if (!element) return;
     const read = () => {
       const bounds = element.getBoundingClientRect();
-      setSize({ width: Math.max(320, bounds.width), height: Math.max(260, bounds.height) });
+      // No artificial minimum: clamping the measurement above the real pane
+      // size was itself a source of scaling, because the oversized coordinate
+      // space then had to be squeezed back into the box.
+      setSize({ width: Math.max(1, bounds.width), height: Math.max(1, bounds.height) });
       const style = getComputedStyle(document.documentElement);
       setColors({
         accent: style.getPropertyValue("--primary").trim() || "#a3ff12",
@@ -433,6 +444,7 @@ function ProfileCanvas({ kind, profile, livePrice, settings }: { kind: ProfileKi
   const range = Math.max(0.0001, maxPrice - minPrice);
   const padTop = 34;
   const padBottom = 34;
+  const activeGradient = resolveVolumeProfileGradient(settings.gradientPreset);
   const axisWidth = 92;
   const plotWidth = Math.max(120, size.width - axisWidth - 40);
   const plotHeight = Math.max(120, size.height - padTop - padBottom);
@@ -453,8 +465,29 @@ function ProfileCanvas({ kind, profile, livePrice, settings }: { kind: ProfileKi
 
   return (
     <div ref={containerRef} className="h-full min-h-0 w-full overflow-hidden bg-background">
-      <svg width="100%" height="100%" viewBox={`0 0 ${size.width} ${size.height}`} preserveAspectRatio="none" role="img" aria-label={`${kind === "tpo" ? "TPO" : "Volume"} profile`}>
+      {/*
+        Drawn in real pixels, not a stretched coordinate space.
+        A percentage-sized viewBox with preserveAspectRatio="none" maps the LAST
+        measured size onto whatever box the pane currently has, so every resize
+        scaled the whole drawing — prices, POC and VAH/VAL labels included —
+        until the observer caught up, and stretched it non-uniformly on the way.
+        A real price scale does not resize its type when the pane narrows; the
+        levels simply move. Sizing the canvas in pixels gives exactly that.
+      */}
+      <svg width={size.width} height={size.height} viewBox={`0 0 ${size.width} ${size.height}`} role="img" aria-label={`${kind === "tpo" ? "TPO" : "Volume"} profile`}>
         <defs>
+          {/*
+            The active gradient scheme, laid out DOWN the profile so it fades
+            across the auction's price range exactly as it does on the chart's
+            own volume profiles. Rendered here so a single-profile workspace
+            carries the same schemes rather than its own separate look.
+          */}
+          {activeGradient ? (
+            <linearGradient id={`profile-scheme-${kind}`} x1="0" y1="1" x2="0" y2="0">
+              <stop offset="0%" stopColor={activeGradient.from} />
+              <stop offset="100%" stopColor={activeGradient.to} />
+            </linearGradient>
+          ) : null}
           <linearGradient id={`profile-fill-${kind}`} x1="0" x2="1">
             <stop offset="0%" stopColor={colors.accent} stopOpacity="0.3" />
             <stop offset="100%" stopColor={colors.accent} stopOpacity="0.92" />
@@ -471,7 +504,11 @@ function ProfileCanvas({ kind, profile, livePrice, settings }: { kind: ProfileKi
         {sorted.map((row) => {
           const rowY = y(row.price) - rowHeight / 2;
           const width = Math.max(2, (scaledWeight(row.weight) / maxWeight) * profileMaxWidth);
-          const fill = row.isPoc ? "#f5b83b" : row.inValueArea ? `url(#profile-fill-${kind})` : "var(--muted)";
+          // A scheme owns every body colour, so the value area, the outside
+          // rows and the POC row all draw through the same fade.
+          const fill = activeGradient
+            ? `url(#profile-scheme-${kind})`
+            : row.isPoc ? "#f5b83b" : row.inValueArea ? `url(#profile-fill-${kind})` : "var(--muted)";
           const tpoBlockWidth = Math.max(1.5, Math.min(10, rowHeight - 0.75, profileMaxWidth / maxWeight));
           const bidWidth = Math.max(0, scaledWeight(row.bidVolume) / maxSideVolume * profileMaxWidth);
           const askWidth = Math.max(0, scaledWeight(row.askVolume) / maxSideVolume * profileMaxWidth);
@@ -480,12 +517,12 @@ function ProfileCanvas({ kind, profile, livePrice, settings }: { kind: ProfileKi
             <g key={row.price}>
               {kind === "volume" && settings.volumeDisplay === "total" ? <rect x={barX(width)} y={rowY} width={width} height={Math.max(1, rowHeight - 1)} fill={fill} opacity={(row.inValueArea || row.isPoc ? 1 : 0.52) * opacity} /> : null}
               {kind === "volume" && settings.volumeDisplay === "bid-ask" ? <>
-                <rect x={barX(bidWidth)} y={rowY} width={bidWidth} height={Math.max(1, rowHeight / 2 - 0.5)} fill={colors.down} opacity={opacity} />
-                <rect x={barX(askWidth)} y={rowY + rowHeight / 2} width={askWidth} height={Math.max(1, rowHeight / 2 - 0.5)} fill={colors.up} opacity={opacity} />
+                <rect x={barX(bidWidth)} y={rowY} width={bidWidth} height={Math.max(1, rowHeight / 2 - 0.5)} fill={activeGradient ? fill : colors.down} opacity={opacity} />
+                <rect x={barX(askWidth)} y={rowY + rowHeight / 2} width={askWidth} height={Math.max(1, rowHeight / 2 - 0.5)} fill={activeGradient ? fill : colors.up} opacity={opacity} />
               </> : null}
               {kind === "volume" && settings.volumeDisplay === "delta-volume" ? <>
                 <rect x={barX(width)} y={rowY} width={width} height={Math.max(1, rowHeight - 1)} fill={fill} opacity={0.34 * opacity} />
-                <rect x={barX(deltaWidth)} y={rowY + rowHeight * 0.2} width={deltaWidth} height={Math.max(1, rowHeight * 0.6)} fill={row.delta >= 0 ? colors.up : colors.down} opacity={opacity} />
+                <rect x={barX(deltaWidth)} y={rowY + rowHeight * 0.2} width={deltaWidth} height={Math.max(1, rowHeight * 0.6)} fill={activeGradient ? fill : row.delta >= 0 ? colors.up : colors.down} opacity={opacity} />
               </> : null}
               {kind === "tpo" ? Array.from({ length: Math.min(300, Math.max(1, Math.round(row.weight))) }, (_, index) => (
                 <g key={index}>
@@ -751,6 +788,7 @@ export default function SingleProfileWorkspace({
       maxTradeVolume: Math.max(0, Math.round(draft.maxTradeVolume)),
       profileWidthPercent: Math.max(10, Math.min(100, Number(draft.profileWidthPercent))),
       opacityPercent: Math.max(10, Math.min(100, Number(draft.opacityPercent))),
+      gradientPreset: String(draft.gradientPreset ?? VOLUME_PROFILE_GRADIENT_OFF),
       subperiodMinutes: Math.max(5, Math.round(draft.subperiodMinutes)),
     };
     setSettings(next);
@@ -816,6 +854,37 @@ export default function SingleProfileWorkspace({
                 <div className="grid grid-cols-2 gap-2"><label><span className="mb-1 block font-mono text-[8px] uppercase tracking-[0.12em] text-muted">Profile mode</span><select value={draft.volumeDisplay} onChange={(event) => setDraft((current) => ({ ...current, volumeDisplay: event.target.value as WorkspaceSettings["volumeDisplay"] }))} className="h-9 w-full border border-border bg-panel px-2 font-mono text-[9px] text-foreground"><option value="total">Total volume</option><option value="bid-ask">Bid / Ask</option><option value="delta-volume">Delta + Volume</option></select></label><label><span className="mb-1 block font-mono text-[8px] uppercase tracking-[0.12em] text-muted">Scale</span><select value={draft.volumeScale} onChange={(event) => setDraft((current) => ({ ...current, volumeScale: event.target.value as WorkspaceSettings["volumeScale"] }))} className="h-9 w-full border border-border bg-panel px-2 font-mono text-[9px] text-foreground"><option value="linear">Linear</option><option value="sqrt">Square root</option><option value="log">Logarithmic</option></select></label></div>
                 <div className="grid grid-cols-2 gap-2"><label><span className="mb-1 block font-mono text-[8px] uppercase tracking-[0.12em] text-muted">Anchor side</span><select value={draft.profileSide} onChange={(event) => setDraft((current) => ({ ...current, profileSide: event.target.value as WorkspaceSettings["profileSide"] }))} className="h-9 w-full border border-border bg-panel px-2 font-mono text-[9px] text-foreground"><option value="left">Left</option><option value="right">Right</option></select></label><label><span className="mb-1 block font-mono text-[8px] uppercase tracking-[0.12em] text-muted">Width · {draft.profileWidthPercent}%</span><input type="range" min="10" max="100" step="1" value={draft.profileWidthPercent} onChange={(event) => setDraft((current) => ({ ...current, profileWidthPercent: Number(event.target.value) }))} className="mt-2 w-full accent-[var(--primary)]" /></label></div>
                 <label className="block"><span className="mb-1 block font-mono text-[8px] uppercase tracking-[0.12em] text-muted">Opacity · {draft.opacityPercent}%</span><input type="range" min="10" max="100" step="1" value={draft.opacityPercent} onChange={(event) => setDraft((current) => ({ ...current, opacityPercent: Number(event.target.value) }))} className="w-full accent-[var(--primary)]" /></label>
+                <div className="block">
+                  <span className="mb-1 block font-mono text-[8px] uppercase tracking-[0.12em] text-muted">Gradient scheme</span>
+                  <div className="grid grid-cols-3 gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setDraft((current) => ({ ...current, gradientPreset: VOLUME_PROFILE_GRADIENT_OFF }))}
+                      className={`h-8 border font-mono text-[8px] uppercase tracking-[0.1em] ${
+                        draft.gradientPreset === VOLUME_PROFILE_GRADIENT_OFF
+                          ? "border-primary/60 bg-primary/10 text-primary"
+                          : "border-border text-muted hover:text-foreground"
+                      }`}
+                    >
+                      Off
+                    </button>
+                    {VOLUME_PROFILE_GRADIENTS.map((gradient) => (
+                      <button
+                        key={gradient.id}
+                        type="button"
+                        title={gradient.label}
+                        onClick={() => setDraft((current) => ({ ...current, gradientPreset: gradient.id }))}
+                        className={`relative h-8 overflow-hidden border ${
+                          draft.gradientPreset === gradient.id ? "border-primary" : "border-border hover:border-primary/40"
+                        }`}
+                      >
+                        <span aria-hidden className="absolute inset-0" style={{ background: `linear-gradient(90deg, ${gradient.from}, ${gradient.to})` }} />
+                        <span className="relative z-10 px-1 font-mono text-[7px] uppercase tracking-[0.08em] text-white mix-blend-difference">{gradient.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <span className="mt-1 block text-[8px] leading-4 text-muted">Fades the profile across its price range, matching the schemes on the chart volume profiles.</span>
+                </div>
               </div> : null}
               {kind === "volume" ? <div className="space-y-3 border border-border bg-background p-2.5">
                 <div><p className="font-mono text-[8px] font-semibold uppercase tracking-[0.14em] text-foreground">Execution filter</p><p className="mt-1 text-[8px] leading-4 text-muted">Filters individual executed trades before the profile is calculated.</p></div>
