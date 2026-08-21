@@ -1,6 +1,6 @@
 import type { CanvasRenderingTarget2D } from "fancy-canvas";
 import type { ISeriesPrimitive, Logical, SeriesAttachedParameter, Time } from "@/lib/lightweightChartsCompat";
-import type { TpoIndicatorSettings, TpoProfileModel } from "@/lib/tpo/types";
+import type { TpoExtensionMode, TpoIndicatorSettings, TpoProfileModel } from "@/lib/tpo/types";
 import { tickToPrice } from "@/lib/tpo/types";
 
 export type TpoTheme = {
@@ -47,6 +47,17 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
     renderer: () => ({ draw: (target: CanvasRenderingTarget2D) => this.draw(target) }),
   };
 
+  /**
+   * Single prints are a shaded region of price, not a mark on the chart, so
+   * they belong UNDER the candles — a trader needs to see price trade back
+   * through the zone. They therefore get their own pane view at the bottom of
+   * the stack while every other TPO visual stays above the series.
+   */
+  private readonly singlePrintPaneView = {
+    zOrder: () => "bottom" as const,
+    renderer: () => ({ draw: (target: CanvasRenderingTarget2D) => this.draw(target, "single-prints") }),
+  };
+
   attached(params: SeriesAttachedParameter<Time>) {
     this.attachedParams = params;
   }
@@ -57,7 +68,7 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
   }
 
   paneViews() {
-    return [this.paneView];
+    return [this.singlePrintPaneView, this.paneView];
   }
 
   updateAllViews() {}
@@ -86,7 +97,7 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
     return timeScale.logicalToCoordinate((Number(lastLogical) + (timestampSeconds - model.lastCandleTime) / model.intervalSeconds) as Logical);
   }
 
-  private draw(target: CanvasRenderingTarget2D) {
+  private draw(target: CanvasRenderingTarget2D, layer: "all" | "single-prints" = "all") {
     const params = this.attachedParams;
     if (!params || !this.models.length) {
       this.hits = [];
@@ -343,13 +354,30 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
         }
 
         const profileLineEnd = pinnedRight ? 0 : Math.min(mediaSize.width, Math.max(anchorX, periodEndX));
+        // A level or single print belongs to its own session and stops where
+        // the session in front begins — never drawn underneath it. The newest
+        // profile has nothing ahead of it and runs to the live edge. This holds
+        // for whatever TPO period is selected, daily or weekly, because the
+        // boundary is read off the profiles actually on the chart.
+        const nextProfileStartMs = this.models
+          .map((candidate) => candidate.profile.startTimeMs)
+          .filter((startMs) => startMs > profile.startTimeMs)
+          .sort((left, right) => left - right)[0];
+        const nextProfileX = nextProfileStartMs === undefined
+          ? null
+          : this.timeToCoordinate(model, nextProfileStartMs / 1_000);
+        const nextProfileEnd = pinnedRight
+          ? 0
+          : nextProfileX == null
+            ? mediaSize.width
+            : Math.min(mediaSize.width, Math.max(profileLineEnd, nextProfileX));
         const drawLevel = (
           tick: number | null,
           color: string,
           dash: number[],
           label: string,
           widthValue = 1,
-          extensionMode: "none" | "until-first-interaction" | "to-window-end" = "none",
+          extensionMode: TpoExtensionMode = "none",
           showLabel = true,
           firstInteractionMs: number | null = null,
         ) => {
@@ -363,11 +391,15 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
           context.beginPath();
           context.moveTo(anchorX, y);
           const interactionX = firstInteractionMs === null ? null : this.timeToCoordinate(model, firstInteractionMs / 1_000);
-          const lineEnd = extensionMode === "to-window-end" && !pinnedRight
-            ? mediaSize.width
-            : extensionMode === "until-first-interaction" && !pinnedRight
-              ? interactionX ?? mediaSize.width
-              : profileLineEnd;
+          const lineEnd = extensionMode === "to-next-profile" && !pinnedRight
+            ? nextProfileEnd
+            : extensionMode === "to-window-end" && !pinnedRight
+              ? mediaSize.width
+              : extensionMode === "until-first-interaction" && !pinnedRight
+                // An untested level still belongs to its own session, so it
+                // stops at the next profile rather than running to the edge.
+                ? Math.min(interactionX ?? nextProfileEnd, nextProfileEnd)
+                : profileLineEnd;
           context.lineTo(lineEnd, y);
           context.stroke();
           if (cellWidth >= 4 && showLabel) {
@@ -379,6 +411,37 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
             context.fillText(label, clamp(lineEnd + (pinnedRight ? 4 : -4), 18, mediaSize.width - 18), y - 2);
           }
         };
+        if (settings.showSinglePrints && layer !== "all") {
+          profile.singlePrints.forEach((zone) => {
+            const top = params.series.priceToCoordinate(tickToPrice(zone.highTick + 0.5, profile.tickSize));
+            const bottom = params.series.priceToCoordinate(tickToPrice(zone.lowTick - 0.5, profile.tickSize));
+            if (top == null || bottom == null) return;
+            // These are structural low-volume extremes: with an extension mode
+            // set, the filled square itself prints rightward across the
+            // screen as a level band — to the first interaction that tested
+            // it, or to the window edge — not just inside the profile.
+            const interactionX = zone.firstInteractionMs == null
+              ? null
+              : this.timeToCoordinate(model, zone.firstInteractionMs / 1_000);
+            const fillEnd = settings.singlePrintExtensionMode === "to-next-profile" && !pinnedRight
+              ? nextProfileEnd
+              : settings.singlePrintExtensionMode === "to-window-end" && !pinnedRight
+                ? mediaSize.width
+                : settings.singlePrintExtensionMode === "until-first-interaction" && !pinnedRight
+                  ? Math.min(interactionX ?? nextProfileEnd, nextProfileEnd)
+                  : profileLineEnd;
+            context.globalAlpha = settings.singlePrintFillZone ? settings.singlePrintFillOpacity / 100 : 0;
+            context.fillStyle = settings.inheritThemeColours ? theme.singlePrint : settings.singlePrintColor;
+            context.fillRect(Math.min(anchorX, fillEnd), Math.min(top, bottom), Math.abs(fillEnd - anchorX), Math.abs(bottom - top));
+            if (settings.singlePrintLineWidth > 0) {
+              drawLevel(zone.lowTick, settings.inheritThemeColours ? theme.singlePrint : settings.singlePrintColor, [2, 2], settings.singlePrintShowLabel ? "SINGLE" : "", settings.singlePrintLineWidth, settings.singlePrintExtensionMode, settings.singlePrintShowLabel, zone.firstInteractionMs ?? null);
+            }
+          });
+        }
+        // The bottom layer exists only for those shaded zones; everything
+        // else TPO draws belongs above the candles.
+        if (layer === "single-prints") return;
+
         if (settings.showPoc && settings.pocLineMode !== "none") drawLevel(
           profile.pocTick,
           settings.inheritThemeColours ? theme.poc : settings.pocLineColor,
@@ -407,31 +470,6 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
                 drawLevel(Math.round(profile.initialBalanceLowTick! - range * multiple), ibColor, [1, 3], `IB -${multiple}`, settings.initialBalanceLineWidth);
               });
           }
-        }
-        if (settings.showSinglePrints) {
-          profile.singlePrints.forEach((zone) => {
-            const top = params.series.priceToCoordinate(tickToPrice(zone.highTick + 0.5, profile.tickSize));
-            const bottom = params.series.priceToCoordinate(tickToPrice(zone.lowTick - 0.5, profile.tickSize));
-            if (top == null || bottom == null) return;
-            // These are structural low-volume extremes: with an extension mode
-            // set, the filled square itself prints rightward across the
-            // screen as a level band — to the first interaction that tested
-            // it, or to the window edge — not just inside the profile.
-            const interactionX = zone.firstInteractionMs == null
-              ? null
-              : this.timeToCoordinate(model, zone.firstInteractionMs / 1_000);
-            const fillEnd = settings.singlePrintExtensionMode === "to-window-end" && !pinnedRight
-              ? mediaSize.width
-              : settings.singlePrintExtensionMode === "until-first-interaction" && !pinnedRight
-                ? interactionX ?? mediaSize.width
-                : profileLineEnd;
-            context.globalAlpha = settings.singlePrintFillZone ? settings.singlePrintFillOpacity / 100 : 0;
-            context.fillStyle = settings.inheritThemeColours ? theme.singlePrint : settings.singlePrintColor;
-            context.fillRect(Math.min(anchorX, fillEnd), Math.min(top, bottom), Math.abs(fillEnd - anchorX), Math.abs(bottom - top));
-            if (settings.singlePrintLineWidth > 0) {
-              drawLevel(zone.lowTick, settings.inheritThemeColours ? theme.singlePrint : settings.singlePrintColor, [2, 2], settings.singlePrintShowLabel ? "SINGLE" : "", settings.singlePrintLineWidth, settings.singlePrintExtensionMode, settings.singlePrintShowLabel, zone.firstInteractionMs ?? null);
-            }
-          });
         }
         profile.peaksValleys.forEach((feature) => {
           if ((feature.kind === "peak" && !settings.showPeaks) || (feature.kind === "valley" && !settings.showValleys)) return;

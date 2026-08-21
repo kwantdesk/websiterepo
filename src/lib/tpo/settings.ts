@@ -160,9 +160,12 @@ export function defaultTpoSettings(
     singlePrintLineWidth: 1,
     // Single prints are structural levels: by default the zone square prints
     // rightward across the screen. Saved settings keep whatever was chosen.
-    singlePrintExtensionMode: "to-window-end",
+    // Marks every step down of three or more into the profile, which is
+    // what a trader reads as a low-volume shelf.
+    singlePrintStepDown: 3,
+    singlePrintExtensionMode: "to-next-profile",
     singlePrintFillZone: true,
-    singlePrintFillOpacity: 12,
+    singlePrintFillOpacity: 60,
     singlePrintShowLabel: true,
     singlePrintShowTestedState: true,
     initialBalanceStartSubperiod: 0,
@@ -231,7 +234,8 @@ export function validateTpoSettings(
     pocLineMode: enumValue("pocLineMode", ["none", "final", "developing", "extend-shifted"], defaults.pocLineMode),
     pocExtensionMode: enumValue("pocExtensionMode", ["none", "until-first-interaction", "to-window-end"], defaults.pocExtensionMode),
     valueAreaExtensionMode: enumValue("valueAreaExtensionMode", ["none", "until-first-interaction", "to-window-end"], defaults.valueAreaExtensionMode),
-    singlePrintExtensionMode: enumValue("singlePrintExtensionMode", ["none", "until-first-interaction", "to-window-end"], defaults.singlePrintExtensionMode),
+    singlePrintStepDown: finite(source.singlePrintStepDown, defaults.singlePrintStepDown, 0, 50),
+    singlePrintExtensionMode: enumValue("singlePrintExtensionMode", ["none", "until-first-interaction", "to-window-end", "to-next-profile"], defaults.singlePrintExtensionMode),
     summaryLayout: enumValue("summaryLayout", ["compact", "full"], defaults.summaryLayout),
     summaryLocation: enumValue("summaryLocation", ["top-left", "top-right", "bottom-left", "bottom-right"], defaults.summaryLocation),
     filterMode: enumValue("filterMode", ["none", "filter", "split-two", "split-three"], defaults.filterMode),

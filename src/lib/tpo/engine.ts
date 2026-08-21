@@ -7,8 +7,8 @@ import type {
   TpoSinglePrintZone,
   TpoSubperiod,
   TpoTrade,
-} from "@/lib/tpo/types";
-import { priceToTick } from "@/lib/tpo/types";
+} from "./types.ts";
+import { priceToTick } from "./types.ts";
 
 const DAY_MS = 86_400_000;
 const WEEK_MS = DAY_MS * 7;
@@ -434,6 +434,7 @@ export function detectSinglePrints(
   quality = 0,
   volumeSensitivity = 0,
   maxTpoCount = 1,
+  stepDown = 0,
 ) {
   // A row qualifies as a thin print when it was visited by no more than
   // `maxTpoCount` subperiods. At 1 this is the textbook single print; higher
@@ -442,7 +443,29 @@ export function detectSinglePrints(
   // previously there was no way to see them at all, only to filter the strict
   // set down further.
   const threshold = Math.max(1, Math.round(maxTpoCount));
-  const isThin = (row: TpoProfileRow) => row.tpoCount >= 1 && row.tpoCount <= threshold;
+
+  // A step down is measured against the rows AROUND it, not against a fixed
+  // width. A two-wide row between eight-wide rows is a hole in the auction;
+  // the same two-wide row in a thin overnight profile is not. The absolute
+  // test alone only ever marked the extremes, because those are the only
+  // rows narrow enough in absolute terms — every interior shelf was missed.
+  const requiredDrop = Math.max(0, Math.round(stepDown));
+  const shoulderWidth = 3;
+  const isStepDown = (index: number) => {
+    if (requiredDrop <= 0) return false;
+    const row = rows[index];
+    if (!row || row.tpoCount < 1) return false;
+    let shoulder = 0;
+    for (let offset = 1; offset <= shoulderWidth; offset += 1) {
+      const below = rows[index - offset];
+      const above = rows[index + offset];
+      if (below) shoulder = Math.max(shoulder, below.tpoCount);
+      if (above) shoulder = Math.max(shoulder, above.tpoCount);
+    }
+    return shoulder - row.tpoCount >= requiredDrop;
+  };
+  const thinByIndex = rows.map((row, index) =>
+    (row.tpoCount >= 1 && row.tpoCount <= threshold) || isStepDown(index));
   let result: TpoSinglePrintZone[] = [];
   let start: TpoProfileRow | null = null;
   let previous: TpoProfileRow | null = null;
@@ -465,9 +488,10 @@ export function detectSinglePrints(
     zoneVolume = 0;
     zoneHasVolume = false;
   };
-  rows.forEach((row) => {
-    if (!isThin(row) || (previous && row.lowTick > previous.highTick + 1)) flush();
-    if (isThin(row)) {
+  rows.forEach((row, index) => {
+    const thin = thinByIndex[index] === true;
+    if (!thin || (previous && row.lowTick > previous.highTick + 1)) flush();
+    if (thin) {
       if (!start) start = row;
       previous = row;
       if (row.volume !== null) {
@@ -755,7 +779,7 @@ function buildOneProfile(
     if (barTouch === null) return tradeTouch;
     return Math.min(tradeTouch, barTouch);
   };
-  const singlePrints = detectSinglePrints(finalRows, settings.minimumSinglePrintTicks, settings.includeExtremesInSinglePrints, settings.singlePrintQuality, settings.singlePrintVolumeSensitivity, settings.singlePrintMaxTpoCount)
+  const singlePrints = detectSinglePrints(finalRows, settings.minimumSinglePrintTicks, settings.includeExtremesInSinglePrints, settings.singlePrintQuality, settings.singlePrintVolumeSensitivity, settings.singlePrintMaxTpoCount, settings.singlePrintStepDown)
     .map((zone) => {
       const firstInteractionMs = firstInteraction(zone.lowTick, zone.highTick);
       return { ...zone, tested: firstInteractionMs !== null, firstInteractionMs };
@@ -926,7 +950,7 @@ export function mergeTpoProfileModels(
     pocTick,
     vahTick: valueArea.vahTick,
     valTick: valueArea.valTick,
-    singlePrints: detectSinglePrints(finalRows, settings.minimumSinglePrintTicks, settings.includeExtremesInSinglePrints, settings.singlePrintQuality, settings.singlePrintVolumeSensitivity, settings.singlePrintMaxTpoCount),
+    singlePrints: detectSinglePrints(finalRows, settings.minimumSinglePrintTicks, settings.includeExtremesInSinglePrints, settings.singlePrintQuality, settings.singlePrintVolumeSensitivity, settings.singlePrintMaxTpoCount, settings.singlePrintStepDown),
     peaksValleys: detectPeaksValleys(
       finalRows,
       settings.peakValleyRadius,

@@ -92,4 +92,57 @@ assert.ok(
   "turning extremes off must drop the tails",
 );
 
+// --- 6. Step downs are relative, which is what marks interior shelves -------
+// A profile that steps 8 -> 2 -> 8 has a hole in it. The absolute test cannot
+// see it at any thinness below 2, because 2 is not "thin" in absolute terms —
+// only measuring the DROP against the surrounding rows finds it.
+const stepped = [
+  row(0, 8, 800), row(1, 8, 800), row(2, 8, 800),
+  row(3, 2, 40),
+  row(4, 8, 800), row(5, 8, 800), row(6, 8, 800),
+];
+const strictOnly = detectSinglePrints(stepped, 1, true, 0, 0, 1, 0);
+assert.equal(strictOnly.length, 0, "a 2-wide row is not a strict single print");
+
+const byStep = detectSinglePrints(stepped, 1, true, 0, 0, 1, 3);
+assert.equal(byStep.length, 1, "a drop of 6 against its neighbours is a step down");
+assert.equal(byStep[0].lowTick, 3);
+assert.equal(byStep[0].highTick, 3);
+
+// The same 2-wide row in a thin profile is NOT a step down: nothing around it
+// is any wider, so there is no hole in the auction to mark.
+const uniformlyThin = [row(0, 2, 40), row(1, 2, 40), row(2, 2, 40), row(3, 2, 40)];
+assert.equal(
+  detectSinglePrints(uniformlyThin, 1, true, 0, 0, 1, 3).length,
+  0,
+  "a uniformly thin profile has no step downs",
+);
+
+// Depth is adjustable: requiring a drop of 7 rejects a drop of 6.
+assert.equal(
+  detectSinglePrints(stepped, 1, true, 0, 0, 1, 7).length,
+  0,
+  "raising the required drop excludes shallower steps",
+);
+// 0 turns the relative test off entirely, leaving the strict behaviour.
+assert.equal(
+  detectSinglePrints(stepped, 1, true, 0, 0, 1, 0).length,
+  0,
+  "step down 0 keeps only strict single prints",
+);
+
+// Deeper steps of every width qualify: 1, 2, 3 and 4 wide against an 8 shoulder.
+for (const width of [1, 2, 3, 4]) {
+  const profile = [
+    row(0, 8, 800), row(1, 8, 800),
+    row(2, width, width * 20),
+    row(3, 8, 800), row(4, 8, 800),
+  ];
+  assert.equal(
+    detectSinglePrints(profile, 1, true, 0, 0, 1, 3).length,
+    1,
+    `a ${width}-wide row under an 8-wide shoulder is a step down`,
+  );
+}
+
 console.log("TPO single print tests passed.");

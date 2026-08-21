@@ -10,7 +10,16 @@ export type TpoScheduleKind = "daily" | "weekly" | "generic-period" | "custom-ra
 export type TpoPeriodMode = "all-loaded-bars" | "multiple-profiles" | "custom-range";
 export type TpoLengthUnit = "minute" | "day" | "week" | "month";
 export type TpoWidthMode = "automatic" | "period-percent" | "window-percent" | "fixed-bars";
-export type TpoExtensionMode = "none" | "until-first-interaction" | "to-window-end";
+/**
+ * How far a TPO level or zone runs to the right. `to-next-profile` stops it
+ * at the back of the profile in front, so a level never draws underneath the
+ * session that superseded it.
+ */
+export type TpoExtensionMode =
+  | "none"
+  | "until-first-interaction"
+  | "to-window-end"
+  | "to-next-profile";
 export type TpoFilterMode = "none" | "filter" | "split-two" | "split-three";
 export type TpoSessionPreset = "rth" | "eth" | "custom";
 export type TpoColourCalculation = "time" | "volume" | "delta";
@@ -184,6 +193,9 @@ export interface TpoIndicatorSettings {
   valueAreaLineWidth: number;
   valueAreaShowLabels: boolean;
   singlePrintLineWidth: number;
+  /** Minimum drop in TPO width against the surrounding rows for a step
+   * down to be marked. 0 keeps only the strict single prints. */
+  singlePrintStepDown: number;
   singlePrintExtensionMode: TpoExtensionMode;
   singlePrintFillZone: boolean;
   singlePrintFillOpacity: number;
