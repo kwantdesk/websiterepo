@@ -130,6 +130,13 @@ function tradeCandidates(
 // history is a strongest-prints-per-minute sample, not a complete record.
 const COMPLETE_TAPE_WINDOW_MS = 15 * 60_000;
 
+/**
+ * Upper bound for the manual minimum trade size, in contracts. Far above any
+ * real single or clustered CME index-futures print, so the setting behaves as
+ * a free numeric entry while still rejecting nonsense.
+ */
+export const MANUAL_FILTER_CEILING = 5_000;
+
 export function calculateBigTradePrints(
   orderFlowCandles: Candle[],
   marketTrades: InstitutionalTrade[],
@@ -172,37 +179,54 @@ export function calculateBigTradePrints(
   const filterMode = String(settings.filterMode ?? "automatic");
   const intensity = String(settings.automaticIntensity ?? "medium");
   const automaticPercentile = intensity === "low" ? 0.8 : intensity === "strong" ? 0.975 : 0.9;
+  // A manual minimum is the trader's own floor and must be honoured exactly.
+  // It used to be clamped to 100 contracts, so asking for 250-lot prints
+  // silently kept showing 100-lot ones.
   const threshold = filterMode === "manual"
-    ? clamp(Number(settings.manualFilter ?? 30), 1, 100)
+    ? clamp(Number(settings.manualFilter ?? 30), 1, MANUAL_FILTER_CEILING)
     : quantile(volumes, automaticPercentile);
   const maximumFilter = Math.max(0, Number(settings.maximumFilter ?? 0));
   const qualified = candidates.filter((candidate) =>
     candidate.volume >= threshold && (maximumFilter === 0 || candidate.volume <= maximumFilter));
   if (!qualified.length) return [];
-  const qualifiedVolumes = qualified.map((candidate) => candidate.volume);
-  const mean = qualifiedVolumes.reduce((total, value) => total + value, 0) / qualifiedVolumes.length;
-  const deviation = Math.sqrt(
-    qualifiedVolumes.reduce((total, value) => total + (value - mean) ** 2, 0) / qualifiedVolumes.length,
-  );
   const standardDevScale = Math.max(0.1, Number(settings.standardDeviation ?? 1));
   const minSize = clamp(Number(settings.minimumSize ?? 6), 1, 80);
   const maxSize = Math.max(minSize, clamp(Number(settings.maximumSize ?? 32), 1, 160));
   const minOpacity = clamp(Number(settings.minimumOpacity ?? 25) / 100, 0, 1);
   const maxOpacity = Math.max(minOpacity, clamp(Number(settings.maximumOpacity ?? 90) / 100, 0, 1));
-  const sortedQualifiedVolumes = [...qualifiedVolumes].sort((left, right) => left - right);
-  const visualCeiling = Math.max(
-    threshold + 1,
-    threshold + deviation * standardDevScale,
-    quantile(sortedQualifiedVolumes, 0.95),
+
+  // Marker size describes the TRADE, never the filter.
+  //
+  // Both ends of the old scale were derived from the active threshold: the
+  // floor was the threshold itself and the ceiling came from the surviving
+  // prints' own spread. Raising a manual minimum therefore re-normalised
+  // everything still on screen — the same 300-lot trade drew visibly smaller
+  // purely because the filter had moved, which is why the setting looked like
+  // it was "just shrinking the nodes" instead of filtering.
+  //
+  // The scale is now measured from the tape's own distribution, which does not
+  // move when the trader changes the minimum. In automatic mode the floor is
+  // still exactly the threshold (both are the same percentile), so that mode
+  // is unchanged; in manual mode the minimum now only decides WHICH prints
+  // appear, never how big they draw.
+  const sizeFloor = quantile(volumes, automaticPercentile);
+  const tapeMean = volumes.reduce((total, value) => total + value, 0) / volumes.length;
+  const tapeDeviation = Math.sqrt(
+    volumes.reduce((total, value) => total + (value - tapeMean) ** 2, 0) / volumes.length,
   );
-  const visualRange = Math.max(1, visualCeiling - threshold);
+  const visualCeiling = Math.max(
+    sizeFloor + 1,
+    sizeFloor + tapeDeviation * standardDevScale,
+    quantile(volumes, 0.99),
+  );
+  const visualRange = Math.max(1, visualCeiling - sizeFloor);
 
   // Keep the qualified history across the loaded chart. The former 2,500
   // tail cap made older bars lose their prints even though the execution tape
   // was present; 12,000 remains bounded while covering the adaptive top decile
   // of the retained, time-distributed execution history.
   return qualified.slice(-12_000).map((candidate) => {
-    const significance = clamp((candidate.volume - threshold) / visualRange, 0, 1);
+    const significance = clamp((candidate.volume - sizeFloor) / visualRange, 0, 1);
     const visualWeight = Math.sqrt(significance);
     return {
       ...candidate,
