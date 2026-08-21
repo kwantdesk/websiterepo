@@ -119,7 +119,6 @@ import ChartIndicatorPanes, {
 } from "@/components/ChartIndicatorPanes";
 import ChartColorField, { isInsideChartColorPopover } from "@/components/ChartColorField";
 import DepthOfMarketPanel from "@/components/DepthOfMarketPanel";
-import GexBotFlowStrip from "@/components/GexBotFlowStrip";
 import KwantLoader from "@/components/KwantLoader";
 import {
   anchorBigTradePrintsToCandles,
@@ -14601,7 +14600,6 @@ function Chart({
           ))}
         </div>
       ) : null}
-      {gexBotFlow ? <GexBotFlowStrip payload={gexBotFlow} /> : null}
       {flowVerdictY !== null && gexBotFlow?.sponsorship.active ? (
         <div
           className={`pointer-events-none absolute right-[70px] z-[25] rounded-md border bg-panel/94 px-2 py-1 font-mono text-[8px] font-semibold shadow-lg backdrop-blur ${gexBotFlow.sponsorship.active.state === "SPONSORED" ? "border-primary/40 text-primary" : "border-warning/40 text-warning"}`}
