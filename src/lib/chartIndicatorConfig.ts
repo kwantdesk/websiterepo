@@ -1605,7 +1605,9 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
   ...(indicatorId === "deep-m-effort-nq" ? {
     useThemeColors: true,
     showZones: true,
-    showMovingAverage: true,
+    // Big Blocks is read as a block study; the moving average sat on top of the
+    // blocks and had to be switched off by hand every time. Opt-in now.
+    showMovingAverage: false,
     askColor: theme?.upColor ?? "#22C55E",
     bidColor: theme?.downColor ?? "#7C3AED",
     maAboveColor: theme?.upColor ?? "#22C55E",
@@ -1621,7 +1623,7 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     enableMessage: false,
     alertMessage: "Big Blocks directional bias changed",
     zoneBars: 22,
-    effortSettingsVersion: 3,
+    effortSettingsVersion: 4,
   } : {}),
   ...(indicatorId === "depth-of-market" ? {
     showCumulative: false,
@@ -2287,7 +2289,7 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
   }
   if (
     normalizedInstance.indicatorId === "deep-m-effort-nq"
-    && Number(normalizedInstance.settings?.effortSettingsVersion) < 3
+    && Number(normalizedInstance.settings?.effortSettingsVersion) < 4
   ) {
     return {
       ...normalizedInstance,
@@ -2296,7 +2298,9 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         ...(normalizedInstance.settings ?? {}),
         shortName: "Big Blocks",
         alertMessage: "Big Blocks directional bias changed",
-        effortSettingsVersion: 3,
+        // Saved charts carry the old always-on moving average.
+        showMovingAverage: false,
+        effortSettingsVersion: 4,
       },
     };
   }
