@@ -2430,6 +2430,15 @@ const DOUBLE_CLICK_STYLE_DRAWING_TYPES = new Set([
   "fib-retracement",
   "fixed-market-profile",
 ]);
+// Line style dropdown -> canvas dash pattern.
+const PROFILE_LEVEL_DASH: Record<string, number[]> = {
+  solid: [],
+  dash: [4, 3],
+  dot: [1, 3],
+  "dash-dot": [6, 3, 1, 3],
+  "dash-dot-dot": [6, 3, 1, 3, 1, 3],
+};
+
 const PRECISION_TOOL_BY_DRAWING_TOOL: Partial<Record<DrawingToolId, PrecisionToolId>> = {
   brush: "precision-pencil",
   volumeProfile: "precision-volume-profile",
@@ -12565,6 +12574,13 @@ function Chart({
       ? null
       : Math.floor(volumeProfileLastCandleTimestamp / 1_000);
     const intervalSeconds = candleIntervalMs ? candleIntervalMs / 1_000 : null;
+    // Compact bar list for `till-interaction` level lines: a level stops at
+    // the first later bar whose range trades back through it.
+    const profileInteractionBars = candles.map((candle) => ({
+      time: Math.floor(candle.timestamp / 1000),
+      high: candle.high,
+      low: candle.low,
+    }));
     const models = volumeProfiles.flatMap((profile): NativeVolumeProfileModel[] => {
       const instance = profile.period === "weekly" ? weeklyInstance : dailyInstance;
       if (!instance || profile.period === "custom" || profile.levels.length === 0) return [];
@@ -12626,6 +12642,21 @@ function Chart({
             100,
           ),
           snapMode: requestedSnapMode,
+          // Plot Settings
+          extendMode: (["none", "till-interaction", "till-end-window"]
+            .includes(String(profileSettings.extendMode))
+            ? String(profileSettings.extendMode)
+            : "none") as "none" | "till-interaction" | "till-end-window",
+          levelDash: PROFILE_LEVEL_DASH[String(profileSettings.levelLineStyle ?? "dash")] ?? [2, 3],
+          visualStyle: (["automatic", "solid", "hollow", "line", "combined"]
+            .includes(String(profileSettings.visualStyle))
+            ? String(profileSettings.visualStyle)
+            : "automatic") as "automatic" | "solid" | "hollow" | "line" | "combined",
+          borderWidth: clamp(Number(profileSettings.borderWidth ?? 1), 0.5, 6),
+          // Only the bars after the profile can resolve a till-interaction line.
+          interactionBars: String(profileSettings.extendMode) === "till-interaction"
+            ? profileInteractionBars
+            : undefined,
           pocLineWidth: clamp(Number(profileSettings.pocLineWidth ?? 1), 0.5, 6),
           showDevelopingPoc: profileSettings.showDevelopingPoc === true,
           valueAreaLineWidth: clamp(Number(profileSettings.valueAreaLineWidth ?? 1), 0.5, 6),

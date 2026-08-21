@@ -1785,6 +1785,13 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     // behaviour every existing profile already has.
     filterMode: "none",
     filterTime: "rth",
+    // Plot Settings: how far level lines run, their dash pattern, and how the
+    // histogram itself is painted.
+    extendMode: "none",
+    levelLineStyle: "dash",
+    visualStyle: "automatic",
+    borderWidth: 1,
+    numberOfProfiles: 0,
     sessionStartMinutes: 8 * 60 + 30,
     sessionEndMinutes: 15 * 60 + 15,
     useEndSessionAsStartDay: false,
@@ -1808,7 +1815,7 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     showVwapLine: false,
     showVwapBands: false,
     showSummary: false,
-    profileSettingsVersion: 9,
+    profileSettingsVersion: 10,
     align: indicatorId === "kwant-profile"
       ? "session"
       : indicatorId === "weekly-volume-profile" ? "left" : "right",
@@ -2141,7 +2148,7 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
   }
   if (
     normalizedInstance.indicatorId === "kwant-profile"
-    && Number(normalizedInstance.settings?.profileSettingsVersion) < 9
+    && Number(normalizedInstance.settings?.profileSettingsVersion) < 10
   ) {
     return {
       ...normalizedInstance,
@@ -2179,18 +2186,23 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         showSummaryVolume: normalizedInstance.settings?.showSummaryVolume ?? true,
         showSummaryTrades: normalizedInstance.settings?.showSummaryTrades ?? false,
         filterMode: normalizedInstance.settings?.filterMode ?? "none",
+        extendMode: normalizedInstance.settings?.extendMode ?? "none",
+        levelLineStyle: normalizedInstance.settings?.levelLineStyle ?? "dash",
+        visualStyle: normalizedInstance.settings?.visualStyle ?? "automatic",
+        borderWidth: normalizedInstance.settings?.borderWidth ?? 1,
+        numberOfProfiles: normalizedInstance.settings?.numberOfProfiles ?? 0,
         filterTime: normalizedInstance.settings?.filterTime ?? "rth",
         sessionStartMinutes: normalizedInstance.settings?.sessionStartMinutes ?? 8 * 60 + 30,
         sessionEndMinutes: normalizedInstance.settings?.sessionEndMinutes ?? 15 * 60 + 15,
         useEndSessionAsStartDay: normalizedInstance.settings?.useEndSessionAsStartDay ?? false,
-        profileSettingsVersion: 9,
+        profileSettingsVersion: 10,
       },
     };
   }
   if (
     ["weekly-volume-profile", "custom-draw-on-volume-profile", "ask-bid-volume-profile", "delta-profile"]
       .includes(normalizedInstance.indicatorId)
-    && Number(normalizedInstance.settings?.profileSettingsVersion) < 9
+    && Number(normalizedInstance.settings?.profileSettingsVersion) < 10
   ) {
     return {
       ...normalizedInstance,
@@ -2218,11 +2230,16 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         showSummaryVolume: normalizedInstance.settings?.showSummaryVolume ?? true,
         showSummaryTrades: normalizedInstance.settings?.showSummaryTrades ?? false,
         filterMode: normalizedInstance.settings?.filterMode ?? "none",
+        extendMode: normalizedInstance.settings?.extendMode ?? "none",
+        levelLineStyle: normalizedInstance.settings?.levelLineStyle ?? "dash",
+        visualStyle: normalizedInstance.settings?.visualStyle ?? "automatic",
+        borderWidth: normalizedInstance.settings?.borderWidth ?? 1,
+        numberOfProfiles: normalizedInstance.settings?.numberOfProfiles ?? 0,
         filterTime: normalizedInstance.settings?.filterTime ?? "rth",
         sessionStartMinutes: normalizedInstance.settings?.sessionStartMinutes ?? 8 * 60 + 30,
         sessionEndMinutes: normalizedInstance.settings?.sessionEndMinutes ?? 15 * 60 + 15,
         useEndSessionAsStartDay: normalizedInstance.settings?.useEndSessionAsStartDay ?? false,
-        profileSettingsVersion: 9,
+        profileSettingsVersion: 10,
       },
     };
   }

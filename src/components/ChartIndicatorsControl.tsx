@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { Children, isValidElement, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import {
   BarChart3,
@@ -367,6 +367,53 @@ function divergenceMarketPair(instrument: string) {
   if (/^M?NQ/.test(normalized)) return { primary: "NQ", comparison: "ES" };
   if (/^M?ES/.test(normalized)) return { primary: "ES", comparison: "NQ" };
   return null;
+}
+
+/**
+ * Groups a settings dialog's blocks into clickable pages instead of one long
+ * dump. Each child declares `data-settings-section`; children without one fall
+ * into "General", so blocks that have not been categorised yet still render.
+ * The strip only appears when a dialog actually has more than one section.
+ */
+function IndicatorSettingsSections({ children }: { children: ReactNode }) {
+  const entries = Children.toArray(children).flatMap((child) => {
+    if (!isValidElement(child)) return [];
+    const props = child.props as { "data-settings-section"?: string };
+    return [{ section: props["data-settings-section"] ?? "General", node: child }];
+  });
+  const sections: string[] = [];
+  for (const entry of entries) if (!sections.includes(entry.section)) sections.push(entry.section);
+  const [active, setActive] = useState(sections[0] ?? "General");
+  // A dialog opened on a different indicator can have entirely different
+  // sections; fall back to the first rather than rendering an empty page.
+  const current = sections.includes(active) ? active : sections[0] ?? "General";
+  if (sections.length <= 1) {
+    return <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">{children}</div>;
+  }
+  return (
+    <>
+      <div className="flex shrink-0 gap-1 overflow-x-auto border-b border-border px-3 pt-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {sections.map((section) => (
+          <button
+            key={section}
+            type="button"
+            aria-pressed={section === current}
+            onClick={() => setActive(section)}
+            className={`shrink-0 whitespace-nowrap px-3 pb-2 pt-1.5 text-[10px] font-semibold uppercase tracking-[0.1em] transition-colors ${
+              section === current
+                ? "text-primary shadow-[inset_0_-2px_0_var(--primary)]"
+                : "text-muted hover:text-foreground"
+            }`}
+          >
+            {section}
+          </button>
+        ))}
+      </div>
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
+        {entries.filter((entry) => entry.section === current).map((entry) => entry.node)}
+      </div>
+    </>
+  );
 }
 
 export default function ChartIndicatorsControl({
@@ -1116,7 +1163,7 @@ export default function ChartIndicatorsControl({
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
+            <IndicatorSettingsSections>
               <label className="flex items-center justify-between rounded-xl border border-border bg-surface/40 px-4 py-3">
                 <span>
                   <span className="block text-[11px] font-medium text-foreground">Visible</span>
@@ -1521,6 +1568,71 @@ export default function ChartIndicatorsControl({
                   </label>
                   <div className="border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
                     Filter keeps only the executions inside the chosen window. Triple splits the day into Asia, London and New York. A custom window may run past midnight — set an end earlier than the start. Use end session as start day attributes an overnight window to the date it finished on, which is what puts an Asia profile on the right trading day.
+                  </div>
+                </div>
+              ) : null}
+
+              {VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) ? (
+                <div className="grid gap-3 border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
+                  <div className="text-[9px] uppercase tracking-[0.14em] text-foreground sm:col-span-2">Plot settings</div>
+                  {([
+                    ["Extend line", "extendMode", "none", [
+                      ["none", "None"],
+                      ["till-interaction", "Till interaction"],
+                      ["till-end-window", "Till end of window"],
+                    ]],
+                    ["Line style", "levelLineStyle", "dash", [
+                      ["solid", "Solid"],
+                      ["dash", "Dash"],
+                      ["dot", "Dot"],
+                      ["dash-dot", "Dash dot"],
+                      ["dash-dot-dot", "Dash dot dot"],
+                    ]],
+                    ["Visual style", "visualStyle", "automatic", [
+                      ["automatic", "Automatic"],
+                      ["solid", "Solid"],
+                      ["hollow", "Hollow"],
+                      ["line", "Line"],
+                      ["combined", "Combined"],
+                    ]],
+                  ] as const).map(([label, key, fallback, options]) => (
+                    <label key={key} className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                      <span>{label}</span>
+                      <KwantSelect
+                        value={String(settingsInstance.settings?.[key] ?? fallback)}
+                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                          ...current,
+                          settings: { ...(current.settings ?? {}), [key]: event.target.value },
+                        }))}
+                        className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                        menuLabel={label}
+                      >
+                        {options.map(([value, optionLabel]) => (
+                          <option key={value} value={value}>{optionLabel}</option>
+                        ))}
+                      </KwantSelect>
+                    </label>
+                  ))}
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                    <span>Border width</span>
+                    <input
+                      type="number"
+                      min={0.5}
+                      max={6}
+                      step={0.5}
+                      value={Number(settingsInstance.settings?.borderWidth ?? 1)}
+                      onChange={(event) => {
+                        const next = Math.min(6, Math.max(0.5, Number(event.target.value) || 1));
+                        replace(settingsInstance.instanceId, (current) => ({
+                          ...current,
+                          settings: { ...(current.settings ?? {}), borderWidth: next },
+                        }));
+                      }}
+                      className="h-9 w-full border border-border bg-background px-3 text-right font-mono text-[10px] text-foreground outline-none focus:border-primary/40"
+                    />
+                  </label>
+                  <div className="border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
+                    Extend line controls how far POC, value area, peak, valley and VWAP lines run: till interaction stops at the first later bar that traded back through the level. Visual style paints the histogram filled, outlined, as an edge line, or both.
                   </div>
                 </div>
               ) : null}
@@ -2439,8 +2551,7 @@ export default function ChartIndicatorsControl({
                   </div>
                 );
                 return (
-                  <div className="space-y-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3">
-                    <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-foreground">Data settings</div>
+                  <div data-settings-section="Data settings" className="space-y-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3">
                     {choiceRow(
                       "Calculation mode",
                       "calculationMode",
@@ -2458,7 +2569,79 @@ export default function ChartIndicatorsControl({
                       "Count a level whose opposing side traded nothing at all.",
                     )}
 
-                    <div className="border-t border-border/60 pt-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-foreground">Plot settings</div>
+                  </div>
+                );
+              })() : null}
+
+              {settingsDefinition.id === "imbalance-tracker" ? (() => {
+                const trackerSettings = settingsInstance.settings ?? {};
+                const patch = (next: Record<string, number | string | boolean>) =>
+                  replace(settingsInstance.instanceId, (current) => ({
+                    ...current,
+                    settings: { ...(current.settings ?? {}), ...next },
+                  }));
+                const toggleRow = (label: string, settingKey: string, hint?: string, defaultOn = false) => {
+                  const on = trackerSettings[settingKey] === undefined
+                    ? defaultOn
+                    : trackerSettings[settingKey] === true;
+                  return (
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <div className="text-[10px] font-medium text-foreground">{label}</div>
+                        {hint ? <div className="mt-0.5 text-[8px] leading-4 text-muted">{hint}</div> : null}
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={on}
+                        aria-label={label}
+                        onClick={() => patch({ [settingKey]: !on })}
+                        className={`h-6 w-11 shrink-0 rounded-full border transition-colors ${on ? "border-primary/50 bg-primary/25" : "border-border bg-background"}`}
+                      >
+                        <span className={`block h-4 w-4 rounded-full bg-foreground transition-transform ${on ? "translate-x-6" : "translate-x-1"}`} />
+                      </button>
+                    </div>
+                  );
+                };
+                const choiceRow = (
+                  label: string,
+                  settingKey: string,
+                  fallback: string,
+                  options: ReadonlyArray<readonly [string, string]>,
+                  hint?: string,
+                ) => (
+                  <div>
+                    <div className="text-[10px] font-medium text-foreground">{label}</div>
+                    {hint ? <div className="mt-0.5 text-[8px] leading-4 text-muted">{hint}</div> : null}
+                    <div
+                      className="mt-1.5 grid gap-1.5"
+                      style={{ gridTemplateColumns: `repeat(${Math.min(3, options.length)}, minmax(0, 1fr))` }}
+                      role="group"
+                      aria-label={label}
+                    >
+                      {options.map(([value, optionLabel]) => {
+                        const selected = String(trackerSettings[settingKey] ?? fallback) === value;
+                        return (
+                          <button
+                            key={value}
+                            type="button"
+                            aria-pressed={selected}
+                            onClick={() => patch({ [settingKey]: value })}
+                            className={`h-9 rounded-lg border px-2 text-[9px] transition-colors ${
+                              selected
+                                ? "border-primary/50 bg-primary/15 text-primary"
+                                : "border-border bg-background text-muted hover:border-primary/30 hover:text-foreground"
+                            }`}
+                          >
+                            {optionLabel}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+                return (
+                  <div data-settings-section="Plot settings" className="space-y-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3">
                     {choiceRow(
                       "Reset mode",
                       "resetMode",
@@ -2478,7 +2661,42 @@ export default function ChartIndicatorsControl({
                       "A touch triggers the zone; otherwise a close beyond it is required.",
                     )}
 
-                    <div className="border-t border-border/60 pt-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-foreground">Alerts</div>
+                  </div>
+                );
+              })() : null}
+
+              {settingsDefinition.id === "imbalance-tracker" ? (() => {
+                const trackerSettings = settingsInstance.settings ?? {};
+                const patch = (next: Record<string, number | string | boolean>) =>
+                  replace(settingsInstance.instanceId, (current) => ({
+                    ...current,
+                    settings: { ...(current.settings ?? {}), ...next },
+                  }));
+                const toggleRow = (label: string, settingKey: string, hint?: string, defaultOn = false) => {
+                  const on = trackerSettings[settingKey] === undefined
+                    ? defaultOn
+                    : trackerSettings[settingKey] === true;
+                  return (
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <div className="text-[10px] font-medium text-foreground">{label}</div>
+                        {hint ? <div className="mt-0.5 text-[8px] leading-4 text-muted">{hint}</div> : null}
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={on}
+                        aria-label={label}
+                        onClick={() => patch({ [settingKey]: !on })}
+                        className={`h-6 w-11 shrink-0 rounded-full border transition-colors ${on ? "border-primary/50 bg-primary/25" : "border-border bg-background"}`}
+                      >
+                        <span className={`block h-4 w-4 rounded-full bg-foreground transition-transform ${on ? "translate-x-6" : "translate-x-1"}`} />
+                      </button>
+                    </div>
+                  );
+                };
+                return (
+                  <div data-settings-section="Alerts" className="space-y-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3">
                     {toggleRow("Enable sound", "enableAlertSound")}
                     <label className="block">
                       <span className="text-[10px] font-medium text-foreground">Alert name</span>
@@ -2498,7 +2716,56 @@ export default function ChartIndicatorsControl({
                       />
                     </label>
 
-                    <div className="border-t border-border/60 pt-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-foreground">Filter time</div>
+                  </div>
+                );
+              })() : null}
+
+              {settingsDefinition.id === "imbalance-tracker" ? (() => {
+                const trackerSettings = settingsInstance.settings ?? {};
+                const patch = (next: Record<string, number | string | boolean>) =>
+                  replace(settingsInstance.instanceId, (current) => ({
+                    ...current,
+                    settings: { ...(current.settings ?? {}), ...next },
+                  }));
+                const choiceRow = (
+                  label: string,
+                  settingKey: string,
+                  fallback: string,
+                  options: ReadonlyArray<readonly [string, string]>,
+                  hint?: string,
+                ) => (
+                  <div>
+                    <div className="text-[10px] font-medium text-foreground">{label}</div>
+                    {hint ? <div className="mt-0.5 text-[8px] leading-4 text-muted">{hint}</div> : null}
+                    <div
+                      className="mt-1.5 grid gap-1.5"
+                      style={{ gridTemplateColumns: `repeat(${Math.min(3, options.length)}, minmax(0, 1fr))` }}
+                      role="group"
+                      aria-label={label}
+                    >
+                      {options.map(([value, optionLabel]) => {
+                        const selected = String(trackerSettings[settingKey] ?? fallback) === value;
+                        return (
+                          <button
+                            key={value}
+                            type="button"
+                            aria-pressed={selected}
+                            onClick={() => patch({ [settingKey]: value })}
+                            className={`h-9 rounded-lg border px-2 text-[9px] transition-colors ${
+                              selected
+                                ? "border-primary/50 bg-primary/15 text-primary"
+                                : "border-border bg-background text-muted hover:border-primary/30 hover:text-foreground"
+                            }`}
+                          >
+                            {optionLabel}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+                return (
+                  <div data-settings-section="Filter time" className="space-y-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3">
                     {choiceRow(
                       "Filter time",
                       "filterTime",
@@ -3665,6 +3932,7 @@ export default function ChartIndicatorsControl({
                 </div>
               ) : null}
 
+              <div data-settings-section="Inputs" className="space-y-4">
               {(INDICATOR_NUMERIC_SETTINGS[settingsDefinition.id] ?? []).filter((setting) => !(settingsDefinition.id === "bounce-levels" && setting.key === "topExposurePercent")).map((setting) => {
                 const value = Number(settingsInstance.settings?.[setting.key] ?? setting.defaultValue);
                 return (
@@ -3717,8 +3985,9 @@ export default function ChartIndicatorsControl({
                   </label>
                 );
               })}
+              </div>
 
-              <div className="grid gap-2 sm:grid-cols-2">
+              <div data-settings-section="Style" className="grid gap-2 sm:grid-cols-2">
                 {Object.entries(settingsInstance.settings ?? {})
                   .filter(([key, value]) =>
                     !INDICATOR_NUMERIC_SETTINGS[settingsDefinition.id]?.some((setting) => setting.key === key)
@@ -3763,14 +4032,14 @@ export default function ChartIndicatorsControl({
                     )
                   ))}
               </div>
-              <div className="rounded-xl border border-primary/15 bg-primary/6 px-4 py-3 text-[9px] leading-4 text-muted">
+              <div data-settings-section="Style" className="rounded-xl border border-primary/15 bg-primary/6 px-4 py-3 text-[9px] leading-4 text-muted">
                 {settingsDefinition.id === "bounce-levels" ? (
                   <>Bounce colours follow the active chart theme by default. Changing any colour automatically creates a workspace-specific palette; turn <span className="text-foreground">Use Theme Colors</span> back on to relink it.</>
                 ) : (
                   <>Theme colours remain linked by default. Turn off <span className="text-foreground">Use Theme Colors</span> before setting custom study colours.</>
                 )}
               </div>
-            </div>
+            </IndicatorSettingsSections>
             {settingsDefinition.id === "deep-print-footprint" ? (
               <div className="border-t border-border bg-panel px-5 py-3">
                 <div className="flex flex-col gap-2 sm:flex-row">

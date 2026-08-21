@@ -127,6 +127,20 @@ export type NativeVolumeProfileStyle = {
   /** Standard deviations to draw as envelopes around VWAP. */
   vwapBandDeviations?: number[];
   vwapBandColor?: string;
+  /**
+   * How far a level line runs to the right.
+   * `none` stops at the profile band, `till-end-window` runs to the chart edge,
+   * `till-interaction` stops at the first bar that traded back through it.
+   */
+  extendMode?: "none" | "till-interaction" | "till-end-window";
+  /** Dash pattern shared by the level lines, from the Line style dropdown. */
+  levelDash?: number[];
+  /** Bars after the profile, used to resolve `till-interaction`. */
+  interactionBars?: readonly { time: number; high: number; low: number }[];
+  /** Histogram appearance: filled, outlined, or a single edge line. */
+  visualStyle?: "automatic" | "solid" | "hollow" | "line" | "combined";
+  /** Outline weight when the style draws borders. */
+  borderWidth?: number;
   /** Summary tab: totals printed beside the profile. */
   showSummaryVolume?: boolean;
   showSummaryTrades?: boolean;
@@ -260,10 +274,33 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
               : radius,
         );
       };
-      const fillPath = (path: Path2D, color: string, opacity: number) => {
+      // Visual Appearance. Solid fills the row, Hollow outlines it, Line draws
+      // the profile's edge only, and Combined does both — the same four ways
+      // DeepChart can render a histogram.
+      const fillPath = (
+        path: Path2D,
+        color: string,
+        opacity: number,
+        visual: "automatic" | "solid" | "hollow" | "line" | "combined" = "automatic",
+        borderWidth = 1,
+      ) => {
         context.globalAlpha = opacity;
+        if (visual === "hollow" || visual === "line") {
+          context.strokeStyle = color;
+          context.lineWidth = visual === "line" ? Math.max(0.5, borderWidth * 0.6) : Math.max(0.5, borderWidth);
+          context.setLineDash([]);
+          context.stroke(path);
+          return;
+        }
         context.fillStyle = color;
         context.fill(path);
+        if (visual === "combined") {
+          context.globalAlpha = Math.min(1, opacity + 0.2);
+          context.strokeStyle = color;
+          context.lineWidth = Math.max(0.5, borderWidth);
+          context.setLineDash([]);
+          context.stroke(path);
+        }
       };
       context.save();
       context.beginPath();
@@ -608,27 +645,35 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
             );
           }
         }
-        fillPath(outsideValueAreaPath, style.outsideValueAreaColor, style.opacity * 0.34);
-        fillPath(valueAreaPath, style.valueAreaColor, style.opacity * 0.82);
+        fillPath(outsideValueAreaPath, style.outsideValueAreaColor, style.opacity * 0.34, style.visualStyle, style.borderWidth);
+        fillPath(valueAreaPath, style.valueAreaColor, style.opacity * 0.82, style.visualStyle, style.borderWidth);
         fillPath(
           positiveDeltaPath,
           style.positiveDeltaColor,
           Math.min(0.94, style.opacity + 0.14),
+          style.visualStyle,
+          style.borderWidth,
         );
         fillPath(
           negativeDeltaPath,
           style.negativeDeltaColor,
           Math.min(0.94, style.opacity + 0.14),
+          style.visualStyle,
+          style.borderWidth,
         );
         fillPath(
           askVolumePath,
           style.positiveDeltaColor,
           Math.min(0.94, style.opacity + 0.08),
+          style.visualStyle,
+          style.borderWidth,
         );
         fillPath(
           bidVolumePath,
           style.negativeDeltaColor,
           Math.min(0.94, style.opacity + 0.08),
+          style.visualStyle,
+          style.borderWidth,
         );
         if (style.showProfileOutline) {
           context.globalAlpha = 0.3;
@@ -636,7 +681,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           context.lineWidth = 0.35;
           context.stroke(outlinePath);
         }
-        if (style.showPocHighlight) fillPath(pocPath, style.pocColor, 0.72);
+        if (style.showPocHighlight) fillPath(pocPath, style.pocColor, 0.72, style.visualStyle, style.borderWidth);
 
         const high = levels.at(-1)?.price ?? null;
         const low = levels[0]?.price ?? null;
@@ -667,16 +712,34 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           if (price == null) return;
           const y = params.series.priceToCoordinate(price);
           if (y == null) return;
+          // Extend Line. `till-interaction` runs on until a later bar trades
+          // back through the level, which is the point the line stops being
+          // untested — drawing past it would overstate the level.
+          let lineEndX = endX;
+          const extendMode = style.extendMode ?? "none";
+          if (extendMode === "till-end-window") {
+            lineEndX = mediaSize.width;
+          } else if (extendMode === "till-interaction") {
+            const bars = style.interactionBars ?? [];
+            let touchedX: number | null = null;
+            for (const bar of bars) {
+              if (bar.low <= price && bar.high >= price) {
+                const barX = this.timeToCoordinate(model, bar.time);
+                if (barX != null && barX > endX) { touchedX = barX; break; }
+              }
+            }
+            lineEndX = touchedX ?? mediaSize.width;
+          }
           context.globalAlpha = 0.82;
           context.strokeStyle = color;
           context.lineWidth = Math.max(0.5, Number.isFinite(lineWidth) ? Number(lineWidth) : 1);
-          context.setLineDash(dash);
+          context.setLineDash(style.levelDash ?? dash);
           context.beginPath();
           context.moveTo(anchorX, y);
-          context.lineTo(endX, y);
+          context.lineTo(lineEndX, y);
           context.stroke();
           if (style.showText && label) {
-            const lineRight = Math.max(anchorX, endX);
+            const lineRight = Math.max(anchorX, lineEndX);
             context.globalAlpha = 0.88;
             context.fillStyle = color;
             context.font = "600 8px 'JetBrains Mono', monospace";
