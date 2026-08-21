@@ -251,10 +251,8 @@ import {
   CHART_INTERVAL_GROUPS,
   formatChartInterval,
   isEventBasedChartInterval,
-  makeCustomChartInterval,
   parseChartIntervalInput,
   supportsChartInterval,
-  type ChartIntervalKind,
 } from "@/lib/chartIntervals";
 import { applyMarketTradesToEventBars, futuresTickSize } from "@/lib/eventBars";
 import { automaticVolumeProfileGroupTicks } from "@/lib/volumeProfileMath";
@@ -1414,6 +1412,10 @@ function PaneHeaderDropdown({
   onSelect,
   menuWidth = 200,
   searchable = false,
+  favourites,
+  onToggleFavourite,
+  favouriteKeyOf,
+  queryOption,
 }: {
   label: string;
   title: string;
@@ -1423,6 +1425,12 @@ function PaneHeaderDropdown({
   onSelect: (value: string) => void;
   menuWidth?: number;
   searchable?: boolean;
+  favourites?: string[];
+  onToggleFavourite?: (option: PaneHeaderMenuOption) => void;
+  favouriteKeyOf?: (option: PaneHeaderMenuOption) => string;
+  // Builds an option from free text so the search box doubles as the custom
+  // entry the old interval picker had ("40r", "300v", "90s").
+  queryOption?: (query: string) => PaneHeaderMenuOption | null;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -1474,10 +1482,14 @@ function PaneHeaderDropdown({
     };
   }, [menuWidth, open]);
   const trimmedQuery = query.trim().toLowerCase();
-  const filtered = trimmedQuery
+  const matched = trimmedQuery
     ? options.filter((option) =>
         `${option.value} ${option.label} ${option.detail ?? ""} ${option.group ?? ""}`.toLowerCase().includes(trimmedQuery))
     : options;
+  const custom = trimmedQuery && queryOption ? queryOption(query.trim()) : null;
+  const filtered = custom && !matched.some((option) => option.value === custom.value)
+    ? [custom, ...matched]
+    : matched;
   return (
     <>
       <button
@@ -1520,19 +1532,38 @@ function PaneHeaderDropdown({
                 {option.group && option.group !== filtered[index - 1]?.group ? (
                   <div className="px-2 pb-0.5 pt-1.5 text-[7px] font-bold uppercase tracking-[0.12em] text-muted/80">{option.group}</div>
                 ) : null}
-                <button
-                  type="button"
-                  onClick={() => {
-                    onSelect(option.value);
-                    setOpen(false);
-                  }}
-                  className={`flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left text-[10px] transition-colors ${
-                    option.value === value ? "bg-primary/10 text-primary" : "text-foreground hover:bg-surface"
-                  }`}
-                >
-                  <span className="font-semibold">{option.label}</span>
-                  {option.detail ? <span className="truncate text-[8px] text-muted">{option.detail}</span> : null}
-                </button>
+                <div className={`flex w-full items-center gap-1 rounded-lg transition-colors ${
+                  option.value === value ? "bg-primary/10" : "hover:bg-surface"
+                }`}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSelect(option.value);
+                      setOpen(false);
+                    }}
+                    className={`flex min-w-0 flex-1 items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left text-[10px] ${
+                      option.value === value ? "text-primary" : "text-foreground"
+                    }`}
+                  >
+                    <span className="font-semibold">{option.label}</span>
+                    {option.detail ? <span className="truncate text-[8px] text-muted">{option.detail}</span> : null}
+                  </button>
+                  {onToggleFavourite ? (() => {
+                    const favouriteKey = favouriteKeyOf ? favouriteKeyOf(option) : option.value;
+                    const starred = (favourites ?? []).includes(favouriteKey);
+                    return (
+                      <button
+                        type="button"
+                        onClick={(event) => { event.stopPropagation(); onToggleFavourite(option); }}
+                        className={`mr-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-md ${starred ? "text-primary" : "text-muted hover:text-primary"}`}
+                        aria-label={`${starred ? "Remove" : "Add"} ${option.label} ${starred ? "from" : "to"} favourites`}
+                        title={starred ? "Remove from the favourites bar" : "Pin to the favourites bar"}
+                      >
+                        <Star className={`h-3 w-3 ${starred ? "fill-primary" : ""}`} />
+                      </button>
+                    );
+                  })() : null}
+                </div>
               </div>
             ))}
             {!filtered.length ? <div className="px-2 py-2 text-[9px] text-muted">No matches.</div> : null}
@@ -3237,6 +3268,11 @@ function reanchorLiveMidIntoCandles(candles: Candle[], mid: number, symbol: stri
   updated[lastIndex] = baseline;
   return updated;
 }
+
+// Favourite intervals and instruments are GLOBAL to the trader: one bar,
+// shared by every chart pane and both chart workspaces.
+const GLOBAL_FAVOURITE_INTERVALS_KEY = "kwantdesk:favourite-intervals:v1";
+const GLOBAL_FAVOURITE_INSTRUMENTS_KEY = "kwantdesk:favourite-instruments:v1";
 
 const workspaceCandleRequests = new Map<string, Promise<Candle[]>>();
 const workspaceLiveSeamRequests = new Map<string, Promise<Candle[]>>();
@@ -9078,21 +9114,23 @@ export default function KwantifyWorkspace({
   const bottomWorkspaceSection = optimisticWorkspaceSection;
   const chartSurfaceActive = bottomWorkspaceSection === "charts" || bottomWorkspaceSection === "gamvue";
   const [equityPeriod, setEquityPeriod] = useState("365d");
-  const [favTFs, setFavTFs] = useState<string[]>(initialChartWorkspaceRuntime.favouriteTimeframes);
-  const [showAllTF, setShowAllTF] = useState(false);
-  const timeframeMenuRef = useRef<HTMLDivElement>(null);
-  const [intervalDrafts, setIntervalDrafts] = useState<Record<ChartIntervalKind, { primary: number; secondary: number }>>({
-    second: { primary: 1, secondary: 1 },
-    minute: { primary: 1, secondary: 1 },
-    time: { primary: 1, secondary: 1 },
-    "volume-bars": { primary: 4, secondary: 2 },
-    range: { primary: 40, secondary: 1 },
-    volume: { primary: 500, secondary: 1 },
-    trade: { primary: 100, secondary: 1 },
-    renko: { primary: 8, secondary: 1 },
-    "point-figure": { primary: 1, secondary: 27 },
-    delta: { primary: 100, secondary: 1 },
+  const [favTFs, setFavTFs] = useState<string[]>(() => {
+    if (typeof window === "undefined") return initialChartWorkspaceRuntime.favouriteTimeframes;
+    try {
+      const stored = JSON.parse(window.localStorage.getItem(GLOBAL_FAVOURITE_INTERVALS_KEY) ?? "null");
+      if (Array.isArray(stored) && stored.every((item) => typeof item === "string")) return stored as string[];
+    } catch {}
+    return initialChartWorkspaceRuntime.favouriteTimeframes;
   });
+  const [favInstruments, setFavInstruments] = useState<string[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const stored = JSON.parse(window.localStorage.getItem(GLOBAL_FAVOURITE_INSTRUMENTS_KEY) ?? "null");
+      if (Array.isArray(stored) && stored.every((item) => typeof item === "string")) return stored as string[];
+    } catch {}
+    return [];
+  });
+  const timeframeMenuRef = useRef<HTMLDivElement>(null);
   const [showMiniAI, setShowMiniAI] = useState(false);
   const [miniExpanded, setMiniExpanded] = useState(false);
   const [miniMessages, setMiniMessages] = useState<Message[]>([]);
@@ -9243,7 +9281,8 @@ export default function KwantifyWorkspace({
     setActivePaneId(next.activePaneId);
     setPaneIndicators(next.indicators);
     setPaneLevelVisibility(next.levelVisibility);
-    setFavTFs(next.favouriteTimeframes);
+    // Favourites are global now — a workspace/scope switch must not replace
+    // them with that scope's old snapshot.
     setLinkedViewportPaneIds(new Set(next.linkedPaneIds));
     setChartSettings(next.chartSettings);
     setDraftChartSettings(next.chartSettings);
@@ -10120,6 +10159,12 @@ export default function KwantifyWorkspace({
       ),
     [instrumentCategories],
   );
+  const favouriteInstrumentItems = useMemo(
+    () => favInstruments
+      .map((key) => instrumentPickerItems.find((item) => item.key === key))
+      .filter((item): item is InstrumentPickerItem => Boolean(item)),
+    [favInstruments, instrumentPickerItems],
+  );
   const filteredInstrumentPickerItems = useMemo(() => {
     const query = instrumentSearch.trim().toLowerCase();
     if (!query) return instrumentPickerItems;
@@ -10760,6 +10805,9 @@ export default function KwantifyWorkspace({
 
   useEffect(() => {
     if (workspaceScopeHydratingRef.current) return;
+    // Persist globally (the favourites bar is shared by every chart) and keep
+    // writing the legacy scoped key so an older build still reads them.
+    window.localStorage.setItem(GLOBAL_FAVOURITE_INTERVALS_KEY, JSON.stringify(favTFs));
     window.localStorage.setItem(
       workspaceScopeStorageKey(chartWorkspaceScopeRef.current, "olisa-chart-favourite-intervals"),
       JSON.stringify(favTFs),
@@ -10768,17 +10816,10 @@ export default function KwantifyWorkspace({
   }, [favTFs]);
 
   useEffect(() => {
-    if (!showAllTF) return;
-
-    const closeTimeframeMenuOutside = (event: PointerEvent) => {
-      const target = event.target;
-      if (!(target instanceof Node) || timeframeMenuRef.current?.contains(target)) return;
-      setShowAllTF(false);
-    };
-
-    document.addEventListener("pointerdown", closeTimeframeMenuOutside);
-    return () => document.removeEventListener("pointerdown", closeTimeframeMenuOutside);
-  }, [showAllTF]);
+    if (workspaceScopeHydratingRef.current) return;
+    window.localStorage.setItem(GLOBAL_FAVOURITE_INSTRUMENTS_KEY, JSON.stringify(favInstruments));
+    window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
+  }, [favInstruments]);
 
   useEffect(() => {
     if (workspaceScopeHydratingRef.current) return;
@@ -13401,7 +13442,14 @@ export default function KwantifyWorkspace({
 
   const toggleFavTF = (tf: string) => {
     setFavTFs((current) =>
-      current.includes(tf) ? (current.length > 1 ? current.filter((item) => item !== tf) : current) : [...current, tf]
+      current.includes(tf) ? current.filter((item) => item !== tf) : [...current, tf]
+    );
+  };
+  // Favourites are the trader's, not the chart's: starring an interval or an
+  // instrument on ANY pane in ANY workspace pins it to the one favourites bar.
+  const toggleFavInstrument = (key: string) => {
+    setFavInstruments((current) =>
+      current.includes(key) ? current.filter((item) => item !== key) : [...current, key]
     );
   };
 
@@ -15207,14 +15255,6 @@ export default function KwantifyWorkspace({
     }
   };
 
-  const applyCustomInterval = (kind: ChartIntervalKind) => {
-    const draft = intervalDrafts[kind];
-    const interval = makeCustomChartInterval(kind, draft.primary, draft.secondary);
-    if (!supportsChartInterval(interval, activeChartBrokerLabel)) return;
-    selectTimeframe(interval);
-    setShowAllTF(false);
-  };
-
   const chooseBroker = (broker: Broker) => {
     setSelectedBroker(broker);
     setBrokerMode("Demo");
@@ -16058,6 +16098,8 @@ export default function KwantifyWorkspace({
               options={paneInstrumentMenuOptions}
               menuWidth={264}
               searchable
+              favourites={favInstruments}
+              onToggleFavourite={(option) => toggleFavInstrument(option.value)}
               onSelect={(key) => {
                 const item = instrumentPickerItems.find((candidate) => candidate.key === key);
                 if (item) selectWorkspacePaneInstrument(pane.id, item.symbol, item.broker, item.key);
@@ -16070,7 +16112,15 @@ export default function KwantifyWorkspace({
               menuLabel="Timeframe"
               value={pane.timeframe}
               options={paneIntervalMenuOptions(pane.broker)}
-              menuWidth={184}
+              menuWidth={214}
+              searchable
+              favourites={favTFs}
+              onToggleFavourite={(option) => toggleFavTF(option.value)}
+              queryOption={(input) => {
+                const parsed = parseChartIntervalInput(input);
+                if (!parsed || !supportsChartInterval(parsed, pane.broker)) return null;
+                return { value: parsed, label: formatChartInterval(parsed), detail: "Custom", group: "Custom" };
+              }}
               onSelect={(timeframe) => selectWorkspacePaneTimeframe(pane.id, timeframe)}
             />
           </div>
@@ -16691,11 +16741,7 @@ export default function KwantifyWorkspace({
           <div
             aria-disabled={!activePaneIsChart}
             title={activePaneIsChart ? "Controls apply to the selected chart" : `${ALL_WORKSPACE_PANEL_OPTIONS.find((option) => option.id === activeWorkspacePane.content)?.label ?? "Panel"} selected — choose a chart to use chart controls`}
-            className={`relative col-start-1 row-start-1 flex min-w-0 items-center justify-self-start pl-2 pr-1 ${!activePaneIsChart ? "pointer-events-none opacity-30" : ""} ${
-            showAllTF
-              ? "overflow-visible"
-              : "overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-          }`}>
+            className={`relative col-start-1 row-start-1 flex min-w-0 items-center justify-self-start overflow-x-auto pl-2 pr-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${!activePaneIsChart ? "pointer-events-none opacity-30" : ""}`}>
           {chartTrades.length > 0 && (
             <div className="mr-2 flex shrink-0 items-center gap-2 rounded-lg bg-primary/10 px-2 py-1">
               <div className="h-2 w-2 rounded-full bg-primary" />
@@ -16703,7 +16749,11 @@ export default function KwantifyWorkspace({
               <button onClick={clearBacktest} className="ml-1 text-[10px] text-muted hover:text-foreground">Clear</button>
             </div>
           )}
-          <div ref={timeframeMenuRef} className="relative flex items-center gap-0.5">
+          {/* The favourites bar. Only starred intervals and instruments live
+              here — the interval picker itself moved to each chart pane's own
+              header dropdown, so this row stays a one-click switcher. Stars are
+              global: whatever a trader pins on any chart shows up here. */}
+          <div ref={timeframeMenuRef} className="relative flex min-w-0 items-center gap-0.5">
             {visibleFavouriteIntervals.map((tf) => (
               <button
                 key={tf}
@@ -16713,155 +16763,39 @@ export default function KwantifyWorkspace({
                   }
                 }}
                 onClick={() => selectTimeframe(tf)}
-                className={`rounded-lg px-2.5 py-1.5 text-[13px] transition-all ${selectedTimeframe === tf ? "bg-surface text-foreground" : "text-muted hover:text-foreground"}`}
+                title={`${formatChartInterval(tf)} · applies to the selected chart`}
+                className={`shrink-0 rounded-lg px-2.5 py-1.5 text-[13px] transition-all ${selectedTimeframe === tf ? "bg-surface text-foreground" : "text-muted hover:text-foreground"}`}
               >
                 {formatChartInterval(tf)}
               </button>
             ))}
-            <button
-              type="button"
-              aria-label="Chart intervals"
-              aria-expanded={showAllTF}
-              onClick={() => setShowAllTF(!showAllTF)}
-              className={`ml-1 flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[12px] transition-colors ${showAllTF ? "border-primary/30 bg-primary/10 text-primary" : "border-border bg-surface/50 text-muted hover:text-foreground"}`}
-            >
-              <span>{formatChartInterval(selectedTimeframe)}</span>
-              <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showAllTF ? "rotate-180" : ""}`} />
-            </button>
-            <button
-              type="button"
-              onClick={() => toggleFavTF(selectedTimeframe)}
-              className="flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-primary"
-              aria-label={`${favTFs.includes(selectedTimeframe) ? "Remove" : "Add"} ${formatChartInterval(selectedTimeframe)} ${favTFs.includes(selectedTimeframe) ? "from" : "to"} favourites`}
-              title={favTFs.includes(selectedTimeframe) ? "Remove interval from top bar" : "Pin interval to top bar"}
-            >
-              <Star className={`h-3.5 w-3.5 ${favTFs.includes(selectedTimeframe) ? "fill-primary text-primary" : ""}`} />
-            </button>
-            {showAllTF && (
-              <div className="absolute left-0 top-[38px] z-50 w-[720px] max-w-[calc(100vw-120px)] overflow-hidden rounded-2xl border border-border bg-panel shadow-2xl shadow-black/50">
-                <div className="flex items-center justify-between border-b border-border px-4 py-3">
-                  <div>
-                    <div className="text-[12px] font-semibold text-foreground">Chart intervals</div>
-                    <div className="mt-0.5 text-[10px] text-muted">
-                      {activeChartBrokerLabel === "Databento"
-                        ? "Time, volume and order-flow bars from CME market data"
-                        : `Time intervals supported by ${displayMarketSource(activeChartBrokerLabel)}; futures-only modes are hidden`}
-                    </div>
-                  </div>
-                  <button type="button" onClick={() => setShowAllTF(false)} className="rounded-lg p-1.5 text-muted hover:bg-surface hover:text-foreground" aria-label="Close chart intervals">
-                    <X className="h-4 w-4" />
-                  </button>
-                </div>
-                <div className="max-h-[560px] overflow-y-auto p-2">
-                  <div className="mb-1 flex flex-wrap items-center gap-2 border-b border-border/60 px-2 pb-2.5">
-                    <div>
-                      <div className="text-[11px] font-medium text-foreground">Load range</div>
-                      <div className="text-[9px] text-muted">How much history loads into this chart · standard is 5D</div>
-                    </div>
-                    <div className="ml-auto flex flex-wrap items-center gap-1">
-                      {["1D", "5D", "1W", "1M", "3M", "6M", "1Y", "All"].map((range) => (
-                        <button
-                          key={range}
-                          type="button"
-                          onClick={() => handleChartPeriod(activePaneId, range)}
-                          className={`rounded-lg border px-2 py-1.5 font-mono text-[10px] transition-colors ${selectedPeriod === range ? "border-primary/30 bg-primary/10 text-primary" : "border-transparent text-foreground hover:border-border hover:bg-surface"}`}
-                        >
-                          {range}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  {availableChartIntervalGroups.map((group) => {
-                    const draft = intervalDrafts[group.kind];
-                    return (
-                      <div key={group.kind} className="grid grid-cols-[128px_138px_minmax(0,1fr)] items-center gap-3 rounded-xl px-2 py-2.5 hover:bg-surface/40">
-                        <div className="flex items-center gap-2 text-[12px] font-medium text-foreground">
-                          <Settings2 className="h-4 w-4 text-muted" />
-                          <span>{group.label}</span>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          {activeChartBrokerLabel === "Databento" ? (
-                            <>
-                              <input
-                                aria-label={`${group.label} interval value`}
-                                type="number"
-                                min={1}
-                                step={1}
-                                value={draft.primary}
-                                onChange={(event) => setIntervalDrafts((current) => ({
-                                  ...current,
-                                  [group.kind]: { ...current[group.kind], primary: Math.max(1, Number(event.target.value) || 1) },
-                                }))}
-                                className="h-8 min-w-0 flex-1 rounded-lg border border-border bg-background px-2 font-mono text-[12px] text-foreground outline-none focus:border-primary/40"
-                              />
-                              {group.secondaryDefault !== undefined && (
-                                <input
-                                  aria-label={`${group.label} secondary interval value`}
-                                  type="number"
-                                  min={1}
-                                  step={1}
-                                  value={draft.secondary}
-                                  onChange={(event) => setIntervalDrafts((current) => ({
-                                    ...current,
-                                    [group.kind]: { ...current[group.kind], secondary: Math.max(1, Number(event.target.value) || 1) },
-                                  }))}
-                                  className="h-8 min-w-0 flex-1 rounded-lg border border-border bg-background px-2 font-mono text-[12px] text-foreground outline-none focus:border-primary/40"
-                                />
-                              )}
-                              <button
-                                type="button"
-                                onClick={() => applyCustomInterval(group.kind)}
-                                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border bg-surface text-muted hover:border-primary/30 hover:text-primary"
-                                aria-label={`Apply custom ${group.label} interval`}
-                                title="Apply custom interval"
-                              >
-                                <Check className="h-3.5 w-3.5" />
-                              </button>
-                            </>
-                          ) : (
-                            <span className="rounded-lg border border-border bg-background px-2.5 py-1.5 text-[10px] text-muted">Standard intervals</span>
-                          )}
-                        </div>
-                        <div className="flex min-w-0 flex-wrap items-center gap-1">
-                          {group.options.map((option) => (
-                            <div key={option.id} className={`flex items-center rounded-lg border transition-colors ${selectedTimeframe === option.id ? "border-primary/30 bg-primary/10" : "border-transparent hover:border-border hover:bg-surface"}`}>
-                              <button
-                                type="button"
-                                onPointerEnter={() => {
-                                  if (activeWorkspacePane.broker === "Databento") {
-                                    void warmDatabentoChartHistory(activeWorkspacePane.symbol, option.id);
-                                  }
-                                }}
-                                onClick={() => {
-                                  selectTimeframe(option.id);
-                                  setShowAllTF(false);
-                                }}
-                                className={`px-2 py-1.5 font-mono text-[11px] ${selectedTimeframe === option.id ? "text-primary" : "text-foreground"}`}
-                              >
-                                {option.label}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => toggleFavTF(option.id)}
-                                className="pr-1.5 text-muted hover:text-primary"
-                                aria-label={`${favTFs.includes(option.id) ? "Remove" : "Add"} ${option.label} ${favTFs.includes(option.id) ? "from" : "to"} favourites`}
-                              >
-                                <Star className={`h-3 w-3 ${favTFs.includes(option.id) ? "fill-primary text-primary" : ""}`} />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-                {activeChartBrokerLabel === "Databento" && (
-                  <div className="border-t border-border px-4 py-2.5 text-[10px] leading-4 text-muted">
-                    Range and Renko use the contract&apos;s tick size. Volume, trade and delta bars use native CME executions.
-                  </div>
-                )}
-              </div>
-            )}
+            {visibleFavouriteIntervals.length && favouriteInstrumentItems.length ? (
+              <span aria-hidden="true" className="mx-1 h-4 w-px shrink-0 bg-border" />
+            ) : null}
+            {favouriteInstrumentItems.map((item) => (
+              <button
+                key={item.key}
+                onPointerEnter={() => {
+                  if (item.broker === "Databento") {
+                    void warmDatabentoChartHistory(item.symbol, selectedTimeframe);
+                  }
+                }}
+                onClick={() => selectWorkspacePaneInstrument(activePaneId, item.symbol, item.broker, item.key)}
+                title={`${item.fullName} · ${displayMarketSource(item.broker)}`}
+                className={`shrink-0 rounded-lg px-2.5 py-1.5 font-mono text-[13px] uppercase transition-all ${
+                  activeWorkspacePane.symbol === item.symbol && activeWorkspacePane.broker === item.broker
+                    ? "bg-surface text-foreground"
+                    : "text-muted hover:text-foreground"
+                }`}
+              >
+                {displayCmeSymbol(item.symbol).slice(0, 3)}
+              </button>
+            ))}
+            {!visibleFavouriteIntervals.length && !favouriteInstrumentItems.length ? (
+              <span className="px-2 py-1.5 text-[11px] text-muted">
+                Star an interval or instrument in a chart&apos;s header to pin it here
+              </span>
+            ) : null}
           </div>
           </div>
           <div className="col-start-2 row-start-1 flex h-8 min-w-0 shrink-0 items-center justify-self-center gap-1 overflow-x-auto px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
