@@ -12,7 +12,7 @@ export const runtime = "nodejs";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.text();
-    if (body.length > 4_096) {
+    if (body.length > 16_384) {
       return NextResponse.json({ error: "Snapshot too large." }, { status: 413 });
     }
     const snapshot = JSON.parse(body) as Record<string, unknown>;
@@ -21,6 +21,20 @@ export async function POST(request: NextRequest) {
     // a recovery that may never come. Tagged separately because a stall is a
     // live symptom, whereas a crash report is always about a session that is
     // already gone.
+    if (snapshot.kind === "stall-profile") {
+      // The functions that were on the stack while the thread was blocked,
+      // ranked by self time. This is the attribution a stall timing cannot
+      // give on its own.
+      // eslint-disable-next-line no-console
+      console.error("[renderer-stall-profile]", JSON.stringify({
+        url: snapshot.url,
+        stalledMs: snapshot.stalledMs,
+        sampledWindowMs: snapshot.sampledWindowMs,
+        top: snapshot.top,
+        userAgent: request.headers.get("user-agent") ?? undefined,
+      }));
+      return new NextResponse(null, { status: 204 });
+    }
     if (snapshot.kind === "stall") {
       // eslint-disable-next-line no-console
       console.error("[renderer-stall]", JSON.stringify({

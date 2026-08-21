@@ -24,8 +24,11 @@ type RendererHealthSnapshot = {
   domNodes: number;
 };
 
+import { captureStallProfile, isRendererProfilerAvailable, startRendererProfiler } from "@/lib/rendererProfiler";
+
 const ACTIVE_KEY = "kwantdesk:renderer-health:active:v1";
 const STALL_KEY = "kwantdesk:renderer-health:stalls:v1";
+const STALL_PROFILE_KEY = "kwantdesk:renderer-health:stall-profiles:v1";
 const CRASH_KEY = "kwantdesk:renderer-health:last-crash:v1";
 const SNAPSHOT_INTERVAL_MS = 5_000;
 const SAMPLE_INTERVAL_MS = 1_000;
@@ -134,6 +137,29 @@ function startStallWatchdog(startedAt: number, longestTaskRef: { value: number }
     if (message?.type !== "recovered") return;
     const stalledMs = Math.round(message.stalledMs ?? 0);
     if (stalledMs < STALL_RECORD_FLOOR_MS) return;
+    // Timing says the thread was blocked; the profile says by what. Stopping
+    // the sampler is async, so the record is written once it resolves.
+    void captureStallProfile(stalledMs).then((profile) => {
+      if (!profile) return;
+      try {
+        const previous = JSON.parse(window.localStorage.getItem(STALL_PROFILE_KEY) ?? "[]") as unknown[];
+        const record = { at: Date.now(), url: window.location.pathname, stalledMs, ...profile };
+        window.localStorage.setItem(
+          STALL_PROFILE_KEY,
+          JSON.stringify([record, ...previous].slice(0, 5)),
+        );
+        // eslint-disable-next-line no-console
+        console.error("[renderer-stall-profile]", JSON.stringify(record));
+        void fetch("/api/telemetry/renderer", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ kind: "stall-profile", ...record }),
+          keepalive: true,
+        }).catch(() => {});
+      } catch {
+        // Best-effort.
+      }
+    });
     try {
       const heap = heapNow();
       const previous = JSON.parse(window.localStorage.getItem(STALL_KEY) ?? "[]") as unknown[];
@@ -231,6 +257,9 @@ export function startRendererHealthRecorder() {
   }, SNAPSHOT_INTERVAL_MS);
 
   startStallWatchdog(startedAt, longestTaskRef);
+  // Sampling runs continuously so a stall is already covered when it happens;
+  // starting a profiler after the freeze begins would miss the cause.
+  startRendererProfiler();
 
   const clearFlag = () => {
     try {
