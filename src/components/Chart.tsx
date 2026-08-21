@@ -705,6 +705,11 @@ type SessionHighLowRenderLevel = {
   lineStyle: "solid" | "dashed" | "dotted";
   fontSize: number;
   precision: number;
+  // "start" keeps the label beside the wick that formed the level (session
+  // high/low behaviour). "end" pins it to the right end of the line — the
+  // screen edge for forward levels — which is where IB and IB-fib labels
+  // belong so the plot stays clear.
+  labelAnchor?: "start" | "end";
 };
 
 class SessionHighLowRenderer implements ISeriesPrimitivePaneRenderer {
@@ -727,6 +732,7 @@ class SessionHighLowRenderer implements ISeriesPrimitivePaneRenderer {
         fontSize: number;
         color: string;
         opacity: number;
+        anchor: "start" | "end";
       };
       type LabelBounds = { left: number; top: number; right: number; bottom: number };
       const labels: LevelLabel[] = [];
@@ -764,7 +770,10 @@ class SessionHighLowRenderer implements ISeriesPrimitivePaneRenderer {
         context.lineTo(endX, y + 0.5);
         context.stroke();
 
-        if (level.label && rawX >= -8 && rawX < mediaSize.width - 8) {
+        const labelVisible = (level.labelAnchor ?? "start") === "end"
+          ? endX > this.primitive.leftInset()
+          : rawX >= -8 && rawX < mediaSize.width - 8;
+        if (level.label && labelVisible) {
           const labelText = `${level.label} ${level.price.toFixed(level.precision)}`;
           context.setLineDash([]);
           context.font = `700 ${level.fontSize}px 'JetBrains Mono', monospace`;
@@ -775,7 +784,13 @@ class SessionHighLowRenderer implements ISeriesPrimitivePaneRenderer {
           const toolbarClearance = this.primitive.leftInset() + 4;
           const measuredWidth = context.measureText(labelText).width;
           const maximumLabelX = Math.max(toolbarClearance, mediaSize.width - measuredWidth - 6);
-          const labelX = Math.min(maximumLabelX, Math.max(toolbarClearance, startX + 6));
+          const anchor = level.labelAnchor ?? "start";
+          // End-anchored labels sit at the line's right terminus: the right
+          // edge of the plot for a forward level, or just inside the line's
+          // own end for a bounded one (IB fibs stop at the next session).
+          const labelX = anchor === "end"
+            ? Math.max(toolbarClearance, Math.min(maximumLabelX, endX - measuredWidth - 6))
+            : Math.min(maximumLabelX, Math.max(toolbarClearance, startX + 6));
           labels.push({
             text: labelText,
             x: labelX,
@@ -784,6 +799,7 @@ class SessionHighLowRenderer implements ISeriesPrimitivePaneRenderer {
             fontSize: level.fontSize,
             color: level.color,
             opacity: level.opacity,
+            anchor,
           });
         }
         context.restore();
@@ -815,15 +831,20 @@ class SessionHighLowRenderer implements ISeriesPrimitivePaneRenderer {
           let candidateX = label.x;
           const baselineY = label.y;
 
+          const minimumX = this.primitive.leftInset() + 4;
           for (let attempt = 0; attempt <= occupied.length; attempt += 1) {
             const bounds = boundsFor(label, candidateX, baselineY);
             const collisions = occupied.filter((other) => overlaps(bounds, other));
-            if (!collisions.length && bounds.right <= mediaSize.width - 6) {
+            if (!collisions.length && bounds.right <= mediaSize.width - 6 && bounds.left >= minimumX) {
               placed = { x: candidateX, y: baselineY, bounds };
               break;
             }
             if (!collisions.length) break;
-            candidateX = Math.max(...collisions.map((collision) => collision.right)) + 8;
+            // Right-anchored labels step LEFT out of a collision so they stay
+            // inside the plot; left-anchored ones step right as before.
+            candidateX = label.anchor === "end"
+              ? Math.min(...collisions.map((collision) => collision.left)) - label.width - 8
+              : Math.max(...collisions.map((collision) => collision.right)) + 8;
           }
 
           if (!placed) {
@@ -835,7 +856,7 @@ class SessionHighLowRenderer implements ISeriesPrimitivePaneRenderer {
                   Math.min(mediaSize.height - 3, baselineY + direction * slot * verticalStep),
                 );
                 const bounds = boundsFor(label, label.x, candidateY);
-                if (bounds.right <= mediaSize.width - 6 && !occupied.some((other) => overlaps(bounds, other))) {
+                if (bounds.right <= mediaSize.width - 6 && bounds.left >= minimumX && !occupied.some((other) => overlaps(bounds, other))) {
                   placed = { x: label.x, y: candidateY, bounds };
                   break;
                 }
@@ -9147,6 +9168,10 @@ function Chart({
         : String(initialBalanceSettings.fixedLineStyle ?? "dashed") === "dotted" ? "dotted" as const : String(initialBalanceSettings.fixedLineStyle ?? "dashed") === "solid" ? "solid" as const : "dashed" as const,
       fontSize: ibFontSize,
       precision: priceFormat.precision,
+      // IB lines run forward to the right edge; their names belong there too,
+      // clear of the candles rather than stacked over the session that made
+      // them.
+      labelAnchor: "end" as const,
     }));
     // Optional fib over EVERY completed initial balance on the chart — each
     // session type (Asia/London/New York) in every lookback day gets its own
@@ -9198,6 +9223,7 @@ function Chart({
             lineStyle: "dotted",
             fontSize: ibFontSize,
             precision: priceFormat.precision,
+            labelAnchor: "end" as const,
           });
         }
       }
@@ -12575,6 +12601,45 @@ function Chart({
             100,
           ),
           snapMode: requestedSnapMode,
+          pocLineWidth: clamp(Number(profileSettings.pocLineWidth ?? 1), 0.5, 6),
+          valueAreaLineWidth: clamp(Number(profileSettings.valueAreaLineWidth ?? 1), 0.5, 6),
+          // Peak and Valley
+          showPeaks: profileSettings.showPeaks === true,
+          showValleys: profileSettings.showValleys === true,
+          peakColor: useThemeColors ? settings.upColor : String(profileSettings.peakColor ?? settings.upColor),
+          valleyColor: useThemeColors ? settings.downColor : String(profileSettings.valleyColor ?? settings.downColor),
+          peakLineWidth: clamp(Number(profileSettings.peakLineWidth ?? 1), 0.5, 6),
+          valleyLineWidth: clamp(Number(profileSettings.valleyLineWidth ?? 1), 0.5, 6),
+          pvSensitivity: clamp(Number(profileSettings.pvSensitivity ?? 40), 0, 100),
+          pvExcludeHighLow: profileSettings.pvExcludeHighLow !== false,
+          peakMinVolumePercent: clamp(Number(profileSettings.peakMinVolumePercent ?? 0), 0, 100),
+          valleyMaxVolumePercent: clamp(Number(profileSettings.valleyMaxVolumePercent ?? 100), 0, 100),
+          peakOnlyOutsideValueArea: profileSettings.peakOnlyOutsideValueArea === true,
+          valleyOnlyOutsideValueArea: profileSettings.valleyOnlyOutsideValueArea === true,
+          showBusinessZone: profileSettings.showBusinessZone === true,
+          businessZoneColor: useThemeColors
+            ? settings.borderUpColor
+            : String(profileSettings.businessZoneColor ?? settings.borderUpColor),
+          businessZoneOpacity: clamp(Number(profileSettings.businessZoneOpacity ?? 18), 2, 100),
+          businessZoneLineWidth: clamp(Number(profileSettings.businessZoneLineWidth ?? 1), 0.5, 6),
+          // VWAP of this profile plus its deviation envelopes.
+          showVwap: profileSettings.showVwapLine === true,
+          vwapColor: useThemeColors ? settings.borderUpColor : String(profileSettings.vwapColor ?? settings.borderUpColor),
+          vwapLineWidth: clamp(Number(profileSettings.vwapLineWidth ?? 1), 0.5, 6),
+          vwapBandColor: String(profileSettings.vwapBandColor ?? settings.gridColor),
+          vwapBandDeviations: profileSettings.showVwapBands === true
+            ? [
+              Number(profileSettings.vwapBand1 ?? 1),
+              Number(profileSettings.vwapBand2 ?? 2),
+              Number(profileSettings.vwapBand3 ?? 0),
+            ].filter((deviation) => Number.isFinite(deviation) && deviation > 0)
+            : [],
+          // Summary
+          showSummaryVolume: profileSettings.showSummary === true && profileSettings.showSummaryVolume !== false,
+          showSummaryTrades: profileSettings.showSummary === true && profileSettings.showSummaryTrades === true,
+          summaryTextColor: useThemeColors ? settings.upColor : String(profileSettings.summaryTextColor ?? settings.upColor),
+          summaryAskColor: useThemeColors ? settings.upColor : String(profileSettings.askColor ?? settings.upColor),
+          summaryBidColor: useThemeColors ? settings.downColor : String(profileSettings.bidColor ?? settings.downColor),
         },
       }];
     });
