@@ -866,6 +866,9 @@ Per task: eslint on changed files (heap-bumped for Chart/KwantifyWorkspace), `np
 ### Footprint render cache (2026-08-20, latest)
 - `8422c1ef` the footprint primitive repainted every visible cell — thousands of fillRect/fillText plus per-bar flatMap allocations and percentile sorts — on EVERY chart invalidation (crosshair moves, live ticks, sibling indicator updates), the reported "footprint lags the whole site". It now paints once into an offscreen canvas and re-projects with a single drawImage; repaints only on data/options/size/h-zoom change or a price rescale beyond 2% (same pattern as the gamma-heatmap `a3072862` fix). `renderVersion` on the primitive tracks staleness; surface released on detach. Verified live: cells/POC/value-area/live-bar outline render correctly on NQ 5m; console clean. RTH interaction soak pending (remote rAF sampling was background-throttled, so no jank numbers from here).
 
+### IB fibs on every session (2026-08-21)
+- `a3518106` IB Levels "Fibonacci" previously drew 50/61.8/78.6% on the MOST RECENT completed IB only; it now emits a set for every completed IBH/IBL pair on the chart (each session type × each lookback day), anchored at the bar that completed that pair, Long/Short mirroring unchanged. `test:initial-balance` green.
+
 ### Magnet snapping (2026-08-21)
 - `22a101f9` Fib/trend anchors with the magnet on "glitched"/"spazzed": the magnet snapped unconditionally in PRICE space to the time-nearest candle's nearest OHLC (no distance limit, full candle scan per pointer move), so hovering anywhere yanked the anchor to far-off values and every drag pixel re-snapped. Now: pixel-space snap to the bar under the cursor only within 18px (binary-searched bar), placement clicks always lock (click the high, click the low), pointer moves/drags are velocity-aware (>0.9px/ms moves freely, snapping engages as the pointer slows) with 30px release hysteresis so a lock cannot flicker between neighbours.
 
