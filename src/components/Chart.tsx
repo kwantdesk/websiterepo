@@ -12602,6 +12602,7 @@ function Chart({
           ),
           snapMode: requestedSnapMode,
           pocLineWidth: clamp(Number(profileSettings.pocLineWidth ?? 1), 0.5, 6),
+          showDevelopingPoc: profileSettings.showDevelopingPoc === true,
           valueAreaLineWidth: clamp(Number(profileSettings.valueAreaLineWidth ?? 1), 0.5, 6),
           // Peak and Valley
           showPeaks: profileSettings.showPeaks === true,

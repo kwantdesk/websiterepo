@@ -95,6 +95,10 @@ export type NativeVolumeProfileStyle = {
   snapMode: "off" | "left" | "right";
   /** Point of Control line weight. */
   pocLineWidth?: number;
+  /** Trace the POC as it migrated through the session. */
+  showDevelopingPoc?: boolean;
+  /** Ignore developing points before this minute of the session, 0 = none. */
+  developingPocStartMs?: number;
   /** Value Area boundary line weight. */
   valueAreaLineWidth?: number;
   /** Peak and Valley tab. Peaks are high-volume nodes, valleys low-volume ones. */
@@ -685,6 +689,39 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
             );
           }
         };
+        // Developing POC: where control sat at each recorded minute. Drawn as
+        // a step trail because the POC holds a price until enough volume moves
+        // it, so interpolating between points would invent migration that
+        // never happened.
+        if (style.showDevelopingPoc && profile.developingPoc.length > 1) {
+          const startMs = Number(style.developingPocStartMs ?? 0);
+          const trail = startMs > 0
+            ? profile.developingPoc.filter((point) => point.timestamp >= startMs)
+            : profile.developingPoc;
+          if (trail.length > 1) {
+            context.globalAlpha = 0.7;
+            context.strokeStyle = style.pocColor;
+            context.lineWidth = Math.max(0.5, Number(style.pocLineWidth ?? 1));
+            context.setLineDash([]);
+            context.beginPath();
+            let started = false;
+            let previousY: number | null = null;
+            for (const point of trail) {
+              const pointX = this.timeToCoordinate(model, Math.floor(point.timestamp / 1000));
+              const pointY = params.series.priceToCoordinate(point.price);
+              if (pointX == null || pointY == null) continue;
+              if (!started) {
+                context.moveTo(pointX, pointY);
+                started = true;
+              } else {
+                if (previousY != null && previousY !== pointY) context.lineTo(pointX, previousY);
+                context.lineTo(pointX, pointY);
+              }
+              previousY = pointY;
+            }
+            if (started) context.stroke();
+          }
+        }
         if (style.showPocLine) {
           drawLevel(groupedPoc, style.pocColor, [2, 3], "POC", style.pocLineWidth);
         }
