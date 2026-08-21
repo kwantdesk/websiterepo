@@ -11,6 +11,7 @@ import {
   type NativePricePoint,
 } from "@/lib/gex-box/native";
 import { getChartGammaLevels, getGexMapPanel } from "@/lib/quantData.server";
+import { ZERO_GAMMA_ARTIFACT_DEVIATION, rejectZeroGammaArtifacts } from "./zeroGammaLine";
 import type { ZeroGammaLinePayload, ZeroGammaLinePoint, ZeroGammaLineSource } from "@/lib/zeroGammaLine";
 
 function previousTradingDay(sessionDate: string) {
@@ -110,6 +111,7 @@ const TRAIL_EXPOSURE_TICKER: Record<ZeroGammaLineSource, string> = {
  */
 const ZERO_GAMMA_MAX_SPOT_DEVIATION = 0.02;
 
+
 async function computeIntradayTrail(
   root: NativeGammaRoot,
   sourceSymbol: ZeroGammaLineSource,
@@ -132,7 +134,7 @@ async function computeIntradayTrail(
     }
   }
   const frames = nativeProfileFrames(panel, exposureSymbol, displayPoints);
-  return frames.flatMap((frame): ZeroGammaLinePoint[] => {
+  const accepted = frames.flatMap((frame): ZeroGammaLinePoint[] => {
     const value = frame.zero_gamma;
     if (value === null || !Number.isFinite(value) || !Number.isFinite(frame.timestamp)) return [];
     // Early buckets carry a partially accumulated surface whose cumulative
@@ -154,7 +156,18 @@ async function computeIntradayTrail(
     ) return [];
     return [{ timestampMs: frame.timestamp, sessionDate: date, value, status: "HISTORICAL" }];
   });
+  return rejectZeroGammaArtifacts(accepted, spotForSession(frames));
 }
+
+/** Representative spot for the session, used to scale the artifact bound. */
+function spotForSession(frames: { spot: number | null }[]): number | null {
+  const spots = frames
+    .map((frame) => frame.spot)
+    .filter((spot): spot is number => Number.isFinite(spot) && (spot as number) > 0)
+    .sort((left, right) => left - right);
+  return spots.length ? spots[Math.floor(spots.length / 2)] : null;
+}
+
 
 // Completed-session trails are immutable → durable cross-instance cache.
 const cachedHistoricalTrail = (
@@ -163,7 +176,10 @@ const cachedHistoricalTrail = (
   date: string,
 ) => unstable_cache(
   () => computeIntradayTrail(root, sourceSymbol, date),
-  ["zero-gamma-trail-v2", root, sourceSymbol, date],
+  // The key carries the acceptance bound: a completed session is immutable
+  // for six hours, so tightening the guard without renaming the key would
+  // keep serving trails built under the old, looser one.
+  ["zero-gamma-trail-v3", root, sourceSymbol, date, String(ZERO_GAMMA_MAX_SPOT_DEVIATION), String(ZERO_GAMMA_ARTIFACT_DEVIATION)],
   { revalidate: 6 * 60 * 60 },
 )();
 

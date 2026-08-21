@@ -115,3 +115,42 @@ export function isZeroGammaLinePayload(value: unknown): value is ZeroGammaLinePa
       && typeof point.value === "number"
       && Number.isFinite(point.value));
 }
+
+/**
+ * How far one bucket may sit from its neighbours before it is treated as a
+ * reconstruction artifact rather than a move. 0.5% is ~147 points on NQ —
+ * comfortably above the ~19-point median bucket-to-bucket variation and below
+ * the isolated excursions, which measured over 150.
+ */
+export const ZERO_GAMMA_ARTIFACT_DEVIATION = 0.005;
+
+/**
+ * Rejects single-bucket artifacts from a reconstructed trail.
+ *
+ * Each minute rebuilds the whole surface, so one strike crossing a threshold
+ * can throw that bucket's crossing hundreds of points and the next bucket puts
+ * it straight back. Measured on an NQ session: of 64 moves over 150 points,
+ * 29 were isolated round trips like that and 35 were sustained migration.
+ *
+ * A point is dropped when it sits too far from the median of its own
+ * neighbourhood — sustained steps move the median with them and survive, while
+ * a lone excursion does not. Points are DROPPED rather than smoothed: this is
+ * an observation series, and replacing a reading with an average would report
+ * a crossing the surface never produced.
+ */
+export function rejectZeroGammaArtifacts(
+  points: ZeroGammaLinePoint[],
+  spot: number | null,
+): ZeroGammaLinePoint[] {
+  if (points.length < 5 || !Number.isFinite(spot) || !(spot as number > 0)) return points;
+  const bound = (spot as number) * ZERO_GAMMA_ARTIFACT_DEVIATION;
+  const ordered = [...points].sort((left, right) => left.timestampMs - right.timestampMs);
+  const values = ordered.map((point) => point.value);
+  return ordered.filter((point, index) => {
+    const window = values
+      .slice(Math.max(0, index - 2), Math.min(values.length, index + 3))
+      .sort((left, right) => left - right);
+    const median = window[Math.floor(window.length / 2)];
+    return Math.abs(point.value - median) <= bound;
+  });
+}

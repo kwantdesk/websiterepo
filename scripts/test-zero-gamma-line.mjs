@@ -129,4 +129,54 @@ assert.equal(isZeroGammaLinePayload({ root: "NQ", points: [{ timestampMs: 1, val
   assert.match(server, /frame\.strikes\.length < 20/, "a thin surface is still rejected outright");
 }
 
+/**
+ * Single-bucket artifact rejection. Each minute rebuilds the whole surface, so
+ * one strike crossing a threshold throws that bucket's crossing hundreds of
+ * points and the next puts it straight back. Measured on an NQ session: of 64
+ * moves over 150 points, 29 were isolated round trips and 35 were real
+ * migration — so the filter must remove the first kind and keep the second.
+ */
+{
+  const { rejectZeroGammaArtifacts } = await import("../src/lib/zeroGammaLine.ts");
+  const spot = 29_400;
+  const at = (index, value) => ({
+    timestampMs: 1_776_000_000_000 + index * 60_000,
+    sessionDate: "2026-08-20",
+    value,
+    status: "HISTORICAL",
+  });
+
+  // An isolated excursion that reverts is an artifact.
+  const spiky = [29_400, 29_410, 29_405, 29_950, 29_408, 29_412, 29_402].map((v, i) => at(i, v));
+  const cleaned = rejectZeroGammaArtifacts(spiky, spot);
+  assert.ok(
+    !cleaned.some((point) => point.value === 29_950),
+    "a lone excursion that reverts must be dropped",
+  );
+  assert.equal(cleaned.length, spiky.length - 1, "only the artifact is dropped");
+
+  // A sustained migration moves the neighbourhood with it and must survive.
+  const migrating = [29_400, 29_405, 29_500, 29_600, 29_700, 29_800, 29_900].map((v, i) => at(i, v));
+  assert.equal(
+    rejectZeroGammaArtifacts(migrating, spot).length,
+    migrating.length,
+    "a sustained migration is not an artifact",
+  );
+
+  // Ordinary variation passes untouched, and values are never rewritten.
+  const calm = [29_400, 29_412, 29_398, 29_405, 29_410, 29_402, 29_407].map((v, i) => at(i, v));
+  const calmOut = rejectZeroGammaArtifacts(calm, spot);
+  assert.equal(calmOut.length, calm.length, "normal variation is kept");
+  assert.deepEqual(
+    calmOut.map((point) => point.value),
+    calm.map((point) => point.value),
+    "surviving readings are reported exactly as the surface produced them",
+  );
+
+  // Degenerate inputs are returned untouched rather than emptied.
+  assert.equal(rejectZeroGammaArtifacts(calm, null).length, calm.length, "no spot means no filtering");
+  assert.equal(rejectZeroGammaArtifacts(calm.slice(0, 3), spot).length, 3, "too few points to judge");
+  assert.deepEqual(rejectZeroGammaArtifacts([], spot), []);
+}
+
 console.log("Zero Gamma Line contract tests passed.");
