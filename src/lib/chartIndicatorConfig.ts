@@ -952,6 +952,9 @@ export const KWANT_STATS_COMPACT_VISIBILITY = {
 
 export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSettings) => ({
   ...(indicatorId === "zero-gamma-line" ? {
+    // AUTO follows the chart's own options family (NQ -> NDX, ES -> SPX).
+    // Naming a source pins the line to that chain instead.
+    sourceTicker: "AUTO",
     historySessions: 5,
     refreshSeconds: 30,
       opacity: 72,

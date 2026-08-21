@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import {
   isZeroGammaLinePayload,
@@ -89,5 +90,43 @@ assert.equal(isZeroGammaLinePayload({
   disclosure: "test",
 }), true);
 assert.equal(isZeroGammaLinePayload({ root: "NQ", points: [{ timestampMs: 1, value: Number.NaN }] }), false);
+
+/**
+ * The intraday trail rejects a crossing that sits too far from spot, because a
+ * partially accumulated one-minute surface puts the cumulative crossing
+ * thousands of points away. The bound was 10%, which on NQ near 29,400 still
+ * admitted a crossing almost 3,000 points off — those survivors drew as
+ * vertical spikes across the pane and made the line unreadable.
+ */
+{
+  const server = readFileSync(
+    new URL("../src/lib/zeroGammaLine.server.ts", import.meta.url),
+    "utf8",
+  );
+  const match = server.match(/const ZERO_GAMMA_MAX_SPOT_DEVIATION = ([0-9.]+);/);
+  assert.ok(match, "the trail must bound how far a crossing may sit from spot");
+
+  const deviation = Number(match[1]);
+  assert.ok(deviation > 0, "the bound must be a real fraction of spot");
+  assert.ok(
+    deviation <= 0.03,
+    `a bound of ${deviation * 100}% is too loose to reject a half-built surface`,
+  );
+
+  // Sanity-check what the bound means on the instruments it runs on.
+  const nqSpot = 29_400;
+  const esSpot = 6_400;
+  assert.ok(nqSpot * deviation < 1_000, "the NQ band must stay well under a thousand points");
+  assert.ok(esSpot * deviation < 250, "the ES band must stay proportionate");
+  // ...but wide enough for a genuine intraday migration.
+  assert.ok(nqSpot * deviation > 200, "the band must not clip real movement on NQ");
+
+  assert.match(
+    server,
+    /Math\.abs\(value - spot\) \/ spot > ZERO_GAMMA_MAX_SPOT_DEVIATION/,
+    "the guard must use the named bound",
+  );
+  assert.match(server, /frame\.strikes\.length < 20/, "a thin surface is still rejected outright");
+}
 
 console.log("Zero Gamma Line contract tests passed.");

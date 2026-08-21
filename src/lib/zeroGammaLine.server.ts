@@ -102,6 +102,14 @@ const TRAIL_EXPOSURE_TICKER: Record<ZeroGammaLineSource, string> = {
   SPY: "SPY",
 };
 
+/**
+ * How far a one-minute crossing may sit from spot before it is treated as a
+ * half-built surface rather than a real flip. 2% is ~590 points on NQ and
+ * ~120 on ES — wide enough for a genuine intraday migration, narrow enough
+ * that a partially accumulated bucket cannot draw a spike across the pane.
+ */
+const ZERO_GAMMA_MAX_SPOT_DEVIATION = 0.02;
+
 async function computeIntradayTrail(
   root: NativeGammaRoot,
   sourceSymbol: ZeroGammaLineSource,
@@ -128,13 +136,22 @@ async function computeIntradayTrail(
     const value = frame.zero_gamma;
     if (value === null || !Number.isFinite(value) || !Number.isFinite(frame.timestamp)) return [];
     // Early buckets carry a partially accumulated surface whose cumulative
-    // crossing lands thousands of points from price (measured 13% below spot
-    // on NQ). A real index zero-Gamma crossing hugs the traded range, so the
-    // trail is stricter than the 25% session-anchor guard and also requires
-    // a materially populated surface before trusting the crossing at all.
+    // crossing lands thousands of points from price. A real zero-Gamma
+    // crossing hugs the traded range, so a bucket that puts it far from spot
+    // is a half-built surface, not a market event.
+    //
+    // The previous 10% bound was far too generous to do that job: on NQ near
+    // 29,400 it admitted a crossing almost 3,000 points away, and those
+    // survivors are the vertical spikes that made the line unreadable. A
+    // crossing that genuinely leaves this band has left the auction, and
+    // plotting it beside price would misrepresent where gamma flips.
     if (frame.strikes.length < 20) return [];
     const spot = frame.spot;
-    if (Number.isFinite(spot) && spot > 0 && Math.abs(value - spot) / spot > 0.1) return [];
+    if (
+      Number.isFinite(spot)
+      && spot > 0
+      && Math.abs(value - spot) / spot > ZERO_GAMMA_MAX_SPOT_DEVIATION
+    ) return [];
     return [{ timestampMs: frame.timestamp, sessionDate: date, value, status: "HISTORICAL" }];
   });
 }

@@ -145,4 +145,28 @@ for (const width of [1, 2, 3, 4]) {
   );
 }
 
+// --- 7. A low-volume area is entered AND left -------------------------------
+// A run that steps down and never recovers is the profile's tail, not a hole
+// inside the auction. That one-sided case was most of the noise.
+const oneSided = [
+  row(0, 8, 800), row(1, 8, 800),
+  row(2, 2, 40), row(3, 2, 40), row(4, 2, 40),
+];
+assert.equal(
+  detectSinglePrints(oneSided, 1, false, 0, 0, 1, 3).length,
+  0,
+  "a step down that never steps back up is a tail, not a low-volume area",
+);
+
+// The same run with a shoulder on the far side is a real hole.
+const pocketed = [
+  row(0, 8, 800), row(1, 8, 800),
+  row(2, 2, 40), row(3, 2, 40), row(4, 2, 40),
+  row(5, 8, 800), row(6, 8, 800),
+];
+const pocket = detectSinglePrints(pocketed, 1, false, 0, 0, 1, 3);
+assert.equal(pocket.length, 1, "a run with a matching opposite step is marked");
+assert.equal(pocket[0].lowTick, 2, "the zone widens from the step...");
+assert.equal(pocket[0].highTick, 4, "...until it meets the equivalent opposite");
+
 console.log("TPO single print tests passed.");
