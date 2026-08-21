@@ -12678,10 +12678,10 @@ function Chart({
           ),
           snapMode: requestedSnapMode,
           // Plot Settings
-          extendMode: (["none", "till-interaction", "till-end-window"]
-            .includes(String(profileSettings.extendMode))
-            ? String(profileSettings.extendMode)
-            : "none") as "none" | "till-interaction" | "till-end-window",
+          // Saved profiles may still carry the retired till-end-window value.
+          extendMode: (String(profileSettings.extendMode) === "till-interaction"
+            ? "till-interaction"
+            : "none") as "none" | "till-interaction",
           levelDash: PROFILE_LEVEL_DASH[String(profileSettings.levelLineStyle ?? "dash")] ?? [2, 3],
           visualStyle: (["automatic", "solid", "hollow", "line", "combined"]
             .includes(String(profileSettings.visualStyle))

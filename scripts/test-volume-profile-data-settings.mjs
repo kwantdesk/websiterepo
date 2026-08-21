@@ -105,3 +105,53 @@ import { volumeProfileBinTick } from "../src/lib/volumeProfileMath.ts";
 }
 
 console.log("Volume profile Data Settings (grouping + filters) tests passed.");
+
+/**
+ * A session's POC and value area stay live until the next session takes over,
+ * so their lines must reach the START of the profile in front and stop there.
+ * Drawing one underneath the next profile misreads which session owns the
+ * level, and the rule has to survive split/RTH modes where several profiles
+ * share a day.
+ */
+{
+  const primitive = readFileSync(
+    new URL("../src/lib/nativeVolumeProfilePrimitive.ts", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(
+    primitive,
+    /nextProfileStartMsById/,
+    "the renderer must know where the next profile begins",
+  );
+  // Chaining is per profile kind so a split session follows its own kind.
+  assert.match(
+    primitive,
+    /\$\{model\.profile\.period\}:\$\{model\.profile\.root\}/,
+    "profiles chain within their own period and root",
+  );
+  // The newest profile has nothing in front of it and runs to the live edge.
+  assert.match(
+    primitive,
+    /nextProfileStartX == null\s*\?\s*mediaSize\.width/,
+    "the newest profile extends to the right edge",
+  );
+  // Level lines start from the chained boundary, not the profile band.
+  assert.match(
+    primitive,
+    /let lineEndX = levelChainEndX;/,
+    "levels extend to the next profile by default",
+  );
+  // Extend modes may only pull a level in, never push it past the next profile.
+  assert.match(
+    primitive,
+    /lineEndX = Math\.min\(lineEndX, touchedX\)/,
+    "till-interaction may only shorten a level, never extend it",
+  );
+  assert.ok(
+    !primitive.includes('"till-end-window"'),
+    "the retired extend-to-chart-edge mode must not linger in the renderer",
+  );
+}
+
+console.log("Volume profile level chaining tests passed.");

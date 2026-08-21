@@ -132,10 +132,11 @@ export type NativeVolumeProfileStyle = {
   vwapBandColor?: string;
   /**
    * How far a level line runs to the right.
-   * `none` stops at the profile band, `till-end-window` runs to the chart edge,
-   * `till-interaction` stops at the first bar that traded back through it.
+   * `none` carries it to the back of the profile in front (the live edge for
+   * the newest profile); `till-interaction` stops it earlier, at the first bar
+   * that traded back through it. A level is never drawn past the next profile.
    */
-  extendMode?: "none" | "till-interaction" | "till-end-window";
+  extendMode?: "none" | "till-interaction";
   /** Dash pattern shared by the level lines, from the Line style dropdown. */
   levelDash?: number[];
   /** Bars after the profile, used to resolve `till-interaction`. */
@@ -328,6 +329,27 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
         return Math.max(latestEndMs, profile.endMs);
       }, Number.NEGATIVE_INFINITY);
 
+      // A session's POC and value area stay live until the next session takes
+      // over, so their lines run on to the START of the profile in front and
+      // stop there — never underneath it. Chaining is per profile kind, so a
+      // split session follows the next segment of its own kind rather than
+      // jumping to an unrelated one, and the newest profile has nothing in
+      // front of it and runs to the live edge.
+      const nextProfileStartMsById = new Map<string, number>();
+      const chainGroups = new Map<string, { id: string; startMs: number }[]>();
+      for (const model of this.models) {
+        const key = `${model.profile.period}:${model.profile.root}`;
+        const group = chainGroups.get(key) ?? [];
+        group.push({ id: model.id, startMs: model.profile.startMs });
+        chainGroups.set(key, group);
+      }
+      for (const group of chainGroups.values()) {
+        group.sort((left, right) => left.startMs - right.startMs);
+        for (let index = 0; index < group.length - 1; index += 1) {
+          nextProfileStartMsById.set(group[index].id, group[index + 1].startMs);
+        }
+      }
+
       for (const model of this.models) {
         const { profile, style } = model;
         const topPrice = params.series.coordinateToPrice(0);
@@ -388,6 +410,16 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           : pinned
           ? pinnedRight ? leftEdge : rightEdge
           : sessionEndX;
+
+        // Where this profile's level lines must stop: the back of the profile
+        // in front, or the right edge when nothing follows.
+        const nextProfileStartMs = nextProfileStartMsById.get(model.id);
+        const nextProfileStartX = nextProfileStartMs === undefined
+          ? null
+          : this.timeToCoordinate(model, Math.floor(nextProfileStartMs / 1_000));
+        const levelChainEndX = nextProfileStartX == null
+          ? mediaSize.width
+          : Math.max(endX, nextProfileStartX);
 
         const sessionWidth = Math.max(0.5, Math.abs(sessionEndX - sessionAnchorX));
         const visibleLogicalRange = params.chart.timeScale().getVisibleLogicalRange();
@@ -724,11 +756,12 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           // Extend Line. `till-interaction` runs on until a later bar trades
           // back through the level, which is the point the line stops being
           // untested — drawing past it would overstate the level.
-          let lineEndX = endX;
+          // A level runs on until the session in front begins. Extend modes may
+          // stop it EARLIER — never later — so a line can never be drawn
+          // underneath the next profile, whatever the split settings are.
+          let lineEndX = levelChainEndX;
           const extendMode = style.extendMode ?? "none";
-          if (extendMode === "till-end-window") {
-            lineEndX = mediaSize.width;
-          } else if (extendMode === "till-interaction") {
+          if (extendMode === "till-interaction") {
             const bars = style.interactionBars ?? [];
             let touchedX: number | null = null;
             for (const bar of bars) {
@@ -737,7 +770,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
                 if (barX != null && barX > endX) { touchedX = barX; break; }
               }
             }
-            lineEndX = touchedX ?? mediaSize.width;
+            if (touchedX != null) lineEndX = Math.min(lineEndX, touchedX);
           }
           context.globalAlpha = 0.82;
           context.strokeStyle = color;
