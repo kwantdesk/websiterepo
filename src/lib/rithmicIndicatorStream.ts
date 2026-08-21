@@ -14,6 +14,12 @@ type SharedStream = {
   source: EventSource | null;
   subscribers: Set<Subscriber>;
   records: InstitutionalTrade[];
+  /**
+   * Identity of every record currently retained, maintained alongside the
+   * tape. Rebuilding a dedup Set per SSE message was the single largest
+   * source of allocation on the charts page — see admitRecords.
+   */
+  recordKeys: Set<string>;
   status: RithmicIndicatorStreamStatus;
   startPromise: Promise<void> | null;
   pendingTrades: InstitutionalTrade[];
@@ -34,6 +40,10 @@ const MAX_TAPE_RECORDS = 25_000;
 // but fan visual updates out as one compact batch. Price presentation uses the
 // separate live tick path, so this does not make the chart price less live.
 const TRADE_PUBLISH_INTERVAL_MS = 40;
+// How far past the cap the tape may run before it is cut back in one move,
+// so trimming costs one splice per few thousand prints instead of a fresh
+// array per message.
+const TAPE_TRIM_SLACK = 4_096;
 const STREAM_RECONNECT_DELAY_MS = 1_000;
 const STREAM_WATCHDOG_INTERVAL_MS = 5_000;
 const STREAM_STALE_AFTER_MS = 20_000;
@@ -41,24 +51,6 @@ const STREAM_STALE_AFTER_MS = 20_000;
 function recordKey(record: InstitutionalTrade) {
   return record.eventId
     || `${record.timestamp}:${record.recordIndex}:${record.close}:${record.volume}`;
-}
-
-function unseenRecords(current: InstitutionalTrade[], incoming: InstitutionalTrade[]) {
-  if (!incoming.length) return [];
-  // The dedup window must exceed the worst reconnect replay. A 512-record
-  // floor let a busy-session replay slip duplicate prints past dedup and into
-  // the candle accumulators, permanently inflating the bars they landed in.
-  const seen = new Set(
-    current
-      .slice(-Math.max(4_096, incoming.length * 4))
-      .map(recordKey),
-  );
-  return incoming.filter((record) => {
-    const key = recordKey(record);
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
 }
 
 function validRecord(value: unknown): value is InstitutionalTrade {
@@ -90,39 +82,58 @@ function decodeRecords(value: unknown) {
   } satisfies InstitutionalTrade));
 }
 
-function mergeRecords(current: InstitutionalTrade[], incoming: InstitutionalTrade[]) {
-  if (!incoming.length) return current;
-  // Live batches are already chronological. Avoid rebuilding and sorting a
-  // 25,000-row map for every SSE message; only compare against the recent tail
-  // where a reconnect can repeat records.
-  const recentKeys = new Set(
-    current
-      .slice(-Math.max(4_096, incoming.length * 4))
-      .map(recordKey),
-  );
-  const additions = incoming.filter((record) => !recentKeys.has(recordKey(record)));
-  if (!additions.length) return current;
-  const currentTail = current.at(-1);
-  const additionsAreOrdered = additions.every((record, index) => (
-    index === 0
-      ? !currentTail
-        || record.timestamp > currentTail.timestamp
-        || (record.timestamp === currentTail.timestamp && record.recordIndex >= currentTail.recordIndex)
-      : record.timestamp > additions[index - 1].timestamp
-        || (record.timestamp === additions[index - 1].timestamp
-          && record.recordIndex >= additions[index - 1].recordIndex)
-  ));
-  if (additionsAreOrdered) {
-    return current.concat(additions).slice(-MAX_TAPE_RECORDS);
-  }
+/**
+ * Admits genuinely new prints to the shared tape, in place.
+ *
+ * The previous pair of helpers rebuilt, for EVERY SSE trades message, a Set
+ * of the last 4,096 record keys — a 4,096-element slice plus 4,096 freshly
+ * built strings — and did it twice, once to find the unseen records and again
+ * to merge them. The merge then allocated two more 25,000-element arrays via
+ * `concat(...).slice(-MAX)`. That is roughly 900KB of garbage per message,
+ * and a busy NQ session sends them many times a second: measured on the
+ * owner's machine, the charts page climbed to 2,275MB of a 4,192MB heap in
+ * 245 seconds, and the resulting major GCs are what freeze the pointer and
+ * stall the price.
+ *
+ * The tape now keeps its identity index alongside it. Each message costs one
+ * key per incoming record and an append — no rescan of the retained tape, no
+ * reallocation of it. Trimming is amortised: the tape is allowed to run past
+ * the cap by a slack window and is then cut back in one splice, so the O(n)
+ * move happens once every few thousand prints instead of once per message.
+ *
+ * Dedup is also now exact over everything retained rather than over a 4,096
+ * record window, so a long reconnect replay can no longer slip a duplicate
+ * past the window and permanently inflate the candle it lands in.
+ */
+export type ExecutionTapeBuffer = {
+  records: InstitutionalTrade[];
+  recordKeys: Set<string>;
+};
 
-  const byId = new Map<string, InstitutionalTrade>();
-  for (const record of [...current, ...additions]) {
-    byId.set(recordKey(record), record);
+export function admitRecords(
+  stream: ExecutionTapeBuffer,
+  incoming: InstitutionalTrade[],
+  maxRecords = MAX_TAPE_RECORDS,
+  trimSlack = TAPE_TRIM_SLACK,
+) {
+  if (!incoming.length) return [];
+  const additions: InstitutionalTrade[] = [];
+  for (const record of incoming) {
+    const key = recordKey(record);
+    if (stream.recordKeys.has(key)) continue;
+    stream.recordKeys.add(key);
+    additions.push(record);
   }
-  return [...byId.values()]
-    .sort((left, right) => left.timestamp - right.timestamp || left.recordIndex - right.recordIndex)
-    .slice(-MAX_TAPE_RECORDS);
+  if (!additions.length) return additions;
+  for (const record of additions) stream.records.push(record);
+  if (stream.records.length > maxRecords + trimSlack) {
+    const overflow = stream.records.length - maxRecords;
+    for (let index = 0; index < overflow; index += 1) {
+      stream.recordKeys.delete(recordKey(stream.records[index]));
+    }
+    stream.records.splice(0, overflow);
+  }
+  return additions;
 }
 
 function publishStatus(stream: SharedStream, status: RithmicIndicatorStreamStatus) {
@@ -234,8 +245,7 @@ async function startStream(
       try {
         const payload = JSON.parse((event as MessageEvent<string>).data) as { records?: unknown };
         const records = decodeRecords(payload.records);
-        const additions = unseenRecords(stream.records, records);
-        stream.records = mergeRecords(stream.records, additions);
+        const additions = admitRecords(stream, records);
         if (!stream.seedPublished) {
           // The hosting proxy rotates long-running streams. Re-emitting a full
           // 25k seed on every reconnect made every open CVD/profile pane rebuild
@@ -246,7 +256,10 @@ async function startStream(
           stream.publishTimer = null;
           stream.pendingTrades = [];
           stream.seedPublished = true;
-          stream.subscribers.forEach((subscriber) => subscriber.onSeed?.(stream.records));
+          // The tape is mutated in place now, so a seed hands out a snapshot
+          // rather than the live array a consumer would see shifting under it.
+          const seed = stream.records.slice();
+          stream.subscribers.forEach((subscriber) => subscriber.onSeed?.(seed));
         } else if (additions.length) {
           queueTradePublication(stream, additions);
         }
@@ -263,9 +276,8 @@ async function startStream(
         // A reconnect can replay the tail of the execution stream. Publish
         // only genuinely new prints so CVD and volume profiles cannot count
         // the same execution twice.
-        const additions = unseenRecords(stream.records, records);
+        const additions = admitRecords(stream, records);
         if (!additions.length) return;
-        stream.records = mergeRecords(stream.records, additions);
         if (stream.seedPublished) queueTradePublication(stream, additions);
       } catch {
         // Ignore a malformed batch and reconcile on the next valid batch.
@@ -310,6 +322,7 @@ export function subscribeRithmicIndicatorTrades(args: {
       source: null,
       subscribers: new Set(),
       records: [],
+      recordKeys: new Set<string>(),
       status: "checking",
       startPromise: null,
       pendingTrades: [],
@@ -333,7 +346,7 @@ export function subscribeRithmicIndicatorTrades(args: {
   };
   stream.subscribers.add(subscriber);
   subscriber.onStatus?.(stream.status);
-  if (stream.records.length) subscriber.onSeed?.(stream.records);
+  if (stream.records.length) subscriber.onSeed?.(stream.records.slice());
   if (!stream.source && !stream.startPromise) {
     launchStream(key, stream, symbol, contractSymbol);
   }
