@@ -8867,7 +8867,13 @@ function Chart({
   );
   const anchoredBigTradePrints = useMemo(() => {
     if (!indicatorCandles.length || !bigTradePrints.length) return [];
-    const anchored = anchorBigTradePrintsToCandles(bigTradePrints, indicatorCandles);
+    const anchored = anchorBigTradePrintsToCandles(
+      bigTradePrints,
+      indicatorCandles,
+      // Clock charts anchor arithmetically so a throttled candle snapshot can
+      // never pin a print to the wrong bar; event charts keep the bar walk.
+      timeframe && isEventBasedChartInterval(timeframe) ? null : candleIntervalMs,
+    );
     const indicatorSettings = bigTradesIndicator?.settings ?? {};
     const combineByCandle = indicatorSettings.combineByCandle !== false;
     const isTimeAggregation = combineByCandle && candleIntervalMs != null && candleIntervalMs >= 60_000;
@@ -8953,7 +8959,7 @@ function Chart({
         opacity: minimumOpacity + (maximumOpacity - minimumOpacity) * visualWeight,
       };
     }).sort((left, right) => left.timestamp - right.timestamp);
-  }, [bigTradePrints, bigTradesIndicator?.settings, candleIntervalMs, indicatorCandles]);
+  }, [bigTradePrints, bigTradesIndicator?.settings, candleIntervalMs, indicatorCandles, timeframe]);
   const bigTradeEventChartTimes = useMemo(
     () => timeframe && isEventBasedChartInterval(timeframe)
       ? buildEventBarChartTimeMap(sampledIndicatorCandles)
@@ -8961,14 +8967,19 @@ function Chart({
     [sampledIndicatorCandles, timeframe],
   );
   const bigTradePrimitiveMarkers = useMemo<BigTradePrimitiveMarker[]>(() =>
-    anchoredBigTradePrints.map((print) => ({
-      ...print,
-      time: (
-        bigTradeEventChartTimes?.get(print.chartTimestamp)
-        ?? eventChartTimeBySourceTimeRef.current.get(print.chartTimestamp)
-        ?? Math.floor(print.chartTimestamp / 1_000)
-      ) as Time,
-    })), [anchoredBigTradePrints, bigTradeEventChartTimes, chartReadyRevision]);
+    anchoredBigTradePrints.flatMap((print) => {
+      const eventTime = bigTradeEventChartTimes?.get(print.chartTimestamp)
+        ?? eventChartTimeBySourceTimeRef.current.get(print.chartTimestamp);
+      // Event bars carry a synthetic second per bar, so the raw timestamp is
+      // NOT a valid chart time. Falling back to it placed the marker between
+      // bars, where the time scale interpolates a coordinate and the marker
+      // floats. A print whose bar cannot be resolved is simply not drawn.
+      if (eventTime === undefined && bigTradeEventChartTimes) return [];
+      return [{
+        ...print,
+        time: (eventTime ?? Math.floor(print.chartTimestamp / 1_000)) as Time,
+      }];
+    }), [anchoredBigTradePrints, bigTradeEventChartTimes, chartReadyRevision]);
 
   useEffect(() => {
     const primitive = bigTradesPrimitiveRef.current;

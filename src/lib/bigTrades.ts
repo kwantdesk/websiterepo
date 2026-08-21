@@ -246,10 +246,39 @@ export function calculateBigTradePrints(
 export function anchorBigTradePrintsToCandles(
   prints: BigTradePrint[],
   candles: Candle[],
+  /**
+   * Bar length for CLOCK-based charts.
+   *
+   * Supplying it anchors by arithmetic rather than by searching the array,
+   * which matters because the array a study holds is a throttled snapshot of
+   * the series the chart draws. Walking a stale array pinned a print to the
+   * last bar that snapshot happened to contain while the marker kept the
+   * print's real price — so it drew above or below a candle it never traded
+   * in, which is the marker apparently floating in space. A clock bucket
+   * cannot go stale.
+   *
+   * Event bars (volume/range/tick/Renko) have no fixed length, so they keep
+   * the array walk; their boundaries are market events, not clock time.
+   */
+  intervalMs?: number | null,
 ): AnchoredBigTradePrint[] {
   if (!candles.length || !prints.length) return [];
   const firstTimestamp = candles[0].timestamp;
   const anchored: AnchoredBigTradePrint[] = [];
+
+  if (Number.isFinite(intervalMs) && Number(intervalMs) > 0) {
+    const step = Number(intervalMs);
+    // Bar phase is a property of the series, not of any one snapshot, so it is
+    // safe to read from a stale array.
+    const phase = ((firstTimestamp % step) + step) % step;
+    for (const print of prints) {
+      if (print.timestamp < firstTimestamp) continue;
+      const bucket = Math.floor((print.timestamp - phase) / step) * step + phase;
+      anchored.push({ ...print, chartTimestamp: bucket });
+    }
+    return anchored;
+  }
+
   let candleIndex = 0;
   for (const print of prints) {
     if (print.timestamp < firstTimestamp) continue;
