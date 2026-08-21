@@ -28,11 +28,13 @@ type JsProfiler = {
 };
 type ProfilerConstructor = new (options: { sampleInterval: number; maxBufferSize: number }) => JsProfiler;
 
-const SAMPLE_INTERVAL_MS = 10;
-// A 30s window at 10ms is 3,000 samples; the buffer is sized with headroom so
-// a burst of oversampling cannot silently truncate the window.
-const MAX_BUFFER_SIZE = 6_000;
-const WINDOW_MS = 30_000;
+// Constructing a Profiler is not free: a trace from the owner's machine caught
+// the constructor at 56.8ms inside a 94ms task during startup. So sample at
+// frame cadence rather than 10ms, keep the buffer small, and rotate rarely —
+// each rotation pays that construction again.
+const SAMPLE_INTERVAL_MS = 16;
+const MAX_BUFFER_SIZE = 2_500;
+const WINDOW_MS = 60_000;
 
 let current: JsProfiler | null = null;
 let startedAt = 0;
@@ -105,14 +107,30 @@ function start() {
     return;
   }
   if (restartTimer !== null) clearTimeout(restartTimer);
-  restartTimer = setTimeout(() => { void rotate(); }, WINDOW_MS);
+  restartTimer = setTimeout(() => {
+    // A hidden tab is not being traded on and cannot stall visibly; rotating
+    // there would pay the constructor for samples nobody needs.
+    if (document.visibilityState !== "visible") {
+      restartTimer = setTimeout(() => { void rotate(); }, WINDOW_MS);
+      return;
+    }
+    void rotate();
+  }, WINDOW_MS);
 }
 
 export function startRendererProfiler() {
   if (running || typeof window === "undefined") return;
   if (!profilerConstructor()) return;
   running = true;
-  start();
+  // Never pay the constructor during startup, which is already the busiest
+  // stretch of the session. Wait for the first idle period after the
+  // workspace has settled.
+  const begin = () => { if (running) start(); };
+  const idle = (window as unknown as {
+    requestIdleCallback?: (cb: () => void, options?: { timeout: number }) => void;
+  }).requestIdleCallback;
+  if (idle) idle(begin, { timeout: 15_000 });
+  else setTimeout(begin, 8_000);
 }
 
 /**
