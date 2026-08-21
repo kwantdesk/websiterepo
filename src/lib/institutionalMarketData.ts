@@ -993,13 +993,27 @@ export async function fetchInstitutionalVolumeProfile(args: {
   return request;
 }
 
+// Every trading date in a week maps to the same Monday, so the two Date
+// allocations and the ISO round-trip below are worth doing once per date
+// rather than once per execution. There are only a few hundred dates in any
+// window a chart can ask for.
+const tradingWeekByDate = new Map<string, string>();
+
 function cmeTradingWeekKey(timestamp: number) {
   const tradingDate = cmeSessionDateKey(timestamp);
   if (!tradingDate) return null;
+  const cached = tradingWeekByDate.get(tradingDate);
+  if (cached !== undefined) return cached;
   const monday = new Date(`${tradingDate}T00:00:00.000Z`);
   const weekday = monday.getUTCDay();
   monday.setUTCDate(monday.getUTCDate() - (weekday === 0 ? 6 : weekday - 1));
-  return monday.toISOString().slice(0, 10);
+  const week = monday.toISOString().slice(0, 10);
+  if (tradingWeekByDate.size >= 512) {
+    const oldest = tradingWeekByDate.keys().next().value;
+    if (oldest !== undefined) tradingWeekByDate.delete(oldest);
+  }
+  tradingWeekByDate.set(tradingDate, week);
+  return week;
 }
 
 export function applyInstitutionalTradesToVolumeProfile(

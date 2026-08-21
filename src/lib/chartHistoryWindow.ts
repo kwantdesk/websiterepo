@@ -128,8 +128,39 @@ function chicagoWallClockMs(
   return null;
 }
 
+/**
+ * Trading dates resolved so far, keyed by the minute the timestamp falls in.
+ *
+ * The session boundary falls on an exact minute, so every timestamp inside a
+ * given minute belongs to the same trading date — resolving one print in that
+ * minute answers for all of them. Bounded to roughly a fortnight of minutes,
+ * which covers every window a chart can ask for while staying small.
+ */
+const sessionDateKeyByMinute = new Map<number, string | null>();
+const SESSION_DATE_KEY_CACHE_LIMIT = 20_160;
+
 export function cmeSessionDateKey(timestamp: number) {
   if (!Number.isFinite(timestamp)) return null;
+  // Intl timezone formatting is expensive and this runs per execution, per
+  // profile: applyInstitutionalTradesToVolumeProfile resolves every record
+  // against each open profile, and the weekly key resolves it again on top.
+  // Measured on a 25,000-print reconnect seed, formatting each print cost
+  // ~97ms per profile — close to a second of blocked main thread across a
+  // daily-plus-weekly workspace, and ~70ms of every second at live cadence.
+  const minute = Math.floor(timestamp / 60_000);
+  const cached = sessionDateKeyByMinute.get(minute);
+  // A resolved null is a real answer and must not be recomputed forever.
+  if (cached !== undefined) return cached;
+  const resolved = resolveCmeSessionDateKey(timestamp);
+  if (sessionDateKeyByMinute.size >= SESSION_DATE_KEY_CACHE_LIMIT) {
+    const oldest = sessionDateKeyByMinute.keys().next().value;
+    if (oldest !== undefined) sessionDateKeyByMinute.delete(oldest);
+  }
+  sessionDateKeyByMinute.set(minute, resolved);
+  return resolved;
+}
+
+function resolveCmeSessionDateKey(timestamp: number) {
   const parts = Object.fromEntries(
     CME_SESSION_CLOCK
       .formatToParts(new Date(timestamp))
