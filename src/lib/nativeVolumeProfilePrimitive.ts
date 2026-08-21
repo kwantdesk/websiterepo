@@ -121,6 +121,12 @@ export type NativeVolumeProfileStyle = {
   negativeDeltaColor: string;
   outsideValueAreaColor: string;
   valueAreaColor: string;
+  /**
+   * Active gradient scheme. When set, the whole profile body fades from
+   * `from` at its low to `to` at its high and every individual body colour
+   * above is ignored, so the profile reads as one graded shape.
+   */
+  gradient?: { from: string; to: string } | null;
   pocColor: string;
   showValueArea: boolean;
   showDelta: boolean;
@@ -327,7 +333,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
       // DeepChart can render a histogram.
       const fillPath = (
         path: Path2D,
-        color: string,
+        color: string | CanvasGradient,
         opacity: number,
         visual: "automatic" | "solid" | "hollow" | "line" | "combined" = "automatic",
         borderWidth = 1,
@@ -794,6 +800,22 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
             );
           }
         }
+        // One vertical gradient across the profile's own price extent. Built
+        // per profile rather than per row so the fade is continuous instead of
+        // banded, and reused by every body path below.
+        let bodyGradient: CanvasGradient | null = null;
+        if (style.gradient) {
+          const lowPrice = levels[0]?.price;
+          const highPrice = levels.at(-1)?.price;
+          const lowY = lowPrice == null ? null : params.series.priceToCoordinate(lowPrice);
+          const highY = highPrice == null ? null : params.series.priceToCoordinate(highPrice);
+          if (lowY != null && highY != null && Math.abs(lowY - highY) > 0.5) {
+            bodyGradient = context.createLinearGradient(0, lowY, 0, highY);
+            bodyGradient.addColorStop(0, style.gradient.from);
+            bodyGradient.addColorStop(1, style.gradient.to);
+          }
+        }
+        const bodyColor = (fallback: string) => bodyGradient ?? fallback;
         if (style.visualStyle === "line" && outlineSteps.length) {
           // Walk the rows in price order, stepping out to each row's width and
           // then along to the next — the same shape the filled profile makes,
@@ -814,13 +836,13 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
             previousWidth = step.width;
           }
           context.globalAlpha = Math.min(1, style.opacity + 0.2);
-          context.strokeStyle = style.valueAreaColor;
+          context.strokeStyle = bodyColor(style.valueAreaColor);
           context.lineWidth = Math.max(0.5, style.borderWidth ?? 1);
           context.setLineDash([]);
           context.lineJoin = "miter";
           context.stroke(silhouette);
         } else {
-          fillPath(outsideValueAreaPath, style.outsideValueAreaColor, style.opacity * 0.34, style.visualStyle, style.borderWidth);
+          fillPath(outsideValueAreaPath, bodyColor(style.outsideValueAreaColor), style.opacity * 0.34, style.visualStyle, style.borderWidth);
         }
         // Line is an OUTLINE, and nothing else. The silhouette above already
         // drew the profile's edge; every remaining path here is built from one
@@ -831,31 +853,31 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
         // own level line, which is drawn separately.
         const drawsInterior = style.visualStyle !== "line";
         if (drawsInterior) {
-          fillPath(valueAreaPath, style.valueAreaColor, style.opacity * 0.82, style.visualStyle, style.borderWidth);
+          fillPath(valueAreaPath, bodyColor(style.valueAreaColor), style.opacity * 0.82, style.visualStyle, style.borderWidth);
           fillPath(
             positiveDeltaPath,
-            style.positiveDeltaColor,
+            bodyColor(style.positiveDeltaColor),
             Math.min(0.94, style.opacity + 0.14),
             style.visualStyle,
             style.borderWidth,
           );
           fillPath(
             negativeDeltaPath,
-            style.negativeDeltaColor,
+            bodyColor(style.negativeDeltaColor),
             Math.min(0.94, style.opacity + 0.14),
             style.visualStyle,
             style.borderWidth,
           );
           fillPath(
             askVolumePath,
-            style.positiveDeltaColor,
+            bodyColor(style.positiveDeltaColor),
             Math.min(0.94, style.opacity + 0.08),
             style.visualStyle,
             style.borderWidth,
           );
           fillPath(
             bidVolumePath,
-            style.negativeDeltaColor,
+            bodyColor(style.negativeDeltaColor),
             Math.min(0.94, style.opacity + 0.08),
             style.visualStyle,
             style.borderWidth,

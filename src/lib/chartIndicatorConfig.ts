@@ -1,6 +1,7 @@
 import type { ChartSettings } from "@/lib/chartSettings";
 import type { ChartIndicatorInstance } from "@/lib/chartIndicatorCatalog";
 import { DEFAULT_VOLUME_PROFILE_VALUE_AREA_PERCENT } from "@/lib/volumeProfileMath";
+import { VOLUME_PROFILE_GRADIENT_OFF } from "@/lib/volumeProfileGradients";
 import { DEFAULT_FOOTPRINT_SETTINGS, FOOTPRINT_SETTINGS_SCHEMA_VERSION } from "@/lib/footprintSettings";
 import { defaultTpoSettings, tpoSettingsToRecord, validateTpoSettings } from "@/lib/tpo/settings";
 import { DEFAULT_DOM_PRO_VISIBLE_ROWS, DOM_PRO_SETTINGS_VERSION } from "@/lib/domPro";
@@ -1828,6 +1829,9 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     // the row height from each session's range, so the same instrument drew a
     // different profile granularity day to day.
     groupingMode: "manual",
+    // Gradient scheme. "off" leaves the individual colours in charge; any
+    // scheme id takes over the whole profile body and locks those pickers.
+    gradientPreset: VOLUME_PROFILE_GRADIENT_OFF,
     snapMode: indicatorId === "custom-draw-on-volume-profile" ? "off" : "left",
     useThemeColors: true,
     showText: false,
@@ -2242,6 +2246,7 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         // every profile. Forced, not defaulted — this is a deliberate reset of
         // the granularity and value area across saved charts.
         groupingMode: "manual",
+        gradientPreset: normalizedInstance.settings?.gradientPreset ?? VOLUME_PROFILE_GRADIENT_OFF,
         groupTicks: 4,
         valueAreaPercent: DEFAULT_VOLUME_PROFILE_VALUE_AREA_PERCENT,
         profileSettingsVersion: 13,
@@ -2303,6 +2308,7 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         // every profile. Forced, not defaulted — this is a deliberate reset of
         // the granularity and value area across saved charts.
         groupingMode: "manual",
+        gradientPreset: normalizedInstance.settings?.gradientPreset ?? VOLUME_PROFILE_GRADIENT_OFF,
         groupTicks: 4,
         valueAreaPercent: DEFAULT_VOLUME_PROFILE_VALUE_AREA_PERCENT,
         profileSettingsVersion: 13,

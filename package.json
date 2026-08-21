@@ -44,7 +44,8 @@
     "test:cvd-flow-heal": "node scripts/test-cvd-flow-heal.mjs",
     "test:volume-profile-split": "node scripts/test-volume-profile-split.mjs",
     "test:volume-profile-grouping": "node scripts/test-volume-profile-grouping.mjs",
-    "test:volume-profile-chain": "node scripts/test-volume-profile-chain.mjs"
+    "test:volume-profile-chain": "node scripts/test-volume-profile-chain.mjs",
+    "test:volume-profile-gradients": "node scripts/test-volume-profile-gradients.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",

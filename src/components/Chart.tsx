@@ -148,6 +148,7 @@ import {
   type FootprintRenderBar,
 } from "@/lib/footprintPrimitive";
 import { ChartRepaintNotifierPrimitive } from "@/lib/chartRepaintNotifier";
+import { resolveVolumeProfileGradient } from "@/lib/volumeProfileGradients";
 import { ImbalanceZonesPrimitive, type ImbalanceZoneModel } from "@/lib/imbalanceZonesPrimitive";
 import { retainLiveFootprintRows } from "@/lib/footprintLive";
 import { FOOTPRINT_DATA_REFRESH_INTERVAL_MS, ORDER_FLOW_DATA_REFRESH_INTERVAL_MS } from "@/lib/footprintRuntime";
@@ -12712,6 +12713,9 @@ function Chart({
           outsideValueAreaColor: useThemeColors ? settings.borderDownColor : String(profileSettings.volumeColor ?? settings.borderDownColor),
           valueAreaColor: useThemeColors ? settings.borderUpColor : String(profileSettings.valueAreaColor ?? settings.borderUpColor),
           pocColor: useThemeColors ? settings.upColor : String(profileSettings.pocColor ?? settings.upColor),
+          // A gradient scheme owns every body colour above; the renderer fades
+          // between these two across the profile's own price extent.
+          gradient: resolveVolumeProfileGradient(profileSettings.gradientPreset),
           showValueArea: profileSettings.showValueArea !== false,
           showDelta: profileSettings.showDelta !== false,
           showProfileSpine: profileSettings.showProfileSpine !== false,

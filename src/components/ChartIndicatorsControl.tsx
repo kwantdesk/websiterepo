@@ -46,6 +46,11 @@ import {
   type FootprintTemplate,
 } from "@/lib/footprintSettings";
 import ChartColorField, { isInsideChartColorPopover } from "@/components/ChartColorField";
+import {
+  VOLUME_PROFILE_GRADIENTS,
+  VOLUME_PROFILE_GRADIENT_OFF,
+  isVolumeProfileGradientActive,
+} from "@/lib/volumeProfileGradients";
 import { isInsideKwantSelectMenu } from "@/components/ui/KwantSelect";
 import KwantSelect from "@/components/ui/KwantSelect";
 import { PULLING_STACKING_PRESETS } from "@/lib/pullingStacking";
@@ -1373,6 +1378,62 @@ export default function ChartIndicatorsControl({
                   <span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition-all ${settingsInstance.enabled ? "left-6" : "left-1"}`} />
                 </button>
               </label>
+
+              {VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) ? (
+                <div className="space-y-2 rounded-xl border border-primary/15 bg-primary/[0.035] p-3">
+                  <div>
+                    <span className="block text-[11px] font-medium text-foreground">Gradient scheme</span>
+                    <span className="mt-0.5 block text-[9px] leading-4 text-muted">
+                      Fades the whole profile from one colour to the other across its own range. While a
+                      scheme is on it owns every profile colour, so the individual pickers are locked.
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+                    <button
+                      type="button"
+                      aria-pressed={!isVolumeProfileGradientActive(settingsInstance.settings?.gradientPreset)}
+                      onClick={() => replace(settingsInstance.instanceId, (current) => ({
+                        ...current,
+                        settings: { ...(current.settings ?? {}), gradientPreset: VOLUME_PROFILE_GRADIENT_OFF },
+                      }))}
+                      className={`h-9 border px-2 text-[9px] font-semibold uppercase tracking-[0.1em] transition-colors ${
+                        isVolumeProfileGradientActive(settingsInstance.settings?.gradientPreset)
+                          ? "border-border bg-background text-muted hover:border-primary/25 hover:text-foreground"
+                          : "border-primary/55 bg-primary/10 text-primary"
+                      }`}
+                    >
+                      Off
+                    </button>
+                    {VOLUME_PROFILE_GRADIENTS.map((gradient) => {
+                      const active = String(settingsInstance.settings?.gradientPreset ?? "") === gradient.id;
+                      return (
+                        <button
+                          key={gradient.id}
+                          type="button"
+                          aria-pressed={active}
+                          title={gradient.label}
+                          onClick={() => replace(settingsInstance.instanceId, (current) => ({
+                            ...current,
+                            settings: { ...(current.settings ?? {}), gradientPreset: gradient.id },
+                          }))}
+                          className={`relative h-9 overflow-hidden border text-[9px] font-semibold transition-colors ${
+                            active ? "border-primary" : "border-border hover:border-primary/35"
+                          }`}
+                        >
+                          <span
+                            aria-hidden
+                            className="absolute inset-0"
+                            style={{ background: `linear-gradient(90deg, ${gradient.from}, ${gradient.to})` }}
+                          />
+                          <span className="relative z-10 px-1 text-[8px] uppercase tracking-[0.08em] text-white mix-blend-difference">
+                            {gradient.label}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
 
               {VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) ? (
                 <div className="flex gap-1 overflow-x-auto border-b border-border pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -4718,6 +4779,10 @@ export default function ChartIndicatorsControl({
                   bySection.set(entry[2], [...(bySection.get(entry[2]) ?? []), entry]);
                 }
                 const themeColours = themeColourMapFor(settingsDefinition.id, chartSettings);
+                // A gradient scheme replaces every profile body colour, so the
+                // pickers would silently do nothing while one is selected.
+                const gradientLocked = VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id)
+                  && isVolumeProfileGradientActive(settingsInstance.settings?.gradientPreset);
                 const control = ([key, value]: readonly [string, unknown, string]) => (
                     typeof value === "boolean" ? (
                       <label key={key} className="flex min-h-10 items-center gap-2 rounded-lg border border-border bg-surface/30 px-3 text-[9px] text-muted">
@@ -4737,6 +4802,10 @@ export default function ChartIndicatorsControl({
                         <span className="truncate">{titleFromKey(key)}</span>
                         <ChartColorField
                           ariaLabel={`${titleFromKey(key)} colour`}
+                          disabled={gradientLocked}
+                          title={gradientLocked
+                            ? "The gradient scheme owns this colour. Set the scheme to Off to pick colours individually."
+                            : undefined}
                           value={themeColours && settingsInstance.settings?.useThemeColors !== false
                             ? String(themeColours[key] ?? value)
                             : String(value)}
