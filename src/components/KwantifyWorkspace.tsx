@@ -3419,11 +3419,17 @@ function fetchWorkspaceLiveSeam(
   return request;
 }
 
+// Beyond this window the retained tape keeps only the strongest prints per
+// minute (enough for Big Trades / Big Blocks, deliberately NOT a complete
+// record). Anything that needs exact per-bar volume — CVD above all — may only
+// trust the tape inside this window.
+const COMPLETE_EXECUTION_TAPE_WINDOW_MS = 15 * 60_000;
+
 function compactIndicatorExecutionHistory(records: InstitutionalTrade[]) {
   if (records.length <= 50_000) return records;
   const ordered = [...records].sort((left, right) =>
     left.timestamp - right.timestamp || left.recordIndex - right.recordIndex);
-  const recentCutoff = (ordered.at(-1)?.timestamp ?? Date.now()) - 15 * 60_000;
+  const recentCutoff = (ordered.at(-1)?.timestamp ?? Date.now()) - COMPLETE_EXECUTION_TAPE_WINDOW_MS;
   const strongestByMinute = new Map<number, InstitutionalTrade[]>();
   const recent: InstitutionalTrade[] = [];
   ordered.forEach((record) => {
@@ -3540,15 +3546,29 @@ function applyAvailableOrderFlowHistory(
   executionTape: InstitutionalTrade[],
 ) {
   if (!candles.length) return candles;
-  return isEventBasedChartInterval(timeframe)
-    ? executionTape.length
+  // Event bars (range/volume/Renko) are BUILT from the tape, so they use it
+  // whole. Time bars must not: beyond COMPLETE_EXECUTION_TAPE_WINDOW_MS the
+  // tape is a strongest-prints sample, and projecting it onto historical bars
+  // understates their aggressor volume — the flat-CVD-with-a-spike bug. Time
+  // bars prefer the gateway's exact per-bar flow, and fall back to the tape
+  // only for the bars the tape still covers completely.
+  if (isEventBasedChartInterval(timeframe)) {
+    return executionTape.length
       ? enrichCandlesWithInstitutionalTrades(candles, executionTape, candles.length)
-      : candles
-    : flowCandles.length
-      ? enrichCandlesWithInstitutionalCandleFlow(candles, flowCandles)
-      : executionTape.length
-        ? enrichCandlesWithInstitutionalTrades(candles, executionTape, candles.length)
-        : candles;
+      : candles;
+  }
+  if (flowCandles.length) return enrichCandlesWithInstitutionalCandleFlow(candles, flowCandles);
+  if (!executionTape.length) return candles;
+  const newestPrint = executionTape[executionTape.length - 1].timestamp;
+  const completeFrom = Math.max(
+    executionTape[0].timestamp,
+    newestPrint - COMPLETE_EXECUTION_TAPE_WINDOW_MS,
+  );
+  const firstIndex = candles.findIndex((candle) => candle.timestamp > completeFrom);
+  if (firstIndex < 0) return candles;
+  const enriched = enrichCandlesWithInstitutionalTrades(candles, executionTape, candles.length);
+  if (enriched === candles) return candles;
+  return enriched.map((candle, index) => (index < firstIndex ? candles[index] : candle));
 }
 
 function normalizeExecutionTimestamp(value: unknown) {
@@ -5558,15 +5578,25 @@ function WorkspaceChartPaneComponent({
       if (!tape.length) return candles;
       const exact = tape.filter((record) => !record.flowOnly);
       if (!exact.length) return candles;
-      const firstExactTimestamp = exact[0].timestamp;
+      // CRITICAL: the retained tape is COMPACTED beyond
+      // COMPLETE_EXECUTION_TAPE_WINDOW_MS — older minutes keep only their
+      // strongest prints. Rebuilding a historical bar from that subset
+      // replaced its true aggressor volume with a small biased fraction,
+      // which is what flattened CVD across the whole session and left a
+      // single vertical jump at the live edge. Only bars inside the complete
+      // window may be rebuilt; everything older keeps the exact per-bar flow
+      // the history feed already delivered.
+      const newestPrint = exact[exact.length - 1].timestamp;
+      const completeFrom = Math.max(
+        exact[0].timestamp,
+        newestPrint - COMPLETE_EXECUTION_TAPE_WINDOW_MS,
+      );
+      const firstRebuildIndex = candles.findIndex((candle) => candle.timestamp > completeFrom);
+      if (firstRebuildIndex < 0) return candles;
       const rebuilt = enrichCandlesWithInstitutionalTrades(candles, exact, candles.length);
       if (rebuilt === candles) return candles;
-      // The oldest bar the tape touches may only be partially covered (prints
-      // before the tape's retention start are gone), so its rebuilt flow would
-      // undercount. Keep the original values for any bar that opened at or
-      // before the first retained print.
       return rebuilt.map((candle, index) =>
-        candle.timestamp <= firstExactTimestamp ? candles[index] : candle);
+        index < firstRebuildIndex ? candles[index] : candle);
     };
     const scheduleMarketTradeStateSync = () => {
       // Footprint receives live batches through its canvas primitive below.
