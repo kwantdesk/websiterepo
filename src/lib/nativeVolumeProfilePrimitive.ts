@@ -822,42 +822,52 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
         } else {
           fillPath(outsideValueAreaPath, style.outsideValueAreaColor, style.opacity * 0.34, style.visualStyle, style.borderWidth);
         }
-        if (style.visualStyle !== "line") fillPath(valueAreaPath, style.valueAreaColor, style.opacity * 0.82, style.visualStyle, style.borderWidth);
-        fillPath(
-          positiveDeltaPath,
-          style.positiveDeltaColor,
-          Math.min(0.94, style.opacity + 0.14),
-          style.visualStyle,
-          style.borderWidth,
-        );
-        fillPath(
-          negativeDeltaPath,
-          style.negativeDeltaColor,
-          Math.min(0.94, style.opacity + 0.14),
-          style.visualStyle,
-          style.borderWidth,
-        );
-        fillPath(
-          askVolumePath,
-          style.positiveDeltaColor,
-          Math.min(0.94, style.opacity + 0.08),
-          style.visualStyle,
-          style.borderWidth,
-        );
-        fillPath(
-          bidVolumePath,
-          style.negativeDeltaColor,
-          Math.min(0.94, style.opacity + 0.08),
-          style.visualStyle,
-          style.borderWidth,
-        );
-        if (style.showProfileOutline) {
-          context.globalAlpha = 0.3;
-          context.strokeStyle = style.valueAreaColor;
-          context.lineWidth = 0.35;
-          context.stroke(outlinePath);
+        // Line is an OUTLINE, and nothing else. The silhouette above already
+        // drew the profile's edge; every remaining path here is built from one
+        // rectangle per row, so stroking them in line mode outlined each row
+        // individually — the bars reappearing inside the outline as soon as
+        // the chart was zoomed in far enough for the rows to separate. In line
+        // mode the interior stays completely see-through and the POC keeps its
+        // own level line, which is drawn separately.
+        const drawsInterior = style.visualStyle !== "line";
+        if (drawsInterior) {
+          fillPath(valueAreaPath, style.valueAreaColor, style.opacity * 0.82, style.visualStyle, style.borderWidth);
+          fillPath(
+            positiveDeltaPath,
+            style.positiveDeltaColor,
+            Math.min(0.94, style.opacity + 0.14),
+            style.visualStyle,
+            style.borderWidth,
+          );
+          fillPath(
+            negativeDeltaPath,
+            style.negativeDeltaColor,
+            Math.min(0.94, style.opacity + 0.14),
+            style.visualStyle,
+            style.borderWidth,
+          );
+          fillPath(
+            askVolumePath,
+            style.positiveDeltaColor,
+            Math.min(0.94, style.opacity + 0.08),
+            style.visualStyle,
+            style.borderWidth,
+          );
+          fillPath(
+            bidVolumePath,
+            style.negativeDeltaColor,
+            Math.min(0.94, style.opacity + 0.08),
+            style.visualStyle,
+            style.borderWidth,
+          );
+          if (style.showProfileOutline) {
+            context.globalAlpha = 0.3;
+            context.strokeStyle = style.valueAreaColor;
+            context.lineWidth = 0.35;
+            context.stroke(outlinePath);
+          }
+          if (style.showPocHighlight) fillPath(pocPath, style.pocColor, 0.72, style.visualStyle, style.borderWidth);
         }
-        if (style.showPocHighlight) fillPath(pocPath, style.pocColor, 0.72, style.visualStyle, style.borderWidth);
 
         const high = levels.at(-1)?.price ?? null;
         const low = levels[0]?.price ?? null;
