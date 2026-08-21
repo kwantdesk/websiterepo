@@ -252,18 +252,16 @@ export default function PrecisionToolsLayer({
   useEffect(() => {
     const subscribe = adapter.subscribeViewport;
     if (!subscribe) return;
-    let frame: number | null = null;
-    const unsubscribe = subscribe(() => {
-      if (frame != null) return;
-      frame = requestAnimationFrame(() => {
-        frame = null;
-        paintRef.current();
-      });
-    });
-    return () => {
-      if (frame != null) cancelAnimationFrame(frame);
-      unsubscribe();
-    };
+    // Paint SYNCHRONOUSLY, inside the chart's own paint pass.
+    //
+    // This signal fires while the chart is drawing its candles. Deferring the
+    // repaint to requestAnimationFrame pushes it into the NEXT frame, so the
+    // drawings land one frame behind the bars — invisible when the chart is
+    // still, and exactly the wobble that shows up when the chart is grabbed
+    // and thrown. Drawing straight into this callback puts the two surfaces in
+    // the same frame, which is the only arrangement that cannot wobble.
+    const unsubscribe = subscribe(() => paintRef.current());
+    return () => unsubscribe();
   }, [adapter.subscribeViewport]);
 
   useEffect(() => {

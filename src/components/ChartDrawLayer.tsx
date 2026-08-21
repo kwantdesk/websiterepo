@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactElement } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactElement } from "react";
 import {
   DRAW_TOOL_SPECS,
   FIB_CIRCLE_COEFFS,
@@ -176,15 +176,72 @@ export default function ChartDrawLayer({
   // throttled ~15fps React signal made drawings lag and wobble behind the
   // candles during a fast pan; this tracks the candles at frame rate.
   const [, forceRedraw] = useState(0);
+  // The projection this render's coordinates were computed against.
+  //
+  // SVG cannot be repainted inside the chart's paint pass — it is the
+  // browser's to draw, and a React render lands a frame or more later. That
+  // gap is the wobble when the chart is grabbed and thrown. A PAN, though, is
+  // a pure translation of an unchanged projection, so the layer can simply be
+  // translated to match the chart in the same frame and left exact until React
+  // catches up with fresh coordinates. Anything that is not a pure translation
+  // (a zoom, a price rescale) falls back to a re-render, because stretching
+  // the layer would distort strokes and text instead of moving them.
+  const projectionBasisRef = useRef<{
+    timeA: number; timeB: number; priceA: number; priceB: number;
+    xA: number; xB: number; yA: number; yB: number;
+  } | null>(null);
+  const drawingsGroupRef = useRef<SVGGElement | null>(null);
+
+  const readProjection = useCallback(() => {
+    const timeA = candles[0]?.time;
+    const timeB = candles[candles.length - 1]?.time;
+    const priceA = candles[0]?.close;
+    if (timeA == null || timeB == null || priceA == null || timeA === timeB) return null;
+    const priceB = priceA * 1.01;
+    const xA = toX(timeA);
+    const xB = toX(timeB);
+    const yA = toY(priceA);
+    const yB = toY(priceB);
+    if (xA == null || xB == null || yA == null || yB == null || xA === xB || yA === yB) return null;
+    return { timeA, timeB, priceA, priceB, xA, xB, yA, yB };
+  }, [candles, toX, toY]);
+
   useEffect(() => {
-    let frame = 0;
+    // Fresh coordinates: drop any compensating transform from the last pan.
+    projectionBasisRef.current = readProjection();
+    drawingsGroupRef.current?.removeAttribute("transform");
+  });
+
+  useEffect(() => {
     const onViewport = () => {
-      if (frame) return;
-      frame = window.requestAnimationFrame(() => { frame = 0; forceRedraw((value) => value + 1); });
+      const basis = projectionBasisRef.current;
+      const group = drawingsGroupRef.current;
+      if (!basis || !group) return;
+      const xA = toX(basis.timeA);
+      const xB = toX(basis.timeB);
+      const yA = toY(basis.priceA);
+      const yB = toY(basis.priceB);
+      if (xA == null || xB == null || yA == null || yB == null) return;
+      const scaleX = (xB - xA) / (basis.xB - basis.xA);
+      const scaleY = (yB - yA) / (basis.yB - basis.yA);
+      const translated = Math.abs(scaleX - 1) < 0.0005 && Math.abs(scaleY - 1) < 0.0005;
+      if (!translated) {
+        // A real scale change. Let React redraw at the new projection.
+        group.removeAttribute("transform");
+        forceRedraw((value) => value + 1);
+        return;
+      }
+      const dx = xA - basis.xA;
+      const dy = yA - basis.yA;
+      if (dx === 0 && dy === 0) {
+        group.removeAttribute("transform");
+        return;
+      }
+      group.setAttribute("transform", `translate(${dx} ${dy})`);
     };
     const unsubscribe = subscribeViewport(onViewport);
-    return () => { unsubscribe(); if (frame) window.cancelAnimationFrame(frame); };
-  }, [subscribeViewport, chartReady]);
+    return () => { unsubscribe(); };
+  }, [subscribeViewport, chartReady, toX, toY]);
   // Volume-profile histograms and anchored-VWAP series live in price/time space
   // — they do NOT change when the user pans or zooms, only the pixel projection
   // does. Computing them inside renderDrawing meant a full candle scan per
@@ -870,8 +927,10 @@ export default function ChartDrawLayer({
       data-viewport={viewportVersion}
       style={{ pointerEvents: "none" }}
     >
-      {drawings.map((drawing) => renderDrawing(drawing))}
-      {previewDrawing ? renderDrawing(previewDrawing, true) : null}
+      <g ref={drawingsGroupRef}>
+        {drawings.map((drawing) => renderDrawing(drawing))}
+        {previewDrawing ? renderDrawing(previewDrawing, true) : null}
+      </g>
       {captureActive ? (
         <rect
           x={0}
