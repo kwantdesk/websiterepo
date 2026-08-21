@@ -12562,7 +12562,11 @@ function Chart({
       timeScale.subscribeVisibleTimeRangeChange(handleVisibleTimeRangeChange);
       container.addEventListener("pointerdown", beginPointerInteraction, { passive: true });
       container.addEventListener("pointermove", handlePointerInteraction, { passive: true });
-      container.addEventListener("wheel", handleWheelInteraction, { passive: true });
+      // Capture phase: the price scale runs its own wheel handler and can
+      // stop the event before it bubbles to the container, which is why
+      // dragging the scale synced the linked group but scrolling it only
+      // ever squeezed the chart under the cursor.
+      container.addEventListener("wheel", handleWheelInteraction, { passive: true, capture: true });
       window.addEventListener("pointermove", handleWindowPointerMove, { passive: true });
       window.addEventListener("pointerup", finishPointerInteraction, { passive: true });
       window.addEventListener("pointercancel", finishPointerInteraction, { passive: true });
@@ -12592,7 +12596,7 @@ function Chart({
         timeScale.unsubscribeVisibleTimeRangeChange(handleVisibleTimeRangeChange);
         container.removeEventListener("pointerdown", beginPointerInteraction);
         container.removeEventListener("pointermove", handlePointerInteraction);
-        container.removeEventListener("wheel", handleWheelInteraction);
+        container.removeEventListener("wheel", handleWheelInteraction, { capture: true });
         window.removeEventListener("pointermove", handleWindowPointerMove);
         window.removeEventListener("pointerup", finishPointerInteraction);
         window.removeEventListener("pointercancel", finishPointerInteraction);

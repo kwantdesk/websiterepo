@@ -589,6 +589,10 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           lastVisible = Math.min(levels.length, low + 1);
         }
 
+        // Line style traces the profile's outer edge as one stepped polyline
+        // rather than outlining every row rectangle, which is what makes it
+        // read as a profile silhouette instead of a stack of boxes.
+        const outlineSteps: { y: number; height: number; width: number }[] = [];
         const valueAreaPath = new Path2D();
         const outsideValueAreaPath = new Path2D();
         const positiveDeltaPath = new Path2D();
@@ -615,6 +619,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           const y = Math.min(top, bottom);
           const height = Math.max(0.72, Math.abs(bottom - top) - 0.12);
           const volumeWidth = Math.max(0, volume / groupedMaxVolume * profileWidth);
+          if (style.visualStyle === "line") outlineSteps.push({ y, height, width: volumeWidth });
           // Delta percentage measures how one-sided a row was rather than how
           // big its delta was, so a thin row that traded entirely on the offer
           // reads as strongly as a heavy balanced one.
@@ -727,8 +732,35 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
             );
           }
         }
-        fillPath(outsideValueAreaPath, style.outsideValueAreaColor, style.opacity * 0.34, style.visualStyle, style.borderWidth);
-        fillPath(valueAreaPath, style.valueAreaColor, style.opacity * 0.82, style.visualStyle, style.borderWidth);
+        if (style.visualStyle === "line" && outlineSteps.length) {
+          // Walk the rows in price order, stepping out to each row's width and
+          // then along to the next — the same shape the filled profile makes,
+          // drawn as a single continuous edge.
+          const ordered = [...outlineSteps].sort((left, right) => left.y - right.y);
+          const direction = pinnedRight ? -1 : 1;
+          const silhouette = new Path2D();
+          let previousWidth: number | null = null;
+          for (const step of ordered) {
+            const edgeX = anchorX + direction * step.width;
+            if (previousWidth === null) {
+              silhouette.moveTo(anchorX, step.y);
+              silhouette.lineTo(edgeX, step.y);
+            } else if (step.width !== previousWidth) {
+              silhouette.lineTo(edgeX, step.y);
+            }
+            silhouette.lineTo(edgeX, step.y + step.height);
+            previousWidth = step.width;
+          }
+          context.globalAlpha = Math.min(1, style.opacity + 0.2);
+          context.strokeStyle = style.valueAreaColor;
+          context.lineWidth = Math.max(0.5, style.borderWidth ?? 1);
+          context.setLineDash([]);
+          context.lineJoin = "miter";
+          context.stroke(silhouette);
+        } else {
+          fillPath(outsideValueAreaPath, style.outsideValueAreaColor, style.opacity * 0.34, style.visualStyle, style.borderWidth);
+        }
+        if (style.visualStyle !== "line") fillPath(valueAreaPath, style.valueAreaColor, style.opacity * 0.82, style.visualStyle, style.borderWidth);
         fillPath(
           positiveDeltaPath,
           style.positiveDeltaColor,

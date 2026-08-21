@@ -1198,7 +1198,16 @@ export default function ChartIndicatorsControl({
                   onChange={(event) => setSearch(event.target.value)}
                   placeholder="Search CVD, volume, VWAP..."
                   spellCheck={false}
-                  autoComplete="off"
+                  // Chrome ignores autoComplete="off" on a plain text input and
+                  // still offers its own suggestion list; an unknown token and
+                  // the manager opt-outs keep that overlay off a search field.
+                  autoComplete="one-time-code"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  name="kwantdesk-indicator-search"
+                  data-lpignore="true"
+                  data-1p-ignore=""
+                  data-form-type="other"
                   className="h-full min-w-0 flex-1 appearance-none border-0 bg-transparent font-mono text-[11px] text-foreground outline-none placeholder:text-muted/55"
                 />
               </div>

@@ -464,6 +464,25 @@ export function detectSinglePrints(
     }
     return shoulder - row.tpoCount >= requiredDrop;
   };
+
+  // A genuine low-volume area is entered AND left: price steps down into it on
+  // one side and back up out of it on the other. A run that only drops away
+  // and never recovers is the profile's own tail, not a hole inside the
+  // auction, and marking those was most of the noise. The zone widens from the
+  // step until it meets the equivalent opposite step.
+  const hasMatchingOppositeStep = (fromIndex: number, toIndex: number) => {
+    if (requiredDrop <= 0) return true;
+    let below = 0;
+    for (let index = fromIndex - 1; index >= 0 && index >= fromIndex - shoulderWidth; index -= 1) {
+      below = Math.max(below, rows[index].tpoCount);
+    }
+    let above = 0;
+    for (let index = toIndex + 1; index < rows.length && index <= toIndex + shoulderWidth; index += 1) {
+      above = Math.max(above, rows[index].tpoCount);
+    }
+    const inner = Math.max(...rows.slice(fromIndex, toIndex + 1).map((row) => row.tpoCount));
+    return below - inner >= requiredDrop && above - inner >= requiredDrop;
+  };
   const thinByIndex = rows.map((row, index) =>
     (row.tpoCount >= 1 && row.tpoCount <= threshold) || isStepDown(index));
   let result: TpoSinglePrintZone[] = [];
@@ -475,7 +494,8 @@ export function detectSinglePrints(
     if (!start || !previous) return;
     const length = previous.highTick - start.lowTick + 1;
     const atExtreme = start === rows[0] || previous === rows.at(-1);
-    if (length >= minimumTicks && (includeExtremes || !atExtreme)) {
+    const paired = atExtreme || hasMatchingOppositeStep(rows.indexOf(start), rows.indexOf(previous));
+    if (length >= minimumTicks && (includeExtremes || !atExtreme) && paired) {
       result.push({
         lowTick: start.lowTick,
         highTick: previous.highTick,
