@@ -9162,11 +9162,21 @@ function Chart({
       }
       const long = String(initialBalanceSettings.fibDirection ?? "long") !== "short";
       const color = long ? settings.upColor : settings.downColor;
+      // Each fib set ends where the NEXT session opens (any session type), so
+      // it reads as that balance's own retracement block instead of a ray
+      // running under every later session. The newest set stays open-ended.
+      const sessionStarts = [...new Set(initialBalanceLevels.map((level) => level.session.startTimestamp))]
+        .sort((left, right) => left - right);
       for (const pair of bySession.values()) {
         if (!pair.high || !pair.low) continue;
         const range = pair.high.price - pair.low.price;
         if (!(range > 0)) continue;
         const fibStart = Math.max(pair.high.startTimestamp, pair.low.startTimestamp);
+        const nextSessionStart = sessionStarts.find((start) => start > pair.high!.session.startTimestamp);
+        const fibEnd = nextSessionStart !== undefined && nextSessionStart > fibStart
+          ? (eventChartTimeBySourceTimeRef.current.get(nextSessionStart)
+            ?? Math.floor(nextSessionStart / 1_000)) as Time
+          : undefined;
         for (const ratio of [0.5, 0.618, 0.786]) {
           fibLevels.push({
             id: `${pair.high.id}-fib-${ratio}-${long ? "long" : "short"}`,
@@ -9174,6 +9184,7 @@ function Chart({
               eventChartTimeBySourceTimeRef.current.get(fibStart)
               ?? Math.floor(fibStart / 1_000)
             ) as Time,
+            endTime: fibEnd,
             price: long
               ? pair.high.price - range * ratio
               : pair.low.price + range * ratio,
