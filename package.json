@@ -41,7 +41,8 @@
     "desktop:build": "powershell -ExecutionPolicy Bypass -File desktop/package-windows.ps1",
     "test:big-trades-filter": "node scripts/test-big-trades-filter.mjs",
     "test:volume-profile-zoom": "node scripts/test-volume-profile-zoom.mjs",
-    "test:cvd-flow-heal": "node scripts/test-cvd-flow-heal.mjs"
+    "test:cvd-flow-heal": "node scripts/test-cvd-flow-heal.mjs",
+    "test:volume-profile-split": "node scripts/test-volume-profile-split.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",

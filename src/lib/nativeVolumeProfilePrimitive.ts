@@ -838,6 +838,25 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           context.stroke();
         }
 
+        // When a day is split into session windows, several profiles sit side
+        // by side on the same date. Name each one at its top, otherwise the
+        // split is invisible and the chart just looks like more profiles.
+        if (profile.sessionLabel && top != null && bottom != null) {
+          const labelY = Math.max(9, Math.min(top, bottom) - 4);
+          context.globalAlpha = 0.92;
+          context.font = "600 9px 'JetBrains Mono', monospace";
+          context.textAlign = pinnedRight ? "right" : "left";
+          context.textBaseline = "alphabetic";
+          const measured = context.measureText(profile.sessionLabel).width;
+          const labelX = clamp(
+            pinnedRight ? anchorX - 2 : anchorX + 2,
+            leftEdge + (pinnedRight ? measured + 4 : 4),
+            mediaSize.width - (pinnedRight ? 4 : measured + 4),
+          );
+          context.fillStyle = style.pocColor;
+          context.fillText(profile.sessionLabel, labelX, labelY);
+        }
+
         const drawLevel = (
           price: number | null,
           color: string,

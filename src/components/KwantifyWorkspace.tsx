@@ -256,7 +256,7 @@ import {
   supportsChartInterval,
 } from "@/lib/chartIntervals";
 import { applyMarketTradesToEventBars, futuresTickSize } from "@/lib/eventBars";
-import { RTH_END_MINUTES, RTH_START_MINUTES } from "@/lib/volumeProfileSessions";
+import { RTH_END_MINUTES, RTH_START_MINUTES, resolveSessionSegments, sessionTradingDate } from "@/lib/volumeProfileSessions";
 import type { ValueAreaProfile } from "@/lib/valueArea";
 import {
   DATABENTO_LIVE_TICK_EVENT,
@@ -7874,6 +7874,36 @@ function WorkspaceChartPaneComponent({
     return (["none", "filter", "splitted", "triple"].includes(requested) ? requested : "none") as
       "none" | "filter" | "splitted" | "triple";
   };
+  /** True when the study is asking for one profile per session window. */
+  const dailySessionSplitsFor = (settings: Record<string, unknown>) => {
+    const mode = sessionFilterModeFor(settings);
+    return mode === "splitted" || mode === "triple";
+  };
+  /**
+   * The session windows a single CME trading date resolves to.
+   *
+   * The date is a Chicago trading date, so the day it describes runs from the
+   * previous 17:00 Globex open. Segments are resolved across that whole span
+   * and then attributed back with the study's own end-session convention, so
+   * an Asia window that opened the evening before lands on the right date.
+   */
+  const sessionSegmentsForTradingDate = (
+    tradingDate: string,
+    settings: Record<string, unknown>,
+  ) => {
+    const midnight = Date.parse(`${tradingDate}T00:00:00.000Z`);
+    if (!Number.isFinite(midnight)) return [];
+    const dayStartMs = midnight - 12 * 60 * 60_000;
+    const dayEndMs = midnight + 36 * 60 * 60_000;
+    const useEndSessionAsStartDay = settings.useEndSessionAsStartDay === true;
+    return resolveSessionSegments(dayStartMs, dayEndMs, {
+      mode: sessionFilterModeFor(settings),
+      window: sessionFilterTimeFor(settings),
+      customStartMinutes: Number(settings.sessionStartMinutes ?? RTH_START_MINUTES),
+      customEndMinutes: Number(settings.sessionEndMinutes ?? RTH_END_MINUTES),
+      useEndSessionAsStartDay,
+    }).filter((segment) => sessionTradingDate(segment, useEndSessionAsStartDay) === tradingDate);
+  };
   const sessionFilterTimeFor = (settings: Record<string, unknown>) => {
     const requested = String(settings.filterTime ?? "rth").toLowerCase();
     return (["rth", "eth", "custom"].includes(requested) ? requested : "rth") as "rth" | "eth" | "custom";
@@ -8020,6 +8050,12 @@ function WorkspaceChartPaneComponent({
         const next = current.filter((candidate) => {
           if (candidate.period !== replacement.period) return true;
           if (replacement.period === "daily") {
+            // A split day produces several daily profiles that share a trading
+            // date, so the session is part of the identity. Matching on the
+            // date alone made each session evict the one before it and only
+            // the last window ever survived — which is why selecting Triple
+            // still showed a single profile.
+            if ((candidate.sessionId ?? "") !== (replacement.sessionId ?? "")) return true;
             return chicagoTradingDate(candidate.startMs) !== chicagoTradingDate(replacement.startMs);
           }
           return false;
@@ -8033,27 +8069,62 @@ function WorkspaceChartPaneComponent({
       const requests: Promise<unknown>[] = [];
       let currentDailyProfileLoaded = !dailyProfileInstance;
       if (dailyProfileInstance) {
+        const dailyFilterMode = sessionFilterModeFor(dailyProfileSettings);
+        const dailySplits = dailySessionSplitsFor(dailyProfileSettings);
         tradingDates.forEach((tradingDate) => {
-          requests.push(fetchInstitutionalVolumeProfile({
-            symbol: displayCmeSymbol(pane.symbol),
-            contractSymbol: resolvedContractSymbol,
-            period: "daily",
-            tradingDate,
-            groupTicks: requestedDailyGroupTicks,
-            valueAreaPercent: Number(dailyProfileSettings.valueAreaPercent ?? STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT),
-            minTradeVolume: requestedDailyMinVolume,
-            maxTradeVolume: requestedDailyMaxVolume,
-            filterMode: sessionFilterModeFor(dailyProfileSettings),
-            filterTime: sessionFilterTimeFor(dailyProfileSettings),
-            sessionStartMinutes: Number(dailyProfileSettings.sessionStartMinutes ?? RTH_START_MINUTES),
-            sessionEndMinutes: Number(dailyProfileSettings.sessionEndMinutes ?? RTH_END_MINUTES),
-            useEndSessionAsStartDay: dailyProfileSettings.useEndSessionAsStartDay === true,
-          }).then((profile) => {
-            if (tradingDate === currentDailyTradingDate && profile) {
-              currentDailyProfileLoaded = true;
-            }
-            replaceExactProfile(profile, tradingDate);
-          }));
+          // Splitting a day means one profile PER window, so Asia, London and
+          // New York stand beside each other. Each segment is requested as its
+          // own explicit span with no further filtering; the server then has
+          // nothing to merge.
+          const segments = dailySplits
+            ? sessionSegmentsForTradingDate(tradingDate, dailyProfileSettings)
+            : [];
+          const jobs = segments.length
+            ? segments.map((segment) => ({
+                startMs: segment.startMs,
+                endMs: segment.endMs,
+                tradingDate: undefined as string | undefined,
+                filterMode: "none" as const,
+                sessionId: segment.id,
+                sessionLabel: segment.label,
+              }))
+            : [{
+                startMs: undefined,
+                endMs: undefined,
+                tradingDate,
+                filterMode: dailyFilterMode,
+                sessionId: undefined,
+                sessionLabel: undefined,
+              }];
+          jobs.forEach((job) => {
+            requests.push(fetchInstitutionalVolumeProfile({
+              symbol: displayCmeSymbol(pane.symbol),
+              contractSymbol: resolvedContractSymbol,
+              period: "daily",
+              tradingDate: job.tradingDate,
+              startMs: job.startMs,
+              endMs: job.endMs,
+              groupTicks: requestedDailyGroupTicks,
+              valueAreaPercent: Number(dailyProfileSettings.valueAreaPercent ?? STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT),
+              minTradeVolume: requestedDailyMinVolume,
+              maxTradeVolume: requestedDailyMaxVolume,
+              filterMode: job.filterMode,
+              filterTime: sessionFilterTimeFor(dailyProfileSettings),
+              sessionStartMinutes: Number(dailyProfileSettings.sessionStartMinutes ?? RTH_START_MINUTES),
+              sessionEndMinutes: Number(dailyProfileSettings.sessionEndMinutes ?? RTH_END_MINUTES),
+              useEndSessionAsStartDay: dailyProfileSettings.useEndSessionAsStartDay === true,
+            }).then((profile) => {
+              if (tradingDate === currentDailyTradingDate && profile) {
+                currentDailyProfileLoaded = true;
+              }
+              replaceExactProfile(
+                profile && job.sessionId
+                  ? { ...profile, sessionId: job.sessionId, sessionLabel: job.sessionLabel }
+                  : profile,
+                tradingDate,
+              );
+            }));
+          });
         });
       }
       if (weeklyProfileInstance) {

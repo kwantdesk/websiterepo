@@ -79,6 +79,14 @@ export type InstitutionalVolumeProfile = {
   contractSymbol: string;
   period: "daily" | "weekly" | "custom";
   tradingDate?: string | null;
+  /**
+   * Which session window this profile covers, when the study is splitting a
+   * day rather than profiling all of it. Several profiles then share one
+   * trading date — Asia, London and New York — so consumers must key on the
+   * pair, never on the date alone.
+   */
+  sessionId?: string;
+  sessionLabel?: string;
   startMs: number;
   endMs: number;
   coverageStartMs?: number | null;

@@ -73,7 +73,13 @@ export async function buildDatabentoExecutionProfile(
   args: ProfileArgs,
 ): Promise<InstitutionalVolumeProfile | null> {
   const groupTicks = Math.max(1, Math.round(args.groupTicks ?? 1));
-  const valueAreaPercent = STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT;
+  // The trader's own % Value Area. This was pinned to the 70% convention here,
+  // so the setting was discarded at the last step even after the route and the
+  // client were both fixed to forward it.
+  const requestedValueArea = Number(args.valueAreaPercent);
+  const valueAreaPercent = Number.isFinite(requestedValueArea) && requestedValueArea > 0
+    ? Math.min(100, requestedValueArea)
+    : STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT;
   const minTradeVolume = Math.max(0, args.minTradeVolume ?? 0);
   const maxTradeVolume = Math.max(0, args.maxTradeVolume ?? 0);
   const contractSymbol = (args.contractSymbol ?? "").trim().toUpperCase();
