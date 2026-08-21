@@ -823,16 +823,32 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
                 pinnedRight ? [radius, 0, 0, radius] : [0, radius, radius, 0],
               );
             }
-            if (style.mode !== "volume" && style.showDelta && !volumeOnlyPinnedDaily) {
+            if (style.mode !== "volume" && style.showDelta) {
+              // Delta normally sits BEHIND the volume half, on the opposite
+              // side of the spine. Docked to the screen edge there is no room
+              // for it there, and it used to be dropped entirely — so choosing
+              // "Delta and total volume" appeared to lose the delta the moment
+              // the profile docked. It now draws INSIDE the volume bar,
+              // sharing its baseline and bounded by its width, so the reading
+              // survives the dock instead of disappearing with it.
+              const insideDock = volumeOnlyPinnedDaily;
+              const barWidth = insideDock
+                ? Math.max(0.5, Math.min(deltaWidth, volumeWidth))
+                : deltaWidth;
+              const sideAnchored = pinned && !splitPinnedDaily;
               addBar(
                 delta >= 0 ? positiveDeltaPath : negativeDeltaPath,
-                pinned && !splitPinnedDaily
-                  ? pinnedRight ? anchorX - deltaWidth : anchorX
-                  : anchorX - deltaWidth,
-                y,
-                deltaWidth,
-                height,
-                pinned && !splitPinnedDaily
+                insideDock
+                  ? pinnedRight ? anchorX - barWidth : anchorX
+                  : sideAnchored
+                    ? pinnedRight ? anchorX - deltaWidth : anchorX
+                    : anchorX - deltaWidth,
+                // Inset so the delta reads as a bar within the volume rather
+                // than replacing it.
+                y + Math.min(height * 0.22, 2),
+                barWidth,
+                Math.max(1, height - Math.min(height * 0.44, 4)),
+                insideDock || sideAnchored
                   ? pinnedRight ? "left" : "right"
                   : "left",
               );

@@ -1832,6 +1832,11 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     // Gradient scheme. "off" leaves the individual colours in charge; any
     // scheme id takes over the whole profile body and locks those pickers.
     gradientPreset: VOLUME_PROFILE_GRADIENT_OFF,
+    // Which windows a split profile actually draws. All on reproduces the
+    // untouched split; unticking one simply omits that profile.
+    sessionAsiaEnabled: true,
+    sessionLondonEnabled: true,
+    sessionNewYorkEnabled: true,
     snapMode: indicatorId === "custom-draw-on-volume-profile" ? "off" : "left",
     useThemeColors: true,
     showText: false,
@@ -2228,10 +2233,11 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         shiftedPocTicks: normalizedInstance.settings?.shiftedPocTicks ?? 4,
         shiftedPocOpacity: normalizedInstance.settings?.shiftedPocOpacity ?? 35,
         valueAreaDeveloping: normalizedInstance.settings?.valueAreaDeveloping ?? "no",
-        // A profile shows volume as standard; delta is opt-in.
-        profileMode: normalizedInstance.settings?.profileMode === "delta-volume"
-          ? "volume"
-          : normalizedInstance.settings?.profileMode ?? "volume",
+        // A profile shows volume as standard, but "Delta and total volume" is
+        // a real choice in the dropdown and must survive. Coercing it back to
+        // plain volume here meant the setting silently reverted every time the
+        // settings version moved, so picking it appeared to do nothing.
+        profileMode: normalizedInstance.settings?.profileMode ?? "volume",
         levelLabelSide: normalizedInstance.settings?.levelLabelSide ?? "right",
         showLevelLabelPrice: normalizedInstance.settings?.showLevelLabelPrice ?? true,
         levelLineStyle: normalizedInstance.settings?.levelLineStyle ?? "dash",
@@ -2247,6 +2253,9 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         // the granularity and value area across saved charts.
         groupingMode: "manual",
         gradientPreset: normalizedInstance.settings?.gradientPreset ?? VOLUME_PROFILE_GRADIENT_OFF,
+        sessionAsiaEnabled: normalizedInstance.settings?.sessionAsiaEnabled ?? true,
+        sessionLondonEnabled: normalizedInstance.settings?.sessionLondonEnabled ?? true,
+        sessionNewYorkEnabled: normalizedInstance.settings?.sessionNewYorkEnabled ?? true,
         groupTicks: 4,
         valueAreaPercent: DEFAULT_VOLUME_PROFILE_VALUE_AREA_PERCENT,
         profileSettingsVersion: 13,
@@ -2290,10 +2299,11 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         shiftedPocTicks: normalizedInstance.settings?.shiftedPocTicks ?? 4,
         shiftedPocOpacity: normalizedInstance.settings?.shiftedPocOpacity ?? 35,
         valueAreaDeveloping: normalizedInstance.settings?.valueAreaDeveloping ?? "no",
-        // A profile shows volume as standard; delta is opt-in.
-        profileMode: normalizedInstance.settings?.profileMode === "delta-volume"
-          ? "volume"
-          : normalizedInstance.settings?.profileMode ?? "volume",
+        // A profile shows volume as standard, but "Delta and total volume" is
+        // a real choice in the dropdown and must survive. Coercing it back to
+        // plain volume here meant the setting silently reverted every time the
+        // settings version moved, so picking it appeared to do nothing.
+        profileMode: normalizedInstance.settings?.profileMode ?? "volume",
         levelLabelSide: normalizedInstance.settings?.levelLabelSide ?? "right",
         showLevelLabelPrice: normalizedInstance.settings?.showLevelLabelPrice ?? true,
         levelLineStyle: normalizedInstance.settings?.levelLineStyle ?? "dash",
@@ -2309,6 +2319,9 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         // the granularity and value area across saved charts.
         groupingMode: "manual",
         gradientPreset: normalizedInstance.settings?.gradientPreset ?? VOLUME_PROFILE_GRADIENT_OFF,
+        sessionAsiaEnabled: normalizedInstance.settings?.sessionAsiaEnabled ?? true,
+        sessionLondonEnabled: normalizedInstance.settings?.sessionLondonEnabled ?? true,
+        sessionNewYorkEnabled: normalizedInstance.settings?.sessionNewYorkEnabled ?? true,
         groupTicks: 4,
         valueAreaPercent: DEFAULT_VOLUME_PROFILE_VALUE_AREA_PERCENT,
         profileSettingsVersion: 13,

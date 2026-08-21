@@ -1976,6 +1976,35 @@ export default function ChartIndicatorsControl({
                       </KwantSelect>
                     </label>
                   ))}
+                  {String(settingsInstance.settings?.filterMode ?? "none") === "triple" ? (
+                    <div className="space-y-1.5 sm:col-span-2">
+                      <span className="block text-[9px] uppercase tracking-[0.12em] text-muted">Sessions drawn</span>
+                      <div className="grid grid-cols-3 gap-2">
+                        {([
+                          ["Asia", "sessionAsiaEnabled"],
+                          ["London", "sessionLondonEnabled"],
+                          ["New York", "sessionNewYorkEnabled"],
+                        ] as const).map(([label, key]) => (
+                          <label key={key} className="flex min-h-9 items-center gap-2 border border-border bg-background/55 px-3 text-[9px] text-muted">
+                            <input
+                              type="checkbox"
+                              className="accent-primary"
+                              checked={settingsInstance.settings?.[key] !== false}
+                              onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                                ...current,
+                                settings: { ...(current.settings ?? {}), [key]: event.target.checked },
+                              }))}
+                            />
+                            <span>{label}</span>
+                          </label>
+                        ))}
+                      </div>
+                      <span className="block text-[8px] leading-4 text-muted">
+                        Unticking a session omits its profile entirely; the remaining sessions keep their own
+                        boundaries rather than absorbing it.
+                      </span>
+                    </div>
+                  ) : null}
                   {([
                     ["Session start", "sessionStartMinutes", 8 * 60 + 30],
                     ["Session end", "sessionEndMinutes", 15 * 60 + 15],

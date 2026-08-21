@@ -119,4 +119,24 @@ const workspace = readFileSync("src/components/KwantifyWorkspace.tsx", "utf8");
 assert.match(workspace, /candidate\.sessionId \?\? ""\) !== \(replacement\.sessionId \?\? ""/);
 
 rmSync(outDir, { recursive: true, force: true });
-console.log("volume profile session split: 9/9 checks passed");
+// 9. Sessions can be individually turned off. An unticked window is omitted
+//    entirely — the remaining sessions must keep their own boundaries rather
+//    than absorbing the gap it leaves.
+{
+  const all = segmentsForTradingDate(DATE, true);
+  const enabled = new Set(["asia", "newyork"]);
+  const kept = all.filter((segment) => enabled.has(segment.id));
+  assert.equal(kept.length, 2, "unticking London must leave two sessions");
+  assert.deepEqual(kept.map((s) => s.id), ["asia", "newyork"]);
+  for (const segment of kept) {
+    const original = all.find((candidate) => candidate.id === segment.id);
+    assert.equal(segment.startMs, original.startMs, `${segment.label} moved its start`);
+    assert.equal(segment.endMs, original.endMs, `${segment.label} absorbed the gap`);
+  }
+}
+
+// 10. The workspace must actually apply the toggle set.
+assert.match(workspace, /enabledSessionIds\.has\(segment\.id\)/);
+assert.match(workspace, /settings\.sessionLondonEnabled === false/);
+
+console.log("volume profile session split: 10/10 checks passed");

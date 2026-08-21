@@ -7916,6 +7916,15 @@ function WorkspaceChartPaneComponent({
     const dayEndMs = midnight + 36 * 60 * 60_000;
     const useEndSessionAsStartDay = settings.useEndSessionAsStartDay === true;
     const mode = sessionFilterModeFor(settings);
+    // Unticking a window omits its profile entirely rather than folding it
+    // into a neighbour, so the remaining sessions keep their own boundaries.
+    const enabledSessionIds = new Set<string>([
+      ...(settings.sessionAsiaEnabled === false ? [] : ["asia"]),
+      ...(settings.sessionLondonEnabled === false ? [] : ["london"]),
+      ...(settings.sessionNewYorkEnabled === false ? [] : ["newyork"]),
+      // Windows outside the three desk sessions are governed by Filter time.
+      "rth", "eth", "custom",
+    ]);
     return resolveSessionSegments(dayStartMs, dayEndMs, {
       mode,
       window: sessionFilterTimeFor(settings),
@@ -7934,7 +7943,7 @@ function WorkspaceChartPaneComponent({
       mode === "triple"
         ? chicagoTradingDate(segment.startMs) === tradingDate
         : sessionTradingDate(segment, useEndSessionAsStartDay) === tradingDate
-    ));
+    )).filter((segment) => enabledSessionIds.has(segment.id));
   };
   const sessionFilterTimeFor = (settings: Record<string, unknown>) => {
     const requested = String(settings.filterTime ?? "rth").toLowerCase();
