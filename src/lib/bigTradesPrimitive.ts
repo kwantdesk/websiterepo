@@ -37,7 +37,7 @@ const DEFAULT_OPTIONS: BigTradesPrimitiveOptions = {
   hollowFill: false,
   informationMode: "volume",
   showLabels: true,
-  labelMinSize: 14,
+  labelMinSize: 1,
   textColor: "#F5F5F5",
   backgroundColor: "#000000",
 };
@@ -179,11 +179,20 @@ class BigTradesRenderer implements ISeriesPrimitivePaneRenderer {
           context.textAlign = "center";
           context.textBaseline = "middle";
           context.lineJoin = "round";
+          // A small marker cannot hold its own number, and dropping the number
+          // is the wrong answer — the contract count is the reason the marker
+          // is there. When the text will not fit inside the shape it is lifted
+          // just above it, with the same halo, so shrinking the markers keeps
+          // every number readable instead of erasing it.
+          const textWidth = context.measureText(text).width;
+          const fitsInside = textWidth + 2 <= radius * (options.markerType === "diamond" ? 1.4 : 1.9)
+            && fontSize + 2 <= radius * 2;
+          const labelY = fitsInside ? y : y - radius - fontSize * 0.75;
           context.strokeStyle = options.backgroundColor;
           context.lineWidth = 2.5;
-          context.strokeText(text, x, y);
+          context.strokeText(text, x, labelY);
           context.fillStyle = options.textColor;
-          context.fillText(text, x, y);
+          context.fillText(text, x, labelY);
         }
         context.restore();
       }

@@ -8950,7 +8950,7 @@ function Chart({
         hollowFill: tradeSettings.hollowFill === true,
         informationMode,
         showLabels: tradeSettings.showLabels !== false,
-        labelMinSize: Number(tradeSettings.labelMinSize ?? 14),
+        labelMinSize: Number(tradeSettings.labelMinSize ?? 1),
         textColor: themeStyles.getPropertyValue("--foreground").trim() || "#F5F5F5",
         backgroundColor: settings.backgroundColor,
       },

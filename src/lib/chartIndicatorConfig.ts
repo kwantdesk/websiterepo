@@ -672,7 +672,9 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "maximumOpacity", label: "Maximum opacity (%)", defaultValue: 90, min: 0, max: 100 },
     { key: "minimumSize", label: "Minimum marker size", defaultValue: 6, min: 1, max: 80 },
     { key: "maximumSize", label: "Maximum marker size", defaultValue: 32, min: 1, max: 160 },
-    { key: "labelMinSize", label: "Show number from marker size", defaultValue: 14, min: 1, max: 160 },
+    // 1 = always. Shrinking the markers used to silently erase the contract
+    // counts, so the number now stays by default and hiding it is opt-in.
+    { key: "labelMinSize", label: "Show number from marker size", defaultValue: 1, min: 1, max: 160 },
   ],
   sessions: [
     { key: "lookbackDays", label: "Lookback (days)", defaultValue: 30, min: 1, max: 365 },
@@ -2300,6 +2302,21 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
   }
   if (
     normalizedInstance.indicatorId === "big-trades"
+    && Number(normalizedInstance.settings?.bigTradesSettingsVersion) < 5
+  ) {
+    // Saved charts carry the old 14px label gate, which is why shrinking the
+    // markers made the numbers disappear. Only the untouched old default is
+    // lifted, so a deliberately raised gate survives the migration.
+    const storedLabelMinSize = Number(normalizedInstance.settings?.labelMinSize ?? 14);
+    if (storedLabelMinSize === 14) {
+      normalizedInstance = {
+        ...normalizedInstance,
+        settings: { ...(normalizedInstance.settings ?? {}), labelMinSize: 1 },
+      };
+    }
+  }
+  if (
+    normalizedInstance.indicatorId === "big-trades"
     && Number(normalizedInstance.settings?.bigTradesSettingsVersion) < 4
   ) {
     const storedManualFilter = Number(normalizedInstance.settings?.manualFilter ?? 30);
@@ -2313,7 +2330,7 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         combineByCandle: false,
         adaptiveTimeframeFilter: false,
         maxMarkersPerBar: 50,
-        bigTradesSettingsVersion: 4,
+        bigTradesSettingsVersion: 5,
       },
     };
   }
