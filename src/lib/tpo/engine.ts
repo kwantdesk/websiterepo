@@ -477,13 +477,23 @@ export function detectSinglePrints(
     }
   });
   flush();
-  // The quality filter ranks zones by tick height: 0 keeps every single
-  // print, 100 keeps only the tallest one, in between keeps the top share.
+  // The quality filter keeps the best single prints: 0 keeps every one, 100
+  // keeps only the single best, in between keeps the top share.
+  //
+  // Ranking used to be by tick HEIGHT alone, which systematically preferred
+  // the long single-visit tails at a profile's extremes and discarded the
+  // short interior low-volume shelves — the structures a trader actually
+  // wants marked inside the auction. A single print is defined by thin
+  // TRADE, not by how tall it happens to be, so ranking is by volume per
+  // tick ascending (thinnest first) and only falls back to height when the
+  // source carries no volume at all.
   if (quality > 0 && result.length > 1) {
     const keep = Math.max(1, Math.round(result.length * (1 - quality / 100)));
-    const kept = new Set([...result]
-      .sort((a, b) => (b.highTick - b.lowTick) - (a.highTick - a.lowTick))
-      .slice(0, keep));
+    const measured = result.filter((zone) => zone.volumePerTick !== null);
+    const ranked = measured.length === result.length
+      ? [...result].sort((a, b) => (a.volumePerTick ?? 0) - (b.volumePerTick ?? 0))
+      : [...result].sort((a, b) => (b.highTick - b.lowTick) - (a.highTick - a.lowTick));
+    const kept = new Set(ranked.slice(0, keep));
     result = result.filter((zone) => kept.has(zone));
   }
   // Low-volume sensitivity: single prints are structural LOW-VOLUME extremes,
