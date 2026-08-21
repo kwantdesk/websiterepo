@@ -1381,6 +1381,162 @@ function valueAreaSourceSymbol(chartSymbol: string) {
   return `${parent}.v.0`;
 }
 
+type PaneHeaderMenuOption = {
+  value: string;
+  label: string;
+  detail?: string;
+  group?: string;
+};
+
+/** Interval choices a pane's broker can actually serve, grouped like the
+ * top-bar interval menu. */
+function paneIntervalMenuOptions(broker: string): PaneHeaderMenuOption[] {
+  return CHART_INTERVAL_GROUPS.flatMap((group) =>
+    group.options
+      .filter((option) => supportsChartInterval(option.id, broker))
+      .map((option) => ({ value: option.id, label: option.label, group: group.label })),
+  );
+}
+
+/**
+ * Compact pane-header trigger ("QQQ" / "3 m") that opens a portaled dropdown.
+ * The pane header is `overflow-hidden` and starts a pane drag on pointerdown,
+ * so the menu portals to document.body (Trade-menu precedent) and the trigger
+ * stops pointerdown propagation so it never begins a drag.
+ */
+function PaneHeaderDropdown({
+  label,
+  title,
+  menuLabel,
+  value,
+  options,
+  onSelect,
+  menuWidth = 200,
+  searchable = false,
+}: {
+  label: string;
+  title: string;
+  menuLabel: string;
+  value: string;
+  options: PaneHeaderMenuOption[];
+  onSelect: (value: string) => void;
+  menuWidth?: number;
+  searchable?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!open) {
+      setQuery("");
+      setPosition(null);
+      return;
+    }
+    const place = () => {
+      const rect = triggerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      setPosition({
+        left: Math.max(8, Math.min(rect.left, window.innerWidth - menuWidth - 8)),
+        top: Math.min(rect.bottom + 6, window.innerHeight - 24),
+      });
+    };
+    place();
+    const closeOnOutside = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (triggerRef.current?.contains(target) || menuRef.current?.contains(target)) return;
+      setOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    const closeOnScroll = (event: Event) => {
+      if (menuRef.current && event.target instanceof Node && menuRef.current.contains(event.target)) return;
+      setOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOnOutside);
+    document.addEventListener("keydown", closeOnEscape);
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", closeOnScroll, true);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutside);
+      document.removeEventListener("keydown", closeOnEscape);
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", closeOnScroll, true);
+    };
+  }, [menuWidth, open]);
+  const trimmedQuery = query.trim().toLowerCase();
+  const filtered = trimmedQuery
+    ? options.filter((option) =>
+        `${option.value} ${option.label} ${option.detail ?? ""} ${option.group ?? ""}`.toLowerCase().includes(trimmedQuery))
+    : options;
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        title={title}
+        aria-label={title}
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={(event) => {
+          event.stopPropagation();
+          setOpen((current) => !current);
+        }}
+        className={`hidden h-5 shrink-0 items-center gap-0.5 rounded-[3px] px-1 font-mono text-[8px] font-normal transition-colors sm:flex ${
+          open ? "bg-surface text-foreground" : "text-muted hover:bg-surface hover:text-foreground"
+        }`}
+      >
+        <span className="truncate">{label}</span>
+        <ChevronDown className={`h-2.5 w-2.5 shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && position && typeof document !== "undefined" ? createPortal(
+        <div
+          ref={menuRef}
+          data-gex-map-dropdown-menu=""
+          className="fixed z-[280] rounded-2xl border border-border bg-panel/95 p-1.5 shadow-[0_22px_70px_rgba(0,0,0,0.58)] backdrop-blur-xl"
+          style={{ left: position.left, top: position.top, width: menuWidth }}
+        >
+          <div className="px-2 pb-1 pt-1.5 text-[8px] font-bold uppercase tracking-[0.14em] text-muted">{menuLabel}</div>
+          {searchable ? (
+            <input
+              autoFocus
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search"
+              className="mb-1 h-7 w-full rounded-lg border border-border bg-background px-2 text-[10px] normal-case text-foreground outline-none focus:border-primary/40"
+            />
+          ) : null}
+          <div className="max-h-[300px] overflow-y-auto">
+            {filtered.map((option, index) => (
+              <div key={`${option.group ?? ""}:${option.value}`}>
+                {option.group && option.group !== filtered[index - 1]?.group ? (
+                  <div className="px-2 pb-0.5 pt-1.5 text-[7px] font-bold uppercase tracking-[0.12em] text-muted/80">{option.group}</div>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => {
+                    onSelect(option.value);
+                    setOpen(false);
+                  }}
+                  className={`flex w-full items-center justify-between gap-2 rounded-lg px-2 py-1.5 text-left text-[10px] transition-colors ${
+                    option.value === value ? "bg-primary/10 text-primary" : "text-foreground hover:bg-surface"
+                  }`}
+                >
+                  <span className="font-semibold">{option.label}</span>
+                  {option.detail ? <span className="truncate text-[8px] text-muted">{option.detail}</span> : null}
+                </button>
+              </div>
+            ))}
+            {!filtered.length ? <div className="px-2 py-2 text-[9px] text-muted">No matches.</div> : null}
+          </div>
+        </div>,
+        document.body,
+      ) : null}
+    </>
+  );
+}
+
 function createWorkspaceLayoutTree(
   layout: Exclude<WorkspaceLayout, "custom">,
   panes: WorkspacePane[],
@@ -9903,6 +10059,15 @@ export default function KwantifyWorkspace({
       `${displayCmeSymbol(item.symbol)} ${currentCmeContract(item.symbol) ?? ""} ${item.fullName} ${displayMarketSource(item.broker)} ${item.category}`.toLowerCase().includes(query),
     );
   }, [instrumentPickerItems, instrumentSearch]);
+  const paneInstrumentMenuOptions = useMemo<PaneHeaderMenuOption[]>(
+    () => instrumentPickerItems.map((item) => ({
+      value: item.key,
+      label: displayCmeSymbol(item.symbol),
+      detail: item.fullName,
+      group: item.category,
+    })),
+    [instrumentPickerItems],
+  );
   const watchlistBrokerSymbols = useMemo(
     () =>
       watchlist.reduce<Record<string, string[]>>((acc, item) => {
@@ -14933,6 +15098,41 @@ export default function KwantifyWorkspace({
     return true;
   };
 
+  // Pane-scoped twin of selectInstrument: the pane-header symbol dropdown can
+  // retarget ANY pane, not just the active one, and must apply the same cash
+  // index broker routing (SPX/NDX only exist on the Market Index feed).
+  const selectWorkspacePaneInstrument = (paneId: string, symbol: string, broker?: string, watchlistKey?: string) => {
+    const pane = workspacePanes.find((candidate) => candidate.id === paneId);
+    if (!pane) return;
+    clearBacktest();
+    const inferredBroker = !broker && isMarketIndexSymbol(symbol) ? "Market Index" : null;
+    const nextBroker = broker ?? inferredBroker ?? pane.broker ?? "OANDA";
+    const nextTimeframe = nextBroker === "Market Index" && !supportsChartInterval(pane.timeframe, nextBroker)
+      ? "1D"
+      : pane.timeframe;
+    if (nextBroker === "Databento") {
+      void warmDatabentoChartHistory(symbol, "1m");
+      if (nextTimeframe !== "1m") {
+        void warmDatabentoChartHistory(symbol, nextTimeframe);
+      }
+    }
+    updateWorkspacePane(paneId, {
+      symbol,
+      broker: nextBroker,
+      timeframe: nextTimeframe,
+      watchlistKey: watchlistKey ?? makeWatchlistKey(symbol, nextBroker),
+    });
+    if (paneId !== activePaneId) return;
+    setSelectedInstrument(symbol);
+    if (nextTimeframe !== pane.timeframe) setSelectedTimeframe(nextTimeframe);
+    if (watchlistKey) setSelectedWatchlistKey(watchlistKey);
+    if (nextBroker !== connectedBroker) {
+      setConnectedBroker(nextBroker);
+      window.localStorage.setItem("olisa-connected-broker", nextBroker);
+      window.sessionStorage.setItem("olisa-broker-session", JSON.stringify({ broker: nextBroker, mode: brokerMode, connectedAt: new Date().toISOString() }));
+    }
+  };
+
   const applyCustomInterval = (kind: ChartIntervalKind) => {
     const draft = intervalDrafts[kind];
     const interval = makeCustomChartInterval(kind, draft.primary, draft.secondary);
@@ -15756,26 +15956,50 @@ export default function KwantifyWorkspace({
     return (
       <div className="relative flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-border bg-panel">
         <div className="kwant-workspace-pane-header flex shrink-0 items-center justify-between border-b border-border bg-panel/95 px-2.5">
-          <button
-            type="button"
+          <div
             onPointerDown={(event) => beginWorkspacePaneDrag(pane.id, event)}
-            onClick={() => {
-              if (workspaceHeaderDragConsumedRef.current) {
-                workspaceHeaderDragConsumedRef.current = false;
-                return;
-              }
-              setWorkspacePanelPickerPaneId(pane.id);
-            }}
-            className={`flex h-7 min-w-0 flex-1 items-center justify-start gap-2 rounded-lg px-2 text-[9px] font-semibold text-foreground hover:bg-surface ${paneMoveLocked ? "cursor-default" : "cursor-grab active:cursor-grabbing"}`}
-            title={paneMoveLocked ? "This chart is locked in place" : "Drag to dock this chart, or click to change it"}
+            className={`flex h-7 min-w-0 flex-1 items-center justify-start gap-0.5 ${paneMoveLocked ? "" : "cursor-grab active:cursor-grabbing"}`}
           >
-            <ChartPanelIcon className="h-3.5 w-3.5 shrink-0 text-primary" />
-            <span className="truncate">{chartOption?.label ?? "CHARTS"}</span>
-            <span className="hidden truncate font-mono text-[8px] font-normal text-muted sm:inline">
-              {displayCmeSymbol(pane.symbol)} · {formatChartInterval(pane.timeframe)}
-            </span>
-            <ChevronDown className="h-3 w-3 shrink-0 text-muted" />
-          </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (workspaceHeaderDragConsumedRef.current) {
+                  workspaceHeaderDragConsumedRef.current = false;
+                  return;
+                }
+                setWorkspacePanelPickerPaneId(pane.id);
+              }}
+              className={`flex h-7 min-w-0 shrink items-center justify-start gap-2 rounded-lg px-2 text-[9px] font-semibold text-foreground hover:bg-surface ${paneMoveLocked ? "cursor-default" : "cursor-grab active:cursor-grabbing"}`}
+              title={paneMoveLocked ? "This chart is locked in place" : "Drag to dock this chart, or click to change it"}
+            >
+              <ChartPanelIcon className="h-3.5 w-3.5 shrink-0 text-primary" />
+              <span className="truncate">{chartOption?.label ?? "CHARTS"}</span>
+              <ChevronDown className="h-3 w-3 shrink-0 text-muted" />
+            </button>
+            <PaneHeaderDropdown
+              label={displayCmeSymbol(pane.symbol)}
+              title="Change this chart's instrument"
+              menuLabel="Instrument"
+              value={`${pane.broker}::${pane.symbol}`}
+              options={paneInstrumentMenuOptions}
+              menuWidth={264}
+              searchable
+              onSelect={(key) => {
+                const item = instrumentPickerItems.find((candidate) => candidate.key === key);
+                if (item) selectWorkspacePaneInstrument(pane.id, item.symbol, item.broker, item.key);
+              }}
+            />
+            <span className="hidden shrink-0 font-mono text-[8px] font-normal text-muted sm:inline">·</span>
+            <PaneHeaderDropdown
+              label={formatChartInterval(pane.timeframe)}
+              title="Change this chart's timeframe"
+              menuLabel="Timeframe"
+              value={pane.timeframe}
+              options={paneIntervalMenuOptions(pane.broker)}
+              menuWidth={184}
+              onSelect={(timeframe) => selectWorkspacePaneTimeframe(pane.id, timeframe)}
+            />
+          </div>
           <div className="flex items-center gap-1">
             {isWorkspaceChartKind(pane.content) ? (
               <button
@@ -15891,9 +16115,35 @@ export default function KwantifyWorkspace({
             <span className="truncate text-[9px] font-semibold uppercase tracking-[0.12em] text-foreground">
               {option?.label ?? displayCmeSymbol(pane.symbol)}
             </span>
-            <span className="hidden truncate font-mono text-[8px] text-muted sm:inline">
-              {isWorkspaceChartKind(pane.content) ? `${displayCmeSymbol(pane.symbol)} · ${formatChartInterval(pane.timeframe)}` : "FLOATING WINDOW"}
-            </span>
+            {isWorkspaceChartKind(pane.content) ? (
+              <>
+                <PaneHeaderDropdown
+                  label={displayCmeSymbol(pane.symbol)}
+                  title="Change this chart's instrument"
+                  menuLabel="Instrument"
+                  value={`${pane.broker}::${pane.symbol}`}
+                  options={paneInstrumentMenuOptions}
+                  menuWidth={264}
+                  searchable
+                  onSelect={(key) => {
+                    const item = instrumentPickerItems.find((candidate) => candidate.key === key);
+                    if (item) selectWorkspacePaneInstrument(pane.id, item.symbol, item.broker, item.key);
+                  }}
+                />
+                <span className="hidden shrink-0 font-mono text-[8px] text-muted sm:inline">·</span>
+                <PaneHeaderDropdown
+                  label={formatChartInterval(pane.timeframe)}
+                  title="Change this chart's timeframe"
+                  menuLabel="Timeframe"
+                  value={pane.timeframe}
+                  options={paneIntervalMenuOptions(pane.broker)}
+                  menuWidth={184}
+                  onSelect={(timeframe) => selectWorkspacePaneTimeframe(pane.id, timeframe)}
+                />
+              </>
+            ) : (
+              <span className="hidden truncate font-mono text-[8px] text-muted sm:inline">FLOATING WINDOW</span>
+            )}
           </div>
           <div className="flex shrink-0 items-center gap-0.5">
             <button
