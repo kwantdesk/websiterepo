@@ -112,7 +112,8 @@ export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
   // id "tpo-daily", which matched nothing — the indicator showed as "In
   // development" and could not be added.
   indicator("TPO Daily", "Volume & Profiles", "Daily time-price-opportunity profiles with square blocks, POC, value area, initial balance and auction analytics.", true, "Kwantify", "TPO Chart"),
-  indicator("Weekly TPO", "Volume & Profiles", "Weekly time-price-opportunity profiles using the shared auction-market profile engine.", true, "Kwantify"),
+  // Display name only — the id must stay "weekly-tpo" (see the note above).
+  indicator("TPO Weekly", "Volume & Profiles", "Weekly time-price-opportunity profiles using the shared auction-market profile engine.", true, "Kwantify", "Weekly TPO"),
   indicator("Weekly Volume Profile", "Volume & Profiles", "Separate volume profile for each trading week.", true, "Kwantify"),
   indicator("Monthly Volume Profile", "Volume & Profiles", "Separate volume profile for each calendar month.", true, "Kwantify"),
   indicator("Session Volume Profile", "Volume & Profiles", "Profile for a configurable RTH, ETH or custom session.", true, "Kwantify"),
