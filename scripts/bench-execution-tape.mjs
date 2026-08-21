@@ -1,4 +1,4 @@
-import { admitRecords } from "../src/lib/rithmicIndicatorStream.ts";
+import { admitRecords } from "../src/lib/executionTape.ts";
 
 /** Allocation cost of one SSE trades message, old strategy vs new. */
 const MAX = 25_000;

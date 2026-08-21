@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { admitRecords } from "../src/lib/rithmicIndicatorStream.ts";
+import { admitRecords } from "../src/lib/executionTape.ts";
 
 const tape = () => ({ records: [], recordKeys: new Set() });
 const print = (n) => ({ eventId: `e${n}`, timestamp: 1_000 + n, recordIndex: n, close: 29_500 + (n % 40) * 0.25, volume: 1 + (n % 7), side: n % 2 ? "buy" : "sell" });
@@ -45,24 +45,53 @@ const print = (n) => ({ eventId: `e${n}`, timestamp: 1_000 + n, recordIndex: n, 
   assert.equal(revived.length, 1, "a print older than the retained window is not remembered");
 }
 
-// --- the shipped stream must not rebuild its dedup index per message ---
+// --- the shipped tape must not rebuild its dedup index per message ---
 {
-  const source = readFileSync(new URL("../src/lib/rithmicIndicatorStream.ts", import.meta.url), "utf8");
+  const tapeSource = readFileSync(new URL("../src/lib/executionTape.ts", import.meta.url), "utf8");
   // Rebuilding a Set of the last 4,096 record keys for every SSE message, then
   // reallocating the whole 25,000-record tape with concat().slice(), was
   // measured as the charts page's dominant allocation: 2,275MB of a 4,192MB
   // heap in 245 seconds on the owner's machine.
-  assert.ok(!source.includes("function unseenRecords"), "the per-message dedup rebuild is gone");
-  assert.ok(!source.includes("function mergeRecords"), "the per-message tape copy is gone");
+  assert.ok(!tapeSource.includes("function unseenRecords"), "the per-message dedup rebuild is gone");
+  assert.ok(!tapeSource.includes("function mergeRecords"), "the per-message tape copy is gone");
   assert.ok(
-    !/\.concat\(additions\)\.slice\(-MAX_TAPE_RECORDS\)/.test(source),
+    !/\.concat\(additions\)\.slice\(-MAX_TAPE_RECORDS\)/.test(tapeSource),
     "the tape must not be reallocated per message",
   );
-  assert.match(source, /stream\.recordKeys\.add\(key\)/);
-  assert.match(source, /stream\.records\.splice\(0, overflow\)/);
-  // Seeds hand out a snapshot because the tape is mutated in place now.
-  assert.match(source, /const seed = stream\.records\.slice\(\);/);
-  assert.match(source, /subscriber\.onSeed\?\.\(stream\.records\.slice\(\)\)/);
+  assert.match(tapeSource, /stream\.recordKeys\.add\(key\)/);
+  assert.match(tapeSource, /stream\.records\.splice\(0, overflow\)/);
+}
+
+// --- ingest runs off the main thread ---
+{
+  const client = readFileSync(new URL("../src/lib/rithmicIndicatorStream.ts", import.meta.url), "utf8");
+  const engine = readFileSync(new URL("../src/lib/executionTapeEngine.ts", import.meta.url), "utf8");
+  const worker = readFileSync(new URL("../src/lib/marketTape.worker.ts", import.meta.url), "utf8");
+
+  // Parsing, dedup, tape and batching belong to the worker now. If any of it
+  // creeps back onto the main thread it competes with React and canvas paint
+  // for the same milliseconds, which is the stall this migration removes.
+  assert.ok(!client.includes("new EventSource("), "the main thread must not own the feed");
+  assert.ok(!client.includes("JSON.parse"), "the main thread must not parse feed payloads");
+  assert.match(client, /new Worker\(new URL\("\.\/marketTape\.worker\.ts", import\.meta\.url\)\)/);
+  assert.match(engine, /new EventSource\(/, "the engine owns the connection");
+  assert.match(worker, /createExecutionTapeEngine/, "the worker runs the shared engine");
+
+  // The engine is written once and runs in either place, so the fallback
+  // cannot drift from the worker path.
+  assert.match(client, /createExecutionTapeEngine/, "a worker-less browser still gets a feed");
+  assert.match(client, /workerUnavailable = true;/);
+  // A worker that dies mid-session must not take the feed with it.
+  assert.match(client, /worker\.addEventListener\("error"/);
+
+  // The engine must not reach for the DOM, or it cannot run in a worker.
+  for (const forbidden of ["window.", "document.", "localStorage"]) {
+    assert.ok(!engine.includes(forbidden), `the engine must not use ${forbidden} — it runs in a worker`);
+  }
+  const tapeSource = readFileSync(new URL("../src/lib/executionTape.ts", import.meta.url), "utf8");
+  for (const forbidden of ["window.", "document.", "\"use client\""]) {
+    assert.ok(!tapeSource.includes(forbidden), `the tape module must not use ${forbidden}`);
+  }
 }
 
 console.log("Execution tape admission tests passed.");
