@@ -1231,6 +1231,10 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     chartMarkers: true,
     browserNotifications: false,
     useThemeColors: true,
+    // Paints every level with the exact colour its strike shows on the GEX
+    // Map surface (live palette, signed-exposure heat scale) instead of the
+    // role colours below.
+    syncGexMapColors: false,
     positiveColor: theme?.upColor ?? "#22C55E",
     negativeColor: theme?.downColor ?? "#EF4444",
     kingColor: theme?.borderUpColor ?? "#F59E0B",

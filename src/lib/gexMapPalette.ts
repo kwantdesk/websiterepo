@@ -119,6 +119,48 @@ export function gexMapSignedScale(palette: GexMapPalette): string[] {
   return explicit ?? buildGexMapSignedScale(palette.negative, palette.positive);
 }
 
+/** The map's per-side linear position for a node: zero exposure sits at the
+ * scale's middle and only the Star magnitude reaches an end. */
+export function gexMapHeatStrength(net: number, starMagnitude: number): number {
+  const yardstick = Math.max(1, starMagnitude);
+  return 0.5 + 0.5 * Math.max(-1, Math.min(1, net / yardstick));
+}
+
+/**
+ * The signed-scale colour at `strength` as a concrete hex value — the same
+ * interpolation the GEX Map paints with `color-mix`, resolved numerically so
+ * canvas renderers (which cannot evaluate CSS colour functions) can reuse the
+ * map's exact colours.
+ */
+export function gexMapHeatColorHex(strength: number, scale: string[]): string {
+  const bounded = clamp01(strength);
+  const position = bounded * (scale.length - 1);
+  const lower = Math.min(scale.length - 1, Math.floor(position));
+  const upper = Math.min(scale.length - 1, lower + 1);
+  const fraction = position - lower;
+  if (lower === upper || fraction === 0) return scale[lower];
+  return hexLerp(scale[lower], scale[upper], fraction);
+}
+
+/**
+ * The ten signed-scale colours as concrete hex values. Theme-linked palettes
+ * take the caller's resolved theme accents (the computed `--danger` /
+ * `--primary` hex values) and rebuild the identical dark→bright shape the
+ * map's `color-mix` stops produce.
+ */
+export function gexMapSignedScaleHex(
+  palette: GexMapPalette,
+  themeAccents: { negative: string; positive: string },
+): string[] {
+  if (palette.useThemeColors) return buildGexMapSignedScale(themeAccents.negative, themeAccents.positive);
+  const explicit = Array.isArray(palette.scaleStops)
+    && palette.scaleStops.length === GEX_MAP_STOP_COUNT
+    && palette.scaleStops.every((stop) => /^#[0-9a-fA-F]{6}$/.test(stop))
+    ? palette.scaleStops.map((stop) => stop.toUpperCase())
+    : null;
+  return explicit ?? buildGexMapSignedScale(palette.negative, palette.positive);
+}
+
 export const DEFAULT_GEX_MAP_PALETTE: GexMapPalette = {
   useThemeColors: true,
   positive: "#22C55E",

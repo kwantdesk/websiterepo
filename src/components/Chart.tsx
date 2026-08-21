@@ -327,7 +327,16 @@ import {
   type DarkPoolGexPrimitiveData,
 } from "@/lib/darkPoolGexPrimitive";
 import { fetchWorkspaceData, gexMapCacheKey, readWorkspaceData, writeWorkspaceData } from "@/lib/workspaceDataCache";
-import { hasRenderableGexMapSurface, type GexMapPanelPayload } from "@/lib/gexMap";
+import { gexMapProviderTicker, hasRenderableGexMapSurface, latestGexMapStrikesFromFrames, type GexMapPanelPayload } from "@/lib/gexMap";
+import {
+  DEFAULT_GEX_MAP_PALETTE,
+  GEX_MAP_PALETTE_CHANGE_EVENT,
+  gexMapHeatColorHex,
+  gexMapHeatStrength,
+  gexMapSignedScaleHex,
+  loadGexMapPalette,
+  type GexMapPalette,
+} from "@/lib/gexMapPalette";
 import { buildOptionsDeltaSeries, optionsDeltaSourceForInstrument } from "@/lib/optionsDelta";
 import { isMarketIndexSymbol } from "@/lib/marketIndices";
 import { detectCvdDivergence, sessionCvdPoints, type CvdCandleLike } from "@/lib/cvdDivergence";
@@ -6636,6 +6645,95 @@ function Chart({
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "bounce-levels") ?? null,
     [indicators],
   );
+  // "Link GEX Map colours": every bounce level paints the exact colour its
+  // strike shows on the GEX Map — same live palette, same signed-exposure heat
+  // scale with the Star magnitude as the yardstick.
+  const bounceGexColorSyncEnabled = bounceLevelsIndicator?.settings?.syncGexMapColors === true;
+  // The map only serves DELTA and GAMMA surfaces; VANNA/CHARM bounce configs
+  // link against the gamma map, which is the surface the trader reads.
+  const bounceGexGreekMode: "DELTA" | "GAMMA" =
+    String(bounceLevelsIndicator?.settings?.greekMode ?? "GAMMA") === "DELTA" ? "DELTA" : "GAMMA";
+  const bounceGexSyncSource = useMemo(() => {
+    if (!bounceGexColorSyncEnabled) return null;
+    const configured = String(bounceLevelsIndicator?.settings?.sourceTicker ?? "AUTO").toUpperCase();
+    return configured === "AUTO" ? optionsDeltaSourceForInstrument(instrument) : gexMapProviderTicker(configured);
+  }, [bounceGexColorSyncEnabled, bounceLevelsIndicator, instrument]);
+  const [bounceGexSurfacePayload, setBounceGexSurfacePayload] = useState<GexMapPanelPayload | null>(null);
+  useEffect(() => {
+    if (!bounceGexSyncSource) {
+      setBounceGexSurfacePayload(null);
+      return;
+    }
+    let cancelled = false;
+    const refreshMs = 60_000;
+    const load = async () => {
+      try {
+        // Shares the exact cache entry the GEX Map panels use, so an open map
+        // panel and this colour link cost one provider request between them.
+        const payload = await fetchWorkspaceData<GexMapPanelPayload>(
+          gexMapCacheKey(bounceGexSyncSource, bounceGexGreekMode, ""),
+          `/api/gex-map?symbol=${encodeURIComponent(bounceGexSyncSource)}&greekMode=${bounceGexGreekMode}`,
+          {
+            maxAgeMs: refreshMs,
+            timeoutMs: 45_000,
+            validate: (value) => hasRenderableGexMapSurface(value as GexMapPanelPayload),
+            invalidMessage: `The ${bounceGexGreekMode} surface did not contain a strike ladder.`,
+          },
+        );
+        if (!cancelled) setBounceGexSurfacePayload((current) =>
+          payload.frames.length || !current?.frames.length ? payload : current);
+      } catch {
+        // Keep the last verified surface through a transient refresh.
+      }
+    };
+    void load();
+    const intervalId = window.setInterval(() => void load(), refreshMs);
+    return () => { cancelled = true; window.clearInterval(intervalId); };
+  }, [bounceGexGreekMode, bounceGexSyncSource]);
+  const [bounceGexPalette, setBounceGexPalette] = useState<GexMapPalette | null>(null);
+  useEffect(() => {
+    if (!bounceGexColorSyncEnabled) {
+      setBounceGexPalette(null);
+      return;
+    }
+    setBounceGexPalette(loadGexMapPalette());
+    const handlePaletteChange = () => setBounceGexPalette(loadGexMapPalette());
+    window.addEventListener(GEX_MAP_PALETTE_CHANGE_EVENT, handlePaletteChange);
+    return () => window.removeEventListener(GEX_MAP_PALETTE_CHANGE_EVENT, handlePaletteChange);
+  }, [bounceGexColorSyncEnabled]);
+  // Options-strike → hex colour, computed exactly like the map paints its
+  // rows: strikes with no positioning dropped, Star magnitude from the full
+  // surface, per-side linear strength, palette scale resolved to hex because
+  // the bounce primitive renders on canvas (no CSS colour functions there).
+  const bounceGexStrikeColors = useMemo(() => {
+    if (!bounceGexColorSyncEnabled || !bounceGexSurfacePayload || !bounceGexPalette) return null;
+    const fromFrames = latestGexMapStrikesFromFrames(bounceGexSurfacePayload.frames);
+    const rows = (fromFrames.length ? fromFrames : bounceGexSurfacePayload.latestStrikes)
+      .filter((row) => row.call !== 0 || row.put !== 0);
+    if (!rows.length) return null;
+    let starMagnitude = 0;
+    for (const row of rows) {
+      const magnitude = Math.abs(row.net);
+      if (Number.isFinite(magnitude) && magnitude > starMagnitude) starMagnitude = magnitude;
+    }
+    const resolveThemeAccentHex = (variable: string, fallback: string) => {
+      if (typeof window === "undefined") return fallback;
+      const raw = getComputedStyle(document.documentElement).getPropertyValue(variable).trim();
+      return /^#[0-9a-fA-F]{6}$/.test(raw) ? raw.toUpperCase() : fallback;
+    };
+    const scale = gexMapSignedScaleHex(bounceGexPalette, {
+      negative: resolveThemeAccentHex("--danger", DEFAULT_GEX_MAP_PALETTE.negative),
+      positive: resolveThemeAccentHex("--primary", DEFAULT_GEX_MAP_PALETTE.positive),
+    });
+    const colors = new Map<number, string>();
+    for (const row of rows) {
+      if (!Number.isFinite(row.net)) continue;
+      colors.set(row.strike, gexMapHeatColorHex(gexMapHeatStrength(row.net, starMagnitude), scale));
+    }
+    return colors;
+  // Theme accent colours live in CSS variables; the chart palette props change
+  // with the theme, so they proxy a theme switch for the accent re-read.
+  }, [bounceGexColorSyncEnabled, bounceGexPalette, bounceGexSurfacePayload, settings.downColor, settings.upColor]);
   // A live candle object changes on every trade, but its timestamp grid only
   // changes when a new bar opens. Keep the expensive overlay geometry keyed to
   // that grid instead of rebuilding thousands of anchors on every price tick.
@@ -6957,21 +7055,28 @@ function Chart({
       showAirPockets: indicatorSettings.showAirPockets !== false,
       showRolls: indicatorSettings.rollVisualizationEnabled === true,
       neutralColor: useThemeColors ? settings.gridColor : String(indicatorSettings.airPocketColor ?? settings.gridColor),
-      roleColors: Object.fromEntries(visibleSnapshot.levels.map((level) => [
-        String(level.sourceStrike),
-        level.role === "KING"
-          ? (useThemeColors ? settings.borderUpColor : String(indicatorSettings.kingColor ?? settings.borderUpColor))
-          : level.role === "DEVELOPING"
-            ? (useThemeColors ? settings.upColor : String(indicatorSettings.developingColor ?? settings.upColor))
-            : level.role === "WEAKENING" || level.role === "RETIRED"
-              ? (useThemeColors ? settings.downColor : String(indicatorSettings.weakeningColor ?? settings.downColor))
-              : "",
-      ])),
+      roleColors: (() => {
+        const roleBased = Object.fromEntries(visibleSnapshot.levels.map((level) => [
+          String(level.sourceStrike),
+          level.role === "KING"
+            ? (useThemeColors ? settings.borderUpColor : String(indicatorSettings.kingColor ?? settings.borderUpColor))
+            : level.role === "DEVELOPING"
+              ? (useThemeColors ? settings.upColor : String(indicatorSettings.developingColor ?? settings.upColor))
+              : level.role === "WEAKENING" || level.role === "RETIRED"
+                ? (useThemeColors ? settings.downColor : String(indicatorSettings.weakeningColor ?? settings.downColor))
+                : "",
+        ]));
+        // GEX Map link: the map's per-strike heat colour wins for every strike
+        // it covers, so the level reads identically on both surfaces.
+        if (!bounceGexStrikeColors) return roleBased;
+        for (const [strike, color] of bounceGexStrikeColors) roleBased[String(strike)] = color;
+        return roleBased;
+      })(),
       positiveColor: useThemeColors ? settings.upColor : String(indicatorSettings.positiveColor ?? settings.upColor),
       negativeColor: useThemeColors ? settings.downColor : String(indicatorSettings.negativeColor ?? settings.downColor),
       extendRight: indicatorSettings.extendRight === true,
     };
-  }, [bounceLevelsIndicator, bounceLevelsSnapshot, bounceReplayCheckpoint, overlayTimelineMs, replayTimestampMs, settings.downColor, settings.upColor]);
+  }, [bounceGexStrikeColors, bounceLevelsIndicator, bounceLevelsSnapshot, bounceReplayCheckpoint, overlayTimelineMs, replayTimestampMs, settings.downColor, settings.upColor]);
   useEffect(() => { bounceLevelsPrimitiveRef.current?.update(bounceLevelsPrimitiveData); }, [bounceLevelsPrimitiveData]);
   useEffect(() => {
     const container = chartContainerRef.current;

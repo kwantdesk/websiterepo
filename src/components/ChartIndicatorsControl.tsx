@@ -1750,7 +1750,7 @@ export default function ChartIndicatorsControl({
                           const currentSettings = current.settings ?? {};
                           const defaults = defaultIndicatorSettings("bounce-levels", chartSettings);
                           const preserved = Object.fromEntries([
-                            "provider", "sourceTicker", "useThemeColors", "positiveColor", "negativeColor", "kingColor",
+                            "provider", "sourceTicker", "useThemeColors", "syncGexMapColors", "positiveColor", "negativeColor", "kingColor",
                             "developingColor", "weakeningColor", "airPocketColor", "browserNotifications", "inAppSound",
                           ].map((key) => [key, currentSettings[key]]).filter(([, value]) => value !== undefined));
                           return { ...current, settings: { ...defaults, ...preserved, preset, ...presetSettings } };
@@ -1830,6 +1830,28 @@ export default function ChartIndicatorsControl({
                       />
                     </label>
                   ) : null}
+                  <div className="flex items-center justify-between gap-3 border border-border bg-background/55 px-3 py-2 sm:col-span-2">
+                    <div className="min-w-0">
+                      <div className="text-[9px] uppercase tracking-[0.14em] text-foreground">Link GEX Map colours</div>
+                      <div className="mt-0.5 text-[9px] leading-4 text-muted">
+                        Every level paints the exact colour its strike shows on the GEX Map — same palette, same signed-exposure heat scale, Star yardstick included.
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => replace(settingsInstance.instanceId, (current) => ({
+                        ...current,
+                        settings: { ...(current.settings ?? {}), syncGexMapColors: current.settings?.syncGexMapColors !== true },
+                      }))}
+                      className={`h-9 shrink-0 border px-3 text-[8px] font-semibold uppercase tracking-[0.08em] transition-colors ${
+                        settingsInstance.settings?.syncGexMapColors === true
+                          ? "border-primary/50 bg-primary/15 text-primary"
+                          : "border-border bg-background text-muted hover:text-foreground"
+                      }`}
+                    >
+                      {settingsInstance.settings?.syncGexMapColors === true ? "Linked" : "Link"}
+                    </button>
+                  </div>
                   <div className="border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
                     KING is always calculated from the full filtered strike list using the largest absolute signed exposure. Centre price and KING remain independent. Historical snapshots never read beyond replay time.
                   </div>
@@ -3216,6 +3238,7 @@ export default function ChartIndicatorsControl({
                   .filter(([key, value]) =>
                     !INDICATOR_NUMERIC_SETTINGS[settingsDefinition.id]?.some((setting) => setting.key === key)
                     && !(settingsDefinition.id === "deep-print-footprint" && FOOTPRINT_PROFILE_MANAGED_SETTINGS.has(key))
+                    && !(settingsDefinition.id === "bounce-levels" && key === "syncGexMapColors")
                     && (typeof value === "boolean" || isColourSetting(key, value)))
                   .map(([key, value]) => (
                     typeof value === "boolean" ? (
