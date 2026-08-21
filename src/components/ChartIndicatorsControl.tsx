@@ -62,18 +62,22 @@ type VolumeProfileSettingsTab =
   | "general"
   | "data"
   | "plot"
+  | "point-of-control"
   | "value-area"
   | "peak-valley"
   | "vwap"
+  | "summary"
   | "sessions";
 
 const VOLUME_PROFILE_SETTINGS_TABS: { id: VolumeProfileSettingsTab; label: string }[] = [
-  { id: "general", label: "Placement" },
+  { id: "general", label: "General" },
   { id: "data", label: "Data settings" },
   { id: "plot", label: "Plot settings" },
+  { id: "point-of-control", label: "Point of control" },
   { id: "value-area", label: "Value area" },
   { id: "peak-valley", label: "Peak and valley" },
-  { id: "vwap", label: "VWAP / summary" },
+  { id: "vwap", label: "VWAP" },
+  { id: "summary", label: "Summary" },
   { id: "sessions", label: "Filter / split time" },
 ];
 
@@ -233,6 +237,79 @@ function persistGexIntervalUserPresets(presets: GexIntervalUserPreset[]) {
 // These studies are rendered by the shared Kwantify calculation engine in
 // Kwant Desk today. The complete catalogue stays visible so no study or
 // favourite is lost while feed-specific studies are connected and validated.
+// Which settings page each TPO field belongs on, mirroring the desktop
+// reference's left rail. Without this every TPO number landed on one "Inputs"
+// page and every colour/toggle on one "Style" page — hundreds of controls in
+// two undifferentiated dumps. Keys not listed fall back to General.
+const TPO_SETTING_SECTIONS: Record<string, string> = {};
+const assignTpoSections = (section: string, keys: readonly string[]) => {
+  for (const key of keys) TPO_SETTING_SECTIONS[key] = section;
+};
+assignTpoSections("General", [
+  "scheduleKind", "periodMode", "lengthValue", "lengthUnit", "displayType", "splitMode",
+  "subperiodMinutes", "profileCount", "visitSource", "groupingMode", "ticksPerRow",
+  "autoTargetRows", "autoGroupFactor", "freezeActiveGrouping", "allowDevelopingComposite",
+  "maximumMergeMembers", "maximumRenderedBlocks", "fpsCap",
+  "showInitialBalance", "initialBalanceSubperiods", "initialBalanceStartSubperiod",
+  "initialBalanceShowHigh", "initialBalanceShowLow", "initialBalanceShowRangeLabel",
+  "initialBalanceShowExtensions", "initialBalanceExtensionMultiples",
+  "initialBalanceLineColor", "initialBalanceLineWidth",
+]);
+assignTpoSections("Background/Text", [
+  "colourCalculation", "colourReference", "minimumTextSize", "maximumTextSize",
+  "fixedVolumeColor", "fixedBidColor", "fixedAskColor",
+  "range1Enabled", "range1Minimum", "range1VolumeColor", "range1BidColor", "range1AskColor",
+  "range2Enabled", "range2Minimum", "range2VolumeColor", "range2BidColor", "range2AskColor",
+  "range3Enabled", "range3Minimum", "range3VolumeColor", "range3BidColor", "range3AskColor",
+  "range4Enabled", "range4Minimum", "range4VolumeColor", "range4BidColor", "range4AskColor",
+  "initialAColorEnabled", "initialAColor", "initialBColorEnabled", "initialBColor",
+  "initialCColorEnabled", "initialCColor", "initialDColorEnabled", "initialDColor",
+  "colorOpenEnabled", "openColor", "colorCloseEnabled", "closeColor",
+  "inheritThemeColours", "profileColor", "opacityPercent", "borderWidth", "blockSize", "blockGap",
+]);
+assignTpoSections("Plot settings", [
+  "barMarkerEnabled", "barMarkerStyle", "barMarkerWidth", "barMarkerUpColor",
+  "barMarkerDownColor", "barMarkerShowOpenClose",
+  "widthMode", "currentWidth", "currentOffset", "previousWidth", "previousOffset",
+  "showOnRight", "mirror", "lockPosition", "showAboveBars",
+]);
+assignTpoSections("Point of control", [
+  "showPoc", "showDevelopingPoc", "pocLineMode", "pocHighlight", "pocHighlightColor",
+  "pocLineColor", "pocLineWidth", "pocExtensionMode", "developingPocStartOffset",
+  "shiftedPocTicks", "pocGroupingOpacity", "showPocPriceLabel", "pocColor",
+]);
+assignTpoSections("Value area", [
+  "showValueArea", "showDevelopingValueArea", "valueAreaPercent", "valueAreaHighlight",
+  "valueAreaHighlightInside", "valueAreaOutsideColor", "valueAreaShowLines",
+  "valueAreaShowBackground", "valueAreaBackgroundOpacity", "valueAreaExtensionMode",
+  "valueAreaLineColor", "valueAreaLineWidth", "valueAreaShowLabels", "valueAreaColor",
+]);
+assignTpoSections("Peak and valley", [
+  "showPeaks", "showValleys", "peakValleyRadius", "peakMinimumProminence",
+  "peakValleySensitivity", "peakValleyExcludeExtremes", "peakColor", "valleyColor",
+]);
+assignTpoSections("Single prints", [
+  "showSinglePrints", "minimumSinglePrintTicks", "singlePrintQuality",
+  "singlePrintVolumeSensitivity", "includeExtremesInSinglePrints", "singlePrintLineWidth",
+  "singlePrintExtensionMode", "singlePrintFillZone", "singlePrintFillOpacity",
+  "singlePrintShowLabel", "singlePrintShowTestedState", "singlePrintColor",
+]);
+assignTpoSections("Summary", [
+  "showSummary", "summaryLayout", "summaryLocation", "summaryShowVolume", "summaryShowTrades",
+  "summaryShowBidAsk", "summaryTextColor", "summaryBackgroundColor",
+  "summaryBackgroundOpacity", "summaryFontSize",
+]);
+assignTpoSections("Filter/split time", [
+  "filterMode", "sessionPreset", "customSessionStart", "customSessionEnd",
+  "useEndSessionAsStartDay", "timezone", "dailyStartTime", "dailyEndMode", "dailyEndTime",
+  "enabledWeekdays", "weekStartDay", "weekStartTime", "weekEndMode", "weekEndDay",
+  "weekEndTime", "weekLength", "customStartMs", "customEndMs", "customEndFollowsLatest",
+]);
+
+const isTpoIndicator = (id: string) => id === "tpo-chart" || id === "weekly-tpo";
+const sectionForSetting = (indicatorId: string, key: string, fallback: string) =>
+  (isTpoIndicator(indicatorId) ? TPO_SETTING_SECTIONS[key] ?? "General" : fallback);
+
 export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "gamma-environment",
   "zero-gamma-line",
@@ -1225,6 +1302,33 @@ export default function ChartIndicatorsControl({
                 </div>
               ) : null}
 
+              {VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) && volumeProfileTab === "general" ? (
+                <div className="grid gap-3 border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
+                  <div className="text-[9px] uppercase tracking-[0.14em] text-foreground sm:col-span-2">Typology</div>
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">
+                    <span>Profile type</span>
+                    <KwantSelect
+                      value={String(settingsInstance.settings?.profileMode ?? "volume")}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                        ...current,
+                        settings: { ...(current.settings ?? {}), profileMode: event.target.value },
+                      }))}
+                      className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                      menuLabel="Profile type"
+                    >
+                      <option value="volume">Volume</option>
+                      <option value="bid-ask">Ask / bid volume</option>
+                      <option value="delta">Delta</option>
+                      <option value="delta-volume">Delta and total volume</option>
+                      <option value="delta-percentage">Delta percentage</option>
+                    </KwantSelect>
+                  </label>
+                  <div className="border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
+                    Volume is the plain traded-volume profile. Delta and total volume adds the signed delta bar beside it; delta percentage scales that delta by the row&apos;s own volume, so a thin one-sided row reads as strongly as a heavy balanced one.
+                  </div>
+                </div>
+              ) : null}
+
               {VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id)
                 && volumeProfileTab === "general"
                 && settingsDefinition.id !== "custom-draw-on-volume-profile" ? (
@@ -1308,6 +1412,9 @@ export default function ChartIndicatorsControl({
                     >
                       <option value="volume">Volume</option>
                       <option value="trades">Number of trades</option>
+                      <option value="aggregate-trades" disabled>Aggregate trades — needs MBO</option>
+                      <option value="order" disabled>Order — needs MBO</option>
+                      <option value="number-orders" disabled>Number of orders — needs MBO</option>
                     </KwantSelect>
                   </label>
                   {([
@@ -1376,7 +1483,7 @@ export default function ChartIndicatorsControl({
                     );
                   })}
                   <div className="border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
-                    Filter min and max bound the trade sizes that reach the profile; max 0 means no upper bound. Automatic sizes each row from the range the profile covers and multiplies it by the group factory. Manual pins every row to a fixed number of ticks.
+                    Order-based inputs need order-by-order (MBO) data, which this feed does not carry — they stay disabled rather than silently counting trades instead. Filter min and max bound the trade sizes that reach the profile; max 0 means no upper bound. Automatic sizes each row from the range the profile covers and multiplies it by the group factory. Manual pins every row to a fixed number of ticks.
                   </div>
                 </div>
               ) : null}
@@ -1466,7 +1573,7 @@ export default function ChartIndicatorsControl({
 
               {VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) && volumeProfileTab === "vwap" ? (
                 <div className="grid gap-3 border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
-                  <div className="text-[9px] uppercase tracking-[0.14em] text-foreground sm:col-span-2">VWAP and summary</div>
+                  <div className="text-[9px] uppercase tracking-[0.14em] text-foreground sm:col-span-2">VWAP</div>
                   {([
                     ["VWAP band 1 (σ)", "vwapBand1", 1],
                     ["VWAP band 2 (σ)", "vwapBand2", 2],
@@ -1493,8 +1600,15 @@ export default function ChartIndicatorsControl({
                       />
                     </label>
                   ))}
+                </div>
+              ) : null}
+
+              {VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) && volumeProfileTab === "summary" ? (
+                <div className="grid gap-3 border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
+                  <div className="text-[9px] uppercase tracking-[0.14em] text-foreground sm:col-span-2">Summary</div>
                   <div className="grid grid-cols-2 gap-2 sm:col-span-2">
                     {([
+                      ["showSummary", "Summary block", false],
                       ["showSummaryVolume", "Summary volume", true],
                       ["showSummaryTrades", "Summary trades", false],
                     ] as const).map(([key, label, defaultOn]) => {
@@ -1604,9 +1718,128 @@ export default function ChartIndicatorsControl({
                 </div>
               ) : null}
 
+              {VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) && volumeProfileTab === "point-of-control" ? (
+                <div className="grid gap-3 border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
+                  <div className="text-[9px] uppercase tracking-[0.14em] text-foreground sm:col-span-2">Point of control</div>
+                  <div className="grid grid-cols-2 gap-2 sm:col-span-2">
+                    {([
+                      ["showPocLine", "POC line", true],
+                      ["showPocHighlight", "Highlight row", true],
+                      ["showDevelopingPoc", "Developing POC", false],
+                    ] as const).map(([key, label, defaultOn]) => {
+                      const enabled = defaultOn
+                        ? settingsInstance.settings?.[key] !== false
+                        : settingsInstance.settings?.[key] === true;
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => replace(settingsInstance.instanceId, (current) => ({
+                            ...current,
+                            settings: { ...(current.settings ?? {}), [key]: !enabled },
+                          }))}
+                          className={`h-8 border px-2 text-[8px] uppercase tracking-[0.1em] ${
+                            enabled ? "border-primary/55 bg-primary/10 text-primary" : "border-border bg-background text-muted"
+                          }`}
+                        >
+                          {label} · {enabled ? "ON" : "OFF"}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {([
+                    ["Line width", "pocLineWidth", 1, 0.5, 6, 0.5],
+                    ["Highlight opacity", "pocHighlightOpacity", 55, 2, 100, 1],
+                    ["Developing start · minutes into session", "developingPocStartMinutes", 0, 0, 1440, 1],
+                    ["Shifted POC tick grouping", "shiftedPocTicks", 4, 1, 100, 1],
+                    ["Shifted POC opacity", "shiftedPocOpacity", 35, 2, 100, 1],
+                  ] as const).map(([label, key, fallback, min, max, step]) => (
+                    <label key={key} className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                      <span>{label}</span>
+                      <input
+                        type="number"
+                        min={min}
+                        max={max}
+                        step={step}
+                        value={Number(settingsInstance.settings?.[key] ?? fallback)}
+                        onChange={(event) => {
+                          const raw = Number(event.target.value);
+                          const next = Math.min(max, Math.max(min, Number.isFinite(raw) ? raw : fallback));
+                          replace(settingsInstance.instanceId, (current) => ({
+                            ...current,
+                            settings: { ...(current.settings ?? {}), [key]: next },
+                          }));
+                        }}
+                        className="h-9 w-full border border-border bg-background px-3 text-right font-mono text-[10px] text-foreground outline-none focus:border-primary/40"
+                      />
+                    </label>
+                  ))}
+                  <div className="border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
+                    Developing POC traces where control sat through the session; a start offset skips the first minutes, which are usually noise. Shifted POC grouping is the tick bucket the migration study uses.
+                  </div>
+                </div>
+              ) : null}
+
               {VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) && volumeProfileTab === "value-area" ? (
                 <div className="grid gap-3 border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
                   <div className="text-[9px] uppercase tracking-[0.14em] text-foreground sm:col-span-2">Value area</div>
+                  <div className="grid grid-cols-2 gap-2 sm:col-span-2">
+                    {([
+                      ["showValueArea", "Value area fill", true],
+                      ["showValueAreaLines", "VAH / VAL lines", true],
+                    ] as const).map(([key, label]) => {
+                      const enabled = settingsInstance.settings?.[key] !== false;
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => replace(settingsInstance.instanceId, (current) => ({
+                            ...current,
+                            settings: { ...(current.settings ?? {}), [key]: !enabled },
+                          }))}
+                          className={`h-8 border px-2 text-[8px] uppercase tracking-[0.1em] ${
+                            enabled ? "border-primary/55 bg-primary/10 text-primary" : "border-border bg-background text-muted"
+                          }`}
+                        >
+                          {label} · {enabled ? "ON" : "OFF"}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                    <span>Developing</span>
+                    <KwantSelect
+                      value={String(settingsInstance.settings?.valueAreaDeveloping ?? "no")}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                        ...current,
+                        settings: { ...(current.settings ?? {}), valueAreaDeveloping: event.target.value },
+                      }))}
+                      className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                      menuLabel="Developing"
+                    >
+                      <option value="no">No</option>
+                      <option value="dash">Dash</option>
+                      <option value="solid">Solid</option>
+                    </KwantSelect>
+                  </label>
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                    <span>Line width</span>
+                    <input
+                      type="number"
+                      min={0.5}
+                      max={6}
+                      step={0.5}
+                      value={Number(settingsInstance.settings?.valueAreaLineWidth ?? 1)}
+                      onChange={(event) => {
+                        const next = Math.min(6, Math.max(0.5, Number(event.target.value) || 1));
+                        replace(settingsInstance.instanceId, (current) => ({
+                          ...current,
+                          settings: { ...(current.settings ?? {}), valueAreaLineWidth: next },
+                        }));
+                      }}
+                      className="h-9 w-full border border-border bg-background px-3 text-right font-mono text-[10px] text-foreground outline-none focus:border-primary/40"
+                    />
+                  </label>
                   <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">
                     <span>% value area</span>
                     <input
@@ -4163,8 +4396,17 @@ export default function ChartIndicatorsControl({
                 </div>
               ) : null}
 
-              <div data-settings-section="Inputs" className="space-y-4">
-              {(INDICATOR_NUMERIC_SETTINGS[settingsDefinition.id] ?? []).filter((setting) => !(settingsDefinition.id === "bounce-levels" && setting.key === "topExposurePercent")).map((setting) => {
+              {(() => {
+                const numericSettings = (INDICATOR_NUMERIC_SETTINGS[settingsDefinition.id] ?? [])
+                  .filter((setting) => !(settingsDefinition.id === "bounce-levels" && setting.key === "topExposurePercent"));
+                const bySection = new Map<string, typeof numericSettings>();
+                for (const setting of numericSettings) {
+                  const section = sectionForSetting(settingsDefinition.id, setting.key, "Inputs");
+                  bySection.set(section, [...(bySection.get(section) ?? []), setting]);
+                }
+                return [...bySection.entries()].map(([section, group]) => (
+                  <div key={section} data-settings-section={section} className="space-y-4">
+                    {group.map((setting) => {
                 const value = Number(settingsInstance.settings?.[setting.key] ?? setting.defaultValue);
                 return (
                   <label key={setting.key} className="block rounded-xl border border-border bg-surface/30 p-3">
@@ -4215,22 +4457,29 @@ export default function ChartIndicatorsControl({
                     />
                   </label>
                 );
-              })}
-              </div>
+                    })}
+                  </div>
+                ));
+              })()}
 
-              <div data-settings-section="Style" className="grid gap-2 sm:grid-cols-2">
-                {Object.entries(settingsInstance.settings ?? {})
+              {(() => {
+                const entries = Object.entries(settingsInstance.settings ?? {})
                   .filter(([key, value]) =>
                     !INDICATOR_NUMERIC_SETTINGS[settingsDefinition.id]?.some((setting) => setting.key === key)
                     && !(settingsDefinition.id === "deep-print-footprint" && FOOTPRINT_PROFILE_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "bounce-levels" && key === "syncGexMapColors")
                     && (typeof value === "boolean" || isColourSetting(key, value)))
-                  .map(([key, value]) => (
+                  .map(([key, value]) => [key, value, sectionForSetting(settingsDefinition.id, key, "Style")] as const);
+                const bySection = new Map<string, Array<readonly [string, unknown, string]>>();
+                for (const entry of entries) {
+                  bySection.set(entry[2], [...(bySection.get(entry[2]) ?? []), entry]);
+                }
+                const control = ([key, value]: readonly [string, unknown, string]) => (
                     typeof value === "boolean" ? (
                       <label key={key} className="flex min-h-10 items-center gap-2 rounded-lg border border-border bg-surface/30 px-3 text-[9px] text-muted">
                         <input
                           type="checkbox"
-                          checked={value}
+                          checked={value === true}
                           onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
                             ...current,
                             settings: { ...(current.settings ?? {}), [key]: event.target.checked },
@@ -4261,8 +4510,13 @@ export default function ChartIndicatorsControl({
                         />
                       </div>
                     )
-                  ))}
-              </div>
+                );
+                return [...bySection.entries()].map(([section, group]) => (
+                  <div key={section} data-settings-section={section} className="grid gap-2 sm:grid-cols-2">
+                    {group.map(control)}
+                  </div>
+                ));
+              })()}
               <div data-settings-section="Style" className="rounded-xl border border-primary/15 bg-primary/6 px-4 py-3 text-[9px] leading-4 text-muted">
                 {settingsDefinition.id === "bounce-levels" ? (
                   <>Bounce colours follow the active chart theme by default. Changing any colour automatically creates a workspace-specific palette; turn <span className="text-foreground">Use Theme Colors</span> back on to relink it.</>
