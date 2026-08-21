@@ -867,6 +867,7 @@ Per task: eslint on changed files (heap-bumped for Chart/KwantifyWorkspace), `np
 - `8422c1ef` the footprint primitive repainted every visible cell — thousands of fillRect/fillText plus per-bar flatMap allocations and percentile sorts — on EVERY chart invalidation (crosshair moves, live ticks, sibling indicator updates), the reported "footprint lags the whole site". It now paints once into an offscreen canvas and re-projects with a single drawImage; repaints only on data/options/size/h-zoom change or a price rescale beyond 2% (same pattern as the gamma-heatmap `a3072862` fix). `renderVersion` on the primitive tracks staleness; surface released on detach. Verified live: cells/POC/value-area/live-bar outline render correctly on NQ 5m; console clean. RTH interaction soak pending (remote rAF sampling was background-throttled, so no jank numbers from here).
 
 ### IB fibs on every session (2026-08-21)
+- `29d47e42` each fib set now terminates at the NEXT session's open (`endTime` on the render level, which the primitive already clips to) instead of extending right forever; the newest set stays open-ended to the live edge.
 - `a3518106` IB Levels "Fibonacci" previously drew 50/61.8/78.6% on the MOST RECENT completed IB only; it now emits a set for every completed IBH/IBL pair on the chart (each session type × each lookback day), anchored at the bar that completed that pair, Long/Short mirroring unchanged. `test:initial-balance` green.
 
 ### Magnet snapping (2026-08-21)
