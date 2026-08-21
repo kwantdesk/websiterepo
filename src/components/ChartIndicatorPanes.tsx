@@ -439,9 +439,26 @@ function ChartIndicatorPaneSurface({
               </text>
             ) : null}
             {!collapsed && group.unavailableReason ? (
-              <text x="10" y={top + 34} fill="var(--muted)" fontSize="9" fontFamily="monospace">
-                {group.unavailableReason}
-              </text>
+              <g>
+                {/* A restoring pane must read as LOADING, not as broken: the
+                    pulsing dot makes the difference obvious while history
+                    streams in. Terminal states (no volume on this feed) are
+                    left as plain text. */}
+                {/^(Restoring|Loading|Waiting)/i.test(group.unavailableReason) ? (
+                  <circle cx="14" cy={top + 30.5} r="3" fill="var(--primary)">
+                    <animate attributeName="opacity" values="0.25;1;0.25" dur="1.1s" repeatCount="indefinite" />
+                  </circle>
+                ) : null}
+                <text
+                  x={/^(Restoring|Loading|Waiting)/i.test(group.unavailableReason) ? 24 : 10}
+                  y={top + 34}
+                  fill="var(--muted)"
+                  fontSize="9"
+                  fontFamily="monospace"
+                >
+                  {group.unavailableReason}
+                </text>
+              </g>
             ) : null}
             {!collapsed && stats ? (
               <g clipPath={`url(#${clipId})`}>

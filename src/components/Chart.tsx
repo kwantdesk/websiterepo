@@ -5605,10 +5605,35 @@ function Chart({
     const intervalId = window.setInterval(() => void load(1, 45_000), refreshMs);
     return () => { cancelled = true; window.clearInterval(intervalId); };
   }, [indicatorSignature, instrument, zeroGammaLineIndicator]);
+  // orderFlowHistoryReady flips as soon as a TOKEN slice of bars carries
+  // aggressor volume (that gate exists to stop history re-downloading). Using
+  // it to render CVD painted a half-built series: a flat stretch over the bars
+  // whose flow had not landed yet, then a straight diagonal as the enriched
+  // tail accumulated — the "retarded" load the trader sees for the first few
+  // seconds. Rendering waits for flow to actually cover the window; until then
+  // the pane keeps its honest restoring state.
+  const orderFlowSeriesReady = useMemo(() => {
+    if (!orderFlowHistoryReady) return false;
+    if (!indicatorCandles.length) return false;
+    // Sample the window rather than scanning every bar on each recompute.
+    const step = Math.max(1, Math.floor(indicatorCandles.length / 240));
+    let sampled = 0;
+    let covered = 0;
+    for (let index = 0; index < indicatorCandles.length; index += step) {
+      const candle = indicatorCandles[index];
+      sampled += 1;
+      if (Number(candle.askVolume ?? 0) + Number(candle.bidVolume ?? 0) > 0) covered += 1;
+    }
+    if (!sampled) return false;
+    // A session legitimately contains flowless bars (holidays, halts, the
+    // maintenance break), so this is a coverage threshold, not a demand for
+    // every bar.
+    return covered / sampled >= 0.6;
+  }, [indicatorCandles, orderFlowHistoryReady]);
   const baseCalculatedIndicatorSeries = useMemo(
     () => indicators.flatMap((instance) => {
       if (
-        !orderFlowHistoryReady
+        !orderFlowSeriesReady
         && [
           "cumulative-volume-delta",
           "delta-cumulative-candlestick",
@@ -5636,7 +5661,7 @@ function Chart({
       indicatorSignature,
       indicators,
       instrument,
-      orderFlowHistoryReady,
+      orderFlowSeriesReady,
       priceFormat.minMove,
       settings.borderUpColor,
       settings.downColor,
@@ -5981,7 +6006,7 @@ function Chart({
           showLegend: instance.indicatorId === "delta-bar" ? false : undefined,
           unavailableReason: isMarketIndexSymbol(instrument)
             ? "This index feed publishes no executed bid/ask volume — order-flow studies need a CME futures chart."
-            : orderFlowHistoryReady
+            : orderFlowSeriesReady
               ? "Waiting for executed CME bid/ask volume."
               : instance.indicatorId === "delta-bar"
                 ? "Restoring delta bar history."
@@ -6013,7 +6038,7 @@ function Chart({
     ivRankByInstance,
     priceFormat.minMove,
     indicatorMarketTrades,
-    orderFlowHistoryReady,
+    orderFlowSeriesReady,
     settings.borderUpColor,
     settings.downColor,
     settings.gridColor,
