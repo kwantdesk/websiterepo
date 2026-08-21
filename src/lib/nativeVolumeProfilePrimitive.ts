@@ -28,6 +28,9 @@ function clamp(value: number, min: number, max: number) {
 // Chart-width profiles are expressed against a stable logical viewport rather
 // than the full Globex session. Treating a 24% KWANT Profile as 24% of all
 // 1,380 one-minute bars made it consume the whole pane after a refresh.
+/** Smallest height a profile row may occupy before rows are grouped. */
+const PROFILE_MIN_ROW_PIXELS = 0.55;
+
 const CHART_PROFILE_REFERENCE_BARS = 80;
 const MAX_PROFILE_PANE_FRACTION = 0.36;
 
@@ -439,8 +442,14 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
         const sourceRowPixels = referenceY == null || nextReferenceY == null
           ? 1
           : Math.max(0.01, Math.abs(nextReferenceY - referenceY));
+        // Rows are allowed to fall well under a pixel before the renderer
+        // collapses them: a profile reads as structure — shelves, single
+        // prints, the notch beside a POC — only while each traded tick still
+        // has its own row. Requiring a full pixel per row silently doubled the
+        // grouping at ordinary zoom and flattened that structure into blocks.
+        // Auto group factory scales this, so raising it deliberately coarsens.
         const automaticMultiplier = style.automaticGrouping
-          ? Math.max(1, Math.ceil((1.15 * style.autoGroupFactor) / sourceRowPixels))
+          ? Math.max(1, Math.ceil((PROFILE_MIN_ROW_PIXELS * style.autoGroupFactor) / sourceRowPixels))
           : 1;
         const groupedTicks = profile.groupTicks * automaticMultiplier;
         const levels = automaticMultiplier === 1
