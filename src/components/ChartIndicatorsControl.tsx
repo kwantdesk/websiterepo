@@ -185,6 +185,50 @@ const DAILY_TPO_SESSION_PRESETS = [
     },
   },
 ] as const;
+const VOLUME_PROFILE_TEMPLATES_STORAGE_KEY = "kwantdesk:volume-profile-templates:v1";
+
+type VolumeProfileTemplate = {
+  id: string;
+  name: string;
+  savedAt: string;
+  settings: Record<string, number | string | boolean>;
+};
+
+function readVolumeProfileTemplates(): VolumeProfileTemplate[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(VOLUME_PROFILE_TEMPLATES_STORAGE_KEY) ?? "[]");
+    return Array.isArray(parsed)
+      ? parsed.filter((item): item is VolumeProfileTemplate => Boolean(
+        item && typeof item.id === "string" && typeof item.name === "string"
+        && item.settings && typeof item.settings === "object",
+      ))
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistVolumeProfileTemplates(templates: VolumeProfileTemplate[]) {
+  window.localStorage.setItem(VOLUME_PROFILE_TEMPLATES_STORAGE_KEY, JSON.stringify(templates));
+  window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
+}
+
+/**
+ * A template is only the profile's own settings — never its instance id or
+ * pane, so importing one on another chart cannot drag the original chart's
+ * identity along with it.
+ */
+function volumeProfileTemplatePayload(settings: Record<string, unknown> | undefined) {
+  const payload: Record<string, number | string | boolean> = {};
+  for (const [key, value] of Object.entries(settings ?? {})) {
+    if (typeof value === "number" || typeof value === "string" || typeof value === "boolean") {
+      payload[key] = value;
+    }
+  }
+  return payload;
+}
+
 const TPO_USER_PRESETS_STORAGE_KEY = "kwantdesk:tpo-user-presets:v1";
 type TpoUserPreset = {
   id: string;
@@ -289,7 +333,7 @@ assignTpoSections("Peak and valley", [
   "peakValleySensitivity", "peakValleyExcludeExtremes", "peakColor", "valleyColor",
 ]);
 assignTpoSections("Single prints", [
-  "showSinglePrints", "minimumSinglePrintTicks", "singlePrintQuality",
+  "showSinglePrints", "minimumSinglePrintTicks", "singlePrintMaxTpoCount", "singlePrintQuality",
   "singlePrintVolumeSensitivity", "includeExtremesInSinglePrints", "singlePrintLineWidth",
   "singlePrintExtensionMode", "singlePrintFillZone", "singlePrintFillOpacity",
   "singlePrintShowLabel", "singlePrintShowTestedState", "singlePrintColor",
@@ -549,6 +593,9 @@ export default function ChartIndicatorsControl({
   const [selectedFootprintTemplateId, setSelectedFootprintTemplateId] = useState("");
   const [footprintSaveStatus, setFootprintSaveStatus] = useState("");
   const [tpoUserPresets, setTpoUserPresets] = useState<TpoUserPreset[]>([]);
+  const [volumeProfileTemplates, setVolumeProfileTemplates] = useState<VolumeProfileTemplate[]>([]);
+  const [volumeProfileTemplateName, setVolumeProfileTemplateName] = useState("");
+  const volumeProfileImportRef = useRef<HTMLInputElement | null>(null);
   const [selectedTpoPresetId, setSelectedTpoPresetId] = useState("");
   const [tpoPresetName, setTpoPresetName] = useState("");
   const [gexIntervalUserPresets, setGexIntervalUserPresets] = useState<GexIntervalUserPreset[]>([]);
@@ -671,6 +718,7 @@ export default function ChartIndicatorsControl({
   useEffect(() => {
     if (!settingsInstanceId?.startsWith("tpo-chart-") && !settingsInstanceId?.startsWith("weekly-tpo-")) return;
     setTpoUserPresets(readTpoUserPresets());
+    setVolumeProfileTemplates(readVolumeProfileTemplates());
     setSelectedTpoPresetId("");
     setTpoPresetName("");
   }, [settingsInstanceId]);
@@ -1325,6 +1373,157 @@ export default function ChartIndicatorsControl({
                   </label>
                   <div className="border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
                     Volume is the plain traded-volume profile. Delta and total volume adds the signed delta bar beside it; delta percentage scales that delta by the row&apos;s own volume, so a thin one-sided row reads as strongly as a heavy balanced one.
+                  </div>
+                </div>
+              ) : null}
+
+              {VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) && volumeProfileTab === "general" ? (
+                <div className="grid gap-3 border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
+                  <div className="text-[9px] uppercase tracking-[0.14em] text-foreground sm:col-span-2">Templates</div>
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">
+                    <span>Apply a saved template</span>
+                    <KwantSelect
+                      value=""
+                      onChange={(event) => {
+                        const template = volumeProfileTemplates.find((candidate) => candidate.id === event.target.value);
+                        if (!template) return;
+                        replace(settingsInstance.instanceId, (current) => ({
+                          ...current,
+                          settings: { ...(current.settings ?? {}), ...template.settings },
+                        }));
+                        setVolumeProfileTemplateName(template.name);
+                      }}
+                      className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                      menuLabel="Saved templates"
+                    >
+                      <option value="">
+                        {volumeProfileTemplates.length ? "Choose a template" : "No saved templates"}
+                      </option>
+                      {volumeProfileTemplates.map((template) => (
+                        <option key={template.id} value={template.id}>{template.name}</option>
+                      ))}
+                    </KwantSelect>
+                  </label>
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">
+                    <span>Template name</span>
+                    <input
+                      value={volumeProfileTemplateName}
+                      onChange={(event) => setVolumeProfileTemplateName(event.target.value)}
+                      placeholder="Daily volume · my setup"
+                      className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none focus:border-primary/40"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const name = volumeProfileTemplateName.trim();
+                      if (!name) return;
+                      const payload = volumeProfileTemplatePayload(settingsInstance.settings);
+                      // Saving under an existing name overwrites it, so a
+                      // trader refining a setup does not accumulate duplicates.
+                      const existing = volumeProfileTemplates.find(
+                        (candidate) => candidate.name.toLowerCase() === name.toLowerCase(),
+                      );
+                      const next = existing
+                        ? volumeProfileTemplates.map((candidate) => (candidate.id === existing.id
+                          ? { ...candidate, settings: payload, savedAt: new Date().toISOString() }
+                          : candidate))
+                        : [
+                          ...volumeProfileTemplates,
+                          { id: crypto.randomUUID(), name, savedAt: new Date().toISOString(), settings: payload },
+                        ];
+                      setVolumeProfileTemplates(next);
+                      persistVolumeProfileTemplates(next);
+                    }}
+                    disabled={!volumeProfileTemplateName.trim()}
+                    className={`h-9 border px-2 text-[8px] uppercase tracking-[0.1em] ${
+                      volumeProfileTemplateName.trim()
+                        ? "border-primary/55 bg-primary/10 text-primary"
+                        : "cursor-not-allowed border-border bg-background text-muted/40"
+                    }`}
+                  >
+                    Save template
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const name = volumeProfileTemplateName.trim().toLowerCase();
+                      const target = volumeProfileTemplates.find(
+                        (candidate) => candidate.name.toLowerCase() === name,
+                      );
+                      if (!target) return;
+                      const next = volumeProfileTemplates.filter((candidate) => candidate.id !== target.id);
+                      setVolumeProfileTemplates(next);
+                      persistVolumeProfileTemplates(next);
+                      setVolumeProfileTemplateName("");
+                    }}
+                    className="h-9 border border-border bg-background px-2 text-[8px] uppercase tracking-[0.1em] text-muted hover:text-foreground"
+                  >
+                    Delete template
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const payload = {
+                        kind: "kwantdesk-volume-profile-template",
+                        version: 1,
+                        name: volumeProfileTemplateName.trim() || settingsDefinition.name,
+                        savedAt: new Date().toISOString(),
+                        settings: volumeProfileTemplatePayload(settingsInstance.settings),
+                      };
+                      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+                      const url = URL.createObjectURL(blob);
+                      const link = document.createElement("a");
+                      link.href = url;
+                      link.download = `${payload.name.replace(/[^\w.-]+/g, "-").toLowerCase()}.json`;
+                      link.click();
+                      URL.revokeObjectURL(url);
+                    }}
+                    className="h-9 border border-border bg-background px-2 text-[8px] uppercase tracking-[0.1em] text-muted hover:text-foreground"
+                  >
+                    Export
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => volumeProfileImportRef.current?.click()}
+                    className="h-9 border border-border bg-background px-2 text-[8px] uppercase tracking-[0.1em] text-muted hover:text-foreground"
+                  >
+                    Import
+                  </button>
+                  <input
+                    ref={volumeProfileImportRef}
+                    type="file"
+                    accept="application/json,.json"
+                    className="hidden"
+                    onChange={async (event) => {
+                      const file = event.target.files?.[0];
+                      event.target.value = "";
+                      if (!file) return;
+                      try {
+                        const parsed = JSON.parse(await file.text());
+                        const settings = volumeProfileTemplatePayload(parsed?.settings);
+                        // An empty or foreign file leaves the profile alone
+                        // rather than clearing it to defaults.
+                        if (!Object.keys(settings).length) return;
+                        replace(settingsInstance.instanceId, (current) => ({
+                          ...current,
+                          settings: { ...(current.settings ?? {}), ...settings },
+                        }));
+                        const name = typeof parsed?.name === "string" ? parsed.name : file.name.replace(/\.json$/i, "");
+                        setVolumeProfileTemplateName(name);
+                        const next = [
+                          ...volumeProfileTemplates.filter((candidate) => candidate.name.toLowerCase() !== name.toLowerCase()),
+                          { id: crypto.randomUUID(), name, savedAt: new Date().toISOString(), settings },
+                        ];
+                        setVolumeProfileTemplates(next);
+                        persistVolumeProfileTemplates(next);
+                      } catch {
+                        // A malformed file is ignored; the profile keeps its settings.
+                      }
+                    }}
+                  />
+                  <div className="border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
+                    A template stores this profile&apos;s settings only — never its chart or pane — so it can be applied to any profile on any chart. Saving under an existing name overwrites it. Templates sync with your account; export writes a JSON file you can share.
                   </div>
                 </div>
               ) : null}

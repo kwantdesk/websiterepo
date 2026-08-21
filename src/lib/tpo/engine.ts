@@ -433,7 +433,16 @@ export function detectSinglePrints(
   includeExtremes: boolean,
   quality = 0,
   volumeSensitivity = 0,
+  maxTpoCount = 1,
 ) {
+  // A row qualifies as a thin print when it was visited by no more than
+  // `maxTpoCount` subperiods. At 1 this is the textbook single print; higher
+  // values progressively reveal the thicker low-volume shelves that are
+  // visibly thin on the profile but which the strict test excludes entirely —
+  // previously there was no way to see them at all, only to filter the strict
+  // set down further.
+  const threshold = Math.max(1, Math.round(maxTpoCount));
+  const isThin = (row: TpoProfileRow) => row.tpoCount >= 1 && row.tpoCount <= threshold;
   let result: TpoSinglePrintZone[] = [];
   let start: TpoProfileRow | null = null;
   let previous: TpoProfileRow | null = null;
@@ -457,8 +466,8 @@ export function detectSinglePrints(
     zoneHasVolume = false;
   };
   rows.forEach((row) => {
-    if (row.tpoCount !== 1 || (previous && row.lowTick > previous.highTick + 1)) flush();
-    if (row.tpoCount === 1) {
+    if (!isThin(row) || (previous && row.lowTick > previous.highTick + 1)) flush();
+    if (isThin(row)) {
       if (!start) start = row;
       previous = row;
       if (row.volume !== null) {
@@ -736,7 +745,7 @@ function buildOneProfile(
     if (barTouch === null) return tradeTouch;
     return Math.min(tradeTouch, barTouch);
   };
-  const singlePrints = detectSinglePrints(finalRows, settings.minimumSinglePrintTicks, settings.includeExtremesInSinglePrints, settings.singlePrintQuality, settings.singlePrintVolumeSensitivity)
+  const singlePrints = detectSinglePrints(finalRows, settings.minimumSinglePrintTicks, settings.includeExtremesInSinglePrints, settings.singlePrintQuality, settings.singlePrintVolumeSensitivity, settings.singlePrintMaxTpoCount)
     .map((zone) => {
       const firstInteractionMs = firstInteraction(zone.lowTick, zone.highTick);
       return { ...zone, tested: firstInteractionMs !== null, firstInteractionMs };
@@ -907,7 +916,7 @@ export function mergeTpoProfileModels(
     pocTick,
     vahTick: valueArea.vahTick,
     valTick: valueArea.valTick,
-    singlePrints: detectSinglePrints(finalRows, settings.minimumSinglePrintTicks, settings.includeExtremesInSinglePrints, settings.singlePrintQuality, settings.singlePrintVolumeSensitivity),
+    singlePrints: detectSinglePrints(finalRows, settings.minimumSinglePrintTicks, settings.includeExtremesInSinglePrints, settings.singlePrintQuality, settings.singlePrintVolumeSensitivity, settings.singlePrintMaxTpoCount),
     peaksValleys: detectPeaksValleys(
       finalRows,
       settings.peakValleyRadius,

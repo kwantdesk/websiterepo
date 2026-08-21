@@ -83,6 +83,13 @@ export interface TpoIndicatorSettings {
   initialBalanceSubperiods: number;
   showSinglePrints: boolean;
   minimumSinglePrintTicks: number;
+  /**
+   * How many subperiod visits a price row may have and still count as a thin
+   * print. 1 is the textbook single print; dragging it up reveals the thicker
+   * low-volume shelves a trader can plainly see on the profile but which the
+   * strict definition hides.
+   */
+  singlePrintMaxTpoCount: number;
   singlePrintQuality: number;
   // 0 keeps every single-print zone; dragging toward 100 keeps only the zones
   // with the LOWEST traded volume per tick — the true low-volume structural
