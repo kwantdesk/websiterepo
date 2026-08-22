@@ -89,6 +89,7 @@ function refreshIntervalFor(url: string) {
   if (url.includes("/api/gex-box/")) return 3_000;
   if (url.includes("/api/gex-interval-map")) return 5_000;
   if (url.includes("/api/options-flow")) return 5_000;
+  if (url.includes("/api/dark-pool-map")) return 5_000;
   return 15_000;
 }
 async function refreshFeed(url: string, force = false) {
@@ -131,6 +132,16 @@ function useSharedFeed(url: string | null) {
 function record(value: unknown): Record<string, unknown> | null { return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null; }
 function finite(value: unknown) { const number = Number(value); return Number.isFinite(number) ? number : null; }
 function compact(value: number) { const abs = Math.abs(value); return `${value < 0 ? "−" : ""}${abs >= 1e9 ? `${(abs / 1e9).toFixed(2)}B` : abs >= 1e6 ? `${(abs / 1e6).toFixed(2)}M` : abs >= 1e3 ? `${(abs / 1e3).toFixed(1)}K` : abs.toFixed(0)}`; }
+function dollars(value: number) { return `${value < 0 ? "−" : ""}$${compact(Math.abs(value))}`; }
+function whole(value: number) { return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(value); }
+function price(value: number) { return new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(value); }
+function ageLabel(timestamp: number | null) {
+  if (!timestamp) return "awaiting update";
+  const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1_000));
+  if (seconds < 60) return `${seconds}s ago`;
+  if (seconds < 3_600) return `${Math.floor(seconds / 60)}m ago`;
+  return `${Math.floor(seconds / 3_600)}h ago`;
+}
 
 function collectRows(value: unknown, depth = 0): Record<string, unknown>[] {
   if (depth > 5 || value == null) return [];
@@ -184,6 +195,94 @@ function ProfileBars({ payload, settings }: { payload: unknown; settings: PanelS
   return <div className="h-full overflow-y-auto px-2 py-1">{rows.length ? rows.map((row) => <div key={row.strike} className="grid h-5 grid-cols-[1fr_58px_1fr] items-center gap-2 border-b border-border/30 text-[9px] font-mono"><div className="flex justify-end"><span className="h-2 opacity-65" title="Open-interest exposure" style={{ backgroundColor: settings.negativeColor, width: `${Math.max(1, Math.abs(row.openInterestExposure) / peak * 100)}%` }} /></div><span className="text-center text-foreground">{row.strike}</span><span className="h-2 opacity-65" title="Volume exposure" style={{ backgroundColor: settings.color, width: `${Math.max(1, Math.abs(row.volumeExposure) / peak * 100)}%` }} /></div>) : <NoRows />}</div>;
 }
 
+type DarkPoolLevelRow = {
+  id: string;
+  levelPrice: number;
+  totalNotional: number;
+  totalShares: number;
+  tradeCount: number;
+  sessionCount: number;
+  strengthScore: number;
+  askSideNotional: number;
+  bidSideNotional: number;
+  midMarketNotional: number;
+  unknownSideNotional: number;
+  lastPrintTimeMs: number | null;
+  isZoneMember: boolean;
+};
+
+function darkPoolLevels(payload: unknown): DarkPoolLevelRow[] {
+  const root = record(payload);
+  const raw = Array.isArray(root?.levels) ? root.levels : [];
+  return raw.flatMap((entry, index) => {
+    const row = record(entry); if (!row) return [];
+    const levelPrice = finite(row.mappedPrice) ?? finite(row.sourcePrice);
+    const totalNotional = finite(row.totalNotional);
+    if (levelPrice === null || totalNotional === null) return [];
+    return [{
+      id: String(row.id ?? `${levelPrice}-${index}`), levelPrice, totalNotional,
+      totalShares: finite(row.totalShares) ?? 0, tradeCount: finite(row.tradeCount) ?? 0,
+      sessionCount: finite(row.sessionCount) ?? 0, strengthScore: finite(row.strengthScore) ?? 0,
+      askSideNotional: finite(row.askSideNotional) ?? 0, bidSideNotional: finite(row.bidSideNotional) ?? 0,
+      midMarketNotional: finite(row.midMarketNotional) ?? 0, unknownSideNotional: finite(row.unknownSideNotional) ?? 0,
+      lastPrintTimeMs: finite(row.lastPrintTimeMs), isZoneMember: Boolean(row.isZoneMember),
+    }];
+  }).sort((a, b) => b.totalNotional - a.totalNotional);
+}
+
+function DarkPoolLevelsPanel({ payload, settings }: { payload: unknown; settings: PanelSettings }) {
+  const root = record(payload); const baseline = record(root?.baseline);
+  const latestPrice = finite(baseline?.latestStockPrice);
+  const checkedAt = finite(root?.checkedAtMs); const status = String(root?.status ?? "unknown");
+  const levels = darkPoolLevels(payload).filter((row) => row.totalNotional >= settings.minimum).slice(0, settings.rows);
+  const peak = Math.max(1, ...levels.map((row) => row.totalNotional));
+  const total = levels.reduce((sum, row) => sum + row.totalNotional, 0);
+  const nearestId = latestPrice === null || !levels.length ? null : levels.reduce((nearest, row) => Math.abs(row.levelPrice - latestPrice) < Math.abs(nearest.levelPrice - latestPrice) ? row : nearest).id;
+  if (!levels.length) return <NoRows />;
+  return <div className="flex h-full min-h-0 flex-col bg-background">
+    <div className="grid shrink-0 grid-cols-2 border-b border-border bg-panel sm:grid-cols-4">
+      <Metric label="Underlying" value={latestPrice === null ? "—" : price(latestPrice)} />
+      <Metric label="Tracked notional" value={dollars(total)} />
+      <Metric label="Ranked levels" value={whole(levels.length)} />
+      <Metric label={status === "live" ? "Live QuantData" : status} value={ageLabel(checkedAt)} accent={status === "live"} />
+    </div>
+    <div className="grid h-8 shrink-0 grid-cols-[74px_minmax(110px,1fr)_70px_58px_54px] items-center border-b border-border bg-panel px-2 text-[8px] font-semibold uppercase tracking-[.14em] text-muted sm:grid-cols-[88px_minmax(160px,1fr)_90px_70px_60px]">
+      <span>Price</span><span>Concentration · aggressor split</span><span className="text-right">Notional</span><span className="text-right">Shares</span><span className="text-right">Score</span>
+    </div>
+    <div className="min-h-0 flex-1 overflow-y-auto">
+      {levels.map((row, index) => {
+        const classified = row.askSideNotional + row.bidSideNotional + row.midMarketNotional + row.unknownSideNotional;
+        const ask = classified ? row.askSideNotional / classified * 100 : 0;
+        const bid = classified ? row.bidSideNotional / classified * 100 : 0;
+        const mid = Math.max(0, 100 - ask - bid);
+        const width = Math.max(1.5, row.totalNotional / peak * 100);
+        const isMarket = row.id === nearestId;
+        return <div key={row.id} className={`relative grid min-h-11 grid-cols-[74px_minmax(110px,1fr)_70px_58px_54px] items-center border-b px-2 font-mono text-[9px] sm:grid-cols-[88px_minmax(160px,1fr)_90px_70px_60px] ${isMarket ? "border-primary/60 bg-primary/[.055]" : "border-border/35 hover:bg-surface/55"}`}>
+          {isMarket ? <span className="absolute inset-y-0 left-0 w-0.5 bg-primary shadow-[0_0_10px_var(--primary)]" /> : null}
+          <div className="min-w-0"><div className={`font-semibold ${isMarket ? "text-primary" : "text-foreground"}`}>{price(row.levelPrice)}</div><div className="mt-0.5 text-[7px] uppercase tracking-[.11em] text-muted">#{index + 1}{row.isZoneMember ? " · zone" : ""}</div></div>
+          <div className="min-w-0 pr-3">
+            <div className="relative h-2 overflow-hidden border border-border/50 bg-surface"><span className="absolute inset-y-0 left-0 bg-primary/70" style={{ width: `${width}%` }} /></div>
+            <div className="mt-1 flex h-1.5 w-full overflow-hidden bg-surface" title={`Ask ${ask.toFixed(0)}% · Mid/unknown ${mid.toFixed(0)}% · Bid ${bid.toFixed(0)}%`}><span className="bg-primary" style={{ width: `${ask}%` }} /><span className="bg-muted/55" style={{ width: `${mid}%` }} /><span className="bg-danger" style={{ width: `${bid}%` }} /></div>
+          </div>
+          <div className="text-right"><div className="text-foreground">{dollars(row.totalNotional)}</div><div className="mt-0.5 text-[7px] text-muted">{whole(row.tradeCount)} prints</div></div>
+          <div className="text-right text-foreground/80">{compact(row.totalShares)}</div>
+          <div className="text-right"><span className="inline-flex min-w-9 justify-center border border-primary/20 bg-primary/[.06] px-1 py-0.5 text-primary">{row.strengthScore.toFixed(0)}</span><div className="mt-0.5 text-[7px] text-muted">{row.sessionCount}D</div></div>
+        </div>;
+      })}
+    </div>
+    <div className="flex h-7 shrink-0 items-center justify-between border-t border-border bg-panel px-2 text-[7px] uppercase tracking-[.12em] text-muted"><span><i className="mr-1 inline-block h-1.5 w-4 bg-primary" />Ask-side <i className="ml-3 mr-1 inline-block h-1.5 w-4 bg-danger" />Bid-side</span><span>Raw notional ranking · no proxy</span></div>
+  </div>;
+}
+
+function EquityPrintsPanel({ payload, settings }: { payload: unknown; settings: PanelSettings }) {
+  const root = record(payload); const raw = Array.isArray(root?.prints) ? root.prints : [];
+  const rows = raw.flatMap((entry, index) => { const row = record(entry); if (!row) return []; const notional = finite(row.notionalValue) ?? 0; const mappedPrice = finite(row.mappedPrice) ?? finite(row.sourcePrice); if (mappedPrice === null || notional < settings.minimum) return []; return [{ id: String(row.id ?? index), mappedPrice, notional, size: finite(row.size) ?? 0, side: String(row.tradeSide ?? "UNKNOWN"), venue: String(row.venue ?? "—"), time: finite(row.tradeTimeMs) }]; }).sort((a, b) => (b.time ?? 0) - (a.time ?? 0)).slice(0, settings.rows);
+  if (!rows.length) return <NoRows />;
+  return <div className="h-full overflow-auto"><table className="w-full border-collapse text-left text-[9px]"><thead className="sticky top-0 z-10 bg-panel"><tr>{["Time", "Price", "Size", "Notional", "Side", "Venue"].map((column) => <th key={column} className="border-b border-border px-2 py-2 font-semibold uppercase tracking-[.11em] text-muted">{column}</th>)}</tr></thead><tbody>{rows.map((row) => <tr key={row.id} className="border-b border-border/35 font-mono hover:bg-surface"><td className="px-2 py-1.5 text-muted">{row.time ? new Date(row.time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "—"}</td><td className="px-2 py-1.5 text-foreground">{price(row.mappedPrice)}</td><td className="px-2 py-1.5 text-foreground/80">{whole(row.size)}</td><td className="px-2 py-1.5 text-foreground">{dollars(row.notional)}</td><td className={`px-2 py-1.5 ${row.side.toLowerCase().includes("ask") ? "text-primary" : row.side.toLowerCase().includes("bid") ? "text-danger" : "text-muted"}`}>{row.side}</td><td className="px-2 py-1.5 text-muted">{row.venue}</td></tr>)}</tbody></table></div>;
+}
+
+function Metric({ label, value, accent = false }: { label: string; value: string; accent?: boolean }) { return <div className="min-w-0 border-r border-border px-3 py-2 last:border-r-0"><div className="truncate text-[7px] font-semibold uppercase tracking-[.14em] text-muted">{label}</div><div className={`mt-1 truncate font-mono text-[11px] ${accent ? "text-primary" : "text-foreground"}`}>{value}</div></div>; }
+
 function DataTable({ payload, limit = 80 }: { payload: unknown; limit?: number }) {
   const rows = collectRows(payload).slice(0, limit); const columns = useMemo(() => { const scores = new Map<string, number>(); rows.forEach((row) => Object.keys(row).forEach((key) => scores.set(key, (scores.get(key) ?? 0) + 1))); return [...scores.entries()].sort((a, b) => b[1] - a[1]).slice(0, 7).map(([key]) => key); }, [rows]);
   if (!rows.length) return <NoRows />;
@@ -204,6 +303,8 @@ function ToolSurface({ panel }: { panel: DashboardPanel }) {
   if (!feed.data && feed.loading) return <div className="flex h-full items-center justify-center"><RefreshCw className="h-5 w-5 animate-spin text-primary" /><span className="ml-3 text-[9px] uppercase tracking-[.15em] text-muted">Restoring verified session</span></div>;
   if (!feed.data && feed.error) return <div className="flex h-full items-center justify-center px-8 text-center"><div><p className="text-[10px] font-semibold uppercase text-danger">Data unavailable</p><p className="mt-2 max-w-md text-[9px] text-muted">{feed.error}</p><button onClick={() => void feed.refresh()} className="mt-4 border border-primary/30 px-3 py-2 text-[9px] uppercase text-primary">Try again</button></div></div>;
   if (panel.toolId === "interval-map" || panel.toolId === "heat-map") return <IntervalCanvas payload={feed.data} settings={panel.settings} />;
+  if (panel.toolId === "dark-pool-levels") return <DarkPoolLevelsPanel payload={feed.data} settings={panel.settings} />;
+  if (panel.toolId === "equity-prints") return <EquityPrintsPanel payload={feed.data} settings={panel.settings} />;
   if (["exposure-strike", "oi-strike", "classic-gex", "state-profile"].includes(panel.toolId)) return <ProfileBars payload={feed.data} settings={panel.settings} />;
   if (panel.toolId === "iv-rank") return <IvRank payload={feed.data} />;
   return <DataTable payload={feed.data} limit={panel.settings.rows} />;
@@ -235,7 +336,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) { re
 function AddToolDialog({ onAdd, onClose }: { onAdd: (tool: Tool) => void; onClose: () => void }) {
   const [category, setCategory] = useState<ToolCategory>("Options"); const [query, setQuery] = useState("");
   const tools = TOOLS.filter((tool) => tool.category === category && tool.label.toLowerCase().includes(query.toLowerCase()));
-  return <div className="fixed inset-0 z-[170] flex items-center justify-center bg-black/35 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}><div className="flex h-[min(760px,88vh)] w-[min(980px,96vw)] flex-col border border-border bg-panel shadow-2xl"><div className="flex h-12 items-center justify-between border-b border-border px-4"><div><h2 className="text-[11px] font-semibold uppercase tracking-[.18em]">Add Tool</h2><p className="mt-0.5 text-[8px] text-muted">Verified panel registry · settings remain panel-local</p></div><button onClick={onClose}><X className="h-4 w-4 text-muted" /></button></div><div className="flex min-h-0 flex-1"><aside className="w-44 shrink-0 border-r border-border p-2">{(["Options", "Equities", "News", "KwantDesk"] as ToolCategory[]).map((item) => <button key={item} onClick={() => setCategory(item)} className={`mb-1 flex h-9 w-full items-center px-3 text-left text-[9px] font-semibold uppercase tracking-[.13em] ${category === item ? "bg-primary/10 text-primary" : "text-muted hover:bg-surface hover:text-foreground"}`}>{item}</button>)}</aside><main className="min-w-0 flex-1 overflow-y-auto p-4"><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search tools" className="mb-4 h-10 w-full border border-border bg-background px-3 text-[10px] outline-none focus:border-primary/40" /><div className="grid grid-cols-1 gap-2 md:grid-cols-2">{tools.map((tool) => <button key={tool.id} onClick={() => onAdd(tool)} className="group flex min-h-20 items-center gap-3 border border-border bg-background p-3 text-left hover:border-primary/35 hover:bg-primary/[.035]"><div className="flex h-10 w-10 shrink-0 items-center justify-center border border-border bg-panel text-primary"><Activity className="h-4 w-4" /></div><span><b className="block text-[10px] font-semibold text-foreground">{tool.label}</b><small className="mt-1 block text-[8px] leading-4 text-muted">{tool.detail}</small></span><Plus className="ml-auto h-4 w-4 text-muted group-hover:text-primary" /></button>)}</div></main></div></div></div>;
+  return <div className="fixed inset-0 z-[170] flex items-center justify-center bg-black/35 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}><div className="flex h-[min(760px,88vh)] w-[min(980px,96vw)] flex-col border border-border bg-panel shadow-2xl"><div className="flex h-12 items-center justify-between border-b border-border px-4"><div><h2 className="text-[11px] font-semibold uppercase tracking-[.18em]">Add Tool</h2><p className="mt-0.5 text-[8px] text-muted">Verified panel registry · settings remain panel-local</p></div><button onClick={onClose}><X className="h-4 w-4 text-muted" /></button></div><div className="flex min-h-0 flex-1"><aside className="w-44 shrink-0 border-r border-border p-2">{(["Options", "Equities", "News", "KwantDesk"] as ToolCategory[]).map((item) => <button key={item} onClick={() => setCategory(item)} className={`mb-1 flex h-9 w-full items-center px-3 text-left text-[9px] font-semibold uppercase tracking-[.13em] ${category === item ? "bg-primary/10 text-primary" : "text-muted hover:bg-surface hover:text-foreground"}`}>{item}</button>)}</aside><main className="min-w-0 flex-1 overflow-y-auto p-4"><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search tools" className="mb-4 h-10 w-full border border-border bg-background px-3 text-[10px] outline-none focus:border-primary/40" /><div className="grid grid-cols-1 gap-2 md:grid-cols-2">{tools.map((tool) => <button key={tool.id} disabled={!tool.endpoint} onClick={() => tool.endpoint && onAdd(tool)} className={`group flex min-h-20 items-center gap-3 border border-border bg-background p-3 text-left ${tool.endpoint ? "hover:border-primary/35 hover:bg-primary/[.035]" : "cursor-not-allowed opacity-45"}`}><div className="flex h-10 w-10 shrink-0 items-center justify-center border border-border bg-panel text-primary"><Activity className="h-4 w-4" /></div><span><b className="block text-[10px] font-semibold text-foreground">{tool.label}</b><small className="mt-1 block text-[8px] leading-4 text-muted">{tool.detail}</small>{!tool.endpoint ? <small className="mt-1 block text-[7px] font-semibold uppercase tracking-[.12em] text-danger">Adapter pending</small> : null}</span>{tool.endpoint ? <Plus className="ml-auto h-4 w-4 text-muted group-hover:text-primary" /> : null}</button>)}</div></main></div></div></div>;
 }
 
 function DashboardPanelView({ panel, onChange, onDuplicate, onDelete }: { panel: DashboardPanel; onChange: (panel: DashboardPanel) => void; onDuplicate: () => void; onDelete: () => void }) {

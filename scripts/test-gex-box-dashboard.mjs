@@ -18,6 +18,10 @@ for (const capability of [
 ]) assert.ok(dashboard.includes(capability), `Missing dashboard capability: ${capability}`);
 
 assert.ok(dashboard.includes("feedSubscribers") && dashboard.includes("feedTimers"), "Dashboard must share requests and polling timers across duplicate panels.");
+assert.ok(dashboard.includes('panel.toolId === "dark-pool-levels"') && dashboard.includes("<DarkPoolLevelsPanel"), "Dark Pool Levels must use its dedicated visualization instead of the generic table.");
+assert.ok(dashboard.includes('panel.toolId === "equity-prints"') && dashboard.includes("<EquityPrintsPanel"), "Equity Prints must use its dedicated tape visualization.");
+assert.ok(dashboard.includes('url.includes("/api/dark-pool-map")') && dashboard.includes("return 5_000"), "Dark-pool panels must refresh at the live dashboard cadence.");
+assert.ok(dashboard.includes("disabled={!tool.endpoint}") && dashboard.includes("Adapter pending"), "Unwired catalogue entries must not masquerade as working tools.");
 assert.ok(!/https?:\/\//.test(dashboard), "Browser dashboard must only use authenticated same-origin API routes.");
 assert.match(route, /GEX.*GAMMA/);
 assert.match(route, /DEX.*DELTA/);
