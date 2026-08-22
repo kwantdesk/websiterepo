@@ -868,6 +868,9 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
             : style.mode === "delta-percentage"
               ? Math.max(0.5, deltaShare * deltaScaleWidth)
               : Math.max(0.5, Math.abs(delta) / deltaScaleMaximum * deltaScaleWidth);
+          // Which side this row's delta bar is drawn on. Declared here so the
+          // POC highlight below traces the same side the bar was drawn on.
+          const deltaOnRight = delta >= 0 && !pinnedRight;
           const askWidth = Math.max(0, level.askVolume / groupedMaxSideVolume * profileWidth);
           const bidWidth = Math.max(0, level.bidVolume / groupedMaxSideVolume * profileWidth);
           const inValueArea = groupedVah !== null && groupedVal !== null
@@ -947,7 +950,6 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
                 : "left",
             );
           } else if (style.showDelta) {
-            const deltaOnRight = delta >= 0 && !pinnedRight;
             addBar(
               delta >= 0 ? positiveDeltaPath : negativeDeltaPath,
               pinned && !splitPinnedDaily
@@ -963,16 +965,23 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           }
 
           if (style.showPocHighlight && isPoc) {
+            // The highlight traces the row it highlights, so it must follow
+            // where that row's bars were actually drawn. In volume mode the
+            // delta bar sits on the RIGHT whenever delta is positive, but the
+            // highlight always added its width to the LEFT — painting a bar
+            // out of the back of the profile with nothing underneath it, over
+            // whatever the trader has behind (a delta footprint, usually).
+            const deltaExtent = style.showDelta && !volumeOnlyPinnedDaily ? deltaWidth : 0;
             const leftExtent = style.mode === "bid-ask"
               ? bidWidth
               : (style.mode === "delta" || style.mode === "delta-percentage")
                 ? delta < 0 ? deltaWidth : 0
-                : style.showDelta && !volumeOnlyPinnedDaily ? deltaWidth : 0;
+                : deltaOnRight ? 0 : deltaExtent;
             const rightExtent = style.mode === "bid-ask"
               ? askWidth
               : (style.mode === "delta" || style.mode === "delta-percentage")
                 ? delta >= 0 ? deltaWidth : 0
-                : volumeWidth;
+                : Math.max(volumeWidth, deltaOnRight ? deltaExtent : 0);
             addBar(
               pocPath,
               pinned
