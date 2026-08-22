@@ -109,7 +109,21 @@ assert.match(primitive, /drawnAnchorXById\.set\(model\.id, leftEdge \+ 2\);/);
 assert.match(primitive, /drawnAnchorXById\.set\(model\.id, rightEdge - 2\);/);
 
 // 10. A blocker drawn to the LEFT of a profile is not in front of it on screen
-//     and must not truncate its levels.
-assert.match(primitive, /blockerDrawnX <= ownDrawnX/);
+//     and must not truncate its levels. (The position is now `blockerX`: the
+//     blocker's drawn spine when it has one, otherwise its start projected
+//     through the profile being drawn — see check 11.)
+assert.match(primitive, /blockerX <= ownDrawnX/);
 
-console.log("volume profile level chaining: 10/10 checks passed");
+// 11. A profile that is in front but cannot be measured must still stop the
+//     lines. Only its POSITION was ever viewport-dependent; the chain itself
+//     is worked out in time. Falling back to the pane width when the blocker
+//     could not place itself is what sent levels racing forward across every
+//     profile ahead of them whenever the chart was zoomed or scrolled.
+assert.match(primitive, /const blockerStartMsById = new Map<string, number>\(\);/);
+assert.match(primitive, /this\.timeToCoordinate\(model, blockerStartMs \/ 1_000\)/);
+assert.ok(
+  primitive.includes("blockerId !== undefined && !blockerPlacedBehind"),
+  "an unplaceable blocker must stop the lines rather than release them",
+);
+
+console.log("volume profile level chaining: 11/11 checks passed");

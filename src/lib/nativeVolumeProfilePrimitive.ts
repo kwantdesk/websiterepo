@@ -486,6 +486,9 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
       // jumping to an unrelated one, and the newest profile has nothing in
       // front of it and runs to the live edge.
       const blockerIdById = new Map<string, string>();
+      // The blocker's start in TIME, kept alongside its id so a level can still
+      // be stopped when the blocker itself is not on screen to be measured.
+      const blockerStartMsById = new Map<string, number>();
       const chainGroups = new Map<string, { id: string; startMs: number; endMs: number }[]>();
       for (const model of this.models) {
         // Every profile on the same instrument competes for the same space, so
@@ -519,7 +522,10 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
               blockerId = candidate.id;
             }
           }
-          if (blockerId !== null) blockerIdById.set(entry.id, blockerId);
+          if (blockerId !== null) {
+            blockerIdById.set(entry.id, blockerId);
+            if (blockerStartMs !== null) blockerStartMsById.set(entry.id, blockerStartMs);
+          }
         }
       }
 
@@ -601,14 +607,35 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
         const blockerDrawnX = blockerId === undefined
           ? null
           : drawnAnchorXById.get(blockerId) ?? null;
-        const ownDrawnX = drawnAnchorXById.get(model.id) ?? null;
-        const nextProfileStartX = blockerDrawnX == null
-          || (ownDrawnX != null && blockerDrawnX <= ownDrawnX)
+        // A blocker that is off screen, or whose own anchor time the scale
+        // cannot resolve, has no drawn position — but it is still in front.
+        // Project its start through THIS model, which is being drawn and so
+        // always has a usable projection basis, rather than giving up because
+        // the blocker could not measure itself.
+        const blockerStartMs = blockerStartMsById.get(model.id);
+        const blockerX = blockerDrawnX ?? (blockerStartMs === undefined
           ? null
-          : blockerDrawnX;
-        const levelChainEndX = nextProfileStartX == null
-          ? mediaSize.width
-          : Math.max(endX, nextProfileStartX);
+          : this.timeToCoordinate(model, blockerStartMs / 1_000));
+        const ownDrawnX = drawnAnchorXById.get(model.id) ?? null;
+        const nextProfileStartX = blockerX == null
+          || (ownDrawnX != null && blockerX <= ownDrawnX)
+          ? null
+          : blockerX;
+        // Three distinct cases, and only one of them may reach the live edge:
+        //   - the profile in front is placed: stop at its back;
+        //   - it is placed BEHIND this one (a dock pinned it left), so nothing
+        //     is actually in front on screen: run on;
+        //   - it exists but could not be placed at all: stop at this profile's
+        //     own end. Running to the live edge there is what made levels
+        //     shoot forward across every profile ahead of them on a zoom.
+        const blockerPlacedBehind = blockerX != null
+          && ownDrawnX != null
+          && blockerX <= ownDrawnX;
+        const levelChainEndX = nextProfileStartX != null
+          ? Math.max(endX, nextProfileStartX)
+          : blockerId !== undefined && !blockerPlacedBehind
+            ? endX
+            : mediaSize.width;
 
         // Decimals come from the contract's own tick, so a level never prints
         // more precision than the instrument actually trades in.
