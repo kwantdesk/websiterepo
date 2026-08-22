@@ -54,6 +54,12 @@ import {
 } from "@/lib/volumeProfileGradients";
 import { isInsideKwantSelectMenu } from "@/components/ui/KwantSelect";
 import KwantSelect from "@/components/ui/KwantSelect";
+import {
+  FOOTPRINT_CHART_TYPES,
+  footprintChartType,
+  footprintVariant,
+  footprintVariantSettings,
+} from "@/lib/footprintChartTypes";
 import { PULLING_STACKING_PRESETS } from "@/lib/pullingStacking";
 import { zeroGammaSourceChoices } from "@/lib/zeroGammaLine";
 import { ABSORPTION_PRESETS } from "@/lib/absorptionDetector";
@@ -465,6 +471,27 @@ function readFavourites() {
   } catch {
     return [];
   }
+}
+
+/**
+ * Selecting a Big Contracts mode by using its control.
+ *
+ * The panel has no mode dropdowns; a slider IS the choice, which is how the
+ * manual minimum has always worked. Extending that to the RTH minimum and the
+ * cap keeps every recovered setting reachable without a second control the
+ * trader has to find first. A cap of zero returns to no capping rather than
+ * leaving the mode set with nothing to act on.
+ */
+function bigTradeModeFor(
+  indicatorId: string,
+  key: string,
+  value: number,
+): Record<string, string> {
+  if (indicatorId !== "big-trades") return {};
+  if (key === "manualFilter") return { filterMode: "manual" };
+  if (key === "rthManualFilter") return { rthFilterMode: "manual" };
+  if (key === "cappingMaxVolume") return { cappingMode: value > 0 ? "size" : "off" };
+  return {};
 }
 
 function titleFromKey(key: string) {
@@ -3686,17 +3713,76 @@ export default function ChartIndicatorsControl({
                       ) : null}
                     </div>
                   </label>
+                  {/* The chart, then the variant. These four engine switches —
+                      content, visualisation, colour calculation and input type —
+                      were four independent dropdowns, so reaching a named view
+                      meant knowing which combination produced it. */}
+                  <div className="space-y-2 border border-primary/20 bg-primary/[0.035] p-2.5">
+                    <div className="flex flex-wrap gap-1">
+                      {FOOTPRINT_CHART_TYPES.map((type) => {
+                        const active = footprintChartType(settingsInstance.settings?.chartType).id === type.id;
+                        return (
+                          <button
+                            key={type.id}
+                            type="button"
+                            title={type.description}
+                            onClick={() => replace(settingsInstance.instanceId, (current) => ({
+                              ...current,
+                              settings: {
+                                ...(current.settings ?? {}),
+                                chartType: type.id,
+                                chartVariant: type.variants[0].id,
+                                ...footprintVariantSettings(type.id, type.variants[0].id),
+                              },
+                            }))}
+                            className={`h-7 shrink-0 border px-2.5 text-[9px] font-semibold uppercase tracking-[0.1em] transition-colors ${
+                              active
+                                ? "border-primary/50 bg-primary/10 text-primary"
+                                : "border-border text-muted hover:border-primary/40 hover:text-foreground"
+                            }`}
+                          >
+                            {type.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {(() => {
+                      const type = footprintChartType(settingsInstance.settings?.chartType);
+                      const variant = footprintVariant(type.id, settingsInstance.settings?.chartVariant);
+                      return (
+                        <>
+                          <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                            <span>{type.label} view</span>
+                            <KwantSelect
+                              value={variant.id}
+                              onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                                ...current,
+                                settings: {
+                                  ...(current.settings ?? {}),
+                                  chartVariant: event.target.value,
+                                  ...footprintVariantSettings(type.id, event.target.value),
+                                },
+                              }))}
+                              className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                              menuLabel={`${type.label} footprint view`}
+                            >
+                              {type.variants.map((option) => (
+                                <option key={option.id} value={option.id}>{option.label}</option>
+                              ))}
+                            </KwantSelect>
+                          </label>
+                          <p className="text-[8px] leading-4 text-muted">{variant.description}</p>
+                        </>
+                      );
+                    })()}
+                  </div>
                   {[
-                    ["Content", "contentMode", [["bid-ask", "Bid Ã— Ask"], ["delta", "Delta"], ["volume", "Volume"], ["volume-delta", "Volume Ã— Delta"], ["trades", "Trades"], ["bid-ask-histogram", "Bid / Ask histogram"], ["volume-histogram", "Volume histogram"], ["delta-histogram", "Delta histogram"], ["ladder", "Minimal ladder"]]],
-                    ["Visualization", "visualizationMode", [["solid", "Solid"], ["heatmap", "Heatmap"], ["histogram", "Histogram"], ["heatmap-histogram", "Heatmap histogram"], ["text-only", "Text only"]]],
                     ["Scale", "scaleMode", [["visible-region", "Visible region"], ["per-bar", "Per bar"], ["all-loaded", "All loaded"], ["fixed-maximum", "Fixed maximum"]]],
-                    ["Input", "inputType", [["volume", "Executed volume"], ["num-trades", "Number of trades"]]],
                     ["Tick grouping", "groupingMode", [["automatic", "Automatic"], ["manual", "Manual"]]],
                     ["Grouping mode", "groupMode", [["fixed", "Fixed"], ["open-close", "Based on open / close"]]],
                     ["Imbalance", "imbalanceMode", [["diagonal", "Diagonal"], ["horizontal", "Horizontal"], ["delta-percent", "Delta percentage"]]],
                     ["Professional number format", "numberFormat", [["automatic", "Automatic"], ["full", "Full values"], ["compact", "Compact K / M"]]],
                     ["Colour mode", "colorMode", [["fading", "Fading intensity"], ["fixed", "Fixed opacity"], ["none", "No cell fill"]]],
-                    ["Colour calculation", "colorCalculation", [["volume", "Volume"], ["delta", "Absolute delta"], ["imbalance", "Bid / Ask imbalance"], ["dominant", "Dominant side"], ["dominant-delta", "Dominant delta"]]],
                     ["Active candle outline", "outsideBarStyle", [["bar", "Full bar"], ["body", "Candle body"]]],
                     ["Live marker alignment", "markerAlignment", [["center", "Centre"], ["right", "Right edge"]]],
                     ["Maximum refresh rate", "fpsLimit", [["30", "30 FPS"], ["60", "60 FPS"], ["120", "120 FPS"]]],
@@ -4853,9 +4939,7 @@ export default function ChartIndicatorsControl({
                             ...current,
                             settings: {
                               ...applyNumericIndicatorSetting(settingsDefinition.id, current.settings, setting.key, nextValue),
-                              ...(settingsDefinition.id === "big-trades" && setting.key === "manualFilter"
-                                ? { filterMode: "manual" }
-                                : {}),
+                              ...bigTradeModeFor(settingsDefinition.id, setting.key, nextValue),
                             },
                           }));
                         }}
@@ -4875,9 +4959,7 @@ export default function ChartIndicatorsControl({
                           ...current,
                           settings: {
                             ...applyNumericIndicatorSetting(settingsDefinition.id, current.settings, setting.key, nextValue),
-                            ...(settingsDefinition.id === "big-trades" && setting.key === "manualFilter"
-                              ? { filterMode: "manual" }
-                              : {}),
+                            ...bigTradeModeFor(settingsDefinition.id, setting.key, nextValue),
                           },
                         }));
                       }}
