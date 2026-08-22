@@ -1,6 +1,8 @@
 "use client";
 
 import KwantSelect from "@/components/ui/KwantSelect";
+import KwantDatePicker from "@/components/ui/KwantDatePicker";
+import { earliestReplaySessionDate, periodReaches, replayPeriodForSession } from "@/lib/replayHistoryRange";
 import TimeZoneSelect from "@/components/ui/TimeZoneSelect";
 import ChartIndicatorsControl from "@/components/ChartIndicatorsControl";
 import { normalizeDrawings, type Drawing } from "@/lib/chartDrawTools";
@@ -13856,6 +13858,28 @@ export default function KwantifyWorkspace({
     setWorkspacePanes((current) => current.map((pane) => (pane.id === paneId ? { ...pane, ...patch } : pane)));
   }, []);
 
+  /**
+   * Widen every chart pane's loaded history so the replayed session is inside
+   * it. Replay reveals loaded candles against the clock and cannot invent what
+   * was never fetched, so without this a date more than a few days back
+   * replayed an empty chart. Panes already reaching that far are left alone.
+   */
+  const applyReplayHistoryRange = useCallback((sessionDate: string) => {
+    const required = replayPeriodForSession(sessionDate);
+    if (!required) return;
+    setWorkspacePanes((current) => {
+      let changed = false;
+      const next = current.map((pane) => {
+        if (!isWorkspaceChartKind(pane.content)) return pane;
+        if (periodReaches(pane.period, required)) return pane;
+        changed = true;
+        return { ...pane, period: required };
+      });
+      return changed ? next : current;
+    });
+    setSelectedPeriod((current) => (periodReaches(current, required) ? current : required));
+  }, []);
+
   const activateWorkspacePane = useCallback((paneId: string) => {
     const nextPane = workspacePanes.find((pane) => pane.id === paneId);
     if (!nextPane) return;
@@ -17684,14 +17708,18 @@ export default function KwantifyWorkspace({
           </div>
           {(chartWorkspaceScope === "gamma" || chartWorkspaceScope === "charts") && gexVueReplay.active ? (
             <div className="flex w-full shrink-0 items-center gap-2 overflow-x-auto border-t border-primary/25 bg-panel/95 px-3 py-2 backdrop-blur-xl [scrollbar-width:thin]">
-                  <span className="shrink-0 font-mono text-[8px] font-semibold uppercase tracking-[0.14em] text-primary">GEX Replay</span>
-                  <input
-                    type="date"
+                  <span className="shrink-0 font-mono text-[8px] font-semibold uppercase tracking-[0.14em] text-primary">
+                    {chartWorkspaceScope === "gamma" ? "GEX Replay" : "Chart Replay"}
+                  </span>
+                  <KwantDatePicker
                     value={gexVueReplay.sessionDate}
                     max={latestCompletedNewYorkSession()}
-                    onChange={(event) => setGexVueReplay((current) => setGexVueReplaySession(current, event.target.value))}
-                    className="h-7 shrink-0 border border-border bg-surface px-2 font-mono text-[9px] text-foreground outline-none focus:border-primary/50"
-                    aria-label="Replay session date"
+                    min={earliestReplaySessionDate()}
+                    onChange={(sessionDate) => {
+                      setGexVueReplay((current) => setGexVueReplaySession(current, sessionDate));
+                      applyReplayHistoryRange(sessionDate);
+                    }}
+                    label="Replay session date"
                   />
                   <button
                     type="button"
