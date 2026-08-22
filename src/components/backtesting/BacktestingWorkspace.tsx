@@ -86,6 +86,8 @@ const REPLAY_INDICATORS_STORAGE_KEY = "kwantdesk:historical-replay:indicators:v1
 
 function defaultReplayIndicators(theme: ChartSettings): ChartIndicatorInstance[] {
   const requestedReplayStudies = [
+    "gamma-environment",
+    "bounce-levels",
     "kwant-profile",
     "cumulative-volume-delta",
     "big-trades",
@@ -833,6 +835,15 @@ export default function BacktestingWorkspace({
   const replayClock = playbackClock;
   const replayDataClock = replayClock === null ? null : Math.floor(replayClock / 1_000) * 1_000;
   const activeOptionsSnapshot = replayClock ? replayOptionsSnapshot(replayClock) : null;
+  const replayGammaEnvironment = useMemo(() => gammaPositioning ? {
+    label: gammaPositioning.environment.gammaStateLabel,
+    regime: gammaPositioning.environment.gammaRegime,
+    checkedAt: gammaPositioning.checkedAt,
+    sourceLabel: `${gammaPositioning.requestedSource} options · ${gammaPositioning.sessionDate} historical replay`,
+    // Every backtesting snapshot is deliberately point-in-time and must never
+    // present itself as the current live options environment.
+    stale: true,
+  } : null, [gammaPositioning]);
   const visibleCandles = useMemo(
     () => historicalCandlesAtClock(candles, oneSecondBars, timeframe, replayDataClock),
     [candles, oneSecondBars, replayDataClock, timeframe],
@@ -1841,6 +1852,9 @@ export default function BacktestingWorkspace({
             gammaLevelsLoading={false}
             gammaLevelsError={levelError.gamma || null}
             onToggleGammaLevels={() => toggleLevel("gamma")}
+            gammaEnvironment={replayGammaEnvironment}
+            gammaEnvironmentLoading={levelLoading && !replayGammaEnvironment}
+            gammaEnvironmentError={levelError.gamma || null}
             valueAreaLevelsEnabled={levelState.valueArea}
             valueAreaLevelsAvailable
             valueAreaLevelsLoading={false}

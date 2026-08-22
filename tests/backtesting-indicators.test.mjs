@@ -41,6 +41,8 @@ test("historical levels remain available inside the indicator dropdown", () => {
 
 test("historical replay includes the requested three-month backtesting studies", () => {
   for (const indicatorId of [
+    "gamma-environment",
+    "bounce-levels",
     "kwant-profile",
     "cumulative-volume-delta",
     "big-trades",
@@ -54,6 +56,27 @@ test("historical replay includes the requested three-month backtesting studies",
   }
   assert.match(replay, /ReplayDatePicker min="2010-06-06"/);
   assert.match(replay, /REPLAY_LOOKBACK_MS = 7 \* 24 \* 60 \* 60_000/);
+});
+
+test("Gamma Environment receives the historical options snapshot used by replay", () => {
+  assert.match(replay, /const replayGammaEnvironment = useMemo\(\(\) => gammaPositioning \? \{/);
+  assert.match(replay, /label: gammaPositioning\.environment\.gammaStateLabel/);
+  assert.match(replay, /regime: gammaPositioning\.environment\.gammaRegime/);
+  assert.match(replay, /stale: true/);
+  assert.match(replay, /gammaEnvironment=\{replayGammaEnvironment\}/);
+  assert.match(replay, /gammaEnvironmentLoading=\{levelLoading && !replayGammaEnvironment\}/);
+});
+
+test("Bounce Levels binds historical replay to the selected New York session", () => {
+  const bounceRoute = readFileSync(
+    new URL("../src/app/api/bounce-levels/route.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(replay, /replayTimestampMs=\{replayDataClock\}/);
+  assert.match(bounceRoute, /function newYorkSessionDateAt\(timestamp: number\)/);
+  assert.match(bounceRoute, /asOf !== null \? newYorkSessionDateAt\(asOf\) : undefined/);
+  assert.match(bounceRoute, /selectLookaheadSafeBounceBucket\(input\.interval, input\.asOf\)/);
+  assert.match(bounceRoute, /historyReferenceMs = asOf/);
 });
 
 test("order-flow studies receive replay-clock-clipped historical executions", () => {

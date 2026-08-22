@@ -70,6 +70,18 @@ const finite = (request: NextRequest, key: string, fallback: number) => {
   return Number.isFinite(value) ? value : fallback;
 };
 
+function newYorkSessionDateAt(timestamp: number) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date(timestamp));
+  const read = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? "";
+  return `${read("year")}-${read("month")}-${read("day")}`;
+}
+
 function historicalSurface(input: {
   sourceTicker: string;
   displayInstrument: string;
@@ -264,10 +276,16 @@ export async function GET(request: NextRequest) {
   if (!EXPIRATIONS.has(expirationMode)) return NextResponse.json({ error: "Unsupported expiration filter." }, { status: 400 });
   const greekMode = (request.nextUrl.searchParams.get("greekMode") || "GAMMA").toUpperCase() as GreekMode;
   if (!GREEKS.has(greekMode)) return NextResponse.json({ error: "Unsupported exposure Greek." }, { status: 400 });
-  const sessionDate = request.nextUrl.searchParams.get("sessionDate") || undefined;
   const asOfRaw = request.nextUrl.searchParams.get("asOf");
   const asOf = asOfRaw ? Date.parse(asOfRaw) : null;
   if (asOfRaw && !Number.isFinite(asOf)) return NextResponse.json({ error: "Replay asOf must be an ISO timestamp." }, { status: 400 });
+  // Replay requests used to omit sessionDate, which made the QuantData
+  // adapter load today's interval surface and then search it for a bucket at
+  // the historical replay clock. Bind the surface to the selected New York
+  // trading day so any replay date in the backtesting window is reconstructed
+  // from its own point-in-time Gamma history with no lookahead.
+  const requestedSessionDate = request.nextUrl.searchParams.get("sessionDate") || undefined;
+  const sessionDate = requestedSessionDate || (asOf !== null ? newYorkSessionDateAt(asOf) : undefined);
   const cacheKey = request.nextUrl.searchParams.toString();
   const cached = payloadCache.get(cacheKey);
   const now = Date.now();
