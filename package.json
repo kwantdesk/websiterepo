@@ -75,7 +75,8 @@
     "test:tpo-settings-wired": "node --import ./scripts/alias-hook.mjs scripts/test-tpo-settings-wired.mjs",
     "bench:tpo-build": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/bench-tpo-build.mjs",
     "test:exchange-clock": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-exchange-clock.mjs",
-    "bench:indicator-clock": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/bench-indicator-clock.mjs"
+    "bench:indicator-clock": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/bench-indicator-clock.mjs",
+    "test:tpo-default-visuals": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-tpo-default-visuals.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",

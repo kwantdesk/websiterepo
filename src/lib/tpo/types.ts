@@ -1,6 +1,22 @@
 export const TPO_CHART_INDICATOR_ID = "tpo-chart";
 export const WEEKLY_TPO_INDICATOR_ID = "weekly-tpo";
-export const TPO_SETTINGS_SCHEMA_VERSION = 1;
+export const TPO_SETTINGS_SCHEMA_VERSION = 2;
+
+/**
+ * Presentation keys reset once when a v1 TPO is loaded.
+ *
+ * v1 shipped the developing POC, the initial balance and single prints all ON
+ * by default, so every TPO ever added carries them whether or not the trader
+ * chose them — the developing POC drawing an orange staircase across the
+ * profiles. These three are restored to the new defaults exactly once, on the
+ * v1 -> v2 read. Every other saved value is preserved, and anything the trader
+ * sets after that is theirs.
+ */
+export const TPO_V2_RESET_KEYS = [
+  "showDevelopingPoc",
+  "showInitialBalance",
+  "showSinglePrints",
+] as const;
 
 export type TpoIndicatorVariant = "daily-tpo" | "weekly-tpo";
 export type TpoVisitSource = "exact-trades" | "bar-range" | "automatic";

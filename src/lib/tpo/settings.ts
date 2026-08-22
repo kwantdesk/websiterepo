@@ -2,6 +2,7 @@ import type { ChartSettings } from "@/lib/chartSettings";
 import { VOLUME_PROFILE_GRADIENT_OFF } from "@/lib/volumeProfileGradients";
 import {
   TPO_SETTINGS_SCHEMA_VERSION,
+  TPO_V2_RESET_KEYS,
   type TpoIndicatorSettings,
   type TpoIndicatorVariant,
 } from "@/lib/tpo/types";
@@ -63,12 +64,17 @@ export function defaultTpoSettings(
     freezeActiveGrouping: true,
     valueAreaPercent: 70,
     showPoc: true,
-    showDevelopingPoc: true,
+    // A freshly added TPO shows the letters, the value area and the point of
+    // control — nothing else. The developing POC in particular drew an orange
+    // staircase down from the highs across every profile, which is a study a
+    // trader turns ON when they want it, not the first thing they should have
+    // to turn off.
+    showDevelopingPoc: false,
     showValueArea: true,
     showDevelopingValueArea: false,
-    showInitialBalance: true,
+    showInitialBalance: false,
     initialBalanceSubperiods: 2,
-    showSinglePrints: true,
+    showSinglePrints: false,
     singlePrintMaxTpoCount: 1,
     minimumSinglePrintTicks: 1,
     singlePrintQuality: 0,
@@ -213,7 +219,13 @@ export function validateTpoSettings(
   theme?: Pick<ChartSettings, "upColor" | "downColor" | "borderUpColor" | "borderDownColor">,
 ): TpoIndicatorSettings {
   const defaults = defaultTpoSettings(variant, theme);
-  const source = input ?? {};
+  const stored = input ?? {};
+  // One-time v1 -> v2 correction: see TPO_V2_RESET_KEYS.
+  const source: Record<string, unknown> = Number(stored.schemaVersion ?? 1) >= 2
+    ? stored
+    : Object.fromEntries(Object.entries(stored).filter(
+      ([key]) => !(TPO_V2_RESET_KEYS as readonly string[]).includes(key),
+    ));
   const enumValue = <T extends string>(key: string, values: readonly T[], fallback: T) =>
     values.includes(source[key] as T) ? source[key] as T : fallback;
   return {
