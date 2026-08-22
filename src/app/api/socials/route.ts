@@ -359,12 +359,14 @@ export async function POST(request: NextRequest) {
     useUpsert = true;
   } else if (objectType === "reaction") {
     const kind = cleanIdentifier(payload.kind, 20);
-    if (!parentId || !["LIKE", "USEFUL", "CLEAR", "EVIDENCE", "SAVED", "FIRE", "TARGET", "BRAIN", "APPLAUSE"].includes(kind)) {
+    if (!parentId || !["LIKE", "USEFUL", "CLEAR", "EVIDENCE", "SAVED", "FIRE", "TARGET", "BRAIN", "APPLAUSE", "POLL"].includes(kind)) {
       return NextResponse.json({ error: "A valid reaction target and type are required." }, { status: 400 });
     }
     if (kind === "SAVED" && scope !== "private" && scope !== "community") {
       return NextResponse.json({ error: "Saved items can only be private or visible on the profile." }, { status: 400 });
     }
+    const optionIndex = kind === "POLL" ? Math.max(0, Math.min(5, Math.trunc(finiteNumber(payload.optionIndex, 0) ?? 0))) : undefined;
+    payload = { kind, ...(optionIndex === undefined ? {} : { optionIndex }) };
     id = `reaction:${parentId}:${kind}`;
     useUpsert = true;
   } else if (objectType === "post") {
@@ -401,6 +403,18 @@ export async function POST(request: NextRequest) {
       && payload.imageDataUrl.length <= 1_350_000
       ? payload.imageDataUrl
       : "";
+    const pollCandidate = payload.poll && typeof payload.poll === "object"
+      ? payload.poll as Record<string, unknown>
+      : null;
+    const pollOptions = pollCandidate && Array.isArray(pollCandidate.options)
+      ? pollCandidate.options.map((option) => cleanText(option, 120)).filter(Boolean).slice(0, 6)
+      : [];
+    const pollQuestion = pollCandidate ? cleanText(pollCandidate.question, 240) : "";
+    const pollClosesAt = pollCandidate?.closesAt === null
+      ? null
+      : typeof pollCandidate?.closesAt === "string" && Number.isFinite(Date.parse(pollCandidate.closesAt))
+        ? new Date(pollCandidate.closesAt).toISOString()
+        : null;
     payload = {
       ...payload,
       kind: ["POST", "ONE-LINER", "TRADE", "MAP", "LIVE OBSERVATION", "REVIEW REQUEST", "LESSON", "QUESTION"].includes(kind) ? kind : "POST",
@@ -412,6 +426,17 @@ export async function POST(request: NextRequest) {
       invalidation: cleanText(payload.invalidation, 1_500),
       imageDataUrl,
       imageName: imageDataUrl ? cleanText(payload.imageName, 140) : "",
+      mediaKind: ["PHOTO", "CAMERA", "GIF", "DUAL_CAMERA"].includes(cleanIdentifier(payload.mediaKind, 20))
+        ? cleanIdentifier(payload.mediaKind, 20)
+        : undefined,
+      locationLabel: cleanText(payload.locationLabel, 180) || undefined,
+      quotedPostId: cleanIdentifier(payload.quotedPostId, 180) || undefined,
+      liveMode: ["LIVE_STREAM", "STAGE"].includes(cleanIdentifier(payload.liveMode, 20))
+        ? cleanIdentifier(payload.liveMode, 20)
+        : undefined,
+      poll: pollQuestion && pollOptions.length >= 2
+        ? { question: pollQuestion, options: pollOptions, closesAt: pollClosesAt }
+        : undefined,
       relatedPrecordId: cleanIdentifier(payload.relatedPrecordId, 180) || null,
       repostOfUserId: cleanIdentifier(payload.repostOfUserId, 80) || undefined,
       repostOfPostId: cleanIdentifier(payload.repostOfPostId, 180) || undefined,

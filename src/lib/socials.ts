@@ -305,6 +305,15 @@ export type SocialPostPayload = {
   observedAt: string;
   imageDataUrl?: string;
   imageName?: string;
+  mediaKind?: "PHOTO" | "CAMERA" | "GIF" | "DUAL_CAMERA";
+  locationLabel?: string;
+  quotedPostId?: string;
+  liveMode?: "LIVE_STREAM" | "STAGE";
+  poll?: {
+    question: string;
+    options: string[];
+    closesAt: string | null;
+  };
   isRepost?: boolean;
   repostOfUserId?: string;
   repostOfPostId?: string;
@@ -338,7 +347,8 @@ export type SocialCommentPayload = {
 };
 
 export type SocialReactionPayload = {
-  kind: "LIKE" | "USEFUL" | "CLEAR" | "EVIDENCE" | "SAVED" | "FIRE" | "TARGET" | "BRAIN" | "APPLAUSE";
+  kind: "LIKE" | "USEFUL" | "CLEAR" | "EVIDENCE" | "SAVED" | "FIRE" | "TARGET" | "BRAIN" | "APPLAUSE" | "POLL";
+  optionIndex?: number;
 };
 
 export type SocialCardPayload = {

@@ -25,8 +25,11 @@ import {
   Globe2,
   Heart,
   Image as ImageIcon,
+  Images,
   Layers3,
+  ListChecks,
   LockKeyhole,
+  MapPin,
   Medal,
   MessageCircle,
   MoreHorizontal,
@@ -35,6 +38,7 @@ import {
   Plus,
   Pin,
   Radar,
+  Radio,
   Repeat2,
   Scale,
   Search,
@@ -50,6 +54,7 @@ import {
   Upload,
   UserPlus,
   UsersRound,
+  Video,
   WalletCards,
   X,
   Zap,
@@ -337,6 +342,17 @@ const EMPTY_POST = {
   invalidation: "",
   imageDataUrl: "",
   imageName: "",
+  mediaKind: "" as "" | NonNullable<SocialPostPayload["mediaKind"]>,
+  locationLabel: "",
+  quotedPostId: "",
+  liveMode: "" as "" | NonNullable<SocialPostPayload["liveMode"]>,
+  pollEnabled: false,
+  pollQuestion: "",
+  pollOptions: ["", ""],
+  pollDays: "1",
+  pollHours: "0",
+  pollMinutes: "0",
+  pollNoExpiry: false,
   scope: "community" as SocialScope,
 };
 
@@ -580,6 +596,9 @@ export default function SocialsWorkspace({
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [oneLinerPublishing, setOneLinerPublishing] = useState(false);
   const [postImagePreparing, setPostImagePreparing] = useState(false);
+  const [composerPanel, setComposerPanel] = useState<"" | "quote" | "poll" | "location" | "live">("");
+  const [quotePickerTab, setQuotePickerTab] = useState<"saved" | "liked" | "posts">("saved");
+  const [dualCameraCapturing, setDualCameraCapturing] = useState(false);
   const [openPostMenuId, setOpenPostMenuId] = useState<string | null>(null);
   const [showReceiptFor, setShowReceiptFor] = useState<string | null>(null);
   const [showDeskModal, setShowDeskModal] = useState(false);
@@ -638,6 +657,9 @@ export default function SocialsWorkspace({
   });
   const [notice, setNotice] = useState("");
   const evidenceInputRef = useRef<HTMLInputElement>(null);
+  const postPhotoInputRef = useRef<HTMLInputElement>(null);
+  const postCameraInputRef = useRef<HTMLInputElement>(null);
+  const postGifInputRef = useRef<HTMLInputElement>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const avatarCropSourceRef = useRef<string | null>(null);
   const avatarDragRef = useRef<{
@@ -2292,6 +2314,7 @@ export default function SocialsWorkspace({
   const openNewPost = (kind: SocialPostPayload["kind"] = "POST") => {
     setEditingPostId(null);
     setPostDraft({ ...EMPTY_POST, kind });
+    setComposerPanel("");
     setShowPostModal(true);
   };
 
@@ -2312,6 +2335,7 @@ export default function SocialsWorkspace({
     setShowPostModal(false);
     setEditingPostId(null);
     setPostDraft(EMPTY_POST);
+    setComposerPanel("");
   };
 
   const openPostEditor = (post: SocialObject) => {
@@ -2334,6 +2358,17 @@ export default function SocialsWorkspace({
       invalidation: payload.invalidation,
       imageDataUrl: payload.imageDataUrl ?? "",
       imageName: payload.imageName ?? "",
+      mediaKind: payload.mediaKind ?? "",
+      locationLabel: payload.locationLabel ?? "",
+      quotedPostId: payload.quotedPostId ?? "",
+      liveMode: payload.liveMode ?? "",
+      pollEnabled: Boolean(payload.poll),
+      pollQuestion: payload.poll?.question ?? "",
+      pollOptions: payload.poll?.options.length ? payload.poll.options : ["", ""],
+      pollDays: payload.poll?.closesAt ? String(Math.max(0, Math.floor((Date.parse(payload.poll.closesAt) - Date.now()) / 86_400_000))) : "1",
+      pollHours: payload.poll?.closesAt ? String(Math.max(0, Math.floor(((Date.parse(payload.poll.closesAt) - Date.now()) % 86_400_000) / 3_600_000))) : "0",
+      pollMinutes: payload.poll?.closesAt ? String(Math.max(0, Math.floor(((Date.parse(payload.poll.closesAt) - Date.now()) % 3_600_000) / 60_000))) : "0",
+      pollNoExpiry: payload.poll?.closesAt === null,
       scope: post.scope,
     });
     setOpenPostMenuId(null);
@@ -2355,6 +2390,65 @@ export default function SocialsWorkspace({
     } finally {
       setPostImagePreparing(false);
     }
+  };
+
+  const captureDualCamera = async () => {
+    if (!navigator.mediaDevices?.getUserMedia || dualCameraCapturing) {
+      setNotice("This browser does not expose camera capture.");
+      return;
+    }
+    setDualCameraCapturing(true);
+    const streams: MediaStream[] = [];
+    try {
+      const front = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
+      streams.push(front);
+      const rear = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false });
+      streams.push(rear);
+      const videos = await Promise.all(streams.map((stream) => new Promise<HTMLVideoElement>((resolve, reject) => {
+        const video = document.createElement("video");
+        video.muted = true;
+        video.playsInline = true;
+        video.srcObject = stream;
+        const timeout = window.setTimeout(() => reject(new Error("Camera preview timed out.")), 8_000);
+        video.onloadedmetadata = () => {
+          window.clearTimeout(timeout);
+          void video.play().then(() => resolve(video)).catch(reject);
+        };
+      })));
+      const canvas = document.createElement("canvas");
+      canvas.width = 1600;
+      canvas.height = 900;
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("Camera composition is unavailable.");
+      context.fillStyle = "#000";
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(videos[1], 0, 0, canvas.width, canvas.height);
+      const insetWidth = 430;
+      const insetHeight = 242;
+      context.fillStyle = "rgba(0,0,0,.75)";
+      context.fillRect(30, 30, insetWidth + 8, insetHeight + 8);
+      context.drawImage(videos[0], 34, 34, insetWidth, insetHeight);
+      const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob((value) => value ? resolve(value) : reject(new Error("The dual-camera image could not be created.")), "image/jpeg", 0.9));
+      await preparePostImage(new File([blob], `dual-camera-${Date.now()}.jpg`, { type: "image/jpeg" }));
+      setPostDraft((current) => ({ ...current, mediaKind: "DUAL_CAMERA" }));
+    } catch (reason) {
+      setNotice(reason instanceof Error ? `${reason.message} Dual-camera capture requires a device/browser that permits both cameras at once.` : "Dual-camera capture is unavailable on this device.");
+    } finally {
+      streams.forEach((stream) => stream.getTracks().forEach((track) => track.stop()));
+      setDualCameraCapturing(false);
+    }
+  };
+
+  const useCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      setNotice("Location is unavailable in this browser.");
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => setPostDraft((current) => ({ ...current, locationLabel: `${coords.latitude.toFixed(5)}, ${coords.longitude.toFixed(5)}` })),
+      () => setNotice("Location permission was not granted."),
+      { enableHighAccuracy: false, timeout: 8_000 },
+    );
   };
 
   const deleteStructuredPost = async (post: SocialObject) => {
@@ -2500,6 +2594,14 @@ export default function SocialsWorkspace({
     const existingPost = editingPostId
       ? posts.find((post) => post.id === editingPostId && post.userId === resolvedAccountKey)
       : null;
+    const pollOptions = postDraft.pollOptions.map((option) => option.trim()).filter(Boolean);
+    if (postDraft.pollEnabled && (!postDraft.pollQuestion.trim() || pollOptions.length < 2)) {
+      setNotice("A poll needs a question and at least two choices.");
+      return;
+    }
+    const pollDurationMs = (Math.max(0, Number(postDraft.pollDays) || 0) * 86_400_000)
+      + (Math.max(0, Number(postDraft.pollHours) || 0) * 3_600_000)
+      + (Math.max(0, Number(postDraft.pollMinutes) || 0) * 60_000);
     let object = buildLocalObject({
       id: existingPost?.id,
       userId: resolvedAccountKey,
@@ -2521,6 +2623,15 @@ export default function SocialsWorkspace({
           : new Date().toISOString(),
         imageDataUrl: postDraft.imageDataUrl,
         imageName: postDraft.imageName,
+        mediaKind: postDraft.mediaKind || undefined,
+        locationLabel: postDraft.locationLabel.trim() || undefined,
+        quotedPostId: postDraft.quotedPostId || undefined,
+        liveMode: postDraft.liveMode || undefined,
+        poll: postDraft.pollEnabled ? {
+          question: postDraft.pollQuestion.trim(),
+          options: pollOptions,
+          closesAt: postDraft.pollNoExpiry ? null : new Date(Date.now() + Math.max(60_000, pollDurationMs)).toISOString(),
+        } : undefined,
       } satisfies SocialPostPayload,
     });
     if (existingPost) {
@@ -2558,6 +2669,26 @@ export default function SocialsWorkspace({
       deskId: precord.deskId,
       parentId: precord.id,
       payload: { kind } satisfies SocialReactionPayload,
+    }));
+  };
+
+  const voteInPoll = async (post: SocialObject, optionIndex: number) => {
+    const existing = reactions.find((reaction) => reaction.userId === resolvedAccountKey
+      && reaction.parentId === post.id
+      && typedPayload<SocialReactionPayload>(reaction)?.kind === "POLL");
+    if (existing && typedPayload<SocialReactionPayload>(existing)?.optionIndex === optionIndex) {
+      await removeObject(existing);
+      return;
+    }
+    await saveObject(buildLocalObject({
+      id: `reaction:${post.id}:POLL`,
+      userId: resolvedAccountKey,
+      authorLabel: currentProfile.displayName,
+      objectType: "reaction",
+      scope: post.scope,
+      deskId: post.deskId,
+      parentId: post.id,
+      payload: { kind: "POLL", optionIndex } satisfies SocialReactionPayload,
     }));
   };
 
@@ -3296,6 +3427,11 @@ export default function SocialsWorkspace({
     );
     const liked = objectReactions.some((reaction) => reaction.userId === resolvedAccountKey && typedPayload<SocialReactionPayload>(reaction)?.kind === "LIKE");
     const saved = objectReactions.some((reaction) => reaction.userId === resolvedAccountKey && typedPayload<SocialReactionPayload>(reaction)?.kind === "SAVED");
+    const quotedPost = payload.quotedPostId ? posts.find((post) => post.id === payload.quotedPostId) ?? null : null;
+    const quotedPayload = quotedPost ? typedPayload<SocialPostPayload>(quotedPost) : null;
+    const pollVotes = objectReactions.filter((reaction) => typedPayload<SocialReactionPayload>(reaction)?.kind === "POLL");
+    const myPollVote = pollVotes.find((reaction) => reaction.userId === resolvedAccountKey);
+    const pollExpired = Boolean(payload.poll?.closesAt && Date.parse(payload.poll.closesAt) <= Date.now());
     const likeCount = objectReactions.filter((reaction) => typedPayload<SocialReactionPayload>(reaction)?.kind === "LIKE").length;
     const reposts = posts.filter((post) => typedPayload<SocialPostPayload>(post)?.repostOfPostId === object.id);
     const reposted = reposts.some((post) => post.userId === resolvedAccountKey);
@@ -3362,7 +3498,11 @@ export default function SocialsWorkspace({
             <>
               {payload.title ? <h3 className="text-[13px] font-semibold tracking-[-0.015em]">{payload.title}</h3> : null}
               <p className="mt-2 text-[10px] leading-5 text-foreground">{payload.body}</p>
+              {payload.liveMode ? <div className="mt-3 inline-flex items-center gap-2 border border-danger/30 bg-danger/10 px-3 py-2 text-[8px] font-semibold text-danger"><span className="h-2 w-2 animate-pulse rounded-full bg-danger" />{payload.liveMode === "STAGE" ? "STAGE" : "LIVE STREAM"}</div> : null}
               {payload.imageDataUrl ? <div className="mt-4 overflow-hidden rounded-2xl border border-border bg-black"><img src={payload.imageDataUrl} alt={payload.imageName || payload.title || "Social post attachment"} className="max-h-[560px] w-full object-contain" /></div> : null}
+              {quotedPost && quotedPayload ? <div className="mt-3 border border-border bg-background/45 p-4"><div className="text-[8px] font-semibold text-muted">Quoted · {quotedPost.authorLabel}</div><div className="mt-2 text-[9px] leading-5 text-foreground">{quotedPayload.body}</div></div> : null}
+              {payload.poll ? <div className="mt-3 border border-border bg-background/35 p-4"><div className="text-[10px] font-semibold text-foreground">{payload.poll.question}</div><div className="mt-3 space-y-2">{payload.poll.options.map((option, optionIndex) => { const votes = pollVotes.filter((reaction) => typedPayload<SocialReactionPayload>(reaction)?.optionIndex === optionIndex).length; const selected = typedPayload<SocialReactionPayload>(myPollVote)?.optionIndex === optionIndex; const percentage = pollVotes.length ? Math.round((votes / pollVotes.length) * 100) : 0; return <button key={`${object.id}:poll:${optionIndex}`} type="button" disabled={pollExpired} onClick={() => void voteInPoll(object, optionIndex)} className={`relative flex h-10 w-full items-center overflow-hidden border px-3 text-left text-[8px] font-semibold ${selected ? "border-primary text-primary" : "border-border text-foreground hover:border-primary/40"}`}><span className="absolute inset-y-0 left-0 bg-primary/10" style={{ width: `${percentage}%` }} /><span className="relative flex-1">{option}</span><span className="relative font-mono text-muted">{percentage}%</span></button>; })}</div><div className="mt-2 text-[7px] text-muted">{pollVotes.length} vote{pollVotes.length === 1 ? "" : "s"} · {payload.poll.closesAt ? pollExpired ? "Poll ended" : `Ends ${formatDate(payload.poll.closesAt, true)}` : "No expiry"}</div></div> : null}
+              {payload.locationLabel ? <div className="mt-3 flex items-center gap-1.5 text-[8px] text-muted"><MapPin className="h-3.5 w-3.5 text-primary" />{payload.locationLabel}</div> : null}
               <div className="mt-3 grid gap-2 md:grid-cols-3">
                 <div className="rounded-xl border border-border bg-background/35 p-3"><div className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">Context</div><p className="mt-2 text-[8px] leading-4 text-foreground">{payload.context}</p></div>
                 <div className="rounded-xl border border-border bg-background/35 p-3"><div className="text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">Condition / evidence</div><p className="mt-2 text-[8px] leading-4 text-foreground">{payload.condition || "Not required for this update type."}</p></div>
@@ -4659,6 +4799,26 @@ export default function SocialsWorkspace({
               </div>
               <label className="mt-4 block"><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">Title</span><input value={postDraft.title} onChange={(event) => setPostDraft((current) => ({ ...current, title: event.target.value }))} placeholder="Optional concise headline" className="h-10 w-full rounded-xl border border-border bg-background px-3 text-[9px] outline-none placeholder:text-muted/55 focus:border-primary/40" /></label>
               <label className="mt-4 block"><span className="mb-1.5 block text-[7px] uppercase tracking-[0.1em] text-muted">{postDraft.kind === "QUESTION" ? "Focused question *" : postDraft.kind === "LESSON" ? "Lesson *" : "What changed or matters? *"}</span><textarea value={postDraft.body} onChange={(event) => setPostDraft((current) => ({ ...current, body: event.target.value }))} rows={4} className="w-full resize-none rounded-xl border border-border bg-background p-3 text-[9px] leading-5 outline-none focus:border-primary/40" /></label>
+              <input ref={postPhotoInputRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={(event) => { const file = event.target.files?.[0] ?? null; if (file) { setPostDraft((current) => ({ ...current, mediaKind: "PHOTO" })); void preparePostImage(file); } event.currentTarget.value = ""; }} />
+              <input ref={postCameraInputRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(event) => { const file = event.target.files?.[0] ?? null; if (file) { setPostDraft((current) => ({ ...current, mediaKind: "CAMERA" })); void preparePostImage(file); } event.currentTarget.value = ""; }} />
+              <input ref={postGifInputRef} type="file" accept="image/gif" className="hidden" onChange={(event) => { const file = event.target.files?.[0] ?? null; if (file) { setPostDraft((current) => ({ ...current, mediaKind: "GIF" })); void preparePostImage(file); } event.currentTarget.value = ""; }} />
+              <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+                {([
+                  ["Photo", ImageIcon, () => postPhotoInputRef.current?.click()],
+                  ["Camera", Camera, () => postCameraInputRef.current?.click()],
+                  ["Live stream", Video, () => { setPostDraft((current) => ({ ...current, liveMode: "LIVE_STREAM" })); setComposerPanel("live"); }],
+                  ["Start a stage", Radio, () => { setPostDraft((current) => ({ ...current, liveMode: "STAGE" })); setComposerPanel("live"); }],
+                  ["Choose GIF", Images, () => postGifInputRef.current?.click()],
+                  ["Quote post", Repeat2, () => setComposerPanel((current) => current === "quote" ? "" : "quote")],
+                  ["Poll", ListChecks, () => { setPostDraft((current) => ({ ...current, pollEnabled: true })); setComposerPanel((current) => current === "poll" ? "" : "poll"); }],
+                  [dualCameraCapturing ? "Capturing…" : "Dual camera", Camera, () => void captureDualCamera()],
+                  ["Location", MapPin, () => setComposerPanel((current) => current === "location" ? "" : "location")],
+                ] as Array<[string, typeof ImageIcon, () => void]>).map(([label, Icon, action]) => <button key={label} type="button" disabled={label === "Capturing…"} onClick={action} className="flex h-11 items-center gap-2 border border-border bg-background/45 px-3 text-left text-[8px] font-semibold text-muted hover:border-primary/35 hover:text-foreground disabled:opacity-50"><Icon className="h-3.5 w-3.5 text-primary" />{label}</button>)}
+              </div>
+              {composerPanel === "quote" ? <div className="mt-3 border border-border bg-background/35 p-4"><div className="flex items-center justify-between gap-3"><div><div className="text-[9px] font-semibold">Choose a post to quote</div><div className="mt-1 text-[7px] text-muted">Pick from saved posts, liked posts, or your own posts.</div></div>{postDraft.quotedPostId ? <button type="button" onClick={() => setPostDraft((current) => ({ ...current, quotedPostId: "" }))} className="text-[8px] text-danger">Remove quote</button> : null}</div><div className="mt-3 flex gap-1">{(["saved", "liked", "posts"] as const).map((item) => <button key={item} type="button" onClick={() => setQuotePickerTab(item)} className={`h-8 px-3 text-[8px] font-semibold capitalize ${quotePickerTab === item ? "bg-primary text-background" : "border border-border text-muted"}`}>{item === "posts" ? "My posts" : item}</button>)}</div><div className="mt-3 max-h-56 space-y-2 overflow-y-auto">{posts.filter((post) => quotePickerTab === "posts" ? post.userId === resolvedAccountKey : reactions.some((reaction) => reaction.parentId === post.id && reaction.userId === resolvedAccountKey && typedPayload<SocialReactionPayload>(reaction)?.kind === (quotePickerTab === "saved" ? "SAVED" : "LIKE"))).slice(0, 30).map((post) => { const candidate = typedPayload<SocialPostPayload>(post); const selected = postDraft.quotedPostId === post.id; return <button key={post.id} type="button" onClick={() => setPostDraft((current) => ({ ...current, quotedPostId: post.id }))} className={`w-full border p-3 text-left ${selected ? "border-primary bg-primary/[0.06]" : "border-border bg-panel"}`}><div className="text-[7px] text-muted">{post.authorLabel} · {formatDate(post.createdAt, true)}</div><div className="mt-1 line-clamp-2 text-[8px] text-foreground">{candidate?.body || candidate?.title || "Post"}</div></button>; })}{!posts.some((post) => quotePickerTab === "posts" ? post.userId === resolvedAccountKey : reactions.some((reaction) => reaction.parentId === post.id && reaction.userId === resolvedAccountKey && typedPayload<SocialReactionPayload>(reaction)?.kind === (quotePickerTab === "saved" ? "SAVED" : "LIKE"))) ? <div className="py-5 text-center text-[8px] text-muted">Nothing in this collection yet.</div> : null}</div></div> : null}
+              {composerPanel === "poll" ? <div className="mt-3 border border-border bg-background/35 p-4"><div className="flex items-center justify-between"><div className="text-[9px] font-semibold">Poll</div><button type="button" onClick={() => { setPostDraft((current) => ({ ...current, pollEnabled: false })); setComposerPanel(""); }} className="text-[8px] text-danger">Remove poll</button></div><input value={postDraft.pollQuestion} onChange={(event) => setPostDraft((current) => ({ ...current, pollQuestion: event.target.value }))} placeholder="Ask a question" className="mt-3 h-10 w-full border border-border bg-panel px-3 text-[9px] outline-none focus:border-primary/40" /><div className="mt-2 space-y-2">{postDraft.pollOptions.map((option, index) => <div key={`poll-option:${index}`} className="flex gap-2"><input value={option} onChange={(event) => setPostDraft((current) => ({ ...current, pollOptions: current.pollOptions.map((item, itemIndex) => itemIndex === index ? event.target.value : item) }))} placeholder={`Choice ${index + 1}`} className="h-9 flex-1 border border-border bg-panel px-3 text-[8px] outline-none focus:border-primary/40" />{postDraft.pollOptions.length > 2 ? <button type="button" onClick={() => setPostDraft((current) => ({ ...current, pollOptions: current.pollOptions.filter((_, itemIndex) => itemIndex !== index) }))} className="h-9 w-9 border border-border text-muted"><X className="mx-auto h-3.5 w-3.5" /></button> : null}</div>)}</div>{postDraft.pollOptions.length < 6 ? <button type="button" onClick={() => setPostDraft((current) => ({ ...current, pollOptions: [...current.pollOptions, ""] }))} className="mt-2 flex h-8 items-center gap-2 text-[8px] font-semibold text-primary"><Plus className="h-3.5 w-3.5" />Add choice</button> : null}<div className="mt-4 border-t border-border pt-3"><label className="flex items-center gap-2 text-[8px] text-muted"><input type="checkbox" checked={postDraft.pollNoExpiry} onChange={(event) => setPostDraft((current) => ({ ...current, pollNoExpiry: event.target.checked }))} className="accent-[var(--primary)]" />No expiry</label>{!postDraft.pollNoExpiry ? <div className="mt-3 grid grid-cols-3 gap-2">{[["Days", "pollDays"], ["Hours", "pollHours"], ["Minutes", "pollMinutes"]].map(([label, key]) => <label key={key}><span className="mb-1 block text-[7px] text-muted">{label}</span><input type="number" min="0" value={postDraft[key as "pollDays" | "pollHours" | "pollMinutes"]} onChange={(event) => setPostDraft((current) => ({ ...current, [key]: event.target.value }))} className="h-9 w-full border border-border bg-panel px-3 font-mono text-[8px] outline-none" /></label>)}</div> : null}</div></div> : null}
+              {composerPanel === "location" ? <div className="mt-3 flex flex-wrap gap-2 border border-border bg-background/35 p-4"><input value={postDraft.locationLabel} onChange={(event) => setPostDraft((current) => ({ ...current, locationLabel: event.target.value }))} placeholder="Add a city, venue or location" className="h-10 min-w-64 flex-1 border border-border bg-panel px-3 text-[9px] outline-none focus:border-primary/40" /><button type="button" onClick={useCurrentLocation} className="h-10 border border-primary/30 px-4 text-[8px] font-semibold text-primary">Use current location</button></div> : null}
+              {composerPanel === "live" && postDraft.liveMode ? <div className="mt-3 flex items-center gap-3 border border-danger/25 bg-danger/[0.06] p-4"><span className="h-2.5 w-2.5 animate-pulse rounded-full bg-danger" /><div className="min-w-0 flex-1"><div className="text-[9px] font-semibold text-foreground">{postDraft.liveMode === "STAGE" ? "Stage selected" : "Live stream selected"}</div><div className="mt-1 text-[7px] text-muted">This post will open as a live room announcement for your selected audience.</div></div><button type="button" onClick={() => { setPostDraft((current) => ({ ...current, liveMode: "" })); setComposerPanel(""); }} className="text-[8px] text-danger">Remove</button></div> : null}
               <div className="mt-4 overflow-hidden rounded-2xl border border-dashed border-border bg-background/30">
                 {postDraft.imageDataUrl ? <div className="relative border-b border-border bg-black"><img src={postDraft.imageDataUrl} alt={postDraft.imageName || "Post attachment preview"} className="max-h-[360px] w-full object-contain" /><button type="button" onClick={() => setPostDraft((current) => ({ ...current, imageDataUrl: "", imageName: "" }))} className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full border border-white/15 bg-black/70 text-white"><X className="h-4 w-4" /></button></div> : null}
                 <label className="flex cursor-pointer items-center justify-center gap-2 px-4 py-4 text-[8px] font-semibold text-muted hover:text-foreground"><ImageIcon className="h-4 w-4 text-primary" />{postImagePreparing ? "Preparing image…" : postDraft.imageDataUrl ? "Replace chart or image" : "Add chart or image"}<input type="file" accept="image/png,image/jpeg,image/webp,image/gif" disabled={postImagePreparing} className="hidden" onChange={(event) => { void preparePostImage(event.target.files?.[0] ?? null); event.currentTarget.value = ""; }} /></label>
