@@ -498,6 +498,18 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
       // until the chart was moved away.
       const latestEndMsByKindForDock = latestEndMsByKind;
       const drawnAnchorXById = new Map<string, number>();
+      // The BACK of each profile's drawn body — its leftmost painted pixel,
+      // which is the edge an incoming level line has to stop at. The anchor is
+      // not that edge: a body that extends left from its spine (any docked or
+      // right-anchored profile, and the delta half of a normal daily) has its
+      // back a full width earlier, so stopping a line at the anchor ran it
+      // straight across the profile it was supposed to stop behind.
+      const drawnBackXById = new Map<string, number>();
+      // Level lines are drawn after every body has been placed. Within one
+      // pass a profile can only see the geometry of models drawn before it,
+      // and the profile in front is frequently drawn after — which is why the
+      // stop edge could not be measured at the point the line was drawn.
+      const deferredLevelDraws: Array<() => void> = [];
       for (const model of this.models) {
         const rawAnchorX = this.timeToCoordinate(
           model,
@@ -671,11 +683,24 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
         const blockerPlacedBehind = blockerX != null
           && ownDrawnX != null
           && blockerX <= ownDrawnX;
-        const levelChainEndX = nextProfileStartX != null
-          ? Math.max(endX, nextProfileStartX)
-          : blockerId !== undefined && !blockerPlacedBehind
-            ? endX
-            : mediaSize.width;
+        // Resolved when the level is actually drawn, by which time every body
+        // has recorded where it was painted. Prefers the blocker's measured
+        // back edge and falls back to its anchor for a blocker that never
+        // drew a body (off screen, or zero width at this zoom).
+        const resolveLevelChainEndX = () => {
+          const blockerBackX = blockerId === undefined
+            ? null
+            : drawnBackXById.get(blockerId) ?? null;
+          const stopX = blockerBackX != null
+            && (ownDrawnX == null || blockerBackX > ownDrawnX)
+            ? blockerBackX
+            : nextProfileStartX;
+          return stopX != null
+            ? Math.max(endX, stopX)
+            : blockerId !== undefined && !blockerPlacedBehind
+              ? endX
+              : mediaSize.width;
+        };
 
         // Decimals come from the contract's own tick, so a level never prints
         // more precision than the instrument actually trades in.
@@ -844,6 +869,17 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           : pinned && !splitPinnedDaily
             ? groupedMaxVolume
             : groupedMaxAbsDelta;
+        // The leftmost pixel this profile will paint, recorded for the level
+        // chaining further up. Volume runs RIGHT from the spine, except on a
+        // profile docked to the right where it runs left instead; a daily's
+        // delta half runs left from the spine when it is not docked. Whichever
+        // reaches furthest left is the back an incoming level must stop at.
+        const bodyReachesLeftBy = pinnedRight
+          ? profileWidth
+          : style.mode !== "volume" && style.showDelta && !pinned
+            ? deltaScaleWidth
+            : 0;
+        drawnBackXById.set(model.id, anchorX - bodyReachesLeftBy);
         const groupedPoc = derived.valueArea.poc ?? profile.poc;
         const groupedVah = derived.valueArea.vah ?? profile.vah;
         const groupedVal = derived.valueArea.val ?? profile.val;
@@ -1206,7 +1242,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           // A level runs on until the session in front begins. Extend modes may
           // stop it EARLIER — never later — so a line can never be drawn
           // underneath the next profile, whatever the split settings are.
-          let lineEndX = levelChainEndX;
+          let lineEndX = resolveLevelChainEndX();
           const extendMode = style.extendMode ?? "none";
           if (extendMode === "till-interaction") {
             const bars = style.interactionBars ?? [];
@@ -1291,12 +1327,19 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
             if (started) context.stroke();
           }
         }
-        if (style.showPocLine) {
-          drawLevel(groupedPoc, levelPocColor, [2, 3], "POC", style.pocLineWidth);
-        }
-        if (style.showValueAreaLines) {
-          drawLevel(groupedVah, levelValueAreaColor, [3, 3], "VAH", style.valueAreaLineWidth);
-          drawLevel(groupedVal, levelValueAreaColor, [3, 3], "VAL", style.valueAreaLineWidth);
+        // Queued rather than drawn: see deferredLevelDraws. This also puts
+        // every level above every body, so a profile drawn later can no longer
+        // paint over an earlier profile's POC and value area.
+        if (style.showPocLine || style.showValueAreaLines) {
+          deferredLevelDraws.push(() => {
+            if (style.showPocLine) {
+              drawLevel(groupedPoc, levelPocColor, [2, 3], "POC", style.pocLineWidth);
+            }
+            if (style.showValueAreaLines) {
+              drawLevel(groupedVah, levelValueAreaColor, [3, 3], "VAH", style.valueAreaLineWidth);
+              drawLevel(groupedVal, levelValueAreaColor, [3, 3], "VAL", style.valueAreaLineWidth);
+            }
+          });
         }
 
         // Peak and Valley: high- and low-volume nodes read off the same grouped
@@ -1400,6 +1443,19 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           }
         }
 
+      }
+
+      // Every body is placed, so each level now knows exactly where the
+      // profile in front was painted and can stop at its back edge. Drawing
+      // them here also lifts every level above every body, so a profile drawn
+      // later cannot paint over an earlier profile's POC or value area.
+      for (const drawDeferredLevel of deferredLevelDraws) {
+        context.save();
+        // Each level sets the styling it needs, but not alpha, and the row
+        // painting above leaves that wherever it finished.
+        context.globalAlpha = 1;
+        drawDeferredLevel();
+        context.restore();
       }
 
       context.restore();

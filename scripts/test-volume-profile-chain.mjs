@@ -88,7 +88,7 @@ const day = (i) => ({ id: `d${i}`, root: "NQ", startMs: T0 + i * DAY, endMs: T0 
 const primitive = readFileSync("src/lib/nativeVolumeProfilePrimitive.ts", "utf8");
 assert.doesNotMatch(primitive, /chainGroups\.get\(`\$\{model\.profile\.period\}/);
 assert.match(primitive, /candidate\.startMs < entry\.endMs/);
-assert.match(primitive, /levelChainEndX/);
+assert.match(primitive, /resolveLevelChainEndX/);
 
 // 8. The stop position must be measured where the blocker is DRAWN, not where
 //    its time sits. A docked profile is painted at a screen edge, so a
@@ -126,4 +126,33 @@ assert.ok(
   "an unplaceable blocker must stop the lines rather than release them",
 );
 
-console.log("volume profile level chaining: 11/11 checks passed");
+// 12. A level must stop at the BACK of the profile in front, not at its
+//     spine. A body that extends left from its spine — any right-docked or
+//     right-anchored profile, and the delta half of a normal daily — has its
+//     back a full width before the anchor, so an anchor-based stop drew the
+//     line straight across the profile it was meant to stop behind.
+{
+  const backEdge = (anchorX, width, extendsLeft) => (extendsLeft ? anchorX - width : anchorX);
+  assert.equal(backEdge(500, 100, true), 400, "a right-anchored body starts a width before its spine");
+  assert.equal(backEdge(500, 100, false), 500, "a left-anchored body starts at its spine");
+  // The visible symptom: stopping at 500 crosses every pixel from 400 to 500.
+  assert.ok(backEdge(500, 100, true) < 500, "the stop must be earlier than the spine");
+}
+assert.match(primitive, /const drawnBackXById = new Map<string, number>\(\);/);
+assert.match(primitive, /drawnBackXById\.set\(model\.id, anchorX - bodyReachesLeftBy\);/);
+assert.match(primitive, /drawnBackXById\.get\(blockerId\)/);
+
+// 13. Levels are drawn after every body. Inside one pass a profile can only
+//     see models drawn before it, and the profile in front is frequently drawn
+//     after — so the stop edge could not be measured at the moment the line
+//     was drawn. Deferring also lifts every level above every body, so a
+//     profile drawn later cannot paint over an earlier one's POC.
+assert.match(primitive, /const deferredLevelDraws: Array<\(\) => void> = \[\];/);
+assert.match(primitive, /deferredLevelDraws\.push\(\(\) => \{/);
+assert.ok(
+  primitive.indexOf("for (const drawDeferredLevel of deferredLevelDraws)")
+    > primitive.indexOf("deferredLevelDraws.push"),
+  "the queue must run after the loop that fills it",
+);
+
+console.log("volume profile level chaining: 13/13 checks passed");
