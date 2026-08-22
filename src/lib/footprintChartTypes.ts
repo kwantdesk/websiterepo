@@ -332,3 +332,32 @@ export function footprintSettingSection(key: string): string {
   }
   return SETTING_SECTIONS[key] ?? "Cells";
 }
+
+/**
+ * Groups footprint setting rows into the tabs they belong under, dropping any
+ * the chosen chart cannot use.
+ *
+ * Sections come back in a fixed reading order rather than the order the rows
+ * happen to be declared in, so the tab strip does not reshuffle when a chart
+ * hides one of them.
+ */
+const SECTION_ORDER = [
+  "Scale", "Grouping", "Cells", "Colours", "Imbalance", "Profile", "Performance",
+] as const;
+
+export function groupFootprintSettingRows<Row extends readonly [unknown, unknown, unknown]>(
+  rows: readonly Row[],
+  chartTypeId: unknown,
+): [string, Row[]][] {
+  const grouped = new Map<string, Row[]>();
+  for (const row of rows) {
+    const key = String(row[1]);
+    if (!footprintSettingApplies(key, chartTypeId)) continue;
+    const section = footprintSettingSection(key);
+    grouped.set(section, [...(grouped.get(section) ?? []), row]);
+  }
+  const ordered = SECTION_ORDER.filter((section) => grouped.has(section));
+  // A section nobody thought to order still gets shown, after the known ones.
+  const extra = [...grouped.keys()].filter((section) => !ordered.includes(section as never));
+  return [...ordered, ...extra].map((section) => [section, grouped.get(section) ?? []]);
+}

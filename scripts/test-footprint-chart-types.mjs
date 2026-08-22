@@ -8,6 +8,7 @@ import {
   footprintSettingSection,
   footprintVariant,
   footprintVariantSettings,
+  groupFootprintSettingRows,
 } from "../src/lib/footprintChartTypes.ts";
 import { validateFootprintSettings } from "../src/lib/footprintSettings.ts";
 
@@ -160,17 +161,74 @@ import { validateFootprintSettings } from "../src/lib/footprintSettings.ts";
 // --- the dialog really is split into tabs, and reads cleanly ---
 {
   const control = readFileSync(new URL("../src/components/ChartIndicatorsControl.tsx", import.meta.url), "utf8");
-  for (const section of ["View", "Cells", "Profile", "Bar"]) {
+  // These blocks are fixed; the setting sections are emitted per section from
+  // groupFootprintSettingRows, so they carry the attribute dynamically.
+  for (const section of ["View", "Profile", "Bar"]) {
     assert.ok(
       control.includes(`data-settings-section="${section}"`),
       `the footprint dialog needs a ${section} tab`,
     );
   }
-  // The dropdowns are filtered by the chosen chart and tagged with their tab.
-  assert.match(control, /footprintSettingApplies\(\s*String\(key\),/);
-  assert.match(control, /data-settings-section=\{footprintSettingSection\(String\(key\)\)\}/);
+  // The dropdowns are grouped into per-section blocks, filtered by chart.
+  assert.match(control, /groupFootprintSettingRows\(/);
   // The old menu carried mojibake where the multiplication signs should be.
   assert.ok(!control.includes("Ã—"), "no mojibake in the indicator control");
+}
+
+// --- the settings really are split into tabs, per chart ---
+{
+  const rows = [
+    ["Scale", "scaleMode", []],
+    ["Tick grouping", "groupingMode", []],
+    ["Grouping mode", "groupMode", []],
+    ["Imbalance", "imbalanceMode", []],
+    ["Number format", "numberFormat", []],
+    ["Colour mode", "colorMode", []],
+    ["Outline", "outsideBarStyle", []],
+    ["Marker", "markerAlignment", []],
+    ["FPS", "fpsLimit", []],
+  ];
+  const sectionsFor = (typeId) => groupFootprintSettingRows(rows, typeId).map(([section]) => section);
+
+  // More than one block, or there are no tabs at all — which is what a nested
+  // data-settings-section produced before: one long list.
+  for (const type of FOOTPRINT_CHART_TYPES) {
+    assert.ok(sectionsFor(type.id).length >= 4, `${type.id} must be split into tabs`);
+  }
+  // Only Bid x Ask can compare two sides.
+  assert.ok(sectionsFor("bid-ask").includes("Imbalance"));
+  for (const other of ["volume", "trades", "delta", "heatmap"]) {
+    assert.ok(!sectionsFor(other).includes("Imbalance"), `${other} must not offer Imbalance`);
+  }
+  // The heatmap IS its colour mode, so it has no Colours tab.
+  assert.ok(!sectionsFor("heatmap").includes("Colours"));
+  assert.ok(sectionsFor("volume").includes("Colours"));
+  // Reading order is fixed, so hiding a tab does not reshuffle the strip.
+  const order = sectionsFor("bid-ask");
+  assert.deepEqual(order, [...order].sort(
+    (a, b) => ["Scale", "Grouping", "Cells", "Colours", "Imbalance", "Profile", "Performance"].indexOf(a)
+      - ["Scale", "Grouping", "Cells", "Colours", "Imbalance", "Profile", "Performance"].indexOf(b),
+  ), "tabs must keep a fixed reading order");
+  // Every row that survives the filter lands in exactly one tab.
+  const placed = groupFootprintSettingRows(rows, "bid-ask").flatMap(([, group]) => group.map((r) => r[1]));
+  assert.equal(new Set(placed).size, placed.length, "a setting must not appear under two tabs");
+  assert.equal(placed.length, rows.length, "no setting may be dropped on Bid x Ask");
+}
+
+// --- the blocks are siblings, not one nested lump ---
+{
+  const control = readFileSync(new URL("../src/components/ChartIndicatorsControl.tsx", import.meta.url), "utf8");
+  // IndicatorSettingsSections reads only DIRECT children, and a Fragment is a
+  // single child: wrapping the group in one would collapse every tab into
+  // "General", which is exactly the bug this replaced.
+  const group = control.slice(control.indexOf("groupFootprintSettingRows(["));
+  const emitted = group.slice(0, group.indexOf("))"));
+  assert.ok(
+    !emitted.includes("<>"),
+    "the per-section blocks must not be wrapped in a Fragment",
+  );
+  assert.match(control, /data-settings-section=\{section\}/,
+    "each emitted block carries its own section");
 }
 
 console.log("Footprint chart type, section and filter tests passed.");

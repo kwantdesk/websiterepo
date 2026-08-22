@@ -59,6 +59,7 @@ import {
   footprintChartType,
   footprintSettingApplies,
   footprintSettingSection,
+  groupFootprintSettingRows,
   footprintVariant,
   footprintVariantSettings,
 } from "@/lib/footprintChartTypes";
@@ -3782,8 +3783,11 @@ export default function ChartIndicatorsControl({
               ) : null}
 
               {settingsDefinition.id === "deep-print-footprint" ? (
-                <div data-settings-section="Cells" className="grid gap-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
-                  {[
+                /* One block PER SECTION, so each becomes its own tab. A
+                   data-settings-section on a nested element does nothing:
+                   IndicatorSettingsSections reads only its direct children, and
+                   a Fragment would collapse the lot into a single child. */
+                groupFootprintSettingRows([
                     ["Scale", "scaleMode", [["visible-region", "Visible region"], ["per-bar", "Per bar"], ["all-loaded", "All loaded"], ["fixed-maximum", "Fixed maximum"]]],
                     ["Tick grouping", "groupingMode", [["automatic", "Automatic"], ["manual", "Manual"]]],
                     ["Grouping mode", "groupMode", [["fixed", "Fixed"], ["open-close", "Based on open / close"]]],
@@ -3793,38 +3797,40 @@ export default function ChartIndicatorsControl({
                     ["Active candle outline", "outsideBarStyle", [["bar", "Full bar"], ["body", "Candle body"]]],
                     ["Live marker alignment", "markerAlignment", [["center", "Centre"], ["right", "Right edge"]]],
                     ["Maximum refresh rate", "fpsLimit", [["30", "30 FPS"], ["60", "60 FPS"], ["120", "120 FPS"]]],
-                  ].filter(([, key]) => footprintSettingApplies(
-                    String(key),
-                    settingsInstance.settings?.chartType,
-                  )).map(([label, key, options]) => (
-                    <label
-                      key={String(key)}
-                      data-settings-section={footprintSettingSection(String(key))}
-                      className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"
+                  ], settingsInstance.settings?.chartType).map(([section, rows]) => (
+                    <div
+                      key={section}
+                      data-settings-section={section}
+                      className="grid gap-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2"
                     >
-                      <span>{String(label)}</span>
-                      <KwantSelect
-                        value={String(settingsInstance.settings?.[String(key)] ?? "")}
-                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
-                          ...current,
-                          settings: {
-                            ...(current.settings ?? {}),
-                            [String(key)]: String(key) === "fpsLimit" ? Number(event.target.value) : event.target.value,
-                          },
-                        }))}
-                        className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
-                        menuLabel={String(label)}
-                      >
-                        {(options as string[][]).map(([value, optionLabel]) => (
-                          <option key={value} value={value}>{optionLabel}</option>
-                        ))}
-                      </KwantSelect>
-                    </label>
-                  ))}
-                  <div className="rounded-lg border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
-                    Bid × Ask uses classified executions from the Rithmic / CME tape. Unclassified executions remain in total volume and POC, but never enter Bid, Ask, Delta or imbalance calculations.
-                  </div>
-                </div>
+                      {rows.map(([label, key, options]) => (
+                        <label key={String(key)} className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                          <span>{String(label)}</span>
+                          <KwantSelect
+                            value={String(settingsInstance.settings?.[String(key)] ?? "")}
+                            onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                              ...current,
+                              settings: {
+                                ...(current.settings ?? {}),
+                                [String(key)]: String(key) === "fpsLimit" ? Number(event.target.value) : event.target.value,
+                              },
+                            }))}
+                            className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                            menuLabel={String(label)}
+                          >
+                            {(options as string[][]).map(([value, optionLabel]) => (
+                              <option key={value} value={value}>{optionLabel}</option>
+                            ))}
+                          </KwantSelect>
+                        </label>
+                      ))}
+                      {section === "Imbalance" ? (
+                        <div className="rounded-lg border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
+                          Bid × Ask uses classified executions from the Rithmic / CME tape. Unclassified executions remain in total volume and POC, but never enter Bid, Ask, Delta or imbalance calculations.
+                        </div>
+                      ) : null}
+                    </div>
+                ))
               ) : null}
 
               {settingsDefinition.id === "deep-print-footprint" ? (
