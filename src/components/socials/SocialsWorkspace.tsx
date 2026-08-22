@@ -3841,34 +3841,33 @@ export default function SocialsWorkspace({
         {tab === "feed" ? (
           <div className="mx-auto grid max-w-7xl gap-3 p-3 xl:grid-cols-[minmax(0,820px)_320px]">
             <div className="min-w-0 space-y-3">
-              <Card className="relative overflow-hidden p-5">
-                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_86%_0%,color-mix(in_srgb,var(--primary)_15%,transparent),transparent_42%)]" />
-                <div className="relative flex flex-wrap items-end gap-4">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 text-[7px] font-semibold uppercase tracking-[0.16em] text-primary"><Heart className="h-3.5 w-3.5" />Your market network</div>
-                    <h2 className="mt-2 text-[24px] font-semibold tracking-[-0.04em]">Gameplans, observations and traders worth following.</h2>
-                    <p className="mt-2 max-w-2xl text-[9px] leading-5 text-muted">Following controls this feed only. Friend requests remain separate and unlock private chat and Desk invitations.</p>
+              <Card className="p-3">
+                <div className="flex items-center gap-2">
+                  <div className="grid min-w-0 flex-1 grid-cols-3 gap-1 rounded-xl border border-border bg-background/35 p-1 sm:grid-cols-5">
+                    {([
+                      ["feed", "Feed", Compass],
+                      ["posts", "My posts", MessageCircle],
+                      ["liked", "Liked", Heart],
+                      ["reposts", "Reposts", Repeat2],
+                      ["saved", "Saved", Bookmark],
+                    ] as Array<[SocialFeedCollection, string, typeof Compass]>).map(([collection, label, Icon]) => (
+                      <button key={collection} type="button" onClick={() => setSocialFeedCollection(collection)} className={`flex h-9 items-center justify-center gap-2 rounded-lg px-2 text-[8px] font-semibold transition-colors ${socialFeedCollection === collection ? "bg-primary/12 text-primary shadow-[0_0_18px_color-mix(in_srgb,var(--primary)_12%,transparent)]" : "text-muted hover:bg-surface hover:text-foreground"}`}>
+                        <Icon className={`h-3.5 w-3.5 ${collection === "liked" && socialFeedCollection === collection ? "fill-current" : ""}`} />{label}
+                      </button>
+                    ))}
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    <button type="button" onClick={() => openNewPost()} className="flex h-10 items-center gap-2 rounded-xl bg-primary px-4 text-[8px] font-semibold text-background hover:brightness-110"><Plus className="h-3.5 w-3.5" />Create post</button>
-                    <button type="button" onClick={openOneLinerComposer} className="flex h-10 items-center gap-2 rounded-xl border border-primary/25 bg-primary/[0.06] px-4 text-[8px] font-semibold text-primary transition-colors hover:bg-primary/10"><Zap className="h-3.5 w-3.5" />Create one-liner</button>
-                  </div>
-                </div>
-                <div className="relative mt-4 grid grid-cols-3 gap-1 rounded-xl border border-border bg-background/35 p-1 sm:grid-cols-5">
-                  {([
-                    ["feed", "Feed", Compass],
-                    ["posts", "My posts", MessageCircle],
-                    ["liked", "Liked", Heart],
-                    ["reposts", "Reposts", Repeat2],
-                    ["saved", "Saved", Bookmark],
-                  ] as Array<[SocialFeedCollection, string, typeof Compass]>).map(([collection, label, Icon]) => (
-                    <button key={collection} type="button" onClick={() => setSocialFeedCollection(collection)} className={`flex h-9 items-center justify-center gap-2 rounded-lg px-2 text-[8px] font-semibold transition-colors ${socialFeedCollection === collection ? "bg-primary/12 text-primary shadow-[0_0_18px_color-mix(in_srgb,var(--primary)_12%,transparent)]" : "text-muted hover:bg-surface hover:text-foreground"}`}>
-                      <Icon className={`h-3.5 w-3.5 ${collection === "liked" && socialFeedCollection === collection ? "fill-current" : ""}`} />{label}
-                    </button>
-                  ))}
+                  <details className="group relative shrink-0">
+                    <summary aria-label="Create" className="flex h-11 w-11 cursor-pointer list-none items-center justify-center rounded-xl bg-primary text-background transition-[filter,transform] hover:brightness-110 active:scale-95 [&::-webkit-details-marker]:hidden">
+                      <Plus className="h-4 w-4 transition-transform group-open:rotate-45" />
+                    </summary>
+                    <div className="absolute right-0 top-[calc(100%+8px)] z-50 w-44 overflow-hidden rounded-xl border border-border bg-panel p-1.5 shadow-2xl shadow-black/35">
+                      <button type="button" onClick={(event) => { event.currentTarget.closest("details")?.removeAttribute("open"); openNewPost(); }} className="flex h-9 w-full items-center gap-2 rounded-lg px-3 text-left text-[8px] font-semibold text-foreground hover:bg-surface"><MessageCircle className="h-3.5 w-3.5 text-primary" />Create post</button>
+                      <button type="button" onClick={(event) => { event.currentTarget.closest("details")?.removeAttribute("open"); openOneLinerComposer(); }} className="flex h-9 w-full items-center gap-2 rounded-lg px-3 text-left text-[8px] font-semibold text-foreground hover:bg-surface"><Zap className="h-3.5 w-3.5 text-primary" />Create one-liner</button>
+                    </div>
+                  </details>
                 </div>
                 {socialFeedCollection === "feed" ? (
-                  <div className="relative mt-2 flex gap-1 rounded-xl border border-border bg-background/35 p-1">
+                  <div className="mt-2 flex gap-1 rounded-xl border border-border bg-background/35 p-1">
                     {(["following", "recommended", "latest"] as SocialFeedMode[]).map((mode) => <button key={mode} type="button" onClick={() => setSocialFeedMode(mode)} className={`flex h-8 flex-1 items-center justify-center rounded-lg px-3 text-[8px] font-semibold capitalize transition-colors ${socialFeedMode === mode ? "bg-primary/12 text-primary shadow-[0_0_18px_color-mix(in_srgb,var(--primary)_10%,transparent)]" : "text-muted hover:bg-surface hover:text-foreground"}`}>{mode}</button>)}
                   </div>
                 ) : null}
