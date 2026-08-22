@@ -1,3 +1,9 @@
+import {
+  DEFAULT_FOOTPRINT_CHART_TYPE,
+  DEFAULT_FOOTPRINT_VARIANT,
+  footprintChartType,
+  footprintVariant,
+} from "@/lib/footprintChartTypes";
 import type {
   FootprintContentMode,
   FootprintNumberFormat,
@@ -19,6 +25,8 @@ export const FOOTPRINT_PROFILE_MAX_TICKS_PER_ROW = 50;
 
 export type FootprintSettings = {
   footprintSettingsVersion: number;
+  chartType: string;
+  chartVariant: string;
   contentMode: FootprintContentMode;
   visualizationMode: FootprintVisualizationMode;
   scaleMode: FootprintScaleMode;
@@ -51,6 +59,7 @@ export type FootprintSettings = {
   fontWeight: number;
   borderWidth: number;
   minimumWidthToShowText: number;
+  showCellText: boolean;
   minimumRowHeightToShowText: number;
   backgroundOpacity: number;
   minimumOpacity: number;
@@ -127,6 +136,8 @@ export type FootprintSettings = {
 
 export const DEFAULT_FOOTPRINT_SETTINGS: FootprintSettings = {
   footprintSettingsVersion: FOOTPRINT_SETTINGS_SCHEMA_VERSION,
+  chartType: DEFAULT_FOOTPRINT_CHART_TYPE,
+  chartVariant: DEFAULT_FOOTPRINT_VARIANT,
   contentMode: "bid-ask",
   visualizationMode: "heatmap-histogram",
   scaleMode: "visible-region",
@@ -159,6 +170,7 @@ export const DEFAULT_FOOTPRINT_SETTINGS: FootprintSettings = {
   fontWeight: 500,
   borderWidth: 1,
   minimumWidthToShowText: 32,
+  showCellText: true,
   minimumRowHeightToShowText: 9,
   backgroundOpacity: 72,
   minimumOpacity: 8,
@@ -401,6 +413,8 @@ function legacyProfileTicksPerRow(value: unknown) {
 
 export function validateFootprintSettings(input: unknown): FootprintSettings {
   const source = input && typeof input === "object" ? input as Record<string, unknown> : {};
+  const resolvedChartType = footprintChartType(source.chartType);
+  const resolvedVariant = footprintVariant(resolvedChartType.id, source.chartVariant);
   const merged = { ...DEFAULT_FOOTPRINT_SETTINGS, ...source } as FootprintSettings;
   const legacyDetailThresholds = Number(source.footprintSettingsVersion ?? 0) < 6;
   const minimumOpacity = clamp(source.minimumOpacity, 0, 100, 8);
@@ -415,6 +429,10 @@ export function validateFootprintSettings(input: unknown): FootprintSettings {
   return {
     ...merged,
     footprintSettingsVersion: FOOTPRINT_SETTINGS_SCHEMA_VERSION,
+    // The chosen view is normalised so an unknown id can never leave the
+    // footprint rendering a combination nobody picked.
+    chartType: resolvedChartType.id,
+    chartVariant: resolvedVariant.id,
     contentMode: option(source.contentMode ?? source.type, ["bid-ask", "delta", "volume", "volume-delta", "trades", "bid-ask-histogram", "volume-histogram", "delta-histogram", "ladder"], "bid-ask"),
     visualizationMode: option(source.visualizationMode, ["solid", "heatmap", "histogram", "heatmap-histogram", "text-only"], "heatmap-histogram"),
     scaleMode: option(source.scaleMode, ["per-bar", "all-loaded", "visible-region", "fixed-maximum"], "visible-region"),

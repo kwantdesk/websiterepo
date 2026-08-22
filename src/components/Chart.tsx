@@ -5313,6 +5313,7 @@ function Chart({
       fontSize: clamp(Number(footprintSettings.fontSize ?? 10), 6, 16),
       fontWeight: clamp(Number(footprintSettings.fontWeight ?? 500), 400, 800),
       minimumWidthToShowText: clamp(Number(footprintSettings.minimumWidthToShowText ?? 32), 18, 180),
+      showCellText: footprintSettings.showCellText !== false,
       minimumRowHeightToShowText: clamp(Number(footprintSettings.minimumRowHeightToShowText ?? 9), 7, 34),
       dynamicTextSize: footprintSettings.dynamicTextSize !== false,
       dynamicTextIncrease: clamp(Number(footprintSettings.dynamicTextIncrease ?? 1), 0, 2),

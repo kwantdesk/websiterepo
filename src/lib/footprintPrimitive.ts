@@ -55,6 +55,7 @@ export type FootprintPrimitiveOptions = {
   fontSize: number;
   fontWeight: number;
   minimumWidthToShowText: number;
+  showCellText: boolean;
   minimumRowHeightToShowText: number;
   dynamicTextSize: boolean;
   dynamicTextIncrease: number;
@@ -149,6 +150,7 @@ const DEFAULT_OPTIONS: FootprintPrimitiveOptions = {
   fontSize: 11,
   fontWeight: 500,
   minimumWidthToShowText: 32,
+  showCellText: true,
   minimumRowHeightToShowText: 9,
   dynamicTextSize: true,
   dynamicTextIncrease: 1,
@@ -676,7 +678,10 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
           const top = y - rowHeight / 2;
           if (top > mediaSize.height || top + rowHeight < 0) continue;
           const values = displayValues(row, options);
-          const detailed = detailedBarCountAllowed
+          // A histogram and a "digital" histogram differ only in whether the
+          // numbers are printed over the bars; everything else is identical.
+          const detailed = options.showCellText !== false
+            && detailedBarCountAllowed
             && barWidth >= options.minimumWidthToShowText
             && rowHeight >= options.minimumRowHeightToShowText;
           const micro = barWidth < 18;
@@ -716,7 +721,8 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
             }
           } else {
             const signed = contentMode === "delta" || contentMode === "delta-histogram" || contentMode === "volume-delta";
-            const metric = signed ? values.delta : contentMode === "trades" ? values.trades : values.total;
+            const counted = contentMode === "trades" || contentMode === "trades-histogram";
+            const metric = signed ? values.delta : counted ? values.trades : values.total;
             const colour = signed ? metric >= 0 ? options.askColor : options.bidColor : options.askColor;
             const heatValue = colourMetric(values, "total", options);
             const normalized = clamp(Math.abs(metric) / Math.max(1, ceiling), 0, 1);
@@ -856,7 +862,8 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
           const compactText = `${compactMetric > 0 && ["delta", "delta-histogram"].includes(contentMode) ? "+" : ""}${formatFootprintValue(compactMetric, format)}`;
           const compactFontSize = clamp(Math.min(fontSize, rowHeight * 0.58, 9), 7, 9);
           context.font = `${row.isPoc ? 700 : options.fontWeight} ${compactFontSize}px 'JetBrains Mono', ui-monospace, monospace`;
-          const compactFits = rowHeight >= 7
+          const compactFits = options.showCellText !== false
+            && rowHeight >= 7
             && context.measureText(compactText).width + 4 <= barWidth;
           if (!fullBidAskFits && !compactFits && !detailed) {
             context.restore();
@@ -880,12 +887,16 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
           } else {
             const metric = contentMode === "volume" || contentMode === "volume-histogram"
               ? values.total
-              : contentMode === "trades"
+              : contentMode === "trades" || contentMode === "trades-histogram"
                 ? values.trades
                 : values.delta;
             const text = contentMode === "volume-delta"
               ? `${formatFootprintValue(values.total, format)} │ ${values.delta >= 0 ? "+" : ""}${formatFootprintValue(values.delta, format)}`
-              : `${metric > 0 && (contentMode === "delta" || contentMode === "delta-histogram") ? "+" : ""}${formatFootprintValue(metric, format)}`;
+              : contentMode === "volume-trades"
+                // Traded size beside how many trades made it: one large print
+                // and fifty small ones fill the same row very differently.
+                ? `${formatFootprintValue(values.total, format)} │ ${formatFootprintValue(values.trades, format)}`
+                : `${metric > 0 && (contentMode === "delta" || contentMode === "delta-histogram") ? "+" : ""}${formatFootprintValue(metric, format)}`;
             const completeTextFits = detailed && context.measureText(text).width + 4 <= barWidth;
             if (completeTextFits || compactFits) {
               context.textAlign = "center";

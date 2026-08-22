@@ -6,6 +6,8 @@ export type FootprintContentMode =
   | "volume"
   | "volume-delta"
   | "trades"
+  | "trades-histogram"
+  | "volume-trades"
   | "bid-ask-histogram"
   | "volume-histogram"
   | "delta-histogram"
