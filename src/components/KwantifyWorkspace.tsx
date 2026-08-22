@@ -2,7 +2,7 @@
 
 import KwantSelect from "@/components/ui/KwantSelect";
 import KwantDatePicker from "@/components/ui/KwantDatePicker";
-import { earliestGexVueReplaySessionDate, periodReaches, replayPeriodForSession } from "@/lib/replayHistoryRange";
+import { earliestGexVueReplaySessionDate } from "@/lib/replayHistoryRange";
 import TimeZoneSelect from "@/components/ui/TimeZoneSelect";
 import ChartIndicatorsControl from "@/components/ChartIndicatorsControl";
 import { normalizeDrawings, type Drawing } from "@/lib/chartDrawTools";
@@ -25,7 +25,10 @@ import { saveChartCrosshairSyncEnabled } from "@/lib/chartCrosshairSync";
 import {
   clampGexVueReplayTimestamp,
   createGexVueReplayState,
+  GEX_VUE_REPLAY_CLOSE_MINUTE,
+  GEX_VUE_REPLAY_OPEN_MINUTE,
   latestCompletedNewYorkSession,
+  newYorkSessionTimestamp,
   normalizeGexVueReplaySessionDate,
   setGexVueReplaySession,
   type GexVueReplayState,
@@ -295,6 +298,7 @@ import {
 import {
   cmeSessionDateKey,
   cmeSessionStartMs,
+  cmeSessionWindowForDate,
   cmeChartTailNeedsReconciliation,
   compressCmeClosedSessionCandles,
   compressNewYorkClosedSessionCandles,
@@ -3348,13 +3352,19 @@ const workspaceHistoricalExecutionRequests = new Map<string, Promise<{
   records: InstitutionalTrade[];
 }>>();
 
-function workspaceOrderFlowKey(symbol: string, timeframe: string) {
+type WorkspaceHistoricalRange = {
+  fromMs: number;
+  toMs: number;
+  key: string;
+};
+
+function workspaceOrderFlowKey(symbol: string, timeframe: string, scope = "live") {
   // Executions belong to the contract, not to a chart aggregation. Sharing
   // one tape lets a freshly opened 200V/40R pane restore the same history a
   // 1m pane already has, then each chart projects those prints into its own
   // bar boundaries. Keep the unused argument for call-site compatibility.
   void timeframe;
-  return `${symbol}::${currentCmeContract(symbol) ?? "ROOT"}::flow`;
+  return `${symbol}::${currentCmeContract(symbol) ?? "ROOT"}::flow::${scope}`;
 }
 
 function storeWorkspaceExecutionTape(key: string, tape: InstitutionalTrade[]) {
@@ -3557,7 +3567,11 @@ function fetchWorkspaceOrderFlow(
  * The provider-backed 1m history keeps the strongest exact executions from
  * every minute and is deliberately canonical for every chart aggregation.
  */
-function fetchWorkspaceHistoricalExecutions(symbol: string, days = DEFAULT_CHART_HISTORY_CALENDAR_DAYS) {
+function fetchWorkspaceHistoricalExecutions(
+  symbol: string,
+  days = DEFAULT_CHART_HISTORY_CALENDAR_DAYS,
+  historicalRange?: WorkspaceHistoricalRange,
+) {
   // Studies that look further back than the default window (Big Contracts'
   // "Days to load") must be able to ask for more history, or their extra days
   // simply contain no executions to mark.
@@ -3565,13 +3579,14 @@ function fetchWorkspaceHistoricalExecutions(symbol: string, days = DEFAULT_CHART
     DEFAULT_CHART_HISTORY_CALENDAR_DAYS,
     Math.min(30, Math.round(Number.isFinite(days) ? days : DEFAULT_CHART_HISTORY_CALENDAR_DAYS)),
   );
-  const key = `${symbol}::${currentCmeContract(symbol) ?? "ROOT"}::historical-executions::${requestedDays}`;
+  const rangeScope = historicalRange?.key ?? `${requestedDays}d`;
+  const key = `${symbol}::${currentCmeContract(symbol) ?? "ROOT"}::historical-executions::${rangeScope}`;
   const pending = workspaceHistoricalExecutionRequests.get(key);
   if (pending) return pending;
 
   const request = (async () => {
     const response = await fetch(
-      `/api/cme-history?symbol=${encodeURIComponent(symbol)}&timeframe=1m&days=${requestedDays}&orderFlow=1`,
+      `/api/cme-history?symbol=${encodeURIComponent(symbol)}&timeframe=1m&days=${requestedDays}&orderFlow=1${historicalRange ? `&from=${historicalRange.fromMs}&to=${historicalRange.toMs}` : ""}`,
       {
         cache: "no-store",
         signal: AbortSignal.timeout(120_000),
@@ -3700,28 +3715,30 @@ async function fetchWorkspaceCandles(
   // be BUILT from the raw tape, so a full ten-day window is minutes of work on
   // a cold cache; the first paint asks for a short window instead.
   historyDays = DEFAULT_CHART_HISTORY_CALENDAR_DAYS,
+  historicalRange?: WorkspaceHistoricalRange,
 ) {
   const periodConfig = getPeriodConfig(period);
   const usingCTraderFeed = FALLBACK_CTRADER_BROKER_NAMES.includes(broker as (typeof FALLBACK_CTRADER_BROKER_NAMES)[number]);
   const oandaInstrument = OANDA_INSTRUMENT_MAP[symbol];
   const oandaGranularity = OANDA_GRANULARITY_MAP[timeframe] || "M5";
-  const from = Date.parse(periodConfig.from);
-  const to = Date.now();
+  const from = historicalRange?.fromMs ?? Date.parse(periodConfig.from);
+  const to = historicalRange?.toMs ?? Date.now();
   const historicalLimit = getHistoricalCandleLimit(period, timeframe, outputsize);
 
   if (broker === "Databento") {
-    const requestKey = `${symbol}::${timeframe}::${includeOrderFlow ? "flow" : "bars"}${forceFresh ? "::fresh" : ""}${healOnly ? "::heal" : ""}::${historyDays}d`;
+    const rangeScope = historicalRange?.key ?? `${historyDays}d`;
+    const requestKey = `${symbol}::${timeframe}::${includeOrderFlow ? "flow" : "bars"}${forceFresh ? "::fresh" : ""}${healOnly ? "::heal" : ""}::${rangeScope}`;
     const pending = workspaceCandleRequests.get(requestKey);
     if (pending) return pending;
 
     const request = (async () => {
       const eventBased = isEventBasedChartInterval(timeframe);
       const contractSymbol = currentCmeContract(symbol);
-      const orderFlowRequest = includeOrderFlow && contractSymbol && !healOnly
+      const orderFlowRequest = includeOrderFlow && contractSymbol && !healOnly && !historicalRange
         ? fetchWorkspaceOrderFlow(symbol, timeframe, contractSymbol)
         : Promise.resolve(null);
       const response = await fetch(
-        `/api/cme-history?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&days=${historyDays}${includeOrderFlow ? "&orderFlow=1" : ""}${healOnly ? "&exec=0" : ""}${forceFresh ? `&fresh=1&t=${Date.now()}` : ""}`,
+        `/api/cme-history?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&days=${historyDays}${includeOrderFlow ? "&orderFlow=1" : ""}${healOnly ? "&exec=0" : ""}${historicalRange ? `&from=${historicalRange.fromMs}&to=${historicalRange.toMs}` : ""}${forceFresh ? `&fresh=1&t=${Date.now()}` : ""}`,
         {
           cache: "no-store",
           // Keep a history request alive across rapid timeframe switches. Its
@@ -3755,21 +3772,26 @@ async function fetchWorkspaceCandles(
       );
       if (includeOrderFlow && !healOnly) {
         storeWorkspaceExecutionTape(
-          workspaceOrderFlowKey(symbol, timeframe),
+          workspaceOrderFlowKey(symbol, timeframe, historicalRange?.key),
           executionTape,
         );
       }
       const downloaded = includeOrderFlow && eventBased && executionTape.length
         ? enrichCandlesWithInstitutionalTrades(rawDownloaded, executionTape, rawDownloaded.length)
         : rawDownloaded;
-      await Promise.all([
-        downloaded.length
-          ? writeChartHistoryCache(symbol, timeframe, downloaded)
-          : Promise.resolve(null),
-        executionTape.length && !healOnly
-          ? writeExecutionTapeCache(symbol, timeframe, executionTape)
-          : Promise.resolve(null),
-      ]);
+      // IndexedDB is the live restore cache. A closed replay session belongs
+      // to its scoped in-memory/server cache; writing it under the live key
+      // made the next normal chart open on a three-month-old final candle.
+      if (!historicalRange) {
+        await Promise.all([
+          downloaded.length
+            ? writeChartHistoryCache(symbol, timeframe, downloaded)
+            : Promise.resolve(null),
+          executionTape.length && !healOnly
+            ? writeExecutionTapeCache(symbol, timeframe, executionTape)
+            : Promise.resolve(null),
+        ]);
+      }
       return downloaded;
     })();
 
@@ -5028,6 +5050,7 @@ function WorkspaceChartPaneComponent({
   viewportSyncGroup = "",
   viewportSyncRole = "independent",
   replayTimestampMs = null,
+  replaySessionDate = null,
   trades,
   indicators,
   onActivate,
@@ -5078,6 +5101,7 @@ function WorkspaceChartPaneComponent({
   viewportSyncGroup?: string;
   viewportSyncRole?: "independent" | "peer";
   replayTimestampMs?: number | null;
+  replaySessionDate?: string | null;
   trades?: (Trade & { markerVisible?: boolean })[];
   indicators: ChartIndicatorInstance[];
   onActivate: () => void;
@@ -5132,6 +5156,13 @@ function WorkspaceChartPaneComponent({
   const [indexFuturesFlowRows, setIndexFuturesFlowRows] = useState<IndexFuturesFlowRow[] | null>(null);
   const paneWantsIndicatorData = indicators.some((instance) => instance.enabled);
   useEffect(() => {
+    // Replay candles already carry the historical futures order flow selected
+    // for that session. Never mix today's rolling index-flow projection into
+    // an old cash-index replay pane.
+    if (replayTimestampMs) {
+      setIndexFuturesFlowRows(null);
+      return;
+    }
     const usingMarketIndexPaneFeed = pane.broker === "Market Index" || isMarketIndexSymbol(pane.symbol);
     const flowRoot = usingMarketIndexPaneFeed ? valueAreaIndexSourceRoot(pane.symbol) : null;
     if (!flowRoot || !paneWantsIndicatorData || isEventBasedChartInterval(pane.timeframe)) {
@@ -5153,7 +5184,7 @@ function WorkspaceChartPaneComponent({
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [pane.broker, pane.symbol, pane.timeframe, paneWantsIndicatorData]);
+  }, [pane.broker, pane.symbol, pane.timeframe, paneWantsIndicatorData, replayTimestampMs]);
   const flowEnrichedCandles = useMemo(() => {
     if (!indexFuturesFlowRows?.length || !candles.length) return candles;
     const bucketMs = Math.max(60_000, getTimeframeMs(pane.timeframe));
@@ -5210,6 +5241,26 @@ function WorkspaceChartPaneComponent({
   // bar reveals — otherwise every tick forced a full series replacement in
   // every pane, which is what made high replay speeds stutter and stall.
   const replayActive = replayTimestampMs !== null && replayTimestampMs > 0;
+  const replayHistoryRange = useMemo<WorkspaceHistoricalRange | null>(() => {
+    if (!replayActive || !replaySessionDate) return null;
+    if (pane.broker === "Databento") {
+      const window = cmeSessionWindowForDate(replaySessionDate);
+      return window
+        ? {
+            fromMs: window.startMs,
+            toMs: window.endMs,
+            key: `replay-${replaySessionDate}-${window.startMs}-${window.endMs}`,
+          }
+        : null;
+    }
+    const fromMs = newYorkSessionTimestamp(replaySessionDate, GEX_VUE_REPLAY_OPEN_MINUTE - 30);
+    const toMs = newYorkSessionTimestamp(replaySessionDate, GEX_VUE_REPLAY_CLOSE_MINUTE + 5);
+    return {
+      fromMs,
+      toMs,
+      key: `replay-${replaySessionDate}-${fromMs}-${toMs}`,
+    };
+  }, [pane.broker, replayActive, replaySessionDate]);
   const replayVisibleCandleCount = useMemo(() => {
     if (!replayActive || !replayTimestampMs) return -1;
     let count = 0;
@@ -5391,6 +5442,7 @@ function WorkspaceChartPaneComponent({
     : "";
   const needsOrderFlowHistory = indicators.some((instance) =>
     instance.enabled && CHART_INDICATOR_BY_ID.get(instance.indicatorId)?.requiresOrderFlow);
+  const replayOrderFlowRequired = Boolean(replayHistoryRange && needsOrderFlowHistory);
   // Big Contracts is the one study with an explicit lookback in days; the
   // execution archive request has to cover it.
   const historicalExecutionDays = indicators.reduce((days, instance) => (
@@ -5615,6 +5667,8 @@ function WorkspaceChartPaneComponent({
 
   useEffect(() => {
     if (
+      replayActive
+      ||
       pane.broker !== "Databento"
       || !resolvedContractSymbol
       || !requiresExecutionStream
@@ -5903,6 +5957,7 @@ function WorkspaceChartPaneComponent({
     pane.symbol,
     pane.timeframe,
     requiresExecutionStream,
+    replayActive,
     resolvedContractSymbol,
   ]);
 
@@ -5954,6 +6009,83 @@ function WorkspaceChartPaneComponent({
     let cancelled = false;
     const requestController = new AbortController();
     let reconciliationTimer: number | null = null;
+
+    // A replay pane is a closed, immutable historical session. Hydrate that
+    // precise window once and stop here: reading today's IndexedDB cache,
+    // opening the live seam and starting tail reconciliation used to make a
+    // three-month-old date download months of bars and then compete with the
+    // current session. It also let current executions leak into old Big
+    // Contracts/Big Blocks. The scoped execution key keeps replay tapes apart
+    // from the live tape while sibling panes still coalesce the HTTP request.
+    if (replayHistoryRange) {
+      historyHydratedRef.current = false;
+      pendingLiveTicksRef.current = [];
+      latestCandlesRef.current = [];
+      latestMarketTradesRef.current = [];
+      latestOrderFlowCandlesRef.current = [];
+      setCandles([]);
+      setMarketTrades([]);
+      setOrderFlowHistoryReady(!needsOrderFlowHistory);
+      setLoading(true);
+      setError(null);
+
+      const loadReplaySession = async () => {
+        try {
+          const replayCandles = await fetchWorkspaceCandles(
+            pane.symbol,
+            pane.timeframe,
+            pane.broker,
+            period,
+            2_000,
+            needsOrderFlowHistory,
+            requestController.signal,
+            false,
+            false,
+            2,
+            replayHistoryRange,
+          );
+          if (cancelled) return;
+          const clean = sanitizeCandles(replayCandles, pane.symbol)
+            .filter((candle) => (
+              candle.timestamp >= replayHistoryRange.fromMs
+              && candle.timestamp <= replayHistoryRange.toMs
+            ));
+          if (!clean.length) throw new Error("No candles were recorded for this replay session.");
+          const replayTape = needsOrderFlowHistory
+            ? workspaceExecutionTape.get(
+                workspaceOrderFlowKey(pane.symbol, pane.timeframe, replayHistoryRange.key),
+              ) ?? []
+            : [];
+          latestCandlesRef.current = clean;
+          latestMarketTradesRef.current = replayTape;
+          latestOrderFlowCandlesRef.current = clean;
+          historyHydratedRef.current = true;
+          setCandles(clean);
+          setMarketTrades(replayTape);
+          setOrderFlowHistoryReady(
+            !needsOrderFlowHistory
+            || hasUsableOrderFlowHistory(clean)
+            || replayTape.length > 0,
+          );
+          setError(null);
+          setLoading(false);
+        } catch (loadError) {
+          if (cancelled || (loadError instanceof DOMException && loadError.name === "AbortError")) return;
+          historyHydratedRef.current = false;
+          setLoading(false);
+          setError(loadError instanceof Error
+            ? loadError.message
+            : "Historical replay data is temporarily unavailable.");
+        }
+      };
+
+      void loadReplaySession();
+      return () => {
+        cancelled = true;
+        requestController.abort();
+      };
+    }
+
     const requestedFrom = requestedChartHistoryStart(period);
     const immediateCache = pane.broker === "Databento"
       ? peekCompatibleChartHistoryCache(pane.symbol, pane.timeframe)
@@ -6454,6 +6586,8 @@ function WorkspaceChartPaneComponent({
     pane.symbol,
     pane.timeframe,
     period,
+    replayHistoryRange,
+    replayOrderFlowRequired,
     resolvedContractSymbol,
   ]);
 
@@ -6463,6 +6597,8 @@ function WorkspaceChartPaneComponent({
   // panes by fetchWorkspaceOrderFlow.
   useEffect(() => {
     if (
+      replayHistoryRange
+      ||
       pane.broker !== "Databento"
       || !needsOrderFlowHistory
       || !resolvedContractSymbol
@@ -6559,7 +6695,7 @@ function WorkspaceChartPaneComponent({
     return () => {
       cancelled = true;
     };
-  }, [needsOrderFlowHistory, pane.broker, pane.symbol, pane.timeframe, resolvedContractSymbol]);
+  }, [needsOrderFlowHistory, pane.broker, pane.symbol, pane.timeframe, replayHistoryRange, resolvedContractSymbol]);
 
   // Flow-heal loop. Enriched history is otherwise consumed exactly once at
   // pane load, so any execution the live stream drops during a busy session
@@ -6571,6 +6707,8 @@ function WorkspaceChartPaneComponent({
   // live edge past the provider's availability lag stays with the stream.
   useEffect(() => {
     if (
+      replayHistoryRange
+      ||
       pane.broker !== "Databento"
       || !needsOrderFlowHistory
       || isEventBasedChartInterval(pane.timeframe)
@@ -6622,10 +6760,10 @@ function WorkspaceChartPaneComponent({
       window.clearTimeout(firstTimer);
       window.clearInterval(timer);
     };
-  }, [needsOrderFlowHistory, pane.broker, pane.symbol, pane.timeframe, period]);
+  }, [needsOrderFlowHistory, pane.broker, pane.symbol, pane.timeframe, period, replayHistoryRange]);
 
   useEffect(() => {
-    if (pane.broker !== "Databento") return;
+    if (pane.broker !== "Databento" || replayHistoryRange) return;
     const interval = window.setInterval(() => {
       if (latestCandlesRef.current.length) {
         void writeChartHistoryCache(pane.symbol, pane.timeframe, latestCandlesRef.current);
@@ -6647,7 +6785,7 @@ function WorkspaceChartPaneComponent({
         void writeExecutionTapeCache(pane.symbol, pane.timeframe, latestMarketTradesRef.current);
       }
     };
-  }, [pane.broker, pane.symbol, pane.timeframe]);
+  }, [pane.broker, pane.symbol, pane.timeframe, replayHistoryRange]);
 
   useEffect(() => {
     latestCandlesRef.current = candles;
@@ -13886,28 +14024,6 @@ export default function KwantifyWorkspace({
     setWorkspacePanes((current) => current.map((pane) => (pane.id === paneId ? { ...pane, ...patch } : pane)));
   }, []);
 
-  /**
-   * Widen every chart pane's loaded history so the replayed session is inside
-   * it. Replay reveals loaded candles against the clock and cannot invent what
-   * was never fetched, so without this a date more than a few days back
-   * replayed an empty chart. Panes already reaching that far are left alone.
-   */
-  const applyReplayHistoryRange = useCallback((sessionDate: string) => {
-    const required = replayPeriodForSession(sessionDate);
-    if (!required) return;
-    setWorkspacePanes((current) => {
-      let changed = false;
-      const next = current.map((pane) => {
-        if (!isWorkspaceChartKind(pane.content)) return pane;
-        if (periodReaches(pane.period, required)) return pane;
-        changed = true;
-        return { ...pane, period: required };
-      });
-      return changed ? next : current;
-    });
-    setSelectedPeriod((current) => (periodReaches(current, required) ? current : required));
-  }, []);
-
   const activateWorkspacePane = useCallback((paneId: string) => {
     const nextPane = workspacePanes.find((pane) => pane.id === paneId);
     if (!nextPane) return;
@@ -16374,6 +16490,9 @@ export default function KwantifyWorkspace({
         replayTimestampMs={chartWorkspaceScope === "gamma" && gexVueReplay.active
           ? gexVueReplay.timestampMs
           : null}
+        replaySessionDate={chartWorkspaceScope === "gamma" && gexVueReplay.active
+          ? gexVueReplay.sessionDate
+          : null}
         trades={activePaneId === pane.id ? chartTrades : []}
         indicators={paneIndicators[pane.id] ?? []}
         paperPositions={selectedPaperAccountLedger?.positions ?? []}
@@ -17823,7 +17942,6 @@ export default function KwantifyWorkspace({
                     onChange={(sessionDate) => {
                       const normalizedSessionDate = normalizeGexVueReplaySessionDate(sessionDate);
                       setGexVueReplay((current) => setGexVueReplaySession(current, normalizedSessionDate));
-                      applyReplayHistoryRange(normalizedSessionDate);
                     }}
                     label="Replay session date"
                   />

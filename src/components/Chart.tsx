@@ -7687,9 +7687,6 @@ function Chart({
     }
     const display = normalizeDarkPoolInstrument(instrument);
     const indicatorSettings = { ...DEFAULT_DARK_POOL_GEX_SETTINGS, ...(darkPoolGexIndicator.settings ?? {}) } as DarkPoolGexSettings;
-    const requestScope = `${instrument}|${JSON.stringify(darkPoolGexIndicator.settings ?? {})}`;
-    darkPoolGexScopeRef.current = requestScope;
-    const scopeAlive = () => darkPoolGexScopeRef.current === requestScope;
     // Futures and cash indices do not publish their own off-exchange tape.
     // Always project the validated ETF print tape into their native price
     // space: QQQ -> NQ/MNQ/NDX and SPY -> ES/MES/SPX/SPXW.  Requiring a
@@ -7702,7 +7699,12 @@ function Chart({
     const refreshMs = Math.max(1_000, Math.min(60_000, Number(darkPoolGexIndicator.settings?.refreshSeconds ?? 5) * 1_000));
     const historicalAsOf = replayTimestampMs ?? drawingCandlesRef.current.at(-1)?.timestamp ?? Date.now();
     const asOfMs = replayTimestampMs ?? (indicatorSettings.contextMode === "current" ? Date.now() : historicalAsOf);
-    const darkPoolCacheKey = `dark-pool-gex:prints:${display}:${source}:${indicatorSettings.lookbackDays}:${indicatorSettings.minimumNotional}:${indicatorSettings.maximumNotional}:${indicatorSettings.minimumShares}:${indicatorSettings.maximumShares}`;
+    const historicalContext = Boolean(replayTimestampMs || indicatorSettings.contextMode !== "current");
+    const historicalScope = historicalContext ? `historical:${Math.floor(asOfMs / 300_000)}` : "live";
+    const requestScope = `${instrument}|${historicalScope}|${JSON.stringify(darkPoolGexIndicator.settings ?? {})}`;
+    darkPoolGexScopeRef.current = requestScope;
+    const scopeAlive = () => darkPoolGexScopeRef.current === requestScope;
+    const darkPoolCacheKey = `dark-pool-gex:prints:${display}:${source}:${indicatorSettings.lookbackDays}:${indicatorSettings.minimumNotional}:${indicatorSettings.maximumNotional}:${indicatorSettings.minimumShares}:${indicatorSettings.maximumShares}:${historicalScope}`;
     const darkPoolHeadCacheKey = `${darkPoolCacheKey}:head`;
     const darkPoolHistoryCacheKey = `${darkPoolCacheKey}:history`;
     const gexSource = /^(NQ|MNQ|QQQ)$/.test(display) ? "QQQ"
@@ -7711,7 +7713,6 @@ function Chart({
           : /^(SPX|SPXW)$/.test(display) ? display
             : /^(RTY|M2K|IWM)$/.test(display) ? "IWM"
               : null;
-    const historicalContext = Boolean(replayTimestampMs || indicatorSettings.contextMode !== "current");
     const gexCacheKey = `dark-pool-gex:gex:${display}:${gexSource ?? "none"}:${historicalContext ? "historical" : "current"}:${historicalContext ? Math.floor(asOfMs / 60_000) : "live"}`;
     const cachedDarkPool = readWorkspaceData<DarkPoolMapPayload>(darkPoolCacheKey)
       ?? readWorkspaceData<DarkPoolMapPayload>(darkPoolHistoryCacheKey)
@@ -7761,6 +7762,7 @@ function Chart({
         displayPrice: String(displayPrice),
       });
       const darkPoolHeadQuery = makeDarkPoolQuery(100);
+      if (historicalContext) darkPoolHeadQuery.set("asOf", new Date(asOfMs).toISOString());
       if (indicatorSettings.maximumNotional > 0) darkPoolHeadQuery.set("maximumPrintNotional", String(indicatorSettings.maximumNotional));
       if (indicatorSettings.maximumShares > 0) darkPoolHeadQuery.set("maximumPrintShares", String(indicatorSettings.maximumShares));
       const gexQuery = new URLSearchParams({
@@ -7811,6 +7813,7 @@ function Chart({
       if (!historyStarted) {
         historyStarted = true;
         const historyQuery = makeDarkPoolQuery(Math.max(500, Math.min(2_000, indicatorSettings.topN * 100)));
+        if (historicalContext) historyQuery.set("asOf", new Date(asOfMs).toISOString());
         if (indicatorSettings.maximumNotional > 0) historyQuery.set("maximumPrintNotional", String(indicatorSettings.maximumNotional));
         if (indicatorSettings.maximumShares > 0) historyQuery.set("maximumPrintShares", String(indicatorSettings.maximumShares));
         void fetchWorkspaceData<DarkPoolMapPayload>(

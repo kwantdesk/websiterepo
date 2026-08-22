@@ -209,7 +209,24 @@ export async function GET(request: NextRequest) {
   const mappingMode = (query.get("mappingMode") || "rolling-affine") as DarkPoolMappingMode;
   const direct = sourceTicker === displayInstrument;
   const settings = settingsFromRequest(request);
-  const nowMs = Date.now();
+  const wallClockMs = Date.now();
+  const requestedAsOf = Date.parse(query.get("asOf") ?? "");
+  const hasHistoricalAsOf = Number.isFinite(requestedAsOf);
+  // Replay must query the provider window that actually ended at the replay
+  // clock. Using wall-clock today here made a three-month-old chart paint
+  // today's dark-pool prints (or nothing at all) and also poisoned the shared
+  // provider cache for every sibling pane. Bound the explicit date so this
+  // remains an exact historical lookup rather than an unbounded export.
+  if (hasHistoricalAsOf && (
+    requestedAsOf > wallClockMs + 60_000
+    || requestedAsOf < wallClockMs - 120 * 24 * 60 * 60_000
+  )) {
+    return NextResponse.json(
+      { error: "The requested dark-pool replay window is outside the supported historical range." },
+      { status: 400, headers: { "Cache-Control": "private, no-store" } },
+    );
+  }
+  const nowMs = hasHistoricalAsOf ? requestedAsOf : wallClockMs;
   const endDate = nyDate(new Date(nowMs));
   const startDate = nyDate(new Date(nowMs - settings.historyDays * 86_400_000));
   // Dark Pool GEX uses a one-page request for first paint and enriches it with
@@ -242,9 +259,27 @@ export async function GET(request: NextRequest) {
           providerKey, sourceTicker, startDate, endDate, maximumRows, settings.minimumPrintNotional,
         );
     const baseline = readBaseline(levelsPayload);
-    const prints = deduplicateDarkPoolPrints(collectRows(printsPayload).map(normalizeDarkPoolPrint).filter((print): print is DarkPoolPrint => Boolean(print)));
-    const sourceMid = baseline?.latestStockPrice ?? prints.at(-1)?.price ?? null;
-    const sampleKey = `${sourceTicker}:${displayInstrument}`;
+    const prints = deduplicateDarkPoolPrints(
+      collectRows(printsPayload)
+        .map(normalizeDarkPoolPrint)
+        .filter((print): print is DarkPoolPrint => Boolean(print))
+        // Historical replay is an as-of view. The provider's date-bounded
+        // response may contain the completed session, so discard every print
+        // that had not happened at the replay clock instead of leaking the
+        // rest of the day into Dark Pool GEX levels and zones.
+        .filter((print) => print.tradeTimeMs <= nowMs),
+    );
+    // A completed historical baseline can contain the session's closing stock
+    // price even while replay is stopped earlier in that session. Prefer the
+    // latest print that had actually occurred at the replay clock so the
+    // underlying-to-futures mapping is an honest as-of conversion.
+    const sourceMid = hasHistoricalAsOf
+      ? prints.at(-1)?.price ?? baseline?.latestStockPrice ?? null
+      : baseline?.latestStockPrice ?? prints.at(-1)?.price ?? null;
+    // Never mix live mapping samples with an old replay. Future wall-clock
+    // samples survived the replay window's lower-bound filter and could make a
+    // three-month-old NQ/ES map disappear or land at today's conversion.
+    const sampleKey = `${sourceTicker}:${displayInstrument}:${hasHistoricalAsOf ? endDate : "live"}`;
     const samples = addMappingSample(sampleKey, sourceMid, direct ? sourceMid : displayPrice, nowMs, settings.mappingWindowMinutes);
     const receipt = createMappingReceipt({
       mode: mappingMode,

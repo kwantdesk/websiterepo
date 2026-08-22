@@ -1759,7 +1759,9 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
     const cachedData = Object.fromEntries(nextPanels.map((panel) => [
       panel.id,
       (() => {
-        const cached = readWorkspaceData<GexMapPanelPayload>(gexMapCacheKey(panel.symbol, panel.greekMode));
+        const cached = readWorkspaceData<GexMapPanelPayload>(
+          gexMapCacheKey(panel.symbol, panel.greekMode, requestedReplayDate),
+        );
         return hasRenderableGexMapSurface(cached) ? cached : null;
       })(),
     ]));
@@ -1772,7 +1774,7 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
     setPanelData(cachedData);
     setPanelErrors({ left: null, centre: null, right: null });
     setLoading(Object.fromEntries(nextPanels.map((panel) => [panel.id, !cachedData[panel.id]])));
-  }, [linkedMarket]);
+  }, [linkedMarket, requestedReplayDate]);
   // Report configuration changes to the host workspace so quick-save and
   // presets capture exactly what the user configured on this pane.
   useEffect(() => {

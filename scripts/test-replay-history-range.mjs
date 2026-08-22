@@ -9,9 +9,9 @@ import {
 } from "../src/lib/replayHistoryRange.ts";
 
 /**
- * Replay reveals the candles a pane has already loaded. Pick a session outside
- * that window and there is nothing to reveal, however far the slider is
- * dragged — so choosing a date has to widen the range to reach it.
+ * The period ladder is retained for ordinary chart-history selection. GEX VUE
+ * replay now uses one exact exchange-session request instead of widening every
+ * pane to a multi-month chart range before it can reveal the selected day.
  */
 const now = Date.parse("2026-08-22T12:00:00.000Z");
 const daysAgo = (days) => new Date(now - days * 24 * 60 * 60_000).toISOString().slice(0, 10);
@@ -71,15 +71,21 @@ const daysAgo = (days) => new Date(now - days * 24 * 60 * 60_000).toISOString().
     "the oldest offered session must be reachable by the deepest range");
 }
 
-// --- the workspace actually applies it, and the picker is the desk's own ---
+// --- replay hydrates one immutable exchange session, and the picker is native to GEX VUE ---
 {
   const workspace = readFileSync(new URL("../src/components/KwantifyWorkspace.tsx", import.meta.url), "utf8");
-  assert.match(workspace, /applyReplayHistoryRange\(normalizedSessionDate\)/,
-    "choosing a replay date must widen the loaded history");
-  assert.match(workspace, /periodReaches\(pane\.period, required\)/,
-    "panes already deep enough must be left alone");
-  assert.match(workspace, /period=\{pane\.period\}/,
-    "the renderer must use the widened replay period selected for each pane");
+  assert.match(workspace, /const replayHistoryRange = useMemo<WorkspaceHistoricalRange \| null>/,
+    "each replay pane must derive an explicit bounded history range");
+  assert.match(workspace, /cmeSessionWindowForDate\(replaySessionDate\)/,
+    "futures replay must request the selected CME session rather than months of bars");
+  assert.match(workspace, /if \(replayHistoryRange\) \{/,
+    "the exact replay loader must run before live history restoration");
+  assert.match(workspace, /workspaceOrderFlowKey\(pane\.symbol, pane\.timeframe, replayHistoryRange\.key\)/,
+    "historical executions must be isolated by replay session");
+  assert.ok(
+    !workspace.includes("applyReplayHistoryRange(normalizedSessionDate)"),
+    "choosing a replay date must not force every pane to download a multi-month range",
+  );
   assert.ok(
     !workspace.includes('gexVueReplay.active ? "5D" : pane.period'),
     "active replay must never force a historical pane back to five days",

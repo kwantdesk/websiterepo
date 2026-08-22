@@ -43,6 +43,9 @@ const DEFAULT_HISTORY_DAYS = DEFAULT_CHART_HISTORY_CALENDAR_DAYS;
 // shows nothing for the extra days. Payloads stay bounded by gzip on the wire
 // and by the browser tape's own compaction once decoded.
 const MAX_HISTORY_DAYS = 30;
+const MAX_EXPLICIT_RANGE_MS = 4 * 24 * 60 * 60_000;
+const MAX_EXPLICIT_LOOKBACK_MS = 120 * 24 * 60 * 60_000;
+const HISTORICAL_SESSION_CACHE_MS = 6 * 60 * 60_000;
 const DURABLE_EVENT_HISTORY_REVALIDATE_SECONDS = 5 * 60;
 // Time bars form continuously. Reusing a five-minute-old durable order-flow
 // payload leaves several closed candles missing at the live seam. Keep the
@@ -80,6 +83,7 @@ async function getDurableEventBars(
   historyDays: number,
   start: string,
   end: string,
+  cacheScope = `${historyDays}d`,
 ): Promise<EventBarsPayload> {
   const encoded = await unstable_cache(
     async () => {
@@ -92,7 +96,7 @@ async function getDurableEventBars(
         executions: [] as DatabentoExecutionTuple[],
       });
     },
-    ["cme-event-bars-v2", symbol, timeframe, `${historyDays}d`],
+    ["cme-event-bars-v2", symbol, timeframe, cacheScope],
     { revalidate: DURABLE_EVENT_HISTORY_REVALIDATE_SECONDS },
   )();
   return decodeHistory<EventBarsPayload>(encoded);
@@ -111,6 +115,7 @@ async function getDurableEventHistory(
   historyDays: number,
   start: string,
   end: string,
+  cacheScope = `${historyDays}d`,
 ): Promise<EventHistoryPayload> {
   const encoded = await unstable_cache(
     async () => {
@@ -121,7 +126,7 @@ async function getDurableEventHistory(
       }
       return encodeHistory(history);
     },
-    ["cme-event-flow-v2", symbol, timeframe, `${historyDays}d`],
+    ["cme-event-flow-v2", symbol, timeframe, cacheScope],
     { revalidate: DURABLE_EVENT_HISTORY_REVALIDATE_SECONDS },
   )();
   return decodeHistory<EventHistoryPayload>(encoded);
@@ -133,6 +138,7 @@ async function getDurableTimeHistory(
   historyDays: number,
   start: string,
   end: string,
+  cacheScope = `${historyDays}d`,
 ): Promise<TimeHistoryPayload> {
   const encoded = await unstable_cache(
     async () => {
@@ -143,7 +149,7 @@ async function getDurableTimeHistory(
       }
       return encodeHistory(history);
     },
-    ["cme-time-flow-v3", symbol, timeframe, `${historyDays}d`],
+    ["cme-time-flow-v3", symbol, timeframe, cacheScope],
     { revalidate: DURABLE_TIME_HISTORY_REVALIDATE_SECONDS },
   )();
   return decodeHistory<TimeHistoryPayload>(encoded);
@@ -155,9 +161,10 @@ async function durableEventHistoryOrDirect(
   historyDays: number,
   start: string,
   end: string,
+  cacheScope?: string,
 ) {
   try {
-    return await getDurableEventHistory(symbol, timeframe, historyDays, start, end);
+    return await getDurableEventHistory(symbol, timeframe, historyDays, start, end, cacheScope);
   } catch (error) {
     // Local scripts and unusual runtimes can lack Next's incremental cache.
     // The data path must remain available there, while production still gains
@@ -175,9 +182,10 @@ async function durableEventBarsOrDirect(
   historyDays: number,
   start: string,
   end: string,
+  cacheScope?: string,
 ) {
   try {
-    return await getDurableEventBars(symbol, timeframe, historyDays, start, end);
+    return await getDurableEventBars(symbol, timeframe, historyDays, start, end, cacheScope);
   } catch (error) {
     if (error instanceof Error && error.message.includes("incrementalCache")) {
       return {
@@ -195,9 +203,10 @@ async function durableTimeHistoryOrDirect(
   historyDays: number,
   start: string,
   end: string,
+  cacheScope?: string,
 ) {
   try {
-    return await getDurableTimeHistory(symbol, timeframe, historyDays, start, end);
+    return await getDurableTimeHistory(symbol, timeframe, historyDays, start, end, cacheScope);
   } catch (error) {
     if (error instanceof Error && error.message.includes("incrementalCache")) {
       return getDatabentoOrderFlowHistory(symbol, timeframe, start, end);
@@ -219,6 +228,10 @@ export async function GET(request: Request) {
   // execution tuple tape is skippable per request without a separate cache.
   const includeExecutions = includeOrderFlow && url.searchParams.get("exec") !== "0";
   const forceFresh = url.searchParams.get("fresh") === "1";
+  const requestedFrom = Number(url.searchParams.get("from"));
+  const requestedTo = Number(url.searchParams.get("to"));
+  const hasExplicitRange = Number.isFinite(requestedFrom) && Number.isFinite(requestedTo)
+    && requestedFrom > 0 && requestedTo > 0;
   const requestedDays = Number(url.searchParams.get("days") ?? DEFAULT_HISTORY_DAYS);
   // The floor used to be the ten-day default, so a caller asking for a SHORT
   // window silently received the full one. Event-based bars have to be built
@@ -233,11 +246,28 @@ export async function GET(request: Request) {
   }
 
   const now = Date.now();
-  const earliest = now - historyDays * 24 * 60 * 60_000;
-  const start = new Date(earliest).toISOString();
-  const cacheKey = `${symbol}::${timeframe}::${historyDays}d::${includeOrderFlow ? "flow" : "bars"}`;
+  if (hasExplicitRange && (
+    requestedFrom >= requestedTo
+    || requestedTo - requestedFrom > MAX_EXPLICIT_RANGE_MS
+    || requestedFrom < now - MAX_EXPLICIT_LOOKBACK_MS
+    || requestedTo > now + 60_000
+  )) {
+    return NextResponse.json(
+      { error: "The requested CME replay window is outside the supported historical range." },
+      { status: 400 },
+    );
+  }
+  const fromMs = hasExplicitRange ? Math.round(requestedFrom) : now - historyDays * 24 * 60 * 60_000;
+  const toMs = hasExplicitRange ? Math.min(now, Math.round(requestedTo)) : now;
+  const start = new Date(fromMs).toISOString();
+  const end = new Date(toMs).toISOString();
+  const cacheScope = hasExplicitRange ? `range-${fromMs}-${toMs}` : `${historyDays}d`;
+  const rangeLabel = hasExplicitRange ? `${start}/${end}` : `${historyDays}D`;
+  const cacheKey = `${symbol}::${timeframe}::${cacheScope}::${includeOrderFlow ? "flow" : "bars"}`;
   const cached = historyCache.get(cacheKey);
-  const cacheLifetime = isEventBasedChartInterval(timeframe)
+  const cacheLifetime = hasExplicitRange
+    ? HISTORICAL_SESSION_CACHE_MS
+    : isEventBasedChartInterval(timeframe)
     ? EVENT_HISTORY_CACHE_MS
     : FRESH_CACHE_MS;
 
@@ -248,7 +278,7 @@ export async function GET(request: Request) {
         executions: includeExecutions ? cached.executions : [],
         source: "CME",
         dataset: "GLBX.MDP3",
-        range: `${historyDays}D`,
+        range: rangeLabel,
         cached: true,
         cachedAt: cached.updatedAt,
       },
@@ -257,7 +287,6 @@ export async function GET(request: Request) {
   }
 
   try {
-    const end = new Date(now).toISOString();
     const history = isEventBasedChartInterval(timeframe)
       ? includeOrderFlow
         ? await durableEventHistoryOrDirect(
@@ -266,6 +295,7 @@ export async function GET(request: Request) {
             historyDays,
             start,
             end,
+            cacheScope,
           )
         : await durableEventBarsOrDirect(
             symbol,
@@ -273,6 +303,7 @@ export async function GET(request: Request) {
             historyDays,
             start,
             end,
+            cacheScope,
           )
       : includeOrderFlow && !forceFresh
         ? await durableTimeHistoryOrDirect(
@@ -281,6 +312,7 @@ export async function GET(request: Request) {
             historyDays,
             start,
             end,
+            cacheScope,
           )
         : {
             candles: await getDatabentoBars(symbol, timeframe, start, end),
@@ -294,7 +326,7 @@ export async function GET(request: Request) {
         executions: includeExecutions ? executions : [],
         source: "CME",
         dataset: "GLBX.MDP3",
-        range: `${historyDays}D`,
+        range: rangeLabel,
         cached: false,
         cachedAt: now,
       },
@@ -308,7 +340,7 @@ export async function GET(request: Request) {
           executions: includeExecutions ? cached.executions : [],
           source: "CME",
           dataset: "GLBX.MDP3",
-          range: `${historyDays}D`,
+          range: rangeLabel,
           cached: true,
           stale: true,
           cachedAt: cached.updatedAt,
