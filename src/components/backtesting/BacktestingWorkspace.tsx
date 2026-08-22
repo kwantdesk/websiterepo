@@ -963,9 +963,9 @@ export default function BacktestingWorkspace({
           timeoutMs: 18_000,
           timeoutMessage: "The prior New York EOD Gamma snapshot timed out.",
         });
-    // There is deliberately no synthetic Kwant structure before the first
-    // validated post-open release. The prior EOD Gamma structure remains on
-    // screen while we wait for that timestamped intraday frame.
+    // Before the first timestamped intraday edition, retain the most recent
+    // completed Kwant edition that was knowable at the replay clock. This is
+    // historical source data, not a synthetic or current-day fallback.
     const intradayGammaRequest = snapshot.mode === "INTRADAY" && snapshot.kwantReleased && futuresPrice !== null
       ? requestJson<ChartGammaLevelsPayload & { error?: string }>(
           `/api/chart-gamma-levels?root=${root}&source=${gammaSource}&calibrated=1&replay=1&sessionDate=${snapshot.sessionDate}&asOf=${encodeURIComponent(snapshot.asOf)}&futuresPrice=${encodeURIComponent(String(futuresPrice))}`,
@@ -979,12 +979,17 @@ export default function BacktestingWorkspace({
           },
         )
       : Promise.resolve(null);
-    const kwantRequest = snapshot.mode === "EOD" && snapshot.kwantReleased
+    const useCompletedKwantEdition = snapshot.mode === "EOD" || !snapshot.kwantReleased;
+    const kwantRequest = useCompletedKwantEdition
       ? requestJson<GameplanPayload & { error?: string }>(
-          `/api/gameplan?root=${root}&sessionDate=${snapshot.newYorkDate}`,
+          `/api/gameplan?root=${root}&sessionDate=${snapshot.sessionDate}`,
           {
             cache: "force-cache",
-            timeoutMs: 15_000,
+            // Historical GAMEPLAN editions rebuild several point-in-time
+            // positioning inputs on a cold cache. Keep the replay responsive,
+            // but allow the verified edition to finish rather than failing at
+            // the old 15-second boundary on older dates.
+            timeoutMs: 60_000,
             timeoutMessage: "The completed Kwant level edition timed out.",
           },
         )
@@ -1008,11 +1013,6 @@ export default function BacktestingWorkspace({
     const intradayGammaResult = Promise.allSettled([intradayGammaRequest]);
     const valueAreaResult = Promise.allSettled([valueAreaRequest]);
     try {
-      if (!snapshot.kwantReleased) {
-        setQuantLevels([]);
-        setQuantZones([]);
-      }
-
       // Each independent source paints as soon as it resolves. Previously the
       // exact intraday Kwant frame could already be available but remained
       // invisible while the prior-EOD request was still completing.
@@ -1045,7 +1045,7 @@ export default function BacktestingWorkspace({
       });
       const kwantTask = kwantResult.then(([kwant]) => {
         if (requestId !== levelRequestIdRef.current) return kwant;
-        if (snapshot.kwantReleased && kwant.status === "fulfilled" && kwant.value) {
+        if (kwant.status === "fulfilled" && kwant.value) {
           const completedPlan = quantSnapshot(kwant.value, settings);
           setQuantLevels(completedPlan.levels);
           setQuantZones(completedPlan.zones);
@@ -1063,7 +1063,7 @@ export default function BacktestingWorkspace({
         return valueArea;
       });
 
-      const [eodGamma, , intradayGamma, valueArea] = await Promise.all([
+      const [eodGamma, kwant, intradayGamma, valueArea] = await Promise.all([
         eodTask,
         kwantTask,
         intradayTask,
@@ -1088,11 +1088,13 @@ export default function BacktestingWorkspace({
             : intradayGamma.status === "rejected" && intradayGamma.reason instanceof Error
               ? intradayGamma.reason.message
               : "Gamma unavailable",
-        quant: snapshot.kwantReleased && snapshot.mode === "INTRADAY" && !eligibleIntraday
+        quant: snapshot.mode === "INTRADAY" && snapshot.kwantReleased && !eligibleIntraday
           ? intradayGamma.status === "rejected" && intradayGamma.reason instanceof Error
             ? intradayGamma.reason.message
             : "Waiting for the first recorded intraday Kwant edition at this replay clock."
-          : "",
+          : useCompletedKwantEdition && kwant.status === "rejected"
+            ? kwant.reason instanceof Error ? kwant.reason.message : "Kwant levels unavailable"
+            : "",
         valueArea: valueArea.status === "rejected"
           ? valueArea.reason instanceof Error ? valueArea.reason.message : "Value area unavailable"
           : "",
@@ -1880,17 +1882,17 @@ export default function BacktestingWorkspace({
               <TriangleAlert className="h-3.5 w-3.5" />
             </span>
             <div>
-              <div className="text-[9px] font-semibold uppercase tracking-[0.1em] text-foreground">Kwant levels not released</div>
+              <div className="text-[9px] font-semibold uppercase tracking-[0.1em] text-foreground">
+                {levelLoading ? "Loading Kwant levels" : "Kwant levels unavailable"}
+              </div>
               <div className="mt-1 text-[8px] leading-4 text-muted">
-                {levelLoading && activeOptionsSnapshot.kwantReleased
-                  ? `Loading the exact ${activeOptionsSnapshot.newYorkDate} point-in-time Kwant edition. The replay continues without interruption.`
+                {levelLoading
+                  ? `Loading the last verified Kwant edition known at this replay timestamp (${activeOptionsSnapshot.sessionDate}). The replay continues without interruption.`
                   : levelError.quant
                     ? levelError.quant
                     : activeOptionsSnapshot.kwantReleased
                   ? "No validated Kwant edition exists at this replay timestamp yet. It will appear automatically at the first recorded release."
-                  : activeOptionsSnapshot.mode === "INTRADAY"
-                    ? `The ${activeOptionsSnapshot.newYorkDate} edition is still being established. It normally appears within the first five minutes after New York opens.`
-                    : `The ${activeOptionsSnapshot.newYorkDate} edition is not available before New York opens. It normally appears within the first five minutes.`}
+                  : `No completed Kwant edition was returned for ${activeOptionsSnapshot.sessionDate}.`}
               </div>
             </div>
           </div>

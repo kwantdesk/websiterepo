@@ -39,6 +39,14 @@ test("historical levels remain available inside the indicator dropdown", () => {
   assert.match(replay, /levelControls=\{replayLevelControls\}/);
 });
 
+test("Kwant levels use the replay clock's last knowable edition across historical sessions", () => {
+  assert.match(replay, /const useCompletedKwantEdition = snapshot\.mode === "EOD" \|\| !snapshot\.kwantReleased/);
+  assert.match(replay, /\/api\/gameplan\?root=\$\{root\}&sessionDate=\$\{snapshot\.sessionDate\}/);
+  assert.doesNotMatch(replay, /\/api\/gameplan\?root=\$\{root\}&sessionDate=\$\{snapshot\.newYorkDate\}/);
+  assert.match(replay, /if \(kwant\.status === "fulfilled" && kwant\.value\)/);
+  assert.match(replay, /const livePlan = quantSnapshotFromGamma\(intradayGamma\.value, root, settings\)/);
+});
+
 test("historical replay includes the requested three-month backtesting studies", () => {
   for (const indicatorId of [
     "gamma-environment",
