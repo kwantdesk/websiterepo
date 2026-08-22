@@ -1,7 +1,7 @@
 import type { Candle } from "@/lib/backtester";
 import type { ChartIndicatorInstance } from "@/lib/chartIndicatorCatalog";
 import { calculateDeepEffort } from "@/lib/deepEffort";
-import { detectCvdDivergence, sessionCvdPoints } from "@/lib/cvdDivergence";
+import { detectCvdDivergences, sessionCvdBars, type CvdDivergenceSegment } from "@/lib/cvdDivergence";
 import { runSourceIndicator, type SourceIndicatorLanguage } from "@/lib/indicatorSourceAdapters";
 
 export type CalculatedIndicatorSeries = {
@@ -433,43 +433,71 @@ export function calculateIndicatorSeries(
   if (key === "cvd-divergence") {
     if (!orderFlowAvailable(candles)) return [];
     const flowCandles = candles.filter(hasVerifiedOrderFlow);
-    const cvd = sessionCvdPoints(flowCandles);
-    if (!cvd.length) return [];
+    const bars = sessionCvdBars(flowCandles);
+    if (!bars.length) return [];
     const useThemeColors = settingBoolean(instance, "useThemeColors", true);
     const bullishColor = useThemeColors ? theme.positive : settingString(instance, "bullishColor", theme.positive);
     const bearishColor = useThemeColors ? theme.negative : settingString(instance, "bearishColor", theme.negative);
     const lineWidth = Math.min(4, Math.max(1, Math.round(settingNumber(instance, "lineWidth", 2)))) as 1 | 2 | 3 | 4;
-    const divergence = detectCvdDivergence(flowCandles, cvd, {
+    const segments = detectCvdDivergences(flowCandles, bars, {
       pivotStrength: settingNumber(instance, "pivotStrength", 2),
-      lookbackBars: settingNumber(instance, "lookbackBars", 80),
-      recentBars: settingNumber(instance, "recentBars", 12),
+      lookbackBars: settingNumber(instance, "lookbackBars", 300),
     });
+
+    // This study IS the CVD, drawn as candles, with divergences marked on it.
+    // It was previously a plain line, which left nowhere to hang a wick-to-wick
+    // marker and made it indistinguishable from the CVD indicator itself.
     const series: CalculatedIndicatorSeries[] = [{
       key,
       label: "CVD",
-      kind: "line",
+      kind: "candlestick",
       placement: "pane",
       color: theme.primary,
-      lineWidth: 2,
       includeZeroInScale: false,
-      data: cvd.map((point) => ({ time: point.time, value: point.value })),
+      data: bars.map((bar) => ({
+        time: bar.time,
+        value: bar.close,
+        open: bar.open,
+        high: bar.high,
+        low: bar.low,
+        close: bar.close,
+        // Candle colour is carried per bar, matching the CVD study.
+        color: bar.close >= bar.open ? theme.positive : theme.negative,
+      })),
     }];
-    if (divergence) {
+
+    // Every divergence is drawn, and each one stays. They share a single
+    // series with an invisible hop between segments: one series per signal
+    // would mean dozens of chart series over a session.
+    const push = (kind: CvdDivergenceSegment["kind"], color: string) => {
+      const chosen = segments.filter((segment) => segment.kind === kind);
+      if (!chosen.length) return;
+      const data: CalculatedIndicatorSeries["data"] = [];
+      let previousTime = Number.NEGATIVE_INFINITY;
+      for (const segment of chosen) {
+        // A line series needs strictly increasing times, so a segment that
+        // would repeat or reverse a time is skipped rather than corrupting
+        // the whole series.
+        if (segment.fromTime <= previousTime || segment.toTime <= segment.fromTime) continue;
+        data.push({ time: segment.fromTime, value: segment.fromCvd, breakBefore: data.length > 0 });
+        data.push({ time: segment.toTime, value: segment.toCvd });
+        previousTime = segment.toTime;
+      }
+      if (data.length < 2) return;
       series.push({
-        key: `${key}-signal`,
-        label: divergence.kind === "bullish" ? "Bullish divergence" : "Bearish divergence",
+        key: `${key}-${kind}`,
+        label: kind === "bullish" ? "Bullish divergence" : "Bearish divergence",
         kind: "line",
         placement: "pane",
-        color: divergence.kind === "bullish" ? bullishColor : bearishColor,
+        color,
         lineWidth,
-        lineStyle: "dashed",
+        lineStyle: "dotted",
         lastValueVisible: false,
-        data: [
-          { time: divergence.fromTime, value: divergence.fromCvd },
-          { time: divergence.toTime, value: divergence.toCvd },
-        ],
+        data,
       });
-    }
+    };
+    push("bullish", bullishColor);
+    push("bearish", bearishColor);
     return series;
   }
 

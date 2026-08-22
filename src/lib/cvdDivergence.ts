@@ -92,6 +92,126 @@ export function sessionCvdPoints(candles: CvdCandleLike[]): CvdPoint[] {
   return points;
 }
 
+/**
+ * One CVD bar: cumulative delta shaped like a candle.
+ *
+ * The divergence study reads the CVD's own wick extremes, so it needs the
+ * bar's high and low rather than a single closing value. Sessions reset at the
+ * 17:00 Chicago futures boundary, exactly as the CVD study does.
+ */
+export type CvdBar = {
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+};
+
+export function sessionCvdBars(candles: CvdCandleLike[]): CvdBar[] {
+  const bars: CvdBar[] = [];
+  let activeSession = "";
+  let cumulative = 0;
+  for (const candle of candles) {
+    const delta = candleDelta(candle);
+    if (delta === null) continue;
+    const session = chicagoSessionKey(candle.timestamp);
+    if (session !== activeSession) {
+      activeSession = session;
+      cumulative = 0;
+    }
+    const open = cumulative;
+    cumulative += delta;
+    bars.push({
+      time: Math.floor(candle.timestamp / 1_000),
+      open,
+      // Within a bar the running total travels from open to close, so those
+      // are its extremes. Intrabar excursions are not recoverable from a
+      // completed candle's aggregate delta and are never invented here.
+      high: Math.max(open, cumulative),
+      low: Math.min(open, cumulative),
+      close: cumulative,
+    });
+  }
+  return bars;
+}
+
+/** A drawn divergence: one dotted segment across the CVD. */
+export type CvdDivergenceSegment = {
+  kind: "bullish" | "bearish";
+  /** Which extreme the segment connects. */
+  direction: "high" | "low";
+  fromTime: number;
+  toTime: number;
+  /** CVD extremes at each anchor — where the segment is actually drawn. */
+  fromCvd: number;
+  toCvd: number;
+  fromPrice: number;
+  toPrice: number;
+};
+
+/**
+ * Every divergence in the window, in time order.
+ *
+ * The single-result detector this replaces reported only the newest signal and
+ * retracted it as soon as CVD recovered, so a completed divergence vanished
+ * from the chart. A divergence is a fact about two swings that have already
+ * printed: once formed it is history and stays drawn.
+ *
+ * Both directions are reported. Consecutive swing LOWS are compared against
+ * the CVD's lows and consecutive swing HIGHS against its highs; any
+ * disagreement in direction between price and CVD is a divergence, whichever
+ * way round it falls.
+ */
+export function detectCvdDivergences(
+  candles: CvdCandleLike[],
+  cvdBars: CvdBar[],
+  options: CvdDivergenceOptions = {},
+): CvdDivergenceSegment[] {
+  const pivotStrength = Math.max(1, Math.min(5, Math.round(options.pivotStrength ?? 2)));
+  const lookbackBars = Math.max(20, Math.min(2_000, Math.round(options.lookbackBars ?? 300)));
+  if (candles.length < pivotStrength * 2 + 2 || cvdBars.length < 2) return [];
+
+  const cvdByTime = new Map(cvdBars.map((bar) => [bar.time, bar]));
+  const window = candles.slice(Math.max(0, candles.length - lookbackBars));
+  const segments: CvdDivergenceSegment[] = [];
+
+  for (const direction of ["low", "high"] as const) {
+    const pivots: Array<{ candle: CvdCandleLike; bar: CvdBar }> = [];
+    for (let index = pivotStrength; index < window.length - pivotStrength; index += 1) {
+      if (!isPivot(window, index, pivotStrength, direction)) continue;
+      const bar = cvdByTime.get(Math.floor(window[index].timestamp / 1_000));
+      if (!bar) continue;
+      pivots.push({ candle: window[index], bar });
+    }
+    for (let index = 1; index < pivots.length; index += 1) {
+      const previous = pivots[index - 1];
+      const current = pivots[index];
+      const priceFrom = direction === "high" ? previous.candle.high : previous.candle.low;
+      const priceTo = direction === "high" ? current.candle.high : current.candle.low;
+      const cvdFrom = direction === "high" ? previous.bar.high : previous.bar.low;
+      const cvdTo = direction === "high" ? current.bar.high : current.bar.low;
+      if (priceFrom === priceTo || cvdFrom === cvdTo) continue;
+      const priceRose = priceTo > priceFrom;
+      const cvdRose = cvdTo > cvdFrom;
+      // Agreement is confirmation, not divergence.
+      if (priceRose === cvdRose) continue;
+      segments.push({
+        // Price up while flow falls is the bearish case, and the mirror is
+        // bullish — read the same way on either extreme.
+        kind: priceRose ? "bearish" : "bullish",
+        direction,
+        fromTime: previous.bar.time,
+        toTime: current.bar.time,
+        fromCvd: cvdFrom,
+        toCvd: cvdTo,
+        fromPrice: priceFrom,
+        toPrice: priceTo,
+      } as CvdDivergenceSegment);
+    }
+  }
+  return segments.sort((left, right) => left.fromTime - right.fromTime || left.toTime - right.toTime);
+}
+
 function isPivot(
   candles: CvdCandleLike[],
   index: number,

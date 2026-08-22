@@ -123,8 +123,9 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
   ],
   "cvd-divergence": [
     { key: "pivotStrength", label: "Swing pivot strength (bars)", defaultValue: 2, min: 1, max: 5, step: 1 },
-    { key: "lookbackBars", label: "Lookback (bars)", defaultValue: 80, min: 20, max: 300, step: 5 },
-    { key: "recentBars", label: "Recent anchor window (bars)", defaultValue: 12, min: 3, max: 60, step: 1 },
+    // Every divergence in the window is marked and each one stays, so the
+    // lookback is simply how much history is scanned.
+    { key: "lookbackBars", label: "Lookback (bars)", defaultValue: 300, min: 20, max: 2000, step: 10 },
     { key: "lineWidth", label: "Divergence line width", defaultValue: 2, min: 1, max: 4, step: 1 },
   ],
   "tape-speed-order-flow-burst": [
