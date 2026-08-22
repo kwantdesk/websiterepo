@@ -160,6 +160,7 @@ export function defaultTpoSettings(
     valueAreaHighlightInside: true,
     valueAreaOutsideColor: theme?.borderDownColor ?? "#475569",
     valueAreaShowLines: true,
+    recentLevelsOnly: false,
     valueAreaShowBackground: false,
     valueAreaBackgroundOpacity: 10,
     valueAreaExtensionMode: "none",

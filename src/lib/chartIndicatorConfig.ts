@@ -1844,6 +1844,9 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     showValueArea: true,
     showPocLine: true,
     showValueAreaLines: true,
+    // Draw POC/VAH/VAL extensions on the newest profile only. Off by default
+    // so nothing changes for anyone who has not asked for it.
+    recentLevelsOnly: false,
     showDelta: true,
     showProfileSpine: true,
     showDevelopingPoc: false,

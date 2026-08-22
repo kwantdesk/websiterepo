@@ -12926,6 +12926,17 @@ function Chart({
       high: candle.high,
       low: candle.low,
     }));
+    // "Recent lines only". With a week of daily profiles on screen every one
+    // of them extends its own POC and value-area lines and the chart turns
+    // into a grid. This keeps the levels on the newest profile of each kind —
+    // the one still forming — and silences the rest. Bodies are untouched, so
+    // the history stays readable; only the extensions stop.
+    const newestStartByKind = new Map<string, number>();
+    for (const profile of volumeProfiles) {
+      const kind = `${profile.root}:${profile.period}`;
+      const current = newestStartByKind.get(kind);
+      if (current == null || profile.startMs > current) newestStartByKind.set(kind, profile.startMs);
+    }
     const models = volumeProfiles.flatMap((profile): NativeVolumeProfileModel[] => {
       const instance = profile.period === "weekly" ? weeklyInstance : dailyInstance;
       if (!instance || profile.period === "custom" || profile.levels.length === 0) return [];
@@ -12934,6 +12945,8 @@ function Chart({
       if (!isExecutionBackedVolumeProfile(profile) && !isCandleBackedVolumeProfile(profile)) return [];
       const profileSettings = instance.settings ?? {};
       const useThemeColors = profileSettings.useThemeColors !== false;
+      const levelsVisible = profileSettings.recentLevelsOnly !== true
+        || newestStartByKind.get(`${profile.root}:${profile.period}`) === profile.startMs;
       const requestedSnapMode = (
         ["off", "left", "right"].includes(String(profileSettings.snapMode))
           ? String(profileSettings.snapMode)
@@ -12977,8 +12990,8 @@ function Chart({
           showValueArea: profileSettings.showValueArea !== false,
           showDelta: profileSettings.showDelta !== false,
           showProfileSpine: profileSettings.showProfileSpine !== false,
-          showPocLine: profileSettings.showPocLine !== false,
-          showValueAreaLines: profileSettings.showValueAreaLines !== false,
+          showPocLine: profileSettings.showPocLine !== false && levelsVisible,
+          showValueAreaLines: profileSettings.showValueAreaLines !== false && levelsVisible,
           showText: profileSettings.showText === true,
           showPocHighlight: profileSettings.showPocHighlight !== false,
           showProfileOutline: profileSettings.showProfileOutline !== false,
@@ -13215,6 +13228,23 @@ function Chart({
           && tpoMergeSelection?.instanceId === model.instanceId
           && !model.profile.id.startsWith("composite:"),
       }));
+    // "Recent lines only", the same option the volume profiles carry: keep the
+    // POC and value-area extensions on the newest profile of each study and
+    // silence the older ones, so a week of TPOs does not draw a grid across
+    // the chart. Only the extensions stop; every profile still draws.
+    const newestTpoStartByInstance = new Map<string, number>();
+    for (const model of models) {
+      const current = newestTpoStartByInstance.get(model.instanceId);
+      if (current == null || model.profile.startTimeMs > current) {
+        newestTpoStartByInstance.set(model.instanceId, model.profile.startTimeMs);
+      }
+    }
+    const levelledModels = models.map((model) => {
+      if (model.settings.recentLevelsOnly !== true) return model;
+      if (newestTpoStartByInstance.get(model.instanceId) === model.profile.startTimeMs) return model;
+      return { ...model, settings: { ...model.settings, showPoc: false, valueAreaShowLines: false } };
+    });
+
     // Repainting an unchanged weekly letter grid on every live tape batch is
     // wasted main-thread work; only push models when something visible moved.
     const identity = tpoProfileIdentityRef.current;
@@ -13226,14 +13256,14 @@ function Chart({
       }
       return id;
     };
-    const modelsSignature = models
+    const modelsSignature = levelledModels
       .map((model) => `${model.instanceId}:${identityOf(model.profile)}:${model.selected ? 1 : 0}:${model.mergeEligible ? 1 : 0}:${JSON.stringify(model.settings)}`)
       .join("|") + `#${JSON.stringify(theme)}#${lastCandleTime}#${intervalSeconds}`;
     if (modelsSignature !== tpoModelsSignatureRef.current) {
       tpoModelsSignatureRef.current = modelsSignature;
-      primitive.setModels(models);
+      primitive.setModels(levelledModels);
     }
-    setTpoDataStatus(models.length ? null : "TPO · NO PROFILE IN THE SELECTED RANGE");
+    setTpoDataStatus(levelledModels.length ? null : "TPO · NO PROFILE IN THE SELECTED RANGE");
     // Trailing rebuild: when the run above served a throttled grid, re-enter
     // once the throttle window closes so the letters catch up to the tape.
     if (earliestStaleBuiltAt !== null && tpoRebuildTimerRef.current === null) {

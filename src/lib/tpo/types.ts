@@ -214,6 +214,12 @@ export interface TpoIndicatorSettings {
   valueAreaHighlightInside: boolean;
   valueAreaOutsideColor: string;
   valueAreaShowLines: boolean;
+  /**
+   * Draw POC and value-area extensions on the newest profile only. A week of
+   * TPOs each extending its own levels turns the chart into a grid; this keeps
+   * them on the one still forming and silences the rest. Bodies are untouched.
+   */
+  recentLevelsOnly: boolean;
   valueAreaShowBackground: boolean;
   valueAreaBackgroundOpacity: number;
   valueAreaExtensionMode: TpoExtensionMode;

@@ -334,6 +334,7 @@ assignTpoSections("Value area", [
   "valueAreaHighlightInside", "valueAreaOutsideColor", "valueAreaShowLines",
   "valueAreaShowBackground", "valueAreaBackgroundOpacity", "valueAreaExtensionMode",
   "valueAreaLineColor", "valueAreaLineWidth", "valueAreaShowLabels", "valueAreaColor",
+  "recentLevelsOnly",
 ]);
 assignTpoSections("Peak and valley", [
   "showPeaks", "showValleys", "peakValleyRadius", "peakMinimumProminence",
@@ -1978,35 +1979,79 @@ export default function ChartIndicatorsControl({
                       </KwantSelect>
                     </label>
                   ))}
-                  {String(settingsInstance.settings?.filterMode ?? "none") === "triple" ? (
-                    <div className="space-y-1.5 sm:col-span-2">
-                      <span className="block text-[9px] uppercase tracking-[0.12em] text-muted">Sessions drawn</span>
-                      <div className="grid grid-cols-3 gap-2">
-                        {([
-                          ["Asia", "sessionAsiaEnabled"],
-                          ["London", "sessionLondonEnabled"],
-                          ["New York", "sessionNewYorkEnabled"],
-                        ] as const).map(([label, key]) => (
-                          <label key={key} className="flex min-h-9 items-center gap-2 border border-border bg-background/55 px-3 text-[9px] text-muted">
-                            <input
-                              type="checkbox"
-                              className="accent-primary"
-                              checked={settingsInstance.settings?.[key] !== false}
-                              onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
-                                ...current,
-                                settings: { ...(current.settings ?? {}), [key]: event.target.checked },
-                              }))}
-                            />
-                            <span>{label}</span>
-                          </label>
-                        ))}
-                      </div>
-                      <span className="block text-[8px] leading-4 text-muted">
-                        Unticking a session omits its profile entirely; the remaining sessions keep their own
-                        boundaries rather than absorbing it.
-                      </span>
+                  {/*
+                    * Sessions are picked directly, not unlocked by a dropdown.
+                    *
+                    * These ticks used to be hidden until Filter mode was set to
+                    * "triple", so the only way to reach "just draw me Asia and
+                    * New York" was to already know that a control named Filter
+                    * mode governed it. Clicking a session now arms the split
+                    * itself, and clearing the last one returns the study to a
+                    * single whole-session profile.
+                    */}
+                  <div className="space-y-1.5 sm:col-span-2">
+                    <span className="block text-[9px] uppercase tracking-[0.12em] text-muted">Sessions drawn</span>
+                    <div className="grid grid-cols-3 gap-2">
+                      {([
+                        ["Asia", "sessionAsiaEnabled"],
+                        ["London", "sessionLondonEnabled"],
+                        ["New York", "sessionNewYorkEnabled"],
+                      ] as const).map(([label, key]) => {
+                        const splitting = String(settingsInstance.settings?.filterMode ?? "none") === "triple";
+                        // Off the split there is one profile covering everything,
+                        // so no single session reads as selected.
+                        const on = splitting && settingsInstance.settings?.[key] !== false;
+                        return (
+                          <button
+                            key={key}
+                            type="button"
+                            onClick={() => replace(settingsInstance.instanceId, (current) => {
+                              const settings = { ...(current.settings ?? {}) };
+                              const wasSplitting = String(settings.filterMode ?? "none") === "triple";
+                              if (!wasSplitting) {
+                                // First pick: arm the split and start from this
+                                // session alone, which is what clicking one asks
+                                // for. Turning on the split with everything still
+                                // enabled would draw all three.
+                                settings.filterMode = "triple";
+                                settings.sessionAsiaEnabled = key === "sessionAsiaEnabled";
+                                settings.sessionLondonEnabled = key === "sessionLondonEnabled";
+                                settings.sessionNewYorkEnabled = key === "sessionNewYorkEnabled";
+                                return { ...current, settings };
+                              }
+                              settings[key] = settings[key] === false;
+                              const noneLeft = settings.sessionAsiaEnabled === false
+                                && settings.sessionLondonEnabled === false
+                                && settings.sessionNewYorkEnabled === false;
+                              if (noneLeft) {
+                                // An empty selection would draw nothing at all,
+                                // which reads as a broken study rather than a
+                                // choice. Fall back to the whole session.
+                                settings.filterMode = "none";
+                                settings.sessionAsiaEnabled = true;
+                                settings.sessionLondonEnabled = true;
+                                settings.sessionNewYorkEnabled = true;
+                              }
+                              return { ...current, settings };
+                            })}
+                            aria-pressed={on}
+                            className={`flex min-h-9 items-center justify-center border px-3 text-[9px] uppercase tracking-[0.12em] transition-colors ${
+                              on
+                                ? "border-primary/40 bg-primary/[0.10] text-primary"
+                                : "border-border bg-background/55 text-muted hover:bg-surface hover:text-foreground"
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        );
+                      })}
                     </div>
-                  ) : null}
+                    <span className="block text-[8px] leading-4 text-muted">
+                      Picking a session splits the day and draws only what is selected; the rest keep their own
+                      boundaries rather than absorbing the ones left out. Asia opens at the 17:00 Globex bell.
+                      Clearing every session returns to one profile for the whole session.
+                    </span>
+                  </div>
                   {([
                     ["Session start", "sessionStartMinutes", 8 * 60 + 30],
                     ["Session end", "sessionEndMinutes", 15 * 60 + 15],
@@ -2141,6 +2186,34 @@ export default function ChartIndicatorsControl({
                         </button>
                       );
                     })}
+                  </div>
+                  {/*
+                    * Its own toggle rather than a member of the grid above:
+                    * those default ON and this defaults OFF, so it cannot
+                    * share their `!== false` reading.
+                    */}
+                  <div className="sm:col-span-2">
+                    {(() => {
+                      const recentOnly = settingsInstance.settings?.recentLevelsOnly === true;
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => replace(settingsInstance.instanceId, (current) => ({
+                            ...current,
+                            settings: { ...(current.settings ?? {}), recentLevelsOnly: !recentOnly },
+                          }))}
+                          className={`h-8 w-full border px-2 text-[8px] uppercase tracking-[0.1em] ${
+                            recentOnly ? "border-primary/55 bg-primary/10 text-primary" : "border-border bg-background text-muted"
+                          }`}
+                        >
+                          Recent lines only · {recentOnly ? "ON" : "OFF"}
+                        </button>
+                      );
+                    })()}
+                    <span className="mt-1 block text-[8px] leading-4 text-muted">
+                      Keeps POC, VAH and VAL on the newest profile — the one still forming — and silences the
+                      older ones. Their bodies stay drawn; only the extensions stop.
+                    </span>
                   </div>
                   <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
                     <span>Developing</span>
