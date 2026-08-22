@@ -5145,7 +5145,7 @@ function Chart({
     footprintSourceCandles,
   ]);
   const footprintProfileGroupTicks = footprintProfileGranularityTicks(
-    footprintSettings.perBarProfileGranularity,
+    footprintSettings.perBarProfileTicksPerRow,
   );
   const footprintProfileBars = useMemo(() => {
     const profileEnabled = footprintSettings.showPerBarVolumeProfile === true
@@ -9958,9 +9958,14 @@ function Chart({
     professionalSyncSuppressedRef.current = false;
     professionalDrawingsRef.current = [];
 
-    // Precision objects live in their own document, so a chart-level clear has
-    // to reach them too or the newer toolbar's drawings survive it.
+    // Four drawing engines answer to this chart, so "clear all" has to reach
+    // every one of them or the ones it misses look like a broken button.
+    // chartingDrawings is the engine the MOUNTED toolbar draws into, and it was
+    // the one being skipped: clearing left every current drawing on screen.
     window.dispatchEvent(new Event(CLEAR_CHART_DRAWINGS_EVENT));
+    commitDrawings([]);
+    setDrawSelectedId(null);
+    setDrawSettingsOpen(false);
     setProfessionalDrawings([]);
     setDrawings([]);
     setDraftDrawing(null);
