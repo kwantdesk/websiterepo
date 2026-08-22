@@ -203,6 +203,16 @@ import {
   type PaperTradingAccountRecord,
 } from "@/lib/paperAccounts";
 import {
+  NO_CAPABILITIES,
+  TIME_IN_FORCE_OPTIONS,
+  breakevenStopPrice,
+  ordersToCancel,
+  reverseIntent,
+  type ConnectorCapabilities,
+  type TimeInForce,
+  type WorkingOrder,
+} from "@/lib/tradingPanel";
+import {
   cancelPaperOrder,
   clearPaperAccountFills,
   closePaperPosition,
@@ -8831,6 +8841,14 @@ function KwantBotAttachments({
   );
 }
 
+const PAPER_TRADING_CAPABILITIES: ConnectorCapabilities = {
+  serverOco: false,
+  reduceOnly: true,
+  postOnly: false,
+  closeOnTrigger: false,
+  timeInForce: ["gtc", "day", "ioc", "fok"],
+};
+
 export default function KwantifyWorkspace({
   section = "charts",
   socialProfileHandle = "",
@@ -9119,6 +9137,12 @@ export default function KwantifyWorkspace({
   const [streamReconnectNonce, setStreamReconnectNonce] = useState(0);
   const [orderSide, setOrderSide] = useState<"buy" | "sell">("buy");
   const [orderType, setOrderType] = useState<"market" | "limit" | "stop">("market");
+  // Order options, in the shape the connector layer understands. OCO is on by
+  // default because a bracket with both a stop and a target is the normal case
+  // and leaving them unlinked is the dangerous one.
+  const [orderOco, setOrderOco] = useState(true);
+  const [orderReduceOnly, setOrderReduceOnly] = useState(false);
+  const [orderTimeInForce, setOrderTimeInForce] = useState<TimeInForce>("gtc");
   // The right panel starts CLOSED on both the server and the first client
   // render, then the saved preference is applied after mount. Reading
   // localStorage in the initializer produced a server/client hydration
@@ -15639,7 +15663,21 @@ export default function KwantifyWorkspace({
     ? `${formatPrice(orderPreviewStopLossPrice, selectedInstrument)} · -${formatDollar(orderPreviewRiskUsd)}`
     : "--";
 
-  const submitPaperOrder = () => {
+  /**
+   * `intent` lets Reverse and any other programmatic action drive the same
+   * path the button uses, instead of setting state and hoping a render lands
+   * before the order is sent. Omitted, every field falls back to the ticket,
+   * so the button behaves exactly as it did.
+   */
+  const submitPaperOrder = (intent?: {
+    side?: "buy" | "sell";
+    type?: "market" | "limit" | "stop";
+    quantity?: number;
+    skipProtection?: boolean;
+  }) => {
+    const submitSide = intent?.side ?? orderSide;
+    const submitType = intent?.type ?? orderType;
+    const submitQuantity = intent?.quantity ?? selectedOrderQuantity;
     if (!selectedPaperTradingAccount) {
       showPaperOrderMessage("error", "Create or select a sim account first.");
       return;
@@ -15651,7 +15689,7 @@ export default function KwantifyWorkspace({
       && Date.now() - activeQuote.timestamp <= 5_000
       && activeQuote.bid > 0
       && activeQuote.ask > 0;
-    if (orderType === "market" && !activeChartQuoteIsExecutable) {
+    if (submitType === "market" && !activeChartQuoteIsExecutable) {
       showPaperOrderMessage("error", "Waiting for the active chart's live executable price. No market order was sent.");
       return;
     }
@@ -15662,18 +15700,18 @@ export default function KwantifyWorkspace({
       showPaperOrderMessage("error", "A live executable price is required before placing this order.");
       return;
     }
-    const entryPrice = orderType === "market"
-      ? orderSide === "buy" ? quote.ask : quote.bid
+    const entryPrice = submitType === "market"
+      ? submitSide === "buy" ? quote.ask : quote.bid
       : Number(orderPrice || selectedMidPrice);
     if (!(entryPrice > 0)) {
       showPaperOrderMessage("error", "A live price is required before placing this order.");
       return;
     }
-    const takeProfitPrice = tpEnabled
-      ? resolvePaperProtectionPrice("tp", orderTP, entryPrice, selectedOrderQuantity)
+    const takeProfitPrice = tpEnabled && !intent?.skipProtection
+      ? resolvePaperProtectionPrice("tp", orderTP, entryPrice, submitQuantity)
       : null;
-    const stopLossPrice = slEnabled
-      ? resolvePaperProtectionPrice("sl", orderSL, entryPrice, selectedOrderQuantity)
+    const stopLossPrice = slEnabled && !intent?.skipProtection
+      ? resolvePaperProtectionPrice("sl", orderSL, entryPrice, submitQuantity)
       : null;
     const result = placePaperOrder(
       paperLedgerRef.current,
@@ -15681,12 +15719,12 @@ export default function KwantifyWorkspace({
       {
         accountId: selectedPaperTradingAccount.id,
         symbol: selectedInstrument,
-        side: orderSide,
-        type: orderType,
-        quantity: selectedOrderQuantity,
-        price: orderType === "market" ? null : entryPrice,
+        side: submitSide,
+        type: submitType,
+        quantity: submitQuantity,
+        price: submitType === "market" ? null : entryPrice,
         stopLoss: stopLossPrice,
-        takeProfits: takeProfitPrice ? [{ price: takeProfitPrice, quantity: selectedOrderQuantity }] : [],
+        takeProfits: takeProfitPrice ? [{ price: takeProfitPrice, quantity: submitQuantity }] : [],
       },
       quote,
     );
@@ -15697,7 +15735,7 @@ export default function KwantifyWorkspace({
     }
     showPaperOrderMessage(
       "success",
-      `${orderSide === "buy" ? "Buy" : "Sell"} ${selectedOrderQuantity} ${displayCmeSymbol(selectedInstrument)} ${orderType === "market" ? "filled" : "working"}.`,
+      `${submitSide === "buy" ? "Buy" : "Sell"} ${submitQuantity} ${displayCmeSymbol(selectedInstrument)} ${submitType === "market" ? "filled" : "working"}.`,
     );
   };
 
@@ -15778,6 +15816,83 @@ export default function KwantifyWorkspace({
     const result = closePaperPosition(paperLedgerRef.current, position.accountId, position.id, quote);
     commitPaperLedger(result.ledger);
     showPaperOrderMessage(result.error ? "error" : "success", result.error ?? `${position.symbol} position flattened.`);
+  };
+
+  /**
+   * The working book in the shape the order model understands, so cancel
+   * scopes and OCO grouping are decided by one tested rule rather than by ad
+   * hoc filtering at each call site.
+   */
+  const paperWorkingBook: WorkingOrder[] = selectedPaperWorkingOrders.map((order) => ({
+    id: order.id,
+    direction: order.side === "buy" ? "buy" : "sell",
+    type: order.type === "market" ? "market" : order.type === "stop" ? "stop" : "limit",
+    quantity: order.quantity,
+    filled: 0,
+    price: order.price ?? null,
+    triggerPrice: null,
+    status: "placed",
+    timeInForce: orderTimeInForce,
+    ocoGroup: null,
+    options: {},
+  }));
+
+  const handleCancelPaperScope = (scope: "bids" | "asks" | "all") => {
+    const accountId = selectedPaperTradingAccount?.id;
+    if (!accountId) return;
+    const doomed = ordersToCancel(paperWorkingBook, scope);
+    if (!doomed.length) {
+      showPaperOrderMessage("error", `No working ${scope === "all" ? "orders" : scope} to cancel.`);
+      return;
+    }
+    doomed.forEach((order) => handleCancelPaperOrder(accountId, order.id));
+    showPaperOrderMessage("success", `Cancelled ${doomed.length} ${doomed.length === 1 ? "order" : "orders"}.`);
+  };
+
+  const handleReversePaperPosition = () => {
+    const position = selectedPaperOpenPositions[0];
+    if (!position) {
+      showPaperOrderMessage("error", "No open position to reverse.");
+      return;
+    }
+    const signed = position.side === "buy" ? position.remainingQuantity : -position.remainingQuantity;
+    const intent = reverseIntent({ quantity: signed, averagePrice: position.entryPrice });
+    if (!intent) return;
+    // Closed first, then re-opened the other way, rather than sent as one
+    // double-size order: closePaperPosition is the only path that books the
+    // realised P&L on the leg being exited, and skipping it would carry the
+    // old entry into the new position's average.
+    handleFlattenPaperPosition(position);
+    submitPaperOrder({
+      side: intent.direction,
+      type: "market",
+      quantity: position.remainingQuantity,
+      // The ticket's TP/SL belong to a fresh trade the operator is composing,
+      // not to a reversal fired from an existing one.
+      skipProtection: true,
+    });
+  };
+
+  const handleBreakevenPaperPositions = () => {
+    const accountId = selectedPaperTradingAccount?.id;
+    if (!accountId) return;
+    const positions = selectedPaperOpenPositions;
+    if (!positions.length) {
+      showPaperOrderMessage("error", "No open position to protect.");
+      return;
+    }
+    let moved = 0;
+    positions.forEach((position) => {
+      const signed = position.side === "buy" ? position.remainingQuantity : -position.remainingQuantity;
+      const stop = breakevenStopPrice(
+        { quantity: signed, averagePrice: position.entryPrice },
+        paperTickSize(position.symbol),
+      );
+      if (stop == null) return;
+      moved += 1;
+      handlePaperProtectionUpdate(accountId, position.id, { kind: "stop_loss", price: stop });
+    });
+    if (moved) showPaperOrderMessage("success", `Break-even stop set on ${moved} ${moved === 1 ? "position" : "positions"}.`);
   };
 
   const handleFlattenPaperAccount = () => {
@@ -18501,8 +18616,89 @@ export default function KwantifyWorkspace({
                   <div className="flex justify-between"><span className="text-muted">Trade value</span><span className="font-mono">{formatDollar(orderPanelTradeValueUsd)}</span></div>
                 </div>
               </div>
+              {/*
+                * Working-order and position controls, and the order options a
+                * connector may or may not honour. Anything the venue cannot do
+                * is disabled with the reason on the control rather than hidden
+                * or quietly dropped — a toggle that flips and then does nothing
+                * makes a trader believe a protection is in force when it is not.
+                */}
+              <div className="mb-3 space-y-2 border-t border-border pt-3">
+                <div className="grid grid-cols-2 gap-1.5">
+                  {([
+                    ["Cancel Bids", () => handleCancelPaperScope("bids"), !paperWorkingBook.some((order) => order.direction === "buy")],
+                    ["Cancel Asks", () => handleCancelPaperScope("asks"), !paperWorkingBook.some((order) => order.direction === "sell")],
+                    ["Cancel All", () => handleCancelPaperScope("all"), paperWorkingBook.length === 0],
+                    ["Reverse", handleReversePaperPosition, selectedPaperOpenPositions.length === 0],
+                  ] as const).map(([label, action, disabled]) => (
+                    <button
+                      key={label}
+                      type="button"
+                      onClick={action}
+                      disabled={disabled || !tradingUnlocked}
+                      className="flex h-8 items-center justify-center rounded-[3px] border border-border bg-surface/40 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted transition-colors hover:bg-surface hover:text-foreground disabled:cursor-not-allowed disabled:opacity-35"
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={handleBreakevenPaperPositions}
+                  disabled={selectedPaperOpenPositions.length === 0 || !tradingUnlocked}
+                  title="Move the stop to the entry price, snapped away from the market so it cannot round into a loss"
+                  className="flex h-8 w-full items-center justify-center rounded-[3px] border border-border bg-surface/40 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted transition-colors hover:bg-surface hover:text-foreground disabled:cursor-not-allowed disabled:opacity-35"
+                >
+                  Breakeven
+                </button>
+                <div className="flex items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={orderOco}
+                    onClick={() => setOrderOco((value) => !value)}
+                    title={PAPER_TRADING_CAPABILITIES.serverOco
+                      ? "The broker enforces the group"
+                      : "No server-side OCO here, so the desk cancels the other leg on the first fill — including a partial one"}
+                    className="flex items-center gap-2 text-[10px] text-muted"
+                  >
+                    <span className={`relative h-4 w-8 shrink-0 rounded-full transition-colors ${orderOco ? "bg-primary" : "bg-border"}`}>
+                      <span className={`absolute top-0.5 h-3 w-3 rounded-full bg-background transition-[left] ${orderOco ? "left-[18px]" : "left-0.5"}`} />
+                    </span>
+                    <span className={orderOco ? "text-foreground" : undefined}>OCO</span>
+                  </button>
+                  <select
+                    value={orderTimeInForce}
+                    onChange={(event) => setOrderTimeInForce(event.target.value as TimeInForce)}
+                    aria-label="Time in force"
+                    className="h-7 rounded-[3px] border border-border bg-background px-2 text-[10px] uppercase text-foreground outline-none focus:border-primary/40"
+                  >
+                    {TIME_IN_FORCE_OPTIONS
+                      .filter((option) => PAPER_TRADING_CAPABILITIES.timeInForce.includes(option.id))
+                      .map((option) => (
+                        <option key={option.id} value={option.id} title={option.hint}>{option.label}</option>
+                      ))}
+                  </select>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={orderReduceOnly && PAPER_TRADING_CAPABILITIES.reduceOnly}
+                  onClick={() => setOrderReduceOnly((value) => !value)}
+                  disabled={!PAPER_TRADING_CAPABILITIES.reduceOnly}
+                  title={PAPER_TRADING_CAPABILITIES.reduceOnly
+                    ? "Never let this order open a position the other way"
+                    : "This connection does not support reduce-only, so the desk will not pretend it is on"}
+                  className="flex items-center gap-2 text-[10px] text-muted disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <span className={`relative h-4 w-8 shrink-0 rounded-full transition-colors ${orderReduceOnly && PAPER_TRADING_CAPABILITIES.reduceOnly ? "bg-primary" : "bg-border"}`}>
+                    <span className={`absolute top-0.5 h-3 w-3 rounded-full bg-background transition-[left] ${orderReduceOnly && PAPER_TRADING_CAPABILITIES.reduceOnly ? "left-[18px]" : "left-0.5"}`} />
+                  </span>
+                  <span className={orderReduceOnly && PAPER_TRADING_CAPABILITIES.reduceOnly ? "text-foreground" : undefined}>Reduce-Only</span>
+                </button>
+              </div>
               <button
-                onClick={tradingUnlocked ? submitPaperOrder : undefined}
+                onClick={tradingUnlocked ? () => submitPaperOrder() : undefined}
                 disabled={!tradingUnlocked}
                 className={`w-full rounded-xl py-3 font-semibold ${tradingUnlocked ? "text-background" : "cursor-not-allowed bg-muted/30 text-muted"}`}
                 style={tradingUnlocked ? { backgroundColor: orderSide === "buy" ? chartSettings.upColor : chartSettings.downColor } : undefined}
