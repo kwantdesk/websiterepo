@@ -74,7 +74,7 @@ const daysAgo = (days) => new Date(now - days * 24 * 60 * 60_000).toISOString().
 // --- the workspace actually applies it, and the picker is the desk's own ---
 {
   const workspace = readFileSync(new URL("../src/components/KwantifyWorkspace.tsx", import.meta.url), "utf8");
-  assert.match(workspace, /applyReplayHistoryRange\(sessionDate\)/,
+  assert.match(workspace, /applyReplayHistoryRange\(normalizedSessionDate\)/,
     "choosing a replay date must widen the loaded history");
   assert.match(workspace, /periodReaches\(pane\.period, required\)/,
     "panes already deep enough must be left alone");
@@ -93,16 +93,16 @@ const daysAgo = (days) => new Date(now - days * 24 * 60 * 60_000).toISOString().
   assert.match(workspace, /<KwantDatePicker/);
   assert.match(workspace, /min=\{earliestGexVueReplaySessionDate\(\)\}/,
     "the synchronized options replay picker must be bounded to three months");
-  // On the Charts workspace the bar must not call itself GEX.
-  assert.match(workspace, /chartWorkspaceScope === "gamma" \? "GEX Replay" : "Chart Replay"/);
+  assert.doesNotMatch(workspace, /Chart Replay/,
+    "GEX replay must remain local to the independently saved GEX VUE workspace");
 
   // The control that starts replay is the control that leaves it, so it must
   // say which one it is about to do rather than reading "Replay" throughout.
   const exitLabels = workspace.match(/gexVueReplay\.active \? "Exit" : "Replay"/g) ?? [];
-  assert.equal(exitLabels.length, 2,
-    "both replay toggles (Charts and GEX Vue) must switch to Exit while active");
+  assert.equal(exitLabels.length, 1,
+    "the GEX VUE replay toggle must switch to Exit while active");
   const exitIcons = workspace.match(/gexVueReplay\.active \? <X className/g) ?? [];
-  assert.equal(exitIcons.length, 2, "the icon must switch with the label");
+  assert.equal(exitIcons.length, 1, "the GEX VUE icon must switch with the label");
 }
 
 console.log("Replay history range tests passed.");

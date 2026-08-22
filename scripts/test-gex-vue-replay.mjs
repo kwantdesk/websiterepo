@@ -7,6 +7,7 @@ import {
   createGexVueReplayState,
   latestCompletedNewYorkSession,
   newYorkSessionTimestamp,
+  normalizeGexVueReplaySessionDate,
   setGexVueReplaySession,
 } from "../src/lib/gexVueReplay.ts";
 
@@ -55,5 +56,10 @@ replay = setGexVueReplaySession({ ...replay, playing: true }, "2026-08-14");
 assert.equal(replay.sessionDate, "2026-08-14");
 assert.equal(replay.timestampMs, replay.startMs);
 assert.equal(replay.playing, false);
+
+assert.equal(normalizeGexVueReplaySessionDate("2026-08-16"), "2026-08-14");
+assert.equal(normalizeGexVueReplaySessionDate("2026-08-15"), "2026-08-14");
+replay = setGexVueReplaySession(replay, "2026-08-16");
+assert.equal(replay.sessionDate, "2026-08-14", "weekend selections must replay the prior market session");
 
 console.log("GEX Vue replay clock tests passed.");

@@ -91,13 +91,22 @@ export function createGexVueReplayState(nowMs = Date.now()): GexVueReplayState {
   };
 }
 
+export function normalizeGexVueReplaySessionDate(sessionDate: string) {
+  const date = new Date(`${sessionDate}T00:00:00.000Z`);
+  if (!Number.isFinite(date.getTime())) return sessionDate;
+  while (date.getUTCDay() === 0 || date.getUTCDay() === 6) {
+    date.setUTCDate(date.getUTCDate() - 1);
+  }
+  return date.toISOString().slice(0, 10);
+}
+
 export function setGexVueReplaySession(state: GexVueReplayState, sessionDate: string): GexVueReplayState {
-  const startMs = newYorkSessionTimestamp(sessionDate, GEX_VUE_REPLAY_OPEN_MINUTE);
-  const endMs = newYorkSessionTimestamp(sessionDate, GEX_VUE_REPLAY_CLOSE_MINUTE);
-  return { ...state, sessionDate, startMs, endMs, timestampMs: startMs, playing: false };
+  const normalizedSessionDate = normalizeGexVueReplaySessionDate(sessionDate);
+  const startMs = newYorkSessionTimestamp(normalizedSessionDate, GEX_VUE_REPLAY_OPEN_MINUTE);
+  const endMs = newYorkSessionTimestamp(normalizedSessionDate, GEX_VUE_REPLAY_CLOSE_MINUTE);
+  return { ...state, sessionDate: normalizedSessionDate, startMs, endMs, timestampMs: startMs, playing: false };
 }
 
 export function clampGexVueReplayTimestamp(state: GexVueReplayState, timestampMs: number) {
   return Math.max(state.startMs, Math.min(state.endMs, timestampMs));
 }
-
