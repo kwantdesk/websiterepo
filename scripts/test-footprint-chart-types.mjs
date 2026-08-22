@@ -4,6 +4,8 @@ import {
   DEFAULT_FOOTPRINT_CHART_TYPE,
   FOOTPRINT_CHART_TYPES,
   footprintChartType,
+  footprintSettingApplies,
+  footprintSettingSection,
   footprintVariant,
   footprintVariantSettings,
 } from "../src/lib/footprintChartTypes.ts";
@@ -114,4 +116,61 @@ import { validateFootprintSettings } from "../src/lib/footprintSettings.ts";
   assert.equal(kept.chartVariant, "trades-histogram");
 }
 
-console.log("Footprint chart type tests passed.");
+// --- a chart is not offered settings it cannot use ---
+{
+  // Imbalance compares the two sides, so it needs both sides to exist.
+  assert.equal(footprintSettingApplies("imbalanceMode", "bid-ask"), true);
+  for (const other of ["volume", "trades", "delta", "heatmap"]) {
+    assert.equal(footprintSettingApplies("imbalanceMode", other), false,
+      `${other} has no two sides to compare`);
+    assert.equal(footprintSettingApplies("minimumRatio", other), false);
+  }
+  // The heatmap is read as colour, never as figures, and colour mode is what
+  // it IS — neither may be offered there.
+  for (const key of ["numberFormat", "minimumWidthToShowText", "colorMode"]) {
+    assert.equal(footprintSettingApplies(key, "heatmap"), false, `${key} on a heatmap`);
+    assert.equal(footprintSettingApplies(key, "volume"), true, `${key} on a volume chart`);
+  }
+  // Anything not spoken for applies everywhere.
+  for (const type of FOOTPRINT_CHART_TYPES) {
+    assert.equal(footprintSettingApplies("scaleMode", type.id), true);
+    assert.equal(footprintSettingApplies("barWidth", type.id), true);
+    assert.equal(footprintSettingApplies("somethingNewNobodyMapped", type.id), true,
+      "an unmapped setting must still be offered, not silently hidden");
+  }
+}
+
+// --- settings land under a tab, and the profile keys all land together ---
+{
+  assert.equal(footprintSettingSection("scaleMode"), "Scale");
+  assert.equal(footprintSettingSection("groupingMode"), "Grouping");
+  assert.equal(footprintSettingSection("imbalanceMode"), "Imbalance");
+  assert.equal(footprintSettingSection("colorMode"), "Colours");
+  assert.equal(footprintSettingSection("fpsLimit"), "Performance");
+  for (const key of [
+    "showPerBarVolumeProfile", "showPerBarDeltaProfile", "perBarProfileTicksPerRow",
+    "perBarProfileOpacity", "perBarProfilePocColor", "perBarVolumeColor",
+  ]) {
+    assert.equal(footprintSettingSection(key), "Profile", `${key} belongs with the profile`);
+  }
+  // An unmapped key still gets a home rather than vanishing.
+  assert.equal(footprintSettingSection("brandNewSetting"), "Cells");
+}
+
+// --- the dialog really is split into tabs, and reads cleanly ---
+{
+  const control = readFileSync(new URL("../src/components/ChartIndicatorsControl.tsx", import.meta.url), "utf8");
+  for (const section of ["View", "Cells", "Profile", "Bar"]) {
+    assert.ok(
+      control.includes(`data-settings-section="${section}"`),
+      `the footprint dialog needs a ${section} tab`,
+    );
+  }
+  // The dropdowns are filtered by the chosen chart and tagged with their tab.
+  assert.match(control, /footprintSettingApplies\(\s*String\(key\),/);
+  assert.match(control, /data-settings-section=\{footprintSettingSection\(String\(key\)\)\}/);
+  // The old menu carried mojibake where the multiplication signs should be.
+  assert.ok(!control.includes("Ã—"), "no mojibake in the indicator control");
+}
+
+console.log("Footprint chart type, section and filter tests passed.");

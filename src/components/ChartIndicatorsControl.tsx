@@ -57,6 +57,8 @@ import KwantSelect from "@/components/ui/KwantSelect";
 import {
   FOOTPRINT_CHART_TYPES,
   footprintChartType,
+  footprintSettingApplies,
+  footprintSettingSection,
   footprintVariant,
   footprintVariantSettings,
 } from "@/lib/footprintChartTypes";
@@ -3622,8 +3624,8 @@ export default function ChartIndicatorsControl({
               ) : null}
 
               {settingsDefinition.id === "deep-print-footprint" ? (
-                <div className="grid gap-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
-                  <div className="sm:col-span-2">
+                <div data-settings-section="View" className="space-y-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3">
+                  <div>
                     <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-foreground">Footprint Settings</div>
                     <p className="mt-1 text-[9px] leading-4 text-muted">
                       Presets, templates, footprint content, grouping, scaling and execution presentation.
@@ -3776,6 +3778,11 @@ export default function ChartIndicatorsControl({
                       );
                     })()}
                   </div>
+                </div>
+              ) : null}
+
+              {settingsDefinition.id === "deep-print-footprint" ? (
+                <div data-settings-section="Cells" className="grid gap-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
                   {[
                     ["Scale", "scaleMode", [["visible-region", "Visible region"], ["per-bar", "Per bar"], ["all-loaded", "All loaded"], ["fixed-maximum", "Fixed maximum"]]],
                     ["Tick grouping", "groupingMode", [["automatic", "Automatic"], ["manual", "Manual"]]],
@@ -3786,8 +3793,15 @@ export default function ChartIndicatorsControl({
                     ["Active candle outline", "outsideBarStyle", [["bar", "Full bar"], ["body", "Candle body"]]],
                     ["Live marker alignment", "markerAlignment", [["center", "Centre"], ["right", "Right edge"]]],
                     ["Maximum refresh rate", "fpsLimit", [["30", "30 FPS"], ["60", "60 FPS"], ["120", "120 FPS"]]],
-                  ].map(([label, key, options]) => (
-                    <label key={String(key)} className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                  ].filter(([, key]) => footprintSettingApplies(
+                    String(key),
+                    settingsInstance.settings?.chartType,
+                  )).map(([label, key, options]) => (
+                    <label
+                      key={String(key)}
+                      data-settings-section={footprintSettingSection(String(key))}
+                      className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"
+                    >
                       <span>{String(label)}</span>
                       <KwantSelect
                         value={String(settingsInstance.settings?.[String(key)] ?? "")}
@@ -3808,13 +3822,13 @@ export default function ChartIndicatorsControl({
                     </label>
                   ))}
                   <div className="rounded-lg border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
-                    Bid Ã— Ask uses classified executions from the Rithmic / CME tape. Unclassified executions remain in total volume and POC, but never enter Bid, Ask, Delta or imbalance calculations.
+                    Bid × Ask uses classified executions from the Rithmic / CME tape. Unclassified executions remain in total volume and POC, but never enter Bid, Ask, Delta or imbalance calculations.
                   </div>
                 </div>
               ) : null}
 
               {settingsDefinition.id === "deep-print-footprint" ? (
-                <section className="space-y-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3">
+                <section data-settings-section="Profile" className="space-y-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3">
                   <div>
                     <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-foreground">Volume Profile</div>
                     <p className="mt-1 text-[9px] leading-4 text-muted">
@@ -3974,7 +3988,7 @@ export default function ChartIndicatorsControl({
               ) : null}
 
               {settingsDefinition.id === "deep-print-footprint" ? (
-                <div className="rounded-lg border border-border bg-background/55 px-3 py-2">
+                <div data-settings-section="Bar" className="rounded-lg border border-border bg-background/55 px-3 py-2">
                   <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-foreground">Footprint Bar</div>
                   <p className="mt-1 text-[9px] leading-4 text-muted">
                     Bar width, spacing, grouping, filters, typography and footprint-detail controls.

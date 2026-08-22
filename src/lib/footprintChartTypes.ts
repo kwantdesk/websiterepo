@@ -265,3 +265,70 @@ export function footprintVariantSettings(
     ...variant.settings,
   };
 }
+
+/**
+ * Which settings belong to which chart.
+ *
+ * Every footprint control used to be shown for every chart, so a Trades chart
+ * offered bid/ask imbalance thresholds that could not affect it and a Heatmap
+ * offered a cell-text width that it never draws. A setting listed here is
+ * offered only for the charts named; anything not listed applies to all of
+ * them.
+ */
+const SETTING_CHART_TYPES: Record<string, readonly FootprintChartTypeId[]> = {
+  // Imbalance compares the two sides, so it needs both sides to exist.
+  imbalanceMode: ["bid-ask"],
+  minimumRatio: ["bid-ask"],
+  maximumRatio: ["bid-ask"],
+  minimumOpacity: ["volume", "trades", "bid-ask", "delta", "heatmap"],
+  // The heatmap is read as colour, never as figures.
+  minimumWidthToShowText: ["volume", "trades", "bid-ask", "delta"],
+  minimumRowHeightToShowText: ["volume", "trades", "bid-ask", "delta"],
+  numberFormat: ["volume", "trades", "bid-ask", "delta"],
+  // Colour mode is what the heatmap IS; it must not be switchable there.
+  colorMode: ["volume", "trades", "bid-ask", "delta"],
+};
+
+export function footprintSettingApplies(key: string, chartTypeId: unknown): boolean {
+  const allowed = SETTING_CHART_TYPES[key];
+  if (!allowed) return true;
+  return allowed.includes(footprintChartType(chartTypeId).id);
+}
+
+/** The tab a footprint setting belongs under. */
+const SETTING_SECTIONS: Record<string, string> = {
+  scaleMode: "Scale",
+  fixedMaximum: "Scale",
+  visibleRegionPercentile: "Scale",
+  gradientExponent: "Scale",
+  groupingMode: "Grouping",
+  groupMode: "Grouping",
+  manualTicks: "Grouping",
+  autoGroupFactor: "Grouping",
+  imbalanceMode: "Imbalance",
+  minimumRatio: "Imbalance",
+  maximumRatio: "Imbalance",
+  numberFormat: "Cells",
+  minimumWidthToShowText: "Cells",
+  minimumRowHeightToShowText: "Cells",
+  barWidth: "Cells",
+  candleSpacing: "Cells",
+  fontSize: "Cells",
+  fontWeight: "Cells",
+  borderWidth: "Cells",
+  outsideBarStyle: "Cells",
+  markerAlignment: "Cells",
+  colorMode: "Colours",
+  backgroundOpacity: "Colours",
+  minimumOpacity: "Colours",
+  maximumOpacity: "Colours",
+  fpsLimit: "Performance",
+  maximumRenderedBlocks: "Performance",
+};
+
+export function footprintSettingSection(key: string): string {
+  if (key.startsWith("perBarProfile") || key.startsWith("showPerBar") || key.startsWith("perBar")) {
+    return "Profile";
+  }
+  return SETTING_SECTIONS[key] ?? "Cells";
+}
