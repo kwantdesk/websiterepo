@@ -248,7 +248,11 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
     // Volume distributions are chart context, not foreground annotations.
     // Paint them below the candlestick series so candle bodies and wicks stay
     // completely legible even where the developing daily profile overlaps.
-    zOrder: () => "bottom" as const,
+    // Volume profiles read as the structure everything else sits inside, so
+    // they paint ABOVE the candles and any other overlay. Row opacity is a
+    // real setting, so lowering it lets the price action show through rather
+    // than the profile being hidden behind it.
+    zOrder: () => "top" as const,
     renderer: () => ({
       draw: (target: CanvasRenderingTarget2D) => this.draw(target),
     }),

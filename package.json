@@ -68,7 +68,8 @@
     "test:volume-profile-chain-fallback": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-volume-profile-chain-fallback.mjs",
     "test:cvd-divergence-segments": "node scripts/test-cvd-divergence-segments.mjs",
     "test:volume-profile-overhang": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-volume-profile-no-back-overhang.mjs",
-    "test:drawing-selection": "node scripts/test-drawing-selection.mjs"
+    "test:drawing-selection": "node scripts/test-drawing-selection.mjs",
+    "test:position-default-size": "node scripts/test-position-default-size.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",

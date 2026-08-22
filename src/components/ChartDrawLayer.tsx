@@ -144,14 +144,26 @@ export default function ChartDrawLayer({
       const px = toX(p.time); const py = toY(p.price);
       if (px != null && py != null) {
         const dir = tool === "longPosition" ? 1 : -1;
-        const targetPt = fromXY(px, py - dir * 90);
-        const stopPt = fromXY(px, py + dir * 60);
+        // A clean 1:1, sized from what the instrument actually moves.
+        //
+        // Fixed pixel offsets meant the default box was a different NUMBER of
+        // points at every zoom, and the same offsets produced a sensible risk
+        // on one instrument and an absurd one on another. Sizing from recent
+        // bar range gives roughly fifty points on NQ and ten on ES without
+        // hard-coding either, because that is the ratio of how they move.
+        const recent = candles.slice(-14);
+        const averageRange = recent.length
+          ? recent.reduce((total, candle) => total + Math.max(0, candle.high - candle.low), 0) / recent.length
+          : 0;
+        const risk = averageRange > 0 ? averageRange * 2 : Math.abs(p.price) * 0.0015;
+        const stopPrice = p.price - dir * risk;
+        const targetPrice = p.price + dir * risk;
         const rightPt = fromXY(Math.min(px + 180, width - 8), py);
-        if (targetPt && stopPt && rightPt) {
+        if (rightPt && Number.isFinite(stopPrice) && Number.isFinite(targetPrice)) {
           committed = [
             p,
-            { time: rightPt.time, price: stopPt.price },
-            { time: rightPt.time, price: targetPt.price },
+            { time: rightPt.time, price: stopPrice },
+            { time: rightPt.time, price: targetPrice },
           ];
         }
       }
