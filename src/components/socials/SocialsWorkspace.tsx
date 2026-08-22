@@ -259,14 +259,12 @@ function clampAvatarOffset(draft: AvatarCropDraft, offsetX: number, offsetY: num
 }
 
 const SOCIAL_TABS: Array<{ id: SocialTab; label: string; description: string; icon: typeof Activity }> = [
-  { id: "today", label: "Record", description: "Your live process", icon: Activity },
-  { id: "reasoning", label: "My Reasoning", description: "Reviewed game plans", icon: BrainCircuit },
-  { id: "precords", label: "Community", description: "Shared trading records", icon: Network },
-  { id: "desks", label: "Desks", description: "Your trading groups", icon: UsersRound },
   { id: "feed", label: "Feed", description: "Following and posts", icon: Heart },
+  { id: "desks", label: "Desks", description: "Your trading groups", icon: UsersRound },
   { id: "rankings", label: "Reputation", description: "Rankings and trust", icon: Trophy },
-  { id: "cards", label: "Calling Cards", description: "Identity rewards", icon: Award },
+  { id: "today", label: "Record", description: "Your live process", icon: Activity },
   { id: "profile", label: "Profile", description: "Your public identity", icon: Radar },
+  { id: "cards", label: "Calling Cards", description: "Identity rewards", icon: Award },
 ];
 
 const SCORE_LABELS: Array<[keyof SocialProfilePayload["scores"], string]> = [
@@ -544,7 +542,7 @@ export default function SocialsWorkspace({
     loadedAt: "",
   }));
   const [ready, setReady] = useState(false);
-  const [saveState, setSaveState] = useState<"loading" | "saved" | "local" | "error">("loading");
+  const [, setSaveState] = useState<"loading" | "saved" | "local" | "error">("loading");
   const [tab, setTab] = useState<SocialTab>(initialProfileHandle ? "profile" : "today");
   const [sectionUnread, setSectionUnread] = useState({ feed: 0, desks: 0 });
   const activityLoadingRef = useRef(false);
@@ -3411,13 +3409,7 @@ export default function SocialsWorkspace({
             <p className="mt-0.5 text-[9px] text-muted">{SOCIAL_RECORD_COPY.tagline} · Build a record that survives review.</p>
           </div>
           <div className="ml-auto flex flex-wrap items-center gap-2">
-            <span className={`flex h-8 items-center gap-1.5 rounded-xl border border-border bg-surface px-2.5 text-[8px] ${saveState === "error" ? "text-danger" : "text-muted"}`}>
-              <span className={`h-1.5 w-1.5 rounded-full ${saveState === "saved" ? "bg-primary" : saveState === "loading" ? "animate-pulse bg-warning" : "bg-accent"}`} />
-              {saveState === "saved" ? "Network synced" : saveState === "loading" ? "Syncing" : "Local resilience"}
-            </span>
             <button type="button" onClick={() => { setTab("profile"); setProfileEditing(false); onOpenProfile?.(currentProfile.handle); }} className="flex h-8 items-center gap-2 rounded-xl border border-border bg-surface px-2.5 text-[8px] font-semibold text-muted hover:text-foreground"><Avatar label={currentProfile.displayName} avatarUrl={currentProfile.avatarUrl} size="sm" />@{currentProfile.handle}</button>
-            <button type="button" onClick={() => setTab("precords")} className="flex h-8 items-center gap-1.5 rounded-xl border border-primary/25 bg-primary/[0.06] px-3 text-[8px] font-semibold text-primary hover:bg-primary/10"><MessageCircle className="h-3.5 w-3.5" />Community review</button>
-            <button type="button" onClick={() => setTab("today")} className="flex h-8 items-center gap-1.5 rounded-xl bg-primary px-3 text-[8px] font-semibold text-background hover:brightness-110"><LockKeyhole className="h-3.5 w-3.5" />{SOCIAL_RECORD_COPY.lockAction}</button>
           </div>
         </div>
         <WorkspaceSubnav
@@ -3442,6 +3434,7 @@ export default function SocialsWorkspace({
             if (id === "profile") setProfileEditing(false);
           }}
           ariaLabel="Socials views"
+          className="lg:[&>div]:justify-center"
         />
       </header>
 
