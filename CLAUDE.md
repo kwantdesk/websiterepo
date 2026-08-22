@@ -1030,3 +1030,31 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
 ### Worktree state
 `M src/components/KwantifyWorkspace.tsx` (theirs, in flight), plus the usual
 `?? ALGO/`, `gexcal-*`, `tmp/pdfs/*` from other workstreams.
+
+## Engineering handoff — 2026-08-22 — QuantData GEX BOX reconstruction
+
+- Completed a signed-in, read-only product teardown of QuantData's dashboard,
+  including its complete Options, Equities and News tool catalogue, panel
+  actions, settings, page types, workspace behavior and customization model.
+  The durable reconstruction audit is
+  `docs/gex-box/QUANTDATA_RECONSTRUCTION_AUDIT.md`.
+- Replaced the legacy hard-wired GEX BOX workspace loader with
+  `src/components/gexbot/GexBoxDashboard.tsx`. The new dashboard has stable
+  panel IDs, Grid and Infinite pages, a full Add Tool catalogue, panel-local
+  settings, duplicate/maximize/delete actions, page-local persistence, and
+  workspace import/export/reset.
+- Browser panels use same-origin authenticated routes only. Core data-backed
+  surfaces use the native QuantData/VPS adapters for interval exposure,
+  GEX/DEX/VEX/CHEX, options flow, IV rank, dark-pool levels, equity prints,
+  underlying prices and native GEX BOX frames. Unavailable normalized adapters
+  show an explicit unavailable state and never substitute or fabricate data.
+- Interval Map now accepts the observed QuantData aggregations (`1m`, `2m`,
+  `3m`, `4m`, `5m`, `10m`, `15m`, `20m`, `30m`, `1h`, `2h`, `4h`) and Greek
+  selection (`GEX`, `DEX`, `VEX`, `CHEX`) through the existing server adapter.
+- Duplicated panels share request cache, in-flight requests and one polling
+  timer per URL. The dashboard restores the previous completed New York RTH
+  session by default and switches to existing live-ready server paths during
+  session; it does not add a vendor connection or client credential.
+- Verification: focused ESLint clean; `npx tsc --noEmit` passed;
+  `npm run test:gex-box` passed 15/15; `node scripts/test-gex-box-dashboard.mjs`
+  passed; production `npm run build` passed.

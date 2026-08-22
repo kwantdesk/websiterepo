@@ -347,7 +347,7 @@ const loadDepthOfMarketWorkspace = () => import("@/components/DepthOfMarketPanel
 const loadSpoofingDetectorWorkspace = () => import("@/components/order-flow/SpoofingDetectorWorkspace");
 const loadSingleProfileWorkspace = () => import("@/components/profile-workspaces/SingleProfileWorkspace");
 const loadOptionsHeatmapWorkspace = () => import("@/components/heatmap/OptionsHeatmapWorkspace");
-const loadGexBotWorkspace = () => import("@/components/gexbot/GexBotWorkspace");
+const loadGexBotWorkspace = () => import("@/components/gexbot/GexBoxDashboard");
 const loadGexDeskWorkspace = () => import("@/components/gexdesk/GexDeskWorkspace");
 const loadGameplanWorkspace = () => import("@/components/gameplan/GameplanWorkspace");
 const loadNewsWorkspace = () => import("@/components/news/NewsWorkspace");

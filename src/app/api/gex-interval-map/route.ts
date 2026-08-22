@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { defaultGexIntervalMapSource } from "@/lib/gexIntervalMap";
 import { normalizeGammaHeatmapInstrument } from "@/lib/gammaHeatmap";
 import { getConfiguredQuantDataApiKey, getGexIntervalMapSurface, getQuantDataHttpError } from "@/lib/quantData.server";
+import type { GreekMode } from "@/lib/optionsFlow";
 import { SITE_ACCESS_COOKIE, isSiteAccessConfigured, isValidSiteAccessToken } from "@/lib/siteAccess";
 
 export const maxDuration = 60;
@@ -32,9 +33,12 @@ export async function GET(request: NextRequest) {
   const startTime = request.nextUrl.searchParams.get("startTime") || undefined;
   const endTime = request.nextUrl.searchParams.get("endTime") || undefined;
   const aggregationPeriod = request.nextUrl.searchParams.get("aggregationPeriod") || "1m";
+  const requestedGreek = (request.nextUrl.searchParams.get("greekMode") || "GEX").toUpperCase();
+  const greekMode = ({ GEX: "GAMMA", GAMMA: "GAMMA", DEX: "DELTA", DELTA: "DELTA", VEX: "VANNA", VANNA: "VANNA", CHEX: "CHARM", CHARM: "CHARM" } as Record<string, GreekMode>)[requestedGreek];
   if (!ALLOWED_DISPLAYS.has(display)) return NextResponse.json({ error: "This display instrument is not supported by GEX Interval Map." }, { status: 400 });
   if (!ALLOWED_SOURCES.has(source)) return NextResponse.json({ error: "This options source is not supported by GEX Interval Map." }, { status: 400 });
-  if (!/^(1m|2m|3m|4m|5m|10m|15m|30m|1h)$/.test(aggregationPeriod)) return NextResponse.json({ error: "Unsupported interval aggregation." }, { status: 400 });
+  if (!/^(1m|2m|3m|4m|5m|10m|15m|20m|30m|1h|2h|4h)$/.test(aggregationPeriod)) return NextResponse.json({ error: "Unsupported interval aggregation." }, { status: 400 });
+  if (!greekMode) return NextResponse.json({ error: "Unsupported interval Greek." }, { status: 400 });
   if (sessionDate && !/^\d{4}-\d{2}-\d{2}$/.test(sessionDate)) return NextResponse.json({ error: "Historical session date must use YYYY-MM-DD." }, { status: 400 });
   if (sessionDate) {
     const requested = Date.parse(`${sessionDate}T00:00:00.000Z`);
@@ -51,11 +55,11 @@ export async function GET(request: NextRequest) {
     if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return NextResponse.json({ error: "Custom history range is invalid." }, { status: 400 });
     if (endMs - startMs > 9 * 31 * 24 * 60 * 60_000 || endMs > Date.now()) return NextResponse.json({ error: "Custom Interval Map history is limited to the previous nine months." }, { status: 400 });
   }
-  const cacheKey = [source, display, sessionDate ?? "current", startTime ?? "", endTime ?? "", aggregationPeriod].join(":");
+  const cacheKey = [source, display, sessionDate ?? "current", startTime ?? "", endTime ?? "", aggregationPeriod, greekMode].join(":");
   const cached = payloadCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return NextResponse.json(cached.payload, { headers: { "Cache-Control": "private, no-store" } });
   try {
-    const payload = await getGexIntervalMapSurface({ sourceTicker: source, sessionDate, startTime, endTime, aggregationPeriod });
+    const payload = await getGexIntervalMapSurface({ sourceTicker: source, sessionDate, startTime, endTime, aggregationPeriod, greekMode });
     if (payloadCache.size > 64) for (const [key, entry] of payloadCache) if (entry.expiresAt <= Date.now()) payloadCache.delete(key);
     payloadCache.set(cacheKey, { expiresAt: Date.now() + Math.max(2_000, Math.min(60_000, payload.refreshAfterMs)), payload });
     return NextResponse.json(payload, { headers: { "Cache-Control": "private, no-store" } });
