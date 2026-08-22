@@ -35,29 +35,30 @@ const DEFAULT_SETTINGS: PanelSettings = {
 };
 
 const nativeTicker = (symbol: string) => symbol === "SPX" || symbol === "SPXW" || symbol === "SPY" ? "ES_SPX" : "NQ_NDX";
+const normalizedTool = (tool: string) => (s: PanelSettings) => `/api/gex-box/tool?tool=${tool}&symbol=${s.symbol}&sessionDate=${s.date}`;
 const TOOLS: Tool[] = [
-  { id: "consolidated-flow", label: "Consolidated Order Flow", category: "Options", detail: "Grouped transactions, premium, sentiment and trade side", endpoint: (s) => `/api/options-flow?symbol=${s.symbol}&priceMode=CASH&detail=FULL` },
+  { id: "consolidated-flow", label: "Consolidated Order Flow", category: "Options", detail: "Grouped transactions, premium, sentiment and trade side", endpoint: normalizedTool("consolidated-flow") },
   { id: "contract-price-time", label: "Contract Price / Time", category: "Options", detail: "Selected contract price history" },
-  { id: "contract-side-statistics", label: "Contract Side Statistics", category: "Options", detail: "Bid, ask, mid and aggressor statistics" },
-  { id: "contract-statistics", label: "Contract Statistics", category: "Options", detail: "Volume, OI, premium, trades, price and IV" },
-  { id: "exposure-expiration", label: "Exposure by Expiration", category: "Options", detail: "Greek exposure grouped by expiration" },
-  { id: "exposure-strike", label: "Exposure by Strike", category: "Options", detail: "Signed exposure profile across strikes", endpoint: (s) => `/api/gex-box/snapshot?ticker=${nativeTicker(s.symbol)}&view=classic&category=gex_full` },
-  { id: "gainers-losers", label: "Gainers / Losers", category: "Options", detail: "Bullish and bearish premium leaderboard", endpoint: (s) => `/api/options-flow?symbol=${s.symbol}&priceMode=CASH&detail=FULL` },
+  { id: "contract-side-statistics", label: "Contract Side Statistics", category: "Options", detail: "Bid, ask, mid and aggressor statistics", endpoint: normalizedTool("contract-side-statistics") },
+  { id: "contract-statistics", label: "Contract Statistics", category: "Options", detail: "Volume, OI, premium, trades, price and IV", endpoint: normalizedTool("contract-statistics") },
+  { id: "exposure-expiration", label: "Exposure by Expiration", category: "Options", detail: "Greek exposure grouped by expiration", endpoint: normalizedTool("exposure-expiration") },
+  { id: "exposure-strike", label: "Exposure by Strike", category: "Options", detail: "Signed exposure profile across strikes", endpoint: normalizedTool("exposure-strike") },
+  { id: "gainers-losers", label: "Gainers / Losers", category: "Options", detail: "Bullish and bearish premium leaderboard", endpoint: normalizedTool("gainers-losers") },
   { id: "heat-map", label: "Heat Map", category: "Options", detail: "Exposure matrix across strikes and expirations", endpoint: (s) => `/api/gex-interval-map?source=${s.symbol}&display=${s.symbol}&sessionDate=${s.date}&aggregationPeriod=${s.aggregation}&greekMode=${s.greek}` },
   { id: "iv-rank", label: "IV Rank", category: "Options", detail: "Current IV against its historical range", endpoint: (s) => `/api/implied-volatility-rank?source=${s.symbol}&display=${s.symbol}&lookBackPeriodDays=252&targetMaturityDays=30&contractMode=combined` },
   { id: "interval-map", label: "Interval Map", category: "Options", detail: "When and where exposure builds or unwinds", endpoint: (s) => `/api/gex-interval-map?source=${s.symbol}&display=${s.symbol}&sessionDate=${s.date}&aggregationPeriod=${s.aggregation}&greekMode=${s.greek}` },
   { id: "market-share", label: "Market Share", category: "Options", detail: "Options venue share visualization" },
   { id: "market-share-table", label: "Market Share Table", category: "Options", detail: "Options venue share table" },
-  { id: "max-pain", label: "Max Pain", category: "Options", detail: "Current max-pain distribution" },
+  { id: "max-pain", label: "Max Pain", category: "Options", detail: "Current max-pain distribution", endpoint: normalizedTool("max-pain") },
   { id: "max-pain-time", label: "Max Pain / Time", category: "Options", detail: "Max-pain history" },
-  { id: "net-drift", label: "Net Drift", category: "Options", detail: "Net implied-volatility drift" },
-  { id: "net-flow", label: "Net Flow", category: "Options", detail: "Net options flow through time", endpoint: (s) => `/api/options-flow?symbol=${s.symbol}&priceMode=CASH&detail=FULL` },
+  { id: "net-drift", label: "Net Drift", category: "Options", detail: "Net implied-volatility drift", endpoint: normalizedTool("net-drift") },
+  { id: "net-flow", label: "Net Flow", category: "Options", detail: "Net options flow through time", endpoint: normalizedTool("net-flow") },
   { id: "oi-time", label: "OI / Time", category: "Options", detail: "Open interest through time" },
   { id: "oi-expiration", label: "OI by Expiration", category: "Options", detail: "Open interest by expiration" },
-  { id: "oi-strike", label: "OI by Strike", category: "Options", detail: "Open interest by strike", endpoint: (s) => `/api/gex-box/snapshot?ticker=${nativeTicker(s.symbol)}&view=classic&category=gex_full` },
+  { id: "oi-strike", label: "OI by Strike", category: "Options", detail: "Open interest by strike", endpoint: normalizedTool("oi-strike") },
   { id: "oi-change", label: "OI Change", category: "Options", detail: "Session-over-session OI change" },
-  { id: "term-structure", label: "Term Structure", category: "Options", detail: "Implied volatility across maturities" },
-  { id: "unconsolidated-flow", label: "Unconsolidated Order Flow", category: "Options", detail: "Raw exchange-level option prints", endpoint: (s) => `/api/options-flow?symbol=${s.symbol}&priceMode=CASH&detail=FULL` },
+  { id: "term-structure", label: "Term Structure", category: "Options", detail: "Implied volatility across maturities", endpoint: normalizedTool("term-structure") },
+  { id: "unconsolidated-flow", label: "Unconsolidated Order Flow", category: "Options", detail: "Raw exchange-level option prints", endpoint: normalizedTool("unconsolidated-flow") },
   { id: "volatility-drift", label: "Volatility Drift", category: "Options", detail: "Call and put volatility drift" },
   { id: "dark-flow", label: "Dark Flow", category: "Equities", detail: "Dark versus lit equity activity" },
   { id: "dark-pool-levels", label: "Dark Pool Levels", category: "Equities", detail: "Ranked persistent dark-pool price concentrations", endpoint: (s) => `/api/dark-pool-map?source=${s.symbol}&display=${s.symbol}&historyDays=5&topLevels=${s.rows}` },
@@ -149,6 +150,12 @@ function collectRows(value: unknown, depth = 0): Record<string, unknown>[] {
   const item = record(value); if (!item) return [];
   const keys = Object.keys(item).map((key) => key.toLowerCase());
   if (keys.some((key) => ["price", "strike", "contract", "premium", "notionalvalue", "netexposure"].includes(key))) return [item];
+  // Normalized adapters intentionally use domain-specific names such as
+  // `expiration`, `call`, `put`, `net`, `bullishShare` and `tradeTime`.
+  // Treat a leaf-like object with multiple scalar cells as a table row rather
+  // than recursively discarding every primitive value and showing No data.
+  const scalarCells = Object.values(item).filter((entry) => entry === null || ["string", "number", "boolean"].includes(typeof entry));
+  if (scalarCells.length >= 2) return [item];
   return Object.values(item).flatMap((entry) => collectRows(entry, depth + 1));
 }
 
