@@ -1,5 +1,5 @@
 import type { CanvasRenderingTarget2D } from "fancy-canvas";
-import { resolveVolumeProfileGradient } from "@/lib/volumeProfileGradients";
+import { mixHexColors, resolveVolumeProfileGradient } from "@/lib/volumeProfileGradients";
 import type { ISeriesPrimitive, Logical, SeriesAttachedParameter, Time } from "@/lib/lightweightChartsCompat";
 import type { TpoExtensionMode, TpoIndicatorSettings, TpoProfileModel } from "@/lib/tpo/types";
 import { tickToPrice } from "@/lib/tpo/types";
@@ -494,9 +494,14 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
         // else TPO draws belongs above the candles.
         if (layer === "single-prints") return;
 
+        // A gradient scheme is the profile's colour setting, so the levels
+        // drawn off it follow too — otherwise the POC and value area keep
+        // their picker colours and read as a different study sitting on top.
+        const schemePocColor = scheme ? scheme.to : null;
+        const schemeValueAreaColor = scheme ? mixHexColors(scheme.to, scheme.from, 0.35) : null;
         if (settings.showPoc && settings.pocLineMode !== "none") drawLevel(
           profile.pocTick,
-          settings.inheritThemeColours ? theme.poc : settings.pocLineColor,
+          schemePocColor ?? (settings.inheritThemeColours ? theme.poc : settings.pocLineColor),
           [],
           "POC",
           settings.pocLineWidth,
@@ -505,7 +510,7 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
           profile.pocFirstInteractionMs ?? null,
         );
         if (settings.showValueArea && settings.valueAreaShowLines) {
-          const valueAreaColor = settings.inheritThemeColours ? theme.valueArea : settings.valueAreaLineColor;
+          const valueAreaColor = schemeValueAreaColor ?? (settings.inheritThemeColours ? theme.valueArea : settings.valueAreaLineColor);
           drawLevel(profile.vahTick, valueAreaColor, [3, 3], "VAH", settings.valueAreaLineWidth, settings.valueAreaExtensionMode, settings.valueAreaShowLabels, profile.vahFirstInteractionMs ?? null);
           drawLevel(profile.valTick, valueAreaColor, [3, 3], "VAL", settings.valueAreaLineWidth, settings.valueAreaExtensionMode, settings.valueAreaShowLabels, profile.valFirstInteractionMs ?? null);
         }

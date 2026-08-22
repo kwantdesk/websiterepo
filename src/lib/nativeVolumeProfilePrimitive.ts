@@ -15,6 +15,7 @@ import {
   calculateVolumeProfileVwap,
   summarizeVolumeProfile,
 } from "./volumeProfileStructure";
+import { mixHexColors } from "@/lib/volumeProfileGradients";
 import {
   calculateVolumeProfileValueArea,
   STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
@@ -1016,6 +1017,17 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           }
         }
         const bodyColor = (fallback: string) => bodyGradient ?? fallback;
+        // A gradient scheme IS the profile's colour setting, so the levels
+        // drawn off it have to follow, or a yellow POC and blue value area
+        // sit on a pink-to-blue profile looking like a different study.
+        // POC takes the scheme's high end; the value area is mostly that end
+        // pulled toward the low one, which keeps the two distinguishable
+        // without letting either land on an unreadable colour the way using
+        // the raw endpoints would on black-to-white.
+        const levelPocColor = style.gradient ? style.gradient.to : style.pocColor;
+        const levelValueAreaColor = style.gradient
+          ? mixHexColors(style.gradient.to, style.gradient.from, 0.35)
+          : style.valueAreaColor;
         if (style.visualStyle === "line" && outlineSteps.length) {
           // Walk the rows in price order, stepping out to each row's width and
           // then along to the next — the same shape the filled profile makes,
@@ -1084,11 +1096,11 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           );
           if (style.showProfileOutline) {
             context.globalAlpha = 0.3;
-            context.strokeStyle = style.valueAreaColor;
+            context.strokeStyle = levelValueAreaColor;
             context.lineWidth = 0.35;
             context.stroke(outlinePath);
           }
-          if (style.showPocHighlight) fillPath(pocPath, style.pocColor, 0.72, style.visualStyle, style.borderWidth);
+          if (style.showPocHighlight) fillPath(pocPath, levelPocColor, 0.72, style.visualStyle, style.borderWidth);
         }
 
         const high = levels.at(-1)?.price ?? null;
@@ -1243,11 +1255,11 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           }
         }
         if (style.showPocLine) {
-          drawLevel(groupedPoc, style.pocColor, [2, 3], "POC", style.pocLineWidth);
+          drawLevel(groupedPoc, levelPocColor, [2, 3], "POC", style.pocLineWidth);
         }
         if (style.showValueAreaLines) {
-          drawLevel(groupedVah, style.valueAreaColor, [3, 3], "VAH", style.valueAreaLineWidth);
-          drawLevel(groupedVal, style.valueAreaColor, [3, 3], "VAL", style.valueAreaLineWidth);
+          drawLevel(groupedVah, levelValueAreaColor, [3, 3], "VAH", style.valueAreaLineWidth);
+          drawLevel(groupedVal, levelValueAreaColor, [3, 3], "VAL", style.valueAreaLineWidth);
         }
 
         // Peak and Valley: high- and low-volume nodes read off the same grouped

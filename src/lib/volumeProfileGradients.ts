@@ -32,6 +32,31 @@ export const VOLUME_PROFILE_GRADIENTS: readonly VolumeProfileGradient[] = [
   { id: "crimson-indigo", label: "Crimson → Indigo", from: "#FF1F5A", to: "#4B32FF" },
 ] as const;
 
+const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
+
+const parseHex = (value: string): [number, number, number] | null => {
+  const match = /^#?([0-9a-f]{6})$/i.exec(value.trim());
+  if (!match) return null;
+  const int = Number.parseInt(match[1], 16);
+  return [(int >> 16) & 255, (int >> 8) & 255, int & 255];
+};
+
+/**
+ * Blends two hex colours. `amount` is how far to travel from `base` toward
+ * `towards`, so 0 returns `base` unchanged. Used to derive a value-area colour
+ * that belongs to a gradient scheme without landing on either raw endpoint —
+ * black-to-white would otherwise put the value area in near-black on a dark
+ * chart. Anything unparseable falls back to `base` rather than throwing.
+ */
+export function mixHexColors(base: string, towards: string, amount: number): string {
+  const a = parseHex(base);
+  const b = parseHex(towards);
+  if (!a || !b) return base;
+  const t = clamp01(amount);
+  const channel = (index: number) => Math.round(a[index] + (b[index] - a[index]) * t);
+  return `#${[0, 1, 2].map((index) => channel(index).toString(16).padStart(2, "0")).join("")}`;
+}
+
 const BY_ID = new Map(VOLUME_PROFILE_GRADIENTS.map((gradient) => [gradient.id, gradient]));
 
 /** Resolves a stored setting to a scheme, or null when gradients are off. */
