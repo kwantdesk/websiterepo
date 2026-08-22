@@ -24,6 +24,12 @@ const TOOL_IDS = new Set([
   "volatility-drift",
 ]);
 
+function detailModeForTool(tool: string): "FULL" | "GAMEPLAN" | "CORE" {
+  if (["contract-side-statistics", "contract-statistics", "gainers-losers", "term-structure"].includes(tool)) return "FULL";
+  if (["max-pain", "oi-strike"].includes(tool)) return "GAMEPLAN";
+  return "CORE";
+}
+
 function responseForTool(tool: string, payload: Awaited<ReturnType<typeof getOptionsFlowPayload>>) {
   const common = {
     schemaVersion: 1,
@@ -104,7 +110,10 @@ export async function GET(request: NextRequest) {
         headers: { "Cache-Control": "private, no-store, max-age=0" },
       });
     }
-    const payload = await getOptionsFlowPayload(symbol, "CASH", sessionDate, "FULL");
+    // Most GEX BOX panels need only the core gamma/flow surface. Requesting
+    // FULL used to rebuild interval maps, skew, IV and term structure whenever
+    // a small strike table opened, which made the whole browser appear frozen.
+    const payload = await getOptionsFlowPayload(symbol, "CASH", sessionDate, detailModeForTool(tool));
     return NextResponse.json(responseForTool(tool, payload), {
       headers: { "Cache-Control": "private, no-store, max-age=0" },
     });

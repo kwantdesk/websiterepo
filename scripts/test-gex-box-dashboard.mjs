@@ -20,6 +20,10 @@ for (const capability of [
 ]) assert.ok(dashboard.includes(capability), `Missing dashboard capability: ${capability}`);
 
 assert.ok(dashboard.includes("feedSubscribers") && dashboard.includes("feedTimers"), "Dashboard must share requests and polling timers across duplicate panels.");
+assert.ok(dashboard.includes("memo(function ToolSurface") && dashboard.includes("memo(function DashboardPanelView"), "Unchanged GEX BOX panels must not rerender when another panel changes.");
+assert.ok(dashboard.includes("collectRows(value: unknown, maxRows = 200)"), "Generic panel normalization must cap payload traversal.");
+assert.ok(dashboard.includes("new Map<number, number>()") && !dashboard.includes("all.findIndex"), "Interval price-path normalization must remain linear rather than quadratic.");
+assert.ok(dashboard.includes("5 * 60_000") && dashboard.includes("payload?.marketOpen === false"), "Completed snapshots must not poll at live-session cadence.");
 assert.ok(dashboard.includes('panel.toolId === "dark-pool-levels"') && dashboard.includes("<DarkPoolLevelsPanel"), "Dark Pool Levels must use its dedicated visualization instead of the generic table.");
 assert.ok(dashboard.includes('panel.toolId === "equity-prints"') && dashboard.includes("<EquityPrintsPanel"), "Equity Prints must use its dedicated tape visualization.");
 assert.ok(dashboard.includes('url.includes("/api/dark-pool-map")') && dashboard.includes("return 5_000"), "Dark-pool panels must refresh at the live dashboard cadence.");
@@ -32,6 +36,7 @@ assert.match(route, /DEX.*DELTA/);
 assert.match(route, /VEX.*VANNA/);
 assert.match(route, /CHEX.*CHARM/);
 assert.match(toolRoute, /mode: tool === "unconsolidated-flow" \? "RAW" : "CONSOLIDATED"/);
+assert.ok(toolRoute.includes("detailModeForTool(tool)") && !toolRoute.includes('sessionDate, "FULL"'), "Small GEX BOX panels must not rebuild the full options payload.");
 assert.ok(toolRoute.includes('tool === "volatility-drift"') && server.includes('/options/tool/volatility-drift'), "Volatility Drift must use its authoritative server adapter.");
 assert.ok(audit.includes("Production tool catalogue"), "Reconstruction audit is incomplete.");
 assert.ok(audit.includes("credentials are never exported"), "Audit must preserve the server-only credential boundary.");
