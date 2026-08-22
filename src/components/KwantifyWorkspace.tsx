@@ -476,6 +476,21 @@ const SocialNotificationsPanel = dynamic(() => import("@/components/socials/Soci
   loading: () => workspaceLoader("Opening activity", "Restoring social notifications."),
 });
 
+// How often a developing profile is committed to React.
+//
+// Every commit re-renders the workspace and each chart, rebuilds the profile
+// models and repaints the primitive — so this cadence is a render cost, not a
+// data cost. Prints keep accumulating between commits and are folded in one
+// batch, and the fold makes a single pass over the levels however many prints
+// it carries, so committing less often is strictly less total work as well as
+// fewer renders. Price is unaffected: candles reach the chart imperatively on
+// every flush regardless.
+//
+// 250ms bought four repaints a second of a distribution a trader reads as a
+// shape, on a workspace where each repaint costs the whole component tree.
+const PROFILE_COMMIT_INTERVAL_MS = 1_000;
+const PROFILE_COMMIT_INTERVAL_BACKGROUND_MS = 3_000;
+
 const BOTTOM_PANEL_MIN_HEIGHT = 150;
 const BOTTOM_PANEL_DEFAULT_HEIGHT = 300;
 const BOTTOM_PANEL_COLLAPSED_HEIGHT = 40;
@@ -5673,7 +5688,7 @@ function WorkspaceChartPaneComponent({
         setVolumeProfiles((current) => current.length
           ? current.map((profile) => applyInstitutionalTradesToVolumeProfile(profile, batch))
           : current);
-      }, activeRef.current ? 250 : 750);
+      }, activeRef.current ? PROFILE_COMMIT_INTERVAL_MS : PROFILE_COMMIT_INTERVAL_BACKGROUND_MS);
     };
 
     const flushExecutionRecords = () => {

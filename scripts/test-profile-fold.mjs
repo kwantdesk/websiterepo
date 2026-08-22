@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { applyInstitutionalTradesToVolumeProfile } from "../src/lib/institutionalMarketData.ts";
 import { volumeProfileBinTick } from "../src/lib/volumeProfileMath.ts";
+import { readFileSync } from "node:fs";
 
 /**
  * The live fold now carries untouched rows by reference and sorts only when a
@@ -114,6 +115,28 @@ const makeBatch = (n, spread, offset = 0) => Array.from({ length: n }, () => {
   for (let i = 1; i < after.levels.length; i += 1) {
     assert.ok(after.levels[i].price > after.levels[i - 1].price, "order broke after an insert");
   }
+}
+
+// --- the commit cadence is a render cost, and prints are never dropped ---
+{
+  const workspace = readFileSync(new URL("../src/components/KwantifyWorkspace.tsx", import.meta.url), "utf8");
+  // Every commit re-renders the workspace and each chart and repaints the
+  // primitive, so this must stay a named, explained value rather than drifting
+  // back to a bare 250ms.
+  assert.match(workspace, /const PROFILE_COMMIT_INTERVAL_MS = 1_000;/);
+  assert.match(workspace, /const PROFILE_COMMIT_INTERVAL_BACKGROUND_MS = 3_000;/);
+  assert.match(
+    workspace,
+    /activeRef\.current \? PROFILE_COMMIT_INTERVAL_MS : PROFILE_COMMIT_INTERVAL_BACKGROUND_MS/,
+  );
+  // Committing less often may not mean seeing less: prints accumulate between
+  // commits and are folded as one batch.
+  assert.match(workspace, /pendingProfileRecords\.push\(\.\.\.records\)/);
+  assert.ok(
+    workspace.includes("const batch = pendingProfileRecords;")
+      && workspace.includes("pendingProfileRecords = [];"),
+    "prints must accumulate between commits and be folded as one batch",
+  );
 }
 
 console.log("Volume profile live-fold tests passed.");
