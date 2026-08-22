@@ -666,6 +666,11 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "daysToLoad", label: "Days to load", defaultValue: 1, min: 1, max: 30 },
     { key: "manualFilter", label: "Manual minimum trade size", defaultValue: 30, min: 1, max: 5000, step: 1 },
     { key: "maximumFilter", label: "Maximum trade size · 0 = unlimited", defaultValue: 0, min: 0, max: 1000000 },
+    // Day and overnight are measured separately, so a genuinely large
+    // overnight print registers instead of being buried by day-session volume.
+    { key: "rthManualFilter", label: "RTH minimum trade size", defaultValue: 30, min: 1, max: 5000, step: 1 },
+    { key: "rthStandardDeviation", label: "RTH marker deviation scale", defaultValue: 1, min: 0.1, max: 5, step: 0.1 },
+    { key: "cappingMaxVolume", label: "Cap size at · 0 = no cap", defaultValue: 0, min: 0, max: 1000000 },
     { key: "clusterWindowMs", label: "Cluster window (milliseconds)", defaultValue: 100, min: 0, max: 10000 },
     { key: "clusterPriceTicks", label: "Cluster price distance (ticks)", defaultValue: 0, min: 0, max: 100 },
     { key: "maxMarkersPerBar", label: "Maximum markers per chart bar", defaultValue: 50, min: 1, max: 50 },
@@ -1597,6 +1602,18 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     combineByCandle: false,
     adaptiveTimeframeFilter: false,
     maximumFilter: 0,
+    // Measure the day session and the overnight session against their own
+    // tape. One combined threshold is set almost entirely by the day session,
+    // so the overnight hours go bare and then the open floods.
+    sessionFilterEnabled: true,
+    rthFilterMode: "manual",
+    rthManualFilter: 30,
+    rthAutomaticIntensity: "medium",
+    rthStandardDeviation: 1,
+    // "off" | "size" | "reject". Size keeps an outsized print but stops it
+    // setting the top of the scale and flattening every other marker.
+    cappingMode: "off",
+    cappingMaxVolume: 0,
     markerType: "circle",
     hollowFill: false,
     informationMode: "volume",

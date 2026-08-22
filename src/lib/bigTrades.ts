@@ -1,3 +1,4 @@
+import { exchangeMinuteOfDay } from "@/lib/exchangeClock";
 import type { Candle } from "@/lib/backtester";
 import type { InstitutionalTrade } from "@/lib/institutionalMarketData";
 
@@ -137,6 +138,66 @@ const COMPLETE_TAPE_WINDOW_MS = 15 * 60_000;
  */
 export const MANUAL_FILTER_CEILING = 5_000;
 
+/**
+ * Regular trading hours for CME index futures, in exchange-local minutes.
+ * Everything outside is treated as the overnight session.
+ */
+const RTH_OPEN_MINUTE = 8 * 60 + 30;
+const RTH_CLOSE_MINUTE = 15 * 60 + 15;
+const EXCHANGE_TIME_ZONE = "America/Chicago";
+
+export function isRegularTradingHours(timestampMs: number): boolean {
+  const minute = exchangeMinuteOfDay(timestampMs, EXCHANGE_TIME_ZONE);
+  return minute >= RTH_OPEN_MINUTE && minute < RTH_CLOSE_MINUTE;
+}
+
+/**
+ * The threshold and size scale for one session's tape.
+ *
+ * Overnight trades a fraction of the day session's volume, so a single
+ * threshold measured across both is dominated by the day and silently raises
+ * the bar overnight — the hours go bare, then the open floods. Measuring each
+ * session against its own distribution is what makes a genuinely large
+ * overnight print register as one.
+ */
+export type BigTradeSessionScale = {
+  threshold: number;
+  sizeFloor: number;
+  visualCeiling: number;
+};
+
+export function buildSessionScale(
+  sortedVolumes: number[],
+  options: {
+    filterMode: string;
+    manualFilter: number;
+    percentile: number;
+    standardDevScale: number;
+  },
+): BigTradeSessionScale {
+  if (!sortedVolumes.length) {
+    return { threshold: options.manualFilter, sizeFloor: 0, visualCeiling: 1 };
+  }
+  const threshold = options.filterMode === "manual"
+    ? options.manualFilter
+    : quantile(sortedVolumes, options.percentile);
+  // Marker size describes the TRADE, never the filter: the floor is always the
+  // tape's own percentile so changing a manual minimum cannot re-normalise
+  // every print still on screen.
+  const sizeFloor = quantile(sortedVolumes, options.percentile);
+  const mean = sortedVolumes.reduce((total, value) => total + value, 0) / sortedVolumes.length;
+  const deviation = Math.sqrt(
+    sortedVolumes.reduce((total, value) => total + (value - mean) ** 2, 0) / sortedVolumes.length,
+  );
+  const visualCeiling = Math.max(
+    sizeFloor + 1,
+    sizeFloor + deviation * options.standardDevScale,
+    quantile(sortedVolumes, 0.99),
+  );
+  return { threshold, sizeFloor, visualCeiling };
+}
+
+
 export function calculateBigTradePrints(
   orderFlowCandles: Candle[],
   marketTrades: InstitutionalTrade[],
@@ -178,18 +239,86 @@ export function calculateBigTradePrints(
   const volumes = thresholdSample.map((candidate) => candidate.volume).sort((left, right) => left - right);
   const filterMode = String(settings.filterMode ?? "automatic");
   const intensity = String(settings.automaticIntensity ?? "medium");
-  const automaticPercentile = intensity === "low" ? 0.8 : intensity === "strong" ? 0.975 : 0.9;
+  const percentileFor = (value: string) =>
+    (value === "low" ? 0.8 : value === "strong" ? 0.975 : 0.9);
+  const automaticPercentile = percentileFor(intensity);
   // A manual minimum is the trader's own floor and must be honoured exactly.
   // It used to be clamped to 100 contracts, so asking for 250-lot prints
   // silently kept showing 100-lot ones.
-  const threshold = filterMode === "manual"
-    ? clamp(Number(settings.manualFilter ?? 30), 1, MANUAL_FILTER_CEILING)
-    : quantile(volumes, automaticPercentile);
-  const maximumFilter = Math.max(0, Number(settings.maximumFilter ?? 0));
-  const qualified = candidates.filter((candidate) =>
-    candidate.volume >= threshold && (maximumFilter === 0 || candidate.volume <= maximumFilter));
-  if (!qualified.length) return [];
+  const manualFilter = clamp(Number(settings.manualFilter ?? 30), 1, MANUAL_FILTER_CEILING);
   const standardDevScale = Math.max(0.1, Number(settings.standardDeviation ?? 1));
+
+  // Day and overnight are measured separately unless asked otherwise.
+  //
+  // The overnight tape runs a fraction of the day session's volume. Measured
+  // together, one threshold is set almost entirely by the day session, so the
+  // overnight hours show nothing at all and then the open floods — the reading
+  // is wrong at both ends of the clock. DeepChart carries a full second filter
+  // for RTH for the same reason.
+  const splitSessions = settings.sessionFilterEnabled !== false;
+  const rthFilterMode = String(settings.rthFilterMode ?? filterMode);
+  const rthManualFilter = clamp(
+    Number(settings.rthManualFilter ?? manualFilter), 1, MANUAL_FILTER_CEILING,
+  );
+  const rthPercentile = percentileFor(String(settings.rthAutomaticIntensity ?? intensity));
+  const rthStandardDevScale = Math.max(0.1, Number(settings.rthStandardDeviation ?? standardDevScale));
+
+  // Each session gets its own complete-tape window, anchored to ITS newest
+  // print rather than the tape's. The shared window spans only fifteen
+  // minutes, so it belongs entirely to whichever session is trading now — a
+  // combined anchor left the other session with no sample at all and silently
+  // handed it the wrong scale, which is the same bug the split exists to fix.
+  const sessionVolumes = (wantRth: boolean) => {
+    const inSession = candidates.filter(
+      (candidate) => isRegularTradingHours(candidate.timestamp) === wantRth,
+    );
+    if (!inSession.length) return [];
+    const sessionNewest = inSession[inSession.length - 1].timestamp;
+    const sessionComplete = inSession.filter(
+      (candidate) => candidate.timestamp >= sessionNewest - COMPLETE_TAPE_WINDOW_MS,
+    );
+    const sample = sessionComplete.length >= 50 ? sessionComplete : inSession;
+    return sample.map((candidate) => candidate.volume).sort((left, right) => left - right);
+  };
+  const overnightVolumes = splitSessions ? sessionVolumes(false) : volumes;
+  const rthVolumes = splitSessions ? sessionVolumes(true) : volumes;
+
+  // A session with too little tape to describe itself borrows the combined
+  // one, so a quiet holiday session cannot produce a nonsense threshold.
+  const MIN_SESSION_SAMPLE = 30;
+  const baseScale = buildSessionScale(volumes, {
+    filterMode, manualFilter, percentile: automaticPercentile, standardDevScale,
+  });
+  const overnightScale = splitSessions && overnightVolumes.length >= MIN_SESSION_SAMPLE
+    ? buildSessionScale(overnightVolumes, {
+        filterMode, manualFilter, percentile: automaticPercentile, standardDevScale,
+      })
+    : baseScale;
+  const rthScale = splitSessions && rthVolumes.length >= MIN_SESSION_SAMPLE
+    ? buildSessionScale(rthVolumes, {
+        filterMode: rthFilterMode,
+        manualFilter: rthManualFilter,
+        percentile: rthPercentile,
+        standardDevScale: rthStandardDevScale,
+      })
+    : baseScale;
+  const scaleFor = (timestamp: number) => (
+    splitSessions && isRegularTradingHours(timestamp) ? rthScale : overnightScale
+  );
+
+  // Capping. A single outsized print otherwise sets the top of the scale and
+  // flattens every other marker toward the floor. "size" keeps the print but
+  // draws it at full size; "reject" removes it from the study altogether.
+  const cappingMode = String(settings.cappingMode ?? (Number(settings.maximumFilter ?? 0) > 0 ? "reject" : "off"));
+  const cappingMaxVolume = Math.max(0, Number(settings.cappingMaxVolume ?? settings.maximumFilter ?? 0));
+  const capActive = cappingMaxVolume > 0 && cappingMode !== "off";
+
+  const qualified = candidates.filter((candidate) => {
+    if (candidate.volume < scaleFor(candidate.timestamp).threshold) return false;
+    if (capActive && cappingMode === "reject" && candidate.volume > cappingMaxVolume) return false;
+    return true;
+  });
+  if (!qualified.length) return [];
   const minSize = clamp(Number(settings.minimumSize ?? 6), 1, 80);
   const maxSize = Math.max(minSize, clamp(Number(settings.maximumSize ?? 32), 1, 160));
   const minOpacity = clamp(Number(settings.minimumOpacity ?? 25) / 100, 0, 1);
@@ -209,24 +338,19 @@ export function calculateBigTradePrints(
   // still exactly the threshold (both are the same percentile), so that mode
   // is unchanged; in manual mode the minimum now only decides WHICH prints
   // appear, never how big they draw.
-  const sizeFloor = quantile(volumes, automaticPercentile);
-  const tapeMean = volumes.reduce((total, value) => total + value, 0) / volumes.length;
-  const tapeDeviation = Math.sqrt(
-    volumes.reduce((total, value) => total + (value - tapeMean) ** 2, 0) / volumes.length,
-  );
-  const visualCeiling = Math.max(
-    sizeFloor + 1,
-    sizeFloor + tapeDeviation * standardDevScale,
-    quantile(volumes, 0.99),
-  );
-  const visualRange = Math.max(1, visualCeiling - sizeFloor);
 
   // Keep the qualified history across the loaded chart. The former 2,500
   // tail cap made older bars lose their prints even though the execution tape
   // was present; 12,000 remains bounded while covering the adaptive top decile
   // of the retained, time-distributed execution history.
   return qualified.slice(-12_000).map((candidate) => {
-    const significance = clamp((candidate.volume - sizeFloor) / visualRange, 0, 1);
+    const scale = scaleFor(candidate.timestamp);
+    const visualRange = Math.max(1, scale.visualCeiling - scale.sizeFloor);
+    // Capped prints draw at the top of the scale rather than stretching it.
+    const sizingVolume = capActive && cappingMode === "size"
+      ? Math.min(candidate.volume, cappingMaxVolume)
+      : candidate.volume;
+    const significance = clamp((sizingVolume - scale.sizeFloor) / visualRange, 0, 1);
     const visualWeight = Math.sqrt(significance);
     return {
       ...candidate,

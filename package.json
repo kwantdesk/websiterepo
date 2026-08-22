@@ -26,6 +26,7 @@
     "test:initial-balance": "node --experimental-strip-types scripts/test-initial-balance.mjs",
     "test:zero-gamma-line": "node --experimental-strip-types scripts/test-zero-gamma-line.mjs",
     "test:options-delta": "node --experimental-strip-types scripts/test-options-delta.mjs",
+    "test:big-trades-session-split": "node scripts/test-big-trades-session-split.mjs",
     "test:big-trades-marker-semantics": "node --import ./scripts/alias-hook.mjs scripts/test-big-trades-marker-semantics.mjs",
     "test:volume-profile-delta-bar": "node --import ./scripts/alias-hook.mjs scripts/test-volume-profile-delta-bar.mjs",
     "test:indicator-history-depth": "node --import ./scripts/alias-hook.mjs scripts/test-indicator-history-depth.mjs",
@@ -80,7 +81,8 @@
     "test:exchange-clock": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-exchange-clock.mjs",
     "bench:indicator-clock": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/bench-indicator-clock.mjs",
     "test:tpo-default-visuals": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-tpo-default-visuals.mjs",
-    "test:footprint-profile-rows": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-footprint-profile-rows.mjs"
+    "test:footprint-profile-rows": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-footprint-profile-rows.mjs",
+    "test:footprint-chart-types": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-footprint-chart-types.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",
