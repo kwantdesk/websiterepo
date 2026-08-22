@@ -443,6 +443,7 @@ import {
   type HedgeLevelsPayload,
 } from "@/lib/hedgeLevels";
 import PrecisionToolsLayer from "@/chart/precision-tools/PrecisionToolsLayer";
+import { CLEAR_CHART_DRAWINGS_EVENT } from "@/chart/precision-tools/PrecisionToolsLayer";
 import PrecisionToolsBoundary from "@/chart/precision-tools/PrecisionToolsBoundary";
 import type { PrecisionChartAdapter, PrecisionTheme, PrecisionToolId } from "@/chart/precision-tools/types";
 import { claimChartInteraction, subscribeChartInteractionOwner } from "@/lib/chartInteractionArbiter";
@@ -2103,6 +2104,10 @@ const DRAWING_TOOLBAR_GROUPS: ToolbarGroup[] = [
       { id: "arrowCursor", label: "Arrow", icon: MousePointer2 },
       { id: "demonstration", label: "Demonstration", icon: MoveHorizontal },
       { id: "magic", label: "Magic", icon: Sparkles },
+      // The pencil belongs beside the cursor and the eraser: it is reached
+      // constantly while marking a chart up, and hunting for it inside the
+      // line-tool group every time is friction on the most-used action.
+      { id: "brush", label: "Pencil", icon: PencilLine, implemented: true },
       { id: "eraser", label: "Eraser", icon: Eraser, implemented: true },
     ],
   },
@@ -3174,6 +3179,10 @@ function Chart({
   const selectedToolRef = useRef<DrawingToolId>("cursor");
   const crosshairSyncEnabledRef = useRef(crosshairSyncEnabled);
   const [draftDrawing, setDraftDrawing] = useState<ChartDrawing | null>(null);
+  // Right-drag ruler: a throwaway measurement that lives only while the right
+  // button is held. It never becomes a saved drawing.
+  const quickMeasureRef = useRef<{ startX: number; startY: number; active: boolean } | null>(null);
+  const [quickMeasure, setQuickMeasure] = useState<ChartDrawing | null>(null);
   const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
   const [positionSettingsDrawingId, setPositionSettingsDrawingId] = useState<string | null>(null);
   const [drawingInteraction, setDrawingInteraction] = useState<DrawingInteraction | null>(null);
@@ -5553,7 +5562,8 @@ function Chart({
         footprintBarWidthRef.current = renderedBarSpacing;
       }
     } else if (footprintActiveRef.current) {
-      chart.timeScale().applyOptions({ barSpacing: 6, minBarSpacing: 0.5 });
+      // Footprint needs real cell width; ordinary charts do not.
+      chart.timeScale().applyOptions({ barSpacing: 6, minBarSpacing: 0.02 });
       footprintActiveRef.current = false;
       footprintBarWidthRef.current = null;
     }
@@ -8993,10 +9003,19 @@ function Chart({
         grouped.set(key, { ...print, id: `bar-${print.chartTimestamp}-${print.side}` });
         return;
       }
-      existing.volume += print.volume;
+      // The marker sits where the size it reports actually traded.
+      //
+      // Letting the first qualifying execution own the price put a marker
+      // carrying a whole bar's volume at whichever print happened to qualify
+      // first — measured 33 points away from the volume-weighted price of the
+      // 359 prints it represented. Weighting the price as volume accumulates
+      // is the same rule clustering already uses.
+      const combinedVolume = existing.volume + print.volume;
+      existing.price = combinedVolume > 0
+        ? (existing.price * existing.volume + print.price * print.volume) / combinedVolume
+        : existing.price;
+      existing.volume = combinedVolume;
       existing.executions += print.executions;
-      // Match Kwantify: the first qualified execution owns the marker's exact
-      // price. Later same-side executions grow it without sliding it.
     });
     const aggregates = Array.from(grouped.values());
     const intervalMinutes = candleIntervalMs / 60_000;
@@ -9939,6 +9958,9 @@ function Chart({
     professionalSyncSuppressedRef.current = false;
     professionalDrawingsRef.current = [];
 
+    // Precision objects live in their own document, so a chart-level clear has
+    // to reach them too or the newer toolbar's drawings survive it.
+    window.dispatchEvent(new Event(CLEAR_CHART_DRAWINGS_EVENT));
     setProfessionalDrawings([]);
     setDrawings([]);
     setDraftDrawing(null);
@@ -10515,7 +10537,11 @@ function Chart({
     if (targetY == null || entryY == null || stopY == null) return null;
 
     const x = Math.min(ax, bx);
-    const boxWidth = Math.max(24, Math.abs(bx - ax));
+    // No pixel floor. Clamping the drawn width meant that once the calculator
+    // was dragged narrower than the clamp its right-hand handles stopped
+    // following the cursor and appeared to slide inside the box. The drag
+    // handler's own one-bar minimum already stops it collapsing.
+    const boxWidth = Math.abs(bx - ax);
     const profitTop = isLong ? targetY : entryY;
     const profitBottom = isLong ? entryY : targetY;
     const riskTop = isLong ? entryY : stopY;
@@ -11400,6 +11426,11 @@ function Chart({
         borderColor: "#1A1A1D",
         timeVisible: true,
         secondsVisible: false,
+        // Lightweight Charts stops zooming out once a bar is half a pixel
+        // wide, which on a normal pane walls the chart at roughly 2,400 bars.
+        // Loosening it lets the view keep opening until the loaded history
+        // itself runs out, which is what "zoom out until you cannot" means.
+        minBarSpacing: 0.02,
         tickMarkFormatter: (time: Time) =>
           formatChartTick(displayEventTime(time), chartTimeZone, timeframe),
       },
@@ -12061,6 +12092,8 @@ function Chart({
 
     const handleContextMenu = (e: MouseEvent) => {
       e.preventDefault();
+      // A right-drag measured something; it must not also open the menu.
+      if (quickMeasureRef.current?.active) return;
       const rect = chartContainerRef.current!.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
@@ -12231,6 +12264,54 @@ function Chart({
     container.addEventListener("pointerleave", releaseNativeCrosshairPointer);
     container.addEventListener("mousemove", handleMouseMove);
     container.addEventListener("mouseleave", handleMouseLeave);
+    // Right-click and DRAG measures; right-click and release opens the menu.
+    // The distinction is movement, so the menu is only suppressed once the
+    // pointer has actually travelled far enough to mean a measurement.
+    const QUICK_MEASURE_THRESHOLD_PX = 6;
+    const quickMeasurePointFor = (event: MouseEvent) => {
+      const rect = container.getBoundingClientRect();
+      const localX = event.clientX - rect.left;
+      const localY = event.clientY - rect.top;
+      const time = xToTime(localX);
+      const price = candleSeriesRef.current?.coordinateToPrice(localY);
+      if (time == null || price == null) return null;
+      return { time, price };
+    };
+    const handleQuickMeasureDown = (event: MouseEvent) => {
+      if (event.button !== 2) return;
+      quickMeasureRef.current = { startX: event.clientX, startY: event.clientY, active: false };
+    };
+    const handleQuickMeasureMove = (event: MouseEvent) => {
+      const state = quickMeasureRef.current;
+      if (!state) return;
+      if (!state.active) {
+        const travelled = Math.hypot(event.clientX - state.startX, event.clientY - state.startY);
+        if (travelled < QUICK_MEASURE_THRESHOLD_PX) return;
+        state.active = true;
+      }
+      const from = quickMeasurePointFor(new MouseEvent("mousemove", {
+        clientX: state.startX,
+        clientY: state.startY,
+      }));
+      const to = quickMeasurePointFor(event);
+      if (!from || !to) return;
+      setContextMenu(null);
+      setQuickMeasure({
+        ...createDrawing("measure", [from, to]),
+        id: "__quick-measure__",
+      } as unknown as ChartDrawing);
+    };
+    const handleQuickMeasureUp = (event: MouseEvent) => {
+      const state = quickMeasureRef.current;
+      quickMeasureRef.current = null;
+      if (!state?.active) return;
+      // The measurement is transient by design: let go and it is gone.
+      setQuickMeasure(null);
+      event.preventDefault();
+    };
+    container.addEventListener("mousedown", handleQuickMeasureDown);
+    window.addEventListener("mousemove", handleQuickMeasureMove);
+    window.addEventListener("mouseup", handleQuickMeasureUp);
     container.addEventListener("contextmenu", handleContextMenu);
     container.addEventListener("wheel", handlePriceScaleWheel, { capture: true, passive: false });
     window.addEventListener("resize", handleResize);
@@ -12307,6 +12388,9 @@ function Chart({
       container.removeEventListener("pointerleave", releaseNativeCrosshairPointer);
       container.removeEventListener("mousemove", handleMouseMove);
       container.removeEventListener("mouseleave", handleMouseLeave);
+      container.removeEventListener("mousedown", handleQuickMeasureDown);
+      window.removeEventListener("mousemove", handleQuickMeasureMove);
+      window.removeEventListener("mouseup", handleQuickMeasureUp);
       container.removeEventListener("contextmenu", handleContextMenu);
       container.removeEventListener("wheel", handlePriceScaleWheel, { capture: true });
       window.removeEventListener("resize", handleResize);
@@ -16608,6 +16692,7 @@ function Chart({
         {zones.map((zone) => renderChartZone(zone))}
         {renderableDrawings.map((drawing) => renderDrawing(drawing))}
         {draftDrawing && renderDrawing(draftDrawing, "draft")}
+        {quickMeasure && renderDrawing(quickMeasure, "draft")}
         {cvdDivergence ? (() => {
           const x1 = timeToX(cvdDivergence.fromTime);
           const y1 = priceToY(cvdDivergence.fromPrice);

@@ -108,7 +108,9 @@ export class PositionCalculatorPrimitive implements ISeriesPrimitive<Time> {
         if (ax == null || bx == null || entryY == null || stopY == null || targetY == null) continue;
 
         const x = Math.min(ax, bx);
-        const boxWidth = Math.max(24, Math.abs(bx - ax));
+        // Matches the chart's own geometry: no pixel floor, so the handles
+        // stay on the true corners while the calculator is dragged narrow.
+        const boxWidth = Math.abs(bx - ax);
         if (x + boxWidth < 0 || x > mediaSize.width) continue;
 
         const isLong = model.targetPrice >= model.entryPrice;
