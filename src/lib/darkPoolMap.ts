@@ -361,7 +361,17 @@ function recordValue(record: Record<string, unknown>, keys: string[]) {
 function timestampMs(value: unknown) {
   if (typeof value === "number" && value > 10_000_000_000) return value;
   if (typeof value === "number") return value * 1_000;
-  const parsed = Date.parse(String(value ?? ""));
+  const text = String(value ?? "").trim();
+  // QuantData serializes equity-print epochs as JSON strings (for example
+  // "1785801582015"). Date.parse rejects those strings, which previously
+  // discarded every valid historical dark-pool print before replay could
+  // aggregate it. Accept both millisecond and second epoch strings first,
+  // then fall back to ordinary ISO/date text.
+  if (/^[+-]?\d+(?:\.\d+)?$/.test(text)) {
+    const numeric = Number(text);
+    if (Number.isFinite(numeric)) return numeric > 10_000_000_000 ? numeric : numeric * 1_000;
+  }
+  const parsed = Date.parse(text);
   return Number.isFinite(parsed) ? parsed : null;
 }
 

@@ -84,6 +84,18 @@ test("delayed print retains original timestamp and historical mapping receipt is
   assert.equal(mapped.isDelayedPrint, true);
 });
 
+test("QuantData numeric-string print timestamps survive historical normalization", () => {
+  const milliseconds = Date.parse("2026-08-03T19:00:00.015Z");
+  const millisecondPrint = normalizeDarkPoolPrint(rawPrint("epoch-ms", 500, 1_000, String(milliseconds)));
+  assert.ok(millisecondPrint);
+  assert.equal(millisecondPrint.tradeTimeMs, milliseconds);
+
+  const seconds = Math.floor(milliseconds / 1_000);
+  const secondPrint = normalizeDarkPoolPrint(rawPrint("epoch-s", 500, 1_000, String(seconds)));
+  assert.ok(secondPrint);
+  assert.equal(secondPrint.tradeTimeMs, seconds * 1_000);
+});
+
 test("ratio fallback, location classification, zone merging and score are deterministic", () => {
   const receipt = createMappingReceipt({ mode: "live-ratio", direct: false, sourceMid: 500, displayMid: 30_000 });
   assert.equal(receipt.beta, 60);
@@ -136,9 +148,20 @@ test("QuantData adapter uses the documented cursor contract and shared history c
   assert.match(darkPoolSection, /searchAfter/);
   assert.match(darkPoolSection, /nextSearchAfter/);
   assert.match(darkPoolSection, /direction: "DESCENDING"/);
+  assert.match(darkPoolSection, /historicalEndTime/);
+  assert.match(darkPoolSection, /endTime: historicalEndTime \|\| utcDayAfter\(endDate\)/);
   assert.match(darkPoolSection, /darkPoolPrintHistoryCache/);
   assert.doesNotMatch(darkPoolSection, /pagination\s*:/);
   assert.doesNotMatch(darkPoolSection, /sessionDateRange/);
+});
+
+test("historical Dark Pool replay bounds provider rows at the selected replay clock", async () => {
+  const route = await read("src/app/api/dark-pool-map/route.ts");
+  assert.match(route, /const historicalEndTime = hasHistoricalAsOf/);
+  assert.match(route, /new Date\(requestedAsOf \+ 1\)\.toISOString\(\)/);
+  assert.match(route, /settings\.minimumPrintNotional, historicalEndTime/);
+  assert.match(route, /cachedProvider\.expiresAt > wallClockMs/);
+  assert.doesNotMatch(route, /cachedProvider\.expiresAt > nowMs/);
 });
 
 test("Dark Pool GEX paints a one-page head before background history enrichment", async () => {

@@ -1,5 +1,4 @@
 import { createServerClient } from "@supabase/ssr";
-import { unstable_cache } from "next/cache";
 import { NextRequest, NextResponse, after } from "next/server";
 import {
   BOUNCE_LEVELS_HISTORY_BUCKET_LIMIT,
@@ -42,12 +41,6 @@ const backgroundRefreshes = new Map<string, Promise<unknown>>();
 const STALE_SERVE_WINDOW_MS = 10 * 60_000;
 /** A replayed minute is immutable, so it is worth retaining for a session. */
 const REPLAY_PAYLOAD_CACHE_MS = 6 * 60 * 60_000;
-/**
- * The rolling week always ends at 00:00Z, so its key is stable for the whole
- * day and the result can be shared across serverless instances instead of
- * every cold worker rebuilding the same seven days of exposure.
- */
-const DURABLE_HISTORY_REVALIDATE_SECONDS = 6 * 60 * 60;
 const DISPLAYS = new Set(["NQ", "MNQ", "ES", "MES", "RTY", "M2K", "QQQ", "NDX", "SPY", "SPX", "SPXW", "IWM"]);
 const SOURCES = new Set(["QQQ", "NDX", "SPY", "SPX", "SPXW", "IWM"]);
 const EXPIRATIONS = new Set<GammaExpirationMode>(["zero-dte", "zero-to-one-dte", "zero-to-seven-dte", "front-expiration", "all-expirations", "custom-dte-range", "specific-expirations"]);
@@ -152,14 +145,14 @@ async function buildBounceLevelsPayload(
     aggregationPeriod: "5m",
     greekMode,
   });
-  const historicalIntervalPromise = unstable_cache(
-    historyRequest,
-    ["bounce-levels-history-v1", source, greekMode, String(historyStartMs), String(historyEndMs)],
-    { revalidate: DURABLE_HISTORY_REVALIDATE_SECONDS },
-  )().catch(() =>
-    // Local scripts and unusual runtimes can lack Next's incremental cache;
-    // the data path has to stay available there.
-    historyRequest().catch(() => null));
+  // Do not wrap this surface in Next's incremental data cache. A seven-day
+  // SPX/SPXW/QQQ interval response is commonly 7-36 MB, while Next rejects
+  // cache entries over 2 MB and turns an otherwise valid replay request into
+  // HTTP 500. The shared QuantData adapter already coalesces this exact
+  // request and retains it for six hours in its bounded server process cache.
+  // Keeping the large raw surface out of the framework cache also prevents a
+  // failed cache write from blanking Bounce Levels on historical sessions.
+  const historicalIntervalPromise = historyRequest().catch(() => null);
   // The live profile and interval history are independent provider surfaces.
   // Start them together so first paint takes one network round instead of two.
   const profilePromise = asOf

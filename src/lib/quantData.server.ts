@@ -354,11 +354,12 @@ function darkPoolPrintRequest(
   endDate: string,
   minimumNotional: number,
   searchAfter?: string[],
+  historicalEndTime?: string,
 ) {
   const request: JsonRecord = {
     timeRange: {
       startTime: `${startDate}T00:00:00.000Z`,
-      endTime: utcDayAfter(endDate),
+      endTime: historicalEndTime || utcDayAfter(endDate),
     },
     filter: {
       ticker: sourceTicker.toUpperCase(),
@@ -385,6 +386,7 @@ async function walkDarkPoolPrintHistory(
   endDate: string,
   maximumRows: number,
   minimumNotional: number,
+  historicalEndTime?: string,
 ): Promise<DarkPoolPrintWalk> {
   const rows: unknown[] = [];
   let searchAfter: string[] | undefined;
@@ -396,7 +398,7 @@ async function walkDarkPoolPrintHistory(
   for (let page = 0; page < maximumPages && rows.length < maximumRows; page += 1) {
     const result = await quantDataPost(
       "/equities/tool/equity-prints",
-      darkPoolPrintRequest(sourceTicker, startDate, endDate, minimumNotional, searchAfter),
+      darkPoolPrintRequest(sourceTicker, startDate, endDate, minimumNotional, searchAfter, historicalEndTime),
       60_000,
     );
     rows.push(...quantDataRows(result.payload));
@@ -415,7 +417,8 @@ const getDurableDarkPoolPrintHistory = unstable_cache(
     endDate: string,
     maximumRows: number,
     minimumNotional: number,
-  ) => walkDarkPoolPrintHistory(sourceTicker, startDate, endDate, maximumRows, minimumNotional),
+    historicalEndTime?: string,
+  ) => walkDarkPoolPrintHistory(sourceTicker, startDate, endDate, maximumRows, minimumNotional, historicalEndTime),
   ["quantdata-dark-pool-print-history-v1"],
   { revalidate: 300 },
 );
@@ -426,10 +429,11 @@ export async function getDarkPoolPrintsPayload(
   endDate: string,
   maximumRows = 100_000,
   minimumNotional = 0,
+  historicalEndTime?: string,
 ) {
   const boundedRows = Math.max(100, Math.min(100_000, Math.round(maximumRows)));
   const boundedNotional = Math.max(0, minimumNotional);
-  const historyKey = `${sourceTicker.toUpperCase()}:${startDate}:${endDate}:${boundedRows}:${boundedNotional}`;
+  const historyKey = `${sourceTicker.toUpperCase()}:${startDate}:${endDate}:${boundedRows}:${boundedNotional}:${historicalEndTime ?? "close"}`;
   const now = Date.now();
   let history = darkPoolPrintHistoryCache.get(historyKey);
   if (!history || history.expiresAt <= now) {
@@ -439,6 +443,7 @@ export async function getDarkPoolPrintsPayload(
       endDate,
       boundedRows,
       boundedNotional,
+      historicalEndTime,
     ).catch((error) => {
       darkPoolPrintHistoryCache.delete(historyKey);
       throw error;
@@ -450,7 +455,7 @@ export async function getDarkPoolPrintsPayload(
   const [head, historical] = await Promise.all([
     quantDataPost(
       "/equities/tool/equity-prints",
-      darkPoolPrintRequest(sourceTicker, startDate, endDate, boundedNotional),
+      darkPoolPrintRequest(sourceTicker, startDate, endDate, boundedNotional, undefined, historicalEndTime),
       2_000,
     ),
     history.promise,

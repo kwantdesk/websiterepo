@@ -183,10 +183,11 @@ async function loadDarkPoolProviderPayloads(
   endDate: string,
   maximumRows: number,
   minimumPrintNotional: number,
+  historicalEndTime?: string,
 ): Promise<DarkPoolProviderPayloads> {
   const [levelsPayload, printsPayload] = await Promise.all([
     getDarkPoolLevelsPayload(sourceTicker, startDate, endDate),
-    getDarkPoolPrintsPayload(sourceTicker, startDate, endDate, maximumRows, minimumPrintNotional),
+    getDarkPoolPrintsPayload(sourceTicker, startDate, endDate, maximumRows, minimumPrintNotional, historicalEndTime),
   ]);
   const value = { levelsPayload, printsPayload };
   providerCache.set(cacheKey, { expiresAt: Date.now() + PROVIDER_FRESH_MS, value });
@@ -229,24 +230,33 @@ export async function GET(request: NextRequest) {
   const nowMs = hasHistoricalAsOf ? requestedAsOf : wallClockMs;
   const endDate = nyDate(new Date(nowMs));
   const startDate = nyDate(new Date(nowMs - settings.historyDays * 86_400_000));
+  // A replay query must end at its own clock. Asking for the completed day
+  // and then filtering a newest-first 100-row page can leave zero rows even
+  // though many valid prints occurred before the selected replay minute.
+  const historicalEndTime = hasHistoricalAsOf
+    ? new Date(requestedAsOf + 1).toISOString()
+    : undefined;
   // Dark Pool GEX uses a one-page request for first paint and enriches it with
   // deeper history in the background. Do not silently turn that fast path
   // back into a ten-page cursor walk.
   const maximumRows = Math.max(100, Math.min(100_000, Math.round(finite(query.get("maximumHistoricalPrints")) ?? 100_000)));
 
-  const providerKey = [sourceTicker, startDate, endDate, maximumRows, settings.minimumPrintNotional].join(":");
+  const providerKey = [sourceTicker, startDate, endDate, maximumRows, settings.minimumPrintNotional, historicalEndTime ?? "close"].join(":");
   const cachedProvider = providerCache.get(providerKey);
 
   try {
-    const fresh = cachedProvider != null && cachedProvider.expiresAt > nowMs;
+    // Provider-cache expiry is a wall-clock concern. Comparing it with an old
+    // replay timestamp made a process entry appear fresh forever and could
+    // serve the wrong retained tape after the user changed replay dates.
+    const fresh = cachedProvider != null && cachedProvider.expiresAt > wallClockMs;
     const servableStale = cachedProvider != null
       && !fresh
-      && cachedProvider.expiresAt + PROVIDER_STALE_SERVE_MS > nowMs;
+      && cachedProvider.expiresAt + PROVIDER_STALE_SERVE_MS > wallClockMs;
     if (servableStale && !providerRefreshes.has(providerKey)) {
       // Answer from the retained tape immediately and refresh behind the
       // response, so the levels paint with the candles.
       const refresh = loadDarkPoolProviderPayloads(
-        providerKey, sourceTicker, startDate, endDate, maximumRows, settings.minimumPrintNotional,
+        providerKey, sourceTicker, startDate, endDate, maximumRows, settings.minimumPrintNotional, historicalEndTime,
       )
         .catch(() => undefined)
         .finally(() => providerRefreshes.delete(providerKey));
@@ -256,7 +266,7 @@ export async function GET(request: NextRequest) {
     const { levelsPayload, printsPayload } = fresh || servableStale
       ? cachedProvider!.value
       : await loadDarkPoolProviderPayloads(
-          providerKey, sourceTicker, startDate, endDate, maximumRows, settings.minimumPrintNotional,
+          providerKey, sourceTicker, startDate, endDate, maximumRows, settings.minimumPrintNotional, historicalEndTime,
         );
     const baseline = readBaseline(levelsPayload);
     const prints = deduplicateDarkPoolPrints(

@@ -16,9 +16,9 @@ test("Bounce Levels never draw endpoint arrows", () => {
 
 test("GEX Bounce colour controls reflect the active theme and create a custom override on edit", () => {
   assert.match(controls, /const bounceThemeColours = \(chartSettings: ChartSettings\)/);
-  assert.match(controls, /settingsDefinition\.id === "bounce-levels" && settingsInstance\.settings\?\.useThemeColors !== false/);
-  assert.match(controls, /\? bounceThemeColours\(chartSettings\)/);
-  assert.match(controls, /settingsDefinition\.id === "bounce-levels" \? \{ useThemeColors: false \} : \{\}/);
+  assert.match(controls, /if \(indicatorId === "bounce-levels"\) return bounceThemeColours\(chartSettings\)/);
+  assert.match(controls, /themeColours && settingsInstance\.settings\?\.useThemeColors !== false/);
+  assert.match(controls, /useThemeColors: false/);
 });
 
 test("rapid GEX Bounce slider input composes against the latest indicator state", () => {
@@ -83,4 +83,11 @@ test("Bounce Levels exposes a hard strongest-exposure population control", () =>
   assert.match(route, /topExposurePercent/);
   assert.match(engine, /exposurePopulationThreshold/);
   assert.match(engine, /node\.absoluteExposure >= populationThreshold/);
+});
+
+test("historical Bounce Levels bypass Next's two-megabyte incremental cache limit", () => {
+  const route = readFileSync(new URL("../src/app/api/bounce-levels/route.ts", import.meta.url), "utf8");
+  assert.doesNotMatch(route, /unstable_cache/);
+  assert.match(route, /historicalIntervalPromise = historyRequest\(\)/);
+  assert.match(route, /Next rejects[\s\S]*cache entries over 2 MB/);
 });
