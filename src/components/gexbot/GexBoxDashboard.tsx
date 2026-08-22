@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
-type ToolCategory = "Options" | "Equities" | "News" | "KwantDesk";
+type ToolCategory = "Options" | "Equities" | "KwantDesk";
 type Tool = { id: string; label: string; category: ToolCategory; detail: string; endpoint?: (settings: PanelSettings) => string };
 type PanelSettings = {
   symbol: string; date: string; aggregation: string; greek: string; expiry: string;
@@ -20,17 +20,20 @@ type DashboardWorkspace = { schemaVersion: 2; name: string; activePageId: string
 const STORAGE_KEY = "kwantdesk:gex-box:dashboard:v2";
 const makeId = (prefix: string) => `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
-function previousNewYorkSession() {
-  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit", weekday: "short" }).formatToParts(new Date());
+function latestNewYorkSession() {
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit", weekday: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date());
   const value = (type: string) => parts.find((part) => part.type === type)?.value ?? "";
   const date = new Date(`${value("year")}-${value("month")}-${value("day")}T12:00:00Z`);
   const weekday = value("weekday");
-  date.setUTCDate(date.getUTCDate() - (weekday === "Mon" ? 3 : weekday === "Sun" ? 2 : 1));
+  const minutes = Number(value("hour")) * 60 + Number(value("minute"));
+  const beforeCashOpen = minutes < 9 * 60 + 30;
+  const daysBack = weekday === "Sun" ? 2 : weekday === "Sat" ? 1 : beforeCashOpen ? (weekday === "Mon" ? 3 : 1) : 0;
+  date.setUTCDate(date.getUTCDate() - daysBack);
   return date.toISOString().slice(0, 10);
 }
 
 const DEFAULT_SETTINGS: PanelSettings = {
-  symbol: "SPY", date: previousNewYorkSession(), aggregation: "5m", greek: "GEX",
+  symbol: "SPY", date: latestNewYorkSession(), aggregation: "5m", greek: "GEX",
   expiry: "ALL", strikes: 20, rows: 50, minimum: 0, color: "var(--primary)", negativeColor: "var(--danger)",
 };
 
@@ -38,7 +41,6 @@ const nativeTicker = (symbol: string) => symbol === "SPX" || symbol === "SPXW" |
 const normalizedTool = (tool: string) => (s: PanelSettings) => `/api/gex-box/tool?tool=${tool}&symbol=${s.symbol}&sessionDate=${s.date}`;
 const TOOLS: Tool[] = [
   { id: "consolidated-flow", label: "Consolidated Order Flow", category: "Options", detail: "Grouped transactions, premium, sentiment and trade side", endpoint: normalizedTool("consolidated-flow") },
-  { id: "contract-price-time", label: "Contract Price / Time", category: "Options", detail: "Selected contract price history" },
   { id: "contract-side-statistics", label: "Contract Side Statistics", category: "Options", detail: "Bid, ask, mid and aggressor statistics", endpoint: normalizedTool("contract-side-statistics") },
   { id: "contract-statistics", label: "Contract Statistics", category: "Options", detail: "Volume, OI, premium, trades, price and IV", endpoint: normalizedTool("contract-statistics") },
   { id: "exposure-expiration", label: "Exposure by Expiration", category: "Options", detail: "Greek exposure grouped by expiration", endpoint: normalizedTool("exposure-expiration") },
@@ -47,30 +49,20 @@ const TOOLS: Tool[] = [
   { id: "heat-map", label: "Heat Map", category: "Options", detail: "Exposure matrix across strikes and expirations", endpoint: (s) => `/api/gex-interval-map?source=${s.symbol}&display=${s.symbol}&sessionDate=${s.date}&aggregationPeriod=${s.aggregation}&greekMode=${s.greek}` },
   { id: "iv-rank", label: "IV Rank", category: "Options", detail: "Current IV against its historical range", endpoint: (s) => `/api/implied-volatility-rank?source=${s.symbol}&display=${s.symbol}&lookBackPeriodDays=252&targetMaturityDays=30&contractMode=combined` },
   { id: "interval-map", label: "Interval Map", category: "Options", detail: "When and where exposure builds or unwinds", endpoint: (s) => `/api/gex-interval-map?source=${s.symbol}&display=${s.symbol}&sessionDate=${s.date}&aggregationPeriod=${s.aggregation}&greekMode=${s.greek}` },
-  { id: "market-share", label: "Market Share", category: "Options", detail: "Options venue share visualization" },
-  { id: "market-share-table", label: "Market Share Table", category: "Options", detail: "Options venue share table" },
   { id: "max-pain", label: "Max Pain", category: "Options", detail: "Current max-pain distribution", endpoint: normalizedTool("max-pain") },
-  { id: "max-pain-time", label: "Max Pain / Time", category: "Options", detail: "Max-pain history" },
   { id: "net-drift", label: "Net Drift", category: "Options", detail: "Net implied-volatility drift", endpoint: normalizedTool("net-drift") },
   { id: "net-flow", label: "Net Flow", category: "Options", detail: "Net options flow through time", endpoint: normalizedTool("net-flow") },
-  { id: "oi-time", label: "OI / Time", category: "Options", detail: "Open interest through time" },
-  { id: "oi-expiration", label: "OI by Expiration", category: "Options", detail: "Open interest by expiration" },
   { id: "oi-strike", label: "OI by Strike", category: "Options", detail: "Open interest by strike", endpoint: normalizedTool("oi-strike") },
-  { id: "oi-change", label: "OI Change", category: "Options", detail: "Session-over-session OI change" },
   { id: "term-structure", label: "Term Structure", category: "Options", detail: "Implied volatility across maturities", endpoint: normalizedTool("term-structure") },
   { id: "unconsolidated-flow", label: "Unconsolidated Order Flow", category: "Options", detail: "Raw exchange-level option prints", endpoint: normalizedTool("unconsolidated-flow") },
-  { id: "volatility-drift", label: "Volatility Drift", category: "Options", detail: "Call and put volatility drift" },
-  { id: "dark-flow", label: "Dark Flow", category: "Equities", detail: "Dark versus lit equity activity" },
+  { id: "volatility-drift", label: "Volatility Drift", category: "Options", detail: "Call and put volatility drift", endpoint: normalizedTool("volatility-drift") },
   { id: "dark-pool-levels", label: "Dark Pool Levels", category: "Equities", detail: "Ranked persistent dark-pool price concentrations", endpoint: (s) => `/api/dark-pool-map?source=${s.symbol}&display=${s.symbol}&historyDays=5&topLevels=${s.rows}` },
   { id: "equity-prints", label: "Equity Prints", category: "Equities", detail: "Ranked equity prints and notional concentration", endpoint: (s) => `/api/dark-pool-map?source=${s.symbol}&display=${s.symbol}&historyDays=1&topLevels=${s.rows}` },
-  { id: "exchange-notifications", label: "Exchange Notifications", category: "Equities", detail: "Exchange alerts and notifications" },
-  { id: "market-map", label: "Market Map", category: "Equities", detail: "Cross-symbol equity market map" },
+  { id: "market-map", label: "Market Map", category: "Equities", detail: "Cross-symbol equity market map", endpoint: () => "/api/market-indices?snapshot=1&symbols=SPY,QQQ,IWM,DIA,SPX,NDX" },
   { id: "stock-price-time", label: "Stock Price / Time", category: "Equities", detail: "Underlying price series", endpoint: (s) => `/api/market-indices?symbol=${s.symbol}&timeframe=${s.aggregation}` },
-  { id: "news-feed", label: "News Feed", category: "News", detail: "Timestamped market headlines" },
   { id: "classic-gex", label: "Classic GEX", category: "KwantDesk", detail: "Native GEX profile and underlying path", endpoint: (s) => `/api/gex-box/snapshot?ticker=${nativeTicker(s.symbol)}&view=classic&category=gex_full` },
   { id: "state-profile", label: "State Profile", category: "KwantDesk", detail: "Native exposure state surface", endpoint: (s) => `/api/gex-box/snapshot?ticker=${nativeTicker(s.symbol)}&view=state&category=${s.greek.toLowerCase()}` },
   { id: "orderflow-profile", label: "Orderflow Profile", category: "KwantDesk", detail: "Native orderflow metrics", endpoint: (s) => `/api/gex-box/snapshot?ticker=${nativeTicker(s.symbol)}&view=orderflow&category=orderflow` },
-  { id: "research-builder", label: "GEX Research", category: "KwantDesk", detail: "Validated structured GEX research requests" },
 ];
 
 const toolById = new Map(TOOLS.map((tool) => [tool.id, tool]));
@@ -87,6 +79,7 @@ const feedSubscribers = new Map<string, Set<(state: FeedState) => void>>();
 const feedInflight = new Map<string, Promise<void>>();
 const feedTimers = new Map<string, number>();
 function refreshIntervalFor(url: string) {
+  if (url.includes("sessionDate=")) return 60_000;
   if (url.includes("/api/gex-box/")) return 3_000;
   if (url.includes("/api/gex-interval-map")) return 5_000;
   if (url.includes("/api/options-flow")) return 5_000;
@@ -148,6 +141,15 @@ function collectRows(value: unknown, depth = 0): Record<string, unknown>[] {
   if (depth > 5 || value == null) return [];
   if (Array.isArray(value)) return value.flatMap((entry) => collectRows(entry, depth + 1));
   const item = record(value); if (!item) return [];
+  // Provider adapters wrap verified data in `rows`, while metadata lives next
+  // to it. Always consume the domain arrays first or the metadata object can
+  // be mistaken for a row and hide the actual snapshot.
+  for (const key of ["rows", "snapshots", "candles", "trades", "board", "data"]) {
+    if (Array.isArray(item[key])) {
+      const rows = collectRows(item[key], depth + 1);
+      if (rows.length) return rows;
+    }
+  }
   const keys = Object.keys(item).map((key) => key.toLowerCase());
   if (keys.some((key) => ["price", "strike", "contract", "premium", "notionalvalue", "netexposure"].includes(key))) return [item];
   // Normalized adapters intentionally use domain-specific names such as
@@ -197,9 +199,18 @@ function IntervalCanvas({ payload, settings }: { payload: unknown; settings: Pan
 
 function ProfileBars({ payload, settings }: { payload: unknown; settings: PanelSettings }) {
   const root = record(payload); const frame = record(root?.frame) ?? record(record(root?.provider)?.frame); const strikesRaw = Array.isArray(frame?.strikes) ? frame.strikes : [];
-  const rows = strikesRaw.map((entry) => Array.isArray(entry) ? { strike: finite(entry[0]), volumeExposure: finite(entry[1]) ?? 0, openInterestExposure: finite(entry[2]) ?? 0 } : null).filter((entry): entry is { strike: number; volumeExposure: number; openInterestExposure: number } => Boolean(entry?.strike)).slice(-90);
-  const peak = Math.max(1, ...rows.flatMap((row) => [Math.abs(row.volumeExposure), Math.abs(row.openInterestExposure)]));
-  return <div className="h-full overflow-y-auto px-2 py-1">{rows.length ? rows.map((row) => <div key={row.strike} className="grid h-5 grid-cols-[1fr_58px_1fr] items-center gap-2 border-b border-border/30 text-[9px] font-mono"><div className="flex justify-end"><span className="h-2 opacity-65" title="Open-interest exposure" style={{ backgroundColor: settings.negativeColor, width: `${Math.max(1, Math.abs(row.openInterestExposure) / peak * 100)}%` }} /></div><span className="text-center text-foreground">{row.strike}</span><span className="h-2 opacity-65" title="Volume exposure" style={{ backgroundColor: settings.color, width: `${Math.max(1, Math.abs(row.volumeExposure) / peak * 100)}%` }} /></div>) : <NoRows />}</div>;
+  const normalizedRaw = Array.isArray(root?.rows) ? root.rows : [];
+  const nativeRows = strikesRaw.map((entry) => Array.isArray(entry) ? { strike: finite(entry[0]), positive: Math.max(0, finite(entry[1]) ?? 0), negative: Math.min(0, finite(entry[2]) ?? 0) } : null);
+  const normalizedRows = normalizedRaw.map((entry) => {
+    const row = record(entry); if (!row) return null;
+    const callOi = finite(row.callOpenInterest); const putOi = finite(row.putOpenInterest);
+    if (callOi !== null || putOi !== null) return { strike: finite(row.strike), positive: Math.max(0, callOi ?? 0), negative: -Math.max(0, putOi ?? 0) };
+    const call = finite(row.call) ?? 0; const put = finite(row.put) ?? 0; const net = finite(row.net) ?? call + put;
+    return { strike: finite(row.strike), positive: Math.max(0, net), negative: Math.min(0, net) };
+  });
+  const rows = [...nativeRows, ...normalizedRows].filter((entry): entry is { strike: number; positive: number; negative: number } => entry?.strike !== null && entry?.strike !== undefined).sort((a, b) => a.strike - b.strike).slice(-90);
+  const peak = Math.max(1, ...rows.flatMap((row) => [Math.abs(row.positive), Math.abs(row.negative)]));
+  return <div className="h-full overflow-y-auto px-2 py-1">{rows.length ? rows.map((row) => <div key={row.strike} className="grid h-5 grid-cols-[1fr_58px_1fr] items-center gap-2 border-b border-border/30 text-[9px] font-mono"><div className="flex justify-end"><span className="h-2 opacity-65" title="Negative / put side" style={{ backgroundColor: settings.negativeColor, width: `${Math.max(1, Math.abs(row.negative) / peak * 100)}%` }} /></div><span className="text-center text-foreground">{row.strike}</span><span className="h-2 opacity-65" title="Positive / call side" style={{ backgroundColor: settings.color, width: `${Math.max(1, Math.abs(row.positive) / peak * 100)}%` }} /></div>) : <NoRows />}</div>;
 }
 
 type DarkPoolLevelRow = {
@@ -306,7 +317,7 @@ function NoRows() { return <div className="flex h-full items-center justify-cent
 
 function ToolSurface({ panel }: { panel: DashboardPanel }) {
   const tool = toolById.get(panel.toolId); const url = tool?.endpoint?.(panel.settings) ?? null; const feed = useSharedFeed(url);
-  if (!tool?.endpoint) return <div className="flex h-full items-center justify-center px-8 text-center"><div><BookOpen className="mx-auto h-5 w-5 text-primary" /><p className="mt-3 text-[10px] font-semibold uppercase tracking-[.16em]">{tool?.label}</p><p className="mt-2 max-w-md text-[9px] leading-5 text-muted">The panel is registered and its settings persist, but its normalized VPS adapter is not available yet. No substitute metric is shown.</p></div></div>;
+  if (!tool?.endpoint) return <div className="flex h-full items-center justify-center px-8 text-center"><div><BookOpen className="mx-auto h-5 w-5 text-primary" /><p className="mt-3 text-[10px] font-semibold uppercase tracking-[.16em]">Tool unavailable</p><p className="mt-2 max-w-md text-[9px] leading-5 text-muted">This saved panel no longer has an authoritative licensed source. Remove it and choose a verified tool.</p></div></div>;
   if (!feed.data && feed.loading) return <div className="flex h-full items-center justify-center"><RefreshCw className="h-5 w-5 animate-spin text-primary" /><span className="ml-3 text-[9px] uppercase tracking-[.15em] text-muted">Restoring verified session</span></div>;
   if (!feed.data && feed.error) return <div className="flex h-full items-center justify-center px-8 text-center"><div><p className="text-[10px] font-semibold uppercase text-danger">Data unavailable</p><p className="mt-2 max-w-md text-[9px] text-muted">{feed.error}</p><button onClick={() => void feed.refresh()} className="mt-4 border border-primary/30 px-3 py-2 text-[9px] uppercase text-primary">Try again</button></div></div>;
   if (panel.toolId === "interval-map" || panel.toolId === "heat-map") return <IntervalCanvas payload={feed.data} settings={panel.settings} />;
@@ -343,7 +354,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) { re
 function AddToolDialog({ onAdd, onClose }: { onAdd: (tool: Tool) => void; onClose: () => void }) {
   const [category, setCategory] = useState<ToolCategory>("Options"); const [query, setQuery] = useState("");
   const tools = TOOLS.filter((tool) => tool.category === category && tool.label.toLowerCase().includes(query.toLowerCase()));
-  return <div className="fixed inset-0 z-[170] flex items-center justify-center bg-black/35 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}><div className="flex h-[min(760px,88vh)] w-[min(980px,96vw)] flex-col border border-border bg-panel shadow-2xl"><div className="flex h-12 items-center justify-between border-b border-border px-4"><div><h2 className="text-[11px] font-semibold uppercase tracking-[.18em]">Add Tool</h2><p className="mt-0.5 text-[8px] text-muted">Verified panel registry · settings remain panel-local</p></div><button onClick={onClose}><X className="h-4 w-4 text-muted" /></button></div><div className="flex min-h-0 flex-1"><aside className="w-44 shrink-0 border-r border-border p-2">{(["Options", "Equities", "News", "KwantDesk"] as ToolCategory[]).map((item) => <button key={item} onClick={() => setCategory(item)} className={`mb-1 flex h-9 w-full items-center px-3 text-left text-[9px] font-semibold uppercase tracking-[.13em] ${category === item ? "bg-primary/10 text-primary" : "text-muted hover:bg-surface hover:text-foreground"}`}>{item}</button>)}</aside><main className="min-w-0 flex-1 overflow-y-auto p-4"><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search tools" className="mb-4 h-10 w-full border border-border bg-background px-3 text-[10px] outline-none focus:border-primary/40" /><div className="grid grid-cols-1 gap-2 md:grid-cols-2">{tools.map((tool) => <button key={tool.id} disabled={!tool.endpoint} onClick={() => tool.endpoint && onAdd(tool)} className={`group flex min-h-20 items-center gap-3 border border-border bg-background p-3 text-left ${tool.endpoint ? "hover:border-primary/35 hover:bg-primary/[.035]" : "cursor-not-allowed opacity-45"}`}><div className="flex h-10 w-10 shrink-0 items-center justify-center border border-border bg-panel text-primary"><Activity className="h-4 w-4" /></div><span><b className="block text-[10px] font-semibold text-foreground">{tool.label}</b><small className="mt-1 block text-[8px] leading-4 text-muted">{tool.detail}</small>{!tool.endpoint ? <small className="mt-1 block text-[7px] font-semibold uppercase tracking-[.12em] text-danger">Adapter pending</small> : null}</span>{tool.endpoint ? <Plus className="ml-auto h-4 w-4 text-muted group-hover:text-primary" /> : null}</button>)}</div></main></div></div></div>;
+  return <div className="fixed inset-0 z-[170] flex items-center justify-center bg-black/35 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}><div className="flex h-[min(760px,88vh)] w-[min(980px,96vw)] flex-col border border-border bg-panel shadow-2xl"><div className="flex h-12 items-center justify-between border-b border-border px-4"><div><h2 className="text-[11px] font-semibold uppercase tracking-[.18em]">Add Tool</h2><p className="mt-0.5 text-[8px] text-muted">Authoritative server-backed tools · settings remain panel-local</p></div><button onClick={onClose}><X className="h-4 w-4 text-muted" /></button></div><div className="flex min-h-0 flex-1"><aside className="w-44 shrink-0 border-r border-border p-2">{(["Options", "Equities", "KwantDesk"] as ToolCategory[]).map((item) => <button key={item} onClick={() => setCategory(item)} className={`mb-1 flex h-9 w-full items-center px-3 text-left text-[9px] font-semibold uppercase tracking-[.13em] ${category === item ? "bg-primary/10 text-primary" : "text-muted hover:bg-surface hover:text-foreground"}`}>{item}</button>)}</aside><main className="min-w-0 flex-1 overflow-y-auto p-4"><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search tools" className="mb-4 h-10 w-full border border-border bg-background px-3 text-[10px] outline-none focus:border-primary/40" /><div className="grid grid-cols-1 gap-2 md:grid-cols-2">{tools.map((tool) => <button key={tool.id} onClick={() => onAdd(tool)} className="group flex min-h-20 items-center gap-3 border border-border bg-background p-3 text-left hover:border-primary/35 hover:bg-primary/[.035]"><div className="flex h-10 w-10 shrink-0 items-center justify-center border border-border bg-panel text-primary"><Activity className="h-4 w-4" /></div><span><b className="block text-[10px] font-semibold text-foreground">{tool.label}</b><small className="mt-1 block text-[8px] leading-4 text-muted">{tool.detail}</small></span><Plus className="ml-auto h-4 w-4 text-muted group-hover:text-primary" /></button>)}</div></main></div></div></div>;
 }
 
 function DashboardPanelView({ panel, onChange, onDuplicate, onDelete }: { panel: DashboardPanel; onChange: (panel: DashboardPanel) => void; onDuplicate: () => void; onDelete: () => void }) {

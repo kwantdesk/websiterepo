@@ -4049,6 +4049,54 @@ export async function getImpliedVolatilityRankSnapshot(input: {
   });
 }
 
+function flattenToolCell(value: unknown, prefix = "", output: JsonRecord = {}): JsonRecord {
+  if (!isRecord(value)) return output;
+  for (const [key, cell] of Object.entries(value)) {
+    const name = prefix ? `${prefix}${key.slice(0, 1).toUpperCase()}${key.slice(1)}` : key;
+    if (cell === null || ["string", "number", "boolean"].includes(typeof cell)) output[name] = cell;
+    else if (isRecord(cell)) flattenToolCell(cell, name, output);
+  }
+  return output;
+}
+
+/** Server-only normalized adapter for QuantData's volatility-drift visual. */
+export async function getGexBoxVolatilityDrift(input: {
+  symbol: string;
+  sessionDate: string;
+  aggregationPeriod?: string;
+}) {
+  const session = getUsOptionsSession();
+  const symbol = input.symbol.trim().toUpperCase();
+  const providerTicker = gexMapProviderTicker(symbol);
+  const sessionDate = input.sessionDate.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(sessionDate)) throw new QuantDataError("A valid session date is required.", 400, null);
+  const marketOpen = sessionDate === session.sessionDate && session.marketOpen;
+  const result = await quantDataPost("/options/tool/volatility-drift", {
+    sessionDate,
+    aggregationPeriod: input.aggregationPeriod?.trim() || "5m",
+    filter: { ticker: providerTicker },
+  }, marketOpen ? 5_000 : 6 * 60 * 60_000);
+  const data = isRecord(result.payload) && isRecord(result.payload.data) ? result.payload.data : {};
+  const rows = Object.entries(data).flatMap(([bucket, raw]) => {
+    if (!isRecord(raw)) return [];
+    const flattened = flattenToolCell(raw);
+    const timestamp = finiteNumber(bucket);
+    return [{ ...(timestamp === null ? { bucket } : { timestamp }), ...flattened }];
+  });
+  return {
+    schemaVersion: 1,
+    provider: "KwantData",
+    tool: "volatility-drift",
+    symbol,
+    sessionDate,
+    marketOpen,
+    snapshotMode: marketOpen ? "LIVE" : "LAST_COMPLETED_SESSION",
+    asOf: marketOpen ? new Date().toISOString() : newYorkCashCloseIso(sessionDate),
+    refreshAfterMs: marketOpen ? 5_000 : 6 * 60 * 60_000,
+    rows,
+  };
+}
+
 /**
  * Fetches the time-bucketed signed Gamma surface and its synchronized source
  * price series through the one shared, server-only QuantData adapter. No

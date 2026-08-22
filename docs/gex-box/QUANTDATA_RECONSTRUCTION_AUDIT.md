@@ -20,53 +20,41 @@ QuantData is not a single chart with four modes. It is a page/workspace system m
 
 The KwantDesk replacement therefore uses a panel registry and stable panel IDs rather than hard-coded Classic/State/Orderflow branches.
 
-## Complete tool catalogue
+## Production tool catalogue
+
+Only tools with an authoritative KwantDesk server route are exposed in the Add Tool catalogue. The browser never invents rows, substitutes another metric, or displays an adapter placeholder.
 
 ### Options
 
 1. Consolidated Order Flow
-2. Contract Price / Time
-3. Contract Side Statistics
-4. Contract Statistics
-5. Exposure by Expiration
-6. Exposure by Strike
-7. Gainers / Losers
-8. Heat Map
-9. IV Rank
-10. Interval Map
-11. Market Share
-12. Market Share Table
-13. Max Pain
-14. Max Pain / Time
-15. Net Drift
-16. Net Flow
-17. OI / Time
-18. OI by Expiration
-19. OI by Strike
-20. OI Change
-21. Term Structure
-22. Unconsolidated Order Flow
-23. Volatility Drift
+2. Contract Side Statistics
+3. Contract Statistics
+4. Exposure by Expiration
+5. Exposure by Strike
+6. Gainers / Losers
+7. Heat Map
+8. IV Rank
+9. Interval Map
+10. Max Pain
+11. Net Drift
+12. Net Flow
+13. OI by Strike
+14. Term Structure
+15. Unconsolidated Order Flow
+16. Volatility Drift
 
 ### Equities
 
-1. Dark Flow
-2. Dark Pool Levels
-3. Equity Prints
-4. Exchange Notifications
-5. Market Map
-6. Stock Price / Time
-
-### News
-
-1. News Feed
+1. Dark Pool Levels
+2. Equity Prints
+3. Market Map
+4. Stock Price / Time
 
 ### KwantDesk-native tools retained
 
 - Classic GEX profile
 - State profile
 - Orderflow profile
-- GEX research builder
 
 These retain the existing native snapshot/replay engines and are registered in the same panel catalogue.
 
@@ -141,7 +129,7 @@ KwantDesk route: `/api/implied-volatility-rank`. Existing model: `IvRankSnapshot
 
 Term Structure, Volatility Drift, and Net Drift are separate tools. They must remain separate panel types even when they share a snapshot broker.
 
-### Remaining catalogue semantics
+### Referenced product semantics not exposed without a source
 
 - Contract Price / Time: selected option contract price history.
 - Contract Side Statistics: bid/ask/mid/aggressor statistics for a selected contract.
@@ -159,7 +147,7 @@ Term Structure, Volatility Drift, and Net Drift are separate tools. They must re
 - Stock Price / Time: underlying price series.
 - News Feed: timestamped source/headline list with symbol/topic filters.
 
-If a normalized server adapter is not yet available, the panel remains registered but displays a precise unavailable-data state. It must not substitute a different metric.
+Contract Price / Time, Market Share, Market Share Table, Max Pain / Time, OI / Time, OI by Expiration, OI Change, Dark Flow, Exchange Notifications, and News Feed were observed in the reference product but are not exposed in KwantDesk until a licensed, normalized server source exists. Legacy workspaces containing one of these IDs retain their saved identity and show an honest unavailable state; new users cannot add a dead panel.
 
 ## Default page layout
 

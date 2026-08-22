@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   getConfiguredQuantDataApiKey,
+  getGexBoxVolatilityDrift,
+  getGexFlowPayload,
   getOptionsFlowPayload,
   getQuantDataHttpError,
 } from "@/lib/quantData.server";
@@ -19,6 +21,7 @@ const TOOL_IDS = new Set([
   "oi-strike",
   "term-structure",
   "unconsolidated-flow",
+  "volatility-drift",
 ]);
 
 function responseForTool(tool: string, payload: Awaited<ReturnType<typeof getOptionsFlowPayload>>) {
@@ -36,9 +39,6 @@ function responseForTool(tool: string, payload: Awaited<ReturnType<typeof getOpt
   };
   const greek = payload.exposures.GAMMA;
   switch (tool) {
-    case "consolidated-flow":
-    case "unconsolidated-flow":
-      return { ...common, rows: payload.flow, board: payload.flowBoard };
     case "contract-side-statistics":
       return { ...common, rows: payload.positioning.tradeSidePremium };
     case "contract-statistics":
@@ -76,6 +76,34 @@ export async function GET(request: NextRequest) {
   if (sessionDate && !/^\d{4}-\d{2}-\d{2}$/.test(sessionDate)) return NextResponse.json({ error: "Invalid session date." }, { status: 400 });
 
   try {
+    if (tool === "consolidated-flow" || tool === "unconsolidated-flow") {
+      const flow = await getGexFlowPayload({
+        symbol,
+        mode: tool === "unconsolidated-flow" ? "RAW" : "CONSOLIDATED",
+        sessionDate,
+        size: 100,
+      });
+      return NextResponse.json({
+        schemaVersion: 1,
+        provider: "KwantData",
+        tool,
+        symbol,
+        sessionDate: flow.sessionDate,
+        marketOpen: flow.marketOpen,
+        snapshotMode: flow.status,
+        asOf: flow.asOf,
+        refreshAfterMs: flow.refreshAfterMs,
+        rows: flow.rows,
+        summary: flow.summary,
+        limitations: flow.diagnostics.limitations,
+      }, { headers: { "Cache-Control": "private, no-store, max-age=0" } });
+    }
+    if (tool === "volatility-drift") {
+      const date = sessionDate || new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date());
+      return NextResponse.json(await getGexBoxVolatilityDrift({ symbol, sessionDate: date }), {
+        headers: { "Cache-Control": "private, no-store, max-age=0" },
+      });
+    }
     const payload = await getOptionsFlowPayload(symbol, "CASH", sessionDate, "FULL");
     return NextResponse.json(responseForTool(tool, payload), {
       headers: { "Cache-Control": "private, no-store, max-age=0" },
