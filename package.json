@@ -63,7 +63,8 @@
     "test:profile-fold": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-profile-fold.mjs",
     "bench:profile-update": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/bench-profile-update.mjs",
     "bench:flow-reconcile": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/bench-flow-reconcile.mjs",
-    "test:candle-ohlc-heal": "node scripts/test-candle-ohlc-heal.mjs"
+    "test:candle-ohlc-heal": "node scripts/test-candle-ohlc-heal.mjs",
+    "test:magnet-snap": "node scripts/test-magnet-snap.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",

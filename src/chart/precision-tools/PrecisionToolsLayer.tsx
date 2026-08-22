@@ -61,18 +61,72 @@ function mergeHydratedPrecisionObjects(remoteObjects: PrecisionObject[], localOb
   return [...merged.values()].sort((left, right) => left.zIndex - right.zIndex || left.createdAt - right.createdAt);
 }
 
+/**
+ * How close the cursor must be to a wick before the magnet takes it, in
+ * SCREEN pixels.
+ *
+ * The magnet used to measure this in price units — three or eight ticks —
+ * which is a fixed distance on an axis whose scale changes constantly. On NQ
+ * that is 0.75 to 2 points: a few pixels on a normal chart and well under one
+ * when zoomed out, so the cursor had to be almost exactly on the wick before
+ * anything locked. A magnet is a screen-space affordance; the radius has to be
+ * a screen-space distance or it silently stops working as the chart is zoomed.
+ */
+const ANCHOR_SNAP_RADIUS_PX = 18;
+const ANCHOR_SNAP_STRONG_RADIUS_PX = 28;
+
+/** Nearest bar by time, binary-searched rather than scanned per pointer move. */
+function nearestCandleByTime(
+  candles: PrecisionChartAdapter["candles"],
+  time: number,
+) {
+  let low = 0;
+  let high = candles.length - 1;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if (candles[middle].timestamp < time) low = middle + 1;
+    else high = middle;
+  }
+  const after = candles[low];
+  const before = candles[low - 1];
+  if (!before) return after;
+  return Math.abs(after.timestamp - time) < Math.abs(before.timestamp - time) ? after : before;
+}
+
 function normalizeAnchor(anchor: PrecisionAnchor, adapter: PrecisionChartAdapter, mode: "off" | "weak" | "strong"): PrecisionAnchor {
   if (mode === "off") return anchor;
-  const nearest = adapter.candles.reduce<typeof adapter.candles[number] | null>((best, candle) => !best || Math.abs(candle.timestamp - anchor.time) < Math.abs(best.timestamp - anchor.time) ? candle : best, null);
-  if (!nearest) return { ...anchor, price: snapPrice(anchor.price, adapter.minMove, adapter.precision) };
-  const prices = [nearest.open, nearest.high, nearest.low, nearest.close];
-  const closest = prices.reduce((best, price) => Math.abs(price - anchor.price) < Math.abs(best - anchor.price) ? price : best);
-  const threshold = adapter.minMove * (mode === "strong" ? 8 : 3);
-  return {
-    ...anchor,
-    time: mode === "strong" || Math.abs(nearest.timestamp - anchor.time) < 60_000 ? nearest.timestamp : anchor.time,
-    price: Math.abs(closest - anchor.price) <= threshold ? closest : snapPrice(anchor.price, adapter.minMove, adapter.precision),
-  };
+  const rounded = { ...anchor, price: snapPrice(anchor.price, adapter.minMove, adapter.precision) };
+  if (!adapter.candles.length) return rounded;
+  const nearest = nearestCandleByTime(adapter.candles, anchor.time);
+  if (!nearest) return rounded;
+
+  const anchorX = adapter.timeToX(anchor.time, anchor.logicalIndex);
+  const barX = adapter.timeToX(nearest.timestamp);
+  const anchorY = adapter.priceToY(anchor.price);
+  if (anchorX == null || barX == null || anchorY == null) return rounded;
+
+  // The bar under the cursor, not merely the nearest one in the whole series:
+  // beyond this the pointer is beside the candle and nothing should be taken.
+  const radius = mode === "strong" ? ANCHOR_SNAP_STRONG_RADIUS_PX : ANCHOR_SNAP_RADIUS_PX;
+  if (Math.abs(barX - anchorX) > radius) return rounded;
+
+  // High and low are offered first so a wick wins a tie against the body.
+  let best: number | null = null;
+  let bestDistance = radius;
+  for (const price of [nearest.high, nearest.low, nearest.open, nearest.close]) {
+    const y = adapter.priceToY(price);
+    if (y == null) continue;
+    const distance = Math.abs(y - anchorY);
+    if (distance <= bestDistance) {
+      bestDistance = distance;
+      best = price;
+    }
+  }
+  if (best === null) {
+    // Strong snap still owns the bar's time even when no level is in reach.
+    return mode === "strong" ? { ...rounded, time: nearest.timestamp } : rounded;
+  }
+  return { ...anchor, time: nearest.timestamp, price: best };
 }
 
 export default function PrecisionToolsLayer({
