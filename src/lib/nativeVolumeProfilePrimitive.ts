@@ -446,13 +446,46 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
       const ownsLeftDock = (model: NativeVolumeProfileModel) =>
         leftDockByKind.get(`${model.profile.period}:${model.profile.root}`)?.id === model.id;
 
+      // Where each profile's spine is actually DRAWN.
+      //
+      // A docked profile is deliberately painted at a screen edge rather than
+      // at its own time, so its time coordinate says nothing about where its
+      // body ended up. Level lines were stopped at that time coordinate, which
+      // meant they halted in empty space and ran straight through the docked
+      // body — and a docked profile's own levels ran from the edge across
+      // every profile between it and its successor's time. Docking only
+      // engages once the anchor scrolls off, which is why the lines behaved
+      // until the chart was moved away.
+      const latestEndMsByKindForDock = latestEndMsByKind;
+      const drawnAnchorXById = new Map<string, number>();
+      for (const model of this.models) {
+        const rawAnchorX = this.timeToCoordinate(
+          model,
+          model.drawingBounds?.startTime ?? model.profile.startMs / 1_000,
+        );
+        if (rawAnchorX == null) continue;
+        const isNewestOfKind = model.profile.endMs >= (
+          latestEndMsByKindForDock.get(`${model.profile.period}:${model.profile.root}`)
+          ?? model.profile.endMs
+        );
+        if (model.style.snapMode === "right" && isNewestOfKind) {
+          drawnAnchorXById.set(model.id, rightEdge - 2);
+          continue;
+        }
+        if (model.style.snapMode === "left" && ownsLeftDock(model) && rawAnchorX < leftEdge + 2) {
+          drawnAnchorXById.set(model.id, leftEdge + 2);
+          continue;
+        }
+        drawnAnchorXById.set(model.id, rawAnchorX);
+      }
+
       // A session's POC and value area stay live until the next session takes
       // over, so their lines run on to the START of the profile in front and
       // stop there — never underneath it. Chaining is per profile kind, so a
       // split session follows the next segment of its own kind rather than
       // jumping to an unrelated one, and the newest profile has nothing in
       // front of it and runs to the live edge.
-      const nextProfileStartMsById = new Map<string, number>();
+      const blockerIdById = new Map<string, string>();
       const chainGroups = new Map<string, { id: string; startMs: number; endMs: number }[]>();
       for (const model of this.models) {
         // Every profile on the same instrument competes for the same space, so
@@ -478,13 +511,15 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           // is what makes a split session stop at the back of the next session
           // rather than painting underneath it.
           let blockerStartMs: number | null = null;
+          let blockerId: string | null = null;
           for (const candidate of group) {
             if (candidate.id === entry.id || candidate.startMs < entry.endMs) continue;
             if (blockerStartMs === null || candidate.startMs < blockerStartMs) {
               blockerStartMs = candidate.startMs;
+              blockerId = candidate.id;
             }
           }
-          if (blockerStartMs !== null) nextProfileStartMsById.set(entry.id, blockerStartMs);
+          if (blockerId !== null) blockerIdById.set(entry.id, blockerId);
         }
       }
 
@@ -557,10 +592,20 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
 
         // Where this profile's level lines must stop: the back of the profile
         // in front, or the right edge when nothing follows.
-        const nextProfileStartMs = nextProfileStartMsById.get(model.id);
-        const nextProfileStartX = nextProfileStartMs === undefined
+        //
+        // Measured where that profile is DRAWN, not where its time sits, so a
+        // docked profile stops the lines at its body instead of being painted
+        // over. A blocker drawn to the left of this profile is not in front of
+        // it on screen and cannot stop anything.
+        const blockerId = blockerIdById.get(model.id);
+        const blockerDrawnX = blockerId === undefined
           ? null
-          : this.timeToCoordinate(model, Math.floor(nextProfileStartMs / 1_000));
+          : drawnAnchorXById.get(blockerId) ?? null;
+        const ownDrawnX = drawnAnchorXById.get(model.id) ?? null;
+        const nextProfileStartX = blockerDrawnX == null
+          || (ownDrawnX != null && blockerDrawnX <= ownDrawnX)
+          ? null
+          : blockerDrawnX;
         const levelChainEndX = nextProfileStartX == null
           ? mediaSize.width
           : Math.max(endX, nextProfileStartX);

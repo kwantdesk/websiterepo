@@ -90,4 +90,26 @@ assert.doesNotMatch(primitive, /chainGroups\.get\(`\$\{model\.profile\.period\}/
 assert.match(primitive, /candidate\.startMs < entry\.endMs/);
 assert.match(primitive, /levelChainEndX/);
 
-console.log("volume profile level chaining: 7/7 checks passed");
+// 8. The stop position must be measured where the blocker is DRAWN, not where
+//    its time sits. A docked profile is painted at a screen edge, so a
+//    time-based stop halted the lines in empty space and let them run straight
+//    through the docked body — which is why the chaining held until the chart
+//    was scrolled away from the profile.
+assert.match(primitive, /const drawnAnchorXById = new Map<string, number>\(\);/);
+assert.match(primitive, /const blockerDrawnX = blockerId === undefined/);
+assert.match(primitive, /drawnAnchorXById\.get\(blockerId\)/);
+assert.doesNotMatch(
+  primitive,
+  /this\.timeToCoordinate\(model, Math\.floor\(nextProfileStartMs \/ 1_000\)\)/,
+  "the stop must not fall back to the blocker's time position",
+);
+
+// 9. A docked profile records its screen edge as its drawn spine.
+assert.match(primitive, /drawnAnchorXById\.set\(model\.id, leftEdge \+ 2\);/);
+assert.match(primitive, /drawnAnchorXById\.set\(model\.id, rightEdge - 2\);/);
+
+// 10. A blocker drawn to the LEFT of a profile is not in front of it on screen
+//     and must not truncate its levels.
+assert.match(primitive, /blockerDrawnX <= ownDrawnX/);
+
+console.log("volume profile level chaining: 10/10 checks passed");
