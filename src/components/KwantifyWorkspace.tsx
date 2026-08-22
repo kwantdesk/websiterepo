@@ -573,6 +573,7 @@ type LiveFeedPrice = {
 type ChartExecutionQuote = {
   paneId: string;
   symbol: string;
+  source: "live" | "replay";
   bid: number;
   ask: number;
   mid: number;
@@ -587,7 +588,9 @@ let liveExecutionQuoteNotifyFrame: number | null = null;
 function publishLiveExecutionQuote(quote: ChartExecutionQuote) {
   const key = normalizePaperSymbol(quote.symbol);
   const previous = liveExecutionQuotesBySymbol.get(key);
-  const previousIsStillArriving = previous && quote.receivedAt - previous.receivedAt < 5_000;
+  const previousIsStillArriving = previous
+    && previous.source === quote.source
+    && quote.receivedAt - previous.receivedAt < 5_000;
 
   // Several panes can display the same contract and therefore receive the
   // same shared market packet. Keep one monotonic mark per symbol so a slower
@@ -5360,6 +5363,30 @@ function WorkspaceChartPaneComponent({
     };
     return [...replayCandles.slice(0, -1), forming];
   }, [pane.timeframe, replayActive, replayCandles, replayMarketTrades, replayTimestampMs]);
+  useEffect(() => {
+    if (!active || !replayActive || !replayTimestampMs || !onLiveExecutionQuote) return;
+    const latest = replayDisplayCandles[replayDisplayCandles.length - 1];
+    if (!latest || !Number.isFinite(latest.close) || latest.close <= 0) return;
+    // Historical bars do not contain an honest archived BBO. Use the exact
+    // replay mark as a zero-spread executable simulation instead of inventing
+    // a bid/ask. The execution timestamp remains the historical replay clock.
+    const mid = snapPaperPrice(pane.symbol, latest.close);
+    const receivedAt = Date.now();
+    const quote: ChartExecutionQuote = {
+      paneId: pane.id,
+      symbol: pane.symbol,
+      source: "replay",
+      bid: mid,
+      ask: mid,
+      mid,
+      timestamp: replayTimestampMs,
+      receivedAt,
+    };
+    onLiveExecutionQuote(quote);
+    window.dispatchEvent(new CustomEvent(PAPER_MARK_QUOTE_EVENT, {
+      detail: { ...quote, timestamp: receivedAt },
+    }));
+  }, [active, onLiveExecutionQuote, pane.id, pane.symbol, replayActive, replayDisplayCandles, replayTimestampMs]);
   const [orderFlowHistoryReady, setOrderFlowHistoryReady] = useState(false);
   const [volumeProfiles, setVolumeProfiles] = useState<InstitutionalVolumeProfile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -7482,6 +7509,7 @@ function WorkspaceChartPaneComponent({
         const executionQuote = {
           paneId: pane.id,
           symbol: pane.symbol,
+          source: "live",
           bid: bookIsCoherent ? snapPaperPrice(pane.symbol, rawBid) : mid,
           ask: bookIsCoherent ? snapPaperPrice(pane.symbol, rawAsk) : mid,
           mid,
@@ -9370,6 +9398,9 @@ export default function KwantifyWorkspace({
   const activeChartExecutionQuoteRef = useRef<ChartExecutionQuote | null>(null);
   const activeChartExecutionQuoteUiRef = useRef<ChartExecutionQuote | null>(null);
   const activeChartExecutionQuoteUiAtRef = useRef(0);
+  const [backtestingExecutionQuote, setBacktestingExecutionQuote] = useState<ChartExecutionQuote | null>(null);
+  const backtestingExecutionQuoteRef = useRef<ChartExecutionQuote | null>(null);
+  const backtestingExecutionQuoteUiAtRef = useRef(0);
   const liveGexCalibrationPriceRef = useRef<number | null>(null);
   const syncPaperLedgerUi = useCallback((immediate = false, minimumIntervalMs = 1_000) => {
     const flush = () => {
@@ -9395,6 +9426,11 @@ export default function KwantifyWorkspace({
     syncPaperLedgerUi(true);
   }, [syncPaperLedgerUi]);
   const handleActiveChartExecutionQuote = useCallback((quote: ChartExecutionQuote) => {
+    const gexReplayActive = chartWorkspaceScope === "gamma" && gexVueReplay.active;
+    const quoteIsAuthorizedForCurrentClock = quote.source === "replay"
+      ? gexReplayActive
+      : !gexReplayActive && optimisticWorkspaceSection !== "backtesting";
+    if (!quoteIsAuthorizedForCurrentClock) return;
     const quoteBelongsToActivePane = quote.paneId === activePaneId;
     if (quoteBelongsToActivePane) activeChartExecutionQuoteRef.current = quote;
     const acceptedForMarking = publishLiveExecutionQuote(quote);
@@ -9446,7 +9482,7 @@ export default function KwantifyWorkspace({
       activeChartExecutionQuoteUiRef.current = quote;
       setActiveChartExecutionQuote(quote);
     }
-  }, [activePaneId, paperTradingAccounts, rightPanel, showTradesMenu, syncPaperLedgerUi]);
+  }, [activePaneId, chartWorkspaceScope, gexVueReplay.active, optimisticWorkspaceSection, paperTradingAccounts, rightPanel, showTradesMenu, syncPaperLedgerUi]);
   const [hiddenPaperFillMarkers, setHiddenPaperFillMarkers] = useState<Record<string, string[]>>(() => {
     if (typeof window === "undefined") return {};
     try {
@@ -9484,6 +9520,57 @@ export default function KwantifyWorkspace({
   const [bottomPanelHeight, setBottomPanelHeight] = useState(BOTTOM_PANEL_DEFAULT_HEIGHT);
   const [bottomMinimized, setBottomMinimized] = useState(true);
   const bottomWorkspaceSection = optimisticWorkspaceSection;
+  const handleBacktestingExecutionQuote = useCallback((incoming: {
+    symbol: string;
+    bid: number;
+    ask: number;
+    mid: number;
+    timestamp: number;
+  }) => {
+    if (bottomWorkspaceSection !== "backtesting") return;
+    const previous = backtestingExecutionQuoteRef.current;
+    const quote: ChartExecutionQuote = {
+      paneId: "backtesting",
+      source: "replay",
+      ...incoming,
+      receivedAt: Date.now(),
+    };
+    backtestingExecutionQuoteRef.current = quote;
+    const acceptedForMarking = publishLiveExecutionQuote(quote);
+    if (!acceptedForMarking) return;
+
+    const currentLedger = paperLedgerRef.current;
+    const nextLedger = processPaperQuote(
+      currentLedger,
+      paperTradingAccounts,
+      quote.symbol,
+      { bid: quote.bid, ask: quote.ask, timestamp: quote.timestamp },
+      {
+        executionAuthorized: true,
+        suspendedProtectionPositionIds: suspendedPaperProtectionIdsRef.current,
+      },
+    );
+    if (nextLedger !== currentLedger) {
+      const executionChanged = paperLedgerExecutionShapeChanged(currentLedger, nextLedger);
+      paperLedgerRef.current = nextLedger;
+      if (executionChanged) syncPaperLedgerUi(true);
+      else if (rightPanel === "order") syncPaperLedgerUi(false, 1_000);
+    }
+
+    if (rightPanel === "order") {
+      const now = Date.now();
+      if (
+        previous?.symbol !== quote.symbol
+        || now - backtestingExecutionQuoteUiAtRef.current >= 250
+      ) {
+        backtestingExecutionQuoteUiAtRef.current = now;
+        setBacktestingExecutionQuote(quote);
+      }
+    }
+    window.dispatchEvent(new CustomEvent(PAPER_MARK_QUOTE_EVENT, {
+      detail: { ...quote, timestamp: quote.receivedAt },
+    }));
+  }, [bottomWorkspaceSection, paperTradingAccounts, rightPanel, syncPaperLedgerUi]);
   const chartSurfaceActive = bottomWorkspaceSection === "charts" || bottomWorkspaceSection === "gamvue";
   const [equityPeriod, setEquityPeriod] = useState("365d");
   const [favTFs, setFavTFs] = useState<string[]>(() => {
@@ -9998,15 +10085,28 @@ export default function KwantifyWorkspace({
     MGC: { price: "3,398.20", change: "+0.14%", up: true },
     GC: { price: "3,401.80", change: "+0.13%", up: true },
   };
-  const selectedWatchlistItem = watchlist.find((item) => item.symbol === selectedInstrument && item.broker === activeChartBrokerLabel);
-  const fallbackDetail = getStaticWatchlistDetail(selectedInstrument, activeChartBrokerLabel, watchlistDetails);
-  const fallbackMidPrice = fallbackDetail ? Number(fallbackDetail.price.replace(/,/g, "")) || 0 : 0;
-  const selectedChartExecutionQuote = activeChartExecutionQuote
-    && activeChartExecutionQuote.paneId === activePaneId
-    && normalizePaperSymbol(activeChartExecutionQuote.symbol) === normalizePaperSymbol(selectedInstrument)
-    && Date.now() - activeChartExecutionQuote.timestamp <= 5_000
-      ? activeChartExecutionQuote
+  const gexPaperReplayActive = chartWorkspaceScope === "gamma" && gexVueReplay.active;
+  const replayPaperQuote = bottomWorkspaceSection === "backtesting"
+    ? backtestingExecutionQuoteRef.current ?? backtestingExecutionQuote
+    : gexPaperReplayActive && activeChartExecutionQuoteRef.current?.source === "replay"
+      ? activeChartExecutionQuoteRef.current ?? activeChartExecutionQuote
       : null;
+  const paperTradingInstrument = replayPaperQuote?.symbol ?? selectedInstrument;
+  const selectedWatchlistItem = watchlist.find((item) => item.symbol === paperTradingInstrument && item.broker === activeChartBrokerLabel);
+  const fallbackDetail = getStaticWatchlistDetail(paperTradingInstrument, activeChartBrokerLabel, watchlistDetails);
+  const fallbackMidPrice = fallbackDetail ? Number(fallbackDetail.price.replace(/,/g, "")) || 0 : 0;
+  const activeExecutionQuoteCandidate = activeChartExecutionQuoteRef.current ?? activeChartExecutionQuote;
+  const selectedChartExecutionQuote = replayPaperQuote ?? (
+    activeExecutionQuoteCandidate
+    && activeExecutionQuoteCandidate.source === "live"
+    && !gexPaperReplayActive
+    && bottomWorkspaceSection !== "backtesting"
+    && activeExecutionQuoteCandidate.paneId === activePaneId
+    && normalizePaperSymbol(activeExecutionQuoteCandidate.symbol) === normalizePaperSymbol(paperTradingInstrument)
+    && Date.now() - activeExecutionQuoteCandidate.receivedAt <= 5_000
+      ? activeExecutionQuoteCandidate
+      : null
+  );
   const selectedMidPrice = selectedChartExecutionQuote?.mid ?? selectedWatchlistItem?.mid ?? fallbackMidPrice;
   const currentLivePrice = {
     bid: selectedChartExecutionQuote?.bid ?? selectedWatchlistItem?.bid ?? selectedMidPrice,
@@ -10018,9 +10118,9 @@ export default function KwantifyWorkspace({
   }
   const hasSelectedLiveQuote = currentLivePrice.bid > 0 && currentLivePrice.ask > 0;
   const currentSpread = Math.max(0, currentLivePrice.ask - currentLivePrice.bid);
-  const orderPanelBidLabel = hasSelectedLiveQuote ? formatPrice(currentLivePrice.bid, selectedInstrument) : "--";
-  const orderPanelAskLabel = hasSelectedLiveQuote ? formatPrice(currentLivePrice.ask, selectedInstrument) : "--";
-  const orderPanelSpreadLabel = hasSelectedLiveQuote ? formatPrice(currentSpread, selectedInstrument) : "--";
+  const orderPanelBidLabel = hasSelectedLiveQuote ? formatPrice(currentLivePrice.bid, paperTradingInstrument) : "--";
+  const orderPanelAskLabel = hasSelectedLiveQuote ? formatPrice(currentLivePrice.ask, paperTradingInstrument) : "--";
+  const orderPanelSpreadLabel = hasSelectedLiveQuote ? formatPrice(currentSpread, paperTradingInstrument) : "--";
   const currentCandle = chartCandles[chartCandles.length - 1];
   const currentOhlc = currentCandle ? {
     open: currentCandle.open,
@@ -10431,23 +10531,23 @@ export default function KwantifyWorkspace({
   const selectedPaperSummary = selectedPaperTradingAccount
     ? summarizePaperAccount(paperLedger, selectedPaperTradingAccount)
     : null;
-  const selectedPaperContract = paperContractSpec(selectedInstrument);
-  const selectedOrderQuantity = paperOrderQuantity(selectedInstrument, orderUnits);
+  const selectedPaperContract = paperContractSpec(paperTradingInstrument);
+  const selectedOrderQuantity = paperOrderQuantity(paperTradingInstrument, orderUnits);
   const selectedPaperLeverage = selectedPaperTradingAccount
     ? parseLeverage(selectedPaperTradingAccount.leverage)
     : 1;
   const selectedOrderQuantityLabel = selectedPaperContract.isMicro
-    ? `${selectedOrderQuantity} ${selectedInstrument} micro${selectedOrderQuantity === 1 ? "" : "s"}`
+    ? `${selectedOrderQuantity} ${paperTradingInstrument} micro${selectedOrderQuantity === 1 ? "" : "s"}`
     : selectedPaperContract.isMini
-      ? `${selectedOrderQuantity} ${selectedInstrument} mini${selectedOrderQuantity === 1 ? "" : "s"}`
+      ? `${selectedOrderQuantity} ${paperTradingInstrument} mini${selectedOrderQuantity === 1 ? "" : "s"}`
     : selectedPaperContract.isFutures
-      ? `${selectedOrderQuantity} ${selectedInstrument} contract${selectedOrderQuantity === 1 ? "" : "s"}`
-      : `${selectedOrderQuantity} ${selectedInstrument} unit${selectedOrderQuantity === 1 ? "" : "s"}`;
+      ? `${selectedOrderQuantity} ${paperTradingInstrument} contract${selectedOrderQuantity === 1 ? "" : "s"}`
+      : `${selectedOrderQuantity} ${paperTradingInstrument} unit${selectedOrderQuantity === 1 ? "" : "s"}`;
   const orderPanelMarginUsd = selectedMidPrice > 0
-    ? paperContractNotional(selectedInstrument, selectedMidPrice, selectedOrderQuantity) / selectedPaperLeverage
+    ? paperContractNotional(paperTradingInstrument, selectedMidPrice, selectedOrderQuantity) / selectedPaperLeverage
     : 0;
   const orderPanelTradeValueUsd = selectedMidPrice > 0
-    ? paperContractNotional(selectedInstrument, selectedMidPrice, selectedOrderQuantity)
+    ? paperContractNotional(paperTradingInstrument, selectedMidPrice, selectedOrderQuantity)
     : 0;
   const activeBrokerHealth = paperExecutionRequested ? {
     state: "connected" as const,
@@ -10494,7 +10594,10 @@ export default function KwantifyWorkspace({
   );
   const selectedPaperOpenPositions = selectedPaperAccountLedger?.positions.filter((position) => position.status === "open") ?? [];
   const selectedPaperWorkingOrders = selectedPaperAccountLedger?.orders.filter((order) => order.status === "working") ?? [];
-  const selectedPaperDailyPnl = dailyRealizedPaperPnl(selectedPaperAccountLedger);
+  const paperValuationTimestamp = selectedChartExecutionQuote?.source === "replay"
+    ? selectedChartExecutionQuote.timestamp
+    : Date.now();
+  const selectedPaperDailyPnl = dailyRealizedPaperPnl(selectedPaperAccountLedger, paperValuationTimestamp);
   const orderPanelLockTone =
     activeBrokerHealth.state === "broken"
       ? {
@@ -15737,19 +15840,19 @@ export default function KwantifyWorkspace({
     const direction = orderSide === "buy" ? 1 : -1;
     const favorableDirection = kind === "tp" ? direction : -direction;
     const type = kind === "tp" ? tpType : slType;
-    if (type === "price") return snapPaperPrice(selectedInstrument, value);
+    if (type === "price") return snapPaperPrice(paperTradingInstrument, value);
     if (type === "ticks") {
-      return snapPaperPrice(selectedInstrument, entryPrice + favorableDirection * value * paperTickSize(selectedInstrument));
+      return snapPaperPrice(paperTradingInstrument, entryPrice + favorableDirection * value * paperTickSize(paperTradingInstrument));
     }
     if (type === "pctPrice") {
-      return snapPaperPrice(selectedInstrument, entryPrice * (1 + favorableDirection * value / 100));
+      return snapPaperPrice(paperTradingInstrument, entryPrice * (1 + favorableDirection * value / 100));
     }
     const accountRiskBase = selectedPaperSummary?.equity ?? 0;
     const cashAmount = type === "rewardPct" || type === "riskPct"
       ? accountRiskBase * value / 100
       : value;
-    const priceDistance = cashAmount / Math.max(paperPointValue(selectedInstrument) * quantity, Number.EPSILON);
-    return snapPaperPrice(selectedInstrument, entryPrice + favorableDirection * priceDistance);
+    const priceDistance = cashAmount / Math.max(paperPointValue(paperTradingInstrument) * quantity, Number.EPSILON);
+    return snapPaperPrice(paperTradingInstrument, entryPrice + favorableDirection * priceDistance);
   };
 
   const orderPreviewEntryPrice = orderType === "market"
@@ -15762,10 +15865,10 @@ export default function KwantifyWorkspace({
     ? resolvePaperProtectionPrice("sl", orderSL, orderPreviewEntryPrice, selectedOrderQuantity)
     : null;
   const orderPreviewRewardUsd = orderPreviewTakeProfitPrice && orderPreviewEntryPrice > 0
-    ? Math.abs(orderPreviewTakeProfitPrice - orderPreviewEntryPrice) * paperPointValue(selectedInstrument) * selectedOrderQuantity
+    ? Math.abs(orderPreviewTakeProfitPrice - orderPreviewEntryPrice) * paperPointValue(paperTradingInstrument) * selectedOrderQuantity
     : 0;
   const orderPreviewRiskUsd = orderPreviewStopLossPrice && orderPreviewEntryPrice > 0
-    ? Math.abs(orderPreviewStopLossPrice - orderPreviewEntryPrice) * paperPointValue(selectedInstrument) * selectedOrderQuantity
+    ? Math.abs(orderPreviewStopLossPrice - orderPreviewEntryPrice) * paperPointValue(paperTradingInstrument) * selectedOrderQuantity
     : 0;
   const orderPreviewRiskReward = orderPreviewRiskUsd > 0 && orderPreviewRewardUsd > 0
     ? orderPreviewRewardUsd / orderPreviewRiskUsd
@@ -15777,10 +15880,10 @@ export default function KwantifyWorkspace({
     ? Math.round(Math.abs(orderPreviewStopLossPrice - orderPreviewEntryPrice) / selectedPaperContract.tickSize)
     : 0;
   const orderTakeProfitPreviewLabel = orderPreviewTakeProfitPrice
-    ? `${formatPrice(orderPreviewTakeProfitPrice, selectedInstrument)} · +${formatDollar(orderPreviewRewardUsd)}`
+    ? `${formatPrice(orderPreviewTakeProfitPrice, paperTradingInstrument)} · +${formatDollar(orderPreviewRewardUsd)}`
     : "--";
   const orderStopLossPreviewLabel = orderPreviewStopLossPrice
-    ? `${formatPrice(orderPreviewStopLossPrice, selectedInstrument)} · -${formatDollar(orderPreviewRiskUsd)}`
+    ? `${formatPrice(orderPreviewStopLossPrice, paperTradingInstrument)} · -${formatDollar(orderPreviewRiskUsd)}`
     : "--";
 
   /**
@@ -15802,22 +15905,9 @@ export default function KwantifyWorkspace({
       showPaperOrderMessage("error", "Create or select a sim account first.");
       return;
     }
-    const activeQuote = activeChartExecutionQuoteRef.current;
-    const activeChartQuoteIsExecutable = activeQuote
-      && activeQuote.paneId === activePaneId
-      && normalizePaperSymbol(activeQuote.symbol) === normalizePaperSymbol(selectedInstrument)
-      && Date.now() - activeQuote.timestamp <= 5_000
-      && activeQuote.bid > 0
-      && activeQuote.ask > 0;
-    if (submitType === "market" && !activeChartQuoteIsExecutable) {
-      showPaperOrderMessage("error", "Waiting for the active chart's live executable price. No market order was sent.");
-      return;
-    }
-    const quote = activeChartQuoteIsExecutable
-      ? { bid: activeQuote.bid, ask: activeQuote.ask, timestamp: Date.now() }
-      : resolvePaperExecutionQuote(selectedInstrument);
+    const quote = resolvePaperExecutionQuote(paperTradingInstrument);
     if (!quote) {
-      showPaperOrderMessage("error", "A live executable price is required before placing this order.");
+      showPaperOrderMessage("error", "Waiting for this chart's executable replay or live price. No order was sent.");
       return;
     }
     const entryPrice = submitType === "market"
@@ -15838,7 +15928,7 @@ export default function KwantifyWorkspace({
       paperTradingAccounts,
       {
         accountId: selectedPaperTradingAccount.id,
-        symbol: selectedInstrument,
+        symbol: paperTradingInstrument,
         side: submitSide,
         type: submitType,
         quantity: submitQuantity,
@@ -15855,7 +15945,7 @@ export default function KwantifyWorkspace({
     }
     showPaperOrderMessage(
       "success",
-      `${submitSide === "buy" ? "Buy" : "Sell"} ${submitQuantity} ${displayCmeSymbol(selectedInstrument)} ${submitType === "market" ? "filled" : "working"}.`,
+      `${submitSide === "buy" ? "Buy" : "Sell"} ${submitQuantity} ${displayCmeSymbol(paperTradingInstrument)} ${submitType === "market" ? "filled" : "working"}.`,
     );
   };
 
@@ -15906,18 +15996,47 @@ export default function KwantifyWorkspace({
 
   const resolvePaperExecutionQuote = (symbol: string) => {
     const normalized = normalizePaperSymbol(symbol);
+    if (bottomWorkspaceSection === "backtesting") {
+      const replayQuote = backtestingExecutionQuoteRef.current;
+      if (
+        replayQuote
+        && replayQuote.source === "replay"
+        && normalizePaperSymbol(replayQuote.symbol) === normalized
+        && replayQuote.bid > 0
+        && replayQuote.ask > 0
+      ) {
+        return { bid: replayQuote.bid, ask: replayQuote.ask, timestamp: replayQuote.timestamp };
+      }
+      return null;
+    }
+
+    const gexReplayActive = chartWorkspaceScope === "gamma" && gexVueReplay.active;
     const activeQuote = activeChartExecutionQuoteRef.current;
+    if (gexReplayActive) {
+      if (
+        activeQuote
+        && activeQuote.source === "replay"
+        && activeQuote.paneId === activePaneId
+        && normalizePaperSymbol(activeQuote.symbol) === normalized
+        && activeQuote.bid > 0
+        && activeQuote.ask > 0
+      ) {
+        return { bid: activeQuote.bid, ask: activeQuote.ask, timestamp: activeQuote.timestamp };
+      }
+      return null;
+    }
     if (
       activeQuote
+      && activeQuote.source === "live"
       && activeQuote.paneId === activePaneId
       && normalizePaperSymbol(activeQuote.symbol) === normalized
-      && Date.now() - activeQuote.timestamp <= 5_000
+      && Date.now() - activeQuote.receivedAt <= 5_000
       && activeQuote.bid > 0
       && activeQuote.ask > 0
     ) {
-      return { bid: activeQuote.bid, ask: activeQuote.ask, timestamp: Date.now() };
+      return { bid: activeQuote.bid, ask: activeQuote.ask, timestamp: activeQuote.timestamp };
     }
-    if (normalized === normalizePaperSymbol(selectedInstrument) && currentLivePrice.bid > 0 && currentLivePrice.ask > 0) {
+    if (normalized === normalizePaperSymbol(paperTradingInstrument) && currentLivePrice.bid > 0 && currentLivePrice.ask > 0) {
       return { bid: currentLivePrice.bid, ask: currentLivePrice.ask, timestamp: Date.now() };
     }
     const watchQuote = watchlist.find((item) =>
@@ -18294,7 +18413,17 @@ export default function KwantifyWorkspace({
             {visitedWorkspaceSections.has("backtesting") ? (
               <ReactActivity mode={bottomWorkspaceSection === "backtesting" ? "visible" : "hidden"}>
                 <WorkspaceFailureBoundary resetKey="backtesting" label="Backtesting">
-                  <BacktestingWorkspace />
+                  <BacktestingWorkspace
+                    onReplayExecutionQuote={handleBacktestingExecutionQuote}
+                    paperPositions={selectedPaperAccountLedger?.positions ?? []}
+                    paperFills={(selectedPaperAccountLedger?.fills ?? []).filter((fill) =>
+                      !selectedHiddenPaperFillIds.has(fill.id))}
+                    onUpdatePaperProtection={handlePaperProtectionUpdate}
+                    onPaperProtectionDragStateChange={handlePaperProtectionDragStateChange}
+                    onClosePaperPosition={handleFlattenPaperPosition}
+                    onRemovePaperFills={handleRemovePaperFillMarkers}
+                    onResetPaperTrading={selectedPaperTradingAccount ? handleResetPaperTrading : undefined}
+                  />
                 </WorkspaceFailureBoundary>
               </ReactActivity>
             ) : null}
@@ -18574,7 +18703,7 @@ export default function KwantifyWorkspace({
         </div>
       </div>
 
-      {bottomWorkspaceSection !== "backtesting" && rightPanel && (
+      {(bottomWorkspaceSection !== "backtesting" || rightPanel === "order") && rightPanel && (
         <div style={{ width: rightPanelWidth }} className="relative flex min-w-0 shrink-0 flex-col overflow-hidden border-l border-border bg-panel">
           <div onMouseDown={startRightPanelResize} className="absolute bottom-0 left-0 top-0 z-10 w-1 cursor-col-resize bg-transparent transition-colors hover:w-1.5 hover:bg-primary/30" />
           {(rightPanel === "friends" || rightPanel === "messages") && (
@@ -18597,7 +18726,7 @@ export default function KwantifyWorkspace({
                 <div className="flex items-center gap-2">
                   <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-surface text-primary"><Zap className="h-3.5 w-3.5" /></div>
                   <div>
-                    <div className="text-[13px] font-semibold text-foreground">{displayCmeSymbol(selectedInstrument)}</div>
+                    <div className="text-[13px] font-semibold text-foreground">{displayCmeSymbol(paperTradingInstrument)}</div>
                     <div className="text-[11px] text-muted">{paperExecutionRequested ? "Paper Trading" : activeTradingBrokerLabel} order ticket</div>
                   </div>
                 </div>
@@ -18644,7 +18773,7 @@ export default function KwantifyWorkspace({
               )}
               <div className={`${tradingUnlocked ? "" : "pointer-events-none opacity-60"}`}>
                 <div className="mb-4 grid grid-cols-3 border-b border-border text-[13px]">{(["market", "limit", "stop"] as const).map((type) => <button key={type} onClick={() => setOrderType(type)} className={`py-2 capitalize transition-colors ${orderType === type ? "border-b-2 border-primary text-foreground" : "text-muted hover:text-foreground"}`}>{type}</button>)}</div>
-                {orderType !== "market" && <div className="mb-4 space-y-1.5"><label className="text-[12px] text-muted">{orderType === "limit" ? "Limit price" : "Stop price"}</label><input value={orderPrice} onChange={(event) => setOrderPrice(event.target.value)} placeholder={selectedMidPrice ? formatPrice(selectedMidPrice, selectedInstrument) : "Price"} className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-right font-mono text-[13px] outline-none focus:border-primary/40" /></div>}
+                {orderType !== "market" && <div className="mb-4 space-y-1.5"><label className="text-[12px] text-muted">{orderType === "limit" ? "Limit price" : "Stop price"}</label><input value={orderPrice} onChange={(event) => setOrderPrice(event.target.value)} placeholder={selectedMidPrice ? formatPrice(selectedMidPrice, paperTradingInstrument) : "Price"} className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-right font-mono text-[13px] outline-none focus:border-primary/40" /></div>}
                 <div className="mb-4 space-y-2">
                   <div className="flex items-center justify-between"><div className="flex items-center gap-2"><span className="text-[13px] text-muted">{selectedPaperContract.quantityLabel}</span>{!selectedPaperContract.isFutures && <KwantSelect value={unitsType} onChange={(e) => setUnitsType(e.target.value as typeof unitsType)} className="rounded-lg border border-border bg-surface px-2 py-1 text-[11px] text-muted outline-none"><option value="units">Units</option><option value="lots">Lots</option><option value="usd">USD</option><option value="pctBalance">% Balance</option></KwantSelect>}</div><div className="flex items-center gap-1 text-[12px] text-muted"><span className="font-mono text-foreground">{formatDollar(orderPanelMarginUsd)}</span><ChevronDown className="h-3 w-3" /></div></div>
                   <div className="flex items-center gap-2"><input value={orderUnits} onChange={(e) => setOrderUnits(e.target.value)} className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-right font-mono text-[13px] outline-none focus:border-primary/40" /><button className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-surface text-muted hover:text-foreground"><ArrowLeftRight className="h-4 w-4" /></button></div>

@@ -49,6 +49,7 @@ import {
 import type { ChartIndicatorInstance } from "@/lib/chartIndicatorCatalog";
 import { defaultIndicatorSettings, normalizeStoredIndicator } from "@/lib/chartIndicatorConfig";
 import type { InstitutionalTrade } from "@/lib/institutionalMarketData";
+import type { PaperPosition, PaperProtectionUpdate, PaperTradeFill } from "@/lib/paperTrading";
 
 const Chart = dynamic(() => import("@/components/Chart"), {
   ssr: false,
@@ -59,6 +60,27 @@ type ReplayInstrument = "NQ" | "MNQ" | "ES" | "MES";
 type ReplayTimeframe = string;
 type LevelFamily = "gamma" | "quant" | "valueArea";
 type ReplayDockKind = "gex" | "zyon";
+
+type BacktestingWorkspaceProps = {
+  onReplayExecutionQuote?: (quote: {
+    symbol: string;
+    bid: number;
+    ask: number;
+    mid: number;
+    timestamp: number;
+  }) => void;
+  paperPositions?: PaperPosition[];
+  paperFills?: PaperTradeFill[];
+  onUpdatePaperProtection?: (
+    accountId: string,
+    positionId: string,
+    update: PaperProtectionUpdate,
+  ) => void;
+  onPaperProtectionDragStateChange?: (positionId: string, dragging: boolean) => void;
+  onClosePaperPosition?: (position: PaperPosition) => void;
+  onRemovePaperFills?: (fillIds: string[]) => void;
+  onResetPaperTrading?: () => void;
+};
 
 const REPLAY_INDICATORS_STORAGE_KEY = "kwantdesk:historical-replay:indicators:v1";
 
@@ -671,7 +693,16 @@ async function requestJson<T extends { error?: string }>(
   }
 }
 
-export default function BacktestingWorkspace() {
+export default function BacktestingWorkspace({
+  onReplayExecutionQuote,
+  paperPositions = [],
+  paperFills = [],
+  onUpdatePaperProtection,
+  onPaperProtectionDragStateChange,
+  onClosePaperPosition,
+  onRemovePaperFills,
+  onResetPaperTrading,
+}: BacktestingWorkspaceProps) {
   const [settings, setSettings] = useState<ChartSettings>(defaultChartSettings);
   const [replayIndicators, setReplayIndicators] = useState<ChartIndicatorInstance[]>(() =>
     loadReplayIndicators(defaultChartSettings));
@@ -816,6 +847,22 @@ export default function BacktestingWorkspace() {
     return replayTrades.filter((trade) =>
       trade.timestamp >= firstVisibleTimestamp && trade.timestamp <= replayDataClock);
   }, [replayDataClock, replayTrades]);
+  useEffect(() => {
+    if (!started || replayDataClock === null || !onReplayExecutionQuote) return;
+    const latest = visibleCandles[visibleCandles.length - 1];
+    if (!latest || !Number.isFinite(latest.close) || latest.close <= 0) return;
+    // Archived replay bars do not contain an honest historical BBO. A paper
+    // fill therefore executes at the exact replay mark with zero simulated
+    // spread, while all tick/point value and protection math remains native
+    // to the selected futures contract in the shared paper ledger.
+    onReplayExecutionQuote({
+      symbol: selectedDefinition.id,
+      bid: latest.close,
+      ask: latest.close,
+      mid: latest.close,
+      timestamp: replayDataClock,
+    });
+  }, [onReplayExecutionQuote, replayDataClock, selectedDefinition.id, started, visibleCandles]);
   const historicalZyonContext = useMemo<HistoricalZyonReplayInput | null>(() => {
     if (replayClock === null || sessionStartAt === null || !visibleCandles.length) return null;
     const mapLevels = (family: "gamma" | "quant" | "valueArea", rows: ChartLevel[], visible: boolean) => rows.map((row) => ({
@@ -1779,6 +1826,13 @@ export default function BacktestingWorkspace() {
             timeframe={timeframe}
             marketIsActive={false}
             settings={settings}
+            paperPositions={paperPositions}
+            paperFills={paperFills}
+            onUpdatePaperProtection={onUpdatePaperProtection}
+            onPaperProtectionDragStateChange={onPaperProtectionDragStateChange}
+            onClosePaperPosition={onClosePaperPosition}
+            onRemovePaperFills={onRemovePaperFills}
+            onResetPaperTrading={onResetPaperTrading}
             toolbarEnabled
             gammaLevelsEnabled={levelState.gamma}
             gammaLevelsAvailable

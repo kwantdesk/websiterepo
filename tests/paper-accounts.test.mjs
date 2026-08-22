@@ -6,8 +6,10 @@ import {
   parseMoney,
 } from "../src/lib/paperAccounts.ts";
 import {
+  dailyRealizedPaperPnl,
   emptyPaperTradingLedger,
   ensurePaperAccountLedger,
+  paperContractSpec,
   placePaperOrder,
   processPaperQuote,
   summarizePaperAccount,
@@ -234,4 +236,57 @@ test("an older execution quote cannot rewind protection and create a false fill"
   assert.equal(stale.accounts[account.id].positions[0].status, "open");
   assert.equal(stale.accounts[account.id].fills.filter((fill) => fill.role === "take_profit").length, 0);
   assert.equal(stale.accounts[account.id].realizedPnl, 0);
+});
+
+test("historical replay uses the native NQ and ES mini/micro point values", () => {
+  const replayAt = Date.parse("2026-06-10T14:30:00.000Z");
+  const contracts = [
+    { symbol: "NQ", pointValue: 20, tickValue: 5, expectedPnl: 40 },
+    { symbol: "MNQ", pointValue: 2, tickValue: 0.5, expectedPnl: 4 },
+    { symbol: "ES", pointValue: 50, tickValue: 12.5, expectedPnl: 100 },
+    { symbol: "MES", pointValue: 5, tickValue: 1.25, expectedPnl: 10 },
+  ];
+
+  for (const contract of contracts) {
+    const account = createPaperTradingAccount({
+      name: `${contract.symbol} Replay Sim`,
+      balance: 100_000,
+      leverage: "1:30",
+      instrument: "All CME Futures",
+    });
+    const spec = paperContractSpec(contract.symbol);
+    assert.equal(spec.pointValue, contract.pointValue);
+    assert.equal(spec.tickValue, contract.tickValue);
+
+    const placed = placePaperOrder(
+      ensurePaperAccountLedger(emptyPaperTradingLedger(), account),
+      [account],
+      {
+        accountId: account.id,
+        symbol: contract.symbol,
+        side: "buy",
+        type: "market",
+        quantity: 2,
+        takeProfits: [{ price: 101, quantity: 2 }],
+      },
+      { bid: 100, ask: 100, timestamp: replayAt },
+    );
+    assert.equal(placed.error, undefined);
+
+    const exited = processPaperQuote(
+      placed.ledger,
+      [account],
+      contract.symbol,
+      { bid: 101, ask: 101, timestamp: replayAt + 60_000 },
+      { executionAuthorized: true },
+    );
+    const accountLedger = exited.accounts[account.id];
+    assert.equal(accountLedger.realizedPnl, contract.expectedPnl);
+    assert.equal(dailyRealizedPaperPnl(accountLedger, replayAt + 60_000), contract.expectedPnl);
+    assert.equal(
+      dailyRealizedPaperPnl(accountLedger, Date.parse("2026-06-11T14:30:00.000Z")),
+      0,
+      "historical replay P&L must stay on its replay trading day",
+    );
+  }
 });
