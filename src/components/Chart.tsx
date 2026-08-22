@@ -364,6 +364,17 @@ const TOOLBAR_PINNED_STORAGE_KEY = "kwantdesk:chart-toolbar-pinned:v1";
 // stays mounted so previously placed drawings keep rendering; flip this back
 // to true to restore the old toolbar UI.
 const LEGACY_LEFT_TOOLBAR_ENABLED = false;
+// Depth the cheap studies reach back to, and the depth their cost was
+// measured at. Bounded so a very long session cannot grow the recompute
+// without limit.
+const DEEP_HISTORY_INDICATOR_MAX_BARS = 20_000;
+const DEEP_HISTORY_INDICATOR_IDS = new Set([
+  "moving-average",
+  "volume",
+  "standard-deviation",
+  "average-true-range-atr",
+  "rate-of-change-roc",
+]);
 const EMPTY_CHARTING_DRAWINGS: Drawing[] = [];
 // Retained gamma-heatmap history columns per pane. Bounds per-pane memory and
 // the per-render surface build cost (the GEX Vue OOM/freeze driver).
@@ -4872,6 +4883,24 @@ function Chart({
       : sampledIndicatorCandles.slice(-1_500),
     [indicatorHistoryLimit, indicatorWindowCandles, sampledIndicatorCandles],
   );
+  // Studies cheap enough to span the whole loaded history instead of the
+  // 1,500-bar lite window, which on a one-minute chart stopped roughly a day
+  // short of price while the candles carried on.
+  //
+  // The membership is measured, not guessed. On 20,000 one-minute bars, per
+  // recompute (the sample cadence is 1-2s): moving average 1.3ms, volume
+  // 1.6ms, standard deviation 2.2ms, ATR 2.4ms, rate of change 2.8ms — about
+  // 10ms with every one of them switched on at once, comfortably inside the
+  // budget. Everything else measured dearer at that depth and stays on the
+  // lite window: Keltner 12ms, rolling VWAP 46ms, and VWAP alone 92ms, which
+  // would block five frames on every sample and bring back the stutter this
+  // window was introduced to prevent.
+  const indicatorWindowCandlesDeep = useMemo(
+    () => (sampledIndicatorCandles.length > DEEP_HISTORY_INDICATOR_MAX_BARS
+      ? sampledIndicatorCandles.slice(-DEEP_HISTORY_INDICATOR_MAX_BARS)
+      : sampledIndicatorCandles),
+    [sampledIndicatorCandles],
+  );
   const indicatorMarketTrades = useMemo(() => {
     if (!indicatorWindowCandles.length || !sampledIndicatorMarketTrades.length) return [];
     const firstTimestamp = indicatorWindowCandles[0].timestamp;
@@ -4998,6 +5027,7 @@ function Chart({
   // biased subset of large prints.
   const indicatorCandles = indicatorWindowCandles;
   const indicatorCandlesLite = indicatorWindowCandlesLite;
+  const indicatorCandlesDeep = indicatorWindowCandlesDeep;
   const tpoSourceTrades = useMemo<TpoTrade[]>(() => {
     if (!tpoSamplingEnabled) return [];
     const tickSize = priceFormat.minMove;
@@ -5813,9 +5843,14 @@ function Chart({
         ].includes(instance.indicatorId)
       ) return [];
       const requiresOrderFlowWindow = CHART_INDICATOR_BY_ID.get(instance.indicatorId)?.requiresOrderFlow === true;
+      const studyCandles = requiresOrderFlowWindow
+        ? indicatorCandles
+        : DEEP_HISTORY_INDICATOR_IDS.has(instance.indicatorId)
+          ? indicatorCandlesDeep
+          : indicatorCandlesLite;
       return calculateIndicatorSeries(
         instance,
-        requiresOrderFlowWindow ? indicatorCandles : indicatorCandlesLite,
+        studyCandles,
         {
           primary: settings.upColor,
           secondary: settings.borderUpColor,
@@ -5828,6 +5863,7 @@ function Chart({
     }),
     [
       indicatorCandles,
+      indicatorCandlesDeep,
       indicatorCandlesLite,
       indicatorSignature,
       indicators,

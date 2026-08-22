@@ -26,6 +26,7 @@
     "test:initial-balance": "node --experimental-strip-types scripts/test-initial-balance.mjs",
     "test:zero-gamma-line": "node --experimental-strip-types scripts/test-zero-gamma-line.mjs",
     "test:options-delta": "node --experimental-strip-types scripts/test-options-delta.mjs",
+    "test:indicator-history-depth": "node --import ./scripts/alias-hook.mjs scripts/test-indicator-history-depth.mjs",
     "test:toolbar-single-source": "node --experimental-strip-types scripts/test-toolbar-single-source.mjs",
     "test:cvd-divergence": "node --import ./scripts/alias-hook.mjs --experimental-strip-types scripts/test-cvd-divergence.mjs",
     "test:preference-hydration": "node --experimental-strip-types scripts/test-preference-hydration.mjs",
