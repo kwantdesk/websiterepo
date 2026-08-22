@@ -56,6 +56,16 @@
 html {
   background: var(--background);
   color: var(--foreground);
+  /* Safari on iOS inflates text in rotated/zoomed layouts unless told not to,
+     which on a dense desk reflows every panel. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  /* Kills the double-tap-to-zoom gesture (and its 300ms click delay) while
+     leaving ordinary panning and scrolling alone. */
+  touch-action: manipulation;
+  /* No rubber-band and no pull-to-refresh: reaching the end of a scrollable
+     panel must not drag the whole application. */
+  overscroll-behavior: none;
 }
 
 body {
@@ -1227,7 +1237,17 @@ table,
    without leaking into the marketing surface.
    -------------------------------------------------------------------------- */
 
+/* The cockpit is pinned to the viewport so it behaves like an application
+   rather than a page: nothing behind it scrolls, so a fast swipe cannot drag
+   the shell around or leave it parked off-centre. Marketing and login pages
+   keep their normal document scrolling. */
 body.kwant-cockpit-ui {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
   --kwant-cyan: var(--secondary);
   --kwant-magenta: var(--primary);
   --kwant-profit: #7ee65c;

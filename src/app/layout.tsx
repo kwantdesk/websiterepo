@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import ThemeProvider from "@/components/ThemeProvider";
+import ViewportLock from "@/components/ViewportLock";
 import { themeBootstrapScript } from "@/lib/theme";
 import "./globals.css";
 
@@ -25,7 +26,20 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  // The desk is an application, not a document. Left scalable, a two-finger
+  // or swipe gesture on iPad leaves the whole page zoomed in with no way back
+  // to a known scale, and focusing any of the dense 8-11px inputs makes Safari
+  // zoom to fit it. Pinning the scale is also what stops that focus zoom.
+  //
+  // Safari honours this when the desk is installed to the Home Screen; in the
+  // browser it ignores user-scalable and the gesture listeners in
+  // ViewportLock do the work instead.
+  maximumScale: 1,
+  userScalable: false,
   viewportFit: "cover",
+  // Let the layout resize rather than have the keyboard scroll the shell
+  // out from under itself.
+  interactiveWidget: "resizes-content",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
@@ -35,7 +49,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <meta name="theme-color" content="#303238" />
         <script dangerouslySetInnerHTML={{ __html: themeBootstrapScript() }} />
       </head>
-      <body><ThemeProvider>{children}</ThemeProvider></body>
+      <body><ViewportLock /><ThemeProvider>{children}</ThemeProvider></body>
     </html>
   );
 }
