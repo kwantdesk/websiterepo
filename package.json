@@ -71,7 +71,9 @@
     "test:drawing-selection": "node scripts/test-drawing-selection.mjs",
     "test:position-default-size": "node scripts/test-position-default-size.mjs",
     "test:replay-history-range": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-replay-history-range.mjs",
-    "test:tpo-settings-wired": "node scripts/test-tpo-settings-wired.mjs"
+    "test:tpo-settings-wired": "node scripts/test-tpo-settings-wired.mjs",
+    "test:tpo-zoned-parts": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-tpo-zoned-parts.mjs",
+    "bench:tpo-build": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/bench-tpo-build.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",
