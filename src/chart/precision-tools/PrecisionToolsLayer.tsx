@@ -3,6 +3,9 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Copy, Eye, Lock, Settings2, Trash2, Unlock } from "lucide-react";
 import { claimChartInteraction, releaseChartInteraction, subscribeChartInteractionOwner } from "@/lib/chartInteractionArbiter";
+
+/** Broadcast by the chart when the trader clears every drawing. */
+export const CLEAR_CHART_DRAWINGS_EVENT = "kwantdesk:clear-chart-drawings";
 import { createDefaultConfigs } from "./defaults";
 import { hitTestObjects, objectScreenAnchors } from "./hitTesting";
 import { simplifyRdp, snapPrice, translateAnchors } from "./math";
@@ -236,8 +239,29 @@ export default function PrecisionToolsLayer({
       setEngaged(false);
       placedCountRef.current = 0;
       store.cancelDraft();
+      // Handles belong to the object being WORKED ON. Disengaging without
+      // clearing the selection left them drawn indefinitely: the click that
+      // moved on went to whichever surface took over, so nothing here ever
+      // deselected and a finished drawing kept its anchor dots forever.
+      // Clicking the object again re-engages this layer and re-selects it.
+      store.select([]);
     }
   }), [store]);
+
+  // "Clear all drawings" has to mean all of them.
+  //
+  // Precision objects live in their own document, so a chart-level clear left
+  // them on screen. The chart broadcasts this event and every drawing surface
+  // clears itself, rather than the chart needing a reference to each store.
+  useEffect(() => {
+    const onClearAll = () => {
+      store.cancelDraft();
+      store.select([]);
+      store.clear();
+    };
+    window.addEventListener(CLEAR_CHART_DRAWINGS_EVENT, onClearAll);
+    return () => window.removeEventListener(CLEAR_CHART_DRAWINGS_EVENT, onClearAll);
+  }, [store]);
   const resizeCanvas = useCallback((canvas: HTMLCanvasElement | null, allocate = true) => {
     if (!canvas) return null;
     canvas.style.width = `${adapter.width}px`;
