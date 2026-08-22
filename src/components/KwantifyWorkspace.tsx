@@ -16988,11 +16988,11 @@ export default function KwantifyWorkspace({
         ) : null}
 
         {chartSurfaceActive && (
-        <header className="kwant-chart-command-deck relative grid shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center border-b border-border bg-panel">
+        <header className="kwant-chart-command-deck relative grid shrink-0 grid-cols-[minmax(0,1fr)_minmax(0,auto)_minmax(0,1fr)] items-center overflow-hidden border-b border-border bg-panel">
           <div
             aria-disabled={!activePaneIsChart}
             title={activePaneIsChart ? "Controls apply to the selected chart" : `${ALL_WORKSPACE_PANEL_OPTIONS.find((option) => option.id === activeWorkspacePane.content)?.label ?? "Panel"} selected — choose a chart to use chart controls`}
-            className={`relative col-start-1 row-start-1 flex min-w-0 items-center justify-self-start overflow-x-auto pl-2 pr-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${!activePaneIsChart ? "pointer-events-none opacity-30" : ""}`}>
+            className={`relative col-start-1 row-start-1 flex min-w-0 items-center justify-start overflow-x-auto pl-2 pr-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${!activePaneIsChart ? "pointer-events-none opacity-30" : ""}`}>
           {chartTrades.length > 0 && (
             <div className="mr-2 flex shrink-0 items-center gap-2 rounded-lg bg-primary/10 px-2 py-1">
               <div className="h-2 w-2 rounded-full bg-primary" />
@@ -17049,7 +17049,7 @@ export default function KwantifyWorkspace({
             ) : null}
           </div>
           </div>
-          <div className="col-start-2 row-start-1 flex h-8 min-w-0 shrink-0 items-center justify-self-center gap-1 overflow-x-auto px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="col-start-2 row-start-1 flex h-8 min-w-0 items-center justify-center gap-1 overflow-x-auto px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {[
               {
                 layout: "single" as Exclude<WorkspaceLayout, "custom">,
@@ -17153,7 +17153,9 @@ export default function KwantifyWorkspace({
               }`}
             >
               <Plus className="h-3.5 w-3.5" />
-              <span>PANEL</span>
+              {/* The icon alone carries the button once space is tight; the
+                  aria-label keeps it announced either way. */}
+              <span className="hidden xl:inline">PANEL</span>
             </button>
             <button
               onClick={() => setWorkspaceLocked((current) => !current)}
