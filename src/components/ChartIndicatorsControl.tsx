@@ -546,6 +546,16 @@ const volumeProfileThemeColours = (chartSettings: ChartSettings) => ({
  */
 const themeColourMapFor = (indicatorId: string, chartSettings: ChartSettings) => {
   if (indicatorId === "bounce-levels") return bounceThemeColours(chartSettings) as Record<string, string>;
+  // Big Contracts and Big Blocks paint their two sides from the theme's up and
+  // down colours (see the primitive updates in Chart.tsx), so the swatches must
+  // show those while theme mode is on rather than the values stored when the
+  // indicator was added.
+  if (indicatorId === "big-trades" || indicatorId === "deep-m-effort-nq") {
+    return {
+      askColor: chartSettings.upColor,
+      bidColor: chartSettings.downColor,
+    } as Record<string, string>;
+  }
   if (VOLUME_PROFILE_INDICATOR_IDS.has(indicatorId)) {
     return volumeProfileThemeColours(chartSettings) as Record<string, string>;
   }
@@ -5041,8 +5051,18 @@ export default function ChartIndicatorsControl({
                             ...current,
                             settings: {
                               ...(current.settings ?? {}),
+                              // Seed the sibling theme colours first, where a
+                              // map exists, so the ones NOT being picked do not
+                              // jump to whatever the theme was when the
+                              // indicator was added.
                               ...(themeColours && current.settings?.useThemeColors !== false ? themeColours : {}),
-                              ...(themeColours ? { useThemeColors: false } : {}),
+                              // Picking a colour IS the override. This used to
+                              // be gated on having a theme map, which only
+                              // bounce levels and the volume profiles have — so
+                              // on every other indicator the chosen colour was
+                              // saved and then ignored, because the renderer
+                              // reads the theme while useThemeColors is true.
+                              useThemeColors: false,
                               [key]: hex,
                             },
                           }))}
