@@ -230,6 +230,41 @@ type ProfileDerived = {
   valueArea: ReturnType<typeof calculateVolumeProfileValueArea>;
 };
 
+/**
+ * Width of a row's delta bar, in pixels.
+ *
+ * Extracted so the degenerate cases are testable. A profile carrying no
+ * aggressor delta at all gives a scale maximum of zero, and the previous
+ * inline form divided by it: `Math.abs(0) / 0` is NaN, `Math.max(0.5, NaN)`
+ * is also NaN, and a canvas silently ignores a NaN rect. The delta half of
+ * "Delta and total volume" therefore vanished with no error to follow —
+ * indistinguishable from the feature having been removed. A profile with no
+ * delta now returns zero and simply draws nothing.
+ */
+export function resolveDeltaBarWidth(input: {
+  mode: "volume" | "delta-volume" | "bid-ask" | "delta" | "delta-percentage";
+  delta: number;
+  volume: number;
+  profileWidth: number;
+  deltaScaleWidth: number;
+  deltaScaleMaximum: number;
+}): number {
+  const { mode, delta, volume, profileWidth, deltaScaleWidth, deltaScaleMaximum } = input;
+  if (!(profileWidth > 0) || !(deltaScaleWidth > 0)) return 0;
+  if (!Number.isFinite(delta) || delta === 0) return 0;
+  if (mode === "delta-percentage") {
+    // Delta percentage measures how one-sided a row was rather than how big
+    // its delta was, so a thin row that traded entirely on the offer reads as
+    // strongly as a heavy balanced one.
+    if (!(volume > 0)) return 0;
+    const share = Math.min(1, Math.abs(delta) / volume);
+    return Math.max(0.5, share * deltaScaleWidth);
+  }
+  if (!(deltaScaleMaximum > 0)) return 0;
+  const share = Math.min(1, Math.abs(delta) / deltaScaleMaximum);
+  return Math.max(0.5, share * deltaScaleWidth);
+}
+
 export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
   private attachedParams: SeriesAttachedParameter<Time> | null = null;
   private models: NativeVolumeProfileModel[] = [];
@@ -867,12 +902,14 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           // Delta percentage measures how one-sided a row was rather than how
           // big its delta was, so a thin row that traded entirely on the offer
           // reads as strongly as a heavy balanced one.
-          const deltaShare = volume > 0 ? Math.abs(delta) / volume : 0;
-          const deltaWidth = profileWidth <= 0
-            ? 0
-            : style.mode === "delta-percentage"
-              ? Math.max(0.5, deltaShare * deltaScaleWidth)
-              : Math.max(0.5, Math.abs(delta) / deltaScaleMaximum * deltaScaleWidth);
+          const deltaWidth = resolveDeltaBarWidth({
+            mode: style.mode,
+            delta,
+            volume,
+            profileWidth,
+            deltaScaleWidth,
+            deltaScaleMaximum,
+          });
           // Which side this row's delta bar is drawn on. Declared here so the
           // POC highlight below traces the same side the bar was drawn on.
           const deltaOnRight = delta >= 0 && !pinnedRight;
