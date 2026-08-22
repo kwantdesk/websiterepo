@@ -1616,6 +1616,55 @@ export const FLOW_HEAL_ABSOLUTE_TOLERANCE = 25;
  * Returns null when nothing is materially wrong, so the caller can skip the
  * commit entirely.
  */
+/**
+ * Restore closed bars' OHLC from the exchange-baked history.
+ *
+ * The live tail is allowed to CREATE a bucket the historical vendor has not
+ * published yet — that is how the right-hand edge stays current. Such a bar's
+ * high and low are only whatever the stream happened to deliver, so it can be
+ * missing the extremes that really traded in that minute, or carry a stray one.
+ *
+ * Nothing ever corrected those bars afterwards. The periodic heal repaired
+ * aggressor FLOW and deliberately preserved OHLC, so a pane left open for a
+ * session accumulated live-built bars whose wicks never matched the tape —
+ * some too short, some too long — while the authoritative bar sat unused in
+ * the very history being polled.
+ *
+ * Bars at or after `liveEdgeFromMs` are still forming and stay with the
+ * stream. Returns null when every closed bar already matches, so the caller
+ * can skip the commit.
+ */
+export function healClosedCandleOhlc(
+  held: Candle[],
+  baked: Candle[],
+  liveEdgeFromMs: number,
+): Candle[] | null {
+  if (!held.length || !baked.length) return null;
+  const bakedByTimestamp = new Map(baked.map((candle) => [candle.timestamp, candle]));
+  let repaired = false;
+  const healed = held.map((candle) => {
+    if (Number(candle.timestamp) >= liveEdgeFromMs) return candle;
+    const authoritative = bakedByTimestamp.get(candle.timestamp);
+    if (!authoritative) return candle;
+    const same = authoritative.open === candle.open
+      && authoritative.high === candle.high
+      && authoritative.low === candle.low
+      && authoritative.close === candle.close;
+    if (same) return candle;
+    repaired = true;
+    // Only the price shape is restored. Flow fields belong to the tape and are
+    // reconciled separately, so they are carried across untouched.
+    return {
+      ...candle,
+      open: authoritative.open,
+      high: authoritative.high,
+      low: authoritative.low,
+      close: authoritative.close,
+    };
+  });
+  return repaired ? healed : null;
+}
+
 export function healClosedCandleFlow(
   held: Candle[],
   baked: Candle[],
