@@ -17430,8 +17430,10 @@ export default function KwantifyWorkspace({
                   : "text-muted hover:bg-surface hover:text-foreground"
               }`}
             >
-              <Repeat className="h-3.5 w-3.5" />
-              Replay
+              {/* The control that starts replay is the control that leaves it,
+                  so it has to say which one it is about to do. */}
+              {gexVueReplay.active ? <X className="h-3.5 w-3.5" /> : <Repeat className="h-3.5 w-3.5" />}
+              {gexVueReplay.active ? "Exit" : "Replay"}
             </button>
           ) : null}
           </div>
@@ -17457,8 +17459,10 @@ export default function KwantifyWorkspace({
                   : "text-muted hover:bg-surface hover:text-foreground"
               }`}
             >
-              <Repeat className="h-3.5 w-3.5" />
-              Replay
+              {/* The control that starts replay is the control that leaves it,
+                  so it has to say which one it is about to do. */}
+              {gexVueReplay.active ? <X className="h-3.5 w-3.5" /> : <Repeat className="h-3.5 w-3.5" />}
+              {gexVueReplay.active ? "Exit" : "Replay"}
             </button>
           ) : null}
           <button

@@ -79,6 +79,14 @@ const daysAgo = (days) => new Date(now - days * 24 * 60 * 60_000).toISOString().
   assert.match(workspace, /<KwantDatePicker/);
   // On the Charts workspace the bar must not call itself GEX.
   assert.match(workspace, /chartWorkspaceScope === "gamma" \? "GEX Replay" : "Chart Replay"/);
+
+  // The control that starts replay is the control that leaves it, so it must
+  // say which one it is about to do rather than reading "Replay" throughout.
+  const exitLabels = workspace.match(/gexVueReplay\.active \? "Exit" : "Replay"/g) ?? [];
+  assert.equal(exitLabels.length, 2,
+    "both replay toggles (Charts and GEX Vue) must switch to Exit while active");
+  const exitIcons = workspace.match(/gexVueReplay\.active \? <X className/g) ?? [];
+  assert.equal(exitIcons.length, 2, "the icon must switch with the label");
 }
 
 console.log("Replay history range tests passed.");
