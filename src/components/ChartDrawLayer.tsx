@@ -11,6 +11,8 @@ import {
   type DrawPoint,
   type DrawToolId,
   type Drawing,
+  magnetStrengthSpec,
+  type MagnetStrength,
 } from "@/lib/chartDrawTools";
 
 // Self-contained SVG overlay that owns the new charting tools end to end:
@@ -29,6 +31,7 @@ type Props = {
   fromXY: (x: number, y: number) => DrawPoint | null;
   candles: DrawCandle[];
   magnet: boolean;
+  magnetStrength: MagnetStrength;
   viewportVersion: number;
   chartReady: number;
   subscribeViewport: (callback: () => void) => (() => void);
@@ -51,7 +54,7 @@ const TEXT_INPUT_TOOLS: DrawToolId[] = ["text", "note", "callout", "signpost"];
 
 export default function ChartDrawLayer({
   width, height, activeTool, keepDrawing, drawings, selectedId,
-  toX, toY, fromXY, candles, magnet, viewportVersion, chartReady, subscribeViewport, onCommit, onUpdate, onDelete, onSelect, onToolConsumed, onRequestText, onOpenSettings,
+  toX, toY, fromXY, candles, magnet, magnetStrength, viewportVersion, chartReady, subscribeViewport, onCommit, onUpdate, onDelete, onSelect, onToolConsumed, onRequestText, onOpenSettings,
 }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [pending, setPending] = useState<{ tool: DrawToolId; points: DrawPoint[] } | null>(null);
@@ -74,8 +77,11 @@ export default function ChartDrawLayer({
   //    slows near the wick it is aiming for;
   //  - hysteresis: once locked, the anchor stays locked until the pointer
   //    clearly leaves the target, so it cannot flicker between neighbours.
-  const SNAP_RADIUS_PX = 18;
-  const SNAP_RELEASE_PX = 30;
+  // Snap reach follows the selected strength rather than one fixed radius,
+  // so a weak magnet can be left on permanently without it grabbing points
+  // the trader meant to place freely.
+  const SNAP_RADIUS_PX = magnetStrengthSpec(magnetStrength).radiusPx;
+  const SNAP_RELEASE_PX = magnetStrengthSpec(magnetStrength).releasePx;
   const SNAP_FAST_PX_PER_MS = 0.9;
   const snapStateRef = useRef<{ lastX: number; lastY: number; lastAt: number; lock: DrawPoint | null }>({
     lastX: 0, lastY: 0, lastAt: 0, lock: null,
@@ -147,6 +153,16 @@ export default function ChartDrawLayer({
     return best ? { point: best, distance: bestDist } : null;
   };
 
+  // Freehand samples must never magnet. Snapping every sample of a stroke to
+  // the nearest open/high/low/close turns a drawn line into a staircase.
+  const rawPoint = (clientX: number, clientY: number) => {
+    const rect = svgRef.current?.getBoundingClientRect();
+    if (!rect) return null;
+    return fromXY(clientX - rect.left, clientY - rect.top);
+  };
+  const freehandCleanupRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => { freehandCleanupRef.current?.(); }, []);
+
   const localPoint = (event: ReactPointerEvent) => {
     const rect = svgRef.current?.getBoundingClientRect();
     if (!rect) return null;
@@ -192,7 +208,10 @@ export default function ChartDrawLayer({
     }
     onCommit(createDrawing(tool, committed));
     setPending(null);
-    if (!keepDrawing) onToolConsumed();
+    // Drawing is repetitive by nature: finishing one stroke should leave the
+    // pencil in hand rather than dropping back to the cursor every time.
+    const staysArmed = keepDrawing || DRAW_TOOL_SPECS[tool].points === "freehand";
+    if (!staysArmed) onToolConsumed();
   };
 
   // Dragging is driven by window-level listeners so the pointer never
@@ -404,7 +423,7 @@ export default function ChartDrawLayer({
       const hit = hitTest(point);
       if (hit) {
         onSelect(hit.id);
-        svgRef.current?.setPointerCapture(event.pointerId);
+        event.currentTarget.setPointerCapture(event.pointerId);
         if (hit.handleIndex != null) dragRef.current = { kind: "handle", id: hit.id, index: hit.handleIndex };
         else {
           const drawing = drawings.find((d) => d.id === hit.id)!;
@@ -419,7 +438,7 @@ export default function ChartDrawLayer({
       if (!pending) {
         if (need <= 1) { onRequestText([point], activeTool); onToolConsumed(); return; }
         setPending({ tool: activeTool, points: [point] });
-        svgRef.current?.setPointerCapture(event.pointerId);
+        event.currentTarget.setPointerCapture(event.pointerId);
       } else {
         const next = [...pending.points, point];
         if (next.length >= need) { onRequestText(next, activeTool); setPending(null); onToolConsumed(); }
@@ -429,23 +448,58 @@ export default function ChartDrawLayer({
     }
 
     if (spec.points === "freehand") {
+      // Press, drag, release — driven from the window so the release is always
+      // seen.
+      //
+      // This used to take pointer capture on the <svg> root, which carries
+      // pointer-events:none and no handlers; the handlers live on the capture
+      // rect inside it. Capture therefore routed every following pointermove
+      // and pointerup away from the only code that could end the stroke, so
+      // the release went unnoticed: freehandRef stayed true, ordinary mouse
+      // movement kept extending the line with no button held, and the next
+      // click restarted `pending` and wiped whatever had been drawn.
+      const first = rawPoint(event.clientX, event.clientY);
+      if (!first) return;
       freehandRef.current = true;
-      setPending({ tool: activeTool, points: [point] });
-      svgRef.current?.setPointerCapture(event.pointerId);
+      let samples = [first];
+      setPending({ tool: activeTool, points: samples });
+      const onMove = (moveEvent: PointerEvent) => {
+        const next = rawPoint(moveEvent.clientX, moveEvent.clientY);
+        if (!next) return;
+        samples = [...samples, next];
+        setPending({ tool: activeTool, points: samples });
+      };
+      const cleanup = () => {
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        window.removeEventListener("pointercancel", onUp);
+        freehandCleanupRef.current = null;
+        freehandRef.current = false;
+      };
+      const onUp = () => {
+        cleanup();
+        // A stroke of one sample is a stray click, not a drawing.
+        if (samples.length >= 2) finish(activeTool, samples);
+        else setPending(null);
+      };
+      freehandCleanupRef.current = cleanup;
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+      window.addEventListener("pointercancel", onUp);
       return;
     }
     if (spec.points === "poly") {
       setPending((current) => current && current.tool === activeTool
         ? { ...current, points: [...current.points, point] }
         : { tool: activeTool, points: [point] });
-      svgRef.current?.setPointerCapture(event.pointerId);
+      event.currentTarget.setPointerCapture(event.pointerId);
       return;
     }
     if (spec.points === 1) { finish(activeTool, [point]); return; }
 
     if (!pending) {
       setPending({ tool: activeTool, points: [point] });
-      svgRef.current?.setPointerCapture(event.pointerId);
+      event.currentTarget.setPointerCapture(event.pointerId);
     } else {
       const next = [...pending.points, point];
       if (next.length >= (spec.points as number)) finish(pending.tool, next);
@@ -458,10 +512,8 @@ export default function ChartDrawLayer({
     if (!point) return;
     setCursor(point);
 
-    if (freehandRef.current && pending) {
-      setPending({ tool: pending.tool, points: [...pending.points, point] });
-      return;
-    }
+    // Freehand runs on window listeners; the rect must not sample it as well.
+    if (freehandRef.current) return;
     const drag = dragRef.current;
     if (drag) {
       const drawing = drawings.find((d) => d.id === drag.id);
@@ -476,11 +528,6 @@ export default function ChartDrawLayer({
   };
 
   const handlePointerUp = () => {
-    if (freehandRef.current && pending) {
-      freehandRef.current = false;
-      if (pending.points.length >= 2) finish(pending.tool, pending.points);
-      else setPending(null);
-    }
     dragRef.current = null;
   };
 

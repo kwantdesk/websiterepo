@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown } from "lucide-react";
-import { DRAW_TOOL_GROUPS, DRAW_TOOL_LIST, DRAW_TOOL_SPECS, type DrawToolGroupId, type DrawToolId } from "@/lib/chartDrawTools";
+import { DRAW_TOOL_GROUPS, DRAW_TOOL_LIST, DRAW_TOOL_SPECS, MAGNET_STRENGTHS, type DrawToolGroupId, type DrawToolId, type MagnetStrength } from "@/lib/chartDrawTools";
 
 // Top charting-tools bar. Clean-room line-art icons (nothing copied from
 // TradingView's assets), grouped exactly the way TradingView collapses its
@@ -94,9 +94,11 @@ type Props = {
   activeTool: DrawToolId;
   keepDrawing: boolean;
   magnet: boolean;
+  magnetStrength: MagnetStrength;
   onSelectTool: (tool: DrawToolId) => void;
   onToggleKeepDrawing: () => void;
   onToggleMagnet: () => void;
+  onSelectMagnetStrength: (strength: MagnetStrength) => void;
   onOpenSettings: () => void;
   hasSelection: boolean;
   onDeleteSelection: () => void;
@@ -104,8 +106,12 @@ type Props = {
 };
 
 export default function ChartDrawToolbar({
-  activeTool, keepDrawing, magnet, onSelectTool, onToggleKeepDrawing, onToggleMagnet, onOpenSettings, hasSelection, onDeleteSelection, onClearAll,
+  activeTool, keepDrawing, magnet, magnetStrength, onSelectTool, onToggleKeepDrawing, onToggleMagnet, onSelectMagnetStrength, onOpenSettings, hasSelection, onDeleteSelection, onClearAll,
 }: Props) {
+  const [magnetMenuOpen, setMagnetMenuOpen] = useState(false);
+  const [magnetMenuPos, setMagnetMenuPos] = useState<{ left: number; top: number } | null>(null);
+  const magnetTrigger = useRef<HTMLButtonElement | null>(null);
+  const magnetMenuRef = useRef<HTMLDivElement>(null);
   const [openGroup, setOpenGroup] = useState<DrawToolGroupId | null>(null);
   const [menuPos, setMenuPos] = useState<{ left: number; top: number } | null>(null);
   const triggers = useRef<Record<string, HTMLButtonElement | null>>({});
@@ -122,6 +128,18 @@ export default function ChartDrawToolbar({
     document.addEventListener("pointerdown", close);
     return () => document.removeEventListener("pointerdown", close);
   }, [openGroup]);
+
+  useEffect(() => {
+    if (!magnetMenuOpen) return;
+    const close = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (magnetMenuRef.current?.contains(target)) return;
+      if (magnetTrigger.current?.contains(target)) return;
+      setMagnetMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", close);
+    return () => document.removeEventListener("pointerdown", close);
+  }, [magnetMenuOpen]);
 
   const openFlyout = (group: DrawToolGroupId) => {
     const rect = triggers.current[group]?.getBoundingClientRect();
@@ -174,21 +192,59 @@ export default function ChartDrawToolbar({
       })}
 
       <span className="my-0.5 h-px w-4 shrink-0 bg-border/70" />
-      <button
-        type="button"
-        onClick={onToggleMagnet}
-        className={`${chip} ${magnet ? "border-primary/40 bg-primary/[0.10] text-primary" : "border-transparent text-muted hover:bg-surface hover:text-foreground"}`}
-        title="Magnet — snap drawing points to the nearest candle wick/body"
-        aria-pressed={magnet}
-      >
-        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
-          <path d="M6 4v7a6 6 0 0 0 12 0V4" /><path d="M6 8h4" /><path d="M14 8h4" />
-        </svg>
-      </button>
+      <div className="relative shrink-0">
+        <button
+          type="button"
+          onClick={onToggleMagnet}
+          className={`${chip} ${magnet ? "border-primary/40 bg-primary/[0.10] text-primary" : "border-transparent text-muted hover:bg-surface hover:text-foreground"}`}
+          title={`Magnet (${magnetStrength}) - snap drawing points to the nearest candle wick/body`}
+          aria-pressed={magnet}
+        >
+          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+            <path d="M6 4v7a6 6 0 0 0 12 0V4" /><path d="M6 8h4" /><path d="M14 8h4" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          ref={magnetTrigger}
+          onClick={() => {
+            const rect = magnetTrigger.current?.getBoundingClientRect();
+            if (!rect) return;
+            setMagnetMenuPos({
+              left: Math.min(rect.right + 6, window.innerWidth - 186),
+              top: Math.max(8, Math.min(rect.top, window.innerHeight - 96)),
+            });
+            setMagnetMenuOpen((value) => !value);
+          }}
+          className="absolute -right-0.5 bottom-0 flex h-3 w-3 items-center justify-center rounded-[2px] text-muted hover:text-foreground"
+          aria-label="Magnet strength"
+        >
+          <ChevronDown className="h-2.5 w-2.5 -rotate-90" />
+        </button>
+      </div>
       <button type="button" onClick={onToggleKeepDrawing} className={`${textChip} ${keepDrawing ? "border-primary/40 bg-primary/[0.10] text-primary" : "border-transparent text-muted hover:bg-surface hover:text-foreground"}`} title="Keep the tool active after drawing">Stay</button>
       <button type="button" onClick={onOpenSettings} disabled={!hasSelection} className={`${textChip} ${hasSelection ? "border-transparent text-muted hover:bg-surface hover:text-foreground" : "border-transparent text-muted/30"}`} title="Selected drawing style">Sty</button>
       <button type="button" onClick={onDeleteSelection} disabled={!hasSelection} className={`${textChip} ${hasSelection ? "border-transparent text-muted hover:bg-surface hover:text-danger" : "border-transparent text-muted/30"}`} title="Delete selected drawing">Del</button>
       <button type="button" onClick={onClearAll} className={`${textChip} border-transparent text-muted hover:bg-surface hover:text-danger`} title="Remove every drawing on this chart">Clr</button>
+
+      {magnetMenuOpen && magnetMenuPos && typeof document !== "undefined"
+        ? createPortal(
+          <div ref={magnetMenuRef} className="fixed z-[280] w-[178px] rounded-xl border border-border bg-panel/97 p-1.5 shadow-[0_22px_70px_rgba(0,0,0,0.55)] backdrop-blur-xl" style={{ left: magnetMenuPos.left, top: magnetMenuPos.top } as CSSProperties}>
+            {MAGNET_STRENGTHS.map((entry) => (
+              <button
+                key={entry.id}
+                type="button"
+                onClick={() => { onSelectMagnetStrength(entry.id); setMagnetMenuOpen(false); }}
+                className={`flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-[11px] ${magnetStrength === entry.id ? "bg-primary/10 text-primary" : "text-foreground hover:bg-surface"}`}
+              >
+                <span>{entry.label}</span>
+                <span className="text-[9px] text-muted">{entry.radiusPx}px</span>
+              </button>
+            ))}
+          </div>,
+          document.body,
+        )
+        : null}
 
       {openGroup && menuPos && typeof document !== "undefined"
         ? createPortal(

@@ -353,7 +353,7 @@ import { detectCvdDivergence, sessionCvdPoints, type CvdCandleLike } from "@/lib
 import ChartDrawToolbar from "@/components/ChartDrawToolbar";
 import ChartDrawLayer from "@/components/ChartDrawLayer";
 import ChartDrawSettings from "@/components/ChartDrawSettings";
-import { createDrawing, normalizeDrawings, type DrawToolId, type Drawing, type DrawPoint } from "@/lib/chartDrawTools";
+import { createDrawing, normalizeDrawings, type DrawToolId, type Drawing, type DrawPoint, DEFAULT_MAGNET_STRENGTH, type MagnetStrength } from "@/lib/chartDrawTools";
 import { CROSSHAIR_STYLE_EVENT, DEFAULT_CROSSHAIR_STYLE, loadCrosshairStyle, normalizeCrosshairStyle, type CrosshairStyle } from "@/lib/crosshairStyle";
 
 // Toolbar pin state is PER CHART: locking one pane's toolbar leaves every
@@ -3235,6 +3235,23 @@ function Chart({
   const [drawMagnet, setDrawMagnet] = useState(false);
   useEffect(() => {
     try { setDrawMagnet(window.localStorage.getItem("kwantdesk:chart-magnet:v1") === "true"); } catch {}
+  }, []);
+  // Magnet strength is remembered alongside the on/off state. Weak is the
+  // default: it only takes a point already sitting on a level, so it can be
+  // left on without hijacking ordinary drawing.
+  const [drawMagnetStrength, setDrawMagnetStrength] = useState<MagnetStrength>(DEFAULT_MAGNET_STRENGTH);
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem("kwantdesk:chart-magnet-strength:v1");
+      if (stored === "weak" || stored === "strong") setDrawMagnetStrength(stored);
+    } catch {}
+  }, []);
+  const selectDrawMagnetStrength = useCallback((strength: MagnetStrength) => {
+    setDrawMagnetStrength(strength);
+    try {
+      window.localStorage.setItem("kwantdesk:chart-magnet-strength:v1", strength);
+      window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
+    } catch {}
   }, []);
   const toggleDrawMagnet = useCallback(() => {
     setDrawMagnet((current) => {
@@ -14019,9 +14036,11 @@ function Chart({
           activeTool={drawTool}
           keepDrawing={drawKeepDrawing}
           magnet={drawMagnet}
+          magnetStrength={drawMagnetStrength}
           onSelectTool={(tool) => { setDrawTool(tool); if (tool !== "cursor") setDrawSelectedId(null); }}
           onToggleKeepDrawing={() => setDrawKeepDrawing((value) => !value)}
           onToggleMagnet={toggleDrawMagnet}
+          onSelectMagnetStrength={selectDrawMagnetStrength}
           onOpenSettings={() => setDrawSettingsOpen(true)}
           hasSelection={Boolean(drawSelectedId)}
           onDeleteSelection={() => {
@@ -14061,6 +14080,7 @@ function Chart({
             }}
             candles={chartingDrawCandles}
             magnet={drawMagnet}
+            magnetStrength={drawMagnetStrength}
             viewportVersion={viewportVersion}
             chartReady={chartReadyRevision}
             subscribeViewport={subscribeDrawViewport}

@@ -94,6 +94,31 @@ export type DrawToolGroupId =
   | "annotation"
   | "measure";
 
+/**
+ * Magnet strength. Weak only takes a point that is already almost on the
+ * level, so ordinary drawing is unaffected; strong reaches out and is for
+ * deliberately pinning to wicks. Weak is first because it is the default and
+ * the one that does not surprise you mid-drawing.
+ */
+export type MagnetStrength = "weak" | "strong";
+
+export const MAGNET_STRENGTHS: {
+  id: MagnetStrength;
+  label: string;
+  /** How close, in pixels, a point must come before it snaps. */
+  radiusPx: number;
+  /** How far it must travel to break a snap it already holds. */
+  releasePx: number;
+}[] = [
+  { id: "weak", label: "Weak magnet", radiusPx: 9, releasePx: 15 },
+  { id: "strong", label: "Strong magnet", radiusPx: 26, releasePx: 40 },
+];
+
+export const DEFAULT_MAGNET_STRENGTH: MagnetStrength = "weak";
+
+export const magnetStrengthSpec = (strength: MagnetStrength) =>
+  MAGNET_STRENGTHS.find((entry) => entry.id === strength) ?? MAGNET_STRENGTHS[0];
+
 export type DrawLineStyle = "solid" | "dashed" | "dotted";
 
 export type DrawStyle = {
