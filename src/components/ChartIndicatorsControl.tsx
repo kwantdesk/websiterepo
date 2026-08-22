@@ -296,7 +296,7 @@ const assignTpoSections = (section: string, keys: readonly string[]) => {
   for (const key of keys) TPO_SETTING_SECTIONS[key] = section;
 };
 assignTpoSections("General", [
-  "scheduleKind", "periodMode", "lengthValue", "lengthUnit", "displayType", "splitMode",
+  "scheduleKind", "periodMode", "lengthValue", "lengthUnit", "displayType", "visualStyle", "splitMode",
   "subperiodMinutes", "profileCount", "visitSource", "groupingMode", "ticksPerRow",
   "autoTargetRows", "autoGroupFactor", "freezeActiveGrouping", "allowDevelopingComposite",
   "maximumMergeMembers", "maximumRenderedBlocks", "fpsCap",
@@ -3977,6 +3977,7 @@ export default function ChartIndicatorsControl({
                       ["Schedule", "scheduleKind", [["daily", "Daily"], ["weekly", "Weekly"], ["generic-period", "Generic period"], ["custom-range", "Custom range"]]],
                       ["Period mode", "periodMode", [["multiple-profiles", "Multiple profiles"], ["all-loaded-bars", "All loaded bars"], ["custom-range", "Custom range"]]],
                       ["Display", "displayType", [["blocks", "Blocks"], ["letters", "Letters"], ["automatic", "Automatic"]]],
+                      ["Appearance", "visualStyle", [["solid", "Solid"], ["hollow", "Hollow"], ["line", "Line"]]],
                       ["Split TPO", "splitMode", [["none", "None"], ["last", "Last"], ["all", "All"]]],
                       ["Data fidelity", "visitSource", [["automatic", "Automatic"], ["exact-trades", "Exact trades"], ["bar-range", "Bar range"]]],
                       ["Tick grouping", "groupingMode", [["automatic", "Automatic"], ["manual", "Manual"]]],

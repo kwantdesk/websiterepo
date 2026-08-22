@@ -318,16 +318,50 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
             context.globalAlpha = opacity
               * (settings.colourReference === "fading" ? 0.28 + clamp(normalized, 0, 1) * 0.72 : 1)
               * (inValueArea ? 0.92 : 0.68);
-            context.fillStyle = schemeFill ?? cellColor;
-            context.fillRect(x + gap / 2, rowTop + (rowHeight - size) / 2, size, size);
-            if (settings.borderWidth > 0 && size >= 2.5) {
+            const blockX = x + gap / 2;
+            const blockY = rowTop + (rowHeight - size) / 2;
+            if (settings.visualStyle === "solid") {
+              context.fillStyle = schemeFill ?? cellColor;
+              context.fillRect(blockX, blockY, size, size);
+            } else if (settings.visualStyle === "hollow") {
+              // Outline only, so overlapping structure stays readable through
+              // the profile rather than being a solid wall of colour.
+              context.strokeStyle = schemeFill ?? cellColor;
+              context.lineWidth = Math.max(0.5, settings.borderWidth || 1);
+              context.strokeRect(blockX, blockY, size, size);
+            } else {
+              // "line" reduces the profile to its outer edge, drawn per row as
+              // the block furthest from the spine.
+              if (cell === row.tpoCount - 1) {
+                context.strokeStyle = schemeFill ?? cellColor;
+                context.lineWidth = Math.max(0.5, settings.borderWidth || 1);
+                context.beginPath();
+                context.moveTo(blockX + (direction < 0 ? size : 0), rowTop);
+                context.lineTo(blockX + (direction < 0 ? size : 0), rowTop + rowHeight);
+                context.stroke();
+              }
+            }
+            if (settings.visualStyle === "solid" && settings.borderWidth > 0 && size >= 2.5) {
               context.globalAlpha = opacity * 0.62;
               context.strokeStyle = theme.background;
               context.lineWidth = settings.borderWidth;
-              context.strokeRect(x + gap / 2, rowTop + (rowHeight - size) / 2, size, size);
+              context.strokeRect(blockX, blockY, size, size);
             }
-            if (showLetters && size >= settings.minimumTextSize + 1) {
-              const fontSize = clamp(size * 0.72, settings.minimumTextSize, settings.maximumTextSize);
+            // Choosing "letters" must show letters.
+            //
+            // The gate used to demand a block taller than the minimum FONT
+            // size, but at ordinary zoom rows are only a few pixels tall, so
+            // the setting silently fell back to blocks and looked broken. An
+            // explicit choice now draws whenever there is room for a glyph at
+            // all; Automatic keeps the conservative threshold, which is the
+            // point of Automatic.
+            const lettersFit = settings.displayType === "letters"
+              ? size >= 4
+              : size >= settings.minimumTextSize + 1;
+            if (showLetters && settings.visualStyle !== "line" && lettersFit) {
+              const fontSize = settings.displayType === "letters"
+                ? clamp(size * 0.82, 4, settings.maximumTextSize)
+                : clamp(size * 0.72, settings.minimumTextSize, settings.maximumTextSize);
               context.globalAlpha = 0.96;
               context.fillStyle = theme.foreground;
               context.font = `600 ${fontSize}px 'JetBrains Mono', monospace`;

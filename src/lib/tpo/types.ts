@@ -75,6 +75,12 @@ export interface TpoIndicatorSettings {
   customEndFollowsLatest: boolean;
   subperiodMinutes: number;
   displayType: TpoDisplayType;
+  /**
+   * How a block is painted: filled, outlined, or reduced to the profile's
+   * outer edge. Matches the volume profile's appearance control so the two
+   * studies can be made to read the same way.
+   */
+  visualStyle: "solid" | "hollow" | "line";
   splitMode: TpoSplitMode;
   profileCount: number;
   visitSource: TpoVisitSource;
