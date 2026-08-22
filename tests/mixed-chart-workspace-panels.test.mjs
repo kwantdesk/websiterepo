@@ -144,7 +144,7 @@ test("embedded pages use the real workspace components inside an isolated panel"
 test("embedded GEX map follows the pane market and keeps last-good panel frames", () => {
   assert.match(workspaceSource, /<GexMapWorkspace[^>]*market=\{gexMarket\}/);
   assert.match(gexMapSource, /market\?: GexMapMarket \| null/);
-  assert.match(gexMapSource, /if \(cached\) next\[panel\.id\] = cached/);
+  assert.match(gexMapSource, /if \(cached && !hasRenderableGexMapSurface\(next\[panel\.id\]\)\) next\[panel\.id\] = cached/);
   assert.doesNotMatch(gexMapSource, /setPanelData\(\(current\) => \(\{ \.\.\.current, \.\.\.cachedPanels \}\)\)/);
 });
 

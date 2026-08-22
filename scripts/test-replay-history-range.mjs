@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   REPLAY_PERIOD_LADDER,
+  earliestGexVueReplaySessionDate,
   earliestReplaySessionDate,
   periodReaches,
   replayPeriodForSession,
@@ -31,6 +32,13 @@ const daysAgo = (days) => new Date(now - days * 24 * 60 * 60_000).toISOString().
   // so the pane fetches what it can instead of silently doing nothing.
   assert.equal(replayPeriodForSession(daysAgo(5_000), now), "All");
   assert.equal(replayPeriodForSession("not-a-date", now), null);
+}
+
+// --- GEX VUE offers exactly the supported three-month synchronized archive ---
+{
+  assert.equal(earliestGexVueReplaySessionDate(now), daysAgo(90));
+  assert.equal(replayPeriodForSession(earliestGexVueReplaySessionDate(now), now), "6M",
+    "headroom at the oldest GEX session must still be loaded rather than clipped");
 }
 
 // --- headroom: the replayed session is never the first row loaded ---
@@ -70,6 +78,12 @@ const daysAgo = (days) => new Date(now - days * 24 * 60 * 60_000).toISOString().
     "choosing a replay date must widen the loaded history");
   assert.match(workspace, /periodReaches\(pane\.period, required\)/,
     "panes already deep enough must be left alone");
+  assert.match(workspace, /period=\{pane\.period\}/,
+    "the renderer must use the widened replay period selected for each pane");
+  assert.ok(
+    !workspace.includes('gexVueReplay.active ? "5D" : pane.period'),
+    "active replay must never force a historical pane back to five days",
+  );
   // The native control is a system popover with system fonts on a dark
   // cockpit; the replay bar uses the desk's own picker.
   assert.ok(
@@ -77,6 +91,8 @@ const daysAgo = (days) => new Date(now - days * 24 * 60 * 60_000).toISOString().
     "the replay date must not use the browser's native picker",
   );
   assert.match(workspace, /<KwantDatePicker/);
+  assert.match(workspace, /min=\{earliestGexVueReplaySessionDate\(\)\}/,
+    "the synchronized options replay picker must be bounded to three months");
   // On the Charts workspace the bar must not call itself GEX.
   assert.match(workspace, /chartWorkspaceScope === "gamma" \? "GEX Replay" : "Chart Replay"/);
 

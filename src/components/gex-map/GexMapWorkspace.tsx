@@ -2145,7 +2145,7 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
                   priceLocked={priceLocked}
                   ladderZoom={ladderZoom}
                   unavailableReason={replaySessionMismatch
-                    ? `Recorded frames are for ${payload?.sessionDate}, but the replay session is ${requestedReplayDate}. Exposure frames are only retained for the latest completed session.`
+                    ? `The provider returned ${payload?.sessionDate}, but replay requested ${requestedReplayDate}. The selected session archive was not returned, so no substitute exposure is shown.`
                     : null}
                   onChange={(patch) => updatePanel(panel.id, patch)}
                   onRemove={panelIndex >= DEFAULT_PANELS.length ? () => removePanel(panel.id) : undefined}

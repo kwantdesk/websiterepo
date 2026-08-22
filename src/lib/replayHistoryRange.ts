@@ -21,6 +21,7 @@ export const REPLAY_PERIOD_LADDER: readonly { period: string; days: number }[] =
 ] as const;
 
 const DAY_MS = 24 * 60 * 60_000;
+export const GEX_VUE_REPLAY_HISTORY_DAYS = 90;
 
 /**
  * Three days of headroom so the replayed session is never the very first rows
@@ -32,6 +33,16 @@ const REPLAY_HISTORY_HEADROOM_DAYS = 3;
 export function earliestReplaySessionDate(nowMs = Date.now()) {
   const oldest = REPLAY_PERIOD_LADDER[REPLAY_PERIOD_LADDER.length - 1].days;
   return new Date(nowMs - oldest * DAY_MS).toISOString().slice(0, 10);
+}
+
+/**
+ * GEX VUE's synchronized archive is intentionally bounded to the three-month
+ * options-history contract.  Keeping this separate from the deeper price-only
+ * ladder prevents the picker offering dates for which the exposure archive is
+ * not guaranteed to exist.
+ */
+export function earliestGexVueReplaySessionDate(nowMs = Date.now()) {
+  return new Date(nowMs - GEX_VUE_REPLAY_HISTORY_DAYS * DAY_MS).toISOString().slice(0, 10);
 }
 
 /** The shortest load range that reaches back to `sessionDate`. */

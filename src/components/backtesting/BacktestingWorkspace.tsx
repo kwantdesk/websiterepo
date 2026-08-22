@@ -48,6 +48,7 @@ import {
 } from "@/lib/chartIntervals";
 import type { ChartIndicatorInstance } from "@/lib/chartIndicatorCatalog";
 import { defaultIndicatorSettings, normalizeStoredIndicator } from "@/lib/chartIndicatorConfig";
+import type { InstitutionalTrade } from "@/lib/institutionalMarketData";
 
 const Chart = dynamic(() => import("@/components/Chart"), {
   ssr: false,
@@ -62,6 +63,16 @@ type ReplayDockKind = "gex" | "zyon";
 const REPLAY_INDICATORS_STORAGE_KEY = "kwantdesk:historical-replay:indicators:v1";
 
 function defaultReplayIndicators(theme: ChartSettings): ChartIndicatorInstance[] {
+  const requestedReplayStudies = [
+    "kwant-profile",
+    "cumulative-volume-delta",
+    "big-trades",
+    "deep-m-effort-nq",
+    "weekly-volume-profile",
+    "tpo-chart",
+    "volume",
+    "vwap",
+  ];
   return [{
     instanceId: "historical-replay-ib-levels",
     indicatorId: "ib-levels",
@@ -79,7 +90,12 @@ function defaultReplayIndicators(theme: ChartSettings): ChartIndicatorInstance[]
       newYorkEnd: "16:00",
       followSessionsStudy: false,
     },
-  }];
+  }, ...requestedReplayStudies.map((indicatorId) => ({
+    instanceId: `historical-replay-${indicatorId}`,
+    indicatorId,
+    enabled: true,
+    settings: defaultIndicatorSettings(indicatorId, theme),
+  }))];
 }
 
 function loadReplayIndicators(theme: ChartSettings): ChartIndicatorInstance[] {
@@ -190,10 +206,28 @@ function ResizableReplayDock({
 
 type SessionPayload = {
   candles: Candle[];
+  executions?: ReplayExecutionTuple[];
+  orderFlow?: {
+    requested: boolean;
+    ready: boolean;
+    source: "historical-executions" | "bars";
+    semantics: string;
+  };
   dataset: string;
   coverage: { earliestDocumented: string; note: string };
   error?: string;
 };
+
+type ReplayExecutionTuple = [
+  timestamp: number,
+  price: number,
+  size: number,
+  delta: number,
+  askVolume?: number,
+  bidVolume?: number,
+  trades?: number,
+  kind?: "flow",
+];
 
 type CompletedProfile = {
   start: string;
@@ -224,6 +258,7 @@ const REPLAY_TIME_ZONE_STORAGE_KEY = "kwantdesk:backtesting-timezone:v1";
 const REPLAY_LOOKBACK_MS = 7 * 24 * 60 * 60_000;
 const REPLAY_FORWARD_MS = 24 * 60 * 60_000;
 const REPLAY_LOAD_TIMEOUT_MS = 20_000;
+const REPLAY_ORDER_FLOW_TIMEOUT_MS = 120_000;
 const REPLAY_TICK_WINDOW_MS = 6 * 60 * 60_000;
 const REPLAY_TICK_PREFETCH_MS = 10 * 60_000;
 
@@ -272,7 +307,8 @@ function historicalCandlesAtClock(
 ) {
   if (!candles.length || clock === null) return [];
   const intervalMs = replayIntervalMs(timeframe);
-  if (!intervalMs) return candles.slice(0, firstCandleAfter(candles, clock));
+  if (!intervalMs) return candles.filter((candle) =>
+    Number(candle.sourceEndTimestamp ?? candle.timestamp) <= clock);
 
   const bucketStart = Math.floor(clock / intervalMs) * intervalMs;
   const completedEnd = firstCandleAtOrAfter(candles, bucketStart);
@@ -315,6 +351,36 @@ function historicalCandlesAtClock(
       volume: 0,
     },
   ];
+}
+
+function replayExecutionTrades(executions: ReplayExecutionTuple[] | undefined): InstitutionalTrade[] {
+  if (!executions?.length) return [];
+  return executions.flatMap((execution, recordIndex) => {
+    const [timestamp, price, size, delta, tupleAskVolume, tupleBidVolume, tupleTrades, kind] = execution;
+    if (![timestamp, price, size, delta].every(Number.isFinite) || timestamp <= 0 || price <= 0 || size <= 0) return [];
+    const askVolume = Number.isFinite(tupleAskVolume)
+      ? Math.max(0, Number(tupleAskVolume))
+      : Math.max(0, delta);
+    const bidVolume = Number.isFinite(tupleBidVolume)
+      ? Math.max(0, Number(tupleBidVolume))
+      : Math.max(0, -delta);
+    return [{
+      eventId: `replay-${timestamp}-${price}-${size}-${recordIndex}`,
+      recordIndex,
+      timestamp,
+      open: price,
+      high: price,
+      low: price,
+      close: price,
+      trades: Math.max(1, Number(tupleTrades ?? 1)),
+      volume: size,
+      bidVolume,
+      askVolume,
+      delta,
+      aggressor: delta > 0 ? "BUY" as const : delta < 0 ? "SELL" as const : "UNKNOWN" as const,
+      flowOnly: kind === "flow",
+    }];
+  });
 }
 
 function historicalPriceWindows(candles: Candle[], clock: number): HistoricalZyonPriceWindow[] {
@@ -621,6 +687,8 @@ export default function BacktestingWorkspace() {
   const [time, setTime] = useState("09:30");
   const [candles, setCandles] = useState<Candle[]>([]);
   const [replayStudyCandles, setReplayStudyCandles] = useState<Candle[]>([]);
+  const [replayTrades, setReplayTrades] = useState<InstitutionalTrade[]>([]);
+  const [orderFlowHistoryReady, setOrderFlowHistoryReady] = useState(false);
   const [oneSecondBars, setOneSecondBars] = useState<Candle[]>([]);
   const [sessionStartAt, setSessionStartAt] = useState<number | null>(null);
   const [replayStartIndex, setReplayStartIndex] = useState(0);
@@ -742,6 +810,12 @@ export default function BacktestingWorkspace() {
     () => historicalCandlesAtClock(replayStudyCandles, oneSecondBars, "1m", replayDataClock),
     [oneSecondBars, replayDataClock, replayStudyCandles],
   );
+  const visibleReplayTrades = useMemo(() => {
+    if (replayDataClock === null) return [];
+    const firstVisibleTimestamp = Math.max(0, replayDataClock - REPLAY_LOOKBACK_MS);
+    return replayTrades.filter((trade) =>
+      trade.timestamp >= firstVisibleTimestamp && trade.timestamp <= replayDataClock);
+  }, [replayDataClock, replayTrades]);
   const historicalZyonContext = useMemo<HistoricalZyonReplayInput | null>(() => {
     if (replayClock === null || sessionStartAt === null || !visibleCandles.length) return null;
     const mapLevels = (family: "gamma" | "quant" | "valueArea", rows: ChartLevel[], visible: boolean) => rows.map((row) => ({
@@ -975,13 +1049,22 @@ export default function BacktestingWorkspace() {
     const start = new Date(startAt - REPLAY_LOOKBACK_MS).toISOString();
     const end = new Date(Math.min(Date.now(), startAt + REPLAY_FORWARD_MS)).toISOString();
     const payload = await requestJson<SessionPayload>(
-      `/api/backtesting/session?symbol=${encodeURIComponent(selectedDefinition.symbol)}&timeframe=${requestedTimeframe}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`,
-      { timeoutMs: REPLAY_LOAD_TIMEOUT_MS, cache: "force-cache" },
+      `/api/backtesting/session?symbol=${encodeURIComponent(selectedDefinition.symbol)}&timeframe=${requestedTimeframe}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}&orderFlow=1&executions=1`,
+      {
+        timeoutMs: REPLAY_ORDER_FLOW_TIMEOUT_MS,
+        cache: "force-cache",
+        timeoutMessage: "Exact historical executions are taking longer than expected. Retry the replay; no approximate order flow was substituted.",
+      },
     );
     const ordered = payload.candles
       .filter((candle) => Number.isFinite(candle.timestamp) && candle.timestamp <= Date.parse(end))
       .sort((left, right) => left.timestamp - right.timestamp);
-    return { ordered, end };
+    return {
+      ordered,
+      end,
+      trades: replayExecutionTrades(payload.executions),
+      orderFlowReady: Boolean(payload.orderFlow?.ready),
+    };
   }, [selectedDefinition.symbol]);
 
   const loadReplayTickerWindow = useCallback(async (
@@ -1057,6 +1140,8 @@ export default function BacktestingWorkspace() {
     setQuantZones([]);
     setValueAreaLevels([]);
     setReplayStudyCandles([]);
+    setReplayTrades([]);
+    setOrderFlowHistoryReady(false);
     setOneSecondBars([]);
     setTickerCoverageStart(0);
     setTickerCoverageEnd(0);
@@ -1068,13 +1153,17 @@ export default function BacktestingWorkspace() {
     setSnapshotDate("");
     setLevelSnapshotKey("");
     try {
-      const [{ ordered }, studyPayload] = await Promise.all([
+      const [primaryPayload, studyPayload] = await Promise.all([
         loadReplayCandles(timeframe, startAt),
         timeframe === "1m" ? Promise.resolve(null) : loadReplayCandles("1m", startAt),
       ]);
+      const { ordered } = primaryPayload;
+      const orderFlowPayload = studyPayload ?? primaryPayload;
       const index = candleIndexAt(ordered, startAt);
       setCandles(ordered);
       setReplayStudyCandles(studyPayload?.ordered ?? ordered);
+      setReplayTrades(orderFlowPayload.trades);
+      setOrderFlowHistoryReady(orderFlowPayload.orderFlowReady);
       setSessionStartAt(startAt);
       setReplayStartIndex(index);
       setVisibleIndex(index);
@@ -1683,6 +1772,9 @@ export default function BacktestingWorkspace() {
             zones={activeZones}
             indicators={replayIndicators}
             initialBalanceCandles={visibleReplayStudyCandles}
+            marketTrades={visibleReplayTrades}
+            replayTimestampMs={replayDataClock}
+            orderFlowHistoryReady={orderFlowHistoryReady}
             instrument={selectedDefinition.id}
             timeframe={timeframe}
             marketIsActive={false}

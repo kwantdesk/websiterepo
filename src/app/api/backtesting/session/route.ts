@@ -1,7 +1,16 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextRequest, NextResponse } from "next/server";
-import { DATABENTO_FUTURES, getDatabentoBars } from "@/lib/databento";
-import { supportsChartInterval } from "@/lib/chartIntervals";
+import {
+  DATABENTO_FUTURES,
+  getDatabentoBars,
+  getDatabentoOrderFlowHistory,
+  type DatabentoExecutionTuple,
+} from "@/lib/databento";
+import { isEventBasedChartInterval, supportsChartInterval } from "@/lib/chartIntervals";
+import {
+  getDatabentoEventHistory,
+  type DatabentoEventExecutionTuple,
+} from "@/lib/databentoEventHistory.server";
 import {
   fetchInstitutionalMarketData,
   isInstitutionalMarketDataConfigured,
@@ -24,7 +33,19 @@ type ReplayCandle = {
   low: number;
   close: number;
   volume?: number;
+  trades?: number;
+  bidVolume?: number;
+  askVolume?: number;
+  delta?: number;
+  deltaOpen?: number;
+  deltaHigh?: number;
+  deltaLow?: number;
+  deltaClose?: number;
+  sourceStartTimestamp?: number;
+  sourceEndTimestamp?: number;
 };
+
+type ReplayExecutionTuple = DatabentoExecutionTuple | DatabentoEventExecutionTuple;
 
 function validCandles(value: unknown): ReplayCandle[] {
   if (!Array.isArray(value)) return [];
@@ -107,6 +128,8 @@ export async function GET(request: NextRequest) {
   const timeframe = (request.nextUrl.searchParams.get("timeframe") || "1m").trim();
   const requestedStart = Date.parse(request.nextUrl.searchParams.get("start") || "");
   const requestedEnd = Date.parse(request.nextUrl.searchParams.get("end") || "");
+  const orderFlowRequested = request.nextUrl.searchParams.get("orderFlow") === "1";
+  const executionsRequested = request.nextUrl.searchParams.get("executions") !== "0";
   const instrument = DATABENTO_FUTURES.find((candidate) =>
     candidate.kind === "future" && candidate.symbol.toUpperCase() === symbol.toUpperCase());
 
@@ -126,14 +149,25 @@ export async function GET(request: NextRequest) {
 
   try {
     let archiveCandles: ReplayCandle[] = [];
+    let executions: ReplayExecutionTuple[] = [];
     let archiveError: unknown = null;
     try {
-      archiveCandles = validCandles(await getDatabentoBars(
-        instrument.symbol,
-        timeframe,
-        new Date(start).toISOString(),
-        new Date(end).toISOString(),
-      ));
+      const startIso = new Date(start).toISOString();
+      const endIso = new Date(end).toISOString();
+      if (orderFlowRequested) {
+        const history = isEventBasedChartInterval(timeframe)
+          ? await getDatabentoEventHistory(instrument.symbol, timeframe, startIso, endIso)
+          : await getDatabentoOrderFlowHistory(instrument.symbol, timeframe, startIso, endIso);
+        archiveCandles = validCandles(history.candles);
+        executions = executionsRequested ? history.executions : [];
+      } else {
+        archiveCandles = validCandles(await getDatabentoBars(
+          instrument.symbol,
+          timeframe,
+          startIso,
+          endIso,
+        ));
+      }
     } catch (error) {
       archiveError = error;
     }
@@ -141,6 +175,7 @@ export async function GET(request: NextRequest) {
     const recentRequest = end >= Date.now() - RECENT_MARKET_WINDOW_MS;
     const newestArchiveBar = archiveCandles.at(-1)?.timestamp ?? 0;
     const needsRecentTail = recentRequest
+      && !orderFlowRequested
       && timeframe === "1m"
       && newestArchiveBar < end - 2 * 60_000;
     const tickerPlantCandles = needsRecentTail
@@ -158,6 +193,16 @@ export async function GET(request: NextRequest) {
       end: new Date(end).toISOString(),
       dataset: "GLBX.MDP3",
       candles,
+      executions,
+      orderFlow: {
+        requested: orderFlowRequested,
+        ready: !orderFlowRequested || candles.some((candle) =>
+          Number(candle.askVolume ?? 0) + Number(candle.bidVolume ?? 0) > 0),
+        source: orderFlowRequested ? "historical-executions" : "bars",
+        semantics: orderFlowRequested
+          ? "Exchange executions classified by aggressor side; replay-clock clipped in the browser."
+          : "OHLCV bars only.",
+      },
       recentTail: tickerPlantCandles.length ? "ticker-plant" : "archive",
       coverage: {
         earliestDocumented: "2010-06-06",

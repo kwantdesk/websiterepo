@@ -2,7 +2,7 @@
 
 import KwantSelect from "@/components/ui/KwantSelect";
 import KwantDatePicker from "@/components/ui/KwantDatePicker";
-import { earliestReplaySessionDate, periodReaches, replayPeriodForSession } from "@/lib/replayHistoryRange";
+import { earliestGexVueReplaySessionDate, periodReaches, replayPeriodForSession } from "@/lib/replayHistoryRange";
 import TimeZoneSelect from "@/components/ui/TimeZoneSelect";
 import ChartIndicatorsControl from "@/components/ChartIndicatorsControl";
 import { normalizeDrawings, type Drawing } from "@/lib/chartDrawTools";
@@ -16360,7 +16360,7 @@ export default function KwantifyWorkspace({
         pane={pane}
         active={activePaneId === pane.id}
         embedded
-        period={(chartWorkspaceScope === "gamma" || chartWorkspaceScope === "charts") && gexVueReplay.active ? "5D" : pane.period}
+        period={pane.period}
         settings={chartSettings}
         crosshairSyncScope={chartWorkspaceScope === "gamma" || linkedViewportPaneIds.has(pane.id)
           ? "gamvue"
@@ -17835,7 +17835,7 @@ export default function KwantifyWorkspace({
                   <KwantDatePicker
                     value={gexVueReplay.sessionDate}
                     max={latestCompletedNewYorkSession()}
-                    min={earliestReplaySessionDate()}
+                    min={earliestGexVueReplaySessionDate()}
                     onChange={(sessionDate) => {
                       setGexVueReplay((current) => setGexVueReplaySession(current, sessionDate));
                       applyReplayHistoryRange(sessionDate);

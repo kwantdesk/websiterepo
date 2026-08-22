@@ -37,7 +37,7 @@ test("GEX map restores cache after mount and does not restart on replay date dis
 });
 
 test("GEX map presents a full loading surface until its initial panels resolve", () => {
-  assert.match(workspace, /const initialSurfacePending = panels\.some/);
+  assert.match(workspace, /const initialSurfacePending = panels\.length > 0 && panels\.every/);
   assert.match(workspace, /loading\[panel\.id\] && !hasRenderableGexMapSurface\(panelData\[panel\.id\]\)/);
   assert.match(workspace, /initialSurfacePending[\s\S]*?Loading GEX MAP[\s\S]*?Restoring the latest exposure surfaces/);
   assert.match(workspace, /className="pointer-events-none absolute inset-0 z-50"/);
@@ -55,7 +55,7 @@ test("GEX map retains a compact completed-session snapshot through provider rest
   assert.match(workspaceCache, /frames: Array\.isArray\(payload\.frames\) \? payload\.frames\.slice\(-5\) : \[\]/);
   assert.match(workspaceCache, /return readLastGoodGexMap<T>\(key\)/);
   assert.match(quantDataServer, /lastGoodGexMapPanelBySurface/);
-  assert.match(quantDataServer, /completed-gex-map-panel-v3/);
+  assert.match(quantDataServer, /completed-gex-map-panel-v4/);
   assert.match(quantDataServer, /latestGexMapStrikesFromFrames\(frames\)/);
   assert.match(quantDataServer, /status: "LAST_SESSION"/);
 });
