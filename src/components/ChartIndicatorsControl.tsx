@@ -40,6 +40,7 @@ import {
   saveFootprintSelection,
   saveFootprintSettings,
   saveFootprintTemplate,
+  FOOTPRINT_PROFILE_MAX_TICKS_PER_ROW,
   footprintProfileGranularityTicks,
   validateFootprintSettings,
   type FootprintPresetName,
@@ -91,7 +92,7 @@ const FOOTPRINT_PROFILE_MANAGED_SETTINGS = new Set([
   "showPerBarVolumeProfile",
   "showPerBarDeltaProfile",
   "perBarProfileScaleMode",
-  "perBarProfileGranularity",
+  "perBarProfileTicksPerRow",
   "perBarProfileWidthPercent",
   "perBarProfileGap",
   "perBarProfileExtraSpacing",
@@ -3698,34 +3699,35 @@ export default function ChartIndicatorsControl({
                     </KwantSelect>
                   </label>
                   {(() => {
-                    const detail = Number(settingsInstance.settings?.perBarProfileGranularity ?? 10);
-                    const ticksPerRow = footprintProfileGranularityTicks(detail);
+                    const ticksPerRow = footprintProfileGranularityTicks(
+                      settingsInstance.settings?.perBarProfileTicksPerRow,
+                    );
                     return (
                       <label className="block rounded-lg border border-border bg-surface/30 p-2.5">
                         <span className="mb-2 flex items-center justify-between text-[9px] text-muted">
-                          <span>Profile granularity</span>
+                          <span>Profile row size</span>
                           <span className="font-mono text-foreground">
-                            {detail}/10 · {ticksPerRow} {ticksPerRow === 1 ? "tick" : "ticks"} per row
+                            {ticksPerRow} {ticksPerRow === 1 ? "tick" : "ticks"} per row
                           </span>
                         </span>
                         <input
                           type="range"
                           min={1}
-                          max={10}
+                          max={FOOTPRINT_PROFILE_MAX_TICKS_PER_ROW}
                           step={1}
-                          value={detail}
+                          value={ticksPerRow}
                           onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
                             ...current,
                             settings: {
                               ...(current.settings ?? {}),
-                              perBarProfileGranularity: Number(event.target.value),
+                              perBarProfileTicksPerRow: Number(event.target.value),
                             },
                           }))}
                           className="w-full accent-primary"
                         />
                         <span className="mt-1.5 flex justify-between text-[8px] text-muted">
-                          <span>Combined</span>
                           <span>Fine · one tick</span>
+                          <span>Coarse · {FOOTPRINT_PROFILE_MAX_TICKS_PER_ROW} ticks</span>
                         </span>
                       </label>
                     );

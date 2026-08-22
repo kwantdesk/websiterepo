@@ -5,7 +5,17 @@ import type {
   FootprintVisualizationMode,
 } from "./footprintTypes";
 
-export const FOOTPRINT_SETTINGS_SCHEMA_VERSION = 7;
+export const FOOTPRINT_SETTINGS_SCHEMA_VERSION = 8;
+
+/**
+ * How coarse the side volume/delta profile may be made, in ticks per row.
+ *
+ * The profile is read as a SHAPE — the wave, the shelves, the thin spots. At
+ * one tick per row on a liquid contract that shape is a comb of hairlines,
+ * which is why the old scale, whose finest setting was also its default,
+ * produced nothing legible.
+ */
+export const FOOTPRINT_PROFILE_MAX_TICKS_PER_ROW = 50;
 
 export type FootprintSettings = {
   footprintSettingsVersion: number;
@@ -23,7 +33,7 @@ export type FootprintSettings = {
   showPerBarVolumeProfile: boolean;
   showPerBarDeltaProfile: boolean;
   perBarProfileScaleMode: "independent" | "shared";
-  perBarProfileGranularity: number;
+  perBarProfileTicksPerRow: number;
   perBarProfileWidthPercent: number;
   perBarProfileGap: number;
   perBarProfileExtraSpacing: number;
@@ -131,7 +141,7 @@ export const DEFAULT_FOOTPRINT_SETTINGS: FootprintSettings = {
   showPerBarVolumeProfile: false,
   showPerBarDeltaProfile: false,
   perBarProfileScaleMode: "independent",
-  perBarProfileGranularity: 10,
+  perBarProfileTicksPerRow: 10,
   perBarProfileWidthPercent: 92,
   perBarProfileGap: 2,
   perBarProfileExtraSpacing: 18,
@@ -367,9 +377,26 @@ const colour = (value: unknown, fallback: string) =>
  * Higher detail means smaller price bins: 10 is native one-tick resolution,
  * while 1 intentionally combines ten ticks into each profile row.
  */
+/**
+ * Ticks per row for the side profile, straight from the setting.
+ *
+ * This used to invert a 1-10 "detail" score into 11 - detail, so the coarsest
+ * the profile could ever be was ten ticks and its DEFAULT — detail 10 — was
+ * one tick, the finest of all. The control now says what it does.
+ */
 export function footprintProfileGranularityTicks(value: unknown) {
-  const detail = Math.round(clamp(value, 1, 10, 10));
-  return 11 - detail;
+  return Math.round(clamp(value, 1, FOOTPRINT_PROFILE_MAX_TICKS_PER_ROW, 10));
+}
+
+/**
+ * A pre-v8 detail score converted to ticks per row. The old default (10, the
+ * finest) yields undefined so the new default applies; anything else was a
+ * real choice and is honoured.
+ */
+function legacyProfileTicksPerRow(value: unknown) {
+  const detail = Number(value);
+  if (!Number.isFinite(detail) || detail === 10) return undefined;
+  return 11 - Math.round(Math.min(10, Math.max(1, detail)));
 }
 
 export function validateFootprintSettings(input: unknown): FootprintSettings {
@@ -403,7 +430,19 @@ export function validateFootprintSettings(input: unknown): FootprintSettings {
     markerAlignment: option(source.markerAlignment, ["center", "right"], "center"),
     manualTicks: Math.round(clamp(source.manualTicks, 1, 100, 1)),
     autoGroupFactor: clamp(source.autoGroupFactor, 0.5, 4, 1),
-    perBarProfileGranularity: Math.round(clamp(source.perBarProfileGranularity, 1, 10, 10)),
+    // v7 and earlier stored a 1-10 detail score whose default, 10, meant one
+    // tick per row. Nobody chose that — it was simply the default — so the
+    // read converts the score to real ticks and lets the new default stand
+    // for anyone still on it. A deliberately coarse choice is carried over.
+    perBarProfileTicksPerRow: Math.round(clamp(
+      source.perBarProfileTicksPerRow
+        ?? (Number(source.footprintSettingsVersion ?? 0) < 8
+          ? legacyProfileTicksPerRow(source.perBarProfileGranularity)
+          : undefined),
+      1,
+      FOOTPRINT_PROFILE_MAX_TICKS_PER_ROW,
+      10,
+    )),
     perBarProfileWidthPercent: clamp(source.perBarProfileWidthPercent, 10, 100, 92),
     perBarProfileGap: clamp(source.perBarProfileGap, 0, 12, 2),
     perBarProfileExtraSpacing: clamp(source.perBarProfileExtraSpacing, 0, 48, 18),
