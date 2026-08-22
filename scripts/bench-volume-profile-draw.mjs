@@ -156,3 +156,19 @@ const rescale = measure("pan, price scale auto-scaling", (i) => {
 
 console.log(`
 auto-scaling costs ${(rescale / steady).toFixed(1)}x a steady frame`);
+
+// With the market open, setVolumeProfiles runs every 250ms and hands every
+// profile a fresh `asOf`. That is part of the renderer's derived-data cache
+// key, so each live update throws away the grouped rows, the bar scales and
+// the value area for EVERY profile and rebuilds them on the next frame.
+// With the market closed no profile ever updates, the cache stays warm for
+// the whole session, and the chart draws at the steady cost above — which is
+// exactly why an idle market feels smooth and a live one does not.
+let asOf = models[0].profile.asOf;
+const live = measure("live profile update (cold cache)", () => {
+  asOf += 250;
+  for (const model of models) model.profile.asOf = asOf;
+});
+console.log(`
+a live profile update costs ${(live / steady).toFixed(0)}x a steady frame`);
+console.log(`at 4 updates/s that is ~${(live * 4).toFixed(0)} ms/s of main thread on profiles alone`);

@@ -59,7 +59,9 @@
     "test:precision-repaint": "node scripts/test-precision-repaint.mjs",
     "test:session-key-cache": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-cme-session-key-cache.mjs",
     "bench:session-keys": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/bench-session-keys.mjs",
-    "test:overlay-in-frame": "node scripts/test-overlay-in-frame.mjs"
+    "test:overlay-in-frame": "node scripts/test-overlay-in-frame.mjs",
+    "test:profile-fold": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-profile-fold.mjs",
+    "bench:profile-update": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/bench-profile-update.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",
