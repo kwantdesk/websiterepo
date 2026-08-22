@@ -9,6 +9,7 @@ import type {
   TpoTrade,
 } from "./types.ts";
 import { priceToTick } from "./types.ts";
+import { exchangeClockParts } from "@/lib/exchangeClock";
 
 const DAY_MS = 86_400_000;
 const WEEK_MS = DAY_MS * 7;
@@ -75,81 +76,17 @@ type MutableCell = {
 
 type PeriodBoundary = { startMs: number; endMs: number; id: string };
 
-const formatterCache = new Map<string, Intl.DateTimeFormat>();
-
-function formatter(timeZone: string) {
-  const cached = formatterCache.get(timeZone);
-  if (cached) return cached;
-  const next = new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    hour12: false,
-    hourCycle: "h23",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    weekday: "short",
-  });
-  formatterCache.set(timeZone, next);
-  return next;
-}
-
-const WEEKDAYS: Record<string, number> = {
-  Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6,
-};
-
 /**
- * Zoned parts resolved so far, keyed by timezone and the minute the timestamp
- * falls in.
+ * Exchange-local parts for a timestamp.
  *
- * Every timezone offset is a whole number of MINUTES, so within one minute the
- * date, hour, minute and weekday are all constant and only the seconds move.
- * Resolving one timestamp in a minute therefore answers for every other one,
- * and DST changes land on a minute boundary so they cannot be straddled.
- *
- * This is worth doing because zonedParts underpins the period-boundary
- * machinery, which runs per trade: profiling one buildTpoProfiles call over
- * five sessions put 88.6% of the entire build — 148.8s of 168.0s — inside
- * Intl.DateTimeFormat.formatToParts here.
+ * Delegates to the shared cached clock: this underpins the period-boundary
+ * machinery and runs per trade, and profiling one build over five sessions put
+ * 88.6% of it — 148.8s of 168.0s — inside Intl.DateTimeFormat here.
  */
-const zonedPartsByMinute = new Map<string, ZonedParts>();
-const ZONED_PARTS_CACHE_LIMIT = 50_000;
-
 export function zonedParts(timestampMs: number, timeZone: string): ZonedParts {
-  const minute = Math.floor(timestampMs / 60_000);
-  const key = `${timeZone}:${minute}`;
-  const cached = zonedPartsByMinute.get(key);
-  if (cached) {
-    const second = Math.floor(timestampMs / 1_000) % 60;
-    return second === cached.second ? cached : { ...cached, second };
-  }
-  const resolved = resolveZonedParts(timestampMs, timeZone);
-  if (zonedPartsByMinute.size >= ZONED_PARTS_CACHE_LIMIT) {
-    const oldest = zonedPartsByMinute.keys().next().value;
-    if (oldest !== undefined) zonedPartsByMinute.delete(oldest);
-  }
-  zonedPartsByMinute.set(key, resolved);
-  return resolved;
+  return exchangeClockParts(timestampMs, timeZone);
 }
 
-function resolveZonedParts(timestampMs: number, timeZone: string): ZonedParts {
-  const parts = Object.fromEntries(
-    formatter(timeZone).formatToParts(new Date(timestampMs))
-      .filter((part) => part.type !== "literal")
-      .map((part) => [part.type, part.value]),
-  );
-  return {
-    year: Number(parts.year),
-    month: Number(parts.month),
-    day: Number(parts.day),
-    hour: Number(parts.hour) % 24,
-    minute: Number(parts.minute),
-    second: Number(parts.second),
-    weekday: WEEKDAYS[String(parts.weekday)] ?? 0,
-  };
-}
 
 function zonedDateTimeToUtc(parts: Omit<ZonedParts, "weekday">, timeZone: string) {
   const desired = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second);

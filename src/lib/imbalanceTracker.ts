@@ -1,4 +1,5 @@
 import type { Candle } from "@/lib/backtester";
+import { exchangeDateKey, exchangeMinuteOfDay } from "@/lib/exchangeClock";
 import type { ChartIndicatorInstance } from "@/lib/chartIndicatorCatalog";
 import type { InstitutionalTrade } from "@/lib/institutionalMarketData";
 
@@ -98,17 +99,11 @@ function consecutiveRuns(ticks: number[], minimumLength: number, step = 1) {
   return runs;
 }
 
+const EXCHANGE_TIME_ZONE = "America/Chicago";
+
 /** Chicago (exchange) wall-clock minutes for a timestamp. */
 function exchangeMinutes(timestamp: number) {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/Chicago",
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(timestamp);
-  const hour = Number(parts.find((part) => part.type === "hour")?.value ?? "0");
-  const minute = Number(parts.find((part) => part.type === "minute")?.value ?? "0");
-  return hour * 60 + minute;
+  return exchangeMinuteOfDay(timestamp, EXCHANGE_TIME_ZONE);
 }
 
 function clockMinutes(value: unknown, fallback: number) {
@@ -120,14 +115,10 @@ function clockMinutes(value: unknown, fallback: number) {
 
 /** The exchange-session key a bar belongs to, for reset modes. */
 function sessionKeyFor(timestamp: number, mode: string) {
-  if (mode === "session" || mode === "day") {
-    return new Intl.DateTimeFormat("en-CA", {
-      timeZone: "America/Chicago",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).format(timestamp);
-  }
+  // Built a fresh Intl.DateTimeFormat per call, and this runs inside the
+  // extension loop for every zone: measured at 29.9s against 52ms with the
+  // reset mode off, on 780 candles. The shared clock caches per minute.
+  if (mode === "session" || mode === "day") return exchangeDateKey(timestamp, EXCHANGE_TIME_ZONE);
   if (mode === "week") {
     const date = new Date(timestamp);
     const week = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));

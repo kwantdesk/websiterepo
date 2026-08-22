@@ -1,3 +1,5 @@
+import { exchangeClockParts } from "@/lib/exchangeClock";
+
 /**
  * CVD Divergence detection.
  *
@@ -52,22 +54,16 @@ function candleDelta(candle: CvdCandleLike): number | null {
 // Intl.DateTimeFormat is one of the most expensive calls in V8; building a
 // fresh one per candle (thousands per live tick, per chart) was a dominant
 // main-thread stall and GC-churn source behind the multi-chart freeze.
-const CHICAGO_SESSION_FORMAT = new Intl.DateTimeFormat("en-CA", {
-  timeZone: "America/Chicago",
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-  hour: "2-digit",
-  hourCycle: "h23",
-});
+const EXCHANGE_TIME_ZONE = "America/Chicago";
 
 /** CME futures session key: the trading day rolls at 17:00 Chicago. */
 function chicagoSessionKey(timestampMs: number): string {
-  const parts = CHICAGO_SESSION_FORMAT.formatToParts(new Date(timestampMs));
-  const read = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? "";
-  const hour = Number(read("hour"));
-  const date = `${read("year")}-${read("month")}-${read("day")}`;
-  if (hour < 17) return date;
+  // Runs per candle. The shared clock caches per minute so a full recompute
+  // does not pay Intl for every bar.
+  const parts = exchangeClockParts(timestampMs, EXCHANGE_TIME_ZONE);
+  const pad = (value: number) => (value < 10 ? `0${value}` : String(value));
+  const date = `${parts.year}-${pad(parts.month)}-${pad(parts.day)}`;
+  if (parts.hour < 17) return date;
   const next = new Date(`${date}T12:00:00Z`);
   next.setUTCDate(next.getUTCDate() + 1);
   return next.toISOString().slice(0, 10);

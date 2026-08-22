@@ -1,4 +1,5 @@
 import type { Candle } from "@/lib/backtester";
+import { exchangeClockParts } from "@/lib/exchangeClock";
 import type { ChartIndicatorInstance } from "@/lib/chartIndicatorCatalog";
 import { calculateDeepEffort } from "@/lib/deepEffort";
 import { detectCvdDivergences, sessionCvdBars, type CvdDivergenceSegment } from "@/lib/cvdDivergence";
@@ -83,22 +84,12 @@ const vwapBandColor = (theme: IndicatorTheme, index: number) => {
   return blendHexColors(theme.muted, theme.secondary, index === 1 ? 0.78 : 0.62);
 };
 
-const chicagoClock = new Intl.DateTimeFormat("en-US", {
-  timeZone: "America/Chicago",
-  year: "numeric",
-  month: "numeric",
-  day: "numeric",
-  hour: "numeric",
-  hourCycle: "h23",
-});
+const ENGINE_TIME_ZONE = "America/Chicago";
 
 function sessionKey(timestamp: number, startHour = 17) {
-  const parts = Object.fromEntries(
-    chicagoClock
-      .formatToParts(new Date(timestamp))
-      .filter((part) => part.type !== "literal")
-      .map((part) => [part.type, Number(part.value)]),
-  ) as Record<"year" | "month" | "day" | "hour", number>;
+  // Runs per candle across several indicators. The shared clock caches per
+  // minute so a recompute does not pay Intl for every bar.
+  const parts = exchangeClockParts(timestamp, ENGINE_TIME_ZONE);
   const tradingDate = new Date(Date.UTC(parts.year, parts.month - 1, parts.day));
   if (parts.hour < startHour) tradingDate.setUTCDate(tradingDate.getUTCDate() - 1);
   return tradingDate.toISOString().slice(0, 10);

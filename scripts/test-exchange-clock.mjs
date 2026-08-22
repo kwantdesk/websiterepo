@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { zonedParts } from "../src/lib/tpo/engine.ts";
+import { exchangeClockParts, exchangeDateKey, exchangeMinuteOfDay } from "../src/lib/exchangeClock.ts";
 
 /**
  * zonedParts is cached per timezone and minute because it underpins the
@@ -96,12 +97,39 @@ const ZONES = ["America/Chicago", "America/New_York", "UTC", "Europe/London", "A
   check(stamp, "America/Chicago", "after a second zone was read");
 }
 
-// --- the cache is bounded ---
+// --- every engine reads the same cached clock ---
 {
-  const engine = readFileSync(new URL("../src/lib/tpo/engine.ts", import.meta.url), "utf8");
-  assert.match(engine, /ZONED_PARTS_CACHE_LIMIT/, "the cache must be bounded");
-  assert.match(engine, /zonedPartsByMinute\.delete\(oldest\)/, "and must evict");
-  assert.match(engine, /`\$\{timeZone\}:\$\{minute\}`/, "keyed by timezone and minute");
+  // The per-record Intl call has now been found in five engines. One cache,
+  // tested once, rather than the pattern being reinvented or forgotten again.
+  for (const zone of ZONES) {
+    const stamp = Date.parse("2026-08-21T18:34:56.789Z");
+    assert.deepEqual({ ...zonedParts(stamp, zone) }, reference(stamp, zone),
+      "the TPO engine must read the shared clock");
+    const parts = exchangeClockParts(stamp, zone);
+    const pad = (v) => (v < 10 ? `0${v}` : String(v));
+    assert.equal(exchangeDateKey(stamp, zone), `${parts.year}-${pad(parts.month)}-${pad(parts.day)}`);
+    assert.equal(exchangeMinuteOfDay(stamp, zone), parts.hour * 60 + parts.minute);
+  }
+
+  const clock = readFileSync(new URL("../src/lib/exchangeClock.ts", import.meta.url), "utf8");
+  assert.match(clock, /PARTS_CACHE_LIMIT/, "the cache must be bounded");
+  assert.match(clock, /partsByMinute\.delete\(oldest\)/, "and must evict");
+  assert.match(clock, /`\$\{timeZone\}:\$\{minute\}`/, "keyed by timezone and minute");
+
+  // No engine may build a DateTimeFormat per call again. The imbalance tracker
+  // did, inside a nested loop: 29.9s against 52ms with the reset mode off.
+  for (const file of [
+    "../src/lib/imbalanceTracker.ts",
+    "../src/lib/cvdDivergence.ts",
+    "../src/lib/chartIndicatorEngine.ts",
+    "../src/lib/tpo/engine.ts",
+  ]) {
+    const source = readFileSync(new URL(file, import.meta.url), "utf8");
+    assert.ok(
+      !source.includes("new Intl.DateTimeFormat"),
+      `${file} must resolve exchange time through the shared cached clock`,
+    );
+  }
 }
 
-console.log("TPO zoned-parts cache tests passed.");
+console.log("Exchange clock cache tests passed (5 engines).");
