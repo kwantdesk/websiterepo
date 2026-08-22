@@ -125,6 +125,28 @@ export default function ChartDrawLayer({
     state.lock = best;
     return best;
   };
+  // The nearest candle level to a pixel position, ignoring both the hysteresis
+  // lock and pointer velocity. The preview path deliberately drops the magnet
+  // while the pointer is moving fast, which is right for the rubber band but
+  // wrong at the moment a gesture commits: flicking an anchor onto a wick and
+  // letting go was landing on the raw pointer price, a few ticks off the high.
+  const hardSnap = (x: number, y: number): { point: DrawPoint; distance: number } | null => {
+    const raw = fromXY(x, y);
+    if (!raw || !magnet || candles.length === 0) return null;
+    const candle = nearestCandleByTime(raw.time);
+    const cx = toX(candle.time);
+    if (cx == null || Math.abs(cx - x) > SNAP_RADIUS_PX) return null;
+    let best: DrawPoint | null = null;
+    let bestDist = SNAP_RADIUS_PX;
+    for (const value of [candle.high, candle.low, candle.open, candle.close]) {
+      const vy = toY(value);
+      if (vy == null) continue;
+      const distance = Math.abs(vy - y);
+      if (distance <= bestDist) { bestDist = distance; best = { time: candle.time, price: value }; }
+    }
+    return best ? { point: best, distance: bestDist } : null;
+  };
+
   const localPoint = (event: ReactPointerEvent) => {
     const rect = svgRef.current?.getBoundingClientRect();
     if (!rect) return null;
@@ -311,15 +333,48 @@ export default function ChartDrawLayer({
     const origin = drawing.points.map((point) => ({ ...point }));
     const start = windowPoint(event.clientX, event.clientY);
     if (!start) return;
+    // The drag's own running result. Reading it back off the `drawing` prop at
+    // release would use the value captured when the drag began.
+    let latest = origin;
     const onMove = (moveEvent: PointerEvent) => {
       const point = windowPoint(moveEvent.clientX, moveEvent.clientY);
       if (!point) return;
       if (mode === "move") {
         const dt = point.time - start.time;
         const dp = point.price - start.price;
-        onUpdate({ ...drawing, points: origin.map((p) => ({ time: p.time + dt, price: p.price + dp })) });
+        latest = origin.map((p) => ({ time: p.time + dt, price: p.price + dp }));
       } else {
-        onUpdate({ ...drawing, points: origin.map((p, i) => (i === mode ? point : p)) });
+        latest = origin.map((p, i) => (i === mode ? point : p));
+      }
+      onUpdate({ ...drawing, points: latest });
+    };
+
+    // Landing the gesture. A whole-drawing move previously applied a raw
+    // delta to every point, so a trend line, Gann fan or fib moved as a unit
+    // ignored the magnet entirely however close its ends came to a wick.
+    // Now the anchor that sits closest to a candle level pulls the whole
+    // drawing onto it, and a single dragged anchor snaps in its own right.
+    const settle = () => {
+      if (!magnet || latest === origin) return;
+      let best: { index: number; point: DrawPoint; distance: number } | null = null;
+      latest.forEach((p, index) => {
+        if (mode !== "move" && index !== mode) return;
+        const px = toX(p.time);
+        const py = toY(p.price);
+        if (px == null || py == null) return;
+        const hit = hardSnap(px, py);
+        if (!hit) return;
+        if (!best || hit.distance < best.distance) best = { index, point: hit.point, distance: hit.distance };
+      });
+      if (!best) return;
+      const target = best as { index: number; point: DrawPoint; distance: number };
+      if (mode === "move") {
+        const dt = target.point.time - latest[target.index].time;
+        const dp = target.point.price - latest[target.index].price;
+        if (dt === 0 && dp === 0) return;
+        onUpdate({ ...drawing, points: latest.map((p) => ({ time: p.time + dt, price: p.price + dp })) });
+      } else {
+        onUpdate({ ...drawing, points: latest.map((p, i) => (i === mode ? target.point : p)) });
       }
     };
     const cleanup = () => {
@@ -327,7 +382,7 @@ export default function ChartDrawLayer({
       window.removeEventListener("pointerup", onUp);
       dragCleanupRef.current = null;
     };
-    const onUp = () => cleanup();
+    const onUp = () => { settle(); cleanup(); };
     // A single stored cleanup guarantees the window listeners are removed even
     // if the pane unmounts mid-drag (the previous leak).
     dragCleanupRef.current = cleanup;
@@ -666,7 +721,13 @@ export default function ChartDrawLayer({
               <line x1={xL} y1={targetY} x2={xR} y2={targetY} stroke={green} strokeOpacity={0.55} strokeWidth={1} />
               <line x1={xL} y1={stopY} x2={xR} y2={stopY} stroke={red} strokeOpacity={0.55} strokeWidth={1} />
               <line x1={xL} y1={entryY} x2={xR} y2={entryY} stroke="#B2B5BE" strokeOpacity={0.8} strokeWidth={1} />
-              {style.showLabels ? (
+              {/*
+                * The readout belongs to the calculator being worked on. Left
+                * on permanently it stacked three pills across the chart for
+                * every position tool placed, which is what made a few of these
+                * unreadable. Deselected, the tool is just its two zones.
+                */}
+              {style.showLabels && (selected || preview) ? (
                 <g>
                   {chip(midX, targetY, `Target: ${targetP.toFixed(2)} (${long ? "+" : "-"}${reward.toFixed(2)} · ${pct(reward)})`, green)}
                   {chip(midX, stopY, `Stop: ${stopP.toFixed(2)} (${long ? "-" : "+"}${risk.toFixed(2)} · ${pct(risk)})`, red)}

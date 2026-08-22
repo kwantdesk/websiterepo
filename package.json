@@ -26,6 +26,7 @@
     "test:initial-balance": "node --experimental-strip-types scripts/test-initial-balance.mjs",
     "test:zero-gamma-line": "node --experimental-strip-types scripts/test-zero-gamma-line.mjs",
     "test:options-delta": "node --experimental-strip-types scripts/test-options-delta.mjs",
+    "test:toolbar-single-source": "node --experimental-strip-types scripts/test-toolbar-single-source.mjs",
     "test:cvd-divergence": "node --experimental-strip-types scripts/test-cvd-divergence.mjs",
     "test:preference-hydration": "node --experimental-strip-types scripts/test-preference-hydration.mjs",
     "test:gex-box": "node --experimental-strip-types scripts/test-gex-box.mjs",
@@ -72,8 +73,9 @@
     "test:position-default-size": "node scripts/test-position-default-size.mjs",
     "test:replay-history-range": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-replay-history-range.mjs",
     "test:tpo-settings-wired": "node scripts/test-tpo-settings-wired.mjs",
-    "test:tpo-zoned-parts": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-tpo-zoned-parts.mjs",
-    "bench:tpo-build": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/bench-tpo-build.mjs"
+    "bench:tpo-build": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/bench-tpo-build.mjs",
+    "test:exchange-clock": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-exchange-clock.mjs",
+    "bench:indicator-clock": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/bench-indicator-clock.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",

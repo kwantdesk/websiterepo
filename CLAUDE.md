@@ -290,6 +290,34 @@ all passed before commits `6d693311` and `cb07189d` were pushed. This is code/bu
 
 ## 8. Chart and workspace invariants
 
+### Drawing toolbar: which one is live
+
+The chart has **three** drawing toolbars in the tree. Only one is mounted. This
+has already cost several rounds of work landing on dead code, so check here
+before touching anything toolbar-related.
+
+| Toolbar | Tool list | Draws into | Status |
+| --- | --- | --- | --- |
+| `ChartDrawToolbar.tsx` | `src/lib/chartDrawTools.ts` | `ChartDrawLayer.tsx` | **LIVE — edit this one** |
+| Left rail in `Chart.tsx` (`DRAWING_TOOLBAR_GROUPS`, `ACTIVE_DRAWING_TOOLBAR_GROUPS`, `tradingViewToolbarCatalog.ts`) | same file | `drawings` state | dead: `LEGACY_LEFT_TOOLBAR_ENABLED = false` |
+| `PrecisionRail.tsx` / `precision-tools/` | `precision-tools/registry.ts` | own canvas | chrome hidden; layer mounted only so previously placed drawings still render |
+
+Consequences to hold on to:
+
+- **Adding or changing a tool** means editing `src/lib/chartDrawTools.ts`. Adding
+  it to `DRAWING_TOOLBAR_GROUPS` in `Chart.tsx` changes nothing a user can see.
+- The live rail renders **one button per group**; every other tool in that group
+  is behind a flyout chevron. A tool that must be reachable in one click needs
+  its own entry in `DRAW_TOOL_GROUPS`, not just a place in the list.
+- **Drawing behaviour** (magnet, selection, dragging, hit testing, the position
+  calculator's rendering) lives in `ChartDrawLayer.tsx`. The parallel
+  implementations in `Chart.tsx` (`selectedTool`, `drawings`,
+  `positionCalculatorPrimitive.ts`) belong to the dead rail.
+- The live drawing state is `drawTool` / `chartingDrawings`. `selectedTool` /
+  `drawings` are legacy.
+- `npm run test:toolbar-single-source` fails if a tool is reachable only from the
+  dead list, or if the pencil/eraser lose their own rail slot.
+
 ### Panel identity
 
 Every panel must have a stable ID. Store panel-local state keyed by that ID. A duplicated panel copies the source snapshot once and then diverges independently. Switching a panel from Chart to Footprint/DOM/etc. replaces its previous content; it must not accidentally retain the old indicator stack.
