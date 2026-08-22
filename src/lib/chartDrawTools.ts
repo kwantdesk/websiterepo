@@ -82,6 +82,8 @@ export type DrawToolId =
 
 export type DrawToolGroupId =
   | "cursor"
+  | "draw"
+  | "eraser"
   | "trend"
   | "gann"
   | "fib"
@@ -136,7 +138,9 @@ const T = (id: DrawToolId, group: DrawToolGroupId, label: string, points: DrawPo
 
 export const DRAW_TOOL_LIST: DrawToolSpec[] = [
   T("cursor", "cursor", "Cursor", 0),
-  T("eraser", "cursor", "Eraser", 0),
+  T("eraser", "eraser", "Eraser", 0),
+  T("brush", "draw", "Pencil", "freehand"),
+  T("highlighter", "draw", "Highlighter", "freehand"),
 
   T("trendLine", "trend", "Trend Line", 2),
   T("ray", "trend", "Ray", 2),
@@ -196,8 +200,6 @@ export const DRAW_TOOL_LIST: DrawToolSpec[] = [
   T("triangleShape", "shapes", "Triangle", 3),
   T("polyline", "shapes", "Polyline", "poly"),
   T("path", "shapes", "Path", "poly"),
-  T("brush", "shapes", "Brush", "freehand"),
-  T("highlighter", "shapes", "Highlighter", "freehand"),
 
   T("text", "annotation", "Text", 1),
   T("note", "annotation", "Note", 1),
@@ -216,6 +218,12 @@ export const DRAW_TOOL_SPECS: Record<DrawToolId, DrawToolSpec> = Object.fromEntr
 
 export const DRAW_TOOL_GROUPS: { id: DrawToolGroupId; label: string }[] = [
   { id: "cursor", label: "Cursor" },
+  // Pencil and eraser sit on the rail in their own right. The rail renders one
+  // button per group, so while the pencil lived in Shapes and the eraser in
+  // Cursor they were both a chevron and a flyout away — unusable for the two
+  // actions reached most often while marking a chart up.
+  { id: "draw", label: "Draw" },
+  { id: "eraser", label: "Eraser" },
   { id: "trend", label: "Lines" },
   { id: "gann", label: "Gann" },
   { id: "fib", label: "Fib" },
