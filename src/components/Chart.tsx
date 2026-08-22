@@ -9029,7 +9029,17 @@ function Chart({
       timeframe && isEventBasedChartInterval(timeframe) ? null : candleIntervalMs,
     );
     const indicatorSettings = bigTradesIndicator?.settings ?? {};
-    const combineByCandle = indicatorSettings.combineByCandle !== false;
+    // Absent means OFF, matching the declared default in chartIndicatorConfig.
+    //
+    // Reading it as `!== false` meant a settings object that predates this key
+    // — any chart saved before it existed — silently took the aggregating
+    // path, where every qualifying print in a bar and side collapses into one
+    // marker carrying their summed volume. That is a different quantity from
+    // the one the marker appears to report: a 5m NQ bubble read 1,410 while
+    // the largest single execution behind it was 76. DeepChart's equivalent
+    // (TradeMinTrade) marks individual executions, which is why a marker there
+    // reads 50 or 20 and sits on the price that actually traded.
+    const combineByCandle = indicatorSettings.combineByCandle === true;
     const isTimeAggregation = combineByCandle && candleIntervalMs != null && candleIntervalMs >= 60_000;
     // Kwantify's execution view never collapses a range/volume/Renko bar into
     // one same-side bubble. Those bars are defined by market events rather

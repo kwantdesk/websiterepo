@@ -26,6 +26,7 @@
     "test:initial-balance": "node --experimental-strip-types scripts/test-initial-balance.mjs",
     "test:zero-gamma-line": "node --experimental-strip-types scripts/test-zero-gamma-line.mjs",
     "test:options-delta": "node --experimental-strip-types scripts/test-options-delta.mjs",
+    "test:big-trades-marker-semantics": "node --import ./scripts/alias-hook.mjs scripts/test-big-trades-marker-semantics.mjs",
     "test:volume-profile-delta-bar": "node --import ./scripts/alias-hook.mjs scripts/test-volume-profile-delta-bar.mjs",
     "test:indicator-history-depth": "node --import ./scripts/alias-hook.mjs scripts/test-indicator-history-depth.mjs",
     "test:toolbar-single-source": "node --experimental-strip-types scripts/test-toolbar-single-source.mjs",
