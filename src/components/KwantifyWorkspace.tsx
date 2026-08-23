@@ -5390,6 +5390,20 @@ function WorkspaceChartPaneComponent({
   }, [active, onLiveExecutionQuote, pane.id, pane.symbol, replayActive, replayDisplayCandles, replayTimestampMs]);
   const [orderFlowHistoryReady, setOrderFlowHistoryReady] = useState(false);
   const [volumeProfiles, setVolumeProfiles] = useState<InstitutionalVolumeProfile[]>([]);
+  /**
+   * A one-minute series for the Initial Balance study, independent of the
+   * chart's own timeframe.
+   *
+   * IB freezes a 15, 30, 45 or 60 minute opening range. Reading that off the
+   * pane's candles means an hourly chart can only ever offer one bar for a
+   * fifteen-minute range, so the level came out as that whole hour's extreme.
+   * The backtest already fed the study a minute series for exactly this
+   * reason; live charts fed it nothing and inherited the chart's interval.
+   *
+   * Broker-agnostic on purpose: the same study has to resolve on SPX, NDX,
+   * QQQ and SPY as it does on the futures.
+   */
+  const [initialBalanceStudyCandles, setInitialBalanceStudyCandles] = useState<Candle[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [liveFeedError, setLiveFeedError] = useState<string | null>(null);
@@ -5517,6 +5531,54 @@ function WorkspaceChartPaneComponent({
     ].includes(instance.indicatorId));
   const weeklyProfileInstance = indicators.find((instance) =>
     instance.enabled && instance.indicatorId === "weekly-volume-profile");
+  const initialBalanceInstance = indicators.find((instance) =>
+    instance.enabled && instance.indicatorId === "ib-levels");
+  // A minute chart already resolves every IB duration exactly, and a seconds
+  // chart more than exactly, so neither needs a second series fetched for it.
+  const initialBalanceNeedsMinuteSeries = Boolean(initialBalanceInstance)
+    && !replayActive
+    && !["1s", "5s", "10s", "15s", "30s", "1m"].includes(pane.timeframe);
+  useEffect(() => {
+    if (!initialBalanceNeedsMinuteSeries) {
+      setInitialBalanceStudyCandles((current) => (current.length ? [] : current));
+      return;
+    }
+    let cancelled = false;
+    const controller = new AbortController();
+    // IB keeps only the most recent window per session, so a couple of days of
+    // minutes is the whole requirement - there is no reason to pull the
+    // study's full lookback at minute resolution.
+    const load = async () => {
+      try {
+        const toMs = Date.now();
+        const candles = await fetchWorkspaceCandles(
+          pane.symbol,
+          "1m",
+          pane.broker,
+          "5D",
+          5_000,
+          false,
+          controller.signal,
+          false,
+          false,
+          3,
+          { fromMs: toMs - 3 * 24 * 60 * 60_000, toMs, key: `ib-1m:${pane.symbol}` },
+        );
+        if (!cancelled) setInitialBalanceStudyCandles(candles);
+      } catch {
+        // The study falls back to the pane's own candles, which is the old
+        // behaviour rather than a blank chart.
+      }
+    };
+    void load();
+    // The developing range has to keep building while the session opens.
+    const timer = window.setInterval(() => void load(), 60_000);
+    return () => {
+      cancelled = true;
+      controller.abort();
+      window.clearInterval(timer);
+    };
+  }, [initialBalanceNeedsMinuteSeries, pane.broker, pane.symbol]);
   const needsLiveVolumeProfiles = Boolean(dailyProfileInstance || weeklyProfileInstance);
   const requiresExecutionStream = needsOrderFlowHistory || isEventBasedChartInterval(pane.timeframe);
   useEffect(() => {
@@ -8618,6 +8680,7 @@ function WorkspaceChartPaneComponent({
           classicGexError={classicGexError}
           expectedMoveCalibration={expectedMoveCalibration}
           volumeProfiles={volumeProfiles}
+          initialBalanceCandles={initialBalanceStudyCandles.length ? initialBalanceStudyCandles : undefined}
           onUpdateIndicatorSetting={onUpdateIndicatorSetting}
           toolbarEnabled
           chartDragEnabled={chartDragEnabled}
