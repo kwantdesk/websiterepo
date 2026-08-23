@@ -9726,7 +9726,9 @@ function Chart({
     borderOpacity: 0.72,
     lineWidth: 1.25,
     lineStyle: "solid",
-    showLabels: true,
+    // Position calculators should land as the clean target/risk boxes. The
+    // readout remains available from the style panel, but is opt-in.
+    showLabels: false,
   };
   const activePositionStyle: Required<PositionVisualSettings> = {
     targetColor: positionSettingsDrawing?.positionStyle?.targetColor ?? positionStyleDefaults.targetColor,
@@ -9774,7 +9776,7 @@ function Chart({
         stopPrice,
         targetPrice,
         selected: selectedDrawingId === drawing.id,
-        showLabels: visualStyle.showLabels ?? true,
+        showLabels: visualStyle.showLabels ?? positionStyleDefaults.showLabels,
         targetText: `Target ${targetDistance.toFixed(priceFormat.precision)} pts · ${Math.round(targetDistance / priceFormat.minMove)} ticks`,
         stopText: `Stop ${stopDistance.toFixed(priceFormat.precision)} pts · ${Math.round(stopDistance / priceFormat.minMove)} ticks`,
         rewardRiskText: `1:${rewardRiskLabel} R:R`,
@@ -10859,15 +10861,21 @@ function Chart({
               1,
               candles.length > 1 ? Math.round(Math.abs(candles[1].timestamp - candles[0].timestamp) / 1000) : 60
             );
-            const startTime = basePoints[0].time;
-            const endTime = basePoints[1].time;
+            // Resize the edge the user can actually see. Imported and older
+            // calculators are not guaranteed to store point 0 on the left, so
+            // treating point order as geometry made diagonal corner drags move
+            // only vertically (or slide the handle inside the box).
+            const leftPointIndex = basePoints[0].time <= basePoints[1].time ? 0 : 1;
+            const rightPointIndex = leftPointIndex === 0 ? 1 : 0;
+            const leftTime = basePoints[leftPointIndex].time;
+            const rightTime = basePoints[rightPointIndex].time;
             const nextTime = isLeft
-              ? Math.min(Math.round(point.time), endTime - minimumTimeSpan)
-              : Math.max(Math.round(point.time), startTime + minimumTimeSpan);
+              ? Math.min(Math.round(point.time), rightTime - minimumTimeSpan)
+              : Math.max(Math.round(point.time), leftTime + minimumTimeSpan);
             if (isLeft) {
-              basePoints[0] = { ...basePoints[0], time: nextTime };
+              basePoints[leftPointIndex] = { ...basePoints[leftPointIndex], time: nextTime };
             } else {
-              basePoints[1] = { ...basePoints[1], time: nextTime };
+              basePoints[rightPointIndex] = { ...basePoints[rightPointIndex], time: nextTime };
               if (basePoints[2]) basePoints[2] = { ...basePoints[2], time: nextTime };
             }
 
@@ -10946,6 +10954,10 @@ function Chart({
           { time: endTime, price: stopPrice },
           { time: endTime, price: targetPrice },
         ],
+        positionStyle: {
+          ...finalized.positionStyle,
+          showLabels: false,
+        },
       };
     }
     finishDraft(finalized);
@@ -11237,15 +11249,16 @@ function Chart({
         {
           const geometry = getLongShortGeometry(drawing);
           if (!geometry) return null;
+          const hitPadding = 14;
           return (
             <rect
               key={`${keyPrefix}-${drawing.id}`}
               data-position-drawing-id={drawing.id}
-              x={geometry.x}
-              y={Math.min(geometry.profitTop, geometry.profitBottom, geometry.riskTop, geometry.riskBottom)}
-              width={geometry.boxWidth}
+              x={geometry.x - hitPadding}
+              y={Math.min(geometry.profitTop, geometry.profitBottom, geometry.riskTop, geometry.riskBottom) - hitPadding}
+              width={geometry.boxWidth + hitPadding * 2}
               height={Math.abs(Math.max(geometry.profitTop, geometry.profitBottom, geometry.riskTop, geometry.riskBottom)
-                - Math.min(geometry.profitTop, geometry.profitBottom, geometry.riskTop, geometry.riskBottom))}
+                - Math.min(geometry.profitTop, geometry.profitBottom, geometry.riskTop, geometry.riskBottom)) + hitPadding * 2}
               fill="transparent"
               style={{ pointerEvents: "all", cursor: drawingsLocked ? "default" : "move" }}
             />

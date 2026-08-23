@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 
 const renderer = readFileSync("src/chart/precision-tools/renderer.ts", "utf8");
 const chart = readFileSync("src/components/Chart.tsx", "utf8");
+const primitive = readFileSync("src/lib/positionCalculatorPrimitive.ts", "utf8");
 
 // 1. The precision renderer must know which object is selected.
 assert.match(renderer, /function renderObject\([\s\S]{0,220}selected = false\): void/);
@@ -31,7 +32,12 @@ const bodyBlock = renderer.slice(
 );
 assert.ok(!bodyBlock.includes("if (selected)"), "the calculator body must always draw");
 
-// 5. The SVG calculator already behaves this way; both must agree.
-assert.match(chart, /\{showLabels && isSelected \? <g pointerEvents="none">/);
+// 5. The live canvas primitive follows the same selected-only label rule.
+assert.match(primitive, /if \(model\.selected && model\.showLabels\)/);
 
-console.log("position calculator labels: 5/5 checks passed");
+// 6. New calculators default to clean red/green boxes. Labels remain an
+//    explicit user option and are persisted on the drawing when enabled.
+assert.match(chart, /const positionStyleDefaults:[\s\S]{0,600}showLabels: false,/);
+assert.match(chart, /positionStyle: \{[\s\S]{0,160}showLabels: false,/);
+
+console.log("position calculator labels: 6/6 checks passed");

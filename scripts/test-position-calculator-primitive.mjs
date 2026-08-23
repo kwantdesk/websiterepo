@@ -44,4 +44,12 @@ assert.match(chart, /positionCalculatorPrimitiveRef\.current = null;/);
 assert.match(drawBody, /if \(model\.selected && model\.showLabels\)/);
 assert.match(drawBody, /if \(model\.selected\) \{/);
 
-console.log("position calculator primitive: 5/5 checks passed");
+// 6. Corner drags resize the visible edge, even for legacy/imported drawings
+//    whose two stored times are reversed. Both axes are updated in one move.
+assert.match(chart, /const leftPointIndex = basePoints\[0\]\.time <= basePoints\[1\]\.time \? 0 : 1;/);
+assert.match(chart, /basePoints\[leftPointIndex\] = \{ \.\.\.basePoints\[leftPointIndex\], time: nextTime \};/);
+assert.match(chart, /basePoints\[rightPointIndex\] = \{ \.\.\.basePoints\[rightPointIndex\], time: nextTime \};/);
+assert.match(chart, /if \(isTarget\) \{[\s\S]{0,500}price: targetPrice/);
+assert.match(chart, /\} else \{[\s\S]{0,500}price: snapPositionPrice/);
+
+console.log("position calculator primitive: 6/6 checks passed");
