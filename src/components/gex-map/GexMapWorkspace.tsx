@@ -27,6 +27,7 @@ import {
   X,
 } from "lucide-react";
 import KwantLoader from "@/components/KwantLoader";
+import GexMapNodePanel from "@/components/gex-map/GexMapNodePanel";
 import GexMapFutureMatrix from "@/components/gex-map/GexMapFutureMatrix";
 import {
   GEX_MAP_GREEKS,
@@ -592,6 +593,9 @@ function ExposurePanel({
   const scrollRef = useRef<HTMLDivElement>(null);
   const ladderRef = useRef<HTMLDivElement>(null);
   const [followingSpot, setFollowingSpot] = useState(true);
+  // Which node the trader opened the detail panel on. Held by strike rather
+  // than by object so it survives every refresh of the exposure surface.
+  const [detailStrike, setDetailStrike] = useState<number | null>(null);
   // Wheel scrolling moves EXACTLY one strike row per notch and lands on row
   // boundaries, so side-by-side columns stay row-aligned instead of drifting
   // by arbitrary pixel amounts.
@@ -1105,6 +1109,17 @@ function ExposurePanel({
                       } : {}),
                     } as CSSProperties}
                     title={tooltip}
+                    role="button"
+                    tabIndex={0}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setDetailStrike((current) => (current === row.strike ? null : row.strike));
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key !== "Enter" && event.key !== " ") return;
+                      event.preventDefault();
+                      setDetailStrike((current) => (current === row.strike ? null : row.strike));
+                    }}
                   >
                     {highlighted ? (
                       <span
@@ -1208,6 +1223,20 @@ function ExposurePanel({
               icon={ScanLine}
               title={`Loading ${greek.short}`}
               detail="Painting the latest strike ladder"
+            />
+          </div>
+        ) : null}
+        {detailStrike !== null && payload ? (
+          <div className="absolute right-2 top-2 z-20 max-h-[calc(100%-1rem)] overflow-y-auto">
+            <GexMapNodePanel
+              strike={detailStrike}
+              frames={payload.frames}
+              // Bounded by the replay clock so a scrubbed map can never show a
+              // node the exposure it only reaches later in the session.
+              throughMs={effectiveTimestamp ?? undefined}
+              greekLabel={greek.label}
+              sessionDate={payload.sessionDate}
+              onClose={() => setDetailStrike(null)}
             />
           </div>
         ) : null}
