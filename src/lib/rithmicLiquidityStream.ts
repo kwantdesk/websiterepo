@@ -63,12 +63,28 @@ type SharedPoll = {
   root: string;
   contractSymbol: string;
   exchange: string;
+  pendingDepth: RawPayload | null;
+  pendingTrades: unknown[];
+  pendingOrderEvents: unknown[];
+  pendingTick: {
+    timestamp?: number;
+    tick?: number;
+    contractSymbol?: string;
+  } | null;
+  publishHandle: number | null;
+  publishMode: "animation-frame" | "timeout" | null;
 };
 
 const streams = new Map<string, SharedPoll>();
 const INITIAL_BOOK_TIMEOUT_MS = 8_000;
 const STREAM_STALE_TIMEOUT_MS = 15_000;
 const STREAM_WATCHDOG_INTERVAL_MS = 3_000;
+// The gateway can produce hundreds of book mutations between two browser
+// paints. Materialising an 800-row book for every mutation made allocation
+// rate proportional to exchange traffic and eventually killed Chrome's
+// renderer during live sessions. Keep every trade/lifecycle event, but emit
+// only the newest authoritative book once the browser can actually paint it.
+const MAX_PENDING_MARKET_EVENTS = 50_000;
 
 function publishStatus(stream: SharedPoll, status: RithmicLiquidityStatus) {
   if (stream.status === status) return;
@@ -224,6 +240,98 @@ function updateTrackers(
   for (const subscriber of recipients) subscriber.onSnapshot(snapshot);
 }
 
+function appendBounded(target: unknown[], value: unknown) {
+  if (!Array.isArray(value) || !value.length) return;
+  for (const item of value) target.push(item);
+  if (target.length > MAX_PENDING_MARKET_EVENTS) {
+    target.splice(0, target.length - MAX_PENDING_MARKET_EVENTS);
+  }
+}
+
+function cancelScheduledPublish(stream: SharedPoll) {
+  if (stream.publishHandle === null) return;
+  if (stream.publishMode === "animation-frame") {
+    window.cancelAnimationFrame(stream.publishHandle);
+  } else {
+    window.clearTimeout(stream.publishHandle);
+  }
+  stream.publishHandle = null;
+  stream.publishMode = null;
+}
+
+function flushPendingMarketFrame(stream: SharedPoll) {
+  stream.publishHandle = null;
+  stream.publishMode = null;
+
+  const pendingDepth = stream.pendingDepth;
+  const pendingTick = stream.pendingTick;
+  stream.pendingDepth = null;
+  stream.pendingTick = null;
+
+  if (pendingDepth?.snapshot) {
+    const trades = stream.pendingTrades;
+    const orderEvents = stream.pendingOrderEvents;
+    stream.pendingTrades = [];
+    stream.pendingOrderEvents = [];
+    const tick = Number(pendingTick?.tick);
+    const tickTimestamp = Number(pendingTick?.timestamp);
+    updateTrackers(stream, {
+      status: pendingDepth.status,
+      snapshot: {
+        ...pendingDepth.snapshot,
+        trades,
+        orderEvents,
+        ...(Number.isFinite(tick) && tick > 0 ? { lastTick: tick } : {}),
+        ...(Number.isFinite(tickTimestamp) && tickTimestamp > 0 ? { timestamp: tickTimestamp } : {}),
+        ...(pendingTick?.contractSymbol ? { contractSymbol: pendingTick.contractSymbol } : {}),
+      },
+    });
+    return;
+  }
+
+  stream.pendingTrades = [];
+  stream.pendingOrderEvents = [];
+  const tick = Number(pendingTick?.tick);
+  if (!stream.latestSnapshot || !Number.isFinite(tick) || tick <= 0) return;
+  const snapshot: RithmicLiquiditySnapshot = {
+    ...stream.latestSnapshot,
+    asOf: new Date(Number(pendingTick?.timestamp) || Date.now()).toISOString(),
+    contractSymbol: String(pendingTick?.contractSymbol || stream.latestSnapshot.contractSymbol),
+    lastPrice: tick * stream.latestSnapshot.tickSize,
+    ageMs: 0,
+    // A price-only update must never replay the last trade batch into detector
+    // engines. The immutable book rows are intentionally shared until the next
+    // depth frame instead of being cloned for every tick.
+    trades: [],
+    orderEvents: [],
+  };
+  stream.latestSnapshot = snapshot;
+  for (const subscriber of stream.subscribers) subscriber.onSnapshot(snapshot);
+}
+
+function scheduleMarketFrame(stream: SharedPoll) {
+  if (stream.publishHandle !== null) return;
+  if (document.visibilityState === "hidden") {
+    stream.publishMode = "timeout";
+    stream.publishHandle = window.setTimeout(() => flushPendingMarketFrame(stream), 100);
+    return;
+  }
+  stream.publishMode = "animation-frame";
+  stream.publishHandle = window.requestAnimationFrame(() => flushPendingMarketFrame(stream));
+}
+
+function queueDepthFrame(stream: SharedPoll, payload: RawPayload) {
+  const { trades, orderEvents, ...snapshot } = payload.snapshot ?? {};
+  const previous = stream.pendingDepth;
+  stream.pendingDepth = {
+    status: { ...previous?.status, ...payload.status },
+    snapshot: { ...previous?.snapshot, ...snapshot },
+  };
+  appendBounded(stream.pendingTrades, trades);
+  appendBounded(stream.pendingOrderEvents, orderEvents);
+  scheduleMarketFrame(stream);
+}
+
 function clearWatchdog(stream: SharedPoll) {
   if (stream.watchdog !== null) window.clearInterval(stream.watchdog);
   stream.watchdog = null;
@@ -259,7 +367,7 @@ function connectStream(stream: SharedPoll) {
     try {
       const payload = JSON.parse((event as MessageEvent<string>).data) as RawPayload;
       markStreamActivity(stream);
-      updateTrackers(stream, payload);
+      queueDepthFrame(stream, payload);
       publishStatus(stream, payload.status?.connected ? "connected" : "checking");
     } catch {
       publishStatus(stream, "unavailable");
@@ -275,6 +383,12 @@ function connectStream(stream: SharedPoll) {
       };
       const snapshots = payload.snapshots ?? [];
       markStreamActivity(stream);
+      // Preserve event ordering if a live mutation happened immediately before
+      // a retained-history packet during reconnect.
+      if (stream.pendingDepth || stream.pendingTick) {
+        cancelScheduledPublish(stream);
+        flushPendingMarketFrame(stream);
+      }
       const replayRecipients = [...stream.subscribers].filter((subscriber) => subscriber.replayHistory);
       if (replayRecipients.length) {
         for (const snapshot of snapshots) {
@@ -323,16 +437,9 @@ function connectStream(stream: SharedPoll) {
         contractSymbol?: string;
       };
       const tick = Number(payload.tick);
-      if (!stream.latestSnapshot || !Number.isFinite(tick) || tick <= 0) return;
-      const snapshot: RithmicLiquiditySnapshot = {
-        ...stream.latestSnapshot,
-        asOf: new Date(Number(payload.timestamp) || Date.now()).toISOString(),
-        contractSymbol: String(payload.contractSymbol || stream.latestSnapshot.contractSymbol),
-        lastPrice: tick * stream.latestSnapshot.tickSize,
-        ageMs: 0,
-      };
-      stream.latestSnapshot = snapshot;
-      for (const subscriber of stream.subscribers) subscriber.onSnapshot(snapshot);
+      if ((!stream.latestSnapshot && !stream.pendingDepth) || !Number.isFinite(tick) || tick <= 0) return;
+      stream.pendingTick = payload;
+      scheduleMarketFrame(stream);
     } catch {
       // A malformed tick must not discard the last good book frame.
     }
@@ -385,6 +492,12 @@ export function subscribeRithmicLiquidity(args: {
       root,
       contractSymbol,
       exchange,
+      pendingDepth: null,
+      pendingTrades: [],
+      pendingOrderEvents: [],
+      pendingTick: null,
+      publishHandle: null,
+      publishMode: null,
     };
     streams.set(key, stream);
   }
@@ -404,6 +517,11 @@ export function subscribeRithmicLiquidity(args: {
     current.subscribers.delete(subscriber);
     if (current.subscribers.size) return;
     if (current.timer !== null) window.clearTimeout(current.timer);
+    cancelScheduledPublish(current);
+    current.pendingDepth = null;
+    current.pendingTrades = [];
+    current.pendingOrderEvents = [];
+    current.pendingTick = null;
     clearWatchdog(current);
     current.eventSource?.close();
     current.eventSource = null;

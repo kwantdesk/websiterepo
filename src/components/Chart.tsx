@@ -4381,6 +4381,7 @@ function Chart({
           for (const event of frame.events.slice(-12)) {
             if (event.score < absorptionSettings.alertMinimumScore || absorptionAlertIdsRef.current.has(event.id)) continue;
             absorptionAlertIdsRef.current.add(event.id);
+            if (absorptionAlertIdsRef.current.size > 2_000) absorptionAlertIdsRef.current = new Set([...absorptionAlertIdsRef.current].slice(-1_000));
             window.dispatchEvent(new CustomEvent("kwantdesk:chart-indicator-alert", { detail: {
               indicatorId: "absorption-detector",
               instanceId: absorptionIndicator.instanceId,
@@ -4499,6 +4500,7 @@ function Chart({
               || (alert.type === "BROKEN" && icebergRefreshSettings.alertOnBroken);
             if (!allowed || !candidate || candidate.score < icebergRefreshSettings.alertMinimumScore || candidate.quality < icebergRefreshSettings.alertMinimumQuality || icebergRefreshAlertIdsRef.current.has(alert.id)) continue;
             icebergRefreshAlertIdsRef.current.add(alert.id);
+            if (icebergRefreshAlertIdsRef.current.size > 2_000) icebergRefreshAlertIdsRef.current = new Set([...icebergRefreshAlertIdsRef.current].slice(-1_000));
             window.dispatchEvent(new CustomEvent("kwantdesk:chart-indicator-alert", { detail: { indicatorId: "iceberg-refresh-detector", instanceId: icebergRefreshIndicator.instanceId, instrument, title: `${candidate.passiveSide} ${alert.type.toLowerCase()} · suspected iceberg`, event: alert } }));
           }
         }
@@ -4610,6 +4612,7 @@ function Chart({
             const event = alert.event;
             if (!event || event.score < liquidityStopSweepSettings.alertMinimumScore || event.dataQualityScore < liquidityStopSweepSettings.alertMinimumQuality || liquidityStopSweepAlertIdsRef.current.has(alert.id)) continue;
             liquidityStopSweepAlertIdsRef.current.add(alert.id);
+            if (liquidityStopSweepAlertIdsRef.current.size > 2_000) liquidityStopSweepAlertIdsRef.current = new Set([...liquidityStopSweepAlertIdsRef.current].slice(-1_000));
             window.dispatchEvent(new CustomEvent("kwantdesk:chart-indicator-alert", { detail: {
               indicatorId: "liquidity-stop-sweep-detector",
               instanceId: liquidityStopSweepIndicator.instanceId,
@@ -5487,6 +5490,7 @@ function Chart({
     if (pocAuctionSettings.alertsEnabled) for (const alert of frame.alerts) {
       if (pocAuctionAlertIdsRef.current.has(alert.id)) continue;
       pocAuctionAlertIdsRef.current.add(alert.id);
+      if (pocAuctionAlertIdsRef.current.size > 2_000) pocAuctionAlertIdsRef.current = new Set([...pocAuctionAlertIdsRef.current].slice(-1_000));
       window.dispatchEvent(new CustomEvent("kwantdesk:chart-indicator-alert", { detail: {
         indicatorId: "poc-auction-suite",
         instanceId: pocAuctionIndicator.instanceId,
@@ -5548,6 +5552,7 @@ function Chart({
         || (alert.type === "BROKEN" && stackedImbalanceSettings.alertOnBroken);
       if (!allowed) continue;
       stackedImbalanceAlertIdsRef.current.add(alert.id);
+      if (stackedImbalanceAlertIdsRef.current.size > 2_000) stackedImbalanceAlertIdsRef.current = new Set([...stackedImbalanceAlertIdsRef.current].slice(-1_000));
       window.dispatchEvent(new CustomEvent("kwantdesk:chart-indicator-alert", { detail: {
         indicatorId: "stacked-imbalance-suite",
         instanceId: stackedImbalanceIndicator.instanceId,
