@@ -76,6 +76,12 @@ export interface TpoIndicatorSettings {
   lengthValue: number;
   lengthUnit: TpoLengthUnit;
   timezone: string;
+  /**
+   * Which venue's clock the session anchors were cut for. Stamped so a study
+   * moved between an options underlying and a futures chart re-derives them
+   * instead of keeping the other venue's day boundary.
+   */
+  tpoSessionFamily?: "cme" | "cash";
   dailyStartTime: string;
   dailyEndMode: "next-daily-start" | "explicit-time";
   dailyEndTime: string;

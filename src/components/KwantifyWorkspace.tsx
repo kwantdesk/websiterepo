@@ -8034,7 +8034,14 @@ function WorkspaceChartPaneComponent({
         } else {
           const first = paneCandles.find((candle) => dateOf(candle.timestamp) === profileDate);
           startMs = first?.timestamp ?? lastCandle.timestamp;
-          endMs = lastCandle.timestamp + intervalMs;
+          // A COMPLETED session ends on its own last bar. Anchoring every
+          // daily profile to the live edge stretched each prior session
+          // across all the ones after it, which is only invisible while
+          // exactly one profile is drawn.
+          const lastOfDate = profileDate === lastDate
+            ? lastCandle
+            : [...paneCandles].reverse().find((candle) => dateOf(candle.timestamp) === profileDate);
+          endMs = (lastOfDate?.timestamp ?? lastCandle.timestamp) + intervalMs;
         }
       }
       return {
@@ -8067,23 +8074,43 @@ function WorkspaceChartPaneComponent({
         if (!ratio || cancelled) return;
         const contractSymbol = currentCmeContract(`${projectionRoot}.c.0`) ?? undefined;
         const requests: Promise<InstitutionalVolumeProfile | null>[] = [];
+        // The study's OWN settings, exactly as the futures path reads them. A
+        // projected profile that ignores the trader's grouping and value area
+        // is not the same study wearing a different symbol.
+        const projectedArgsFor = (instanceSettings: Record<string, unknown>, autoGroupTicks: number) => ({
+          groupTicks: instanceSettings.groupingMode === "manual"
+            ? Math.max(1, Math.round(Number(instanceSettings.groupTicks ?? 4) || 4))
+            : autoGroupTicks,
+          valueAreaPercent: Number(instanceSettings.valueAreaPercent)
+            > 0 ? Number(instanceSettings.valueAreaPercent) : STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
+          minTradeVolume: Math.max(0, Number(instanceSettings.minTradeVolume ?? 0) || 0),
+          maxTradeVolume: Math.max(0, Number(instanceSettings.maxTradeVolume ?? 0) || 0),
+        });
         if (wantsDaily) {
-          requests.push(fetchInstitutionalVolumeProfile({
-            symbol: projectionRoot,
-            contractSymbol,
-            period: "daily",
-            tradingDate: chicagoTradingDate(Date.now()),
-            groupTicks: 1,
-            valueAreaPercent: STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
-          }));
+          // One profile per session the pane actually shows, not just today.
+          // The futures path has always loaded the prior sessions a profile
+          // trader reads back over; projecting only the live day left the
+          // options charts with a single profile and nothing behind it.
+          const projectedDates = [...new Set(
+            latestCandlesRef.current.map((candle) => chicagoTradingDate(candle.timestamp)),
+          )].sort().slice(-5);
+          const dates = projectedDates.length ? projectedDates : [chicagoTradingDate(Date.now())];
+          for (const tradingDate of dates) {
+            requests.push(fetchInstitutionalVolumeProfile({
+              symbol: projectionRoot,
+              contractSymbol,
+              period: "daily",
+              tradingDate,
+              ...projectedArgsFor(dailyProfileInstance?.settings ?? {}, 1),
+            }));
+          }
         }
         if (wantsWeekly) {
           requests.push(fetchInstitutionalVolumeProfile({
             symbol: projectionRoot,
             contractSymbol,
             period: "weekly",
-            groupTicks: 4,
-            valueAreaPercent: STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
+            ...projectedArgsFor(weeklyProfileInstance?.settings ?? {}, 4),
           }));
         }
         const results = await Promise.allSettled(requests);

@@ -1,4 +1,5 @@
 import type { ChartSettings } from "@/lib/chartSettings";
+import { isMarketIndexSymbol } from "@/lib/marketIndices";
 import { VOLUME_PROFILE_GRADIENT_OFF } from "@/lib/volumeProfileGradients";
 import {
   TPO_SETTINGS_SCHEMA_VERSION,
@@ -25,11 +26,59 @@ const validTimeZone = (value: unknown, fallback: string) => {
   }
 };
 
+/**
+ * Which venue's clock a TPO profile is cut on.
+ *
+ * The defaults are CME's: the day opens at 17:00 Chicago and the week opens
+ * Sunday at 17:00, because that is when Globex opens. An options underlying -
+ * SPX, NDX, QQQ, SPY - has no overnight leg at all; it trades 09:30 to 16:00
+ * New York and nothing else. Cut on CME's clock, Monday's cash session is
+ * dated to SUNDAY and anchored to 17:00 the previous evening, hours before
+ * its first bar exists. The profile's contents were right and its day, label
+ * and position were not.
+ */
+export type TpoSessionFamily = "cme" | "cash";
+
+export function tpoSessionFamilyFor(instrument?: string): TpoSessionFamily {
+  return instrument && isMarketIndexSymbol(instrument) ? "cash" : "cme";
+}
+
+/**
+ * The session anchors, which are the only settings that depend on the venue.
+ * Everything else - rows, value area, colours, single prints - is identical
+ * across both families, which is the point: the same study, same options,
+ * cut on the right clock.
+ *
+ * Kept in Chicago time so the "rth" preset's own 08:30-15:00 window continues
+ * to line up; 08:30 Chicago IS the 09:30 New York cash open.
+ */
+/** The settings re-derived when a study moves between venue families. */
+const TPO_SESSION_ANCHOR_KEYS = [
+  "dailyStartTime",
+  "weekStartDay",
+  "weekStartTime",
+  "enabledWeekdays",
+] as const;
+
+const CASH_SESSION_ANCHORS = {
+  dailyStartTime: "08:30:00",
+  weekStartDay: 1,
+  weekStartTime: "08:30:00",
+  // A CME session is named by the day it OPENS, so Globex runs Sunday through
+  // Thursday. A cash session opens and closes on the same day: Monday through
+  // Friday. Left at the CME set, Friday is not an enabled start day at all and
+  // its bars are swallowed by Thursday's profile - four profiles for a
+  // five-day week.
+  enabledWeekdays: [1, 2, 3, 4, 5],
+} satisfies Partial<TpoIndicatorSettings>;
+
 export function defaultTpoSettings(
   variant: TpoIndicatorVariant,
   theme?: Pick<ChartSettings, "upColor" | "downColor" | "borderUpColor" | "borderDownColor">,
+  instrument?: string,
 ): TpoIndicatorSettings {
   const weekly = variant === "weekly-tpo";
+  const cash = tpoSessionFamilyFor(instrument) === "cash";
   return {
     schemaVersion: TPO_SETTINGS_SCHEMA_VERSION,
     indicatorVariant: variant,
@@ -211,6 +260,9 @@ export function defaultTpoSettings(
     maximumMergeMembers: 30,
     maximumRenderedBlocks: 50_000,
     fpsCap: 60,
+    // Last, so it overrides the CME anchors above rather than being overridden
+    // by them.
+    ...(cash ? CASH_SESSION_ANCHORS : {}),
   };
 }
 
@@ -218,20 +270,35 @@ export function validateTpoSettings(
   input: Record<string, unknown> | undefined,
   variant: TpoIndicatorVariant,
   theme?: Pick<ChartSettings, "upColor" | "downColor" | "borderUpColor" | "borderDownColor">,
+  /** The chart the study is attached to, which decides the session clock. */
+  instrument?: string,
 ): TpoIndicatorSettings {
-  const defaults = defaultTpoSettings(variant, theme);
+  const family = tpoSessionFamilyFor(instrument);
+  const defaults = defaultTpoSettings(variant, theme, instrument);
   const stored = input ?? {};
   // One-time v1 -> v2 correction: see TPO_V2_RESET_KEYS.
-  const source: Record<string, unknown> = Number(stored.schemaVersion ?? 1) >= 2
+  const migrated: Record<string, unknown> = Number(stored.schemaVersion ?? 1) >= 2
     ? stored
     : Object.fromEntries(Object.entries(stored).filter(
       ([key]) => !(TPO_V2_RESET_KEYS as readonly string[]).includes(key),
+    ));
+  // A study carrying anchors cut for the OTHER venue re-derives them. Settings
+  // saved before the families were distinguished carry no stamp and are all
+  // CME, so a TPO already sitting on an options underlying is corrected the
+  // first time it is read rather than staying a day out forever. A deliberate
+  // change WITHIN a family is never touched, because the stamp still matches.
+  const storedFamily = migrated.tpoSessionFamily;
+  const source: Record<string, unknown> = storedFamily === family
+    ? migrated
+    : Object.fromEntries(Object.entries(migrated).filter(
+      ([key]) => !(TPO_SESSION_ANCHOR_KEYS as readonly string[]).includes(key),
     ));
   const enumValue = <T extends string>(key: string, values: readonly T[], fallback: T) =>
     values.includes(source[key] as T) ? source[key] as T : fallback;
   return {
     ...defaults,
     ...source,
+    tpoSessionFamily: family,
     schemaVersion: TPO_SETTINGS_SCHEMA_VERSION,
     indicatorVariant: variant,
     scheduleKind: enumValue("scheduleKind", ["daily", "weekly", "generic-period", "custom-range"], defaults.scheduleKind),
@@ -308,7 +375,9 @@ export function validateTpoSettings(
     initialBalanceLineWidth: finite(source.initialBalanceLineWidth, defaults.initialBalanceLineWidth, 0, 10),
     summaryBackgroundOpacity: finite(source.summaryBackgroundOpacity, defaults.summaryBackgroundOpacity, 0, 100),
     summaryFontSize: finite(source.summaryFontSize, defaults.summaryFontSize, 6, 24),
-    weekStartDay: Math.round(finite(source.weekStartDay, 0, 0, 6)),
+    // Falls back to the DEFAULT, not to a hardcoded Sunday: the cash week
+    // opens Monday, and pinning zero here silently overrode that.
+    weekStartDay: Math.round(finite(source.weekStartDay, defaults.weekStartDay, 0, 6)),
     weekEndDay: Math.round(finite(source.weekEndDay, 5, 0, 6)),
     weekLength: Math.round(finite(source.weekLength, 1, 1, 52)),
     maximumMergeMembers: Math.round(finite(source.maximumMergeMembers, 30, 2, 100)),

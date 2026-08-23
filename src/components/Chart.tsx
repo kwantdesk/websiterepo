@@ -4860,7 +4860,7 @@ function Chart({
       return {
         instanceId: instance.instanceId,
         enabled: instance.enabled,
-        settings: tpoCalculationSettingsKey(validateTpoSettings(instance.settings, variant)),
+        settings: tpoCalculationSettingsKey(validateTpoSettings(instance.settings, variant, undefined, instrument)),
       };
     })), [indicators]);
   const [settledTpoIndicators, setSettledTpoIndicators] = useState(indicators);
@@ -13265,9 +13265,9 @@ function Chart({
     let earliestStaleBuiltAt: number | null = null;
     const baseModels = instances.flatMap((instance): TpoPrimitiveModel[] => {
       const variant = instance.indicatorId === "weekly-tpo" ? "weekly-tpo" : "daily-tpo";
-      const renderSettings = validateTpoSettings(instance.settings, variant, settings);
+      const renderSettings = validateTpoSettings(instance.settings, variant, settings, instrument);
       const calculationSource = settledInstances.get(instance.instanceId) ?? instance;
-      const calculationSettings = validateTpoSettings(calculationSource.settings, variant);
+      const calculationSettings = validateTpoSettings(calculationSource.settings, variant, undefined, instrument);
       const calculationKey = tpoCalculationSettingsKey(calculationSettings);
       const cached = tpoProfileCacheRef.current.get(instance.instanceId);
       const exactHit = cached
