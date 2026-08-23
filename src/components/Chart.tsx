@@ -4040,6 +4040,23 @@ function Chart({
         || marketTrades.length - previousSampledTrades.length >= 250
       )
     );
+    const sampledReplayCandle = sampledIndicatorCandles.at(-1);
+    const replayCandle = candles.at(-1);
+    const replayFootprintAdvanced = (
+      replayTimestampMs !== null
+      && replayTimestampMs > 0
+      && footprintSamplingEnabled
+      && (
+        previousSampledTrades.length !== marketTrades.length
+        || sampledIndicatorCandles.length !== candles.length
+        || sampledReplayCandle?.timestamp !== replayCandle?.timestamp
+        || sampledReplayCandle?.open !== replayCandle?.open
+        || sampledReplayCandle?.high !== replayCandle?.high
+        || sampledReplayCandle?.low !== replayCandle?.low
+        || sampledReplayCandle?.close !== replayCandle?.close
+        || sampledReplayCandle?.volume !== replayCandle?.volume
+      )
+    );
     pendingIndicatorCandlesRef.current = candles;
     pendingIndicatorMarketTradesRef.current = marketTrades;
     sampledOrderFlowHistoryReadyRef.current = orderFlowHistoryReady;
@@ -4048,7 +4065,7 @@ function Chart({
     // the same completed candle snapshot immediately, otherwise the price
     // chart appears first and CVD remains as its old flat/live-only sample for
     // another timer cycle after refresh.
-    if (historyShapeChanged || orderFlowHydrated || executionTapeHydrated) {
+    if (historyShapeChanged || orderFlowHydrated || executionTapeHydrated || replayFootprintAdvanced) {
       if (indicatorSampleTimerRef.current !== null) {
         window.clearTimeout(indicatorSampleTimerRef.current);
         indicatorSampleTimerRef.current = null;
@@ -4108,6 +4125,8 @@ function Chart({
     nonFootprintOrderFlowIndicatorEnabled,
     orderFlowHistoryReady,
     orderFlowIndicatorEnabled,
+    replayTimestampMs,
+    sampledIndicatorCandles,
     volumeIndicatorEnabled,
   ]);
 

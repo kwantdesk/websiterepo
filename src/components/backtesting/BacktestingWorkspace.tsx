@@ -50,6 +50,7 @@ import type { ChartIndicatorInstance } from "@/lib/chartIndicatorCatalog";
 import { defaultIndicatorSettings, normalizeStoredIndicator } from "@/lib/chartIndicatorConfig";
 import type { InstitutionalTrade } from "@/lib/institutionalMarketData";
 import type { PaperPosition, PaperProtectionUpdate, PaperTradeFill } from "@/lib/paperTrading";
+import { sliceReplayExecutionWindow } from "@/lib/replayExecutionWindow";
 
 const Chart = dynamic(() => import("@/components/Chart"), {
   ssr: false,
@@ -853,10 +854,7 @@ export default function BacktestingWorkspace({
     [oneSecondBars, replayDataClock, replayStudyCandles],
   );
   const visibleReplayTrades = useMemo(() => {
-    if (replayDataClock === null) return [];
-    const firstVisibleTimestamp = Math.max(0, replayDataClock - REPLAY_LOOKBACK_MS);
-    return replayTrades.filter((trade) =>
-      trade.timestamp >= firstVisibleTimestamp && trade.timestamp <= replayDataClock);
+    return sliceReplayExecutionWindow(replayTrades, replayDataClock, REPLAY_LOOKBACK_MS);
   }, [replayDataClock, replayTrades]);
   useEffect(() => {
     if (!started || replayDataClock === null || !onReplayExecutionQuote) return;
@@ -1105,11 +1103,15 @@ export default function BacktestingWorkspace({
     }
   }, [levelSnapshotKey, root, selectedDefinition.symbol, settings, valueAreaLevels.length, valueAreaSnapshotKey]);
 
-  const loadReplayCandles = useCallback(async (requestedTimeframe: ReplayTimeframe, startAt: number) => {
+  const loadReplayCandles = useCallback(async (
+    requestedTimeframe: ReplayTimeframe,
+    startAt: number,
+    includeExecutions = true,
+  ) => {
     const start = new Date(startAt - REPLAY_LOOKBACK_MS).toISOString();
     const end = new Date(Math.min(Date.now(), startAt + REPLAY_FORWARD_MS)).toISOString();
     const payload = await requestJson<SessionPayload>(
-      `/api/backtesting/session?symbol=${encodeURIComponent(selectedDefinition.symbol)}&timeframe=${requestedTimeframe}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}&orderFlow=1&executions=1`,
+      `/api/backtesting/session?symbol=${encodeURIComponent(selectedDefinition.symbol)}&timeframe=${requestedTimeframe}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}&orderFlow=1&executions=${includeExecutions ? "1" : "0"}`,
       {
         timeoutMs: REPLAY_ORDER_FLOW_TIMEOUT_MS,
         cache: "force-cache",
@@ -1214,7 +1216,7 @@ export default function BacktestingWorkspace({
     setLevelSnapshotKey("");
     try {
       const [primaryPayload, studyPayload] = await Promise.all([
-        loadReplayCandles(timeframe, startAt),
+        loadReplayCandles(timeframe, startAt, timeframe === "1m"),
         timeframe === "1m" ? Promise.resolve(null) : loadReplayCandles("1m", startAt),
       ]);
       const { ordered } = primaryPayload;
@@ -1252,7 +1254,7 @@ export default function BacktestingWorkspace({
     setTimeframeLoading(true);
     setError("");
     try {
-      const { ordered } = await loadReplayCandles(nextTimeframe, sessionStartAt);
+      const { ordered } = await loadReplayCandles(nextTimeframe, sessionStartAt, false);
       setTimeframe(nextTimeframe);
       setCandles(ordered);
       setReplayStartIndex(candleIndexAt(ordered, sessionStartAt));

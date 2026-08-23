@@ -84,6 +84,7 @@
     "test:tpo-default-visuals": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-tpo-default-visuals.mjs",
     "test:footprint-profile-rows": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-footprint-profile-rows.mjs",
     "test:footprint-chart-types": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-footprint-chart-types.mjs",
+    "test:footprint-replay": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-footprint-replay.mjs",
     "test:indicator-colour-override": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-indicator-colour-override.mjs"
   },
   "dependencies": {
