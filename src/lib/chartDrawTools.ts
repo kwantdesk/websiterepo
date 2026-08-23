@@ -349,13 +349,45 @@ function migrateDrawStyle(saved: Partial<DrawStyle>): Partial<DrawStyle> {
 
 const defaultStyleFor = (tool: DrawToolId): DrawStyle => {
   if (tool === "highlighter") return { ...DEFAULT_DRAW_STYLE, color: "#FFEB3B", width: 4, fillOpacity: 0.25 };
-  if (tool === "longPosition") return { ...DEFAULT_DRAW_STYLE, color: "#089981" };
-  if (tool === "shortPosition") return { ...DEFAULT_DRAW_STYLE, color: "#F23645" };
+  // The calculators land as clean target/risk boxes. Their readout is three
+  // stacked pills across the middle of the box; on by default it covers the
+  // price action the position is being sized against. Still available from the
+  // style panel.
+  if (tool === "longPosition" || tool === "shortPosition") {
+    return { ...DEFAULT_DRAW_STYLE, showLabels: false };
+  }
   if (tool === "text" || tool === "note" || tool === "callout" || tool === "priceLabel" || tool === "signpost" || tool === "flagMark") {
     return { ...DEFAULT_DRAW_STYLE, color: "#EAB308" };
   }
   return { ...DEFAULT_DRAW_STYLE };
 };
+
+/**
+ * Move one handle of a drawing.
+ *
+ * A position calculator draws ONE right edge, at the furthest of its stop and
+ * target points. Moving either handle alone therefore only ever pushed that
+ * edge out: pull one in and the other still held the maximum, so the box
+ * refused to shrink and the corner felt dead. The two points share the edge,
+ * so dragging either moves it in both directions - while each keeps its own
+ * price, so sizing the target never drags the stop level with it.
+ */
+export function updateDrawingHandle(
+  drawing: Drawing,
+  index: number,
+  point: DrawPoint,
+): Drawing {
+  const sharesRightEdge = (drawing.tool === "longPosition" || drawing.tool === "shortPosition")
+    && (index === 1 || index === 2);
+  return {
+    ...drawing,
+    points: drawing.points.map((existing, i) => {
+      if (i === index) return point;
+      if (sharesRightEdge && (i === 1 || i === 2)) return { ...existing, time: point.time };
+      return existing;
+    }),
+  };
+}
 
 export function createDrawing(tool: DrawToolId, points: DrawPoint[], text?: string): Drawing {
   return { id: `draw-${crypto.randomUUID()}`, tool, points, style: defaultStyleFor(tool), text };

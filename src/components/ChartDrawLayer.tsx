@@ -8,6 +8,7 @@ import {
   FIB_TIME_COEFFS,
   createDrawing,
   resolveDrawColor,
+  updateDrawingHandle,
   type DrawLineStyle,
   type DrawPoint,
   type DrawToolId,
@@ -49,6 +50,8 @@ type Props = {
    * the chart in a palette the theme has moved away from.
    */
   themeColor?: string;
+  /** Theme bearish candle, for the risk side of a position calculator. */
+  themeBearColor?: string;
 };
 
 type XY = { x: number | null; y: number | null };
@@ -61,7 +64,7 @@ const TEXT_INPUT_TOOLS: DrawToolId[] = ["text", "note", "callout", "signpost"];
 
 export default function ChartDrawLayer({
   width, height, activeTool, keepDrawing, drawings, selectedId,
-  toX, toY, fromXY, candles, magnet, magnetStrength, viewportVersion, chartReady, subscribeViewport, onCommit, onUpdate, onDelete, onSelect, onToolConsumed, onRequestText, onOpenSettings, themeColor,
+  toX, toY, fromXY, candles, magnet, magnetStrength, viewportVersion, chartReady, subscribeViewport, onCommit, onUpdate, onDelete, onSelect, onToolConsumed, onRequestText, onOpenSettings, themeColor, themeBearColor,
 }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [pending, setPending] = useState<{ tool: DrawToolId; points: DrawPoint[] } | null>(null);
@@ -525,7 +528,7 @@ export default function ChartDrawLayer({
     if (drag) {
       const drawing = drawings.find((d) => d.id === drag.id);
       if (!drawing) return;
-      if (drag.kind === "handle") onUpdate({ ...drawing, points: drawing.points.map((p, i) => (i === drag.index ? point : p)) });
+      if (drag.kind === "handle") onUpdate(updateDrawingHandle(drawing, drag.index, point));
       else {
         const dt = point.time - drag.start.time;
         const dp = point.price - drag.start.price;
@@ -745,7 +748,12 @@ export default function ChartDrawLayer({
           const xL = a.x!;
           const xrCandidates = [b.x, c.x].filter((v): v is number => v != null);
           const xR = Math.max(xL + 40, ...(xrCandidates.length ? xrCandidates : [xL + 180]));
-          const green = "#089981"; const red = "#F23645";
+          // The zones ARE the theme's two candle colours: on a white-bullish,
+          // grey-bearish theme the target zone is white and the risk zone
+          // grey. These were pinned to TradingView's green/red, so the
+          // calculator was the one tool that never matched the chart.
+          const green = themeColor || "#089981";
+          const red = themeBearColor || "#F23645";
           const entryP = pr[0].price; const stopP = pr[1].price; const targetP = pr[2].price;
           const reward = Math.abs(targetP - entryP); const risk = Math.abs(entryP - stopP);
           const rr = risk > 0 ? reward / risk : 0;
@@ -1080,8 +1088,10 @@ export default function ChartDrawLayer({
 function previewStyle(tool: DrawToolId) {
   const base = { color: "#2962FF", width: 2, lineStyle: "solid" as DrawLineStyle, fillOpacity: 0.12, showLabels: true };
   if (tool === "highlighter") return { ...base, color: "#FFEB3B", width: 4, fillOpacity: 0.25 };
-  if (tool === "longPosition") return { ...base, color: "#089981" };
-  if (tool === "shortPosition") return { ...base, color: "#F23645" };
+  // Matches defaultStyleFor: the calculators are placed without their readout.
+  if (tool === "longPosition" || tool === "shortPosition") {
+    return { ...base, showLabels: false };
+  }
   return base;
 }
 

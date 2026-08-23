@@ -14228,6 +14228,7 @@ function Chart({
             // Every drawing tool follows the theme's bullish candle until the
             // trader picks a colour of its own.
             themeColor={settings.upColor}
+            themeBearColor={settings.downColor}
             activeTool={drawTool}
             keepDrawing={drawKeepDrawing}
             drawings={chartingDrawings}
