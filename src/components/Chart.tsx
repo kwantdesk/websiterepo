@@ -389,6 +389,11 @@ import {
   buildPreviousSessionHighLowLevels,
 } from "@/lib/marketSessions";
 import { calculateKwantStats } from "@/lib/kwantStats";
+import {
+  resetChartViewport as resetChartViewportCore,
+  type ViewportPriceScale,
+  type ViewportTimeScale,
+} from "@/lib/chartViewportReset";
 import { defaultChartSettings, type ChartSettings } from "@/lib/chartSettings";
 import {
   DrawingManager,
@@ -2567,19 +2572,13 @@ function resetChartViewport(
   candleCount: number,
   onSettled?: () => void,
 ) {
-  candleSeries.priceScale().applyOptions({ autoScale: true });
-  if (candleCount <= DEFAULT_VISIBLE_CANDLE_COUNT) {
-    chart.timeScale().fitContent();
-  } else {
-    chart.timeScale().setVisibleLogicalRange({
-      from: Math.max(0, candleCount - DEFAULT_VISIBLE_CANDLE_COUNT),
-      to: candleCount + DEFAULT_RIGHT_CANDLE_PADDING,
-    });
-  }
-
-  return window.requestAnimationFrame(() => {
-    candleSeries.priceScale().applyOptions({ autoScale: false });
-    onSettled?.();
+  return resetChartViewportCore({
+    timeScale: chart.timeScale() as unknown as ViewportTimeScale,
+    priceScale: candleSeries.priceScale() as unknown as ViewportPriceScale,
+    candleCount,
+    visibleCandleCount: DEFAULT_VISIBLE_CANDLE_COUNT,
+    rightPadding: DEFAULT_RIGHT_CANDLE_PADDING,
+    onSettled,
   });
 }
 
@@ -3590,7 +3589,10 @@ function Chart({
   const indicatorSampleTimerRef = useRef<number | null>(null);
   const liveVolumeSampleTimerRef = useRef<number | null>(null);
   const pendingLiveVolumeCandleRef = useRef<Candle | null>(null);
-  const viewportResetFrameRef = useRef<number | null>(null);
+  // Cancels an in-flight viewport reset. Not a frame id any more: the reset
+  // now waits for the chart to paint the new range before pinning the price
+  // scale, so it owns more than one frame.
+  const viewportResetFrameRef = useRef<(() => void) | null>(null);
   const chartVisualReadyTokenRef = useRef(0);
   const pendingIndicatorCandlesRef = useRef(candles);
   const pendingIndicatorMarketTradesRef = useRef(marketTrades);
@@ -3644,9 +3646,7 @@ function Chart({
     const readyToken = chartVisualReadyTokenRef.current + 1;
     chartVisualReadyTokenRef.current = readyToken;
     setChartVisualReady(false);
-    if (viewportResetFrameRef.current !== null) {
-      window.cancelAnimationFrame(viewportResetFrameRef.current);
-    }
+    viewportResetFrameRef.current?.();
     viewportResetFrameRef.current = resetChartViewport(
       chart,
       candleSeries,
@@ -3664,9 +3664,7 @@ function Chart({
     const chart = chartRef.current;
     const candleSeries = candleSeriesRef.current;
     if (!chart || !candleSeries) return;
-    if (viewportResetFrameRef.current !== null) {
-      window.cancelAnimationFrame(viewportResetFrameRef.current);
-    }
+    viewportResetFrameRef.current?.();
     viewportResetFrameRef.current = resetChartViewport(
       chart,
       candleSeries,
@@ -12573,7 +12571,7 @@ function Chart({
       }
       pendingMouseMove = null;
       if (viewportResetFrameRef.current !== null) {
-        window.cancelAnimationFrame(viewportResetFrameRef.current);
+        viewportResetFrameRef.current();
         viewportResetFrameRef.current = null;
       }
       chartVisualReadyTokenRef.current += 1;
