@@ -82,6 +82,7 @@
     "test:draw-tool-theme": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-draw-tool-theme.mjs",
     "test:position-tool-behaviour": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-position-tool-behaviour.mjs",
     "test:initial-balance-timeframe": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-initial-balance-timeframe.mjs",
+    "test:globex-initial-balance": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-globex-initial-balance.mjs",
     "test:gex-map-node-detail": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-gex-map-node-detail.mjs",
     "test:options-ticker-profiles": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-options-ticker-profiles.mjs",
     "test:tpo-settings-wired": "node --import ./scripts/alias-hook.mjs scripts/test-tpo-settings-wired.mjs",

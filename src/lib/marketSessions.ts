@@ -141,7 +141,17 @@ export function buildMarketSessionWindows(
     candles.forEach((candle) => {
       if (candle.timestamp < cutoff) return;
       const parts = zonedParts(candle.timestamp, session.timezone);
-      const weekend = parts.weekday === "Sat" || parts.weekday === "Sun";
+      // Globex REOPENS on Sunday evening. Those candles are the start of the
+      // trading week, not weekend trading, so hiding weekends must not delete
+      // them - and it did, which left the Globex session with no window at
+      // all and the IB study (and its fib retracement, which is built from
+      // the IB range) blank every Sunday night through Monday.
+      //
+      // Only a session that wraps midnight can open on one day and close on
+      // the next, so this cannot affect Tokyo, London or New York, none of
+      // which trade at the weekend under any reading.
+      const weekend = parts.weekday === "Sat"
+        || (parts.weekday === "Sun" && !(wrapsMidnight && parts.minute >= startMinute));
       const isActive = (!hideWeekends || !weekend)
         && inClockRange(parts.minute, startMinute, endMinute);
       // Each window belongs to ONE dated session occurrence. Gap tolerance
