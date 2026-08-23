@@ -161,6 +161,12 @@ function oneFactorFit(rows, key) {
   return { scale, rmse, r2: total ? 1 - residual / total : 0 };
 }
 
+function safeRatio(numerator, denominator) {
+  return Number.isFinite(numerator) && Number.isFinite(denominator) && Math.abs(denominator) > 1e-9
+    ? numerator / denominator
+    : null;
+}
+
 function sideVolumes(payload, type) {
   const node = payload?.data?.[type] || {};
   return {
@@ -240,6 +246,7 @@ for (const [ticker, target] of Object.entries(TARGETS)) {
 
     // Common open-interest convention: calls positive, puts negative.
     const oiGammaUnits = call.gamma * callOi - put.gamma * putOi;
+    const grossOiGammaUnits = call.gamma * callOi + put.gamma * putOi;
     const volumeGammaUnits = call.gamma * callVolume - put.gamma * putVolume;
 
     // Intraday dealer GEX sampled from trade prints. A customer buy at the ask
@@ -283,6 +290,7 @@ for (const [ticker, target] of Object.entries(TARGETS)) {
       putGammaSource: put.source,
       callVolume,
       putVolume,
+      grossOiPerOnePercent: grossOiGammaUnits * perOnePercentMultiplier,
       oiPerOnePercent: oiGammaUnits * perOnePercentMultiplier,
       oiPerOneDollar: oiGammaUnits * perOneDollarMultiplier,
       volumePerOnePercent: volumeGammaUnits * perOnePercentMultiplier,
@@ -293,6 +301,12 @@ for (const [ticker, target] of Object.entries(TARGETS)) {
       putCustomerNet,
     });
   }
+}
+
+for (const row of outputRows) {
+  row.impliedSignedGrossOiShare = safeRatio(row.target, row.grossOiPerOnePercent);
+  row.impliedStructuralScale = safeRatio(row.target, row.oiPerOnePercent);
+  row.impliedExactFlowScale = safeRatio(row.target, row.exactDealerFlowPerOnePercent);
 }
 
 const featureKeys = [
@@ -322,6 +336,13 @@ console.log("|---|---:|---:|---:|");
 for (const key of featureKeys) {
   const fit = fits[key];
   console.log(`| ${key} | ${fit.scale.toFixed(6)} | ${fit.r2.toFixed(4)} | ${money(fit.rmse)} |`);
+}
+console.log("\n## Implied latent-position diagnostics\n");
+console.log("`Target / gross OI GEX` is the signed share of gross contract gamma that would have to remain in dealer inventory to reproduce Trinity at that strike. It is a diagnostic, not an observed OPRA field.\n");
+console.log("| Ticker | Strike | Trinity target | Gross OI GEX / 1% | Target / gross OI GEX | Target / net OI GEX | Target / exact flow |\n|---|---:|---:|---:|---:|---:|---:|");
+for (const row of outputRows) {
+  const ratio = (value) => Number.isFinite(value) ? value.toFixed(4) : "n/a";
+  console.log(`| ${row.ticker} | ${row.strike} | ${money(row.target)} | ${money(row.grossOiPerOnePercent)} | ${ratio(row.impliedSignedGrossOiShare)} | ${ratio(row.impliedStructuralScale)} | ${ratio(row.impliedExactFlowScale)} |`);
 }
 console.log("\n## Sampling diagnostics\n");
 for (const row of diagnostics) {
