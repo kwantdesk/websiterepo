@@ -764,6 +764,27 @@ function protectionValid(
   return takeProfits.every((target) => side === "buy" ? target.price > entryPrice : target.price < entryPrice);
 }
 
+/**
+ * Read a price the trader typed into the order ticket.
+ *
+ * The ticket used a bare Number(), which returns NaN for anything carrying a
+ * thousands separator or a stray space - and the chart's own price axis shows
+ * NQ with a comma, so "29,096.25" is the obvious thing to type. The order was
+ * then refused with "a live price is required", which reads as the ticket
+ * ignoring the limit price rather than rejecting how it was written.
+ *
+ * Returns null for anything that is not a positive finite price, so the
+ * caller can say so plainly instead of sending NaN into the ledger.
+ */
+export function parsePaperPriceInput(value: string | number | null | undefined): number | null {
+  if (typeof value === "number") return Number.isFinite(value) && value > 0 ? value : null;
+  if (typeof value !== "string") return null;
+  const cleaned = value.trim().replace(/[\s,_']/g, "");
+  if (!cleaned || !/^[+-]?\d*\.?\d+$/.test(cleaned)) return null;
+  const parsed = Number(cleaned);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
 export function placePaperOrder(
   ledger: PaperTradingLedger,
   accounts: PaperTradingAccountRecord[],

@@ -35,7 +35,7 @@ import {
   type GexVueReplayState,
 } from "@/lib/gexVueReplay";
 
-import { Activity as ReactActivity, memo, startTransition, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { Activity as ReactActivity, memo, startTransition, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
 import Image from "next/image";
@@ -238,6 +238,7 @@ import {
   PAPER_MARK_QUOTE_EVENT,
   paperTickSize,
   parseLeverage,
+  parsePaperPriceInput,
   placePaperOrder,
   processPaperQuote,
   resetPaperAccountLedger,
@@ -9626,6 +9627,11 @@ export default function KwantifyWorkspace({
   const [paperAccountStrategy, setPaperAccountStrategy] = useState("Manual / No Strategy");
   const [orderUnits, setOrderUnits] = useState("1");
   const [orderPrice, setOrderPrice] = useState("");
+  // The broker/account block sits between the ticket and the actions a trader
+  // reaches for while managing a position - cancel bids, cancel asks, reverse,
+  // break even. Its contents change rarely and push those below the fold, so
+  // it starts collapsed and stays a click away.
+  const [showBrokerAccount, setShowBrokerAccount] = useState(false);
   const [orderTP, setOrderTP] = useState("");
   const [orderSL, setOrderSL] = useState("");
   const [orderTicketMessage, setOrderTicketMessage] = useState<{ tone: "success" | "error"; text: string } | null>(null);
@@ -15947,13 +15953,30 @@ export default function KwantifyWorkspace({
     }, 3_200);
   };
 
+  /**
+   * Enter sends the order.
+   *
+   * The ticket had no keyboard path at all: a trader who typed a limit price,
+   * a stop and a target and pressed Enter got nothing, which reads as the
+   * limit price being ignored rather than the order never having been sent.
+   * Shift+Enter is left alone so it cannot fire from a multi-line field.
+   */
+  const handleOrderTicketKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
+    if (event.key !== "Enter" || event.shiftKey || event.altKey) return;
+    if (event.nativeEvent.isComposing) return;
+    if (!tradingUnlocked) return;
+    event.preventDefault();
+    (event.target as HTMLElement | null)?.blur?.();
+    void submitPaperOrder();
+  };
+
   const resolvePaperProtectionPrice = (
     kind: "tp" | "sl",
     rawValue: string,
     entryPrice: number,
     quantity: number,
   ) => {
-    const value = Number(rawValue);
+    const value = parsePaperPriceInput(rawValue) ?? 0;
     if (!(value > 0)) return null;
     const direction = orderSide === "buy" ? 1 : -1;
     const favorableDirection = kind === "tp" ? direction : -direction;
@@ -15975,7 +15998,7 @@ export default function KwantifyWorkspace({
 
   const orderPreviewEntryPrice = orderType === "market"
     ? orderSide === "buy" ? currentLivePrice.ask : currentLivePrice.bid
-    : Number(orderPrice || selectedMidPrice);
+    : parsePaperPriceInput(orderPrice) ?? selectedMidPrice ?? 0;
   const orderPreviewTakeProfitPrice = tpEnabled && orderPreviewEntryPrice > 0
     ? resolvePaperProtectionPrice("tp", orderTP, orderPreviewEntryPrice, selectedOrderQuantity)
     : null;
@@ -16028,9 +16051,18 @@ export default function KwantifyWorkspace({
       showPaperOrderMessage("error", "Waiting for this chart's executable replay or live price. No order was sent.");
       return;
     }
+    const typedPrice = parsePaperPriceInput(orderPrice);
+    // A limit or stop order is defined BY its price. Silently falling back to
+    // the mid turned a mistyped limit into a market-ish order at whatever the
+    // book happened to be, which is the one substitution a ticket must never
+    // make.
+    if (submitType !== "market" && orderPrice.trim() && typedPrice === null) {
+      showPaperOrderMessage("error", `"${orderPrice.trim()}" is not a valid ${submitType} price.`);
+      return;
+    }
     const entryPrice = submitType === "market"
       ? submitSide === "buy" ? quote.ask : quote.bid
-      : Number(orderPrice || selectedMidPrice);
+      : typedPrice ?? selectedMidPrice ?? 0;
     if (!(entryPrice > 0)) {
       showPaperOrderMessage("error", "A live price is required before placing this order.");
       return;
@@ -18839,7 +18871,7 @@ export default function KwantifyWorkspace({
             />
           )}
           {rightPanel === "order" && (
-            <div className="flex-1 overflow-y-auto p-4">
+            <div className="flex-1 overflow-y-auto p-4" onKeyDown={handleOrderTicketKeyDown}>
               <div className="mb-4 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-surface text-primary"><Zap className="h-3.5 w-3.5" /></div>
@@ -18902,8 +18934,17 @@ export default function KwantifyWorkspace({
                 {showExits && <div className={`space-y-4 border-t border-border p-3 ${tradingUnlocked ? "" : "pointer-events-none opacity-60"}`}><div className="space-y-2"><div className="flex items-center justify-between"><div className="flex items-center gap-2"><span className="text-[13px] text-muted">Take profit</span><KwantSelect value={tpType} onChange={(e) => setTpType(e.target.value as typeof tpType)} className="rounded-lg border border-border bg-surface px-2 py-1 text-[11px] text-muted outline-none"><option value="price">price</option><option value="ticks">ticks</option><option value="pctPrice">% of price</option><option value="rewardUsd">reward USD</option><option value="rewardPct">reward % balance</option></KwantSelect></div><button onClick={() => setTpEnabled((value) => !value)} className={`h-5 w-10 rounded-full transition-all ${tpEnabled ? "bg-primary" : "border border-border bg-surface"}`}><span className={`block h-4 w-4 rounded-full bg-background transition-transform ${tpEnabled ? "translate-x-5" : "translate-x-0.5"}`} /></button></div><div className="flex items-center gap-2"><input disabled={!tpEnabled} value={orderTP} onChange={(e) => setOrderTP(e.target.value)} className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-right font-mono text-[13px] outline-none disabled:opacity-50" /><button className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-surface text-muted hover:text-foreground"><ArrowLeftRight className="h-4 w-4" /></button><span className="w-14 text-right font-mono text-[11px] text-muted">{orderPreviewTakeProfitTicks ? `${orderPreviewTakeProfitTicks} ticks` : "--"}</span></div></div><div className="space-y-2"><div className="flex items-center justify-between"><div className="flex items-center gap-2"><span className="text-[13px] text-muted">Stop loss</span><KwantSelect value={slType} onChange={(e) => setSlType(e.target.value as typeof slType)} className="rounded-lg border border-border bg-surface px-2 py-1 text-[11px] text-muted outline-none"><option value="price">price</option><option value="ticks">ticks</option><option value="pctPrice">% of price</option><option value="riskUsd">risk USD</option><option value="riskPct">risk % balance</option></KwantSelect></div><button onClick={() => setSlEnabled((value) => !value)} className={`h-5 w-10 rounded-full transition-all ${slEnabled ? "bg-primary" : "border border-border bg-surface"}`}><span className={`block h-4 w-4 rounded-full bg-background transition-transform ${slEnabled ? "translate-x-5" : "translate-x-0.5"}`} /></button></div><div className="flex items-center gap-2"><input disabled={!slEnabled} value={orderSL} onChange={(e) => setOrderSL(e.target.value)} className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-right font-mono text-[13px] outline-none disabled:opacity-50" /><button className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-surface text-muted hover:text-foreground"><ArrowLeftRight className="h-4 w-4" /></button><span className="w-14 text-right font-mono text-[11px] text-muted">{orderPreviewStopLossTicks ? `${orderPreviewStopLossTicks} ticks` : "--"}</span></div></div></div>}
               </div>
               <div className="mb-4 rounded-xl border border-border bg-background/30 p-3 text-[13px]">
-                <div className="mb-3 flex items-center justify-between">
-                  <h3 className="font-semibold text-primary">Broker account</h3>
+                <div className="flex items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={() => setShowBrokerAccount((value) => !value)}
+                    aria-expanded={showBrokerAccount}
+                    className="flex items-center gap-1.5 font-semibold text-primary"
+                    title={showBrokerAccount ? "Hide broker account details" : "Show broker account details"}
+                  >
+                    <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showBrokerAccount ? "" : "-rotate-90"}`} />
+                    Broker account
+                  </button>
                   <span
                     className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
                       activeBrokerHealth.state === "connected"
@@ -18917,7 +18958,7 @@ export default function KwantifyWorkspace({
                     {activeBrokerHealth.label}
                   </span>
                 </div>
-                <div className="space-y-2">
+                {showBrokerAccount && <div className="mt-3 space-y-2">
                   <div className="flex justify-between"><span className="text-muted">Broker</span><span className="font-mono text-right">{paperExecutionRequested ? "Paper Trading" : activeTradingBrokerLabel}</span></div>
                   <div className="flex justify-between"><span className="text-muted">Mode</span><span className="font-mono text-right">{paperExecutionRequested ? "Sim" : formatTradingModeLabel(currentBrokerConnection.mode)}</span></div>
                   {paperTradingAccounts.length > 0 ? (
@@ -18964,7 +19005,7 @@ export default function KwantifyWorkspace({
                   <div className="flex justify-between"><span className="text-muted">Tick value</span><span className="font-mono">{formatDollar(selectedPaperContract.tickValue * selectedOrderQuantity)}</span></div>
                   <div className="flex justify-between"><span className="text-muted">1-point value</span><span className="font-mono">{formatDollar(selectedPaperContract.pointValue * selectedOrderQuantity)}</span></div>
                   <div className="flex justify-between"><span className="text-muted">Trade value</span><span className="font-mono">{formatDollar(orderPanelTradeValueUsd)}</span></div>
-                </div>
+                </div>}
               </div>
               {/*
                 * Working-order and position controls, and the order options a
