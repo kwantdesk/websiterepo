@@ -48,7 +48,18 @@ import {
 } from "@/lib/chartIntervals";
 import type { ChartIndicatorInstance } from "@/lib/chartIndicatorCatalog";
 import { defaultIndicatorSettings, normalizeStoredIndicator } from "@/lib/chartIndicatorConfig";
-import type { InstitutionalTrade } from "@/lib/institutionalMarketData";
+import {
+  applyInstitutionalTradesToVolumeProfile,
+  fetchInstitutionalVolumeProfile,
+  type InstitutionalTrade,
+  type InstitutionalVolumeProfile,
+} from "@/lib/institutionalMarketData";
+import {
+  replayProfileJobs,
+  replayWeeklyProfileWindow,
+  replayProfileWithinClock,
+} from "@/lib/replayVolumeProfiles";
+import { cmeSessionDateKey } from "@/lib/chartHistoryWindow";
 import type { PaperPosition, PaperProtectionUpdate, PaperTradeFill } from "@/lib/paperTrading";
 import { sliceReplayExecutionWindow } from "@/lib/replayExecutionWindow";
 import { useVixEnvironment } from "@/hooks/useVixEnvironment";
@@ -783,6 +794,10 @@ export default function BacktestingWorkspace({
   const [quantLevels, setQuantLevels] = useState<ChartLevel[]>([]);
   const [quantZones, setQuantZones] = useState<ChartZone[]>([]);
   const [valueAreaLevels, setValueAreaLevels] = useState<ChartLevel[]>([]);
+  // Exact execution-tape profiles for the replayed window. A volume profile
+  // trader reads five sessions back to decide what the current one means, so
+  // the backtest has to carry the same history the live pane does.
+  const [replayVolumeProfiles, setReplayVolumeProfiles] = useState<InstitutionalVolumeProfile[]>([]);
   const [valueAreaSnapshotKey, setValueAreaSnapshotKey] = useState("");
   const [snapshotDate, setSnapshotDate] = useState("");
   const [levelSnapshotKey, setLevelSnapshotKey] = useState("");
@@ -882,6 +897,130 @@ export default function BacktestingWorkspace({
   const visibleReplayTrades = useMemo(() => {
     return sliceReplayExecutionWindow(replayTrades, replayDataClock, REPLAY_LOOKBACK_MS);
   }, [replayDataClock, replayTrades]);
+
+  // --- Exact volume profiles for the replayed window -----------------------
+  // The live pane loads five sessions of execution-tape profiles so prior
+  // value can be read against the developing session. The backtest requested
+  // none at all, so every profile study had only the short replay tape behind
+  // the cursor and drew nothing for the days before it.
+  const dailyProfileInstance = useMemo(() => replayIndicators.find((instance) =>
+    instance.enabled
+    && ["kwant-profile", "ask-bid-volume-profile", "delta-profile"].includes(instance.indicatorId)),
+  [replayIndicators]);
+  const weeklyProfileInstance = useMemo(() => replayIndicators.find((instance) =>
+    instance.enabled && instance.indicatorId === "weekly-volume-profile"),
+  [replayIndicators]);
+  const replayClockRef = useRef<number | null>(replayDataClock);
+  useEffect(() => {
+    replayClockRef.current = replayDataClock;
+  }, [replayDataClock]);
+  // The developing session turns over once a day, not once a frame. Keying the
+  // request on the replay clock itself would refetch five sessions on every
+  // tick — at 100x that is a request every few milliseconds. The profile grows
+  // from the replay tape between session boundaries instead.
+  const replaySessionKey = replayDataClock === null ? "" : cmeSessionDateKey(replayDataClock) ?? "";
+  const dailyProfileSignature = dailyProfileInstance
+    ? JSON.stringify(dailyProfileInstance.settings ?? {})
+    : "";
+  const weeklyProfileSignature = weeklyProfileInstance
+    ? JSON.stringify(weeklyProfileInstance.settings ?? {})
+    : "";
+  useEffect(() => {
+    const clock = replayClockRef.current;
+    if (!started || clock === null || (!dailyProfileInstance && !weeklyProfileInstance)) {
+      setReplayVolumeProfiles((current) => (current.length ? [] : current));
+      return;
+    }
+    let cancelled = false;
+    const root = selectedDefinition.symbol.replace(/\.[vnc]\.\d+$/i, "");
+    const dailySettings = (dailyProfileInstance?.settings ?? {}) as Record<string, unknown>;
+    const weeklySettings = (weeklyProfileInstance?.settings ?? {}) as Record<string, unknown>;
+    const groupTicksFor = (settings: Record<string, unknown>) => (
+      settings.groupingMode === "manual"
+        ? Math.max(1, Math.round(Number(settings.groupTicks ?? 4) || 4))
+        // Automatic grouping is resolved by the renderer, which knows the zoom.
+        // Pre-coarsening here permanently fattens the rows.
+        : 1
+    );
+    const profileArgsFor = (settings: Record<string, unknown>) => ({
+      groupTicks: groupTicksFor(settings),
+      valueAreaPercent: Number(settings.valueAreaPercent ?? 70),
+      minTradeVolume: Math.max(0, Number(settings.minTradeVolume ?? 0) || 0),
+      maxTradeVolume: Math.max(0, Number(settings.maxTradeVolume ?? 0) || 0),
+    });
+    const requests: Promise<InstitutionalVolumeProfile | null>[] = [];
+    if (dailyProfileInstance) {
+      for (const job of replayProfileJobs(candles, clock)) {
+        requests.push(fetchInstitutionalVolumeProfile({
+          symbol: root,
+          period: "daily",
+          // The gateway resolves a trading date to the whole CME session. That
+          // is correct for a session already behind the cursor and wrong for
+          // the one under it, which must stop at the clock or it hands the
+          // trader the close while they are still replaying the open.
+          tradingDate: job.tradingDate,
+          endMs: job.endMs,
+          ...profileArgsFor(dailySettings),
+        }));
+      }
+    }
+    if (weeklyProfileInstance) {
+      const window = replayWeeklyProfileWindow(candles, clock);
+      if (window) {
+        requests.push(fetchInstitutionalVolumeProfile({
+          symbol: root,
+          period: "weekly",
+          startMs: window.startMs,
+          endMs: window.endMs,
+          ...profileArgsFor(weeklySettings),
+        }));
+      }
+    }
+    if (!requests.length) {
+      setReplayVolumeProfiles((current) => (current.length ? [] : current));
+      return;
+    }
+    void Promise.allSettled(requests).then((results) => {
+      if (cancelled) return;
+      const resolved = results
+        .flatMap((result) => (result.status === "fulfilled" && result.value ? [result.value] : []))
+        // The request cache is keyed by query and a replay can be restarted at
+        // an earlier time against the same symbol, so a profile fetched for a
+        // later cursor can still be in memory. Painting it shows the future.
+        .filter((profile) => replayProfileWithinClock(profile, clock))
+        .sort((left, right) => left.startMs - right.startMs);
+      setReplayVolumeProfiles(resolved);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    candles,
+    dailyProfileInstance,
+    dailyProfileSignature,
+    replaySessionKey,
+    selectedDefinition.symbol,
+    started,
+    weeklyProfileInstance,
+    weeklyProfileSignature,
+  ]);
+  // The session under the cursor keeps developing as the replay plays. Folding
+  // the visible tape into it is the same path the live pane uses, so the
+  // profile advances with playback instead of freezing at the fetch.
+  const replayVolumeProfilesAtClock = useMemo(() => {
+    if (!replayVolumeProfiles.length || !visibleReplayTrades.length) return replayVolumeProfiles;
+    // Only the session under the cursor can receive a print. The fold already
+    // rejects a trade whose session does not match the profile's, but it
+    // rejects it AFTER scanning the whole visible tape — so folding the four
+    // completed sessions costs four full passes per tick to change nothing.
+    // The tape is re-sliced on every replay frame, so at 100x that is the
+    // difference between a smooth playback and a stalled one.
+    return replayVolumeProfiles.map((profile) => (
+      profile.period === "daily" && profile.tradingDate !== replaySessionKey
+        ? profile
+        : applyInstitutionalTradesToVolumeProfile(profile, visibleReplayTrades)
+    ));
+  }, [replaySessionKey, replayVolumeProfiles, visibleReplayTrades]);
   useEffect(() => {
     if (!started || replayDataClock === null || !onReplayExecutionQuote) return;
     const latest = visibleCandles[visibleCandles.length - 1];
@@ -1137,7 +1276,11 @@ export default function BacktestingWorkspace({
     const start = new Date(startAt - REPLAY_LOOKBACK_MS).toISOString();
     const end = new Date(Math.min(Date.now(), startAt + REPLAY_FORWARD_MS)).toISOString();
     const payload = await requestJson<SessionPayload>(
-      `/api/backtesting/session?symbol=${encodeURIComponent(selectedDefinition.symbol)}&timeframe=${requestedTimeframe}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}&orderFlow=1&executions=${includeExecutions ? "1" : "0"}`,
+      // `executionStart` anchors the order-flow tape to where playback begins.
+      // The candle window deliberately reaches five sessions back and a day
+      // forward; without this the tape covered the far end of that window and
+      // every order-flow study sat empty through the replayed session.
+      `/api/backtesting/session?symbol=${encodeURIComponent(selectedDefinition.symbol)}&timeframe=${requestedTimeframe}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}&executionStart=${startAt}&orderFlow=1&executions=${includeExecutions ? "1" : "0"}`,
       {
         timeoutMs: REPLAY_ORDER_FLOW_TIMEOUT_MS,
         cache: "force-cache",
@@ -1861,6 +2004,7 @@ export default function BacktestingWorkspace({
             indicators={replayIndicators}
             initialBalanceCandles={visibleReplayStudyCandles}
             marketTrades={visibleReplayTrades}
+            volumeProfiles={replayVolumeProfilesAtClock}
             replayTimestampMs={replayDataClock}
             orderFlowHistoryReady={orderFlowHistoryReady}
             instrument={selectedDefinition.id}

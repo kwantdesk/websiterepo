@@ -7,6 +7,7 @@ import {
 } from "@/lib/eventBars";
 import type { Candle } from "@/lib/backtester";
 import { cmeEventTailCutoffMs } from "@/lib/chartHistoryWindow";
+import { replayEventFlowWindow } from "@/lib/replayExecutionWindow";
 import {
   databentoEventTimestampMs,
   databentoTradeAggressor,
@@ -30,6 +31,21 @@ const EVENT_BAR_FLUSH_SIZE = 16_384;
 const MAX_EVENT_FLOW_BUCKETS = 30_000;
 const EVENT_FLOW_BUCKET_MS = 1_000;
 const EVENT_EXECUTION_LOOKBACK_MS = 6 * 60 * 60_000;
+/**
+ * A replay asks for its flow FORWARD from where the trader hits play, not
+ * backward from the end of the fetched window.
+ *
+ * A backtest loads candles for [session - 5 days, session + 1 day] so the
+ * profiles behind the cursor have history. Looking six hours back from that
+ * window's end lands most of a day AFTER the replay start, so order-flow
+ * studies stayed empty through the entire session being replayed and only
+ * woke up near the end. Anchoring to the start instead covers the session the
+ * trader is actually watching.
+ *
+ * Eight hours spans a full RTH session with room either side, and stays
+ * inside MAX_EVENT_FLOW_BUCKETS at one-second resolution (28,800 of 30,000).
+ */
+const EVENT_REPLAY_EXECUTION_WINDOW_MS = 8 * 60 * 60_000;
 type EventHistorySchema = "trades";
 
 export type DatabentoEventExecutionTuple = [
@@ -375,6 +391,11 @@ export async function getDatabentoEventHistory(
   timeframe: string,
   start: string,
   end: string,
+  /**
+   * Where a replay's execution tape should begin. Omitted for live charts,
+   * which still want the most recent window ending at `end`.
+   */
+  executionStartMs?: number,
 ) {
   const requestedStart = Date.parse(start);
   const requestedEnd = Date.parse(end);
@@ -399,14 +420,24 @@ export async function getDatabentoEventHistory(
   const executionEnd = finalBarCutoff === null
     ? requestedExecutionEnd
     : Math.min(requestedExecutionEnd, finalBarCutoff);
-  const flow = await streamEventFlow({
-    symbol,
-    candles,
-    // Event candles already contain exact full-window volume/delta. This
-    // second pass exists only to return the compact recent indicator tape;
-    // do not download and parse the same five sessions twice.
-    start: Math.max(requestedStart, executionEnd - EVENT_EXECUTION_LOOKBACK_MS),
-    end: executionEnd,
-  }).catch(() => ({ candles, executions: [] as DatabentoEventExecutionTuple[] }));
+  // A replay anchors its tape to the moment play begins; a live chart wants
+  // the window that ends at `end`. Both stay bounded — event candles already
+  // carry exact full-window volume and delta, so this second pass only builds
+  // the compact indicator tape and never re-reads the same five sessions.
+  const flowWindow = replayEventFlowWindow({
+    requestedStart,
+    executionEnd,
+    anchorMs: executionStartMs,
+    trailingLookbackMs: EVENT_EXECUTION_LOOKBACK_MS,
+    forwardWindowMs: EVENT_REPLAY_EXECUTION_WINDOW_MS,
+  });
+  const flow = flowWindow === null
+    ? { candles, executions: [] as DatabentoEventExecutionTuple[] }
+    : await streamEventFlow({
+      symbol,
+      candles,
+      start: flowWindow.start,
+      end: flowWindow.end,
+    }).catch(() => ({ candles, executions: [] as DatabentoEventExecutionTuple[] }));
   return flow;
 }

@@ -130,6 +130,10 @@ export async function GET(request: NextRequest) {
   const requestedEnd = Date.parse(request.nextUrl.searchParams.get("end") || "");
   const orderFlowRequested = request.nextUrl.searchParams.get("orderFlow") === "1";
   const executionsRequested = request.nextUrl.searchParams.get("executions") !== "0";
+  // Where the replay's execution tape should begin. A replay window reaches a
+  // day past the session so the forming bar is covered, so a tape anchored to
+  // the window's END sits well after the moment the trader hits play.
+  const requestedExecutionStart = Number(request.nextUrl.searchParams.get("executionStart"));
   const instrument = DATABENTO_FUTURES.find((candidate) =>
     candidate.kind === "future" && candidate.symbol.toUpperCase() === symbol.toUpperCase());
 
@@ -156,7 +160,15 @@ export async function GET(request: NextRequest) {
       const endIso = new Date(end).toISOString();
       if (orderFlowRequested) {
         const history = isEventBasedChartInterval(timeframe)
-          ? await getDatabentoEventHistory(instrument.symbol, timeframe, startIso, endIso)
+          ? await getDatabentoEventHistory(
+            instrument.symbol,
+            timeframe,
+            startIso,
+            endIso,
+            Number.isFinite(requestedExecutionStart) && requestedExecutionStart > 0
+              ? requestedExecutionStart
+              : undefined,
+          )
           : await getDatabentoOrderFlowHistory(instrument.symbol, timeframe, startIso, endIso);
         archiveCandles = validCandles(history.candles);
         executions = executionsRequested ? history.executions : [];
