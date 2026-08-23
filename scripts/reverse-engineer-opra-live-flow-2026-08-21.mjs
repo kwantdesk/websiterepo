@@ -58,6 +58,59 @@ const TARGETS = {
   },
 };
 
+const TRINITY_STATE_HISTORY = {
+  SPX: {
+    label: "SPXW",
+    values: new Map([
+      [7680, new Map([
+        [Date.parse("2026-08-21T13:30:00.000Z"), 3_739_800],
+        [Date.parse("2026-08-21T13:45:00.000Z"), 10_466_400],
+        [Date.parse("2026-08-21T14:00:00.000Z"), 21_915_800],
+      ])],
+      [7675, new Map([
+        [Date.parse("2026-08-21T13:30:00.000Z"), -6_526_300],
+        [Date.parse("2026-08-21T13:45:00.000Z"), -8_369_900],
+        [Date.parse("2026-08-21T14:00:00.000Z"), -8_570_200],
+      ])],
+    ]),
+  },
+  SPY: {
+    label: "SPY",
+    values: new Map([
+      [760, new Map([
+        [Date.parse("2026-08-21T13:30:00.000Z"), 173_033_700],
+        [Date.parse("2026-08-21T13:45:00.000Z"), 196_831_600],
+        [Date.parse("2026-08-21T14:00:00.000Z"), 215_060_800],
+      ])],
+      [766, new Map([
+        [Date.parse("2026-08-21T13:30:00.000Z"), -87_257_500],
+        [Date.parse("2026-08-21T13:45:00.000Z"), -114_703_900],
+        [Date.parse("2026-08-21T14:00:00.000Z"), -80_040_300],
+      ])],
+      [768, new Map([
+        [Date.parse("2026-08-21T13:30:00.000Z"), -21_061_900],
+        [Date.parse("2026-08-21T13:45:00.000Z"), 55_602_400],
+        [Date.parse("2026-08-21T14:00:00.000Z"), 52_168_300],
+      ])],
+    ]),
+  },
+  QQQ: {
+    label: "QQQ",
+    values: new Map([
+      [708, new Map([
+        [Date.parse("2026-08-21T13:30:00.000Z"), -46_027_400],
+        [Date.parse("2026-08-21T13:45:00.000Z"), -74_590_800],
+        [Date.parse("2026-08-21T14:00:00.000Z"), -83_276_100],
+      ])],
+      [714, new Map([
+        [Date.parse("2026-08-21T13:30:00.000Z"), 14_340_600],
+        [Date.parse("2026-08-21T13:45:00.000Z"), 18_160_400],
+        [Date.parse("2026-08-21T14:00:00.000Z"), 24_884_900],
+      ])],
+    ]),
+  },
+};
+
 const SIDE_RULES = {
   customerDirectional: { CB: 1, CS: -1, PB: -1, PS: 1, CM: 0, PM: 0 },
   dealerDirectional: { CB: -1, CS: 1, PB: 1, PS: -1, CM: 0, PM: 0 },
@@ -425,6 +478,70 @@ function multiFactorHoldoutRmse(rows) {
   return Math.sqrt(squared / Math.max(1, count));
 }
 
+function dynamicStateMetrics(rows, predictions) {
+  const base = metrics(rows.map((row) => ({ target: row.current })), predictions);
+  const directionAccuracy = rows.filter((row, index) => (
+    Math.sign(row.current - row.prior) === Math.sign(predictions[index] - row.prior)
+  )).length / Math.max(1, rows.length);
+  return { ...base, directionAccuracy };
+}
+
+function fitDynamicState(rows, rho) {
+  const adjusted = rows.map((row) => ({ ...row, target: row.current - rho * row.prior }));
+  const fit = multiFactorFit(adjusted);
+  if (!fit) return null;
+  const predictions = rows.map((row) => rho * row.prior
+    + row.features.reduce((sum, value, index) => sum + value * fit.weights[index], 0));
+  return { rho, weights: fit.weights, predictions, ...dynamicStateMetrics(rows, predictions) };
+}
+
+function dynamicStateNestedHoldout(rows) {
+  const symbols = [...new Set(rows.map((row) => row.ticker))];
+  const predictions = [];
+  const testRows = [];
+  for (const symbol of symbols) {
+    const train = rows.filter((row) => row.ticker !== symbol);
+    const test = rows.filter((row) => row.ticker === symbol);
+    let bestFit = null;
+    for (let step = 0; step <= 200; step += 1) {
+      const fit = fitDynamicState(train, step / 100);
+      if (!fit) continue;
+      if (!bestFit || fit.rmse < bestFit.rmse) bestFit = fit;
+    }
+    if (!bestFit) return { rmse: Number.POSITIVE_INFINITY, directionAccuracy: 0 };
+    for (const row of test) {
+      predictions.push(bestFit.rho * row.prior
+        + row.features.reduce((sum, value, index) => sum + value * bestFit.weights[index], 0));
+      testRows.push(row);
+    }
+  }
+  const result = dynamicStateMetrics(testRows, predictions);
+  return { rmse: result.rmse, directionAccuracy: result.directionAccuracy };
+}
+
+function dynamicCarryHoldout(rows) {
+  const symbols = [...new Set(rows.map((row) => row.ticker))];
+  const predictions = [];
+  const testRows = [];
+  for (const symbol of symbols) {
+    const train = rows.filter((row) => row.ticker !== symbol);
+    const test = rows.filter((row) => row.ticker === symbol);
+    const fit = oneFactorFit(
+      train.map((row) => ({ target: row.current, prior: row.prior })),
+      "prior",
+    );
+    if (!Number.isFinite(fit.scale)) {
+      return { rmse: Number.POSITIVE_INFINITY, directionAccuracy: 0 };
+    }
+    for (const row of test) {
+      predictions.push(fit.scale * row.prior);
+      testRows.push(row);
+    }
+  }
+  const result = dynamicStateMetrics(testRows, predictions);
+  return { rmse: result.rmse, directionAccuracy: result.directionAccuracy };
+}
+
 function ternaryRules() {
   const rules = [];
   for (let encoded = 1; encoded < 3 ** EXECUTION_BUCKETS.length; encoded += 1) {
@@ -504,6 +621,7 @@ const ternaryCandidates = [];
 const snapshotCandidates = [];
 const stateChangeCandidates = [];
 const sentimentCandidates = [];
+const dynamicStateCandidates = [];
 let candidateCount = 0;
 
 function retainCandidate(candidate) {
@@ -524,6 +642,65 @@ function retainLimited(collection, candidate, limit, compare = (left, right) => 
 }
 
 const SIMPLE_TERNARY_RULES = ternaryRules();
+
+const DYNAMIC_STATE_MODELS = [
+  { name: "classified gamma CB/CS/PB/PS", basis: "gammaOnePercent", filter: FILTERS.classified, buckets: ["CB", "CS", "PB", "PS"] },
+  { name: "simple classified gamma CB/CS/PB/PS", basis: "gammaOnePercent", filter: FILTERS.simpleClassified, buckets: ["CB", "CS", "PB", "PS"] },
+  { name: "all gamma CB/CS/PB/PS/CM/PM", basis: "gammaOnePercent", filter: FILTERS.all, buckets: EXECUTION_BUCKETS },
+  { name: "classified contracts CB/CS/PB/PS", basis: "contracts", filter: FILTERS.classified, buckets: ["CB", "CS", "PB", "PS"] },
+  { name: "all contracts CB/CS/PB/PS/CM/PM", basis: "contracts", filter: FILTERS.all, buckets: EXECUTION_BUCKETS },
+  { name: "classified premium CB/CS/PB/PS", basis: "premium", filter: FILTERS.classified, buckets: ["CB", "CS", "PB", "PS"] },
+];
+
+for (const source of ["comprising", "consolidated"]) {
+  if (![...sourceRows.keys()].some((key) => key.endsWith(`:${source}`))) continue;
+  for (const model of DYNAMIC_STATE_MODELS) {
+    const rows = [];
+    for (const [ticker, history] of Object.entries(TRINITY_STATE_HISTORY)) {
+      const configuredSpot = TARGETS[ticker].spot;
+      for (const [strike, observations] of history.values) {
+        const timestamps = [...observations.keys()].sort((left, right) => left - right);
+        const tape = indexedRows.get(`${ticker}:${source}:${strike}`) ?? [];
+        for (let index = 1; index < timestamps.length; index += 1) {
+          const priorTime = timestamps[index - 1];
+          const currentTime = timestamps[index];
+          const totals = Object.fromEntries(model.buckets.map((bucket) => [bucket, 0]));
+          for (const trade of tape) {
+            if (trade.timestamp <= priorTime || trade.timestamp > currentTime || !model.filter(trade)) continue;
+            if (Object.hasOwn(totals, trade.bucket)) {
+              totals[trade.bucket] += valueBasis(trade, model.basis, configuredSpot);
+            }
+          }
+          rows.push({
+            ticker: history.label,
+            strike,
+            priorTime,
+            currentTime,
+            prior: observations.get(priorTime),
+            current: observations.get(currentTime),
+            features: model.buckets.map((bucket) => totals[bucket]),
+          });
+        }
+      }
+    }
+    const nestedHoldout = dynamicStateNestedHoldout(rows);
+    for (let step = 0; step <= 200; step += 1) {
+      const rho = step / 100;
+      const fit = fitDynamicState(rows, rho);
+      if (!fit) continue;
+      dynamicStateCandidates.push({
+        source,
+        model: model.name,
+        basis: model.basis,
+        buckets: model.buckets,
+        rows,
+        ...fit,
+        holdoutRmse: nestedHoldout.rmse,
+        holdoutDirectionAccuracy: nestedHoldout.directionAccuracy,
+      });
+    }
+  }
+}
 
 for (const source of ["raw", "comprising", "consolidated"]) {
   if (![...sourceRows.keys()].some((key) => key.endsWith(`:${source}`))) continue;
@@ -802,6 +979,19 @@ const rankedStateChanges = stateChangeCandidates
   .sort((left, right) => right.r2 - left.r2 || left.holdoutRmse - right.holdoutRmse);
 const rankedSentiment = sentimentCandidates
   .sort((left, right) => right.r2 - left.r2 || left.holdoutRmse - right.holdoutRmse);
+const rankedDynamicStates = dynamicStateCandidates
+  .sort((left, right) => left.holdoutRmse - right.holdoutRmse || right.r2 - left.r2);
+const dynamicBaselineRows = rankedDynamicStates[0]?.rows ?? [];
+const dynamicCarryScale = dynamicBaselineRows.length
+  ? oneFactorFit(dynamicBaselineRows.map((row) => ({ target: row.current, prior: row.prior })), "prior").scale
+  : 0;
+const dynamicCarryPredictions = dynamicBaselineRows.map((row) => dynamicCarryScale * row.prior);
+const dynamicCarryMetrics = dynamicBaselineRows.length
+  ? dynamicStateMetrics(dynamicBaselineRows, dynamicCarryPredictions)
+  : null;
+const dynamicCarryHoldoutMetrics = dynamicBaselineRows.length
+  ? dynamicCarryHoldout(dynamicBaselineRows)
+  : null;
 
 console.log(`# OPRA 0DTE Live Flow reverse engineering — ${SESSION_DATE} 10:00 ET\n`);
 console.log("This search uses only the existing VPS-backed options source. It does not issue a direct metered Databento historical request.\n");
@@ -855,6 +1045,28 @@ rankedSentiment.slice(0, 20).forEach((row, index) => {
   console.log(`| ${index + 1} | ${row.source} | ${formatEt(row.cutoff)} | ${row.candidateName} | ${row.scale.toExponential(3)} | ${row.r2.toFixed(4)} | ${(row.signAccuracy * 100).toFixed(1)}% | ${money(row.holdoutRmse)} |`);
 });
 
+console.log("\n## Trinity dynamic-state reconstruction\n");
+console.log("These models fit the observed 09:30 → 09:45 → 10:00 node transitions as `E(t) = rho × E(t-1) + classified OPRA flow`. Ranking is by leave-one-symbol-out RMSE, so a fit that merely memorizes one underlying does not win.\n");
+if (dynamicCarryMetrics) {
+  console.log(`A carry-only baseline fits rho ${dynamicCarryScale.toFixed(4)}, R² ${dynamicCarryMetrics.r2.toFixed(4)}, RMSE ${money(dynamicCarryMetrics.rmse)}, and ${(dynamicCarryMetrics.directionAccuracy * 100).toFixed(1)}% change-direction accuracy. Its leave-one-symbol-out RMSE is ${money(dynamicCarryHoldoutMetrics.rmse)} with ${(dynamicCarryHoldoutMetrics.directionAccuracy * 100).toFixed(1)}% holdout change-direction accuracy. OPRA features must improve on that baseline to be meaningful.\n`);
+}
+console.log("| Rank | Source | Flow features | Rho | In-sample R² | Node sign | Change direction | Symbol holdout RMSE | Holdout direction | Coefficients |\n|---:|---|---|---:|---:|---:|---:|---:|---:|---|");
+rankedDynamicStates.slice(0, 20).forEach((row, index) => {
+  console.log(`| ${index + 1} | ${row.source} | ${row.model} | ${row.rho.toFixed(2)} | ${row.r2.toFixed(4)} | ${(row.signAccuracy * 100).toFixed(1)}% | ${(row.directionAccuracy * 100).toFixed(1)}% | ${money(row.holdoutRmse)} | ${(row.holdoutDirectionAccuracy * 100).toFixed(1)}% | ${row.weights.map((value) => value.toExponential(3)).join(" / ")} |`);
+});
+
+const bestDynamic = rankedDynamicStates[0];
+if (bestDynamic) {
+  console.log("\n### Best dynamic-state rows\n");
+  console.log(`Best cross-symbol model: ${bestDynamic.source}; ${bestDynamic.model}; rho ${bestDynamic.rho.toFixed(2)}.\n`);
+  console.log("| Symbol | Strike | Interval ET | Prior | Trinity current | Predicted current | Error |\n|---|---:|---|---:|---:|---:|---:|");
+  bestDynamic.rows.forEach((row, index) => {
+    const interval = `${formatEt(row.priorTime)}–${formatEt(row.currentTime)}`;
+    const predicted = bestDynamic.predictions[index];
+    console.log(`| ${row.ticker} | ${row.strike} | ${interval} | ${money(row.prior)} | ${money(row.current)} | ${money(predicted)} | ${money(predicted - row.current)} |`);
+  });
+}
+
 const best = ranked[0];
 console.log("\n## Best candidate exact rows\n");
 console.log(`Source ${best.source}; snapshot ${formatEt(best.cutoff)} ET; ${best.window}; ${best.filter}; ${best.basis}; ${best.rule}; scale ${best.scale}.\n`);
@@ -888,4 +1100,11 @@ console.log("\nJSON_RESULT=" + JSON.stringify({
   snapshots: rankedSnapshots.slice(0, 50).map(({ rows: _rows, ...row }) => ({ ...row, cutoff: new Date(row.cutoff).toISOString() })),
   stateChanges: rankedStateChanges.slice(0, 50).map(({ rows: _rows, ...row }) => ({ ...row, cutoff: new Date(row.cutoff).toISOString() })),
   sentiment: rankedSentiment.slice(0, 50).map(({ rows: _rows, ...row }) => ({ ...row, cutoff: new Date(row.cutoff).toISOString() })),
+  dynamicStates: rankedDynamicStates.slice(0, 50).map(({ rows: _rows, predictions: _predictions, ...row }) => ({ ...row })),
+  dynamicCarryBaseline: dynamicCarryMetrics ? {
+    rho: dynamicCarryScale,
+    ...dynamicCarryMetrics,
+    holdoutRmse: dynamicCarryHoldoutMetrics.rmse,
+    holdoutDirectionAccuracy: dynamicCarryHoldoutMetrics.directionAccuracy,
+  } : null,
 }));

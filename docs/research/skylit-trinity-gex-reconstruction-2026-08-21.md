@@ -87,6 +87,9 @@ state-change and provider-sentiment searches. Candidate families included:
 8. Latest contract-state volume, OI and OI-change snapshots.
 9. Gamma-state changes from the session open to the cutoff.
 10. Provider bullish/bearish sentiment, including simple-trade-only variants.
+11. Dynamic state models fitted to the observed 09:30, 09:45 and 10:00
+    Trinity node transitions, with separate call-buy, call-sell, put-buy,
+    put-sell and midpoint OPRA-flow features.
 
 ## Measured result
 
@@ -119,6 +122,79 @@ R-squared near one. It does neither.
 The six-bucket regression can force a better in-sample shape, but its holdout
 error triples. Its coefficients also assign contradictory economic meanings to
 equivalent executions. It is an overfit, not the competitor formula.
+
+### Closest mathematical reconstruction: carried state plus OPRA flow
+
+The time-series evidence was then fitted directly rather than treating the
+10:00 screenshot as an independent snapshot:
+
+```text
+E_K(t) = rho * E_K(t - 15m)
+       + beta_CB * CallBuyGammaFlow_K
+       + beta_CS * CallSellGammaFlow_K
+       + beta_PB * PutBuyGammaFlow_K
+       + beta_PS * PutSellGammaFlow_K
+       + beta_CM * CallMidGammaFlow_K
+       + beta_PM * PutMidGammaFlow_K
+```
+
+The fit used the seven observed Trinity nodes across both 09:30→09:45 and
+09:45→10:00 transitions. The results were:
+
+| Dynamic model | R-squared | Node sign | Change direction | Leave-one-symbol-out RMSE |
+|---|---:|---:|---:|---:|
+| Carry only | 0.9219 | — | 78.6% | $31.84M |
+| Carry + classified OPRA gamma-flow buckets | 0.9714 | 100.0% | 85.7% | $43.87M |
+
+The best full-sample flow fit used `rho = 1.09`; bucket coefficients in
+CB/CS/PB/PS order were approximately
+`-0.169 / +0.070 / +0.655 / -0.166`.
+
+Those coefficients must **not** be copied into production. Although they improve
+the full-sample fit, their leave-one-symbol-out error is worse than carrying the
+prior node alone. The put-buy coefficient also has the opposite sign expected
+from a simple dealer-counterparty model. That means the small sample is using
+the visible flow buckets as proxies for an unobserved classifier. The important
+result is the model class: prior node state explains most of the variation. A
+fresh per-window tape sum does not, and naïve OPRA aggressor signing makes the
+cross-symbol result worse.
+
+The fitted `rho > 1` should not be implemented as literal inventory growth. It
+absorbs the fact that an unchanged option position has a different dollar GEX
+15 minutes later because spot, gamma and time-to-expiry changed. The production
+engine should carry **signed contracts**, then revalue those contracts using
+current greeks. In contract space the correct form is:
+
+```text
+q_i(t) = q_i(t - dt) + inferredDealerContractFlow_i(t)
+
+E_K(t) = sum_i_at_strike_K(
+           q_i(t) * gamma_i(t) * 100 * spot(t)^2 * 0.01
+         )
+```
+
+This is the closest defensible equation to Trinity from the observed replay and
+the same OPRA inputs. It naturally preserves overnight state, permits a single
+strike to flip sign, and revalues the carried book without inventing trades.
+The OPRA update term still requires a calibrated economic-trade and
+dealer/open-close classifier; public aggressor side by itself is insufficient.
+
+### Trinity settings checked
+
+The signed-in Trinity controls were inspected so display transforms were not
+mistaken for source mathematics:
+
+- `GEX / VEX` changes the greek being displayed;
+- `Velocity` and its interval display the change in the node, not the node's
+  underlying dollar-state formula;
+- `Node %` expresses each node as a share of the largest absolute node;
+- `Color scale` changes presentation only;
+- `Center on spot` and `Center on King` change scroll position only;
+- the `Confluence halo` compares current 5m, 10m and 15m direction agreement;
+- replay exposes 1m, 5m, 10m, 15m, 1h, 4h and 1d node history.
+
+None of these controls is a hidden unit conversion capable of turning ordinary
+OI GEX into the displayed dollar rows.
 
 ### The target implies a small, strike-specific signed inventory share
 
@@ -219,9 +295,10 @@ the customer opened a long or closed a short.
 
 The intraday accumulator must not reset to zero at the cash open. Trinity already
 has non-zero nodes at 04:00 ET, so it starts from a carried baseline. The engine
-must snapshot that baseline and then apply time-ordered trade updates. A
-ten-minute change should be a separate chip, not substituted for the main row
-value.
+must snapshot signed contract inventory, apply time-ordered trade updates, and
+revalue the entire carried inventory against current spot and contract gamma on
+every frame. A ten-minute change should be a separate chip, not substituted for
+the main row value.
 
 ### 2. Dealer OI GEX — structural
 
@@ -300,4 +377,4 @@ untouched sessions.
   flow comparison.
 - `scripts/reverse-engineer-opra-live-flow-2026-08-21.mjs` — paginated target-
   strike tape, 166,320 constrained combinations, bucket/state/sentiment models,
-  and holdout diagnostics.
+  dynamic carried-state reconstruction and symbol holdout diagnostics.
