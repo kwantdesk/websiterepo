@@ -212,4 +212,3 @@ OI changes and held-out sessions, not against the 28 screenshot numbers.
 - `scripts/reverse-engineer-opra-live-flow-2026-08-21.mjs` — paginated target-
   strike tape, 166,320 constrained combinations, bucket/state/sentiment models,
   and holdout diagnostics.
-
