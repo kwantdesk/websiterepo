@@ -7761,7 +7761,14 @@ function Chart({
         maximumHistoricalPrints: String(maximumHistoricalPrints),
         displayPrice: String(displayPrice),
       });
-      const darkPoolHeadQuery = makeDarkPoolQuery(100);
+      // Historical replay is immutable and only needs one bounded snapshot.
+      // The old path fetched a 100-print head and then immediately walked up
+      // to another 2,000 prints for every replay chart.  Four synchronized
+      // panels therefore duplicated the slowest provider request while the
+      // user was waiting for first paint.  Keep live mode's background
+      // enrichment, but make replay a single, right-sized exact request.
+      const historicalPrintLimit = Math.max(100, Math.min(500, indicatorSettings.topN * 20));
+      const darkPoolHeadQuery = makeDarkPoolQuery(historicalContext ? historicalPrintLimit : 100);
       if (historicalContext) darkPoolHeadQuery.set("asOf", new Date(asOfMs).toISOString());
       if (indicatorSettings.maximumNotional > 0) darkPoolHeadQuery.set("maximumPrintNotional", String(indicatorSettings.maximumNotional));
       if (indicatorSettings.maximumShares > 0) darkPoolHeadQuery.set("maximumPrintShares", String(indicatorSettings.maximumShares));
@@ -7810,7 +7817,7 @@ function Chart({
       // Enrich the retained browser frame once in the background. A full
       // cursor walk is useful for historical ranking, but it is never allowed
       // to delay first paint or the live head refresh cadence.
-      if (!historyStarted) {
+      if (!historicalContext && !historyStarted) {
         historyStarted = true;
         const historyQuery = makeDarkPoolQuery(Math.max(500, Math.min(2_000, indicatorSettings.topN * 100)));
         if (historicalContext) historyQuery.set("asOf", new Date(asOfMs).toISOString());
@@ -9019,9 +9026,10 @@ function Chart({
           indicatorCandles,
           indicatorMarketTrades,
           { ...(bigTradesIndicator.settings ?? {}), tickSize: priceFormat.minMove },
+          replayTimestampMs ?? Date.now(),
         )
       : [],
-    [bigTradesIndicator, indicatorCandles, indicatorMarketTrades, priceFormat.minMove],
+    [bigTradesIndicator, indicatorCandles, indicatorMarketTrades, priceFormat.minMove, replayTimestampMs],
   );
   const anchoredBigTradePrints = useMemo(() => {
     if (!indicatorCandles.length || !bigTradePrints.length) return [];

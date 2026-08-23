@@ -101,7 +101,6 @@ export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
   indicator("KWANT Delta", "Order Flow", "Enhanced delta-bar and aggression analysis.", true, "Reference", "Deep Delta"),
   indicator("KWANT Wall", "Order Flow", "Tracks significant resting-liquidity walls.", true, "Reference", "Deep Wall"),
   indicator("KWANT V-Tracker", "Order Flow", "Tracks volume behaviour and participation shifts.", true, "Reference", "Deep V-Tracker"),
-  indicator("Big Contracts", "Order Flow", "Execution-level trade visualisation and filtering.", true, "Reference", "Deep Trades"),
 
   indicator("Volume", "Volume & Profiles", "Total volume with filtering and delta-aware colouring."),
   indicator("Volume Swing", "Volume & Profiles", "Volume measured across detected price swings.", true),

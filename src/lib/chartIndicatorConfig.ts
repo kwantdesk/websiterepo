@@ -1897,6 +1897,12 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
       ? { ...instance, indicatorId: "kwant-stats" }
       : instance.indicatorId === "deep-m-effort"
         ? { ...instance, indicatorId: "deep-m-effort-nq" }
+      // "Deep Trades" was an old duplicate library entry carrying the same
+      // visible Big Contracts name but no chart renderer. Preserve existing
+      // saved workspaces by routing that legacy id into the real execution-
+      // tape engine instead of silently dropping it in historical replay.
+      : instance.indicatorId === "deep-trades"
+        ? { ...instance, indicatorId: "big-trades" }
       : instance;
   if (normalizedInstance.indicatorId === "market-profile-tpo") {
     normalizedInstance = { ...normalizedInstance, indicatorId: "tpo-chart" };
