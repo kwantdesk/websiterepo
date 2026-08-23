@@ -1,12 +1,13 @@
-# StrikeGEX Signal A reconstruction — 2026-08-21 10:00 ET
+# Skylit Heatseeker GEX reconstruction — 2026-08-21 10:00 ET
 
 ## Decision
 
 The supplied competitor screenshot is not a differently coloured version of
-KwantDesk's current strike profile. It is StrikeGEX **Signal A / LIVE FLOW** in
-**0DTE** mode. Their public documentation describes Signal A as a session-reset,
-directional order-flow model and explicitly separates it from Signal B, which is
-the open-interest/dealer-positioning model.
+KwantDesk's current strike profile. It is **Skylit Heatseeker** in its
+three-panel SPXW/SPY/QQQ layout with **0DTE** selected. Skylit describes the
+displayed values as live dealer gamma exposure derived through custom inference
+models and proprietary dealer-microstructure intelligence, rather than raw
+vendor GEX repackaged without further modelling.
 
 The values cannot be reproduced by applying a public, deterministic GEX formula
 to the OPRA fields available at 10:00 ET. The missing transformation is the
@@ -39,8 +40,8 @@ Inputs included:
 - provider sentiment classifications;
 - exact bid/ask trade-side statistics;
 - trade volume, premium, delta, vega, gamma, OI, previous OI and OI change;
-- cutoffs from 09:56 through 10:03 ET to cover the competitor's roughly
-  two-minute snapshot cadence;
+- cutoffs from 09:56 through 10:03 ET to cover timestamp, transport and
+  screenshot-capture alignment around the requested 10:00 ET observation;
 - rolling windows of 2, 5, 10, 15, 20 and 30 minutes plus session-to-date.
 
 The exhaustive tape reader paginates each requested strike. The independent
@@ -104,9 +105,9 @@ call and put gamma at a strike and scales each side by `volume / openInterest`
 (capped at 8). Algebraically, before the cap, this is a call-volume-minus-put-
 volume gamma profile. It is a structural/participation hybrid.
 
-The competitor screenshot is Signal A: an estimate of live directional flow.
-Those are different measurements, so the discrepancy is expected and should
-not be corrected with a colour or normalization multiplier.
+The competitor screenshot is Skylit's inferred live dealer-positioning state.
+That is a different measurement, so the discrepancy is expected and should not
+be corrected with a colour or normalization multiplier.
 
 ## The missing state variable
 
@@ -116,8 +117,9 @@ closing flag for every print. Bid/ask inference estimates aggressor direction,
 but aggressor direction alone does not reveal whether the execution created a
 new position, reduced an old position, or represented one leg of a spread.
 
-The competitor's row values therefore require an internal position-attribution
-layer. That layer can include:
+Skylit's public material confirms that its exposure calculations use custom
+inference models. The row values therefore require an internal position-
+attribution layer. That layer can include:
 
 - opening/closing probability;
 - customer/dealer probability;
@@ -202,6 +204,19 @@ OI changes and held-out sessions, not against the 28 screenshot numbers.
 - Show source timestamp, expiry scope and model name in the panel.
 - Keep Flow GEX and Dealer OI GEX selectable and visibly distinct.
 - Never label an unavailable Flow GEX frame as zero.
+
+## Skylit source checks
+
+- Skylit's product page identifies Trinity Mode as the simultaneous SPXW, SPY
+  and QQQ dealer-exposure view:
+  <https://www.skylit.ai/>.
+- Skylit's GEX methodology article defines Heatseeker values as dealer gamma
+  exposure at each strike and the King Node as the largest absolute GEX:
+  <https://www.skylit.ai/learn/gamma-exposure>.
+- Skylit's comparison article states that its displayed exposure is produced by
+  custom inference models and proprietary dealer-microstructure intelligence,
+  not raw vendor data alone:
+  <https://www.skylit.ai/learn/best-gex-tools>.
 
 ## Reproduction
 
