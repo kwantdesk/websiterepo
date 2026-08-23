@@ -122,13 +122,25 @@ export const magnetStrengthSpec = (strength: MagnetStrength) =>
 export type DrawLineStyle = "solid" | "dashed" | "dotted";
 
 export type DrawStyle = {
+  /**
+   * Only consulted once the trader has picked a colour of their own. Until
+   * then `useThemeColor` keeps the drawing on the theme's bullish candle, so
+   * every tool on the left rail matches the chart it is drawn on.
+   */
   color: string;
-  width: number;        // px, 1..4
+  /**
+   * True until the trader chooses a colour. Absent on drawings saved before
+   * the theme followed the tools, which is why the check is `!== false`.
+   */
+  useThemeColor?: boolean;
+  width: number;        // px, 0.5..4
   lineStyle: DrawLineStyle;
   fillOpacity: number;  // 0..1, used by shapes
   showLabels: boolean;
   fontSize?: number;    // text tools
   visible?: boolean;    // hide without deleting
+  /** Stamped by migrateDrawStyle so the width halving runs exactly once. */
+  styleVersion?: number;
   // Volume-profile tools (fixed range / anchored). Optional so drawings saved
   // before these settings existed keep rendering with the defaults.
   profileRows?: number;        // row count, 20..200 (default 80)
@@ -138,9 +150,15 @@ export type DrawStyle = {
   profileWidthPercent?: number; // widest row as % of the range width, 10..80
 };
 
+export const DRAW_STYLE_SCHEMA_VERSION = 2;
+
 export const DEFAULT_DRAW_STYLE: DrawStyle = {
   color: "#2962FF",
-  width: 2,
+  useThemeColor: true,
+  styleVersion: DRAW_STYLE_SCHEMA_VERSION,
+  // Halved. Every tool on the rail drew at 2px, which reads as heavy against
+  // candles and buries the price action under its own annotation.
+  width: 1,
   lineStyle: "solid",
   fillOpacity: 0.12,
   showLabels: true,
@@ -289,6 +307,46 @@ export type Drawing = {
   text?: string;
 };
 
+/**
+ * The colour a drawing is actually painted in.
+ *
+ * Tools follow the theme's bullish candle until the trader picks a colour of
+ * their own, so changing theme restyles every existing drawing rather than
+ * leaving a chart of stale blue lines behind. Position calculators resolve
+ * their profit and stop zones the same way, from the same two colours.
+ */
+export function resolveDrawColor(
+  style: Pick<DrawStyle, "color" | "useThemeColor"> | undefined,
+  themeColor: string | undefined,
+): string {
+  if (!style) return themeColor || DEFAULT_DRAW_STYLE.color;
+  if (style.useThemeColor === false) return style.color;
+  return themeColor || style.color || DEFAULT_DRAW_STYLE.color;
+}
+
+/**
+ * Saved drawings predate both the halved stroke and the theme link, and their
+ * style is persisted per drawing rather than read from a live default. Without
+ * a migration the trader's existing chart keeps every 2px blue line while only
+ * new ones follow the theme.
+ *
+ * Stamped so it runs once: a trader who deliberately picks 2px afterwards
+ * keeps it.
+ */
+function migrateDrawStyle(saved: Partial<DrawStyle>): Partial<DrawStyle> {
+  if (Number(saved.styleVersion ?? 0) >= DRAW_STYLE_SCHEMA_VERSION) return saved;
+  const savedWidth = Number(saved.width);
+  return {
+    ...saved,
+    // Only a width the drawing actually carried is halved. Merging the default
+    // in first and halving that would drive every style-less drawing to 0.5px.
+    ...(Number.isFinite(savedWidth) ? { width: Math.max(0.5, savedWidth / 2) } : {}),
+    // An old drawing never had the flag, so it was never an explicit choice.
+    useThemeColor: saved.useThemeColor ?? true,
+    styleVersion: DRAW_STYLE_SCHEMA_VERSION,
+  };
+}
+
 const defaultStyleFor = (tool: DrawToolId): DrawStyle => {
   if (tool === "highlighter") return { ...DEFAULT_DRAW_STYLE, color: "#FFEB3B", width: 4, fillOpacity: 0.25 };
   if (tool === "longPosition") return { ...DEFAULT_DRAW_STYLE, color: "#089981" };
@@ -319,7 +377,7 @@ export function normalizeDrawings(value: unknown): Drawing[] {
     const minPoints = typeof spec.points === "number" ? spec.points : 2;
     if (points.length < minPoints) continue;
     const style = candidate.style && typeof candidate.style === "object"
-      ? { ...defaultStyleFor(candidate.tool!), ...candidate.style }
+      ? { ...defaultStyleFor(candidate.tool!), ...migrateDrawStyle(candidate.style) }
       : defaultStyleFor(candidate.tool!);
     out.push({
       id: candidate.id,

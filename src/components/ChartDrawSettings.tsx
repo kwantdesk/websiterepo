@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
-import { DRAW_TOOL_SPECS, type DrawLineStyle, type Drawing } from "@/lib/chartDrawTools";
+import { DRAW_TOOL_SPECS, resolveDrawColor, type DrawLineStyle, type Drawing } from "@/lib/chartDrawTools";
 import { deleteDrawTemplate, loadDrawTemplates, saveDrawTemplate, type DrawTemplateStore } from "@/lib/chartDrawTemplates";
 
 // Tabbed settings dialog for a charting drawing — Style, Text, Coordinates and
@@ -17,9 +17,11 @@ type Props = {
   drawing: Drawing | null;
   onChange: (drawing: Drawing) => void;
   onClose: () => void;
+  /** Theme bullish candle, so the swatch shows what is actually painted. */
+  themeColor?: string;
 };
 
-export default function ChartDrawSettings({ drawing, onChange, onClose }: Props) {
+export default function ChartDrawSettings({ drawing, onChange, onClose, themeColor }: Props) {
   const [tab, setTab] = useState<"style" | "text" | "coordinates" | "visibility">("style");
   const [templates, setTemplates] = useState<DrawTemplateStore>({});
   const [templateName, setTemplateName] = useState("");
@@ -85,8 +87,8 @@ export default function ChartDrawSettings({ drawing, onChange, onClose }: Props)
         <div className="max-h-[50vh] space-y-3 overflow-y-auto p-4">
           {tab === "style" ? (
             <>
-              <Row label="Colour"><input type="color" value={drawing.style.color} onChange={(e) => patchStyle({ color: e.target.value })} className="h-7 w-10 cursor-pointer rounded border border-border bg-background" /></Row>
-              <Row label="Line width"><Select value={String(drawing.style.width)} onChange={(v) => patchStyle({ width: Number(v) })} options={[["1", "1px"], ["2", "2px"], ["3", "3px"], ["4", "4px"]]} /></Row>
+              <Row label="Colour"><input type="color" value={resolveDrawColor(drawing.style, themeColor)} onChange={(e) => patchStyle({ color: e.target.value, useThemeColor: false })} className="h-7 w-10 cursor-pointer rounded border border-border bg-background" /></Row>
+              <Row label="Line width"><Select value={String(drawing.style.width)} onChange={(v) => patchStyle({ width: Number(v) })} options={[["0.5", "0.5px"], ["1", "1px"], ["2", "2px"], ["3", "3px"], ["4", "4px"]]} /></Row>
               <Row label="Line style"><Select value={drawing.style.lineStyle} onChange={(v) => patchStyle({ lineStyle: v as DrawLineStyle })} options={[["solid", "Solid"], ["dashed", "Dashed"], ["dotted", "Dotted"]]} /></Row>
               {isShape ? (
                 <Row label="Fill opacity">

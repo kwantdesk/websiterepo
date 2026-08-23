@@ -7,6 +7,7 @@ import {
   FIB_LEVELS,
   FIB_TIME_COEFFS,
   createDrawing,
+  resolveDrawColor,
   type DrawLineStyle,
   type DrawPoint,
   type DrawToolId,
@@ -42,6 +43,12 @@ type Props = {
   onToolConsumed: () => void;
   onRequestText: (points: DrawPoint[], tool: DrawToolId) => void;
   onOpenSettings: (id: string) => void;
+  /**
+   * The theme's bullish candle colour. Every tool on the rail paints in it
+   * until the trader picks a colour of their own, so a drawing never sits on
+   * the chart in a palette the theme has moved away from.
+   */
+  themeColor?: string;
 };
 
 type XY = { x: number | null; y: number | null };
@@ -54,7 +61,7 @@ const TEXT_INPUT_TOOLS: DrawToolId[] = ["text", "note", "callout", "signpost"];
 
 export default function ChartDrawLayer({
   width, height, activeTool, keepDrawing, drawings, selectedId,
-  toX, toY, fromXY, candles, magnet, magnetStrength, viewportVersion, chartReady, subscribeViewport, onCommit, onUpdate, onDelete, onSelect, onToolConsumed, onRequestText, onOpenSettings,
+  toX, toY, fromXY, candles, magnet, magnetStrength, viewportVersion, chartReady, subscribeViewport, onCommit, onUpdate, onDelete, onSelect, onToolConsumed, onRequestText, onOpenSettings, themeColor,
 }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [pending, setPending] = useState<{ tool: DrawToolId; points: DrawPoint[] } | null>(null);
@@ -581,7 +588,7 @@ export default function ChartDrawLayer({
     const { style } = drawing;
     if (!preview && style.visible === false) return null;
     const dash = dashFor(style.lineStyle, style.width);
-    const stroke = style.color;
+    const stroke = resolveDrawColor(style, themeColor);
     const w = style.width;
     const selected = !preview && drawing.id === selectedId;
     const coords = drawing.points.map((p) => ({ x: toX(p.time), y: toY(p.price) }));
@@ -688,7 +695,7 @@ export default function ChartDrawLayer({
           const p0 = pr[0].price; const p1 = pr[1].price;
           return <g>{FIB_LEVELS.map((lv) => {
             const price = p1 + (p0 - p1) * lv.coeff; const ly = toY(price);
-            return ly == null ? null : <g key={lv.coeff}>{line(left, ly, right, ly, lv.color)}{style.showLabels ? label(left + 2, ly - 2, `${lv.coeff} (${price.toFixed(2)})`, lv.color) : null}</g>;
+            return ly == null ? null : <g key={lv.coeff}>{line(left, ly, right, ly, stroke)}{style.showLabels ? label(left + 2, ly - 2, `${lv.coeff} (${price.toFixed(2)})`, stroke) : null}</g>;
           })}</g>;
         }
         case "fibExtension": {
@@ -696,14 +703,14 @@ export default function ChartDrawLayer({
           const move = pr[1].price - pr[0].price;
           return <g>{FIB_LEVELS.map((lv) => {
             const price = pr[2].price + move * lv.coeff; const ly = toY(price);
-            return ly == null ? null : <g key={lv.coeff}>{line(c.x!, ly, width, ly, lv.color)}{style.showLabels ? label(c.x! + 2, ly - 2, `${lv.coeff} (${price.toFixed(2)})`, lv.color) : null}</g>;
+            return ly == null ? null : <g key={lv.coeff}>{line(c.x!, ly, width, ly, stroke)}{style.showLabels ? label(c.x! + 2, ly - 2, `${lv.coeff} (${price.toFixed(2)})`, stroke) : null}</g>;
           })}</g>;
         }
         case "fibChannel": {
           if (!b || !c || a.x == null || b.x == null || c.y == null) return null;
           const base = projectY(a, b, c); const off = c.y - base;
           return <g>{FIB_LEVELS.slice(0, 7).map((lv) => (
-            <g key={lv.coeff}>{line(a.x!, a.y! + off * lv.coeff, b.x!, b.y! + off * lv.coeff, lv.color)}</g>
+            <g key={lv.coeff}>{line(a.x!, a.y! + off * lv.coeff, b.x!, b.y! + off * lv.coeff, stroke)}</g>
           ))}</g>;
         }
         case "fibTimeZone": {
@@ -906,10 +913,10 @@ export default function ChartDrawLayer({
               // The rows share a left spine and keep a hairline separation like
               // the native profile renderer, staying legible at 200 rows.
               return <rect key={i} x={boxLeft} y={Math.min(yTop, yBot) + 0.175} width={Math.max(0.5, w)} height={rowHeight} rx={Math.min(1.5, rowHeight / 2)}
-                fill={isPoc ? style.color : inVA ? stroke : outside} fillOpacity={isPoc ? 0.95 : inVA ? 0.62 : 0.32} />;
+                fill={isPoc ? stroke : inVA ? stroke : outside} fillOpacity={isPoc ? 0.95 : inVA ? 0.62 : 0.32} />;
             })}
-            {showPoc && pocY != null ? line(boxLeft, pocY, boxRight, pocY, style.color, 1) : null}
-            {showPoc && style.showLabels && pocY != null ? label(boxLeft + 3, pocY - 2, `POC ${prof.poc.toFixed(2)}`, style.color) : null}
+            {showPoc && pocY != null ? line(boxLeft, pocY, boxRight, pocY, stroke, 1) : null}
+            {showPoc && style.showLabels && pocY != null ? label(boxLeft + 3, pocY - 2, `POC ${prof.poc.toFixed(2)}`, stroke) : null}
           </g>;
         }
         case "anchoredVwap": {

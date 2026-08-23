@@ -14225,6 +14225,9 @@ function Chart({
           <ChartDrawLayer
             width={overlaySize.width}
             height={overlaySize.height}
+            // Every drawing tool follows the theme's bullish candle until the
+            // trader picks a colour of its own.
+            themeColor={settings.upColor}
             activeTool={drawTool}
             keepDrawing={drawKeepDrawing}
             drawings={chartingDrawings}
@@ -14273,6 +14276,7 @@ function Chart({
             />
           ) : null}
           <ChartDrawSettings
+            themeColor={settings.upColor}
             drawing={drawSettingsOpen && drawSelectedId ? (chartingDrawings.find((drawing) => drawing.id === drawSelectedId) ?? null) : null}
             onChange={(next) => commitDrawings(chartingDrawings.map((d) => d.id === next.id ? next : d))}
             onClose={() => setDrawSettingsOpen(false)}
