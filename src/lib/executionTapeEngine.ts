@@ -15,9 +15,30 @@ import type { InstitutionalTrade } from "@/lib/institutionalMarketData";
 export type ExecutionTapeStatus = "checking" | "connected" | "unavailable";
 
 const TRADE_PUBLISH_INTERVAL_MS = 40;
-const STREAM_RECONNECT_DELAY_MS = 4_000;
-const STREAM_STALE_AFTER_MS = 30_000;
-const STREAM_WATCHDOG_INTERVAL_MS = 5_000;
+/**
+ * How long a silent stream is tolerated before it is treated as dead.
+ *
+ * An SSE connection can go half-open - the hosting proxy rotates it, the
+ * socket stays up, and no error ever fires - so the ONLY signal is silence.
+ * Heartbeats refresh the clock, so silence here means the feed genuinely
+ * stopped delivering, not that the market went quiet.
+ *
+ * These were 30s stale / 5s watchdog / 4s reconnect, a worst case of 39
+ * seconds before a print could reappear, and prints then arrived in a burst
+ * at the end of it. The liquidity stream runs against the SAME gateway on
+ * 15s / 3s / 250ms and has done so reliably, which is what makes these values
+ * safe rather than optimistic: the gateway's heartbeat is already known to be
+ * frequent enough for them.
+ */
+export const STREAM_STALE_AFTER_MS = 15_000;
+export const STREAM_WATCHDOG_INTERVAL_MS = 3_000;
+/**
+ * A stall is not an outage. A watchdog reconnect goes straight back out,
+ * while an explicit error keeps a backoff so a genuinely down gateway is not
+ * hammered by every open pane.
+ */
+export const STREAM_STALE_RECONNECT_DELAY_MS = 250;
+export const STREAM_RECONNECT_DELAY_MS = 4_000;
 
 export type ExecutionTapeEngineHandlers = {
   onStatus: (status: ExecutionTapeStatus) => void;
@@ -75,7 +96,7 @@ export function createExecutionTapeEngine(
     watchdogTimer = null;
   };
 
-  const scheduleReconnect = () => {
+  const scheduleReconnect = (delayMs: number = STREAM_RECONNECT_DELAY_MS) => {
     if (stopped) return;
     closeConnection();
     setStatus("checking");
@@ -83,7 +104,7 @@ export function createExecutionTapeEngine(
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null;
       void connect();
-    }, STREAM_RECONNECT_DELAY_MS);
+    }, delayMs);
   };
 
   async function connect(): Promise<void> {
@@ -166,7 +187,7 @@ export function createExecutionTapeEngine(
         if (
           generation === thisGeneration
           && Date.now() - lastActivityAt > STREAM_STALE_AFTER_MS
-        ) scheduleReconnect();
+        ) scheduleReconnect(STREAM_STALE_RECONNECT_DELAY_MS);
       }, STREAM_WATCHDOG_INTERVAL_MS);
 
       stream.onerror = () => {
