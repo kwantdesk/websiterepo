@@ -51,6 +51,7 @@ import { defaultIndicatorSettings, normalizeStoredIndicator } from "@/lib/chartI
 import type { InstitutionalTrade } from "@/lib/institutionalMarketData";
 import type { PaperPosition, PaperProtectionUpdate, PaperTradeFill } from "@/lib/paperTrading";
 import { sliceReplayExecutionWindow } from "@/lib/replayExecutionWindow";
+import { useVixEnvironment } from "@/hooks/useVixEnvironment";
 
 const Chart = dynamic(() => import("@/components/Chart"), {
   ssr: false,
@@ -88,6 +89,7 @@ const REPLAY_INDICATORS_STORAGE_KEY = "kwantdesk:historical-replay:indicators:v1
 function defaultReplayIndicators(theme: ChartSettings): ChartIndicatorInstance[] {
   const requestedReplayStudies = [
     "gamma-environment",
+    "vix-environment",
     "bounce-levels",
     "kwant-profile",
     "cumulative-volume-delta",
@@ -835,6 +837,30 @@ export default function BacktestingWorkspace({
   const root = instrument === "NQ" || instrument === "MNQ" ? "NQ" : "ES";
   const replayClock = playbackClock;
   const replayDataClock = replayClock === null ? null : Math.floor(replayClock / 1_000) * 1_000;
+  const replayVixIndicator = replayIndicators.find((instance) =>
+    instance.enabled && instance.indicatorId === "vix-environment") ?? null;
+  const replayVixThresholds = useMemo(() => ({
+    normal: Number(replayVixIndicator?.settings?.normalThreshold ?? 15),
+    elevated: Number(replayVixIndicator?.settings?.elevatedThreshold ?? 20),
+    high: Number(replayVixIndicator?.settings?.highThreshold ?? 25),
+    extreme: Number(replayVixIndicator?.settings?.extremeThreshold ?? 30),
+  }), [
+    replayVixIndicator?.settings?.elevatedThreshold,
+    replayVixIndicator?.settings?.extremeThreshold,
+    replayVixIndicator?.settings?.highThreshold,
+    replayVixIndicator?.settings?.normalThreshold,
+  ]);
+  const {
+    snapshot: replayVixEnvironment,
+    loading: replayVixEnvironmentLoading,
+    error: replayVixEnvironmentError,
+  } = useVixEnvironment({
+    enabled: Boolean(started && replayVixIndicator),
+    instrument: selectedDefinition.id,
+    sourceSetting: replayVixIndicator?.settings?.sourceSymbol,
+    replayTimestampMs: replayDataClock,
+    thresholds: replayVixThresholds,
+  });
   const activeOptionsSnapshot = replayClock ? replayOptionsSnapshot(replayClock) : null;
   const replayGammaEnvironment = useMemo(() => gammaPositioning ? {
     label: gammaPositioning.environment.gammaStateLabel,
@@ -1859,6 +1885,9 @@ export default function BacktestingWorkspace({
             gammaEnvironment={replayGammaEnvironment}
             gammaEnvironmentLoading={levelLoading && !replayGammaEnvironment}
             gammaEnvironmentError={levelError.gamma || null}
+            vixEnvironment={replayVixIndicator ? replayVixEnvironment : null}
+            vixEnvironmentLoading={Boolean(replayVixIndicator && replayVixEnvironmentLoading)}
+            vixEnvironmentError={replayVixIndicator ? replayVixEnvironmentError : null}
             valueAreaLevelsEnabled={levelState.valueArea}
             valueAreaLevelsAvailable
             valueAreaLevelsLoading={false}

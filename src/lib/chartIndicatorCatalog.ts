@@ -58,6 +58,7 @@ export const CHART_INDICATOR_CATEGORIES: ChartIndicatorCategory[] = [
 
 export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
   indicator("Gamma Environment", "Options Flow", "Compact live gamma-regime status box with configurable chart-corner placement.", false, "Kwantify"),
+  indicator("VIX Environment", "Volatility", "Compact VIX/VXN implied-volatility regime with daily move, session range and trailing 52-week rank and percentile.", false, "Kwantify"),
   indicator("Zero Gamma Line", "Options Flow", "True scenario-repriced dealer Gamma zero crossing with live updates and five completed trading sessions of no-lookahead history.", false, "Kwantify"),
   indicator("Options Delta", "Options Flow", "Net dealer Delta exposure of the chart's own options family through the session, drawn as signed bars beneath price like CVD.", false, "Kwantify"),
   indicator("Zero Gamma Bars", "Options Flow", "Net dealer Gamma of the chart's own options family through the session as signed bars: above zero is the positive-Gamma environment, below is negative, and the bar height shows how close the regime sits to flipping.", false, "Kwantify"),

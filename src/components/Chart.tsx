@@ -77,6 +77,7 @@ import {
   X,
 } from "lucide-react";
 import { Candle, Trade } from "@/lib/backtester";
+import type { VixEnvironmentSnapshot } from "@/lib/vixEnvironment";
 import {
   DATABENTO_LIVE_TICK_EVENT,
   LIVE_CHART_CANDLE_EVENT,
@@ -546,6 +547,9 @@ interface ChartProps {
   } | null;
   gammaEnvironmentLoading?: boolean;
   gammaEnvironmentError?: string | null;
+  vixEnvironment?: VixEnvironmentSnapshot | null;
+  vixEnvironmentLoading?: boolean;
+  vixEnvironmentError?: string | null;
   onToggleGammaLevels?: () => void;
   kwantLevelsEnabled?: boolean;
   kwantLevelsAvailable?: boolean;
@@ -2974,6 +2978,9 @@ function Chart({
   gammaEnvironment = null,
   gammaEnvironmentLoading = false,
   gammaEnvironmentError = null,
+  vixEnvironment = null,
+  vixEnvironmentLoading = false,
+  vixEnvironmentError = null,
   onToggleGammaLevels,
   kwantLevelsEnabled = false,
   kwantLevelsAvailable = false,
@@ -8035,6 +8042,35 @@ function Chart({
     if (!label) return null;
     return gammaEnvironmentScale <= 0.85 ? label.split(/\s[-·]\s/)[0] : label;
   })();
+  const vixEnvironmentIndicator = useMemo(
+    () => indicators.find((instance) => instance.enabled && instance.indicatorId === "vix-environment") ?? null,
+    [indicatorSignature, indicators],
+  );
+  const vixEnvironmentSettings = vixEnvironmentIndicator?.settings ?? {};
+  const vixEnvironmentPosition = String(vixEnvironmentSettings.position ?? "top-left");
+  const vixEnvironmentScale = Math.min(2, Math.max(0.6, Number(vixEnvironmentSettings.badgeScale ?? 1)));
+  const vixEnvironmentUseThemeColors = vixEnvironmentSettings.useThemeColors === true;
+  const vixEnvironmentColor = (() => {
+    const regime = vixEnvironment?.regime ?? "NORMAL";
+    if (vixEnvironmentUseThemeColors) {
+      if (regime === "CALM") return settings.upColor;
+      if (regime === "NORMAL") return settings.borderUpColor;
+      if (regime === "ELEVATED") return settings.wickUpColor;
+      if (regime === "HIGH") return settings.borderDownColor;
+      return settings.downColor;
+    }
+    const key = regime === "CALM" ? "calmColor"
+      : regime === "NORMAL" ? "normalColor"
+        : regime === "ELEVATED" ? "elevatedColor"
+          : regime === "HIGH" ? "highColor"
+            : "extremeColor";
+    const fallback = regime === "CALM" ? "#22C55E"
+      : regime === "NORMAL" ? "#38BDF8"
+        : regime === "ELEVATED" ? "#F59E0B"
+          : regime === "HIGH" ? "#F97316"
+            : "#EF4444";
+    return String(vixEnvironmentSettings[key] ?? fallback);
+  })();
   const classicGexOverlay = useMemo(() => {
     if (!classicGexIndicator || !classicGexProfile || !candleSeriesRef.current) return null;
     const profileSettings = classicGexIndicator.settings ?? {};
@@ -9681,13 +9717,13 @@ function Chart({
   // The badge sits INSIDE the chart plot: clear of the measured price scale on
   // the right, the time axis at the bottom, and the pinned drawing toolbar on
   // the left. CSS zoom scales offset values too, so they are divided back out.
-  const gammaEnvironmentPositionStyle = (() => {
-    const unzoom = (value: number) => value / gammaEnvironmentScale;
+  const environmentPositionStyle = (position: string, scale: number) => {
+    const unzoom = (value: number) => value / scale;
     const rightInsetPx = unzoom(nativePriceScaleWidth + 10);
     const bottomInsetPx = unzoom(26 + 8);
     const leftInsetPx = unzoom(LEGACY_LEFT_TOOLBAR_ENABLED && toolbarPinned && toolbarDock === "left" ? toolbarMetrics.buttonSize + 22 : 12);
     const topInsetPx = unzoom(12);
-    switch (gammaEnvironmentPosition) {
+    switch (position) {
       case "top-left": return { left: leftInsetPx, top: topInsetPx } as CSSProperties;
       case "top-middle": return { left: "50%", top: topInsetPx, transform: "translateX(-50%)" } as CSSProperties;
       case "bottom-left": return { left: leftInsetPx, bottom: bottomInsetPx } as CSSProperties;
@@ -9695,7 +9731,9 @@ function Chart({
       case "bottom-right": return { right: rightInsetPx, bottom: bottomInsetPx } as CSSProperties;
       default: return { right: rightInsetPx, top: topInsetPx } as CSSProperties;
     }
-  })();
+  };
+  const gammaEnvironmentPositionStyle = environmentPositionStyle(gammaEnvironmentPosition, gammaEnvironmentScale);
+  const vixEnvironmentPositionStyle = environmentPositionStyle(vixEnvironmentPosition, vixEnvironmentScale);
   const toolbarButtonStyle = {
     width: toolbarMetrics.buttonSize,
     height: toolbarMetrics.buttonSize,
@@ -14289,6 +14327,73 @@ function Chart({
           {gammaEnvironmentIndicator.settings?.showSource === true && gammaEnvironment ? (
             <div className="mt-1 max-w-[240px] truncate text-[7px] uppercase tracking-[0.08em] text-muted">
               {gammaEnvironment.sourceLabel}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+      {vixEnvironmentIndicator ? (
+        <div
+          className="pointer-events-none absolute z-[32] min-w-[168px] border bg-panel/94 px-3 py-2 font-mono shadow-xl backdrop-blur"
+          style={{
+            ...vixEnvironmentPositionStyle,
+            borderColor: `color-mix(in srgb, ${vixEnvironmentColor} 58%, transparent)`,
+            boxShadow: `0 0 18px color-mix(in srgb, ${vixEnvironmentColor} 14%, transparent)`,
+            ...(vixEnvironmentScale !== 1 ? { zoom: vixEnvironmentScale } as CSSProperties : {}),
+          }}
+          aria-label="VIX Environment"
+        >
+          <div className="flex items-center gap-2 text-[7px] uppercase tracking-[0.15em] text-muted">
+            <span
+              className={`h-1.5 w-1.5 rounded-full ${vixEnvironmentLoading && !vixEnvironment ? "animate-pulse" : ""}`}
+              style={{ backgroundColor: vixEnvironmentError && !vixEnvironment ? settings.downColor : vixEnvironmentColor }}
+            />
+            <span>VIX Environment</span>
+          </div>
+          <div className="mt-1 flex items-baseline gap-2 whitespace-nowrap">
+            <span className="text-[13px] font-semibold" style={{ color: vixEnvironmentColor }}>
+              {vixEnvironment ? `${vixEnvironment.symbol} ${vixEnvironment.value.toFixed(2)}` : "—"}
+            </span>
+            <span className="text-[8px] font-semibold uppercase tracking-[0.08em]" style={{ color: vixEnvironmentColor }}>
+              {vixEnvironment?.regime
+                ?? (vixEnvironmentLoading ? "Synchronising" : vixEnvironmentError ? "Unavailable" : "Waiting")}
+            </span>
+          </div>
+          {vixEnvironmentIndicator.settings?.showChange !== false && vixEnvironment?.change !== null && vixEnvironment?.change !== undefined ? (
+            <div className="mt-1 text-[8px] uppercase tracking-[0.08em] text-foreground">
+              Day {vixEnvironment.change >= 0 ? "+" : ""}{vixEnvironment.change.toFixed(2)}
+              {vixEnvironment.changePercent !== null
+                ? ` · ${vixEnvironment.changePercent >= 0 ? "+" : ""}${vixEnvironment.changePercent.toFixed(2)}%`
+                : ""}
+            </div>
+          ) : null}
+          {vixEnvironmentIndicator.settings?.showRange !== false && vixEnvironment && vixEnvironment.sessionLow !== null && vixEnvironment.sessionHigh !== null ? (
+            <div className="mt-1 text-[7px] uppercase tracking-[0.08em] text-muted">
+              Range {vixEnvironment.sessionLow.toFixed(2)}—{vixEnvironment.sessionHigh.toFixed(2)}
+              {vixEnvironment.sessionPositionPercent !== null ? ` · ${Math.round(vixEnvironment.sessionPositionPercent)}%` : ""}
+            </div>
+          ) : null}
+          {(vixEnvironmentIndicator.settings?.showRank !== false || vixEnvironmentIndicator.settings?.showPercentile !== false) && vixEnvironment ? (
+            <div className="mt-1 flex items-center gap-2 text-[7px] uppercase tracking-[0.08em] text-muted">
+              {vixEnvironmentIndicator.settings?.showRank !== false && vixEnvironment.rank52Week !== null ? (
+                <span>52W rank <b className="text-foreground">{Math.round(vixEnvironment.rank52Week)}</b></span>
+              ) : null}
+              {vixEnvironmentIndicator.settings?.showPercentile !== false && vixEnvironment.percentile52Week !== null ? (
+                <span>Pctl <b className="text-foreground">{Math.round(vixEnvironment.percentile52Week)}</b></span>
+              ) : null}
+            </div>
+          ) : null}
+          {vixEnvironmentIndicator.settings?.showFreshness !== false && vixEnvironment ? (
+            <div className="mt-1 flex items-center gap-1.5 text-[7px] uppercase tracking-[0.1em] text-muted">
+              <span className={vixEnvironment.stale ? "text-warning" : "text-primary"}>
+                {vixEnvironment.stale ? "Last session" : "Live"}
+              </span>
+              <span>·</span>
+              <span>{new Date(vixEnvironment.checkedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+            </div>
+          ) : null}
+          {vixEnvironmentIndicator.settings?.showSource === true && vixEnvironment ? (
+            <div className="mt-1 max-w-[260px] truncate text-[7px] uppercase tracking-[0.08em] text-muted">
+              {vixEnvironment.sourceLabel}
             </div>
           ) : null}
         </div>

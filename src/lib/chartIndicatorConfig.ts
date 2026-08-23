@@ -15,6 +15,7 @@ import { DEFAULT_TAPE_SPEED_SETTINGS, normalizeTapeSpeedSettings } from "@/lib/t
 
 export const LIVE_CHART_INDICATOR_IDS = new Set([
   "gamma-environment",
+  "vix-environment",
   "zero-gamma-line",
   "options-delta",
   "zero-gamma-bars",
@@ -997,6 +998,28 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     negativeColor: "#EF4444",
     badgeScale: 1,
     gammaEnvironmentSettingsVersion: 2,
+  } : {}),
+  ...(indicatorId === "vix-environment" ? {
+    position: "top-left",
+    sourceSymbol: "VIX",
+    showChange: true,
+    showRange: true,
+    showRank: true,
+    showPercentile: true,
+    showFreshness: true,
+    showSource: false,
+    useThemeColors: false,
+    calmColor: "#22C55E",
+    normalColor: "#38BDF8",
+    elevatedColor: "#F59E0B",
+    highColor: "#F97316",
+    extremeColor: "#EF4444",
+    normalThreshold: 15,
+    elevatedThreshold: 20,
+    highThreshold: 25,
+    extremeThreshold: 30,
+    badgeScale: 1,
+    vixEnvironmentSettingsVersion: 1,
   } : {}),
   ...(indicatorId === "pulling-stacking" ? {
     ...DEFAULT_PULLING_STACKING_SETTINGS,
@@ -2463,6 +2486,42 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
       ...normalizedInstance,
       settings: { ...settings, gammaEnvironmentSettingsVersion: 2 },
     };
+  }
+  if (normalizedInstance.indicatorId === "vix-environment") {
+    const defaults = defaultIndicatorSettings("vix-environment");
+    const settings = { ...defaults, ...(normalizedInstance.settings ?? {}) };
+    const allowedPositions = new Set([
+      "top-left",
+      "top-middle",
+      "top-right",
+      "bottom-left",
+      "bottom-middle",
+      "bottom-right",
+    ]);
+    if (!allowedPositions.has(String(settings.position))) settings.position = "top-left";
+    if (!new Set(["VIX", "VXN", "AUTO"]).has(String(settings.sourceSymbol).toUpperCase())) settings.sourceSymbol = "VIX";
+    else settings.sourceSymbol = String(settings.sourceSymbol).toUpperCase();
+    const parsedScale = Number(settings.badgeScale);
+    settings.badgeScale = Number.isFinite(parsedScale) ? Math.min(2, Math.max(0.6, parsedScale)) : 1;
+    const normal = Math.max(5, Math.min(50, Number(settings.normalThreshold) || 15));
+    const elevated = Math.max(normal + 1, Math.min(60, Number(settings.elevatedThreshold) || 20));
+    const high = Math.max(elevated + 1, Math.min(70, Number(settings.highThreshold) || 25));
+    const extreme = Math.max(high + 1, Math.min(100, Number(settings.extremeThreshold) || 30));
+    Object.assign(settings, {
+      normalThreshold: normal,
+      elevatedThreshold: elevated,
+      highThreshold: high,
+      extremeThreshold: extreme,
+      showChange: settings.showChange !== false,
+      showRange: settings.showRange !== false,
+      showRank: settings.showRank !== false,
+      showPercentile: settings.showPercentile !== false,
+      showFreshness: settings.showFreshness !== false,
+      showSource: settings.showSource === true,
+      useThemeColors: settings.useThemeColors === true,
+      vixEnvironmentSettingsVersion: 1,
+    });
+    return { ...normalizedInstance, settings };
   }
   if (normalizedInstance.indicatorId === "ib-levels") {
     const defaults = defaultIndicatorSettings("ib-levels");

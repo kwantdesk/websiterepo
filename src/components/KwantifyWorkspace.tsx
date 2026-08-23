@@ -18,6 +18,7 @@ import { useKwantBotInterpreter } from "@/hooks/useKwantBotInterpreter";
 import { useSocialNotifications } from "@/hooks/useSocialNotifications";
 import { useStructureLevels } from "@/hooks/useStructureLevels";
 import { useGexBotFlow } from "@/hooks/useGexBotFlow";
+import { useVixEnvironment } from "@/hooks/useVixEnvironment";
 import { ACTIVITY_STREAK_TIME_ZONE } from "@/lib/activityStreak";
 import { STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT } from "@/lib/volumeProfileMath";
 import { clearChartViewportGroup } from "@/lib/chartViewportSync";
@@ -5459,6 +5460,30 @@ function WorkspaceChartPaneComponent({
     instance.enabled && instance.indicatorId === "expected-move") ?? null;
   const gammaEnvironmentIndicator = indicators.find((instance) =>
     instance.enabled && instance.indicatorId === "gamma-environment") ?? null;
+  const vixEnvironmentIndicator = indicators.find((instance) =>
+    instance.enabled && instance.indicatorId === "vix-environment") ?? null;
+  const vixEnvironmentThresholds = useMemo(() => ({
+    normal: Number(vixEnvironmentIndicator?.settings?.normalThreshold ?? 15),
+    elevated: Number(vixEnvironmentIndicator?.settings?.elevatedThreshold ?? 20),
+    high: Number(vixEnvironmentIndicator?.settings?.highThreshold ?? 25),
+    extreme: Number(vixEnvironmentIndicator?.settings?.extremeThreshold ?? 30),
+  }), [
+    vixEnvironmentIndicator?.settings?.elevatedThreshold,
+    vixEnvironmentIndicator?.settings?.extremeThreshold,
+    vixEnvironmentIndicator?.settings?.highThreshold,
+    vixEnvironmentIndicator?.settings?.normalThreshold,
+  ]);
+  const {
+    snapshot: vixEnvironment,
+    loading: vixEnvironmentLoading,
+    error: vixEnvironmentError,
+  } = useVixEnvironment({
+    enabled: Boolean(vixEnvironmentIndicator),
+    instrument: pane.symbol,
+    sourceSetting: vixEnvironmentIndicator?.settings?.sourceSymbol,
+    replayTimestampMs,
+    thresholds: vixEnvironmentThresholds,
+  });
   const directGammaEnvironmentConversion = gammaEnvironmentIndicator
     ? resolveDirectGammaEnvironmentConversion(gammaInstrument)
     : null;
@@ -8604,6 +8629,9 @@ function WorkspaceChartPaneComponent({
           gammaEnvironment={gammaEnvironmentIndicator ? currentGammaEnvironment : null}
           gammaEnvironmentLoading={Boolean(gammaEnvironmentIndicator && currentGammaEnvironmentLoading)}
           gammaEnvironmentError={gammaEnvironmentIndicator ? currentGammaEnvironmentError : null}
+          vixEnvironment={vixEnvironmentIndicator ? vixEnvironment : null}
+          vixEnvironmentLoading={Boolean(vixEnvironmentIndicator && vixEnvironmentLoading)}
+          vixEnvironmentError={vixEnvironmentIndicator ? vixEnvironmentError : null}
           onToggleGammaLevels={onToggleGammaLevels}
           kwantLevelsEnabled={kwantLevelsEnabled}
           kwantLevelsAvailable={kwantLevelsAvailable}

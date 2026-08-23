@@ -373,6 +373,7 @@ const sectionForSetting = (indicatorId: string, key: string, fallback: string) =
 
 export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "gamma-environment",
+  "vix-environment",
   "zero-gamma-line",
   "options-delta",
   "zero-gamma-bars",
@@ -4856,6 +4857,148 @@ export default function ChartIndicatorsControl({
                   ) : null}
                   <p className="text-[8px] leading-4 text-muted sm:col-span-2">
                     Uses the same authoritative gamma-environment frame as Kwant Levels and keeps the latest good snapshot visible between refreshes.
+                  </p>
+                </div>
+              ) : null}
+
+              {settingsDefinition.id === "vix-environment" ? (
+                <div className="grid gap-3 border border-primary/20 bg-primary/[0.035] p-3 sm:grid-cols-2">
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                    <span>Box position</span>
+                    <KwantSelect
+                      value={String(settingsInstance.settings?.position ?? "top-left")}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                        ...current,
+                        settings: { ...(current.settings ?? {}), position: event.target.value },
+                      }))}
+                      className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                      menuLabel="VIX Environment position"
+                    >
+                      <option value="top-left">Top left</option>
+                      <option value="top-middle">Top middle</option>
+                      <option value="top-right">Top right</option>
+                      <option value="bottom-left">Bottom left</option>
+                      <option value="bottom-middle">Bottom middle</option>
+                      <option value="bottom-right">Bottom right</option>
+                    </KwantSelect>
+                  </label>
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                    <span>Volatility source</span>
+                    <KwantSelect
+                      value={String(settingsInstance.settings?.sourceSymbol ?? "VIX")}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                        ...current,
+                        settings: { ...(current.settings ?? {}), sourceSymbol: event.target.value },
+                      }))}
+                      className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                      menuLabel="VIX Environment source"
+                    >
+                      <option value="VIX">VIX · S&amp;P 500 volatility</option>
+                      <option value="VXN">VXN · Nasdaq-100 volatility</option>
+                      <option value="AUTO">Auto · match instrument family</option>
+                    </KwantSelect>
+                  </label>
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">
+                    <span className="flex items-center justify-between">
+                      <span>Box size</span>
+                      <span className="font-mono normal-case text-foreground">{Math.round(Number(settingsInstance.settings?.badgeScale ?? 1) * 100)}%</span>
+                    </span>
+                    <input
+                      type="range"
+                      min={0.6}
+                      max={2}
+                      step={0.05}
+                      value={Number(settingsInstance.settings?.badgeScale ?? 1)}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                        ...current,
+                        settings: { ...(current.settings ?? {}), badgeScale: Number(event.target.value) },
+                      }))}
+                      className="w-full accent-primary"
+                      aria-label="VIX Environment box size"
+                    />
+                  </label>
+                  {[
+                    ["showChange", "Daily change"],
+                    ["showRange", "Session range"],
+                    ["showRank", "52-week rank"],
+                    ["showPercentile", "52-week percentile"],
+                    ["showFreshness", "Freshness"],
+                    ["showSource", "Data source"],
+                  ].map(([key, label]) => (
+                    <label key={key} className="flex items-center gap-2 text-[9px] uppercase tracking-[0.12em] text-muted">
+                      <input
+                        type="checkbox"
+                        checked={settingsInstance.settings?.[key] !== false && (key !== "showSource" || settingsInstance.settings?.showSource === true)}
+                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                          ...current,
+                          settings: { ...(current.settings ?? {}), [key]: event.target.checked },
+                        }))}
+                        className="h-3.5 w-3.5 accent-primary"
+                      />
+                      {label}
+                    </label>
+                  ))}
+                  <label className="flex items-center gap-2 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">
+                    <input
+                      type="checkbox"
+                      checked={settingsInstance.settings?.useThemeColors === true}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                        ...current,
+                        settings: { ...(current.settings ?? {}), useThemeColors: event.target.checked },
+                      }))}
+                      className="h-3.5 w-3.5 accent-primary"
+                    />
+                    Use theme colours
+                  </label>
+                  <div className="grid grid-cols-2 gap-2 sm:col-span-2 sm:grid-cols-4">
+                    {[
+                      ["normalThreshold", "Normal from", 15],
+                      ["elevatedThreshold", "Elevated from", 20],
+                      ["highThreshold", "High from", 25],
+                      ["extremeThreshold", "Extreme from", 30],
+                    ].map(([key, label, fallback]) => (
+                      <label key={String(key)} className="space-y-1 text-[8px] uppercase tracking-[0.1em] text-muted">
+                        <span>{String(label)}</span>
+                        <input
+                          type="number"
+                          min={5}
+                          max={100}
+                          step={1}
+                          value={Number(settingsInstance.settings?.[String(key)] ?? fallback)}
+                          onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                            ...current,
+                            settings: { ...(current.settings ?? {}), [String(key)]: Number(event.target.value) },
+                          }))}
+                          className="h-8 w-full border border-border bg-background px-2 font-mono text-[10px] text-foreground"
+                        />
+                      </label>
+                    ))}
+                  </div>
+                  {settingsInstance.settings?.useThemeColors !== true ? (
+                    <div className="grid gap-2 sm:col-span-2 sm:grid-cols-5">
+                      {[
+                        ["calmColor", "Calm", "#22C55E"],
+                        ["normalColor", "Normal", "#38BDF8"],
+                        ["elevatedColor", "Elevated", "#F59E0B"],
+                        ["highColor", "High", "#F97316"],
+                        ["extremeColor", "Extreme", "#EF4444"],
+                      ].map(([key, label, fallback]) => (
+                        <div key={key} className="flex items-center justify-between gap-2 text-[8px] uppercase tracking-[0.1em] text-muted sm:block sm:space-y-1">
+                          <span>{label}</span>
+                          <ChartColorField
+                            ariaLabel={`${label} VIX regime colour`}
+                            value={String(settingsInstance.settings?.[key] ?? fallback)}
+                            onChange={(hex) => replace(settingsInstance.instanceId, (current) => ({
+                              ...current,
+                              settings: { ...(current.settings ?? {}), [key]: hex },
+                            }))}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                  <p className="text-[8px] leading-4 text-muted sm:col-span-2">
+                    VIX is the market&apos;s 30-day implied-volatility index. The 52-week rank places today inside its trailing range; percentile is the share of trailing closes at or below today. Replay never reads beyond its selected clock.
                   </p>
                 </div>
               ) : null}
