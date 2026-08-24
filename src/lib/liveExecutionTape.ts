@@ -70,6 +70,57 @@ function removeSupersededFlowBuckets(
   return [...current.slice(0, start), ...retained, ...current.slice(end)];
 }
 
+function removeSupersededFlowBucketsInPlace(
+  current: InstitutionalTrade[],
+  exactSecondBuckets: Set<number>,
+) {
+  if (!current.length || !exactSecondBuckets.size) return;
+  let firstSecond = Number.POSITIVE_INFINITY;
+  let lastSecond = Number.NEGATIVE_INFINITY;
+  for (const second of exactSecondBuckets) {
+    if (second < firstSecond) firstSecond = second;
+    if (second > lastSecond) lastSecond = second;
+  }
+  const firstTimestamp = firstSecond * 1_000;
+  const lastTimestampExclusive = (lastSecond + 1) * 1_000;
+  const currentTail = current.at(-1);
+  if (!currentTail || currentTail.timestamp < firstTimestamp) return;
+
+  let low = 0;
+  let high = current.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if (current[middle].timestamp < firstTimestamp) low = middle + 1;
+    else high = middle;
+  }
+  const start = low;
+  let end = start;
+  while (end < current.length && current[end].timestamp < lastTimestampExclusive) end += 1;
+  if (start === end) return;
+
+  let write = start;
+  for (let read = start; read < end; read += 1) {
+    const record = current[read];
+    if (
+      record.flowOnly
+      && exactSecondBuckets.has(Math.floor(record.timestamp / 1_000))
+    ) continue;
+    current[write] = record;
+    write += 1;
+  }
+  if (write === end) return;
+  const removed = end - write;
+  current.copyWithin(write, end);
+  current.length -= removed;
+}
+
+function replaceArrayContents<T>(target: T[], replacement: T[]) {
+  if (target === replacement) return target;
+  target.length = 0;
+  for (const item of replacement) target.push(item);
+  return target;
+}
+
 export function mergeInstitutionalTradeTape(
   current: InstitutionalTrade[],
   incoming: InstitutionalTrade[],
@@ -102,6 +153,55 @@ export function mergeInstitutionalTradeTape(
   const unique = new Map<string, InstitutionalTrade>();
   for (const record of [...baseCurrent, ...additions]) unique.set(recordKey(record), record);
   return compactSortedTape([...unique.values()].sort(ordered));
+}
+
+/**
+ * Append into the single workspace-owned live tape without allocating another
+ * 55k-entry array for every Rithmic packet. React consumers must receive a
+ * sampled `tape.slice()` rather than retaining this mutable canonical array.
+ */
+export function mergeInstitutionalTradeTapeInPlace(
+  current: InstitutionalTrade[],
+  incoming: InstitutionalTrade[],
+) {
+  if (!incoming.length) return current;
+
+  const exactSecondBuckets = new Set<number>();
+  for (const record of incoming) {
+    if (!record.flowOnly) exactSecondBuckets.add(Math.floor(record.timestamp / 1_000));
+  }
+  removeSupersededFlowBucketsInPlace(current, exactSecondBuckets);
+
+  const recentKeys = new Set<string>();
+  const recentStart = Math.max(0, current.length - Math.max(512, incoming.length * 4));
+  for (let index = recentStart; index < current.length; index += 1) {
+    recentKeys.add(recordKey(current[index]));
+  }
+
+  const additions: InstitutionalTrade[] = [];
+  for (const record of incoming) {
+    const key = recordKey(record);
+    if (recentKeys.has(key)) continue;
+    recentKeys.add(key);
+    additions.push(record);
+  }
+  if (!additions.length) return current;
+
+  const currentTail = current.at(-1);
+  const additionsAreOrdered = additions.every((record, index) => (
+    index === 0
+      ? !currentTail || ordered(currentTail, record) <= 0
+      : ordered(additions[index - 1], record) <= 0
+  ));
+  if (!additionsAreOrdered) {
+    return replaceArrayContents(current, mergeInstitutionalTradeTape(current, additions));
+  }
+
+  for (const record of additions) current.push(record);
+  if (current.length > COMPACTION_HIGH_WATER) {
+    replaceArrayContents(current, compactSortedTape(current));
+  }
+  return current;
 }
 
 export const LIVE_EXECUTION_TAPE_LIMITS = {

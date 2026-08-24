@@ -1334,7 +1334,8 @@ export function applyInstitutionalTradesToCandles(
     };
   }
 
-  return next.slice(-Math.max(1, limit));
+  const retainedLimit = Math.max(1, limit);
+  return next.length > retainedLimit ? next.slice(-retainedLimit) : next;
 }
 
 export function mergeInstitutionalVolumeProfiles(

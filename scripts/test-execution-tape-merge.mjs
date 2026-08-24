@@ -1,9 +1,46 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { admitRecords } from "../src/lib/executionTape.ts";
+import {
+  LIVE_EXECUTION_TAPE_LIMITS,
+  mergeInstitutionalTradeTapeInPlace,
+} from "../src/lib/liveExecutionTape.ts";
 
 const tape = () => ({ records: [], recordKeys: new Set() });
 const print = (n) => ({ eventId: `e${n}`, timestamp: 1_000 + n, recordIndex: n, close: 29_500 + (n % 40) * 0.25, volume: 1 + (n % 7), side: n % 2 ? "buy" : "sell" });
+
+// --- the shared workspace tape mutates one canonical array ---
+{
+  const current = [print(1), print(2)];
+  const reference = current;
+  const merged = mergeInstitutionalTradeTapeInPlace(current, [print(2), print(3), print(3), print(4)]);
+  assert.equal(merged, reference, "the hot path must retain one canonical array");
+  assert.deepEqual(merged.map((record) => record.eventId), ["e1", "e2", "e3", "e4"]);
+
+  const flow = { ...print(10), timestamp: 10_050, eventId: "flow", flowOnly: true };
+  const exact = { ...print(11), timestamp: 10_080, eventId: "exact", flowOnly: false };
+  mergeInstitutionalTradeTapeInPlace(current, [flow]);
+  mergeInstitutionalTradeTapeInPlace(current, [exact]);
+  assert.ok(!current.some((record) => record.eventId === "flow"), "exact prints replace their flow bucket in place");
+  assert.ok(current.some((record) => record.eventId === "exact"));
+}
+
+// --- compaction remains bounded without replacing the canonical reference ---
+{
+  const current = [];
+  const reference = current;
+  const records = Array.from({ length: LIVE_EXECUTION_TAPE_LIMITS.highWater + 10 }, (_, index) => ({
+    ...print(index),
+    timestamp: 100_000 + index,
+    flowOnly: index % 2 === 0,
+  }));
+  mergeInstitutionalTradeTapeInPlace(current, records);
+  assert.equal(current, reference);
+  assert.ok(
+    current.length <= LIVE_EXECUTION_TAPE_LIMITS.flow + LIVE_EXECUTION_TAPE_LIMITS.exact,
+    "the canonical tape compacts to the two retained lanes",
+  );
+}
 
 // --- admission keeps the tape exact ---
 {

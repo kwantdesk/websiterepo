@@ -126,7 +126,12 @@ class GammaHeatmapRenderer implements ISeriesPrimitivePaneRenderer {
       context.rect(0, 0, mediaSize.width, mediaSize.height);
       context.clip();
       if (data.viewMode !== "levels-only") {
-        const pixelRatio = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
+        const devicePixelRatio = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
+        // The heatmap cache is an auxiliary bitmap layered over the chart.
+        // Bound it independently from display DPR so a large grid does not
+        // duplicate hundreds of MB of GPU backing stores per pane.
+        const pixelBudgetRatio = Math.sqrt(1_000_000 / Math.max(1, mediaSize.width * mediaSize.height));
+        const pixelRatio = Math.max(0.35, Math.min(1.5, devicePixelRatio, pixelBudgetRatio));
         // Try to reuse the cached surface. Repainting the bins is the expensive
         // work; a live chart pans/rescales every frame but the DATA only changes
         // on a refresh. When the data, size and horizontal zoom are unchanged we

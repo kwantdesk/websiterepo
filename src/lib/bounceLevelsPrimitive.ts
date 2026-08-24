@@ -860,8 +860,13 @@ export class BounceLevelsPrimitive implements ISeriesPrimitive<Time> {
   }
   createLayer(width: number, height: number) {
     const devicePixelRatio = typeof window === "undefined" ? 1 : Math.max(1, window.devicePixelRatio || 1);
-    const pixelBudgetRatio = Math.sqrt(4_000_000 / Math.max(1, width * height));
-    const pixelRatio = Math.max(1, Math.min(2, devicePixelRatio, pixelBudgetRatio));
+    // This is an auxiliary overlay in addition to Lightweight Charts' own
+    // high-DPI canvases. Share a fixed bitmap budget across active panes and
+    // permit a sub-1x cache on very large/multi-monitor workspaces; drawImage
+    // scales it back to media coordinates while chart-owned text stays crisp.
+    const perPanelPixelBudget = Math.max(260_000, Math.floor(2_000_000 / this.activePanelCount()));
+    const pixelBudgetRatio = Math.sqrt(perPanelPixelBudget / Math.max(1, width * height));
+    const pixelRatio = Math.max(0.35, Math.min(1.5, devicePixelRatio, pixelBudgetRatio));
     // Live exposure frames invalidate this layer several times per second.
     // Reuse its backing surface instead of allocating a new multi-megabyte GPU
     // canvas for every frame (the live-session Aw, Snap/OOM root cause).

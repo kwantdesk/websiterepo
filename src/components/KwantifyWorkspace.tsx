@@ -147,7 +147,10 @@ import {
   type InstitutionalTrade,
   type InstitutionalVolumeProfile,
 } from "@/lib/institutionalMarketData";
-import { mergeInstitutionalTradeTape } from "@/lib/liveExecutionTape";
+import {
+  mergeInstitutionalTradeTape,
+  mergeInstitutionalTradeTapeInPlace,
+} from "@/lib/liveExecutionTape";
 import { ORDER_FLOW_DATA_REFRESH_INTERVAL_MS } from "@/lib/footprintRuntime";
 import { subscribeRithmicIndicatorTrades } from "@/lib/rithmicIndicatorStream";
 import {
@@ -3415,7 +3418,13 @@ function mergeSharedWorkspaceExecutionTape(
   const key = workspaceOrderFlowKey(symbol, timeframe);
   const completedBatch = workspaceExecutionBatchResults.get(incoming);
   if (completedBatch?.key === key) return completedBatch.tape;
-  const sharedTape = workspaceExecutionTape.get(key) ?? [];
+  let sharedTape = workspaceExecutionTape.get(key);
+  if (!sharedTape) {
+    // The workspace map owns the only mutable live tape. Never mutate a React
+    // state array supplied by a pane when seeding the shared contract stream.
+    sharedTape = localTape.slice();
+    storeWorkspaceExecutionTape(key, sharedTape);
+  }
   const incomingTail = incoming.at(-1);
   const sharedTailRecord = sharedTape.at(-1);
   // Background panes intentionally coalesce for longer than the active pane.
@@ -3438,14 +3447,15 @@ function mergeSharedWorkspaceExecutionTape(
   }
   const localTail = localTape.at(-1)?.timestamp ?? 0;
   const sharedTail = sharedTape.at(-1)?.timestamp ?? 0;
-  const baseTape = sharedTail > localTail
-    || (sharedTail === localTail && sharedTape.length >= localTape.length)
-    ? sharedTape
-    : localTape;
-  const tape = storeWorkspaceExecutionTape(
-    key,
-    mergeInstitutionalTradeTape(baseTape, incoming),
-  );
+  if (
+    localTape !== sharedTape
+    && (localTail > sharedTail || (localTail === sharedTail && localTape.length > sharedTape.length))
+  ) {
+    sharedTape.length = 0;
+    for (const record of localTape) sharedTape.push(record);
+  }
+  const tape = mergeInstitutionalTradeTapeInPlace(sharedTape, incoming);
+  storeWorkspaceExecutionTape(key, tape);
   workspaceExecutionBatchResults.set(incoming, { key, tape });
   return tape;
 }
@@ -5880,7 +5890,7 @@ function WorkspaceChartPaneComponent({
       const delay = Math.max(0, cadence - elapsed);
       if (delay === 0) {
         lastMarketTradeStateSyncRef.current = Date.now();
-        setMarketTrades(latestMarketTradesRef.current);
+        setMarketTrades(latestMarketTradesRef.current.slice());
         return;
       }
       if (marketTradeStateSyncTimer !== null) return;
@@ -5890,7 +5900,7 @@ function WorkspaceChartPaneComponent({
       marketTradeStateSyncTimer = window.setTimeout(() => {
         marketTradeStateSyncTimer = null;
         lastMarketTradeStateSyncRef.current = Date.now();
-        setMarketTrades(latestMarketTradesRef.current);
+        setMarketTrades(latestMarketTradesRef.current.slice());
       }, delay);
     };
     const queueProfileUpdate = (records: InstitutionalTrade[]) => {
@@ -6032,7 +6042,7 @@ function WorkspaceChartPaneComponent({
             records,
           );
           latestMarketTradesRef.current = next;
-          setMarketTrades(next);
+          setMarketTrades(next.slice());
         }
 
         // A collector reconnect commonly provides a session seed before the
@@ -7710,7 +7720,7 @@ function WorkspaceChartPaneComponent({
             const tapeCadence = activeRef.current ? 1_000 : 2_500;
             if (now - lastMarketTradeStateSyncRef.current >= tapeCadence) {
               lastMarketTradeStateSyncRef.current = now;
-              setMarketTrades(nextTape);
+              setMarketTrades(nextTape.slice());
             }
           }
         }

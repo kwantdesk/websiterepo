@@ -389,5 +389,6 @@ export function applyMarketTradesToEventBars(
     if (bars.length > limit * 2) bars.splice(0, bars.length - limit);
   }
 
-  return bars.slice(-Math.max(1, limit));
+  const retainedLimit = Math.max(1, limit);
+  return bars.length > retainedLimit ? bars.slice(-retainedLimit) : bars;
 }

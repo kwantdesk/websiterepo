@@ -475,8 +475,12 @@ export class DarkPoolGexPrimitive implements ISeriesPrimitive<Time> {
     const devicePixelRatio = typeof window === "undefined" ? 1 : Math.max(1, window.devicePixelRatio || 1);
     const activePanels = this.activePanelCount();
     const maximumRatio = activePanels >= 4 ? 1.25 : activePanels >= 2 ? 1.5 : 2;
-    const pixelBudgetRatio = Math.sqrt(2_000_000 / Math.max(1, width * height));
-    const pixelRatio = Math.max(1, Math.min(maximumRatio, devicePixelRatio, pixelBudgetRatio));
+    // This cached overlay must not retain another full-size GPU bitmap for
+    // every chart in a wide grid. Divide a bounded cache budget across panes
+    // and upscale during the final blit.
+    const perPanelPixelBudget = Math.max(220_000, Math.floor(1_400_000 / activePanels));
+    const pixelBudgetRatio = Math.sqrt(perPanelPixelBudget / Math.max(1, width * height));
+    const pixelRatio = Math.max(0.35, Math.min(maximumRatio, devicePixelRatio, pixelBudgetRatio));
     const canvas = this.layerCanvas ?? document.createElement("canvas");
     const nextWidth = Math.max(1, Math.ceil(width * pixelRatio));
     const nextHeight = Math.max(1, Math.ceil(height * pixelRatio));
