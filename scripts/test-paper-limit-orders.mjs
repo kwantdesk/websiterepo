@@ -162,3 +162,87 @@ console.log("Paper limit order ticket tests passed.");
 }
 
 console.log("Paper limit order engine tests passed.");
+
+// ---------------------------------------------------------------------------
+// A resting order shows on the chart, and its stop and target are attached by
+// dragging off that static entry line - before it has filled.
+// ---------------------------------------------------------------------------
+{
+  const { placePaperOrder, processPaperQuote, updatePaperOrderProtection } =
+    await import("../src/lib/paperTrading.ts");
+  const account = {
+    id: "acct-3", name: "Sim", balance: "5000000", equity: "5000000", leverage: "1:1",
+    strategy: "", instrument: "NQ", running: true, change: "0", pnl: "0",
+    positions: "0", today: "0", trades: 0, created: "", points: "0",
+  };
+  const accounts = [account];
+  const quote = (bid, ask, t) => ({ bid, ask, timestamp: t });
+  let ledger = { version: 1, accounts: {} };
+
+  // Placed with NO protection, exactly as a chart click places it.
+  const placed = placePaperOrder(ledger, accounts, {
+    accountId: "acct-3", symbol: "NQ", side: "buy", type: "limit", quantity: 1,
+    price: 29000, stopLoss: null, takeProfits: [],
+  }, quote(29100, 29100.25, 1_000));
+  assert.equal(placed.error, undefined);
+  ledger = placed.ledger;
+  const orderId = placed.order.id;
+  assert.equal(ledger.accounts["acct-3"].orders[0].stopLoss, null, "it rests unprotected");
+
+  // Drag a stop off the resting entry.
+  ledger = updatePaperOrderProtection(ledger, "acct-3", orderId, { kind: "stop_loss", price: 28950 });
+  assert.equal(ledger.accounts["acct-3"].orders[0].stopLoss, 28950, "the stop attaches to the ORDER");
+  // And a target.
+  ledger = updatePaperOrderProtection(ledger, "acct-3", orderId, { kind: "take_profit", price: 29100 });
+  assert.equal(ledger.accounts["acct-3"].orders[0].takeProfits[0].price, 29100);
+
+  // The wrong side is refused rather than stored - a fill would otherwise
+  // close instantly at a loss.
+  const before = ledger;
+  ledger = updatePaperOrderProtection(ledger, "acct-3", orderId, { kind: "stop_loss", price: 29500 });
+  assert.equal(ledger, before, "a stop above a buy entry must be refused");
+  ledger = updatePaperOrderProtection(ledger, "acct-3", orderId, { kind: "take_profit", price: 28500 });
+  assert.equal(ledger, before, "a target below a buy entry must be refused");
+
+  // Protection set on the resting order has to survive the fill.
+  ledger = processPaperQuote(ledger, accounts, "NQ", quote(28999.75, 29000, 3_000), { executionAuthorized: true });
+  const position = ledger.accounts["acct-3"].positions[0];
+  assert.ok(position, "it fills");
+  assert.equal(position.stopLoss, 28950, "the dragged stop transfers to the position");
+  assert.equal(position.takeProfits[0].price, 29100, "and so does the target");
+
+  // A filled or unknown order is not editable.
+  assert.equal(updatePaperOrderProtection(ledger, "acct-3", orderId, { kind: "stop_loss", price: 28900 }), ledger,
+    "a filled order must not accept new protection");
+  assert.equal(updatePaperOrderProtection(ledger, "acct-3", "nope", { kind: "stop_loss", price: 1 }), ledger);
+}
+
+// --- the chart draws resting orders and routes their edits to the order ---
+{
+  const { readFileSync } = await import("node:fs");
+  const chart = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
+  const workspace = readFileSync(new URL("../src/components/KwantifyWorkspace.tsx", import.meta.url), "utf8");
+
+  assert.ok(chart.includes("workingOrderAnchor"), "a resting order needs a drawable anchor");
+  assert.ok(chart.includes("...workingOrderOverlayLevels].map((level)"),
+    "it must go through the SAME overlay pipeline as a position, so it gets the handles");
+  assert.ok(chart.includes("· working"), "and be labelled as resting, not filled");
+  // Routing: the id decides whether the edit lands on an order or a position.
+  assert.ok(workspace.includes("updatePaperOrderProtection(current, accountId, positionId, update)"),
+    "an edit on a resting order must write to the ORDER");
+  assert.ok(workspace.includes('candidate.status === "working"'), "and only while it is still working");
+  // Placing must end the arming session, or the line keeps following the
+  // cursor and the click looks like it did nothing.
+  const placeBlock = workspace.slice(
+    workspace.indexOf("const order = pendingChartOrder;"),
+    workspace.indexOf("Yes, place it"),
+  );
+  assert.ok(placeBlock.includes("setChartPlacementSuspended(true)"),
+    "placing must stop the line following the cursor");
+  assert.ok(
+    placeBlock.indexOf("setChartPlacementSuspended(true)") < placeBlock.indexOf("submitPaperOrder({"),
+    "and must do so before sending",
+  );
+}
+
+console.log("Resting order chart tests passed.");

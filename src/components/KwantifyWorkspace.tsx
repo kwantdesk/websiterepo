@@ -243,12 +243,14 @@ import {
   parseLeverage,
   parsePaperPriceInput,
   placePaperOrder,
+  updatePaperOrderProtection,
   processPaperQuote,
   resetPaperAccountLedger,
   savePaperTradingLedger,
   snapPaperPrice,
   summarizePaperAccount,
   updatePaperProtection,
+  type PaperOrder,
   type PaperProtectionUpdate,
   type PaperPosition,
   type PaperTradeFill,
@@ -5127,6 +5129,7 @@ function WorkspaceChartPaneComponent({
   paperFills,
   onUpdatePaperProtection,
   armedOrder,
+  paperWorkingOrders,
   onArmedOrderPick,
   onArmedOrderCancel,
   onPaperProtectionDragStateChange,
@@ -5181,6 +5184,7 @@ function WorkspaceChartPaneComponent({
   paperPositions?: PaperPosition[];
   paperFills?: PaperTradeFill[];
   armedOrder?: { side: "buy" | "sell"; type: "limit" | "stop"; quantity: number } | null;
+  paperWorkingOrders?: PaperOrder[];
   onArmedOrderPick?: (price: number) => void;
   onArmedOrderCancel?: () => void;
   onUpdatePaperProtection?: (
@@ -8755,6 +8759,7 @@ function WorkspaceChartPaneComponent({
           expectedMoveCalibration={expectedMoveCalibration}
           volumeProfiles={volumeProfiles}
           armedOrder={armedOrder}
+          paperWorkingOrders={paperWorkingOrders}
           onArmedOrderPick={onArmedOrderPick}
           onArmedOrderCancel={onArmedOrderCancel}
           initialBalanceCandles={initialBalanceStudyCandles.length ? initialBalanceStudyCandles : undefined}
@@ -16191,12 +16196,31 @@ export default function KwantifyWorkspace({
     );
   };
 
+  /**
+   * A protection update names either a position or a RESTING ORDER. The chart
+   * presents an order as a position anchor so it can reuse the same handles
+   * and drag, so the id is what tells the two apart here.
+   */
   const handlePaperProtectionUpdate = (
     accountId: string,
     positionId: string,
     update: PaperProtectionUpdate,
   ) => {
     const current = paperLedgerRef.current;
+    const restingOrder = current.accounts[accountId]?.orders.find(
+      (candidate) => candidate.id === positionId && candidate.status === "working",
+    );
+    if (restingOrder) {
+      // It has not filled, so the stop and target belong on the ORDER and
+      // transfer to the position when it does.
+      const next = updatePaperOrderProtection(current, accountId, positionId, update);
+      if (next === current) {
+        showPaperOrderMessage("error", "TP and SL must remain on the correct side of the order price.");
+        return;
+      }
+      commitPaperLedger(next);
+      return;
+    }
     const position = current.accounts[accountId]?.positions.find((candidate) => candidate.id === positionId);
     const quote = position ? resolvePaperExecutionQuote(position.symbol) : null;
     const committedUpdate = update.kind === "stop_loss" && update.price != null && position && quote
@@ -16860,6 +16884,7 @@ export default function KwantifyWorkspace({
         paperFills={(selectedPaperAccountLedger?.fills ?? []).filter((fill) =>
           !selectedHiddenPaperFillIds.has(fill.id))}
         armedOrder={armedOrder}
+        paperWorkingOrders={selectedPaperWorkingOrders}
         onArmedOrderPick={(price) => {
           const armed = armedOrder;
           if (!armed) return;
@@ -19007,6 +19032,11 @@ export default function KwantifyWorkspace({
                     onClick={() => {
                       const order = pendingChartOrder;
                       setPendingChartOrder(null);
+                      // Placing ends the arming session. Re-arming here would
+                      // leave the line following the cursor immediately after
+                      // the order was placed, which reads as the click having
+                      // done nothing.
+                      setChartPlacementSuspended(true);
                       submitPaperOrder({
                         side: order.side,
                         type: order.type,

@@ -438,6 +438,7 @@ import {
   snapPaperPrice,
   type PaperMarkQuote,
   type PaperProtectionUpdate,
+  type PaperOrder,
   type PaperPosition,
   type PaperTradeFill,
 } from "@/lib/paperTrading";
@@ -593,6 +594,13 @@ interface ChartProps {
    * is far more direct than typing a level into a field.
    */
   armedOrder?: { side: "buy" | "sell"; type: "limit" | "stop"; quantity: number } | null;
+  /**
+   * Orders resting on the book. They have no position yet, so they are drawn
+   * from the order itself - and carry the same stop/target handles an open
+   * entry does, because that is where a trader reaches to attach exits.
+   */
+  paperWorkingOrders?: PaperOrder[];
+  onCancelWorkingOrder?: (orderId: string) => void;
   onArmedOrderPick?: (price: number) => void;
   onArmedOrderCancel?: () => void;
   onClosePaperPosition?: (position: PaperPosition) => void;
@@ -3016,6 +3024,8 @@ function Chart({
   armedOrder = null,
   onArmedOrderPick,
   onArmedOrderCancel,
+  paperWorkingOrders = [],
+  onCancelWorkingOrder,
   onUpdatePaperProtection,
   onPaperProtectionDragStateChange,
   onClosePaperPosition,
@@ -13972,13 +13982,86 @@ function Chart({
     return true;
   }, [professionalDrawings]);
 
+  const visibleWorkingOrders = useMemo(
+    () => paperWorkingOrders.filter((order) =>
+      order.status === "working"
+      && order.price != null
+      && normalizePaperSymbol(order.symbol) === normalizePaperSymbol(instrument)),
+    [instrument, paperWorkingOrders],
+  );
   const visiblePaperPositions = paperPositions.filter((position) =>
     position.status === "open"
     && position.remainingQuantity > 0
     && normalizePaperSymbol(position.symbol) === normalizePaperSymbol(instrument));
   const formatPaperMoney = (value: number) =>
     `${value > 0 ? "+" : value < 0 ? "-" : ""}$${Math.abs(value).toFixed(2)}`;
-  const paperOverlayLevels = visiblePaperPositions.flatMap((position) => {
+  /**
+   * A resting order presented as a position anchor.
+   *
+   * The overlay's handles, drag preview and commit path are all built around
+   * a position. An order carries every field they read, so presenting it this
+   * way gives a working order the same stop/target handles an open entry has
+   * without duplicating any of that pointer code. The commit is routed back
+   * to the ORDER by id, since that is where the protection has to live until
+   * it fills.
+   */
+  const workingOrderAnchor = (order: PaperOrder): PaperPosition => ({
+    id: order.id,
+    accountId: order.accountId,
+    symbol: order.symbol,
+    side: order.side,
+    quantity: order.quantity,
+    remainingQuantity: order.quantity,
+    entryPrice: order.price ?? 0,
+    openedAt: order.createdAt,
+    markPrice: order.price ?? 0,
+    protectionMarkPrice: order.price ?? 0,
+    protectionQuoteAt: order.createdAt,
+    unrealizedPnl: 0,
+    marginUsed: 0,
+    leverage: 1,
+    stopLoss: order.stopLoss,
+    takeProfits: order.takeProfits.map((target, index) => ({
+      id: `${order.id}-tp-${index}`,
+      price: target.price,
+      quantity: target.quantity,
+      filledQuantity: 0,
+    })),
+    status: "open",
+  });
+  const workingOrderOverlayLevels = visibleWorkingOrders.flatMap((order) => {
+    const anchor = workingOrderAnchor(order);
+    return [
+      {
+        id: `${order.id}-order`,
+        kind: "entry" as const,
+        price: anchor.entryPrice,
+        label: `${order.side === "buy" ? "BUY" : "SELL"} ${order.quantity} ${order.type.toUpperCase()} · ${anchor.entryPrice.toFixed(priceFormat.precision)} · working`,
+        color: order.side === "buy" ? settings.upColor : settings.downColor,
+        position: anchor,
+        targetId: null as string | null,
+      },
+      ...(order.stopLoss === null ? [] : [{
+        id: `${order.id}-order-sl`,
+        kind: "stop_loss" as const,
+        price: order.stopLoss,
+        label: `SL · ${order.quantity} · ${order.stopLoss.toFixed(priceFormat.precision)}`,
+        color: settings.downColor,
+        position: anchor,
+        targetId: null as string | null,
+      }]),
+      ...order.takeProfits.map((target, index) => ({
+        id: `${order.id}-order-tp-${index}`,
+        kind: "take_profit" as const,
+        price: target.price,
+        label: `TP · ${target.quantity} · ${target.price.toFixed(priceFormat.precision)}`,
+        color: settings.upColor,
+        position: anchor,
+        targetId: `${order.id}-tp-${index}` as string | null,
+      })),
+    ];
+  });
+  const paperOverlayLevels = [...visiblePaperPositions.flatMap((position) => {
     const livePositionPnl = paperPositionLivePnl(position);
     const entry = [{
       id: `${position.id}-entry`,
@@ -14022,7 +14105,9 @@ function Chart({
         targetId: target.id,
       }));
     return [...entry, ...stop, ...targets];
-  }).map((level) => {
+  // Resting orders draw alongside open positions and, presented as anchors,
+  // share their handles and drag path exactly.
+  }), ...workingOrderOverlayLevels].map((level) => {
     const displayPrice = paperDragPreview?.id === level.id ? paperDragPreview.price : level.price;
     const protectedQuantity = level.kind === "take_profit" && level.targetId
       ? (() => {
@@ -14161,7 +14246,7 @@ function Chart({
       });
     }
     primitive.update(levels, settings.backgroundColor);
-  }, [armedOrder, armedOrderPrice, candles, onClosePaperPosition, onUpdatePaperProtection, paperDraftOverlayLevel, paperOverlayLevels, priceFormat.precision, settings.backgroundColor, settings.downColor, settings.upColor]);
+  }, [armedOrder, armedOrderPrice, candles, onCancelWorkingOrder, onClosePaperPosition, onUpdatePaperProtection, paperDraftOverlayLevel, paperOverlayLevels, priceFormat.precision, settings.backgroundColor, settings.downColor, settings.upColor]);
 
   useEffect(() => {
     if (!liveCandleEventKey) return;

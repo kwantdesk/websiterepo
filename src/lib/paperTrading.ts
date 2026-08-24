@@ -1295,6 +1295,56 @@ export function flattenPaperAccount(
   return { ledger: nextLedger, closed, cancelled, errors };
 }
 
+/**
+ * Attach or move a resting order's stop and target before it fills.
+ *
+ * A working order has no position yet, so the protection lives on the ORDER
+ * and transfers to the position at the moment it fills. Without this the
+ * trader could only set exits by typing them into the ticket before placing;
+ * dragging them off the resting entry line - which is how they are set on an
+ * open position - had nowhere to write to.
+ *
+ * The same side rule is enforced as at placement: a stop above a buy entry or
+ * a target below it is refused rather than stored, since the fill would
+ * otherwise close instantly at a loss.
+ */
+export function updatePaperOrderProtection(
+  ledger: PaperTradingLedger,
+  accountId: string,
+  orderId: string,
+  update: PaperProtectionUpdate,
+): PaperTradingLedger {
+  const account = ledger.accounts[accountId];
+  if (!account) return ledger;
+  const order = account.orders.find((candidate) => candidate.id === orderId);
+  if (!order || order.status !== "working" || order.price == null) return ledger;
+
+  const price = update.price == null ? null : snapPaperPrice(order.symbol, update.price);
+  const nextStopLoss = update.kind === "stop_loss" ? price : order.stopLoss;
+  const nextTakeProfits = update.kind === "take_profit"
+    ? price == null
+      ? []
+      : [{
+        price,
+        quantity: paperOrderQuantity(order.symbol, update.quantity ?? order.quantity),
+      }]
+    : order.takeProfits;
+  if (!protectionValid(order.side, order.price, nextStopLoss, nextTakeProfits)) return ledger;
+
+  const nextOrder: PaperOrder = { ...order, stopLoss: nextStopLoss, takeProfits: nextTakeProfits };
+  return {
+    ...ledger,
+    accounts: {
+      ...ledger.accounts,
+      [accountId]: {
+        ...account,
+        orders: account.orders.map((candidate) => candidate.id === orderId ? nextOrder : candidate),
+        updatedAt: Date.now(),
+      },
+    },
+  };
+}
+
 export function cancelPaperOrder(ledger: PaperTradingLedger, accountId: string, orderId: string): PaperTradingLedger {
   const account = ledger.accounts[accountId];
   if (!account) return ledger;
