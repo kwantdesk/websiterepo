@@ -28,6 +28,7 @@
     "test:zero-gamma-line": "node --experimental-strip-types scripts/test-zero-gamma-line.mjs",
     "test:options-delta": "node --experimental-strip-types scripts/test-options-delta.mjs",
     "test:event-bar-block-prints": "node --import ./scripts/alias-hook.mjs scripts/test-event-bar-block-prints.mjs",
+    "test:indicator-plot-colors": "node --import ./scripts/alias-hook.mjs scripts/test-indicator-plot-colors.mjs",
     "test:trading-panel-orders": "node --import ./scripts/alias-hook.mjs scripts/test-trading-panel-orders.mjs",
     "test:big-trades-session-split": "node scripts/test-big-trades-session-split.mjs",
     "test:big-trades-marker-semantics": "node --import ./scripts/alias-hook.mjs scripts/test-big-trades-marker-semantics.mjs",

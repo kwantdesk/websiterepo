@@ -4,6 +4,7 @@ import type { ChartIndicatorInstance } from "@/lib/chartIndicatorCatalog";
 import { calculateDeepEffort } from "@/lib/deepEffort";
 import { detectCvdDivergences, sessionCvdBars, type CvdDivergenceSegment } from "@/lib/cvdDivergence";
 import { runSourceIndicator, type SourceIndicatorLanguage } from "@/lib/indicatorSourceAdapters";
+import { applyIndicatorPlotColors } from "@/lib/indicatorPlotColors";
 
 export type CalculatedIndicatorSeries = {
   key: string;
@@ -332,7 +333,28 @@ export function calculateDeltaPercentHighlights(
   });
 }
 
+/**
+ * Every study's plots, with the trader's own colours applied over them.
+ *
+ * The engine paints from the chart theme, which is right until somebody wants
+ * one moving average a different colour from another. Overrides are applied
+ * here, once, rather than threaded through twenty-six separate branches — an
+ * untouched indicator returns exactly what it always did.
+ */
 export function calculateIndicatorSeries(
+  instance: ChartIndicatorInstance,
+  candles: Candle[],
+  theme: IndicatorTheme,
+  context: { instrument?: string; tickSize?: number } = {},
+): CalculatedIndicatorSeries[] {
+  return applyIndicatorPlotColors(
+    instance.indicatorId,
+    instance.settings as Record<string, unknown> | undefined,
+    computeIndicatorSeries(instance, candles, theme, context),
+  );
+}
+
+function computeIndicatorSeries(
   instance: ChartIndicatorInstance,
   candles: Candle[],
   theme: IndicatorTheme,
