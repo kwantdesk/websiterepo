@@ -30,6 +30,75 @@ const CBOE_VIX_HISTORY_START = Date.UTC(1990, 0, 1);
 const snapshotCache = new Map<string, { expiresAt: number; payload: unknown }>();
 const SNAPSHOT_CACHE_TTL_MS = 10_000;
 
+type IndexHistoryCandle = {
+  timestamp: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function indexHistoryCandles(payload: unknown): IndexHistoryCandle[] {
+  if (!isRecord(payload) || !Array.isArray(payload.candles)) return [];
+  return payload.candles.flatMap((value): IndexHistoryCandle[] => {
+    if (!isRecord(value)) return [];
+    const timestamp = Number(value.timestamp);
+    const open = Number(value.open);
+    const high = Number(value.high);
+    const low = Number(value.low);
+    const close = Number(value.close);
+    const volume = Number(value.volume ?? 0);
+    if (![timestamp, open, high, low, close].every(Number.isFinite)) return [];
+    return [{ timestamp, open, high, low, close, volume: Number.isFinite(volume) ? volume : 0 }];
+  });
+}
+
+function newYorkDateKey(timestamp: number) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date(timestamp));
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((item) => item.type === type)?.value ?? "";
+  return `${part("year")}-${part("month")}-${part("day")}`;
+}
+
+function newYorkCashSessionHasStarted(timestamp: number) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date(timestamp));
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((item) => item.type === type)?.value ?? "";
+  const weekday = part("weekday");
+  const minute = Number(part("hour")) * 60 + Number(part("minute"));
+  return weekday !== "Sat" && weekday !== "Sun" && minute >= 9 * 60 + 30;
+}
+
+function needsCurrentSessionRepair(candles: IndexHistoryCandle[], from: number, to: number, now: number) {
+  if (!newYorkCashSessionHasStarted(now)) return false;
+  const today = newYorkDateKey(now);
+  if (newYorkDateKey(to) !== today || from >= now) return false;
+  const latest = candles.at(-1);
+  return !latest || newYorkDateKey(latest.timestamp) !== today;
+}
+
+function mergeIndexHistoryCandles(...groups: IndexHistoryCandle[][]) {
+  return [...new Map(
+    groups.flat().map((candle) => [candle.timestamp, candle] as const),
+  ).values()].sort((left, right) => left.timestamp - right.timestamp);
+}
+
 export async function GET(request: Request) {
   const url = new URL(request.url);
   if (url.searchParams.get("snapshot") === "1") {
@@ -133,7 +202,53 @@ export async function GET(request: Request) {
             : "VPS index history failed.";
           throw new Error(message);
         }
-        return NextResponse.json(payload, {
+        let responsePayload = payload;
+        const historicalCandles = indexHistoryCandles(payload);
+        if (needsCurrentSessionRepair(historicalCandles, from, to, now)) {
+          // Massive can return completed sessions but omit today's NDX bars
+          // when a multi-day aggregate crosses a weekend. The same provider
+          // returns the live session correctly when it is requested alone.
+          // Repair that stale tail here so the chart does not jump from
+          // Friday history to only the few quote-built candles held by the
+          // browser.
+          try {
+            const today = newYorkDateKey(now);
+            const currentSessionFrom = Date.parse(`${today}T00:00:00.000Z`);
+            const currentParams = new URLSearchParams({
+              symbol,
+              timeframe,
+              from: String(currentSessionFrom),
+              to: String(to),
+            });
+            const currentUpstream = await fetchInstitutionalMarketData(
+              `v1/market-data/index-history?${currentParams.toString()}`,
+              { method: "GET" },
+              20_000,
+            );
+            const currentPayload = await currentUpstream.json().catch(() => null) as unknown;
+            let currentCandles = currentUpstream.ok ? indexHistoryCandles(currentPayload) : [];
+            if (!currentCandles.length) {
+              currentCandles = (await fetchMarketIndexCandles({
+                symbol,
+                timeframe,
+                from: currentSessionFrom,
+                to,
+              })).map((candle) => ({ ...candle, volume: candle.volume ?? 0 }));
+            }
+            if (currentCandles.length && isRecord(payload)) {
+              responsePayload = {
+                ...payload,
+                candles: mergeIndexHistoryCandles(historicalCandles, currentCandles),
+                source: `${String(payload.source || "VPS index history")} + current session`,
+              };
+            }
+          } catch {
+            // Keep the valid completed-session history. The local provider
+            // chain below remains the fallback when the primary request
+            // itself fails.
+          }
+        }
+        return NextResponse.json(responsePayload, {
           headers: { "Cache-Control": "private, no-store, max-age=0" },
         });
       } catch {

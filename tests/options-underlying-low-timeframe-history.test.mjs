@@ -25,7 +25,7 @@ test("every options-underlying minute interval uses bounded market-session reque
   assert.match(adapter, /sessionDate,\s*aggregationPeriod,\s*filter: \{ ticker: symbol \}/s);
   assert.match(adapter, /weekdaySessionDates\(from, to\)\.map/);
   assert.match(adapter, /Promise\.allSettled/);
-  assert.match(adapter, /options-underlying-session-history-v1/);
+  assert.match(adapter, /options-underlying-session-history-v2/);
   assert.match(adapter, /new Map\(candles\.map\(\(candle\) => \[candle\.timestamp, candle\]\)\)/);
 });
 
