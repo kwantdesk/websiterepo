@@ -15,9 +15,32 @@ for (const tool of [
 ]) assert.ok(dashboard.includes(tool), `Missing registered dashboard tool: ${tool}`);
 
 for (const capability of [
-  "kwantdesk:gex-box:dashboard:v2", "Export workspace", "Import workspace",
-  "Reset to standard", "Infinite", "Duplicate Tab", "shared VPS feeds",
+  "kwantdesk:gex-box:dashboard:v2", "Import workspace",
+  "Reset to standard", "Duplicate Tab", "shared VPS feeds",
 ]) assert.ok(dashboard.includes(capability), `Missing dashboard capability: ${capability}`);
+
+// Workspaces are saved, listed, applied and exported from one menu in the
+// header centre — the same gestures the charts workspaces menu offers, over a
+// store of their own so the two lists cannot empty each other.
+assert.ok(
+  dashboard.includes("function GexBoxWorkspacesMenu")
+  && dashboard.includes("Quick Save")
+  && dashboard.includes("Save As")
+  && dashboard.includes("exportGexBoxWorkspace")
+  && dashboard.includes("saveGexBoxWorkspace"),
+  "GEX BOX must save, list, apply and export its own workspaces.",
+);
+assert.ok(
+  !dashboard.includes("kwantdesk:workspace-presets"),
+  "GEX BOX workspaces must not share the charts preset store.",
+);
+
+// One grid pattern, three across. Choosing a layout is gone, so a workspace
+// saved on one machine lands the same way on another.
+assert.ok(
+  dashboard.includes("xl:grid-cols-3") && !dashboard.includes('addPage("infinite")'),
+  "GEX BOX must use one fixed grid rather than a chosen layout.",
+);
 
 assert.ok(dashboard.includes("feedSubscribers") && dashboard.includes("feedTimers"), "Dashboard must share requests and polling timers across duplicate panels.");
 assert.ok(dashboard.includes("memo(function ToolSurface") && dashboard.includes("memo(function DashboardPanelView"), "Unchanged GEX BOX panels must not rerender when another panel changes.");

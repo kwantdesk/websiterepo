@@ -1,10 +1,10 @@
 "use client";
 
 import {
-  Activity, BarChart3, BookOpen, ChevronDown, Copy, Download, Expand,
-  FileUp, Grid2X2, Grip, Infinity as InfinityIcon, LayoutDashboard, Maximize2,
+  Activity, BarChart3, BookOpen, Copy, Download, Expand,
+  FileUp, Grip, LayoutDashboard, Maximize2,
   MoreHorizontal, Move, Plus, RefreshCw, Search, Settings2, Trash2, X,
-  SlidersHorizontal,
+  Save, SlidersHorizontal,
 } from "lucide-react";
 import { memo, startTransition, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
@@ -36,6 +36,15 @@ type DashboardWorkspace = {
   paletteId?: string;
 };
 
+import {
+  deleteGexBoxWorkspace,
+  exportGexBoxWorkspace,
+  GEX_BOX_WORKSPACES_EVENT,
+  importGexBoxWorkspace,
+  loadGexBoxWorkspaces,
+  saveGexBoxWorkspace,
+  type GexBoxWorkspacePreset,
+} from "@/lib/gexBoxWorkspaces";
 import {
   DEFAULT_GEX_BOX_PALETTE_ID,
   gexBoxPanelColors,
@@ -155,6 +164,136 @@ function GexBoxStyleSettings({ paletteId, onApply, onClose }: {
           })}
         </div>
       </div>
+    </div>
+  </div>;
+}
+
+/**
+ * Saved GEX BOX workspaces, in the same shape the charts menu uses.
+ *
+ * Same visuals and the same gestures — Quick Save, Save As, pick one to apply,
+ * export, delete — over a separate store, because a GEX BOX workspace and a
+ * charts workspace have no fields in common. Keeping the interaction identical
+ * is the point; keeping the lists apart is what stops one emptying the other.
+ */
+function GexBoxWorkspacesMenu({ activeId, snapshotName, onApply, onSave, onImport, onReset, onClose }: {
+  activeId: string | null;
+  snapshotName: string;
+  onApply: (preset: GexBoxWorkspacePreset) => void;
+  onSave: (name: string) => { ok: boolean; error?: string };
+  onImport: (file: File) => void;
+  onReset: () => void;
+  onClose: () => void;
+}) {
+  const [presets, setPresets] = useState<GexBoxWorkspacePreset[]>([]);
+  const [saveAs, setSaveAs] = useState(false);
+  const [name, setName] = useState("");
+  const [status, setStatus] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    const refresh = () => setPresets(loadGexBoxWorkspaces());
+    refresh();
+    window.addEventListener(GEX_BOX_WORKSPACES_EVENT, refresh);
+    return () => window.removeEventListener(GEX_BOX_WORKSPACES_EVENT, refresh);
+  }, []);
+
+  const commit = (value: string) => {
+    const result = onSave(value);
+    if (!result.ok) { setStatus(result.error ?? "That could not be saved."); return; }
+    setPresets(loadGexBoxWorkspaces());
+    setSaveAs(false); setName(""); setStatus(null);
+  };
+
+  return <div className="absolute left-1/2 top-9 z-[220] w-[340px] -translate-x-1/2 rounded-2xl border border-border bg-panel p-2 shadow-2xl shadow-black/50">
+    <div className="flex items-center justify-between gap-3 px-2 pb-2 pt-1">
+      <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">GEX BOX workspaces</span>
+      <span className="flex items-center gap-1.5 text-[9px] text-muted">
+        <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+        Saved locally
+      </span>
+    </div>
+    <div className="mb-2 grid grid-cols-2 gap-1.5">
+      <button
+        type="button"
+        onClick={() => commit(activeId ? snapshotName : "GEX BOX")}
+        className="flex h-9 items-center justify-center gap-1.5 rounded-xl bg-primary text-[10px] font-semibold text-background"
+      >
+        <Save className="h-3.5 w-3.5" />
+        Quick Save
+      </button>
+      <button
+        type="button"
+        onClick={() => { setSaveAs(true); setStatus(null); }}
+        className="flex h-9 items-center justify-center gap-1.5 rounded-xl border border-border bg-surface text-[10px] font-semibold text-foreground"
+      >
+        <Plus className="h-3.5 w-3.5" />
+        Save As
+      </button>
+    </div>
+    <div className="max-h-64 space-y-1 overflow-y-auto">
+      {presets.length ? presets.map((preset) => (
+        <div key={preset.id} className={`group flex items-center gap-1 rounded-xl ${activeId === preset.id ? "bg-primary/10 ring-1 ring-inset ring-primary/25" : "hover:bg-surface"}`}>
+          <button type="button" onClick={() => { onApply(preset); onClose(); }} className="min-w-0 flex-1 px-3 py-2 text-left">
+            <div className="truncate text-[12px] font-medium text-foreground">{preset.name}</div>
+            <div className="mt-0.5 text-[9px] text-muted">
+              {activeId === preset.id ? "Active · " : ""}
+              {preset.pages.length} {preset.pages.length === 1 ? "page" : "pages"}
+              {preset.updatedAt ? ` · ${new Date(preset.updatedAt).toLocaleDateString()}` : ""}
+            </div>
+          </button>
+          <button
+            type="button"
+            onClick={() => { void navigator.clipboard?.writeText(exportGexBoxWorkspace(preset)).then(() => setStatus(`${preset.name} copied as JSON`)).catch(() => setStatus("Could not copy that workspace.")); }}
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-muted opacity-0 transition-opacity hover:text-primary group-hover:opacity-100"
+            aria-label={`Export ${preset.name}`}
+            title="Copy this workspace as JSON"
+          ><Download className="h-3.5 w-3.5" /></button>
+          <button
+            type="button"
+            onClick={() => { if (window.confirm(`Delete workspace "${preset.name}"?`)) setPresets(deleteGexBoxWorkspace(preset.id)); }}
+            className="mr-1 flex h-7 w-7 items-center justify-center rounded-lg text-muted opacity-0 transition-opacity hover:text-danger group-hover:opacity-100"
+            aria-label={`Delete ${preset.name}`}
+          ><Trash2 className="h-3.5 w-3.5" /></button>
+        </div>
+      )) : <div className="rounded-xl border border-dashed border-border px-3 py-4 text-center text-[10px] text-muted">No saved workspaces yet</div>}
+    </div>
+    <div className="mt-2 border-t border-border pt-2">
+      {saveAs ? <div className="mb-2 flex items-center gap-2">
+        <input
+          autoFocus
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+          onKeyDown={(event) => { if (event.key === "Enter") commit(name); if (event.key === "Escape") setSaveAs(false); }}
+          placeholder="Workspace name"
+          className="h-8 min-w-0 flex-1 rounded-lg border border-border bg-background px-2 text-[10px] text-foreground outline-none focus:border-primary/40"
+        />
+        <button type="button" onClick={() => commit(name)} className="h-8 rounded-lg bg-primary px-3 text-[9px] font-semibold uppercase text-background">Save</button>
+      </div> : null}
+      <button
+        type="button"
+        onClick={() => fileRef.current?.click()}
+        className="flex h-8 w-full items-center justify-center gap-1.5 rounded-lg border border-border text-[9px] font-semibold uppercase tracking-[.1em] text-muted hover:text-foreground"
+      >
+        <FileUp className="h-3.5 w-3.5" />
+        Import workspace
+      </button>
+      <input
+        ref={fileRef}
+        type="file"
+        accept="application/json,.json"
+        className="hidden"
+        onChange={(event) => { const file = event.target.files?.[0]; if (file) onImport(file); event.target.value = ""; }}
+      />
+      <button
+        type="button"
+        onClick={() => { if (window.confirm("Reset this workspace to the standard layout?")) { onReset(); onClose(); } }}
+        className="mt-1.5 flex h-8 w-full items-center justify-center gap-1.5 rounded-lg border border-border text-[9px] font-semibold uppercase tracking-[.1em] text-muted hover:text-foreground"
+      >
+        <RefreshCw className="h-3.5 w-3.5" />
+        Reset to standard
+      </button>
+      {status ? <div className="mt-2 text-[9px] text-primary" role="status">{status}</div> : null}
     </div>
   </div>;
 }
@@ -965,7 +1104,9 @@ const DashboardPanelView = memo(function DashboardPanelView({ panel, index, onCh
 function MenuButton({ icon: Icon, label, onClick, danger = false }: { icon: typeof Copy; label: string; onClick: () => void; danger?: boolean }) { return <button onClick={onClick} className={`flex h-8 w-full items-center gap-2 px-2 text-left text-[9px] ${danger ? "text-danger" : "text-muted hover:text-foreground"}`}><Icon className="h-3.5 w-3.5" />{label}</button>; }
 
 export default function GexBoxDashboard() {
-  const [workspace, setWorkspace] = useState<DashboardWorkspace>(() => defaultWorkspace()); const [hydrated, setHydrated] = useState(false); const [showTools, setShowTools] = useState(false); const [showStyle, setShowStyle] = useState(false); const [workspaceMenu, setWorkspaceMenu] = useState(false); const importRef = useRef<HTMLInputElement | null>(null);
+  const [workspace, setWorkspace] = useState<DashboardWorkspace>(() => defaultWorkspace()); const [hydrated, setHydrated] = useState(false); const [showTools, setShowTools] = useState(false); const [showStyle, setShowStyle] = useState(false); const [workspaceMenu, setWorkspaceMenu] = useState(false);
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
+  const [activeWorkspaceName, setActiveWorkspaceName] = useState("GEX BOX");
   useEffect(() => { try { const raw = localStorage.getItem(STORAGE_KEY); if (raw) { const parsed = JSON.parse(raw) as DashboardWorkspace; if (parsed.schemaVersion === 2 && parsed.pages?.length) setWorkspace({ ...parsed, pages: parsed.pages.map((page) => ({ ...page, panels: page.panels.map((panel) => ({ ...panel, settings: completeSettings(panel.settings) })) })) }); } } catch {} setHydrated(true); }, []);
   useEffect(() => {
     if (!hydrated) return;
@@ -1054,6 +1195,43 @@ export default function GexBoxDashboard() {
     };
   }, [panelDrag, updatePage]);
 
+  const saveNamedWorkspace = useCallback((name: string) => {
+    const result = saveGexBoxWorkspace(name, {
+      pages: workspace.pages,
+      activePageId: workspace.activePageId,
+      paletteId: workspace.paletteId,
+    });
+    if (!result.ok) return { ok: false, error: result.error };
+    setActiveWorkspaceId(result.preset.id);
+    setActiveWorkspaceName(result.preset.name);
+    return { ok: true };
+  }, [workspace]);
+
+  const applySavedWorkspace = useCallback((preset: GexBoxWorkspacePreset) => {
+    const pages = preset.pages as DashboardPage[];
+    if (!Array.isArray(pages) || !pages.length) return;
+    setWorkspace({
+      schemaVersion: 2,
+      name: preset.name,
+      // A saved workspace names its own active page; if that page is missing
+      // the first one is used rather than leaving the dashboard on a page id
+      // that matches nothing and rendering blank.
+      activePageId: pages.some((page) => page.id === preset.activePageId) ? preset.activePageId : pages[0].id,
+      paletteId: preset.paletteId,
+      pages: pages.map((page) => ({ ...page, panels: (page.panels ?? []).map((panel) => ({ ...panel, settings: completeSettings(panel.settings) })) })),
+    });
+    setActiveWorkspaceId(preset.id);
+    setActiveWorkspaceName(preset.name);
+  }, []);
+
+  const importSavedWorkspace = useCallback((file: File) => {
+    void file.text().then((raw) => {
+      const result = importGexBoxWorkspace(raw);
+      if (!result.ok) { window.alert(result.error); return; }
+      applySavedWorkspace(result.preset);
+    }).catch(() => window.alert("That file could not be read."));
+  }, [applySavedWorkspace]);
+
   const applyPalette = useCallback((paletteId: string) => {
     const colors = gexBoxPanelColors(resolveGexBoxRoles(paletteId));
     // Written into every panel rather than read at render time, so a panel
@@ -1070,8 +1248,6 @@ export default function GexBoxDashboard() {
   }, []);
 
   const addPage = (layout: "grid" | "infinite") => { const id = makeId("page"); setWorkspace((current) => ({ ...current, activePageId: id, pages: [...current.pages, { id, name: layout === "grid" ? `Page ${current.pages.length + 1}` : `Infinite ${current.pages.length + 1}`, layout, panels: [] }] })); };
-  const exportWorkspace = () => { const blob = new Blob([JSON.stringify(workspace, null, 2)], { type: "application/json" }); const url = URL.createObjectURL(blob); const anchor = document.createElement("a"); anchor.href = url; anchor.download = `kwantdesk-gex-box-${new Date().toISOString().slice(0, 10)}.json`; anchor.click(); URL.revokeObjectURL(url); };
-  const importWorkspace = async (file: File) => { try { const parsed = JSON.parse(await file.text()) as DashboardWorkspace; if (parsed.schemaVersion !== 2 || !Array.isArray(parsed.pages) || !parsed.pages.length || parsed.pages.some((page) => !page.id || !Array.isArray(page.panels) || page.panels.some((panel) => !toolById.has(panel.toolId)))) throw new Error("Invalid GEX BOX workspace file."); setWorkspace({ ...parsed, pages: parsed.pages.map((page) => ({ ...page, panels: page.panels.map((panel) => ({ ...panel, settings: completeSettings(panel.settings) })) })) }); } catch (error) { window.alert(error instanceof Error ? error.message : "Invalid workspace file."); } };
   // The palette reaches chrome — table headers, strike labels — through CSS
   // variables rather than per-panel settings, since those are the frame around
   // the data rather than the data itself.
@@ -1081,18 +1257,19 @@ export default function GexBoxDashboard() {
     style={gexBoxThemeVariables(themeRoles) as CSSProperties}
     className="flex h-full min-h-0 flex-col overflow-hidden bg-background text-foreground"
   >
-    <header className="shrink-0 border-b border-border bg-panel"><div className="flex h-11 items-center justify-between gap-3 px-3"><div className="flex items-center gap-3"><div className="flex h-8 w-8 items-center justify-center border border-primary/25 bg-primary/10"><LayoutDashboard className="h-4 w-4 text-primary" /></div><div><h1 className="text-[11px] font-semibold uppercase tracking-[.18em]">GEX BOX</h1><p className="text-[8px] text-muted">QuantData tools · KwantDesk workspace engine</p></div></div><div className="flex items-center gap-1"><button onClick={() => setShowTools(true)} className="flex h-8 items-center gap-2 border border-primary/30 bg-primary/10 px-3 text-[9px] font-semibold uppercase tracking-[.12em] text-primary"><Plus className="h-3.5 w-3.5" />Add Tool</button><button onClick={() => setShowStyle(true)} className="flex h-8 items-center gap-2 border border-border px-3 text-[9px] uppercase text-muted hover:text-foreground" title="Workspace style and palette"><SlidersHorizontal className="h-3.5 w-3.5" />Settings</button><button onClick={() => addPage("grid")} className="flex h-8 items-center gap-2 border border-border px-3 text-[9px] uppercase text-muted hover:text-foreground"><Grid2X2 className="h-3.5 w-3.5" />Grid</button><button onClick={() => addPage("infinite")} className="flex h-8 items-center gap-2 border border-border px-3 text-[9px] uppercase text-muted hover:text-foreground"><InfinityIcon className="h-3.5 w-3.5" />Infinite</button><div className="relative"><button onClick={() => setWorkspaceMenu((v) => !v)} className="flex h-8 items-center gap-2 border border-border px-3 text-[9px] font-semibold uppercase tracking-[.12em]"><Download className="h-3.5 w-3.5 text-primary" />Workspaces<ChevronDown className="h-3 w-3 text-muted" /></button>{workspaceMenu ? <div className="absolute right-0 top-9 z-40 w-52 border border-border bg-panel p-1 shadow-xl"><MenuButton icon={Download} label="Export workspace" onClick={() => { setWorkspaceMenu(false); exportWorkspace(); }} /><MenuButton icon={FileUp} label="Import workspace" onClick={() => { setWorkspaceMenu(false); importRef.current?.click(); }} /><MenuButton icon={RefreshCw} label="Reset to standard" onClick={() => { setWorkspaceMenu(false); setWorkspace(defaultWorkspace()); }} /></div> : null}</div></div></div>
+    <header className="shrink-0 border-b border-border bg-panel"><div className="flex h-11 items-center justify-between gap-3 px-3"><div className="flex items-center gap-3"><div className="flex h-8 w-8 items-center justify-center border border-primary/25 bg-primary/10"><LayoutDashboard className="h-4 w-4 text-primary" /></div><div><h1 className="text-[11px] font-semibold uppercase tracking-[.18em]">GEX BOX</h1><p className="text-[8px] text-muted">QuantData tools · KwantDesk workspace engine</p></div></div><div className="relative flex flex-1 justify-center"><button onClick={() => setWorkspaceMenu((v) => !v)} className={`flex h-8 items-center gap-1.5 rounded-[3px] border px-2.5 text-[10px] font-semibold uppercase tracking-[.075em] transition-colors ${workspaceMenu ? "border-primary/35 bg-primary/[0.08] text-primary" : "border-transparent text-muted hover:bg-surface hover:text-foreground"}`} title="Saved GEX BOX workspaces"><Save className="h-3.5 w-3.5" strokeWidth={1.55} /><span>WORKSPACES</span></button>{workspaceMenu ? <GexBoxWorkspacesMenu activeId={activeWorkspaceId} snapshotName={activeWorkspaceName} onApply={applySavedWorkspace} onSave={saveNamedWorkspace} onImport={importSavedWorkspace} onReset={() => { setWorkspace(defaultWorkspace()); setActiveWorkspaceId(null); setActiveWorkspaceName("GEX BOX"); }} onClose={() => setWorkspaceMenu(false)} /> : null}</div><div className="flex items-center gap-1"><button onClick={() => setShowTools(true)} className="flex h-8 items-center gap-2 border border-primary/30 bg-primary/10 px-3 text-[9px] font-semibold uppercase tracking-[.12em] text-primary"><Plus className="h-3.5 w-3.5" />Add Tool</button><button onClick={() => setShowStyle(true)} className="flex h-8 items-center gap-2 border border-border px-3 text-[9px] uppercase text-muted hover:text-foreground" title="Workspace style and palette"><SlidersHorizontal className="h-3.5 w-3.5" />Settings</button></div></div>
       {showStyle ? <GexBoxStyleSettings
         paletteId={workspace.paletteId ?? DEFAULT_GEX_BOX_PALETTE_ID}
         onApply={(id) => { applyPalette(id); setShowStyle(false); }}
         onClose={() => setShowStyle(false)}
       /> : null}
       <div className="flex h-10 items-end gap-1 overflow-x-auto px-3">{workspace.pages.map((page) => <div key={page.id} className={`group flex h-9 shrink-0 items-center border-b-2 px-3 ${page.id === active.id ? "border-primary bg-primary/[.035] text-primary" : "border-transparent text-muted"}`}><button onClick={() => setWorkspace((current) => ({ ...current, activePageId: page.id }))} className="text-[9px] font-semibold uppercase tracking-[.13em]">{page.name}</button>{workspace.pages.length > 1 ? <button onClick={() => setWorkspace((current) => { const pages = current.pages.filter((item) => item.id !== page.id); return { ...current, pages, activePageId: current.activePageId === page.id ? pages[0].id : current.activePageId }; })} className="ml-2 opacity-0 group-hover:opacity-100"><X className="h-3 w-3" /></button> : null}</div>)}<button onClick={() => addPage("grid")} className="mb-1 flex h-7 w-7 shrink-0 items-center justify-center text-muted hover:text-primary"><Plus className="h-3.5 w-3.5" /></button></div></header>
-    <main data-gexbox-dragging={panelDrag ? "true" : undefined} className={`min-h-0 flex-1 overflow-auto p-2 ${panelDrag ? "select-none" : ""} ${active.layout === "grid" ? "grid auto-rows-[minmax(310px,1fr)] grid-cols-1 gap-2 xl:grid-cols-2" : "relative min-w-[1600px] grid auto-rows-[420px] grid-cols-3 gap-2"}`}>
+    {/* One grid, always three across. The layout is no longer a choice, so a
+        workspace saved on one machine lands the same way on another. */}
+    <main data-gexbox-dragging={panelDrag ? "true" : undefined} className={`grid min-h-0 flex-1 auto-rows-[minmax(310px,1fr)] grid-cols-1 gap-2 overflow-auto p-2 md:grid-cols-2 xl:grid-cols-3 ${panelDrag ? "select-none" : ""}`}>
       {active.panels.length ? active.panels.map((panel, index) => <DashboardPanelView key={panel.id} panel={panel} index={index} onChange={changePanel} onDuplicate={duplicatePanel} onDelete={deletePanel} onGrab={grabPanel} dragging={panelDrag?.id === panel.id} dropTarget={panelDrag !== null && panelDrop === index} />) : <button onClick={() => setShowTools(true)} className="col-span-full flex min-h-[420px] items-center justify-center border border-dashed border-border text-muted hover:border-primary/40 hover:text-primary"><Plus className="mr-2 h-4 w-4" /><span className="text-[10px] uppercase tracking-[.15em]">Add the first tool</span></button>}
     </main>
     <footer className="flex h-7 shrink-0 items-center justify-between border-t border-border bg-panel px-3 text-[8px] uppercase tracking-[.12em] text-muted"><span>{active.layout} page · {active.panels.length} panels · shared VPS feeds</span><span>Prior completed New York RTH · live during session</span></footer>
     {showTools ? <AddToolDialog onAdd={addTool} onClose={() => setShowTools(false)} /> : null}
-    <input ref={importRef} type="file" accept="application/json,.json" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; if (file) void importWorkspace(file); event.target.value = ""; }} />
   </div>;
 }
