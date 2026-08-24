@@ -39,6 +39,27 @@ The visual direction is a compact professional trading cockpit: thin square-edge
 - Separate native gamma service: `services/databento_gateway`
 - User-owned/untracked directory: `ALGO/`
 
+### Production deployment and cost policy
+
+The owner wants the production website to remain live and wants completed work deployed, but does not want every development branch or intermediate commit to create a Vercel build.
+
+- Only the `main` branch may trigger a Vercel deployment. Preserve this exact intent in `vercel.json`:
+
+  ```json
+  "git": {
+    "deploymentEnabled": {
+      "*": false,
+      "main": true
+    }
+  }
+  ```
+
+- Never change this to global `deploymentEnabled: true`, re-enable preview/branch deployments, or add another automatic deployment path unless the owner explicitly approves it.
+- Work and verify locally. When a task is complete, stage only the scoped files, make one clean commit, and push `main` once when practical. Do not push a stream of partial attempts.
+- A push to `main` is expected to deploy the production website. Do not pause, disable, or take production offline unless the owner explicitly asks.
+- Continuous live market data, per-tick vendor traffic, replay generation, and long-running stream fan-out belong on the VPS gateway. Do not proxy or poll them continuously through Vercel functions.
+- Main-only deployments reduce build churn; they do not make a live Vercel application free. Runtime, transfer, function, Fluid, and observability usage must still be designed and monitored deliberately.
+
 ### Never touch `ALGO/`
 
 `ALGO/` is intentionally untracked and belongs to the owner. Do not stage it, delete it, move it, format it, or include it in commits unless the owner explicitly asks for work inside it.
