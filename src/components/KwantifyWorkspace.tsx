@@ -5116,6 +5116,9 @@ function WorkspaceChartPaneComponent({
   paperPositions,
   paperFills,
   onUpdatePaperProtection,
+  armedOrder,
+  onArmedOrderPick,
+  onArmedOrderCancel,
   onPaperProtectionDragStateChange,
   onClosePaperPosition,
   onRemovePaperFills,
@@ -5167,6 +5170,9 @@ function WorkspaceChartPaneComponent({
   onInitialSettled?: () => void;
   paperPositions?: PaperPosition[];
   paperFills?: PaperTradeFill[];
+  armedOrder?: { side: "buy" | "sell"; type: "limit" | "stop"; quantity: number } | null;
+  onArmedOrderPick?: (price: number) => void;
+  onArmedOrderCancel?: () => void;
   onUpdatePaperProtection?: (
     accountId: string,
     positionId: string,
@@ -8738,6 +8744,9 @@ function WorkspaceChartPaneComponent({
           classicGexError={classicGexError}
           expectedMoveCalibration={expectedMoveCalibration}
           volumeProfiles={volumeProfiles}
+          armedOrder={armedOrder}
+          onArmedOrderPick={onArmedOrderPick}
+          onArmedOrderCancel={onArmedOrderCancel}
           initialBalanceCandles={initialBalanceStudyCandles.length ? initialBalanceStudyCandles : undefined}
           onUpdateIndicatorSetting={onUpdateIndicatorSetting}
           toolbarEnabled
@@ -9662,6 +9671,19 @@ export default function KwantifyWorkspace({
   // break even. Its contents change rarely and push those below the fold, so
   // it starts collapsed and stays a click away.
   const [showBrokerAccount, setShowBrokerAccount] = useState(false);
+  /**
+   * Placing a resting order by pointing at the level.
+   *
+   * `armedOrder` puts the chart into pick mode; the click comes back with a
+   * price and opens a confirmation, because a mis-click on a chart must not
+   * silently become a working order.
+   */
+  const [armedOrder, setArmedOrder] = useState<
+    { side: "buy" | "sell"; type: "limit" | "stop"; quantity: number } | null
+  >(null);
+  const [pendingChartOrder, setPendingChartOrder] = useState<
+    { side: "buy" | "sell"; type: "limit" | "stop"; quantity: number; price: number } | null
+  >(null);
   const [orderTP, setOrderTP] = useState("");
   const [orderSL, setOrderSL] = useState("");
   const [orderTicketMessage, setOrderTicketMessage] = useState<{ tone: "success" | "error"; text: string } | null>(null);
@@ -16068,6 +16090,12 @@ export default function KwantifyWorkspace({
     type?: "market" | "limit" | "stop";
     quantity?: number;
     skipProtection?: boolean;
+    /**
+     * Price picked on the chart. Carried on the intent rather than pushed
+     * through the ticket's own field, so placement cannot depend on a render
+     * landing between the click and the send.
+     */
+    price?: number;
   }) => {
     const submitSide = intent?.side ?? orderSide;
     const submitType = intent?.type ?? orderType;
@@ -16081,12 +16109,14 @@ export default function KwantifyWorkspace({
       showPaperOrderMessage("error", "Waiting for this chart's executable replay or live price. No order was sent.");
       return;
     }
-    const typedPrice = parsePaperPriceInput(orderPrice);
+    const typedPrice = intent?.price != null
+      ? parsePaperPriceInput(intent.price)
+      : parsePaperPriceInput(orderPrice);
     // A limit or stop order is defined BY its price. Silently falling back to
     // the mid turned a mistyped limit into a market-ish order at whatever the
     // book happened to be, which is the one substitution a ticket must never
     // make.
-    if (submitType !== "market" && orderPrice.trim() && typedPrice === null) {
+    if (submitType !== "market" && intent?.price == null && orderPrice.trim() && typedPrice === null) {
       showPaperOrderMessage("error", `"${orderPrice.trim()}" is not a valid ${submitType} price.`);
       return;
     }
@@ -16797,6 +16827,16 @@ export default function KwantifyWorkspace({
         paperPositions={selectedPaperAccountLedger?.positions ?? []}
         paperFills={(selectedPaperAccountLedger?.fills ?? []).filter((fill) =>
           !selectedHiddenPaperFillIds.has(fill.id))}
+        armedOrder={armedOrder}
+        onArmedOrderPick={(price) => {
+          const armed = armedOrder;
+          if (!armed) return;
+          // A chart click opens a confirmation rather than sending, so a
+          // mis-click cannot become a working order.
+          setPendingChartOrder({ ...armed, price });
+          setArmedOrder(null);
+        }}
+        onArmedOrderCancel={() => setArmedOrder(null)}
         onUpdatePaperProtection={handlePaperProtectionUpdate}
         onPaperProtectionDragStateChange={handlePaperProtectionDragStateChange}
         onClosePaperPosition={handleFlattenPaperPosition}
@@ -18900,6 +18940,56 @@ export default function KwantifyWorkspace({
               }}
             />
           )}
+          {pendingChartOrder && (
+            <div
+              className="fixed inset-0 z-[120] flex items-center justify-center bg-background/70 backdrop-blur-sm"
+              onClick={() => setPendingChartOrder(null)}
+            >
+              <section
+                className="w-full max-w-[340px] rounded-xl border border-border bg-panel p-4 shadow-[0_24px_90px_rgba(0,0,0,0.65)]"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <h3 className="text-[14px] font-semibold text-foreground">Place {pendingChartOrder.type} order?</h3>
+                <div className="mt-3 space-y-1.5 font-mono text-[12px]">
+                  <div className="flex justify-between">
+                    <span className="text-muted">Side</span>
+                    <span style={{ color: pendingChartOrder.side === "buy" ? chartSettings.upColor : chartSettings.downColor }}>
+                      {pendingChartOrder.side === "buy" ? "BUY" : "SELL"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between"><span className="text-muted">Contracts</span><span>{pendingChartOrder.quantity}</span></div>
+                  <div className="flex justify-between"><span className="text-muted">{pendingChartOrder.type === "limit" ? "Limit" : "Stop"}</span><span>{formatPrice(pendingChartOrder.price, paperTradingInstrument)}</span></div>
+                  <div className="flex justify-between"><span className="text-muted">Instrument</span><span>{displayCmeSymbol(paperTradingInstrument)}</span></div>
+                </div>
+                <p className="mt-3 text-[11px] leading-5 text-muted">
+                  It rests until price reaches it. Once filled, drag the stop and target on the chart as usual.
+                </p>
+                <div className="mt-4 grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPendingChartOrder(null)}
+                    className="rounded-lg border border-border px-3 py-2 text-[12px] text-muted hover:text-foreground"
+                  >Cancel</button>
+                  <button
+                    type="button"
+                    autoFocus
+                    onClick={() => {
+                      const order = pendingChartOrder;
+                      setPendingChartOrder(null);
+                      submitPaperOrder({
+                        side: order.side,
+                        type: order.type,
+                        quantity: order.quantity,
+                        price: order.price,
+                      });
+                    }}
+                    className="rounded-lg px-3 py-2 text-[12px] font-semibold text-background"
+                    style={{ backgroundColor: pendingChartOrder.side === "buy" ? chartSettings.upColor : chartSettings.downColor }}
+                  >Yes, place it</button>
+                </div>
+              </section>
+            </div>
+          )}
           {rightPanel === "order" && (
             <div className="flex-1 overflow-y-auto p-4" onKeyDown={handleOrderTicketKeyDown}>
               <div className="mb-4 flex items-center justify-between">
@@ -18953,7 +19043,19 @@ export default function KwantifyWorkspace({
               )}
               <div className={`${tradingUnlocked ? "" : "pointer-events-none opacity-60"}`}>
                 <div className="mb-4 grid grid-cols-3 border-b border-border text-[13px]">{(["market", "limit", "stop"] as const).map((type) => <button key={type} onClick={() => setOrderType(type)} className={`py-2 capitalize transition-colors ${orderType === type ? "border-b-2 border-primary text-foreground" : "text-muted hover:text-foreground"}`}>{type}</button>)}</div>
-                {orderType !== "market" && <div className="mb-4 space-y-1.5"><label className="text-[12px] text-muted">{orderType === "limit" ? "Limit price" : "Stop price"}</label><input value={orderPrice} onChange={(event) => setOrderPrice(event.target.value)} placeholder={selectedMidPrice ? formatPrice(selectedMidPrice, paperTradingInstrument) : "Price"} className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-right font-mono text-[13px] outline-none focus:border-primary/40" /></div>}
+                {orderType !== "market" && <div className="mb-4 space-y-1.5"><label className="text-[12px] text-muted">{orderType === "limit" ? "Limit price" : "Stop price"}</label><input value={orderPrice} onChange={(event) => setOrderPrice(event.target.value)} placeholder={selectedMidPrice ? formatPrice(selectedMidPrice, paperTradingInstrument) : "Price"} className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-right font-mono text-[13px] outline-none focus:border-primary/40" />
+                  <button
+                    type="button"
+                    disabled={!tradingUnlocked}
+                    onClick={() => setArmedOrder(armedOrder
+                      ? null
+                      : { side: orderSide, type: orderType, quantity: selectedOrderQuantity })}
+                    className={`w-full rounded-lg border px-3 py-2 text-[11px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                      armedOrder ? "border-primary bg-primary/10 text-primary" : "border-border text-muted hover:text-foreground"
+                    }`}
+                    title="Pick the level on the chart instead of typing it"
+                  >{armedOrder ? "Click the chart to place · Esc to cancel" : "Place on chart"}</button>
+                </div>}
                 <div className="mb-4 space-y-2">
                   <div className="flex items-center justify-between"><div className="flex items-center gap-2"><span className="text-[13px] text-muted">{selectedPaperContract.quantityLabel}</span>{!selectedPaperContract.isFutures && <KwantSelect value={unitsType} onChange={(e) => setUnitsType(e.target.value as typeof unitsType)} className="rounded-lg border border-border bg-surface px-2 py-1 text-[11px] text-muted outline-none"><option value="units">Units</option><option value="lots">Lots</option><option value="usd">USD</option><option value="pctBalance">% Balance</option></KwantSelect>}</div><div className="flex items-center gap-1 text-[12px] text-muted"><span className="font-mono text-foreground">{formatDollar(orderPanelMarginUsd)}</span><ChevronDown className="h-3 w-3" /></div></div>
                   <div className="flex items-center gap-2"><input value={orderUnits} onChange={(e) => setOrderUnits(e.target.value)} className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-right font-mono text-[13px] outline-none focus:border-primary/40" /><button className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-surface text-muted hover:text-foreground"><ArrowLeftRight className="h-4 w-4" /></button></div>

@@ -586,6 +586,15 @@ interface ChartProps {
     update: PaperProtectionUpdate,
   ) => void;
   onPaperProtectionDragStateChange?: (positionId: string, dragging: boolean) => void;
+  /**
+   * A resting order the trader has armed but not yet priced. While it is set,
+   * the chart follows the cursor with the order's own line and a click picks
+   * the price - which is how a resting order is placed everywhere else, and
+   * is far more direct than typing a level into a field.
+   */
+  armedOrder?: { side: "buy" | "sell"; type: "limit" | "stop"; quantity: number } | null;
+  onArmedOrderPick?: (price: number) => void;
+  onArmedOrderCancel?: () => void;
   onClosePaperPosition?: (position: PaperPosition) => void;
   onRemovePaperFills?: (fillIds: string[]) => void;
   onResetPaperTrading?: () => void;
@@ -3004,6 +3013,9 @@ function Chart({
   onIndicatorPaneHeightChange,
   paperPositions = [],
   paperFills = [],
+  armedOrder = null,
+  onArmedOrderPick,
+  onArmedOrderCancel,
   onUpdatePaperProtection,
   onPaperProtectionDragStateChange,
   onClosePaperPosition,
@@ -14046,6 +14058,52 @@ function Chart({
         };
       })()
     : null;
+  // --- Arming a resting order on the chart ---------------------------------
+  // The line tracks the cursor, a click picks the price. Held in a ref as well
+  // as state: the pointer handlers read it without re-subscribing on every
+  // mouse move.
+  const [armedOrderPrice, setArmedOrderPrice] = useState<number | null>(null);
+  const armedOrderRef = useRef(armedOrder);
+  useEffect(() => {
+    armedOrderRef.current = armedOrder;
+    if (!armedOrder) setArmedOrderPrice(null);
+  }, [armedOrder]);
+  useEffect(() => {
+    if (!armedOrder) return;
+    const container = chartContainerRef.current;
+    const series = candleSeriesRef.current;
+    if (!container || !series) return;
+    const priceAt = (event: PointerEvent | MouseEvent) => {
+      const bounds = container.getBoundingClientRect();
+      const y = event.clientY - bounds.top;
+      const raw = series.coordinateToPrice(y);
+      // Snap to the instrument's tick, so a picked level is a price that can
+      // actually rest on the book.
+      return raw === null || !Number.isFinite(raw) ? null : snapPaperPrice(instrument, raw);
+    };
+    const follow = (event: PointerEvent) => setArmedOrderPrice(priceAt(event));
+    const pick = (event: MouseEvent) => {
+      const price = priceAt(event);
+      if (price === null) return;
+      // The chart owns this click entirely while an order is armed, or the
+      // crosshair/drawing layers would act on it as well.
+      event.preventDefault();
+      event.stopPropagation();
+      onArmedOrderPick?.(price);
+    };
+    const cancelOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onArmedOrderCancel?.();
+    };
+    container.addEventListener("pointermove", follow);
+    container.addEventListener("click", pick, true);
+    window.addEventListener("keydown", cancelOnEscape);
+    return () => {
+      container.removeEventListener("pointermove", follow);
+      container.removeEventListener("click", pick, true);
+      window.removeEventListener("keydown", cancelOnEscape);
+    };
+  }, [armedOrder, instrument, onArmedOrderCancel, onArmedOrderPick]);
+
   useEffect(() => {
     const primitive = paperPositionOverlayPrimitiveRef.current;
     if (!primitive) return;
@@ -14081,8 +14139,17 @@ function Chart({
         kind: paperDraftOverlayLevel.kind,
       });
     }
+    if (armedOrder && armedOrderPrice !== null) {
+      levels.push({
+        id: "armed-order",
+        price: armedOrderPrice,
+        label: `${armedOrder.side === "buy" ? "BUY" : "SELL"} ${armedOrder.quantity} ${armedOrder.type.toUpperCase()} · ${armedOrderPrice.toFixed(priceFormat.precision)} · click to place`,
+        color: armedOrder.side === "buy" ? settings.upColor : settings.downColor,
+        kind: "entry",
+      });
+    }
     primitive.update(levels, settings.backgroundColor);
-  }, [candles, onClosePaperPosition, onUpdatePaperProtection, paperDraftOverlayLevel, paperOverlayLevels, settings.backgroundColor, settings.downColor, settings.upColor]);
+  }, [armedOrder, armedOrderPrice, candles, onClosePaperPosition, onUpdatePaperProtection, paperDraftOverlayLevel, paperOverlayLevels, priceFormat.precision, settings.backgroundColor, settings.downColor, settings.upColor]);
 
   useEffect(() => {
     if (!liveCandleEventKey) return;

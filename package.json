@@ -86,6 +86,7 @@
     "test:globex-initial-balance": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-globex-initial-balance.mjs",
     "test:chart-viewport-reset": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-chart-viewport-reset.mjs",
     "test:paper-limit-orders": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-paper-limit-orders.mjs",
+    "test:chart-limit-placement": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-chart-limit-placement.mjs",
     "test:execution-stream-staleness": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-execution-stream-staleness.mjs",
     "test:execution-worker-backpressure": "node --experimental-strip-types scripts/test-execution-worker-backpressure.mjs",
     "test:big-trades-live-edge": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-big-trades-live-edge.mjs",
