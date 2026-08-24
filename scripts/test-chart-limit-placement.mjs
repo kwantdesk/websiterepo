@@ -42,19 +42,36 @@ const workspace = readFileSync(new URL("../src/components/KwantifyWorkspace.tsx"
     "disarming must clear the line");
 }
 
+// --- choosing limit arms the chart; there is no second button to press ---
+{
+  const armed = workspace.slice(workspace.indexOf("const armedOrder = useMemo("));
+  const body = armed.slice(0, armed.indexOf("],") + 2);
+  assert.ok(body.includes('orderType === "limit" || orderType === "stop"'),
+    "the TYPE is the intent - selecting limit must arm the chart on its own");
+  assert.ok(body.includes("tradingUnlocked"), "a locked ticket must not arm");
+  assert.ok(body.includes('rightPanel === "order"'),
+    "a closed ticket must not leave the chart armed behind it");
+  assert.ok(body.includes("pendingChartOrder === null"),
+    "a second click must not stack another dialog on the first");
+  // The chart subscribes listeners on this identity, so it has to be stable.
+  assert.ok(body.includes("useMemo("), "the armed order must be memoised, not rebuilt each render");
+
+  // A fresh choice of type or side is a fresh intent, so it resumes placement.
+  assert.ok(workspace.includes("setOrderType(type); setChartPlacementSuspended(false);"),
+    "changing type must re-arm");
+  assert.ok(workspace.includes('setOrderSide("buy"); setChartPlacementSuspended(false);'),
+    "changing side must re-arm");
+}
+
 // --- a click confirms; it never sends straight away ---
 {
   assert.ok(workspace.includes("setPendingChartOrder({ ...armed, price })"),
     "a chart click must open a confirmation");
   assert.ok(workspace.includes("Place {pendingChartOrder.type} order?"), "the dialog states the intent");
   assert.ok(workspace.includes("Yes, place it"), "and needs an explicit yes");
-  // Arming ends at the pick, so one arm places one order.
-  const pick = workspace.slice(workspace.indexOf("onArmedOrderPick={(price) => {"));
-  assert.ok(pick.slice(0, 400).includes("setArmedOrder(null)"),
-    "picking must disarm, so one arm places one order");
-  // Cancelling must not leave the chart armed or the dialog open.
   assert.ok(workspace.includes("onClick={() => setPendingChartOrder(null)}"), "cancel closes it");
-  assert.ok(workspace.includes("onArmedOrderCancel={() => setArmedOrder(null)}"), "escape disarms");
+  assert.ok(workspace.includes("onArmedOrderCancel={() => setChartPlacementSuspended(true)}"),
+    "Escape suspends placement");
 }
 
 // --- the confirmed price is carried on the intent, not through the field ---
@@ -66,21 +83,14 @@ const workspace = readFileSync(new URL("../src/components/KwantifyWorkspace.tsx"
     "a chart-picked price must not depend on the ticket field having re-rendered");
 }
 
-// --- arming is offered only where a resting order makes sense ---
+// --- the chart re-attaches once it is ready ---
 {
-  // The button lives inside the limit/stop price block, which only renders
-  // when the type is not market - a market order has no level to pick.
-  // Scoped to the LIVE ticket. There is a second, disabled copy behind
-  // `false &&` whose price field is uncontrolled; asserting against that one
-  // would pass while the real ticket had no button at all.
-  const priceBlock = workspace.slice(workspace.indexOf("value={orderPrice} onChange="));
-  const scoped = priceBlock.slice(0, priceBlock.indexOf("</div>}") + 7);
-  assert.ok(!workspace.slice(0, workspace.indexOf("value={orderPrice} onChange="))
-    .includes("Place on chart"), "the button must not be on the disabled ticket");
-  assert.ok(scoped.includes("Place on chart"), "arming belongs with the resting-order price");
-  assert.ok(scoped.includes("disabled={!tradingUnlocked}"), "a locked ticket cannot arm");
-  assert.ok(scoped.includes("type: orderType"), "it arms the type the ticket is set to");
-  assert.ok(scoped.includes("quantity: selectedOrderQuantity"), "with the contracts typed in");
+  // Arming before the series exists used to return early and never re-attach,
+  // which looks exactly like the feature not working.
+  assert.ok(
+    chart.includes("}, [armedOrder, chartReadyRevision, instrument, onArmedOrderCancel, onArmedOrderPick]);"),
+    "the listeners must re-attach when the chart becomes ready",
+  );
 }
 
 console.log("Chart limit placement tests passed.");

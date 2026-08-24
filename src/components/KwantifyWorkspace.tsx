@@ -9678,9 +9678,7 @@ export default function KwantifyWorkspace({
    * price and opens a confirmation, because a mis-click on a chart must not
    * silently become a working order.
    */
-  const [armedOrder, setArmedOrder] = useState<
-    { side: "buy" | "sell"; type: "limit" | "stop"; quantity: number } | null
-  >(null);
+  const [chartPlacementSuspended, setChartPlacementSuspended] = useState(false);
   const [pendingChartOrder, setPendingChartOrder] = useState<
     { side: "buy" | "sell"; type: "limit" | "stop"; quantity: number; price: number } | null
   >(null);
@@ -10709,6 +10707,30 @@ export default function KwantifyWorkspace({
     : null;
   const selectedPaperContract = paperContractSpec(paperTradingInstrument);
   const selectedOrderQuantity = paperOrderQuantity(paperTradingInstrument, orderUnits);
+  /**
+   * Choosing limit or stop arms the chart. There is no second button to press:
+   * the type IS the intent, so the line is there the moment the trader looks
+   * at the chart, which is the whole point of picking a level by eye.
+   *
+   * Suspended by Escape and while the confirmation is open, so a click cannot
+   * stack a second dialog on the first, and re-armed whenever the type or side
+   * changes - a fresh choice is a fresh intent.
+   */
+  // Memoised on its own fields: the chart subscribes pointer and click
+  // listeners on this identity, so a fresh object every render would tear
+  // them down and re-add them continuously.
+  const armedOrder = useMemo(
+    () => (
+      tradingUnlocked
+      && rightPanel === "order"
+      && !chartPlacementSuspended
+      && pendingChartOrder === null
+      && (orderType === "limit" || orderType === "stop")
+        ? { side: orderSide, type: orderType as "limit" | "stop", quantity: selectedOrderQuantity }
+        : null
+    ),
+    [chartPlacementSuspended, orderSide, orderType, pendingChartOrder, rightPanel, selectedOrderQuantity, tradingUnlocked],
+  );
   const selectedPaperLeverage = selectedPaperTradingAccount
     ? parseLeverage(selectedPaperTradingAccount.leverage)
     : 1;
@@ -16834,9 +16856,8 @@ export default function KwantifyWorkspace({
           // A chart click opens a confirmation rather than sending, so a
           // mis-click cannot become a working order.
           setPendingChartOrder({ ...armed, price });
-          setArmedOrder(null);
         }}
-        onArmedOrderCancel={() => setArmedOrder(null)}
+        onArmedOrderCancel={() => setChartPlacementSuspended(true)}
         onUpdatePaperProtection={handlePaperProtectionUpdate}
         onPaperProtectionDragStateChange={handlePaperProtectionDragStateChange}
         onClosePaperPosition={handleFlattenPaperPosition}
@@ -18377,11 +18398,11 @@ export default function KwantifyWorkspace({
                     <button onClick={() => setRightPanel(null)} className="flex h-7 w-7 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"><X className="h-3.5 w-3.5" /></button>
                   </div>
                   <div className="relative mb-4 grid grid-cols-2 gap-2">
-                    <button onClick={() => setOrderSide("sell")} className={`rounded-xl border border-danger/20 px-3 py-2 text-left transition-all ${orderSide === "sell" ? "bg-danger/20 text-danger" : "bg-danger/10 text-danger/80"}`}><div className="text-[12px] font-semibold">Sell</div><div className="font-mono text-[13px]">{watchlistDetails[selectedInstrument]?.price ?? "29,096.2"}</div></button>
+                    <button onClick={() => { setOrderSide("sell"); setChartPlacementSuspended(false); }} className={`rounded-xl border border-danger/20 px-3 py-2 text-left transition-all ${orderSide === "sell" ? "bg-danger/20 text-danger" : "bg-danger/10 text-danger/80"}`}><div className="text-[12px] font-semibold">Sell</div><div className="font-mono text-[13px]">{watchlistDetails[selectedInstrument]?.price ?? "29,096.2"}</div></button>
                     <div className="pointer-events-none absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 rounded-full bg-surface px-2 py-0.5 font-mono text-[10px] text-muted">0.0</div>
-                    <button onClick={() => setOrderSide("buy")} className={`rounded-xl border border-primary/20 px-3 py-2 text-right transition-all ${orderSide === "buy" ? "bg-primary/20 text-primary" : "bg-primary/10 text-primary/80"}`}><div className="text-[12px] font-semibold">Buy</div><div className="font-mono text-[13px]">{watchlistDetails[selectedInstrument]?.price ?? "29,096.2"}</div></button>
+                    <button onClick={() => { setOrderSide("buy"); setChartPlacementSuspended(false); }} className={`rounded-xl border border-primary/20 px-3 py-2 text-right transition-all ${orderSide === "buy" ? "bg-primary/20 text-primary" : "bg-primary/10 text-primary/80"}`}><div className="text-[12px] font-semibold">Buy</div><div className="font-mono text-[13px]">{watchlistDetails[selectedInstrument]?.price ?? "29,096.2"}</div></button>
                   </div>
-                  <div className="mb-4 grid grid-cols-3 border-b border-border text-[13px]">{(["market", "limit", "stop"] as const).map((type) => <button key={type} onClick={() => setOrderType(type)} className={`py-2 capitalize transition-colors ${orderType === type ? "border-b-2 border-primary text-foreground" : "text-muted hover:text-foreground"}`}>{type}</button>)}</div>
+                  <div className="mb-4 grid grid-cols-3 border-b border-border text-[13px]">{(["market", "limit", "stop"] as const).map((type) => <button key={type} onClick={() => { setOrderType(type); setChartPlacementSuspended(false); }} className={`py-2 capitalize transition-colors ${orderType === type ? "border-b-2 border-primary text-foreground" : "text-muted hover:text-foreground"}`}>{type}</button>)}</div>
                   {orderType !== "market" && <div className="mb-4 space-y-1.5"><label className="text-[12px] text-muted">{orderType === "limit" ? "Limit price" : "Stop price"}</label><input defaultValue={watchlistDetails[selectedInstrument]?.price ?? "29,096.2"} className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-right font-mono text-[13px] outline-none focus:border-primary/40" /></div>}
                   <div className="mb-4 space-y-2">
                     <div className="flex items-center justify-between"><div className="flex items-center gap-2"><span className="text-[13px] text-muted">Units</span><KwantSelect value={unitsType} onChange={(e) => setUnitsType(e.target.value as typeof unitsType)} className="rounded-lg border border-border bg-surface px-2 py-1 text-[11px] text-muted outline-none"><option value="units">Units</option><option value="lots">Lots</option><option value="usd">USD</option><option value="pctBalance">% Balance</option></KwantSelect></div><div className="flex items-center gap-1 text-[12px] text-muted"><span className="font-mono text-foreground">581.92 USD</span><ChevronDown className="h-3 w-3" /></div></div>
@@ -19004,7 +19025,7 @@ export default function KwantifyWorkspace({
               </div>
               <div className="relative mb-4 grid grid-cols-2 gap-2">
                 <button
-                  onClick={() => setOrderSide("sell")}
+                  onClick={() => { setOrderSide("sell"); setChartPlacementSuspended(false); }}
                   className="rounded-xl border px-3 py-2 text-left transition-all"
                   style={{
                     borderColor: colorWithAlpha(chartSettings.downColor, orderSide === "sell" ? 0.62 : 0.28),
@@ -19014,7 +19035,7 @@ export default function KwantifyWorkspace({
                 ><div className="text-[12px] font-semibold">Sell</div><div className="font-mono text-[13px]">{orderPanelBidLabel}</div></button>
                 <div className="pointer-events-none absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 rounded-full bg-surface px-2 py-0.5 font-mono text-[10px] text-muted">{orderPanelSpreadLabel}</div>
                 <button
-                  onClick={() => setOrderSide("buy")}
+                  onClick={() => { setOrderSide("buy"); setChartPlacementSuspended(false); }}
                   className="rounded-xl border px-3 py-2 text-right transition-all"
                   style={{
                     borderColor: colorWithAlpha(chartSettings.upColor, orderSide === "buy" ? 0.62 : 0.28),
@@ -19042,19 +19063,17 @@ export default function KwantifyWorkspace({
                 </div>
               )}
               <div className={`${tradingUnlocked ? "" : "pointer-events-none opacity-60"}`}>
-                <div className="mb-4 grid grid-cols-3 border-b border-border text-[13px]">{(["market", "limit", "stop"] as const).map((type) => <button key={type} onClick={() => setOrderType(type)} className={`py-2 capitalize transition-colors ${orderType === type ? "border-b-2 border-primary text-foreground" : "text-muted hover:text-foreground"}`}>{type}</button>)}</div>
+                <div className="mb-4 grid grid-cols-3 border-b border-border text-[13px]">{(["market", "limit", "stop"] as const).map((type) => <button key={type} onClick={() => { setOrderType(type); setChartPlacementSuspended(false); }} className={`py-2 capitalize transition-colors ${orderType === type ? "border-b-2 border-primary text-foreground" : "text-muted hover:text-foreground"}`}>{type}</button>)}</div>
                 {orderType !== "market" && <div className="mb-4 space-y-1.5"><label className="text-[12px] text-muted">{orderType === "limit" ? "Limit price" : "Stop price"}</label><input value={orderPrice} onChange={(event) => setOrderPrice(event.target.value)} placeholder={selectedMidPrice ? formatPrice(selectedMidPrice, paperTradingInstrument) : "Price"} className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-right font-mono text-[13px] outline-none focus:border-primary/40" />
                   <button
                     type="button"
                     disabled={!tradingUnlocked}
-                    onClick={() => setArmedOrder(armedOrder
-                      ? null
-                      : { side: orderSide, type: orderType, quantity: selectedOrderQuantity })}
+                    onClick={() => setChartPlacementSuspended((value) => !value)}
                     className={`w-full rounded-lg border px-3 py-2 text-[11px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
                       armedOrder ? "border-primary bg-primary/10 text-primary" : "border-border text-muted hover:text-foreground"
                     }`}
                     title="Pick the level on the chart instead of typing it"
-                  >{armedOrder ? "Click the chart to place · Esc to cancel" : "Place on chart"}</button>
+                  >{armedOrder ? "Click the chart to place · Esc to stop" : "Chart placement off · tap to resume"}</button>
                 </div>}
                 <div className="mb-4 space-y-2">
                   <div className="flex items-center justify-between"><div className="flex items-center gap-2"><span className="text-[13px] text-muted">{selectedPaperContract.quantityLabel}</span>{!selectedPaperContract.isFutures && <KwantSelect value={unitsType} onChange={(e) => setUnitsType(e.target.value as typeof unitsType)} className="rounded-lg border border-border bg-surface px-2 py-1 text-[11px] text-muted outline-none"><option value="units">Units</option><option value="lots">Lots</option><option value="usd">USD</option><option value="pctBalance">% Balance</option></KwantSelect>}</div><div className="flex items-center gap-1 text-[12px] text-muted"><span className="font-mono text-foreground">{formatDollar(orderPanelMarginUsd)}</span><ChevronDown className="h-3 w-3" /></div></div>

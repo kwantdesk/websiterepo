@@ -14111,7 +14111,10 @@ function Chart({
       container.removeEventListener("click", pick, true);
       window.removeEventListener("keydown", cancelOnEscape);
     };
-  }, [armedOrder, instrument, onArmedOrderCancel, onArmedOrderPick]);
+    // chartReadyRevision matters: arming before the series exists would
+    // otherwise return here and never re-attach, which looks exactly like the
+    // feature not working.
+  }, [armedOrder, chartReadyRevision, instrument, onArmedOrderCancel, onArmedOrderPick]);
 
   useEffect(() => {
     const primitive = paperPositionOverlayPrimitiveRef.current;
