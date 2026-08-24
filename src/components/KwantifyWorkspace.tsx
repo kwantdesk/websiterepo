@@ -199,6 +199,7 @@ import {
   type GammaConversionDefinition,
 } from "@/lib/chartGammaConversion";
 import {
+  shouldAcceptMarketIndexFrame,
   subscribeMarketIndexSnapshot,
   type MarketIndexLiveSnapshot,
 } from "@/lib/marketIndexLiveClient";
@@ -12574,16 +12575,20 @@ export default function KwantifyWorkspace({
     const symbols = marketIndexWatchSymbolsCsv.split(",").filter(Boolean);
     if (!symbols.length) return;
 
-    const latestTimestampBySymbol = new Map<string, number>();
+    const latestFrameBySymbol = new Map<string, { timestamp: number; lastPrice: number }>();
     const applySnapshot = (snapshot: MarketIndexLiveSnapshot) => {
       const symbol = snapshot.symbol.trim().toUpperCase();
       const timestamp = marketTimestamp(snapshot.timestamp);
-      const previousTimestamp = latestTimestampBySymbol.get(symbol) ?? 0;
+      const previousFrame = latestFrameBySymbol.get(symbol);
       // REST snapshots often repeat the exact same provider frame between
-      // genuine prints. Re-applying those duplicates forced the entire
-      // workspace tree to render every 750ms even though no price changed.
-      if (timestamp <= previousTimestamp) return;
-      latestTimestampBySymbol.set(symbol, timestamp);
+      // genuine prints. SPX/NDX also publish real price changes under the same
+      // minute timestamp, so only an exact timestamp/price repeat is a
+      // duplicate; rejecting every equal timestamp froze their ticker.
+      if (!shouldAcceptMarketIndexFrame(previousFrame, {
+        timestamp,
+        lastPrice: snapshot.lastPrice,
+      })) return;
+      latestFrameBySymbol.set(symbol, { timestamp, lastPrice: snapshot.lastPrice });
 
       setFeedErrorByBroker((current) => {
         if (!current["Market Index"]) return current;

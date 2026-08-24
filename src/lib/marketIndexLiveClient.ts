@@ -23,7 +23,8 @@ let indexEventSource: EventSource | null = null;
 let indexEventSourceKey = "";
 let streamConnected = false;
 const lastStreamFrameAt = new Map<string, number>();
-const lastDeliveredTimestamp = new Map<string, number>();
+export type MarketIndexFrameIdentity = Pick<MarketIndexLiveSnapshot, "timestamp" | "lastPrice">;
+const lastDeliveredFrame = new Map<string, MarketIndexFrameIdentity>();
 
 // Index quotes now come from the KwantData session tape (per-minute bars with
 // a short server cache) after the Massive subscription ended, so polling
@@ -60,14 +61,31 @@ function schedulePoll(delay: number) {
   }, Math.max(0, delay));
 }
 
+/**
+ * Cash-index providers can publish several genuine price changes inside one
+ * minute while keeping the bar's minute timestamp. Reject only an older frame
+ * or an exact timestamp/price duplicate; treating every equal timestamp as a
+ * duplicate froze SPX and NDX between minute boundaries.
+ */
+export function shouldAcceptMarketIndexFrame(
+  previous: MarketIndexFrameIdentity | null | undefined,
+  next: MarketIndexFrameIdentity,
+) {
+  if (!previous) return true;
+  if (next.timestamp < previous.timestamp) return false;
+  return next.timestamp !== previous.timestamp || next.lastPrice !== previous.lastPrice;
+}
+
 function deliverSnapshot(snapshot: MarketIndexLiveSnapshot, streamed = false) {
   const symbol = snapshot.symbol.trim().toUpperCase();
-  const previousTimestamp = lastDeliveredTimestamp.get(symbol) ?? 0;
+  const previous = lastDeliveredFrame.get(symbol);
   // A slower route fallback must never rewind a chart after a newer VPS frame
-  // has already painted it. Equal timestamps remain valid because more than
-  // one execution can occur inside the same millisecond.
-  if (snapshot.timestamp < previousTimestamp) return;
-  lastDeliveredTimestamp.set(symbol, snapshot.timestamp);
+  // has already painted it. Equal timestamps remain valid when price changed.
+  if (!shouldAcceptMarketIndexFrame(previous, snapshot)) return;
+  lastDeliveredFrame.set(symbol, {
+    timestamp: snapshot.timestamp,
+    lastPrice: snapshot.lastPrice,
+  });
   if (streamed) lastStreamFrameAt.set(symbol, Date.now());
   subscribers.get(symbol)?.forEach((subscriber) => subscriber.onSnapshot(snapshot));
 }
@@ -224,7 +242,7 @@ export function subscribeMarketIndexSnapshot(
       indexEventSourceKey = "";
       streamConnected = false;
       lastStreamFrameAt.clear();
-      lastDeliveredTimestamp.clear();
+      lastDeliveredFrame.clear();
     }
   };
 }
