@@ -31,7 +31,22 @@ assert.ok(dashboard.includes('label="Sentiment"') && dashboard.includes('label="
 assert.ok(dashboard.includes('label: "Spread"') && dashboard.includes('label: "Moneyness"') && dashboard.includes('label: "Δ / Γ / Θ / V"') && dashboard.includes('label: "Flags"'), "Order Flow must expose execution, contract, Greeks and classification detail.");
 assert.ok(dashboard.includes('flowColumns: "full"') && dashboard.includes('flowGrouping: "none"') && dashboard.includes('flowFlags: "ALL"'), "Order Flow display presets must remain backward-compatible with stored workspaces.");
 assert.ok(dashboard.includes("function ProfessionalIntervalMap") && dashboard.includes('"horizontal-ribbons"') && dashboard.includes('"call-put-split"'), "Interval Map must support the audited QuantData visual and content modes.");
-assert.ok(dashboard.includes("intervalMaximumDistance") && dashboard.includes('aria-label="Interval map visible range"') && dashboard.includes('exposureSide: "call"'), "Interval Map must expose strike-distance, navigation and true call/put split controls.");
+assert.ok(dashboard.includes("intervalMaximumDistance") && dashboard.includes('exposureSide: "call"'), "Interval Map must expose strike-distance and true call/put split controls.");
+// The map navigates like a chart rather than through a range slider: drag the
+// plot to pan both axes, drag the strike scale or the time axis to stretch
+// either one, wheel to zoom, double-click to reset.
+assert.ok(
+  dashboard.includes('mode: "pan"')
+  && dashboard.includes('mode: "strike-scale"')
+  && dashboard.includes('mode: "time-scale"')
+  && dashboard.includes("strikeCentre")
+  && dashboard.includes("onDoubleClick"),
+  "Interval Map must pan and scale on both axes like a chart.",
+);
+assert.ok(
+  dashboard.includes('intervalPriceStyle: "line" | "candles"') && dashboard.includes('value="candles"'),
+  "Interval Map must be able to draw the underlying as candlesticks.",
+);
 assert.ok(dashboard.includes("TOOL_SERIES[panel.toolId]") && dashboard.includes("<SeriesPanel"), "Time-series tools must route to their chart renderer.");
 assert.ok(dashboard.includes('panel.toolId === "market-map"') && dashboard.includes("<MarketMapPanel"), "Market Map must use its dedicated cross-symbol renderer.");
 for (const renderer of [

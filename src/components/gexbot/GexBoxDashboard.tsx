@@ -21,6 +21,11 @@ type PanelSettings = {
   intervalContent: "net" | "call" | "put" | "gross" | "call-put-split";
   intervalMode: "raw" | "difference"; intervalBaseline: "previous-bucket" | "session-open" | "rolling-average";
   intervalRollingBuckets: number; intervalMaximumPoints: number; intervalMaximumDistance: number; intervalShowPrice: boolean;
+  /** How the underlying is drawn over the map: a line, or real candles. */
+  intervalPriceStyle: "line" | "candles";
+  /** Buckets folded into one candle. One bucket carries a single price, so a
+   *  candle needs several before it has an open, high, low and close to show. */
+  intervalCandleBuckets: number;
 };
 type DashboardPanel = { id: string; toolId: string; title: string; settings: PanelSettings };
 type DashboardPage = { id: string; name: string; layout: "grid" | "infinite"; panels: DashboardPanel[] };
@@ -50,6 +55,7 @@ const DEFAULT_SETTINGS: PanelSettings = {
   tableSearch: "", tableSort: "", tableDirection: "desc",
   intervalVisual: "bubbles", intervalContent: "net", intervalMode: "raw", intervalBaseline: "previous-bucket",
   intervalRollingBuckets: 5, intervalMaximumPoints: 5000, intervalMaximumDistance: 20, intervalShowPrice: true,
+  intervalPriceStyle: "line", intervalCandleBuckets: 5,
 };
 
 function completeSettings(value?: Partial<PanelSettings>): PanelSettings {
@@ -240,7 +246,21 @@ function intervalValue(call: number, put: number, content: PanelSettings["interv
 
 function ProfessionalIntervalMap({ payload, settings }: { payload: unknown; settings: PanelSettings }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null); const pointsOnScreen = useRef<Array<IntervalPoint & { x: number; y: number; radius: number }>>([]);
-  const drag = useRef<{ x: number; offset: number } | null>(null); const [viewport, setViewport] = useState({ zoom: 1, offset: 0 }); const [hover, setHover] = useState<(IntervalPoint & { x: number; y: number }) | null>(null);
+  // The map navigates like a chart: drag the plot to pan both ways, drag the
+  // strike scale on the right to stretch it, drag the time axis along the
+  // bottom to stretch that. `strikeCentre` is null until the view is moved so
+  // the map keeps auto-fitting to the data until somebody takes hold of it.
+  const drag = useRef<
+    | { mode: "pan"; x: number; y: number; offset: number; centre: number | null; span: number }
+    | { mode: "strike-scale"; y: number; zoom: number }
+    | { mode: "time-scale"; x: number; zoom: number }
+    | null
+  >(null);
+  const [viewport, setViewport] = useState<{ zoom: number; offset: number; strikeZoom: number; strikeCentre: number | null }>(
+    { zoom: 1, offset: 0, strikeZoom: 1, strikeCentre: null },
+  );
+  const [hover, setHover] = useState<(IntervalPoint & { x: number; y: number }) | null>(null);
+  const PLOT_RIGHT_GUTTER = 68, PLOT_BOTTOM_GUTTER = 27;
   const model = useMemo(() => {
     const surface = record(payload); const rawBuckets = Array.isArray(surface?.buckets) ? surface.buckets : [];
     const previous = new Map<string, number>(); const sessionOpen = new Map<string, number>(); const rolling = new Map<string, number[]>(); const points: IntervalPoint[] = []; const prices: Array<{ bucketIndex: number; timestamp: number; price: number }> = [];
@@ -272,30 +292,145 @@ function ProfessionalIntervalMap({ payload, settings }: { payload: unknown; sett
       const styles = getComputedStyle(container); const css = (name: string, fallback: string) => styles.getPropertyValue(name).trim() || fallback; const resolve = (value: string, fallback: string) => value.startsWith("var(") ? css(value.slice(4, -1), fallback) : value;
       const positive = resolve(settings.color, "#aaff00"), negative = resolve(settings.negativeColor, "#ff3366"), grid = css("--border", "#2c3138"), foreground = css("--foreground", "#fff"), muted = css("--muted", "#89909a");
       const left = 10, right = 68, top = 8, bottom = 27, plotWidth = Math.max(1, rect.width - left - right), plotHeight = Math.max(1, rect.height - top - bottom); const visibleBuckets = Math.max(8, model.buckets / viewport.zoom); const maxOffset = Math.max(0, model.buckets - visibleBuckets); const start = Math.max(0, Math.min(maxOffset, viewport.offset)); const end = start + visibleBuckets; const span = Math.max(.0001, model.maxStrike - model.minStrike);
-      const xFor = (index: number) => left + (index - start) / visibleBuckets * plotWidth; const yFor = (strike: number) => top + (model.maxStrike - strike) / span * plotHeight;
+      const xFor = (index: number) => left + (index - start) / visibleBuckets * plotWidth;
+      // The strike axis is a viewport too, not a fixed fit to the data.
+      const strikeSpan = Math.max(.0001, span / Math.max(.05, viewport.strikeZoom));
+      const strikeCentre = viewport.strikeCentre ?? (model.maxStrike + model.minStrike) / 2;
+      const viewHigh = strikeCentre + strikeSpan / 2;
+      const yFor = (strike: number) => top + (viewHigh - strike) / strikeSpan * plotHeight;
       ctx.save(); ctx.strokeStyle = grid; ctx.globalAlpha = .7; ctx.lineWidth = .5; ctx.font = "9px JetBrains Mono"; ctx.fillStyle = muted;
-      for (let i = 0; i <= 6; i++) { const y = top + i * plotHeight / 6; ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(left + plotWidth, y); ctx.stroke(); const strike = model.maxStrike - i * span / 6; ctx.fillText(strike.toFixed(strike < 1000 ? 1 : 0), left + plotWidth + 7, y + 3); }
+      for (let i = 0; i <= 6; i++) { const y = top + i * plotHeight / 6; ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(left + plotWidth, y); ctx.stroke(); const strike = viewHigh - i * strikeSpan / 6; ctx.fillText(strike.toFixed(strike < 1000 ? 1 : 0), left + plotWidth + 7, y + 3); }
       for (let i = 0; i <= 6; i++) { const x = left + i * plotWidth / 6; ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, top + plotHeight); ctx.stroke(); const bucket = Math.round(start + i * visibleBuckets / 6); const point = model.points.find((item) => item.bucketIndex >= bucket); if (point) ctx.fillText(timeCell(point.timestamp), Math.max(left, x - 23), rect.height - 7); } ctx.restore();
-      const visible = model.points.filter((point) => point.bucketIndex >= start && point.bucketIndex <= end); const cellWidth = Math.max(2, plotWidth / visibleBuckets); const strikeStep = span / Math.max(1, Math.min(80, new Set(visible.map((point) => point.strike)).size)); const cellHeight = Math.max(2, plotHeight * strikeStep / span); const screen: Array<IntervalPoint & { x: number; y: number; radius: number }> = [];
+      const visible = model.points.filter((point) => point.bucketIndex >= start && point.bucketIndex <= end); const cellWidth = Math.max(2, plotWidth / visibleBuckets); const strikeStep = span / Math.max(1, Math.min(80, new Set(visible.map((point) => point.strike)).size)); const cellHeight = Math.max(2, plotHeight * strikeStep / strikeSpan); const screen: Array<IntervalPoint & { x: number; y: number; radius: number }> = [];
       visible.forEach((point) => { const splitOffset = point.exposureSide === "call" ? -2.5 : point.exposureSide === "put" ? 2.5 : 0; const x = xFor(point.bucketIndex) + splitOffset, y = yFor(point.strike), ratio = Math.min(1, Math.sqrt(Math.abs(point.value) / model.peak)), color = point.exposureSide === "call" ? positive : point.exposureSide === "put" ? negative : point.value >= 0 ? positive : negative; const radius = settings.intervalVisual === "fixed-dots" ? 3 : 1.5 + ratio * 10; ctx.save();
         if (settings.intervalVisual === "heat-cells" || settings.intervalVisual === "hybrid") { ctx.globalAlpha = .12 + ratio * .55; ctx.fillStyle = color; ctx.fillRect(x - cellWidth / 2, y - cellHeight / 2, Math.max(1, cellWidth), Math.max(1, cellHeight)); }
         if (settings.intervalVisual === "horizontal-ribbons") { ctx.globalAlpha = .14 + ratio * .62; ctx.fillStyle = color; ctx.fillRect(x - cellWidth / 2, y - Math.max(1, ratio * 7), cellWidth * 1.3, Math.max(2, ratio * 14)); }
         if (["bubbles", "fixed-dots", "hybrid"].includes(settings.intervalVisual)) { ctx.beginPath(); ctx.arc(x, y, radius, 0, Math.PI * 2); ctx.globalAlpha = .1 + ratio * .32; ctx.fillStyle = color; ctx.fill(); ctx.globalAlpha = .5 + ratio * .5; ctx.strokeStyle = color; ctx.lineWidth = .7 + ratio; ctx.stroke(); }
         ctx.restore(); screen.push({ ...point, x, y, radius });
       }); pointsOnScreen.current = screen;
-      if (settings.intervalShowPrice && model.prices.length > 1) { const visiblePrices = model.prices.filter((item) => item.bucketIndex >= start && item.bucketIndex <= end); const values = visiblePrices.map((item) => item.price); const pMin = Math.min(...values), pMax = Math.max(...values), pSpan = Math.max(.01, pMax - pMin); ctx.beginPath(); visiblePrices.forEach((item, index) => { const x = xFor(item.bucketIndex), y = top + (pMax - item.price) / pSpan * plotHeight; index ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.strokeStyle = foreground; ctx.lineWidth = 1.35; ctx.globalAlpha = .9; ctx.stroke(); }
+      if (settings.intervalShowPrice && model.prices.length > 1) {
+        const visiblePrices = model.prices.filter((item) => item.bucketIndex >= start && item.bucketIndex <= end);
+        // The underlying rides the STRIKE axis, so price and strikes read
+        // against one scale. It used to be normalised to its own visible
+        // min/max, which drew the line through the middle of the map wherever
+        // the market actually was and made it impossible to see which strikes
+        // price was sitting on.
+        if (settings.intervalPriceStyle === "candles" && visiblePrices.length > 1) {
+          const per = Math.max(1, Math.round(settings.intervalCandleBuckets));
+          const candles: Array<{ index: number; open: number; high: number; low: number; close: number }> = [];
+          for (let i = 0; i < visiblePrices.length; i += per) {
+            const slice = visiblePrices.slice(i, i + per);
+            if (!slice.length) continue;
+            const closes = slice.map((item) => item.price);
+            candles.push({
+              index: slice[Math.floor(slice.length / 2)].bucketIndex,
+              open: closes[0], close: closes[closes.length - 1],
+              high: Math.max(...closes), low: Math.min(...closes),
+            });
+          }
+          const bodyWidth = Math.max(1.5, plotWidth / Math.max(1, candles.length) * .6);
+          candles.forEach((candle) => {
+            const x = xFor(candle.index), up = candle.close >= candle.open;
+            ctx.globalAlpha = .95; ctx.strokeStyle = up ? positive : negative; ctx.fillStyle = up ? positive : negative; ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(x, yFor(candle.high)); ctx.lineTo(x, yFor(candle.low)); ctx.stroke();
+            const openY = yFor(candle.open), closeY = yFor(candle.close);
+            ctx.fillRect(x - bodyWidth / 2, Math.min(openY, closeY), bodyWidth, Math.max(1, Math.abs(closeY - openY)));
+          });
+          ctx.globalAlpha = 1;
+        } else {
+          ctx.beginPath();
+          visiblePrices.forEach((item, index) => { const x = xFor(item.bucketIndex), y = yFor(item.price); index ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+          ctx.strokeStyle = foreground; ctx.lineWidth = 1.35; ctx.globalAlpha = .9; ctx.stroke(); ctx.globalAlpha = 1;
+        }
+      }
     };
     let frame = window.requestAnimationFrame(draw); const observer = new ResizeObserver(() => { window.cancelAnimationFrame(frame); frame = window.requestAnimationFrame(draw); }); observer.observe(container); return () => { observer.disconnect(); window.cancelAnimationFrame(frame); };
-  }, [model, settings.color, settings.intervalShowPrice, settings.intervalVisual, settings.negativeColor, viewport]);
+  }, [model, settings.color, settings.intervalCandleBuckets, settings.intervalPriceStyle, settings.intervalShowPrice, settings.intervalVisual, settings.negativeColor, viewport]);
   if (!model.points.length) return <NoRows />;
-  return <div className="relative h-full min-h-0 overflow-hidden" onWheel={(event) => { event.preventDefault(); const direction = event.deltaY < 0 ? 1.22 : .82; setViewport((current) => ({ zoom: Math.max(1, Math.min(20, current.zoom * direction)), offset: current.offset })); }} onPointerDown={(event) => { drag.current = { x: event.clientX, offset: viewport.offset }; event.currentTarget.setPointerCapture(event.pointerId); }} onPointerMove={(event) => { if (drag.current) { const width = Math.max(1, event.currentTarget.clientWidth - 78); const visible = Math.max(8, model.buckets / viewport.zoom); setViewport((current) => ({ ...current, offset: Math.max(0, drag.current!.offset - (event.clientX - drag.current!.x) / width * visible) })); return; } const rect = event.currentTarget.getBoundingClientRect(); const x = event.clientX - rect.left, y = event.clientY - rect.top; let nearest: typeof pointsOnScreen.current[number] | null = null, distance = 18; pointsOnScreen.current.forEach((point) => { const next = Math.hypot(point.x - x, point.y - y); if (next < distance) { distance = next; nearest = point; } }); setHover(nearest); }} onPointerUp={() => { drag.current = null; }} onPointerLeave={() => { drag.current = null; setHover(null); }}>
+  const clampOffset = (value: number, zoom: number) =>
+    Math.max(0, Math.min(Math.max(0, model.buckets - Math.max(8, model.buckets / zoom)), value));
+  const currentStrikeSpan = () =>
+    Math.max(.0001, (model.maxStrike - model.minStrike) / Math.max(.05, viewport.strikeZoom));
+  const currentStrikeCentre = () =>
+    viewport.strikeCentre ?? (model.maxStrike + model.minStrike) / 2;
+
+  return <div
+    className="relative h-full min-h-0 overflow-hidden"
+    onWheel={(event) => {
+      event.preventDefault();
+      const rect = event.currentTarget.getBoundingClientRect();
+      const overStrikeScale = event.clientX - rect.left > rect.width - PLOT_RIGHT_GUTTER;
+      const direction = event.deltaY < 0 ? 1.22 : .82;
+      // Over the strike scale, or with shift held, the wheel stretches price
+      // instead of time — the two axes a chart lets you zoom separately.
+      setViewport((current) => (overStrikeScale || event.shiftKey
+        ? { ...current, strikeZoom: Math.max(.2, Math.min(40, current.strikeZoom * direction)) }
+        : { ...current, zoom: Math.max(1, Math.min(20, current.zoom * direction)) }));
+    }}
+    onDoubleClick={() => setViewport({ zoom: 1, offset: 0, strikeZoom: 1, strikeCentre: null })}
+    onPointerDown={(event) => {
+      const rect = event.currentTarget.getBoundingClientRect();
+      const x = event.clientX - rect.left, y = event.clientY - rect.top;
+      event.currentTarget.setPointerCapture(event.pointerId);
+      if (x > rect.width - PLOT_RIGHT_GUTTER) {
+        drag.current = { mode: "strike-scale", y: event.clientY, zoom: viewport.strikeZoom };
+      } else if (y > rect.height - PLOT_BOTTOM_GUTTER) {
+        drag.current = { mode: "time-scale", x: event.clientX, zoom: viewport.zoom };
+      } else {
+        drag.current = {
+          mode: "pan", x: event.clientX, y: event.clientY,
+          offset: viewport.offset, centre: viewport.strikeCentre, span: currentStrikeSpan(),
+        };
+      }
+    }}
+    onPointerMove={(event) => {
+      const held = drag.current;
+      const rect = event.currentTarget.getBoundingClientRect();
+      if (held?.mode === "strike-scale") {
+        // Dragging a price scale down compresses it and up stretches it, the
+        // same direction a chart's own scale moves.
+        const travel = (event.clientY - held.y) / Math.max(1, rect.height);
+        setViewport((current) => ({ ...current, strikeZoom: Math.max(.2, Math.min(40, held.zoom * Math.exp(-travel * 2.2))) }));
+        return;
+      }
+      if (held?.mode === "time-scale") {
+        const travel = (event.clientX - held.x) / Math.max(1, rect.width);
+        setViewport((current) => {
+          const zoom = Math.max(1, Math.min(20, held.zoom * Math.exp(travel * 2.2)));
+          return { ...current, zoom, offset: clampOffset(current.offset, zoom) };
+        });
+        return;
+      }
+      if (held?.mode === "pan") {
+        const width = Math.max(1, rect.width - PLOT_RIGHT_GUTTER - 10);
+        const height = Math.max(1, rect.height - PLOT_BOTTOM_GUTTER - 8);
+        const visible = Math.max(8, model.buckets / viewport.zoom);
+        const centre = held.centre ?? (model.maxStrike + model.minStrike) / 2;
+        setViewport((current) => ({
+          ...current,
+          offset: clampOffset(held.offset - (event.clientX - held.x) / width * visible, current.zoom),
+          // Dragging DOWN moves the view down the price axis, so the content
+          // follows the hand exactly as candles do.
+          strikeCentre: centre + (event.clientY - held.y) / height * held.span,
+        }));
+        return;
+      }
+      const x = event.clientX - rect.left, y = event.clientY - rect.top;
+      let nearest: typeof pointsOnScreen.current[number] | null = null, distance = 18;
+      pointsOnScreen.current.forEach((point) => { const next = Math.hypot(point.x - x, point.y - y); if (next < distance) { distance = next; nearest = point; } });
+      setHover(nearest);
+    }}
+    onPointerUp={() => { drag.current = null; }}
+    onPointerLeave={() => { drag.current = null; setHover(null); }}
+  >
     <canvas ref={canvasRef} className="block h-full w-full cursor-crosshair" />
-    <div className="absolute bottom-0 left-2 right-[68px] z-10 flex h-5 items-center gap-2 border-t border-border/60 bg-background/85 px-1 backdrop-blur-sm"><span className="text-[7px] uppercase tracking-[.12em] text-muted">Range</span><input aria-label="Interval map visible range" type="range" min="0" max={Math.max(0, model.buckets - Math.max(8, model.buckets / viewport.zoom))} step="0.1" value={Math.min(viewport.offset, Math.max(0, model.buckets - Math.max(8, model.buckets / viewport.zoom)))} onChange={(event) => setViewport((current) => ({ ...current, offset: Number(event.target.value) }))} className="h-1 min-w-0 flex-1 accent-primary" /></div>
-    <button onClick={(event) => { event.stopPropagation(); setViewport({ zoom: 1, offset: 0 }); }} className="absolute right-2 top-2 border border-border bg-panel/90 px-2 py-1 text-[8px] uppercase text-muted hover:text-primary">Reset view</button>
+    <button
+      onClick={(event) => { event.stopPropagation(); setViewport({ zoom: 1, offset: 0, strikeZoom: 1, strikeCentre: null }); }}
+      className="absolute right-2 top-2 z-20 border border-border bg-panel/90 px-2 py-1 text-[8px] uppercase text-muted hover:text-primary"
+    >Reset view</button>
     {hover ? <div className="pointer-events-none absolute z-20 min-w-44 border border-border bg-panel/95 p-2 font-mono text-[8px] shadow-xl" style={{ left: Math.min(hover.x + 12, Math.max(4, (canvasRef.current?.clientWidth ?? 240) - 190)), top: Math.max(4, hover.y - 66) }}><div className="mb-1 text-foreground">{timeCell(hover.timestamp)} · {hover.expiration}</div><div className="flex justify-between text-muted"><span>Strike</span><b className="text-foreground">{price(hover.strike)}</b></div><div className="flex justify-between text-muted"><span>Underlying</span><b className="text-foreground">{hover.sourcePrice === null ? "—" : price(hover.sourcePrice)}</b></div><div className="flex justify-between text-muted"><span>Call / Put</span><b className="text-foreground">{compact(hover.call)} / {compact(hover.put)}</b></div><div className="flex justify-between text-muted"><span>{settings.intervalMode === "difference" ? "Change" : settings.intervalContent}</span><b className={hover.value >= 0 ? "text-primary" : "text-danger"}>{compact(hover.value)}</b></div></div> : null}
   </div>;
 }
-
 function ExposureHeatMap({ payload, settings }: { payload: unknown; settings: PanelSettings }) {
   const surface = record(payload); const buckets = Array.isArray(surface?.buckets) ? surface.buckets : []; const latest = record(buckets.at(-1)); const rows = Array.isArray(latest?.rows) ? latest.rows.map(record).filter((row): row is Record<string, unknown> => Boolean(row)) : [];
   const expirations = [...new Set(rows.map((row) => String(valueAt(row, "expirationDate", "expiration", "expiry") ?? "ALL")))].slice(0, 14); const strikes = [...new Set(rows.map((row) => finite(valueAt(row, "sourceStrike", "strike"))).filter((value): value is number => value !== null))].sort((a, b) => b - a).slice(0, settings.rows); const values = rows.map((row) => intervalValue(finite(valueAt(row, "callExposure", "call")) ?? 0, finite(valueAt(row, "putExposure", "put")) ?? 0, settings.intervalContent)); const peak = Math.max(1, ...values.map(Math.abs));
@@ -712,6 +847,8 @@ function PanelSettingsDialog({ panel, onChange, onClose }: { panel: DashboardPan
       {intervalTool ? <>
         <div className="col-span-2 mt-1 border-t border-border pt-3 text-[8px] font-semibold uppercase tracking-[.16em] text-foreground">Interval exposure surface</div>
         <Field label="Visual mode"><select value={panel.settings.intervalVisual} onChange={(e) => update("intervalVisual", e.target.value)}>{["bubbles", "fixed-dots", "heat-cells", "horizontal-ribbons", "hybrid"].map((v) => <option key={v}>{v}</option>)}</select></Field>
+        <Field label="Underlying style"><select value={panel.settings.intervalPriceStyle} onChange={(e) => update("intervalPriceStyle", e.target.value)}><option value="line">Line</option><option value="candles">Candlesticks</option></select></Field>
+        <Field label={`Buckets per candle · ${panel.settings.intervalCandleBuckets}`}><input type="range" min="1" max="30" value={panel.settings.intervalCandleBuckets} onChange={(e) => update("intervalCandleBuckets", Number(e.target.value))} /></Field>
         <Field label="Exposure content"><select value={panel.settings.intervalContent} onChange={(e) => update("intervalContent", e.target.value)}>{["net", "call", "put", "gross", "call-put-split"].map((v) => <option key={v}>{v}</option>)}</select></Field>
         <Field label="Value mode"><select value={panel.settings.intervalMode} onChange={(e) => update("intervalMode", e.target.value)}><option value="raw">Raw exposure</option><option value="difference">Build / unwind change</option></select></Field>
         <Field label="Difference baseline"><select value={panel.settings.intervalBaseline} onChange={(e) => update("intervalBaseline", e.target.value)}><option value="previous-bucket">Previous interval</option><option value="session-open">Session open</option><option value="rolling-average">Rolling average</option></select></Field>
