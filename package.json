@@ -87,6 +87,8 @@
     "test:chart-viewport-reset": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-chart-viewport-reset.mjs",
     "test:paper-limit-orders": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-paper-limit-orders.mjs",
     "test:execution-stream-staleness": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-execution-stream-staleness.mjs",
+    "test:big-trades-live-edge": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-big-trades-live-edge.mjs",
+    "bench:big-trades": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/bench-big-trades.mjs",
     "test:gex-map-node-detail": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-gex-map-node-detail.mjs",
     "test:options-ticker-profiles": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-options-ticker-profiles.mjs",
     "test:tpo-settings-wired": "node --import ./scripts/alias-hook.mjs scripts/test-tpo-settings-wired.mjs",

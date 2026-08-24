@@ -124,7 +124,9 @@ import KwantLoader from "@/components/KwantLoader";
 import {
   anchorBigTradePrintsToCandles,
   buildEventBarChartTimeMap,
-  calculateBigTradePrints,
+  admitLiveBigTradePrints,
+  calculateBigTradePrintsWithContext,
+  type BigTradeLiveContext,
   type AnchoredBigTradePrint,
 } from "@/lib/bigTrades";
 import {
@@ -9078,15 +9080,28 @@ function Chart({
       instance.enabled && instance.indicatorId === "depth-of-market") ?? null,
     [indicatorSignature, indicators],
   );
+  const bigTradeLiveContextRef = useRef<BigTradeLiveContext | null>(null);
+  const bigTradeCommittedRef = useRef<{ markers: BigTradePrimitiveMarker[]; watermark: number }>({
+    markers: [], watermark: 0,
+  });
+  const bigTradePrimitiveOptionsRef = useRef<BigTradesPrimitiveOptions | null>(null);
   const bigTradePrints = useMemo(
-    () => bigTradesIndicator
-      ? calculateBigTradePrints(
-          indicatorCandles,
-          indicatorMarketTrades,
-          { ...(bigTradesIndicator.settings ?? {}), tickSize: priceFormat.minMove },
-          replayTimestampMs ?? Date.now(),
-        )
-      : [],
+    () => {
+      if (!bigTradesIndicator) {
+        bigTradeLiveContextRef.current = null;
+        return [];
+      }
+      const { prints, context } = calculateBigTradePrintsWithContext(
+        indicatorCandles,
+        indicatorMarketTrades,
+        { ...(bigTradesIndicator.settings ?? {}), tickSize: priceFormat.minMove },
+        replayTimestampMs ?? Date.now(),
+      );
+      // Retaining the measured scale is what lets a print arriving before the
+      // next full pass be drawn immediately rather than a sample later.
+      bigTradeLiveContextRef.current = context;
+      return prints;
+    },
     [bigTradesIndicator, indicatorCandles, indicatorMarketTrades, priceFormat.minMove, replayTimestampMs],
   );
   const anchoredBigTradePrints = useMemo(() => {
@@ -9203,6 +9218,51 @@ function Chart({
       };
     }).sort((left, right) => left.timestamp - right.timestamp);
   }, [bigTradePrints, bigTradesIndicator?.settings, candleIntervalMs, indicatorCandles, timeframe]);
+  /**
+   * Draw a qualifying print the moment the tape holds it.
+   *
+   * The full pass measures the tape's distribution and costs 22ms on a
+   * 20,000-print tape, 183ms on 150,000 - at stream cadence that is 55% and
+   * 458% of a core, so it samples every 1.5s instead. That sampling is why a
+   * large print could sit invisible for over a second after it had already
+   * arrived.
+   *
+   * This appends only prints newer than the committed set, sized against the
+   * scale the last pass measured. Measured at 0.02ms per batch, and the next
+   * full pass replaces the whole set, so clustering and any scale movement
+   * still settle within the sample interval.
+   */
+  useEffect(() => {
+    if (!bigTradesIndicator) return;
+    const receive = (event: Event) => {
+      const detail = (event as CustomEvent<LiveChartExecutionDetail>).detail;
+      if (!detail || detail.key !== liveCandleEventKey) return;
+      // A replay reveals history against its own clock; the live tape is not
+      // its future to draw.
+      if (liveReplayActiveRef.current) return;
+      const primitive = bigTradesPrimitiveRef.current;
+      const context = bigTradeLiveContextRef.current;
+      const options = bigTradePrimitiveOptionsRef.current;
+      const committed = bigTradeCommittedRef.current;
+      if (!primitive || !context || !options || !committed.watermark) return;
+      const fresh = admitLiveBigTradePrints(context, detail.tape, committed.watermark);
+      if (!fresh.length) return;
+      primitive.update(
+        [
+          ...committed.markers,
+          ...fresh.map((print) => ({
+            ...print,
+            time: (eventChartTimeBySourceTimeRef.current.get(print.timestamp)
+              ?? Math.floor(print.timestamp / 1_000)) as Time,
+          })),
+        ],
+        options,
+      );
+    };
+    window.addEventListener(LIVE_CHART_EXECUTION_EVENT, receive);
+    return () => window.removeEventListener(LIVE_CHART_EXECUTION_EVENT, receive);
+  }, [bigTradesIndicator, liveCandleEventKey]);
+
   const bigTradeEventChartTimes = useMemo(
     () => timeframe && isEventBasedChartInterval(timeframe)
       ? buildEventBarChartTimeMap(sampledIndicatorCandles)
@@ -9242,9 +9302,17 @@ function Chart({
         ? rawInformationMode
         : "volume";
     const themeStyles = window.getComputedStyle(document.documentElement);
-    primitive.update(
-      bigTradesIndicator ? bigTradePrimitiveMarkers : [],
-      {
+    const markers = bigTradesIndicator ? bigTradePrimitiveMarkers : [];
+    // The authoritative set replaces everything the live edge drew between
+    // samples, so a live marker is never wrong for longer than one interval.
+    bigTradeCommittedRef.current = {
+      markers,
+      // The watermark is the SOURCE timestamp, taken from the anchored prints:
+      // a marker's `time` is a chart coordinate and, on event bars, a
+      // synthetic second that cannot be compared against the tape.
+      watermark: markers.length ? (anchoredBigTradePrints.at(-1)?.timestamp ?? 0) : 0,
+    };
+    const nextOptions: BigTradesPrimitiveOptions = {
         askColor: useThemeColors
           ? settings.upColor
           : String(tradeSettings.askColor ?? settings.upColor),
@@ -9256,11 +9324,13 @@ function Chart({
         informationMode,
         showLabels: tradeSettings.showLabels !== false,
         labelMinSize: Number(tradeSettings.labelMinSize ?? 1),
-        textColor: themeStyles.getPropertyValue("--foreground").trim() || "#F5F5F5",
-        backgroundColor: settings.backgroundColor,
-      },
-    );
+      textColor: themeStyles.getPropertyValue("--foreground").trim() || "#F5F5F5",
+      backgroundColor: settings.backgroundColor,
+    };
+    bigTradePrimitiveOptionsRef.current = nextOptions;
+    primitive.update(markers, nextOptions);
   }, [
+    anchoredBigTradePrints,
     bigTradePrimitiveMarkers,
     bigTradesIndicator,
     chartReadyRevision,
