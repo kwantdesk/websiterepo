@@ -5659,16 +5659,22 @@ function Chart({
       // Start at a useful information density. The renderer expands the two
       // profile wings as space becomes available instead of forcing every
       // candle to reserve three full footprint widths up front.
+      // The space the wings ask for, honoured rather than capped.
+      //
+      // This used to clamp the whole span to 42px and the extra spacing to
+      // 10px, while their sliders ran to 100% and 48px. Past those points both
+      // controls were inert: the bar spacing they feed never grew, so the
+      // renderer had no more room to give the wings and nothing moved on
+      // screen however far either slider was dragged. The renderer still
+      // adapts downward when space is genuinely tight; what it cannot do is
+      // invent room the time scale never reserved.
       const adaptiveProfileSpan = profileLayerEnabled
-        ? Math.min(
-          42,
-          profileSideWidth * profileSideCount
-            + footprintPrimitiveOptions.perBarProfileGap * profileSideCount
-            + Math.min(10, footprintPrimitiveOptions.perBarProfileExtraSpacing),
-        )
+        ? profileSideWidth * profileSideCount
+          + footprintPrimitiveOptions.perBarProfileGap * profileSideCount
+          + footprintPrimitiveOptions.perBarProfileExtraSpacing
         : 0;
       const renderedBarSpacing = Math.min(
-        128,
+        260,
         Math.max(
           40,
           Math.min(86, footprintPrimitiveOptions.barWidth)

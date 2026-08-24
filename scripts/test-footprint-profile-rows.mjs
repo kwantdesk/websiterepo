@@ -29,17 +29,21 @@ import {
   );
   assert.equal(footprintProfileGranularityTicks(0), 1, "never finer than one tick");
   assert.equal(footprintProfileGranularityTicks(-5), 1);
-  assert.equal(footprintProfileGranularityTicks(undefined), 10, "absent falls to the default");
-  assert.equal(footprintProfileGranularityTicks("nonsense"), 10);
+  assert.equal(footprintProfileGranularityTicks(undefined), 1, "absent falls to the default");
+  assert.equal(footprintProfileGranularityTicks("nonsense"), 1);
   assert.ok(FOOTPRINT_PROFILE_MAX_TICKS_PER_ROW >= 50, "coarse enough to read a wave on a liquid contract");
 }
 
-// --- a fresh footprint groups ten ticks to a row ---
+// --- a fresh footprint draws one tick to a row ---
+//
+// Ten was chosen so a liquid contract read as a shape rather than a comb. The
+// desk owner asked for the finest granularity as the shipped default instead;
+// grouping remains on the slider for anyone who wants the shape back.
 {
-  assert.equal(DEFAULT_FOOTPRINT_SETTINGS.perBarProfileTicksPerRow, 10);
+  assert.equal(DEFAULT_FOOTPRINT_SETTINGS.perBarProfileTicksPerRow, 1);
   const fresh = validateFootprintSettings({});
-  assert.equal(fresh.perBarProfileTicksPerRow, 10, "ten times coarser than the old default");
-  assert.equal(footprintProfileGranularityTicks(fresh.perBarProfileTicksPerRow), 10);
+  assert.equal(fresh.perBarProfileTicksPerRow, 1, "the finest granularity is the default");
+  assert.equal(footprintProfileGranularityTicks(fresh.perBarProfileTicksPerRow), 1);
 }
 
 // --- the old default was nobody's choice, so it does not survive ---
@@ -48,7 +52,7 @@ import {
     footprintSettingsVersion: 7,
     perBarProfileGranularity: 10, // the old default: one tick per row
   });
-  assert.equal(legacyDefault.perBarProfileTicksPerRow, 10,
+  assert.equal(legacyDefault.perBarProfileTicksPerRow, 1,
     "a footprint still on the old default gets the new one");
 }
 

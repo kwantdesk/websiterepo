@@ -22,6 +22,8 @@ export const FOOTPRINT_SETTINGS_SCHEMA_VERSION = 8;
  * produced nothing legible.
  */
 export const FOOTPRINT_PROFILE_MAX_TICKS_PER_ROW = 50;
+/** Finest granularity, and what an absent setting resolves to. */
+export const FOOTPRINT_PROFILE_DEFAULT_TICKS_PER_ROW = 1;
 
 export type FootprintSettings = {
   footprintSettingsVersion: number;
@@ -152,7 +154,10 @@ export const DEFAULT_FOOTPRINT_SETTINGS: FootprintSettings = {
   showPerBarVolumeProfile: false,
   showPerBarDeltaProfile: false,
   perBarProfileScaleMode: "independent",
-  perBarProfileTicksPerRow: 10,
+  // One tick per row: the trader asked for the finest granularity by default.
+  // Grouping is still available on the slider for liquid contracts where a
+  // per-tick profile reads as a comb rather than a shape.
+  perBarProfileTicksPerRow: FOOTPRINT_PROFILE_DEFAULT_TICKS_PER_ROW,
   perBarProfileWidthPercent: 92,
   perBarProfileGap: 2,
   perBarProfileExtraSpacing: 18,
@@ -397,7 +402,12 @@ const colour = (value: unknown, fallback: string) =>
  * one tick, the finest of all. The control now says what it does.
  */
 export function footprintProfileGranularityTicks(value: unknown) {
-  return Math.round(clamp(value, 1, FOOTPRINT_PROFILE_MAX_TICKS_PER_ROW, 10));
+  // The fallback is the shipped default rather than a second literal, or the
+  // two drift and an absent setting resolves to a granularity no footprint
+  // actually ships with.
+  return Math.round(clamp(
+    value, 1, FOOTPRINT_PROFILE_MAX_TICKS_PER_ROW, FOOTPRINT_PROFILE_DEFAULT_TICKS_PER_ROW,
+  ));
 }
 
 /**
@@ -459,7 +469,7 @@ export function validateFootprintSettings(input: unknown): FootprintSettings {
           : undefined),
       1,
       FOOTPRINT_PROFILE_MAX_TICKS_PER_ROW,
-      10,
+      FOOTPRINT_PROFILE_DEFAULT_TICKS_PER_ROW,
     )),
     perBarProfileWidthPercent: clamp(source.perBarProfileWidthPercent, 10, 100, 92),
     perBarProfileGap: clamp(source.perBarProfileGap, 0, 12, 2),

@@ -16538,14 +16538,14 @@ export default function KwantifyWorkspace({
     }
     return (
       <div className={`${overlay ? "absolute inset-0 z-[100]" : "h-full"} flex min-h-0 items-center justify-center overflow-y-auto bg-background/95 p-4 backdrop-blur-xl`}>
-        <div className="my-auto w-full max-w-[840px] rounded-2xl border border-border bg-panel/95 p-4 shadow-2xl shadow-black/40 sm:p-5">
+        <div className="@container my-auto w-full max-w-[840px] rounded-2xl border border-border bg-panel/95 p-4 shadow-2xl shadow-black/40 sm:p-5">
           <div className="mb-4 flex items-start justify-between gap-3">
-            <div>
+            <div className="min-w-0">
               <div className="flex items-center gap-2 text-primary">
                 <Plus className="h-4 w-4" />
-                <h3 className="text-[12px] font-semibold uppercase tracking-[0.13em]">Add to workspace</h3>
+                <h3 className="truncate text-[12px] font-semibold uppercase tracking-[0.13em]">Add to workspace</h3>
               </div>
-              <p className="mt-1.5 text-[10px] leading-4 text-muted">Choose a live KwantDesk workspace for this panel.</p>
+              <p className="mt-1.5 hidden text-[10px] leading-4 text-muted @[380px]:block">Choose a live KwantDesk workspace for this panel.</p>
             </div>
             <button
               type="button"
@@ -16562,7 +16562,7 @@ export default function KwantifyWorkspace({
             <Layers3 className="h-3.5 w-3.5 text-primary" />
             <span>Workspaces</span>
           </div>
-          <div className="grid grid-cols-1 gap-2 min-[440px]:grid-cols-2 min-[760px]:grid-cols-3">
+          <div className="grid grid-cols-1 gap-2 @[440px]:grid-cols-2 @[760px]:grid-cols-3">
             {WORKSPACE_PANEL_OPTIONS.map((option) => {
               const Icon = option.icon;
               return (
@@ -16579,7 +16579,7 @@ export default function KwantifyWorkspace({
                   </span>
                   <span className="min-w-0">
                     <span className="block truncate text-[10px] font-semibold text-foreground">{option.label}</span>
-                    <span className="mt-0.5 block truncate text-[8px] text-muted">{option.description}</span>
+                    <span className="mt-0.5 hidden truncate text-[8px] text-muted @[300px]:block">{option.description}</span>
                   </span>
                 </button>
               );
@@ -16591,7 +16591,7 @@ export default function KwantifyWorkspace({
             <span>Tools &amp; Indicators</span>
           </div>
           <div className="mb-2 text-[8px] font-semibold uppercase tracking-[0.16em] text-primary/80">Options</div>
-          <div className="mb-3 grid grid-cols-1 gap-2 min-[440px]:grid-cols-2 min-[760px]:grid-cols-3">
+          <div className="mb-3 grid grid-cols-1 gap-2 @[440px]:grid-cols-2 @[760px]:grid-cols-3">
             {WORKSPACE_TOOL_OPTIONS.filter((option) => option.id === "tool-gamma-heatmap" || option.id === "tool-implied-volatility-rank" || option.id === "tool-net-gamma-exposure-by-strike" || option.id === "tool-gex-interval-map" || option.id === "tool-bounce-levels" || option.id === "tool-dark-pool-map" || option.id === "tool-dark-pool-gex").map((option) => {
               const Icon = option.icon;
               return (
@@ -16603,13 +16603,13 @@ export default function KwantifyWorkspace({
                   className={`group flex min-h-[66px] items-center gap-3 rounded-xl border p-3 text-left transition-all hover:-translate-y-0.5 hover:border-primary/45 hover:bg-primary/[0.07] disabled:pointer-events-none ${pane.content === option.id || workspacePanelTransition?.content === option.id ? "border-primary/40 bg-primary/[0.08]" : "border-border bg-surface/60"}`}
                 >
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary"><Icon className="h-[17px] w-[17px]" /></span>
-                  <span className="min-w-0"><span className="block text-[9px] font-semibold leading-3 text-foreground">{option.label}</span><span className="mt-1 block text-[8px] leading-3 text-muted">{option.description}</span></span>
+                  <span className="min-w-0"><span className="block text-[9px] font-semibold leading-3 text-foreground">{option.label}</span><span className="mt-1 hidden text-[8px] leading-3 text-muted @[300px]:block">{option.description}</span></span>
                 </button>
               );
             })}
           </div>
           <div className="mb-2 text-[8px] font-semibold uppercase tracking-[0.16em] text-muted">Market &amp; Order Flow</div>
-          <div className="grid grid-cols-1 gap-2 min-[440px]:grid-cols-2 min-[760px]:grid-cols-3">
+          <div className="grid grid-cols-1 gap-2 @[440px]:grid-cols-2 @[760px]:grid-cols-3">
             {WORKSPACE_TOOL_OPTIONS.filter((option) => option.id !== "tool-gamma-heatmap" && option.id !== "tool-implied-volatility-rank" && option.id !== "tool-net-gamma-exposure-by-strike" && option.id !== "tool-gex-interval-map" && option.id !== "tool-bounce-levels" && option.id !== "tool-dark-pool-map" && option.id !== "tool-dark-pool-gex").map((option) => {
               const Icon = option.icon;
               return (
@@ -16625,7 +16625,7 @@ export default function KwantifyWorkspace({
                   </span>
                   <span className="min-w-0">
                     <span className="block text-[9px] font-semibold leading-3 text-foreground">{option.label}</span>
-                    <span className="mt-1 block text-[8px] leading-3 text-muted">{option.description}</span>
+                    <span className="mt-1 hidden text-[8px] leading-3 text-muted @[300px]:block">{option.description}</span>
                   </span>
                 </button>
               );

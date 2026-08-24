@@ -3852,26 +3852,42 @@ export default function ChartIndicatorsControl({
                       Builds from the same live executions as each footprint bar. Total volume faces right, signed delta faces left, and the POC square uses the footprint bar&apos;s exact POC row.
                     </p>
                   </div>
+                  {/*
+                    * The POC square and the outline are drawn INSIDE a profile
+                    * wing, so with both wings off they are dead switches: the
+                    * box ticks and nothing appears. They now disable themselves
+                    * and say why, rather than letting a trader conclude the
+                    * feature is broken.
+                    */}
                   <div className="grid gap-2 sm:grid-cols-2">
-                    {[
-                      ["Volume profile · right", "showPerBarVolumeProfile", false],
-                      ["Delta profile · left", "showPerBarDeltaProfile", false],
-                      ["POC square", "showPerBarProfilePoc", true],
-                      ["Profile outline", "perBarProfileOutline", false],
-                    ].map(([label, key, fallback]) => (
-                      <label key={String(key)} className="flex min-h-9 items-center gap-2 rounded-lg border border-border bg-surface/30 px-3 text-[9px] text-muted">
-                        <input
-                          type="checkbox"
-                          checked={Boolean(settingsInstance.settings?.[String(key)] ?? fallback)}
-                          onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
-                            ...current,
-                            settings: { ...(current.settings ?? {}), [String(key)]: event.target.checked },
-                          }))}
-                          className="accent-primary"
-                        />
-                        <span>{String(label)}</span>
-                      </label>
-                    ))}
+                    {(() => {
+                      const wingsOn = Boolean(settingsInstance.settings?.showPerBarVolumeProfile ?? false)
+                        || Boolean(settingsInstance.settings?.showPerBarDeltaProfile ?? false);
+                      return [
+                        ["Volume profile · right", "showPerBarVolumeProfile", false, true],
+                        ["Delta profile · left", "showPerBarDeltaProfile", false, true],
+                        ["POC square", "showPerBarProfilePoc", true, wingsOn],
+                        ["Profile outline", "perBarProfileOutline", false, wingsOn],
+                      ].map(([label, key, fallback, available]) => (
+                        <label
+                          key={String(key)}
+                          title={available ? undefined : "Turn on a volume or delta profile first — this draws inside one"}
+                          className={`flex min-h-9 items-center gap-2 rounded-lg border border-border bg-surface/30 px-3 text-[9px] text-muted ${available ? "" : "opacity-40"}`}
+                        >
+                          <input
+                            type="checkbox"
+                            disabled={!available}
+                            checked={Boolean(settingsInstance.settings?.[String(key)] ?? fallback)}
+                            onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                              ...current,
+                              settings: { ...(current.settings ?? {}), [String(key)]: event.target.checked },
+                            }))}
+                            className="accent-primary"
+                          />
+                          <span>{String(label)}</span>
+                        </label>
+                      ));
+                    })()}
                   </div>
                   <label className="block space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
                     <span>Profile normalization</span>
