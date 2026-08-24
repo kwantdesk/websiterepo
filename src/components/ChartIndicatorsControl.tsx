@@ -71,6 +71,7 @@ import { ICEBERG_REFRESH_PRESETS } from "@/lib/icebergRefreshDetector";
 import { LIQUIDITY_STOP_SWEEP_PRESETS } from "@/lib/liquidityStopSweepDetector";
 import { POC_AUCTION_PRESETS } from "@/lib/pocAuctionSuite";
 import { TAPE_SPEED_PRESETS } from "@/lib/tapeSpeedOrderFlowBurst";
+import IndicatorTemplateBar from "@/components/IndicatorTemplateBar";
 
 const FAVOURITES_STORAGE_KEY = "kwantdesk-chart-indicator-favourites";
 
@@ -5098,6 +5099,21 @@ export default function ChartIndicatorsControl({
                   </p>
                 </div>
               ) : null}
+
+              {/*
+                * Save, open and import — on every indicator, not just the
+                * footprint. Rendered before the settings themselves so a
+                * template is reachable without scrolling past everything it
+                * would change.
+                */}
+              <IndicatorTemplateBar
+                indicatorId={settingsDefinition.id}
+                settings={settingsInstance.settings ?? {}}
+                onApply={(next) => replace(settingsInstance.instanceId, (current) => ({
+                  ...current,
+                  settings: next,
+                }))}
+              />
 
               {(() => {
                 const numericSettings = (INDICATOR_NUMERIC_SETTINGS[settingsDefinition.id] ?? [])
