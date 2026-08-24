@@ -509,6 +509,26 @@ const SocialNotificationsPanel = dynamic(() => import("@/components/socials/Soci
 // shape, on a workspace where each repaint costs the whole component tree.
 const PROFILE_COMMIT_INTERVAL_MS = 1_000;
 const PROFILE_COMMIT_INTERVAL_BACKGROUND_MS = 3_000;
+const MAX_PENDING_PANE_EXECUTION_RECORDS = 25_000;
+
+function appendBoundedPaneRecords(
+  target: InstitutionalTrade[],
+  records: InstitutionalTrade[],
+) {
+  if (!records.length) return;
+  if (records.length >= MAX_PENDING_PANE_EXECUTION_RECORDS) {
+    target.length = 0;
+    for (
+      let index = records.length - MAX_PENDING_PANE_EXECUTION_RECORDS;
+      index < records.length;
+      index += 1
+    ) target.push(records[index]);
+    return;
+  }
+  const overflow = target.length + records.length - MAX_PENDING_PANE_EXECUTION_RECORDS;
+  if (overflow > 0) target.splice(0, overflow);
+  for (const record of records) target.push(record);
+}
 
 const BOTTOM_PANEL_MIN_HEIGHT = 150;
 const BOTTOM_PANEL_DEFAULT_HEIGHT = 300;
@@ -3748,7 +3768,12 @@ async function fetchWorkspaceCandles(
           cache: "no-store",
           // Keep a history request alive across rapid timeframe switches. Its
           // result still warms the browser cache for the next selection.
-          signal: AbortSignal.timeout(isEventBasedChartInterval(timeframe) ? 285_000 : 45_000),
+          signal: signal
+            ? AbortSignal.any([
+                signal,
+                AbortSignal.timeout(isEventBasedChartInterval(timeframe) ? 285_000 : 45_000),
+              ])
+            : AbortSignal.timeout(isEventBasedChartInterval(timeframe) ? 285_000 : 45_000),
         },
       );
       const [payload, institutionalOrderFlow] = await Promise.all([
@@ -3787,7 +3812,7 @@ async function fetchWorkspaceCandles(
       // IndexedDB is the live restore cache. A closed replay session belongs
       // to its scoped in-memory/server cache; writing it under the live key
       // made the next normal chart open on a three-month-old final candle.
-      if (!historicalRange) {
+      if (!historicalRange && !healOnly) {
         await Promise.all([
           downloaded.length
             ? writeChartHistoryCache(symbol, timeframe, downloaded)
@@ -5864,7 +5889,7 @@ function WorkspaceChartPaneComponent({
     };
     const queueProfileUpdate = (records: InstitutionalTrade[]) => {
       if (!needsLiveVolumeProfiles || !records.length) return;
-      pendingProfileRecords.push(...records);
+      appendBoundedPaneRecords(pendingProfileRecords, records);
       if (profileSyncTimer !== null) return;
       profileSyncTimer = window.setTimeout(() => {
         profileSyncTimer = null;
@@ -5965,7 +5990,7 @@ function WorkspaceChartPaneComponent({
     };
     const queueExecutionUpdate = (records: InstitutionalTrade[]) => {
       if (!records.length) return;
-      pendingExecutionRecords.push(...records);
+      appendBoundedPaneRecords(pendingExecutionRecords, records);
       if (executionSyncTimer !== null) return;
       // Footprint remains visually live at 10 fps while multiple panes share
       // one bounded main-thread workload. Background panes reconcile slower.
@@ -6829,8 +6854,11 @@ function WorkspaceChartPaneComponent({
       || isEventBasedChartInterval(pane.timeframe)
     ) return;
     let cancelled = false;
+    let healing = false;
     const controller = new AbortController();
     const heal = async () => {
+      if (healing) return;
+      healing = true;
       try {
         const downloaded = await fetchWorkspaceCandles(
           pane.symbol,
@@ -6863,6 +6891,8 @@ function WorkspaceChartPaneComponent({
       } catch {
         // The next beat retries; a cold durable-cache build on the server can
         // exceed the request timeout until it finishes in the background.
+      } finally {
+        healing = false;
       }
     };
     // First pass early so a pane whose live stream dropped prints during the

@@ -58,6 +58,22 @@ function ensureWorker(): Worker | null {
   worker.addEventListener("message", (event: MessageEvent<WorkerMessage>) => {
     const message = event.data;
     const stream = streams.get(message?.key ?? "");
+    if (message?.type === "trades") {
+      try {
+        if (!stream) return;
+        // The worker owns the authoritative tape; this copy exists only to
+        // seed a pane that attaches later, so it is bounded the same way.
+        for (const record of message.records) stream.records.push(record);
+        if (stream.records.length > 29_096) stream.records.splice(0, stream.records.length - 25_000);
+        stream.subscribers.forEach((subscriber) => subscriber.onTrades(message.records));
+      } finally {
+        // Acknowledge only after synchronous fan-out. Until this arrives the
+        // worker coalesces subsequent prints instead of filling Chromium's
+        // structured-clone message queue with unbounded batches.
+        (event.currentTarget as Worker | null)?.postMessage({ type: "ack", key: message.key });
+      }
+      return;
+    }
     if (!stream) return;
     if (message.type === "status") {
       stream.status = message.status;
@@ -70,11 +86,6 @@ function ensureWorker(): Worker | null {
       stream.subscribers.forEach((subscriber) => subscriber.onSeed?.(message.records.slice()));
       return;
     }
-    // The worker owns the authoritative tape; this copy exists only to seed a
-    // pane that attaches later, so it is bounded the same way.
-    for (const record of message.records) stream.records.push(record);
-    if (stream.records.length > 29_096) stream.records.splice(0, stream.records.length - 25_000);
-    stream.subscribers.forEach((subscriber) => subscriber.onTrades(message.records));
   });
   worker.addEventListener("error", () => {
     // A worker that dies mid-session must not silently take the feed with it.
