@@ -370,6 +370,18 @@ const LEGACY_LEFT_TOOLBAR_ENABLED = false;
 // Depth the cheap studies reach back to, and the depth their cost was
 // measured at. Bounded so a very long session cannot grow the recompute
 // without limit.
+// Studies that live in their own pane and are built ENTIRELY from the
+// execution tape. With no flow yet they have nothing to plot but zero, which
+// draws a flat line reading as "the market is perfectly balanced" rather than
+// "this has not loaded". One list so the render gate and the status that
+// explains it cannot drift apart.
+const ORDER_FLOW_PANE_INDICATOR_IDS = new Set([
+  "cumulative-volume-delta",
+  "cvd-divergence",
+  "delta-cumulative-candlestick",
+  "delta-cumulative-histogram",
+  "delta-bar",
+]);
 const DEEP_HISTORY_INDICATOR_MAX_BARS = 20_000;
 const DEEP_HISTORY_INDICATOR_IDS = new Set([
   "moving-average",
@@ -5898,17 +5910,26 @@ function Chart({
     // every bar.
     return covered / sampled >= 0.6;
   }, [indicatorCandles, orderFlowHistoryReady]);
+  /**
+   * What the order-flow panes are waiting for, or null once they have it.
+   *
+   * These studies are gated off until the tape is usable, so before that the
+   * pane is simply blank — indistinguishable from a broken indicator. Naming
+   * the wait is the difference between "loading" and "this does not work".
+   */
+  const orderFlowPaneStatus = useMemo(() => {
+    if (orderFlowSeriesReady) return null;
+    const waiting = indicators.some((instance) =>
+      instance.enabled && ORDER_FLOW_PANE_INDICATOR_IDS.has(instance.indicatorId));
+    if (!waiting) return null;
+    return orderFlowHistoryReady
+      ? "CVD · BUILDING FROM EXECUTIONS"
+      : "CVD · LOADING EXECUTION HISTORY";
+  }, [indicatorSignature, indicators, orderFlowHistoryReady, orderFlowSeriesReady]);
+
   const baseCalculatedIndicatorSeries = useMemo(
     () => indicators.flatMap((instance) => {
-      if (
-        !orderFlowSeriesReady
-        && [
-          "cumulative-volume-delta",
-          "delta-cumulative-candlestick",
-          "delta-cumulative-histogram",
-          "delta-bar",
-        ].includes(instance.indicatorId)
-      ) return [];
+      if (!orderFlowSeriesReady && ORDER_FLOW_PANE_INDICATOR_IDS.has(instance.indicatorId)) return [];
       const requiresOrderFlowWindow = CHART_INDICATOR_BY_ID.get(instance.indicatorId)?.requiresOrderFlow === true;
       const studyCandles = requiresOrderFlowWindow
         ? indicatorCandles
@@ -17238,6 +17259,13 @@ function Chart({
       {tpoMergeSelection ? (
         <div className="pointer-events-none absolute left-1/2 top-4 z-30 -translate-x-1/2 border border-primary/45 bg-panel/95 px-3 py-2 text-[11px] font-medium text-foreground shadow-xl backdrop-blur">
           Select the other end of the TPO range <span className="ml-2 text-muted">Esc to cancel</span>
+        </div>
+      ) : null}
+
+      {orderFlowPaneStatus ? (
+        <div className="pointer-events-none absolute bottom-8 right-3 z-20 flex items-center gap-1.5 border border-border bg-panel/92 px-2 py-1 font-mono text-[9px] font-semibold tracking-[0.08em] text-muted shadow-lg backdrop-blur">
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
+          {orderFlowPaneStatus}
         </div>
       ) : null}
 
