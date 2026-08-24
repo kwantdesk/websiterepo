@@ -4,8 +4,9 @@ import {
   Activity, BarChart3, BookOpen, ChevronDown, Copy, Download, Expand,
   FileUp, Grid2X2, Grip, Infinity as InfinityIcon, LayoutDashboard, Maximize2,
   MoreHorizontal, Move, Plus, RefreshCw, Search, Settings2, Trash2, X,
+  SlidersHorizontal,
 } from "lucide-react";
-import { memo, startTransition, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { memo, startTransition, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
 type ToolCategory = "Options" | "Equities" | "KwantDesk";
 type Tool = { id: string; label: string; category: ToolCategory; detail: string; endpoint?: (settings: PanelSettings) => string };
@@ -29,7 +30,19 @@ type PanelSettings = {
 };
 type DashboardPanel = { id: string; toolId: string; title: string; settings: PanelSettings };
 type DashboardPage = { id: string; name: string; layout: "grid" | "infinite"; panels: DashboardPanel[] };
-type DashboardWorkspace = { schemaVersion: 2; name: string; activePageId: string; pages: DashboardPage[] };
+type DashboardWorkspace = {
+  schemaVersion: 2; name: string; activePageId: string; pages: DashboardPage[];
+  /** Workspace-wide palette. Absent on workspaces saved before it existed. */
+  paletteId?: string;
+};
+
+import {
+  DEFAULT_GEX_BOX_PALETTE_ID,
+  gexBoxPanelColors,
+  gexBoxThemeVariables,
+  resolveGexBoxRoles,
+} from "@/lib/gexBoxTheme";
+import { GEX_MAP_PALETTE_PRESETS } from "@/lib/gexMapPalette";
 
 const STORAGE_KEY = "kwantdesk:gex-box:dashboard:v2";
 const makeId = (prefix: string) => `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -91,6 +104,60 @@ const TOOLS: Tool[] = [
 ];
 
 const toolById = new Map(TOOLS.map((tool) => [tool.id, tool]));
+
+/**
+ * Palette picker for the whole workspace.
+ *
+ * Choosing one writes the call and put colours into every panel on every page,
+ * so a call is the same colour wherever it appears — net flow, net drift,
+ * exposure by expiration, anything added later. Headers and strike labels
+ * follow through CSS variables rather than per-panel settings, because they
+ * are chrome rather than data.
+ */
+function GexBoxStyleSettings({ paletteId, onApply, onClose }: {
+  paletteId: string;
+  onApply: (id: string) => void;
+  onClose: () => void;
+}) {
+  return <div className="fixed inset-0 z-[170] flex items-center justify-center bg-black/35 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <div className="flex h-[min(680px,86vh)] w-[min(760px,94vw)] flex-col border border-border bg-panel shadow-2xl">
+      <div className="flex h-12 shrink-0 items-center justify-between border-b border-border px-4">
+        <div>
+          <h2 className="text-[11px] font-semibold uppercase tracking-[.18em]">Workspace style</h2>
+          <p className="mt-0.5 text-[8px] text-muted">The same palettes the GEX Map uses · applies to every panel at once</p>
+        </div>
+        <button onClick={onClose} aria-label="Close workspace style"><X className="h-4 w-4 text-muted" /></button>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto p-4">
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
+          {GEX_MAP_PALETTE_PRESETS.map((preset) => {
+            const roles = resolveGexBoxRoles(preset.id);
+            const selected = preset.id === paletteId;
+            return <button
+              key={preset.id}
+              onClick={() => onApply(preset.id)}
+              className={`flex flex-col gap-2 border p-2.5 text-left transition-colors ${selected ? "border-primary/45 bg-primary/[.07]" : "border-border bg-background hover:border-primary/30"}`}
+            >
+              <span className="flex items-center justify-between">
+                <b className="text-[9px] font-semibold uppercase tracking-[.12em] text-foreground">{preset.label}</b>
+                {selected ? <span className="text-[7px] uppercase tracking-[.14em] text-primary">Active</span> : null}
+              </span>
+              <span className="flex h-4 overflow-hidden">
+                {roles.scale.map((stop, index) => <i key={`${preset.id}-${index}`} className="h-full flex-1" style={{ backgroundColor: stop }} />)}
+              </span>
+              <span className="flex items-center gap-2 text-[7px] uppercase tracking-[.12em]">
+                <span className="flex items-center gap-1" style={{ color: roles.call }}><i className="h-2 w-2" style={{ backgroundColor: roles.call }} />Call</span>
+                <span className="flex items-center gap-1" style={{ color: roles.put }}><i className="h-2 w-2" style={{ backgroundColor: roles.put }} />Put</span>
+                <span style={{ color: roles.strike }}>Strike</span>
+                <span style={{ color: roles.header }}>Header</span>
+              </span>
+            </button>;
+          })}
+        </div>
+      </div>
+    </div>
+  </div>;
+}
 
 function defaultWorkspace(): DashboardWorkspace {
   const panel = (toolId: string, symbol: string): DashboardPanel => ({ id: makeId("panel"), toolId, title: toolById.get(toolId)?.label ?? toolId, settings: { ...DEFAULT_SETTINGS, symbol } });
@@ -435,7 +502,7 @@ function ExposureHeatMap({ payload, settings }: { payload: unknown; settings: Pa
   const surface = record(payload); const buckets = Array.isArray(surface?.buckets) ? surface.buckets : []; const latest = record(buckets.at(-1)); const rows = Array.isArray(latest?.rows) ? latest.rows.map(record).filter((row): row is Record<string, unknown> => Boolean(row)) : [];
   const expirations = [...new Set(rows.map((row) => String(valueAt(row, "expirationDate", "expiration", "expiry") ?? "ALL")))].slice(0, 14); const strikes = [...new Set(rows.map((row) => finite(valueAt(row, "sourceStrike", "strike"))).filter((value): value is number => value !== null))].sort((a, b) => b - a).slice(0, settings.rows); const values = rows.map((row) => intervalValue(finite(valueAt(row, "callExposure", "call")) ?? 0, finite(valueAt(row, "putExposure", "put")) ?? 0, settings.intervalContent)); const peak = Math.max(1, ...values.map(Math.abs));
   if (!rows.length) return <NoRows />;
-  return <div className="h-full overflow-auto"><table className="min-w-max border-collapse text-[8px] font-mono"><thead className="sticky top-0 z-10 bg-panel"><tr><th className="sticky left-0 z-20 border border-border bg-panel px-2 py-2 text-muted">Strike</th>{expirations.map((expiry) => <th key={expiry} className="border border-border px-3 py-2 text-muted">{expiry}</th>)}</tr></thead><tbody>{strikes.map((strike) => <tr key={strike}><th className="sticky left-0 z-10 border border-border bg-panel px-2 py-1.5 text-foreground">{price(strike)}</th>{expirations.map((expiry) => { const row = rows.find((item) => finite(valueAt(item, "sourceStrike", "strike")) === strike && String(valueAt(item, "expirationDate", "expiration", "expiry") ?? "ALL") === expiry); const value = row ? intervalValue(finite(valueAt(row, "callExposure", "call")) ?? 0, finite(valueAt(row, "putExposure", "put")) ?? 0, settings.intervalContent) : 0; const ratio = Math.min(1, Math.abs(value) / peak); return <td key={expiry} title={`${expiry} · ${price(strike)} · ${compact(value)}`} className="min-w-24 border border-border px-2 py-1.5 text-right" style={{ color: value >= 0 ? settings.color : settings.negativeColor, background: `color-mix(in srgb, ${value >= 0 ? settings.color : settings.negativeColor} ${Math.round(8 + ratio * 62)}%, transparent)` }}>{compact(value)}</td>; })}</tr>)}</tbody></table></div>;
+  return <div className="h-full overflow-auto"><table className="min-w-max border-collapse text-[8px] font-mono"><thead className="sticky top-0 z-10 bg-panel"><tr><th data-gexbox-role="strike" className="sticky left-0 z-20 border border-border bg-panel px-2 py-2">Strike</th>{expirations.map((expiry) => <th key={expiry} className="border border-border px-3 py-2 text-muted">{expiry}</th>)}</tr></thead><tbody>{strikes.map((strike) => <tr key={strike}><th data-gexbox-role="strike" className="sticky left-0 z-10 border border-border bg-panel px-2 py-1.5">{price(strike)}</th>{expirations.map((expiry) => { const row = rows.find((item) => finite(valueAt(item, "sourceStrike", "strike")) === strike && String(valueAt(item, "expirationDate", "expiration", "expiry") ?? "ALL") === expiry); const value = row ? intervalValue(finite(valueAt(row, "callExposure", "call")) ?? 0, finite(valueAt(row, "putExposure", "put")) ?? 0, settings.intervalContent) : 0; const ratio = Math.min(1, Math.abs(value) / peak); return <td key={expiry} title={`${expiry} · ${price(strike)} · ${compact(value)}`} className="min-w-24 border border-border px-2 py-1.5 text-right" style={{ color: value >= 0 ? settings.color : settings.negativeColor, background: `color-mix(in srgb, ${value >= 0 ? settings.color : settings.negativeColor} ${Math.round(8 + ratio * 62)}%, transparent)` }}>{compact(value)}</td>; })}</tr>)}</tbody></table></div>;
 }
 
 function ProfileBars({ payload, settings }: { payload: unknown; settings: PanelSettings }) {
@@ -454,7 +521,7 @@ function ProfileBars({ payload, settings }: { payload: unknown; settings: PanelS
     return { rows, peak: Math.max(1, ...rows.flatMap((row) => [Math.abs(row.positive), Math.abs(row.negative)])) };
   }, [payload]);
   const positiveTotal = rows.reduce((sum, row) => sum + row.positive, 0), negativeTotal = rows.reduce((sum, row) => sum + row.negative, 0); const strongest = rows.reduce((best, row) => Math.max(Math.abs(row.positive), Math.abs(row.negative)) > Math.max(Math.abs(best.positive), Math.abs(best.negative)) ? row : best, rows[0] ?? { strike: 0, positive: 0, negative: 0 });
-  return <div className="flex h-full min-h-0 flex-col"><div className="grid shrink-0 grid-cols-4 border-b border-border bg-panel"><Metric label="Greek" value={settings.greek} accent /><Metric label="Positive" value={compact(positiveTotal)} /><Metric label="Negative" value={compact(negativeTotal)} /><Metric label="Largest strike" value={price(strongest.strike)} /></div><div className="grid h-7 shrink-0 grid-cols-[1fr_70px_1fr] items-center gap-2 border-b border-border px-2 text-[7px] font-semibold uppercase tracking-[.13em] text-muted"><span className="text-right">Put / negative</span><span className="text-center">Strike</span><span>Call / positive</span></div><div className="min-h-0 flex-1 overflow-y-auto px-2 py-1">{rows.length ? rows.map((row) => <div key={row.strike} className="grid h-6 grid-cols-[1fr_70px_1fr] items-center gap-2 border-b border-border/30 text-[8px] font-mono"><div className="relative flex h-3 justify-end"><span className="absolute right-0 top-0 h-full opacity-60" title={`Negative ${compact(row.negative)}`} style={{ backgroundColor: settings.negativeColor, width: `${Math.max(1, Math.abs(row.negative) / peak * 100)}%` }} /><span className="relative z-10 self-center pr-1 text-foreground/85">{row.negative ? compact(row.negative) : ""}</span></div><span className="text-center text-foreground">{price(row.strike)}</span><div className="relative flex h-3"><span className="absolute left-0 top-0 h-full opacity-60" title={`Positive ${compact(row.positive)}`} style={{ backgroundColor: settings.color, width: `${Math.max(1, Math.abs(row.positive) / peak * 100)}%` }} /><span className="relative z-10 self-center pl-1 text-foreground/85">{row.positive ? compact(row.positive) : ""}</span></div></div>) : <NoRows />}</div></div>;
+  return <div className="flex h-full min-h-0 flex-col"><div className="grid shrink-0 grid-cols-4 border-b border-border bg-panel"><Metric label="Greek" value={settings.greek} accent /><Metric label="Positive" value={compact(positiveTotal)} /><Metric label="Negative" value={compact(negativeTotal)} /><Metric label="Largest strike" value={price(strongest.strike)} /></div><div className="grid h-7 shrink-0 grid-cols-[1fr_70px_1fr] items-center gap-2 border-b border-border px-2 text-[7px] font-semibold uppercase tracking-[.13em] text-muted"><span className="text-right">Put / negative</span><span className="text-center">Strike</span><span>Call / positive</span></div><div className="min-h-0 flex-1 overflow-y-auto px-2 py-1">{rows.length ? rows.map((row) => <div key={row.strike} className="grid h-6 grid-cols-[1fr_70px_1fr] items-center gap-2 border-b border-border/30 text-[8px] font-mono"><div className="relative flex h-3 justify-end"><span className="absolute right-0 top-0 h-full opacity-60" title={`Negative ${compact(row.negative)}`} style={{ backgroundColor: settings.negativeColor, width: `${Math.max(1, Math.abs(row.negative) / peak * 100)}%` }} /><span className="relative z-10 self-center pr-1 text-foreground/85">{row.negative ? compact(row.negative) : ""}</span></div><span data-gexbox-role="strike" className="text-center">{price(row.strike)}</span><div className="relative flex h-3"><span className="absolute left-0 top-0 h-full opacity-60" title={`Positive ${compact(row.positive)}`} style={{ backgroundColor: settings.color, width: `${Math.max(1, Math.abs(row.positive) / peak * 100)}%` }} /><span className="relative z-10 self-center pl-1 text-foreground/85">{row.positive ? compact(row.positive) : ""}</span></div></div>) : <NoRows />}</div></div>;
 }
 
 type DarkPoolLevelRow = {
@@ -882,7 +949,7 @@ const DashboardPanelView = memo(function DashboardPanelView({ panel, onChange, o
 function MenuButton({ icon: Icon, label, onClick, danger = false }: { icon: typeof Copy; label: string; onClick: () => void; danger?: boolean }) { return <button onClick={onClick} className={`flex h-8 w-full items-center gap-2 px-2 text-left text-[9px] ${danger ? "text-danger" : "text-muted hover:text-foreground"}`}><Icon className="h-3.5 w-3.5" />{label}</button>; }
 
 export default function GexBoxDashboard() {
-  const [workspace, setWorkspace] = useState<DashboardWorkspace>(() => defaultWorkspace()); const [hydrated, setHydrated] = useState(false); const [showTools, setShowTools] = useState(false); const [workspaceMenu, setWorkspaceMenu] = useState(false); const importRef = useRef<HTMLInputElement | null>(null);
+  const [workspace, setWorkspace] = useState<DashboardWorkspace>(() => defaultWorkspace()); const [hydrated, setHydrated] = useState(false); const [showTools, setShowTools] = useState(false); const [showStyle, setShowStyle] = useState(false); const [workspaceMenu, setWorkspaceMenu] = useState(false); const importRef = useRef<HTMLInputElement | null>(null);
   useEffect(() => { try { const raw = localStorage.getItem(STORAGE_KEY); if (raw) { const parsed = JSON.parse(raw) as DashboardWorkspace; if (parsed.schemaVersion === 2 && parsed.pages?.length) setWorkspace({ ...parsed, pages: parsed.pages.map((page) => ({ ...page, panels: page.panels.map((panel) => ({ ...panel, settings: completeSettings(panel.settings) })) })) }); } } catch {} setHydrated(true); }, []);
   useEffect(() => {
     if (!hydrated) return;
@@ -898,11 +965,39 @@ export default function GexBoxDashboard() {
     setShowTools(false);
     startTransition(() => updatePage((page) => ({ ...page, panels: [...page.panels, { id: makeId("panel"), toolId: tool.id, title: tool.label, settings: { ...DEFAULT_SETTINGS } }] })));
   };
+  const applyPalette = useCallback((paletteId: string) => {
+    const colors = gexBoxPanelColors(resolveGexBoxRoles(paletteId));
+    // Written into every panel rather than read at render time, so a panel
+    // whose colours are later tuned by hand keeps that tuning instead of being
+    // silently re-themed on the next render.
+    setWorkspace((current) => ({
+      ...current,
+      paletteId,
+      pages: current.pages.map((page) => ({
+        ...page,
+        panels: page.panels.map((panel) => ({ ...panel, settings: { ...panel.settings, ...colors } })),
+      })),
+    }));
+  }, []);
+
   const addPage = (layout: "grid" | "infinite") => { const id = makeId("page"); setWorkspace((current) => ({ ...current, activePageId: id, pages: [...current.pages, { id, name: layout === "grid" ? `Page ${current.pages.length + 1}` : `Infinite ${current.pages.length + 1}`, layout, panels: [] }] })); };
   const exportWorkspace = () => { const blob = new Blob([JSON.stringify(workspace, null, 2)], { type: "application/json" }); const url = URL.createObjectURL(blob); const anchor = document.createElement("a"); anchor.href = url; anchor.download = `kwantdesk-gex-box-${new Date().toISOString().slice(0, 10)}.json`; anchor.click(); URL.revokeObjectURL(url); };
   const importWorkspace = async (file: File) => { try { const parsed = JSON.parse(await file.text()) as DashboardWorkspace; if (parsed.schemaVersion !== 2 || !Array.isArray(parsed.pages) || !parsed.pages.length || parsed.pages.some((page) => !page.id || !Array.isArray(page.panels) || page.panels.some((panel) => !toolById.has(panel.toolId)))) throw new Error("Invalid GEX BOX workspace file."); setWorkspace({ ...parsed, pages: parsed.pages.map((page) => ({ ...page, panels: page.panels.map((panel) => ({ ...panel, settings: completeSettings(panel.settings) })) })) }); } catch (error) { window.alert(error instanceof Error ? error.message : "Invalid workspace file."); } };
-  return <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background text-foreground">
-    <header className="shrink-0 border-b border-border bg-panel"><div className="flex h-11 items-center justify-between gap-3 px-3"><div className="flex items-center gap-3"><div className="flex h-8 w-8 items-center justify-center border border-primary/25 bg-primary/10"><LayoutDashboard className="h-4 w-4 text-primary" /></div><div><h1 className="text-[11px] font-semibold uppercase tracking-[.18em]">GEX BOX</h1><p className="text-[8px] text-muted">QuantData tools · KwantDesk workspace engine</p></div></div><div className="flex items-center gap-1"><button onClick={() => setShowTools(true)} className="flex h-8 items-center gap-2 border border-primary/30 bg-primary/10 px-3 text-[9px] font-semibold uppercase tracking-[.12em] text-primary"><Plus className="h-3.5 w-3.5" />Add Tool</button><button onClick={() => addPage("grid")} className="flex h-8 items-center gap-2 border border-border px-3 text-[9px] uppercase text-muted hover:text-foreground"><Grid2X2 className="h-3.5 w-3.5" />Grid</button><button onClick={() => addPage("infinite")} className="flex h-8 items-center gap-2 border border-border px-3 text-[9px] uppercase text-muted hover:text-foreground"><InfinityIcon className="h-3.5 w-3.5" />Infinite</button><div className="relative"><button onClick={() => setWorkspaceMenu((v) => !v)} className="flex h-8 items-center gap-2 border border-border px-3 text-[9px] font-semibold uppercase tracking-[.12em]"><Download className="h-3.5 w-3.5 text-primary" />Workspaces<ChevronDown className="h-3 w-3 text-muted" /></button>{workspaceMenu ? <div className="absolute right-0 top-9 z-40 w-52 border border-border bg-panel p-1 shadow-xl"><MenuButton icon={Download} label="Export workspace" onClick={() => { setWorkspaceMenu(false); exportWorkspace(); }} /><MenuButton icon={FileUp} label="Import workspace" onClick={() => { setWorkspaceMenu(false); importRef.current?.click(); }} /><MenuButton icon={RefreshCw} label="Reset to standard" onClick={() => { setWorkspaceMenu(false); setWorkspace(defaultWorkspace()); }} /></div> : null}</div></div></div>
+  // The palette reaches chrome — table headers, strike labels — through CSS
+  // variables rather than per-panel settings, since those are the frame around
+  // the data rather than the data itself.
+  const themeRoles = resolveGexBoxRoles(workspace.paletteId ?? DEFAULT_GEX_BOX_PALETTE_ID);
+  return <div
+    data-gexbox-themed
+    style={gexBoxThemeVariables(themeRoles) as CSSProperties}
+    className="flex h-full min-h-0 flex-col overflow-hidden bg-background text-foreground"
+  >
+    <header className="shrink-0 border-b border-border bg-panel"><div className="flex h-11 items-center justify-between gap-3 px-3"><div className="flex items-center gap-3"><div className="flex h-8 w-8 items-center justify-center border border-primary/25 bg-primary/10"><LayoutDashboard className="h-4 w-4 text-primary" /></div><div><h1 className="text-[11px] font-semibold uppercase tracking-[.18em]">GEX BOX</h1><p className="text-[8px] text-muted">QuantData tools · KwantDesk workspace engine</p></div></div><div className="flex items-center gap-1"><button onClick={() => setShowTools(true)} className="flex h-8 items-center gap-2 border border-primary/30 bg-primary/10 px-3 text-[9px] font-semibold uppercase tracking-[.12em] text-primary"><Plus className="h-3.5 w-3.5" />Add Tool</button><button onClick={() => setShowStyle(true)} className="flex h-8 items-center gap-2 border border-border px-3 text-[9px] uppercase text-muted hover:text-foreground" title="Workspace style and palette"><SlidersHorizontal className="h-3.5 w-3.5" />Settings</button><button onClick={() => addPage("grid")} className="flex h-8 items-center gap-2 border border-border px-3 text-[9px] uppercase text-muted hover:text-foreground"><Grid2X2 className="h-3.5 w-3.5" />Grid</button><button onClick={() => addPage("infinite")} className="flex h-8 items-center gap-2 border border-border px-3 text-[9px] uppercase text-muted hover:text-foreground"><InfinityIcon className="h-3.5 w-3.5" />Infinite</button><div className="relative"><button onClick={() => setWorkspaceMenu((v) => !v)} className="flex h-8 items-center gap-2 border border-border px-3 text-[9px] font-semibold uppercase tracking-[.12em]"><Download className="h-3.5 w-3.5 text-primary" />Workspaces<ChevronDown className="h-3 w-3 text-muted" /></button>{workspaceMenu ? <div className="absolute right-0 top-9 z-40 w-52 border border-border bg-panel p-1 shadow-xl"><MenuButton icon={Download} label="Export workspace" onClick={() => { setWorkspaceMenu(false); exportWorkspace(); }} /><MenuButton icon={FileUp} label="Import workspace" onClick={() => { setWorkspaceMenu(false); importRef.current?.click(); }} /><MenuButton icon={RefreshCw} label="Reset to standard" onClick={() => { setWorkspaceMenu(false); setWorkspace(defaultWorkspace()); }} /></div> : null}</div></div></div>
+      {showStyle ? <GexBoxStyleSettings
+        paletteId={workspace.paletteId ?? DEFAULT_GEX_BOX_PALETTE_ID}
+        onApply={(id) => { applyPalette(id); setShowStyle(false); }}
+        onClose={() => setShowStyle(false)}
+      /> : null}
       <div className="flex h-10 items-end gap-1 overflow-x-auto px-3">{workspace.pages.map((page) => <div key={page.id} className={`group flex h-9 shrink-0 items-center border-b-2 px-3 ${page.id === active.id ? "border-primary bg-primary/[.035] text-primary" : "border-transparent text-muted"}`}><button onClick={() => setWorkspace((current) => ({ ...current, activePageId: page.id }))} className="text-[9px] font-semibold uppercase tracking-[.13em]">{page.name}</button>{workspace.pages.length > 1 ? <button onClick={() => setWorkspace((current) => { const pages = current.pages.filter((item) => item.id !== page.id); return { ...current, pages, activePageId: current.activePageId === page.id ? pages[0].id : current.activePageId }; })} className="ml-2 opacity-0 group-hover:opacity-100"><X className="h-3 w-3" /></button> : null}</div>)}<button onClick={() => addPage("grid")} className="mb-1 flex h-7 w-7 shrink-0 items-center justify-center text-muted hover:text-primary"><Plus className="h-3.5 w-3.5" /></button></div></header>
     <main className={`min-h-0 flex-1 overflow-auto p-2 ${active.layout === "grid" ? "grid auto-rows-[minmax(310px,1fr)] grid-cols-1 gap-2 xl:grid-cols-2" : "relative min-w-[1600px] grid auto-rows-[420px] grid-cols-3 gap-2"}`}>
       {active.panels.length ? active.panels.map((panel) => <DashboardPanelView key={panel.id} panel={panel} onChange={changePanel} onDuplicate={duplicatePanel} onDelete={deletePanel} />) : <button onClick={() => setShowTools(true)} className="col-span-full flex min-h-[420px] items-center justify-center border border-dashed border-border text-muted hover:border-primary/40 hover:text-primary"><Plus className="mr-2 h-4 w-4" /><span className="text-[10px] uppercase tracking-[.15em]">Add the first tool</span></button>}

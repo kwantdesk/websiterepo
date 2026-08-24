@@ -2039,3 +2039,23 @@ select:-webkit-autofill {
   caret-color: var(--foreground);
   transition: background-color 5000s ease-in-out 0s;
 }
+
+/* --------------------------------------------------------------------------
+   GEX BOX workspace palette.
+
+   Calls and puts are DATA and take their colour from each panel's own
+   settings, which the palette writes into every panel when it is applied.
+   Column headings and strike labels are the frame around that data, so they
+   follow the workspace palette through variables instead — one rule reaching
+   every panel at once, which is what makes every header on a page match.
+
+   The strike rule is written so it beats the header rule on a cell that is
+   both a heading and a strike, without either needing !important.
+   -------------------------------------------------------------------------- */
+[data-gexbox-themed] th:not([data-gexbox-role]) {
+  color: var(--gexbox-header);
+}
+
+[data-gexbox-themed] [data-gexbox-role="strike"] {
+  color: var(--gexbox-strike);
+}

@@ -39,6 +39,7 @@
     "test:toolbar-single-source": "node --experimental-strip-types scripts/test-toolbar-single-source.mjs",
     "test:cvd-divergence": "node --import ./scripts/alias-hook.mjs --experimental-strip-types scripts/test-cvd-divergence.mjs",
     "test:preference-hydration": "node --experimental-strip-types scripts/test-preference-hydration.mjs",
+    "test:gex-box-theme": "node --import ./scripts/alias-hook.mjs scripts/test-gex-box-theme.mjs",
     "test:gex-box": "node --experimental-strip-types scripts/test-gex-box.mjs",
     "test:gex-map-star": "node --experimental-strip-types scripts/test-gex-map-star.mjs",
     "test:gex-vue-replay": "node --experimental-strip-types scripts/test-gex-vue-replay.mjs",
