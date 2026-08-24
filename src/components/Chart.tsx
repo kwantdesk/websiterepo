@@ -6044,8 +6044,47 @@ function Chart({
       Number(eventChartTimeBySourceTimeRef.current.get(candle.timestamp)
         ?? Math.floor(candle.timestamp / 1_000)));
   }, [candles, zeroGammaLinePayload]);
+  /**
+   * Studies projected onto the bars the chart actually draws.
+   *
+   * Every study computes on the source candle timestamp, which is correct on a
+   * clock chart because that IS the bar's time. A volume, range, tick or Renko
+   * chart draws its bars on a REMAPPED continuous scale instead, so a series
+   * left on source time lands between the bars: it inserts whitespace slots
+   * that spread the candles apart, and each point stops lining up with the bar
+   * it describes. CVD on 500v drifted away from the bar whose delta it was
+   * reporting for exactly this reason.
+   *
+   * A point with no bar to sit on is dropped rather than kept at a time the
+   * chart cannot place, which is what created the whitespace.
+   */
+  const eventChartSeriesTimeBySecond = useMemo(() => {
+    if (!timeframe || !isEventBasedChartInterval(timeframe)) return null;
+    const map = new Map<number, number>();
+    for (const candle of candles) {
+      const chartTime = eventChartTimeBySourceTimeRef.current.get(candle.timestamp);
+      if (chartTime != null) map.set(Math.floor(candle.timestamp / 1_000), chartTime);
+    }
+    return map.size ? map : null;
+  }, [candles, timeframe]);
+
+  const chartAlignedIndicatorSeries = useMemo(() => {
+    const remap = eventChartSeriesTimeBySecond;
+    if (!remap) return baseCalculatedIndicatorSeries;
+    return baseCalculatedIndicatorSeries.map((series) => {
+      let moved = false;
+      const data = series.data.flatMap((point) => {
+        const chartTime = remap.get(Number(point.time));
+        if (chartTime == null) return [];
+        if (chartTime !== point.time) moved = true;
+        return [{ ...point, time: chartTime }];
+      });
+      return moved || data.length !== series.data.length ? { ...series, data } : series;
+    });
+  }, [baseCalculatedIndicatorSeries, eventChartSeriesTimeBySecond]);
+
   const calculatedIndicatorSeries = useMemo(() => [
-    ...baseCalculatedIndicatorSeries,
+    ...chartAlignedIndicatorSeries,
     ...indicators.flatMap((instance): CalculatedIndicatorSeries[] => {
       if (!instance.enabled || instance.indicatorId !== "zero-gamma-line" || !zeroGammaLinePayload?.points.length) return [];
       const useThemeColors = instance.settings?.useThemeColors !== false;
@@ -6137,7 +6176,7 @@ function Chart({
         data: rankData,
       }];
     }),
-  ], [baseCalculatedIndicatorSeries, candles, indicatorSignature, indicators, ivRankByInstance, optionsDeltaSeries, settings.borderUpColor, settings.downColor, settings.upColor, timeframe, zeroGammaBarsSeries, zeroGammaChartBarTimes, zeroGammaLinePayload]);
+  ], [chartAlignedIndicatorSeries, candles, indicatorSignature, indicators, ivRankByInstance, optionsDeltaSeries, settings.borderUpColor, settings.downColor, settings.upColor, timeframe, zeroGammaBarsSeries, zeroGammaChartBarTimes, zeroGammaLinePayload]);
   const calculatedIndicatorPanes = useMemo(() => {
     return indicators.flatMap((instance): IndicatorPaneGroup[] => {
       if (!instance.enabled) return [];
@@ -12626,58 +12665,15 @@ function Chart({
     window.addEventListener("resize", handleResize);
     window.addEventListener(WORKSPACE_LAYOUT_SETTLED_EVENT, handleResize);
     chart.timeScale().subscribeVisibleLogicalRangeChange(scheduleViewportRefresh);
-    // Every coordinate overlay (drawings, TPO zones, Expected Move rails,
-    // imbalance markers) is positioned from this refresh. The visible-range
-    // event only covers HORIZONTAL movement, so a price-scale rescale — which
-    // happens on every new bar under auto-scale — moved the candles while the
-    // overlays kept their old Y pixels, and the lines visibly drifted off the
-    // levels they were placed on. The repaint notifier fires on any chart
-    // paint; a cheap transform signature keeps an idle chart from looping.
-    let lastTransformSignature = "";
-    // Two prices used purely as projection probes. Captured once so the
-    // reference cannot drift with the viewport it is measuring.
-    let overlayProbePrices: [number, number] | null = null;
-    const refreshOnRepaint = () => {
-      const timeScale = chart.timeScale();
-      const logical = timeScale.getVisibleLogicalRange();
-      const series = candleSeriesRef.current;
-      const topPrice = series?.coordinateToPrice(0) ?? null;
-      const bottomPrice = series?.coordinateToPrice(container.clientHeight) ?? null;
-      // This refresh re-renders the whole chart component, so it must fire when
-      // the transform MOVES and stay silent when it does not.
-      //
-      // Sign the PROJECTION, not the range. Comparing raw prices meant a live
-      // market re-rendered on every tick under auto-scale; comparing a fraction
-      // of the range gave a step several pixels wide, so drawings visibly
-      // floated behind the candles. Normalising by the span is worse still —
-      // it is scale-invariant, so a pure zoom produces an identical signature
-      // and the overlays never move at all.
-      //
-      // Projecting two fixed reference points and rounding to whole pixels
-      // captures pan, zoom and price rescale alike, and changes exactly when
-      // something on screen has moved by an amount the eye can resolve.
-      if (!overlayProbePrices && topPrice != null && bottomPrice != null && topPrice !== bottomPrice) {
-        overlayProbePrices = [bottomPrice, topPrice];
-      }
-      const probeY = (price: number) => {
-        const coordinate = series?.priceToCoordinate(price);
-        return coordinate == null ? "" : Math.round(coordinate);
-      };
-      const probeX = (logicalIndex: number) => {
-        const coordinate = timeScale.logicalToCoordinate(logicalIndex as never);
-        return coordinate == null ? "" : Math.round(coordinate);
-      };
-      const signature = [
-        probeX(0),
-        probeX(100),
-        overlayProbePrices ? probeY(overlayProbePrices[0]) : "",
-        overlayProbePrices ? probeY(overlayProbePrices[1]) : "",
-      ].join(":");
-      if (signature === lastTransformSignature) return;
-      lastTransformSignature = signature;
-      scheduleViewportRefresh();
-    };
-    const unsubscribeRepaintRefresh = repaintNotifierRef.current?.subscribe(refreshOnRepaint);
+    // Never bridge the live chart repaint loop back into React state. A live
+    // auto-scale changes the price projection on nearly every tick; subscribing
+    // scheduleViewportRefresh here made every chart reconcile its entire React
+    // tree continuously and retained thousands of listener objects per second.
+    //
+    // User-driven pan/zoom still commits React coordinate overlays through the
+    // visible-range subscription above. Drawings and precision tools follow
+    // vertical auto-scale changes through their own imperative repaint
+    // subscriptions, while Lightweight Charts primitives repaint natively.
     const resizeObserver = new ResizeObserver(handleResize);
     resizeObserver.observe(container);
 
@@ -12711,7 +12707,6 @@ function Chart({
         synchronizedCrosshairReleaseFrame = null;
       }
       chart.timeScale().unsubscribeVisibleLogicalRangeChange(scheduleViewportRefresh);
-      unsubscribeRepaintRefresh?.();
       resizeObserver.disconnect();
       if (viewportFrameRef.current != null) {
         window.cancelAnimationFrame(viewportFrameRef.current);
