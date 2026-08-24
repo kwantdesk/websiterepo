@@ -181,6 +181,32 @@ export default function ChartDrawLayer({
     return snapAt(event.clientX - rect.left, event.clientY - rect.top, { velocityAware: event.type === "pointermove" });
   };
 
+  /**
+   * Where a freshly placed position tool should end, in chart time.
+   *
+   * Counted in bars so it behaves the same on a clock chart and on a volume,
+   * range or tick chart, whose bars carry irregular times. Past the last bar
+   * there is nothing to count, so the spacing of the recent ones is continued
+   * — the median rather than the mean, since one maintenance break would drag
+   * an average across the whole session.
+   */
+  const POSITION_TOOL_BARS = 12;
+  const rightEdgeTimeForPosition = (fromTime: number): number | null => {
+    if (!candles.length) return fromTime + 60 * POSITION_TOOL_BARS;
+    let index = 0;
+    while (index < candles.length && candles[index].time < fromTime) index += 1;
+    const ahead = candles[Math.min(candles.length - 1, index + POSITION_TOOL_BARS)];
+    if (ahead && ahead.time > fromTime) return ahead.time;
+    const tail = candles.slice(-12);
+    const gaps = tail
+      .slice(1)
+      .map((candle, position) => candle.time - tail[position].time)
+      .filter((gap) => gap > 0)
+      .sort((left, right) => left - right);
+    const step = gaps.length ? gaps[Math.floor(gaps.length / 2)] : 60;
+    return fromTime + step * POSITION_TOOL_BARS;
+  };
+
   const finish = (tool: DrawToolId, points: DrawPoint[]) => {
     let committed = points;
     // TradingView-style position tools: one click places the whole tool.
@@ -206,12 +232,20 @@ export default function ChartDrawLayer({
         const risk = averageRange > 0 ? averageRange * 2 : Math.abs(p.price) * 0.0015;
         const stopPrice = p.price - dir * risk;
         const targetPrice = p.price + dir * risk;
-        const rightPt = fromXY(Math.min(px + 180, width - 8), py);
-        if (rightPt && Number.isFinite(stopPrice) && Number.isFinite(targetPrice)) {
+        // The right edge is measured in BARS, not pixels.
+        //
+        // It used to ask the time scale what time sat 180px to the right, and
+        // on a volume or range chart that lands past the last bar, where the
+        // scale has no time to give. fromXY returned null, the three-point
+        // shape was never built, and the renderer — which needs all three —
+        // drew nothing at all. A long or short placed on 500v simply did not
+        // appear.
+        const rightTime = rightEdgeTimeForPosition(p.time);
+        if (rightTime != null && Number.isFinite(stopPrice) && Number.isFinite(targetPrice)) {
           committed = [
             p,
-            { time: rightPt.time, price: stopPrice },
-            { time: rightPt.time, price: targetPrice },
+            { time: rightTime, price: stopPrice },
+            { time: rightTime, price: targetPrice },
           ];
         }
       }
@@ -232,6 +266,27 @@ export default function ChartDrawLayer({
     if (!rect) return null;
     return snapAt(clientX - rect.left, clientY - rect.top, { velocityAware: true });
   };
+  // Clicking the chart away from a drawing puts its anchor dots away.
+  //
+  // The only deselect used to live on the capture rect, which is not rendered
+  // while the cursor tool is active — which is exactly the state you are in
+  // after drawing something. So a placed drawing kept its handles for the rest
+  // of the session and could be dragged by accident at any moment.
+  //
+  // Listening on the chart container in the BUBBLE phase is what makes this
+  // safe: every drawing's own pointer handler stops propagation, so a click
+  // that hit a drawing never reaches here and the selection survives. Only a
+  // click that hit nothing gets through. Chrome outside the container — the
+  // toolbar, the style dialog — is not in this element at all.
+  useEffect(() => {
+    if (!selectedId) return;
+    const container = svgRef.current?.parentElement;
+    if (!container) return;
+    const clear = () => onSelect(null);
+    container.addEventListener("pointerdown", clear);
+    return () => container.removeEventListener("pointerdown", clear);
+  }, [onSelect, selectedId]);
+
   const dragCleanupRef = useRef<(() => void) | null>(null);
   useEffect(() => () => { dragCleanupRef.current?.(); }, []);
   // Redraw the overlay in lockstep with the chart's OWN viewport changes,
@@ -360,13 +415,25 @@ export default function ChartDrawLayer({
     event.stopPropagation();
     onSelect(drawing.id);
     const origin = drawing.points.map((point) => ({ ...point }));
-    const start = windowPoint(event.clientX, event.clientY);
+    // Moving a whole drawing measures its delta from the RAW pointer.
+    //
+    // Taking it from the magnet-snapped point made the delta jump to whichever
+    // candle time and open/high/low/close the magnet had latched, and the
+    // velocity-aware snap engages and releases while a drag is in flight — so
+    // the shape lurched sideways and scrambled as it moved, worst on a pencil
+    // stroke where every sample carries its own time. Snapping belongs to
+    // placing a point, not to translating one that is already placed.
+    const start = mode === "move"
+      ? rawPoint(event.clientX, event.clientY)
+      : windowPoint(event.clientX, event.clientY);
     if (!start) return;
     // The drag's own running result. Reading it back off the `drawing` prop at
     // release would use the value captured when the drag began.
     let latest = origin;
     const onMove = (moveEvent: PointerEvent) => {
-      const point = windowPoint(moveEvent.clientX, moveEvent.clientY);
+      const point = mode === "move"
+        ? rawPoint(moveEvent.clientX, moveEvent.clientY)
+        : windowPoint(moveEvent.clientX, moveEvent.clientY);
       if (!point) return;
       if (mode === "move") {
         const dt = point.time - start.time;
@@ -385,6 +452,10 @@ export default function ChartDrawLayer({
     // drawing onto it, and a single dragged anchor snaps in its own right.
     const settle = () => {
       if (!magnet || latest === origin) return;
+      // A freehand stroke has no meaningful anchor to pin to a wick, and
+      // shifting the whole thing so one arbitrary sample lands on one would
+      // move a drawing the trader placed by hand.
+      if (DRAW_TOOL_SPECS[drawing.tool].points === "freehand") return;
       let best: { index: number; point: DrawPoint; distance: number } | null = null;
       latest.forEach((p, index) => {
         if (mode !== "move" && index !== mode) return;
