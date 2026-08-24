@@ -586,18 +586,33 @@ type ReactionCacheEntry = {
   sampleCount: number;
   firstTimestampMs: number | null;
   lastTimestampMs: number | null;
+  gexSnapshotTimeMs: number | null;
+  settingsCacheKey: string;
   analytics: DarkPoolReactionAnalytics | null;
 };
 
 const reactionAnalyticsCache = new Map<string, ReactionCacheEntry>();
+const REACTION_ANALYTICS_CACHE_MAX_ENTRIES = 128;
+const REACTION_ANALYTICS_CACHE_RETAIN_ENTRIES = 96;
 
 function trimReactionAnalyticsCache() {
-  if (reactionAnalyticsCache.size <= 2_000) return;
-  const removeCount = reactionAnalyticsCache.size - 1_500;
+  if (reactionAnalyticsCache.size <= REACTION_ANALYTICS_CACHE_MAX_ENTRIES) return;
   for (const key of reactionAnalyticsCache.keys()) {
     reactionAnalyticsCache.delete(key);
-    if (reactionAnalyticsCache.size <= 2_000 - removeCount) break;
+    if (reactionAnalyticsCache.size <= REACTION_ANALYTICS_CACHE_RETAIN_ENTRIES) break;
   }
+}
+
+export function getDarkPoolGexReactionCacheDiagnostics() {
+  let interactionCount = 0;
+  for (const entry of reactionAnalyticsCache.values()) {
+    interactionCount += entry.analytics?.interactions.length ?? 0;
+  }
+  return { entries: reactionAnalyticsCache.size, interactionCount };
+}
+
+export function resetDarkPoolGexReactionCache() {
+  reactionAnalyticsCache.clear();
 }
 
 export function buildDarkPoolGexFrame(input: {
@@ -721,12 +736,19 @@ export function buildDarkPoolGexFrame(input: {
         Math.abs(currentPrice - event.price) <= activationDistance
         || (latestLow !== null && latestHigh !== null && event.price >= latestLow - activationDistance && event.price <= latestHigh + activationDistance)
       );
-      const cacheKey = `${event.id}:${event.price}:${tickSize}:${input.gex?.snapshotTimeMs ?? 0}:${settingsCacheKey}`;
+      // The live GEX snapshot advances continuously. Keeping its timestamp (or
+      // each settings revision) in the Map key retained a complete reaction
+      // history for every poll and every chart until Chrome exhausted its
+      // heap. One event owns one cache slot; snapshot/settings remain part of
+      // cache validity so either change still forces a correct recomputation.
+      const cacheKey = `${event.id}:${event.price}:${tickSize}`;
       const cached = reactionAnalyticsCache.get(cacheKey);
       const cacheMatches = cached
         && cached.sampleCount === priceSamples.length
         && cached.firstTimestampMs === (priceSamples[0]?.timestampMs ?? null)
-        && cached.lastTimestampMs === (latestPriceSample?.timestampMs ?? null);
+        && cached.lastTimestampMs === (latestPriceSample?.timestampMs ?? null)
+        && cached.gexSnapshotTimeMs === (input.gex?.snapshotTimeMs ?? null)
+        && cached.settingsCacheKey === settingsCacheKey;
       let reaction = settings.contextMode === "current" && !withinActivationRadius && cacheMatches
         ? cached.analytics
         : calculateDarkPoolReactionAnalytics({
@@ -744,10 +766,14 @@ export function buildDarkPoolGexFrame(input: {
             },
           });
       if (settings.contextMode === "current") {
+        // Refresh insertion order so trimming behaves as an inexpensive LRU.
+        reactionAnalyticsCache.delete(cacheKey);
         reactionAnalyticsCache.set(cacheKey, {
           sampleCount: priceSamples.length,
           firstTimestampMs: priceSamples[0]?.timestampMs ?? null,
           lastTimestampMs: latestPriceSample?.timestampMs ?? null,
+          gexSnapshotTimeMs: input.gex?.snapshotTimeMs ?? null,
+          settingsCacheKey,
           analytics: reaction,
         });
         trimReactionAnalyticsCache();

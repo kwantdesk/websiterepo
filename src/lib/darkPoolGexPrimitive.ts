@@ -6,7 +6,7 @@ import type {
   SeriesAttachedParameter,
   Time,
 } from "@/lib/lightweightChartsCompat";
-import { formatDarkPoolNotional, resolveDarkPoolGexLineLifecycle, type DarkPoolGexCluster, type DarkPoolGexEvent, type DarkPoolGexFrame, type DarkPoolGexSettings } from "@/lib/darkPoolGex";
+import { formatDarkPoolNotional, resetDarkPoolGexReactionCache, resolveDarkPoolGexLineLifecycle, type DarkPoolGexCluster, type DarkPoolGexEvent, type DarkPoolGexFrame, type DarkPoolGexSettings } from "@/lib/darkPoolGex";
 
 type CandleSeriesApi = SeriesAttachedParameter<Time, "Candlestick">["series"];
 
@@ -390,6 +390,7 @@ export class DarkPoolGexPrimitive implements ISeriesPrimitive<Time> {
   }
   detached() {
     activeDarkPoolGexPrimitives.delete(this);
+    if (activeDarkPoolGexPrimitives.size === 0) resetDarkPoolGexReactionCache();
     if (this.refinementTimer !== null) clearTimeout(this.refinementTimer);
     this.refinementTimer = null;
     this.candleSeries = null;
@@ -411,6 +412,7 @@ export class DarkPoolGexPrimitive implements ISeriesPrimitive<Time> {
     if (data) activeDarkPoolGexPrimitives.add(this);
     else {
       activeDarkPoolGexPrimitives.delete(this);
+      if (activeDarkPoolGexPrimitives.size === 0) resetDarkPoolGexReactionCache();
       this.releaseLayer();
     }
     if (!data) this.renderedHits = [];

@@ -3,6 +3,8 @@ import {
   buildDarkPoolGexFrame,
   calculateDarkPoolGexReaction,
   DEFAULT_DARK_POOL_GEX_SETTINGS,
+  getDarkPoolGexReactionCacheDiagnostics,
+  resetDarkPoolGexReactionCache,
   resolveDarkPoolGexLineLifecycle,
   resolveDarkPoolGexCoordinate,
   summarizeDarkPoolGexResearch,
@@ -115,6 +117,47 @@ assert.equal(frame.rawEvents.find((event) => event.print.id === "A")?.price, 737
 assert.ok(frame.rawEvents.every((event) => event.direction === "UNKNOWN"), "Dark-pool direction must remain neutral");
 assert.ok(frame.rawEvents.every((event) => event.classification === "TRF_REPORTED"));
 assert.equal(frame.clusters.length, 0, "Derived clusters are off by default");
+
+resetDarkPoolGexReactionCache();
+const stableLivePool = { ...darkPool, prints: darkPool.prints.filter((print) => print.id !== "future") };
+const livePriceSamples = Array.from({ length: 120 }, (_, index) => ({
+  timestampMs: NOW - (120 - index) * 1_000,
+  price: 737 + (index % 8) * 0.1,
+  resolution: "tick",
+}));
+for (let index = 0; index < 250; index += 1) {
+  buildDarkPoolGexFrame({
+    darkPool: stableLivePool,
+    gex: { ...gex, snapshotTimeMs: NOW + index, levels: gex.levels.map((item) => ({ ...item, snapshotTimeMs: NOW + index })) },
+    asOfMs: NOW + index,
+    tickSize: 0.01,
+    priceSamples: livePriceSamples,
+  });
+}
+assert.equal(
+  getDarkPoolGexReactionCacheDiagnostics().entries,
+  frame.rawEvents.length,
+  "Advancing live GEX snapshots must replace event analytics rather than retain one full history per poll",
+);
+for (let index = 0; index < 150; index += 1) {
+  buildDarkPoolGexFrame({
+    darkPool: stableLivePool,
+    gex,
+    asOfMs: NOW,
+    tickSize: 0.01,
+    priceSamples: livePriceSamples,
+    settings: {
+      ...DEFAULT_DARK_POOL_GEX_SETTINGS,
+      interactionTolerance: 0.01 + index * 0.0001,
+    },
+  });
+}
+assert.equal(
+  getDarkPoolGexReactionCacheDiagnostics().entries,
+  frame.rawEvents.length,
+  "Changing settings must replace event analytics rather than retain every settings revision",
+);
+resetDarkPoolGexReactionCache();
 
 const clustered = buildDarkPoolGexFrame({
   darkPool,
