@@ -257,9 +257,15 @@ export function startRendererHealthRecorder() {
   }, SNAPSHOT_INTERVAL_MS);
 
   startStallWatchdog(startedAt, longestTaskRef);
-  // Sampling runs continuously so a stall is already covered when it happens;
-  // starting a profiler after the freeze begins would miss the cause.
-  startRendererProfiler();
+  // The JS self-profiler is a diagnostics instrument, not a production
+  // runtime dependency. Keeping it active all trading day retains thousands
+  // of stack samples and rotates a trace every minute. Enable it explicitly
+  // when investigating a stall; normal production tabs stay profiler-free.
+  let profilerEnabled = process.env.NODE_ENV !== "production";
+  try {
+    profilerEnabled = profilerEnabled || window.localStorage.getItem("kwantdesk:renderer-profiler") === "1";
+  } catch {}
+  if (profilerEnabled) startRendererProfiler();
 
   const clearFlag = () => {
     try {

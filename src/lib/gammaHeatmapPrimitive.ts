@@ -81,7 +81,14 @@ class GammaHeatmapRenderer implements ISeriesPrimitivePaneRenderer {
   // when the data, viewport, scale or size actually change.
   private surface: HTMLCanvasElement | null = null;
   private surfaceMeta: SurfaceMeta | null = null;
-  dispose() { this.surface = null; this.surfaceMeta = null; }
+  dispose() {
+    if (this.surface) {
+      this.surface.width = 1;
+      this.surface.height = 1;
+    }
+    this.surface = null;
+    this.surfaceMeta = null;
+  }
   private maxValueKey = "";
   private maxValue = 1;
 

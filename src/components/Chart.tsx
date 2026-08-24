@@ -12657,7 +12657,12 @@ function Chart({
         viewportResetFrameRef.current = null;
       }
       chartVisualReadyTokenRef.current += 1;
-      if (chartRef.current) {
+      // Only detach through the shared refs when they still belong to this
+      // effect instance. A rapid remount/theme change can otherwise make an
+      // old cleanup detach primitives from the newly-created chart while its
+      // own local chart (and GPU surfaces) is never removed.
+      const ownsCurrentChart = chartRef.current === chart;
+      if (ownsCurrentChart) {
         if (candleSeriesRef.current && gameplanUnderlayRef.current) {
           try {
             candleSeriesRef.current.detachPrimitive(gameplanUnderlayRef.current);
@@ -12823,9 +12828,13 @@ function Chart({
         if (candleSeriesRef.current && tapeSpeedPrimitiveRef.current) {
           try { candleSeriesRef.current.detachPrimitive(tapeSpeedPrimitiveRef.current); } catch { /* chart may already be disposed */ }
         }
-        chartRef.current.remove();
-        chartRef.current = null;
       }
+      // Always dispose the effect-local chart, even if a newer instance has
+      // already replaced chartRef.current. Lightweight Charts releases its
+      // canvas layers from remove(); losing this local handle leaks them.
+      try { chart.remove(); } catch { /* chart may already be disposed */ }
+      if (!ownsCurrentChart) return;
+      chartRef.current = null;
       candleSeriesRef.current = null;
       gameplanUnderlayRef.current = null;
       fixedPriceLevelLabelsRef.current = null;

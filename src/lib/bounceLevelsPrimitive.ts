@@ -759,6 +759,18 @@ export class BounceLevelsPrimitive implements ISeriesPrimitive<Time> {
   private refinementKey = "";
   private readonly paneView = new BounceLevelsView(this);
   attached(param: SeriesAttachedParameter<Time, "Candlestick">) { this.candleSeries = param.series; this.chartApi = param.chart as IChartApi; this.requestRedraw = param.requestUpdate; }
+  private releaseLayer() {
+    // Dropping the JS reference alone leaves the high-DPI backing store in
+    // Chrome's GPU process until a later GC. Explicitly collapse it first so a
+    // closed/replaced pane releases its graphics memory immediately.
+    if (this.layerCanvas) {
+      this.layerCanvas.width = 1;
+      this.layerCanvas.height = 1;
+    }
+    this.layerCanvas = null;
+    this.layerViewport = null;
+    this.layerKey = "";
+  }
   detached() {
     activeBouncePrimitives.delete(this);
     if (this.refinementTimer !== null) clearTimeout(this.refinementTimer);
@@ -768,9 +780,7 @@ export class BounceLevelsPrimitive implements ISeriesPrimitive<Time> {
     this.chartApi = null;
     this.requestRedraw = null;
     this.hits = [];
-    this.layerCanvas = null;
-    this.layerViewport = null;
-    this.layerKey = "";
+    this.releaseLayer();
   }
   update(data: BounceLevelsPrimitiveData | null) {
     if (this.renderData !== data) {
@@ -778,13 +788,15 @@ export class BounceLevelsPrimitive implements ISeriesPrimitive<Time> {
       this.refinementTimer = null;
       this.refinementKey = "";
       this.renderRevision += 1;
-      this.layerCanvas = null;
       this.layerViewport = null;
       this.layerKey = "";
     }
     this.renderData = data;
     if (data) activeBouncePrimitives.add(this);
-    else activeBouncePrimitives.delete(this);
+    else {
+      activeBouncePrimitives.delete(this);
+      this.releaseLayer();
+    }
     this.requestRedraw?.();
   }
   activePanelCount() { return Math.max(1, activeBouncePrimitives.size); }
@@ -841,7 +853,6 @@ export class BounceLevelsPrimitive implements ISeriesPrimitive<Time> {
     this.refinementTimer = setTimeout(() => {
       this.refinementTimer = null;
       this.refinementKey = "";
-      this.layerCanvas = null;
       this.layerViewport = null;
       this.layerKey = "";
       this.requestRedraw?.();
@@ -851,12 +862,18 @@ export class BounceLevelsPrimitive implements ISeriesPrimitive<Time> {
     const devicePixelRatio = typeof window === "undefined" ? 1 : Math.max(1, window.devicePixelRatio || 1);
     const pixelBudgetRatio = Math.sqrt(4_000_000 / Math.max(1, width * height));
     const pixelRatio = Math.max(1, Math.min(2, devicePixelRatio, pixelBudgetRatio));
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.max(1, Math.ceil(width * pixelRatio));
-    canvas.height = Math.max(1, Math.ceil(height * pixelRatio));
+    // Live exposure frames invalidate this layer several times per second.
+    // Reuse its backing surface instead of allocating a new multi-megabyte GPU
+    // canvas for every frame (the live-session Aw, Snap/OOM root cause).
+    const canvas = this.layerCanvas ?? document.createElement("canvas");
+    const nextWidth = Math.max(1, Math.ceil(width * pixelRatio));
+    const nextHeight = Math.max(1, Math.ceil(height * pixelRatio));
+    if (canvas.width !== nextWidth) canvas.width = nextWidth;
+    if (canvas.height !== nextHeight) canvas.height = nextHeight;
     const context = canvas.getContext("2d", { alpha: true });
     if (!context) throw new Error("Bounce Levels could not allocate its render layer.");
-    context.scale(pixelRatio, pixelRatio);
+    context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+    context.clearRect(0, 0, width, height);
     return { canvas, context };
   }
   storeLayer(key: string, canvas: HTMLCanvasElement, viewport: BounceRenderViewport) {

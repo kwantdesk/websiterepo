@@ -974,6 +974,10 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
   }
 
   dispose() {
+    if (this.surface) {
+      this.surface.width = 1;
+      this.surface.height = 1;
+    }
     this.surface = null;
     this.surfaceMeta = null;
   }

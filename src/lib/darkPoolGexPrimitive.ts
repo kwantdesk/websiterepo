@@ -379,6 +379,15 @@ export class DarkPoolGexPrimitive implements ISeriesPrimitive<Time> {
   private readonly paneView = new DarkPoolGexView(this);
 
   attached(param: SeriesAttachedParameter<Time, "Candlestick">) { this.candleSeries = param.series; this.chartApi = param.chart as IChartApi; this.requestRedraw = param.requestUpdate; }
+  private releaseLayer() {
+    if (this.layerCanvas) {
+      this.layerCanvas.width = 1;
+      this.layerCanvas.height = 1;
+    }
+    this.layerCanvas = null;
+    this.layerViewport = null;
+    this.layerKey = "";
+  }
   detached() {
     activeDarkPoolGexPrimitives.delete(this);
     if (this.refinementTimer !== null) clearTimeout(this.refinementTimer);
@@ -387,9 +396,7 @@ export class DarkPoolGexPrimitive implements ISeriesPrimitive<Time> {
     this.chartApi = null;
     this.requestRedraw = null;
     this.renderedHits = [];
-    this.layerCanvas = null;
-    this.layerViewport = null;
-    this.layerKey = "";
+    this.releaseLayer();
   }
   update(data: DarkPoolGexPrimitiveData | null) {
     if (this.renderData !== data) {
@@ -397,13 +404,15 @@ export class DarkPoolGexPrimitive implements ISeriesPrimitive<Time> {
       this.refinementTimer = null;
       this.refinementKey = "";
       this.renderRevision += 1;
-      this.layerCanvas = null;
       this.layerViewport = null;
       this.layerKey = "";
     }
     this.renderData = data;
     if (data) activeDarkPoolGexPrimitives.add(this);
-    else activeDarkPoolGexPrimitives.delete(this);
+    else {
+      activeDarkPoolGexPrimitives.delete(this);
+      this.releaseLayer();
+    }
     if (!data) this.renderedHits = [];
     this.requestRedraw?.();
   }
@@ -457,7 +466,6 @@ export class DarkPoolGexPrimitive implements ISeriesPrimitive<Time> {
     this.refinementTimer = setTimeout(() => {
       this.refinementTimer = null;
       this.refinementKey = "";
-      this.layerCanvas = null;
       this.layerViewport = null;
       this.layerKey = "";
       this.requestRedraw?.();
@@ -469,12 +477,15 @@ export class DarkPoolGexPrimitive implements ISeriesPrimitive<Time> {
     const maximumRatio = activePanels >= 4 ? 1.25 : activePanels >= 2 ? 1.5 : 2;
     const pixelBudgetRatio = Math.sqrt(2_000_000 / Math.max(1, width * height));
     const pixelRatio = Math.max(1, Math.min(maximumRatio, devicePixelRatio, pixelBudgetRatio));
-    const canvas = document.createElement("canvas");
-    canvas.width = Math.max(1, Math.ceil(width * pixelRatio));
-    canvas.height = Math.max(1, Math.ceil(height * pixelRatio));
+    const canvas = this.layerCanvas ?? document.createElement("canvas");
+    const nextWidth = Math.max(1, Math.ceil(width * pixelRatio));
+    const nextHeight = Math.max(1, Math.ceil(height * pixelRatio));
+    if (canvas.width !== nextWidth) canvas.width = nextWidth;
+    if (canvas.height !== nextHeight) canvas.height = nextHeight;
     const context = canvas.getContext("2d", { alpha: true });
     if (!context) throw new Error("Dark Pool GEX could not allocate its render layer.");
-    context.scale(pixelRatio, pixelRatio);
+    context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+    context.clearRect(0, 0, width, height);
     return { canvas, context };
   }
   storeLayer(key: string, canvas: HTMLCanvasElement, viewport: DarkPoolRenderViewport) {
