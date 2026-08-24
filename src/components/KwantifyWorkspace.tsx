@@ -15039,6 +15039,58 @@ export default function KwantifyWorkspace({
     return normalizedPresets;
   };
 
+  /**
+   * Everything a saved workspace remembers, as one comparable string.
+   *
+   * Deliberately the same fields createCurrentWorkspaceSnapshot captures, and
+   * deliberately NOT its id, name or timestamp — those change on every save
+   * and would make a freshly saved workspace look modified straight away.
+   */
+  const workspaceStateSignature = useMemo(() => {
+    try {
+      return JSON.stringify([
+        workspaceTree,
+        workspacePanes,
+        chartSettings,
+        paneIndicators,
+        paneLevelVisibility,
+        workspaceFloatingWindows,
+        [...linkedViewportPaneIds].sort(),
+      ]);
+    } catch {
+      // A cyclic or unserialisable value must not take the workspace down;
+      // the badge simply stops tracking until the next clean read.
+      return "";
+    }
+  }, [
+    chartSettings,
+    linkedViewportPaneIds,
+    paneIndicators,
+    paneLevelVisibility,
+    workspaceFloatingWindows,
+    workspacePanes,
+    workspaceTree,
+  ]);
+  // Null until a workspace has been saved or applied in this session: with
+  // nothing to compare against there is nothing to warn about, and nagging
+  // someone who has never used workspaces is just noise.
+  const [savedWorkspaceSignature, setSavedWorkspaceSignature] = useState<string | null>(null);
+  // Applying a preset sets a dozen pieces of state, so the signature is only
+  // the applied one AFTER that render. React batches those updates into a
+  // single render, so adopting the first signature that follows is exactly
+  // right — setting it inline would capture the workspace being replaced and
+  // flag a freshly applied preset as modified.
+  const pendingWorkspaceCleanRef = useRef(false);
+  const workspaceHasUnsavedChanges = savedWorkspaceSignature !== null
+    && workspaceStateSignature !== ""
+    && savedWorkspaceSignature !== workspaceStateSignature;
+
+  useEffect(() => {
+    if (!pendingWorkspaceCleanRef.current || !workspaceStateSignature) return;
+    pendingWorkspaceCleanRef.current = false;
+    setSavedWorkspaceSignature(workspaceStateSignature);
+  }, [workspaceStateSignature]);
+
   const createCurrentWorkspaceSnapshot = (
     name: string,
     id = crypto.randomUUID(),
@@ -15072,6 +15124,7 @@ export default function KwantifyWorkspace({
     }
     const nextPreset = createCurrentWorkspaceSnapshot(name);
     persistWorkspacePresets([...workspacePresets, nextPreset]);
+    setSavedWorkspaceSignature(workspaceStateSignature);
     setActiveWorkspacePresetId(nextPreset.id);
     setWorkspacePresetName("");
     setShowSaveWorkspacePreset(false);
@@ -15089,6 +15142,7 @@ export default function KwantifyWorkspace({
       return;
     }
     const nextPreset = createCurrentWorkspaceSnapshot(activePreset.name, activePreset.id);
+    setSavedWorkspaceSignature(workspaceStateSignature);
     persistWorkspacePresets(
       workspacePresets.map((preset) => preset.id === nextPreset.id ? nextPreset : preset),
     );
@@ -15096,6 +15150,7 @@ export default function KwantifyWorkspace({
   };
 
   const applyWorkspacePreset = (preset: WorkspacePreset) => {
+    pendingWorkspaceCleanRef.current = true;
     // Restore the workspace's saved look first: the overall theme and custom
     // palettes it was saved with win over whatever theme is currently active,
     // so an old workspace always comes back exactly as it was designed.
@@ -17659,7 +17714,7 @@ export default function KwantifyWorkspace({
         ) : null}
 
         {chartSurfaceActive && (
-        <header className="kwant-chart-command-deck relative grid shrink-0 grid-cols-[minmax(0,1fr)_minmax(0,auto)_minmax(0,1fr)] items-center overflow-hidden border-b border-border bg-panel">
+        <header className="@container kwant-chart-command-deck relative grid shrink-0 grid-cols-[minmax(0,1fr)_minmax(0,auto)_minmax(0,1fr)] items-center overflow-hidden border-b border-border bg-panel">
           <div
             aria-disabled={!activePaneIsChart}
             title={activePaneIsChart ? "Controls apply to the selected chart" : `${ALL_WORKSPACE_PANEL_OPTIONS.find((option) => option.id === activeWorkspacePane.content)?.label ?? "Panel"} selected — choose a chart to use chart controls`}
@@ -17863,6 +17918,24 @@ export default function KwantifyWorkspace({
               >
                 <Save className="h-3.5 w-3.5" strokeWidth={1.55} />
                 <span>WORKSPACES</span>
+                {/*
+                  * Anything the saved workspace remembers — layout, panes,
+                  * chart settings, indicators and their colours — puts this
+                  * here. It only appears once a workspace has actually been
+                  * saved or applied, since there is nothing to be unsaved
+                  * against before that.
+                  */}
+                {workspaceHasUnsavedChanges ? (
+                  <span
+                    className="flex items-center gap-1 text-amber-300"
+                    title="This workspace has changes that are not saved"
+                  >
+                    <AlertTriangle className="h-3 w-3" strokeWidth={2} />
+                    <span className="hidden text-[9px] font-semibold normal-case tracking-normal @[560px]:inline">
+                      Save this workspace
+                    </span>
+                  </span>
+                ) : null}
               </button>
               {showWorkspacePresetMenu && typeof document !== "undefined" ? createPortal(
                 <div
