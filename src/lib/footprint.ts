@@ -104,11 +104,27 @@ function comparisonMode(mode: FootprintImbalanceMode): FootprintComparisonMode {
   return mode;
 }
 
+/**
+ * Where a bar stops accepting trades.
+ *
+ * A bar ends where the next one begins. The LAST bar has no next one, and this
+ * used to guess its width from the single previous gap — fine on a clock chart
+ * where every gap is the interval, wrong on a volume, range or tick chart
+ * where they are not. A quick previous bar gave the forming bar a window of a
+ * second or two, and every trade after that was dropped: the bar kept its
+ * open, high, low and close from the candle and showed no rows at all, so the
+ * footprint climbed with price while empty.
+ *
+ * The last bar is the forming one and owns everything at or after its start.
+ * Which trades reach here is the caller's window to choose, and it already
+ * fetches candles and tape for the same span.
+ *
+ * Note this guard only ever fires for the last bar: lowerBoundCandle already
+ * assigns a trade to the latest candle starting at or before it, so a trade
+ * belonging to the next bar is never offered to this one.
+ */
 function approximateBarEnd(candles: Candle[], index: number) {
-  const next = candles[index + 1]?.timestamp;
-  if (next !== undefined) return next;
-  const previous = candles[index - 1]?.timestamp;
-  return candles[index].timestamp + Math.max(1, candles[index].timestamp - (previous ?? candles[index].timestamp - 60_000));
+  return candles[index + 1]?.timestamp ?? Number.POSITIVE_INFINITY;
 }
 
 function levelWithAliases(level: FootprintPriceLevel): FootprintRow {

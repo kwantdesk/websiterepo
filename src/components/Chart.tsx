@@ -3967,11 +3967,15 @@ function Chart({
 
       const firstTimestamp = sourceCandles[0].timestamp;
       const finalCandle = sourceCandles.at(-1)!;
-      const approximateInterval = timeframeToMs(timeframe)
-        ?? Math.max(1, finalCandle.timestamp - (sourceCandles.at(-2)?.timestamp ?? finalCandle.timestamp - 60_000));
+      // An event chart's bars have no fixed width, so there is no interval to
+      // add to the last bar's start. Guessing one from the previous gap cut the
+      // tape short of the forming bar and left it drawing empty.
+      const clockIntervalMs = timeframeToMs(timeframe);
       const visibleTape = tape.slice(
         lowerBound(tape, firstTimestamp),
-        lowerBound(tape, finalCandle.timestamp + approximateInterval),
+        clockIntervalMs === null
+          ? tape.length
+          : lowerBound(tape, finalCandle.timestamp + clockIntervalMs),
       );
       const bars = buildFootprintBarsCached(liveFootprintBaseBuildCacheRef, sourceCandles, visibleTape, buildSettings);
       const profileGroupTicks = liveFootprintProfileGroupTicksRef.current;
@@ -5177,9 +5181,10 @@ function Chart({
     if (!footprintSourceCandles.length || !sampledIndicatorMarketTrades.length) return [];
     const start = footprintSourceCandles[0].timestamp;
     const finalCandle = footprintSourceCandles.at(-1)!;
-    const approximateInterval = timeframeToMs(timeframe)
-      ?? Math.max(1, finalCandle.timestamp - (footprintSourceCandles.at(-2)?.timestamp ?? finalCandle.timestamp - 60_000));
-    const end = finalCandle.timestamp + approximateInterval;
+    // See the live path: an event chart has no interval to add, so the tape
+    // runs to its end rather than being cut short of the forming bar.
+    const clockIntervalMs = timeframeToMs(timeframe);
+    const end = clockIntervalMs === null ? null : finalCandle.timestamp + clockIntervalMs;
     const lowerBound = (timestamp: number) => {
       let low = 0;
       let high = sampledIndicatorMarketTrades.length;
@@ -5190,7 +5195,7 @@ function Chart({
       }
       return low;
     };
-    return sampledIndicatorMarketTrades.slice(lowerBound(start), lowerBound(end));
+    return sampledIndicatorMarketTrades.slice(lowerBound(start), end === null ? sampledIndicatorMarketTrades.length : lowerBound(end));
   }, [footprintSourceCandles, sampledIndicatorMarketTrades, sampledIndicatorMarketTradesVersion, timeframe]);
   const resolvedFootprintGroupTicks = useMemo(() => {
     const manual = Math.max(1, Math.round(Number(footprintSettings.manualTicks ?? 1)));
