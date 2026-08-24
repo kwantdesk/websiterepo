@@ -153,46 +153,39 @@ function addThresholdTrade(
   record: MarketTrade,
   threshold: EventThreshold,
 ) {
-  let remainingVolume = Math.max(0, Number(record.size) || 0);
-  let remainingTrades = Math.max(1, Number(record.trades) || 1);
-  let remainingDelta = Number(record.delta) || 0;
-  const measurement = threshold.kind === "volume"
-    ? () => remainingVolume
-    : threshold.kind === "trade"
-      ? () => remainingTrades
-      : () => Math.abs(remainingDelta);
+  const volume = Math.max(0, Number(record.size) || 0);
+  const trades = Math.max(1, Number(record.trades) || 1);
+  const delta = Number(record.delta) || 0;
 
-  while (measurement() > 1e-9) {
-    let last = bars.at(-1);
-    if (!last) {
-      last = makeCandle(record, safeTimestamp(record.timestamp), 0, 0, 0);
-      bars.push(last);
-    }
-
-    const current = threshold.kind === "volume"
-      ? Number(last.volume ?? 0)
-      : threshold.kind === "trade"
-        ? Number(last.trades ?? 0)
-        : Math.abs(Number(last.delta ?? 0));
-    const capacity = Math.max(0, threshold.value - current);
-    if (capacity <= 1e-9) {
-      bars.push(makeContinuationCandle(record, last));
-      continue;
-    }
-
-    const available = measurement();
-    const fraction = Math.min(1, capacity / Math.max(available, 1e-9));
-    const volumePart = remainingVolume * fraction;
-    const tradesPart = remainingTrades * fraction;
-    const deltaPart = remainingDelta * fraction;
-    updateCandle(last, record.price, volumePart, tradesPart, deltaPart);
-    remainingVolume = Math.max(0, remainingVolume - volumePart);
-    remainingTrades = Math.max(0, remainingTrades - tradesPart);
-    remainingDelta -= deltaPart;
-
-    if (fraction >= 1 - 1e-9) break;
-    bars.push(makeContinuationCandle(record, last));
+  let last = bars.at(-1);
+  if (!last) {
+    last = makeCandle(record, safeTimestamp(record.timestamp), 0, 0, 0);
+    bars.push(last);
   }
+
+  const filled = threshold.kind === "volume"
+    ? Number(last.volume ?? 0)
+    : threshold.kind === "trade"
+      ? Number(last.trades ?? 0)
+      : Math.abs(Number(last.delta ?? 0));
+
+  // A bar that has met its threshold is finished; this print opens the next.
+  if (filled >= threshold.value - 1e-9) {
+    last = makeContinuationCandle(record, last);
+    bars.push(last);
+  }
+
+  // One execution belongs to ONE bar, even when it is larger than the
+  // threshold on its own.
+  //
+  // This used to divide a print across as many bars as it could fill. Nothing
+  // trades between those bars, so every one of them came out with its open,
+  // high, low and close all equal — a single 5,000-lot block on a 500v chart
+  // manufactured nine identical bars and drew a flat horizontal run through
+  // the chart. The volume did arrive at one price in one moment, so it belongs
+  // to one bar; letting that bar overrun the threshold is what every other
+  // platform does and is the only reading that describes what happened.
+  updateCandle(last, record.price, volume, trades, delta);
 }
 
 function addRangeTrade(
