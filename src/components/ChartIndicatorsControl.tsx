@@ -16,6 +16,7 @@ import {
   Star,
   Trash2,
   X,
+  AlertTriangle,
 } from "lucide-react";
 import {
   CHART_INDICATOR_BY_ID,
@@ -1014,7 +1015,41 @@ export default function ChartIndicatorsControl({
     onChange(next);
   }, [onChange]);
 
-  const closeSettingsDialog = useCallback(() => {
+  /**
+   * What the settings looked like when the dialog opened.
+   *
+   * Edits apply to the chart immediately so the trader can see them, which
+   * also means there is nothing to compare against at close time unless the
+   * original is kept. Discard restores exactly this.
+   */
+  const settingsOpenSnapshotRef = useRef<Record<string, string | number | boolean> | null>(null);
+  const [unsavedSettingsPrompt, setUnsavedSettingsPrompt] = useState(false);
+
+  useEffect(() => {
+    if (!settingsInstanceId) {
+      settingsOpenSnapshotRef.current = null;
+      setUnsavedSettingsPrompt(false);
+      return;
+    }
+    // Only on OPEN. Re-capturing as the instance object changes would make
+    // every edit its own baseline and nothing would ever look modified.
+    if (!settingsOpenSnapshotRef.current) {
+      settingsOpenSnapshotRef.current = { ...(settingsInstance?.settings ?? {}) };
+    }
+  }, [settingsInstance, settingsInstanceId]);
+
+  const settingsAreDirty = useCallback(() => {
+    const opened = settingsOpenSnapshotRef.current;
+    if (!opened || !settingsInstance) return false;
+    try {
+      return JSON.stringify(opened) !== JSON.stringify(settingsInstance.settings ?? {});
+    } catch {
+      return false;
+    }
+  }, [settingsInstance]);
+
+  /** Persist and close. The footprint keeps its own local store as well. */
+  const commitSettingsAndClose = useCallback(() => {
     if (settingsInstance?.indicatorId === "deep-print-footprint") {
       const validated = validateFootprintSettings(settingsInstance.settings);
       replace(settingsInstance.instanceId, (current) => ({
@@ -1022,10 +1057,33 @@ export default function ChartIndicatorsControl({
         settings: { ...(current.settings ?? {}), ...validated },
       }));
       saveFootprintSettings(settingsInstance.instanceId, validated);
-      window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
     }
+    window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
+    settingsOpenSnapshotRef.current = null;
+    setUnsavedSettingsPrompt(false);
     setSettingsInstanceId(null);
   }, [replace, settingsInstance]);
+
+  const discardSettingsAndClose = useCallback(() => {
+    const opened = settingsOpenSnapshotRef.current;
+    if (opened && settingsInstance) {
+      replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...opened } }));
+    }
+    settingsOpenSnapshotRef.current = null;
+    setUnsavedSettingsPrompt(false);
+    setSettingsInstanceId(null);
+  }, [replace, settingsInstance]);
+
+  const closeSettingsDialog = useCallback(() => {
+    // Clicking away used to save silently, which is fine until it is not: a
+    // slider nudged by accident on the way past became the new setting with
+    // nothing said. Ask when anything actually changed.
+    if (settingsAreDirty()) {
+      setUnsavedSettingsPrompt(true);
+      return;
+    }
+    commitSettingsAndClose();
+  }, [commitSettingsAndClose, settingsAreDirty]);
 
   useEffect(() => {
     if (!settingsInstanceId) return;
@@ -1391,7 +1449,7 @@ export default function ChartIndicatorsControl({
           <div
             ref={settingsDialogRef}
             data-indicator-settings-dialog
-            className="pointer-events-auto flex max-h-[88vh] w-full max-w-[540px] flex-col overflow-hidden rounded-2xl border border-border bg-panel shadow-2xl shadow-black/60"
+            className="pointer-events-auto relative flex max-h-[88vh] w-full max-w-[540px] flex-col overflow-hidden rounded-2xl border border-border bg-panel shadow-2xl shadow-black/60"
           >
             <div
               className="flex touch-none select-none items-center justify-between border-b border-border px-5 py-4 cursor-move active:cursor-grabbing"
@@ -1405,6 +1463,42 @@ export default function ChartIndicatorsControl({
                 <div className="text-[15px] font-semibold text-foreground">{settingsInstance.indicatorId === "source-code-indicator" ? String(settingsInstance.settings?.scriptName ?? settingsDefinition.name) : settingsDefinition.name}</div>
                 <div className="mt-0.5 text-[9px] uppercase tracking-[0.12em] text-muted">{settingsDefinition.category} · live calculation</div>
               </div>
+              {unsavedSettingsPrompt ? (
+                <div className="absolute inset-0 z-[60] flex items-center justify-center rounded-xl bg-background/85 p-4 backdrop-blur-sm">
+                  <div className="w-full max-w-[300px] rounded-xl border border-border bg-panel p-4 shadow-2xl">
+                    <div className="flex items-center gap-2 text-amber-300">
+                      <AlertTriangle className="h-4 w-4" strokeWidth={2} />
+                      <span className="text-[11px] font-semibold uppercase tracking-[0.1em]">Unsaved changes</span>
+                    </div>
+                    <p className="mt-2 text-[10px] leading-4 text-muted">
+                      Keep the changes to {settingsDefinition?.name ?? "this indicator"}?
+                    </p>
+                    <div className="mt-3 grid grid-cols-3 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setUnsavedSettingsPrompt(false)}
+                        className="h-8 rounded-lg border border-border text-[9px] font-semibold uppercase tracking-[0.08em] text-muted hover:text-foreground"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={discardSettingsAndClose}
+                        className="h-8 rounded-lg border border-border text-[9px] font-semibold uppercase tracking-[0.08em] text-danger hover:bg-danger/10"
+                      >
+                        Discard
+                      </button>
+                      <button
+                        type="button"
+                        onClick={commitSettingsAndClose}
+                        className="h-8 rounded-lg bg-primary text-[9px] font-semibold uppercase tracking-[0.08em] text-background"
+                      >
+                        Save
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
               <button type="button" onClick={closeSettingsDialog} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground">
                 <X className="h-4 w-4" />
               </button>
