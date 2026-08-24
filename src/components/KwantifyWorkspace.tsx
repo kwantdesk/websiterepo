@@ -18321,8 +18321,7 @@ export default function KwantifyWorkspace({
           )
           : null}
 
-        {chartSurfaceActive || visitedWorkspaceSections.has("charts") ? (
-        <ReactActivity mode={chartSurfaceActive ? "visible" : "hidden"}>
+        {chartSurfaceActive ? (
         <WorkspaceFailureBoundary resetKey={`charting-${chartWorkspaceScope}`} label={chartWorkspaceScope === "gamma" ? "GEX Vue charting" : "Charts"}>
         {!preferencesReady ? (
           workspaceLoader("Opening charts", "Restoring your saved workspace before the market feed starts.")
@@ -18583,9 +18582,8 @@ export default function KwantifyWorkspace({
           </div>
         </div>}
         </WorkspaceFailureBoundary>
-        </ReactActivity>
         ) : null}
-        <ReactActivity mode={chartSurfaceActive ? "hidden" : "visible"}>
+        {!chartSurfaceActive ? (
           <section
             className="relative isolate min-h-0 min-w-0 flex-1 overflow-hidden bg-panel"
             aria-label={`${BOTTOM_WORKSPACE_SECTIONS.find((section) => section.id === bottomWorkspaceSection)?.label ?? "Workspace"} workspace`}
@@ -18618,12 +18616,10 @@ export default function KwantifyWorkspace({
                 </WorkspaceFailureBoundary>
               </ReactActivity>
             ) : null}
-            {visitedWorkspaceSections.has("gexmap") ? (
-              <ReactActivity mode={bottomWorkspaceSection === "gexmap" ? "visible" : "hidden"}>
+            {bottomWorkspaceSection === "gexmap" ? (
                 <WorkspaceFailureBoundary resetKey="gexmap" label="GEX Map">
                   <GexMapWorkspace />
                 </WorkspaceFailureBoundary>
-              </ReactActivity>
             ) : null}
             {bottomWorkspaceSection === "liqmap" ? (
               <WorkspaceFailureBoundary resetKey="liqmap" label="Liquidity Map">
@@ -18734,7 +18730,7 @@ export default function KwantifyWorkspace({
               </ReactActivity>
             ) : null}
           </section>
-        </ReactActivity>
+        ) : null}
 
         {false && !bottomMinimized && (
           <div onMouseDown={startBottomResize} className="relative h-4 flex-shrink-0 cursor-row-resize bg-transparent">

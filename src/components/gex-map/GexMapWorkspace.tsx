@@ -69,6 +69,7 @@ import {
   type GreekMode,
 } from "@/lib/optionsFlow";
 import {
+  compactGexMapLiveCacheKey,
   fetchWorkspaceData,
   gexMapCacheKey,
   readWorkspaceData,
@@ -1747,6 +1748,11 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
   const replayMode = externalReplay?.active ?? internalReplayMode;
   const requestedReplayDate = replayMode ? (externalReplay?.sessionDate || replayDate) : "";
   requestedReplayDateRef.current = requestedReplayDate;
+  const panelCacheKey = useCallback((panel: Pick<PanelConfig, "symbol" | "greekMode">) => (
+    replayMode
+      ? gexMapCacheKey(panel.symbol, panel.greekMode, requestedReplayDate)
+      : compactGexMapLiveCacheKey(panel.symbol, panel.greekMode)
+  ), [replayMode, requestedReplayDate]);
 
   useEffect(() => {
     setLocationMarket(market ?? linkedMarketFromLocation());
@@ -1789,7 +1795,7 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
       panel.id,
       (() => {
         const cached = readWorkspaceData<GexMapPanelPayload>(
-          gexMapCacheKey(panel.symbol, panel.greekMode, requestedReplayDate),
+          panelCacheKey(panel),
         );
         return hasRenderableGexMapSurface(cached) ? cached : null;
       })(),
@@ -1803,7 +1809,7 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
     setPanelData(cachedData);
     setPanelErrors({ left: null, centre: null, right: null });
     setLoading(Object.fromEntries(nextPanels.map((panel) => [panel.id, !cachedData[panel.id]])));
-  }, [linkedMarket, requestedReplayDate]);
+  }, [linkedMarket, panelCacheKey, requestedReplayDate]);
   // Report configuration changes to the host workspace so quick-save and
   // presets capture exactly what the user configured on this pane.
   useEffect(() => {
@@ -1828,7 +1834,7 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
       let nextRefreshDelay = 60_000;
       const cachedPanels = Object.fromEntries(panels.map((panel) => {
         const cached = readWorkspaceData<GexMapPanelPayload>(
-          gexMapCacheKey(panel.symbol, panel.greekMode, requestedReplayDate),
+          panelCacheKey(panel),
         );
         return [panel.id, hasRenderableGexMapSurface(cached) ? cached : null];
       }));
@@ -1847,9 +1853,10 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
             symbol: panel.symbol,
             greekMode: panel.greekMode,
             ...(requestedReplayDate ? { sessionDate: requestedReplayDate } : {}),
+            ...(!replayMode ? { compact: "1" } : {}),
           });
           const payload = await fetchWorkspaceData<GexMapPanelPayload>(
-            gexMapCacheKey(panel.symbol, panel.greekMode, requestedReplayDate),
+            panelCacheKey(panel),
             `/api/gex-map?${query}`,
             {
               force: forceRefresh,
@@ -1934,7 +1941,7 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
         timer = null;
       }
     };
-  }, [panels, refreshToken, replayMode, requestedReplayDate]);
+  }, [panelCacheKey, panels, refreshToken, replayMode, requestedReplayDate]);
 
   const timeline = useMemo(() => {
     const timestamps = new Set<number>();

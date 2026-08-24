@@ -38,6 +38,74 @@ export type GexMapPanelPayload = {
   rateLimitRemaining: number | null;
 };
 
+export const GEX_MAP_LIVE_LOOKBACK_MINUTES = [10, 5, 2, 1] as const;
+
+/**
+ * Keep the live map cheap without weakening replay.
+ *
+ * A full interval-map response grows by one set of strike updates every
+ * minute. Sending that whole session for every panel every five seconds made
+ * the browser retain the old surfaces while parsing the replacements, which
+ * produced a large recurring heap spike beside a multi-pane chart workspace.
+ *
+ * Live mode only needs the current ladder and the state at the four selectable
+ * comparison windows. Reconstruct those states once on the server and emit
+ * them as complete frames. The existing client snapshot logic can consume
+ * this payload unchanged, while historical replay continues to request the
+ * unmodified full frame history.
+ */
+export function compactLiveGexMapPanel(
+  payload: GexMapPanelPayload,
+  lookbackMinutes: readonly number[] = GEX_MAP_LIVE_LOOKBACK_MINUTES,
+): GexMapPanelPayload {
+  if (!payload.frames.length) {
+    return { ...payload, candles: payload.candles.slice(-2) };
+  }
+
+  const lastTimestamp = payload.frames[payload.frames.length - 1].timestamp;
+  const targets = [...new Set(lookbackMinutes
+    .filter((minutes) => Number.isFinite(minutes) && minutes > 0)
+    .map((minutes) => lastTimestamp - minutes * 60_000))]
+    .sort((left, right) => left - right);
+  const surface = new Map<number, ExposureStrike>();
+  const frames: GexMapFrame[] = [];
+  let targetIndex = 0;
+
+  const capture = (timestamp: number) => {
+    if (!surface.size) return;
+    frames.push({
+      timestamp,
+      updates: [...surface.values()].map((row) => ({ ...row })),
+    });
+  };
+
+  for (const frame of payload.frames) {
+    while (targetIndex < targets.length && targets[targetIndex] < frame.timestamp) {
+      capture(targets[targetIndex]);
+      targetIndex += 1;
+    }
+    for (const update of frame.updates) surface.set(update.strike, update);
+    while (targetIndex < targets.length && targets[targetIndex] === frame.timestamp) {
+      capture(targets[targetIndex]);
+      targetIndex += 1;
+    }
+  }
+  while (targetIndex < targets.length) {
+    capture(targets[targetIndex]);
+    targetIndex += 1;
+  }
+
+  // Preserve the real newest frame timestamp: the live comparison window is
+  // anchored to it after the cash close rather than to a drifting `asOf`.
+  capture(lastTimestamp);
+
+  return {
+    ...payload,
+    frames,
+    candles: payload.candles.slice(-2),
+  };
+}
+
 /**
  * QuantData exposes the S&P index option chain and its cash history beneath
  * the SPX underlying. SPXW is the weekly option class, not a separately

@@ -253,6 +253,10 @@ export function gexMapCacheKey(symbol: string, greekMode: string, sessionDate = 
   return `gex-map:${symbol}:${greekMode}:${sessionDate || "live"}`;
 }
 
+export function compactGexMapLiveCacheKey(symbol: string, greekMode: string) {
+  return `${gexMapCacheKey(symbol, greekMode)}:compact`;
+}
+
 export function gameplanCacheKey(root: string, session: string) {
   return `gameplan:v2:${root}:${session}`;
 }
@@ -277,8 +281,9 @@ export async function preloadWorkspaceData(key: string) {
     ];
     return Promise.all(panels.map(({ symbol, greekMode }) => {
       const query = new URLSearchParams({ symbol, greekMode });
+      query.set("compact", "1");
       return fetchWorkspaceData(
-        gexMapCacheKey(symbol, greekMode),
+        compactGexMapLiveCacheKey(symbol, greekMode),
         `/api/gex-map?${query}`,
       );
     }));
