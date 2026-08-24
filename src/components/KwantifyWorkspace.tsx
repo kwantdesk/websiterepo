@@ -5330,6 +5330,11 @@ function WorkspaceChartPaneComponent({
   );
   const [lowerIndicatorHeight, setLowerIndicatorHeight] = useState(0);
   const [marketTrades, setMarketTrades] = useState<InstitutionalTrade[]>([]);
+  // The live contract tape is a single bounded mutable array shared by every
+  // pane for that instrument. A revision lets React consumers observe an
+  // in-place append without cloning 25k-55k execution objects per pane on
+  // every checkpoint. Those queued clones were the live-market renderer OOM.
+  const [marketTradesVersion, setMarketTradesVersion] = useState(0);
   const replayVisibleTradeCount = useMemo(() => {
     if (!replayActive || !replayTimestampMs) return -1;
     let count = 0;
@@ -5894,7 +5899,9 @@ function WorkspaceChartPaneComponent({
       const delay = Math.max(0, cadence - elapsed);
       if (delay === 0) {
         lastMarketTradeStateSyncRef.current = Date.now();
-        setMarketTrades(latestMarketTradesRef.current.slice());
+        const tape = latestMarketTradesRef.current;
+        setMarketTrades((current) => current === tape ? current : tape);
+        setMarketTradesVersion((current) => current + 1);
         return;
       }
       if (marketTradeStateSyncTimer !== null) return;
@@ -5904,7 +5911,9 @@ function WorkspaceChartPaneComponent({
       marketTradeStateSyncTimer = window.setTimeout(() => {
         marketTradeStateSyncTimer = null;
         lastMarketTradeStateSyncRef.current = Date.now();
-        setMarketTrades(latestMarketTradesRef.current.slice());
+        const tape = latestMarketTradesRef.current;
+        setMarketTrades((current) => current === tape ? current : tape);
+        setMarketTradesVersion((current) => current + 1);
       }, delay);
     };
     const queueProfileUpdate = (records: InstitutionalTrade[]) => {
@@ -6046,7 +6055,8 @@ function WorkspaceChartPaneComponent({
             records,
           );
           latestMarketTradesRef.current = next;
-          setMarketTrades(next.slice());
+          setMarketTrades((current) => current === next ? current : next);
+          setMarketTradesVersion((current) => current + 1);
         }
 
         // A collector reconnect commonly provides a session seed before the
@@ -7724,7 +7734,8 @@ function WorkspaceChartPaneComponent({
             const tapeCadence = activeRef.current ? 1_000 : 2_500;
             if (now - lastMarketTradeStateSyncRef.current >= tapeCadence) {
               lastMarketTradeStateSyncRef.current = now;
-              setMarketTrades(nextTape.slice());
+              setMarketTrades((current) => current === nextTape ? current : nextTape);
+              setMarketTradesVersion((current) => current + 1);
             }
           }
         }
@@ -8729,6 +8740,7 @@ function WorkspaceChartPaneComponent({
         <Chart
           candles={replayDisplayCandles}
           marketTrades={replayMarketTrades}
+          marketTradesVersion={marketTradesVersion}
           trades={trades}
           levels={chartLevels}
           zones={historicalStructureEnabled ? structure.snapshot.zones : []}

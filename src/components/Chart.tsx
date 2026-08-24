@@ -506,6 +506,7 @@ import {
 interface ChartProps {
   candles: Candle[];
   marketTrades?: InstitutionalTrade[];
+  marketTradesVersion?: number;
   trades?: (Trade & { markerVisible?: boolean })[];
   levels?: ChartLevel[];
   zones?: ChartZone[];
@@ -2955,6 +2956,7 @@ function lightweightIndicatorData(definition: CalculatedIndicatorSeries) {
 function Chart({
   candles,
   marketTrades = [],
+  marketTradesVersion = 0,
   trades,
   levels,
   zones = [],
@@ -3579,6 +3581,7 @@ function Chart({
   }, [chartReadyRevision, crosshairStyle]);
   const [sampledIndicatorCandles, setSampledIndicatorCandles] = useState(candles);
   const [sampledIndicatorMarketTrades, setSampledIndicatorMarketTrades] = useState(marketTrades);
+  const [sampledIndicatorMarketTradesVersion, setSampledIndicatorMarketTradesVersion] = useState(marketTradesVersion);
   const [smtComparisonCandles, setSmtComparisonCandles] = useState<Candle[]>([]);
   const [indicatorPaneHeights, setIndicatorPaneHeights] = useState<Record<string, number>>({});
   const [collapsedIndicatorPanes, setCollapsedIndicatorPanes] = useState<Record<string, boolean>>({});
@@ -3620,6 +3623,7 @@ function Chart({
   const chartVisualReadyTokenRef = useRef(0);
   const pendingIndicatorCandlesRef = useRef(candles);
   const pendingIndicatorMarketTradesRef = useRef(marketTrades);
+  const pendingIndicatorMarketTradesVersionRef = useRef(marketTradesVersion);
   const sampledIndicatorMarketTradesRef = useRef(marketTrades);
   const sampledOrderFlowHistoryReadyRef = useRef(orderFlowHistoryReady);
   const updateIndicatorSettingRef = useRef(onUpdateIndicatorSetting);
@@ -3717,7 +3721,7 @@ function Chart({
       drawingDataRefreshTimerRef.current = null;
       professionalDrawingManagerRef.current?.getAllDrawings().forEach((drawing) => drawing.requestUpdate());
     }, keyboardActive ? 250 : 1_000);
-  }, [candles, keyboardActive, marketTrades]);
+  }, [candles, keyboardActive, marketTrades, marketTradesVersion]);
 
   useEffect(() => () => {
     if (drawingDataRefreshTimerRef.current !== null) {
@@ -4088,6 +4092,7 @@ function Chart({
     );
     pendingIndicatorCandlesRef.current = candles;
     pendingIndicatorMarketTradesRef.current = marketTrades;
+    pendingIndicatorMarketTradesVersionRef.current = marketTradesVersion;
     sampledOrderFlowHistoryReadyRef.current = orderFlowHistoryReady;
     if (!indicatorSamplingEnabled) return;
     // Historical hydration is not a live-tick update. Paint Volume/CVD from
@@ -4107,7 +4112,8 @@ function Chart({
         setSampledIndicatorCandles(candles);
         if (orderFlowIndicatorEnabled) {
           sampledIndicatorMarketTradesRef.current = marketTrades;
-          setSampledIndicatorMarketTrades(marketTrades);
+          setSampledIndicatorMarketTrades((current) => current === marketTrades ? current : marketTrades);
+          setSampledIndicatorMarketTradesVersion(marketTradesVersion);
         }
       });
       return;
@@ -4130,7 +4136,12 @@ function Chart({
             : pendingCandles);
           if (nonFootprintOrderFlowIndicatorEnabled) {
             sampledIndicatorMarketTradesRef.current = pendingIndicatorMarketTradesRef.current;
-            setSampledIndicatorMarketTrades(pendingIndicatorMarketTradesRef.current);
+            setSampledIndicatorMarketTrades((current) => (
+              current === pendingIndicatorMarketTradesRef.current
+                ? current
+                : pendingIndicatorMarketTradesRef.current
+            ));
+            setSampledIndicatorMarketTradesVersion(pendingIndicatorMarketTradesVersionRef.current);
           }
         });
       });
@@ -4150,6 +4161,7 @@ function Chart({
     indicatorSamplingEnabled,
     keyboardActive,
     marketTrades,
+    marketTradesVersion,
     nonFootprintIndicatorSamplingEnabled,
     nonFootprintOrderFlowIndicatorEnabled,
     orderFlowHistoryReady,
@@ -4967,7 +4979,7 @@ function Chart({
       else high = middle;
     }
     return sampledIndicatorMarketTrades.slice(low);
-  }, [indicatorWindowCandles, sampledIndicatorMarketTrades]);
+  }, [indicatorWindowCandles, sampledIndicatorMarketTrades, sampledIndicatorMarketTradesVersion]);
   const tapeSpeedIndicator = useMemo(
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "tape-speed-order-flow-burst") ?? null,
     [indicatorSignature, indicators],
@@ -5165,7 +5177,7 @@ function Chart({
       return low;
     };
     return sampledIndicatorMarketTrades.slice(lowerBound(start), lowerBound(end));
-  }, [footprintSourceCandles, sampledIndicatorMarketTrades, timeframe]);
+  }, [footprintSourceCandles, sampledIndicatorMarketTrades, sampledIndicatorMarketTradesVersion, timeframe]);
   const resolvedFootprintGroupTicks = useMemo(() => {
     const manual = Math.max(1, Math.round(Number(footprintSettings.manualTicks ?? 1)));
     if (footprintSettings.groupingMode === "manual") return manual;
@@ -5463,6 +5475,7 @@ function Chart({
     footprintSourceCandles,
     liveFootprintRenderBars,
     sampledIndicatorMarketTrades,
+    sampledIndicatorMarketTradesVersion,
   ]);
   const footprintHasPriceLevelFlow = liveFootprintRenderBars.some((bar) => bar.hasPriceLevelFlow);
   const footprintHasClassifiedFlow = liveFootprintRenderBars.some((bar) =>

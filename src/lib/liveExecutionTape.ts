@@ -157,8 +157,9 @@ export function mergeInstitutionalTradeTape(
 
 /**
  * Append into the single workspace-owned live tape without allocating another
- * 55k-entry array for every Rithmic packet. React consumers must receive a
- * sampled `tape.slice()` rather than retaining this mutable canonical array.
+ * 55k-entry array for every Rithmic packet. React consumers observe this
+ * mutable canonical array through a small monotonic revision; cloning it for
+ * every pane and checkpoint can queue gigabytes of obsolete snapshots.
  */
 export function mergeInstitutionalTradeTapeInPlace(
   current: InstitutionalTrade[],

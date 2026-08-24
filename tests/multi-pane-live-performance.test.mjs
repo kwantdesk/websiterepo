@@ -44,7 +44,7 @@ test("one shared execution stream batches visual fanout without dropping its tap
   assert.match(stream, /scheduleReconnect\(key, stream, symbol, contractSymbol\)/);
 });
 
-test("each pane losslessly coalesces execution work before copying tape and candles", () => {
+test("each pane losslessly coalesces execution work before publishing tape revisions", () => {
   assert.match(workspace, /let pendingExecutionRecords: InstitutionalTrade\[\] = \[\]/);
   assert.match(workspace, /const flushExecutionRecords = \(\) =>/);
   assert.match(workspace, /pendingExecutionRecords\.push\(\.\.\.records\)/);
@@ -54,6 +54,17 @@ test("each pane losslessly coalesces execution work before copying tape and cand
   assert.match(workspace, /footprintLiveActive[\s\S]{0,120}\? 1_500/);
   assert.match(workspace, /footprintLiveActive && !nonFootprintOrderFlowActive\) return/);
   assert.match(workspace, /onTrades: \(records\) => \{[\s\S]{0,160}queueExecutionUpdate\(records\)/);
+});
+
+test("live order-flow checkpoints reuse one tape instead of cloning the full archive", () => {
+  const chart = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(workspace, /latestMarketTradesRef\.current\.slice\(\)/);
+  assert.doesNotMatch(workspace, /setMarketTrades\(next(?:Tape)?\.slice\(\)\)/);
+  assert.match(workspace, /const \[marketTradesVersion, setMarketTradesVersion\] = useState\(0\)/);
+  assert.match(workspace, /marketTradesVersion=\{marketTradesVersion\}/);
+  assert.match(chart, /marketTradesVersion\?: number/);
+  assert.match(chart, /pendingIndicatorMarketTradesVersionRef/);
+  assert.match(chart, /sampledIndicatorMarketTradesVersion/);
 });
 
 test("sibling panes share one bounded execution tape instead of retaining duplicate archives", () => {
