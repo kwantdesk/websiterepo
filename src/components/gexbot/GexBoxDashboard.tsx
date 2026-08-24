@@ -937,10 +937,26 @@ function AddToolDialog({ onAdd, onClose }: { onAdd: (tool: Tool) => void; onClos
   return <div className="fixed inset-0 z-[170] flex items-center justify-center bg-black/35 p-4" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}><div className="flex h-[min(760px,88vh)] w-[min(980px,96vw)] flex-col border border-border bg-panel shadow-2xl"><div className="flex h-12 items-center justify-between border-b border-border px-4"><div><h2 className="text-[11px] font-semibold uppercase tracking-[.18em]">Add Tool</h2><p className="mt-0.5 text-[8px] text-muted">Authoritative server-backed tools · settings remain panel-local</p></div><button onClick={onClose}><X className="h-4 w-4 text-muted" /></button></div><div className="flex min-h-0 flex-1"><aside className="w-44 shrink-0 border-r border-border p-2">{(["Options", "Equities", "KwantDesk"] as ToolCategory[]).map((item) => <button key={item} onClick={() => setCategory(item)} className={`mb-1 flex h-9 w-full items-center px-3 text-left text-[9px] font-semibold uppercase tracking-[.13em] ${category === item ? "bg-primary/10 text-primary" : "text-muted hover:bg-surface hover:text-foreground"}`}>{item}</button>)}</aside><main className="min-w-0 flex-1 overflow-y-auto p-4"><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search tools" className="mb-4 h-10 w-full border border-border bg-background px-3 text-[10px] outline-none focus:border-primary/40" /><div className="grid grid-cols-1 gap-2 md:grid-cols-2">{tools.map((tool) => <button key={tool.id} onClick={() => onAdd(tool)} className="group flex min-h-20 items-center gap-3 border border-border bg-background p-3 text-left hover:border-primary/35 hover:bg-primary/[.035]"><div className="flex h-10 w-10 shrink-0 items-center justify-center border border-border bg-panel text-primary"><Activity className="h-4 w-4" /></div><span><b className="block text-[10px] font-semibold text-foreground">{tool.label}</b><small className="mt-1 block text-[8px] leading-4 text-muted">{tool.detail}</small></span><Plus className="ml-auto h-4 w-4 text-muted group-hover:text-primary" /></button>)}</div></main></div></div></div>;
 }
 
-const DashboardPanelView = memo(function DashboardPanelView({ panel, onChange, onDuplicate, onDelete }: { panel: DashboardPanel; onChange: (panel: DashboardPanel) => void; onDuplicate: (panel: DashboardPanel) => void; onDelete: (panelId: string) => void }) {
+const DashboardPanelView = memo(function DashboardPanelView({ panel, index, onChange, onDuplicate, onDelete, onGrab, dragging, dropTarget }: { panel: DashboardPanel; index: number; onChange: (panel: DashboardPanel) => void; onDuplicate: (panel: DashboardPanel) => void; onDelete: (panelId: string) => void; onGrab: (panelId: string, index: number) => void; dragging: boolean; dropTarget: boolean }) {
   const [settings, setSettings] = useState(false); const [menu, setMenu] = useState(false); const [maximized, setMaximized] = useState(false);
-  return <article className={`${maximized ? "fixed inset-3 z-[150]" : "relative min-h-[310px]"} flex min-w-0 flex-col overflow-hidden border border-border bg-background shadow-[inset_2px_0_0_color-mix(in_srgb,var(--primary)_65%,transparent)]`}>
-    <header className="flex h-10 shrink-0 items-center justify-between border-b border-border bg-panel px-3"><div className="flex min-w-0 items-center gap-2"><Grip className="h-3.5 w-3.5 text-primary" /><span className="truncate text-[10px] font-semibold uppercase tracking-[.14em]">{panel.title}</span><span className="font-mono text-[8px] text-muted">{panel.settings.symbol} · {panel.settings.aggregation}</span></div><div className="relative flex items-center gap-1"><button onClick={() => setSettings(true)} className="p-1.5 text-muted hover:text-primary" aria-label="Panel settings"><Settings2 className="h-3.5 w-3.5" /></button><button onClick={() => setMaximized((v) => !v)} className="p-1.5 text-muted hover:text-primary" aria-label="Maximize panel"><Maximize2 className="h-3.5 w-3.5" /></button><button onClick={() => setMenu((v) => !v)} className="p-1.5 text-muted hover:text-primary"><MoreHorizontal className="h-4 w-4" /></button>{menu ? <div className="absolute right-0 top-8 z-30 w-40 border border-border bg-panel p-1 shadow-xl"><MenuButton icon={Copy} label="Duplicate Tab" onClick={() => { setMenu(false); onDuplicate(panel); }} /><MenuButton icon={Expand} label="Maximize" onClick={() => { setMenu(false); setMaximized(true); }} /><MenuButton icon={Move} label="Pop Out Tool" onClick={() => { setMenu(false); setMaximized(true); }} /><MenuButton icon={Trash2} label="Delete Tab" danger onClick={() => { setMenu(false); onDelete(panel.id); }} /></div> : null}</div></header>
+  return <article
+    data-panel-index={index}
+    className={`${maximized ? "fixed inset-3 z-[150]" : "relative min-h-[310px]"} flex min-w-0 flex-col overflow-hidden border bg-background shadow-[inset_2px_0_0_color-mix(in_srgb,var(--primary)_65%,transparent)] ${
+      dragging ? "border-primary/50 opacity-40" : dropTarget ? "border-primary" : "border-border"
+    }`}
+  >
+    {/* Where the panel being carried would land. */}
+    {dropTarget && !dragging ? <span className="pointer-events-none absolute inset-0 z-20 border-2 border-dashed border-primary/70 bg-primary/[.06]" /> : null}
+    <header
+      className="flex h-10 shrink-0 cursor-grab items-center justify-between border-b border-border bg-panel px-3 active:cursor-grabbing"
+      onPointerDown={(event) => {
+        // The header's own controls are not a handle; a drag that started on
+        // Settings or Delete would swallow the click that was intended.
+        if ((event.target as HTMLElement).closest("button")) return;
+        if (event.button !== 0 || maximized) return;
+        onGrab(panel.id, index);
+      }}
+    ><div className="flex min-w-0 items-center gap-2"><Grip className="h-3.5 w-3.5 text-primary" /><span className="truncate text-[10px] font-semibold uppercase tracking-[.14em]">{panel.title}</span><span className="font-mono text-[8px] text-muted">{panel.settings.symbol} · {panel.settings.aggregation}</span></div><div className="relative flex items-center gap-1"><button onClick={() => setSettings(true)} className="p-1.5 text-muted hover:text-primary" aria-label="Panel settings"><Settings2 className="h-3.5 w-3.5" /></button><button onClick={() => setMaximized((v) => !v)} className="p-1.5 text-muted hover:text-primary" aria-label="Maximize panel"><Maximize2 className="h-3.5 w-3.5" /></button><button onClick={() => setMenu((v) => !v)} className="p-1.5 text-muted hover:text-primary"><MoreHorizontal className="h-4 w-4" /></button>{menu ? <div className="absolute right-0 top-8 z-30 w-40 border border-border bg-panel p-1 shadow-xl"><MenuButton icon={Copy} label="Duplicate Tab" onClick={() => { setMenu(false); onDuplicate(panel); }} /><MenuButton icon={Expand} label="Maximize" onClick={() => { setMenu(false); setMaximized(true); }} /><MenuButton icon={Move} label="Pop Out Tool" onClick={() => { setMenu(false); setMaximized(true); }} /><MenuButton icon={Trash2} label="Delete Tab" danger onClick={() => { setMenu(false); onDelete(panel.id); }} /></div> : null}</div></header>
     <div className="relative min-h-0 flex-1"><ToolSurface panel={panel} onChange={onChange} /></div>
     {settings ? <PanelSettingsDialog panel={panel} onChange={onChange} onClose={() => setSettings(false)} /> : null}
   </article>;
@@ -965,6 +981,79 @@ export default function GexBoxDashboard() {
     setShowTools(false);
     startTransition(() => updatePage((page) => ({ ...page, panels: [...page.panels, { id: makeId("panel"), toolId: tool.id, title: tool.label, settings: { ...DEFAULT_SETTINGS } }] })));
   };
+  /**
+   * Dragging a panel to a new slot.
+   *
+   * Held in refs as well as state: the window listeners below are installed
+   * once per drag, so reading the drop slot from state inside them would read
+   * whatever it was when the drag began.
+   */
+  const panelDragRef = useRef<{ id: string; from: number } | null>(null);
+  const panelDropRef = useRef<number | null>(null);
+  const [panelDrag, setPanelDrag] = useState<{ id: string; from: number } | null>(null);
+  const [panelDrop, setPanelDrop] = useState<number | null>(null);
+
+  const grabPanel = useCallback((panelId: string, index: number) => {
+    panelDragRef.current = { id: panelId, from: index };
+    panelDropRef.current = index;
+    setPanelDrag({ id: panelId, from: index });
+    setPanelDrop(index);
+  }, []);
+
+  useEffect(() => {
+    if (!panelDrag) return;
+    // The slot under the pointer, found from the document rather than from
+    // per-panel handlers: the panel being carried is semi-transparent and
+    // still under the cursor, so its own events would answer every move.
+    const move = (event: PointerEvent) => {
+      const element = document.elementFromPoint(event.clientX, event.clientY);
+      const slot = element instanceof Element ? element.closest("[data-panel-index]") : null;
+      const raw = slot?.getAttribute("data-panel-index");
+      const index = raw === null || raw === undefined ? null : Number(raw);
+      const next = index !== null && Number.isFinite(index) ? index : null;
+      if (next !== panelDropRef.current) {
+        panelDropRef.current = next;
+        setPanelDrop(next);
+      }
+    };
+    const finish = () => {
+      const held = panelDragRef.current;
+      const to = panelDropRef.current;
+      panelDragRef.current = null;
+      panelDropRef.current = null;
+      setPanelDrag(null);
+      setPanelDrop(null);
+      if (!held || to === null || to === held.from) return;
+      updatePage((page) => {
+        const panels = [...page.panels];
+        if (held.from < 0 || held.from >= panels.length) return page;
+        const [moved] = panels.splice(held.from, 1);
+        // Splicing out first means the target index already accounts for the
+        // gap the panel left behind, so the rest close up exactly as they look
+        // like they will while the drag is in flight.
+        panels.splice(Math.max(0, Math.min(panels.length, to)), 0, moved);
+        return { ...page, panels };
+      });
+    };
+    const cancel = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      panelDragRef.current = null;
+      panelDropRef.current = null;
+      setPanelDrag(null);
+      setPanelDrop(null);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", finish);
+    window.addEventListener("pointercancel", finish);
+    window.addEventListener("keydown", cancel);
+    return () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", finish);
+      window.removeEventListener("keydown", cancel);
+    };
+  }, [panelDrag, updatePage]);
+
   const applyPalette = useCallback((paletteId: string) => {
     const colors = gexBoxPanelColors(resolveGexBoxRoles(paletteId));
     // Written into every panel rather than read at render time, so a panel
@@ -999,8 +1088,8 @@ export default function GexBoxDashboard() {
         onClose={() => setShowStyle(false)}
       /> : null}
       <div className="flex h-10 items-end gap-1 overflow-x-auto px-3">{workspace.pages.map((page) => <div key={page.id} className={`group flex h-9 shrink-0 items-center border-b-2 px-3 ${page.id === active.id ? "border-primary bg-primary/[.035] text-primary" : "border-transparent text-muted"}`}><button onClick={() => setWorkspace((current) => ({ ...current, activePageId: page.id }))} className="text-[9px] font-semibold uppercase tracking-[.13em]">{page.name}</button>{workspace.pages.length > 1 ? <button onClick={() => setWorkspace((current) => { const pages = current.pages.filter((item) => item.id !== page.id); return { ...current, pages, activePageId: current.activePageId === page.id ? pages[0].id : current.activePageId }; })} className="ml-2 opacity-0 group-hover:opacity-100"><X className="h-3 w-3" /></button> : null}</div>)}<button onClick={() => addPage("grid")} className="mb-1 flex h-7 w-7 shrink-0 items-center justify-center text-muted hover:text-primary"><Plus className="h-3.5 w-3.5" /></button></div></header>
-    <main className={`min-h-0 flex-1 overflow-auto p-2 ${active.layout === "grid" ? "grid auto-rows-[minmax(310px,1fr)] grid-cols-1 gap-2 xl:grid-cols-2" : "relative min-w-[1600px] grid auto-rows-[420px] grid-cols-3 gap-2"}`}>
-      {active.panels.length ? active.panels.map((panel) => <DashboardPanelView key={panel.id} panel={panel} onChange={changePanel} onDuplicate={duplicatePanel} onDelete={deletePanel} />) : <button onClick={() => setShowTools(true)} className="col-span-full flex min-h-[420px] items-center justify-center border border-dashed border-border text-muted hover:border-primary/40 hover:text-primary"><Plus className="mr-2 h-4 w-4" /><span className="text-[10px] uppercase tracking-[.15em]">Add the first tool</span></button>}
+    <main data-gexbox-dragging={panelDrag ? "true" : undefined} className={`min-h-0 flex-1 overflow-auto p-2 ${panelDrag ? "select-none" : ""} ${active.layout === "grid" ? "grid auto-rows-[minmax(310px,1fr)] grid-cols-1 gap-2 xl:grid-cols-2" : "relative min-w-[1600px] grid auto-rows-[420px] grid-cols-3 gap-2"}`}>
+      {active.panels.length ? active.panels.map((panel, index) => <DashboardPanelView key={panel.id} panel={panel} index={index} onChange={changePanel} onDuplicate={duplicatePanel} onDelete={deletePanel} onGrab={grabPanel} dragging={panelDrag?.id === panel.id} dropTarget={panelDrag !== null && panelDrop === index} />) : <button onClick={() => setShowTools(true)} className="col-span-full flex min-h-[420px] items-center justify-center border border-dashed border-border text-muted hover:border-primary/40 hover:text-primary"><Plus className="mr-2 h-4 w-4" /><span className="text-[10px] uppercase tracking-[.15em]">Add the first tool</span></button>}
     </main>
     <footer className="flex h-7 shrink-0 items-center justify-between border-t border-border bg-panel px-3 text-[8px] uppercase tracking-[.12em] text-muted"><span>{active.layout} page · {active.panels.length} panels · shared VPS feeds</span><span>Prior completed New York RTH · live during session</span></footer>
     {showTools ? <AddToolDialog onAdd={addTool} onClose={() => setShowTools(false)} /> : null}

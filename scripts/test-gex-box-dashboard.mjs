@@ -30,6 +30,33 @@ assert.ok(dashboard.includes("function OrderFlowPanel") && dashboard.includes('l
 assert.ok(dashboard.includes('label="Sentiment"') && dashboard.includes('label="Exchange"') && dashboard.includes('label="Expiry"') && dashboard.includes('label="Flags"') && dashboard.includes('label="Columns"') && dashboard.includes('label="Group"'), "Order Flow must expose its professional filter controls.");
 assert.ok(dashboard.includes('label: "Spread"') && dashboard.includes('label: "Moneyness"') && dashboard.includes('label: "Δ / Γ / Θ / V"') && dashboard.includes('label: "Flags"'), "Order Flow must expose execution, contract, Greeks and classification detail.");
 assert.ok(dashboard.includes('flowColumns: "full"') && dashboard.includes('flowGrouping: "none"') && dashboard.includes('flowFlags: "ALL"'), "Order Flow display presets must remain backward-compatible with stored workspaces.");
+// Panels rearrange by dragging their header onto another slot, on grid and
+// infinite pages alike, with the target slot marked before the drop.
+assert.ok(
+  dashboard.includes("data-panel-index")
+  && dashboard.includes("onGrab")
+  && dashboard.includes("document.elementFromPoint"),
+  "Panels must be draggable onto another slot.",
+);
+assert.ok(
+  dashboard.includes("dropTarget") && dashboard.includes("border-dashed"),
+  "The slot a dragged panel would land in must be shown before the drop.",
+);
+assert.ok(
+  dashboard.includes("panels.splice(held.from, 1)") && dashboard.includes("panels.splice(Math.max(0, Math.min(panels.length, to)), 0, moved)"),
+  "Dropping must move the panel and let the rest close up, not swap two panels.",
+);
+assert.ok(
+  dashboard.includes('.closest("button")'),
+  "A panel header's own controls must not start a drag.",
+);
+assert.ok(
+  dashboard.includes('window.removeEventListener("pointermove", move)')
+  && dashboard.includes('window.removeEventListener("pointerup", finish)')
+  && dashboard.includes('window.removeEventListener("pointercancel", finish)'),
+  "Drag listeners must be removed when the drag ends.",
+);
+
 assert.ok(dashboard.includes("function ProfessionalIntervalMap") && dashboard.includes('"horizontal-ribbons"') && dashboard.includes('"call-put-split"'), "Interval Map must support the audited QuantData visual and content modes.");
 assert.ok(dashboard.includes("intervalMaximumDistance") && dashboard.includes('exposureSide: "call"'), "Interval Map must expose strike-distance and true call/put split controls.");
 // The map navigates like a chart rather than through a range slider: drag the
