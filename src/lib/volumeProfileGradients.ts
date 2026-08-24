@@ -30,6 +30,9 @@ export const VOLUME_PROFILE_GRADIENTS: readonly VolumeProfileGradient[] = [
   { id: "lime-teal", label: "Lime → Teal", from: "#C6FF3D", to: "#00C2A8" },
   { id: "violet-amber", label: "Violet → Amber", from: "#8B5CF6", to: "#FFB020" },
   { id: "crimson-indigo", label: "Crimson → Indigo", from: "#FF1F5A", to: "#4B32FF" },
+  // Requested by the desk. `from` is the LOW end, so red sits at the bottom of
+  // the profile and lime at the top, which is the direction the labels read.
+  { id: "red-lime", label: "Red → Lime", from: "#FF0000", to: "#48FF03" },
 ] as const;
 
 const clamp01 = (value: number) => Math.min(1, Math.max(0, value));

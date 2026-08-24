@@ -867,7 +867,7 @@ type StrategyItem = {
   totalPnl?: number;
 };
 
-type WorkspaceLayout = "single" | "split-vertical" | "split-horizontal" | "quad" | "columns" | "gexmap-columns" | "gexmap-columns-4" | "custom";
+type WorkspaceLayout = "single" | "split-vertical" | "columns-3" | "split-horizontal" | "quad" | "columns" | "gexmap-columns" | "gexmap-columns-4" | "custom";
 type WorkspacePagePanelKind = "charts" | "zyon" | "gameplan" | "gamma" | "gexmap" | "liqmap" | "news" | "socials" | "journal";
 type WorkspaceToolKind =
   | "tool-gamma-heatmap"
@@ -1674,6 +1674,24 @@ function createWorkspaceLayoutTree(
   if (layout === "split-horizontal") {
     return { type: "split", id: "root-y", axis: "y", ratio: 50, first: pane(0), second: pane(1) };
   }
+  if (layout === "columns-3") {
+    // Three equal columns left to right: an x-split at a third, then in half.
+    return {
+      type: "split",
+      id: "root-x",
+      axis: "x",
+      ratio: 100 / 3,
+      first: pane(0),
+      second: {
+        type: "split",
+        id: "columns3-2",
+        axis: "x",
+        ratio: 50,
+        first: pane(1),
+        second: pane(2),
+      },
+    };
+  }
   if (layout === "columns") {
     // Four equal columns left to right: nested x-splits at 25 / 33.33 / 50.
     return {
@@ -2393,6 +2411,7 @@ function loadChartWorkspaceRuntime(scope: ChartWorkspaceScope): ChartWorkspaceRu
 
   const layoutValue = read("olisa-chart-workspace-layout");
   const layout: WorkspaceLayout = layoutValue === "split-vertical"
+    || layoutValue === "columns-3"
     || layoutValue === "split-horizontal"
     || layoutValue === "quad"
     || layoutValue === "columns"
@@ -14376,7 +14395,9 @@ export default function KwantifyWorkspace({
     const gexMapAutoChartCount = layout === "gexmap-columns" ? 3 : layout === "gexmap-columns-4" ? 4 : 0;
     const requiredPaneCount = gexMapAutoChartCount
       ? gexMapAutoChartCount + 1
-      : layout === "quad" || layout === "columns" ? 4 : layout === "single" ? 1 : 2;
+      : layout === "quad" || layout === "columns" ? 4
+        : layout === "columns-3" ? 3
+          : layout === "single" ? 1 : 2;
     const nextPanes = [...workspacePanes];
     const scopedDefaults = defaultWorkspacePanes(chartWorkspaceScopeRef.current);
     for (const defaultPane of scopedDefaults) {
@@ -17717,6 +17738,17 @@ export default function KwantifyWorkspace({
                   <span className="grid h-4 w-4 grid-cols-2 gap-0.5">
                     <span className="rounded-[2px] border border-current/70 bg-current/15" />
                     <span className="rounded-[2px] border border-current/70 bg-current/15" />
+                  </span>
+                ),
+              },
+              {
+                layout: "columns-3" as Exclude<WorkspaceLayout, "custom">,
+                title: "Three panels side by side",
+                icon: (
+                  <span className="grid h-4 w-4 grid-cols-3 gap-px">
+                    <span className="rounded-[1px] border border-current/70 bg-current/15" />
+                    <span className="rounded-[1px] border border-current/70 bg-current/15" />
+                    <span className="rounded-[1px] border border-current/70 bg-current/15" />
                   </span>
                 ),
               },

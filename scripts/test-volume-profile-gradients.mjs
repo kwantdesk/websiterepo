@@ -16,8 +16,12 @@ const {
   isVolumeProfileGradientActive,
 } = await import(`file://${bundle.replaceAll("\\", "/")}`);
 
-// 1. Ten schemes, as asked for.
-assert.equal(VOLUME_PROFILE_GRADIENTS.length, 10);
+// 1. At least the ten schemes originally asked for; more may be added since
+//    every check below is per-scheme rather than positional.
+assert.ok(
+  VOLUME_PROFILE_GRADIENTS.length >= 10,
+  `expected at least ten schemes, found ${VOLUME_PROFILE_GRADIENTS.length}`,
+);
 
 // 2. Every scheme is a genuine two-colour fade with distinct, valid endpoints.
 const HEX = /^#[0-9A-Fa-f]{6}$/;

@@ -3149,6 +3149,8 @@ function Chart({
   const liveFootprintBuildSettingsRef = useRef<FootprintBuildSettings | null>(null);
   const liveFootprintPrimitiveOptionsRef = useRef<FootprintPrimitiveOptions | null>(null);
   const liveFootprintProfileGroupTicksRef = useRef(1);
+  // Signature of everything that decides a footprint bar's ROW SHAPE.
+  const liveFootprintRowShapeRef = useRef("");
   const liveFootprintEnabledRef = useRef(false);
   const liveFootprintRenderBarsRef = useRef<FootprintRenderBar[]>([]);
   const liveFootprintTapeRef = useRef<InstitutionalTrade[]>([]);
@@ -5472,6 +5474,25 @@ function Chart({
     liveFootprintBuildSettingsRef.current = footprintBuildSettings;
     liveFootprintPrimitiveOptionsRef.current = footprintPrimitiveOptions;
     liveFootprintProfileGroupTicksRef.current = footprintProfileGroupTicks;
+    // Retention preserves live-captured price-level flow a rebuild cannot
+    // recover, but it copies the whole retained bar — including its ROWS,
+    // which carry the grouping they were built under. Change ticks per row and
+    // every already-retained bar keeps the old shape while fresh bars take the
+    // new one, so the chart shows two granularities side by side and only some
+    // bars appear to obey the setting. Drop retention when the shape changes;
+    // the visible tape is still there and the rebuild re-derives the rows.
+    const footprintRowShape = [
+      resolvedFootprintGroupTicks,
+      footprintProfileGroupTicks,
+      instrument,
+      timeframe,
+    ].join(":");
+    if (liveFootprintRowShapeRef.current !== footprintRowShape) {
+      liveFootprintRowShapeRef.current = footprintRowShape;
+      liveFootprintRenderBarsRef.current = [];
+      liveFootprintBaseBuildCacheRef.current = null;
+      liveFootprintProfileBuildCacheRef.current = null;
+    }
     liveFootprintRenderBarsRef.current = retainLiveFootprintRows(
       liveFootprintRenderBars,
       liveFootprintRenderBarsRef.current,
@@ -5485,9 +5506,12 @@ function Chart({
     footprintPrimitiveOptions,
     footprintProfileGroupTicks,
     footprintSourceCandles,
+    instrument,
     liveFootprintRenderBars,
+    resolvedFootprintGroupTicks,
     sampledIndicatorMarketTrades,
     sampledIndicatorMarketTradesVersion,
+    timeframe,
   ]);
   const footprintHasPriceLevelFlow = liveFootprintRenderBars.some((bar) => bar.hasPriceLevelFlow);
   const footprintHasClassifiedFlow = liveFootprintRenderBars.some((bar) =>
