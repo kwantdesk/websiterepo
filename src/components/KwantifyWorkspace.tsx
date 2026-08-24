@@ -15189,7 +15189,16 @@ export default function KwantifyWorkspace({
       saveScopedChartSettings(chartWorkspaceScopeRef.current, nextChartSettings);
     }
     if (preset.indicators) {
-      setPaneIndicators(linkPaneIndicatorStateToTheme(clonePaneIndicatorState(preset.indicators)));
+      // Restored EXACTLY as saved.
+      //
+      // This used to relink every indicator to the active theme on the way in,
+      // which is the right thing to do when a theme is chosen and completely
+      // wrong here: a workspace carries its own colours and its own theme, so
+      // relinking threw away every colour the trader had set and handed back
+      // the theme's. An afternoon spent colouring CVD, candles, big trades, IB
+      // levels, the footprint and the profiles was lost on reopening the very
+      // workspace it was saved into.
+      setPaneIndicators(clonePaneIndicatorState(preset.indicators));
     }
     setPaneLevelVisibility(clonePaneLevelVisibility(preset.levelVisibility ?? {}));
     const firstPaneId = collectWorkspacePaneIds(normalizedTree)[0];

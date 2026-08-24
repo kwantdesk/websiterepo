@@ -2617,26 +2617,36 @@ export const clonePaneIndicatorState = (state: Record<string, ChartIndicatorInst
   );
 
 /**
- * Selecting an account theme is a global visual action. Existing indicator
- * instances may contain a historic `useThemeColors: false` snapshot, so link
- * them back to the active palette at the moment the theme changes. Users can
- * still customise an indicator again afterwards.
+ * Choosing an account theme is a global visual action, so indicators that
+ * still follow the theme are relinked to the new palette.
+ *
+ * An indicator carrying `useThemeColors: false` is NOT relinked. That flag is
+ * only ever written when somebody picks a colour, so overriding it discards
+ * deliberate work — and it did, for every study at once, every time a theme
+ * was chosen. The original reasoning was that the flag might be a stale
+ * snapshot rather than a choice; losing an afternoon of colouring is the worse
+ * of the two failures, and anyone who wants the theme back can switch the
+ * indicator to theme colours in its own settings.
+ *
+ * Apply this ONLY when the theme itself changes. Restoring a saved workspace
+ * must not pass through here: that workspace carries the colours it was saved
+ * with.
  */
 export const linkPaneIndicatorStateToTheme = (state: Record<string, ChartIndicatorInstance[]>) =>
   Object.fromEntries(
     Object.entries(state).map(([paneId, instances]) => [
       paneId,
-      instances.map((instance) => {
-        const preserveBounceOverride = instance.indicatorId === "bounce-levels"
-          && instance.settings?.useThemeColors === false;
-        return {
-          ...instance,
-          settings: {
-            ...(instance.settings ?? {}),
-            useThemeColors: preserveBounceOverride ? false : true,
-          },
-        };
-      }),
+      instances.map((instance) => (
+        instance.settings?.useThemeColors === false
+          ? instance
+          : {
+            ...instance,
+            settings: {
+              ...(instance.settings ?? {}),
+              useThemeColors: true,
+            },
+          }
+      )),
     ]),
   );
 
