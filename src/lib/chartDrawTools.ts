@@ -294,6 +294,17 @@ export const FIB_LEVELS: FibLevel[] = [
   { coeff: 4.236, color: "#787B86" },
 ];
 
+/**
+ * What a RETRACEMENT draws: the 0-1 range only.
+ *
+ * A retracement measures how far a move has pulled back, so every level lives
+ * between its two anchors. The projections past 1 belong to the Trend-Based
+ * Fib Extension tool, which keeps the full list above.
+ */
+export const FIB_RETRACEMENT_LEVELS: FibLevel[] = FIB_LEVELS.filter(
+  (level) => level.coeff >= 0 && level.coeff <= 1,
+);
+
 export const FIB_TIME_COEFFS = [0, 1, 2, 3, 5, 8, 13, 21, 34];
 export const FIB_CIRCLE_COEFFS = [0.236, 0.382, 0.5, 0.618, 1];
 

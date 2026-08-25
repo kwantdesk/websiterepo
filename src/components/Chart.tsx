@@ -6301,7 +6301,7 @@ function Chart({
         const latest = tapeSpeedFrame.latest;
         return [{
           key: instance.instanceId,
-          title: `TAPE SPEED · ${metricLabel.toUpperCase()} · ${tapeSpeedFrame.status}`,
+          title: `Tape Speed · ${metricLabel} · ${tapeSpeedFrame.status}`,
           indicatorId: instance.indicatorId,
           settings: instance.settings,
           series: tapeSpeedPaneSeries(tapeSpeedFrame, instance.instanceId, tapeSpeedSettings),
@@ -6432,7 +6432,7 @@ function Chart({
         });
         return [{
           key: instance.instanceId,
-          title: `IV RANK · ${sourceDisplay} · ${Math.round(Number(instance.settings?.lookBackPeriodDays ?? 252))}D · ${Math.round(Number(instance.settings?.targetMaturityDays ?? 30))}D · ${status}`,
+          title: `IV Rank · ${sourceDisplay} · ${Math.round(Number(instance.settings?.lookBackPeriodDays ?? 252))}D · ${Math.round(Number(instance.settings?.targetMaturityDays ?? 30))}D · ${status}`,
           indicatorId: instance.indicatorId,
           settings: instance.settings,
           series,
@@ -6462,7 +6462,7 @@ function Chart({
       if (instance.indicatorId === "kwant-stats") {
         return [{
           key: instance.instanceId,
-          title: "KWANT STATS",
+          title: "Kwant Stats",
           indicatorId: instance.indicatorId,
           settings: instance.settings,
           series: [],

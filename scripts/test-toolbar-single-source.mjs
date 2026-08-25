@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { DRAW_TOOL_GROUPS, DRAW_TOOL_LIST, DRAW_TOOL_SPECS } from "../src/lib/chartDrawTools.ts";
+import { DRAW_TOOL_GROUPS, DRAW_TOOL_LIST, DRAW_TOOL_SPECS, FIB_LEVELS, FIB_RETRACEMENT_LEVELS } from "../src/lib/chartDrawTools.ts";
 
 /**
  * The chart carries three drawing toolbars and only one is mounted. Work has
@@ -70,6 +70,53 @@ check("no duplicate tool ids", () => {
     assert.ok(!seen.has(tool.id), `duplicate tool id "${tool.id}"`);
     seen.add(tool.id);
   }
+});
+
+check("a retracement stays inside its own two anchors", () => {
+  // A retracement measures how far a move pulled back, so every level belongs
+  // between the anchors. The 1.618/2.618/3.618/4.236 projections are the
+  // Extension tool's, and drawing them here put lines far off the move being
+  // measured.
+  assert.ok(FIB_RETRACEMENT_LEVELS.length > 0);
+  for (const level of FIB_RETRACEMENT_LEVELS) {
+    assert.ok(level.coeff >= 0 && level.coeff <= 1, `${level.coeff} is outside the 0-1 range`);
+  }
+  const coeffs = FIB_RETRACEMENT_LEVELS.map((level) => level.coeff);
+  assert.deepEqual(coeffs, [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1]);
+  // The Extension tool still needs the projections, so they must not have been
+  // deleted outright.
+  assert.ok(FIB_LEVELS.some((level) => level.coeff > 1), "the extension levels are gone");
+});
+
+check("the retracement renderer uses the bounded list", () => {
+  const layer = readFileSync(new URL("../src/components/ChartDrawLayer.tsx", import.meta.url), "utf8");
+  const start = layer.indexOf('case "fibRetracement"');
+  assert.ok(start > 0, "the retracement case is gone");
+  const body = layer.slice(start, layer.indexOf('case "fibExtension"', start));
+  assert.match(body, /FIB_RETRACEMENT_LEVELS\.map/, "the retracement is drawing the full list again");
+});
+
+check("indicator pane titles are named, not shouted", () => {
+  // Kwant Stats shipped as "KWANT STATS" beside CVD's "Cumulative Volume
+  // Delta". Acronyms stay upper case; a whole word does not.
+  const ACRONYMS = new Set([
+    "CVD", "VWAP", "MACD", "RSI", "ATR", "EMA", "SMA", "WMA", "ADX", "CCI", "OBV",
+    "TPO", "VP", "VAH", "VAL", "POC", "IV", "GEX", "DEX", "VEX", "CHEX", "DOM",
+    "OI", "PNL", "OCO", "RTH", "ETH", "CME", "ZGB", "AD", "DP", "SVP", "COB",
+  ]);
+  const chart = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
+  const shouted = [];
+  for (const line of chart.split("\n")) {
+    const match = /^\s*title: [`"]([^`"$]*)/.exec(line);
+    if (!match) continue;
+    for (const word of match[1].split(/[^A-Za-z/]+/)) {
+      const bare = word.replace(/\//g, "");
+      if (bare.length < 3 || bare !== bare.toUpperCase()) continue;
+      if (ACRONYMS.has(bare)) continue;
+      shouted.push(`${word} (in "${match[1].trim()}")`);
+    }
+  }
+  assert.deepEqual(shouted, [], `pane titles shouting: ${shouted.join(", ")}`);
 });
 
 console.log(`\ntoolbar single-source: ${passed}/${passed} checks passed`);

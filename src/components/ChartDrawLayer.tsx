@@ -5,6 +5,7 @@ import {
   DRAW_TOOL_SPECS,
   FIB_CIRCLE_COEFFS,
   FIB_LEVELS,
+  FIB_RETRACEMENT_LEVELS,
   FIB_TIME_COEFFS,
   createDrawing,
   resolveDrawColor,
@@ -835,7 +836,7 @@ export default function ChartDrawLayer({
           if (!b || a.x == null || b.x == null) return null;
           const left = Math.min(a.x!, b.x); const right = Math.max(a.x!, b.x);
           const p0 = pr[0].price; const p1 = pr[1].price;
-          return <g>{FIB_LEVELS.map((lv) => {
+          return <g>{FIB_RETRACEMENT_LEVELS.map((lv) => {
             const price = p1 + (p0 - p1) * lv.coeff; const ly = toY(price);
             return ly == null ? null : <g key={lv.coeff}>{line(left, ly, right, ly, stroke)}{style.showLabels ? label(left + 2, ly - 2, `${lv.coeff} (${price.toFixed(2)})`, stroke) : null}</g>;
           })}</g>;
