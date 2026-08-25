@@ -3290,6 +3290,11 @@ function Chart({
   const professionalDrawingsRef = useRef<ProfessionalDrawingRecord[]>([]);
   const professionalDrawingsHydrationRef = useRef<{ instrument: string; ready: boolean }>({ instrument: "", ready: false });
   const positionDrawingsHydrationRef = useRef<{ key: string; ready: boolean }>({ key: "", ready: false });
+  // The live drawing set, read by the legacy-position migration below, which
+  // runs from a hydration effect and must append to whatever is current
+  // rather than to whatever was current when the effect was created.
+  const chartingDrawingsRef = useRef<Drawing[]>(chartingDrawings);
+  chartingDrawingsRef.current = chartingDrawings;
   const professionalDrawingsLoadGenerationRef = useRef(0);
   const professionalDrawingManagerRef = useRef<DrawingManager | null>(null);
   const professionalDrawingPreviewRef = useRef<ProfessionalDrawing | null>(null);
@@ -10728,7 +10733,43 @@ function Chart({
     positionDrawingsHydrationRef.current = { key: positionKey, ready: false };
     try {
       const rawPositions = window.localStorage.getItem(positionKey);
-      setDrawings(normalizePositionDrawings(rawPositions ? JSON.parse(rawPositions) : []));
+      const legacyPositions = normalizePositionDrawings(rawPositions ? JSON.parse(rawPositions) : []);
+      // Position calculators saved before the new toolbar existed live in the
+      // LEGACY overlay, which renders at pointer-events:none now that its rail
+      // is retired. They were still drawn, so they looked completely normal —
+      // and completely dead: grabbing a corner did nothing, because nothing
+      // under the cursor was listening. Move them into the live layer, which
+      // uses the identical point model (entry, stop-with-the-right-edge,
+      // target), so they become grabbable again.
+      // Claimed once per chart rather than by deleting the legacy entry: if
+      // anything about this conversion is wrong the trader's original
+      // calculators are still on disk to recover from, and the claim is what
+      // stops them being copied in again on every mount.
+      const positionMigrationClaimKey = `kwantdesk:position-drawings:migrated:v1:${chartInstanceId}:${instrument}`;
+      const alreadyMigrated = window.localStorage.getItem(positionMigrationClaimKey) != null;
+      if (legacyPositions.length && !alreadyMigrated) {
+        const migrated = legacyPositions.map((legacy) => {
+          const entry = legacy.points[0];
+          const stop = legacy.points[1];
+          const risk = Math.max(Math.abs(entry.price - stop.price), priceFormat.minMove);
+          const target = legacy.points[2] ?? {
+            time: stop.time,
+            price: legacy.tool === "longPosition" ? entry.price + risk * 2 : entry.price - risk * 2,
+          };
+          // The legacy renderer derived the target when it was absent; make it
+          // explicit here so the live tool has the three points it needs.
+          return createDrawing(legacy.tool as DrawToolId, [
+            { time: entry.time, price: entry.price },
+            { time: stop.time, price: stop.price },
+            { time: stop.time, price: target.price },
+          ]);
+        });
+        commitDrawings([...chartingDrawingsRef.current, ...migrated]);
+        window.localStorage.setItem(positionMigrationClaimKey, new Date().toISOString());
+      }
+      // Either way the legacy overlay holds nothing: anything it kept would be
+      // a second, inert copy sitting under the live one.
+      setDrawings([]);
     } catch {
       setDrawings([]);
     }
