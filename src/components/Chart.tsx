@@ -5156,7 +5156,11 @@ function Chart({
       backgroundColor: "rgba(8,10,14,0.55)",
       showBids: source.showBids !== false,
       showAsks: source.showAsks !== false,
-      alignLeft: source.alignLeft === true,
+      // Absent means the DEFAULT, which is on — the same reading every other
+      // toggle here uses. Treating an absent key as off made a ladder saved
+      // before this setting existed come up mirrored, contradicting its own
+      // stock setting and leaving it to be switched on by hand.
+      alignLeft: source.alignLeft !== false,
       showSizes: source.showSizes !== false,
       levelSpacingPx: clamp(Math.round(Number(source.levelSpacingPx ?? 25)), 8, 60),
       barOpacity: clamp(Number(source.barOpacity ?? 56) / 100, 0.1, 1),

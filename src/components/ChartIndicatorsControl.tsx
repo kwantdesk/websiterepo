@@ -654,6 +654,26 @@ function IndicatorSettingsSections({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * Whether a boolean setting is on, reading an ABSENT key as the study's own
+ * default rather than as off.
+ *
+ * A saved indicator only carries the keys it was written with, so a setting
+ * added after that instance was created is simply missing. Reading missing as
+ * off showed the dialog disagreeing with the chart in front of it — the
+ * ladder drawn one way, its switch reporting the other — and left a stock
+ * setting to be turned on by hand.
+ */
+function toggleOn(
+  instance: { indicatorId: string; settings?: Record<string, unknown> | null },
+  key: string,
+): boolean {
+  const stored = instance.settings?.[key];
+  if (typeof stored === "boolean") return stored;
+  const defaults = defaultIndicatorSettings(instance.indicatorId) as Record<string, unknown>;
+  return defaults[key] === true;
+}
+
 export default function ChartIndicatorsControl({
   instrument,
   timeframe,
@@ -5274,14 +5294,14 @@ export default function ChartIndicatorsControl({
                       <button
                         key={key}
                         type="button"
-                        aria-pressed={settingsInstance.settings?.[key] === true}
+                        aria-pressed={toggleOn(settingsInstance, key)}
                         onClick={() => replace(settingsInstance.instanceId, (current) => ({
                           ...current,
-                          settings: { ...(current.settings ?? {}), [key]: current.settings?.[key] !== true },
+                          settings: { ...(current.settings ?? {}), [key]: !toggleOn(current, key) },
                         }))}
-                        className={`flex h-8 items-center justify-between border px-2 text-left text-[8px] font-semibold uppercase tracking-[0.08em] ${settingsInstance.settings?.[key] === true ? "border-primary/45 bg-primary/10 text-primary" : "border-border bg-background text-muted hover:text-foreground"}`}
+                        className={`flex h-8 items-center justify-between border px-2 text-left text-[8px] font-semibold uppercase tracking-[0.08em] ${toggleOn(settingsInstance, key) ? "border-primary/45 bg-primary/10 text-primary" : "border-border bg-background text-muted hover:text-foreground"}`}
                       >
-                        <span>{label}</span><span>{settingsInstance.settings?.[key] === true ? "ON" : "OFF"}</span>
+                        <span>{label}</span><span>{toggleOn(settingsInstance, key) ? "ON" : "OFF"}</span>
                       </button>
                     ))}
                   </div>
@@ -5297,6 +5317,13 @@ export default function ChartIndicatorsControl({
               {settingsDefinition.id === "mini-dom" ? (
                 <div className="space-y-2 rounded-lg border border-border bg-surface/30 p-2.5">
                   <div className="text-[9px] font-semibold uppercase tracking-[0.14em] text-muted">Resting book rails</div>
+                  {/*
+                    * Read against the study's own defaults. A key the saved
+                    * settings never wrote is not OFF, it is whatever the study
+                    * ships with — and showing it as OFF while the chart draws
+                    * it ON makes the dialog lie about the ladder in front of
+                    * it.
+                    */}
                   <div className="grid grid-cols-2 gap-2">
                     {([
                       ["showAsks", "Ask rail"], ["showBids", "Bid rail"],
@@ -5306,14 +5333,14 @@ export default function ChartIndicatorsControl({
                       <button
                         key={key}
                         type="button"
-                        aria-pressed={settingsInstance.settings?.[key] === true}
+                        aria-pressed={toggleOn(settingsInstance, key)}
                         onClick={() => replace(settingsInstance.instanceId, (current) => ({
                           ...current,
-                          settings: { ...(current.settings ?? {}), [key]: current.settings?.[key] !== true },
+                          settings: { ...(current.settings ?? {}), [key]: !toggleOn(current, key) },
                         }))}
-                        className={`flex h-8 items-center justify-between border px-2 text-left text-[8px] font-semibold uppercase tracking-[0.08em] ${settingsInstance.settings?.[key] === true ? "border-primary/45 bg-primary/10 text-primary" : "border-border bg-background text-muted hover:text-foreground"}`}
+                        className={`flex h-8 items-center justify-between border px-2 text-left text-[8px] font-semibold uppercase tracking-[0.08em] ${toggleOn(settingsInstance, key) ? "border-primary/45 bg-primary/10 text-primary" : "border-border bg-background text-muted hover:text-foreground"}`}
                       >
-                        <span>{label}</span><span>{settingsInstance.settings?.[key] === true ? "ON" : "OFF"}</span>
+                        <span>{label}</span><span>{toggleOn(settingsInstance, key) ? "ON" : "OFF"}</span>
                       </button>
                     ))}
                   </div>

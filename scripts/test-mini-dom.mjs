@@ -282,4 +282,38 @@ check("the chart ends at the ladder rather than running under it", () => {
   assert.match(chart, /timeScale\.applyOptions\(\{ rightOffset: miniDomReservedRightOffsetRef\.current \}\);/);
 });
 
+check("the stock settings are what a fresh ladder actually draws", () => {
+  // Every rail switch ships ON, and the renderer has to agree. alignLeft was
+  // declared true but READ as `=== true`, so a ladder whose saved settings
+  // predate the key came up mirrored — the stock setting contradicted by the
+  // way it was read, and left to be switched on by hand.
+  const settings = defaultIndicatorSettings("mini-dom");
+  for (const key of ["showBids", "showAsks", "showSizes", "alignLeft", "useThemeColors"]) {
+    assert.equal(settings[key], true, `${key} must ship on`);
+  }
+  const chart = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
+  const block = chart.slice(chart.indexOf("const miniDomOptions = useMemo"), chart.indexOf("miniDomOptionsRef"));
+  for (const key of ["showBids", "showAsks", "showSizes", "alignLeft"]) {
+    assert.match(
+      block,
+      new RegExp(`source\.${key} !== false`),
+      `${key} ships on, so an absent key must read as ON, not OFF`,
+    );
+  }
+});
+
+check("the settings dialog reports what the chart is drawing", () => {
+  // A saved indicator only carries the keys it was written with. Reading a
+  // missing key as off showed the switch disagreeing with the ladder in front
+  // of it.
+  const control = readFileSync(new URL("../src/components/ChartIndicatorsControl.tsx", import.meta.url), "utf8");
+  assert.match(control, /function toggleOn\(/, "the dialog must resolve toggles against the study's defaults");
+  assert.match(control, /if \(typeof stored === "boolean"\) return stored;/);
+  assert.match(control, /defaults\[key\] === true;/);
+  const railBlock = control.slice(control.indexOf("Resting book rails"), control.indexOf("Resting book rails") + 2600);
+  assert.match(railBlock, /toggleOn\(settingsInstance, key\)/, "the rail switches must use it");
+  assert.doesNotMatch(railBlock, /settingsInstance\.settings\?\.\[key\] === true/,
+    "an absent key is the default, not off");
+});
+
 console.log(`\nmini dom: ${passed}/${passed} checks passed`);
