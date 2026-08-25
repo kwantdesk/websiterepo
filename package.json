@@ -39,6 +39,7 @@
     "test:crosshair-link": "node --import ./scripts/alias-hook.mjs scripts/test-crosshair-link.mjs",
     "test:index-timeframes": "node --import ./scripts/alias-hook.mjs scripts/test-index-timeframes.mjs",
     "test:chart-frame-work": "node --import ./scripts/alias-hook.mjs scripts/test-chart-frame-work.mjs",
+    "test:browser-storage-quota": "node --import ./scripts/alias-hook.mjs scripts/test-browser-storage-quota.mjs",
     "test:stats-palettes": "node --import ./scripts/alias-hook.mjs scripts/test-stats-palettes.mjs",
     "test:indicator-plot-colors": "node --import ./scripts/alias-hook.mjs scripts/test-indicator-plot-colors.mjs",
     "test:trading-panel-orders": "node --import ./scripts/alias-hook.mjs scripts/test-trading-panel-orders.mjs",
@@ -120,7 +121,8 @@
     "test:footprint-replay": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-footprint-replay.mjs",
     "test:indicator-colour-override": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-indicator-colour-override.mjs",
     "test:vix-environment": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-vix-environment.mjs",
-    "test:live-chart-memory": "node --experimental-strip-types scripts/test-live-chart-memory-guard.mjs"
+    "test:live-chart-memory": "node --experimental-strip-types scripts/test-live-chart-memory-guard.mjs",
+    "test:live-overlay-lifetimes": "node scripts/test-live-overlay-lifetimes.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",

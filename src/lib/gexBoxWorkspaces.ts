@@ -12,6 +12,8 @@
  * corrupt saved workspace must never stop the ones beside it loading.
  */
 
+import { writeProtectedItem } from "@/lib/browserStorageQuota";
+
 export const GEX_BOX_WORKSPACES_STORAGE_KEY = "kwantdesk:gex-box:workspaces:v1";
 export const GEX_BOX_WORKSPACES_EVENT = "kwantdesk:gex-box-workspaces-changed";
 
@@ -79,13 +81,16 @@ export function loadGexBoxWorkspaces(): GexBoxWorkspacePreset[] {
 function persist(presets: GexBoxWorkspacePreset[]): boolean {
   const store = storage();
   if (!store) return false;
-  try {
-    store.setItem(GEX_BOX_WORKSPACES_STORAGE_KEY, JSON.stringify(presets));
-    window.dispatchEvent(new CustomEvent(GEX_BOX_WORKSPACES_EVENT));
-    return true;
-  } catch {
-    return false;
-  }
+  // A saved workspace is work. If the quota is full it is the re-fetchable
+  // provider caches that give way, not the thing the trader is trying to keep.
+  const written = writeProtectedItem(
+    GEX_BOX_WORKSPACES_STORAGE_KEY,
+    JSON.stringify(presets),
+    store,
+  );
+  if (!written.ok) return false;
+  window.dispatchEvent(new CustomEvent(GEX_BOX_WORKSPACES_EVENT));
+  return true;
 }
 
 export type GexBoxWorkspaceWrite =

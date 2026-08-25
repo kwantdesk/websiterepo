@@ -1,5 +1,6 @@
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { applyTheme } from "./theme.ts";
+import { writeProtectedItem } from "@/lib/browserStorageQuota";
 
 const USER_PREFERENCES_TABLE = "user_preferences";
 const USER_PREFERENCES_METADATA_KEY = "kwantdesk_preferences";
@@ -169,7 +170,9 @@ function applyBrowserPreferences(snapshot: UserPreferenceSnapshot) {
     for (const key of keysToRemove) window.localStorage.removeItem(key);
   }
   for (const [key, value] of Object.entries(snapshot.values)) {
-    window.localStorage.setItem(key, value);
+    // Preferences are the trader's own state — layouts, panes, drawings. A
+    // full quota gives up cache before it gives up any of this.
+    writeProtectedItem(key, value);
   }
 }
 

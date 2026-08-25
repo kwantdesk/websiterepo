@@ -11,6 +11,8 @@
  * template that cannot be understood is skipped, not thrown.
  */
 
+import { writeProtectedItem } from "@/lib/browserStorageQuota";
+
 export const INDICATOR_TEMPLATES_STORAGE_KEY = "kwantdesk:indicator-templates:v1";
 export const INDICATOR_TEMPLATES_EVENT = "kwantdesk:indicator-templates-changed";
 
@@ -96,7 +98,11 @@ function persist(store: TemplateStore): boolean {
   const storage = browserStorage();
   if (!storage) return false;
   try {
-    storage.setItem(INDICATOR_TEMPLATES_STORAGE_KEY, JSON.stringify(store));
+    // Templates are work, so a full quota evicts re-fetchable caches rather
+    // than losing the settings the trader just named.
+    if (!writeProtectedItem(INDICATOR_TEMPLATES_STORAGE_KEY, JSON.stringify(store), storage).ok) {
+      return false;
+    }
     window.dispatchEvent(new CustomEvent(INDICATOR_TEMPLATES_EVENT));
     return true;
   } catch {
