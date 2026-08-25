@@ -476,6 +476,7 @@ function parseExposure(
   symbol: string,
   mode: GreekMode,
   expirationFilter?: string | ((expiration: string) => boolean),
+  representation: GexMapRepresentation = "PER_ONE_PERCENT_MOVE",
 ): ExposureSummary | null {
   if (!isRecord(payload) || !isRecord(payload.data)) return null;
   const tickerNode = payload.data[symbol] ?? payload.data[symbol.toUpperCase()];
@@ -518,7 +519,7 @@ function parseExposure(
 
   return {
     mode,
-    representation: "PER_ONE_PERCENT_MOVE",
+    representation,
     net,
     gross,
     strikes,
@@ -2597,7 +2598,13 @@ async function buildGexMapPanel(
     }, historical ? 300_000 : 2_000),
   ]);
 
-  const fullExposure = parseExposure(exposureResult.payload, providerTicker, greekModeInput);
+  const fullExposure = parseExposure(
+    exposureResult.payload,
+    providerTicker,
+    greekModeInput,
+    undefined,
+    representation,
+  );
   const expirations = fullExposure?.expiries
     .map((row) => row.expiration)
     .filter(Boolean)
@@ -2611,7 +2618,7 @@ async function buildGexMapPanel(
 
   const selectedExposure = expiryScope === "ALL_EXPIRIES"
     ? fullExposure
-    : parseExposure(exposureResult.payload, providerTicker, greekModeInput, expiration);
+    : parseExposure(exposureResult.payload, providerTicker, greekModeInput, expiration, representation);
   const intervalResult = await quantDataPost("/options/tool/interval-map", {
     sessionDate,
     aggregationPeriod: "1m",

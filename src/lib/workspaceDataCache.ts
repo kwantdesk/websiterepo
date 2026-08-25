@@ -1,6 +1,8 @@
 import {
   DEFAULT_GEX_MAP_EXPIRY_SCOPE,
+  DEFAULT_GEX_MAP_REPRESENTATION,
   type GexMapExpiryScope,
+  type GexMapRepresentation,
 } from "@/lib/gexMap";
 
 type WorkspaceCacheEntry = {
@@ -259,16 +261,18 @@ export function gexMapCacheKey(
   greekMode: string,
   sessionDate = "",
   scope: GexMapExpiryScope = DEFAULT_GEX_MAP_EXPIRY_SCOPE,
+  representation: GexMapRepresentation = DEFAULT_GEX_MAP_REPRESENTATION,
 ) {
-  return `gex-map:${symbol}:${greekMode}:${sessionDate || "live"}:${scope}`;
+  return `gex-map:${symbol}:${greekMode}:${sessionDate || "live"}:${scope}:${representation}`;
 }
 
 export function compactGexMapLiveCacheKey(
   symbol: string,
   greekMode: string,
   scope: GexMapExpiryScope = DEFAULT_GEX_MAP_EXPIRY_SCOPE,
+  representation: GexMapRepresentation = DEFAULT_GEX_MAP_REPRESENTATION,
 ) {
-  return `${gexMapCacheKey(symbol, greekMode, "", scope)}:compact`;
+  return `${gexMapCacheKey(symbol, greekMode, "", scope, representation)}:compact`;
 }
 
 export function gameplanCacheKey(root: string, session: string) {
@@ -296,6 +300,8 @@ export async function preloadWorkspaceData(key: string) {
     return Promise.all(panels.map(({ symbol, greekMode }) => {
       const query = new URLSearchParams({ symbol, greekMode });
       query.set("compact", "1");
+      query.set("scope", DEFAULT_GEX_MAP_EXPIRY_SCOPE);
+      query.set("representation", DEFAULT_GEX_MAP_REPRESENTATION);
       return fetchWorkspaceData(
         compactGexMapLiveCacheKey(symbol, greekMode),
         `/api/gex-map?${query}`,

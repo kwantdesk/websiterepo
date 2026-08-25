@@ -18,9 +18,17 @@ export type GexMapFrame = {
 
 export type GexMapExpiryScope = "ALL_EXPIRIES" | "FRONT_EXPIRY";
 
-/** Trinity's comparison view is an all-expiry surface. Keep that as the
- * product default while preserving an explicit front-expiry diagnostic. */
-export const DEFAULT_GEX_MAP_EXPIRY_SCOPE: GexMapExpiryScope = "ALL_EXPIRIES";
+export type GexMapRepresentation = "PER_ONE_DOLLAR_MOVE" | "PER_ONE_PERCENT_MOVE";
+
+/** The comparable dealer ladder is the nearest listed expiry (0DTE during a
+ * normal index session). Keep the complete chain available as an explicit
+ * diagnostic instead of silently mixing expiries into the default surface. */
+export const DEFAULT_GEX_MAP_EXPIRY_SCOPE: GexMapExpiryScope = "FRONT_EXPIRY";
+
+/** Skylit-style strike ladders display exposure per $1 underlying move. Keep
+ * the native 1% convention available as an explicit diagnostic instead of
+ * silently mixing two differently scaled surfaces. */
+export const DEFAULT_GEX_MAP_REPRESENTATION: GexMapRepresentation = "PER_ONE_DOLLAR_MOVE";
 
 export type GexMapPanelPayload = {
   symbol: string;
@@ -30,7 +38,7 @@ export type GexMapPanelPayload = {
   expirations: string[];
   scope: GexMapExpiryScope;
   model: "STRUCTURAL_OI";
-  representation: "PER_ONE_PERCENT_MOVE";
+  representation: GexMapRepresentation;
   source: "KwantData Interval Map";
   sourceTimeZone: "America/New_York";
   asOf: string;

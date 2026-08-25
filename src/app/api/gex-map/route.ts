@@ -4,8 +4,10 @@ import { getConfiguredQuantDataApiKey, getGexMapPanel, getQuantDataHttpError } f
 import {
   compactLiveGexMapPanel,
   DEFAULT_GEX_MAP_EXPIRY_SCOPE,
+  DEFAULT_GEX_MAP_REPRESENTATION,
   GEX_MAP_GREEKS,
   type GexMapExpiryScope,
+  type GexMapRepresentation,
 } from "@/lib/gexMap";
 import { OPTIONS_FLOW_TICKERS, type GreekMode } from "@/lib/optionsFlow";
 import {
@@ -68,6 +70,10 @@ export async function GET(request: NextRequest) {
   const compact = request.nextUrl.searchParams.get("compact") === "1" && !sessionDate;
   const requestedScope = (request.nextUrl.searchParams.get("scope") || DEFAULT_GEX_MAP_EXPIRY_SCOPE).trim().toUpperCase();
   const scope = requestedScope as GexMapExpiryScope;
+  const requestedRepresentation = (
+    request.nextUrl.searchParams.get("representation") || DEFAULT_GEX_MAP_REPRESENTATION
+  ).trim().toUpperCase();
+  const representation = requestedRepresentation as GexMapRepresentation;
   if (!OPTIONS_FLOW_TICKERS.includes(symbol as (typeof OPTIONS_FLOW_TICKERS)[number])) {
     return NextResponse.json({ error: "Unsupported GEXMAP instrument." }, { status: 400 });
   }
@@ -80,9 +86,12 @@ export async function GET(request: NextRequest) {
   if (scope !== "ALL_EXPIRIES" && scope !== "FRONT_EXPIRY") {
     return NextResponse.json({ error: "Unsupported expiry scope." }, { status: 400 });
   }
+  if (representation !== "PER_ONE_DOLLAR_MOVE" && representation !== "PER_ONE_PERCENT_MOVE") {
+    return NextResponse.json({ error: "Unsupported exposure representation." }, { status: 400 });
+  }
 
   try {
-    const payload = await getGexMapPanel(symbol, greekMode, sessionDate, scope);
+    const payload = await getGexMapPanel(symbol, greekMode, sessionDate, scope, representation);
     return NextResponse.json(compact ? compactLiveGexMapPanel(payload) : payload, {
       headers: { "Cache-Control": "private, no-store, max-age=0" },
     });

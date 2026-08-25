@@ -31,12 +31,14 @@ import GexMapNodePanel from "@/components/gex-map/GexMapNodePanel";
 import GexMapFutureMatrix from "@/components/gex-map/GexMapFutureMatrix";
 import {
   DEFAULT_GEX_MAP_EXPIRY_SCOPE,
+  DEFAULT_GEX_MAP_REPRESENTATION,
   GEX_MAP_GREEKS,
   hasRenderableGexMapSurface,
   latestGexMapStrikesFromFrames,
   selectGexMapStarNode,
   type GexMapExpiryScope,
   type GexMapPanelPayload,
+  type GexMapRepresentation,
 } from "@/lib/gexMap";
 import {
   DEFAULT_GEX_MAP_PALETTE,
@@ -90,10 +92,12 @@ type GexMapMarket = "NQ" | "ES";
 /** Serializable snapshot of an embedded map's user configuration, owned by
  * the host workspace pane so it saves and restores with the workspace. */
 export type GexMapEmbedState = {
+  surfaceVersion: 2;
   panels: PanelConfig[];
   viewMode: GexMapViewMode;
   stepMinutes: number;
   expiryScope: GexMapExpiryScope;
+  representation: GexMapRepresentation;
 };
 
 type GexMapWorkspaceProps = {
@@ -237,7 +241,9 @@ function normalizeGexMapEmbedState(value: unknown): GexMapEmbedState | null {
       .map((panel) => ({ id: panel.id, symbol: panel.symbol.toUpperCase(), greekMode: panel.greekMode }))
     : [];
   if (!panels.length) return null;
+  const currentSurface = parsed.surfaceVersion === 2;
   return {
+    surfaceVersion: 2,
     // An untouched old default is carried forward to the new one; a layout
     // the trader actually chose is theirs and is kept exactly as saved.
     panels: isLegacyDefaultPanels(panels) ? DEFAULT_PANELS.map((panel) => ({ ...panel })) : panels,
@@ -245,7 +251,15 @@ function normalizeGexMapEmbedState(value: unknown): GexMapEmbedState | null {
     stepMinutes: (FRAME_STEPS as readonly number[]).includes(Number(parsed.stepMinutes))
       ? Number(parsed.stepMinutes) as (typeof FRAME_STEPS)[number]
       : 1,
-    expiryScope: parsed.expiryScope === "FRONT_EXPIRY" ? "FRONT_EXPIRY" : DEFAULT_GEX_MAP_EXPIRY_SCOPE,
+    // Workspaces saved before the comparable-surface migration inherited the
+    // former all-expiry default. Migrate those once, while preserving an
+    // explicit all-expiry choice saved by the current schema.
+    expiryScope: currentSurface
+      ? (parsed.expiryScope === "ALL_EXPIRIES" ? "ALL_EXPIRIES" : "FRONT_EXPIRY")
+      : DEFAULT_GEX_MAP_EXPIRY_SCOPE,
+    representation: parsed.representation === "PER_ONE_PERCENT_MOVE"
+      ? "PER_ONE_PERCENT_MOVE"
+      : DEFAULT_GEX_MAP_REPRESENTATION,
   };
 }
 
@@ -1383,7 +1397,7 @@ function StarViewSettings({
       <section className="max-h-[80vh] w-full max-w-[620px] overflow-y-auto border border-border bg-panel shadow-[0_24px_90px_rgba(0,0,0,0.65)]" onPointerDown={(event) => event.stopPropagation()}>
         <header className="sticky top-0 z-10 flex h-11 items-center border-b border-border bg-panel px-4">
           <div>
-            <div className="text-[11px] font-semibold text-foreground">STAR VIEW SETTINGS</div>
+            <div className="text-[11px] font-semibold text-foreground">{viewMode.toUpperCase()} VIEW SETTINGS</div>
             <div className="text-[8px] uppercase tracking-[0.12em] text-muted">Applied to every GEX Map panel</div>
           </div>
           <button type="button" onClick={onClose} className="ml-auto flex h-7 w-7 items-center justify-center border border-border text-muted hover:text-foreground" aria-label="Close Star view settings"><X className="h-3.5 w-3.5" /></button>
@@ -1421,60 +1435,77 @@ function StarViewSettings({
               ))}
             </div>
           </div>
-          <label className={rowClass}>
-            <span><span className="block text-[10px] text-foreground">Highlighted nodes</span><span className="text-[8px] text-muted">Unique structural strikes per panel</span></span>
-            <input type="range" min="2" max="8" step="1" value={settings.highlightedNodes} onChange={(event) => update("highlightedNodes", Number(event.target.value))} className="w-full accent-[var(--primary)]" />
-          </label>
-          <label className={rowClass}>
-            <span><span className="block text-[10px] text-foreground">Selection strategy</span><span className="text-[8px] text-muted">Changes the deterministic node ranking</span></span>
-            <GexMapDropdown
-              ariaLabel="Structural node selection strategy"
-              value={settings.selectionStrategy}
-              options={[
-                { value: "structural", label: "Structural", detail: "Balanced structural ranking" },
-                { value: "magnitude", label: "Magnitude", detail: "Largest absolute exposure first" },
-                { value: "velocity", label: "Velocity", detail: "Fastest-changing nodes first" },
-              ]}
-              menuLabel="Selection strategy"
-              menuWidth={230}
-              onChange={(selectionStrategy) => update("selectionStrategy", selectionStrategy)}
-            />
-          </label>
-          <label className={rowClass}>
-            <span><span className="block text-[10px] text-foreground">Dimmed-row intensity</span><span className="text-[8px] text-muted">{Math.round(settings.dimOpacity * 100)}%</span></span>
-            <input type="range" min="0.02" max="0.3" step="0.01" value={settings.dimOpacity} onChange={(event) => update("dimOpacity", Number(event.target.value))} className="w-full accent-[var(--primary)]" />
-          </label>
-          {([
-            ["showRawValues", "Show raw exposure values"],
-            ["showRoleLabels", "Show role labels"],
-            ["showAirPocketLabels", "Show air-pocket labels"],
-            ["animateChanges", "Animate live changes"],
-          ] as const).map(([key, label]) => (
-            <label key={key} className={rowClass}>
-              <span className="text-[10px] text-foreground">{label}</span>
-              <input type="checkbox" checked={settings[key]} onChange={(event) => update(key, event.target.checked)} className="ml-auto h-4 w-4 accent-[var(--primary)]" />
-            </label>
-          ))}
-          <div className={rowClass}>
-            <span><span className="block text-[10px] text-foreground">Minimum map control</span><span className="text-[8px] text-muted">Auto adapts to strike density</span></span>
-            <div className="flex items-center gap-2">
-              <button type="button" onClick={() => update("minimumControlPct", settings.minimumControlPct === null ? 0.5 : null)} className={`h-7 border px-2 text-[8px] ${settings.minimumControlPct === null ? "border-primary bg-primary/10 text-primary" : "border-border text-muted"}`}>{settings.minimumControlPct === null ? "AUTO" : "MANUAL"}</button>
-              {settings.minimumControlPct !== null ? <input type="number" min="0" max="25" step="0.1" value={settings.minimumControlPct} onChange={(event) => update("minimumControlPct", Number(event.target.value))} className="h-7 min-w-0 flex-1 border border-border bg-surface px-2 text-[9px] text-foreground" /> : null}
-            </div>
-          </div>
-          <div className="pt-4 text-[8px] font-semibold uppercase tracking-[0.14em] text-muted">Air-pocket calculation</div>
-          <label className={rowClass}>
-            <span className="text-[10px] text-foreground">Row control threshold</span>
-            <input type="number" min="0" max="20" step="0.05" value={settings.airPocketRowThresholdPct} onChange={(event) => update("airPocketRowThresholdPct", Number(event.target.value))} className="h-8 border border-border bg-surface px-2 text-[9px] text-foreground" />
-          </label>
-          <label className={rowClass}>
-            <span className="text-[10px] text-foreground">Combined pocket threshold</span>
-            <input type="number" min="0" max="50" step="0.1" value={settings.airPocketCombinedThresholdPct} onChange={(event) => update("airPocketCombinedThresholdPct", Number(event.target.value))} className="h-8 border border-border bg-surface px-2 text-[9px] text-foreground" />
-          </label>
-          <label className={rowClass}>
-            <span><span className="block text-[10px] text-foreground">Spot-proximity weighting</span><span className="text-[8px] text-muted">{Math.round(settings.proximityWeight * 100)}%</span></span>
-            <input type="range" min="0" max="0.3" step="0.01" value={settings.proximityWeight} onChange={(event) => update("proximityWeight", Number(event.target.value))} className="w-full accent-[var(--primary)]" />
-          </label>
+          {viewMode !== "full" ? (
+            <>
+              <label className={rowClass}>
+                <span><span className="block text-[10px] text-foreground">Dimmed-row intensity</span><span className="text-[8px] text-muted">{Math.round(settings.dimOpacity * 100)}%</span></span>
+                <input type="range" min="0.02" max="0.3" step="0.01" value={settings.dimOpacity} onChange={(event) => update("dimOpacity", Number(event.target.value))} className="w-full accent-[var(--primary)]" />
+              </label>
+              {([
+                ["showRawValues", "Show raw exposure values"],
+                ["animateChanges", "Animate live changes"],
+              ] as const).map(([key, label]) => (
+                <label key={key} className={rowClass}>
+                  <span className="text-[10px] text-foreground">{label}</span>
+                  <input type="checkbox" checked={settings[key]} onChange={(event) => update(key, event.target.checked)} className="ml-auto h-4 w-4 accent-[var(--primary)]" />
+                </label>
+              ))}
+            </>
+          ) : null}
+          {viewMode === "ninja" ? (
+            <>
+              <div className="pt-4 text-[8px] font-semibold uppercase tracking-[0.14em] text-muted">Ninja node selection</div>
+              <label className={rowClass}>
+                <span><span className="block text-[10px] text-foreground">Highlighted nodes</span><span className="text-[8px] text-muted">Unique structural strikes per panel</span></span>
+                <input type="range" min="2" max="8" step="1" value={settings.highlightedNodes} onChange={(event) => update("highlightedNodes", Number(event.target.value))} className="w-full accent-[var(--primary)]" />
+              </label>
+              <label className={rowClass}>
+                <span><span className="block text-[10px] text-foreground">Selection strategy</span><span className="text-[8px] text-muted">Changes the deterministic node ranking</span></span>
+                <GexMapDropdown
+                  ariaLabel="Structural node selection strategy"
+                  value={settings.selectionStrategy}
+                  options={[
+                    { value: "structural", label: "Structural", detail: "Balanced structural ranking" },
+                    { value: "magnitude", label: "Magnitude", detail: "Largest absolute exposure first" },
+                    { value: "velocity", label: "Velocity", detail: "Fastest-changing nodes first" },
+                  ]}
+                  menuLabel="Selection strategy"
+                  menuWidth={230}
+                  onChange={(selectionStrategy) => update("selectionStrategy", selectionStrategy)}
+                />
+              </label>
+              {([[
+                "showRoleLabels", "Show role labels",
+              ], [
+                "showAirPocketLabels", "Show air-pocket labels",
+              ]] as const).map(([key, label]) => (
+                <label key={key} className={rowClass}>
+                  <span className="text-[10px] text-foreground">{label}</span>
+                  <input type="checkbox" checked={settings[key]} onChange={(event) => update(key, event.target.checked)} className="ml-auto h-4 w-4 accent-[var(--primary)]" />
+                </label>
+              ))}
+              <div className={rowClass}>
+                <span><span className="block text-[10px] text-foreground">Minimum map control</span><span className="text-[8px] text-muted">Auto adapts to strike density</span></span>
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={() => update("minimumControlPct", settings.minimumControlPct === null ? 0.5 : null)} className={`h-7 border px-2 text-[8px] ${settings.minimumControlPct === null ? "border-primary bg-primary/10 text-primary" : "border-border text-muted"}`}>{settings.minimumControlPct === null ? "AUTO" : "MANUAL"}</button>
+                  {settings.minimumControlPct !== null ? <input type="number" min="0" max="25" step="0.1" value={settings.minimumControlPct} onChange={(event) => update("minimumControlPct", Number(event.target.value))} className="h-7 min-w-0 flex-1 border border-border bg-surface px-2 text-[9px] text-foreground" /> : null}
+                </div>
+              </div>
+              <div className="pt-4 text-[8px] font-semibold uppercase tracking-[0.14em] text-muted">Air-pocket calculation</div>
+              <label className={rowClass}>
+                <span className="text-[10px] text-foreground">Row control threshold</span>
+                <input type="number" min="0" max="20" step="0.05" value={settings.airPocketRowThresholdPct} onChange={(event) => update("airPocketRowThresholdPct", Number(event.target.value))} className="h-8 border border-border bg-surface px-2 text-[9px] text-foreground" />
+              </label>
+              <label className={rowClass}>
+                <span className="text-[10px] text-foreground">Combined pocket threshold</span>
+                <input type="number" min="0" max="50" step="0.1" value={settings.airPocketCombinedThresholdPct} onChange={(event) => update("airPocketCombinedThresholdPct", Number(event.target.value))} className="h-8 border border-border bg-surface px-2 text-[9px] text-foreground" />
+              </label>
+              <label className={rowClass}>
+                <span><span className="block text-[10px] text-foreground">Spot-proximity weighting</span><span className="text-[8px] text-muted">{Math.round(settings.proximityWeight * 100)}%</span></span>
+                <input type="range" min="0" max="0.3" step="0.01" value={settings.proximityWeight} onChange={(event) => update("proximityWeight", Number(event.target.value))} className="w-full accent-[var(--primary)]" />
+              </label>
+            </>
+          ) : null}
           <div className="pt-4 text-[8px] font-semibold uppercase tracking-[0.14em] text-muted">Colours</div>
           <div className="border-b border-border/60 py-3">
             <span><span className="block text-[10px] text-foreground">Gradient palettes</span><span className="text-[8px] text-muted">One click recolours the whole map</span></span>
@@ -1672,6 +1703,9 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
   const [expiryScope, setExpiryScope] = useState<GexMapExpiryScope>(
     () => initialEmbedStateRef.current?.expiryScope ?? DEFAULT_GEX_MAP_EXPIRY_SCOPE,
   );
+  const [representation, setRepresentation] = useState<GexMapRepresentation>(
+    () => initialEmbedStateRef.current?.representation ?? DEFAULT_GEX_MAP_REPRESENTATION,
+  );
   // Node zoom: SSR-safe default first, stored value applied after hydration.
   const [ladderZoom, setLadderZoom] = useState(1);
   // PRESENT (live per-strike ladders) vs FUTURE (forward expiry×strike
@@ -1792,9 +1826,9 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
   requestedReplayDateRef.current = requestedReplayDate;
   const panelCacheKey = useCallback((panel: Pick<PanelConfig, "symbol" | "greekMode">) => (
     replayMode
-      ? gexMapCacheKey(panel.symbol, panel.greekMode, requestedReplayDate, expiryScope)
-      : compactGexMapLiveCacheKey(panel.symbol, panel.greekMode, expiryScope)
-  ), [expiryScope, replayMode, requestedReplayDate]);
+      ? gexMapCacheKey(panel.symbol, panel.greekMode, requestedReplayDate, expiryScope, representation)
+      : compactGexMapLiveCacheKey(panel.symbol, panel.greekMode, expiryScope, representation)
+  ), [expiryScope, replayMode, representation, requestedReplayDate]);
 
   useEffect(() => {
     setLocationMarket(market ?? linkedMarketFromLocation());
@@ -1857,12 +1891,14 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
   useEffect(() => {
     panelsRef.current = panels;
     onStateChangeRef.current?.({
+      surfaceVersion: 2,
       panels: panels.map((panel) => ({ ...panel })),
       viewMode,
       stepMinutes,
       expiryScope,
+      representation,
     });
-  }, [expiryScope, panels, stepMinutes, viewMode]);
+  }, [expiryScope, panels, representation, stepMinutes, viewMode]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1896,6 +1932,7 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
             symbol: panel.symbol,
             greekMode: panel.greekMode,
             scope: expiryScope,
+            representation,
             ...(requestedReplayDate ? { sessionDate: requestedReplayDate } : {}),
             ...(!replayMode ? { compact: "1" } : {}),
           });
@@ -1985,7 +2022,7 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
         timer = null;
       }
     };
-  }, [expiryScope, panelCacheKey, panels, refreshToken, replayMode, requestedReplayDate]);
+  }, [expiryScope, panelCacheKey, panels, refreshToken, replayMode, representation, requestedReplayDate]);
 
   const timeline = useMemo(() => {
     const timestamps = new Set<number>();
@@ -2127,7 +2164,7 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
 
           <div
             className="ml-1 flex h-7 shrink-0 items-center gap-0.5 rounded-[3px] border border-border/70 bg-background/35 p-0.5"
-            title="Expiry aggregation for every strike. All expiries matches the complete-chain comparison; Front isolates the nearest expiration."
+            title="Front / 0DTE is the comparable dealer ladder. All Exp is a complete-chain structural diagnostic."
           >
             {(["ALL_EXPIRIES", "FRONT_EXPIRY"] as const).map((scope) => (
               <button
@@ -2141,7 +2178,28 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
                 aria-pressed={expiryScope === scope}
                 className={`h-5 rounded-[2px] px-2 text-[9px] font-semibold uppercase leading-none tracking-[0.075em] ${expiryScope === scope ? "bg-surface text-primary" : "text-muted hover:text-foreground"}`}
               >
-                {scope === "ALL_EXPIRIES" ? "All Exp" : "Front"}
+                {scope === "ALL_EXPIRIES" ? "All Exp" : "Front / 0DTE"}
+              </button>
+            ))}
+          </div>
+
+          <div
+            className="ml-1 flex h-7 shrink-0 items-center gap-0.5 rounded-[3px] border border-border/70 bg-background/35 p-0.5"
+            title="Exposure display unit. $1 is directly comparable with dollar-move ladders; 1% is the larger native percent-move convention."
+          >
+            {(["PER_ONE_DOLLAR_MOVE", "PER_ONE_PERCENT_MOVE"] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => {
+                  setRepresentation(mode);
+                  setCursor(0);
+                  setPlaying(false);
+                }}
+                aria-pressed={representation === mode}
+                className={`h-5 rounded-[2px] px-2 text-[9px] font-semibold uppercase leading-none tracking-[0.075em] ${representation === mode ? "bg-surface text-primary" : "text-muted hover:text-foreground"}`}
+              >
+                {mode === "PER_ONE_DOLLAR_MOVE" ? "$1" : "1%"}
               </button>
             ))}
           </div>
@@ -2233,7 +2291,8 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
               const matchesPanel = payload
                 && payload.symbol === panel.symbol
                 && payload.greekMode === panel.greekMode
-                && payload.scope === expiryScope;
+                && payload.scope === expiryScope
+                && payload.representation === representation;
               const replaySessionMismatch = Boolean(
                 matchesPanel
                 && replayMode

@@ -138,7 +138,7 @@ export type ExposureExpiry = {
 
 export type ExposureSummary = {
   mode: GreekMode;
-  representation: "PER_ONE_PERCENT_MOVE";
+  representation: "PER_ONE_DOLLAR_MOVE" | "PER_ONE_PERCENT_MOVE";
   net: number;
   gross: number;
   strikes: ExposureStrike[];
