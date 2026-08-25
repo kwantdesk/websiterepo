@@ -4,6 +4,7 @@ import { memo, useEffect, useMemo, useRef, useState, type CSSProperties, type Po
 import { Check, ChevronDown, GripHorizontal, Minus, Plus, RefreshCw, Settings2 } from "lucide-react";
 import type { CalculatedIndicatorSeries } from "@/lib/chartIndicatorEngine";
 import type { KwantStatsTable } from "@/lib/kwantStats";
+import { chartCandleBodyWidth, paneBarSpacing } from "@/lib/chartBarWidth";
 
 type IndicatorPaneGroup = {
   key: string;
@@ -603,9 +604,12 @@ function ChartIndicatorPaneSurface({
                 const visible = sampledPanePoints(definition, xForTime, plotWidth);
                 if (!visible.length) return null;
                 if (definition.kind === "histogram") {
-                  const barWidth = visible.length > 1
-                    ? Math.max(1, Math.min(12, Math.abs(visible[1].x - visible[0].x) * 0.72))
-                    : 3;
+                  // The same width the candle above it is drawn at. A flat
+                  // 72% capped at twelve pixels meant that past that cap the
+                  // candles kept growing and the histogram stayed narrow, so a
+                  // bar and its delta stopped being the same width — the one
+                  // thing that makes a lower pane readable against price.
+                  const barWidth = chartCandleBodyWidth(paneBarSpacing(visible));
                   const zero = Math.max(innerTop, Math.min(innerBottom, yFor(0, definition)));
                   const pathsByColor = new Map<string, string[]>();
                   visible.forEach((point) => {
@@ -634,9 +638,9 @@ function ChartIndicatorPaneSurface({
                   );
                 }
                 if (definition.kind === "candlestick") {
-                  const barWidth = visible.length > 1
-                    ? Math.max(2, Math.min(10, Math.abs(visible[1].x - visible[0].x) * 0.64))
-                    : 4;
+                  // A candle in a pane is still a candle: same width as the
+                  // one it sits under.
+                  const barWidth = chartCandleBodyWidth(paneBarSpacing(visible));
                   return (
                     <g key={definition.key}>
                       {visible.map((point) => {
@@ -1142,9 +1146,11 @@ function ChartVerticalIndicatorPaneSurface({
                       .map((point) => ({ ...point, y: point.y + plotTop }));
                     if (!visible.length) return null;
                     if (definition.kind === "histogram") {
-                      const barHeight = visible.length > 1
-                        ? Math.max(1, Math.min(9, Math.abs(visible[1].y - visible[0].y) * 0.72))
-                        : 3;
+                      // Rotated pane: bars run along price, so the same rule
+                      // applies to their height.
+                      const barHeight = chartCandleBodyWidth(
+                        paneBarSpacing(visible.map((point) => ({ x: point.y }))),
+                      );
                       const pathsByColor = new Map<string, string[]>();
                       visible.forEach((point) => {
                         const valueX = xForValue(point.value);
