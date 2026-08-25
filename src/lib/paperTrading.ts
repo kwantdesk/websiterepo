@@ -374,6 +374,51 @@ export function paperContractNotional(symbol: string, price: number, quantity: n
   return Math.max(0, finite(price)) * Math.max(0, finite(quantity)) * paperPointValue(symbol);
 }
 
+/**
+ * Initial margin per contract, in dollars.
+ *
+ * A futures contract is not bought with its notional value. One NQ carries
+ * about $588,000 of index exposure at 29,400, and the exchange asks a fixed
+ * performance bond of a few thousand to hold it — nothing like the full face
+ * value. Charging notional divided by a 1:1 default made a single NQ need
+ * $588,000 of a $50,000 account, so every order came back "insufficient
+ * available funds" the instant it was pressed. That is the buy button doing
+ * nothing.
+ *
+ * These are exchange initial margins rounded to the nearest round number, and
+ * they move with volatility, so they are a fair sim rather than a live
+ * clearing figure. A symbol with no entry falls back to a fraction of
+ * notional, which is right for cash instruments where there is no bond.
+ */
+const INITIAL_MARGINS: Record<string, number> = {
+  NQ: 26_000, MNQ: 2_600,
+  ES: 17_000, MES: 1_700,
+  RTY: 10_000, M2K: 1_000,
+  YM: 11_000, MYM: 1_100,
+  GC: 14_000, MGC: 1_400,
+  SI: 20_000, SIL: 4_000,
+  CL: 7_000, MCL: 700, QM: 3_500,
+  BTC: 100_000, MBT: 2_000, ETH: 40_000, MET: 800,
+};
+
+/** Fraction of notional required where no exchange bond applies. */
+const CASH_MARGIN_FRACTION = 0.25;
+
+export function paperRequiredMargin(
+  symbol: string,
+  price: number,
+  quantity: number,
+  leverage = 1,
+) {
+  const contracts = Math.max(0, finite(quantity));
+  const perContract = INITIAL_MARGINS[normalizePaperSymbol(symbol)];
+  const gross = perContract !== undefined
+    ? perContract * contracts
+    : paperContractNotional(symbol, price, quantity) * CASH_MARGIN_FRACTION;
+  // Leverage only ever makes room; it cannot demand more than the bond.
+  return gross / Math.max(1, finite(leverage) || 1);
+}
+
 export function paperProjectedPnl(
   symbol: string,
   side: PaperOrderSide,
@@ -694,7 +739,7 @@ function createEntryPosition(
     protectionMarkPrice: fillPrice,
     protectionQuoteAt: timestamp,
     unrealizedPnl: 0,
-    marginUsed: paperContractNotional(order.symbol, fillPrice, quantity) / Math.max(1, leverage),
+    marginUsed: paperRequiredMargin(order.symbol, fillPrice, quantity, leverage),
     leverage,
     stopLoss: order.stopLoss == null ? null : snapPaperPrice(order.symbol, order.stopLoss),
     takeProfits,
@@ -824,7 +869,12 @@ export function placePaperOrder(
   let nextLedger = ensurePaperAccountLedger(ledger, accountRecord);
   let account = nextLedger.accounts[draft.accountId];
   const leverage = parseLeverage(accountRecord.leverage);
-  const requiredMargin = paperContractNotional(fallbackOrder.symbol, estimatedEntry, fallbackOrder.quantity) / leverage;
+  const requiredMargin = paperRequiredMargin(
+    fallbackOrder.symbol,
+    estimatedEntry,
+    fallbackOrder.quantity,
+    leverage,
+  );
   const summary = summarizePaperAccount(nextLedger, accountRecord);
   if (requiredMargin > summary.availableFunds) {
     const rejectedOrder = { ...fallbackOrder, rejectionReason: "Insufficient available funds" };
@@ -1398,9 +1448,13 @@ export function summarizePaperAccount(
   const balance = account?.cashBalance ?? startingBalance;
   const openPositions = account?.positions.filter((position) => position.status === "open") ?? [];
   const unrealizedPnl = openPositions.reduce((sum, position) => sum + position.unrealizedPnl, 0);
+  // The same bond the order was accepted against. Summing notional here
+  // instead charged the account the contract's whole face value, so a single
+  // NQ swallowed every dollar of available funds the moment it filled and the
+  // next order was refused however small it was.
   const marginUsed = openPositions.reduce(
     (sum, position) =>
-      sum + paperContractNotional(position.symbol, position.entryPrice, position.remainingQuantity) / Math.max(1, position.leverage),
+      sum + paperRequiredMargin(position.symbol, position.entryPrice, position.remainingQuantity, position.leverage),
     0,
   );
   const closedFills = account?.fills.filter((fill) => fill.role !== "entry") ?? [];

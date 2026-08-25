@@ -236,6 +236,7 @@ import {
   loadPaperTradingLedger,
   normalizePaperSymbol,
   paperContractNotional,
+  paperRequiredMargin,
   paperContractSpec,
   paperOrderQuantity,
   paperPointValue,
@@ -10861,8 +10862,10 @@ export default function KwantifyWorkspace({
     : selectedPaperContract.isFutures
       ? `${selectedOrderQuantity} ${paperTradingInstrument} contract${selectedOrderQuantity === 1 ? "" : "s"}`
       : `${selectedOrderQuantity} ${paperTradingInstrument} unit${selectedOrderQuantity === 1 ? "" : "s"}`;
+  // The same bond the engine will actually require, so the ticket cannot show
+  // a margin the order is then rejected for.
   const orderPanelMarginUsd = selectedMidPrice > 0
-    ? paperContractNotional(paperTradingInstrument, selectedMidPrice, selectedOrderQuantity) / selectedPaperLeverage
+    ? paperRequiredMargin(paperTradingInstrument, selectedMidPrice, selectedOrderQuantity, selectedPaperLeverage)
     : 0;
   const orderPanelTradeValueUsd = selectedMidPrice > 0
     ? paperContractNotional(paperTradingInstrument, selectedMidPrice, selectedOrderQuantity)
@@ -14565,6 +14568,7 @@ export default function KwantifyWorkspace({
               // Carried through rather than dropped: an auto layout sets the
               // columns, not how their exposure is expressed.
               representation: pane.gexMapState?.representation ?? DEFAULT_GEX_MAP_REPRESENTATION,
+              surfaceVersion: 2,
             },
           };
         }

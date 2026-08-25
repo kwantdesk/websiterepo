@@ -34,6 +34,7 @@
     "test:delta-ladder": "node --import ./scripts/alias-hook.mjs scripts/test-delta-ladder.mjs",
     "test:workspace-layout-panes": "node --import ./scripts/alias-hook.mjs scripts/test-workspace-layout-panes.mjs",
     "test:paper-account-persistence": "node --import ./scripts/alias-hook.mjs scripts/test-paper-account-persistence.mjs",
+    "test:paper-margin": "node --import ./scripts/alias-hook.mjs scripts/test-paper-margin.mjs",
     "test:candle-visibility": "node --import ./scripts/alias-hook.mjs scripts/test-candle-visibility.mjs",
     "test:gex-map-defaults": "node --import ./scripts/alias-hook.mjs scripts/test-gex-map-defaults.mjs",
     "test:crosshair-link": "node --import ./scripts/alias-hook.mjs scripts/test-crosshair-link.mjs",
