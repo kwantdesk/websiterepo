@@ -1510,6 +1510,9 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     neutralColor: theme?.borderUpColor ?? theme?.upColor ?? "#94A3B8",
     textColor: "#E5E7EB",
     headerColor: theme?.gridColor ?? "#27272A",
+    // Which saved scheme the five colours above came from. Empty means they
+    // were set by hand, so the picker does not claim a scheme it is not on.
+    statsPaletteId: "",
     statsSettingsVersion: 2,
   } : {}),
   ...(indicatorId === "sessions" ? {

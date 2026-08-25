@@ -73,6 +73,7 @@ import { LIQUIDITY_STOP_SWEEP_PRESETS } from "@/lib/liquidityStopSweepDetector";
 import { POC_AUCTION_PRESETS } from "@/lib/pocAuctionSuite";
 import { TAPE_SPEED_PRESETS } from "@/lib/tapeSpeedOrderFlowBurst";
 import IndicatorTemplateBar from "@/components/IndicatorTemplateBar";
+import { STATS_PALETTES, resolveStatsPalette, statsPaletteSettings } from "@/lib/statsPalettes";
 
 const FAVOURITES_STORAGE_KEY = "kwantdesk-chart-indicator-favourites";
 
@@ -5190,6 +5191,61 @@ export default function ChartIndicatorsControl({
                   </label>
                   <p className="text-[8px] leading-4 text-muted sm:col-span-2">
                     CVD resets at the 17:00 Chicago futures-session boundary and accumulates real aggressor-side executions. Display and colour choices moved here from the chart pane.
+                  </p>
+                </div>
+              ) : null}
+
+              {settingsDefinition.id === "kwant-stats" ? (
+                <div className="space-y-2 rounded-lg border border-border bg-surface/30 p-2.5">
+                  <div className="text-[9px] font-semibold uppercase tracking-[0.14em] text-muted">Colour scheme</div>
+                  <select
+                    value={String(settingsInstance.settings?.statsPaletteId ?? "")}
+                    onChange={(event) => {
+                      const palette = resolveStatsPalette(event.target.value);
+                      replace(settingsInstance.instanceId, (current) => ({
+                        ...current,
+                        settings: {
+                          ...(current.settings ?? {}),
+                          // Choosing Custom leaves the colours exactly where
+                          // they are and only forgets which scheme they came
+                          // from. It must not undo work already done.
+                          ...(palette ? statsPaletteSettings(palette) : { statsPaletteId: "" }),
+                        },
+                      }));
+                    }}
+                    aria-label="Kwant Stats colour scheme"
+                    className="h-9 w-full rounded-lg border border-border bg-background px-2 text-[10px] text-foreground outline-none focus:border-primary/40"
+                  >
+                    <option value="">Custom · set each colour below</option>
+                    {STATS_PALETTES.map((palette) => (
+                      <option key={palette.id} value={palette.id}>{palette.label}</option>
+                    ))}
+                  </select>
+                  <div className="flex flex-wrap gap-1">
+                    {STATS_PALETTES.map((palette) => {
+                      const active = settingsInstance.settings?.statsPaletteId === palette.id;
+                      return (
+                        <button
+                          key={palette.id}
+                          type="button"
+                          title={palette.label}
+                          aria-label={palette.label}
+                          onClick={() => replace(settingsInstance.instanceId, (current) => ({
+                            ...current,
+                            settings: { ...(current.settings ?? {}), ...statsPaletteSettings(palette) },
+                          }))}
+                          className={`flex h-5 w-9 overflow-hidden rounded-[3px] border ${active ? "border-primary" : "border-border hover:border-primary/40"}`}
+                        >
+                          <i className="h-full flex-1" style={{ backgroundColor: palette.positiveColor }} />
+                          <i className="h-full flex-1" style={{ backgroundColor: palette.neutralColor }} />
+                          <i className="h-full flex-1" style={{ backgroundColor: palette.negativeColor }} />
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="text-[8px] leading-4 text-muted">
+                    A scheme sets all five colours and switches this study off the chart theme, which would otherwise
+                    stay in charge and leave the choice doing nothing.
                   </p>
                 </div>
               ) : null}
