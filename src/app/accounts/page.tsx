@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import AppSidebar from "@/components/AppSidebar";
 import { loadSavedStrategiesRaw } from "@/lib/automation";
@@ -133,8 +133,15 @@ export default function AccountsPage() {
   const parsedAdjustAmount = Number(adjustAmount) || 0;
   const previewBalance = Math.min(1000000, Math.max(0, currentBalance + parsedAdjustAmount));
 
+  /** Whether the saved accounts have been read yet. Until they have, nothing is written back. */
+  const paperAccountsHydratedRef = useRef(false);
+
   useEffect(() => {
     const saved = loadPaperTradingAccounts();
+    // Marked read even when nothing was stored: an empty store is a real
+    // answer, and the save below must be allowed to record the first account
+    // the trader creates.
+    paperAccountsHydratedRef.current = true;
     if (!saved.length) return;
     setAccounts(saved.map((account) => ({ ...account, winRate: "0%" })));
     const reconciledLedger = saved.reduce(
@@ -159,6 +166,11 @@ export default function AccountsPage() {
   }, []);
 
   useEffect(() => {
+    // The same ordering trap as the charts workspace: this effect runs on
+    // mount with the state as it was BEFORE the load effect's setState lands,
+    // so without the guard it saves that starting value over the accounts on
+    // disk.
+    if (!paperAccountsHydratedRef.current) return;
     savePaperTradingAccounts(
       accounts.map(({ winRate: _winRate, ...account }) => account),
     );

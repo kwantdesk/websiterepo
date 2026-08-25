@@ -41,6 +41,7 @@ import dynamic from "next/dynamic";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { orderPanesForLayout } from "@/lib/workspaceLayoutPanes";
 import {
   AlertCircle,
   AlertTriangle,
@@ -9591,6 +9592,8 @@ export default function KwantifyWorkspace({
   const [brokerConnections, setBrokerConnections] = useState<Record<string, BrokerConnectionState>>({});
   const [linkedCTraderAccounts, setLinkedCTraderAccounts] = useState<CTraderStatusAccount[]>([]);
   const [paperTradingAccounts, setPaperTradingAccounts] = useState<PaperTradingAccountRecord[]>([]);
+  /** Whether the saved accounts have been read yet. Until they have, nothing is written back. */
+  const paperAccountsHydratedRef = useRef(false);
   const [selectedPaperAccountId, setSelectedPaperAccountId] = useState(() =>
     typeof window === "undefined" ? "" : window.localStorage.getItem("kwantify-selected-paper-account") ?? "");
   const [paperLedger, setPaperLedger] = useState<PaperTradingLedger>(() =>
@@ -11610,9 +11613,13 @@ export default function KwantifyWorkspace({
       window.localStorage.setItem("olisa-connected-broker", "Databento");
       setBrokerConnections(JSON.parse(window.localStorage.getItem("olisa-broker-connections") ?? "{}"));
       setPaperTradingAccounts(loadPaperTradingAccounts());
+      paperAccountsHydratedRef.current = true;
     } catch {
       setBrokerFavourites([]);
       setBrokerConnections({});
+      // Deliberately NOT marked hydrated: a failure here means the stored
+      // accounts were never read, and saving an empty list over them would
+      // turn a bad read into permanent loss.
       setPaperTradingAccounts([]);
     }
   }, []);
@@ -11698,6 +11705,15 @@ export default function KwantifyWorkspace({
   }, [activePaneId, authChecked, section, workspacePanes, workspaceTree]);
 
   useEffect(() => {
+    // Never write back before the store has been read.
+    //
+    // The state starts empty and is filled by an effect, but an effect's
+    // setState does not change the value the effects after it see in the same
+    // pass — so on every mount this one ran first with an empty list and
+    // saved it over the trader's accounts. It could only recover if the load
+    // in the same pass had already succeeded, which is why the accounts came
+    // back sometimes and were gone for good other times.
+    if (!paperAccountsHydratedRef.current) return;
     savePaperTradingAccounts(paperTradingAccounts);
   }, [paperTradingAccounts]);
 
@@ -14400,28 +14416,37 @@ export default function KwantifyWorkspace({
           : layout === "single" ? 1 : 2;
     const nextPanes = [...workspacePanes];
     const scopedDefaults = defaultWorkspacePanes(chartWorkspaceScopeRef.current);
+    // Panes that did not exist before this click. Only these may start empty;
+    // everything already on the desk keeps whatever the trader put in it.
+    const freshPaneIds = new Set<string>();
     for (const defaultPane of scopedDefaults) {
       if (nextPanes.length >= requiredPaneCount) break;
       if (!nextPanes.some((pane) => pane.id === defaultPane.id)) {
         nextPanes.push({ ...defaultPane });
+        freshPaneIds.add(defaultPane.id);
       }
     }
     while (nextPanes.length < requiredPaneCount) {
       const source = scopedDefaults[nextPanes.length] ?? scopedDefaults[0];
-      nextPanes.push({
-        ...source,
-        id: `${chartWorkspaceScopeRef.current}-pane-${Date.now()}-${nextPanes.length + 1}`,
-      });
+      const id = `${chartWorkspaceScopeRef.current}-pane-${Date.now()}-${nextPanes.length + 1}`;
+      nextPanes.push({ ...source, id });
+      freshPaneIds.add(id);
     }
-    const currentlyVisible = new Set(collectWorkspacePaneIds(workspaceTree));
-    let orderedPanes = [
-      activeWorkspacePane,
-      ...nextPanes.filter((pane) => pane.id !== activeWorkspacePane.id),
-    ].map((pane, index) => (
-      index === 0 || currentlyVisible.has(pane.id)
-        ? pane
-        : { ...pane, content: null }
-    ));
+    // A layout button changes the geometry and nothing else.
+    //
+    // It used to hoist the ACTIVE pane to the front, so picking a layout while
+    // focused on the right-hand chart moved that chart to the left and shuffled
+    // the others past it — the charts appeared to be swapped or thrown away.
+    // And any pane not in the current tree had its content blanked, so a chart
+    // the trader had set up and then hidden behind a smaller layout came back
+    // empty. Keeping the on-screen order and every pane's content means the
+    // walls move and the contents stay where they were put.
+    let orderedPanes = orderPanesForLayout<WorkspacePane, WorkspacePanelKind | null>(
+      collectWorkspacePaneIds(workspaceTree),
+      nextPanes,
+      freshPaneIds,
+      null,
+    );
     if (gexMapAutoChartCount) {
       // The auto layouts fix content AND the instruments, not just geometry:
       // the stock options surface on the left, the embedded GEX Map on the
