@@ -178,16 +178,29 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
               : Math.min(periodWidth * 0.42, Math.max(72, pixelsPerBar * 28));
         const width = clamp(requestedWidth * (latest ? 1 : settings.previousWidth / Math.max(1, settings.currentWidth)), 22, mediaSize.width * 0.42);
         const offset = (latest ? settings.currentOffset : settings.previousOffset) * pixelsPerBar;
-        const pinnedRight = settings.showOnRight;
-        const behindLeftWall = !pinnedRight && periodStartX + offset < 2;
+        // Which WAY it is drawn, and WHERE it is anchored, are two things.
+        //
+        // Show-on-right sent every profile to the same place — the screen's
+        // right edge — so this week and last week were drawn one on top of
+        // the other, which is the doubled profile. Docking to the edge only
+        // makes sense for the newest of a kind; the ones behind it belong at
+        // their own period. They still FACE the same way, because that is
+        // what the setting is about.
+        const facesLeft = settings.showOnRight;
+        const dockRight = facesLeft && latest;
+        const behindLeftWall = !facesLeft && periodStartX + offset < 2;
         if (behindLeftWall && leftWallProfileByInstance.get(model.instanceId) !== modelIndex) return;
-        const anchorX = pinnedRight
+        const anchorX = dockRight
           ? mediaSize.width - 4 - offset
-          : behindLeftWall ? 4 : clamp(periodStartX + offset, 2, mediaSize.width - 2);
+          : facesLeft
+            // An older right-facing profile hangs off the end of its own
+            // period and opens back across it.
+            ? clamp(periodEndX - offset, 2, mediaSize.width - 2)
+            : behindLeftWall ? 4 : clamp(periodStartX + offset, 2, mediaSize.width - 2);
         // A profile held at the left wall must open into the viewport. Keeping
         // a saved mirrored direction here would draw part of the newest TPO
         // outside the clipped canvas and make the profile look incomplete.
-        const direction = pinnedRight ? -1 : behindLeftWall ? 1 : settings.mirror ? -1 : 1;
+        const direction = facesLeft ? -1 : behindLeftWall ? 1 : settings.mirror ? -1 : 1;
         const maxTpos = Math.max(1, ...profile.rows.map((row) => row.tpoCount));
         const cellWidth = Math.min(baseCell, Math.max(1.25, width / maxTpos));
         const gap = Math.min(settings.blockGap, cellWidth * 0.35);
@@ -405,7 +418,7 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
           });
         }
 
-        const profileLineEnd = pinnedRight ? 0 : Math.min(mediaSize.width, Math.max(anchorX, periodEndX));
+        const profileLineEnd = facesLeft ? 0 : Math.min(mediaSize.width, Math.max(anchorX, periodEndX));
         // A level or single print belongs to its own session and stops where
         // the session in front begins — never drawn underneath it. The newest
         // profile has nothing ahead of it and runs to the live edge. This holds
@@ -418,7 +431,7 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
         const nextProfileX = nextProfileStartMs === undefined
           ? null
           : this.timeToCoordinate(model, nextProfileStartMs / 1_000);
-        const nextProfileEnd = pinnedRight
+        const nextProfileEnd = facesLeft
           ? 0
           : nextProfileX == null
             ? mediaSize.width
@@ -443,11 +456,11 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
           context.beginPath();
           context.moveTo(anchorX, y);
           const interactionX = firstInteractionMs === null ? null : this.timeToCoordinate(model, firstInteractionMs / 1_000);
-          const lineEnd = extensionMode === "to-next-profile" && !pinnedRight
+          const lineEnd = extensionMode === "to-next-profile" && !facesLeft
             ? nextProfileEnd
-            : extensionMode === "to-window-end" && !pinnedRight
+            : extensionMode === "to-window-end" && !facesLeft
               ? mediaSize.width
-              : extensionMode === "until-first-interaction" && !pinnedRight
+              : extensionMode === "until-first-interaction" && !facesLeft
                 // An untested level still belongs to its own session, so it
                 // stops at the next profile rather than running to the edge.
                 ? Math.min(interactionX ?? nextProfileEnd, nextProfileEnd)
@@ -458,9 +471,9 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
             context.globalAlpha = 0.9;
             context.fillStyle = color;
             context.font = "600 7px 'JetBrains Mono', monospace";
-            context.textAlign = pinnedRight ? "left" : "right";
+            context.textAlign = facesLeft ? "left" : "right";
             context.textBaseline = "bottom";
-            context.fillText(label, clamp(lineEnd + (pinnedRight ? 4 : -4), 18, mediaSize.width - 18), y - 2);
+            context.fillText(label, clamp(lineEnd + (facesLeft ? 4 : -4), 18, mediaSize.width - 18), y - 2);
           }
         };
         if (settings.showSinglePrints && layer !== "all") {
@@ -475,11 +488,11 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
             const interactionX = zone.firstInteractionMs == null
               ? null
               : this.timeToCoordinate(model, zone.firstInteractionMs / 1_000);
-            const fillEnd = settings.singlePrintExtensionMode === "to-next-profile" && !pinnedRight
+            const fillEnd = settings.singlePrintExtensionMode === "to-next-profile" && !facesLeft
               ? nextProfileEnd
-              : settings.singlePrintExtensionMode === "to-window-end" && !pinnedRight
+              : settings.singlePrintExtensionMode === "to-window-end" && !facesLeft
                 ? mediaSize.width
-                : settings.singlePrintExtensionMode === "until-first-interaction" && !pinnedRight
+                : settings.singlePrintExtensionMode === "until-first-interaction" && !facesLeft
                   ? Math.min(interactionX ?? nextProfileEnd, nextProfileEnd)
                   : profileLineEnd;
             context.globalAlpha = settings.singlePrintFillZone ? settings.singlePrintFillOpacity / 100 : 0;

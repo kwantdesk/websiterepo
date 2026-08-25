@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { defaultTpoSettings, validateTpoSettings } from "../src/lib/tpo/settings.ts";
 import { TPO_SETTINGS_SCHEMA_VERSION, TPO_V2_RESET_KEYS } from "../src/lib/tpo/types.ts";
+import { readFileSync } from "node:fs";
 
 /**
  * A freshly added TPO shows the letters, the value area and the point of
@@ -70,6 +71,26 @@ for (const variant of ["tpo-chart", "weekly-tpo"]) {
 {
   const legacy = validateTpoSettings({ showDevelopingPoc: true }, "tpo-chart");
   assert.equal(legacy.showDevelopingPoc, false, "an unversioned TPO is a v1 TPO");
+}
+
+
+// --- show-on-right must not stack every profile at the same edge ---
+{
+  const primitive = readFileSync(new URL("../src/lib/tpo/primitive.ts", import.meta.url), "utf8");
+  // Where a profile is ANCHORED and which way it is DRAWN are two things.
+  // Sending every show-on-right profile to the screen's right edge drew this
+  // week and last week one on top of the other — the doubled profile.
+  // Docking belongs to the newest of a kind; the ones behind it sit at their
+  // own period and still face the same way.
+  assert.match(primitive, /const facesLeft = settings\.showOnRight;/);
+  assert.match(primitive, /const dockRight = facesLeft && latest;/,
+    "only the newest profile may dock to the screen edge");
+  assert.doesNotMatch(primitive, /const pinnedRight = settings\.showOnRight;/,
+    "dock and direction must not be the same flag");
+  // An older right-facing profile anchors at the end of its own period.
+  assert.match(primitive, /clamp\(periodEndX - offset, 2, mediaSize\.width - 2\)/);
+  // Direction still follows the setting for every profile, not just the newest.
+  assert.match(primitive, /const direction = facesLeft \? -1/);
 }
 
 console.log("TPO default visual tests passed.");
