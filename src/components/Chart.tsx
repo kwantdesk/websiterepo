@@ -14196,7 +14196,10 @@ function Chart({
     return [...entry, ...stop, ...targets];
   // Resting orders draw alongside open positions and, presented as anchors,
   // share their handles and drag path exactly.
-  }), ...workingOrderOverlayLevels].map((level) => {
+  }).map((level) => ({ ...level, resting: false })),
+  // Tagged so the renderer can tell a filled position from an order that is
+  // still only sitting there.
+  ...workingOrderOverlayLevels.map((level) => ({ ...level, resting: true }))].map((level) => {
     const displayPrice = paperDragPreview?.id === level.id ? paperDragPreview.price : level.price;
     const protectedQuantity = level.kind === "take_profit" && level.targetId
       ? (() => {
@@ -14308,7 +14311,12 @@ function Chart({
         : Boolean(onUpdatePaperProtection),
       stopColor: settings.downColor,
       takeProfitColor: settings.upColor,
-      livePosition: level.kind === "entry" ? {
+      // A resting order has no live profit and loss, because there is no
+      // position. Handing the renderer a livePosition made it replace the
+      // order's own label — "BUY 2 LIMIT · working" — with a size and a
+      // running dollar figure measured from the limit price against the
+      // market, so an untouched order read as an open trade.
+      livePosition: level.kind === "entry" && !level.resting ? {
         symbol: level.position.symbol,
         side: level.position.side,
         quantity: level.position.remainingQuantity,
@@ -15384,7 +15392,9 @@ function Chart({
             <div
               className="paper-position-overlay-label pointer-events-auto absolute right-1 flex h-4 w-[164px] -translate-y-1/2 items-center overflow-hidden opacity-0"
               style={{ borderColor: level.color, color: level.color }}
-              title={`Unrealized ${level.position.unrealizedPnl.toFixed(2)}`}
+              title={level.resting
+                ? `${level.position.side === "buy" ? "Buy" : "Sell"} ${level.position.quantity} resting at ${level.position.entryPrice.toFixed(priceFormat.precision)}`
+                : `Unrealized ${level.position.unrealizedPnl.toFixed(2)}`}
             >
               {onUpdatePaperProtection && level.position.stopLoss === null ? (
                 <button
