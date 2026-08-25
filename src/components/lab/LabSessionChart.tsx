@@ -15,7 +15,7 @@ import {
   type RithmicClassicCandle,
 } from "@/lib/gex-box/rithmicCandles";
 import { subscribeRithmicIndicatorTrades, type RithmicIndicatorStreamStatus } from "@/lib/rithmicIndicatorStream";
-import type { LabMode, LabRoot, LabSnapshotLevel, LabSnapshotUpdate } from "@/lib/labSnapshot";
+import type { LabMode, LabRoot, LabSnapshot, LabSnapshotLevel, LabSnapshotUpdate } from "@/lib/labSnapshot";
 
 type ChartCandle = RithmicClassicCandle & { volume?: number };
 type LabCandleSeries = ReturnType<IChartApi["addCandlestickSeries"]>;
@@ -59,11 +59,15 @@ export default function LabSessionChart({
   mode,
   levels,
   updates,
+  trade,
+  setupAt,
 }: {
   root: LabRoot;
   mode: LabMode;
   levels: LabSnapshotLevel[];
   updates: LabSnapshotUpdate[];
+  trade: LabSnapshot["trade"] | null;
+  setupAt: string | null;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -75,6 +79,7 @@ export default function LabSessionChart({
   const [historyState, setHistoryState] = useState<"loading" | "ready" | "unavailable">("loading");
   const [streamStatus, setStreamStatus] = useState<RithmicIndicatorStreamStatus>("checking");
   const [lastPrice, setLastPrice] = useState<number | null>(null);
+  const [dataRevision, setDataRevision] = useState(0);
   const contract = useMemo(() => rithmicContractForRoot(root), [root]);
 
   useEffect(() => {
@@ -145,6 +150,7 @@ export default function LabSessionChart({
       seriesRef.current.setData(seriesRows(candlesRef.current));
       const price = candlesRef.current.at(-1)?.close ?? null;
       setLastPrice(price);
+      setDataRevision((value) => value + 1);
       if (fit) chartRef.current?.timeScale().fitContent();
     };
 
@@ -241,11 +247,65 @@ export default function LabSessionChart({
         }));
       }
     }
+    if (trade?.side && trade.zone) {
+      const armed = trade.status === "ARMED";
+      const entryColor = armed ? colors.primary : colors.accent;
+      const entryLow = Math.min(trade.zone[0], trade.zone[1]);
+      const entryHigh = Math.max(trade.zone[0], trade.zone[1]);
+      priceLinesRef.current.push(series.createPriceLine({
+        price: entryLow,
+        color: entryColor,
+        lineWidth: armed ? 2 : 1,
+        lineStyle: armed ? LineStyle.Solid : LineStyle.Dashed,
+        axisLabelVisible: true,
+        title: armed ? `${trade.side === "LONG" ? "BUY" : "SELL"} ENTRY` : `WATCH ${trade.side}`,
+      }));
+      if (entryHigh !== entryLow) {
+        priceLinesRef.current.push(series.createPriceLine({
+          price: entryHigh,
+          color: entryColor,
+          lineWidth: 1,
+          lineStyle: LineStyle.Dotted,
+          axisLabelVisible: false,
+          title: "",
+        }));
+      }
+      if (trade.stop !== null) {
+        priceLinesRef.current.push(series.createPriceLine({
+          price: trade.stop,
+          color: colors.danger,
+          lineWidth: 2,
+          lineStyle: LineStyle.Solid,
+          axisLabelVisible: true,
+          title: armed ? "SL" : "SL PLAN",
+        }));
+      }
+      if (trade.coreTarget !== null) {
+        priceLinesRef.current.push(series.createPriceLine({
+          price: trade.coreTarget,
+          color: colors.primary,
+          lineWidth: 1,
+          lineStyle: LineStyle.Dashed,
+          axisLabelVisible: true,
+          title: "TP1 CORE",
+        }));
+      }
+      if (trade.runnerTarget !== null) {
+        priceLinesRef.current.push(series.createPriceLine({
+          price: trade.runnerTarget,
+          color: colors.accent,
+          lineWidth: 1,
+          lineStyle: LineStyle.Dotted,
+          axisLabelVisible: true,
+          title: "TP2 RUNNER",
+        }));
+      }
+    }
     return () => {
       priceLinesRef.current.forEach((line) => series.removePriceLine(line));
       priceLinesRef.current = [];
     };
-  }, [chartReady, levels]);
+  }, [chartReady, levels, trade]);
 
   useEffect(() => {
     const series = seriesRef.current;
@@ -261,7 +321,7 @@ export default function LabSessionChart({
       }
       return Math.floor(nearest / 1_000) as Time;
     };
-    series.setMarkers(updates
+    const markers: Parameters<LabCandleSeries["setMarkers"]>[0] = updates
       .filter((update) => update.price !== null && Number.isFinite(Date.parse(update.at)))
       .slice(-24)
       .map((update) => ({
@@ -270,8 +330,19 @@ export default function LabSessionChart({
         shape: update.kind === "LEVEL" ? "arrowDown" as const : "circle" as const,
         color: update.kind === "RISK" ? danger : primary,
         text: update.title.slice(0, 20),
-      })));
-  }, [chartReady, updates]);
+      }));
+    if (trade?.status === "ARMED" && trade.side && setupAt && Number.isFinite(Date.parse(setupAt))) {
+      markers.push({
+        time: nearestTime(Date.parse(setupAt)),
+        position: trade.side === "LONG" ? "belowBar" : "aboveBar",
+        shape: trade.side === "LONG" ? "arrowUp" : "arrowDown",
+        color: trade.side === "LONG" ? primary : danger,
+        text: `${trade.side === "LONG" ? "BUY" : "SELL"} SETUP · CONFIRM`,
+      });
+    }
+    markers.sort((left, right) => Number(left.time) - Number(right.time));
+    series.setMarkers(markers);
+  }, [chartReady, dataRevision, setupAt, trade, updates]);
 
   const feedLabel = streamStatus === "connected"
     ? "Rithmic tape live"
@@ -286,6 +357,7 @@ export default function LabSessionChart({
       <div className="absolute inset-x-0 top-0 z-10 flex h-8 items-center gap-2 border-b border-border bg-panel/95 px-3 backdrop-blur-sm">
         <span className="font-mono text-[10px] font-semibold text-foreground">{root} · 5M</span>
         <span className={`border px-1.5 py-0.5 text-[7px] font-semibold uppercase tracking-[0.1em] ${mode === "FOLLOW" ? "border-danger/35 text-danger" : mode === "FADE" ? "border-primary/35 text-primary" : "border-border text-muted"}`}>{mode}</span>
+        {trade?.status === "ARMED" && trade.side ? <span className={`border px-1.5 py-0.5 text-[7px] font-semibold uppercase tracking-[0.1em] ${trade.side === "LONG" ? "border-primary/35 text-primary" : "border-danger/35 text-danger"}`}>{trade.side === "LONG" ? "BUY" : "SELL"} setup · confirm</span> : trade?.side ? <span className="border border-border px-1.5 py-0.5 text-[7px] font-semibold uppercase tracking-[0.1em] text-muted">Watch {trade.side}</span> : null}
         <span className="ml-auto font-mono text-[10px] text-foreground">{lastPrice?.toLocaleString("en-US", { maximumFractionDigits: 2 }) ?? "—"}</span>
         <span className="text-[7px] uppercase tracking-[0.1em] text-muted">{feedLabel}</span>
       </div>

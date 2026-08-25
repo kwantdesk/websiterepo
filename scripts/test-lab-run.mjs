@@ -131,6 +131,33 @@ assert.equal(second.film.deltas.find((delta) => delta.id === "spot")?.delta, -1)
 assert.equal(second.film.deltas.find((delta) => delta.id === "flip")?.direction, "CHASING_DOWN");
 assert.equal(second.gates.find((gate) => gate.id === "film")?.status, "PASS");
 assert.equal(second.updates.length, 2);
+assert.equal(second.trade.status, "WAIT");
+assert.match(second.trade.permission, /price outside candidate zone/i);
+
+const armedAt = new Date("2026-08-25T13:36:00.000Z");
+const armed = buildLabSnapshotFromGameplan(payload({ spot: 102.5, flip: 99.5, generatedAt: armedAt.toISOString() }), {
+  now: armedAt,
+  prior: first,
+  sources: sources("LIVE", armedAt.toISOString()),
+  referees: referees(armedAt.toISOString()),
+  commit: "test-commit",
+});
+assert.equal(armed.mode.value, "FADE");
+assert.equal(armed.trade.qualityGrade, "A+");
+assert.equal(armed.trade.status, "ARMED");
+assert.match(armed.trade.permission, /five-part announce still must pass/i);
+
+const lowerGradePayload = payload({ spot: 102.5, flip: 99.5, generatedAt: armedAt.toISOString() });
+lowerGradePayload.plan.one_trade.short_side.quality_grade = "A";
+const lowerGrade = buildLabSnapshotFromGameplan(lowerGradePayload, {
+  now: armedAt,
+  prior: first,
+  sources: sources("LIVE", armedAt.toISOString()),
+  referees: referees(armedAt.toISOString()),
+  commit: "test-commit",
+});
+assert.equal(lowerGrade.trade.status, "WAIT");
+assert.match(lowerGrade.trade.permission, /A\+ required/i);
 
 const staleAt = new Date("2026-08-25T18:31:00.000Z");
 const stale = buildLabSnapshotFromGameplan(payload({ generatedAt: staleAt.toISOString() }), {
@@ -144,4 +171,4 @@ assert.equal(stale.film.status, "STALE");
 assert.equal(labRunPhase(new Date("2026-08-29T14:00:00.000Z")), "CLOSED");
 assert.equal(labTargetSessionDate(new Date("2026-08-29T14:00:00.000Z")), "2026-08-31");
 
-console.log("THE LAB manual run: 24 assertions passed");
+console.log("THE LAB manual run: 32 assertions passed");

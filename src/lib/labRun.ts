@@ -347,7 +347,21 @@ export function buildLabSnapshotFromGameplan(
       ? [plan.one_trade.long_side, plan.one_trade.short_side]
         .sort((left, right) => right.quality_score - left.quality_score)[0]
       : null;
-  const stoppedGate = gates.find((gate) => gate.status === "STOP");
+  const blockingGate = gates.find((gate) => gate.status !== "PASS");
+  const setupAtSpot = Boolean(modeSetup && spot !== null
+    && spot >= Math.min(modeSetup.zone[0], modeSetup.zone[1])
+    && spot <= Math.max(modeSetup.zone[0], modeSetup.zone[1]));
+  const tradeArmed = Boolean(modeSetup
+    && modeSetup.quality_grade === "A+"
+    && phase === "LIVE"
+    && !blockingGate
+    && setupAtSpot);
+  const tradeWaitReasons = modeSetup ? [
+    phase !== "LIVE" ? `${phase} SESSION` : null,
+    blockingGate ? `${blockingGate.label.toUpperCase()} ${blockingGate.status}` : null,
+    modeSetup.quality_grade !== "A+" ? `GRADE ${modeSetup.quality_grade} — A+ REQUIRED` : null,
+    !setupAtSpot ? "PRICE OUTSIDE CANDIDATE ZONE" : null,
+  ].filter((reason): reason is string => Boolean(reason)) : [];
   const confidencePenalty = (gameplan.status === "PARTIAL" ? 20 : 0)
     + (film.status !== "READY" ? 15 : 0)
     + (crossStatus !== "PASS" ? 8 : 0);
@@ -445,7 +459,7 @@ export function buildLabSnapshotFromGameplan(
     levels,
     scenarios,
     trade: {
-      status: modeSetup ? "WAIT" : "NO_TRADE",
+      status: modeSetup ? tradeArmed ? "ARMED" : "WAIT" : "NO_TRADE",
       side: modeSetup?.side ?? null,
       name: modeSetup?.setup_name ?? "No setup issued",
       zone: modeSetup?.zone ?? null,
@@ -454,7 +468,7 @@ export function buildLabSnapshotFromGameplan(
       optionsAlignment: modeSetup?.options_alignment,
       technicalReasoning: modeSetup?.reasoning.slice(0, 8),
       permission: modeSetup
-        ? `${stoppedGate ? `BLOCKED BY ${stoppedGate.label.toUpperCase()}. ` : ""}${modeSetup.permission} Location alone is never permission.`
+        ? `${tradeWaitReasons.length ? `WAIT — ${tradeWaitReasons.join(" · ")}. ` : "MACHINE GATES PASS — SETUP AT ZONE. "}${modeSetup.permission} Location alone is never permission; the five-part announce still must pass.`
         : "The mode is unresolved, so August V1 issues no trade card.",
       entryTrigger: modeSetup?.permission ?? "Not issued",
       stop: modeSetup?.stop ?? null,

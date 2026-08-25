@@ -352,7 +352,7 @@ export default function LabWorkspace() {
               ) : <div className="p-3"><EmptyRow>Run August V1 to issue a source-backed setup brief. No setup is inferred from price alone.</EmptyRow></div>}
             </Panel>
 
-            <div className="col-span-12 xl:col-span-8"><LabSessionChart root={root} mode={currentSnapshot?.mode.value ?? "UNRESOLVED"} levels={currentSnapshot?.levels ?? []} updates={currentSnapshot?.updates ?? []} /></div>
+            <div className="col-span-12 xl:col-span-8"><LabSessionChart root={root} mode={currentSnapshot?.mode.value ?? "UNRESOLVED"} levels={currentSnapshot?.levels ?? []} updates={currentSnapshot?.updates ?? []} trade={currentSnapshot?.trade ?? null} setupAt={currentSnapshot?.updatedAt ?? null} /></div>
 
             <Panel title="Doors & condemned ground" eyebrow="Nearest first · source tagged" className="col-span-12 xl:col-span-4">
               <div className="max-h-[410px] overflow-y-auto p-2">
