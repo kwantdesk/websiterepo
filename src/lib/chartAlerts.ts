@@ -1,3 +1,5 @@
+import { writeProtectedItem } from "./browserStorageQuota.ts";
+
 export type ChartAlertConditionKind = "price" | "strategy";
 
 export type ChartAlertPriceOperator =
@@ -75,7 +77,7 @@ export function loadChartAlerts(): ChartAlertRecord[] {
 
 export function saveChartAlerts(alerts: ChartAlertRecord[]) {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(alerts));
+  writeProtectedItem(STORAGE_KEY, JSON.stringify(alerts));
 }
 
 export function upsertChartAlert(alert: ChartAlertRecord) {

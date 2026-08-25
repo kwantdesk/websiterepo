@@ -52,6 +52,7 @@ import {
   resolveGexBoxRoles,
 } from "@/lib/gexBoxTheme";
 import { GEX_MAP_PALETTE_PRESETS } from "@/lib/gexMapPalette";
+import { writeProtectedItem } from "@/lib/browserStorageQuota";
 
 const STORAGE_KEY = "kwantdesk:gex-box:dashboard:v2";
 const makeId = (prefix: string) => `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -1265,7 +1266,7 @@ export default function GexBoxDashboard() {
   useEffect(() => { try { const raw = localStorage.getItem(STORAGE_KEY); if (raw) { const parsed = JSON.parse(raw) as DashboardWorkspace; if (parsed.schemaVersion === 2 && parsed.pages?.length) setWorkspace({ ...parsed, pages: parsed.pages.map((page) => ({ ...page, panels: page.panels.map((panel) => ({ ...panel, settings: completeSettings(panel.settings) })) })) }); } } catch {} setHydrated(true); }, []);
   useEffect(() => {
     if (!hydrated) return;
-    const timer = window.setTimeout(() => localStorage.setItem(STORAGE_KEY, JSON.stringify(workspace)), 250);
+    const timer = window.setTimeout(() => writeProtectedItem(STORAGE_KEY, JSON.stringify(workspace)), 250);
     return () => window.clearTimeout(timer);
   }, [hydrated, workspace]);
   const active = workspace.pages.find((page) => page.id === workspace.activePageId) ?? workspace.pages[0];

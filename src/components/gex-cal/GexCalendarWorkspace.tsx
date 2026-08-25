@@ -7,6 +7,7 @@ import KwantLoader from "@/components/KwantLoader";
 import KwantSelect from "@/components/ui/KwantSelect";
 import type { GexCalCell, GexCalMatrix } from "@/lib/gexCalendar";
 import { OPTIONS_FLOW_INSTRUMENTS } from "@/lib/optionsFlow";
+import { writeProtectedItem } from "@/lib/browserStorageQuota";
 
 type Settings = {
   source: string;
@@ -162,7 +163,7 @@ export default function GexCalendarWorkspace() {
     setRightPanelWidth(restoredWidth);
     setPersistenceReady(true);
   }, []);
-  useEffect(() => { if (persistenceReady && typeof window !== "undefined") localStorage.setItem(STORAGE_KEY, JSON.stringify(settings)); }, [persistenceReady, settings]);
+  useEffect(() => { if (persistenceReady && typeof window !== "undefined") writeProtectedItem(STORAGE_KEY, JSON.stringify(settings)); }, [persistenceReady, settings]);
 
   const load = useCallback(async (quiet = false) => {
     requestRef.current?.abort();
@@ -266,7 +267,7 @@ export default function GexCalendarWorkspace() {
   const createAlert = (cell: GexCalCell) => {
     const existing = JSON.parse(localStorage.getItem(ALERTS_KEY) || "[]") as unknown[];
     existing.push({ id: crypto.randomUUID(), source: settings.source, greek: settings.greek, expiration: cell.expiration, strike: cell.strike, threshold: cell.value, createdAt: new Date().toISOString(), active: true });
-    localStorage.setItem(ALERTS_KEY, JSON.stringify(existing));
+    writeProtectedItem(ALERTS_KEY, JSON.stringify(existing));
     setContext(null);
   };
   const openContext = (cell: GexCalCell) => setContext({ x: Math.min(window.innerWidth - 230, window.innerWidth / 2), y: Math.min(window.innerHeight - 180, window.innerHeight / 2), cell });

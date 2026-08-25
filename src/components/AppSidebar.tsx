@@ -26,6 +26,7 @@ import {
 import { defaultTheme, saveTheme } from "@/lib/theme";
 import { startRendererHealthRecorder } from "@/lib/rendererHealth";
 import HighImpactNewsChip from "@/components/HighImpactNewsChip";
+import { writeProtectedItem } from "@/lib/browserStorageQuota";
 type SidebarKey =
   | "ai"
   | "agent"
@@ -171,7 +172,7 @@ function AppSidebar({
     const migrationKey = "kwantdesk:midnight-cockpit-theme:v1";
     if (window.localStorage.getItem(migrationKey) !== "applied") {
       saveTheme(defaultTheme);
-      window.localStorage.setItem(migrationKey, "applied");
+      writeProtectedItem(migrationKey, "applied");
     }
 
     return () => body.classList.remove("kwant-cockpit-ui");

@@ -48,6 +48,7 @@ import {
 import { cacheProfileIdentity, readProfileIdentityCache } from "@/lib/profileIdentityCache";
 import { isValidProfileHandle, PROFILE_HANDLE_REQUIREMENTS } from "@/lib/profileHandle";
 import { themePresets } from "@/lib/themePresets";
+import { writeProtectedItem } from "@/lib/browserStorageQuota";
 
 type SettingsTab =
   | "Identity"
@@ -188,7 +189,7 @@ function ColorPicker({ label, value, onChange }: { label: string; value: string;
     setHsv(rgbToHsv(normalized));
     const next = [normalized, ...recentColors.filter((item) => item !== normalized)].slice(0, 12);
     setRecentColors(next);
-    localStorage.setItem("olisa-recent-colors", JSON.stringify(next));
+    writeProtectedItem("olisa-recent-colors", JSON.stringify(next));
   }
 
   function updateGradient(event: React.PointerEvent<HTMLDivElement>) {
@@ -472,12 +473,12 @@ export default function SettingsPage() {
   }, [chartSettings]);
 
   useEffect(() => {
-    window.localStorage.setItem("kwantdesk-settings-toggles", JSON.stringify(toggles));
+    writeProtectedItem("kwantdesk-settings-toggles", JSON.stringify(toggles));
     window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
   }, [toggles]);
 
   useEffect(() => {
-    window.localStorage.setItem("kwantdesk-settings-font-size", fontSize);
+    writeProtectedItem("kwantdesk-settings-font-size", fontSize);
     window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
   }, [fontSize]);
 
@@ -687,7 +688,7 @@ export default function SettingsPage() {
   }
 
   function saveChartDefaults() {
-    localStorage.setItem("olisa-chart-defaults", JSON.stringify({ ...chartDefaults, showVolume: toggles.volume, showGrid: toggles.grid }));
+    writeProtectedItem("olisa-chart-defaults", JSON.stringify({ ...chartDefaults, showVolume: toggles.volume, showGrid: toggles.grid }));
   }
 
   const input = "w-full rounded-xl border border-border bg-surface px-4 py-3 text-[13px] outline-none focus:border-primary/40";

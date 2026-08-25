@@ -1,3 +1,5 @@
+import { writeProtectedItem } from "./browserStorageQuota.ts";
+
 export type RuntimeMode = "replay" | "demo" | "paper" | "forward_test" | "live";
 
 export type StrategyDraftDossier = {
@@ -356,7 +358,7 @@ function readJson<T>(key: string, fallback: T): T {
 
 function writeJson<T>(key: string, value: T) {
   if (!hasWindow()) return;
-  window.localStorage.setItem(key, JSON.stringify(value));
+  writeProtectedItem(key, JSON.stringify(value));
 }
 
 export function loadSavedStrategiesRaw() {
@@ -366,7 +368,7 @@ export function loadSavedStrategiesRaw() {
   const localValue = window.localStorage.getItem(SAVED_STRATEGIES_KEY);
 
   if (sessionValue && sessionValue !== localValue) {
-    window.localStorage.setItem(SAVED_STRATEGIES_KEY, sessionValue);
+    writeProtectedItem(SAVED_STRATEGIES_KEY, sessionValue);
     return sessionValue;
   }
 
@@ -381,7 +383,7 @@ export function loadSavedStrategiesRaw() {
 export function saveSavedStrategiesRaw(raw: string) {
   if (!hasWindow()) return;
   window.sessionStorage.setItem(SAVED_STRATEGIES_KEY, raw);
-  window.localStorage.setItem(SAVED_STRATEGIES_KEY, raw);
+  writeProtectedItem(SAVED_STRATEGIES_KEY, raw);
 }
 
 export function clearSavedStrategiesRaw() {

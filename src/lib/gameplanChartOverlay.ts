@@ -6,6 +6,7 @@ import {
   type GameplanRole,
   type GameplanSession,
 } from "@/lib/gameplan";
+import { writeProtectedItem } from "./browserStorageQuota.ts";
 
 export type GameplanChartRoot = "NQ" | "ES";
 
@@ -103,7 +104,7 @@ export function loadGameplanChartOverlays(): GameplanChartOverlayStore {
 
 function publishOverlayStore(store: GameplanChartOverlayStore) {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(GAMEPLAN_CHART_OVERLAYS_STORAGE_KEY, JSON.stringify(store));
+  writeProtectedItem(GAMEPLAN_CHART_OVERLAYS_STORAGE_KEY, JSON.stringify(store));
   window.dispatchEvent(new CustomEvent(GAMEPLAN_CHART_OVERLAYS_EVENT, { detail: store }));
 }
 

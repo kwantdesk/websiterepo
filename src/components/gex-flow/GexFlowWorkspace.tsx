@@ -19,6 +19,7 @@ import {
   type GexFlowRow,
   type GexFlowSide,
 } from "@/lib/gexFlow";
+import { writeProtectedItem } from "@/lib/browserStorageQuota";
 
 const STORAGE_KEY = "kwantdesk:gex-flow:workspace:v1";
 const ALERTS_KEY = "kwantdesk:gex-flow:alerts:v1";
@@ -168,7 +169,7 @@ export default function GexFlowWorkspace() {
     } catch { /* Account/local state is optional. */ }
   }, []);
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ symbol, mode, screens, columns, filters, activeScreen }));
+    writeProtectedItem(STORAGE_KEY, JSON.stringify({ symbol, mode, screens, columns, filters, activeScreen }));
   }, [symbol, mode, screens, columns, filters, activeScreen]);
 
   const load = useCallback(async (silent = false) => {
@@ -292,7 +293,7 @@ export default function GexFlowWorkspace() {
   const createAlert = () => {
     const current = JSON.parse(localStorage.getItem(ALERTS_KEY) || "[]") as unknown[];
     current.push({ id: crypto.randomUUID(), screenId: activeScreen, symbol, filters, createdAt: new Date().toISOString(), active: true });
-    localStorage.setItem(ALERTS_KEY, JSON.stringify(current));
+    writeProtectedItem(ALERTS_KEY, JSON.stringify(current));
   };
   const exportRows = (format: "CSV" | "JSON") => {
     if (format === "JSON") return download(`gex-flow-${symbol}.json`, JSON.stringify(visibleRows, null, 2), "application/json");

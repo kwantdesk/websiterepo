@@ -24,6 +24,7 @@ import {
   User,
   Wallet,
 } from "lucide-react";
+import { writeProtectedItem } from "@/lib/browserStorageQuota";
 
 type Message = { role: "user" | "assistant"; content: string };
 type EmotionId = "frustrated" | "anxious" | "neutral" | "focused" | "calm";
@@ -149,28 +150,28 @@ export default function AgentPage() {
   }, [messages, loading]);
 
   useEffect(() => {
-    window.localStorage.setItem(storageKey("messages"), JSON.stringify(messages));
+    writeProtectedItem(storageKey("messages"), JSON.stringify(messages));
   }, [messages]);
 
   useEffect(() => {
-    window.localStorage.setItem(storageKey("selectedEmotion"), selectedEmotion);
+    writeProtectedItem(storageKey("selectedEmotion"), selectedEmotion);
   }, [selectedEmotion]);
 
   useEffect(() => {
-    window.localStorage.setItem(storageKey("emotionHistory"), JSON.stringify(emotionHistory));
+    writeProtectedItem(storageKey("emotionHistory"), JSON.stringify(emotionHistory));
   }, [emotionHistory]);
 
   useEffect(() => {
-    window.localStorage.setItem(storageKey("goals"), JSON.stringify(goals));
+    writeProtectedItem(storageKey("goals"), JSON.stringify(goals));
   }, [goals]);
 
   useEffect(() => {
-    window.localStorage.setItem(storageKey("trades"), JSON.stringify(trades));
+    writeProtectedItem(storageKey("trades"), JSON.stringify(trades));
   }, [trades]);
 
   useEffect(() => {
     if (sessionStartedAt) {
-      window.localStorage.setItem(storageKey("sessionStartedAt"), sessionStartedAt.toISOString());
+      writeProtectedItem(storageKey("sessionStartedAt"), sessionStartedAt.toISOString());
     } else {
       window.localStorage.removeItem(storageKey("sessionStartedAt"));
     }

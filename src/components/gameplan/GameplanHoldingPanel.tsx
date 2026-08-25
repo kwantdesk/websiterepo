@@ -32,6 +32,7 @@ import {
   type ZyonTradingAccountPhase,
 } from "@/lib/zyon";
 import { zyonGameplanLaunchHref } from "@/lib/zyonGameplanLaunch";
+import { writeProtectedItem } from "@/lib/browserStorageQuota";
 
 type DraftResponse = {
   draft?: ZyonGameplanDraft | null;
@@ -206,7 +207,7 @@ export default function GameplanHoldingPanel({ onPendingChange }: Props) {
     setLocking(true);
     setNotice("");
     writePendingScoringTransition({ record: optimisticRecord, state: "saving" });
-    window.localStorage.setItem("kwantdesk:gameplan-page-tab", "scoring");
+    writeProtectedItem("kwantdesk:gameplan-page-tab", "scoring");
     window.dispatchEvent(new CustomEvent("kwantdesk:gameplan-lock-started", {
       detail: { record: optimisticRecord },
     }));

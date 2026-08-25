@@ -10,6 +10,7 @@ import type {
   FootprintScaleMode,
   FootprintVisualizationMode,
 } from "./footprintTypes";
+import { writeProtectedItem } from "./browserStorageQuota.ts";
 
 export const FOOTPRINT_SETTINGS_SCHEMA_VERSION = 8;
 
@@ -662,6 +663,6 @@ export function saveFootprintTemplate(name: string, settings: unknown): Footprin
 export function deleteFootprintTemplate(templateId: string): FootprintTemplate[] {
   if (typeof window === "undefined") return [];
   const next = loadFootprintTemplates().filter((template) => template.id !== templateId);
-  window.localStorage.setItem(FOOTPRINT_TEMPLATES_STORAGE_KEY, JSON.stringify(next));
+  writeProtectedItem(FOOTPRINT_TEMPLATES_STORAGE_KEY, JSON.stringify(next));
   return next;
 }

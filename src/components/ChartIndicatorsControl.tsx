@@ -74,6 +74,7 @@ import { POC_AUCTION_PRESETS } from "@/lib/pocAuctionSuite";
 import { TAPE_SPEED_PRESETS } from "@/lib/tapeSpeedOrderFlowBurst";
 import IndicatorTemplateBar from "@/components/IndicatorTemplateBar";
 import { STATS_PALETTES, resolveStatsPalette, statsPaletteSettings } from "@/lib/statsPalettes";
+import { writeProtectedItem } from "@/lib/browserStorageQuota";
 
 const FAVOURITES_STORAGE_KEY = "kwantdesk-chart-indicator-favourites";
 
@@ -229,7 +230,7 @@ function readVolumeProfileTemplates(): VolumeProfileTemplate[] {
 }
 
 function persistVolumeProfileTemplates(templates: VolumeProfileTemplate[]) {
-  window.localStorage.setItem(VOLUME_PROFILE_TEMPLATES_STORAGE_KEY, JSON.stringify(templates));
+  writeProtectedItem(VOLUME_PROFILE_TEMPLATES_STORAGE_KEY, JSON.stringify(templates));
   window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
 }
 
@@ -269,7 +270,7 @@ function readTpoUserPresets() {
 }
 
 function persistTpoUserPresets(presets: TpoUserPreset[]) {
-  window.localStorage.setItem(TPO_USER_PRESETS_STORAGE_KEY, JSON.stringify(presets));
+  writeProtectedItem(TPO_USER_PRESETS_STORAGE_KEY, JSON.stringify(presets));
   window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
 }
 
@@ -293,7 +294,7 @@ function readGexIntervalUserPresets() {
 }
 
 function persistGexIntervalUserPresets(presets: GexIntervalUserPreset[]) {
-  window.localStorage.setItem(GEX_INTERVAL_PRESETS_STORAGE_KEY, JSON.stringify(presets));
+  writeProtectedItem(GEX_INTERVAL_PRESETS_STORAGE_KEY, JSON.stringify(presets));
   window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
 }
 
@@ -739,7 +740,7 @@ export default function ChartIndicatorsControl({
   }, [indicators, settingsOpenRequest]);
 
   useEffect(() => {
-    window.localStorage.setItem(FAVOURITES_STORAGE_KEY, JSON.stringify(favourites));
+    writeProtectedItem(FAVOURITES_STORAGE_KEY, JSON.stringify(favourites));
     window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
   }, [favourites]);
 

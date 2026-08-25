@@ -322,7 +322,7 @@ export async function hydrateUserPreferences(
     const legacyOwner = window.localStorage.getItem(LEGACY_PREFERENCES_OWNER_KEY);
     if (!legacyOwner || legacyOwner === user.id) {
       selected = current;
-      window.localStorage.setItem(LEGACY_PREFERENCES_OWNER_KEY, user.id);
+      writeProtectedItem(LEGACY_PREFERENCES_OWNER_KEY, user.id);
     } else {
       selected = {
         version: 1,
@@ -379,7 +379,7 @@ export async function hydrateUserPreferences(
   const changed = preferenceSnapshotFingerprint(current) !== preferenceSnapshotFingerprint(selected);
   applyBrowserPreferences(selected);
   applyTheme();
-  window.localStorage.setItem(ACTIVE_PREFERENCES_OWNER_KEY, user.id);
+  writeProtectedItem(ACTIVE_PREFERENCES_OWNER_KEY, user.id);
   saveScopedPreferences(user.id, selected);
   return { changed, snapshot: selected };
 }

@@ -32,6 +32,7 @@ import type {
   MacroIntelligencePayload,
   MacroScenario,
 } from "@/lib/macroIntelligence";
+import { writeProtectedItem } from "@/lib/browserStorageQuota";
 
 export type MacroNewsView = "macro" | "developments";
 
@@ -231,7 +232,7 @@ function MacroChatPanel() {
     } catch {}
   }, []);
   useEffect(() => {
-    window.localStorage.setItem(MACRO_CHAT_KEY, JSON.stringify(messages.slice(-30)));
+    writeProtectedItem(MACRO_CHAT_KEY, JSON.stringify(messages.slice(-30)));
     bottomRef.current?.scrollIntoView({ block: "end" });
   }, [messages, sending]);
   const send = async () => {

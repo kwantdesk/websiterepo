@@ -341,6 +341,7 @@ import {
   type ClassicGexProfilePayload,
 } from "@/lib/classicGexProfile";
 import { mergeOneFamilyPositioning } from "@/lib/gexBotFlow";
+import { writeProtectedItem } from "@/lib/browserStorageQuota";
 
 function workspaceLoader(title: string, detail: string) {
   return (
@@ -2370,7 +2371,7 @@ function loadScopedChartSettings(scope: ChartWorkspaceScope) {
 
 function saveScopedChartSettings(scope: ChartWorkspaceScope, settings: ChartSettings) {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(
+  writeProtectedItem(
     workspaceScopeStorageKey(scope, CHART_WORKSPACE_SETTINGS_STORAGE_KEY),
     JSON.stringify(normalizeChartSettings(settings)),
   );
@@ -2526,7 +2527,7 @@ function persistChartWorkspaceRuntime(
 ) {
   if (typeof window === "undefined") return;
   const write = (key: string, value: string) =>
-    window.localStorage.setItem(workspaceScopeStorageKey(scope, key), value);
+    writeProtectedItem(workspaceScopeStorageKey(scope, key), value);
   write("olisa-chart-workspace-layout", runtime.layout);
   write(WORKSPACE_LAYOUT_LOCK_STORAGE_KEY, String(runtime.locked));
   write("olisa-chart-workspace-split-ratio", String(runtime.splitRatio));
@@ -2542,7 +2543,7 @@ function persistChartWorkspaceRuntime(
   write(PANE_LEVEL_VISIBILITY_STORAGE_KEY, JSON.stringify(clonePaneLevelVisibility(runtime.levelVisibility)));
   write("olisa-chart-favourite-intervals", JSON.stringify(runtime.favouriteTimeframes));
   write("olisa-chart-workspace-linked-panes", JSON.stringify(runtime.linkedPaneIds));
-  window.localStorage.setItem(CHART_TEMPLATES_STORAGE_KEY, JSON.stringify(runtime.templates));
+  writeProtectedItem(CHART_TEMPLATES_STORAGE_KEY, JSON.stringify(runtime.templates));
   saveScopedChartSettings(scope, runtime.chartSettings);
 }
 
@@ -5084,7 +5085,7 @@ function writeGammaOverlayCache(overlay: GammaChartOverlay) {
   const storageKey = `${GAMMA_OVERLAY_CACHE_PREFIX}${overlay.instrument.toUpperCase()}`;
   const serialized = JSON.stringify({ savedAt: Date.now(), overlay });
   try { window.sessionStorage.setItem(storageKey, serialized); } catch {}
-  try { window.localStorage.setItem(storageKey, serialized); } catch {}
+  try { writeProtectedItem(storageKey, serialized); } catch {}
 }
 
 function readValueAreaOverlayCache(
@@ -11184,7 +11185,7 @@ export default function KwantifyWorkspace({
     setColorHsv(rgbToHsv(normalized));
     const nextRecentColors = [normalized, ...recentColors.filter((color) => color !== normalized)].slice(0, 12);
     setRecentColors(nextRecentColors);
-    window.localStorage.setItem("olisa-recent-colors", JSON.stringify(nextRecentColors));
+    writeProtectedItem("olisa-recent-colors", JSON.stringify(nextRecentColors));
     if (!colorPicker) return;
     setDraftChartSettings((current) => ({ ...current, themeLinked: false, [colorPicker]: normalized }));
     setChartSettings((current) => ({ ...current, themeLinked: false, [colorPicker]: normalized }));
@@ -11256,7 +11257,7 @@ export default function KwantifyWorkspace({
     const savedSettings = normalizeChartSettings({ ...draftChartSettings, themeLinked: false });
     const nextTemplates = [...templates.filter((template) => template.name !== name), { name, settings: savedSettings }];
     setTemplates(nextTemplates);
-    window.localStorage.setItem(
+    writeProtectedItem(
       CHART_TEMPLATES_STORAGE_KEY,
       JSON.stringify(nextTemplates),
     );
@@ -11267,7 +11268,7 @@ export default function KwantifyWorkspace({
   function deleteChartTemplate(name: string) {
     const nextTemplates = templates.filter((template) => template.name !== name);
     setTemplates(nextTemplates);
-    window.localStorage.setItem(
+    writeProtectedItem(
       CHART_TEMPLATES_STORAGE_KEY,
       JSON.stringify(nextTemplates),
     );
@@ -11594,12 +11595,12 @@ export default function KwantifyWorkspace({
     // Never write before the saved preference has been restored, or the
     // closed initial state would clobber a saved open panel on every load.
     if (!rightPanelHydratedRef.current) return;
-    window.localStorage.setItem("kwantdesk-right-panel-state", rightPanel ?? "");
+    writeProtectedItem("kwantdesk-right-panel-state", rightPanel ?? "");
     window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
   }, [rightPanel]);
 
   useEffect(() => {
-    window.localStorage.setItem("kwantdesk-bottom-panel-minimized", String(bottomMinimized));
+    writeProtectedItem("kwantdesk-bottom-panel-minimized", String(bottomMinimized));
     window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
   }, [bottomMinimized]);
 
@@ -11607,8 +11608,8 @@ export default function KwantifyWorkspace({
     if (workspaceScopeHydratingRef.current) return;
     // Persist globally (the favourites bar is shared by every chart) and keep
     // writing the legacy scoped key so an older build still reads them.
-    window.localStorage.setItem(GLOBAL_FAVOURITE_INTERVALS_KEY, JSON.stringify(favTFs));
-    window.localStorage.setItem(
+    writeProtectedItem(GLOBAL_FAVOURITE_INTERVALS_KEY, JSON.stringify(favTFs));
+    writeProtectedItem(
       workspaceScopeStorageKey(chartWorkspaceScopeRef.current, "olisa-chart-favourite-intervals"),
       JSON.stringify(favTFs),
     );
@@ -11617,7 +11618,7 @@ export default function KwantifyWorkspace({
 
   useEffect(() => {
     if (workspaceScopeHydratingRef.current) return;
-    window.localStorage.setItem(GLOBAL_FAVOURITE_INSTRUMENTS_KEY, JSON.stringify(favInstruments));
+    writeProtectedItem(GLOBAL_FAVOURITE_INSTRUMENTS_KEY, JSON.stringify(favInstruments));
     window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
   }, [favInstruments]);
 
@@ -11627,7 +11628,7 @@ export default function KwantifyWorkspace({
     // Persist after the interaction settles so synchronous localStorage writes
     // never block the chart or settings drawer while the pointer is moving.
     const timer = window.setTimeout(() => {
-      window.localStorage.setItem(
+      writeProtectedItem(
         workspaceScopeStorageKey(chartWorkspaceScopeRef.current, CHART_INDICATORS_STORAGE_KEY),
         JSON.stringify(clonePaneIndicatorState(paneIndicators)),
       );
@@ -11658,7 +11659,7 @@ export default function KwantifyWorkspace({
       setBottomPanelHeight((currentHeight) => {
         const nextHeight = Math.min(maxHeight, Math.max(BOTTOM_PANEL_MIN_HEIGHT, currentHeight));
         if (nextHeight !== currentHeight) {
-          window.localStorage.setItem("olisa-bottom-panel-height", String(nextHeight));
+          writeProtectedItem("olisa-bottom-panel-height", String(nextHeight));
         }
         return nextHeight;
       });
@@ -11819,7 +11820,7 @@ export default function KwantifyWorkspace({
   }, []);
 
   useEffect(() => {
-    window.localStorage.setItem(
+    writeProtectedItem(
       "kwantify-hidden-paper-fill-markers-v1",
       JSON.stringify(hiddenPaperFillMarkers),
     );
@@ -11827,7 +11828,7 @@ export default function KwantifyWorkspace({
 
   useEffect(() => {
     if (selectedPaperTradingAccount?.id) {
-      window.localStorage.setItem("kwantify-selected-paper-account", selectedPaperTradingAccount.id);
+      writeProtectedItem("kwantify-selected-paper-account", selectedPaperTradingAccount.id);
     }
   }, [selectedPaperTradingAccount?.id]);
 
@@ -11941,42 +11942,42 @@ export default function KwantifyWorkspace({
   }, []);
 
   useEffect(() => {
-    window.localStorage.setItem("olisa-broker-connections", JSON.stringify(brokerConnections));
+    writeProtectedItem("olisa-broker-connections", JSON.stringify(brokerConnections));
   }, [brokerConnections]);
 
   useEffect(() => {
     if (workspaceScopeHydratingRef.current) return;
-    window.localStorage.setItem(workspaceScopeStorageKey(chartWorkspaceScopeRef.current, "olisa-chart-workspace-layout"), workspaceLayout);
+    writeProtectedItem(workspaceScopeStorageKey(chartWorkspaceScopeRef.current, "olisa-chart-workspace-layout"), workspaceLayout);
   }, [workspaceLayout]);
 
   useEffect(() => {
     if (workspaceScopeHydratingRef.current) return;
-    window.localStorage.setItem(workspaceScopeStorageKey(chartWorkspaceScopeRef.current, WORKSPACE_LAYOUT_LOCK_STORAGE_KEY), String(workspaceLocked));
+    writeProtectedItem(workspaceScopeStorageKey(chartWorkspaceScopeRef.current, WORKSPACE_LAYOUT_LOCK_STORAGE_KEY), String(workspaceLocked));
   }, [workspaceLocked]);
 
   useEffect(() => {
     if (workspaceScopeHydratingRef.current) return;
-    window.localStorage.setItem(workspaceScopeStorageKey(chartWorkspaceScopeRef.current, "olisa-chart-workspace-split-ratio"), String(workspaceSplitRatio));
+    writeProtectedItem(workspaceScopeStorageKey(chartWorkspaceScopeRef.current, "olisa-chart-workspace-split-ratio"), String(workspaceSplitRatio));
   }, [workspaceSplitRatio]);
 
   useEffect(() => {
     if (workspaceScopeHydratingRef.current) return;
-    window.localStorage.setItem(workspaceScopeStorageKey(chartWorkspaceScopeRef.current, "olisa-chart-workspace-quad-split"), JSON.stringify(workspaceQuadSplit));
+    writeProtectedItem(workspaceScopeStorageKey(chartWorkspaceScopeRef.current, "olisa-chart-workspace-quad-split"), JSON.stringify(workspaceQuadSplit));
   }, [workspaceQuadSplit]);
 
   useEffect(() => {
     if (workspaceScopeHydratingRef.current) return;
-    window.localStorage.setItem(workspaceScopeStorageKey(chartWorkspaceScopeRef.current, "olisa-chart-workspace-panes"), JSON.stringify(workspacePanes));
+    writeProtectedItem(workspaceScopeStorageKey(chartWorkspaceScopeRef.current, "olisa-chart-workspace-panes"), JSON.stringify(workspacePanes));
   }, [workspacePanes]);
 
   useEffect(() => {
     if (workspaceScopeHydratingRef.current) return;
-    window.localStorage.setItem(workspaceScopeStorageKey(chartWorkspaceScopeRef.current, "olisa-chart-workspace-tree"), JSON.stringify(workspaceTree));
+    writeProtectedItem(workspaceScopeStorageKey(chartWorkspaceScopeRef.current, "olisa-chart-workspace-tree"), JSON.stringify(workspaceTree));
   }, [workspaceTree]);
 
   useEffect(() => {
     if (workspaceScopeHydratingRef.current) return;
-    window.localStorage.setItem(
+    writeProtectedItem(
       workspaceScopeStorageKey(chartWorkspaceScopeRef.current, "olisa-chart-workspace-linked-panes"),
       JSON.stringify([...linkedViewportPaneIds]),
     );
@@ -11984,7 +11985,7 @@ export default function KwantifyWorkspace({
 
   useEffect(() => {
     if (workspaceScopeHydratingRef.current) return;
-    window.localStorage.setItem(
+    writeProtectedItem(
       workspaceScopeStorageKey(chartWorkspaceScopeRef.current, "olisa-chart-workspace-crosshair-panes"),
       JSON.stringify([...linkedCrosshairPaneIds]),
     );
@@ -11992,7 +11993,7 @@ export default function KwantifyWorkspace({
 
   useEffect(() => {
     if (workspaceScopeHydratingRef.current) return;
-    window.localStorage.setItem(
+    writeProtectedItem(
       workspaceScopeStorageKey(chartWorkspaceScopeRef.current, "olisa-chart-workspace-hidden-candles"),
       JSON.stringify([...candlesHiddenPaneIds]),
     );
@@ -12001,7 +12002,7 @@ export default function KwantifyWorkspace({
   useEffect(() => {
     if (!preferencesReady || workspaceScopeHydratingRef.current) return;
     const timer = window.setTimeout(() => {
-      window.localStorage.setItem(
+      writeProtectedItem(
         workspaceScopeStorageKey(chartWorkspaceScopeRef.current, WORKSPACE_FLOATING_WINDOWS_STORAGE_KEY),
         JSON.stringify(workspaceFloatingWindows),
       );
@@ -12012,7 +12013,7 @@ export default function KwantifyWorkspace({
 
   useEffect(() => {
     if (workspaceScopeHydratingRef.current) return;
-    window.localStorage.setItem(
+    writeProtectedItem(
       workspaceScopeStorageKey(chartWorkspaceScopeRef.current, WORKSPACE_PRESETS_STORAGE_KEY),
       JSON.stringify(workspacePresets),
     );
@@ -12024,7 +12025,7 @@ export default function KwantifyWorkspace({
       && workspacePresets.some((preset) => preset.id === activeWorkspacePresetId)
     ) {
       if (!workspaceScopeHydratingRef.current) {
-        window.localStorage.setItem(
+        writeProtectedItem(
           workspaceScopeStorageKey(chartWorkspaceScopeRef.current, ACTIVE_WORKSPACE_PRESET_STORAGE_KEY),
           activeWorkspacePresetId,
         );
@@ -12039,7 +12040,7 @@ export default function KwantifyWorkspace({
 
   useEffect(() => {
     if (workspaceScopeHydratingRef.current) return;
-    window.localStorage.setItem(workspaceScopeStorageKey(chartWorkspaceScopeRef.current, "olisa-chart-workspace-active-pane"), activePaneId);
+    writeProtectedItem(workspaceScopeStorageKey(chartWorkspaceScopeRef.current, "olisa-chart-workspace-active-pane"), activePaneId);
   }, [activePaneId]);
 
   useEffect(() => {
@@ -12064,20 +12065,20 @@ export default function KwantifyWorkspace({
   }, [activeWorkspacePane, connectedBroker, selectedInstrument, selectedPeriod, selectedTimeframe, selectedWatchlistKey]);
 
   useEffect(() => {
-    window.localStorage.setItem("olisa-watchlist-favorites", JSON.stringify(watchlistFavorites));
+    writeProtectedItem("olisa-watchlist-favorites", JSON.stringify(watchlistFavorites));
   }, [watchlistFavorites]);
 
   useEffect(() => {
-    window.localStorage.setItem("olisa-watchlist-flags", JSON.stringify(watchlistFlags));
+    writeProtectedItem("olisa-watchlist-flags", JSON.stringify(watchlistFlags));
   }, [watchlistFlags]);
 
   useEffect(() => {
-    window.localStorage.setItem("olisa-watchlist-sections", JSON.stringify(watchlistSections));
+    writeProtectedItem("olisa-watchlist-sections", JSON.stringify(watchlistSections));
   }, [watchlistSections]);
 
   useEffect(() => {
     if (workspaceScopeHydratingRef.current) return;
-    window.localStorage.setItem(
+    writeProtectedItem(
       workspaceScopeStorageKey(chartWorkspaceScopeRef.current, PANE_LEVEL_VISIBILITY_STORAGE_KEY),
       JSON.stringify(clonePaneLevelVisibility(paneLevelVisibility)),
     );
@@ -13660,7 +13661,7 @@ export default function KwantifyWorkspace({
     // theme after the page had already painted. Theme colours are account
     // identity now, so the migration may mark completion but must not mutate
     // the active palette.
-    window.localStorage.setItem(migrationKey, "applied");
+    writeProtectedItem(migrationKey, "applied");
   }, [authChecked]);
 
   useEffect(() => {
@@ -13757,7 +13758,7 @@ export default function KwantifyWorkspace({
       const nextHeight = Math.min(maxHeight, Math.max(BOTTOM_PANEL_MIN_HEIGHT, rawHeight));
       setBottomMinimized(false);
       setBottomPanelHeight(nextHeight);
-      window.localStorage.setItem("olisa-bottom-panel-height", String(nextHeight));
+      writeProtectedItem("olisa-bottom-panel-height", String(nextHeight));
     };
 
     const handleMouseUp = () => {
@@ -14507,7 +14508,7 @@ export default function KwantifyWorkspace({
     setSelectedPeriod(nextPane.period);
     setConnectedBroker(nextPane.broker);
     setSelectedWatchlistKey(nextPane.watchlistKey);
-    window.localStorage.setItem("olisa-connected-broker", nextPane.broker);
+    writeProtectedItem("olisa-connected-broker", nextPane.broker);
     window.sessionStorage.setItem("olisa-broker-session", JSON.stringify({ broker: nextPane.broker, mode: brokerMode, connectedAt: new Date().toISOString() }));
   }, [brokerMode, workspacePanes]);
 
@@ -15164,7 +15165,7 @@ export default function KwantifyWorkspace({
   const persistWorkspacePresets = (nextPresets: WorkspacePreset[]) => {
     const normalizedPresets = normalizeWorkspacePresets(nextPresets, chartWorkspaceScopeRef.current);
     setWorkspacePresets(normalizedPresets);
-    window.localStorage.setItem(
+    writeProtectedItem(
       workspaceScopeStorageKey(chartWorkspaceScopeRef.current, WORKSPACE_PRESETS_STORAGE_KEY),
       JSON.stringify(normalizedPresets),
     );
@@ -15617,7 +15618,7 @@ export default function KwantifyWorkspace({
       const viewportMaximum = Math.max(RIGHT_PANEL_MIN_WIDTH, window.innerWidth - 96);
       const nextWidth = Math.min(RIGHT_PANEL_MAX_WIDTH, viewportMaximum, Math.max(RIGHT_PANEL_MIN_WIDTH, rawWidth));
       setRightPanelWidth(nextWidth);
-      window.localStorage.setItem("olisa-right-panel-width", String(nextWidth));
+      writeProtectedItem("olisa-right-panel-width", String(nextWidth));
     };
     const handleMouseUp = () => {
       document.removeEventListener("mousemove", handleMouseMove);
@@ -15720,7 +15721,7 @@ export default function KwantifyWorkspace({
   const toggleBrokerFavourite = (brokerName: string) => {
     setBrokerFavourites((current) => {
       const next = current.includes(brokerName) ? current.filter((name) => name !== brokerName) : [...current, brokerName];
-      window.localStorage.setItem("olisa-broker-favourites", JSON.stringify(next));
+      writeProtectedItem("olisa-broker-favourites", JSON.stringify(next));
       return next;
     });
   };
@@ -15767,7 +15768,7 @@ export default function KwantifyWorkspace({
     setBrokerConnections((current) => ({ ...current, [brokerName]: nextConnection }));
     if (paperAccount?.id) setSelectedPaperAccountId(paperAccount.id);
     setConnectedBroker(brokerName);
-    window.localStorage.setItem("olisa-connected-broker", brokerName);
+    writeProtectedItem("olisa-connected-broker", brokerName);
     window.sessionStorage.setItem("olisa-broker-session", JSON.stringify(nextConnection));
     setSelectedBroker(null);
     setShowBrokerModal(false);
@@ -16091,7 +16092,7 @@ export default function KwantifyWorkspace({
       const nextLiquidityInstrument = liquidityMapInstrument(symbol);
       if (!nextLiquidityInstrument) return;
       setSelectedLiquidityMapInstrument(nextLiquidityInstrument);
-      window.localStorage.setItem(LIQUIDITY_MAP_INSTRUMENT_STORAGE_KEY, nextLiquidityInstrument);
+      writeProtectedItem(LIQUIDITY_MAP_INSTRUMENT_STORAGE_KEY, nextLiquidityInstrument);
       if (watchlistKey) setSelectedWatchlistKey(watchlistKey);
       return;
     }
@@ -16121,7 +16122,7 @@ export default function KwantifyWorkspace({
     if (watchlistKey) setSelectedWatchlistKey(watchlistKey);
     if (broker && broker !== connectedBroker) {
       setConnectedBroker(broker);
-      window.localStorage.setItem("olisa-connected-broker", broker);
+      writeProtectedItem("olisa-connected-broker", broker);
       window.sessionStorage.setItem("olisa-broker-session", JSON.stringify({ broker, mode: brokerMode, connectedAt: new Date().toISOString() }));
     }
   };
@@ -16199,7 +16200,7 @@ export default function KwantifyWorkspace({
     if (watchlistKey) setSelectedWatchlistKey(watchlistKey);
     if (nextBroker !== connectedBroker) {
       setConnectedBroker(nextBroker);
-      window.localStorage.setItem("olisa-connected-broker", nextBroker);
+      writeProtectedItem("olisa-connected-broker", nextBroker);
       window.sessionStorage.setItem("olisa-broker-session", JSON.stringify({ broker: nextBroker, mode: brokerMode, connectedAt: new Date().toISOString() }));
     }
   };
@@ -16266,7 +16267,7 @@ export default function KwantifyWorkspace({
     }
     selectPaperTradingAccount(account.id);
     setConnectedBroker("Paper Trading");
-    window.localStorage.setItem("olisa-connected-broker", "Paper Trading");
+    writeProtectedItem("olisa-connected-broker", "Paper Trading");
     setBrokerMode("Demo");
     setShowTradesMenu(false);
     setTradesMenuView("root");
@@ -19704,7 +19705,7 @@ export default function KwantifyWorkspace({
                                 if (val) {
                                   const updated = watchlistSections.map((item) => item.id === section.id ? { ...item, name: val } : item);
                                   setWatchlistSections(updated);
-                                  localStorage.setItem("olisa-watchlist-sections", JSON.stringify(updated));
+                                  writeProtectedItem("olisa-watchlist-sections", JSON.stringify(updated));
                                 }
                                 setRenamingSectionId(null);
                               }
@@ -19717,7 +19718,7 @@ export default function KwantifyWorkspace({
                               if (val) {
                                 const updated = watchlistSections.map((item) => item.id === section.id ? { ...item, name: val } : item);
                                 setWatchlistSections(updated);
-                                localStorage.setItem("olisa-watchlist-sections", JSON.stringify(updated));
+                                writeProtectedItem("olisa-watchlist-sections", JSON.stringify(updated));
                               }
                               setRenamingSectionId(null);
                             }}

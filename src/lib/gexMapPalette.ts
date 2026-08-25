@@ -1,3 +1,5 @@
+import { writeProtectedItem } from "./browserStorageQuota.ts";
+
 export type GexMapPalette = {
   useThemeColors: boolean;
   /** Strongest positive-exposure tone. */
@@ -246,7 +248,7 @@ export function loadGexMapPalette(): GexMapPalette {
 export function saveGexMapPalette(palette: GexMapPalette) {
   if (typeof window === "undefined") return;
   const normalized = normalizeGexMapPalette(palette);
-  window.localStorage.setItem(GEX_MAP_PALETTE_STORAGE_KEY, JSON.stringify(normalized));
+  writeProtectedItem(GEX_MAP_PALETTE_STORAGE_KEY, JSON.stringify(normalized));
   window.dispatchEvent(new CustomEvent(GEX_MAP_PALETTE_CHANGE_EVENT, { detail: normalized }));
   window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
 }

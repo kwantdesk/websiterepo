@@ -1,3 +1,5 @@
+import { writeProtectedItem } from "./browserStorageQuota.ts";
+
 export type StrategyBuilderMode = "research" | "pro" | "fast";
 
 export type StrategyBuilderStoredMessage = {
@@ -118,7 +120,7 @@ export function saveStrategyBuilderWorkspace(
   accountId = LOCAL_STRATEGY_BUILDER_ACCOUNT_ID,
 ) {
   if (!hasWindow()) return;
-  window.localStorage.setItem(storageKey(accountId), JSON.stringify(workspace));
+  writeProtectedItem(storageKey(accountId), JSON.stringify(workspace));
 }
 
 export function updateStrategyBuilderThread(

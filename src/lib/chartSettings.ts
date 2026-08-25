@@ -2,6 +2,7 @@
 
 import type { ThemeColors } from "@/lib/theme";
 import { normalizeTimeZone } from "@/lib/timeZones";
+import { writeProtectedItem } from "./browserStorageQuota.ts";
 
 export interface ChartSettings {
   themeLinked: boolean;
@@ -136,7 +137,7 @@ export function loadStoredChartSettings() {
 export function saveStoredChartSettings(settings: ChartSettings) {
   if (typeof window === "undefined") return;
   const normalized = normalizeChartSettings(settings);
-  window.localStorage.setItem(CHART_SETTINGS_STORAGE_KEY, JSON.stringify(normalized));
+  writeProtectedItem(CHART_SETTINGS_STORAGE_KEY, JSON.stringify(normalized));
   // CSS variables repaint the application chrome immediately, but canvas
   // charts keep their palette in React state. Give every mounted chart surface
   // the same normalized payload so a theme change cannot leave stale panes

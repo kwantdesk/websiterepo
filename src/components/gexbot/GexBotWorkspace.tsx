@@ -39,6 +39,7 @@ import type {
 } from "@/lib/gexBotTypes";
 import { subscribeRithmicIndicatorTrades, type RithmicIndicatorStreamStatus } from "@/lib/rithmicIndicatorStream";
 import { readWorkspaceData, writeWorkspaceData } from "@/lib/workspaceDataCache";
+import { writeProtectedItem } from "@/lib/browserStorageQuota";
 
 type View = "classic" | "state" | "orderflow" | "research";
 type Expiry = "full" | "zero" | "one";
@@ -971,7 +972,7 @@ export default function GexBotWorkspace() {
   const rithmicContract = rithmicRoot ? rithmicContractForRoot(rithmicRoot) : null;
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ version: 3, view, ticker, expiry, stateMetric, dataset, appearance, orderflowPanels }));
+    writeProtectedItem(STORAGE_KEY, JSON.stringify({ version: 3, view, ticker, expiry, stateMetric, dataset, appearance, orderflowPanels }));
     if (window.location.pathname === "/gexbot" || window.location.pathname === "/gex-box" || window.location.pathname.startsWith("/gex-box/")) {
       const params = new URLSearchParams({
         ticker,

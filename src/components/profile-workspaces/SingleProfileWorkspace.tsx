@@ -26,6 +26,7 @@ import {
   VOLUME_PROFILE_GRADIENT_OFF,
   resolveVolumeProfileGradient,
 } from "@/lib/volumeProfileGradients";
+import { writeProtectedItem } from "@/lib/browserStorageQuota";
 
 type ProfileKind = "tpo" | "volume";
 type ProfilePreset =
@@ -792,7 +793,7 @@ export default function SingleProfileWorkspace({
       subperiodMinutes: Math.max(5, Math.round(draft.subperiodMinutes)),
     };
     setSettings(next);
-    localStorage.setItem(storageKey, JSON.stringify(next));
+    writeProtectedItem(storageKey, JSON.stringify(next));
     setSettingsOpen(false);
   };
 

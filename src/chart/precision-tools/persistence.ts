@@ -2,6 +2,7 @@
 
 import { PRECISION_TOOL_IDS, type PrecisionDocument, type PrecisionObject, type PrecisionToolConfig, type PrecisionToolbarState } from "./types";
 import { createDefaultConfigs, defaultPrecisionToolbarState } from "./defaults";
+import { writeProtectedItem } from "@/lib/browserStorageQuota";
 
 const objectPrefix = "kwantdesk:precision-tools:v1";
 const configPrefix = "kwantdesk:precision-tool-configs:v1";
@@ -48,7 +49,7 @@ export function loadPrecisionDocument(workspaceId: string, chartId: string): Pre
 
 export function savePrecisionDocument(document: PrecisionDocument): void {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(precisionObjectStorageKey(document.workspaceId, document.chartId), JSON.stringify({ ...document, savedAt: Date.now() }));
+  writeProtectedItem(precisionObjectStorageKey(document.workspaceId, document.chartId), JSON.stringify({ ...document, savedAt: Date.now() }));
 }
 
 export function loadPrecisionConfigs(identity: string, colors?: { primary?: string; bullish?: string; bearish?: string }): PrecisionToolConfig[] {
@@ -69,7 +70,7 @@ export function loadPrecisionConfigs(identity: string, colors?: { primary?: stri
 
 export function savePrecisionConfigs(identity: string, configs: PrecisionToolConfig[]): void {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(precisionConfigStorageKey(identity), JSON.stringify(configs));
+  writeProtectedItem(precisionConfigStorageKey(identity), JSON.stringify(configs));
 }
 
 export function loadPrecisionToolbar(workspaceId: string): PrecisionToolbarState {
@@ -88,7 +89,7 @@ export function loadPrecisionToolbar(workspaceId: string): PrecisionToolbarState
 
 export function savePrecisionToolbar(workspaceId: string, toolbar: PrecisionToolbarState): void {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(precisionToolbarStorageKey(workspaceId), JSON.stringify({ ...toolbar, activeTool: null, mode: "select" }));
+  writeProtectedItem(precisionToolbarStorageKey(workspaceId), JSON.stringify({ ...toolbar, activeTool: null, mode: "select" }));
 }
 
 export function exportPrecisionDocument(document: PrecisionDocument, instrumentId = ""): string {

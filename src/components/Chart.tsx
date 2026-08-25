@@ -522,6 +522,7 @@ import {
   type ChartViewportSyncRole,
   type ChartViewportSnapshot,
 } from "@/lib/chartViewportSync";
+import { writeProtectedItem } from "@/lib/browserStorageQuota";
 
 interface ChartProps {
   candles: Candle[];
@@ -6848,7 +6849,7 @@ function Chart({
   }, [indicatorPaneHeight, onIndicatorPaneHeightChange]);
   useEffect(() => {
     if (typeof window === "undefined" || !liveCandleEventKey) return;
-    window.localStorage.setItem(
+    writeProtectedItem(
       `kwantdesk:indicator-pane-layout:${liveCandleEventKey}`,
       JSON.stringify(indicatorPaneLayout),
     );

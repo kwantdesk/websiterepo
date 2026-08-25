@@ -78,6 +78,7 @@ import {
   gexMapCacheKey,
   readWorkspaceData,
 } from "@/lib/workspaceDataCache";
+import { writeProtectedItem } from "@/lib/browserStorageQuota";
 
 const GEX_MAP_TIME_HORIZON_KEY = "kwantdesk:gex-map-time-horizon:v1";
 
@@ -1846,7 +1847,7 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
 
   useEffect(() => {
     if (!starPreferencesHydratedRef.current) return;
-    window.localStorage.setItem(GEX_MAP_STAR_PREFERENCES_KEY, JSON.stringify({ viewMode, settings: starSettings }));
+    writeProtectedItem(GEX_MAP_STAR_PREFERENCES_KEY, JSON.stringify({ viewMode, settings: starSettings }));
   }, [starSettings, viewMode]);
 
   useEffect(() => {

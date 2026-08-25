@@ -150,6 +150,7 @@ import {
   persistGameplanScoringRecord,
   writePendingScoringTransition,
 } from "@/lib/gameplanScoringTransition";
+import { writeProtectedItem } from "@/lib/browserStorageQuota";
 
 type SocialTab = "today" | "reasoning" | "precords" | "desks" | "feed" | "rankings" | "cards" | "profile";
 type FeedFilter = "all" | "proven" | "mine";
@@ -1909,7 +1910,7 @@ export default function SocialsWorkspace({
     setZyonDraftLocking(true);
     setNotice("");
     writePendingScoringTransition({ record: optimisticRecord, state: "saving" });
-    window.localStorage.setItem("kwantdesk:gameplan-page-tab", "scoring");
+    writeProtectedItem("kwantdesk:gameplan-page-tab", "scoring");
     onOpenGameplanScoring?.();
 
     try {
@@ -3359,7 +3360,7 @@ export default function SocialsWorkspace({
               </div>
             </div>
           ) : own ? (
-            <button type="button" onClick={() => { window.localStorage.setItem("kwantdesk:gameplan-page-tab", "scoring"); router.push("/gameplan?tab=scoring"); }} className="mt-4 flex h-9 items-center gap-2 rounded-xl border border-primary/25 bg-primary/[0.06] px-3 text-[9px] font-semibold text-primary hover:bg-primary/10"><Plus className="h-3.5 w-3.5" />Open Scoring to add execution</button>
+            <button type="button" onClick={() => { writeProtectedItem("kwantdesk:gameplan-page-tab", "scoring"); router.push("/gameplan?tab=scoring"); }} className="mt-4 flex h-9 items-center gap-2 rounded-xl border border-primary/25 bg-primary/[0.06] px-3 text-[9px] font-semibold text-primary hover:bg-primary/10"><Plus className="h-3.5 w-3.5" />Open Scoring to add execution</button>
           ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-1.5 border-t border-border bg-background/20 px-4 py-2.5">
@@ -4164,7 +4165,7 @@ export default function SocialsWorkspace({
                     value={rankingDeskId}
                     onChange={(event) => {
                       setRankingDeskId(event.target.value);
-                      window.localStorage.setItem("kwantdesk-active-desk", event.target.value);
+                      writeProtectedItem("kwantdesk-active-desk", event.target.value);
                     }}
                     className="h-8 min-w-[180px] rounded-lg border border-border bg-background px-3 text-[8px] font-semibold outline-none"
                     aria-label="Select Desk ranking"

@@ -21,6 +21,7 @@ import {
   sourceIndicatorLanguageLabel,
   type SourceIndicatorLanguage,
 } from "@/lib/indicatorSourceAdapters";
+import { writeProtectedItem } from "@/lib/browserStorageQuota";
 
 const SOURCE_INDICATOR_STORAGE_KEY = "kwantdesk-source-code-indicators:v1";
 const SOURCE_INDICATOR_ID = "source-code-indicator";
@@ -99,7 +100,7 @@ function readScripts() {
 }
 
 function saveScripts(scripts: SavedSourceIndicator[]) {
-  window.localStorage.setItem(SOURCE_INDICATOR_STORAGE_KEY, JSON.stringify(scripts));
+  writeProtectedItem(SOURCE_INDICATOR_STORAGE_KEY, JSON.stringify(scripts));
   window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
 }
 

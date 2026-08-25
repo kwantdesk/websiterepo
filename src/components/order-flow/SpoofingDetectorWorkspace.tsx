@@ -19,6 +19,7 @@ import {
   type SpoofingDetectorRow,
   type SpoofingDetectorSettings,
 } from "@/lib/spoofingDetector";
+import { writeProtectedItem } from "@/lib/browserStorageQuota";
 
 type SpoofingDetectorWorkspaceProps = {
   workspaceId: string;
@@ -441,7 +442,7 @@ export default function SpoofingDetectorWorkspace({
 
   const saveSettings = () => {
     const next = normalizeSpoofingDetectorSettings(draft);
-    window.localStorage.setItem(storageKey, JSON.stringify(next));
+    writeProtectedItem(storageKey, JSON.stringify(next));
     setSettings(next);
     setDraft(next);
     engineRef.current.reset();

@@ -45,6 +45,7 @@ import {
   mergeOneFamilyPositioning,
   type GexBotFlowPayload,
 } from "@/lib/gexBotFlow";
+import { writeProtectedItem } from "@/lib/browserStorageQuota";
 
 const Chart = dynamic(() => import("@/components/Chart"), {
   ssr: false,
@@ -1530,12 +1531,12 @@ export default function LevelzWorkspace() {
 
   useEffect(() => {
     if (!layoutReady) return;
-    window.localStorage.setItem(LEVELZ_LAYOUT_STORAGE_KEY, JSON.stringify(panels));
+    writeProtectedItem(LEVELZ_LAYOUT_STORAGE_KEY, JSON.stringify(panels));
   }, [layoutReady, panels]);
 
   useEffect(() => {
     if (!layoutReady) return;
-    window.localStorage.setItem(LEVELZ_INTELLIGENCE_COLLAPSED_STORAGE_KEY, String(intelligenceCollapsed));
+    writeProtectedItem(LEVELZ_INTELLIGENCE_COLLAPSED_STORAGE_KEY, String(intelligenceCollapsed));
   }, [intelligenceCollapsed, layoutReady]);
 
   const updatePanel = (id: string, patch: Partial<PanelConfig>) => {

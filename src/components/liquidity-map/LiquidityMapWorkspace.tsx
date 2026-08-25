@@ -3,6 +3,7 @@
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import KwantLoader from "@/components/KwantLoader";
 import { readStoredTheme, THEME_STORAGE_KEY } from "@/lib/theme";
+import { writeProtectedItem } from "@/lib/browserStorageQuota";
 
 type LiquidityMapReplayControl = {
   tradingDate: string;
@@ -204,7 +205,7 @@ function LiquidityMapWorkspace({
         const nextInstrument = liquidityMapInstrument(activeSymbol);
         if (nextInstrument) {
           if (nextInstrument !== instrument) {
-            window.localStorage.setItem("kwantdesk:liquidity-map-instrument:v1", nextInstrument);
+            writeProtectedItem("kwantdesk:liquidity-map-instrument:v1", nextInstrument);
             onInstrumentChange?.(nextInstrument);
           }
         }
@@ -225,7 +226,7 @@ function LiquidityMapWorkspace({
         const nextInstrument = liquidityMapInstrument(activeSymbol);
         if (nextInstrument) {
           if (nextInstrument !== instrument) {
-            window.localStorage.setItem("kwantdesk:liquidity-map-instrument:v1", nextInstrument);
+            writeProtectedItem("kwantdesk:liquidity-map-instrument:v1", nextInstrument);
             onInstrumentChange?.(nextInstrument);
           }
         }

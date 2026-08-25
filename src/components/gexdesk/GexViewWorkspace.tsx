@@ -51,6 +51,7 @@ import {
   gexdeskHistoryCacheKey,
   readWorkspaceData,
 } from "@/lib/workspaceDataCache";
+import { writeProtectedItem } from "@/lib/browserStorageQuota";
 
 type GexViewChartMode = "CANDLES" | "LINE";
 type GexViewChartConfig = {
@@ -480,7 +481,7 @@ export default function GexViewWorkspace({
   );
 
   useEffect(() => {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(charts));
+    writeProtectedItem(STORAGE_KEY, JSON.stringify(charts));
   }, [charts]);
 
   useEffect(() => {

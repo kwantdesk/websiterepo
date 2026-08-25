@@ -90,6 +90,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { writeProtectedItem } from "@/lib/browserStorageQuota";
 
 type DeskWorkspaceProps = {
   viewerId: string;
@@ -1135,7 +1136,7 @@ export default function DeskWorkspace({
 
   useEffect(() => {
     if (!activeDeskId) return;
-    window.localStorage.setItem("kwantdesk-active-desk", activeDeskId);
+    writeProtectedItem("kwantdesk-active-desk", activeDeskId);
     setDiscovering(false);
     if (Date.now() < suppressRefreshUntilRef.current) return;
     void loadNetwork(true, activeDeskId);
@@ -1321,7 +1322,7 @@ export default function DeskWorkspace({
     setActiveDeskId(nextDesk?.deskId ?? "");
     setActiveChannelId("");
     if (typeof window !== "undefined") {
-      if (nextDesk) window.localStorage.setItem("kwantdesk-active-desk", nextDesk.deskId);
+      if (nextDesk) writeProtectedItem("kwantdesk-active-desk", nextDesk.deskId);
       else window.localStorage.removeItem("kwantdesk-active-desk");
     }
 
@@ -1355,7 +1356,7 @@ export default function DeskWorkspace({
       setActiveChannelId(previousActiveChannelId);
       setLifecycleTarget({ action: "archive", workspace });
       if (typeof window !== "undefined") {
-        if (previousActiveDeskId) window.localStorage.setItem("kwantdesk-active-desk", previousActiveDeskId);
+        if (previousActiveDeskId) writeProtectedItem("kwantdesk-active-desk", previousActiveDeskId);
         else window.localStorage.removeItem("kwantdesk-active-desk");
       }
       onNotice(reason instanceof Error ? reason.message : "That Desk could not be archived.");
@@ -1405,7 +1406,7 @@ export default function DeskWorkspace({
       setActiveDeskId(nextDesk?.deskId ?? "");
       setActiveChannelId("");
       if (typeof window !== "undefined") {
-        if (nextDesk) window.localStorage.setItem("kwantdesk-active-desk", nextDesk.deskId);
+        if (nextDesk) writeProtectedItem("kwantdesk-active-desk", nextDesk.deskId);
         else window.localStorage.removeItem("kwantdesk-active-desk");
       }
     }
@@ -1432,7 +1433,7 @@ export default function DeskWorkspace({
       setDeleteConfirmation(confirmation);
       setLifecycleTarget({ action: "delete", workspace });
       if (typeof window !== "undefined") {
-        if (previousActiveDeskId) window.localStorage.setItem("kwantdesk-active-desk", previousActiveDeskId);
+        if (previousActiveDeskId) writeProtectedItem("kwantdesk-active-desk", previousActiveDeskId);
         else window.localStorage.removeItem("kwantdesk-active-desk");
       }
       onNotice(reason instanceof Error ? reason.message : "That Desk could not be permanently deleted.");

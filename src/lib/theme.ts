@@ -1,4 +1,5 @@
 import { relinkGexMapPaletteToTheme } from "./gexMapPalette.ts";
+import { writeProtectedItem } from "./browserStorageQuota.ts";
 
 export const defaultTheme = {
   background: "#000000",
@@ -84,7 +85,7 @@ export function applyTheme(theme?: Partial<ThemeColors>) {
 export function saveTheme(theme: ThemeColors) {
   if (typeof window === "undefined") return;
   const normalized = normalizeTheme(theme);
-  localStorage.setItem(THEME_STORAGE_KEY, JSON.stringify(normalized));
+  writeProtectedItem(THEME_STORAGE_KEY, JSON.stringify(normalized));
   applyTheme(normalized);
   // A deliberate theme choice overrides every themed surface, including a
   // custom GEX Map palette (which stays theme-linked until re-customised).

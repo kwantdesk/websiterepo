@@ -17,6 +17,7 @@ import KwantSelect from "@/components/ui/KwantSelect";
 import { useSpeechDictation } from "@/hooks/useSpeechDictation";
 import type { HistoricalZyonReplayInput } from "@/lib/historicalZyon";
 import { isZyonModelKey, ZYON_MODELS, type ZyonModelKey } from "@/lib/zyon";
+import { writeProtectedItem } from "@/lib/browserStorageQuota";
 
 type ReplayMessage = {
   id: string;
@@ -83,7 +84,7 @@ export default function HistoricalZyonPanel({
   );
 
   useEffect(() => {
-    window.localStorage.setItem("kwantdesk:zyon:model", model);
+    writeProtectedItem("kwantdesk:zyon:model", model);
   }, [model]);
 
   useEffect(() => {

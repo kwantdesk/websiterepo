@@ -63,6 +63,7 @@ import { cmeSessionDateKey } from "@/lib/chartHistoryWindow";
 import type { PaperPosition, PaperProtectionUpdate, PaperTradeFill } from "@/lib/paperTrading";
 import { sliceReplayExecutionWindow } from "@/lib/replayExecutionWindow";
 import { useVixEnvironment } from "@/hooks/useVixEnvironment";
+import { writeProtectedItem } from "@/lib/browserStorageQuota";
 
 const Chart = dynamic(() => import("@/components/Chart"), {
   ssr: false,
@@ -841,11 +842,11 @@ export default function BacktestingWorkspace({
   }, []);
 
   useEffect(() => {
-    window.localStorage.setItem("olisa-chart-favourite-intervals", JSON.stringify(favouriteTimeframes));
+    writeProtectedItem("olisa-chart-favourite-intervals", JSON.stringify(favouriteTimeframes));
   }, [favouriteTimeframes]);
 
   useEffect(() => {
-    window.localStorage.setItem(REPLAY_INDICATORS_STORAGE_KEY, JSON.stringify(replayIndicators));
+    writeProtectedItem(REPLAY_INDICATORS_STORAGE_KEY, JSON.stringify(replayIndicators));
   }, [replayIndicators]);
 
   const selectedDefinition = INSTRUMENTS.find((item) => item.id === instrument) ?? INSTRUMENTS[0];
@@ -1692,7 +1693,7 @@ export default function BacktestingWorkspace({
     const normalized = normalizeTimeZone(nextTimeZone);
     setError("");
     setReplayTimeZone(normalized);
-    window.localStorage.setItem(REPLAY_TIME_ZONE_STORAGE_KEY, normalized);
+    writeProtectedItem(REPLAY_TIME_ZONE_STORAGE_KEY, normalized);
   };
 
   const renderSetupPanel = (overlay: boolean) => (

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { DEFAULT_FREQUENT_EMOJIS, rankedEmojis, type EmojiUsage } from "@/lib/emojis";
+import { writeProtectedItem } from "@/lib/browserStorageQuota";
 
 const EMOJI_EVENT = "kwantdesk:emoji-usage-changed";
 
@@ -24,7 +25,7 @@ function readUsage(accountKey: string): EmojiUsage {
 }
 
 function writeUsage(accountKey: string, usage: EmojiUsage) {
-  window.localStorage.setItem(storageKey(accountKey), JSON.stringify(usage));
+  writeProtectedItem(storageKey(accountKey), JSON.stringify(usage));
   window.dispatchEvent(new CustomEvent(EMOJI_EVENT, { detail: { accountKey } }));
 }
 

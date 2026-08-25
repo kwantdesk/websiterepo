@@ -20,6 +20,7 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
+import { writeProtectedItem } from "@/lib/browserStorageQuota";
 
 type Theme = "midnight" | "graphite" | "obsidian";
 
@@ -51,7 +52,7 @@ export default function DashboardShell({ email }: { email: string }) {
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
-    window.localStorage.setItem("kwantdesk-theme", theme);
+    writeProtectedItem("kwantdesk-theme", theme);
   }, [theme]);
 
   return (
