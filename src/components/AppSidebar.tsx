@@ -9,6 +9,7 @@ import {
   CalendarDays,
   CalendarRange,
   Crosshair,
+  FlaskConical,
   History,
   Home,
   LineChart,
@@ -110,6 +111,7 @@ const navItems: Array<{
   { key: "news", href: "/news", label: "News", title: "News", icon: BookOpen },
   { key: "socials", href: "/socials", label: "Socials", title: "Socials", icon: UsersRound },
   { key: "journal", href: "/journal", label: "Journal", title: "Journal", icon: NotebookPen },
+  { key: "lab", href: "/lab", label: "THE LAB", title: "August V1 live desk", icon: FlaskConical },
   { key: "backtesting", href: "/backtesting", label: "Backtesting", title: "Backtesting", icon: History },
   { key: "accounts", href: "/accounts", label: "Accounts", title: "Paper and broker accounts", icon: Wallet },
 ];

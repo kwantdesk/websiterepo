@@ -5,6 +5,7 @@ import { buildArchivedValueAreaProfile } from "./archive-value-area.mjs";
 import { replayArchiveIntoBook } from "./archive-replay.mjs";
 import { CashIndexArchiver } from "./cash-index-archiver.mjs";
 import { HeatmapReplayStore } from "./heatmap-replay.mjs";
+import { LabRepositoryStore } from "./lab-repository.mjs";
 import { RithmicBookStore } from "./book-store.mjs";
 import { loadConfig } from "./config.mjs";
 import { DatabentoEquitiesTradeStream } from "./databento-equities-stream.mjs";
@@ -38,6 +39,10 @@ const heatmapReplay = new HeatmapReplayStore({
   tickSizeFor: (symbol) => tickSize(symbol),
   log: (line) => process.stdout.write(`${line}\n`),
 });
+// August V1 desk plans, Film, gates and analyst updates are published as one
+// versioned artifact in the VPS-hosted Quant Desk repository. The browser
+// consumes this read-only boundary; it never assembles a plan from vendor APIs.
+const labRepository = new LabRepositoryStore({ root: config.labRepositoryRoot });
 // Our OWN daily copy of each completed cash-index session's real minute OHLC
 // (the provider only serves it after the close, and keeps it on its own
 // terms). Archived minutes after every close, retried until complete,
@@ -1040,6 +1045,7 @@ const server = createServer(async (request, response) => {
       massiveIndices: massiveIndices.status(),
       databentoEquities: databentoEquities.status(),
       quantDataMarketSnapshots: quantDataMarketSnapshots.status(),
+      labRepository: labRepository.health(),
     });
   }
   if (!authorized(request)) {
@@ -1053,6 +1059,24 @@ const server = createServer(async (request, response) => {
     if (vendorDataEdge.canHandle(url.pathname)) {
       await vendorDataEdge.handle(request, response, url);
       return;
+    }
+    if (request.method === "GET" && url.pathname === "/v1/lab/snapshot") {
+      const root = String(url.searchParams.get("root") || "NQ").trim().toUpperCase();
+      try {
+        return json(response, 200, await labRepository.readSnapshot(root));
+      } catch (error) {
+        const status = error?.code === "ENOENT"
+          ? 404
+          : error?.code === "LAB_REPOSITORY_NOT_CONFIGURED"
+            ? 503
+            : error?.code === "LAB_ROOT_UNSUPPORTED"
+              ? 400
+              : 422;
+        return json(response, status, {
+          error: error instanceof Error ? error.message : "The Lab repository snapshot is unavailable.",
+          code: error?.code || "LAB_REPOSITORY_ERROR",
+        });
+      }
     }
     if (request.method === "GET" && url.pathname === "/v1/rithmic/systems") {
       if (config.sourceMode === "rtrader-excel") {

@@ -146,7 +146,15 @@ QUANTDATA_API_KEY=qd_...
 VENDOR_REQUEST_TIMEOUT_MS=30000
 QUANTDATA_MIN_SPACING_MS=80
 QUANTDATA_EDGE_CACHE_MS=2500
+KWANTDESK_LAB_REPOSITORY_ROOT=/opt/kwantify/QUANT-DESK-sync
 ```
+
+`KWANTDESK_LAB_REPOSITORY_ROOT` points at the VPS clone of the private Quant
+Desk repository. THE LAB reads only
+`AUGUST_V1_QUANT_DESK_FRAMEWORK/runtime/<NQ|ES>/current.json`. The artifact must
+declare `version: kwantdesk-august-v1-lab-v1` and `environment: LIVE`; missing,
+test, oversized, or malformed artifacts fail closed. The website does not
+silently rebuild a plan from direct vendor requests when the artifact is down.
 
 The Vercel project needs only `KWANTDESK_MARKET_DATA_GATEWAY_URL` and
 `KWANTDESK_MARKET_DATA_GATEWAY_TOKEN`. Direct vendor keys can remain briefly

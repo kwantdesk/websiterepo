@@ -75,6 +75,7 @@ Do not chase it and do not lower the healthcheck thresholds because of it.
    QUANTDATA_API_KEY=...                    # VPS-only vendor credential
    MASSIVE_API_KEY=...                      # VPS-only cash-index credential
    MASSIVE_INDICES_WS_URL=wss://socket.massive.com/indices
+   KWANTDESK_LAB_REPOSITORY_ROOT=/opt/kwantify/QUANT-DESK-sync
    ```
 
    `RITHMIC_GATEWAY_HOST` is overridden to `0.0.0.0` by compose; the

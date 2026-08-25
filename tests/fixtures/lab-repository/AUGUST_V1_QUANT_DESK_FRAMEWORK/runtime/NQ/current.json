@@ -1,0 +1,85 @@
+{
+  "version": "kwantdesk-august-v1-lab-v1",
+  "environment": "TEST",
+  "root": "NQ",
+  "sessionDate": "2026-08-25",
+  "phase": "PREOPEN",
+  "publishedAt": "2026-08-25T13:00:00.000Z",
+  "updatedAt": "2026-08-25T13:08:00.000Z",
+  "refreshAfterMs": 15000,
+  "receipt": {
+    "repository": "TEST FIXTURE — NOT MARKET DATA",
+    "commit": "test-only-august-v1",
+    "artifact": "runtime/NQ/current.json"
+  },
+  "mode": {
+    "value": "FOLLOW",
+    "spot": 23542.25,
+    "flip": 23608,
+    "asOf": "2026-08-25T13:08:00.000Z",
+    "prior": true,
+    "reason": "Test fixture: spot is below the prior flip; live wake must re-prove this mode."
+  },
+  "summary": {
+    "oneLiner": "Test fixture only: follow weakness beneath the flip; do not fade the first drive without a second audited hold.",
+    "dayType": "Directional test",
+    "confidence": 62,
+    "evidenceGrade": "PROVISIONAL",
+    "sampleSize": 4,
+    "killCondition": "Acceptance above the flip with both anchors holding cancels the short continuation read."
+  },
+  "film": {
+    "status": "READY",
+    "asOf": "2026-08-25T13:08:00.000Z",
+    "priorAsOf": "2026-08-25T12:56:00.000Z",
+    "deltas": [
+      { "id": "spot", "label": "Spot", "previous": 23571.5, "current": 23542.25, "delta": -29.25, "direction": "CHASING_DOWN", "interpretation": "Price moved lower between frames." },
+      { "id": "put-major", "label": "Put major", "previous": 23530, "current": 23505, "delta": -25, "direction": "CHASING_DOWN", "interpretation": "The put anchor followed price lower; this is trend fuel, not repaired defense." },
+      { "id": "call-major", "label": "Call major", "previous": 23680, "current": 23680, "delta": 0, "direction": "HOLDING", "interpretation": "The call wall has not migrated yet." },
+      { "id": "flip", "label": "Zero-gamma flip", "previous": 23602, "current": 23608, "delta": 6, "direction": "DIVERGING", "interpretation": "The flip moved away from the falling tape." }
+    ]
+  },
+  "cogs": [
+    { "id": "fence", "label": "Dealer fence", "status": "FROZEN", "source": "GEXBot repository receipt", "asOf": "2026-08-24T20:00:00.000Z", "detail": "Prior RTH fence; wake pull required." },
+    { "id": "tape", "label": "Futures tape", "status": "LIVE", "source": "Rithmic VPS", "asOf": "2026-08-25T13:08:00.000Z", "detail": "Normalized NQ trades advancing." },
+    { "id": "profile", "label": "Auction profile", "status": "LIVE", "source": "Databento archive", "asOf": "2026-08-25T13:06:00.000Z", "detail": "Overnight value and prior RTH structure loaded." },
+    { "id": "pit", "label": "Historical PIT", "status": "NOT_REQUIRED", "source": "QuantData archive", "asOf": "2026-08-24T20:00:00.000Z", "detail": "Research cog is not required for a live click." }
+  ],
+  "gates": [
+    { "id": "vix", "label": "VIX structure", "value": "Below risk line", "status": "PASS", "asOf": "2026-08-25T13:08:00.000Z", "rule": "No contagion trigger is active in this test fixture." },
+    { "id": "es", "label": "ES agreement", "value": "Below own flip", "status": "PASS", "asOf": "2026-08-25T13:08:00.000Z", "rule": "Leader and NQ agree on the prior mode." },
+    { "id": "event", "label": "Event window", "value": "Clear", "status": "PASS", "asOf": "2026-08-25T13:08:00.000Z", "rule": "No fresh trade inside the release freeze window." }
+  ],
+  "levels": [
+    { "id": "sell-23600", "label": "Failed reclaim ceiling", "kind": "SELL", "low": 23596, "high": 23612, "strength": 91, "status": "CONFIRMED", "action": "Sell only after price returns from below and fails to close back through the band.", "invalidation": "Acceptance above 23612 followed by a held retest.", "sources": ["flip", "call wall", "prior value edge"], "witnesses": ["lower high", "ES confirms", "volume dries"], "career": "Broken floor awaiting first underside retest." },
+    { "id": "target-23490", "label": "First core door", "kind": "TARGET", "low": 23486, "high": 23494, "strength": 83, "status": "PROVISIONAL", "action": "Core limit rests at this door from fill.", "invalidation": "Target is removed if the entry model is invalidated first.", "sources": ["naked POC", "profile shelf"], "witnesses": [], "career": "Untested reference." },
+    { "id": "buy-23440", "label": "Second audited defense", "kind": "BUY", "low": 23434, "high": 23448, "strength": 76, "status": "PROVISIONAL", "action": "A reversal is legal only if defense visibly rebuilds and the sweep stops making lows.", "invalidation": "Clean acceptance beneath 23434.", "sources": ["put wall", "overnight low"], "witnesses": ["large defensive prints", "wall holds"], "career": "Deeper demand tier; first test not yet observed." },
+    { "id": "flip-line", "label": "Hinge — nothing fresh", "kind": "NO_TRADE", "low": 23604, "high": 23612, "strength": 100, "status": "CONFIRMED", "action": "Do not initiate at the flip.", "invalidation": "The no-trade geography moves only when a current live flip is published.", "sources": ["zero gamma"], "witnesses": [], "career": "Mode boundary." }
+  ],
+  "scenarios": [
+    { "id": "continue", "name": "Failed reclaim continuation", "weight": 55, "status": "WATCHING", "trigger": "Return to 23596–23612, failure to close through, then a lower high.", "path": [23542.25, 23490, 23440], "kill": "Acceptance above 23612." },
+    { "id": "repair", "name": "Flip repair", "weight": 30, "status": "WATCHING", "trigger": "Reclaim and hold above 23612 while both anchors stop chasing down.", "path": [23612, 23680], "kill": "Immediate loss of the reclaimed hinge." },
+    { "id": "rotation", "name": "No-trade rotation", "weight": 15, "status": "WATCHING", "trigger": "Repeated traversal of the hinge with two-sided anchors welded.", "path": [], "kill": "One side creates acceptance and distance." }
+  ],
+  "trade": {
+    "status": "WAIT",
+    "side": "SHORT",
+    "name": "Failed reclaim with the move",
+    "zone": [23596, 23612],
+    "permission": "Wait for the return and the failed reclaim. Location alone is not permission.",
+    "entryTrigger": "Lower high beneath the band with ES still below its own flip.",
+    "stop": 23622,
+    "coreTarget": 23490,
+    "runnerTarget": 23440,
+    "invalidation": "A close back through the band that holds on retest.",
+    "announce": ["model", "stop", "size", "core target door", "runner plan"]
+  },
+  "noTrade": [
+    { "id": "hinge", "label": "Flip / hinge", "low": 23604, "high": 23612, "reason": "Nothing fresh at the mode boundary." },
+    { "id": "middle", "label": "Value middle", "low": 23534, "high": 23564, "reason": "The week's business lives here; no edge in the middle." }
+  ],
+  "updates": [
+    { "id": "plan", "at": "2026-08-25T13:00:00.000Z", "kind": "PLAN", "title": "Pre-open map issued", "body": "Prior mode is FOLLOW. The first legal idea is a failed reclaim beneath the flip, not a touch short and not a fade of the opening drive.", "evidence": ["prior flip", "anchor map", "overnight profile"], "price": 23558.5 },
+    { "id": "film", "at": "2026-08-25T13:08:00.000Z", "kind": "FILM", "title": "Put anchor chased lower", "body": "The lower re-strike is classified as trend intent until a later frame shows it holding while price approaches.", "evidence": ["two frames", "put major -25", "spot -29.25"], "price": 23542.25 }
+  ]
+}

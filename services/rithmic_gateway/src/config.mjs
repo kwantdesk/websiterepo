@@ -78,6 +78,7 @@ export function loadConfig(env = process.env) {
     port: positiveInteger(env.RITHMIC_GATEWAY_PORT, 8793),
     host: String(env.RITHMIC_GATEWAY_HOST || "127.0.0.1").trim(),
     gatewayToken,
+    labRepositoryRoot: String(env.KWANTDESK_LAB_REPOSITORY_ROOT || "").trim(),
     databentoApiKey,
     quantDataApiKey,
     massiveApiKey,
