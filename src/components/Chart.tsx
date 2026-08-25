@@ -262,6 +262,7 @@ import {
   type TapeSpeedHit,
 } from "@/lib/tapeSpeedOrderFlowBurstPrimitive";
 import { subscribeRithmicLiquidity, type RithmicLiquidityStatus } from "@/lib/rithmicLiquidityStream";
+import { MiniDomPrimitive, type MiniDomLevel, type MiniDomOptions } from "@/lib/miniDomPrimitive";
 import {
   defaultGammaHeatmapSource,
   isGammaHeatmapPayload,
@@ -3101,6 +3102,7 @@ function Chart({
   const sessionWindowRenderDataRef = useRef<SessionWindowRenderData[]>([]);
   const volumeProfilePrimitiveRef = useRef<NativeVolumeProfilePrimitive | null>(null);
   const tpoProfilePrimitiveRef = useRef<TpoProfilePrimitive | null>(null);
+  const miniDomPrimitiveRef = useRef<MiniDomPrimitive | null>(null);
   const classicGexProfilePrimitiveRef = useRef<ClassicGexProfilePrimitive | null>(null);
   const gammaHeatmapPrimitiveRef = useRef<GammaHeatmapPrimitive | null>(null);
   const pullingStackingPrimitiveRef = useRef<PullingStackingPrimitive | null>(null);
@@ -5126,6 +5128,72 @@ function Chart({
   const indicatorCandles = indicatorWindowCandles;
   const indicatorCandlesLite = indicatorWindowCandlesLite;
   const indicatorCandlesDeep = indicatorWindowCandlesDeep;
+  const miniDomIndicator = useMemo(
+    () => indicators.find((instance) => instance.enabled && instance.indicatorId === "mini-dom") ?? null,
+    [indicatorSignature, indicators],
+  );
+  const miniDomOptions = useMemo((): MiniDomOptions => {
+    const source = miniDomIndicator?.settings ?? {};
+    const useThemeColors = source.useThemeColors !== false;
+    return {
+      widthPx: clamp(Number(source.widthPx ?? 190), 90, 420),
+      rightGapPx: clamp(Number(source.rightGapPx ?? 0), 0, 60),
+      buyColor: useThemeColors ? settings.upColor : String(source.buyColor ?? settings.upColor),
+      sellColor: useThemeColors ? settings.downColor : String(source.sellColor ?? settings.downColor),
+      textColor: String(source.textColor ?? "#E5E7EB"),
+      headerColor: useThemeColors ? settings.gridColor : String(source.headerColor ?? settings.gridColor),
+      backgroundColor: "rgba(8,10,14,0.55)",
+      showHeader: source.showHeader !== false,
+      showSizes: source.showSizes !== false,
+      depth: clamp(Math.round(Number(source.depth ?? 20)), 1, 60),
+      opacity: clamp(Number(source.opacity ?? 92) / 100, 0.1, 1),
+      fontSize: clamp(Math.round(Number(source.fontSize ?? 10)), 7, 15),
+    };
+  }, [miniDomIndicator, settings.downColor, settings.gridColor, settings.upColor]);
+  const miniDomOptionsRef = useRef(miniDomOptions);
+  miniDomOptionsRef.current = miniDomOptions;
+
+  useEffect(() => {
+    const primitive = miniDomPrimitiveRef.current;
+    if (!primitive) return;
+    if (!miniDomIndicator) {
+      primitive.clear();
+      return;
+    }
+    const normalized = String(contractSymbol || instrument || "NQ").trim().toUpperCase().replace(/\.[VNC]\.\d+$/i, "");
+    const explicitContract = /[FGHJKMNQUVXZ]\d{1,2}$/i.test(normalized) ? normalized : null;
+    const chartRoot = normalized.replace(/[FGHJKMNQUVXZ]\d{1,2}$/i, "") || "NQ";
+    const microParents: Record<string, string> = { MNQ: "NQ", MES: "ES", MYM: "YM", M2K: "RTY", MGC: "GC", MCL: "CL", MBT: "BTC", MET: "ETH" };
+    const root = microParents[chartRoot] ?? chartRoot;
+    // The shared book stream, not a second subscription: this is the same feed
+    // the DOM panel and the liquidity studies already read.
+    const unsubscribe = subscribeRithmicLiquidity({
+      root,
+      contractSymbol: explicitContract,
+      exchange: "CME",
+      onSnapshot: (snapshot) => {
+        const levels: MiniDomLevel[] = snapshot.levels
+          .filter((level) => level.size > 0)
+          .map((level) => ({ side: level.side, price: level.price, size: level.size }));
+        primitive.setBook(
+          levels,
+          snapshot.tickSize > 0 ? snapshot.tickSize : priceFormat.minMove,
+          miniDomOptionsRef.current,
+        );
+      },
+    });
+    return () => {
+      unsubscribe();
+      primitive.clear();
+    };
+  }, [contractSymbol, instrument, miniDomIndicator, priceFormat.minMove]);
+
+  // A settings change has to reach the ladder before the next book frame, or
+  // a width or colour tweak appears to do nothing until the market ticks.
+  useEffect(() => {
+    miniDomPrimitiveRef.current?.setOptions(miniDomOptions);
+  }, [miniDomOptions]);
+
   const tpoSourceTrades = useMemo<TpoTrade[]>(() => {
     if (!tpoSamplingEnabled) return [];
     const tickSize = priceFormat.minMove;
@@ -11965,6 +12033,9 @@ function Chart({
     const tpoProfilePrimitive = new TpoProfilePrimitive();
     candleSeries.attachPrimitive(tpoProfilePrimitive);
     tpoProfilePrimitiveRef.current = tpoProfilePrimitive;
+    const miniDomPrimitive = new MiniDomPrimitive();
+    candleSeries.attachPrimitive(miniDomPrimitive);
+    miniDomPrimitiveRef.current = miniDomPrimitive;
     const bigTradesPrimitive = new BigTradesPrimitive();
     candleSeries.attachPrimitive(bigTradesPrimitive);
     bigTradesPrimitiveRef.current = bigTradesPrimitive;
