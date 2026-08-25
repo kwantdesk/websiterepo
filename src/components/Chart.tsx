@@ -5136,20 +5136,20 @@ function Chart({
     const source = miniDomIndicator?.settings ?? {};
     const useThemeColors = source.useThemeColors !== false;
     return {
-      widthPx: clamp(Number(source.widthPx ?? 190), 90, 420),
-      rightGapPx: clamp(Number(source.rightGapPx ?? 0), 0, 60),
+      widthPx: clamp(Number(source.widthPx ?? 190), 60, 420),
+      rightGapPx: clamp(Number(source.rightGapPx ?? 2), 0, 60),
       buyColor: useThemeColors ? settings.upColor : String(source.buyColor ?? settings.upColor),
       sellColor: useThemeColors ? settings.downColor : String(source.sellColor ?? settings.downColor),
-      textColor: String(source.textColor ?? "#E5E7EB"),
-      headerColor: useThemeColors ? settings.gridColor : String(source.headerColor ?? settings.gridColor),
       backgroundColor: "rgba(8,10,14,0.55)",
-      showHeader: source.showHeader !== false,
+      showBids: source.showBids !== false,
+      showAsks: source.showAsks !== false,
+      alignLeft: source.alignLeft === true,
       showSizes: source.showSizes !== false,
-      depth: clamp(Math.round(Number(source.depth ?? 20)), 1, 60),
-      opacity: clamp(Number(source.opacity ?? 92) / 100, 0.1, 1),
-      fontSize: clamp(Math.round(Number(source.fontSize ?? 10)), 7, 15),
+      levelSpacingPx: clamp(Math.round(Number(source.levelSpacingPx ?? 25)), 8, 60),
+      barOpacity: clamp(Number(source.barOpacity ?? 56) / 100, 0.1, 1),
+      fontSize: clamp(Math.round(Number(source.fontSize ?? 8)), 6, 14),
     };
-  }, [miniDomIndicator, settings.downColor, settings.gridColor, settings.upColor]);
+  }, [miniDomIndicator, settings.downColor, settings.upColor]);
   const miniDomOptionsRef = useRef(miniDomOptions);
   miniDomOptionsRef.current = miniDomOptions;
 

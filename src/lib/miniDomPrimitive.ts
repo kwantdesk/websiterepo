@@ -8,13 +8,24 @@ import type {
 } from "@/lib/lightweightChartsCompat";
 
 /**
- * The Mini DOM: a depth ladder drawn against the chart's own price scale.
+ * The Mini DOM: the liquidity map's resting-book rail, drawn against the
+ * chart's own price scale.
  *
- * The full Depth of Market already exists as a panel. This is the same book in
- * the place a trader is actually looking — pinned to the right of the chart,
- * with every row sitting at the price it belongs to, so resting size lines up
- * with the candles instead of living in a separate column that has to be read
- * across.
+ * This is the same ladder the liq map paints down its price axis — resting bid
+ * and ask size banded into price levels, one thick bar per band with its
+ * contract count sitting on it — brought onto the chart so resting size lines
+ * up with the candles instead of living in another window.
+ *
+ * The geometry is deliberately the liq map's, not a new one:
+ *
+ *   - Size is BANDED, not drawn per tick. A tick is a couple of pixels at
+ *     normal zoom, so per-tick bars are hairlines nobody can read and no
+ *     number fits between them. The liq map picks a band step that leaves
+ *     roughly 25px between levels and sums every resting order inside a band,
+ *     which is what makes the bars thick.
+ *   - Bid and ask are two rails growing away from each other, each able to be
+ *     switched off on its own.
+ *   - Bar length is the band's size against the largest band on screen.
  *
  * It is a series primitive rather than an overlay for the reason every other
  * price-anchored thing on this chart is: it has to reach the screen in the
@@ -28,7 +39,7 @@ export type MiniDomLevel = {
 };
 
 export type MiniDomOptions = {
-  /** Total ladder width in pixels: the size column plus the bars. */
+  /** Total ladder width in pixels, shared by whichever rails are shown. */
   widthPx: number;
   /**
    * Gap from the price scale. The default is two pixels, which is where a
@@ -38,14 +49,19 @@ export type MiniDomOptions = {
   rightGapPx: number;
   buyColor: string;
   sellColor: string;
-  textColor: string;
-  headerColor: string;
   backgroundColor: string;
-  showHeader: boolean;
+  showBids: boolean;
+  showAsks: boolean;
+  /**
+   * Both rails grow left instead of away from each other, for reading every
+   * length off one baseline. Off by default: the liq map's mirrored rails are
+   * what this ladder is a copy of.
+   */
+  alignLeft: boolean;
   showSizes: boolean;
-  /** Rows either side of the spread. */
-  depth: number;
-  opacity: number;
+  /** Rough pixels between banded price levels — the liq map uses 25. */
+  levelSpacingPx: number;
+  barOpacity: number;
   fontSize: number;
 };
 
@@ -54,55 +70,131 @@ export const DEFAULT_MINI_DOM_OPTIONS: MiniDomOptions = {
   rightGapPx: 2,
   buyColor: "#14B8B0",
   sellColor: "#B4174B",
-  textColor: "#E5E7EB",
-  headerColor: "#9AA3AF",
   backgroundColor: "rgba(8,10,14,0.55)",
-  showHeader: true,
+  showBids: true,
+  showAsks: true,
+  alignLeft: false,
   showSizes: true,
-  depth: 20,
-  opacity: 0.92,
-  fontSize: 10,
+  levelSpacingPx: 25,
+  barOpacity: 0.56,
+  fontSize: 8,
 };
 
 /**
  * The ladder's geometry for one frame.
  *
- * Pulled out of the renderer so the layout can be checked without a canvas:
- * every bar shares its right edge and grows left, so no bar may run under the
- * size column, and the ladder may never be wider than the pane it sits in.
+ * Pulled out of the renderer so the layout can be checked without a canvas.
+ * The rails split whatever width is left after the gap, so switching one side
+ * off gives the other the whole ladder rather than leaving a hole.
  */
 export function miniDomLayout(input: {
   paneWidth: number;
   widthPx: number;
   rightGapPx: number;
+  showBids: boolean;
+  showAsks: boolean;
 }) {
-  const width = Math.max(60, Math.min(input.widthPx, Math.max(60, input.paneWidth - 40)));
+  const sideCount = Number(input.showBids) + Number(input.showAsks);
+  const width = Math.max(40, Math.min(input.widthPx, Math.max(40, input.paneWidth - 40)));
   // Anchored where a right-docked volume profile anchors: the pane's own right
   // edge, which is the chart side of the price scale. The scale is a separate
   // canvas, so the pane width IS the boundary — the ladder can never run under
   // it however wide it is set.
   const right = Math.max(width, input.paneWidth - Math.max(0, input.rightGapPx));
   const left = right - width;
-  const numberColumn = Math.min(52, Math.max(26, width * 0.24));
+  const sideWidth = sideCount > 0 ? width / sideCount : 0;
+  // Asks sit on the outside and bids on the inside, the way the liq map stacks
+  // them down its own axis.
+  const sellLeft = left;
+  const sellRight = left + (input.showAsks ? sideWidth : 0);
+  const buyLeft = sellRight;
+  const buyRight = buyLeft + (input.showBids ? sideWidth : 0);
   return {
     left,
     right,
     width,
-    /** Every bar starts here and grows LEFT, so one edge is common to all. */
-    barRight: right,
-    /** Sizes sit in one aligned column at the far left, clear of the bars. */
-    numberX: left + numberColumn - 6,
-    /** How far a full-size bar may reach before it reaches the numbers. */
-    barExtent: Math.max(4, width - numberColumn),
+    sideWidth,
+    sellLeft,
+    sellRight,
+    buyLeft,
+    buyRight,
+    /** Bars stop short of the rail edge so neighbouring rails stay apart. */
+    barExtent: Math.max(1, sideWidth - 5),
+    /** Below this the contract counts do not fit and are dropped. */
+    sizesFit: sideWidth >= 42,
   };
+}
+
+/**
+ * How many ticks one drawn band covers.
+ *
+ * A tick is a couple of pixels at normal zoom. Drawing one bar per tick gives
+ * hairlines with no room for a number between them, so the step is chosen to
+ * leave roughly `spacingPx` between bands and every resting order inside a
+ * band is summed into one thick bar.
+ */
+export function miniDomBandStep(visibleTickSpan: number, plotHeight: number, spacingPx: number) {
+  if (!(visibleTickSpan > 0) || !(plotHeight > 0)) return 1;
+  const targetLevels = Math.max(12, plotHeight / Math.max(4, spacingPx));
+  return Math.max(1, Math.round(visibleTickSpan / targetLevels));
+}
+
+/**
+ * Bar thickness. Floored at 8px so a zoomed-out ladder still reads as bars
+ * with numbers on them, and capped at 16 so a zoomed-in one does not become
+ * blocks that swallow the price levels between them.
+ */
+export function miniDomBarHeight(levelSpacing: number) {
+  return Math.max(8, Math.min(16, levelSpacing * 0.62));
 }
 
 export function miniDomBarWidth(size: number, peak: number, extent: number) {
   if (!(size > 0) || !(peak > 0) || !(extent > 0)) return 0;
   // Clamped: a level larger than the peak the frame was scaled from — which a
-  // late update can produce — must not run under the size column.
+  // late update can produce — must not run past its own rail.
   return Math.max(1, Math.min(extent, (size / peak) * extent));
 }
+
+/**
+ * Sum resting size into price bands, the liq map's `aggregateRestingBook`.
+ *
+ * The peak returned is the largest single band on screen, which is what bar
+ * lengths are scaled against — so the ladder rescales as the view moves rather
+ * than being flattened by one far-away wall.
+ */
+export function aggregateMiniDomBook(
+  levels: readonly MiniDomLevel[],
+  tickSize: number,
+  bandTicks: number,
+  bottomTick: number,
+  topTick: number,
+) {
+  const step = Math.max(1, Math.round(bandTicks) || 1);
+  const bands = new Map<number, { buy: number; sell: number }>();
+  let peak = 0;
+  if (!(tickSize > 0)) return { bands, peak, step };
+  for (const level of levels) {
+    const size = Math.max(0, Number(level.size) || 0);
+    if (!(size > 0)) continue;
+    const tick = level.price / tickSize;
+    if (!Number.isFinite(tick) || tick < bottomTick || tick > topTick) continue;
+    const bucket = Math.round(tick / step) * step;
+    if (bucket < bottomTick || bucket > topTick) continue;
+    const band = bands.get(bucket) ?? { buy: 0, sell: 0 };
+    if (level.side === "ASK") band.sell += size;
+    else band.buy += size;
+    bands.set(bucket, band);
+    peak = Math.max(peak, band.buy, band.sell);
+  }
+  return { bands, peak, step };
+}
+
+const withAlpha = (color: string, alpha: number) => {
+  const hex = color.trim();
+  if (!/^#[0-9a-f]{6}$/i.test(hex)) return hex;
+  const int = Number.parseInt(hex.slice(1), 16);
+  return `rgba(${(int >> 16) & 255},${(int >> 8) & 255},${int & 255},${alpha})`;
+};
 
 export class MiniDomPrimitive implements ISeriesPrimitive<Time> {
   private attachedParams: SeriesAttachedParameter<Time> | null = null;
@@ -117,7 +209,7 @@ export class MiniDomPrimitive implements ISeriesPrimitive<Time> {
     };
     this.paneView = {
       // Above the candles: the ladder is read against price, and a candle
-      // drawn over a row hides the size that row is reporting.
+      // drawn over a band hides the size that band is reporting.
       zOrder: () => "top" as const,
       renderer: () => renderer,
     };
@@ -165,66 +257,86 @@ export class MiniDomPrimitive implements ISeriesPrimitive<Time> {
     const params = this.attachedParams;
     if (!params || !this.levels.length) return;
     const options = this.options;
+    if (!options.showBids && !options.showAsks) return;
+
     target.useMediaCoordinateSpace(({ context, mediaSize }) => {
       const layout = miniDomLayout({
         paneWidth: mediaSize.width,
         widthPx: options.widthPx,
         rightGapPx: options.rightGapPx,
+        showBids: options.showBids,
+        showAsks: options.showAsks,
       });
 
-      const asks = this.levels.filter((level) => level.side === "ASK").sort((a, b) => a.price - b.price).slice(0, options.depth);
-      const bids = this.levels.filter((level) => level.side === "BID").sort((a, b) => b.price - a.price).slice(0, options.depth);
-      const shown = [...asks, ...bids];
-      if (!shown.length) return;
-      const peak = Math.max(1, ...shown.map((level) => level.size));
+      // Band against what is actually on screen, so the ladder rescales as the
+      // view moves rather than being flattened by one far-away wall.
+      const topPrice = params.series.coordinateToPrice(0);
+      const bottomPrice = params.series.coordinateToPrice(mediaSize.height);
+      if (topPrice === null || bottomPrice === null) return;
+      const tick = this.tickSize > 0 ? this.tickSize : 0.25;
+      const bottomTick = Math.min(topPrice, bottomPrice) / tick;
+      const topTick = Math.max(topPrice, bottomPrice) / tick;
+      const visibleTickSpan = topTick - bottomTick;
+      if (!(visibleTickSpan > 0)) return;
 
-      // One row is one tick, measured on the live scale so the ladder breathes
-      // with the chart instead of assuming a zoom.
-      const anchor = shown[0].price;
-      const anchorY = params.series.priceToCoordinate(anchor);
-      const nextY = params.series.priceToCoordinate(anchor + this.tickSize);
-      if (anchorY === null || nextY === null) return;
-      const rowHeight = Math.max(1, Math.abs(nextY - anchorY));
+      const bandTicks = miniDomBandStep(visibleTickSpan, mediaSize.height, options.levelSpacingPx);
+      const book = aggregateMiniDomBook(this.levels, tick, bandTicks, bottomTick, topTick);
+      if (!book.peak) return;
+      const barHeight = miniDomBarHeight(mediaSize.height / Math.max(1, visibleTickSpan / book.step));
 
       context.save();
-      context.globalAlpha = options.opacity;
-
       if (options.backgroundColor) {
         context.fillStyle = options.backgroundColor;
         context.fillRect(layout.left, 0, layout.width, mediaSize.height);
       }
-
       context.font = `600 ${options.fontSize}px 'JetBrains Mono', ui-monospace, monospace`;
       context.textBaseline = "middle";
 
-      if (options.showHeader) {
-        // One column now, so one label. Sides are told apart by colour.
-        context.fillStyle = options.headerColor;
-        context.textAlign = "center";
-        context.fillText("DOM", layout.left + layout.width / 2, 10);
-      }
+      const first = Math.ceil(bottomTick / book.step) * book.step;
+      for (let band = first; band <= topTick; band += book.step) {
+        const value = book.bands.get(band);
+        if (!value) continue;
+        const y = params.series.priceToCoordinate(band * tick);
+        if (y === null || y < -barHeight || y > mediaSize.height + barHeight) continue;
+        const top = y - barHeight / 2;
 
-      for (const level of shown) {
-        const y = params.series.priceToCoordinate(level.price);
-        if (y === null) continue;
-        const top = y - rowHeight / 2;
-        if (top + rowHeight < 0 || top > mediaSize.height) continue;
-        const sell = level.side === "ASK";
-        const barWidth = miniDomBarWidth(level.size, peak, layout.barExtent);
-        const barHeight = Math.max(1, rowHeight - 1);
-        context.fillStyle = sell ? options.sellColor : options.buyColor;
-        // Every bar shares its right edge against the price scale and grows
-        // left, so lengths are read off one baseline rather than two. Which
-        // side a row is on is carried by colour.
-        context.fillRect(layout.barRight - barWidth, top, barWidth, barHeight);
+        if (value.sell > 0 && options.showAsks) {
+          const width = miniDomBarWidth(value.sell, book.peak, layout.barExtent);
+          context.fillStyle = withAlpha(options.sellColor, options.barOpacity);
+          // The ask rail grows left, away from the bid rail beside it.
+          context.fillRect(layout.sellRight - width - 1, top, width, barHeight);
+        }
+        if (value.buy > 0 && options.showBids) {
+          const width = miniDomBarWidth(value.buy, book.peak, layout.barExtent);
+          context.fillStyle = withAlpha(options.buyColor, options.barOpacity);
+          // Left-aligned mode reads both rails off the same baseline instead.
+          context.fillRect(
+            options.alignLeft ? layout.buyRight - width - 1 : layout.buyLeft + 1,
+            top,
+            width,
+            barHeight,
+          );
+        }
 
-        if (options.showSizes && rowHeight >= options.fontSize - 1) {
-          context.fillStyle = sell ? options.sellColor : options.buyColor;
-          context.textAlign = "right";
-          context.fillText(String(Math.round(level.size)), layout.numberX, y);
+        // The count sits on the rail at full strength, so it stays legible
+        // over a bar drawn at the band's own translucent colour.
+        if (options.showSizes && layout.sizesFit) {
+          if (value.sell > 0 && options.showAsks) {
+            context.textAlign = "left";
+            context.fillStyle = options.sellColor;
+            context.fillText(String(Math.round(value.sell)), layout.sellLeft + 3, y + 0.5);
+          }
+          if (value.buy > 0 && options.showBids) {
+            context.textAlign = options.alignLeft ? "left" : "right";
+            context.fillStyle = options.buyColor;
+            context.fillText(
+              String(Math.round(value.buy)),
+              options.alignLeft ? layout.buyLeft + 3 : layout.buyRight - 3,
+              y + 0.5,
+            );
+          }
         }
       }
-
       context.restore();
     });
   }

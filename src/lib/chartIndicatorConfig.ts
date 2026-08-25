@@ -619,11 +619,14 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "zeroLineWidth", label: "Zero-line width", defaultValue: 1, min: 1, max: 4 },
   ],
   "mini-dom": [
-    { key: "widthPx", label: "Ladder width (pixels)", defaultValue: 190, min: 90, max: 420, step: 2 },
+    { key: "widthPx", label: "Ladder width (pixels)", defaultValue: 190, min: 60, max: 420, step: 2 },
     { key: "rightGapPx", label: "Gap from the price scale (px)", defaultValue: 2, min: 0, max: 60, step: 1 },
-    { key: "depth", label: "Rows each side of the spread", defaultValue: 20, min: 1, max: 60, step: 1 },
-    { key: "opacity", label: "Opacity (%)", defaultValue: 92, min: 10, max: 100, step: 1 },
-    { key: "fontSize", label: "Size text (px)", defaultValue: 10, min: 7, max: 15, step: 1 },
+    // Band spacing, not row count. Resting size is summed into price bands so
+    // the bars are thick enough to carry their contract count; asking for a
+    // row per tick gives hairlines with no room for a number.
+    { key: "levelSpacingPx", label: "Spacing between price levels (px)", defaultValue: 25, min: 8, max: 60, step: 1 },
+    { key: "barOpacity", label: "Bar opacity (%)", defaultValue: 56, min: 10, max: 100, step: 1 },
+    { key: "fontSize", label: "Contract text (px)", defaultValue: 8, min: 6, max: 14, step: 1 },
   ],
   "depth-of-market": [
     { key: "width", label: "Dock width (pixels)", defaultValue: 640, min: 240, max: 1100 },
@@ -1695,16 +1698,18 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
   ...(indicatorId === "mini-dom" ? {
     widthPx: 190,
     rightGapPx: 2,
-    depth: 20,
-    opacity: 92,
-    fontSize: 10,
-    showHeader: true,
+    levelSpacingPx: 25,
+    barOpacity: 56,
+    fontSize: 8,
+    showBids: true,
+    showAsks: true,
+    // Off by default: the liq map's mirrored bid/ask rails are what this
+    // ladder is a copy of. On, both rails read off one baseline instead.
+    alignLeft: false,
     showSizes: true,
     useThemeColors: true,
     buyColor: theme?.upColor ?? "#14B8B0",
     sellColor: theme?.downColor ?? "#B4174B",
-    textColor: "#E5E7EB",
-    headerColor: theme?.gridColor ?? "#9AA3AF",
   } : {}),
   ...(indicatorId === "depth-of-market" ? {
     showCumulative: false,

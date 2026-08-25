@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   DEFAULT_MINI_DOM_OPTIONS,
+  aggregateMiniDomBook,
+  miniDomBandStep,
+  miniDomBarHeight,
   miniDomBarWidth,
   miniDomLayout,
 } from "../src/lib/miniDomPrimitive.ts";
@@ -9,13 +12,15 @@ import { CHART_INDICATOR_BY_ID } from "../src/lib/chartIndicatorCatalog.ts";
 import { defaultIndicatorSettings } from "../src/lib/chartIndicatorConfig.ts";
 
 /**
- * The Mini DOM is a ladder pinned against the price scale: every bar shares
- * its right edge and grows left, and every row sits centred on its own price.
+ * The Mini DOM is the liquidity map's resting-book rail drawn on the chart:
+ * bid and ask size summed into price BANDS, one thick bar per band with its
+ * contract count sitting on it.
  *
- * The failures worth catching are geometric and silent — a bar running under
- * the size column so the number cannot be read, a ladder wider than the pane
- * it sits in, or a level arriving larger than the frame was scaled from and
- * drawing past the end of its own track.
+ * The failure this study already shipped with is the one worth guarding: a bar
+ * per tick. A tick is a couple of pixels at normal zoom, so per-tick rows are
+ * hairlines with no room for a number between them — the ladder renders, and
+ * is useless. Banding is what makes the bars thick, so the band step and the
+ * bar height floor are the load-bearing pieces here.
  */
 
 let passed = 0;
@@ -27,8 +32,11 @@ check("the study is registered and addable", () => {
   assert.equal(definition.name, "Mini DOM");
   assert.equal(definition.requiresOrderFlow, true, "it draws the book, so it needs order flow");
   const settings = defaultIndicatorSettings("mini-dom");
-  for (const key of ["widthPx", "rightGapPx", "depth", "opacity", "fontSize"]) {
+  for (const key of ["widthPx", "rightGapPx", "levelSpacingPx", "barOpacity", "fontSize"]) {
     assert.ok(settings[key] !== undefined, `${key} has no default`);
+  }
+  for (const key of ["showBids", "showAsks", "showSizes", "alignLeft"]) {
+    assert.equal(typeof settings[key], "boolean", `${key} has no default`);
   }
 });
 
@@ -48,69 +56,116 @@ check("the library offers it rather than showing it as Pending", () => {
   assert.ok(inSet(control, "RENDERED_CHART_INDICATOR_IDS"), "missing from RENDERED_CHART_INDICATOR_IDS");
 });
 
+check("bars are thick enough to carry a number, not per-tick hairlines", () => {
+  // A typical NQ view: 200 ticks (50 points) over an 800px pane. One bar per
+  // tick would be 4px apart — the shipped bug. Banding must give bars that
+  // clear the 8px floor with the counts readable.
+  const span = 200;
+  const height = 800;
+  const step = miniDomBandStep(span, height, DEFAULT_MINI_DOM_OPTIONS.levelSpacingPx);
+  assert.ok(step > 1, `a band covers ${step} ticks — that is a bar per tick again`);
+  const spacing = height / (span / step);
+  assert.ok(spacing >= 20, `levels are ${spacing.toFixed(1)}px apart, too tight for a number`);
+  assert.ok(miniDomBarHeight(spacing) >= 8, "bars must clear the 8px floor");
+});
+
+check("bar height stays between the floor and the cap at any zoom", () => {
+  for (const spacing of [0.5, 4, 12, 25, 200, 5000]) {
+    const height = miniDomBarHeight(spacing);
+    assert.ok(height >= 8, `spacing ${spacing} gave a ${height}px hairline`);
+    assert.ok(height <= 16, `spacing ${spacing} gave a ${height}px block`);
+  }
+});
+
+check("zooming right in still bands at one tick rather than a fraction", () => {
+  // Fully zoomed in there is nothing left to merge; the step must bottom out
+  // at a whole tick instead of going fractional and misplacing every band.
+  const step = miniDomBandStep(10, 900, 25);
+  assert.equal(step, 1);
+  assert.ok(Number.isInteger(step));
+});
+
+check("resting size is summed into bands, keeping bid and ask apart", () => {
+  const levels = [
+    { side: "BID", price: 100.0, size: 5 },
+    { side: "BID", price: 100.25, size: 7 },   // same band as 100.00
+    { side: "ASK", price: 100.25, size: 3 },
+    { side: "ASK", price: 102.0, size: 40 },
+  ];
+  const book = aggregateMiniDomBook(levels, 0.25, 4, 380, 420);
+  const band = book.bands.get(400); // 100.00 / 0.25 = tick 400
+  assert.equal(band.buy, 12, "both bids in the band must be summed");
+  assert.equal(band.sell, 3, "the ask in that band stays on its own side");
+  assert.equal(book.peak, 40, "the peak is the largest single band on screen");
+});
+
+check("only what is on screen is banded and scaled", () => {
+  // A wall far off screen must not flatten every visible bar against it.
+  const levels = [
+    { side: "BID", price: 100.0, size: 10 },
+    { side: "BID", price: 500.0, size: 90_000 },
+  ];
+  const book = aggregateMiniDomBook(levels, 0.25, 4, 380, 420);
+  assert.equal(book.peak, 10, "the off-screen wall must not set the scale");
+  assert.equal(book.bands.size, 1);
+});
+
+check("switching a rail off gives the other the whole ladder", () => {
+  const both = miniDomLayout({ paneWidth: 1200, widthPx: 190, rightGapPx: 2, showBids: true, showAsks: true });
+  const one = miniDomLayout({ paneWidth: 1200, widthPx: 190, rightGapPx: 2, showBids: true, showAsks: false });
+  assert.equal(both.sideWidth, 95, "two rails split the width");
+  assert.equal(one.sideWidth, 190, "one rail takes it all rather than leaving a hole");
+  assert.equal(one.buyLeft, one.left, "the surviving rail starts at the ladder's edge");
+});
+
+check("the rails grow away from each other and never overlap", () => {
+  const layout = miniDomLayout({ paneWidth: 1200, widthPx: 190, rightGapPx: 2, showBids: true, showAsks: true });
+  assert.equal(layout.sellRight, layout.buyLeft, "the rails meet without a gap or an overlap");
+  // The ask bar ends at sellRight and grows left; the bid bar starts at
+  // buyLeft and grows right. A full-size pair must not cross.
+  const full = miniDomBarWidth(100, 100, layout.barExtent);
+  assert.ok(layout.sellRight - full - 1 >= layout.sellLeft, "a full ask bar escaped its rail");
+  assert.ok(layout.buyLeft + 1 + full <= layout.buyRight, "a full bid bar escaped its rail");
+});
+
 check("it sits where a right-docked volume profile sits", () => {
   // That profile anchors at rightEdge - 2, and rightEdge is the pane width
   // because its right inset is never set. Matching it puts the two on the
   // same line rather than a hair apart.
   assert.equal(DEFAULT_MINI_DOM_OPTIONS.rightGapPx, 2);
-  const paneWidth = 1200;
-  const dockedProfileAnchor = paneWidth - 2;
-  const layout = miniDomLayout({ paneWidth, widthPx: 190, rightGapPx: DEFAULT_MINI_DOM_OPTIONS.rightGapPx });
-  assert.equal(layout.right, dockedProfileAnchor, "the ladder's right edge is the profile's dock");
-  assert.equal(layout.barRight, layout.right, "bars start at that edge and grow left");
+  const layout = miniDomLayout({ paneWidth: 1200, widthPx: 190, rightGapPx: 2, showBids: true, showAsks: true });
+  assert.equal(layout.right, 1198, "the ladder's right edge is the profile's dock");
 });
 
-check("the ladder cannot run under the price scale", () => {
-  // The scale is its own canvas, so the pane width is the boundary: even asked
-  // for more width than the pane has, the ladder narrows instead of spilling.
-  const layout = miniDomLayout({ paneWidth: 300, widthPx: 420, rightGapPx: 0 });
-  assert.ok(layout.right <= 300, `right edge ${layout.right} escaped a 300px pane`);
-});
-
-check("a larger gap moves the whole ladder in", () => {
-  const layout = miniDomLayout({ paneWidth: 1200, widthPx: 190, rightGapPx: 20 });
-  assert.equal(layout.right, 1180);
-  assert.equal(layout.left, 990);
-});
-
-check("no bar ever runs under the size column", () => {
-  const layout = miniDomLayout({ paneWidth: 1200, widthPx: 190, rightGapPx: 0 });
-  for (const size of [1, 7, 26, 99, 1e6]) {
-    const width = miniDomBarWidth(size, 26, layout.barExtent);
-    const leftEnd = layout.barRight - width;
-    assert.ok(
-      leftEnd >= layout.numberX,
-      `a size of ${size} reached ${leftEnd.toFixed(1)}, past the numbers at ${layout.numberX.toFixed(1)}`,
-    );
+check("the ladder never outgrows or escapes the pane", () => {
+  for (const paneWidth of [140, 300, 900]) {
+    const layout = miniDomLayout({ paneWidth, widthPx: 420, rightGapPx: 0, showBids: true, showAsks: true });
+    assert.ok(layout.left >= 0, `ladder started at ${layout.left} on a ${paneWidth}px pane`);
+    assert.ok(layout.right <= paneWidth, `ladder reached ${layout.right} on a ${paneWidth}px pane`);
   }
 });
 
-check("a level bigger than the frame's peak is clamped, not drawn past the track", () => {
-  // A late book update can carry a level larger than the peak the frame was
-  // scaled from; without the clamp it would draw off the end.
-  const layout = miniDomLayout({ paneWidth: 1200, widthPx: 190, rightGapPx: 0 });
-  assert.equal(miniDomBarWidth(1000, 26, layout.barExtent), layout.barExtent);
+check("counts are dropped rather than overprinted on a narrow rail", () => {
+  const wide = miniDomLayout({ paneWidth: 1200, widthPx: 190, rightGapPx: 0, showBids: true, showAsks: true });
+  const narrow = miniDomLayout({ paneWidth: 1200, widthPx: 70, rightGapPx: 0, showBids: true, showAsks: true });
+  assert.equal(wide.sizesFit, true);
+  assert.equal(narrow.sizesFit, false, "a 35px rail cannot hold a contract count");
 });
 
-check("an empty or impossible level draws nothing", () => {
-  const layout = miniDomLayout({ paneWidth: 1200, widthPx: 190, rightGapPx: 0 });
+check("a band bigger than the frame's peak is clamped, not drawn past its rail", () => {
+  const layout = miniDomLayout({ paneWidth: 1200, widthPx: 190, rightGapPx: 0, showBids: true, showAsks: true });
+  assert.equal(miniDomBarWidth(1000, 26, layout.barExtent), layout.barExtent);
+  assert.ok(miniDomBarWidth(1, 100_000, layout.barExtent) >= 1, "one lot must still be drawable");
+});
+
+check("an empty or impossible band draws nothing", () => {
+  const layout = miniDomLayout({ paneWidth: 1200, widthPx: 190, rightGapPx: 0, showBids: true, showAsks: true });
   for (const [size, peak] of [[0, 26], [-5, 26], [10, 0], [Number.NaN, 26]]) {
     assert.equal(miniDomBarWidth(size, peak, layout.barExtent), 0, `size ${size} peak ${peak} must draw nothing`);
   }
   assert.equal(miniDomBarWidth(10, 26, 0), 0, "no track means no bar");
-});
-
-check("a real level always gets a visible bar", () => {
-  const layout = miniDomLayout({ paneWidth: 1200, widthPx: 190, rightGapPx: 0 });
-  assert.ok(miniDomBarWidth(1, 100_000, layout.barExtent) >= 1, "one lot must still be drawable");
-});
-
-check("the ladder never outgrows the pane", () => {
-  for (const paneWidth of [140, 300, 900]) {
-    const layout = miniDomLayout({ paneWidth, widthPx: 420, rightGapPx: 0 });
-    assert.ok(layout.left >= 0, `ladder started at ${layout.left} on a ${paneWidth}px pane`);
-    assert.ok(layout.width <= paneWidth, `ladder was ${layout.width} wide on a ${paneWidth}px pane`);
-  }
+  assert.equal(aggregateMiniDomBook([{ side: "BID", price: 100, size: 5 }], 0, 4, 0, 1e9).peak, 0,
+    "no tick size means no book");
 });
 
 check("it reuses the shared book stream rather than opening another", () => {

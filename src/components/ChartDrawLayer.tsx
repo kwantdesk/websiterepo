@@ -342,20 +342,34 @@ export default function ChartDrawLayer({
       if (xA == null || xB == null || yA == null || yB == null) return;
       const scaleX = (xB - xA) / (basis.xB - basis.xA);
       const scaleY = (yB - yA) / (basis.yB - basis.yA);
-      const translated = Math.abs(scaleX - 1) < 0.0005 && Math.abs(scaleY - 1) < 0.0005;
-      if (!translated) {
-        // A real scale change. Let React redraw at the new projection.
+      if (!Number.isFinite(scaleX) || !Number.isFinite(scaleY)) return;
+      // Dragging sideways almost always moves the price scale a little too,
+      // because it autoscales to whatever is on screen. Demanding a PURE
+      // translation therefore rejected most ordinary panning and sent it to a
+      // React redraw, which lands a frame or more after the candles have
+      // already moved — the drawing swimming against the chart. A pan with a
+      // small rescale is still an affine map, so it can be matched exactly in
+      // the same frame; only a real zoom, where the distortion would be big
+      // enough to see in strokes and labels, needs the redraw.
+      if (Math.abs(scaleX - 1) > 0.05 || Math.abs(scaleY - 1) > 0.05) {
         group.removeAttribute("transform");
         forceRedraw((value) => value + 1);
         return;
       }
-      const dx = xA - basis.xA;
-      const dy = yA - basis.yA;
-      if (dx === 0 && dy === 0) {
+      const dx = xA - scaleX * basis.xA;
+      const dy = yA - scaleY * basis.yA;
+      if (Math.abs(dx) > EDGE_OVERSCAN || Math.abs(dy) > EDGE_OVERSCAN) {
+        // Further than edge-anchored geometry was drawn past the pane, so the
+        // transform would start exposing the ends it was meant to hide.
+        group.removeAttribute("transform");
+        forceRedraw((value) => value + 1);
+        return;
+      }
+      if (dx === 0 && dy === 0 && scaleX === 1 && scaleY === 1) {
         group.removeAttribute("transform");
         return;
       }
-      group.setAttribute("transform", `translate(${dx} ${dy})`);
+      group.setAttribute("transform", `translate(${dx} ${dy}) scale(${scaleX} ${scaleY})`);
     };
     const unsubscribe = subscribeViewport(onViewport);
     return () => { unsubscribe(); };
@@ -753,10 +767,10 @@ export default function ChartDrawLayer({
           const g = extend(a.x!, a.y!, b.x, b.y!, width, height);
           return line(f.x, f.y, g.x, g.y);
         }
-        case "horizontalLine": return a.y == null ? null : line(0, a.y, width, a.y);
-        case "horizontalRay": return a.x == null ? null : line(a.x, a.y!, width, a.y!);
-        case "verticalLine": return a.x == null ? null : line(a.x, 0, a.x, height);
-        case "crossLine": return a.x == null ? null : <g>{line(0, a.y!, width, a.y!)}{line(a.x, 0, a.x, height)}</g>;
+        case "horizontalLine": return a.y == null ? null : line(-EDGE_OVERSCAN, a.y, width + EDGE_OVERSCAN, a.y);
+        case "horizontalRay": return a.x == null ? null : line(a.x, a.y!, width + EDGE_OVERSCAN, a.y!);
+        case "verticalLine": return a.x == null ? null : line(a.x, -EDGE_OVERSCAN, a.x, height + EDGE_OVERSCAN);
+        case "crossLine": return a.x == null ? null : <g>{line(-EDGE_OVERSCAN, a.y!, width + EDGE_OVERSCAN, a.y!)}{line(a.x, -EDGE_OVERSCAN, a.x, height + EDGE_OVERSCAN)}</g>;
         case "parallelChannel":
         case "flatChannel": {
           if (!b || !c || a.x == null || b.x == null || c.y == null) return null;
@@ -831,7 +845,7 @@ export default function ChartDrawLayer({
           const move = pr[1].price - pr[0].price;
           return <g>{FIB_LEVELS.map((lv) => {
             const price = pr[2].price + move * lv.coeff; const ly = toY(price);
-            return ly == null ? null : <g key={lv.coeff}>{line(c.x!, ly, width, ly, stroke)}{style.showLabels ? label(c.x! + 2, ly - 2, `${lv.coeff} (${price.toFixed(2)})`, stroke) : null}</g>;
+            return ly == null ? null : <g key={lv.coeff}>{line(c.x!, ly, width + EDGE_OVERSCAN, ly, stroke)}{style.showLabels ? label(c.x! + 2, ly - 2, `${lv.coeff} (${price.toFixed(2)})`, stroke) : null}</g>;
           })}</g>;
         }
         case "fibChannel": {
@@ -846,7 +860,7 @@ export default function ChartDrawLayer({
           const step = pr[1].time - pr[0].time;
           return <g>{FIB_TIME_COEFFS.map((coeff) => {
             const vx = toX(pr[0].time + step * coeff);
-            return vx == null ? null : <g key={coeff}>{line(vx, 0, vx, height, "#2962FF")}{style.showLabels ? label(vx + 2, 12, String(coeff)) : null}</g>;
+            return vx == null ? null : <g key={coeff}>{line(vx, -EDGE_OVERSCAN, vx, height + EDGE_OVERSCAN, "#2962FF")}{style.showLabels ? label(vx + 2, 12, String(coeff)) : null}</g>;
           })}</g>;
         }
         case "fibCircles": {
@@ -1218,7 +1232,11 @@ export default function ChartDrawLayer({
       data-viewport={viewportVersion}
       style={{ pointerEvents: "none" }}
     >
-      <g ref={drawingsGroupRef}>
+      {/*
+        * non-scaling-stroke keeps line weight true while the group carries a
+        * pan's small rescale, so a drawing cannot thicken as the chart moves.
+        */}
+      <g ref={drawingsGroupRef} vectorEffect="non-scaling-stroke">
         {drawings.map((drawing) => renderDrawing(drawing))}
         {previewDrawing ? renderDrawing(previewDrawing, true) : null}
       </g>
@@ -1308,11 +1326,35 @@ function volumeProfile(candles: DrawCandle[], t0: number, t1: number, binCount =
   return { bins, poc, pocIndex, maxVol, valLow: bins[lo].priceLow, vahHigh: bins[hi].priceHigh };
 }
 
+/**
+ * How far past the pane edge-anchored geometry is drawn.
+ *
+ * Panning does not redraw this layer — it puts a compensating translate on the
+ * whole drawing group, which is exact for a shape anchored at both ends in
+ * price and time. Anything that runs to the EDGE of the pane is not: a
+ * horizontal ray, a vertical line, a fib extension's rails, a fib time zone's
+ * verticals and every extended ray all pull away from the edge they are
+ * supposed to touch, which is the drifting the trader sees while moving the
+ * chart. Drawing them well past the edge means the translate can never expose
+ * an end; the <svg> root clips at its own width and height, so the overspill
+ * costs nothing on screen.
+ *
+ * A pan larger than this in one frame falls back to a real redraw, so the
+ * margin sets the cost, not the correctness.
+ */
+const EDGE_OVERSCAN = 2000;
+
 function extend(x1: number, y1: number, x2: number, y2: number, w: number, h: number) {
   const dx = x2 - x1; const dy = y2 - y1;
   if (dx === 0 && dy === 0) return { x: x2, y: y2 };
-  const tx = dx > 0 ? (w - x1) / dx : dx < 0 ? -x1 / dx : Infinity;
-  const ty = dy > 0 ? (h - y1) / dy : dy < 0 ? -y1 / dy : Infinity;
+  // Clipped to the overscanned box rather than the pane, so an extended ray
+  // still reaches the edge after a pan translate.
+  const left = -EDGE_OVERSCAN;
+  const top = -EDGE_OVERSCAN;
+  const right = w + EDGE_OVERSCAN;
+  const bottom = h + EDGE_OVERSCAN;
+  const tx = dx > 0 ? (right - x1) / dx : dx < 0 ? (left - x1) / dx : Infinity;
+  const ty = dy > 0 ? (bottom - y1) / dy : dy < 0 ? (top - y1) / dy : Infinity;
   const t = Math.max(0, Math.min(tx, ty));
   return { x: x1 + dx * t, y: y1 + dy * t };
 }

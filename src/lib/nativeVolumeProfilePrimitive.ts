@@ -633,6 +633,14 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
         const pinnedRight = style.snapMode === "right"
           && isNewestOfKind
           && (profile.period !== "daily" || latestDailyProfile);
+        // Which WAY the profile is drawn, as opposed to where it is anchored.
+        //
+        // Docking to the screen edge is reserved for the newest profile of a
+        // kind, and that is deliberate. Direction is not: asking for profiles
+        // on the right and getting every one except the newest drawn growing
+        // rightward — off toward the price scale — is the setting doing the
+        // opposite of what it says on every bar but one.
+        const facesLeft = style.snapMode === "right";
         const pinnedLeft = style.snapMode === "left"
           && ownsLeftDock(model)
           && (profile.period === "daily" ? autoPinnedDailyLeft : sessionAnchorX < leftEdge + 2);
@@ -874,7 +882,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
         // profile docked to the right where it runs left instead; a daily's
         // delta half runs left from the spine when it is not docked. Whichever
         // reaches furthest left is the back an incoming level must stop at.
-        const bodyReachesLeftBy = pinnedRight
+        const bodyReachesLeftBy = facesLeft
           ? profileWidth
           : style.mode !== "volume" && style.showDelta && !pinned
             ? deltaScaleWidth
@@ -948,7 +956,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           });
           // Which side this row's delta bar is drawn on. Declared here so the
           // POC highlight below traces the same side the bar was drawn on.
-          const deltaOnRight = delta >= 0 && !pinnedRight;
+          const deltaOnRight = delta >= 0 && !facesLeft;
           const askWidth = Math.max(0, level.askVolume / groupedMaxSideVolume * profileWidth);
           const bidWidth = Math.max(0, level.bidVolume / groupedMaxSideVolume * profileWidth);
           const inValueArea = groupedVah !== null && groupedVal !== null
@@ -960,20 +968,20 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           if (style.mode === "delta-volume" || style.mode === "volume") {
             addBar(
               valueAreaActive ? valueAreaPath : outsideValueAreaPath,
-              pinnedRight ? anchorX - volumeWidth : anchorX,
+              facesLeft ? anchorX - volumeWidth : anchorX,
               y,
               volumeWidth,
               height,
-              pinnedRight ? "left" : "right",
+              facesLeft ? "left" : "right",
             );
             if (style.showProfileOutline && height >= 2.2) {
               const radius = Math.min(2.25, height / 2, volumeWidth / 2);
               outlinePath.roundRect(
-                pinnedRight ? anchorX - volumeWidth : anchorX,
+                facesLeft ? anchorX - volumeWidth : anchorX,
                 y,
                 volumeWidth,
                 height,
-                pinnedRight ? [radius, 0, 0, radius] : [0, radius, radius, 0],
+                facesLeft ? [radius, 0, 0, radius] : [0, radius, radius, 0],
               );
             }
             if (style.mode !== "volume" && style.showDelta) {
@@ -992,9 +1000,9 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
               addBar(
                 delta >= 0 ? positiveDeltaPath : negativeDeltaPath,
                 insideDock
-                  ? pinnedRight ? anchorX - barWidth : anchorX
+                  ? facesLeft ? anchorX - barWidth : anchorX
                   : sideAnchored
-                    ? pinnedRight ? anchorX - deltaWidth : anchorX
+                    ? facesLeft ? anchorX - deltaWidth : anchorX
                     : anchorX - deltaWidth,
                 // Inset so the delta reads as a bar within the volume rather
                 // than replacing it.
@@ -1002,42 +1010,42 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
                 barWidth,
                 Math.max(1, height - Math.min(height * 0.44, 4)),
                 insideDock || sideAnchored
-                  ? pinnedRight ? "left" : "right"
+                  ? facesLeft ? "left" : "right"
                   : "left",
               );
             }
           } else if (style.mode === "bid-ask") {
             addBar(
               askVolumePath,
-              pinnedRight ? anchorX - askWidth : anchorX,
+              facesLeft ? anchorX - askWidth : anchorX,
               y,
               askWidth,
               height,
-              pinnedRight ? "left" : "right",
+              facesLeft ? "left" : "right",
             );
             addBar(
               bidVolumePath,
               pinned && !splitPinnedDaily
-                ? pinnedRight ? anchorX - bidWidth : anchorX
+                ? facesLeft ? anchorX - bidWidth : anchorX
                 : anchorX - bidWidth,
               y,
               bidWidth,
               height,
               pinned && !splitPinnedDaily
-                ? pinnedRight ? "left" : "right"
+                ? facesLeft ? "left" : "right"
                 : "left",
             );
           } else if (style.showDelta) {
             addBar(
               delta >= 0 ? positiveDeltaPath : negativeDeltaPath,
               pinned && !splitPinnedDaily
-                ? pinnedRight ? anchorX - deltaWidth : anchorX
+                ? facesLeft ? anchorX - deltaWidth : anchorX
                 : deltaOnRight ? anchorX : anchorX - deltaWidth,
               y,
               deltaWidth,
               height,
               pinned && !splitPinnedDaily
-                ? pinnedRight ? "left" : "right"
+                ? facesLeft ? "left" : "right"
                 : deltaOnRight ? "right" : "left",
             );
           }
@@ -1063,7 +1071,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
             addBar(
               pocPath,
               pinned
-                ? pinnedRight ? anchorX - Math.max(leftExtent, rightExtent) : anchorX
+                ? facesLeft ? anchorX - Math.max(leftExtent, rightExtent) : anchorX
                 : anchorX - leftExtent,
               y,
               pinned
@@ -1106,7 +1114,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           // then along to the next — the same shape the filled profile makes,
           // drawn as a single continuous edge.
           const ordered = [...outlineSteps].sort((left, right) => left.y - right.y);
-          const direction = pinnedRight ? -1 : 1;
+          const direction = facesLeft ? -1 : 1;
           const silhouette = new Path2D();
           let previousWidth: number | null = null;
           for (const step of ordered) {
@@ -1214,13 +1222,13 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           const labelY = Math.min(top, bottom) - 4;
           context.globalAlpha = 0.92;
           context.font = "600 9px 'JetBrains Mono', monospace";
-          context.textAlign = pinnedRight ? "right" : "left";
+          context.textAlign = facesLeft ? "right" : "left";
           context.textBaseline = "alphabetic";
           const measured = context.measureText(sessionLabel).width;
           const labelX = clamp(
-            pinnedRight ? anchorX - 2 : anchorX + 2,
-            leftEdge + (pinnedRight ? measured + 4 : 4),
-            mediaSize.width - (pinnedRight ? 4 : measured + 4),
+            facesLeft ? anchorX - 2 : anchorX + 2,
+            leftEdge + (facesLeft ? measured + 4 : 4),
+            mediaSize.width - (facesLeft ? 4 : measured + 4),
           );
           context.fillStyle = style.pocColor;
           context.fillText(sessionLabel, labelX, labelY);
