@@ -9,7 +9,7 @@ import {
   miniDomLayout,
 } from "../src/lib/miniDomPrimitive.ts";
 import { CHART_INDICATOR_BY_ID } from "../src/lib/chartIndicatorCatalog.ts";
-import { defaultIndicatorSettings } from "../src/lib/chartIndicatorConfig.ts";
+import { INDICATOR_NUMERIC_SETTINGS, defaultIndicatorSettings } from "../src/lib/chartIndicatorConfig.ts";
 
 /**
  * The Mini DOM is the liquidity map's resting-book rail drawn on the chart:
@@ -170,12 +170,88 @@ check("an empty or impossible band draws nothing", () => {
 
 check("it reuses the shared book stream rather than opening another", () => {
   const chart = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
-  assert.match(chart, /subscribeRithmicLiquidity\(\{[\s\S]{0,400}onSnapshot: \(snapshot\) => \{[\s\S]{0,200}MiniDomLevel/,
+  assert.match(chart, /subscribeRithmicLiquidity\(\{[\s\S]{0,1200}MiniDomLevel/,
     "the ladder must read the same feed the DOM panel and liquidity studies use");
+  // The shared default is 800 ticks — 200 points of NQ — which is why the
+  // ladder stopped a couple of hundred points either side of price. Counted
+  // in ticks so it scales with whatever the instrument trades in.
+  assert.match(chart, /depthTicks: 6_000,/, "the ladder must ask for a book deeper than the shared default");
   assert.match(chart, /setOptions\(miniDomOptions\)/,
     "a settings change must restyle rather than blank the ladder until the next frame");
   assert.doesNotMatch(chart, /setBook\(\[\], priceFormat\.minMove, miniDomOptions\)/,
     "carrying options on an empty book would blank the ladder until the next frame");
+});
+
+check("it is the chart's right edge, not a pane laid over it", () => {
+  // Opaque, so nothing behind it shows through, and every rail runs the same
+  // way so lengths compare off one baseline.
+  assert.equal(DEFAULT_MINI_DOM_OPTIONS.backgroundColor, "#000000");
+  assert.equal(DEFAULT_MINI_DOM_OPTIONS.alignLeft, true);
+  assert.equal(defaultIndicatorSettings("mini-dom").alignLeft, true,
+    "the study must ship pointing one way");
+});
+
+check("it reserves its width so a docked profile stops at its edge", () => {
+  // A right-docked volume profile anchors at the pane's right edge. With the
+  // ladder on, that edge moves: the profile has to stop at the ladder's left
+  // side instead of sliding underneath an opaque panel.
+  const layout = miniDomLayout({ paneWidth: 1200, widthPx: 190, rightGapPx: 2, showBids: true, showAsks: true });
+  assert.equal(layout.reservedWidth, 1200 - layout.left);
+  assert.ok(layout.reservedWidth >= layout.width, "the gap to the scale counts as reserved too");
+  const chart = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
+  assert.match(
+    chart,
+    /setPaneInsets\(\{ left: toolbarPlotLeftInset, right: miniDomReservedWidth \}\)/,
+    "the volume profile must dock against the ladder, not the pane",
+  );
+  assert.match(chart, /cursor-ew-resize/, "the ladder's left edge must be draggable");
+});
+
+check("finer granularity is reachable from the settings", () => {
+  const spacing = INDICATOR_NUMERIC_SETTINGS["mini-dom"].find((field) => field.key === "levelSpacingPx");
+  assert.ok(spacing, "the spacing control is gone");
+  assert.ok(spacing.min <= 4, `spacing floors at ${spacing.min}px, too coarse to tighten`);
+  // Tighter spacing must actually produce more bands.
+  const coarse = miniDomBandStep(200, 800, 25);
+  const fine = miniDomBandStep(200, 800, spacing.min);
+  assert.ok(fine < coarse, `${spacing.min}px must band finer than 25px (${fine} vs ${coarse})`);
+  assert.ok(fine >= 1, "and never go fractional");
+});
+
+check("an empty depth frame does not blank the ladder", () => {
+  // Frames occasionally arrive carrying nothing — a resync, a heartbeat, one
+  // that crossed a reconnect. Taking those at face value emptied the ladder
+  // and the next real frame filled it again: the ladder blinking out and
+  // coming back.
+  const source = readFileSync(new URL("../src/lib/miniDomPrimitive.ts", import.meta.url), "utf8");
+  assert.match(source, /if \(levels\.length\) \{/, "an empty frame must not replace the book");
+  assert.match(source, /MINI_DOM_BOOK_RETENTION_MS/, "but a book nobody confirms must not stand forever");
+  assert.match(source, /Date\.now\(\) - this\.booked > MINI_DOM_BOOK_RETENTION_MS/);
+  // Switching the study off still empties it at once.
+  assert.match(source, /clear\(\) \{\s*this\.levels = \[\];\s*this\.booked = 0;/);
+});
+
+check("the deepest subscriber sets the book depth for everyone", () => {
+  const stream = readFileSync(new URL("../src/lib/rithmicLiquidityStream.ts", import.meta.url), "utf8");
+  assert.match(stream, /export const DEFAULT_LIQUIDITY_DEPTH_TICKS = 800;/);
+  assert.match(stream, /depthTicks: String\(stream\.depthTicks\)/, "the request must carry the resolved depth");
+  assert.match(stream, /function requestedDepthTicks/, "one stream serves consumers wanting different depths");
+  // Wanting MORE reopens the socket; wanting the same or less rides it.
+  assert.match(stream, /requestedDepthTicks\(stream\) > stream\.depthTicks/);
+});
+
+check("both rails start at one baseline and run the same way", () => {
+  // Aligned, a bid and an ask of equal size must draw equal, which they only
+  // do off a shared baseline. One rail started at the ladder's right edge and
+  // the other in the middle, so the same size drew two different lengths.
+  const aligned = miniDomLayout({ paneWidth: 1200, widthPx: 190, rightGapPx: 2, showBids: true, showAsks: true, alignLeft: true });
+  assert.equal(aligned.baselineX, aligned.sellRight, "the baseline is where the ask rail already began");
+  assert.ok(aligned.numberX < aligned.baselineX - aligned.barExtent + 1, "the counts sit left of every bar");
+  const mirrored = miniDomLayout({ paneWidth: 1200, widthPx: 190, rightGapPx: 2, showBids: true, showAsks: true });
+  assert.equal(mirrored.baselineX, null, "mirrored keeps a rail each");
+  // A full-length aligned bar must not reach the number column.
+  const full = miniDomBarWidth(100, 100, aligned.barExtent);
+  assert.ok(aligned.baselineX - full - 1 >= aligned.numberX, "a full bar must not run over the counts");
 });
 
 console.log(`\nmini dom: ${passed}/${passed} checks passed`);

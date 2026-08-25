@@ -12,6 +12,8 @@ type Subscriber = {
   onSnapshot: (snapshot: RithmicLiquiditySnapshot) => void;
   onStatus?: (status: RithmicLiquidityStatus) => void;
   replayHistory?: boolean;
+  /** How deep this consumer needs the book. Omitted takes the shared default. */
+  depthTicks?: number;
 };
 
 type RawPayload = {
@@ -63,6 +65,15 @@ type SharedPoll = {
   root: string;
   contractSymbol: string;
   exchange: string;
+  /**
+   * How deep the book is requested, in ticks either side of the inside.
+   *
+   * One stream serves every consumer of an instrument's book, and they do not
+   * all want the same depth: the liquidity map reads a window around price,
+   * while a ladder drawn on a chart has to reach as far as the chart is zoomed
+   * out. The stream therefore asks for the DEEPEST any live subscriber wants.
+   */
+  depthTicks: number;
   pendingDepth: RawPayload | null;
   pendingTrades: unknown[];
   pendingOrderEvents: unknown[];
@@ -349,13 +360,31 @@ function scheduleReconnect(stream: SharedPoll, delayMs = 1_000) {
   }, delayMs);
 }
 
+/**
+ * Book depth in ticks for a consumer that does not ask for a particular
+ * depth. 800 ticks is 200 points of NQ, which is a sensible window for the
+ * liquidity map and far too shallow for a ladder on a zoomed-out chart.
+ */
+export const DEFAULT_LIQUIDITY_DEPTH_TICKS = 800;
+
+/** The deepest any live subscriber wants, which is what the stream requests. */
+function requestedDepthTicks(stream: SharedPoll) {
+  let deepest = DEFAULT_LIQUIDITY_DEPTH_TICKS;
+  for (const subscriber of stream.subscribers) {
+    const wanted = Number(subscriber.depthTicks);
+    if (Number.isFinite(wanted) && wanted > deepest) deepest = Math.min(20_000, Math.round(wanted));
+  }
+  return deepest;
+}
+
 function connectStream(stream: SharedPoll) {
   if (stream.eventSource || !stream.subscribers.size) return;
+  stream.depthTicks = requestedDepthTicks(stream);
   const generation = ++stream.generation;
   const query = new URLSearchParams({
     exchange: stream.exchange,
     symbol: stream.root,
-    depthTicks: "800",
+    depthTicks: String(stream.depthTicks),
     includeOrderEvents: "1",
   });
   if (stream.contractSymbol) query.set("contractSymbol", stream.contractSymbol);
@@ -472,6 +501,13 @@ export function subscribeRithmicLiquidity(args: {
   onSnapshot: Subscriber["onSnapshot"];
   onStatus?: Subscriber["onStatus"];
   replayHistory?: boolean;
+  /**
+   * How deep this consumer needs the book, in ticks either side of the inside
+   * market. Omitted takes the shared default. The stream requests whatever
+   * the deepest live subscriber asks for, so wanting more never quietly
+   * shallows anyone else and asking for less never deepens the feed.
+   */
+  depthTicks?: number;
 }) {
   const root = args.root.trim().toUpperCase();
   const contractSymbol = String(args.contractSymbol || "").trim().toUpperCase();
@@ -492,6 +528,7 @@ export function subscribeRithmicLiquidity(args: {
       root,
       contractSymbol,
       exchange,
+      depthTicks: DEFAULT_LIQUIDITY_DEPTH_TICKS,
       pendingDepth: null,
       pendingTrades: [],
       pendingOrderEvents: [],
@@ -505,10 +542,18 @@ export function subscribeRithmicLiquidity(args: {
     onSnapshot: args.onSnapshot,
     onStatus: args.onStatus,
     replayHistory: args.replayHistory,
+    depthTicks: args.depthTicks,
   };
   stream.subscribers.add(subscriber);
   subscriber.onStatus?.(stream.status);
   if (stream.latestSnapshot) subscriber.onSnapshot(stream.latestSnapshot);
+  // A consumer wanting more depth than the open connection carries has to be
+  // given it, so the socket is reopened at the deeper request. Wanting the
+  // same or less rides the existing one.
+  if (stream.eventSource && requestedDepthTicks(stream) > stream.depthTicks) {
+    stream.eventSource.close();
+    stream.eventSource = null;
+  }
   connectStream(stream);
 
   return () => {

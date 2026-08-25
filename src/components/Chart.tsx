@@ -5192,6 +5192,13 @@ function Chart({
       root,
       contractSymbol: explicitContract,
       exchange: "CME",
+      // The ladder has to reach as far as the chart is zoomed out, and the
+      // shared default — 800 ticks, which is 200 points of NQ — is why it
+      // stopped a couple of hundred points either side of price. Counted in
+      // ticks, so it scales with whatever the instrument trades in. The
+      // stream serves the deepest of its subscribers, so asking here does not
+      // shallow the liquidity map or deepen anyone else's feed.
+      depthTicks: 6_000,
       onSnapshot: (snapshot) => {
         const levels: MiniDomLevel[] = snapshot.levels
           .filter((level) => level.size > 0)

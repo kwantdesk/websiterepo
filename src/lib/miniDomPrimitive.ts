@@ -53,9 +53,9 @@ export type MiniDomOptions = {
   showBids: boolean;
   showAsks: boolean;
   /**
-   * Both rails grow left instead of away from each other, for reading every
-   * length off one baseline. Off by default: the liq map's mirrored rails are
-   * what this ladder is a copy of.
+   * Both rails grow left off one shared baseline, which is how lengths get
+   * compared at a glance. Off puts them back to the liq map's mirrored pair,
+   * growing away from each other.
    */
   alignLeft: boolean;
   showSizes: boolean;
@@ -70,10 +70,12 @@ export const DEFAULT_MINI_DOM_OPTIONS: MiniDomOptions = {
   rightGapPx: 2,
   buyColor: "#14B8B0",
   sellColor: "#B4174B",
-  backgroundColor: "rgba(8,10,14,0.55)",
+  // Opaque: the ladder is the edge of the chart, not a pane laid over it, so
+  // nothing shows through from behind.
+  backgroundColor: "#000000",
   showBids: true,
   showAsks: true,
-  alignLeft: false,
+  alignLeft: true,
   showSizes: true,
   levelSpacingPx: 25,
   barOpacity: 0.56,
@@ -93,6 +95,8 @@ export function miniDomLayout(input: {
   rightGapPx: number;
   showBids: boolean;
   showAsks: boolean;
+  /** Both rails off one baseline instead of the liq map's mirrored pair. */
+  alignLeft?: boolean;
 }) {
   const sideCount = Number(input.showBids) + Number(input.showAsks);
   const width = Math.max(40, Math.min(input.widthPx, Math.max(40, input.paneWidth - 40)));
@@ -109,6 +113,20 @@ export function miniDomLayout(input: {
   const sellRight = left + (input.showAsks ? sideWidth : 0);
   const buyLeft = sellRight;
   const buyRight = buyLeft + (input.showBids ? sideWidth : 0);
+  // Aligned, the two rails collapse onto ONE baseline and every bar runs from
+  // it in the same direction, so a bid and an ask of equal size draw equal.
+  // Mirrored, each rail keeps its own edge and they grow apart.
+  //
+  // The baseline is where the ask rail already started — the middle of the
+  // ladder — so turning alignment on moves the bid rail across to meet it
+  // rather than shifting anything the trader was already reading. The counts
+  // then live in a column of their own to the LEFT of every bar, out of the
+  // way of a bar that runs long.
+  const numberColumn = Math.min(52, Math.max(26, width * 0.24));
+  const baselineX = input.alignLeft ? sellRight : null;
+  const alignedExtent = baselineX === null
+    ? 0
+    : Math.max(1, baselineX - left - numberColumn);
   return {
     left,
     right,
@@ -118,10 +136,21 @@ export function miniDomLayout(input: {
     sellRight,
     buyLeft,
     buyRight,
+    /** Where every bar starts when the rails are aligned. */
+    baselineX,
+    /** One aligned column for the counts, clear of the bars. */
+    numberX: left + numberColumn - 6,
     /** Bars stop short of the rail edge so neighbouring rails stay apart. */
-    barExtent: Math.max(1, sideWidth - 5),
+    barExtent: baselineX === null ? Math.max(1, sideWidth - 5) : alignedExtent,
+    /**
+     * What the rest of the chart may use. The ladder is opaque and fixed to
+     * the price scale, so everything else — a docked volume profile above all
+     * — has to treat this as the pane's right edge rather than sliding
+     * underneath it.
+     */
+    reservedWidth: Math.max(0, input.paneWidth - (right - width)),
     /** Below this the contract counts do not fit and are dropped. */
-    sizesFit: sideWidth >= 42,
+    sizesFit: input.alignLeft ? width >= 68 : sideWidth >= 42,
   };
 }
 
@@ -196,9 +225,23 @@ const withAlpha = (color: string, alpha: number) => {
   return `rgba(${(int >> 16) & 255},${(int >> 8) & 255},${int & 255},${alpha})`;
 };
 
+/**
+ * How long a book stands after the last frame that carried one.
+ *
+ * Depth frames occasionally arrive carrying nothing — a resync, a heartbeat,
+ * a frame that crossed a reconnect. Taking those at face value emptied the
+ * ladder and the next real frame filled it again, which is the ladder seen
+ * blinking out and returning. The last book it was actually given stands
+ * across those, but not indefinitely: past this the feed has stopped saying
+ * anything and an old book is no longer the market.
+ */
+const MINI_DOM_BOOK_RETENTION_MS = 15_000;
+
 export class MiniDomPrimitive implements ISeriesPrimitive<Time> {
   private attachedParams: SeriesAttachedParameter<Time> | null = null;
   private levels: MiniDomLevel[] = [];
+  /** When a frame last carried an actual book. */
+  private booked = 0;
   private tickSize = 0.25;
   private options: MiniDomOptions = DEFAULT_MINI_DOM_OPTIONS;
   private readonly paneView: ISeriesPrimitivePaneView;
@@ -216,9 +259,13 @@ export class MiniDomPrimitive implements ISeriesPrimitive<Time> {
   }
 
   setBook(levels: MiniDomLevel[], tickSize: number, options: MiniDomOptions) {
-    this.levels = levels;
     this.tickSize = tickSize > 0 ? tickSize : this.tickSize;
     this.options = options;
+    // An empty frame is not an empty book. See MINI_DOM_BOOK_RETENTION_MS.
+    if (levels.length) {
+      this.levels = levels;
+      this.booked = Date.now();
+    }
     this.attachedParams?.requestUpdate();
   }
 
@@ -237,6 +284,7 @@ export class MiniDomPrimitive implements ISeriesPrimitive<Time> {
   /** Drop the book, for when the study is switched off or the symbol changes. */
   clear() {
     this.levels = [];
+    this.booked = 0;
     this.attachedParams?.requestUpdate();
   }
 
@@ -247,6 +295,7 @@ export class MiniDomPrimitive implements ISeriesPrimitive<Time> {
   detached() {
     this.attachedParams = null;
     this.levels = [];
+    this.booked = 0;
   }
 
   paneViews() {
@@ -256,6 +305,9 @@ export class MiniDomPrimitive implements ISeriesPrimitive<Time> {
   private draw(target: CanvasRenderingTarget2D) {
     const params = this.attachedParams;
     if (!params || !this.levels.length) return;
+    // Past the retention window the feed has gone quiet, and a book nobody is
+    // still confirming is not the market.
+    if (Date.now() - this.booked > MINI_DOM_BOOK_RETENTION_MS) return;
     const options = this.options;
     if (!options.showBids && !options.showAsks) return;
 
@@ -266,6 +318,7 @@ export class MiniDomPrimitive implements ISeriesPrimitive<Time> {
         rightGapPx: options.rightGapPx,
         showBids: options.showBids,
         showAsks: options.showAsks,
+        alignLeft: options.alignLeft,
       });
 
       // Band against what is actually on screen, so the ladder rescales as the
@@ -300,40 +353,52 @@ export class MiniDomPrimitive implements ISeriesPrimitive<Time> {
         if (y === null || y < -barHeight || y > mediaSize.height + barHeight) continue;
         const top = y - barHeight / 2;
 
-        if (value.sell > 0 && options.showAsks) {
-          const width = miniDomBarWidth(value.sell, book.peak, layout.barExtent);
-          context.fillStyle = withAlpha(options.sellColor, options.barOpacity);
-          // The ask rail grows left, away from the bid rail beside it.
-          context.fillRect(layout.sellRight - width - 1, top, width, barHeight);
-        }
-        if (value.buy > 0 && options.showBids) {
-          const width = miniDomBarWidth(value.buy, book.peak, layout.barExtent);
-          context.fillStyle = withAlpha(options.buyColor, options.barOpacity);
-          // Left-aligned mode reads both rails off the same baseline instead.
-          context.fillRect(
-            options.alignLeft ? layout.buyRight - width - 1 : layout.buyLeft + 1,
-            top,
-            width,
-            barHeight,
-          );
-        }
-
-        // The count sits on the rail at full strength, so it stays legible
-        // over a bar drawn at the band's own translucent colour.
-        if (options.showSizes && layout.sizesFit) {
+        const baseline = layout.baselineX;
+        if (baseline !== null) {
+          // Aligned: one baseline, everything running left off it. A price
+          // band in a real book carries resting size on one side or the
+          // other, so the two practically never land on the same row; where
+          // they do, the larger is drawn first so neither is hidden.
+          const rows: Array<{ size: number; color: string }> = [];
+          if (value.sell > 0 && options.showAsks) rows.push({ size: value.sell, color: options.sellColor });
+          if (value.buy > 0 && options.showBids) rows.push({ size: value.buy, color: options.buyColor });
+          rows.sort((left, right) => right.size - left.size);
+          for (const row of rows) {
+            const width = miniDomBarWidth(row.size, book.peak, layout.barExtent);
+            context.fillStyle = withAlpha(row.color, options.barOpacity);
+            context.fillRect(baseline - width - 1, top, width, barHeight);
+          }
+          if (options.showSizes && layout.sizesFit && rows.length) {
+            // Left of every bar, in one column, at full strength.
+            context.textAlign = "right";
+            context.fillStyle = rows[0].color;
+            context.fillText(String(Math.round(rows[0].size)), layout.numberX, y + 0.5);
+          }
+        } else {
           if (value.sell > 0 && options.showAsks) {
-            context.textAlign = "left";
-            context.fillStyle = options.sellColor;
-            context.fillText(String(Math.round(value.sell)), layout.sellLeft + 3, y + 0.5);
+            const width = miniDomBarWidth(value.sell, book.peak, layout.barExtent);
+            context.fillStyle = withAlpha(options.sellColor, options.barOpacity);
+            // The ask rail grows left, away from the bid rail beside it.
+            context.fillRect(layout.sellRight - width - 1, top, width, barHeight);
           }
           if (value.buy > 0 && options.showBids) {
-            context.textAlign = options.alignLeft ? "left" : "right";
-            context.fillStyle = options.buyColor;
-            context.fillText(
-              String(Math.round(value.buy)),
-              options.alignLeft ? layout.buyLeft + 3 : layout.buyRight - 3,
-              y + 0.5,
-            );
+            const width = miniDomBarWidth(value.buy, book.peak, layout.barExtent);
+            context.fillStyle = withAlpha(options.buyColor, options.barOpacity);
+            context.fillRect(layout.buyLeft + 1, top, width, barHeight);
+          }
+          // The count sits on the rail at full strength, so it stays legible
+          // over a bar drawn at the band's own translucent colour.
+          if (options.showSizes && layout.sizesFit) {
+            if (value.sell > 0 && options.showAsks) {
+              context.textAlign = "left";
+              context.fillStyle = options.sellColor;
+              context.fillText(String(Math.round(value.sell)), layout.sellLeft + 3, y + 0.5);
+            }
+            if (value.buy > 0 && options.showBids) {
+              context.textAlign = "right";
+              context.fillStyle = options.buyColor;
+              context.fillText(String(Math.round(value.buy)), layout.buyRight - 3, y + 0.5);
+            }
           }
         }
       }
