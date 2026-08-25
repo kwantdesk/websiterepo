@@ -113,6 +113,11 @@ assert.equal(first.trade.qualityGrade, "A+");
 assert.equal(first.trade.qualityScore, 82);
 assert.equal(first.trade.optionsAlignment, "Aligned");
 assert.deepEqual(first.trade.technicalReasoning, ["Source-backed test setup."]);
+assert.equal(first.trade.levelName, "VERIFIED WALL");
+assert.equal(first.trade.levelRole, "wall");
+assert.equal(first.trade.entryReference, 102);
+assert.equal(first.trade.issuedAt, first.updatedAt);
+assert.equal(first.trade.armedAt, null);
 assert.equal(first.gates.find((gate) => gate.id === "film")?.status, "STOP");
 assert.match(first.updates.at(-1).body, /One frame/i);
 
@@ -145,6 +150,8 @@ const armed = buildLabSnapshotFromGameplan(payload({ spot: 102.5, flip: 99.5, ge
 assert.equal(armed.mode.value, "FADE");
 assert.equal(armed.trade.qualityGrade, "A+");
 assert.equal(armed.trade.status, "ARMED");
+assert.equal(armed.trade.issuedAt, first.updatedAt);
+assert.equal(armed.trade.armedAt, armed.updatedAt);
 assert.match(armed.trade.permission, /five-part announce still must pass/i);
 
 const lowerGradePayload = payload({ spot: 102.5, flip: 99.5, generatedAt: armedAt.toISOString() });
@@ -171,4 +178,4 @@ assert.equal(stale.film.status, "STALE");
 assert.equal(labRunPhase(new Date("2026-08-29T14:00:00.000Z")), "CLOSED");
 assert.equal(labTargetSessionDate(new Date("2026-08-29T14:00:00.000Z")), "2026-08-31");
 
-console.log("THE LAB manual run: 32 assertions passed");
+console.log("THE LAB manual run: 39 assertions passed");

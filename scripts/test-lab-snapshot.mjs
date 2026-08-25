@@ -35,12 +35,21 @@ const explainedSetup = {
     ...fixture.trade,
     qualityGrade: "A+",
     qualityScore: 88,
+    levelName: "Verified call wall",
+    levelRole: "wall",
+    entryReference: 23_596,
+    bestRiskReward: 2.4,
+    issuedAt: fixture.updatedAt,
+    armedAt: fixture.updatedAt,
     optionsAlignment: "Dealer positioning and premium flow agree with the setup side.",
     technicalReasoning: ["The wall is verified by two independent sources."],
+    targetDetails: [{ price: 23_490, level: "Core door", reason: "Next verified structural door.", riskReward: 1.6, payPercent: 60 }],
   },
 };
 assert.equal(isLabSnapshot(explainedSetup), true, "source-backed A+ reasoning must pass");
 assert.equal(isLabSnapshot({ ...explainedSetup, trade: { ...explainedSetup.trade, qualityScore: 101 } }), false);
 assert.equal(isLabSnapshot({ ...explainedSetup, trade: { ...explainedSetup.trade, technicalReasoning: ["Valid", 42] } }), false);
+assert.equal(isLabSnapshot({ ...explainedSetup, trade: { ...explainedSetup.trade, armedAt: "not-a-date" } }), false);
+assert.equal(isLabSnapshot({ ...explainedSetup, trade: { ...explainedSetup.trade, targetDetails: [{ ...explainedSetup.trade.targetDetails[0], payPercent: 101 }] } }), false);
 
-console.log("THE LAB snapshot contract: 15 assertions passed");
+console.log("THE LAB snapshot contract: 17 assertions passed");

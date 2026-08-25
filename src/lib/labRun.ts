@@ -362,6 +362,19 @@ export function buildLabSnapshotFromGameplan(
     modeSetup.quality_grade !== "A+" ? `GRADE ${modeSetup.quality_grade} — A+ REQUIRED` : null,
     !setupAtSpot ? "PRICE OUTSIDE CANDIDATE ZONE" : null,
   ].filter((reason): reason is string => Boolean(reason)) : [];
+  const samePriorSetup = Boolean(modeSetup && prior?.trade.side === modeSetup.side
+    && prior.trade.name === modeSetup.setup_name
+    && prior.trade.zone
+    && prior.trade.zone[0] === modeSetup.zone[0]
+    && prior.trade.zone[1] === modeSetup.zone[1]);
+  const issuedAt = modeSetup
+    ? samePriorSetup ? prior?.trade.issuedAt ?? prior?.updatedAt ?? at : at
+    : undefined;
+  const armedAt = modeSetup
+    ? tradeArmed
+      ? samePriorSetup ? prior?.trade.armedAt ?? at : at
+      : samePriorSetup ? prior?.trade.armedAt ?? null : null
+    : undefined;
   const confidencePenalty = (gameplan.status === "PARTIAL" ? 20 : 0)
     + (film.status !== "READY" ? 15 : 0)
     + (crossStatus !== "PASS" ? 8 : 0);
@@ -465,8 +478,21 @@ export function buildLabSnapshotFromGameplan(
       zone: modeSetup?.zone ?? null,
       qualityGrade: modeSetup?.quality_grade,
       qualityScore: modeSetup?.quality_score,
+      levelName: modeSetup?.level_name,
+      levelRole: modeSetup?.level_role,
+      entryReference: modeSetup?.entry_reference,
+      bestRiskReward: modeSetup?.best_risk_reward,
+      issuedAt,
+      armedAt,
       optionsAlignment: modeSetup?.options_alignment,
       technicalReasoning: modeSetup?.reasoning.slice(0, 8),
+      targetDetails: modeSetup?.target_details.slice(0, 5).map((target) => ({
+        price: target.price,
+        level: target.level,
+        reason: target.reason,
+        riskReward: target.risk_reward,
+        payPercent: target.pay_percent,
+      })),
       permission: modeSetup
         ? `${tradeWaitReasons.length ? `WAIT — ${tradeWaitReasons.join(" · ")}. ` : "MACHINE GATES PASS — SETUP AT ZONE. "}${modeSetup.permission} Location alone is never permission; the five-part announce still must pass.`
         : "The mode is unresolved, so August V1 issues no trade card.",

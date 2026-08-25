@@ -117,8 +117,21 @@ export type LabSnapshot = {
     zone: [number, number] | null;
     qualityGrade?: "A+" | "A" | "B+" | "WAIT";
     qualityScore?: number;
+    levelName?: string;
+    levelRole?: "magnet" | "wall" | "accelerant" | "decision";
+    entryReference?: number;
+    bestRiskReward?: number;
+    issuedAt?: string;
+    armedAt?: string | null;
     optionsAlignment?: string;
     technicalReasoning?: string[];
+    targetDetails?: Array<{
+      price: number;
+      level: string;
+      reason: string;
+      riskReward: number;
+      payPercent: number;
+    }>;
     permission: string;
     entryTrigger: string;
     stop: number | null;
@@ -206,10 +219,27 @@ export function isLabSnapshot(value: unknown): value is LabSnapshot {
   if (value.trade.zone !== null && (!Array.isArray(value.trade.zone) || value.trade.zone.length !== 2 || !value.trade.zone.every(finite))) return false;
   if (value.trade.qualityGrade !== undefined && !enumValue(value.trade.qualityGrade, ["A+", "A", "B+", "WAIT"] as const)) return false;
   if (value.trade.qualityScore !== undefined && (!finite(value.trade.qualityScore) || value.trade.qualityScore < 0 || value.trade.qualityScore > 100)) return false;
+  if (value.trade.levelName !== undefined && !text(value.trade.levelName)) return false;
+  if (value.trade.levelRole !== undefined && !enumValue(value.trade.levelRole, ["magnet", "wall", "accelerant", "decision"] as const)) return false;
+  if (value.trade.entryReference !== undefined && !finite(value.trade.entryReference)) return false;
+  if (value.trade.bestRiskReward !== undefined && (!finite(value.trade.bestRiskReward) || value.trade.bestRiskReward < 0 || value.trade.bestRiskReward > 100)) return false;
+  if (value.trade.issuedAt !== undefined && !iso(value.trade.issuedAt)) return false;
+  if (value.trade.armedAt !== undefined && value.trade.armedAt !== null && !iso(value.trade.armedAt)) return false;
   if (value.trade.optionsAlignment !== undefined && !text(value.trade.optionsAlignment)) return false;
   if (value.trade.technicalReasoning !== undefined && (!Array.isArray(value.trade.technicalReasoning)
     || value.trade.technicalReasoning.length > 8
     || !value.trade.technicalReasoning.every((item) => Boolean(text(item))))) return false;
+  if (value.trade.targetDetails !== undefined && (!Array.isArray(value.trade.targetDetails)
+    || value.trade.targetDetails.length > 5
+    || !value.trade.targetDetails.every((item) => record(item)
+      && finite(item.price)
+      && Boolean(text(item.level))
+      && Boolean(text(item.reason))
+      && finite(item.riskReward)
+      && item.riskReward >= 0
+      && finite(item.payPercent)
+      && item.payPercent >= 0
+      && item.payPercent <= 100))) return false;
   if (!nullableFinite(value.trade.stop) || !nullableFinite(value.trade.coreTarget) || !nullableFinite(value.trade.runnerTarget)) return false;
   if (!Array.isArray(value.trade.announce) || !value.trade.announce.every((item) => typeof item === "string")) return false;
 

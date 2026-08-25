@@ -628,6 +628,17 @@ function aPlusSetupForSide(
     : tape === "calm"
       ? "Positive-gamma conditions favour a defended level and rotation toward the next positioning concentration."
       : "Mixed gamma conditions require acceptance away from the entry zone before treating the reaction as real.";
+  const roleDescription = level.role === "wall"
+    ? "A wall is an options-positioning concentration where hedging can absorb price and create a defended reaction; it only remains a wall while live behaviour confirms it."
+    : level.role === "accelerant"
+      ? "An accelerant is short-gamma terrain: price can speed through it, so the trade is the confirmed rejection or continuation around it—not a blind touch."
+      : level.role === "magnet"
+        ? "A magnet is a positioning concentration that can pull price toward it; the edge comes from the reaction and exit path, not from predicting the first touch."
+        : "A decision level separates two auction paths; acceptance on one side changes the active scenario and failed acceptance creates the tradeable rejection.";
+  const riskPoints = Math.abs(selected.entryReference - selected.stop);
+  const targetDescription = targetDetails.length
+    ? targetDetails.map((target, index) => `TP${index + 1} ${formatLevel(target.price)} at ${target.level} (${target.risk_reward.toFixed(2)}R; pay ${target.pay_percent}%)`).join(" · ")
+    : "No verified structural target exists beyond the setup zone.";
   const permission = side === "LONG"
     ? `Price trades into ${formatLevel(level.zone[0])}-${formatLevel(level.zone[1])}; sell aggression stops making progress, buyers reclaim the upper edge, and price leaves the zone with displacement while options flow confirms or stops opposing the move.`
     : `Price trades into ${formatLevel(level.zone[0])}-${formatLevel(level.zone[1])}; buy aggression stops making progress, sellers reclaim the lower edge, and price leaves the zone with displacement while options flow confirms or stops opposing the move.`;
@@ -646,16 +657,16 @@ function aPlusSetupForSide(
     permission,
     options_alignment: flowDescription,
     reasoning: [
-      level.why,
-      `${level.name} carries ${level.strength}/5 structural strength from ${level.sources.join(" + ")} evidence.`,
+      `${level.name} is the selected ${level.role} at ${formatLevel(level.zone[0])}-${formatLevel(level.zone[1])}. ${roleDescription}`,
+      `Why this exact zone: ${level.why}`,
+      `Evidence stack: ${level.strength}/5 structural strength from ${level.sources.join(" + ")}; terrain is ${level.terrain}.`,
       characterAlignment > 0.2
-        ? `Its order character supports the ${side.toLowerCase()} thesis.`
-        : `Its order character is not fully aligned, so the live reaction must do more of the work.`,
+        ? `Order character supports the ${side.toLowerCase()} thesis (directional alignment ${characterAlignment.toFixed(2)}). ${level.order_character.plain}`
+        : `Order character is not fully aligned (directional alignment ${characterAlignment.toFixed(2)}), so the live reaction must do more of the work. ${level.order_character.plain}`,
       flowDescription,
       tapeDescription,
-      targetDetails.length
-        ? `The furthest verified pay-yourself level offers approximately 1:${selected.bestRiskReward.toFixed(2)} risk-to-reward from the conservative entry reference.`
-        : "No verified pay-yourself level exists beyond this zone yet.",
+      `Risk geometry: conservative entry reference ${formatLevel(selected.entryReference)}, structural stop ${formatLevel(selected.stop)}, ${riskPoints.toFixed(2)} points at risk. The stop comes from structure; size must come from the Cage law.`,
+      `Pay-yourself map: ${targetDescription} Best available structural reward is ${selected.bestRiskReward.toFixed(2)}R.`,
     ],
     entry_reference: selected.entryReference,
     stop: selected.stop,

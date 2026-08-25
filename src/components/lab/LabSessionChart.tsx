@@ -16,6 +16,7 @@ import {
 } from "@/lib/gex-box/rithmicCandles";
 import { subscribeRithmicIndicatorTrades, type RithmicIndicatorStreamStatus } from "@/lib/rithmicIndicatorStream";
 import type { LabMode, LabRoot, LabSnapshot, LabSnapshotLevel, LabSnapshotUpdate } from "@/lib/labSnapshot";
+import { evaluateLabTradeOutcome, type LabTradeOutcome } from "@/lib/labTradeOutcome";
 
 type ChartCandle = RithmicClassicCandle & { volume?: number };
 type LabCandleSeries = ReturnType<IChartApi["addCandlestickSeries"]>;
@@ -61,6 +62,7 @@ export default function LabSessionChart({
   updates,
   trade,
   setupAt,
+  onOutcome,
 }: {
   root: LabRoot;
   mode: LabMode;
@@ -68,6 +70,7 @@ export default function LabSessionChart({
   updates: LabSnapshotUpdate[];
   trade: LabSnapshot["trade"] | null;
   setupAt: string | null;
+  onOutcome: (outcome: LabTradeOutcome) => void;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -144,6 +147,7 @@ export default function LabSessionChart({
     const controller = new AbortController();
     let disposed = false;
     let uiFrame: number | null = null;
+    let analysisTimer: number | null = null;
 
     const publishBuffer = (fit = false) => {
       if (disposed || !seriesRef.current) return;
@@ -181,6 +185,13 @@ export default function LabSessionChart({
         if (!disposed) setLastPrice(candlesRef.current.at(-1)?.close ?? null);
       });
     };
+    const scheduleAnalysis = () => {
+      if (analysisTimer !== null) return;
+      analysisTimer = window.setTimeout(() => {
+        analysisTimer = null;
+        if (!disposed) setDataRevision((value) => value + 1);
+      }, 1_000);
+    };
     const unsubscribe = subscribeRithmicIndicatorTrades({
       symbol: root,
       contractSymbol: contract,
@@ -201,6 +212,7 @@ export default function LabSessionChart({
           if (candle) seriesRef.current?.update(seriesRows([candle])[0]);
         });
         schedulePrice();
+        scheduleAnalysis();
       },
     });
     return () => {
@@ -208,6 +220,7 @@ export default function LabSessionChart({
       controller.abort();
       unsubscribe();
       if (uiFrame !== null) window.cancelAnimationFrame(uiFrame);
+      if (analysisTimer !== null) window.clearTimeout(analysisTimer);
     };
   // chartReady ensures a theme-driven chart rebuild receives a fresh feed and
   // history paint without retaining listeners from the previous instance.
@@ -331,9 +344,10 @@ export default function LabSessionChart({
         color: update.kind === "RISK" ? danger : primary,
         text: update.title.slice(0, 20),
       }));
-    if (trade?.status === "ARMED" && trade.side && setupAt && Number.isFinite(Date.parse(setupAt))) {
+    const signalAt = trade?.armedAt ?? (trade?.status === "ARMED" ? setupAt : null);
+    if (trade?.side && signalAt && Number.isFinite(Date.parse(signalAt))) {
       markers.push({
-        time: nearestTime(Date.parse(setupAt)),
+        time: nearestTime(Date.parse(signalAt)),
         position: trade.side === "LONG" ? "belowBar" : "aboveBar",
         shape: trade.side === "LONG" ? "arrowUp" : "arrowDown",
         color: trade.side === "LONG" ? primary : danger,
@@ -343,6 +357,10 @@ export default function LabSessionChart({
     markers.sort((left, right) => Number(left.time) - Number(right.time));
     series.setMarkers(markers);
   }, [chartReady, dataRevision, setupAt, trade, updates]);
+
+  useEffect(() => {
+    onOutcome(evaluateLabTradeOutcome(candlesRef.current, trade, setupAt));
+  }, [dataRevision, onOutcome, setupAt, trade]);
 
   const feedLabel = streamStatus === "connected"
     ? "Rithmic tape live"
@@ -357,7 +375,7 @@ export default function LabSessionChart({
       <div className="absolute inset-x-0 top-0 z-10 flex h-8 items-center gap-2 border-b border-border bg-panel/95 px-3 backdrop-blur-sm">
         <span className="font-mono text-[10px] font-semibold text-foreground">{root} · 5M</span>
         <span className={`border px-1.5 py-0.5 text-[7px] font-semibold uppercase tracking-[0.1em] ${mode === "FOLLOW" ? "border-danger/35 text-danger" : mode === "FADE" ? "border-primary/35 text-primary" : "border-border text-muted"}`}>{mode}</span>
-        {trade?.status === "ARMED" && trade.side ? <span className={`border px-1.5 py-0.5 text-[7px] font-semibold uppercase tracking-[0.1em] ${trade.side === "LONG" ? "border-primary/35 text-primary" : "border-danger/35 text-danger"}`}>{trade.side === "LONG" ? "BUY" : "SELL"} setup · confirm</span> : trade?.side ? <span className="border border-border px-1.5 py-0.5 text-[7px] font-semibold uppercase tracking-[0.1em] text-muted">Watch {trade.side}</span> : null}
+        {trade?.status === "ARMED" && trade.side ? <span className={`border px-1.5 py-0.5 text-[7px] font-semibold uppercase tracking-[0.1em] ${trade.side === "LONG" ? "border-primary/35 text-primary" : "border-danger/35 text-danger"}`}>{trade.side === "LONG" ? "BUY" : "SELL"} setup · confirm</span> : trade?.armedAt && trade.side ? <span className="border border-accent/35 px-1.5 py-0.5 text-[7px] font-semibold uppercase tracking-[0.1em] text-accent">Signal issued · re-grade</span> : trade?.side ? <span className="border border-border px-1.5 py-0.5 text-[7px] font-semibold uppercase tracking-[0.1em] text-muted">Watch {trade.side}</span> : null}
         <span className="ml-auto font-mono text-[10px] text-foreground">{lastPrice?.toLocaleString("en-US", { maximumFractionDigits: 2 }) ?? "—"}</span>
         <span className="text-[7px] uppercase tracking-[0.1em] text-muted">{feedLabel}</span>
       </div>

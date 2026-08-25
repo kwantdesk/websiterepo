@@ -31,6 +31,7 @@ import {
   type LabRoot,
   type LabSnapshot,
 } from "@/lib/labSnapshot";
+import type { LabTradeOutcome, LabTradeOutcomeStatus } from "@/lib/labTradeOutcome";
 
 function Panel({ title, eyebrow, action, className = "", children }: {
   title: string;
@@ -72,6 +73,33 @@ function levelTone(kind: LabLevelKind) {
   return "border-border text-foreground";
 }
 
+function setupRoleExplanation(role: LabSnapshot["trade"]["levelRole"] | undefined, kind: LabLevelKind | undefined) {
+  if (role === "wall") return "A wall is concentrated options positioning where hedging can absorb price. It matters only while the live reaction proves that defence or rejection is still present.";
+  if (role === "accelerant") return "An accelerant is short-gamma terrain where hedging can chase price. It is important because clean acceptance can expand quickly; a blind touch is not an entry.";
+  if (role === "magnet") return "A magnet is concentrated positioning that can pull price toward it. The trade comes from the audited reaction and path away—not from predicting the first touch.";
+  if (role === "decision" || kind === "FLIP") return "A decision zone separates two auction paths. Acceptance changes the active scenario; failed acceptance creates the potential rejection setup.";
+  if (kind === "BUY") return "This is a demand-side structural zone. It matters only if selling stops making progress and defence visibly rebuilds.";
+  if (kind === "SELL") return "This is a supply-side structural zone. It matters only if buying stops making progress and price fails to accept above it.";
+  return "This zone is carried by the repository ladder; its importance must be proved by its sources, Film and live reaction.";
+}
+
+function outcomeTone(status: LabTradeOutcomeStatus | undefined) {
+  if (status === "RUNNER_HIT" || status === "CORE_HIT") return "border-primary/35 text-primary";
+  if (status === "STOPPED" || status === "INDETERMINATE") return "border-danger/35 text-danger";
+  if (status === "LIVE") return "border-accent/35 text-accent";
+  return "border-border text-muted";
+}
+
+function formatNewYorkEvent(value: string | null | undefined) {
+  if (!value) return "—";
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(Date.parse(value));
+}
+
 function timeAgo(value: string | null, now: number) {
   if (!value) return "unknown";
   const age = Math.max(0, now - Date.parse(value));
@@ -106,6 +134,7 @@ export default function LabWorkspace() {
   const [runMessage, setRunMessage] = useState("");
   const [runError, setRunError] = useState("");
   const [now, setNow] = useState<number | null>(null);
+  const [tradeOutcome, setTradeOutcome] = useState<LabTradeOutcome | null>(null);
   const requestRef = useRef<AbortController | null>(null);
   const snapshotRef = useRef<LabSnapshot | null>(null);
 
@@ -142,6 +171,7 @@ export default function LabWorkspace() {
   useEffect(() => {
     snapshotRef.current = null;
     setSnapshot(null);
+    setTradeOutcome(null);
     setError("");
     void loadSnapshot();
     return () => requestRef.current?.abort();
@@ -193,6 +223,22 @@ export default function LabWorkspace() {
     && !freshnessBlocked
     && currentSnapshot?.trade.status === "ARMED";
   const spot = currentSnapshot?.mode.spot ?? null;
+  const setupLevel = useMemo(() => {
+    const zone = currentSnapshot?.trade.zone;
+    if (!zone) return null;
+    const low = Math.min(zone[0], zone[1]);
+    const high = Math.max(zone[0], zone[1]);
+    return (currentSnapshot?.levels ?? [])
+      .filter((level) => level.high >= low && level.low <= high && level.kind !== "NO_TRADE")
+      .sort((left, right) => right.strength - left.strength)[0] ?? null;
+  }, [currentSnapshot?.levels, currentSnapshot?.trade.zone]);
+  const technicalCase = technicalReasons.length ? technicalReasons : [
+    setupLevel ? `${setupLevel.label} is the repository level overlapping the candidate zone. ${setupRoleExplanation(currentSnapshot?.trade.levelRole, setupLevel.kind)}` : "",
+    setupLevel?.action ?? "",
+    setupLevel?.career ? `Level career: ${setupLevel.career}` : "",
+    currentSnapshot?.mode.reason ?? "",
+    ...(currentSnapshot?.film.deltas ?? []).slice(0, 3).map((delta) => `${delta.label}: ${delta.interpretation}`),
+  ].filter(Boolean);
   const orderedLevels = useMemo(() => (currentSnapshot?.levels ?? [])
     .slice()
     .sort((left, right) => {
@@ -206,6 +252,10 @@ export default function LabWorkspace() {
     await fetch("/api/lab/access", { method: "DELETE" }).catch(() => undefined);
     window.location.reload();
   };
+
+  const handleTradeOutcome = useCallback((outcome: LabTradeOutcome) => {
+    setTradeOutcome(outcome);
+  }, []);
 
   const runLab = async () => {
     requestRef.current?.abort();
@@ -320,16 +370,16 @@ export default function LabWorkspace() {
 
                   <div className="bg-panel p-4">
                     <p className="text-[7px] font-semibold uppercase tracking-[0.14em] text-muted">Technical case</p>
-                    {technicalReasons.length ? (
+                    {technicalCase.length ? (
                       <ol className="mt-3 space-y-2.5">
-                        {technicalReasons.map((reason, index) => (
+                        {technicalCase.map((reason, index) => (
                           <li key={`${index}-${reason}`} className="grid grid-cols-[18px_1fr] gap-2 text-[8px] leading-4 text-foreground">
                             <span className="flex h-[18px] w-[18px] items-center justify-center border border-border font-mono text-[7px] text-muted">{index + 1}</span>
                             <span>{reason}</span>
                           </li>
                         ))}
                       </ol>
-                    ) : <div className="mt-3"><EmptyRow>Re-run August V1 to attach the source-backed technical case to this older setup card.</EmptyRow></div>}
+                    ) : <div className="mt-3"><EmptyRow>No source-backed technical context is attached. Do not rely on the grade.</EmptyRow></div>}
                     <div className="mt-4 border-l-2 border-accent bg-background px-3 py-2.5">
                       <p className="text-[6px] font-semibold uppercase tracking-[0.12em] text-accent">Options alignment</p>
                       <p className="mt-1 text-[8px] leading-4 text-foreground">{currentSnapshot?.trade.optionsAlignment ?? "Not attached to this repository frame — re-run before relying on the grade."}</p>
@@ -352,7 +402,7 @@ export default function LabWorkspace() {
               ) : <div className="p-3"><EmptyRow>Run August V1 to issue a source-backed setup brief. No setup is inferred from price alone.</EmptyRow></div>}
             </Panel>
 
-            <div className="col-span-12 xl:col-span-8"><LabSessionChart root={root} mode={currentSnapshot?.mode.value ?? "UNRESOLVED"} levels={currentSnapshot?.levels ?? []} updates={currentSnapshot?.updates ?? []} trade={currentSnapshot?.trade ?? null} setupAt={currentSnapshot?.updatedAt ?? null} /></div>
+            <div className="col-span-12 xl:col-span-8"><LabSessionChart root={root} mode={currentSnapshot?.mode.value ?? "UNRESOLVED"} levels={currentSnapshot?.levels ?? []} updates={currentSnapshot?.updates ?? []} trade={currentSnapshot?.trade ?? null} setupAt={currentSnapshot?.trade.armedAt ?? currentSnapshot?.updatedAt ?? null} onOutcome={handleTradeOutcome} /></div>
 
             <Panel title="Doors & condemned ground" eyebrow="Nearest first · source tagged" className="col-span-12 xl:col-span-4">
               <div className="max-h-[410px] overflow-y-auto p-2">
@@ -383,6 +433,41 @@ export default function LabWorkspace() {
 
             <Panel title="Data cogs" eyebrow="A dead cog is announced" className="col-span-12 xl:col-span-5">
               <div className="grid grid-cols-1 gap-px bg-border sm:grid-cols-2">{currentSnapshot?.cogs.length ? currentSnapshot.cogs.map((cog) => <div key={cog.id} className="bg-background p-3"><div className="flex items-center gap-2"><Database className={`h-3.5 w-3.5 ${cogTone(cog.status)}`} strokeWidth={1.5} /><strong className="text-[8px]">{cog.label}</strong><span className={`ml-auto text-[6px] font-semibold ${cogTone(cog.status)}`}>{cog.status}</span></div><p className="mt-2 truncate text-[7px] text-muted">{cog.source} · {timeAgo(cog.asOf, currentTime)}</p><p className="mt-1 text-[7px] leading-3 text-muted">{cog.detail}</p></div>) : <EmptyRow>No data-cog receipt exists.</EmptyRow>}</div>
+            </Panel>
+
+            <Panel title="Technical gameplan" eyebrow="Why this exact zone · what it is · why it matters" className="col-span-12 xl:col-span-8" action={<span className={`border px-2 py-1 font-mono text-[7px] font-semibold ${setupGrade === "A+" ? "border-primary/35 text-primary" : "border-border text-muted"}`}>{setupGrade ?? "NO GRADE"} · {setupScore ?? "—"}/100</span>}>
+              {setupIssued ? <div className="grid gap-px bg-border lg:grid-cols-3">
+                <div className="bg-background p-4">
+                  <p className="text-[7px] font-semibold uppercase tracking-[0.14em] text-muted">Why this zone</p>
+                  <p className="mt-2 text-[11px] font-semibold text-foreground">{currentSnapshot?.trade.levelName ?? setupLevel?.label ?? currentSnapshot?.trade.name}</p>
+                  <p className="mt-2 text-[8px] leading-4 text-foreground">{setupRoleExplanation(currentSnapshot?.trade.levelRole, setupLevel?.kind)}</p>
+                  {setupLevel ? <><p className="mt-3 text-[7px] leading-3 text-muted">{setupLevel.action}</p><div className="mt-3 flex flex-wrap gap-1">{setupLevel.sources.map((source) => <span key={source} className="border border-border px-1.5 py-0.5 text-[6px] uppercase tracking-[0.08em] text-muted">{source}</span>)}</div><p className="mt-2 font-mono text-[7px] text-muted">Strength {setupLevel.strength}/100 · {setupLevel.kind} · {setupLevel.status}</p></> : <p className="mt-3 text-[7px] text-danger">No overlapping ladder receipt is attached; re-run before treating the zone as structural.</p>}
+                </div>
+                <div className="bg-panel p-4">
+                  <p className="text-[7px] font-semibold uppercase tracking-[0.14em] text-muted">Mode + Film fit</p>
+                  <p className="mt-2 text-[8px] leading-4 text-foreground"><strong>{currentSnapshot?.mode.value ?? "UNRESOLVED"}:</strong> {currentSnapshot?.mode.reason ?? "No mode evidence."}</p>
+                  <div className="mt-3 space-y-2">{currentSnapshot?.film.deltas.length ? currentSnapshot.film.deltas.slice(0, 4).map((delta) => <div key={delta.id} className="border-l border-border pl-2"><p className="text-[7px] font-semibold text-foreground">{delta.label} · {delta.direction.replaceAll("_", " ")}</p><p className="mt-1 text-[7px] leading-3 text-muted">{delta.interpretation}</p></div>) : <p className="text-[7px] leading-3 text-danger">One frame—no Film. This is context, not a live call.</p>}</div>
+                  <div className="mt-3 border-l-2 border-accent bg-background px-3 py-2"><p className="text-[6px] uppercase tracking-[0.12em] text-accent">Options alignment</p><p className="mt-1 text-[7px] leading-3 text-foreground">{currentSnapshot?.trade.optionsAlignment ?? "Re-run to attach the live options-flow read."}</p></div>
+                </div>
+                <div className="bg-background p-4">
+                  <p className="text-[7px] font-semibold uppercase tracking-[0.14em] text-muted">Execution map</p>
+                  <div className="mt-2 grid grid-cols-2 gap-px bg-border"><div className="bg-panel p-2"><p className="text-[6px] uppercase tracking-[0.1em] text-muted">Entry reference</p><p className="mt-1 font-mono text-[9px]">{formatPrice(currentSnapshot?.trade.entryReference ?? (currentSnapshot?.trade.side === "LONG" ? currentSnapshot?.trade.zone?.[1] ?? null : currentSnapshot?.trade.zone?.[0] ?? null))}</p></div><div className="bg-panel p-2"><p className="text-[6px] uppercase tracking-[0.1em] text-muted">Structural stop</p><p className="mt-1 font-mono text-[9px] text-danger">{formatPrice(currentSnapshot?.trade.stop ?? null)}</p></div></div>
+                  <p className="mt-3 text-[7px] leading-3 text-foreground">TRIGGER: {currentSnapshot?.trade.entryTrigger}</p><p className="mt-2 text-[7px] leading-3 text-danger">KILL: {currentSnapshot?.trade.invalidation}</p>
+                  <div className="mt-3 space-y-2">{currentSnapshot?.trade.targetDetails?.length ? currentSnapshot.trade.targetDetails.map((target, index) => <div key={`${target.price}-${index}`} className="border border-border bg-panel p-2"><div className="flex items-center gap-2"><span className="text-[6px] font-semibold text-primary">TP{index + 1}</span><span className="font-mono text-[8px]">{formatPrice(target.price)}</span><span className="ml-auto font-mono text-[7px] text-muted">{target.riskReward.toFixed(2)}R · {target.payPercent}%</span></div><p className="mt-1 text-[7px] leading-3 text-muted">{target.reason}</p></div>) : <><p className="text-[7px] text-muted">TP1 CORE · {formatPrice(currentSnapshot?.trade.coreTarget ?? null)}</p><p className="text-[7px] text-muted">TP2 RUNNER · {formatPrice(currentSnapshot?.trade.runnerTarget ?? null)}</p></>}</div>
+                </div>
+              </div> : <div className="p-3"><EmptyRow>No technical gameplan exists until August V1 issues a source-backed setup.</EmptyRow></div>}
+            </Panel>
+
+            <Panel title="Setup results" eyebrow="Tape grade · not broker fills" className="col-span-12 xl:col-span-4" action={<span className={`border px-2 py-1 text-[7px] font-semibold ${outcomeTone(tradeOutcome?.status)}`}>{tradeOutcome?.status.replaceAll("_", " ") ?? "NO RESULT"}</span>}>
+              <div className="p-3">
+                <div className="grid grid-cols-3 gap-px bg-border text-center"><div className="bg-background p-2.5"><p className="text-[6px] uppercase tracking-[0.1em] text-muted">MFE</p><p className="mt-1 font-mono text-[10px]">{tradeOutcome?.mfePoints === null || tradeOutcome?.mfePoints === undefined ? "—" : `${tradeOutcome.mfePoints.toFixed(2)} pts`}</p></div><div className="bg-background p-2.5"><p className="text-[6px] uppercase tracking-[0.1em] text-muted">MAE</p><p className="mt-1 font-mono text-[10px]">{tradeOutcome?.maePoints === null || tradeOutcome?.maePoints === undefined ? "—" : `${tradeOutcome.maePoints.toFixed(2)} pts`}</p></div><div className="bg-background p-2.5"><p className="text-[6px] uppercase tracking-[0.1em] text-muted">Peak R</p><p className="mt-1 font-mono text-[10px]">{tradeOutcome?.peakR === null || tradeOutcome?.peakR === undefined ? "—" : `${tradeOutcome.peakR.toFixed(2)}R`}</p></div></div>
+                <div className="mt-3 space-y-1.5">{([[
+                  "A+ armed",
+                  currentSnapshot?.trade.armedAt ?? (currentSnapshot?.trade.status === "ARMED" ? currentSnapshot.updatedAt : null),
+                ], ["Entry reference", tradeOutcome?.entryAt ?? null], ["TP1 core", tradeOutcome?.coreHitAt ?? null], ["TP2 runner", tradeOutcome?.runnerHitAt ?? null], ["Structural stop", tradeOutcome?.stopHitAt ?? null]] as const).map(([label, value]) => <div key={label} className="flex items-center border border-border bg-background px-2.5 py-2"><span className="text-[7px] text-muted">{label}</span><span className={`ml-auto font-mono text-[7px] ${value ? "text-foreground" : "text-muted"}`}>{value ? `${formatNewYorkEvent(value)} NY` : "NOT HIT"}</span></div>)}</div>
+                <p className="mt-3 border-l-2 border-border pl-3 text-[8px] leading-4 text-foreground">{tradeOutcome?.summary ?? "The live chart is loading the tape required to grade this setup."}</p>
+                <p className="mt-3 text-[6px] leading-3 text-muted">This grades whether the published prices traded and how far price travelled. Exact fills, slippage, size and realised P&amp;L require the broker receipt in Journal.</p>
+              </div>
             </Panel>
           </div>
 
