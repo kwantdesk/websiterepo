@@ -226,18 +226,6 @@ const withAlpha = (color: string, alpha: number) => {
   return `rgba(${(int >> 16) & 255},${(int >> 8) & 255},${int & 255},${alpha})`;
 };
 
-/**
- * How long a book stands after the last frame that carried one.
- *
- * Depth frames occasionally arrive carrying nothing — a resync, a heartbeat,
- * a frame that crossed a reconnect. Taking those at face value emptied the
- * ladder and the next real frame filled it again, which is the ladder seen
- * blinking out and returning. The last book it was actually given stands
- * across those, but not indefinitely: past this the feed has stopped saying
- * anything and an old book is no longer the market.
- */
-const MINI_DOM_BOOK_RETENTION_MS = 15_000;
-
 export class MiniDomPrimitive implements ISeriesPrimitive<Time> {
   private attachedParams: SeriesAttachedParameter<Time> | null = null;
   private levels: MiniDomLevel[] = [];
@@ -259,15 +247,32 @@ export class MiniDomPrimitive implements ISeriesPrimitive<Time> {
     };
   }
 
+  /**
+   * Take a depth frame.
+   *
+   * An empty frame is not an empty book. Frames occasionally arrive carrying
+   * nothing — a resync, a heartbeat, one that crossed a reconnect — and taking
+   * those at face value emptied the ladder until the next real frame refilled
+   * it. The last book actually received stands instead.
+   *
+   * Nothing here expires it on a timer. A quiet tape is not a dead feed, and
+   * a clock-based cutoff made the ladder hide itself and reappear on its own
+   * every time the book went still. The feed's own status decides when there
+   * is nothing to show: see the stream's onStatus, which clears it.
+   */
   setBook(levels: MiniDomLevel[], tickSize: number, options: MiniDomOptions) {
     this.tickSize = tickSize > 0 ? tickSize : this.tickSize;
     this.options = options;
-    // An empty frame is not an empty book. See MINI_DOM_BOOK_RETENTION_MS.
     if (levels.length) {
       this.levels = levels;
       this.booked = Date.now();
     }
     this.attachedParams?.requestUpdate();
+  }
+
+  /** The last book received, so a rebuilt chart can be given it back at once. */
+  book(): { levels: MiniDomLevel[]; tickSize: number } | null {
+    return this.levels.length ? { levels: this.levels, tickSize: this.tickSize } : null;
   }
 
   /**
@@ -306,9 +311,6 @@ export class MiniDomPrimitive implements ISeriesPrimitive<Time> {
   private draw(target: CanvasRenderingTarget2D) {
     const params = this.attachedParams;
     if (!params || !this.levels.length) return;
-    // Past the retention window the feed has gone quiet, and a book nobody is
-    // still confirming is not the market.
-    if (Date.now() - this.booked > MINI_DOM_BOOK_RETENTION_MS) return;
     const options = this.options;
     if (!options.showBids && !options.showAsks) return;
 

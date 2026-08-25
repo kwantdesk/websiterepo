@@ -3116,6 +3116,17 @@ function Chart({
   const deltaLadderPrimitiveRef = useRef<DeltaLadderPrimitive | null>(null);
   /** The time scale's own right offset, kept so the ladder can give it back. */
   const miniDomReservedRightOffsetRef = useRef<number | null>(null);
+  /**
+   * The last book the ladder was given.
+   *
+   * The chart tears its series down and rebuilds it — a timeframe change, a
+   * resize, a theme apply — and every primitive is new and empty afterwards.
+   * The book subscription is not keyed on that, so nothing re-fed the new
+   * ladder and it stayed blank until the next depth frame happened to land.
+   * On a quiet tape that is a long time, which is the ladder appearing and
+   * disappearing of its own accord.
+   */
+  const miniDomLastBookRef = useRef<{ levels: MiniDomLevel[]; tickSize: number } | null>(null);
   const classicGexProfilePrimitiveRef = useRef<ClassicGexProfilePrimitive | null>(null);
   const gammaHeatmapPrimitiveRef = useRef<GammaHeatmapPrimitive | null>(null);
   const pullingStackingPrimitiveRef = useRef<PullingStackingPrimitive | null>(null);
@@ -5201,6 +5212,7 @@ function Chart({
     const primitive = miniDomPrimitiveRef.current;
     if (!primitive) return;
     if (!miniDomEnabled) {
+      miniDomLastBookRef.current = null;
       primitive.clear();
       return;
     }
@@ -5222,22 +5234,30 @@ function Chart({
       // stream serves the deepest of its subscribers, so asking here does not
       // shallow the liquidity map or deepen anyone else's feed.
       depthTicks: 6_000,
+      // A quiet tape is not a dead feed, so nothing hides the ladder on a
+      // timer. The stream says when there is genuinely nothing to show.
+      onStatus: (status) => {
+        if (status !== "unavailable") return;
+        miniDomLastBookRef.current = null;
+        miniDomPrimitiveRef.current?.clear();
+      },
       onSnapshot: (snapshot) => {
         const levels: MiniDomLevel[] = snapshot.levels
           .filter((level) => level.size > 0)
           .map((level) => ({ side: level.side, price: level.price, size: level.size }));
-        primitive.setBook(
-          levels,
-          snapshot.tickSize > 0 ? snapshot.tickSize : priceFormat.minMove,
-          miniDomOptionsRef.current,
-        );
+        const tickSize = snapshot.tickSize > 0 ? snapshot.tickSize : priceFormat.minMove;
+        if (levels.length) miniDomLastBookRef.current = { levels, tickSize };
+        miniDomPrimitiveRef.current?.setBook(levels, tickSize, miniDomOptionsRef.current);
       },
     });
+    // A chart rebuild leaves a new, empty ladder behind. Hand it the book it
+    // already had rather than waiting on the tape to say it again.
+    const retained = miniDomLastBookRef.current;
+    if (retained) primitive.setBook(retained.levels, retained.tickSize, miniDomOptionsRef.current);
     return () => {
       unsubscribe();
-      primitive.clear();
     };
-  }, [contractSymbol, instrument, miniDomEnabled, priceFormat.minMove]);
+  }, [chartReadyRevision, contractSymbol, instrument, miniDomEnabled, priceFormat.minMove]);
 
   // A settings change has to reach the ladder before the next book frame, or
   // a width or colour tweak appears to do nothing until the market ticks.

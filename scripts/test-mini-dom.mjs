@@ -225,8 +225,15 @@ check("an empty depth frame does not blank the ladder", () => {
   // coming back.
   const source = readFileSync(new URL("../src/lib/miniDomPrimitive.ts", import.meta.url), "utf8");
   assert.match(source, /if \(levels\.length\) \{/, "an empty frame must not replace the book");
-  assert.match(source, /MINI_DOM_BOOK_RETENTION_MS/, "but a book nobody confirms must not stand forever");
-  assert.match(source, /Date\.now\(\) - this\.booked > MINI_DOM_BOOK_RETENTION_MS/);
+  // And nothing hides it on a clock. A quiet tape is not a dead feed: a
+  // time-based cutoff made the ladder hide itself and reappear on its own
+  // every time the book went still. The FEED says when there is nothing to
+  // show.
+  assert.doesNotMatch(source, /MINI_DOM_BOOK_RETENTION_MS/, "the ladder must not expire on a timer");
+  assert.doesNotMatch(source, /Date\.now\(\) - this\.booked >/);
+  const chartSource = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
+  assert.match(chartSource, /if \(status !== "unavailable"\) return;/,
+    "a dead feed is what clears the ladder");
   // Switching the study off still empties it at once.
   assert.match(source, /clear\(\) \{\s*this\.levels = \[\];\s*this\.booked = 0;/);
 });
@@ -266,7 +273,11 @@ check("a settings change does not tear down the book", () => {
   // the setting did, which is the only reason to be moving it.
   const chart = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
   assert.match(chart, /const miniDomEnabled = Boolean\(miniDomIndicator\);/);
-  assert.match(chart, /\}, \[contractSymbol, instrument, miniDomEnabled, priceFormat\.minMove\]\);/,
+  // The rule, not the exact list: the subscription keys on whether the study
+  // is on, never on the study object, which is rebuilt on every edit.
+  assert.match(chart, /miniDomEnabled, priceFormat\.minMove\]\);/,
+    "the book subscription must key on whether the ladder is on");
+  assert.doesNotMatch(chart, /instrument, miniDomIndicator, priceFormat\.minMove\]\);/,
     "the book subscription must not depend on the study's settings");
   assert.match(chart, /setOptions\(miniDomOptions\)/, "restyling still has to reach the ladder at once");
 });
@@ -314,6 +325,28 @@ check("the settings dialog reports what the chart is drawing", () => {
   assert.match(railBlock, /toggleOn\(settingsInstance, key\)/, "the rail switches must use it");
   assert.doesNotMatch(railBlock, /settingsInstance\.settings\?\.\[key\] === true/,
     "an absent key is the default, not off");
+});
+
+check("a chart rebuild does not leave the ladder blank", () => {
+  // The chart tears its series down and rebuilds it — a timeframe change, a
+  // resize, a theme apply — and every primitive is new and empty afterwards.
+  // With nothing re-feeding it, the ladder stayed blank until the next depth
+  // frame happened to land, which on a quiet tape is a long time. That is the
+  // ladder appearing and disappearing of its own accord.
+  const chart = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
+  assert.match(chart, /miniDomLastBookRef/, "the last book must be retained outside the primitive");
+  assert.match(
+    chart,
+    /const retained = miniDomLastBookRef\.current;\s*\n\s*if \(retained\) primitive\.setBook\(/,
+    "a rebuilt ladder must be handed the book it already had",
+  );
+  assert.match(
+    chart,
+    /\}, \[chartReadyRevision, contractSymbol, instrument, miniDomEnabled, priceFormat\.minMove\]\);/,
+    "the subscription must re-run when the chart is rebuilt",
+  );
+  // Switching instruments must not carry the previous book across.
+  assert.match(chart, /miniDomLastBookRef\.current = null;\s*\n\s*primitive\.clear\(\);/);
 });
 
 console.log(`\nmini dom: ${passed}/${passed} checks passed`);
