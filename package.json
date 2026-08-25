@@ -109,7 +109,8 @@
     "test:footprint-chart-types": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-footprint-chart-types.mjs",
     "test:footprint-replay": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-footprint-replay.mjs",
     "test:indicator-colour-override": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-indicator-colour-override.mjs",
-    "test:vix-environment": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-vix-environment.mjs"
+    "test:vix-environment": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-vix-environment.mjs",
+    "test:live-chart-memory": "node --experimental-strip-types scripts/test-live-chart-memory-guard.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",

@@ -13,6 +13,12 @@ import {
   type Time,
 } from "@/lib/lightweightChartsCompat";
 import {
+  buildLightweightSeriesDataSnapshot,
+  planLightweightSeriesDataSync,
+  stableSeriesOptionsSignature,
+  type LightweightSeriesDataSnapshot,
+} from "@/lib/lightweightSeriesDataSync";
+import {
   ArrowBigDown,
   ArrowBigUp,
   ArrowDown,
@@ -663,6 +669,7 @@ const HEDGE_LEVEL_COLORS: Record<HedgeChartLevel["kind"], string> = {
 };
 
 const EMPTY_CHART_LEVELS: ChartLevel[] = [];
+const EMPTY_CHART_ITEMS: never[] = [];
 
 const smtComparisonSnapshotCache = new Map<string, { candles: Candle[]; storedAt: number }>();
 const smtComparisonSnapshotRequests = new Map<string, Promise<Candle[]>>();
@@ -2957,6 +2964,9 @@ function getTextToolChrome(tool: DrawingToolId) {
 
 function lightweightIndicatorData(definition: CalculatedIndicatorSeries) {
   if (definition.kind !== "line") return definition.data as any[];
+  if (!definition.data.some((point) => Object.prototype.hasOwnProperty.call(point, "breakBefore"))) {
+    return definition.data as any[];
+  }
   return definition.data.map((point, index) => {
     const { breakBefore: _breakBefore, ...linePoint } = point;
     return definition.data[index + 1]?.breakBefore
@@ -2967,13 +2977,13 @@ function lightweightIndicatorData(definition: CalculatedIndicatorSeries) {
 
 function Chart({
   candles,
-  marketTrades = [],
+  marketTrades = EMPTY_CHART_ITEMS,
   marketTradesVersion = 0,
   trades,
   levels,
-  zones = [],
+  zones = EMPTY_CHART_ITEMS,
   backgroundLevels = EMPTY_CHART_LEVELS,
-  backgroundZones = [],
+  backgroundZones = EMPTY_CHART_ITEMS,
   instrument = "Instrument",
   chartInstanceId = "primary",
   viewportSyncGroup = "",
@@ -2991,14 +3001,14 @@ function Chart({
   onRemoveAllIndicators,
   chartingDrawings = EMPTY_CHARTING_DRAWINGS,
   onChartingDrawingsChange,
-  indicators = [],
+  indicators = EMPTY_CHART_ITEMS,
   initialBalanceCandles,
   classicGexProfile = null,
-  classicGexHistory = [],
+  classicGexHistory = EMPTY_CHART_ITEMS,
   classicGexLoading = false,
   classicGexError = null,
   expectedMoveCalibration = null,
-  volumeProfiles = [],
+  volumeProfiles = EMPTY_CHART_ITEMS,
   onUpdateIndicatorSetting,
   onOpenIndicatorSettings,
   settings = defaultChartSettings,
@@ -3033,12 +3043,12 @@ function Chart({
   liveCandleEventKey,
   gexBotFlow = null,
   onIndicatorPaneHeightChange,
-  paperPositions = [],
-  paperFills = [],
+  paperPositions = EMPTY_CHART_ITEMS,
+  paperFills = EMPTY_CHART_ITEMS,
   armedOrder = null,
   onArmedOrderPick,
   onArmedOrderCancel,
-  paperWorkingOrders = [],
+  paperWorkingOrders = EMPTY_CHART_ITEMS,
   onCancelWorkingOrder,
   onUpdatePaperProtection,
   onPaperProtectionDragStateChange,
@@ -3069,9 +3079,13 @@ function Chart({
     kind: "line" | "histogram";
     series: {
       setData: (data: any[]) => void;
+      update: (data: any) => void;
       applyOptions: (options: Record<string, unknown>) => void;
     };
+    dataSnapshot: LightweightSeriesDataSnapshot;
+    optionsSignature: string;
   }>>([]);
+  const chartConstructionSettingsKey = stableSeriesOptionsSignature(settings);
   const backgroundLevelsRef = useRef<ChartLevel[]>([]);
   const backgroundZonesRef = useRef<ChartZone[]>([]);
   const gameplanUnderlayRef = useRef<GameplanUnderlayPrimitive | null>(null);
@@ -12978,7 +12992,7 @@ function Chart({
       prevDataRef.current = "";
       lastRenderedCandleTimeRef.current = null;
     };
-  }, [chartInstanceId, crosshairSyncInstrumentKey, crosshairSyncScope, instrument, priceFormat, settings, themeVersion]);
+  }, [chartConstructionSettingsKey, chartInstanceId, crosshairSyncInstrumentKey, crosshairSyncScope, instrument, priceFormat, themeVersion]);
 
   useEffect(() => {
     const chart = chartRef.current;
@@ -13721,10 +13735,21 @@ function Chart({
               autoscaleInfoProvider: () => ({ priceRange: { minValue: 0, maxValue: 100 } }),
             } : {}),
           };
+      const data = lightweightIndicatorData(definition);
+      const dataSnapshot = buildLightweightSeriesDataSnapshot(data, existing?.dataSnapshot ?? null);
+      const optionsSignature = stableSeriesOptionsSignature(options);
       if (existing && existing.kind === kind) {
-        existing.series.applyOptions(options);
-        existing.series.setData(lightweightIndicatorData(definition));
-        return existing;
+        if (existing.optionsSignature !== optionsSignature) {
+          existing.series.applyOptions(options);
+        }
+        const syncPlan = planLightweightSeriesDataSync(existing.dataSnapshot, dataSnapshot);
+        if (syncPlan === "append" || syncPlan === "update-last") {
+          const latestPoint = data.at(-1);
+          if (latestPoint) existing.series.update(latestPoint);
+        } else if (syncPlan === "replace") {
+          existing.series.setData(data);
+        }
+        return { ...existing, dataSnapshot, optionsSignature };
       }
       const series = kind === "histogram"
         ? chart.addHistogramSeries({
@@ -13736,14 +13761,17 @@ function Chart({
             ...options,
             priceScaleId: definition.priceScaleId ?? "right",
           });
-      series.setData(lightweightIndicatorData(definition));
+      series.setData(data);
       return {
         key: definition.key,
         kind,
         series: series as unknown as {
           setData: (data: any[]) => void;
+          update: (data: any) => void;
           applyOptions: (options: Record<string, unknown>) => void;
         },
+        dataSnapshot,
+        optionsSignature,
       };
     });
   }, [calculatedIndicatorSeries, chartReadyRevision]);
