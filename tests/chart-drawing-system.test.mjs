@@ -246,3 +246,32 @@ test("dragging a drawing translates it in pixels, not in time", () => {
   );
   assert.match(layer, /fromXY\(pixel\.x \+ dx, pixel\.y \+ dy\)/);
 });
+
+test("drawings track a zoom in the same frame, not a frame behind it", () => {
+  // Panning and zooming a linear time and price scale are both AFFINE, so a
+  // translate-and-scale reproduces the new projection EXACTLY, however far the
+  // chart has moved. The layer used to give up past a five-percent rescale and
+  // hand the frame to a React redraw — and one wheel notch is more than five
+  // percent, so every zoom left the drawings behind the chart and then snapped
+  // them into place when the movement stopped. That snap is what reads as a
+  // drawing bugging around and resetting.
+  const layer = readFileSync(new URL("../src/components/ChartDrawLayer.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(
+    layer,
+    /Math\.abs\(scaleX - 1\) > 0\.05 \|\| Math\.abs\(scaleY - 1\) > 0\.05/,
+    "a zoom must be matched by the transform, not deferred to a redraw",
+  );
+  assert.match(layer, /translate\(\$\{dx\} \$\{dy\}\) scale\(\$\{scaleX\} \$\{scaleY\}\)/);
+  // Only a degenerate projection falls back to a redraw.
+  assert.match(layer, /scaleX <= 0\.001 \|\| scaleY <= 0\.001/);
+
+  // Text inside a scaled group scales with it, so the layer re-renders at the
+  // true projection once movement stops. The transform has been holding the
+  // correct position throughout, so nothing moves in the swap.
+  assert.match(layer, /const settle = \(\) => \{/);
+  assert.match(layer, /if \(scaleX !== 1 \|\| scaleY !== 1\) settle\(\);/,
+    "a pure pan needs no settle — it translates text without distorting it");
+
+  // Stroke weight must not ride the scale.
+  assert.match(layer, /<g ref=\{drawingsGroupRef\} vectorEffect="non-scaling-stroke">/);
+});

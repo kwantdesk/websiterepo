@@ -345,6 +345,24 @@ export default function ChartDrawLayer({
   });
 
   useEffect(() => {
+    let settleTimer: number | null = null;
+    /**
+     * Re-render at the real projection once the chart stops moving.
+     *
+     * The transform below keeps every drawing in the right PLACE while the
+     * chart moves. What it cannot keep is label text at its true size, since
+     * text inside a scaled group scales with it. So the layer is left alone
+     * during the gesture and redrawn when it ends — by which time the
+     * transform has already been holding the correct position, so there is
+     * nothing to see in the swap.
+     */
+    const settle = () => {
+      if (settleTimer !== null) window.clearTimeout(settleTimer);
+      settleTimer = window.setTimeout(() => {
+        settleTimer = null;
+        forceRedraw((value) => value + 1);
+      }, 90);
+    };
     const onViewport = () => {
       const basis = projectionBasisRef.current;
       const group = drawingsGroupRef.current;
@@ -356,37 +374,39 @@ export default function ChartDrawLayer({
       if (xA == null || xB == null || yA == null || yB == null) return;
       const scaleX = (xB - xA) / (basis.xB - basis.xA);
       const scaleY = (yB - yA) / (basis.yB - basis.yA);
-      if (!Number.isFinite(scaleX) || !Number.isFinite(scaleY)) return;
-      // Dragging sideways almost always moves the price scale a little too,
-      // because it autoscales to whatever is on screen. Demanding a PURE
-      // translation therefore rejected most ordinary panning and sent it to a
-      // React redraw, which lands a frame or more after the candles have
-      // already moved — the drawing swimming against the chart. A pan with a
-      // small rescale is still an affine map, so it can be matched exactly in
-      // the same frame; only a real zoom, where the distortion would be big
-      // enough to see in strokes and labels, needs the redraw.
-      if (Math.abs(scaleX - 1) > 0.05 || Math.abs(scaleY - 1) > 0.05) {
+      // Panning and zooming a linear time and price scale are both AFFINE, so
+      // a translate-and-scale reproduces the new projection exactly — not
+      // approximately — however far the chart has moved. This used to give up
+      // past a five-percent rescale and hand the frame to a React redraw,
+      // which lands after the candles have already moved: one wheel notch is
+      // more than five percent, so every zoom left the drawings a frame or
+      // more behind the chart and then snapped them into place when the
+      // movement stopped. That snap is the drawing "resetting".
+      if (
+        !Number.isFinite(scaleX) || !Number.isFinite(scaleY)
+        || scaleX <= 0.001 || scaleY <= 0.001
+        || scaleX > 1_000 || scaleY > 1_000
+      ) {
         group.removeAttribute("transform");
         forceRedraw((value) => value + 1);
         return;
       }
       const dx = xA - scaleX * basis.xA;
       const dy = yA - scaleY * basis.yA;
-      if (Math.abs(dx) > EDGE_OVERSCAN || Math.abs(dy) > EDGE_OVERSCAN) {
-        // Further than edge-anchored geometry was drawn past the pane, so the
-        // transform would start exposing the ends it was meant to hide.
-        group.removeAttribute("transform");
-        forceRedraw((value) => value + 1);
-        return;
-      }
       if (dx === 0 && dy === 0 && scaleX === 1 && scaleY === 1) {
         group.removeAttribute("transform");
         return;
       }
       group.setAttribute("transform", `translate(${dx} ${dy}) scale(${scaleX} ${scaleY})`);
+      // Only a rescale needs settling; a pure pan translates text without
+      // distorting it, so it can hold the transform indefinitely.
+      if (scaleX !== 1 || scaleY !== 1) settle();
     };
     const unsubscribe = subscribeViewport(onViewport);
-    return () => { unsubscribe(); };
+    return () => {
+      unsubscribe();
+      if (settleTimer !== null) window.clearTimeout(settleTimer);
+    };
   }, [subscribeViewport, chartReady, toX, toY]);
   // Volume-profile histograms and anchored-VWAP series live in price/time space
   // — they do NOT change when the user pans or zooms, only the pixel projection
