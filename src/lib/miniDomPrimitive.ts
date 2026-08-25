@@ -70,9 +70,11 @@ export const DEFAULT_MINI_DOM_OPTIONS: MiniDomOptions = {
   rightGapPx: 2,
   buyColor: "#14B8B0",
   sellColor: "#B4174B",
-  // Opaque: the ladder is the edge of the chart, not a pane laid over it, so
-  // nothing shows through from behind.
-  backgroundColor: "#000000",
+  // No panel. The chart reserves the ladder's width on the time scale, so
+  // nothing draws underneath it any more and there is nothing to cover up —
+  // a filled panel is just a slab of colour over the chart. Empty means the
+  // fill is skipped entirely; an opacity can be dialled back in per chart.
+  backgroundColor: "",
   showBids: true,
   showAsks: true,
   alignLeft: true,

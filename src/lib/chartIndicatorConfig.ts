@@ -624,8 +624,12 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     // Band spacing, not row count. Resting size is summed into price bands so
     // the bars are thick enough to carry their contract count; asking for a
     // row per tick gives hairlines with no room for a number.
-    { key: "levelSpacingPx", label: "Spacing between price levels (px)", defaultValue: 25, min: 8, max: 60, step: 1 },
+    // Granularity. Lower packs more price levels in; the bar height floor
+    // keeps them readable, and the contract counts drop out on their own once
+    // the rows are too tight to hold one.
+    { key: "levelSpacingPx", label: "Spacing between price levels (px) · lower is finer", defaultValue: 25, min: 3, max: 60, step: 1 },
     { key: "barOpacity", label: "Bar opacity (%)", defaultValue: 56, min: 10, max: 100, step: 1 },
+    { key: "backgroundOpacity", label: "Panel background (%) · 0 = transparent", defaultValue: 0, min: 0, max: 100, step: 1 },
     { key: "fontSize", label: "Contract text (px)", defaultValue: 8, min: 6, max: 14, step: 1 },
   ],
   "depth-of-market": [
@@ -1724,12 +1728,15 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     rightGapPx: 2,
     levelSpacingPx: 25,
     barOpacity: 56,
+    // No panel behind the ladder: the chart already ends at its edge, so
+    // there is nothing underneath to cover.
+    backgroundOpacity: 0,
     fontSize: 8,
     showBids: true,
     showAsks: true,
-    // Off by default: the liq map's mirrored bid/ask rails are what this
-    // ladder is a copy of. On, both rails read off one baseline instead.
-    alignLeft: false,
+    // Both rails grow left off one shared baseline, so lengths compare
+    // directly. Off puts them back to the liq map's mirrored pair.
+    alignLeft: true,
     showSizes: true,
     useThemeColors: true,
     buyColor: theme?.upColor ?? "#14B8B0",

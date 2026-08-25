@@ -183,9 +183,18 @@ check("it reuses the shared book stream rather than opening another", () => {
 });
 
 check("it is the chart's right edge, not a pane laid over it", () => {
-  // Opaque, so nothing behind it shows through, and every rail runs the same
-  // way so lengths compare off one baseline.
-  assert.equal(DEFAULT_MINI_DOM_OPTIONS.backgroundColor, "#000000");
+  // No panel behind it. The chart reserves the ladder's width on the time
+  // scale, so nothing draws underneath any more — a fill would just be a slab
+  // of colour over the chart. Empty skips the fill entirely.
+  assert.equal(DEFAULT_MINI_DOM_OPTIONS.backgroundColor, "", "the ladder must not paint a panel");
+  assert.equal(defaultIndicatorSettings("mini-dom").backgroundOpacity, 0);
+  const chartSrc = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(chartSrc, /backgroundColor: "rgba\(8,10,14,0\.55\)"/,
+    "the ladder's panel must not be hardcoded");
+  // Skipped, not painted with a transparent colour — a fill still costs a
+  // rect over the whole ladder every frame.
+  const primitiveSrc = readFileSync(new URL("../src/lib/miniDomPrimitive.ts", import.meta.url), "utf8");
+  assert.match(primitiveSrc, /if \(options\.backgroundColor\) \{/);
   assert.equal(DEFAULT_MINI_DOM_OPTIONS.alignLeft, true);
   assert.equal(defaultIndicatorSettings("mini-dom").alignLeft, true,
     "the study must ship pointing one way");

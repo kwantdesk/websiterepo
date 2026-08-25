@@ -5176,7 +5176,12 @@ function Chart({
       rightGapPx: clamp(Number(source.rightGapPx ?? 2), 0, 60),
       buyColor: useThemeColors ? settings.upColor : String(source.buyColor ?? settings.upColor),
       sellColor: useThemeColors ? settings.downColor : String(source.sellColor ?? settings.downColor),
-      backgroundColor: "rgba(8,10,14,0.55)",
+      // Transparent unless asked for. This was a hardcoded 55% panel, which
+      // is a dark slab sitting over the chart behind it.
+      backgroundColor: (() => {
+        const panel = clamp(Number(source.backgroundOpacity ?? 0), 0, 100);
+        return panel > 0 ? `rgba(8,10,14,${(panel / 100).toFixed(3)})` : "";
+      })(),
       showBids: source.showBids !== false,
       showAsks: source.showAsks !== false,
       // Absent means the DEFAULT, which is on — the same reading every other
