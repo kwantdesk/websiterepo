@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/KwantDesk.Core/KwantDesk.Core.csproj" />
+    <Project Path="src/KwantDesk.MarketData/KwantDesk.MarketData.csproj" />
+    <Project Path="src/KwantDesk.Rendering/KwantDesk.Rendering.csproj" />
+    <Project Path="src/KwantDesk.Workstation/KwantDesk.Workstation.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/KwantDesk.Core.Tests/KwantDesk.Core.Tests.csproj" />
+  </Folder>
+</Solution>
