@@ -1,6 +1,6 @@
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { applyTheme } from "./theme.ts";
-import { writeProtectedItem } from "@/lib/browserStorageQuota";
+import { writeProtectedItem } from "./browserStorageQuota.ts";
 
 const USER_PREFERENCES_TABLE = "user_preferences";
 const USER_PREFERENCES_METADATA_KEY = "kwantdesk_preferences";
