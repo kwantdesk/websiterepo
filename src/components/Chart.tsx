@@ -3114,6 +3114,8 @@ function Chart({
   const tpoProfilePrimitiveRef = useRef<TpoProfilePrimitive | null>(null);
   const miniDomPrimitiveRef = useRef<MiniDomPrimitive | null>(null);
   const deltaLadderPrimitiveRef = useRef<DeltaLadderPrimitive | null>(null);
+  /** The time scale's own right offset, kept so the ladder can give it back. */
+  const miniDomReservedRightOffsetRef = useRef<number | null>(null);
   const classicGexProfilePrimitiveRef = useRef<ClassicGexProfilePrimitive | null>(null);
   const gammaHeatmapPrimitiveRef = useRef<GammaHeatmapPrimitive | null>(null);
   const pullingStackingPrimitiveRef = useRef<PullingStackingPrimitive | null>(null);
@@ -5183,10 +5185,18 @@ function Chart({
   const miniDomOptionsRef = useRef(miniDomOptions);
   miniDomOptionsRef.current = miniDomOptions;
 
+  // Whether the ladder is ON. Deliberately a boolean and not the study
+  // itself: the study object is rebuilt on every settings change, and having
+  // it in the subscription's dependencies tore the book stream down and
+  // cleared the ladder each time a slider moved. On a quiet tape the next
+  // depth frame can be a long way off, so the ladder simply vanished for a
+  // minute — you could not see what a setting did to it, which is the only
+  // reason to be moving the slider.
+  const miniDomEnabled = Boolean(miniDomIndicator);
   useEffect(() => {
     const primitive = miniDomPrimitiveRef.current;
     if (!primitive) return;
-    if (!miniDomIndicator) {
+    if (!miniDomEnabled) {
       primitive.clear();
       return;
     }
@@ -5223,13 +5233,47 @@ function Chart({
       unsubscribe();
       primitive.clear();
     };
-  }, [contractSymbol, instrument, miniDomIndicator, priceFormat.minMove]);
+  }, [contractSymbol, instrument, miniDomEnabled, priceFormat.minMove]);
 
   // A settings change has to reach the ladder before the next book frame, or
   // a width or colour tweak appears to do nothing until the market ticks.
   useEffect(() => {
     miniDomPrimitiveRef.current?.setOptions(miniDomOptions);
   }, [miniDomOptions]);
+
+  /**
+   * The ladder is the chart's right edge, so the chart has to end at it.
+   *
+   * It is opaque and fixed against the price scale, and everything else on
+   * the pane was still free to draw underneath: candles slid under it at the
+   * live edge and disappeared, and a docked profile ran beneath an opaque
+   * panel. Reserving its width as bar offset means the newest candle stops at
+   * its left side instead of vanishing behind it — the same reservation the
+   * net-gamma lane already uses, so the two cannot fight over the same space.
+   *
+   * Measured in bars because that is what the time scale reserves in, so the
+   * gap holds its pixel width as the chart is zoomed.
+   */
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    const timeScale = chart.timeScale();
+    if (!miniDomEnabled || miniDomReservedWidth <= 0) {
+      if (miniDomReservedRightOffsetRef.current !== null) {
+        timeScale.applyOptions({ rightOffset: miniDomReservedRightOffsetRef.current });
+        miniDomReservedRightOffsetRef.current = null;
+      }
+      return;
+    }
+    const options = timeScale.options();
+    if (miniDomReservedRightOffsetRef.current === null) {
+      miniDomReservedRightOffsetRef.current = Number(options.rightOffset ?? 0);
+    }
+    const barsToReserve = miniDomReservedWidth / Math.max(1, Number(options.barSpacing ?? 6));
+    timeScale.applyOptions({
+      rightOffset: Math.max(miniDomReservedRightOffsetRef.current, barsToReserve),
+    });
+  }, [chartReadyRevision, miniDomEnabled, miniDomReservedWidth]);
 
   const tpoSourceTrades = useMemo<TpoTrade[]>(() => {
     if (!tpoSamplingEnabled) return [];

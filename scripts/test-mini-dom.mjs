@@ -245,13 +245,41 @@ check("both rails start at one baseline and run the same way", () => {
   // do off a shared baseline. One rail started at the ladder's right edge and
   // the other in the middle, so the same size drew two different lengths.
   const aligned = miniDomLayout({ paneWidth: 1200, widthPx: 190, rightGapPx: 2, showBids: true, showAsks: true, alignLeft: true });
-  assert.equal(aligned.baselineX, aligned.sellRight, "the baseline is where the ask rail already began");
+  // Hard against the price scale, with no band of black between the bars and
+  // the prices they belong to. Anchoring at the middle left the ladder's whole
+  // right half empty and the bars floating away from the scale.
+  assert.equal(aligned.baselineX, aligned.right, "bars must start at the ladder's right edge");
+  assert.equal(aligned.right, 1198, "which is the price scale, less the configured gap");
   assert.ok(aligned.numberX < aligned.baselineX - aligned.barExtent + 1, "the counts sit left of every bar");
   const mirrored = miniDomLayout({ paneWidth: 1200, widthPx: 190, rightGapPx: 2, showBids: true, showAsks: true });
   assert.equal(mirrored.baselineX, null, "mirrored keeps a rail each");
   // A full-length aligned bar must not reach the number column.
   const full = miniDomBarWidth(100, 100, aligned.barExtent);
   assert.ok(aligned.baselineX - full - 1 >= aligned.numberX, "a full bar must not run over the counts");
+});
+
+check("a settings change does not tear down the book", () => {
+  // The study object is rebuilt on every settings change. Having it in the
+  // subscription's dependencies dropped the stream and cleared the ladder each
+  // time a slider moved, and on a quiet tape the next depth frame is a long
+  // way off — so the ladder vanished for a minute and you could not see what
+  // the setting did, which is the only reason to be moving it.
+  const chart = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
+  assert.match(chart, /const miniDomEnabled = Boolean\(miniDomIndicator\);/);
+  assert.match(chart, /\}, \[contractSymbol, instrument, miniDomEnabled, priceFormat\.minMove\]\);/,
+    "the book subscription must not depend on the study's settings");
+  assert.match(chart, /setOptions\(miniDomOptions\)/, "restyling still has to reach the ladder at once");
+});
+
+check("the chart ends at the ladder rather than running under it", () => {
+  // It is opaque and fixed against the price scale, so anything still free to
+  // draw beneath it just disappears — candles at the live edge above all.
+  const chart = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
+  assert.match(chart, /miniDomReservedRightOffsetRef/, "the ladder must reserve its width on the time scale");
+  assert.match(chart, /barsToReserve = miniDomReservedWidth \/ Math\.max\(1, Number\(options\.barSpacing \?\? 6\)\)/,
+    "reserved in bars, so the gap holds its pixel width through a zoom");
+  // And it must hand the offset back when switched off.
+  assert.match(chart, /timeScale\.applyOptions\(\{ rightOffset: miniDomReservedRightOffsetRef\.current \}\);/);
 });
 
 console.log(`\nmini dom: ${passed}/${passed} checks passed`);

@@ -117,13 +117,14 @@ export function miniDomLayout(input: {
   // it in the same direction, so a bid and an ask of equal size draw equal.
   // Mirrored, each rail keeps its own edge and they grow apart.
   //
-  // The baseline is where the ask rail already started — the middle of the
-  // ladder — so turning alignment on moves the bid rail across to meet it
-  // rather than shifting anything the trader was already reading. The counts
-  // then live in a column of their own to the LEFT of every bar, out of the
-  // way of a bar that runs long.
+  // The baseline is the ladder's own right edge, hard against the price
+  // scale. Anchoring it at the middle instead left the whole right half of
+  // the ladder empty — a band of black between the bars and the scale, with
+  // the bars floating away from the prices they belong to. The counts live in
+  // a column of their own to the LEFT of every bar, out of the way of a bar
+  // that runs long.
   const numberColumn = Math.min(52, Math.max(26, width * 0.24));
-  const baselineX = input.alignLeft ? sellRight : null;
+  const baselineX = input.alignLeft ? right : null;
   const alignedExtent = baselineX === null
     ? 0
     : Math.max(1, baselineX - left - numberColumn);
