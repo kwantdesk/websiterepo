@@ -21,28 +21,75 @@ const workspaceDataCache = new Map<string, WorkspaceCacheEntry>();
 const WORKSPACE_DATA_CACHE_MAX = 8;
 const WORKSPACE_DATA_CACHE_MAX_BYTES = 64 * 1024 * 1024;
 
-// Cheap heap-size estimate for the known-large payload shapes — never a full
-// JSON.stringify (that alone churned ~8 MB strings per refresh).
-function estimateEntryBytes(value: unknown): number {
-  if (!value || typeof value !== "object") return 2_048;
-  const record = value as Record<string, unknown>;
-  const snapshots = record.snapshots;
-  if (Array.isArray(snapshots)) {
-    const first = snapshots[0] as Record<string, unknown> | undefined;
-    const bins = Array.isArray(first?.bins) ? (first!.bins as unknown[]).length : 0;
-    return snapshots.length * Math.max(1, bins) * 120;
-  }
-  const frames = record.frames;
-  if (Array.isArray(frames)) {
-    const first = frames[0] as Record<string, unknown> | undefined;
-    const strikes = Array.isArray(first?.strikes)
-      ? (first!.strikes as unknown[]).length
-      : Array.isArray(first?.rows) ? (first!.rows as unknown[]).length : 0;
-    return frames.length * Math.max(1, strikes) * 120;
-  }
-  const levels = record.levels;
-  if (Array.isArray(levels)) return levels.length * 96;
-  return 64 * 1024;
+/**
+ * How much heap a cached payload is really holding.
+ *
+ * This used to recognise three payload shapes and fall back to a flat 64 KB
+ * for anything else. The interval map is one of the "anything else": 1.81 MB
+ * on the wire counted as 0.06 MB, a 29x under-count, so the cache's byte cap
+ * could never fire for it and only the eight-entry limit did any bounding at
+ * all. Several of those parsed at once is hundreds of megabytes the cache
+ * believed was half a megabyte.
+ *
+ * Measured by walking the value rather than by knowing its shape, so a
+ * payload added later is counted correctly without anyone remembering to
+ * teach this function about it. The walk stops after a bounded number of
+ * nodes and scales what it saw up to the whole structure — an estimate, but
+ * one that tracks the real size instead of a guess. Never JSON.stringify:
+ * that allocated a multi-MB throwaway string on every refresh, which is the
+ * very churn this cache exists to avoid.
+ */
+const ESTIMATE_NODE_BUDGET = 20_000;
+
+export function estimateWorkspaceEntryBytes(value: unknown): number {
+  let budget = ESTIMATE_NODE_BUDGET;
+
+  const walk = (node: unknown): number => {
+    if (node === null || node === undefined) return 4;
+    switch (typeof node) {
+      case "number": return 8;
+      case "boolean": return 4;
+      case "string": return 16 + node.length * 2;
+      case "object": break;
+      default: return 8;
+    }
+    if (Array.isArray(node)) {
+      let total = 32;
+      let measured = 0;
+      while (measured < node.length && budget > 0) {
+        budget -= 1;
+        total += walk(node[measured]) + 8;
+        measured += 1;
+      }
+      // The rest of THIS array, priced from the part of it actually walked.
+      // Extrapolating per array rather than once at the end is what makes a
+      // deeply nested payload come out near its real size: the budget runs
+      // out inside one long array, and only that array knows how much of
+      // itself was left unmeasured.
+      if (measured < node.length && measured > 0) {
+        total += ((total - 32) / measured) * (node.length - measured);
+      }
+      return total;
+    }
+    const entries = Object.entries(node as Record<string, unknown>);
+    let total = 32;
+    let measured = 0;
+    while (measured < entries.length && budget > 0) {
+      budget -= 1;
+      // A property costs a slot, not its name: objects of the same shape
+      // share one hidden class, so the key text is stored once for the shape
+      // rather than once per object. Charging per object inflated a long
+      // array of small records several times over.
+      total += 8 + walk(entries[measured][1]);
+      measured += 1;
+    }
+    if (measured < entries.length && measured > 0) {
+      total += ((total - 32) / measured) * (entries.length - measured);
+    }
+    return total;
+  };
+
+  return Math.max(2_048, Math.round(walk(value)));
 }
 
 function workspaceCacheBytes(): number {
@@ -52,7 +99,7 @@ function workspaceCacheBytes(): number {
 }
 
 function setWorkspaceCacheEntry(key: string, entry: WorkspaceCacheEntry) {
-  if (entry.bytes === undefined) entry.bytes = estimateEntryBytes(entry.value);
+  if (entry.bytes === undefined) entry.bytes = estimateWorkspaceEntryBytes(entry.value);
   if (workspaceDataCache.has(key)) workspaceDataCache.delete(key);
   workspaceDataCache.set(key, entry);
   while (
