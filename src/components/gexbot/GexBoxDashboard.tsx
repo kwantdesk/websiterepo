@@ -123,28 +123,54 @@ const toolById = new Map(TOOLS.map((tool) => [tool.id, tool]));
  * follow through CSS variables rather than per-panel settings, because they
  * are chrome rather than data.
  */
-function GexBoxStyleSettings({ paletteId, onApply, onClose }: {
+/**
+ * Picking a workspace palette.
+ *
+ * Choosing a colour used to APPLY it and shut the dialog, so comparing two
+ * palettes meant reopening the dialog for each one and there was no way to
+ * change your mind. A click now previews on the live workspace behind the
+ * dialog and nothing is committed until Save; leaving with an unsaved choice
+ * asks first, and discarding puts the palette back exactly as it was found.
+ */
+function GexBoxStyleSettings({ paletteId, onPreview, onSave, onClose }: {
   paletteId: string;
-  onApply: (id: string) => void;
+  onPreview: (id: string) => void;
+  onSave: (id: string) => void;
   onClose: () => void;
 }) {
-  return <div className="fixed inset-0 z-[170] flex items-center justify-center bg-black/35 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+  // The palette as it was on open, so Discard is exact.
+  const originalRef = useRef(paletteId);
+  const [draft, setDraft] = useState(paletteId);
+  const [confirming, setConfirming] = useState(false);
+  const dirty = draft !== originalRef.current;
+
+  const discard = useCallback(() => {
+    onPreview(originalRef.current);
+    onClose();
+  }, [onClose, onPreview]);
+
+  const attemptClose = useCallback(() => {
+    if (!dirty) { onClose(); return; }
+    setConfirming(true);
+  }, [dirty, onClose]);
+
+  return <div className="fixed inset-0 z-[170] flex items-center justify-center bg-black/35 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) attemptClose(); }}>
     <div className="flex h-[min(680px,86vh)] w-[min(760px,94vw)] flex-col border border-border bg-panel shadow-2xl">
       <div className="flex h-12 shrink-0 items-center justify-between border-b border-border px-4">
         <div>
           <h2 className="text-[11px] font-semibold uppercase tracking-[.18em]">Workspace style</h2>
-          <p className="mt-0.5 text-[8px] text-muted">The same palettes the GEX Map uses · applies to every panel at once</p>
+          <p className="mt-0.5 text-[8px] text-muted">Click through the palettes — the workspace previews behind this — then Save</p>
         </div>
-        <button onClick={onClose} aria-label="Close workspace style"><X className="h-4 w-4 text-muted" /></button>
+        <button onClick={attemptClose} aria-label="Close workspace style"><X className="h-4 w-4 text-muted" /></button>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
           {GEX_MAP_PALETTE_PRESETS.map((preset) => {
             const roles = resolveGexBoxRoles(preset.id);
-            const selected = preset.id === paletteId;
+            const selected = preset.id === draft;
             return <button
               key={preset.id}
-              onClick={() => onApply(preset.id)}
+              onClick={() => { setDraft(preset.id); onPreview(preset.id); }}
               className={`flex flex-col gap-2 border p-2.5 text-left transition-colors ${selected ? "border-primary/45 bg-primary/[.07]" : "border-border bg-background hover:border-primary/30"}`}
             >
               <span className="flex items-center justify-between">
@@ -164,7 +190,45 @@ function GexBoxStyleSettings({ paletteId, onApply, onClose }: {
           })}
         </div>
       </div>
+      <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-t border-border px-4">
+        <span className="text-[8px] uppercase tracking-[.14em] text-muted">
+          {dirty ? "Unsaved palette" : "Saved"}
+        </span>
+        <span className="flex items-center gap-2">
+          <button
+            onClick={discard}
+            className="flex h-8 items-center border border-border px-3 text-[9px] font-semibold uppercase tracking-[.12em] text-muted hover:text-foreground"
+          >
+            Discard
+          </button>
+          <button
+            onClick={() => { originalRef.current = draft; onSave(draft); }}
+            disabled={!dirty}
+            className={`flex h-8 items-center border px-4 text-[9px] font-semibold uppercase tracking-[.12em] ${dirty ? "border-primary/35 bg-primary/10 text-primary" : "border-border text-muted opacity-50"}`}
+          >
+            Save
+          </button>
+        </span>
+      </div>
     </div>
+    {/*
+      * Leaving with a palette the trader has not kept. Asked rather than
+      * assumed either way: silently saving makes a browse permanent, and
+      * silently discarding throws away a deliberate choice.
+      */}
+    {confirming ? <div className="absolute inset-0 z-[180] flex items-center justify-center bg-black/55 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) setConfirming(false); }}>
+      <div className="w-[min(360px,92vw)] border border-border bg-panel p-5 shadow-2xl">
+        <h3 className="text-[10px] font-semibold uppercase tracking-[.16em] text-foreground">Save this palette?</h3>
+        <p className="mt-2 text-[9px] leading-4 text-muted">
+          The workspace is showing a palette you have not saved. Keep it, or put the previous one back.
+        </p>
+        <div className="mt-4 flex items-center justify-end gap-2">
+          <button onClick={() => setConfirming(false)} className="flex h-8 items-center border border-border px-3 text-[9px] uppercase tracking-[.12em] text-muted hover:text-foreground">Keep editing</button>
+          <button onClick={discard} className="flex h-8 items-center border border-border px-3 text-[9px] uppercase tracking-[.12em] text-muted hover:text-foreground">Discard</button>
+          <button onClick={() => { originalRef.current = draft; onSave(draft); }} className="flex h-8 items-center border border-primary/35 bg-primary/10 px-4 text-[9px] font-semibold uppercase tracking-[.12em] text-primary">Save</button>
+        </div>
+      </div>
+    </div> : null}
   </div>;
 }
 
@@ -361,7 +425,7 @@ function useSharedFeed(url: string | null) {
       if (!listeners.size) {
         feedSubscribers.delete(url);
         const timer = feedTimers.get(url);
-        if (timer !== undefined) window.clearInterval(timer);
+        if (timer !== undefined) window.clearTimeout(timer);
         feedTimers.delete(url);
       }
     };
@@ -407,11 +471,15 @@ function collectRows(value: unknown, maxRows = 200): Record<string, unknown>[] {
 
 function IntervalCanvas({ payload, settings }: { payload: unknown; settings: PanelSettings }) {
   const ref = useRef<HTMLCanvasElement | null>(null);
+  const drawRef = useRef<(() => void) | null>(null);
+  const drawStateRef = useRef({ payload, settings });
+  drawStateRef.current = { payload, settings };
   useEffect(() => {
     const canvas = ref.current; if (!canvas) return;
     const container = canvas.parentElement; if (!container) return;
-    const surface = record(payload); const buckets = Array.isArray(surface?.buckets) ? surface.buckets : [];
     const draw = () => {
+      const { payload, settings } = drawStateRef.current;
+      const surface = record(payload); const buckets = Array.isArray(surface?.buckets) ? surface.buckets : [];
       const rect = container.getBoundingClientRect(); const dpr = Math.min(2, window.devicePixelRatio || 1);
       canvas.width = Math.max(1, Math.floor(rect.width * dpr)); canvas.height = Math.max(1, Math.floor(rect.height * dpr)); canvas.style.width = `${rect.width}px`; canvas.style.height = `${rect.height}px`;
       const ctx = canvas.getContext("2d"); if (!ctx) return; ctx.scale(dpr, dpr); ctx.clearRect(0, 0, rect.width, rect.height);
@@ -440,8 +508,17 @@ function IntervalCanvas({ payload, settings }: { payload: unknown; settings: Pan
     };
     let frame = 0;
     const scheduleDraw = () => { window.cancelAnimationFrame(frame); frame = window.requestAnimationFrame(draw); };
-    scheduleDraw(); const observer = new ResizeObserver(scheduleDraw); observer.observe(container); return () => { observer.disconnect(); window.cancelAnimationFrame(frame); };
-  }, [payload, settings.color, settings.minimum, settings.negativeColor]);
+    drawRef.current = scheduleDraw;
+    scheduleDraw();
+    const observer = new ResizeObserver(scheduleDraw);
+    observer.observe(container);
+    return () => {
+      if (drawRef.current === scheduleDraw) drawRef.current = null;
+      observer.disconnect();
+      window.cancelAnimationFrame(frame);
+    };
+  }, []);
+  useEffect(() => { drawRef.current?.(); }, [payload, settings.color, settings.minimum, settings.negativeColor]);
   return <canvas ref={ref} className="block h-full w-full" />;
 }
 
@@ -452,6 +529,7 @@ function intervalValue(call: number, put: number, content: PanelSettings["interv
 
 function ProfessionalIntervalMap({ payload, settings }: { payload: unknown; settings: PanelSettings }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null); const pointsOnScreen = useRef<Array<IntervalPoint & { x: number; y: number; radius: number }>>([]);
+  const drawRef = useRef<(() => void) | null>(null);
   // The map navigates like a chart: drag the plot to pan both ways, drag the
   // strike scale on the right to stretch it, drag the time axis along the
   // bottom to stretch that. `strikeCentre` is null until the view is moved so
@@ -490,9 +568,13 @@ function ProfessionalIntervalMap({ payload, settings }: { payload: unknown; sett
     const trimmed = points.length > settings.intervalMaximumPoints ? points.slice(-settings.intervalMaximumPoints) : points; const strikes = trimmed.map((point) => point.strike); const peak = Math.max(1, ...trimmed.map((point) => Math.abs(point.value)));
     return { buckets: rawBuckets.length, points: trimmed, prices, minStrike: strikes.length ? Math.min(...strikes) : 0, maxStrike: strikes.length ? Math.max(...strikes) : 1, peak };
   }, [payload, settings.expiry, settings.intervalBaseline, settings.intervalContent, settings.intervalMaximumDistance, settings.intervalMaximumPoints, settings.intervalMode, settings.intervalRollingBuckets, settings.minimum, settings.strikes]);
+  const drawStateRef = useRef({ model, settings, viewport });
+  drawStateRef.current = { model, settings, viewport };
+  const hasRenderablePoints = model.points.length > 0;
   useEffect(() => {
     const canvas = canvasRef.current; const container = canvas?.parentElement; if (!canvas || !container) return;
     const draw = () => {
+      const { model, settings, viewport } = drawStateRef.current;
       const rect = container.getBoundingClientRect(); const dpr = Math.min(2, window.devicePixelRatio || 1); canvas.width = Math.max(1, Math.floor(rect.width * dpr)); canvas.height = Math.max(1, Math.floor(rect.height * dpr)); canvas.style.width = `${rect.width}px`; canvas.style.height = `${rect.height}px`;
       const ctx = canvas.getContext("2d"); if (!ctx) return; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, rect.width, rect.height);
       const styles = getComputedStyle(container); const css = (name: string, fallback: string) => styles.getPropertyValue(name).trim() || fallback; const resolve = (value: string, fallback: string) => value.startsWith("var(") ? css(value.slice(4, -1), fallback) : value;
@@ -550,7 +632,25 @@ function ProfessionalIntervalMap({ payload, settings }: { payload: unknown; sett
         }
       }
     };
-    let frame = window.requestAnimationFrame(draw); const observer = new ResizeObserver(() => { window.cancelAnimationFrame(frame); frame = window.requestAnimationFrame(draw); }); observer.observe(container); return () => { observer.disconnect(); window.cancelAnimationFrame(frame); };
+    let frame = 0;
+    const scheduleDraw = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(draw);
+    };
+    drawRef.current = scheduleDraw;
+    scheduleDraw();
+    const observer = new ResizeObserver(scheduleDraw);
+    observer.observe(container);
+    return () => {
+      if (drawRef.current === scheduleDraw) drawRef.current = null;
+      observer.disconnect();
+      window.cancelAnimationFrame(frame);
+    };
+  // Live interval frames repaint this mounted canvas through drawStateRef. They
+  // must not recreate the ResizeObserver and animation-frame closure.
+  }, [hasRenderablePoints]);
+  useEffect(() => {
+    drawRef.current?.();
   }, [model, settings.color, settings.intervalCandleBuckets, settings.intervalPriceStyle, settings.intervalShowPrice, settings.intervalVisual, settings.negativeColor, viewport]);
   if (!model.points.length) return <NoRows />;
   const clampOffset = (value: number, zoom: number) =>
@@ -947,9 +1047,43 @@ const TOOL_SERIES: Record<string, SeriesSpec[]> = {
 };
 
 function SeriesPanel({ toolId, payload, settings, onSettings }: { toolId: string; payload: unknown; settings: PanelSettings; onSettings: (patch: Partial<PanelSettings>) => void }) {
-  const ref = useRef<HTMLCanvasElement | null>(null); const rows = useMemo(() => collectRows(payload, 500), [payload]); const specs = TOOL_SERIES[toolId] ?? [];
+  const ref = useRef<HTMLCanvasElement | null>(null); const drawRef = useRef<(() => void) | null>(null); const rows = useMemo(() => collectRows(payload, 500), [payload]); const specs = TOOL_SERIES[toolId] ?? [];
   const series = useMemo(() => specs.map((spec) => ({ ...spec, values: rows.map((row, index) => ({ index, value: finite(valueAt(row, ...spec.keys)) })).filter((item): item is { index: number; value: number } => item.value !== null) })).filter((item) => item.values.length), [rows, specs]);
-  useEffect(() => { const canvas = ref.current, container = canvas?.parentElement; if (!canvas || !container || !series.length) return; const draw = () => { const rect = container.getBoundingClientRect(), dpr = Math.min(2, window.devicePixelRatio || 1); canvas.width = Math.max(1, Math.floor(rect.width * dpr)); canvas.height = Math.max(1, Math.floor(rect.height * dpr)); canvas.style.width = `${rect.width}px`; canvas.style.height = `${rect.height}px`; const ctx = canvas.getContext("2d"); if (!ctx) return; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, rect.width, rect.height); const styles = getComputedStyle(container); const color = (name: string, fallback: string) => styles.getPropertyValue(name).trim() || fallback; const palette = { positive: settings.color.startsWith("var(") ? color("--primary", "#aaff00") : settings.color, negative: settings.negativeColor.startsWith("var(") ? color("--danger", "#ff3366") : settings.negativeColor, foreground: color("--foreground", "#fff"), muted: color("--muted", "#888") }; const border = color("--border", "#333"), left = 12, right = 56, top = 16, bottom = 28, width = Math.max(1, rect.width - left - right), height = Math.max(1, rect.height - top - bottom); const all = series.flatMap((item) => item.values.map((value) => value.value)); const min = Math.min(...all, 0), max = Math.max(...all, 0), span = Math.max(1e-9, max - min), maxIndex = Math.max(1, rows.length - 1); ctx.strokeStyle = border; ctx.globalAlpha = .7; ctx.lineWidth = .5; for (let i = 0; i <= 5; i++) { const y = top + i * height / 5; ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(left + width, y); ctx.stroke(); ctx.fillStyle = palette.muted; ctx.font = "9px JetBrains Mono"; ctx.fillText(compact(max - i * span / 5), left + width + 6, y + 3); } const zero = top + (max / span) * height; ctx.strokeStyle = palette.muted; ctx.setLineDash([3, 4]); ctx.beginPath(); ctx.moveTo(left, zero); ctx.lineTo(left + width, zero); ctx.stroke(); ctx.setLineDash([]); series.forEach((item) => { ctx.beginPath(); item.values.forEach((point, index) => { const x = left + point.index / maxIndex * width, y = top + (max - point.value) / span * height; index ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.strokeStyle = palette[item.color]; ctx.globalAlpha = .9; ctx.lineWidth = item.color === "foreground" ? 1.5 : 1.15; ctx.stroke(); }); }; let frame = requestAnimationFrame(draw); const observer = new ResizeObserver(() => { cancelAnimationFrame(frame); frame = requestAnimationFrame(draw); }); observer.observe(container); return () => { observer.disconnect(); cancelAnimationFrame(frame); }; }, [rows.length, series, settings.color, settings.negativeColor]);
+  const drawStateRef = useRef({ rows, series, settings });
+  drawStateRef.current = { rows, series, settings };
+  const hasSeries = series.length > 0;
+  useEffect(() => {
+    const canvas = ref.current;
+    const container = canvas?.parentElement;
+    if (!canvas || !container || !hasSeries) return;
+    const draw = () => {
+      const { rows, series, settings } = drawStateRef.current;
+      const rect = container.getBoundingClientRect(), dpr = Math.min(2, window.devicePixelRatio || 1);
+      canvas.width = Math.max(1, Math.floor(rect.width * dpr)); canvas.height = Math.max(1, Math.floor(rect.height * dpr)); canvas.style.width = `${rect.width}px`; canvas.style.height = `${rect.height}px`;
+      const ctx = canvas.getContext("2d"); if (!ctx) return;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, rect.width, rect.height);
+      const styles = getComputedStyle(container); const color = (name: string, fallback: string) => styles.getPropertyValue(name).trim() || fallback;
+      const palette = { positive: settings.color.startsWith("var(") ? color("--primary", "#aaff00") : settings.color, negative: settings.negativeColor.startsWith("var(") ? color("--danger", "#ff3366") : settings.negativeColor, foreground: color("--foreground", "#fff"), muted: color("--muted", "#888") };
+      const border = color("--border", "#333"), left = 12, right = 56, top = 16, bottom = 28, width = Math.max(1, rect.width - left - right), height = Math.max(1, rect.height - top - bottom);
+      const all = series.flatMap((item) => item.values.map((value) => value.value)); const min = Math.min(...all, 0), max = Math.max(...all, 0), span = Math.max(1e-9, max - min), maxIndex = Math.max(1, rows.length - 1);
+      ctx.strokeStyle = border; ctx.globalAlpha = .7; ctx.lineWidth = .5;
+      for (let i = 0; i <= 5; i++) { const y = top + i * height / 5; ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(left + width, y); ctx.stroke(); ctx.fillStyle = palette.muted; ctx.font = "9px JetBrains Mono"; ctx.fillText(compact(max - i * span / 5), left + width + 6, y + 3); }
+      const zero = top + (max / span) * height; ctx.strokeStyle = palette.muted; ctx.setLineDash([3, 4]); ctx.beginPath(); ctx.moveTo(left, zero); ctx.lineTo(left + width, zero); ctx.stroke(); ctx.setLineDash([]);
+      series.forEach((item) => { ctx.beginPath(); item.values.forEach((point, index) => { const x = left + point.index / maxIndex * width, y = top + (max - point.value) / span * height; index ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }); ctx.strokeStyle = palette[item.color]; ctx.globalAlpha = .9; ctx.lineWidth = item.color === "foreground" ? 1.5 : 1.15; ctx.stroke(); });
+    };
+    let frame = 0;
+    const scheduleDraw = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(draw); };
+    drawRef.current = scheduleDraw;
+    scheduleDraw();
+    const observer = new ResizeObserver(scheduleDraw);
+    observer.observe(container);
+    return () => {
+      if (drawRef.current === scheduleDraw) drawRef.current = null;
+      observer.disconnect();
+      cancelAnimationFrame(frame);
+    };
+  }, [hasSeries]);
+  useEffect(() => { drawRef.current?.(); }, [rows.length, series, settings.color, settings.negativeColor]);
   if (!series.length || rows.length < 2) return <StructuredToolPanel toolId={toolId} payload={payload} limit={settings.rows} settings={settings} onSettings={onSettings} />;
   return <div className="flex h-full min-h-0 flex-col"><div className="flex h-8 shrink-0 items-center gap-4 overflow-x-auto border-b border-border bg-panel px-3">{series.map((item) => <span key={item.label} className={`flex shrink-0 items-center gap-1.5 text-[8px] uppercase tracking-[.11em] ${item.color === "positive" ? "text-primary" : item.color === "negative" ? "text-danger" : "text-foreground"}`}><i className="h-0.5 w-4 bg-current" />{item.label}<b className="font-mono text-foreground">{compact(item.values.at(-1)?.value ?? 0)}</b></span>)}</div><div className="min-h-0 flex-1"><canvas ref={ref} className="block h-full w-full" /></div></div>;
 }
@@ -1022,14 +1156,35 @@ function PanelSettingsDialog({ panel, onChange, onClose }: { panel: DashboardPan
   const update = (key: keyof PanelSettings, value: string | number) => onChange({ ...panel, settings: { ...panel.settings, [key]: value } });
   const flowTool = panel.toolId === "consolidated-flow" || panel.toolId === "unconsolidated-flow";
   const intervalTool = panel.toolId === "interval-map" || panel.toolId === "heat-map";
+  // Which controls this tool actually reads, asked of the tool itself.
+  //
+  // Every panel was offered a timeframe whether or not its request carries
+  // one, so changing it on most tools did nothing and the dialog quietly lied
+  // about what it controlled. Probing the tool's own endpoint with a sentinel
+  // keeps this honest as tools are added, instead of a hand-kept list that
+  // drifts the first time someone writes a new one.
+  const uses = useMemo(() => {
+    const tool = TOOLS.find((entry) => entry.id === panel.toolId);
+    if (!tool?.endpoint) return { symbol: true, aggregation: false, date: false, greek: false, expiry: false };
+    const probe = { ...panel.settings, symbol: "__SYM__", aggregation: "__AGG__", date: "__DATE__", greek: "__GREEK__", expiry: "__EXP__" };
+    let url = "";
+    try { url = tool.endpoint(probe); } catch { url = ""; }
+    return {
+      symbol: url.includes("__SYM__"),
+      aggregation: url.includes("__AGG__"),
+      date: url.includes("__DATE__"),
+      greek: url.includes("__GREEK__"),
+      expiry: url.includes("__EXP__"),
+    };
+  }, [panel.settings, panel.toolId]);
   return <div className="fixed inset-0 z-[180] pointer-events-none"><div className="pointer-events-auto absolute left-1/2 top-1/2 w-[430px] max-w-[calc(100vw-24px)] -translate-x-1/2 -translate-y-1/2 border border-border bg-panel shadow-2xl" style={{ marginLeft: position.x, marginTop: position.y }}>
     <div className="flex h-10 cursor-move items-center justify-between border-b border-border px-3" onPointerDown={(event) => { drag.current = { x: event.clientX, y: event.clientY, px: position.x, py: position.y }; event.currentTarget.setPointerCapture(event.pointerId); }} onPointerMove={(event) => { if (!drag.current) return; setPosition({ x: drag.current.px + event.clientX - drag.current.x, y: drag.current.py + event.clientY - drag.current.y }); }} onPointerUp={() => { drag.current = null; }}><span className="text-[10px] font-semibold uppercase tracking-[.16em]">{panel.title} settings</span><button onClick={onClose}><X className="h-4 w-4 text-muted" /></button></div>
     <div className="grid max-h-[70vh] grid-cols-2 gap-3 overflow-y-auto p-4 text-[9px]">
-      <Field label="Symbol"><select value={panel.settings.symbol} onChange={(e) => update("symbol", e.target.value)}>{["SPX", "SPXW", "SPY", "NDX", "QQQ"].map((v) => <option key={v}>{v}</option>)}</select></Field>
-      <Field label="Session date"><input type="date" value={panel.settings.date} onChange={(e) => update("date", e.target.value)} /></Field>
-      <Field label="Aggregation"><select value={panel.settings.aggregation} onChange={(e) => update("aggregation", e.target.value)}>{["1m", "2m", "3m", "4m", "5m", "10m", "15m", "20m", "30m", "1h", "2h", "4h"].map((v) => <option key={v}>{v}</option>)}</select></Field>
-      <Field label="Greek"><select value={panel.settings.greek} onChange={(e) => update("greek", e.target.value)}>{["GEX", "DEX", "VEX", "CHEX"].map((v) => <option key={v}>{v}</option>)}</select></Field>
-      <Field label="Expiration"><select value={panel.settings.expiry} onChange={(e) => update("expiry", e.target.value)}>{["0DTE", "FRONT", "0-7DTE", "ALL"].map((v) => <option key={v}>{v}</option>)}</select></Field>
+      {uses.symbol ? <Field label="Symbol"><select value={panel.settings.symbol} onChange={(e) => update("symbol", e.target.value)}>{["SPX", "SPXW", "SPY", "NDX", "QQQ"].map((v) => <option key={v}>{v}</option>)}</select></Field> : null}
+      {uses.date ? <Field label="Session date"><input type="date" value={panel.settings.date} onChange={(e) => update("date", e.target.value)} /></Field> : null}
+      {uses.aggregation ? <Field label="Aggregation"><select value={panel.settings.aggregation} onChange={(e) => update("aggregation", e.target.value)}>{["1m", "2m", "3m", "4m", "5m", "10m", "15m", "20m", "30m", "1h", "2h", "4h"].map((v) => <option key={v}>{v}</option>)}</select></Field> : null}
+      {uses.greek ? <Field label="Greek"><select value={panel.settings.greek} onChange={(e) => update("greek", e.target.value)}>{["GEX", "DEX", "VEX", "CHEX"].map((v) => <option key={v}>{v}</option>)}</select></Field> : null}
+      {uses.expiry ? <Field label="Expiration"><select value={panel.settings.expiry} onChange={(e) => update("expiry", e.target.value)}>{["0DTE", "FRONT", "0-7DTE", "ALL"].map((v) => <option key={v}>{v}</option>)}</select></Field> : null}
       <Field label={`Strike padding · ${panel.settings.strikes}`}><input type="range" min="5" max="100" value={panel.settings.strikes} onChange={(e) => update("strikes", Number(e.target.value))} /></Field>
       <Field label={`Table rows · ${panel.settings.rows}`}><input type="range" min="10" max="200" step="10" value={panel.settings.rows} onChange={(e) => update("rows", Number(e.target.value))} /></Field>
       <Field label="Minimum magnitude"><input type="number" min="0" value={panel.settings.minimum} onChange={(e) => update("minimum", Number(e.target.value))} /></Field>
@@ -1260,7 +1415,8 @@ export default function GexBoxDashboard() {
     <header className="shrink-0 border-b border-border bg-panel"><div className="flex h-11 items-center justify-between gap-3 px-3"><div className="flex items-center gap-3"><div className="flex h-8 w-8 items-center justify-center border border-primary/25 bg-primary/10"><LayoutDashboard className="h-4 w-4 text-primary" /></div><div><h1 className="text-[11px] font-semibold uppercase tracking-[.18em]">GEX BOX</h1><p className="text-[8px] text-muted">QuantData tools · KwantDesk workspace engine</p></div></div><div className="relative flex flex-1 justify-center"><button onClick={() => setWorkspaceMenu((v) => !v)} className={`flex h-8 items-center gap-1.5 rounded-[3px] border px-2.5 text-[10px] font-semibold uppercase tracking-[.075em] transition-colors ${workspaceMenu ? "border-primary/35 bg-primary/[0.08] text-primary" : "border-transparent text-muted hover:bg-surface hover:text-foreground"}`} title="Saved GEX BOX workspaces"><Save className="h-3.5 w-3.5" strokeWidth={1.55} /><span>WORKSPACES</span></button>{workspaceMenu ? <GexBoxWorkspacesMenu activeId={activeWorkspaceId} snapshotName={activeWorkspaceName} onApply={applySavedWorkspace} onSave={saveNamedWorkspace} onImport={importSavedWorkspace} onReset={() => { setWorkspace(defaultWorkspace()); setActiveWorkspaceId(null); setActiveWorkspaceName("GEX BOX"); }} onClose={() => setWorkspaceMenu(false)} /> : null}</div><div className="flex items-center gap-1"><button onClick={() => setShowTools(true)} className="flex h-8 items-center gap-2 border border-primary/30 bg-primary/10 px-3 text-[9px] font-semibold uppercase tracking-[.12em] text-primary"><Plus className="h-3.5 w-3.5" />Add Tool</button><button onClick={() => setShowStyle(true)} className="flex h-8 items-center gap-2 border border-border px-3 text-[9px] uppercase text-muted hover:text-foreground" title="Workspace style and palette"><SlidersHorizontal className="h-3.5 w-3.5" />Settings</button></div></div>
       {showStyle ? <GexBoxStyleSettings
         paletteId={workspace.paletteId ?? DEFAULT_GEX_BOX_PALETTE_ID}
-        onApply={(id) => { applyPalette(id); setShowStyle(false); }}
+        onPreview={applyPalette}
+        onSave={(id) => { applyPalette(id); setShowStyle(false); }}
         onClose={() => setShowStyle(false)}
       /> : null}
       <div className="flex h-10 items-end gap-1 overflow-x-auto px-3">{workspace.pages.map((page) => <div key={page.id} className={`group flex h-9 shrink-0 items-center border-b-2 px-3 ${page.id === active.id ? "border-primary bg-primary/[.035] text-primary" : "border-transparent text-muted"}`}><button onClick={() => setWorkspace((current) => ({ ...current, activePageId: page.id }))} className="text-[9px] font-semibold uppercase tracking-[.13em]">{page.name}</button>{workspace.pages.length > 1 ? <button onClick={() => setWorkspace((current) => { const pages = current.pages.filter((item) => item.id !== page.id); return { ...current, pages, activePageId: current.activePageId === page.id ? pages[0].id : current.activePageId }; })} className="ml-2 opacity-0 group-hover:opacity-100"><X className="h-3 w-3" /></button> : null}</div>)}<button onClick={() => addPage("grid")} className="mb-1 flex h-7 w-7 shrink-0 items-center justify-center text-muted hover:text-primary"><Plus className="h-3.5 w-3.5" /></button></div></header>
