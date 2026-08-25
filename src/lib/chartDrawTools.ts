@@ -374,10 +374,12 @@ function migrateDrawStyle(saved: Partial<DrawStyle>): Partial<DrawStyle> {
 
 /**
  * The colours the chart already uses for a real fill marker, so a drawn entry
- * and a genuine one are the same green and red.
+ * and a genuine one are the same green and red. These are the values in
+ * PaperFillMarkersRenderer, not the backtest series markers, which use a
+ * different pair.
  */
-export const PAPER_FILL_BUY_COLOR = "#22C55E";
-export const PAPER_FILL_SELL_COLOR = "#EF4444";
+export const PAPER_FILL_BUY_COLOR = "#22e887";
+export const PAPER_FILL_SELL_COLOR = "#ff3b5c";
 
 const defaultStyleFor = (tool: DrawToolId): DrawStyle => {
   if (tool === "highlighter") return { ...DEFAULT_DRAW_STYLE, color: "#FFEB3B", width: 4, fillOpacity: 0.25 };
@@ -393,11 +395,16 @@ const defaultStyleFor = (tool: DrawToolId): DrawStyle => {
   // buy and a red sell read identically whichever theme the chart is on.
   // useThemeColor:false is what stops the theme repainting them; the trader
   // can still change either from the style panel.
-  if (tool === "entryArrow") {
-    return { ...DEFAULT_DRAW_STYLE, color: PAPER_FILL_BUY_COLOR, useThemeColor: false, width: 1 };
-  }
-  if (tool === "exitArrow") {
-    return { ...DEFAULT_DRAW_STYLE, color: PAPER_FILL_SELL_COLOR, useThemeColor: false, width: 1 };
+  if (tool === "entryArrow" || tool === "exitArrow") {
+    return {
+      ...DEFAULT_DRAW_STYLE,
+      color: tool === "entryArrow" ? PAPER_FILL_BUY_COLOR : PAPER_FILL_SELL_COLOR,
+      useThemeColor: false,
+      width: 1,
+      // A real fill marker is a bare triangle with no caption, so the drawn
+      // one matches it out of the box. Still available from the style panel.
+      showLabels: false,
+    };
   }
   if (tool === "text" || tool === "note" || tool === "callout" || tool === "priceLabel" || tool === "signpost" || tool === "flagMark") {
     return { ...DEFAULT_DRAW_STYLE, color: "#EAB308" };

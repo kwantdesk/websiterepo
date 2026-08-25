@@ -17,7 +17,7 @@ import {
   magnetStrengthSpec,
   type MagnetStrength,
 } from "@/lib/chartDrawTools";
-import { entryExitArrowGeometry, timeAtPixelPastLastBar } from "@/lib/chartDrawGeometry";
+import { fillMarkerGeometry, timeAtPixelPastLastBar } from "@/lib/chartDrawGeometry";
 
 // Self-contained SVG overlay that owns the new charting tools end to end:
 // point placement (fixed-count, poly-click and freehand-drag), live preview,
@@ -284,28 +284,25 @@ export default function ChartDrawLayer({
 
   const finish = (tool: DrawToolId, points: DrawPoint[]) => {
     let committed = points;
-    // Entry and exit arrows are placed with ONE click, on the bar being
-    // marked, and then sized by their two handles. The click is the tip — the
-    // exact price the fill happened at — and the second point is the tail,
-    // synthesized a comfortable distance away so the arrow is visible and
-    // grabbable immediately.
+    // Entry and exit markers are placed with ONE click on the bar being
+    // marked. The click is the fill itself — the marker is CENTRED on it, as
+    // the real one is — and the second point is a size handle synthesized a
+    // marker's width away.
     //
-    // The tail is derived through fromXY at the tip's own x, which the time
-    // scale can always name because the click came from there. Asking for a
-    // pixel further right would land past the last bar on a chart near the
-    // live edge and come back null, which is how other tools have silently
-    // failed to appear.
+    // Nine pixels right is inside the plot for any click that landed on a
+    // bar, so fromXY can always name it. Asking for a pixel much further right
+    // would land past the last bar near the live edge and come back null,
+    // which is how other tools have silently failed to appear.
     if ((tool === "entryArrow" || tool === "exitArrow") && points.length === 1) {
-      const tip = points[0];
-      const tipX = toX(tip.time);
-      const tipY = toY(tip.price);
-      if (tipX != null && tipY != null) {
-        // Down for an entry (the arrow points up at the bar from below), up
-        // for an exit (it points down at the bar from above) — the way the
-        // real fill markers sit.
-        const away = tool === "entryArrow" ? ARROW_DEFAULT_LENGTH_PX : -ARROW_DEFAULT_LENGTH_PX;
-        const tail = fromXY(tipX + ARROW_DEFAULT_HALF_WIDTH_PX, tipY + away);
-        if (tail) committed = [tip, tail];
+      const anchor = points[0];
+      const anchorX = toX(anchor.time);
+      const anchorY = toY(anchor.price);
+      if (anchorX != null && anchorY != null) {
+        const handle = fromXY(
+          anchorX + FILL_MARKER_DEFAULT_HALF_WIDTH_PX,
+          anchorY + FILL_MARKER_DEFAULT_HALF_HEIGHT_PX,
+        );
+        if (handle) committed = [anchor, handle];
       }
     }
     // TradingView-style position tools: one click places the whole tool.
@@ -1146,51 +1143,37 @@ export default function ChartDrawLayer({
         }
         case "entryArrow":
         case "exitArrow": {
-          // A trade mark, drawn the way the chart draws a real fill: an entry
-          // is a green arrow pointing UP at the bar from below, an exit a red
-          // arrow pointing DOWN at it from above.
-          //
-          // The direction is a property of the TOOL, never of where the tail
-          // handle happens to be dragged. Dragging the tail past the tip would
-          // otherwise flip the arrow over and a green buy would end up
-          // pointing down, which is the one thing a fill marker must never do.
-          // The tail is therefore clamped to its own side of the tip; it sets
-          // length and width, not direction.
+          // The mark this chart already paints on a real fill: a sideways
+          // triangle centred on the fill, pointing RIGHT into an entry and
+          // LEFT out of an exit (PaperFillMarkersRenderer). Same shape, same
+          // colours, just resizable.
           if (a.x == null || a.y == null) return null;
           const entry = drawing.tool === "entryArrow";
-          const geometry = entryExitArrowGeometry({
-            direction: entry ? "up" : "down",
-            tipX: a.x,
-            tipY: a.y,
-            tailX: b?.x,
-            tailY: b?.y,
-            defaultLength: ARROW_DEFAULT_LENGTH_PX,
-            defaultHalfWidth: ARROW_DEFAULT_HALF_WIDTH_PX,
-            minLength: ARROW_MIN_LENGTH_PX,
-            minHalfWidth: ARROW_MIN_HALF_WIDTH_PX,
+          const marker = fillMarkerGeometry({
+            direction: entry ? "right" : "left",
+            anchorX: a.x,
+            anchorY: a.y,
+            handleX: b?.x,
+            handleY: b?.y,
+            defaultHalfWidth: FILL_MARKER_DEFAULT_HALF_WIDTH_PX,
+            defaultHalfHeight: FILL_MARKER_DEFAULT_HALF_HEIGHT_PX,
+            minHalfWidth: FILL_MARKER_MIN_HALF_WIDTH_PX,
+            minHalfHeight: FILL_MARKER_MIN_HALF_HEIGHT_PX,
           });
-          const path = `${geometry.points.map(([x, y], index) => `${index ? "L" : "M"}${x},${y}`).join(" ")} Z`;
-          const text = drawing.text || (entry ? "ENTRY" : "EXIT");
+          const path = `${marker.points.map(([x, y], index) => `${index ? "L" : "M"}${x},${y}`).join(" ")} Z`;
           return (
             <g>
-              <path
-                d={path}
-                fill={stroke}
-                fillOpacity={0.95}
-                stroke={stroke}
-                strokeWidth={w}
-                strokeLinejoin="round"
-              />
-              {style.showLabels === false
+              <path d={path} fill={stroke} stroke={stroke} strokeWidth={w} strokeLinejoin="round" />
+              {style.showLabels === false || !drawing.text
                 ? null
                 : <text
-                    x={a.x}
-                    y={entry ? geometry.tailY + 12 : geometry.tailY - 5}
+                    x={entry ? marker.backX - 4 : marker.backX + 4}
+                    y={a.y + 3}
                     fill={stroke}
                     fontSize={10}
                     fontFamily="monospace"
-                    textAnchor="middle"
-                  >{text}</text>}
+                    textAnchor={entry ? "end" : "start"}
+                  >{drawing.text}</text>}
             </g>
           );
         }
@@ -1604,17 +1587,20 @@ function volumeProfile(candles: DrawCandle[], t0: number, t1: number, binCount =
 const EDGE_OVERSCAN = 2000;
 
 /**
- * Default and minimum geometry for the entry/exit arrows, in pixels.
+ * Default and minimum geometry for the entry/exit fill markers, in pixels.
  *
- * Pixels rather than price: an arrow is an annotation on the screen and should
- * read the same size at every zoom and on every instrument, unlike a position
- * box whose height is a real risk in points.
+ * Pixels rather than price: a fill marker is an annotation on the screen and
+ * should read the same size at every zoom and on every instrument, exactly as
+ * the real one does.
  */
-const ARROW_DEFAULT_LENGTH_PX = 44;
-const ARROW_DEFAULT_HALF_WIDTH_PX = 9;
+// The real marker is 12x8 around the fill. The drawn one starts a little
+// larger so it is easy to grab, keeping the same 3:2 proportion, and scales
+// from there.
+const FILL_MARKER_DEFAULT_HALF_WIDTH_PX = 9;
+const FILL_MARKER_DEFAULT_HALF_HEIGHT_PX = 6;
 /** Below these it stops being legible, or grabbable. */
-const ARROW_MIN_LENGTH_PX = 10;
-const ARROW_MIN_HALF_WIDTH_PX = 4;
+const FILL_MARKER_MIN_HALF_WIDTH_PX = 4;
+const FILL_MARKER_MIN_HALF_HEIGHT_PX = 3;
 
 function extend(x1: number, y1: number, x2: number, y2: number, w: number, h: number) {
   const dx = x2 - x1; const dy = y2 - y1;
