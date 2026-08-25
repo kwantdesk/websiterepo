@@ -66,6 +66,10 @@ const ICONS: Partial<Record<DrawToolId, ToolIcon>> = {
   callout: svg(<><rect x="4" y="5" width="12" height="9" rx="2" /><path d="M8 14l-2 5 6-5" /></>),
   priceLabel: svg(<><rect x="4" y="9" width="16" height="6" rx="1" /><path d="M20 12h1" /></>),
   signpost: svg(<><line x1="12" y1="4" x2="12" y2="20" /><rect x="12" y="6" width="8" height="6" /></>),
+  // Solid arrows, matching the shape they actually draw: an entry points up
+  // at the bar, an exit points down at it.
+  entryArrow: svg(<path d="M12 4l6 8h-3.6v8h-4.8v-8H6z" fill="currentColor" stroke="none" />),
+  exitArrow: svg(<path d="M12 20l-6-8h3.6V4h4.8v8H18z" fill="currentColor" stroke="none" />),
   arrowMarker: svg(<><line x1="4" y1="20" x2="18" y2="6" /><path d="M13 5h6v6" /></>),
   flagMark: svg(<><line x1="6" y1="4" x2="6" y2="20" /><path d="M6 5h11l-3 4 3 4H6z" /></>),
   measure: svg(<><rect x="4" y="7" width="16" height="10" /><line x1="8" y1="7" x2="8" y2="11" /><line x1="12" y1="7" x2="12" y2="11" /><line x1="16" y1="7" x2="16" y2="11" /></>),

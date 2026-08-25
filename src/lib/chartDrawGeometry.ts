@@ -63,3 +63,82 @@ export function timeAtPixelPastLastBar(input: PastEdgeTimeInput): number | null 
   if (!(step > 0)) return null;
   return lastTime + ((localX - lastX) / pixelsPerBar) * step;
 }
+
+/**
+ * Geometry for an entry/exit arrow, in pixels.
+ *
+ * The direction is a property of the TOOL, never of where the tail handle
+ * happens to be dragged: an entry is a green arrow pointing UP at the bar from
+ * below and an exit a red one pointing DOWN at it from above, exactly as the
+ * chart draws a real fill marker. Dragging the tail past the tip would
+ * otherwise flip the arrow over, and a green buy pointing down is the one
+ * thing a fill marker must never show. The tail is therefore clamped to its
+ * own side of the tip; it sets length and width, not direction.
+ */
+export type ArrowGeometryInput = {
+  /** Which way the tool always points. */
+  direction: "up" | "down";
+  /** The marked price/time, in pixels: the arrow's point. */
+  tipX: number;
+  tipY: number;
+  /** The tail handle. Absent while the arrow is being placed. */
+  tailX?: number | null;
+  tailY?: number | null;
+  defaultLength: number;
+  defaultHalfWidth: number;
+  minLength: number;
+  minHalfWidth: number;
+};
+
+export type ArrowGeometry = {
+  /** Tail end after clamping, always on the correct side of the tip. */
+  tailY: number;
+  length: number;
+  halfWidth: number;
+  /** Where the head meets the shaft. */
+  headBaseY: number;
+  shaftHalf: number;
+  /** Closed outline, tip first. */
+  points: Array<[number, number]>;
+};
+
+export function entryExitArrowGeometry(input: ArrowGeometryInput): ArrowGeometry {
+  const { direction, tipX, tipY, defaultLength, defaultHalfWidth, minLength, minHalfWidth } = input;
+  const up = direction === "up";
+  // An arrow pointing UP has its body BELOW the tip, so its tail is at a
+  // LARGER y. Screen y grows downward.
+  const fallbackTailY = tipY + (up ? defaultLength : -defaultLength);
+  const requestedTailY = Number.isFinite(input.tailY as number) ? (input.tailY as number) : fallbackTailY;
+  const tailY = up
+    ? Math.max(tipY + minLength, requestedTailY)
+    : Math.min(tipY - minLength, requestedTailY);
+
+  const requestedTailX = Number.isFinite(input.tailX as number)
+    ? (input.tailX as number)
+    : tipX + defaultHalfWidth;
+  const halfWidth = Math.max(minHalfWidth, Math.abs(requestedTailX - tipX));
+
+  const length = Math.abs(tailY - tipY);
+  // The head keeps its proportion as the arrow lengthens, but can never eat
+  // the whole shaft or the mark stops reading as an arrow.
+  const head = Math.min(length * 0.55, halfWidth * 1.6);
+  const headBaseY = up ? tipY + head : tipY - head;
+  const shaftHalf = Math.max(1.5, halfWidth * 0.38);
+
+  return {
+    tailY,
+    length,
+    halfWidth,
+    headBaseY,
+    shaftHalf,
+    points: [
+      [tipX, tipY],
+      [tipX - halfWidth, headBaseY],
+      [tipX - shaftHalf, headBaseY],
+      [tipX - shaftHalf, tailY],
+      [tipX + shaftHalf, tailY],
+      [tipX + shaftHalf, headBaseY],
+      [tipX + halfWidth, headBaseY],
+    ],
+  };
+}

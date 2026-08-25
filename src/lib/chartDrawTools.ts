@@ -47,6 +47,9 @@ export type DrawToolId =
   | "cypher"
   | "elliottImpulse"
   | "elliottCorrection"
+  // trade marks
+  | "entryArrow"
+  | "exitArrow"
   // forecast / measurement
   | "longPosition"
   | "shortPosition"
@@ -89,6 +92,7 @@ export type DrawToolGroupId =
   | "fib"
   | "patterns"
   | "forecast"
+  | "trade"
   | "volume"
   | "shapes"
   | "annotation"
@@ -224,6 +228,12 @@ export const DRAW_TOOL_LIST: DrawToolSpec[] = [
   // TradingView-style: one click places the tool with default target/stop
   // zones; the three stored points (entry, stop+right edge, target) are
   // synthesized at commit time and then adjusted by dragging their handles.
+  // One click drops the arrow on the bar; the two handles then set how far it
+  // reaches and how wide it is. Placed like the position calculators rather
+  // than as a two-click line, because a fill is a single point in the market.
+  T("entryArrow", "trade", "Entry Arrow", 1),
+  T("exitArrow", "trade", "Exit Arrow", 1),
+
   T("longPosition", "forecast", "Long Position", 1),
   T("shortPosition", "forecast", "Short Position", 1),
   T("forecast", "forecast", "Forecast", 2),
@@ -272,6 +282,10 @@ export const DRAW_TOOL_GROUPS: { id: DrawToolGroupId; label: string }[] = [
   { id: "fib", label: "Fib" },
   { id: "patterns", label: "Patterns" },
   { id: "forecast", label: "Forecast" },
+  // Its own rail slot: marking an entry and an exit is done constantly while
+  // reviewing a chart, and the rail shows one button per group — anything
+  // sharing a group with the calculators would be a chevron away.
+  { id: "trade", label: "Trade" },
   { id: "volume", label: "Volume" },
   { id: "shapes", label: "Shapes" },
   { id: "annotation", label: "Text" },
@@ -358,6 +372,13 @@ function migrateDrawStyle(saved: Partial<DrawStyle>): Partial<DrawStyle> {
   };
 }
 
+/**
+ * The colours the chart already uses for a real fill marker, so a drawn entry
+ * and a genuine one are the same green and red.
+ */
+export const PAPER_FILL_BUY_COLOR = "#22C55E";
+export const PAPER_FILL_SELL_COLOR = "#EF4444";
+
 const defaultStyleFor = (tool: DrawToolId): DrawStyle => {
   if (tool === "highlighter") return { ...DEFAULT_DRAW_STYLE, color: "#FFEB3B", width: 4, fillOpacity: 0.25 };
   // The calculators land as clean target/risk boxes. Their readout is three
@@ -366,6 +387,17 @@ const defaultStyleFor = (tool: DrawToolId): DrawStyle => {
   // style panel.
   if (tool === "longPosition" || tool === "shortPosition") {
     return { ...DEFAULT_DRAW_STYLE, showLabels: false };
+  }
+  // Entry and exit arrows mean the same thing the real fill markers do, so
+  // they carry the fill colours rather than the theme's line colour: a green
+  // buy and a red sell read identically whichever theme the chart is on.
+  // useThemeColor:false is what stops the theme repainting them; the trader
+  // can still change either from the style panel.
+  if (tool === "entryArrow") {
+    return { ...DEFAULT_DRAW_STYLE, color: PAPER_FILL_BUY_COLOR, useThemeColor: false, width: 1 };
+  }
+  if (tool === "exitArrow") {
+    return { ...DEFAULT_DRAW_STYLE, color: PAPER_FILL_SELL_COLOR, useThemeColor: false, width: 1 };
   }
   if (tool === "text" || tool === "note" || tool === "callout" || tool === "priceLabel" || tool === "signpost" || tool === "flagMark") {
     return { ...DEFAULT_DRAW_STYLE, color: "#EAB308" };

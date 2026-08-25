@@ -47,6 +47,7 @@
     "test:paper-storage-full": "node --import ./scripts/alias-hook.mjs scripts/test-paper-storage-full.mjs",
     "test:paper-limit-fills": "node --import ./scripts/alias-hook.mjs scripts/test-paper-limit-fills.mjs",
     "test:position-tool-resize": "node --import ./scripts/alias-hook.mjs scripts/test-position-tool-resize.mjs",
+    "test:entry-exit-arrows": "node --import ./scripts/alias-hook.mjs scripts/test-entry-exit-arrows.mjs",
     "test:storage-writes-guarded": "node --import ./scripts/alias-hook.mjs scripts/test-storage-writes-guarded.mjs",
     "test:gex-box-panel-settings": "node --import ./scripts/alias-hook.mjs scripts/test-gex-box-panel-settings.mjs",
     "test:stats-palettes": "node --import ./scripts/alias-hook.mjs scripts/test-stats-palettes.mjs",

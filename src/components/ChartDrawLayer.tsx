@@ -17,7 +17,7 @@ import {
   magnetStrengthSpec,
   type MagnetStrength,
 } from "@/lib/chartDrawTools";
-import { timeAtPixelPastLastBar } from "@/lib/chartDrawGeometry";
+import { entryExitArrowGeometry, timeAtPixelPastLastBar } from "@/lib/chartDrawGeometry";
 
 // Self-contained SVG overlay that owns the new charting tools end to end:
 // point placement (fixed-count, poly-click and freehand-drag), live preview,
@@ -284,6 +284,30 @@ export default function ChartDrawLayer({
 
   const finish = (tool: DrawToolId, points: DrawPoint[]) => {
     let committed = points;
+    // Entry and exit arrows are placed with ONE click, on the bar being
+    // marked, and then sized by their two handles. The click is the tip — the
+    // exact price the fill happened at — and the second point is the tail,
+    // synthesized a comfortable distance away so the arrow is visible and
+    // grabbable immediately.
+    //
+    // The tail is derived through fromXY at the tip's own x, which the time
+    // scale can always name because the click came from there. Asking for a
+    // pixel further right would land past the last bar on a chart near the
+    // live edge and come back null, which is how other tools have silently
+    // failed to appear.
+    if ((tool === "entryArrow" || tool === "exitArrow") && points.length === 1) {
+      const tip = points[0];
+      const tipX = toX(tip.time);
+      const tipY = toY(tip.price);
+      if (tipX != null && tipY != null) {
+        // Down for an entry (the arrow points up at the bar from below), up
+        // for an exit (it points down at the bar from above) — the way the
+        // real fill markers sit.
+        const away = tool === "entryArrow" ? ARROW_DEFAULT_LENGTH_PX : -ARROW_DEFAULT_LENGTH_PX;
+        const tail = fromXY(tipX + ARROW_DEFAULT_HALF_WIDTH_PX, tipY + away);
+        if (tail) committed = [tip, tail];
+      }
+    }
     // TradingView-style position tools: one click places the whole tool.
     // Synthesize the stop (below/above) and target (above/below) points plus a
     // bounded right edge from pixel offsets so the default shape reads the
@@ -872,7 +896,7 @@ export default function ChartDrawLayer({
     if (drawing.tool === "verticalLine" || drawing.tool === "crossLine") {
       return Math.abs(px - a.x) <= 6 || (drawing.tool === "crossLine" && Math.abs(py - a.y) <= 6);
     }
-    if (["rectangle", "ellipse", "circle", "fibRetracement", "priceRange", "dateRange", "datePriceRange", "brush", "highlighter", "longPosition", "shortPosition"].includes(drawing.tool)) {
+    if (["rectangle", "ellipse", "circle", "fibRetracement", "priceRange", "dateRange", "datePriceRange", "brush", "highlighter", "longPosition", "shortPosition", "entryArrow", "exitArrow"].includes(drawing.tool)) {
       const xs = coords.map((c) => c.x).filter((v): v is number => v != null);
       const ys = coords.map((c) => c.y).filter((v): v is number => v != null);
       if (!xs.length) return false;
@@ -1119,6 +1143,56 @@ export default function ChartDrawLayer({
           const d = pr[1].price - pr[0].price; const pct = pr[0].price ? (d / pr[0].price) * 100 : 0; const bars = Math.round((pr[1].time - pr[0].time) / 60);
           const green = d >= 0 ? "#089981" : "#F23645";
           return <g><rect x={Math.min(a.x!, b.x)} y={Math.min(a.y!, b.y!)} width={Math.abs(b.x - a.x!)} height={Math.abs(b.y! - a.y!)} fill={green} fillOpacity={0.12} stroke={green} strokeWidth={1} />{line(a.x!, a.y!, b.x, b.y!, green)}{label(Math.min(a.x!, b.x) + 4, Math.min(a.y!, b.y!) - 4, `${d >= 0 ? "+" : ""}${d.toFixed(2)} (${pct.toFixed(2)}%) · ${bars}m`, green)}</g>;
+        }
+        case "entryArrow":
+        case "exitArrow": {
+          // A trade mark, drawn the way the chart draws a real fill: an entry
+          // is a green arrow pointing UP at the bar from below, an exit a red
+          // arrow pointing DOWN at it from above.
+          //
+          // The direction is a property of the TOOL, never of where the tail
+          // handle happens to be dragged. Dragging the tail past the tip would
+          // otherwise flip the arrow over and a green buy would end up
+          // pointing down, which is the one thing a fill marker must never do.
+          // The tail is therefore clamped to its own side of the tip; it sets
+          // length and width, not direction.
+          if (a.x == null || a.y == null) return null;
+          const entry = drawing.tool === "entryArrow";
+          const geometry = entryExitArrowGeometry({
+            direction: entry ? "up" : "down",
+            tipX: a.x,
+            tipY: a.y,
+            tailX: b?.x,
+            tailY: b?.y,
+            defaultLength: ARROW_DEFAULT_LENGTH_PX,
+            defaultHalfWidth: ARROW_DEFAULT_HALF_WIDTH_PX,
+            minLength: ARROW_MIN_LENGTH_PX,
+            minHalfWidth: ARROW_MIN_HALF_WIDTH_PX,
+          });
+          const path = `${geometry.points.map(([x, y], index) => `${index ? "L" : "M"}${x},${y}`).join(" ")} Z`;
+          const text = drawing.text || (entry ? "ENTRY" : "EXIT");
+          return (
+            <g>
+              <path
+                d={path}
+                fill={stroke}
+                fillOpacity={0.95}
+                stroke={stroke}
+                strokeWidth={w}
+                strokeLinejoin="round"
+              />
+              {style.showLabels === false
+                ? null
+                : <text
+                    x={a.x}
+                    y={entry ? geometry.tailY + 12 : geometry.tailY - 5}
+                    fill={stroke}
+                    fontSize={10}
+                    fontFamily="monospace"
+                    textAnchor="middle"
+                  >{text}</text>}
+            </g>
+          );
         }
         case "arrowMarker": {
           if (!b || a.x == null || b.x == null) return null;
@@ -1528,6 +1602,19 @@ function volumeProfile(candles: DrawCandle[], t0: number, t1: number, binCount =
  * margin sets the cost, not the correctness.
  */
 const EDGE_OVERSCAN = 2000;
+
+/**
+ * Default and minimum geometry for the entry/exit arrows, in pixels.
+ *
+ * Pixels rather than price: an arrow is an annotation on the screen and should
+ * read the same size at every zoom and on every instrument, unlike a position
+ * box whose height is a real risk in points.
+ */
+const ARROW_DEFAULT_LENGTH_PX = 44;
+const ARROW_DEFAULT_HALF_WIDTH_PX = 9;
+/** Below these it stops being legible, or grabbable. */
+const ARROW_MIN_LENGTH_PX = 10;
+const ARROW_MIN_HALF_WIDTH_PX = 4;
 
 function extend(x1: number, y1: number, x2: number, y2: number, w: number, h: number) {
   const dx = x2 - x1; const dy = y2 - y1;
