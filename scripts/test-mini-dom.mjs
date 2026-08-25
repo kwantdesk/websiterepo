@@ -360,9 +360,14 @@ check("a chart rebuild does not leave the ladder blank", () => {
   assert.match(chart, /miniDomLastBookRef\.current = null;\s*\n\s*primitive\.clear\(\);/);
 });
 
-check("the stock level spacing is ten", () => {
+check("the stock level spacing is ten and the stock width is half", () => {
   assert.equal(DEFAULT_MINI_DOM_OPTIONS.levelSpacingPx, 10);
   assert.equal(defaultIndicatorSettings("mini-dom").levelSpacingPx, 10);
+  assert.equal(DEFAULT_MINI_DOM_OPTIONS.widthPx, 95, "the ladder ships at half its old width");
+  assert.equal(defaultIndicatorSettings("mini-dom").widthPx, 95);
+  // Half the width still has to leave a rail wide enough to be worth drawing.
+  const layout = miniDomLayout({ paneWidth: 1200, widthPx: 95, rightGapPx: 2, showBids: true, showAsks: true, alignLeft: true });
+  assert.ok(layout.barExtent > 10, `a ${layout.barExtent}px track is too short to read a size off`);
 });
 
 console.log(`\nmini dom: ${passed}/${passed} checks passed`);

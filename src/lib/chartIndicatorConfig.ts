@@ -619,7 +619,7 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "zeroLineWidth", label: "Zero-line width", defaultValue: 1, min: 1, max: 4 },
   ],
   "mini-dom": [
-    { key: "widthPx", label: "Ladder width (pixels)", defaultValue: 190, min: 60, max: 420, step: 2 },
+    { key: "widthPx", label: "Ladder width (pixels)", defaultValue: 95, min: 40, max: 420, step: 2 },
     { key: "rightGapPx", label: "Gap from the price scale (px)", defaultValue: 2, min: 0, max: 60, step: 1 },
     // Band spacing, not row count. Resting size is summed into price bands so
     // the bars are thick enough to carry their contract count; asking for a
@@ -1724,7 +1724,7 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     spineColor: theme?.gridColor ?? "#6B7280",
   } : {}),
   ...(indicatorId === "mini-dom" ? {
-    widthPx: 190,
+    widthPx: 95,
     rightGapPx: 2,
     levelSpacingPx: 10,
     barOpacity: 56,

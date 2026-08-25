@@ -66,7 +66,7 @@ export type MiniDomOptions = {
 };
 
 export const DEFAULT_MINI_DOM_OPTIONS: MiniDomOptions = {
-  widthPx: 190,
+  widthPx: 95,
   rightGapPx: 2,
   buyColor: "#14B8B0",
   sellColor: "#B4174B",

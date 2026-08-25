@@ -4043,7 +4043,9 @@ function Chart({
       const nextBars = retainLiveFootprintRows(
         bars.map((bar) => ({
           ...bar,
-          profileRows: profileRows?.get(bar.timestamp) ?? bar.rows,
+          // Same rule on the live path: a separate profile build owns every
+          // bar's side profile or none of them, never a mix of granularities.
+          profileRows: profileRows ? profileRows.get(bar.timestamp) ?? [] : bar.rows,
           time: (eventChartTimeBySourceTimeRef.current.get(bar.timestamp)
             ?? Math.floor(bar.timestamp / 1_000)) as Time,
         })),
@@ -5172,7 +5174,7 @@ function Chart({
     const source = miniDomIndicator?.settings ?? {};
     const useThemeColors = source.useThemeColors !== false;
     return {
-      widthPx: clamp(Number(source.widthPx ?? 190), 60, 420),
+      widthPx: clamp(Number(source.widthPx ?? 95), 40, 420),
       rightGapPx: clamp(Number(source.rightGapPx ?? 2), 0, 60),
       buyColor: useThemeColors ? settings.upColor : String(source.buyColor ?? settings.upColor),
       sellColor: useThemeColors ? settings.downColor : String(source.sellColor ?? settings.downColor),
@@ -5587,7 +5589,14 @@ function Chart({
   const footprintRenderBars = useMemo((): FootprintRenderBar[] =>
     footprintBars.map((bar) => ({
       ...bar,
-      profileRows: footprintProfileRowsByTimestamp.get(bar.timestamp) ?? bar.rows,
+      // A bar the profile build did not produce gets NOTHING, not the
+      // footprint's own rows. Those are grouped at a different tick size when
+      // a separate profile granularity is set, so falling back to them drew
+      // one candle's side profile at a different row height from every bar
+      // beside it — the odd candle that does not match the rest.
+      profileRows: footprintProfileRowsByTimestamp.size
+        ? footprintProfileRowsByTimestamp.get(bar.timestamp) ?? []
+        : bar.rows,
       time: (eventChartTimeBySourceTimeRef.current.get(bar.timestamp)
         ?? Math.floor(bar.timestamp / 1_000)) as Time,
     })), [footprintBars, footprintProfileRowsByTimestamp]);
