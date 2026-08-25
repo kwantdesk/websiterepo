@@ -1,7 +1,12 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextRequest, NextResponse } from "next/server";
 import { getConfiguredQuantDataApiKey, getGexMapPanel, getQuantDataHttpError } from "@/lib/quantData.server";
-import { compactLiveGexMapPanel, GEX_MAP_GREEKS } from "@/lib/gexMap";
+import {
+  compactLiveGexMapPanel,
+  DEFAULT_GEX_MAP_EXPIRY_SCOPE,
+  GEX_MAP_GREEKS,
+  type GexMapExpiryScope,
+} from "@/lib/gexMap";
 import { OPTIONS_FLOW_TICKERS, type GreekMode } from "@/lib/optionsFlow";
 import {
   SITE_ACCESS_COOKIE,
@@ -61,6 +66,8 @@ export async function GET(request: NextRequest) {
   const greekMode = (request.nextUrl.searchParams.get("greekMode") || "GAMMA").trim().toUpperCase() as GreekMode;
   const sessionDate = request.nextUrl.searchParams.get("sessionDate")?.trim() || undefined;
   const compact = request.nextUrl.searchParams.get("compact") === "1" && !sessionDate;
+  const requestedScope = (request.nextUrl.searchParams.get("scope") || DEFAULT_GEX_MAP_EXPIRY_SCOPE).trim().toUpperCase();
+  const scope = requestedScope as GexMapExpiryScope;
   if (!OPTIONS_FLOW_TICKERS.includes(symbol as (typeof OPTIONS_FLOW_TICKERS)[number])) {
     return NextResponse.json({ error: "Unsupported GEXMAP instrument." }, { status: 400 });
   }
@@ -70,9 +77,12 @@ export async function GET(request: NextRequest) {
   if (sessionDate && !DATE_PATTERN.test(sessionDate)) {
     return NextResponse.json({ error: "Invalid replay date." }, { status: 400 });
   }
+  if (scope !== "ALL_EXPIRIES" && scope !== "FRONT_EXPIRY") {
+    return NextResponse.json({ error: "Unsupported expiry scope." }, { status: 400 });
+  }
 
   try {
-    const payload = await getGexMapPanel(symbol, greekMode, sessionDate);
+    const payload = await getGexMapPanel(symbol, greekMode, sessionDate, scope);
     return NextResponse.json(compact ? compactLiveGexMapPanel(payload) : payload, {
       headers: { "Cache-Control": "private, no-store, max-age=0" },
     });

@@ -16,12 +16,20 @@ export type GexMapFrame = {
   updates: ExposureStrike[];
 };
 
+export type GexMapExpiryScope = "ALL_EXPIRIES" | "FRONT_EXPIRY";
+
+/** Trinity's comparison view is an all-expiry surface. Keep that as the
+ * product default while preserving an explicit front-expiry diagnostic. */
+export const DEFAULT_GEX_MAP_EXPIRY_SCOPE: GexMapExpiryScope = "ALL_EXPIRIES";
+
 export type GexMapPanelPayload = {
   symbol: string;
   greekMode: GreekMode;
   sessionDate: string;
-  expiration: string;
-  scope: "FRONT_EXPIRY";
+  expiration: string | null;
+  expirations: string[];
+  scope: GexMapExpiryScope;
+  model: "STRUCTURAL_OI";
   representation: "PER_ONE_PERCENT_MOVE";
   source: "KwantData Interval Map";
   sourceTimeZone: "America/New_York";

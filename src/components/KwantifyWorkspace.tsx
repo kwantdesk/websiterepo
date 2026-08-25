@@ -14450,6 +14450,7 @@ export default function KwantifyWorkspace({
               panels: GEX_MAP_AUTO_MAP_PANELS.map((panel) => ({ ...panel })),
               viewMode: pane.gexMapState?.viewMode ?? "star",
               stepMinutes: pane.gexMapState?.stepMinutes ?? 1,
+              expiryScope: pane.gexMapState?.expiryScope ?? "ALL_EXPIRIES",
             },
           };
         }

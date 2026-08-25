@@ -5986,8 +5986,8 @@ function Chart({
         // Shares the exact cache entry the GEX Map panels use, so an open
         // map panel and this pane cost one provider request between them.
         const payload = await fetchWorkspaceData<GexMapPanelPayload>(
-          gexMapCacheKey(source, greekMode, ""),
-          `/api/gex-map?symbol=${encodeURIComponent(source)}&greekMode=${greekMode}`,
+          gexMapCacheKey(source, greekMode, "", "FRONT_EXPIRY"),
+          `/api/gex-map?symbol=${encodeURIComponent(source)}&greekMode=${greekMode}&scope=FRONT_EXPIRY`,
           {
             maxAgeMs: refreshMs,
             timeoutMs: 45_000,
@@ -7295,8 +7295,8 @@ function Chart({
         // Shares the exact cache entry the GEX Map panels use, so an open map
         // panel and this colour link cost one provider request between them.
         const payload = await fetchWorkspaceData<GexMapPanelPayload>(
-          gexMapCacheKey(bounceGexSyncSource, bounceGexGreekMode, ""),
-          `/api/gex-map?symbol=${encodeURIComponent(bounceGexSyncSource)}&greekMode=${bounceGexGreekMode}`,
+          gexMapCacheKey(bounceGexSyncSource, bounceGexGreekMode, "", "FRONT_EXPIRY"),
+          `/api/gex-map?symbol=${encodeURIComponent(bounceGexSyncSource)}&greekMode=${bounceGexGreekMode}&scope=FRONT_EXPIRY`,
           {
             maxAgeMs: refreshMs,
             timeoutMs: 45_000,

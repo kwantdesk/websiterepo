@@ -27,8 +27,10 @@ import {
   type VolatilitySkewPoint,
 } from "@/lib/optionsFlow";
 import {
+  DEFAULT_GEX_MAP_EXPIRY_SCOPE,
   gexMapProviderTicker,
   latestGexMapStrikesFromFrames,
+  type GexMapExpiryScope,
   type GexMapFrame,
   type GexMapPanelPayload,
 } from "@/lib/gexMap";
@@ -2557,6 +2559,7 @@ async function buildGexMapPanel(
   symbolInput: string,
   greekModeInput: GreekMode,
   requestedSessionDate?: string,
+  expiryScope: GexMapExpiryScope = DEFAULT_GEX_MAP_EXPIRY_SCOPE,
 ): Promise<GexMapPanelPayload> {
   const symbol = symbolInput.trim().toUpperCase();
   const providerTicker = gexMapProviderTicker(symbol);
@@ -2580,25 +2583,31 @@ async function buildGexMapPanel(
   ]);
 
   const fullExposure = parseExposure(exposureResult.payload, providerTicker, greekModeInput);
-  const expiration = fullExposure?.expiries
+  const expirations = fullExposure?.expiries
     .map((row) => row.expiration)
-    .filter((value) => value >= sessionDate)
-    .sort()[0] ?? fullExposure?.expiries[0]?.expiration ?? null;
+    .filter(Boolean)
+    .sort() ?? [];
+  const expiration = expirations.filter((value) => value >= sessionDate)[0]
+    ?? expirations[0]
+    ?? null;
   if (!expiration) {
     throw new QuantDataError(`No ${greekModeInput} exposure is available for ${symbol} on ${sessionDate}.`, 422, exposureResult.remaining);
   }
 
-  const frontExposure = parseExposure(exposureResult.payload, providerTicker, greekModeInput, expiration);
+  const selectedExposure = expiryScope === "ALL_EXPIRIES"
+    ? fullExposure
+    : parseExposure(exposureResult.payload, providerTicker, greekModeInput, expiration);
   const intervalResult = await quantDataPost("/options/tool/interval-map", {
     sessionDate,
     aggregationPeriod: "1m",
     greekMode: greekModeInput,
-    filter: {
-      ticker: providerTicker,
-      expirationDate: expiration,
-    },
+    filter: expiryScope === "ALL_EXPIRIES"
+      ? { ticker: providerTicker }
+      : { ticker: providerTicker, expirationDate: expiration },
   }, endpointTtl);
-  const frames = parseGexMapFrames(intervalResult.payload, expiration);
+  const frames = expiryScope === "ALL_EXPIRIES"
+    ? parseFullChainGexMapFrames(intervalResult.payload)
+    : parseGexMapFrames(intervalResult.payload, expiration);
   const candles = parseCandles(candleResult.payload, true);
   const latestCandle = candles.at(-1) ?? null;
   const firstCandle = candles[0] ?? null;
@@ -2613,20 +2622,23 @@ async function buildGexMapPanel(
   // its exposure-by-strike rows are cleared. The interval map is still the
   // authoritative session record, so rebuild the frozen close from every
   // incremental frame instead of returning a structurally valid black map.
-  const latestStrikes = frontExposure?.strikes.length
-    ? frontExposure.strikes
+  const latestStrikes = selectedExposure?.strikes.length
+    ? selectedExposure.strikes
     : latestGexMapStrikesFromFrames(frames);
 
   if (!latestStrikes.length && !frames.length) {
-    throw new QuantDataError(`No front-expiry ${greekModeInput} strikes are available for ${symbol}.`, 422, exposureResult.remaining);
+    const scopeLabel = expiryScope === "ALL_EXPIRIES" ? "all-expiry" : "front-expiry";
+    throw new QuantDataError(`No ${scopeLabel} ${greekModeInput} strikes are available for ${symbol}.`, 422, exposureResult.remaining);
   }
 
   return {
     symbol,
     greekMode: greekModeInput,
     sessionDate,
-    expiration,
-    scope: "FRONT_EXPIRY",
+    expiration: expiryScope === "FRONT_EXPIRY" ? expiration : null,
+    expirations,
+    scope: expiryScope,
+    model: "STRUCTURAL_OI",
     representation: "PER_ONE_PERCENT_MOVE",
     source: "KwantData Interval Map",
     sourceTimeZone: "America/New_York",
@@ -2656,6 +2668,7 @@ export async function getGexMapPanel(
   symbolInput: string,
   greekModeInput: GreekMode,
   requestedSessionDate?: string,
+  expiryScope: GexMapExpiryScope = "FRONT_EXPIRY",
 ): Promise<GexMapPanelPayload> {
   const symbol = symbolInput.trim().toUpperCase();
   const currentSession = getUsOptionsSession();
@@ -2663,15 +2676,15 @@ export async function getGexMapPanel(
   const completedSession = sessionDate !== currentSession.sessionDate || !currentSession.marketOpen;
   // Keep fallbacks session-specific so a historical replay can never receive
   // a different day's surface merely because that panel was requested last.
-  const surfaceKey = `${symbol}:${greekModeInput}:${sessionDate}`;
+  const surfaceKey = `${symbol}:${greekModeInput}:${sessionDate}:${expiryScope}`;
   try {
     const payload = completedSession
       ? await unstable_cache(
-        () => buildGexMapPanel(symbol, greekModeInput, sessionDate),
-        ["completed-gex-map-panel-v4", symbol, greekModeInput, sessionDate],
+        () => buildGexMapPanel(symbol, greekModeInput, sessionDate, expiryScope),
+        ["completed-gex-map-panel-v5", symbol, greekModeInput, sessionDate, expiryScope],
         { revalidate: 6 * 60 * 60 },
       )()
-      : await buildGexMapPanel(symbol, greekModeInput, sessionDate);
+      : await buildGexMapPanel(symbol, greekModeInput, sessionDate, expiryScope);
     lastGoodGexMapPanelBySurface.set(surfaceKey, payload);
     return payload;
   } catch (error) {
@@ -2786,8 +2799,8 @@ async function buildHistoricalPositioningWallFrames(
     throw new Error("The provider did not return full-chain interval frames for this session.");
   } catch (error) {
     const [gammaPanel, deltaPanel] = await Promise.all([
-      getGexMapPanel(symbol, "GAMMA", sessionDate),
-      getGexMapPanel(symbol, "DELTA", sessionDate),
+      getGexMapPanel(symbol, "GAMMA", sessionDate, "FRONT_EXPIRY"),
+      getGexMapPanel(symbol, "DELTA", sessionDate, "FRONT_EXPIRY"),
     ]);
     return {
       symbol,

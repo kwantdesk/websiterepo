@@ -30,10 +30,12 @@ import KwantLoader from "@/components/KwantLoader";
 import GexMapNodePanel from "@/components/gex-map/GexMapNodePanel";
 import GexMapFutureMatrix from "@/components/gex-map/GexMapFutureMatrix";
 import {
+  DEFAULT_GEX_MAP_EXPIRY_SCOPE,
   GEX_MAP_GREEKS,
   hasRenderableGexMapSurface,
   latestGexMapStrikesFromFrames,
   selectGexMapStarNode,
+  type GexMapExpiryScope,
   type GexMapPanelPayload,
 } from "@/lib/gexMap";
 import {
@@ -91,6 +93,7 @@ export type GexMapEmbedState = {
   panels: PanelConfig[];
   viewMode: GexMapViewMode;
   stepMinutes: number;
+  expiryScope: GexMapExpiryScope;
 };
 
 type GexMapWorkspaceProps = {
@@ -207,6 +210,7 @@ function normalizeGexMapEmbedState(value: unknown): GexMapEmbedState | null {
     stepMinutes: (FRAME_STEPS as readonly number[]).includes(Number(parsed.stepMinutes))
       ? Number(parsed.stepMinutes) as (typeof FRAME_STEPS)[number]
       : 1,
+    expiryScope: parsed.expiryScope === "FRONT_EXPIRY" ? "FRONT_EXPIRY" : DEFAULT_GEX_MAP_EXPIRY_SCOPE,
   };
 }
 
@@ -1630,6 +1634,9 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
     // normalizeGexMapEmbedState only admits FRAME_STEPS members.
     () => (initialEmbedStateRef.current?.stepMinutes ?? 1) as (typeof FRAME_STEPS)[number],
   );
+  const [expiryScope, setExpiryScope] = useState<GexMapExpiryScope>(
+    () => initialEmbedStateRef.current?.expiryScope ?? DEFAULT_GEX_MAP_EXPIRY_SCOPE,
+  );
   // Node zoom: SSR-safe default first, stored value applied after hydration.
   const [ladderZoom, setLadderZoom] = useState(1);
   // PRESENT (live per-strike ladders) vs FUTURE (forward expiry×strike
@@ -1750,9 +1757,9 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
   requestedReplayDateRef.current = requestedReplayDate;
   const panelCacheKey = useCallback((panel: Pick<PanelConfig, "symbol" | "greekMode">) => (
     replayMode
-      ? gexMapCacheKey(panel.symbol, panel.greekMode, requestedReplayDate)
-      : compactGexMapLiveCacheKey(panel.symbol, panel.greekMode)
-  ), [replayMode, requestedReplayDate]);
+      ? gexMapCacheKey(panel.symbol, panel.greekMode, requestedReplayDate, expiryScope)
+      : compactGexMapLiveCacheKey(panel.symbol, panel.greekMode, expiryScope)
+  ), [expiryScope, replayMode, requestedReplayDate]);
 
   useEffect(() => {
     setLocationMarket(market ?? linkedMarketFromLocation());
@@ -1818,8 +1825,9 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
       panels: panels.map((panel) => ({ ...panel })),
       viewMode,
       stepMinutes,
+      expiryScope,
     });
-  }, [panels, stepMinutes, viewMode]);
+  }, [expiryScope, panels, stepMinutes, viewMode]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1852,6 +1860,7 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
           const query = new URLSearchParams({
             symbol: panel.symbol,
             greekMode: panel.greekMode,
+            scope: expiryScope,
             ...(requestedReplayDate ? { sessionDate: requestedReplayDate } : {}),
             ...(!replayMode ? { compact: "1" } : {}),
           });
@@ -1941,7 +1950,7 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
         timer = null;
       }
     };
-  }, [panelCacheKey, panels, refreshToken, replayMode, requestedReplayDate]);
+  }, [expiryScope, panelCacheKey, panels, refreshToken, replayMode, requestedReplayDate]);
 
   const timeline = useMemo(() => {
     const timestamps = new Set<number>();
@@ -2081,6 +2090,34 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
             ))}
           </div>
 
+          <div
+            className="ml-1 flex h-7 shrink-0 items-center gap-0.5 rounded-[3px] border border-border/70 bg-background/35 p-0.5"
+            title="Expiry aggregation for every strike. All expiries matches the complete-chain comparison; Front isolates the nearest expiration."
+          >
+            {(["ALL_EXPIRIES", "FRONT_EXPIRY"] as const).map((scope) => (
+              <button
+                key={scope}
+                type="button"
+                onClick={() => {
+                  setExpiryScope(scope);
+                  setCursor(0);
+                  setPlaying(false);
+                }}
+                aria-pressed={expiryScope === scope}
+                className={`h-5 rounded-[2px] px-2 text-[9px] font-semibold uppercase leading-none tracking-[0.075em] ${expiryScope === scope ? "bg-surface text-primary" : "text-muted hover:text-foreground"}`}
+              >
+                {scope === "ALL_EXPIRIES" ? "All Exp" : "Front"}
+              </button>
+            ))}
+          </div>
+
+          <span
+            className="ml-1 shrink-0 text-[8px] font-semibold uppercase tracking-[0.12em] text-muted"
+            title="Structural open-interest exposure. A proprietary inferred dealer-flow inventory model may produce different signed values."
+          >
+            OI model
+          </span>
+
           <div className="ml-1 flex h-7 shrink-0 items-center gap-0.5 rounded-[3px] border border-border/70 bg-background/35 p-0.5" title={`Node zoom ${Math.round(ladderZoom * 100)}% — zoom in for fewer, larger nodes; out for more, smaller ones`}>
             <button
               type="button"
@@ -2160,7 +2197,8 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
               const payload = panelData[panel.id];
               const matchesPanel = payload
                 && payload.symbol === panel.symbol
-                && payload.greekMode === panel.greekMode;
+                && payload.greekMode === panel.greekMode
+                && payload.scope === expiryScope;
               const replaySessionMismatch = Boolean(
                 matchesPanel
                 && replayMode

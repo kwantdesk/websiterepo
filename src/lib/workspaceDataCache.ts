@@ -1,3 +1,8 @@
+import {
+  DEFAULT_GEX_MAP_EXPIRY_SCOPE,
+  type GexMapExpiryScope,
+} from "@/lib/gexMap";
+
 type WorkspaceCacheEntry = {
   value: unknown;
   updatedAt: number;
@@ -249,12 +254,21 @@ export function optionsFlowCacheKey(symbol: string, priceMode: string) {
   return `options-flow:${symbol}:${priceMode}`;
 }
 
-export function gexMapCacheKey(symbol: string, greekMode: string, sessionDate = "") {
-  return `gex-map:${symbol}:${greekMode}:${sessionDate || "live"}`;
+export function gexMapCacheKey(
+  symbol: string,
+  greekMode: string,
+  sessionDate = "",
+  scope: GexMapExpiryScope = DEFAULT_GEX_MAP_EXPIRY_SCOPE,
+) {
+  return `gex-map:${symbol}:${greekMode}:${sessionDate || "live"}:${scope}`;
 }
 
-export function compactGexMapLiveCacheKey(symbol: string, greekMode: string) {
-  return `${gexMapCacheKey(symbol, greekMode)}:compact`;
+export function compactGexMapLiveCacheKey(
+  symbol: string,
+  greekMode: string,
+  scope: GexMapExpiryScope = DEFAULT_GEX_MAP_EXPIRY_SCOPE,
+) {
+  return `${gexMapCacheKey(symbol, greekMode, "", scope)}:compact`;
 }
 
 export function gameplanCacheKey(root: string, session: string) {

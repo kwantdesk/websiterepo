@@ -234,6 +234,7 @@ export function buildGammaHeatmapPayload(input: {
     throw new Error("Gamma Heatmap currently supports NQ, MNQ, ES and MES chart scales.");
   }
   if (!(panel.stockPrice && panel.stockPrice > 0)) throw new Error("The options source price is unavailable.");
+  if (!panel.expiration) throw new Error("Gamma Heatmap requires a front-expiry options surface.");
   const asOf = panel.asOf || new Date().toISOString();
   const mapping = buildGammaHeatmapMapping({
     sourceInstrument: panel.symbol,
