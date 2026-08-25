@@ -5111,6 +5111,7 @@ function WorkspaceChartPaneComponent({
   period,
   settings,
   crosshairSyncScope = "matching",
+  crosshairLinked = false,
   candlesVisible = true,
   viewportSyncGroup = "",
   viewportSyncRole = "independent",
@@ -5167,6 +5168,8 @@ function WorkspaceChartPaneComponent({
   period: string;
   settings: ChartSettings;
   crosshairSyncScope?: "matching" | "gamvue";
+  /** Whether this chart shares its crosshair while keeping its own viewport. */
+  crosshairLinked?: boolean;
   /** Whether this chart paints its candles; everything else keeps its place. */
   candlesVisible?: boolean;
   viewportSyncGroup?: string;
@@ -8774,6 +8777,7 @@ function WorkspaceChartPaneComponent({
           instrument={displayCmeSymbol(pane.symbol)}
           chartInstanceId={pane.id}
           crosshairSyncScope={crosshairSyncScope}
+          crosshairLinked={crosshairLinked}
           candlesVisible={candlesVisible}
           viewportSyncGroup={viewportSyncGroup}
           viewportSyncRole={viewportSyncRole}
@@ -17076,6 +17080,7 @@ export default function KwantifyWorkspace({
         embedded
         period={pane.period}
         settings={chartSettings}
+        crosshairLinked={linkedCrosshairPaneIds.has(pane.id)}
         candlesVisible={!candlesHiddenPaneIds.has(pane.id)}
         crosshairSyncScope={chartWorkspaceScope === "gamma"
           || linkedViewportPaneIds.has(pane.id)

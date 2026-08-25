@@ -70,13 +70,23 @@ export function snapCrosshairCoordinate(coordinate: number, pixelRatio = 1) {
   return Math.round(coordinate * ratio) / ratio;
 }
 
+/**
+ * The group a chart shares its crosshair with.
+ *
+ * `shareGroup` is whether this chart has opted into the shared group at all.
+ * That used to mean "is it viewport-linked", because linking the viewport was
+ * the only way to share a cursor. It is not any more: a chart can link only
+ * its crosshair, keeping its own timeframe and scale, and such a chart is not
+ * a viewport peer — so it resolved to an empty group, and an empty group is
+ * dropped on publish and ignored on receive. The button did nothing at all.
+ */
 export function chartCrosshairSyncGroup(
   scope: ChartCrosshairSyncScope,
   instrumentKey: string,
   viewportGroup: string,
-  viewportLinked: boolean,
+  shareGroup: boolean,
 ) {
-  if (scope === "gamvue") return viewportLinked ? viewportGroup.trim() : "";
+  if (scope === "gamvue") return shareGroup ? viewportGroup.trim() : "";
   return instrumentKey.trim();
 }
 

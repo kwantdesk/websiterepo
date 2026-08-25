@@ -538,6 +538,11 @@ interface ChartProps {
   viewportSyncRole?: ChartViewportSyncRole;
   crosshairSyncScope?: ChartCrosshairSyncScope;
   /**
+   * Whether this chart shares its crosshair with the others while keeping its
+   * own viewport. Its own control, separate from the viewport link.
+   */
+  crosshairLinked?: boolean;
+  /**
    * Whether this chart paints its candles.
    *
    * Off leaves everything else exactly where it is — the series, its scale and
@@ -2999,6 +3004,7 @@ function Chart({
   viewportSyncGroup = "",
   viewportSyncRole = "independent",
   crosshairSyncScope = "matching",
+  crosshairLinked = false,
   candlesVisible = true,
   keyboardActive = true,
   workspaceId = "default-workspace",
@@ -3077,6 +3083,9 @@ function Chart({
   const viewportSyncReleaseTimerRef = useRef<number | null>(null);
   const viewportSyncGroupRef = useRef(viewportSyncGroup);
   const viewportSyncRoleRef = useRef(viewportSyncRole);
+  // Read inside the crosshair handler, which is bound once.
+  const crosshairLinkedRef = useRef(crosshairLinked);
+  crosshairLinkedRef.current = crosshairLinked;
   const viewportSyncCandlesRef = useRef(candles);
   viewportSyncCandlesRef.current = candles;
   const prevCandlesLengthRef = useRef<number>(0);
@@ -3825,10 +3834,13 @@ function Chart({
       if (!detail || detail.scope !== crosshairSyncScope) return;
       setCrosshairSyncEnabled(detail.enabled);
     };
-    setCrosshairSyncEnabled(readChartCrosshairSyncEnabled(crosshairSyncScope));
+    // Linking a chart's crosshair IS the switch for that chart. Requiring the
+    // separate stored toggle as well meant pressing the button changed
+    // nothing the trader could see.
+    setCrosshairSyncEnabled(crosshairLinked || readChartCrosshairSyncEnabled(crosshairSyncScope));
     window.addEventListener(CHART_CROSSHAIR_SYNC_TOGGLE_EVENT, handleToggle);
     return () => window.removeEventListener(CHART_CROSSHAIR_SYNC_TOGGLE_EVENT, handleToggle);
-  }, [crosshairSyncScope]);
+  }, [crosshairLinked, crosshairSyncScope]);
 
   useEffect(() => {
     crosshairSyncEnabledRef.current = crosshairSyncEnabled;
@@ -3840,11 +3852,11 @@ function Chart({
   }, [crosshairSyncEnabled]);
 
   useEffect(() => {
-    if (crosshairSyncScope !== "gamvue" || viewportSyncRole === "peer") return;
+    if (crosshairSyncScope !== "gamvue" || viewportSyncRole === "peer" || crosshairLinked) return;
     chartRef.current?.clearCrosshairPosition();
     if (horzLineRef.current) horzLineRef.current.style.display = "none";
     if (priceLabelRef.current) priceLabelRef.current.style.display = "none";
-  }, [crosshairSyncScope, viewportSyncGroup, viewportSyncRole]);
+  }, [crosshairLinked, crosshairSyncScope, viewportSyncGroup, viewportSyncRole]);
 
   useEffect(() => {
     if (selectedTool !== "cursor" && selectedTool !== "selection" && !precisionToolForDrawingTool(selectedTool)) {
@@ -12299,7 +12311,10 @@ function Chart({
         crosshairSyncScope,
         crosshairSyncInstrumentKey,
         viewportSyncGroupRef.current,
-        viewportSyncRoleRef.current === "peer",
+        // Either link puts this chart in the shared group: the viewport link
+        // ties the whole frame together, the crosshair link shares only the
+        // cursor.
+        viewportSyncRoleRef.current === "peer" || crosshairLinkedRef.current,
       );
       if (
         !crosshairSyncEnabledRef.current
@@ -12340,11 +12355,13 @@ function Chart({
       if (horzLineRef.current) horzLineRef.current.style.display = "none";
       if (priceLabelRef.current) priceLabelRef.current.style.display = "none";
     };
+    // The RECEIVING side of the same rule. Both ends have to resolve the same
+    // group or a chart publishes into one nobody is listening on.
     const synchronizedCrosshairGroup = () => chartCrosshairSyncGroup(
       crosshairSyncScope,
       crosshairSyncInstrumentKey,
       viewportSyncGroupRef.current,
-      viewportSyncRoleRef.current === "peer",
+      viewportSyncRoleRef.current === "peer" || crosshairLinkedRef.current,
     );
     const handleSynchronizedCrosshair = (detail: ChartCrosshairSyncMove) => {
       if (!crosshairSyncEnabledRef.current) return;
