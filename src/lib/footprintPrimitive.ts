@@ -44,6 +44,12 @@ export type FootprintPrimitiveOptions = {
   perBarProfilePocSize: number;
   perBarProfileOutline: boolean;
   barWidth: number;
+  /**
+   * Price distance between two adjacent rows — the study's tick size times its
+   * grouping. Every bar shares it, so it belongs in the options rather than
+   * being read back off each bar's own rows.
+   */
+  rowPriceStep: number;
   candleSpacing: number;
   borderWidth: number;
   opacity: number;
@@ -118,6 +124,7 @@ export type FootprintPrimitiveOptions = {
 };
 
 const DEFAULT_OPTIONS: FootprintPrimitiveOptions = {
+  rowPriceStep: 0,
   contentMode: "bid-ask",
   visualizationMode: "heatmap-histogram",
   scaleMode: "visible-region",
@@ -574,9 +581,21 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
         for (const row of bar.rows) {
           const y = params.series.priceToCoordinate(row.price);
           if (y === null) continue;
-          const neighbouringTick = bar.rows[1]
-            ? Math.abs(bar.rows[1].price - bar.rows[0].price)
-            : Math.max(0.000001, (bar.high - bar.low) / Math.max(1, bar.rows.length));
+          // Row spacing is the STUDY's, not this bar's.
+          //
+          // It used to be measured from the first two rows of each bar. Rows
+          // only exist where something traded, so a bar whose lowest two rows
+          // were not adjacent reported a spacing several ticks wide, drew
+          // taller rows, and — because the text is sized from row height —
+          // printed visibly larger numbers than the bar beside it. It settled
+          // as trades filled the gaps in, which is why it looked like a
+          // loading glitch. The fallback survives only for a bar drawn before
+          // the step is known.
+          const neighbouringTick = options.rowPriceStep > 0
+            ? options.rowPriceStep
+            : bar.rows[1]
+              ? Math.abs(bar.rows[1].price - bar.rows[0].price)
+              : Math.max(0.000001, (bar.high - bar.low) / Math.max(1, bar.rows.length));
           const nextY = params.series.priceToCoordinate(row.price + neighbouringTick);
           const rowHeight = nextY === null ? 1 : Math.max(1, Math.abs(nextY - y));
           const top = y - rowHeight / 2;

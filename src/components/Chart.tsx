@@ -5406,6 +5406,9 @@ function Chart({
       perBarProfilePocSize: clamp(Number(footprintSettings.perBarProfilePocSize ?? 5), 2, 12),
       perBarProfileOutline: footprintSettings.perBarProfileOutline === true,
       barWidth: clamp(Number(footprintSettings.barWidth ?? 92), 28, 180),
+      // The study's own row spacing, so every bar draws rows the same height
+      // and prints its numbers at the same size.
+      rowPriceStep: Math.max(0, priceFormat.minMove * resolvedFootprintGroupTicks),
       candleSpacing: clamp(Number(footprintSettings.candleSpacing ?? 6), 1, 24),
       borderWidth: clamp(Number(footprintSettings.borderWidth ?? 1), 0.5, 4),
       opacity: clamp(Number(footprintSettings.backgroundOpacity ?? 74) / 100, 0, 1),
@@ -5488,7 +5491,7 @@ function Chart({
         : String(footprintSettings.perBarProfilePocColor ?? settings.borderUpColor),
       backgroundColor: settings.backgroundColor,
     };
-  }, [footprintSettings, settings]);
+  }, [footprintSettings, priceFormat.minMove, resolvedFootprintGroupTicks, settings]);
   useEffect(() => {
     liveFootprintEnabledRef.current = Boolean(footprintIndicator);
     const sourceTailTimestamp = footprintSourceCandles.at(-1)?.timestamp ?? Number.NEGATIVE_INFINITY;
