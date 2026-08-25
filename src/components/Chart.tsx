@@ -4017,7 +4017,10 @@ function Chart({
           liveFootprintRefreshTimerRef.current = null;
           queueChartFrameWork(footprintWorkKey, refreshVisibleFootprint);
         },
-        keyboardActive ? FOOTPRINT_DATA_REFRESH_INTERVAL_MS : 500,
+        // One cadence either way: the tape does not care whether the keyboard
+        // is in use, and the slower branch was the one a trader watching price
+        // actually sat in.
+        FOOTPRINT_DATA_REFRESH_INTERVAL_MS,
       );
     };
     window.addEventListener(LIVE_CHART_EXECUTION_EVENT, receive);
@@ -4030,7 +4033,7 @@ function Chart({
       cancelChartFrameWork(footprintWorkKey);
       liveFootprintTapeRef.current = [];
     };
-  }, [chartFrameWorkKey, keyboardActive, liveCandleEventKey, timeframe]);
+  }, [chartFrameWorkKey, liveCandleEventKey, timeframe]);
 
   useEffect(() => {
     updateIndicatorSettingRef.current = onUpdateIndicatorSetting;
