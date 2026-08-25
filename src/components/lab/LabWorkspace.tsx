@@ -11,6 +11,7 @@ import {
   FileCheck2,
   FlaskConical,
   LockKeyhole,
+  Play,
   RefreshCw,
   Route,
   ShieldAlert,
@@ -101,6 +102,9 @@ export default function LabWorkspace() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [running, setRunning] = useState(false);
+  const [runMessage, setRunMessage] = useState("");
+  const [runError, setRunError] = useState("");
   const [now, setNow] = useState<number | null>(null);
   const requestRef = useRef<AbortController | null>(null);
   const snapshotRef = useRef<LabSnapshot | null>(null);
@@ -199,6 +203,40 @@ export default function LabWorkspace() {
     window.location.reload();
   };
 
+  const runLab = async () => {
+    requestRef.current?.abort();
+    setRunning(true);
+    setRunMessage("");
+    setRunError("");
+    setError("");
+    try {
+      const response = await fetch("/api/lab/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ root }),
+      });
+      const body = await response.json().catch(() => ({})) as unknown;
+      if (!response.ok) {
+        const message = body && typeof body === "object" && "error" in body && typeof body.error === "string"
+          ? body.error
+          : "The August V1 run failed before publication.";
+        throw new Error(message);
+      }
+      if (!isLabSnapshot(body)) throw new Error("The manual run returned an invalid August V1 snapshot.");
+      snapshotRef.current = body;
+      setSnapshot(body);
+      setRunMessage(body.film.status === "READY"
+        ? `Re-run complete · Film updated against ${timeAgo(body.film.priorAsOf, Date.now())}.`
+        : "Baseline frame captured · run again later to create Film before any live call.");
+    } catch (runFailure) {
+      setRunError(runFailure instanceof Error ? runFailure.message : "The August V1 run failed before publication.");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+      setRunning(false);
+    }
+  };
+
   return (
     <main className="flex h-screen min-h-0 flex-col overflow-hidden bg-background text-foreground">
       <AppSidebar activeItem="lab" orientation="horizontal" />
@@ -217,7 +255,7 @@ export default function LabWorkspace() {
           </div>
           <div className="ml-2 flex items-center border border-border bg-background p-0.5">
             {(["NQ", "ES"] as LabRoot[]).map((item) => (
-              <button key={item} type="button" onClick={() => setRoot(item)} className={`h-7 min-w-10 px-2 font-mono text-[9px] font-semibold ${root === item ? "bg-primary text-background" : "text-muted hover:text-foreground"}`}>{item}</button>
+              <button key={item} type="button" disabled={running} onClick={() => setRoot(item)} className={`h-7 min-w-10 px-2 font-mono text-[9px] font-semibold disabled:cursor-not-allowed disabled:opacity-50 ${root === item ? "bg-primary text-background" : "text-muted hover:text-foreground"}`}>{item}</button>
             ))}
           </div>
           <div className="ml-auto hidden items-center gap-5 xl:flex">
@@ -225,11 +263,15 @@ export default function LabWorkspace() {
             <div><p className="text-[6px] uppercase tracking-[0.14em] text-muted">{countdownLabel}</p><p className="mt-1 font-mono text-[9px]">{now === null ? "--:--:--" : clock.phase === "LIVE" ? "RTH ACTIVE" : formatCountdown(countdownTarget - now)}</p></div>
             <div><p className="text-[6px] uppercase tracking-[0.14em] text-muted">Repository receipt</p><p className={`mt-1 font-mono text-[9px] ${freshness === "CURRENT" ? "text-primary" : freshness === "STALE" || freshness === "MISSING" ? "text-danger" : "text-accent"}`}>{currentSnapshot ? `${freshness} · ${timeAgo(currentSnapshot.updatedAt, currentTime)}` : "MISSING"}</p></div>
           </div>
-          <button type="button" onClick={() => void loadSnapshot(true)} className="ml-1 flex h-8 w-8 items-center justify-center border border-border text-muted hover:border-primary/30 hover:text-foreground" title="Refresh repository snapshot"><RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} strokeWidth={1.5} /></button>
+          <button type="button" disabled={running} onClick={() => void runLab()} className="ml-1 flex h-8 shrink-0 items-center justify-center gap-2 border border-primary/35 bg-primary/[0.07] px-2.5 text-primary hover:bg-primary/[0.12] disabled:cursor-wait disabled:opacity-60" title={currentSnapshot ? "Pull every source again and update Film" : "Start August V1 now and capture the first frame"}><Play className={`h-3 w-3 ${running ? "animate-pulse fill-current" : "fill-current"}`} strokeWidth={1.5} /><span className="text-[7px] font-semibold uppercase tracking-[0.1em]"><span className="hidden 2xl:inline">{running ? "Running August V1…" : currentSnapshot ? "Re-run · update Film" : "Run August V1"}</span><span className="2xl:hidden">{running ? "Running…" : currentSnapshot ? "Re-run" : "Run"}</span></span></button>
+          <button type="button" disabled={running} onClick={() => void loadSnapshot(true)} className="flex h-8 w-8 items-center justify-center border border-border text-muted hover:border-primary/30 hover:text-foreground disabled:cursor-wait disabled:opacity-50" title="Refresh repository snapshot"><RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} strokeWidth={1.5} /></button>
           <button type="button" onClick={() => void lockLab()} className="flex h-8 w-8 items-center justify-center border border-border text-muted hover:border-danger/30 hover:text-danger" title="Lock THE LAB"><LockKeyhole className="h-3.5 w-3.5" strokeWidth={1.5} /></button>
         </header>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-2.5">
+          {runMessage ? <div className="mb-2.5 flex items-start gap-3 border border-primary/35 bg-primary/[0.05] px-3 py-2.5"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-primary" strokeWidth={1.5} /><div><p className="text-[9px] font-semibold uppercase tracking-[0.08em] text-primary">August V1 published</p><p className="mt-1 text-[8px] leading-4 text-muted">{runMessage}</p></div></div> : null}
+          {runError ? <div className="mb-2.5 flex items-start gap-3 border border-danger/35 bg-danger/[0.05] px-3 py-2.5"><ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-danger" strokeWidth={1.5} /><div><p className="text-[9px] font-semibold uppercase tracking-[0.08em] text-danger">Manual run failed closed</p><p className="mt-1 text-[8px] leading-4 text-muted">{runError} The prior repository frame was not replaced.</p></div></div> : null}
+          {running ? <div className="mb-2.5 border border-primary/25 bg-primary/[0.04] px-3 py-2 text-[8px] text-muted">Pulling positioning, futures calibration, volatility and cross-index referees; then publishing one atomic August V1 frame…</div> : null}
           {error ? <div className="mb-2.5 flex items-start gap-3 border border-danger/35 bg-danger/[0.05] px-3 py-2.5"><ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-danger" strokeWidth={1.5} /><div><p className="text-[9px] font-semibold uppercase tracking-[0.08em] text-danger">No current desk-issued snapshot</p><p className="mt-1 text-[8px] leading-4 text-muted">{error} THE LAB will not substitute vendor calls or manufacture a plan. Price may remain visible, but trade permission is blocked.</p></div></div> : null}
           {loading && !currentSnapshot ? <div className="mb-2.5 border border-border bg-panel px-3 py-2 text-[8px] text-muted">Reading the latest August V1 repository receipt…</div> : null}
 

@@ -1078,6 +1078,24 @@ const server = createServer(async (request, response) => {
         });
       }
     }
+    if (request.method === "POST" && url.pathname === "/v1/lab/snapshot") {
+      try {
+        const body = await bodyJson(request);
+        return json(response, 200, await labRepository.publishSnapshot(body));
+      } catch (error) {
+        const status = error?.code === "LAB_REPOSITORY_NOT_CONFIGURED"
+          ? 503
+          : error?.code === "LAB_SNAPSHOT_OUT_OF_ORDER"
+            ? 409
+            : error?.code === "LAB_ROOT_UNSUPPORTED"
+              ? 400
+              : 422;
+        return json(response, status, {
+          error: error instanceof Error ? error.message : "The Lab repository refused the snapshot publication.",
+          code: error?.code || "LAB_REPOSITORY_ERROR",
+        });
+      }
+    }
     if (request.method === "GET" && url.pathname === "/v1/rithmic/systems") {
       if (config.sourceMode === "rtrader-excel") {
         return json(response, 200, { provider: "Rithmic", systems: ["RTrader Pro Excel"] });
