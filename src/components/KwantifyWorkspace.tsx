@@ -611,6 +611,14 @@ type ChartExecutionQuote = {
   bid: number;
   ask: number;
   mid: number;
+  /**
+   * The price this packet TRADED at, when it carried a print.
+   *
+   * Resting orders and TP/SL are levels in the book, and a level is hit by
+   * what trades, not by where the touch sits. Without this the engine only
+   * saw the best bid/ask and a tapped level never filled.
+   */
+  last?: number;
   timestamp: number;
   receivedAt: number;
 };
@@ -5463,6 +5471,8 @@ function WorkspaceChartPaneComponent({
       bid: mid,
       ask: mid,
       mid,
+      // A replayed candle price is a recorded execution, not a quote.
+      last: mid,
       timestamp: replayTimestampMs,
       receivedAt,
     };
@@ -7696,6 +7706,9 @@ function WorkspaceChartPaneComponent({
           bid: bookIsCoherent ? snapPaperPrice(pane.symbol, rawBid) : mid,
           ask: bookIsCoherent ? snapPaperPrice(pane.symbol, rawAsk) : mid,
           mid,
+          // The gateway sends the executed price as `mid` on a trade packet,
+          // so this is a real print rather than a derived midpoint.
+          last: price.isTrade ? mid : undefined,
           timestamp: tickTimestamp,
           receivedAt: Date.now(),
         } satisfies ChartExecutionQuote;
@@ -9728,7 +9741,7 @@ export default function KwantifyWorkspace({
       currentLedger,
       paperTradingAccounts,
       quote.symbol,
-      { bid: quote.bid, ask: quote.ask, timestamp: quote.timestamp },
+      { bid: quote.bid, ask: quote.ask, last: quote.last, timestamp: quote.timestamp },
       {
         executionAuthorized: true,
         suspendedProtectionPositionIds: suspendedPaperProtectionIdsRef.current,
@@ -9844,7 +9857,7 @@ export default function KwantifyWorkspace({
       currentLedger,
       paperTradingAccounts,
       quote.symbol,
-      { bid: quote.bid, ask: quote.ask, timestamp: quote.timestamp },
+      { bid: quote.bid, ask: quote.ask, last: quote.last, timestamp: quote.timestamp },
       {
         executionAuthorized: true,
         suspendedProtectionPositionIds: suspendedPaperProtectionIdsRef.current,
@@ -16510,7 +16523,7 @@ export default function KwantifyWorkspace({
         && replayQuote.bid > 0
         && replayQuote.ask > 0
       ) {
-        return { bid: replayQuote.bid, ask: replayQuote.ask, timestamp: replayQuote.timestamp };
+        return { bid: replayQuote.bid, ask: replayQuote.ask, last: replayQuote.last, timestamp: replayQuote.timestamp };
       }
       return null;
     }
@@ -16526,7 +16539,7 @@ export default function KwantifyWorkspace({
         && activeQuote.bid > 0
         && activeQuote.ask > 0
       ) {
-        return { bid: activeQuote.bid, ask: activeQuote.ask, timestamp: activeQuote.timestamp };
+        return { bid: activeQuote.bid, ask: activeQuote.ask, last: activeQuote.last, timestamp: activeQuote.timestamp };
       }
       return null;
     }
@@ -16539,7 +16552,7 @@ export default function KwantifyWorkspace({
       && activeQuote.bid > 0
       && activeQuote.ask > 0
     ) {
-      return { bid: activeQuote.bid, ask: activeQuote.ask, timestamp: activeQuote.timestamp };
+      return { bid: activeQuote.bid, ask: activeQuote.ask, last: activeQuote.last, timestamp: activeQuote.timestamp };
     }
     if (normalized === normalizePaperSymbol(paperTradingInstrument) && currentLivePrice.bid > 0 && currentLivePrice.ask > 0) {
       return { bid: currentLivePrice.bid, ask: currentLivePrice.ask, timestamp: Date.now() };

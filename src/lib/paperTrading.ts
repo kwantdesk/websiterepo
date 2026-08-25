@@ -13,7 +13,34 @@ export type PaperQuote = {
   bid: number;
   ask: number;
   timestamp: number;
+  /**
+   * The price this packet actually TRADED at, when it carried a print.
+   *
+   * Resting orders and protection used to be tested against the best bid/ask
+   * alone, and that is why a level could be tapped without filling. A sell
+   * limit at 24,000 rests in the offer queue at 24,000; when the market trades
+   * there the book is typically bid 23,999.75 / ask 24,000, so a rule of
+   * "fill when the bid reaches 24,000" needs the market to run a full tick
+   * PAST the order before it does anything. The trader watches price print at
+   * their level and nothing happen.
+   *
+   * The gateway already sends the executed price on a trade packet, so the
+   * level is tested against the print itself. Absent (quote-only packets),
+   * every test falls back to the touch exactly as before.
+   */
+  last?: number;
 };
+
+/**
+ * The price to test a resting level against.
+ *
+ * A print is what actually happened; the touch is only what was available.
+ * Prefer the print when the packet carried one.
+ */
+function crossingPrice(quote: PaperQuote, fallback: number) {
+  const last = Number(quote.last);
+  return Number.isFinite(last) && last > 0 ? last : fallback;
+}
 
 export type PaperQuoteProcessingOptions = {
   /**
@@ -812,13 +839,35 @@ function workingOrderFillPrice(order: PaperOrder, quote: PaperQuote) {
     : Math.max(order.price, executablePrice);
 }
 
+/**
+ * Whether a resting order has been hit.
+ *
+ * Two separate things can hit it, and only the first was implemented:
+ *
+ *  - the order is MARKETABLE against the current touch - a buy limit at or
+ *    above the offer, a sell limit at or below the bid - so it can be filled
+ *    immediately, with price improvement;
+ *  - the market TRADED at the order's price. A resting sell limit sits in the
+ *    offer queue at its price; a print there is a buyer lifting that offer.
+ *    Testing only the bid meant the market had to run a full tick past the
+ *    order before it filled, so a level could be tapped and nothing happened.
+ *
+ * Filling on a print at the level assumes queue priority - one print does not
+ * prove every order resting there was filled. That is the standard simulation
+ * assumption and it is the one a trader reading the chart expects; the
+ * alternative silently refuses fills the chart says should have happened.
+ */
 function orderTriggered(order: PaperOrder, quote: PaperQuote) {
   if (order.status !== "working" || order.price == null) return false;
   if (order.type === "limit") {
-    return order.side === "buy" ? quote.ask <= order.price : quote.bid >= order.price;
+    return order.side === "buy"
+      ? quote.ask <= order.price || crossingPrice(quote, quote.ask) <= order.price
+      : quote.bid >= order.price || crossingPrice(quote, quote.bid) >= order.price;
   }
   if (order.type === "stop") {
-    return order.side === "buy" ? quote.ask >= order.price : quote.bid <= order.price;
+    return order.side === "buy"
+      ? quote.ask >= order.price || crossingPrice(quote, quote.ask) >= order.price
+      : quote.bid <= order.price || crossingPrice(quote, quote.bid) <= order.price;
   }
   return false;
 }
@@ -1029,6 +1078,11 @@ export function processPaperQuote(
       if (!executionAuthorized) continue;
 
       const previousProtectionMark = position.protectionMarkPrice;
+      // P&L marks to the executable touch, but a LEVEL is hit by what traded.
+      // Testing protection against the touch alone is why a target could be
+      // tapped without closing: a long's take profit at 24,000 was tested
+      // against the bid, which sits a tick below the print that reached it.
+      const protectionMark = crossingPrice(quote, markPrice);
       const marketableRelease = options.marketableProtectionPositionIds?.has(position.id) === true;
 
       const protectionIsSuspended = options.suspendedProtectionPositionIds?.has(position.id) === true
@@ -1037,10 +1091,10 @@ export function processPaperQuote(
         // A drag disables fills, not price tracking. Keeping this watermark at
         // the latest executable price means the newly placed stop is armed
         // from the release market rather than from an old pre-drag quote.
-        if (position.protectionMarkPrice !== markPrice || position.protectionQuoteAt !== quote.timestamp) {
+        if (position.protectionMarkPrice !== protectionMark || position.protectionQuoteAt !== quote.timestamp) {
           const nextPosition = {
             ...position,
-            protectionMarkPrice: markPrice,
+            protectionMarkPrice: protectionMark,
             protectionQuoteAt: Math.max(position.protectionQuoteAt, quote.timestamp),
           };
           account = {
@@ -1057,8 +1111,8 @@ export function processPaperQuote(
         marketableRelease
           ? (position.side === "buy" ? markPrice <= position.stopLoss : markPrice >= position.stopLoss)
           : position.side === "buy"
-            ? previousProtectionMark > position.stopLoss && markPrice <= position.stopLoss
-            : previousProtectionMark < position.stopLoss && markPrice >= position.stopLoss
+            ? previousProtectionMark > position.stopLoss && protectionMark <= position.stopLoss
+            : previousProtectionMark < position.stopLoss && protectionMark >= position.stopLoss
       );
       if (stopHit) {
         // A working simulated stop fills at its configured tick. When a trader
@@ -1091,8 +1145,8 @@ export function processPaperQuote(
           marketableRelease
             ? (position.side === "buy" ? markPrice >= target.price : markPrice <= target.price)
             : position.side === "buy"
-              ? previousProtectionMark < target.price && markPrice >= target.price
-              : previousProtectionMark > target.price && markPrice <= target.price
+              ? previousProtectionMark < target.price && protectionMark >= target.price
+              : previousProtectionMark > target.price && protectionMark <= target.price
         );
         if (!targetHit) continue;
         const closeQuantity = Math.min(position.remainingQuantity, remainingTargetQuantity);
@@ -1130,11 +1184,11 @@ export function processPaperQuote(
       position = account.positions.find((candidate) => candidate.id === originalPosition.id) ?? position;
       if (
         position.status === "open"
-        && (position.protectionMarkPrice !== markPrice || position.protectionQuoteAt !== quote.timestamp)
+        && (position.protectionMarkPrice !== protectionMark || position.protectionQuoteAt !== quote.timestamp)
       ) {
         const nextPosition = {
           ...position,
-          protectionMarkPrice: markPrice,
+          protectionMarkPrice: protectionMark,
           protectionQuoteAt: Math.max(position.protectionQuoteAt, quote.timestamp),
         };
         account = {

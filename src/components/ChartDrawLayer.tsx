@@ -17,6 +17,7 @@ import {
   magnetStrengthSpec,
   type MagnetStrength,
 } from "@/lib/chartDrawTools";
+import { timeAtPixelPastLastBar } from "@/lib/chartDrawGeometry";
 
 // Self-contained SVG overlay that owns the new charting tools end to end:
 // point placement (fixed-count, poly-click and freehand-drag), live preview,
@@ -190,6 +191,58 @@ export default function ChartDrawLayer({
     if (!rect) return null;
     return fromXY(clientX - rect.left, clientY - rect.top);
   };
+
+  /**
+   * The price at a pixel, independent of whether the time is knowable.
+   *
+   * fromXY answers with a {time, price} pair or nothing at all, so a pixel the
+   * time scale cannot name also loses its price. The price scale always knows
+   * its own answer, and a drag that can only resolve one axis should still
+   * move along that axis rather than doing nothing.
+   */
+  const priceAtY = (localY: number) => {
+    // Probe at a pixel the time scale can definitely name — the last bar's own
+    // x — so the pair resolves and its price can be read. The price scale does
+    // not care which column was asked.
+    const lastTime = candles.length ? candles[candles.length - 1].time : null;
+    const probeX = lastTime == null ? null : toX(lastTime);
+    for (const x of [probeX, 0, Math.max(0, width - priceScaleWidth - 1)]) {
+      if (x == null) continue;
+      const point = fromXY(x, localY);
+      if (point) return point.price;
+    }
+    return null;
+  };
+
+  /**
+   * The chart time at a pixel, including past the last bar.
+   *
+   * The time scale only names times it has bars for, so everything right of
+   * the live edge — where a position tool's right edge is deliberately placed
+   * — comes back null. Past the last bar the answer is counted in BARS: how
+   * many bar widths the pixel is beyond the final bar, times the bar spacing.
+   * Measuring in bars rather than clock time is what makes this behave the
+   * same on a volume, range or tick chart, whose bars carry irregular times
+   * and which have no fixed interval to extrapolate with at all.
+   */
+  const timeAtX = (localX: number) => {
+    const direct = fromXY(localX, 0);
+    if (direct) return direct.time;
+    if (candles.length < 2) return null;
+    const lastTime = candles[candles.length - 1].time;
+    const previousTime = candles[candles.length - 2].time;
+    const lastX = toX(lastTime);
+    const previousX = toX(previousTime);
+    if (lastX == null || previousX == null) return null;
+    return timeAtPixelPastLastBar({
+      localX,
+      lastTime,
+      lastX,
+      previousTime,
+      previousX,
+      recentTimes: candles.slice(-12).map((candle) => candle.time),
+    });
+  };
   // Unique per layer: two charts on screen must not share one clip.
   const plotClipId = useId().replace(/:/g, "");
   const freehandCleanupRef = useRef<(() => void) | null>(null);
@@ -332,6 +385,16 @@ export default function ChartDrawLayer({
   } | null>(null);
   const drawingsGroupRef = useRef<SVGGElement | null>(null);
 
+  // Chart.tsx supplies these projectors as inline callbacks. Their identity
+  // therefore changes on every live candle render even though they always
+  // read the same chart refs. A viewport subscription that depends on those
+  // callback identities continuously unsubscribes and re-subscribes while
+  // the market is live, leaving a large volume of listener closures for GC.
+  // Keep the single subscription stable and read the current projectors from
+  // a ref when a viewport event actually arrives.
+  const viewportProjectionRef = useRef({ toX, toY });
+  viewportProjectionRef.current = { toX, toY };
+
   const readProjection = useCallback(() => {
     const timeA = candles[0]?.time;
     const timeB = candles[candles.length - 1]?.time;
@@ -375,10 +438,11 @@ export default function ChartDrawLayer({
       const basis = projectionBasisRef.current;
       const group = drawingsGroupRef.current;
       if (!basis || !group) return;
-      const xA = toX(basis.timeA);
-      const xB = toX(basis.timeB);
-      const yA = toY(basis.priceA);
-      const yB = toY(basis.priceB);
+      const projection = viewportProjectionRef.current;
+      const xA = projection.toX(basis.timeA);
+      const xB = projection.toX(basis.timeB);
+      const yA = projection.toY(basis.priceA);
+      const yB = projection.toY(basis.priceB);
       if (xA == null || xB == null || yA == null || yB == null) return;
       const scaleX = (xB - xA) / (basis.xB - basis.xA);
       const scaleY = (yB - yA) / (basis.yB - basis.yA);
@@ -415,7 +479,7 @@ export default function ChartDrawLayer({
       unsubscribe();
       if (settleTimer !== null) window.clearTimeout(settleTimer);
     };
-  }, [subscribeViewport, chartReady, toX, toY]);
+  }, [subscribeViewport, chartReady]);
   // Volume-profile histograms and anchored-VWAP series live in price/time space
   // — they do NOT change when the user pans or zooms, only the pixel projection
   // does. Computing them inside renderDrawing meant a full candle scan per
@@ -491,21 +555,37 @@ export default function ChartDrawLayer({
     if (drawing.points.length < 3) return;
     const origin = drawing.points.map((point) => ({ ...point }));
     const onMove = (moveEvent: PointerEvent) => {
-      // Raw, not magnet-snapped: a resize should follow the hand, and the
-      // velocity-aware snap makes a held drag lurch between wicks.
-      const point = rawPoint(moveEvent.clientX, moveEvent.clientY);
-      if (!point) return;
+      const rect = svgRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const localX = moveEvent.clientX - rect.left;
+      const localY = moveEvent.clientY - rect.top;
+      // The two axes are resolved SEPARATELY, and this is the whole fix.
+      //
+      // It used to ask fromXY for a {time, price} pair and give up entirely
+      // when that came back null. fromXY is null for any pixel the time scale
+      // cannot name — which is the whole blank area to the right of the last
+      // bar. A position tool is placed with its right edge twelve bars past
+      // the entry, so both right-hand corners sit in exactly that dead zone
+      // and dragging them did nothing at all. Worse, the price was thrown
+      // away with the time, so a corner could not even be moved up or down.
+      const price = priceAtY(localY);
+      const time = timeAtX(localX);
+      if (price == null && time == null) return;
       const next = origin.map((entry) => ({ ...entry }));
-      if (corner.edge === "stop") next[1].price = point.price;
-      else next[2].price = point.price;
-      if (corner.side === "left") {
-        // Neither edge may cross the other, or the box turns inside out and
-        // the fills render with a negative width.
-        next[0].time = Math.min(point.time, next[1].time - 1);
-      } else {
-        const right = Math.max(point.time, next[0].time + 1);
-        next[1].time = right;
-        next[2].time = right;
+      if (price != null) {
+        if (corner.edge === "stop") next[1].price = price;
+        else next[2].price = price;
+      }
+      if (time != null) {
+        if (corner.side === "left") {
+          // Neither edge may cross the other, or the box turns inside out and
+          // the fills render with a negative width.
+          next[0].time = Math.min(time, next[1].time - 1);
+        } else {
+          const right = Math.max(time, next[0].time + 1);
+          next[1].time = right;
+          next[2].time = right;
+        }
       }
       onUpdate({ ...drawing, points: next });
     };
