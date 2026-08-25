@@ -11,7 +11,7 @@ namespace KwantDesk.MarketData.Sessions;
 /// Multiple chart views read this shared state; they never create their own
 /// vendor/VPS subscriptions.
 /// </summary>
-public sealed class MarketDataSession : IAsyncDisposable
+public sealed class MarketDataSession : IMarketDataSession
 {
     private readonly RithmicTradeStreamClient _client;
     private readonly TimeCandleAggregator _aggregator;

@@ -12,7 +12,9 @@ namespace KwantDesk.Workstation;
 public partial class MainWindow : Window
 {
     private readonly HttpClient _httpClient;
-    private readonly MarketDataSession _marketDataSession;
+    private readonly SharedMarketDataHub _marketDataHub;
+    private SharedMarketDataHub.MarketDataLease? _marketDataLease;
+    private IMarketDataSession? _marketDataSession;
     private readonly DispatcherTimer _heartbeat;
     private bool _isClosing;
     private bool _closeCompleted;
@@ -38,9 +40,11 @@ public partial class MainWindow : Window
         var tokenProvider = new EnvironmentAccessTokenProvider();
         var sse = new SseClient(_httpClient, tokenProvider);
         var trades = new RithmicTradeStreamClient(options, sse);
-        _marketDataSession = new MarketDataSession(trades, "CME", "NQ", TimeSpan.FromMinutes(1));
-        Chart.Series = _marketDataSession.Candles;
-        _marketDataSession.StatusChanged += MarketDataSession_OnStatusChanged;
+        _marketDataHub = new SharedMarketDataHub(key => new MarketDataSession(
+            trades,
+            key.Exchange,
+            key.ContractSymbol,
+            key.CandleInterval));
 
         _heartbeat = new DispatcherTimer(DispatcherPriority.Background)
         {
@@ -55,8 +59,20 @@ public partial class MainWindow : Window
     private async void MainWindow_OnLoaded(object sender, RoutedEventArgs e)
     {
         _heartbeat.Start();
-        await _marketDataSession.StartAsync();
-        ApplyStatus();
+        try
+        {
+            _marketDataLease = await _marketDataHub.AcquireAsync(
+                new MarketDataSubscriptionKey("CME", "NQ", TimeSpan.FromMinutes(1)));
+            _marketDataSession = _marketDataLease.Session;
+            Chart.Series = _marketDataSession.Candles;
+            _marketDataSession.StatusChanged += MarketDataSession_OnStatusChanged;
+            ApplyStatus();
+        }
+        catch (Exception exception)
+        {
+            ConnectionText.Text = "START FAILED";
+            StatusDetail.Text = exception.Message;
+        }
     }
 
     private void MarketDataSession_OnStatusChanged(object? sender, EventArgs e)
@@ -66,6 +82,7 @@ public partial class MainWindow : Window
 
     private void ApplyStatus()
     {
+        if (_marketDataSession is null) return;
         var status = _marketDataSession.Status;
         ConnectionText.Text = status;
         var color = status switch
@@ -84,7 +101,7 @@ public partial class MainWindow : Window
 
     private void Heartbeat_OnTick(object? sender, EventArgs e)
     {
-        var lastTick = _marketDataSession.LastTickAtUnixMs;
+        var lastTick = _marketDataSession?.LastTickAtUnixMs ?? 0;
         var age = lastTick <= 0
             ? "NO TICK"
             : $"LAST TICK {(DateTimeOffset.UtcNow - DateTimeOffset.FromUnixTimeMilliseconds(lastTick)).TotalSeconds:0.0}s";
@@ -107,8 +124,13 @@ public partial class MainWindow : Window
         try
         {
             _heartbeat.Stop();
-            _marketDataSession.StatusChanged -= MarketDataSession_OnStatusChanged;
-            await _marketDataSession.DisposeAsync();
+            if (_marketDataSession is not null)
+            {
+                _marketDataSession.StatusChanged -= MarketDataSession_OnStatusChanged;
+            }
+
+            if (_marketDataLease is not null) await _marketDataLease.DisposeAsync();
+            await _marketDataHub.DisposeAsync();
             Chart.Dispose();
             _httpClient.Dispose();
         }

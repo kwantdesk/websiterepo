@@ -15,8 +15,9 @@ does not embed the website in a browser.
 
 The current vertical slice implements the NQ one-minute execution stream, compact
 VPS seed history, deterministic candle aggregation, a bounded 20,000-candle store,
-and a hardware-accelerated chart. It is the foundation for the staged 1:1 migration;
-the full KwantDesk surface has not yet been ported.
+a process-wide reference-counted subscription registry, and a hardware-accelerated
+chart. It is the foundation for the staged 1:1 migration; the full KwantDesk surface
+has not yet been ported.
 
 ## Authentication
 
@@ -69,7 +70,7 @@ extraction and native-library discovery failures.
 ## Migration sequence
 
 1. Certify the NQ chart/session lifecycle and authenticated VPS ticket flow.
-2. Add the shared instrument/timeframe subscription registry.
+2. Issue short-lived production VPS tickets through browser/PKCE sign-in.
 3. Port chart panels and bounded overlays one at a time with parity tests.
 4. Port LIQ MAP using GPU buffers and one normalized Level 3 stream.
 5. Port GEX VUE/GEX MAP from the native-gamma gateway with deterministic replay.
