@@ -263,6 +263,7 @@ import {
 } from "@/lib/tapeSpeedOrderFlowBurstPrimitive";
 import { subscribeRithmicLiquidity, type RithmicLiquidityStatus } from "@/lib/rithmicLiquidityStream";
 import { MiniDomPrimitive, type MiniDomLevel, type MiniDomOptions } from "@/lib/miniDomPrimitive";
+import { DeltaLadderPrimitive, type DeltaLadderLevel, type DeltaLadderOptions, type DeltaLadderSide } from "@/lib/deltaLadderPrimitive";
 import {
   defaultGammaHeatmapSource,
   isGammaHeatmapPayload,
@@ -3103,6 +3104,7 @@ function Chart({
   const volumeProfilePrimitiveRef = useRef<NativeVolumeProfilePrimitive | null>(null);
   const tpoProfilePrimitiveRef = useRef<TpoProfilePrimitive | null>(null);
   const miniDomPrimitiveRef = useRef<MiniDomPrimitive | null>(null);
+  const deltaLadderPrimitiveRef = useRef<DeltaLadderPrimitive | null>(null);
   const classicGexProfilePrimitiveRef = useRef<ClassicGexProfilePrimitive | null>(null);
   const gammaHeatmapPrimitiveRef = useRef<GammaHeatmapPrimitive | null>(null);
   const pullingStackingPrimitiveRef = useRef<PullingStackingPrimitive | null>(null);
@@ -5222,7 +5224,36 @@ function Chart({
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "poc-auction-suite") ?? null,
     [indicatorSignature, indicators],
   );
-  const footprintDataConsumer = footprintIndicator ?? stackedImbalanceIndicator ?? pocAuctionIndicator;
+  const deltaBarIndicator = useMemo(
+    () => indicators.find((instance) => instance.enabled && instance.indicatorId === "delta-bar") ?? null,
+    [indicatorSignature, indicators],
+  );
+  // Docked to a side, the Delta Bar stops being a per-bar histogram and becomes
+  // a per-PRICE one, so it needs the same executed bid/ask levels the footprint
+  // is built from. In its normal lower pane it needs none of that.
+  const deltaLadderSide = useMemo((): DeltaLadderSide | null => {
+    const mode = String(deltaBarIndicator?.settings?.displayMode ?? "pane");
+    return mode === "right" || mode === "left" ? mode : null;
+  }, [deltaBarIndicator]);
+  const deltaLadderOptions = useMemo((): DeltaLadderOptions | null => {
+    if (!deltaLadderSide) return null;
+    const source = deltaBarIndicator?.settings ?? {};
+    const useThemeColors = source.useThemeColors !== false;
+    return {
+      side: deltaLadderSide,
+      widthPx: clamp(Number(source.ladderWidthPx ?? 150), 40, 420),
+      edgeGapPx: clamp(Number(source.ladderEdgeGapPx ?? 2), 0, 60),
+      buyColor: useThemeColors ? settings.upColor : String(source.buyColor ?? settings.upColor),
+      sellColor: useThemeColors ? settings.downColor : String(source.sellColor ?? settings.downColor),
+      spineColor: String(source.spineColor ?? settings.gridColor),
+      levelSpacingPx: clamp(Math.round(Number(source.ladderLevelSpacingPx ?? 22)), 8, 60),
+      barOpacity: clamp(Number(source.ladderOpacity ?? 85) / 100, 0.1, 1),
+      showValues: source.showLadderValues !== false,
+      fontSize: clamp(Math.round(Number(source.ladderFontSize ?? 8)), 6, 14),
+    };
+  }, [deltaBarIndicator, deltaLadderSide, settings.downColor, settings.gridColor, settings.upColor]);
+  const footprintDataConsumer = footprintIndicator ?? stackedImbalanceIndicator ?? pocAuctionIndicator
+    ?? (deltaLadderSide ? deltaBarIndicator : null);
   useEffect(() => {
     if (!footprintDataConsumer || footprintViewportRefreshTimerRef.current !== null) return;
     footprintViewportRefreshTimerRef.current = window.setTimeout(() => {
@@ -5380,6 +5411,32 @@ function Chart({
     footprintMarketTrades,
     footprintSourceCandles,
   ]);
+  // One entry per traded price across the loaded window. The primitive bands
+  // these into the visible range itself, so this only has to be rebuilt when
+  // the executions change — not on every pan.
+  const deltaLadderLevels = useMemo((): DeltaLadderLevel[] => {
+    if (!deltaLadderSide || !footprintBars.length) return [];
+    const byPrice = new Map<number, number>();
+    for (const bar of footprintBars) {
+      for (const row of bar.rows) {
+        const delta = Number(row.delta);
+        if (!Number.isFinite(delta) || delta === 0) continue;
+        byPrice.set(row.price, (byPrice.get(row.price) ?? 0) + delta);
+      }
+    }
+    return Array.from(byPrice, ([price, delta]) => ({ price, delta }));
+  }, [deltaLadderSide, footprintBars]);
+
+  useEffect(() => {
+    const primitive = deltaLadderPrimitiveRef.current;
+    if (!primitive) return;
+    if (!deltaLadderOptions || !deltaLadderLevels.length) {
+      primitive.clear();
+      return;
+    }
+    primitive.setLevels(deltaLadderLevels, priceFormat.minMove, deltaLadderOptions);
+  }, [deltaLadderLevels, deltaLadderOptions, priceFormat.minMove]);
+
   const footprintProfileGroupTicks = footprintProfileGranularityTicks(
     footprintSettings.perBarProfileTicksPerRow,
   );
@@ -6484,6 +6541,9 @@ function Chart({
           unavailableReason: indicatorCandles.length ? undefined : "Waiting for chart history.",
         }];
       }
+      // Docked to a side it draws on the chart itself, so it must not also
+      // claim a lower pane.
+      if (instance.indicatorId === "delta-bar" && deltaLadderSide) return [];
       const series = calculatedIndicatorSeries.filter((definition) =>
         definition.groupKey === instance.instanceId && definition.placement === "pane");
       if (series.length) {
@@ -6502,6 +6562,9 @@ function Chart({
         "delta-cumulative-histogram",
         "delta-bar",
       ].includes(instance.indicatorId)) {
+        // The side ladder reports its own absence on the chart; a pane saying
+        // "waiting for volume" would be a second, contradictory answer.
+        if (instance.indicatorId === "delta-bar" && deltaLadderSide) return [];
         return [{
           key: instance.instanceId,
           title: instance.indicatorId === "delta-bar" ? "Delta Bar" : "Cumulative Volume Delta",
@@ -12036,6 +12099,9 @@ function Chart({
     const miniDomPrimitive = new MiniDomPrimitive();
     candleSeries.attachPrimitive(miniDomPrimitive);
     miniDomPrimitiveRef.current = miniDomPrimitive;
+    const deltaLadderPrimitive = new DeltaLadderPrimitive();
+    candleSeries.attachPrimitive(deltaLadderPrimitive);
+    deltaLadderPrimitiveRef.current = deltaLadderPrimitive;
     const bigTradesPrimitive = new BigTradesPrimitive();
     candleSeries.attachPrimitive(bigTradesPrimitive);
     bigTradesPrimitiveRef.current = bigTradesPrimitive;

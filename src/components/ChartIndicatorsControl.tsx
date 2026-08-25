@@ -5197,6 +5197,57 @@ export default function ChartIndicatorsControl({
                 </div>
               ) : null}
 
+              {settingsDefinition.id === "delta-bar" ? (
+                <div className="space-y-2 rounded-lg border border-border bg-surface/30 p-2.5">
+                  <div className="text-[9px] font-semibold uppercase tracking-[0.14em] text-muted">Where it draws</div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {([
+                      ["pane", "Lower pane"], ["left", "Left side"], ["right", "Right side"],
+                    ] as const).map(([mode, label]) => {
+                      const active = String(settingsInstance.settings?.displayMode ?? "pane") === mode;
+                      return (
+                        <button
+                          key={mode}
+                          type="button"
+                          aria-pressed={active}
+                          onClick={() => replace(settingsInstance.instanceId, (current) => ({
+                            ...current,
+                            settings: { ...(current.settings ?? {}), displayMode: mode },
+                          }))}
+                          className={`h-8 border px-2 text-[8px] font-semibold uppercase tracking-[0.08em] ${active ? "border-primary/45 bg-primary/10 text-primary" : "border-border bg-background text-muted hover:text-foreground"}`}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {([
+                      ["showLadderValues", "Delta numbers"], ["useThemeColors", "Website colours"],
+                    ] as const).map(([key, label]) => (
+                      <button
+                        key={key}
+                        type="button"
+                        aria-pressed={settingsInstance.settings?.[key] === true}
+                        onClick={() => replace(settingsInstance.instanceId, (current) => ({
+                          ...current,
+                          settings: { ...(current.settings ?? {}), [key]: current.settings?.[key] !== true },
+                        }))}
+                        className={`flex h-8 items-center justify-between border px-2 text-left text-[8px] font-semibold uppercase tracking-[0.08em] ${settingsInstance.settings?.[key] === true ? "border-primary/45 bg-primary/10 text-primary" : "border-border bg-background text-muted hover:text-foreground"}`}
+                      >
+                        <span>{label}</span><span>{settingsInstance.settings?.[key] === true ? "ON" : "OFF"}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[8px] leading-4 text-muted">
+                    In the lower pane this is delta per bar. Moved to a side it becomes delta per PRICE: one spine down
+                    the edge with a spike at every level that traded, reaching toward the candles, green for buying and
+                    red for selling. It spans the whole visible range and rescales as you move, so the longest spike is
+                    the biggest delta on screen right now.
+                  </p>
+                </div>
+              ) : null}
+
               {settingsDefinition.id === "mini-dom" ? (
                 <div className="space-y-2 rounded-lg border border-border bg-surface/30 p-2.5">
                   <div className="text-[9px] font-semibold uppercase tracking-[0.14em] text-muted">Resting book rails</div>

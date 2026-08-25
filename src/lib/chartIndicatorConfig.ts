@@ -842,6 +842,15 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "minTradeVolume", label: "Minimum execution size", defaultValue: 0, min: 0, max: 100000 },
     { key: "maxTradeVolume", label: "Maximum execution size (0 = no maximum)", defaultValue: 0, min: 0, max: 1000000 },
   ],
+  "delta-bar": [
+    // Only read when the study is docked to a side; in its lower pane it is
+    // still the plain per-bar histogram it has always been.
+    { key: "ladderWidthPx", label: "Ladder reach (pixels)", defaultValue: 150, min: 40, max: 420, step: 2 },
+    { key: "ladderEdgeGapPx", label: "Gap from the pane edge (px)", defaultValue: 2, min: 0, max: 60, step: 1 },
+    { key: "ladderLevelSpacingPx", label: "Spacing between price levels (px)", defaultValue: 22, min: 8, max: 60, step: 1 },
+    { key: "ladderOpacity", label: "Spike opacity (%)", defaultValue: 85, min: 10, max: 100, step: 1 },
+    { key: "ladderFontSize", label: "Delta text (px)", defaultValue: 8, min: 6, max: 14, step: 1 },
+  ],
   "cumulative-volume-delta": [
     { key: "lineWidth", label: "Line width", defaultValue: 2, min: 1, max: 4 },
     { key: "filterMinVolume", label: "Filtered CVD minimum bar volume", defaultValue: 0, min: 0, max: 10000000 },
@@ -1694,6 +1703,21 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     alertMessage: "Big Blocks directional bias changed",
     zoneBars: 22,
     effortSettingsVersion: 4,
+  } : {}),
+  ...(indicatorId === "delta-bar" ? {
+    // "pane" keeps the histogram every existing chart already has; the side
+    // modes turn it into a per-price ladder on the chart itself.
+    displayMode: "pane",
+    ladderWidthPx: 150,
+    ladderEdgeGapPx: 2,
+    ladderLevelSpacingPx: 22,
+    ladderOpacity: 85,
+    ladderFontSize: 8,
+    showLadderValues: true,
+    useThemeColors: true,
+    buyColor: theme?.upColor ?? "#22C55E",
+    sellColor: theme?.downColor ?? "#EF4444",
+    spineColor: theme?.gridColor ?? "#6B7280",
   } : {}),
   ...(indicatorId === "mini-dom" ? {
     widthPx: 190,
