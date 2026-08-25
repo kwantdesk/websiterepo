@@ -81,24 +81,80 @@ function completeSurfaces(panel: GexMapPanelPayload): CompleteSurface[] {
  * old first-crossing answer is kept, so callers that have no price reference
  * behave exactly as before.
  */
+/**
+ * How much of the chain around spot the flip is looked for in, counted in
+ * strikes rather than percent.
+ *
+ * The listed chain runs far past anything the market trades — on NDX it spans
+ * 8,000 to 40,000 against a spot near 29,000 — and those far strikes carry
+ * enough notional to drag the balance point thousands of points away from any
+ * price that traded. Scoping the scan to the near-money strikes cut the
+ * crossing's day range from 19,224 points to 544 over a session where spot
+ * moved 264.
+ *
+ * Counted in strikes because a percentage does not travel between
+ * instruments: half a percent is 35 strikes of NDX at ten-point spacing but
+ * about six of SPY at a dollar. Forty keeps a real sample of the chain on
+ * either shape. Narrower windows track price more and more closely — at eight
+ * strikes a side the correlation reaches 0.93 — but that is the level
+ * collapsing onto spot and reporting the price back as if it were structure,
+ * which is worse than useless. At forty the flip still moves about twice as
+ * far as spot, so it stays a level of its own.
+ */
+const ZERO_GAMMA_STRIKE_SAMPLE = 40;
+
+/**
+ * The price at which aggregate dealer Gamma flips sign.
+ *
+ * Net dealer Gamma at a hypothetical spot S is the exposure resting below S
+ * against the exposure above it — the sum over strikes of exposure×sign(S−k),
+ * which is 2·cumulative(S) − total. That is zero where the running total
+ * reaches HALF the chain's total, not where it reaches zero.
+ *
+ * Searching for zero, as this did, asks a different question: "above which
+ * price is the exposure below it nil". On a chain whose total is one-signed
+ * the running sum never returns to zero and there is simply no answer —
+ * measured across a full NDX session, 145 of 405 one-minute surfaces (36%)
+ * produced no crossing at all, every one of them because cumulative Gamma
+ * stayed negative from the bottom strike to the top. Those were the holes in
+ * the chart's trail, and they are why the line could not paint alongside
+ * price the way the GEX BOX Classic surface does. The half-total crossing
+ * always exists, because the running sum starts near zero and ends at the
+ * total, so it has to pass halfway.
+ *
+ * The flip that describes the market is the one price is sitting next to, so
+ * where the profile balances more than once the crossing nearest spot wins.
+ * Without a usable spot the first crossing is kept, so callers with no price
+ * reference behave as they did.
+ */
 function zeroCrossing(rows: Array<{ strike: number; exposure: number }>, spot?: number | null) {
-  const sorted = [...rows].sort((left, right) => left.strike - right.strike);
+  const usableSpot = Number.isFinite(spot) && (spot as number) > 0 ? (spot as number) : null;
+  const scoped = usableSpot === null
+    ? rows
+    : [...rows]
+      .sort((left, right) => Math.abs(left.strike - usableSpot) - Math.abs(right.strike - usableSpot))
+      .slice(0, ZERO_GAMMA_STRIKE_SAMPLE);
+  const sorted = [...scoped].sort((left, right) => left.strike - right.strike);
+  if (sorted.length < 2) return null;
+  let total = 0;
+  for (const row of sorted) total += row.exposure;
+  const target = total / 2;
   const crossings: number[] = [];
   let cumulative = 0;
   for (let index = 0; index < sorted.length; index += 1) {
     const previous = cumulative;
     cumulative += sorted[index].exposure;
-    if (index === 0 || previous === 0) continue;
-    if ((previous < 0 && cumulative >= 0) || (previous > 0 && cumulative <= 0)) {
-      const denominator = Math.abs(previous) + Math.abs(cumulative);
-      const ratio = denominator === 0 ? 0.5 : Math.abs(previous) / denominator;
+    if (index === 0) continue;
+    if ((previous < target && cumulative >= target) || (previous > target && cumulative <= target)) {
+      const span = cumulative - previous;
+      const ratio = span === 0 ? 0.5 : (target - previous) / span;
       crossings.push(sorted[index - 1].strike + (sorted[index].strike - sorted[index - 1].strike) * ratio);
     }
   }
   if (!crossings.length) return null;
-  if (!Number.isFinite(spot) || !((spot as number) > 0)) return crossings[0];
+  if (usableSpot === null) return crossings[0];
   return crossings.reduce((best, crossing) =>
-    Math.abs(crossing - (spot as number)) < Math.abs(best - (spot as number)) ? crossing : best);
+    Math.abs(crossing - usableSpot) < Math.abs(best - usableSpot) ? crossing : best);
 }
 
 function strongest(rows: Array<[number, number]>, direction: "positive" | "negative") {

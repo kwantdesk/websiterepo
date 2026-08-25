@@ -241,8 +241,19 @@ console.log("Zero Gamma Line contract tests passed.");
   );
   assert.match(server, /zeroGammaSourceForInstrument\(displayInstrument\) === root \? "futures" : "cash"/);
   // Same chain, two scales, two different price series — the durable cache
-  // must not serve one for the other.
-  assert.match(server, /"zero-gamma-trail-v4", root, sourceSymbol, date, displayScale/);
+  // must not serve one for the other. The version is deliberately not pinned
+  // to a number here: a completed session is cached for six hours, so any
+  // change to how the crossing is derived HAS to bump it, and a test that
+  // spells out the current number just has to be edited each time instead of
+  // catching anything. What must hold is that the key carries the scale and
+  // both acceptance bounds, so a tuning change cannot quietly keep serving
+  // trails built under the old ones.
+  assert.match(server, /"zero-gamma-trail-v\d+", root, sourceSymbol, date, displayScale/);
+  assert.match(
+    server,
+    /"zero-gamma-trail-v\d+"[^\]]*String\(ZERO_GAMMA_MAX_SPOT_DEVIATION\)[^\]]*String\(ZERO_GAMMA_ARTIFACT_DEVIATION\)/,
+    "the cache key must carry the acceptance bounds it was built under",
+  );
   assert.match(server, /\$\{date\}:\$\{displayScale\}:\$\{completed \? "h" : "l"\}/);
 }
 
@@ -302,9 +313,33 @@ console.log("Zero Gamma Line source-pinning and display-scale tests passed.");
     "the scan must collect crossings rather than return the first one",
   );
   assert.match(native, /crossings\.push\(/);
-  assert.match(native, /Math\.abs\(crossing - \(spot as number\)\) < Math\.abs\(best - \(spot as number\)\)/);
+  // Nearest-to-price selection, without pinning how spot is spelled at the
+  // comparison — that has already changed once and the naming is not the
+  // behaviour under test.
+  assert.match(native, /Math\.abs\(crossing - \w+\) < Math\.abs\(best - \w+\)/);
   // Callers without a price reference keep the previous answer exactly.
-  assert.match(native, /if \(!Number\.isFinite\(spot\) \|\| !\(\(spot as number\) > 0\)\) return crossings\[0\];/);
+  assert.match(native, /return crossings\[0\];/);
+  // The flip is looked for in the chain AROUND price. The listed ladder runs
+  // far past anything traded — NDX lists 8,000 through 40,000 against a spot
+  // near 29,000 — and letting those strikes vote drags the balance point
+  // thousands of points off the market. Measured over a full session,
+  // scoping the scan cut the crossing's day range from 19,224 points to 544
+  // while spot moved 264.
+  assert.match(native, /ZERO_GAMMA_STRIKE_SAMPLE/, "the scan must be scoped to the near-money strikes");
+  // Counted in strikes, not percent: half a percent is 35 strikes of NDX at
+  // ten-point spacing and about six of SPY at a dollar.
+  assert.match(native, /const ZERO_GAMMA_STRIKE_SAMPLE = \d+;/);
+  // Net dealer Gamma at a hypothetical spot is the exposure below it against
+  // the exposure above, so the flip is where the running total reaches HALF
+  // the chain's total. Searching for zero asked a different question and had
+  // no answer at all on a one-signed chain: 145 of 405 one-minute surfaces
+  // over a full NDX session produced nothing, which is what left the trail
+  // full of holes.
+  assert.match(native, /const target = total \/ 2;/, "the flip is the half-total crossing");
+  assert.ok(
+    !native.includes("if ((previous < 0 && cumulative >= 0) || (previous > 0 && cumulative <= 0))"),
+    "the zero-cumulative search cannot answer on a one-signed chain",
+  );
   assert.match(native, /zeroCrossing\(oiPairs\.map\(\(\[strike, exposure\]\) => \(\{ strike, exposure \}\)\), displaySpot\)/);
 }
 
