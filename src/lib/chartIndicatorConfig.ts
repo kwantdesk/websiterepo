@@ -620,7 +620,7 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
   ],
   "mini-dom": [
     { key: "widthPx", label: "Ladder width (pixels)", defaultValue: 190, min: 90, max: 420, step: 2 },
-    { key: "rightGapPx", label: "Gap from the price scale (px)", defaultValue: 0, min: 0, max: 60, step: 1 },
+    { key: "rightGapPx", label: "Gap from the price scale (px)", defaultValue: 2, min: 0, max: 60, step: 1 },
     { key: "depth", label: "Rows each side of the spread", defaultValue: 20, min: 1, max: 60, step: 1 },
     { key: "opacity", label: "Opacity (%)", defaultValue: 92, min: 10, max: 100, step: 1 },
     { key: "fontSize", label: "Size text (px)", defaultValue: 10, min: 7, max: 15, step: 1 },
@@ -1694,7 +1694,7 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
   } : {}),
   ...(indicatorId === "mini-dom" ? {
     widthPx: 190,
-    rightGapPx: 0,
+    rightGapPx: 2,
     depth: 20,
     opacity: 92,
     fontSize: 10,

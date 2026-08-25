@@ -30,7 +30,11 @@ export type MiniDomLevel = {
 export type MiniDomOptions = {
   /** Total ladder width in pixels: the size column plus the bars. */
   widthPx: number;
-  /** Gap from the price scale. Zero hugs it, which is the default. */
+  /**
+   * Gap from the price scale. The default is two pixels, which is where a
+   * right-docked volume profile anchors, so the two line up rather than
+   * sitting a hair apart.
+   */
   rightGapPx: number;
   buyColor: string;
   sellColor: string;
@@ -47,7 +51,7 @@ export type MiniDomOptions = {
 
 export const DEFAULT_MINI_DOM_OPTIONS: MiniDomOptions = {
   widthPx: 190,
-  rightGapPx: 0,
+  rightGapPx: 2,
   buyColor: "#14B8B0",
   sellColor: "#B4174B",
   textColor: "#E5E7EB",
@@ -73,8 +77,10 @@ export function miniDomLayout(input: {
   rightGapPx: number;
 }) {
   const width = Math.max(60, Math.min(input.widthPx, Math.max(60, input.paneWidth - 40)));
-  // The ladder hugs the price scale, so its right edge is the pane's. The gap
-  // exists only for anyone who wants it off the edge.
+  // Anchored where a right-docked volume profile anchors: the pane's own right
+  // edge, which is the chart side of the price scale. The scale is a separate
+  // canvas, so the pane width IS the boundary — the ladder can never run under
+  // it however wide it is set.
   const right = Math.max(width, input.paneWidth - Math.max(0, input.rightGapPx));
   const left = right - width;
   const numberColumn = Math.min(52, Math.max(26, width * 0.24));

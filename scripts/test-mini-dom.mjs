@@ -32,14 +32,42 @@ check("the study is registered and addable", () => {
   }
 });
 
-check("it hugs the price scale by default", () => {
-  assert.equal(DEFAULT_MINI_DOM_OPTIONS.rightGapPx, 0, "a gap by default would not be hugging it");
-  const layout = miniDomLayout({ paneWidth: 1200, widthPx: 190, rightGapPx: 0 });
-  assert.equal(layout.right, 1200, "the ladder's right edge is the pane's");
-  assert.equal(layout.barRight, layout.right, "bars start at that edge");
+check("the library offers it rather than showing it as Pending", () => {
+  // Being built is not enough. The library marks a study live only when it is
+  // in BOTH gating sets, and they live in different files — CVD Divergence
+  // shipped fully working and unaddable for exactly this reason.
+  const inSet = (source, setName) => {
+    const open = source.indexOf(`${setName} = new Set([`);
+    if (open < 0) return false;
+    const close = source.indexOf("]);", open);
+    return close > open && source.slice(open, close).includes('"mini-dom"');
+  };
+  const config = readFileSync(new URL("../src/lib/chartIndicatorConfig.ts", import.meta.url), "utf8");
+  const control = readFileSync(new URL("../src/components/ChartIndicatorsControl.tsx", import.meta.url), "utf8");
+  assert.ok(inSet(config, "LIVE_CHART_INDICATOR_IDS"), "missing from LIVE_CHART_INDICATOR_IDS");
+  assert.ok(inSet(control, "RENDERED_CHART_INDICATOR_IDS"), "missing from RENDERED_CHART_INDICATOR_IDS");
 });
 
-check("a gap moves the whole ladder in, for anyone who wants one", () => {
+check("it sits where a right-docked volume profile sits", () => {
+  // That profile anchors at rightEdge - 2, and rightEdge is the pane width
+  // because its right inset is never set. Matching it puts the two on the
+  // same line rather than a hair apart.
+  assert.equal(DEFAULT_MINI_DOM_OPTIONS.rightGapPx, 2);
+  const paneWidth = 1200;
+  const dockedProfileAnchor = paneWidth - 2;
+  const layout = miniDomLayout({ paneWidth, widthPx: 190, rightGapPx: DEFAULT_MINI_DOM_OPTIONS.rightGapPx });
+  assert.equal(layout.right, dockedProfileAnchor, "the ladder's right edge is the profile's dock");
+  assert.equal(layout.barRight, layout.right, "bars start at that edge and grow left");
+});
+
+check("the ladder cannot run under the price scale", () => {
+  // The scale is its own canvas, so the pane width is the boundary: even asked
+  // for more width than the pane has, the ladder narrows instead of spilling.
+  const layout = miniDomLayout({ paneWidth: 300, widthPx: 420, rightGapPx: 0 });
+  assert.ok(layout.right <= 300, `right edge ${layout.right} escaped a 300px pane`);
+});
+
+check("a larger gap moves the whole ladder in", () => {
   const layout = miniDomLayout({ paneWidth: 1200, widthPx: 190, rightGapPx: 20 });
   assert.equal(layout.right, 1180);
   assert.equal(layout.left, 990);
