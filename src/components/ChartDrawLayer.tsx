@@ -411,6 +411,60 @@ export default function ChartDrawLayer({
     return cache;
   }, [drawings, candles]);
 
+  /**
+   * Resizing a position tool by one of its four corners.
+   *
+   * The generic handles put one dot per POINT, which for this tool is the
+   * entry anchor and the two right-hand prices — three dots, none of them on a
+   * corner of the box you can see. Dragging the body moved the whole thing, so
+   * there was no way to change the stop or the target by hand: it only ever
+   * slid around.
+   *
+   * A corner carries a price and a time edge. The stop corners move the stop,
+   * the target corners move the target, the left pair moves the entry's own
+   * time and the right pair moves the shared right edge. The entry PRICE is
+   * never touched — that is where the trade was entered, not a size handle.
+   */
+  const beginPositionCornerDrag = (
+    drawing: Drawing,
+    corner: { side: "left" | "right"; edge: "stop" | "target" },
+    event: ReactPointerEvent,
+  ) => {
+    event.stopPropagation();
+    onSelect(drawing.id);
+    if (drawing.points.length < 3) return;
+    const origin = drawing.points.map((point) => ({ ...point }));
+    const onMove = (moveEvent: PointerEvent) => {
+      // Raw, not magnet-snapped: a resize should follow the hand, and the
+      // velocity-aware snap makes a held drag lurch between wicks.
+      const point = rawPoint(moveEvent.clientX, moveEvent.clientY);
+      if (!point) return;
+      const next = origin.map((entry) => ({ ...entry }));
+      if (corner.edge === "stop") next[1].price = point.price;
+      else next[2].price = point.price;
+      if (corner.side === "left") {
+        // Neither edge may cross the other, or the box turns inside out and
+        // the fills render with a negative width.
+        next[0].time = Math.min(point.time, next[1].time - 1);
+      } else {
+        const right = Math.max(point.time, next[0].time + 1);
+        next[1].time = right;
+        next[2].time = right;
+      }
+      onUpdate({ ...drawing, points: next });
+    };
+    const cleanup = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", cleanup);
+      window.removeEventListener("pointercancel", cleanup);
+      dragCleanupRef.current = null;
+    };
+    dragCleanupRef.current = cleanup;
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", cleanup);
+    window.addEventListener("pointercancel", cleanup);
+  };
+
   const beginDrag = (drawing: Drawing, mode: "move" | number, event: ReactPointerEvent) => {
     event.stopPropagation();
     onSelect(drawing.id);
@@ -1092,13 +1146,44 @@ export default function ChartDrawLayer({
                 : null}
       </g>
     ) : null;
-    const handles = selected
-      ? valid.map((p, i) => (
-        <circle key={`h${i}`} cx={p.x} cy={p.y} r={4.5} fill="#fff" stroke={stroke} strokeWidth={1.5}
-          style={{ pointerEvents: "all", cursor: "grab" }}
-          onPointerDown={(event) => beginDrag(drawing, i, event)} />
-      ))
+    const isPositionTool = drawing.tool === "longPosition" || drawing.tool === "shortPosition";
+    const positionCorners = isPositionTool && coords.length >= 3
+      && coords[0].x != null && coords[1].x != null && coords[2].x != null
+      && coords[0].y != null && coords[1].y != null && coords[2].y != null
+      ? (() => {
+        const leftX = Math.min(coords[0].x as number, coords[1].x as number);
+        const rightX = Math.max(coords[0].x as number, coords[1].x as number, coords[2].x as number);
+        const stopY = coords[1].y as number;
+        const targetY = coords[2].y as number;
+        return [
+          { id: "ls", x: leftX, y: stopY, side: "left" as const, edge: "stop" as const },
+          { id: "rs", x: rightX, y: stopY, side: "right" as const, edge: "stop" as const },
+          { id: "lt", x: leftX, y: targetY, side: "left" as const, edge: "target" as const },
+          { id: "rt", x: rightX, y: targetY, side: "right" as const, edge: "target" as const },
+        ];
+      })()
       : null;
+    const handles = !selected
+      ? null
+      : positionCorners
+        ? positionCorners.map((corner) => (
+          <circle
+            key={`c${corner.id}`}
+            cx={corner.x}
+            cy={corner.y}
+            r={4.5}
+            fill="#fff"
+            stroke={stroke}
+            strokeWidth={1.5}
+            style={{ pointerEvents: "all", cursor: "nwse-resize" }}
+            onPointerDown={(event) => beginPositionCornerDrag(drawing, { side: corner.side, edge: corner.edge }, event)}
+          />
+        ))
+        : valid.map((p, i) => (
+          <circle key={`h${i}`} cx={p.x} cy={p.y} r={4.5} fill="#fff" stroke={stroke} strokeWidth={1.5}
+            style={{ pointerEvents: "all", cursor: "grab" }}
+            onPointerDown={(event) => beginDrag(drawing, i, event)} />
+        ));
     return (
       <g
         key={drawing.id}
