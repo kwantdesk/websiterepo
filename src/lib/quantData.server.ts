@@ -28,11 +28,13 @@ import {
 } from "@/lib/optionsFlow";
 import {
   DEFAULT_GEX_MAP_EXPIRY_SCOPE,
+  DEFAULT_GEX_MAP_REPRESENTATION,
   gexMapProviderTicker,
   latestGexMapStrikesFromFrames,
   type GexMapExpiryScope,
   type GexMapFrame,
   type GexMapPanelPayload,
+  type GexMapRepresentation,
 } from "@/lib/gexMap";
 import { resolveCashLevelOne } from "@/lib/optionsLevelOne.server";
 import {
@@ -663,23 +665,34 @@ function parseUnderlyingHistoryCandles(payload: unknown): OptionsCandle[] {
 }
 
 function underlyingHistoryBucket(timestamp: number, timeframe: string, sessionAnchor?: number) {
-  if (timeframe === "1W") {
+  // Weeks and days do not collide with anything, so either spelling buckets
+  // the same way. Matching only the uppercase form let a lowercase request
+  // fall through to the duration table, find nothing, and return the source
+  // timestamp — so `1w` handed back the daily candles it was built from
+  // instead of weekly ones.
+  const span = timeframe.trim().toLowerCase();
+  if (span === "1w") {
     const date = new Date(timestamp);
     const monday = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
     const day = monday.getUTCDay() || 7;
     monday.setUTCDate(monday.getUTCDate() - day + 1);
     return monday.getTime();
   }
-  if (timeframe === "1M") {
+  // Months keep the uppercase spelling, because lowercase m is minutes.
+  if (/^1M$/.test(timeframe.trim())) {
     const date = new Date(timestamp);
     return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1);
+  }
+  if (span === "1d") {
+    const date = new Date(timestamp);
+    return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
   }
   const durationMs: Record<string, number> = {
     "2h": 2 * 60 * 60_000,
     "4h": 4 * 60 * 60_000,
   };
   const minuteMatch = timeframe.match(/^(\d+)m$/);
-  const duration = minuteMatch ? Number(minuteMatch[1]) * 60_000 : durationMs[timeframe];
+  const duration = minuteMatch ? Number(minuteMatch[1]) * 60_000 : durationMs[span];
   if (!duration) return timestamp;
   const anchor = sessionAnchor ?? 0;
   return anchor + Math.floor((timestamp - anchor) / duration) * duration;
@@ -726,15 +739,16 @@ function underlyingHistoryPlan(timeframe: string) {
     const sourceMinutes = [30, 15, 5, 1].find((candidate) => minutes % candidate === 0) ?? 1;
     return { aggregationPeriod: `${sourceMinutes}m`, sessionScoped: true };
   }
-  const providerAggregation: Record<string, string> = {
-    "1h": "1h",
-    "2h": "1h",
-    "4h": "1h",
-    "1D": "1d",
-    "1W": "1d",
-    "1M": "1d",
-  };
-  const aggregationPeriod = providerAggregation[timeframe];
+  // Months are uppercase M; minutes were matched above as lowercase m, and
+  // that is the one place case carries meaning.
+  if (/^\d+M$/.test(timeframe.trim())) return { aggregationPeriod: "1d", sessionScoped: false };
+  // Hours, days and weeks do not collide, so either spelling resolves. Keying
+  // these on the uppercase spelling alone is what made a chart asking for the
+  // daily — which is what the timeframe control sends — miss this adapter and
+  // fall through to a provider the desk is no longer entitled to, so an SPX,
+  // SPY or QQQ pane sat spinning on a refusal.
+  const spanMatch = timeframe.trim().toLowerCase().match(/^(\d+)([hdw])$/);
+  const aggregationPeriod = spanMatch ? (spanMatch[2] === "h" ? "1h" : "1d") : undefined;
   return aggregationPeriod ? { aggregationPeriod, sessionScoped: false } : null;
 }
 
@@ -2560,6 +2574,7 @@ async function buildGexMapPanel(
   greekModeInput: GreekMode,
   requestedSessionDate?: string,
   expiryScope: GexMapExpiryScope = DEFAULT_GEX_MAP_EXPIRY_SCOPE,
+  representation: GexMapRepresentation = DEFAULT_GEX_MAP_REPRESENTATION,
 ): Promise<GexMapPanelPayload> {
   const symbol = symbolInput.trim().toUpperCase();
   const providerTicker = gexMapProviderTicker(symbol);
@@ -2572,7 +2587,7 @@ async function buildGexMapPanel(
     quantDataPost("/options/tool/exposure-by-strike", {
       sessionDate,
       greekMode: greekModeInput,
-      representationMode: "PER_ONE_PERCENT_MOVE",
+      representationMode: representation,
       filter: { ticker: providerTicker },
     }, endpointTtl),
     quantDataPost("/equities/tool/stock-price-over-time", {
@@ -2601,6 +2616,7 @@ async function buildGexMapPanel(
     sessionDate,
     aggregationPeriod: "1m",
     greekMode: greekModeInput,
+    representationMode: representation,
     filter: expiryScope === "ALL_EXPIRIES"
       ? { ticker: providerTicker }
       : { ticker: providerTicker, expirationDate: expiration },
@@ -2639,7 +2655,7 @@ async function buildGexMapPanel(
     expirations,
     scope: expiryScope,
     model: "STRUCTURAL_OI",
-    representation: "PER_ONE_PERCENT_MOVE",
+    representation,
     source: "KwantData Interval Map",
     sourceTimeZone: "America/New_York",
     asOf: new Date(frameAsOf).toISOString(),
@@ -2669,6 +2685,7 @@ export async function getGexMapPanel(
   greekModeInput: GreekMode,
   requestedSessionDate?: string,
   expiryScope: GexMapExpiryScope = "FRONT_EXPIRY",
+  representation: GexMapRepresentation = DEFAULT_GEX_MAP_REPRESENTATION,
 ): Promise<GexMapPanelPayload> {
   const symbol = symbolInput.trim().toUpperCase();
   const currentSession = getUsOptionsSession();
@@ -2676,15 +2693,15 @@ export async function getGexMapPanel(
   const completedSession = sessionDate !== currentSession.sessionDate || !currentSession.marketOpen;
   // Keep fallbacks session-specific so a historical replay can never receive
   // a different day's surface merely because that panel was requested last.
-  const surfaceKey = `${symbol}:${greekModeInput}:${sessionDate}:${expiryScope}`;
+  const surfaceKey = `${symbol}:${greekModeInput}:${sessionDate}:${expiryScope}:${representation}`;
   try {
     const payload = completedSession
       ? await unstable_cache(
-        () => buildGexMapPanel(symbol, greekModeInput, sessionDate, expiryScope),
-        ["completed-gex-map-panel-v5", symbol, greekModeInput, sessionDate, expiryScope],
+        () => buildGexMapPanel(symbol, greekModeInput, sessionDate, expiryScope, representation),
+        ["completed-gex-map-panel-v6", symbol, greekModeInput, sessionDate, expiryScope, representation],
         { revalidate: 6 * 60 * 60 },
       )()
-      : await buildGexMapPanel(symbol, greekModeInput, sessionDate, expiryScope);
+      : await buildGexMapPanel(symbol, greekModeInput, sessionDate, expiryScope, representation);
     lastGoodGexMapPanelBySurface.set(surfaceKey, payload);
     return payload;
   } catch (error) {

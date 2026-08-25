@@ -42,6 +42,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { orderPanesForLayout } from "@/lib/workspaceLayoutPanes";
+import { DEFAULT_GEX_MAP_REPRESENTATION } from "@/lib/gexMap";
 import {
   AlertCircle,
   AlertTriangle,
@@ -14536,7 +14537,7 @@ export default function KwantifyWorkspace({
       // The auto layouts fix content AND the instruments, not just geometry:
       // the stock options surface on the left, the embedded GEX Map on the
       // right 35% carrying the matching exposure columns.
-      orderedPanes = orderedPanes.map((pane, index) => {
+      orderedPanes = orderedPanes.map((pane, index): WorkspacePane => {
         if (index < gexMapAutoChartCount) {
           const symbol = GEX_MAP_AUTO_CHART_SYMBOLS[index]
             ?? GEX_MAP_AUTO_CHART_SYMBOLS[GEX_MAP_AUTO_CHART_SYMBOLS.length - 1];
@@ -14561,6 +14562,9 @@ export default function KwantifyWorkspace({
               viewMode: pane.gexMapState?.viewMode ?? "star",
               stepMinutes: pane.gexMapState?.stepMinutes ?? 1,
               expiryScope: pane.gexMapState?.expiryScope ?? "ALL_EXPIRIES",
+              // Carried through rather than dropped: an auto layout sets the
+              // columns, not how their exposure is expressed.
+              representation: pane.gexMapState?.representation ?? DEFAULT_GEX_MAP_REPRESENTATION,
             },
           };
         }

@@ -50,25 +50,41 @@ function finiteNumber(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+/**
+ * A chart's timeframe as a provider aggregate.
+ *
+ * Case matters in exactly one place and nowhere else. `m` is MINUTES and `M`
+ * is MONTHS — that collision is real and is preserved. Everything else was
+ * accidentally case-sensitive: days and weeks were spelled `1D` and `1W`
+ * while minutes and hours were lowercase, so a chart asking for `1d` — which
+ * is what the timeframe control sends — was told the instrument did not
+ * support it, and the pane sat spinning on a 502. Only SPX, SPY and QQQ felt
+ * it, because NDX resolves through a different provider path.
+ */
 function timeframeToAggregate(timeframe: string) {
-  const minuteMatch = timeframe.match(/^(\d+)m$/);
+  const raw = timeframe.trim();
+  // Minutes: lowercase m only, so `1M` cannot be read as one minute.
+  const minuteMatch = raw.match(/^(\d+)m$/);
   if (minuteMatch) {
     const multiplier = Number(minuteMatch[1]);
     if (Number.isInteger(multiplier) && multiplier >= 1 && multiplier <= 240) {
       return { multiplier, timespan: "minute" };
     }
   }
-  const resolutions: Record<string, { multiplier: number; timespan: string }> = {
-    "1h": { multiplier: 1, timespan: "hour" },
-    "2h": { multiplier: 2, timespan: "hour" },
-    "4h": { multiplier: 4, timespan: "hour" },
-    "1D": { multiplier: 1, timespan: "day" },
-    "1W": { multiplier: 1, timespan: "week" },
-    "1M": { multiplier: 1, timespan: "month" },
-  };
-  const resolution = resolutions[timeframe];
-  if (!resolution) throw new Error(`Market instruments do not support ${timeframe}.`);
-  return resolution;
+  // Months: uppercase M only, for the same reason.
+  const monthMatch = raw.match(/^(\d+)M$/);
+  if (monthMatch) {
+    const multiplier = Number(monthMatch[1]);
+    if (Number.isInteger(multiplier) && multiplier >= 1) return { multiplier, timespan: "month" };
+  }
+  // Hours, days and weeks carry no such collision, so either spelling works.
+  const spanMatch = raw.toLowerCase().match(/^(\d+)([hdw])$/);
+  if (spanMatch) {
+    const multiplier = Number(spanMatch[1]);
+    const timespan = spanMatch[2] === "h" ? "hour" : spanMatch[2] === "d" ? "day" : "week";
+    if (Number.isInteger(multiplier) && multiplier >= 1) return { multiplier, timespan };
+  }
+  throw new Error(`Market instruments do not support ${timeframe}.`);
 }
 
 function parseCboeDate(value: string) {
