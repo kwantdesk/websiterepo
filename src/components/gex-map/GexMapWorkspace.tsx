@@ -109,21 +109,54 @@ type GexMapWorkspaceProps = {
   onStateChange?: (state: GexMapEmbedState) => void;
 };
 
+/**
+ * What the map opens on: SPX, SPY and QQQ gamma, side by side.
+ *
+ * The three columns used to open on three DIFFERENT greeks — gamma, delta,
+ * then vanna — so the first thing on screen compared three unlike things
+ * across three underlyings. Reading gamma across the index, the ETF and the
+ * Nasdaq proxy at once is what the map is opened for; the other greeks are a
+ * click away per column.
+ */
 const DEFAULT_PANELS: PanelConfig[] = [
+  { id: "left", symbol: "SPX", greekMode: "GAMMA" },
+  { id: "centre", symbol: "SPY", greekMode: "GAMMA" },
+  { id: "right", symbol: "QQQ", greekMode: "GAMMA" },
+];
+
+/**
+ * The layout every saved map carried before the default became three gammas.
+ *
+ * A pane that still holds exactly this was never actually configured — it is
+ * the old default sitting where it was left — so it is moved on. Anything
+ * else is a deliberate choice and is left alone.
+ */
+const LEGACY_DEFAULT_PANELS: PanelConfig[] = [
   { id: "left", symbol: "SPX", greekMode: "GAMMA" },
   { id: "centre", symbol: "SPY", greekMode: "DELTA" },
   { id: "right", symbol: "QQQ", greekMode: "VANNA" },
 ];
+
+function isLegacyDefaultPanels(panels: readonly PanelConfig[]) {
+  return panels.length === LEGACY_DEFAULT_PANELS.length
+    && panels.every((panel, index) => panel.id === LEGACY_DEFAULT_PANELS[index].id
+      && panel.symbol === LEGACY_DEFAULT_PANELS[index].symbol
+      && panel.greekMode === LEGACY_DEFAULT_PANELS[index].greekMode);
+}
+/**
+ * A map pinned to an instrument opens on that instrument's own family, and on
+ * gamma across all three columns for the same reason the default does.
+ */
 const MARKET_PANELS: Record<GexMapMarket, PanelConfig[]> = {
   NQ: [
     { id: "left", symbol: "NDX", greekMode: "GAMMA" },
-    { id: "centre", symbol: "QQQ", greekMode: "DELTA" },
-    { id: "right", symbol: "QQQ", greekMode: "VANNA" },
+    { id: "centre", symbol: "QQQ", greekMode: "GAMMA" },
+    { id: "right", symbol: "SPX", greekMode: "GAMMA" },
   ],
   ES: [
     { id: "left", symbol: "SPX", greekMode: "GAMMA" },
-    { id: "centre", symbol: "SPY", greekMode: "DELTA" },
-    { id: "right", symbol: "SPY", greekMode: "VANNA" },
+    { id: "centre", symbol: "SPY", greekMode: "GAMMA" },
+    { id: "right", symbol: "QQQ", greekMode: "GAMMA" },
   ],
 };
 const SPEEDS = [1, 2, 5, 10] as const;
@@ -205,7 +238,9 @@ function normalizeGexMapEmbedState(value: unknown): GexMapEmbedState | null {
     : [];
   if (!panels.length) return null;
   return {
-    panels,
+    // An untouched old default is carried forward to the new one; a layout
+    // the trader actually chose is theirs and is kept exactly as saved.
+    panels: isLegacyDefaultPanels(panels) ? DEFAULT_PANELS.map((panel) => ({ ...panel })) : panels,
     viewMode: normalizeGexMapViewMode(parsed.viewMode),
     stepMinutes: (FRAME_STEPS as readonly number[]).includes(Number(parsed.stepMinutes))
       ? Number(parsed.stepMinutes) as (typeof FRAME_STEPS)[number]
