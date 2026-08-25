@@ -454,6 +454,15 @@ type Props = {
   levelControls?: ChartLevelControl[];
   settingsOpenRequest?: { instanceId: string; requestId: number } | null;
   onChange: (next: ChartIndicatorInstance[]) => void;
+  /**
+   * Whether this chart is painting its candles.
+   *
+   * Candles are the chart, not a study, so there is nothing to delete — but a
+   * trader framing a session off profiles and levels wants them out of the
+   * way. Hiding them leaves every other study exactly where it is.
+   */
+  candlesVisible?: boolean;
+  onToggleCandles?: (visible: boolean) => void;
 };
 
 export type ChartLevelControl = {
@@ -653,6 +662,8 @@ export default function ChartIndicatorsControl({
   levelControls = [],
   settingsOpenRequest = null,
   onChange,
+  candlesVisible = true,
+  onToggleCandles,
 }: Props) {
   const rootRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -1241,6 +1252,41 @@ export default function ChartIndicatorsControl({
                   </div>
                 </section>
               ) : null}
+              {/*
+                * Candles come first and cannot be removed.
+                *
+                * They are the chart, not a study, so there is nothing to
+                * delete — but a trader framing a session off profiles and
+                * levels wants them out of the way, and nothing offered that.
+                * Switching them off leaves every other study exactly where it
+                * was: the series stays, its scale stays, its anchors stay.
+                * Only the candles stop being painted.
+                */}
+              <div className="p-2 pb-0">
+                <div className="flex items-center gap-2 rounded-xl px-2 py-2 hover:bg-surface/60">
+                  <button
+                    type="button"
+                    onClick={() => onToggleCandles?.(!candlesVisible)}
+                    className={`flex h-8 w-8 items-center justify-center rounded-lg border ${
+                      candlesVisible
+                        ? "border-primary/25 bg-primary/10 text-primary"
+                        : "border-border bg-background text-muted"
+                    }`}
+                    title={candlesVisible ? "Candles on" : "Candles hidden — everything else keeps its place"}
+                    aria-pressed={candlesVisible}
+                  >
+                    {candlesVisible ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+                  </button>
+                  <div className="min-w-0 flex-1">
+                    <div className={`truncate text-[11px] font-medium ${candlesVisible ? "text-foreground" : "text-muted"}`}>
+                      Candles
+                    </div>
+                    <div className="mt-0.5 truncate text-[8px] uppercase tracking-[0.12em] text-muted/70">
+                      Price · always on this chart
+                    </div>
+                  </div>
+                </div>
+              </div>
               {indicators.length ? (
               <div className="p-2">
                 {indicators.map((instance) => {

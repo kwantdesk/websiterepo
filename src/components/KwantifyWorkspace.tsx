@@ -5111,6 +5111,7 @@ function WorkspaceChartPaneComponent({
   period,
   settings,
   crosshairSyncScope = "matching",
+  candlesVisible = true,
   viewportSyncGroup = "",
   viewportSyncRole = "independent",
   replayTimestampMs = null,
@@ -5166,6 +5167,8 @@ function WorkspaceChartPaneComponent({
   period: string;
   settings: ChartSettings;
   crosshairSyncScope?: "matching" | "gamvue";
+  /** Whether this chart paints its candles; everything else keeps its place. */
+  candlesVisible?: boolean;
   viewportSyncGroup?: string;
   viewportSyncRole?: "independent" | "peer";
   replayTimestampMs?: number | null;
@@ -8771,6 +8774,7 @@ function WorkspaceChartPaneComponent({
           instrument={displayCmeSymbol(pane.symbol)}
           chartInstanceId={pane.id}
           crosshairSyncScope={crosshairSyncScope}
+          candlesVisible={candlesVisible}
           viewportSyncGroup={viewportSyncGroup}
           viewportSyncRole={viewportSyncRole}
           keyboardActive={active}
@@ -9357,6 +9361,35 @@ export default function KwantifyWorkspace({
    * keeps its own timeframe and scale. That was only reachable by linking the
    * viewport, which dragged the rest along with it.
    */
+  /**
+   * Charts whose candles are hidden.
+   *
+   * Per chart, because framing one session off profiles and levels is a thing
+   * you do to ONE chart while the others keep showing price. Stored as the
+   * hidden set so an untouched chart, and every saved workspace made before
+   * this existed, keeps its candles.
+   */
+  const [candlesHiddenPaneIds, setCandlesHiddenPaneIds] = useState<Set<string>>(() => {
+    if (typeof window === "undefined") return new Set<string>();
+    try {
+      const raw = window.localStorage.getItem(
+        workspaceScopeStorageKey(initialChartWorkspaceScope, "olisa-chart-workspace-hidden-candles"),
+      );
+      const parsed = raw ? JSON.parse(raw) : null;
+      return new Set<string>(Array.isArray(parsed) ? parsed.map(String) : []);
+    } catch {
+      return new Set<string>();
+    }
+  });
+  const setPaneCandlesVisible = useCallback((paneId: string, visible: boolean) => {
+    setCandlesHiddenPaneIds((current) => {
+      const next = new Set(current);
+      if (visible) next.delete(paneId);
+      else next.add(paneId);
+      return next;
+    });
+  }, []);
+
   const [linkedCrosshairPaneIds, setLinkedCrosshairPaneIds] = useState<Set<string>>(
     () => {
       if (typeof window === "undefined") return new Set<string>();
@@ -11931,6 +11964,14 @@ export default function KwantifyWorkspace({
       JSON.stringify([...linkedCrosshairPaneIds]),
     );
   }, [linkedCrosshairPaneIds]);
+
+  useEffect(() => {
+    if (workspaceScopeHydratingRef.current) return;
+    window.localStorage.setItem(
+      workspaceScopeStorageKey(chartWorkspaceScopeRef.current, "olisa-chart-workspace-hidden-candles"),
+      JSON.stringify([...candlesHiddenPaneIds]),
+    );
+  }, [candlesHiddenPaneIds]);
 
   useEffect(() => {
     if (!preferencesReady || workspaceScopeHydratingRef.current) return;
@@ -17035,6 +17076,7 @@ export default function KwantifyWorkspace({
         embedded
         period={pane.period}
         settings={chartSettings}
+        candlesVisible={!candlesHiddenPaneIds.has(pane.id)}
         crosshairSyncScope={chartWorkspaceScope === "gamma"
           || linkedViewportPaneIds.has(pane.id)
           || linkedCrosshairPaneIds.has(pane.id)
@@ -18233,6 +18275,8 @@ export default function KwantifyWorkspace({
             timeframe={formatChartInterval(activeWorkspacePane.timeframe)}
             indicators={paneIndicators[activePaneId] ?? []}
             chartSettings={chartSettings}
+            candlesVisible={!candlesHiddenPaneIds.has(activePaneId)}
+            onToggleCandles={(visible) => setPaneCandlesVisible(activePaneId, visible)}
             settingsOpenRequest={indicatorSettingsOpenRequest?.paneId === activePaneId
               ? indicatorSettingsOpenRequest
               : null}

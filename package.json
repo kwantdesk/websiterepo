@@ -34,6 +34,7 @@
     "test:delta-ladder": "node --import ./scripts/alias-hook.mjs scripts/test-delta-ladder.mjs",
     "test:workspace-layout-panes": "node --import ./scripts/alias-hook.mjs scripts/test-workspace-layout-panes.mjs",
     "test:paper-account-persistence": "node --import ./scripts/alias-hook.mjs scripts/test-paper-account-persistence.mjs",
+    "test:candle-visibility": "node --import ./scripts/alias-hook.mjs scripts/test-candle-visibility.mjs",
     "test:stats-palettes": "node --import ./scripts/alias-hook.mjs scripts/test-stats-palettes.mjs",
     "test:indicator-plot-colors": "node --import ./scripts/alias-hook.mjs scripts/test-indicator-plot-colors.mjs",
     "test:trading-panel-orders": "node --import ./scripts/alias-hook.mjs scripts/test-trading-panel-orders.mjs",

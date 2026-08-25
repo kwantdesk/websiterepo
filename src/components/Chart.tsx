@@ -537,6 +537,14 @@ interface ChartProps {
   viewportSyncGroup?: string;
   viewportSyncRole?: ChartViewportSyncRole;
   crosshairSyncScope?: ChartCrosshairSyncScope;
+  /**
+   * Whether this chart paints its candles.
+   *
+   * Off leaves everything else exactly where it is — the series, its scale and
+   * every primitive anchored to it stay; only the candles stop being drawn —
+   * so a session can be framed off profiles and levels alone.
+   */
+  candlesVisible?: boolean;
   keyboardActive?: boolean;
   workspaceId?: string;
   contractSymbol?: string | null;
@@ -2991,6 +2999,7 @@ function Chart({
   viewportSyncGroup = "",
   viewportSyncRole = "independent",
   crosshairSyncScope = "matching",
+  candlesVisible = true,
   keyboardActive = true,
   workspaceId = "default-workspace",
   contractSymbol = null,
@@ -5854,7 +5863,12 @@ function Chart({
     liveFootprintRenderBarsRef.current = stableFootprintBars;
     primitive.update(stableFootprintBars, footprintPrimitiveOptions);
 
-    const replaceCandles = Boolean(footprintIndicator && footprintHasPriceLevelFlow);
+    // Painted transparent rather than hidden. The series, its price scale and
+    // every primitive anchored to it stay exactly as they are — which is the
+    // point: switching candles off must leave profiles, levels and drawings
+    // sitting where they were, as if a candle were still there. Marking the
+    // series invisible would drop it out of autoscale and move everything.
+    const replaceCandles = Boolean(footprintIndicator && footprintHasPriceLevelFlow) || !candlesVisible;
     series.applyOptions(replaceCandles ? {
       upColor: "rgba(0,0,0,0)",
       downColor: "rgba(0,0,0,0)",
