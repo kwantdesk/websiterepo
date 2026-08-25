@@ -262,7 +262,7 @@ import {
   type TapeSpeedHit,
 } from "@/lib/tapeSpeedOrderFlowBurstPrimitive";
 import { subscribeRithmicLiquidity, type RithmicLiquidityStatus } from "@/lib/rithmicLiquidityStream";
-import { MiniDomPrimitive, type MiniDomLevel, type MiniDomOptions } from "@/lib/miniDomPrimitive";
+import { MiniDomPrimitive, miniDomLayout, type MiniDomLevel, type MiniDomOptions } from "@/lib/miniDomPrimitive";
 import { DeltaLadderPrimitive, type DeltaLadderLevel, type DeltaLadderOptions, type DeltaLadderSide } from "@/lib/deltaLadderPrimitive";
 import {
   defaultGammaHeatmapSource,
@@ -5152,6 +5152,25 @@ function Chart({
       fontSize: clamp(Math.round(Number(source.fontSize ?? 8)), 6, 14),
     };
   }, [miniDomIndicator, settings.downColor, settings.upColor]);
+  /**
+   * How much of the pane's right edge the Mini DOM occupies.
+   *
+   * The ladder is opaque and pinned to the price scale, so it IS the chart's
+   * right edge while it is on. Anything that docks right — a volume profile
+   * above all — has to stop at its left side instead of sliding underneath
+   * it, which is what the pane inset below does.
+   */
+  const miniDomReservedWidth = useMemo(() => {
+    if (!miniDomIndicator || !overlaySize.width) return 0;
+    return miniDomLayout({
+      paneWidth: overlaySize.width,
+      widthPx: miniDomOptions.widthPx,
+      rightGapPx: miniDomOptions.rightGapPx,
+      showBids: miniDomOptions.showBids,
+      showAsks: miniDomOptions.showAsks,
+    }).reservedWidth;
+  }, [miniDomIndicator, miniDomOptions, overlaySize.width]);
+
   const miniDomOptionsRef = useRef(miniDomOptions);
   miniDomOptionsRef.current = miniDomOptions;
 
@@ -9411,9 +9430,18 @@ function Chart({
     if (!indicatorCandles.length || !bigTradePrints.length) return [];
     const anchored = anchorBigTradePrintsToCandles(
       bigTradePrints,
-      indicatorCandles,
-      // Clock charts anchor arithmetically so a throttled candle snapshot can
-      // never pin a print to the wrong bar; event charts keep the bar walk.
+      // The LIVE series, not the throttled study snapshot.
+      //
+      // A big print has to show the moment the tape carries it, and it has to
+      // show at the price it traded. The snapshot behind the studies is
+      // resampled every second or two, and on a 200-volume chart several bars
+      // form inside that window — so a print anchored against it landed on
+      // whichever bar the snapshot happened to end on. That is the print seen
+      // hanging in empty space, and withholding it instead only traded the
+      // wrong place for a late one. Anchored against the series the chart is
+      // actually drawing, the bar it belongs to is already there.
+      candles,
+      // Clock charts anchor arithmetically; event charts keep the bar walk.
       timeframe && isEventBasedChartInterval(timeframe) ? null : candleIntervalMs,
     );
     const indicatorSettings = bigTradesIndicator?.settings ?? {};
@@ -9520,7 +9548,7 @@ function Chart({
         opacity: minimumOpacity + (maximumOpacity - minimumOpacity) * visualWeight,
       };
     }).sort((left, right) => left.timestamp - right.timestamp);
-  }, [bigTradePrints, bigTradesIndicator?.settings, candleIntervalMs, indicatorCandles, timeframe]);
+  }, [bigTradePrints, bigTradesIndicator?.settings, candleIntervalMs, candles, indicatorCandles, timeframe]);
   /**
    * Draw a qualifying print the moment the tape holds it.
    *
@@ -13380,7 +13408,7 @@ function Chart({
   useEffect(() => {
     const primitive = volumeProfilePrimitiveRef.current;
     if (!primitive) return;
-    primitive.setPaneInsets({ left: toolbarPlotLeftInset });
+    primitive.setPaneInsets({ left: toolbarPlotLeftInset, right: miniDomReservedWidth });
     const dailyInstance = indicators.find((instance) =>
       instance.enabled
       && [
@@ -13548,6 +13576,7 @@ function Chart({
     chartReadyRevision,
     indicatorSignature,
     indicators,
+    miniDomReservedWidth,
     settings.borderDownColor,
     settings.borderUpColor,
     settings.downColor,
@@ -14722,6 +14751,42 @@ function Chart({
           activeChartKeyboardTargetId = chartInstanceId;
         }}
       >
+      {/*
+        * The Mini DOM's own left edge, as something the trader can take hold
+        * of. The ladder is a canvas primitive with no element to grab, so the
+        * grip is a thin strip laid over where it ends, dragging its width in
+        * pixels. Nothing else on the chart moves: the ladder is the pane's
+        * right edge while it is on, so widening it just moves that edge.
+        */}
+      {miniDomIndicator && miniDomReservedWidth > 0 ? (
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Drag to resize the Mini DOM"
+          title="Drag to resize the Mini DOM"
+          onPointerDown={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const startX = event.clientX;
+            const startWidth = miniDomOptions.widthPx;
+            const instanceId = miniDomIndicator.instanceId;
+            const move = (moveEvent: PointerEvent) => {
+              // Dragging LEFT widens: the ladder grows away from the scale.
+              const next = clamp(Math.round(startWidth - (moveEvent.clientX - startX)), 60, 420);
+              updateIndicatorSettingRef.current?.(instanceId, "widthPx", next);
+            };
+            const release = () => {
+              window.removeEventListener("pointermove", move);
+              window.removeEventListener("pointerup", release);
+            };
+            window.addEventListener("pointermove", move);
+            window.addEventListener("pointerup", release);
+          }}
+          className="absolute top-0 z-[26] h-full w-[6px] cursor-ew-resize hover:bg-primary/30"
+          style={{ right: `${Math.max(0, miniDomReservedWidth - 3)}px` }}
+        />
+      ) : null}
+
       {toolbarEnabled ? (
         <>
           <ChartDrawLayer

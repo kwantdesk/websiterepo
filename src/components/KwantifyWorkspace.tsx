@@ -46,6 +46,7 @@ import {
   AlertCircle,
   AlertTriangle,
   ArrowLeftRight,
+  Crosshair,
   ArrowUp,
   BarChart3,
   Bell,
@@ -9347,6 +9348,37 @@ export default function KwantifyWorkspace({
   const [linkedViewportPaneIds, setLinkedViewportPaneIds] = useState<Set<string>>(
     () => new Set(initialChartWorkspaceRuntime.linkedPaneIds),
   );
+  /**
+   * Charts whose CROSSHAIR follows the others, and nothing else.
+   *
+   * Linking the viewport ties a chart's whole frame to its peers — time
+   * window, zoom, the lot. Sometimes the only thing worth sharing is where
+   * the cursor is: read the same moment across four instruments while each
+   * keeps its own timeframe and scale. That was only reachable by linking the
+   * viewport, which dragged the rest along with it.
+   */
+  const [linkedCrosshairPaneIds, setLinkedCrosshairPaneIds] = useState<Set<string>>(
+    () => {
+      if (typeof window === "undefined") return new Set<string>();
+      try {
+        const raw = window.localStorage.getItem(
+          workspaceScopeStorageKey(initialChartWorkspaceScope, "olisa-chart-workspace-crosshair-panes"),
+        );
+        const parsed = raw ? JSON.parse(raw) : null;
+        return new Set<string>(Array.isArray(parsed) ? parsed.map(String) : []);
+      } catch {
+        return new Set<string>();
+      }
+    },
+  );
+  const toggleCrosshairConnection = useCallback((paneId: string) => {
+    setLinkedCrosshairPaneIds((current) => {
+      const next = new Set(current);
+      if (next.has(paneId)) next.delete(paneId);
+      else next.add(paneId);
+      return next;
+    });
+  }, []);
   // Per-pane refresh: bumping a pane's nonce remounts ONLY that chart pane,
   // refetching its history and rebuilding its indicators without touching the
   // other panes or reloading the page.
@@ -11891,6 +11923,14 @@ export default function KwantifyWorkspace({
       JSON.stringify([...linkedViewportPaneIds]),
     );
   }, [linkedViewportPaneIds]);
+
+  useEffect(() => {
+    if (workspaceScopeHydratingRef.current) return;
+    window.localStorage.setItem(
+      workspaceScopeStorageKey(chartWorkspaceScopeRef.current, "olisa-chart-workspace-crosshair-panes"),
+      JSON.stringify([...linkedCrosshairPaneIds]),
+    );
+  }, [linkedCrosshairPaneIds]);
 
   useEffect(() => {
     if (!preferencesReady || workspaceScopeHydratingRef.current) return;
@@ -16995,7 +17035,9 @@ export default function KwantifyWorkspace({
         embedded
         period={pane.period}
         settings={chartSettings}
-        crosshairSyncScope={chartWorkspaceScope === "gamma" || linkedViewportPaneIds.has(pane.id)
+        crosshairSyncScope={chartWorkspaceScope === "gamma"
+          || linkedViewportPaneIds.has(pane.id)
+          || linkedCrosshairPaneIds.has(pane.id)
           ? "gamvue"
           : "matching"}
         viewportSyncGroup={viewportSyncGroupForScope(chartWorkspaceScope)}
@@ -17152,6 +17194,28 @@ export default function KwantifyWorkspace({
                 aria-label={linkedViewportPaneIds.has(pane.id) ? "Unlink shared viewport" : "Link shared viewport"}
               >
                 <ArrowLeftRight className="h-3.5 w-3.5" />
+              </button>
+            ) : null}
+            {/*
+              * Beside the viewport link, and deliberately its own control: the
+              * viewport link ties the whole frame together, this one shares
+              * only where the cursor is.
+              */}
+            {isWorkspaceChartKind(pane.content) ? (
+              <button
+                type="button"
+                onClick={() => toggleCrosshairConnection(pane.id)}
+                className={`flex h-7 w-7 items-center justify-center rounded-lg transition-colors ${
+                  linkedCrosshairPaneIds.has(pane.id)
+                    ? "bg-primary/15 text-primary shadow-[0_0_14px_color-mix(in_srgb,var(--primary)_35%,transparent)]"
+                    : "text-muted hover:bg-surface hover:text-primary"
+                }`}
+                title={linkedCrosshairPaneIds.has(pane.id)
+                  ? "Crosshair linked — only the cursor crosses to the other charts; click to unlink"
+                  : "Link only this chart's crosshair to the other charts"}
+                aria-label={linkedCrosshairPaneIds.has(pane.id) ? "Unlink crosshair" : "Link crosshair"}
+              >
+                <Crosshair className="h-3.5 w-3.5" />
               </button>
             ) : null}
             {isWorkspaceChartKind(pane.content) ? (
@@ -17312,6 +17376,25 @@ export default function KwantifyWorkspace({
                 aria-label={linkedViewportPaneIds.has(pane.id) ? "Unlink shared viewport" : "Link shared viewport"}
               >
                 <ArrowLeftRight className="h-3 w-3" />
+              </button>
+            ) : null}
+            {/* Its own control beside the viewport link: only the cursor crosses. */}
+            {isWorkspaceChartKind(pane.content) ? (
+              <button
+                type="button"
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={() => toggleCrosshairConnection(pane.id)}
+                className={`flex h-6 w-6 items-center justify-center border transition-colors ${
+                  linkedCrosshairPaneIds.has(pane.id)
+                    ? "border-primary/45 bg-primary/10 text-primary"
+                    : "border-transparent text-muted hover:border-border hover:text-primary"
+                }`}
+                title={linkedCrosshairPaneIds.has(pane.id)
+                  ? "Crosshair linked — only the cursor crosses to the other charts; click to unlink"
+                  : "Link only this chart's crosshair to the other charts"}
+                aria-label={linkedCrosshairPaneIds.has(pane.id) ? "Unlink crosshair" : "Link crosshair"}
+              >
+                <Crosshair className="h-3 w-3" />
               </button>
             ) : null}
             {isWorkspaceChartKind(pane.content) ? (
