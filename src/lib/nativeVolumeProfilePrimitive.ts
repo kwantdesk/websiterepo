@@ -541,7 +541,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
       // The blocker's start in TIME, kept alongside its id so a level can still
       // be stopped when the blocker itself is not on screen to be measured.
       const blockerStartMsById = new Map<string, number>();
-      const chainGroups = new Map<string, { id: string; startMs: number; endMs: number }[]>();
+      const chainGroups = new Map<string, { id: string; startMs: number; endMs: number; period: string }[]>();
       for (const model of this.models) {
         // Every profile on the same instrument competes for the same space, so
         // they all share one chain: daily, weekly, split sessions and fixed
@@ -553,6 +553,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           id: model.id,
           startMs: model.drawingBounds ? model.drawingBounds.startTime * 1_000 : model.profile.startMs,
           endMs: model.drawingBounds ? model.drawingBounds.endTime * 1_000 : model.profile.endMs,
+          period: model.profile.period,
         });
         chainGroups.set(model.profile.root, group);
       }
@@ -565,14 +566,34 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           // own span while still stopping at the week in front of it, and it
           // is what makes a split session stop at the back of the next session
           // rather than painting underneath it.
+          //
+          // Sessions of the SAME period are the exception, and they are the
+          // hard rule: whichever one begins next stops the one before it, to
+          // the second, even where the two spans overlap. A Globex profile
+          // running from the evening open through to the cash close overlaps
+          // the New York session sitting inside it, so the end-based test
+          // never saw New York as being "in front" and Globex's POC, VAH and
+          // VAL ran straight through it and on across the chart. Only the
+          // profiles actually being drawn are considered, so the level stops
+          // at the next session the trader has switched ON — turn Asia off
+          // and the line carries through to London instead.
           let blockerStartMs: number | null = null;
           let blockerId: string | null = null;
-          for (const candidate of group) {
-            if (candidate.id === entry.id || candidate.startMs < entry.endMs) continue;
+          const considerBlocker = (candidate: typeof entry) => {
             if (blockerStartMs === null || candidate.startMs < blockerStartMs) {
               blockerStartMs = candidate.startMs;
               blockerId = candidate.id;
             }
+          };
+          for (const candidate of group) {
+            if (candidate.id === entry.id) continue;
+            const samePeriod = candidate.period === entry.period;
+            // Same period: the next one to begin, overlap or not.
+            if (samePeriod && candidate.startMs > entry.startMs) considerBlocker(candidate);
+            // A different period nests — a weekly holds its levels across the
+            // dailies drawn inside its own span — so it only yields to one
+            // that begins at or after it ends.
+            else if (!samePeriod && candidate.startMs >= entry.endMs) considerBlocker(candidate);
           }
           if (blockerId !== null) {
             blockerIdById.set(entry.id, blockerId);

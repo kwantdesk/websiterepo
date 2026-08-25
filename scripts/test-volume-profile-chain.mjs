@@ -18,7 +18,16 @@ function buildChain(models) {
     for (const entry of group) {
       let blocker = null;
       for (const candidate of group) {
-        if (candidate.id === entry.id || candidate.startMs < entry.endMs) continue;
+        if (candidate.id === entry.id) continue;
+        const samePeriod = (candidate.period ?? "daily") === (entry.period ?? "daily");
+        // Same period — the sessions of a day, one daily after another — is
+        // the hard rule: whichever begins next stops the one before it, to
+        // the second, overlap or not. A different period nests, so it only
+        // yields to one starting at or after it ends.
+        const inFront = samePeriod
+          ? candidate.startMs > entry.startMs
+          : candidate.startMs >= entry.endMs;
+        if (!inFront) continue;
         if (blocker === null || candidate.startMs < blocker) blocker = candidate.startMs;
       }
       if (blocker !== null) next.set(entry.id, blocker);
@@ -42,8 +51,8 @@ const day = (i) => ({ id: `d${i}`, root: "NQ", startMs: T0 + i * DAY, endMs: T0 
 // 2. A weekly must NOT be truncated by the dailies drawn inside its own span —
 //    that is the case a start-time comparison gets wrong.
 {
-  const weekly = { id: "w0", root: "NQ", startMs: T0, endMs: T0 + 5 * DAY };
-  const nextWeekly = { id: "w1", root: "NQ", startMs: T0 + 7 * DAY, endMs: T0 + 12 * DAY };
+  const weekly = { id: "w0", root: "NQ", period: "weekly", startMs: T0, endMs: T0 + 5 * DAY };
+  const nextWeekly = { id: "w1", root: "NQ", period: "weekly", startMs: T0 + 7 * DAY, endMs: T0 + 12 * DAY };
   const chain = buildChain([weekly, nextWeekly, day(0), day(1), day(2)]);
   assert.equal(chain.get("w0"), nextWeekly.startMs, "a weekly must run across its own dailies");
 }
@@ -87,7 +96,8 @@ const day = (i) => ({ id: `d${i}`, root: "NQ", startMs: T0 + i * DAY, endMs: T0 
 // 7. The renderer must actually use one chain across every kind.
 const primitive = readFileSync("src/lib/nativeVolumeProfilePrimitive.ts", "utf8");
 assert.doesNotMatch(primitive, /chainGroups\.get\(`\$\{model\.profile\.period\}/);
-assert.match(primitive, /candidate\.startMs < entry\.endMs/);
+assert.match(primitive, /candidate\.startMs > entry\.startMs/, "same-period sessions chain by start");
+assert.match(primitive, /candidate\.startMs >= entry\.endMs/, "a nested kind still yields only past its end");
 assert.match(primitive, /resolveLevelChainEndX/);
 
 // 8. The stop position must be measured where the blocker is DRAWN, not where
@@ -156,3 +166,48 @@ assert.ok(
 );
 
 console.log("volume profile level chaining: 13/13 checks passed");
+
+// 13. THE REPORTED BUG. Sessions overlap. A Globex profile runs from the
+//     evening open right through to the cash close, so the New York session
+//     sits INSIDE its span. Comparing against the end therefore never saw New
+//     York as being in front, and Globex's POC, VAH and VAL ran straight
+//     through it and on across the chart — the pile of lines the trader was
+//     looking at.
+{
+  const HOUR = 3_600_000;
+  const globexOpen = Date.parse("2026-08-17T22:00:00.000Z");
+  const globex = { id: "globex", root: "NQ", startMs: globexOpen, endMs: globexOpen + 22 * HOUR };
+  const newYork = { id: "ny", root: "NQ", startMs: globexOpen + 15.5 * HOUR, endMs: globexOpen + 22 * HOUR };
+  const chain = buildChain([globex, newYork]);
+  assert.equal(
+    chain.get("globex"), newYork.startMs,
+    "Globex must stop the second New York opens, even though New York starts inside its span",
+  );
+  assert.equal(chain.get("ny"), undefined, "the session in front runs on to the live edge");
+}
+
+// 14. It stops at the next session the trader has switched ON. Only profiles
+//     actually being drawn are chained, so turning one off carries the line
+//     through to the one after it rather than halting in empty space.
+{
+  const HOUR = 3_600_000;
+  const open = Date.parse("2026-08-17T22:00:00.000Z");
+  const globex = { id: "globex", root: "NQ", startMs: open, endMs: open + 22 * HOUR };
+  const asia = { id: "asia", root: "NQ", startMs: open + 1 * HOUR, endMs: open + 9 * HOUR };
+  const london = { id: "london", root: "NQ", startMs: open + 9 * HOUR, endMs: open + 15.5 * HOUR };
+
+  assert.equal(
+    buildChain([globex, asia, london]).get("globex"), asia.startMs,
+    "with Asia on, Globex stops at Asia",
+  );
+  assert.equal(
+    buildChain([globex, london]).get("globex"), london.startMs,
+    "with Asia off, the same line carries through to London",
+  );
+  assert.equal(
+    buildChain([globex]).get("globex"), undefined,
+    "with nothing else on, it runs to the live edge",
+  );
+}
+
+console.log("volume profile level chaining: session-overlap rule verified");
