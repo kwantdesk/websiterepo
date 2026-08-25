@@ -5147,7 +5147,14 @@ function Chart({
           setFootprintViewportVersion((current) => current + 1);
         });
       });
-    }, keyboardActive ? 200 : 500);
+      // How long the footprint may lag the viewport.
+      //
+      // At 500ms a zoom outran the retained bars and the footprint dropped out
+      // until the refresh landed — a margin cannot cover a large zoom, because
+      // it is measured against the span the view had BEFORE it changed. Since
+      // 8ddbfb08 the build is incremental and closed bars come back from cache,
+      // so catching up costs far less than it did when this delay was chosen.
+    }, keyboardActive ? 120 : 180);
   }, [chartFrameWorkKey, footprintDataConsumer, keyboardActive, viewportVersion]);
   useEffect(() => () => {
     if (footprintViewportRefreshTimerRef.current !== null) {
@@ -5169,9 +5176,24 @@ function Chart({
     const logical = chartRef.current?.timeScale().getVisibleLogicalRange();
     if (!logical) return footprintCandles.slice(-160);
     const sourceOffset = candles.length - footprintCandles.length;
-    const first = Math.max(0, Math.floor(Number(logical.from)) - sourceOffset - 8);
-    const last = Math.min(footprintCandles.length, Math.ceil(Number(logical.to)) - sourceOffset + 9);
-    return first < last ? footprintCandles.slice(first, last) : footprintCandles.slice(-160);
+    // Keep half a screen of bars either side of the view.
+    //
+    // This slice is what the footprint gets built from, and it is refreshed on
+    // a throttle — up to half a second after the viewport actually moves. With
+    // a margin of eight bars, a zoom or a flick of the wheel carried the view
+    // clean off the retained bars before the refresh landed, and the footprint
+    // simply vanished until it caught up. A margin measured against the
+    // visible span survives that gap; the incremental build cache means the
+    // extra bars are reused rather than rebuilt.
+    const visibleSpan = Math.max(8, Number(logical.to) - Number(logical.from));
+    const margin = Math.ceil(visibleSpan * 0.5) + 8;
+    const first = Math.max(0, Math.floor(Number(logical.from)) - sourceOffset - margin);
+    const last = Math.min(footprintCandles.length, Math.ceil(Number(logical.to)) - sourceOffset + margin);
+    // Scrolled clear of the retained history there is genuinely nothing to
+    // draw. Falling back to the newest 160 bars, as this did, put the
+    // footprint somewhere off screen to the right and left it stale for the
+    // next refresh too.
+    return first < last ? footprintCandles.slice(first, last) : [];
   }, [candles.length, footprintCandles, footprintDataConsumer, footprintViewportVersion]);
   const footprintSourceCandles = useMemo(() => {
     if (!footprintDataConsumer) return [];
