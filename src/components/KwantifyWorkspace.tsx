@@ -21,6 +21,7 @@ import { useGexBotFlow } from "@/hooks/useGexBotFlow";
 import { useVixEnvironment } from "@/hooks/useVixEnvironment";
 import { ACTIVITY_STREAK_TIME_ZONE } from "@/lib/activityStreak";
 import { STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT } from "@/lib/volumeProfileMath";
+import { groupByNewYorkDate } from "@/lib/newYorkTradingDay";
 import { clearChartViewportGroup } from "@/lib/chartViewportSync";
 import { saveChartCrosshairSyncEnabled } from "@/lib/chartCrosshairSync";
 import {
@@ -5522,6 +5523,9 @@ function WorkspaceChartPaneComponent({
   const latestMarketTradesRef = useRef<InstitutionalTrade[]>([]);
   const latestOrderFlowCandlesRef = useRef<Candle[]>([]);
   const lastCandleStateSyncRef = useRef(0);
+  // What the index volume profiles were last built from, so an unchanged
+  // candle window does not rebuild every daily profile again.
+  const indexVolumeProfileSignatureRef = useRef("");
   const lastMarketTradeStateSyncRef = useRef(0);
   const classicGexHistoryRef = useRef<ClassicGexHistorySnapshot[]>([]);
   const rithmicConnectedRef = useRef(false);
@@ -8236,19 +8240,19 @@ function WorkspaceChartPaneComponent({
     if (!wantsDaily && !wantsWeekly) return;
     const volumeCandles = candles.filter((candle) => Number(candle.volume ?? 0) > 0);
     if (!volumeCandles.length) return;
-    const newYorkDate = new Intl.DateTimeFormat("en-CA", {
-      timeZone: "America/New_York",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    });
-    const byDate = new Map<string, typeof volumeCandles>();
-    for (const candle of volumeCandles) {
-      const key = newYorkDate.format(candle.timestamp);
-      const bucket = byDate.get(key);
-      if (bucket) bucket.push(candle);
-      else byDate.set(key, [candle]);
-    }
+    // This effect re-runs on every live candle commit. Rebuilding every daily
+    // profile of the whole window each time is the same answer recomputed
+    // several times a minute per pane, so bail when the candles that feed it
+    // are unchanged. Only the newest bar moves between commits, so its
+    // timestamp and volume are what distinguish one pass from the next.
+    const newest = volumeCandles[volumeCandles.length - 1];
+    const signature = `${volumeCandles.length}:${volumeCandles[0].timestamp}:${newest.timestamp}:${newest.volume ?? 0}:${pane.timeframe}`;
+    if (indexVolumeProfileSignatureRef.current === signature) return;
+    indexVolumeProfileSignatureRef.current = signature;
+    // Grouping by trading date used one Intl.DateTimeFormat.format call per
+    // candle; New York is a whole number of hours from UTC, so the cached
+    // helper returns identical keys for a fraction of the allocation.
+    const byDate = groupByNewYorkDate(volumeCandles, (candle) => candle.timestamp);
     const intervalMs = Math.max(60_000, getTimeframeMs(pane.timeframe));
     const root = displayCmeSymbol(pane.symbol);
     const binSizeFor = (group: typeof volumeCandles) => {
@@ -11791,7 +11795,20 @@ export default function KwantifyWorkspace({
   }, [paperTradingAccounts]);
 
   useEffect(() => {
-    savePaperTradingLedger(paperLedger);
+    // An exception thrown here reaches the workspace failure boundary, which
+    // is why a full localStorage turned pressing Buy into a crash and reload:
+    // the order filled, this effect ran on the resulting render, and the write
+    // threw. The save now reports instead of throwing, and the trader is told
+    // when a filled order will not survive a refresh rather than being shown a
+    // green confirmation for something that was never stored.
+    const saved = savePaperTradingLedger(paperLedger);
+    // An empty ledger failing to save is not worth interrupting anyone over;
+    // one holding real fills is.
+    if (saved.ok || !Object.keys(paperLedger.accounts).length) return;
+    setOrderTicketMessage({
+      tone: "error",
+      text: "Browser storage is full — trades are live in this session but will not survive a refresh. Clear site data to restore saving.",
+    });
   }, [paperLedger]);
 
   useEffect(() => () => {

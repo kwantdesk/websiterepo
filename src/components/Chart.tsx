@@ -2703,6 +2703,29 @@ function normalizeTimeValue(value: Time | null): number | null {
   return null;
 }
 
+/**
+ * Time-axis and crosshair formatters, kept rather than rebuilt per label.
+ *
+ * Constructing an Intl.DateTimeFormat is much more expensive than using one,
+ * and this is the formatter Lightweight Charts calls for every visible axis
+ * tick on every repaint and for the crosshair label on every pointer move. A
+ * chart pane therefore built hundreds of formatters a second, and several
+ * panes multiplied it - main-thread time and garbage in the exact path that
+ * has to stay smooth while the tape prints. There are only a handful of
+ * distinct (zone, options) pairs in the whole chart, so they are all cached.
+ */
+const chartTimestampFormatters = new Map<string, Intl.DateTimeFormat>();
+
+function chartTimestampFormatter(timeZone: string, options: Intl.DateTimeFormatOptions) {
+  const zone = normalizeTimeZone(timeZone);
+  const key = `${zone}|${options.day ?? ""}|${options.month ?? ""}|${options.year ?? ""}|${options.hour ?? ""}|${options.minute ?? ""}|${options.second ?? ""}|${options.weekday ?? ""}`;
+  const cached = chartTimestampFormatters.get(key);
+  if (cached) return cached;
+  const formatter = new Intl.DateTimeFormat("en-AU", { timeZone: zone, hour12: false, ...options });
+  chartTimestampFormatters.set(key, formatter);
+  return formatter;
+}
+
 function formatChartTimestamp(
   value: Time,
   timeZone: string,
@@ -2710,11 +2733,7 @@ function formatChartTimestamp(
 ) {
   const timestamp = normalizeTimeValue(value);
   if (timestamp === null) return "";
-  return new Intl.DateTimeFormat("en-AU", {
-    timeZone: normalizeTimeZone(timeZone),
-    hour12: false,
-    ...options,
-  }).format(new Date(timestamp * 1_000));
+  return chartTimestampFormatter(timeZone, options).format(timestamp * 1_000);
 }
 
 function formatChartTick(value: Time, timeZone: string, timeframe?: string) {

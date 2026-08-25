@@ -1,3 +1,5 @@
+import { writeProtectedItem, type StorageWriteResult } from "./browserStorageQuota.ts";
+
 export type PaperTradingAccountRecord = {
   id: string;
   name: string;
@@ -58,10 +60,30 @@ export function loadPaperTradingAccounts(): PaperTradingAccountRecord[] {
   }
 }
 
-export function savePaperTradingAccounts(accounts: PaperTradingAccountRecord[]) {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(PAPER_TRADING_ACCOUNTS_STORAGE_KEY, JSON.stringify(accounts));
+/**
+ * Persist the sim accounts without letting a full quota destroy them.
+ *
+ * The bare `setItem` here throws when the origin's storage is full, and this
+ * runs from account creation and from every ledger commit that touches the
+ * account list - including the Buy/Sell path. An exception there escaped the
+ * click handler and took the workspace down with it. It also explains accounts
+ * that vanished on refresh: the write that was supposed to keep them threw,
+ * and nothing recorded that it had.
+ *
+ * Cache is evicted to make room; a write that still will not fit is reported
+ * to the caller instead of thrown, because the accounts are already correct in
+ * memory and the session must continue.
+ */
+export function savePaperTradingAccounts(accounts: PaperTradingAccountRecord[]): StorageWriteResult {
+  if (typeof window === "undefined") return { ok: false, reclaimedBytes: 0, evicted: 0 };
+  let result: StorageWriteResult;
+  try {
+    result = writeProtectedItem(PAPER_TRADING_ACCOUNTS_STORAGE_KEY, JSON.stringify(accounts));
+  } catch {
+    result = { ok: false, reclaimedBytes: 0, evicted: 0 };
+  }
   window.dispatchEvent(new CustomEvent(PAPER_TRADING_ACCOUNTS_EVENT, { detail: accounts }));
+  return result;
 }
 
 export function createPaperTradingAccount(input: {

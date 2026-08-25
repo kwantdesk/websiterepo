@@ -2,6 +2,7 @@ import {
   parseMoney,
   type PaperTradingAccountRecord,
 } from "./paperAccounts.ts";
+import { writeProtectedItem, type StorageWriteResult } from "./browserStorageQuota.ts";
 
 export type PaperOrderSide = "buy" | "sell";
 export type PaperOrderType = "market" | "limit" | "stop";
@@ -594,10 +595,33 @@ export function loadPaperTradingLedger(): PaperTradingLedger {
   }
 }
 
-export function savePaperTradingLedger(ledger: PaperTradingLedger) {
-  if (typeof window === "undefined") return;
-  window.localStorage.setItem(PAPER_TRADING_LEDGER_STORAGE_KEY, JSON.stringify(ledger));
+/**
+ * Persist the ledger, and never take the desk down doing it.
+ *
+ * This ran a bare `localStorage.setItem`. When the origin's quota is full - and
+ * this desk fills it with cached provider payloads - that call THROWS. It runs
+ * inside the Buy/Sell click handler, so the throw escaped the handler, tripped
+ * the workspace failure boundary and reloaded the page: pressing Buy appeared
+ * to crash and refresh the site rather than fill an order.
+ *
+ * Two things had to change. Re-downloadable cache is now evicted to make room
+ * for the trader's own ledger, and a write that still cannot fit is reported
+ * rather than thrown. The order has already executed in memory by this point;
+ * losing the ability to persist it must not lose the fill as well, so the
+ * change event fires either way and the caller is told whether it will survive
+ * a refresh.
+ */
+export function savePaperTradingLedger(ledger: PaperTradingLedger): StorageWriteResult {
+  if (typeof window === "undefined") return { ok: false, reclaimedBytes: 0, evicted: 0 };
+  let result: StorageWriteResult;
+  try {
+    result = writeProtectedItem(PAPER_TRADING_LEDGER_STORAGE_KEY, JSON.stringify(ledger));
+  } catch {
+    // Serialisation itself failed; the in-memory ledger is still authoritative.
+    result = { ok: false, reclaimedBytes: 0, evicted: 0 };
+  }
   window.dispatchEvent(new CustomEvent(PAPER_TRADING_LEDGER_EVENT, { detail: ledger }));
+  return result;
 }
 
 function paperAccountHasExecutedActivity(account: PaperAccountLedger | null | undefined) {
