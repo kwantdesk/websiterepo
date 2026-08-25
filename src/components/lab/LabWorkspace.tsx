@@ -176,6 +176,10 @@ export default function LabWorkspace() {
   const countdownLabel = beforePlan ? "Plan publication" : clock.phase === "PLAN_WINDOW" ? "New York wake" : "Session clock";
   const freshness = snapshot && now !== null ? labSnapshotFreshness(snapshot, now) : "MISSING";
   const currentSnapshot = snapshot?.root === root ? snapshot : null;
+  const setupGrade = currentSnapshot?.trade.qualityGrade ?? null;
+  const setupScore = currentSnapshot?.trade.qualityScore ?? null;
+  const technicalReasons = currentSnapshot?.trade.technicalReasoning ?? [];
+  const setupIssued = Boolean(currentSnapshot?.trade.side && currentSnapshot.trade.zone);
   const stoppedGate = currentSnapshot?.gates.find((gate) => gate.status === "STOP");
   const deadCog = currentSnapshot?.cogs.find((cog) => cog.status === "DOWN" || cog.status === "STALE");
   const filmBlocked = !currentSnapshot || currentSnapshot.film.status !== "READY";
@@ -288,6 +292,64 @@ export default function LabWorkspace() {
               <div className="grid min-h-[132px] grid-cols-2 gap-px bg-border">
                 {[["Receipt current", !freshnessBlocked, freshness], ["Mode resolved", !modeBlocked, currentSnapshot?.mode.value ?? "MISSING"], ["Film ready", !filmBlocked, currentSnapshot?.film.status ?? "MISSING"], ["Referees clear", !stoppedGate, stoppedGate?.label ?? "NO STOP"], ["Cogs usable", !deadCog, deadCog?.label ?? "NO DEAD COG"], ["Trade armed", currentSnapshot?.trade.status === "ARMED", currentSnapshot?.trade.status ?? "MISSING"]].map(([label, pass, detail]) => <div key={String(label)} className="bg-background p-3"><div className="flex items-center gap-2">{pass ? <CheckCircle2 className="h-3.5 w-3.5 text-primary" strokeWidth={1.5} /> : <Ban className="h-3.5 w-3.5 text-danger" strokeWidth={1.5} />}<span className="text-[8px] font-medium">{label}</span></div><p className="mt-2 truncate font-mono text-[7px] text-muted">{String(detail)}</p></div>)}
               </div>
+            </Panel>
+
+            <Panel
+              title="A+ Setup Blueprint"
+              eyebrow="What it is · why it qualifies · what must confirm · A+ is not automatic permission"
+              className="col-span-12"
+              action={<span className={`border px-2 py-1 font-mono text-[7px] font-semibold uppercase tracking-[0.1em] ${setupGrade === "A+" ? "border-primary/35 text-primary" : setupGrade === "WAIT" || !setupGrade ? "border-danger/35 text-danger" : "border-accent/35 text-accent"}`}>{setupGrade ? `${setupGrade} · ${setupScore ?? "—"}/100` : "Run to grade"}</span>}
+            >
+              {setupIssued ? (
+                <div className="grid gap-px bg-border lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.45fr)_minmax(0,1.15fr)]">
+                  <div className="bg-background p-4">
+                    <p className="text-[7px] font-semibold uppercase tracking-[0.14em] text-muted">The setup</p>
+                    <div className="mt-3 flex items-start gap-3">
+                      <Target className="mt-0.5 h-4 w-4 shrink-0 text-primary" strokeWidth={1.5} />
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-semibold leading-4 text-foreground">{currentSnapshot?.trade.name}</p>
+                        <p className="mt-1 text-[7px] uppercase tracking-[0.12em] text-muted">{currentSnapshot?.trade.side} candidate · {currentSnapshot?.mode.value} mode fit</p>
+                      </div>
+                    </div>
+                    <div className="mt-4 grid grid-cols-2 gap-px bg-border">
+                      <div className="bg-panel p-2.5"><p className="text-[6px] uppercase tracking-[0.12em] text-muted">Candidate zone</p><p className="mt-1 font-mono text-[10px]">{currentSnapshot?.trade.zone ? `${formatPrice(currentSnapshot.trade.zone[0])}–${formatPrice(currentSnapshot.trade.zone[1])}` : "—"}</p></div>
+                      <div className="bg-panel p-2.5"><p className="text-[6px] uppercase tracking-[0.12em] text-muted">Permission state</p><p className={`mt-1 font-mono text-[10px] ${currentSnapshot?.trade.status === "ARMED" ? "text-primary" : "text-danger"}`}>{currentSnapshot?.trade.status ?? "WAIT"}</p></div>
+                    </div>
+                    <p className="mt-3 text-[7px] leading-3 text-muted">The grade ranks structural quality. It does not authorize an entry.</p>
+                  </div>
+
+                  <div className="bg-panel p-4">
+                    <p className="text-[7px] font-semibold uppercase tracking-[0.14em] text-muted">Technical case</p>
+                    {technicalReasons.length ? (
+                      <ol className="mt-3 space-y-2.5">
+                        {technicalReasons.map((reason, index) => (
+                          <li key={`${index}-${reason}`} className="grid grid-cols-[18px_1fr] gap-2 text-[8px] leading-4 text-foreground">
+                            <span className="flex h-[18px] w-[18px] items-center justify-center border border-border font-mono text-[7px] text-muted">{index + 1}</span>
+                            <span>{reason}</span>
+                          </li>
+                        ))}
+                      </ol>
+                    ) : <div className="mt-3"><EmptyRow>Re-run August V1 to attach the source-backed technical case to this older setup card.</EmptyRow></div>}
+                    <div className="mt-4 border-l-2 border-accent bg-background px-3 py-2.5">
+                      <p className="text-[6px] font-semibold uppercase tracking-[0.12em] text-accent">Options alignment</p>
+                      <p className="mt-1 text-[8px] leading-4 text-foreground">{currentSnapshot?.trade.optionsAlignment ?? "Not attached to this repository frame — re-run before relying on the grade."}</p>
+                    </div>
+                  </div>
+
+                  <div className="bg-background p-4">
+                    <p className="text-[7px] font-semibold uppercase tracking-[0.14em] text-muted">Must print / kill the idea</p>
+                    <div className="mt-3 border border-primary/25 bg-primary/[0.05] p-3">
+                      <p className="text-[6px] font-semibold uppercase tracking-[0.12em] text-primary">Must print before entry</p>
+                      <p className="mt-2 text-[8px] leading-4 text-foreground">{currentSnapshot?.trade.entryTrigger || "No trigger has been issued."}</p>
+                    </div>
+                    <div className="mt-2 border border-danger/30 bg-danger/[0.05] p-3">
+                      <p className="text-[6px] font-semibold uppercase tracking-[0.12em] text-danger">Kill the idea</p>
+                      <p className="mt-2 text-[8px] leading-4 text-foreground">{currentSnapshot?.trade.invalidation || "Missing invalidation — do not trade."}</p>
+                    </div>
+                    <div className="mt-3 flex items-start gap-2 text-danger"><ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" strokeWidth={1.5} /><p className="text-[7px] leading-3">Location alone is not permission. {stoppedGate ? `${stoppedGate.label} is blocking the call.` : "All machine gates and the live trigger must agree."}</p></div>
+                  </div>
+                </div>
+              ) : <div className="p-3"><EmptyRow>Run August V1 to issue a source-backed setup brief. No setup is inferred from price alone.</EmptyRow></div>}
             </Panel>
 
             <div className="col-span-12 xl:col-span-8"><LabSessionChart root={root} mode={currentSnapshot?.mode.value ?? "UNRESOLVED"} levels={currentSnapshot?.levels ?? []} updates={currentSnapshot?.updates ?? []} /></div>

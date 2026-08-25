@@ -109,6 +109,10 @@ assert.equal(first.mode.prior, true);
 assert.equal(first.film.status, "NO_FILM");
 assert.equal(first.trade.side, "SHORT");
 assert.equal(first.trade.status, "WAIT");
+assert.equal(first.trade.qualityGrade, "A+");
+assert.equal(first.trade.qualityScore, 82);
+assert.equal(first.trade.optionsAlignment, "Aligned");
+assert.deepEqual(first.trade.technicalReasoning, ["Source-backed test setup."]);
 assert.equal(first.gates.find((gate) => gate.id === "film")?.status, "STOP");
 assert.match(first.updates.at(-1).body, /One frame/i);
 
@@ -140,4 +144,4 @@ assert.equal(stale.film.status, "STALE");
 assert.equal(labRunPhase(new Date("2026-08-29T14:00:00.000Z")), "CLOSED");
 assert.equal(labTargetSessionDate(new Date("2026-08-29T14:00:00.000Z")), "2026-08-31");
 
-console.log("THE LAB manual run: 20 assertions passed");
+console.log("THE LAB manual run: 24 assertions passed");

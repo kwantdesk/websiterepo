@@ -29,4 +29,18 @@ assert.equal(isLabSnapshot({ ...fixture, root: "YM" }), false);
 assert.equal(isLabSnapshot({ ...fixture, refreshAfterMs: 500 }), false);
 assert.throws(() => parseLabSnapshot({ ...fixture, film: { ...fixture.film, status: "READY", deltas: new Array(21).fill(fixture.film.deltas[0]) } }), /invalid August V1/);
 
-console.log("THE LAB snapshot contract: 12 assertions passed");
+const explainedSetup = {
+  ...fixture,
+  trade: {
+    ...fixture.trade,
+    qualityGrade: "A+",
+    qualityScore: 88,
+    optionsAlignment: "Dealer positioning and premium flow agree with the setup side.",
+    technicalReasoning: ["The wall is verified by two independent sources."],
+  },
+};
+assert.equal(isLabSnapshot(explainedSetup), true, "source-backed A+ reasoning must pass");
+assert.equal(isLabSnapshot({ ...explainedSetup, trade: { ...explainedSetup.trade, qualityScore: 101 } }), false);
+assert.equal(isLabSnapshot({ ...explainedSetup, trade: { ...explainedSetup.trade, technicalReasoning: ["Valid", 42] } }), false);
+
+console.log("THE LAB snapshot contract: 15 assertions passed");

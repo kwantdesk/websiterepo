@@ -449,6 +449,10 @@ export function buildLabSnapshotFromGameplan(
       side: modeSetup?.side ?? null,
       name: modeSetup?.setup_name ?? "No setup issued",
       zone: modeSetup?.zone ?? null,
+      qualityGrade: modeSetup?.quality_grade,
+      qualityScore: modeSetup?.quality_score,
+      optionsAlignment: modeSetup?.options_alignment,
+      technicalReasoning: modeSetup?.reasoning.slice(0, 8),
       permission: modeSetup
         ? `${stoppedGate ? `BLOCKED BY ${stoppedGate.label.toUpperCase()}. ` : ""}${modeSetup.permission} Location alone is never permission.`
         : "The mode is unresolved, so August V1 issues no trade card.",

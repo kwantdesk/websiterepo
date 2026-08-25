@@ -115,6 +115,10 @@ export type LabSnapshot = {
     side: "LONG" | "SHORT" | null;
     name: string;
     zone: [number, number] | null;
+    qualityGrade?: "A+" | "A" | "B+" | "WAIT";
+    qualityScore?: number;
+    optionsAlignment?: string;
+    technicalReasoning?: string[];
     permission: string;
     entryTrigger: string;
     stop: number | null;
@@ -200,6 +204,12 @@ export function isLabSnapshot(value: unknown): value is LabSnapshot {
   if (!record(value.trade) || !enumValue(value.trade.status, ["ARMED", "WAIT", "DELETED", "NO_TRADE"] as const)) return false;
   if (value.trade.side !== null && !enumValue(value.trade.side, ["LONG", "SHORT"] as const)) return false;
   if (value.trade.zone !== null && (!Array.isArray(value.trade.zone) || value.trade.zone.length !== 2 || !value.trade.zone.every(finite))) return false;
+  if (value.trade.qualityGrade !== undefined && !enumValue(value.trade.qualityGrade, ["A+", "A", "B+", "WAIT"] as const)) return false;
+  if (value.trade.qualityScore !== undefined && (!finite(value.trade.qualityScore) || value.trade.qualityScore < 0 || value.trade.qualityScore > 100)) return false;
+  if (value.trade.optionsAlignment !== undefined && !text(value.trade.optionsAlignment)) return false;
+  if (value.trade.technicalReasoning !== undefined && (!Array.isArray(value.trade.technicalReasoning)
+    || value.trade.technicalReasoning.length > 8
+    || !value.trade.technicalReasoning.every((item) => Boolean(text(item))))) return false;
   if (!nullableFinite(value.trade.stop) || !nullableFinite(value.trade.coreTarget) || !nullableFinite(value.trade.runnerTarget)) return false;
   if (!Array.isArray(value.trade.announce) || !value.trade.announce.every((item) => typeof item === "string")) return false;
 
