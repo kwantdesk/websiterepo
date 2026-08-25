@@ -59,7 +59,7 @@ export type MiniDomOptions = {
    */
   alignLeft: boolean;
   showSizes: boolean;
-  /** Rough pixels between banded price levels — the liq map uses 25. */
+  /** Rough pixels between banded price levels. Ten is the stock setting. */
   levelSpacingPx: number;
   barOpacity: number;
   fontSize: number;
@@ -79,7 +79,7 @@ export const DEFAULT_MINI_DOM_OPTIONS: MiniDomOptions = {
   showAsks: true,
   alignLeft: true,
   showSizes: true,
-  levelSpacingPx: 25,
+  levelSpacingPx: 10,
   barOpacity: 0.56,
   fontSize: 8,
 };
@@ -373,7 +373,10 @@ export class MiniDomPrimitive implements ISeriesPrimitive<Time> {
             context.fillStyle = withAlpha(row.color, options.barOpacity);
             context.fillRect(baseline - width - 1, top, width, barHeight);
           }
-          if (options.showSizes && layout.sizesFit && rows.length) {
+          // A count needs a row tall enough to hold it. At tight level
+          // spacing the bars are still readable but the numbers would print
+          // over one another, so they drop out and the bars carry the read.
+          if (options.showSizes && layout.sizesFit && rows.length && barHeight >= options.fontSize) {
             // Left of every bar, in one column, at full strength.
             context.textAlign = "right";
             context.fillStyle = rows[0].color;
@@ -393,7 +396,7 @@ export class MiniDomPrimitive implements ISeriesPrimitive<Time> {
           }
           // The count sits on the rail at full strength, so it stays legible
           // over a bar drawn at the band's own translucent colour.
-          if (options.showSizes && layout.sizesFit) {
+          if (options.showSizes && layout.sizesFit && barHeight >= options.fontSize) {
             if (value.sell > 0 && options.showAsks) {
               context.textAlign = "left";
               context.fillStyle = options.sellColor;

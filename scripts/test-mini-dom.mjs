@@ -65,8 +65,10 @@ check("bars are thick enough to carry a number, not per-tick hairlines", () => {
   const step = miniDomBandStep(span, height, DEFAULT_MINI_DOM_OPTIONS.levelSpacingPx);
   assert.ok(step > 1, `a band covers ${step} ticks — that is a bar per tick again`);
   const spacing = height / (span / step);
-  assert.ok(spacing >= 20, `levels are ${spacing.toFixed(1)}px apart, too tight for a number`);
-  assert.ok(miniDomBarHeight(spacing) >= 8, "bars must clear the 8px floor");
+  // The floor is the BAR, not the gap: the stock spacing is deliberately
+  // tight, and the counts drop out on their own when a row cannot hold one.
+  assert.ok(miniDomBarHeight(spacing) >= 8, `bars are ${miniDomBarHeight(spacing)}px, under the 8px floor`);
+  assert.ok(spacing >= miniDomBarHeight(spacing), "bars must not overrun the row above");
 });
 
 check("bar height stays between the floor and the cap at any zoom", () => {
@@ -356,6 +358,11 @@ check("a chart rebuild does not leave the ladder blank", () => {
   );
   // Switching instruments must not carry the previous book across.
   assert.match(chart, /miniDomLastBookRef\.current = null;\s*\n\s*primitive\.clear\(\);/);
+});
+
+check("the stock level spacing is ten", () => {
+  assert.equal(DEFAULT_MINI_DOM_OPTIONS.levelSpacingPx, 10);
+  assert.equal(defaultIndicatorSettings("mini-dom").levelSpacingPx, 10);
 });
 
 console.log(`\nmini dom: ${passed}/${passed} checks passed`);

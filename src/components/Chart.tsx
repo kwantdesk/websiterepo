@@ -5190,7 +5190,7 @@ function Chart({
       // stock setting and leaving it to be switched on by hand.
       alignLeft: source.alignLeft !== false,
       showSizes: source.showSizes !== false,
-      levelSpacingPx: clamp(Math.round(Number(source.levelSpacingPx ?? 25)), 8, 60),
+      levelSpacingPx: clamp(Math.round(Number(source.levelSpacingPx ?? 10)), 3, 60),
       barOpacity: clamp(Number(source.barOpacity ?? 56) / 100, 0.1, 1),
       fontSize: clamp(Math.round(Number(source.fontSize ?? 8)), 6, 14),
     };
@@ -14943,6 +14943,7 @@ function Chart({
           <ChartDrawLayer
             width={overlaySize.width}
             height={overlaySize.height}
+            priceScaleWidth={nativePriceScaleWidth}
             // Every drawing tool follows the theme's bullish candle until the
             // trader picks a colour of its own.
             themeColor={settings.upColor}

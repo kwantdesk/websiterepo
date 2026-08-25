@@ -627,7 +627,7 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     // Granularity. Lower packs more price levels in; the bar height floor
     // keeps them readable, and the contract counts drop out on their own once
     // the rows are too tight to hold one.
-    { key: "levelSpacingPx", label: "Spacing between price levels (px) · lower is finer", defaultValue: 25, min: 3, max: 60, step: 1 },
+    { key: "levelSpacingPx", label: "Spacing between price levels (px) · lower is finer", defaultValue: 10, min: 3, max: 60, step: 1 },
     { key: "barOpacity", label: "Bar opacity (%)", defaultValue: 56, min: 10, max: 100, step: 1 },
     { key: "backgroundOpacity", label: "Panel background (%) · 0 = transparent", defaultValue: 0, min: 0, max: 100, step: 1 },
     { key: "fontSize", label: "Contract text (px)", defaultValue: 8, min: 6, max: 14, step: 1 },
@@ -1726,7 +1726,7 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
   ...(indicatorId === "mini-dom" ? {
     widthPx: 190,
     rightGapPx: 2,
-    levelSpacingPx: 25,
+    levelSpacingPx: 10,
     barOpacity: 56,
     // No panel behind the ladder: the chart already ends at its edge, so
     // there is nothing underneath to cover.

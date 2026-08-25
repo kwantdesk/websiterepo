@@ -273,5 +273,39 @@ test("drawings track a zoom in the same frame, not a frame behind it", () => {
     "a pure pan needs no settle — it translates text without distorting it");
 
   // Stroke weight must not ride the scale.
-  assert.match(layer, /<g ref=\{drawingsGroupRef\} vectorEffect="non-scaling-stroke">/);
+  assert.match(layer, /ref=\{drawingsGroupRef\}/);
+  assert.match(layer, /vectorEffect="non-scaling-stroke"/);
+});
+
+test("a freehand stroke offers two handles, not one per sample", () => {
+  // A pencil or highlighter stroke is hundreds of sampled points, and a grab
+  // dot on every one of them buries the stroke under its own handles. The two
+  // that mean anything are where it started and where it ended.
+  const layer = readFileSync(new URL("../src/components/ChartDrawLayer.tsx", import.meta.url), "utf8");
+  assert.match(
+    layer,
+    /DRAW_TOOL_SPECS\[drawing\.tool\]\.points === "freehand" && valid\.length > 2/,
+    "freehand must be handled apart from anchored tools",
+  );
+  assert.match(layer, /\{ point: valid\[0\], index: 0 \}/, "the first sample keeps a handle");
+  assert.match(layer, /index: drawing\.points\.length - 1/, "so does the last");
+  // The index handed to the drag must be the index in the DRAWING, not in the
+  // filtered on-screen list, or dragging the end handle would move the wrong
+  // sample.
+  assert.match(layer, /beginDrag\(drawing, index, event\)/);
+});
+
+test("drawings end where the candles end, not over the price scale", () => {
+  // The overlay spans the whole chart element, so without a clip every
+  // drawing paints across the price scale — a trend line or a rectangle
+  // sitting over the chart's own axis instead of sliding under it the way
+  // candles do.
+  const layer = readFileSync(new URL("../src/components/ChartDrawLayer.tsx", import.meta.url), "utf8");
+  assert.match(layer, /priceScaleWidth\?: number;/, "the layer must know where the scale starts");
+  assert.match(layer, /width=\{Math\.max\(0, width - priceScaleWidth\) \+ EDGE_OVERSCAN\}/);
+  assert.match(layer, /clipPath=\{`url\(#\$\{plotClipId\}\)`\}/, "the drawing group must be clipped");
+  // Unique per layer, or two charts on screen share one clip.
+  assert.match(layer, /const plotClipId = useId\(\)/);
+  const chart = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
+  assert.match(chart, /priceScaleWidth=\{nativePriceScaleWidth\}/, "the chart must pass its measured scale width");
 });

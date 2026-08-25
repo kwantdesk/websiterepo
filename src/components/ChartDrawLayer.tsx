@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactElement } from "react";
+import { type PointerEvent as ReactPointerEvent, type ReactElement, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   DRAW_TOOL_SPECS,
   FIB_CIRCLE_COEFFS,
@@ -24,6 +24,12 @@ import {
 // coordinate system — the only thing shared with the chart.
 type Props = {
   width: number;
+  /**
+   * The price scale's width. The overlay spans the whole chart element, so
+   * without it every drawing paints over the scale instead of sliding under
+   * it the way candles do.
+   */
+  priceScaleWidth?: number;
   height: number;
   activeTool: DrawToolId;
   keepDrawing: boolean;
@@ -64,7 +70,7 @@ const dashFor = (style: DrawLineStyle, width: number) =>
 const TEXT_INPUT_TOOLS: DrawToolId[] = ["text", "note", "callout", "signpost"];
 
 export default function ChartDrawLayer({
-  width, height, activeTool, keepDrawing, drawings, selectedId,
+  width, height, priceScaleWidth = 0, activeTool, keepDrawing, drawings, selectedId,
   toX, toY, fromXY, candles, magnet, magnetStrength, viewportVersion, chartReady, subscribeViewport, onCommit, onUpdate, onDelete, onSelect, onToolConsumed, onRequestText, onOpenSettings, themeColor, themeBearColor,
 }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
@@ -184,6 +190,8 @@ export default function ChartDrawLayer({
     if (!rect) return null;
     return fromXY(clientX - rect.left, clientY - rect.top);
   };
+  // Unique per layer: two charts on screen must not share one clip.
+  const plotClipId = useId().replace(/:/g, "");
   const freehandCleanupRef = useRef<(() => void) | null>(null);
   useEffect(() => () => { freehandCleanupRef.current?.(); }, []);
 
@@ -1266,10 +1274,17 @@ export default function ChartDrawLayer({
             onPointerDown={(event) => beginPositionCornerDrag(drawing, { side: corner.side, edge: corner.edge }, event)}
           />
         ))
-        : valid.map((p, i) => (
-          <circle key={`h${i}`} cx={p.x} cy={p.y} r={4.5} fill="#fff" stroke={stroke} strokeWidth={1.5}
+        // A pencil or highlighter stroke is hundreds of sampled points, and a
+        // grab dot on every one of them buries the stroke under its own
+        // handles. Only the two that mean anything are offered: where the
+        // stroke started and where it ended.
+        : (DRAW_TOOL_SPECS[drawing.tool].points === "freehand" && valid.length > 2
+          ? [{ point: valid[0], index: 0 }, { point: valid[valid.length - 1], index: drawing.points.length - 1 }]
+          : valid.map((point, index) => ({ point, index }))
+        ).map(({ point, index }) => (
+          <circle key={`h${index}`} cx={point.x} cy={point.y} r={4.5} fill="#fff" stroke={stroke} strokeWidth={1.5}
             style={{ pointerEvents: "all", cursor: "grab" }}
-            onPointerDown={(event) => beginDrag(drawing, i, event)} />
+            onPointerDown={(event) => beginDrag(drawing, index, event)} />
         ));
     return (
       <g
@@ -1306,10 +1321,27 @@ export default function ChartDrawLayer({
       style={{ pointerEvents: "none" }}
     >
       {/*
+        * The chart's right edge. Drawings are chart content, so they end
+        * where the candles end and slide under the price scale rather than
+        * painting across it — a trend line or a rectangle running over the
+        * prices is the chart's own axis being covered by something drawn on
+        * it. Generous vertically so nothing is clipped at the top or bottom.
+        */}
+      <defs>
+        <clipPath id={plotClipId}>
+          <rect
+            x={-EDGE_OVERSCAN}
+            y={-EDGE_OVERSCAN}
+            width={Math.max(0, width - priceScaleWidth) + EDGE_OVERSCAN}
+            height={height + EDGE_OVERSCAN * 2}
+          />
+        </clipPath>
+      </defs>
+      {/*
         * non-scaling-stroke keeps line weight true while the group carries a
         * pan's small rescale, so a drawing cannot thicken as the chart moves.
         */}
-      <g ref={drawingsGroupRef} vectorEffect="non-scaling-stroke">
+      <g ref={drawingsGroupRef} vectorEffect="non-scaling-stroke" clipPath={`url(#${plotClipId})`}>
         {drawings.map((drawing) => renderDrawing(drawing))}
         {previewDrawing ? renderDrawing(previewDrawing, true) : null}
       </g>

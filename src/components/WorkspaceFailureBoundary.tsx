@@ -20,10 +20,12 @@ type State = {
   recoveryKey: number;
   attempts: number;
   errorCode: string;
+  /** What actually threw. Shown so a failure is reportable, not just coded. */
+  errorMessage: string;
 };
 
 export default class WorkspaceFailureBoundary extends Component<Props, State> {
-  state: State = { failed: false, recoveryKey: 0, attempts: 0, errorCode: "" };
+  state: State = { failed: false, recoveryKey: 0, attempts: 0, errorCode: "", errorMessage: "" };
   private recoveryTimer: number | null = null;
 
   static getDerivedStateFromError(): Partial<State> {
@@ -36,7 +38,7 @@ export default class WorkspaceFailureBoundary extends Component<Props, State> {
       error,
       info.componentStack ?? "",
     );
-    this.setState({ errorCode: failure.code });
+    this.setState({ errorCode: failure.code, errorMessage: failure.message });
     console.error("Kwant Desk workspace render failed", {
       workspace: this.props.label,
       error,
@@ -51,6 +53,7 @@ export default class WorkspaceFailureBoundary extends Component<Props, State> {
           recoveryKey: current.recoveryKey + 1,
           attempts: current.attempts + 1,
           errorCode: "",
+          errorMessage: "",
         }));
       }, this.state.attempts === 0 ? 80 : 300);
     }
@@ -77,6 +80,7 @@ export default class WorkspaceFailureBoundary extends Component<Props, State> {
       recoveryKey: current.recoveryKey + 1,
       attempts: 0,
       errorCode: "",
+      errorMessage: "",
     }));
   };
 
@@ -106,6 +110,16 @@ export default class WorkspaceFailureBoundary extends Component<Props, State> {
           <p className="mt-2 text-[10px] leading-5 text-muted">
             The section could not recover after two clean remounts.
           </p>
+          {/*
+            * The message, not just the code. A trader reporting "it broke and
+            * gave me a code" cannot be helped without going and reading their
+            * console; the line that actually threw is the whole diagnosis.
+            */}
+          {this.state.errorMessage ? (
+            <p className="mt-3 max-h-24 overflow-y-auto break-words rounded-lg border border-border/60 bg-panel/60 px-3 py-2 text-left font-mono text-[9px] leading-4 text-foreground/80">
+              {this.state.errorMessage}
+            </p>
+          ) : null}
           {this.state.errorCode ? <p className="mt-2 font-mono text-[9px] text-muted">{this.state.errorCode}</p> : null}
           <button
             type="button"
