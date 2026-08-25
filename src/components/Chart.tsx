@@ -6061,6 +6061,28 @@ function Chart({
     // the first load misses its budget, or outside RTH when that session has
     // produced no buckets yet.
     let painted = false;
+    /**
+     * Whether the older sessions came back with a real intraday TRAIL, not
+     * just their single closing anchor.
+     *
+     * This is the difference between a line across history and a bare dot per
+     * day. A completed session's trail is built once and then durably cached,
+     * but the first request for a cold one cannot wait for it — the server
+     * races a short budget and finishes the build in the background. So the
+     * first answer legitimately arrives without history, and the only way to
+     * collect it is to ask again once the build has landed.
+     */
+    let historyRestoredAt = 0;
+    const trailPresent = (payload: ZeroGammaLinePayload, wanted: number) => {
+      const perSession = new Map<string, number>();
+      for (const point of payload.points) {
+        perSession.set(point.sessionDate, (perSession.get(point.sessionDate) ?? 0) + 1);
+      }
+      // A trail is minutes of buckets; an anchor is one point. Anything with
+      // only a handful is the anchor, not the trace.
+      const withTrail = [...perSession.values()].filter((count) => count > 3).length;
+      return withTrail >= wanted;
+    };
     const historySessions = Math.max(1, Math.min(5, Math.round(Number(zeroGammaLineIndicator.settings?.historySessions ?? 5))));
     const refreshMs = Math.max(5_000, Number(zeroGammaLineIndicator.settings?.refreshSeconds ?? 10) * 1_000);
     // AUTO follows the chart's own options family; a pinned chain reads the
@@ -6079,6 +6101,7 @@ function Chart({
           { force, maxAgeMs: refreshMs, timeoutMs, validate: isZeroGammaLinePayload, invalidMessage: "Zero Gamma Line returned an incomplete history." },
         );
         if (payload.points.length) painted = true;
+        if (sessions > 1 && trailPresent(payload, sessions)) historyRestoredAt = Date.now();
         if (!cancelled) setZeroGammaLinePayload((current) => {
           if (!current || current.sourceSymbol !== payload.sourceSymbol) return payload;
           const points = [...new Map([...current.points, ...payload.points]
@@ -6104,13 +6127,30 @@ function Chart({
       if (!cancelled && historySessions > quickSessions) await load(historySessions, 120_000);
     })();
     // Shared cache + in-flight deduplication allows every pane to observe the
-    // same refresh. Completed sessions never change, so the recurring refresh
-    // only asks for the live session — repeatedly re-requesting the full
-    // history burned provider quota fleet-wide for identical answers.
-    const intervalId = window.setInterval(
-      () => void (painted ? load(1, 45_000) : load(historySessions, 120_000)),
-      refreshMs,
-    );
+    // same refresh. Completed sessions never change, so once their trails are
+    // in hand the recurring refresh only asks for the live session —
+    // re-requesting settled history burns provider quota fleet-wide for
+    // identical answers.
+    //
+    // Until then it keeps asking. Dropping to the live session as soon as
+    // ANY point had painted was what left history bare: one closing anchor
+    // per day counts as painted, so the moment those arrived the pane stopped
+    // asking for the trails, and the ones being built in the background were
+    // never collected. A warm durable cache answers in milliseconds, so this
+    // costs nothing once it has converged, and the minute between attempts
+    // keeps a cold one from stampeding the provider queue.
+    const HISTORY_RETRY_MS = 60_000;
+    let lastHistoryAttempt = 0;
+    const tick = () => {
+      const needsHistory = historySessions > 1 && historyRestoredAt === 0;
+      if (needsHistory && Date.now() - lastHistoryAttempt >= HISTORY_RETRY_MS) {
+        lastHistoryAttempt = Date.now();
+        void load(historySessions, 120_000);
+        return;
+      }
+      void (painted ? load(1, 45_000) : load(historySessions, 120_000));
+    };
+    const intervalId = window.setInterval(tick, refreshMs);
     return () => { cancelled = true; window.clearInterval(intervalId); };
   }, [indicatorSignature, instrument, zeroGammaLineIndicator]);
   // orderFlowHistoryReady flips as soon as a TOKEN slice of bars carries

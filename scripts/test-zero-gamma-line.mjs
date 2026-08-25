@@ -357,4 +357,30 @@ console.log("Zero Gamma Line source-pinning and display-scale tests passed.");
   );
 }
 
+
+// --- history is collected until it actually arrives ---
+{
+  // A completed session's trail is built once and durably cached, but the
+  // first request for a cold one cannot wait: the server races a short budget
+  // and finishes the build in the background. So the first answer legitimately
+  // comes back with no history, and the only way to collect it is to ask
+  // again once the build has landed.
+  //
+  // The pane used to stop asking the moment ANY point had painted — and a
+  // completed session always yields its single closing anchor, which counts
+  // as painted. So the trails being built in the background were never
+  // collected and history stayed a dot per day instead of a line.
+  assert.match(chart, /const trailPresent = /, "the pane must tell a trail from a lone closing anchor");
+  assert.match(chart, /count > 3/, "one anchor is not a trail");
+  assert.match(chart, /historyRestoredAt/, "it must track whether history actually arrived");
+  assert.doesNotMatch(
+    chart,
+    /window\.setInterval\(\s*\(\) => void \(painted \? load\(1, 45_000\) : load\(historySessions, 120_000\)\),/,
+    "painting a single anchor must not end the search for history",
+  );
+  // And it must not hammer a cold provider queue while it waits.
+  assert.match(chart, /HISTORY_RETRY_MS = 60_000/);
+  assert.match(chart, /Date\.now\(\) - lastHistoryAttempt >= HISTORY_RETRY_MS/);
+}
+
 console.log("Zero Gamma Line drift, crossing-selection and regime-shading tests passed.");
