@@ -41,10 +41,16 @@ const print = (id, timestamp, price) => ({
 {
   const stale = candles(2);                      // snapshot stops at bar 1
   const fresh = candles(6);                      // chart is really at bar 5
-  const late = print("late", T0 + 4 * BAR + MIN, 20_050);
+  const late = print("late", T0 + 4 * BAR + MIN, 20_005);
 
-  const walked = anchorBigTradePrintsToCandles([late], stale);      // no interval
-  assert.equal(walked[0].chartTimestamp, T0 + BAR, "fixture must reproduce the stale pin");
+  // 20,050 is above every bar's high, so no bar in the snapshot is the one it
+  // traded in. The walk used to pin it to the snapshot's last bar anyway and
+  // the marker kept its own price, which is the print seen hanging in space.
+  // It is withheld until the series carries a bar it fits.
+  const walked = anchorBigTradePrintsToCandles(
+    [print("away", T0 + 4 * BAR + MIN, 20_050)], stale,
+  );                                                               // no interval
+  assert.deepEqual(walked, [], "a print that fits no bar in the snapshot must not be drawn");
 
   const bucketed = anchorBigTradePrintsToCandles([late], stale, BAR);
   assert.equal(
@@ -85,14 +91,68 @@ const print = (id, timestamp, price) => ({
 
 // 6. Event bars have no fixed length, so they keep the bar walk.
 {
-  const eventBars = [
-    { timestamp: T0, open: 1, high: 1, low: 1, close: 1, volume: 1 },
-    { timestamp: T0 + 7_000, open: 1, high: 1, low: 1, close: 1, volume: 1 },
-    { timestamp: T0 + 9_500, open: 1, high: 1, low: 1, close: 1, volume: 1 },
-  ];
+  const bar = (timestamp) => ({ timestamp, open: 20_000, high: 20_010, low: 19_990, close: 20_005, volume: 1 });
+  const eventBars = [bar(T0), bar(T0 + 7_000), bar(T0 + 9_500)];
   const anchored = anchorBigTradePrintsToCandles([print("e", T0 + 8_000, 20_006)], eventBars, null);
   assert.equal(anchored[0].chartTimestamp, T0 + 7_000);
 }
 
+// 7. A volume/range/tick chart has no clock to fall back on, so its prints
+//    ride the stale walk. The price is what catches it: a print that did not
+//    trade in the bar it landed on is withheld, and draws as soon as the
+//    series carries the bar it belongs to.
+{
+  const bar = (timestamp, low, high) => ({ timestamp, open: low, high, low, close: high, volume: 200 });
+  const stale = [bar(T0, 19_990, 20_010), bar(T0 + 7_000, 19_995, 20_015)];
+  const traded = print("v", T0 + 30_000, 20_120);
+
+  assert.deepEqual(
+    anchorBigTradePrintsToCandles([traded], stale, null), [],
+    "a 200-volume print that fits no loaded bar must not be drawn at a price the chart never visited",
+  );
+
+  const caughtUp = [...stale, bar(T0 + 20_000, 20_100, 20_130)];
+  const anchored = anchorBigTradePrintsToCandles([traded], caughtUp, null);
+  assert.equal(anchored.length, 1, "it must draw once its own bar is loaded");
+  assert.equal(anchored[0].chartTimestamp, T0 + 20_000);
+  assert.equal(anchored[0].price, 20_120, "and keep its real price");
+}
+
+// 8. Withholding must not swallow ordinary prints. A clustered print carries a
+//    volume-weighted average price, which can sit a hair off the bar's own
+//    high or low, and those still belong.
+{
+  const bars = [{ timestamp: T0, open: 20_000, high: 20_010, low: 19_990, close: 20_005, volume: 200 }];
+  for (const price of [19_990, 20_010, 20_000, 20_010.01, 19_989.99]) {
+    assert.equal(
+      anchorBigTradePrintsToCandles([print(`p${price}`, T0 + 1_000, price)], bars, null).length,
+      1,
+      `${price} sits in the bar and must still draw`,
+    );
+  }
+  // Whole handles away is a different bar, not rounding.
+  assert.equal(
+    anchorBigTradePrintsToCandles([print("far", T0 + 1_000, 20_050)], bars, null).length, 0,
+  );
+}
+
+// 9. On a clock chart the bucket is arithmetic, so the newest bar is exempt
+//    from the price check: it is still filling and its high and low arrive
+//    from the same tape as the print. Withholding there would blink markers
+//    on and off at the live edge. A CLOSED bar gets no such benefit.
+{
+  const series = candles(3);
+  const forming = print("forming", T0 + 2 * BAR + MIN, 20_400);
+  assert.equal(
+    anchorBigTradePrintsToCandles([forming], series, BAR).length, 1,
+    "a print on the forming bar draws before the candle stretches to meet it",
+  );
+  const closed = print("closed", T0 + MIN, 20_400);
+  assert.equal(
+    anchorBigTradePrintsToCandles([closed], series, BAR).length, 0,
+    "a closed bar's high and low are final, so a print outside one is wrong",
+  );
+}
+
 rmSync(outDir, { recursive: true, force: true });
-console.log("big trades anchoring: 6/6 checks passed");
+console.log("big trades anchoring: 9/9 checks passed");

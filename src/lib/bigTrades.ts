@@ -510,6 +510,19 @@ export function anchorBigTradePrintsToCandles(
     for (const print of prints) {
       if (print.timestamp < firstTimestamp) continue;
       const bucket = Math.floor((print.timestamp - phase) / step) * step + phase;
+      // The bucket is arithmetic and cannot go stale, so the bar is right by
+      // construction. The price check still earns its place on a CLOSED bar,
+      // whose high and low are final: a print outside one did not trade there
+      // and something upstream is wrong.
+      //
+      // The newest bar is exempt. It is still filling, and its high and low
+      // arrive from the same tape as the print — a moment where the print has
+      // landed and the candle has not yet stretched to meet it is normal, and
+      // withholding there would make markers blink on and off at the live
+      // edge.
+      const candle = candleAtTimestamp(candles, bucket);
+      const isForming = candle !== undefined && candle.timestamp >= candles[candles.length - 1].timestamp;
+      if (candle && !isForming && !printSitsInCandle(print.price, candle)) continue;
       anchored.push({ ...print, chartTimestamp: bucket });
     }
     return anchored;
@@ -522,7 +535,58 @@ export function anchorBigTradePrintsToCandles(
       candleIndex + 1 < candles.length
       && candles[candleIndex + 1].timestamp <= print.timestamp
     ) candleIndex += 1;
-    anchored.push({ ...print, chartTimestamp: candles[candleIndex].timestamp });
+    const candle = candles[candleIndex];
+    // A trade happened at a price, in a bar. If the print's price is outside
+    // the bar's own high and low then this is not the bar it traded in, and
+    // drawing it here is the marker floating in space at a price the chart
+    // never visited.
+    //
+    // The walk cannot tell on its own: the array a study holds is a THROTTLED
+    // snapshot of the series, so on an event chart — volume, range, tick,
+    // Renko, where there is no clock arithmetic to fall back on — every print
+    // newer than the newest bar in that snapshot lands on it. Several prints
+    // collapse onto one bar keeping their real prices, and the ones that did
+    // not trade in it hang off the chart.
+    //
+    // Withheld rather than moved: the print is real and its price is right,
+    // so the only wrong thing is the bar. The next snapshot carries the bar it
+    // belongs to and it draws then.
+    if (!printSitsInCandle(print.price, candle)) continue;
+    anchored.push({ ...print, chartTimestamp: candle.timestamp });
   }
   return anchored;
+}
+
+/** The bar starting exactly at a timestamp, by binary search on the series. */
+function candleAtTimestamp(candles: Candle[], timestamp: number): Candle | undefined {
+  let low = 0;
+  let high = candles.length - 1;
+  while (low <= high) {
+    const mid = (low + high) >> 1;
+    const value = candles[mid].timestamp;
+    if (value === timestamp) return candles[mid];
+    if (value < timestamp) low = mid + 1;
+    else high = mid - 1;
+  }
+  return undefined;
+}
+
+/**
+ * Whether a print's price falls inside a bar's traded range.
+ *
+ * The tolerance is a thousandth of the bar's own range, which absorbs the
+ * rounding in a clustered print's volume-weighted average price without
+ * admitting a print from a different bar — those miss by whole handles, not
+ * by a fraction of one bar's range.
+ */
+export function printSitsInCandle(
+  price: number,
+  candle: Pick<Candle, "high" | "low"> | undefined,
+): boolean {
+  if (!candle) return false;
+  const high = Number(candle.high);
+  const low = Number(candle.low);
+  if (!Number.isFinite(high) || !Number.isFinite(low)) return true;
+  const tolerance = Math.max((high - low) * 0.001, Number.EPSILON);
+  return price >= low - tolerance && price <= high + tolerance;
 }
