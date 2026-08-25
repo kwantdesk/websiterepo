@@ -622,6 +622,52 @@ export default function ChartDrawLayer({
     window.addEventListener("pointercancel", cleanup);
   };
 
+  /**
+   * Resizing an entry/exit fill marker by its single handle.
+   *
+   * The generic handles put one dot per POINT, and this tool's two points are
+   * the fill itself and a size corner nine pixels away — two dots overlapping
+   * at the marker's default size, with the hit test returning the first. So
+   * grabbing the visible dot always caught the ANCHOR and moved the marker
+   * instead of resizing it: the handle did nothing, because it could not be
+   * reached at all.
+   *
+   * There is now one handle, drawn out at the triangle's point where nothing
+   * else sits. Dragging it along the direction the marker faces sets its
+   * width, and away from the price line sets its height.
+   */
+  const beginFillMarkerResize = (drawing: Drawing, event: ReactPointerEvent) => {
+    event.stopPropagation();
+    onSelect(drawing.id);
+    if (drawing.points.length < 2) return;
+    const origin = drawing.points.map((point) => ({ ...point }));
+    const onMove = (moveEvent: PointerEvent) => {
+      const rect = svgRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const localX = moveEvent.clientX - rect.left;
+      const localY = moveEvent.clientY - rect.top;
+      // Each axis resolved on its own, so a pixel past the last bar — where
+      // the time scale has no answer — still resizes the height.
+      const price = priceAtY(localY);
+      const time = timeAtX(localX);
+      if (price == null && time == null) return;
+      const next = origin.map((point) => ({ ...point }));
+      if (time != null) next[1].time = time;
+      if (price != null) next[1].price = price;
+      onUpdate({ ...drawing, points: next });
+    };
+    const cleanup = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", cleanup);
+      window.removeEventListener("pointercancel", cleanup);
+      dragCleanupRef.current = null;
+    };
+    dragCleanupRef.current = cleanup;
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", cleanup);
+    window.addEventListener("pointercancel", cleanup);
+  };
+
   const beginDrag = (drawing: Drawing, mode: "move" | number, event: ReactPointerEvent) => {
     event.stopPropagation();
     onSelect(drawing.id);
@@ -1395,8 +1441,37 @@ export default function ChartDrawLayer({
         ];
       })()
       : null;
+    // One handle, at the point of the triangle. Anywhere closer would sit
+    // under the anchor dot and be unreachable.
+    const fillMarkerHandle = (drawing.tool === "entryArrow" || drawing.tool === "exitArrow")
+      && a.x != null && a.y != null
+      ? fillMarkerGeometry({
+          direction: drawing.tool === "entryArrow" ? "right" : "left",
+          anchorX: a.x,
+          anchorY: a.y,
+          handleX: b?.x,
+          handleY: b?.y,
+          defaultHalfWidth: FILL_MARKER_DEFAULT_HALF_WIDTH_PX,
+          defaultHalfHeight: FILL_MARKER_DEFAULT_HALF_HEIGHT_PX,
+          minHalfWidth: FILL_MARKER_MIN_HALF_WIDTH_PX,
+          minHalfHeight: FILL_MARKER_MIN_HALF_HEIGHT_PX,
+        })
+      : null;
     const handles = !selected
       ? null
+      : fillMarkerHandle
+      ? (
+        <circle
+          cx={fillMarkerHandle.tipX}
+          cy={a.y as number}
+          r={5}
+          fill="#fff"
+          stroke={stroke}
+          strokeWidth={1.5}
+          style={{ pointerEvents: "all", cursor: "ew-resize" }}
+          onPointerDown={(event) => beginFillMarkerResize(drawing, event)}
+        />
+      )
       : positionCorners
         ? positionCorners.map((corner) => (
           <circle

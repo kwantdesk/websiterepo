@@ -81,19 +81,41 @@ check("it keeps the real marker's 3:2 proportion by default", () => {
   assert.equal(geometry.halfWidth / geometry.halfHeight, 6 / 4);
 });
 
-check("the handle resizes it and can never turn it around", () => {
-  // THE RULE. The half-extents are distances, so dragging the handle to the
-  // far side of the anchor makes the marker bigger — an entry cannot be
-  // dragged into pointing left.
-  const bigger = entryAt({ handleX: 140, handleY: 230 });
-  assert.equal(bigger.halfWidth, 40);
-  assert.equal(bigger.halfHeight, 30);
-  assert.ok(bigger.tipX > 100, "still pointing right");
+check("pulling the handle in SHRINKS it, and past the anchor clamps", () => {
+  // THE REPORTED FAILURE. Width used to be measured as a raw distance from
+  // the anchor, so pulling the handle inward shrank the marker only until it
+  // reached the anchor and then GREW it again out the other side. Overshoot
+  // by a pixel and it started expanding, which is why it "just did nothing"
+  // when you tried to make it small.
+  const big = entryAt({ handleX: 200 });
+  assert.equal(big.halfWidth, 100);
+  const smaller = entryAt({ handleX: 120 });
+  assert.equal(smaller.halfWidth, 20, "pulling the handle in must shrink it");
+  const tiny = entryAt({ handleX: 103 });
+  assert.equal(tiny.halfWidth, 4, "all the way down to the minimum");
+  // Dragged well past the anchor it stays at the minimum rather than growing.
+  assert.equal(entryAt({ handleX: 20 }).halfWidth, 4, "past the anchor it must not grow back");
+  assert.equal(entryAt({ handleX: -500 }).halfWidth, 4);
+  // And it still points the right way at every size.
+  for (const handleX of [200, 120, 103, 20, -500]) {
+    assert.ok(entryAt({ handleX }).tipX >= 100, "an entry always points right");
+  }
+});
 
-  const draggedThrough = entryAt({ handleX: 60, handleY: 170 });
-  assert.equal(draggedThrough.halfWidth, 40, "the same size, mirrored");
-  assert.equal(draggedThrough.tipX, 140, "and still pointing right");
-  assert.ok(exitAt({ handleX: 160 }).tipX < 100, "an exit still points left");
+check("an exit shrinks the same way, in its own direction", () => {
+  // Mirrored: its handle is to the LEFT, so pulling it right shrinks.
+  assert.equal(exitAt({ handleX: 0 }).halfWidth, 100);
+  assert.equal(exitAt({ handleX: 80 }).halfWidth, 20);
+  assert.equal(exitAt({ handleX: 200 }).halfWidth, 4, "past the anchor it must not grow back");
+  for (const handleX of [0, 80, 200]) {
+    assert.ok(exitAt({ handleX }).tipX <= 100, "an exit always points left");
+  }
+});
+
+check("height resizes symmetrically about the price", () => {
+  assert.equal(entryAt({ handleY: 260 }).halfHeight, 60);
+  assert.equal(entryAt({ handleY: 140 }).halfHeight, 60, "either side of the fill is the same height");
+  assert.equal(entryAt({ handleY: 201 }).halfHeight, 3, "down to the minimum");
 });
 
 check("it stays legible when squashed", () => {
@@ -133,6 +155,25 @@ check("they carry the real fill colours, and a theme cannot repaint them", () =>
   assert.equal(resolveDrawColor(exit.style, "#1E90FF"), PAPER_FILL_SELL_COLOR);
   // A real fill marker carries no caption, so neither does the drawn one.
   assert.equal(entry.style.showLabels, false);
+});
+
+check("there is exactly ONE handle, and it is not buried under the anchor", () => {
+  // The generic handles put one dot per POINT. This tool's two points are the
+  // fill and a size corner nine pixels away, so both dots landed on top of
+  // each other and the hit test always returned the anchor - the size handle
+  // could not be grabbed at all. One handle now, drawn out at the triangle's
+  // point where nothing else sits.
+  const layer = readFileSync(new URL("../src/components/ChartDrawLayer.tsx", import.meta.url), "utf8");
+  assert.match(layer, /const fillMarkerHandle = \(drawing\.tool === "entryArrow" \|\| drawing\.tool === "exitArrow"\)/);
+  assert.match(layer, /cx=\{fillMarkerHandle\.tipX\}/, "the handle sits at the tip");
+  assert.match(layer, /onPointerDown=\{\(event\) => beginFillMarkerResize\(drawing, event\)\}/);
+  // It must be chosen BEFORE the generic per-point handles, or the overlapping
+  // dots come straight back.
+  const handles = layer.slice(layer.indexOf("const handles = !selected"));
+  assert.ok(
+    handles.indexOf("fillMarkerHandle") < handles.indexOf("positionCorners"),
+    "the fill-marker branch must precede the generic handles",
+  );
 });
 
 check("the whole marker is grabbable, not just its outline", () => {

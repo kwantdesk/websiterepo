@@ -110,19 +110,25 @@ export function fillMarkerGeometry(input: FillMarkerGeometryInput): FillMarkerGe
     defaultHalfWidth, defaultHalfHeight, minHalfWidth, minHalfHeight,
   } = input;
 
+  const right = direction === "right";
   const requestedX = Number.isFinite(input.handleX as number)
     ? (input.handleX as number)
-    : anchorX + defaultHalfWidth;
+    : anchorX + (right ? defaultHalfWidth : -defaultHalfWidth);
   const requestedY = Number.isFinite(input.handleY as number)
     ? (input.handleY as number)
     : anchorY + defaultHalfHeight;
 
-  // Distances, so the handle can be dragged to either side and only ever
-  // resizes. This is what makes the direction impossible to flip.
-  const halfWidth = Math.max(minHalfWidth, Math.abs(requestedX - anchorX));
+  // Width is measured ALONG the direction the marker points, not as a raw
+  // distance. Measuring the distance meant pulling the handle inward shrank
+  // the marker only until it reached the anchor and then GREW it again out
+  // the other side, so it could not be made small: overshoot by a pixel and
+  // it started expanding. Signed, dragging inward shrinks to the minimum and
+  // stays there, and the marker still cannot be turned around.
+  const reach = right ? requestedX - anchorX : anchorX - requestedX;
+  const halfWidth = Math.max(minHalfWidth, reach);
+  // Height is symmetric about the anchor, so distance is the right measure.
   const halfHeight = Math.max(minHalfHeight, Math.abs(requestedY - anchorY));
 
-  const right = direction === "right";
   const tipX = right ? anchorX + halfWidth : anchorX - halfWidth;
   const backX = right ? anchorX - halfWidth : anchorX + halfWidth;
 
