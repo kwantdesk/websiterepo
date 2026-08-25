@@ -215,3 +215,34 @@ test("fixed market profile uses native value-area math and faces forward", () =>
   assert.match(drawingGeometry, /fillColor\?: string/);
   assert.match(drawingPaneView, /if \(rect\.fillColor\) ctx\.fillRect/);
 });
+
+test("dragging a drawing translates it in pixels, not in time", () => {
+  // A drag moves a drawing across the SCREEN, so it has to translate in
+  // screen space. Applying a time delta to every point assumes an equal step
+  // in time is an equal step in pixels, and it is not: bar times on a volume,
+  // range or tick chart are irregular, a session gap folds hours into one
+  // boundary, and past the last bar the mapping extrapolates. The same
+  // drawing therefore stretched, sheared and threw points at the edge of the
+  // pane while it was moved — worst on a pencil stroke, where every sample
+  // carries its own time and each distorted by a different amount.
+  const layer = readFileSync(new URL("../src/components/ChartDrawLayer.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(
+    layer,
+    /const dt = point\.time - (start|drag\.start)\.time/,
+    "a whole-drawing move must not be a time delta",
+  );
+  assert.doesNotMatch(
+    layer,
+    /origin\.map\(\(p\) => \(\{ time: p\.time \+ dt, price: p\.price \+ dp \}\)\)/,
+    "a whole-drawing move must not be a time delta",
+  );
+  // Both move paths — the handle-bar grab and the select-and-drag on the
+  // capture rect — hold where each point sat on screen and re-project from
+  // there, so the shape that lands is the shape that was drawn.
+  const pixelOrigins = layer.match(/originPixels|startPixels/g) ?? [];
+  assert.ok(
+    pixelOrigins.length >= 4,
+    `both drag paths must capture screen positions (found ${pixelOrigins.length} references)`,
+  );
+  assert.match(layer, /fromXY\(pixel\.x \+ dx, pixel\.y \+ dy\)/);
+});

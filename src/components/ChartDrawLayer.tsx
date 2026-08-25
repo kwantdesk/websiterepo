@@ -72,7 +72,20 @@ export default function ChartDrawLayer({
   const [cursor, setCursor] = useState<DrawPoint | null>(null);
   const freehandRef = useRef(false);
   const dragRef = useRef<
-    | { kind: "move"; id: string; start: DrawPoint; origin: DrawPoint[] }
+    // A move carries where the drawing sat on SCREEN when it was grabbed, not
+    // just the anchor under the pointer. Translating by a time delta assumes
+    // an equal step in time is an equal step in pixels; on a volume, range or
+    // tick chart the bar times are irregular, a session gap folds hours into
+    // one boundary, and past the last bar the mapping extrapolates — so the
+    // drawing sheared and flung points at the pane edge as it moved.
+    | {
+      kind: "move";
+      id: string;
+      startX: number;
+      startY: number;
+      origin: DrawPoint[];
+      originPixels: Array<{ x: number | null; y: number | null }>;
+    }
     | { kind: "handle"; id: string; index: number }
     | null
   >(null);
@@ -496,19 +509,41 @@ export default function ChartDrawLayer({
       ? rawPoint(event.clientX, event.clientY)
       : windowPoint(event.clientX, event.clientY);
     if (!start) return;
+    // Where each point sits on SCREEN when the grab starts.
+    //
+    // A drag moves a drawing across the screen, so it has to translate in
+    // screen space. Applying a time delta to every point instead assumes an
+    // equal step in time is an equal step in pixels, and it is not: bar times
+    // on a volume, range or tick chart are irregular, a session gap folds
+    // hours into one bar boundary, and past the last bar the mapping
+    // extrapolates. The same drawing therefore stretched, sheared and threw
+    // points at the edge of the pane as it moved — worst on a pencil stroke,
+    // where every sample carries its own time and each one distorted by a
+    // different amount. Held in pixels the shape is exactly the shape drawn.
+    const startPixels = origin.map((p) => ({ x: toX(p.time), y: toY(p.price) }));
+    const startX = event.clientX;
+    const startY = event.clientY;
     // The drag's own running result. Reading it back off the `drawing` prop at
     // release would use the value captured when the drag began.
     let latest = origin;
     const onMove = (moveEvent: PointerEvent) => {
-      const point = mode === "move"
-        ? rawPoint(moveEvent.clientX, moveEvent.clientY)
-        : windowPoint(moveEvent.clientX, moveEvent.clientY);
-      if (!point) return;
       if (mode === "move") {
-        const dt = point.time - start.time;
-        const dp = point.price - start.price;
-        latest = origin.map((p) => ({ time: p.time + dt, price: p.price + dp }));
+        const dx = moveEvent.clientX - startX;
+        const dy = moveEvent.clientY - startY;
+        const moved: DrawPoint[] = [];
+        for (let index = 0; index < origin.length; index += 1) {
+          const pixel = startPixels[index];
+          // A point the projection cannot place — off an event chart's ends,
+          // say — keeps its stored anchor rather than being invented at the
+          // pane edge.
+          if (pixel.x == null || pixel.y == null) { moved.push(origin[index]); continue; }
+          const next = fromXY(pixel.x + dx, pixel.y + dy);
+          moved.push(next ?? origin[index]);
+        }
+        latest = moved;
       } else {
+        const point = windowPoint(moveEvent.clientX, moveEvent.clientY);
+        if (!point) return;
         latest = origin.map((p, i) => (i === mode ? point : p));
       }
       onUpdate({ ...drawing, points: latest });
@@ -577,7 +612,15 @@ export default function ChartDrawLayer({
         if (hit.handleIndex != null) dragRef.current = { kind: "handle", id: hit.id, index: hit.handleIndex };
         else {
           const drawing = drawings.find((d) => d.id === hit.id)!;
-          dragRef.current = { kind: "move", id: hit.id, start: point, origin: drawing.points.map((p) => ({ ...p })) };
+          const rect = svgRef.current?.getBoundingClientRect();
+          dragRef.current = {
+            kind: "move",
+            id: hit.id,
+            startX: event.clientX - (rect?.left ?? 0),
+            startY: event.clientY - (rect?.top ?? 0),
+            origin: drawing.points.map((p) => ({ ...p })),
+            originPixels: drawing.points.map((p) => ({ x: toX(p.time), y: toY(p.price) })),
+          };
         }
       } else onSelect(null);
       return;
@@ -670,9 +713,18 @@ export default function ChartDrawLayer({
       if (!drawing) return;
       if (drag.kind === "handle") onUpdate(updateDrawingHandle(drawing, drag.index, point));
       else {
-        const dt = point.time - drag.start.time;
-        const dp = point.price - drag.start.price;
-        onUpdate({ ...drawing, points: drag.origin.map((p) => ({ time: p.time + dt, price: p.price + dp })) });
+        const rect = svgRef.current?.getBoundingClientRect();
+        const dx = event.clientX - (rect?.left ?? 0) - drag.startX;
+        const dy = event.clientY - (rect?.top ?? 0) - drag.startY;
+        // Translated in pixels, so what the trader sees keeps the shape they
+        // drew. A point the projection cannot place keeps its stored anchor
+        // rather than being invented at the pane edge.
+        const moved = drag.origin.map((p, index) => {
+          const pixel = drag.originPixels[index];
+          if (pixel?.x == null || pixel?.y == null) return p;
+          return fromXY(pixel.x + dx, pixel.y + dy) ?? p;
+        });
+        onUpdate({ ...drawing, points: moved });
       }
     }
   };
