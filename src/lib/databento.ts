@@ -15,7 +15,7 @@ import {
   vendorMarketDataConfigured,
   vendorMarketDataFetch,
 } from "@/lib/vendorMarketData.server";
-import { availableEndFromError } from "@/lib/databentoAvailableEnd";
+import { availableEndFromError, clampEndToLicence, rememberAvailableEnd } from "@/lib/databentoAvailableEnd";
 
 export const DATABENTO_HISTORICAL_BASE_URL = "https://api.databento.com/v0";
 
@@ -155,7 +155,8 @@ function time(value: unknown) {
   return databentoEventTimestampMs(value) ?? 0;
 }
 
-async function historicalRequest(params: Record<string, string>, canRetryAvailableEnd = true) {
+async function historicalRequest(rawParams: Record<string, string>, canRetryAvailableEnd = true) {
+  const params = clampEndToLicence(rawParams);
   if (!vendorMarketDataConfigured("databento")) throw new Error("Databento is not configured.");
 
   const form = new URLSearchParams({
@@ -179,6 +180,9 @@ async function historicalRequest(params: Record<string, string>, canRetryAvailab
     const availableEnd = response.status === 422 && canRetryAvailableEnd
       ? availableEndFromError(detail)
       : null;
+    // Remember it even when this particular request cannot be rescued: the
+    // boundary is a property of the licence, not of one call.
+    rememberAvailableEnd(availableEnd);
     const requestedStart = Date.parse(params.start ?? "");
     const requestedEnd = Date.parse(params.end ?? "");
     if (

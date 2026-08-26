@@ -45,3 +45,52 @@ export function availableEndFromError(detail: string) {
   const timestamp = Date.parse(match[1].includes("T") || match[1].includes(" ") ? match[1] : `${match[1]}T00:00:00Z`);
   return Number.isFinite(timestamp) ? timestamp : null;
 }
+
+// The licence's own reported end, remembered across requests.
+//
+// This account's CME entitlement is DELAYED rather than expired: it trails real
+// time by hours and the boundary creeps forward. Every request reaching past it
+// is refused with a 422 naming the end it would accept.
+//
+// Retrying rescues the call that hit the wall, but it teaches only that one
+// call. Measured on a single production pane load: fifteen /api/cme-history
+// requests, THIRTEEN of them 502s at one to four seconds each — roughly twenty
+// seconds of a chart's startup spent rediscovering the same fact thirteen
+// times. That is a large part of "charts take ages to populate".
+//
+// Remembering it makes the first refusal the only one. It lives here rather
+// than beside the fetch so it can be tested without the server-only vendor
+// client — the same reason availableEndFromError was extracted.
+let rememberedAvailableEndMs: number | null = null;
+
+/** A fresh process, or a test, must not inherit a stale boundary. */
+export function resetRememberedAvailableEnd() {
+  rememberedAvailableEndMs = null;
+}
+
+export function rememberedAvailableEnd() {
+  return rememberedAvailableEndMs;
+}
+
+/** Only ever moves forward: the provider extends this window as time passes. */
+export function rememberAvailableEnd(timestampMs: number | null) {
+  if (timestampMs == null || !Number.isFinite(timestampMs)) return;
+  if (rememberedAvailableEndMs == null || timestampMs > rememberedAvailableEndMs) {
+    rememberedAvailableEndMs = timestampMs;
+  }
+}
+
+/**
+ * Narrow a request's end to the licence boundary. Never widens a window, and
+ * never rescues one that starts beyond the boundary — there is genuinely no
+ * data there, and that failure has to reach the trader rather than becoming a
+ * silently empty chart.
+ */
+export function clampEndToLicence<T extends Record<string, string>>(params: T): T {
+  if (rememberedAvailableEndMs == null) return params;
+  const requestedEnd = Date.parse(params.end ?? "");
+  const requestedStart = Date.parse(params.start ?? "");
+  if (Number.isFinite(requestedEnd) && requestedEnd <= rememberedAvailableEndMs) return params;
+  if (Number.isFinite(requestedStart) && requestedStart >= rememberedAvailableEndMs) return params;
+  return { ...params, end: new Date(rememberedAvailableEndMs - 1).toISOString() };
+}
