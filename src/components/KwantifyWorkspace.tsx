@@ -19860,7 +19860,7 @@ export default function KwantifyWorkspace({
                     </span>
                     <span className={orderOco ? "text-foreground" : undefined}>OCO</span>
                   </button>
-                  <select
+                  <KwantSelect
                     value={orderTimeInForce}
                     onChange={(event) => setOrderTimeInForce(event.target.value as TimeInForce)}
                     aria-label="Time in force"
@@ -19871,7 +19871,7 @@ export default function KwantifyWorkspace({
                       .map((option) => (
                         <option key={option.id} value={option.id} title={option.hint}>{option.label}</option>
                       ))}
-                  </select>
+                  </KwantSelect>
                 </div>
                 <button
                   type="button"

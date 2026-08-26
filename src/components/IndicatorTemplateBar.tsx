@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import KwantSelect from "@/components/ui/KwantSelect";
 import { BookmarkPlus, Download, Trash2, Upload } from "lucide-react";
 import {
   INDICATOR_TEMPLATES_EVENT,
@@ -132,7 +133,7 @@ export default function IndicatorTemplateBar({ indicatorId, settings, onApply }:
     <div className="space-y-2 rounded-lg border border-border bg-surface/30 p-2.5">
       <div className="text-[9px] font-semibold uppercase tracking-[0.14em] text-muted">Templates</div>
       <div className="flex flex-wrap items-center gap-1.5">
-        <select
+        <KwantSelect
           value={selectedId}
           onChange={(event) => {
             setSelectedId(event.target.value);
@@ -145,7 +146,7 @@ export default function IndicatorTemplateBar({ indicatorId, settings, onApply }:
           {templates.map((template) => (
             <option key={template.id} value={template.id}>{template.name}</option>
           ))}
-        </select>
+        </KwantSelect>
         <button type="button" onClick={exportSelected} disabled={!selectedId} className={chip} title="Copy this template as JSON">
           <Download className="h-3.5 w-3.5" />
           Export

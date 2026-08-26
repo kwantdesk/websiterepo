@@ -9,13 +9,11 @@ import { fileURLToPath } from "node:url";
  * A native <select> renders the OS menu — on Windows a grey list in a system
  * font that ignores the theme completely. A native <input type="color"> opens
  * the OS colour picker. Neither can be styled, so every one is a hole in an
- * otherwise consistent interface, and they appear in exactly the places a
- * trader uses most: chart settings, panel colours, replay controls.
+ * otherwise consistent interface, and they sit in the places a trader uses
+ * most: chart settings, panel settings, the trade panel, the accounts page.
  *
- * The replacements already existed — ChartColorField for colour, and the
- * portaled menu GEX Map used, now shared as KwantSelect. This test keeps them
- * from coming back, and carries the remaining <select> count DOWN: the number
- * below is a ratchet, never to be raised.
+ * Both replacements already existed — components/ui/KwantSelect and
+ * ChartColorField. The work was simply never finished.
  */
 
 // fileURLToPath, not .pathname: a percent-encoded space in the path (this
@@ -36,8 +34,8 @@ const files = walk(SRC);
 const nativeSelects = [];
 const nativeColors = [];
 for (const file of files) {
-  // Comments talk ABOUT native selects (this file's own replacement documents
-  // why they are bad), so count code only.
+  // Comments legitimately talk ABOUT native selects — this test's own
+  // replacement documents why they are bad — so count code only.
   const source = readFileSync(file, "utf8")
     .replace(/\/\*[\s\S]*?\*\//g, "")
     .replace(/^\s*\/\/.*$/gm, "");
@@ -49,47 +47,51 @@ for (const file of files) {
 let passed = 0;
 const check = (name, fn) => { fn(); passed += 1; console.log(`  ok  ${name}`); };
 
+check("no native <select> remains anywhere", () => {
+  // THE POINT. Forty-six were left across nine files, long after the shared
+  // component had been written and used in a handful of places.
+  assert.deepEqual(
+    nativeSelects,
+    [],
+    "native <select> still in:\n" + nativeSelects.map((entry) => `  ${entry.selects}  ${entry.file}`).join("\n"),
+  );
+});
+
 check("no native colour pickers remain", () => {
   assert.deepEqual(nativeColors, [], `native <input type="color"> in: ${nativeColors.join(", ")}`);
 });
 
-check("the shared controls exist and are the ones used", () => {
-  const select = readFileSync(join(SRC, "components", "KwantSelect.tsx"), "utf8");
-  assert.match(select, /export default function KwantSelect<T extends string>/);
+check("the shared select is a drop-in for the native one", () => {
+  const select = readFileSync(join(SRC, "components", "ui", "KwantSelect.tsx"), "utf8");
+  // Taking native select props and reading <option> children is what makes a
+  // call site a tag swap rather than a rewrite, and what stops a conversion
+  // silently changing which options a control offers.
+  assert.match(select, /Omit<SelectHTMLAttributes<HTMLSelectElement>, "multiple" \| "size">/);
+  assert.match(select, /function optionsFromChildren/);
   // Portaled, or a menu inside an overflow-hidden panel is clipped away.
   assert.match(select, /createPortal\(/);
-  // A menu positioned against a trigger that has since moved is worse than none.
-  assert.match(select, /window\.addEventListener\("scroll", closeOnViewportChange, true\)/);
-  assert.match(select, /if \(event\.key === "Escape"\)/);
-
-  // GEX Map keeps its old import name but must not own a second copy.
-  const map = readFileSync(join(SRC, "components", "gex-map", "GexMapWorkspace.tsx"), "utf8");
-  assert.doesNotMatch(map, /export function GexMapDropdown<T extends string>/,
-    "GEX Map must re-export the shared menu, not define its own");
-  assert.match(map, /from "@\/components\/KwantSelect"/);
 });
 
-check("the drawing settings dialog is fully converted", () => {
-  // One helper backs every dropdown in that panel, so it converts as a unit.
+check("there is one shared select, plus GEX Map's richer one", () => {
+  // GEX Map's own menu carries a detail line under each option, which
+  // ui/KwantSelect has no place for. It stays, and stays the only exception —
+  // a third would put the product back to guessing which one is live, the same
+  // trap as the three drawing toolbars.
+  const map = readFileSync(join(SRC, "components", "gex-map", "GexMapWorkspace.tsx"), "utf8");
+  assert.match(map, /export function GexMapDropdown<T extends string>/);
+  const components = files.filter((file) => /KwantSelect\.tsx$/.test(file));
+  assert.deepEqual(
+    components.map((file) => file.slice(file.indexOf("src"))),
+    [join("src", "components", "ui", "KwantSelect.tsx")],
+    "there must be exactly one KwantSelect component",
+  );
+});
+
+check("the drawing settings dialog uses both", () => {
   const settings = readFileSync(join(SRC, "components", "ChartDrawSettings.tsx"), "utf8");
-  assert.doesNotMatch(settings, /<select[\s>]/, "the drawing settings dialog must use the shared menu");
   assert.match(settings, /<KwantSelect/);
   assert.match(settings, /<ChartColorField/);
-});
-
-check("the remaining native selects only ever go down", () => {
-  // A ratchet, not a target. Lower it as surfaces are converted; never raise it.
-  // Remaining, highest first: GexBoxDashboard, Chart (professional drawing
-  // panel), SingleProfileWorkspace, TradingPanel, SpoofingDetector, accounts,
-  // KwantifyWorkspace, IndicatorTemplateBar, ChartIndicatorsControl.
-  const total = nativeSelects.reduce((sum, entry) => sum + entry.selects, 0);
-  const CEILING = 46;
-  assert.ok(
-    total <= CEILING,
-    `native <select> count rose to ${total} (ceiling ${CEILING}):\n`
-      + nativeSelects.map((entry) => `  ${entry.selects}  ${entry.file}`).join("\n"),
-  );
-  console.log(`      ${total} native <select> left, in ${nativeSelects.length} files`);
+  assert.match(settings, /from "@\/components\/ui\/KwantSelect"/);
 });
 
 console.log(`\nno native controls: ${passed}/${passed} checks passed`);

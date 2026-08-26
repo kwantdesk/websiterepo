@@ -5356,7 +5356,7 @@ export default function ChartIndicatorsControl({
               {settingsDefinition.id === "kwant-stats" ? (
                 <div className="space-y-2 rounded-lg border border-border bg-surface/30 p-2.5">
                   <div className="text-[9px] font-semibold uppercase tracking-[0.14em] text-muted">Colour scheme</div>
-                  <select
+                  <KwantSelect
                     value={String(settingsInstance.settings?.statsPaletteId ?? "")}
                     onChange={(event) => {
                       const palette = resolveStatsPalette(event.target.value);
@@ -5378,7 +5378,7 @@ export default function ChartIndicatorsControl({
                     {STATS_PALETTES.map((palette) => (
                       <option key={palette.id} value={palette.id}>{palette.label}</option>
                     ))}
-                  </select>
+                  </KwantSelect>
                   <div className="flex flex-wrap gap-1">
                     {STATS_PALETTES.map((palette) => {
                       const active = settingsInstance.settings?.statsPaletteId === palette.id;

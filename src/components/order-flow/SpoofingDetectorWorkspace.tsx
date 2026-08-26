@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import KwantSelect from "@/components/ui/KwantSelect";
 import { HelpCircle, RotateCcw, Save, Settings2 } from "lucide-react";
 import FloatingSettingsWindow from "@/components/ui/FloatingSettingsWindow";
 import KwantLoader from "@/components/KwantLoader";
@@ -570,18 +571,18 @@ export default function SpoofingDetectorWorkspace({
       >
             <label className="block space-y-1.5 text-[9px] uppercase tracking-[0.1em] text-muted">
               <span>Detection mode</span>
-              <select
+              <KwantSelect
                 value={draft.detectionMode}
                 onChange={(event) => setDraft((current) => ({ ...current, detectionMode: event.target.value as SpoofingDetectorSettings["detectionMode"] }))}
                 className="h-8 w-full border border-border bg-surface px-2 font-mono text-[9px] text-foreground outline-none focus:border-primary/40"
               >
                 <option value="PRICE_LEVEL">PRICE LEVEL</option>
                 <option value="INDIVIDUAL_ORDER">INDIVIDUAL ORDER (NATIVE DBO)</option>
-              </select>
+              </KwantSelect>
             </label>
             <label className="block space-y-1.5 text-[9px] uppercase tracking-[0.1em] text-muted">
               <span>Candle interval</span>
-              <select
+              <KwantSelect
                 value={draft.candleIntervalMs}
                 onChange={(event) => setDraft((current) => ({ ...current, candleIntervalMs: Number(event.target.value) }))}
                 className="h-8 w-full border border-border bg-surface px-2 font-mono text-[9px] text-foreground outline-none focus:border-primary/40"
@@ -590,7 +591,7 @@ export default function SpoofingDetectorWorkspace({
                 <option value={2_000}>2 SECONDS</option>
                 <option value={5_000}>5 SECONDS</option>
                 <option value={10_000}>10 SECONDS</option>
-              </select>
+              </KwantSelect>
             </label>
             <SettingRange label="Visible price rows" value={draft.visibleRows} min={10} max={40} step={1} onChange={(value) => setDraft((current) => ({ ...current, visibleRows: value }))} />
             <SettingRange label="Minimum candidate" value={draft.minimumCandidateContracts} min={1} max={2_000} step={1} onChange={(value) => setDraft((current) => ({ ...current, minimumCandidateContracts: value }))} format={(value) => `${value} ct`} />

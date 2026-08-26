@@ -1,6 +1,7 @@
 "use client";
 
 import { memo, startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
+import KwantSelect from "@/components/ui/KwantSelect";
 import {
   createChart,
   LineStyle,
@@ -16796,7 +16797,7 @@ function Chart({
               </label>
               <label className="block text-[12px] text-muted">
                 <span className="mb-2 block">Line style</span>
-                <select
+                <KwantSelect
                   value={(selectedProfessionalDrawing.style.lineDash ?? []).join(",")}
                   onChange={(event) => updateSelectedProfessionalDrawing({ lineDash: event.target.value ? event.target.value.split(",").map(Number) : [] })}
                   className="h-9 w-full border border-border bg-surface px-3 text-[12px] text-foreground outline-none focus:border-primary"
@@ -16805,7 +16806,7 @@ function Chart({
                   <option value="6,4">Dashed</option>
                   <option value="2,3">Dotted</option>
                   <option value="10,4,2,4">Dash-dot</option>
-                </select>
+                </KwantSelect>
               </label>
             </section>
 
@@ -16852,15 +16853,15 @@ function Chart({
                           value={levelStyle.color ?? selectedProfessionalDrawing.style.lineColor}
                           onChange={(hex) => updateSelectedFibLevelStyle(level, { color: hex })}
                         />
-                        <select
+                        <KwantSelect
                           value={levelStyle.lineWidth ?? selectedProfessionalDrawing.style.lineWidth}
                           onChange={(event) => updateSelectedFibLevelStyle(level, { lineWidth: Number(event.target.value) })}
                           className="h-7 border border-border bg-background px-1 text-[9px] text-foreground outline-none focus:border-primary"
                           aria-label={`Width for Fibonacci level ${level}`}
                         >
                           {[0.5, 1, 1.5, 2, 3, 4].map((width) => <option key={width} value={width}>{width}px</option>)}
-                        </select>
-                        <select
+                        </KwantSelect>
+                        <KwantSelect
                           value={(levelStyle.lineDash ?? selectedProfessionalDrawing.style.lineDash ?? []).join(",")}
                           onChange={(event) => updateSelectedFibLevelStyle(level, { lineDash: event.target.value ? event.target.value.split(",").map(Number) : [] })}
                           className="h-7 border border-border bg-background px-1 text-[9px] text-foreground outline-none focus:border-primary"
@@ -16869,7 +16870,7 @@ function Chart({
                           <option value="">Solid</option>
                           <option value="6,4">Dash</option>
                           <option value="2,3">Dot</option>
-                        </select>
+                        </KwantSelect>
                         <button
                           type="button"
                           onClick={() => removeSelectedFibLevel(index)}
@@ -16895,14 +16896,14 @@ function Chart({
 
                 <label className="block text-[11px] text-muted">
                   <span className="mb-1.5 block">Labels position</span>
-                  <select
+                  <KwantSelect
                     value={selectedProfessionalDrawing.options.fibLabelPosition ?? "right"}
                     onChange={(event) => updateSelectedProfessionalDrawing({}, { fibLabelPosition: event.target.value === "left" ? "left" : "right" })}
                     className="h-9 w-full border border-border bg-surface px-3 text-[11px] text-foreground outline-none focus:border-primary"
                   >
                     <option value="right">Right</option>
                     <option value="left">Left</option>
-                  </select>
+                  </KwantSelect>
                 </label>
               </section>
             ) : null}
@@ -16969,7 +16970,7 @@ function Chart({
               </label>
               <label className="block text-[12px] text-muted">
                 <span className="mb-2 block">Timeframe visibility</span>
-                <select
+                <KwantSelect
                   value={!selectedProfessionalDrawing.options.timeframes?.length
                     ? "all"
                     : selectedProfessionalDrawing.options.timeframes.length === 1 && selectedProfessionalDrawing.options.timeframes[0] === timeframe
@@ -16991,7 +16992,7 @@ function Chart({
                   <option value="current">Current timeframe only</option>
                   <option value="1m,2m,3m,5m,10m,15m,30m,45m,1h">Intraday</option>
                   <option value="4h,1D,1W">Higher timeframes</option>
-                </select>
+                </KwantSelect>
               </label>
               <label className="block text-[12px] text-muted">
                 <span className="mb-2 flex justify-between"><span>Layer order</span><span>{selectedProfessionalDrawing.options.zIndex ?? 0}</span></span>
@@ -17186,7 +17187,7 @@ function Chart({
             <div className="grid grid-cols-[1fr_auto] items-end gap-3">
               <label>
                 <span className="mb-1.5 block text-[9px] font-medium text-muted">Line style</span>
-                <select
+                <KwantSelect
                   value={activePositionStyle.lineStyle}
                   onChange={(event) => updatePositionVisualSettings({ lineStyle: event.target.value as PositionVisualSettings["lineStyle"] })}
                   className="h-9 w-full rounded-xl border border-border bg-surface px-2.5 text-[11px] text-foreground outline-none"
@@ -17194,7 +17195,7 @@ function Chart({
                   <option value="solid">Solid</option>
                   <option value="dashed">Dashed</option>
                   <option value="dotted">Dotted</option>
-                </select>
+                </KwantSelect>
               </label>
               <label className="flex h-9 cursor-pointer items-center gap-2 rounded-xl border border-border bg-surface px-2.5 text-[10px] text-foreground">
                 <input

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import KwantSelect from "@/components/ui/KwantSelect";
 import { ChevronDown, Eye, EyeOff } from "lucide-react";
 import {
   TIME_IN_FORCE_OPTIONS,
@@ -152,7 +153,7 @@ export default function TradingPanel({
         <span className="text-[9px] uppercase tracking-[0.12em] text-muted">Account</span>
         <span className="flex items-center gap-1.5">
           <span className="relative flex-1">
-            <select
+            <KwantSelect
               value={selectedAccountId ?? ""}
               onChange={(event) => onSelectAccount(event.target.value)}
               className="h-8 w-full appearance-none rounded-[3px] border border-border bg-background px-2 pr-7 font-mono text-[11px] text-foreground outline-none focus:border-primary/40"
@@ -163,7 +164,7 @@ export default function TradingPanel({
                   {accountHidden ? "••••••••" : account.label}
                 </option>
               ))}
-            </select>
+            </KwantSelect>
             <ChevronDown className="pointer-events-none absolute right-2 top-2.5 h-3 w-3 text-muted" />
           </span>
           <button
@@ -291,7 +292,7 @@ export default function TradingPanel({
             : "This broker has no server-side OCO, so the desk cancels the other leg on the first fill"}
         />
         <span className="relative">
-          <select
+          <KwantSelect
             value={timeInForce}
             onChange={(event) => setTimeInForce(event.target.value as TimeInForce)}
             className="h-7 appearance-none rounded-[3px] border border-border bg-background pl-2 pr-6 text-[10px] uppercase text-foreground outline-none focus:border-primary/40"
@@ -302,7 +303,7 @@ export default function TradingPanel({
                 {option.label}
               </option>
             ))}
-          </select>
+          </KwantSelect>
           <ChevronDown className="pointer-events-none absolute right-1.5 top-2 h-3 w-3 text-muted" />
         </span>
       </div>
@@ -352,7 +353,7 @@ export default function TradingPanel({
                 onChange={(event) => setLeg({ ...leg, value: Math.max(0, Number(event.target.value) || 0) })}
                 className="h-7 min-w-0 flex-1 rounded-[3px] border border-border bg-background px-2 text-right font-mono text-[10px] text-foreground outline-none focus:border-primary/40 disabled:opacity-40"
               />
-              <select
+              <KwantSelect
                 value={leg.unit}
                 disabled={!leg.enabled}
                 onChange={(event) => setLeg({ ...leg, unit: event.target.value as ProtectionLeg["unit"] })}
@@ -362,7 +363,7 @@ export default function TradingPanel({
                 <option value="ticks">T</option>
                 <option value="price">P</option>
                 <option value="percent">%</option>
-              </select>
+              </KwantSelect>
             </div>
           ))}
           <button type="button" onClick={onEditProtection} className={`${CHIP} border-sky-500/60 bg-sky-600 text-white hover:bg-sky-500`}>

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import ChartColorField from "@/components/ChartColorField";
-import KwantSelect from "@/components/KwantSelect";
+import KwantSelect from "@/components/ui/KwantSelect";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { DRAW_TOOL_SPECS, resolveDrawColor, type DrawLineStyle, type Drawing } from "@/lib/chartDrawTools";
@@ -180,15 +180,12 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 // label position and the profile controls.
 function Select({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: [string, string][] }) {
   return (
-    <div className="w-32">
-      <KwantSelect
-        ariaLabel="Drawing setting"
-        value={value}
-        options={options.map(([optionValue, label]) => ({ value: optionValue, label }))}
-        menuLabel="Select"
-        menuWidth={160}
-        onChange={onChange}
-      />
-    </div>
+    <KwantSelect
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      className="h-8 w-32 rounded-lg border border-border bg-background px-2 text-[12px] text-foreground outline-none focus:border-primary/40"
+    >
+      {options.map(([optionValue, label]) => <option key={optionValue} value={optionValue}>{label}</option>)}
+    </KwantSelect>
   );
 }
