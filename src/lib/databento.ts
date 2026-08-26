@@ -15,6 +15,7 @@ import {
   vendorMarketDataConfigured,
   vendorMarketDataFetch,
 } from "@/lib/vendorMarketData.server";
+import { availableEndFromError } from "@/lib/databentoAvailableEnd";
 
 export const DATABENTO_HISTORICAL_BASE_URL = "https://api.databento.com/v0";
 
@@ -154,23 +155,6 @@ function time(value: unknown) {
   return databentoEventTimestampMs(value) ?? 0;
 }
 
-function availableEndFromError(detail: string) {
-  try {
-    const payload = JSON.parse(detail) as {
-      detail?: {
-        case?: string;
-        payload?: { available_end?: unknown };
-      };
-    };
-    if (payload.detail?.case !== "data_end_after_available_end") return null;
-    const value = String(payload.detail.payload?.available_end ?? "");
-    const timestamp = Date.parse(value);
-    return Number.isFinite(timestamp) ? timestamp : null;
-  } catch {
-    return null;
-  }
-}
-
 async function historicalRequest(params: Record<string, string>, canRetryAvailableEnd = true) {
   if (!vendorMarketDataConfigured("databento")) throw new Error("Databento is not configured.");
 
@@ -211,7 +195,7 @@ async function historicalRequest(params: Record<string, string>, canRetryAvailab
         false,
       );
     }
-    throw new Error(`Databento request failed (${response.status}): ${detail.slice(0, 180)}`);
+    throw new Error(`Databento request failed (${response.status}): ${detail.slice(0, 400)}`);
   }
   return parseRows(await response.text());
 }
@@ -273,7 +257,7 @@ async function streamHistoricalRows(
       incomplete.availableEndMs = availableEnd;
       throw incomplete;
     }
-    throw new Error(`Databento request failed (${response.status}): ${detail.slice(0, 180)}`);
+    throw new Error(`Databento request failed (${response.status}): ${detail.slice(0, 400)}`);
   }
   if (!response.body) throw new Error("Databento returned an empty CME trade stream.");
 
