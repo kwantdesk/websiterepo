@@ -349,12 +349,26 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
       || model.intervalSeconds == null
       || model.intervalSeconds <= 0
     ) return null;
-    const lastCoordinate = timeScale.timeToCoordinate(model.lastCandleTime as Time);
-    if (lastCoordinate == null) return null;
-    const lastLogical = timeScale.coordinateToLogical(lastCoordinate);
-    if (lastLogical == null) return null;
-    const projectedLogical = Number(lastLogical)
-      + (timestamp - model.lastCandleTime) / model.intervalSeconds;
+    // Project from the last candle when it is on screen, and from whatever IS
+    // on screen when it is not.
+    //
+    // Zoomed into a region far behind the live edge, the last candle is off
+    // screen and timeToCoordinate returns null for it too — so this fallback
+    // failed exactly when it was needed. The caller then had no position for
+    // the profile in front, and a week-old profile's value-area lines ran
+    // straight through everything to the right edge. Anything visible is a
+    // usable origin: the scale is linear in logical space, so one resolvable
+    // anchor plus the bar interval places any time, on screen or not.
+    const anchorTime = timeScale.timeToCoordinate(model.lastCandleTime as Time) != null
+      ? model.lastCandleTime
+      : timeScale.getVisibleRange()?.from ?? null;
+    if (anchorTime == null) return null;
+    const anchorCoordinate = timeScale.timeToCoordinate(anchorTime as Time);
+    if (anchorCoordinate == null) return null;
+    const anchorLogical = timeScale.coordinateToLogical(anchorCoordinate);
+    if (anchorLogical == null) return null;
+    const projectedLogical = Number(anchorLogical)
+      + (timestamp - Number(anchorTime)) / model.intervalSeconds;
     return timeScale.logicalToCoordinate(projectedLogical as Logical);
   }
 

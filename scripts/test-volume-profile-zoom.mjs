@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { execSync } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
@@ -56,4 +57,35 @@ assert.ok(widthAt(REFERENCE_BARS / 2) > FULL, "zooming in must still enlarge the
 assert.ok(widthAt(1) <= PANE * 0.36 + 1e-9, "the pane fraction ceiling still bounds it");
 
 rmSync(outDir, { recursive: true, force: true });
+// A blocker off screen still stops the lines.
+//
+// Value-area lines stop at the back of the profile in FRONT. That profile's
+// position was projected from the last candle, so zooming into a region far
+// behind the live edge put the last candle off screen too and the projection
+// returned null - exactly when it was needed. With no position for the blocker,
+// a week-old profile's lines ran straight through everything to the right edge,
+// which looked like the lines releasing on zoom.
+//
+// The scale is linear in logical space, so ANY resolvable anchor plus the bar
+// interval places any time. The last candle when it is visible, otherwise the
+// start of whatever is.
+{
+  const primitive = readFileSync("src/lib/nativeVolumeProfilePrimitive.ts", "utf8");
+  assert.match(
+    primitive,
+    /timeScale\.getVisibleRange\(\)\?\.from \?\? null/,
+    "an off-screen last candle must fall back to something that is on screen",
+  );
+  assert.match(primitive, /const anchorLogical = timeScale\.coordinateToLogical\(anchorCoordinate\);/);
+  assert.match(
+    primitive,
+    /\+ \(timestamp - Number\(anchorTime\)\) \/ model\.intervalSeconds;/,
+    "the offset must be measured from the anchor actually used, not always the last candle",
+  );
+  // The blocker is still projected through the model being drawn, which always
+  // has a usable basis, rather than giving up because it could not measure
+  // itself.
+  assert.match(primitive, /const blockerX = blockerDrawnX \?\? \(blockerStartMs === undefined/);
+}
+
 console.log("volume profile zoom curve: 6/6 checks passed");
