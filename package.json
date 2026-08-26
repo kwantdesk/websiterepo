@@ -150,7 +150,8 @@
     "test:indicator-colour-override": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-indicator-colour-override.mjs",
     "test:vix-environment": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-vix-environment.mjs",
     "test:live-chart-memory": "node --experimental-strip-types scripts/test-live-chart-memory-guard.mjs",
-    "test:live-overlay-lifetimes": "node scripts/test-live-overlay-lifetimes.mjs"
+    "test:live-overlay-lifetimes": "node scripts/test-live-overlay-lifetimes.mjs",
+    "test:paper-order-label": "node scripts/test-paper-order-label-geometry.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",

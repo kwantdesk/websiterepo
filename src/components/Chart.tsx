@@ -1784,6 +1784,27 @@ function paperProtectionSizeLabel(positionSide: "buy" | "sell", quantity: number
   return paperPositionSizeLabel(positionSide === "buy" ? "sell" : "buy", quantity);
 }
 
+/**
+ * Order-label geometry, in one place on purpose.
+ *
+ * The label a trader reads is painted on the canvas by
+ * PaperPositionOverlayRenderer, but the SL / TP / close controls they actually
+ * click are an invisible HTML twin stacked exactly on top of it. The two were
+ * hand-matched magic numbers (164x16, 20px handles, 8px type) in two files'
+ * worth of code, so resizing the painted box alone would leave the hit targets
+ * behind it and the handles would stop working where they appear to be.
+ * Everything below derives from one scale so the box and its controls can only
+ * move together.
+ */
+const PAPER_LABEL_SCALE = 2;
+const PAPER_LABEL_WIDTH = 164 * PAPER_LABEL_SCALE;
+const PAPER_LABEL_HEIGHT = 16 * PAPER_LABEL_SCALE;
+const PAPER_LABEL_FONT_PX = 8 * PAPER_LABEL_SCALE;
+const PAPER_LABEL_PAD_X = 7 * PAPER_LABEL_SCALE;
+const PAPER_LABEL_HANDLE_WIDTH = 20 * PAPER_LABEL_SCALE;
+const PAPER_LABEL_CLOSE_WIDTH = 16 * PAPER_LABEL_SCALE;
+const PAPER_LABEL_ICON_PX = 10 * PAPER_LABEL_SCALE;
+
 class PaperPositionOverlayRenderer implements ISeriesPrimitivePaneRenderer {
   constructor(private readonly primitive: PaperPositionOverlayPrimitive) {}
 
@@ -1793,10 +1814,10 @@ class PaperPositionOverlayRenderer implements ISeriesPrimitivePaneRenderer {
 
     target.useMediaCoordinateSpace(({ context, mediaSize }) => {
       context.save();
-      context.font = "700 8px 'JetBrains Mono', monospace";
+      context.font = `700 ${PAPER_LABEL_FONT_PX}px 'JetBrains Mono', monospace`;
       context.textBaseline = "middle";
-      const labelWidth = 164;
-      const labelHeight = 16;
+      const labelWidth = PAPER_LABEL_WIDTH;
+      const labelHeight = PAPER_LABEL_HEIGHT;
       const labelX = Math.max(0, mediaSize.width - labelWidth - 4);
 
       for (const level of this.primitive.levels()) {
@@ -1835,28 +1856,31 @@ class PaperPositionOverlayRenderer implements ISeriesPrimitivePaneRenderer {
         context.strokeStyle = level.color;
         context.lineWidth = 1;
         context.strokeRect(labelX + 0.5, labelTop + 0.5, labelWidth - 1, labelHeight - 1);
-        let textLeft = labelX + 7;
+        let textLeft = labelX + PAPER_LABEL_PAD_X;
         if (level.kind === "entry" && level.showStopHandle) {
           context.fillStyle = level.stopColor ?? level.color;
-          context.fillText("SL", labelX + 5, y, 15);
+          context.fillText("SL", labelX + 5 * PAPER_LABEL_SCALE, y, 15 * PAPER_LABEL_SCALE);
           context.strokeStyle = level.color;
           context.beginPath();
-          context.moveTo(labelX + 20.5, labelTop + 1);
-          context.lineTo(labelX + 20.5, labelTop + labelHeight - 1);
+          context.moveTo(labelX + PAPER_LABEL_HANDLE_WIDTH + 0.5, labelTop + 1);
+          context.lineTo(labelX + PAPER_LABEL_HANDLE_WIDTH + 0.5, labelTop + labelHeight - 1);
           context.stroke();
-          textLeft += 20;
+          textLeft += PAPER_LABEL_HANDLE_WIDTH;
         }
         if (level.kind === "entry" && level.showTakeProfitHandle) {
+          // The divider closes this handle's cell, so it is measured from the
+          // cell's own left edge rather than from the text inset inside it.
+          const takeProfitDivider = textLeft + PAPER_LABEL_HANDLE_WIDTH - PAPER_LABEL_PAD_X + 0.5;
           context.fillStyle = level.takeProfitColor ?? level.color;
-          context.fillText("TP", textLeft - 2, y, 15);
+          context.fillText("TP", textLeft - 2 * PAPER_LABEL_SCALE, y, 15 * PAPER_LABEL_SCALE);
           context.strokeStyle = level.color;
           context.beginPath();
-          context.moveTo(textLeft + 13.5, labelTop + 1);
-          context.lineTo(textLeft + 13.5, labelTop + labelHeight - 1);
+          context.moveTo(takeProfitDivider, labelTop + 1);
+          context.lineTo(takeProfitDivider, labelTop + labelHeight - 1);
           context.stroke();
-          textLeft += 20;
+          textLeft += PAPER_LABEL_HANDLE_WIDTH;
         }
-        const closeWidth = level.showClose ? 16 : 0;
+        const closeWidth = level.showClose ? PAPER_LABEL_CLOSE_WIDTH : 0;
         if (closeWidth) {
           context.strokeStyle = level.color;
           context.beginPath();
@@ -1864,13 +1888,13 @@ class PaperPositionOverlayRenderer implements ISeriesPrimitivePaneRenderer {
           context.lineTo(labelX + labelWidth - closeWidth - 0.5, labelTop + labelHeight - 1);
           context.stroke();
           context.fillStyle = level.color;
-          context.fillText("×", labelX + labelWidth - 12, y, 10);
+          context.fillText("×", labelX + labelWidth - 12 * PAPER_LABEL_SCALE, y, 10 * PAPER_LABEL_SCALE);
         }
         context.beginPath();
         context.rect(textLeft, labelTop + 1, labelX + labelWidth - closeWidth - textLeft - 2, labelHeight - 2);
         context.clip();
         context.fillStyle = level.color;
-        context.fillText(renderedLabel, textLeft, y, labelX + labelWidth - closeWidth - textLeft - 4);
+        context.fillText(renderedLabel, textLeft, y, labelX + labelWidth - closeWidth - textLeft - 4 * PAPER_LABEL_SCALE);
         context.restore();
       }
       context.restore();
@@ -15929,8 +15953,13 @@ function Chart({
         >
           {level.kind === "entry" ? (
             <div
-              className="paper-position-overlay-label pointer-events-auto absolute right-1 flex h-4 w-[164px] -translate-y-1/2 items-center overflow-hidden opacity-0"
-              style={{ borderColor: level.color, color: level.color }}
+              className="paper-position-overlay-label pointer-events-auto absolute right-1 flex -translate-y-1/2 items-center overflow-hidden opacity-0"
+              style={{
+                borderColor: level.color,
+                color: level.color,
+                height: PAPER_LABEL_HEIGHT,
+                width: PAPER_LABEL_WIDTH,
+              }}
               title={level.resting
                 ? `${level.position.side === "buy" ? "Buy" : "Sell"} ${level.position.quantity} resting at ${level.position.entryPrice.toFixed(priceFormat.precision)}`
                 : `Unrealized ${level.position.unrealizedPnl.toFixed(2)}`}
@@ -15939,8 +15968,13 @@ function Chart({
                 <button
                   type="button"
                   onPointerDown={(event) => startNewPaperProtectionDrag(event, level.position, "stop_loss")}
-                  className="flex w-5 touch-none cursor-ns-resize self-stretch items-center justify-center border-r font-mono text-[8px] font-bold transition-colors hover:bg-danger/15 active:cursor-grabbing"
-                  style={{ borderColor: level.color, color: settings.downColor }}
+                  className="flex touch-none cursor-ns-resize self-stretch items-center justify-center border-r font-mono font-bold transition-colors hover:bg-danger/15 active:cursor-grabbing"
+                  style={{
+                    borderColor: level.color,
+                    color: settings.downColor,
+                    width: PAPER_LABEL_HANDLE_WIDTH,
+                    fontSize: PAPER_LABEL_FONT_PX,
+                  }}
                   title="Hold and drag to place a working stop loss"
                   aria-label={`Add stop loss to ${level.position.symbol} position`}
                 >
@@ -15951,15 +15985,25 @@ function Chart({
                 <button
                   type="button"
                   onPointerDown={(event) => startNewPaperProtectionDrag(event, level.position, "take_profit")}
-                  className="flex w-5 touch-none cursor-ns-resize self-stretch items-center justify-center border-r font-mono text-[8px] font-bold transition-colors hover:bg-success/15 active:cursor-grabbing"
-                  style={{ borderColor: level.color, color: settings.upColor }}
+                  className="flex touch-none cursor-ns-resize self-stretch items-center justify-center border-r font-mono font-bold transition-colors hover:bg-success/15 active:cursor-grabbing"
+                  style={{
+                    borderColor: level.color,
+                    color: settings.upColor,
+                    width: PAPER_LABEL_HANDLE_WIDTH,
+                    fontSize: PAPER_LABEL_FONT_PX,
+                  }}
                   title="Hold and drag to place a working take profit"
                   aria-label={`Add take profit to ${level.position.symbol} position`}
                 >
                   TP
                 </button>
               ) : null}
-              <span className="min-w-0 flex-1 truncate px-[7px]">{level.label}</span>
+              <span
+                className="min-w-0 flex-1 truncate"
+                style={{ paddingLeft: PAPER_LABEL_PAD_X, paddingRight: PAPER_LABEL_PAD_X }}
+              >
+                {level.label}
+              </span>
               {onClosePaperPosition ? (
                 <button
                   type="button"
@@ -15968,24 +16012,30 @@ function Chart({
                     event.stopPropagation();
                     onClosePaperPosition(level.position);
                   }}
-                  className="flex w-4 self-stretch items-center justify-center border-l transition-colors hover:bg-danger/15 hover:text-danger"
-                  style={{ borderColor: level.color }}
+                  className="flex self-stretch items-center justify-center border-l transition-colors hover:bg-danger/15 hover:text-danger"
+                  style={{ borderColor: level.color, width: PAPER_LABEL_CLOSE_WIDTH }}
                   title="Close this position at the live bid/ask"
                   aria-label={`Close ${level.position.symbol} position`}
                 >
-                  <X className="h-2.5 w-2.5" />
+                  <X style={{ height: PAPER_LABEL_ICON_PX, width: PAPER_LABEL_ICON_PX }} />
                 </button>
               ) : null}
             </div>
           ) : (
             <div
-              className="paper-protection-overlay-label pointer-events-auto absolute right-1 flex h-4 w-[164px] -translate-y-1/2 items-stretch overflow-hidden opacity-0"
-              style={{ borderColor: level.color, color: level.color }}
+              className="paper-protection-overlay-label pointer-events-auto absolute right-1 flex -translate-y-1/2 items-stretch overflow-hidden opacity-0"
+              style={{
+                borderColor: level.color,
+                color: level.color,
+                height: PAPER_LABEL_HEIGHT,
+                width: PAPER_LABEL_WIDTH,
+              }}
             >
               <button
                 type="button"
                 onPointerDown={(event) => startPaperProtectionDrag(event, level)}
-                className="min-w-0 flex-1 cursor-ns-resize touch-none truncate px-[7px] text-left active:cursor-grabbing"
+                className="min-w-0 flex-1 cursor-ns-resize touch-none truncate text-left active:cursor-grabbing"
+                style={{ paddingLeft: PAPER_LABEL_PAD_X, paddingRight: PAPER_LABEL_PAD_X }}
                 title="Drag to adjust protection"
               >
                 {level.label}
@@ -15997,12 +16047,12 @@ function Chart({
                   event.stopPropagation();
                   removePaperProtection(level);
                 }}
-                className="flex w-4 shrink-0 items-center justify-center border-l transition-colors hover:bg-danger/15 hover:text-danger"
-                style={{ borderColor: level.color }}
+                className="flex shrink-0 items-center justify-center border-l transition-colors hover:bg-danger/15 hover:text-danger"
+                style={{ borderColor: level.color, width: PAPER_LABEL_CLOSE_WIDTH }}
                 title={`Remove ${level.kind === "stop_loss" ? "stop loss" : "take profit"}`}
                 aria-label={`Remove ${level.kind === "stop_loss" ? "stop loss" : "take profit"} from ${level.position.symbol} position`}
               >
-                <X className="h-2.5 w-2.5" />
+                <X style={{ height: PAPER_LABEL_ICON_PX, width: PAPER_LABEL_ICON_PX }} />
               </button>
             </div>
           )}
