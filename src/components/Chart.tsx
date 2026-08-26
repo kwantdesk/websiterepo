@@ -5322,26 +5322,22 @@ function Chart({
    * Measured in bars because that is what the time scale reserves in, so the
    * gap holds its pixel width as the chart is zoomed.
    */
+  /**
+   * The Mini DOM does NOT get its own page edge.
+   *
+   * It used to push the time scale over by its own width so candles stopped
+   * at its left side, which made the ladder the chart's right boundary. The
+   * price scale is the edge; the ladder sits inside the plot against it and
+   * price runs on underneath. This effect only undoes a reservation left over
+   * from that behaviour.
+   */
   useEffect(() => {
     const chart = chartRef.current;
     if (!chart) return;
-    const timeScale = chart.timeScale();
-    if (!miniDomEnabled || miniDomReservedWidth <= 0) {
-      if (miniDomReservedRightOffsetRef.current !== null) {
-        timeScale.applyOptions({ rightOffset: miniDomReservedRightOffsetRef.current });
-        miniDomReservedRightOffsetRef.current = null;
-      }
-      return;
-    }
-    const options = timeScale.options();
-    if (miniDomReservedRightOffsetRef.current === null) {
-      miniDomReservedRightOffsetRef.current = Number(options.rightOffset ?? 0);
-    }
-    const barsToReserve = miniDomReservedWidth / Math.max(1, Number(options.barSpacing ?? 6));
-    timeScale.applyOptions({
-      rightOffset: Math.max(miniDomReservedRightOffsetRef.current, barsToReserve),
-    });
-  }, [chartReadyRevision, miniDomEnabled, miniDomReservedWidth]);
+    if (miniDomReservedRightOffsetRef.current === null) return;
+    chart.timeScale().applyOptions({ rightOffset: miniDomReservedRightOffsetRef.current });
+    miniDomReservedRightOffsetRef.current = null;
+  }, [chartReadyRevision, miniDomEnabled]);
 
   const tpoSourceTrades = useMemo<TpoTrade[]>(() => {
     if (!tpoSamplingEnabled) return [];
@@ -13629,7 +13625,9 @@ function Chart({
   useEffect(() => {
     const primitive = volumeProfilePrimitiveRef.current;
     if (!primitive) return;
-    primitive.setPaneInsets({ left: toolbarPlotLeftInset, right: miniDomReservedWidth });
+    // The ladder no longer claims the pane's right edge, so a right-docked
+    // profile runs to the price scale exactly as it does with the DOM off.
+    primitive.setPaneInsets({ left: toolbarPlotLeftInset, right: 0 });
     const dailyInstance = indicators.find((instance) =>
       instance.enabled
       && [
@@ -15003,8 +15001,13 @@ function Chart({
             window.addEventListener("pointermove", move);
             window.addEventListener("pointerup", release);
           }}
-          className="absolute top-0 z-[26] h-full w-[6px] cursor-ew-resize hover:bg-primary/30"
-          style={{ right: `${Math.max(0, miniDomReservedWidth - 3)}px` }}
+          // Offset from the CONTAINER's right edge, which includes the price
+          // scale — the ladder's own left edge is that much further in. Without
+          // the scale's width in here the strip sat about sixty pixels away
+          // from the edge it is supposed to grab, so it never caught the
+          // pointer and resizing appeared to do nothing at all.
+          className="absolute top-0 z-[26] h-full w-[10px] cursor-ew-resize hover:bg-primary/30"
+          style={{ right: `${Math.max(0, nativePriceScaleWidth + miniDomReservedWidth - 5)}px` }}
         />
       ) : null}
 
