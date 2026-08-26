@@ -78,7 +78,43 @@ assert.doesNotMatch(
 );
 assert.doesNotMatch(layer, /Math\.abs\(nearest\.timestamp - anchor\.time\) < 60_000/);
 
-// 7. Both drawing engines use the same screen-space radius.
-assert.match(drawLayer, /const SNAP_RADIUS_PX = 18;/);
+// 7. Both drawing engines use a screen-space radius, and the live layer takes
+// it from the chosen magnet strength rather than a fixed 18px. (This assertion
+// still named the old constant long after weak/strong landed, so it had been
+// failing on its own.)
+assert.match(drawLayer, /const SNAP_RADIUS_PX = magnetStrengthSpec\(magnetStrength\)\.radiusPx;/);
+assert.match(drawLayer, /const SNAP_RELEASE_PX = magnetStrengthSpec\(magnetStrength\)\.releasePx;/);
+
+// --- the magnet applies to MOVING a drawing, not only to placing one ---
+{
+  const { readFileSync } = await import("node:fs");
+  const layer = readFileSync(new URL("../src/components/ChartDrawLayer.tsx", import.meta.url), "utf8");
+  const move = layer.slice(layer.indexOf("const drag = dragRef.current;"), layer.indexOf("const handlePointerUp"));
+
+  // THE REPORTED FAILURE: a drawing snapped to a wick when placed and then
+  // never again - drag it away and it floated free for the rest of its life.
+  // The body drag called fromXY straight; the handles snapped only because they
+  // run through localPoint. Every tool with a body behaved this way.
+  assert.match(move, /const snapped = snapAt\(anchorPixel\.x \+ dx, anchorPixel\.y \+ dy, \{ velocityAware: true \}\);/,
+    "a body drag must consult the magnet");
+
+  // Snapped through ONE anchor: snapping each point independently would pull
+  // them onto different candles and deform the shape.
+  assert.match(move, /const anchorPixel = drag\.originPixels\[0\];/);
+  assert.match(move, /dx = snappedX - anchorPixel\.x;/);
+  assert.match(move, /dy = snappedY - anchorPixel\.y;/);
+  assert.ok(
+    (move.match(/snapAt\(/g) ?? []).length === 1,
+    "exactly one snap per move, not one per point",
+  );
+
+  // The translation itself is unchanged, so the geometry still carries across
+  // and an unplaceable point still keeps its stored anchor.
+  assert.match(move, /return fromXY\(pixel\.x \+ dx, pixel\.y \+ dy\) \?\? p;/);
+
+  // Magnet off, or a pixel the scale cannot name: the raw delta stands.
+  assert.match(move, /if \(snappedX != null && snappedY != null\)/);
+  assert.match(move, /let dx = event\.clientX/, "dx must be reassignable for the snap to adjust it");
+}
 
 console.log("magnet snapping: 7/7 checks passed");

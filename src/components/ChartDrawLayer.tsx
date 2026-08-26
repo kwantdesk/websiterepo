@@ -909,8 +909,33 @@ export default function ChartDrawLayer({
       if (drag.kind === "handle") onUpdate(updateDrawingHandle(drawing, drag.index, point));
       else {
         const rect = svgRef.current?.getBoundingClientRect();
-        const dx = event.clientX - (rect?.left ?? 0) - drag.startX;
-        const dy = event.clientY - (rect?.top ?? 0) - drag.startY;
+        let dx = event.clientX - (rect?.left ?? 0) - drag.startX;
+        let dy = event.clientY - (rect?.top ?? 0) - drag.startY;
+        // The magnet applies to MOVING a drawing, not only to placing one.
+        //
+        // This used to call fromXY straight, so a drawing snapped to a wick
+        // when it was first placed and then never again: drag it away and it
+        // floated free for the rest of its life. Every tool with a body behaved
+        // that way - the handles snapped because they run through localPoint,
+        // the body did not.
+        //
+        // The whole drawing is snapped through ONE anchor rather than each
+        // point independently: snapping points separately would pull them onto
+        // different candles and deform the shape the trader drew. The anchor's
+        // snapped pixel becomes the delta every point is translated by, so the
+        // geometry is carried across unchanged.
+        const anchorPixel = drag.originPixels[0];
+        if (anchorPixel?.x != null && anchorPixel?.y != null) {
+          const snapped = snapAt(anchorPixel.x + dx, anchorPixel.y + dy, { velocityAware: true });
+          if (snapped) {
+            const snappedX = toX(snapped.time);
+            const snappedY = toY(snapped.price);
+            if (snappedX != null && snappedY != null) {
+              dx = snappedX - anchorPixel.x;
+              dy = snappedY - anchorPixel.y;
+            }
+          }
+        }
         // Translated in pixels, so what the trader sees keeps the shape they
         // drew. A point the projection cannot place keeps its stored anchor
         // rather than being invented at the pane edge.
