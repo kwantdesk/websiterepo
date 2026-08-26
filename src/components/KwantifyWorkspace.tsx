@@ -36,7 +36,7 @@ import {
   type GexVueReplayState,
 } from "@/lib/gexVueReplay";
 
-import { Activity as ReactActivity, memo, startTransition, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { Activity as ReactActivity, memo, startTransition, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
 import dynamic from "next/dynamic";
 import Image from "next/image";
@@ -549,6 +549,10 @@ const BOTTOM_PANEL_COLLAPSE_SNAP_HEIGHT = 72;
 const CHART_TOP_BAR_HEIGHT = 40;
 const RIGHT_PANEL_MIN_WIDTH = 64;
 const RIGHT_PANEL_MAX_WIDTH = 1600;
+// The icon rail's own width, and the key that remembers whether it is tucked
+// away. Both live here so the drag maths and the transform cannot drift apart.
+const RAIL_WIDTH_PX = 44;
+const RAIL_HIDDEN_STORAGE_KEY = "kwantdesk:right-rail-hidden:v1";
 const RIGHT_PANEL_DEFAULT_WIDTH = 280;
 type RightPanel = "order" | "watchlist" | "gex" | "zyon" | "kwantbot" | "optionstape" | "alerts" | "alertslog" | "friends" | "messages";
 
@@ -9614,6 +9618,15 @@ export default function KwantifyWorkspace({
   // mismatch: a refresh painted the server's default-open watchlist for the
   // seconds hydration took, then snapped it shut.
   const [rightPanel, setRightPanel] = useState<RightPanel | null>(null);
+  // The icon rail can be pushed off the right edge entirely and pulled back by
+  // its own tab. On a phone those 44px are a real share of the screen, and the
+  // tab was previously only able to REOPEN a panel - there was no way to get
+  // the rail itself out of the way.
+  const [railHidden, setRailHidden] = useState(false);
+  // Live pixel offset while the tab is being dragged, so the rail tracks the
+  // finger instead of snapping when it is released.
+  const [railDragPx, setRailDragPx] = useState<number | null>(null);
+  const railDragRef = useRef<{ startX: number; startHidden: boolean } | null>(null);
   const [friendsInitialFriendId, setFriendsInitialFriendId] = useState("");
   const [lastOpenRightPanel, setLastOpenRightPanel] = useState<RightPanel>("watchlist");
   const rightPanelHydratedRef = useRef(false);
@@ -15649,6 +15662,61 @@ export default function KwantifyWorkspace({
     setRightPanel((current) => current === panel ? null : panel);
   };
 
+  useEffect(() => {
+    try {
+      setRailHidden(window.localStorage.getItem(RAIL_HIDDEN_STORAGE_KEY) === "1");
+    } catch {
+      // A rail that cannot read its own preference still has to render.
+    }
+  }, []);
+
+  // The tab is both a button and a handle. A press that never travels far is a
+  // tap and toggles; anything further is a drag and the release decides from
+  // where it ended up, so a half-hearted pull settles back rather than leaving
+  // the rail stranded mid-screen.
+  const RAIL_DRAG_COMMIT_PX = 22;
+  const beginRailDrag = (event: ReactPointerEvent<HTMLElement>) => {
+    railDragRef.current = { startX: event.clientX, startHidden: railHidden };
+    setRailDragPx(0);
+    const onMove = (moveEvent: PointerEvent) => {
+      const origin = railDragRef.current;
+      if (!origin) return;
+      const delta = moveEvent.clientX - origin.startX;
+      // Clamped to the rail's own width: it can sit anywhere between fully out
+      // and fully hidden, and nowhere else.
+      const travelled = origin.startHidden ? RAIL_WIDTH_PX + delta : delta;
+      setRailDragPx(Math.min(RAIL_WIDTH_PX, Math.max(0, travelled)));
+    };
+    const onEnd = (endEvent: PointerEvent) => {
+      const origin = railDragRef.current;
+      railDragRef.current = null;
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onEnd);
+      window.removeEventListener("pointercancel", onEnd);
+      setRailDragPx(null);
+      if (!origin) return;
+      const delta = endEvent.clientX - origin.startX;
+      if (Math.abs(delta) < 4) {
+        // A tap, not a drag.
+        setRailHidden((current) => {
+          const next = !current;
+          try { window.localStorage.setItem(RAIL_HIDDEN_STORAGE_KEY, next ? "1" : "0"); } catch { /* preference only */ }
+          return next;
+        });
+        if (railHidden || rightPanel) return;
+        reopenRightPanel();
+        return;
+      }
+      const travelled = origin.startHidden ? RAIL_WIDTH_PX + delta : delta;
+      const next = travelled > RAIL_DRAG_COMMIT_PX;
+      setRailHidden(next);
+      try { window.localStorage.setItem(RAIL_HIDDEN_STORAGE_KEY, next ? "1" : "0"); } catch { /* preference only */ }
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onEnd);
+    window.addEventListener("pointercancel", onEnd);
+  };
+
   const reopenRightPanel = () => {
     if (lastOpenRightPanel === "gex") {
       setRightPanelWidth((current) => Math.max(360, current));
@@ -20118,11 +20186,21 @@ export default function KwantifyWorkspace({
           )}
         </div>
       )}
-      <div className={`relative z-40 w-[44px] shrink-0 flex-col items-center gap-2 border-l border-border bg-panel py-3 ${bottomWorkspaceSection === "backtesting" ? "hidden" : "flex"}`}>
+      <div
+        className={`relative z-40 w-[44px] shrink-0 flex-col items-center gap-2 border-l border-border bg-panel py-3 ${bottomWorkspaceSection === "backtesting" ? "hidden" : "flex"}`}
+        style={{
+          // While dragging, follow the finger. Otherwise rest at one end or the
+          // other. The margin is what stops a hidden rail leaving a 44px gutter
+          // of empty panel behind it — the chart takes the space back.
+          transform: `translateX(${railDragPx ?? (railHidden ? RAIL_WIDTH_PX : 0)}px)`,
+          marginRight: `-${railDragPx ?? (railHidden ? RAIL_WIDTH_PX : 0)}px`,
+          transition: railDragPx == null ? "transform 180ms ease, margin-right 180ms ease" : "none",
+        }}
+      >
         <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-14 z-10 h-px -translate-y-px bg-border" />
-        {!rightPanel && (
+        {(railHidden || !rightPanel) && (
           <button
-            title={`Reopen ${
+            title={railHidden ? "Drag out or tap to bring the rail back" : `Drag right to hide the rail, or reopen ${
               lastOpenRightPanel === "alertslog"
                 ? "Alerts Log"
                 : lastOpenRightPanel === "gex"
@@ -20139,10 +20217,13 @@ export default function KwantifyWorkspace({
                     ? "Messages"
                   : lastOpenRightPanel.charAt(0).toUpperCase() + lastOpenRightPanel.slice(1)
             }`}
-            onClick={reopenRightPanel}
-            className="absolute -left-3 top-1/2 z-20 flex h-12 w-3 -translate-y-1/2 items-center justify-center rounded-l-full border border-r-0 border-border bg-panel text-muted shadow-lg transition-colors hover:bg-surface hover:text-foreground"
+            onPointerDown={beginRailDrag}
+            aria-label={railHidden ? "Show the side rail" : "Hide the side rail"}
+            // Taller and a touch wider than it was: on a phone this is the only
+            // thing to aim at, and a 3px strip is not a touch target.
+            className="absolute -left-3 top-1/2 z-20 flex h-20 w-3.5 -translate-y-1/2 touch-none select-none items-center justify-center rounded-l-full border border-r-0 border-border bg-panel text-muted shadow-lg transition-colors hover:bg-surface hover:text-foreground"
           >
-            <ChevronLeft className="h-3 w-3" />
+            <ChevronLeft className={`h-3 w-3 transition-transform ${railHidden ? "rotate-180" : ""}`} />
           </button>
         )}
         {[
