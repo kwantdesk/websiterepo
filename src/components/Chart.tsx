@@ -457,9 +457,7 @@ import {
   paperContractSpec,
   paperFillCandleTimestamp,
   paperProjectedPnl,
-  PAPER_MARK_QUOTE_EVENT,
   snapPaperPrice,
-  type PaperMarkQuote,
   type PaperProtectionUpdate,
   type PaperOrder,
   type PaperPosition,
@@ -1753,27 +1751,7 @@ class PaperFillMarkersPrimitive implements ISeriesPrimitive<Time> {
   paneViews() { return [this.markerView]; }
 }
 
-type PaperPositionOverlayRenderLevel = {
-  id: string;
-  price: number;
-  label: string;
-  color: string;
-  kind: "entry" | "stop_loss" | "take_profit";
-  showStopHandle?: boolean;
-  showTakeProfitHandle?: boolean;
-  showClose?: boolean;
-  stopColor?: string;
-  takeProfitColor?: string;
-  livePosition?: {
-    symbol: string;
-    side: "buy" | "sell";
-    quantity: number;
-    entryPrice: number;
-    fallbackMarkPrice: number;
-  };
-};
 
-type PaperOverlayQuoteEventDetail = PaperMarkQuote & { paneId: string };
 
 function paperPositionSizeLabel(side: "buy" | "sell", quantity: number) {
   const absoluteQuantity = Math.max(0, Math.abs(quantity));
@@ -1841,180 +1819,22 @@ function paperLabelWidthPx(text: string, handleCount: number, showClose: boolean
   return Math.min(PAPER_LABEL_MAX_WIDTH, Math.max(PAPER_LABEL_MIN_WIDTH, wanted));
 }
 
-/** Trim to what fits, with an ellipsis, rather than distorting the glyphs. */
-function paperLabelFittedText(text: string, availablePx: number): string {
-  const maxChars = Math.floor(availablePx / PAPER_LABEL_CHAR_PX);
-  if (maxChars >= text.length) return text;
-  if (maxChars < 2) return "";
-  return `${text.slice(0, maxChars - 1)}…`;
-}
 
-class PaperPositionOverlayRenderer implements ISeriesPrimitivePaneRenderer {
-  constructor(private readonly primitive: PaperPositionOverlayPrimitive) {}
+/**
+ * The order labels used to be painted here, as a Lightweight Charts primitive
+ * on the chart canvas. They are DOM now.
+ *
+ * A canvas primitive cannot paint above the drawing layer: drawings are an SVG
+ * overlay stacked on top of the chart, so a trendline drawn across a stop
+ * covered the label reporting it. Moving the labels into the overlay that
+ * already carried their click targets puts them above the drawings and
+ * collapses the two renderers that had to be kept pixel-identical into one.
+ *
+ * What the canvas gave for free was position on every frame. The DOM nodes get
+ * that from repositionPaperOverlays, which runs on the same frame the drawing
+ * layer reprojects on.
+ */
 
-  draw(target: Parameters<ISeriesPrimitivePaneRenderer["draw"]>[0]) {
-    const series = this.primitive.series();
-    if (!series) return;
-
-    target.useMediaCoordinateSpace(({ context, mediaSize }) => {
-      context.save();
-      context.font = `700 ${PAPER_LABEL_FONT_PX}px 'JetBrains Mono', monospace`;
-      context.textBaseline = "middle";
-      const labelHeight = PAPER_LABEL_HEIGHT;
-
-      for (const level of this.primitive.levels()) {
-        const y = series.priceToCoordinate(level.price);
-        if (y === null || y < -labelHeight || y > mediaSize.height + labelHeight) continue;
-        const livePnl = level.kind === "entry" && level.livePosition
-          ? paperPositionLivePnl({
-              symbol: level.livePosition.symbol,
-              side: level.livePosition.side,
-              entryPrice: level.livePosition.entryPrice,
-              markPrice: level.livePosition.fallbackMarkPrice,
-              remainingQuantity: level.livePosition.quantity,
-            }, this.primitive.marketQuote())
-          : null;
-        const renderedLabel = livePnl === null || !level.livePosition
-          ? level.label
-          : `${paperPositionSizeLabel(level.livePosition.side, level.livePosition.quantity)} · ${livePnl > 0 ? "+" : livePnl < 0 ? "-" : ""}$${Math.abs(livePnl).toFixed(2)}`;
-        // The box grows with its own text so a working order's price is not
-        // trimmed away, then stops at the pane edge on a narrow chart.
-        const handleCount = level.kind === "entry"
-          ? Number(Boolean(level.showStopHandle)) + Number(Boolean(level.showTakeProfitHandle))
-          : 0;
-        // Sized from level.label, which is the string React also has, so the
-        // HTML twin can reach the identical width without measuring. The live
-        // P&L variant is only ever shorter and is fitted into that same box.
-        const labelWidth = Math.min(
-          Math.max(PAPER_LABEL_HEIGHT, mediaSize.width - 8),
-          paperLabelWidthPx(level.label, handleCount, Boolean(level.showClose)),
-        );
-        const labelX = Math.max(0, mediaSize.width - labelWidth - 4);
-
-        context.save();
-        context.globalAlpha = 0.92;
-        context.strokeStyle = level.color;
-        context.lineWidth = 1;
-        context.setLineDash(level.kind === "entry" ? [] : [5, 4]);
-        context.beginPath();
-        context.moveTo(0, y + 0.5);
-        context.lineTo(mediaSize.width, y + 0.5);
-        context.stroke();
-        context.restore();
-
-        const labelTop = y - labelHeight / 2;
-        context.save();
-        context.globalAlpha = 0.96;
-        context.fillStyle = this.primitive.backgroundColor();
-        context.fillRect(labelX, labelTop, labelWidth, labelHeight);
-        context.globalAlpha = 1;
-        context.strokeStyle = level.color;
-        context.lineWidth = 1;
-        context.strokeRect(labelX + 0.5, labelTop + 0.5, labelWidth - 1, labelHeight - 1);
-        let textLeft = labelX + PAPER_LABEL_PAD_X;
-        if (level.kind === "entry" && level.showStopHandle) {
-          context.fillStyle = level.stopColor ?? level.color;
-          context.fillText("SL", labelX + 5 * PAPER_LABEL_SCALE, y, 15 * PAPER_LABEL_SCALE);
-          context.strokeStyle = level.color;
-          context.beginPath();
-          context.moveTo(labelX + PAPER_LABEL_HANDLE_WIDTH + 0.5, labelTop + 1);
-          context.lineTo(labelX + PAPER_LABEL_HANDLE_WIDTH + 0.5, labelTop + labelHeight - 1);
-          context.stroke();
-          textLeft += PAPER_LABEL_HANDLE_WIDTH;
-        }
-        if (level.kind === "entry" && level.showTakeProfitHandle) {
-          // The divider closes this handle's cell, so it is measured from the
-          // cell's own left edge rather than from the text inset inside it.
-          const takeProfitDivider = textLeft + PAPER_LABEL_HANDLE_WIDTH - PAPER_LABEL_PAD_X + 0.5;
-          context.fillStyle = level.takeProfitColor ?? level.color;
-          context.fillText("TP", textLeft - 2 * PAPER_LABEL_SCALE, y, 15 * PAPER_LABEL_SCALE);
-          context.strokeStyle = level.color;
-          context.beginPath();
-          context.moveTo(takeProfitDivider, labelTop + 1);
-          context.lineTo(takeProfitDivider, labelTop + labelHeight - 1);
-          context.stroke();
-          textLeft += PAPER_LABEL_HANDLE_WIDTH;
-        }
-        const closeWidth = level.showClose ? PAPER_LABEL_CLOSE_WIDTH : 0;
-        if (closeWidth) {
-          context.strokeStyle = level.color;
-          context.beginPath();
-          context.moveTo(labelX + labelWidth - closeWidth - 0.5, labelTop + 1);
-          context.lineTo(labelX + labelWidth - closeWidth - 0.5, labelTop + labelHeight - 1);
-          context.stroke();
-          context.fillStyle = level.color;
-          context.fillText("×", labelX + labelWidth - 12 * PAPER_LABEL_SCALE, y, 10 * PAPER_LABEL_SCALE);
-        }
-        context.beginPath();
-        context.rect(textLeft, labelTop + 1, labelX + labelWidth - closeWidth - textLeft - 2, labelHeight - 2);
-        context.clip();
-        context.fillStyle = level.color;
-        // No maxWidth argument: that is what condensed the glyphs. Anything
-        // still too long for the bounded box is trimmed with an ellipsis.
-        context.fillText(
-          paperLabelFittedText(renderedLabel, labelX + labelWidth - closeWidth - textLeft - 4 * PAPER_LABEL_SCALE),
-          textLeft,
-          y,
-        );
-        context.restore();
-      }
-      context.restore();
-    });
-  }
-}
-
-class PaperPositionOverlayView implements ISeriesPrimitivePaneView {
-  private readonly overlayRenderer: PaperPositionOverlayRenderer;
-
-  constructor(primitive: PaperPositionOverlayPrimitive) {
-    this.overlayRenderer = new PaperPositionOverlayRenderer(primitive);
-  }
-
-  zOrder() { return "top" as const; }
-  renderer() { return this.overlayRenderer; }
-}
-
-class PaperPositionOverlayPrimitive implements ISeriesPrimitive<Time> {
-  private candleSeries: CandleSeriesApi | null = null;
-  private requestRedraw: (() => void) | null = null;
-  private renderLevels: PaperPositionOverlayRenderLevel[] = [];
-  private chartBackground = "#050608";
-  private liveMarketQuote: PaperMarkQuote | null = null;
-  private readonly overlayView = new PaperPositionOverlayView(this);
-
-  attached(param: SeriesAttachedParameter<Time, "Candlestick">) {
-    this.candleSeries = param.series as CandleSeriesApi;
-    this.requestRedraw = param.requestUpdate;
-  }
-
-  detached() {
-    this.candleSeries = null;
-    this.requestRedraw = null;
-  }
-
-  update(levels: PaperPositionOverlayRenderLevel[], backgroundColor: string) {
-    this.renderLevels = levels;
-    this.chartBackground = backgroundColor;
-    this.requestRedraw?.();
-  }
-
-  updateMarketQuote(quote: PaperMarkQuote) {
-    if (!Number.isFinite(quote.bid) || !Number.isFinite(quote.ask) || quote.bid <= 0 || quote.ask <= 0) return;
-    if (
-      this.liveMarketQuote?.bid === quote.bid
-      && this.liveMarketQuote.ask === quote.ask
-      && this.liveMarketQuote.timestamp === quote.timestamp
-    ) return;
-    this.liveMarketQuote = quote;
-    this.requestRedraw?.();
-  }
-
-  series() { return this.candleSeries; }
-  levels() { return this.renderLevels; }
-  marketQuote() { return this.liveMarketQuote; }
-  backgroundColor() { return this.chartBackground; }
-  paneViews() { return [this.overlayView]; }
-}
 
 type DrawingToolId =
   | "cursor"
@@ -3327,7 +3147,33 @@ function Chart({
   const footprintProfileBuildCacheRef = useRef<FootprintBuildCache | null>(null);
   const pocAuctionBuildCacheRef = useRef<FootprintBuildCache | null>(null);
   const paperFillMarkersPrimitiveRef = useRef<PaperFillMarkersPrimitive | null>(null);
-  const paperPositionOverlayPrimitiveRef = useRef<PaperPositionOverlayPrimitive | null>(null);
+  /**
+   * The order labels are DOM, not canvas, because they have to sit above the
+   * drawing layer - a trendline drawn across a stop must not cover it.
+   *
+   * DOM costs their position: React commits coordinate overlays on a 64ms
+   * transition, so left to React alone a label would trail the candles by
+   * about four frames during a pan. These nodes are therefore repositioned
+   * imperatively on the same frame the drawing layer reprojects on.
+   */
+  const paperOverlayNodesRef = useRef(new Map<string, HTMLDivElement>());
+  const repositionPaperOverlays = useCallback(() => {
+    const series = candleSeriesRef.current;
+    if (!series) return;
+    for (const node of paperOverlayNodesRef.current.values()) {
+      const price = Number(node.dataset.paperPrice);
+      if (!Number.isFinite(price)) continue;
+      const y = series.priceToCoordinate(price);
+      if (y == null) {
+        // Off the visible price range: hide rather than pin it to an edge,
+        // which would read as a level sitting somewhere it is not.
+        node.style.visibility = "hidden";
+        continue;
+      }
+      node.style.visibility = "";
+      node.style.top = `${y}px`;
+    }
+  }, []);
   const footprintActiveRef = useRef(false);
   const footprintBarWidthRef = useRef<number | null>(null);
   const [paperDragPreview, setPaperDragPreview] = useState<{ id: string; price: number } | null>(null);
@@ -12494,9 +12340,6 @@ function Chart({
     const paperFillMarkersPrimitive = new PaperFillMarkersPrimitive();
     candleSeries.attachPrimitive(paperFillMarkersPrimitive);
     paperFillMarkersPrimitiveRef.current = paperFillMarkersPrimitive;
-    const paperPositionOverlayPrimitive = new PaperPositionOverlayPrimitive();
-    candleSeries.attachPrimitive(paperPositionOverlayPrimitive);
-    paperPositionOverlayPrimitiveRef.current = paperPositionOverlayPrimitive;
 
     const chartData = buildSafeChartData(
       candles,
@@ -13067,6 +12910,7 @@ function Chart({
         syncNativePriceScaleWidth();
         // Every frame of the pan, not every React commit.
         reprojectDrawingLayer();
+        repositionPaperOverlays();
         const elapsed = performance.now() - viewportRefreshLastAtRef.current;
         if (elapsed >= VIEWPORT_REACT_REFRESH_INTERVAL_MS) {
           if (viewportRefreshTimerRef.current !== null) {
@@ -13438,13 +13282,6 @@ function Chart({
             // Chart teardown can detach primitives before React cleanup runs.
           }
         }
-        if (candleSeriesRef.current && paperPositionOverlayPrimitiveRef.current) {
-          try {
-            candleSeriesRef.current.detachPrimitive(paperPositionOverlayPrimitiveRef.current);
-          } catch {
-            // Chart teardown can detach primitives before React cleanup runs.
-          }
-        }
         if (candleSeriesRef.current && tpoProfilePrimitiveRef.current) {
           try { candleSeriesRef.current.detachPrimitive(tpoProfilePrimitiveRef.current); } catch { /* chart may already be disposed */ }
         }
@@ -13501,7 +13338,6 @@ function Chart({
       smtDivergencePrimitiveRef.current = null;
       footprintPrimitiveRef.current = null;
       paperFillMarkersPrimitiveRef.current = null;
-      paperPositionOverlayPrimitiveRef.current = null;
       footprintActiveRef.current = false;
       footprintBarWidthRef.current = null;
       indicatorSeriesRefs.current = [];
@@ -14846,68 +14682,36 @@ function Chart({
     // feature not working.
   }, [armedOrder, chartReadyRevision, instrument, onArmedOrderCancel, onArmedOrderPick]);
 
-  useEffect(() => {
-    const primitive = paperPositionOverlayPrimitiveRef.current;
-    if (!primitive) return;
-    const levels: PaperPositionOverlayRenderLevel[] = paperOverlayLevels.map((level) => ({
-      id: level.id,
-      price: level.price,
-      label: level.label,
-      color: level.color,
-      kind: level.kind,
-      showStopHandle: level.kind === "entry" && Boolean(onUpdatePaperProtection) && level.position.stopLoss === null,
-      showTakeProfitHandle: level.kind === "entry"
-        && Boolean(onUpdatePaperProtection)
-        && !level.position.takeProfits.some((target) => target.quantity > target.filledQuantity),
-      showClose: level.kind === "entry"
-        ? Boolean(onClosePaperPosition)
-        : Boolean(onUpdatePaperProtection),
-      stopColor: settings.downColor,
-      takeProfitColor: settings.upColor,
-      // A resting order has no live profit and loss, because there is no
-      // position. Handing the renderer a livePosition made it replace the
-      // order's own label — "BUY 2 LIMIT · working" — with a size and a
-      // running dollar figure measured from the limit price against the
-      // market, so an untouched order read as an open trade.
-      livePosition: level.kind === "entry" && !level.resting ? {
-        symbol: level.position.symbol,
-        side: level.position.side,
-        quantity: level.position.remainingQuantity,
-        entryPrice: level.position.entryPrice,
-        fallbackMarkPrice: level.position.markPrice,
-      } : undefined,
-    }));
-    if (paperDraftOverlayLevel) {
-      levels.push({
-        id: paperDraftOverlayLevel.id,
-        price: paperDraftOverlayLevel.price,
-        label: paperDraftOverlayLevel.label,
-        color: paperDraftOverlayLevel.color,
-        kind: paperDraftOverlayLevel.kind,
-      });
-    }
-    if (armedOrder && armedOrderPrice !== null) {
-      levels.push({
-        id: "armed-order",
-        price: armedOrderPrice,
-        label: `${armedOrder.side === "buy" ? "BUY" : "SELL"} ${armedOrder.quantity} ${armedOrder.type.toUpperCase()} · ${armedOrderPrice.toFixed(priceFormat.precision)} · click to place`,
-        color: armedOrder.side === "buy" ? settings.upColor : settings.downColor,
-        kind: "entry",
-      });
-    }
-    primitive.update(levels, settings.backgroundColor);
-  }, [armedOrder, armedOrderPrice, candles, onCancelWorkingOrder, onClosePaperPosition, onUpdatePaperProtection, paperDraftOverlayLevel, paperOverlayLevels, priceFormat.precision, settings.backgroundColor, settings.downColor, settings.upColor]);
 
+  /**
+   * Levels that exist only while the trader is acting: the protection being
+   * dragged, and an armed order waiting for the click that places it. They
+   * carry no position, so they render as a plain label with no handles.
+   */
+  const paperOverlayPreviewLevels = [
+    ...(paperDraftOverlayLevel ? [{
+      id: paperDraftOverlayLevel.id,
+      price: paperDraftOverlayLevel.price,
+      label: paperDraftOverlayLevel.label,
+      color: paperDraftOverlayLevel.color,
+      kind: paperDraftOverlayLevel.kind,
+      y: candleSeriesRef.current?.priceToCoordinate(paperDraftOverlayLevel.price) ?? null,
+    }] : []),
+    ...(armedOrder && armedOrderPrice !== null ? [{
+      id: "armed-order",
+      price: armedOrderPrice,
+      label: `${armedOrder.side === "buy" ? "BUY" : "SELL"} ${armedOrder.quantity} ${armedOrder.type.toUpperCase()} · ${armedOrderPrice.toFixed(priceFormat.precision)} · click to place`,
+      color: armedOrder.side === "buy" ? settings.upColor : settings.downColor,
+      kind: "entry" as const,
+      y: candleSeriesRef.current?.priceToCoordinate(armedOrderPrice) ?? null,
+    }] : []),
+  ].filter((level): level is typeof level & { y: number } => Number.isFinite(level.y));
+
+  // Levels move with the data, not only with the viewport, so re-place them on
+  // every commit as well as on every pan frame.
   useEffect(() => {
-    if (!liveCandleEventKey) return;
-    const receive = (event: Event) => {
-      const detail = (event as CustomEvent<PaperOverlayQuoteEventDetail>).detail;
-      if (!detail || detail.paneId !== liveCandleEventKey) return;
-      paperPositionOverlayPrimitiveRef.current?.updateMarketQuote(detail);
-    };
-    window.addEventListener(PAPER_MARK_QUOTE_EVENT, receive);
-    return () => window.removeEventListener(PAPER_MARK_QUOTE_EVENT, receive);
-  }, [liveCandleEventKey]);
+    repositionPaperOverlays();
+  });
   const matchingPaperFills = paperFills
     .filter((fill) => normalizePaperSymbol(fill.symbol) === normalizePaperSymbol(instrument));
   const constrainedPaperProtectionPrice = (
@@ -16007,18 +15811,40 @@ function Chart({
       {paperOverlayLevels.map((level) => (
         <div
           key={level.id}
+          ref={(node) => {
+            if (node) paperOverlayNodesRef.current.set(level.id, node);
+            else paperOverlayNodesRef.current.delete(level.id);
+          }}
+          data-paper-price={level.price}
           className="pointer-events-none absolute left-0 z-[31]"
           style={{
             right: nativePriceScaleWidth,
             top: level.y,
           }}
         >
+          {/*
+            * The level's own price line. It used to be painted on the chart
+            * canvas alongside the label; both moved here so the line and the
+            * box can never separate, and so they sit above the drawing layer.
+            */}
+          <div
+            className="pointer-events-none absolute left-0 right-0 -translate-y-1/2"
+            style={{
+              top: 0,
+              borderTopWidth: 1,
+              borderTopStyle: level.kind === "entry" ? "solid" : "dashed",
+              borderTopColor: level.color,
+              opacity: 0.92,
+            }}
+          />
           {level.kind === "entry" ? (
             <div
-              className="paper-position-overlay-label pointer-events-auto absolute right-1 flex -translate-y-1/2 items-center overflow-hidden opacity-0"
+              className="paper-position-overlay-label pointer-events-auto absolute right-1 flex -translate-y-1/2 items-center overflow-hidden border font-mono font-bold"
               style={{
                 borderColor: level.color,
                 color: level.color,
+                backgroundColor: settings.backgroundColor,
+                fontSize: PAPER_LABEL_FONT_PX,
                 height: PAPER_LABEL_HEIGHT,
                 width: paperLabelWidthPx(
                   level.label,
@@ -16092,10 +15918,12 @@ function Chart({
             </div>
           ) : (
             <div
-              className="paper-protection-overlay-label pointer-events-auto absolute right-1 flex -translate-y-1/2 items-stretch overflow-hidden opacity-0"
+              className="paper-protection-overlay-label pointer-events-auto absolute right-1 flex -translate-y-1/2 items-stretch overflow-hidden border font-mono font-bold"
               style={{
                 borderColor: level.color,
                 color: level.color,
+                backgroundColor: settings.backgroundColor,
+                fontSize: PAPER_LABEL_FONT_PX,
                 height: PAPER_LABEL_HEIGHT,
                 width: paperLabelWidthPx(level.label, 0, true),
                 maxWidth: "calc(100% - 8px)",
@@ -16126,6 +15954,48 @@ function Chart({
               </button>
             </div>
           )}
+        </div>
+      ))}
+      {paperOverlayPreviewLevels.map((level) => (
+        <div
+          key={level.id}
+          ref={(node) => {
+            if (node) paperOverlayNodesRef.current.set(level.id, node);
+            else paperOverlayNodesRef.current.delete(level.id);
+          }}
+          data-paper-price={level.price}
+          className="pointer-events-none absolute left-0 z-[31]"
+          style={{ right: nativePriceScaleWidth, top: level.y }}
+        >
+          <div
+            className="pointer-events-none absolute left-0 right-0 -translate-y-1/2"
+            style={{
+              top: 0,
+              borderTopWidth: 1,
+              borderTopStyle: level.kind === "entry" ? "solid" : "dashed",
+              borderTopColor: level.color,
+              opacity: 0.92,
+            }}
+          />
+          <div
+            className="pointer-events-none absolute right-1 flex -translate-y-1/2 items-center overflow-hidden border font-mono font-bold"
+            style={{
+              borderColor: level.color,
+              color: level.color,
+              backgroundColor: settings.backgroundColor,
+              fontSize: PAPER_LABEL_FONT_PX,
+              height: PAPER_LABEL_HEIGHT,
+              width: paperLabelWidthPx(level.label, 0, false),
+              maxWidth: "calc(100% - 8px)",
+            }}
+          >
+            <span
+              className="min-w-0 flex-1 truncate"
+              style={{ paddingLeft: PAPER_LABEL_PAD_X, paddingRight: PAPER_LABEL_PAD_X }}
+            >
+              {level.label}
+            </span>
+          </div>
         </div>
       ))}
       {paperOverlayLevels.filter((level) => level.kind === "entry").map((level) => (
