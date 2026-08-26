@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { logProviderError, providerErrorMessage } from "@/lib/providerErrorMessage";
 import { unstable_cache } from "next/cache";
 import { gzipSync, gunzipSync } from "node:zlib";
 import {
@@ -348,8 +349,9 @@ export async function GET(request: Request) {
         { headers: { "Cache-Control": "private, no-store, max-age=0" } },
       );
     }
+    logProviderError("cme-history", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message.replaceAll("Databento", "CME") : "CME history failed." },
+      { error: providerErrorMessage(error, "CME history") },
       { status: 502 },
     );
   }

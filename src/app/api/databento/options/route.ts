@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { logProviderError, providerErrorMessage } from "@/lib/providerErrorMessage";
 import { getDatabentoOptions } from "@/lib/databento";
 import { vendorMarketDataConfigured } from "@/lib/vendorMarketData.server";
 
@@ -16,8 +17,9 @@ export async function GET() {
       { headers: { "Cache-Control": "private, max-age=300" } },
     );
   } catch (error) {
+    logProviderError("databento-options", error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message.replaceAll("Databento", "CME") : "Unable to load CME option definitions." },
+      { error: providerErrorMessage(error, "Options data") },
       { status: 502 },
     );
   }

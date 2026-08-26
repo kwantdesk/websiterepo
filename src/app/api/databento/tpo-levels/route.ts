@@ -1,4 +1,5 @@
 import { unstable_cache } from "next/cache";
+import { logProviderError, providerErrorMessage } from "@/lib/providerErrorMessage";
 import { NextResponse } from "next/server";
 import { nextCmeDailyCompletion } from "@/lib/cmeProfileWindows";
 import {
@@ -166,8 +167,12 @@ export async function GET(request: Request) {
       });
     }
     const authFailure = error instanceof DatabentoTpoAuthError;
+    logProviderError("tpo-levels", error);
+    // An auth failure keeps its own status so the client can tell a session
+    // problem from an outage, but not its own TEXT: the provider's words there
+    // name the credential state, which is the trader's business least of all.
     return NextResponse.json(
-      { error: authFailure ? error.message : error instanceof Error ? error.message : "TPO Levels failed." },
+      { error: providerErrorMessage(error, "TPO levels") },
       { status: authFailure ? 401 : 502 },
     );
   }
