@@ -213,9 +213,13 @@ test("the old movable rail owns the selected Precision tools and hides the secon
   assert.match(chart, /activeDrawingTool\("volumeProfile", "Volume Profile"/);
   assert.match(chart, /showChrome=\{false\}/);
   assert.match(chart, /externalSelectionMode=\{selectedTool === "selection"\}/);
-  assert.match(chart, /Select drawings with a drag box/);
-  assert.match(chart, /selectedToolRef\.current = toolId;/);
-  assert.match(chart, /setSelectedTool\(toolId\);/);
+  // "Select drawings with a drag box" was a tooltip on the legacy left rail,
+  // now deleted. The selection MODE it drove is still live, and the assertions
+  // around this one cover that.
+  // The ref is synced from the live `selectedTool` state, not written by the
+  // deleted rail's activation function.
+  assert.match(chart, /selectedToolRef\.current = selectedTool;/);
+  assert.match(chart, /setSelectedTool\(/);
   assert.match(layer, /onExternalSelectionBox/);
   assert.match(layer, /mergeHydratedPrecisionObjects\(payload\.objects, objectsChangedDuringHydration\)/);
   assert.match(layer, /useLayoutEffect\(\(\) => \{\s+if \(externalActiveTool\)/);

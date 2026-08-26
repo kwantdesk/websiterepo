@@ -16,13 +16,15 @@ const check = (name, fn) => { fn(); passed += 1; console.log(`  ok  ${name}`); }
 const chartSource = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
 const toolbarSource = readFileSync(new URL("../src/components/ChartDrawToolbar.tsx", import.meta.url), "utf8");
 
-check("the legacy left rail is still disabled", () => {
-  assert.match(
-    chartSource,
-    /const LEGACY_LEFT_TOOLBAR_ENABLED = false;/,
-    "LEGACY_LEFT_TOOLBAR_ENABLED changed. If the old rail is being revived that is a deliberate\n"
-    + "decision, but CLAUDE.md section 8 and this test must be updated with it.",
-  );
+check("the legacy left rail is gone, not merely switched off", () => {
+  // It used to be 536 lines of JSX behind `LEGACY_LEFT_TOOLBAR_ENABLED = false`
+  // - permanently unrendered, but still the first drawing toolbar anyone found
+  // when searching this file, and repeatedly the one edited by mistake.
+  // Deleting it is what makes ChartDrawToolbar the only answer.
+  assert.doesNotMatch(chartSource, /LEGACY_LEFT_TOOLBAR_ENABLED/,
+    "the dead rail is back; reviving it is a deliberate decision, but CLAUDE.md section 8 and this test must change with it");
+  assert.doesNotMatch(chartSource, /function activateToolbarTool/,
+    "activateToolbarTool only ever served the dead rail");
 });
 
 check("the mounted toolbar reads from chartDrawTools", () => {

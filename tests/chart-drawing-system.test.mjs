@@ -36,7 +36,9 @@ test("the live chart rail preserves the legacy actions inside the reconstructed 
   assert.match(toolbarCatalog, /TRADINGVIEW_TOOLBAR_TOOL_COUNT = 93/);
   assert.match(chart, /const ACTIVE_DRAWING_TOOLBAR_GROUPS: ToolbarGroup\[\] = RECONSTRUCTED_GROUP_ORDER\.flatMap/);
   assert.match(chart, /TRADINGVIEW_TOOLBAR_TOOL_IDS\.has\(tool\.id\)/);
-  assert.match(chart, /TRADINGVIEW_TOOLBAR_BY_APP_TOOL\.get\(tool\.id\)/);
+  // Still the catalog that orders the live groups, just no longer read by a
+  // per-row lookup in the deleted rail.
+  assert.match(chart, /TRADINGVIEW_TOOLBAR_BY_APP_TOOL\.get\(/);
   assert.doesNotMatch(toolbarCatalog, /Soon/);
 });
 
@@ -68,10 +70,17 @@ test("drawing controls include history, clipboard, templates, magnet and keep mo
   assert.match(chart, /professionalPendingAnchorsRef\.current\.pop\(\)/);
 });
 
-test("a drawing menu row activates its tool on the first click", () => {
-  assert.match(chart, /function activateToolbarTool\(toolId: DrawingToolId\)/);
-  assert.match(chart, /selectedToolRef\.current = toolId;[\s\S]*?claimChartInteraction\("legacy-tools"\);[\s\S]*?setSelectedTool\(toolId\)/);
-  assert.match(chart, /onClick=\{\(\) => \{\s*if \(implemented\) activateToolbarTool\(tool\.id\);\s*\}\}/);
+test("the dead rail's menu rows are gone with the rail", () => {
+  // This used to assert that a row in the legacy left toolbar activated its
+  // tool on the first click. That toolbar never rendered - these assertions
+  // were holding 536 lines of unreachable JSX in place. The live rail is
+  // ChartDrawToolbar and its own tests cover it.
+  assert.doesNotMatch(chart, /function activateToolbarTool/);
+  assert.doesNotMatch(chart, /LEGACY_LEFT_TOOLBAR_ENABLED/);
+  // What must still hold: selecting a tool goes through the live state.
+  // The ref is synced from the live `selectedTool` state, not written by the
+  // deleted rail's activation function.
+  assert.match(chart, /selectedToolRef\.current = selectedTool;/);
 });
 
 test("completed line tools open their style and template editor on double-click", () => {
