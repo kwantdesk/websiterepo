@@ -52,6 +52,7 @@
     "test:big-block-width": "node --import ./scripts/alias-hook.mjs scripts/test-big-block-width.mjs",
     "test:deploy-cost": "node --import ./scripts/alias-hook.mjs scripts/test-deploy-cost.mjs",
     "test:interval-menu": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-interval-menu.mjs",
+    "test:live-status-broadcast": "node scripts/test-live-status-broadcast.mjs",
     "test:provider-error-message": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-provider-error-message.mjs",
     "test:no-native-controls": "node scripts/test-no-native-controls.mjs",
     "test:draw-layer-anchoring": "node scripts/test-draw-layer-anchoring.mjs",

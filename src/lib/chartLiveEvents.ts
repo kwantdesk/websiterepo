@@ -189,15 +189,26 @@ export function readDatabentoLiveTail(symbol: string) {
 }
 
 export function publishDatabentoLiveStatus(status: DatabentoLiveStatus) {
+  // The freshness stamp always advances: readDatabentoLiveStatus treats an old
+  // stamp as "no status", so a live feed has to keep saying it is alive even
+  // when the value has not changed.
+  const previous = latestDatabentoLiveStatus?.status;
   latestDatabentoLiveStatus = {
     status,
     updatedAt: Date.now(),
   };
-  if (typeof window !== "undefined") {
-    window.dispatchEvent(new CustomEvent(DATABENTO_LIVE_STATUS_EVENT, {
-      detail: status,
-    }));
-  }
+  // The BROADCAST only fires on a change.
+  //
+  // markStreamAlive() calls this on every server signal, and measured on a
+  // two-pane chart in pre-market that was 40 dispatches a SECOND - three for
+  // every tick - each one a CustomEvent waking every listener in every open
+  // workspace to be told the feed is still live. Status is a small enum;
+  // re-announcing an unchanged value is pure allocation and wakeups, and it
+  // scales with panes and with tick rate, which is exactly the wrong way round.
+  if (typeof window === "undefined" || previous === status) return;
+  window.dispatchEvent(new CustomEvent(DATABENTO_LIVE_STATUS_EVENT, {
+    detail: status,
+  }));
 }
 
 export function readDatabentoLiveStatus(maxAgeMs = 30_000) {
