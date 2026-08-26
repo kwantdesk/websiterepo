@@ -51,6 +51,7 @@
     "test:mini-dom-edge": "node --import ./scripts/alias-hook.mjs scripts/test-mini-dom-edge.mjs",
     "test:big-block-width": "node --import ./scripts/alias-hook.mjs scripts/test-big-block-width.mjs",
     "test:deploy-cost": "node --import ./scripts/alias-hook.mjs scripts/test-deploy-cost.mjs",
+    "test:draw-layer-anchoring": "node scripts/test-draw-layer-anchoring.mjs",
     "test:chart-text-tools": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-chart-text-tools.mjs",
     "test:index-history-timeout": "node scripts/test-index-history-timeout.mjs",
     "test:gex-flow-as-tool": "node scripts/test-gex-flow-as-tool.mjs",

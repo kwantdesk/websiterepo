@@ -15068,6 +15068,10 @@ function Chart({
             width={overlaySize.width}
             height={overlaySize.height}
             priceScaleWidth={nativePriceScaleWidth}
+            // Drawings belong to the price pane: above the candles, behind the
+            // stacked indicator panes and the axes.
+            plotTopInset={topIndicatorPaneHeight}
+            plotBottomInset={indicatorPaneHeight + CHART_TIME_AXIS_HEIGHT}
             // Every drawing tool follows the theme's bullish candle until the
             // trader picks a colour of its own.
             themeColor={settings.upColor}

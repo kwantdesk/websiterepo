@@ -1,6 +1,6 @@
 "use client";
 
-import { type PointerEvent as ReactPointerEvent, type ReactElement, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { type PointerEvent as ReactPointerEvent, type ReactElement, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   DRAW_TOOL_SPECS,
   FIB_CIRCLE_COEFFS,
@@ -31,6 +31,10 @@ type Props = {
    * it the way candles do.
    */
   priceScaleWidth?: number;
+  /** Height of any indicator panes docked ABOVE the price pane. */
+  plotTopInset?: number;
+  /** Height of the panes docked below, plus the time axis. */
+  plotBottomInset?: number;
   height: number;
   activeTool: DrawToolId;
   keepDrawing: boolean;
@@ -76,7 +80,8 @@ const TEXT_INPUT_TOOLS: DrawToolId[] = ["text", "note", "callout", "signpost", "
 
 export default function ChartDrawLayer({
   width, height, priceScaleWidth = 0, activeTool, keepDrawing, drawings, selectedId,
-  toX, toY, fromXY, candles, magnet, magnetStrength, viewportVersion, chartReady, subscribeViewport, onCommit, onUpdate, onDelete, onSelect, onToolConsumed, onRequestText, onOpenSettings, themeColor, themeBearColor,
+  toX, toY, fromXY, candles, magnet, magnetStrength, viewportVersion, chartReady, subscribeViewport,
+  plotTopInset = 0, plotBottomInset = 0, onCommit, onUpdate, onDelete, onSelect, onToolConsumed, onRequestText, onOpenSettings, themeColor, themeBearColor,
 }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [pending, setPending] = useState<{ tool: DrawToolId; points: DrawPoint[] } | null>(null);
@@ -450,7 +455,24 @@ export default function ChartDrawLayer({
     return { timeA, timeB, priceA, priceB, xA, xB, yA, yB };
   }, [candles, toX, toY]);
 
-  useEffect(() => {
+  // BEFORE paint, not after.
+  //
+  // This ran as a plain effect on every render, which on a live chart is
+  // constantly — every tick, every indicator sample. Effects fire AFTER the
+  // browser has painted, and by then the chart may already have moved past the
+  // coordinates this render drew. It stored that MOVED projection as the basis
+  // and stripped the compensating transform, so the drawings were left sitting
+  // at stale coordinates while the next viewport event measured its delta from
+  // an origin that never matched them. That is the jumping, and the reason a
+  // thrown chart left drawings somewhere they should not be: the error was
+  // recorded into the basis rather than corrected.
+  //
+  // useLayoutEffect runs synchronously after the DOM is updated and before the
+  // browser paints, so the basis is captured from the same projection the
+  // render actually used. Canvas primitives — volume profiles, TPO, Big
+  // Contracts — never had this problem because they paint inside the chart's
+  // own pass and cannot fall out of step with it.
+  useLayoutEffect(() => {
     // Fresh coordinates: drop any compensating transform from the last pan.
     projectionBasisRef.current = readProjection();
     drawingsGroupRef.current?.removeAttribute("transform");
@@ -1601,11 +1623,24 @@ export default function ChartDrawLayer({
         */}
       <defs>
         <clipPath id={plotClipId}>
+          {/*
+            * The PRICE PANE, not the whole layer.
+            *
+            * Vertically this used to overscan the full height, so a drawing
+            * could wash straight down over the Volume, CVD and Kwant Stats
+            * panes below — a price-pane drawing painting on top of other
+            * indicators' content. It now stops at the first pane docked below
+            * and starts below any docked above, so drawings sit above the
+            * candles and behind everything that is not the price pane.
+            *
+            * Horizontally it still stops at the price scale: drawings are chart
+            * content and slide under the axis rather than across it.
+            */}
           <rect
             x={-EDGE_OVERSCAN}
-            y={-EDGE_OVERSCAN}
+            y={plotTopInset}
             width={Math.max(0, width - priceScaleWidth) + EDGE_OVERSCAN}
-            height={height + EDGE_OVERSCAN * 2}
+            height={Math.max(1, height - plotTopInset - plotBottomInset)}
           />
         </clipPath>
       </defs>
