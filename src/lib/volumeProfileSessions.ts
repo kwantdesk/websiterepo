@@ -41,7 +41,7 @@ export const DEFAULT_SESSION_FILTER: SessionFilterConfig = {
 
 export type SessionSegment = {
   /** Stable identity used to label a split profile. */
-  id: "rth" | "eth" | "asia" | "london" | "newyork" | "custom";
+  id: "rth" | "eth" | "globex" | "asia" | "london" | "newyork" | "custom";
   label: string;
   startMs: number;
   endMs: number;
@@ -52,15 +52,49 @@ export const RTH_START_MINUTES = 8 * 60 + 30;
 export const RTH_END_MINUTES = 15 * 60 + 15;
 
 /**
- * The three sessions a futures desk actually reads, in exchange-local minutes.
- * Asia opens the trading day at the 17:00 Globex open and runs past midnight,
- * which is why its end is expressed beyond 1440.
+ * The sessions a futures desk actually reads, in exchange-local minutes.
+ *
+ * The CME electronic day opens at 17:00 Chicago, so every window here is
+ * expressed from that bell and the later ones run past 1440 into the next
+ * calendar day.
+ *
+ * Globex is the evening between the CME open and Tokyo: 09:00 JST is 19:00
+ * Chicago, so that is where Asia's cash session begins and where the opening
+ * Globex window ends. Splitting the two matters because the thin, headline-led
+ * hours straight after the bell trade nothing like Tokyo's session, and folding
+ * them together buries the Globex open's own value area inside Asia's.
+ *
+ * The stored filter mode is still spelled "triple" from when there were three
+ * of these. Renaming it would orphan every saved workspace, so the value stays
+ * and only what it resolves to has grown.
  */
-const TRIPLE_SEGMENTS: { id: SessionSegment["id"]; label: string; start: number; end: number }[] = [
-  { id: "asia", label: "Asia", start: 17 * 60, end: 26 * 60 },
-  { id: "london", label: "London", start: 26 * 60, end: RTH_START_MINUTES + 24 * 60 },
-  { id: "newyork", label: "New York", start: RTH_START_MINUTES + 24 * 60, end: RTH_END_MINUTES + 24 * 60 },
+const DESK_SESSION_SEGMENTS: {
+  id: SessionSegment["id"];
+  label: string;
+  /** The per-study flag that switches this window on. */
+  settingsKey: string;
+  start: number;
+  end: number;
+}[] = [
+  { id: "globex", label: "Globex", settingsKey: "sessionGlobexEnabled", start: 17 * 60, end: 19 * 60 },
+  { id: "asia", label: "Asia", settingsKey: "sessionAsiaEnabled", start: 19 * 60, end: 26 * 60 },
+  { id: "london", label: "London", settingsKey: "sessionLondonEnabled", start: 26 * 60, end: RTH_START_MINUTES + 24 * 60 },
+  { id: "newyork", label: "New York", settingsKey: "sessionNewYorkEnabled", start: RTH_START_MINUTES + 24 * 60, end: RTH_END_MINUTES + 24 * 60 },
 ];
+
+/**
+ * The desk sessions in draw order.
+ *
+ * The settings dialog, the toggle handler and the window resolver all read this
+ * one list, so a session cannot exist as a button without a window behind it or
+ * be drawn without a way to switch it off.
+ */
+export const DESK_SESSIONS: readonly { id: SessionSegment["id"]; label: string; settingsKey: string }[] =
+  DESK_SESSION_SEGMENTS.map(({ id, label, settingsKey }) => ({ id, label, settingsKey }));
+
+/** Every desk-session settings flag, in draw order. */
+export const DESK_SESSION_SETTING_KEYS: readonly string[] =
+  DESK_SESSION_SEGMENTS.map((segment) => segment.settingsKey);
 
 const minuteFormatter = new Intl.DateTimeFormat("en-US", {
   timeZone: CHICAGO_TIME_ZONE,
@@ -113,7 +147,7 @@ export function resolveSessionSegments(
 
   const spans: { id: SessionSegment["id"]; label: string; start: number; end: number }[] =
     config.mode === "triple"
-      ? TRIPLE_SEGMENTS
+      ? DESK_SESSION_SEGMENTS
       : config.window === "custom"
         ? [{
           id: "custom",

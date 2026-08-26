@@ -1947,6 +1947,7 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     gradientPreset: VOLUME_PROFILE_GRADIENT_OFF,
     // Which windows a split profile actually draws. All on reproduces the
     // untouched split; unticking one simply omits that profile.
+    sessionGlobexEnabled: true,
     sessionAsiaEnabled: true,
     sessionLondonEnabled: true,
     sessionNewYorkEnabled: true,
@@ -2375,6 +2376,7 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         // the granularity and value area across saved charts.
         groupingMode: "manual",
         gradientPreset: normalizedInstance.settings?.gradientPreset ?? VOLUME_PROFILE_GRADIENT_OFF,
+        sessionGlobexEnabled: normalizedInstance.settings?.sessionGlobexEnabled ?? true,
         sessionAsiaEnabled: normalizedInstance.settings?.sessionAsiaEnabled ?? true,
         sessionLondonEnabled: normalizedInstance.settings?.sessionLondonEnabled ?? true,
         sessionNewYorkEnabled: normalizedInstance.settings?.sessionNewYorkEnabled ?? true,
@@ -2441,6 +2443,7 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         // the granularity and value area across saved charts.
         groupingMode: "manual",
         gradientPreset: normalizedInstance.settings?.gradientPreset ?? VOLUME_PROFILE_GRADIENT_OFF,
+        sessionGlobexEnabled: normalizedInstance.settings?.sessionGlobexEnabled ?? true,
         sessionAsiaEnabled: normalizedInstance.settings?.sessionAsiaEnabled ?? true,
         sessionLondonEnabled: normalizedInstance.settings?.sessionLondonEnabled ?? true,
         sessionNewYorkEnabled: normalizedInstance.settings?.sessionNewYorkEnabled ?? true,

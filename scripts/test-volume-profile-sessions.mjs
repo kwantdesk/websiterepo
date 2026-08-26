@@ -66,13 +66,14 @@ const DAY_END = chicago("2026-08-21T00:00:00Z");
   assert.equal(isWithinSessionSegments(chicago("2026-08-19T15:00:00Z"), segments), false, "10:00 Chicago is not overnight");
 }
 
-// --- triple split produces Asia / London / New York, non-overlapping ---
+// --- the desk split produces Globex / Asia / London / New York, non-overlapping ---
 {
   const segments = resolveSessionSegments(DAY_START, DAY_END, {
     ...DEFAULT_SESSION_FILTER, mode: "triple",
   });
   const ids = new Set(segments.map((s) => s.id));
-  assert.deepEqual([...ids].sort(), ["asia", "london", "newyork"], "all three sessions are produced");
+  assert.deepEqual([...ids].sort(), ["asia", "globex", "london", "newyork"],
+    "all four desk sessions are produced");
 
   for (const segment of segments) {
     assert.ok(segment.endMs > segment.startMs, `${segment.id} window has positive length`);
@@ -91,9 +92,36 @@ const DAY_END = chicago("2026-08-21T00:00:00Z");
   assert.equal(owning.length, 1, "an execution belongs to exactly one session");
   assert.equal(owning[0].id, "newyork");
 
-  const asiaPrint = chicago("2026-08-19T23:30:00Z"); // 18:30 Chicago
+  // 18:30 Chicago is the hour after the CME bell and before Tokyo opens, so it
+  // belongs to Globex. It used to be swept into Asia, which buried the Globex
+  // open's own value area inside Tokyo's session.
+  const globexPrint = chicago("2026-08-19T23:30:00Z"); // 18:30 Chicago
+  const globexOwner = segments.filter((s) => globexPrint >= s.startMs && globexPrint < s.endMs);
+  assert.equal(globexOwner.length, 1, "an execution belongs to exactly one session");
+  assert.equal(globexOwner[0]?.id, "globex", "an 18:30 print is Globex, not Asia");
+
+  // Tokyo cash opens 09:00 JST = 19:00 Chicago; from there it is Asia.
+  const asiaPrint = chicago("2026-08-20T01:30:00Z"); // 20:30 Chicago
   const asiaOwner = segments.filter((s) => asiaPrint >= s.startMs && asiaPrint < s.endMs);
-  assert.equal(asiaOwner[0]?.id, "asia", "an 18:30 print is Asia");
+  assert.equal(asiaOwner[0]?.id, "asia", "a 20:30 print is Asia");
+
+  // The four windows must butt together with no gap between the bell and NY.
+  // The range spans several days, so each handover is checked against the NEXT
+  // window in the same day rather than against whichever segment shares an id -
+  // matching by id alone pairs one day's Globex with another day's Asia.
+  for (const [earlier, later] of [["globex", "asia"], ["asia", "london"], ["london", "newyork"]]) {
+    const earlierWindows = segments.filter((segment) => segment.id === earlier);
+    assert.ok(earlierWindows.length, `${earlier} windows exist`);
+    for (const window of earlierWindows) {
+      // The final window of the range has no partner because its successor
+      // falls outside the requested span, which is correct, not a gap.
+      if (window.endMs >= DAY_END) continue;
+      assert.ok(
+        segments.some((segment) => segment.id === later && segment.startMs === window.endMs),
+        `${earlier} must hand straight over to ${later}`,
+      );
+    }
+  }
 }
 
 // --- custom windows, including one that runs past midnight ---

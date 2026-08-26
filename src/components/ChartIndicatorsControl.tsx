@@ -31,6 +31,7 @@ import {
   VOLUME_PROFILE_INDICATOR_IDS,
   defaultIndicatorSettings,
 } from "@/lib/chartIndicatorConfig";
+import { DESK_SESSIONS, DESK_SESSION_SETTING_KEYS } from "@/lib/volumeProfileSessions";
 import type { ChartSettings } from "@/lib/chartSettings";
 import {
   applyFootprintPreset,
@@ -2160,7 +2161,7 @@ export default function ChartIndicatorsControl({
                       ["none", "None · whole session"],
                       ["filter", "Filter · keep the window"],
                       ["splitted", "Splitted · per session"],
-                      ["triple", "Triple · Asia / London / NY"],
+                      ["triple", "Sessions · Globex / Asia / London / NY"],
                     ]],
                     ["Filter time", "filterTime", "rth", [
                       ["rth", "RTH · cash session"],
@@ -2197,12 +2198,8 @@ export default function ChartIndicatorsControl({
                     */}
                   <div className="space-y-1.5 sm:col-span-2">
                     <span className="block text-[9px] uppercase tracking-[0.12em] text-muted">Sessions drawn</span>
-                    <div className="grid grid-cols-3 gap-2">
-                      {([
-                        ["Asia", "sessionAsiaEnabled"],
-                        ["London", "sessionLondonEnabled"],
-                        ["New York", "sessionNewYorkEnabled"],
-                      ] as const).map(([label, key]) => {
+                    <div className="grid grid-cols-2 gap-2">
+                      {DESK_SESSIONS.map(({ label, settingsKey: key }) => {
                         const splitting = String(settingsInstance.settings?.filterMode ?? "none") === "triple";
                         // Off the split there is one profile covering everything,
                         // so no single session reads as selected.
@@ -2220,23 +2217,20 @@ export default function ChartIndicatorsControl({
                                 // for. Turning on the split with everything still
                                 // enabled would draw all three.
                                 settings.filterMode = "triple";
-                                settings.sessionAsiaEnabled = key === "sessionAsiaEnabled";
-                                settings.sessionLondonEnabled = key === "sessionLondonEnabled";
-                                settings.sessionNewYorkEnabled = key === "sessionNewYorkEnabled";
+                                for (const sessionKey of DESK_SESSION_SETTING_KEYS) {
+                                  settings[sessionKey] = sessionKey === key;
+                                }
                                 return { ...current, settings };
                               }
                               settings[key] = settings[key] === false;
-                              const noneLeft = settings.sessionAsiaEnabled === false
-                                && settings.sessionLondonEnabled === false
-                                && settings.sessionNewYorkEnabled === false;
+                              const noneLeft = DESK_SESSION_SETTING_KEYS
+                                .every((sessionKey) => settings[sessionKey] === false);
                               if (noneLeft) {
                                 // An empty selection would draw nothing at all,
                                 // which reads as a broken study rather than a
                                 // choice. Fall back to the whole session.
                                 settings.filterMode = "none";
-                                settings.sessionAsiaEnabled = true;
-                                settings.sessionLondonEnabled = true;
-                                settings.sessionNewYorkEnabled = true;
+                                for (const sessionKey of DESK_SESSION_SETTING_KEYS) settings[sessionKey] = true;
                               }
                               return { ...current, settings };
                             })}
@@ -2254,7 +2248,8 @@ export default function ChartIndicatorsControl({
                     </div>
                     <span className="block text-[8px] leading-4 text-muted">
                       Picking a session splits the day and draws only what is selected; the rest keep their own
-                      boundaries rather than absorbing the ones left out. Asia opens at the 17:00 Globex bell.
+                      boundaries rather than absorbing the ones left out. Globex runs from the 17:00 open to
+                      Tokyo at 19:00, then Asia to 02:00, London to 08:30 and New York to 15:15, Chicago time.
                       Clearing every session returns to one profile for the whole session.
                     </span>
                   </div>

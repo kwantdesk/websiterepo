@@ -8375,6 +8375,7 @@ function WorkspaceChartPaneComponent({
     // Unticking a window omits its profile entirely rather than folding it
     // into a neighbour, so the remaining sessions keep their own boundaries.
     const enabledSessionIds = new Set<string>([
+      ...(settings.sessionGlobexEnabled === false ? [] : ["globex"]),
       ...(settings.sessionAsiaEnabled === false ? [] : ["asia"]),
       ...(settings.sessionLondonEnabled === false ? [] : ["london"]),
       ...(settings.sessionNewYorkEnabled === false ? [] : ["newyork"]),
@@ -8568,14 +8569,36 @@ function WorkspaceChartPaneComponent({
       if (dailyProfileInstance) {
         const dailyFilterMode = sessionFilterModeFor(dailyProfileSettings);
         const dailySplits = dailySessionSplitsFor(dailyProfileSettings);
+        const segmentsByDate = new Map<string, ReturnType<typeof sessionSegmentsForTradingDate>>();
+        tradingDates.forEach((tradingDate) => {
+          segmentsByDate.set(
+            tradingDate,
+            dailySplits ? sessionSegmentsForTradingDate(tradingDate, dailyProfileSettings) : [],
+          );
+        });
+        // Unticking a session has to take its profile OFF the chart.
+        // replaceExactProfile only ever adds or replaces by identity, so a
+        // window that is no longer requested was simply never revisited and
+        // stayed drawn — turning Asia off looked like the click did nothing.
+        // Pruning here rather than on arrival makes it disappear immediately
+        // instead of waiting on the surviving sessions' network round trip.
+        const drawnSessionIds = new Set<string>(
+          dailySplits
+            ? [...segmentsByDate.values()].flat().map((segment) => segment.id)
+            : [""],
+        );
+        setVolumeProfiles((current) => {
+          const kept = current.filter((candidate) => (
+            candidate.period !== "daily" || drawnSessionIds.has(candidate.sessionId ?? "")
+          ));
+          return kept.length === current.length ? current : kept;
+        });
         tradingDates.forEach((tradingDate) => {
           // Splitting a day means one profile PER window, so Asia, London and
           // New York stand beside each other. Each segment is requested as its
           // own explicit span with no further filtering; the server then has
           // nothing to merge.
-          const segments = dailySplits
-            ? sessionSegmentsForTradingDate(tradingDate, dailyProfileSettings)
-            : [];
+          const segments = segmentsByDate.get(tradingDate) ?? [];
           const jobs = segments.length
             ? segments.map((segment) => ({
                 startMs: segment.startMs,
@@ -8674,6 +8697,12 @@ function WorkspaceChartPaneComponent({
     dailyProfileSettings.sessionStartMinutes,
     dailyProfileSettings.sessionEndMinutes,
     dailyProfileSettings.useEndSessionAsStartDay,
+    // Without these the effect never re-ran on a session toggle, so clicking
+    // Asia off changed a stored flag and nothing else: no refetch, no prune.
+    dailyProfileSettings.sessionGlobexEnabled,
+    dailyProfileSettings.sessionAsiaEnabled,
+    dailyProfileSettings.sessionLondonEnabled,
+    dailyProfileSettings.sessionNewYorkEnabled,
     dailyProfileSettings.valueAreaPercent,
     dailyProfileSettings.groupTicks,
     dailyProfileSettings.groupingMode,
