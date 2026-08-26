@@ -4,6 +4,7 @@ import {
   admitsBigTrade,
   calculateBigTradePrints,
   calculateBigTradePrintsWithContext,
+  retainBigTradePrints,
 } from "../src/lib/bigTrades.ts";
 
 /**
@@ -109,6 +110,52 @@ const tape = Array.from({ length: 20_000 }, (_, i) =>
   const per = (performance.now() - started) / runs;
   console.log(`  live admission: ${per.toFixed(4)}ms per batch of 40`);
   assert.ok(per < 1, `the live edge must be far inside a frame, got ${per.toFixed(3)}ms`);
+}
+
+// --- "Days to load" survives tape compaction ---
+{
+  // The study reads the raw execution tape, and that tape is compacted to its
+  // most recent 25,000 exact prints. NQ makes roughly twelve thousand prints in
+  // two HOURS, so the tape holds about four hours. Ten days of history arrived,
+  // painted, and vanished at the next compaction: markers appearing and then
+  // disappearing. Raising the tape limit would mean over a million records;
+  // retaining the few prints that QUALIFIED costs almost nothing.
+  const { prints, context } = calculateBigTradePrintsWithContext(candles, tape, settings, now);
+  assert.ok(prints.length > 0, "the fixture must produce prints to retain");
+
+  const older = prints.slice(0, Math.floor(prints.length / 2));
+  const newer = prints.slice(Math.floor(prints.length / 2));
+  const windowStart = now - 10 * 24 * 60 * MIN;
+
+  // A later pass that can only see the newer half must not lose the older.
+  const retained = retainBigTradePrints(older, newer, context, windowStart);
+  assert.equal(retained.length, prints.length, "everything earned is kept");
+  assert.ok(
+    retained.every((print, index) => index === 0 || retained[index - 1].timestamp <= print.timestamp),
+    "and stays in time order",
+  );
+
+  // Idempotent: re-running a pass must not duplicate anything.
+  assert.equal(retainBigTradePrints(retained, newer, context, windowStart).length, prints.length);
+
+  // Outside the lookback it is dropped - "Days to load" is a bound, not a
+  // licence to accumulate for ever.
+  const narrow = retainBigTradePrints(prints, [], context, now - MIN);
+  assert.ok(narrow.length < prints.length, "prints older than the window are evicted");
+
+  // The current pass wins on collision, so sizing follows the live scale.
+  const resized = { ...newer[0], radius: 99 };
+  const merged = retainBigTradePrints(prints, [resized], context, windowStart);
+  assert.equal(merged.find((print) => print.id === resized.id)?.radius, 99);
+
+  // A pass with no measured scale keeps what we had rather than wiping every
+  // historical marker because one sample came back empty.
+  assert.equal(retainBigTradePrints(prints, [], null, windowStart).length, prints.length);
+
+  // Bounded from the newest end like every other retained series.
+  const capped = retainBigTradePrints(prints, [], context, windowStart, 5);
+  assert.equal(capped.length, 5);
+  assert.equal(capped.at(-1)?.timestamp, prints.at(-1)?.timestamp, "the newest are the ones kept");
 }
 
 // --- the chart actually paints it without a React round trip ---

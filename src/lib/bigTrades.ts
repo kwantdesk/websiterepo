@@ -479,6 +479,53 @@ export function admitLiveBigTradePrints(
 }
 
 /** Whether a print qualifies, by the same rule the full pass applies. */
+/**
+ * Keep the big prints a chart has already earned, across tape compaction.
+ *
+ * "Days to load" asks for a lookback in DAYS, but the study reads the raw
+ * execution tape, and that tape is compacted to the most recent
+ * EXACT_RECORD_LIMIT (25,000) prints. NQ produces roughly twelve thousand
+ * prints in two hours, so the tape holds about four HOURS of exact executions.
+ * Ten days of history therefore arrived, painted, and then vanished at the next
+ * compaction — the markers appearing and disappearing.
+ *
+ * Raising that limit is not the answer: ten days of NQ prints is well over a
+ * million records, which is the memory the compaction exists to bound. But
+ * Big Contracts does not need the tape, only the prints that QUALIFIED, and
+ * those are rare — hundreds a day, not millions. Retaining them costs almost
+ * nothing and survives the tape being trimmed underneath.
+ *
+ * Retained prints are re-tested against the CURRENT scale rather than trusted
+ * because they qualified once. The threshold moves with the session, and a
+ * marker that would no longer be admitted today must not linger just because it
+ * was admitted an hour ago.
+ */
+export function retainBigTradePrints(
+  previous: BigTradePrint[],
+  next: BigTradePrint[],
+  context: BigTradeLiveContext | null,
+  windowStartMs: number,
+  cap = 12_000,
+): BigTradePrint[] {
+  if (!previous.length) return next;
+  const merged = new Map<string, BigTradePrint>();
+  for (const print of previous) {
+    if (print.timestamp < windowStartMs) continue;
+    // No context means no measured scale this pass; keeping what we had is
+    // better than dropping every historical marker because one pass was empty.
+    if (context && !admitsBigTrade(context, print.timestamp, print.volume)) continue;
+    merged.set(print.id, print);
+  }
+  // The current pass wins on collision: its sizing reflects the live scale.
+  for (const print of next) {
+    if (print.timestamp < windowStartMs) continue;
+    merged.set(print.id, print);
+  }
+  const ordered = [...merged.values()].sort((left, right) => left.timestamp - right.timestamp);
+  // Bounded from the NEWEST end, like every other retained series here.
+  return ordered.length > cap ? ordered.slice(-cap) : ordered;
+}
+
 export function admitsBigTrade(context: BigTradeLiveContext, timestamp: number, volume: number) {
   if (volume < context.scaleFor(timestamp).threshold) return false;
   if (context.capActive && context.cappingMode === "reject" && volume > context.cappingMaxVolume) return false;

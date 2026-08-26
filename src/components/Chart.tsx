@@ -132,8 +132,10 @@ import {
   buildEventBarChartTimeMap,
   admitLiveBigTradePrints,
   calculateBigTradePrintsWithContext,
+  retainBigTradePrints,
   type BigTradeLiveContext,
   type AnchoredBigTradePrint,
+  type BigTradePrint,
 } from "@/lib/bigTrades";
 import {
   BigTradesPrimitive,
@@ -9595,6 +9597,9 @@ function Chart({
   // big trades yet had nothing to compare against, so the live path could never
   // start. See the commit below.
   const bigTradeTapeWatermarkRef = useRef(0);
+  // Prints already earned, kept across tape compaction. The raw execution tape
+  // holds roughly four hours of exact prints; "Days to load" asks for days.
+  const retainedBigTradePrintsRef = useRef<BigTradePrint[]>([]);
   const bigTradeCommittedRef = useRef<{ markers: BigTradePrimitiveMarker[]; watermark: number }>({
     markers: [], watermark: 0,
   });
@@ -9618,7 +9623,25 @@ function Chart({
       // resumes exactly where this pass stopped reading rather than where it
       // last found something.
       bigTradeTapeWatermarkRef.current = Number(indicatorMarketTrades.at(-1)?.timestamp ?? 0);
-      return prints;
+      // The tape is compacted to its most recent prints, so a pass late in the
+      // session can no longer SEE the history an earlier pass did. Union with
+      // what has already been earned, bounded by the study's own lookback, so
+      // "Days to load: 10" keeps ten days instead of the four hours the tape
+      // happens to still hold.
+      const lookbackDays = Math.min(30, Math.max(1, Number(bigTradesIndicator.settings?.daysToLoad ?? 1)));
+      const newestKnown = Math.max(
+        Number(indicatorMarketTrades.at(-1)?.timestamp ?? 0),
+        Number(indicatorCandles.at(-1)?.timestamp ?? 0),
+      );
+      const anchor = newestKnown > 0 ? newestKnown : (replayTimestampMs ?? Date.now());
+      const retained = retainBigTradePrints(
+        retainedBigTradePrintsRef.current,
+        prints,
+        context,
+        anchor - lookbackDays * 86_400_000,
+      );
+      retainedBigTradePrintsRef.current = retained;
+      return retained;
     },
     [bigTradesIndicator, indicatorCandles, indicatorMarketTrades, priceFormat.minMove, replayTimestampMs],
   );
