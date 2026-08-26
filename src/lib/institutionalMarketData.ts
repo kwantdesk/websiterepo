@@ -1941,7 +1941,14 @@ export async function fetchInstitutionalOrderFlowLevels(args: {
     }
     const records = normalizeInstitutionalTradeRecords(payload.records);
     const candles = normalizeCandles(payload.candles, 20_000);
-    const trades = normalizeInstitutionalTradeRecords(payload.trades);
+    // `trades` and `records` are the same tape. Normalising both walked every
+    // print twice on the main thread for nothing — thousands of rows per pane,
+    // on load and on every heal cycle. When the caller did not ask for the
+    // prints the gateway no longer sends them, and the already-normalised
+    // records stand in by reference: same content, no second pass.
+    const trades = args.includeTrades
+      ? normalizeInstitutionalTradeRecords(payload.trades)
+      : records;
     const result: InstitutionalOrderFlowResult = {
       candles,
       records,
