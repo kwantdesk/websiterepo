@@ -73,4 +73,58 @@ check("the scheduler it protects is still there", () => {
   assert.match(source, /qdNextStartMs = start \+ QD_MIN_SPACING_MS;/);
 });
 
+check("a chart's own candles jump the queue", () => {
+  // Measured on GEX VUE: a pane's price history took 20,041ms and 25,674ms -
+  // past the client's timeout AND past its retry - while GEX panels on the same
+  // page were served ahead of it. The chart cannot draw a candle without that
+  // response; a GEX panel decorates a chart that does not exist yet.
+  const scheduler = source.slice(source.indexOf("async function qdSchedule"), source.indexOf("async function quantDataNetworkPost"));
+  assert.match(scheduler, /async function qdSchedule\(priority = false\)/);
+  assert.match(scheduler, /if \(priority\) \{/);
+  // A priority request takes the NEXT slot rather than joining the end.
+  assert.match(scheduler, /Math\.min\(qdNextStartMs, now \+ QD_MIN_SPACING_MS\)/);
+  // The provider still sees the same spacing: the rate limit is unchanged and
+  // only the ORDER differs. If this stopped advancing, priority traffic would
+  // bypass the limiter entirely and trip the provider's per-second cap.
+  assert.match(scheduler, /qdNextStartMs = Math\.max\(qdNextStartMs, start\) \+ QD_MIN_SPACING_MS;/);
+
+  // Both chart-history paths are marked, and nothing else is. Read the real
+  // argument list by matching brackets - a window regex runs straight past the
+  // closing paren into the next call, and parseCandles(payload, true) sitting
+  // on the following line looks exactly like a priority argument.
+  const priorityCalls = [];
+  for (let at = source.indexOf("quantDataPost("); at !== -1; at = source.indexOf("quantDataPost(", at + 1)) {
+    const open = source.indexOf("(", at);
+    let depth = 0;
+    let end = open;
+    for (; end < source.length; end += 1) {
+      const char = source[end];
+      if (char === "(" || char === "[" || char === "{") depth += 1;
+      else if (char === ")" || char === "]" || char === "}") {
+        depth -= 1;
+        if (depth === 0) break;
+      }
+    }
+    const call = source.slice(open + 1, end);
+    // Top-level commas only: the body object and the path are full of others.
+    const args = [];
+    let start = 0;
+    depth = 0;
+    for (let i = 0; i < call.length; i += 1) {
+      const char = call[i];
+      if (char === "(" || char === "[" || char === "{") depth += 1;
+      else if (char === ")" || char === "]" || char === "}") depth -= 1;
+      else if (char === "," && depth === 0) { args.push(call.slice(start, i)); start = i + 1; }
+    }
+    args.push(call.slice(start));
+    if (args.length >= 4 && args[3].trim().replace(/,$/, "") === "true") {
+      priorityCalls.push(args[0].trim());
+    }
+  }
+  assert.equal(priorityCalls.length, 2, `only chart history may be priority, found ${priorityCalls.length}`);
+  for (const path of priorityCalls) {
+    assert.ok(path.includes("stock-price-over-time"), `priority is for candles only, not ${path}`);
+  }
+});
+
 console.log(`\nquantdata coalescing: ${passed}/${passed} checks passed`);

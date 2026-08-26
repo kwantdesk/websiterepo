@@ -211,21 +211,41 @@ const QD_TRANSIENT_RETRIES = 1;
 const qdSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 let qdNextStartMs = 0;
-async function qdSchedule() {
+// Two lanes, because not every request matters equally to a chart that is
+// trying to draw.
+//
+// Measured on GEX VUE: a pane's own price history took 20,041ms and 25,674ms -
+// past the client's timeout AND past its retry - while GEX panels on the same
+// page were served ahead of it. The chart cannot draw a single candle without
+// that response; a GEX panel is an overlay on a chart that does not exist yet.
+// Serving them first come, first served put the one blocking request behind
+// dozens of optional ones.
+//
+// Priority requests take the NEXT slot and push everything else back by one,
+// rather than joining the end of the queue. The provider still sees the same
+// 80ms spacing, so the rate limit this scheduler exists to respect is
+// unchanged - only the order is.
+async function qdSchedule(priority = false) {
   const now = Date.now();
+  if (priority) {
+    const start = Math.max(now, Math.min(qdNextStartMs, now + QD_MIN_SPACING_MS));
+    qdNextStartMs = Math.max(qdNextStartMs, start) + QD_MIN_SPACING_MS;
+    if (start > now) await qdSleep(start - now);
+    return;
+  }
   const start = Math.max(now, qdNextStartMs);
   qdNextStartMs = start + QD_MIN_SPACING_MS;
   if (start > now) await qdSleep(start - now);
 }
 
-async function quantDataNetworkPost(path: string, body: JsonRecord) {
+async function quantDataNetworkPost(path: string, body: JsonRecord, priority = false) {
   const apiKey = getConfiguredQuantDataApiKey();
   if (!apiKey) {
     throw new QuantDataError("KwantData is not configured.", 503, null);
   }
 
   for (let attempt = 0; ; attempt += 1) {
-    await qdSchedule();
+    await qdSchedule(priority);
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     try {
@@ -281,12 +301,12 @@ async function quantDataNetworkPost(path: string, body: JsonRecord) {
   }
 }
 
-function quantDataPost(path: string, body: JsonRecord, ttlMs = 0) {
+function quantDataPost(path: string, body: JsonRecord, ttlMs = 0, priority = false) {
   const cacheKey = `${path}:${JSON.stringify(body)}`;
   const cached = endpointCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.promise;
 
-  const promise = quantDataNetworkPost(path, body).catch((error) => {
+  const promise = quantDataNetworkPost(path, body, priority).catch((error) => {
     endpointCache.delete(cacheKey);
     throw error;
   });
@@ -889,10 +909,14 @@ async function getOptionsUnderlyingSessionHistory(
     aggregationPeriod,
     filter: { ticker: symbol },
   };
+  // Priority: this IS the chart's candles. Nothing else on the page can be
+  // drawn without them, so it must not queue behind the analytics panels that
+  // decorate a chart which does not exist yet.
   const load = async () => (await quantDataPost(
     "/equities/tool/stock-price-over-time",
     body,
     sessionDate === marketDateKey(Date.now()) ? 5_000 : 60_000,
+    true,
   )).payload;
 
   // Minute history is intentionally requested one market session at a time.
@@ -970,7 +994,8 @@ export async function getOptionsUnderlyingHistory(input: {
       },
       aggregationPeriod,
       filter: { ticker: cashTicker },
-    }, to < Date.now() - 5 * 60_000 ? 5 * 60_000 : 5_000)).payload];
+      // Priority for the same reason as the per-session path above.
+    }, to < Date.now() - 5 * 60_000 ? 5 * 60_000 : 5_000, true)).payload];
   }
   const candles = payloads.flatMap(parseUnderlyingHistoryCandles)
     .filter((candle) => candle.timestamp >= from && candle.timestamp <= to);
