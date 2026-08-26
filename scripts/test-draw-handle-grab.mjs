@@ -104,6 +104,43 @@ check("every interactive part of a drawing carries the hit marker", () => {
   assert.match(layer, /data-draw-hit=\{interactive \? "drawing" : undefined\}/, "the drawing group itself");
 });
 
+check("the placement surface sits UNDER the drawings", () => {
+  // THE REPORTED FAILURE, and the reason the earlier fixes did not land.
+  // Reproduced with a real mouse on production: place a Long Position, grab a
+  // corner, and the four handle dots go to zero instead of resizing.
+  //
+  // SVG paints in document order, so the capture rect being rendered last made
+  // it the top-most thing in the layer and it swallowed every press. The press
+  // never reached the handle; it ran the rect's own hit test, which only knows
+  // a drawing's RAW POINTS. A position calculator's four visible corners are
+  // computed geometry rather than points, so that test can never match one —
+  // the miss fell through to onSelect(null) and the handles unmounted under the
+  // cursor.
+  //
+  // Synthetic pointer events dispatched straight onto a handle circle bypassed
+  // the rect entirely and "passed", which is exactly how this survived a
+  // previous round of fixes.
+  const captureIndex = layer.indexOf("{captureActive ? (");
+  const drawingsIndex = layer.indexOf("<g ref={drawingsGroupRef}");
+  assert.ok(captureIndex > 0 && drawingsIndex > 0, "both the capture rect and the drawings group must exist");
+  assert.ok(
+    captureIndex < drawingsIndex,
+    "the capture rect must be rendered BEFORE the drawings, or it paints over them and eats their presses",
+  );
+});
+
+check("an armed tool still places on empty chart", () => {
+  // The ordering only works because drawings opt OUT of pointer events while a
+  // tool is armed: an empty press falls through to the rect underneath and
+  // places normally. If that ever changes, moving the rect down would start
+  // swallowing placement instead.
+  assert.match(layer, /const interactive = !preview && !active && activeTool !== "eraser";/);
+  assert.match(layer, /: \{ pointerEvents: "none" \}/, "a non-interactive drawing must not take presses");
+  // Handles are the deliberate exception - always grabbable, so a selected
+  // drawing can be resized without first putting the tool down.
+  assert.match(layer, /<g key=\{key\} data-draw-hit="handle" style=\{\{ pointerEvents: "all", cursor \}\}/);
+});
+
 check("handles still only appear on the selected drawing", () => {
   // Every drawing showing its dots at once would bury the chart.
   assert.match(layer, /const handles = !selected\s*\n\s*\? null/);

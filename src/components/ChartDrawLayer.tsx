@@ -1581,13 +1581,23 @@ export default function ChartDrawLayer({
         </clipPath>
       </defs>
       {/*
-        * non-scaling-stroke keeps line weight true while the group carries a
-        * pan's small rescale, so a drawing cannot thicken as the chart moves.
+        * The placement surface sits UNDER the drawings, not over them.
+        *
+        * SVG paints in document order, so while it was rendered last it was the
+        * top-most thing in the layer and swallowed every press. That was fine
+        * for placing a new drawing on empty chart and wrong for everything
+        * else: a press on a selected drawing's resize handle never reached the
+        * handle at all. It landed here, ran the hit test below, and that test
+        * only knows a drawing's RAW POINTS — a position calculator's four
+        * visible corners are computed geometry, not points, so it could never
+        * match one. The miss fell through to onSelect(null), the handles
+        * unmounted under the cursor, and the resize died before it started.
+        *
+        * Underneath, the ordering does the work: drawings are pointerEvents
+        * "none" while a tool is armed, so an empty press still reaches this
+        * rect and places normally, while handles — which are always "all" —
+        * get the presses that land on them.
         */}
-      <g ref={drawingsGroupRef} vectorEffect="non-scaling-stroke" clipPath={`url(#${plotClipId})`}>
-        {drawings.map((drawing) => renderDrawing(drawing))}
-        {previewDrawing ? renderDrawing(previewDrawing, true) : null}
-      </g>
       {captureActive ? (
         <rect
           x={0}
@@ -1603,6 +1613,14 @@ export default function ChartDrawLayer({
           onPointerLeave={() => setCursor(null)}
         />
       ) : null}
+      {/*
+        * non-scaling-stroke keeps line weight true while the group carries a
+        * pan's small rescale, so a drawing cannot thicken as the chart moves.
+        */}
+      <g ref={drawingsGroupRef} vectorEffect="non-scaling-stroke" clipPath={`url(#${plotClipId})`}>
+        {drawings.map((drawing) => renderDrawing(drawing))}
+        {previewDrawing ? renderDrawing(previewDrawing, true) : null}
+      </g>
     </svg>
   );
 }
