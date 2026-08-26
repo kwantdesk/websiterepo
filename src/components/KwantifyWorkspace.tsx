@@ -380,11 +380,11 @@ const workspaceModulePreloaders: Record<string, () => Promise<unknown>> = {
   charts: loadChartWorkspace,
   gamvue: loadChartWorkspace,
   gexcal: loadGexMapWorkspace,
-  gexflow: loadGexFlowWorkspace,
   gamma: loadGammaWorkspace,
   gexmap: loadGexMapWorkspace,
   liqmap: loadLiquidityMapWorkspace,
   "tool-depth-of-market": loadDepthOfMarketWorkspace,
+  "tool-gex-flow": loadGexFlowWorkspace,
   "tool-spoofing-detector": loadSpoofingDetectorWorkspace,
   "tool-single-tpo-chart": loadSingleProfileWorkspace,
   "tool-single-volume-profile": loadSingleProfileWorkspace,
@@ -897,6 +897,7 @@ type WorkspaceToolKind =
   | "tool-single-tpo-chart"
   | "tool-weekly-tpo"
   | "tool-depth-of-market"
+  | "tool-gex-flow"
   | "tool-pulling-stacking"
   | "tool-big-trades"
   | "tool-imbalance-detector"
@@ -1038,7 +1039,7 @@ type LevelExportRow = {
   source: string;
   asOf: string;
 };
-export type PrimaryWorkspaceSection = "charts" | "gamvue" | "gexcal" | "gexflow" | "gamma" | "levelz" | "gexmap" | "liqmap" | "heatmap" | "gexbot" | "gexdesk" | "gameplan" | "kwantbot" | "news" | "zyon" | "journal" | "socials" | "backtesting";
+export type PrimaryWorkspaceSection = "charts" | "gamvue" | "gexcal" | "gamma" | "levelz" | "gexmap" | "liqmap" | "heatmap" | "gexbot" | "gexdesk" | "gameplan" | "kwantbot" | "news" | "zyon" | "journal" | "socials" | "backtesting";
 
 const WORKSPACE_PRESETS_STORAGE_KEY = "kwantdesk-chart-workspace-presets";
 const ACTIVE_WORKSPACE_PRESET_STORAGE_KEY = "kwantdesk-chart-workspace-active-preset";
@@ -1071,7 +1072,6 @@ const BOTTOM_WORKSPACE_SECTIONS = [
   { id: "gamvue" as const, label: "GEX Vue" },
   { id: "gexcal" as const, label: "GEX CAL" },
   { id: "gexbot" as const, label: "GEX BOX" },
-  { id: "gexflow" as const, label: "GEX FLOW" },
   { id: "gamma" as const, label: "Gamma" },
   { id: "levelz" as const, label: "LEVELZ" },
   { id: "gexmap" as const, label: "GEXMAP" },
@@ -1294,6 +1294,7 @@ const WORKSPACE_TOOL_OPTIONS: Array<WorkspacePanelOption<WorkspaceToolKind>> = [
   { id: "tool-single-tpo-chart", label: "SINGLE TPO CHART", description: "One standalone time profile with live price, POC and value area", icon: Grid3X3 },
   { id: "tool-weekly-tpo", label: "WEEKLY TPO", description: "Weekly square-block market profile and auction analytics", icon: BarChart3, indicatorId: "weekly-tpo" },
   { id: "tool-depth-of-market", label: "DOM PRO", description: "Professional full-depth MBO ladder and traded liquidity", icon: List, indicatorId: "depth-of-market" },
+  { id: "tool-gex-flow", label: "GEX FLOW", description: "Live options tape with screens, filters and saved columns", icon: FileText },
   { id: "tool-pulling-stacking", label: "PULLING & STACKING", description: "Displayed Bid and Ask liquidity being added, pulled, moved and reposted through time using Level 3 order-book events.", icon: Layers3, indicatorId: "pulling-stacking" },
   { id: "tool-big-trades", label: "BIG CONTRACTS", description: "Large aggressive executions anchored to price", icon: Zap, indicatorId: "big-trades" },
   { id: "tool-imbalance-detector", label: "IMBALANCE DETECTOR", description: "Stacked and diagonal bid/ask imbalance", icon: Layers3, indicatorId: "imbalance-tracker" },
@@ -17022,6 +17023,16 @@ export default function KwantifyWorkspace({
           </WorkspaceFailureBoundary>
         );
       }
+      // GEX FLOW renders the WHOLE workspace, not a reduced pane version: the
+      // same screens, filters, columns and refresh it had as a page. Expanded
+      // to full width in GEX VUE it is therefore identical to the old page,
+      // which is the point of removing the page.
+      case "tool-gex-flow":
+        return (
+          <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-gexflow`} label="GEX FLOW">
+            <GexFlowWorkspace />
+          </WorkspaceFailureBoundary>
+        );
       case "tool-spoofing-detector":
         return (
           <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-spoofing-${pane.symbol}`} label="Spoofing Detector">
@@ -18977,13 +18988,6 @@ export default function KwantifyWorkspace({
                     switched back into being a duplicate GEX Map. */}
                 <WorkspaceFailureBoundary resetKey="gexcal" label="GEX FUTURE">
                   <GexMapWorkspace lockedTimeHorizon="future" />
-                </WorkspaceFailureBoundary>
-              </ReactActivity>
-            ) : null}
-            {visitedWorkspaceSections.has("gexflow") ? (
-              <ReactActivity mode={bottomWorkspaceSection === "gexflow" ? "visible" : "hidden"}>
-                <WorkspaceFailureBoundary resetKey="gexflow" label="GEX FLOW">
-                  <GexFlowWorkspace />
                 </WorkspaceFailureBoundary>
               </ReactActivity>
             ) : null}

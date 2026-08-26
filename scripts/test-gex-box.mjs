@@ -216,15 +216,19 @@ test("the public order-flow catalog contains the required eight metrics only", (
   ]);
 });
 
-test("navigation exposes GEX BOX immediately after GEX CAL and preserves GEX CAL", async () => {
+test("navigation exposes GEX BOX immediately after GEX CAL", async () => {
   const sidebar = await readFile(new URL("../src/components/AppSidebar.tsx", import.meta.url), "utf8");
   const cal = sidebar.indexOf('href: "/gex-cal"');
   const box = sidebar.indexOf('href: "/gex-box"');
-  const flow = sidebar.indexOf('href: "/gex-flow"');
-  assert.ok(cal >= 0 && box > cal && flow > box);
+  assert.ok(cal >= 0 && box > cal, "GEX BOX still follows GEX CAL in the rail");
+  // GEX FLOW used to sit after GEX BOX. It is a TOOL now - offered inside GEX
+  // BOX and addable as a workspace pane - so it has no nav button and no route
+  // of its own. One fewer top-level button, same workspace.
+  assert.equal(sidebar.indexOf('href: "/gex-flow"'), -1);
   const layout = await readFile(new URL("../src/app/(workspace)/layout.tsx", import.meta.url), "utf8");
   assert.match(layout, /"\/gex-cal": "gexcal"/);
   assert.match(layout, /"\/gex-box": "gexbot"/);
+  assert.doesNotMatch(layout, /gex-flow/);
 });
 
 test("GEX BOX routes use the native QuantData and Databento adapter without GEXBot or simulation", async () => {

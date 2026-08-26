@@ -7,9 +7,16 @@ import {
   Save, SlidersHorizontal,
 } from "lucide-react";
 import { memo, startTransition, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import dynamic from "next/dynamic";
+
+// Loaded on demand: GEX BOX should not carry the flow workspace unless a panel
+// actually asks for it.
+const GexFlowWorkspace = dynamic(() => import("@/components/gex-flow/GexFlowWorkspace"), { ssr: false });
 
 type ToolCategory = "Options" | "Equities" | "KwantDesk";
-type Tool = { id: string; label: string; category: ToolCategory; detail: string; endpoint?: (settings: PanelSettings) => string };
+// `endpoint` is optional: a tool that owns its own data fetching renders a
+// whole workspace and takes nothing from the shared feed.
+type Tool = { id: string; label: string; category: ToolCategory; detail: string; endpoint?: ((settings: PanelSettings) => string) | null };
 type PanelSettings = {
   symbol: string; date: string; aggregation: string; greek: string; expiry: string;
   strikes: number; rows: number; minimum: number; color: string; negativeColor: string;
@@ -94,6 +101,12 @@ const TOOLS: Tool[] = [
   { id: "exposure-expiration", label: "Exposure by Expiration", category: "Options", detail: "Greek exposure grouped by expiration", endpoint: normalizedTool("exposure-expiration") },
   { id: "exposure-strike", label: "Exposure by Strike", category: "Options", detail: "Signed exposure profile across strikes", endpoint: normalizedTool("exposure-strike") },
   { id: "gainers-losers", label: "Gainers / Losers", category: "Options", detail: "Bullish and bearish premium leaderboard", endpoint: normalizedTool("gainers-losers") },
+  // GEX FLOW is a whole workspace rather than one payload rendered into a
+  // panel: it owns its screens, filters, columns and refresh. It therefore has
+  // no endpoint here - the shared feed would fetch nothing and the panel
+  // renders the workspace directly. That is also what keeps it looking
+  // identical wherever it is hosted, instead of a cut-down second version.
+  { id: "gex-flow", label: "GEX Flow", category: "Options", detail: "Live options tape with screens, filters and saved columns", endpoint: null },
   { id: "heat-map", label: "Heat Map", category: "Options", detail: "Exposure matrix across strikes and expirations", endpoint: (s) => `/api/gex-interval-map?source=${s.symbol}&display=${s.symbol}&sessionDate=${s.date}&aggregationPeriod=${s.aggregation}&greekMode=${s.greek}` },
   { id: "iv-rank", label: "IV Rank", category: "Options", detail: "Current IV against its historical range", endpoint: (s) => `/api/implied-volatility-rank?source=${s.symbol}&display=${s.symbol}&lookBackPeriodDays=252&targetMaturityDays=30&contractMode=combined` },
   { id: "interval-map", label: "Interval Map", category: "Options", detail: "When and where exposure builds or unwinds", endpoint: (s) => `/api/gex-interval-map?source=${s.symbol}&display=${s.symbol}&sessionDate=${s.date}&aggregationPeriod=${s.aggregation}&greekMode=${s.greek}` },
@@ -1146,6 +1159,7 @@ const ToolSurface = memo(function ToolSurface({ panel, onChange }: { panel: Dash
   if (["exposure-strike", "oi-strike", "classic-gex", "state-profile"].includes(panel.toolId)) return <ProfileBars payload={feed.data} settings={panel.settings} />;
   if (panel.toolId === "iv-rank") return <IvRank payload={feed.data} />;
   if (TOOL_SERIES[panel.toolId]) return <SeriesPanel toolId={panel.toolId} payload={feed.data} settings={panel.settings} onSettings={patchSettings} />;
+  if (panel.toolId === "gex-flow") return <GexFlowWorkspace />;
   if (panel.toolId === "market-map") return <MarketMapPanel payload={feed.data} />;
   if (TOOL_COLUMNS[panel.toolId]) return <StructuredToolPanel toolId={panel.toolId} payload={feed.data} limit={panel.settings.rows} settings={panel.settings} onSettings={patchSettings} />;
   if (panel.toolId === "orderflow-profile") return <DataTable payload={feed.data} limit={panel.settings.rows} />;

@@ -34,7 +34,6 @@ type SidebarKey =
   | "charts"
   | "gamvue"
   | "gexcal"
-  | "gexflow"
   | "gamma"
   | "levelz"
   | "gexmap"
@@ -102,7 +101,6 @@ const navItems: Array<{
   { key: "gamvue", href: "/gamvue", label: "GEX VUE", title: "GEX charting", icon: BarChart3 },
   { key: "gexcal", href: "/gex-cal", label: "GEX FUTURE", title: "Forward expiration by strike exposure", icon: CalendarRange },
   { key: "gexbot", href: "/gex-box", label: "GEX BOX", title: "Classic, state, order-flow and research exposure", icon: Boxes },
-  { key: "gexflow", href: "/gex-flow", label: "GEX FLOW", title: "Live and historical options flow", icon: Workflow },
   { key: "gamma", href: "/gamma", label: "GAMMA", title: "Options Flow Gamma", icon: Crosshair },
   { key: "gexmap", href: "/gexmap", label: "GEX MAP", title: "GEX Map", icon: ScanLine },
   { key: "liqmap", href: "/liqmap", label: "LIQ MAP", title: "Liquidity Heatmap", icon: Waves },
@@ -121,7 +119,6 @@ const PERSISTENT_WORKSPACE_KEYS = new Set<SidebarKey>([
   "charts",
   "gamvue",
   "gexcal",
-  "gexflow",
   "zyon",
   "gameplan",
   "gamma",
