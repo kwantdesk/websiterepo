@@ -310,7 +310,20 @@ export class MiniDomPrimitive implements ISeriesPrimitive<Time> {
     return [this.paneView];
   }
 
-  private draw(target: CanvasRenderingTarget2D) {
+  /**
+   * Deliberately draws nothing.
+   *
+   * A series primitive is clipped to the price pane, which is the one place
+   * the ladder must NOT be: it belongs over on the price-scale side, clear of
+   * the candles. The primitive is kept because it is where the live book is
+   * collected and retained across settings changes; the painting is done by
+   * drawMiniDomLadder into a canvas that sits outside the pane.
+   */
+  private draw(_target: CanvasRenderingTarget2D) {
+    return;
+  }
+
+  private drawInPane(target: CanvasRenderingTarget2D) {
     const params = this.attachedParams;
     if (!params || !this.levels.length) return;
     const options = this.options;
@@ -413,4 +426,125 @@ export class MiniDomPrimitive implements ISeriesPrimitive<Time> {
       context.restore();
     });
   }
+}
+
+/**
+ * Paint the ladder into ANY 2D context.
+ *
+ * Split out of the series primitive so the ladder can be drawn somewhere a
+ * primitive cannot reach. A primitive is clipped to the price pane, which is
+ * exactly the region the ladder was asked to get out of — it belongs over on
+ * the price-scale side, not on top of the candles.
+ */
+export type MiniDomView = {
+  levels: MiniDomLevel[];
+  tickSize: number;
+  /** Screen y for a price, in this canvas's own coordinates. */
+  yAtPrice: (price: number) => number | null;
+  /** The price at a screen y, for deciding which bands are on screen. */
+  priceAtY: (y: number) => number | null;
+};
+
+export function drawMiniDomLadder(
+  context: CanvasRenderingContext2D,
+  mediaSize: { width: number; height: number },
+  view: MiniDomView,
+  options: MiniDomOptions,
+) {
+  if (!view.levels.length) return;
+  if (!options.showBids && !options.showAsks) return;
+      const layout = miniDomLayout({
+        paneWidth: mediaSize.width,
+        widthPx: options.widthPx,
+        rightGapPx: options.rightGapPx,
+        showBids: options.showBids,
+        showAsks: options.showAsks,
+        alignLeft: options.alignLeft,
+      });
+
+      // Band against what is actually on screen, so the ladder rescales as the
+      // view moves rather than being flattened by one far-away wall.
+      const topPrice = view.priceAtY(0);
+      const bottomPrice = view.priceAtY(mediaSize.height);
+      if (topPrice === null || bottomPrice === null) return;
+      const tick = view.tickSize > 0 ? view.tickSize : 0.25;
+      const bottomTick = Math.min(topPrice, bottomPrice) / tick;
+      const topTick = Math.max(topPrice, bottomPrice) / tick;
+      const visibleTickSpan = topTick - bottomTick;
+      if (!(visibleTickSpan > 0)) return;
+
+      const bandTicks = miniDomBandStep(visibleTickSpan, mediaSize.height, options.levelSpacingPx);
+      const book = aggregateMiniDomBook(view.levels, tick, bandTicks, bottomTick, topTick);
+      if (!book.peak) return;
+      const barHeight = miniDomBarHeight(mediaSize.height / Math.max(1, visibleTickSpan / book.step));
+
+      context.save();
+      if (options.backgroundColor) {
+        context.fillStyle = options.backgroundColor;
+        context.fillRect(layout.left, 0, layout.width, mediaSize.height);
+      }
+      context.font = `600 ${options.fontSize}px 'JetBrains Mono', ui-monospace, monospace`;
+      context.textBaseline = "middle";
+
+      const first = Math.ceil(bottomTick / book.step) * book.step;
+      for (let band = first; band <= topTick; band += book.step) {
+        const value = book.bands.get(band);
+        if (!value) continue;
+        const y = view.yAtPrice(band * tick);
+        if (y === null || y < -barHeight || y > mediaSize.height + barHeight) continue;
+        const top = y - barHeight / 2;
+
+        const baseline = layout.baselineX;
+        if (baseline !== null) {
+          // Aligned: one baseline, everything running left off it. A price
+          // band in a real book carries resting size on one side or the
+          // other, so the two practically never land on the same row; where
+          // they do, the larger is drawn first so neither is hidden.
+          const rows: Array<{ size: number; color: string }> = [];
+          if (value.sell > 0 && options.showAsks) rows.push({ size: value.sell, color: options.sellColor });
+          if (value.buy > 0 && options.showBids) rows.push({ size: value.buy, color: options.buyColor });
+          rows.sort((left, right) => right.size - left.size);
+          for (const row of rows) {
+            const width = miniDomBarWidth(row.size, book.peak, layout.barExtent);
+            context.fillStyle = withAlpha(row.color, options.barOpacity);
+            context.fillRect(baseline - width - 1, top, width, barHeight);
+          }
+          // A count needs a row tall enough to hold it. At tight level
+          // spacing the bars are still readable but the numbers would print
+          // over one another, so they drop out and the bars carry the read.
+          if (options.showSizes && layout.sizesFit && rows.length && barHeight >= options.fontSize) {
+            // Left of every bar, in one column, at full strength.
+            context.textAlign = "right";
+            context.fillStyle = rows[0].color;
+            context.fillText(String(Math.round(rows[0].size)), layout.numberX, y + 0.5);
+          }
+        } else {
+          if (value.sell > 0 && options.showAsks) {
+            const width = miniDomBarWidth(value.sell, book.peak, layout.barExtent);
+            context.fillStyle = withAlpha(options.sellColor, options.barOpacity);
+            // The ask rail grows left, away from the bid rail beside it.
+            context.fillRect(layout.sellRight - width - 1, top, width, barHeight);
+          }
+          if (value.buy > 0 && options.showBids) {
+            const width = miniDomBarWidth(value.buy, book.peak, layout.barExtent);
+            context.fillStyle = withAlpha(options.buyColor, options.barOpacity);
+            context.fillRect(layout.buyLeft + 1, top, width, barHeight);
+          }
+          // The count sits on the rail at full strength, so it stays legible
+          // over a bar drawn at the band's own translucent colour.
+          if (options.showSizes && layout.sizesFit && barHeight >= options.fontSize) {
+            if (value.sell > 0 && options.showAsks) {
+              context.textAlign = "left";
+              context.fillStyle = options.sellColor;
+              context.fillText(String(Math.round(value.sell)), layout.sellLeft + 3, y + 0.5);
+            }
+            if (value.buy > 0 && options.showBids) {
+              context.textAlign = "right";
+              context.fillStyle = options.buyColor;
+              context.fillText(String(Math.round(value.buy)), layout.buyRight - 3, y + 0.5);
+            }
+          }
+        }
+      }
+      context.restore();
 }

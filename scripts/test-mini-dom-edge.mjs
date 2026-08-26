@@ -109,4 +109,34 @@ check("its width is what the setting asks for, between the clamps", () => {
   assert.equal(900 - layout.reservedWidth, layout.left, "which is the ladder's left edge measured from the pane");
 });
 
+check("the ladder is drawn OUTSIDE the price pane", () => {
+  // A series primitive is clipped to the pane, which is the one place the
+  // ladder must not be — it belongs over on the price-scale side, clear of
+  // the candles. The primitive is kept only as the place the live book is
+  // collected and retained; it paints nothing.
+  const primitive = readFileSync(new URL("../src/lib/miniDomPrimitive.ts", import.meta.url), "utf8");
+  const draw = primitive.slice(primitive.indexOf("private draw(_target"), primitive.indexOf("private drawInPane"));
+  assert.ok(draw.length > 0, "the in-pane draw must still exist to be a no-op");
+  assert.doesNotMatch(draw, /useMediaCoordinateSpace/, "it must not reach the pane canvas at all");
+  assert.match(primitive, /export function drawMiniDomLadder/, "the painting moves to a standalone renderer");
+});
+
+check("its canvas sits behind the chart, pinned to the right edge", () => {
+  assert.match(chart, /ref=\{miniDomCanvasRef\}/, "the ladder needs its own surface");
+  const canvas = chart.slice(chart.indexOf("ref={miniDomCanvasRef}"), chart.indexOf("ref={miniDomCanvasRef}") + 700);
+  assert.match(canvas, /right: 0/, "pinned to the right edge");
+  assert.match(canvas, /zIndex: 0/, "and behind the chart's own canvases");
+  assert.match(canvas, /pointer-events-none/, "it must never eat a chart interaction");
+  // Lifting the chart's own surface above it is the other half of "behind".
+  assert.match(chart, /chartSurface\.style\.zIndex = "1";/);
+});
+
+check("the price scale can actually be seen through", () => {
+  // A solid layout background paints straight over anything behind it, so the
+  // ladder would be invisible rather than behind. The colour moves to the
+  // container, which looks identical.
+  assert.match(chart, /background: \{ color: "transparent" \}/, "the chart must not paint its own background");
+  assert.match(chart, /style=\{\{ backgroundColor: settings\.backgroundColor \}\}/, "the container carries it instead");
+});
+
 console.log(`\nmini dom edge: ${passed}/${passed} checks passed`);
