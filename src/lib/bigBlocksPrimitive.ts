@@ -6,6 +6,7 @@ import type {
   SeriesAttachedParameter,
   Time,
 } from "@/lib/lightweightChartsCompat";
+import { chartCandleBodyWidth } from "@/lib/chartBarWidth";
 
 export type BigBlockRenderZone = {
   id: string;
@@ -52,14 +53,27 @@ class BigBlocksRenderer implements ISeriesPrimitivePaneRenderer {
         const bottomY = params.series.priceToCoordinate(zone.bottom);
         if (rawStartX === null || rawEndX === null || topY === null || bottomY === null) continue;
 
-        const left = Math.min(rawStartX, rawEndX);
-        const right = Math.max(rawStartX, rawEndX);
+        // A zone COVERS its bars; it does not run centre-to-centre.
+        //
+        // timeToCoordinate returns the MIDDLE of a bar, so a block that starts
+        // and ends on the same bar — which every block does the moment it
+        // prints — measured zero pixels wide and was clamped to a 2px sliver.
+        // It then appeared to grow as the zone reached further bars. Widening
+        // by half a candle body at each end gives a fresh block the full
+        // standard bar width immediately, and a multi-bar block covers its
+        // first and last bars completely instead of stopping at their centres.
+        const bodyWidth = chartCandleBodyWidth(Number(timeScale.options().barSpacing));
+        const halfBody = bodyWidth / 2;
+        const left = Math.min(rawStartX, rawEndX) - halfBody;
+        const right = Math.max(rawStartX, rawEndX) + halfBody;
         const top = Math.min(topY, bottomY);
         const bottom = Math.max(topY, bottomY);
         if (right < 0 || left > mediaSize.width || bottom < 0 || top > mediaSize.height) continue;
 
         const color = zone.side === "ASK" ? options.askColor : options.bidColor;
-        const width = Math.max(2, right - left);
+        // Never thinner than one candle: that is the standard width a block is
+        // supposed to print at.
+        const width = Math.max(bodyWidth, right - left);
         const height = Math.max(2, bottom - top);
         context.save();
         context.globalAlpha = options.opacity;
