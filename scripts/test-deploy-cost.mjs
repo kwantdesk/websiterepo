@@ -161,6 +161,26 @@ check("anything that ships still builds", () => {
   assert.equal(shouldBuild(["scripts/test-a.mjs", "src/lib/thing.ts"]), true);
 });
 
+check("it recovers the history Vercel's shallow clone leaves out", () => {
+  // MEASURED LIVE. Vercel clones shallow, so the previous deployment's commit
+  // is not in the checkout and `git diff` against it silently returns nothing.
+  // The first real run logged "Could not read the changed files — building"
+  // and built, which would have made the whole gate useless. It now deepens
+  // the clone before comparing.
+  const script = readFileSync(new URL("../scripts/vercel-should-build.sh", import.meta.url), "utf8");
+  assert.match(script, /git fetch --deepen=\d+/, "it must deepen a shallow clone");
+  // Deepening before asking for one arbitrary SHA: not every server enables
+  // uploadpack.allowReachableSHA1InWant, but every server can deepen.
+  assert.ok(
+    script.indexOf("--deepen") < script.indexOf('git fetch --depth=1 origin "$VERCEL_GIT_PREVIOUS_SHA"'),
+    "the reliable recovery must be tried first",
+  );
+  assert.match(script, /BASE="HEAD\^"/, "and HEAD's parent is the last resort before building");
+  // set -e would let a git hiccup decide the exit code, and an accidental 0
+  // silently drops a real deploy.
+  assert.doesNotMatch(script, /^set -e$/m, "the gate must not abort part-way to an arbitrary exit code");
+});
+
 check("when it cannot tell, it builds", () => {
   // A wrongly skipped deploy is worse than a wasted one.
   const script = join(process.cwd(), "scripts", "vercel-should-build.sh");
