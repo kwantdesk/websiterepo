@@ -3882,13 +3882,48 @@ async function fetchWorkspaceCandles(
   }
 
   if (broker === "Market Index") {
-    const response = await fetch(
-      `/api/market-indices?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&from=${from}&to=${to}`,
-      { cache: "no-store", signal },
-    );
-    const payload = await response.json();
-    if (!response.ok) throw new Error(payload.error ?? `${symbol} index history is unavailable.`);
-    return sanitizeCandles((payload.candles ?? []) as Candle[], symbol);
+    // Bounded, and retried once.
+    //
+    // Cash-index history shares the gateway's spaced vendor queue with every
+    // GEX surface on the page. On GEX VUE that is dozens of requests, and a
+    // chart that happens to queue behind them waits a long time: measured on
+    // production, SPX's own history request ran 92.5 SECONDS and returned
+    // nothing while SPY, NDX and QQQ came back in five to nine. The endpoint
+    // itself is not slow - the same window fetched in 2.8s once the queue had
+    // drained. The pane simply lost the race.
+    //
+    // This fetch had no timeout, so losing the race meant waiting for ever, and
+    // `chartIsLoading` is candles.length === 0 - the pane sat on "restoring
+    // candles" with nothing on its way. A bounded attempt plus one retry turns
+    // a permanent hang into a slightly late chart, because by the second
+    // attempt the startup burst has cleared.
+    const attempt = async (timeoutMs: number) => {
+      const timeoutController = new AbortController();
+      const abortOnCallerSignal = () => timeoutController.abort();
+      signal?.addEventListener("abort", abortOnCallerSignal, { once: true });
+      const timer = window.setTimeout(() => timeoutController.abort(), timeoutMs);
+      try {
+        const response = await fetch(
+          `/api/market-indices?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&from=${from}&to=${to}`,
+          { cache: "no-store", signal: timeoutController.signal },
+        );
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error ?? `${symbol} index history is unavailable.`);
+        return sanitizeCandles((payload.candles ?? []) as Candle[], symbol);
+      } finally {
+        window.clearTimeout(timer);
+        signal?.removeEventListener("abort", abortOnCallerSignal);
+      }
+    };
+    try {
+      return await attempt(20_000);
+    } catch (error) {
+      // A caller that has moved on (instrument or interval changed, pane
+      // unmounted) must not be retried against - that would be a request for a
+      // chart nobody is looking at.
+      if (signal?.aborted) throw error;
+      return await attempt(30_000);
+    }
   }
 
   try {
