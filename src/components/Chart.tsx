@@ -262,7 +262,7 @@ import {
   type TapeSpeedHit,
 } from "@/lib/tapeSpeedOrderFlowBurstPrimitive";
 import { subscribeRithmicLiquidity, type RithmicLiquidityStatus } from "@/lib/rithmicLiquidityStream";
-import { MiniDomPrimitive, drawMiniDomLadder, miniDomLayout, type MiniDomLevel, type MiniDomOptions } from "@/lib/miniDomPrimitive";
+import { MiniDomPrimitive, miniDomLayout, type MiniDomLevel, type MiniDomOptions } from "@/lib/miniDomPrimitive";
 import { DeltaLadderPrimitive, type DeltaLadderLevel, type DeltaLadderOptions, type DeltaLadderSide } from "@/lib/deltaLadderPrimitive";
 import {
   defaultGammaHeatmapSource,
@@ -3142,10 +3142,6 @@ function Chart({
   const volumeProfilePrimitiveRef = useRef<NativeVolumeProfilePrimitive | null>(null);
   const tpoProfilePrimitiveRef = useRef<TpoProfilePrimitive | null>(null);
   const miniDomPrimitiveRef = useRef<MiniDomPrimitive | null>(null);
-  const miniDomCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  // Bumped when a new book is stored. The primitive holds the book in a ref,
-  // so nothing else would tell the canvas it has something new to paint.
-  const [miniDomBookRevision, setMiniDomBookRevision] = useState(0);
   const deltaLadderPrimitiveRef = useRef<DeltaLadderPrimitive | null>(null);
   /** The time scale's own right offset, kept so the ladder can give it back. */
   const miniDomReservedRightOffsetRef = useRef<number | null>(null);
@@ -5296,7 +5292,6 @@ function Chart({
         const tickSize = snapshot.tickSize > 0 ? snapshot.tickSize : priceFormat.minMove;
         if (levels.length) miniDomLastBookRef.current = { levels, tickSize };
         miniDomPrimitiveRef.current?.setBook(levels, tickSize, miniDomOptionsRef.current);
-        setMiniDomBookRevision((revision) => revision + 1);
       },
     });
     // A chart rebuild leaves a new, empty ladder behind. Hand it the book it
@@ -6850,66 +6845,6 @@ function Chart({
     [paneStackHeight],
   );
   const topIndicatorPaneHeight = useMemo(() => paneStackHeight("top"), [paneStackHeight]);
-
-  /**
-   * Paint the ladder onto its own canvas, beside the price scale.
-   *
-   * Redrawn whenever the book, the settings, the viewport or the pane size
-   * change — the same triggers the primitive used to redraw on, except the
-   * surface is outside the pane so the plot keeps its full width.
-   */
-  useEffect(() => {
-    const canvas = miniDomCanvasRef.current;
-    const series = candleSeriesRef.current;
-    const book = miniDomPrimitiveRef.current?.book();
-    if (!canvas || !series) return;
-    const cssWidth = canvas.clientWidth;
-    const cssHeight = canvas.clientHeight;
-    if (!(cssWidth > 0 && cssHeight > 0)) return;
-    const ratio = window.devicePixelRatio || 1;
-    if (canvas.width !== Math.round(cssWidth * ratio) || canvas.height !== Math.round(cssHeight * ratio)) {
-      canvas.width = Math.round(cssWidth * ratio);
-      canvas.height = Math.round(cssHeight * ratio);
-    }
-    const context = canvas.getContext("2d");
-    if (!context) return;
-    context.save();
-    context.setTransform(ratio, 0, 0, ratio, 0, 0);
-    context.clearRect(0, 0, cssWidth, cssHeight);
-    if (book?.levels.length) {
-      // The canvas is aligned to the price pane's top, so a pane y is this
-      // canvas's y with no further offset.
-      drawMiniDomLadder(
-        context,
-        { width: cssWidth, height: cssHeight },
-        {
-          levels: book.levels,
-          tickSize: book.tickSize,
-          yAtPrice: (price) => {
-            const y = series.priceToCoordinate(price);
-            return y === null ? null : Number(y) - topIndicatorPaneHeight;
-          },
-          priceAtY: (y) => {
-            const price = series.coordinateToPrice(y + topIndicatorPaneHeight);
-            return price === null ? null : Number(price);
-          },
-        },
-        miniDomOptions,
-      );
-    }
-    context.restore();
-  }, [
-    chartReadyRevision,
-    indicatorPaneHeight,
-    miniDomBookRevision,
-    miniDomIndicator,
-    miniDomOptions,
-    overlaySize.height,
-    overlaySize.width,
-    topIndicatorPaneHeight,
-    viewportVersion,
-  ]);
-
   useEffect(() => {
     onIndicatorPaneHeightChange?.(indicatorPaneHeight);
   }, [indicatorPaneHeight, onIndicatorPaneHeightChange]);
@@ -12227,11 +12162,7 @@ function Chart({
 
     const chart = createChart(chartContainerRef.current, {
       layout: {
-        // Transparent so the Mini DOM ladder, which sits BEHIND the chart's
-        // own canvases, is visible through the price scale instead of being
-        // painted over by it. The colour moves to the container below, so the
-        // chart looks exactly the same.
-        background: { color: "transparent" },
+        background: { color: settings.backgroundColor },
         textColor: "#9CA3AF",
         fontSize: 11,
         fontFamily: "'JetBrains Mono', monospace",
@@ -12405,15 +12336,6 @@ function Chart({
     const tpoProfilePrimitive = new TpoProfilePrimitive();
     candleSeries.attachPrimitive(tpoProfilePrimitive);
     tpoProfilePrimitiveRef.current = tpoProfilePrimitive;
-    // The chart's own canvases sit in a wrapper of their own. Lifting it above
-    // the ladder canvas is what puts the ladder BEHIND the price scale rather
-    // than over its labels; the transparent layout background is what lets it
-    // show through at all.
-    const chartSurface = chartContainerRef.current?.firstElementChild as HTMLElement | null;
-    if (chartSurface) {
-      chartSurface.style.position = chartSurface.style.position || "relative";
-      chartSurface.style.zIndex = "1";
-    }
     const miniDomPrimitive = new MiniDomPrimitive();
     candleSeries.attachPrimitive(miniDomPrimitive);
     miniDomPrimitiveRef.current = miniDomPrimitive;
@@ -15041,7 +14963,6 @@ function Chart({
       <div
         ref={chartContainerRef}
         className="relative h-full min-w-0 flex-1 overflow-hidden"
-        style={{ backgroundColor: settings.backgroundColor }}
         data-chart-instance-id={chartInstanceId}
         data-volume-profile-count={volumeProfiles.length}
         data-volume-profile-provider={volumeProfiles.at(-1)?.provider ?? "none"}
@@ -15056,30 +14977,6 @@ function Chart({
         * pixels. Nothing else on the chart moves: the ladder is the pane's
         * right edge while it is on, so widening it just moves that edge.
         */}
-      {/* The Mini DOM ladder.
-
-          It used to be a series primitive, which is clipped to the price pane
-          — so it could only ever be drawn on top of the candles, and it took
-          chart width away from them. It is now its own canvas pinned to the
-          right edge, UNDER the chart's canvases: the price scale and its
-          labels paint over it, and the plot keeps its full width. */}
-      {miniDomIndicator && miniDomReservedWidth > 0 ? (
-        <canvas
-          ref={miniDomCanvasRef}
-          className="pointer-events-none absolute"
-          style={{
-            right: 0,
-            top: topIndicatorPaneHeight,
-            width: miniDomReservedWidth,
-            height: Math.max(
-              1,
-              overlaySize.height - topIndicatorPaneHeight - indicatorPaneHeight - CHART_TIME_AXIS_HEIGHT,
-            ),
-            zIndex: 0,
-          }}
-        />
-      ) : null}
-
       {miniDomIndicator && miniDomReservedWidth > 0 ? (
         <div
           role="separator"
