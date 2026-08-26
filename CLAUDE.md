@@ -4,7 +4,24 @@
 
 ## 1. Your role
 
-You are acting as the second engineer on KwantDesk for a short handoff period. Work directly in this repository, preserve the existing product, diagnose the real cause of bugs, implement complete fixes, test them, commit them, and push them to `origin/main` so Vercel can deploy them.
+You are acting as the second engineer on KwantDesk for a short handoff period. Work directly in this repository, preserve the existing product, diagnose the real cause of bugs, implement complete fixes, test them, and commit scoped work locally.
+
+> **Deployment restored — 2026-08-26.** The duplicate Vercel project is
+> disconnected and the hold is lifted. `kwantdesk/websiterepo` is connected to
+> **`websiterepo-yfmi` only** (the live project serving `www.kwantdesk.com`);
+> the stale `websiterepo` project still exists but has no Git connection and
+> must not be reconnected — that is what made every push build twice. Pushing
+> `main` deploys, once. Verified: `e6d54422` built Ready in 1m40s as a single
+> production deployment.
+>
+> **Cost.** The August infrastructure invoice was $224.76, dominated by Build
+> CPU ($80.91, doubled by that second project) and Fast Origin Transfer
+> ($48.68, from `no-store` market-data routes re-sending multi-MB surfaces per
+> pane). Both are addressed in code — `vercel.json` carries an `ignoreCommand`
+> that skips builds for commits touching only scripts/docs/tests, and the heavy
+> routes revalidate via `src/lib/conditionalJson.ts`. Keep new market-data
+> routes on that helper rather than `no-store`, and keep them `private`: they
+> sit behind a session check and must never enter a shared cache.
 
 Do not behave like a prototype generator. This is a live private market-analysis product used during real sessions. A visually plausible fake, delayed data presented as live, a fallback silently replacing authoritative data, or a patch that merely hides an error is a product failure.
 
@@ -41,7 +58,7 @@ The visual direction is a compact professional trading cockpit: thin square-edge
 
 ### Production deployment and cost policy
 
-The owner wants the production website to remain live and wants completed work deployed, but does not want every development branch or intermediate commit to create a Vercel build.
+The owner wants the production website to remain live. Automatic production pushes are temporarily suspended because the repository is connected to two Vercel projects.
 
 - Only the `main` branch may trigger a Vercel deployment. Preserve this exact intent in `vercel.json`:
 
@@ -55,8 +72,8 @@ The owner wants the production website to remain live and wants completed work d
   ```
 
 - Never change this to global `deploymentEnabled: true`, re-enable preview/branch deployments, or add another automatic deployment path unless the owner explicitly approves it.
-- Work and verify locally. When a task is complete, stage only the scoped files, make one clean commit, and push `main` once when practical. Do not push a stream of partial attempts.
-- A push to `main` is expected to deploy the production website. Do not pause, disable, or take production offline unless the owner explicitly asks.
+- Work and verify locally. When a task is complete, stage only the scoped files, make one clean local commit, and push it — that push is the production deploy.
+- Do not take the existing production site offline. The correct account-level repair is to disconnect only the stale `websiterepo` project from this Git repository while retaining `websiterepo-yfmi`.
 - Continuous live market data, per-tick vendor traffic, replay generation, and long-running stream fan-out belong on the VPS gateway. Do not proxy or poll them continuously through Vercel functions.
 - Main-only deployments reduce build churn; they do not make a live Vercel application free. Runtime, transfer, function, Fluid, and observability usage must still be designed and monitored deliberately.
 
