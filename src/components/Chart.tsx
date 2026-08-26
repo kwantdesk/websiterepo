@@ -3102,6 +3102,12 @@ function Chart({
   const viewportSyncUserInteractionRef = useRef(false);
   const viewportSyncReleaseTimerRef = useRef<number | null>(null);
   const viewportSyncGroupRef = useRef(viewportSyncGroup);
+  // Read through a ref inside the chart-construction effect below. It is only
+  // ever consulted by crosshair handlers, never by construction, so having it
+  // as a DEPENDENCY tore the whole chart down and rebuilt it every time the
+  // crosshair link was toggled - which is what "clicking it refreshes my whole
+  // chart" was.
+  const crosshairSyncScopeRef = useRef(crosshairSyncScope);
   const viewportSyncRoleRef = useRef(viewportSyncRole);
   // Read inside the crosshair handler, which is bound once.
   const crosshairLinkedRef = useRef(crosshairLinked);
@@ -3794,8 +3800,12 @@ function Chart({
 
   useEffect(() => {
     viewportSyncGroupRef.current = viewportSyncGroup;
+    crosshairSyncScopeRef.current = crosshairSyncScope;
     viewportSyncRoleRef.current = viewportSyncRole;
-  }, [viewportSyncGroup, viewportSyncRole]);
+    // crosshairSyncScope belongs in these deps: the ref is what the chart
+    // effect reads now, so leaving it out would freeze the scope at whatever it
+    // was when the chart mounted and the crosshair link would stop working.
+  }, [crosshairSyncScope, viewportSyncGroup, viewportSyncRole]);
 
   useEffect(() => {
     drawingCandlesRef.current = candles;
@@ -12367,7 +12377,7 @@ function Chart({
     let lastAppliedCrosshairKey = "";
     const handleNativeCrosshairMove: Parameters<IChartApi["subscribeCrosshairMove"]>[0] = (param) => {
       const syncGroupId = chartCrosshairSyncGroup(
-        crosshairSyncScope,
+        crosshairSyncScopeRef.current,
         crosshairSyncInstrumentKey,
         viewportSyncGroupRef.current,
         // Either link puts this chart in the shared group: the viewport link
@@ -12384,7 +12394,7 @@ function Chart({
       if (!param.point || param.time === undefined) {
         publishChartCrosshairMove({
           sourceChartId: chartInstanceId,
-          scope: crosshairSyncScope,
+          scope: crosshairSyncScopeRef.current,
           syncGroupId,
           instrumentKey: crosshairSyncInstrumentKey,
           sourceTimestampMs: null,
@@ -12401,7 +12411,7 @@ function Chart({
       const referencePrice = resolveSyncedChartCandle(sourceTimestampMs, drawingCandlesRef.current)?.close ?? null;
       publishChartCrosshairMove({
         sourceChartId: chartInstanceId,
-        scope: crosshairSyncScope,
+        scope: crosshairSyncScopeRef.current,
         syncGroupId,
         instrumentKey: crosshairSyncInstrumentKey,
         sourceTimestampMs,
@@ -12417,7 +12427,7 @@ function Chart({
     // The RECEIVING side of the same rule. Both ends have to resolve the same
     // group or a chart publishes into one nobody is listening on.
     const synchronizedCrosshairGroup = () => chartCrosshairSyncGroup(
-      crosshairSyncScope,
+      crosshairSyncScopeRef.current,
       crosshairSyncInstrumentKey,
       viewportSyncGroupRef.current,
       viewportSyncRoleRef.current === "peer" || crosshairLinkedRef.current,
@@ -12431,7 +12441,7 @@ function Chart({
         || detail.syncGroupId !== syncGroupId
         || nativeCrosshairPointerActive
         || detail.sourceChartId === chartInstanceId
-        || detail.scope !== crosshairSyncScope
+        || detail.scope !== crosshairSyncScopeRef.current
       ) return;
 
       applyingSynchronizedCrosshair = true;
@@ -12461,7 +12471,7 @@ function Chart({
         }
         const targetTime = eventChartTimeBySourceTimeRef.current.get(targetCandle.timestamp)
           ?? Math.floor(targetCandle.timestamp / 1_000);
-        const synchronizedPrice = crosshairSyncScope === "gamvue"
+        const synchronizedPrice = crosshairSyncScopeRef.current === "gamvue"
           ? resolveEquivalentCrosshairPrice(
               detail.price,
               detail.referencePrice ?? detail.price,
@@ -13362,7 +13372,7 @@ function Chart({
       prevDataRef.current = "";
       lastRenderedCandleTimeRef.current = null;
     };
-  }, [chartConstructionSettingsKey, chartInstanceId, crosshairSyncInstrumentKey, crosshairSyncScope, instrument, priceFormat, themeVersion]);
+  }, [chartConstructionSettingsKey, chartInstanceId, crosshairSyncInstrumentKey, instrument, priceFormat, themeVersion]);
 
   useEffect(() => {
     const chart = chartRef.current;

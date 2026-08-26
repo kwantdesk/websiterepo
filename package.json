@@ -51,6 +51,7 @@
     "test:mini-dom-edge": "node --import ./scripts/alias-hook.mjs scripts/test-mini-dom-edge.mjs",
     "test:big-block-width": "node --import ./scripts/alias-hook.mjs scripts/test-big-block-width.mjs",
     "test:deploy-cost": "node --import ./scripts/alias-hook.mjs scripts/test-deploy-cost.mjs",
+    "test:crosshair-link-no-rebuild": "node scripts/test-crosshair-link-no-rebuild.mjs",
     "test:draw-handle-grab": "node --import ./scripts/alias-hook.mjs scripts/test-draw-handle-grab.mjs",
     "test:databento-available-end": "node --import ./scripts/alias-hook.mjs scripts/test-databento-available-end.mjs",
     "test:entry-exit-arrows": "node --import ./scripts/alias-hook.mjs scripts/test-entry-exit-arrows.mjs",
