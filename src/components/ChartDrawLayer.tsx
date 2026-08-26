@@ -1457,34 +1457,46 @@ export default function ChartDrawLayer({
           minHalfHeight: FILL_MARKER_MIN_HALF_HEIGHT_PX,
         })
       : null;
+    /**
+     * A grab handle: a small visible dot with a much larger invisible target.
+     *
+     * The dots were bare r=4.5 circles, so the grabbable region ended about
+     * six pixels from their centre — measured. Aim for one and land seven
+     * pixels out and the pointer instead hit the body layer underneath, which
+     * MOVES the drawing. So a resize silently became a drag, on every tool
+     * that has handles. The dot still draws at 4.5 so nothing looks different;
+     * the transparent circle around it is what the pointer actually catches.
+     */
+    const grabHandle = (
+      key: string,
+      x: number,
+      y: number,
+      cursor: string,
+      onGrab: (event: ReactPointerEvent) => void,
+    ) => (
+      <g key={key} style={{ pointerEvents: "all", cursor }} onPointerDown={onGrab}>
+        <circle cx={x} cy={y} r={HANDLE_HIT_RADIUS_PX} fill="transparent" />
+        <circle cx={x} cy={y} r={HANDLE_DOT_RADIUS_PX} fill="#fff" stroke={stroke} strokeWidth={1.5} />
+      </g>
+    );
+
     const handles = !selected
       ? null
       : fillMarkerHandle
-      ? (
-        <circle
-          cx={fillMarkerHandle.tipX}
-          cy={a.y as number}
-          r={5}
-          fill="#fff"
-          stroke={stroke}
-          strokeWidth={1.5}
-          style={{ pointerEvents: "all", cursor: "ew-resize" }}
-          onPointerDown={(event) => beginFillMarkerResize(drawing, event)}
-        />
+      ? grabHandle(
+        "fill-marker",
+        fillMarkerHandle.tipX,
+        a.y as number,
+        "ew-resize",
+        (event) => beginFillMarkerResize(drawing, event),
       )
       : positionCorners
-        ? positionCorners.map((corner) => (
-          <circle
-            key={`c${corner.id}`}
-            cx={corner.x}
-            cy={corner.y}
-            r={4.5}
-            fill="#fff"
-            stroke={stroke}
-            strokeWidth={1.5}
-            style={{ pointerEvents: "all", cursor: "nwse-resize" }}
-            onPointerDown={(event) => beginPositionCornerDrag(drawing, { side: corner.side, edge: corner.edge }, event)}
-          />
+        ? positionCorners.map((corner) => grabHandle(
+          `c${corner.id}`,
+          corner.x,
+          corner.y,
+          "nwse-resize",
+          (event) => beginPositionCornerDrag(drawing, { side: corner.side, edge: corner.edge }, event),
         ))
         // A pencil or highlighter stroke is hundreds of sampled points, and a
         // grab dot on every one of them buries the stroke under its own
@@ -1493,10 +1505,12 @@ export default function ChartDrawLayer({
         : (DRAW_TOOL_SPECS[drawing.tool].points === "freehand" && valid.length > 2
           ? [{ point: valid[0], index: 0 }, { point: valid[valid.length - 1], index: drawing.points.length - 1 }]
           : valid.map((point, index) => ({ point, index }))
-        ).map(({ point, index }) => (
-          <circle key={`h${index}`} cx={point.x} cy={point.y} r={4.5} fill="#fff" stroke={stroke} strokeWidth={1.5}
-            style={{ pointerEvents: "all", cursor: "grab" }}
-            onPointerDown={(event) => beginDrag(drawing, index, event)} />
+        ).map(({ point, index }) => grabHandle(
+          `h${index}`,
+          point.x,
+          point.y,
+          "grab",
+          (event) => beginDrag(drawing, index, event),
         ));
     return (
       <g
@@ -1676,6 +1690,17 @@ const FILL_MARKER_DEFAULT_HALF_HEIGHT_PX = 6;
 /** Below these it stops being legible, or grabbable. */
 const FILL_MARKER_MIN_HALF_WIDTH_PX = 4;
 const FILL_MARKER_MIN_HALF_HEIGHT_PX = 3;
+
+/**
+ * Grab handles: what is drawn, and what the pointer can actually catch.
+ *
+ * The visible dot stays small so it does not cover the price action it marks.
+ * The target around it is what makes it grabbable — a nine-pixel dot is far
+ * below what anyone can hit reliably, and missing it does not do nothing, it
+ * drags the whole drawing instead.
+ */
+const HANDLE_DOT_RADIUS_PX = 4.5;
+const HANDLE_HIT_RADIUS_PX = 11;
 
 function extend(x1: number, y1: number, x2: number, y2: number, w: number, h: number) {
   const dx = x2 - x1; const dy = y2 - y1;

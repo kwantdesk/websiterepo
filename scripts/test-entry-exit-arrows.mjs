@@ -165,8 +165,10 @@ check("there is exactly ONE handle, and it is not buried under the anchor", () =
   // point where nothing else sits.
   const layer = readFileSync(new URL("../src/components/ChartDrawLayer.tsx", import.meta.url), "utf8");
   assert.match(layer, /const fillMarkerHandle = \(drawing\.tool === "entryArrow" \|\| drawing\.tool === "exitArrow"\)/);
-  assert.match(layer, /cx=\{fillMarkerHandle\.tipX\}/, "the handle sits at the tip");
-  assert.match(layer, /onPointerDown=\{\(event\) => beginFillMarkerResize\(drawing, event\)\}/);
+  // Drawn through the shared grab helper, so it gets the same enlarged target
+  // every other handle has — the dot itself is far too small to aim at.
+  assert.match(layer, /grabHandle\(\s*"fill-marker",\s*fillMarkerHandle\.tipX,/, "the handle sits at the tip");
+  assert.match(layer, /\(event\) => beginFillMarkerResize\(drawing, event\)/);
   // It must be chosen BEFORE the generic per-point handles, or the overlapping
   // dots come straight back.
   const handles = layer.slice(layer.indexOf("const handles = !selected"));
