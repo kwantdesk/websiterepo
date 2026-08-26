@@ -666,11 +666,21 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           && ownsLeftDock(model)
           && (profile.period === "daily" ? autoPinnedDailyLeft : sessionAnchorX < leftEdge + 2);
         const pinned = pinnedLeft || pinnedRight;
+        // A left-facing profile must open back across ITS OWN session.
+        //
+        // An undocked profile anchored at its session START and drawn leftward
+        // opens across the session BEFORE it — the histogram sits over bars it
+        // was not built from, which is the profile reading backwards. Anchoring
+        // it at the session end instead makes it cover exactly the range it
+        // measured, whichever way it faces. The TPO renderer already does this
+        // ("an older right-facing profile hangs off the end of its own period
+        // and opens back across it"); the volume profile did not, which is why
+        // only some profiles looked reversed.
         const rawAnchorX = customProfile
           ? (customLeft + customRight) / 2
           : pinned
           ? pinnedRight ? rightEdge - 2 : leftEdge + 2
-          : sessionAnchorX;
+          : facesLeft ? sessionEndX : sessionAnchorX;
         const endX = customProfile
           ? customRight
           : pinned

@@ -81,4 +81,22 @@ assert.doesNotMatch(
   "left docking must not fall back to the newest profile in the pane",
 );
 
-console.log("volume profile left dock: 7/7 checks passed");
+// A left-facing profile must open back across ITS OWN session.
+//
+// An undocked profile anchored at its session START and drawn leftward opens
+// across the session BEFORE it - the histogram sitting over bars it was not
+// built from, which reads as the profile being backwards. Only some profiles
+// looked wrong because the DOCKED one re-anchors to the screen edge, and the
+// TPO renderer already handled this ("an older right-facing profile hangs off
+// the end of its own period and opens back across it").
+assert.match(
+  primitive,
+  /: facesLeft \? sessionEndX : sessionAnchorX;/,
+  "facing left must anchor at the session END so the profile covers what it measured",
+);
+// Docking is unchanged: a pinned profile still goes to the screen edge.
+assert.match(primitive, /\? pinnedRight \? rightEdge - 2 : leftEdge \+ 2/);
+// And direction still follows the setting, which is what it is for.
+assert.match(primitive, /const facesLeft = style\.snapMode === "right";/);
+
+console.log("volume profile left dock: 8/8 checks passed");
