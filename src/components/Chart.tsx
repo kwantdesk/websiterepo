@@ -9579,6 +9579,12 @@ function Chart({
     [indicatorSignature, indicators],
   );
   const bigTradeLiveContextRef = useRef<BigTradeLiveContext | null>(null);
+  // How far along the TAPE the last full pass got, which is not the same thing
+  // as the newest print it decided was big. The live edge admits prints newer
+  // than this; keying that off the newest marker instead meant a chart with no
+  // big trades yet had nothing to compare against, so the live path could never
+  // start. See the commit below.
+  const bigTradeTapeWatermarkRef = useRef(0);
   const bigTradeCommittedRef = useRef<{ markers: BigTradePrimitiveMarker[]; watermark: number }>({
     markers: [], watermark: 0,
   });
@@ -9598,6 +9604,10 @@ function Chart({
       // Retaining the measured scale is what lets a print arriving before the
       // next full pass be drawn immediately rather than a sample later.
       bigTradeLiveContextRef.current = context;
+      // Recorded from the same pass that produced `prints`, so the live edge
+      // resumes exactly where this pass stopped reading rather than where it
+      // last found something.
+      bigTradeTapeWatermarkRef.current = Number(indicatorMarketTrades.at(-1)?.timestamp ?? 0);
       return prints;
     },
     [bigTradesIndicator, indicatorCandles, indicatorMarketTrades, priceFormat.minMove, replayTimestampMs],
@@ -9814,10 +9824,20 @@ function Chart({
     // samples, so a live marker is never wrong for longer than one interval.
     bigTradeCommittedRef.current = {
       markers,
-      // The watermark is the SOURCE timestamp, taken from the anchored prints:
-      // a marker's `time` is a chart coordinate and, on event bars, a
-      // synthetic second that cannot be compared against the tape.
-      watermark: markers.length ? (anchoredBigTradePrints.at(-1)?.timestamp ?? 0) : 0,
+      // The watermark is a SOURCE timestamp, never a marker's `time`: that is a
+      // chart coordinate and, on event bars, a synthetic second that cannot be
+      // compared against the tape.
+      //
+      // It is where the last pass stopped READING, not the last print it
+      // admitted. Those differ whenever the newest executions were ordinary,
+      // which is almost always. Using the newest marker meant that a chart with
+      // no big trades in its window committed a watermark of 0, and the live
+      // handler bails on a falsy watermark — so the live path was dead until
+      // some slower route happened to find the first print. That is why the
+      // FIRST big block of a session could not appear live: it arrived minutes
+      // late on the 4-minute heal backfill instead, sitting on a candle that
+      // had long since closed.
+      watermark: bigTradeTapeWatermarkRef.current,
     };
     const nextOptions: BigTradesPrimitiveOptions = {
         askColor: useThemeColors

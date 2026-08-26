@@ -128,10 +128,55 @@ const tape = Array.from({ length: 20_000 }, (_, i) =>
     "the live edge must not go through React");
   // A replay must not be shown the live tape.
   assert.ok(body.includes("liveReplayActiveRef.current"), "replay must be excluded");
-  // The watermark must be the source timestamp: a marker's `time` is a chart
+  // The watermark must be a SOURCE timestamp: a marker's `time` is a chart
   // coordinate, and on event bars a synthetic second.
-  assert.ok(chart.includes("anchoredBigTradePrints.at(-1)?.timestamp"),
-    "the watermark must come from the source timestamp");
+  //
+  // It must also be where the last pass stopped READING the tape, not the last
+  // print it admitted. Those differ whenever the newest executions were
+  // ordinary, which is nearly always — and when a chart held no big trades at
+  // all the old rule committed a watermark of 0. The live handler bails on a
+  // falsy watermark, so the live path was dead until some slower route found
+  // the first print, which is why the FIRST big block of a session arrived
+  // minutes late on the heal backfill, sitting on a candle that had closed.
+  assert.ok(chart.includes("watermark: bigTradeTapeWatermarkRef.current"),
+    "the watermark must be the tape position of the last pass");
+  assert.ok(
+    chart.includes("bigTradeTapeWatermarkRef.current = Number(indicatorMarketTrades.at(-1)?.timestamp ?? 0)"),
+    "and it must be recorded by the same pass that produced the prints",
+  );
+  assert.ok(
+    !chart.includes("watermark: markers.length ? (anchoredBigTradePrints.at(-1)?.timestamp ?? 0) : 0"),
+    "committing 0 when nothing qualified is what disabled the live path",
+  );
+}
+
+// --- a tape with no qualifying print still arms the live edge ---
+{
+  // The regression in one behaviour: before the first big trade of a session
+  // there is nothing to anchor a watermark to, and the live edge has to work
+  // anyway. This is the case that was broken.
+  // Uniform one-lot prints: the threshold is a percentile OF THE TAPE, so
+  // merely removing the big trades just re-normalises it and plenty of the
+  // remainder qualifies. A flat distribution under the manual floor is what
+  // actually produces a session with no big contracts in it.
+  const quiet = Array.from({ length: 5_000 }, (_, i) =>
+    trade(i, 1, now - 390 * MIN + Math.floor((i / 5_000) * 390 * MIN)));
+  // Manual mode so the floor is an absolute size rather than a percentile of
+  // whatever the tape happens to contain.
+  const manual = { ...settings, filterMode: "manual", rthFilterMode: "manual" };
+  const { prints, context } = calculateBigTradePrintsWithContext(candles, quiet, manual, now);
+  assert.equal(prints.length, 0, "this tape must hold no qualifying print");
+
+  // What the chart now commits: where the pass stopped reading.
+  const watermark = Number(quiet.at(-1)?.timestamp ?? 0);
+  assert.ok(watermark > 0, "a non-empty tape must give a usable watermark");
+
+  // A big print arriving after that watermark must be admitted immediately,
+  // with no full pass in between.
+  const fresh = [trade(20_001, 400, watermark + 1_000)];
+  const admitted = admitLiveBigTradePrints(context, fresh, watermark);
+  assert.equal(admitted.length, 1, "the first big print of a session must paint live");
+  assert.equal(admitted[0].volume, 400);
 }
 
 console.log("Big Contracts live-edge tests passed.");

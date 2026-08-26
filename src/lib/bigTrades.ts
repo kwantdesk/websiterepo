@@ -333,7 +333,20 @@ export function calculateBigTradePrintsWithContext(
     if (capActive && cappingMode === "reject" && candidate.volume > cappingMaxVolume) return false;
     return true;
   });
-  if (!qualified.length) return { prints: [], context: null };
+  // No early return when nothing qualified.
+  //
+  // The context below is the measured SCALE — thresholds, capping and marker
+  // sizing — and none of it is derived from the qualifying prints. Returning
+  // null here threw away a perfectly usable scale for the one state where it
+  // matters most: before the session's first big contract. The chart stores
+  // that null in bigTradeLiveContextRef, and the live handler bails on a null
+  // context, so the live edge was switched off until some slower pass happened
+  // to find a print. That is why the FIRST big block of a session never
+  // appeared live — it turned up minutes later on the heal backfill, sitting
+  // on a candle that had long since closed.
+  //
+  // An empty `qualified` already yields an empty `prints` through the map
+  // below, so the empty case needs no branch of its own.
   const minSize = clamp(Number(settings.minimumSize ?? 6), 1, 80);
   const maxSize = Math.max(minSize, clamp(Number(settings.maximumSize ?? 32), 1, 160));
   const minOpacity = clamp(Number(settings.minimumOpacity ?? 25) / 100, 0, 1);
