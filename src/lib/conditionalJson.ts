@@ -36,6 +36,13 @@ export type ConditionalJsonOptions = {
    * than the one the server would give it.
    */
   maxAgeMs?: number;
+  /**
+   * Verbatim Cache-Control, for a route that already has a policy worth
+   * keeping. The ETag is added either way, so an existing policy gains free
+   * revalidation without its freshness rules being rewritten underneath it.
+   * Must not widen the response to a shared cache.
+   */
+  cacheControl?: string;
 };
 
 /** Weak, because a 304 promises equivalence, not a byte-identical body. */
@@ -57,7 +64,7 @@ export function conditionalJson<T>(
   const maxAgeSeconds = Math.max(0, Math.floor((options.maxAgeMs ?? 0) / 1_000));
   // must-revalidate so a stale copy is never served once the window passes;
   // the ETag then makes that revalidation almost free.
-  const cacheControl = `private, max-age=${maxAgeSeconds}, must-revalidate`;
+  const cacheControl = options.cacheControl ?? `private, max-age=${maxAgeSeconds}, must-revalidate`;
 
   if (requestMatchesETag(request, etag)) {
     return new Response(null, {

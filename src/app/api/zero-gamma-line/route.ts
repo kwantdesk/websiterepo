@@ -2,6 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextRequest, NextResponse } from "next/server";
 import { getZeroGammaLinePayload } from "@/lib/zeroGammaLine.server";
 import { isZeroGammaLineSource, zeroGammaRootForInstrument, zeroGammaSourceForInstrument } from "@/lib/zeroGammaLine";
+import { conditionalJson } from "@/lib/conditionalJson";
 
 // A cold request derives up to six provider-backed session snapshots plus
 // their intraday trails. The platform default function timeout cut that chain
@@ -41,8 +42,11 @@ export async function GET(request: NextRequest) {
   const cacheKey = `${root}:${source}:${instrument}:${sessions}`;
   const cached = payloadCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
-    return NextResponse.json(cached.payload, {
-      headers: { "Cache-Control": "private, max-age=5, stale-while-revalidate=30" },
+    // The entry's own expiry moves only when the trail is rebuilt, so it
+    // identifies the payload without hashing it.
+    return conditionalJson(request, cached.payload, {
+      identity: `${cacheKey}:${cached.expiresAt}`,
+      cacheControl: "private, max-age=5, stale-while-revalidate=30",
     });
   }
   try {
@@ -50,9 +54,11 @@ export async function GET(request: NextRequest) {
     if (payloadCache.size > 64) {
       for (const [key, entry] of payloadCache) if (entry.expiresAt <= Date.now()) payloadCache.delete(key);
     }
-    payloadCache.set(cacheKey, { expiresAt: Date.now() + PAYLOAD_CACHE_TTL_MS, payload });
-    return NextResponse.json(payload, {
-      headers: { "Cache-Control": "private, max-age=5, stale-while-revalidate=30" },
+    const expiresAt = Date.now() + PAYLOAD_CACHE_TTL_MS;
+    payloadCache.set(cacheKey, { expiresAt, payload });
+    return conditionalJson(request, payload, {
+      identity: `${cacheKey}:${expiresAt}`,
+      cacheControl: "private, max-age=5, stale-while-revalidate=30",
     });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Zero Gamma Line is temporarily unavailable." }, { status: 503 });

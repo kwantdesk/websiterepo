@@ -171,4 +171,32 @@ check("when it cannot tell, it builds", () => {
   assert.ok(built, "no previous commit must build");
 });
 
+check("every heavy market-data route revalidates, none of them go public", () => {
+  // The routes carrying multi-megabyte surfaces polled per pane. Each must be
+  // able to answer a repeat with a 304, and none may be handed to a shared
+  // cache — they all sit behind a session check.
+  const routes = [
+    "src/app/api/gamma-heatmap/route.ts",
+    "src/app/api/zero-gamma-line/route.ts",
+    "src/app/api/bounce-levels/route.ts",
+  ];
+  for (const route of routes) {
+    const text = readFileSync(new URL(`../${route}`, import.meta.url), "utf8");
+    assert.match(text, /conditionalJson\(/, `${route} must revalidate`);
+    assert.doesNotMatch(text, /"public/, `${route} must never be publicly cacheable`);
+    assert.doesNotMatch(text, /s-maxage/, `${route} must not be held by a shared cache`);
+    // The identity must be built from something that MOVES when the data does.
+    // A constant tag would revalidate a stale surface forever.
+    assert.match(text, /identity: `\$\{cacheKey\}:\$\{|identity: `\$\{key\}:\$\{/, `${route} needs a moving identity`);
+  }
+});
+
+check("an unrebuilt surface keeps its tag; a rebuilt one gets a new one", () => {
+  // These identify by the cache entry's expiry, which moves only when the
+  // surface is rebuilt — so polls in between revalidate into a 304.
+  const same = payloadETag("NQ:GAMMA:NDX:5:1756220000000");
+  assert.equal(payloadETag("NQ:GAMMA:NDX:5:1756220000000"), same, "same surface, same tag");
+  assert.notEqual(payloadETag("NQ:GAMMA:NDX:5:1756220030000"), same, "rebuilt surface, new tag");
+});
+
 console.log(`\ndeploy cost: ${passed}/${passed} checks passed`);

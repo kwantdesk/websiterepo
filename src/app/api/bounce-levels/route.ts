@@ -22,6 +22,7 @@ import {
 } from "@/lib/quantData.server";
 import type { GreekMode } from "@/lib/optionsFlow";
 import { SITE_ACCESS_COOKIE, isSiteAccessConfigured, isValidSiteAccessToken } from "@/lib/siteAccess";
+import { conditionalJson } from "@/lib/conditionalJson";
 
 export const maxDuration = 60;
 
@@ -283,7 +284,10 @@ export async function GET(request: NextRequest) {
   const cached = payloadCache.get(cacheKey);
   const now = Date.now();
   if (cached && cached.expiresAt > now) {
-    return NextResponse.json(cached.payload, { headers: { "Cache-Control": "private, no-store" } });
+    return conditionalJson(request, cached.payload, {
+      identity: `${cacheKey}:${cached.expiresAt}`,
+      cacheControl: "private, max-age=30, must-revalidate",
+    });
   }
   if (cached && cached.expiresAt + STALE_SERVE_WINDOW_MS > now) {
     // Answer from the stale surface immediately and rebuild behind the
@@ -298,13 +302,21 @@ export async function GET(request: NextRequest) {
       backgroundRefreshes.set(cacheKey, refresh);
       after(() => refresh);
     }
-    return NextResponse.json(cached.payload, { headers: { "Cache-Control": "private, no-store" } });
+    // Served from the stale surface while a rebuild runs behind it; the
+    // expiry still identifies exactly which surface this is.
+    return conditionalJson(request, cached.payload, {
+      identity: `${cacheKey}:${cached.expiresAt}`,
+      cacheControl: "private, max-age=30, must-revalidate",
+    });
   }
   try {
     const payload = await buildBounceLevelsPayload(request, cacheKey, {
       display, source, displayPrice, expirationMode, greekMode, sessionDate, asOf,
     });
-    return NextResponse.json(payload, { headers: { "Cache-Control": "private, no-store" } });
+    return conditionalJson(request, payload, {
+      identity: `${cacheKey}:${payloadCache.get(cacheKey)?.expiresAt ?? Date.now()}`,
+      cacheControl: "private, max-age=30, must-revalidate",
+    });
   } catch (error) {
     const problem = getQuantDataHttpError(error);
     return NextResponse.json({ error: problem.message }, { status: problem.status, headers: { "Cache-Control": "private, no-store" } });
