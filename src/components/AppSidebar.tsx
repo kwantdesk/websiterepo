@@ -100,7 +100,7 @@ const navItems: Array<{
   { key: "home", href: "/", label: "Home", title: "Home", icon: Home },
   { key: "charts", href: "/charts", label: "Charts", title: "Charts", icon: LineChart },
   { key: "gamvue", href: "/gamvue", label: "GEX VUE", title: "GEX charting", icon: BarChart3 },
-  { key: "gexcal", href: "/gex-cal", label: "GEX CAL", title: "Expiration by strike exposure", icon: CalendarRange },
+  { key: "gexcal", href: "/gex-cal", label: "GEX FUTURE", title: "Forward expiration by strike exposure", icon: CalendarRange },
   { key: "gexbot", href: "/gex-box", label: "GEX BOX", title: "Classic, state, order-flow and research exposure", icon: Boxes },
   { key: "gexflow", href: "/gex-flow", label: "GEX FLOW", title: "Live and historical options flow", icon: Workflow },
   { key: "gamma", href: "/gamma", label: "GAMMA", title: "Options Flow Gamma", icon: Crosshair },

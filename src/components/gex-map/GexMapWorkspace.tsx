@@ -112,6 +112,11 @@ type GexMapWorkspaceProps = {
   persistedState?: GexMapEmbedState | null;
   /** Reports configuration changes so the host can persist them with the workspace. */
   onStateChange?: (state: GexMapEmbedState) => void;
+  /**
+   * Pin the workspace to one horizon and hide the PRESENT/FUTURE switch, so the
+   * FUTURE matrix can be a page in its own right rather than a mode of the map.
+   */
+  lockedTimeHorizon?: "present" | "future" | null;
 };
 
 /**
@@ -1657,7 +1662,16 @@ function StarViewSettings({
   );
 }
 
-function GexMapWorkspace({ market = null, externalReplay = null, persistedState = null, onStateChange }: GexMapWorkspaceProps = {}) {
+function GexMapWorkspace({
+  market = null,
+  externalReplay = null,
+  persistedState = null,
+  onStateChange,
+  // Pins the workspace to one horizon and hides the PRESENT/FUTURE switch. The
+  // GEX CAL route is the FUTURE matrix as a page of its own, and a page that
+  // could be switched back to PRESENT would just be a second GEX Map.
+  lockedTimeHorizon = null,
+}: GexMapWorkspaceProps = {}) {
   // Keep the server and first browser render identical. Reading window.location or
   // sessionStorage in a state initializer can make React discard the hydrated GEX
   // tree, which previously left an otherwise healthy map blank on some page loads.
@@ -1711,10 +1725,13 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
   const [ladderZoom, setLadderZoom] = useState(1);
   // PRESENT (live per-strike ladders) vs FUTURE (forward expiry×strike
   // matrix). Persisted so the map reopens on the horizon last worked in.
-  const [timeHorizon, setTimeHorizon] = useState<"present" | "future">(() => {
+  const [storedTimeHorizon, setTimeHorizon] = useState<"present" | "future">(() => {
     if (typeof window === "undefined") return "present";
     return window.localStorage.getItem(GEX_MAP_TIME_HORIZON_KEY) === "future" ? "future" : "present";
   });
+  // A locked horizon wins over the remembered one, and must not overwrite it:
+  // the GEX Map page has to reopen on whichever horizon IT was last left on.
+  const timeHorizon = lockedTimeHorizon ?? storedTimeHorizon;
   useEffect(() => {
     try {
       const stored = Number(window.localStorage.getItem(GEX_MAP_ZOOM_STORAGE_KEY));
@@ -2142,8 +2159,10 @@ function GexMapWorkspace({ market = null, externalReplay = null, persistedState 
           </div>
 
           {/* PRESENT = the live per-strike ladders; FUTURE = the forward
-              expiry×strike matrix built from the same options surface. */}
-          <div className="ml-1 flex h-7 shrink-0 items-center gap-0.5 rounded-[3px] border border-border/70 bg-background/35 p-0.5">
+              expiry×strike matrix built from the same options surface. Hidden
+              when the host pinned a horizon: a page that is only ever FUTURE
+              should not offer a way out of itself. */}
+          <div className={`ml-1 h-7 shrink-0 items-center gap-0.5 rounded-[3px] border border-border/70 bg-background/35 p-0.5 ${lockedTimeHorizon ? "hidden" : "flex"}`}>
             {(["present", "future"] as const).map((mode) => (
               <button
                 key={mode}

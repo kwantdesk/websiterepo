@@ -356,7 +356,6 @@ function workspaceLoader(title: string, detail: string) {
 
 const loadChartWorkspace = () => import("@/components/Chart");
 const loadGammaWorkspace = () => import("@/components/options-flow/GammaWorkspace");
-const loadGexCalendarWorkspace = () => import("@/components/gex-cal/GexCalendarWorkspace");
 const loadGexFlowWorkspace = () => import("@/components/gex-flow/GexFlowWorkspace");
 const loadGexMapWorkspace = () => import("@/components/gex-map/GexMapWorkspace");
 // eslint-disable-next-line @typescript-eslint/consistent-type-imports
@@ -380,7 +379,7 @@ const loadKwantBotWorkspace = () => import("@/components/kwantbot/KwantBotIntell
 const workspaceModulePreloaders: Record<string, () => Promise<unknown>> = {
   charts: loadChartWorkspace,
   gamvue: loadChartWorkspace,
-  gexcal: loadGexCalendarWorkspace,
+  gexcal: loadGexMapWorkspace,
   gexflow: loadGexFlowWorkspace,
   gamma: loadGammaWorkspace,
   gexmap: loadGexMapWorkspace,
@@ -413,10 +412,6 @@ const Chart = dynamic(loadChartWorkspace, {
 const GammaWorkspace = dynamic(loadGammaWorkspace, {
   ssr: false,
   loading: () => workspaceLoader("Opening Gamma", "Restoring the latest options view."),
-});
-const GexCalendarWorkspace = dynamic(loadGexCalendarWorkspace, {
-  ssr: false,
-  loading: () => workspaceLoader("Opening GEX CAL", "Normalizing expiration and strike exposure."),
 });
 const GexFlowWorkspace = dynamic(loadGexFlowWorkspace, {
   ssr: false,
@@ -18974,8 +18969,14 @@ export default function KwantifyWorkspace({
           >
             {visitedWorkspaceSections.has("gexcal") ? (
               <ReactActivity mode={bottomWorkspaceSection === "gexcal" ? "visible" : "hidden"}>
-                <WorkspaceFailureBoundary resetKey="gexcal" label="GEX CAL">
-                  <GexCalendarWorkspace />
+                {/* GEX CAL is now the GEX Map FUTURE matrix as a page of its
+                    own. It is the same forward expiry x strike surface, with
+                    the map's own symbol, greek, lookahead, value-mode, zoom and
+                    palette controls, rather than a second calendar built on the
+                    same data. The horizon is pinned so the page cannot be
+                    switched back into being a duplicate GEX Map. */}
+                <WorkspaceFailureBoundary resetKey="gexcal" label="GEX FUTURE">
+                  <GexMapWorkspace lockedTimeHorizon="future" />
                 </WorkspaceFailureBoundary>
               </ReactActivity>
             ) : null}
