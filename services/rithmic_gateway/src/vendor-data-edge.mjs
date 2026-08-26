@@ -76,7 +76,10 @@ export function rollingDatabentoCacheKey(path, body) {
 }
 
 export class VendorDataEdge {
-  constructor(config, fetchImpl = fetch) {
+  // The exposure archiver is optional so the edge stays constructible without
+  // it (tests, and a gateway running with archiving turned off).
+  constructor(config, fetchImpl = fetch, exposureArchiver = null) {
+    this.exposureArchiver = exposureArchiver;
     this.config = config;
     this.fetch = fetchImpl;
     this.databentoCache = new Map();
@@ -290,6 +293,11 @@ export class VendorDataEdge {
       if (value) headers[name] = value;
     }
     if (upstream.ok) {
+      // Archive BEFORE the cache write, and only on a genuine upstream success.
+      // A cache hit returns earlier and never reaches here, which is correct:
+      // a served-from-cache response is a repeat of one already archived, and
+      // the archiver would only have to discard it again.
+      this.exposureArchiver?.archive({ path, requestBody: body, payload });
       this.quantDataCache.set(cacheKey, {
         expiresAt: Date.now() + this.config.quantDataCacheMs,
         status: upstream.status,

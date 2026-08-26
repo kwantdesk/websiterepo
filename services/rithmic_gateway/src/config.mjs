@@ -122,6 +122,13 @@ export function loadConfig(env = process.env) {
     recordDir: String(
       env.RITHMIC_RECORD_DIR || join(SERVICE_ROOT, "recordings"),
     ).trim(),
+    // Durable capture of the options exposure surfaces. Futures have the raw
+    // tape; options had no archive at all, so gamma history never accumulated
+    // and yesterday's surface could not be redrawn at any price. On by default
+    // for the same reason the recorder is: a session not captured as it happens
+    // is gone.
+    exposureArchiveEnabled:
+      String(env.EXPOSURE_ARCHIVE_ENABLED || "true").toLowerCase() !== "false",
     // Floor on depth-by-order resync requests per instrument. Rithmic depth
     // sequences are exchange-wide and regress constantly for one symbol, so
     // an unthrottled resync becomes a snapshot storm against the provider.

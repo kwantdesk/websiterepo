@@ -14,6 +14,7 @@ import { QuantDataMarketSnapshotStream } from "./quantdata-market-snapshot-strea
 import { discoverRithmicSystems, RithmicMarketDataClient } from "./rithmic-client.mjs";
 import { RTraderExcelMarketDataClient } from "./rtrader-excel-client.mjs";
 import { MarketDataRecorder } from "./recorder.mjs";
+import { ExposureArchiver } from "./exposure-archiver.mjs";
 import { VendorDataEdge } from "./vendor-data-edge.mjs";
 import {
   chicagoTradingDate,
@@ -56,7 +57,15 @@ const cashIndexArchiver = new CashIndexArchiver({
     .filter(Boolean),
   log: (line) => process.stdout.write(`${line}\n`),
 });
-const vendorDataEdge = new VendorDataEdge(config);
+// The options counterpart to the recorder. Every GEX surface in the product —
+// Map, Cal, VUE, BOX, the Gamma page — fetches through the vendor edge, so one
+// writer there captures all of them, and a surface added later is archived
+// without touching this wiring.
+const exposureArchiver = new ExposureArchiver({
+  dir: config.recordDir,
+  enabled: config.exposureArchiveEnabled,
+});
+const vendorDataEdge = new VendorDataEdge(config, fetch, exposureArchiver);
 const databentoEquities = new DatabentoEquitiesTradeStream({
   apiKey: config.databentoApiKey,
   reconnectMinMs: config.reconnectMinMs,
@@ -1041,6 +1050,10 @@ const server = createServer(async (request, response) => {
     return json(response, config.configured ? 200 : 503, {
       ...client.health(),
       recorder: recorder.status(),
+      // Checked the same way as the recorder: archived counts climbing while
+      // the options market is open means gamma history is accumulating. A
+      // skipped count far above archived is healthy — it is the dedupe working.
+      exposure: exposureArchiver.status(),
       vendorData: vendorDataEdge.health(),
       massiveIndices: massiveIndices.status(),
       databentoEquities: databentoEquities.status(),
@@ -1880,6 +1893,12 @@ server.listen(config.port, config.host, () => {
   if (config.databentoApiKey) databentoEquities.start();
   if (config.quantDataApiKey) quantDataMarketSnapshots.start();
   if (config.massiveApiKey) massiveIndices.start();
+  if (exposureArchiver.enabled) {
+    exposureArchiver.start();
+    process.stdout.write(`[exposure] archiving options surfaces to ${exposureArchiver.dir}\n`);
+  } else {
+    process.stdout.write("[exposure] DISABLED - gamma history will not accumulate\n");
+  }
   if (cashIndexArchiver.enabled) {
     cashIndexArchiver.start();
     process.stdout.write(`[cash-index] archiving ${cashIndexArchiver.tickers.join(", ")} after every cash close\n`);
@@ -1892,7 +1911,10 @@ server.listen(config.port, config.host, () => {
 // leaves a session file without its completeness record.
 for (const signal of ["SIGINT", "SIGTERM"]) {
   process.on(signal, () => {
-    void recorder.close().finally(() => process.exit(0));
+    void Promise.resolve(exposureArchiver.stop())
+      .catch(() => {})
+      .then(() => recorder.close())
+      .finally(() => process.exit(0));
   });
 }
 
