@@ -369,16 +369,32 @@ export default function ChartDrawLayer({
   // after drawing something. So a placed drawing kept its handles for the rest
   // of the session and could be dragged by accident at any moment.
   //
-  // Listening on the chart container in the BUBBLE phase is what makes this
-  // safe: every drawing's own pointer handler stops propagation, so a click
-  // that hit a drawing never reaches here and the selection survives. Only a
-  // click that hit nothing gets through. Chrome outside the container — the
-  // toolbar, the style dialog — is not in this element at all.
+  // It listens on the chart container in the bubble phase, and it decides from
+  // the EVENT TARGET.
+  //
+  // It used to clear unconditionally, on the assumption that a drawing's own
+  // onPointerDown had already called stopPropagation() so a press that hit a
+  // drawing could never reach here. That is not how React delivers events:
+  // listeners are attached once at the app ROOT, which is an ancestor of this
+  // container, so the native event reaches this listener FIRST and the React
+  // handler — with its stopPropagation — runs afterwards. Pressing a resize
+  // handle therefore deselected the drawing before the grab could start, the
+  // handles unmounted underneath the cursor, and the drag died on the spot.
+  // That is why every tool's corner handles "did nothing": trend lines, rays,
+  // fibs, rectangles and both position calculators all share this path.
+  //
+  // Reading the target is immune to the ordering: anything inside a drawing is
+  // marked data-draw-hit, so only a press that genuinely hit empty chart
+  // clears the selection.
   useEffect(() => {
     if (!selectedId) return;
     const container = svgRef.current?.parentElement;
     if (!container) return;
-    const clear = () => onSelect(null);
+    const clear = (event: PointerEvent) => {
+      const target = event.target as Element | null;
+      if (target?.closest?.("[data-draw-hit]")) return;
+      onSelect(null);
+    };
     container.addEventListener("pointerdown", clear);
     return () => container.removeEventListener("pointerdown", clear);
   }, [onSelect, selectedId]);
@@ -1409,7 +1425,7 @@ export default function ChartDrawLayer({
     // Transparent fat hit layer so thin lines and shape interiors are easy to
     // grab; single-anchor tools get a hit line/dot instead.
     const hit = interactive ? (
-      <g style={{ pointerEvents: "all" }}>
+      <g data-draw-hit="body" style={{ pointerEvents: "all" }}>
         {["horizontalLine", "horizontalRay"].includes(drawing.tool) && a.y != null
           ? <line x1={0} y1={a.y} x2={width} y2={a.y} stroke="transparent" strokeWidth={12} />
           : ["verticalLine", "crossLine"].includes(drawing.tool) && a.x != null
@@ -1474,7 +1490,7 @@ export default function ChartDrawLayer({
       cursor: string,
       onGrab: (event: ReactPointerEvent) => void,
     ) => (
-      <g key={key} style={{ pointerEvents: "all", cursor }} onPointerDown={onGrab}>
+      <g key={key} data-draw-hit="handle" style={{ pointerEvents: "all", cursor }} onPointerDown={onGrab}>
         <circle cx={x} cy={y} r={HANDLE_HIT_RADIUS_PX} fill="transparent" />
         <circle cx={x} cy={y} r={HANDLE_DOT_RADIUS_PX} fill="#fff" stroke={stroke} strokeWidth={1.5} />
       </g>
@@ -1515,6 +1531,7 @@ export default function ChartDrawLayer({
     return (
       <g
         key={drawing.id}
+        data-draw-hit={interactive ? "drawing" : undefined}
         opacity={preview ? 0.75 : 1}
         style={interactive ? { pointerEvents: "auto", cursor: bodyMovable ? "move" : "pointer" } : { pointerEvents: "none" }}
         onPointerDown={interactive

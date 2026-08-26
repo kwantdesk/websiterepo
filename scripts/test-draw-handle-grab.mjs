@@ -65,7 +65,7 @@ check("the helper draws the target first and the dot on top", () => {
   assert.match(helper, /fill="transparent"/, "the target must be invisible");
   // The group carries the pointer handling, so a press anywhere inside the
   // target counts — including on the dot.
-  assert.match(helper, /<g key=\{key\} style=\{\{ pointerEvents: "all", cursor \}\} onPointerDown=\{onGrab\}>/);
+  assert.match(helper, /<g key=\{key\} data-draw-hit="handle" style=\{\{ pointerEvents: "all", cursor \}\} onPointerDown=\{onGrab\}>/);
 });
 
 check("each handle keeps its own cursor", () => {
@@ -74,6 +74,34 @@ check("each handle keeps its own cursor", () => {
   assert.match(block, /"ew-resize"/, "the fill marker resizes sideways");
   assert.match(block, /"nwse-resize"/, "a position corner resizes diagonally");
   assert.match(block, /"grab"/, "a plain anchor is grabbed");
+});
+
+check("pressing a handle cannot deselect the drawing out from under it", () => {
+  // THE REPORTED FAILURE, reproduced on production: grab a corner, and the
+  // handles vanish instead of resizing. Measured with a real mouse drag on a
+  // placed Long Position — the four handle dots went from four to zero.
+  //
+  // The deselect listener is NATIVE and sits on the chart container. React
+  // attaches its own listeners once at the app ROOT, an ancestor of that
+  // container, so the native listener runs FIRST and the React handler's
+  // stopPropagation() lands too late to protect the selection. The old code
+  // cleared unconditionally and relied on exactly that stopPropagation, which
+  // is why every tool with handles behaved the same way.
+  const clear = layer.slice(layer.indexOf("if (!selectedId) return;"), layer.indexOf("const dragCleanupRef"));
+  assert.match(clear, /const clear = \(event: PointerEvent\) =>/,
+    "the listener must receive the event so it can read the target");
+  assert.match(clear, /target\?\.closest\?\.\("\[data-draw-hit\]"\)/,
+    "a press inside a drawing must be recognised by its marker, not by propagation");
+  assert.doesNotMatch(clear, /const clear = \(\) => onSelect\(null\);/,
+    "an unconditional clear is the bug");
+});
+
+check("every interactive part of a drawing carries the hit marker", () => {
+  // If a grabbable element is missing the marker, pressing it clears the
+  // selection and that tool goes back to doing nothing.
+  assert.match(layer, /<g key=\{key\} data-draw-hit="handle"/, "resize/anchor handles");
+  assert.match(layer, /<g data-draw-hit="body"/, "the fat transparent hit layer");
+  assert.match(layer, /data-draw-hit=\{interactive \? "drawing" : undefined\}/, "the drawing group itself");
 });
 
 check("handles still only appear on the selected drawing", () => {
