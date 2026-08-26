@@ -11,11 +11,15 @@ import { getNativeFuturesSpot } from "@/lib/databentoGamma.server";
 import { getConfiguredQuantDataApiKey, getGexMapPanel, getQuantDataHttpError } from "@/lib/quantData.server";
 import { OPTIONS_FLOW_TICKERS } from "@/lib/optionsFlow";
 import { SITE_ACCESS_COOKIE, isSiteAccessConfigured, isValidSiteAccessToken } from "@/lib/siteAccess";
+import { conditionalJson } from "@/lib/conditionalJson";
 
 export const maxDuration = 60;
 
 const SOURCE_MODES = new Set<GammaHeatmapSourceMode>(["quantdata", "databento-raw", "hybrid"]);
-const payloadCache = new Map<string, { expiresAt: number; payload: unknown }>();
+// The freshness stamp and refresh interval are read back out on a cache hit
+// to build the ETag, so the entry is typed rather than unknown.
+type CachedHeatmapPayload = { asOf: string; refreshAfterMs: number };
+const payloadCache = new Map<string, { expiresAt: number; payload: CachedHeatmapPayload }>();
 
 async function isAuthenticated(request: NextRequest) {
   const host = request.nextUrl.hostname;
@@ -56,14 +60,25 @@ export async function GET(request: NextRequest) {
     if (!(displayPrice && displayPrice > 0)) throw new Error("The live futures price required for strike mapping is unavailable.");
     const key = [source, greekMode, display, sourceMode, historyHours, binSize, Math.round(displayPrice * 4) / 4].join(":");
     const cached = payloadCache.get(key);
-    if (cached && cached.expiresAt > Date.now()) return NextResponse.json(cached.payload, { headers: { "Cache-Control": "private, no-store" } });
+    if (cached && cached.expiresAt > Date.now()) {
+      return conditionalJson(request, cached.payload, {
+        identity: `${key}:${cached.payload.asOf}`,
+        maxAgeMs: cached.payload.refreshAfterMs,
+      });
+    }
     const panel = await getGexMapPanel(source, greekMode);
     const payload = buildGammaHeatmapPayload({ panel, displayInstrument: display, displayPrice, sourceMode, historyHours, binSize });
     if (payloadCache.size > 64) {
       for (const [cacheKey, entry] of payloadCache) if (entry.expiresAt <= Date.now()) payloadCache.delete(cacheKey);
     }
     payloadCache.set(key, { expiresAt: Date.now() + Math.max(2_000, Math.min(15_000, payload.refreshAfterMs)), payload });
-    return NextResponse.json(payload, { headers: { "Cache-Control": "private, no-store" } });
+    // `asOf` moves only when the upstream surface does, so a pane that polls
+    // faster than the data changes revalidates into a 304 instead of pulling
+    // several megabytes out of origin again.
+    return conditionalJson(request, payload, {
+      identity: `${key}:${payload.asOf}`,
+      maxAgeMs: payload.refreshAfterMs,
+    });
   } catch (error) {
     const problem = getQuantDataHttpError(error);
     return NextResponse.json({ error: problem.message }, { status: problem.status, headers: { "Cache-Control": "private, no-store" } });
