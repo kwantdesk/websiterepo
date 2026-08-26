@@ -2514,6 +2514,42 @@ const STABLE_RIGHT_PRICE_SCALE_WIDTH = 76;
 // component for every raw pan/zoom event makes pointer input monopolise the
 // main thread, especially with several workspace charts mounted.
 const VIEWPORT_REACT_REFRESH_INTERVAL_MS = 64;
+
+/**
+ * The KwantDesk mark, bottom-left of every chart.
+ *
+ * It scales with the pane rather than sitting at a fixed size, so a full-screen
+ * chart wears it at a readable size and a sixth of a six-pane workspace is not
+ * dominated by it. Width leads, because the mark is a wordmark and its
+ * legibility is horizontal; height then caps it so a short pane - a strip above
+ * a footprint, say - does not get a mark taller than its own candles.
+ *
+ * Bottom inset matches the rest of the chart chrome: the 26px time axis plus
+ * the standard 8px margin.
+ */
+const CHART_WATERMARK_SRC = "/brand/kwantdesk-wordmark-white.png";
+const CHART_WATERMARK_ASPECT = 1911 / 305;
+const CHART_WATERMARK_WIDTH_FRACTION = 0.14;
+const CHART_WATERMARK_MIN_WIDTH = 80;
+const CHART_WATERMARK_MAX_WIDTH = 280;
+const CHART_WATERMARK_MAX_HEIGHT_FRACTION = 0.08;
+
+/** The mark's rendered box for a pane, or null when the pane is too small. */
+function chartWatermarkSize(paneWidth: number, paneHeight: number) {
+  if (!(paneWidth > 0) || !(paneHeight > 0)) return null;
+  const width = Math.min(
+    CHART_WATERMARK_MAX_WIDTH,
+    Math.max(CHART_WATERMARK_MIN_WIDTH, paneWidth * CHART_WATERMARK_WIDTH_FRACTION),
+  );
+  const height = Math.min(
+    width / CHART_WATERMARK_ASPECT,
+    paneHeight * CHART_WATERMARK_MAX_HEIGHT_FRACTION,
+  );
+  // Below this the wordmark is a smudge rather than a mark, and a pane that
+  // small has nothing to spare for it.
+  if (height < 9 || paneWidth < CHART_WATERMARK_MIN_WIDTH + 40) return null;
+  return { width: Math.round(height * CHART_WATERMARK_ASPECT), height: Math.round(height) };
+}
 // Height of the time axis strip beneath every pane. The precision-tools
 // adapter already models the non-price-pane region at the bottom of the
 // chart as this plus the docked pane stack.
@@ -3426,6 +3462,7 @@ function Chart({
   const [clearConfirm, setClearConfirm] = useState(false);
   const [resetPaperTradingConfirm, setResetPaperTradingConfirm] = useState(false);
   const [overlaySize, setOverlaySize] = useState({ width: 0, height: 0 });
+  const chartWatermark = chartWatermarkSize(overlaySize.width, overlaySize.height);
   const [nativePriceScaleWidth, setNativePriceScaleWidth] = useState(STABLE_RIGHT_PRICE_SCALE_WIDTH);
   // One shared SVG clip per chart instance keeps every overlay (drawings, TPO
   // zones, Expected Move rails) inside the price pane, under the price scale.
@@ -15440,6 +15477,27 @@ function Chart({
           {tapeSpeedTooltip.event.contextTags.length ? <div className="mt-2 border-t border-border pt-1 text-primary">Context: {tapeSpeedTooltip.event.contextTags.join(" · ").replaceAll("-", " ")}</div> : null}
           {tapeSpeedTooltip.event.warnings.map((warning) => <div key={warning} className="mt-1 text-warning">{warning}</div>)}
         </div>
+      ) : null}
+      {chartWatermark ? (
+        /*
+          * Sits above the chart canvas but under every reading on it - levels,
+          * drawings, order labels - so it identifies the chart without ever
+          * being something a trader has to look past.
+          */
+        <img
+          src={CHART_WATERMARK_SRC}
+          alt=""
+          aria-hidden
+          draggable={false}
+          className="pointer-events-none absolute z-[5] select-none"
+          style={{
+            left: 12,
+            bottom: 26 + 8,
+            width: chartWatermark.width,
+            height: chartWatermark.height,
+            opacity: 0.55,
+          }}
+        />
       ) : null}
       {gammaHeatmapIndicator ? (
         <div
