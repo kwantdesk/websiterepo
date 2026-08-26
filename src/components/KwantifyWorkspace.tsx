@@ -282,7 +282,9 @@ import {
   formatChartInterval,
   isEventBasedChartInterval,
   parseChartIntervalInput,
+  makeCustomChartInterval,
   supportsChartInterval,
+  type ChartIntervalKind,
 } from "@/lib/chartIntervals";
 import { applyMarketTradesToEventBars, futuresTickSize } from "@/lib/eventBars";
 import { RTH_END_MINUTES, RTH_START_MINUTES, resolveSessionSegments, sessionTradingDate } from "@/lib/volumeProfileSessions";
@@ -9947,6 +9949,26 @@ export default function KwantifyWorkspace({
     return [];
   });
   const timeframeMenuRef = useRef<HTMLDivElement>(null);
+  // The interval menu. The favourites strip is a shortcut to a handful of
+  // intervals; this is where every interval the feed supports lives, along with
+  // the custom builders for volume, range, tick and delta bars and the amount
+  // of history the chart loads.
+  const [showAllTF, setShowAllTF] = useState(false);
+  // One draft per interval KIND, so switching between builders keeps whatever
+  // was typed into each. Seeded with the sizes a futures trader actually starts
+  // from rather than 1.
+  const [intervalDrafts, setIntervalDrafts] = useState<Record<ChartIntervalKind, { primary: number; secondary: number }>>({
+    second: { primary: 30, secondary: 1 },
+    minute: { primary: 5, secondary: 1 },
+    time: { primary: 5, secondary: 1 },
+    "volume-bars": { primary: 4, secondary: 2 },
+    range: { primary: 40, secondary: 1 },
+    volume: { primary: 500, secondary: 1 },
+    trade: { primary: 1_000, secondary: 1 },
+    renko: { primary: 20, secondary: 1 },
+    "point-figure": { primary: 20, secondary: 3 },
+    delta: { primary: 200, secondary: 1 },
+  });
   const [showMiniAI, setShowMiniAI] = useState(false);
   const [miniExpanded, setMiniExpanded] = useState(false);
   const [miniMessages, setMiniMessages] = useState<Message[]>([]);
@@ -16258,6 +16280,39 @@ export default function KwantifyWorkspace({
     setSelectedTimeframe(timeframe);
   };
 
+  // Build an interval from the numbers typed into a builder row. Refuses one
+  // the active feed cannot serve rather than switching the chart to something
+  // that will come back empty.
+  // The menu is a panel, not a popover component, so it needs its own dismissal.
+  // Pointerdown rather than click, so it closes on the press that begins an
+  // interaction elsewhere instead of waiting for the release.
+  useEffect(() => {
+    if (!showAllTF) return;
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node) || timeframeMenuRef.current?.contains(target)) return;
+      setShowAllTF(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setShowAllTF(false);
+    };
+    document.addEventListener("pointerdown", closeOnOutsidePointer);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsidePointer);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [showAllTF]);
+
+  const applyCustomInterval = (kind: ChartIntervalKind) => {
+    const draft = intervalDrafts[kind];
+    if (!draft) return;
+    const interval = makeCustomChartInterval(kind, draft.primary, draft.secondary);
+    if (!interval || !supportsChartInterval(interval, activeChartBrokerLabel)) return;
+    selectTimeframe(interval);
+    setShowAllTF(false);
+  };
+
   const selectWorkspacePaneTimeframe = (paneId: string, timeframe: string) => {
     const pane = workspacePanes.find((candidate) => candidate.id === paneId);
     if (!pane || !supportsChartInterval(timeframe, pane.broker)) return false;
@@ -18044,6 +18099,20 @@ export default function KwantifyWorkspace({
               header dropdown, so this row stays a one-click switcher. Stars are
               global: whatever a trader pins on any chart shows up here. */}
           <div ref={timeframeMenuRef} className="relative flex min-w-0 items-center gap-0.5">
+            {/* Every interval the feed supports, the custom builders, and how
+                much history this chart loads. The favourites to the right are
+                a shortcut to a handful of these, not a replacement for them. */}
+            <button
+              type="button"
+              aria-label="Chart intervals"
+              aria-expanded={showAllTF}
+              onClick={() => setShowAllTF((open) => !open)}
+              title="All intervals, custom bars and load range"
+              className={`mr-1 flex shrink-0 items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[12px] transition-colors ${showAllTF ? "border-primary/30 bg-primary/10 text-primary" : "border-border bg-surface/50 text-muted hover:text-foreground"}`}
+            >
+              <span className="font-mono">{formatChartInterval(selectedTimeframe)}</span>
+              <ChevronDown className={`h-3.5 w-3.5 transition-transform ${showAllTF ? "rotate-180" : ""}`} />
+            </button>
             {visibleFavouriteIntervals.map((tf) => (
               <button
                 key={tf}
@@ -18059,6 +18128,131 @@ export default function KwantifyWorkspace({
                 {formatChartInterval(tf)}
               </button>
             ))}
+            {showAllTF ? (
+              <div className="absolute left-0 top-[38px] z-50 w-[720px] max-w-[calc(100vw-120px)] overflow-hidden rounded-2xl border border-border bg-panel shadow-2xl shadow-black/50">
+                <div className="flex items-center justify-between border-b border-border px-4 py-3">
+                  <div>
+                    <div className="text-[12px] font-semibold text-foreground">Chart intervals</div>
+                    <div className="mt-0.5 text-[10px] text-muted">
+                      {activeChartBrokerLabel === "Databento"
+                        ? "Time, volume and order-flow bars from CME market data"
+                        : `Time intervals supported by ${displayMarketSource(activeChartBrokerLabel)}; futures-only modes are hidden`}
+                    </div>
+                  </div>
+                  <button type="button" onClick={() => setShowAllTF(false)} className="rounded-lg p-1.5 text-muted hover:bg-surface hover:text-foreground" aria-label="Close chart intervals">
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                <div className="max-h-[560px] overflow-y-auto p-2">
+                  <div className="mb-1 flex flex-wrap items-center gap-2 border-b border-border/60 px-2 pb-2.5">
+                    <div>
+                      <div className="text-[11px] font-medium text-foreground">Load range</div>
+                      <div className="text-[9px] text-muted">How much history loads into this chart · standard is 5D</div>
+                    </div>
+                    <div className="ml-auto flex flex-wrap items-center gap-1">
+                      {["1D", "5D", "1W", "1M", "3M", "6M", "1Y", "All"].map((range) => (
+                        <button
+                          key={range}
+                          type="button"
+                          onClick={() => handleChartPeriod(activePaneId, range)}
+                          className={`rounded-lg border px-2 py-1.5 font-mono text-[10px] transition-colors ${selectedPeriod === range ? "border-primary/30 bg-primary/10 text-primary" : "border-transparent text-foreground hover:border-border hover:bg-surface"}`}
+                        >
+                          {range}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {availableChartIntervalGroups.map((group) => {
+                    const draft = intervalDrafts[group.kind];
+                    return (
+                      <div key={group.kind} className="grid grid-cols-[128px_138px_minmax(0,1fr)] items-center gap-3 rounded-xl px-2 py-2.5 hover:bg-surface/40">
+                        <div className="flex items-center gap-2 text-[12px] font-medium text-foreground">
+                          <Settings2 className="h-4 w-4 text-muted" />
+                          <span>{group.label}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          {activeChartBrokerLabel === "Databento" && draft ? (
+                            <>
+                              <input
+                                aria-label={`${group.label} interval value`}
+                                type="number"
+                                min={1}
+                                step={1}
+                                value={draft.primary}
+                                onChange={(event) => setIntervalDrafts((current) => ({
+                                  ...current,
+                                  [group.kind]: { ...current[group.kind], primary: Math.max(1, Number(event.target.value) || 1) },
+                                }))}
+                                className="h-8 min-w-0 flex-1 rounded-lg border border-border bg-background px-2 font-mono text-[12px] text-foreground outline-none focus:border-primary/40"
+                              />
+                              {group.secondaryDefault !== undefined ? (
+                                <input
+                                  aria-label={`${group.label} secondary interval value`}
+                                  type="number"
+                                  min={1}
+                                  step={1}
+                                  value={draft.secondary}
+                                  onChange={(event) => setIntervalDrafts((current) => ({
+                                    ...current,
+                                    [group.kind]: { ...current[group.kind], secondary: Math.max(1, Number(event.target.value) || 1) },
+                                  }))}
+                                  className="h-8 min-w-0 flex-1 rounded-lg border border-border bg-background px-2 font-mono text-[12px] text-foreground outline-none focus:border-primary/40"
+                                />
+                              ) : null}
+                              <button
+                                type="button"
+                                onClick={() => applyCustomInterval(group.kind)}
+                                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border bg-surface text-muted hover:border-primary/30 hover:text-primary"
+                                aria-label={`Apply custom ${group.label} interval`}
+                                title="Apply custom interval"
+                              >
+                                <Check className="h-3.5 w-3.5" />
+                              </button>
+                            </>
+                          ) : (
+                            <span className="rounded-lg border border-border bg-background px-2.5 py-1.5 text-[10px] text-muted">Standard intervals</span>
+                          )}
+                        </div>
+                        <div className="flex min-w-0 flex-wrap items-center gap-1">
+                          {group.options.map((option) => (
+                            <div key={option.id} className={`flex items-center rounded-lg border transition-colors ${selectedTimeframe === option.id ? "border-primary/30 bg-primary/10" : "border-transparent hover:border-border hover:bg-surface"}`}>
+                              <button
+                                type="button"
+                                onPointerEnter={() => {
+                                  if (activeWorkspacePane.broker === "Databento") {
+                                    void warmDatabentoChartHistory(activeWorkspacePane.symbol, option.id);
+                                  }
+                                }}
+                                onClick={() => {
+                                  selectTimeframe(option.id);
+                                  setShowAllTF(false);
+                                }}
+                                className={`px-2 py-1.5 font-mono text-[11px] ${selectedTimeframe === option.id ? "text-primary" : "text-foreground"}`}
+                              >
+                                {option.label}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => toggleFavTF(option.id)}
+                                className="pr-1.5 text-muted hover:text-primary"
+                                aria-label={`${favTFs.includes(option.id) ? "Remove" : "Add"} ${option.label} ${favTFs.includes(option.id) ? "from" : "to"} favourites`}
+                              >
+                                <Star className={`h-3 w-3 ${favTFs.includes(option.id) ? "fill-primary text-primary" : ""}`} />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+                {activeChartBrokerLabel === "Databento" ? (
+                  <div className="border-t border-border px-4 py-2.5 text-[10px] leading-4 text-muted">
+                    Range and Renko use the contract&apos;s tick size. Volume, trade and delta bars use native CME executions.
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
             {visibleFavouriteIntervals.length && favouriteInstrumentItems.length ? (
               <span aria-hidden="true" className="mx-1 h-4 w-px shrink-0 bg-border" />
             ) : null}
