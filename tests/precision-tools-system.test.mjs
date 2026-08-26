@@ -211,7 +211,15 @@ test("the old movable rail owns the selected Precision tools and hides the secon
   assert.match(chart, /isSvgPositionTool/);
   assert.match(chart, /onDoubleClick=\{handleDrawingDoubleClick\}/);
   assert.match(chart, /activeDrawingTool\("volumeProfile", "Volume Profile"/);
-  assert.match(chart, /showChrome=\{false\}/);
+  // The precision RAIL is gone, not merely switched off. showChrome had exactly
+  // one call site and it passed false, so the rail, the object list, the
+  // settings drawer and the floating object toolbar could never render - three
+  // dead components and seven dead JSX blocks whose only effect was to make
+  // "which toolbar is live?" a question with three answers. ChartDrawToolbar is
+  // the only drawing toolbar now. What survives here is the RENDER layer, which
+  // still draws objects placed before the rail was retired.
+  assert.doesNotMatch(chart, /showChrome/, "the chrome flag and its rail are removed");
+  assert.doesNotMatch(layer, /PrecisionRail/, "the rail must not be imported back");
   assert.match(chart, /externalSelectionMode=\{selectedTool === "selection"\}/);
   // "Select drawings with a drag box" was a tooltip on the legacy left rail,
   // now deleted. The selection MODE it drove is still live, and the assertions
@@ -226,5 +234,7 @@ test("the old movable rail owns the selected Precision tools and hides the secon
   assert.match(layer, /closestIndex = -1/);
   assert.match(layer, /adapter\.yToPrice\(y\)/);
   assert.match(layer, /Math\.max\(\.\.\.xs\) >= left/);
-  assert.match(layer, /showChrome \? <PrecisionRail/);
+  // The rail used to be rendered here behind a showChrome flag that was always
+  // false. Both are gone; the layer is render-only now.
+  assert.doesNotMatch(layer, /showChrome/);
 });

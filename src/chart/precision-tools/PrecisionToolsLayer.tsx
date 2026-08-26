@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Copy, Eye, Lock, Settings2, Trash2, Unlock } from "lucide-react";
 import { claimChartInteraction, releaseChartInteraction, subscribeChartInteractionOwner } from "@/lib/chartInteractionArbiter";
 
 /** Broadcast by the chart when the trader clears every drawing. */
@@ -10,9 +9,6 @@ import { createDefaultConfigs } from "./defaults";
 import { hitTestObjects, objectScreenAnchors } from "./hitTesting";
 import { simplifyRdp, snapPrice, translateAnchors } from "./math";
 import { exportPrecisionDocument, importPrecisionDocument, loadPrecisionConfigs, loadPrecisionToolbar, savePrecisionConfigs, savePrecisionToolbar } from "./persistence";
-import PrecisionObjectList from "./PrecisionObjectList";
-import PrecisionRail from "./PrecisionRail";
-import PrecisionSettingsDrawer from "./PrecisionSettingsDrawer";
 import { requiredPrecisionAnchors } from "./registry";
 import { renderPrecisionCanvas, renderPrecisionInteractionCanvas } from "./renderer";
 import { PrecisionToolsStore } from "./store";
@@ -25,7 +21,6 @@ interface Props {
   adapter: PrecisionChartAdapter;
   theme: PrecisionTheme;
   enabled?: boolean;
-  showChrome?: boolean;
   externalActiveTool?: PrecisionToolId | null;
   externalSelectionMode?: boolean;
   externalKeepDrawing?: boolean;
@@ -138,7 +133,6 @@ export default function PrecisionToolsLayer({
   adapter,
   theme,
   enabled = true,
-  showChrome = true,
   externalActiveTool = null,
   externalSelectionMode = false,
   externalKeepDrawing = false,
@@ -180,16 +174,18 @@ export default function PrecisionToolsLayer({
   const store = storeRef.current;
   const snapshot = store.getSnapshot();
   const selectedObject = snapshot.objects.find((object) => snapshot.selectedIds.includes(object.id)) ?? null;
+  const liveAdapterRef = useRef(adapter);
+  liveAdapterRef.current = adapter;
 
   useEffect(() => store.subscribe(() => setRevision((value) => value + 1)), [store]);
   useEffect(() => () => { if (interactionFrameRef.current != null) cancelAnimationFrame(interactionFrameRef.current); }, []);
   useEffect(() => {
     const host = canvasRef.current?.parentElement;
     if (!host || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(() => { adapter.requestChartRender(); setRevision((value) => value + 1); });
+    const observer = new ResizeObserver(() => { liveAdapterRef.current.requestChartRender(); setRevision((value) => value + 1); });
     observer.observe(host);
     return () => observer.disconnect();
-  }, [adapter]);
+  }, []);
   useEffect(() => { setConfigs(loadPrecisionConfigs(workspaceId, { primary: theme.primary, bullish: theme.bullish, bearish: theme.bearish })); }, [theme.bearish, theme.bullish, theme.primary, workspaceId]);
   useEffect(() => { savePrecisionToolbar(workspaceId, snapshot.toolbar); }, [revision, snapshot.toolbar, workspaceId]);
   useEffect(() => {
@@ -281,6 +277,28 @@ export default function PrecisionToolsLayer({
     return context;
   }, [adapter.height, adapter.width]);
 
+  // Live candles and viewport moves replace the adapter object many times per
+  // second. Rebinding the window listener to that object on every render left
+  // thousands of listener closures waiting for GC during an active session.
+  // Keep one listener for the layer lifetime and let it read the current chart
+  // projections and visual state through this ref instead.
+  const globalCrosshairStateRef = useRef({
+    adapter,
+    chartId,
+    engaged,
+    mode: snapshot.toolbar.mode,
+    resizeCanvas,
+    theme,
+  });
+  globalCrosshairStateRef.current = {
+    adapter,
+    chartId,
+    engaged,
+    mode: snapshot.toolbar.mode,
+    resizeCanvas,
+    theme,
+  };
+
   useEffect(() => () => {
     if (interactionFrameRef.current != null) cancelAnimationFrame(interactionFrameRef.current);
     releaseCanvasBackingStore(canvasRef.current);
@@ -289,19 +307,28 @@ export default function PrecisionToolsLayer({
 
   useEffect(() => {
     const handleGlobalCrosshair = (event: Event) => {
+      const current = globalCrosshairStateRef.current;
       const detail = (event as CustomEvent<{ chartId: string; time: number; price: number }>).detail;
-      if (!detail || detail.chartId === chartId || snapshot.toolbar.mode !== "global-crosshair") return;
-      const x = adapter.timeToX(detail.time);
-      const y = adapter.priceToY(detail.price);
+      if (!detail || detail.chartId === current.chartId || current.mode !== "global-crosshair") return;
+      const x = current.adapter.timeToX(detail.time);
+      const y = current.adapter.priceToY(detail.price);
       if (x != null && y != null) {
         pointerRef.current = { x, y };
-        const interaction = resizeCanvas(interactionCanvasRef.current, true);
-        if (interaction) renderPrecisionInteractionCanvas(interaction, adapter, pointerRef.current, engaged, theme);
+        const interaction = current.resizeCanvas(interactionCanvasRef.current, true);
+        if (interaction) {
+          renderPrecisionInteractionCanvas(
+            interaction,
+            current.adapter,
+            pointerRef.current,
+            current.engaged,
+            current.theme,
+          );
+        }
       }
     };
     window.addEventListener("kwantdesk:precision-global-crosshair", handleGlobalCrosshair);
     return () => window.removeEventListener("kwantdesk:precision-global-crosshair", handleGlobalCrosshair);
-  }, [adapter, chartId, engaged, resizeCanvas, snapshot.toolbar.mode, theme]);
+  }, []);
 
   // Held in a ref so the repaint subscription below never has to re-bind.
   // The adapter's projections read the chart live, so drawing with the latest
@@ -316,10 +343,14 @@ export default function PrecisionToolsLayer({
     if (interaction) renderPrecisionInteractionCanvas(interaction, adapter, pointerRef.current, true, theme);
   };
 
+  // Schedule a React-driven repaint only when drawing/UI state changes. The
+  // adapter is replaced for every live candle update, so depending on the
+  // adapter here creates a new requestAnimationFrame on every market tick.
+  // Chart/viewport motion is already painted by the stable subscription below.
   useEffect(() => {
     const frame = requestAnimationFrame(() => paintRef.current());
     return () => cancelAnimationFrame(frame);
-  }, [adapter, engaged, resizeCanvas, revision, snapshot.draft, snapshot.objects, snapshot.selectedIds, snapshot.toolbar.hidden, snapshot.toolbar.mode, theme]);
+  }, [engaged, resizeCanvas, revision, snapshot.draft, snapshot.objects, snapshot.selectedIds, snapshot.toolbar.hidden, snapshot.toolbar.mode, theme]);
 
   // Repaint with the chart, not with React.
   //
@@ -414,8 +445,11 @@ export default function PrecisionToolsLayer({
       store.setToolbar((toolbar) => ({ ...toolbar, hidden: false, mode: "select", activeTool: null, activeGroup: null }));
       return;
     }
-    if (!showChrome) release();
-  }, [claim, externalActiveTool, externalSelectionMode, release, selectTool, showChrome, store]);
+    // The rail is gone, so this layer is render-only and must never hold the
+    // chart's interaction claim. It exists to draw objects placed before the
+    // precision toolbar was retired; nothing here takes input any more.
+    release();
+  }, [claim, externalActiveTool, externalSelectionMode, release, selectTool, store]);
 
   useEffect(() => {
     if (appliedClearRevisionRef.current === clearRevision) return;
@@ -486,34 +520,38 @@ export default function PrecisionToolsLayer({
   // selects the object and hands the very same press to the normal
   // select-mode drag handlers through pointer capture — the Buy/Sell
   // Calculator and every other drawing can then be moved at any time.
+  const dormantGrabStateRef = useRef({ adapter, anchorAtPoint, claim, engaged, store });
+  dormantGrabStateRef.current = { adapter, anchorAtPoint, claim, engaged, store };
   useEffect(() => {
-    if (engaged || snapshot.toolbar.hidden || !snapshot.objects.length) return;
     const handleDormantGrab = (event: PointerEvent) => {
       if (event.button !== 0) return;
+      const current = dormantGrabStateRef.current;
+      const liveSnapshot = current.store.getSnapshot();
+      if (current.engaged || liveSnapshot.toolbar.hidden || !liveSnapshot.objects.length) return;
       const canvas = interactionCanvasRef.current;
       if (!canvas) return;
       const rect = canvas.getBoundingClientRect();
       const point = { x: event.clientX - rect.left, y: event.clientY - rect.top };
       if (point.x < 0 || point.y < 0 || point.x > rect.width || point.y > rect.height) return;
-      const hit = hitTestObjects(snapshot.objects, point, adapter);
+      const hit = hitTestObjects(liveSnapshot.objects, point, current.adapter);
       if (!hit) return;
-      const target = snapshot.objects.find((object) => object.id === hit.objectId);
+      const target = liveSnapshot.objects.find((object) => object.id === hit.objectId);
       if (!target || target.visibility.locked) return;
-      const anchor = anchorAtPoint(point.x, point.y);
+      const anchor = current.anchorAtPoint(point.x, point.y);
       if (!anchor) return;
       event.preventDefault();
       event.stopPropagation();
-      claim();
-      store.setToolbar((toolbar) => ({ ...toolbar, mode: "select", activeTool: null, activeGroup: null }));
-      store.select([target.id]);
-      store.beginObjectEdit();
+      current.claim();
+      current.store.setToolbar((toolbar) => ({ ...toolbar, mode: "select", activeTool: null, activeGroup: null }));
+      current.store.select([target.id]);
+      current.store.beginObjectEdit();
       dragRef.current = { objectId: hit.objectId, kind: hit.kind, handleIndex: hit.handleIndex, start: anchor, original: copyObject(target), dormantGrab: true };
       canvas.style.pointerEvents = "auto";
       canvas.setPointerCapture(event.pointerId);
     };
     document.addEventListener("pointerdown", handleDormantGrab, true);
     return () => document.removeEventListener("pointerdown", handleDormantGrab, true);
-  }, [adapter, anchorAtPoint, claim, engaged, snapshot.objects, snapshot.toolbar.hidden, store]);
+  }, []);
 
   const onPointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
     if (!engaged || event.button !== 0) return;
@@ -789,13 +827,6 @@ export default function PrecisionToolsLayer({
   return <div className="pointer-events-none absolute inset-0 z-[66] overflow-hidden" data-precision-tools-root data-revision={revision}>
     <canvas ref={canvasRef} className="pointer-events-none absolute inset-0" aria-label="Precision Tools rendering layer" />
     <canvas ref={interactionCanvasRef} className="absolute inset-0 touch-none" style={{ pointerEvents: engaged ? "auto" : "none", cursor: snapshot.toolbar.mode === "select" ? "crosshair" : snapshot.toolbar.mode === "hand" ? "grab" : "crosshair" }} onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp} onPointerLeave={() => { pointerRef.current = null; resizeCanvas(interactionCanvasRef.current, false); }} aria-label="Precision Tools interaction layer" />
-    {showChrome ? <PrecisionRail snapshot={snapshot} engaged={engaged} onMode={setMode} onTool={selectTool} onGroup={(activeGroup) => store.setToolbar((toolbar) => ({ ...toolbar, activeGroup }))} onCollapse={() => store.setToolbar((toolbar) => ({ ...toolbar, collapsed: !toolbar.collapsed }))} onToggleHidden={() => { const hidden = !snapshot.toolbar.hidden; store.setToolbar((toolbar) => ({ ...toolbar, hidden })); store.setAllVisible(!hidden); }} onToggleLocked={() => { const locked = !snapshot.toolbar.locked; store.setToolbar((toolbar) => ({ ...toolbar, locked })); store.setAllLocked(locked); }} onObjects={() => setObjectsOpen((value) => !value)} onSettings={() => setSettingsOpen(true)} onImport={() => fileInputRef.current?.click()} onExport={exportObjects} onClear={() => setClearOpen(true)} onDismiss={release} /> : null}
-    {showChrome ? <input ref={fileInputRef} type="file" accept="application/json,.json" className="hidden" onChange={(event) => { void importObjects(event.target.files?.[0]); event.currentTarget.value = ""; }} /> : null}
     {selectionBox ? <div className="pointer-events-none absolute z-[72] border border-dashed border-[#78b1ff] bg-[#4f91e9]/10" style={{ left: Math.min(selectionBox.start.x, selectionBox.end.x), top: Math.min(selectionBox.start.y, selectionBox.end.y), width: Math.abs(selectionBox.end.x - selectionBox.start.x), height: Math.abs(selectionBox.end.y - selectionBox.start.y) }} /> : null}
-    {showChrome && objectsOpen ? <PrecisionObjectList snapshot={snapshot} onClose={() => setObjectsOpen(false)} onSelect={(id) => { claim(); store.select([id]); }} onVisibility={(id) => store.toggleObjectVisibility(id)} onLock={(id) => store.toggleObjectLock(id)} onDuplicate={(id) => store.duplicate([id])} onDelete={(id) => store.remove([id])} onLayer={(id, direction) => store.moveObjectLayer(id, direction)} onRename={(id, name) => store.updateObject(id, (object) => ({ ...object, name }))} onSettings={(id) => { store.select([id]); setSettingsOpen(true); }} onAllVisible={(visible) => store.setAllVisible(visible)} onAllLocked={(locked) => store.setAllLocked(locked)} onClear={() => setClearOpen(true)} /> : null}
-    {showChrome && settingsOpen ? <PrecisionSettingsDrawer object={selectedObject} configs={configs} activeSlot={snapshot.toolbar.activeConfigSlot} onSlot={setActiveConfigSlot} onClose={() => setSettingsOpen(false)} onUpdate={updateSelected} onSaveConfig={saveConfig} onResetConfig={resetConfig} /> : null}
-    {showChrome && engaged && selectedObject && !settingsOpen ? <div className="pointer-events-auto absolute left-1/2 top-[72px] z-[73] flex -translate-x-1/2 items-center border border-[#34475e] bg-[#09111b]/95 p-1 shadow-xl"><button type="button" onClick={() => store.toggleObjectLock(selectedObject.id)} className="grid h-7 w-7 place-items-center text-[#8192a8] hover:text-[#9ec9ff]">{selectedObject.visibility.locked ? <Unlock className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5" />}</button><button type="button" onClick={() => store.duplicate([selectedObject.id])} className="grid h-7 w-7 place-items-center text-[#8192a8] hover:text-[#9ec9ff]"><Copy className="h-3.5 w-3.5" /></button><button type="button" onClick={() => store.toggleObjectVisibility(selectedObject.id)} className="grid h-7 w-7 place-items-center text-[#8192a8] hover:text-[#9ec9ff]"><Eye className="h-3.5 w-3.5" /></button><button type="button" onClick={() => setSettingsOpen(true)} className="grid h-7 w-7 place-items-center text-[#8192a8] hover:text-[#9ec9ff]"><Settings2 className="h-3.5 w-3.5" /></button><button type="button" onClick={() => store.remove([selectedObject.id])} className="grid h-7 w-7 place-items-center text-[#8192a8] hover:text-[#ff6a85]"><Trash2 className="h-3.5 w-3.5" /></button><div className="ml-1 flex border-l border-[#2d3d52] pl-1">{Array.from({ length: 9 }, (_, index) => index + 1).map((slot) => <button key={slot} type="button" onClick={() => setActiveConfigSlot(slot)} className={`h-7 w-7 font-mono text-[7px] font-bold ${snapshot.toolbar.activeConfigSlot === slot ? "bg-[#18283d] text-[#9dc9ff]" : "text-[#5f7188] hover:text-white"}`}>TC{slot}</button>)}</div></div> : null}
-    {showChrome && clearOpen ? <div className="pointer-events-auto absolute inset-0 z-[80] grid place-items-center bg-black/55"><div className="w-[340px] border border-[#4a3540] bg-[#0b111a] p-5 shadow-2xl"><div className="font-mono text-[11px] font-bold uppercase text-[#e7edf5]">Clear Precision objects?</div><p className="mt-2 font-mono text-[9px] leading-5 text-[#8796a9]">This affects only the independent Precision Tools document. Legacy drawings remain untouched. Undo remains available.</p><div className="mt-4 grid grid-cols-2 gap-2"><button type="button" onClick={() => setClearOpen(false)} className="h-9 border border-[#36475c] font-mono text-[9px] text-[#9aa9ba]">Cancel</button><button type="button" onClick={() => { store.clear(); setClearOpen(false); }} className="h-9 border border-[#784052] bg-[#32141e] font-mono text-[9px] font-bold text-[#ff718b]">Clear all</button></div></div></div> : null}
-    {showChrome && error ? <button type="button" onClick={() => setError(null)} className="pointer-events-auto absolute bottom-8 left-1/2 z-[82] -translate-x-1/2 border border-[#7b3e50] bg-[#2d111a] px-3 py-2 font-mono text-[9px] text-[#ff859a]">{error}</button> : null}
   </div>;
 }

@@ -16644,7 +16644,6 @@ function Chart({
             chartId={`${chartInstanceId}:${normalizePaperSymbol(contractSymbol ?? instrument)}`}
             adapter={precisionAdapter}
             theme={precisionTheme}
-            showChrome={false}
             externalActiveTool={precisionToolForDrawingTool(selectedTool)}
             externalSelectionMode={selectedTool === "selection"}
             externalKeepDrawing={keepDrawingMode}
