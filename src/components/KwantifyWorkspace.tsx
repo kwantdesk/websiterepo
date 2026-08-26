@@ -381,7 +381,6 @@ const loadKwantBotWorkspace = () => import("@/components/kwantbot/KwantBotIntell
 const workspaceModulePreloaders: Record<string, () => Promise<unknown>> = {
   charts: loadChartWorkspace,
   gamvue: loadChartWorkspace,
-  gexcal: loadGexMapWorkspace,
   gamma: loadGammaWorkspace,
   gexmap: loadGexMapWorkspace,
   liqmap: loadLiquidityMapWorkspace,
@@ -1041,7 +1040,7 @@ type LevelExportRow = {
   source: string;
   asOf: string;
 };
-export type PrimaryWorkspaceSection = "charts" | "gamvue" | "gexcal" | "gamma" | "levelz" | "gexmap" | "liqmap" | "heatmap" | "gexbot" | "gexdesk" | "gameplan" | "kwantbot" | "news" | "zyon" | "journal" | "socials" | "backtesting";
+export type PrimaryWorkspaceSection = "charts" | "gamvue" | "gamma" | "levelz" | "gexmap" | "liqmap" | "heatmap" | "gexbot" | "gexdesk" | "gameplan" | "kwantbot" | "news" | "zyon" | "journal" | "socials" | "backtesting";
 
 const WORKSPACE_PRESETS_STORAGE_KEY = "kwantdesk-chart-workspace-presets";
 const ACTIVE_WORKSPACE_PRESET_STORAGE_KEY = "kwantdesk-chart-workspace-active-preset";
@@ -1072,7 +1071,6 @@ const LIQUIDITY_MAP_INSTRUMENT_STORAGE_KEY = "kwantdesk:liquidity-map-instrument
 const BOTTOM_WORKSPACE_SECTIONS = [
   { id: "charts" as const, label: "Charts" },
   { id: "gamvue" as const, label: "GEX Vue" },
-  { id: "gexcal" as const, label: "GEX CAL" },
   { id: "gexbot" as const, label: "GEX BOX" },
   { id: "gamma" as const, label: "Gamma" },
   { id: "levelz" as const, label: "LEVELZ" },
@@ -19207,19 +19205,6 @@ export default function KwantifyWorkspace({
             className="relative isolate min-h-0 min-w-0 flex-1 overflow-hidden bg-panel"
             aria-label={`${BOTTOM_WORKSPACE_SECTIONS.find((section) => section.id === bottomWorkspaceSection)?.label ?? "Workspace"} workspace`}
           >
-            {visitedWorkspaceSections.has("gexcal") ? (
-              <ReactActivity mode={bottomWorkspaceSection === "gexcal" ? "visible" : "hidden"}>
-                {/* GEX CAL is now the GEX Map FUTURE matrix as a page of its
-                    own. It is the same forward expiry x strike surface, with
-                    the map's own symbol, greek, lookahead, value-mode, zoom and
-                    palette controls, rather than a second calendar built on the
-                    same data. The horizon is pinned so the page cannot be
-                    switched back into being a duplicate GEX Map. */}
-                <WorkspaceFailureBoundary resetKey="gexcal" label="GEX FUTURE">
-                  <GexMapWorkspace lockedTimeHorizon="future" />
-                </WorkspaceFailureBoundary>
-              </ReactActivity>
-            ) : null}
             {visitedWorkspaceSections.has("gamma") ? (
               <ReactActivity mode={bottomWorkspaceSection === "gamma" ? "visible" : "hidden"}>
                 <WorkspaceFailureBoundary resetKey="gamma" label="Gamma">

@@ -57,7 +57,7 @@
     "test:chart-text-tools": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-chart-text-tools.mjs",
     "test:index-history-timeout": "node scripts/test-index-history-timeout.mjs",
     "test:gex-flow-as-tool": "node scripts/test-gex-flow-as-tool.mjs",
-    "test:gex-future-page": "node scripts/test-gex-future-page.mjs",
+    "test:gex-cal-as-tool": "node scripts/test-gex-cal-as-tool.mjs",
     "test:right-rail-drag": "node scripts/test-right-rail-drag.mjs",
     "test:crosshair-link-no-rebuild": "node scripts/test-crosshair-link-no-rebuild.mjs",
     "test:draw-handle-grab": "node --import ./scripts/alias-hook.mjs scripts/test-draw-handle-grab.mjs",

@@ -216,19 +216,23 @@ test("the public order-flow catalog contains the required eight metrics only", (
   ]);
 });
 
-test("navigation exposes GEX BOX immediately after GEX CAL", async () => {
+test("GEX CAL and GEX FLOW are tools inside GEX BOX, not pages", async () => {
   const sidebar = await readFile(new URL("../src/components/AppSidebar.tsx", import.meta.url), "utf8");
-  const cal = sidebar.indexOf('href: "/gex-cal"');
-  const box = sidebar.indexOf('href: "/gex-box"');
-  assert.ok(cal >= 0 && box > cal, "GEX BOX still follows GEX CAL in the rail");
-  // GEX FLOW used to sit after GEX BOX. It is a TOOL now - offered inside GEX
-  // BOX and addable as a workspace pane - so it has no nav button and no route
-  // of its own. One fewer top-level button, same workspace.
+  // Both used to be top-level nav buttons with routes of their own. Each is a
+  // whole workspace rather than one payload in a panel, so GEX BOX hosts the
+  // real thing and the pages are gone - two fewer buttons, same surfaces.
+  assert.equal(sidebar.indexOf('href: "/gex-cal"'), -1);
   assert.equal(sidebar.indexOf('href: "/gex-flow"'), -1);
+  assert.ok(sidebar.indexOf('href: "/gex-box"') > 0, "GEX BOX itself keeps its button");
+
   const layout = await readFile(new URL("../src/app/(workspace)/layout.tsx", import.meta.url), "utf8");
-  assert.match(layout, /"\/gex-cal": "gexcal"/);
   assert.match(layout, /"\/gex-box": "gexbot"/);
+  assert.doesNotMatch(layout, /gex-cal/);
   assert.doesNotMatch(layout, /gex-flow/);
+
+  const dashboard = await readFile(new URL("../src/components/gexbot/GexBoxDashboard.tsx", import.meta.url), "utf8");
+  assert.match(dashboard, /\{ id: "gex-cal", label: "GEX CAL", category: "KwantDesk"/);
+  assert.match(dashboard, /\{ id: "gex-flow", label: "GEX Flow", category: "Options"/);
 });
 
 test("GEX BOX routes use the native QuantData and Databento adapter without GEXBot or simulation", async () => {

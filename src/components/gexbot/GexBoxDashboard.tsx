@@ -13,6 +13,10 @@ import ChartColorField from "@/components/ChartColorField";
 // Loaded on demand: GEX BOX should not carry the flow workspace unless a panel
 // actually asks for it.
 const GexFlowWorkspace = dynamic(() => import("@/components/gex-flow/GexFlowWorkspace"), { ssr: false });
+// GEX CAL is the GEX Map FUTURE matrix. Pinned to that horizon it is the
+// forward expiration x strike surface and nothing else, so it belongs here as a
+// tool rather than as a page that duplicates the map.
+const GexMapWorkspace = dynamic(() => import("@/components/gex-map/GexMapWorkspace"), { ssr: false });
 
 type ToolCategory = "Options" | "Equities" | "KwantDesk";
 // `endpoint` is optional: a tool that owns its own data fetching renders a
@@ -122,6 +126,7 @@ const TOOLS: Tool[] = [
   { id: "equity-prints", label: "Equity Prints", category: "Equities", detail: "Ranked equity prints and notional concentration", endpoint: (s) => `/api/dark-pool-map?source=${s.symbol}&display=${s.symbol}&historyDays=1&topLevels=${s.rows}` },
   { id: "market-map", label: "Market Map", category: "Equities", detail: "Cross-symbol equity market map", endpoint: () => "/api/market-indices?snapshot=1&symbols=SPY,QQQ,IWM,DIA,SPX,NDX" },
   { id: "stock-price-time", label: "Stock Price / Time", category: "Equities", detail: "Underlying price series", endpoint: (s) => `/api/market-indices?symbol=${s.symbol}&timeframe=${s.aggregation}` },
+  { id: "gex-cal", label: "GEX CAL", category: "KwantDesk", detail: "Forward expiration x strike exposure, with the map's own controls", endpoint: null },
   { id: "classic-gex", label: "Classic GEX", category: "KwantDesk", detail: "Native GEX profile and underlying path", endpoint: (s) => `/api/gex-box/snapshot?ticker=${nativeTicker(s.symbol)}&view=classic&category=gex_full` },
   { id: "state-profile", label: "State Profile", category: "KwantDesk", detail: "Native exposure state surface", endpoint: (s) => `/api/gex-box/snapshot?ticker=${nativeTicker(s.symbol)}&view=state&category=${s.greek.toLowerCase()}` },
   { id: "orderflow-profile", label: "Orderflow Profile", category: "KwantDesk", detail: "Native orderflow metrics", endpoint: (s) => `/api/gex-box/snapshot?ticker=${nativeTicker(s.symbol)}&view=orderflow&category=orderflow` },
@@ -1161,6 +1166,7 @@ const ToolSurface = memo(function ToolSurface({ panel, onChange }: { panel: Dash
   if (panel.toolId === "iv-rank") return <IvRank payload={feed.data} />;
   if (TOOL_SERIES[panel.toolId]) return <SeriesPanel toolId={panel.toolId} payload={feed.data} settings={panel.settings} onSettings={patchSettings} />;
   if (panel.toolId === "gex-flow") return <GexFlowWorkspace />;
+  if (panel.toolId === "gex-cal") return <GexMapWorkspace lockedTimeHorizon="future" />;
   if (panel.toolId === "market-map") return <MarketMapPanel payload={feed.data} />;
   if (TOOL_COLUMNS[panel.toolId]) return <StructuredToolPanel toolId={panel.toolId} payload={feed.data} limit={panel.settings.rows} settings={panel.settings} onSettings={patchSettings} />;
   if (panel.toolId === "orderflow-profile") return <DataTable payload={feed.data} limit={panel.settings.rows} />;
