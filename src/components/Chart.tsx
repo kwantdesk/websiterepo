@@ -3403,6 +3403,11 @@ function Chart({
     });
   }, []);
   const [drawTextInput, setDrawTextInput] = useState<{ points: DrawPoint[]; tool: DrawToolId; x: number; y: number; value: string } | null>(null);
+  // True only when the trader actually meant to leave the text box: Escape,
+  // Enter, or a press somewhere else. Everything else that removes focus - a
+  // live tick re-rendering the chart, the pane claiming the keyboard target -
+  // is not a cancellation, and the box puts the caret back instead of closing.
+  const drawTextDismissRef = useRef(false);
   const [drawSettingsOpen, setDrawSettingsOpen] = useState(false);
   const chartingDrawCandles = useMemo(
     () => candles.map((candle) => ({
@@ -3450,6 +3455,31 @@ function Chart({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [drawSelectedId, chartingDrawings, commitDrawings]);
+  // A press anywhere but the text box is the deliberate exit that onBlur can no
+  // longer assume. Capture phase, because the chart's own handlers stop
+  // propagation before a bubble listener would ever see it.
+  const drawTextCommitRef = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    if (!drawTextInput) return;
+    const onPress = (event: PointerEvent) => {
+      const target = event.target as Element | null;
+      if (target?.closest?.("[data-chart-text-input]")) return;
+      drawTextDismissRef.current = true;
+      // Read through the ref: this listener is attached once per box, not once
+      // per keystroke, so the value it closed over would be stale.
+      drawTextCommitRef.current?.();
+    };
+    document.addEventListener("pointerdown", onPress, true);
+    return () => document.removeEventListener("pointerdown", onPress, true);
+  }, [Boolean(drawTextInput)]);
+  drawTextCommitRef.current = drawTextInput
+    ? () => {
+        const value = drawTextInput.value.trim();
+        if (value) commitDrawings([...chartingDrawings, createDrawing(drawTextInput.tool, drawTextInput.points, value)]);
+        setDrawTextInput(null);
+      }
+    : null;
+
   const [crosshairStyle, setCrosshairStyle] = useState<CrosshairStyle>(() => ({ ...DEFAULT_CROSSHAIR_STYLE }));
   useEffect(() => {
     setCrosshairStyle(loadCrosshairStyle());
@@ -15070,6 +15100,7 @@ function Chart({
               const x = timeToX(anchor.time);
               const y = priceToY(anchor.price);
               if (x == null || y == null) return;
+              drawTextDismissRef.current = false;
               setDrawTextInput({ points, tool, x, y, value: "" });
             }}
           />
@@ -15078,12 +15109,36 @@ function Chart({
               autoFocus
               value={drawTextInput.value}
               onChange={(event) => setDrawTextInput({ ...drawTextInput, value: event.target.value })}
-              onBlur={() => {
+              onBlur={(event) => {
                 const value = drawTextInput.value.trim();
-                if (value) commitDrawings([...chartingDrawings, createDrawing(drawTextInput.tool, drawTextInput.points, value)]);
-                setDrawTextInput(null);
+                if (value) {
+                  commitDrawings([...chartingDrawings, createDrawing(drawTextInput.tool, drawTextInput.points, value)]);
+                  setDrawTextInput(null);
+                  return;
+                }
+                // An EMPTY blur must not throw the box away.
+                //
+                // It used to close unconditionally, and on a live chart the box
+                // never survived long enough to be typed into: the placing
+                // click itself claims the pane's keyboard target, and any
+                // re-render - a tick, an indicator sample - takes focus with
+                // it. The box appeared and vanished, which is what "I click on
+                // the chart and nothing happens" was.
+                //
+                // Losing focus with nothing written is not an instruction to
+                // cancel, so the caret is put back. Escape cancels, Enter
+                // commits, and a deliberate press elsewhere closes it below.
+                if (drawTextDismissRef.current) return;
+                const input = event.currentTarget;
+                window.requestAnimationFrame(() => {
+                  if (!drawTextDismissRef.current) input.focus();
+                });
               }}
-              onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); if (event.key === "Escape") setDrawTextInput(null); }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") { drawTextDismissRef.current = true; event.currentTarget.blur(); }
+                if (event.key === "Escape") { drawTextDismissRef.current = true; setDrawTextInput(null); }
+              }}
+              data-chart-text-input=""
               className="absolute z-[30] rounded border border-primary bg-panel px-1.5 py-0.5 text-[13px] text-foreground outline-none"
               style={{ left: drawTextInput.x, top: drawTextInput.y - 10 }}
               placeholder="Text"

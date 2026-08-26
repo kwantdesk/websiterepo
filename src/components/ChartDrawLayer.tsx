@@ -68,7 +68,11 @@ export type DrawCandle = { time: number; open: number; high: number; low: number
 const dashFor = (style: DrawLineStyle, width: number) =>
   style === "dashed" ? `${width * 3} ${width * 2}` : style === "dotted" ? `${width} ${width * 2}` : undefined;
 
-const TEXT_INPUT_TOOLS: DrawToolId[] = ["text", "note", "callout", "signpost"];
+// Every tool whose whole point is the words on it. priceLabel and flagMark
+// were missing: defaultStyleFor treats them as text-bearing, but they fell
+// through to generic placement instead of being asked for their text, so both
+// dropped an empty, captionless marker on the chart and looked broken.
+const TEXT_INPUT_TOOLS: DrawToolId[] = ["text", "note", "callout", "signpost", "priceLabel", "flagMark"];
 
 export default function ChartDrawLayer({
   width, height, priceScaleWidth = 0, activeTool, keepDrawing, drawings, selectedId,
