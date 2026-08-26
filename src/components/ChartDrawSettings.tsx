@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import ChartColorField from "@/components/ChartColorField";
+import KwantSelect from "@/components/KwantSelect";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { DRAW_TOOL_SPECS, resolveDrawColor, type DrawLineStyle, type Drawing } from "@/lib/chartDrawTools";
@@ -87,7 +89,7 @@ export default function ChartDrawSettings({ drawing, onChange, onClose, themeCol
         <div className="max-h-[50vh] space-y-3 overflow-y-auto p-4">
           {tab === "style" ? (
             <>
-              <Row label="Colour"><input type="color" value={resolveDrawColor(drawing.style, themeColor)} onChange={(e) => patchStyle({ color: e.target.value, useThemeColor: false })} className="h-7 w-10 cursor-pointer rounded border border-border bg-background" /></Row>
+              <Row label="Colour"><ChartColorField ariaLabel="Drawing colour" value={resolveDrawColor(drawing.style, themeColor)} onChange={(hex) => patchStyle({ color: hex, useThemeColor: false })} /></Row>
               <Row label="Line width"><Select value={String(drawing.style.width)} onChange={(v) => patchStyle({ width: Number(v) })} options={[["0.5", "0.5px"], ["1", "1px"], ["2", "2px"], ["3", "3px"], ["4", "4px"]]} /></Row>
               <Row label="Line style"><Select value={drawing.style.lineStyle} onChange={(v) => patchStyle({ lineStyle: v as DrawLineStyle })} options={[["solid", "Solid"], ["dashed", "Dashed"], ["dotted", "Dotted"]]} /></Row>
               {isShape ? (
@@ -110,7 +112,7 @@ export default function ChartDrawSettings({ drawing, onChange, onClose, themeCol
                     <input type="range" min={10} max={80} step={2} value={drawing.style.profileWidthPercent ?? 32} onChange={(e) => patchStyle({ profileWidthPercent: Number(e.target.value) })} className="w-40 accent-primary" />
                   </Row>
                   <Row label="Show POC line"><input type="checkbox" checked={drawing.style.showPoc !== false} onChange={(e) => patchStyle({ showPoc: e.target.checked })} className="h-4 w-4 accent-primary" /></Row>
-                  <Row label="Outside value area"><input type="color" value={drawing.style.outsideColor ?? "#787B86"} onChange={(e) => patchStyle({ outsideColor: e.target.value })} className="h-7 w-10 cursor-pointer rounded border border-border bg-background" /></Row>
+                  <Row label="Outside value area"><ChartColorField ariaLabel="Outside value area colour" value={drawing.style.outsideColor ?? "#787B86"} onChange={(hex) => patchStyle({ outsideColor: hex })} /></Row>
                 </div>
               ) : null}
 
@@ -173,10 +175,20 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   return <label className="flex items-center justify-between gap-4"><span className="text-[12px] text-foreground">{label}</span>{children}</label>;
 }
 
+// One helper backs every dropdown in this dialog, so routing it through the
+// shared menu converts the whole panel at once — line width, line style, fill,
+// label position and the profile controls.
 function Select({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: [string, string][] }) {
   return (
-    <select value={value} onChange={(e) => onChange(e.target.value)} className="h-8 w-32 rounded-lg border border-border bg-background px-2 text-[12px] text-foreground outline-none focus:border-primary/40">
-      {options.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-    </select>
+    <div className="w-32">
+      <KwantSelect
+        ariaLabel="Drawing setting"
+        value={value}
+        options={options.map(([optionValue, label]) => ({ value: optionValue, label }))}
+        menuLabel="Select"
+        menuWidth={160}
+        onChange={onChange}
+      />
+    </div>
   );
 }

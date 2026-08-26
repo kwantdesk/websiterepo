@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { memo, startTransition, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import dynamic from "next/dynamic";
+import ChartColorField from "@/components/ChartColorField";
 
 // Loaded on demand: GEX BOX should not carry the flow workspace unless a panel
 // actually asks for it.
@@ -1203,8 +1204,8 @@ function PanelSettingsDialog({ panel, onChange, onClose }: { panel: DashboardPan
       <Field label={`Strike padding · ${panel.settings.strikes}`}><input type="range" min="5" max="100" value={panel.settings.strikes} onChange={(e) => update("strikes", Number(e.target.value))} /></Field>
       <Field label={`Table rows · ${panel.settings.rows}`}><input type="range" min="10" max="200" step="10" value={panel.settings.rows} onChange={(e) => update("rows", Number(e.target.value))} /></Field>
       <Field label="Minimum magnitude"><input type="number" min="0" value={panel.settings.minimum} onChange={(e) => update("minimum", Number(e.target.value))} /></Field>
-      <Field label="Positive color"><input type="color" value={panel.settings.color.startsWith("#") ? panel.settings.color : "#aaff00"} onChange={(e) => update("color", e.target.value)} /></Field>
-      <Field label="Negative color"><input type="color" value={panel.settings.negativeColor.startsWith("#") ? panel.settings.negativeColor : "#ff3366"} onChange={(e) => update("negativeColor", e.target.value)} /></Field>
+      <Field label="Positive color"><ChartColorField ariaLabel="Positive colour" value={panel.settings.color.startsWith("#") ? panel.settings.color : "#aaff00"} onChange={(hex) => update("color", hex)} /></Field>
+      <Field label="Negative color"><ChartColorField ariaLabel="Negative colour" value={panel.settings.negativeColor.startsWith("#") ? panel.settings.negativeColor : "#ff3366"} onChange={(hex) => update("negativeColor", hex)} /></Field>
       {flowTool ? <>
         <div className="col-span-2 mt-1 border-t border-border pt-3 text-[8px] font-semibold uppercase tracking-[.16em] text-foreground">Order-flow filters & display</div>
         <Field label="Sentiment"><select value={panel.settings.flowSentiment} onChange={(e) => update("flowSentiment", e.target.value)}>{["ALL", "BULLISH", "BEARISH", "NEUTRAL"].map((v) => <option key={v}>{v}</option>)}</select></Field>
