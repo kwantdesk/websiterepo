@@ -14,6 +14,7 @@ import { deleteDrawTemplate, loadDrawTemplates, saveDrawTemplate, type DrawTempl
 const SHAPE_TOOLS = ["rectangle", "rotatedRectangle", "ellipse", "circle", "triangleShape", "gannBox", "datePriceRange", "longPosition", "shortPosition"];
 const TEXT_TOOLS = ["text", "note", "callout", "signpost", "priceLabel", "flagMark"];
 const PROFILE_TOOLS = ["fixedRangeVolumeProfile", "anchoredVolumeProfile"];
+const POSITION_TOOLS = ["longPosition", "shortPosition"];
 
 type Props = {
   drawing: Drawing | null;
@@ -21,9 +22,13 @@ type Props = {
   onClose: () => void;
   /** Theme bullish candle, so the swatch shows what is actually painted. */
   themeColor?: string;
+  /** Theme bearish candle, for the position tool's risk zone swatch. */
+  themeBearColor?: string;
 };
 
-export default function ChartDrawSettings({ drawing, onChange, onClose, themeColor }: Props) {
+export default function ChartDrawSettings({
+  drawing, onChange, onClose, themeColor, themeBearColor,
+}: Props) {
   const [tab, setTab] = useState<"style" | "text" | "coordinates" | "visibility">("style");
   const [templates, setTemplates] = useState<DrawTemplateStore>({});
   const [templateName, setTemplateName] = useState("");
@@ -55,6 +60,7 @@ export default function ChartDrawSettings({ drawing, onChange, onClose, themeCol
   const isShape = SHAPE_TOOLS.includes(drawing.tool);
   const isText = TEXT_TOOLS.includes(drawing.tool);
   const isProfile = PROFILE_TOOLS.includes(drawing.tool);
+  const isPosition = POSITION_TOOLS.includes(drawing.tool);
   const toolTemplates = templates[drawing.tool] ?? {};
 
   const patchStyle = (next: Partial<Drawing["style"]>) => onChange({ ...drawing, style: { ...drawing.style, ...next } });
@@ -98,6 +104,35 @@ export default function ChartDrawSettings({ drawing, onChange, onClose, themeCol
                 </Row>
               ) : null}
               <Row label="Show labels"><input type="checkbox" checked={drawing.style.showLabels} onChange={(e) => patchStyle({ showLabels: e.target.checked })} className="h-4 w-4 accent-primary" /></Row>
+
+              {isPosition ? (
+                <div className="space-y-3 border-t border-border pt-3">
+                  <div className="text-[10px] uppercase tracking-[0.1em] text-muted">Profit and loss zones</div>
+                  <Row label="Profit">
+                    <ChartColorField
+                      ariaLabel="Profit zone colour"
+                      value={drawing.style.profitColor ?? themeColor ?? "#089981"}
+                      onChange={(hex) => patchStyle({ profitColor: hex })}
+                    />
+                  </Row>
+                  <Row label="Loss">
+                    <ChartColorField
+                      ariaLabel="Loss zone colour"
+                      value={drawing.style.lossColor ?? themeBearColor ?? "#F23645"}
+                      onChange={(hex) => patchStyle({ lossColor: hex })}
+                    />
+                  </Row>
+                  {drawing.style.profitColor || drawing.style.lossColor ? (
+                    <button
+                      type="button"
+                      onClick={() => patchStyle({ profitColor: undefined, lossColor: undefined })}
+                      className="h-8 rounded-lg border border-border px-3 text-[11px] text-muted hover:text-foreground"
+                    >
+                      Follow theme
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
 
               {isProfile ? (
                 <div className="space-y-3 border-t border-border pt-3">

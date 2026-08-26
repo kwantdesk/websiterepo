@@ -152,6 +152,19 @@ export type DrawStyle = {
   showPoc?: boolean;           // POC line + label (default true)
   outsideColor?: string;       // rows outside the value area (default #787B86)
   profileWidthPercent?: number; // widest row as % of the range width, 10..80
+  /**
+   * Long/Short position zones. The profit and risk bands were pinned to the
+   * theme's two candle colours with no way to override them, so a desk that
+   * runs a monochrome or white-bullish theme could not make the calculator
+   * read red-and-green — the one place a trader most wants those two colours
+   * to be unambiguous.
+   *
+   * Absent means "follow the theme", which is what every existing drawing and
+   * every new one does until the trader picks. Saving a style template
+   * captures them like any other style field.
+   */
+  profitColor?: string;
+  lossColor?: string;
 };
 
 export const DRAW_STYLE_SCHEMA_VERSION = 2;

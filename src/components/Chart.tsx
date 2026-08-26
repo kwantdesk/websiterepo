@@ -1797,13 +1797,57 @@ function paperProtectionSizeLabel(positionSide: "buy" | "sell", quantity: number
  * move together.
  */
 const PAPER_LABEL_SCALE = 2;
-const PAPER_LABEL_WIDTH = 164 * PAPER_LABEL_SCALE;
 const PAPER_LABEL_HEIGHT = 16 * PAPER_LABEL_SCALE;
 const PAPER_LABEL_FONT_PX = 8 * PAPER_LABEL_SCALE;
 const PAPER_LABEL_PAD_X = 7 * PAPER_LABEL_SCALE;
 const PAPER_LABEL_HANDLE_WIDTH = 20 * PAPER_LABEL_SCALE;
 const PAPER_LABEL_CLOSE_WIDTH = 16 * PAPER_LABEL_SCALE;
 const PAPER_LABEL_ICON_PX = 10 * PAPER_LABEL_SCALE;
+
+/**
+ * Text is measured, never squeezed.
+ *
+ * These labels passed a maxWidth to fillText, and canvas does not truncate on
+ * maxWidth - it CONDENSES the glyphs to fit. "SELL 2 LIMIT · 21550.25 ·
+ * working" is 33 characters, about 317px at this size, against roughly 194px
+ * between the handles and the close cell, so it was being crushed to 61% of its
+ * natural width. The short SL and TP captions fit and rendered normally, which
+ * is why the body looked like a different, distorted typeface beside them.
+ *
+ * JetBrains Mono advances 600/1000 em, so a run of monospace text has an exact
+ * width without measuring. That matters because the canvas painter and its
+ * invisible HTML twin have to agree on the box width and only one of them can
+ * call measureText.
+ */
+const PAPER_LABEL_CHAR_PX = PAPER_LABEL_FONT_PX * 0.6;
+const PAPER_LABEL_MIN_WIDTH = 164 * PAPER_LABEL_SCALE;
+// 240 is not arbitrary: a full working order - side, size, type, price and
+// state - is 33 characters, which needs a 457px box. Capping below that would
+// trim the price off the one label that most needs it. A narrower pane still
+// wins, because both halves clamp to the pane width on top of this.
+const PAPER_LABEL_MAX_WIDTH = 240 * PAPER_LABEL_SCALE;
+
+/** The chrome around the text: padding, any handles, and the close cell. */
+function paperLabelChromePx(handleCount: number, showClose: boolean): number {
+  return PAPER_LABEL_PAD_X * 2
+    + handleCount * PAPER_LABEL_HANDLE_WIDTH
+    + (showClose ? PAPER_LABEL_CLOSE_WIDTH : 0);
+}
+
+/** The box width this label wants, bounded so it cannot swallow a narrow pane. */
+function paperLabelWidthPx(text: string, handleCount: number, showClose: boolean): number {
+  const wanted = paperLabelChromePx(handleCount, showClose)
+    + Math.ceil(text.length * PAPER_LABEL_CHAR_PX);
+  return Math.min(PAPER_LABEL_MAX_WIDTH, Math.max(PAPER_LABEL_MIN_WIDTH, wanted));
+}
+
+/** Trim to what fits, with an ellipsis, rather than distorting the glyphs. */
+function paperLabelFittedText(text: string, availablePx: number): string {
+  const maxChars = Math.floor(availablePx / PAPER_LABEL_CHAR_PX);
+  if (maxChars >= text.length) return text;
+  if (maxChars < 2) return "";
+  return `${text.slice(0, maxChars - 1)}…`;
+}
 
 class PaperPositionOverlayRenderer implements ISeriesPrimitivePaneRenderer {
   constructor(private readonly primitive: PaperPositionOverlayPrimitive) {}
@@ -1816,9 +1860,7 @@ class PaperPositionOverlayRenderer implements ISeriesPrimitivePaneRenderer {
       context.save();
       context.font = `700 ${PAPER_LABEL_FONT_PX}px 'JetBrains Mono', monospace`;
       context.textBaseline = "middle";
-      const labelWidth = PAPER_LABEL_WIDTH;
       const labelHeight = PAPER_LABEL_HEIGHT;
-      const labelX = Math.max(0, mediaSize.width - labelWidth - 4);
 
       for (const level of this.primitive.levels()) {
         const y = series.priceToCoordinate(level.price);
@@ -1835,6 +1877,19 @@ class PaperPositionOverlayRenderer implements ISeriesPrimitivePaneRenderer {
         const renderedLabel = livePnl === null || !level.livePosition
           ? level.label
           : `${paperPositionSizeLabel(level.livePosition.side, level.livePosition.quantity)} · ${livePnl > 0 ? "+" : livePnl < 0 ? "-" : ""}$${Math.abs(livePnl).toFixed(2)}`;
+        // The box grows with its own text so a working order's price is not
+        // trimmed away, then stops at the pane edge on a narrow chart.
+        const handleCount = level.kind === "entry"
+          ? Number(Boolean(level.showStopHandle)) + Number(Boolean(level.showTakeProfitHandle))
+          : 0;
+        // Sized from level.label, which is the string React also has, so the
+        // HTML twin can reach the identical width without measuring. The live
+        // P&L variant is only ever shorter and is fitted into that same box.
+        const labelWidth = Math.min(
+          Math.max(PAPER_LABEL_HEIGHT, mediaSize.width - 8),
+          paperLabelWidthPx(level.label, handleCount, Boolean(level.showClose)),
+        );
+        const labelX = Math.max(0, mediaSize.width - labelWidth - 4);
 
         context.save();
         context.globalAlpha = 0.92;
@@ -1894,7 +1949,13 @@ class PaperPositionOverlayRenderer implements ISeriesPrimitivePaneRenderer {
         context.rect(textLeft, labelTop + 1, labelX + labelWidth - closeWidth - textLeft - 2, labelHeight - 2);
         context.clip();
         context.fillStyle = level.color;
-        context.fillText(renderedLabel, textLeft, y, labelX + labelWidth - closeWidth - textLeft - 4 * PAPER_LABEL_SCALE);
+        // No maxWidth argument: that is what condensed the glyphs. Anything
+        // still too long for the bounded box is trimmed with an ellipsis.
+        context.fillText(
+          paperLabelFittedText(renderedLabel, labelX + labelWidth - closeWidth - textLeft - 4 * PAPER_LABEL_SCALE),
+          textLeft,
+          y,
+        );
         context.restore();
       }
       context.restore();
@@ -15175,6 +15236,7 @@ function Chart({
           ) : null}
           <ChartDrawSettings
             themeColor={settings.upColor}
+            themeBearColor={settings.downColor}
             drawing={drawSettingsOpen && drawSelectedId ? (chartingDrawings.find((drawing) => drawing.id === drawSelectedId) ?? null) : null}
             onChange={(next) => commitDrawings(chartingDrawings.map((d) => d.id === next.id ? next : d))}
             onClose={() => setDrawSettingsOpen(false)}
@@ -15958,7 +16020,14 @@ function Chart({
                 borderColor: level.color,
                 color: level.color,
                 height: PAPER_LABEL_HEIGHT,
-                width: PAPER_LABEL_WIDTH,
+                width: paperLabelWidthPx(
+                  level.label,
+                  Number(Boolean(onUpdatePaperProtection && level.position.stopLoss === null))
+                    + Number(Boolean(onUpdatePaperProtection
+                      && !level.position.takeProfits.some((target) => target.quantity > target.filledQuantity))),
+                  Boolean(onClosePaperPosition),
+                ),
+                maxWidth: "calc(100% - 8px)",
               }}
               title={level.resting
                 ? `${level.position.side === "buy" ? "Buy" : "Sell"} ${level.position.quantity} resting at ${level.position.entryPrice.toFixed(priceFormat.precision)}`
@@ -16028,7 +16097,8 @@ function Chart({
                 borderColor: level.color,
                 color: level.color,
                 height: PAPER_LABEL_HEIGHT,
-                width: PAPER_LABEL_WIDTH,
+                width: paperLabelWidthPx(level.label, 0, true),
+                maxWidth: "calc(100% - 8px)",
               }}
             >
               <button

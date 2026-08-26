@@ -1182,12 +1182,12 @@ export default function ChartDrawLayer({
           const xL = a.x!;
           const xrCandidates = [b.x, c.x].filter((v): v is number => v != null);
           const xR = Math.max(xL + 40, ...(xrCandidates.length ? xrCandidates : [xL + 180]));
-          // The zones ARE the theme's two candle colours: on a white-bullish,
-          // grey-bearish theme the target zone is white and the risk zone
-          // grey. These were pinned to TradingView's green/red, so the
-          // calculator was the one tool that never matched the chart.
-          const green = themeColor || "#089981";
-          const red = themeBearColor || "#F23645";
+          // The zones follow the theme's two candle colours by default, so the
+          // calculator matches the chart it is drawn on. A trader who wants
+          // plain red-and-green regardless of theme sets them per drawing in
+          // the double-click settings; absent means follow the theme.
+          const green = style.profitColor ?? themeColor ?? "#089981";
+          const red = style.lossColor ?? themeBearColor ?? "#F23645";
           const entryP = pr[0].price; const stopP = pr[1].price; const targetP = pr[2].price;
           const reward = Math.abs(targetP - entryP); const risk = Math.abs(entryP - stopP);
           const rr = risk > 0 ? reward / risk : 0;
