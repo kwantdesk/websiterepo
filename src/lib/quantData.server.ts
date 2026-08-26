@@ -290,7 +290,32 @@ function quantDataPost(path: string, body: JsonRecord, ttlMs = 0) {
     endpointCache.delete(cacheKey);
     throw error;
   });
-  if (ttlMs > 0) endpointCache.set(cacheKey, { expiresAt: Date.now() + ttlMs, promise });
+
+  // An identical request already in flight is JOINED, not re-issued.
+  //
+  // This registered the promise only when a caller passed a ttl, and ttlMs
+  // defaults to 0 - so by default four panes asking for the same SPX GAMMA
+  // panel at the same moment sent four upstream requests. Every one of them
+  // takes a slot in qdSchedule's 80ms queue, and that queue only ever moves
+  // forward: a burst pushes qdNextStartMs into the future and everything behind
+  // it inherits the debt. Measured on production, the same GEX Map request took
+  // 16,130ms under load and 1,164ms once the burst had drained.
+  //
+  // Coalescing is not caching and carries no staleness: the joined callers get
+  // the response they would have got anyway, from the request already on its
+  // way. Only a TTL keeps the entry after it settles.
+  endpointCache.set(cacheKey, {
+    expiresAt: ttlMs > 0 ? Date.now() + ttlMs : Number.POSITIVE_INFINITY,
+    promise,
+  });
+  if (ttlMs <= 0) {
+    // Drop it the moment it settles, so a later caller gets fresh data. The
+    // guard means a slow response cannot be evicted by a newer registration
+    // for the same key.
+    void promise.finally(() => {
+      if (endpointCache.get(cacheKey)?.promise === promise) endpointCache.delete(cacheKey);
+    });
+  }
   return promise;
 }
 
