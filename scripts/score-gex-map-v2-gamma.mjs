@@ -27,6 +27,8 @@ import {
   emptyDealerInventory,
   revalueDealerGex,
   contractKey,
+  blendDealerNodes,
+  DEALER_FLOW_SHARE,
   priorTradingDates,
   DEALER_FLOW_HALF_LIFE_MS,
   DEALER_BOOK_CARRY_SESSIONS,
@@ -53,6 +55,7 @@ const ZERO_DTE = "2026-08-21";
 const REPRESENTATION = "PER_ONE_DOLLAR_MOVE";
 
 const openInterest = capture.openInterest?.data ?? {};
+const structuralExposure = capture.exposure?.data?.[capture.symbol]?.exposureMap?.[ZERO_DTE] ?? {};
 const oiFor = (key) => {
   const [, strikeText, right] = key.split("|");
   const cell = openInterest[Number(strikeText).toFixed(1)] ?? openInterest[strikeText];
@@ -166,7 +169,25 @@ for (const frameIso of frames) {
     representation: REPRESENTATION,
   });
 
-  const ours = frame.nodes.map((node) => [node.strike, node.net]);
+  /*
+   * The shipped composition, not the flow book alone: four fifths measured
+   * flow, one fifth the provider's structural surface. Scoring the raw flow
+   * here would score something the panel does not draw.
+   */
+  const structuralRows = Object.entries(structuralExposure)
+    .map(([strikeText, row]) => {
+      const call = Number(row?.callExposure ?? 0);
+      const put = Number(row?.putExposure ?? 0);
+      return { strike: Number(strikeText), call, put, net: call + put };
+    })
+    .filter((row) => Number.isFinite(row.strike) && Number.isFinite(row.net));
+  const ours = blendDealerNodes(
+    frame.nodes.map((node) => ({
+      strike: node.strike, call: node.callNet, put: node.putNet, net: node.net,
+    })),
+    structuralRows,
+    DEALER_FLOW_SHARE,
+  ).map((node) => [node.strike, node.net]);
   const theirs = strikes.map((strike) => [strike, target.values[String(strike)] ?? target.values[strike]]);
   const shared = ours.filter(([strike]) => Number.isFinite(
     target.values[String(strike)] ?? target.values[strike],

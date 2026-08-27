@@ -42,6 +42,8 @@
  * ground truth - rather than fitted to a competitor's screenshots.
  */
 
+import type { ExposureStrike } from "@/lib/optionsFlow";
+
 /** Which side of the chain a quantity belongs to. Both have positive gamma. */
 export type OptionRight = "call" | "put";
 
@@ -648,4 +650,75 @@ export function priorTradingDates(sessionDate: string, count: number): string[] 
     dates.push(cursor.toISOString().slice(0, 10));
   }
   return dates.reverse();
+}
+
+/**
+ * How much of a node is the measured flow book, and how much the provider's
+ * structural surface.
+ *
+ * v2 was a pure flow measurement and that is still four fifths of it. The last
+ * fifth is there because the two signals were measured to be genuinely
+ * different things: against the reference lattice the flow book scored r=0.597
+ * and the structural surface r=0.566, while correlating only 0.32 to 0.46 with
+ * EACH OTHER. Two predictors that disagree that much both carry information the
+ * other lacks.
+ *
+ * Leave-one-out is what justifies shipping it rather than the raw fit. Choosing
+ * the weight on three frames and scoring only the fourth improved correlation
+ * on all four - 0.630 vs 0.503, 0.639 vs 0.515, 0.752 vs 0.669, 0.712 vs 0.701
+ * - with the chosen weight landing at 0.6 or 0.7 every time. A parameter fitted
+ * to noise does not survive that.
+ *
+ * The trade is real and worth stating: at this weight the biggest nodes agree
+ * 88% of the time against 80% for flow alone and the ladder covers every listed
+ * strike instead of the 80% flow reaches, while plain all-strike sign agreement
+ * slips from 68% to 63%. The strikes it slips on average 4% of the Star; the
+ * ones it gains are the ones a trader reads.
+ *
+ * gamma x open interest - the textbook dealer proxy - was measured at r=-0.04
+ * against the reference and is deliberately NOT a third term.
+ */
+export const DEALER_FLOW_SHARE = 0.8;
+
+/**
+ * Combine the two at unit gross, then restore the flow book's own scale.
+ *
+ * They arrive in different units - contracts x dollar gamma against the
+ * provider's own exposure figure - so an unweighted sum is just whichever
+ * number happens to be larger. Normalising first makes the weight mean what it
+ * says; rescaling afterwards keeps the result in the flow book's dollars rather
+ * than in an abstract unit nobody can read.
+ */
+export function blendDealerNodes(
+  flow: readonly ExposureStrike[],
+  structuralRows: readonly ExposureStrike[],
+  share = DEALER_FLOW_SHARE,
+): ExposureStrike[] {
+  const flowByStrike = new Map(flow.map((row) => [row.strike, row]));
+  const structuralByStrike = new Map(structuralRows.map((row) => [row.strike, row]));
+  const strikes = [...new Set([...flowByStrike.keys(), ...structuralByStrike.keys()])]
+    .sort((left, right) => left - right);
+  if (!strikes.length) return [];
+
+  const gross = (map: Map<number, ExposureStrike>) => strikes
+    .reduce((sum, strike) => sum + Math.abs(map.get(strike)?.net ?? 0), 0);
+  const flowGross = gross(flowByStrike);
+  const structuralGross = gross(structuralByStrike);
+  // Nothing to blend with, or nothing to blend: the surviving side stands.
+  if (flowGross <= 0 || structuralGross <= 0) return flow.map((row) => ({ ...row }));
+
+  const blended: ExposureStrike[] = [];
+  for (const strike of strikes) {
+    const flowRow = flowByStrike.get(strike);
+    const structuralRow = structuralByStrike.get(strike);
+    const mix = (pick: (row: ExposureStrike) => number) => (
+      share * (flowRow ? pick(flowRow) / flowGross : 0)
+      + (1 - share) * (structuralRow ? pick(structuralRow) / structuralGross : 0)
+    ) * flowGross;
+    const call = mix((row) => row.call);
+    const put = mix((row) => row.put);
+    if (call === 0 && put === 0) continue;
+    blended.push({ strike, call, put, net: call + put });
+  }
+  return blended;
 }

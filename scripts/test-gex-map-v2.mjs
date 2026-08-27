@@ -4,6 +4,8 @@ import {
   contractKey,
   parseContractKey,
   priorTradingDates,
+  blendDealerNodes,
+  DEALER_FLOW_SHARE,
   DEALER_BOOK_CARRY_SESSIONS,
   contractDollarGamma,
   OPTION_CONTRACT_MULTIPLIER,
@@ -376,5 +378,56 @@ check("the carried sessions skip weekends and stay in order", () => {
   assert.deepEqual(priorTradingDates("2026-08-21", 0), []);
   assert.equal(DEALER_BOOK_CARRY_SESSIONS, 3);
 });
+
+check("a node is measured flow first, structural second", () => {
+  /*
+   * The weight is not a taste. Against the reference lattice the flow book
+   * scored r=0.597 and the provider's structural surface r=0.566 while
+   * correlating only 0.32-0.46 with EACH OTHER, so each carries information the
+   * other lacks. Leave-one-out - choose the weight on three frames, score only
+   * the fourth - improved correlation on all four held-out frames, which a
+   * parameter fitted to noise does not do.
+   */
+  assert.equal(DEALER_FLOW_SHARE, 0.8);
+
+  // Unit gross before mixing, flow's scale after: the two arrive in different
+  // units, so an unweighted sum is just whichever number is larger.
+  const flow = [
+    { strike: 100, call: 60, put: 0, net: 60 },
+    { strike: 101, call: 0, put: -40, net: -40 },
+  ];
+  const structural = [
+    { strike: 100, call: 1_000_000, put: 0, net: 1_000_000 },
+    { strike: 102, call: 0, put: -1_000_000, net: -1_000_000 },
+  ];
+  const blended = blendDealerNodes(flow, structural, 0.8);
+
+  // The union: structural gives the ladder an opinion at 102, which flow has
+  // never seen a print at. Coverage went from 80% of the reference's strikes to
+  // all of them, which is most of what this is for.
+  assert.deepEqual(blended.map((row) => row.strike), [100, 101, 102]);
+  // Scale is preserved - the blend stays in the flow book's dollars rather than
+  // an abstract unit, so a node still reads as dealer exposure.
+  const grossFlow = flow.reduce((sum, row) => sum + Math.abs(row.net), 0);
+  const grossOut = blended.reduce((sum, row) => sum + Math.abs(row.net), 0);
+  assert.ok(Math.abs(grossOut - grossFlow) < 1e-9, `${grossOut} vs ${grossFlow}`);
+  // A strike only structural knows about is worth the minority share.
+  const only = blended.find((row) => row.strike === 102);
+  assert.ok(only.net < 0);
+  assert.ok(Math.abs(only.net) < Math.abs(blended.find((row) => row.strike === 100).net));
+});
+
+check("the blend degrades to whichever side actually has a book", () => {
+  const flow = [{ strike: 100, call: 5, put: 0, net: 5 }];
+  // No structural surface: the flow book stands alone rather than being scaled
+  // to nothing by a zero denominator.
+  assert.deepEqual(blendDealerNodes(flow, [], 0.8), flow);
+  assert.deepEqual(blendDealerNodes(flow, [{ strike: 1, call: 0, put: 0, net: 0 }], 0.8), flow);
+  // No flow book at all is a v2 failure, and must not be dressed up as one:
+  // the empty-book guard downstream still has nothing to draw.
+  assert.deepEqual(blendDealerNodes([], [{ strike: 1, call: 2, put: 0, net: 2 }], 0.8), []);
+  assert.deepEqual(blendDealerNodes([], [], 0.8), []);
+});
+
 
 console.log(`\ngex map v2: ${passed}/${passed} checks passed`);

@@ -214,4 +214,24 @@ check("a spread leg is dropped, and the half-life is the measured one", () => {
 });
 
 
+check("the panel reports what its nodes are made of", () => {
+  /*
+   * v2 is no longer pure flow, and the surface must never have to guess. Four
+   * fifths is the measured dealer book; the last fifth is the provider's
+   * structural surface, which was measured to be a genuinely different signal
+   * (r=0.566 against the reference while correlating only 0.32-0.46 with our
+   * flow) and which gives the ladder an opinion at every listed strike instead
+   * of the 80% flow reaches.
+   */
+  assert.match(server, /blendDealerNodes\(/);
+  assert.match(server, /structural\.latestStrikes,/);
+  assert.match(server, /flowShare: DEALER_FLOW_SHARE,/);
+  assert.match(server, /flowShare: number;/);
+  // The structural side is v1's own surface, so the two models still share a
+  // clock and a greek - the thing that makes any comparison between them mean
+  // something.
+  assert.match(server, /const structural = await getGexMapPanel\(symbol, "GAMMA", sessionDate, scope, representation\);/);
+});
+
+
 console.log(`\ngex map v2 wiring: ${passed}/${passed} checks passed`);

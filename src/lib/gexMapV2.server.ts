@@ -16,6 +16,8 @@ import {
   emptyDealerInventory,
   contractKey,
   revalueDealerGex,
+  blendDealerNodes,
+  DEALER_FLOW_SHARE,
   priorTradingDates,
   DEALER_BOOK_CARRY_SESSIONS,
   v2Readiness,
@@ -279,6 +281,12 @@ export type DealerInventoryPanelPayload = GexMapPanelPayload & {
    * be once the remaining tapes finish reading in the background.
    */
   carriedSessions: number;
+  /**
+   * The share of each node that is measured flow; the rest is the provider's
+   * structural surface. Reported so the panel never has to guess what it is
+   * looking at, and so a change here is visible rather than silent.
+   */
+  flowShare: number;
 };
 
 /**
@@ -425,12 +433,25 @@ async function buildDealerInventoryPanel(
     spot: structural.stockPrice ?? 0,
     representation,
   });
-  const latestStrikes: ExposureStrike[] = frame.nodes.map((node) => ({
-    strike: node.strike,
-    call: node.callNet,
-    put: node.putNet,
-    net: node.net,
-  }));
+  /*
+   * Four fifths measured flow, one fifth the provider's structural surface.
+   *
+   * The two were measured to be different signals rather than one wearing two
+   * hats - r=0.597 and r=0.566 against the reference lattice while correlating
+   * 0.32 to 0.46 with each other - and leave-one-out improved correlation on
+   * every held-out frame, so this is a finding rather than a fit. It also gives
+   * the ladder an opinion at every listed strike instead of only the 80% flow
+   * has reached.
+   */
+  const latestStrikes: ExposureStrike[] = blendDealerNodes(
+    frame.nodes.map((node) => ({
+      strike: node.strike,
+      call: node.callNet,
+      put: node.putNet,
+      net: node.net,
+    })),
+    structural.latestStrikes,
+  );
 
   /*
    * An empty book must FAIL, not return an empty ladder.
@@ -459,6 +480,7 @@ async function buildDealerInventoryPanel(
     tapeTruncated: tape.truncated,
     tapeFromMs: fromMs,
     carriedSessions,
+    flowShare: DEALER_FLOW_SHARE,
     latestStrikes,
     /*
      * NO FRAMES.
