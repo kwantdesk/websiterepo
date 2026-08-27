@@ -67,7 +67,9 @@ check("theme-linked colours defer to the theme, the rest never do", () => {
   for (const key of ["clusterColor", "singlePrintColor", "vwapColor", "textColor"]) {
     assert.ok(always.includes(`"${key}"`), `${key} should sit in the always-editable group`);
   }
-  assert.match(themed, /disabled=\{settingsInstance\.settings\?\.useThemeColors !== false\}/);
+  // Matched on the condition rather than the whole expression: it became
+  // multi-line when a gradient scheme was given the right to lock it too.
+  assert.match(themed, /settingsInstance\.settings\?\.useThemeColors !== false/);
   assert.doesNotMatch(always, /disabled=\{settingsInstance\.settings\?\.useThemeColors/);
 });
 
@@ -80,5 +82,46 @@ check("a chosen colour survives validation, so it saves with the workspace", () 
   assert.match(settings, /return \{\s*\n\s*\.\.\.merged,/);
   assert.match(palette, /replace\(settingsInstance\.instanceId, \(current\) => \(\{/);
 });
+
+check("one click recolours the whole footprint", () => {
+  /*
+   * What was actually asked for: the same gradient schemes the volume profile
+   * has, applied in ONE CLICK. Fourteen individual swatches is not that.
+   *
+   * The endpoints map to the two sides a footprint is made of - `from` is the
+   * bid, `to` is the ask - and the POC, value area, neutral and stacked
+   * markers are blended from those two, so a scheme reads as one graded
+   * palette rather than two raw colours with unrelated markers over it.
+   */
+  assert.match(palette, /VOLUME_PROFILE_GRADIENTS\.map\(\(gradient\) => \{/);
+  assert.match(palette, /gradientPreset: gradient\.id/);
+  // An Off button, or a scheme could never be taken back off.
+  assert.match(palette, /gradientPreset: VOLUME_PROFILE_GRADIENT_OFF/);
+
+  // The renderer has to honour it, or the button is decoration.
+  assert.match(chart, /const footprintGradient = resolveVolumeProfileGradient\(footprintSettings\.gradientPreset\);/);
+  assert.match(chart, /askColor: footprintGradient\s*\n\s*\? footprintGradient\.to/);
+  assert.match(chart, /bidColor: footprintGradient\s*\n\s*\? footprintGradient\.from/);
+  // Derived, not raw: the markers blend the two endpoints.
+  assert.match(chart, /valueAreaColor: footprintGradient\s*\n\s*\? mixHexColors\(footprintGradient\.from, footprintGradient\.to, 0\.35\)/);
+});
+
+check("the schemes are the profile's own, not a second list", () => {
+  // A copied list would drift the first time one of them was tuned.
+  const gradients = readFileSync(new URL("../src/lib/volumeProfileGradients.ts", import.meta.url), "utf8");
+  assert.match(gradients, /export const VOLUME_PROFILE_GRADIENTS/);
+  assert.match(palette, /VOLUME_PROFILE_GRADIENTS/);
+});
+
+check("an active scheme owns every colour", () => {
+  // The profile locks its pickers while a scheme is on, for a good reason:
+  // letting both apply produces something that half-follows a gradient. Both
+  // footprint groups defer now - the theme-gated ones AND the always-editable
+  // ones, which had no disabled state at all before.
+  const deferrals = palette.match(/isVolumeProfileGradientActive\(settingsInstance\.settings\?\.gradientPreset\)/g) ?? [];
+  assert.ok(deferrals.length >= 4, `expected both picker groups to defer, found ${deferrals.length}`);
+  assert.match(palette, /A gradient scheme owns every colour/);
+});
+
 
 console.log(`\nfootprint palette: ${passed}/${passed} checks passed`);

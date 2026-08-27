@@ -159,7 +159,7 @@ import {
   type FootprintRenderBar,
 } from "@/lib/footprintPrimitive";
 import { ChartRepaintNotifierPrimitive } from "@/lib/chartRepaintNotifier";
-import { resolveVolumeProfileGradient } from "@/lib/volumeProfileGradients";
+import { resolveVolumeProfileGradient, mixHexColors } from "@/lib/volumeProfileGradients";
 import { PositionCalculatorPrimitive, type PositionCalculatorModel } from "@/lib/positionCalculatorPrimitive";
 import { ImbalanceZonesPrimitive, type ImbalanceZoneModel } from "@/lib/imbalanceZonesPrimitive";
 import { retainLiveFootprintRows } from "@/lib/footprintLive";
@@ -526,6 +526,11 @@ import {
   type ChartViewportSnapshot,
 } from "@/lib/chartViewportSync";
 import { writeProtectedItem } from "@/lib/browserStorageQuota";
+import {
+  chartWatermarkSize,
+  CHART_WATERMARK_SRC,
+  CHART_WATERMARK_OPACITY,
+} from "@/lib/chartWatermark";
 
 interface ChartProps {
   candles: Candle[];
@@ -2532,29 +2537,6 @@ const VIEWPORT_REACT_REFRESH_INTERVAL_MS = 64;
  * Bottom inset matches the rest of the chart chrome: the 26px time axis plus
  * the standard 8px margin.
  */
-const CHART_WATERMARK_SRC = "/brand/kwantdesk-wordmark-white.png";
-const CHART_WATERMARK_ASPECT = 1911 / 305;
-const CHART_WATERMARK_WIDTH_FRACTION = 0.14;
-const CHART_WATERMARK_MIN_WIDTH = 80;
-const CHART_WATERMARK_MAX_WIDTH = 280;
-const CHART_WATERMARK_MAX_HEIGHT_FRACTION = 0.08;
-
-/** The mark's rendered box for a pane, or null when the pane is too small. */
-function chartWatermarkSize(paneWidth: number, paneHeight: number) {
-  if (!(paneWidth > 0) || !(paneHeight > 0)) return null;
-  const width = Math.min(
-    CHART_WATERMARK_MAX_WIDTH,
-    Math.max(CHART_WATERMARK_MIN_WIDTH, paneWidth * CHART_WATERMARK_WIDTH_FRACTION),
-  );
-  const height = Math.min(
-    width / CHART_WATERMARK_ASPECT,
-    paneHeight * CHART_WATERMARK_MAX_HEIGHT_FRACTION,
-  );
-  // Below this the wordmark is a smudge rather than a mark, and a pane that
-  // small has nothing to spare for it.
-  if (height < 9 || paneWidth < CHART_WATERMARK_MIN_WIDTH + 40) return null;
-  return { width: Math.round(height * CHART_WATERMARK_ASPECT), height: Math.round(height) };
-}
 // Height of the time axis strip beneath every pane. The precision-tools
 // adapter already models the non-price-pane region at the bottom of the
 // chart as this plus the docked pane stack.
@@ -5693,6 +5675,9 @@ function Chart({
   }, [footprintDataConsumer, footprintDataKey, liveFootprintRenderBars]);
   const footprintPrimitiveOptions = useMemo((): FootprintPrimitiveOptions => {
     const useThemeColors = footprintSettings.useThemeColors !== false;
+    // Resolved once per settings change, not per bar: the primitive repaints
+    // thousands of cells and must never parse hex on the render path.
+    const footprintGradient = resolveVolumeProfileGradient(footprintSettings.gradientPreset);
     const option = <T extends string>(value: unknown, allowed: readonly T[], fallback: T) =>
       allowed.includes(String(value) as T) ? String(value) as T : fallback;
     return {
@@ -5798,18 +5783,49 @@ function Chart({
       fpsLimit: ([30, 60, 120].includes(Number(footprintSettings.fpsLimit))
         ? Number(footprintSettings.fpsLimit)
         : 60) as 30 | 60 | 120,
-      askColor: useThemeColors ? settings.upColor : String(footprintSettings.askColor ?? settings.upColor),
-      bidColor: useThemeColors ? settings.downColor : String(footprintSettings.bidColor ?? settings.downColor),
-      betweenColor: String(footprintSettings.betweenColor ?? "#A1A1AA"),
-      neutralColor: useThemeColors ? settings.gridColor : String(footprintSettings.neutralColor ?? settings.gridColor),
+      /*
+       * A gradient scheme owns every colour on the footprint, exactly as it
+       * does on the volume profile: the two endpoints ARE the colour setting,
+       * and letting the individual pickers apply at the same time would only
+       * produce a footprint that half-follows a gradient.
+       *
+       * The endpoints map to the two sides a footprint is actually made of -
+       * `from` is the bid, `to` is the ask - and everything else is derived
+       * from them by blending, so a scheme reads as one graded palette rather
+       * than two raw colours with unrelated markers scattered over it.
+       */
+      askColor: footprintGradient
+        ? footprintGradient.to
+        : useThemeColors ? settings.upColor : String(footprintSettings.askColor ?? settings.upColor),
+      bidColor: footprintGradient
+        ? footprintGradient.from
+        : useThemeColors ? settings.downColor : String(footprintSettings.bidColor ?? settings.downColor),
+      betweenColor: footprintGradient
+        ? mixHexColors(footprintGradient.from, footprintGradient.to, 0.5)
+        : String(footprintSettings.betweenColor ?? "#A1A1AA"),
+      neutralColor: footprintGradient
+        ? mixHexColors(footprintGradient.from, footprintGradient.to, 0.5)
+        : useThemeColors ? settings.gridColor : String(footprintSettings.neutralColor ?? settings.gridColor),
       textColor: String(footprintSettings.textColor ?? "#F5F5F5"),
-      pocColor: useThemeColors ? settings.borderUpColor : String(footprintSettings.pocColor ?? settings.borderUpColor),
-      valueAreaColor: String(footprintSettings.valueAreaColor ?? "#647BA8"),
-      deltaPocColor: useThemeColors ? settings.borderDownColor : String(footprintSettings.deltaPocColor ?? settings.borderDownColor),
-      clusterColor: String(footprintSettings.clusterColor ?? "#F59E0B"),
+      pocColor: footprintGradient
+        ? footprintGradient.to
+        : useThemeColors ? settings.borderUpColor : String(footprintSettings.pocColor ?? settings.borderUpColor),
+      valueAreaColor: footprintGradient
+        ? mixHexColors(footprintGradient.from, footprintGradient.to, 0.35)
+        : String(footprintSettings.valueAreaColor ?? "#647BA8"),
+      deltaPocColor: footprintGradient
+        ? footprintGradient.from
+        : useThemeColors ? settings.borderDownColor : String(footprintSettings.deltaPocColor ?? settings.borderDownColor),
+      clusterColor: footprintGradient
+        ? mixHexColors(footprintGradient.to, "#FFFFFF", 0.25)
+        : String(footprintSettings.clusterColor ?? "#F59E0B"),
       singlePrintColor: String(footprintSettings.singlePrintColor ?? "#F4F4F5"),
-      stackedAskColor: useThemeColors ? settings.upColor : String(footprintSettings.stackedAskColor ?? settings.upColor),
-      stackedBidColor: useThemeColors ? settings.downColor : String(footprintSettings.stackedBidColor ?? settings.downColor),
+      stackedAskColor: footprintGradient
+        ? footprintGradient.to
+        : useThemeColors ? settings.upColor : String(footprintSettings.stackedAskColor ?? settings.upColor),
+      stackedBidColor: footprintGradient
+        ? footprintGradient.from
+        : useThemeColors ? settings.downColor : String(footprintSettings.stackedBidColor ?? settings.downColor),
       unfinishedAuctionColor: String(footprintSettings.unfinishedAuctionColor ?? "#E4BF5A"),
       vwapColor: String(footprintSettings.vwapColor ?? "#22D3EE"),
       perBarVolumeColor: useThemeColors
@@ -15602,7 +15618,7 @@ function Chart({
             marginInline: "auto",
             width: chartWatermark.width,
             height: chartWatermark.height,
-            opacity: 0.55,
+            opacity: CHART_WATERMARK_OPACITY,
           }}
         />
       ) : null}

@@ -4202,6 +4202,59 @@ export default function ChartIndicatorsControl({
                       Saved with the chart, so a workspace keeps the palette it was built with.
                     </p>
                   </div>
+                  <div>
+                    <span className="block text-[11px] font-medium text-foreground">Gradient scheme</span>
+                    <span className="mt-0.5 block text-[9px] leading-4 text-muted">
+                      One click recolours the whole footprint: bid takes the left colour, ask the right,
+                      and the POC, value area and stacked markers are blended from the two. The same
+                      schemes the volume profile uses. While one is on it owns every colour, so the
+                      pickers below are locked.
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+                    <button
+                      type="button"
+                      aria-pressed={!isVolumeProfileGradientActive(settingsInstance.settings?.gradientPreset)}
+                      onClick={() => replace(settingsInstance.instanceId, (current) => ({
+                        ...current,
+                        settings: { ...(current.settings ?? {}), gradientPreset: VOLUME_PROFILE_GRADIENT_OFF },
+                      }))}
+                      className={`h-9 border px-2 text-[9px] font-semibold uppercase tracking-[0.1em] transition-colors ${
+                        isVolumeProfileGradientActive(settingsInstance.settings?.gradientPreset)
+                          ? "border-border bg-background text-muted hover:border-primary/25 hover:text-foreground"
+                          : "border-primary/55 bg-primary/10 text-primary"
+                      }`}
+                    >
+                      Off
+                    </button>
+                    {VOLUME_PROFILE_GRADIENTS.map((gradient) => {
+                      const active = String(settingsInstance.settings?.gradientPreset ?? "") === gradient.id;
+                      return (
+                        <button
+                          key={gradient.id}
+                          type="button"
+                          aria-pressed={active}
+                          title={gradient.label}
+                          onClick={() => replace(settingsInstance.instanceId, (current) => ({
+                            ...current,
+                            settings: { ...(current.settings ?? {}), gradientPreset: gradient.id },
+                          }))}
+                          className={`relative h-9 overflow-hidden border text-[9px] font-semibold transition-colors ${
+                            active ? "border-primary" : "border-border hover:border-primary/35"
+                          }`}
+                        >
+                          <span
+                            aria-hidden
+                            className="absolute inset-0"
+                            style={{ background: `linear-gradient(90deg, ${gradient.from}, ${gradient.to})` }}
+                          />
+                          <span className="relative z-10 px-1 text-[8px] uppercase tracking-[0.08em] text-white mix-blend-difference">
+                            {gradient.label}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
                   <label className="flex min-h-9 items-center gap-2 rounded-lg border border-border bg-background/55 px-3 text-[9px] uppercase tracking-[0.12em] text-muted">
                     <input
                       type="checkbox"
@@ -4233,8 +4286,15 @@ export default function ChartIndicatorsControl({
                             ...current,
                             settings: { ...(current.settings ?? {}), [String(key)]: hex },
                           }))}
-                          disabled={settingsInstance.settings?.useThemeColors !== false}
-                          title={settingsInstance.settings?.useThemeColors !== false ? "Turn off Use theme colours to set a custom colour" : undefined}
+                          disabled={
+                            isVolumeProfileGradientActive(settingsInstance.settings?.gradientPreset)
+                            || settingsInstance.settings?.useThemeColors !== false
+                          }
+                          title={isVolumeProfileGradientActive(settingsInstance.settings?.gradientPreset)
+                            ? "A gradient scheme owns every colour — turn it off to set this one"
+                            : settingsInstance.settings?.useThemeColors !== false
+                              ? "Turn off Use theme colours to set a custom colour"
+                              : undefined}
                         />
                       </div>
                     ))}
@@ -4261,6 +4321,10 @@ export default function ChartIndicatorsControl({
                             ...current,
                             settings: { ...(current.settings ?? {}), [String(key)]: hex },
                           }))}
+                          disabled={isVolumeProfileGradientActive(settingsInstance.settings?.gradientPreset)}
+                          title={isVolumeProfileGradientActive(settingsInstance.settings?.gradientPreset)
+                            ? "A gradient scheme owns every colour — turn it off to set this one"
+                            : undefined}
                         />
                       </div>
                     ))}
