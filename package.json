@@ -158,7 +158,8 @@
     "research:gexmap-vs-trinity": "node scripts/compare-gexmap-vs-trinity-scope.mjs",
     "test:gex-map-v2": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-gex-map-v2.mjs",
     "research:gex-map-v2": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/validate-gex-map-v2.mjs",
-    "research:gex-map-v2-calibrate": "node scripts/calibrate-gex-map-v2.mjs"
+    "research:gex-map-v2-calibrate": "node scripts/calibrate-gex-map-v2.mjs",
+    "test:gex-map-v2-wiring": "node scripts/test-gex-map-v2-wiring.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",

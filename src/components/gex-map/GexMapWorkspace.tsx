@@ -117,6 +117,15 @@ type GexMapWorkspaceProps = {
    * FUTURE matrix can be a page in its own right rather than a mode of the map.
    */
   lockedTimeHorizon?: "present" | "future" | null;
+  /**
+   * Offer the v2 dealer-inventory model beside the structural one.
+   *
+   * Only the standalone GEX MAP page passes this. The panels embedded in GEX
+   * VUE stay on v1: they sit beside charts and replay, and a panel that can
+   * silently be showing a different measurement than the one next to it is
+   * worse than one that cannot.
+   */
+  enableDealerModel?: boolean;
 };
 
 /**
@@ -1671,6 +1680,7 @@ function GexMapWorkspace({
   // GEX CAL route is the FUTURE matrix as a page of its own, and a page that
   // could be switched back to PRESENT would just be a second GEX Map.
   lockedTimeHorizon = null,
+  enableDealerModel = false,
 }: GexMapWorkspaceProps = {}) {
   // Keep the server and first browser render identical. Reading window.location or
   // sessionStorage in a state initializer can make React discard the hydrated GEX
@@ -1715,6 +1725,12 @@ function GexMapWorkspace({
     // normalizeGexMapEmbedState only admits FRAME_STEPS members.
     () => (initialEmbedStateRef.current?.stepMinutes ?? 1) as (typeof FRAME_STEPS)[number],
   );
+  /**
+   * Which calculation the panels request. v1 by default: v2 is a different
+   * measurement, not a newer version of this one, and it is only measured to
+   * beat v1 on cash indices.
+   */
+  const [exposureModel, setExposureModel] = useState<"STRUCTURAL_OI" | "DEALER_INVENTORY">("STRUCTURAL_OI");
   const [expiryScope, setExpiryScope] = useState<GexMapExpiryScope>(
     () => initialEmbedStateRef.current?.expiryScope ?? DEFAULT_GEX_MAP_EXPIRY_SCOPE,
   );
@@ -1842,11 +1858,16 @@ function GexMapWorkspace({
   const replayMode = externalReplay?.active ?? internalReplayMode;
   const requestedReplayDate = replayMode ? (externalReplay?.sessionDate || replayDate) : "";
   requestedReplayDateRef.current = requestedReplayDate;
-  const panelCacheKey = useCallback((panel: Pick<PanelConfig, "symbol" | "greekMode">) => (
-    replayMode
+  const panelCacheKey = useCallback((panel: Pick<PanelConfig, "symbol" | "greekMode">) => {
+    const base = replayMode
       ? gexMapCacheKey(panel.symbol, panel.greekMode, requestedReplayDate, expiryScope, representation)
-      : compactGexMapLiveCacheKey(panel.symbol, panel.greekMode, expiryScope, representation)
-  ), [expiryScope, replayMode, representation, requestedReplayDate]);
+      : compactGexMapLiveCacheKey(panel.symbol, panel.greekMode, expiryScope, representation);
+    // The model belongs in the key. Without it, switching models would serve
+    // the other calculation's numbers from cache under the new label - the
+    // worst possible failure for a panel whose whole purpose is which
+    // calculation you are looking at.
+    return exposureModel === "DEALER_INVENTORY" ? `${base}:dealer` : base;
+  }, [exposureModel, expiryScope, replayMode, representation, requestedReplayDate]);
 
   useEffect(() => {
     setLocationMarket(market ?? linkedMarketFromLocation());
@@ -1946,11 +1967,16 @@ function GexMapWorkspace({
       setLoading(Object.fromEntries(panels.map((panel) => [panel.id, true])));
       try {
         const loadPanel = async (panel: PanelConfig) => {
+          // v2 is gamma only, and the route rejects any other greek on it, so
+          // a panel showing DELTA or VEX stays structural whatever the toggle
+          // says rather than failing the whole load.
+          const dealerModel = exposureModel === "DEALER_INVENTORY" && panel.greekMode === "GAMMA";
           const query = new URLSearchParams({
             symbol: panel.symbol,
             greekMode: panel.greekMode,
             scope: expiryScope,
             representation,
+            ...(dealerModel ? { model: "DEALER_INVENTORY" } : {}),
             ...(requestedReplayDate ? { sessionDate: requestedReplayDate } : {}),
             ...(!replayMode ? { compact: "1" } : {}),
           });
@@ -2040,7 +2066,7 @@ function GexMapWorkspace({
         timer = null;
       }
     };
-  }, [expiryScope, panelCacheKey, panels, refreshToken, replayMode, representation, requestedReplayDate]);
+  }, [exposureModel, expiryScope, panelCacheKey, panels, refreshToken, replayMode, representation, requestedReplayDate]);
 
   const timeline = useMemo(() => {
     const timestamps = new Set<number>();
@@ -2181,6 +2207,38 @@ function GexMapWorkspace({
               </button>
             ))}
           </div>
+
+          {enableDealerModel ? (
+            /*
+              * Which calculation is on screen. These are two different
+              * measurements of the same chain, not two versions of one, so the
+              * control names both rather than offering a "v2" that implies the
+              * other is out of date.
+              */
+            <div
+              className="ml-1 flex h-7 shrink-0 items-center gap-0.5 rounded-[3px] border border-border/70 bg-background/35 p-0.5"
+              title="Structural is the provider's exposure by strike. Dealer is a carried signed dealer book revalued against current gamma - measured to track the reference far more closely on cash indices, and worse than Structural on ETFs."
+            >
+              {([
+                ["STRUCTURAL_OI", "STRUCTURAL"],
+                ["DEALER_INVENTORY", "DEALER"],
+              ] as const).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => {
+                    setExposureModel(value);
+                    setCursor(0);
+                    setPlaying(false);
+                  }}
+                  aria-pressed={exposureModel === value}
+                  className={`h-5 rounded-[2px] px-2 text-[9px] font-semibold uppercase leading-none tracking-[0.075em] ${exposureModel === value ? "bg-surface text-primary" : "text-muted hover:text-foreground"}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          ) : null}
 
           <div
             className="ml-1 flex h-7 shrink-0 items-center gap-0.5 rounded-[3px] border border-border/70 bg-background/35 p-0.5"

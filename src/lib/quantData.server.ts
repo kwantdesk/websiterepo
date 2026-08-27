@@ -2732,6 +2732,57 @@ async function buildGexMapPanel(
 }
 
 /**
+ * The consolidated tape, newest first, bounded.
+ *
+ * Exported for the GEX Map v2 dealer-inventory model, which needs the prints
+ * themselves rather than an aggregate. The provider caps this cursor-paginated
+ * endpoint at 100 rows a request and every request takes a slot in the 80ms
+ * scheduler, so the page count is bounded by the caller and reported back
+ * rather than silently truncated.
+ */
+export async function readConsolidatedTape(
+  symbol: string,
+  sessionDate: string,
+  maxPages = 40,
+): Promise<{ prints: OptionsFlowPrint[]; truncated: boolean; remaining: number | null }> {
+  const prints: OptionsFlowPrint[] = [];
+  let cursor: string[] | null = null;
+  let truncated = false;
+  let remaining: number | null = null;
+
+  for (let page = 0; page < maxPages; page += 1) {
+    const body: Record<string, unknown> = {
+      sessionDate,
+      filter: { ticker: symbol.trim().toUpperCase() },
+      size: 100,
+      sort: { field: "tradeTime", direction: "DESCENDING" },
+    };
+    if (cursor) body.searchAfter = cursor;
+    const result = await quantDataPost("/options/tool/order-flow/consolidated", body, 60_000);
+    remaining = result.remaining ?? remaining;
+    const parsed = parseFlow(result.payload);
+    if (!parsed.length) break;
+    prints.push(...parsed);
+    cursor = quantDataCursor(result.payload);
+    if (!cursor) break;
+    if (page === maxPages - 1) truncated = true;
+  }
+  return { prints, truncated, remaining };
+}
+
+/** Open interest per strike, exported for the v2 dealer-inventory bound. */
+export async function readOpenInterestByStrike(
+  symbol: string,
+  sessionDate: string,
+): Promise<OpenInterestStrike[]> {
+  const result = await quantDataPost("/options/tool/open-interest-by-strike", {
+    sessionDate,
+    filter: { ticker: symbol.trim().toUpperCase() },
+  }, 60_000);
+  return parseOpenInterest(result.payload);
+}
+
+/**
  * Completed interval maps are immutable. Persist them in Next's server cache
  * so each replay-minute request can select its point-in-time frame without
  * rebuilding the same historical KwantData session in another serverless

@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextRequest, NextResponse } from "next/server";
-import { getConfiguredQuantDataApiKey, getGexMapPanel, getQuantDataHttpError } from "@/lib/quantData.server";
+import { getConfiguredQuantDataApiKey, getGexMapPanel, getQuantDataHttpError, getUsOptionsSessionDate } from "@/lib/quantData.server";
+import { getDealerInventoryPanel } from "@/lib/gexMapV2.server";
 import {
   compactLiveGexMapPanel,
   DEFAULT_GEX_MAP_EXPIRY_SCOPE,
@@ -90,8 +91,33 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Unsupported exposure representation." }, { status: 400 });
   }
 
+  /*
+   * model=DEALER_INVENTORY selects v2. It is opt-in per request and defaults to
+   * v1, so every existing caller - including the GEX Map panels embedded in GEX
+   * VUE - keeps the structural model untouched.
+   *
+   * v2 is GAMMA only: a dealer book is a gamma position, and the same carried
+   * contracts revalued through a delta or vanna surface would be a different
+   * measurement wearing this model's name.
+   */
+  const model = (request.nextUrl.searchParams.get("model") || "STRUCTURAL_OI").trim().toUpperCase();
+  if (model !== "STRUCTURAL_OI" && model !== "DEALER_INVENTORY") {
+    return NextResponse.json({ error: "Unsupported exposure model." }, { status: 400 });
+  }
+  if (model === "DEALER_INVENTORY" && greekMode !== "GAMMA") {
+    return NextResponse.json({ error: "The dealer inventory model is gamma only." }, { status: 400 });
+  }
+
   try {
-    const payload = await getGexMapPanel(symbol, greekMode, sessionDate, scope, representation);
+    const payload = model === "DEALER_INVENTORY"
+      ? await getDealerInventoryPanel(
+        symbol,
+        sessionDate || getUsOptionsSessionDate(),
+        scope,
+        representation,
+        Boolean(sessionDate) && sessionDate !== getUsOptionsSessionDate(),
+      )
+      : await getGexMapPanel(symbol, greekMode, sessionDate, scope, representation);
     return NextResponse.json(compact ? compactLiveGexMapPanel(payload) : payload, {
       headers: { "Cache-Control": "private, no-store, max-age=0" },
     });

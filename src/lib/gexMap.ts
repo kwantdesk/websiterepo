@@ -37,7 +37,15 @@ export type GexMapPanelPayload = {
   expiration: string | null;
   expirations: string[];
   scope: GexMapExpiryScope;
-  model: "STRUCTURAL_OI";
+  /**
+   * Which calculation produced these numbers.
+   *
+   * STRUCTURAL_OI is v1: the provider's exposure-by-strike, summed.
+   * DEALER_INVENTORY is v2: a carried signed dealer book revalued against
+   * current gamma. They are different measurements, not versions of one, so a
+   * panel must never present one while labelled the other.
+   */
+  model: "STRUCTURAL_OI" | "DEALER_INVENTORY";
   representation: GexMapRepresentation;
   source: "KwantData Interval Map";
   sourceTimeZone: "America/New_York";

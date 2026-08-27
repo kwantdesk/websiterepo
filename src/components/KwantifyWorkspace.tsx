@@ -19250,7 +19250,14 @@ export default function KwantifyWorkspace({
             ) : null}
             {bottomWorkspaceSection === "gexmap" ? (
                 <WorkspaceFailureBoundary resetKey="gexmap" label="GEX Map">
-                  <GexMapWorkspace />
+                  {/*
+                    * The standalone page is the only place the dealer model is
+                    * offered. The GEX Map panels embedded in GEX VUE sit beside
+                    * charts and replay, where a panel that could silently be
+                    * showing a different measurement than the one next to it is
+                    * worse than one that cannot.
+                    */}
+                  <GexMapWorkspace enableDealerModel />
                 </WorkspaceFailureBoundary>
             ) : null}
             {bottomWorkspaceSection === "liqmap" ? (
