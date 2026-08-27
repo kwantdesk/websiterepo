@@ -859,9 +859,16 @@ export async function fetchInstitutionalSnapshot(args: {
       status: payload.status === "LIVE" ? "LIVE" : payload.status === "STALE" ? "STALE" : "NOT_OPEN",
       ageMs: Math.max(0, finiteNumber(payload.ageMs) ?? Date.now() - asOfMs),
       recordCount: Math.max(0, Math.floor(finiteNumber(payload.recordCount) ?? 0)),
-      candles: normalizeCandles(
-        payload.candles ?? payload.bars,
-        Math.min(100_000, Math.max(1, args.lookbackBars ?? 100_000)),
+      // Repaired here rather than only on the cache path: the gateway builds a
+      // bar per bucket that TRADED, so a sparse instrument arrives full of
+      // holes and every consumer of this snapshot would inherit them.
+      candles: repairInstitutionalCandleSeries(
+        normalizeCandles(
+          payload.candles ?? payload.bars,
+          Math.min(100_000, Math.max(1, args.lookbackBars ?? 100_000)),
+        ),
+        args.timeframe,
+        requestedRoot,
       ),
     };
   } catch (error) {
@@ -1223,13 +1230,78 @@ export function supportsInstitutionalTradeAggregation(timeframe: string) {
   return timeframeMilliseconds(timeframe) !== null || /^(\d+)(r|v|t|dv)$/.test(timeframe.trim());
 }
 
+/**
+ * The longest run of no-trade buckets that will be drawn as flat bars.
+ *
+ * A bar exists because a trade happened in its bucket, so an instrument that
+ * does not trade every minute has holes: measured on 2026-08-27, gold held 1m
+ * bars for 80% of its minutes against ES at 100% - 218 gaps of 2 to 7 minutes
+ * in a day and a half. On the chart that is a 1m series whose bars are four
+ * minutes apart, which misstates the time axis itself, and every study read off
+ * it - VWAP windows, session anchors, indicator periods, initial balance - is
+ * measuring the wrong span.
+ *
+ * Thirty minutes is well above the longest real quiet run measured and well
+ * below any session break. The two 61-minute gaps in the same series are the
+ * CME daily halt and must stay holes: the market was CLOSED, and an hour of
+ * invented bars across a halt is a different claim entirely.
+ */
+const MAXIMUM_FILLED_GAP_MS = 30 * 60_000;
+
+/**
+ * Draw the minutes an instrument did not trade in.
+ *
+ * A filled bar carries NO volume, no trades and no delta, and opens, highs,
+ * lows and closes at the previous close. That is not invented data - it is the
+ * true statement that the price did not move because nothing changed hands, and
+ * it is distinguishable from a real bar by exactly the field that says so.
+ *
+ * Only interior gaps are filled. Nothing is drawn before the first real bar or
+ * after the last, because that would be claiming the instrument was quiet when
+ * the truth is only that the series ends there.
+ */
+export function fillNoTradeCandleGaps(candles: Candle[], intervalMs: number): Candle[] {
+  if (!Number.isFinite(intervalMs) || intervalMs <= 0 || candles.length < 2) return candles;
+  const filled: Candle[] = [];
+  for (const candle of candles) {
+    const previous = filled.at(-1);
+    if (previous) {
+      const span = candle.timestamp - previous.timestamp;
+      if (span > intervalMs && span <= MAXIMUM_FILLED_GAP_MS) {
+        for (let at = previous.timestamp + intervalMs; at < candle.timestamp; at += intervalMs) {
+          filled.push({
+            timestamp: at,
+            open: previous.close,
+            high: previous.close,
+            low: previous.close,
+            close: previous.close,
+            volume: 0,
+            trades: 0,
+            bidVolume: 0,
+            askVolume: 0,
+            delta: 0,
+          });
+        }
+      }
+    }
+    filled.push(candle);
+  }
+  return filled;
+}
+
 export function repairInstitutionalCandleSeries(
   candles: Candle[],
   timeframe: string,
   symbol: string,
 ) {
   const threshold = eventThreshold(timeframe, symbol);
-  if (threshold?.kind !== "r") return candles;
+  // A range or volume bar is not on a clock, so there is no bucket to be
+  // missing - only a time-bucketed series can have a hole in it.
+  if (!threshold) {
+    const intervalMs = timeframeMilliseconds(timeframe);
+    return intervalMs ? fillNoTradeCandleGaps(candles, intervalMs) : candles;
+  }
+  if (threshold.kind !== "r") return candles;
   const maximumRange = threshold.value + futuresTickSize(symbol) * 0.5;
   return candles.map((candle) => {
     const range = candle.high - candle.low;

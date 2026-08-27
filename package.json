@@ -151,6 +151,7 @@
     "test:vix-environment": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-vix-environment.mjs",
     "test:live-chart-memory": "node --experimental-strip-types scripts/test-live-chart-memory-guard.mjs",
     "test:live-overlay-lifetimes": "node scripts/test-live-overlay-lifetimes.mjs",
+    "test:candle-gap-fill": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-candle-gap-fill.mjs",
     "test:paper-order-label": "node scripts/test-paper-order-label-geometry.mjs",
     "test:volume-profile-session-toggle": "node scripts/test-volume-profile-session-toggle.mjs",
     "test:position-tool-colours": "node scripts/test-position-tool-colours.mjs",
