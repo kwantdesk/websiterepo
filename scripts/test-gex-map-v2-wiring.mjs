@@ -130,4 +130,23 @@ check("v2 ships no frames rather than v1's frames", () => {
   assert.doesNotMatch(server, /frames: structural\.frames,/);
 });
 
+check("open interest covers the same contracts as the exposure", () => {
+  // v2 divides the provider's exposure by open interest to recover per-contract
+  // gamma, so the two must cover the SAME contracts. Front-expiry exposure over
+  // all-expiry open interest measured a call/put gamma ratio of 1.8 at the
+  // median, where put-call parity says it must be 1 - gamma is identical for a
+  // call and a put at one strike and expiry. That distortion lands directly on
+  // the sign of every strike where the two sides oppose.
+  assert.match(quantData, /expiration\?: string \| null,/);
+  assert.match(quantData, /\.\.\.\(expiration \? \{ expirationDate: expiration \} : \{\}\)/);
+  assert.match(
+    server,
+    /readOpenInterestByStrike\(symbol, sessionDate, scope === "FRONT_EXPIRY" \? structural\.expiration : null\)/,
+  );
+  // And the structural panel has to be awaited first, because its expiration is
+  // what decides the scope of that request.
+  const order = server.indexOf("const structural = await getGexMapPanel");
+  assert.ok(order > 0 && order < server.indexOf("readOpenInterestByStrike(symbol, sessionDate, scope"));
+});
+
 console.log(`\ngex map v2 wiring: ${passed}/${passed} checks passed`);

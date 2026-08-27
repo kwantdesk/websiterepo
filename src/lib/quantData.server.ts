@@ -2837,14 +2837,28 @@ export async function readRawConsolidatedTape(
   };
 }
 
-/** Open interest per strike, exported for the v2 dealer-inventory bound. */
+/**
+ * Open interest per strike, exported for the v2 dealer-inventory model.
+ *
+ * `expiration` is not optional in practice. v2 divides the provider's exposure
+ * by this open interest to recover per-contract gamma, so the two must cover
+ * the SAME contracts. Front-expiry exposure over all-expiry open interest
+ * measured a call/put gamma ratio of 1.8 at the median where put-call parity
+ * says it must be 1 - gamma is identical for a call and a put at one strike and
+ * expiry. That distortion lands straight on the sign of every strike where the
+ * two sides oppose, which is most of them.
+ */
 export async function readOpenInterestByStrike(
   symbol: string,
   sessionDate: string,
+  expiration?: string | null,
 ): Promise<OpenInterestStrike[]> {
   const result = await quantDataPost("/options/tool/open-interest-by-strike", {
     sessionDate,
-    filter: { ticker: symbol.trim().toUpperCase() },
+    filter: {
+      ticker: symbol.trim().toUpperCase(),
+      ...(expiration ? { expirationDate: expiration } : {}),
+    },
   }, 60_000);
   return parseOpenInterest(result.payload);
 }

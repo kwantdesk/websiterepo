@@ -142,9 +142,12 @@ async function buildDealerInventoryPanel(
   // own exposure per strike. Reusing it keeps v2 on identical greeks and an
   // identical clock to v1 - if the two used different surfaces, every
   // difference between the models would be uninterpretable.
-  const [structural, openInterest, tape] = await Promise.all([
-    getGexMapPanel(symbol, "GAMMA", sessionDate, scope, representation),
-    readOpenInterestByStrike(symbol, sessionDate),
+  // The structural panel first: its `expiration` decides which contracts the
+  // open interest must cover, and getting that wrong silently distorts every
+  // per-contract gamma this model divides out.
+  const structural = await getGexMapPanel(symbol, "GAMMA", sessionDate, scope, representation);
+  const [openInterest, tape] = await Promise.all([
+    readOpenInterestByStrike(symbol, sessionDate, scope === "FRONT_EXPIRY" ? structural.expiration : null),
     readConsolidatedTape(symbol, sessionDate, TAPE_PAGE_LIMIT),
   ]);
 
