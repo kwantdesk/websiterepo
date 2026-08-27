@@ -124,4 +124,38 @@ check("every save path makes room before it refuses", () => {
   }
 });
 
+check("every re-fetchable cache is actually evictable", () => {
+  // THE BUG THIS CAUGHT. The mechanism only works if a cache is LISTED. A
+  // re-fetchable payload missing from the list is worse than not having the
+  // mechanism: it fills the quota, cannot be evicted to make room, and the save
+  // it blocks fails silently. The GEX Map ladders - the largest thing this app
+  // writes - were missing, which is how Save As came to fail with megabytes of
+  // refetchable strike data sitting next to it.
+  const quota = readFileSync(new URL("../src/lib/browserStorageQuota.ts", import.meta.url), "utf8");
+  const listed = [...quota.matchAll(/"(kwantdesk:[^"]+)"/g)].map((match) => match[1]);
+
+  // Every prefix the app writes whose name says it can be fetched again.
+  const sources = ["../src/lib/workspaceDataCache.ts", "../src/lib/userPreferences.ts"]
+    .map((path) => readFileSync(new URL(path, import.meta.url), "utf8")).join("\n");
+  const refetchable = [...sources.matchAll(/"(kwantdesk:[a-z0-9:.-]*(?:last-good|last-native)[a-z0-9:.-]*)"/g)]
+    .map((match) => match[1]);
+
+  const missing = refetchable.filter((prefix) => !listed.some((entry) => prefix.startsWith(entry)));
+  assert.deepEqual(missing, [], `re-fetchable but not evictable: ${missing.join(", ")}`);
+  // The biggest one specifically, because it is the one that broke a save.
+  assert.ok(
+    listed.includes("kwantdesk:gex-map-last-good:v1:"),
+    "the GEX Map ladders must be evictable",
+  );
+});
+
+check("the experimental model does not spend the quota", () => {
+  // Two ladders per panel instead of one, for a mirror that exists so a
+  // provider restart cannot blank the map - a guarantee v2 does not need and
+  // should not pay for in space that belongs to saved work.
+  const cache = readFileSync(new URL("../src/lib/workspaceDataCache.ts", import.meta.url), "utf8");
+  const writer = cache.slice(cache.indexOf("function writeLastGoodGexMap"));
+  assert.match(writer.slice(0, 600), /if \(key\.endsWith\(":dealer"\)\) return;/);
+});
+
 console.log(`\nbrowser storage quota: ${passed}/${passed} checks passed`);

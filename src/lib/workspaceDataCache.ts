@@ -160,6 +160,10 @@ function readLastGoodGexMap<T>(key: string): T | null {
 
 function writeLastGoodGexMap<T>(key: string, value: T, updatedAt: number) {
   if (typeof window === "undefined" || !isGexMapKey(key) || !value || typeof value !== "object") return;
+  // The dealer model is a second ladder per panel, and this mirror exists so a
+  // provider restart cannot blank the map - a guarantee the experimental model
+  // does not need and should not pay for in quota that belongs to saved work.
+  if (key.endsWith(":dealer")) return;
   try {
     const payload = value as Record<string, unknown>;
     // The active map can contain hundreds of minute frames per panel. Keep a

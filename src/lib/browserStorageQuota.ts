@@ -11,6 +11,13 @@
  * backwards: "browser storage is full" while megabytes of re-downloadable
  * gamma frames sat beside it. Anything the trader is trying to keep now
  * evicts cache and tries again.
+ *
+ * This only works if every cache is actually LISTED below. A re-fetchable
+ * payload missing from the list is worse than not having the mechanism at all:
+ * it fills the quota, cannot be evicted to make room, and the save it blocks
+ * fails silently. The GEX Map ladders - the single largest thing this app
+ * writes - were missing, which is exactly how a Save As came to fail while
+ * megabytes of strike data it could refetch in a second sat next to it.
  */
 
 /**
@@ -21,9 +28,15 @@
  * if it cannot be rebuilt from a provider, it is not cache.
  */
 const DISPOSABLE_PREFIXES = [
+  "kwantdesk:gex-map-last-good:v1:",        // whole strike ladders, the largest
   "kwantdesk:gex-box:last-native:v1:",      // exposure frame envelopes
   "kwantdesk:gamma-levels:last-good:v1:",   // gamma ladders, largest per entry
+  "kwantdesk:chart-gamma-overlay:last-good:v1:", // per-chart gamma overlays
+  "kwantdesk:tpo-levels:last-good:v2:",     // TPO letter grids
+  "kwantdesk:tpo-levels:last-good:v1:",
   "kwantdesk:value-area:last-good:v2:",     // value-area payloads
+  "kwantdesk:value-area:last-good:v1:",
+  "kwantdesk:economic-calendar-cache:v2",   // calendar, refetched on demand
   "kwantdesk:renderer-health",              // crash forensics snapshots
   "kwantdesk:client-render-failures",       // recorded render failures
 ];
