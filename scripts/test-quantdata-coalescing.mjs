@@ -79,8 +79,8 @@ check("a chart's own candles jump the queue", () => {
   // page were served ahead of it. The chart cannot draw a candle without that
   // response; a GEX panel decorates a chart that does not exist yet.
   const scheduler = source.slice(source.indexOf("async function qdSchedule"), source.indexOf("async function quantDataNetworkPost"));
-  assert.match(scheduler, /async function qdSchedule\(priority = false\)/);
-  assert.match(scheduler, /if \(priority\) \{/);
+  assert.match(scheduler, /async function qdSchedule\(lane: QdLane = "normal"\)/);
+  assert.match(scheduler, /if \(lane === "priority"\) \{/);
   // A priority request takes the NEXT slot rather than joining the end.
   assert.match(scheduler, /Math\.min\(qdNextStartMs, now \+ QD_MIN_SPACING_MS\)/);
   // The provider still sees the same spacing: the rate limit is unchanged and

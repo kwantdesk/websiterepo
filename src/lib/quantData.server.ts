@@ -240,9 +240,44 @@ let qdNextStartMs = 0;
 // rather than joining the end of the queue. The provider still sees the same
 // 80ms spacing, so the rate limit this scheduler exists to respect is
 // unchanged - only the order is.
-async function qdSchedule(priority = false) {
+/**
+ * A third lane, for work no one is waiting on.
+ *
+ * The two existing lanes both belong to a request a trader is watching, so a
+ * background warm-up joining "normal" competes head to head with the panel that
+ * prompted it. Measured on the dealer model: warming three prior sessions in
+ * the background pushed the next panel's OWN tape read from 21s to 61s, past
+ * the route's ceiling - the spinner never resolved, and the cause was the work
+ * meant to make it faster.
+ *
+ * A background request yields while anything in front of it is still working.
+ * It is not merely last in line: it does not take a slot at all, so it cannot
+ * push a trader's request further out.
+ *
+ * With a hard limit on how long it will yield for, because yielding forever is
+ * the same bug facing the other way: a lane that waits for silence that never
+ * comes never runs, and the warm-up it exists to perform never finishes.
+ *
+ * Thirty seconds, not five. A panel refresh is a short burst with idle seconds
+ * behind it, so the background lane gets its turn in those gaps without ever
+ * racing a burst - at five seconds it started competing mid-load and pushed a
+ * cold three-panel click from 6s to 14s.
+ */
+type QdLane = "priority" | "normal" | "background";
+
+let qdForegroundPending = 0;
+const QD_BACKGROUND_POLL_MS = 250;
+const QD_BACKGROUND_MAX_YIELD_MS = 30_000;
+
+async function qdSchedule(lane: QdLane = "normal") {
+  if (lane === "background") {
+    const yieldUntil = Date.now() + QD_BACKGROUND_MAX_YIELD_MS;
+    while (qdForegroundPending > 0 && Date.now() < yieldUntil) {
+      await qdSleep(QD_BACKGROUND_POLL_MS);
+    }
+  }
   const now = Date.now();
-  if (priority) {
+  if (lane === "priority") {
     const start = Math.max(now, Math.min(qdNextStartMs, now + QD_MIN_SPACING_MS));
     qdNextStartMs = Math.max(qdNextStartMs, start) + QD_MIN_SPACING_MS;
     if (start > now) await qdSleep(start - now);
@@ -253,14 +288,44 @@ async function qdSchedule(priority = false) {
   if (start > now) await qdSleep(start - now);
 }
 
-async function quantDataNetworkPost(path: string, body: JsonRecord, priority = false) {
+/**
+ * What the provider scheduler is currently doing.
+ *
+ * The background lane yields to the foreground, so a foreground count that
+ * never returns to zero silently stops every warm-up on the desk - a failure
+ * with no error and no log line. This makes it observable from the diagnostics
+ * route rather than only inferable from work that never finishes.
+ */
+export function quantDataSchedulerState() {
+  return {
+    foregroundPending: qdForegroundPending,
+    queueDepthMs: Math.max(0, qdNextStartMs - Date.now()),
+  };
+}
+
+async function quantDataNetworkPost(path: string, body: JsonRecord, lane: QdLane = "normal") {
   const apiKey = getConfiguredQuantDataApiKey();
   if (!apiKey) {
     throw new QuantDataError("KwantData is not configured.", 503, null);
   }
+  // Counted around the WHOLE attempt loop, retries included: a request being
+  // backed off is still a request a trader is waiting on.
+  if (lane !== "background") qdForegroundPending += 1;
+  try {
+    return await quantDataNetworkAttempts(path, body, lane, apiKey);
+  } finally {
+    if (lane !== "background") qdForegroundPending -= 1;
+  }
+}
 
+async function quantDataNetworkAttempts(
+  path: string,
+  body: JsonRecord,
+  lane: QdLane,
+  apiKey: string,
+) {
   for (let attempt = 0; ; attempt += 1) {
-    await qdSchedule(priority);
+    await qdSchedule(lane);
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     try {
@@ -321,12 +386,13 @@ async function quantDataNetworkPost(path: string, body: JsonRecord, priority = f
   }
 }
 
-function quantDataPost(path: string, body: JsonRecord, ttlMs = 0, priority = false) {
+function quantDataPost(path: string, body: JsonRecord, ttlMs = 0, lane: QdLane | boolean = "normal") {
+  const resolvedLane: QdLane = lane === true ? "priority" : lane === false ? "normal" : lane;
   const cacheKey = `${path}:${JSON.stringify(body)}`;
   const cached = endpointCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.promise;
 
-  const promise = quantDataNetworkPost(path, body, priority).catch((error) => {
+  const promise = quantDataNetworkPost(path, body, resolvedLane).catch((error) => {
     endpointCache.delete(cacheKey);
     throw error;
   });
@@ -2766,6 +2832,13 @@ export async function readConsolidatedTape(
   symbol: string,
   sessionDate: string,
   maxPages = 100,
+  /**
+   * "background" for a warm-up nobody is waiting on. A full session is around
+   * seventy pages against an allowance of roughly twenty requests per window,
+   * so this read is the most expensive thing the dealer model does - and the
+   * most important one not to run in front of a panel that is trying to draw.
+   */
+  lane: "normal" | "background" = "normal",
 ): Promise<{ prints: OptionsFlowPrint[]; truncated: boolean; remaining: number | null }> {
   const prints: OptionsFlowPrint[] = [];
   let cursor: string[] | null = null;
@@ -2780,7 +2853,7 @@ export async function readConsolidatedTape(
       sort: { field: "tradeTime", direction: "DESCENDING" },
     };
     if (cursor) body.searchAfter = cursor;
-    const result = await quantDataPost("/options/tool/order-flow/consolidated", body, 60_000);
+    const result = await quantDataPost("/options/tool/order-flow/consolidated", body, 60_000, lane);
     remaining = result.remaining ?? remaining;
     const parsed = parseFlow(result.payload);
     if (!parsed.length) break;

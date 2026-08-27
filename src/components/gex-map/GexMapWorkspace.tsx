@@ -2109,9 +2109,29 @@ function GexMapWorkspace({
   const currentSessionDate = latestSessionDate
     || panels.map((panel) => panelData[panel.id]?.sessionDate).find(Boolean)
     || "";
-  const initialSurfacePending = panels.length > 0 && panels.every((panel) => (
-    loading[panel.id] && !hasRenderableGexMapSurface(panelData[panel.id])
-  ));
+  /*
+   * The full-screen loader is for the FIRST surface, and nothing else.
+   *
+   * It covers the whole workspace, so any later load that happened to empty
+   * every panel at once put it back up - and switching the exposure model does
+   * exactly that, because the two models are different measurements and v1's
+   * rows must not sit under a DEALER heading while v2 loads. The result was a
+   * toggle that looked like it reloaded the page.
+   *
+   * Once a surface has been drawn the chrome is already on screen and should
+   * stay there: each panel has its own loader inside its strike column, which
+   * is the part that is actually reloading.
+   */
+  const hasDrawnASurfaceRef = useRef(false);
+  if (!hasDrawnASurfaceRef.current
+    && panels.some((panel) => hasRenderableGexMapSurface(panelData[panel.id]))) {
+    hasDrawnASurfaceRef.current = true;
+  }
+  const initialSurfacePending = !hasDrawnASurfaceRef.current
+    && panels.length > 0
+    && panels.every((panel) => (
+      loading[panel.id] && !hasRenderableGexMapSurface(panelData[panel.id])
+    ));
 
   function updatePanel(id: PanelConfig["id"], patch: Partial<Pick<PanelConfig, "symbol" | "greekMode">>) {
     setPanels((current) => current.map((panel) => panel.id === id ? { ...panel, ...patch } : panel));

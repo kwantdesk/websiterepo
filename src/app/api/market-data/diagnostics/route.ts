@@ -11,6 +11,7 @@ import {
   marketDataProvider,
 } from "@/lib/marketDataGatewayEnv";
 import { vendorMarketDataConfigured } from "@/lib/vendorMarketData.server";
+import { quantDataSchedulerState } from "@/lib/quantData.server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -145,6 +146,10 @@ export async function GET(request: Request) {
       },
       gatewayHost: url ? new URL(url).host : null,
       gatewayConfigured: Boolean(url && marketDataGatewayToken()),
+      // The options scheduler's own state. Its background lane yields to the
+      // foreground, so a foreground count stuck above zero stops every warm-up
+      // on the desk with no error and no log line to find.
+      optionsScheduler: quantDataSchedulerState(),
       candidates,
     },
     { headers: { "Cache-Control": "no-store" } },

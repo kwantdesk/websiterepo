@@ -189,7 +189,7 @@ check("the book is carried across prior sessions, and that read is cached", () =
    * completed session's tape cannot change, so each prior session is read once
    * and cached for a day; only the live session's tape is ever re-read.
    */
-  assert.match(server, /const readCarriedTape = \(symbol: string, sessionDate: string\) => unstable_cache\(/);
+  assert.match(server, /const readCarriedTape = \(symbol: string, sessionDate: string\) => joinInFlight\(/);
   assert.match(server, /revalidate: 24 \* 60 \* 60/);
   assert.match(server, /priorTradingDates\(sessionDate, DEALER_BOOK_CARRY_SESSIONS\)/);
   // A missing prior session must not fail today's panel - a holiday has no tape.

@@ -88,7 +88,6 @@ const flat = (trade) => ({
   ...trade,
   dealerCounterpartyProbability: 1,
   economicTradeWeight: 1,
-  complexLegWeight: 1,
   quoteConfidence: 1,
 });
 
