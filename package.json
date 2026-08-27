@@ -157,8 +157,9 @@
     "test:chart-watermark": "node scripts/test-chart-watermark.mjs",
     "research:gexmap-vs-trinity": "node scripts/compare-gexmap-vs-trinity-scope.mjs",
     "test:gex-map-v2": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-gex-map-v2.mjs",
-    "research:gex-map-v2": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/validate-gex-map-v2.mjs",
-    "research:gex-map-v2-calibrate": "node scripts/calibrate-gex-map-v2.mjs",
+    "research:gex-map-v2": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/score-gex-map-v2-gamma.mjs",
+    "research:gex-map-v2-carry": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/sweep-gex-map-v2-carry.mjs",
+    "research:gex-map-v2-sign": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/sweep-gex-map-v2-sign.mjs",
     "test:gex-map-v2-wiring": "node scripts/test-gex-map-v2-wiring.mjs",
     "research:capture-tape": "node scripts/capture-opra-tape.mjs"
   },

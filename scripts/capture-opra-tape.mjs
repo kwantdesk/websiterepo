@@ -25,6 +25,9 @@
  * Options:
  *   --symbols SPX,SPY,QQQ     default SPX,SPY,QQQ
  *   --pages   N               tape pages per symbol, 100 rows each (default 60)
+ *   --order   ASCENDING        page from the session's FIRST print (default
+ *                              DESCENDING, newest-first) - use ASCENDING when
+ *                              scoring against a lattice taken near the open
  *   --out     PATH            default tmp/opra-tape-<sessionDate>.json
  *
  * Take a Trinity screenshot or lattice at the same minute. Without a matching
@@ -43,11 +46,20 @@ const base = (arg("base") ?? "http://localhost:3210").replace(/\/$/, "");
 const cookie = arg("cookie");
 const symbols = (arg("symbols") ?? "SPX,SPY,QQQ").split(",").map((s) => s.trim().toUpperCase());
 const maxPages = Number(arg("pages") ?? 60);
+/*
+ * ASCENDING reaches the OPENING prints.
+ *
+ * A reference lattice taken at 09:55 was built from the first 25 minutes of
+ * flow, and the provider pages newest-first by default - which walks away from
+ * exactly the prints that lattice was built from.
+ */
+const order = (arg("order") ?? "DESCENDING").toUpperCase() === "ASCENDING" ? "ASCENDING" : "DESCENDING";
 
 const headers = { "content-type": "application/json", ...(cookie ? { cookie } : {}) };
 
 async function capture(symbol, sessionDate, pages) {
-  const url = `${base}/api/research/opra-tape?symbol=${symbol}&sessionDate=${sessionDate}&pages=${pages}`;
+  const url = `${base}/api/research/opra-tape`
+    + `?symbol=${symbol}&sessionDate=${sessionDate}&pages=${pages}&order=${order}`;
   const response = await fetch(url, { headers });
   if (!response.ok) {
     throw new Error(`${symbol} -> ${response.status} ${(await response.text()).slice(0, 200)}`);

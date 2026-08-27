@@ -15,6 +15,8 @@ import {
   emptyDealerInventory,
   contractKey,
   revalueDealerGex,
+  priorTradingDates,
+  DEALER_BOOK_CARRY_SESSIONS,
   v2Readiness,
   DEALER_FLOW_HALF_LIFE_MS,
   type DealerInventoryState,
@@ -58,6 +60,38 @@ import {
  * enough rather than presenting a partial book as a whole one.
  */
 const TAPE_PAGE_LIMIT = 100;
+
+/**
+ * The prior sessions' tape for the same contracts.
+ *
+ * A 0DTE contract is not new on its expiry day, and a book that opens flat
+ * discards more flow than it keeps: from-zero at the open covered 36% of the
+ * reference's strikes against 80% with three sessions carried.
+ *
+ * Cached for a day and keyed per session, because a completed session's tape
+ * cannot change. That is what makes this affordable - the extra reads are paid
+ * once per symbol and date, not on a panel refresh, and the live session's tape
+ * remains the only one re-read.
+ */
+const readCarriedTape = (symbol: string, sessionDate: string) => unstable_cache(
+  async () => {
+    try {
+      return (await readConsolidatedTape(symbol, sessionDate, TAPE_PAGE_LIMIT)).prints;
+    } catch {
+      /*
+       * A missing prior session is not a failure of today's panel.
+       *
+       * A market holiday has no tape at all, and the provider's retention will
+       * eventually end. Either way the book is simply built from less carried
+       * flow, which `absorbedPrints` already reports. Failing the whole panel
+       * because a session three days ago is unavailable would be worse.
+       */
+      return [] as OptionsFlowPrint[];
+    }
+  },
+  ["gex-map-v2-carried-tape-v1", symbol, sessionDate],
+  { revalidate: 24 * 60 * 60 },
+)();
 
 export type DealerInventoryPanelPayload = GexMapPanelPayload & {
   model: "DEALER_INVENTORY";
@@ -146,9 +180,11 @@ async function buildDealerInventoryPanel(
   // open interest must cover, and getting that wrong silently distorts every
   // per-contract gamma this model divides out.
   const structural = await getGexMapPanel(symbol, "GAMMA", sessionDate, scope, representation);
-  const [openInterest, tape] = await Promise.all([
+  const carriedDates = priorTradingDates(sessionDate, DEALER_BOOK_CARRY_SESSIONS);
+  const [openInterest, tape, ...carried] = await Promise.all([
     readOpenInterestByStrike(symbol, sessionDate, scope === "FRONT_EXPIRY" ? structural.expiration : null),
     readConsolidatedTape(symbol, sessionDate, TAPE_PAGE_LIMIT),
+    ...carriedDates.map((date) => readCarriedTape(symbol, date)),
   ]);
 
   const openInterestByStrike = new Map(openInterest.map((row) => [row.strike, row]));
@@ -162,7 +198,21 @@ async function buildDealerInventoryPanel(
     return right === "call" ? row.callOpenInterest : row.putOpenInterest;
   };
 
-  const { state, absorbed, fromMs } = buildInventory(tape.prints, oiFor, sessionDate, asOfMs);
+  /*
+   * Prior-session prints in the SAME contracts, folded in ahead of today's.
+   *
+   * Filtered to the panel's own expirations first: a prior session's tape is
+   * mostly other expiries, and carrying them would build a book the panel never
+   * draws. Sorted with today's into one time-ordered tape, because the book is
+   * aged to each print as it folds in - interleaving them out of order would
+   * decay the wrong ones.
+   */
+  const inScope = new Set(expirations);
+  const prints = [...carried.flat(), ...tape.prints]
+    .filter((print) => inScope.has(print.expirationDate?.slice(0, 10) ?? ""))
+    .sort((left, right) => left.tradeTime - right.tradeTime);
+
+  const { state, absorbed, fromMs } = buildInventory(prints, oiFor, sessionDate, asOfMs);
 
   /*
    * The contract's OWN gamma, taken from the most recent print that carried
@@ -172,7 +222,7 @@ async function buildDealerInventoryPanel(
    */
   const gammaByContract = new Map<ReturnType<typeof contractKey>, number>();
   const gammaAsOf = new Map<string, number>();
-  for (const print of tape.prints) {
+  for (const print of prints) {
     const gamma = print.gamma;
     const expiration = print.expirationDate?.slice(0, 10);
     const strike = print.strikePrice;

@@ -2786,6 +2786,16 @@ export async function readRawConsolidatedTape(
   symbol: string,
   sessionDate: string,
   maxPages = 60,
+  /**
+   * Paging direction.
+   *
+   * The live model wants the NEWEST prints: with a three-hour half-life this
+   * morning's flow is worth a fraction of a recent print. Scoring a past
+   * session against a reference lattice taken minutes after the open wants the
+   * opposite - the prints that built the book by that minute are the EARLIEST
+   * of the day, and newest-first paging walks away from them.
+   */
+  order: "ASCENDING" | "DESCENDING" = "DESCENDING",
 ): Promise<{
   symbol: string;
   sessionDate: string;
@@ -2804,7 +2814,7 @@ export async function readRawConsolidatedTape(
       sessionDate,
       filter: { ticker },
       size: 100,
-      sort: { field: "tradeTime", direction: "DESCENDING" },
+      sort: { field: "tradeTime", direction: order },
     };
     if (cursor) body.searchAfter = cursor;
     const result = await quantDataPost("/options/tool/order-flow/consolidated", body, 60_000);

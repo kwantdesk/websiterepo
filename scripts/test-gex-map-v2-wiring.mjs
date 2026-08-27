@@ -177,4 +177,41 @@ check("open interest covers the same contracts as the exposure", () => {
   assert.ok(order > 0 && order < server.indexOf("readOpenInterestByStrike(symbol, sessionDate, scope"));
 });
 
+check("the book is carried across prior sessions, and that read is cached", () => {
+  /*
+   * A book that opens flat discards more flow than it keeps: the 2026-08-21 SPX
+   * expiry took 2,072 prints across the prior four sessions against 1,523 on
+   * the day itself. Scored against the reference lattice, carrying three
+   * sessions took strike coverage from 36% to 82% and sign agreement from 64%
+   * to 68%.
+   *
+   * The cost has to stay bounded or this is the August quota burn again. A
+   * completed session's tape cannot change, so each prior session is read once
+   * and cached for a day; only the live session's tape is ever re-read.
+   */
+  assert.match(server, /const readCarriedTape = \(symbol: string, sessionDate: string\) => unstable_cache\(/);
+  assert.match(server, /revalidate: 24 \* 60 \* 60/);
+  assert.match(server, /priorTradingDates\(sessionDate, DEALER_BOOK_CARRY_SESSIONS\)/);
+  // A missing prior session must not fail today's panel - a holiday has no tape.
+  assert.match(server, /return \[\] as OptionsFlowPrint\[\];/);
+  // Carried prints are filtered to the panel's own expirations and merged in
+  // TIME order: the book is aged to each print as it folds in, so appending a
+  // prior session after today's would decay the wrong ones.
+  assert.match(server, /const inScope = new Set\(expirations\);/);
+  assert.match(server, /\.sort\(\(left, right\) => left\.tradeTime - right\.tradeTime\)/);
+});
+
+check("a spread leg is dropped, and the half-life is the measured one", () => {
+  const engine = readFileSync(new URL("../src/lib/gexMapV2.ts", import.meta.url), "utf8");
+  // Multi-leg prints are 57% of the tape and their direction is unreadable
+  // without their partners. Halving them still let them dominate; dropping them
+  // raised correlation 0.418 -> 0.572 and doubled the star matches.
+  assert.doesNotMatch(engine, /complexLegWeight/, "down-weighting a spread leg is not the fix");
+  assert.match(engine, /if \(MULTI_LEG_TRADE_TYPES\.has\(String\(raw\.tradeType \?\? ""\)\.toUpperCase\(\)\)\) return null;/);
+  // M2S measured as REAL directional flow - dropping it too cut sign 68% -> 62%.
+  assert.doesNotMatch(engine, /MULTI_LEG_TRADE_TYPES = new Set\(\[[\s\S]*?M2S/);
+  assert.match(engine, /DEALER_FLOW_HALF_LIFE_MS = 12 \* 60 \* 60 \* 1_000;/);
+});
+
+
 console.log(`\ngex map v2 wiring: ${passed}/${passed} checks passed`);

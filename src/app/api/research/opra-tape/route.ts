@@ -105,7 +105,11 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const tape = await readRawConsolidatedTape(symbol, sessionDate, pages);
+    // order=ASCENDING reaches the opening prints. A reference lattice taken at
+    // 09:55 was built from the first 25 minutes of flow, and newest-first paging
+    // walks away from those prints rather than towards them.
+    const order = request.nextUrl.searchParams.get("order") === "ASCENDING" ? "ASCENDING" : "DESCENDING";
+    const tape = await readRawConsolidatedTape(symbol, sessionDate, pages, order);
 
     /*
      * aggregate=1 collapses the tape to signed contract sums per strike, per

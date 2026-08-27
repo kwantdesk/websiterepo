@@ -95,8 +95,6 @@ export type ClassifiedTrade = {
   dealerCounterpartyProbability: number;
   /** 0 for a duplicate parent/child record; reduced when the role is unclear. */
   economicTradeWeight: number;
-  /** Reduced for a leg of a spread or roll whose partner offsets it. */
-  complexLegWeight: number;
   /** Highest at or through the NBBO, lowest at the midpoint. */
   quoteConfidence: number;
 };
@@ -109,7 +107,6 @@ export function tradeInventoryDelta(trade: ClassifiedTrade): number {
   if (trade.dealerSign === 0) return 0;
   const weight = clamp01(trade.dealerCounterpartyProbability)
     * clamp01(trade.economicTradeWeight)
-    * clamp01(trade.complexLegWeight)
     * clamp01(trade.quoteConfidence);
   return trade.contracts * trade.dealerSign * weight;
 }
@@ -386,11 +383,27 @@ const CONSOLIDATION_WEIGHT: Record<string, number> = {
 };
 
 /**
- * A multi-leg print is one side of a spread whose other legs offset much of the
- * gamma it appears to add. Without the partner legs in hand the honest response
- * is to let it move the state less, not to take it at face value.
+ * Multi-leg prints are DROPPED, not down-weighted.
+ *
+ * One leg of a spread has partners that offset most of the gamma it appears to
+ * add, and the tape never delivers the partners, so its direction is not
+ * readable. They are also the majority of the tape - 57% of prints in the
+ * 2026-08-21 SPX expiry - which is why halving them still let them dominate.
+ *
+ * Measured against the reference lattice on 4 frames, dropping them raised mean
+ * correlation from 0.418 to 0.572 and doubled the star-node matches, at every
+ * carry depth and half-life tried.
+ *
+ * M2S (a multi-leg order reported as single-leg fills) is deliberately NOT in
+ * this set. It looks like it belongs, and the same measurement says otherwise:
+ * dropping M2S as well cut sign agreement from 68% to 62% and correlation from
+ * 0.572 to 0.535. It carries real directional inventory.
  */
-const MULTI_LEG_TRADE_TYPES = new Set(["MULTI_AUTO_COB", "M2S_AUTO"]);
+const MULTI_LEG_TRADE_TYPES = new Set([
+  "MULTI_AUTO_COB",
+  "MULTI_FLR_PP",
+  "MULTI_AUCT_COB",
+]);
 
 /** One consolidated print as the provider delivers it. */
 export type ProviderConsolidatedTrade = {
@@ -427,8 +440,9 @@ export function classifyConsolidatedTrade(raw: ProviderConsolidatedTrade): Class
   const side = TRADE_SIDE_CLASSIFICATION[String(raw.tradeSideCode ?? "").toUpperCase()];
   if (!side || side.dealerSign === 0) return null;
 
+  if (MULTI_LEG_TRADE_TYPES.has(String(raw.tradeType ?? "").toUpperCase())) return null;
+
   const consolidation = CONSOLIDATION_WEIGHT[String(raw.tradeConsolidationType ?? "").toUpperCase()] ?? 0.6;
-  const multiLeg = MULTI_LEG_TRADE_TYPES.has(String(raw.tradeType ?? "").toUpperCase());
 
   return {
     tradeTimeMs: Number(raw.tradeTime) || 0,
@@ -442,7 +456,6 @@ export function classifyConsolidatedTrade(raw: ProviderConsolidatedTrade): Class
     // one: every other weight is measured, this one would not be.
     dealerCounterpartyProbability: 1,
     economicTradeWeight: consolidation,
-    complexLegWeight: multiLeg ? 0.5 : 1,
     quoteConfidence: side.quoteConfidence,
   };
 }
@@ -486,27 +499,20 @@ export function classifyConsolidatedTape(
 /**
  * How fast absorbed flow stops counting.
  *
- * A classified print tells you a dealer took the other side. It does not tell
- * you whether that position is still open an hour later, and there is no
- * reliable per-print open/close flag to ask - the provider's isOpeningPosition
- * was true on 2 records out of 417 in the sampled session.
+ * OPRA carries no reliable open/close flag - the provider's isOpeningPosition
+ * was true on 2 prints of 417 in the sampled session - so the engine cannot know
+ * which positions were closed. A half-life is the honest substitute: positions
+ * close at SOME rate, without pretending to know which ones.
  *
- * So the engine assumes positions close at some rate rather than pretending to
- * know which ones did. Measured across every captured Trinity frame, on the
- * cash index:
- *
- *   carry (nothing ever closes)   mean r -0.302   - actively wrong
- *   decay 24h                     mean r  0.180
- *   decay 3h                      mean r  0.603, worst frame 0.528
- *   session only                  mean r  0.635, worst frame 0.458
- *
- * Session-only scores marginally higher on the mean and materially worse on the
- * worst frame, and it is a cliff: it cannot express a position held over a
- * weekend, and it means nothing at all for a non-0DTE expiry. The three-hour
- * half-life is the more robust and more general of the two, so it is the
- * default. `carry` is retained only as the null hypothesis.
+ * Twelve hours, measured. Three hours was the earlier setting and it is too
+ * fast: on a 6.5-hour session it leaves the morning's flow worth an eighth of
+ * the afternoon's, and 0DTE positions overwhelmingly do not close early - they
+ * expire. Scored against the reference lattice, moving 3h -> 12h raised mean
+ * correlation from 0.487 to 0.572 with no frame getting worse. Past 24h the
+ * gain flattens and sign agreement starts to slip, so this is the knee rather
+ * than the maximum of any single metric.
  */
-export const DEALER_FLOW_HALF_LIFE_MS = 3 * 60 * 60 * 1_000;
+export const DEALER_FLOW_HALF_LIFE_MS = 12 * 60 * 60 * 1_000;
 
 /**
  * Age the carried book forward to `nowMs`.
@@ -602,4 +608,44 @@ export function contractDollarGamma(
   if (!Number.isFinite(gamma) || !Number.isFinite(spot) || spot <= 0) return 0;
   const move = representation === "PER_ONE_PERCENT_MOVE" ? spot * spot * 0.01 : spot;
   return Math.abs(gamma) * OPTION_CONTRACT_MULTIPLIER * move;
+}
+
+/**
+ * How many prior sessions of the SAME contracts are folded in.
+ *
+ * A 0DTE contract is not new on its expiry day. SPX lists them daily, so the
+ * 2026-08-21 expiry took 2,072 prints across the four sessions before it
+ * against 1,523 on the day itself - a book that opens flat discards more flow
+ * than it keeps, and it shows: from-zero at the open covered 36% of the
+ * reference's strikes and 16% of its magnitude.
+ *
+ * Three sessions, measured. Coverage runs 36% -> 61% -> 73% -> 80% at one, two
+ * and three sessions and then flattens (81% at four), because the 12h half-life
+ * has already reduced a four-day-old print to about 3% of a fresh one. Sign
+ * agreement and correlation are unchanged between three and four.
+ *
+ * Each prior session is a completed, immutable tape, so it is read once and
+ * cached for a day rather than re-read on a panel refresh.
+ */
+export const DEALER_BOOK_CARRY_SESSIONS = 3;
+
+/**
+ * The `count` trading dates before `sessionDate`, oldest first.
+ *
+ * Weekends only. Market holidays are not enumerated here on purpose: a holiday
+ * simply has no tape, so the read returns nothing and the session contributes
+ * nothing. A wrong holiday table would silently drop a real session instead,
+ * which is the worse failure of the two.
+ */
+export function priorTradingDates(sessionDate: string, count: number): string[] {
+  const dates: string[] = [];
+  const cursor = new Date(`${sessionDate}T00:00:00Z`);
+  if (Number.isNaN(cursor.getTime())) return dates;
+  while (dates.length < Math.max(0, count)) {
+    cursor.setUTCDate(cursor.getUTCDate() - 1);
+    const weekday = cursor.getUTCDay();
+    if (weekday === 0 || weekday === 6) continue;
+    dates.push(cursor.toISOString().slice(0, 10));
+  }
+  return dates.reverse();
 }

@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import {
   contractKey,
   parseContractKey,
+  priorTradingDates,
+  DEALER_BOOK_CARRY_SESSIONS,
   contractDollarGamma,
   OPTION_CONTRACT_MULTIPLIER,
   tradeInventoryDelta,
@@ -63,7 +65,7 @@ check("dollar gamma comes from the contract's own greek", () => {
 const trade = (over = {}) => ({
   expiration: "2026-08-21", strike: 765, right: "call", contracts: 100,
   dealerSign: -1, dealerCounterpartyProbability: 1, economicTradeWeight: 1,
-  complexLegWeight: 1, quoteConfidence: 1, ...over,
+  quoteConfidence: 1, ...over,
 });
 
 check("a customer buy makes the dealer shorter gamma", () => {
@@ -77,7 +79,7 @@ check("uncertainty scales a trade down, it does not reverse it", () => {
   const half = tradeInventoryDelta(trade({ quoteConfidence: 0.5 }));
   assert.equal(half, -50);
   // Weights multiply, so two half-confident dimensions compound.
-  assert.equal(tradeInventoryDelta(trade({ quoteConfidence: 0.5, complexLegWeight: 0.5 })), -25);
+  assert.equal(tradeInventoryDelta(trade({ quoteConfidence: 0.5, economicTradeWeight: 0.5 })), -25);
   // Out-of-range weights are clamped, never negated.
   assert.equal(tradeInventoryDelta(trade({ quoteConfidence: 5 })), -100);
   // Math.abs, because a zeroed weight legitimately produces -0 and strict
@@ -109,7 +111,16 @@ check("the provider's own labels drive the classifier", () => {
   // A midpoint print has no aggressor, so it is dropped, not guessed.
   assert.equal(classifyConsolidatedTrade({ ...raw, tradeSideCode: "MID_MARKET" }), null);
   // A multi-leg print is one side of a spread whose partner offsets it.
-  assert.equal(classifyConsolidatedTrade({ ...raw, tradeType: "MULTI_AUTO_COB" })?.complexLegWeight, 0.5);
+  // A spread leg is DROPPED, not down-weighted: its partners offset most of the
+  // gamma it appears to add and the tape never delivers them, so its direction
+  // is not readable. Dropping them raised correlation 0.418 -> 0.572 against
+  // the reference and doubled the star matches.
+  assert.equal(classifyConsolidatedTrade({ ...raw, tradeType: "MULTI_AUTO_COB" }), null);
+  assert.equal(classifyConsolidatedTrade({ ...raw, tradeType: "MULTI_FLR_PP" }), null);
+  // M2S looks like it belongs in that set and measured the opposite way -
+  // dropping it too cut sign agreement 68% -> 62%. It is real directional flow.
+  assert.ok(classifyConsolidatedTrade({ ...raw, tradeType: "M2S_FLR" }));
+  assert.ok(classifyConsolidatedTrade({ ...raw, tradeType: "M2S_AUTO" }));
   // Unusable records are dropped rather than defaulted into the state.
   assert.equal(classifyConsolidatedTrade({ ...raw, size: 0 }), null);
   assert.equal(classifyConsolidatedTrade({ ...raw, contractType: "" }), null);
@@ -321,7 +332,7 @@ check("ageing per trade is not the same as one decay at the end", () => {
   const oi = () => 1e9;
   const at = (ms, right, contracts, dealerSign) => ({
     tradeTimeMs: ms, expiration: "2026-08-21", strike: 765, right, contracts, dealerSign,
-    dealerCounterpartyProbability: 1, economicTradeWeight: 1, complexLegWeight: 1, quoteConfidence: 1,
+    dealerCounterpartyProbability: 1, economicTradeWeight: 1, quoteConfidence: 1,
   });
   // An old buy and a recent sell of equal size at the same strike.
   const tape = [at(0, "call", 100, -1), at(half * 3, "call", 100, 1)];
@@ -343,6 +354,27 @@ check("ageing per trade is not the same as one decay at the end", () => {
     !broken.contracts[key],
     `one decay at the end must lose the age information, got ${broken.contracts[key]}`,
   );
+});
+
+check("the carried sessions skip weekends and stay in order", () => {
+  // A 0DTE contract is not new on its expiry day, so the book folds in the
+  // prior sessions' flow in the SAME contracts. From-zero at the open covered
+  // 36% of the reference's strikes; three sessions carried covers 80%.
+  const before = priorTradingDates("2026-08-21", 3);
+  assert.deepEqual(before, ["2026-08-18", "2026-08-19", "2026-08-20"]);
+  // Oldest first, because the book is aged to each print as it folds in - fed
+  // newest-first the decay would run backwards.
+  assert.deepEqual([...before].sort(), before);
+  // Monday reaches back over the weekend, not into it.
+  assert.deepEqual(priorTradingDates("2026-08-24", 3), ["2026-08-19", "2026-08-20", "2026-08-21"]);
+  assert.ok(priorTradingDates("2026-08-24", 10).every((day) => {
+    const weekday = new Date(`${day}T00:00:00Z`).getUTCDay();
+    return weekday !== 0 && weekday !== 6;
+  }));
+  // Nonsense in, nothing out - never a run of Invalid Date strings.
+  assert.deepEqual(priorTradingDates("not-a-date", 3), []);
+  assert.deepEqual(priorTradingDates("2026-08-21", 0), []);
+  assert.equal(DEALER_BOOK_CARRY_SESSIONS, 3);
 });
 
 console.log(`\ngex map v2: ${passed}/${passed} checks passed`);
