@@ -27,7 +27,7 @@ const drawLayer = readFileSync(new URL("../src/components/ChartDrawLayer.tsx", i
 let passed = 0;
 const check = (name, fn) => { fn(); passed += 1; console.log(`  ok  ${name}`); };
 
-const SCALE_TEXT = source.match(/const PAPER_LABEL_SCALE = (\d+);/)?.[1];
+const SCALE_TEXT = source.match(/const PAPER_LABEL_SCALE = ([\d.]+);/)?.[1];
 assert.ok(SCALE_TEXT, "PAPER_LABEL_SCALE is missing");
 
 const constant = (name) => {
@@ -65,14 +65,19 @@ const args = [PAD, HANDLE, CLOSE, CHAR, MIN, MAX];
 const chromePx = evalHelper("paperLabelChromePx")(...args, null);
 const widthPx = evalHelper("paperLabelWidthPx")(...args, chromePx);
 
-check("the label is twice the size it was", () => {
-  // The owner asked for 2x: the box and the numbers inside were not readable
-  // against candles, which is the one moment they need to be.
-  assert.equal(SCALE, 2);
+check("every dimension scales together", () => {
+  // The original was 8px type in a 164x16 box, unreadable against candles.
+  // 2x fixed that and overshot - the labels crowded the candles they sit on -
+  // so it settled at 1.5. What matters is that ONE number moves all of them:
+  // the painted box and its hit targets are the same geometry, and a dimension
+  // that stopped following the scale would put a handle off its divider.
+  assert.equal(SCALE, 1.5);
   assert.deepEqual(
     { HEIGHT, FONT, PAD, HANDLE, CLOSE, MIN },
-    { HEIGHT: 32, FONT: 16, PAD: 14, HANDLE: 40, CLOSE: 32, MIN: 328 },
+    { HEIGHT: 16 * SCALE, FONT: 8 * SCALE, PAD: 7 * SCALE, HANDLE: 20 * SCALE, CLOSE: 16 * SCALE, MIN: 164 * SCALE },
   );
+  // Still meaningfully bigger than the original that could not be read.
+  assert.ok(FONT > 8 && HEIGHT > 16);
 });
 
 check("nothing paints these on the canvas any more", () => {

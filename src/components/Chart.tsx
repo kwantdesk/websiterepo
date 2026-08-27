@@ -1776,7 +1776,10 @@ function paperProtectionSizeLabel(positionSide: "buy" | "sell", quantity: number
  * Everything below derives from one scale so the box and its controls can only
  * move together.
  */
-const PAPER_LABEL_SCALE = 2;
+// 2x was too big in practice: the entry, stop and target labels crowded the
+// candles they sit against. 1.5 keeps them readable at a glance - the point of
+// enlarging them - at three quarters of the size.
+const PAPER_LABEL_SCALE = 1.5;
 const PAPER_LABEL_HEIGHT = 16 * PAPER_LABEL_SCALE;
 const PAPER_LABEL_FONT_PX = 8 * PAPER_LABEL_SCALE;
 const PAPER_LABEL_PAD_X = 7 * PAPER_LABEL_SCALE;

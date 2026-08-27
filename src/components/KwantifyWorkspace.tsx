@@ -15271,10 +15271,24 @@ export default function KwantifyWorkspace({
   const persistWorkspacePresets = (nextPresets: WorkspacePreset[]) => {
     const normalizedPresets = normalizeWorkspacePresets(nextPresets, chartWorkspaceScopeRef.current);
     setWorkspacePresets(normalizedPresets);
-    writeProtectedItem(
+    // The write can fail: browser storage is a few megabytes and a workspace
+    // carries every pane, indicator and drawing in it. writeProtectedItem
+    // evicts re-fetchable cache and retries, but it can still come up short,
+    // and it REPORTS that. Ignoring the result is how a save that did not
+    // happen came to show "Workspace updated".
+    const written = writeProtectedItem(
       workspaceScopeStorageKey(chartWorkspaceScopeRef.current, WORKSPACE_PRESETS_STORAGE_KEY),
       JSON.stringify(normalizedPresets),
     );
+    if (!written.ok) {
+      setWorkspacePresets(workspacePresets);
+      showReportToast(
+        "error",
+        "Browser storage is full, so this workspace was not saved. Close some tabs of this app and try again.",
+        6000,
+      );
+      return null;
+    }
     // A saved workspace is an explicit user action. Push it to the account
     // store immediately instead of waiting for the next interval sync, so
     // closing the app right after Quick Save cannot lose the workspace.
@@ -15366,7 +15380,7 @@ export default function KwantifyWorkspace({
       return;
     }
     const nextPreset = createCurrentWorkspaceSnapshot(name);
-    persistWorkspacePresets([...workspacePresets, nextPreset]);
+    if (!persistWorkspacePresets([...workspacePresets, nextPreset])) return;
     setSavedWorkspaceSignature(workspaceStateSignature);
     setActiveWorkspacePresetId(nextPreset.id);
     setWorkspacePresetName("");
@@ -15385,10 +15399,13 @@ export default function KwantifyWorkspace({
       return;
     }
     const nextPreset = createCurrentWorkspaceSnapshot(activePreset.name, activePreset.id);
-    setSavedWorkspaceSignature(workspaceStateSignature);
-    persistWorkspacePresets(
+    const written = persistWorkspacePresets(
       workspacePresets.map((preset) => preset.id === nextPreset.id ? nextPreset : preset),
     );
+    // Only mark the workspace clean once it is actually stored. Marking it
+    // saved on a refused write loses the change silently at the next reload.
+    if (!written) return;
+    setSavedWorkspaceSignature(workspaceStateSignature);
     showReportToast("success", `Workspace "${activePreset.name}" updated`, 2000);
   };
 

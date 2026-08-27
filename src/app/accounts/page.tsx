@@ -116,6 +116,12 @@ export default function AccountsPage() {
   const [connectBroker, setConnectBroker] = useState<string | null>(null);
   const [showRouteModal, setShowRouteModal] = useState(false);
   const [accounts, setAccounts] = useState<DemoAccount[]>([]);
+  /**
+   * Browser storage refused the last write, so what is on screen is NOT what
+   * will come back after a refresh. Said plainly, because an account that
+   * looks created and is gone tomorrow is worse than one that never appeared.
+   */
+  const [accountsStorageFull, setAccountsStorageFull] = useState(false);
   const [paperLedger, setPaperLedger] = useState<PaperTradingLedger>(() =>
     typeof window === "undefined" ? emptyPaperTradingLedger() : loadPaperTradingLedger());
   const [newAccountName, setNewAccountName] = useState("");
@@ -172,9 +178,13 @@ export default function AccountsPage() {
     // so without the guard it saves that starting value over the accounts on
     // disk.
     if (!paperAccountsHydratedRef.current) return;
-    savePaperTradingAccounts(
+    const written = savePaperTradingAccounts(
       accounts.map(({ winRate: _winRate, ...account }) => account),
     );
+    // A refused write is why an account could be created, look right, and be
+    // gone after a refresh. The result was already reported and nobody read
+    // it, which made silent data loss indistinguishable from success.
+    if (!written.ok) setAccountsStorageFull(true);
   }, [accounts]);
 
   function openAdjustBalance(accountId: string) {
@@ -259,6 +269,12 @@ export default function AccountsPage() {
     <div className="flex min-h-screen flex-col bg-background text-foreground">
       <Sidebar />
       <main className="min-w-0 flex-1">
+        {accountsStorageFull ? (
+          <div className="border-b border-danger/40 bg-danger/10 px-6 py-2 text-[12px] text-danger">
+            Browser storage is full, so account changes are not being saved and will be lost on refresh.
+            Close other tabs of this app, then make the change again.
+          </div>
+        ) : null}
         <header className="sticky top-0 z-20 flex flex-wrap items-center gap-4 border-b border-border bg-background/95 px-6 py-4 backdrop-blur">
           <div className="mr-auto flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary"><Wallet className="h-5 w-5" /></div>
