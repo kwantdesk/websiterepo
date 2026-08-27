@@ -206,6 +206,14 @@ export type OptionsFlowPrint = {
   impliedVolatility: number | null;
   side: string;
   consolidationType: string;
+  /**
+   * The exchange trade condition, e.g. AUTO, ISO, AUCT, MULTI_AUTO_COB, M2S_AUTO.
+   *
+   * Carried because the multi-leg conditions identify one side of a spread whose
+   * partner legs offset much of the gamma the print appears to add. Without it a
+   * spread leg is counted at full weight as directional positioning.
+   */
+  tradeType: string;
   sentiment: "BULLISH" | "BEARISH" | "NEUTRAL";
   unusual: boolean;
   opening: boolean;

@@ -615,6 +615,7 @@ function parseFlow(payload: unknown): OptionsFlowPrint[] {
       impliedVolatility: finiteNumber(value.impliedVolatility),
       side: textValue(value.tradeSideCode) || textValue(value.tradeSide) || "MID",
       consolidationType: textValue(value.tradeConsolidationType) || "TRADE",
+      tradeType: textValue(value.tradeType),
       sentiment: classifySentiment(value),
       unusual: value.isUnusual === true,
       opening: value.isOpeningPosition === true,
@@ -2768,6 +2769,72 @@ export async function readConsolidatedTape(
     if (page === maxPages - 1) truncated = true;
   }
   return { prints, truncated, remaining };
+}
+
+/**
+ * The consolidated tape UNMODIFIED, plus the chain needed to revalue it.
+ *
+ * parseFlow is lossy by design - it normalises the provider's records into the
+ * shape the flow UI wants. For calibrating the v2 weights that is fatal: the
+ * distinctions that matter (aggressor strength, sweep versus split, multi-leg
+ * conditions, per-print greeks) are exactly what normalisation discards, and a
+ * capture cannot get back a field it never stored. So this returns the records
+ * as the provider sent them.
+ */
+export async function readRawConsolidatedTape(
+  symbol: string,
+  sessionDate: string,
+  maxPages = 60,
+): Promise<{
+  symbol: string;
+  sessionDate: string;
+  prints: unknown[];
+  truncated: boolean;
+  exposure: unknown;
+  openInterest: unknown;
+}> {
+  const ticker = symbol.trim().toUpperCase();
+  const prints: unknown[] = [];
+  let cursor: string[] | null = null;
+  let truncated = false;
+
+  for (let page = 0; page < maxPages; page += 1) {
+    const body: Record<string, unknown> = {
+      sessionDate,
+      filter: { ticker },
+      size: 100,
+      sort: { field: "tradeTime", direction: "DESCENDING" },
+    };
+    if (cursor) body.searchAfter = cursor;
+    const result = await quantDataPost("/options/tool/order-flow/consolidated", body, 60_000);
+    const rows = isRecord(result.payload) && Array.isArray(result.payload.data) ? result.payload.data : [];
+    if (!rows.length) break;
+    prints.push(...rows);
+    cursor = quantDataCursor(result.payload);
+    if (!cursor) break;
+    if (page === maxPages - 1) truncated = true;
+  }
+
+  // Without the chain the tape scores nothing: there is no gamma to revalue the
+  // inferred book against and no open interest to bound it by.
+  const [exposure, openInterest] = await Promise.all([
+    quantDataPost("/options/tool/exposure-by-strike", {
+      sessionDate,
+      greekMode: "GAMMA",
+      representationMode: "PER_ONE_DOLLAR_MOVE",
+      filter: { ticker },
+    }, 60_000),
+    quantDataPost("/options/tool/open-interest-by-strike", { sessionDate, filter: { ticker } }, 60_000),
+  ]);
+
+  return {
+    symbol: ticker,
+    sessionDate,
+    prints,
+    truncated,
+    exposure: exposure.payload,
+    openInterest: openInterest.payload,
+  };
 }
 
 /** Open interest per strike, exported for the v2 dealer-inventory bound. */

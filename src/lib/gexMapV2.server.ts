@@ -61,11 +61,11 @@ export type DealerInventoryPanelPayload = GexMapPanelPayload & {
 /**
  * A parsed flow print in the shape the classifier reads.
  *
- * parseFlow already renames the provider's fields, so this maps them back. It
- * drops `tradeType`, which is the one classifier input this path cannot supply:
- * multi-leg prints therefore carry full weight here rather than the halved
- * weight they get when the raw record is available. That overstates spread
- * legs slightly and is the honest cost of reusing the shared parser.
+ * parseFlow renames the provider's fields, so this maps them back. Every
+ * classifier input survives the round trip, including `tradeType` - the
+ * multi-leg conditions are what identify one leg of a spread whose partners
+ * offset much of the gamma it appears to add, and without them a spread leg
+ * would be counted at full weight as directional positioning.
  */
 function asConsolidatedTrade(print: OptionsFlowPrint): ProviderConsolidatedTrade {
   return {
@@ -75,6 +75,7 @@ function asConsolidatedTrade(print: OptionsFlowPrint): ProviderConsolidatedTrade
     size: print.size,
     tradeSideCode: print.side,
     tradeConsolidationType: print.consolidationType,
+    tradeType: print.tradeType,
     openInterest: print.openInterest,
     isOpeningPosition: print.opening,
     tradeTime: print.tradeTime,
