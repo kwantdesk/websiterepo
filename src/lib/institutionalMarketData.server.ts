@@ -72,21 +72,32 @@ const ORIGIN_FAILURES_BEFORE_COOLDOWN = 2;
 
 const originFailures = new Map<string, { count: number; until: number }>();
 
-function originIsCoolingDown(origin: string) {
+export function originIsCoolingDown(origin: string) {
   const entry = originFailures.get(origin);
   return Boolean(entry && entry.until > Date.now());
 }
 
-function recordOriginFailure(origin: string) {
+/**
+ * `definitive` means the gateway itself answered that it is broken - a 502, 503
+ * or 504 from the edge in front of a dead collector.
+ *
+ * That trips the breaker on the FIRST occurrence, where a timeout needs two.
+ * A timeout is ambiguous: it might be a slow multi-page read. A 502 is not, and
+ * waiting for a second one is how twenty concurrent pane requests all pay the
+ * full timeout before any of them records a failure - which is precisely the
+ * burst this exists to stop.
+ */
+export function recordOriginFailure(origin: string, definitive = false) {
   const entry = originFailures.get(origin);
   const count = (entry && entry.until > Date.now() ? entry.count : 0) + 1;
+  const tripped = definitive || count >= ORIGIN_FAILURES_BEFORE_COOLDOWN;
   originFailures.set(origin, {
     count,
-    until: count >= ORIGIN_FAILURES_BEFORE_COOLDOWN ? Date.now() + ORIGIN_COOLDOWN_MS : 0,
+    until: tripped ? Date.now() + ORIGIN_COOLDOWN_MS : 0,
   });
 }
 
-function recordOriginSuccess(origin: string) {
+export function recordOriginSuccess(origin: string) {
   originFailures.delete(origin);
 }
 
