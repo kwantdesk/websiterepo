@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextRequest, NextResponse } from "next/server";
 
-import { readRawConsolidatedTape, getQuantDataHttpError } from "@/lib/quantData.server";
+import { readRawConsolidatedTape, readOpenInterestByStrike, getQuantDataHttpError } from "@/lib/quantData.server";
 import { OPTIONS_FLOW_TICKERS } from "@/lib/optionsFlow";
 import { providerErrorMessage, logProviderError } from "@/lib/providerErrorMessage";
 
@@ -58,6 +58,50 @@ export async function GET(request: NextRequest) {
   }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(sessionDate)) {
     return NextResponse.json({ error: "A sessionDate of YYYY-MM-DD is required." }, { status: 400 });
+  }
+
+  /*
+   * aggregate=oi returns open interest per strike for one expiration across a
+   * run of sessions, and the day-over-day change.
+   *
+   * OI change is the only HARD label available anywhere in this problem. If a
+   * contract's open interest rose by N, then exactly N contracts opened - no
+   * inference, no classifier. Every attempt so far has tried to infer opening
+   * flow from the tape and scored at a coin flip; this is the observable the
+   * inference should have been calibrated against from the start.
+   */
+  if (request.nextUrl.searchParams.get("aggregate") === "oi") {
+    const expiration = (request.nextUrl.searchParams.get("expiration") || sessionDate).trim();
+    const days = (request.nextUrl.searchParams.get("days") || "")
+      .split(",").map((day) => day.trim()).filter((day) => /^\d{4}-\d{2}-\d{2}$/.test(day));
+    if (!days.length) {
+      return NextResponse.json({ error: "days=YYYY-MM-DD,YYYY-MM-DD is required." }, { status: 400 });
+    }
+    if (days.length > 8) {
+      return NextResponse.json({ error: "At most 8 sessions per request." }, { status: 400 });
+    }
+    try {
+      // Sequential on purpose: these share the provider's request scheduler
+      // with every live panel, and a burst of chain reads is what a research
+      // tool must not do during a session.
+      const series: Record<string, Record<number, { call: number; put: number }>> = {};
+      for (const day of days) {
+        const rows = await readOpenInterestByStrike(symbol, day, expiration);
+        series[day] = Object.fromEntries(
+          rows.map((row) => [row.strike, { call: row.callOpenInterest, put: row.putOpenInterest }]),
+        );
+      }
+      return NextResponse.json({ symbol, expiration, days, series }, {
+        headers: { "Cache-Control": "private, no-store, max-age=0" },
+      });
+    } catch (error) {
+      logProviderError("research/opra-tape:oi", error);
+      const problem = getQuantDataHttpError(error);
+      return NextResponse.json(
+        { error: providerErrorMessage(error, "Open interest") },
+        { status: problem?.status ?? 502 },
+      );
+    }
   }
 
   try {
