@@ -402,7 +402,16 @@ check("a node is measured flow first, structural second", () => {
    * the fourth - improved correlation on all four held-out frames, which a
    * parameter fitted to noise does not do.
    */
-  assert.equal(DEALER_FLOW_SHARE, 0.8);
+  /*
+   * The weight is calibrated, so pinning the literal only guarantees a failing
+   * test the next time evidence moves it. What must hold is that the flow book
+   * LEADS the blend without owning it outright: below a half the structural
+   * surface decides the map's sign, and at one there is no blend at all.
+   */
+  assert.ok(
+    DEALER_FLOW_SHARE > 0.5 && DEALER_FLOW_SHARE < 1,
+    `flow must lead the blend without being the whole of it, got ${DEALER_FLOW_SHARE}`,
+  );
 
   // Unit gross before mixing, flow's scale after: the two arrive in different
   // units, so an unweighted sum is just whichever number is larger.
@@ -414,7 +423,7 @@ check("a node is measured flow first, structural second", () => {
     { strike: 100, call: 1_000_000, put: 0, net: 1_000_000 },
     { strike: 102, call: 0, put: -1_000_000, net: -1_000_000 },
   ];
-  const blended = blendDealerNodes(flow, structural, 0.8);
+  const blended = blendDealerNodes(flow, structural, DEALER_FLOW_SHARE);
 
   // The union: structural gives the ladder an opinion at 102, which flow has
   // never seen a print at. Coverage went from 80% of the reference's strikes to

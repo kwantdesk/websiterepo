@@ -693,7 +693,31 @@ export function priorTradingDates(sessionDate: string, count: number): string[] 
  * gamma x open interest - the textbook dealer proxy - was measured at r=-0.04
  * against the reference and is deliberately NOT a third term.
  */
-export const DEALER_FLOW_SHARE = 0.8;
+export const DEALER_FLOW_SHARE = 0.7;
+/*
+ * 0.7, not the 0.8 that shipped first, and not the 0.4 one live pair asked for.
+ *
+ * The replay lattice and a live side-by-side disagree about where the peak sits,
+ * so the weight is set where they OVERLAP rather than where either one alone is
+ * happiest:
+ *
+ *              replay (4 frames, 08-21)      live pair (08-28, 75 strikes)
+ *   0.4        r 0.656,  0/4 stars           r 0.882,  star matches
+ *   0.6        r 0.684,  0/4 stars           r 0.707,  star matches
+ *   0.7        r 0.684,  2/4 stars           r 0.539,  star matches
+ *   0.8        r 0.672,  2/4 stars           r 0.394,  star matches
+ *
+ * Two things are consistent across both. The STAR wants more flow - it is the
+ * flow book that puts the biggest node in the right place, and the structural
+ * surface that drags it to the wrong strike. Correlation wants less. 0.8 was
+ * above the leave-one-out pick on the only data that existed at the time, which
+ * the comment above already says chose 0.6 or 0.7 every time; the live pair
+ * agrees it is too high.
+ *
+ * The honest limit: 0.4 correlates far better on the live pair but loses every
+ * star on the replay frames. Deciding between 0.4 and 0.7 needs live pairs from
+ * more than one minute of one instrument, and one capture is not a sample.
+ */
 
 /**
  * Combine the two at unit gross, then restore the flow book's own scale.
