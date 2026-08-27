@@ -4,6 +4,11 @@ import { memo, useCallback, useEffect, useRef, useState } from "react";
 import KwantLoader from "@/components/KwantLoader";
 import { readStoredTheme, THEME_STORAGE_KEY } from "@/lib/theme";
 import { writeProtectedItem } from "@/lib/browserStorageQuota";
+import {
+  chartWatermarkSize,
+  CHART_WATERMARK_SRC,
+  CHART_WATERMARK_OPACITY,
+} from "@/lib/chartWatermark";
 
 type LiquidityMapReplayControl = {
   tradingDate: string;
@@ -35,6 +40,8 @@ function LiquidityMapWorkspace({
   replay = null,
 }: LiquidityMapWorkspaceProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const paneRef = useRef<HTMLDivElement>(null);
+  const [paneSize, setPaneSize] = useState({ width: 0, height: 0 });
   const styleCheckTimerRef = useRef<number | null>(null);
   const stylesReadyRef = useRef(false);
   const marketFrameReadyRef = useRef(false);
@@ -241,8 +248,35 @@ function LiquidityMapWorkspace({
     };
   }, [instrument, onActivate, onInstrumentChange, syncInstrument, syncPerformancePriority, syncReadyState, syncTheme]);
 
+  /*
+   * The pane's own size, for the mark.
+   *
+   * Observed rather than read once: this pane is split, resized, detached and
+   * hidden like any other, and a size measured at mount would leave the mark at
+   * whatever it was when the workspace happened to load.
+   */
+  useEffect(() => {
+    const node = paneRef.current;
+    if (!node || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(([entry]) => {
+      const box = entry?.contentRect;
+      if (!box) return;
+      setPaneSize((current) => (
+        current.width === box.width && current.height === box.height
+          ? current
+          : { width: box.width, height: box.height }
+      ));
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+  const watermark = chartWatermarkSize(paneSize.width, paneSize.height);
+
   return (
-    <div className="relative isolate h-full min-h-0 min-w-0 w-full max-w-full overflow-hidden bg-chart-background [contain:layout_paint_size]">
+    <div
+      ref={paneRef}
+      className="relative isolate h-full min-h-0 min-w-0 w-full max-w-full overflow-hidden bg-chart-background [contain:layout_paint_size]"
+    >
       <iframe
         ref={iframeRef}
         className="block h-full min-w-0 w-full max-w-full border-0 bg-chart-background"
@@ -260,6 +294,36 @@ function LiquidityMapWorkspace({
           syncPerformancePriority();
         }}
       />
+      {watermark ? (
+        /*
+          * The same mark the charts carry, on the same sizing rules.
+          *
+          * Centred across the WHOLE pane here, unlike the chart. The chart
+          * offsets for its price scale because the parent owns and measures it;
+          * the liquidity map draws its own axis inside the iframe, so the
+          * parent has no honest width to subtract and guessing one would put
+          * the mark somewhere nobody chose.
+          *
+          * Above the iframe but below the loader and the replay chip, so it
+          * identifies the surface without covering anything a trader reads.
+          */
+        <img
+          src={CHART_WATERMARK_SRC}
+          alt=""
+          aria-hidden
+          draggable={false}
+          className="pointer-events-none absolute z-[5] select-none"
+          style={{
+            top: 8,
+            left: 0,
+            right: 0,
+            marginInline: "auto",
+            width: watermark.width,
+            height: watermark.height,
+            opacity: CHART_WATERMARK_OPACITY,
+          }}
+        />
+      ) : null}
       {!isReady ? (
         <div className="pointer-events-none absolute inset-0 z-10">
           <KwantLoader
