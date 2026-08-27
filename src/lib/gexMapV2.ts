@@ -722,3 +722,89 @@ export function blendDealerNodes(
   }
   return blended;
 }
+
+/** One classified trade with the gamma its own print carried. */
+export type DatedDealerTrade = {
+  trade: ClassifiedTrade;
+  gamma: number | null;
+};
+
+/**
+ * The dealer ladder at every minute of a session, not just the last one.
+ *
+ * v2 shipped with no frames at all. That was the right call at the time -
+ * passing v1's frames through would have put one model's history beside another
+ * model's ladder - but it left the DEALER model with an empty replay timeline,
+ * because the timeline is built from `payload.frames` and nothing else. Replay
+ * was not broken so much as absent: the scrubber had nothing to scrub.
+ *
+ * It costs no provider requests. The tape is already read and the whole session
+ * is in hand, so this is one pass over prints that have already been paid for.
+ * Trades fold into a running book and the book is aged to each frame boundary
+ * as it is crossed, which is the same arithmetic the live panel runs with the
+ * clock stopped earlier - not a second implementation of it.
+ *
+ * Gamma advances with the walk: a contract is valued at the gamma its most
+ * recent print carried AT THAT MINUTE, never at one from later in the session.
+ * Same for spot. A replay that revalued history at the closing price would be
+ * showing today's surface wearing a past timestamp, which is the one thing
+ * historical gamma must never do.
+ */
+export function replayDealerLadders(input: {
+  /** Minute boundaries to emit at, ascending. */
+  timestamps: readonly number[];
+  /** Every trade in scope, ascending by time. */
+  trades: readonly DatedDealerTrade[];
+  openInterest: (key: string) => number;
+  /** Underlying price at a frame - never later than the frame itself. */
+  spotAt: (timestampMs: number) => number;
+  expirations: readonly string[];
+  strikes: readonly number[];
+  representation: GexRepresentation;
+  sessionDate: string;
+  halfLifeMs?: number;
+}): { timestamp: number; nodes: DealerGexNode[] }[] {
+  const { timestamps, trades } = input;
+  if (!timestamps.length) return [];
+
+  const halfLifeMs = input.halfLifeMs ?? DEALER_FLOW_HALF_LIFE_MS;
+  const gammaByContract = new Map<ContractKey, number>();
+  const gammaAsOf = new Map<ContractKey, number>();
+  let state = emptyDealerInventory(input.sessionDate, trades[0]?.trade.tradeTimeMs ?? timestamps[0]);
+  let cursor = 0;
+  const ladders: { timestamp: number; nodes: DealerGexNode[] }[] = [];
+
+  for (const timestamp of timestamps) {
+    const window: ClassifiedTrade[] = [];
+    while (cursor < trades.length && trades[cursor].trade.tradeTimeMs <= timestamp) {
+      const { trade, gamma } = trades[cursor];
+      window.push(trade);
+      if (gamma !== null && Number.isFinite(gamma)) {
+        const key = contractKey(trade.expiration, trade.strike, trade.right);
+        if ((gammaAsOf.get(key) ?? -1) <= trade.tradeTimeMs) {
+          gammaAsOf.set(key, trade.tradeTimeMs);
+          gammaByContract.set(key, Math.abs(gamma));
+        }
+      }
+      cursor += 1;
+    }
+    // Folding this minute's trades in and ageing to the boundary in one call
+    // keeps the per-trade ageing that makes decay mean anything; ageing the
+    // whole window at once would apply one factor to all of it.
+    state = window.length
+      ? accumulateDecayedTape(state, window, input.openInterest, timestamp, halfLifeMs)
+      : decayDealerInventory(state, timestamp, halfLifeMs);
+    ladders.push({
+      timestamp,
+      nodes: revalueDealerGex({
+        state,
+        strikes: input.strikes,
+        expirations: input.expirations,
+        gammaByContract,
+        spot: input.spotAt(timestamp),
+        representation: input.representation,
+      }).nodes,
+    });
+  }
+  return ladders;
+}

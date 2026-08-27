@@ -17,6 +17,8 @@ import {
   contractKey,
   revalueDealerGex,
   blendDealerNodes,
+  replayDealerLadders,
+  type DatedDealerTrade,
   DEALER_FLOW_SHARE,
   priorTradingDates,
   DEALER_BOOK_CARRY_SESSIONS,
@@ -170,6 +172,13 @@ const readCarriedTape = (symbol: string, sessionDate: string) => joinInFlight(
  * after it finishes draws the full book.
  */
 const FIRST_PAINT_PAGE_LIMIT = 12;
+
+/**
+ * How far a node must move, as a share of the ladder's largest, to be re-sent
+ * in a replay frame. A hundredth of a percent of the Star is far below anything
+ * a ladder renders and far above the float noise of rescaling.
+ */
+const FRAME_UPDATE_EPSILON = 0.0001;
 
 /** Warm-ups already scheduled, so a refresh cannot stack duplicates. */
 const carriedTapeBuilds = new Set<string>();
@@ -327,10 +336,21 @@ function buildInventory(
   openInterest: (key: string) => number,
   sessionDate: string,
   asOfMs: number,
-): { state: DealerInventoryState; absorbed: number; fromMs: number | null } {
+): {
+  state: DealerInventoryState;
+  absorbed: number;
+  fromMs: number | null;
+  /*
+   * The classified tape, and the gamma each print carried, returned rather than
+   * discarded: the per-minute replay ladders walk exactly this and pairing them
+   * again outside would be a second classification that could drift from this
+   * one.
+   */
+  trades: DatedDealerTrade[];
+} {
   const classified = classifyConsolidatedTape(prints.map(asConsolidatedTrade));
   if (!classified.length) {
-    return { state: emptyDealerInventory(sessionDate, asOfMs), absorbed: 0, fromMs: null };
+    return { state: emptyDealerInventory(sessionDate, asOfMs), absorbed: 0, fromMs: null, trades: [] };
   }
   const times = prints
     .map((print) => print.tradeTime)
@@ -348,7 +368,29 @@ function buildInventory(
     asOfMs,
     DEALER_FLOW_HALF_LIFE_MS,
   );
-  return { state, absorbed: classified.length, fromMs };
+  /*
+   * Pair each surviving trade with the gamma its own print carried.
+   *
+   * Keyed on contract AND time rather than by index, because the classifier
+   * de-duplicates parent/child records and drops midpoints and spread legs - so
+   * its output does not line up with the tape it was given, and zipping the two
+   * would silently attach one contract's gamma to another contract's trade.
+   */
+  const gammaByPrint = new Map<string, number>();
+  for (const print of prints) {
+    const expiration = print.expirationDate?.slice(0, 10);
+    const right = print.contractType === "CALL" ? "call" : print.contractType === "PUT" ? "put" : null;
+    if (!expiration || !right || print.strikePrice === null || print.gamma === null) continue;
+    gammaByPrint.set(`${contractKey(expiration, print.strikePrice, right)}@${print.tradeTime}`, print.gamma);
+  }
+  const trades = classified.map((trade) => ({
+    trade,
+    gamma: gammaByPrint.get(
+      `${contractKey(trade.expiration, trade.strike, trade.right)}@${trade.tradeTimeMs}`,
+    ) ?? null,
+  }));
+
+  return { state, absorbed: classified.length, fromMs, trades };
 }
 
 async function buildDealerInventoryPanel(
@@ -400,7 +442,7 @@ async function buildDealerInventoryPanel(
     .filter((print) => inScope.has(print.expirationDate?.slice(0, 10) ?? ""))
     .sort((left, right) => left.tradeTime - right.tradeTime);
 
-  const { state, absorbed, fromMs } = buildInventory(prints, oiFor, sessionDate, asOfMs);
+  const { state, absorbed, fromMs, trades } = buildInventory(prints, oiFor, sessionDate, asOfMs);
 
   /*
    * The contract's OWN gamma, taken from the most recent print that carried
@@ -454,6 +496,81 @@ async function buildDealerInventoryPanel(
   );
 
   /*
+   * The same book at every minute of the session, for replay and the change
+   * columns.
+   *
+   * v2 shipped with no frames, which left the DEALER model with an empty replay
+   * timeline - the timeline is built from `payload.frames` and nothing else, so
+   * the scrubber had nothing to scrub. Passing v1's frames through instead was
+   * never an option: a node whose value comes from one model and whose change
+   * comes from another is worse than no change at all.
+   *
+   * It costs no provider requests. The tape is already in hand, so this is one
+   * pass over prints already paid for, and each minute is blended against the
+   * structural surface AS IT STOOD AT THAT MINUTE rather than against the
+   * closing one.
+   */
+  const spotByMinute = structural.candles
+    .filter((candle) => Number.isFinite(candle.timestamp) && Number.isFinite(candle.close))
+    .sort((left, right) => left.timestamp - right.timestamp);
+  const spotAt = (timestampMs: number) => {
+    let value = structural.stockPrice ?? 0;
+    for (const candle of spotByMinute) {
+      if (candle.timestamp > timestampMs) break;
+      value = candle.close;
+    }
+    return value;
+  };
+
+  const ladders = replayDealerLadders({
+    timestamps: structural.frames.map((frame) => frame.timestamp),
+    trades,
+    openInterest: oiFor,
+    spotAt,
+    expirations,
+    strikes: structural.latestStrikes.map((row) => row.strike),
+    representation,
+    sessionDate,
+  });
+
+  // Emitted as UPDATES, the shape the surface already consumes: only the
+  // strikes whose value actually moved this minute. A full ladder per minute
+  // would multiply an already megabyte-scale replay payload by the number of
+  // strikes that did nothing.
+  const structuralSurface = new Map<number, ExposureStrike>();
+  const emitted = new Map<number, number>();
+  const dealerFrames = ladders.map((ladder, index) => {
+    for (const update of structural.frames[index]?.updates ?? []) {
+      structuralSurface.set(update.strike, update);
+    }
+    const blended = blendDealerNodes(
+      ladder.nodes.map((node) => ({
+        strike: node.strike, call: node.callNet, put: node.putNet, net: node.net,
+      })),
+      [...structuralSurface.values()],
+    );
+    /*
+     * Emit a strike when it MOVED, not when its last decimal did.
+     *
+     * Every node is rescaled each minute, so an exact comparison re-sends
+     * strikes whose value went from 0 to 1 dollar against a Star in the
+     * billions - measured, the three busiest strikes in the ladder were three
+     * worthless ones. A sign change always goes through, because that is the
+     * one movement a trader must never miss.
+     */
+    const scale = blended.reduce((most, row) => Math.max(most, Math.abs(row.net)), 0);
+    const material = scale * FRAME_UPDATE_EPSILON;
+    const updates = blended.filter((row) => {
+      const previous = emitted.get(row.strike);
+      if (previous === undefined) return true;
+      if (Math.sign(previous) !== Math.sign(row.net)) return true;
+      return Math.abs(row.net - previous) > material;
+    });
+    for (const row of updates) emitted.set(row.strike, row.net);
+    return { timestamp: ladder.timestamp, updates };
+  });
+
+  /*
    * An empty book must FAIL, not return an empty ladder.
    *
    * The panel keeps the last renderable surface while a request is in flight,
@@ -482,20 +599,7 @@ async function buildDealerInventoryPanel(
     carriedSessions,
     flowShare: DEALER_FLOW_SHARE,
     latestStrikes,
-    /*
-     * NO FRAMES.
-     *
-     * These drive the change columns and replay. Passing the structural frames
-     * through would put v1's history under a DEALER label beside v2's ladder -
-     * the same lie as the empty-book fallback, in the one place a trader reads
-     * to see how a node is BUILDING. A node whose value came from one model and
-     * whose change came from another is worse than no change at all.
-     *
-     * Deriving them properly needs the book rebuilt at each lookback, which is
-     * another tape read per window. That waits for the state to be persisted
-     * rather than rebuilt, so the panel is not charged for it on every refresh.
-     */
-    frames: [],
+    frames: dealerFrames,
     netExposure: latestStrikes.reduce((sum, row) => sum + row.net, 0),
     grossExposure: latestStrikes.reduce((sum, row) => sum + Math.abs(row.call) + Math.abs(row.put), 0),
   };

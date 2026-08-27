@@ -5,6 +5,7 @@ import {
   parseContractKey,
   priorTradingDates,
   blendDealerNodes,
+  replayDealerLadders,
   DEALER_FLOW_SHARE,
   DEALER_BOOK_CARRY_SESSIONS,
   contractDollarGamma,
@@ -427,6 +428,98 @@ check("the blend degrades to whichever side actually has a book", () => {
   // the empty-book guard downstream still has nothing to draw.
   assert.deepEqual(blendDealerNodes([], [{ strike: 1, call: 2, put: 0, net: 2 }], 0.8), []);
   assert.deepEqual(blendDealerNodes([], [], 0.8), []);
+});
+
+
+check("a replay frame never sees a trade that has not happened yet", () => {
+  /*
+   * THE RULE HISTORICAL GAMMA LIVES OR DIES BY. A frame revalued with later
+   * trades, a later gamma or a later spot is today's surface wearing a past
+   * timestamp. It is also the easiest mistake to make here, because the whole
+   * session is in hand while the ladders are being built.
+   */
+  const minute = 60_000;
+  const at = (n) => 1_700_000_000_000 + n * minute;
+  const trade = (n, contracts) => ({
+    trade: {
+      tradeTimeMs: at(n),
+      expiration: "2026-08-21",
+      strike: 100,
+      right: "call",
+      contracts,
+      dealerSign: 1,
+      dealerCounterpartyProbability: 1,
+      economicTradeWeight: 1,
+      quoteConfidence: 1,
+    },
+    gamma: 0.01 * n,
+  });
+
+  const ladders = replayDealerLadders({
+    timestamps: [at(1), at(2), at(3)],
+    trades: [trade(2, 10), trade(3, 10)],
+    openInterest: () => 1e9,
+    spotAt: () => 100,
+    expirations: ["2026-08-21"],
+    strikes: [100],
+    representation: "PER_ONE_DOLLAR_MOVE",
+    sessionDate: "2026-08-21",
+  });
+
+  assert.equal(ladders.length, 3);
+  assert.deepEqual(ladders.map((l) => l.timestamp), [at(1), at(2), at(3)]);
+  // Nothing had traded by minute one, so there is no node - not a zero.
+  assert.deepEqual(ladders[0].nodes, []);
+  // The book only ever grows forward.
+  assert.equal(ladders[1].nodes[0].callContracts, 10);
+  assert.ok(ladders[2].nodes[0].callContracts > ladders[1].nodes[0].callContracts);
+  // And each minute is valued at the gamma known THEN: the minute-two frame
+  // must not have been revalued with minute three's richer gamma.
+  const perContract = (l) => Math.abs(l.nodes[0].net) / Math.abs(l.nodes[0].callContracts);
+  assert.ok(perContract(ladders[1]) < perContract(ladders[2]));
+});
+
+check("a replay frame is valued at the spot of its own minute", () => {
+  const minute = 60_000;
+  const at = (n) => 1_700_000_000_000 + n * minute;
+  const one = {
+    trade: {
+      tradeTimeMs: at(1), expiration: "2026-08-21", strike: 100, right: "call",
+      contracts: 10, dealerSign: 1, dealerCounterpartyProbability: 1,
+      economicTradeWeight: 1, quoteConfidence: 1,
+    },
+    gamma: 0.05,
+  };
+  const spots = { [at(1)]: 100, [at(2)]: 200 };
+  const ladders = replayDealerLadders({
+    timestamps: [at(1), at(2)],
+    trades: [one],
+    openInterest: () => 1e9,
+    spotAt: (ts) => spots[ts],
+    expirations: ["2026-08-21"],
+    strikes: [100],
+    representation: "PER_ONE_DOLLAR_MOVE",
+    sessionDate: "2026-08-21",
+  });
+  // Same position, twice the underlying: dollar gamma per $1 scales with spot,
+  // so the later frame is worth more WITHOUT anything having traded. That is
+  // the whole point of revaluing rather than replaying a stored number.
+  const decayed = Math.abs(ladders[1].nodes[0].net) / Math.abs(ladders[0].nodes[0].net);
+  assert.ok(decayed > 1.9 && decayed < 2.01, `expected about 2x, got ${decayed}`);
+});
+
+check("no minutes in, no ladders out", () => {
+  const empty = replayDealerLadders({
+    timestamps: [],
+    trades: [],
+    openInterest: () => 0,
+    spotAt: () => 100,
+    expirations: ["2026-08-21"],
+    strikes: [100],
+    representation: "PER_ONE_DOLLAR_MOVE",
+    sessionDate: "2026-08-21",
+  });
+  assert.deepEqual(empty, []);
 });
 
 

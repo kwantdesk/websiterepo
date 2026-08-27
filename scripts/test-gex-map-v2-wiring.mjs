@@ -120,13 +120,16 @@ check("a surface from the other model is dropped, not shown", () => {
   assert.match(workspace, /cached\.model === expectedModel/);
 });
 
-check("v2 ships no frames rather than v1's frames", () => {
+check("v2 never borrows v1's frames", () => {
   // Frames drive the change columns and replay. Passing the structural frames
   // through would put v1's history under a DEALER label beside v2's ladder -
   // the same lie as the empty-book fallback, in the one place a trader reads to
   // see how a node is BUILDING. A node whose value came from one model and
   // whose change came from another is worse than no change at all.
-  assert.match(server, /frames: \[\],/);
+  //
+  // It shipped as an EMPTY list for that reason, and that is what left the
+  // dealer model with no replay timeline at all. v2 builds its own now; the
+  // rule it was protecting still stands.
   assert.doesNotMatch(server, /frames: structural\.frames,/);
 });
 
@@ -231,6 +234,30 @@ check("the panel reports what its nodes are made of", () => {
   // clock and a greek - the thing that makes any comparison between them mean
   // something.
   assert.match(server, /const structural = await getGexMapPanel\(symbol, "GAMMA", sessionDate, scope, representation\);/);
+});
+
+
+check("the dealer model has a replay timeline of its own", () => {
+  /*
+   * THE BUG. The replay timeline is built from `payload.frames` and nothing
+   * else, and v2 shipped `frames: []` - so on the DEALER model the scrubber had
+   * nothing to scrub and replay simply did not work. Passing v1's frames
+   * through was never the answer: a node whose value comes from one model and
+   * whose change comes from another is worse than no change at all.
+   *
+   * Building them costs no provider requests. The tape is already in hand.
+   */
+  assert.doesNotMatch(server, /frames: \[\],/, "an empty timeline is what broke replay");
+  assert.match(server, /frames: dealerFrames,/);
+  assert.match(server, /replayDealerLadders\(\{/);
+  // Each minute blends against the structural surface AS IT STOOD THEN, which
+  // means walking its incremental updates rather than reusing the closing one.
+  assert.match(server, /for \(const update of structural\.frames\[index\]\?\.updates \?\? \[\]\) \{/);
+  // Spot comes from the session's own candles, never later than the frame.
+  assert.match(server, /if \(candle\.timestamp > timestampMs\) break;/);
+  // Sent as updates, not full ladders: a replay payload is already megabytes.
+  assert.match(server, /const FRAME_UPDATE_EPSILON = 0\.0001;/);
+  assert.match(server, /if \(Math\.sign\(previous\) !== Math\.sign\(row\.net\)\) return true;/);
 });
 
 
