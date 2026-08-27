@@ -583,3 +583,51 @@ on a symbol where it measured worse than the thing it replaces.
 Calibrate `dealerCounterpartyProbability` and an open/close weight against
 observed OI change — the one real ground-truth label available — and re-score.
 That is what should move the ETFs.
+
+## Addendum — 2026-08-27 — why a node is negative for them and positive for us
+
+The single most important measurement in this whole file, and it is one line:
+
+**v1's sign is decided by chain composition, 100% of the time.**
+
+| Symbol | v1 sign == whichever side carries more gamma-weighted OI | v1 sign == Trinity | put-heavy strikes v1 calls negative |
+|---|---:|---:|---:|
+| SPXW | **100%** | 55% | 75% |
+| SPY | **100%** | 50% | 84% |
+| QQQ | **100%** | 50% | 96% |
+
+`parseExposure` computes `net = callExposure + putExposure`, and the provider
+signs calls positive and puts negative. So the sign of every v1 row is just
+`sign(|callExposure| - |putExposure|)`. Put-heavy strike, negative node.
+Call-heavy strike, positive node. There is no third possibility and no input
+from anyone's positioning.
+
+Trinity's sign is decided by which way dealers actually ended up positioned,
+which is a different question with a different answer. Two unrelated binary
+signals agree about half the time, and that is exactly the 50-55% observed.
+
+**This is why no setting closes the gap.** Units, expiry scope, greek, palette,
+interval - none of them can change `sign(|call| - |put|)`. A strike that is
+put-heavy will read negative on v1 forever, however the dealers are positioned
+in it.
+
+Their published material is consistent with this being the real difference:
+positive GEX is defined as dealers long gamma and negative as dealers short
+gamma (`/learn/gamma-exposure`), and the framing throughout is
+"every option the gambler buys creates a hedge the dealer must execute"
+(`/learn/dealer-positioning`) - an inferred dealer position, not a chain
+statistic. The formula itself is deliberately not published.
+
+### v2 escapes it
+
+Because v2 multiplies per-contract gamma by INFERRED DEALER CONTRACTS, which
+carry their own sign, its rows are no longer dictated by the chain's shape:
+
+| Symbol | v2 sign == bigger side of chain | v2 sign == Trinity |
+|---|---:|---:|
+| SPXW | 47% (v1: 100%) | 66% |
+| SPY | 36% (v1: 100%) | 59% |
+| QQQ | 44% (v1: 100%) | 40% |
+
+That is the structural confirmation the model class is right: v2 is answering
+the question Trinity answers, where v1 was answering a different one.
