@@ -5205,6 +5205,7 @@ function WorkspaceChartPaneComponent({
   onArmedOrderCancel,
   onPaperProtectionDragStateChange,
   onClosePaperPosition,
+  onCancelWorkingOrder,
   onRemovePaperFills,
   onResetPaperTrading,
   onLiveExecutionQuote,
@@ -5269,6 +5270,7 @@ function WorkspaceChartPaneComponent({
   ) => void;
   onPaperProtectionDragStateChange?: (positionId: string, dragging: boolean) => void;
   onClosePaperPosition?: (position: PaperPosition) => void;
+  onCancelWorkingOrder?: (accountId: string, orderId: string) => void;
   onRemovePaperFills?: (fillIds: string[]) => void;
   onResetPaperTrading?: () => void;
   onLiveExecutionQuote?: (quote: ChartExecutionQuote) => void;
@@ -8933,6 +8935,7 @@ function WorkspaceChartPaneComponent({
           onUpdatePaperProtection={onUpdatePaperProtection}
           onPaperProtectionDragStateChange={onPaperProtectionDragStateChange}
           onClosePaperPosition={onClosePaperPosition}
+          onCancelWorkingOrder={onCancelWorkingOrder}
           onRemovePaperFills={onRemovePaperFills}
           onResetPaperTrading={onResetPaperTrading}
         />
@@ -17360,6 +17363,7 @@ export default function KwantifyWorkspace({
         onUpdatePaperProtection={handlePaperProtectionUpdate}
         onPaperProtectionDragStateChange={handlePaperProtectionDragStateChange}
         onClosePaperPosition={handleFlattenPaperPosition}
+        onCancelWorkingOrder={handleCancelPaperOrder}
         onRemovePaperFills={handleRemovePaperFillMarkers}
         onResetPaperTrading={selectedPaperTradingAccount ? handleResetPaperTrading : undefined}
         onLiveExecutionQuote={handleActiveChartExecutionQuote}
@@ -19361,6 +19365,7 @@ export default function KwantifyWorkspace({
                     onUpdatePaperProtection={handlePaperProtectionUpdate}
                     onPaperProtectionDragStateChange={handlePaperProtectionDragStateChange}
                     onClosePaperPosition={handleFlattenPaperPosition}
+                    onCancelWorkingOrder={handleCancelPaperOrder}
                     onRemovePaperFills={handleRemovePaperFillMarkers}
                     onResetPaperTrading={selectedPaperTradingAccount ? handleResetPaperTrading : undefined}
                   />

@@ -638,7 +638,7 @@ interface ChartProps {
    * entry does, because that is where a trader reaches to attach exits.
    */
   paperWorkingOrders?: PaperOrder[];
-  onCancelWorkingOrder?: (orderId: string) => void;
+  onCancelWorkingOrder?: (accountId: string, orderId: string) => void;
   onArmedOrderPick?: (price: number) => void;
   onArmedOrderCancel?: () => void;
   onClosePaperPosition?: (position: PaperPosition) => void;
@@ -14593,7 +14593,23 @@ function Chart({
         id: `${order.id}-order-sl`,
         kind: "stop_loss" as const,
         price: order.stopLoss,
-        label: `SL · ${order.quantity} · ${order.stopLoss.toFixed(priceFormat.precision)}`,
+        /*
+         * The P&L this level would realise, before the order has filled.
+         *
+         * An open position's stop already shows this; a working order's did
+         * not, so the one case where the trader can still change their mind
+         * for free was the case that told them least. The entry is the order's
+         * own limit price, which is the price it will fill at if it fills at
+         * all - so the figure is exact rather than an estimate, and it moves
+         * with the handle as the limit or the stop is dragged.
+         */
+        label: `SL · ${order.quantity} · ${order.stopLoss.toFixed(priceFormat.precision)} · ${formatPaperMoney(paperProjectedPnl(
+          order.symbol,
+          order.side,
+          anchor.entryPrice,
+          order.stopLoss,
+          order.quantity,
+        ))}`,
         color: settings.downColor,
         position: anchor,
         targetId: null as string | null,
@@ -14602,7 +14618,13 @@ function Chart({
         id: `${order.id}-order-tp-${index}`,
         kind: "take_profit" as const,
         price: target.price,
-        label: `TP · ${target.quantity} · ${target.price.toFixed(priceFormat.precision)}`,
+        label: `TP${order.takeProfits.length > 1 ? index + 1 : ""} · ${target.quantity} · ${target.price.toFixed(priceFormat.precision)} · ${formatPaperMoney(paperProjectedPnl(
+          order.symbol,
+          order.side,
+          anchor.entryPrice,
+          target.price,
+          target.quantity,
+        ))}`,
         color: settings.upColor,
         position: anchor,
         targetId: `${order.id}-tp-${index}` as string | null,
@@ -16037,18 +16059,30 @@ function Chart({
               >
                 {level.label}
               </span>
-              {onClosePaperPosition ? (
+              {(level.resting ? onCancelWorkingOrder : onClosePaperPosition) ? (
                 <button
                   type="button"
                   onClick={(event) => {
                     event.preventDefault();
                     event.stopPropagation();
-                    onClosePaperPosition(level.position);
+                    /*
+                     * A resting order is CANCELLED, not closed.
+                     *
+                     * It is drawn through a synthetic position anchor so it can
+                     * share the open position's handles and drag path, and that
+                     * anchor carries the ORDER's id. Sending it to the position
+                     * close path looked right and could never match anything -
+                     * which is why pressing this X did nothing at all.
+                     */
+                    if (level.resting) onCancelWorkingOrder?.(level.position.accountId, level.position.id);
+                    else onClosePaperPosition?.(level.position);
                   }}
                   className="flex self-stretch items-center justify-center border-l transition-colors hover:bg-danger/15 hover:text-danger"
                   style={{ borderColor: level.color, width: PAPER_LABEL_CLOSE_WIDTH }}
-                  title="Close this position at the live bid/ask"
-                  aria-label={`Close ${level.position.symbol} position`}
+                  title={level.resting ? "Cancel this working order" : "Close this position at the live bid/ask"}
+                  aria-label={level.resting
+                    ? `Cancel working ${level.position.symbol} order`
+                    : `Close ${level.position.symbol} position`}
                 >
                   <X style={{ height: PAPER_LABEL_ICON_PX, width: PAPER_LABEL_ICON_PX }} />
                 </button>

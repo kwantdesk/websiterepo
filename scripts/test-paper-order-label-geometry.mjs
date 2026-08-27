@@ -192,4 +192,49 @@ check("the figure refreshes on commits and pan frames too", () => {
   assert.match(source, /repositionPaperOverlays\(\);\s*\n\s*refreshPaperLivePnl\(\);/);
 });
 
+check("the X on a resting order cancels it instead of closing nothing", () => {
+  /*
+   * THE BUG. A working order is drawn through a synthetic position anchor so it
+   * can share the open position's handles, drag path and commit code, and that
+   * anchor carries the ORDER's id. The X sent it to onClosePaperPosition, which
+   * looks right and can never match a position - so pressing it did nothing at
+   * all, silently.
+   */
+  assert.match(source, /if \(level\.resting\) onCancelWorkingOrder\?\.\(level\.position\.accountId, level\.position\.id\);/);
+  assert.match(source, /else onClosePaperPosition\?\.\(level\.position\);/);
+  // The button has to RENDER for a resting order, which means its presence is
+  // gated on the handler that resting orders actually use.
+  assert.match(source, /\{\(level\.resting \? onCancelWorkingOrder : onClosePaperPosition\) \? \(/);
+  // And it must say what it does - "Close this position" on a resting order is
+  // a label describing something that is not going to happen.
+  assert.match(source, /title=\{level\.resting \? "Cancel this working order" : "Close this position at the live bid\/ask"\}/);
+  // Dead prop, dead button: the handler was declared on Chart and never passed
+  // by any parent, so wiring the click alone would have changed nothing.
+  const workspace = readFileSync(new URL("../src/components/KwantifyWorkspace.tsx", import.meta.url), "utf8");
+  assert.match(workspace, /onCancelWorkingOrder=\{handleCancelPaperOrder\}/);
+  assert.match(workspace, /onCancelWorkingOrder=\{onCancelWorkingOrder\}/);
+  // The signature has to carry the account, because that is what the ledger
+  // call it ends up making takes.
+  assert.match(source, /onCancelWorkingOrder\?: \(accountId: string, orderId: string\) => void;/);
+});
+
+check("a working order's stop and target show the P&L they would realise", () => {
+  /*
+   * An open position's SL and TP already carry this. A working order's did not,
+   * so the one moment the trader can still change their mind for free was the
+   * moment the label told them least.
+   *
+   * The entry is the order's own limit price - the price it fills at if it
+   * fills at all - so the figure is exact rather than a projection from the
+   * live mark.
+   */
+  const anchorPnl = /paperProjectedPnl\(\s*order\.symbol,\s*order\.side,\s*anchor\.entryPrice,/g;
+  assert.equal((source.match(anchorPnl) ?? []).length, 2, "both the stop and the target need it");
+  assert.match(source, /label: `SL · \$\{order\.quantity\} · \$\{order\.stopLoss\.toFixed\(priceFormat\.precision\)\} · \$\{formatPaperMoney\(paperProjectedPnl\(/);
+  // Numbered like an open position's when there is more than one target, so the
+  // two label families cannot be told apart by accident.
+  assert.match(source, /label: `TP\$\{order\.takeProfits\.length > 1 \? index \+ 1 : ""\}/);
+});
+
+
 console.log(`\npaper order label geometry: ${passed}/${passed} checks passed`);

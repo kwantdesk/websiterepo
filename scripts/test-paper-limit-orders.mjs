@@ -224,8 +224,15 @@ console.log("Paper limit order engine tests passed.");
   const workspace = readFileSync(new URL("../src/components/KwantifyWorkspace.tsx", import.meta.url), "utf8");
 
   assert.ok(chart.includes("workingOrderAnchor"), "a resting order needs a drawable anchor");
-  assert.ok(chart.includes("...workingOrderOverlayLevels].map((level)"),
-    "it must go through the SAME overlay pipeline as a position, so it gets the handles");
+  // Matched on structure, not on an exact literal: this assertion was pinned to
+  // the spread's exact text and went stale the moment resting orders were
+  // tagged, silently failing the suite over a change it was not testing.
+  assert.match(
+    chart,
+    /\.\.\.workingOrderOverlayLevels[\s\S]{0,120}?\]\.map\(\(level\) => \{/,
+    "it must go through the SAME overlay pipeline as a position, so it gets the handles",
+  );
+  assert.ok(chart.includes("resting: true"), "and be tagged so the renderer can tell the two apart");
   assert.ok(chart.includes("· working"), "and be labelled as resting, not filled");
   // Routing: the id decides whether the edit lands on an order or a position.
   assert.ok(workspace.includes("updatePaperOrderProtection(current, accountId, positionId, update)"),
