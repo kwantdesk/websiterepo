@@ -1,6 +1,8 @@
 import "server-only";
 import { unstable_cache } from "next/cache";
 
+import { providerErrorMessage, logProviderError } from "@/lib/providerErrorMessage";
+
 import {
   OPTIONS_FLOW_TICKERS,
   canonicalOptionsSourceForRoot,
@@ -167,6 +169,19 @@ export class QuantDataError extends Error {
     message: string,
     readonly status: number,
     readonly remaining: number | null,
+    /**
+     * True when `message` is the PROVIDER's own words rather than ours.
+     *
+     * The two must not be treated alike on the way to a browser. The vendor's
+     * text carries its account state - "you have exceeded your usage limits",
+     * billing cases, entitlement names - and putting that on a trading surface
+     * tells the trader nothing they can act on while carrying the desk's
+     * account status out of the room in any screenshot or screen-share.
+     *
+     * Ours are written for the trader and say something useful, so they are
+     * passed through unchanged.
+     */
+    readonly fromProvider = false,
   ) {
     super(message);
   }
@@ -277,7 +292,12 @@ async function quantDataNetworkPost(path: string, body: JsonRecord, priority = f
           continue;
         }
         const detail = isRecord(payload) ? textValue(payload.detail) || textValue(payload.title) : "";
-        throw new QuantDataError(detail || `KwantData request failed (${response.status}).`, response.status, remaining);
+        throw new QuantDataError(
+          detail || `KwantData request failed (${response.status}).`,
+          response.status,
+          remaining,
+          true,
+        );
       }
 
       return { payload, remaining };
@@ -5334,9 +5354,28 @@ export function getLastGoodGexFlowPayload(symbol: string, mode: GexFlowMode, ses
     .sort((left, right) => Date.parse(right[1].asOf) - Date.parse(left[1].asOf))[0]?.[1] ?? null;
 }
 
-export function getQuantDataHttpError(error: unknown) {
+/**
+ * What a route is allowed to send to the browser when the provider refuses.
+ *
+ * Every options route funnels its catch through here, and it was returning the
+ * provider's own `detail` verbatim - which is how a rate-limit reply put the
+ * vendor's usage-limit wording onto the 0DTE gamma surface. The full text still
+ * reaches the server log, which is where it is useful.
+ *
+ * Our own QuantDataErrors are passed through: they are written for the trader
+ * and say something actionable, like which session holds no classified flow.
+ */
+export function getQuantDataHttpError(error: unknown, subject = "Options data") {
   if (error instanceof QuantDataError) {
-    return { status: error.status, message: error.message, remaining: error.remaining };
+    if (!error.fromProvider) {
+      return { status: error.status, message: error.message, remaining: error.remaining };
+    }
+    logProviderError(`quantdata:${error.status}`, error);
+    return {
+      status: error.status,
+      message: providerErrorMessage(error, subject),
+      remaining: error.remaining,
+    };
   }
-  return { status: 500, message: "Options Flow could not be loaded.", remaining: null };
+  return { status: 500, message: `${subject} could not be loaded.`, remaining: null };
 }
