@@ -693,30 +693,28 @@ export function priorTradingDates(sessionDate: string, count: number): string[] 
  * gamma x open interest - the textbook dealer proxy - was measured at r=-0.04
  * against the reference and is deliberately NOT a third term.
  */
-export const DEALER_FLOW_SHARE = 0.7;
+export const DEALER_FLOW_SHARE = 0.8;
 /*
- * 0.7, not the 0.8 that shipped first, and not the 0.4 one live pair asked for.
+ * Briefly moved to 0.7 on a live Trinity pair, and moved back. The pair was
+ * not matched.
  *
- * The replay lattice and a live side-by-side disagree about where the peak sits,
- * so the weight is set where they OVERLAP rather than where either one alone is
- * happiest:
+ * Our half of it came from a stale cached payload stamped three hours earlier
+ * than theirs, and it carried spot 7739.22 against the true post-close 7730.11
+ * - which happened to sit almost exactly on Trinity's 7738.9. Scoring that pair
+ * produced a correlation peak at 0.4, and the peak was spot alignment, not the
+ * model. Re-scored with both halves stamped at the same close, correlation
+ * rises monotonically with the flow share instead:
  *
- *              replay (4 frames, 08-21)      live pair (08-28, 75 strikes)
- *   0.4        r 0.656,  0/4 stars           r 0.882,  star matches
- *   0.6        r 0.684,  0/4 stars           r 0.707,  star matches
- *   0.7        r 0.684,  2/4 stars           r 0.539,  star matches
- *   0.8        r 0.672,  2/4 stars           r 0.394,  star matches
+ *   share   0.4     0.7     0.8     1.0
+ *   r      0.457   0.606   0.624   0.644
  *
- * Two things are consistent across both. The STAR wants more flow - it is the
- * flow book that puts the biggest node in the right place, and the structural
- * surface that drags it to the wrong strike. Correlation wants less. 0.8 was
- * above the leave-one-out pick on the only data that existed at the time, which
- * the comment above already says chose 0.6 or 0.7 every time; the live pair
- * agrees it is too high.
+ * with 0.8 holding 76 strikes where flow alone covers 59. That agrees with the
+ * replay lattice, which put its plateau at 0.6-0.8 and its star matches at 0.7
+ * and above, so 0.8 stands.
  *
- * The honest limit: 0.4 correlates far better on the live pair but loses every
- * star on the replay frames. Deciding between 0.4 and 0.7 needs live pairs from
- * more than one minute of one instrument, and one capture is not a sample.
+ * The lesson is the method, not the number: a pair is only evidence when both
+ * halves carry the same timestamp AND the same spot. Check `asOf` and the spot
+ * on both sides before scoring anything against a competitor's live surface.
  */
 
 /**
