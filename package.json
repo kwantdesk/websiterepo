@@ -161,6 +161,7 @@
     "test:footprint-palette": "node scripts/test-footprint-palette.mjs",
     "test:chart-watermark": "node scripts/test-chart-watermark.mjs",
     "research:gexmap-vs-trinity": "node scripts/compare-gexmap-vs-trinity-scope.mjs",
+    "test:gex-map-velocity": "node scripts/test-gex-map-velocity.mjs",
     "test:gex-map-v2": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-gex-map-v2.mjs",
     "research:gex-map-v2": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/score-gex-map-v2-gamma.mjs",
     "research:gex-map-v2-where-wrong": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/research-gex-map-v2-where-wrong.mjs",

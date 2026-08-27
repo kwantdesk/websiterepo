@@ -291,6 +291,24 @@ function formatSessionDate(value: string) {
   });
 }
 
+/**
+ * The surface as it stood at the session's FIRST recorded frame.
+ *
+ * The velocity pill measures growth against this rather than against the
+ * previous step. A one-minute step divides by whatever the node happened to
+ * hold sixty seconds ago, and a node that was near zero then reads 900% or
+ * 3,000% now - true arithmetic, useless to a trader, and it re-rolled the dice
+ * on every refresh. Against the open the same number answers a question worth
+ * asking: how much has this node built TODAY.
+ */
+function sessionOpenSurface(payload: GexMapPanelPayload, upTo: number | null) {
+  const opening = new Map<number, ExposureStrike>();
+  const first = payload.frames.find((frame) => upTo === null || frame.timestamp <= upTo);
+  if (!first) return opening;
+  for (const update of first.updates) opening.set(update.strike, update);
+  return opening;
+}
+
 function buildSnapshots(payload: GexMapPanelPayload, timestamp: number | null, stepMinutes: number) {
   if (timestamp === null) {
     // Older browser snapshots may have been saved during the provider's
@@ -314,7 +332,7 @@ function buildSnapshots(payload: GexMapPanelPayload, timestamp: number | null, s
       if (frame.timestamp > previousTarget) break;
       for (const update of frame.updates) previous.set(update.strike, update);
     }
-    return { current, previous };
+    return { current, previous, opening: sessionOpenSurface(payload, null) };
   }
 
   const previousTarget = timestamp - stepMinutes * 60_000;
@@ -327,7 +345,7 @@ function buildSnapshots(payload: GexMapPanelPayload, timestamp: number | null, s
       if (frame.timestamp <= previousTarget) previous.set(update.strike, update);
     }
   }
-  return { current, previous };
+  return { current, previous, opening: sessionOpenSurface(payload, timestamp) };
 }
 
 function priceAt(payload: GexMapPanelPayload, timestamp: number | null) {
@@ -729,8 +747,8 @@ function ExposurePanel({
     ) return;
     onReplayCoverageGap();
   }, [firstFrameTimestamp, onReplayCoverageGap, selectedTimestamp]);
-  const { current, previous } = useMemo(
-    () => payload ? buildSnapshots(payload, effectiveTimestamp, stepMinutes) : { current: new Map(), previous: new Map() },
+  const { current, previous, opening } = useMemo(
+    () => payload ? buildSnapshots(payload, effectiveTimestamp, stepMinutes) : { current: new Map(), previous: new Map(), opening: new Map() },
     [payload, effectiveTimestamp, stepMinutes],
   );
   const spot = payload ? priceAt(payload, effectiveTimestamp) : null;
@@ -790,25 +808,31 @@ function ExposurePanel({
   const starContrastFor = useCallback((net: number) => (
     heatStrength(net) >= 0.5 ? signedScale[0] : signedScale[signedScale.length - 1]
   ), [heatStrength, signedScale]);
-  // The growth ticker stays readable by marking only the movers that matter:
-  // the eight fastest-growing and eight fastest-shrinking nodes by percentage
-  // change of exposure magnitude over the selected step window. Nodes whose
-  // PRIOR exposure was a rounding error against the Star node are skipped —
-  // dividing by a near-zero base is what manufactured 999% readings.
+  /*
+   * A node needs a real opening position before a percentage means anything.
+   *
+   * Half a percent of the Star. Below that a node opened at a rounding error,
+   * and dividing by a rounding error is what manufactured the 999% and 3,000%
+   * readings - a node worth nothing posting the biggest number on the ladder.
+   */
+  const velocityBaselineFloor = starMagnitude * 0.005;
+  // The ticker stays readable by marking only the movers that matter: the
+  // eight that have built most since the open and the eight that have given up
+  // most. Measured against the SESSION OPEN, the same baseline the pill shows,
+  // so the nodes picked as movers are the nodes whose number is displayed.
   const growthTickStrikes = useMemo(() => {
-    const priorFloor = starMagnitude * 0.005;
     const entries: Array<{ strike: number; pct: number }> = [];
     for (const row of rows) {
-      const prior = previous.get(row.strike);
-      if (!prior || Math.abs(prior.net) < priorFloor) continue;
-      const pct = ((Math.abs(row.net) - Math.abs(prior.net)) / Math.abs(prior.net)) * 100;
+      const openedAt = opening.get(row.strike);
+      if (!openedAt || Math.abs(openedAt.net) < velocityBaselineFloor) continue;
+      const pct = ((Math.abs(row.net) - Math.abs(openedAt.net)) / Math.abs(openedAt.net)) * 100;
       if (!Number.isFinite(pct) || pct === 0) continue;
       entries.push({ strike: row.strike, pct });
     }
     const growing = entries.filter((entry) => entry.pct > 0).sort((a, b) => b.pct - a.pct).slice(0, 8);
     const shrinking = entries.filter((entry) => entry.pct < 0).sort((a, b) => a.pct - b.pct).slice(0, 8);
     return new Set([...growing, ...shrinking].map((entry) => entry.strike));
-  }, [previous, rows, starMagnitude]);
+  }, [opening, rows, velocityBaselineFloor]);
   const greek = GEX_MAP_GREEKS.find((item) => item.mode === config.greekMode) ?? GEX_MAP_GREEKS[0];
   const viewIdentity = `${config.symbol}:${config.greekMode}:${payload?.expiration ?? "pending"}:${payload?.sessionDate ?? "pending"}`;
   const centeringIdentity = `${viewIdentity}:${selectedTimestamp ?? "live"}:${spotStrike ?? "pending"}`;
@@ -1087,12 +1111,27 @@ function ExposurePanel({
               const changeRatio = prior && Math.abs(prior.net) > 0
                 ? (row.net - prior.net) / Math.abs(prior.net)
                 : null;
-              // Live growth ticker beside the strike: percentage change of the
-              // node's exposure magnitude since the previous frame. Green ▲ =
-              // the node is growing, red ▼ = shrinking; re-ticks on every data
-              // refresh. Fixed semantic colours by design, on any theme.
-              const growthPct = prior && Math.abs(prior.net) > 0
-                ? ((Math.abs(row.net) - Math.abs(prior.net)) / Math.abs(prior.net)) * 100
+              /*
+               * Velocity beside the strike: how much this node has built SINCE
+               * THE SESSION OPENED. Green ▲ growing, red ▼ shrinking.
+               *
+               * It used to measure against the previous step, which divides by
+               * whatever the node happened to hold a minute ago - so a node
+               * that was near zero then read 900% or 3,000% now. Arithmetically
+               * true, useless to read, and it re-rolled on every refresh.
+               * Against the open it answers the question a trader is actually
+               * asking, and it only moves when the node does.
+               *
+               * The floor is what stops the same absurdity returning through
+               * the back door: a node that opened at a rounding error can post
+               * an enormous percentage while being worth nothing at all, so
+               * anything opening below half a percent of the session's largest
+               * node has no meaningful baseline and shows no pill.
+               */
+              const openedAt = opening.get(row.strike);
+              const openingMagnitude = openedAt ? Math.abs(openedAt.net) : 0;
+              const growthPct = openingMagnitude >= velocityBaselineFloor
+                ? ((Math.abs(row.net) - openingMagnitude) / openingMagnitude) * 100
                 : null;
               const growthTick = growthPct === null || !Number.isFinite(growthPct) || !growthTickStrikes.has(row.strike)
                 ? null
@@ -1108,7 +1147,7 @@ function ExposurePanel({
                       textShadow: "none",
                       boxShadow: "0 1px 3px rgba(0,0,0,0.45)",
                     }}
-                    title={`Exposure magnitude ${growthPct >= 0 ? "grew" : "shrank"} ${Math.abs(growthPct).toFixed(1)}% over the last ${stepMinutes}m step`}
+                    title={`Exposure magnitude ${growthPct >= 0 ? "grew" : "shrank"} ${Math.abs(growthPct).toFixed(1)}% since the session opened`}
                   >
                     {growthPct > 0 ? "▲" : growthPct < 0 ? "▼" : "•"}
                     {Math.abs(growthPct) > 500 ? ">500" : Math.abs(growthPct).toFixed(1)}%
