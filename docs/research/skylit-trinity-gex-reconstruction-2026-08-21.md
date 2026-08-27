@@ -746,3 +746,82 @@ a v2 label.
 Sign agreement is 56% against Trinity's own 96% frame-to-frame. The times do not
 match, which accounts for some of it, but not all. Next measurement should be
 like-for-like: the same minute on both products.
+
+## Addendum — 2026-08-27 — a matched pair, and where v2 actually stands
+
+The first comparison in this whole file taken at the SAME instant on both
+products. Market closed, both showing the 2026-08-26 close, both reporting spot
+7675.70. SPX FRONT/0DTE DEALER against Trinity SPXW, 26 overlapping strikes:
+
+| | v2 | v1 |
+|---|---:|---:|
+| sign agreement | 54% | 55% |
+| correlation | 0.349 | 0.141 |
+| gross magnitude | 6.5x | 142x |
+| star node | 7670 | — |
+| Trinity King | 7635 | — |
+
+Magnitude is now the right order. Sign agreement is not better than v1 and the
+star lands on the wrong strike.
+
+### The diagnostic that matters is concentration
+
+Our largest node is **51% of our gross**. Theirs is **16%**. And our biggest sits
+at 7670, five points from spot, while their top three (7635, 7630, 7650) are all
+well below it. We are plotting near-the-money churn; they are not.
+
+That single fact explains the star mismatch and most of the sign disagreement,
+and it is not a scaling issue.
+
+### Every lever traded one metric against another
+
+Half-life, against the 2026-08-21 lattices (target concentration 14%):
+
+| Half-life | r | sign | concentration |
+|---|---:|---:|---:|
+| 3h (shipped) | 0.602 | 59% | 39% |
+| 12h | 0.425 | 55% | 27% |
+| 1d | 0.231 | 57% | **21%** |
+| 1w | 0.270 | 58% | 36% |
+| carry | 0.323 | 60% | 37% |
+
+The setting closest on concentration is the worst on correlation.
+
+Node weighting:
+
+| Weighting | SPXW r | sign | concentration |
+|---|---:|---:|---:|
+| gamma | 0.602 | 59% | 39% |
+| sqrt(gamma) | 0.574 | 59% | **18%** |
+| flat contracts | 0.231 | 61% | 10% |
+
+`sqrt(gamma)` nearly matches their concentration while keeping the correlation.
+**It was not shipped.** Square-rooting gamma has no physical meaning; dollar
+gamma exposure is gamma times contracts times multiplier, and a fudge that fits
+one session is how a model becomes unexplainable. It is recorded because of what
+it implies, not as a candidate.
+
+### What it implies
+
+On 0DTE, dollar gamma is enormously peaked at the money. A book whose largest
+node sits 40 points out of the money at 16% concentration is therefore **not
+dominated by 0DTE dollar gamma**. Since the gamma is not in question - put-call
+parity now holds after the expiry-scope fix - the quantities must be.
+
+Ours are wrong in shape: a three-hour half-life over a bounded recent tape sees
+mostly at-the-money churn, because that is what trades. Real dealer inventory is
+built at structural strikes over days and persists. Lengthening the half-life
+spreads the book but destroys the correlation, which says the persistence cannot
+be recovered by decay alone - it needs the open/close distinction that decides
+WHICH flow persists.
+
+### Honest status
+
+Not close. Magnitude is fixed, the model class is right, and the sign is not
+better than the model it replaces. Every remaining lever reachable in this data
+trades one metric against another, which is the signature of a missing feature
+rather than a mistuned one.
+
+The missing feature is the same one named twice already: per-print aggressor
+strength, sweep-versus-split and multi-leg, which this capture collapses to
+BUY / SELL / MID. Further sweeping here is fitting noise.
