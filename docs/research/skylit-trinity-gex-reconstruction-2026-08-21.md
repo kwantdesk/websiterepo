@@ -825,3 +825,62 @@ rather than a mistuned one.
 The missing feature is the same one named twice already: per-print aggressor
 strength, sweep-versus-split and multi-leg, which this capture collapses to
 BUY / SELL / MID. Further sweeping here is fitting noise.
+
+## Addendum — 2026-08-27 — the aggressor hypothesis, tested and falsified
+
+Three times in this file the remaining gap is attributed to per-print aggressor
+detail that the 2026-08-21 capture destroyed by collapsing `tradeSideCode` to
+BUY / SELL / MID. That claim has now been tested directly and it is **wrong**.
+
+`/api/research/opra-tape?aggregate=net` was used to pull the complete
+2026-08-26 SPX session tape with the full five-level `tradeSideCode`, plus
+consolidation type: 4,826 prints, all classified, not truncated. It returns one
+signed contract total per strike per candidate rule, which is small enough to
+score.
+
+Scored against Trinity SPXW at the same instant (spot 7675.70, 26 strikes):
+
+| Rule | Sign agreement | Star strike |
+|---|---:|---|
+| every quote-crossing print | 13/26 = **50%** | 7670 |
+| only prints THROUGH the quote | 13/24 = **54%** | 7670 |
+| only prints AT the quote | 14/26 = **54%** | 7620 |
+| blocks only | 8/23 = 35% | 7665 |
+| any of the above, inverted | 46-50% | — |
+
+Trinity's King that frame was **7635**. No rule found it, and no rule beat a coin
+flip on sign.
+
+### What this rules out
+
+Trinity's per-strike sign **cannot be derived from OPRA aggressor-classified
+flow**. Not from collapsed sides, not from five levels, not from sweeps or
+blocks, not inverted, and not by any magnitude weighting - flow, OI-mass,
+imbalance-share, flat and notional all land at 55-61% because they share the
+same flow, and sign is a property of the flow alone.
+
+v1's structural model scores 55% on the same comparison. Both of our models are
+uncorrelated with their sign, which means the signal is in neither the chain nor
+the tape.
+
+### What remains possible
+
+A dealer/customer identification we do not receive, or a seeded baseline that
+dominates the observable flow, or a construction that is not flow-derived at
+all. All three are outside OPRA, so none can be settled from this side.
+
+### What this changes
+
+Stop trying to reproduce their sign. It is not reachable from the inputs we
+have, and every further sweep is fitting noise - the last six sweeps in this
+file each traded one metric against another, which is the signature of a model
+searching for signal that is not in its inputs.
+
+The defensible goals that ARE reachable:
+
+- v2 as an honest dealer-flow model of our own, which it now is: magnitude
+  within the right order, put-call parity holding, state carried and revalued.
+- **Star agreement specifically**, which depends on magnitude concentration
+  rather than sign, and is the thing most often read off the panel.
+
+The second is worth attacking on its own terms and has not been tried yet.
