@@ -74,6 +74,52 @@ export async function GET(request: NextRequest) {
      * exactly the distinction the earlier capture destroyed by collapsing side
      * to BUY / SELL / MID.
      */
+    /*
+     * aggregate=net returns ONE signed contract total per strike for each
+     * candidate aggressor rule, for a single expiration.
+     *
+     * Sign agreement against the reference has sat at 55-61% under every
+     * magnitude model tried, which means the error is in the SIGN of the
+     * accumulated flow, not in how it is valued. The sign comes entirely from
+     * which prints are counted as customer buying. These are the rules worth
+     * separating, and each needs one number per strike to be scored - not
+     * thousands of prints.
+     */
+    if (request.nextUrl.searchParams.get("aggregate") === "net") {
+      const wanted = (request.nextUrl.searchParams.get("expiration") || sessionDate).trim();
+      // dealerSign: a customer lifting the offer leaves the dealer short.
+      const RULES: Record<string, (side: string, consolidation: string) => number> = {
+        all: (side) => (side === "ASK" || side === "ABOVE_ASK" ? -1 : side === "BID" || side === "BELOW_BID" ? 1 : 0),
+        aggressive: (side) => (side === "ABOVE_ASK" ? -1 : side === "BELOW_BID" ? 1 : 0),
+        atQuote: (side) => (side === "ASK" ? -1 : side === "BID" ? 1 : 0),
+        sweep: (side, consolidation) => (consolidation !== "SWEEP" ? 0
+          : side === "ASK" || side === "ABOVE_ASK" ? -1 : side === "BID" || side === "BELOW_BID" ? 1 : 0),
+        block: (side, consolidation) => (consolidation !== "BLOCK" ? 0
+          : side === "ASK" || side === "ABOVE_ASK" ? -1 : side === "BID" || side === "BELOW_BID" ? 1 : 0),
+      };
+      const net: Record<number, Record<string, number>> = {};
+      for (const raw of tape.prints) {
+        if (!raw || typeof raw !== "object") continue;
+        const print = raw as Record<string, unknown>;
+        const expiration = typeof print.expirationDate === "string" ? print.expirationDate.slice(0, 10) : "";
+        if (expiration !== wanted) continue;
+        const strike = Number(print.strikePrice);
+        const size = Number(print.size);
+        if (!Number.isFinite(strike) || !Number.isFinite(size) || size <= 0) continue;
+        const side = String(print.tradeSideCode ?? "").toUpperCase();
+        const consolidation = String(print.tradeConsolidationType ?? "").toUpperCase();
+        const row = net[strike] ?? (net[strike] = {});
+        for (const [name, rule] of Object.entries(RULES)) {
+          row[name] = (row[name] ?? 0) + size * rule(side, consolidation);
+        }
+      }
+      return NextResponse.json({
+        symbol: tape.symbol, sessionDate: tape.sessionDate, expiration: wanted,
+        prints: tape.prints.length, truncated: tape.truncated,
+        rules: Object.keys(RULES), net,
+      }, { headers: { "Cache-Control": "private, no-store, max-age=0" } });
+    }
+
     if (request.nextUrl.searchParams.get("aggregate") === "1") {
       const buckets = new Map<string, number>();
       let classified = 0;
