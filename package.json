@@ -155,7 +155,9 @@
     "test:volume-profile-session-toggle": "node scripts/test-volume-profile-session-toggle.mjs",
     "test:position-tool-colours": "node scripts/test-position-tool-colours.mjs",
     "test:chart-watermark": "node scripts/test-chart-watermark.mjs",
-    "research:gexmap-vs-trinity": "node scripts/compare-gexmap-vs-trinity-scope.mjs"
+    "research:gexmap-vs-trinity": "node scripts/compare-gexmap-vs-trinity-scope.mjs",
+    "test:gex-map-v2": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-gex-map-v2.mjs",
+    "research:gex-map-v2": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/validate-gex-map-v2.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",
