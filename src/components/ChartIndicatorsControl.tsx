@@ -4181,6 +4181,95 @@ export default function ChartIndicatorsControl({
               ) : null}
 
               {settingsDefinition.id === "deep-print-footprint" ? (
+                /*
+                  * The footprint's own palette.
+                  *
+                  * Every one of these keys was already resolved in Chart.tsx and
+                  * honoured by the renderer - what was missing was any way to set
+                  * them. The Profile block below even disables its pickers until
+                  * "Use theme colours" is off, and that control did not exist
+                  * anywhere in this dialog, so those pickers could never be
+                  * reached at all.
+                  *
+                  * Declared as its own block with the same section name as the
+                  * generated dropdown group, so the two render together under one
+                  * Colours tab rather than splitting into two.
+                  */
+                <div data-settings-section="Colours" className="space-y-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3">
+                  <div>
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-foreground">Palette</div>
+                    <p className="mt-1 text-[9px] leading-4 text-muted">
+                      Saved with the chart, so a workspace keeps the palette it was built with.
+                    </p>
+                  </div>
+                  <label className="flex min-h-9 items-center gap-2 rounded-lg border border-border bg-background/55 px-3 text-[9px] uppercase tracking-[0.12em] text-muted">
+                    <input
+                      type="checkbox"
+                      className="accent-primary"
+                      checked={settingsInstance.settings?.useThemeColors !== false}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                        ...current,
+                        settings: { ...(current.settings ?? {}), useThemeColors: event.target.checked },
+                      }))}
+                    />
+                    <span>Use theme colours</span>
+                  </label>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {[
+                      ["Ask / buy", "askColor", chartSettings.upColor],
+                      ["Bid / sell", "bidColor", chartSettings.downColor],
+                      ["Neutral", "neutralColor", chartSettings.gridColor],
+                      ["POC", "pocColor", chartSettings.borderUpColor],
+                      ["Delta POC", "deltaPocColor", chartSettings.borderDownColor],
+                      ["Stacked ask", "stackedAskColor", chartSettings.upColor],
+                      ["Stacked bid", "stackedBidColor", chartSettings.downColor],
+                    ].map(([label, key, fallback]) => (
+                      <div key={String(key)} className="flex min-h-9 items-center justify-between gap-2 rounded-lg border border-border bg-surface/30 px-3 text-[9px] text-muted">
+                        <span className="truncate">{String(label)}</span>
+                        <ChartColorField
+                          ariaLabel={`${String(label)} colour`}
+                          value={String(settingsInstance.settings?.[String(key)] ?? fallback)}
+                          onChange={(hex) => replace(settingsInstance.instanceId, (current) => ({
+                            ...current,
+                            settings: { ...(current.settings ?? {}), [String(key)]: hex },
+                          }))}
+                          disabled={settingsInstance.settings?.useThemeColors !== false}
+                          title={settingsInstance.settings?.useThemeColors !== false ? "Turn off Use theme colours to set a custom colour" : undefined}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {/* The theme has no equivalent for these, so they are always
+                        the trader's own choice rather than something the toggle
+                        can take back. */}
+                    {[
+                      ["Between bid and ask", "betweenColor", "#7C8796"],
+                      ["Cell text", "textColor", "#E9EDF2"],
+                      ["Value area", "valueAreaColor", "#647BA8"],
+                      ["Cluster", "clusterColor", "#F59E0B"],
+                      ["Single print", "singlePrintColor", "#F4F4F5"],
+                      ["Unfinished auction", "unfinishedAuctionColor", "#E4BF5A"],
+                      ["VWAP", "vwapColor", "#22D3EE"],
+                    ].map(([label, key, fallback]) => (
+                      <div key={String(key)} className="flex min-h-9 items-center justify-between gap-2 rounded-lg border border-border bg-surface/30 px-3 text-[9px] text-muted">
+                        <span className="truncate">{String(label)}</span>
+                        <ChartColorField
+                          ariaLabel={`${String(label)} colour`}
+                          value={String(settingsInstance.settings?.[String(key)] ?? fallback)}
+                          onChange={(hex) => replace(settingsInstance.instanceId, (current) => ({
+                            ...current,
+                            settings: { ...(current.settings ?? {}), [String(key)]: hex },
+                          }))}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+
+              {settingsDefinition.id === "deep-print-footprint" ? (
                 <div data-settings-section="Bar" className="rounded-lg border border-border bg-background/55 px-3 py-2">
                   <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-foreground">Footprint Bar</div>
                   <p className="mt-1 text-[9px] leading-4 text-muted">
