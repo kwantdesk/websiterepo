@@ -512,3 +512,74 @@ quantities. The gap closes only by building the carried dealer-inventory state
 engine specified in "KwantDesk model to own" above — for which the measured
 ceiling remains R-squared 0.979 and 96% row-sign accuracy on an untouched frame,
 with the residual being Skylit's unobservable trade-attribution layer.
+
+## Addendum — 2026-08-27 — v2 engine built and calibrated
+
+`src/lib/gexMapV2.ts`, with `test:gex-map-v2` (16 checks),
+`research:gex-map-v2` and `scripts/calibrate-gex-map-v2.mjs`. v1 is untouched
+and tagged `gex-map-v1` at `6ea90a4a`.
+
+### The classifier inputs were available all along
+
+The main report states that OPRA publishes no dealer flag and no reliable
+open/close flag, so the classifier would need an unobservable inference layer.
+That understated what the provider actually delivers. Each consolidated print
+carries `tradeSideCode` (ASK / ABOVE_ASK / BID / BELOW_BID / MID_MARKET),
+`tradeConsolidationType` (SWEEP / BLOCK / SPLIT) with `comprisingTrades` for
+de-duplication, `greeks.gamma` per contract, plus `openInterest`, `size`,
+`stockPrice`, `strikePrice` and `contractType`.
+
+The dealer sign is therefore read, not guessed: a customer lifting the offer
+leaves the dealer short that option and short gamma. Only `MID_MARKET` is
+genuinely unresolvable, and it is dropped rather than assigned a direction.
+
+`isOpeningPosition` is the one label that is NOT usable — true on 2 records out
+of 417 in the sampled session. Gating on it would discard the tape.
+
+### Accumulation policy, scored on every captured frame
+
+Because there is no usable open/close flag, the engine needs a policy for how
+long absorbed flow keeps counting. Each policy was scored against all four
+captured Trinity frames rather than one, since a policy that wins on a single
+minute is fitted to noise.
+
+Mean cross-strike correlation (worst frame in brackets):
+
+| Policy | SPXW | SPY | QQQ |
+|---|---:|---:|---:|
+| carry (nothing closes) | -0.302 | 0.120 (-0.187) | 0.001 |
+| decay 24h | 0.180 | -0.057 | 0.076 |
+| decay 6h | 0.564 | -0.342 | 0.043 |
+| **decay 3h** | **0.603 (0.528)** | -0.330 | 0.038 |
+| session only | 0.635 (0.458) | -0.450 | 0.165 |
+| **v1 baseline** | **0.141** | **0.006** | **0.244** |
+
+`carry` is actively wrong on the index, which settles the open/close question:
+treating every classified print as a position still held is worse than useless.
+
+Session-only edges the mean but is materially worse on the worst frame, is a
+cliff rather than a rate, and means nothing for a non-0DTE expiry. **A 3-hour
+half-life is the shipped default**; `decayDealerInventory` applies it to the
+whole book once per step, which a test proves is identical to decaying each
+trade individually.
+
+### Result, stated plainly
+
+- **Cash index: v2 beats v1 by 4.3x** (0.603 against 0.141), holding its sign on
+  every frame.
+- **ETFs: v2 is WORSE than v1** (SPY -0.330 against 0.006; QQQ 0.038 against
+  0.244).
+
+A plain aggressor rule works where 0DTE flow is overwhelmingly opening and
+directional, and fails where much of the tape is hedging, covered-call and
+spread activity that an aggressor flag alone reads backwards.
+
+`v2Readiness()` therefore reports `validated` only for cash indices and
+`experimental` for everything else. v2 must not present itself as authoritative
+on a symbol where it measured worse than the thing it replaces.
+
+### Next
+
+Calibrate `dealerCounterpartyProbability` and an open/close weight against
+observed OI change — the one real ground-truth label available — and re-score.
+That is what should move the ETFs.

@@ -14,6 +14,9 @@ import {
   representationScale,
   DEALER_INVENTORY_OI_BOUND,
   DEALER_INVENTORY_WARMUP_CONTRACTS,
+  decayDealerInventory,
+  DEALER_FLOW_HALF_LIFE_MS,
+  v2Readiness,
 } from "../src/lib/gexMapV2.ts";
 
 /**
@@ -239,6 +242,55 @@ check("the same book reprices when the market moves", () => {
   assert.ok(Math.abs(after.nodes[0].net) > Math.abs(before.nodes[0].net));
   // Same position, same sign - only the valuation moved.
   assert.equal(Math.sign(after.nodes[0].net), Math.sign(before.nodes[0].net));
+});
+
+check("decaying the book per step equals decaying every trade", () => {
+  // The engine decays the whole accumulated position once per step, which is
+  // O(1) instead of O(trades). That is only legitimate because exponential
+  // decay composes - this proves it rather than asserting it.
+  const key = contractKey("2026-08-21", 765, "call");
+  const half = DEALER_FLOW_HALF_LIFE_MS;
+  const openInterest = () => 1e9;
+
+  let stepwise = emptyDealerInventory("2026-08-21", 0);
+  stepwise = advanceDealerInventory(stepwise, [trade({ contracts: 100, dealerSign: 1 })], openInterest);
+  stepwise = decayDealerInventory(stepwise, half, half);
+  stepwise = advanceDealerInventory(stepwise, [trade({ contracts: 100, dealerSign: 1 })], openInterest);
+  stepwise = decayDealerInventory(stepwise, half * 2, half);
+
+  // The first trade is two half-lives old by the end, the second is one.
+  const perTrade = 100 * 2 ** -2 + 100 * 2 ** -1;
+  assert.ok(
+    Math.abs(stepwise.contracts[key] - perTrade) < 1e-9,
+    `stepwise ${stepwise.contracts[key]} vs per-trade ${perTrade}`,
+  );
+});
+
+check("decay drops fragments and never runs backwards", () => {
+  const key = contractKey("2026-08-21", 765, "call");
+  const state = {
+    sessionDate: "2026-08-21", asOfMs: 1_000, carried: true, absorbedContracts: 1e6,
+    contracts: { [key]: 4 },
+  };
+  // Long enough and the position is a rounding artefact, not a book.
+  assert.deepEqual(decayDealerInventory(state, 1_000 + DEALER_FLOW_HALF_LIFE_MS * 4).contracts, {});
+  // A clock that goes backwards, or a repeated frame, must not amplify it.
+  assert.equal(decayDealerInventory(state, 0).contracts[key], 4);
+  assert.equal(decayDealerInventory(state, 1_000).contracts[key], 4);
+  // Decay shrinks magnitude and never flips a sign.
+  const aged = decayDealerInventory({ ...state, contracts: { [key]: -1_000 } }, 1_000 + DEALER_FLOW_HALF_LIFE_MS);
+  assert.ok(aged.contracts[key] < 0 && aged.contracts[key] > -1_000);
+});
+
+check("v2 declares where it is validated and where it is not", () => {
+  // Measured mean correlation vs v1: cash index 0.603 vs 0.141, SPY -0.330 vs
+  // 0.006, QQQ 0.038 vs 0.244. Shipping a number because it is newer, when it
+  // measured worse than what it replaces, is the failure this prevents.
+  assert.equal(v2Readiness("SPX"), "validated");
+  assert.equal(v2Readiness("spxw"), "validated");
+  assert.equal(v2Readiness("SPY"), "experimental");
+  assert.equal(v2Readiness("QQQ"), "experimental");
+  assert.equal(v2Readiness("AAPL"), "experimental");
 });
 
 console.log(`\ngex map v2: ${passed}/${passed} checks passed`);

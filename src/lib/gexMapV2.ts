@@ -468,3 +468,93 @@ export function classifyConsolidatedTape(
     .map(classifyConsolidatedTrade)
     .filter((trade): trade is ClassifiedTrade => trade !== null);
 }
+
+/**
+ * How fast absorbed flow stops counting.
+ *
+ * A classified print tells you a dealer took the other side. It does not tell
+ * you whether that position is still open an hour later, and there is no
+ * reliable per-print open/close flag to ask - the provider's isOpeningPosition
+ * was true on 2 records out of 417 in the sampled session.
+ *
+ * So the engine assumes positions close at some rate rather than pretending to
+ * know which ones did. Measured across every captured Trinity frame, on the
+ * cash index:
+ *
+ *   carry (nothing ever closes)   mean r -0.302   - actively wrong
+ *   decay 24h                     mean r  0.180
+ *   decay 3h                      mean r  0.603, worst frame 0.528
+ *   session only                  mean r  0.635, worst frame 0.458
+ *
+ * Session-only scores marginally higher on the mean and materially worse on the
+ * worst frame, and it is a cliff: it cannot express a position held over a
+ * weekend, and it means nothing at all for a non-0DTE expiry. The three-hour
+ * half-life is the more robust and more general of the two, so it is the
+ * default. `carry` is retained only as the null hypothesis.
+ */
+export const DEALER_FLOW_HALF_LIFE_MS = 3 * 60 * 60 * 1_000;
+
+/**
+ * Age the carried book forward to `nowMs`.
+ *
+ * Applied to the whole state per step rather than per trade: exponential decay
+ * composes, so decaying the accumulated position by the elapsed interval is
+ * identical to having decayed each trade individually, at O(1) instead of
+ * O(trades).
+ *
+ * Positions that decay below a contract are dropped. Keeping a book of
+ * thousands of near-zero fragments would cost memory and add nothing a trader
+ * can see.
+ */
+export function decayDealerInventory(
+  state: DealerInventoryState,
+  nowMs: number,
+  halfLifeMs: number = DEALER_FLOW_HALF_LIFE_MS,
+): DealerInventoryState {
+  const elapsed = nowMs - state.asOfMs;
+  if (!Number.isFinite(elapsed) || elapsed <= 0 || !(halfLifeMs > 0)) return state;
+  const factor = 2 ** (-elapsed / halfLifeMs);
+  const contracts: Record<ContractKey, number> = {};
+  for (const [key, quantity] of Object.entries(state.contracts)) {
+    const decayed = quantity * factor;
+    if (Math.abs(decayed) < 1) continue;
+    contracts[key] = decayed;
+  }
+  return { ...state, contracts, asOfMs: nowMs };
+}
+
+/**
+ * Where v2 is measured to be better than v1, and where it is not.
+ *
+ * Across every captured Trinity frame at matched 0DTE scope, mean cross-strike
+ * correlation, v2 (3h decay) against v1:
+ *
+ *   cash index (SPX/SPXW)   0.603  vs  0.141   - v2 is decisively better
+ *   ETF (SPY)              -0.330  vs  0.006   - v2 is worse
+ *   ETF (QQQ)               0.038  vs  0.244   - v2 is worse
+ *
+ * A plain aggressor rule works on the index, where 0DTE flow is overwhelmingly
+ * opening and directional, and fails on the ETFs, where far more of the tape is
+ * hedging, covered-call and spread activity that an aggressor flag alone reads
+ * backwards. Closing that gap needs the dealer-counterparty and open/close
+ * weights calibrated against observed OI change.
+ *
+ * Until then v2 must not present itself as authoritative on a symbol where it
+ * measured WORSE than the thing it replaces. Shipping a number because it is
+ * newer, when it is known to be less correct, is the failure this guard exists
+ * to prevent.
+ */
+const V2_VALIDATED_ROOTS = new Set(["SPX", "SPXW", "NDX", "RUT", "VIX"]);
+
+export type V2Readiness = "validated" | "experimental";
+
+/**
+ * Whether v2 has been measured to beat v1 for this underlying.
+ *
+ * Cash indices are validated. Everything else - ETFs and single names - is
+ * experimental until the flow weights are calibrated for it, and the panel must
+ * say so rather than presenting the number plainly.
+ */
+export function v2Readiness(symbol: string): V2Readiness {
+  return V2_VALIDATED_ROOTS.has(symbol.trim().toUpperCase()) ? "validated" : "experimental";
+}
