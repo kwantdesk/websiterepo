@@ -140,13 +140,15 @@ for (const frameIso of frames) {
 
   // Each contract at the gamma its OWN most recent print carried by this
   // minute. Prints are in time order, so the last write wins.
-  const gammaByContract = new Map();
+  const contracts = new Map();
   let spot = target.spot ?? 0;
   for (const print of upTo) {
     const right = print.contractType === "CALL" ? "call" : print.contractType === "PUT" ? "put" : null;
-    const gamma = print.greeks?.gamma;
-    if (!right || !Number.isFinite(gamma)) continue;
-    gammaByContract.set(contractKey(ZERO_DTE, print.strikePrice, right), Math.abs(gamma));
+    if (!right || !Number.isFinite(print.impliedVolatility) || !Number.isFinite(print.dte)) continue;
+    contracts.set(contractKey(ZERO_DTE, print.strikePrice, right), {
+      impliedVolatility: print.impliedVolatility,
+      expiryMs: print.tradeTime + print.dte * 24 * 60 * 60 * 1_000,
+    });
     if (Number.isFinite(print.stockPrice)) spot = print.stockPrice;
   }
 
@@ -164,8 +166,10 @@ for (const frameIso of frames) {
     state,
     strikes,
     expirations: [ZERO_DTE],
-    gammaByContract,
+    contracts,
     spot,
+    // Gamma is computed at THIS minute, not at the close.
+    asOfMs: cutoff,
     representation: REPRESENTATION,
   });
 

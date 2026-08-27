@@ -82,12 +82,15 @@ function buildFrame(frameIso) {
   const target = lattices[frameIso]?.SPXW;
   const cutoff = Date.parse(frameIso);
   const upTo = prints.filter((p) => p.tradeTime <= cutoff);
-  const gammaByContract = new Map();
+  const contracts = new Map();
   let spot = target.spot ?? 0;
   for (const p of upTo) {
     const right = p.contractType === "CALL" ? "call" : p.contractType === "PUT" ? "put" : null;
-    if (!right || !Number.isFinite(p.greeks?.gamma)) continue;
-    gammaByContract.set(contractKey(ZERO_DTE, p.strikePrice, right), Math.abs(p.greeks.gamma));
+    if (!right || !Number.isFinite(p.impliedVolatility) || !Number.isFinite(p.dte)) continue;
+    contracts.set(contractKey(ZERO_DTE, p.strikePrice, right), {
+      impliedVolatility: p.impliedVolatility,
+      expiryMs: p.tradeTime + p.dte * 24 * 60 * 60 * 1_000,
+    });
     if (Number.isFinite(p.stockPrice)) spot = p.stockPrice;
   }
   const state = accumulateDecayedTape(
@@ -99,7 +102,7 @@ function buildFrame(frameIso) {
   );
   const strikes = [...new Set(Object.keys(target.values).map(Number))].sort((a, b) => a - b);
   const frame = revalueDealerGex({
-    state, strikes, expirations: [ZERO_DTE], gammaByContract, spot, representation: REPRESENTATION,
+    state, strikes, expirations: [ZERO_DTE], contracts, spot, asOfMs: cutoff, representation: REPRESENTATION,
   });
   // The shipped composition, so this measures what the panel draws.
   const ours = new Map(blendDealerNodes(

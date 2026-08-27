@@ -30,6 +30,8 @@ import {
   revalueDealerGex,
   contractKey,
   contractDollarGamma,
+  blackScholesGamma,
+  yearsToExpiry,
   DEALER_FLOW_HALF_LIFE_MS,
   DEALER_BOOK_CARRY_SESSIONS,
   priorTradingDates,
@@ -117,12 +119,15 @@ for (const frameIso of frames) {
   const cutoff = Date.parse(frameIso);
   const upTo = prints.filter((p) => p.tradeTime <= cutoff);
 
-  const gammaByContract = new Map();
+  const contracts = new Map();
   let spot = target.spot ?? 0;
   for (const p of upTo) {
     const right = p.contractType === "CALL" ? "call" : p.contractType === "PUT" ? "put" : null;
-    if (!right || !Number.isFinite(p.greeks?.gamma)) continue;
-    gammaByContract.set(contractKey(ZERO_DTE, p.strikePrice, right), Math.abs(p.greeks.gamma));
+    if (!right || !Number.isFinite(p.impliedVolatility) || !Number.isFinite(p.dte)) continue;
+    contracts.set(contractKey(ZERO_DTE, p.strikePrice, right), {
+      impliedVolatility: p.impliedVolatility,
+      expiryMs: p.tradeTime + p.dte * 24 * 60 * 60 * 1_000,
+    });
     if (Number.isFinite(p.stockPrice)) spot = p.stockPrice;
   }
 
@@ -135,7 +140,7 @@ for (const frameIso of frames) {
   );
   const strikes = [...new Set(Object.keys(target.values).map(Number))].sort((a, b) => a - b);
   const frame = revalueDealerGex({
-    state, strikes, expirations: [ZERO_DTE], gammaByContract, spot, representation: REPRESENTATION,
+    state, strikes, expirations: [ZERO_DTE], contracts, spot, asOfMs: cutoff, representation: REPRESENTATION,
   });
 
   const flow = new Map(frame.nodes.map((n) => [n.strike, n.net]));
@@ -152,9 +157,11 @@ for (const frameIso of frames) {
   const gammaOi = new Map();
   const structuralValue = new Map();
   for (const strike of strikes) {
-    const call = gammaByContract.get(contractKey(ZERO_DTE, strike, "call"));
-    const put = gammaByContract.get(contractKey(ZERO_DTE, strike, "put"));
-    const gamma = call ?? put;
+    const surface = contracts.get(contractKey(ZERO_DTE, strike, "call"))
+      ?? contracts.get(contractKey(ZERO_DTE, strike, "put"));
+    const gamma = surface
+      ? blackScholesGamma(spot, strike, surface.impliedVolatility, yearsToExpiry(surface.expiryMs, cutoff))
+      : undefined;
     if (gamma !== undefined) {
       const perContract = contractDollarGamma(gamma, spot, REPRESENTATION);
       gammaOi.set(strike, perContract * (oiAt(strike, "call") - oiAt(strike, "put")));

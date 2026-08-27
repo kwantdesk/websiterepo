@@ -159,11 +159,17 @@ check("the book is valued from the contract's own gamma, never a quotient", () =
   // parseFlow must keep carrying the greek through, or the lookup is empty and
   // every strike silently drops out of the ladder.
   assert.match(quantData, /gamma: isRecord\(value\.greeks\) \? finiteNumber\(value\.greeks\.gamma\) : null/);
-  assert.match(server, /gammaByContract/);
+  assert.match(server, /contractSurfaces/);
   assert.match(server, /revalueDealerGex\(\{/);
   // Latest print per contract, not first: gamma moves with spot and time, and
   // the panel revalues the book as it stands NOW.
-  assert.match(server, /if \(\(gammaAsOf\.get\(key\) \?\? -1\) >= print\.tradeTime\) continue;/);
+  assert.match(server, /if \(\(surfaceAsOf\.get\(key\) \?\? -1\) >= print\.tradeTime\) continue;/);
+  // Gamma is DERIVED at valuation time from IV and the expiry, not remembered:
+  // the frozen gamma the panel used was a median four hours stale, and gamma on
+  // a 0DTE contract moves more than tenfold in that time.
+  assert.match(server, /expiryMs: print\.tradeTime \+ print\.dte \* 24 \* 60 \* 60 \* 1_000/);
+  assert.match(server, /contracts: contractSurfaces,/);
+  assert.match(server, /asOfMs,/);
 });
 
 check("open interest covers the same contracts as the exposure", () => {

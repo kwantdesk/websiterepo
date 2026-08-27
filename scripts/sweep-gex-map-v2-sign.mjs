@@ -194,12 +194,15 @@ function scoreFrame(frameIso, variant, carryDays, halfLifeMs) {
   const prints = allPrints.filter((print) => print.tradeTime <= cutoff && print.session >= earliest);
   if (prints.length < 8) return null;
 
-  const gammaByContract = new Map();
+  const contracts = new Map();
   let spot = target.spot ?? 0;
   for (const print of prints) {
     const right = print.contractType === "CALL" ? "call" : print.contractType === "PUT" ? "put" : null;
-    if (!right || !Number.isFinite(print.greeks?.gamma)) continue;
-    gammaByContract.set(contractKey(ZERO_DTE, print.strikePrice, right), Math.abs(print.greeks.gamma));
+    if (!right || !Number.isFinite(print.impliedVolatility) || !Number.isFinite(print.dte)) continue;
+    contracts.set(contractKey(ZERO_DTE, print.strikePrice, right), {
+      impliedVolatility: print.impliedVolatility,
+      expiryMs: print.tradeTime + print.dte * 24 * 60 * 60 * 1_000,
+    });
     if (print.session === ZERO_DTE && Number.isFinite(print.stockPrice)) spot = print.stockPrice;
   }
 
@@ -227,7 +230,7 @@ function scoreFrame(frameIso, variant, carryDays, halfLifeMs) {
 
   const strikes = [...new Set(Object.keys(target.values).map(Number))].sort((a, b) => a - b);
   const frame = revalueDealerGex({
-    state, strikes, expirations: [ZERO_DTE], gammaByContract, spot, representation: REPRESENTATION,
+    state, strikes, expirations: [ZERO_DTE], contracts, spot, asOfMs: cutoff, representation: REPRESENTATION,
   });
 
   const theirValue = (strike) => target.values[String(strike)] ?? target.values[strike];

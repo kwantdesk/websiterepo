@@ -18,6 +18,7 @@ import {
   revalueDealerGex,
   blendDealerNodes,
   replayDealerLadders,
+  type ContractValuationInputs,
   type DatedDealerTrade,
   DEALER_FLOW_SHARE,
   priorTradingDates,
@@ -369,23 +370,37 @@ function buildInventory(
     DEALER_FLOW_HALF_LIFE_MS,
   );
   /*
-   * Pair each surviving trade with the gamma its own print carried.
+   * Pair each surviving trade with its contract's VOLATILITY SURFACE - implied
+   * volatility and the expiry instant - rather than with the gamma its print
+   * carried.
+   *
+   * Gamma is derived from these at valuation time. Remembering gamma instead
+   * meant valuing a 0DTE book at a number a median four hours old, and gamma at
+   * a fixed strike moves more than tenfold in that time; IV barely moves and
+   * the expiry does not move at all.
    *
    * Keyed on contract AND time rather than by index, because the classifier
    * de-duplicates parent/child records and drops midpoints and spread legs - so
    * its output does not line up with the tape it was given, and zipping the two
-   * would silently attach one contract's gamma to another contract's trade.
+   * would silently attach one contract's surface to another contract's trade.
    */
-  const gammaByPrint = new Map<string, number>();
+  const surfaceByPrint = new Map<string, { impliedVolatility: number; expiryMs: number }>();
   for (const print of prints) {
     const expiration = print.expirationDate?.slice(0, 10);
     const right = print.contractType === "CALL" ? "call" : print.contractType === "PUT" ? "put" : null;
-    if (!expiration || !right || print.strikePrice === null || print.gamma === null) continue;
-    gammaByPrint.set(`${contractKey(expiration, print.strikePrice, right)}@${print.tradeTime}`, print.gamma);
+    if (!expiration || !right || print.strikePrice === null) continue;
+    if (print.impliedVolatility === null || print.dte === null) continue;
+    // The provider gives days remaining AT THE PRINT; the expiry instant it
+    // implies is fixed, so it can be read at any later clock.
+    const expiryMs = print.tradeTime + print.dte * 24 * 60 * 60 * 1_000;
+    surfaceByPrint.set(
+      `${contractKey(expiration, print.strikePrice, right)}@${print.tradeTime}`,
+      { impliedVolatility: print.impliedVolatility, expiryMs },
+    );
   }
   const trades = classified.map((trade) => ({
     trade,
-    gamma: gammaByPrint.get(
+    valuation: surfaceByPrint.get(
       `${contractKey(trade.expiration, trade.strike, trade.right)}@${trade.tradeTimeMs}`,
     ) ?? null,
   }));
@@ -445,23 +460,25 @@ async function buildDealerInventoryPanel(
   const { state, absorbed, fromMs, trades } = buildInventory(prints, oiFor, sessionDate, asOfMs);
 
   /*
-   * The contract's OWN gamma, taken from the most recent print that carried
-   * one. Latest rather than first: gamma moves with spot and time, and the
-   * panel is revaluing the book as it stands now, not as it stood at the
-   * opening trade.
+   * Each contract's volatility surface, from the most recent print that carried
+   * one. Latest rather than first, because implied volatility does drift over a
+   * session even though it is far steadier than gamma.
    */
-  const gammaByContract = new Map<ReturnType<typeof contractKey>, number>();
-  const gammaAsOf = new Map<string, number>();
+  const contractSurfaces = new Map<ReturnType<typeof contractKey>, ContractValuationInputs>();
+  const surfaceAsOf = new Map<string, number>();
   for (const print of prints) {
-    const gamma = print.gamma;
     const expiration = print.expirationDate?.slice(0, 10);
     const strike = print.strikePrice;
-    if (gamma === null || !expiration || strike === null) continue;
+    if (!expiration || strike === null) continue;
+    if (print.impliedVolatility === null || print.dte === null) continue;
     if (print.contractType !== "CALL" && print.contractType !== "PUT") continue;
     const key = contractKey(expiration, strike, print.contractType === "CALL" ? "call" : "put");
-    if ((gammaAsOf.get(key) ?? -1) >= print.tradeTime) continue;
-    gammaAsOf.set(key, print.tradeTime);
-    gammaByContract.set(key, Math.abs(gamma));
+    if ((surfaceAsOf.get(key) ?? -1) >= print.tradeTime) continue;
+    surfaceAsOf.set(key, print.tradeTime);
+    contractSurfaces.set(key, {
+      impliedVolatility: print.impliedVolatility,
+      expiryMs: print.tradeTime + print.dte * 24 * 60 * 60 * 1_000,
+    });
   }
 
   // Revalue the carried book against each contract's own gamma. The arithmetic
@@ -471,8 +488,10 @@ async function buildDealerInventoryPanel(
     state,
     strikes: structural.latestStrikes.map((row) => row.strike),
     expirations,
-    gammaByContract,
+    contracts: contractSurfaces,
     spot: structural.stockPrice ?? 0,
+    // Valued at the panel's own clock, so gamma reflects the time left NOW.
+    asOfMs,
     representation,
   });
   /*

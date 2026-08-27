@@ -9,6 +9,8 @@ import {
   DEALER_FLOW_SHARE,
   DEALER_BOOK_CARRY_SESSIONS,
   contractDollarGamma,
+  blackScholesGamma,
+  yearsToExpiry,
   OPTION_CONTRACT_MULTIPLIER,
   tradeInventoryDelta,
   classifyConsolidatedTrade,
@@ -196,11 +198,18 @@ check("a unit change cannot flip a sign", () => {
  * gamma IS identical for the two. That is not a convenience in the fixture - it
  * is the physical property the previous derivation violated at 83% of strikes.
  */
-const GAMMA = new Map([
-  [contractKey("2026-08-21", 764, "call"), 0.040],
-  [contractKey("2026-08-21", 764, "put"), 0.040],
-  [contractKey("2026-08-21", 765, "call"), 0.055],
-  [contractKey("2026-08-21", 765, "put"), 0.055],
+const EXPIRY_MS = Date.parse("2026-08-21T20:00:00Z");
+const VALUED_AT = EXPIRY_MS - 6 * 60 * 60_000;
+const surface = (impliedVolatility) => ({ impliedVolatility, expiryMs: EXPIRY_MS });
+const CONTRACTS = new Map([
+  // One volatility across the fixture, so the only thing separating 764 from
+  // 765 is MONEYNESS - which is the whole point of computing gamma rather than
+  // remembering it. At spot 765 the 765 strike is exactly at the money and
+  // carries the most gamma there is.
+  [contractKey("2026-08-21", 764, "call"), surface(20)],
+  [contractKey("2026-08-21", 764, "put"), surface(20)],
+  [contractKey("2026-08-21", 765, "call"), surface(20)],
+  [contractKey("2026-08-21", 765, "put"), surface(20)],
 ]);
 const strikes = [764, 765];
 
@@ -215,7 +224,7 @@ check("one strike can flip while its neighbour holds", () => {
     },
   };
   const frame = revalueDealerGex({
-    state, strikes, expirations: ["2026-08-21"], gammaByContract: GAMMA, spot: 765,
+    state, strikes, expirations: ["2026-08-21"], contracts: CONTRACTS, spot: 765, asOfMs: VALUED_AT,
     representation: "PER_ONE_DOLLAR_MOVE",
   });
   const at = (strike) => frame.nodes.find((node) => node.strike === strike);
@@ -229,7 +238,7 @@ check("one strike can flip while its neighbour holds", () => {
 check("a strike with no inventory is absent, not zero", () => {
   const state = emptyDealerInventory("2026-08-21", 1);
   const frame = revalueDealerGex({
-    state, strikes, expirations: ["2026-08-21"], gammaByContract: GAMMA, spot: 765,
+    state, strikes, expirations: ["2026-08-21"], contracts: CONTRACTS, spot: 765, asOfMs: VALUED_AT,
     representation: "PER_ONE_DOLLAR_MOVE",
   });
   // A confident zero is a claim. No position is not the same as flat.
@@ -245,14 +254,14 @@ check("a cold state reports itself as warming", () => {
     contracts: { [contractKey("2026-08-21", 765, "call")]: 5 },
   };
   const frame = revalueDealerGex({
-    state: cold, strikes, expirations: ["2026-08-21"], gammaByContract: GAMMA, spot: 765,
+    state: cold, strikes, expirations: ["2026-08-21"], contracts: CONTRACTS, spot: 765, asOfMs: VALUED_AT,
     representation: "PER_ONE_DOLLAR_MOVE",
   });
   assert.equal(frame.status, "warming");
   assert.ok(DEALER_INVENTORY_WARMUP_CONTRACTS > 0);
   // A state carried from a real previous session is not warming.
   assert.equal(revalueDealerGex({
-    state: { ...cold, carried: true }, strikes, expirations: ["2026-08-21"], gammaByContract: GAMMA, spot: 765,
+    state: { ...cold, carried: true }, strikes, expirations: ["2026-08-21"], contracts: CONTRACTS, spot: 765, asOfMs: VALUED_AT,
     representation: "PER_ONE_DOLLAR_MOVE",
   }).status, "ready");
 });
@@ -264,11 +273,15 @@ check("the same book reprices when the market moves", () => {
     sessionDate: "2026-08-21", asOfMs: 1, carried: true, absorbedContracts: 1e6,
     contracts: { [contractKey("2026-08-21", 765, "call")]: 100 },
   };
-  const shared = { state, strikes, expirations: ["2026-08-21"], representation: "PER_ONE_PERCENT_MOVE" };
-  const before = revalueDealerGex({ ...shared, gammaByContract: GAMMA, spot: 765 });
-  // Spot moved and gamma rose under an UNCHANGED position.
-  const richer = new Map(GAMMA).set(contractKey("2026-08-21", 765, "call"), 0.070);
-  const after = revalueDealerGex({ ...shared, gammaByContract: richer, spot: 768 });
+  const shared = {
+    state, strikes, expirations: ["2026-08-21"],
+    contracts: CONTRACTS, representation: "PER_ONE_PERCENT_MOVE",
+  };
+  const before = revalueDealerGex({ ...shared, spot: 765, asOfMs: VALUED_AT });
+  // Nothing traded. Only the clock moved - six hours closer to expiry - and on
+  // a 0DTE contract that alone repositions every node, which is why the
+  // reference re-prices every second.
+  const after = revalueDealerGex({ ...shared, spot: 765, asOfMs: EXPIRY_MS - 30 * 60_000 });
   assert.ok(Math.abs(after.nodes[0].net) > Math.abs(before.nodes[0].net));
   // Same position, same sign - only the valuation moved.
   assert.equal(Math.sign(after.nodes[0].net), Math.sign(before.nodes[0].net));
@@ -452,7 +465,9 @@ check("a replay frame never sees a trade that has not happened yet", () => {
       economicTradeWeight: 1,
       quoteConfidence: 1,
     },
-    gamma: 0.01 * n,
+    // A rising volatility, so a frame revalued with a LATER print's surface
+    // would be visibly richer per contract than it should be.
+    valuation: { impliedVolatility: 10 + n, expiryMs: at(600) },
   });
 
   const ladders = replayDealerLadders({
@@ -473,10 +488,17 @@ check("a replay frame never sees a trade that has not happened yet", () => {
   // The book only ever grows forward.
   assert.equal(ladders[1].nodes[0].callContracts, 10);
   assert.ok(ladders[2].nodes[0].callContracts > ladders[1].nodes[0].callContracts);
-  // And each minute is valued at the gamma known THEN: the minute-two frame
-  // must not have been revalued with minute three's richer gamma.
+  /*
+   * And each minute is valued at the volatility known THEN, never at a later
+   * one. Gamma falls as volatility rises at the money, so the minute-two frame
+   * - which knows only the quieter minute-two surface - must be worth MORE per
+   * contract than minute three, not less.
+   */
   const perContract = (l) => Math.abs(l.nodes[0].net) / Math.abs(l.nodes[0].callContracts);
-  assert.ok(perContract(ladders[1]) < perContract(ladders[2]));
+  assert.ok(
+    perContract(ladders[1]) > perContract(ladders[2]),
+    `minute two ${perContract(ladders[1])} should exceed minute three ${perContract(ladders[2])}`,
+  );
 });
 
 check("a replay frame is valued at the spot of its own minute", () => {
@@ -488,9 +510,10 @@ check("a replay frame is valued at the spot of its own minute", () => {
       contracts: 10, dealerSign: 1, dealerCounterpartyProbability: 1,
       economicTradeWeight: 1, quoteConfidence: 1,
     },
-    gamma: 0.05,
+    valuation: { impliedVolatility: 20, expiryMs: at(600) },
   };
-  const spots = { [at(1)]: 100, [at(2)]: 200 };
+  // Spot walks away from the strike: at the money first, then 8% above it.
+  const spots = { [at(1)]: 100, [at(2)]: 108 };
   const ladders = replayDealerLadders({
     timestamps: [at(1), at(2)],
     trades: [one],
@@ -501,11 +524,21 @@ check("a replay frame is valued at the spot of its own minute", () => {
     representation: "PER_ONE_DOLLAR_MOVE",
     sessionDate: "2026-08-21",
   });
-  // Same position, twice the underlying: dollar gamma per $1 scales with spot,
-  // so the later frame is worth more WITHOUT anything having traded. That is
-  // the whole point of revaluing rather than replaying a stored number.
-  const decayed = Math.abs(ladders[1].nodes[0].net) / Math.abs(ladders[0].nodes[0].net);
-  assert.ok(decayed > 1.9 && decayed < 2.01, `expected about 2x, got ${decayed}`);
+  /*
+   * Same position, nothing traded, and the node SHRINKS - because gamma is
+   * computed, not remembered. A contract at the money carries the most gamma
+   * there is; walk spot 8% away and it collapses, far faster than the linear
+   * spot factor can lift it.
+   *
+   * This is the behaviour the owner saw from the other side, and the reason the
+   * reference re-prices every node every second while a book that remembers its
+   * gamma sits still. Under the old model this frame was worth MORE, because
+   * only the spot multiplier moved.
+   */
+  const moved = Math.abs(ladders[1].nodes[0].net) / Math.abs(ladders[0].nodes[0].net);
+  assert.ok(moved < 0.5, `a node 8% from spot should collapse, got ${moved}x`);
+  // And it is still a real number rather than a zero: the position exists.
+  assert.ok(Math.abs(ladders[1].nodes[0].net) > 0);
 });
 
 check("no minutes in, no ladders out", () => {
@@ -520,6 +553,54 @@ check("no minutes in, no ladders out", () => {
     sessionDate: "2026-08-21",
   });
   assert.deepEqual(empty, []);
+});
+
+
+check("gamma is computed from the surface, not remembered from a print", () => {
+  /*
+   * THE MEASUREMENT THAT FORCED THIS. The engine valued every contract at the
+   * gamma its own most recent print carried. That is a real greek and a stale
+   * one: across an SPX expiry only 30% of contracts kept gamma within 2x of
+   * where it started, 28% moved by more than TENFOLD, and the gamma the panel
+   * used was a median four hours old.
+   *
+   * Validated against the provider's own gamma, which arrives on every print:
+   * on the same print this reproduces their number with a median ratio of
+   * 1.000 across 1,437 prints, and asked to predict a LATER print's gamma from
+   * an earlier print's volatility it is closer than the frozen gamma on 99% of
+   * 1,253 pairs - median error 1.31x against 2.14x.
+   */
+  const spot = 100;
+  const iv = 20;
+  const year = 365 * 24 * 60 * 60_000;
+
+  // At the money carries the most gamma there is.
+  const atm = blackScholesGamma(spot, 100, iv, 1 / 365);
+  assert.ok(atm > blackScholesGamma(spot, 108, iv, 1 / 365));
+  assert.ok(atm > blackScholesGamma(spot, 92, iv, 1 / 365));
+
+  // Time is why the reference re-prices when nothing trades: the same contract
+  // at the same spot is worth more per contract as expiry closes in.
+  assert.ok(
+    blackScholesGamma(spot, 100, iv, 1 / 365 / 24) > blackScholesGamma(spot, 100, iv, 1 / 365),
+    "an hour to expiry should carry more ATM gamma than a day",
+  );
+
+  // Nonsense in, zero out - never NaN or Infinity onto a trading surface.
+  for (const bad of [
+    [0, 100, iv, 1], [100, 0, iv, 1], [100, 100, 0, 1],
+    [100, 100, Number.NaN, 1], [Number.NaN, 100, iv, 1],
+  ]) {
+    assert.equal(blackScholesGamma(...bad), 0, `expected 0 for ${JSON.stringify(bad)}`);
+  }
+  // At expiry the spike has zero width; it must stay finite rather than divide
+  // by zero on the last tick of the session.
+  assert.ok(Number.isFinite(blackScholesGamma(spot, 100, iv, 0)));
+
+  // Years to expiry never runs backwards past the expiry itself.
+  const expiry = 1_700_000_000_000;
+  assert.equal(yearsToExpiry(expiry, expiry + 60_000), 0);
+  assert.ok(Math.abs(yearsToExpiry(expiry, expiry - year) - 1) < 1e-9);
 });
 
 
