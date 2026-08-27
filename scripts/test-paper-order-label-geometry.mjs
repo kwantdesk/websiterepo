@@ -153,4 +153,38 @@ check("the handles are still sized from the shared constants", () => {
   assert.ok(HANDLE * 2 + PAD < MIN - CLOSE, "handles and close cell must not overlap");
 });
 
+check("open P&L still ticks after the move to DOM", () => {
+  // THE REGRESSION. The canvas primitive held the live mark quote itself and
+  // recomputed the figure on every frame it painted. React only has
+  // position.markPrice, which is whatever it was at the last commit, so moving
+  // the labels to the DOM without carrying the quote across froze the number.
+  assert.match(source, /PAPER_MARK_QUOTE_EVENT/, "the quote subscription must exist");
+  assert.match(source, /paperMarkQuoteRef\.current = detail;/, "the quote has to be kept");
+  assert.match(source, /const refreshPaperLivePnl = useCallback\(/);
+  // Written straight into the text node: a setState per tick is exactly what
+  // the imperative overlay exists to avoid.
+  assert.match(source, /node\.textContent = next;/);
+  assert.doesNotMatch(source, /setPaperLivePnl/, "no render per tick");
+  // The figure must be recomputed with the LIVE quote, not the stale mark.
+  assert.match(source, /paperPositionLivePnl\(live\.position, quote\)/);
+});
+
+check("a resting order keeps its own label", () => {
+  // A working order has no open P&L, because there is no position. Feeding one
+  // in replaces "BUY 2 LIMIT - working" with a size and a running dollar figure
+  // measured from the limit price, so an untouched order reads as an open
+  // trade. This caught the canvas renderer once already.
+  assert.match(source, /if \(level\.kind !== "entry" \|\| level\.resting\) return;/,
+    "only an open position may have its text rewritten");
+  assert.match(source, /if \(level\.kind !== "entry" \|\| level\.resting\) continue;/,
+    "and only an open position enters the live map");
+});
+
+check("the figure refreshes on commits and pan frames too", () => {
+  // A quote that stops arriving must not leave a number that is silently wrong
+  // after the position changes underneath it.
+  assert.match(source, /paperLivePositionsRef\.current = live;\s*\n\s*refreshPaperLivePnl\(\);/);
+  assert.match(source, /repositionPaperOverlays\(\);\s*\n\s*refreshPaperLivePnl\(\);/);
+});
+
 console.log(`\npaper order label geometry: ${passed}/${passed} checks passed`);

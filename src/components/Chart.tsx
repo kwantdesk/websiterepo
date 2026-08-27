@@ -453,7 +453,9 @@ import { isOptionsFuturesRatioSane } from "@/lib/optionsFlow";
 import type { GexBotFlowPayload } from "@/lib/gexBotFlow";
 import {
   normalizePaperSymbol,
+  PAPER_MARK_QUOTE_EVENT,
   paperPositionLivePnl,
+  type PaperMarkQuote,
   paperContractSpec,
   paperFillCandleTimestamp,
   paperProjectedPnl,
@@ -3193,6 +3195,33 @@ function Chart({
    * imperatively on the same frame the drawing layer reprojects on.
    */
   const paperOverlayNodesRef = useRef(new Map<string, HTMLDivElement>());
+  /**
+   * Open P&L ticks faster than React commits.
+   *
+   * The canvas primitive that used to paint these labels held the live mark
+   * quote itself and recomputed the figure on every frame it drew. React only
+   * has position.markPrice, which is whatever it was at the last commit, so
+   * moving the labels to the DOM without this froze the number on screen.
+   *
+   * The quote is therefore kept in a ref and written straight into the text
+   * node - per tick, with no render.
+   */
+  const paperMarkQuoteRef = useRef<PaperMarkQuote | null>(null);
+  const paperPnlNodesRef = useRef(new Map<string, HTMLElement>());
+  const paperLivePositionsRef = useRef(new Map<string, {
+    position: Pick<PaperPosition, "symbol" | "side" | "entryPrice" | "markPrice" | "remainingQuantity">;
+    sizeLabel: string;
+  }>());
+  const refreshPaperLivePnl = useCallback(() => {
+    const quote = paperMarkQuoteRef.current;
+    for (const [id, node] of paperPnlNodesRef.current) {
+      const live = paperLivePositionsRef.current.get(id);
+      if (!live) continue;
+      const pnl = paperPositionLivePnl(live.position, quote);
+      const next = `${live.sizeLabel} · ${formatPaperMoney(pnl)}`;
+      if (node.textContent !== next) node.textContent = next;
+    }
+  }, []);
   const repositionPaperOverlays = useCallback(() => {
     const series = candleSeriesRef.current;
     if (!series) return;
@@ -12948,6 +12977,7 @@ function Chart({
         // Every frame of the pan, not every React commit.
         reprojectDrawingLayer();
         repositionPaperOverlays();
+        refreshPaperLivePnl();
         const elapsed = performance.now() - viewportRefreshLastAtRef.current;
         if (elapsed >= VIEWPORT_REACT_REFRESH_INTERVAL_MS) {
           if (viewportRefreshTimerRef.current !== null) {
@@ -14749,6 +14779,46 @@ function Chart({
   useEffect(() => {
     repositionPaperOverlays();
   });
+
+  /*
+   * A resting order has no open P&L, because there is no position. Feeding one
+   * in here would replace the order's own label - "BUY 2 LIMIT · working" -
+   * with a size and a running dollar figure measured from the limit price
+   * against the market, so an untouched order would read as an open trade.
+   */
+  useEffect(() => {
+    const live = new Map<string, {
+      position: Pick<PaperPosition, "symbol" | "side" | "entryPrice" | "markPrice" | "remainingQuantity">;
+      sizeLabel: string;
+    }>();
+    for (const level of paperOverlayLevels) {
+      if (level.kind !== "entry" || level.resting) continue;
+      live.set(level.id, {
+        position: {
+          symbol: level.position.symbol,
+          side: level.position.side,
+          entryPrice: level.position.entryPrice,
+          markPrice: level.position.markPrice,
+          remainingQuantity: level.position.remainingQuantity,
+        },
+        sizeLabel: paperPositionSizeLabel(level.position.side, level.position.remainingQuantity),
+      });
+    }
+    paperLivePositionsRef.current = live;
+    refreshPaperLivePnl();
+  }, [paperOverlayLevels, refreshPaperLivePnl]);
+
+  useEffect(() => {
+    if (!liveCandleEventKey) return;
+    const receive = (event: Event) => {
+      const detail = (event as CustomEvent<PaperMarkQuote & { paneId: string }>).detail;
+      if (!detail || detail.paneId !== liveCandleEventKey) return;
+      paperMarkQuoteRef.current = detail;
+      refreshPaperLivePnl();
+    };
+    window.addEventListener(PAPER_MARK_QUOTE_EVENT, receive);
+    return () => window.removeEventListener(PAPER_MARK_QUOTE_EVENT, receive);
+  }, [liveCandleEventKey, refreshPaperLivePnl]);
   const matchingPaperFills = paperFills
     .filter((fill) => normalizePaperSymbol(fill.symbol) === normalizePaperSymbol(instrument));
   const constrainedPaperProtectionPrice = (
@@ -15952,6 +16022,13 @@ function Chart({
                 </button>
               ) : null}
               <span
+                ref={(node) => {
+                  // Only an open position gets its text rewritten per tick. A
+                  // resting order's label is its own and must survive.
+                  if (level.kind !== "entry" || level.resting) return;
+                  if (node) paperPnlNodesRef.current.set(level.id, node);
+                  else paperPnlNodesRef.current.delete(level.id);
+                }}
                 className="min-w-0 flex-1 truncate"
                 style={{ paddingLeft: PAPER_LABEL_PAD_X, paddingRight: PAPER_LABEL_PAD_X }}
               >
