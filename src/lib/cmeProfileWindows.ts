@@ -127,3 +127,26 @@ export function nextCmeDailyCompletion(now: number) {
   }
   return now + 24 * 60 * 60_000;
 }
+
+/**
+ * The open of the trading week `now` falls in.
+ *
+ * A CME week runs Sunday 17:00 CT to Friday 16:00 CT, so the week's open is the
+ * most recent Sunday's Globex open - and on a Sunday BEFORE 17:00 the new week
+ * has not started yet, so the answer is still last Sunday.
+ *
+ * The weekly volume profile used to take "the last five trading dates the chart
+ * happened to have loaded" instead. That is not a week: on a Tuesday it reached
+ * back into the previous Thursday and Friday, and when a pane had only today's
+ * candles - a short range, or history still restoring - it collapsed to exactly
+ * today and the weekly profile mirrored the daily one.
+ */
+export function currentCmeWeekStart(now: number) {
+  const parts = chicagoParts(now);
+  let date = { year: parts.year, month: parts.month, day: parts.day };
+  // Back to the most recent Sunday, today included.
+  date = addLocalDays(date, -localDayOfWeek(date));
+  const start = chicagoEpoch(date, 17);
+  // Sunday before the open still belongs to the week that just finished.
+  return start > now ? chicagoEpoch(addLocalDays(date, -7), 17) : start;
+}

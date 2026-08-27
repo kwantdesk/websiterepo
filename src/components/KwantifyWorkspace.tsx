@@ -344,6 +344,7 @@ import {
 } from "@/lib/classicGexProfile";
 import { mergeOneFamilyPositioning } from "@/lib/gexBotFlow";
 import { writeProtectedItem } from "@/lib/browserStorageQuota";
+import { currentCmeWeekStart } from "@/lib/cmeProfileWindows";
 
 function workspaceLoader(title: string, detail: string) {
   return (
@@ -8650,14 +8651,28 @@ function WorkspaceChartPaneComponent({
         });
       }
       if (weeklyProfileInstance) {
-        const weeklyDates = new Set(tradingDates.slice(-5));
-        const weeklyCandles = candles.filter((candle) =>
-          weeklyDates.has(chicagoTradingDate(candle.timestamp)));
+        /*
+         * THIS WEEK, from the Sunday Globex open - not the last five sessions
+         * the chart happened to have loaded.
+         *
+         * The old window was `tradingDates.slice(-5)`, which is not a week. On
+         * a Tuesday it reached back into the previous Thursday and Friday, and
+         * when a pane held only today's candles - a short load range, or
+         * history still restoring - it collapsed to exactly today and the
+         * weekly profile mirrored the daily one.
+         *
+         * The start is the WEEK's open rather than the first loaded candle, so
+         * the profile covers Monday onward even when the chart's own history is
+         * shorter than that. The server has the tape; the pane's viewport
+         * should not decide how much of the week a weekly profile is made of.
+         */
+        const weekStartMs = currentCmeWeekStart(Date.now());
+        const weeklyCandles = candles.filter((candle) => candle.timestamp >= weekStartMs);
         requests.push(fetchInstitutionalVolumeProfile({
           symbol: displayCmeSymbol(pane.symbol),
           contractSymbol: resolvedContractSymbol,
           period: "weekly",
-          startMs: weeklyCandles[0]?.timestamp,
+          startMs: weekStartMs,
           endMs: weeklyCandles.length
             ? weeklyCandles[weeklyCandles.length - 1].timestamp + chartStepMs
             : undefined,
