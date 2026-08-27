@@ -21,6 +21,49 @@ export const dynamic = "force-dynamic";
 // this answers "what is production actually reading?" without dashboard
 // access. It exposes no secrets: variable NAMES, the gateway HOST, the
 // deployed commit, and an upstream reachability probe. Never the token.
+/**
+ * Ask the gateway for a completed session it should already hold.
+ *
+ * A hit means the archive is doing its job. A miss carries the archiver's own
+ * status, which says whether it is enabled at all and which tickers it covers -
+ * far more useful than the absence of a chart.
+ */
+async function cashIndexArchiveStatus() {
+  const probeSymbol = "SPX";
+  try {
+    const { fetchInstitutionalMarketData, isInstitutionalMarketDataConfigured } =
+      await import("@/lib/institutionalMarketData.server");
+    if (!isInstitutionalMarketDataConfigured()) return { configured: false };
+    // The most recent weekday before today: today's session is not archived
+    // until after the close, so probing it would report a miss that is correct.
+    const cursor = new Date();
+    do { cursor.setUTCDate(cursor.getUTCDate() - 1); }
+    while (cursor.getUTCDay() === 0 || cursor.getUTCDay() === 6);
+    const sessionDate = cursor.toISOString().slice(0, 10);
+    const response = await fetchInstitutionalMarketData(
+      `v1/market-data/cash-index-history?symbol=${probeSymbol}&sessionDate=${sessionDate}`,
+      { method: "GET" },
+      8_000,
+    );
+    if (response?.ok) {
+      const payload = await response.json().catch(() => null);
+      const bars = Array.isArray(payload?.candles) ? payload.candles.length : null;
+      return { configured: true, probeSymbol, sessionDate, archived: true, bars };
+    }
+    const detail = await response?.json().catch(() => null);
+    return {
+      configured: true,
+      probeSymbol,
+      sessionDate,
+      archived: false,
+      status: response?.status ?? null,
+      archiver: detail?.archiver ?? null,
+    };
+  } catch (error) {
+    return { configured: true, probeSymbol, archived: false, error: String(error).slice(0, 160) };
+  }
+}
+
 export async function GET(request: Request) {
   const url = marketDataGatewayUrl();
   const names = marketDataGatewayEnvNames();
@@ -146,6 +189,23 @@ export async function GET(request: Request) {
       },
       gatewayHost: url ? new URL(url).host : null,
       gatewayConfigured: Boolean(url && marketDataGatewayToken()),
+      /*
+       * Whether completed cash-index sessions are being served from the VPS
+       * archive or restored from the provider every time.
+       *
+       * This is the difference between a chart drawing in milliseconds and one
+       * spending a 30-40s provider restore PER SESSION - five of those for a
+       * five-day minute chart, against an allowance of roughly twenty provider
+       * requests per window. When the archive is empty every pane pays that
+       * again on every cache expiry, and whichever symbol's request lands on a
+       * drained bucket is the one that appears to hang. Measured on the same
+       * cold run: NDX 37s while SPX took 2s, then the reverse.
+       *
+       * The gateway has always reported this, but only inside a 404 body that
+       * nothing surfaced - so the one thing that would explain a hanging chart
+       * was invisible.
+       */
+      cashIndexArchive: await cashIndexArchiveStatus(),
       // The options scheduler's own state. Its background lane yields to the
       // foreground, so a foreground count stuck above zero stops every warm-up
       // on the desk with no error and no log line to find.
