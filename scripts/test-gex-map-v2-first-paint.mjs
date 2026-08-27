@@ -59,7 +59,9 @@ check("the warm-up is started from the request scope, never inside the cache", (
   assert.match(entry, /warmDealerBookTapes\(symbol, sessionDate\);/);
   assert.ok(
     entry.indexOf("warmDealerBookTapes(symbol, sessionDate);")
-      < entry.indexOf("gex-map-v2-dealer-inventory-v1"),
+      // Version-agnostic: the key's shape version moves whenever the payload
+      // changes, and this check is about ORDER, not about which version it is.
+      < entry.indexOf("gex-map-v2-dealer-inventory-"),
     "the warm-up has to start before the cached build, in the request scope",
   );
   // The builder itself only READS what is already warm - it never starts a

@@ -1862,11 +1862,20 @@ function GexMapWorkspace({
     const base = replayMode
       ? gexMapCacheKey(panel.symbol, panel.greekMode, requestedReplayDate, expiryScope, representation)
       : compactGexMapLiveCacheKey(panel.symbol, panel.greekMode, expiryScope, representation);
-    // The model belongs in the key. Without it, switching models would serve
-    // the other calculation's numbers from cache under the new label - the
-    // worst possible failure for a panel whose whole purpose is which
-    // calculation you are looking at.
-    return exposureModel === "DEALER_INVENTORY" ? `${base}:dealer` : base;
+    /*
+     * The model belongs in the key. Without it, switching models would serve
+     * the other calculation's numbers from cache under the new label - the
+     * worst possible failure for a panel whose whole purpose is which
+     * calculation you are looking at.
+     *
+     * The suffix carries a SHAPE version too, and it must be bumped whenever
+     * the dealer payload changes. This cache persists to sessionStorage and
+     * holds a replay payload for six hours, so an entry written by the previous
+     * deploy outlives it: when frames were added to the dealer payload, the
+     * browser kept serving the old frameless one and the panel reported "No
+     * replay frames" against a server that was already returning 391 of them.
+     */
+    return exposureModel === "DEALER_INVENTORY" ? `${base}:dealer-v2` : base;
   }, [exposureModel, expiryScope, replayMode, representation, requestedReplayDate]);
 
   useEffect(() => {

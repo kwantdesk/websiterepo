@@ -628,7 +628,18 @@ export async function getDealerInventoryPanel(
    * after it lands draws the full book.
    */
   warmDealerBookTapes(symbol, sessionDate);
-  const key = ["gex-map-v2-dealer-inventory-v1", symbol, sessionDate, scope, representation];
+  /*
+   * The version in this key tracks the PAYLOAD SHAPE, and must be bumped
+   * whenever that shape changes.
+   *
+   * A completed session caches for six hours, and on the platform that cache is
+   * durable and shared across instances - so an entry built by the previous
+   * deploy outlives it. When frames were added to this payload the key stayed
+   * at v1, and every replay date kept serving the old frameless entry: the
+   * dealer model reported "No replay frames" for hours after the fix shipped,
+   * on code that was correct.
+   */
+  const key = ["gex-map-v2-dealer-inventory-v2", symbol, sessionDate, scope, representation];
   return unstable_cache(
     () => buildDealerInventoryPanel(symbol, sessionDate, scope, representation),
     key,

@@ -49,7 +49,10 @@ check("the model is part of the cache key", () => {
   // Without this, switching models serves the other calculation's numbers from
   // cache under the new label - the worst failure available to a panel whose
   // entire purpose is which calculation you are looking at.
-  assert.match(workspace, /exposureModel === "DEALER_INVENTORY" \? `\$\{base\}:dealer` : base/);
+  // Versioned, because this cache persists to sessionStorage and holds a
+  // replay payload for six hours - long enough for an entry written by the
+  // previous deploy to outlive it and serve a shape the code no longer emits.
+  assert.match(workspace, /exposureModel === "DEALER_INVENTORY" \? `\$\{base\}:dealer-v2` : base/);
   // And switching must actually refetch.
   assert.match(workspace, /\}, \[exposureModel, expiryScope, panelCacheKey/);
 });
@@ -258,6 +261,28 @@ check("the dealer model has a replay timeline of its own", () => {
   // Sent as updates, not full ladders: a replay payload is already megabytes.
   assert.match(server, /const FRAME_UPDATE_EPSILON = 0\.0001;/);
   assert.match(server, /if \(Math\.sign\(previous\) !== Math\.sign\(row\.net\)\) return true;/);
+});
+
+
+check("both caches carry a version of the payload shape", () => {
+  /*
+   * THE FAILURE THIS PREVENTS. Frames were added to the dealer payload and both
+   * cache keys stayed as they were. A completed session caches for six hours on
+   * the server - durable and shared across instances - and the browser mirrors
+   * it into sessionStorage for the same six. So entries written by the PREVIOUS
+   * deploy outlived it on both sides, and the panel reported "No replay frames"
+   * for hours against code that was already returning 391 of them.
+   *
+   * Neither version means anything on its own; what matters is that changing
+   * the shape changes them. If this assertion ever fails because the number
+   * moved, the fix is to move BOTH and leave the check pinned to the new pair.
+   */
+  assert.match(server, /"gex-map-v2-dealer-inventory-v2", symbol, sessionDate, scope, representation/);
+  assert.match(workspace, /`\$\{base\}:dealer-v2`/);
+  // And both say what the version is for, so the next person changing the shape
+  // is told rather than left to find out from a stale panel.
+  assert.match(server, /must be bumped\s*\n\s*\* whenever that shape changes/);
+  assert.match(workspace, /must be bumped whenever/);
 });
 
 
