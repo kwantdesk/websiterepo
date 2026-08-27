@@ -258,16 +258,34 @@ let qdNextStartMs = 0;
  * the same bug facing the other way: a lane that waits for silence that never
  * comes never runs, and the warm-up it exists to perform never finishes.
  *
- * Thirty seconds, not five. A panel refresh is a short burst with idle seconds
- * behind it, so the background lane gets its turn in those gaps without ever
- * racing a burst - at five seconds it started competing mid-load and pushed a
- * cold three-panel click from 6s to 14s.
+ * The ceiling is PER REQUEST, and a warm-up is seventy of them. At thirty
+ * seconds a carried session could take half an hour to read, which is not a
+ * warm-up at all - measured live, the dealer book sat at zero carried sessions
+ * through six minutes of polling while the foreground stayed busy.
+ *
+ * Two seconds. A foreground request still wins every individual race - it takes
+ * its slot the moment it asks, while a background one waits - but a full
+ * session now reads in minutes instead of never.
  */
 type QdLane = "priority" | "normal" | "background";
 
 let qdForegroundPending = 0;
 const QD_BACKGROUND_POLL_MS = 250;
-const QD_BACKGROUND_MAX_YIELD_MS = 30_000;
+/*
+ * A background request waits its turn, and then waits again.
+ *
+ * Yielding to the foreground was not enough. A warm-up is ~70 pages per session
+ * and the dealer book warms three of them, so 210 requests went at the provider
+ * through the same 80ms spacing the foreground uses - against an allowance of
+ * roughly twenty per window. They rate-limited each OTHER, exhausted four
+ * retries, and every carried session came back empty. Measured: three sessions,
+ * three "Rate limit exceeded" errors, a book that never carried anything.
+ *
+ * Nobody is waiting on this read, so it drips. Half a second a page puts a
+ * session at ~35 seconds and leaves the window overwhelmingly free for panels.
+ */
+const QD_BACKGROUND_SPACING_MS = 500;
+const QD_BACKGROUND_MAX_YIELD_MS = 2_000;
 
 async function qdSchedule(lane: QdLane = "normal") {
   if (lane === "background") {
@@ -284,7 +302,7 @@ async function qdSchedule(lane: QdLane = "normal") {
     return;
   }
   const start = Math.max(now, qdNextStartMs);
-  qdNextStartMs = start + QD_MIN_SPACING_MS;
+  qdNextStartMs = start + (lane === "background" ? QD_BACKGROUND_SPACING_MS : QD_MIN_SPACING_MS);
   if (start > now) await qdSleep(start - now);
 }
 
@@ -2853,7 +2871,19 @@ export async function readConsolidatedTape(
       sort: { field: "tradeTime", direction: "DESCENDING" },
     };
     if (cursor) body.searchAfter = cursor;
-    const result = await quantDataPost("/options/tool/order-flow/consolidated", body, 60_000, lane);
+    /*
+     * Sixty pages already read are not thrown away because the sixty-first was
+     * refused. A partial session is strictly better than none for a book that
+     * is only ever an estimate, and the alternative - one late rate limit
+     * discarding the whole read - is what left `carriedSessions` at zero.
+     */
+    let result;
+    try {
+      result = await quantDataPost("/options/tool/order-flow/consolidated", body, 60_000, lane);
+    } catch (error) {
+      if (!prints.length) throw error;
+      return { prints, truncated: true, remaining };
+    }
     remaining = result.remaining ?? remaining;
     const parsed = parseFlow(result.payload);
     if (!parsed.length) break;

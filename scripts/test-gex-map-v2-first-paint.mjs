@@ -34,10 +34,10 @@ check("a warm-up can never run in front of the panel it is warming", () => {
   assert.match(provider, /if \(lane !== "background"\) qdForegroundPending -= 1;/);
   // And yielding forever is the same bug facing the other way - three panels
   // refreshing every five seconds means the foreground is rarely empty.
-  // Thirty seconds, not five: a panel refresh is a short burst with idle
-  // seconds behind it, and at five the lane competed mid-load and pushed a cold
-  // three-panel click from 6s to 14s.
-  assert.match(provider, /const QD_BACKGROUND_MAX_YIELD_MS = 30_000;/);
+  // The ceiling is PER REQUEST and a warm-up is seventy of them, so a large
+  // value is not caution - it is a warm-up that never finishes. Measured live,
+  // the book sat at zero carried sessions through six minutes of polling.
+  assert.match(provider, /const QD_BACKGROUND_MAX_YIELD_MS = 2_000;/);
 });
 
 check("every expensive read the panel does not need is on that lane", () => {

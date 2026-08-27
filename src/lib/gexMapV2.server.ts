@@ -103,6 +103,23 @@ const inFlightReads = new Map<string, Promise<unknown>>();
 const completedReads = new Map<string, { at: number; value: unknown }>();
 const COMPLETED_READ_LIMIT = 64;
 
+/**
+ * Nothing is not an answer worth remembering.
+ *
+ * A read that came back empty - rate limited, a holiday, a provider hiccup -
+ * used to be memoised exactly like a real one. For a carried session that meant
+ * a DAY of remembering that a session had no tape, on the strength of a single
+ * 429, with the book silently thin the whole time and nothing saying why.
+ *
+ * An empty result now simply is not cached, so the next refresh asks again.
+ */
+function isWorthRemembering(value: unknown) {
+  return !(Array.isArray(value) && value.length === 0)
+    && !(value && typeof value === "object" && "prints" in value
+      && Array.isArray((value as { prints: unknown[] }).prints)
+      && (value as { prints: unknown[] }).prints.length === 0);
+}
+
 function joinInFlight<T>(key: string, start: () => Promise<T>, memoMs: number): Promise<T> {
   const done = completedReads.get(key);
   if (done && Date.now() - done.at < memoMs) return Promise.resolve(done.value as T);
@@ -110,7 +127,7 @@ function joinInFlight<T>(key: string, start: () => Promise<T>, memoMs: number): 
   if (existing) return existing;
   const promise = start()
     .then((value) => {
-      completedReads.set(key, { at: Date.now(), value });
+      if (isWorthRemembering(value)) completedReads.set(key, { at: Date.now(), value });
       if (completedReads.size > COMPLETED_READ_LIMIT) {
         const oldest = completedReads.keys().next().value;
         if (oldest !== undefined) completedReads.delete(oldest);
@@ -140,7 +157,7 @@ const readCarriedTape = (symbol: string, sessionDate: string) => joinInFlight(
     async () => {
       try {
         return (await readConsolidatedTape(symbol, sessionDate, TAPE_PAGE_LIMIT, "background")).prints;
-      } catch {
+      } catch (error) {
         /*
          * A missing prior session is not a failure of today's panel.
          *
@@ -148,7 +165,13 @@ const readCarriedTape = (symbol: string, sessionDate: string) => joinInFlight(
          * will eventually end. Either way the book is simply built from less
          * carried flow, which `carriedSessions` reports. Failing the whole
          * panel because a session three days ago is unavailable would be worse.
+         *
+         * It is said out loud, though. Swallowed silently, a rate-limited read
+         * looked exactly like a holiday, and the empty result it returned was
+         * then remembered for a DAY - one transient 429 poisoning the carry
+         * until tomorrow, with nothing anywhere saying why the book was thin.
          */
+        console.warn(`[gex-map-v2] carried tape unavailable for ${symbol} ${sessionDate}`, error);
         return [] as OptionsFlowPrint[];
       }
     },
@@ -182,7 +205,7 @@ const FIRST_PAINT_PAGE_LIMIT = 12;
 const FRAME_UPDATE_EPSILON = 0.0001;
 
 /** Warm-ups already scheduled, so a refresh cannot stack duplicates. */
-const carriedTapeBuilds = new Set<string>();
+const carriedTapeBuilds = new Map<string, Promise<unknown>>();
 
 /**
  * Hand work to the platform so it survives the response, and never twice.
@@ -196,15 +219,17 @@ const carriedTapeBuilds = new Set<string>();
  * Outside a request scope - a warm-up, a script - there is nothing to defer
  * past, so it simply runs.
  */
-function warmInBackground(key: string, work: Promise<unknown>) {
-  if (carriedTapeBuilds.has(key)) return;
-  carriedTapeBuilds.add(key);
-  const settle = () => work
+function warmInBackground(key: string, work: Promise<unknown>): Promise<unknown> {
+  const running = carriedTapeBuilds.get(key);
+  if (running) return running;
+  const settled = work
     // A warm-up that fails every time is indistinguishable from one that is
     // merely slow: the book just stays thin forever. Say so once per attempt.
     .catch((error) => { console.warn(`[gex-map-v2] warm-up failed for ${key}`, error); })
     .finally(() => { carriedTapeBuilds.delete(key); });
-  try { after(settle); } catch { void settle(); }
+  carriedTapeBuilds.set(key, settled);
+  try { after(() => settled); } catch { /* no request scope to hold it open */ }
+  return settled;
 }
 
 /**
@@ -271,8 +296,21 @@ function carriedTapeIfWarm(symbol: string, sessionDate: string): OptionsFlowPrin
  */
 export function warmDealerBookTapes(symbol: string, sessionDate: string) {
   warmInBackground(`live:${symbol}:${sessionDate}`, fullLiveTape(symbol, sessionDate));
+  /*
+   * One carried session at a time, not three at once.
+   *
+   * Started together they competed for the same provider window and rate
+   * limited each OTHER into three empty reads - measured, three sessions, three
+   * "Rate limit exceeded", a book that carried nothing. Chained, each waits for
+   * the one before it, so the book fills in a session at a time instead.
+   */
+  let queue: Promise<unknown> = Promise.resolve();
   for (const date of priorTradingDates(sessionDate, DEALER_BOOK_CARRY_SESSIONS)) {
-    warmInBackground(`carried:${symbol}:${date}`, readCarriedTape(symbol, date));
+    const previous = queue;
+    queue = warmInBackground(
+      `carried:${symbol}:${date}`,
+      previous.then(() => readCarriedTape(symbol, date)),
+    );
   }
 }
 
