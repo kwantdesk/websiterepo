@@ -60,45 +60,6 @@ export function parseContractKey(key: ContractKey): { expiration: string; strike
 }
 
 /**
- * Per-strike provider figures for one expiration.
- *
- * `callExposure` / `putExposure` are QuantData's signed dollar exposure and
- * carry its structural convention (calls positive, puts negative). Open
- * interest is unsigned contract count.
- */
-export type ProviderStrikeRow = {
-  strike: number;
-  callExposure: number;
-  putExposure: number;
-  callOpenInterest: number;
-  putOpenInterest: number;
-};
-
-/**
- * Dollar gamma of ONE contract, always positive.
- *
- * Backed out of the provider's own figures rather than recomputed from an
- * option pricer: dividing the provider's dollar exposure by the open interest
- * behind it returns the per-contract dollar gamma the provider itself used.
- * That keeps v2 on the same greeks and the same spot as v1 rather than
- * introducing a second, silently different volatility surface - if the two
- * disagreed, every difference between v1 and v2 would be uninterpretable.
- *
- * The provider's put sign is dropped deliberately. A long put and a long call
- * both have positive gamma; call-positive/put-negative is a structural
- * convention about assumed dealer positioning, and assuming it here would bake
- * in the very thing this engine exists to measure.
- */
-export function perContractDollarGamma(row: ProviderStrikeRow): { call: number; put: number } {
-  const call = row.callOpenInterest > 0 ? Math.abs(row.callExposure) / row.callOpenInterest : 0;
-  const put = row.putOpenInterest > 0 ? Math.abs(row.putExposure) / row.putOpenInterest : 0;
-  return {
-    call: Number.isFinite(call) ? call : 0,
-    put: Number.isFinite(put) ? put : 0,
-  };
-}
-
-/**
  * One economic trade, already de-duplicated and classified.
  *
  * `dealerSign` is the direction the DEALER's inventory moves, not the
@@ -315,30 +276,48 @@ export const DEALER_INVENTORY_WARMUP_CONTRACTS = 25_000;
  */
 export function revalueDealerGex(input: {
   state: DealerInventoryState;
-  rows: readonly ProviderStrikeRow[];
+  /** Strikes the panel lists, in the panel's own order. */
+  strikes: readonly number[];
   /** Expirations in scope, matching the panel's own filter. */
   expirations: readonly string[];
+  /** Each contract's OWN gamma, keyed by contractKey. */
+  gammaByContract: ReadonlyMap<ContractKey, number>;
   spot: number;
   representation: GexRepresentation;
-  /** Unit the provider's exposure figures arrived in. */
-  providerRepresentation: GexRepresentation;
 }): DealerGexFrame {
-  const scale = representationScale(input.providerRepresentation, input.representation, input.spot);
   const byStrike = new Map<number, DealerGexNode>();
 
-  for (const row of input.rows) {
-    const gamma = perContractDollarGamma(row);
+  for (const strike of input.strikes) {
+    /*
+     * Valued per CONTRACT, not per strike.
+     *
+     * Each expiration carries its own gamma, and on a multi-expiry scope a
+     * near-dated contract and a far-dated one at the same strike are worth very
+     * different amounts per contract held. Collapsing to one gamma per strike
+     * would value them identically.
+     */
+    let callNet = 0;
+    let putNet = 0;
     let callContracts = 0;
     let putContracts = 0;
     for (const expiration of input.expirations) {
-      callContracts += input.state.contracts[contractKey(expiration, row.strike, "call")] ?? 0;
-      putContracts += input.state.contracts[contractKey(expiration, row.strike, "put")] ?? 0;
+      for (const right of ["call", "put"] as const) {
+        const key = contractKey(expiration, strike, right);
+        const contracts = input.state.contracts[key] ?? 0;
+        if (!contracts) continue;
+        const gamma = input.gammaByContract.get(key);
+        // No gamma for this contract means no honest value for it. Skipping it
+        // understates the node; substituting a neighbour's gamma would state a
+        // number the data does not support.
+        if (gamma === undefined) continue;
+        const value = contracts * contractDollarGamma(gamma, input.spot, input.representation);
+        if (right === "call") { callNet += value; callContracts += contracts; }
+        else { putNet += value; putContracts += contracts; }
+      }
     }
     if (callContracts === 0 && putContracts === 0) continue;
-    const callNet = callContracts * gamma.call * scale;
-    const putNet = putContracts * gamma.put * scale;
-    byStrike.set(row.strike, {
-      strike: row.strike,
+    byStrike.set(strike, {
+      strike,
       net: callNet + putNet,
       callNet,
       putNet,
@@ -592,4 +571,35 @@ export type V2Readiness = "validated" | "experimental";
  */
 export function v2Readiness(symbol: string): V2Readiness {
   return V2_VALIDATED_ROOTS.has(symbol.trim().toUpperCase()) ? "validated" : "experimental";
+}
+
+/**
+ * Dollar gamma of ONE contract, from the contract's OWN gamma.
+ *
+ * This replaces recovering it by dividing the provider's derived exposure by
+ * open interest. That quotient was never gamma: gamma is identical for a call
+ * and a put at one strike and expiry, and the quotient failed that test at 83%
+ * of strikes, ranging from 0.066 to 4,339 against a required 1.0. Every
+ * magnitude the model produced was therefore built on a number that is not a
+ * greek, which is why the star node and the concentration profile could never
+ * be tuned into agreement.
+ *
+ * The provider sends `greeks.gamma` on every consolidated print. Every contract
+ * the model holds got there BY trading, so every one of them has its own gamma
+ * available - no chain snapshot, and no vendor model in the middle.
+ *
+ * The move factor is the standard convention:
+ *   per $1  : gamma x multiplier x spot
+ *   per 1%  : gamma x multiplier x spot^2 x 0.01
+ */
+export const OPTION_CONTRACT_MULTIPLIER = 100;
+
+export function contractDollarGamma(
+  gamma: number,
+  spot: number,
+  representation: GexRepresentation,
+): number {
+  if (!Number.isFinite(gamma) || !Number.isFinite(spot) || spot <= 0) return 0;
+  const move = representation === "PER_ONE_PERCENT_MOVE" ? spot * spot * 0.01 : spot;
+  return Math.abs(gamma) * OPTION_CONTRACT_MULTIPLIER * move;
 }

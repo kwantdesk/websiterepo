@@ -214,6 +214,17 @@ export type OptionsFlowPrint = {
    * spread leg is counted at full weight as directional positioning.
    */
   tradeType: string;
+  /**
+   * The contract's ACTUAL gamma at the time of the print.
+   *
+   * The provider sends this on every consolidated print and it was being
+   * dropped. Its absence is why the dealer model had been recovering
+   * "per-contract gamma" by dividing the provider's derived exposure figure by
+   * open interest - a quantity that fails put-call parity by up to 4,000x, so
+   * it was never gamma at all. Gamma is identical for a call and a put at one
+   * strike and expiry; this field is, that quotient is not.
+   */
+  gamma: number | null;
   sentiment: "BULLISH" | "BEARISH" | "NEUTRAL";
   unusual: boolean;
   opening: boolean;

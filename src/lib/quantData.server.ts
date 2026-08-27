@@ -616,6 +616,7 @@ function parseFlow(payload: unknown): OptionsFlowPrint[] {
       side: textValue(value.tradeSideCode) || textValue(value.tradeSide) || "MID",
       consolidationType: textValue(value.tradeConsolidationType) || "TRADE",
       tradeType: textValue(value.tradeType),
+      gamma: isRecord(value.greeks) ? finiteNumber(value.greeks.gamma) : null,
       sentiment: classifySentiment(value),
       unusual: value.isUnusual === true,
       opening: value.isOpeningPosition === true,

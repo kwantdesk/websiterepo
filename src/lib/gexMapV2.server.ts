@@ -14,7 +14,7 @@ import {
   accumulateDecayedTape,
   emptyDealerInventory,
   contractKey,
-  perContractDollarGamma,
+  revalueDealerGex,
   v2Readiness,
   DEALER_FLOW_HALF_LIFE_MS,
   type DealerInventoryState,
@@ -164,29 +164,43 @@ async function buildDealerInventoryPanel(
 
   const { state, absorbed, fromMs } = buildInventory(tape.prints, oiFor, sessionDate, asOfMs);
 
-  // Revalue the carried book against the provider's current per-contract gamma.
-  const latestStrikes: ExposureStrike[] = [];
-  for (const row of structural.latestStrikes) {
-    const oi = openInterestByStrike.get(row.strike);
-    if (!oi) continue;
-    const gamma = perContractDollarGamma({
-      strike: row.strike,
-      callExposure: row.call,
-      putExposure: row.put,
-      callOpenInterest: oi.callOpenInterest,
-      putOpenInterest: oi.putOpenInterest,
-    });
-    let callContracts = 0;
-    let putContracts = 0;
-    for (const expiration of expirations) {
-      callContracts += state.contracts[contractKey(expiration, row.strike, "call")] ?? 0;
-      putContracts += state.contracts[contractKey(expiration, row.strike, "put")] ?? 0;
-    }
-    if (callContracts === 0 && putContracts === 0) continue;
-    const call = callContracts * gamma.call;
-    const put = putContracts * gamma.put;
-    latestStrikes.push({ strike: row.strike, call, put, net: call + put });
+  /*
+   * The contract's OWN gamma, taken from the most recent print that carried
+   * one. Latest rather than first: gamma moves with spot and time, and the
+   * panel is revaluing the book as it stands now, not as it stood at the
+   * opening trade.
+   */
+  const gammaByContract = new Map<ReturnType<typeof contractKey>, number>();
+  const gammaAsOf = new Map<string, number>();
+  for (const print of tape.prints) {
+    const gamma = print.gamma;
+    const expiration = print.expirationDate?.slice(0, 10);
+    const strike = print.strikePrice;
+    if (gamma === null || !expiration || strike === null) continue;
+    if (print.contractType !== "CALL" && print.contractType !== "PUT") continue;
+    const key = contractKey(expiration, strike, print.contractType === "CALL" ? "call" : "put");
+    if ((gammaAsOf.get(key) ?? -1) >= print.tradeTime) continue;
+    gammaAsOf.set(key, print.tradeTime);
+    gammaByContract.set(key, Math.abs(gamma));
   }
+
+  // Revalue the carried book against each contract's own gamma. The arithmetic
+  // lives in the pure module so it is covered by test:gex-map-v2 rather than
+  // only by whatever a live panel happens to exercise.
+  const frame = revalueDealerGex({
+    state,
+    strikes: structural.latestStrikes.map((row) => row.strike),
+    expirations,
+    gammaByContract,
+    spot: structural.stockPrice ?? 0,
+    representation,
+  });
+  const latestStrikes: ExposureStrike[] = frame.nodes.map((node) => ({
+    strike: node.strike,
+    call: node.callNet,
+    put: node.putNet,
+    net: node.net,
+  }));
 
   /*
    * An empty book must FAIL, not return an empty ladder.

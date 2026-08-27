@@ -130,13 +130,41 @@ check("v2 ships no frames rather than v1's frames", () => {
   assert.doesNotMatch(server, /frames: structural\.frames,/);
 });
 
+check("the book is valued from the contract's own gamma, never a quotient", () => {
+  /*
+   * THE MEASUREMENT THAT CHANGED THE MODEL.
+   *
+   * v2 used to recover per-contract gamma by dividing the provider's derived
+   * exposure by open interest. Gamma is IDENTICAL for a call and a put at one
+   * strike and expiry, so that quotient has one testable property: the call
+   * figure and the put figure must agree. Measured on SPX at 2026-08-26, they
+   * agreed within 10% at 17% of strikes, with the call/put ratio spanning 0.066
+   * to 4,339 against a required 1.0 - so the quotient is not gamma, and every
+   * magnitude, every star node and the whole concentration profile were built
+   * on it.
+   *
+   * The provider sends `greeks.gamma` on every consolidated print, and every
+   * contract in the book got there BY trading, so every one of them has its own
+   * gamma on the same tape the book is built from. It costs nothing extra.
+   */
+  const engine = readFileSync(new URL("../src/lib/gexMapV2.ts", import.meta.url), "utf8");
+  assert.doesNotMatch(engine, /perContractDollarGamma/, "the invalid derivation must not come back");
+  assert.doesNotMatch(server, /perContractDollarGamma/);
+  // parseFlow must keep carrying the greek through, or the lookup is empty and
+  // every strike silently drops out of the ladder.
+  assert.match(quantData, /gamma: isRecord\(value\.greeks\) \? finiteNumber\(value\.greeks\.gamma\) : null/);
+  assert.match(server, /gammaByContract/);
+  assert.match(server, /revalueDealerGex\(\{/);
+  // Latest print per contract, not first: gamma moves with spot and time, and
+  // the panel revalues the book as it stands NOW.
+  assert.match(server, /if \(\(gammaAsOf\.get\(key\) \?\? -1\) >= print\.tradeTime\) continue;/);
+});
+
 check("open interest covers the same contracts as the exposure", () => {
-  // v2 divides the provider's exposure by open interest to recover per-contract
-  // gamma, so the two must cover the SAME contracts. Front-expiry exposure over
-  // all-expiry open interest measured a call/put gamma ratio of 1.8 at the
-  // median, where put-call parity says it must be 1 - gamma is identical for a
-  // call and a put at one strike and expiry. That distortion lands directly on
-  // the sign of every strike where the two sides oppose.
+  // Open interest no longer sets the VALUE of a contract, but it still bounds
+  // how much inventory one strike may absorb, so it must still cover the same
+  // contracts the panel lists. Front-expiry exposure read against all-expiry
+  // open interest inflates that bound on every front-dated strike.
   assert.match(quantData, /expiration\?: string \| null,/);
   assert.match(quantData, /\.\.\.\(expiration \? \{ expirationDate: expiration \} : \{\}\)/);
   assert.match(

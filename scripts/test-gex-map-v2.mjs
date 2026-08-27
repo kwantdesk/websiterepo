@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import {
   contractKey,
   parseContractKey,
-  perContractDollarGamma,
+  contractDollarGamma,
+  OPTION_CONTRACT_MULTIPLIER,
   tradeInventoryDelta,
   classifyConsolidatedTrade,
   classifyConsolidatedTape,
@@ -39,21 +40,24 @@ check("contract keys round-trip", () => {
   assert.equal(parseContractKey("2026-08-21|765|banana"), null);
 });
 
-check("per-contract gamma is positive on both sides", () => {
-  // The provider signs puts negative by convention. A long put and a long call
-  // both have POSITIVE gamma; carrying that convention into the state would
-  // bake in the dealer positioning this engine exists to measure.
-  const gamma = perContractDollarGamma({
-    strike: 765, callExposure: 20_000, putExposure: -60_000,
-    callOpenInterest: 100, putOpenInterest: 200,
-  });
-  assert.equal(gamma.call, 200);
-  assert.equal(gamma.put, 300);
-  // No open interest means no per-contract figure to divide out, not Infinity.
-  const empty = perContractDollarGamma({
-    strike: 1, callExposure: 5, putExposure: -5, callOpenInterest: 0, putOpenInterest: 0,
-  });
-  assert.deepEqual(empty, { call: 0, put: 0 });
+check("dollar gamma comes from the contract's own greek", () => {
+  // It used to be recovered by dividing the provider's derived exposure by open
+  // interest. That quotient was never gamma: gamma is IDENTICAL for a call and
+  // a put at one strike and expiry, and the quotient failed that test at 83% of
+  // strikes, ranging 0.066 to 4,339 against a required 1.0. Every magnitude the
+  // model produced was therefore built on a number that is not a greek.
+  const gamma = 0.0377;
+  const spot = 765.88;
+  const perDollar = contractDollarGamma(gamma, spot, "PER_ONE_DOLLAR_MOVE");
+  const perPercent = contractDollarGamma(gamma, spot, "PER_ONE_PERCENT_MOVE");
+  assert.ok(Math.abs(perDollar - gamma * OPTION_CONTRACT_MULTIPLIER * spot) < 1e-9);
+  // The two representations differ by exactly spot/100, as everywhere else.
+  assert.ok(Math.abs(perPercent - perDollar * spot * 0.01) < 1e-6);
+  // Sign never comes from gamma; it comes from the signed contract count.
+  assert.ok(contractDollarGamma(-gamma, spot, "PER_ONE_DOLLAR_MOVE") > 0);
+  // Nonsense in, zero out - never Infinity or NaN onto a trading surface.
+  assert.equal(contractDollarGamma(gamma, 0, "PER_ONE_DOLLAR_MOVE"), 0);
+  assert.equal(contractDollarGamma(Number.NaN, spot, "PER_ONE_DOLLAR_MOVE"), 0);
 });
 
 const trade = (over = {}) => ({
@@ -171,10 +175,20 @@ check("a unit change cannot flip a sign", () => {
   assert.equal(representationScale("PER_ONE_DOLLAR_MOVE", "PER_ONE_PERCENT_MOVE", 0), 1);
 });
 
-const rows = [
-  { strike: 764, callExposure: 10_000, putExposure: -10_000, callOpenInterest: 100, putOpenInterest: 100 },
-  { strike: 765, callExposure: 20_000, putExposure: -60_000, callOpenInterest: 100, putOpenInterest: 200 },
-];
+/*
+ * A gamma book, keyed the way the dealer state is keyed.
+ *
+ * One figure per strike and expiry, shared by the call and the put, because
+ * gamma IS identical for the two. That is not a convenience in the fixture - it
+ * is the physical property the previous derivation violated at 83% of strikes.
+ */
+const GAMMA = new Map([
+  [contractKey("2026-08-21", 764, "call"), 0.040],
+  [contractKey("2026-08-21", 764, "put"), 0.040],
+  [contractKey("2026-08-21", 765, "call"), 0.055],
+  [contractKey("2026-08-21", 765, "put"), 0.055],
+]);
+const strikes = [764, 765];
 
 check("one strike can flip while its neighbour holds", () => {
   // THE POINT. A vendor snapshot recomputed every frame cannot do this; a
@@ -187,8 +201,8 @@ check("one strike can flip while its neighbour holds", () => {
     },
   };
   const frame = revalueDealerGex({
-    state, rows, expirations: ["2026-08-21"], spot: 765,
-    representation: "PER_ONE_DOLLAR_MOVE", providerRepresentation: "PER_ONE_DOLLAR_MOVE",
+    state, strikes, expirations: ["2026-08-21"], gammaByContract: GAMMA, spot: 765,
+    representation: "PER_ONE_DOLLAR_MOVE",
   });
   const at = (strike) => frame.nodes.find((node) => node.strike === strike);
   assert.ok(at(764).net > 0);
@@ -201,8 +215,8 @@ check("one strike can flip while its neighbour holds", () => {
 check("a strike with no inventory is absent, not zero", () => {
   const state = emptyDealerInventory("2026-08-21", 1);
   const frame = revalueDealerGex({
-    state, rows, expirations: ["2026-08-21"], spot: 765,
-    representation: "PER_ONE_DOLLAR_MOVE", providerRepresentation: "PER_ONE_DOLLAR_MOVE",
+    state, strikes, expirations: ["2026-08-21"], gammaByContract: GAMMA, spot: 765,
+    representation: "PER_ONE_DOLLAR_MOVE",
   });
   // A confident zero is a claim. No position is not the same as flat.
   assert.deepEqual(frame.nodes, []);
@@ -217,15 +231,15 @@ check("a cold state reports itself as warming", () => {
     contracts: { [contractKey("2026-08-21", 765, "call")]: 5 },
   };
   const frame = revalueDealerGex({
-    state: cold, rows, expirations: ["2026-08-21"], spot: 765,
-    representation: "PER_ONE_DOLLAR_MOVE", providerRepresentation: "PER_ONE_DOLLAR_MOVE",
+    state: cold, strikes, expirations: ["2026-08-21"], gammaByContract: GAMMA, spot: 765,
+    representation: "PER_ONE_DOLLAR_MOVE",
   });
   assert.equal(frame.status, "warming");
   assert.ok(DEALER_INVENTORY_WARMUP_CONTRACTS > 0);
   // A state carried from a real previous session is not warming.
   assert.equal(revalueDealerGex({
-    state: { ...cold, carried: true }, rows, expirations: ["2026-08-21"], spot: 765,
-    representation: "PER_ONE_DOLLAR_MOVE", providerRepresentation: "PER_ONE_DOLLAR_MOVE",
+    state: { ...cold, carried: true }, strikes, expirations: ["2026-08-21"], gammaByContract: GAMMA, spot: 765,
+    representation: "PER_ONE_DOLLAR_MOVE",
   }).status, "ready");
 });
 
@@ -236,10 +250,11 @@ check("the same book reprices when the market moves", () => {
     sessionDate: "2026-08-21", asOfMs: 1, carried: true, absorbedContracts: 1e6,
     contracts: { [contractKey("2026-08-21", 765, "call")]: 100 },
   };
-  const shared = { state, expirations: ["2026-08-21"], spot: 765, representation: "PER_ONE_PERCENT_MOVE", providerRepresentation: "PER_ONE_DOLLAR_MOVE" };
-  const before = revalueDealerGex({ ...shared, rows });
-  const richer = rows.map((row) => (row.strike === 765 ? { ...row, callExposure: 40_000 } : row));
-  const after = revalueDealerGex({ ...shared, rows: richer });
+  const shared = { state, strikes, expirations: ["2026-08-21"], representation: "PER_ONE_PERCENT_MOVE" };
+  const before = revalueDealerGex({ ...shared, gammaByContract: GAMMA, spot: 765 });
+  // Spot moved and gamma rose under an UNCHANGED position.
+  const richer = new Map(GAMMA).set(contractKey("2026-08-21", 765, "call"), 0.070);
+  const after = revalueDealerGex({ ...shared, gammaByContract: richer, spot: 768 });
   assert.ok(Math.abs(after.nodes[0].net) > Math.abs(before.nodes[0].net));
   // Same position, same sign - only the valuation moved.
   assert.equal(Math.sign(after.nodes[0].net), Math.sign(before.nodes[0].net));
