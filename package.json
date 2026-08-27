@@ -167,6 +167,7 @@
     "research:gex-map-live-pair": "node scripts/score-live-pair.mjs",
     "research:gex-map-v2-where-wrong": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/research-gex-map-v2-where-wrong.mjs",
     "research:gex-map-v2-composition": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/research-trinity-composition.mjs",
+    "research:gex-map-v2-scale": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/sweep-gex-map-v2-scale.mjs",
     "research:gex-map-v2-blend": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/sweep-gex-map-v2-blend.mjs",
     "research:gex-map-v2-depth": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/sweep-gex-map-v2-depth.mjs",
     "research:gex-map-v2-open-interest": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/research-gex-map-v2-vs-open-interest.mjs",
