@@ -45,15 +45,32 @@ import { volumeProfileBinTick } from "../src/lib/volumeProfileMath.ts";
     new URL("../src/lib/nativeVolumeProfilePrimitive.ts", import.meta.url),
     "utf8",
   );
+  /*
+   * Matched on behaviour rather than on one expression.
+   *
+   * Both of these were pinned to the exact text of the multiplier and went
+   * stale when the legibility floor was extended to manual profiles - failing
+   * the suite over a refactor they were not testing, which is worse than not
+   * testing it at all.
+   *
+   * What must stay true: the trader's coarsening factor applies ONLY in
+   * automatic mode, and it scales a multiplier derived from how many pixels a
+   * row actually gets.
+   */
   assert.match(
     primitive,
-    /automaticMultiplier = style\.automaticGrouping/,
-    "the renderer still owns automatic grouping",
+    /style\.automaticGrouping \? style\.autoGroupFactor : 1/,
+    "the coarsening factor is still exclusive to automatic grouping",
   );
   assert.match(
     primitive,
-    /style\.autoGroupFactor\) \/ sourceRowPixels/,
-    "Auto group factory scales the renderer's pixel-derived multiplier",
+    /automaticMultiplier = Math\.max\([\s\S]{0,200}?\/ sourceRowPixels/,
+    "and it still scales a multiplier derived from the pixels a row gets",
+  );
+  assert.match(
+    primitive,
+    /groupedTicks = profile\.groupTicks \* automaticMultiplier/,
+    "which is what actually coarsens the rows",
   );
 }
 
@@ -119,10 +136,23 @@ console.log("Volume profile Data Settings (grouping + filters) tests passed.");
     "utf8",
   );
 
+  /*
+   * Pinned to behaviour, not to identifiers.
+   *
+   * The chaining was rebuilt to measure where the profile in front is DRAWN
+   * rather than where its time sits - so a docked profile stops the lines at
+   * its body instead of being painted over. The old names went with it, and
+   * these assertions failed the suite over a rewrite they were not testing.
+   */
   assert.match(
     primitive,
-    /nextProfileStartMsById/,
-    "the renderer must know where the next profile begins",
+    /blockerStartMsById/,
+    "the renderer must know where the profile in front begins",
+  );
+  assert.match(
+    primitive,
+    /blockerIdById/,
+    "and which profile that is",
   );
   // Chaining is per profile kind so a split session follows its own kind.
   assert.match(
@@ -131,15 +161,18 @@ console.log("Volume profile Data Settings (grouping + filters) tests passed.");
     "profiles chain within their own period and root",
   );
   // The newest profile has nothing in front of it and runs to the live edge.
+  // A profile that HAS one in front but could not place it must stop at its own
+  // end instead - running on there is what made levels shoot forward across
+  // every profile ahead of them on a zoom.
   assert.match(
     primitive,
-    /nextProfileStartX == null\s*\?\s*mediaSize\.width/,
-    "the newest profile extends to the right edge",
+    /blockerId !== undefined && !blockerPlacedBehind\s*\?\s*endX\s*:\s*mediaSize\.width/,
+    "only a profile with nothing in front of it reaches the live edge",
   );
   // Level lines start from the chained boundary, not the profile band.
   assert.match(
     primitive,
-    /let lineEndX = levelChainEndX;/,
+    /let lineEndX = resolveLevelChainEndX\(\);/,
     "levels extend to the next profile by default",
   );
   // Extend modes may only pull a level in, never push it past the next profile.

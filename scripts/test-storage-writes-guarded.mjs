@@ -23,12 +23,21 @@ const files = execSync(
   { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 },
 ).split("\n").filter(Boolean);
 
-/** Whether the line sits inside a `try` block that has not closed yet. */
-function insideTry(lines, upTo) {
+/**
+ * Whether the write at `lines[upTo]`, starting at `column`, sits inside a `try`
+ * that has not closed yet.
+ *
+ * The column matters. This used to scan the whole of the final line, so a
+ * one-line `try { ... } catch {}` had already closed by the time it was asked -
+ * and every write written that way was reported as unguarded. The braces after
+ * the call are not in front of it.
+ */
+function insideTry(lines, upTo, column) {
   let depth = 0;
   const openTries = [];
   for (let index = 0; index <= upTo; index += 1) {
-    const code = lines[index].replace(/\/\/.*$/, "");
+    const whole = index === upTo ? lines[index].slice(0, column) : lines[index];
+    const code = whole.replace(/\/\/.*$/, "");
     if (/\btry\s*\{/.test(code)) openTries.push(depth);
     for (const char of code) {
       if (char === "{") depth += 1;
@@ -54,12 +63,50 @@ function bareWrites() {
       const trimmed = line.trim();
       // Prose about setItem is not a call to it.
       if (trimmed.startsWith("*") || trimmed.startsWith("//") || trimmed.startsWith("/*")) continue;
-      if (insideTry(lines, index)) continue;
+      const column = line.search(/(?:window\.)?localStorage\.setItem\(/);
+      if (insideTry(lines, index, column < 0 ? line.length : column)) continue;
       found.push(`${file}:${index + 1}`);
     }
   }
   return found;
 }
+
+check("the detector still catches a bare write", () => {
+  /*
+   * A guard that has been loosened into always passing is worse than no guard,
+   * so the loosening is tested directly. Each fixture is the line array
+   * insideTry actually reads, with the column of the call.
+   */
+  const at = (line) => line.search(/(?:window\.)?localStorage\.setItem\(/);
+  const guarded = (rows, index) => insideTry(rows, index, at(rows[index]));
+
+  // THE FALSE POSITIVE. The braces after the call are not in front of it.
+  const oneLine = ['try { window.localStorage.setItem("k", "v"); } catch { /* pref */ }'];
+  assert.equal(guarded(oneLine, 0), true, "a one-line try/catch guards its write");
+
+  // A bare write is still a bare write.
+  assert.equal(guarded(['window.localStorage.setItem("k", "v");'], 0), false);
+  // Including one that merely FOLLOWS a closed try on an earlier line.
+  assert.equal(guarded([
+    "try { doSomething(); } catch {}",
+    'window.localStorage.setItem("k", "v");',
+  ], 1), false, "a try that already closed guards nothing");
+  // And one in the catch block itself, which is where a quota failure lands.
+  assert.equal(guarded([
+    "try { a(); } catch {",
+    '  window.localStorage.setItem("k", "v");',
+    "}",
+  ], 1), false, "the catch block is not inside the try");
+
+  // A multi-line try still guards, at any nesting depth.
+  assert.equal(guarded([
+    "try {",
+    "  if (ready) {",
+    '    window.localStorage.setItem("k", "v");',
+    "  }",
+    "} catch {}",
+  ], 2), true);
+});
 
 check("no unguarded localStorage write remains", () => {
   const bare = bareWrites();
