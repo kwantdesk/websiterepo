@@ -110,9 +110,20 @@ check("it sits under every reading on the chart", () => {
   assert.match(source, /className="pointer-events-none absolute z-\[5\] select-none"/);
   assert.match(source, /aria-hidden/);
   assert.match(source, /draggable=\{false\}/);
-  // Bottom-left, on the same chrome insets the rest of the overlays use: the
-  // 26px time axis plus the standard 8px margin.
-  assert.match(source, /left: 12,\s*\n\s*bottom: 26 \+ 8,/);
+  /*
+   * Top centre, and centred by the BROWSER rather than by measurement.
+   *
+   * `left: 0` with `right: <price scale>` and `margin-inline: auto` splits the
+   * free space evenly, so the mark re-centres on every resize, split, detach
+   * and aspect ratio on its own. A measured centre would need a layout effect,
+   * which runs a frame late and goes stale when a pane is resized while hidden.
+   */
+  assert.match(source, /top: 8,\s*\n\s*left: 0,\s*\n\s*right: nativePriceScaleWidth,\s*\n\s*marginInline: "auto",/);
+  // Centred over the candles, not the pane: the price scale is chrome on the
+  // right, and centring across it leaves the mark visibly off-centre.
+  assert.doesNotMatch(source, /right: 0,\s*\n\s*marginInline: "auto"/);
+  // An explicit width is what makes margin:auto centre anything at all.
+  assert.match(source, /marginInline: "auto",\s*\n\s*width: chartWatermark\.width,/);
 });
 
 console.log(`\nchart watermark: ${passed}/${passed} checks passed`);

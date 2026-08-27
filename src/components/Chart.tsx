@@ -15578,6 +15578,16 @@ function Chart({
           * Sits above the chart canvas but under every reading on it - levels,
           * drawings, order labels - so it identifies the chart without ever
           * being something a trader has to look past.
+          *
+          * Centred by the browser, not by measurement: `left: 0` and
+          * `right: <price scale>` with `margin-inline: auto` splits the free
+          * space evenly, so the mark re-centres on every resize, split, detach
+          * and aspect ratio without a layout effect that can run a frame late
+          * or go stale when a pane is resized while hidden.
+          *
+          * Centred over the CANDLES rather than the pane. The price scale is a
+          * chrome strip on the right, and centring across it would leave the
+          * mark visibly left of the middle of the chart a trader is reading.
           */
         <img
           src={CHART_WATERMARK_SRC}
@@ -15586,8 +15596,10 @@ function Chart({
           draggable={false}
           className="pointer-events-none absolute z-[5] select-none"
           style={{
-            left: 12,
-            bottom: 26 + 8,
+            top: 8,
+            left: 0,
+            right: nativePriceScaleWidth,
+            marginInline: "auto",
             width: chartWatermark.width,
             height: chartWatermark.height,
             opacity: 0.55,
