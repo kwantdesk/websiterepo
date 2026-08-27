@@ -52,7 +52,57 @@ async function fetchFromOrigin(
   }
 }
 
+/**
+ * How long an origin that keeps failing is left alone.
+ *
+ * A crash-looping collector answers /health during its up windows, so the
+ * health probe waves requests through and they then hang on a gateway that
+ * died mid-flight. Measured during one such loop: a single index-history
+ * request took 77 seconds to fail, and a workspace runs five or six of them at
+ * once - which is what "the whole site is frozen" actually was.
+ *
+ * Fifteen seconds is long enough to stop a flapping origin from being retried
+ * on every pane refresh, and short enough that a real recovery is picked up
+ * within one refresh cycle rather than needing a reload.
+ */
+const ORIGIN_COOLDOWN_MS = 15_000;
+
+/** Two, not one: a single timeout can be a slow response rather than an outage. */
+const ORIGIN_FAILURES_BEFORE_COOLDOWN = 2;
+
+const originFailures = new Map<string, { count: number; until: number }>();
+
+function originIsCoolingDown(origin: string) {
+  const entry = originFailures.get(origin);
+  return Boolean(entry && entry.until > Date.now());
+}
+
+function recordOriginFailure(origin: string) {
+  const entry = originFailures.get(origin);
+  const count = (entry && entry.until > Date.now() ? entry.count : 0) + 1;
+  originFailures.set(origin, {
+    count,
+    until: count >= ORIGIN_FAILURES_BEFORE_COOLDOWN ? Date.now() + ORIGIN_COOLDOWN_MS : 0,
+  });
+}
+
+function recordOriginSuccess(origin: string) {
+  originFailures.delete(origin);
+}
+
+/** What the breaker is currently holding open, for the diagnostics surface. */
+export function marketDataOriginCooldowns() {
+  const now = Date.now();
+  return [...originFailures.entries()]
+    .filter(([, entry]) => entry.until > now)
+    .map(([origin, entry]) => ({ origin, failures: entry.count, msRemaining: entry.until - now }));
+}
+
 async function originIsConnected(origin: string, token: string) {
+  // A cooling-down origin is not probed at all. The probe is itself a request
+  // to the thing that is failing, and five seconds of it per pane per refresh
+  // is most of what makes an outage feel like a freeze.
+  if (originIsCoolingDown(origin)) return false;
   const cached = gatewayHealth.get(origin);
   if (cached && Date.now() - cached.checkedAt < HEALTH_CACHE_MS) return cached.healthy;
   let healthy = false;
@@ -107,21 +157,34 @@ export async function fetchInstitutionalMarketData(
     try {
       const response = await fetchFromOrigin(origin, normalizedPath, token, init, timeoutMs);
       lastGoodOrigin = origin;
+      recordOriginSuccess(origin);
       return response;
     } catch (error) {
       lastError = error;
+      recordOriginFailure(origin);
       if (origin === lastGoodOrigin) lastGoodOrigin = null;
     }
   }
 
-  // Preserve historical/degraded failover behavior only after every healthy
-  // collector has failed. A disconnected origin must never delay steady-state
-  // live chart requests.
+  /*
+   * Preserve historical/degraded failover only after every healthy collector
+   * has failed - and never for an origin the breaker is holding open.
+   *
+   * This loop retries origins the health probe ALREADY found dead, at the full
+   * timeout, on every request. That is correct for a collector whose /health is
+   * unreliable but whose data endpoints work; it is ruinous for one that is
+   * simply down, because every pane then pays the timeout twice - once being
+   * told the origin is unavailable, once proving it.
+   */
   for (const origin of unavailable) {
+    if (originIsCoolingDown(origin)) continue;
     try {
-      return await fetchFromOrigin(origin, normalizedPath, token, init, timeoutMs);
+      const response = await fetchFromOrigin(origin, normalizedPath, token, init, timeoutMs);
+      recordOriginSuccess(origin);
+      return response;
     } catch (error) {
       lastError = error;
+      recordOriginFailure(origin);
     }
   }
 
