@@ -44,8 +44,20 @@ import {
  * expected to surface it rather than present a partial book as a full one.
  */
 
-/** 100 rows a page, so this is 4,000 of the most recent prints. */
-const TAPE_PAGE_LIMIT = 40;
+/**
+ * 100 rows a page.
+ *
+ * Measured against the reference on SPX at 2026-08-26 close, 40 pages produced
+ * a book with a gross magnitude 0.54x the reference - roughly half a session's
+ * inventory, which is what a truncated tape looks like. The cap is the binding
+ * constraint on magnitude, not the model.
+ *
+ * Raised to 100 pages, 10,000 prints. The cost is bounded and paid once: the
+ * built book is cached per symbol and session, so a five-second panel refresh
+ * never re-reads the tape. `tapeTruncated` still reports when even this was not
+ * enough rather than presenting a partial book as a whole one.
+ */
+const TAPE_PAGE_LIMIT = 100;
 
 export type DealerInventoryPanelPayload = GexMapPanelPayload & {
   model: "DEALER_INVENTORY";
@@ -200,11 +212,20 @@ async function buildDealerInventoryPanel(
     tapeTruncated: tape.truncated,
     tapeFromMs: fromMs,
     latestStrikes,
-    // The change columns and replay belong to the structural frames. Deriving
-    // them here would need the book rebuilt at each lookback, which is another
-    // full tape read per window - left for when the state is persisted rather
-    // than rebuilt, so the panel is not quietly charged for it every refresh.
-    frames: structural.frames,
+    /*
+     * NO FRAMES.
+     *
+     * These drive the change columns and replay. Passing the structural frames
+     * through would put v1's history under a DEALER label beside v2's ladder -
+     * the same lie as the empty-book fallback, in the one place a trader reads
+     * to see how a node is BUILDING. A node whose value came from one model and
+     * whose change came from another is worse than no change at all.
+     *
+     * Deriving them properly needs the book rebuilt at each lookback, which is
+     * another tape read per window. That waits for the state to be persisted
+     * rather than rebuilt, so the panel is not charged for it on every refresh.
+     */
+    frames: [],
     netExposure: latestStrikes.reduce((sum, row) => sum + row.net, 0),
     grossExposure: latestStrikes.reduce((sum, row) => sum + Math.abs(row.call) + Math.abs(row.put), 0),
   };

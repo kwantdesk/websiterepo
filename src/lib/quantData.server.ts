@@ -2744,7 +2744,7 @@ async function buildGexMapPanel(
 export async function readConsolidatedTape(
   symbol: string,
   sessionDate: string,
-  maxPages = 40,
+  maxPages = 100,
 ): Promise<{ prints: OptionsFlowPrint[]; truncated: boolean; remaining: number | null }> {
   const prints: OptionsFlowPrint[] = [];
   let cursor: string[] | null = null;

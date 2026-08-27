@@ -77,9 +77,9 @@ check("the tape read is bounded and reports what it missed", () => {
   // takes a slot in the 80ms scheduler. An unbounded read on a five-second
   // panel refresh is the August quota burn again.
   assert.match(quantData, /export async function readConsolidatedTape\(/);
-  assert.match(quantData, /maxPages = 40/);
+  assert.match(quantData, /maxPages = 100/);
   assert.match(quantData, /truncated: boolean/);
-  assert.match(server, /const TAPE_PAGE_LIMIT = 40;/);
+  assert.match(server, /const TAPE_PAGE_LIMIT = 100;/);
   // And the built book is cached so refreshes do not re-read the tape.
   assert.match(server, /unstable_cache\(/);
 });
@@ -118,6 +118,16 @@ check("a surface from the other model is dropped, not shown", () => {
   assert.match(workspace, /const expectedModel = exposureModel === "DEALER_INVENTORY"/);
   assert.match(workspace, /if \(next\[panel\.id\] && next\[panel\.id\]\?\.model !== expectedModel\) delete next\[panel\.id\];/);
   assert.match(workspace, /cached\.model === expectedModel/);
+});
+
+check("v2 ships no frames rather than v1's frames", () => {
+  // Frames drive the change columns and replay. Passing the structural frames
+  // through would put v1's history under a DEALER label beside v2's ladder -
+  // the same lie as the empty-book fallback, in the one place a trader reads to
+  // see how a node is BUILDING. A node whose value came from one model and
+  // whose change came from another is worse than no change at all.
+  assert.match(server, /frames: \[\],/);
+  assert.doesNotMatch(server, /frames: structural\.frames,/);
 });
 
 console.log(`\ngex map v2 wiring: ${passed}/${passed} checks passed`);

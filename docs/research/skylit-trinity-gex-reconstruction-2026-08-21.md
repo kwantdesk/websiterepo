@@ -703,3 +703,46 @@ against this capture.
 consolidated tape with the full field set alongside Trinity frames, then re-run
 this sweep against it. Searching further on the collapsed tape would be fitting
 to noise.
+
+## Addendum — 2026-08-27 — v2 measured against Trinity for the first time
+
+Read directly out of the live API rather than a screenshot, SPX,
+`model=DEALER_INVENTORY`, 2026-08-26:
+
+| | v2 | v1 |
+|---|---:|---:|
+| cross-strike correlation | **0.481** | 0.141 |
+| sign agreement | 56% | 55% |
+| gross magnitude vs Trinity | **0.54x** | 142x |
+| star node | **7670** | — |
+| Trinity King node | **7670** | — |
+
+**Both products pick the same King.** That is the first genuine agreement
+anywhere in this investigation, and it is a lower bound: our reading is session
+close (20:00Z) while the Trinity frame is the 11:15 replay, so they are
+different minutes.
+
+Magnitude went from 142x too large under v1 to 0.54x - about half. Half a
+session's inventory is exactly what a truncated tape produces, so the page cap
+was the binding constraint on magnitude rather than anything in the model. Raised
+40 -> 100 pages.
+
+### Two further model leaks found and closed
+
+Both are the same failure as the empty-book fallback: v1 numbers presented under
+a v2 label.
+
+1. **`frames` were the structural frames.** They drive the change columns and
+   replay, so the ladder was v2 while the history beside it was v1 - in the one
+   place a trader reads to see how a node is BUILDING. v2 now ships no frames at
+   all rather than another model's. Deriving them needs the book rebuilt per
+   lookback, which waits for a persisted state.
+2. **Decay was applied once to the whole book** instead of per trade, which is a
+   global scalar and changes no relative value. The panel was silently running
+   `carry`, measured at -0.302 where the shipped policy measures +0.603.
+
+### Still open
+
+Sign agreement is 56% against Trinity's own 96% frame-to-frame. The times do not
+match, which accounts for some of it, but not all. Next measurement should be
+like-for-like: the same minute on both products.
