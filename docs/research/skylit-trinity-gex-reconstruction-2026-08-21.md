@@ -631,3 +631,75 @@ carry their own sign, its rows are no longer dictated by the chain's shape:
 
 That is the structural confirmation the model class is right: v2 is answering
 the question Trinity answers, where v1 was answering a different one.
+
+## Addendum — 2026-08-27 — flow calibration against open interest
+
+### Ground truth derived, not assumed
+
+Open interest is a real label: `OI = opens - closes` and `Volume = opens + closes`,
+so `opening fraction = (1 + OI/V) / 2`. The 45MB capture holds every trade in
+the 2026-08-21 expiry across its whole 78-session life, and the chain snapshot
+holds that expiry's open interest, so the fraction is measurable rather than
+assumed:
+
+| Symbol | contracts | aggregate OI/V | opening fraction |
+|---|---:|---:|---:|
+| SPXW | 473 | 0.229 | **0.615** |
+| SPY | 291 | 0.388 | **0.694** |
+| QQQ | 209 | 0.380 | **0.690** |
+
+So 62-69% of volume opens and 31-38% closes. Note the consequence: cumulative
+flow over a contract's life is roughly four times its standing open interest.
+
+### The OI bound is not what sets the values
+
+That raised the obvious worry - that `DEALER_INVENTORY_OI_BOUND` was clipping
+most positions, which would make v2 a structural quantity in disguise and land
+it in exactly v1's trap. It is not:
+
+| Symbol | positions at the bound | median abs(inventory)/OI | p90 |
+|---|---:|---:|---:|
+| SPXW | 2% | 0.001 | 0.080 |
+| SPY | 5% | 0.000 | 0.157 |
+| QQQ | 9% | 0.000 | 0.223 |
+
+The flow sets the values. Those p90 fractions also sit in the same range as the
+signed OI-gamma share the main report derived from Trinity's own rows
+(-0.21%..+1.39% SPXW, -15%..+19% SPY, -28%..+9% QQQ).
+
+### Every available lever, swept
+
+Mean across all four captured frames:
+
+| Variant | SPXW r | SPY r | QQQ r |
+|---|---:|---:|---:|
+| **baseline, 3h decay** | **0.603** | -0.330 | 0.038 |
+| buys only | 0.033 | 0.458 | -0.050 |
+| sells only | 0.327 | -0.439 | 0.052 |
+| buy bias 2x | 0.414 | -0.066 | -0.046 |
+| buy bias 0.5x | 0.523 | -0.431 | 0.040 |
+| size >= 10 / 50 / 200 | 0.546 / 0.387 / 0.573 | -0.302 / -0.228 / 0.009 | 0.034 / 0.028 / -0.113 |
+
+**Nothing beats the shipped baseline on the index.** Combined with the earlier
+half-life, session-versus-carry, sign-flip and bound sweeps, the levers
+reachable in this data are exhausted and the shipped configuration is the best
+of them.
+
+### Why the ETFs cannot be fixed from this capture
+
+The calibration tape carries `side` collapsed to BUY / SELL / MID. The LIVE path
+receives strictly more: `tradeSideCode` at five levels (ABOVE_ASK / ASK / BID /
+BELOW_BID / MID_MARKET), plus `tradeConsolidationType`, `tradeType`,
+`greeks.gamma`, `openInterest` and `premium` per print.
+
+Aggressor strength, sweep-versus-split and multi-leg detection are precisely the
+distinctions that separate directional customer positioning from hedging and
+spread activity - which is the diagnosis for why a plain aggressor rule works on
+the index and reads backwards on the ETFs. The shipped classifier already uses
+those five levels and the consolidation weight; they simply cannot be scored
+against this capture.
+
+**Next step is data capture, not model search:** record a live session's
+consolidated tape with the full field set alongside Trinity frames, then re-run
+this sweep against it. Searching further on the collapsed tape would be fitting
+to noise.
