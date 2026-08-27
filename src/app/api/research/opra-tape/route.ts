@@ -62,6 +62,46 @@ export async function GET(request: NextRequest) {
 
   try {
     const tape = await readRawConsolidatedTape(symbol, sessionDate, pages);
+
+    /*
+     * aggregate=1 collapses the tape to signed contract sums per strike, per
+     * side, per aggressor level.
+     *
+     * The raw tape is thousands of prints and cannot be read back through a
+     * browser, but the calibration does not need the prints - it needs to know
+     * how much size sits behind ABOVE_ASK versus ASK versus BID versus
+     * BELOW_BID at each strike. That is a few hundred numbers, and it is
+     * exactly the distinction the earlier capture destroyed by collapsing side
+     * to BUY / SELL / MID.
+     */
+    if (request.nextUrl.searchParams.get("aggregate") === "1") {
+      const buckets = new Map<string, number>();
+      let classified = 0;
+      for (const raw of tape.prints) {
+        if (!raw || typeof raw !== "object") continue;
+        const print = raw as Record<string, unknown>;
+        const strike = Number(print.strikePrice);
+        const size = Number(print.size);
+        const right = String(print.contractType ?? "").toUpperCase();
+        const side = String(print.tradeSideCode ?? "").toUpperCase();
+        const expiration = typeof print.expirationDate === "string" ? print.expirationDate.slice(0, 10) : "";
+        if (!Number.isFinite(strike) || !Number.isFinite(size) || size <= 0) continue;
+        if (right !== "CALL" && right !== "PUT") continue;
+        classified += 1;
+        const key = `${expiration}|${strike}|${right}|${side}|${String(print.tradeConsolidationType ?? "")}`;
+        buckets.set(key, (buckets.get(key) ?? 0) + size);
+      }
+      return NextResponse.json({
+        symbol: tape.symbol,
+        sessionDate: tape.sessionDate,
+        prints: tape.prints.length,
+        classified,
+        truncated: tape.truncated,
+        // "expiration|strike|right|tradeSideCode|consolidation": contracts
+        buckets: Object.fromEntries([...buckets.entries()].sort()),
+      }, { headers: { "Cache-Control": "private, no-store, max-age=0" } });
+    }
+
     return NextResponse.json(tape, {
       // Research output, bound to one signed-in operator. Never shared-cached.
       headers: { "Cache-Control": "private, no-store, max-age=0" },
