@@ -154,7 +154,8 @@
     "test:paper-order-label": "node scripts/test-paper-order-label-geometry.mjs",
     "test:volume-profile-session-toggle": "node scripts/test-volume-profile-session-toggle.mjs",
     "test:position-tool-colours": "node scripts/test-position-tool-colours.mjs",
-    "test:chart-watermark": "node scripts/test-chart-watermark.mjs"
+    "test:chart-watermark": "node scripts/test-chart-watermark.mjs",
+    "research:gexmap-vs-trinity": "node scripts/compare-gexmap-vs-trinity-scope.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",

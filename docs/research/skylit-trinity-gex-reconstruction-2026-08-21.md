@@ -179,6 +179,65 @@ strike to flip sign, and revalues the carried book without inventing trades.
 The OPRA update term still requires a calibrated economic-trade and
 dealer/open-close classifier; public aggressor side by itself is insufficient.
 
+### Full-lattice untouched 10:00 validation
+
+The state result was subsequently repeated against the complete visible
+SPXW/SPY/QQQ lattice rather than the seven illustrative nodes above. Model
+selection used only the 09:50 and 09:55 frames; the 10:00 frame remained
+untouched. Across 275 strike rows:
+
+| Model | 10:00 R-squared | RMSE | MAE | Row-sign accuracy |
+|---|---:|---:|---:|---:|
+| Fresh OI/volume/OPRA snapshot families | at most 0.0189 | at least $56.47M | — | approximately 47–61% |
+| Previous signed node state only | 0.97889 | $2.706M | $0.797M | 96.0% |
+| Carried state plus classified OPRA level/change features | **0.97965** | **$2.656M** | $0.938M | 86.55% |
+
+The OPRA-enhanced state model was selected without seeing 10:00. Exact examples
+from that untouched frame were:
+
+| Node | Trinity | Reconstructed |
+|---|---:|---:|
+| SPXW 7640 | +$11.647M | +$12.020M |
+| SPXW 7675 | -$8.570M | -$7.504M |
+| SPXW 7680 | +$21.916M | +$18.164M |
+| SPY 760 | +$215.061M | +$216.371M |
+| SPY 766 | -$80.040M | -$76.306M |
+| QQQ 708 | -$83.276M | -$89.332M |
+| QQQ 714 | +$24.885M | +$20.607M |
+
+This is the decisive mathematical result. The cross-section cannot be recovered
+from a static OPRA snapshot, while a strike-specific signed state carried from
+the preceding frame reproduces almost all of it. The remaining 2.03% is the
+unobserved trade-attribution and economic-order logic that Skylit describes as
+its proprietary inference layer.
+
+The production equation should keep the display normalization explicit until
+the unit convention is independently verified:
+
+```text
+signedDealerContracts_i(t)
+  = signedDealerContracts_i(t - dt)
+  + sum_j(contracts_j
+          * dealerTradeSign_j
+          * P(dealer counterparty | j)
+          * P(economic opening/closing role | j)
+          * complexLegWeight_j
+          * quoteConfidence_j)
+
+NodeGEX_K(t)
+  = sum_i_at_strike_K(
+      signedDealerContracts_i(t)
+      * gamma_i(t)
+      * contractMultiplier_i
+      * displayMove_i(t)
+    )
+```
+
+For a one-dollar underlying move, `displayMove = spot`; for the common one-percent
+GEX convention, `displayMove = spot^2 * 0.01`. This normalization changes units
+and magnitude only. It cannot create Trinity's strike-by-strike sign pattern;
+that comes from `signedDealerContracts`.
+
 ### Trinity settings checked
 
 The signed-in Trinity controls were inspected so display transforms were not
@@ -368,6 +427,10 @@ untouched sessions.
   custom inference models and proprietary dealer-microstructure intelligence,
   not raw vendor data alone:
   <https://www.skylit.ai/learn/best-gex-tools>.
+- Skylit's dealer-positioning guide distinguishes nodes that actively build or
+  unwind from static hedge nodes, which is consistent with the carried-state
+  result and inconsistent with a fresh OI-only calculation:
+  <https://www.skylit.ai/learn/dealer-positioning>.
 
 ## Reproduction
 
@@ -378,3 +441,74 @@ untouched sessions.
 - `scripts/reverse-engineer-opra-live-flow-2026-08-21.mjs` — paginated target-
   strike tape, 166,320 constrained combinations, bucket/state/sentiment models,
   dynamic carried-state reconstruction and symbol holdout diagnostics.
+
+## Addendum — 2026-08-27 — scope isolated, and a correction
+
+Re-opened after a fresh side-by-side at **10:26 ET on 2026-08-26**, both products
+in replay on the same minute and the same strikes. The 2026-08-21 conclusion
+reproduced from data it never saw.
+
+### Correction: GEX MAP does not use `deriveSessionVolumeGamma`
+
+The "Why KwantDesk currently differs" section above attributes the divergence to
+`deriveSessionVolumeGamma`'s `volume / openInterest` participation scaling. That
+is true of the Classic GEX profile and the gameplan surface, but **not** of the
+GEX MAP panel, which is the surface being compared. `getGexMapPanel` contains no
+reference to it.
+
+What GEX MAP actually does:
+
+```text
+getGexMapPanel
+  -> quantDataPost("/options/tool/exposure-by-strike", { representationMode })
+  -> parseExposure: net = callExposure + putExposure, summed over expiries in scope
+```
+
+We compute no gamma of our own on this surface. **Our levels are QuantData's
+levels.** The comparison is therefore QuantData's dealer-exposure model against
+Skylit's, not our arithmetic against theirs. That does not change the required
+build, but it does change where the number comes from.
+
+### Scope was isolated from model, and it is not the answer
+
+`scripts/compare-gexmap-vs-trinity-scope.mjs` replays the captured QuantData
+interval map against the captured Trinity lattice for the same minute, once
+filtered to 0DTE and once across all expirations. If the divergence were a scope
+mismatch, correlation would rise sharply when scope is matched.
+
+| Symbol | Scope | Strikes | Sign match | r | Gross QD/Trinity |
+|---|---|---:|---:|---:|---:|
+| SPXW | 0DTE | 67 | 54% | 0.141 | 332.6x |
+| SPXW | ALL-EXP | 78 | 56% | 0.141 | 594.3x |
+| SPY | 0DTE | 36 | 47% | 0.006 | 7.7x |
+| SPY | ALL-EXP | 63 | 52% | -0.131 | 17.2x |
+| QQQ | 0DTE | 49 | 53% | 0.244 | 9.2x |
+| QQQ | ALL-EXP | 75 | 51% | 0.024 | 15.4x |
+
+Matching the scope roughly halves the magnitude gap (SPY 17.2x → 7.7x) and moves
+correlation by at most +0.22. Best absolute correlation anywhere in the table is
+**0.244**; sign agreement never leaves the 47–56% band, which is a coin flip.
+
+Scope is worth fixing for honesty — the guardrail "do not mix 0DTE and all-expiry
+rows" stands — but it converges nothing.
+
+### Independent confirmation from the 2026-08-26 frame
+
+The 08-26 screenshots were transcribed and compared with no reference to the
+08-21 work. SPY, 23 overlapping strikes, ours on ALL EXP:
+
+- sign agreement **12/23**;
+- ratio spread where signs even agree: **6.5x to 1735x**;
+- gross ratio **17.2x** — the same figure the 08-21 SPY ALL-EXP row produces.
+
+Two independent sessions, five days apart, agree. A units difference cannot be
+the cause: `$1` and `1%` differ by `spot/100`, a positive scalar, and a positive
+scalar cannot flip a sign or change a correlation.
+
+### Standing conclusion
+
+Unchanged and now better supported. QuantData and Skylit measure different
+quantities. The gap closes only by building the carried dealer-inventory state
+engine specified in "KwantDesk model to own" above — for which the measured
+ceiling remains R-squared 0.979 and 96% row-sign accuracy on an untouched frame,
+with the residual being Skylit's unobservable trade-attribution layer.
