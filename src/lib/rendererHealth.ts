@@ -22,6 +22,21 @@ type RendererHealthSnapshot = {
   longTasks: number;
   longestTaskMs: number;
   domNodes: number;
+  /*
+   * Browser resources this page is holding open, net of teardown.
+   *
+   * The 08-25 trace named the failure: 276,938 event listeners in 148 seconds
+   * while DOM nodes rose by 178. Heap alone could never have said that - it
+   * only ever said "something grew". Six sites were repaired and the crash
+   * came back, so the next one has to arrive already carrying its own cause.
+   *
+   * `listenerTypes` is the naming field. A net count says a leak exists;
+   * "mousemove 41,882" says which effect to open.
+   */
+  listeners: number;
+  listenerTypes: string;
+  intervals: number;
+  observers: number;
 };
 
 import { captureStallProfile, isRendererProfilerAvailable, startRendererProfiler } from "@/lib/rendererProfiler";
@@ -34,6 +49,88 @@ const SNAPSHOT_INTERVAL_MS = 5_000;
 const SAMPLE_INTERVAL_MS = 1_000;
 
 type PerformanceMemory = { usedJSHeapSize: number; jsHeapSizeLimit: number };
+
+/*
+ * Net add/remove balance for the resources an effect can leak.
+ *
+ * Counted by wrapping the browser's own methods, because the alternative -
+ * getEventListeners - exists only inside DevTools and cannot run in a user's
+ * session. Every wrapper delegates to the original and returns what it
+ * returned, so behaviour is unchanged whether or not this ever runs.
+ *
+ * The number is a BALANCE, not a census. Adding the same listener twice is a
+ * DOM no-op that still counts twice here, and a removeEventListener whose
+ * arguments do not match removes nothing while still counting down. Neither
+ * matters for what this is for: the churn pattern is add-in-effect,
+ * remove-in-cleanup, which balances exactly, so a number that climbs and never
+ * settles is a cleanup that is not running.
+ */
+const resourceCounts = { listeners: 0, intervals: 0, observers: 0 };
+/** Per event type, so the report names the listener instead of just counting. */
+const listenersByType = new Map<string, number>();
+let countersInstalled = false;
+
+function installResourceCounters() {
+  if (countersInstalled || typeof window === "undefined") return;
+  countersInstalled = true;
+  try {
+    const target = EventTarget.prototype;
+    const add = target.addEventListener;
+    const remove = target.removeEventListener;
+    target.addEventListener = function patchedAdd(this: EventTarget, type, listener, options) {
+      resourceCounts.listeners += 1;
+      listenersByType.set(type, (listenersByType.get(type) ?? 0) + 1);
+      return add.call(this, type, listener, options);
+    };
+    target.removeEventListener = function patchedRemove(this: EventTarget, type, listener, options) {
+      resourceCounts.listeners -= 1;
+      const held = listenersByType.get(type);
+      if (held !== undefined) listenersByType.set(type, held - 1);
+      return remove.call(this, type, listener, options);
+    };
+
+    const setIntervalOriginal = window.setInterval;
+    const clearIntervalOriginal = window.clearInterval;
+    window.setInterval = function patchedSetInterval(this: Window, ...args: unknown[]) {
+      resourceCounts.intervals += 1;
+      return (setIntervalOriginal as unknown as (...a: unknown[]) => number).apply(this, args);
+    } as typeof window.setInterval;
+    window.clearInterval = function patchedClearInterval(this: Window, handle?: number) {
+      if (handle !== undefined) resourceCounts.intervals -= 1;
+      return clearIntervalOriginal.call(this, handle);
+    } as typeof window.clearInterval;
+
+    // A ResizeObserver rebuilt per tick was one of the repaired sites, so the
+    // count that would have caught it is worth keeping.
+    const ObserverOriginal = window.ResizeObserver;
+    if (ObserverOriginal) {
+      class CountedResizeObserver extends ObserverOriginal {
+        constructor(callback: ResizeObserverCallback) {
+          super(callback);
+          resourceCounts.observers += 1;
+        }
+        disconnect() {
+          resourceCounts.observers -= 1;
+          super.disconnect();
+        }
+      }
+      window.ResizeObserver = CountedResizeObserver;
+    }
+  } catch {
+    // Counting is diagnostic. A browser that refuses the patch keeps its page.
+    countersInstalled = true;
+  }
+}
+
+/** The few types holding the most listeners, as "mousemove 41882, resize 12". */
+function busiestListenerTypes(limit = 4): string {
+  return [...listenersByType.entries()]
+    .filter(([, count]) => count > 0)
+    .sort((left, right) => right[1] - left[1])
+    .slice(0, limit)
+    .map(([type, count]) => `${type} ${count}`)
+    .join(", ");
+}
 
 function heapNow(): { used: number | null; limit: number | null } {
   const memory = (performance as Performance & { memory?: PerformanceMemory }).memory;
@@ -201,6 +298,10 @@ export function startRendererHealthRecorder() {
   if (started || typeof window === "undefined") return;
   started = true;
 
+  // Before anything else subscribes, so the balance starts from zero and the
+  // app's own listeners are all counted.
+  installResourceCounters();
+
   reportPreviousCrash();
 
   const startedAt = Date.now();
@@ -243,6 +344,10 @@ export function startRendererHealthRecorder() {
         longTasks,
         longestTaskMs: Math.round(longestTaskMs),
         domNodes: document.getElementsByTagName("*").length,
+        listeners: resourceCounts.listeners,
+        listenerTypes: busiestListenerTypes(),
+        intervals: resourceCounts.intervals,
+        observers: resourceCounts.observers,
       };
       window.localStorage.setItem(ACTIVE_KEY, JSON.stringify(snapshot));
       // The window resets each snapshot so the stored values describe the
@@ -289,6 +394,10 @@ export function startRendererHealthRecorder() {
           longTasks: 0,
           longestTaskMs: 0,
           domNodes: document.getElementsByTagName("*").length,
+        listeners: resourceCounts.listeners,
+        listenerTypes: busiestListenerTypes(),
+        intervals: resourceCounts.intervals,
+        observers: resourceCounts.observers,
         } satisfies RendererHealthSnapshot));
       } catch {}
     }

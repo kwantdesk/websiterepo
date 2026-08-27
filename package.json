@@ -175,7 +175,8 @@
     "research:gex-map-v2-sign": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/sweep-gex-map-v2-sign.mjs",
     "test:gex-map-v2-first-paint": "node scripts/test-gex-map-v2-first-paint.mjs",
     "test:gex-map-v2-wiring": "node scripts/test-gex-map-v2-wiring.mjs",
-    "research:capture-tape": "node scripts/capture-opra-tape.mjs"
+    "research:capture-tape": "node scripts/capture-opra-tape.mjs",
+    "test:renderer-counters": "node scripts/test-renderer-resource-counters.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",
