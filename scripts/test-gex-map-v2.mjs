@@ -17,6 +17,7 @@ import {
   decayDealerInventory,
   DEALER_FLOW_HALF_LIFE_MS,
   v2Readiness,
+  accumulateDecayedTape,
 } from "../src/lib/gexMapV2.ts";
 
 /**
@@ -291,6 +292,42 @@ check("v2 declares where it is validated and where it is not", () => {
   assert.equal(v2Readiness("SPY"), "experimental");
   assert.equal(v2Readiness("QQQ"), "experimental");
   assert.equal(v2Readiness("AAPL"), "experimental");
+});
+
+check("ageing per trade is not the same as one decay at the end", () => {
+  // THE BUG THIS CAUGHT. The server accumulated the whole tape at full weight
+  // and decayed the book once. One factor applied to everything is a global
+  // scalar, and a global scalar leaves every relative value unchanged - so the
+  // book was silently on the `carry` policy, which measured -0.302 against the
+  // reference where the shipped 3h policy measured +0.603. It showed up live as
+  // 94% of rows positive above spot and negative below: a function of distance
+  // from spot, not a dealer book.
+  const half = DEALER_FLOW_HALF_LIFE_MS;
+  const oi = () => 1e9;
+  const at = (ms, right, contracts, dealerSign) => ({
+    tradeTimeMs: ms, expiration: "2026-08-21", strike: 765, right, contracts, dealerSign,
+    dealerCounterpartyProbability: 1, economicTradeWeight: 1, complexLegWeight: 1, quoteConfidence: 1,
+  });
+  // An old buy and a recent sell of equal size at the same strike.
+  const tape = [at(0, "call", 100, -1), at(half * 3, "call", 100, 1)];
+  const now = half * 3;
+
+  const aged = accumulateDecayedTape(emptyDealerInventory("2026-08-21", 0), tape, oi, now, half);
+  const key = contractKey("2026-08-21", 765, "call");
+
+  // Correct: the three-half-life-old buy is worth an eighth of the fresh sell,
+  // so the book is net LONG.
+  assert.ok(aged.contracts[key] > 0, `expected net long, got ${aged.contracts[key]}`);
+
+  // The old way: advance both at full weight, then decay once. They cancel
+  // exactly and the strike vanishes - age carried no information at all.
+  let broken = emptyDealerInventory("2026-08-21", 0);
+  broken = advanceDealerInventory(broken, tape, oi);
+  broken = decayDealerInventory(broken, now, half);
+  assert.ok(
+    !broken.contracts[key],
+    `one decay at the end must lose the age information, got ${broken.contracts[key]}`,
+  );
 });
 
 console.log(`\ngex map v2: ${passed}/${passed} checks passed`);

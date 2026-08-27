@@ -10,8 +10,7 @@ import type { ExposureStrike, OptionsFlowPrint } from "@/lib/optionsFlow";
 import {
   classifyConsolidatedTape,
   type ProviderConsolidatedTrade,
-  advanceDealerInventory,
-  decayDealerInventory,
+  accumulateDecayedTape,
   emptyDealerInventory,
   contractKey,
   perContractDollarGamma,
@@ -106,10 +105,17 @@ function buildInventory(
     .filter((value) => Number.isFinite(value) && value > 0);
   const fromMs = times.length ? Math.min(...times) : null;
 
-  let state = emptyDealerInventory(sessionDate, fromMs ?? asOfMs);
-  // classifyConsolidatedTape already sorted ascending by trade time.
-  state = advanceDealerInventory(state, classified, openInterest);
-  state = decayDealerInventory(state, asOfMs, DEALER_FLOW_HALF_LIFE_MS);
+  // Age the book to each trade as it folds in. Advancing the whole tape and
+  // decaying once at the end applies one factor to everything, which is a
+  // global scalar and changes no relative value - the book would silently be
+  // on the `carry` policy that measured actively wrong.
+  const state = accumulateDecayedTape(
+    emptyDealerInventory(sessionDate, fromMs ?? asOfMs),
+    classified,
+    openInterest,
+    asOfMs,
+    DEALER_FLOW_HALF_LIFE_MS,
+  );
   return { state, absorbed: classified.length, fromMs };
 }
 

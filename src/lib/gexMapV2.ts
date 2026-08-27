@@ -117,6 +117,14 @@ export function perContractDollarGamma(row: ProviderStrikeRow): { call: number; 
  * direction.
  */
 export type ClassifiedTrade = {
+  /**
+   * When it printed. The book is aged to each trade as it is folded in, so
+   * without this every trade would decay by the same amount - which is a
+   * global scalar, and a global scalar changes no relative value. That is the
+   * difference between the calibrated 3h-decay policy and `carry`, which
+   * measured actively wrong.
+   */
+  tradeTimeMs: number;
   expiration: string;
   strike: number;
   right: OptionRight;
@@ -444,6 +452,7 @@ export function classifyConsolidatedTrade(raw: ProviderConsolidatedTrade): Class
   const multiLeg = MULTI_LEG_TRADE_TYPES.has(String(raw.tradeType ?? "").toUpperCase());
 
   return {
+    tradeTimeMs: Number(raw.tradeTime) || 0,
     expiration,
     strike,
     right: type === "CALL" ? "call" : "put",
@@ -457,6 +466,32 @@ export function classifyConsolidatedTrade(raw: ProviderConsolidatedTrade): Class
     complexLegWeight: multiLeg ? 0.5 : 1,
     quoteConfidence: side.quoteConfidence,
   };
+}
+
+/**
+ * Fold a classified tape into the book, ageing it to each trade as it goes.
+ *
+ * This is the ONLY correct way to combine accumulation with decay. Advancing
+ * the whole tape and then decaying once applies the same factor to every trade,
+ * and a uniform factor is a global scalar that leaves every relative value
+ * unchanged - the book ends up on the `carry` policy, which measured -0.302
+ * against the reference where the 3h policy measured +0.603.
+ */
+export function accumulateDecayedTape(
+  initial: DealerInventoryState,
+  trades: readonly ClassifiedTrade[],
+  openInterest: OpenInterestLookup,
+  asOfMs: number,
+  halfLifeMs: number = DEALER_FLOW_HALF_LIFE_MS,
+): DealerInventoryState {
+  let state = initial;
+  for (const trade of trades) {
+    const at = Number.isFinite(trade.tradeTimeMs) && trade.tradeTimeMs > 0 ? trade.tradeTimeMs : state.asOfMs;
+    state = decayDealerInventory(state, at, halfLifeMs);
+    state = advanceDealerInventory(state, [trade], openInterest);
+    state = { ...state, asOfMs: Math.max(state.asOfMs, at) };
+  }
+  return decayDealerInventory(state, asOfMs, halfLifeMs);
 }
 
 /** Classify a whole tape, dropping what cannot be read, in time order. */
