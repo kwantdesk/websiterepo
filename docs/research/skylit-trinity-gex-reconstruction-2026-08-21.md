@@ -884,3 +884,64 @@ The defensible goals that ARE reachable:
   rather than sign, and is the thing most often read off the panel.
 
 The second is worth attacking on its own terms and has not been tried yet.
+
+## Addendum — 2026-08-27 — resolved: they are not inferring it, they are buying it
+
+Skylit's landing page states their sourcing in one line:
+
+> "Data licensed via NASDAQ, CBOE & OPRA"
+
+Direct exchange licences, not a vendor aggregator. That matters because Cboe
+sells something OPRA does not carry.
+
+### Cboe Open-Close Volume Summary
+
+Cboe DataShop's Open-Close product categorises **every trade** by:
+
+- **participant type** — customer, professional customer, broker-dealer,
+  **market maker**;
+- **action** — buy or sell;
+- **position** — **open or close**;
+- contract-size buckets for customer flow;
+- available end-of-day OR as **intraday 1-minute or 10-minute snapshots**;
+- across all Cboe exchanges (BZX, **C1**, C2, EDGX) — and SPX/SPXW are
+  exclusively C1-listed, so the symbol in question is fully covered;
+- delivered by SFTP or Snowflake.
+
+<https://datashop.cboe.com/cboe-options-open-close-volume-summary>
+
+### This is exactly the two unknowns
+
+Every failed attempt in this file was trying to INFER two labels:
+
+1. was the counterparty a dealer;
+2. did the trade open or close a position.
+
+Cboe publishes both, per contract, per minute. Skylit is not inferring dealer
+positioning — they are reading it. Their 1-minute Trinity interval matches the
+Open-Close intraday cadence exactly.
+
+### It explains every measurement in this file
+
+- **Sign uncorrelated with any OPRA rule (35-54%).** Correct: the signal is not
+  in OPRA. Market-maker buy-to-open minus sell-to-open is a different quantity
+  from aggressor-inferred flow, not a noisier version of it.
+- **Their book is not at-the-money peaked (16% concentration vs our 51%).**
+  Correct: real open positions accumulate at structural strikes, where volume
+  proxies concentrate wherever trading is heaviest, which is at the money.
+- **Their King sits on high-open-interest strikes below spot.** Correct: that is
+  where standing dealer inventory is, not where today's churn is.
+- **v1's structural model also scores 55%.** Correct: neither the chain nor the
+  tape contains it.
+
+### What this means for KwantDesk
+
+Matching Skylit's numbers from QuantData is not an engineering problem and no
+amount of modelling closes it. It is a data licence: **Cboe Open-Close,
+intraday**, which removes the classifier entirely and replaces every inferred
+weight in `gexMapV2.ts` with a published figure.
+
+Without it, v2 remains an honest inferred-flow model - useful, defensible, and
+NOT the same measurement. With it, the engine already built is the right shape:
+signed dealer contracts carried per contract and revalued against current gamma.
+Only the source of the signed quantity changes.
