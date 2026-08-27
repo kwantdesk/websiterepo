@@ -424,16 +424,28 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
           * clamp(options.perBarProfileWidthPercent / 100, 0.1, 1);
         const profileSideCount = Number(options.showPerBarVolumeProfile)
           + Number(options.showPerBarDeltaProfile);
-        const previousX = index > 0 ? timeScale.timeToCoordinate(bars[index - 1].time) : null;
-        const nextX = index + 1 < bars.length ? timeScale.timeToCoordinate(bars[index + 1].time) : null;
+        /*
+         * A bar occupies ONE SLOT, and the slot is the time scale's own bar
+         * spacing.
+         *
+         * This measured the distance to the nearest neighbouring bar instead,
+         * which is the same thing only while bars are contiguous. Footprint
+         * bars are built from the tape, so a minute nobody traded in produces
+         * no bar at all - and then the bar after the hole was handed the width
+         * of the hole. The live bar is where it shows, because it is the one
+         * most likely to sit just after a quiet minute: it rendered several
+         * times wider than every other bar on the chart, at random, whenever
+         * the minute before it happened to be empty.
+         */
+        const ceilingWidth = options.barWidth
+          + options.candleSpacing
+          + requestedProfileWidth * profileSideCount
+          + options.perBarProfileGap * profileSideCount
+          + options.perBarProfileExtraSpacing;
+        const slotWidth = Number(timeScale.options().barSpacing);
         const nearest = Math.min(
-          previousX === null ? Number.POSITIVE_INFINITY : Math.abs(x - previousX),
-          nextX === null ? Number.POSITIVE_INFINITY : Math.abs(nextX - x),
-          options.barWidth
-            + options.candleSpacing
-            + requestedProfileWidth * profileSideCount
-            + options.perBarProfileGap * profileSideCount
-            + options.perBarProfileExtraSpacing,
+          Number.isFinite(slotWidth) && slotWidth > 0 ? slotWidth : ceilingWidth,
+          ceilingWidth,
         );
         const availableSlotWidth = Math.max(8, nearest - options.candleSpacing);
         const minimumReadableFootprintWidth = Math.min(
