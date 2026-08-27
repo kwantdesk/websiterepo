@@ -1959,11 +1959,19 @@ function GexMapWorkspace({
       setPanelData((current) => {
         const next = { ...current };
         for (const panel of panels) {
+          // Retaining the last surface while loading is right for a refresh and
+          // WRONG across a model change: the two models are different
+          // measurements, so holding v1's rows under a DEALER heading shows a
+          // number the label denies. Drop anything from the other model.
+          if (next[panel.id] && next[panel.id]?.model !== expectedModel) delete next[panel.id];
           const cached = cachedPanels[panel.id];
-          if (cached && !hasRenderableGexMapSurface(next[panel.id])) next[panel.id] = cached;
+          if (cached && cached.model === expectedModel && !hasRenderableGexMapSurface(next[panel.id])) {
+            next[panel.id] = cached;
+          }
         }
         return next;
       });
+      const expectedModel = exposureModel === "DEALER_INVENTORY" ? "DEALER_INVENTORY" : "STRUCTURAL_OI";
       setLoading(Object.fromEntries(panels.map((panel) => [panel.id, true])));
       try {
         const loadPanel = async (panel: PanelConfig) => {

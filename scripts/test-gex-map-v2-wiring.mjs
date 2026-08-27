@@ -98,4 +98,26 @@ check("the two models cannot be confused in the payload", () => {
   assert.match(server, /model: "DEALER_INVENTORY",/);
 });
 
+check("an empty dealer book fails instead of mimicking v1", () => {
+  // THE BUG THE OWNER CAUGHT. The panel keeps the last renderable surface while
+  // a request is in flight, so an empty v2 response was silently replaced on
+  // screen by the v1 rows already there - identical numbers under a DEALER
+  // label, with nothing erroring. The toggle simply appeared to do nothing.
+  assert.match(server, /if \(!latestStrikes\.length\) \{/);
+  assert.match(server, /throw new QuantDataError\(/);
+  assert.match(server, /no dealer book can be built/);
+  // The distinction matters for diagnosis: no classified flow at all is a
+  // different failure from flow that nets to nothing at every strike.
+  assert.match(server, /absorbed === 0/);
+});
+
+check("a surface from the other model is dropped, not shown", () => {
+  // Retaining the last surface is right for a refresh and wrong across a model
+  // change: the two are different measurements, so holding v1's rows under a
+  // DEALER heading shows a number the label denies.
+  assert.match(workspace, /const expectedModel = exposureModel === "DEALER_INVENTORY"/);
+  assert.match(workspace, /if \(next\[panel\.id\] && next\[panel\.id\]\?\.model !== expectedModel\) delete next\[panel\.id\];/);
+  assert.match(workspace, /cached\.model === expectedModel/);
+});
+
 console.log(`\ngex map v2 wiring: ${passed}/${passed} checks passed`);

@@ -162,7 +162,7 @@ const lastLiveAutoScaleBySource = new Map<string, number>();
 let gexDeskCache: { expiresAt: number; promise: Promise<GexDeskPayload> } | null = null;
 const lastGoodGexMapPanelBySurface = new Map<string, GexMapPanelPayload>();
 
-class QuantDataError extends Error {
+export class QuantDataError extends Error {
   constructor(
     message: string,
     readonly status: number,

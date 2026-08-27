@@ -2,6 +2,7 @@ import { unstable_cache } from "next/cache";
 
 import {
   getGexMapPanel,
+  QuantDataError,
   readConsolidatedTape,
   readOpenInterestByStrike,
 } from "@/lib/quantData.server";
@@ -170,6 +171,25 @@ async function buildDealerInventoryPanel(
     const call = callContracts * gamma.call;
     const put = putContracts * gamma.put;
     latestStrikes.push({ strike: row.strike, call, put, net: call + put });
+  }
+
+  /*
+   * An empty book must FAIL, not return an empty ladder.
+   *
+   * The panel keeps the last renderable surface while a request is in flight,
+   * so an empty v2 response is silently replaced on screen by the v1 numbers
+   * that were there before - identical rows under a DEALER label. That is the
+   * exact confusion this model was separated to avoid, and it is invisible:
+   * nothing errors, the toggle just appears to do nothing.
+   */
+  if (!latestStrikes.length) {
+    throw new QuantDataError(
+      absorbed === 0
+        ? `No classified options flow is available for ${symbol} on ${sessionDate}, so no dealer book can be built.`
+        : `The dealer book for ${symbol} on ${sessionDate} holds no position at any listed strike.`,
+      422,
+      null,
+    );
   }
 
   return {
