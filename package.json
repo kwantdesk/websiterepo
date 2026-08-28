@@ -160,6 +160,7 @@
     "test:footprint-bar-width": "node scripts/test-footprint-bar-width.mjs",
     "test:footprint-palette": "node scripts/test-footprint-palette.mjs",
     "test:chart-watermark": "node scripts/test-chart-watermark.mjs",
+    "test:desktop-auth": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/test-desktop-auth-protocol.mjs && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-desktop-auth-service.mjs && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-desktop-auth-http.mjs && node scripts/test-desktop-auth-migration.mjs && node --test services/rithmic_gateway/test/desktop-ticket-verifier.test.mjs",
     "research:gexmap-vs-trinity": "node scripts/compare-gexmap-vs-trinity-scope.mjs",
     "test:gex-map-velocity": "node scripts/test-gex-map-velocity.mjs",
     "test:gex-map-v2": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-gex-map-v2.mjs",
@@ -176,7 +177,8 @@
     "test:gex-map-v2-first-paint": "node scripts/test-gex-map-v2-first-paint.mjs",
     "test:gex-map-v2-wiring": "node scripts/test-gex-map-v2-wiring.mjs",
     "research:capture-tape": "node scripts/capture-opra-tape.mjs",
-    "test:renderer-counters": "node scripts/test-renderer-resource-counters.mjs"
+    "test:renderer-counters": "node scripts/test-renderer-resource-counters.mjs",
+    "test:liq-inside-market": "node scripts/test-liquidity-inside-market.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",

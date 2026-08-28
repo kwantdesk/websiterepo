@@ -195,13 +195,55 @@ export function symbolMatchesSnapshot(requested, snapshotRoot) {
   return got === want || got === (MICRO_PARENT_ROOTS[want] || want);
 }
 
+/*
+ * The tightest pair that is not crossed.
+ *
+ * A resting ask below the best bid would already have traded, so a crossed
+ * inside market is a level the book never removed - not a real quote. Measured
+ * live on NQ: the ask stack was correct from tick 118590 up, while two phantom
+ * asks sat at 118156 and 118214, about a hundred points BELOW the market. Both
+ * the collector and this file pick the inside market with a plain min/max, so
+ * one of those phantoms became bestAsk - reported ~400 ticks below bestBid.
+ * The ask trail was then drawn far off the bottom of the plot and the map
+ * showed a single line where it draws two.
+ *
+ * The last trade is the referee, because it comes from the tape rather than
+ * from the book: the inside market is the tightest pair straddling it. Nothing
+ * is repaired unless the book is actually crossed, so a normal snapshot takes
+ * exactly the values the collector sent.
+ *
+ * This corrects the DISPLAY of a book the collector already published crossed.
+ * The stale orders themselves are the collector's to drop.
+ */
+export function insideMarket(bidLevels, askLevels, rawBid, rawAsk, lastTick) {
+  if (!(rawBid >= rawAsk)) return { bid: rawBid, ask: rawAsk };
+  if (!Number.isFinite(lastTick)) return { bid: rawBid, ask: rawAsk };
+  let bid = -Infinity;
+  let ask = Infinity;
+  for (const tick of bidLevels.keys()) if (tick <= lastTick && tick > bid) bid = tick;
+  for (const tick of askLevels.keys()) if (tick >= lastTick && tick < ask) ask = tick;
+  // A side with nothing on the trade's own side of the book keeps what it had;
+  // inventing a level would be worse than showing the collector's own number.
+  return {
+    bid: Number.isFinite(bid) ? bid : rawBid,
+    ask: Number.isFinite(ask) ? ask : rawAsk,
+  };
+}
+
 export function normalizeLiveSnapshot(raw) {
   if (!raw || !FULL_DEPTH_SOURCES.has(raw.source) || raw.readOnly !== true || raw.fullDepth !== true) return null;
   const bidBook = normalizeBookLevels(raw.bids);
   const askBook = normalizeBookLevels(raw.asks);
   if (!bidBook.levels.size || !askBook.levels.size) return null;
-  const bestBid = finite(raw.bestBid, Math.max(...bidBook.levels.keys()));
-  const bestAsk = finite(raw.bestAsk, Math.min(...askBook.levels.keys()));
+  const inside = insideMarket(
+    bidBook.levels,
+    askBook.levels,
+    finite(raw.bestBid, Math.max(...bidBook.levels.keys())),
+    finite(raw.bestAsk, Math.min(...askBook.levels.keys())),
+    finite(raw.lastTick, Number.NaN),
+  );
+  const bestBid = inside.bid;
+  const bestAsk = inside.ask;
   return {
     id: finite(raw.id),
     timestamp: finite(raw.timestamp, Date.now()),
