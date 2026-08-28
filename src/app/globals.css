@@ -1303,7 +1303,17 @@ header.kwant-command-rail {
   font-size: 18px;
   font-weight: 400;
   line-height: 1;
-  letter-spacing: -.055em;
+  /*
+   * The wordmark is set at its natural width.
+   *
+   * It carried -.055em, which squeezed it about 10% narrower than the letters
+   * are drawn and made the header read as a different logo from the mark on
+   * the charts. Measured with Inter actually loaded, nothing needed the space:
+   * natural is 97px against a 110px brand box on desktop, 86 against 110 on
+   * tablet, and 76 against 84 on mobile. The tracking was buying room that was
+   * already there.
+   */
+  letter-spacing: normal;
   white-space: nowrap;
   text-rendering: geometricPrecision;
   -webkit-font-smoothing: antialiased;
