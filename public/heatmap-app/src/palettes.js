@@ -1,4 +1,4 @@
-import { websiteThemeColors } from './ui-themes.js?v=20260828-chromey-mono';
+import { websiteThemeColors } from './ui-themes.js?v=20260828-trade-frames';
 
 export const DEFAULT_PALETTE = 'auto';
 

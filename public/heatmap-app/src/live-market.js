@@ -230,6 +230,23 @@ export function insideMarket(bidLevels, askLevels, rawBid, rawAsk, lastTick) {
   };
 }
 
+/**
+ * How far back of the collector's trade buffer belongs to THIS frame.
+ *
+ * A snapshot carries the gateway's rolling tape - up to a couple of thousand
+ * prints - and every one of them was being pinned to the single frame that
+ * happened to carry them. On a busy book that is invisible, because the next
+ * frame arrives before anyone looks. On a quiet one it is the whole picture:
+ * measured on gold, 300 frames held trades in FIVE of them, 220 prints stacked
+ * into a single column while the other 295 columns were empty.
+ *
+ * A print belongs to the moment it happened, so only the ones inside this
+ * frame's own window are attached to it. The rest already have frames of their
+ * own, or belong to minutes the map was not watching - and a bubble drawn in
+ * the wrong column is worse than one not drawn at all.
+ */
+const TRADE_FRAME_WINDOW_MS = 1_500;
+
 export function normalizeLiveSnapshot(raw) {
   if (!raw || !FULL_DEPTH_SOURCES.has(raw.source) || raw.readOnly !== true || raw.fullDepth !== true) return null;
   const bidBook = normalizeBookLevels(raw.bids);
@@ -258,13 +275,21 @@ export function normalizeLiveSnapshot(raw) {
     bestAsk,
     midTick: finite(raw.midTick, (bestBid + bestAsk) / 2),
     lastTick: finite(raw.lastTick, (bestBid + bestAsk) / 2),
-    trades: (raw.trades || []).map(trade => ({
-      id: finite(trade.id),
-      timestamp: finite(trade.timestamp, raw.timestamp),
-      tick: finite(trade.tick),
-      size: finite(trade.size),
-      side: trade.side === 'sell' ? 'sell' : 'buy',
-    })),
+    trades: (raw.trades || [])
+      .map(trade => ({
+        id: finite(trade.id),
+        timestamp: finite(trade.timestamp, raw.timestamp),
+        tick: finite(trade.tick),
+        size: finite(trade.size),
+        side: trade.side === 'sell' ? 'sell' : 'buy',
+      }))
+      .filter(trade => {
+        const frameTime = finite(raw.timestamp, 0);
+        if (!frameTime || !trade.timestamp) return true;
+        const age = frameTime - trade.timestamp;
+        // Future-dated prints are a clock skew, not history: keep them.
+        return age <= TRADE_FRAME_WINDOW_MS;
+      }),
     cvd: finite(raw.cvd),
     delta: finite(raw.delta),
     volume: finite(raw.volume),
