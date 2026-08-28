@@ -26,6 +26,15 @@ export const CHART_WATERMARK_OPACITY = 0.55;
 export const LIQUIDITY_MAP_WATERMARK_SCALE = 0.5;
 
 /**
+ * The charts wear it a quarter smaller than the sizing rules alone give.
+ *
+ * Applied as a scale rather than by retuning the width fraction, so the
+ * thresholds that decide WHEN the mark appears at all - and the aspect it keeps
+ * while it does - stay exactly where they were tested.
+ */
+export const CHART_WATERMARK_SCALE = 0.75;
+
+/**
  * The mark's rendered box for a pane, or null when the pane is too small.
  *
  * `scale` shrinks it without changing when it appears or disappears, so a

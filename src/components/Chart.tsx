@@ -551,6 +551,7 @@ import {
   chartWatermarkSize,
   CHART_WATERMARK_SRC,
   CHART_WATERMARK_OPACITY,
+  CHART_WATERMARK_SCALE,
 } from "@/lib/chartWatermark";
 
 interface ChartProps {
@@ -3525,7 +3526,7 @@ function Chart({
   const [clearConfirm, setClearConfirm] = useState(false);
   const [resetPaperTradingConfirm, setResetPaperTradingConfirm] = useState(false);
   const [overlaySize, setOverlaySize] = useState({ width: 0, height: 0 });
-  const chartWatermark = chartWatermarkSize(overlaySize.width, overlaySize.height);
+  const chartWatermark = chartWatermarkSize(overlaySize.width, overlaySize.height, CHART_WATERMARK_SCALE);
   const [nativePriceScaleWidth, setNativePriceScaleWidth] = useState(STABLE_RIGHT_PRICE_SCALE_WIDTH);
   // One shared SVG clip per chart instance keeps every overlay (drawings, TPO
   // zones, Expected Move rails) inside the price pane, under the price scale.

@@ -8,6 +8,7 @@ import {
   CHART_WATERMARK_SRC,
   CHART_WATERMARK_OPACITY,
   LIQUIDITY_MAP_WATERMARK_SCALE,
+  CHART_WATERMARK_SCALE,
 } from "../src/lib/chartWatermark.ts";
 
 /**
@@ -177,6 +178,26 @@ check("the liquidity map centres on the chart, not the pane", () => {
   // No plot yet means no mark: one that jumps into place on the first frame is
   // worse than one that simply arrives correct.
   assert.match(liqMap, /plotBox\s*\n?\s*\?\s*chartWatermarkSize/, "the mark is placed before the plot is known");
+});
+
+check("the charts wear the mark a quarter smaller", () => {
+  /*
+   * Applied as a scale rather than by retuning the width fraction, so the
+   * thresholds deciding WHEN the mark appears - and the aspect it keeps while
+   * it does - stay exactly where the checks above pinned them.
+   */
+  assert.equal(CHART_WATERMARK_SCALE, 0.75);
+  for (const [w, h] of [[2560, 1300], [1600, 900], [900, 600], [760, 420]]) {
+    const full = chartWatermarkSize(w, h);
+    const scaled = chartWatermarkSize(w, h, CHART_WATERMARK_SCALE);
+    assert.ok(Math.abs(scaled.width / full.width - 0.75) < 0.03, `${w}x${h} did not shrink a quarter`);
+    assert.ok(
+      Math.abs(scaled.width / scaled.height - CHART_WATERMARK_ASPECT) < 0.35,
+      `${w}x${h} distorted the mark while shrinking it`,
+    );
+  }
+  assert.match(chart, /chartWatermarkSize\(overlaySize\.width, overlaySize\.height, CHART_WATERMARK_SCALE\)/,
+    "the chart does not apply the scale");
 });
 
 check("the liquidity map wears the mark at half size", () => {
