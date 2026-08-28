@@ -18,6 +18,17 @@ export const defaultTheme = {
   crosshairColor: "rgba(255,255,255,.72)",
   candleUp: "#FFFFFF",
   candleDown: "#737373",
+  /*
+   * The candle's outline and wick, which a hollow candle needs separately.
+   *
+   * A theme could only ever say one colour per side, and it was applied to the
+   * body, the border and the wick alike - so a body that is not the outline,
+   * which is how most terminals draw a bearish candle, could not be expressed
+   * at all. These default to their own side's body colour, so a theme that
+   * says nothing about them looks exactly as it did.
+   */
+  candleUpBorder: "#FFFFFF",
+  candleDownBorder: "#737373",
 };
 
 export type ThemeColors = typeof defaultTheme;

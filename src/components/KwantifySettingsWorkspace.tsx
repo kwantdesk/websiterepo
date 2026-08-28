@@ -656,10 +656,12 @@ export default function SettingsPage() {
       gridColor: theme.gridColor,
       upColor: theme.candleUp,
       downColor: theme.candleDown,
-      borderUpColor: theme.candleUp,
-      borderDownColor: theme.candleDown,
-      wickUpColor: theme.candleUp,
-      wickDownColor: theme.candleDown,
+      borderUpColor: theme.candleUpBorder ?? theme.candleUp,
+      borderDownColor: theme.candleDownBorder ?? theme.candleDown,
+      // The wick follows the outline, not the body. On a hollow candle a wick
+      // drawn in the body colour is a wick drawn in the background.
+      wickUpColor: theme.candleUpBorder ?? theme.candleUp,
+      wickDownColor: theme.candleDownBorder ?? theme.candleDown,
     };
     setThemeSettings(theme);
     setChartSettings(nextChartSettings);

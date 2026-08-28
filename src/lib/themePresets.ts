@@ -19,6 +19,11 @@ function palette(name: string, colors: Palette): ThemePreset {
       crosshairColor: colors.crosshairColor ?? `${colors.primary}B8`,
       candleUp: colors.candleUp ?? colors.primary,
       candleDown: colors.candleDown ?? colors.danger,
+      // Each side's outline follows its own body unless the preset says
+      // otherwise, so every palette written before hollow candles existed
+      // keeps drawing exactly what it drew.
+      candleUpBorder: colors.candleUpBorder ?? colors.candleUp ?? colors.primary,
+      candleDownBorder: colors.candleDownBorder ?? colors.candleDown ?? colors.danger,
     },
   };
 }
@@ -52,7 +57,18 @@ export const themePresets: ThemePreset[] = [
     foreground: "#DCE4DC", primary: "#00FF00", secondary: "#8C8C8C", accent: "#9A9A3D",
     muted: "#6F7A6F", border: "#161A16", danger: "#C11414",
     chartBackground: "#000000", gridColor: "#0E120E",
-    crosshairColor: "rgba(0,255,0,.7)", candleUp: "#00FF00", candleDown: "#C11414",
+    crosshairColor: "rgba(0,255,0,.7)",
+    /*
+     * Bullish is the green, solid. Bearish is a HOLLOW candle - a black body
+     * the colour of the chart, outlined and wicked in light grey - which is
+     * what makes a down bar read as an absence rather than as another colour
+     * competing with the green.
+     *
+     * The red is not a candle colour here. It belongs to the level bars, and
+     * `danger` is where it lives.
+     */
+    candleUp: "#00FF00", candleUpBorder: "#00FF00",
+    candleDown: "#000000", candleDownBorder: "#B9C0B9",
   }),
 
   palette("Solar Flare", { background: "#100702", panel: "#1B0C03", surface: "#2D1507", card: "#241005", foreground: "#FFF4E6", primary: "#FF8A00", secondary: "#36C5F0", muted: "#B48C70", border: "#5A2C0C", danger: "#28A8E0", gridColor: "#351A09" }),
