@@ -33,6 +33,28 @@ export const themePresets: ThemePreset[] = [
   palette("Kwant Desk", { background: "#000000", panel: "#050506", surface: "#0B0C0E", card: "#07080A", foreground: "#FFFFFF", primary: "#B6FF00", secondary: "#4361FF", accent: "#4361FF", muted: "#7F858D", border: "#1A1D22", danger: "#4361FF", chartBackground: "#000000", gridColor: "#111318", crosshairColor: "rgba(182,255,0,.78)", candleUp: "#B6FF00", candleDown: "#FFFFFF" }),
   palette("Mr. Quant", { background: "#000000", panel: "#050914", surface: "#0B1530", card: "#070D1D", foreground: "#F7FAFF", primary: "#47B7FF", secondary: "#91B9FF", accent: "#2E9FEA", muted: "#7E91B6", border: "#18315A", danger: "#FF4D67", chartBackground: "#000000", gridColor: "#0B172B", crosshairColor: "rgba(71,183,255,.78)", candleUp: "#47B7FF", candleDown: "#F7FAFF" }),
 
+  /*
+   * The DeepChart look, matched from the owner's own terminal.
+   *
+   * Pure black with a single high-voltage green doing the work and red only for
+   * what went the other way: the point of it is that a profile row, a level and
+   * a candle are all the same green, so the eye reads STRUCTURE rather than
+   * decoration. The greys are chrome - moving averages and axes - and the olive
+   * is reserved for the horizontal levels, which is what keeps them legible
+   * against the green without adding another accent.
+   *
+   * candleDown is deliberately the same red as danger rather than white. On a
+   * black shell a white down-candle reads as neutral, and this palette wants
+   * direction to be unmistakable at a glance.
+   */
+  palette("Deep Terminal", {
+    background: "#000000", panel: "#040504", surface: "#0A0C0A", card: "#060806",
+    foreground: "#D8F5D8", primary: "#00FF41", secondary: "#7A7A6A", accent: "#B8B850",
+    muted: "#6E7A6E", border: "#1A1F1A", danger: "#FF2A2A",
+    chartBackground: "#000000", gridColor: "#101410",
+    crosshairColor: "rgba(0,255,65,.72)", candleUp: "#00FF41", candleDown: "#FF2A2A",
+  }),
+
   palette("Solar Flare", { background: "#100702", panel: "#1B0C03", surface: "#2D1507", card: "#241005", foreground: "#FFF4E6", primary: "#FF8A00", secondary: "#36C5F0", muted: "#B48C70", border: "#5A2C0C", danger: "#28A8E0", gridColor: "#351A09" }),
   palette("Playdough Parade", { background: "#FFF4D8", panel: "#FFF9E9", surface: "#FFD166", card: "#FFE7A3", foreground: "#25213B", primary: "#F77F00", secondary: "#4D96FF", muted: "#786C69", border: "#E7BE68", danger: "#9B5DE5", gridColor: "#EAD9B5" }),
   palette("Tangerine Terminal", { background: "#061412", panel: "#0A201C", surface: "#10332C", card: "#0C2924", foreground: "#E9FFF8", primary: "#FF9F1C", secondary: "#2EC4B6", muted: "#79A49A", border: "#21584C", danger: "#FF5D3A", gridColor: "#163D35" }),
@@ -80,4 +102,4 @@ export const themePresets: ThemePreset[] = [
 ];
 
 export const RETAINED_THEME_NAMES = ["Midnight Cockpit", "Kwant Desk", "Mr. Quant"] as const;
-export const NEW_THEME_COUNT = 40;
+export const NEW_THEME_COUNT = 41;
