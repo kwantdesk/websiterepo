@@ -1,3 +1,4 @@
+import { providerErrorMessage, logProviderError } from "@/lib/providerErrorMessage";
 import { NextRequest, NextResponse } from "next/server";
 import { buildDatabentoExecutionProfile } from "@/lib/databentoExecutionProfile.server";
 import {
@@ -221,6 +222,28 @@ async function proxy(request: NextRequest, context: RouteContext) {
           ? 150_000
           : 30_000,
     );
+    /*
+     * A refusal never reaches the browser in the provider's own words.
+     *
+     * Everything below forwards `upstream.body` untouched, which is right for
+     * data and wrong for an error: the vendor's body carries its account state
+     * - usage limits, billing cases, entitlement names - and a trading surface
+     * rendered it verbatim. That tells a trader nothing they can act on while
+     * putting the desk's account status on screen, where a screenshot or a
+     * screen-share carries it out of the room.
+     *
+     * Checked before the stream branches, because an error status must not be
+     * streamed either. The provider's real words still reach the server log,
+     * which is the half that has to survive for an outage to be diagnosable.
+     */
+    if (!upstream.ok) {
+      const raw = await upstream.text().catch(() => "");
+      logProviderError(`market-data:${path}:${upstream.status}`, new Error(raw));
+      return NextResponse.json(
+        { error: providerErrorMessage(new Error(raw), "Market data") },
+        { status: upstream.status, headers: { "Cache-Control": "private, no-store" } },
+      );
+    }
     const headers = new Headers({
       "Content-Type": upstream.headers.get("content-type") || "application/json",
       "Cache-Control": "no-store",
