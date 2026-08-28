@@ -79,6 +79,11 @@ import {
   readWorkspaceData,
 } from "@/lib/workspaceDataCache";
 import { writeProtectedItem } from "@/lib/browserStorageQuota";
+import {
+  GEX_MAP_REPLAY_WINDOWS,
+  framesInReplayWindow,
+  type GexMapReplayWindowId,
+} from "@/lib/gexMapReplayWindow";
 
 const GEX_MAP_TIME_HORIZON_KEY = "kwantdesk:gex-map-time-horizon:v1";
 
@@ -187,6 +192,7 @@ const GEX_MAP_ZOOM_MAX = 1.5;
 const GEX_MAP_ZOOM_STEP = 0.1;
 const MAX_GEX_MAP_PANELS = 4;
 const GEX_MAP_STAR_PREFERENCES_KEY = "kwantdesk:gex-map:star-preferences:v1";
+const GEX_MAP_REPLAY_WINDOW_KEY = "kwantdesk:gex-map-replay-window:v1";
 
 function readGexMapStarPreferences() {
   if (typeof window === "undefined") return null;
@@ -2124,6 +2130,17 @@ function GexMapWorkspace({
     };
   }, [exposureModel, expiryScope, panelCacheKey, panels, refreshToken, replayMode, representation, requestedReplayDate]);
 
+  const [replayWindow, setReplayWindow] = useState<GexMapReplayWindowId>(() => {
+    if (typeof window === "undefined") return "rth";
+    const stored = window.localStorage.getItem(GEX_MAP_REPLAY_WINDOW_KEY);
+    return GEX_MAP_REPLAY_WINDOWS.some((entry) => entry.id === stored)
+      ? stored as GexMapReplayWindowId
+      : "rth";
+  });
+  useEffect(() => {
+    writeProtectedItem(GEX_MAP_REPLAY_WINDOW_KEY, replayWindow);
+  }, [replayWindow]);
+
   const timeline = useMemo(() => {
     const timestamps = new Set<number>();
     for (const panel of panels) {
@@ -2131,11 +2148,16 @@ function GexMapWorkspace({
       if (!payload || (replayMode && requestedReplayDate && payload.sessionDate !== requestedReplayDate)) continue;
       for (const frame of payload.frames) timestamps.add(frame.timestamp);
     }
-    const ordered = [...timestamps].sort((a, b) => a - b);
+    /*
+     * Narrowed to the chosen part of the day BEFORE the step thinning, so the
+     * step counts minutes of the window rather than minutes of the overnight
+     * that precedes it.
+     */
+    const ordered = framesInReplayWindow([...timestamps].sort((a, b) => a - b), replayWindow);
     if (stepMinutes === 1 || !ordered.length) return ordered;
     const anchor = ordered[0];
     return ordered.filter((timestamp) => Math.round((timestamp - anchor) / 60_000) % stepMinutes === 0);
-  }, [panelData, panels, replayMode, requestedReplayDate, stepMinutes]);
+  }, [panelData, panels, replayMode, replayWindow, requestedReplayDate, stepMinutes]);
 
   useEffect(() => {
     if (!replayMode || !playing || timeline.length < 2) return;
@@ -2388,6 +2410,37 @@ function GexMapWorkspace({
           </div>
 
           <div className="gex-map-header-actions ml-auto flex shrink-0 items-center gap-1">
+            {/*
+              * Which part of the day a replay covers.
+              *
+              * Sits beside the column control because it is a property of the
+              * map rather than of one column, and only while replay is on -
+              * a live map has no window to choose.
+              */}
+            {replayMode ? (
+              <div
+                className="flex h-7 shrink-0 items-center gap-0.5 rounded-[3px] border border-border/70 bg-background/35 p-0.5"
+                role="group"
+                aria-label="Replay window"
+              >
+                {GEX_MAP_REPLAY_WINDOWS.map((entry) => (
+                  <button
+                    key={entry.id}
+                    type="button"
+                    onClick={() => setReplayWindow(entry.id)}
+                    aria-pressed={replayWindow === entry.id}
+                    title={entry.title}
+                    className={`h-6 rounded-[2px] px-2 text-[9px] font-semibold uppercase leading-none tracking-[0.075em] transition-colors ${
+                      replayWindow === entry.id
+                        ? "bg-surface text-primary"
+                        : "text-muted hover:text-foreground"
+                    }`}
+                  >
+                    {entry.label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
             <button
               type="button"
               onClick={addPanel}
