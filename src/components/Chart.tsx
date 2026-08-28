@@ -160,6 +160,7 @@ import {
 } from "@/lib/footprintPrimitive";
 import { ChartRepaintNotifierPrimitive } from "@/lib/chartRepaintNotifier";
 import { resolveVolumeProfileGradient, mixHexColors } from "@/lib/volumeProfileGradients";
+import { resolveIndicatorPalette } from "@/lib/indicatorPalettes";
 import { PositionCalculatorPrimitive, type PositionCalculatorModel } from "@/lib/positionCalculatorPrimitive";
 import { ImbalanceZonesPrimitive, type ImbalanceZoneModel } from "@/lib/imbalanceZonesPrimitive";
 import { retainLiveFootprintRows } from "@/lib/footprintLive";
@@ -5673,6 +5674,22 @@ function Chart({
       retainedFootprintBarsRef.current = { key: footprintDataKey, bars: liveFootprintRenderBars };
     }
   }, [footprintDataConsumer, footprintDataKey, liveFootprintRenderBars]);
+  /*
+   * The theme an indicator's colours fall back to when nothing is chosen.
+   *
+   * Held in one place so every indicator agrees about what "the theme colour"
+   * means. Memoised on the four values it reads rather than on the whole
+   * settings object, which changes on unrelated edits and would rebuild every
+   * indicator's options for a font size.
+   */
+  const indicatorPaletteTheme = useMemo(() => ({
+    up: settings.upColor,
+    down: settings.downColor,
+    neutral: settings.gridColor,
+    accent: settings.borderUpColor,
+    text: settings.upColor,
+  }), [settings.upColor, settings.downColor, settings.gridColor, settings.borderUpColor]);
+
   const footprintPrimitiveOptions = useMemo((): FootprintPrimitiveOptions => {
     const useThemeColors = footprintSettings.useThemeColors !== false;
     // Resolved once per settings change, not per bar: the primitive repaints
@@ -9919,13 +9936,21 @@ function Chart({
       // had long since closed.
       watermark: bigTradeTapeWatermarkRef.current,
     };
+    /*
+     * Colours come from the shared role resolver so the one-click schemes in
+     * the settings dialog reach the canvas. It keeps the existing order of
+     * precedence exactly - theme toggle over pickers, pickers over theme - and
+     * only adds a scheme on top when one is chosen.
+     */
+    const tradePalette = resolveIndicatorPalette(
+      "big-contracts",
+      tradeSettings,
+      indicatorPaletteTheme,
+      useThemeColors,
+    );
     const nextOptions: BigTradesPrimitiveOptions = {
-        askColor: useThemeColors
-          ? settings.upColor
-          : String(tradeSettings.askColor ?? settings.upColor),
-        bidColor: useThemeColors
-          ? settings.downColor
-          : String(tradeSettings.bidColor ?? settings.downColor),
+        askColor: tradePalette.askColor,
+        bidColor: tradePalette.bidColor,
         markerType,
         hollowFill: tradeSettings.hollowFill === true,
         informationMode,
@@ -9978,15 +10003,17 @@ function Chart({
   useEffect(() => {
     const effortSettings = deepEffortIndicator?.settings ?? {};
     const useThemeColors = effortSettings.useThemeColors !== false;
+    const blockPalette = resolveIndicatorPalette(
+      "big-blocks",
+      effortSettings,
+      indicatorPaletteTheme,
+      useThemeColors,
+    );
     bigBlocksPrimitiveRef.current?.update(
       deepEffortIndicator ? bigBlockRenderZones : [],
       {
-        askColor: useThemeColors
-          ? settings.upColor
-          : String(effortSettings.askColor ?? settings.upColor),
-        bidColor: useThemeColors
-          ? settings.downColor
-          : String(effortSettings.bidColor ?? settings.downColor),
+        askColor: blockPalette.askColor,
+        bidColor: blockPalette.bidColor,
         opacity: clamp(Number(effortSettings.zoneOpacity ?? 20) / 100, 0.01, 1),
         lineWidth: clamp(Number(effortSettings.zoneLineWidth ?? 1), 0, 4),
       },

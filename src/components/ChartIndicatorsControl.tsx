@@ -33,6 +33,8 @@ import {
 } from "@/lib/chartIndicatorConfig";
 import { DESK_SESSIONS, DESK_SESSION_SETTING_KEYS } from "@/lib/volumeProfileSessions";
 import type { ChartSettings } from "@/lib/chartSettings";
+import IndicatorPaletteSection from "@/components/indicators/IndicatorPaletteSection";
+import { indicatorSupportsPalette } from "@/lib/indicatorPalettes";
 import {
   applyFootprintPreset,
   deleteFootprintTemplate,
@@ -5570,6 +5572,35 @@ export default function ChartIndicatorsControl({
                   settings: next,
                 }))}
               />
+
+              {/*
+                * Colours, for any indicator that declares what it paints.
+                *
+                * Rendered from the shared role registry rather than written per
+                * indicator, so a study gains one-click schemes by declaring its
+                * roles instead of by someone adding another block of JSX here
+                * and spelling every option key correctly. The profiles and the
+                * footprint keep their own hand-built blocks for now - they
+                * carry settings this cannot express yet - which is why this is
+                * skipped for them rather than replacing them.
+                */}
+              {indicatorSupportsPalette(settingsDefinition.id) ? (
+                <IndicatorPaletteSection
+                  indicatorId={settingsDefinition.id}
+                  settings={settingsInstance.settings ?? {}}
+                  theme={{
+                    up: chartSettings.upColor,
+                    down: chartSettings.downColor,
+                    neutral: chartSettings.gridColor,
+                    accent: chartSettings.borderUpColor,
+                    text: chartSettings.upColor,
+                  }}
+                  onChange={(next) => replace(settingsInstance.instanceId, (current) => ({
+                    ...current,
+                    settings: next,
+                  }))}
+                />
+              ) : null}
 
               {(() => {
                 const numericSettings = (INDICATOR_NUMERIC_SETTINGS[settingsDefinition.id] ?? [])
