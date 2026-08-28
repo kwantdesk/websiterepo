@@ -308,4 +308,69 @@ check("an explicit pick still works when no scheme is on", () => {
   assert.equal(out[0].color, "#123456");
 });
 
+const { supportsPalette, paletteRolesFor, settingsWithPalette } =
+  await import("../src/lib/indicatorPaletteRegistry.ts");
+const { CHART_INDICATOR_BY_ID: CATALOG } = await import("../src/lib/chartIndicatorCatalog.ts");
+
+const colourKeys = (settings) => Object.keys(settings).filter((key) => /colou?r$/i.test(key));
+const everyIndicator = [];
+for (const [id] of CATALOG) {
+  let settings = {};
+  try { settings = defaultIndicatorSettings(id) ?? {}; } catch { continue; }
+  if (colourKeys(settings).length) everyIndicator.push([id, settings]);
+}
+const PALETTE_THEME = { up: "#22C55E", down: "#EF4444", neutral: "#8A8F98", accent: "#2962FF", text: "#FFFFFF" };
+
+check("EVERY indicator that has colours offers a scheme", () => {
+  /*
+   * The first pass generated roles from the plot registry alone, so the
+   * twenty-six series studies gained schemes and the forty-two canvas ones did
+   * not - imbalance tracker, big trades, the footprint, the TPOs, the profiles,
+   * the DOM and the levels among them. Counting only the studies that were easy
+   * to reach is what made that look finished.
+   */
+  assert.ok(everyIndicator.length >= 60, `expected the full catalogue, got ${everyIndicator.length}`);
+  const missing = everyIndicator.map(([id]) => id).filter((id) => !supportsPalette(id));
+  assert.deepEqual(missing, [], `${missing.length} indicators have colours but no scheme: ${missing.join(", ")}`);
+});
+
+check("a scheme changes EVERY colour of EVERY indicator", () => {
+  /*
+   * Offering the control is not the same as it doing anything. It resolved
+   * against a lazily-filled cache that only the settings dialog warmed, so on a
+   * chart whose dialog had never been opened a scheme silently did nothing.
+   */
+  const dead = [];
+  const partial = [];
+  for (const [id, settings] of everyIndicator) {
+    const keys = colourKeys(settings);
+    const out = settingsWithPalette(
+      { indicatorId: id, settings: { ...settings, [INDICATOR_GRADIENT_KEY]: "chromey-mono" } },
+      PALETTE_THEME,
+    );
+    const changed = keys.filter((key) => out.settings[key] !== settings[key]);
+    if (!changed.length) dead.push(id);
+    else if (changed.length < keys.length) partial.push(`${id} (${changed.length}/${keys.length})`);
+  }
+  assert.deepEqual(dead, [], `a scheme does nothing on: ${dead.join(", ")}`);
+  assert.deepEqual(partial, [], `a scheme only partly applies on: ${partial.join(", ")}`);
+});
+
+check("an indicator with no scheme set is passed through untouched", () => {
+  // By identity, so a chart nobody has recoloured rerenders exactly as often as
+  // it did before any of this existed.
+  const instance = { indicatorId: "imbalance-tracker", settings: defaultIndicatorSettings("imbalance-tracker") };
+  assert.equal(settingsWithPalette(instance, PALETTE_THEME), instance, "an untouched study was rebuilt anyway");
+});
+
+check("roles resolve without the settings dialog having been opened", () => {
+  /*
+   * The bug that made the pickers dead: roles were cached on first UI use and
+   * the renderer read that cache. Asked cold, every study must still answer.
+   */
+  for (const [id] of everyIndicator) {
+    assert.ok(paletteRolesFor(id).length > 0, `${id} answers no roles when asked cold`);
+  }
+});
+
 console.log(`\nindicator palettes: ${passed}/${passed} checks passed`);

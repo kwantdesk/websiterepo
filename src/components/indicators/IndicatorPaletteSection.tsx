@@ -5,9 +5,9 @@ import {
   INDICATOR_GRADIENTS,
   INDICATOR_GRADIENT_KEY,
   INDICATOR_GRADIENT_OFF,
-  indicatorColorRoles,
   type IndicatorPaletteTheme,
 } from "@/lib/indicatorPalettes";
+import { paletteRolesFor } from "@/lib/indicatorPaletteRegistry";
 import { isVolumeProfileGradientActive } from "@/lib/volumeProfileGradients";
 
 /** What an indicator's settings dialog is allowed to persist. */
@@ -37,7 +37,7 @@ export default function IndicatorPaletteSection({
   theme: IndicatorPaletteTheme;
   onChange: (next: Record<string, IndicatorSettingValue>) => void;
 }) {
-  const roles = indicatorColorRoles(indicatorId);
+  const roles = paletteRolesFor(indicatorId);
   if (!roles.length) return null;
 
   const active = isVolumeProfileGradientActive(settings[INDICATOR_GRADIENT_KEY]);

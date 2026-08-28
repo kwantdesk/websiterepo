@@ -34,7 +34,7 @@ import {
 import { DESK_SESSIONS, DESK_SESSION_SETTING_KEYS } from "@/lib/volumeProfileSessions";
 import type { ChartSettings } from "@/lib/chartSettings";
 import IndicatorPaletteSection from "@/components/indicators/IndicatorPaletteSection";
-import { indicatorSupportsPalette } from "@/lib/indicatorPalettes";
+import { supportsPalette as indicatorSupportsPalette } from "@/lib/indicatorPaletteRegistry";
 import { CANDLE_STYLES, CANDLE_SETTING_KEYS, resolveCandleStyle } from "@/lib/candleStyle";
 import {
   applyFootprintPreset,

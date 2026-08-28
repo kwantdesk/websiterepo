@@ -161,6 +161,7 @@ import {
 import { ChartRepaintNotifierPrimitive } from "@/lib/chartRepaintNotifier";
 import { resolveVolumeProfileGradient, mixHexColors } from "@/lib/volumeProfileGradients";
 import { resolveIndicatorPalette } from "@/lib/indicatorPalettes";
+import { settingsWithPalette } from "@/lib/indicatorPaletteRegistry";
 import {
   resolveCandleSeriesColors,
   resolveCandleStyle,
@@ -2992,7 +2993,7 @@ function Chart({
   onRemoveAllIndicators,
   chartingDrawings = EMPTY_CHARTING_DRAWINGS,
   onChartingDrawingsChange,
-  indicators = EMPTY_CHART_ITEMS,
+  indicators: rawIndicators = EMPTY_CHART_ITEMS,
   initialBalanceCandles,
   classicGexProfile = null,
   classicGexHistory = EMPTY_CHART_ITEMS,
@@ -3047,6 +3048,31 @@ function Chart({
   onRemovePaperFills,
   onResetPaperTrading,
 }: ChartProps) {
+  const indicatorPaletteThemeValue = useMemo(() => ({
+    up: settings.upColor,
+    down: settings.downColor,
+    neutral: settings.gridColor,
+    accent: settings.borderUpColor,
+    text: settings.upColor,
+  }), [settings.upColor, settings.downColor, settings.gridColor, settings.borderUpColor]);
+
+  /*
+   * Every study's settings, with its chosen scheme resolved into them.
+   *
+   * Applied HERE, where the list enters the chart, because every study is
+   * looked up out of it with `.find()` - so one map covers all of them and no
+   * renderer has to know schemes exist. A canvas study reads `settings.askColor`
+   * straight out of this object and has no drawing seam to intercept the way
+   * the series engine does; the settings are the seam.
+   *
+   * An instance with no scheme is passed through unchanged by identity, so a
+   * chart nobody has recoloured rerenders exactly as often as it did before.
+   */
+  const indicators = useMemo(
+    () => rawIndicators.map((instance) => settingsWithPalette(instance, indicatorPaletteThemeValue)),
+    [rawIndicators, indicatorPaletteThemeValue],
+  );
+
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);

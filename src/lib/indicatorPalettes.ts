@@ -156,9 +156,52 @@ export const INDICATOR_COLOR_ROLES: Readonly<Record<string, readonly IndicatorCo
   ],
 };
 
+/**
+ * The theme colour a settings key is asking for, read from its own name.
+ *
+ * Studies drawn on a canvas keep their colours in their own settings rather
+ * than in the plot registry - imbalance tracker, big trades, footprint, TPO,
+ * the profiles, the DOM, the levels. Forty-two of them had no scheme at all
+ * because the generated roles only covered the series studies.
+ *
+ * The names are consistent enough to read: an askColor is the buying side, a
+ * bidColor the selling side. Anything unrecognised falls to neutral, which is
+ * what an untouched study already painted.
+ */
+function inferredFallback(key: string): (theme: IndicatorPaletteTheme) => string {
+  const name = key.toLowerCase();
+  if (/(up|positive|buy|ask|bull|call|support|gain|profit|high)/.test(name)) return (t) => t.up;
+  if (/(down|negative|sell|bid|bear|put|resist|loss|low)/.test(name)) return (t) => t.down;
+  if (/(text|label|font)/.test(name)) return (t) => t.text;
+  if (/(accent|highlight|star|king|poc|marker)/.test(name)) return (t) => t.accent;
+  return (t) => t.neutral;
+}
+
+const inferredRoles = new Map<string, IndicatorColorRole[]>();
+
+/**
+ * Roles for a study that keeps its colours in its own settings.
+ *
+ * Derived on first use from the keys the study actually declares, so a study
+ * gains a scheme by having colours rather than by being remembered - which is
+ * the whole reason forty-two of them were missed the first time.
+ */
+export function inferIndicatorColorRoles(
+  indicatorId: string,
+  defaultSettings: Record<string, unknown>,
+): readonly IndicatorColorRole[] {
+  const cached = inferredRoles.get(indicatorId);
+  if (cached) return cached;
+  const roles = Object.keys(defaultSettings)
+    .filter((key) => /colou?r$/i.test(key))
+    .map((key) => ({ key, label: labelForKey(key), fallback: inferredFallback(key) }));
+  inferredRoles.set(indicatorId, roles);
+  return roles;
+}
+
 /** Every indicator that has declared roles, for the settings UI to ask about. */
 export function indicatorColorRoles(indicatorId: string): readonly IndicatorColorRole[] {
-  return INDICATOR_COLOR_ROLES[indicatorId] ?? [];
+  return INDICATOR_COLOR_ROLES[indicatorId] ?? inferredRoles.get(indicatorId) ?? [];
 }
 
 export function indicatorSupportsPalette(indicatorId: string): boolean {
@@ -189,8 +232,17 @@ export function resolveIndicatorPalette(
    * that has never had the toggle.
    */
   themeLocked = false,
+  /*
+   * The study's roles, when the caller already knows them.
+   *
+   * Without this the resolver read a lazily-filled cache that only the settings
+   * dialog warmed, so a scheme resolved to nothing on any chart whose dialog
+   * had not been opened - the picker was there and did nothing, which is the
+   * exact failure this work exists to remove.
+   */
+  knownRoles?: readonly IndicatorColorRole[],
 ): Record<string, string> {
-  const roles = indicatorColorRoles(indicatorId);
+  const roles = knownRoles ?? indicatorColorRoles(indicatorId);
   if (!roles.length) return {};
   const gradient = resolveVolumeProfileGradient(settings?.[INDICATOR_GRADIENT_KEY]);
   const resolved: Record<string, string> = {};
