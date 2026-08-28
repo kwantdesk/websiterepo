@@ -47,12 +47,12 @@ export const themePresets: ThemePreset[] = [
    * black shell a white down-candle reads as neutral, and this palette wants
    * direction to be unmistakable at a glance.
    */
-  palette("Deep Terminal", {
+  palette("Chromey Mono", {
     background: "#000000", panel: "#040504", surface: "#0A0C0A", card: "#060806",
-    foreground: "#D8F5D8", primary: "#00FF41", secondary: "#7A7A6A", accent: "#B8B850",
-    muted: "#6E7A6E", border: "#1A1F1A", danger: "#FF2A2A",
-    chartBackground: "#000000", gridColor: "#101410",
-    crosshairColor: "rgba(0,255,65,.72)", candleUp: "#00FF41", candleDown: "#FF2A2A",
+    foreground: "#DCE4DC", primary: "#00FF00", secondary: "#8C8C8C", accent: "#9A9A3D",
+    muted: "#6F7A6F", border: "#161A16", danger: "#C11414",
+    chartBackground: "#000000", gridColor: "#0E120E",
+    crosshairColor: "rgba(0,255,0,.7)", candleUp: "#00FF00", candleDown: "#C11414",
   }),
 
   palette("Solar Flare", { background: "#100702", panel: "#1B0C03", surface: "#2D1507", card: "#241005", foreground: "#FFF4E6", primary: "#FF8A00", secondary: "#36C5F0", muted: "#B48C70", border: "#5A2C0C", danger: "#28A8E0", gridColor: "#351A09" }),

@@ -23,6 +23,15 @@ assert.ok(
   `expected at least ten schemes, found ${VOLUME_PROFILE_GRADIENTS.length}`,
 );
 
+/*
+ * Theme names a scheme is allowed to borrow, read from the presets so a scheme
+ * cannot be named after a theme that does not exist or has been renamed.
+ */
+const themeNames = new Set(
+  [...readFileSync(new URL("../src/lib/themePresets.ts", import.meta.url), "utf8")
+    .matchAll(/palette\("([^"]+)"/g)].map((match) => match[1]),
+);
+
 // 2. Every scheme is a genuine two-colour fade with distinct, valid endpoints.
 const HEX = /^#[0-9A-Fa-f]{6}$/;
 const ids = new Set();
@@ -30,7 +39,16 @@ for (const gradient of VOLUME_PROFILE_GRADIENTS) {
   assert.match(gradient.from, HEX, `${gradient.id} from is not a hex colour`);
   assert.match(gradient.to, HEX, `${gradient.id} to is not a hex colour`);
   assert.notEqual(gradient.from.toLowerCase(), gradient.to.toLowerCase(), `${gradient.id} does not fade`);
-  assert.ok(gradient.label.includes("→"), `${gradient.id} label must name both ends`);
+  /*
+   * A label has to tell a trader what the scheme does. Naming both ends does
+   * that, and so does carrying the name of a theme they can actually select -
+   * "Chromey Mono" says which look it matches, which is more use than
+   * "Red -> Terminal Green". Anything else says nothing.
+   */
+  assert.ok(
+    gradient.label.includes("→") || themeNames.has(gradient.label),
+    `${gradient.id} label names neither its endpoints nor a real theme`,
+  );
   assert.ok(!ids.has(gradient.id), `duplicate scheme id ${gradient.id}`);
   ids.add(gradient.id);
 }

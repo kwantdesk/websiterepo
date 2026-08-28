@@ -1,5 +1,5 @@
-import { paletteAccents, paletteLut, paletteRenderKey } from './palettes.js?v=20260828-deep-terminal';
-import { canvasUiTheme } from './ui-themes.js?v=20260828-deep-terminal';
+import { paletteAccents, paletteLut, paletteRenderKey } from './palettes.js?v=20260828-chromey-mono';
+import { canvasUiTheme } from './ui-themes.js?v=20260828-chromey-mono';
 
 function colorCss([red, green, blue], alpha = 1) {
   return alpha >= 1

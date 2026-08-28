@@ -21,14 +21,14 @@ export const VOLUME_PROFILE_GRADIENT_OFF = "off";
 
 export const VOLUME_PROFILE_GRADIENTS: readonly VolumeProfileGradient[] = [
   /*
-   * The DeepChart scheme, matching the "Deep Terminal" theme.
+   * The DeepChart scheme, matching the "Chromey Mono" theme.
    *
    * Red at the low end and high-voltage green at the high end, so a profile,
    * a footprint cell and an indicator all fade the way that terminal reads:
    * what is being sold at the bottom of the scale, what is being bought at the
    * top, and nothing in between competing for attention.
    */
-  { id: "red-terminal-green", label: "Red → Terminal Green", from: "#FF2A2A", to: "#00FF41" },
+  { id: "chromey-mono", label: "Chromey Mono", from: "#C11414", to: "#00FF00" },
   { id: "pink-blue", label: "Pink → Blue", from: "#FF2D95", to: "#2D9BFF" },
   { id: "yellow-blue", label: "Yellow → Blue", from: "#FFE83D", to: "#2D6BFF" },
   { id: "orange-green", label: "Orange → Green", from: "#FF7A1A", to: "#22E06B" },

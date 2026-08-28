@@ -1,4 +1,4 @@
-import { websiteThemeColors } from './ui-themes.js?v=20260828-deep-terminal';
+import { websiteThemeColors } from './ui-themes.js?v=20260828-chromey-mono';
 
 export const DEFAULT_PALETTE = 'auto';
 
@@ -7,16 +7,16 @@ const atLandmarks = colors => colors.map((color, index) => [BOOKMAP_LANDMARKS[in
 
 export const PALETTES = Object.freeze({
   /*
-   * The DeepChart look, matching the "Deep Terminal" website theme.
+   * The DeepChart look, matching the "Chromey Mono" website theme.
    *
    * Black through to a single high-voltage green, so the heat reads as one
    * structure rather than as a rainbow: depth is brightness, not hue. The
    * accents keep the market-side encoding - green resting bid, red resting
    * ask - which is what keeps the book legible at a glance against it.
    */
-  deepterminal: atLandmarks([
-    [0, 0, 0], [0, 26, 8], [0, 64, 18], [0, 122, 32],
-    [0, 190, 50], [0, 255, 65], [200, 255, 205],
+  chromeymono: atLandmarks([
+    [0, 0, 0], [0, 24, 0], [0, 60, 0], [0, 118, 0],
+    [0, 188, 0], [0, 255, 0], [200, 255, 200],
   ]),
   kwantify: atLandmarks([
     [5, 7, 7], [5, 20, 16], [4, 50, 37], [0, 106, 75],
@@ -97,7 +97,7 @@ export const PALETTES = Object.freeze({
 // ask/sell uses `ask`, so the market-side encoding stays consistent while the
 // complete chart changes theme as one unit.
 export const PALETTE_ACCENTS = Object.freeze({
-  deepterminal: Object.freeze({ bid: [0, 255, 65], ask: [255, 42, 42] }),
+  chromeymono: Object.freeze({ bid: [0, 255, 0], ask: [193, 20, 20] }),
   kwantify: Object.freeze({ bid: [0, 245, 160], ask: [239, 68, 68] }),
   liquid: Object.freeze({ bid: [100, 210, 255], ask: [255, 159, 10] }),
   thermal: Object.freeze({ bid: [0, 190, 230], ask: [255, 125, 0] }),
@@ -118,7 +118,7 @@ export const PALETTE_ACCENTS = Object.freeze({
 });
 
 export const NEW_PALETTE_NAMES = Object.freeze([
-  'deepterminal',
+  'chromeymono',
   'aurora', 'magma', 'viridis', 'plasma', 'arctic',
   'limefire', 'purplegold', 'copper', 'icefire', 'neon',
 ]);
