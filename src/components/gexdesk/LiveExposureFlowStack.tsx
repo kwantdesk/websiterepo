@@ -468,7 +468,7 @@ export default function LiveExposureFlowStack({
 
       <div className="flex h-7 shrink-0 items-center justify-between border-t border-border bg-panel px-3 text-[6px] text-muted">
         <span>Call, put and net exposure by completed provider minute - session baseline retained while live buckets merge.</span>
-        <span className="font-mono">KwantData - {symbol} - 1m</span>
+        <span className="font-mono">{symbol} - 1m</span>
       </div>
     </div>
   );

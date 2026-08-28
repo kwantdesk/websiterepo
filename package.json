@@ -188,7 +188,8 @@
     "test:hollow-candle-themes": "node --import ./scripts/alias-hook.mjs scripts/test-hollow-candle-themes.mjs",
     "test:indicator-visibility": "node --import ./scripts/alias-hook.mjs scripts/test-indicator-visibility.mjs",
     "test:journal-outcome-colors": "node --import ./scripts/alias-hook.mjs scripts/test-journal-outcome-colors.mjs",
-    "test:gex-map-replay-window": "node --import ./scripts/alias-hook.mjs scripts/test-gex-map-replay-window.mjs"
+    "test:gex-map-replay-window": "node --import ./scripts/alias-hook.mjs scripts/test-gex-map-replay-window.mjs",
+    "test:news-provider-surface": "node --import ./scripts/alias-hook.mjs scripts/test-news-and-provider-surface.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",

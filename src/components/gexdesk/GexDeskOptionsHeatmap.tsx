@@ -793,7 +793,7 @@ export default function GexDeskOptionsHeatmap({
               </div>
               <div className="flex items-start gap-2 rounded-xl border border-border bg-background/30 p-3 text-[6px] leading-4 text-muted">
                 <Radio className="mt-0.5 h-3 w-3 shrink-0 text-primary" />
-                <span>{view === "REPLAY" ? "Replay brightness is historical call/put gamma exposure from KwantData Interval Map frames. The white path is timestamp-aligned Databento NQ history; it is not a reconstructed options tape." : "Brightness measures actual consolidated call/put premium or contracts at each mapped level. It is options activity, not resting futures liquidity."}</span>
+                <span>{view === "REPLAY" ? "Replay brightness is historical call/put gamma exposure from Interval Map frames. The white path is timestamp-aligned Databento NQ history; it is not a reconstructed options tape." : "Brightness measures actual consolidated call/put premium or contracts at each mapped level. It is options activity, not resting futures liquidity."}</span>
               </div>
               {(view === "REPLAY" ? replayError : historyError) ? <div className="text-[6px] leading-4 text-warning">{view === "REPLAY" ? replayError : historyError}</div> : null}
             </div>
@@ -864,7 +864,7 @@ export default function GexDeskOptionsHeatmap({
               ))}
             </div>
             <div className="w-full text-[6px] leading-4 text-muted">
-              Historical exposure: KwantData Interval Map · Price path: Databento NQ 1-minute history · The session list rolls forward automatically to the latest five available US options sessions.
+              Historical exposure: Interval Map · Price path: Databento NQ 1-minute history · The session list rolls forward automatically to the latest five available US options sessions.
             </div>
           </div>
         ) : null}

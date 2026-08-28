@@ -551,7 +551,7 @@ export default function GammaOrderflowTerminal({
           <div className="px-3 py-3">
             <div className="flex items-center gap-2"><Database className="h-3.5 w-3.5 text-primary" /><span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-muted">Data health</span></div>
             <div className="mt-2 space-y-1.5 text-[9px]">
-              <div className="flex justify-between gap-2"><span className="text-muted">KwantData profile</span><span className="font-mono text-foreground">{ageLabel(history?.asOf)} old</span></div>
+              <div className="flex justify-between gap-2"><span className="text-muted">Positioning profile</span><span className="font-mono text-foreground">{ageLabel(history?.asOf)} old</span></div>
               <div className="flex justify-between gap-2"><span className="text-muted">Databento futures</span><span className="font-mono text-foreground">{history?.nqPrices.length ?? 0} aligned bars</span></div>
               <div className="flex justify-between gap-2"><span className="text-muted">Mapping coverage</span><span className={`font-mono ${(history?.mappingCoverage ?? 0) >= 0.8 ? "text-primary" : "text-danger"}`}>{((history?.mappingCoverage ?? 0) * 100).toFixed(0)}%</span></div>
               <div className="flex justify-between gap-2"><span className="text-muted">OPRA classification</span><span className="font-mono text-muted">NOT VERIFIED</span></div>

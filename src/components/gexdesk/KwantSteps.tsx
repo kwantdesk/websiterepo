@@ -622,7 +622,7 @@ export default function KwantSteps({
           <span className="flex items-center gap-1.5"><span className="h-1.5 w-5 rounded-full border border-primary/40 bg-primary/15" />Open-interest GEX</span>
           <span className="flex items-center gap-1.5"><span className="h-1.5 w-5 rounded-full bg-primary" />Session-volume GEX estimate</span>
           <span className="flex items-center gap-1.5"><span className="h-2 w-2 rounded-full bg-foreground/60" />Front-expiry readings · 30m / 15m / 5m / 1m</span>
-          <span className="ml-auto flex items-center gap-1.5"><BarChart3 className="h-3 w-3" />KwantData positioning · CME NQ mapping</span>
+          <span className="ml-auto flex items-center gap-1.5"><BarChart3 className="h-3 w-3" />Options positioning · CME NQ mapping</span>
         </div>
         {!historySupported ? <div className="mt-1 text-[6px] text-muted">1DTE shows the current structural profile; intraday replay is available for the front expiry.</div> : null}
         {historyError ? <div className="mt-1 text-[6px] text-warning">Playback history: {historyError}</div> : null}
