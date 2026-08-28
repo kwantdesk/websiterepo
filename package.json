@@ -183,7 +183,8 @@
     "test:footprint-hysteresis": "node scripts/test-footprint-detail-hysteresis.mjs",
     "test:indicator-palettes": "node scripts/test-indicator-palettes.mjs",
     "test:volume-profile-session-filter": "node scripts/test-volume-profile-session-filter.mjs",
-    "test:brand-wordmark": "node scripts/test-brand-wordmark.mjs"
+    "test:brand-wordmark": "node scripts/test-brand-wordmark.mjs",
+    "test:gex-box-self-contained": "node scripts/test-gex-box-self-contained-tools.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",

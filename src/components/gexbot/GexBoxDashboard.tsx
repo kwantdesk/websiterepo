@@ -1152,10 +1152,33 @@ function IvRank({ payload }: { payload: unknown }) {
 
 function NoRows() { return <div className="flex h-full items-center justify-center text-center"><div><BarChart3 className="mx-auto h-5 w-5 text-muted" /><p className="mt-2 text-[9px] uppercase tracking-[.15em] text-muted">No rows in this verified frame</p></div></div>; }
 
+/**
+ * Tools whose renderer owns its own data.
+ *
+ * Kept beside the guard it exempts, so adding another self-fetching workspace
+ * means adding it here rather than discovering months later that the panel has
+ * been quietly reporting the tool as unavailable.
+ */
+const SELF_CONTAINED_TOOL_IDS = new Set(["gex-flow", "gex-cal"]);
+
 const ToolSurface = memo(function ToolSurface({ panel, onChange }: { panel: DashboardPanel; onChange: (panel: DashboardPanel) => void }) {
   const tool = toolById.get(panel.toolId); const url = tool?.endpoint?.(panel.settings) ?? null; const feed = useSharedFeed(url);
   const patchSettings = useCallback((patch: Partial<PanelSettings>) => onChange({ ...panel, settings: { ...panel.settings, ...patch } }), [onChange, panel]);
-  if (!tool?.endpoint) return <div className="flex h-full items-center justify-center px-8 text-center"><div><BookOpen className="mx-auto h-5 w-5 text-primary" /><p className="mt-3 text-[10px] font-semibold uppercase tracking-[.16em]">Tool unavailable</p><p className="mt-2 max-w-md text-[9px] leading-5 text-muted">This saved panel no longer has an authoritative licensed source. Remove it and choose a verified tool.</p></div></div>;
+  /*
+   * Tools that bring their own data are answered before the endpoint guard.
+   *
+   * That guard reads a missing endpoint as "this panel has no licensed source
+   * any more" and refuses to render. For most tools that is right. For these
+   * two it is exactly backwards: they have no endpoint BECAUSE their renderer
+   * is a full workspace that fetches for itself, and the guard sat above their
+   * branches, so both returned "Tool unavailable" and neither renderer was
+   * ever reached. Mounted directly, GEX CAL draws 3,619 cells from a healthy
+   * 7,108-entry chain - the panel was the only thing wrong with it.
+   */
+  const selfContained = SELF_CONTAINED_TOOL_IDS.has(panel.toolId);
+  if (!selfContained && !tool?.endpoint) return <div className="flex h-full items-center justify-center px-8 text-center"><div><BookOpen className="mx-auto h-5 w-5 text-primary" /><p className="mt-3 text-[10px] font-semibold uppercase tracking-[.16em]">Tool unavailable</p><p className="mt-2 max-w-md text-[9px] leading-5 text-muted">This saved panel no longer has an authoritative licensed source. Remove it and choose a verified tool.</p></div></div>;
+  if (panel.toolId === "gex-flow") return <GexFlowWorkspace />;
+  if (panel.toolId === "gex-cal") return <GexMapWorkspace lockedTimeHorizon="future" />;
   if (!feed.data && feed.loading) return <div className="flex h-full items-center justify-center"><RefreshCw className="h-5 w-5 animate-spin text-primary" /><span className="ml-3 text-[9px] uppercase tracking-[.15em] text-muted">Restoring verified session</span></div>;
   if (!feed.data && feed.error) return <div className="flex h-full items-center justify-center px-8 text-center"><div><p className="text-[10px] font-semibold uppercase text-danger">Data unavailable</p><p className="mt-2 max-w-md text-[9px] text-muted">{feed.error}</p><button onClick={() => void feed.refresh()} className="mt-4 border border-primary/30 px-3 py-2 text-[9px] uppercase text-primary">Try again</button></div></div>;
   if (panel.toolId === "consolidated-flow" || panel.toolId === "unconsolidated-flow") return <OrderFlowPanel payload={feed.data} settings={panel.settings} onSettings={patchSettings} />;
@@ -1166,8 +1189,6 @@ const ToolSurface = memo(function ToolSurface({ panel, onChange }: { panel: Dash
   if (["exposure-strike", "oi-strike", "classic-gex", "state-profile"].includes(panel.toolId)) return <ProfileBars payload={feed.data} settings={panel.settings} />;
   if (panel.toolId === "iv-rank") return <IvRank payload={feed.data} />;
   if (TOOL_SERIES[panel.toolId]) return <SeriesPanel toolId={panel.toolId} payload={feed.data} settings={panel.settings} onSettings={patchSettings} />;
-  if (panel.toolId === "gex-flow") return <GexFlowWorkspace />;
-  if (panel.toolId === "gex-cal") return <GexMapWorkspace lockedTimeHorizon="future" />;
   if (panel.toolId === "market-map") return <MarketMapPanel payload={feed.data} />;
   if (TOOL_COLUMNS[panel.toolId]) return <StructuredToolPanel toolId={panel.toolId} payload={feed.data} limit={panel.settings.rows} settings={panel.settings} onSettings={patchSettings} />;
   if (panel.toolId === "orderflow-profile") return <DataTable payload={feed.data} limit={panel.settings.rows} />;
