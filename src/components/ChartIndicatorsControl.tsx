@@ -35,6 +35,7 @@ import { DESK_SESSIONS, DESK_SESSION_SETTING_KEYS } from "@/lib/volumeProfileSes
 import type { ChartSettings } from "@/lib/chartSettings";
 import IndicatorPaletteSection from "@/components/indicators/IndicatorPaletteSection";
 import { indicatorSupportsPalette } from "@/lib/indicatorPalettes";
+import { CANDLE_STYLES, CANDLE_SETTING_KEYS, resolveCandleStyle } from "@/lib/candleStyle";
 import {
   applyFootprintPreset,
   deleteFootprintTemplate,
@@ -467,6 +468,14 @@ type Props = {
    */
   candlesVisible?: boolean;
   onToggleCandles?: (visible: boolean) => void;
+  /**
+   * This pane's candle style and colours, and how to change them.
+   *
+   * Null means the pane has never been configured and follows the chart theme,
+   * which is what every pane did before candles had settings at all.
+   */
+  candleSettings?: Record<string, unknown> | null;
+  onCandleSettingsChange?: (next: Record<string, unknown>) => void;
 };
 
 export type ChartLevelControl = {
@@ -688,6 +697,8 @@ export default function ChartIndicatorsControl({
   onChange,
   candlesVisible = true,
   onToggleCandles,
+  candleSettings = null,
+  onCandleSettingsChange,
 }: Props) {
   const rootRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -706,6 +717,11 @@ export default function ChartIndicatorsControl({
   const [menuPosition, setMenuPosition] = useState<{ left: number; top: number; width: number } | null>(null);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [settingsInstanceId, setSettingsInstanceId] = useState<string | null>(null);
+  const [candleSettingsOpen, setCandleSettingsOpen] = useState(false);
+  const candleStyleId = resolveCandleStyle(candleSettings?.[CANDLE_SETTING_KEYS.style]);
+  const setCandleSetting = (key: string, value: unknown) => {
+    onCandleSettingsChange?.({ ...(candleSettings ?? {}), [key]: value });
+  };
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<"All" | ChartIndicatorCategory>("All");
   const [favourites, setFavourites] = useState<string[]>(readFavourites);
@@ -1306,9 +1322,25 @@ export default function ChartIndicatorsControl({
                       Candles
                     </div>
                     <div className="mt-0.5 truncate text-[8px] uppercase tracking-[0.12em] text-muted/70">
-                      Price · always on this chart
+                      {CANDLE_STYLES.find((entry) => entry.id === candleStyleId)?.label ?? "Price"} · always on this chart
                     </div>
                   </div>
+                  {/*
+                    * The candles were the one thing on the chart with no
+                    * settings, while every study drawn on top of them had a
+                    * dialog. Same gear, same place in the row.
+                    */}
+                  {onCandleSettingsChange ? (
+                    <button
+                      type="button"
+                      onClick={() => setCandleSettingsOpen(true)}
+                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-border text-muted transition-colors hover:border-primary/30 hover:text-foreground"
+                      title="Candle style and colours"
+                      aria-label="Candle settings"
+                    >
+                      <Settings2 className="h-3.5 w-3.5" />
+                    </button>
+                  ) : null}
                 </div>
               </div>
               {indicators.length ? (
@@ -1508,6 +1540,116 @@ export default function ChartIndicatorsControl({
             <div className="flex items-center justify-between border-t border-border px-5 py-3">
               <span className="text-[9px] text-muted">{indicators.length} saved to this chart</span>
               <button type="button" onClick={() => setLibraryOpen(false)} className="rounded-lg bg-primary px-4 py-2 text-[10px] font-semibold text-background">Done</button>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      ) : null}
+
+      {candleSettingsOpen && typeof document !== "undefined" ? createPortal(
+        <div className="pointer-events-none fixed inset-0 z-[2800] flex items-center justify-center bg-transparent p-4">
+          <div className="pointer-events-auto relative flex max-h-[88vh] w-full max-w-[440px] flex-col overflow-hidden rounded-2xl border border-border bg-panel shadow-2xl shadow-black/60">
+            <div className="flex items-center justify-between border-b border-border px-5 py-4">
+              <div>
+                <div className="text-[15px] font-semibold text-foreground">Candles</div>
+                <div className="mt-0.5 text-[9px] uppercase tracking-[0.12em] text-muted">Style and colours · this chart only</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCandleSettingsOpen(false)}
+                className="flex h-8 w-8 items-center justify-center rounded-lg border border-border text-muted hover:text-foreground"
+                aria-label="Close candle settings"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
+              <div data-settings-section="Style" className="space-y-2">
+                <span className="block text-[11px] font-medium text-foreground">Style</span>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {CANDLE_STYLES.map((style) => (
+                    <button
+                      key={style.id}
+                      type="button"
+                      aria-pressed={candleStyleId === style.id}
+                      title={style.detail}
+                      onClick={() => setCandleSetting(CANDLE_SETTING_KEYS.style, style.id)}
+                      className={`h-9 rounded-[3px] border px-2 text-[9px] font-semibold uppercase tracking-[0.08em] transition-colors ${
+                        candleStyleId === style.id
+                          ? "border-primary/55 bg-primary/10 text-primary"
+                          : "border-border bg-background text-muted hover:border-primary/30 hover:text-foreground"
+                      }`}
+                    >
+                      {style.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[8px] leading-4 text-muted">
+                  {CANDLE_STYLES.find((style) => style.id === candleStyleId)?.detail}
+                </p>
+              </div>
+
+              <IndicatorPaletteSection
+                indicatorId="candles"
+                settings={(candleSettings ?? {}) as Record<string, string | number | boolean>}
+                theme={{
+                  up: chartSettings.upColor,
+                  down: chartSettings.downColor,
+                  neutral: chartSettings.gridColor,
+                  accent: chartSettings.borderUpColor,
+                  text: chartSettings.upColor,
+                }}
+                onChange={(next) => onCandleSettingsChange?.(next)}
+              />
+
+              <div data-settings-section="Body" className="space-y-3 rounded-xl border border-border bg-surface/30 p-3">
+                <label className="block">
+                  <span className="mb-2 flex items-center justify-between text-[10px] text-muted">
+                    <span>Body opacity</span>
+                    <input
+                      type="number"
+                      min={5}
+                      max={100}
+                      step={5}
+                      value={Number(candleSettings?.[CANDLE_SETTING_KEYS.bodyOpacity] ?? 100)}
+                      onChange={(event) => setCandleSetting(
+                        CANDLE_SETTING_KEYS.bodyOpacity,
+                        Math.min(100, Math.max(5, Number(event.target.value) || 100)),
+                      )}
+                      className="h-6 w-16 rounded-[3px] border border-border bg-background px-1.5 text-right text-[10px] text-foreground outline-none focus:border-primary/60"
+                    />
+                  </span>
+                </label>
+                {([
+                  ["Borders", CANDLE_SETTING_KEYS.borderVisible],
+                  ["Wicks", CANDLE_SETTING_KEYS.wickVisible],
+                ] as const).map(([label, key]) => (
+                  <label key={key} className="flex items-center justify-between gap-3 text-[10px] text-muted">
+                    <span>{label}</span>
+                    <input
+                      type="checkbox"
+                      checked={candleSettings?.[key] !== false}
+                      onChange={(event) => setCandleSetting(key, event.target.checked)}
+                      className="h-3.5 w-3.5 accent-[var(--primary)]"
+                    />
+                  </label>
+                ))}
+                <p className="text-[8px] leading-4 text-muted">
+                  A hollow style keeps its borders whatever this says — an outline candle without an outline is nothing at all.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex shrink-0 items-center justify-end gap-2 border-t border-border bg-panel px-5 py-3">
+              <button
+                type="button"
+                onClick={() => setCandleSettingsOpen(false)}
+                className="flex h-9 items-center justify-center gap-1.5 rounded-lg bg-primary px-4 text-[9px] font-semibold uppercase tracking-[0.08em] text-background"
+              >
+                <Save className="h-3.5 w-3.5" />
+                Save
+              </button>
             </div>
           </div>
         </div>,

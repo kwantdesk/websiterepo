@@ -161,6 +161,13 @@ import {
 import { ChartRepaintNotifierPrimitive } from "@/lib/chartRepaintNotifier";
 import { resolveVolumeProfileGradient, mixHexColors } from "@/lib/volumeProfileGradients";
 import { resolveIndicatorPalette } from "@/lib/indicatorPalettes";
+import {
+  resolveCandleSeriesColors,
+  resolveCandleStyle,
+  isHeikinAshiStyle,
+  toHeikinAshi,
+  CANDLE_SETTING_KEYS,
+} from "@/lib/candleStyle";
 import { visibleIndicatorTheme } from "@/lib/indicatorPlotColors";
 import { PositionCalculatorPrimitive, type PositionCalculatorModel } from "@/lib/positionCalculatorPrimitive";
 import { ImbalanceZonesPrimitive, type ImbalanceZoneModel } from "@/lib/imbalanceZonesPrimitive";
@@ -572,6 +579,8 @@ interface ChartProps {
    * so a session can be framed off profiles and levels alone.
    */
   candlesVisible?: boolean;
+  /** Per-pane candle style and colours; null means follow the chart theme. */
+  candleSettings?: Record<string, unknown> | null;
   keyboardActive?: boolean;
   workspaceId?: string;
   contractSymbol?: string | null;
@@ -2970,6 +2979,7 @@ function Chart({
   crosshairSyncScope = "matching",
   crosshairLinked = false,
   candlesVisible = true,
+  candleSettings = null,
   keyboardActive = true,
   workspaceId = "default-workspace",
   contractSymbol = null,
@@ -3974,6 +3984,13 @@ function Chart({
         lastRenderedCandleTimeRef.current !== null
         && candleTime < lastRenderedCandleTimeRef.current
       ) return;
+      /*
+       * A Heikin Ashi bar is an average of the one before it, so a single
+       * updated bar cannot be computed from the tick alone. The redraw effect
+       * recomputes the whole series instead; pushing the raw bar here would
+       * paint one true candle in the middle of a smoothed series.
+       */
+      if (heikinAshiActiveRef.current) return;
       try {
         candleSeriesRef.current.update({
           time: candleTime as Time,
@@ -5694,6 +5711,54 @@ function Chart({
    * settings object, which changes on unrelated edits and would rebuild every
    * indicator's options for a font size.
    */
+  /*
+   * The candle series' own options.
+   *
+   * Resolved from this pane's candle settings over the chart theme, so a pane
+   * nobody has configured paints exactly what it did before candles gained
+   * settings of their own.
+   */
+  /*
+   * The bars the CANDLE SERIES draws, which are not always the bars the rest of
+   * the chart measures.
+   *
+   * Heikin Ashi averages each bar into the one before it, so its open and close
+   * are derived values rather than traded prices. Studies, profiles, footprint
+   * and levels must keep reading the real tape - only the series being looked
+   * at is smoothed.
+   */
+  const candleStyle = useMemo(
+    () => resolveCandleStyle(candleSettings?.[CANDLE_SETTING_KEYS.style]),
+    [candleSettings],
+  );
+  /*
+   * Read by the imperative live paths, which are bound once and must not be
+   * rebuilt every time a colour changes.
+   */
+  const heikinAshiActiveRef = useRef(false);
+  /** The style the series was last drawn with, so a change forces a redraw. */
+  const lastDrawnCandleStyleRef = useRef<string | null>(null);
+  useEffect(() => {
+    heikinAshiActiveRef.current = isHeikinAshiStyle(candleStyle);
+  }, [candleStyle]);
+
+  const seriesCandles = useMemo(
+    () => (isHeikinAshiStyle(candleStyle) ? toHeikinAshi(candles) : candles),
+    [candleStyle, candles],
+  );
+
+  const resolvedCandleColors = useMemo(() => resolveCandleSeriesColors(candleSettings, {
+    up: settings.upColor,
+    down: settings.downColor,
+    borderUp: settings.borderUpColor,
+    borderDown: settings.borderDownColor,
+    wickUp: settings.wickUpColor,
+    wickDown: settings.wickDownColor,
+  }), [
+    candleSettings, settings.upColor, settings.downColor, settings.borderUpColor,
+    settings.borderDownColor, settings.wickUpColor, settings.wickDownColor,
+  ]);
+
   const indicatorPaletteTheme = useMemo(() => ({
     up: settings.upColor,
     down: settings.downColor,
@@ -6079,14 +6144,7 @@ function Chart({
       borderDownColor: "rgba(0,0,0,0)",
       wickUpColor: "rgba(0,0,0,0)",
       wickDownColor: "rgba(0,0,0,0)",
-    } : {
-      upColor: settings.upColor,
-      downColor: settings.downColor,
-      borderUpColor: settings.borderUpColor,
-      borderDownColor: settings.borderDownColor,
-      wickUpColor: settings.wickUpColor,
-      wickDownColor: settings.wickDownColor,
-    });
+    } : resolvedCandleColors);
 
     if (footprintIndicator) {
       const profileLayerEnabled = footprintPrimitiveOptions.showPerBarVolumeProfile
@@ -12137,11 +12195,28 @@ function Chart({
     latestCandleRef.current = lastSourceCandle;
     if (!candleSeriesRef.current || !chartRef.current) return;
     const lastCandleKey = `${lastSourceCandle.timestamp}-${lastSourceCandle.open}-${lastSourceCandle.high}-${lastSourceCandle.low}-${lastSourceCandle.close}`;
-    if (lastCandleKey === prevDataRef.current) return;
+    /*
+     * A style change redraws even when the bars have not moved.
+     *
+     * The key below is built from the last candle, so switching to Heikin Ashi
+     * on a quiet chart looked like nothing happened until the next bar
+     * arrived - the guard is there to skip redundant work, not to hold a
+     * setting the trader just changed.
+     */
+    const styleChanged = lastDrawnCandleStyleRef.current !== candleStyle;
+    lastDrawnCandleStyleRef.current = candleStyle;
+    if (!styleChanged && lastCandleKey === prevDataRef.current) return;
     prevDataRef.current = lastCandleKey;
 
     const previousCandleCount = prevCandlesLengthRef.current;
     const needsFullRedraw =
+      /*
+       * An averaged bar has no incremental form: every Heikin Ashi bar is
+       * computed from the one before it, so advancing the series means
+       * recomputing it. Redrawing is the only correct way to move it forward,
+       * not an optimisation to skip.
+       */
+      isHeikinAshiStyle(candleStyle) ||
       prevCandlesLengthRef.current === 0 ||
       // ANY shrink must redraw: series.update() can never remove bars, so a
       // small backward replay scrub (1-5 bars) previously left ghost future
@@ -12152,7 +12227,7 @@ function Chart({
 
     if (needsFullRedraw) {
       const chartData = buildSafeChartData(
-        candles,
+        seriesCandles,
         timeframeToMs(timeframe) === null,
         eventSourceTimeByChartTimeRef.current,
         eventChartTimeBySourceTimeRef.current,
@@ -12221,7 +12296,7 @@ function Chart({
     if (candles.length > prevCandlesLengthRef.current) {
       prevCandlesLengthRef.current = candles.length;
     }
-  }, [candles]);
+  }, [candles, candleStyle, seriesCandles]);
 
   const hasCandles = candles.length > 0;
   useEffect(() => {
@@ -12488,7 +12563,7 @@ function Chart({
     paperFillMarkersPrimitiveRef.current = paperFillMarkersPrimitive;
 
     const chartData = buildSafeChartData(
-      candles,
+      seriesCandles,
       timeframeToMs(timeframe) === null,
       eventSourceTimeByChartTimeRef.current,
       eventChartTimeBySourceTimeRef.current,

@@ -121,6 +121,19 @@ const GENERATED_ROLES: Record<string, IndicatorColorRole[]> = Object.fromEntries
  * They have no plot slots, so their roles are named here.
  */
 const PRIMITIVE_ROLES: Record<string, IndicatorColorRole[]> = {
+  /*
+   * The price series itself. Ordered falling-then-rising so a scheme reads the
+   * way it does everywhere else, and keyed to match `CANDLE_SETTING_KEYS` - the
+   * candle resolver reads the same settings object this writes.
+   */
+  candles: [
+    { key: "candleDownColor", label: "Down body", fallback: (t) => t.down },
+    { key: "candleBorderDownColor", label: "Down border", fallback: (t) => t.down },
+    { key: "candleWickDownColor", label: "Down wick", fallback: (t) => t.down },
+    { key: "candleWickUpColor", label: "Up wick", fallback: (t) => t.up },
+    { key: "candleBorderUpColor", label: "Up border", fallback: (t) => t.up },
+    { key: "candleUpColor", label: "Up body", fallback: (t) => t.up },
+  ],
   "big-contracts": [
     { key: "bidColor", label: "Sell aggressor", fallback: (t) => t.down },
     { key: "askColor", label: "Buy aggressor", fallback: (t) => t.up },

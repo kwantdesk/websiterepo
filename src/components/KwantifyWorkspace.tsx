@@ -5221,6 +5221,7 @@ function WorkspaceChartPaneComponent({
   crosshairLinked?: boolean;
   /** Whether this chart paints its candles; everything else keeps its place. */
   candlesVisible?: boolean;
+  candleSettings?: Record<string, unknown> | null;
   viewportSyncGroup?: string;
   viewportSyncRole?: "independent" | "peer";
   replayTimestampMs?: number | null;
@@ -9487,6 +9488,30 @@ export default function KwantifyWorkspace({
       return new Set<string>();
     }
   });
+  /*
+   * Candle style and colours, per pane.
+   *
+   * Stored beside the visibility flag rather than in the chart theme: two
+   * charts of the same instrument are routinely set up differently, and the
+   * theme is shared by every one of them. An untouched pane holds no entry at
+   * all, so it keeps following the theme exactly as it did.
+   */
+  const [candleSettingsByPane, setCandleSettingsByPane] = useState<Record<string, Record<string, unknown>>>(() => {
+    if (typeof window === "undefined") return {};
+    try {
+      const raw = window.localStorage.getItem(
+        workspaceScopeStorageKey(initialChartWorkspaceScope, "olisa-chart-workspace-candle-settings"),
+      );
+      const parsed = raw ? JSON.parse(raw) : null;
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+      return {};
+    }
+  });
+  const setPaneCandleSettings = useCallback((paneId: string, next: Record<string, unknown>) => {
+    setCandleSettingsByPane((current) => ({ ...current, [paneId]: next }));
+  }, []);
+
   const setPaneCandlesVisible = useCallback((paneId: string, visible: boolean) => {
     setCandlesHiddenPaneIds((current) => {
       const next = new Set(current);
@@ -12122,6 +12147,14 @@ export default function KwantifyWorkspace({
       JSON.stringify([...candlesHiddenPaneIds]),
     );
   }, [candlesHiddenPaneIds]);
+
+  useEffect(() => {
+    if (workspaceScopeHydratingRef.current) return;
+    writeProtectedItem(
+      workspaceScopeStorageKey(chartWorkspaceScopeRef.current, "olisa-chart-workspace-candle-settings"),
+      JSON.stringify(candleSettingsByPane),
+    );
+  }, [candleSettingsByPane]);
 
   useEffect(() => {
     if (!preferencesReady || workspaceScopeHydratingRef.current) return;
@@ -17347,6 +17380,7 @@ export default function KwantifyWorkspace({
         settings={chartSettings}
         crosshairLinked={linkedCrosshairPaneIds.has(pane.id)}
         candlesVisible={!candlesHiddenPaneIds.has(pane.id)}
+        candleSettings={candleSettingsByPane[pane.id] ?? null}
         crosshairSyncScope={chartWorkspaceScope === "gamma"
           || linkedViewportPaneIds.has(pane.id)
           || linkedCrosshairPaneIds.has(pane.id)
@@ -18687,6 +18721,8 @@ export default function KwantifyWorkspace({
             chartSettings={chartSettings}
             candlesVisible={!candlesHiddenPaneIds.has(activePaneId)}
             onToggleCandles={(visible) => setPaneCandlesVisible(activePaneId, visible)}
+            candleSettings={candleSettingsByPane[activePaneId] ?? null}
+            onCandleSettingsChange={(next) => setPaneCandleSettings(activePaneId, next)}
             settingsOpenRequest={indicatorSettingsOpenRequest?.paneId === activePaneId
               ? indicatorSettingsOpenRequest
               : null}
