@@ -1,3 +1,5 @@
+import { mixHexColors, resolveVolumeProfileGradient } from "@/lib/volumeProfileGradients";
+
 /**
  * Which colours each indicator actually paints, and what to call them.
  *
@@ -174,6 +176,29 @@ export function defaultIndicatorPlotColors(
   return out;
 }
 
+/**
+ * A slot's position along a chosen scheme.
+ *
+ * Slots are declared in the order the study plots them, so spreading a scheme
+ * across that order is what makes a multi-series study read as one graded
+ * object - the envelopes fading out from the mean rather than each band
+ * picking an unrelated colour.
+ */
+export function indicatorSlotGradientColor(
+  gradient: { from: string; to: string },
+  index: number,
+  count: number,
+): string {
+  // A study that plots ONE series takes the scheme's finishing colour, not its
+  // starting one. Picking "Red -> Terminal Green" for a lone VWAP line and
+  // getting the dark red reads as the wrong scheme entirely; the end of the
+  // ramp is what a trader means by "that colour".
+  if (count <= 1) return gradient.to;
+  if (index <= 0) return gradient.from;
+  if (index >= count - 1) return gradient.to;
+  return mixHexColors(gradient.from, gradient.to, index / (count - 1));
+}
+
 /** Apply a trader's chosen colours over what the engine produced. */
 export function applyIndicatorPlotColors<
   T extends { key: string; color?: string; upColor?: string; downColor?: string },
@@ -183,6 +208,34 @@ export function applyIndicatorPlotColors<
   series: T[],
 ): T[] {
   if (!settings) return series;
+  /*
+   * A scheme outranks the individual pickers.
+   *
+   * Every study already routes its colours through here, so this is the one
+   * place that has to know about schemes for all of them to gain one - rather
+   * than each study growing its own copy of the same logic. Letting a scheme
+   * and the pickers both apply produces a study that half-follows the scheme,
+   * which reads as a bug; the panel greys the pickers out to say so.
+   */
+  const gradient = resolveVolumeProfileGradient(settings.gradientPreset);
+  const slots = INDICATOR_PLOT_COLOR_SLOTS[indicatorId] ?? [];
+  if (gradient && slots.length) {
+    const colorForKey = new Map(
+      slots.map((slot, index) => [slot.key, indicatorSlotGradientColor(gradient, index, slots.length)]),
+    );
+    return series.map((entry) => {
+      const color = colorForKey.get(indicatorSeriesColorKey(indicatorId, entry.key));
+      if (!color) return entry;
+      // A candlestick or histogram carries a rising and falling colour too.
+      // Both ends of the scheme are the natural pair for those.
+      return {
+        ...entry,
+        color,
+        ...(entry.upColor === undefined ? {} : { upColor: gradient.to }),
+        ...(entry.downColor === undefined ? {} : { downColor: gradient.from }),
+      };
+    });
+  }
   const pick = (key: string) => {
     const value = settings[key];
     return typeof value === "string" && value.trim() ? value : null;

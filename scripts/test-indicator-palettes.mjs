@@ -92,9 +92,15 @@ check("a two-role indicator takes the scheme's endpoints exactly", () => {
   assert.equal(gradientStop(g, 1, 2), "#ffffff");
 });
 
-check("a single-role indicator does not divide by zero", () => {
+check("a lone series takes the scheme's finishing colour", () => {
+  /*
+   * Not its starting one, and not a division by zero. Choosing
+   * "Red -> Terminal Green" for a single VWAP line and getting the dark red
+   * reads as the wrong scheme entirely - the end of the ramp is what a trader
+   * means when they point at a scheme and say "that colour".
+   */
   const g = { id: "t", label: "t", from: "#abcdef", to: "#ffffff" };
-  assert.equal(gradientStop(g, 0, 1), "#abcdef");
+  assert.equal(gradientStop(g, 0, 1), "#ffffff");
 });
 
 check("middle roles are spread across the scheme", () => {
@@ -176,6 +182,84 @@ check("the schemes are the same list the profiles offer", () => {
   for (const scheme of INDICATOR_GRADIENTS) {
     assert.ok(profiles.includes(scheme.id), `${scheme.id} is not one of the profile schemes`);
   }
+});
+
+const { calculateIndicatorSeries } = await import("../src/lib/chartIndicatorEngine.ts");
+const { defaultIndicatorSettings } = await import("../src/lib/chartIndicatorConfig.ts");
+const { CHART_INDICATOR_BY_ID } = await import("../src/lib/chartIndicatorCatalog.ts");
+const { applyIndicatorPlotColors, INDICATOR_PLOT_COLOR_SLOTS } = await import("../src/lib/indicatorPlotColors.ts");
+
+const ENGINE_THEME = {
+  primary: "#22C55E", secondary: "#4ADE80", positive: "#22C55E",
+  negative: "#EF4444", muted: "#8A8F98", up: "#22C55E", down: "#EF4444",
+  grid: "#8A8F98", text: "#FFFFFF", background: "#000000",
+};
+const candles = [];
+let price = 20_000;
+for (let i = 0; i < 300; i += 1) {
+  price += Math.sin(i / 7) * 3;
+  const open = price;
+  const close = price + Math.cos(i / 5) * 2;
+  candles.push({
+    timestamp: 1_700_000_000_000 + i * 60_000,
+    open, high: Math.max(open, close) + 1, low: Math.min(open, close) - 1, close,
+    volume: 500 + (i % 97), askVolume: 300, bidVolume: 200, delta: 100,
+  });
+}
+const runEngine = (id, settings) => calculateIndicatorSeries(
+  { instanceId: id, indicatorId: id, enabled: true, settings },
+  candles, ENGINE_THEME, { instrument: "NQ", tickSize: 0.25 },
+);
+const plotting = [];
+for (const [id] of CHART_INDICATOR_BY_ID) {
+  let series = [];
+  try { series = runEngine(id, defaultIndicatorSettings(id) ?? {}); } catch { continue; }
+  if (series.length) plotting.push([id, series]);
+}
+
+check("every study that plots anything offers a palette", () => {
+  /*
+   * The check that would have caught the half-done job: three studies had
+   * schemes and twenty-three did not, because the role list was written by
+   * hand beside a registry the engine already had. Roles are generated from
+   * that registry now, so this cannot drift again without failing here.
+   */
+  assert.ok(plotting.length >= 20, `expected the usual studies to plot, got ${plotting.length}`);
+  const missing = plotting.map(([id]) => id).filter((id) => !indicatorSupportsPalette(id));
+  assert.deepEqual(missing, [], `these studies plot but offer no colour scheme: ${missing.join(", ")}`);
+});
+
+check("a scheme recolours every plotted series of every study", () => {
+  // Offering the control is not the same as it doing anything.
+  const scheme = INDICATOR_GRADIENTS.find((g) => g.id === "chromey-mono") ?? INDICATOR_GRADIENTS[0];
+  const untouched = [];
+  for (const [id, series] of plotting) {
+    if (!INDICATOR_PLOT_COLOR_SLOTS[id]) continue;
+    const before = series.map((entry) => entry.color);
+    const after = applyIndicatorPlotColors(id, { [INDICATOR_GRADIENT_KEY]: scheme.id }, series);
+    if (!after.some((entry, index) => entry.color && entry.color !== before[index])) untouched.push(id);
+  }
+  assert.deepEqual(untouched, [], `a scheme left these studies unchanged: ${untouched.join(", ")}`);
+});
+
+check("a multi-series study is graded across the scheme", () => {
+  /*
+   * Slots are declared in plot order, so a scheme fades the bands out from the
+   * mean rather than each one picking an unrelated colour.
+   */
+  const envelopes = INDICATOR_PLOT_COLOR_SLOTS["vwap-envelopes"];
+  assert.ok(envelopes && envelopes.length > 2, "vwap-envelopes no longer plots bands");
+  const scheme = { id: "t", label: "t", from: "#000000", to: "#FFFFFF" };
+  const stops = envelopes.map((_, index) => gradientStop(scheme, index, envelopes.length));
+  assert.equal(stops[0], "#000000");
+  assert.equal(stops[stops.length - 1], "#FFFFFF");
+  assert.equal(new Set(stops).size, stops.length, "the bands are not distinct");
+});
+
+check("an explicit pick still works when no scheme is on", () => {
+  // A scheme is an override, not a replacement for the per-series pickers.
+  const out = applyIndicatorPlotColors("vwap", { mainColor: "#123456" }, [{ key: "vwap-main", color: "#ffffff" }]);
+  assert.equal(out[0].color, "#123456");
 });
 
 console.log(`\nindicator palettes: ${passed}/${passed} checks passed`);

@@ -5,6 +5,7 @@ import {
   resolveVolumeProfileGradient,
   type VolumeProfileGradient,
 } from "@/lib/volumeProfileGradients";
+import { INDICATOR_PLOT_COLOR_SLOTS, type IndicatorThemeRole } from "@/lib/indicatorPlotColors";
 
 /**
  * One-click colour schemes for every indicator, not just the profiles.
@@ -70,11 +71,56 @@ export const INDICATOR_GRADIENT_OFF = VOLUME_PROFILE_GRADIENT_OFF;
  * `to`, and anything between is mixed. Putting "sell" before "buy" would
  * silently invert every scheme on that indicator.
  */
-export const INDICATOR_COLOR_ROLES: Readonly<Record<string, readonly IndicatorColorRole[]>> = {
-  "cvd-divergence": [
-    { key: "bullishColor", label: "Bullish divergence", fallback: (t) => t.up },
-    { key: "bearishColor", label: "Bearish divergence", fallback: (t) => t.down },
-  ],
+/** The theme colour each plot-slot role falls back to. */
+const THEME_FOR_ROLE: Record<IndicatorThemeRole, (theme: IndicatorPaletteTheme) => string> = {
+  primary: (t) => t.up,
+  secondary: (t) => t.accent,
+  positive: (t) => t.up,
+  negative: (t) => t.down,
+  muted: (t) => t.neutral,
+};
+
+/**
+ * "upper1Color" reads as "Upper 1"; "plotColor" as "Plot".
+ *
+ * The keys are already derived from the series the engine returns, so a label
+ * built from the key names the same thing the study plots - and a study that
+ * gains a series gets a labelled picker without anyone writing one.
+ */
+function labelForKey(key: string): string {
+  const words = key
+    .replace(/Color$/, "")
+    .replace(/([A-Z])/g, " $1")
+    .replace(/(\d+)/g, " $1")
+    .trim();
+  return words ? words[0].toUpperCase() + words.slice(1).toLowerCase() : "Colour";
+}
+
+/*
+ * Roles for every study that plots a series, GENERATED from the same registry
+ * the engine paints from.
+ *
+ * Hand-listing them was the mistake this replaces: three studies were given
+ * schemes and the other twenty-three were not, which is exactly the drift a
+ * second list invites. Generating them means an indicator cannot have a
+ * picker the engine ignores, or a plotted series with no picker.
+ */
+const GENERATED_ROLES: Record<string, IndicatorColorRole[]> = Object.fromEntries(
+  Object.entries(INDICATOR_PLOT_COLOR_SLOTS).map(([indicatorId, slots]) => [
+    indicatorId,
+    slots.map((slot) => ({
+      key: slot.key,
+      label: labelForKey(slot.key),
+      fallback: THEME_FOR_ROLE[slot.role],
+    })),
+  ]),
+);
+
+/*
+ * Studies that paint through a canvas primitive rather than the series engine.
+ * They have no plot slots, so their roles are named here.
+ */
+const PRIMITIVE_ROLES: Record<string, IndicatorColorRole[]> = {
   "big-contracts": [
     { key: "bidColor", label: "Sell aggressor", fallback: (t) => t.down },
     { key: "askColor", label: "Buy aggressor", fallback: (t) => t.up },
@@ -82,6 +128,18 @@ export const INDICATOR_COLOR_ROLES: Readonly<Record<string, readonly IndicatorCo
   "big-blocks": [
     { key: "bidColor", label: "Sell block", fallback: (t) => t.down },
     { key: "askColor", label: "Buy block", fallback: (t) => t.up },
+  ],
+};
+
+export const INDICATOR_COLOR_ROLES: Readonly<Record<string, readonly IndicatorColorRole[]>> = {
+  ...GENERATED_ROLES,
+  // A hand-written entry wins, so a study can carry better labels than the key
+  // alone gives - "Bullish divergence" rather than "Bullish".
+  ...PRIMITIVE_ROLES,
+  "cvd-divergence": [
+    { key: "plotColor", label: "CVD line", fallback: (t) => t.up },
+    { key: "bullishColor", label: "Bullish divergence", fallback: (t) => t.up },
+    { key: "bearishColor", label: "Bearish divergence", fallback: (t) => t.down },
   ],
 };
 
@@ -145,7 +203,12 @@ export function resolveIndicatorPalette(
  * muddy midpoints.
  */
 export function gradientStop(gradient: VolumeProfileGradient, index: number, count: number): string {
-  if (count <= 1 || index <= 0) return gradient.from;
+  // A study that plots ONE series takes the scheme's finishing colour, not its
+  // starting one. Picking "Red -> Terminal Green" for a lone VWAP line and
+  // getting the dark red reads as the wrong scheme entirely; the end of the
+  // ramp is what a trader means by "that colour".
+  if (count <= 1) return gradient.to;
+  if (index <= 0) return gradient.from;
   if (index >= count - 1) return gradient.to;
   return mixHexColors(gradient.from, gradient.to, index / (count - 1));
 }
