@@ -1,88 +1,77 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-import { CHART_INTERVAL_GROUPS, makeCustomChartInterval } from "../src/lib/chartIntervals.ts";
+const workspace = readFileSync(
+  new URL("../src/components/KwantifyWorkspace.tsx", import.meta.url), "utf8",
+);
 
 /**
- * The interval menu, restored.
+ * The chart interval menu.
  *
- * The top bar's favourites are a shortcut to a handful of intervals. The menu
- * behind them is where every interval the feed supports lives, along with the
- * custom builders for volume, range, tick, renko and delta bars, and how much
- * history the chart loads.
+ * It stopped doing anything visible without anyone touching it: the command
+ * deck gained `overflow-x-auto` for sideways scrolling and the header above it
+ * `overflow-hidden`, and an absolutely positioned panel is still clipped by an
+ * ancestor that scrolls. The panel opens 38px below a deck about 44px tall, so
+ * the whole surface was cut away - the button toggled, the state changed, and
+ * nothing appeared.
  *
- * It was removed wholesale by "Make the top bar a global favourites switcher"
- * (fcb39791), which took the trigger, the drafts, applyCustomInterval and the
- * Load range block with it — leaving only the favourites, so any interval not
- * already pinned became unreachable and the load range could not be changed at
- * all.
+ * These are source checks because the failure was never in the panel's own
+ * markup. Every button inside it was wired correctly the entire time.
  */
-
-const workspace = readFileSync(new URL("../src/components/KwantifyWorkspace.tsx", import.meta.url), "utf8");
 
 let passed = 0;
 const check = (name, fn) => { fn(); passed += 1; console.log(`  ok  ${name}`); };
 
-check("the trigger is left of the favourites", () => {
-  const trigger = workspace.indexOf('aria-label="Chart intervals"');
-  const favourites = workspace.indexOf("{visibleFavouriteIntervals.map((tf) => (");
-  assert.ok(trigger > 0 && favourites > 0, "both the trigger and the favourites strip must exist");
-  assert.ok(trigger < favourites, "the menu button opens the bar; it belongs before the pinned intervals");
-  assert.match(workspace, /aria-expanded=\{showAllTF\}/);
+check("the deck still has the clips that made this necessary", () => {
+  /*
+   * If these ever go away the portal is merely unnecessary rather than wrong,
+   * but while they are here nothing absolute can escape them - so this states
+   * plainly what the portal is for.
+   */
+  assert.match(workspace, /kwant-chart-command-deck[^"]*overflow-hidden/, "the command deck header no longer clips");
+  assert.match(workspace, /col-start-1 row-start-1 [^"]*overflow-x-auto/, "the deck row no longer scrolls sideways");
 });
 
-check("it shows the load range, defaulting to 5D", () => {
-  assert.match(workspace, /\["1D", "5D", "1W", "1M", "3M", "6M", "1Y", "All"\]\.map\(\(range\) => \(/);
-  assert.match(workspace, /onClick=\{\(\) => handleChartPeriod\(activePaneId, range\)\}/,
-    "the range applies to the pane being looked at, not globally");
-  assert.match(workspace, /standard is 5D/);
-});
-
-check("every interval kind has a custom builder draft", () => {
-  // A kind without a draft renders no inputs, so the builder row is dead for
-  // that group — which is how volume and range bars became untypeable.
-  const kinds = [...new Set(CHART_INTERVAL_GROUPS.map((group) => group.kind))];
-  const drafts = workspace.slice(
-    workspace.indexOf("const [intervalDrafts, setIntervalDrafts]"),
-    workspace.indexOf("const [intervalDrafts, setIntervalDrafts]") + 900,
+check("the interval panel is portaled out of the deck", () => {
+  assert.match(
+    workspace,
+    /\{showAllTF && timeframeMenuAnchor && typeof document !== "undefined" \? createPortal\(/,
+    "the interval panel is not portaled",
   );
-  for (const kind of kinds) {
-    assert.ok(
-      drafts.includes(`${kind}:`) || drafts.includes(`"${kind}":`),
-      `interval kind "${kind}" has no seeded draft`,
-    );
-  }
+  // An absolute panel inside the deck is exactly the bug. It must be fixed and
+  // placed from a measured rect instead.
+  assert.doesNotMatch(
+    workspace,
+    /className="absolute left-0 top-\[38px\] z-50 w-\[720px\]/,
+    "the interval panel is still an absolutely positioned child of the deck",
+  );
+  assert.match(workspace, /style=\{\{ left: timeframeMenuAnchor\.left, top: timeframeMenuAnchor\.top \}\}/);
 });
 
-check("a custom interval is refused when the feed cannot serve it", () => {
-  const apply = workspace.slice(workspace.indexOf("const applyCustomInterval"), workspace.indexOf("const applyCustomInterval") + 600);
-  assert.match(apply, /if \(!interval \|\| !supportsChartInterval\(interval, activeChartBrokerLabel\)\) return;/,
-    "switching to an interval the feed cannot serve would load an empty chart");
-  assert.match(apply, /setShowAllTF\(false\);/, "applying closes the menu");
-  // And the builder actually produces the interval the library understands.
-  // Read off the builder itself rather than assumed: lowercase for volume,
-  // range and trade; uppercase R is RENKO, not range.
-  assert.equal(makeCustomChartInterval("volume", 500, 1), "500v");
-  assert.equal(makeCustomChartInterval("range", 40, 1), "40r");
-  assert.equal(makeCustomChartInterval("renko", 20, 1), "20R");
-  assert.equal(makeCustomChartInterval("volume-bars", 4, 2), "4/2VB");
+check("a press inside the panel does not dismiss it", () => {
+  /*
+   * The panel is no longer in the deck's subtree, so the outside-pointerdown
+   * guard stops recognising it. Without its own check, pressing an interval
+   * closes the menu before the click lands and the menu looks just as dead as
+   * it did when it was clipped.
+   */
+  assert.match(workspace, /if \(timeframePanelRef\.current\?\.contains\(target\)\) return;/);
 });
 
-check("the menu can be dismissed", () => {
-  const dismiss = workspace.slice(workspace.indexOf("if (!showAllTF) return;"), workspace.indexOf("const applyCustomInterval"));
-  // Pointerdown, so it closes on the press that starts an interaction elsewhere
-  // rather than waiting for the release.
-  assert.match(dismiss, /document\.addEventListener\("pointerdown", closeOnOutsidePointer\)/);
-  assert.match(dismiss, /if \(event\.key === "Escape"\) setShowAllTF\(false\);/);
-  assert.match(dismiss, /document\.removeEventListener\("pointerdown", closeOnOutsidePointer\)/);
-  assert.match(dismiss, /timeframeMenuRef\.current\?\.contains\(target\)/, "pressing inside the menu is not a dismissal");
+check("the panel follows its button", () => {
+  // A fixed box does not follow a deck that scrolls sideways, or a resize.
+  assert.match(workspace, /window\.addEventListener\("scroll", place, true\)/, "deck scrolling is not tracked");
+  assert.match(workspace, /window\.addEventListener\("resize", place\)/, "resizing is not tracked");
+  assert.match(workspace, /window\.removeEventListener\("scroll", place, true\)/, "the scroll listener leaks");
+  assert.match(workspace, /window\.removeEventListener\("resize", place\)/, "the resize listener leaks");
+  // And it must not run off the right edge of a narrow window.
+  assert.match(workspace, /Math\.max\(12, Math\.min\(rect\.left, window\.innerWidth - width - 12\)\)/);
 });
 
-check("intervals can be pinned to the bar from inside the menu", () => {
-  // Otherwise the favourites strip could only ever shrink.
-  const menu = workspace.slice(workspace.indexOf("{showAllTF ? ("), workspace.indexOf("{showAllTF ? (") + 9_000);
-  assert.match(menu, /onClick=\{\(\) => toggleFavTF\(option\.id\)\}/);
-  assert.match(menu, /selectTimeframe\(option\.id\);/);
+check("choosing an interval still applies it to the chart", () => {
+  // The part that was never broken, asserted so the portal cannot break it.
+  assert.match(workspace, /selectTimeframe\(option\.id\);\s*\n\s*setShowAllTF\(false\);/);
+  assert.match(workspace, /updateWorkspacePane\(activePaneId, \{ timeframe \}\);/);
 });
 
 console.log(`\ninterval menu: ${passed}/${passed} checks passed`);

@@ -10042,6 +10042,24 @@ export default function KwantifyWorkspace({
     return [];
   });
   const timeframeMenuRef = useRef<HTMLDivElement>(null);
+  /*
+   * The interval panel is portaled to <body> and positioned from this button's
+   * rect.
+   *
+   * It used to be an absolutely positioned child of the command deck, which
+   * looked fine until the deck gained `overflow-x-auto` for sideways scrolling
+   * and the header above it `overflow-hidden`. An absolute box is still clipped
+   * by an ancestor that scrolls, and the panel opens 38px below a deck about
+   * 44px tall - so the whole 720x560 surface was cut away. The button toggled,
+   * the state changed, and nothing appeared: the interval menu did nothing at
+   * all.
+   *
+   * Portaling escapes both clips. The anchor is measured on open and kept
+   * current while the panel is up, because the deck scrolls under it.
+   */
+  const timeframeButtonRef = useRef<HTMLButtonElement>(null);
+  const timeframePanelRef = useRef<HTMLDivElement>(null);
+  const [timeframeMenuAnchor, setTimeframeMenuAnchor] = useState<{ left: number; top: number } | null>(null);
   // The interval menu. The favourites strip is a shortcut to a handful of
   // intervals; this is where every interval the feed supports lives, along with
   // the custom builders for volume, range, tick and delta bars and the amount
@@ -16408,7 +16426,13 @@ export default function KwantifyWorkspace({
     if (!showAllTF) return;
     const closeOnOutsidePointer = (event: PointerEvent) => {
       const target = event.target;
-      if (!(target instanceof Node) || timeframeMenuRef.current?.contains(target)) return;
+      if (!(target instanceof Node)) return;
+      // The panel lives at <body>, so it is NOT inside the deck's subtree any
+      // more. Without its own check, pressing an interval would dismiss the
+      // menu on pointerdown and the click would never land - the menu would
+      // look just as dead as it did when it was being clipped.
+      if (timeframeMenuRef.current?.contains(target)) return;
+      if (timeframePanelRef.current?.contains(target)) return;
       setShowAllTF(false);
     };
     const closeOnEscape = (event: KeyboardEvent) => {
@@ -16419,6 +16443,39 @@ export default function KwantifyWorkspace({
     return () => {
       document.removeEventListener("pointerdown", closeOnOutsidePointer);
       document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [showAllTF]);
+
+  /*
+   * Keep the portaled panel under its button.
+   *
+   * The deck scrolls sideways and the window resizes, and a fixed box does not
+   * follow either on its own. Measured on open and then on scroll/resize while
+   * the panel is up; the listeners are capture-phase so the deck's own scroll
+   * counts, and they exist only while it is open.
+   */
+  useEffect(() => {
+    if (!showAllTF) {
+      setTimeframeMenuAnchor(null);
+      return;
+    }
+    const place = () => {
+      const button = timeframeButtonRef.current;
+      if (!button) return;
+      const rect = button.getBoundingClientRect();
+      // Never let the panel run off the right edge on a narrow window.
+      const width = Math.min(720, window.innerWidth - 24);
+      setTimeframeMenuAnchor({
+        left: Math.max(12, Math.min(rect.left, window.innerWidth - width - 12)),
+        top: rect.bottom + 6,
+      });
+    };
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
     };
   }, [showAllTF]);
 
@@ -18223,6 +18280,7 @@ export default function KwantifyWorkspace({
                 much history this chart loads. The favourites to the right are
                 a shortcut to a handful of these, not a replacement for them. */}
             <button
+              ref={timeframeButtonRef}
               type="button"
               aria-label="Chart intervals"
               aria-expanded={showAllTF}
@@ -18248,8 +18306,11 @@ export default function KwantifyWorkspace({
                 {formatChartInterval(tf)}
               </button>
             ))}
-            {showAllTF ? (
-              <div className="absolute left-0 top-[38px] z-50 w-[720px] max-w-[calc(100vw-120px)] overflow-hidden rounded-2xl border border-border bg-panel shadow-2xl shadow-black/50">
+            {showAllTF && timeframeMenuAnchor && typeof document !== "undefined" ? createPortal(
+              <div
+                ref={timeframePanelRef}
+                style={{ left: timeframeMenuAnchor.left, top: timeframeMenuAnchor.top }}
+                className="fixed z-[191] w-[720px] max-w-[calc(100vw-24px)] overflow-hidden rounded-2xl border border-border bg-panel shadow-2xl shadow-black/50">
                 <div className="flex items-center justify-between border-b border-border px-4 py-3">
                   <div>
                     <div className="text-[12px] font-semibold text-foreground">Chart intervals</div>
@@ -18371,7 +18432,8 @@ export default function KwantifyWorkspace({
                     Range and Renko use the contract&apos;s tick size. Volume, trade and delta bars use native CME executions.
                   </div>
                 ) : null}
-              </div>
+              </div>,
+              document.body,
             ) : null}
             {visibleFavouriteIntervals.length && favouriteInstrumentItems.length ? (
               <span aria-hidden="true" className="mx-1 h-4 w-px shrink-0 bg-border" />
