@@ -161,6 +161,7 @@ import {
 import { ChartRepaintNotifierPrimitive } from "@/lib/chartRepaintNotifier";
 import { resolveVolumeProfileGradient, mixHexColors } from "@/lib/volumeProfileGradients";
 import { resolveIndicatorPalette } from "@/lib/indicatorPalettes";
+import { visibleIndicatorTheme } from "@/lib/indicatorPlotColors";
 import { PositionCalculatorPrimitive, type PositionCalculatorModel } from "@/lib/positionCalculatorPrimitive";
 import { ImbalanceZonesPrimitive, type ImbalanceZoneModel } from "@/lib/imbalanceZonesPrimitive";
 import { retainLiveFootprintRows } from "@/lib/footprintLive";
@@ -6412,13 +6413,9 @@ function Chart({
       return calculateIndicatorSeries(
         instance,
         studyCandles,
-        {
-          primary: settings.upColor,
-          secondary: settings.borderUpColor,
-          positive: settings.upColor,
-          negative: settings.downColor,
-          muted: settings.gridColor,
-        },
+        // Resolved so a study is never painted the chart's own colour: a
+        // hollow-candle theme makes downColor the background.
+        visibleIndicatorTheme(settings),
         { instrument, tickSize: priceFormat.minMove },
       ).map((series) => ({ ...series, groupKey: instance.instanceId }));
     }),
@@ -6800,13 +6797,16 @@ function Chart({
               indicatorMarketTrades,
               instance,
               priceFormat.minMove,
-              {
-                positive: settings.upColor,
-                negative: settings.downColor,
-                neutral: settings.borderUpColor,
-                text: "var(--foreground)",
-                header: settings.gridColor,
-              },
+              (() => {
+                const visible = visibleIndicatorTheme(settings);
+                return {
+                  positive: visible.positive,
+                  negative: visible.negative,
+                  neutral: visible.secondary,
+                  text: "var(--foreground)",
+                  header: visible.muted,
+                };
+              })(),
             )
             : undefined,
           unavailableReason: indicatorCandles.length ? undefined : "Waiting for chart history.",

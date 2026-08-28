@@ -185,7 +185,8 @@
     "test:volume-profile-session-filter": "node scripts/test-volume-profile-session-filter.mjs",
     "test:brand-wordmark": "node scripts/test-brand-wordmark.mjs",
     "test:gex-box-self-contained": "node scripts/test-gex-box-self-contained-tools.mjs",
-    "test:hollow-candle-themes": "node --import ./scripts/alias-hook.mjs scripts/test-hollow-candle-themes.mjs"
+    "test:hollow-candle-themes": "node --import ./scripts/alias-hook.mjs scripts/test-hollow-candle-themes.mjs",
+    "test:indicator-visibility": "node --import ./scripts/alias-hook.mjs scripts/test-indicator-visibility.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",

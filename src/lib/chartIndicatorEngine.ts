@@ -351,6 +351,7 @@ export function calculateIndicatorSeries(
     instance.indicatorId,
     instance.settings as Record<string, unknown> | undefined,
     computeIndicatorSeries(instance, candles, theme, context),
+    theme,
   );
 }
 

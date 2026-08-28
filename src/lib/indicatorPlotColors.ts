@@ -161,6 +161,75 @@ const upKey = (key: string) => `${key.replace(/Color$/, "")}UpColor`;
 const downKey = (key: string) => `${key.replace(/Color$/, "")}DownColor`;
 
 /** Every colour setting an indicator understands, seeded from the theme. */
+/**
+ * The colours a study may seed from, guaranteed to be visible on the chart.
+ *
+ * A theme is free to paint a candle BODY the same colour as the chart - that is
+ * what a hollow candle is, and Chromey Mono draws its bearish bars that way.
+ * Studies then seeded their "negative" from that body and their "muted" from
+ * the grid, and drew black bars on a black chart: CVD, the delta histograms and
+ * volume all went invisible the moment that theme was selected.
+ *
+ * A candle body is a candle body. The colour that MEANS bearish on a hollow
+ * theme is the outline, so where a body cannot be seen against the background
+ * the outline stands in for it. Nothing changes for a theme whose candles are
+ * solid, which is every other one.
+ */
+export function visibleIndicatorTheme(chart: {
+  upColor: string;
+  downColor: string;
+  borderUpColor: string;
+  borderDownColor: string;
+  gridColor: string;
+  backgroundColor: string;
+}): Record<IndicatorThemeRole, string> {
+  const seen = (colour: string, instead: string) => (
+    distinguishable(colour, chart.backgroundColor) ? colour : instead
+  );
+  // The grid is deliberately near-invisible on most themes; volume rides on
+  // `muted`, so it falls back to the outline rather than to another hairline.
+  const muted = seen(chart.gridColor, seen(chart.borderDownColor, chart.borderUpColor));
+  return {
+    primary: seen(chart.upColor, chart.borderUpColor),
+    secondary: seen(chart.borderUpColor, chart.upColor),
+    positive: seen(chart.upColor, chart.borderUpColor),
+    negative: seen(chart.downColor, chart.borderDownColor),
+    muted,
+  };
+}
+
+/**
+ * Whether two colours can be told apart on screen.
+ *
+ * Compared by relative luminance rather than by equality, because "invisible"
+ * includes #0E120E on #000000 - not the same colour, and not a visible one
+ * either.
+ */
+function distinguishable(colour: string, background: string): boolean {
+  const a = luminance(colour);
+  const b = luminance(background);
+  if (a === null || b === null) return true;
+  /*
+   * A deliberately low bar. This decides only whether a colour is EFFECTIVELY
+   * the background, not whether it is easy to read - a grid line is supposed to
+   * be nearly invisible, and substituting for every dim colour would repaint
+   * volume on most of the palettes. Measured: #0E120E on black lands at 1.12
+   * and is replaced; the usual #1F1F1F gridline lands at 1.30 and is left
+   * alone.
+   */
+  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05) >= 1.2;
+}
+
+function luminance(colour: string): number | null {
+  const hex = /^#([0-9a-f]{6})$/i.exec(String(colour).trim());
+  if (!hex) return null;
+  const channels = [0, 2, 4].map((at) => {
+    const value = parseInt(hex[1].slice(at, at + 2), 16) / 255;
+    return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+}
+
 export function defaultIndicatorPlotColors(
   indicatorId: string,
   theme: Record<IndicatorThemeRole, string>,
@@ -200,12 +269,52 @@ export function indicatorSlotGradientColor(
 }
 
 /** Apply a trader's chosen colours over what the engine produced. */
+/**
+ * Recolour a series that paints its bars individually.
+ *
+ * A histogram like Volume does not take one colour: every point carries its
+ * own, set from the theme's positive or negative to show direction. Setting
+ * only the series colour therefore changed nothing a trader could see - the
+ * picker and the scheme were both dead on it, which is what "volume doesn't
+ * even work" meant.
+ *
+ * The theme is what says which of those two a point is, so direction survives
+ * being recoloured instead of every bar flattening to one colour.
+ */
+function recolourPoints<T extends { data?: unknown }>(
+  entry: T,
+  theme: Partial<Record<IndicatorThemeRole, string>> | undefined,
+  up: string,
+  down: string,
+): T {
+  if (!Array.isArray(entry.data) || !entry.data.length) return entry;
+  const positive = theme?.positive?.toLowerCase();
+  const negative = theme?.negative?.toLowerCase();
+  let touched = false;
+  const data = (entry.data as { color?: string }[]).map((point) => {
+    if (typeof point?.color !== "string") return point;
+    const current = point.color.toLowerCase();
+    // Anything that is neither of the theme's two direction colours is left
+    // alone: it was deliberate, not a default.
+    const next = current === positive ? up : current === negative ? down : null;
+    if (!next || next.toLowerCase() === current) return point;
+    touched = true;
+    return { ...point, color: next };
+  });
+  return touched ? { ...entry, data } : entry;
+}
+
 export function applyIndicatorPlotColors<
-  T extends { key: string; color?: string; upColor?: string; downColor?: string },
+  T extends { key: string; color?: string; upColor?: string; downColor?: string; data?: unknown },
 >(
   indicatorId: string,
   settings: Record<string, unknown> | undefined,
   series: T[],
+  /**
+   * The theme the series was computed with, so a per-point colour can be
+   * recognised as "the positive one" rather than guessed at by luminance.
+   */
+  theme?: Partial<Record<IndicatorThemeRole, string>>,
 ): T[] {
   if (!settings) return series;
   /*
@@ -228,8 +337,9 @@ export function applyIndicatorPlotColors<
       if (!color) return entry;
       // A candlestick or histogram carries a rising and falling colour too.
       // Both ends of the scheme are the natural pair for those.
+      const recoloured = recolourPoints(entry, theme, gradient.to, gradient.from);
       return {
-        ...entry,
+        ...recoloured,
         color,
         ...(entry.upColor === undefined ? {} : { upColor: gradient.to }),
         ...(entry.downColor === undefined ? {} : { downColor: gradient.from }),
@@ -248,8 +358,13 @@ export function applyIndicatorPlotColors<
     const down = pick(downKey(key));
     if (!color && !up && !down) return entry;
     changed = true;
+    /*
+     * A chosen colour has to reach the bars as well as the series. Without
+     * this, picking a colour for Volume moved a value nothing reads.
+     */
+    const recoloured = recolourPoints(entry, theme, up ?? color ?? "", down ?? color ?? "");
     return {
-      ...entry,
+      ...recoloured,
       ...(color ? { color } : {}),
       ...(up ? { upColor: up } : {}),
       ...(down ? { downColor: down } : {}),

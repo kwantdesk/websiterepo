@@ -12,7 +12,7 @@ import { DEFAULT_ICEBERG_REFRESH_SETTINGS, ICEBERG_REFRESH_SETTINGS_VERSION, nor
 import { DEFAULT_LIQUIDITY_STOP_SWEEP_SETTINGS, LIQUIDITY_STOP_SWEEP_SETTINGS_VERSION, normalizeLiquidityStopSweepSettings } from "@/lib/liquidityStopSweepDetector";
 import { DEFAULT_POC_AUCTION_SUITE_SETTINGS, POC_AUCTION_SUITE_SETTINGS_VERSION, normalizePocAuctionSuiteSettings } from "@/lib/pocAuctionSuite";
 import { DEFAULT_TAPE_SPEED_SETTINGS, normalizeTapeSpeedSettings } from "@/lib/tapeSpeedOrderFlowBurst";
-import { defaultIndicatorPlotColors } from "@/lib/indicatorPlotColors";
+import { defaultIndicatorPlotColors, visibleIndicatorTheme } from "@/lib/indicatorPlotColors";
 
 export const LIVE_CHART_INDICATOR_IDS = new Set([
   "gamma-environment",
@@ -987,13 +987,14 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
   // One picker per plotted series, seeded from the chart theme so an untouched
   // study looks exactly as it did. Spread FIRST, so any indicator that already
   // declares its own colour keys below keeps them.
-  ...defaultIndicatorPlotColors(indicatorId, {
-    primary: theme?.upColor ?? "#22C55E",
-    secondary: theme?.borderUpColor ?? theme?.upColor ?? "#4ADE80",
-    positive: theme?.upColor ?? "#22C55E",
-    negative: theme?.downColor ?? "#EF4444",
-    muted: theme?.gridColor ?? "#8A8F98",
-  }),
+  ...defaultIndicatorPlotColors(indicatorId, visibleIndicatorTheme({
+    upColor: theme?.upColor ?? "#22C55E",
+    downColor: theme?.downColor ?? "#EF4444",
+    borderUpColor: theme?.borderUpColor ?? theme?.upColor ?? "#4ADE80",
+    borderDownColor: theme?.borderDownColor ?? theme?.downColor ?? "#EF4444",
+    gridColor: theme?.gridColor ?? "#8A8F98",
+    backgroundColor: theme?.backgroundColor ?? "#000000",
+  })),
   ...(indicatorId === "zero-gamma-line" ? {
     // AUTO follows the chart's own options family (NQ -> NDX, ES -> SPX).
     // Naming a source pins the line to that chain instead.

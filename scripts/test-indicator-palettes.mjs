@@ -256,6 +256,52 @@ check("a multi-series study is graded across the scheme", () => {
   assert.equal(new Set(stops).size, stops.length, "the bands are not distinct");
 });
 
+check("a study that colours its bars individually is recoloured too", () => {
+  /*
+   * Volume does not take one colour: every bar carries its own, set from the
+   * theme's positive or negative to show direction. Setting only the series
+   * colour changed nothing a trader could see, so both the picker and the
+   * scheme were dead on it - reported as "volume doesn't even work".
+   *
+   * Direction has to survive the recolour, or the fix trades an invisible
+   * control for a histogram that no longer says which way the bar went.
+   */
+  const perPoint = plotting.filter(([, series]) => series.some((entry) => Array.isArray(entry.data)
+    && entry.data.some((point) => typeof point?.color === "string")));
+  assert.ok(perPoint.length > 0, "no study colours its bars individually any more");
+
+  /*
+   * Driven through the engine rather than by re-applying to series it already
+   * coloured. The engine applies a study's colours exactly once, so applying
+   * them a second time here would compare against bars that had already been
+   * recoloured and report a working study as dead.
+   */
+  const dead = [];
+  for (const [id] of perPoint) {
+    const bars = (settings) => new Set(runEngine(id, { ...(defaultIndicatorSettings(id) ?? {}), ...settings })
+      .flatMap((entry) => (entry.data ?? []).map((point) => point?.color).filter(Boolean)));
+    const before = bars({});
+    const after = bars({ [INDICATOR_GRADIENT_KEY]: "chromey-mono" });
+    if ([...after].every((colour) => before.has(colour))) dead.push(id);
+  }
+  assert.deepEqual(dead, [], `a scheme left the bars of these studies unchanged: ${dead.join(", ")}`);
+
+  const volume = plotting.find(([id]) => id === "volume");
+  assert.ok(volume, "volume no longer plots");
+  const themed = applyIndicatorPlotColors(
+    "volume",
+    { [INDICATOR_GRADIENT_KEY]: "chromey-mono" },
+    // Bars coloured by direction, exactly as the engine emits them.
+    [{ key: "volume", kind: "histogram", color: "#8A8F98", data: [
+      { time: 1, value: 5, color: ENGINE_THEME.positive },
+      { time: 2, value: 4, color: ENGINE_THEME.negative },
+    ] }],
+    ENGINE_THEME,
+  );
+  const colours = themed[0].data.map((point) => point.color);
+  assert.equal(new Set(colours).size, 2, `direction was flattened: ${colours.join(", ")}`);
+});
+
 check("an explicit pick still works when no scheme is on", () => {
   // A scheme is an override, not a replacement for the per-series pickers.
   const out = applyIndicatorPlotColors("vwap", { mainColor: "#123456" }, [{ key: "vwap-main", color: "#ffffff" }]);
