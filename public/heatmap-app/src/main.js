@@ -1,6 +1,6 @@
-import { SYMBOLS } from './market-simulator.js';
-import { BOOKMAP_VISUAL_DEFAULTS, RollingDepthEngine } from './depth-engine.js?v=20260817-live-stability';
-import { DepthRenderer, priceLabel, timeLabel } from './renderer.js?v=20260817-live-stability';
+import { SYMBOLS } from './market-simulator.js?v=20260828-inside-market';
+import { BOOKMAP_VISUAL_DEFAULTS, RollingDepthEngine } from './depth-engine.js?v=20260828-inside-market';
+import { DepthRenderer, priceLabel, timeLabel } from './renderer.js?v=20260828-inside-market';
 import {
   DepthMarketFeed,
   INSTITUTIONAL_MARKET_DATA_ORIGIN,
@@ -13,22 +13,22 @@ import {
   normalizeLiquidityMapSymbol,
   symbolMatchesSnapshot,
   updateLivePresentationEdge,
-} from './live-market.js?v=20260817-live-stability';
-import { DEFAULT_PALETTE, paletteCssGradient } from './palettes.js';
+} from './live-market.js?v=20260828-inside-market';
+import { DEFAULT_PALETTE, paletteCssGradient } from './palettes.js?v=20260828-inside-market';
 import {
   DEFAULT_INDICATOR_SETTINGS,
   analyzeOrderFlow,
   computeOrderbookImbalance,
   computeVolumeImbalance,
   mergeLiveCvdHistory,
-} from './order-flow-indicators.js';
-import { panHistoryEnd, panPriceCenter, wheelColumnShift } from './history-navigation.js';
+} from './order-flow-indicators.js?v=20260828-inside-market';
+import { panHistoryEnd, panPriceCenter, wheelColumnShift } from './history-navigation.js?v=20260828-inside-market';
 import {
   DEFAULT_UI_THEME,
   WEBSITE_THEME_STORAGE_KEY,
   applyUiTheme,
   setWebsiteThemeColors,
-} from './ui-themes.js';
+} from './ui-themes.js?v=20260828-inside-market';
 
 // Retain genuine Rithmic book frames, not monitor presentation frames. The
 // gateway emits full books at 20 FPS; 1,800 frames therefore preserves the

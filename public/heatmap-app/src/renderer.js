@@ -1,5 +1,5 @@
-import { paletteAccents, paletteLut, paletteRenderKey } from './palettes.js';
-import { canvasUiTheme } from './ui-themes.js';
+import { paletteAccents, paletteLut, paletteRenderKey } from './palettes.js?v=20260828-inside-market';
+import { canvasUiTheme } from './ui-themes.js?v=20260828-inside-market';
 
 function colorCss([red, green, blue], alpha = 1) {
   return alpha >= 1

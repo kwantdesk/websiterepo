@@ -1,4 +1,4 @@
-import { websiteThemeColors } from './ui-themes.js';
+import { websiteThemeColors } from './ui-themes.js?v=20260828-inside-market';
 
 export const DEFAULT_PALETTE = 'auto';
 
