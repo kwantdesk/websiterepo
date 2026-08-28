@@ -191,7 +191,8 @@
     "test:gex-map-replay-window": "node --import ./scripts/alias-hook.mjs scripts/test-gex-map-replay-window.mjs",
     "test:news-provider-surface": "node --import ./scripts/alias-hook.mjs scripts/test-news-and-provider-surface.mjs",
     "test:indicator-settings-save": "node scripts/test-indicator-settings-save.mjs",
-    "test:candle-style": "node --import ./scripts/alias-hook.mjs scripts/test-candle-style.mjs"
+    "test:candle-style": "node --import ./scripts/alias-hook.mjs scripts/test-candle-style.mjs",
+    "test:candle-gaps": "node --import ./scripts/alias-hook.mjs scripts/test-candle-gaps.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",

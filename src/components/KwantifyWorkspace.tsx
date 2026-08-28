@@ -147,6 +147,7 @@ import {
   fetchInstitutionalVolumeProfile,
   isExecutionBackedVolumeProfile,
   readCachedInstitutionalVolumeProfiles,
+  repairInstitutionalCandleSeries,
   type InstitutionalOrderFlowResult,
   type InstitutionalTrade,
   type InstitutionalVolumeProfile,
@@ -3136,7 +3137,22 @@ function sanitizeCandle(candle: Candle, symbol: string, referencePrice?: number)
   };
 }
 
-function sanitizeCandles(candles: Candle[], symbol: string) {
+/**
+ * Every candle in the workspace passes through here, which is why the no-trade
+ * gap fill is applied here too.
+ *
+ * `repairInstitutionalCandleSeries` and the `fillNoTradeCandleGaps` behind it
+ * were written, bounded and measured - and then reached nothing. Their only
+ * callers were two cache helpers in the same file that nothing outside it ever
+ * called, so a gold chart carried its holes all the way to the renderer. This
+ * is the seam that was already in the path.
+ *
+ * The timeframe is optional because a few callers restore a cached array with
+ * no interval to hand. Without it the candles are cleaned exactly as before and
+ * no bar is added - a missing timeframe must not be guessed at, because the
+ * guess decides whether flat bars get drawn.
+ */
+function sanitizeCandles(candles: Candle[], symbol: string, timeframe?: string) {
   const cleanCandles: Candle[] = [];
 
   for (const candle of candles) {
@@ -3145,7 +3161,7 @@ function sanitizeCandles(candles: Candle[], symbol: string) {
     if (cleanCandle) cleanCandles.push(cleanCandle);
   }
 
-  return cleanCandles.map((candle, index, rows) => {
+  const despiked = cleanCandles.map((candle, index, rows) => {
     if (index === 0) return candle;
     const previous = rows[index - 1];
     const next = rows[index + 1];
@@ -3191,6 +3207,10 @@ function sanitizeCandles(candles: Candle[], symbol: string) {
       low: Math.min(low, bodyLow),
     };
   });
+
+  // Filled AFTER the spike repair, so a flat bar carries a corrected close
+  // rather than a bad print held across the quiet minutes that follow it.
+  return timeframe ? repairInstitutionalCandleSeries(despiked, timeframe, symbol) : despiked;
 }
 
 function mergeLiveMidIntoCandles(
@@ -3539,6 +3559,7 @@ function fetchWorkspaceLiveSeam(
   ]).then(([snapshot, recentFlow]) => sanitizeCandles(
     mergeChartHistory(snapshot?.candles ?? [], recentFlow?.candles ?? []),
     symbol,
+    timeframe,
   ))
     .catch(() => [] as Candle[])
     .finally(() => {
@@ -3828,7 +3849,7 @@ async function fetchWorkspaceCandles(
         orderFlowRequest,
       ]);
       if (!response.ok) throw new Error(payload.error ?? `CME did not return candles for ${displayCmeSymbol(symbol)}.`);
-      const providerCandles = sanitizeCandles((payload.candles ?? []) as Candle[], symbol);
+      const providerCandles = sanitizeCandles((payload.candles ?? []) as Candle[], symbol, timeframe);
       // The history provider owns event-bar geometry. A gateway candle is a
       // clock bucket and must never replace range, volume, trade, delta or
       // Renko bars: doing so collapsed a five-day 40R chart to one 1-minute
@@ -3910,7 +3931,7 @@ async function fetchWorkspaceCandles(
         );
         const payload = await response.json();
         if (!response.ok) throw new Error(payload.error ?? `${symbol} index history is unavailable.`);
-        return sanitizeCandles((payload.candles ?? []) as Candle[], symbol);
+        return sanitizeCandles((payload.candles ?? []) as Candle[], symbol, timeframe);
       } finally {
         window.clearTimeout(timer);
         signal?.removeEventListener("abort", abortOnCallerSignal);
@@ -3932,7 +3953,7 @@ async function fetchWorkspaceCandles(
     const storedRes = await fetch(storedUrl, { cache: "no-store", signal });
     const storedData = await storedRes.json();
     if (storedData.configured && storedData.candles && storedData.candles.length > 0) {
-      return sanitizeCandles(storedData.candles as Candle[], symbol);
+      return sanitizeCandles(storedData.candles as Candle[], symbol, timeframe);
     }
   } catch {
     // Fall through to broker APIs while historical storage is being populated.
@@ -3945,7 +3966,7 @@ async function fetchWorkspaceCandles(
         { signal },
       );
       const data = await res.json();
-      if (data.candles && data.candles.length > 0) return sanitizeCandles(data.candles as Candle[], symbol);
+      if (data.candles && data.candles.length > 0) return sanitizeCandles(data.candles as Candle[], symbol, timeframe);
       throw new Error(data.error || `${broker} did not return candle data for ${symbol}.`);
     } catch {
       throw new Error(`${broker} candle feed unavailable for ${symbol}.`);
@@ -3958,7 +3979,7 @@ async function fetchWorkspaceCandles(
       url += `&from=${encodeURIComponent(periodConfig.from)}&to=${encodeURIComponent(new Date(to).toISOString())}&maxCandles=${historicalLimit}`;
       const res = await fetch(url, { signal });
       const data = await res.json();
-      if (data.candles && data.candles.length > 0) return sanitizeCandles(data.candles as Candle[], symbol);
+      if (data.candles && data.candles.length > 0) return sanitizeCandles(data.candles as Candle[], symbol, timeframe);
     } catch {
       // fall through
     }
@@ -3969,7 +3990,7 @@ async function fetchWorkspaceCandles(
     { signal },
   );
   const data = await res.json();
-  return sanitizeCandles((data.candles || []) as Candle[], symbol);
+  return sanitizeCandles((data.candles || []) as Candle[], symbol, timeframe);
 }
 
 async function warmDatabentoChartHistory(symbol: string, timeframe: string) {
@@ -6299,7 +6320,7 @@ function WorkspaceChartPaneComponent({
             replayHistoryRange,
           );
           if (cancelled) return;
-          const clean = sanitizeCandles(replayCandles, pane.symbol)
+          const clean = sanitizeCandles(replayCandles, pane.symbol, pane.timeframe)
             .filter((candle) => (
               candle.timestamp >= replayHistoryRange.fromMs
               && candle.timestamp <= replayHistoryRange.toMs
@@ -6349,7 +6370,7 @@ function WorkspaceChartPaneComponent({
       : [];
     const immediateHistory = trimDisconnectedActiveTail(
       trimCandlesAfterActiveBucket(
-        sanitizeCandles(immediateCache?.candles ?? [], pane.symbol),
+        sanitizeCandles(immediateCache?.candles ?? [], pane.symbol, pane.timeframe),
         pane.timeframe,
       ),
       pane.timeframe,
@@ -6456,7 +6477,7 @@ function WorkspaceChartPaneComponent({
           void writeExecutionTapeCache(pane.symbol, pane.timeframe, mergedTape);
         }
 
-        const orderFlowCandles = sanitizeCandles(result.candles, pane.symbol);
+        const orderFlowCandles = sanitizeCandles(result.candles, pane.symbol, pane.timeframe);
         latestOrderFlowCandlesRef.current = orderFlowCandles;
         // Keep the completed response even if base OHLC is still opening. The
         // history loader below reapplies this snapshot when its candles land;
@@ -6515,6 +6536,7 @@ function WorkspaceChartPaneComponent({
           sanitizeCandles(
             mergeChartHistory(cached?.candles ?? [], liveSeam),
             pane.symbol,
+            pane.timeframe,
           ),
           pane.timeframe,
         ),
@@ -6600,7 +6622,7 @@ function WorkspaceChartPaneComponent({
           if (cancelled) return;
           let baseCandles = trimChartHistoryForPeriod(
             trimCandlesAfterActiveBucket(
-              sanitizeCandles(baseHistory, pane.symbol),
+              sanitizeCandles(baseHistory, pane.symbol, pane.timeframe),
               pane.timeframe,
             ),
             period,
@@ -6660,7 +6682,7 @@ function WorkspaceChartPaneComponent({
           ? mergeInstitutionalTradeTape(latestMarketTradesRef.current, downloadedMarketTrades)
           : [];
         const downloaded = trimCandlesAfterActiveBucket(
-          sanitizeCandles(nextCandles, pane.symbol),
+          sanitizeCandles(nextCandles, pane.symbol, pane.timeframe),
           pane.timeframe,
         );
         const clean = pane.broker === "Databento"
@@ -6777,6 +6799,7 @@ function WorkspaceChartPaneComponent({
                 seam,
               ),
               pane.symbol,
+              pane.timeframe,
             ),
             pane.timeframe,
           ),
@@ -6929,7 +6952,7 @@ function WorkspaceChartPaneComponent({
     ).then((result) => {
       if (!result) return;
       applyFlow(
-        sanitizeCandles(result.candles, pane.symbol),
+        sanitizeCandles(result.candles, pane.symbol, pane.timeframe),
         result.records.length ? result.records : result.trades,
       );
       persistAppliedFlow();
@@ -13240,7 +13263,7 @@ export default function KwantifyWorkspace({
         return merged.filter((candle) => candle.timestamp >= from);
       } catch (error) {
         const fallback = (cached?.candles ?? []).filter((candle) => candle.timestamp >= from);
-        if (fallback.length) return sanitizeCandles(fallback, selectedInstrument);
+        if (fallback.length) return sanitizeCandles(fallback, selectedInstrument, selectedTimeframe);
         throw error;
       }
     }
@@ -13252,7 +13275,7 @@ export default function KwantifyWorkspace({
       );
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error ?? `${selectedInstrument} index history is unavailable.`);
-      return sanitizeCandles((payload.candles ?? []) as Candle[], selectedInstrument);
+      return sanitizeCandles((payload.candles ?? []) as Candle[], selectedInstrument, selectedTimeframe);
     }
 
     try {
@@ -13260,7 +13283,7 @@ export default function KwantifyWorkspace({
       const storedRes = await fetch(storedUrl, { cache: "no-store", signal });
       const storedData = await storedRes.json();
       if (storedData.configured && storedData.candles && storedData.candles.length > 0) {
-        return sanitizeCandles(storedData.candles as Candle[], selectedInstrument);
+        return sanitizeCandles(storedData.candles as Candle[], selectedInstrument, selectedTimeframe);
       }
     } catch {
       // Fall through to direct broker APIs while historical storage is being populated.
@@ -13274,7 +13297,7 @@ export default function KwantifyWorkspace({
         );
         const data = await res.json();
         if (data.candles && data.candles.length > 0) {
-          return sanitizeCandles(data.candles as Candle[], selectedInstrument);
+          return sanitizeCandles(data.candles as Candle[], selectedInstrument, selectedTimeframe);
         }
         throw new Error(data.error || `${activeChartBrokerLabel} did not return candles for ${selectedInstrument}.`);
       } catch {
@@ -13288,7 +13311,7 @@ export default function KwantifyWorkspace({
         { cache: "no-store", signal },
       );
       const data = await res.json();
-      return sanitizeCandles((data.candles || []) as Candle[], selectedInstrument);
+      return sanitizeCandles((data.candles || []) as Candle[], selectedInstrument, selectedTimeframe);
     }
 
     if (oandaInstrument) {
@@ -13298,7 +13321,7 @@ export default function KwantifyWorkspace({
         const res = await fetch(url, { signal });
         const data = await res.json();
         if (data.candles && data.candles.length > 0) {
-          return sanitizeCandles(data.candles as Candle[], selectedInstrument);
+          return sanitizeCandles(data.candles as Candle[], selectedInstrument, selectedTimeframe);
         }
       } catch {
         // Fall back to the existing market-data route when OANDA is unavailable.
@@ -13310,7 +13333,7 @@ export default function KwantifyWorkspace({
       { signal },
     );
     const data = await res.json();
-    return sanitizeCandles((data.candles || []) as Candle[], selectedInstrument);
+    return sanitizeCandles((data.candles || []) as Candle[], selectedInstrument, selectedTimeframe);
   }
 
   useEffect(() => {
@@ -13415,7 +13438,7 @@ export default function KwantifyWorkspace({
         );
         if (cancelled) return;
         if (candles.length > 0) {
-          setChartCandles(sanitizeCandles(candles, selectedInstrument));
+          setChartCandles(sanitizeCandles(candles, selectedInstrument, selectedTimeframe));
           if (backtestResult && !backtestResult.error) {
             const config: BacktestConfig = {
               initialBalance: 10000,
@@ -13463,7 +13486,7 @@ export default function KwantifyWorkspace({
         setBacktesting(true);
         const candles = await fetchChartCandles(outputsize, reportPeriod);
         if (candles.length > 0) {
-          const cleanCandles = sanitizeCandles(candles, selectedInstrument);
+          const cleanCandles = sanitizeCandles(candles, selectedInstrument, selectedTimeframe);
           const config: BacktestConfig = {
             initialBalance: 10000,
             broker: { spread: 1.5, slippage: 0.5, commission: 0 },

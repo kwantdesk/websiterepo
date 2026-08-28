@@ -1,5 +1,6 @@
 import type { Candle } from "@/lib/backtester";
 import { cmeEventTailCutoffMs, cmeSessionDateKey } from "@/lib/chartHistoryWindow";
+import { futuresTickSize } from "@/lib/eventBars";
 import {
   calculateVolumeProfileValueArea,
   STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
@@ -1205,16 +1206,16 @@ function timeframeMilliseconds(timeframe: string) {
   return value * 7 * 24 * 60 * 60_000;
 }
 
-function futuresTickSize(symbol: string) {
-  const root = symbol.toUpperCase();
-  if (["MNQ", "NQ", "MES", "ES"].includes(root)) return 0.25;
-  if (["MYM", "YM"].includes(root)) return 1;
-  if (["M2K", "RTY"].includes(root)) return 0.1;
-  if (["MGC", "GC"].includes(root)) return 0.1;
-  if (["SIL", "SI"].includes(root)) return 0.005;
-  if (["MCL", "CL"].includes(root)) return 0.01;
-  return 0.01;
-}
+/*
+ * Tick sizes come from `eventBars`, which is the copy that is right.
+ *
+ * The copy that stood here read the symbol as its own root, so every contract
+ * the platform actually requests missed: "GC.c.0" uppercases to "GC.C.0", which
+ * is not "GC", so gold fell through to the 0.01 default - a tenth of its real
+ * 0.1 tick. It also knew six instruments where the chart offers forty. That
+ * fed the range-bar repair below, so a gold range bar was measured against a
+ * tolerance ten times too tight and re-anchored constantly.
+ */
 
 function eventThreshold(timeframe: string, symbol: string) {
   const match = timeframe.trim().match(/^(\d+)(r|v|t|dv)$/);
