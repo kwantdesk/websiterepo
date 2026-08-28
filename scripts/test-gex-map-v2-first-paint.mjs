@@ -124,4 +124,39 @@ check("switching model reloads the columns, not the workspace", () => {
   assert.match(workspace, /if \(next\[panel\.id\] && next\[panel\.id\]\?\.model !== expectedModel\) delete next\[panel\.id\];/);
 });
 
+check("the dealer replay timeline only spans what the book covers", () => {
+  /*
+   * The tape is read newest-first and bounded, so on a cold cache it reaches
+   * back about an hour while the session's frames run six and a half. Measured
+   * on SPX: cold, the book began at 18:53 against frames from 13:30, and 324 of
+   * 391 minutes carried no position. Those minutes were still emitted, so the
+   * scrubber offered five hours of history that drew an empty map, with nothing
+   * saying the book simply did not reach that far back. It self-corrects as the
+   * tape warms - the same panel a minute later held 995 prints back to 14:26
+   * with no empty frames at all - which is what made it look intermittent.
+   */
+  assert.match(server, /const firstCovered = dealerFrames\.findIndex/, "the blank lead is never located");
+  assert.match(server, /frames: coveredFrames/, "the payload still ships the blank lead");
+  // Only the LEADING run. A quiet minute mid-session is a real observation -
+  // the book genuinely did not move - and dropping those would misreport a flat
+  // book as missing coverage.
+  assert.match(server, /firstCovered > 0 \? dealerFrames\.slice\(firstCovered\) : dealerFrames/);
+  assert.doesNotMatch(
+    server,
+    /dealerFrames\.filter\(\(frame\) => frame\.updates\.length\)/,
+    "quiet minutes in the middle of a session must survive",
+  );
+});
+
+check("changing what the frames contain bumps both cache keys", () => {
+  /*
+   * Twice now a change to the dealer payload shipped without a key bump, and
+   * the owner saw hours of stale frames against a server that was already
+   * correct. The shape did not change here, but the CONTENT did, and a cached
+   * payload is just as wrong either way.
+   */
+  assert.match(server, /"gex-map-v2-dealer-inventory-v3"/, "the server cache key was not bumped");
+  assert.match(workspace, /:dealer-v3/, "the client cache key was not bumped");
+});
+
 console.log(`\ngex map v2 first paint: ${passed}/${passed} checks passed`);

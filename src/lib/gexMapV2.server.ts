@@ -628,6 +628,28 @@ async function buildDealerInventoryPanel(
   });
 
   /*
+   * The timeline starts where the BOOK starts, not where the session does.
+   *
+   * The tape is read newest-first and bounded, so on a cold cache it reaches
+   * back an hour or so while the session's frames run six and a half. Measured
+   * on SPX: cold, the book began at 18:53 against frames from 13:30, and 324 of
+   * 391 minutes carried no position at all. Those minutes were still emitted,
+   * so the scrubber offered five hours of history that drew an empty map with
+   * nothing anywhere saying the book simply did not go back that far.
+   *
+   * Dropping the leading run means the scrubber spans exactly what the book
+   * covers. It self-corrects as the tape warms - the same panel a minute later
+   * measured 995 prints back to 14:26 with no empty frames at all, so nothing
+   * is dropped in the normal case and this costs a warm session nothing.
+   *
+   * Only the LEADING run goes. A quiet minute in the middle of a session is a
+   * real observation - the book genuinely did not move - and deleting those
+   * would misreport a flat book as a gap in coverage.
+   */
+  const firstCovered = dealerFrames.findIndex((frame) => frame.updates.length);
+  const coveredFrames = firstCovered > 0 ? dealerFrames.slice(firstCovered) : dealerFrames;
+
+  /*
    * An empty book must FAIL, not return an empty ladder.
    *
    * The panel keeps the last renderable surface while a request is in flight,
@@ -656,7 +678,7 @@ async function buildDealerInventoryPanel(
     carriedSessions,
     flowShare: DEALER_FLOW_SHARE,
     latestStrikes,
-    frames: dealerFrames,
+    frames: coveredFrames,
     netExposure: latestStrikes.reduce((sum, row) => sum + row.net, 0),
     grossExposure: latestStrikes.reduce((sum, row) => sum + Math.abs(row.call) + Math.abs(row.put), 0),
   };
@@ -696,7 +718,7 @@ export async function getDealerInventoryPanel(
    * dealer model reported "No replay frames" for hours after the fix shipped,
    * on code that was correct.
    */
-  const key = ["gex-map-v2-dealer-inventory-v2", symbol, sessionDate, scope, representation];
+  const key = ["gex-map-v2-dealer-inventory-v3", symbol, sessionDate, scope, representation];
   return unstable_cache(
     () => buildDealerInventoryPanel(symbol, sessionDate, scope, representation),
     key,

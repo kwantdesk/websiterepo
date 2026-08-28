@@ -1914,7 +1914,7 @@ function GexMapWorkspace({
      * browser kept serving the old frameless one and the panel reported "No
      * replay frames" against a server that was already returning 391 of them.
      */
-    return exposureModel === "DEALER_INVENTORY" ? `${base}:dealer-v2` : base;
+    return exposureModel === "DEALER_INVENTORY" ? `${base}:dealer-v3` : base;
   }, [exposureModel, expiryScope, replayMode, representation, requestedReplayDate]);
 
   useEffect(() => {
