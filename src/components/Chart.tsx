@@ -396,6 +396,17 @@ const ORDER_FLOW_PANE_INDICATOR_IDS = new Set([
   "delta-bar",
 ]);
 const DEEP_HISTORY_INDICATOR_MAX_BARS = 20_000;
+
+/**
+ * How much of the window a cumulative-delta study must cover before it draws.
+ *
+ * Below this it is a few points joined into a long straight line that reads as
+ * a real, flat CVD - and then jumps when the rest of the flow lands, which is
+ * what made the study look like it was hanging. Only consulted while the flow
+ * stream is still filling in; once it reports ready, a genuinely sparse session
+ * is drawn as sparse.
+ */
+const CUMULATIVE_DELTA_MINIMUM_COVERAGE = 0.6;
 const DEEP_HISTORY_INDICATOR_IDS = new Set([
   "moving-average",
   "volume",
@@ -6817,7 +6828,35 @@ function Chart({
       if (instance.indicatorId === "delta-bar" && deltaLadderSide) return [];
       const series = calculatedIndicatorSeries.filter((definition) =>
         definition.groupKey === instance.instanceId && definition.placement === "pane");
-      if (series.length) {
+      /*
+       * A cumulative-delta study needs most of its bars before it can be read.
+       *
+       * The running total skips any candle whose aggressor volume has not
+       * arrived, so a session that is still being restored produces a handful
+       * of points spread across the whole window - and the chart joins them
+       * into a long straight line that looks like a real, flat CVD. It then
+       * "jumps" when the rest lands, which is what made it look like the study
+       * was hanging.
+       *
+       * A straight line that is wrong is worse than a spinner, so while flow is
+       * still arriving AND coverage is thin, the pane keeps saying so. The test
+       * is coverage rather than emptiness because one bar is enough to draw the
+       * misleading line. It resolves itself: once the flow stream reports
+       * ready, whatever exists is drawn honestly, however sparse.
+       */
+      const cumulativeDeltaStudy = [
+        "cumulative-volume-delta",
+        "delta-cumulative-candlestick",
+        "delta-cumulative-histogram",
+        "delta-bar",
+      ].includes(instance.indicatorId);
+      const plotted = series[0]?.data?.length ?? 0;
+      const stillRestoring = cumulativeDeltaStudy
+        && !orderFlowSeriesReady
+        && indicatorCandles.length > 0
+        && plotted < indicatorCandles.length * CUMULATIVE_DELTA_MINIMUM_COVERAGE;
+
+      if (series.length && !stillRestoring) {
         return [{
           key: instance.instanceId,
           title: series[0].label,
@@ -6827,12 +6866,7 @@ function Chart({
           showLegend: instance.indicatorId === "delta-bar" ? false : undefined,
         }];
       }
-      if ([
-        "cumulative-volume-delta",
-        "delta-cumulative-candlestick",
-        "delta-cumulative-histogram",
-        "delta-bar",
-      ].includes(instance.indicatorId)) {
+      if (cumulativeDeltaStudy) {
         // The side ladder reports its own absence on the chart; a pane saying
         // "waiting for volume" would be a second, contradictory answer.
         if (instance.indicatorId === "delta-bar" && deltaLadderSide) return [];
