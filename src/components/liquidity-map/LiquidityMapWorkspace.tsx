@@ -257,17 +257,34 @@ function LiquidityMapWorkspace({
    */
   useEffect(() => {
     const node = paneRef.current;
-    if (!node || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(([entry]) => {
-      const box = entry?.contentRect;
-      if (!box) return;
+    if (!node) return;
+    /*
+     * Measured off the node, not off the ResizeObserver entry.
+     *
+     * This pane carries `contain: size`, which makes it report a 0x0 content
+     * box AND stops its own resize callbacks firing at all - observed
+     * directly, in both content-box and border-box modes, zero entries were
+     * delivered for an element measuring 1400x700. Reading `entry.contentRect`
+     * pinned the size at zero forever, so the mark never appeared once.
+     *
+     * The parent has no containment and is what actually decides this pane's
+     * size, so that is what is watched; the pane itself is then measured with
+     * offsetWidth/offsetHeight, which containment does not lie about.
+     */
+    const measure = () => {
+      const width = node.offsetWidth;
+      const height = node.offsetHeight;
       setPaneSize((current) => (
-        current.width === box.width && current.height === box.height
+        current.width === width && current.height === height
           ? current
-          : { width: box.width, height: box.height }
+          : { width, height }
       ));
-    });
-    observer.observe(node);
+    };
+    // Once up front: a pane that is never resized still has to wear the mark.
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(node.parentElement ?? node);
     return () => observer.disconnect();
   }, []);
   const watermark = chartWatermarkSize(paneSize.width, paneSize.height);

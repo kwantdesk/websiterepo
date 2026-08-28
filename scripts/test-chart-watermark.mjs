@@ -153,14 +153,29 @@ check("it is centred by the browser, not by measurement", () => {
   assert.match(liqMap, /marginInline: "auto",\s*\n\s*width: watermark\.width,/);
 });
 
-check("the liquidity map observes its own size", () => {
-  // Measured once at mount, the mark would keep whatever size the pane happened
-  // to have when the workspace loaded - and this pane is split, resized,
-  // detached and hidden like any other.
-  assert.match(liqMap, /new ResizeObserver/, "the liq map pane size is not observed");
+check("the liquidity map measures a pane that hides its own size", () => {
+  /*
+   * The pane carries `contain: size`. Measured live in Chromium, that element
+   * reports a 0x0 content box AND delivers no ResizeObserver callbacks at all -
+   * zero entries in both content-box and border-box modes for an element
+   * measuring 1400x700. Reading `entry.contentRect` pinned the size at zero and
+   * the mark never rendered once.
+   *
+   * So the entry is not what gets read, and the contained pane is not what gets
+   * observed.
+   */
+  assert.match(liqMap, /\[contain:layout_paint_size\]/, "the containment this works around is gone");
+  // Comments stripped: the paragraph above explains contentRect, and matching
+  // the explanation instead of the code is not a check of anything.
+  const liqMapCode = liqMap.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  assert.doesNotMatch(liqMapCode, /entry\??\.contentRect/, "contentRect is 0x0 under contain: size");
+  assert.match(liqMap, /node\.offsetWidth/, "the pane must be measured directly");
+  assert.match(liqMap, /observer\.observe\(node\.parentElement \?\? node\)/, "the contained pane cannot be the observed one");
+  // A pane that is never resized still has to wear the mark.
+  assert.match(liqMap, /^\s*measure\(\);$/m, "there is no measurement before the first resize");
   assert.match(liqMap, /observer\.disconnect\(\)/, "the observer is never cleaned up");
   // Setting state on every observed frame would rerender the pane continuously.
-  assert.match(liqMap, /current\.width === box\.width && current\.height === box\.height/);
+  assert.match(liqMap, /current\.width === width && current\.height === height/);
 });
 
 console.log(`\nchart watermark: ${passed}/${passed} checks passed`);
