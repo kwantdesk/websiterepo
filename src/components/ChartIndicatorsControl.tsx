@@ -5803,6 +5803,41 @@ export default function ChartIndicatorsControl({
               </div>
             ) : null}
           </div>
+
+          {/*
+            * Save and Cancel, on EVERY indicator.
+            *
+            * The dialog applies each change as it is made, so closing it was
+            * the only way to keep or drop them - and clicking away asked
+            * "unsaved changes?" instead of offering anywhere to save. Only the
+            * footprint had a button, so every other study made a trader answer
+            * a prompt to do the ordinary thing.
+            *
+            * Pinned outside the scrolling body, so it is reachable on a long
+            * settings list without scrolling to the end of it.
+            */}
+          <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border bg-panel px-5 py-3">
+            <span className="text-[8px] uppercase tracking-[0.12em] text-muted" role="status">
+              {settingsAreDirty() ? "Unsaved changes" : "All changes saved"}
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={discardSettingsAndClose}
+                className="flex h-9 items-center rounded-lg border border-border px-3 text-[9px] font-semibold uppercase tracking-[0.08em] text-muted transition-colors hover:border-danger/40 hover:text-foreground"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={commitSettingsAndClose}
+                className="flex h-9 items-center justify-center gap-1.5 rounded-lg bg-primary px-4 text-[9px] font-semibold uppercase tracking-[0.08em] text-background transition-opacity hover:opacity-90"
+              >
+                <Save className="h-3.5 w-3.5" />
+                Save
+              </button>
+            </div>
+          </div>
         </div>,
         document.body,
       ) : null}
