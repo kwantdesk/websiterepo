@@ -179,7 +179,8 @@
     "research:capture-tape": "node scripts/capture-opra-tape.mjs",
     "test:renderer-counters": "node scripts/test-renderer-resource-counters.mjs",
     "test:liq-inside-market": "node scripts/test-liquidity-inside-market.mjs",
-    "test:liq-cache-busting": "node scripts/test-liquidity-map-cache-busting.mjs"
+    "test:liq-cache-busting": "node scripts/test-liquidity-map-cache-busting.mjs",
+    "test:footprint-hysteresis": "node scripts/test-footprint-detail-hysteresis.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",

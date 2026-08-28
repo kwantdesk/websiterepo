@@ -359,7 +359,35 @@ function renderMode(options: FootprintPrimitiveOptions): FootprintContentMode {
   return options.type;
 }
 
+/**
+ * How far a threshold may be crossed back before the cells give up their text.
+ *
+ * Purely a release margin: a cell still has to clear the configured minimum to
+ * START showing numbers, and only keeps them while it stays within this much of
+ * it. Wide enough to swallow an autoscale nudge, far too narrow to keep text in
+ * a cell that has genuinely become too small to hold it.
+ */
+const FOOTPRINT_DETAIL_RELEASE = 0.82;
+
 class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
+  /*
+   * Whether the last frame printed numbers.
+   *
+   * The three gates that decide it - visible bar count, bar width and row
+   * height - are all hard comparisons against a threshold, and all three move
+   * continuously. Row height is the pixel gap between adjacent price levels, so
+   * it shrinks the moment the price scale autoscales; bar width follows
+   * barSpacing, so it moves on every zoom. A footprint sitting near any
+   * threshold therefore flipped between printed, hollow and blank from frame to
+   * frame - reported as numbers appearing and vanishing while the market moved,
+   * and going hollow on zoom.
+   *
+   * Remembering the last decision turns each threshold into a band. It is read
+   * once at the top of a frame and written once at the end, so every cell in a
+   * frame agrees with every other rather than flipping mid-paint.
+   */
+  private printedText = false;
+
   constructor(private readonly primitive: FootprintPrimitive) {}
 
   draw(target: CanvasRenderingTarget2D) {
@@ -408,7 +436,14 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
       const timeScale = params.chart.timeScale();
       const visibleBars = bars.slice(fromIndex, toIndex);
       const visibleCeiling = footprintScaleCeiling(bars, visibleBars, options);
-      const detailedBarCountAllowed = visibleBars.length <= options.maximumDetailedVisibleBars;
+      // Read once per frame: a gate that moved mid-paint would print numbers on
+      // some cells of one bar and not others.
+      const release = this.printedText ? FOOTPRINT_DETAIL_RELEASE : 1;
+      const detailedBarCountAllowed = visibleBars.length
+        <= options.maximumDetailedVisibleBars / release;
+      const minimumTextWidth = options.minimumWidthToShowText * release;
+      const minimumTextRowHeight = options.minimumRowHeightToShowText * release;
+      let printedTextThisFrame = false;
 
       context.save();
       context.beginPath();
@@ -617,8 +652,9 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
           // numbers are printed over the bars; everything else is identical.
           const detailed = options.showCellText !== false
             && detailedBarCountAllowed
-            && barWidth >= options.minimumWidthToShowText
-            && rowHeight >= options.minimumRowHeightToShowText;
+            && barWidth >= minimumTextWidth
+            && rowHeight >= minimumTextRowHeight;
+          if (detailed) printedTextThisFrame = true;
           const micro = barWidth < 18;
 
           if (options.showValueArea && row.isValueArea) {
@@ -906,6 +942,7 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
         }
       }
       context.restore();
+      this.printedText = printedTextThisFrame;
   }
 
   dispose() {}
