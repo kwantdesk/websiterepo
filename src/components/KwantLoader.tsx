@@ -7,6 +7,16 @@ type KwantLoaderProps = {
   icon?: LucideIcon;
   className?: string;
   compact?: boolean;
+  /**
+   * This loader stands in for a whole page rather than one panel.
+   *
+   * A page-level loader was being returned in place of a workspace root that
+   * carried its own height, so it fell back to the height of the words inside
+   * it - a band across the top with the page showing through underneath, which
+   * is what "cuts off halfway down" was. Filling the space is not something the
+   * call site can be relied on to remember, so the loader claims it.
+   */
+  page?: boolean;
   style?: CSSProperties;
 };
 
@@ -16,6 +26,7 @@ export default function KwantLoader({
   icon: Icon = Sparkles,
   className = "",
   compact = false,
+  page = false,
   style,
 }: KwantLoaderProps) {
   return (
@@ -23,7 +34,12 @@ export default function KwantLoader({
       role="status"
       aria-live="polite"
       aria-label={title}
-      className={`kwant-loader relative flex min-h-0 items-center justify-center overflow-hidden bg-background text-center ${className}`}
+      className={`kwant-loader relative flex min-h-0 items-center justify-center overflow-hidden bg-background text-center ${
+        // `grow`/`self-stretch` fill a flex parent, `h-full` a sized one, and
+        // the floor covers a parent that gives no height at all - which is the
+        // case that produced the band.
+        page ? "h-full w-full grow self-stretch min-h-[70vh]" : ""
+      } ${className}`}
       style={style}
     >
       <span className="kwant-loader-backdrop pointer-events-none absolute inset-0" aria-hidden="true" />

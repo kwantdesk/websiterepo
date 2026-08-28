@@ -518,7 +518,7 @@ export default function GexDeskWorkspace() {
   if (!payload && !error) {
     return (
       <KwantLoader
-        className="h-full min-h-0"
+        page
         icon={Layers3}
         title="Opening Gexdesk"
         detail="Mapping NDX and QQQ positioning onto live NQ."

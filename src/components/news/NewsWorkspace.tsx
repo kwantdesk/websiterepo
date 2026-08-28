@@ -227,9 +227,25 @@ function timeUntil(value: string, now: Date) {
   return `in ${Math.floor(hours / 24)}d ${hours % 24}h`;
 }
 
+/*
+ * Impact severity does NOT follow the theme.
+ *
+ * It was drawn from `danger` and `primary`, which are whatever the palette
+ * chose - and ten of the forty-four have a danger that is not red at all, so a
+ * high-impact release rendered blue on Kwant Desk and cyan on Solar Flare. Red
+ * for high and orange for medium is a convention every economic calendar
+ * shares, and a trader reads it before the word next to it; a theme is not
+ * entitled to overrule that.
+ *
+ * Low impact keeps the theme's muted tone. There is no convention to break -
+ * it means "no strong colour", which is exactly what muted is for.
+ */
+const IMPACT_HIGH = "#EF4444";
+const IMPACT_MEDIUM = "#F59E0B";
+
 function impactClasses(impact: EconomicImpact) {
-  if (impact === "High") return "border-danger/25 bg-danger/10 text-danger";
-  if (impact === "Medium") return "border-primary/25 bg-primary/10 text-primary";
+  if (impact === "High") return `border-[${IMPACT_HIGH}]/30 bg-[${IMPACT_HIGH}]/10 text-[${IMPACT_HIGH}]`;
+  if (impact === "Medium") return `border-[${IMPACT_MEDIUM}]/30 bg-[${IMPACT_MEDIUM}]/10 text-[${IMPACT_MEDIUM}]`;
   return "border-border bg-surface text-muted";
 }
 
@@ -319,7 +335,7 @@ function CalendarPopover({
 function LoadingState() {
   return (
     <KwantLoader
-      className="flex-1"
+      page
       icon={CalendarDays}
       title="Loading the economic calendar"
       detail="Scheduled releases, forecasts and impact"
@@ -705,7 +721,7 @@ function EconomicCalendarWorkspace() {
                 const active = selectedImpacts.includes(impact);
                 return (
                   <button key={impact} type="button" onClick={() => toggleImpact(impact)} className={`flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-[9px] font-semibold ${active ? impactClasses(impact) : "text-muted opacity-55"}`}>
-                    <span className={`h-1.5 w-1.5 rounded-full ${impact === "High" ? "bg-danger" : impact === "Medium" ? "bg-primary" : "bg-muted"}`} />
+                    <span className={`h-1.5 w-1.5 rounded-full ${impact === "High" ? `bg-[${IMPACT_HIGH}]` : impact === "Medium" ? `bg-[${IMPACT_MEDIUM}]` : "bg-muted"}`} />
                     {impact}
                   </button>
                 );
@@ -721,7 +737,7 @@ function EconomicCalendarWorkspace() {
             </div>
             <div className="rounded-2xl border border-border bg-panel p-4">
               <div className="text-[8px] font-semibold uppercase tracking-[0.15em] text-muted">High impact</div>
-              <div className={`mt-2 font-mono text-[22px] font-semibold ${highImpactCount ? "text-danger" : "text-foreground"}`}>{highImpactCount}</div>
+              <div className={`mt-2 font-mono text-[22px] font-semibold ${highImpactCount ? `text-[${IMPACT_HIGH}]` : "text-foreground"}`}>{highImpactCount}</div>
               <div className="mt-1 text-[9px] text-muted">{highImpactCount ? "Protect the release windows" : "No major release in this view"}</div>
             </div>
             <div className="rounded-2xl border border-border bg-panel p-4 sm:col-span-2">

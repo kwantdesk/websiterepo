@@ -315,7 +315,7 @@ export default function MacroWorkspace({ view }: { view: MacroNewsView }) {
     return () => window.clearInterval(timer);
   }, [load]);
   const developmentGroups = useMemo(() => payload?.developments ?? [], [payload]);
-  if (loading && !payload) return <KwantLoader className="h-full" icon={BrainCircuit} title="Building macro intelligence" detail="Official evidence, causal chains and market receipts" />;
+  if (loading && !payload) return <KwantLoader page icon={BrainCircuit} title="Building macro intelligence" detail="Official evidence, causal chains and market receipts" />;
   if (!payload) return <div className="flex h-full items-center justify-center p-6"><div className="max-w-md rounded-2xl border border-danger/20 bg-panel p-6 text-center"><ShieldAlert className="mx-auto h-6 w-6 text-danger" /><h2 className="mt-3 text-[13px] font-semibold">Macro intelligence unavailable</h2><p className="mt-2 text-[9px] leading-5 text-muted">{error}</p><button type="button" onClick={() => void load(true)} className="mt-4 rounded-xl bg-primary px-4 py-2 text-[9px] font-semibold text-background">Retry</button></div></div>;
   return (
     <div className="flex h-full min-h-0 flex-col bg-background text-foreground">
