@@ -181,7 +181,8 @@
     "test:liq-inside-market": "node scripts/test-liquidity-inside-market.mjs",
     "test:liq-cache-busting": "node scripts/test-liquidity-map-cache-busting.mjs",
     "test:footprint-hysteresis": "node scripts/test-footprint-detail-hysteresis.mjs",
-    "test:indicator-palettes": "node scripts/test-indicator-palettes.mjs"
+    "test:indicator-palettes": "node scripts/test-indicator-palettes.mjs",
+    "test:volume-profile-session-filter": "node scripts/test-volume-profile-session-filter.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",

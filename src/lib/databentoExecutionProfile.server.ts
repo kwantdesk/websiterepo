@@ -101,9 +101,27 @@ export async function buildDatabentoExecutionProfile(
     return null;
   }
 
+  /*
+   * Every input that changes the answer belongs in the key.
+   *
+   * The session segments did not. Filter/Split Time was therefore a control
+   * that appeared to work and did nothing: the first request for a window
+   * cached the unfiltered profile, and every later request for the SAME window
+   * with a different filter was served that entry. Measured on NQ - filtering
+   * to RTH returned the full session's numbers byte for byte, identical volume
+   * included, while narrowing the window by hand moved POC 65 points.
+   *
+   * The segments' boundaries are what the filter actually does, so those are
+   * what identify it. The mode and window names would not: a custom window and
+   * an RTH one can both be "custom" while covering different hours.
+   */
+  const segmentKey = (args.sessionSegments ?? [])
+    .map((segment) => `${segment.id}@${segment.startMs}-${segment.endMs}`)
+    .join(",");
   const key = [
     args.symbol, contractSymbol, args.startMs, args.endMs,
     args.tickSize, groupTicks, valueAreaPercent, minTradeVolume, maxTradeVolume,
+    segmentKey,
   ].join(":");
   const cached = cache.get(key);
   const age = cached ? Date.now() - cached.storedAt : Number.POSITIVE_INFINITY;

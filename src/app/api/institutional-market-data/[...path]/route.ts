@@ -4,6 +4,7 @@ import {
   RTH_END_MINUTES,
   RTH_START_MINUTES,
   resolveSessionSegments,
+  type SessionSegment,
   type SessionFilterMode,
   type SessionWindowKind,
 } from "@/lib/volumeProfileSessions";
@@ -131,6 +132,31 @@ async function executionProfileResponse(request: NextRequest) {
   }
 }
 
+/**
+ * The one session window a proxied request can be narrowed to, or null.
+ *
+ * Null covers both "no filtering asked for" and "asked for something a single
+ * window cannot express", because the caller does the same thing with each:
+ * forward the request untouched.
+ */
+function sessionWindowForForwarding(request: NextRequest): SessionSegment | null {
+  const params = request.nextUrl.searchParams;
+  const mode = String(params.get("filterMode") ?? "none").toLowerCase();
+  if (!["filter", "splitted", "triple"].includes(mode)) return null;
+  const startMs = Number(params.get("startMs"));
+  const endMs = Number(params.get("endMs"));
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return null;
+  const requestedWindow = String(params.get("filterTime") ?? "rth").toLowerCase();
+  const segments = resolveSessionSegments(startMs, endMs, {
+    mode: mode as SessionFilterMode,
+    window: (["rth", "eth", "custom"].includes(requestedWindow) ? requestedWindow : "rth") as SessionWindowKind,
+    customStartMinutes: Number(params.get("sessionStartMinutes") ?? RTH_START_MINUTES),
+    customEndMinutes: Number(params.get("sessionEndMinutes") ?? RTH_END_MINUTES),
+    useEndSessionAsStartDay: params.get("useEndSessionAsStartDay") === "true",
+  });
+  return segments.length === 1 ? segments[0] : null;
+}
+
 async function proxy(request: NextRequest, context: RouteContext) {
   const { path: pathParts } = await context.params;
   const path = pathParts.join("/");
@@ -138,9 +164,33 @@ async function proxy(request: NextRequest, context: RouteContext) {
     return NextResponse.json({ error: "Unsupported market-data operation." }, { status: 400 });
   }
 
+  /*
+   * Filter/Split Time has to survive the fall-through.
+   *
+   * The execution-profile builder above applies the session windows itself,
+   * but it only answers while Databento is usable. When it is not - which is
+   * the normal state here, the equities datasets 402 - the request falls
+   * through to the collector, and the collector knows nothing about session
+   * filtering. So the control appeared to work and did nothing: measured on
+   * NQ, filtering to RTH returned the whole trading date's profile, identical
+   * volume included, while the same request against an RTH-shaped window moved
+   * POC 65 points.
+   *
+   * A single session window IS a narrower request, so it is expressed as one.
+   * Several windows are not - a weekly RTH profile is five separate spans with
+   * the overnights cut out of the middle, and no single start/end can say that
+   * - so those are left alone for the collector to learn, rather than silently
+   * narrowed to something that would quietly include what it was asked to drop.
+   */
+  const forwarded = new URL(request.url);
   if (request.method === "GET" && path === "v1/market-data/volume-profile") {
     const executionProfile = await executionProfileResponse(request);
     if (executionProfile) return executionProfile;
+    const only = sessionWindowForForwarding(request);
+    if (only) {
+      forwarded.searchParams.set("startMs", String(only.startMs));
+      forwarded.searchParams.set("endMs", String(only.endMs));
+    }
   }
 
   if (!isInstitutionalMarketDataConfigured()) {
@@ -155,7 +205,7 @@ async function proxy(request: NextRequest, context: RouteContext) {
     : await request.arrayBuffer();
   try {
     const upstream = await fetchInstitutionalMarketData(
-      `${path}${request.nextUrl.search}`,
+      `${path}${forwarded.search}`,
       {
         method: request.method,
         body,
