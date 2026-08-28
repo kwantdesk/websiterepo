@@ -2,6 +2,12 @@
 
 import Image from "next/image";
 import {
+  resolveOutcomeColors,
+  SEMANTIC_WIN,
+  SEMANTIC_LOSS,
+  type OutcomeColors,
+} from "@/lib/outcomeColors";
+import {
   Activity,
   ArchiveRestore,
   ArrowDownRight,
@@ -80,7 +86,7 @@ import {
 } from "@/lib/journalAnalysis";
 import KwantSelect from "@/components/ui/KwantSelect";
 import { usePersistentFieldDictation } from "@/hooks/usePersistentFieldDictation";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type CSSProperties } from "react";
 
 type JournalTab = "pulse" | "calendar" | "trades" | "edgebook" | "analysis" | "evidence" | "imports";
 type OutcomeFilter = "all" | "wins" | "losses" | "breakeven" | "needs-review";
@@ -544,12 +550,12 @@ function MetricCard({
     <Card className="min-w-0 p-4">
       <div className="flex items-center justify-between gap-3">
         <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-muted">{label}</span>
-        <Icon className={`h-3.5 w-3.5 ${tone === "positive" ? "text-[#22C55E]" : tone === "negative" ? "text-[#EF4444]" : "text-muted"}`} />
+        <Icon className={`h-3.5 w-3.5 ${tone === "positive" ? "text-[var(--journal-win)]" : tone === "negative" ? "text-[var(--journal-loss)]" : "text-muted"}`} />
       </div>
       <ResponsiveMetricValue
         value={value}
         compactValue={compactValue}
-        className={`mt-3 font-mono text-[22px] font-semibold ${tone === "positive" ? "text-[#22C55E]" : tone === "negative" ? "text-[#EF4444]" : "text-foreground"}`}
+        className={`mt-3 font-mono text-[22px] font-semibold ${tone === "positive" ? "text-[var(--journal-win)]" : tone === "negative" ? "text-[var(--journal-loss)]" : "text-foreground"}`}
       />
       <div className="mt-1 truncate text-[9px] text-muted">{detail}</div>
     </Card>
@@ -666,7 +672,7 @@ function EquityCurve({ trades }: { trades: JournalTrade[] }) {
         <line x1={geometry.left} x2={geometry.left} y1={geometry.top} y2={geometry.height - geometry.bottom} stroke="var(--border)" strokeWidth="1" vectorEffect="non-scaling-stroke" />
         <line x1={geometry.left} x2={geometry.width - geometry.right} y1={geometry.hasStartingBalance ? geometry.baselineY : geometry.zeroY} y2={geometry.hasStartingBalance ? geometry.baselineY : geometry.zeroY} stroke="var(--muted)" strokeOpacity=".45" strokeDasharray="4 5" vectorEffect="non-scaling-stroke" />
         <path d={geometry.area} fill="url(#journal-equity-fill)" />
-        <path d={geometry.path} fill="none" stroke={geometry.finalPnl >= 0 ? "#22C55E" : "#EF4444"} strokeWidth="2.25" vectorEffect="non-scaling-stroke" />
+        <path d={geometry.path} fill="none" stroke={geometry.finalPnl >= 0 ? "var(--journal-win)" : "var(--journal-loss)"} strokeWidth="2.25" vectorEffect="non-scaling-stroke" />
         {hovered ? <>
           <line x1={hovered.x} x2={hovered.x} y1={geometry.top} y2={geometry.height - geometry.bottom} stroke="var(--foreground)" strokeOpacity=".45" strokeDasharray="3 4" vectorEffect="non-scaling-stroke" />
           <line x1={geometry.left} x2={geometry.width - geometry.right} y1={hovered.y} y2={hovered.y} stroke="var(--foreground)" strokeOpacity=".28" strokeDasharray="3 4" vectorEffect="non-scaling-stroke" />
@@ -677,7 +683,7 @@ function EquityCurve({ trades }: { trades: JournalTrade[] }) {
       {geometry.xTicks.map((tick) => <span key={tick.index} className="pointer-events-none absolute -translate-x-1/2 whitespace-nowrap font-mono text-[7px] text-muted" style={{ left: `${tick.x / geometry.width * 100}%`, bottom: 3 }}>{tick.index === 0 ? "START" : new Date(tick.timestamp).toLocaleDateString("en-AU", { day: "2-digit", month: "short" })}</span>)}
       <span className="pointer-events-none absolute bottom-0 left-1/2 -translate-x-1/2 text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">Trade sequence / close date</span>
       <span className="pointer-events-none absolute left-[-17px] top-1/2 -rotate-90 text-[7px] font-semibold uppercase tracking-[0.12em] text-muted">{geometry.hasStartingBalance ? "Account equity" : "Cumulative P&L"}</span>
-      <span className={`absolute right-2 top-2 rounded-lg border border-border bg-background/85 px-2 py-1 font-mono text-[10px] backdrop-blur ${geometry.finalPnl >= 0 ? "text-[#22C55E]" : "text-[#EF4444]"}`}>{geometry.hasStartingBalance ? money(geometry.final) : compact(geometry.finalPnl)}</span>
+      <span className={`absolute right-2 top-2 rounded-lg border border-border bg-background/85 px-2 py-1 font-mono text-[10px] backdrop-blur ${geometry.finalPnl >= 0 ? "text-[var(--journal-win)]" : "text-[var(--journal-loss)]"}`}>{geometry.hasStartingBalance ? money(geometry.final) : compact(geometry.finalPnl)}</span>
       {hovered ? <div
         className="pointer-events-none absolute z-10 min-w-[188px] rounded-xl border border-border bg-background/95 p-3 shadow-2xl backdrop-blur-xl"
         style={{
@@ -687,7 +693,7 @@ function EquityCurve({ trades }: { trades: JournalTrade[] }) {
         }}
       >
         {hovered.trade ? <>
-          <div className="flex items-center justify-between gap-3"><span className="text-[8px] font-semibold uppercase tracking-[0.12em] text-muted">Trade #{hovered.index}</span><span className={`font-mono text-[10px] font-semibold ${hovered.trade.netPnl >= 0 ? "text-[#22C55E]" : "text-[#EF4444]"}`}>{money(hovered.trade.netPnl)}</span></div>
+          <div className="flex items-center justify-between gap-3"><span className="text-[8px] font-semibold uppercase tracking-[0.12em] text-muted">Trade #{hovered.index}</span><span className={`font-mono text-[10px] font-semibold ${hovered.trade.netPnl >= 0 ? "text-[var(--journal-win)]" : "text-[var(--journal-loss)]"}`}>{money(hovered.trade.netPnl)}</span></div>
           <div className="mt-2 text-[10px] font-semibold text-foreground">{hovered.trade.symbol} · {hovered.trade.side} · {hovered.trade.quantity} contract{hovered.trade.quantity === 1 ? "" : "s"}</div>
           <div className="mt-1 font-mono text-[8px] text-muted">{hovered.trade.entryPrice ?? "—"} → {hovered.trade.exitPrice ?? "—"}</div>
           <div className="mt-1 text-[8px] text-muted">{new Date(hovered.timestamp).toLocaleString("en-AU", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</div>
@@ -719,7 +725,7 @@ function DailyBars({ trades }: { trades: JournalTrade[] }) {
     >
       <div className="pointer-events-none absolute right-2 top-2 z-10 rounded-lg border border-border bg-background/90 px-2 py-1 font-mono text-[8px] shadow-lg backdrop-blur">
         {hovered
-          ? <><span className="mr-2 text-muted">{new Date(`${hovered[0]}T12:00:00`).toLocaleDateString("en-AU", { day: "2-digit", month: "short", year: "numeric" })}</span><span className={hovered[1] >= 0 ? "text-[#22C55E]" : "text-[#EF4444]"}>{money(hovered[1])}</span></>
+          ? <><span className="mr-2 text-muted">{new Date(`${hovered[0]}T12:00:00`).toLocaleDateString("en-AU", { day: "2-digit", month: "short", year: "numeric" })}</span><span className={hovered[1] >= 0 ? "text-[var(--journal-win)]" : "text-[var(--journal-loss)]"}>{money(hovered[1])}</span></>
           : <span className="text-muted">Hover a traded day</span>}
       </div>
 
@@ -784,9 +790,9 @@ function PerformanceList({ title, rows }: { title: string; rows: ReturnType<type
           <div key={row.label} className="grid grid-cols-[110px_minmax(80px,1fr)_76px_54px] items-center gap-3 px-4 py-2.5 text-[9px]">
             <span className="truncate font-semibold text-foreground" title={row.label}>{row.label}</span>
             <div className="h-1.5 overflow-hidden rounded-full bg-surface">
-              <div className={`h-full rounded-full ${row.netPnl >= 0 ? "bg-[#22C55E]" : "bg-[#EF4444]"}`} style={{ width: `${Math.max(3, Math.abs(row.netPnl) / maximum * 100)}%` }} />
+              <div className={`h-full rounded-full ${row.netPnl >= 0 ? "bg-[var(--journal-win)]" : "bg-[var(--journal-loss)]"}`} style={{ width: `${Math.max(3, Math.abs(row.netPnl) / maximum * 100)}%` }} />
             </div>
-            <span className={`text-right font-mono font-semibold ${row.netPnl >= 0 ? "text-[#22C55E]" : "text-[#EF4444]"}`}>{compact(row.netPnl)}</span>
+            <span className={`text-right font-mono font-semibold ${row.netPnl >= 0 ? "text-[var(--journal-win)]" : "text-[var(--journal-loss)]"}`}>{compact(row.netPnl)}</span>
             <span className="text-right font-mono text-muted">{row.tradeCount} · {percent(row.winRate, 0)}</span>
           </div>
         ))}
@@ -836,7 +842,44 @@ function AnalysisFindingCard({
     </div>
   );
 }
+/**
+ * The journal's win and loss colours, from whatever theme is on.
+ *
+ * Read from the CSS variables the theme actually applied rather than from a
+ * stored preset, so this cannot disagree with what is on screen, and refreshed
+ * on the same event every other themed surface listens to.
+ */
+function useOutcomeColors(): OutcomeColors {
+  const [colors, setColors] = useState<OutcomeColors>(() => ({
+    win: SEMANTIC_WIN,
+    loss: SEMANTIC_LOSS,
+    winSoft: `color-mix(in srgb, ${SEMANTIC_WIN} 8%, transparent)`,
+    lossSoft: `color-mix(in srgb, ${SEMANTIC_LOSS} 8%, transparent)`,
+  }));
+  useEffect(() => {
+    const read = () => {
+      const style = getComputedStyle(document.documentElement);
+      const value = (name: string) => style.getPropertyValue(name).trim();
+      setColors(resolveOutcomeColors({
+        up: value("--candle-up"),
+        upOutline: value("--candle-up-border"),
+        down: value("--candle-down"),
+        downOutline: value("--candle-down-border"),
+        primary: value("--primary"),
+        accent: value("--accent"),
+        danger: value("--danger"),
+        background: value("--background"),
+      }));
+    };
+    read();
+    window.addEventListener("kwantdesk:theme-change", read);
+    return () => window.removeEventListener("kwantdesk:theme-change", read);
+  }, []);
+  return colors;
+}
+
 export default function JournalWorkspace({ accountKey }: { accountKey: string }) {
+  const outcomeColors = useOutcomeColors();
   const resolvedAccountKey = accountKey || "local";
   const initialMemory = JOURNAL_MEMORY_CACHE.get(resolvedAccountKey);
   const [state, setState] = useState<JournalState>(() => initialMemory?.state ?? EMPTY_JOURNAL_STATE);
@@ -2288,7 +2331,18 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-background text-foreground">
+    <div
+      className="flex h-full min-h-0 flex-col bg-background text-foreground"
+      // Set once here rather than threaded through fifty-six call sites, so
+      // every figure, bar, curve and calendar cell moves with the theme
+      // together.
+      style={{
+        "--journal-win": outcomeColors.win,
+        "--journal-loss": outcomeColors.loss,
+        "--journal-win-soft": outcomeColors.winSoft,
+        "--journal-loss-soft": outcomeColors.lossSoft,
+      } as CSSProperties}
+    >
       <header className="shrink-0 bg-panel">
         <div className="flex min-h-[64px] flex-wrap items-center gap-3 px-4 py-3">
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary"><NotebookPen className="h-4 w-4" /></span>
@@ -2368,7 +2422,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
                       <span className={`block truncate text-[10px] font-semibold ${active ? "text-primary" : "text-foreground"}`}>{label}</span>
                       <span className="mt-0.5 block truncate text-[7px] text-muted">{detail}</span>
                     </span>
-                    <span className={`font-mono text-[9px] font-semibold ${accountStats.netPnl > 0 ? "text-[#22C55E]" : accountStats.netPnl < 0 ? "text-[#EF4444]" : "text-muted"}`}>{compact(accountStats.netPnl)}</span>
+                    <span className={`font-mono text-[9px] font-semibold ${accountStats.netPnl > 0 ? "text-[var(--journal-win)]" : accountStats.netPnl < 0 ? "text-[var(--journal-loss)]" : "text-muted"}`}>{compact(accountStats.netPnl)}</span>
                     {id !== "all" && id !== ZYON_JOURNAL_ACCOUNT ? <button type="button" aria-label={`Manage ${label}`} onClick={(event) => { event.stopPropagation(); const bounds = event.currentTarget.getBoundingClientRect(); setAccountMenu({ account: id, x: Math.max(8, Math.min(bounds.right, window.innerWidth - 210)), y: Math.max(8, Math.min(bounds.bottom + 4, window.innerHeight - 170)) }); }} className="-mr-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-muted opacity-60 hover:bg-surface hover:text-foreground group-hover:opacity-100"><MoreVertical className="h-3.5 w-3.5" /></button> : null}
                   </div>
                   <div className="mt-2 flex items-center justify-between border-t border-border/50 pt-2 text-[7px] text-muted">
@@ -2486,7 +2540,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
                       <span className="font-mono text-muted">{formatDate(trade.closedAt ?? trade.openedAt)}</span>
                       <span className="font-semibold text-foreground">{trade.symbol}</span>
                       <span className="truncate text-muted">{trade.setup || trade.tags.join(", ") || "No setup classified"}</span>
-                      <span className={`text-right font-mono font-semibold ${trade.netPnl >= 0 ? "text-[#22C55E]" : "text-[#EF4444]"}`}>{money(trade.netPnl)}</span>
+                      <span className={`text-right font-mono font-semibold ${trade.netPnl >= 0 ? "text-[var(--journal-win)]" : "text-[var(--journal-loss)]"}`}>{money(trade.netPnl)}</span>
                       <ChevronRight className="h-3.5 w-3.5 text-muted" />
                     </button>
                   ))}
@@ -2527,9 +2581,9 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
               </div>
               <div className="grid grid-cols-7">
                 {calendarDays.map((day, index) => day ? (
-                  <button key={day.dateKey} type="button" onClick={() => setSelectedDay(day.dateKey)} className={`group min-h-[108px] border-b border-r border-border p-2 text-left transition-colors hover:bg-surface/60 ${selectedDay === day.dateKey ? "bg-primary/[0.07] shadow-[inset_0_0_0_1px_var(--primary)]" : day.trades.length ? day.pnl >= 0 ? "bg-[#22C55E]/[0.05]" : "bg-[#EF4444]/[0.05]" : "bg-background/20"}`}>
+                  <button key={day.dateKey} type="button" onClick={() => setSelectedDay(day.dateKey)} className={`group min-h-[108px] border-b border-r border-border p-2 text-left transition-colors hover:bg-surface/60 ${selectedDay === day.dateKey ? "bg-primary/[0.07] shadow-[inset_0_0_0_1px_var(--primary)]" : day.trades.length ? day.pnl >= 0 ? "bg-[var(--journal-win-soft)]" : "bg-[var(--journal-loss-soft)]" : "bg-background/20"}`}>
                     <div className="flex items-start justify-between gap-1"><span className="font-mono text-[9px] text-muted">{day.day}</span>{day.evidence ? <Paperclip className="h-3 w-3 text-accent" /> : null}</div>
-                    {day.trades.length ? <><div className={`mt-4 font-mono text-[11px] font-semibold ${day.pnl >= 0 ? "text-[#22C55E]" : "text-[#EF4444]"}`}>{money(day.pnl)}</div><div className="mt-1 text-[8px] text-muted">{day.trades.length} trade{day.trades.length === 1 ? "" : "s"}</div><div className="mt-2 h-1 rounded-full bg-surface"><div className="h-full rounded-full bg-primary" style={{ width: `${day.trades.length ? day.reviewed / day.trades.length * 100 : 0}%` }} /></div></> : null}
+                    {day.trades.length ? <><div className={`mt-4 font-mono text-[11px] font-semibold ${day.pnl >= 0 ? "text-[var(--journal-win)]" : "text-[var(--journal-loss)]"}`}>{money(day.pnl)}</div><div className="mt-1 text-[8px] text-muted">{day.trades.length} trade{day.trades.length === 1 ? "" : "s"}</div><div className="mt-2 h-1 rounded-full bg-surface"><div className="h-full rounded-full bg-primary" style={{ width: `${day.trades.length ? day.reviewed / day.trades.length * 100 : 0}%` }} /></div></> : null}
                   </button>
                 ) : <div key={`blank-${index}`} className="min-h-[108px] border-b border-r border-border bg-background/10" />)}
               </div>
@@ -2537,7 +2591,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
             {selectedDay ? (
               <Card className="overflow-hidden">
                 <div className="flex items-center justify-between border-b border-border px-4 py-3"><div><h3 className="text-[11px] font-semibold text-foreground">{formatDate(`${selectedDay}T12:00:00`)}</h3><p className="mt-0.5 text-[8px] text-muted">{selectedDayTrades.length} imported trades · {money(selectedDayTrades.reduce((sum, trade) => sum + trade.netPnl, 0))}</p></div><button type="button" onClick={() => setSelectedDay("")} className="text-muted hover:text-foreground"><X className="h-4 w-4" /></button></div>
-                <div className="divide-y divide-border/60">{selectedDayTrades.map((trade) => <button key={trade.id} type="button" onClick={() => setSelectedTradeId(trade.id)} className="grid w-full grid-cols-[74px_70px_64px_minmax(80px,1fr)_90px] items-center gap-3 px-4 py-3 text-left text-[9px] hover:bg-surface/40"><span className="font-mono text-muted">{new Date(trade.openedAt).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" })}</span><span className="font-semibold">{trade.symbol}</span><span className={trade.side === "LONG" ? "text-[#22C55E]" : "text-[#EF4444]"}>{trade.side}</span><span className="truncate text-muted">{trade.setup || trade.tags.join(", ") || "Unclassified"}</span><span className={`text-right font-mono font-semibold ${trade.netPnl >= 0 ? "text-[#22C55E]" : "text-[#EF4444]"}`}>{money(trade.netPnl)}</span></button>)}</div>
+                <div className="divide-y divide-border/60">{selectedDayTrades.map((trade) => <button key={trade.id} type="button" onClick={() => setSelectedTradeId(trade.id)} className="grid w-full grid-cols-[74px_70px_64px_minmax(80px,1fr)_90px] items-center gap-3 px-4 py-3 text-left text-[9px] hover:bg-surface/40"><span className="font-mono text-muted">{new Date(trade.openedAt).toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" })}</span><span className="font-semibold">{trade.symbol}</span><span className={trade.side === "LONG" ? "text-[var(--journal-win)]" : "text-[var(--journal-loss)]"}>{trade.side}</span><span className="truncate text-muted">{trade.setup || trade.tags.join(", ") || "Unclassified"}</span><span className={`text-right font-mono font-semibold ${trade.netPnl >= 0 ? "text-[var(--journal-win)]" : "text-[var(--journal-loss)]"}`}>{money(trade.netPnl)}</span></button>)}</div>
               </Card>
             ) : null}
           </div>
@@ -2572,11 +2626,11 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
                         <td className="whitespace-nowrap px-3 py-2.5 font-mono text-muted">{formatDate(trade.closedAt ?? trade.openedAt, true)}</td>
                         <td className="max-w-[140px] truncate px-3 py-2.5 text-muted" title={trade.account}>{trade.account}</td>
                         <td className="px-3 py-2.5 font-semibold text-foreground">{trade.symbol}</td>
-                        <td className={`px-3 py-2.5 font-semibold ${trade.side === "LONG" ? "text-[#22C55E]" : trade.side === "SHORT" ? "text-[#EF4444]" : "text-muted"}`}>{trade.side}</td>
+                        <td className={`px-3 py-2.5 font-semibold ${trade.side === "LONG" ? "text-[var(--journal-win)]" : trade.side === "SHORT" ? "text-[var(--journal-loss)]" : "text-muted"}`}>{trade.side}</td>
                         <td className="px-3 py-2.5 font-mono">{trade.quantity.toLocaleString()}</td>
                         <td className="px-3 py-2.5 font-mono">{trade.entryPrice?.toLocaleString("en-US", { maximumFractionDigits: 6 }) ?? "—"}</td>
                         <td className="px-3 py-2.5 font-mono">{trade.exitPrice?.toLocaleString("en-US", { maximumFractionDigits: 6 }) ?? "—"}</td>
-                        <td className={`px-3 py-2.5 font-mono font-semibold ${trade.netPnl >= 0 ? "text-[#22C55E]" : "text-[#EF4444]"}`}>{money(trade.netPnl)}</td>
+                        <td className={`px-3 py-2.5 font-mono font-semibold ${trade.netPnl >= 0 ? "text-[var(--journal-win)]" : "text-[var(--journal-loss)]"}`}>{money(trade.netPnl)}</td>
                         <td className="px-3 py-2.5 font-mono">{trade.rMultiple === null ? "—" : `${trade.rMultiple.toFixed(2)}R`}</td>
                         <td className="px-3 py-2.5 text-muted">{formatDuration(trade.durationMs)}</td>
                         <td className="max-w-[220px] truncate px-3 py-2.5 text-muted">{trade.setup || trade.tags.join(", ") || "—"}</td>
@@ -2605,7 +2659,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
             <Card className="p-4">
               <div className="flex items-center gap-2"><Tags className="h-4 w-4 text-primary" /><h3 className="text-[11px] font-semibold text-foreground">Direction comparison</h3></div>
               <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                {bySide.map((row) => <div key={row.label} className="rounded-xl border border-border bg-background/35 p-3"><div className="text-[8px] font-semibold uppercase tracking-[0.12em] text-muted">{row.label}</div><div className={`mt-2 font-mono text-[18px] font-semibold ${row.netPnl >= 0 ? "text-[#22C55E]" : "text-[#EF4444]"}`}>{money(row.netPnl)}</div><div className="mt-1 text-[8px] text-muted">{row.tradeCount} trades · {percent(row.winRate)} win · {ratio(row.profitFactor)} PF</div></div>)}
+                {bySide.map((row) => <div key={row.label} className="rounded-xl border border-border bg-background/35 p-3"><div className="text-[8px] font-semibold uppercase tracking-[0.12em] text-muted">{row.label}</div><div className={`mt-2 font-mono text-[18px] font-semibold ${row.netPnl >= 0 ? "text-[var(--journal-win)]" : "text-[var(--journal-loss)]"}`}>{money(row.netPnl)}</div><div className="mt-1 text-[8px] text-muted">{row.tradeCount} trades · {percent(row.winRate)} win · {ratio(row.profitFactor)} PF</div></div>)}
               </div>
               <p className="mt-3 text-[8px] leading-4 text-muted">Edgebook ranks only the selected imported population. Treat small samples as questions to investigate, not proof of a repeatable edge.</p>
             </Card>
@@ -3006,14 +3060,14 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
                   {postableTrades.map((trade) => {
                     const active = trade.id === postTradeId;
                     return <button key={trade.id} type="button" onClick={() => { setPostTradeId(trade.id); setPostTradeError(""); }} className={`w-full rounded-2xl border p-3 text-left transition ${active ? "border-primary/45 bg-primary/[0.09] shadow-[0_0_18px_color-mix(in_srgb,var(--primary)_10%,transparent)]" : "border-border bg-background/30 hover:border-primary/25 hover:bg-surface/55"}`}>
-                      <div className="flex items-center gap-2"><span className={`flex h-8 w-8 items-center justify-center rounded-xl ${trade.side === "LONG" ? "bg-[#22C55E]/10 text-[#22C55E]" : "bg-[#EF4444]/10 text-[#EF4444]"}`}>{trade.side === "LONG" ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />}</span><span className="min-w-0 flex-1"><span className="block truncate text-[9px] font-semibold text-foreground">{trade.symbol} · {trade.setup || "Journal trade"}</span><span className="mt-0.5 block text-[7px] text-muted">{formatDate(trade.openedAt, true)} · {trade.side} · {trade.quantity} contract{trade.quantity === 1 ? "" : "s"}</span></span><span className={`font-mono text-[11px] font-semibold ${trade.netPnl >= 0 ? "text-[#22C55E]" : "text-[#EF4444]"}`}>{money(trade.netPnl)}</span></div>
+                      <div className="flex items-center gap-2"><span className={`flex h-8 w-8 items-center justify-center rounded-xl ${trade.side === "LONG" ? "bg-[var(--journal-win)]/10 text-[var(--journal-win)]" : "bg-[var(--journal-loss)]/10 text-[var(--journal-loss)]"}`}>{trade.side === "LONG" ? <ArrowUpRight className="h-3.5 w-3.5" /> : <ArrowDownRight className="h-3.5 w-3.5" />}</span><span className="min-w-0 flex-1"><span className="block truncate text-[9px] font-semibold text-foreground">{trade.symbol} · {trade.setup || "Journal trade"}</span><span className="mt-0.5 block text-[7px] text-muted">{formatDate(trade.openedAt, true)} · {trade.side} · {trade.quantity} contract{trade.quantity === 1 ? "" : "s"}</span></span><span className={`font-mono text-[11px] font-semibold ${trade.netPnl >= 0 ? "text-[var(--journal-win)]" : "text-[var(--journal-loss)]"}`}>{money(trade.netPnl)}</span></div>
                     </button>;
                   })}
                 </div>
               </section>
               <section className="flex min-h-[360px] flex-col rounded-2xl border border-border bg-background/30 p-4">
                 {postTrade ? <>
-                  <div className="flex items-start gap-3"><span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${postTrade.side === "LONG" ? "bg-[#22C55E]/10 text-[#22C55E]" : "bg-[#EF4444]/10 text-[#EF4444]"}`}>{postTrade.side === "LONG" ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}</span><div className="min-w-0"><div className="text-[12px] font-semibold text-foreground">{postTrade.symbol} {postTrade.side}</div><div className="mt-1 truncate text-[8px] text-muted">{postTrade.setup || "Journal trade"}</div></div><div className={`ml-auto font-mono text-[18px] font-semibold ${postTrade.netPnl >= 0 ? "text-[#22C55E]" : "text-[#EF4444]"}`}>{money(postTrade.netPnl)}</div></div>
+                  <div className="flex items-start gap-3"><span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${postTrade.side === "LONG" ? "bg-[var(--journal-win)]/10 text-[var(--journal-win)]" : "bg-[var(--journal-loss)]/10 text-[var(--journal-loss)]"}`}>{postTrade.side === "LONG" ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}</span><div className="min-w-0"><div className="text-[12px] font-semibold text-foreground">{postTrade.symbol} {postTrade.side}</div><div className="mt-1 truncate text-[8px] text-muted">{postTrade.setup || "Journal trade"}</div></div><div className={`ml-auto font-mono text-[18px] font-semibold ${postTrade.netPnl >= 0 ? "text-[var(--journal-win)]" : "text-[var(--journal-loss)]"}`}>{money(postTrade.netPnl)}</div></div>
                   <div className="mt-4 grid grid-cols-2 gap-2">
                     {[["Entry", postTrade.entryPrice?.toLocaleString("en-US", { maximumFractionDigits: 6 }) ?? "—"], ["Exit", postTrade.exitPrice?.toLocaleString("en-US", { maximumFractionDigits: 6 }) ?? "—"], ["Risk", postTrade.initialRisk === null ? "Not recorded" : money(postTrade.initialRisk, false)], ["Result", postTrade.rMultiple === null ? "Not recorded" : `${postTrade.rMultiple.toFixed(2)}R`]].map(([label, value]) => <div key={label} className="rounded-xl border border-border bg-panel/70 p-3"><div className="text-[7px] uppercase tracking-[0.12em] text-muted">{label}</div><div className="mt-1 font-mono text-[10px] text-foreground">{value}</div></div>)}
                   </div>
@@ -3161,14 +3215,14 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
         <div className="fixed inset-0 z-[950] bg-black/55 backdrop-blur-[2px]" onMouseDown={(event) => { if (event.target === event.currentTarget) setSelectedTradeId(null); }}>
           <aside className="absolute bottom-0 right-0 top-0 flex w-full max-w-[520px] flex-col border-l border-border bg-panel shadow-2xl shadow-black/60">
             <div className="flex items-start gap-3 border-b border-border px-5 py-4">
-              <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${selectedTrade.netPnl >= 0 ? "bg-[#22C55E]/10 text-[#22C55E]" : "bg-[#EF4444]/10 text-[#EF4444]"}`}>{selectedTrade.side === "LONG" ? <ArrowUpRight className="h-4 w-4" /> : <ArrowDownRight className="h-4 w-4" />}</span>
-              <div className="min-w-0"><div className="flex items-center gap-2"><h2 className="text-[14px] font-semibold text-foreground">{selectedTrade.symbol}</h2><span className={`rounded-md px-1.5 py-0.5 text-[8px] font-semibold ${selectedTrade.side === "LONG" ? "bg-[#22C55E]/10 text-[#22C55E]" : "bg-[#EF4444]/10 text-[#EF4444]"}`}>{selectedTrade.side}</span></div><p className="mt-1 truncate text-[9px] text-muted">{selectedTrade.account} · {formatDate(selectedTrade.openedAt, true)}</p></div>
+              <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${selectedTrade.netPnl >= 0 ? "bg-[var(--journal-win)]/10 text-[var(--journal-win)]" : "bg-[var(--journal-loss)]/10 text-[var(--journal-loss)]"}`}>{selectedTrade.side === "LONG" ? <ArrowUpRight className="h-4 w-4" /> : <ArrowDownRight className="h-4 w-4" />}</span>
+              <div className="min-w-0"><div className="flex items-center gap-2"><h2 className="text-[14px] font-semibold text-foreground">{selectedTrade.symbol}</h2><span className={`rounded-md px-1.5 py-0.5 text-[8px] font-semibold ${selectedTrade.side === "LONG" ? "bg-[var(--journal-win)]/10 text-[var(--journal-win)]" : "bg-[var(--journal-loss)]/10 text-[var(--journal-loss)]"}`}>{selectedTrade.side}</span></div><p className="mt-1 truncate text-[9px] text-muted">{selectedTrade.account} · {formatDate(selectedTrade.openedAt, true)}</p></div>
               <button type="button" onClick={() => setSelectedTradeId(null)} className="ml-auto flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"><X className="h-4 w-4" /></button>
             </div>
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
               {selectedTradeIsZyon ? <div className="flex items-start gap-2 rounded-xl border border-primary/20 bg-primary/[0.07] p-3 text-[8px] leading-4 text-muted"><Bot className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" /><span><strong className="text-foreground">Verified ZYON outcome.</strong> This record mirrors its locked Gameplan review and stays read-only here so the Journal cannot diverge from the original outcome.</span></div> : null}
               <div className="grid grid-cols-3 gap-2">
-                <div className="rounded-xl border border-border bg-background/35 p-3"><div className="text-[8px] uppercase tracking-[0.1em] text-muted">Net P&amp;L</div><div className={`mt-1 font-mono text-[16px] font-semibold ${selectedTrade.netPnl >= 0 ? "text-[#22C55E]" : "text-[#EF4444]"}`}>{money(selectedTrade.netPnl)}</div></div>
+                <div className="rounded-xl border border-border bg-background/35 p-3"><div className="text-[8px] uppercase tracking-[0.1em] text-muted">Net P&amp;L</div><div className={`mt-1 font-mono text-[16px] font-semibold ${selectedTrade.netPnl >= 0 ? "text-[var(--journal-win)]" : "text-[var(--journal-loss)]"}`}>{money(selectedTrade.netPnl)}</div></div>
                 <div className="rounded-xl border border-border bg-background/35 p-3"><div className="text-[8px] uppercase tracking-[0.1em] text-muted">R multiple</div><div className="mt-1 font-mono text-[16px] font-semibold">{selectedTrade.rMultiple === null ? "—" : `${selectedTrade.rMultiple.toFixed(2)}R`}</div></div>
                 <div className="rounded-xl border border-border bg-background/35 p-3"><div className="text-[8px] uppercase tracking-[0.1em] text-muted">Duration</div><div className="mt-1 font-mono text-[16px] font-semibold">{formatDuration(selectedTrade.durationMs)}</div></div>
               </div>
