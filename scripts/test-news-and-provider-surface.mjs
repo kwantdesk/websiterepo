@@ -85,14 +85,39 @@ check("a page-level loader fills the page it stands in for", () => {
   }
 });
 
+check("the gamma page does not report the provider's quota", () => {
+  /*
+   * The page carried "KwantData quota N remaining" in its footer, so when the
+   * allowance ran out the surface announced it. That is the desk's account
+   * state on a trading screen: it names a supplier, says nothing a trader can
+   * act on, and travels in every screenshot.
+   */
+  const gamma = read("../src/components/options-flow/GammaWorkspace.tsx");
+  assert.doesNotMatch(gamma, /quota/i, "the provider's quota is still on screen");
+  assert.doesNotMatch(gamma, /rateLimitRemaining \?\? "/, "the remaining allowance is still rendered");
+});
+
+check("the EOD notice is the label and the date, nothing else", () => {
+  // It carried two sentences explaining what a frozen snapshot is. A trader
+  // reading a gamma page already knows.
+  const gamma = read("../src/components/options-flow/GammaWorkspace.tsx");
+  assert.match(gamma, /<strong className="font-semibold text-amber-200">EOD snapshot<\/strong>/);
+  assert.doesNotMatch(gamma, /frozen from the last completed options session/, "the explanation survived");
+  assert.doesNotMatch(gamma, /not Monday live options positioning/, "the explanation survived");
+});
+
 check("the vendor is not named on a gamma surface", () => {
   // The owner asked for the word gone from the page, and a vendor name is not
   // something a trader can act on.
-  const gexdesk = readdirSync(new URL("../src/components/gexdesk/", import.meta.url))
-    .filter((name) => name.endsWith(".tsx"));
+  const files = [
+    ...readdirSync(new URL("../src/components/gexdesk/", import.meta.url))
+      .filter((name) => name.endsWith(".tsx"))
+      .map((name) => `gexdesk/${name}`),
+    "options-flow/GammaWorkspace.tsx",
+  ];
   const offenders = [];
-  for (const name of gexdesk) {
-    const source = read(`../src/components/gexdesk/${name}`);
+  for (const name of files) {
+    const source = read(`../src/components/${name}`);
     // Comments explaining provenance are fine; rendered text is not.
     const rendered = source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
     if (/KwantData/.test(rendered)) offenders.push(name);
