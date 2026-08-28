@@ -312,6 +312,34 @@ export class DepthRenderer {
     const yForTick = tick => ((topTick - tick) / visibleTickSpan) * plotHeight;
     const tickForY = y => topTick - (y / plotHeight) * visibleTickSpan;
 
+    /*
+     * Tell the parent where the CHART actually is.
+     *
+     * The DOM ladder, price axis and profile are painted inside this same
+     * canvas, so the workspace around us cannot measure them - it sees one
+     * full-width element. Without this it can only centre things across the
+     * whole pane, which puts them visibly left of the middle of the chart a
+     * trader is reading whenever the DOM is open.
+     *
+     * Posted only when the geometry actually changes: this runs on every
+     * render, and a message per frame would be a per-tick cost for a value
+     * that only moves when the pane or the panel toggles do.
+     */
+    if (window.parent !== window) {
+      const rect = this.canvas?.getBoundingClientRect?.();
+      const key = `${Math.round(plotWidth)}:${Math.round(plotHeight)}:${Math.round(rect?.top ?? 0)}:${Math.round(rect?.left ?? 0)}`;
+      if (key !== this.publishedPlotKey) {
+        this.publishedPlotKey = key;
+        window.parent.postMessage({
+          type: 'kwantdesk:liquidity-map-plot',
+          left: Math.round(rect?.left ?? 0),
+          top: Math.round(rect?.top ?? 0),
+          width: Math.round(plotWidth),
+          height: Math.round(plotHeight),
+        }, window.location.origin);
+      }
+    }
+
     this.layout = {
       width, height, plotWidth, dataWidth, liveGap, plotHeight, profileWidth, volumeRatioWidth, priceAxisWidth,
       priceLabelWidth, restingBookWidth, depthColumnWidth, timeAxisHeight,

@@ -7,6 +7,7 @@ import {
   CHART_WATERMARK_ASPECT,
   CHART_WATERMARK_SRC,
   CHART_WATERMARK_OPACITY,
+  LIQUIDITY_MAP_WATERMARK_SCALE,
 } from "../src/lib/chartWatermark.ts";
 
 /**
@@ -28,6 +29,7 @@ const read = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
 const chart = read("../src/components/Chart.tsx");
 const liqMap = read("../src/components/liquidity-map/LiquidityMapWorkspace.tsx");
 const shared = read("../src/lib/chartWatermark.ts");
+const renderer = read("../public/heatmap-app/src/renderer.js");
 
 let passed = 0;
 const check = (name, fn) => { fn(); passed += 1; console.log(`  ok  ${name}`); };
@@ -145,12 +147,47 @@ check("it is centred by the browser, not by measurement", () => {
   assert.match(chart, /marginInline: "auto",\s*\n\s*width: chartWatermark\.width,/);
 
   /*
-   * The liquidity map centres across the WHOLE pane instead. It draws its own
-   * axis inside the iframe, so the parent has no honest width to subtract -
-   * guessing one would put the mark somewhere nobody chose.
+   * The liquidity map brackets the plot the map reports rather than the pane,
+   * for the same reason: its DOM ladder and price axis are chrome on the right,
+   * and centring across them leaves the mark visibly left of the middle of the
+   * chart. It cannot subtract a measured width the way the chart does, because
+   * that chrome is painted inside the same canvas as the heat.
    */
-  assert.match(liqMap, /top: 8,\s*\n\s*left: 0,\s*\n\s*right: 0,\s*\n\s*marginInline: "auto",/);
+  assert.match(liqMap, /top: \(plotBox\?\.top \?\? 0\) \+ 8,/, "the mark must sit under the map's own rail");
+  assert.match(liqMap, /left: plotBox\?\.left \?\? 0,/);
+  assert.match(
+    liqMap,
+    /right: paneSize\.width - \(\(plotBox\?\.left \?\? 0\) \+ \(plotBox\?\.width \?\? 0\)\)/,
+    "the right edge must be the plot's edge, not the pane's",
+  );
   assert.match(liqMap, /marginInline: "auto",\s*\n\s*width: watermark\.width,/);
+});
+
+check("the liquidity map centres on the chart, not the pane", () => {
+  /*
+   * The DOM ladder, price axis and volume profile are painted into the same
+   * canvas as the heat, so from the workspace the map is one full-width
+   * element and its internal geometry cannot be measured. The map posts its
+   * plot rect; centring across the pane instead puts the mark visibly left of
+   * the middle of the chart whenever the DOM is open.
+   */
+  assert.match(renderer, /kwantdesk:liquidity-map-plot/, "the map never reports its plot");
+  assert.match(renderer, /publishedPlotKey/, "the plot would be posted on every render");
+  assert.match(liqMap, /"kwantdesk:liquidity-map-plot"/, "the workspace never listens for it");
+  // No plot yet means no mark: one that jumps into place on the first frame is
+  // worse than one that simply arrives correct.
+  assert.match(liqMap, /plotBox\s*\n?\s*\?\s*chartWatermarkSize/, "the mark is placed before the plot is known");
+});
+
+check("the liquidity map wears the mark at half size", () => {
+  assert.equal(LIQUIDITY_MAP_WATERMARK_SCALE, 0.5);
+  const full = chartWatermarkSize(1400, 700);
+  const half = chartWatermarkSize(1400, 700, LIQUIDITY_MAP_WATERMARK_SCALE);
+  assert.ok(Math.abs(half.width / full.width - 0.5) < 0.02, "half means half");
+  // Scaling must not distort it.
+  assert.ok(Math.abs(half.width / half.height - CHART_WATERMARK_ASPECT) < 0.35, "scaling distorted the mark");
+  assert.match(liqMap, /LIQUIDITY_MAP_WATERMARK_SCALE/, "the liq map does not use the half-size scale");
+  assert.doesNotMatch(chart, /LIQUIDITY_MAP_WATERMARK_SCALE/, "the charts must keep full size");
 });
 
 check("the liquidity map measures a pane that hides its own size", () => {

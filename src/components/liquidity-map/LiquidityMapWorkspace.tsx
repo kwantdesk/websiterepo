@@ -8,6 +8,7 @@ import {
   chartWatermarkSize,
   CHART_WATERMARK_SRC,
   CHART_WATERMARK_OPACITY,
+  LIQUIDITY_MAP_WATERMARK_SCALE,
 } from "@/lib/chartWatermark";
 
 type LiquidityMapReplayControl = {
@@ -42,6 +43,14 @@ function LiquidityMapWorkspace({
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const paneRef = useRef<HTMLDivElement>(null);
   const [paneSize, setPaneSize] = useState({ width: 0, height: 0 });
+  /*
+   * Where the chart is inside the pane, as the map itself reports it.
+   *
+   * The DOM ladder, price axis and volume profile are painted into the same
+   * canvas as the heat, so from out here the map is one full-width element and
+   * nothing about its internal geometry can be measured. The map posts it.
+   */
+  const [plotBox, setPlotBox] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
   const styleCheckTimerRef = useRef<number | null>(null);
   const stylesReadyRef = useRef(false);
   const marketFrameReadyRef = useRef(false);
@@ -171,6 +180,19 @@ function LiquidityMapWorkspace({
     const handleMapReady = (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return;
       if (event.source !== iframeRef.current?.contentWindow) return;
+      if (event.data?.type === "kwantdesk:liquidity-map-plot") {
+        const { left, top, width, height } = event.data as Record<string, unknown>;
+        if ([left, top, width, height].every((value) => typeof value === "number" && Number.isFinite(value))) {
+          setPlotBox((current) => (
+            current
+              && current.left === left && current.top === top
+              && current.width === width && current.height === height
+              ? current
+              : { left, top, width, height } as { left: number; top: number; width: number; height: number }
+          ));
+        }
+        return;
+      }
       if (event.data?.type === "kwantdesk:liquidity-map-focus") {
         onActivate?.();
         return;
@@ -287,7 +309,17 @@ function LiquidityMapWorkspace({
     observer.observe(node.parentElement ?? node);
     return () => observer.disconnect();
   }, []);
-  const watermark = chartWatermarkSize(paneSize.width, paneSize.height);
+  /*
+   * Sized and placed against the CHART, not the pane.
+   *
+   * Until the map reports its plot the mark stays hidden rather than being
+   * centred across the whole pane: with the DOM open that lands it visibly
+   * left of the middle of the chart, and a mark that jumps into place once the
+   * first frame arrives is worse than one that simply arrives correct.
+   */
+  const watermark = plotBox
+    ? chartWatermarkSize(plotBox.width, plotBox.height, LIQUIDITY_MAP_WATERMARK_SCALE)
+    : null;
 
   return (
     <div
@@ -331,9 +363,13 @@ function LiquidityMapWorkspace({
           draggable={false}
           className="pointer-events-none absolute z-[5] select-none"
           style={{
-            top: 8,
-            left: 0,
-            right: 0,
+            // Under the map's own tool rail rather than floating over it, and
+            // centred across the plot so the DOM's inner edge is the chart's
+            // right edge - `left` and `right` bracket the plot, `auto` margins
+            // split what is left over.
+            top: (plotBox?.top ?? 0) + 8,
+            left: plotBox?.left ?? 0,
+            right: paneSize.width - ((plotBox?.left ?? 0) + (plotBox?.width ?? 0)),
             marginInline: "auto",
             width: watermark.width,
             height: watermark.height,
