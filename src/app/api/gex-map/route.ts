@@ -1,6 +1,8 @@
 import { createServerClient } from "@supabase/ssr";
+import { timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { getConfiguredQuantDataApiKey, getGexMapPanel, getQuantDataHttpError, getUsOptionsSessionDate } from "@/lib/quantData.server";
+import { conditionalJson } from "@/lib/conditionalJson";
 import { getDealerInventoryPanel } from "@/lib/gexMapV2.server";
 import {
   compactLiveGexMapPanel,
@@ -25,6 +27,13 @@ export const maxDuration = 60;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 async function isAuthenticated(request: NextRequest) {
+  const expectedInternalToken = String(process.env.KWANTDESK_ANALYTICS_SERVICE_TOKEN || "").trim();
+  const suppliedInternalToken = String(request.headers.get("x-kwantdesk-internal-analytics-token") || "").trim();
+  if (expectedInternalToken.length >= 32 && suppliedInternalToken.length === expectedInternalToken.length) {
+    const supplied = Buffer.from(suppliedInternalToken, "utf8");
+    const expected = Buffer.from(expectedInternalToken, "utf8");
+    if (supplied.length === expected.length && timingSafeEqual(supplied, expected)) return true;
+  }
   const host = request.nextUrl.hostname;
   if (
     process.env.KWANTIFY_DEV_AUTH_BYPASS === "1"
@@ -118,8 +127,29 @@ export async function GET(request: NextRequest) {
         Boolean(sessionDate) && sessionDate !== getUsOptionsSessionDate(),
       )
       : await getGexMapPanel(symbol, greekMode, sessionDate, scope, representation);
-    return NextResponse.json(compact ? compactLiveGexMapPanel(payload) : payload, {
-      headers: { "Cache-Control": "private, no-store, max-age=0" },
+    /*
+     * The ladder is large and every open panel polls it. The payload states
+     * its own freshness in `refreshAfterMs`, so that is exactly how long the
+     * browser may reuse a copy - asking again sooner would only be told the
+     * same thing.
+     *
+     * The identity is deliberately wider than `asOf`: spot and net exposure
+     * can move within one surface timestamp, and a ladder that quietly kept a
+     * stale spot beside live strikes would be worse than the transfer it
+     * saves.
+     */
+    const body = compact ? compactLiveGexMapPanel(payload) : payload;
+    return conditionalJson(request, body, {
+      identity: [
+        request.nextUrl.searchParams.toString(),
+        payload.asOf,
+        payload.status,
+        payload.stockPrice ?? "",
+        payload.netExposure,
+        payload.latestStrikes.length,
+        payload.frames.length,
+      ].join("::"),
+      maxAgeMs: payload.refreshAfterMs,
     });
   } catch (error) {
     const problem = getQuantDataHttpError(error);

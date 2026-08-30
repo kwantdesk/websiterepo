@@ -9,6 +9,7 @@ import {
   fetchMarketIndexSnapshots,
   hasIntradayMarketIndexHistoryAccess,
 } from "@/lib/marketIndices.server";
+import { conditionalJson } from "@/lib/conditionalJson";
 import { getMarketIndexDefinition } from "@/lib/marketIndices";
 
 export const dynamic = "force-dynamic";
@@ -29,6 +30,14 @@ const CBOE_VIX_HISTORY_START = Date.UTC(1990, 0, 1);
 // bursts into one provider pass so the KwantData fallback cannot burn quota.
 const snapshotCache = new Map<string, { expiresAt: number; payload: unknown }>();
 const SNAPSHOT_CACHE_TTL_MS = 10_000;
+
+/*
+ * A completed bar series does not change, and the newest bar of a live one
+ * only moves when its interval closes. Ten seconds is short enough that a
+ * forming bar is never visibly behind, and long enough to collapse the burst
+ * of identical requests several panes make on load.
+ */
+const INDEX_HISTORY_MAX_AGE_MS = 10_000;
 
 type IndexHistoryCandle = {
   timestamp: number;
@@ -113,8 +122,16 @@ export async function GET(request: Request) {
     const cacheKey = symbols.join(",");
     const cached = snapshotCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
-      return NextResponse.json(cached.payload, {
-        headers: { "Cache-Control": "private, no-store, max-age=0" },
+      /*
+       * The ticker polls every four seconds against a ten-second server cache,
+       * so most requests were being answered with a full re-send of a body the
+       * browser already had. Reusing it for the rest of that entry's life is
+       * exactly what the server would return anyway.
+       */
+      const asOf = (cached.payload as { asOf?: string }).asOf ?? "";
+      return conditionalJson(request, cached.payload, {
+        identity: `${cacheKey}::${asOf}`,
+        maxAgeMs: Math.max(0, cached.expiresAt - Date.now()),
       });
     }
     try {
@@ -132,8 +149,13 @@ export async function GET(request: Request) {
               : "VPS index snapshot failed.";
             throw new Error(message);
           }
-          return NextResponse.json(payload, {
-            headers: { "Cache-Control": "private, no-store, max-age=0" },
+          return conditionalJson(request, payload, {
+            // Passed straight through from the collector, so its own asOf is
+            // the only honest identity. Without one it must never match.
+            identity: `vps-snapshot::${cacheKey}::${
+              (payload as { asOf?: string } | null)?.asOf ?? Date.now()
+            }`,
+            maxAgeMs: 0,
           });
         } catch {
           // The VPS stream lost its Massive entitlement. Local providers
@@ -154,8 +176,9 @@ export async function GET(request: Request) {
         }
         snapshotCache.set(cacheKey, { expiresAt: Date.now() + SNAPSHOT_CACHE_TTL_MS, payload });
       }
-      return NextResponse.json(payload, {
-        headers: { "Cache-Control": "private, no-store, max-age=0" },
+      return conditionalJson(request, payload, {
+        identity: `${cacheKey}::${payload.asOf}`,
+        maxAgeMs: snapshots.length ? SNAPSHOT_CACHE_TTL_MS : 0,
       });
     } catch (error) {
       return NextResponse.json(
@@ -166,6 +189,15 @@ export async function GET(request: Request) {
   }
 
   const symbol = url.searchParams.get("symbol")?.trim().toUpperCase() ?? "";
+  /*
+   * A bar series for a fixed window does not change once its last bar closes,
+   * so the newest bar's timestamp and the bar count together say everything
+   * about whether the client's copy is still the right answer.
+   */
+  const historyIdentity = (rows: Array<{ timestamp?: number }>) => [
+    symbol, timeframe, from, to, rows.length, rows.at(-1)?.timestamp ?? "",
+  ].join("::");
+
   const timeframe = url.searchParams.get("timeframe")?.trim() || "5m";
   if (!getMarketIndexDefinition(symbol)) {
     return NextResponse.json({ error: "A supported market instrument is required." }, { status: 400 });
@@ -248,8 +280,9 @@ export async function GET(request: Request) {
             // itself fails.
           }
         }
-        return NextResponse.json(responsePayload, {
-          headers: { "Cache-Control": "private, no-store, max-age=0" },
+        return conditionalJson(request, responsePayload, {
+          identity: historyIdentity(indexHistoryCandles(responsePayload)),
+          maxAgeMs: INDEX_HISTORY_MAX_AGE_MS,
         });
       } catch {
         // The VPS history proxy lost its Massive entitlement. Fall through to
@@ -259,7 +292,8 @@ export async function GET(request: Request) {
       }
     }
     const candles = await fetchMarketIndexCandles({ symbol, timeframe, from, to });
-    return NextResponse.json(
+    return conditionalJson(
+      request,
       {
         candles,
         symbol,
@@ -269,7 +303,10 @@ export async function GET(request: Request) {
         from,
         to,
       },
-      { headers: { "Cache-Control": "private, no-store, max-age=0" } },
+      {
+        identity: historyIdentity(candles),
+        maxAgeMs: INDEX_HISTORY_MAX_AGE_MS,
+      },
     );
   } catch (error) {
     return NextResponse.json(

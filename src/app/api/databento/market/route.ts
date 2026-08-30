@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { conditionalJson } from "@/lib/conditionalJson";
 import { logProviderError, providerErrorMessage } from "@/lib/providerErrorMessage";
 import { unstable_cache } from "next/cache";
 import { gzipSync, gunzipSync } from "node:zlib";
@@ -272,8 +273,28 @@ export async function GET(request: Request) {
     ? EVENT_HISTORY_CACHE_MS
     : FRESH_CACHE_MS;
 
+  /*
+   * This is the largest response the platform serves - a full candle history
+   * plus its execution tuples, megabytes of it - and the panes ask for it
+   * repeatedly: on load, on every timeframe change, on tail reconciliation and
+   * on the four-minute flow-heal loop, once per pane.
+   *
+   * It was `no-store`, so every one of those dragged the whole body out of
+   * origin even when the server was answering from a cache entry it had
+   * already sent. One month measured 795 GB of origin transfer at $61.69.
+   *
+   * The identity below changes exactly when the payload does, so an unchanged
+   * surface comes back as a header-only 304. The browser is allowed to reuse
+   * its copy for the REMAINING life of the server's own cache entry, never
+   * longer: inside that window the server would hand back this same entry
+   * anyway, so nothing older is ever shown than what a request would return.
+   */
+  const bodyIdentity = (cachedAt: number, extra = "") =>
+    `${cacheKey}::${includeExecutions ? "exec" : "bars"}::${cachedAt}${extra}`;
+
   if (!forceFresh && cached && now - cached.updatedAt <= cacheLifetime) {
-    return NextResponse.json(
+    return conditionalJson(
+      request,
       {
         candles: cached.candles,
         executions: includeExecutions ? cached.executions : [],
@@ -283,7 +304,10 @@ export async function GET(request: Request) {
         cached: true,
         cachedAt: cached.updatedAt,
       },
-      { headers: { "Cache-Control": "private, no-store, max-age=0" } },
+      {
+        identity: bodyIdentity(cached.updatedAt),
+        maxAgeMs: Math.max(0, cacheLifetime - (now - cached.updatedAt)),
+      },
     );
   }
 
@@ -321,7 +345,8 @@ export async function GET(request: Request) {
           };
     const { candles, executions } = history;
     if (candles.length) historyCache.set(cacheKey, { candles, executions, updatedAt: now });
-    return NextResponse.json(
+    return conditionalJson(
+      request,
       {
         candles,
         executions: includeExecutions ? executions : [],
@@ -331,11 +356,14 @@ export async function GET(request: Request) {
         cached: false,
         cachedAt: now,
       },
-      { headers: { "Cache-Control": "private, no-store, max-age=0" } },
+      // Just stored as the cache entry for `cacheLifetime`, so that is exactly
+      // how long the same request would be answered from it.
+      { identity: bodyIdentity(now), maxAgeMs: cacheLifetime },
     );
   } catch (error) {
     if (cached?.candles.length) {
-      return NextResponse.json(
+      return conditionalJson(
+        request,
         {
           candles: cached.candles,
           executions: includeExecutions ? cached.executions : [],
@@ -346,7 +374,10 @@ export async function GET(request: Request) {
           stale: true,
           cachedAt: cached.updatedAt,
         },
-        { headers: { "Cache-Control": "private, no-store, max-age=0" } },
+        // Held past its lifetime because the provider failed. The body is still
+        // worth a 304, but the browser must come back every time so it picks up
+        // the moment the provider answers again.
+        { identity: bodyIdentity(cached.updatedAt, "::stale"), maxAgeMs: 0 },
       );
     }
     logProviderError("cme-history", error);
