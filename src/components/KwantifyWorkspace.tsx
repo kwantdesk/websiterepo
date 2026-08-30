@@ -6756,14 +6756,37 @@ function WorkspaceChartPaneComponent({
         if (loadError instanceof DOMException && loadError.name === "AbortError") return;
         if (!cachedCandles.length && !immediateCandles.length) {
           historyHydratedRef.current = false;
-          setError("CME history is temporarily unavailable.");
+          /*
+           * The route's own words, when it has any.
+           *
+           * It already answers provider-neutrally and specifically - "CME
+           * history is only available up to 2026-08-30" tells a trader what is
+           * actually wrong, where a fixed "temporarily unavailable" tells them
+           * to keep waiting for something that is not coming back on its own.
+           */
+          setError(loadError instanceof Error && loadError.message
+            ? loadError.message
+            : "CME history is unavailable right now.");
         }
         const tailNeedsReconciliation = cmeChartTailNeedsReconciliation(
           latestCandlesRef.current.length ? latestCandlesRef.current : cachedCandles,
           pane.timeframe,
         );
-        setLoading(!(latestCandlesRef.current.length || cachedCandles.length));
-        if (tailNeedsReconciliation && !isEventBasedChartInterval(pane.timeframe)) {
+        /*
+         * Only keep the loader up while something is still coming.
+         *
+         * This used to go back to loading whenever the load failed with nothing
+         * cached, on the reasoning that an empty chart is still waiting. For a
+         * time interval that holds, because the reconciliation timer below
+         * retries. For an EVENT interval it is skipped - so a range or volume
+         * chart with no cached history failed, returned to loading, and nothing
+         * ever ran again. It span for as long as the tab stayed open, with the
+         * real reason already in hand and never shown.
+         */
+        const willRetry = tailNeedsReconciliation && !isEventBasedChartInterval(pane.timeframe);
+        const haveSomethingToDraw = Boolean(latestCandlesRef.current.length || cachedCandles.length);
+        setLoading(!haveSomethingToDraw && willRetry);
+        if (willRetry) {
           reconciliationTimer = window.setTimeout(() => {
             reconciliationTimer = null;
             void reconcileTail();
@@ -17046,8 +17069,10 @@ export default function KwantifyWorkspace({
     setActivePaneId(paneId);
     const tool = WORKSPACE_TOOL_OPTIONS.find((option) => option.id === content);
     const indicatorId = tool?.indicatorId;
+    const withoutPreviousTool = paneIndicators[paneId] ?? [];
+    const installed = withoutPreviousTool.find((instance) => instance.indicatorId === indicatorId);
     const nextIndicators: ChartIndicatorInstance[] = indicatorId && CHART_INDICATOR_BY_ID.has(indicatorId)
-      ? [{
+      ? [installed ? { ...installed, enabled: true } : {
           instanceId: `${indicatorId}-${crypto.randomUUID()}`,
           indicatorId,
           enabled: true,
