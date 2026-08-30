@@ -479,6 +479,7 @@ import {
   type PaperMarkQuote,
   paperContractSpec,
   paperFillCandleTimestamp,
+  constrainDraggedPaperOrderPrice,
   paperProjectedPnl,
   snapPaperPrice,
   type PaperProtectionUpdate,
@@ -654,6 +655,15 @@ interface ChartProps {
     update: PaperProtectionUpdate,
   ) => void;
   onPaperProtectionDragStateChange?: (positionId: string, dragging: boolean) => void;
+  /**
+   * Reprice a resting order by dragging its line.
+   *
+   * Moving the entry is the one adjustment that changes both sides of the trade
+   * at once: the stop and target stay put and the risk and reward measured
+   * against them move, which is exactly what a trader is looking at when they
+   * reach for the line.
+   */
+  onUpdatePaperOrderPrice?: (accountId: string, orderId: string, price: number) => void;
   /**
    * A resting order the trader has armed but not yet priced. While it is set,
    * the chart follows the cursor with the order's own line and a click picks
@@ -3044,6 +3054,7 @@ function Chart({
   paperWorkingOrders = EMPTY_CHART_ITEMS,
   onCancelWorkingOrder,
   onUpdatePaperProtection,
+  onUpdatePaperOrderPrice,
   onPaperProtectionDragStateChange,
   onClosePaperPosition,
   onRemovePaperFills,
@@ -3276,7 +3287,14 @@ function Chart({
   }, []);
   const footprintActiveRef = useRef(false);
   const footprintBarWidthRef = useRef<number | null>(null);
-  const [paperDragPreview, setPaperDragPreview] = useState<{ id: string; price: number } | null>(null);
+  /*
+   * `positionId` and `kind` are carried so a dragged ENTRY can reprice its own
+   * stop and target labels while the pointer is still down. Matching on the
+   * level id alone only ever reaches the line under the cursor.
+   */
+  const [paperDragPreview, setPaperDragPreview] = useState<
+    { id: string; price: number; kind: "entry" | "stop_loss" | "take_profit"; positionId: string } | null
+  >(null);
   const [paperDraftProtection, setPaperDraftProtection] = useState<{
     id: string;
     kind: "stop_loss" | "take_profit";
@@ -14867,20 +14885,38 @@ function Chart({
           return target ? Math.max(0, target.quantity - target.filledQuantity) : level.position.remainingQuantity;
         })()
       : level.position.remainingQuantity;
+    /*
+     * While a resting order's entry is being dragged, its own stop and target
+     * are repriced against the price under the cursor rather than the one
+     * stored on the order. Dragging the entry is what CHANGES the risk and the
+     * reward - showing the trader the old figures until they let go would hide
+     * the only thing they are dragging it to find out.
+     */
+    const draggedEntryPrice = paperDragPreview?.kind === "entry"
+      && paperDragPreview.positionId === level.position.id
+      ? paperDragPreview.price
+      : null;
+    const effectiveEntry = draggedEntryPrice ?? level.position.entryPrice;
     const projectedPnl = level.kind === "entry"
       ? paperPositionLivePnl(level.position)
       : paperProjectedPnl(
           level.position.symbol,
           level.position.side,
-          level.position.entryPrice,
+          effectiveEntry,
           displayPrice,
           protectedQuantity,
         );
+    const showsDraggedFigures = paperDragPreview?.id === level.id
+      || (draggedEntryPrice !== null && level.kind !== "entry");
     return {
     ...level,
     price: displayPrice,
-    label: paperDragPreview?.id === level.id
+    label: showsDraggedFigures && level.kind !== "entry"
       ? `${level.kind === "stop_loss" ? "SL" : "TP"} · ${paperProtectionSizeLabel(level.position.side, protectedQuantity)} · ${displayPrice.toFixed(priceFormat.precision)} · ${formatPaperMoney(projectedPnl)}`
+      : paperDragPreview?.id === level.id && level.resting
+      // A resting entry names its own new price as it moves; it has no open
+      // P&L to show, because there is no position yet.
+      ? `${level.position.side === "buy" ? "BUY" : "SELL"} ${level.position.quantity} · ${displayPrice.toFixed(priceFormat.precision)} · working`
       : level.label,
     y: candleSeriesRef.current?.priceToCoordinate(displayPrice) ?? null,
     };
@@ -15038,8 +15074,15 @@ function Chart({
     event: ReactPointerEvent<HTMLButtonElement>,
     level: (typeof paperOverlayLevels)[number],
   ) => {
-    if (level.kind === "entry" || !onUpdatePaperProtection) return;
-    const protectionKind = level.kind;
+    /*
+     * A FILLED entry is a fact about what happened and cannot move. A resting
+     * one is still just a price the trader chose, so it drags like any other
+     * handle - which is the one case where changing your mind is still free.
+     */
+    const restingEntry = level.kind === "entry" && level.resting;
+    if (level.kind === "entry" && !restingEntry) return;
+    if (restingEntry ? !onUpdatePaperOrderPrice : !onUpdatePaperProtection) return;
+    const protectionKind = level.kind === "entry" ? null : level.kind;
     event.preventDefault();
     event.stopPropagation();
     const container = chartContainerRef.current;
@@ -15054,8 +15097,24 @@ function Chart({
       const bounds = container.getBoundingClientRect();
       const price = series.coordinateToPrice(clientY - bounds.top);
       if (price === null || !Number.isFinite(price)) return;
-      latestPrice = constrainedPaperProtectionPrice(level.position, protectionKind, price);
-      setPaperDragPreview({ id: level.id, price: latestPrice });
+      if (restingEntry) {
+        // The order can be filled or cancelled by a quote mid-drag. If it is no
+        // longer resting there is nothing to reprice, so the line holds where
+        // it is rather than being clamped against a stale copy.
+        const restingOrder = visibleWorkingOrders.find((order) => order.id === level.position.id);
+        if (!restingOrder) return;
+        latestPrice = constrainDraggedPaperOrderPrice(restingOrder, price);
+      } else if (protectionKind) {
+        latestPrice = constrainedPaperProtectionPrice(level.position, protectionKind, price);
+      } else {
+        return;
+      }
+      setPaperDragPreview({
+        id: level.id,
+        price: latestPrice,
+        kind: level.kind,
+        positionId: level.position.id,
+      });
     };
     const flushPreview = () => {
       animationFrame = null;
@@ -15078,10 +15137,12 @@ function Chart({
       pendingClientY = upEvent.clientY;
       updatePreview(upEvent.clientY);
       cleanup();
-      if (level.kind === "stop_loss") {
-        onUpdatePaperProtection(level.position.accountId, level.position.id, { kind: "stop_loss", price: latestPrice });
+      if (restingEntry) {
+        onUpdatePaperOrderPrice?.(level.position.accountId, level.position.id, latestPrice);
+      } else if (level.kind === "stop_loss") {
+        onUpdatePaperProtection?.(level.position.accountId, level.position.id, { kind: "stop_loss", price: latestPrice });
       } else if (level.targetId) {
-        onUpdatePaperProtection(level.position.accountId, level.position.id, {
+        onUpdatePaperProtection?.(level.position.accountId, level.position.id, {
           kind: "take_profit",
           targetId: level.targetId,
           price: latestPrice,
@@ -16237,19 +16298,36 @@ function Chart({
                   TP
                 </button>
               ) : null}
-              <span
-                ref={(node) => {
-                  // Only an open position gets its text rewritten per tick. A
-                  // resting order's label is its own and must survive.
-                  if (level.kind !== "entry" || level.resting) return;
-                  if (node) paperPnlNodesRef.current.set(level.id, node);
-                  else paperPnlNodesRef.current.delete(level.id);
-                }}
-                className="min-w-0 flex-1 truncate"
-                style={{ paddingLeft: PAPER_LABEL_PAD_X, paddingRight: PAPER_LABEL_PAD_X }}
-              >
-                {level.label}
-              </span>
+              {level.resting && onUpdatePaperOrderPrice ? (
+                /*
+                 * A resting order's price is still just a choice, so its line
+                 * drags like any other handle. A FILLED entry stays plain text:
+                 * it is a record of what happened, not a setting.
+                 */
+                <button
+                  type="button"
+                  onPointerDown={(event) => startPaperProtectionDrag(event, level)}
+                  className="min-w-0 flex-1 cursor-ns-resize touch-none truncate text-left active:cursor-grabbing"
+                  style={{ paddingLeft: PAPER_LABEL_PAD_X, paddingRight: PAPER_LABEL_PAD_X }}
+                  title="Drag to reprice this order · the stop and target hold still and their P&L follows"
+                >
+                  {level.label}
+                </button>
+              ) : (
+                <span
+                  ref={(node) => {
+                    // Only an open position gets its text rewritten per tick. A
+                    // resting order's label is its own and must survive.
+                    if (level.kind !== "entry" || level.resting) return;
+                    if (node) paperPnlNodesRef.current.set(level.id, node);
+                    else paperPnlNodesRef.current.delete(level.id);
+                  }}
+                  className="min-w-0 flex-1 truncate"
+                  style={{ paddingLeft: PAPER_LABEL_PAD_X, paddingRight: PAPER_LABEL_PAD_X }}
+                >
+                  {level.label}
+                </span>
+              )}
               {(level.resting ? onCancelWorkingOrder : onClosePaperPosition) ? (
                 <button
                   type="button"

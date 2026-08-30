@@ -216,7 +216,9 @@
     "test:interval-menu": "node scripts/test-interval-menu.mjs",
     "test:chart-history-state": "node scripts/test-chart-history-state.mjs",
     "test:origin-transfer": "node --import ./scripts/alias-hook.mjs scripts/test-origin-transfer.mjs",
-    "test:weekly-profile-week": "node --import ./scripts/alias-hook.mjs scripts/test-weekly-profile-week.mjs"
+    "test:weekly-profile-week": "node --import ./scripts/alias-hook.mjs scripts/test-weekly-profile-week.mjs",
+    "test:order-drag": "node --import ./scripts/alias-hook.mjs scripts/test-order-drag.mjs",
+    "test:order-drag": "node --import ./scripts/alias-hook.mjs scripts/test-order-drag.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",

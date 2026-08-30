@@ -250,6 +250,7 @@ import {
   parseLeverage,
   parsePaperPriceInput,
   placePaperOrder,
+  updatePaperOrderPrice,
   updatePaperOrderProtection,
   processPaperQuote,
   resetPaperAccountLedger,
@@ -5221,6 +5222,7 @@ function WorkspaceChartPaneComponent({
   paperPositions,
   paperFills,
   onUpdatePaperProtection,
+  onUpdatePaperOrderPrice,
   armedOrder,
   paperWorkingOrders,
   onArmedOrderPick,
@@ -5291,6 +5293,7 @@ function WorkspaceChartPaneComponent({
     positionId: string,
     update: PaperProtectionUpdate,
   ) => void;
+  onUpdatePaperOrderPrice?: (accountId: string, orderId: string, price: number) => void;
   onPaperProtectionDragStateChange?: (positionId: string, dragging: boolean) => void;
   onClosePaperPosition?: (position: PaperPosition) => void;
   onCancelWorkingOrder?: (accountId: string, orderId: string) => void;
@@ -9008,6 +9011,7 @@ function WorkspaceChartPaneComponent({
           paperPositions={paperPositions}
           paperFills={paperFills}
           onUpdatePaperProtection={onUpdatePaperProtection}
+          onUpdatePaperOrderPrice={onUpdatePaperOrderPrice}
           onPaperProtectionDragStateChange={onPaperProtectionDragStateChange}
           onClosePaperPosition={onClosePaperPosition}
           onCancelWorkingOrder={onCancelWorkingOrder}
@@ -16818,6 +16822,21 @@ export default function KwantifyWorkspace({
    * presents an order as a position anchor so it can reuse the same handles
    * and drag, so the id is what tells the two apart here.
    */
+  /**
+   * Reprice a resting order dragged on the chart.
+   *
+   * The stop and target are deliberately left where they are. Moving the entry
+   * is how a trader changes the risk and reward of a trade they have not taken
+   * yet; dragging the exits along with it would leave both untouched and make
+   * the gesture pointless.
+   */
+  const handlePaperOrderPriceUpdate = (accountId: string, orderId: string, price: number) => {
+    const current = paperLedgerRef.current;
+    const next = updatePaperOrderPrice(current, accountId, orderId, price);
+    if (next === current) return;
+    commitPaperLedger(next);
+  };
+
   const handlePaperProtectionUpdate = (
     accountId: string,
     positionId: string,
@@ -17528,6 +17547,7 @@ export default function KwantifyWorkspace({
         }}
         onArmedOrderCancel={() => setChartPlacementSuspended(true)}
         onUpdatePaperProtection={handlePaperProtectionUpdate}
+        onUpdatePaperOrderPrice={handlePaperOrderPriceUpdate}
         onPaperProtectionDragStateChange={handlePaperProtectionDragStateChange}
         onClosePaperPosition={handleFlattenPaperPosition}
         onCancelWorkingOrder={handleCancelPaperOrder}
@@ -19537,6 +19557,7 @@ export default function KwantifyWorkspace({
                     paperFills={(selectedPaperAccountLedger?.fills ?? []).filter((fill) =>
                       !selectedHiddenPaperFillIds.has(fill.id))}
                     onUpdatePaperProtection={handlePaperProtectionUpdate}
+                    onUpdatePaperOrderPrice={handlePaperOrderPriceUpdate}
                     onPaperProtectionDragStateChange={handlePaperProtectionDragStateChange}
                     onClosePaperPosition={handleFlattenPaperPosition}
                     onCancelWorkingOrder={handleCancelPaperOrder}

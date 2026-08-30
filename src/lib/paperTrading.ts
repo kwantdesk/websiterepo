@@ -1436,6 +1436,74 @@ export function flattenPaperAccount(
  * a target below it is refused rather than stored, since the fill would
  * otherwise close instantly at a loss.
  */
+/**
+ * Where a working order's price may be dragged to.
+ *
+ * Moving the entry is the one adjustment that changes both sides of the trade
+ * at once: the stop and the target stay where the trader put them, and the risk
+ * and reward measured against them move instead. That is the whole point of
+ * dragging it - so the protection is NOT dragged along, it is held still and
+ * repriced.
+ *
+ * The entry is clamped to stay on its own side of both, one tick clear. Without
+ * that, a drag through the stop would invert the trade - a long whose stop sits
+ * above its entry is not a long with a bad stop, it is nonsense - and refusing
+ * the move outright mid-drag would just make the handle stick.
+ */
+export function constrainDraggedPaperOrderPrice(order: PaperOrder, price: number): number {
+  const tick = paperTickSize(order.symbol);
+  const targets = order.takeProfits.map((target) => target.price).filter(Number.isFinite);
+  let low = -Infinity;
+  let high = Infinity;
+  if (order.side === "buy") {
+    if (order.stopLoss !== null) low = order.stopLoss + tick;
+    if (targets.length) high = Math.min(...targets) - tick;
+  } else {
+    if (order.stopLoss !== null) high = order.stopLoss - tick;
+    if (targets.length) low = Math.max(...targets) + tick;
+  }
+  // A band narrower than a tick means the protection itself leaves no room;
+  // hold the order where it is rather than inventing a price between them.
+  if (low > high) return order.price ?? price;
+  return snapPaperPrice(order.symbol, Math.min(high, Math.max(low, price)));
+}
+
+/**
+ * Reprice a resting order.
+ *
+ * Only a working order can move: once it has filled, its entry is a fact about
+ * what happened, not a setting.
+ */
+export function updatePaperOrderPrice(
+  ledger: PaperTradingLedger,
+  accountId: string,
+  orderId: string,
+  price: number,
+): PaperTradingLedger {
+  const account = ledger.accounts[accountId];
+  if (!account) return ledger;
+  const order = account.orders.find((candidate) => candidate.id === orderId);
+  if (!order || order.status !== "working" || order.price == null) return ledger;
+  if (!Number.isFinite(price)) return ledger;
+
+  const nextPrice = constrainDraggedPaperOrderPrice(order, price);
+  if (nextPrice === order.price) return ledger;
+  if (!protectionValid(order.side, nextPrice, order.stopLoss, order.takeProfits)) return ledger;
+
+  const nextOrder: PaperOrder = { ...order, price: nextPrice };
+  return {
+    ...ledger,
+    accounts: {
+      ...ledger.accounts,
+      [accountId]: {
+        ...account,
+        orders: account.orders.map((candidate) => candidate.id === orderId ? nextOrder : candidate),
+        updatedAt: Date.now(),
+      },
+    },
+  };
+}
+
 export function updatePaperOrderProtection(
   ledger: PaperTradingLedger,
   accountId: string,

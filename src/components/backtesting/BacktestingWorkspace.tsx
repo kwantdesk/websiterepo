@@ -90,6 +90,7 @@ type BacktestingWorkspaceProps = {
     positionId: string,
     update: PaperProtectionUpdate,
   ) => void;
+  onUpdatePaperOrderPrice?: (accountId: string, orderId: string, price: number) => void;
   onPaperProtectionDragStateChange?: (positionId: string, dragging: boolean) => void;
   onClosePaperPosition?: (position: PaperPosition) => void;
   onCancelWorkingOrder?: (accountId: string, orderId: string) => void;
@@ -716,6 +717,7 @@ export default function BacktestingWorkspace({
   paperPositions = [],
   paperFills = [],
   onUpdatePaperProtection,
+  onUpdatePaperOrderPrice,
   onPaperProtectionDragStateChange,
   onClosePaperPosition,
   onCancelWorkingOrder,
@@ -2017,6 +2019,7 @@ export default function BacktestingWorkspace({
             paperPositions={paperPositions}
             paperFills={paperFills}
             onUpdatePaperProtection={onUpdatePaperProtection}
+            onUpdatePaperOrderPrice={onUpdatePaperOrderPrice}
             onPaperProtectionDragStateChange={onPaperProtectionDragStateChange}
             onClosePaperPosition={onClosePaperPosition}
             onCancelWorkingOrder={onCancelWorkingOrder}
