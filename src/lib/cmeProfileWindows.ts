@@ -141,6 +141,30 @@ export function nextCmeDailyCompletion(now: number) {
  * candles - a short range, or history still restoring - it collapsed to exactly
  * today and the weekly profile mirrored the daily one.
  */
+export type CmeWeekSelection = "current" | "previous";
+
+/**
+ * Which trading week a weekly profile covers.
+ *
+ * A weekly profile of the CURRENT week is only worth as much as the week has
+ * run. On a Monday morning it is a few hours of tape wearing a weekly label,
+ * and it stays that way until Wednesday or so - which is exactly when a trader
+ * most wants last week's completed structure to lean on.
+ *
+ * "previous" returns the week that has actually finished, bounded at this
+ * week's open so no part of the live week leaks into it. It is a complete,
+ * settled profile rather than one that reshapes under you all day.
+ */
+export function cmeWeekRange(now: number, selection: CmeWeekSelection = "current") {
+  const thisWeekStart = currentCmeWeekStart(now);
+  if (selection !== "previous") return { startMs: thisWeekStart, endMs: null as number | null };
+  return {
+    // One millisecond before this week's open lands inside the week before it.
+    startMs: currentCmeWeekStart(thisWeekStart - 1),
+    endMs: thisWeekStart,
+  };
+}
+
 export function currentCmeWeekStart(now: number) {
   const parts = chicagoParts(now);
   let date = { year: parts.year, month: parts.month, day: parts.day };

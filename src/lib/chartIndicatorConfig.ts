@@ -13,6 +13,7 @@ import { DEFAULT_LIQUIDITY_STOP_SWEEP_SETTINGS, LIQUIDITY_STOP_SWEEP_SETTINGS_VE
 import { DEFAULT_POC_AUCTION_SUITE_SETTINGS, POC_AUCTION_SUITE_SETTINGS_VERSION, normalizePocAuctionSuiteSettings } from "@/lib/pocAuctionSuite";
 import { DEFAULT_TAPE_SPEED_SETTINGS, normalizeTapeSpeedSettings } from "@/lib/tapeSpeedOrderFlowBurst";
 import { defaultIndicatorPlotColors, visibleIndicatorTheme } from "@/lib/indicatorPlotColors";
+import { normalizeExpectedMoveSettings } from "@/lib/expectedMove";
 
 export const LIVE_CHART_INDICATOR_IDS = new Set([
   "gamma-environment",
@@ -1871,6 +1872,12 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
   } : {}),
   ...(indicatorId === "tpo-chart" ? tpoSettingsToRecord(defaultTpoSettings("daily-tpo", theme)) : {}),
   ...(indicatorId === "weekly-tpo" ? tpoSettingsToRecord(defaultTpoSettings("weekly-tpo", theme)) : {}),
+  /*
+   * Which week the weekly profile covers. Defaults to the current one, so a
+   * chart that has never been touched paints exactly what it painted before
+   * this setting existed.
+   */
+  ...(indicatorId === "weekly-volume-profile" ? { weekSelection: "current" } : {}),
   ...(["kwant-profile", "weekly-volume-profile", "custom-draw-on-volume-profile", "ask-bid-volume-profile", "delta-profile"].includes(indicatorId) ? {
     valueAreaPercent: DEFAULT_VOLUME_PROFILE_VALUE_AREA_PERCENT,
     // Data Settings — the input series, the trade-size band applied before
@@ -2111,6 +2118,64 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
     for (const unsafeKey of ["apiKey", "credential", "credentials", "snapshot", "points", "history"]) delete settings[unsafeKey];
     return { ...normalizedInstance, settings };
   }
+  if (normalizedInstance.indicatorId === "gamma-heatmap") {
+    const defaults: Record<string, number | string | boolean> = defaultIndicatorSettings("gamma-heatmap");
+    const settings: Record<string, number | string | boolean> = { ...defaults, ...(normalizedInstance.settings ?? {}) };
+    for (const definition of INDICATOR_NUMERIC_SETTINGS["gamma-heatmap"] ?? []) {
+      const parsed = Number(settings[definition.key]);
+      settings[definition.key] = Math.min(
+        definition.max,
+        Math.max(definition.min, Number.isFinite(parsed) ? parsed : definition.defaultValue),
+      );
+    }
+    const enumValues: Record<string, string[]> = {
+      preset: ["intraday", "positioning", "flow-change", "levels"],
+      metric: ["GAMMA", "DELTA", "VANNA", "CHARM"],
+      viewMode: ["net", "call-put", "absolute", "change", "hedge-pressure", "levels-only"],
+      sourceMode: ["hybrid", "quantdata", "databento-raw"],
+      optionsSource: ["AUTO", "QQQ", "NDX", "SPY", "SPX", "SPXW"],
+    };
+    for (const [key, allowed] of Object.entries(enumValues)) {
+      if (!allowed.includes(String(settings[key]))) settings[key] = defaults[key];
+    }
+    for (const key of ["showHistorical", "showLevels", "carryForwardFade", "showStatus", "useThemeColors"]) {
+      settings[key] = settings[key] !== false;
+    }
+    for (const unsafeKey of ["apiKey", "credential", "credentials", "providerCredential", "snapshot", "snapshots", "levels", "history"]) {
+      delete settings[unsafeKey];
+    }
+    return { ...normalizedInstance, settings };
+  }
+  if (normalizedInstance.indicatorId === "divergence-detector") {
+    const defaults: Record<string, number | string | boolean> = defaultIndicatorSettings("divergence-detector");
+    const source: Record<string, number | string | boolean> = { ...defaults, ...(normalizedInstance.settings ?? {}) };
+    const settings: Record<string, number | string | boolean> = {};
+    for (const definition of INDICATOR_NUMERIC_SETTINGS["divergence-detector"] ?? []) {
+      const parsed = Number(source[definition.key]);
+      settings[definition.key] = Math.min(
+        definition.max,
+        Math.max(definition.min, Number.isFinite(parsed) ? parsed : definition.defaultValue),
+      );
+    }
+    settings.comparisonMode = "automatic-es-nq";
+    for (const key of [
+      "includeNonConfirmation", "showBullish", "showBearish", "showLabels",
+      "showPivotDots", "useThemeColors",
+    ]) settings[key] = source[key] !== false;
+    settings.dashedLines = source.dashedLines === true;
+    for (const key of ["bullishColor", "bearishColor"]) {
+      settings[key] = /^#[0-9a-f]{6}$/i.test(String(source[key] ?? ""))
+        ? String(source[key]).toUpperCase()
+        : defaults[key];
+    }
+    settings.divergenceDetectorSettingsVersion = 1;
+    return { ...normalizedInstance, settings };
+  }
+  if (normalizedInstance.indicatorId === "expected-move") {
+    const defaults: Record<string, number | string | boolean> = defaultIndicatorSettings("expected-move");
+    const source: Record<string, number | string | boolean> = { ...defaults, ...(normalizedInstance.settings ?? {}) };
+    return { ...normalizedInstance, settings: { ...normalizeExpectedMoveSettings(source) } };
+  }
   if (normalizedInstance.indicatorId === "cvd-divergence") {
     const defaults: Record<string, number | string | boolean> = defaultIndicatorSettings("cvd-divergence");
     const settings: Record<string, number | string | boolean> = { ...defaults, ...(normalizedInstance.settings ?? {}) };
@@ -2154,7 +2219,10 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
       );
     }
     const enumValues: Record<string, string[]> = {
+      preset: ["balanced-net-gex", "zero-dte-scalper", "full-chain", "call-put-breakdown", "absolute-gamma", "minimal-levels"],
       provider: ["quantdata", "databento-custom", "hybrid-validation"],
+      sourceTicker: ["AUTO", "QQQ", "NDX", "NQ", "SPY", "SPX", "SPXW"],
+      representation: ["per-one-percent-move"],
       expirationMode: ["zero-dte", "zero-to-one-dte", "zero-to-seven-dte", "front-expiration", "all-expirations", "custom-dte-range", "specific-expirations"],
       aggregationMode: ["exact-display-tick", "auto-bin", "custom-bin"],
       placement: ["right", "left", "floating"],
@@ -2167,6 +2235,21 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
     };
     for (const [key, allowed] of Object.entries(enumValues)) {
       if (!allowed.includes(String(settings[key]))) settings[key] = defaults[key];
+    }
+    const expirationDates = String(settings.expirationDates ?? "").split(",")
+      .map((value) => value.trim())
+      .filter((value) => /^\d{4}-\d{2}-\d{2}$/.test(value))
+      .slice(0, 64);
+    settings.expirationDates = expirationDates.join(",");
+    for (const key of [
+      "includeWeeklies", "includeMonthlies", "includeQuarterlies", "reverseDirections",
+      "sharePositiveNegativeScale", "showZeroSpine", "showValues", "showMappedPrice",
+      "showMaxPositive", "showMaxNegative", "showDominantAbsolute", "showCallWall",
+      "showPutWall", "showCurrentPrice", "showHeader", "showMappingConfidence",
+      "tooltipsEnabled", "fadeWhenBelowMinimum", "hideWhenBelowMinimum", "useThemeColors",
+    ]) settings[key] = settings[key] === true;
+    for (const key of ["positiveColor", "negativeColor", "callColor", "putColor", "absoluteColor", "zeroSpineColor", "warningColor"]) {
+      if (!/^#[0-9a-f]{6}$/i.test(String(settings[key] ?? ""))) settings[key] = defaults[key];
     }
     // Version 3 intentionally moves the profile from the chart edge into a
     // centered overlay. This also migrates already-saved workspaces that used
@@ -2192,8 +2275,10 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
       settings[definition.key] = Math.min(definition.max, Math.max(definition.min, Number.isFinite(parsed) ? parsed : definition.defaultValue));
     }
     const enumValues: Record<string, string[]> = {
+      preset: ["balanced-intraday", "zero-dte-scalper", "build-unwind", "heat-ribbon", "full-chain-structure", "minimal-nodes", "historical-replay"],
+      provider: ["quantdata"],
       sourceTicker: ["AUTO", "QQQ", "NDX", "NQ", "SPY", "SPX", "SPXW"],
-      aggregationPeriod: ["1m", "2m", "3m", "4m", "5m", "10m", "15m", "30m", "1h"],
+      aggregationPeriod: ["1m", "2m", "3m", "4m", "5m", "10m", "15m", "20m", "30m", "1h", "2h", "4h"],
       historyMode: ["current-session", "session-date", "custom-range"],
       mode: ["raw", "difference"],
       baseline: ["previous-bucket", "session-open", "rolling-average"],
@@ -2206,6 +2291,31 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
       negativeExposurePalette: ["neutral", "bearish"],
     };
     for (const [key, allowed] of Object.entries(enumValues)) if (!allowed.includes(String(settings[key]))) settings[key] = defaults[key];
+    const booleanKeys = [
+      "includeWeeklies", "includeMonthlies", "includeQuarterlies", "highlightCurrentBucket",
+      "showCurrentBucketOutline", "hollowBubbles", "showLevelTracks", "showUnderlyingPriceLine",
+      "showMaxPositive", "showMaxNegative", "showDominantAbsolute", "showCallWall", "showPutWall",
+      "mergeCoincidentLabels", "hideZeroValues", "showLevels", "showValues", "showHeader",
+      "showMappingConfidence", "tooltipsEnabled", "enableAlerts", "alertNewLargePoint",
+      "alertLevelApproach", "alertLevelTouch", "browserNotifications", "useThemeColors",
+    ];
+    for (const key of booleanKeys) if (typeof settings[key] !== "boolean") settings[key] = defaults[key];
+    for (const key of ["positiveColor", "negativeColor", "callColor", "putColor", "neutralColor"]) {
+      if (!/^#[0-9a-f]{6}$/i.test(String(settings[key]))) settings[key] = defaults[key];
+      else settings[key] = String(settings[key]).toUpperCase();
+    }
+    const validCalendarDate = (value: unknown) => {
+      const text = String(value ?? "");
+      const date = /^\d{4}-\d{2}-\d{2}$/.test(text) ? new Date(`${text}T00:00:00.000Z`) : null;
+      return date && Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === text ? text : "";
+    };
+    settings.sessionDate = validCalendarDate(settings.sessionDate);
+    settings.expirationDates = [...new Set(String(settings.expirationDates ?? "").split(",")
+      .map((value) => validCalendarDate(value.trim())).filter(Boolean))].sort().slice(0, 64).join(",");
+    for (const key of ["startTime", "endTime"]) {
+      const instant = Date.parse(String(settings[key] ?? ""));
+      settings[key] = Number.isFinite(instant) ? new Date(instant).toISOString() : "";
+    }
     if (Number(settings.gexIntervalMapSettingsVersion ?? 0) < 2) {
       settings.visualMode = "bubbles";
       settings.maximumPoints = Math.max(20_000, Number(settings.maximumPoints ?? 0));
@@ -2263,22 +2373,82 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
     if (Number(settings.activeEnterThreshold) < Number(settings.activeExitThreshold)) settings.activeEnterThreshold = settings.activeExitThreshold;
     return { ...normalizedInstance, settings: { ...settings, bounceLevelsSettingsVersion: 5 } };
   }
-  if (
-    normalizedInstance.indicatorId === "depth-of-market"
-    && Number(normalizedInstance.settings?.domSettingsVersion) < DOM_PRO_SETTINGS_VERSION
-  ) {
-    normalizedInstance = {
+  if (normalizedInstance.indicatorId === "depth-of-market") {
+    const defaults: Record<string, number | string | boolean> = defaultIndicatorSettings("depth-of-market");
+    const storedVersion = Number(normalizedInstance.settings?.domSettingsVersion ?? 0);
+    const settings: Record<string, number | string | boolean> = {
+      ...defaults,
+      ...(normalizedInstance.settings ?? {}),
+    };
+    if (storedVersion < DOM_PRO_SETTINGS_VERSION) {
+      settings.width = Math.max(640, Number(normalizedInstance.settings?.width ?? 640));
+      settings.rows = DEFAULT_DOM_PRO_VISIBLE_ROWS;
+      settings.rowHeight = 24;
+      settings.domPreset = "order-flow";
+      settings.domColumns = String(defaults.domColumns ?? "[]");
+    }
+    for (const definition of INDICATOR_NUMERIC_SETTINGS["depth-of-market"] ?? []) {
+      const parsed = Number(settings[definition.key]);
+      const clamped = Math.min(
+        definition.max,
+        Math.max(definition.min, Number.isFinite(parsed) ? parsed : definition.defaultValue),
+      );
+      settings[definition.key] = [
+        "width", "rows", "rowHeight", "refreshRateMs", "recentWindowMs", "fontSize",
+      ].includes(definition.key) ? Math.round(clamped) : clamped;
+    }
+    for (const key of [
+      "showCumulative", "showOrderCount", "showPullStack", "showRecentTrades",
+      "showDepthHistogram", "showHeaderStats", "showImbalance", "autoCenter",
+      "compactNumbers", "useThemeColors",
+    ]) {
+      if (typeof settings[key] !== "boolean") settings[key] = defaults[key];
+    }
+    if (!["scalper", "order-flow", "minimal", "custom"].includes(String(settings.domPreset))) {
+      settings.domPreset = "order-flow";
+    }
+    for (const key of ["bidColor", "askColor", "lastTradeColor"]) {
+      settings[key] = /^#[0-9a-f]{6}$/i.test(String(settings[key] ?? ""))
+        ? String(settings[key]).toUpperCase()
+        : defaults[key];
+    }
+    const defaultColumns = [
+      { id: "buy", width: 100, enabled: true },
+      { id: "sell", width: 100, enabled: true },
+      { id: "bid", width: 100, enabled: true },
+      { id: "price", width: 100, enabled: true },
+      { id: "ask", width: 100, enabled: true },
+      { id: "trades", width: 100, enabled: true },
+      { id: "orders", width: 82, enabled: false },
+      { id: "cob", width: 82, enabled: false },
+      { id: "pullStack", width: 82, enabled: false },
+    ] as const;
+    let storedColumns: Array<{ id?: unknown; width?: unknown; enabled?: unknown }> = [];
+    const serializedColumns = String(settings.domColumns ?? "");
+    if (serializedColumns.length <= 16_384) {
+      try {
+        const parsed = JSON.parse(serializedColumns) as unknown;
+        if (Array.isArray(parsed)) storedColumns = parsed.slice(0, defaultColumns.length);
+      } catch {
+        storedColumns = [];
+      }
+    }
+    settings.domColumns = JSON.stringify(defaultColumns.map((fallback) => {
+      const stored = storedColumns.find((column) => column?.id === fallback.id);
+      const width = Number(stored?.width);
+      return {
+        id: fallback.id,
+        width: Math.max(54, Math.min(260, Math.round(Number.isFinite(width) ? width : fallback.width))),
+        enabled: typeof stored?.enabled === "boolean" ? stored.enabled : fallback.enabled,
+      };
+    }));
+    for (const unsafeKey of [
+      "apiKey", "credential", "credentials", "providerCredential", "snapshot", "snapshots",
+      "levels", "book", "orders", "trades", "executions", "history", "orderEvents",
+    ]) delete settings[unsafeKey];
+    return {
       ...normalizedInstance,
-      settings: {
-        ...defaultIndicatorSettings("depth-of-market"),
-        ...(normalizedInstance.settings ?? {}),
-        width: Math.max(640, Number(normalizedInstance.settings?.width ?? 640)),
-        rows: DEFAULT_DOM_PRO_VISIBLE_ROWS,
-        rowHeight: 24,
-        domPreset: "order-flow",
-        domColumns: String(defaultIndicatorSettings("depth-of-market").domColumns ?? "[]"),
-        domSettingsVersion: DOM_PRO_SETTINGS_VERSION,
-      },
+      settings: { ...settings, domSettingsVersion: DOM_PRO_SETTINGS_VERSION },
     };
   }
   if (

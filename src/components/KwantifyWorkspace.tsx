@@ -345,7 +345,7 @@ import {
 } from "@/lib/classicGexProfile";
 import { mergeOneFamilyPositioning } from "@/lib/gexBotFlow";
 import { writeProtectedItem } from "@/lib/browserStorageQuota";
-import { currentCmeWeekStart } from "@/lib/cmeProfileWindows";
+import { cmeWeekRange } from "@/lib/cmeProfileWindows";
 
 function workspaceLoader(title: string, detail: string) {
   return (
@@ -8713,16 +8713,29 @@ function WorkspaceChartPaneComponent({
          * shorter than that. The server has the tape; the pane's viewport
          * should not decide how much of the week a weekly profile is made of.
          */
-        const weekStartMs = currentCmeWeekStart(Date.now());
-        const weeklyCandles = candles.filter((candle) => candle.timestamp >= weekStartMs);
+        /*
+         * On a Monday the current week is a few hours old, so a "weekly"
+         * profile is barely more than the daily one and reshapes all day. The
+         * setting lets the chart show the week that has actually FINISHED
+         * instead - complete structure to lean on while this one builds.
+         */
+        const { startMs: weekStartMs, endMs: weekEndMs } = cmeWeekRange(
+          Date.now(),
+          weeklyProfileSettings.weekSelection === "previous" ? "previous" : "current",
+        );
+        const weeklyCandles = candles.filter((candle) => (
+          candle.timestamp >= weekStartMs && (weekEndMs === null || candle.timestamp < weekEndMs)
+        ));
         requests.push(fetchInstitutionalVolumeProfile({
           symbol: displayCmeSymbol(pane.symbol),
           contractSymbol: resolvedContractSymbol,
           period: "weekly",
           startMs: weekStartMs,
-          endMs: weeklyCandles.length
+          // A finished week is bounded at this week's open so no part of the
+          // live week can leak into it.
+          endMs: weekEndMs ?? (weeklyCandles.length
             ? weeklyCandles[weeklyCandles.length - 1].timestamp + chartStepMs
-            : undefined,
+            : undefined),
           groupTicks: requestedWeeklyGroupTicks,
           valueAreaPercent: Number(weeklyProfileSettings.valueAreaPercent ?? STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT),
           minTradeVolume: requestedWeeklyMinVolume,
