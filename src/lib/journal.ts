@@ -31,6 +31,13 @@ export type JournalTrade = {
   netPnl: number;
   initialRisk: number | null;
   rMultiple: number | null;
+  /*
+   * How far the trade went against and in favour before it finished, in money.
+   * Adverse is zero or negative, favourable zero or positive - a trade that
+   * never traded against you drew down nothing, not a positive amount.
+   */
+  adverseExcursion?: number | null;
+  favourableExcursion?: number | null;
   durationMs: number | null;
   setup: string;
   tags: string[];
@@ -1132,6 +1139,73 @@ export function parseJournalTextFile(
 
   const result = parseJournalRows(fileName, sourceRows, account, importId);
   return extension === "json" ? { ...result, detectedSchema: "json" } : result;
+}
+
+/**
+ * How the trades were EXECUTED, as distinct from what they earned.
+ *
+ * The existing stats answer "did this make money". These answer "how" - how
+ * long positions were held, how far they went against you before they worked,
+ * how much of the favourable move was actually kept, and whether the plan the
+ * trade was taken with resembled the result.
+ *
+ * Every field is null when nothing supports it. A trade with no stop has no R
+ * and no planned ratio; a trade imported from a broker has no excursion, since
+ * nobody was watching it tick by tick. Averaging those in as zero would quietly
+ * drag every number toward it.
+ */
+export type JournalExecutionStats = {
+  averageHoldMs: number | null;
+  averageWinHoldMs: number | null;
+  averageLossHoldMs: number | null;
+  averageAdverseExcursion: number | null;
+  averageFavourableExcursion: number | null;
+  averagePlannedRiskReward: number | null;
+  /** Of the best unrealised move, how much was actually taken. */
+  captureRate: number | null;
+  /** Favourable reach against adverse reach. Above 1 means the trades ran the right way first. */
+  edgeRatio: number | null;
+};
+
+function meanOf(values: number[]): number | null {
+  return values.length ? values.reduce((total, value) => total + value, 0) / values.length : null;
+}
+
+export function calculateJournalExecutionStats(trades: JournalTrade[]): JournalExecutionStats {
+  const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
+  const holds = trades.map((trade) => trade.durationMs).filter(finite).filter((ms) => ms >= 0);
+  const winHolds = trades.filter((trade) => trade.netPnl > 0).map((trade) => trade.durationMs).filter(finite);
+  const lossHolds = trades.filter((trade) => trade.netPnl < 0).map((trade) => trade.durationMs).filter(finite);
+  const adverse = trades.map((trade) => trade.adverseExcursion).filter(finite);
+  const favourable = trades.map((trade) => trade.favourableExcursion).filter(finite);
+  const planned = trades.map((trade) => trade.plannedRiskReward).filter(finite).filter((value) => value > 0);
+
+  /*
+   * Capture is measured over trades that actually went in favour. A trade whose
+   * best moment was its entry has nothing to have captured, and scoring it zero
+   * would say the trader gave something back when there was nothing to give.
+   */
+  const captured = trades.filter((trade) =>
+    finite(trade.favourableExcursion) && trade.favourableExcursion > 0);
+  const captureRate = captured.length
+    ? meanOf(captured.map((trade) => trade.netPnl / (trade.favourableExcursion as number)))
+    : null;
+
+  const meanAdverse = meanOf(adverse.map(Math.abs));
+  const meanFavourable = meanOf(favourable);
+  return {
+    averageHoldMs: meanOf(holds),
+    averageWinHoldMs: meanOf(winHolds),
+    averageLossHoldMs: meanOf(lossHolds),
+    // Reported as the negative it is, so a drawdown never reads as a gain.
+    averageAdverseExcursion: meanAdverse === null ? null : -meanAdverse,
+    averageFavourableExcursion: meanFavourable,
+    averagePlannedRiskReward: meanOf(planned),
+    captureRate,
+    edgeRatio: meanAdverse && meanAdverse > 0 && meanFavourable !== null
+      ? meanFavourable / meanAdverse
+      : null,
+  };
 }
 
 export function calculateJournalStats(trades: JournalTrade[], evidence: JournalEvidence[] = []): JournalStats {

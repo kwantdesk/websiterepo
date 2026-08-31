@@ -140,11 +140,22 @@ function paperFillToJournalTrade(
     fees: 0,
     feesKnown: true,
     netPnl,
-    // Risk is only known when the trade carried a stop, which the fill does not
-    // record. Left null rather than guessed, so R multiples stay honest.
-    initialRisk: null,
-    rMultiple: null,
-    durationMs: entryFill ? Math.max(0, fill.timestamp - entryFill.timestamp) : null,
+    /*
+     * Measured on the trade itself and written onto the fill as it closed, from
+     * the stop and target it was PLANNED with - locked thirty seconds in, so a
+     * stop later trailed into profit cannot rewrite the risk the trade was
+     * actually taken with. Still null when the trade carried no stop: there is
+     * no R to be a multiple of, and zero would read as a scratch.
+     */
+    initialRisk: fill.initialRisk ?? null,
+    rMultiple: fill.rMultiple ?? null,
+    stopPrice: fill.plannedStopLoss ?? null,
+    targetPrice: fill.plannedTakeProfit ?? null,
+    plannedRiskReward: fill.plannedRiskReward ?? null,
+    adverseExcursion: fill.adverseExcursion ?? null,
+    favourableExcursion: fill.favourableExcursion ?? null,
+    durationMs: fill.holdMs
+      ?? (entryFill ? Math.max(0, fill.timestamp - entryFill.timestamp) : null),
     // The exit that actually happened is the most useful thing to sort by, and
     // it is a fact rather than an interpretation.
     setup: fill.role === "take_profit"

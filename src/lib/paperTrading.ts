@@ -83,6 +83,26 @@ export type PaperPosition = {
   takeProfits: PaperTakeProfit[];
   status: "open" | "closed";
   closedAt?: number;
+  /*
+   * The stop and target the trade was PLANNED with.
+   *
+   * Seeded when the position opens and re-snapshotted once thirty seconds have
+   * passed, because the first half-minute is when a trader is still nudging the
+   * levels into place. Locking at the very first tick would record a
+   * placeholder; never locking would let a stop trailed into profit rewrite the
+   * risk the trade was actually taken with, and every R multiple measured
+   * against it would flatter the result.
+   */
+  plannedStopLoss?: number | null;
+  plannedTakeProfit?: number | null;
+  plannedLockedAt?: number;
+  /*
+   * How far the market went against and in favour while the trade was open.
+   * Held as PRICES rather than amounts, so a partial close values them at its
+   * own size rather than the size the position started with.
+   */
+  worstPrice?: number;
+  bestPrice?: number;
 };
 
 export type PaperProtectionUpdate =
@@ -120,6 +140,21 @@ export type PaperTradeFill = {
   role: PaperFillRole;
   realizedPnl: number;
   label: string;
+  /*
+   * The trade's own analysis, measured at the moment it closed.
+   *
+   * A closed position is DELETED from the ledger, so anything not written onto
+   * the fill is gone for good. These are facts about what happened, not a view
+   * that can be recomputed afterwards.
+   */
+  plannedStopLoss?: number | null;
+  plannedTakeProfit?: number | null;
+  plannedRiskReward?: number | null;
+  initialRisk?: number | null;
+  rMultiple?: number | null;
+  adverseExcursion?: number | null;
+  favourableExcursion?: number | null;
+  holdMs?: number | null;
 };
 
 export function paperFillCandleTimestamp(
@@ -454,6 +489,44 @@ export function paperRequiredMargin(
   return gross / Math.max(1, finite(leverage) || 1);
 }
 
+/**
+ * How long a trade is given before its plan is treated as final.
+ *
+ * The first half-minute is when a trader is still nudging the stop and target
+ * into place. Reading them at the very first tick records a placeholder;
+ * reading them at the close lets a stop trailed into profit rewrite the risk
+ * the trade was actually taken with, and every R measured against it would
+ * flatter the result.
+ */
+export const PLANNED_RISK_LOCK_MS = 30_000;
+
+/** Reward divided by risk, from the levels the trade was planned with. */
+export function paperPlannedRiskReward(
+  entryPrice: number,
+  plannedStopLoss: number | null | undefined,
+  plannedTakeProfit: number | null | undefined,
+): number | null {
+  if (plannedStopLoss == null || plannedTakeProfit == null) return null;
+  const risk = Math.abs(entryPrice - plannedStopLoss);
+  const reward = Math.abs(plannedTakeProfit - entryPrice);
+  // A stop AT the entry risks nothing, and dividing by it would report an
+  // infinite reward on a trade that simply had no room in it.
+  return risk > 0 ? reward / risk : null;
+}
+
+/** What the planned stop was worth in money, for this many contracts. */
+export function paperInitialRisk(
+  symbol: string,
+  entryPrice: number,
+  plannedStopLoss: number | null | undefined,
+  quantity: number,
+): number | null {
+  if (plannedStopLoss == null) return null;
+  const distance = Math.abs(entryPrice - plannedStopLoss);
+  if (!(distance > 0) || !(quantity > 0)) return null;
+  return distance * paperPointValue(symbol) * quantity;
+}
+
 export function paperProjectedPnl(
   symbol: string,
   side: PaperOrderSide,
@@ -592,6 +665,17 @@ function normalizePosition(value: Partial<PaperPosition>): PaperPosition | null 
       : [],
     status: remainingQuantity > 0 && value.status !== "closed" ? "open" : "closed",
     closedAt: value.closedAt,
+    /*
+     * Carried across a reload. This rebuilds the position field by field, so
+     * anything not named here is dropped - and losing the plan or the
+     * excursion mid-trade would mean the R and the drawdown were measured from
+     * whenever the page was last refreshed.
+     */
+    plannedStopLoss: value.plannedStopLoss ?? null,
+    plannedTakeProfit: value.plannedTakeProfit ?? null,
+    plannedLockedAt: value.plannedLockedAt,
+    worstPrice: value.worstPrice,
+    bestPrice: value.bestPrice,
   };
 }
 
@@ -805,6 +889,15 @@ function createEntryPosition(
     stopLoss: order.stopLoss == null ? null : snapPaperPrice(order.symbol, order.stopLoss),
     takeProfits,
     status: "open",
+    /*
+     * Provisional until the thirty-second lock re-reads them. A trade closed
+     * inside that window keeps what it was opened with, which is the only
+     * honest answer for a trade nobody had time to adjust.
+     */
+    plannedStopLoss: order.stopLoss == null ? null : snapPaperPrice(order.symbol, order.stopLoss),
+    plannedTakeProfit: takeProfits[0]?.price ?? null,
+    worstPrice: fillPrice,
+    bestPrice: fillPrice,
   };
   const filledOrder: PaperOrder = {
     ...order,
@@ -978,6 +1071,45 @@ export function placePaperOrder(
   };
 }
 
+/**
+ * What the trade turned out to be, measured as it closes.
+ *
+ * Written onto the FILL because the position is deleted the moment it is fully
+ * closed - and the trader may clear their fills later, which is why the journal
+ * copies these across at the same moment rather than reading them back.
+ *
+ * Excursions are valued at the quantity being closed, so a scale-out reports
+ * the drawdown that piece actually carried.
+ */
+function tradeAnalysis(
+  position: PaperPosition,
+  closeQuantity: number,
+  realizedPnl: number,
+  timestamp: number,
+) {
+  const plannedStopLoss = position.plannedStopLoss ?? position.stopLoss ?? null;
+  const plannedTakeProfit = position.plannedTakeProfit ?? position.takeProfits[0]?.price ?? null;
+  const initialRisk = paperInitialRisk(
+    position.symbol, position.entryPrice, plannedStopLoss, closeQuantity,
+  );
+  const worstPrice = position.worstPrice ?? position.entryPrice;
+  const bestPrice = position.bestPrice ?? position.entryPrice;
+  return {
+    plannedStopLoss,
+    plannedTakeProfit,
+    plannedRiskReward: paperPlannedRiskReward(position.entryPrice, plannedStopLoss, plannedTakeProfit),
+    initialRisk,
+    // Without a planned stop there is no R to be a multiple OF. Null rather
+    // than zero, which would read as a scratch.
+    rMultiple: initialRisk && initialRisk > 0 ? realizedPnl / initialRisk : null,
+    // Clamped by direction: a trade that never traded against you has an
+    // adverse excursion of nothing, not a positive one.
+    adverseExcursion: Math.min(0, calculatePnl(position, worstPrice, closeQuantity)),
+    favourableExcursion: Math.max(0, calculatePnl(position, bestPrice, closeQuantity)),
+    holdMs: Math.max(0, timestamp - position.openedAt),
+  };
+}
+
 function closePositionQuantity(
   account: PaperAccountLedger,
   position: PaperPosition,
@@ -1012,6 +1144,7 @@ function closePositionQuantity(
     role,
     realizedPnl: pnl,
     label,
+    ...tradeAnalysis(position, closeQuantity, pnl, timestamp),
   };
   return {
     ...account,
@@ -1086,6 +1219,38 @@ export function processPaperQuote(
       // trigger simulated execution. This prevents stale or malformed fallback
       // prices from inventing a TP/SL fill and changing the account balance.
       if (!executionAuthorized) continue;
+
+      /*
+       * The excursion watermarks and the plan lock, both on the authoritative
+       * stream only - a stale watchlist price must not be able to record a
+       * drawdown the trade never actually saw.
+       */
+      const worstPrice = position.side === "buy"
+        ? Math.min(position.worstPrice ?? position.entryPrice, markPrice)
+        : Math.max(position.worstPrice ?? position.entryPrice, markPrice);
+      const bestPrice = position.side === "buy"
+        ? Math.max(position.bestPrice ?? position.entryPrice, markPrice)
+        : Math.min(position.bestPrice ?? position.entryPrice, markPrice);
+      const settlePlan = position.plannedLockedAt == null
+        && quote.timestamp - position.openedAt >= PLANNED_RISK_LOCK_MS;
+      if (worstPrice !== position.worstPrice || bestPrice !== position.bestPrice || settlePlan) {
+        position = {
+          ...position,
+          worstPrice,
+          bestPrice,
+          ...(settlePlan ? {
+            plannedStopLoss: position.stopLoss,
+            plannedTakeProfit: position.takeProfits[0]?.price ?? null,
+            plannedLockedAt: quote.timestamp,
+          } : {}),
+        };
+        account = {
+          ...account,
+          positions: account.positions.map((candidate) => candidate.id === position.id ? position : candidate),
+          updatedAt: quote.timestamp,
+        };
+        changed = true;
+      }
 
       const previousProtectionMark = position.protectionMarkPrice;
       // P&L marks to the executable touch, but a LEVEL is hit by what traded.

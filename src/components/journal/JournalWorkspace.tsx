@@ -61,6 +61,7 @@ import KwantLoader from "@/components/KwantLoader";
 import WorkspaceSubnav from "@/components/ui/WorkspaceSubnav";
 import {
   calculateJournalAdvancedStats,
+  calculateJournalExecutionStats,
   calculateJournalStats,
   EMPTY_JOURNAL_STATE,
   isZyonJournalAccountName,
@@ -426,6 +427,22 @@ function tradingAccountTypeLabel(value: JournalTradingAccountType | undefined) {
   if (value === "EVALUATION") return "Evaluation";
   if (value === "FUNDED") return "Funded account";
   return "Not recorded";
+}
+
+/**
+ * A hold time a trader can read at a glance.
+ *
+ * Seconds below a minute, minutes below an hour, hours and minutes above it.
+ * "4,231s" is technically the same answer and tells nobody anything.
+ */
+function holdTime(ms: number | null) {
+  if (ms === null || !Number.isFinite(ms) || ms < 0) return "—";
+  const seconds = Math.round(ms / 1_000);
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ${String(seconds % 60).padStart(2, "0")}s`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours}h ${String(minutes % 60).padStart(2, "0")}m`;
 }
 
 function compact(value: number) {
@@ -1283,6 +1300,15 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
   );
   const stats = useMemo(() => calculateJournalStats(filteredTrades, filteredEvidence), [filteredEvidence, filteredTrades]);
   const advancedStats = useMemo(() => calculateJournalAdvancedStats(filteredTrades), [filteredTrades]);
+  /*
+   * How the trades were EXECUTED, as distinct from what they earned. The rows
+   * above answer whether this made money; these answer how it was traded.
+   */
+  const executionStats = useMemo(() => calculateJournalExecutionStats(filteredTrades), [filteredTrades]);
+  const excursionTrades = useMemo(
+    () => filteredTrades.filter((trade) => typeof trade.adverseExcursion === "number").length,
+    [filteredTrades],
+  );
   const selectedTrade = allTrades.find((trade) => trade.id === selectedTradeId) ?? null;
   const editingTrade = allTrades.find((trade) => trade.id === editingTradeId) ?? null;
   const deleteTradeTarget = allTrades.find((trade) => trade.id === deleteTradeTargetId) ?? null;
@@ -2527,6 +2553,50 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
               <MetricCard label="Payoff ratio" value={ratio(advancedStats.payoffRatio)} detail="Average winner / average loser" icon={Target} tone={(advancedStats.payoffRatio ?? 0) >= 1 ? "positive" : "negative"} />
               <MetricCard label="Current streak" value={stats.currentStreak ? `${stats.currentStreak}${stats.currentStreakKind === "WIN" ? "W" : "L"}` : "—"} detail="Consecutive non-breakeven trades" icon={Activity} tone={stats.currentStreakKind === "WIN" ? "positive" : stats.currentStreakKind === "LOSS" ? "negative" : "neutral"} />
               <MetricCard label="Recovery factor" value={ratio(advancedStats.recoveryFactor)} detail="Net P&L / max drawdown" icon={ShieldCheck} tone={(advancedStats.recoveryFactor ?? 0) >= 1 ? "positive" : "neutral"} />
+            </div>
+
+            {/* How the trades were EXECUTED. The rows above say whether this
+                made money; these say how it was traded - how long positions
+                were held, how far they went against before they worked, and
+                how much of the favourable move was actually kept. Excursion
+                needs a trade watched tick by tick, so it is present on demo
+                trades and absent on imported ones, and every card says so
+                rather than averaging a missing number in as zero. */}
+            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-8">
+              <MetricCard label="Avg hold time" value={holdTime(executionStats.averageHoldMs)} detail="Entry to exit, all trades" icon={Clock3} />
+              <MetricCard label="Avg hold · winners" value={holdTime(executionStats.averageWinHoldMs)} detail="Time in the trades that worked" icon={TrendingUp} tone="positive" />
+              <MetricCard label="Avg hold · losers" value={holdTime(executionStats.averageLossHoldMs)} detail="Cut faster than winners is healthy" icon={TrendingDown} tone="negative" />
+              <MetricCard
+                label="Avg adverse excursion"
+                value={money(executionStats.averageAdverseExcursion)}
+                compactValue={executionStats.averageAdverseExcursion === null ? undefined : compact(executionStats.averageAdverseExcursion)}
+                detail={excursionTrades ? `Worst drawdown while open · ${excursionTrades} tracked` : "Tracked on trades taken here"}
+                icon={ArrowDownRight}
+                tone="negative"
+              />
+              <MetricCard
+                label="Avg favourable excursion"
+                value={money(executionStats.averageFavourableExcursion)}
+                compactValue={executionStats.averageFavourableExcursion === null ? undefined : compact(executionStats.averageFavourableExcursion)}
+                detail="Best unrealised move before the exit"
+                icon={ArrowUpRight}
+                tone="positive"
+              />
+              <MetricCard label="Avg planned R : R" value={ratio(executionStats.averagePlannedRiskReward)} detail="From the stop and target set at entry" icon={Target} />
+              <MetricCard
+                label="Capture rate"
+                value={percent(executionStats.captureRate)}
+                detail="Kept out of the best move available"
+                icon={Layers3}
+                tone={(executionStats.captureRate ?? 0) >= 0.5 ? "positive" : "neutral"}
+              />
+              <MetricCard
+                label="Edge ratio"
+                value={ratio(executionStats.edgeRatio)}
+                detail="Favourable reach / adverse reach"
+                icon={Activity}
+                tone={(executionStats.edgeRatio ?? 0) >= 1 ? "positive" : "negative"}
+              />
             </div>
 
             <div className="grid gap-3 xl:grid-cols-[minmax(0,1.65fr)_minmax(320px,.75fr)]">
