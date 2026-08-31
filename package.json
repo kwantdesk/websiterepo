@@ -229,6 +229,7 @@
     "test:index-history-cache": "node --import ./scripts/alias-hook.mjs scripts/test-index-history-cache.mjs",
     "test:page-loaders": "node --import ./scripts/alias-hook.mjs scripts/test-page-loaders.mjs",
     "test:stall-watchdog": "node --import ./scripts/alias-hook.mjs scripts/test-stall-watchdog.mjs",
+    "test:indicator-theme-follow": "node --import ./scripts/alias-hook.mjs scripts/test-indicator-theme-follow.mjs",
     "test:session-boundaries": "node --import ./scripts/alias-hook.mjs scripts/test-session-boundaries.mjs",
     "test:developing-value-area": "node --import ./scripts/alias-hook.mjs scripts/test-developing-value-area.mjs",
     "test:volume-profile-count": "node --import ./scripts/alias-hook.mjs scripts/test-volume-profile-count.mjs",

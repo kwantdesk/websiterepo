@@ -1866,8 +1866,15 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     showZeroGamma: true,
     showLabels: true,
     useThemeColors: true,
-    positiveColor: "#22C55E",
-    negativeColor: "#EF4444",
+    // Theme-derived like every other directional pair in this file. They were
+    // literals while the flag above said the opposite, so the study announced
+    // that it followed the theme and then did not - and nothing downstream
+    // could correct it, because a colour only moves with the theme if the
+    // default it came from did.
+    positiveColor: theme?.upColor ?? "#22C55E",
+    negativeColor: theme?.downColor ?? "#EF4444",
+    // Not directional: the zero-gamma line is a reference mark and stays a
+    // near-white against every palette rather than sinking into the grid.
     zeroGammaColor: "#F4F4F5",
     classicGexSettingsVersion: 1,
   } : {}),
@@ -1878,7 +1885,10 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     showBandFill: false,
     showLabels: true,
     useThemeColors: true,
-    neutralColor: "#D6A84B",
+    // The band is not directional, so it takes the theme's own accent rather
+    // than a fixed gold that belonged to one palette. It said it followed the
+    // theme while being a literal, which is a flag that cannot come true.
+    neutralColor: theme?.borderUpColor ?? theme?.upColor ?? "#D6A84B",
     expectedMoveSettingsVersion: 1,
   } : {}),
   ...(indicatorId === "hedge-levels" ? {

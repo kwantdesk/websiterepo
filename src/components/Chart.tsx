@@ -162,7 +162,7 @@ import {
 import { ChartRepaintNotifierPrimitive } from "@/lib/chartRepaintNotifier";
 import { resolveVolumeProfileGradient, mixHexColors } from "@/lib/volumeProfileGradients";
 import { resolveIndicatorPalette } from "@/lib/indicatorPalettes";
-import { settingsWithPalette } from "@/lib/indicatorPaletteRegistry";
+import { settingsWithPalette, settingsWithThemeColours } from "@/lib/indicatorPaletteRegistry";
 import {
   resolveCandleSeriesColors,
   resolveCandleStyle,
@@ -3092,9 +3092,39 @@ function Chart({
    * An instance with no scheme is passed through unchanged by identity, so a
    * chart nobody has recoloured rerenders exactly as often as it did before.
    */
+  /*
+   * Just the theme fields a study's defaults are derived from, so the map
+   * below re-runs when a colour changes and not on every unrelated settings
+   * edit. It is on the live path.
+   */
+  const indicatorThemeSettings = useMemo(() => ({
+    upColor: settings.upColor,
+    downColor: settings.downColor,
+    borderUpColor: settings.borderUpColor,
+    borderDownColor: settings.borderDownColor,
+    gridColor: settings.gridColor,
+    backgroundColor: settings.backgroundColor,
+  } as ChartSettings), [
+    settings.upColor, settings.downColor, settings.borderUpColor,
+    settings.borderDownColor, settings.gridColor, settings.backgroundColor,
+  ]);
   const indicators = useMemo(
-    () => rawIndicators.map((instance) => settingsWithPalette(instance, indicatorPaletteThemeValue)),
-    [rawIndicators, indicatorPaletteThemeValue],
+    () => rawIndicators.map((instance) => settingsWithPalette(
+      /*
+       * The theme first, then the scheme on top of it.
+       *
+       * Study colours were seeded from the theme once, when the indicator was
+       * added, and never re-derived - so changing theme moved the candles and
+       * left Volume, CVD and most of the library behind. Only the few studies
+       * with a hand-written block further down this file ever followed, which
+       * is why the footprint worked and its neighbours did not.
+       *
+       * A chosen scheme still outranks the theme, so this runs underneath it.
+       */
+      settingsWithThemeColours(instance, indicatorThemeSettings),
+      indicatorPaletteThemeValue,
+    )),
+    [rawIndicators, indicatorPaletteThemeValue, indicatorThemeSettings],
   );
 
   const chartContainerRef = useRef<HTMLDivElement>(null);
