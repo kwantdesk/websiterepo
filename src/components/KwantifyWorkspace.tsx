@@ -8529,8 +8529,21 @@ function WorkspaceChartPaneComponent({
         || (profile.period === "weekly" && Boolean(weeklyProfileInstance))
       );
     };
+    /*
+     * The session is part of a daily profile's identity.
+     *
+     * A split day produces several daily profiles sharing one trading date.
+     * Keying on the date alone collapsed them into a single map entry, so
+     * ticking Globex, Asia, London and New York drew exactly what ticking none
+     * of them drew - and because this merge rebuilds the map from the CURRENT
+     * profiles, it also flattened correctly split ones that had already
+     * arrived from the live fetch.
+     *
+     * `replaceExactProfile` already keys on the session for the same reason;
+     * this is the same identity, applied to the cached path that missed it.
+     */
     const profileSessionKey = (profile: InstitutionalVolumeProfile) =>
-      `${profile.period}:${profile.period === "daily" ? chicagoTradingDate(profile.startMs) : "weekly"}`;
+      `${profile.period}:${profile.period === "daily" ? chicagoTradingDate(profile.startMs) : "weekly"}:${profile.sessionId ?? ""}`;
 
     // A volume profile is an execution-tape surface. OHLCV cannot recover the
     // traded-at-price distribution or aggressor-side delta, so it is never an

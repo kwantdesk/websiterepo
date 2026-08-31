@@ -224,7 +224,8 @@
     "test:paper-account-visibility": "node --import ./scripts/alias-hook.mjs scripts/test-paper-account-visibility.mjs",
     "test:trade-analytics": "node --import ./scripts/alias-hook.mjs scripts/test-trade-analytics.mjs",
     "test:money-precision": "node --import ./scripts/alias-hook.mjs scripts/test-money-precision.mjs",
-    "test:indicator-opacity": "node --import ./scripts/alias-hook.mjs scripts/test-indicator-opacity.mjs"
+    "test:indicator-opacity": "node --import ./scripts/alias-hook.mjs scripts/test-indicator-opacity.mjs",
+    "test:volume-profile-sessions-split": "node --import ./scripts/alias-hook.mjs scripts/test-volume-profile-sessions-split.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",
