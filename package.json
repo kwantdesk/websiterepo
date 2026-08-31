@@ -220,7 +220,8 @@
     "test:order-drag": "node --import ./scripts/alias-hook.mjs scripts/test-order-drag.mjs",
     "test:paper-journal": "node --import ./scripts/alias-hook.mjs scripts/test-paper-journal.mjs",
     "test:paper-trade-export": "node --import ./scripts/alias-hook.mjs scripts/test-paper-trade-export.mjs",
-    "test:candle-context-menu": "node --import ./scripts/alias-hook.mjs scripts/test-candle-context-menu.mjs"
+    "test:candle-context-menu": "node --import ./scripts/alias-hook.mjs scripts/test-candle-context-menu.mjs",
+    "test:paper-account-visibility": "node --import ./scripts/alias-hook.mjs scripts/test-paper-account-visibility.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",

@@ -6,6 +6,7 @@ import Link from "next/link";
 import AppSidebar from "@/components/AppSidebar";
 import { loadSavedStrategiesRaw } from "@/lib/automation";
 import {
+  PAPER_TRADING_ACCOUNTS_EVENT,
   createPaperTradingAccount,
   formatMoney,
   loadPaperTradingAccounts,
@@ -13,6 +14,7 @@ import {
   savePaperTradingAccounts,
   type PaperTradingAccountRecord,
 } from "@/lib/paperAccounts";
+import { PREFERENCES_HYDRATED_EVENT } from "@/lib/userPreferences";
 import {
   emptyPaperTradingLedger,
   ensurePaperAccountLedger,
@@ -164,11 +166,35 @@ export default function AccountsPage() {
     const handleStorage = (event: StorageEvent) => {
       if (event.key === PAPER_TRADING_LEDGER_STORAGE_KEY) syncLedger();
     };
+    /*
+     * The accounts themselves were only ever read once, on mount.
+     *
+     * That is too early for two ordinary cases: an account created in the trade
+     * menu while this page is open, and signing in - which restores the saved
+     * accounts into local storage AFTER this page has already read it. Both
+     * left the page showing nothing, which reads exactly like the accounts were
+     * never saved.
+     */
+    const syncAccounts = () => {
+      const saved = loadPaperTradingAccounts();
+      setAccounts((current) => {
+        const next = saved.map((account) => ({ ...account, winRate: "0%" }));
+        return JSON.stringify(current.map(({ winRate: _ignored, ...rest }) => rest))
+          === JSON.stringify(saved)
+          ? current
+          : next;
+      });
+      setPaperLedger(loadPaperTradingLedger());
+    };
     window.addEventListener("storage", handleStorage);
     window.addEventListener(PAPER_TRADING_LEDGER_EVENT, syncLedger);
+    window.addEventListener(PAPER_TRADING_ACCOUNTS_EVENT, syncAccounts);
+    window.addEventListener(PREFERENCES_HYDRATED_EVENT, syncAccounts);
     return () => {
       window.removeEventListener("storage", handleStorage);
       window.removeEventListener(PAPER_TRADING_LEDGER_EVENT, syncLedger);
+      window.removeEventListener(PAPER_TRADING_ACCOUNTS_EVENT, syncAccounts);
+      window.removeEventListener(PREFERENCES_HYDRATED_EVENT, syncAccounts);
     };
   }, []);
 

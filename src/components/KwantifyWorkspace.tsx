@@ -116,7 +116,7 @@ import { createClient } from "@/lib/supabase";
 import type { FriendsPayload } from "@/lib/friends";
 import { cacheProfileIdentity, readProfileIdentityCache } from "@/lib/profileIdentityCache";
 import { useAccountPreferenceSync } from "@/hooks/useAccountPreferenceSync";
-import { compactLegacyAuthPreferenceMetadata, hydrateUserPreferences } from "@/lib/userPreferences";
+import { PREFERENCES_HYDRATED_EVENT, compactLegacyAuthPreferenceMetadata, hydrateUserPreferences } from "@/lib/userPreferences";
 import { loadJournalState, saveJournalState } from "@/lib/journalStore";
 import { PAPER_JOURNAL_UPDATED_EVENT, appendPaperTradesToJournal } from "@/lib/paperJournal";
 import {
@@ -12212,11 +12212,23 @@ export default function KwantifyWorkspace({
       setPaperTradingAccounts((current) =>
         JSON.stringify(current) === JSON.stringify(nextAccounts) ? current : nextAccounts);
     };
+    /*
+     * Signing in restores the accounts into local storage without touching
+     * this state, so the same re-read runs on hydration. The ledger comes with
+     * them - an account whose balances and positions did not follow it back is
+     * not the account the trader left.
+     */
+    const handleHydrated = () => {
+      handlePaperAccountsChange();
+      commitPaperLedger(loadPaperTradingLedger());
+    };
     window.addEventListener("storage", handleStorage);
     window.addEventListener(PAPER_TRADING_ACCOUNTS_EVENT, handlePaperAccountsChange);
+    window.addEventListener(PREFERENCES_HYDRATED_EVENT, handleHydrated);
     return () => {
       window.removeEventListener("storage", handleStorage);
       window.removeEventListener(PAPER_TRADING_ACCOUNTS_EVENT, handlePaperAccountsChange);
+      window.removeEventListener(PREFERENCES_HYDRATED_EVENT, handleHydrated);
     };
   }, [commitPaperLedger]);
 

@@ -171,6 +171,18 @@ export function preferenceSnapshotFingerprint(snapshot: UserPreferenceSnapshot) 
   return JSON.stringify(snapshot.values);
 }
 
+/**
+ * Signing in replaces local state, and everything reading it has to be told.
+ *
+ * Hydration writes the account's saved values straight into local storage. The
+ * surfaces that read those values - the paper accounts in the trade menu, the
+ * order ticket's account picker, the accounts page - each read ONCE and then
+ * listen only for their own change events, which a hydration never fires. So
+ * the trader's demo accounts were restored correctly and stayed invisible until
+ * a manual refresh, which reads exactly like they were never saved.
+ */
+export const PREFERENCES_HYDRATED_EVENT = "kwantdesk:preferences-hydrated";
+
 function applyBrowserPreferences(snapshot: UserPreferenceSnapshot) {
   if (typeof window === "undefined") return;
   if (snapshot.complete) {
@@ -187,6 +199,7 @@ function applyBrowserPreferences(snapshot: UserPreferenceSnapshot) {
     // full quota gives up cache before it gives up any of this.
     writeProtectedItem(key, value);
   }
+  window.dispatchEvent(new CustomEvent(PREFERENCES_HYDRATED_EVENT));
 }
 
 async function loadCloudPreferences(
