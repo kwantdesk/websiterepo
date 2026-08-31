@@ -3928,14 +3928,29 @@ async function fetchWorkspaceCandles(
     // candles" with nothing on its way. A bounded attempt plus one retry turns
     // a permanent hang into a slightly late chart, because by the second
     // attempt the startup burst has cleared.
+    /*
+     * The requested window, quantised.
+     *
+     * `to` is Date.now(), so it differed by a few milliseconds between two
+     * panes mounting together: every request was a unique URL. That made the
+     * shared-request key below miss almost every time, and it defeated the
+     * route's own ETag - it answers with an identity and a max-age precisely
+     * so an unchanged series can come back as a 304 instead of the whole
+     * payload, and a URL that never repeats can never revalidate.
+     *
+     * Rounding down costs at most fifteen seconds of tail, which the live
+     * quote stream owns anyway.
+     */
+    const windowQuantumMs = 15_000;
+    const windowFrom = Math.floor(from / windowQuantumMs) * windowQuantumMs;
+    const windowTo = Math.floor(to / windowQuantumMs) * windowQuantumMs;
+
     const attempt = async (timeoutMs: number) => {
       const timeoutController = new AbortController();
-      const abortOnCallerSignal = () => timeoutController.abort();
-      signal?.addEventListener("abort", abortOnCallerSignal, { once: true });
       const timer = window.setTimeout(() => timeoutController.abort(), timeoutMs);
       try {
         const response = await fetch(
-          `/api/market-indices?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&from=${from}&to=${to}`,
+          `/api/market-indices?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&from=${windowFrom}&to=${windowTo}`,
           { cache: "no-store", signal: timeoutController.signal },
         );
         const payload = await response.json();
@@ -3943,17 +3958,53 @@ async function fetchWorkspaceCandles(
         return sanitizeCandles((payload.candles ?? []) as Candle[], symbol, timeframe);
       } finally {
         window.clearTimeout(timer);
-        signal?.removeEventListener("abort", abortOnCallerSignal);
       }
     };
+
+    /*
+     * One request per symbol and window, shared by every pane that asks.
+     *
+     * Four index panes on one workspace were four separate trips into a queue
+     * that is already the bottleneck, and two panes on the same symbol were
+     * two identical ones.
+     *
+     * The caller's abort signal is deliberately NOT wired into the shared
+     * fetch. A pane that unmounts mid-flight used to kill a request a sibling
+     * pane was still waiting on, and the work was thrown away rather than
+     * cached - on a saturated queue the request has already waited its turn,
+     * so letting it finish and land in the cache is worth more than the
+     * bandwidth it saves. Each caller still checks its own signal below.
+     */
+    const requestKey = `index::${symbol}::${timeframe}::${historicalRange?.key ?? `${windowFrom}-${windowTo}`}`;
+    const pending = workspaceCandleRequests.get(requestKey);
+    if (pending) return pending;
+
+    const request = (async () => {
+      let candles: Candle[];
+      try {
+        candles = await attempt(20_000);
+      } catch {
+        // By the second attempt the page's startup burst has usually cleared.
+        candles = await attempt(30_000);
+      }
+      /*
+       * Persisted so the NEXT visit paints instantly instead of racing the
+       * queue again. Never under the live key for a historical range request -
+       * that would leave a normal chart opening on an old final candle.
+       */
+      if (candles.length && !historicalRange) {
+        void writeChartHistoryCache(symbol, timeframe, candles);
+      }
+      return candles;
+    })();
+
+    workspaceCandleRequests.set(requestKey, request);
     try {
-      return await attempt(20_000);
-    } catch (error) {
-      // A caller that has moved on (instrument or interval changed, pane
-      // unmounted) must not be retried against - that would be a request for a
-      // chart nobody is looking at.
-      if (signal?.aborted) throw error;
-      return await attempt(30_000);
+      return await request;
+    } finally {
+      if (workspaceCandleRequests.get(requestKey) === request) {
+        workspaceCandleRequests.delete(requestKey);
+      }
     }
   }
 
@@ -6527,7 +6578,22 @@ function WorkspaceChartPaneComponent({
 
     const loadHistory = async () => {
       const [cached, storedTape, liveSeam] = await Promise.all([
-        pane.broker === "Databento"
+        /*
+         * Cash-index panes read the candle cache too.
+         *
+         * The whole paint-from-cache path below was gated on Databento, so
+         * SPX, SPY, NDX and QQQ always started from nothing and sat on the
+         * spinner until a live request returned. On GEX VUE that request
+         * queues behind dozens of GEX surfaces in the gateway's spaced vendor
+         * queue - SPX's own history was measured at 92.5 seconds there - so
+         * "slow to load" was the pane having nothing to draw for a minute and
+         * a half, not a slow endpoint.
+         *
+         * The cache is only a first paint: it is twenty seconds stale at most
+         * before `cachedIsHydrated` sends the fetch anyway, and the live quote
+         * stream owns the forming bar regardless.
+         */
+        pane.broker === "Databento" || pane.broker === "Market Index"
           ? readCompatibleChartHistoryCache(pane.symbol, pane.timeframe)
           : Promise.resolve(null),
         pane.broker === "Databento" && needsOrderFlowHistory

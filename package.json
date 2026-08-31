@@ -226,6 +226,7 @@
     "test:money-precision": "node --import ./scripts/alias-hook.mjs scripts/test-money-precision.mjs",
     "test:indicator-opacity": "node --import ./scripts/alias-hook.mjs scripts/test-indicator-opacity.mjs",
     "test:indicator-colour-controls": "node --import ./scripts/alias-hook.mjs scripts/test-indicator-colour-controls.mjs",
+    "test:index-history-cache": "node --import ./scripts/alias-hook.mjs scripts/test-index-history-cache.mjs",
     "test:session-boundaries": "node --import ./scripts/alias-hook.mjs scripts/test-session-boundaries.mjs",
     "test:developing-value-area": "node --import ./scripts/alias-hook.mjs scripts/test-developing-value-area.mjs",
     "test:volume-profile-count": "node --import ./scripts/alias-hook.mjs scripts/test-volume-profile-count.mjs",
