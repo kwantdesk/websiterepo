@@ -376,6 +376,21 @@ assignTpoSections("Filter/split time", [
 ]);
 
 const isTpoIndicator = (id: string) => id === "tpo-chart" || id === "weekly-tpo";
+
+/**
+ * Studies that draw their own scheme picker higher up this dialog.
+ *
+ * They were also being given the shared Colours section, so a profile carried
+ * "Gradient scheme" near the top and "Colour scheme" further down - two
+ * controls, the same `gradientPreset` key, no way to tell which was in charge.
+ * Whichever was clicked last silently moved the other.
+ *
+ * Their own blocks stay: they carry wording and locking the shared one cannot
+ * express yet. The shared one steps aside, which is what the comment at its
+ * call site always claimed happened.
+ */
+const hasOwnPaletteSection = (id: string) =>
+  VOLUME_PROFILE_INDICATOR_IDS.has(id) || isTpoIndicator(id) || id === "deep-print-footprint";
 const sectionForSetting = (indicatorId: string, key: string, fallback: string) =>
   (isTpoIndicator(indicatorId) ? TPO_SETTING_SECTIONS[key] ?? "General" : fallback);
 
@@ -5760,10 +5775,11 @@ export default function ChartIndicatorsControl({
                 * roles instead of by someone adding another block of JSX here
                 * and spelling every option key correctly. The profiles and the
                 * footprint keep their own hand-built blocks for now - they
-                * carry settings this cannot express yet - which is why this is
-                * skipped for them rather than replacing them.
+                * carry settings this cannot express yet - so this steps aside
+                * for them rather than giving them a second scheme picker.
                 */}
-              {indicatorSupportsPalette(settingsDefinition.id) ? (
+              {indicatorSupportsPalette(settingsDefinition.id)
+                && !hasOwnPaletteSection(settingsDefinition.id) ? (
                 <IndicatorPaletteSection
                   indicatorId={settingsDefinition.id}
                   settings={settingsInstance.settings ?? {}}
