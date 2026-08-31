@@ -110,6 +110,30 @@ export type IndicatorNumericSetting = {
   step?: number;
 };
 
+/** The most daily profiles a chart will draw, whatever is asked for. */
+export const MAXIMUM_DAILY_VOLUME_PROFILES = 12;
+/** What a chart draws when the trader has not chosen, unchanged from before. */
+export const DEFAULT_DAILY_VOLUME_PROFILE_COUNT = 6;
+
+/**
+ * How many daily profiles to draw - DeepChart's "Number of profile".
+ *
+ * The setting has been stored and migrated since the profile dialog was built
+ * and read by nothing: the trading-date list was sliced to a hard six. So the
+ * value persisted, survived reloads, and moved nothing on the chart.
+ *
+ * Zero means "the standing default" rather than "none", which is what every
+ * saved chart already carries. The ceiling is real work - each profile is its
+ * own request per session window - and the chart cannot draw more days than it
+ * has candles for, so asking for twelve on a short history simply yields what
+ * is there.
+ */
+export function resolveDailyVolumeProfileCount(value: unknown): number {
+  const numeric = Math.round(Number(value));
+  if (!Number.isFinite(numeric) || numeric <= 0) return DEFAULT_DAILY_VOLUME_PROFILE_COUNT;
+  return Math.min(MAXIMUM_DAILY_VOLUME_PROFILES, numeric);
+}
+
 export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[]> = {
   "zero-gamma-line": [
     { key: "historySessions", label: "Trading sessions of history", defaultValue: 5, min: 1, max: 5, step: 1 },

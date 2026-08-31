@@ -140,6 +140,7 @@ import {
   defaultIndicatorSettings,
   linkPaneIndicatorStateToTheme,
   normalizePaneIndicatorState,
+  resolveDailyVolumeProfileCount,
 } from "@/lib/chartIndicatorConfig";
 import { mergeGammaLevelsAtSamePrice, type ChartGammaLevelsPayload } from "@/lib/chartGammaLevels";
 import {
@@ -5763,12 +5764,20 @@ function WorkspaceChartPaneComponent({
   // open the execution stream can be live before the first/restored candle is
   // committed, so relying on candles alone omitted today's profile entirely.
   const currentDailyTradingDate = chicagoTradingDate(Date.now());
+  /*
+   * How many daily profiles to draw, which used to be a hard six.
+   *
+   * `numberOfProfiles` was stored, migrated and read by nothing - the setting
+   * persisted across reloads and moved nothing on the chart. The slice is the
+   * one place that decided, so it is the one place that has to ask.
+   */
+  const dailyProfileCount = resolveDailyVolumeProfileCount(dailyProfileSettings.numberOfProfiles);
   const dailyTradingDates = useMemo(() => {
     const dates = new Set<string>();
     candles.forEach((candle) => dates.add(chicagoTradingDate(candle.timestamp)));
     dates.add(currentDailyTradingDate);
-    return [...dates].sort().slice(-6);
-  }, [candles, currentDailyTradingDate]);
+    return [...dates].sort().slice(-dailyProfileCount);
+  }, [candles, currentDailyTradingDate, dailyProfileCount]);
   const dailyTradingDateSignature = dailyTradingDates.join(",");
   // The futures→cash value-area projection reads the latest cash candle
   // through a ref so the refresh loop never re-arms on every candle update.
