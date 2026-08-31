@@ -273,7 +273,7 @@ export default function GammaBotWorkspace() {
   }, [appendMessages, closest, currentReaction, instrument, livePrice, paused]);
 
   if (loading && !data) {
-    return <KwantLoader className="h-full" compact icon={Bot} title="Opening Gamma Bot" detail="Translating the latest GEX, DEX and level structure." />;
+    return <KwantLoader page compact icon={Bot} title="Opening Gamma Bot" detail="Translating the latest GEX, DEX and level structure." />;
   }
 
   return (

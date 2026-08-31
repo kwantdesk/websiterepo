@@ -831,7 +831,7 @@ export default function OptionsHeatmapWorkspace() {
   const lowerZone = resolvedModel?.zones.filter((zone) => resolvedModel.currentPrice !== null && zone.center < resolvedModel.currentPrice).sort((left, right) => right.center - left.center)[0] ?? null;
 
   if (!payload && !error) {
-    return <KwantLoader className="h-full min-h-0" icon={Flame} title="Opening Heat Map" detail="Restoring mapped NDX and QQQ positioning with the shared NQ tape." />;
+    return <KwantLoader page icon={Flame} title="Opening Heat Map" detail="Restoring mapped NDX and QQQ positioning with the shared NQ tape." />;
   }
 
   if (!resolvedModel) {

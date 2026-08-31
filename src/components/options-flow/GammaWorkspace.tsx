@@ -795,7 +795,7 @@ function FlowBoard({ rows, selected, onSelect }: { rows: FlowBoardItem[]; select
 function LoadingScreen() {
   return (
     <KwantLoader
-      className="flex-1"
+      page
       icon={Waves}
       title="Loading live options positioning"
       detail="Exposure, volatility, flow and price"
@@ -1142,7 +1142,7 @@ export default function GammaWorkspace() {
           </div>
         </header>
 
-        {loading && !data ? <div className="flex min-h-[520px]"><LoadingScreen /></div> : !data ? (
+        {loading && !data ? <div className="flex flex-1 min-h-[520px]"><LoadingScreen /></div> : !data ? (
           <div className="flex min-h-[520px] items-center justify-center p-6">
             <Panel className="max-w-md p-6 text-center">
               <Database className="mx-auto h-6 w-6 text-danger" />

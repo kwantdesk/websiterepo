@@ -2388,7 +2388,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
   if (!ready) {
     return (
       <KwantLoader
-        className="h-full"
+        page
         icon={NotebookPen}
         title="Loading Journal memory"
         detail="Restoring accounts, records and saved evidence"

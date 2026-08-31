@@ -1862,7 +1862,7 @@ function GlossaryDrawer({ term, onClose }: { term: string | null; onClose: () =>
 function LoadingState() {
   return (
     <KwantLoader
-      className="h-full min-h-[500px]"
+      page
       icon={Map}
       title="Building today's level map"
       detail="Positioning, volatility, flow and futures translation"
