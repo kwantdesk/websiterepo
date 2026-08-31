@@ -65,6 +65,7 @@ import {
   Ruler,
   ScanLine,
   Settings2,
+  Palette,
   Shapes,
   ShoppingCart,
   Slash,
@@ -168,6 +169,7 @@ import {
   isHeikinAshiStyle,
   toHeikinAshi,
   CANDLE_SETTING_KEYS,
+  OPEN_CANDLE_SETTINGS_EVENT,
 } from "@/lib/candleStyle";
 import { visibleIndicatorTheme } from "@/lib/indicatorPlotColors";
 import { PositionCalculatorPrimitive, type PositionCalculatorModel } from "@/lib/positionCalculatorPrimitive";
@@ -17983,6 +17985,22 @@ function Chart({
             <span className="flex-1 text-left">Sell 1 {instrument} @ {contextMenu.price}</span>
           </button>
           <div className="my-1 border-t border-border" />
+          {/* Only the focused chart offers this: the control that owns the
+              panel always edits the ACTIVE chart, so opening it from another
+              pane would quietly change the wrong one. */}
+          {keyboardActive ? (
+            <button
+              onMouseDown={(e) => {
+                e.stopPropagation();
+                setContextMenu(null);
+                window.dispatchEvent(new CustomEvent(OPEN_CANDLE_SETTINGS_EVENT));
+              }}
+              className="flex w-full cursor-pointer items-center gap-3 px-4 py-2.5 text-[13px] text-foreground transition-colors hover:bg-surface"
+            >
+              <Palette className="h-4 w-4 text-muted" />
+              <span className="flex-1 text-left">Candle colours and palettes...</span>
+            </button>
+          ) : null}
           <button
             onMouseDown={(e) => {
               e.stopPropagation();

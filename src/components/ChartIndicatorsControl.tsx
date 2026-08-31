@@ -35,7 +35,7 @@ import { DESK_SESSIONS, DESK_SESSION_SETTING_KEYS } from "@/lib/volumeProfileSes
 import type { ChartSettings } from "@/lib/chartSettings";
 import IndicatorPaletteSection from "@/components/indicators/IndicatorPaletteSection";
 import { supportsPalette as indicatorSupportsPalette } from "@/lib/indicatorPaletteRegistry";
-import { CANDLE_STYLES, CANDLE_SETTING_KEYS, resolveCandleStyle } from "@/lib/candleStyle";
+import { CANDLE_STYLES, CANDLE_SETTING_KEYS, OPEN_CANDLE_SETTINGS_EVENT, resolveCandleStyle } from "@/lib/candleStyle";
 import {
   applyFootprintPreset,
   deleteFootprintTemplate,
@@ -718,6 +718,16 @@ export default function ChartIndicatorsControl({
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [settingsInstanceId, setSettingsInstanceId] = useState<string | null>(null);
   const [candleSettingsOpen, setCandleSettingsOpen] = useState(false);
+  /*
+   * Right-clicking the candles opens this panel directly. The colours, the
+   * style and the gradient schemes all live here, and the only way in before
+   * was the indicator list - which is not where anyone reaches for them.
+   */
+  useEffect(() => {
+    const open = () => setCandleSettingsOpen(true);
+    window.addEventListener(OPEN_CANDLE_SETTINGS_EVENT, open);
+    return () => window.removeEventListener(OPEN_CANDLE_SETTINGS_EVENT, open);
+  }, []);
   const candleStyleId = resolveCandleStyle(candleSettings?.[CANDLE_SETTING_KEYS.style]);
   const setCandleSetting = (key: string, value: unknown) => {
     onCandleSettingsChange?.({ ...(candleSettings ?? {}), [key]: value });

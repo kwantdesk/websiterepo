@@ -52,6 +52,20 @@ export const CANDLE_STYLES = [
 
 export type CandleStyleId = typeof CANDLE_STYLES[number]["id"];
 
+/**
+ * Ask the indicator control to open the candle settings.
+ *
+ * The colours, the style and the gradient schemes all live in one panel, and
+ * the only way in was the indicator list. Right-clicking the candles is where
+ * a trader reaches for them, so the chart asks for that panel by name rather
+ * than growing a second copy of the same controls that could drift from it.
+ *
+ * The control is always mounted in the command deck and always edits the
+ * ACTIVE chart, so only the active chart offers this - opening it from a
+ * chart that is not focused would quietly edit a different one.
+ */
+export const OPEN_CANDLE_SETTINGS_EVENT = "kwantdesk:open-candle-settings";
+
 export type CandleThemeColors = {
   up: string;
   down: string;

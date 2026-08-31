@@ -219,7 +219,8 @@
     "test:weekly-profile-week": "node --import ./scripts/alias-hook.mjs scripts/test-weekly-profile-week.mjs",
     "test:order-drag": "node --import ./scripts/alias-hook.mjs scripts/test-order-drag.mjs",
     "test:paper-journal": "node --import ./scripts/alias-hook.mjs scripts/test-paper-journal.mjs",
-    "test:paper-trade-export": "node --import ./scripts/alias-hook.mjs scripts/test-paper-trade-export.mjs"
+    "test:paper-trade-export": "node --import ./scripts/alias-hook.mjs scripts/test-paper-trade-export.mjs",
+    "test:candle-context-menu": "node --import ./scripts/alias-hook.mjs scripts/test-candle-context-menu.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",
