@@ -6,6 +6,42 @@ export type ExpectedMoveMethod = "QD_PRIOR_IV_ONE_SIGMA" | "PRIOR_REALIZED_RANGE
 export type ExpectedMoveMode = "SESSION" | "LIVE";
 export type ExpectedMoveSourceSymbol = "QQQ" | "NDX";
 
+export type ExpectedMoveIndicatorSettings = {
+  lineOpacity: number;
+  fillOpacity: number;
+  mode: ExpectedMoveMode;
+  mappingSource: ExpectedMoveSourceSymbol;
+  showTwoSigma: boolean;
+  showBandFill: boolean;
+  showLabels: boolean;
+  useThemeColors: boolean;
+  neutralColor: string;
+  expectedMoveSettingsVersion: 1;
+};
+
+export function normalizeExpectedMoveSettings(
+  input: Record<string, number | string | boolean> = {},
+): ExpectedMoveIndicatorSettings {
+  const bounded = (value: unknown, fallback: number, minimum: number, maximum: number) => {
+    const parsed = Number(value);
+    return Math.min(maximum, Math.max(minimum, Number.isFinite(parsed) ? parsed : fallback));
+  };
+  return {
+    lineOpacity: bounded(input.lineOpacity, 72, 15, 100),
+    fillOpacity: bounded(input.fillOpacity, 3, 0, 4),
+    mode: input.mode === "LIVE" ? "LIVE" : "SESSION",
+    mappingSource: input.mappingSource === "NDX" ? "NDX" : "QQQ",
+    showTwoSigma: input.showTwoSigma === true,
+    showBandFill: input.showBandFill === true,
+    showLabels: input.showLabels !== false,
+    useThemeColors: input.useThemeColors !== false,
+    neutralColor: /^#[0-9a-f]{6}$/i.test(String(input.neutralColor ?? ""))
+      ? String(input.neutralColor).toUpperCase()
+      : "#D6A84B",
+    expectedMoveSettingsVersion: 1,
+  };
+}
+
 export type ExpectedMoveCandle = {
   timestamp: number;
   open: number;
