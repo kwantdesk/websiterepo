@@ -2376,7 +2376,23 @@ export default function ChartIndicatorsControl({
                             onClick={() => replace(settingsInstance.instanceId, (current) => {
                               const settings = { ...(current.settings ?? {}) };
                               const wasSplitting = String(settings.filterMode ?? "none") === "triple";
-                              if (!wasSplitting) {
+                              /*
+                               * Every session still enabled means nothing has
+                               * been PICKED yet - either the split is off, or
+                               * it was armed from the Filter mode dropdown,
+                               * which turns it on with all four flags true.
+                               *
+                               * In that state all four buttons are lit, so the
+                               * first click landed as a removal: the session
+                               * the trader asked for went dark and the three
+                               * they did not want stayed on. Clicking a session
+                               * has to mean "show me this one", so the first
+                               * pick isolates it either way and only a real
+                               * selection toggles.
+                               */
+                              const nothingPickedYet = DESK_SESSION_SETTING_KEYS
+                                .every((sessionKey) => settings[sessionKey] !== false);
+                              if (!wasSplitting || nothingPickedYet) {
                                 // First pick: arm the split and start from this
                                 // session alone, which is what clicking one asks
                                 // for. Turning on the split with everything still

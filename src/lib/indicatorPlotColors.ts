@@ -189,13 +189,76 @@ export function visibleIndicatorTheme(chart: {
   // The grid is deliberately near-invisible on most themes; volume rides on
   // `muted`, so it falls back to the outline rather than to another hairline.
   const muted = seen(chart.gridColor, seen(chart.borderDownColor, chart.borderUpColor));
+  const positive = seen(chart.upColor, chart.borderUpColor);
+  /*
+   * The two sides of a study have to be told apart from EACH OTHER, not just
+   * from the background.
+   *
+   * Checking only against the background is why a rising and a falling CVD bar
+   * could arrive the same colour: five of the palettes pair two shades of one
+   * hue for up and down - brick against maroon, orange against red-orange -
+   * which reads fine on candles, where position says the rest, and not at all
+   * on a delta histogram where colour is the only signal.
+   *
+   * The falling side tries its own outline first, so a palette that already
+   * distinguishes them keeps exactly the colour it chose. Only when that is
+   * no help too is it separated by force.
+   */
+  const negative = separable(seen(chart.downColor, chart.borderDownColor), positive, chart.borderDownColor);
   return {
-    primary: seen(chart.upColor, chart.borderUpColor),
+    primary: positive,
     secondary: seen(chart.borderUpColor, chart.upColor),
-    positive: seen(chart.upColor, chart.borderUpColor),
-    negative: seen(chart.downColor, chart.borderDownColor),
+    positive,
+    negative,
     muted,
   };
+}
+
+/**
+ * A colour that can be told apart from `from`.
+ *
+ * Tries the caller's own alternative before altering anything, so a palette
+ * that already separates its two sides is left exactly as its author wrote it.
+ */
+function separable(colour: string, from: string, alternative: string): string {
+  if (colourDistance(colour, from) >= MINIMUM_SIDE_DISTANCE) return colour;
+  if (colourDistance(alternative, from) >= MINIMUM_SIDE_DISTANCE) return alternative;
+  // Both shades of the same hue. Push the falling side away from the rising one
+  // rather than inventing a colour unrelated to the palette.
+  return shiftAway(colour, from);
+}
+
+/*
+ * Straight-line distance in RGB. Measured across the palettes: brick #B5482E
+ * against maroon #8F2440 lands at 55 and is indistinguishable on a histogram,
+ * while orange #FF8A00 against blue #28A8E0 lands past 200 and is obvious.
+ */
+const MINIMUM_SIDE_DISTANCE = 60;
+
+function colourDistance(left: string, right: string): number {
+  const a = channels(left);
+  const b = channels(right);
+  if (!a || !b) return Number.POSITIVE_INFINITY;
+  return Math.sqrt((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2);
+}
+
+function shiftAway(colour: string, from: string): string {
+  const source = channels(colour);
+  const other = channels(from);
+  if (!source || !other) return colour;
+  // Darken when the other side is bright, lighten when it is dark, so the two
+  // separate by weight while both stay visible against the chart.
+  const otherIsBright = (other[0] + other[1] + other[2]) / 3 >= 128;
+  const shifted = source.map((value) => otherIsBright
+    ? Math.max(0, Math.round(value * 0.55))
+    : Math.min(255, Math.round(value + (255 - value) * 0.45)));
+  return `#${shifted.map((value) => value.toString(16).padStart(2, "0")).join("")}`;
+}
+
+function channels(colour: string): [number, number, number] | null {
+  const hex = String(colour).trim().replace("#", "");
+  if (!/^[0-9a-f]{6}$/i.test(hex)) return null;
+  return [0, 2, 4].map((index) => parseInt(hex.slice(index, index + 2), 16)) as [number, number, number];
 }
 
 /**
