@@ -908,18 +908,17 @@ export async function fetchInstitutionalVolumeProfile(args: {
   useEndSessionAsStartDay?: boolean;
 }): Promise<InstitutionalVolumeProfile | null> {
   const requestedValueArea = Number(args.valueAreaPercent);
+  // The trader's own % Value Area. This was previously pinned to the 70%
+  // convention here as well as on the route, so the setting never arrived.
+  const askedValueAreaPercent = Number.isFinite(requestedValueArea) && requestedValueArea > 0
+    ? Math.min(100, requestedValueArea)
+    : STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT;
   const query = new URLSearchParams({
     profileSchema: "2",
     symbol: args.symbol,
     period: args.period,
     groupTicks: String(Math.max(1, Math.round(args.groupTicks ?? 1))),
-    // The trader's own % Value Area. This was previously pinned to the 70%
-    // convention here as well as on the route, so the setting never arrived.
-    valueAreaPercent: String(
-      Number.isFinite(requestedValueArea) && requestedValueArea > 0
-        ? Math.min(100, requestedValueArea)
-        : STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
-    ),
+    valueAreaPercent: String(askedValueAreaPercent),
     minTradeVolume: String(Math.max(0, args.minTradeVolume ?? 0)),
     maxTradeVolume: String(Math.max(0, args.maxTradeVolume ?? 0)),
     filterMode: args.filterMode ?? "none",
@@ -975,14 +974,32 @@ export async function fetchInstitutionalVolumeProfile(args: {
         );
         return null;
       }
+      /*
+       * The percentage the profile was actually built at.
+       *
+       * This asked the route for 68%, got a profile computed at 68% back, then
+       * recomputed the value area at the 70% convention and stamped 70 on the
+       * way out - so the trader's setting was discarded on arrival, and the
+       * live top-up downstream reads that stamp and carries the substitution
+       * forward. VAL and the POC still agreed with DeepChart because the POC
+       * does not move with the percentage and the walk breaks ties upward, so
+       * the extra width came off the top: only VAH drifted, which is exactly
+       * what was reported.
+       *
+       * The server's own answer wins; the asked-for value is the fallback for
+       * a response that does not carry one.
+       */
+      const responseValueAreaPercent = Number(payload.valueAreaPercent) > 0
+        ? Math.min(100, Number(payload.valueAreaPercent))
+        : askedValueAreaPercent;
       const valueArea = calculateVolumeProfileValueArea(
         payload.levels,
         payload.tickSize * payload.groupTicks,
-        STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
+        responseValueAreaPercent,
       );
       const normalizedPayload = {
         ...payload,
-        valueAreaPercent: STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
+        valueAreaPercent: responseValueAreaPercent,
         poc: valueArea.poc,
         vah: valueArea.vah,
         val: valueArea.val,

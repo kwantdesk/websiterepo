@@ -84,6 +84,35 @@ check("the live top-up uses the profile's own percentage", () => {
   );
 });
 
+check("the fetch keeps the percentage the profile was built at", () => {
+  /*
+   * The fix above was defeated one layer up. The client asked the route for
+   * 68%, got a profile computed at 68% back, then recomputed the value area at
+   * the 70% constant and stamped 70 on the way out - so the setting was
+   * discarded on arrival, and the live top-up read that stamp and carried the
+   * substitution forward for the rest of the session.
+   */
+  const source = readFileSync(
+    new URL("../src/lib/institutionalMarketData.ts", import.meta.url), "utf8",
+  );
+  const start = source.indexOf("export async function fetchInstitutionalVolumeProfile");
+  assert.ok(start > 0, "the profile fetch is gone");
+  const body = source.slice(start, source.indexOf(`${String.fromCharCode(10)}export `, start + 10));
+  assert.match(
+    body,
+    /const responseValueAreaPercent = Number\(payload\.valueAreaPercent\) > 0/,
+    "the fetch no longer reads the percentage the profile was built at",
+  );
+  assert.match(body, /valueAreaPercent: responseValueAreaPercent,/, "the response is stamped with the convention again");
+  const recompute = body.slice(body.indexOf("const valueArea = calculateVolumeProfileValueArea"));
+  assert.ok(
+    !recompute.slice(0, 260).includes("STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT"),
+    "the fetch still recomputes the value area at 70%",
+  );
+  // The request itself must still carry what the trader asked for.
+  assert.match(body, /valueAreaPercent: String\(askedValueAreaPercent\)/, "the request no longer sends the setting");
+});
+
 check("an absent percentage still falls back to the convention", () => {
   // Old cached profiles carry no percentage; they must not compute at zero.
   assert.equal(STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT, 70);
