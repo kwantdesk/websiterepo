@@ -2666,6 +2666,11 @@ export default function ChartIndicatorsControl({
                       className="h-9 w-full border border-border bg-background px-3 text-right font-mono text-[10px] text-foreground outline-none focus:border-primary/40"
                     />
                   </label>
+                  <div className="border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
+                    Developing traces both value-area edges as they widened through the session, dashed or solid.
+                    It is recorded minute by minute while the session runs, so a day that finished before the chart
+                    was open has no trail to draw and the setting honestly shows nothing on it.
+                  </div>
                 </div>
               ) : null}
 

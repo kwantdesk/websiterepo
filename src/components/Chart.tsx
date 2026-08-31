@@ -14010,6 +14010,14 @@ function Chart({
             ? Number(profileSettings.developingPocStartMinutes) * 60_000
             : 0,
           valueAreaLineWidth: clamp(Number(profileSettings.valueAreaLineWidth ?? 1), 0.5, 6),
+          /*
+           * The Value Area tab's "Developing" control, which had been stored
+           * and migrated since the tab was built and read by nothing - the
+           * dropdown remembered dash or solid and the chart drew neither.
+           */
+          developingValueArea: String(profileSettings.valueAreaDeveloping) === "dash"
+            ? "dash"
+            : String(profileSettings.valueAreaDeveloping) === "solid" ? "solid" : "no",
           // Peak and Valley
           showPeaks: profileSettings.showPeaks === true,
           showValleys: profileSettings.showValleys === true,

@@ -109,6 +109,17 @@ export type InstitutionalVolumeProfile = {
   standardDeviation: number;
   levels: InstitutionalVolumeProfileLevel[];
   developingPoc: Array<{ timestamp: number; price: number }>;
+  /*
+   * Where the value area's edges sat at each recorded minute - DeepChart's
+   * "Developing" switch on the Value Area tab.
+   *
+   * Optional because a cached profile written before this existed has none,
+   * and an absent trail must read as "not recorded" rather than as an empty
+   * session. Like the developing POC it is built by the live top-up, so a
+   * historical-only profile carries none and the switch honestly draws
+   * nothing.
+   */
+  developingValueArea?: Array<{ timestamp: number; vah: number; val: number }>;
   asOf: string;
 };
 
@@ -1181,6 +1192,14 @@ export function applyInstitutionalTradesToVolumeProfile(
     if (developingPoc.at(-1)?.timestamp === latestMinute) developingPoc[developingPoc.length - 1] = { timestamp: latestMinute, price: valueArea.poc };
     else developingPoc.push({ timestamp: latestMinute, price: valueArea.poc });
   }
+  // The same minute, the same rule: the newest sample replaces the one for the
+  // minute still building rather than stacking a second point on it.
+  const developingValueArea = [...(profile.developingValueArea ?? [])];
+  if (valueArea.vah !== null && valueArea.val !== null) {
+    const sample = { timestamp: latestMinute, vah: valueArea.vah, val: valueArea.val };
+    if (developingValueArea.at(-1)?.timestamp === latestMinute) developingValueArea[developingValueArea.length - 1] = sample;
+    else developingValueArea.push(sample);
+  }
   return {
     ...profile,
     // Reporting the standard here as well is what made the drift invisible:
@@ -1207,6 +1226,7 @@ export function applyInstitutionalTradesToVolumeProfile(
     val: valueArea.val,
     levels: nextLevels,
     developingPoc: developingPoc.slice(-2_000),
+    developingValueArea: developingValueArea.slice(-2_000),
   };
 }
 
@@ -1495,6 +1515,10 @@ export function mergeInstitutionalVolumeProfiles(
     developingPoc: [
       ...historical.developingPoc,
       ...exact.developingPoc,
+    ].slice(-2_000),
+    developingValueArea: [
+      ...(historical.developingValueArea ?? []),
+      ...(exact.developingValueArea ?? []),
     ].slice(-2_000),
   };
 }

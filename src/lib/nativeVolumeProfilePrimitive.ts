@@ -145,6 +145,13 @@ export type NativeVolumeProfileStyle = {
   pocLineWidth?: number;
   /** Trace the POC as it migrated through the session. */
   showDevelopingPoc?: boolean;
+  /**
+   * Trace both value-area edges as they widened through the session.
+   *
+   * DeepChart spells this as the line it draws rather than as a switch, and so
+   * does our dialog: "no", or the dash pattern to draw it with.
+   */
+  developingValueArea?: "no" | "dash" | "solid";
   /** Ignore developing points before this minute of the session, 0 = none. */
   developingPocStartMs?: number;
   /** Value Area boundary line weight. */
@@ -1351,34 +1358,76 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
         // a step trail because the POC holds a price until enough volume moves
         // it, so interpolating between points would invent migration that
         // never happened.
-        if (style.showDevelopingPoc && profile.developingPoc.length > 1) {
-          const startMs = Number(style.developingPocStartMs ?? 0);
-          const trail = startMs > 0
-            ? profile.developingPoc.filter((point) => point.timestamp >= startMs)
-            : profile.developingPoc;
-          if (trail.length > 1) {
-            context.globalAlpha = 0.7;
-            context.strokeStyle = style.pocColor;
-            context.lineWidth = Math.max(0.5, Number(style.pocLineWidth ?? 1));
-            context.setLineDash([]);
-            context.beginPath();
-            let started = false;
-            let previousY: number | null = null;
-            for (const point of trail) {
-              const pointX = this.timeToCoordinate(model, Math.floor(point.timestamp / 1000));
-              const pointY = params.series.priceToCoordinate(point.price);
-              if (pointX == null || pointY == null) continue;
-              if (!started) {
-                context.moveTo(pointX, pointY);
-                started = true;
-              } else {
-                if (previousY != null && previousY !== pointY) context.lineTo(pointX, previousY);
-                context.lineTo(pointX, pointY);
-              }
-              previousY = pointY;
+        const developingStartMs = Number(style.developingPocStartMs ?? 0);
+        const withinDevelopingWindow = <T extends { timestamp: number }>(trail: readonly T[]) => (
+          developingStartMs > 0
+            ? trail.filter((point) => point.timestamp >= developingStartMs)
+            : trail
+        );
+        const drawDevelopingTrail = (
+          trail: readonly { timestamp: number; price: number }[],
+          colour: string,
+          width: number,
+          dash: number[] = [],
+        ) => {
+          if (trail.length < 2) return;
+          context.globalAlpha = 0.7;
+          context.strokeStyle = colour;
+          context.lineWidth = Math.max(0.5, width);
+          context.setLineDash(dash);
+          context.beginPath();
+          let started = false;
+          let previousY: number | null = null;
+          for (const point of trail) {
+            const pointX = this.timeToCoordinate(model, Math.floor(point.timestamp / 1000));
+            const pointY = params.series.priceToCoordinate(point.price);
+            if (pointX == null || pointY == null) continue;
+            if (!started) {
+              context.moveTo(pointX, pointY);
+              started = true;
+            } else {
+              if (previousY != null && previousY !== pointY) context.lineTo(pointX, previousY);
+              context.lineTo(pointX, pointY);
             }
-            if (started) context.stroke();
+            previousY = pointY;
           }
+          if (started) context.stroke();
+        };
+
+        if (style.showDevelopingPoc && profile.developingPoc.length > 1) {
+          drawDevelopingTrail(
+            withinDevelopingWindow(profile.developingPoc),
+            style.pocColor,
+            Number(style.pocLineWidth ?? 1),
+          );
+        }
+        /*
+         * Developing value area: both edges as they widened through the
+         * session. Two trails rather than a filled band - a fill would sit
+         * over the histogram it is measuring, and the edges are what a trader
+         * reads against.
+         *
+         * Only the live top-up records these, so a historical-only profile has
+         * none and this honestly draws nothing rather than interpolating a
+         * shape from the finished value area.
+         */
+        if (
+          style.developingValueArea
+          && style.developingValueArea !== "no"
+          && (profile.developingValueArea?.length ?? 0) > 1
+        ) {
+          const trail = withinDevelopingWindow(profile.developingValueArea ?? []);
+          const width = Number(style.valueAreaLineWidth ?? 1);
+          const dash = style.developingValueArea === "dash" ? [3, 3] : [];
+          for (const edge of ["vah", "val"] as const) {
+            drawDevelopingTrail(
+              trail.map((point) => ({ timestamp: point.timestamp, price: point[edge] })),
+              levelValueAreaColor,
+              width,
+              dash,
+            );
+          }
+          context.setLineDash([]);
         }
         // Queued rather than drawn: see deferredLevelDraws. This also puts
         // every level above every body, so a profile drawn later can no longer
