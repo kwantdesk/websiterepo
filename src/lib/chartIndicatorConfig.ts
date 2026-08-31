@@ -1008,7 +1008,70 @@ export const KWANT_STATS_COMPACT_VISIBILITY = {
   showDeltaEffort: false,
 } as const;
 
-export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSettings) => ({
+/**
+ * The chart theme as a STUDY has to show it.
+ *
+ * Several palettes pair two shades of one hue for up and down - brick against
+ * maroon, orange against red-orange. That reads fine on candles, where the
+ * body's position carries the meaning, and not at all on a delta histogram
+ * where colour is the only signal: a rising and a falling CVD bar arrive the
+ * same colour and the study looks like one block.
+ *
+ * `visibleIndicatorTheme` already resolves this, and the plot colours spread
+ * in below already went through it - but every study that declares its own
+ * directional keys then overwrote them with the RAW `theme.upColor`, which is
+ * how CVD ended up back at one colour on exactly those palettes.
+ *
+ * Separating here instead means one place decides, and every `theme?.upColor`
+ * below is the separated one. A palette whose sides are already far apart is
+ * returned untouched, by identity, so Solar Flare keeps its orange against
+ * blue exactly as its author chose.
+ */
+function sidedTheme(theme?: ChartSettings): ChartSettings | undefined {
+  if (!theme) return theme;
+  const grid = theme.gridColor ?? "#8A8F98";
+  const background = theme.backgroundColor ?? "#000000";
+  const borderUp = theme.borderUpColor ?? theme.upColor ?? "#4ADE80";
+  const borderDown = theme.borderDownColor ?? theme.downColor ?? "#EF4444";
+  const separate = (up: string, down: string) => {
+    const visible = visibleIndicatorTheme({
+      upColor: up,
+      downColor: down,
+      borderUpColor: borderUp,
+      borderDownColor: borderDown,
+      gridColor: grid,
+      backgroundColor: background,
+    });
+    return { up: visible.positive, down: visible.negative };
+  };
+  const body = separate(theme.upColor ?? "#22C55E", theme.downColor ?? "#EF4444");
+  /*
+   * The outline pair is separated too, and separately.
+   *
+   * Studies split across both: CVD takes its delta bars from the body colours
+   * and its volume bars from the outline ones. Fixing only the body left the
+   * volume half of the same study still reading as one colour on the palettes
+   * that pair two shades of a hue - which is most of what "the CVD is one
+   * colour" actually was.
+   */
+  const outline = separate(borderUp, borderDown);
+  if (
+    body.up === theme.upColor && body.down === theme.downColor
+    && outline.up === theme.borderUpColor && outline.down === theme.borderDownColor
+  ) return theme;
+  return {
+    ...theme,
+    upColor: body.up,
+    downColor: body.down,
+    borderUpColor: outline.up,
+    borderDownColor: outline.down,
+  };
+}
+
+export const defaultIndicatorSettings = (indicatorId: string, rawTheme?: ChartSettings) =>
+  indicatorSettingsFromTheme(indicatorId, sidedTheme(rawTheme));
+
+const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) => ({
   // One picker per plotted series, seeded from the chart theme so an untouched
   // study looks exactly as it did. Spread FIRST, so any indicator that already
   // declares its own colour keys below keeps them.
@@ -1086,7 +1149,9 @@ export const defaultIndicatorSettings = (indicatorId: string, theme?: ChartSetti
     ...DEFAULT_PULLING_STACKING_SETTINGS,
     bidStackColor: theme?.upColor ?? DEFAULT_PULLING_STACKING_SETTINGS.bidStackColor,
     askStackColor: theme?.downColor ?? DEFAULT_PULLING_STACKING_SETTINGS.askStackColor,
-    bidPullColor: "#F59E0B",
+    // Its partner followed the theme while this stayed a fixed amber, so on
+    // any orange palette the two pull sides arrived the same colour.
+    bidPullColor: theme?.borderDownColor ?? theme?.downColor ?? "#F59E0B",
     askPullColor: theme?.borderUpColor ?? "#38BDF8",
     neutralColor: theme?.gridColor ?? DEFAULT_PULLING_STACKING_SETTINGS.neutralColor,
     pullingStackingSettingsVersion: PULLING_STACKING_SETTINGS_VERSION,

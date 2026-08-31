@@ -2,6 +2,17 @@ import assert from "node:assert/strict";
 
 const { themePresets } = await import("../src/lib/themePresets.ts");
 const { visibleIndicatorTheme } = await import("../src/lib/indicatorPlotColors.ts");
+const { CHART_INDICATOR_CATALOG } = await import("../src/lib/chartIndicatorCatalog.ts");
+const { defaultIndicatorSettings } = await import("../src/lib/chartIndicatorConfig.ts");
+
+const asChartSettings = (preset) => ({
+  upColor: preset.colors.candleUp,
+  downColor: preset.colors.candleDown,
+  borderUpColor: preset.colors.candleUpBorder,
+  borderDownColor: preset.colors.candleDownBorder,
+  gridColor: preset.colors.gridColor,
+  backgroundColor: preset.colors.chartBackground,
+});
 
 /**
  * The two sides of a study can always be told apart.
@@ -87,6 +98,47 @@ check("the roles stay stable for the same palette", () => {
   for (const preset of themePresets.slice(0, 6)) {
     assert.deepEqual(roles(preset.colors), roles(preset.colors), `${preset.name} is not deterministic`);
   }
+});
+
+check("no study anywhere pairs its two sides into one colour", () => {
+  /*
+   * The checks above prove the resolver separates a palette. This proves every
+   * study actually USES it.
+   *
+   * CVD did not. Its delta bars take the body colours and its volume bars take
+   * the outline ones, and both were read raw from the theme - so on the five
+   * palettes that pair two shades of one hue the histogram arrived as a single
+   * block. "Why is the CVD one colour" was that, and separating only the body
+   * half left the volume half still doing it.
+   *
+   * The whole catalogue, against every shipped theme, for every directional
+   * pair a study declares.
+   */
+  const suffixes = [["Ask", "Bid"], ["ask", "bid"], ["Up", "Down"], ["Positive", "Negative"],
+    ["positive", "negative"], ["Bull", "Bear"], ["bullish", "bearish"], ["buy", "sell"]];
+  const collapsed = [];
+  for (const { id } of CHART_INDICATOR_CATALOG) {
+    for (const preset of themePresets) {
+      let defaults;
+      try { defaults = defaultIndicatorSettings(id, asChartSettings(preset)); } catch { continue; }
+      for (const key of Object.keys(defaults)) {
+        if (!/colou?r$/i.test(key)) continue;
+        for (const [a, b] of suffixes) {
+          if (!key.includes(a)) continue;
+          const partner = key.replace(a, b);
+          if (!(partner in defaults)) continue;
+          const apart = distance(defaults[key], defaults[partner]);
+          if (apart < 60) {
+            collapsed.push(`${id} on ${preset.name}: ${key} ${defaults[key]} vs ${partner} ${defaults[partner]} (${apart.toFixed(0)})`);
+          }
+        }
+      }
+    }
+  }
+  assert.deepEqual(
+    collapsed.slice(0, 10), [],
+    `${collapsed.length} directional pairs read as one colour:\n  ${collapsed.slice(0, 10).join("\n  ")}`,
+  );
 });
 
 console.log(`\nindicator side colours: ${passed}/${passed} checks passed`);
