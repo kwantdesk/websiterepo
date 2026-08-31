@@ -67,16 +67,23 @@ export const RTH_END_MINUTES = 15 * 60 + 15;
  * early. Two different windows over one tape give two different value areas,
  * which is why the mismatch read as a constant offset rather than drift.
  *
- * DeepChart's Asian window opens at 14:00 Chicago, an hour before the cash
- * close, so on its own terms it also swallows the last hour of the previous
- * day session. We start Asia at the 17:00 bell instead: the earlier hour
- * belongs to the day that is still trading, and no desk reads it as Asia.
+ * The overnight is the one place we deliberately do NOT copy them. DeepChart
+ * runs a single Asian window; we split the same stretch into Globex and Asia,
+ * because 09:00 JST is 19:00 Chicago and the thin headline-led hours straight
+ * after the bell trade nothing like Tokyo's session. DeepChart's Asian is
+ * therefore our Globex and Asia TOGETHER, and that is the comparison to make
+ * against it - neither of ours on its own.
  *
- * Globex is ours - DeepChart has no equivalent, and no such window exists
- * anywhere in its assembly. It is the evening between the CME open and Tokyo:
- * 09:00 JST is 19:00 Chicago. It now overlaps the front of Asia the same way
- * DeepChart's own Europe and Usa overlap, which is what lets the two be read
- * against each other instead of one hiding inside the other.
+ * The two shared a 17:00 start for one commit, to match that Asian window
+ * exactly. That is what "profiles sitting in random spots" was: a session
+ * profile is anchored at its own start, so two starting on the same second
+ * anchor at the same pixel and draw through each other, and the level chain
+ * picks the profile in front with a strict "starts later" test that a tie can
+ * never satisfy. The windows tile again, so each has its own place.
+ *
+ * London and New York still overlap between 08:30 and 10:00, which is
+ * DeepChart's own behaviour and is fine: their starts differ, so the chain
+ * resolves them.
  *
  * The stored filter mode is still spelled "triple" from when there were three
  * of these. Renaming it would orphan every saved workspace, so the value stays
@@ -92,8 +99,8 @@ const DESK_SESSION_SEGMENTS: {
 }[] = [
   // 17:00 -> 19:00 Chicago. Ours; the CME open through to Tokyo's.
   { id: "globex", label: "Globex", settingsKey: "sessionGlobexEnabled", start: 17 * 60, end: 19 * 60 },
-  // DeepChart "Asian", 15:00 -> 03:00 New York, started at the CME bell instead.
-  { id: "asia", label: "Asia", settingsKey: "sessionAsiaEnabled", start: 17 * 60, end: 26 * 60 },
+  // 19:00 -> 02:00. Tokyo's own session; with Globex it is DeepChart's Asian.
+  { id: "asia", label: "Asia", settingsKey: "sessionAsiaEnabled", start: 19 * 60, end: 26 * 60 },
   // DeepChart "Europe", 03:00 -> 11:00 New York.
   { id: "london", label: "London", settingsKey: "sessionLondonEnabled", start: 26 * 60, end: 34 * 60 },
   // DeepChart "Usa", 09:30 -> 16:00 New York - the cash session, not the CME close.

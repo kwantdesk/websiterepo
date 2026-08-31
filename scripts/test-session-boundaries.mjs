@@ -42,14 +42,14 @@ const middleOf = (id) => {
   return found[Math.floor(found.length / 2)];
 };
 
-check("Asia runs from the CME bell to 02:00, matching DeepChart's Asian", () => {
+check("Asia runs 19:00 to 02:00, closing with DeepChart's Asian", () => {
   /*
-   * DeepChart opens Asian at 14:00 Chicago, an hour before the cash close, so
-   * on its own terms it also swallows the tail of the day that is still
-   * trading. We start at the 17:00 bell; the close is theirs exactly.
+   * The close is theirs exactly. The open is not, and deliberately: DeepChart
+   * runs one Asian window where we run Globex and Asia, so THEIR Asian is our
+   * two together and neither of ours alone should be compared against it.
    */
   const asia = middleOf("asia");
-  assert.equal(wallClock(asia.startMs), "17:00");
+  assert.equal(wallClock(asia.startMs), "19:00");
   assert.equal(wallClock(asia.endMs), "02:00");
 });
 
@@ -69,19 +69,39 @@ check("New York runs 08:30 to 15:00, matching DeepChart's Usa", () => {
   assert.equal(wallClock(newYork.endMs), "15:00");
 });
 
-check("Globex stays ours and stays separate", () => {
+check("Globex hands over to Asia rather than sitting on top of it", () => {
   /*
-   * DeepChart has no Globex - the word appears nowhere in its assembly. It now
-   * overlaps the front of Asia, the same way DeepChart's own Europe and Usa
-   * overlap, so the opening hours can be read against the whole overnight
-   * instead of disappearing inside it.
+   * This is the regression this file exists to stop. Both once started at
+   * 17:00, and a session profile is anchored at its own start - so the two
+   * anchored at the same pixel and drew through each other, which is what
+   * "profiles in random spots" was. They must tile.
    */
   const globex = middleOf("globex");
   assert.equal(wallClock(globex.startMs), "17:00");
   assert.equal(wallClock(globex.endMs), "19:00");
   const asia = middleOf("asia");
-  assert.equal(globex.startMs, asia.startMs, "Globex no longer opens on the bell with Asia");
-  assert.ok(globex.endMs < asia.endMs, "Globex is meant to be the front of Asia, not all of it");
+  assert.notEqual(globex.startMs, asia.startMs, "Globex and Asia anchor at the same instant again");
+  assert.equal(globex.endMs, asia.startMs, "Globex no longer hands straight over to Asia");
+});
+
+check("no two desk sessions share a start", () => {
+  /*
+   * The level chain picks the profile in front with a strict "starts later"
+   * test, which a tie can never satisfy: two tied profiles each believe
+   * nothing is in front of them and run their POC and value area across each
+   * other. Overlap is fine and DeepChart does it too - London and New York
+   * still overlap here - but an exact tie is not.
+   */
+  const starts = new Map();
+  for (const segment of segments) {
+    const key = `${segment.startMs}`;
+    const already = starts.get(key);
+    assert.ok(
+      !already,
+      `${segment.id} and ${already} both start at ${wallClock(segment.startMs)}`,
+    );
+    starts.set(key, segment.id);
+  }
 });
 
 check("every session still covers real time and is still switchable", () => {
@@ -101,7 +121,7 @@ check("the day session and the overnight together leave no hole", () => {
    * close belongs to at least one session at every moment.
    */
   const asia = segments.find(
-    (segment) => segment.id === "asia" && wallClock(segment.startMs) === "17:00",
+    (segment) => segment.id === "asia" && wallClock(segment.startMs) === "19:00",
   );
   assert.ok(asia, "no unclipped Asia in the range");
   // The neighbours of that particular Asia, not the middle of their own runs -
