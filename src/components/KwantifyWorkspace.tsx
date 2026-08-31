@@ -119,6 +119,11 @@ import { useAccountPreferenceSync } from "@/hooks/useAccountPreferenceSync";
 import { compactLegacyAuthPreferenceMetadata, hydrateUserPreferences } from "@/lib/userPreferences";
 import { loadJournalState, saveJournalState } from "@/lib/journalStore";
 import { PAPER_JOURNAL_UPDATED_EVENT, appendPaperTradesToJournal } from "@/lib/paperJournal";
+import {
+  dailyPaperTradeRows,
+  paperDailyExportFileName,
+  paperTradeRowsToCsv,
+} from "@/lib/paperTradeExport";
 import { readStoredTheme, saveTheme, type ThemeColors } from "@/lib/theme";
 import { DEFAULT_CROSSHAIR_STYLE, loadCrosshairStyle, normalizeCrosshairStyle, saveCrosshairStyle, type CrosshairStyle } from "@/lib/crosshairStyle";
 import { loadGexMapPalette, saveGexMapPalette, type GexMapPalette } from "@/lib/gexMapPalette";
@@ -11211,6 +11216,29 @@ export default function KwantifyWorkspace({
     ? selectedChartExecutionQuote.timestamp
     : Date.now();
   const selectedPaperDailyPnl = dailyRealizedPaperPnl(selectedPaperAccountLedger, paperValuationTimestamp);
+  /*
+   * The trades behind the daily figure, as a file another journal will take.
+   *
+   * Same day and same fills as the number beside it, so the list always
+   * explains it - and clearing the account's fills empties both at once,
+   * because both read the same place.
+   */
+  const selectedPaperDailyTradeRows = dailyPaperTradeRows(
+    selectedPaperAccountLedger,
+    selectedPaperTradingAccount?.name ?? "Demo account",
+    paperValuationTimestamp,
+  );
+  const downloadPaperDailyTrades = () => {
+    if (!selectedPaperDailyTradeRows.length) return;
+    const name = selectedPaperTradingAccount?.name ?? "Demo account";
+    downloadLevelFile(
+      // A byte order mark, so Excel opens it as UTF-8 instead of mangling the
+      // first header cell.
+      String.fromCharCode(0xFEFF) + paperTradeRowsToCsv(selectedPaperDailyTradeRows),
+      paperDailyExportFileName(name, paperValuationTimestamp),
+      "text/csv;charset=utf-8",
+    );
+  };
   const orderPanelLockTone =
     activeBrokerHealth.state === "broken"
       ? {
@@ -20222,9 +20250,25 @@ export default function KwantifyWorkspace({
                     <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-foreground">Daily P&amp;L</div>
                     <div className="mt-0.5 text-[9px] text-muted">Closed today · New York</div>
                   </div>
-                  <span className={`font-mono text-[13px] font-semibold tabular-nums ${selectedPaperDailyPnl > 0 ? "text-primary" : selectedPaperDailyPnl < 0 ? "text-danger" : "text-foreground"}`}>
-                    {selectedPaperDailyPnl > 0 ? "+" : selectedPaperDailyPnl < 0 ? "-" : ""}{formatDollar(selectedPaperDailyPnl)}
-                  </span>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <span className={`font-mono text-[13px] font-semibold tabular-nums ${selectedPaperDailyPnl > 0 ? "text-primary" : selectedPaperDailyPnl < 0 ? "text-danger" : "text-foreground"}`}>
+                      {selectedPaperDailyPnl > 0 ? "+" : selectedPaperDailyPnl < 0 ? "-" : ""}{formatDollar(selectedPaperDailyPnl)}
+                    </span>
+                    {/* Disabled rather than hidden, so the export does not
+                        appear and vanish as the first trade of the day closes. */}
+                    <button
+                      type="button"
+                      onClick={downloadPaperDailyTrades}
+                      disabled={!selectedPaperDailyTradeRows.length}
+                      className="flex h-7 w-7 items-center justify-center rounded-[2px] border border-border text-muted transition-colors hover:border-primary/30 hover:text-primary disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:border-border disabled:hover:text-muted"
+                      title={selectedPaperDailyTradeRows.length
+                        ? `Download today's ${selectedPaperDailyTradeRows.length} closed ${selectedPaperDailyTradeRows.length === 1 ? "trade" : "trades"} as CSV`
+                        : "No trades closed today"}
+                      aria-label="Download today's closed trades"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
                 </div>
               </div>
               {!tradingUnlocked && (

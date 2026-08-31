@@ -167,7 +167,14 @@ const paperPnlDayFormatter = new Intl.DateTimeFormat("en-US", {
   day: "2-digit",
 });
 
-function paperPnlDayKey(timestamp: number): string {
+/**
+ * The New York trading day a timestamp belongs to.
+ *
+ * Exported so anything reporting on "today" - the daily P&L readout and the
+ * export of the trades behind it - draws the same boundary. Two definitions of
+ * today would let a figure and the list explaining it disagree.
+ */
+export function paperPnlDayKey(timestamp: number): string {
   if (!Number.isFinite(timestamp)) return "";
   const parts = paperPnlDayFormatter.formatToParts(new Date(timestamp));
   const year = parts.find((part) => part.type === "year")?.value;
