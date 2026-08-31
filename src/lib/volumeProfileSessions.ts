@@ -58,11 +58,25 @@ export const RTH_END_MINUTES = 15 * 60 + 15;
  * expressed from that bell and the later ones run past 1440 into the next
  * calendar day.
  *
- * Globex is the evening between the CME open and Tokyo: 09:00 JST is 19:00
- * Chicago, so that is where Asia's cash session begins and where the opening
- * Globex window ends. Splitting the two matters because the thin, headline-led
- * hours straight after the bell trade nothing like Tokyo's session, and folding
- * them together buries the Globex open's own value area inside Asia's.
+ * Asia, London and New York carry DeepChart's own boundaries, read on
+ * 2026-08-31 out of its Sessions Marker defaults (Asian 15:00-03:00, Europe
+ * 03:00-11:00, Usa 09:30-16:00 - New York time, which its 09:30 cash open
+ * fixes beyond doubt) and converted to Chicago. A profile is only comparable
+ * to DeepChart's if it covers the same tape, and ours previously did not: our
+ * Asia opened two hours after theirs and our London and New York both closed
+ * early. Two different windows over one tape give two different value areas,
+ * which is why the mismatch read as a constant offset rather than drift.
+ *
+ * DeepChart's Asian window opens at 14:00 Chicago, an hour before the cash
+ * close, so on its own terms it also swallows the last hour of the previous
+ * day session. We start Asia at the 17:00 bell instead: the earlier hour
+ * belongs to the day that is still trading, and no desk reads it as Asia.
+ *
+ * Globex is ours - DeepChart has no equivalent, and no such window exists
+ * anywhere in its assembly. It is the evening between the CME open and Tokyo:
+ * 09:00 JST is 19:00 Chicago. It now overlaps the front of Asia the same way
+ * DeepChart's own Europe and Usa overlap, which is what lets the two be read
+ * against each other instead of one hiding inside the other.
  *
  * The stored filter mode is still spelled "triple" from when there were three
  * of these. Renaming it would orphan every saved workspace, so the value stays
@@ -76,10 +90,14 @@ const DESK_SESSION_SEGMENTS: {
   start: number;
   end: number;
 }[] = [
+  // 17:00 -> 19:00 Chicago. Ours; the CME open through to Tokyo's.
   { id: "globex", label: "Globex", settingsKey: "sessionGlobexEnabled", start: 17 * 60, end: 19 * 60 },
-  { id: "asia", label: "Asia", settingsKey: "sessionAsiaEnabled", start: 19 * 60, end: 26 * 60 },
-  { id: "london", label: "London", settingsKey: "sessionLondonEnabled", start: 26 * 60, end: RTH_START_MINUTES + 24 * 60 },
-  { id: "newyork", label: "New York", settingsKey: "sessionNewYorkEnabled", start: RTH_START_MINUTES + 24 * 60, end: RTH_END_MINUTES + 24 * 60 },
+  // DeepChart "Asian", 15:00 -> 03:00 New York, started at the CME bell instead.
+  { id: "asia", label: "Asia", settingsKey: "sessionAsiaEnabled", start: 17 * 60, end: 26 * 60 },
+  // DeepChart "Europe", 03:00 -> 11:00 New York.
+  { id: "london", label: "London", settingsKey: "sessionLondonEnabled", start: 26 * 60, end: 34 * 60 },
+  // DeepChart "Usa", 09:30 -> 16:00 New York - the cash session, not the CME close.
+  { id: "newyork", label: "New York", settingsKey: "sessionNewYorkEnabled", start: RTH_START_MINUTES + 24 * 60, end: 15 * 60 + 24 * 60 },
 ];
 
 /**
