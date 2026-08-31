@@ -75,6 +75,9 @@ function ProfileCanvas({
   profileScale: number;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const drawStateRef = useRef({ frame, frames, strikes, dataset, appearance, palette, profileScale });
+  const drawRef = useRef<() => void>(() => {});
+  drawStateRef.current = { frame, frames, strikes, dataset, appearance, palette, profileScale };
 
   useLayoutEffect(() => {
     const canvas = canvasRef.current;
@@ -85,6 +88,7 @@ function ProfileCanvas({
     const draw = () => {
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(() => {
+        const { frame, frames, strikes, dataset, appearance, palette, profileScale } = drawStateRef.current;
         const rect = parent.getBoundingClientRect();
         const dpr = Math.min(window.devicePixelRatio || 1, 2);
         canvas.width = Math.max(1, Math.round(rect.width * dpr));
@@ -213,6 +217,7 @@ function ProfileCanvas({
         ctx.fillText(`${(max / profileScale).toFixed(0)}.00`, Math.min(rect.width - 76, origin + available - 48), 4);
       });
     };
+    drawRef.current = draw;
     const resize = new ResizeObserver(draw);
     resize.observe(parent);
     chart.timeScale().subscribeVisibleLogicalRangeChange(draw);
@@ -226,13 +231,21 @@ function ProfileCanvas({
     window.addEventListener("pointerup", endPointer, { passive: true });
     draw();
     return () => {
+      drawRef.current = () => {};
       cancelAnimationFrame(raf); resize.disconnect(); chart.timeScale().unsubscribeVisibleLogicalRangeChange(draw);
       parent.removeEventListener("wheel", draw);
       parent.removeEventListener("pointerdown", startPointer);
       parent.removeEventListener("pointermove", movePointer);
       window.removeEventListener("pointerup", endPointer);
     };
-  }, [appearance, chart, dataset, frame, frames, palette, priceSeries, profileScale, strikes]);
+  }, [chart, priceSeries]);
+
+  // Market frames and appearance updates need a repaint, not a complete
+  // listener/ResizeObserver teardown and rebuild. Rebinding that lifecycle on
+  // every live frame multiplied listeners across every open GEX Box chart.
+  useLayoutEffect(() => {
+    drawRef.current();
+  }, [appearance, dataset, frame, frames, palette, profileScale, strikes]);
 
   return <canvas ref={canvasRef} className="pointer-events-none absolute inset-0 z-[2]" aria-hidden="true" />;
 }

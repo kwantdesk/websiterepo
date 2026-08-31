@@ -3,17 +3,18 @@ import assert from "node:assert/strict";
 
 import { applyMarketTradesToEventBars } from "../src/lib/eventBars.ts";
 
-test("500-volume overflow continues from the completed bar close", () => {
+test("500-volume overflow keeps one execution intact and the next bar continues from its close", () => {
   const bars = applyMarketTradesToEventBars([], [
     { timestamp: 1_000, price: 20_000, size: 300, trades: 1, delta: 300 },
     { timestamp: 2_000, price: 20_000.25, size: 300, trades: 1, delta: 300 },
+    { timestamp: 3_000, price: 20_000.5, size: 100, trades: 1, delta: 100 },
   ], "500v", "NQ");
 
   assert.equal(bars.length, 2);
-  assert.equal(bars[0].volume, 500);
+  assert.equal(bars[0].volume, 600);
   assert.equal(bars[1].volume, 100);
   assert.equal(bars[1].open, bars[0].close);
-  assert.equal(bars[1].close, 20_000.25);
+  assert.equal(bars[1].close, 20_000.5);
   assert.ok(bars[1].timestamp > bars[0].timestamp);
 });
 

@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { getRouteActor } from "@/lib/serverAuth";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
+import { getZyonRouteActor } from "@/lib/serverAuth";
+import { createZyonStorageClient } from "@/lib/zyonStorage.server";
 import {
   isZyonMarketRoot,
   normalizeZyonTradingAccount,
@@ -90,12 +90,12 @@ function fromRow(row: DraftRow): ZyonGameplanDraft | null {
 }
 
 export async function GET(request: NextRequest) {
-  const actor = await getRouteActor(request);
+  const actor = await getZyonRouteActor(request);
   if (!actor) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
   const rootParam = request.nextUrl.searchParams.get("root");
   const root = isZyonMarketRoot(rootParam) ? rootParam : null;
   try {
-    const supabase = await createSupabaseServerClient();
+    const supabase = await createZyonStorageClient(actor);
     const { data, error } = await supabase
       .from("zyon_gameplan_drafts")
       .select("id,session_date,root,title,payload,created_at,updated_at")
@@ -150,7 +150,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
-  const actor = await getRouteActor(request);
+  const actor = await getZyonRouteActor(request);
   if (!actor) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
   let draft: ZyonGameplanDraft;
   try {
@@ -166,15 +166,26 @@ export async function PUT(request: NextRequest) {
     }, { status: 400 });
   }
   try {
-    const supabase = await createSupabaseServerClient();
+    const supabase = await createZyonStorageClient(actor);
     const { data: existing, error: loadError } = await supabase
       .from("zyon_gameplan_drafts")
-      .select("id,session_date,created_at")
+      .select("id,session_date,created_at,updated_at")
       .eq("user_id", actor.userId)
       .eq("id", draft.id)
       .maybeSingle();
     if (loadError) throw loadError;
     if (!existing) return NextResponse.json({ error: "That holding Gameplan no longer exists." }, { status: 404 });
+    const expectedUpdatedAt = clean(draft.updatedAt, 80);
+    if (
+      expectedUpdatedAt
+      && Number.isFinite(Date.parse(expectedUpdatedAt))
+      && Date.parse(expectedUpdatedAt) !== Date.parse(existing.updated_at)
+    ) {
+      return NextResponse.json({
+        error: "This holding Gameplan changed on another workstation. Reload it before saving.",
+        code: "GAMEPLAN_VERSION_CONFLICT",
+      }, { status: 409 });
+    }
     const entryTiming = zyonGameplanEntryTimingStatus(draft.entryTime, existing.created_at);
     const historicalWithoutTime = draft.recordMode === "HISTORICAL" && entryTiming === "MISSING";
     if (entryTiming === "INVALID" || historicalWithoutTime) {
@@ -185,7 +196,8 @@ export async function PUT(request: NextRequest) {
         code: "ENTRY_TIME_INVALID",
       }, { status: 400 });
     }
-    const { error } = await supabase
+    const now = new Date().toISOString();
+    const update = supabase
       .from("zyon_gameplan_drafts")
       .update({
         session_date: /^\d{4}-\d{2}-\d{2}$/.test(draft.sessionDate) ? draft.sessionDate : existing.session_date,
@@ -212,12 +224,22 @@ export async function PUT(request: NextRequest) {
           expiryAt: clean(draft.expiryAt, 60) || null,
           recordMode: entryTiming === "TOO_OLD" ? "HISTORICAL" : "LIVE",
         },
-        updated_at: new Date().toISOString(),
+        updated_at: now,
       })
       .eq("user_id", actor.userId)
-      .eq("id", draft.id);
+      .eq("id", draft.id)
+      .eq("updated_at", existing.updated_at)
+      .select("updated_at")
+      .maybeSingle();
+    const { data: saved, error } = await update;
     if (error) throw error;
-    return NextResponse.json({ saved: true, recordMode: entryTiming === "TOO_OLD" ? "HISTORICAL" : "LIVE" }, {
+    if (!saved) {
+      return NextResponse.json({
+        error: "This holding Gameplan changed while it was being saved. Reload it before continuing.",
+        code: "GAMEPLAN_VERSION_CONFLICT",
+      }, { status: 409 });
+    }
+    return NextResponse.json({ saved: true, recordMode: entryTiming === "TOO_OLD" ? "HISTORICAL" : "LIVE", updatedAt: saved.updated_at }, {
       headers: { "Cache-Control": "private, no-store, max-age=0" },
     });
   } catch (error) {

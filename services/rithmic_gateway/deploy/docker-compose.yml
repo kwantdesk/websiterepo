@@ -37,6 +37,10 @@ services:
       UV_THREADPOOL_SIZE: "16"
     volumes:
       - recordings:/recordings
+      # The signed website snapshot is verified before the gateway atomically
+      # replaces this bounded local cache. Keep it outside the image so a
+      # restart starts from the last valid snapshot and fails closed if stale.
+      - ../runtime/desktop-auth:/desktop-auth
     expose:
       - "8793"
     labels:

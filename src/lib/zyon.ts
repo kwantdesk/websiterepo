@@ -88,6 +88,37 @@ export type ZyonMessage = {
 export const ZYON_GAMEPLAN_READY_TAG = "zyon:gameplan:ready";
 export const ZYON_GAMEPLAN_SENT_TAG = "zyon:gameplan:sent";
 
+export function zyonDurableSourceKey(value: unknown): string {
+  if (typeof value !== "string") return "";
+  return value
+    .replace(/\u0000/g, "")
+    .trim()
+    .slice(0, 80)
+    .replace(/[^a-zA-Z0-9_-]/g, "");
+}
+
+export function zyonDurableEffectIds(value: unknown) {
+  const sourceMessageId = zyonDurableSourceKey(value);
+  if (!sourceMessageId) return null;
+  return {
+    sourceMessageId,
+    userConversationId: `zyon-conversation-${sourceMessageId}`,
+    assistantConversationId: `zyon-conversation-assistant-${sourceMessageId}`,
+    journalEntryId: `zyon-journal-${sourceMessageId}`,
+  } as const;
+}
+
+export function zyonDurableGameplanDraftId(
+  value: unknown,
+  sessionDate: string,
+  root: ZyonMarketRoot,
+): string {
+  const sourceMessageId = zyonDurableSourceKey(value);
+  return sourceMessageId
+    ? `zyon-gameplan-draft:${sessionDate}:${root}:${sourceMessageId}`
+    : "";
+}
+
 export type ZyonJournalEntry = {
   id: string;
   sessionDate: string;

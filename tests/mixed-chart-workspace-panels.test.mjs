@@ -29,11 +29,11 @@ test("workspace picker separates pages from dedicated order-flow tools", () => {
     "DOM PRO",
     "BIG CONTRACTS",
     "IMBALANCE DETECTOR",
-    "ABSORPTION INDICATOR",
+    "ABSORPTION DETECTOR",
     "QUEUE POSITION TRACKING",
     "SIZE MODIFICATION TRACKING",
     "ORDER SIZE DISTRIBUTION",
-    "ICEBERG DETECTION",
+    "ICEBERG / REFRESH DETECTOR",
     "SPOOFING DETECTOR",
     "FRONT RUNNING",
     "PASSIVE MARKET MAKING",
@@ -68,9 +68,9 @@ test("chart-backed tools remain saved chart panes while DOM Pro uses its standal
 
 test("changing a workspace panel resets copied indicators and installs only the selected tool", () => {
   assert.match(workspaceSource, /const nextIndicators: ChartIndicatorInstance\[\] = indicatorId && CHART_INDICATOR_BY_ID\.has\(indicatorId\)/);
+  assert.match(workspaceSource, /const installed = withoutPreviousTool\.find\(\(instance\) => instance\.indicatorId === indicatorId\)/);
   assert.match(workspaceSource, /setPaneIndicators\(\(current\) => \(\{ \.\.\.current, \[paneId\]: nextIndicators \}\)\)/);
   assert.match(workspaceSource, /\[paneId\]: \{ \.\.\.EMPTY_PANE_LEVEL_VISIBILITY \}/);
-  assert.doesNotMatch(workspaceSource, /withoutPreviousTool/);
 });
 
 test("mixed-workspace picker and selected headers use uppercase product labels", () => {
@@ -144,7 +144,7 @@ test("embedded pages use the real workspace components inside an isolated panel"
 test("embedded GEX map follows the pane market and keeps last-good panel frames", () => {
   assert.match(workspaceSource, /<GexMapWorkspace[^>]*market=\{gexMarket\}/);
   assert.match(gexMapSource, /market\?: GexMapMarket \| null/);
-  assert.match(gexMapSource, /if \(cached && !hasRenderableGexMapSurface\(next\[panel\.id\]\)\) next\[panel\.id\] = cached/);
+  assert.match(gexMapSource, /cached && cached\.model === expectedModel && !hasRenderableGexMapSurface\(next\[panel\.id\]\)/);
   assert.doesNotMatch(gexMapSource, /setPanelData\(\(current\) => \(\{ \.\.\.current, \.\.\.cachedPanels \}\)\)/);
 });
 

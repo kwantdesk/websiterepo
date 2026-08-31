@@ -115,3 +115,13 @@ test("11. identical input produces byte-stable output", () => {
   assert.equal(first.strikeInterval, 5);
   assert.equal(first.levels.some((level) => level.sourcePrice === 110), false);
 });
+
+test("12. the normalized desktop edge uses internal timing-safe auth and a bounded derived receipt", async () => {
+  const route = await readFile(new URL("../src/app/api/hedge-levels/route.ts", import.meta.url), "utf8");
+  assert.match(route, /timingSafeEqual/);
+  assert.match(route, /x-kwantdesk-internal-analytics-token/);
+  assert.match(route, /schemaVersion:\s*1/);
+  assert.match(route, /id:\s*"hedge-levels"/);
+  assert.match(route, /receivedAtMs:\s*Date\.now\(\)/);
+  assert.doesNotMatch(route, /apiKey.*searchParams/i);
+});

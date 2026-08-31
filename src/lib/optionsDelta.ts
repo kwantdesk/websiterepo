@@ -32,7 +32,7 @@ export function optionsDeltaSourceForInstrument(instrument: string): OptionsDelt
  * cumulative surface exactly like the GEX Map ladder does and sums it after
  * each frame — no interpolation and no lookahead.
  */
-export function buildOptionsDeltaSeries(payload: Pick<GexMapPanelPayload, "frames">): OptionsDeltaPoint[] {
+export function buildOptionsSurfaceNetSeries(payload: Pick<GexMapPanelPayload, "frames">): OptionsDeltaPoint[] {
   const surface = new Map<number, number>();
   const points: OptionsDeltaPoint[] = [];
   const frames = [...payload.frames].sort((left, right) => left.timestamp - right.timestamp);
@@ -55,3 +55,6 @@ export function buildOptionsDeltaSeries(payload: Pick<GexMapPanelPayload, "frame
   }
   return points;
 }
+
+/** Backward-compatible name for the Options Delta pane. */
+export const buildOptionsDeltaSeries = buildOptionsSurfaceNetSeries;

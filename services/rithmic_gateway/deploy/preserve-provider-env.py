@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Preserve VPS-owned market-data credentials across collector releases."""
+"""Preserve VPS-owned credentials and authorization config across releases."""
 
 from __future__ import annotations
 
@@ -8,10 +8,26 @@ import sys
 from pathlib import Path
 
 
-PROVIDER_KEYS = (
+VPS_OWNED_KEYS = (
     "DATABENTO_API_KEY",
     "QUANTDATA_API_KEY",
     "MASSIVE_API_KEY",
+    "KWANTDESK_DESKTOP_TICKET_ISSUER",
+    "KWANTDESK_DESKTOP_TICKET_AUDIENCE",
+    "KWANTDESK_DESKTOP_TICKET_PUBLIC_KEYS_JSON",
+    "KWANTDESK_DESKTOP_REVOCATIONS_URL",
+    "KWANTDESK_DESKTOP_REVOCATIONS_SYNC_TOKEN",
+    "KWANTDESK_DESKTOP_REVOCATIONS_FILE",
+    "KWANTDESK_DESKTOP_REVOCATIONS_POLL_MS",
+    "KWANTDESK_NEWS_SERVICE_ORIGIN",
+    "KWANTDESK_NEWS_SERVICE_TOKEN",
+    "KWANTDESK_NEWS_SERVICE_TIMEOUT_MS",
+    "KWANTDESK_SOCIALS_SERVICE_ORIGIN",
+    "KWANTDESK_SOCIALS_SERVICE_TOKEN",
+    "KWANTDESK_SOCIALS_SERVICE_TIMEOUT_MS",
+    "KWANTDESK_JOURNAL_SERVICE_ORIGIN",
+    "KWANTDESK_JOURNAL_SERVICE_TOKEN",
+    "KWANTDESK_JOURNAL_SERVICE_TIMEOUT_MS",
 )
 
 
@@ -41,7 +57,7 @@ def main() -> int:
 
     replacements = {
         key: preserved[key]
-        for key in PROVIDER_KEYS
+        for key in VPS_OWNED_KEYS
         if preserved.get(key, "").strip()
     }
     if not replacements:
@@ -60,7 +76,7 @@ def main() -> int:
         else:
             output.append(line)
 
-    for key in PROVIDER_KEYS:
+    for key in VPS_OWNED_KEYS:
         if key in replacements and key not in written:
             output.append(f"{key}={replacements[key]}")
 
@@ -68,7 +84,7 @@ def main() -> int:
     os.chmod(new_path, 0o600)
 
     # Report only key names. Credential values must never enter deploy logs.
-    print("preserved provider credentials: " + ", ".join(replacements))
+    print("preserved VPS-owned configuration keys: " + ", ".join(replacements))
     return 0
 
 

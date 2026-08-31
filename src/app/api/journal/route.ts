@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { getRouteActor } from "@/lib/serverAuth";
+import { getJournalRouteActor } from "@/lib/serverAuth";
 import {
   isZyonJournalAccountName,
   type JournalAccount,
@@ -302,7 +302,7 @@ function sanitizeImport(value: unknown, account: string): JournalImportBatch | n
 }
 
 async function journalClient(request: NextRequest) {
-  const actor = await getRouteActor(request);
+  const actor = await getJournalRouteActor(request);
   if (!actor) return { actor: null, supabase: null };
   try {
     return { actor, supabase: await createSupabaseServerClient() };

@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { getRouteActor, type RouteActor } from "@/lib/serverAuth";
+import { getSocialsRouteActor, type RouteActor } from "@/lib/serverAuth";
+import { createSocialsStorageClient } from "@/lib/socialsStorage.server";
 import {
   normalizePresenceStatus,
   type FriendGroupMember,
@@ -187,10 +188,10 @@ function messageSharedTrade(value: unknown) {
 }
 
 async function socialClient(request: NextRequest) {
-  const actor = await getRouteActor(request);
+  const actor = await getSocialsRouteActor(request);
   if (!actor) return { actor: null, supabase: null };
   try {
-    return { actor, supabase: await createSupabaseServerClient() };
+    return { actor, supabase: await createSocialsStorageClient(actor) };
   } catch {
     return { actor, supabase: null };
   }

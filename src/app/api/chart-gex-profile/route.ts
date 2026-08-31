@@ -1,4 +1,5 @@
 import { createServerClient } from "@supabase/ssr";
+import { timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import {
   getClassicGexProfilePayload,
@@ -12,6 +13,13 @@ import type {
 } from "@/lib/classicGexProfile";
 
 async function isAuthenticated(request: NextRequest) {
+  const expectedInternalToken = String(process.env.KWANTDESK_ANALYTICS_SERVICE_TOKEN || "").trim();
+  const suppliedInternalToken = String(request.headers.get("x-kwantdesk-internal-analytics-token") || "").trim();
+  if (expectedInternalToken.length >= 32 && suppliedInternalToken.length === expectedInternalToken.length) {
+    const supplied = Buffer.from(suppliedInternalToken, "utf8");
+    const expected = Buffer.from(expectedInternalToken, "utf8");
+    if (supplied.length === expected.length && timingSafeEqual(supplied, expected)) return true;
+  }
   const host = request.nextUrl.hostname;
   if (
     process.env.KWANTIFY_DEV_AUTH_BYPASS === "1"

@@ -1,8 +1,13 @@
 import { createServerClient } from "@supabase/ssr";
+import { createHash, timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { getZeroGammaLinePayload } from "@/lib/zeroGammaLine.server";
 import { isZeroGammaLineSource, zeroGammaRootForInstrument, zeroGammaSourceForInstrument } from "@/lib/zeroGammaLine";
+import type { ZeroGammaLinePayload } from "@/lib/zeroGammaLine";
 import { conditionalJson } from "@/lib/conditionalJson";
+
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 // A cold request derives up to six provider-backed session snapshots plus
 // their intraday trails. The platform default function timeout cut that chain
@@ -12,16 +17,58 @@ export const maxDuration = 300;
 
 // Several panes and machines poll the same instrument; a short instance-local
 // payload cache collapses those bursts into one provider computation.
-const payloadCache = new Map<string, { expiresAt: number; payload: unknown }>();
+type ZeroGammaLineReceipt = ZeroGammaLinePayload & {
+  schemaVersion: 1;
+  id: "zero-gamma-line";
+  asOfMs: number;
+  receivedAtMs: number;
+  revision: string;
+};
+
+const payloadCache = new Map<string, { expiresAt: number; payload: ZeroGammaLineReceipt }>();
 const PAYLOAD_CACHE_TTL_MS = 10_000;
 
 async function isAuthenticated(request: NextRequest) {
+  const expectedInternalToken = String(process.env.KWANTDESK_ANALYTICS_SERVICE_TOKEN || "").trim();
+  const suppliedInternalToken = String(request.headers.get("x-kwantdesk-internal-analytics-token") || "").trim();
+  if (expectedInternalToken.length >= 32 && suppliedInternalToken.length === expectedInternalToken.length) {
+    const supplied = Buffer.from(suppliedInternalToken, "utf8");
+    const expected = Buffer.from(expectedInternalToken, "utf8");
+    if (supplied.length === expected.length && timingSafeEqual(supplied, expected)) return true;
+  }
   if (process.env.KWANTIFY_DEV_AUTH_BYPASS === "1" && ["localhost", "127.0.0.1", "::1"].includes(request.nextUrl.hostname)) return true;
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !key) return process.env.NODE_ENV !== "production";
   const supabase = createServerClient(url, key, { cookies: { getAll: () => request.cookies.getAll(), setAll: () => undefined } });
   return Boolean((await supabase.auth.getUser()).data.user);
+}
+
+function createReceipt(payload: ZeroGammaLinePayload): ZeroGammaLineReceipt {
+  const receivedAtMs = Date.now();
+  const asOfMs = Date.parse(payload.asOf);
+  if (!Number.isFinite(asOfMs) || asOfMs <= 0 || asOfMs > receivedAtMs + 60_000) {
+    throw new Error("The Zero Gamma Line receipt clock is invalid.");
+  }
+  const points = payload.points.slice(-4_000);
+  const revision = createHash("sha256").update(JSON.stringify([
+    payload.root,
+    payload.sourceSymbol,
+    payload.displayInstrument,
+    payload.status,
+    payload.positiveAbove,
+    payload.method,
+    points,
+  ])).digest("hex");
+  return {
+    ...payload,
+    points,
+    schemaVersion: 1,
+    id: "zero-gamma-line",
+    asOfMs,
+    receivedAtMs,
+    revision,
+  };
 }
 
 export async function GET(request: NextRequest) {
@@ -50,7 +97,7 @@ export async function GET(request: NextRequest) {
     });
   }
   try {
-    const payload = await getZeroGammaLinePayload(root, source, instrument, sessions);
+    const payload = createReceipt(await getZeroGammaLinePayload(root, source, instrument, sessions));
     if (payloadCache.size > 64) {
       for (const [key, entry] of payloadCache) if (entry.expiresAt <= Date.now()) payloadCache.delete(key);
     }

@@ -23,6 +23,10 @@ const {
   buildGexIntervalMapSnapshot,
   normalizeGexIntervalProviderPayload,
 } = require("../src/lib/gexIntervalMap.ts");
+const {
+  defaultIndicatorSettings,
+  normalizeStoredIndicator,
+} = require("../src/lib/chartIndicatorConfig.ts");
 
 const baseSettings = {
   mode: "raw",
@@ -142,6 +146,41 @@ assert.match(workspaceSource, /tool-gex-interval-map[\s\S]*indicatorId: "gex-int
 assert.match(primitiveSource, /useMediaCoordinateSpace/, "the renderer uses the chart canvas media-coordinate primitive");
 assert.match(primitiveSource, /x < -40[\s\S]*x > mediaSize\.width/, "the renderer culls off-screen points");
 assert.doesNotMatch(routeSource, /NEXT_PUBLIC_(?:QUANTDATA|GEX)[A-Z_]*(?:KEY|TOKEN|SECRET)/, "options-provider credentials are never exposed through a public environment variable");
+assert.match(routeSource, /export const dynamic = "force-dynamic"/, "the private surface cannot be statically cached");
+assert.match(routeSource, /timingSafeEqual\(supplied, expected\)/, "the internal service token uses timing-safe comparison");
+assert.match(routeSource, /x-kwantdesk-internal-analytics-token/, "the VPS uses a dedicated internal analytics credential header");
+assert.match(routeSource, /search\.length > 12_000/, "oversized query strings are rejected");
+assert.match(routeSource, /!QUERY_KEYS\.has\(key\) \|\| values\.length !== 1 \|\| values\[0\]\.length > 1_000/, "unknown, duplicate and oversized query values are rejected");
+assert.match(routeSource, /MAX_BUCKETS = 720/, "provider history has a fixed bucket bound");
+assert.match(routeSource, /MAX_ROWS_PER_BUCKET = 2_048/, "every interval bucket has a fixed row bound");
+assert.match(routeSource, /MAX_TOTAL_ROWS = 368_640/, "the total provider surface has a fixed row bound");
+assert.match(routeSource, /while \(payloadCache\.size >= MAX_CACHE_ENTRIES\)/, "the private response cache has explicit eviction");
+assert.match(routeSource, /createHash\("sha256"\)/, "receipts carry deterministic revision identity");
+assert.match(routeSource, /replayAsOfMs = history\.historical \? asOfMs : null/, "historical receipts carry an explicit replay clock and live receipts do not");
+
+const defaults = defaultIndicatorSettings("gex-interval-map");
+assert.equal(Object.keys(defaults).length, 79, "browser and native expose the same 79 persisted settings");
+assert.equal(defaults.provider, "quantdata");
+assert.equal(defaults.visualMode, "bubbles");
+assert.equal(defaults.gexIntervalMapSettingsVersion, 3);
+const normalizedStored = normalizeStoredIndicator({
+  id: "fixture-gex-interval-map",
+  indicatorId: "gex-interval-map",
+  settings: {
+    refreshSeconds: 999,
+    maximumPoints: 1,
+    visualMode: "triangles",
+    provider: "browser-secret",
+    apiKey: "must-not-survive",
+    buckets: [{ mustNot: "survive" }],
+  },
+});
+assert.equal(normalizedStored.settings.refreshSeconds, 60);
+assert.equal(normalizedStored.settings.maximumPoints, 500);
+assert.equal(normalizedStored.settings.visualMode, "bubbles");
+assert.equal(normalizedStored.settings.provider, "quantdata");
+assert.equal("apiKey" in normalizedStored.settings, false);
+assert.equal("buckets" in normalizedStored.settings, false);
 
 const performanceBuckets = [];
 const performancePrices = [];

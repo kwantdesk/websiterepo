@@ -1,4 +1,5 @@
 import { createServerClient } from "@supabase/ssr";
+import { timingSafeEqual } from "node:crypto";
 import { unstable_cache } from "next/cache";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -27,9 +28,22 @@ const getCachedHedgeExposure = unstable_cache(
   { revalidate: 60 },
 );
 
-const lastGood = new Map<"NQ" | "MNQ", HedgeLevelsPayload>();
+type NormalizedHedgeLevelsReceipt = HedgeLevelsPayload & {
+  schemaVersion: 1;
+  id: "hedge-levels";
+  receivedAtMs: number;
+};
+
+const lastGood = new Map<"NQ" | "MNQ", NormalizedHedgeLevelsReceipt>();
 
 async function isAuthenticated(request: NextRequest) {
+  const expectedInternalToken = String(process.env.KWANTDESK_ANALYTICS_SERVICE_TOKEN || "").trim();
+  const suppliedInternalToken = String(request.headers.get("x-kwantdesk-internal-analytics-token") || "").trim();
+  if (expectedInternalToken.length >= 32 && suppliedInternalToken.length === expectedInternalToken.length) {
+    const supplied = Buffer.from(suppliedInternalToken, "utf8");
+    const expected = Buffer.from(expectedInternalToken, "utf8");
+    if (supplied.length === expected.length && timingSafeEqual(supplied, expected)) return true;
+  }
   const host = request.nextUrl.hostname;
   if (
     process.env.KWANTIFY_DEV_AUTH_BYPASS === "1"
@@ -91,7 +105,10 @@ export async function GET(request: NextRequest) {
     const converted = convertHedgeLevels(surface, calibration.scale, 0.25);
     if (!converted) throw new Error("Hedge Levels could not convert the current gamma surface.");
     const generatedAt = input.checkedAt;
-    const payload: HedgeLevelsPayload = {
+    const payload: NormalizedHedgeLevelsReceipt = {
+      schemaVersion: 1,
+      id: "hedge-levels",
+      receivedAtMs: Date.now(),
       instrument,
       sourceSymbol: "NDX",
       sessionDate: input.sessionDate,
@@ -132,7 +149,12 @@ export async function GET(request: NextRequest) {
     }
     const fallback = lastGood.get(instrument);
     if (fallback) {
-      return NextResponse.json(staleHedgeLevelsPayload(fallback), {
+      return NextResponse.json({
+        ...staleHedgeLevelsPayload(fallback),
+        schemaVersion: 1,
+        id: "hedge-levels",
+        receivedAtMs: Date.now(),
+      } satisfies NormalizedHedgeLevelsReceipt, {
         headers: { "Cache-Control": "private, no-store, max-age=0" },
       });
     }

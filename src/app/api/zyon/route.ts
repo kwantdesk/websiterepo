@@ -5,7 +5,7 @@ import {
   extractClaudeText,
   getClaudeApiKey,
 } from "@/lib/claude.server";
-import { getRouteActor } from "@/lib/serverAuth";
+import { getZyonRouteActor } from "@/lib/serverAuth";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 import { getZyonMarketContext } from "@/lib/zyonMarketContext.server";
 import { selectZyonFuturesPrice } from "@/lib/zyonPriceContext";
@@ -29,6 +29,8 @@ import {
   zyonConversationRoleTag,
   zyonDailyFolderId,
   zyonDailyRootFolderId,
+  zyonDurableEffectIds,
+  zyonDurableGameplanDraftId,
   zyonFolderIdTag,
   zyonFolderKindTag,
   zyonGameplanEntryTimingStatus,
@@ -1170,6 +1172,7 @@ function buildJournalEntry(
   root: ZyonMarketRoot,
   context: unknown,
   attachments: IncomingAttachment[],
+  sourceMessageId?: string,
 ): ZyonJournalEntry | null {
   const title = cleanText(input.title, 120);
   const body = cleanText(input.body, 8_000);
@@ -1181,7 +1184,7 @@ function buildJournalEntry(
     ? input.tags.map((tag) => cleanText(tag, 30)).filter(Boolean).slice(0, 8)
     : [];
   return {
-    id: zyonId("zyon-journal"),
+    id: zyonDurableEffectIds(sourceMessageId)?.journalEntryId ?? zyonId("zyon-journal"),
     sessionDate: sessionDateForContext(context),
     root,
     title,
@@ -1246,10 +1249,10 @@ function buildGameplanDraft(
     : "DOLLARS";
   const now = new Date().toISOString();
   const sessionDate = sessionDateForContext(context);
-  const sourceKey = cleanText(sourceMessageId, 80).replace(/[^a-zA-Z0-9_-]/g, "")
-    || zyonId("submission");
+  const draftId = zyonDurableGameplanDraftId(sourceMessageId, sessionDate, root)
+    || `zyon-gameplan-draft:${sessionDate}:${root}:${zyonId("submission")}`;
   return {
-    id: `zyon-gameplan-draft:${sessionDate}:${root}:${sourceKey}`,
+    id: draftId,
     sessionDate,
     root,
     instrument: cleanText(input.instrument, 16).toUpperCase() || root,
@@ -1650,7 +1653,7 @@ async function pendingGameplanDraftId(actorId: string, persistenceClient?: Supab
 
 export async function POST(request: NextRequest) {
   const requestReceivedAt = Date.now();
-  const actor = await getRouteActor(request);
+  const actor = await getZyonRouteActor(request);
   if (!actor) {
     return NextResponse.json({ error: "Sign in to use ZYON." }, { status: 401 });
   }
@@ -1746,15 +1749,14 @@ export async function POST(request: NextRequest) {
     requestedParentId,
   });
   const conversationFolder = await within(conversationFolderPromise, fallbackFolder, 450);
-  const rawUserMessageId = cleanText(finalRawMessage?.id, 120);
-  const userConversationEntryId = rawUserMessageId
-    ? `zyon-conversation-${rawUserMessageId}`
-    : zyonId("zyon-conversation-user");
+  const durableEffectIds = zyonDurableEffectIds(finalRawMessage?.id);
+  const rawUserMessageId = durableEffectIds?.sourceMessageId ?? "";
+  const userConversationEntryId = durableEffectIds?.userConversationId
+    ?? zyonId("zyon-conversation-user");
   // A transport retry must update the same assistant record instead of
   // producing a second copy after the first response was lost at the edge.
-  const assistantConversationEntryId = rawUserMessageId
-    ? `zyon-conversation-assistant-${rawUserMessageId}`
-    : zyonId("zyon-conversation-assistant");
+  const assistantConversationEntryId = durableEffectIds?.assistantConversationId
+    ?? zyonId("zyon-conversation-assistant");
   const persistedUserAttachments = await within(persistAttachments({
     actorId: actor.userId,
     folderId: conversationFolder.folderId,
@@ -2083,6 +2085,7 @@ export async function POST(request: NextRequest) {
         root,
         payload.context,
         finalAttachments,
+        rawUserMessageId,
       )
       : null;
     if (
@@ -2101,7 +2104,7 @@ export async function POST(request: NextRequest) {
         ].filter(Boolean).join("\n\n"),
         kind: /\btrade\b/i.test(finalUserText) ? "TRADE" : "NOTE",
         tags: [root, "discretionary"],
-      }, root, payload.context, finalAttachments);
+      }, root, payload.context, finalAttachments, rawUserMessageId);
     }
     if (journalEntry && !journalEntry.tags.includes(zyonChatIdTag(chatId))) {
       journalEntry = {

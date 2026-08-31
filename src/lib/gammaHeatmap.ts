@@ -221,6 +221,10 @@ function deriveLevels(bins: GammaHeatmapBin[], mappingConfidence: number, greekM
   return levels.sort((a, b) => a.price - b.price);
 }
 
+/** Browser-authoritative exports used by the native parity fixture. */
+export const buildGammaHeatmapBins = binSurface;
+export const deriveGammaHeatmapLevels = deriveLevels;
+
 export function buildGammaHeatmapPayload(input: {
   panel: GexMapPanelPayload;
   displayInstrument: string;
@@ -288,7 +292,7 @@ export function buildGammaHeatmapPayload(input: {
       sourceMode === "hybrid" ? "Databento futures spot + QuantData exposure surface" : sourceMode,
     ],
     limitations: [
-      "The current adapter is front-expiry and per-one-percent-move.",
+      "The current adapter is front-expiry and per-one-dollar-move.",
       "A local strike sign transition is not a true repriced gamma flip.",
       ...(sourceMode === "databento-raw" ? ["Native raw historical chain surfaces are not available through this interval-map response."] : []),
     ],

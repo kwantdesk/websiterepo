@@ -3,7 +3,7 @@ import GoogleLoginButton from "@/components/GoogleLoginButton";
 export const dynamic = "force-dynamic";
 
 type LoginPageProps = {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; returnTo?: string }>;
 };
 
 const messages: Record<string, string> = {
@@ -13,7 +13,8 @@ const messages: Record<string, string> = {
 };
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
-  const { error } = await searchParams;
+  const { error, returnTo } = await searchParams;
+  const safeReturnTo = safeRelativeReturn(returnTo);
 
   return (
     <main className="login-page">
@@ -29,9 +30,14 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
           <p>Access your private quantitative research workspace.</p>
         </div>
         {error ? <p className="login-error">{messages[error] ?? messages.auth}</p> : null}
-        <GoogleLoginButton />
+        <GoogleLoginButton returnTo={safeReturnTo} />
         <p className="login-note">Continue with any Google account.</p>
       </section>
     </main>
   );
+}
+
+function safeRelativeReturn(value?: string) {
+  if (!value || !value.startsWith("/") || value.startsWith("//") || value.length > 2_000) return "/";
+  return value;
 }

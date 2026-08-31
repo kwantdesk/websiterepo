@@ -22,6 +22,10 @@ async function loadEngine() {
 
 const engine = await loadEngine();
 const minute = 60_000;
+const fixture = JSON.parse(await readFile(path.join(
+  root,
+  "native/parity/fixtures/charts/smt-divergence-authoritative.json",
+), "utf8"));
 
 function candles(highs, lows = highs.map((high) => high - 3)) {
   return highs.map((high, index) => ({
@@ -34,17 +38,7 @@ function candles(highs, lows = highs.map((high) => high - 3)) {
   }));
 }
 
-const settings = {
-  pivotStrength: 1,
-  synchronizationBars: 1,
-  minimumSwingBars: 2,
-  maximumLookbackBars: 500,
-  minimumMoveTicks: 1,
-  maximumSignals: 20,
-  includeNonConfirmation: true,
-  showBullish: true,
-  showBearish: true,
-};
+const settings = fixture.calculation.settings;
 
 test("Divergence Detector is registered as the ES-NQ SMT study and wired to the chart primitive", async () => {
   const catalog = await readFile(path.join(root, "src/lib/chartIndicatorCatalog.ts"), "utf8");
@@ -55,8 +49,8 @@ test("Divergence Detector is registered as the ES-NQ SMT study and wired to the 
 });
 
 test("NQ higher high against an ES lower high prints confirmed bearish SMT", () => {
-  const nq = candles([100, 102, 110, 103, 104, 106, 113, 105, 104, 103]);
-  const es = candles([200, 202, 210, 203, 204, 205, 208, 204, 203, 202]);
+  const nq = candles(fixture.calculation.primaryHighs);
+  const es = candles(fixture.calculation.comparisonHighs);
   const signals = engine.calculateSmtDivergences({
     primaryCandles: nq,
     comparisonCandles: es,
@@ -67,10 +61,19 @@ test("NQ higher high against an ES lower high prints confirmed bearish SMT", () 
   });
   const bearish = signals.find((signal) => signal.kind === "bearish");
   assert.ok(bearish);
-  assert.equal(bearish.failedMarket, "ES");
-  assert.equal(bearish.startPrice, 110);
-  assert.equal(bearish.endPrice, 113);
-  assert.match(bearish.label, /BEARISH DIVERGENCE · ES FAILED HH/);
+  assert.equal(bearish.failedMarket, fixture.calculation.expected.failedMarket);
+  assert.equal(bearish.startPrice, fixture.calculation.expected.startPrice);
+  assert.equal(bearish.endPrice, fixture.calculation.expected.endPrice);
+  assert.equal(bearish.confirmationTime, fixture.calculation.expected.confirmationTimeUnixMs);
+  assert.equal(bearish.label, fixture.calculation.expected.label);
+});
+
+test("stored settings use the exact bounded twenty-field contract", async () => {
+  const config = await readFile(path.join(root, "src/lib/chartIndicatorConfig.ts"), "utf8");
+  assert.match(config, /if \(normalizedInstance\.indicatorId === "divergence-detector"\)/);
+  assert.match(config, /settings\.comparisonMode = "automatic-es-nq"/);
+  assert.match(config, /settings\.divergenceDetectorSettingsVersion = 1/);
+  assert.match(config, /\^#\[0-9a-f\]\{6\}\$/i);
 });
 
 test("the inverse ES chart draws the same SMT event on ES pivots", () => {

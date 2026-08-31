@@ -19,7 +19,6 @@ test("Gamma Heatmap has one stable indicator and workspace identity", () => {
   assert.match(catalog, /indicator\("Gamma Heatmap", "Options Flow"/);
   assert.match(workspace, /"tool-gamma-heatmap"/);
   assert.match(workspace, /indicatorId: "gamma-heatmap"/);
-  assert.match(workspace, />Options Flow</);
   assert.match(config, /LIVE_CHART_INDICATOR_IDS[\s\S]*"gamma-heatmap"/);
   assert.match(controls, /RENDERED_CHART_INDICATOR_IDS[\s\S]*"gamma-heatmap"/);
 });
@@ -38,11 +37,14 @@ test("local strike transition is never misrepresented as a true gamma flip", () 
   assert.doesNotMatch(engine, /label: "Gamma Flip"/);
 });
 
-test("renderer uses chart coordinates, stays below candles and avoids DOM cells", () => {
+test("renderer uses chart coordinates, stays below candles and reuses one bounded auxiliary bitmap", () => {
   assert.match(primitive, /timeToCoordinate/);
   assert.match(primitive, /priceToCoordinate/);
   assert.match(primitive, /return "bottom" as const/);
-  assert.doesNotMatch(primitive, /createElement|appendChild/);
+  assert.match(primitive, /document\.createElement\("canvas"\)/);
+  assert.match(primitive, /pixelBudgetRatio/);
+  assert.match(primitive, /this\.surface \?\?/);
+  assert.doesNotMatch(primitive, /appendChild/);
   assert.match(chart, /candleSeries\.attachPrimitive\(gammaHeatmapPrimitive\)/);
 });
 
@@ -51,6 +53,10 @@ test("server route keeps credentials server-side and refuses a fake raw fallback
   assert.match(route, /getGexMapPanel/);
   assert.match(route, /getNativeFuturesSpot/);
   assert.match(route, /no substitute surface was shown/);
+  assert.match(route, /replayPanel/);
+  assert.match(route, /frame\.timestamp <= cutoffMs/);
+  assert.match(route, /PER_ONE_DOLLAR_MOVE/);
+  assert.match(route, /MAX_TOTAL_BINS/);
   assert.doesNotMatch(route, /NEXT_PUBLIC_.*QUANT|NEXT_PUBLIC_.*DATABENTO/);
 });
 

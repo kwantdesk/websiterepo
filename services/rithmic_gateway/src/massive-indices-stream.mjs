@@ -15,6 +15,24 @@ const PROVIDER_TICKER_BY_SYMBOL = new Map([
   ["DJI", "I:DJI"],
 ]);
 
+// The live socket above is the indices feed, but Massive's aggregate REST
+// endpoint uses the same normalized shape for listed underlyings. Keep the
+// broader history catalogue separate so stock tickers are never subscribed
+// on the indices-only WebSocket.
+const HISTORY_TICKER_BY_SYMBOL = new Map([
+  ...PROVIDER_TICKER_BY_SYMBOL,
+  ["SPY", "SPY"],
+  ["QQQ", "QQQ"],
+  ["IWM", "IWM"],
+  ["AAPL", "AAPL"],
+  ["NVDA", "NVDA"],
+  ["TSLA", "TSLA"],
+  ["MSFT", "MSFT"],
+  ["AMZN", "AMZN"],
+  ["META", "META"],
+  ["AMD", "AMD"],
+]);
+
 const SYMBOLS_BY_PROVIDER_TICKER = new Map();
 for (const [symbol, ticker] of PROVIDER_TICKER_BY_SYMBOL) {
   SYMBOLS_BY_PROVIDER_TICKER.set(ticker, [
@@ -60,6 +78,10 @@ function newYorkSession(timestamp = Date.now()) {
 
 function providerTicker(symbol) {
   return PROVIDER_TICKER_BY_SYMBOL.get(String(symbol || "").trim().toUpperCase()) || null;
+}
+
+function historyTicker(symbol) {
+  return HISTORY_TICKER_BY_SYMBOL.get(String(symbol || "").trim().toUpperCase()) || null;
 }
 
 function publicSymbols(ticker) {
@@ -291,11 +313,12 @@ export class MassiveIndicesStream extends EventEmitter {
 
   async history({ symbol, timeframe, from, to }) {
     const normalized = String(symbol || "").trim().toUpperCase();
-    const ticker = providerTicker(normalized);
-    if (!ticker) throw new Error(`${normalized} is not a Massive cash index.`);
+    const ticker = historyTicker(normalized);
+    if (!ticker) throw new Error(`${normalized} is not an enabled Market Index chart instrument.`);
     const start = Number(from);
     const end = Number(to);
-    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+    if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end <= start ||
+        end > Date.now() + 5 * 60_000 || end - start > 370 * 24 * 60 * 60_000) {
       throw new Error("Select a valid index-history window.");
     }
     const { multiplier, timespan } = aggregateResolution(timeframe);
@@ -398,6 +421,7 @@ export class MassiveIndicesStream extends EventEmitter {
 
 export const __test = {
   aggregateResolution,
+  historyTicker,
   newYorkSession,
   parseSnapshotResult,
   providerTicker,

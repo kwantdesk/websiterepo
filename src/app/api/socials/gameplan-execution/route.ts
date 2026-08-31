@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { getRouteActor } from "@/lib/serverAuth";
+import { getSocialsRouteActor } from "@/lib/serverAuth";
+import { createSocialsStorageClient } from "@/lib/socialsStorage.server";
 import type {
   SocialExecutionFill,
   SocialGameplanExecutionPayload,
@@ -120,7 +120,7 @@ function aggregateFills(fills: SocialExecutionFill[]) {
 }
 
 export async function POST(request: NextRequest) {
-  const actor = await getRouteActor(request);
+  const actor = await getSocialsRouteActor(request);
   if (!actor) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
 
   let body: ExecutionRequest;
@@ -133,7 +133,7 @@ export async function POST(request: NextRequest) {
   const planId = cleanIdentifier(body.planId);
   if (!planId || !body.action) return NextResponse.json({ error: "Choose a locked Gameplan." }, { status: 400 });
 
-  const supabase = await createSupabaseServerClient();
+  const supabase = await createSocialsStorageClient(actor);
   const { data: planRow, error: planError } = await supabase
     .from("social_objects")
     .select("id,author_label,scope,desk_id,payload,created_at")

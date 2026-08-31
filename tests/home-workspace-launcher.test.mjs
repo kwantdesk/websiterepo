@@ -39,6 +39,7 @@ test("home launcher exposes the complete primary workspace set with visual previ
     assert.match(source, new RegExp(`href: "${href.replaceAll("/", "\\/")}"`));
   }
 
-  assert.match(source, /<WorkspacePreview type=\{destination\.preview\} \/>/);
-  assert.match(source, /group-hover:scale-\[1\.035\]/);
+  assert.match(source, /<HomeWorkspacePreview type=\{destination\.preview\} live=\{live\} \/>/);
+  assert.match(source, /destination\.preview === "home" && <LiveIndexTape live=\{live\} \/>/);
+  assert.match(source, /hover:-translate-y-1/);
 });

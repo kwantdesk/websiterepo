@@ -71,12 +71,57 @@ Do not chase it and do not lower the healthcheck thresholds because of it.
    RITHMIC_PASSWORD=...
    RITHMIC_SUBSCRIPTIONS=CME:MNQU6,CME:NQU6,CME:ESU6,CME:MESU6
    KWANTIFY_MARKET_DATA_GATEWAY_TOKEN=...   # long random string
+   KWANTDESK_DESKTOP_TICKET_ISSUER=https://www.kwantdesk.com/desktop-ticket
+   KWANTDESK_DESKTOP_TICKET_AUDIENCE=https://feed.kwantdesk.com
+   KWANTDESK_DESKTOP_TICKET_PUBLIC_KEYS_JSON=... # active Ed25519 public keys only
+   KWANTDESK_DESKTOP_REVOCATIONS_URL=https://www.kwantdesk.com/api/desktop-auth/revocations
+   KWANTDESK_DESKTOP_REVOCATIONS_SYNC_TOKEN=... # dedicated server-to-server secret
+   KWANTDESK_DESKTOP_REVOCATIONS_FILE=/desktop-auth/revocations.json
+   KWANTDESK_DESKTOP_REVOCATIONS_POLL_MS=15000
+   KWANTDESK_ANALYTICS_ORIGIN=http://kwantdesk-analytics:3000 # fixed private/VPS analytics origin
+   KWANTDESK_ANALYTICS_SERVICE_TOKEN=... # separate 32+ character internal token; also set server-side on analytics service
+   KWANTDESK_ANALYTICS_TIMEOUT_MS=45000
+   KWANTDESK_NEWS_SERVICE_ORIGIN=https://www.kwantdesk.com # fixed NEWS service origin; use the private/VPS origin when available
+   KWANTDESK_NEWS_SERVICE_TOKEN=... # separate 32+ character internal token; set identically on the NEWS server routes
+   KWANTDESK_NEWS_SERVICE_TIMEOUT_MS=120000
+   KWANTDESK_SOCIALS_SERVICE_ORIGIN=https://www.kwantdesk.com # fixed server-side SOCIALS read/mutation service
+   KWANTDESK_SOCIALS_SERVICE_TOKEN=... # separate 32+ character internal token; set identically on the web service
+   KWANTDESK_SOCIALS_SERVICE_TIMEOUT_MS=120000
+   KWANTDESK_JOURNAL_SERVICE_ORIGIN=https://www.kwantdesk.com # fixed server-side JOURNAL state/analysis service
+   KWANTDESK_JOURNAL_SERVICE_TOKEN=... # separate 32+ character internal token; set identically on the web service
+   KWANTDESK_JOURNAL_SERVICE_TIMEOUT_MS=120000
    DATABENTO_API_KEY=...                    # VPS-only vendor credential
    QUANTDATA_API_KEY=...                    # VPS-only vendor credential
    MASSIVE_API_KEY=...                      # VPS-only cash-index credential
    MASSIVE_INDICES_WS_URL=wss://socket.massive.com/indices
    KWANTDESK_LAB_REPOSITORY_ROOT=/opt/kwantify/QUANT-DESK-sync
+   OPENAI_API_KEY=...                       # VPS-only ZYON transcription credential
+   OPENAI_ZYON_TRANSCRIPTION_MODEL=gpt-4o-mini-transcribe-2025-12-15
+   OPENAI_ZYON_TRANSCRIPTION_TIMEOUT_MS=45000
    ```
+
+   Before enabling `socials.account:write`, apply
+   `202608300002_create_desktop_social_follow_mutations.sql` to the server-side
+   database and verify its service-role-only RPC. Do not grant or make the
+   workstation request that scope while the native SOCIALS route is gated.
+
+   Before enabling native JOURNAL, apply
+   `202608300005_expand_desktop_journal_scopes.sql`, verify separate
+   `journal.account:read` and `journal.account:write` entitlements, and probe
+   state read, one reversible mutation, saved-analysis read and bounded
+   analysis generation through the VPS. The JOURNAL origin/token pair is
+   all-or-nothing; partial configuration is a startup error. Screenshots stay
+   in Journal storage and are never forwarded to the analysis model.
+
+   Leave every `KWANTDESK_DESKTOP_*` value blank until the website issuer,
+   entitlement migration, sync-token rotation, and revocation outage/rollback
+   drill are ready together. Partial configuration intentionally prevents the
+   gateway from starting. Create `runtime/desktop-auth` beside `deploy` with
+   owner-only permissions before enabling the boundary; Compose mounts it at
+   `/desktop-auth` and the synchronizer publishes only verified snapshots.
+   Leave both analytics values blank until the server-side web application is
+   reachable at the fixed private origin. Configuring only one is a startup
+   error. The token must never use a `NEXT_PUBLIC_` environment name.
 
    `RITHMIC_GATEWAY_HOST` is overridden to `0.0.0.0` by compose; the
    `127.0.0.1` in the file is correct for local dev and would make the
@@ -105,6 +150,11 @@ Do not chase it and do not lower the healthcheck thresholds because of it.
    Cash indices additionally require `massiveIndices.configured: true` and a
    fresh `massiveIndices.lastValueAt`. The website never opens a Massive
    session itself; the single VPS WebSocket fans out through the shared SSE.
+   Before enabling native ZYON dictation, additionally require
+   `zyonTranscription.configured: true` and verify an authenticated bounded WAV
+   fixture through `POST /v1/zyon/transcriptions`. The credential must exist
+   only in the VPS secret manager/operator environment; do not add it to the
+   native build or Vercel.
    `connected: true` with a frozen `lastMessageAt` is a dead feed wearing a
    live label — treat it as an outage.
 

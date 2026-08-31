@@ -23,6 +23,17 @@ test("single profiles expose session presets, live price and fixed value-area la
   assert.match(profileSource, /\["LIVE".*\["POC".*\["VAH".*\["VAL"/s);
 });
 
+test("single TPO is the bounded production time-at-price path rather than execution-volume inference", () => {
+  assert.match(profileSource, /engineSettings\.visitSource = "bar-range"/);
+  assert.match(profileSource, /buildTpoProfiles\(\{ trades: \[\], bars/);
+  assert.match(profileSource, /source: profile\.source === "exact-trades" \? "EXACT EXECUTIONS" : "CME 1M RANGE"/);
+  assert.match(profileSource, /Math\.min\(300, Math\.max\(1, Math\.round\(row\.weight\)\)\)/);
+  assert.match(profileSource, /min="5" max="120" step="5"/);
+  assert.match(profileSource, /option value="blocks">Square blocks/);
+  assert.match(profileSource, /option value="letters">TPO letters/);
+  assert.match(profileSource, /window\.setInterval\(load, 15_000\)/);
+});
+
 test("single volume profile supports selecting and merging multiple completed sessions", () => {
   assert.match(profileSource, /merge-days/);
   assert.match(profileSource, /selectedDates/);

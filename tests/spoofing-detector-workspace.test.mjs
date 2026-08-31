@@ -46,7 +46,7 @@ test("live and retained replay frames use the same shared normalized Rithmic str
   assert.match(componentSource, /replayHistory: true/);
   assert.match(streamSource, /includeOrderEvents: "1"/);
   assert.match(streamSource, /source\.addEventListener\("history"/);
-  assert.match(streamSource, /updateTrackers\(stream, \{ status: payload\.status, snapshot \}, recipients\)/);
+  assert.match(streamSource, /updateTrackers\(stream, \{ status: payload\.status, snapshot \}, replayRecipients\)/);
   assert.match(gatewaySource, /frame\.snapshot\.orderEvents = state\.pendingOrderEvents\.slice\(\)/);
 });
 

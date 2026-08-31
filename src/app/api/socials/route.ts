@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createHash } from "node:crypto";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { getRouteActor, type RouteActor } from "@/lib/serverAuth";
+import { getSocialsRouteActor, type RouteActor } from "@/lib/serverAuth";
 import {
   calculateReasoningScore,
   CALLING_CARD_CATALOG,
@@ -125,7 +125,7 @@ function unavailableResponse() {
 }
 
 async function socialClient(request: NextRequest) {
-  const actor = await getRouteActor(request);
+  const actor = await getSocialsRouteActor(request);
   if (!actor) return { actor: null, supabase: null };
   try {
     return { actor, supabase: await createSupabaseServerClient() };

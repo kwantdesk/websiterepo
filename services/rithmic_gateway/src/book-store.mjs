@@ -61,6 +61,7 @@ function makeInstrument(exchange, symbol, maxTrades) {
     askVolumeTotal: 0,
     bidVolumeTotal: 0,
     sequence: 0,
+    orderEventSequence: 0,
     sourceSequence: "0",
     asOfMs: 0,
     lastPrice: null,
@@ -284,6 +285,7 @@ export class RithmicBookStore {
     instrument.pendingDepthSnapshot = null;
     instrument.bookValid = false;
     instrument.depthMode = "TRADES";
+    instrument.individualOrders = false;
   }
 
   applyTrade(payload) {
@@ -567,7 +569,7 @@ export class RithmicBookStore {
       if (updateType === 3) {
         if (existing) {
           orderEvents.push({
-            sequence: instrument.sequence + orderEvents.length + 1,
+            sequence: ++instrument.orderEventSequence,
             timestamp,
             orderId: id,
             action: "REMOVE",
@@ -576,6 +578,8 @@ export class RithmicBookStore {
             previousPrice: Number(existing.price),
             size: 0,
             previousSize: Number(existing.size || 0),
+            priority: String(existing.priority || "0"),
+            previousPriority: String(existing.priority || "0"),
           });
         }
         removeOrderFromDepth(instrument, existing);
@@ -593,7 +597,7 @@ export class RithmicBookStore {
         priority: String(priorities[index] ?? existing?.priority ?? "0"),
       };
       orderEvents.push({
-        sequence: instrument.sequence + orderEvents.length + 1,
+        sequence: ++instrument.orderEventSequence,
         timestamp,
         orderId: id,
         action: existing ? "MODIFY" : "ADD",
@@ -602,6 +606,8 @@ export class RithmicBookStore {
         previousPrice: existing ? Number(existing.price) : null,
         size: Number(nextOrder.size || 0),
         previousSize: Number(existing?.size || 0),
+        priority: String(nextOrder.priority || "0"),
+        previousPriority: existing ? String(existing.priority || "0") : null,
       });
       // Updating one order used to rebuild every price level from every order
       // in the book. At active CME rates that is O(messages * total orders)
@@ -699,6 +705,46 @@ export class RithmicBookStore {
       ? instrument.trades.filter((trade) => Number(trade.sequence) > afterSequence)
       : instrument.trades;
     const trades = tradeLimit > 0 ? matchingTrades.slice(-tradeLimit) : [];
+    const includeOrders = options.includeOrders === true;
+    const orderLimit = Math.min(50_000, Math.max(1, Math.floor(Number(options.orderLimit) || 50_000)));
+    let orders;
+    let orderStateComplete = false;
+    if (includeOrders && instrument.individualOrders) {
+      // The incremental lifecycle tape is contract-wide. Seed the same bounded
+      // scope once: a visible-price-only baseline would become unknowable as
+      // soon as an off-screen MODIFY/REMOVE arrived, even though no events were
+      // lost. Pane depth is a presentation filter applied after reconstruction.
+      const selected = [...instrument.orders.values()];
+      const priority = (value) => {
+        try {
+          const parsed = BigInt(String(value || "0"));
+          return parsed > 0n ? parsed : null;
+        } catch {
+          return null;
+        }
+      };
+      selected.sort((left, right) => {
+        if (left.side !== right.side) return left.side === "BUY" ? -1 : 1;
+        if (left.price !== right.price) {
+          return left.side === "BUY" ? right.price - left.price : left.price - right.price;
+        }
+        const leftPriority = priority(left.priority);
+        const rightPriority = priority(right.priority);
+        if (leftPriority === null && rightPriority !== null) return 1;
+        if (leftPriority !== null && rightPriority === null) return -1;
+        if (leftPriority !== null && rightPriority !== null && leftPriority !== rightPriority)
+          return leftPriority < rightPriority ? -1 : 1;
+        return String(left.id).localeCompare(String(right.id));
+      });
+      orders = selected.slice(0, orderLimit).map((order) => ({
+        orderId: String(order.id),
+        side: order.side === "BUY" ? "BID" : "ASK",
+        price: Number(order.price),
+        size: Number(order.size),
+        priority: String(order.priority || "0"),
+      }));
+      orderStateComplete = instrument.orders.size <= orderLimit && instrument.pendingDepthSnapshot === null;
+    }
     return {
       provider: "Rithmic",
       exchange: instrument.exchange,
@@ -724,6 +770,9 @@ export class RithmicBookStore {
       individualOrders: instrument.individualOrders,
       bookValid: instrument.bookValid,
       orderCount: instrument.orders.size,
+      orderEventSequence: instrument.orderEventSequence,
+      orders,
+      orderStateComplete,
     };
   }
 }

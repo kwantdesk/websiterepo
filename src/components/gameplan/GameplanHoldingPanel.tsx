@@ -18,7 +18,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import KwantSelect from "@/components/ui/KwantSelect";
 import {
   buildGameplanScoringRecord,
-  persistGameplanScoringRecord,
   writePendingScoringTransition,
 } from "@/lib/gameplanScoringTransition";
 import {
@@ -166,9 +165,14 @@ export default function GameplanHoldingPanel({ onPendingChange }: Props) {
     const payload = await response.json().catch(() => null) as {
       error?: string;
       recordMode?: "LIVE" | "HISTORICAL";
+      updatedAt?: string;
     } | null;
     if (!response.ok) throw new Error(payload?.error || "The edited Gameplan could not be saved.");
-    const saved = { ...normalized, recordMode: payload?.recordMode ?? normalized.recordMode ?? "LIVE", updatedAt: new Date().toISOString() };
+    const saved = {
+      ...normalized,
+      recordMode: payload?.recordMode ?? normalized.recordMode ?? "LIVE",
+      updatedAt: payload?.updatedAt ?? normalized.updatedAt,
+    };
     setDraft(saved);
     window.dispatchEvent(new CustomEvent("kwantdesk:zyon-gameplan-draft-updated", {
       detail: { draftId: saved.id },
@@ -214,12 +218,19 @@ export default function GameplanHoldingPanel({ onPendingChange }: Props) {
     try {
       const saved = await persistDraft();
       if (!saved) throw new Error("The completed Gameplan could not be prepared for Scoring.");
-      const record = buildGameplanScoringRecord(saved, {
-        id: optimisticRecord.id,
-        createdAt: optimisticRecord.createdAt,
-        recordMode: saved.recordMode ?? "LIVE",
+      const lockResponse = await fetch("/api/zyon/gameplan-lock", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ draftId: saved.id, expectedUpdatedAt: saved.updatedAt }),
       });
-      const savedRecord = await persistGameplanScoringRecord(record);
+      const lockResult = await lockResponse.json().catch(() => null) as {
+        object?: typeof optimisticRecord;
+        error?: string;
+      } | null;
+      if (!lockResponse.ok || !lockResult?.object) {
+        throw new Error(lockResult?.error || "The Gameplan remains in Holding because its immutable record could not be created.");
+      }
+      const savedRecord = lockResult.object;
       writePendingScoringTransition({ record: savedRecord, state: "saved" });
       window.dispatchEvent(new CustomEvent("kwantdesk:gameplan-locked", {
         detail: { recordId: savedRecord.id, object: savedRecord },

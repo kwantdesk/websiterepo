@@ -267,6 +267,9 @@ assert.ok(directSnapshot.exposureField.flatMap((slice) => slice.nodes).some((nod
 
 const source = fs.readFileSync(path.join(root, "src/app/api/bounce-levels/route.ts"), "utf8");
 assert.doesNotMatch(source, /NEXT_PUBLIC_(?:QUANTDATA|GEX)[A-Z_]*(?:KEY|TOKEN|SECRET)/, "provider credentials remain server-only");
+assert.doesNotMatch(source, /NEXT_PUBLIC_KWANTDESK_ANALYTICS_SERVICE_TOKEN/, "the internal VPS analytics token can never enter a public browser bundle");
+assert.match(source, /timingSafeEqual\(supplied, expected\)/, "the internal VPS service token is compared in constant time");
+assert.match(source, /x-kwantdesk-internal-analytics-token/, "the normalized gateway uses the dedicated internal analytics boundary");
 assert.match(source, /selectLookaheadSafeBounceBucket/, "the API uses the tested lookahead-safe selector");
 const chartSource = fs.readFileSync(path.join(root, "src/components/Chart.tsx"), "utf8");
 assert.match(chartSource, /minimumDte: String\(indicatorSettings\.minimumDte\)/, "custom minimum DTE is sent from Bounce Levels settings to the API");

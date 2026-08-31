@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import type { NextRequest } from "next/server";
@@ -5,12 +6,85 @@ import type { NextRequest } from "next/server";
 export type RouteActor = {
   userId: string;
   label: string;
-  mode: "supabase" | "local-dev";
+  mode: "supabase" | "local-dev" | "desktop-gateway";
   createdAt?: string;
   displayName?: string;
   username?: string;
   avatarUrl?: string;
 };
+
+const ZYON_GATEWAY_TOKEN_HEADER = "x-kwantdesk-internal-zyon-token";
+const ZYON_GATEWAY_SUBJECT_HEADER = "x-kwantdesk-desktop-subject";
+const NEWS_GATEWAY_TOKEN_HEADER = "x-kwantdesk-internal-news-token";
+const NEWS_GATEWAY_SUBJECT_HEADER = "x-kwantdesk-desktop-subject";
+const SOCIALS_GATEWAY_TOKEN_HEADER = "x-kwantdesk-internal-socials-token";
+const SOCIALS_GATEWAY_SUBJECT_HEADER = "x-kwantdesk-desktop-subject";
+const JOURNAL_GATEWAY_TOKEN_HEADER = "x-kwantdesk-internal-journal-token";
+const JOURNAL_GATEWAY_SUBJECT_HEADER = "x-kwantdesk-desktop-subject";
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/**
+ * ZYON's VPS-only service boundary. The public desktop ticket is verified by
+ * the market-data gateway; only that gateway may exchange its verified `sub`
+ * claim for this internal actor. The internal service credential is never
+ * returned to, accepted from, or persisted by the native application.
+ */
+export async function getZyonRouteActor(request: NextRequest): Promise<RouteActor | null> {
+  const desktop = internalDesktopActor(
+    request,
+    ZYON_GATEWAY_TOKEN_HEADER,
+    ZYON_GATEWAY_SUBJECT_HEADER,
+    process.env.KWANTDESK_ZYON_SERVICE_TOKEN,
+  );
+  if (desktop) return desktop;
+  return getRouteActor(request);
+}
+
+/**
+ * NEWS uses a separate fixed VPS bridge and credential from ZYON. The gateway
+ * supplies the verified desktop-ticket subject; the public bearer and internal
+ * service credential never cross the same trust boundary.
+ */
+export async function getNewsRouteActor(request: NextRequest): Promise<RouteActor | null> {
+  const desktop = internalDesktopActor(
+    request,
+    NEWS_GATEWAY_TOKEN_HEADER,
+    NEWS_GATEWAY_SUBJECT_HEADER,
+    process.env.KWANTDESK_NEWS_SERVICE_TOKEN,
+  );
+  if (desktop) return desktop;
+  return getRouteActor(request);
+}
+
+/**
+ * SOCIALS is identity-bound independently from the market-data and NEWS
+ * services. The gateway verifies the short-lived desktop ticket and forwards
+ * only its UUID subject; the service-role credential remains server-side and
+ * the SOCIALS reader reapplies viewer privacy before returning any object.
+ */
+export async function getSocialsRouteActor(request: NextRequest): Promise<RouteActor | null> {
+  const desktop = internalDesktopActor(
+    request,
+    SOCIALS_GATEWAY_TOKEN_HEADER,
+    SOCIALS_GATEWAY_SUBJECT_HEADER,
+    process.env.KWANTDESK_SOCIALS_SERVICE_TOKEN,
+  );
+  if (desktop) return desktop;
+  return getRouteActor(request);
+}
+
+/** Identity-bound desktop Journal bridge. Cloud database credentials never
+ * leave the browser service and the desktop public ticket never reaches it. */
+export async function getJournalRouteActor(request: NextRequest): Promise<RouteActor | null> {
+  const desktop = internalDesktopActor(
+    request,
+    JOURNAL_GATEWAY_TOKEN_HEADER,
+    JOURNAL_GATEWAY_SUBJECT_HEADER,
+    process.env.KWANTDESK_JOURNAL_SERVICE_TOKEN,
+  );
+  if (desktop) return desktop;
+  return getRouteActor(request);
+}
 
 export async function getRouteActor(request?: NextRequest): Promise<RouteActor | null> {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -82,5 +156,30 @@ export async function getRouteActor(request?: NextRequest): Promise<RouteActor |
     displayName,
     username,
     avatarUrl,
+  };
+}
+
+function constantTimeEqual(left: string, right: string): boolean {
+  const supplied = Buffer.from(left, "utf8");
+  const expected = Buffer.from(right, "utf8");
+  return supplied.length === expected.length && timingSafeEqual(supplied, expected);
+}
+
+function internalDesktopActor(
+  request: NextRequest,
+  tokenHeader: string,
+  subjectHeader: string,
+  expectedToken: string | undefined,
+): RouteActor | null {
+  const expected = String(expectedToken || "").trim();
+  const supplied = request.headers.get(tokenHeader)?.trim() ?? "";
+  const subject = request.headers.get(subjectHeader)?.trim() ?? "";
+  if (!expected || !supplied || !UUID.test(subject) || !constantTimeEqual(supplied, expected)) {
+    return null;
+  }
+  return {
+    userId: subject,
+    label: `desktop:${subject}`,
+    mode: "desktop-gateway",
   };
 }

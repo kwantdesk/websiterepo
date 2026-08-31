@@ -5,11 +5,19 @@ import path from "node:path";
 import process from "node:process";
 
 const SESSION_DATE = "2026-08-21";
-const SESSION_OPEN_MS = Date.parse("2026-08-21T13:30:00.000Z");
+// Include the pre-market Trinity anchor. OPRA trades begin at 09:30 ET, but the
+// earlier boundary lets the carried state remain explicit in the same model.
+const SESSION_OPEN_MS = Date.parse("2026-08-21T08:00:00.000Z");
+const OPRA_FETCH_START_MS = Date.parse(process.env.OPRA_FETCH_START_ISO || "2026-08-21T08:00:00.000Z");
 const FETCH_END_MS = Date.parse("2026-08-21T14:03:00.000Z");
 const CONTRACT_MULTIPLIER = 100;
+// Trinity's default `firstColumn` view requests the nearest expiration only.
+const TRINITY_EXPIRATION_COUNT = 1;
 
-const TARGETS = {
+const EXPIRATIONS_BY_TICKER = new Map();
+const EXPIRATION_REQUESTS_BY_TICKER = new Map();
+
+let TARGETS = {
   SPX: {
     label: "SPXW",
     spot: 7666.85,
@@ -58,7 +66,7 @@ const TARGETS = {
   },
 };
 
-const TRINITY_STATE_HISTORY = {
+let TRINITY_STATE_HISTORY = {
   SPX: {
     label: "SPXW",
     values: new Map([
@@ -149,16 +157,107 @@ function readDotEnv(filePath) {
 }
 
 const env = { ...readDotEnv(path.resolve(process.cwd(), ".env.local")), ...process.env };
+const SUMMARY_ONLY = env.OPRA_REVERSE_ENGINEER_SUMMARY_ONLY === "1";
+
+function loadFullTrinityLattices(filePath, openingFilePath) {
+  if (!filePath) return;
+  const payload = JSON.parse(fs.readFileSync(path.resolve(filePath), "utf8"));
+  const snapshots = payload?.targets;
+  if (!snapshots?.["930"] || !snapshots?.["945"] || !snapshots?.["1000"]) {
+    throw new Error("TRINITY_FULL_LATTICES must contain 930, 945 and 1000 target snapshots.");
+  }
+
+  const timestampByKey = {
+    400: Date.parse(`${SESSION_DATE}T08:00:00.000Z`),
+    930: Date.parse(`${SESSION_DATE}T13:30:00.000Z`),
+    945: Date.parse(`${SESSION_DATE}T13:45:00.000Z`),
+    1000: Date.parse(`${SESSION_DATE}T14:00:00.000Z`),
+  };
+  const openingPayload = openingFilePath
+    ? JSON.parse(fs.readFileSync(path.resolve(openingFilePath), "utf8"))
+    : null;
+  if (openingPayload?.targets) {
+    snapshots["400"] = Object.fromEntries(Object.entries(openingPayload.targets).map(([ticker, rows]) => [
+      ticker,
+      rows.map(([strike, value]) => ({ strike, value })),
+    ]));
+  }
+  const snapshotKeys = snapshots["400"] ? ["400", "930", "945", "1000"] : ["930", "945", "1000"];
+  const metadata = {
+    SPX: { label: "SPXW", spot: 7666.85 },
+    SPY: { label: "SPY", spot: 764.8 },
+    QQQ: { label: "QQQ", spot: 711.46 },
+  };
+
+  TARGETS = {};
+  TRINITY_STATE_HISTORY = {};
+  for (const [ticker, meta] of Object.entries(metadata)) {
+    const latestRows = snapshots["1000"][ticker] ?? [];
+    TARGETS[ticker] = {
+      ...meta,
+      values: new Map(latestRows.map((row) => [Number(row.strike), Number(row.value)])),
+    };
+
+    const observationsByStrike = new Map();
+    for (const key of snapshotKeys) {
+      for (const row of snapshots[key][ticker] ?? []) {
+        const strike = Number(row.strike);
+        const observations = observationsByStrike.get(strike) ?? new Map();
+        observations.set(timestampByKey[key], Number(row.value));
+        observationsByStrike.set(strike, observations);
+      }
+    }
+    TRINITY_STATE_HISTORY[ticker] = {
+      label: meta.label,
+      values: new Map([...observationsByStrike].filter(([, observations]) => observations.size >= 2)),
+    };
+  }
+}
+
+loadFullTrinityLattices(env.TRINITY_FULL_LATTICES, env.TRINITY_OPENING_LATTICE);
+
+function loadExtraTrinityLattices(filePath) {
+  if (!filePath) return;
+  const payload = JSON.parse(fs.readFileSync(path.resolve(filePath), "utf8"));
+  const tickerByLabel = { SPXW: "SPX", SPY: "SPY", QQQ: "QQQ" };
+  for (const [timestampText, panels] of Object.entries(payload)) {
+    const timestamp = Date.parse(timestampText);
+    if (!Number.isFinite(timestamp)) continue;
+    for (const [label, panel] of Object.entries(panels ?? {})) {
+      const ticker = tickerByLabel[label];
+      if (!ticker || !TRINITY_STATE_HISTORY[ticker]) continue;
+      for (const [strikeText, value] of Object.entries(panel?.values ?? {})) {
+        const strike = Number(strikeText);
+        const observations = TRINITY_STATE_HISTORY[ticker].values.get(strike) ?? new Map();
+        observations.set(timestamp, Number(value));
+        TRINITY_STATE_HISTORY[ticker].values.set(strike, observations);
+      }
+    }
+  }
+}
+
+loadExtraTrinityLattices(env.TRINITY_EXTRA_LATTICES);
 const gatewayUrl = String(env.KWANTIFY_MARKET_DATA_GATEWAY_URL || "").replace(/\/$/, "");
 const gatewayToken = String(env.KWANTIFY_MARKET_DATA_GATEWAY_TOKEN || "");
 if (!gatewayUrl || !gatewayToken) throw new Error("The VPS market-data gateway is not configured.");
 
+let nextQuantDataRequestAt = 0;
+
+async function waitForQuantDataSlot() {
+  const scheduledAt = Math.max(Date.now(), nextQuantDataRequestAt);
+  nextQuantDataRequestAt = scheduledAt + 275;
+  const waitMs = scheduledAt - Date.now();
+  if (waitMs > 0) await new Promise((resolve) => setTimeout(resolve, waitMs));
+}
+
 async function quantDataPost(endpoint, body) {
   for (let attempt = 0; attempt < 6; attempt += 1) {
+    await waitForQuantDataSlot();
     const response = await fetch(`${gatewayUrl}/v1/vendors/quantdata/v1${endpoint}`, {
       method: "POST",
       headers: { Authorization: `Bearer ${gatewayToken}`, "Content-Type": "application/json" },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(30_000),
     });
     const payload = await response.json().catch(() => ({}));
     if (response.ok) return payload;
@@ -243,9 +342,29 @@ function normalizeTrade(row, source) {
   const strike = numberAt(row, "strikePrice", "strike");
   const stockPrice = numberAt(row, "stockPrice", "underlyingPrice", "spotPrice");
   const consolidation = textAt(row, "tradeConsolidationType", "consolidationType", "tradeType").toUpperCase();
+  const tradeType = textAt(row, "tradeType", "executionType").toUpperCase();
   const strategy = textAt(row, "strategy", "strategyType", "detectedStrategy");
-  const multiLeg = row?.isMultiLeg === true || row?.multiLeg === true || row?.complexTrade === true || Boolean(strategy);
+  const parentTradeType = textAt(row, "parentTradeType").toUpperCase();
+  const multiLeg = row?.isMultiLeg === true
+    || row?.multiLeg === true
+    || row?.complexTrade === true
+    || Boolean(strategy)
+    || tradeType.includes("MULTI_")
+    || tradeType.includes("_COB")
+    || parentTradeType.includes("MULTI_")
+    || parentTradeType.includes("_COB");
   const opening = row?.isOpeningPosition === true || row?.opening === true;
+  const unusual = row?.isUnusual === true || row?.unusual === true;
+  const goldenSweep = row?.isGoldenSweep === true || row?.goldenSweep === true;
+  const volumeGreaterThanOpenInterest = row?.isVolumeGreaterThanOpenInterest === true
+    || row?.volumeGreaterThanOpenInterest === true;
+  const impliedVolatility = numberAt(row, "impliedVolatility", "iv", "greeks.impliedVolatility") ?? 0;
+  const bid = numberAt(row, "bidPrice", "bid", "bestBid") ?? 0;
+  const ask = numberAt(row, "askPrice", "ask", "bestAsk") ?? 0;
+  const bidAskSpread = numberAt(row, "bidAskSpread", "spread") ?? Math.max(0, ask - bid);
+  const spreadPosition = ask > bid
+    ? Math.max(-1, Math.min(2, (fill - bid) / (ask - bid)))
+    : side === "BUY" ? 1 : side === "SELL" ? 0 : 0.5;
   const bucket = type === "CALL"
     ? side === "BUY" ? "CB" : side === "SELL" ? "CS" : "CM"
     : type === "PUT"
@@ -276,16 +395,56 @@ function normalizeTrade(row, source) {
     opening,
     multiLeg,
     consolidation,
+    tradeType,
+    unusual,
+    goldenSweep,
+    volumeGreaterThanOpenInterest,
+    impliedVolatility,
+    bid,
+    ask,
+    bidAskSpread,
+    spreadPosition,
+    exchange: textAt(row, "exchange", "marketCenter").toUpperCase(),
+    moneyness: (typeof row?.moneyness === "string" ? row.moneyness : row?.moneyness?.moneyType ?? "").toUpperCase(),
   };
+}
+
+async function getTrinityExpirations(ticker) {
+  const cached = EXPIRATIONS_BY_TICKER.get(ticker);
+  if (cached?.length) return cached;
+  const pending = EXPIRATION_REQUESTS_BY_TICKER.get(ticker);
+  if (pending) return pending;
+  const request = (async () => {
+    const payload = await quantDataPost("/options/tool/exposure-by-strike", {
+      sessionDate: SESSION_DATE,
+      greekMode: "GAMMA",
+      representationMode: "PER_ONE_PERCENT_MOVE",
+      filter: { ticker },
+    });
+    const exposureMap = payload?.data?.[ticker]?.exposureMap;
+    const expirations = exposureMap && typeof exposureMap === "object"
+      ? Object.keys(exposureMap)
+        .filter((expiration) => expiration >= SESSION_DATE)
+        .sort()
+        .slice(0, TRINITY_EXPIRATION_COUNT)
+      : [];
+    if (!expirations.length) throw new Error(`No expirations were returned for ${ticker} on ${SESSION_DATE}.`);
+    console.log(`Using Trinity's first ${expirations.length} expirations for ${ticker}: ${expirations.join(", ")}`);
+    EXPIRATIONS_BY_TICKER.set(ticker, expirations);
+    return expirations;
+  })();
+  EXPIRATION_REQUESTS_BY_TICKER.set(ticker, request);
+  return request;
 }
 
 async function walkStrikeTape(endpoint, ticker, strike, includeComprisingTrades = false) {
   const rows = [];
+  await getTrinityExpirations(ticker);
   let searchAfter;
   for (let page = 0; page < 40; page += 1) {
     const body = {
-      timeRange: { startTime: new Date(SESSION_OPEN_MS).toISOString(), endTime: new Date(FETCH_END_MS).toISOString() },
-      filter: { ticker, expirationDate: SESSION_DATE, strikePrice: strike },
+      timeRange: { startTime: new Date(OPRA_FETCH_START_MS).toISOString(), endTime: new Date(FETCH_END_MS).toISOString() },
+      filter: { ticker, strikePrice: strike },
       size: 100,
       sort: { field: "tradeTime", direction: "ASCENDING" },
       ...(includeComprisingTrades ? { includeComprisingTrades: true } : {}),
@@ -318,16 +477,19 @@ function comprisingRows(parents) {
     ? parent.comprisingTrades.map((child, childIndex) => ({
       ...parent,
       ...child,
+      parentTradeType: textAt(parent, "tradeType", "executionType"),
+      parentTradeConsolidationType: textAt(parent, "tradeConsolidationType", "consolidationType"),
       id: textAt(child, "id", "tradeId", "eventId") || `${textAt(parent, "id", "tradeId", "eventId") || parentIndex}:child:${childIndex}`,
       comprisingTrades: undefined,
     }))
     : []);
 }
 
-function dedupe(rows, source) {
+function dedupe(rows, source, ticker) {
+  const expirationSet = new Set(EXPIRATIONS_BY_TICKER.get(ticker) ?? [SESSION_DATE]);
   const normalized = rows
     .map((row) => normalizeTrade(row, source))
-    .filter((row) => row.expirationDate === SESSION_DATE && Number.isFinite(row.strike) && row.type !== "UNKNOWN" && row.size > 0 && row.timestamp > 0);
+    .filter((row) => expirationSet.has(row.expirationDate) && Number.isFinite(row.strike) && row.type !== "UNKNOWN" && row.size > 0 && row.timestamp > 0);
   return [...new Map(normalized.map((row) => [row.id, row])).values()].sort((left, right) => left.timestamp - right.timestamp);
 }
 
@@ -542,6 +704,337 @@ function dynamicCarryHoldout(rows) {
   return { rmse: result.rmse, directionAccuracy: result.directionAccuracy };
 }
 
+function gammaUnitAt(tape, timestamp, type, configuredSpot) {
+  const candidates = tape.filter((trade) => trade.type === type && trade.gamma > 0);
+  if (!candidates.length) return null;
+  let selected = null;
+  for (const trade of candidates) {
+    if (trade.timestamp <= timestamp) selected = trade;
+    else break;
+  }
+  // At the 09:30 boundary there may be no print at or before the exact second.
+  // The first subsequent print is the least-assumptive estimate of that surface.
+  if (!selected) selected = candidates[0];
+  const spot = selected.stockPrice && selected.stockPrice > 0 ? selected.stockPrice : configuredSpot;
+  return selected.gamma * CONTRACT_MULTIPLIER * spot * spot * 0.01;
+}
+
+function repricingFeatures(tape, priorTime, currentTime, configuredSpot, priorValue) {
+  const priorCall = gammaUnitAt(tape, priorTime, "CALL", configuredSpot);
+  const currentCall = gammaUnitAt(tape, currentTime, "CALL", configuredSpot);
+  const priorPut = gammaUnitAt(tape, priorTime, "PUT", configuredSpot);
+  const currentPut = gammaUnitAt(tape, currentTime, "PUT", configuredSpot);
+  const callRatio = priorCall && currentCall ? currentCall / priorCall : 1;
+  const putRatio = priorPut && currentPut ? currentPut / priorPut : 1;
+  const grossPrior = (priorCall ?? 0) + (priorPut ?? 0);
+  const grossCurrent = (currentCall ?? 0) + (currentPut ?? 0);
+  const grossRatio = grossPrior > 0 && grossCurrent > 0 ? grossCurrent / grossPrior : 1;
+  return {
+    priorCallRepriced: priorValue * callRatio,
+    priorPutRepriced: priorValue * putRatio,
+    priorGrossRepriced: priorValue * grossRatio,
+    callRatio,
+    putRatio,
+    grossRatio,
+  };
+}
+
+function propagatedBucketFeatures(tape, timestamps, endIndex, configuredSpot, model) {
+  const currentTime = timestamps[endIndex];
+  const currentCall = gammaUnitAt(tape, currentTime, "CALL", configuredSpot);
+  const currentPut = gammaUnitAt(tape, currentTime, "PUT", configuredSpot);
+  const totals = Object.fromEntries(model.buckets.map((bucket) => [bucket, 0]));
+  for (let intervalIndex = 1; intervalIndex <= endIndex; intervalIndex += 1) {
+    const priorTime = timestamps[intervalIndex - 1];
+    const intervalTime = timestamps[intervalIndex];
+    const intervalCall = gammaUnitAt(tape, intervalTime, "CALL", configuredSpot);
+    const intervalPut = gammaUnitAt(tape, intervalTime, "PUT", configuredSpot);
+    const callCarry = currentCall && intervalCall ? currentCall / intervalCall : 1;
+    const putCarry = currentPut && intervalPut ? currentPut / intervalPut : 1;
+    for (const trade of tape) {
+      if (trade.timestamp <= priorTime || trade.timestamp > intervalTime || !model.filter(trade)) continue;
+      if (!Object.hasOwn(totals, trade.bucket)) continue;
+      const carry = trade.type === "CALL" ? callCarry : putCarry;
+      totals[trade.bucket] += valueBasis(trade, model.basis, configuredSpot) * carry;
+    }
+  }
+  return model.buckets.map((bucket) => totals[bucket]);
+}
+
+function buildLatentSplitRows(source, model) {
+  const rowSpecs = [];
+  const strikeKeys = [];
+  for (const [ticker, history] of Object.entries(TRINITY_STATE_HISTORY)) {
+    const configuredSpot = TARGETS[ticker].spot;
+    for (const [strike, observations] of history.values) {
+      const timestamps = [...observations.keys()].sort((left, right) => left - right);
+      if (timestamps.length < 2) continue;
+      const tape = indexedRows.get(`${ticker}:${source}:${strike}`) ?? [];
+      const firstTime = timestamps[0];
+      const firstValue = observations.get(firstTime);
+      const firstCall = gammaUnitAt(tape, firstTime, "CALL", configuredSpot);
+      const firstPut = gammaUnitAt(tape, firstTime, "PUT", configuredSpot);
+      const strikeKey = `${history.label}:${strike}`;
+      strikeKeys.push(strikeKey);
+      for (let endIndex = 1; endIndex < timestamps.length; endIndex += 1) {
+        const currentTime = timestamps[endIndex];
+        const currentCall = gammaUnitAt(tape, currentTime, "CALL", configuredSpot);
+        const currentPut = gammaUnitAt(tape, currentTime, "PUT", configuredSpot);
+        const callCarry = firstCall && currentCall ? currentCall / firstCall : 1;
+        const putCarry = firstPut && currentPut ? currentPut / firstPut : 1;
+        const basePutCarry = firstValue * putCarry;
+        rowSpecs.push({
+          ticker: history.label,
+          strike,
+          strikeKey,
+          priorTime: timestamps[endIndex - 1],
+          currentTime,
+          prior: observations.get(timestamps[endIndex - 1]),
+          current: observations.get(currentTime),
+          basePutCarry,
+          splitSensitivity: firstValue * (callCarry - putCarry),
+          bucketFeatures: propagatedBucketFeatures(tape, timestamps, endIndex, configuredSpot, model),
+        });
+      }
+    }
+  }
+  const uniqueStrikeKeys = [...new Set(strikeKeys)];
+  const strikeIndex = new Map(uniqueStrikeKeys.map((key, index) => [key, index]));
+  return {
+    strikeKeys: uniqueStrikeKeys,
+    rows: rowSpecs.map((row) => ({
+      ...row,
+      target: row.current - row.basePutCarry,
+      features: [
+        ...uniqueStrikeKeys.map((_, index) => index === strikeIndex.get(row.strikeKey) ? row.splitSensitivity : 0),
+        ...row.bucketFeatures,
+      ],
+    })),
+  };
+}
+
+function latentSplitMetrics(rows, fit) {
+  const predictions = rows.map((row) => row.basePutCarry
+    + row.features.reduce((sum, value, index) => sum + value * fit.weights[index], 0));
+  return { predictions, ...dynamicStateMetrics(rows, predictions) };
+}
+
+function fitLatentSplitState(rows) {
+  const fit = multiFactorFit(rows);
+  if (!fit) return null;
+  return { weights: fit.weights, ...latentSplitMetrics(rows, fit) };
+}
+
+function latentSplitTimeHoldout(rows) {
+  const latestTime = Math.max(...rows.map((row) => row.currentTime));
+  const train = rows.filter((row) => row.currentTime < latestTime);
+  const test = rows.filter((row) => row.currentTime === latestTime);
+  const fit = fitLatentSplitState(train);
+  if (!fit || !test.length) {
+    return { timestamp: latestTime, count: test.length, rmse: Number.POSITIVE_INFINITY, directionAccuracy: 0 };
+  }
+  const evaluated = latentSplitMetrics(test, fit);
+  return {
+    timestamp: latestTime,
+    count: test.length,
+    weights: fit.weights,
+    predictions: evaluated.predictions,
+    rmse: evaluated.rmse,
+    r2: evaluated.r2,
+    signAccuracy: evaluated.signAccuracy,
+    directionAccuracy: evaluated.directionAccuracy,
+  };
+}
+
+function fitDirectDynamicState(rows) {
+  const adjusted = rows.map((row) => ({ ...row, target: row.current }));
+  const fit = multiFactorFit(adjusted);
+  if (!fit) return null;
+  const predictions = rows.map((row) => row.features.reduce((sum, value, index) => sum + value * fit.weights[index], 0));
+  return { weights: fit.weights, predictions, ...dynamicStateMetrics(rows, predictions) };
+}
+
+function directDynamicStateHoldout(rows) {
+  const predictions = [];
+  const testRows = [];
+  for (const symbol of [...new Set(rows.map((row) => row.ticker))]) {
+    const train = rows.filter((row) => row.ticker !== symbol);
+    const test = rows.filter((row) => row.ticker === symbol);
+    const fit = fitDirectDynamicState(train);
+    if (!fit) return { rmse: Number.POSITIVE_INFINITY, directionAccuracy: 0 };
+    for (const row of test) {
+      predictions.push(row.features.reduce((sum, value, index) => sum + value * fit.weights[index], 0));
+      testRows.push(row);
+    }
+  }
+  const result = dynamicStateMetrics(testRows, predictions);
+  return { rmse: result.rmse, directionAccuracy: result.directionAccuracy };
+}
+
+function directDynamicTimeHoldout(rows) {
+  const latestTime = Math.max(...rows.map((row) => row.currentTime));
+  const train = rows.filter((row) => row.currentTime < latestTime);
+  const test = rows.filter((row) => row.currentTime === latestTime);
+  const fit = fitDirectDynamicState(train);
+  if (!fit || !test.length) {
+    return { timestamp: latestTime, count: test.length, rmse: Number.POSITIVE_INFINITY, directionAccuracy: 0 };
+  }
+  const predictions = test.map((row) => row.features.reduce((sum, value, index) => sum + value * fit.weights[index], 0));
+  const result = dynamicStateMetrics(test, predictions);
+  return {
+    timestamp: latestTime,
+    count: test.length,
+    rmse: result.rmse,
+    directionAccuracy: result.directionAccuracy,
+    weights: fit.weights,
+  };
+}
+
+function multiFactorFitWithRidge(rows, ridgeFactor = 1) {
+  if (!rows.length) return null;
+  const featureCount = rows[0].features.length;
+  const scales = Array.from({ length: featureCount }, (_, column) => {
+    const magnitude = Math.sqrt(rows.reduce((sum, row) => sum + row.features[column] ** 2, 0) / Math.max(1, rows.length));
+    return magnitude > 0 ? magnitude : 1;
+  });
+  const normalized = rows.map((row) => row.features.map((value, column) => value / scales[column]));
+  const matrix = Array.from({ length: featureCount }, () => Array(featureCount).fill(0));
+  const vector = Array(featureCount).fill(0);
+  for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
+    for (let left = 0; left < featureCount; left += 1) {
+      vector[left] += normalized[rowIndex][left] * rows[rowIndex].current;
+      for (let right = 0; right < featureCount; right += 1) {
+        matrix[left][right] += normalized[rowIndex][left] * normalized[rowIndex][right];
+      }
+    }
+  }
+  for (let index = 0; index < featureCount; index += 1) matrix[index][index] += ridgeFactor;
+  const normalizedWeights = solveLinearSystem(matrix, vector);
+  if (!normalizedWeights) return null;
+  const weights = normalizedWeights.map((value, column) => value / scales[column]);
+  const predictions = rows.map((row) => row.features.reduce((sum, value, column) => sum + value * weights[column], 0));
+  return { weights, predictions, ...dynamicStateMetrics(rows, predictions) };
+}
+
+const ENHANCED_FLOW_GROUPS = {
+  all: () => true,
+  simple: (trade) => !trade.multiLeg,
+  multiLeg: (trade) => trade.multiLeg,
+  opening: (trade) => trade.opening,
+  unusual: (trade) => trade.unusual,
+  goldenSweep: (trade) => trade.goldenSweep,
+  volumeOverOi: (trade) => trade.volumeGreaterThanOpenInterest,
+  aboveAsk: (trade) => trade.spreadPosition > 1.02,
+  atAsk: (trade) => trade.spreadPosition >= 0.85 && trade.spreadPosition <= 1.02,
+  mid: (trade) => trade.spreadPosition > 0.15 && trade.spreadPosition < 0.85,
+  atBid: (trade) => trade.spreadPosition >= -0.02 && trade.spreadPosition <= 0.15,
+  belowBid: (trade) => trade.spreadPosition < -0.02,
+};
+
+const ENHANCED_SPECS = [
+  { name: "gamma core", bases: ["gammaOnePercent"], groups: ["all"] },
+  { name: "gamma structure", bases: ["gammaOnePercent"], groups: ["all", "simple", "multiLeg", "opening", "unusual"] },
+  { name: "gamma microstructure", bases: ["gammaOnePercent"], groups: ["all", "simple", "multiLeg", "opening", "unusual", "goldenSweep", "volumeOverOi", "aboveAsk", "atAsk", "mid", "atBid", "belowBid"] },
+  { name: "gamma plus premium", bases: ["gammaOnePercent", "premium"], groups: ["all", "simple", "multiLeg", "opening", "unusual"] },
+  { name: "gamma premium contracts", bases: ["gammaOnePercent", "premium", "contracts"], groups: ["all", "simple", "multiLeg", "opening", "unusual"] },
+];
+
+function enhancedFeatureNames(spec, carryMode) {
+  const carry = carryMode === "callPutSplit" ? ["priorCallRepriced", "priorPutRepriced"] : [carryMode];
+  const flow = [];
+  for (const basis of spec.bases) {
+    for (const group of spec.groups) {
+      for (const bucket of EXECUTION_BUCKETS) flow.push(`${basis}:${group}:${bucket}`);
+    }
+  }
+  return [...carry, ...flow];
+}
+
+function enhancedFlowFeatures(tape, priorTime, currentTime, configuredSpot, spec) {
+  const values = [];
+  for (const basis of spec.bases) {
+    for (const group of spec.groups) {
+      const matches = ENHANCED_FLOW_GROUPS[group];
+      for (const bucket of EXECUTION_BUCKETS) {
+        let total = 0;
+        for (const trade of tape) {
+          if (trade.timestamp <= priorTime || trade.timestamp > currentTime) continue;
+          if (trade.bucket !== bucket || !matches(trade)) continue;
+          total += valueBasis(trade, basis, configuredSpot);
+        }
+        values.push(total);
+      }
+    }
+  }
+  return values;
+}
+
+function buildEnhancedTransitionRows(source, spec, carryMode) {
+  const rows = [];
+  for (const [ticker, history] of Object.entries(TRINITY_STATE_HISTORY)) {
+    const configuredSpot = TARGETS[ticker].spot;
+    for (const [strike, observations] of history.values) {
+      const timestamps = [...observations.keys()].sort((left, right) => left - right);
+      const tape = indexedRows.get(`${ticker}:${source}:${strike}`) ?? [];
+      for (let index = 1; index < timestamps.length; index += 1) {
+        const priorTime = timestamps[index - 1];
+        const currentTime = timestamps[index];
+        if (currentTime - priorTime > 20 * 60_000) continue;
+        const prior = observations.get(priorTime);
+        const repricing = repricingFeatures(tape, priorTime, currentTime, configuredSpot, prior);
+        const carry = carryMode === "callPutSplit"
+          ? [repricing.priorCallRepriced, repricing.priorPutRepriced]
+          : [carryMode === "prior" ? prior : repricing[carryMode]];
+        rows.push({
+          ticker: history.label,
+          strike,
+          priorTime,
+          currentTime,
+          prior,
+          current: observations.get(currentTime),
+          features: [...carry, ...enhancedFlowFeatures(tape, priorTime, currentTime, configuredSpot, spec)],
+        });
+      }
+    }
+  }
+  return rows;
+}
+
+function predictEnhancedRows(train, test, ridgeFactor, perSymbol) {
+  const predictions = [];
+  const evaluated = [];
+  const groups = perSymbol ? [...new Set(test.map((row) => row.ticker))] : [null];
+  for (const ticker of groups) {
+    const trainRows = ticker ? train.filter((row) => row.ticker === ticker) : train;
+    const testRows = ticker ? test.filter((row) => row.ticker === ticker) : test;
+    const fit = multiFactorFitWithRidge(trainRows, ridgeFactor);
+    if (!fit || !testRows.length) return null;
+    for (const row of testRows) {
+      predictions.push(row.features.reduce((sum, value, index) => sum + value * fit.weights[index], 0));
+      evaluated.push(row);
+    }
+  }
+  const result = dynamicStateMetrics(evaluated, predictions);
+  return { rows: evaluated, predictions, ...result };
+}
+
+function enhancedWalkForward(rows, ridgeFactor, perSymbol, omitLatest = true) {
+  const times = [...new Set(rows.map((row) => row.currentTime))].sort((left, right) => left - right);
+  const testTimes = omitLatest ? times.slice(2, -1) : times.slice(2);
+  const evaluated = [];
+  const predictions = [];
+  for (const currentTime of testTimes) {
+    const train = rows.filter((row) => row.currentTime < currentTime);
+    const test = rows.filter((row) => row.currentTime === currentTime);
+    const result = predictEnhancedRows(train, test, ridgeFactor, perSymbol);
+    if (!result) return null;
+    evaluated.push(...result.rows);
+    predictions.push(...result.predictions);
+  }
+  if (!evaluated.length) return null;
+  return { rows: evaluated, predictions, ...dynamicStateMetrics(evaluated, predictions) };
+}
+
 function ternaryRules() {
   const rules = [];
   for (let encoded = 1; encoded < 3 ** EXECUTION_BUCKETS.length; encoded += 1) {
@@ -588,9 +1081,9 @@ for (const ticker of Object.keys(TARGETS)) {
     ? (await mapWithConcurrency(strikes, 3, (strike) => walkStrikeTape("/options/tool/order-flow/unconsolidated", ticker, strike).catch(() => []))).flat()
     : [];
   const sources = {
-    consolidated: dedupe(consolidatedRaw, "consolidated"),
-    raw: dedupe(rawResult, "raw"),
-    comprising: dedupe(comprisingRows(consolidatedRaw), "comprising"),
+    consolidated: dedupe(consolidatedRaw, "consolidated", ticker),
+    raw: dedupe(rawResult, "raw", ticker),
+    comprising: dedupe(comprisingRows(consolidatedRaw), "comprising", ticker),
   };
   for (const [source, rows] of Object.entries(sources)) {
     if (!rows.length) continue;
@@ -622,6 +1115,11 @@ const snapshotCandidates = [];
 const stateChangeCandidates = [];
 const sentimentCandidates = [];
 const dynamicStateCandidates = [];
+const repricedStateCandidates = [];
+const simpleRepricedStateCandidates = [];
+const latentSplitStateCandidates = [];
+const openingSeedCandidates = [];
+const enhancedTransitionCandidates = [];
 let candidateCount = 0;
 
 function retainCandidate(candidate) {
@@ -652,7 +1150,48 @@ const DYNAMIC_STATE_MODELS = [
   { name: "classified premium CB/CS/PB/PS", basis: "premium", filter: FILTERS.classified, buckets: ["CB", "CS", "PB", "PS"] },
 ];
 
-for (const source of ["comprising", "consolidated"]) {
+if (OPRA_FETCH_START_MS < SESSION_OPEN_MS) {
+  for (const source of ["comprising", "consolidated"]) {
+    if (![...sourceRows.keys()].some((key) => key.endsWith(`:${source}`))) continue;
+    for (const model of DYNAMIC_STATE_MODELS) {
+      const rows = [];
+      for (const [ticker, history] of Object.entries(TRINITY_STATE_HISTORY)) {
+        const configuredSpot = TARGETS[ticker].spot;
+        for (const [strike, observations] of history.values) {
+          const openingTime = Math.min(...observations.keys());
+          const totals = Object.fromEntries(model.buckets.map((bucket) => [bucket, 0]));
+          const tape = indexedRows.get(`${ticker}:${source}:${strike}`) ?? [];
+          for (const trade of tape) {
+            if (trade.timestamp < OPRA_FETCH_START_MS || trade.timestamp > openingTime || !model.filter(trade)) continue;
+            if (Object.hasOwn(totals, trade.bucket)) totals[trade.bucket] += valueBasis(trade, model.basis, configuredSpot);
+          }
+          rows.push({
+            ticker: history.label,
+            strike,
+            target: observations.get(openingTime),
+            features: model.buckets.map((bucket) => totals[bucket]),
+          });
+        }
+      }
+      const fit = multiFactorFit(rows);
+      if (!fit) continue;
+      openingSeedCandidates.push({
+        source,
+        model: model.name,
+        basis: model.basis,
+        buckets: model.buckets,
+        rows,
+        weights: fit.weights,
+        rmse: fit.rmse,
+        r2: fit.r2,
+        signAccuracy: fit.signAccuracy,
+        holdoutRmse: multiFactorHoldoutRmse(rows),
+      });
+    }
+  }
+}
+
+for (const source of ["raw", "comprising", "consolidated"]) {
   if (![...sourceRows.keys()].some((key) => key.endsWith(`:${source}`))) continue;
   for (const model of DYNAMIC_STATE_MODELS) {
     const rows = [];
@@ -678,6 +1217,7 @@ for (const source of ["comprising", "consolidated"]) {
             currentTime,
             prior: observations.get(priorTime),
             current: observations.get(currentTime),
+            ...repricingFeatures(tape, priorTime, currentTime, configuredSpot, observations.get(priorTime)),
             features: model.buckets.map((bucket) => totals[bucket]),
           });
         }
@@ -700,6 +1240,303 @@ for (const source of ["comprising", "consolidated"]) {
       });
     }
   }
+}
+
+// Trinity's state cannot be repriced correctly when the previous signed value
+// is treated as one homogeneous gamma inventory. Calls and puts have different
+// gamma surfaces, so estimate one latent call/put split per strike and carry
+// classified call and put flow on their own surfaces. The split is learned
+// from earlier replay observations; the latest observation remains untouched
+// for a genuine walk-forward test.
+for (const source of ["comprising", "consolidated"]) {
+  if (![...sourceRows.keys()].some((key) => key.endsWith(`:${source}`))) continue;
+  for (const model of DYNAMIC_STATE_MODELS.filter((candidate) => [
+    "all gamma CB/CS/PB/PS/CM/PM",
+    "all contracts CB/CS/PB/PS/CM/PM",
+    "classified premium CB/CS/PB/PS",
+  ].includes(candidate.name))) {
+    const built = buildLatentSplitRows(source, model);
+    const fit = fitLatentSplitState(built.rows);
+    if (!fit) continue;
+    const timeHoldout = latentSplitTimeHoldout(built.rows);
+    const alphaWeights = fit.weights.slice(0, built.strikeKeys.length);
+    latentSplitStateCandidates.push({
+      source,
+      model: model.name,
+      basis: model.basis,
+      buckets: model.buckets,
+      strikeKeys: built.strikeKeys,
+      rows: built.rows,
+      ...fit,
+      alphaSummary: {
+        minimum: Math.min(...alphaWeights),
+        median: [...alphaWeights].sort((left, right) => left - right)[Math.floor(alphaWeights.length / 2)],
+        maximum: Math.max(...alphaWeights),
+      },
+      timeHoldoutRmse: timeHoldout.rmse,
+      timeHoldoutR2: timeHoldout.r2,
+      timeHoldoutSignAccuracy: timeHoldout.signAccuracy,
+      timeHoldoutDirectionAccuracy: timeHoldout.directionAccuracy,
+      timeHoldoutWeights: timeHoldout.weights,
+      timeHoldoutPredictions: timeHoldout.predictions,
+      timeHoldoutTimestamp: timeHoldout.timestamp,
+    });
+  }
+}
+
+for (const source of ["raw", "comprising", "consolidated"]) {
+  if (![...sourceRows.keys()].some((key) => key.endsWith(`:${source}`))) continue;
+  for (const model of DYNAMIC_STATE_MODELS) {
+    const rows = [];
+    for (const [ticker, history] of Object.entries(TRINITY_STATE_HISTORY)) {
+      const configuredSpot = TARGETS[ticker].spot;
+      for (const [strike, observations] of history.values) {
+        const timestamps = [...observations.keys()].sort((left, right) => left - right);
+        const tape = indexedRows.get(`${ticker}:${source}:${strike}`) ?? [];
+        for (let index = 1; index < timestamps.length; index += 1) {
+          const priorTime = timestamps[index - 1];
+          const currentTime = timestamps[index];
+          const totals = Object.fromEntries(model.buckets.map((bucket) => [bucket, 0]));
+          for (const trade of tape) {
+            if (trade.timestamp <= priorTime || trade.timestamp > currentTime || !model.filter(trade)) continue;
+            if (Object.hasOwn(totals, trade.bucket)) totals[trade.bucket] += valueBasis(trade, model.basis, configuredSpot);
+          }
+          const prior = observations.get(priorTime);
+          const repricing = repricingFeatures(tape, priorTime, currentTime, configuredSpot, prior);
+          for (const priorMode of ["priorGrossRepriced", "priorCallRepriced", "priorPutRepriced", "callPutSplit"]) {
+            const carryFeatures = priorMode === "callPutSplit"
+              ? [repricing.priorCallRepriced, repricing.priorPutRepriced]
+              : [repricing[priorMode]];
+            rows.push({
+              ticker: history.label,
+              strike,
+              priorTime,
+              currentTime,
+              prior,
+              current: observations.get(currentTime),
+              priorMode,
+              features: [...carryFeatures, ...model.buckets.map((bucket) => totals[bucket])],
+            });
+          }
+        }
+      }
+    }
+    for (const priorMode of ["priorGrossRepriced", "priorCallRepriced", "priorPutRepriced", "callPutSplit"]) {
+      const modeRows = rows.filter((row) => row.priorMode === priorMode);
+      const fit = fitDirectDynamicState(modeRows);
+      if (!fit) continue;
+      const holdout = directDynamicStateHoldout(modeRows);
+      const timeHoldout = directDynamicTimeHoldout(modeRows);
+      repricedStateCandidates.push({
+        source,
+        model: model.name,
+        priorMode,
+        basis: model.basis,
+        buckets: model.buckets,
+        rows: modeRows,
+        ...fit,
+        holdoutRmse: holdout.rmse,
+        holdoutDirectionAccuracy: holdout.directionAccuracy,
+        timeHoldoutRmse: timeHoldout.rmse,
+        timeHoldoutDirectionAccuracy: timeHoldout.directionAccuracy,
+      });
+    }
+  }
+}
+
+// Search a constrained, auditable execution classifier instead of relying only
+// on six unconstrained bucket coefficients. Each rule assigns buy/sell/mid
+// call/put prints to {-1, 0, +1}; a two-factor fit then estimates one carry
+// coefficient and one common contracts coefficient.
+for (const candidate of repricedStateCandidates) {
+  if (candidate.source !== "comprising"
+    || candidate.model !== "all contracts CB/CS/PB/PS/CM/PM"
+    || candidate.priorMode !== "priorPutRepriced") continue;
+  for (const rule of SIMPLE_TERNARY_RULES) {
+    const rows = candidate.rows.map((row) => ({
+      ...row,
+      features: [
+        row.features[0],
+        row.features.slice(1).reduce((sum, value, index) => sum + value * rule[index], 0),
+      ],
+    }));
+    const fit = fitDirectDynamicState(rows);
+    if (!fit) continue;
+    const holdout = directDynamicStateHoldout(rows);
+    const timeHoldout = directDynamicTimeHoldout(rows);
+    simpleRepricedStateCandidates.push({
+      source: candidate.source,
+      model: "put-repriced carry + ternary execution classifier",
+      priorMode: candidate.priorMode,
+      basis: candidate.basis,
+      buckets: EXECUTION_BUCKETS,
+      rule,
+      rows,
+      ...fit,
+      holdoutRmse: holdout.rmse,
+      holdoutDirectionAccuracy: holdout.directionAccuracy,
+      timeHoldoutRmse: timeHoldout.rmse,
+      timeHoldoutDirectionAccuracy: timeHoldout.directionAccuracy,
+      timeHoldoutWeights: timeHoldout.weights,
+    });
+  }
+}
+
+for (const source of ["comprising", "consolidated"]) {
+  if (![...sourceRows.keys()].some((key) => key.endsWith(`:${source}`))) continue;
+  for (const spec of ENHANCED_SPECS) {
+    for (const carryMode of ["prior", "priorGrossRepriced", "priorPutRepriced", "callPutSplit"]) {
+      const rows = buildEnhancedTransitionRows(source, spec, carryMode);
+      if (!rows.length) continue;
+      const latestTime = Math.max(...rows.map((row) => row.currentTime));
+      const latestTrain = rows.filter((row) => row.currentTime < latestTime);
+      const latestTest = rows.filter((row) => row.currentTime === latestTime);
+      for (const ridgeFactor of [0.1, 1, 10]) {
+        for (const perSymbol of [false, true]) {
+          const validation = enhancedWalkForward(rows, ridgeFactor, perSymbol, true);
+          const latest = predictEnhancedRows(latestTrain, latestTest, ridgeFactor, perSymbol);
+          if (!validation || !latest) continue;
+          enhancedTransitionCandidates.push({
+            source,
+            spec: spec.name,
+            carryMode,
+            featureNames: enhancedFeatureNames(spec, carryMode),
+            featureCount: rows[0].features.length,
+            ridgeFactor,
+            perSymbol,
+            rows,
+            validationRmse: validation.rmse,
+            validationR2: validation.r2,
+            validationSignAccuracy: validation.signAccuracy,
+            validationDirectionAccuracy: validation.directionAccuracy,
+            latestTimestamp: latestTime,
+            latestRows: latest.rows,
+            latestPredictions: latest.predictions,
+            latestRmse: latest.rmse,
+            latestR2: latest.r2,
+            latestSignAccuracy: latest.signAccuracy,
+            latestDirectionAccuracy: latest.directionAccuracy,
+          });
+        }
+      }
+    }
+  }
+}
+
+if (SUMMARY_ONLY) {
+  const rankedDynamicStates = dynamicStateCandidates
+    .sort((left, right) => left.holdoutRmse - right.holdoutRmse || right.r2 - left.r2);
+  const baselineRows = rankedDynamicStates[0]?.rows ?? [];
+  const carryScale = baselineRows.length
+    ? oneFactorFit(baselineRows.map((row) => ({ target: row.current, prior: row.prior })), "prior").scale
+    : 0;
+  const carryPredictions = baselineRows.map((row) => carryScale * row.prior);
+  const carryMetrics = baselineRows.length ? dynamicStateMetrics(baselineRows, carryPredictions) : null;
+  const carryHoldout = baselineRows.length ? dynamicCarryHoldout(baselineRows) : null;
+  const rankedRepricedStates = repricedStateCandidates
+    .sort((left, right) => left.holdoutRmse - right.holdoutRmse || right.r2 - left.r2);
+  const rankedSimpleRepricedStates = simpleRepricedStateCandidates
+    .sort((left, right) => left.holdoutRmse - right.holdoutRmse || left.timeHoldoutRmse - right.timeHoldoutRmse);
+  const rankedLatentSplitStates = latentSplitStateCandidates
+    .sort((left, right) => left.timeHoldoutRmse - right.timeHoldoutRmse || right.r2 - left.r2);
+  const rankedOpeningSeeds = openingSeedCandidates
+    .sort((left, right) => left.holdoutRmse - right.holdoutRmse || right.r2 - left.r2);
+  const rankedEnhancedTransitions = enhancedTransitionCandidates
+    .sort((left, right) => left.validationRmse - right.validationRmse || left.latestRmse - right.latestRmse);
+  const bestRepriced = rankedRepricedStates[0];
+  const bestLatentSplit = rankedLatentSplitStates[0];
+  const referenceStrikes = {
+    SPXW: new Set([7680, 7675, 7640]),
+    SPY: new Set([760, 764, 766, 768, 775]),
+    QQQ: new Set([700, 708, 714, 717]),
+  };
+  const latestObservationTime = bestRepriced
+    ? Math.max(...bestRepriced.rows.map((row) => row.currentTime))
+    : null;
+  const repricedReferenceSamples = bestRepriced
+    ? bestRepriced.rows.map((row, index) => ({ row, predicted: bestRepriced.predictions[index] }))
+      .filter(({ row }) => row.currentTime === latestObservationTime && referenceStrikes[row.ticker]?.has(row.strike))
+      .map(({ row, predicted }) => ({
+        ticker: row.ticker,
+        strike: row.strike,
+        timestamp: new Date(row.currentTime).toISOString(),
+        prior: row.prior,
+        repricedPrior: row.features[0],
+        actual: row.current,
+        predicted,
+        error: predicted - row.current,
+      }))
+    : [];
+  const latentSplitReferenceSamples = bestLatentSplit
+    ? bestLatentSplit.rows.filter((row) => row.currentTime === bestLatentSplit.timeHoldoutTimestamp)
+      .map((row, index) => ({ row, predicted: bestLatentSplit.timeHoldoutPredictions[index] }))
+      .filter(({ row }) => referenceStrikes[row.ticker]?.has(row.strike))
+      .map(({ row, predicted }) => ({
+        ticker: row.ticker,
+        strike: row.strike,
+        timestamp: new Date(row.currentTime).toISOString(),
+        prior: row.prior,
+        actual: row.current,
+        predicted,
+        error: predicted - row.current,
+      }))
+    : [];
+  const bestEnhanced = rankedEnhancedTransitions[0];
+  const enhancedReferenceSamples = bestEnhanced
+    ? bestEnhanced.latestRows.map((row, index) => ({ row, predicted: bestEnhanced.latestPredictions[index] }))
+      .filter(({ row }) => referenceStrikes[row.ticker]?.has(row.strike))
+      .map(({ row, predicted }) => ({
+        ticker: row.ticker,
+        strike: row.strike,
+        timestamp: new Date(row.currentTime).toISOString(),
+        prior: row.prior,
+        actual: row.current,
+        predicted,
+        error: predicted - row.current,
+      }))
+    : [];
+  const latestPersistenceRows = bestEnhanced?.latestRows ?? [];
+  const latestPersistencePredictions = latestPersistenceRows.map((row) => row.prior);
+  const latestPersistence = latestPersistenceRows.length
+    ? dynamicStateMetrics(latestPersistenceRows, latestPersistencePredictions)
+    : null;
+  console.log(JSON.stringify({
+    sessionDate: SESSION_DATE,
+    diagnostics,
+    observationCount: baselineRows.length,
+    carryBaseline: carryMetrics ? {
+      rho: carryScale,
+      ...carryMetrics,
+      holdoutRmse: carryHoldout.rmse,
+      holdoutDirectionAccuracy: carryHoldout.directionAccuracy,
+    } : null,
+    dynamicStates: rankedDynamicStates.slice(0, 20).map(({ rows: _rows, predictions: _predictions, ...row }) => row),
+    repricedStates: rankedRepricedStates.slice(0, 30).map(({ rows: _rows, predictions: _predictions, ...row }) => row),
+    simpleRepricedStates: rankedSimpleRepricedStates.slice(0, 30).map(({ rows: _rows, predictions: _predictions, ...row }) => row),
+    latentSplitStates: rankedLatentSplitStates.slice(0, 20).map(({
+      rows: _rows,
+      predictions: _predictions,
+      strikeKeys: _strikeKeys,
+      weights: _weights,
+      timeHoldoutWeights: _timeHoldoutWeights,
+      timeHoldoutPredictions: _timeHoldoutPredictions,
+      ...row
+    }) => row),
+    openingSeeds: rankedOpeningSeeds.slice(0, 20).map(({ rows: _rows, ...row }) => row),
+    enhancedTransitions: rankedEnhancedTransitions.slice(0, 30).map(({
+      rows: _rows,
+      latestRows: _latestRows,
+      latestPredictions: _latestPredictions,
+      featureNames: _featureNames,
+      ...row
+    }) => row),
+    bestEnhancedFeatureNames: bestEnhanced?.featureNames ?? [],
+    latestPersistence,
+    repricedReferenceSamples,
+    latentSplitReferenceSamples,
+    enhancedReferenceSamples,
+  }, null, 2));
+  process.exit(0);
 }
 
 for (const source of ["raw", "comprising", "consolidated"]) {
@@ -790,7 +1627,7 @@ for (const source of ["raw", "comprising", "consolidated"]) {
   }
 }
 
-for (const source of ["comprising", "consolidated"]) {
+for (const source of ["raw", "comprising", "consolidated"]) {
   if (![...sourceRows.keys()].some((key) => key.endsWith(`:${source}`))) continue;
   for (const cutoff of CUTOFFS) {
     const rowsByCandidate = new Map([
@@ -852,7 +1689,7 @@ function sentimentSign(trade) {
   return 0;
 }
 
-for (const source of ["comprising", "consolidated"]) {
+for (const source of ["raw", "comprising", "consolidated"]) {
   if (![...sourceRows.keys()].some((key) => key.endsWith(`:${source}`))) continue;
   for (const cutoff of CUTOFFS) {
     const rowsByStateCandidate = new Map([

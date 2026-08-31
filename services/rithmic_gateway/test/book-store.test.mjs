@@ -201,6 +201,8 @@ test("emits exact DBO lifecycle deltas without confusing cancelled and remaining
     previousPrice: null,
     size: 625,
     previousSize: 0,
+    priority: "0",
+    previousPriority: null,
   });
 
   const reduced = store.applyDepthUpdate({
@@ -217,6 +219,8 @@ test("emits exact DBO lifecycle deltas without confusing cancelled and remaining
   assert.equal(reduced.orderEvents[0].action, "MODIFY");
   assert.equal(reduced.orderEvents[0].previousSize, 625);
   assert.equal(reduced.orderEvents[0].size, 275);
+  assert.equal(reduced.orderEvents[0].priority, "0");
+  assert.equal(reduced.orderEvents[0].previousPriority, "0");
   assert.equal(store.snapshot("CME", "NQU6", 10).asks[0].size, 275);
 
   const removed = store.applyDepthUpdate({
@@ -233,6 +237,38 @@ test("emits exact DBO lifecycle deltas without confusing cancelled and remaining
   assert.equal(removed.orderEvents[0].action, "REMOVE");
   assert.equal(removed.orderEvents[0].previousSize, 275);
   assert.equal(removed.orderEvents[0].size, 0);
+  assert.equal(removed.orderEvents[0].priority, "0");
+  assert.equal(removed.orderEvents[0].previousPriority, "0");
+});
+
+test("assigns one contiguous normalized cursor to every order event in multi-row packets", () => {
+  const store = new RithmicBookStore();
+  const first = store.applyDepthUpdate({
+    exchange: "CME",
+    symbol: "NQU6",
+    sequenceNumber: "800",
+    updateType: [1, 1],
+    transactionType: [1, 1],
+    depthPrice: [30_000, 29_999.75],
+    depthSize: [5, 7],
+    depthOrderPriority: ["101", "102"],
+    exchangeOrderId: ["BID-A", "BID-B"],
+  });
+  const second = store.applyDepthUpdate({
+    exchange: "CME",
+    symbol: "NQU6",
+    sequenceNumber: "801",
+    updateType: [2],
+    transactionType: [1],
+    depthPrice: [30_000],
+    depthSize: [6],
+    depthOrderPriority: ["99"],
+    exchangeOrderId: ["BID-A"],
+  });
+
+  assert.deepEqual(first.orderEvents.map((event) => event.sequence), [1, 2]);
+  assert.deepEqual(second.orderEvents.map((event) => event.sequence), [3]);
+  assert.equal(store.snapshot("CME", "NQU6", 10).orderEventSequence, 3);
 });
 
 test("publishes a DBO snapshot atomically only after its completion packet", () => {
@@ -246,6 +282,16 @@ test("publishes a DBO snapshot atomically only after its completion packet", () 
     depthSize: [3, 7],
     depthOrderPriority: ["1", "2"],
     exchangeOrderId: ["BID-A", "BID-B"],
+  }), null);
+  assert.equal(store.applyDepthSnapshot({
+    exchange: "CME",
+    symbol: "NQU6",
+    sequenceNumber: "500",
+    depthSide: 1,
+    depthPrice: 29_799.75,
+    depthSize: [2],
+    depthOrderPriority: ["4"],
+    exchangeOrderId: ["BID-C"],
   }), null);
   assert.equal(store.applyDepthSnapshot({
     exchange: "CME",
@@ -273,6 +319,15 @@ test("publishes a DBO snapshot atomically only after its completion packet", () 
   assert.equal(snapshot.bookValid, true);
   assert.deepEqual(snapshot.bids[0], { price: 29_800, size: 10, orders: 2 });
   assert.deepEqual(snapshot.asks[0], { price: 29_800.25, size: 5, orders: 1 });
+  const queueBaseline = store.snapshot("CME", "NQU6", 1, { includeOrders: true });
+  assert.equal(queueBaseline.orderStateComplete, true);
+  assert.equal(queueBaseline.orderEventSequence, 0);
+  assert.deepEqual(queueBaseline.orders, [
+    { orderId: "BID-A", side: "BID", price: 29_800, size: 3, priority: "1" },
+    { orderId: "BID-B", side: "BID", price: 29_800, size: 7, priority: "2" },
+    { orderId: "BID-C", side: "BID", price: 29_799.75, size: 2, priority: "4" },
+    { orderId: "ASK-A", side: "ASK", price: 29_800.25, size: 5, priority: "3" },
+  ]);
 });
 
 test("a replacement DBO snapshot does not leak stale orders or partial rows", () => {

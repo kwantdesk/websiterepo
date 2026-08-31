@@ -109,6 +109,8 @@ test("settings migration validates columns and presets deterministically", () =>
     domColumns: JSON.stringify([{ id: "bid", width: 999, enabled: false }]),
   });
   assert.equal(settings.rows, 120);
+  assert.equal(domProSettingsFromRecord({ fontSize: 99 }).fontSize, 13);
+  assert.equal(domProSettingsFromRecord({ fontSize: -1 }).fontSize, 7);
   assert.equal(settings.columns.find((column) => column.id === "bid")?.width, 260);
   assert.equal(settings.columns.find((column) => column.id === "bid")?.enabled, false);
   assert.deepEqual(

@@ -7,7 +7,7 @@ import {
 import type { MacroChatResponse } from "@/lib/macroIntelligence";
 import { getMacroIntelligence } from "@/lib/macroIntelligence.server";
 import { ingestMacroMemory } from "@/lib/macroMemory.server";
-import { getRouteActor } from "@/lib/serverAuth";
+import { getNewsRouteActor } from "@/lib/serverAuth";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -19,7 +19,7 @@ function clean(value: unknown, max = 8_000) {
 }
 
 export async function GET(request: NextRequest) {
-  if (!(await getRouteActor(request))) {
+  if (!(await getNewsRouteActor(request))) {
     return NextResponse.json({ error: "Authentication required." }, { status: 401 });
   }
   after(async () => {
@@ -121,7 +121,7 @@ async function researchedMacroAnswer(
 }
 
 export async function POST(request: NextRequest) {
-  const actor = await getRouteActor(request);
+  const actor = await getNewsRouteActor(request);
   if (!actor) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
   const apiKey = getClaudeApiKey();
   if (!apiKey) return NextResponse.json({ error: "The macro analyst is waiting for its Anthropic API key." }, { status: 503 });

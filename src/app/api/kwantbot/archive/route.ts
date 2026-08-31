@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
 import {
   type KwantBotInterpreterMessage,
@@ -6,8 +7,8 @@ import {
   type KwantBotMarketRoot,
   type KwantBotMemoryEvent,
 } from "@/lib/kwantBotInterpreter";
-import { getRouteActor } from "@/lib/serverAuth";
-import { createClient } from "@/lib/supabase/server";
+import { getZyonRouteActor } from "@/lib/serverAuth";
+import { createClient as createRouteClient } from "@/lib/supabase/server";
 
 const MESSAGE_TABLE = "kwantbot_messages";
 const MEMORY_TABLE = "kwantbot_memory_events";
@@ -96,9 +97,19 @@ function pageLimit(value: string | null, fallback: number, maximum: number) {
   return Number.isFinite(parsed) ? Math.max(1, Math.min(maximum, parsed)) : fallback;
 }
 
+async function createArchiveClient(mode: "supabase" | "desktop-gateway") {
+  if (mode === "supabase") return createRouteClient();
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() ?? "";
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() ?? "";
+  if (!url || !key) throw new Error("The desktop GAMEPLAN analyst archive is not configured.");
+  return createSupabaseClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  });
+}
+
 export async function GET(request: NextRequest) {
-  const actor = await getRouteActor(request);
-  if (!actor || actor.mode !== "supabase") {
+  const actor = await getZyonRouteActor(request);
+  if (!actor || (actor.mode !== "supabase" && actor.mode !== "desktop-gateway")) {
     return NextResponse.json({ error: "Authentication required." }, { status: 401 });
   }
 
@@ -119,7 +130,7 @@ export async function GET(request: NextRequest) {
   const contextsBefore = validCursor(request.nextUrl.searchParams.get("contextsBefore"));
 
   try {
-    const supabase = await createClient();
+    const supabase = await createArchiveClient(actor.mode);
     let messageQuery = supabase
       .from(MESSAGE_TABLE)
       .select("payload,created_at")
@@ -206,8 +217,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const actor = await getRouteActor(request);
-  if (!actor || actor.mode !== "supabase") {
+  const actor = await getZyonRouteActor(request);
+  if (!actor || (actor.mode !== "supabase" && actor.mode !== "desktop-gateway")) {
     return NextResponse.json({ error: "Authentication required." }, { status: 401 });
   }
 
@@ -236,7 +247,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const supabase = await createClient();
+    const supabase = await createArchiveClient(actor.mode);
     const writes = [];
 
     if (messages.length) {

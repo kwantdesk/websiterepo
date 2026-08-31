@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
-import { getRouteActor } from "@/lib/serverAuth";
+import { getZyonRouteActor } from "@/lib/serverAuth";
 import {
   isZyonMarketRoot,
   ZYON_CHAT_LIMIT,
@@ -119,7 +119,7 @@ function unavailableResponse() {
 }
 
 export async function GET(request: NextRequest) {
-  const actor = await getRouteActor(request);
+  const actor = await getZyonRouteActor(request);
   if (!actor) {
     return NextResponse.json({ error: "Authentication required." }, { status: 401 });
   }
@@ -347,7 +347,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const actor = await getRouteActor(request);
+  const actor = await getZyonRouteActor(request);
   if (!actor) {
     return NextResponse.json({ error: "Authentication required." }, { status: 401 });
   }
@@ -637,7 +637,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const actor = await getRouteActor(request);
+  const actor = await getZyonRouteActor(request);
   if (!actor) {
     return NextResponse.json({ error: "Authentication required." }, { status: 401 });
   }

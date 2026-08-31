@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { getClaudeApiKey } from "@/lib/claude.server";
 import type { KwantBotMarketRoot } from "@/lib/kwantBotInterpreter";
-import { getRouteActor } from "@/lib/serverAuth";
+import { getZyonRouteActor } from "@/lib/serverAuth";
 import { getZyonMarketContext } from "@/lib/zyonMarketContext.server";
 
 export const dynamic = "force-dynamic";
@@ -14,7 +14,7 @@ function marketRoot(value: string | null): KwantBotMarketRoot {
 }
 
 export async function GET(request: NextRequest) {
-  const actor = await getRouteActor(request);
+  const actor = await getZyonRouteActor(request);
   if (!actor) {
     return NextResponse.json({ error: "Authentication required." }, { status: 401 });
   }

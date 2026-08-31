@@ -100,7 +100,7 @@ test("every expiration mode selects the intended rows", () => {
 test("shared secure provider and shared strike mapper are reused", () => {
   assert.match(adapter, /getNetGammaExposureSurface/);
   assert.match(adapter, /quantDataPost\("\/options\/tool\/exposure-by-strike"/);
-  assert.match(adapter, /parseExposure\(response\.payload, sourceTicker, "GAMMA"\)/);
+  assert.match(adapter, /parseExposure\(response\.payload, providerTicker, greekMode\)/);
   assert.match(engine, /buildGammaHeatmapMapping/);
   assert.match(engine, /mapGammaHeatmapStrike/);
   assert.match(route, /getNetGammaExposureSurface/);
@@ -130,13 +130,13 @@ test("settings expose presets, expirations, mapping confidence, geometry and dis
   assert.match(config, /"net-gamma-exposure-by-strike": \[/);
   assert.match(config, /minimumMappingConfidence/);
   assert.match(config, /expirationMode: "zero-to-one-dte"/);
-  assert.match(config, /placement: "right"/);
+  assert.match(config, /placement: "floating"/);
   assert.match(config, /contentMode: "net"/);
   assert.match(config, /scaleMode: "visible-percentile"/);
   assert.match(config, /fadeWhenBelowMinimum: true/);
   assert.match(controls, /Balanced Net GEX/);
   assert.match(controls, /Specific expirations/);
-  assert.match(controls, /Reserved chart space/);
+  assert.match(config, /floatingXPercent: 50/);
   assert.match(controls, /Reset data/);
   assert.match(controls, /Reset visuals/);
   assert.match(controls, /Restore defaults/);
@@ -151,7 +151,7 @@ test("visual changes do not refetch provider data and requests are shared", () =
 });
 
 test("persistence migration clamps settings and strips secrets and snapshots", () => {
-  assert.match(config, /netGammaSettingsVersion: 2/);
+  assert.match(config, /netGammaSettingsVersion: 3/);
   assert.match(config, /apiKey/);
   assert.match(config, /liveSnapshot/);
   assert.match(config, /Number\.isFinite/);
@@ -165,4 +165,14 @@ test("all modes, status labels, and mapping limitations remain honest", () => {
   assert.match(engine, /contract-specific futures calendar-spread mapping is unavailable/);
   assert.match(chart, /No qualifying rows/);
   assert.match(chart, /LIVE RATIO FALLBACK/);
+});
+
+test("native analytics route is exact, authenticated, bounded and live-only", () => {
+  assert.match(route, /timingSafeEqual/);
+  assert.match(route, /x-kwantdesk-internal-analytics-token/);
+  assert.match(route, /MAX_ROWS = 2_048/);
+  assert.match(route, /MAX_TOTAL_CONTRIBUTIONS = 32_768/);
+  assert.match(route, /familySources/);
+  assert.match(route, /replayAsOfMs: null/);
+  assert.doesNotMatch(route, /"asOf"/);
 });

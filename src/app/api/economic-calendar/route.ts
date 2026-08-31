@@ -1,33 +1,11 @@
-import { createServerClient } from "@supabase/ssr";
 import { NextRequest, NextResponse } from "next/server";
 import { getEconomicCalendar } from "@/lib/economicCalendar.server";
+import { getNewsRouteActor } from "@/lib/serverAuth";
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
-async function isAuthenticated(request: NextRequest) {
-  const host = request.nextUrl.hostname;
-  if (
-    process.env.KWANTIFY_DEV_AUTH_BYPASS === "1"
-    && (host === "localhost" || host === "127.0.0.1" || host === "::1")
-  ) return true;
-
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey =
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
-    ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!supabaseUrl || !supabaseAnonKey) return process.env.NODE_ENV !== "production";
-  const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
-    cookies: {
-      getAll: () => request.cookies.getAll(),
-      setAll: () => undefined,
-    },
-  });
-  const { data } = await supabase.auth.getUser();
-  return Boolean(data.user);
-}
-
 export async function GET(request: NextRequest) {
-  if (!(await isAuthenticated(request))) {
+  if (!(await getNewsRouteActor(request))) {
     return NextResponse.json({ error: "Authentication required." }, { status: 401 });
   }
 

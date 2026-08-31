@@ -94,9 +94,32 @@ test("Massive index history stays server-side and is cached on the VPS", async (
   });
 });
 
+test("Massive history fallback supports GEX VUE listed underlyings without subscribing them on the index socket", async () => {
+  const calls = [];
+  const stream = configuredStream(async (url) => {
+    calls.push(url);
+    return jsonResponse({
+      results: [{ t: 1_786_455_000_000, o: 650, h: 651, l: 649, c: 650.5, v: 100 }],
+    });
+  });
+
+  const candles = await stream.history({
+    symbol: "SPY",
+    timeframe: "5m",
+    from: Date.UTC(2026, 7, 17),
+    to: Date.UTC(2026, 7, 18),
+  });
+
+  assert.equal(candles.length, 1);
+  assert.match(calls[0], /\/v2\/aggs\/ticker\/SPY\/range\/5\/minute/);
+  assert.equal(__test.providerTicker("SPY"), null);
+  assert.equal(__test.historyTicker("QQQ"), "QQQ");
+});
+
 test("Massive resolution and symbol aliases are deterministic", () => {
   assert.deepEqual(__test.aggregateResolution("1m"), { multiplier: 1, timespan: "minute" });
   assert.deepEqual(__test.aggregateResolution("4h"), { multiplier: 4, timespan: "hour" });
   assert.equal(__test.providerTicker("SPXW"), "I:SPX");
+  assert.equal(__test.historyTicker("SPY"), "SPY");
   assert.deepEqual(__test.publicSymbols("I:SPX"), ["SPX", "SPXW"]);
 });

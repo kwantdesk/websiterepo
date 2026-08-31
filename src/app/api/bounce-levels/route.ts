@@ -1,4 +1,5 @@
 import { createServerClient } from "@supabase/ssr";
+import { timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse, after } from "next/server";
 import {
   BOUNCE_LEVELS_HISTORY_BUCKET_LIMIT,
@@ -48,6 +49,13 @@ const EXPIRATIONS = new Set<GammaExpirationMode>(["zero-dte", "zero-to-one-dte",
 const GREEKS = new Set<GreekMode>(["GAMMA", "DELTA", "VANNA", "CHARM"]);
 
 async function isAuthenticated(request: NextRequest) {
+  const expectedInternalToken = String(process.env.KWANTDESK_ANALYTICS_SERVICE_TOKEN || "").trim();
+  const suppliedInternalToken = String(request.headers.get("x-kwantdesk-internal-analytics-token") || "").trim();
+  if (expectedInternalToken.length >= 32 && suppliedInternalToken.length === expectedInternalToken.length) {
+    const supplied = Buffer.from(suppliedInternalToken, "utf8");
+    const expected = Buffer.from(expectedInternalToken, "utf8");
+    if (supplied.length === expected.length && timingSafeEqual(supplied, expected)) return true;
+  }
   const host = request.nextUrl.hostname;
   if (process.env.KWANTIFY_DEV_AUTH_BYPASS === "1" && ["localhost", "127.0.0.1", "::1"].includes(host)) return true;
   if (isSiteAccessConfigured() && await isValidSiteAccessToken(request.cookies.get(SITE_ACCESS_COOKIE)?.value)) return true;

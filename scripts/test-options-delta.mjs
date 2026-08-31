@@ -16,8 +16,9 @@ assert.match(catalog, /indicator\("Options Delta", "Options Flow"/);
 assert.match(config, /LIVE_CHART_INDICATOR_IDS[\s\S]*?"options-delta"/);
 assert.match(controls, /RENDERED_CHART_INDICATOR_IDS[\s\S]*?"options-delta"/);
 assert.match(chart, /indicatorId === "options-delta"/);
-assert.match(chart, /buildOptionsDeltaSeries\(optionsDeltaPayload\)/);
-assert.match(chart, /greekMode=DELTA/);
+assert.match(chart, /buildOptionsDeltaSeries\(payload\)/);
+assert.match(chart, /optionsSurfacePaneEffect\(optionsDeltaIndicator, "DELTA"/);
+assert.match(chart, /\/api\/gex-map\?symbol=.*greekMode=\$\{greekMode\}/);
 
 // The pane maps to the chart's own options family.
 assert.equal(optionsDeltaSourceForInstrument("QQQ"), "QQQ");

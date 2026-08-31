@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 
-export default function GoogleLoginButton() {
+export default function GoogleLoginButton({ returnTo = "/" }: { returnTo?: string }) {
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -13,9 +13,11 @@ export default function GoogleLoginButton() {
 
     try {
       const supabase = createClient();
+      const callback = new URL("/auth/callback", window.location.origin);
+      callback.searchParams.set("returnTo", returnTo);
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
-        options: { redirectTo: `${window.location.origin}/auth/callback` },
+        options: { redirectTo: callback.toString() },
       });
       if (error) throw error;
     } catch (error) {

@@ -9,13 +9,31 @@ import { LabRepositoryStore } from "./lab-repository.mjs";
 import { RithmicBookStore } from "./book-store.mjs";
 import { loadConfig } from "./config.mjs";
 import { DatabentoEquitiesTradeStream } from "./databento-equities-stream.mjs";
+import { DatabentoHistoryService, HistoryRequestError } from "./databento-history.mjs";
+import { DatabentoOptionsCatalog, OptionsCatalogError } from "./databento-options-catalog.mjs";
+import { DatabentoOptionTradeStream } from "./databento-option-trades.mjs";
+import { createDesktopStreamGuard } from "./desktop-stream-guard.mjs";
+import { loadDesktopRevocationSynchronizerFromEnv } from "./desktop-revocation-synchronizer.mjs";
+import { loadDesktopTicketRevocationCacheFromEnv } from "./desktop-ticket-revocations.mjs";
+import { loadDesktopTicketVerifierFromEnv } from "./desktop-ticket-verifier.mjs";
+import { GatewayAuthorizer } from "./gateway-authorizer.mjs";
 import { MassiveIndicesStream } from "./massive-indices-stream.mjs";
+import { NormalizedAnalyticsProxy, normalizedAnalyticsProblem } from "./normalized-analytics-proxy.mjs";
+import { MarketIndexHistoryError, QuantDataMarketHistoryService } from "./quantdata-market-history.mjs";
 import { QuantDataMarketSnapshotStream } from "./quantdata-market-snapshot-stream.mjs";
 import { discoverRithmicSystems, RithmicMarketDataClient } from "./rithmic-client.mjs";
 import { RTraderExcelMarketDataClient } from "./rtrader-excel-client.mjs";
 import { MarketDataRecorder } from "./recorder.mjs";
 import { ExposureArchiver } from "./exposure-archiver.mjs";
 import { VendorDataEdge } from "./vendor-data-edge.mjs";
+import { ZyonServiceProxy, zyonServiceProblem } from "./zyon-service-proxy.mjs";
+import {
+  ZyonTranscriptionService,
+  zyonTranscriptionProblem,
+} from "./zyon-transcription-service.mjs";
+import { NewsServiceProxy, newsServiceProblem } from "./news-service-proxy.mjs";
+import { SocialsServiceProxy, socialsServiceProblem } from "./socials-service-proxy.mjs";
+import { JournalServiceProxy, journalServiceProblem } from "./journal-service-proxy.mjs";
 import {
   chicagoTradingDate,
   cmeSessionBounds,
@@ -23,6 +41,25 @@ import {
 } from "./trading-session.mjs";
 
 const config = loadConfig();
+const desktopTicketRevocations = loadDesktopTicketRevocationCacheFromEnv();
+const desktopRevocationSynchronizer = loadDesktopRevocationSynchronizerFromEnv(process.env, {
+  log: (line) => process.stderr.write(`${line}\n`),
+});
+const desktopTicketVerifier = loadDesktopTicketVerifierFromEnv(process.env, desktopTicketRevocations
+  ? { isRevoked: (principal) => desktopTicketRevocations.isRevoked(principal) }
+  : {});
+if (
+  Boolean(desktopTicketVerifier) !== Boolean(desktopTicketRevocations) ||
+  Boolean(desktopTicketVerifier) !== Boolean(desktopRevocationSynchronizer)
+) {
+  throw new Error(
+    "Desktop ticket verification, revocation cache, and revocation synchronizer must be configured together.",
+  );
+}
+const gatewayAuthorizer = new GatewayAuthorizer({
+  gatewayToken: config.gatewayToken,
+  desktopTicketVerifier,
+});
 const client = config.sourceMode === "rtrader-excel"
   ? new RTraderExcelMarketDataClient(config)
   : new RithmicMarketDataClient(config);
@@ -44,6 +81,36 @@ const heatmapReplay = new HeatmapReplayStore({
 // versioned artifact in the VPS-hosted Quant Desk repository. The browser
 // consumes this read-only boundary; it never assembles a plan from vendor APIs.
 const labRepository = new LabRepositoryStore({ root: config.labRepositoryRoot });
+const normalizedAnalytics = new NormalizedAnalyticsProxy({
+  origin: config.normalizedAnalyticsOrigin,
+  serviceToken: config.normalizedAnalyticsServiceToken,
+  timeoutMs: config.normalizedAnalyticsTimeoutMs,
+});
+const zyonService = new ZyonServiceProxy({
+  origin: config.zyonServiceOrigin,
+  serviceToken: config.zyonServiceToken,
+  timeoutMs: config.zyonServiceTimeoutMs,
+});
+const zyonTranscription = new ZyonTranscriptionService({
+  apiKey: config.openAiApiKey,
+  model: config.openAiZyonTranscriptionModel,
+  timeoutMs: config.openAiZyonTranscriptionTimeoutMs,
+});
+const newsService = new NewsServiceProxy({
+  origin: config.newsServiceOrigin,
+  serviceToken: config.newsServiceToken,
+  timeoutMs: config.newsServiceTimeoutMs,
+});
+const socialsService = new SocialsServiceProxy({
+  origin: config.socialsServiceOrigin,
+  serviceToken: config.socialsServiceToken,
+  timeoutMs: config.socialsServiceTimeoutMs,
+});
+const journalService = new JournalServiceProxy({
+  origin: config.journalServiceOrigin,
+  serviceToken: config.journalServiceToken,
+  timeoutMs: config.journalServiceTimeoutMs,
+});
 // Our OWN daily copy of each completed cash-index session's real minute OHLC
 // (the provider only serves it after the close, and keeps it on its own
 // terms). Archived minutes after every close, retried until complete,
@@ -66,6 +133,19 @@ const exposureArchiver = new ExposureArchiver({
   enabled: config.exposureArchiveEnabled,
 });
 const vendorDataEdge = new VendorDataEdge(config, fetch, exposureArchiver);
+const chartHistory = new DatabentoHistoryService({
+  apiKey: config.databentoApiKey,
+  timeoutMs: config.vendorRequestTimeoutMs,
+});
+const optionCatalog = new DatabentoOptionsCatalog({
+  apiKey: config.databentoApiKey,
+  timeoutMs: config.vendorRequestTimeoutMs,
+});
+const optionTrades = new DatabentoOptionTradeStream({
+  apiKey: config.databentoApiKey,
+  reconnectMinMs: config.reconnectMinMs,
+  reconnectMaxMs: config.reconnectMaxMs,
+});
 const databentoEquities = new DatabentoEquitiesTradeStream({
   apiKey: config.databentoApiKey,
   reconnectMinMs: config.reconnectMinMs,
@@ -83,6 +163,11 @@ const quantDataMarketSnapshots = new QuantDataMarketSnapshotStream({
   timeoutMs: Math.min(10_000, config.vendorRequestTimeoutMs),
   equitySymbols: ["SPY", "QQQ", "IWM", "AAPL", "NVDA", "TSLA", "MSFT", "AMZN", "META", "AMD"],
   indexSymbols: ["SPX", "NDX"],
+});
+const quantDataMarketHistory = new QuantDataMarketHistoryService({
+  apiKey: config.quantDataApiKey,
+  timeoutMs: Math.min(15_000, config.vendorRequestTimeoutMs),
+  archiveReadSession: (ticker, sessionDate) => cashIndexArchiver.readSession(ticker, sessionDate),
 });
 const massiveIndices = new MassiveIndicesStream({
   apiKey: config.massiveApiKey,
@@ -109,12 +194,6 @@ function json(response, status, body) {
     "Cache-Control": "no-store",
   });
   response.end(JSON.stringify(body));
-}
-
-function authorized(request) {
-  if (!config.gatewayToken) return false;
-  const value = String(request.headers.authorization || "");
-  return value.startsWith("Bearer ") && value.slice(7).trim() === config.gatewayToken;
 }
 
 async function bodyJson(request) {
@@ -702,6 +781,17 @@ function heatmapPayload(snapshot, after = 0) {
       absorptionScore: 0,
       changeTicks: 0,
       eventsSince: Math.max(0, sequence - after),
+      orderEventSequence: Number(snapshot.orderEventSequence) || 0,
+      orderStateComplete: Boolean(snapshot.orderStateComplete),
+      orders: Array.isArray(snapshot.orders)
+        ? snapshot.orders.map((order) => ({
+            orderId: String(order.orderId),
+            side: order.side,
+            price: Number(order.price),
+            size: Number(order.size),
+            priority: String(order.priority || "0"),
+          }))
+        : undefined,
       source: snapshot.depthMode === "MBO_AGGREGATED"
         ? "rtrader-excel-mbo-aggregate"
         : snapshot.fullDepth
@@ -1055,23 +1145,333 @@ const server = createServer(async (request, response) => {
       // skipped count far above archived is healthy — it is the dedupe working.
       exposure: exposureArchiver.status(),
       vendorData: vendorDataEdge.health(),
+      chartHistory: chartHistory.status(),
       massiveIndices: massiveIndices.status(),
       databentoEquities: databentoEquities.status(),
       quantDataMarketSnapshots: quantDataMarketSnapshots.status(),
       labRepository: labRepository.health(),
+      normalizedAnalytics: normalizedAnalytics.health(),
+      zyon: zyonService.health(),
+      zyonTranscription: zyonTranscription.health(),
+      news: newsService.health(),
+      socials: socialsService.health(),
+      journal: journalService.health(),
+      desktopRevocations: desktopRevocationSynchronizer?.status() ?? { configured: false },
     });
   }
-  if (!authorized(request)) {
-    return json(response, config.gatewayToken ? 401 : 503, {
-      error: config.gatewayToken
-        ? "Unauthorized"
-        : "KWANTIFY_MARKET_DATA_GATEWAY_TOKEN is not configured.",
+  const authorization = await gatewayAuthorizer.authorize(request, url.pathname);
+  if (!authorization.allowed) {
+    return json(response, authorization.status, {
+      error: authorization.status === 403
+        ? "Forbidden"
+        : authorization.status === 503
+          ? "Authorization unavailable"
+          : "Unauthorized",
+      code: authorization.code,
     });
   }
   try {
+    if (zyonTranscription.canHandle(request.method, url.pathname)) {
+      try {
+        await zyonTranscription.handle(request, response, authorization.principal);
+        return;
+      } catch (error) {
+        const failure = zyonTranscriptionProblem(error);
+        return json(response, failure.status, { error: failure.message, code: failure.code });
+      }
+    }
+    if (zyonService.canHandle(request.method, url.pathname)) {
+      try {
+        await zyonService.forward(request, response, url, authorization.principal);
+        return;
+      } catch (error) {
+        const failure = zyonServiceProblem(error);
+        return json(response, failure.status, { error: failure.message, code: failure.code });
+      }
+    }
+    if (newsService.canHandle(request.method, url.pathname)) {
+      try {
+        await newsService.forward(request, response, url, authorization.principal);
+        return;
+      } catch (error) {
+        const failure = newsServiceProblem(error);
+        return json(response, failure.status, { error: failure.message, code: failure.code });
+      }
+    }
+    if (socialsService.canHandle(request.method, url.pathname)) {
+      try {
+        await socialsService.forward(request, response, url, authorization.principal);
+        return;
+      } catch (error) {
+        const failure = socialsServiceProblem(error);
+        return json(response, failure.status, { error: failure.message, code: failure.code });
+      }
+    }
+    if (journalService.canHandle(request.method, url.pathname)) {
+      try {
+        await journalService.forward(request, response, url, authorization.principal);
+        return;
+      } catch (error) {
+        const failure = journalServiceProblem(error);
+        return json(response, failure.status, { error: failure.message, code: failure.code });
+      }
+    }
     if (vendorDataEdge.canHandle(url.pathname)) {
       await vendorDataEdge.handle(request, response, url);
       return;
+    }
+    if (request.method === "GET" && url.pathname === "/v1/analytics/bounce-levels") {
+      try {
+        await normalizedAnalytics.forwardBounceLevels(response, url);
+        return;
+      } catch (error) {
+        const failure = normalizedAnalyticsProblem(error);
+        return json(response, failure.status, { error: failure.message, code: failure.code });
+      }
+    }
+    if (request.method === "GET" && url.pathname === "/v1/analytics/gameplan") {
+      try {
+        await normalizedAnalytics.forwardGameplan(response, url);
+        return;
+      } catch (error) {
+        const failure = normalizedAnalyticsProblem(error);
+        return json(response, failure.status, { error: failure.message, code: failure.code });
+      }
+    }
+    if (request.method === "GET" && url.pathname === "/v1/analytics/options-flow") {
+      try {
+        await normalizedAnalytics.forwardOptionsFlowWorkspace(response, url);
+        return;
+      } catch (error) {
+        const failure = normalizedAnalyticsProblem(error);
+        return json(response, failure.status, { error: failure.message, code: failure.code });
+      }
+    }
+    if (request.method === "GET" && url.pathname === "/v1/analytics/options-flow/market-data") {
+      try {
+        await normalizedAnalytics.forwardOptionsFlowMarketData(response, url);
+        return;
+      } catch (error) {
+        const failure = normalizedAnalyticsProblem(error);
+        return json(response, failure.status, { error: failure.message, code: failure.code });
+      }
+    }
+    if (request.method === "GET" && url.pathname === "/v1/analytics/classic-gex-profile") {
+      try {
+        await normalizedAnalytics.forwardClassicGexProfile(response, url);
+        return;
+      } catch (error) {
+        const failure = normalizedAnalyticsProblem(error);
+        return json(response, failure.status, { error: failure.message, code: failure.code });
+      }
+    }
+    if (request.method === "GET" && url.pathname === "/v1/analytics/dark-pool-map") {
+      try {
+        await normalizedAnalytics.forwardDarkPoolMap(response, url);
+        return;
+      } catch (error) {
+        const failure = normalizedAnalyticsProblem(error);
+        return json(response, failure.status, { error: failure.message, code: failure.code });
+      }
+    }
+    if (request.method === "GET" && url.pathname === "/v1/analytics/implied-volatility-rank") {
+      try {
+        await normalizedAnalytics.forwardImpliedVolatilityRank(response, url);
+        return;
+      } catch (error) {
+        const failure = normalizedAnalyticsProblem(error);
+        return json(response, failure.status, { error: failure.message, code: failure.code });
+      }
+    }
+    if (request.method === "GET" && url.pathname === "/v1/analytics/gamma-environment") {
+      try {
+        await normalizedAnalytics.forwardGammaEnvironment(response, url);
+        return;
+      } catch (error) {
+        const failure = normalizedAnalyticsProblem(error);
+        return json(response, failure.status, { error: failure.message, code: failure.code });
+      }
+    }
+    if (request.method === "GET" && url.pathname === "/v1/analytics/chart-gamma-levels") {
+      try {
+        await normalizedAnalytics.forwardChartGammaLevels(response, url);
+        return;
+      } catch (error) {
+        const failure = normalizedAnalyticsProblem(error);
+        return json(response, failure.status, { error: failure.message, code: failure.code });
+      }
+    }
+    if (request.method === "GET" && url.pathname === "/v1/analytics/expected-move") {
+      try {
+        await normalizedAnalytics.forwardExpectedMove(response, url);
+        return;
+      } catch (error) {
+        const failure = normalizedAnalyticsProblem(error);
+        return json(response, failure.status, { error: failure.message, code: failure.code });
+      }
+    }
+    if (request.method === "GET" && url.pathname === "/v1/analytics/hedge-levels") {
+      try {
+        await normalizedAnalytics.forwardHedgeLevels(response, url);
+        return;
+      } catch (error) {
+        const failure = normalizedAnalyticsProblem(error);
+        return json(response, failure.status, { error: failure.message, code: failure.code });
+      }
+    }
+    if (request.method === "GET" && url.pathname === "/v1/analytics/vix-environment") {
+      try {
+        await normalizedAnalytics.forwardVixEnvironment(response, url);
+        return;
+      } catch (error) {
+        const failure = normalizedAnalyticsProblem(error);
+        return json(response, failure.status, { error: failure.message, code: failure.code });
+      }
+    }
+    if (request.method === "GET" && url.pathname === "/v1/analytics/zero-gamma-line") {
+      try {
+        await normalizedAnalytics.forwardZeroGammaLine(response, url);
+        return;
+      } catch (error) {
+        const failure = normalizedAnalyticsProblem(error);
+        return json(response, failure.status, { error: failure.message, code: failure.code });
+      }
+    }
+    if (request.method === "GET" && url.pathname === "/v1/analytics/options-delta") {
+      try {
+        await normalizedAnalytics.forwardOptionsDelta(response, url);
+        return;
+      } catch (error) {
+        const failure = normalizedAnalyticsProblem(error);
+        return json(response, failure.status, { error: failure.message, code: failure.code });
+      }
+    }
+    if (request.method === "GET" && url.pathname === "/v1/analytics/zero-gamma-bars") {
+      try {
+        await normalizedAnalytics.forwardZeroGammaBars(response, url);
+        return;
+      } catch (error) {
+        const failure = normalizedAnalyticsProblem(error);
+        return json(response, failure.status, { error: failure.message, code: failure.code });
+      }
+    }
+    if (request.method === "GET" && url.pathname === "/v1/analytics/gamma-heatmap") {
+      try {
+        await normalizedAnalytics.forwardGammaHeatmap(response, url);
+        return;
+      } catch (error) {
+        const failure = normalizedAnalyticsProblem(error);
+        return json(response, failure.status, { error: failure.message, code: failure.code });
+      }
+    }
+    if (request.method === "GET" && url.pathname === "/v1/analytics/net-gamma-exposure-by-strike") {
+      try {
+        await normalizedAnalytics.forwardNetGammaExposureByStrike(response, url);
+        return;
+      } catch (error) {
+        const failure = normalizedAnalyticsProblem(error);
+        return json(response, failure.status, { error: failure.message, code: failure.code });
+      }
+    }
+    if (request.method === "GET" && url.pathname === "/v1/analytics/gex-interval-map") {
+      try {
+        await normalizedAnalytics.forwardGexIntervalMap(response, url);
+        return;
+      } catch (error) {
+        const failure = normalizedAnalyticsProblem(error);
+        return json(response, failure.status, { error: failure.message, code: failure.code });
+      }
+    }
+    if (request.method === "GET" && url.pathname === "/v1/analytics/gex-map") {
+      try {
+        await normalizedAnalytics.forwardGexMap(response, url);
+        return;
+      } catch (error) {
+        const failure = normalizedAnalyticsProblem(error);
+        return json(response, failure.status, { error: failure.message, code: failure.code });
+      }
+    }
+    if (request.method === "GET" && url.pathname === "/v1/analytics/gex-flow") {
+      try {
+        await normalizedAnalytics.forwardGexFlow(response, url);
+        return;
+      } catch (error) {
+        const failure = normalizedAnalyticsProblem(error);
+        return json(response, failure.status, { error: failure.message, code: failure.code });
+      }
+    }
+    if (request.method === "POST" && url.pathname === "/v1/analytics/gex-flow/ratios") {
+      try {
+        await normalizedAnalytics.forwardGexFlowRatios(request, response, url);
+        return;
+      } catch (error) {
+        const failure = normalizedAnalyticsProblem(error);
+        return json(response, failure.status, { error: failure.message, code: failure.code });
+      }
+    }
+    if (request.method === "GET" && url.pathname === "/v1/market-data/options") {
+      try {
+        return json(response, 200, await optionCatalog.load());
+      } catch (error) {
+        const status = error instanceof OptionsCatalogError ? error.status : 502;
+        return json(response, status, {
+          error: error instanceof OptionsCatalogError
+            ? error.message
+            : "CME options catalog is unavailable.",
+          code: error instanceof OptionsCatalogError
+            ? error.code
+            : "options_catalog_unavailable",
+        });
+      }
+    }
+    if (request.method === "GET" && url.pathname === "/v1/market-data/history") {
+      let instrument = requestedInstrument(url);
+      const root = parentRoot(contractRoot(instrument.symbol));
+      let allowed = gatewayInstrumentCatalog().some((row) => (
+        row.root === root
+        && String(row.exchange || "").toUpperCase() === instrument.exchange
+      ));
+      if (!allowed) {
+        try {
+          const option = await optionCatalog.resolve(
+            url.searchParams.get("contractSymbol") || url.searchParams.get("symbol"),
+          );
+          if (option) {
+            instrument = { exchange: option.venue, symbol: option.symbol };
+            allowed = true;
+          }
+        } catch (error) {
+          if (error instanceof OptionsCatalogError && error.status === 503) {
+            return json(response, error.status, { error: error.message, code: error.code });
+          }
+        }
+      }
+      if (!allowed) {
+        return json(response, 400, {
+          error: "The requested chart-history instrument is not enabled.",
+          code: "history_instrument_not_enabled",
+        });
+      }
+      try {
+        return json(response, 200, await chartHistory.load({
+          exchange: instrument.exchange,
+          symbol: instrument.symbol,
+          interval: url.searchParams.get("interval"),
+          fromMs: url.searchParams.get("fromMs"),
+          toMs: url.searchParams.get("toMs"),
+          limit: url.searchParams.get("limit"),
+        }));
+      } catch (error) {
+        const status = error instanceof HistoryRequestError ? error.status : 502;
+        return json(response, status, {
+          error: error instanceof HistoryRequestError
+            ? error.message
+            : "CME chart history is unavailable.",
+          code: error instanceof HistoryRequestError
+            ? error.code
+            : "history_unavailable",
+        });
+      }
     }
     if (request.method === "GET" && url.pathname === "/v1/lab/snapshot") {
       const root = String(url.searchParams.get("root") || "NQ").trim().toUpperCase();
@@ -1302,8 +1702,14 @@ const server = createServer(async (request, response) => {
       const subscriber = { response, symbols, cleanup: null };
       marketIndexSseClients.add(subscriber);
       const keepalive = setInterval(() => response.write(": keepalive\n\n"), 8_000);
+      const streamGuard = createDesktopStreamGuard({
+        authorization,
+        response,
+        revocationCache: desktopTicketRevocations,
+      });
       const cleanup = () => {
         clearInterval(keepalive);
+        streamGuard.dispose();
         marketIndexSseClients.delete(subscriber);
       };
       subscriber.cleanup = cleanup;
@@ -1335,24 +1741,128 @@ const server = createServer(async (request, response) => {
       });
     }
     if (request.method === "GET" && url.pathname === "/v1/market-data/index-history") {
-      if (!config.massiveApiKey) {
-        return json(response, 503, { error: "Massive index history is not configured on the VPS." });
-      }
       const symbol = String(url.searchParams.get("symbol") || "").trim().toUpperCase();
       const timeframe = String(url.searchParams.get("timeframe") || "5m").trim();
       const from = Number(url.searchParams.get("from"));
       const to = Number(url.searchParams.get("to"));
-      const candles = await massiveIndices.history({ symbol, timeframe, from, to });
-      return json(response, 200, {
-        candles,
-        symbol,
-        source: "Massive (VPS)",
-        from,
-        to,
+      let providerFailure = null;
+      if (quantDataMarketHistory.supports(symbol) && config.quantDataApiKey) {
+        try {
+          return json(response, 200, await quantDataMarketHistory.load({ symbol, timeframe, from, to }));
+        } catch (error) {
+          if (error instanceof MarketIndexHistoryError && error.status < 500) {
+            return json(response, error.status, { error: error.message, code: error.code });
+          }
+          providerFailure = error;
+        }
+      }
+      if (config.massiveApiKey) {
+        try {
+          const candles = await massiveIndices.history({ symbol, timeframe, from, to });
+          return json(response, 200, {
+            candles,
+            symbol,
+            source: "Massive (VPS)",
+            from,
+            to,
+            truncated: candles.length >= 50_000,
+          });
+        } catch (error) {
+          providerFailure = error;
+        }
+      }
+      return json(response, providerFailure ? 502 : 503, {
+        error: providerFailure
+          ? "Market Index history is unavailable from the configured VPS providers."
+          : "Market Index history is not configured on the VPS.",
+        code: providerFailure ? "index_history_unavailable" : "index_history_unconfigured",
       });
     }
     if (request.method === "GET" && url.pathname === "/v1/market-data/trades") {
-      const instrument = requestedInstrument(url);
+      let instrument = requestedInstrument(url);
+      const requestedRoot = parentRoot(contractRoot(instrument.symbol));
+      const futuresEnabled = gatewayInstrumentCatalog().some((row) => (
+        row.root === requestedRoot
+        && String(row.exchange || "").toUpperCase() === instrument.exchange
+      ));
+      if (!futuresEnabled) {
+        let option;
+        try {
+          option = await optionCatalog.resolve(
+            url.searchParams.get("contractSymbol") || url.searchParams.get("symbol"),
+          );
+        } catch (error) {
+          const status = error instanceof OptionsCatalogError ? error.status : 502;
+          return json(response, status, {
+            error: error instanceof OptionsCatalogError
+              ? error.message
+              : "CME option live data is unavailable.",
+            code: error instanceof OptionsCatalogError
+              ? error.code
+              : "option_live_unavailable",
+          });
+        }
+        if (!option) {
+          return json(response, 400, {
+            error: "The requested live instrument is not enabled.",
+            code: "live_instrument_not_enabled",
+          });
+        }
+        instrument = { exchange: option.venue, symbol: option.symbol };
+        let release;
+        try {
+          release = optionTrades.subscribe(option.symbol);
+        } catch (error) {
+          return json(response, 429, {
+            error: error instanceof Error ? error.message : "The CME option live limit was reached.",
+            code: "option_live_limit",
+          });
+        }
+        const seedTrades = optionTrades.trades(option.symbol);
+        response.writeHead(200, {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache, no-transform",
+          Connection: "keep-alive",
+          "X-Accel-Buffering": "no",
+        });
+        response.write(`event: ready\ndata: ${JSON.stringify({
+          provider: "Databento",
+          dataset: "GLBX.MDP3",
+          symbol: option.symbol,
+        })}\n\n`);
+        response.write(`event: seed\ndata: ${JSON.stringify({
+          candles: aggregateCandles(seedTrades, 1_000, 7_200),
+          records: seedTrades.map(normalizedTradeRecord),
+          historicalAvailable: false,
+        })}\n\n`);
+        const onTrade = (event) => {
+          if (event.symbol !== option.symbol || response.destroyed || response.writableEnded) return;
+          response.write(`event: trades\ndata: ${JSON.stringify({
+            historicalSeed: false,
+            records: [normalizedTradeRecord(event.trade)],
+          })}\n\n`);
+        };
+        optionTrades.on("trade", onTrade);
+        const keepalive = setInterval(() => response.write(": keepalive\n\n"), 10_000);
+        const streamGuard = createDesktopStreamGuard({
+          authorization,
+          response,
+          revocationCache: desktopTicketRevocations,
+        });
+        let cleanedUp = false;
+        const cleanup = () => {
+          if (cleanedUp) return;
+          cleanedUp = true;
+          clearInterval(keepalive);
+          streamGuard.dispose();
+          optionTrades.off("trade", onTrade);
+          release();
+        };
+        request.on("close", cleanup);
+        response.on("close", cleanup);
+        response.on("error", cleanup);
+        return;
+      }
       client.subscribe(instrument.exchange, instrument.symbol);
       const snapshot = client.book.snapshot(instrument.exchange, instrument.symbol, 1);
       // The browser keeps one shared execution stream per instrument.  Seed it
@@ -1383,10 +1893,22 @@ const server = createServer(async (request, response) => {
       };
       tradeSseClients.add(subscriber);
       const keepalive = setInterval(() => response.write(": keepalive\n\n"), 10_000);
-      request.on("close", () => {
-        clearInterval(keepalive);
-        tradeSseClients.delete(subscriber);
+      const streamGuard = createDesktopStreamGuard({
+        authorization,
+        response,
+        revocationCache: desktopTicketRevocations,
       });
+      let cleanedUp = false;
+      const cleanup = () => {
+        if (cleanedUp) return;
+        cleanedUp = true;
+        clearInterval(keepalive);
+        streamGuard.dispose();
+        tradeSseClients.delete(subscriber);
+      };
+      request.on("close", cleanup);
+      response.on("close", cleanup);
+      response.on("error", cleanup);
       return;
     }
     if (request.method === "GET" && url.pathname === "/v1/heatmap/stream") {
@@ -1395,7 +1917,11 @@ const server = createServer(async (request, response) => {
       const depth = Math.min(5_000, Math.max(20, Number(url.searchParams.get("depthTicks") || 400)));
       const afterTimestamp = Math.max(0, Number(url.searchParams.get("afterTimestamp") || 0));
       const includeOrderEvents = url.searchParams.get("includeOrderEvents") === "1";
-      const snapshot = client.book.snapshot(instrument.exchange, instrument.symbol, depth);
+      const includeOrders = url.searchParams.get("includeOrders") === "1";
+      const snapshot = client.book.snapshot(instrument.exchange, instrument.symbol, depth, {
+        includeOrders,
+        orderLimit: 50_000,
+      });
       response.writeHead(200, {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache, no-transform",
@@ -1488,11 +2014,17 @@ const server = createServer(async (request, response) => {
       const keepalive = setInterval(() => response.write(
         `event: heartbeat\ndata: ${JSON.stringify({ timestamp: Date.now() })}\n\n`,
       ), 5_000);
+      const streamGuard = createDesktopStreamGuard({
+        authorization,
+        response,
+        revocationCache: desktopTicketRevocations,
+      });
       let cleanedUp = false;
       const cleanup = () => {
         if (cleanedUp) return;
         cleanedUp = true;
         clearInterval(keepalive);
+        streamGuard.dispose();
         heatmapSseClients.delete(subscriber);
       };
       subscriber.cleanup = cleanup;
@@ -1871,6 +2403,7 @@ server.listen(config.port, config.host, () => {
   process.stdout.write(
     `Olisa Labs Platform Rithmic gateway listening on http://${config.host}:${config.port}\n`,
   );
+  desktopRevocationSynchronizer?.start();
   if (recorder.enabled) {
     process.stdout.write(`[recorder] capturing raw stream to ${config.recordDir}\n`);
   } else {
@@ -1923,7 +2456,9 @@ server.listen(config.port, config.host, () => {
 // leaves a session file without its completeness record.
 for (const signal of ["SIGINT", "SIGTERM"]) {
   process.on(signal, () => {
-    void Promise.resolve(exposureArchiver.stop())
+    void Promise.resolve(desktopRevocationSynchronizer?.stop())
+      .catch(() => {})
+      .then(() => exposureArchiver.stop())
       .catch(() => {})
       .then(() => recorder.close())
       .finally(() => process.exit(0));
@@ -1931,8 +2466,10 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
 }
 
 async function shutdown() {
+  await desktopRevocationSynchronizer?.stop();
   massiveIndices.stop();
   databentoEquities.stop();
+  optionTrades.stop();
   quantDataMarketSnapshots.stop();
   await client.stop();
   server.close(() => process.exit(0));

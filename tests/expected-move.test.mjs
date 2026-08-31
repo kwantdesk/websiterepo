@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   EXPECTED_MOVE_TRADING_DAYS,
   buildExpectedMoveBand,
@@ -11,9 +12,15 @@ import {
   expectedMoveSigmaRails,
   isExpectedMoveCalibrationUsable,
   newYorkExpectedMoveSessionBounds,
+  normalizeExpectedMoveSettings,
   staleExpectedMovePayload,
 } from "../src/lib/expectedMove.ts";
 import { isOptionsFuturesRatioSane } from "../src/lib/optionsFlow.ts";
+
+const fixture = JSON.parse(readFileSync(
+  new URL("../native/parity/fixtures/charts/expected-move-authoritative.json", import.meta.url),
+  "utf8",
+));
 
 const day = (date, open, high, low, close) => ({
   timestamp: Date.parse(`${date}T00:00:00.000Z`),
@@ -219,4 +226,46 @@ test("New York session bounds honor March and November DST changes", () => {
   assert.equal(new Date(newYorkExpectedMoveSessionBounds("2026-03-09").open).toISOString(), "2026-03-09T13:30:00.000Z");
   assert.equal(new Date(newYorkExpectedMoveSessionBounds("2026-10-30").open).toISOString(), "2026-10-30T13:30:00.000Z");
   assert.equal(new Date(newYorkExpectedMoveSessionBounds("2026-11-02").open).toISOString(), "2026-11-02T14:30:00.000Z");
+});
+
+test("shared authoritative fixture locks settings and session/live rail math", () => {
+  assert.deepEqual(normalizeExpectedMoveSettings(fixture.settings.input), fixture.settings.expected);
+  const range = fixture.snapshot.range;
+  const session = buildExpectedMoveBand({
+    mode: "SESSION",
+    range,
+    scale: fixture.snapshot.scale,
+    currentPrice: fixture.calculation.currentPrice,
+    now: fixture.calculation.sessionOpenMs,
+    sessionDate: fixture.snapshot.sessionDate,
+    tickSize: fixture.calculation.tickSize,
+  });
+  const live = buildExpectedMoveBand({
+    mode: "LIVE",
+    range,
+    scale: fixture.snapshot.scale,
+    currentPrice: fixture.calculation.currentPrice,
+    now: (fixture.calculation.sessionOpenMs + fixture.calculation.sessionCloseMs) / 2,
+    sessionDate: fixture.snapshot.sessionDate,
+    tickSize: fixture.calculation.tickSize,
+  });
+  assert.ok(session && live);
+  for (const key of ["anchor", "high", "low", "movePoints"]) {
+    assert.ok(Math.abs(session[key] - fixture.calculation.session[key]) < 1e-9);
+    assert.ok(Math.abs(live[key] - fixture.calculation.liveMidpoint[key]) < 1e-9);
+  }
+  assert.deepEqual(expectedMoveSigmaRails(session, 2), {
+    high: fixture.calculation.session.twoSigmaHigh,
+    low: fixture.calculation.session.twoSigmaLow,
+  });
+});
+
+test("desktop normalized route is service-authenticated and never accepts a vendor credential", () => {
+  const route = readFileSync(new URL("../src/app/api/expected-move/route.ts", import.meta.url), "utf8");
+  assert.match(route, /timingSafeEqual/);
+  assert.match(route, /normalizedDisplay \? "FUTURES" : "CASH"/);
+  assert.match(route, /isExpectedMoveCalibrationUsable/);
+  assert.match(route, /normalizedNextRefreshAtMs/);
+  assert.match(route, /NormalizedExpectedMoveReceipt/);
+  assert.doesNotMatch(route, /searchParams\.get\(["']apiKey["']\)/);
 });

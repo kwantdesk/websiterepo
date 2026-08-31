@@ -26,16 +26,16 @@ async function loadCrosshairSync() {
 
 const sync = await loadCrosshairSync();
 
-test("crosshair synchronization is exposed beside the mouse selection tool", async () => {
+test("crosshair synchronization is exposed by the workspace pane and wired into the chart", async () => {
   const chart = await readFile(path.join(root, "src/components/Chart.tsx"), "utf8");
-  const mouseButton = chart.indexOf("<Hand className={toolbarIconClassName} />");
-  const linkedButton = chart.indexOf("saveChartCrosshairSyncEnabled(!crosshairSyncEnabled, crosshairSyncScope)");
-  assert.ok(mouseButton >= 0);
-  assert.ok(linkedButton > mouseButton);
+  const workspace = await readFile(path.join(root, "src/components/KwantifyWorkspace.tsx"), "utf8");
+  assert.match(workspace, /toggleCrosshairConnection/);
+  assert.match(workspace, /crosshairLinked=\{linkedCrosshairPaneIds\.has\(pane\.id\)\}/);
+  assert.match(workspace, /crosshairLinked=\{crosshairLinked\}/);
   assert.match(chart, /chart\.subscribeCrosshairMove\(handleNativeCrosshairMove\)/);
   assert.match(chart, /chart\.setCrosshairPosition\(synchronizedPrice, targetTime as Time, candleSeries\)/);
   assert.match(chart, /detail\.syncGroupId !== syncGroupId/);
-  assert.match(chart, /Link equivalent prices across linked GEX VUE charts/);
+  assert.match(workspace, /Link only this chart's crosshair to the other charts/);
 });
 
 test("a synchronized timestamp resolves to the containing candle on the receiving timeframe", () => {

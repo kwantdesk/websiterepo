@@ -8,7 +8,7 @@ import {
   type JournalAnalysisPriority,
   type JournalQuantAnalysis,
 } from "@/lib/journalAnalysis";
-import { getRouteActor } from "@/lib/serverAuth";
+import { getJournalRouteActor } from "@/lib/serverAuth";
 import { createClient as createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -157,7 +157,7 @@ function validEvidence(value: unknown): value is JournalAnalysisEvidencePack {
 }
 
 async function loadStoredAnalysis(request: NextRequest, account: string) {
-  const actor = await getRouteActor(request);
+  const actor = await getJournalRouteActor(request);
   if (!actor) return { response: NextResponse.json({ error: "Authentication required." }, { status: 401 }), actor: null, supabase: null };
   try {
     const supabase = await createSupabaseServerClient();
@@ -215,7 +215,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   const requestStartedAt = Date.now();
-  const actor = await getRouteActor(request);
+  const actor = await getJournalRouteActor(request);
   if (!actor) return NextResponse.json({ error: "Authentication required." }, { status: 401 });
 
   let body: { account?: unknown; evidence?: unknown };
