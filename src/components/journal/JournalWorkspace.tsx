@@ -78,6 +78,7 @@ import {
   type JournalTradingAccountType,
 } from "@/lib/journal";
 import { loadJournalState, saveJournalState } from "@/lib/journalStore";
+import { PAPER_JOURNAL_UPDATED_EVENT } from "@/lib/paperJournal";
 import {
   buildJournalAnalysisEvidence,
   type JournalAnalysisFinding,
@@ -1127,6 +1128,37 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
     }, 350);
     return () => window.clearTimeout(timer);
   }, [ready, resolvedAccountKey, state]);
+
+  /*
+   * Demo trades are written to the journal store as they close, which can
+   * happen while this pane is open. Merge them in, or the debounced save above
+   * would write a copy that predates them and lose the trade.
+   *
+   * Strictly additive: anything already held here wins, so an edit in progress
+   * is never overwritten by the stored copy.
+   */
+  useEffect(() => {
+    const mergeStoredTrades = () => {
+      void loadJournalState(resolvedAccountKey).then((stored) => {
+        setState((current) => {
+          const knownTrades = new Set(current.trades.map((trade) => trade.id));
+          const knownAccounts = new Set(current.accounts.map((account) => account.id));
+          const trades = stored.trades.filter((trade) => !knownTrades.has(trade.id));
+          const accounts = stored.accounts.filter((account) => !knownAccounts.has(account.id));
+          if (!trades.length && !accounts.length) return current;
+          return {
+            ...current,
+            accounts: [...current.accounts, ...accounts],
+            trades: [...current.trades, ...trades],
+          };
+        });
+      }).catch(() => {
+        // Nothing to merge is not an error worth surfacing; the next close retries.
+      });
+    };
+    window.addEventListener(PAPER_JOURNAL_UPDATED_EVENT, mergeStoredTrades);
+    return () => window.removeEventListener(PAPER_JOURNAL_UPDATED_EVENT, mergeStoredTrades);
+  }, [resolvedAccountKey]);
 
   const archivedAccountNames = useMemo(
     () => new Set(state.accounts.filter((account) => Boolean(account.archivedAt)).map((account) => account.name)),

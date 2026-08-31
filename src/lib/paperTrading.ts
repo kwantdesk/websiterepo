@@ -648,6 +648,9 @@ export function savePaperTradingLedger(ledger: PaperTradingLedger): StorageWrite
     result = { ok: false, reclaimedBytes: 0, evicted: 0 };
   }
   window.dispatchEvent(new CustomEvent(PAPER_TRADING_LEDGER_EVENT, { detail: ledger }));
+  // Also tell the account sync, or a trade would wait up to a minute for the
+  // heartbeat before it were safe on any other machine.
+  window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
   return result;
 }
 

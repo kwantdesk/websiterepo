@@ -52,7 +52,12 @@ export type JournalTrade = {
 export type JournalAccount = {
   id: string;
   name: string;
-  source: "import" | "manual";
+  /*
+   * "paper" is a journal created for a demo trading account. Its trades are
+   * written as they close and are never revised, so the record survives the
+   * trader clearing their fills, resetting the account, or deleting it.
+   */
+  source: "import" | "manual" | "paper";
   createdAt: string;
   updatedAt: string;
   archivedAt?: string | null;

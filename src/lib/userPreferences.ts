@@ -68,6 +68,19 @@ const TRACKED_STORAGE_KEYS = new Set([
   "kwantify-chart-toolbar-dock",
   "kwantify-chart-toolbar-collapsed",
   "kwantify:options-flow:chart-timeframe",
+  /*
+   * Paper trading belongs to the trader, not to the browser.
+   *
+   * These two were never synced, so an account and everything traded in it
+   * lived in one browser's localStorage: a different machine, a cleared cache
+   * or a private window and the accounts were simply gone, which is why they
+   * had to be recreated on almost every sign-in.
+   *
+   * They are a record of decisions someone made, not a cache that can be
+   * fetched again, so they belong with the workspaces and drawings.
+   */
+  "kwantify-paper-trading-accounts",
+  "kwantify-paper-trading-ledger-v1",
 ]);
 
 const TRACKED_STORAGE_PREFIXES = [

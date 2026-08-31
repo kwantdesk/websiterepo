@@ -117,6 +117,8 @@ import type { FriendsPayload } from "@/lib/friends";
 import { cacheProfileIdentity, readProfileIdentityCache } from "@/lib/profileIdentityCache";
 import { useAccountPreferenceSync } from "@/hooks/useAccountPreferenceSync";
 import { compactLegacyAuthPreferenceMetadata, hydrateUserPreferences } from "@/lib/userPreferences";
+import { loadJournalState, saveJournalState } from "@/lib/journalStore";
+import { PAPER_JOURNAL_UPDATED_EVENT, appendPaperTradesToJournal } from "@/lib/paperJournal";
 import { readStoredTheme, saveTheme, type ThemeColors } from "@/lib/theme";
 import { DEFAULT_CROSSHAIR_STYLE, loadCrosshairStyle, normalizeCrosshairStyle, saveCrosshairStyle, type CrosshairStyle } from "@/lib/crosshairStyle";
 import { loadGexMapPalette, saveGexMapPalette, type GexMapPalette } from "@/lib/gexMapPalette";
@@ -9897,10 +9899,65 @@ export default function KwantifyWorkspace({
     const elapsed = performance.now() - paperLedgerUiLastSyncRef.current;
     paperLedgerUiTimerRef.current = window.setTimeout(flush, Math.max(0, minimumIntervalMs - elapsed));
   }, []);
+  /*
+   * Every demo account keeps a journal, and every trade closed in it writes
+   * itself in.
+   *
+   * This has to happen AS THE TRADE CLOSES rather than be derived later. The
+   * ledger deletes a position the moment it closes and keeps only the fills,
+   * and the trader is free to clear those fills off the chart - so a journal
+   * built from the ledger on demand would lose the trade twice over. What is
+   * written here is permanent and is never revised.
+   *
+   * Debounced, because a commit happens on every quote that changes anything
+   * and the journal lives in IndexedDB.
+   */
+  const paperJournalTimerRef = useRef<number | null>(null);
+  const paperJournalAccountsRef = useRef<PaperTradingAccountRecord[]>([]);
+  paperJournalAccountsRef.current = paperTradingAccounts;
+  const paperJournalKeyRef = useRef("local");
+  paperJournalKeyRef.current = preferenceUserId || currentUsername || "local";
+
+  const schedulePaperJournalSync = useCallback(() => {
+    if (paperJournalTimerRef.current !== null) return;
+    paperJournalTimerRef.current = window.setTimeout(() => {
+      paperJournalTimerRef.current = null;
+      void (async () => {
+        const records = paperJournalAccountsRef.current;
+        if (!records.length) return;
+        const key = paperJournalKeyRef.current;
+        try {
+          const state = await loadJournalState(key);
+          const next = appendPaperTradesToJournal(state, records, paperLedgerRef.current);
+          // Same object back means there was nothing new to record.
+          if (next === state) return;
+          await saveJournalState(key, next);
+          // An open journal holds its own copy and saves it back, so it has to
+          // be told rather than left to overwrite what was just written.
+          window.dispatchEvent(new CustomEvent(PAPER_JOURNAL_UPDATED_EVENT));
+        } catch {
+          // The journal is a record, not part of executing the trade. A failed
+          // write must never interfere with the ledger, and the next close
+          // retries it anyway.
+        }
+      })();
+    }, 1_500);
+  }, []);
+
+  useEffect(() => () => {
+    if (paperJournalTimerRef.current !== null) window.clearTimeout(paperJournalTimerRef.current);
+  }, []);
+
+  // A demo account gets its journal as soon as it exists, before it has traded.
+  useEffect(() => {
+    schedulePaperJournalSync();
+  }, [paperTradingAccounts, schedulePaperJournalSync]);
+
   const commitPaperLedger = useCallback((next: PaperTradingLedger) => {
     paperLedgerRef.current = next;
     syncPaperLedgerUi(true);
-  }, [syncPaperLedgerUi]);
+    schedulePaperJournalSync();
+  }, [schedulePaperJournalSync, syncPaperLedgerUi]);
   const handleActiveChartExecutionQuote = useCallback((quote: ChartExecutionQuote) => {
     const gexReplayActive = chartWorkspaceScope === "gamma" && gexVueReplay.active;
     const quoteIsAuthorizedForCurrentClock = quote.source === "replay"

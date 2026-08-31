@@ -218,7 +218,7 @@
     "test:origin-transfer": "node --import ./scripts/alias-hook.mjs scripts/test-origin-transfer.mjs",
     "test:weekly-profile-week": "node --import ./scripts/alias-hook.mjs scripts/test-weekly-profile-week.mjs",
     "test:order-drag": "node --import ./scripts/alias-hook.mjs scripts/test-order-drag.mjs",
-    "test:order-drag": "node --import ./scripts/alias-hook.mjs scripts/test-order-drag.mjs"
+    "test:paper-journal": "node --import ./scripts/alias-hook.mjs scripts/test-paper-journal.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",

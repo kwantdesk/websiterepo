@@ -83,6 +83,9 @@ export function savePaperTradingAccounts(accounts: PaperTradingAccountRecord[]):
     result = { ok: false, reclaimedBytes: 0, evicted: 0 };
   }
   window.dispatchEvent(new CustomEvent(PAPER_TRADING_ACCOUNTS_EVENT, { detail: accounts }));
+  // Also tell the account sync, or a trade would wait up to a minute for the
+  // heartbeat before it were safe on any other machine.
+  window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
   return result;
 }
 
