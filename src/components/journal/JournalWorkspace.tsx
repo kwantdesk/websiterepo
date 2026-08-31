@@ -454,7 +454,15 @@ function compact(value: number) {
   });
   if (absolute >= 1_000_000) return `${sign}$${formatMagnitude(absolute / 1_000_000)}M`;
   if (absolute >= 1_000) return `${sign}$${formatMagnitude(absolute / 1_000)}K`;
-  return `${sign}$${absolute.toFixed(0)}`;
+  /*
+   * Under a thousand the cents are kept.
+   *
+   * This form only appears when the full figure will not fit its card, and
+   * shortening a K or M reads as the approximation it is. Turning $234.75 into
+   * "$235" does not - it looks like an exact amount, and it is the wrong one.
+   * Three more characters at this size always fit.
+   */
+  return `${sign}$${absolute.toFixed(2)}`;
 }
 
 function formatDate(value: string | null, includeTime = false) {

@@ -222,7 +222,8 @@
     "test:paper-trade-export": "node --import ./scripts/alias-hook.mjs scripts/test-paper-trade-export.mjs",
     "test:candle-context-menu": "node --import ./scripts/alias-hook.mjs scripts/test-candle-context-menu.mjs",
     "test:paper-account-visibility": "node --import ./scripts/alias-hook.mjs scripts/test-paper-account-visibility.mjs",
-    "test:trade-analytics": "node --import ./scripts/alias-hook.mjs scripts/test-trade-analytics.mjs"
+    "test:trade-analytics": "node --import ./scripts/alias-hook.mjs scripts/test-trade-analytics.mjs",
+    "test:money-precision": "node --import ./scripts/alias-hook.mjs scripts/test-money-precision.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",
