@@ -174,6 +174,34 @@ check("the workspace records closes and tells an open journal", () => {
   assert.match(journal, /window\.removeEventListener\(PAPER_JOURNAL_UPDATED_EVENT, mergeStoredTrades\)/);
 });
 
+check("every path that fills a trade tells the journal", () => {
+  /*
+   * The journal was hooked to commitPaperLedger alone, and the quote-driven
+   * paths do not use it - they assign the ledger directly so they can throttle
+   * the React sync instead of forcing one per quote. That is EVERY trade that
+   * closes on a live stop or target. The daily figure still moved, because it
+   * reads the ledger, so the loss was silent.
+   *
+   * This walks the assignment sites rather than naming them, so a new one
+   * cannot be added without being noticed here.
+   */
+  const workspace = readFileSync(
+    new URL("../src/components/KwantifyWorkspace.tsx", import.meta.url), "utf8",
+  );
+  const sites = [];
+  for (let at = workspace.indexOf("paperLedgerRef.current ="); at !== -1;
+       at = workspace.indexOf("paperLedgerRef.current =", at + 1)) sites.push(at);
+
+  assert.ok(sites.length >= 4, `expected the known commit sites, found ${sites.length}`);
+  for (const at of sites) {
+    const around = workspace.slice(Math.max(0, at - 300), at + 900);
+    assert.ok(
+      around.includes("schedulePaperJournalSync"),
+      `a ledger commit near offset ${at} does not tell the journal`,
+    );
+  }
+});
+
 check("the journal is written under the key the journal reads", () => {
   /*
    * The key resolves after sign-in, while demo accounts are restored from local

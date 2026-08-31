@@ -10007,6 +10007,16 @@ export default function KwantifyWorkspace({
       // sampled into React only as quickly as the visible trade UI needs it;
       // the execution engine still evaluates every quote in the ref above.
       if (executionChanged) {
+        /*
+         * A fill happened, so the journal has a trade to record.
+         *
+         * This path deliberately does NOT go through commitPaperLedger - it
+         * throttles the React sync rather than forcing one per quote - which
+         * is why hooking the journal to that helper alone missed every trade
+         * that closed on a live quote. The daily figure still moved, because
+         * it reads the ledger; the journal was simply never told.
+         */
+        schedulePaperJournalSync();
         syncPaperLedgerUi(true);
       } else if (showTradesMenu || rightPanel === "order") {
         // Live P&L and marks are driven by the small external quote store.
@@ -10032,7 +10042,7 @@ export default function KwantifyWorkspace({
       activeChartExecutionQuoteUiRef.current = quote;
       setActiveChartExecutionQuote(quote);
     }
-  }, [activePaneId, chartWorkspaceScope, gexVueReplay.active, optimisticWorkspaceSection, paperTradingAccounts, rightPanel, showTradesMenu, syncPaperLedgerUi]);
+  }, [activePaneId, chartWorkspaceScope, gexVueReplay.active, optimisticWorkspaceSection, paperTradingAccounts, rightPanel, schedulePaperJournalSync, showTradesMenu, syncPaperLedgerUi]);
   const [hiddenPaperFillMarkers, setHiddenPaperFillMarkers] = useState<Record<string, string[]>>(() => {
     if (typeof window === "undefined") return {};
     try {
@@ -10119,8 +10129,10 @@ export default function KwantifyWorkspace({
     if (nextLedger !== currentLedger) {
       const executionChanged = paperLedgerExecutionShapeChanged(currentLedger, nextLedger);
       paperLedgerRef.current = nextLedger;
-      if (executionChanged) syncPaperLedgerUi(true);
-      else if (rightPanel === "order") syncPaperLedgerUi(false, 1_000);
+      if (executionChanged) {
+        schedulePaperJournalSync();
+        syncPaperLedgerUi(true);
+      } else if (rightPanel === "order") syncPaperLedgerUi(false, 1_000);
     }
 
     if (rightPanel === "order") {
@@ -10136,7 +10148,7 @@ export default function KwantifyWorkspace({
     window.dispatchEvent(new CustomEvent(PAPER_MARK_QUOTE_EVENT, {
       detail: { ...quote, timestamp: quote.receivedAt },
     }));
-  }, [bottomWorkspaceSection, paperTradingAccounts, rightPanel, syncPaperLedgerUi]);
+  }, [bottomWorkspaceSection, paperTradingAccounts, rightPanel, schedulePaperJournalSync, syncPaperLedgerUi]);
   const chartSurfaceActive = bottomWorkspaceSection === "charts" || bottomWorkspaceSection === "gamvue";
   const [equityPeriod, setEquityPeriod] = useState("365d");
   const [favTFs, setFavTFs] = useState<string[]>(() => {
@@ -12185,9 +12197,10 @@ export default function KwantifyWorkspace({
     if (next !== current) {
       const executionChanged = paperLedgerExecutionShapeChanged(current, next);
       paperLedgerRef.current = next;
+      if (executionChanged) schedulePaperJournalSync();
       syncPaperLedgerUi(executionChanged);
     }
-  }, [paperTradingAccounts, syncPaperLedgerUi, watchlist]);
+  }, [paperTradingAccounts, schedulePaperJournalSync, syncPaperLedgerUi, watchlist]);
 
   useEffect(() => {
     const handleStorage = (event: StorageEvent) => {
