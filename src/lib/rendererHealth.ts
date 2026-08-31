@@ -42,7 +42,12 @@ type RendererHealthSnapshot = {
 import { captureStallProfile, isRendererProfilerAvailable, startRendererProfiler } from "@/lib/rendererProfiler";
 
 const ACTIVE_KEY = "kwantdesk:renderer-health:active:v1";
-const STALL_KEY = "kwantdesk:renderer-health:stalls:v1";
+/*
+ * v2: every v1 record was a backgrounded tab rather than a stall, so the ring
+ * is started fresh instead of leaving twenty false positives to be read as
+ * history.
+ */
+const STALL_KEY = "kwantdesk:renderer-health:stalls:v2";
 const STALL_PROFILE_KEY = "kwantdesk:renderer-health:stall-profiles:v1";
 const CRASH_KEY = "kwantdesk:renderer-health:last-crash:v1";
 const SNAPSHOT_INTERVAL_MS = 5_000;
@@ -184,11 +189,36 @@ let started = false;
  * the page is still wedged, and reports the true duration once beats resume.
  */
 const STALL_WORKER_SOURCE = `
-let lastBeat = 0, state = null, stallFrom = 0, reported = false, endpoint = "";
+let lastBeat = 0, state = null, stallFrom = 0, reported = false, endpoint = "", paused = false;
 self.onmessage = (event) => {
   const message = event.data;
   if (message.type === "config") { endpoint = message.endpoint; return; }
+  /*
+   * A hidden tab is not a stalled tab.
+   *
+   * Chrome throttles the page's timers to roughly once a minute in a
+   * background tab. The worker is not throttled, so it saw the beats stop and
+   * called every backgrounded minute a sixty-second freeze - and POSTed each
+   * one to our own telemetry. Twenty such records, all 59,995-60,003ms with
+   * longestTaskMs 0, were sitting in the ring where the real stalls should
+   * have been, which is why a genuine hang could not be found in it.
+   *
+   * The page announces the change directly, before throttling can begin.
+   */
+  if (message.type === "visibility") {
+    paused = message.hidden === true;
+    stallFrom = 0; reported = false;
+    lastBeat = Date.now();
+    return;
+  }
   if (message.type !== "beat") return;
+  // Belt and braces: a beat that arrives late but says it was hidden resyncs
+  // rather than resolving into a stall, in case the announcement was missed.
+  if (message.hidden === true) {
+    paused = true; stallFrom = 0; reported = false; lastBeat = message.at; state = message.state;
+    return;
+  }
+  paused = false;
   if (stallFrom) {
     self.postMessage({ type: "recovered", stalledMs: message.at - stallFrom, state });
     stallFrom = 0; reported = false;
@@ -197,6 +227,9 @@ self.onmessage = (event) => {
 };
 setInterval(() => {
   if (!lastBeat) return;
+  // While the page is hidden its timers are throttled, so keep sliding the
+  // baseline forward instead of letting a gap accumulate against it.
+  if (paused) { lastBeat = Date.now(); return; }
   const gap = Date.now() - lastBeat;
   if (gap < 2000) return;
   if (!stallFrom) stallFrom = lastBeat;
@@ -279,11 +312,27 @@ function startStallWatchdog(startedAt: number, longestTaskRef: { value: number }
       // Best-effort: a full quota must not break the page.
     }
   });
+  /*
+   * Announced the moment it changes, which is before the browser starts
+   * throttling this page's timers - the beat below cannot do it on its own,
+   * because by the time it next runs the gap already looks like a freeze.
+   */
+  const announceVisibility = () => {
+    try {
+      worker.postMessage({ type: "visibility", hidden: document.visibilityState === "hidden" });
+    } catch {
+      // The worker is gone; the main-thread recorder still stands.
+    }
+  };
+  document.addEventListener("visibilitychange", announceVisibility);
+  announceVisibility();
+
   window.setInterval(() => {
     const heap = heapNow();
     worker.postMessage({
       type: "beat",
       at: Date.now(),
+      hidden: document.visibilityState === "hidden",
       state: {
         url: window.location.pathname,
         heapUsedMB: heap.used,
