@@ -174,6 +174,29 @@ check("the workspace records closes and tells an open journal", () => {
   assert.match(journal, /window\.removeEventListener\(PAPER_JOURNAL_UPDATED_EVENT, mergeStoredTrades\)/);
 });
 
+check("the journal is written under the key the journal reads", () => {
+  /*
+   * The key resolves after sign-in, while demo accounts are restored from local
+   * storage immediately. Without the key in the dependency list the first sync
+   * wrote to "local" and the journal page - looking under the user's id by the
+   * time anyone opened it - found nothing there. That is exactly the "no
+   * journal was created" report.
+   */
+  const workspace = readFileSync(
+    new URL("../src/components/KwantifyWorkspace.tsx", import.meta.url), "utf8",
+  );
+  assert.match(
+    workspace,
+    /const paperJournalKey = preferenceUserId \|\| currentUsername \|\| "local";/,
+    "the journal key is not resolved in one place",
+  );
+  assert.match(
+    workspace,
+    /\}, \[paperJournalKey, paperTradingAccounts, schedulePaperJournalSync\]\);/,
+    "the sync does not re-run when the key settles",
+  );
+});
+
 check("paper accounts follow the trader to another machine", () => {
   const prefs = readFileSync(new URL("../src/lib/userPreferences.ts", import.meta.url), "utf8");
   assert.match(prefs, /"kwantify-paper-trading-accounts",/, "accounts are not synced to the user");

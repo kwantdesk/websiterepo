@@ -9920,8 +9920,19 @@ export default function KwantifyWorkspace({
   const paperJournalTimerRef = useRef<number | null>(null);
   const paperJournalAccountsRef = useRef<PaperTradingAccountRecord[]>([]);
   paperJournalAccountsRef.current = paperTradingAccounts;
+  /*
+   * The key this writes under has to be the one the journal READS under.
+   *
+   * It resolves after sign-in, while the demo accounts are restored from local
+   * storage immediately - so the first sync ran against "local" while the
+   * journal page, by the time anyone opened it, was looking under the user's
+   * id and found nothing there. Depending on the key below means the sync runs
+   * again the moment it settles; it reads the whole ledger rather than a delta,
+   * so everything lands under the right key and nothing is left behind.
+   */
+  const paperJournalKey = preferenceUserId || currentUsername || "local";
   const paperJournalKeyRef = useRef("local");
-  paperJournalKeyRef.current = preferenceUserId || currentUsername || "local";
+  paperJournalKeyRef.current = paperJournalKey;
 
   const schedulePaperJournalSync = useCallback(() => {
     if (paperJournalTimerRef.current !== null) return;
@@ -9953,10 +9964,11 @@ export default function KwantifyWorkspace({
     if (paperJournalTimerRef.current !== null) window.clearTimeout(paperJournalTimerRef.current);
   }, []);
 
-  // A demo account gets its journal as soon as it exists, before it has traded.
+  // A demo account gets its journal as soon as it exists, before it has traded,
+  // and again if the key it belongs under changes.
   useEffect(() => {
     schedulePaperJournalSync();
-  }, [paperTradingAccounts, schedulePaperJournalSync]);
+  }, [paperJournalKey, paperTradingAccounts, schedulePaperJournalSync]);
 
   const commitPaperLedger = useCallback((next: PaperTradingLedger) => {
     paperLedgerRef.current = next;
