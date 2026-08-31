@@ -1152,10 +1152,23 @@ export function applyInstitutionalTradesToVolumeProfile(
   // With no new prices the row order is unchanged, so the next batch can reuse
   // this index instead of rebuilding it.
   if (!appendedLevels.length) volumeProfileLevelIndexCache.set(nextLevels, sourceIndex);
+  /*
+   * The trader's own percentage, not the 70% convention.
+   *
+   * This recomputes the value area on every live batch, and it was doing so at
+   * the standard 70% however the study was configured - so a profile asked for
+   * at 68% was served correctly by the server and then quietly widened by the
+   * first tick that arrived. POC does not move with the percentage and the
+   * walk breaks ties upward, which is why VAL and the POC matched while only
+   * VAH drifted.
+   */
+  const activeValueAreaPercent = Number(profile.valueAreaPercent) > 0
+    ? Number(profile.valueAreaPercent)
+    : STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT;
   const valueArea = calculateVolumeProfileValueArea(
     nextLevels,
     profile.tickSize * profile.groupTicks,
-    STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
+    activeValueAreaPercent,
   );
   const nextVwap = totalVolume > 0 ? weightedPrice / totalVolume : null;
   const variance = totalVolume > 0 && nextVwap !== null
@@ -1170,7 +1183,10 @@ export function applyInstitutionalTradesToVolumeProfile(
   }
   return {
     ...profile,
-    valueAreaPercent: STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
+    // Reporting the standard here as well is what made the drift invisible:
+    // the profile claimed 70% after being recomputed at 70%, so nothing
+    // downstream could see that the trader had asked for something else.
+    valueAreaPercent: activeValueAreaPercent,
     asOf: new Date(latestTimestamp).toISOString(),
     // Active daily and weekly profiles grow from the Rithmic execution tape.
     // Their original endMs is the snapshot edge, not a boundary that should

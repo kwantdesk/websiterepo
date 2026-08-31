@@ -226,7 +226,8 @@
     "test:money-precision": "node --import ./scripts/alias-hook.mjs scripts/test-money-precision.mjs",
     "test:indicator-opacity": "node --import ./scripts/alias-hook.mjs scripts/test-indicator-opacity.mjs",
     "test:volume-profile-sessions-split": "node --import ./scripts/alias-hook.mjs scripts/test-volume-profile-sessions-split.mjs",
-    "test:indicator-side-colours": "node --import ./scripts/alias-hook.mjs scripts/test-indicator-side-colours.mjs"
+    "test:indicator-side-colours": "node --import ./scripts/alias-hook.mjs scripts/test-indicator-side-colours.mjs",
+    "test:value-area-percent": "node --import ./scripts/alias-hook.mjs scripts/test-value-area-percent.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",
