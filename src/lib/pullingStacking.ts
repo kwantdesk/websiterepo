@@ -107,7 +107,7 @@ export const DEFAULT_PULLING_STACKING_SETTINGS: PullingStackingSettings = {
   minimumContracts: 25, relativeThreshold: 3, selectedPercentile: .9, scoreThreshold: 65, markerMinimumScore: 65,
   visibleTicks: 120, currentProfileWidth: 156, profileWidthPercent: 13, minimumProfileWidthPx: 110, maximumProfileWidthPx: 280, latestWindowMs: 1_000,
   lowerPaneHeight: 160, markerSize: 7, maximumEvents: 1_000, maximumBuckets: 4_000, staleAfterMs: 5_000, markerRetentionMs: 300_000,
-  opacity: 42, minimumOpacity: .025, maximumOpacity: .42, minimumCellHeightPx: 2, maximumCellHeightPx: 24,
+  opacity: 100, minimumOpacity: .025, maximumOpacity: .42, minimumCellHeightPx: 2, maximumCellHeightPx: 24,
   includeOwnOrders: false, includeImpliedOrders: false, bidEnabled: true, askEnabled: true,
   showHeatCells: true, showRibbons: false, showEventMarkers: true, showCurrentProfile: true, showLiveDepth: true, showLowerPane: false,
   showLabels: true, showHeader: true, showTooltips: true, showWallBuild: true, showWallCollapse: true, showLiquidityVacuum: true,

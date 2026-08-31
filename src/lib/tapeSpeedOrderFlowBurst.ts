@@ -140,7 +140,7 @@ export const DEFAULT_TAPE_SPEED_SETTINGS: TapeSpeedSettings = {
   totalColor: "#F8FAFC",
   neutralColor: "#94A3B8",
   warningColor: "#F59E0B",
-  opacity: 78,
+  opacity: 100,
   markerSize: 7,
   paneHeight: 190,
 };

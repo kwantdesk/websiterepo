@@ -27,7 +27,7 @@ export type BigBlocksPrimitiveOptions = {
 const DEFAULT_OPTIONS: BigBlocksPrimitiveOptions = {
   askColor: "#22C55E",
   bidColor: "#EF4444",
-  opacity: 0.2,
+  opacity: 1,
   lineWidth: 1,
 };
 

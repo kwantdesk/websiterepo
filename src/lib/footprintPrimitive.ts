@@ -148,7 +148,7 @@ const DEFAULT_OPTIONS: FootprintPrimitiveOptions = {
   barWidth: 92,
   candleSpacing: 6,
   borderWidth: 1,
-  opacity: 0.72,
+  opacity: 1,
   minimumOpacity: 0.08,
   maximumOpacity: 0.72,
   gradientExponent: 0.72,

@@ -241,7 +241,7 @@ export const DEFAULT_ABSORPTION_SETTINGS: AbsorptionSettings = {
   activeProfileWidth: 120,
   activeProfileMaximumZones: 12,
   lowerPaneHeight: 160,
-  opacity: 72,
+  opacity: 100,
   markerSize: 7,
   zoneBorderWidth: 1,
   includeInChartAutoscale: false,

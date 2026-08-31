@@ -23,7 +23,7 @@ const DEFAULT_OPTIONS: SmtDivergencePrimitiveOptions = {
   bullishColor: "#22C55E",
   bearishColor: "#EF4444",
   lineWidth: 2,
-  opacity: 0.92,
+  opacity: 1,
   showLabels: true,
   showPivotDots: true,
   labelFontSize: 10,

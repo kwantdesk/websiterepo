@@ -416,7 +416,17 @@ const DEEP_HISTORY_INDICATOR_MAX_BARS = 20_000;
  * stream is still filling in; once it reports ready, a genuinely sparse session
  * is drawn as sparse.
  */
-const CUMULATIVE_DELTA_MINIMUM_COVERAGE = 0.6;
+/**
+ * How much of the tape must carry aggressor volume before CVD is drawn.
+ *
+ * Measured over bars that actually TRADED. A bar with no volume is genuinely
+ * flat rather than missing its flow, and counting those as gaps is why this
+ * threshold used to sit at 60% - which let a series render with four bars in
+ * ten unknown. Cumulative delta across an unknown bar is not flat, it is
+ * unknown, and drawing it flat is the straight line the trader sees while it
+ * loads. Counting only traded bars makes a strict threshold safe.
+ */
+const CUMULATIVE_DELTA_MINIMUM_COVERAGE = 0.95;
 const DEEP_HISTORY_INDICATOR_IDS = new Set([
   "moving-average",
   "volume",
@@ -6244,17 +6254,23 @@ function Chart({
       footprintBarWidthRef.current = null;
     }
   }, [
+    /*
+     * This effect owns whether the candles are painted or transparent, so both
+     * inputs to that decision belong here.
+     *
+     * `candlesVisible` was missing, which is why hiding the candles did
+     * nothing: the prop changed and the effect that acts on it never re-ran.
+     * `resolvedCandleColors` was missing for the same reason - the raw theme
+     * colours were listed instead, so a theme change repainted but choosing a
+     * candle style, colour or scheme did not.
+     */
+    candlesVisible,
+    resolvedCandleColors,
     chartReadyRevision,
     footprintHasPriceLevelFlow,
     footprintIndicator,
     footprintPrimitiveOptions,
     liveFootprintRenderBars,
-    settings.borderDownColor,
-    settings.borderUpColor,
-    settings.downColor,
-    settings.upColor,
-    settings.wickDownColor,
-    settings.wickUpColor,
   ]);
   const ivRankSubscriptions = useMemo(() => indicators.flatMap((instance) => {
     if (!instance.enabled || instance.indicatorId !== "implied-volatility-rank") return [];
@@ -6491,14 +6507,17 @@ function Chart({
     let covered = 0;
     for (let index = 0; index < indicatorCandles.length; index += step) {
       const candle = indicatorCandles[index];
+      // A bar that never traded is legitimately flat, not a bar whose flow is
+      // missing. Counting those as gaps is what forced the old loose
+      // threshold, and the loose threshold is what let a half-built series
+      // paint.
+      if (Number(candle.volume ?? 0) <= 0) continue;
       sampled += 1;
       if (Number(candle.askVolume ?? 0) + Number(candle.bidVolume ?? 0) > 0) covered += 1;
     }
-    if (!sampled) return false;
-    // A session legitimately contains flowless bars (holidays, halts, the
-    // maintenance break), so this is a coverage threshold, not a demand for
-    // every bar.
-    return covered / sampled >= 0.6;
+    // Nothing traded in the window at all: there is no delta to be missing.
+    if (!sampled) return true;
+    return covered / sampled >= CUMULATIVE_DELTA_MINIMUM_COVERAGE;
   }, [indicatorCandles, orderFlowHistoryReady]);
   /**
    * What the order-flow panes are waiting for, or null once they have it.

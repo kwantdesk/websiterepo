@@ -164,7 +164,7 @@ export const DEFAULT_LIQUIDITY_STOP_SWEEP_SETTINGS: LiquidityStopSweepSettings =
   maximumActiveLaneRows: 12,
   minimumLaneScore: 60,
   markerSize: 8,
-  opacity: 78,
+  opacity: 100,
   useThemeColors: true,
   buyColor: "#22D3A7",
   sellColor: "#FF3B78",

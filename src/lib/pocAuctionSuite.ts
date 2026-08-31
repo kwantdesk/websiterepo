@@ -133,7 +133,7 @@ export const DEFAULT_POC_AUCTION_SUITE_SETTINGS: PocAuctionSuiteSettings = {
   auctionTouchToleranceTicks: 0, auctionResolutionMode: "first-touch", minimumTradeThroughTicks: 1, minimumResolutionVolume: 25,
   showHeader: true, showBarPocMarkers: true, showDynamicPocLine: true, showExtendedLevels: true, showAuctionMarkers: true,
   showActiveLane: true, activeLaneWidth: 150, maximumActiveLaneRows: 14, showLowerPane: false,
-  markerSize: 7, lineWidth: 1.5, opacity: 82, useThemeColors: true,
+  markerSize: 7, lineWidth: 1.5, opacity: 100, useThemeColors: true,
   barPocColor: "#22D3EE", sessionPocColor: "#A3E635", nakedPocColor: "#F59E0B", finishedColor: "#A1A1AA",
   unfinishedColor: "#F59E0B", excessHighColor: "#FB7185", excessLowColor: "#22D3A7", neutralColor: "#71717A",
   showLabels: true, showTooltips: true, alertsEnabled: false, alertOnMigration: true, alertOnNewNakedPoc: true, alertOnAuctionClose: true,

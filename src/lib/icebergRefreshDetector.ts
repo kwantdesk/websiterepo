@@ -122,7 +122,7 @@ export const DEFAULT_ICEBERG_REFRESH_SETTINGS: IcebergRefreshSettings = {
   zoneMergeEnabled: true, zoneMergeWindowMs: 1_000, maximumZoneGapTicks: 1,
   postSnapshotWarmupMs: 3_000, baselineWarmupMs: 20_000, staleAfterMs: 5_000, historySeconds: 3_600, maximumCandidates: 1_000, maximumCycles: 5_000,
   showHeader: true, showCycleCells: true, showMarkers: true, showZones: true, showActiveProfile: true, showLabels: true, showTooltips: true, showLowerPane: false,
-  activeProfileWidth: 140, markerSize: 8, opacity: 72, useThemeColors: true,
+  activeProfileWidth: 140, markerSize: 8, opacity: 100, useThemeColors: true,
   bidColor: "#22D3A7", askColor: "#FF3B78", nativeColor: "#A78BFA", exhaustedColor: "#F59E0B", pulledColor: "#FB7185", brokenColor: "#71717A", neutralColor: "#A1A1AA",
   alertsEnabled: false, alertMinimumScore: 75, alertMinimumQuality: 45, alertOnRefresh: false, alertOnSuspected: true, alertOnExhausted: true, alertOnPulled: true, alertOnBroken: true,
 };

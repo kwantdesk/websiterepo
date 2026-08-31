@@ -102,7 +102,7 @@ export const DEFAULT_STACKED_IMBALANCE_SETTINGS: StackedImbalanceSettings = {
   minimumResponseGroups: 2,
   maximumRetestsPerZone: 3,
   minimumBreakCloses: 1,
-  opacity: 74,
+  opacity: 100,
   markerSize: 6,
   activeLaneWidth: 96,
   askColor: "#22D3A7",
