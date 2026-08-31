@@ -6593,9 +6593,24 @@ function WorkspaceChartPaneComponent({
          * before `cachedIsHydrated` sends the fetch anyway, and the live quote
          * stream owns the forming bar regardless.
          */
-        pane.broker === "Databento" || pane.broker === "Market Index"
+        pane.broker === "Databento"
           ? readCompatibleChartHistoryCache(pane.symbol, pane.timeframe)
-          : Promise.resolve(null),
+          /*
+           * The EXACT entry for a cash-index pane, never a resampled one.
+           *
+           * The compatible reader will build a missing timeframe by resampling
+           * a shorter one it already holds - 5m from cached 1m - which is
+           * right for Databento, where the whole series comes from one archive
+           * and is reconciled against it. It is wrong here: those synthetic
+           * bars get merged with the real 5m the route returns, the two do not
+           * land on the same boundaries, and the chart ends up with a slot per
+           * unmatched bar. That is the empty left half with everything
+           * squeezed to the right, and on some intervals a chart that never
+           * settles at all.
+           */
+          : pane.broker === "Market Index"
+            ? readChartHistoryCache(pane.symbol, pane.timeframe)
+            : Promise.resolve(null),
         pane.broker === "Databento" && needsOrderFlowHistory
           ? readExecutionTapeCache(pane.symbol, pane.timeframe)
           : Promise.resolve(null),

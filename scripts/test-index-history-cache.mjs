@@ -35,8 +35,33 @@ const indexBranch = (() => {
 check("an index pane reads the candle cache", () => {
   assert.match(
     workspace,
-    /pane\.broker === "Databento" \|\| pane\.broker === "Market Index"\s*\n\s*\? readCompatibleChartHistoryCache\(pane\.symbol, pane\.timeframe\)/,
+    /pane\.broker === "Market Index"\s*\n\s*\? readChartHistoryCache\(pane\.symbol, pane\.timeframe\)/,
     "the restore path is gated on Databento again",
+  );
+});
+
+check("and reads the EXACT entry, never a resampled one", () => {
+  /*
+   * The compatible reader builds a missing timeframe by resampling a shorter
+   * one it already holds - 5m out of cached 1m. That is right for Databento,
+   * where the series comes from one archive and is reconciled against it, and
+   * wrong here: the synthetic bars get merged with the real 5m the route
+   * returns, the two do not share boundaries, and the chart gets a slot per
+   * unmatched bar. That was an empty left half with the candles squeezed to
+   * the right, and on some intervals a chart that never settled at all.
+   */
+  const start = workspace.indexOf("const loadHistory = async () => {");
+  assert.ok(start > 0, "the restore path is gone");
+  const restore = workspace.slice(start, start + 2000);
+  assert.ok(
+    !/"Market Index"\s*\n?\s*\? readCompatibleChartHistoryCache/.test(restore),
+    "an index pane is resampling another timeframe again",
+  );
+  // Databento must keep it: that is what its five-day backfill check reads.
+  assert.match(
+    restore,
+    /pane\.broker === "Databento"\s*\n\s*\? readCompatibleChartHistoryCache\(pane\.symbol, pane\.timeframe\)/,
+    "the CME path lost its compatible read",
   );
 });
 
