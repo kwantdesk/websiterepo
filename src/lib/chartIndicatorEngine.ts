@@ -590,10 +590,24 @@ function computeIndicatorSeries(
       const filteredDelta = passesFilter ? delta : 0;
       const plottedDelta = dedicatedStudy ? filteredDelta : delta;
       const cumulativeBase = cumulative;
-      const cumulativeOpen = cumulativeBase + relativeOpen;
+      /*
+       * A CVD candle opens where the one before it closed.
+       *
+       * `deltaOpen` is meant to be the delta at the START of the bar, so the
+       * body spans the bar's own flow. Our flow-baked bars store a single
+       * delta and set deltaOpen to deltaClose - which makes open equal close
+       * on EVERY bar: a zero-height body, and `close >= open` true every time,
+       * so every candle painted the ask colour and the study read as one
+       * block. The cumulative line still rose and fell correctly, which is why
+       * it looked like a colour bug rather than a geometry one.
+       *
+       * A bar that carries a genuine intra-bar open keeps it.
+       */
+      const declaredOpen = cumulativeBase + relativeOpen;
       const cumulativeHigh = cumulativeBase + (passesFilter || !dedicatedStudy ? relativeHigh : 0);
       const cumulativeLow = cumulativeBase + (passesFilter || !dedicatedStudy ? relativeLow : 0);
       cumulative = cumulativeBase + plottedDelta;
+      const cumulativeOpen = declaredOpen === cumulative ? cumulativeBase : declaredOpen;
       cumulativeAsk += ask;
       cumulativeBid += bid;
       cumulativeFiltered += filteredDelta;
