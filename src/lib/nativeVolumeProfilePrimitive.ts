@@ -136,6 +136,26 @@ export type NativeVolumeProfileStyle = {
   showValueAreaLines: boolean;
   showText: boolean;
   showPocHighlight: boolean;
+  /**
+   * How solid the POC row's highlight is, 2-100.
+   *
+   * The slider for this existed in the Point of Control tab and was read by
+   * nothing: the fill was hardcoded, so dragging it moved a stored number and
+   * never the chart.
+   */
+  pocHighlightOpacity?: number;
+  /**
+   * Tick grouping for the developing POC trail - DeepChart's ShiftPocTick.
+   *
+   * The POC drifts a tick at a time all session. Grouping it means the trail
+   * only steps when control moves by a size the trader considers a real shift,
+   * so what is left is the migration rather than the noise around it. Both this
+   * and its opacity had controls in the Point of Control tab and were read by
+   * nothing.
+   */
+  shiftedPocTicks?: number;
+  /** How solid that trail is drawn, 2-100. */
+  shiftedPocOpacity?: number;
   showProfileOutline: boolean;
   automaticGrouping: boolean;
   autoGroupFactor: number;
@@ -1268,7 +1288,10 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
             context.lineWidth = 0.35;
             context.stroke(outlinePath);
           }
-          if (style.showPocHighlight) fillPath(pocPath, levelPocColor, 0.72, style.visualStyle, style.borderWidth);
+          if (style.showPocHighlight) {
+            const pocHighlightAlpha = Math.min(1, Math.max(0.02, Number(style.pocHighlightOpacity ?? 72) / 100));
+            fillPath(pocPath, levelPocColor, pocHighlightAlpha, style.visualStyle, style.borderWidth);
+          }
         }
 
         const high = levels.at(-1)?.price ?? null;
@@ -1404,9 +1427,10 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           colour: string,
           width: number,
           dash: number[] = [],
+          alpha = 0.7,
         ) => {
           if (trail.length < 2) return;
-          context.globalAlpha = 0.7;
+          context.globalAlpha = alpha;
           context.strokeStyle = colour;
           context.lineWidth = Math.max(0.5, width);
           context.setLineDash(dash);
@@ -1430,10 +1454,29 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
         };
 
         if (style.showDevelopingPoc && profile.developingPoc.length > 1) {
+          /*
+           * Grouped to the trader's shift size before it is drawn.
+           *
+           * Floored to the same grid the rows use, so a step in the trail lands
+           * on a row boundary rather than between two of them. A grouping of 1
+           * is the identity, which is the untouched behaviour.
+           */
+          const shiftTicks = Math.max(1, Math.round(Number(style.shiftedPocTicks ?? 1)));
+          const trail = withinDevelopingWindow(profile.developingPoc);
+          const grouped = shiftTicks > 1
+            ? trail.map((point) => ({
+              timestamp: point.timestamp,
+              price: volumeProfileBinTick(
+                Math.round(point.price / profile.tickSize), shiftTicks,
+              ) * profile.tickSize,
+            }))
+            : trail;
           drawDevelopingTrail(
-            withinDevelopingWindow(profile.developingPoc),
+            grouped,
             style.pocColor,
             Number(style.pocLineWidth ?? 1),
+            [],
+            Math.min(1, Math.max(0.02, Number(style.shiftedPocOpacity ?? 70) / 100)),
           );
         }
         /*

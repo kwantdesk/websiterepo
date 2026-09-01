@@ -236,6 +236,7 @@
     "test:daily-pnl-day": "node --import ./scripts/alias-hook.mjs scripts/test-daily-pnl-day.mjs",
     "test:desk-session-clock": "node --import ./scripts/alias-hook.mjs scripts/test-desk-session-clock.mjs",
     "test:value-area-rows": "node --import ./scripts/alias-hook.mjs scripts/test-value-area-rows.mjs",
+    "test:volume-profile-settings-live": "node --import ./scripts/alias-hook.mjs scripts/test-volume-profile-settings-live.mjs",
     "test:session-boundaries": "node --import ./scripts/alias-hook.mjs scripts/test-session-boundaries.mjs",
     "test:developing-value-area": "node --import ./scripts/alias-hook.mjs scripts/test-developing-value-area.mjs",
     "test:volume-profile-count": "node --import ./scripts/alias-hook.mjs scripts/test-volume-profile-count.mjs",
