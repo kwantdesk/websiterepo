@@ -101,6 +101,39 @@ check("a tap with a panel open closes the panel", () => {
   );
 });
 
+check("the grab tab stays on screen when the rail slides away", () => {
+  /*
+   * The rail carries its offset as a transform and the tab is a child of it, so
+   * the tab inherited the same transform and slid off with it. A hidden rail
+   * took its own handle away and there was nothing left to bring it back with -
+   * which is a rail that disappears for good.
+   */
+  assert.match(
+    workspace,
+    /const railOffsetPx = railDragPx \?\? \(railHidden \? RAIL_WIDTH_PX : 0\);/,
+    "the rail offset is no longer shared with the tab",
+  );
+  assert.match(
+    workspace,
+    /transform: `translate\(\$\{-railOffsetPx\}px, -50%\)`/,
+    "the tab no longer cancels the rail's transform",
+  );
+  // The vertical centring has to live in the same transform or it is lost.
+  assert.ok(
+    !/w-3\.5 -translate-y-1\/2 touch-none/.test(workspace),
+    "the class-based vertical centring is back and will be overridden",
+  );
+});
+
+check("a state updater is not used to fire another setState", () => {
+  // React may run an updater twice; it has to be pure.
+  const toggle = workspace.slice(workspace.indexOf("const toggleRightPanel ="));
+  assert.ok(
+    !/setRightPanel\(\(current\) => \{[\s\S]{0,400}?setRailHidden/.test(toggle.slice(0, 1200)),
+    "setRailHidden is being called from inside the setRightPanel updater again",
+  );
+});
+
 check("opening a panel brings its own rail back", () => {
   /*
    * A panel cannot be open with the rail it was opened from stranded off
@@ -109,7 +142,7 @@ check("opening a panel brings its own rail back", () => {
   const toggle = workspace.slice(workspace.indexOf("const toggleRightPanel ="));
   assert.match(
     toggle.slice(0, 900),
-    /if \(next\) \{[\s\S]{0,120}?setRailHidden\(false\);/,
+    /const opening = rightPanel !== panel;[\s\S]{0,220}?setRailHidden\(false\);/,
     "opening a panel no longer restores the rail",
   );
 });

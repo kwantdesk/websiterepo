@@ -9955,6 +9955,16 @@ export default function KwantifyWorkspace({
   // Live pixel offset while the tab is being dragged, so the rail tracks the
   // finger instead of snapping when it is released.
   const [railDragPx, setRailDragPx] = useState<number | null>(null);
+  /*
+   * How far the rail is slid off to the right, in pixels.
+   *
+   * The rail carries this as a transform. Its grab tab is a child, so the tab
+   * inherited the same transform and slid away with it - a hidden rail took its
+   * own handle off screen and there was nothing left to bring it back with. The
+   * tab cancels this out below so it always sits at the edge, whatever the rail
+   * is doing.
+   */
+  const railOffsetPx = railDragPx ?? (railHidden ? RAIL_WIDTH_PX : 0);
   const railDragRef = useRef<{ startX: number; startHidden: boolean } | null>(null);
   const [friendsInitialFriendId, setFriendsInitialFriendId] = useState("");
   const [lastOpenRightPanel, setLastOpenRightPanel] = useState<RightPanel>("watchlist");
@@ -16225,21 +16235,22 @@ export default function KwantifyWorkspace({
       setRightPanelWidth((current) => Math.max(360, current));
     }
     if (panel === "messages") setFriendsInitialFriendId("");
-    setRightPanel((current) => {
-      const next = current === panel ? null : panel;
-      /*
-       * A panel cannot be open with its own rail hidden.
-       *
-       * The rail is where the panel was opened from and where it is closed
-       * again; leaving it stranded off screen means the watchlist appears with
-       * nothing to dismiss it from. Opening always brings the rail back.
-       */
-      if (next) {
-        setRailHidden(false);
-        try { window.localStorage.setItem(RAIL_HIDDEN_STORAGE_KEY, "0"); } catch { /* preference only */ }
-      }
-      return next;
-    });
+    /*
+     * A panel cannot be open with its own rail hidden.
+     *
+     * The rail is where the panel was opened from and where it is closed again;
+     * leaving it stranded off screen means the watchlist appears with nothing to
+     * dismiss it from. Opening always brings the rail back.
+     *
+     * Decided out here rather than inside the updater: a state updater has to be
+     * pure, and React is free to run it twice.
+     */
+    const opening = rightPanel !== panel;
+    setRightPanel(opening ? panel : null);
+    if (opening) {
+      setRailHidden(false);
+      try { window.localStorage.setItem(RAIL_HIDDEN_STORAGE_KEY, "0"); } catch { /* preference only */ }
+    }
   };
 
   useEffect(() => {
@@ -21047,8 +21058,8 @@ export default function KwantifyWorkspace({
           // While dragging, follow the finger. Otherwise rest at one end or the
           // other. The margin is what stops a hidden rail leaving a 44px gutter
           // of empty panel behind it — the chart takes the space back.
-          transform: `translateX(${railDragPx ?? (railHidden ? RAIL_WIDTH_PX : 0)}px)`,
-          marginRight: `-${railDragPx ?? (railHidden ? RAIL_WIDTH_PX : 0)}px`,
+          transform: `translateX(${railOffsetPx}px)`,
+          marginRight: `-${railOffsetPx}px`,
           transition: railDragPx == null ? "transform 180ms ease, margin-right 180ms ease" : "none",
         }}
       >
@@ -21090,7 +21101,16 @@ export default function KwantifyWorkspace({
               : rightPanel ? `Close ${railPanelLabel(rightPanel)}` : "Hide the side rail"}
             // Taller and a touch wider than it was: on a phone this is the only
             // thing to aim at, and a 3px strip is not a touch target.
-            className="absolute -left-3 top-1/2 z-20 flex h-20 w-3.5 -translate-y-1/2 touch-none select-none items-center justify-center rounded-l-full border border-r-0 border-border bg-panel text-muted shadow-lg transition-colors hover:bg-surface hover:text-foreground"
+            /*
+             * Counter-translated so it stays at the screen edge while the rail
+             * slides behind it. The vertical centring moves into the same
+             * transform because a style transform replaces the class one.
+             */
+            style={{
+              transform: `translate(${-railOffsetPx}px, -50%)`,
+              transition: railDragPx == null ? "transform 180ms ease" : "none",
+            }}
+            className="absolute -left-3 top-1/2 z-20 flex h-20 w-3.5 touch-none select-none items-center justify-center rounded-l-full border border-r-0 border-border bg-panel text-muted shadow-lg transition-colors hover:bg-surface hover:text-foreground"
           >
             <ChevronLeft className={`h-3 w-3 transition-transform ${railHidden ? "rotate-180" : ""}`} />
           </button>
