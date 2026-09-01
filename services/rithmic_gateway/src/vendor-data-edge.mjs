@@ -56,6 +56,24 @@ function bufferedResponseHeaders(upstream, extra = {}) {
   return headers;
 }
 
+/** Identical path AND identical body, so one ticker never serves another. */
+export function quantDataCacheKey(path, body) {
+  return createHash("sha256").update(path).update(body).digest("hex");
+}
+
+// The provider names its own retry window. Bounded either way: never long
+// enough to strand a surface, never so short that the herd returns instantly.
+export const MIN_QUANTDATA_REFUSAL_HOLD_MS = 1_000;
+export const MAX_QUANTDATA_REFUSAL_HOLD_MS = 10_000;
+
+export function quantDataRefusalHoldMs(headers) {
+  const seconds = Number(headers?.get?.("retry-after"));
+  const named = Number.isFinite(seconds) && seconds > 0
+    ? seconds * 1_000
+    : MIN_QUANTDATA_REFUSAL_HOLD_MS;
+  return Math.min(MAX_QUANTDATA_REFUSAL_HOLD_MS, Math.max(MIN_QUANTDATA_REFUSAL_HOLD_MS, named));
+}
+
 export function rollingDatabentoCacheKey(path, body) {
   if (path !== "/v0/timeseries.get_range" || !body?.length) return null;
   const params = new URLSearchParams(body.toString("utf8"));
@@ -85,6 +103,7 @@ export class VendorDataEdge {
     this.databentoCache = new Map();
     this.databentoInFlight = new Map();
     this.quantDataCache = new Map();
+    this.quantDataInFlight = new Map();
     this.quantDataNextStartAt = 0;
     this.metrics = {
       databentoRequests: 0,
@@ -92,6 +111,7 @@ export class VendorDataEdge {
       databentoCoalescedRequests: 0,
       quantDataRequests: 0,
       quantDataCacheHits: 0,
+      quantDataCoalescedRequests: 0,
       massiveRequests: 0,
       lastDatabentoAt: null,
       lastQuantDataAt: null,
@@ -249,7 +269,7 @@ export class VendorDataEdge {
     if (request.method !== "POST") throw Object.assign(new Error("Method not allowed."), { status: 405 });
     const path = gatewayPath(url.pathname, "/v1/vendors/quantdata", SAFE_QUANTDATA_PATH);
     const body = await requestBody(request);
-    const cacheKey = createHash("sha256").update(path).update(body).digest("hex");
+    const cacheKey = quantDataCacheKey(path, body);
     const cached = this.quantDataCache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) {
       this.metrics.quantDataCacheHits += 1;
@@ -258,6 +278,33 @@ export class VendorDataEdge {
       return;
     }
 
+    /*
+     * Collapse identical concurrent requests into one upstream call, the way
+     * the Databento lane already did.
+     *
+     * The cache alone cannot help a thundering herd, because it is only
+     * populated once a response ARRIVES: every pane that asks during the same
+     * in-flight window is a cache miss and its own upstream request. A desk
+     * opens six panes on the same few underlyings and they all refresh
+     * together at the bell, which is how a single user exhausts a 240
+     * request/minute quota. Measured during that outage: x-ratelimit-remaining
+     * was 0 and every GEX surface answered 429, so GEX Map and GEX VUE simply
+     * stopped updating.
+     */
+    let pending = this.quantDataInFlight.get(cacheKey);
+    if (!pending) {
+      pending = this.#fetchBufferedQuantData(path, request.headers, body, cacheKey)
+        .finally(() => this.quantDataInFlight.delete(cacheKey));
+      this.quantDataInFlight.set(cacheKey, pending);
+    } else {
+      this.metrics.quantDataCoalescedRequests += 1;
+    }
+    const entry = await pending;
+    response.writeHead(entry.status, entry.headers);
+    response.end(entry.body);
+  }
+
+  async #fetchBufferedQuantData(path, requestHeaders, body, cacheKey) {
     const now = Date.now();
     const startAt = Math.max(now, this.quantDataNextStartAt);
     this.quantDataNextStartAt = startAt + this.config.quantDataMinSpacingMs;
@@ -271,7 +318,7 @@ export class VendorDataEdge {
         method: "POST",
         headers: {
           Authorization: `Bearer ${this.config.quantDataApiKey}`,
-          "Content-Type": request.headers["content-type"] || "application/json",
+          "Content-Type": requestHeaders["content-type"] || "application/json",
           Accept: "application/json",
         },
         body,
@@ -304,14 +351,35 @@ export class VendorDataEdge {
         headers,
         body: payload,
       });
-      if (this.quantDataCache.size > 2_000) {
-        for (const [key, value] of this.quantDataCache) {
-          if (value.expiresAt <= Date.now()) this.quantDataCache.delete(key);
-        }
-      }
+      this.#pruneQuantDataCache();
+    } else if (upstream.status === 429) {
+      /*
+       * Hold a refusal for the window the provider itself named.
+       *
+       * Only successes were cached, so while the quota was exhausted every
+       * repeat request went upstream again and spent more of the quota being
+       * refused - the hole digs itself deeper exactly when it most needs to
+       * stop. Serving the provider's own 429 back for its own retry-after is
+       * honest (the desk IS rate limited, and the response says so), and it
+       * is what lets the window recover. Bounded so a malformed or hostile
+       * retry-after cannot strand the surface.
+       */
+      this.quantDataCache.set(cacheKey, {
+        expiresAt: Date.now() + quantDataRefusalHoldMs(upstream.headers),
+        status: upstream.status,
+        headers,
+        body: payload,
+      });
+      this.#pruneQuantDataCache();
     }
-    response.writeHead(upstream.status, headers);
-    response.end(payload);
+    return { status: upstream.status, headers, body: payload };
+  }
+
+  #pruneQuantDataCache() {
+    if (this.quantDataCache.size <= 2_000) return;
+    for (const [key, value] of this.quantDataCache) {
+      if (value.expiresAt <= Date.now()) this.quantDataCache.delete(key);
+    }
   }
 
   async #massive(request, response, url) {
