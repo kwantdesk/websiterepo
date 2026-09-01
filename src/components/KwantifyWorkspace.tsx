@@ -16241,13 +16241,25 @@ export default function KwantifyWorkspace({
       if (!origin) return;
       const delta = endEvent.clientX - origin.startX;
       if (Math.abs(delta) < 4) {
-        // A tap, not a drag.
-        setRailHidden((current) => {
-          const next = !current;
-          try { window.localStorage.setItem(RAIL_HIDDEN_STORAGE_KEY, next ? "1" : "0"); } catch { /* preference only */ }
-          return next;
-        });
-        if (railHidden || rightPanel) return;
+        /*
+         * A tap, not a drag - and the two states mean different things, which
+         * this used to run together.
+         *
+         * It toggled `railHidden` unconditionally and THEN decided whether to
+         * reopen a panel, reading the pre-toggle value to do it. So tapping the
+         * tab to bring the watchlist back hid the rail in the same gesture: the
+         * panel opened and the rail it was opened from slid off screen.
+         *
+         * The tab's own wording is the spec. Hidden: "tap to bring the rail
+         * back". Showing: "drag right to hide the rail, or reopen X" - so a tap
+         * while it is showing asks for the panel, and only a DRAG hides.
+         */
+        if (railHidden) {
+          setRailHidden(false);
+          try { window.localStorage.setItem(RAIL_HIDDEN_STORAGE_KEY, "0"); } catch { /* preference only */ }
+          return;
+        }
+        if (rightPanel) return;
         reopenRightPanel();
         return;
       }
