@@ -63,18 +63,6 @@ export function zoomScaledVolumeProfileWidth({
   visibleLogicalTo: number;
   referenceLogicalBars: number;
   widthPercent: number;
-  /**
-   * DeepChart's Plot Width/Offset tab: the CURRENT profile and the completed
-   * ones behind it are sized and nudged independently.
-   *
-   * `widthPercent` is the current profile's width and stays the fallback for
-   * both, so a chart that has never touched these draws exactly as it did.
-   * Offsets are in pixels and shift a profile along the time axis - what a desk
-   * uses to lift the live profile clear of the bars it is measuring.
-   */
-  previousWidthPercent?: number;
-  currentOffsetPx?: number;
-  previousOffsetPx?: number;
   maxPaneFraction?: number;
 }) {
   const visibleLogicalSpan = Math.abs(visibleLogicalTo - visibleLogicalFrom);
@@ -129,6 +117,18 @@ export type NativeVolumeProfileStyle = {
   mode: "volume" | "delta-volume" | "bid-ask" | "delta" | "delta-percentage";
   widthBasis: "chart" | "session";
   widthPercent: number;
+  /**
+   * DeepChart's Plot Width/Offset tab: the CURRENT profile and the completed
+   * ones behind it are sized and nudged independently.
+   *
+   * `widthPercent` is the current profile's width and stays the fallback for
+   * both, so a chart that has never touched these draws exactly as it did.
+   * Offsets are in pixels and shift a profile along the time axis - what a desk
+   * uses to lift the live profile clear of the bars it is measuring.
+   */
+  previousWidthPercent?: number;
+  currentOffsetPx?: number;
+  previousOffsetPx?: number;
   opacity: number;
   positiveDeltaColor: string;
   negativeDeltaColor: string;
