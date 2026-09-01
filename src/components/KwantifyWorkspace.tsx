@@ -261,6 +261,7 @@ import {
   updatePaperOrderPrice,
   updatePaperOrderProtection,
   processPaperQuote,
+  reconcilePaperOrdersAgainstBars,
   resetPaperAccountLedger,
   savePaperTradingLedger,
   snapPaperPrice,
@@ -12334,6 +12335,65 @@ export default function KwantifyWorkspace({
       syncPaperLedgerUi(executionChanged);
     }
   }, [paperTradingAccounts, schedulePaperJournalSync, syncPaperLedgerUi, watchlist]);
+
+  /*
+   * Resting orders reconciled against the bars, not only against the quotes.
+   *
+   * A quote-driven fill is correct only while every quote arrives. Leave the
+   * tab and the browser throttles its timers to roughly one a minute, and each
+   * wake carries the latest price only - so a limit touched for two minutes an
+   * hour ago is never seen, and the trader comes back to a working order beside
+   * a chart that plainly traded through it.
+   *
+   * Bars carry the range actually traversed, so this catches exactly what the
+   * samples missed. It runs when the tab comes back and on a slow timer, and
+   * does nothing at all unless orders are resting.
+   */
+  useEffect(() => {
+    if (!paperTradingAccounts.length) return;
+    let cancelled = false;
+
+    const reconcile = async () => {
+      const ledger = paperLedgerRef.current;
+      const symbols = new Set<string>();
+      for (const account of Object.values(ledger.accounts)) {
+        for (const order of account.orders) {
+          if (order.status === "working" && order.price != null) symbols.add(order.symbol);
+        }
+      }
+      if (!symbols.size) return;
+      let next = ledger;
+      for (const symbol of symbols) {
+        // Minute bars, because a resting order needs the finest range we hold.
+        const cached = await readCompatibleChartHistoryCache(symbol, "1m").catch(() => null);
+        if (cancelled || !cached?.candles.length) continue;
+        next = reconcilePaperOrdersAgainstBars(
+          next,
+          paperTradingAccounts,
+          symbol,
+          cached.candles.map((candle) => ({
+            timestamp: candle.timestamp, high: candle.high, low: candle.low,
+          })),
+          { executionAuthorized: true },
+        );
+      }
+      if (cancelled || next === paperLedgerRef.current) return;
+      const executionChanged = paperLedgerExecutionShapeChanged(paperLedgerRef.current, next);
+      paperLedgerRef.current = next;
+      if (executionChanged) schedulePaperJournalSync();
+      syncPaperLedgerUi(executionChanged);
+    };
+
+    const onVisible = () => { if (document.visibilityState === "visible") void reconcile(); };
+    document.addEventListener("visibilitychange", onVisible);
+    void reconcile();
+    const timer = window.setInterval(() => void reconcile(), 60_000);
+    return () => {
+      cancelled = true;
+      document.removeEventListener("visibilitychange", onVisible);
+      window.clearInterval(timer);
+    };
+  }, [paperTradingAccounts, schedulePaperJournalSync, syncPaperLedgerUi]);
 
   useEffect(() => {
     const handleStorage = (event: StorageEvent) => {

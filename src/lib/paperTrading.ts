@@ -1815,3 +1815,85 @@ export function summarizePaperAccount(
     winRate: closedTrades ? wins / closedTrades * 100 : 0,
   };
 }
+
+/** A bar, reduced to what a resting order needs from it. */
+export type PaperReconcileBar = {
+  timestamp: number;
+  high: number;
+  low: number;
+};
+
+/**
+ * Fills resting orders the live quote stream never saw hit.
+ *
+ * `processPaperQuote` compares a resting order against ONE quote, which is
+ * correct only if every quote is delivered. A backgrounded tab has its timers
+ * throttled to roughly one a minute and each wake delivers the latest price
+ * only, so a limit touched for two minutes an hour ago is never observed: the
+ * trader comes back to a working order beside a chart that plainly traded
+ * through it. That is the reported bug, and no amount of quote handling fixes
+ * it, because the crossing is simply not in the samples.
+ *
+ * A bar's high and low ARE the range traversed, so they see what the samples
+ * missed. This is the same reconciliation a broker performs against the tape.
+ *
+ * Deliberate rules:
+ *
+ *   - Only bars that OPENED after the order was placed. The bar containing the
+ *     placement carries price action from before the order existed, and filling
+ *     from that would be inventing a fill out of the past.
+ *   - The fill is at the order's own price. A limit cannot do worse than its
+ *     limit and a stop is modelled at its trigger; guessing slippage here would
+ *     be fabricating an execution price nobody quoted.
+ *   - The EARLIEST crossing bar wins, so the fill lands where it happened
+ *     rather than where the reconciliation happened to run.
+ */
+export function reconcilePaperOrdersAgainstBars(
+  ledger: PaperTradingLedger,
+  accounts: PaperTradingAccountRecord[],
+  symbol: string,
+  bars: readonly PaperReconcileBar[],
+  options: { executionAuthorized?: boolean } = {},
+): PaperTradingLedger {
+  if (options.executionAuthorized !== true || !bars.length) return ledger;
+  const normalizedSymbol = normalizePaperSymbol(symbol);
+  const usable = bars.filter((bar) =>
+    Number.isFinite(bar.timestamp) && Number.isFinite(bar.high) && Number.isFinite(bar.low)
+    && bar.high >= bar.low && bar.high > 0);
+  if (!usable.length) return ledger;
+
+  let changed = false;
+  const nextAccounts = { ...ledger.accounts };
+  for (const [accountId, original] of Object.entries(ledger.accounts)) {
+    const accountRecord = accounts.find((candidate) => candidate.id === accountId);
+    if (!accountRecord) continue;
+    let account = original;
+    const resting = original.orders.filter((order) =>
+      order.status === "working"
+      && order.price != null
+      && (order.type === "limit" || order.type === "stop")
+      && normalizePaperSymbol(order.symbol) === normalizedSymbol);
+
+    for (const order of resting) {
+      const limit = order.price as number;
+      const crossed = usable.find((bar) => {
+        if (bar.timestamp <= order.createdAt) return false;
+        if (order.type === "limit") {
+          return order.side === "buy" ? bar.low <= limit : bar.high >= limit;
+        }
+        return order.side === "buy" ? bar.high >= limit : bar.low <= limit;
+      });
+      if (!crossed) continue;
+      account = createEntryPosition(
+        account,
+        order,
+        snapPaperPrice(order.symbol, limit),
+        crossed.timestamp,
+        parseLeverage(accountRecord.leverage),
+      );
+      changed = true;
+    }
+    if (account !== original) nextAccounts[accountId] = account;
+  }
+  return changed ? { ...ledger, accounts: nextAccounts } : ledger;
+}
