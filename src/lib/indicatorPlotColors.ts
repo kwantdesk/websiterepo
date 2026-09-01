@@ -409,6 +409,27 @@ export function applyIndicatorPlotColors<
       };
     });
   }
+  /*
+   * In theme mode the stored colours are not choices, so they must not apply.
+   *
+   * A study that plots one series carries one colour setting, and a study that
+   * paints its bars by direction carries per-point colours. Where both are
+   * true, the single setting was being pushed into BOTH directions below -
+   * `up ?? color`, `down ?? color` - so every rising and falling bar collapsed
+   * onto the same colour. Eight studies did this: CVD and its three delta
+   * variants, Volume, Delta Bar, the MACD histogram and the Awesome
+   * Oscillator.
+   *
+   * It was invisible to every colour-layer check because the colour APPLIED
+   * was correct; there was simply only ever one of it. And it was invisible in
+   * a settings dialog too, because with the theme driving them those values
+   * are defaults nobody chose.
+   *
+   * Picking a colour sets `useThemeColors: false`, which is what makes a
+   * deliberate choice reach the bars - the behaviour that put this line here.
+   * A scheme still outranks both and is handled above.
+   */
+  if (settings.useThemeColors !== false) return series;
   const pick = (key: string) => {
     const value = settings[key];
     return typeof value === "string" && value.trim() ? value : null;
