@@ -63,11 +63,6 @@ check("a tap with the rail showing and nothing open reopens the last panel", () 
   );
 });
 
-check("the preference is still written when it changes", () => {
-  // The rail has to come back hidden or showing the way it was left.
-  assert.match(tapHandler, /window\.localStorage\.setItem\(RAIL_HIDDEN_STORAGE_KEY, "0"\)/);
-});
-
 check("dragging still hides it", () => {
   /*
    * The tap is not the only gesture. A drag past the commit distance is what
@@ -145,6 +140,34 @@ check("opening a panel brings its own rail back", () => {
     /const opening = rightPanel !== panel;[\s\S]{0,220}?setRailHidden\(false\);/,
     "opening a panel no longer restores the rail",
   );
+});
+
+check("the rail always starts visible", () => {
+  /*
+   * The failure mode that outlived three fixes: hidden persisted, so every
+   * reload restored a rail that was off screen, and every route back to it was
+   * part of the thing that had disappeared. A control whose hidden state cannot
+   * be recovered is worse than one that forgets.
+   */
+  assert.match(
+    workspace,
+    /useEffect\(\(\) => \{[\s\S]{0,40}?setRailHidden\(false\);/,
+    "the rail no longer forces itself visible on mount",
+  );
+  assert.match(
+    workspace,
+    /window\.localStorage\.removeItem\(RAIL_HIDDEN_STORAGE_KEY\)/,
+    "a browser still carrying the old hidden preference is not cleared",
+  );
+  assert.ok(
+    !/getItem\(RAIL_HIDDEN_STORAGE_KEY\) === "1"/.test(workspace),
+    "the hidden state is being restored from storage again",
+  );
+});
+
+check("hiding is still possible within a session", () => {
+  // The gesture stays; only its persistence is gone.
+  assert.match(workspace, /setRailHidden\(next\);/, "drag-to-hide was removed rather than made non-persistent");
 });
 
 check("the tab says what it will do", () => {

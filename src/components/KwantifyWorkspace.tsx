@@ -16253,11 +16253,26 @@ export default function KwantifyWorkspace({
     }
   };
 
+  /*
+   * The rail always starts visible, and a hidden state is never restored.
+   *
+   * Hiding it is still a gesture within a session - drag it away and it stays
+   * away until reload. What it can no longer do is survive a reload, because
+   * that is what turned "I slid it off" into "my sidebar is gone" across three
+   * separate attempts to fix the recovery path: the rail was off screen, the
+   * preference brought it back off screen every load, and every route back was
+   * itself part of the thing that had disappeared.
+   *
+   * A workspace control whose hidden state cannot be recovered is worse than
+   * one that forgets, so it forgets. The stored key is cleared rather than
+   * ignored, so a browser carrying "1" from before this stops fighting it.
+   */
   useEffect(() => {
+    setRailHidden(false);
     try {
-      setRailHidden(window.localStorage.getItem(RAIL_HIDDEN_STORAGE_KEY) === "1");
+      window.localStorage.removeItem(RAIL_HIDDEN_STORAGE_KEY);
     } catch {
-      // A rail that cannot read its own preference still has to render.
+      // A rail that cannot clear its own preference still has to render.
     }
   }, []);
 
