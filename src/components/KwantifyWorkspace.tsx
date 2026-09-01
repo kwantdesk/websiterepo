@@ -555,6 +555,28 @@ const BOTTOM_PANEL_DEFAULT_HEIGHT = 300;
 const BOTTOM_PANEL_COLLAPSED_HEIGHT = 40;
 const BOTTOM_PANEL_COLLAPSE_SNAP_HEIGHT = 72;
 const CHART_TOP_BAR_HEIGHT = 40;
+/**
+ * A right panel's name as a person would say it.
+ *
+ * The rail tab announces what its tap will do, and "Close optionstape" is not
+ * what anybody calls that panel.
+ */
+const RAIL_PANEL_LABELS: Record<string, string> = {
+  alertslog: "Alerts Log",
+  gex: "Live GEX",
+  zyon: "ZYON",
+  kwantbot: "Kwant Bot",
+  optionstape: "Options Tape",
+  friends: "Friends",
+  messages: "Messages",
+  watchlist: "Watchlist",
+  order: "Trade",
+};
+
+function railPanelLabel(panel: string): string {
+  return RAIL_PANEL_LABELS[panel] ?? panel.charAt(0).toUpperCase() + panel.slice(1);
+}
+
 const RIGHT_PANEL_MIN_WIDTH = 64;
 const RIGHT_PANEL_MAX_WIDTH = 1600;
 // The icon rail's own width, and the key that remembers whether it is tucked
@@ -16203,7 +16225,21 @@ export default function KwantifyWorkspace({
       setRightPanelWidth((current) => Math.max(360, current));
     }
     if (panel === "messages") setFriendsInitialFriendId("");
-    setRightPanel((current) => current === panel ? null : panel);
+    setRightPanel((current) => {
+      const next = current === panel ? null : panel;
+      /*
+       * A panel cannot be open with its own rail hidden.
+       *
+       * The rail is where the panel was opened from and where it is closed
+       * again; leaving it stranded off screen means the watchlist appears with
+       * nothing to dismiss it from. Opening always brings the rail back.
+       */
+      if (next) {
+        setRailHidden(false);
+        try { window.localStorage.setItem(RAIL_HIDDEN_STORAGE_KEY, "0"); } catch { /* preference only */ }
+      }
+      return next;
+    });
   };
 
   useEffect(() => {
@@ -16259,7 +16295,11 @@ export default function KwantifyWorkspace({
           try { window.localStorage.setItem(RAIL_HIDDEN_STORAGE_KEY, "0"); } catch { /* preference only */ }
           return;
         }
-        if (rightPanel) return;
+        // A panel is open: the tap is asking to put it away.
+        if (rightPanel) {
+          setRightPanel(null);
+          return;
+        }
         reopenRightPanel();
         return;
       }
@@ -21013,9 +21053,21 @@ export default function KwantifyWorkspace({
         }}
       >
         <span aria-hidden="true" className="pointer-events-none absolute inset-x-0 top-14 z-10 h-px -translate-y-px bg-border" />
-        {(railHidden || !rightPanel) && (
+        {/*
+          * Always rendered.
+          *
+          * It used to be hidden whenever a panel was open - exactly when it is
+          * most wanted, because that is the state you need to get out of. With
+          * a panel open it closes the panel; otherwise it is the rail's own
+          * show/hide handle.
+          */}
+        {(
           <button
-            title={railHidden ? "Drag out or tap to bring the rail back" : `Drag right to hide the rail, or reopen ${
+            title={railHidden
+              ? "Drag out or tap to bring the rail back"
+              : rightPanel
+                ? `Close ${railPanelLabel(rightPanel)}`
+                : `Drag right to hide the rail, or reopen ${
               lastOpenRightPanel === "alertslog"
                 ? "Alerts Log"
                 : lastOpenRightPanel === "gex"
@@ -21033,7 +21085,9 @@ export default function KwantifyWorkspace({
                   : lastOpenRightPanel.charAt(0).toUpperCase() + lastOpenRightPanel.slice(1)
             }`}
             onPointerDown={beginRailDrag}
-            aria-label={railHidden ? "Show the side rail" : "Hide the side rail"}
+            aria-label={railHidden
+              ? "Show the side rail"
+              : rightPanel ? `Close ${railPanelLabel(rightPanel)}` : "Hide the side rail"}
             // Taller and a touch wider than it was: on a phone this is the only
             // thing to aim at, and a 3px strip is not a touch target.
             className="absolute -left-3 top-1/2 z-20 flex h-20 w-3.5 -translate-y-1/2 touch-none select-none items-center justify-center rounded-l-full border border-r-0 border-border bg-panel text-muted shadow-lg transition-colors hover:bg-surface hover:text-foreground"

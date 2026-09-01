@@ -50,12 +50,15 @@ check("a tap on a hidden rail brings it back and stops there", () => {
   assert.match(hiddenBranch.slice(0, 260), /return;/, "the hidden branch does not stop");
 });
 
-check("a tap with the rail showing asks for the panel, not for the rail to go", () => {
-  assert.match(tapHandler, /if \(rightPanel\) return;\s*\n\s*reopenRightPanel\(\);/);
-  // And nothing in the tap path hides a rail that is already showing.
-  const afterHiddenBranch = tapHandler.slice(tapHandler.indexOf("if (rightPanel) return;"));
+check("a tap with the rail showing and nothing open reopens the last panel", () => {
+  assert.match(tapHandler, /reopenRightPanel\(\);/, "the tap no longer reopens the last panel");
+  /*
+   * And nothing in the tap path hides a rail that is already showing. Hiding
+   * is a DRAG - a tap that hid the rail is what took it away when the
+   * watchlist was opened.
+   */
   assert.ok(
-    !/setRailHidden\(true\)/.test(afterHiddenBranch),
+    !/setRailHidden\(true\)/.test(tapHandler),
     "a tap can still hide a rail that was showing",
   );
 });
@@ -77,12 +80,44 @@ check("dragging still hides it", () => {
   );
 });
 
-check("the tab is reachable in both states", () => {
+check("the tab is there in EVERY state", () => {
   /*
-   * It renders when the rail is hidden, or when nothing is open. If it only
-   * rendered in one of those, a rail could be hidden with no way back.
+   * It used to be hidden whenever a panel was open - which is exactly when it
+   * is most wanted, because that is the state you need to get out of. With the
+   * watchlist open there was no control to put it away and no rail visible to
+   * put it away from.
    */
-  assert.match(workspace, /\{\(railHidden \|\| !rightPanel\) && \(/, "the rail tab's visibility rule changed");
+  assert.ok(
+    !/\{\(railHidden \|\| !rightPanel\) && \(/.test(workspace),
+    "the rail tab is conditional on no panel being open again",
+  );
+});
+
+check("a tap with a panel open closes the panel", () => {
+  assert.match(
+    tapHandler,
+    /if \(rightPanel\) \{[\s\S]{0,80}?setRightPanel\(null\);/,
+    "the tab no longer closes an open panel",
+  );
+});
+
+check("opening a panel brings its own rail back", () => {
+  /*
+   * A panel cannot be open with the rail it was opened from stranded off
+   * screen - that is the state with no way out.
+   */
+  const toggle = workspace.slice(workspace.indexOf("const toggleRightPanel ="));
+  assert.match(
+    toggle.slice(0, 900),
+    /if \(next\) \{[\s\S]{0,120}?setRailHidden\(false\);/,
+    "opening a panel no longer restores the rail",
+  );
+});
+
+check("the tab says what it will do", () => {
+  // "Close optionstape" is not what anybody calls that panel.
+  assert.match(workspace, /function railPanelLabel\(panel: string\): string/);
+  assert.match(workspace, /\? `Close \$\{railPanelLabel\(rightPanel\)\}`/, "the tab still claims to hide the rail while a panel is open");
 });
 
 console.log(`\nside rail tap: ${passed}/${passed} checks passed`);
