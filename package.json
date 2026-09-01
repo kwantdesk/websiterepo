@@ -175,6 +175,7 @@
     "test:footprint-bar-width": "node scripts/test-footprint-bar-width.mjs",
     "test:footprint-palette": "node scripts/test-footprint-palette.mjs",
     "test:footprint-flow-coverage": "node scripts/test-footprint-flow-coverage.mjs",
+    "test:volume-profile-session-selection": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-volume-profile-session-selection.mjs",
     "test:chart-watermark": "node scripts/test-chart-watermark.mjs",
     "test:desktop-auth": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/test-desktop-auth-protocol.mjs && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-desktop-auth-service.mjs && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-desktop-auth-http.mjs && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-desktop-auth-revocations.mjs && node scripts/test-desktop-auth-migration.mjs && node --test services/rithmic_gateway/test/desktop-ticket-verifier.test.mjs",
     "research:gexmap-vs-trinity": "node scripts/compare-gexmap-vs-trinity-scope.mjs",

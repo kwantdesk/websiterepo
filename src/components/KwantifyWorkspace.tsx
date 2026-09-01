@@ -8784,14 +8784,30 @@ function WorkspaceChartPaneComponent({
       let currentDailyProfileLoaded = !dailyProfileInstance;
       if (dailyProfileInstance) {
         const dailyFilterMode = sessionFilterModeFor(dailyProfileSettings);
-        const dailySplits = dailySessionSplitsFor(dailyProfileSettings);
+        const requestedSplits = dailySessionSplitsFor(dailyProfileSettings);
         const segmentsByDate = new Map<string, ReturnType<typeof sessionSegmentsForTradingDate>>();
         tradingDates.forEach((tradingDate) => {
           segmentsByDate.set(
             tradingDate,
-            dailySplits ? sessionSegmentsForTradingDate(tradingDate, dailyProfileSettings) : [],
+            requestedSplits ? sessionSegmentsForTradingDate(tradingDate, dailyProfileSettings) : [],
           );
         });
+        /*
+         * A split that resolves to no window at all draws the whole day, not
+         * nothing.
+         *
+         * Every session unticked - reachable from a saved workspace, or from
+         * settings edited directly - left `drawnSessionIds` empty, and the
+         * prune below then removed every daily profile on the chart while no
+         * request was issued to replace them. The study vanished, which reads
+         * as broken rather than as a choice. An empty selection is not an
+         * instruction to draw nothing.
+         */
+        const dailySplits = requestedSplits
+          && [...segmentsByDate.values()].some((segments) => segments.length > 0);
+        if (requestedSplits && !dailySplits) {
+          for (const tradingDate of tradingDates) segmentsByDate.set(tradingDate, []);
+        }
         // Unticking a session has to take its profile OFF the chart.
         // replaceExactProfile only ever adds or replaces by identity, so a
         // window that is no longer requested was simply never revisited and
@@ -17666,7 +17682,7 @@ export default function KwantifyWorkspace({
         return <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-gamma`} label="Gamma"><GammaWorkspace /></WorkspaceFailureBoundary>;
       case "gexmap": {
         const gexMarket = ["ES", "MES"].includes(normalizePaperSymbol(pane.symbol)) ? "ES" : "NQ";
-        return <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-gexmap-${gexMarket}`} label="GEX Map"><GexMapWorkspace key={`${pane.id}-${gexMarket}`} market={gexMarket} persistedState={pane.gexMapState ?? null} onStateChange={(state) => {
+        return <WorkspaceFailureBoundary resetKey={`workspace-${pane.id}-gexmap-${gexMarket}`} label="GEX Map"><GexMapWorkspace key={`${pane.id}-${gexMarket}`} market={gexMarket} enableDealerModel persistedState={pane.gexMapState ?? null} onStateChange={(state) => {
           setWorkspacePanes((current) => current.map((candidate) => {
             if (candidate.id !== pane.id) return candidate;
             if (JSON.stringify(candidate.gexMapState) === JSON.stringify(state)) return candidate;
@@ -19858,13 +19874,6 @@ export default function KwantifyWorkspace({
             ) : null}
             {bottomWorkspaceSection === "gexmap" ? (
                 <WorkspaceFailureBoundary resetKey="gexmap" label="GEX Map">
-                  {/*
-                    * The standalone page is the only place the dealer model is
-                    * offered. The GEX Map panels embedded in GEX VUE sit beside
-                    * charts and replay, where a panel that could silently be
-                    * showing a different measurement than the one next to it is
-                    * worse than one that cannot.
-                    */}
                   <GexMapWorkspace enableDealerModel />
                 </WorkspaceFailureBoundary>
             ) : null}

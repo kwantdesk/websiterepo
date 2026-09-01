@@ -104,6 +104,12 @@ export type GexMapEmbedState = {
   stepMinutes: number;
   expiryScope: GexMapExpiryScope;
   representation: GexMapRepresentation;
+  /*
+   * Optional so workspaces saved before the embedded panels offered this
+   * still load; they simply come back on the structural model, which is what
+   * they were showing when they were saved.
+   */
+  exposureModel?: "STRUCTURAL_OI" | "DEALER_INVENTORY";
 };
 
 type GexMapWorkspaceProps = {
@@ -123,12 +129,14 @@ type GexMapWorkspaceProps = {
    */
   lockedTimeHorizon?: "present" | "future" | null;
   /**
-   * Offer the v2 dealer-inventory model beside the structural one.
+   * Offer the dealer-inventory model beside the structural one.
    *
-   * Only the standalone GEX MAP page passes this. The panels embedded in GEX
-   * VUE stay on v1: they sit beside charts and replay, and a panel that can
-   * silently be showing a different measurement than the one next to it is
-   * worse than one that cannot.
+   * This was once the standalone page only, on the reasoning that a panel
+   * beside charts and replay must not silently show a different measurement
+   * than the one next to it. The embedded panels now offer it too, because the
+   * control is not silent: it names both models and keeps the active one
+   * pressed, and the choice is saved with the pane, so a panel always says
+   * which measurement it is drawing.
    */
   enableDealerModel?: boolean;
 };
@@ -1829,7 +1837,8 @@ function GexMapWorkspace({
    * measurement, not a newer version of this one, and it is only measured to
    * beat v1 on cash indices.
    */
-  const [exposureModel, setExposureModel] = useState<"STRUCTURAL_OI" | "DEALER_INVENTORY">("STRUCTURAL_OI");
+  const [exposureModel, setExposureModel] = useState<"STRUCTURAL_OI" | "DEALER_INVENTORY">(
+    () => initialEmbedStateRef.current?.exposureModel ?? "STRUCTURAL_OI");
   const [expiryScope, setExpiryScope] = useState<GexMapExpiryScope>(
     () => initialEmbedStateRef.current?.expiryScope ?? DEFAULT_GEX_MAP_EXPIRY_SCOPE,
   );
@@ -2044,8 +2053,9 @@ function GexMapWorkspace({
       stepMinutes,
       expiryScope,
       representation,
+      exposureModel,
     });
-  }, [expiryScope, panels, representation, stepMinutes, viewMode]);
+  }, [expiryScope, exposureModel, panels, representation, stepMinutes, viewMode]);
 
   useEffect(() => {
     let cancelled = false;
