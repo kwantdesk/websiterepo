@@ -121,6 +121,7 @@ import {
   type IvRankQuery,
   type IvRankResourceState,
 } from "@/lib/impliedVolatilityRankClient";
+import { readableTextOn } from "@/lib/readableContrast";
 import ChartIndicatorPanes, {
   type IndicatorPaneDock,
   type IndicatorPaneGroup,
@@ -15119,6 +15120,18 @@ function Chart({
    * dragged, and an armed order waiting for the click that places it. They
    * carry no position, so they render as a plain label with no handles.
    */
+  /*
+   * The order chips are painted as the inverse of the chart.
+   *
+   * They used to be the chart's own background with the side colour as text,
+   * which on a pale theme reads as a white box and on any theme puts a thin
+   * coloured glyph on a surface of nearly the same brightness. The background
+   * is now whichever of black or white can actually be read against the
+   * chart's background, and the text is the chart background itself, so the
+   * numbers are always at maximum contrast. The side stays legible because the
+   * border and the price line keep the up/down colour.
+   */
+  const paperLabelInk = readableTextOn(settings.backgroundColor);
   const paperOverlayPreviewLevels = [
     ...(paperDraftOverlayLevel ? [{
       id: paperDraftOverlayLevel.id,
@@ -16369,8 +16382,8 @@ function Chart({
               className="paper-position-overlay-label pointer-events-auto absolute right-1 flex -translate-y-1/2 items-center overflow-hidden border font-mono font-bold"
               style={{
                 borderColor: level.color,
-                color: level.color,
-                backgroundColor: settings.backgroundColor,
+                color: settings.backgroundColor,
+                backgroundColor: paperLabelInk,
                 fontSize: PAPER_LABEL_FONT_PX,
                 height: PAPER_LABEL_HEIGHT,
                 width: paperLabelWidthPx(
@@ -16484,8 +16497,8 @@ function Chart({
               className="paper-protection-overlay-label pointer-events-auto absolute right-1 flex -translate-y-1/2 items-stretch overflow-hidden border font-mono font-bold"
               style={{
                 borderColor: level.color,
-                color: level.color,
-                backgroundColor: settings.backgroundColor,
+                color: settings.backgroundColor,
+                backgroundColor: paperLabelInk,
                 fontSize: PAPER_LABEL_FONT_PX,
                 height: PAPER_LABEL_HEIGHT,
                 width: paperLabelWidthPx(level.label, 0, true),
@@ -16544,8 +16557,8 @@ function Chart({
             className="pointer-events-none absolute right-1 flex -translate-y-1/2 items-center overflow-hidden border font-mono font-bold"
             style={{
               borderColor: level.color,
-              color: level.color,
-              backgroundColor: settings.backgroundColor,
+              color: settings.backgroundColor,
+              backgroundColor: paperLabelInk,
               fontSize: PAPER_LABEL_FONT_PX,
               height: PAPER_LABEL_HEIGHT,
               width: paperLabelWidthPx(level.label, 0, false),
