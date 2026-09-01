@@ -14,6 +14,19 @@
 :root {
   /* The CHARTS workspace header is the shell's vertical rhythm reference. */
   --kwant-shell-bar-height: 36px;
+  /*
+   * The KwantDesk mark, on whatever theme is running.
+   *
+   * Derived rather than fixed, so it moves with every palette without anyone
+   * maintaining a list. The foreground is the colour each theme already
+   * guarantees is readable on its own surfaces; mixing a quarter of the theme
+   * signature into it gives the mark the palette character without spending
+   * the contrast the foreground was chosen for.
+   *
+   * Every surface that shows the mark reads this - the header wordmark, the
+   * chart watermark and the liquidity map - so the three cannot drift apart.
+   */
+  --brand-mark: color-mix(in srgb, var(--foreground) 76%, var(--primary));
   --background: #020304;
   --foreground: #DDE2E7;
   --primary: #FF1F78;
@@ -1298,7 +1311,17 @@ header.kwant-command-rail {
 .kwant-primary-brand-wordmark {
   display: block;
   width: 100%;
-  color: #fff;
+  /*
+   * The mark takes the theme, not white.
+   *
+   * White belongs to no palette: on an amber-and-pink cockpit or a warm sand
+   * one it read as a sticker rather than as part of the product. This is the
+   * theme foreground carried most of the way, tinted toward the theme signature
+   * so the mark picks up the palette while keeping the contrast the foreground
+   * is chosen for. The chart and liquidity-map watermarks read the same
+   * variable, so all three can never disagree.
+   */
+  color: var(--brand-mark);
   font-family: "Inter", "Segoe UI", Arial, sans-serif;
   font-size: 18px;
   font-weight: 400;

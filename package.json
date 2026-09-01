@@ -232,6 +232,7 @@
     "test:indicator-theme-follow": "node --import ./scripts/alias-hook.mjs scripts/test-indicator-theme-follow.mjs",
     "test:cvd-candle-direction": "node --import ./scripts/alias-hook.mjs scripts/test-cvd-candle-direction.mjs",
     "test:indicator-both-sides": "node --import ./scripts/alias-hook.mjs scripts/test-indicator-both-sides.mjs",
+    "test:brand-mark-theme": "node --import ./scripts/alias-hook.mjs scripts/test-brand-mark-theme.mjs",
     "test:session-boundaries": "node --import ./scripts/alias-hook.mjs scripts/test-session-boundaries.mjs",
     "test:developing-value-area": "node --import ./scripts/alias-hook.mjs scripts/test-developing-value-area.mjs",
     "test:volume-profile-count": "node --import ./scripts/alias-hook.mjs scripts/test-volume-profile-count.mjs",

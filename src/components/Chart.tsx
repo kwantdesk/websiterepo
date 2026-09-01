@@ -562,7 +562,7 @@ import {
 import { writeProtectedItem } from "@/lib/browserStorageQuota";
 import {
   chartWatermarkSize,
-  CHART_WATERMARK_SRC,
+  chartWatermarkPaint,
   CHART_WATERMARK_OPACITY,
   CHART_WATERMARK_SCALE,
 } from "@/lib/chartWatermark";
@@ -15888,12 +15888,9 @@ function Chart({
           * chrome strip on the right, and centring across it would leave the
           * mark visibly left of the middle of the chart a trader is reading.
           */
-        <img
-          src={CHART_WATERMARK_SRC}
-          alt=""
+        <span
           aria-hidden
-          draggable={false}
-          className="pointer-events-none absolute z-[5] select-none"
+          className="pointer-events-none absolute z-[5] block select-none"
           style={{
             top: 8,
             left: 0,
@@ -15902,6 +15899,7 @@ function Chart({
             width: chartWatermark.width,
             height: chartWatermark.height,
             opacity: CHART_WATERMARK_OPACITY,
+            ...chartWatermarkPaint(),
           }}
         />
       ) : null}

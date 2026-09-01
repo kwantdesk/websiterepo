@@ -6,7 +6,7 @@ import { readStoredTheme, THEME_STORAGE_KEY } from "@/lib/theme";
 import { writeProtectedItem } from "@/lib/browserStorageQuota";
 import {
   chartWatermarkSize,
-  CHART_WATERMARK_SRC,
+  chartWatermarkPaint,
   CHART_WATERMARK_OPACITY,
   LIQUIDITY_MAP_WATERMARK_SCALE,
 } from "@/lib/chartWatermark";
@@ -356,12 +356,9 @@ function LiquidityMapWorkspace({
           * Above the iframe but below the loader and the replay chip, so it
           * identifies the surface without covering anything a trader reads.
           */
-        <img
-          src={CHART_WATERMARK_SRC}
-          alt=""
+        <span
           aria-hidden
-          draggable={false}
-          className="pointer-events-none absolute z-[5] select-none"
+          className="pointer-events-none absolute z-[5] block select-none"
           style={{
             // Under the map's own tool rail rather than floating over it, and
             // centred across the plot so the DOM's inner edge is the chart's
@@ -374,6 +371,7 @@ function LiquidityMapWorkspace({
             width: watermark.width,
             height: watermark.height,
             opacity: CHART_WATERMARK_OPACITY,
+            ...chartWatermarkPaint(),
           }}
         />
       ) : null}

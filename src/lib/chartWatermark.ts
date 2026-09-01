@@ -1,3 +1,5 @@
+import type { CSSProperties } from "react";
+
 /**
  * The KwantDesk mark that identifies a surface, and the rules for sizing it.
  *
@@ -54,4 +56,31 @@ export function chartWatermarkSize(paneWidth: number, paneHeight: number, scale 
   // small has nothing to spare for it.
   if (height < 9 * scale || paneWidth < CHART_WATERMARK_MIN_WIDTH + 40) return null;
   return { width: Math.round(height * CHART_WATERMARK_ASPECT), height: Math.round(height) };
+}
+
+/**
+ * The mark's colour, and how a white PNG is made to take it.
+ *
+ * The wordmark ships as a white PNG, so on every theme it was white — the one
+ * colour that belongs to no palette. Tinting it with a CSS filter is the lazy
+ * way and it shows: hue-rotate on white does nothing, and the brightness/sepia
+ * chains that fake it land on a different colour per theme and fringe the
+ * letter edges.
+ *
+ * The PNG is used as a MASK instead. Its alpha channel is the stencil and the
+ * colour is painted behind it, so the letterforms and their antialiasing are
+ * exactly the ones the designer drew, in any colour we ask for.
+ */
+export function chartWatermarkPaint(): CSSProperties {
+  return {
+    backgroundColor: "var(--brand-mark)",
+    WebkitMaskImage: `url("${CHART_WATERMARK_SRC}")`,
+    maskImage: `url("${CHART_WATERMARK_SRC}")`,
+    WebkitMaskSize: "100% 100%",
+    maskSize: "100% 100%",
+    WebkitMaskRepeat: "no-repeat",
+    maskRepeat: "no-repeat",
+    WebkitMaskPosition: "center",
+    maskPosition: "center",
+  };
 }
