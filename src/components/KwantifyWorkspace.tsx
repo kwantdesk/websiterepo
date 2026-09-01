@@ -297,7 +297,7 @@ import {
   type ChartIntervalKind,
 } from "@/lib/chartIntervals";
 import { applyMarketTradesToEventBars, futuresTickSize } from "@/lib/eventBars";
-import { RTH_END_MINUTES, RTH_START_MINUTES, resolveSessionSegments, sessionTradingDate } from "@/lib/volumeProfileSessions";
+import { RTH_END_MINUTES, RTH_START_MINUTES, currentDeskSession, resolveSessionSegments, sessionTradingDate } from "@/lib/volumeProfileSessions";
 import type { ValueAreaProfile } from "@/lib/valueArea";
 import {
   DATABENTO_LIVE_TICK_EVENT,
@@ -724,6 +724,31 @@ function LivePaperOpenPnl({ positions }: { positions: PaperPosition[] }) {
   return (
     <span className={`font-mono text-[13px] font-semibold tabular-nums ${pnl > 0 ? "text-primary" : pnl < 0 ? "text-danger" : "text-foreground"}`}>
       {pnl > 0 ? "+" : pnl < 0 ? "-" : ""}{formatDollar(pnl)}
+    </span>
+  );
+}
+
+/**
+ * The desk session the daily P&L is being made in, named as it hands over.
+ *
+ * The caption here was the literal words "New York", so it said New York while
+ * the trader was in Asia. It resolves the session now, and it ticks: Globex at
+ * the 17:00 open, Asia, London, New York, then nothing until the next open.
+ *
+ * Once a minute is the right cadence - the boundaries fall on the minute, and
+ * this sits beside a figure that must not be made to rerender for a clock.
+ */
+function LiveDeskSession() {
+  const [session, setSession] = useState(() => currentDeskSession());
+  useEffect(() => {
+    const tick = () => setSession(currentDeskSession());
+    tick();
+    const timer = window.setInterval(tick, 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+  return (
+    <span title="The daily P&L covers one CME trading day, which opens at 17:00 Chicago.">
+      {session ? session.label : "Market closed"}
     </span>
   );
 }
@@ -20388,7 +20413,7 @@ export default function KwantifyWorkspace({
                 <div className="flex items-center justify-between gap-3 px-3 py-3">
                   <div className="min-w-0">
                     <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-foreground">Daily P&amp;L</div>
-                    <div className="mt-0.5 text-[9px] text-muted">Closed this trading day · from the 17:00 CT open</div>
+                    <div className="mt-0.5 text-[9px] text-muted">Closed this trading day · <LiveDeskSession /></div>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
                     <span className={`font-mono text-[13px] font-semibold tabular-nums ${selectedPaperDailyPnl > 0 ? "text-primary" : selectedPaperDailyPnl < 0 ? "text-danger" : "text-foreground"}`}>

@@ -235,3 +235,62 @@ export function sessionTradingDate(segment: SessionSegment, useEndSessionAsStart
     day: "2-digit",
   }).format(new Date(reference));
 }
+
+/**
+ * The one session a moment is IN, for a readout that must name exactly one.
+ *
+ * Separate from the profile windows above on purpose. Those deliberately
+ * overlap - London runs past the cash open to 10:00 because DeepChart's Europe
+ * does, and a profile drawn over that window is correct. A clock cannot
+ * overlap: at 09:00 the desk is in New York, not in both.
+ *
+ * The boundaries are the same ones, so the two can never drift into disagreeing
+ * about when a session starts; only London's close differs, and it differs for
+ * a stated reason.
+ */
+const DESK_CLOCK_SEGMENTS: { id: SessionSegment["id"]; label: string; start: number; end: number }[] = [
+  { id: "globex", label: "Globex", start: 17 * 60, end: 19 * 60 },
+  { id: "asia", label: "Asia", start: 19 * 60, end: 26 * 60 },
+  // Hands over at the cash open rather than at DeepChart's 10:00, because from
+  // 08:30 the desk is trading New York.
+  { id: "london", label: "London", start: 26 * 60, end: RTH_START_MINUTES + 24 * 60 },
+  { id: "newyork", label: "New York", start: RTH_START_MINUTES + 24 * 60, end: 15 * 60 + 24 * 60 },
+];
+
+const chicagoWeekdayFormatter = new Intl.DateTimeFormat("en-US", {
+  timeZone: CHICAGO_TIME_ZONE,
+  weekday: "short",
+});
+
+export type DeskSession = {
+  id: SessionSegment["id"];
+  label: string;
+  /** Minutes until this session ends, for a readout that counts down. */
+  minutesRemaining: number;
+};
+
+/**
+ * Which desk session a moment falls in, or null when the market is shut.
+ *
+ * Null is a real answer and has to stay one: between the 15:00 close and the
+ * 17:00 open, and across the weekend, there is no session, and naming one
+ * would be worse than naming none.
+ */
+export function currentDeskSession(timestampMs: number = Date.now()): DeskSession | null {
+  if (!Number.isFinite(timestampMs)) return null;
+  const minute = exchangeMinuteOfDay(timestampMs);
+  const weekday = chicagoWeekdayFormatter.format(new Date(timestampMs));
+  // The CME week runs Sunday 17:00 to Friday 15:00, Chicago.
+  if (weekday === "Sat") return null;
+  if (weekday === "Sun" && minute < 17 * 60) return null;
+  if (weekday === "Fri" && minute >= 15 * 60) return null;
+  /*
+   * Wound onto the trading day's own frame, which opens at 17:00. Anything
+   * before that belongs to the day that opened the previous evening, so it is
+   * carried past midnight rather than compared against a calendar day.
+   */
+  const offset = minute >= 17 * 60 ? minute : minute + 24 * 60;
+  const segment = DESK_CLOCK_SEGMENTS.find((entry) => offset >= entry.start && offset < entry.end);
+  if (!segment) return null;
+  return { id: segment.id, label: segment.label, minutesRemaining: segment.end - offset };
+}

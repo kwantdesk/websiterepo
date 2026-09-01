@@ -56,6 +56,19 @@ check("a nonsense timestamp is refused, not guessed", () => {
   assert.equal(paperPnlDayKey(Number.POSITIVE_INFINITY), "");
 });
 
+check("the readout names the session it is in, and it ticks", () => {
+  /*
+   * Hardcoded words cannot be right twice a day. The caption resolves the
+   * session and re-resolves it on a timer, so it hands over Globex -> Asia ->
+   * London -> New York rather than claiming one of them all day.
+   */
+  assert.match(workspace, /function LiveDeskSession\(\)/, "the live session readout is gone");
+  assert.match(workspace, /setSession\(currentDeskSession\(\)\)/, "it no longer resolves the session");
+  assert.match(workspace, /window\.setInterval\(tick, 60_000\)/, "it no longer ticks");
+  assert.match(workspace, /Closed this trading day · <LiveDeskSession \/>/, "the caption is not wired to it");
+  assert.match(workspace, /"Market closed"/, "there is no closed state between sessions");
+});
+
 check("the readout no longer calls itself New York", () => {
   /*
    * The figure was right for a calendar day and the words described a session.
@@ -65,10 +78,9 @@ check("the readout no longer calls itself New York", () => {
     !workspace.includes("Closed today · New York"),
     "the daily P&L still reads as the New York session",
   );
-  assert.match(
-    workspace,
-    /Closed this trading day · from the 17:00 CT open/,
-    "the daily P&L no longer names its boundary",
+  assert.ok(
+    !workspace.includes("Closed this trading day · from the 17:00 CT open"),
+    "the caption is a fixed string again",
   );
 });
 
