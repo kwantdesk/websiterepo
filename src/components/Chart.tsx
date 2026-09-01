@@ -10123,6 +10123,44 @@ function Chart({
       : null,
     [sampledIndicatorCandles, timeframe],
   );
+  /**
+   * Where each big print's level stops: the first later bar that CLOSED
+   * through it.
+   *
+   * A close through the price is what resolves the level - a wick that pokes
+   * past it and comes back has not. The scan is bounded because it runs per
+   * print over the visible candles, and an unresolved level is the normal
+   * case rather than an error: it simply means the level is still live.
+   */
+  const bigTradeProjectionEnds = useMemo(() => {
+    const ends = new Map<string, number>();
+    if (bigTradesIndicator?.settings?.showProjection !== true) return ends;
+    const bars = indicatorCandles;
+    if (bars.length < 2) return ends;
+    const MAX_FORWARD_BARS = 600;
+    for (const print of anchoredBigTradePrints) {
+      // First bar strictly after the print.
+      let low = 0;
+      let high = bars.length;
+      while (low < high) {
+        const middle = (low + high) >>> 1;
+        if (bars[middle].timestamp <= print.chartTimestamp) low = middle + 1;
+        else high = middle;
+      }
+      let previous = bars[Math.max(0, low - 1)]?.close ?? print.price;
+      const limit = Math.min(bars.length, low + MAX_FORWARD_BARS);
+      for (let index = low; index < limit; index += 1) {
+        const close = bars[index].close;
+        // Opposite sides of the level on consecutive closes is a cross.
+        if ((previous - print.price) * (close - print.price) < 0) {
+          ends.set(print.id, bars[index].timestamp);
+          break;
+        }
+        previous = close;
+      }
+    }
+    return ends;
+  }, [anchoredBigTradePrints, bigTradesIndicator, indicatorCandles]);
   const bigTradePrimitiveMarkers = useMemo<BigTradePrimitiveMarker[]>(() =>
     anchoredBigTradePrints.flatMap((print) => {
       const eventTime = bigTradeEventChartTimes?.get(print.chartTimestamp)
@@ -10132,11 +10170,17 @@ function Chart({
       // bars, where the time scale interpolates a coordinate and the marker
       // floats. A print whose bar cannot be resolved is simply not drawn.
       if (eventTime === undefined && bigTradeEventChartTimes) return [];
+      const resolvedAt = bigTradeProjectionEnds.get(print.id);
       return [{
         ...print,
         time: (eventTime ?? Math.floor(print.chartTimestamp / 1_000)) as Time,
+        projectionEndTime: resolvedAt === undefined
+          ? null
+          : ((bigTradeEventChartTimes?.get(resolvedAt)
+            ?? eventChartTimeBySourceTimeRef.current.get(resolvedAt)
+            ?? Math.floor(resolvedAt / 1_000)) as Time),
       }];
-    }), [anchoredBigTradePrints, bigTradeEventChartTimes, chartReadyRevision]);
+    }), [anchoredBigTradePrints, bigTradeEventChartTimes, bigTradeProjectionEnds, chartReadyRevision]);
 
   useEffect(() => {
     const primitive = bigTradesPrimitiveRef.current;
@@ -10198,6 +10242,13 @@ function Chart({
         labelMinSize: Number(tradeSettings.labelMinSize ?? 1),
       textColor: themeStyles.getPropertyValue("--foreground").trim() || "#F5F5F5",
       backgroundColor: settings.backgroundColor,
+      showProjection: tradeSettings.showProjection === true,
+      projectionLineWidth: Number(tradeSettings.projectionLineWidth ?? 1),
+      projectionLineStyle: ((): BigTradesPrimitiveOptions["projectionLineStyle"] => {
+        const requested = String(tradeSettings.projectionLineStyle ?? "dashed");
+        return requested === "solid" || requested === "dotted" ? requested : "dashed";
+      })(),
+      projectionOpacity: Number(tradeSettings.projectionOpacity ?? 55),
     };
     bigTradePrimitiveOptionsRef.current = nextOptions;
     primitive.update(markers, nextOptions);

@@ -16,6 +16,13 @@ export type BigTradePrimitiveMarker = {
   side: "ASK" | "BID";
   radius: number;
   opacity: number;
+  /*
+   * Where this print's level stops, resolved against the candles by the
+   * caller: the first later bar that CLOSED through the price. Undefined means
+   * nothing has closed through it yet, so the level is still live and runs to
+   * the right edge.
+   */
+  projectionEndTime?: Time | null;
 };
 
 export type BigTradesPrimitiveOptions = {
@@ -28,6 +35,19 @@ export type BigTradesPrimitiveOptions = {
   labelMinSize: number;
   textColor: string;
   backgroundColor: string;
+  /*
+   * A large print leaves a level, not just a dot.
+   *
+   * The study marked where size traded and stopped there, so the price it
+   * happened at - the thing you actually trade against later - had to be eyed
+   * off the marker. The level is projected forward from the print and stays on
+   * the chart until a bar closes through it, at which point it has been
+   * resolved and stops.
+   */
+  showProjection: boolean;
+  projectionLineWidth: number;
+  projectionLineStyle: "solid" | "dashed" | "dotted";
+  projectionOpacity: number;
 };
 
 const DEFAULT_OPTIONS: BigTradesPrimitiveOptions = {
@@ -40,6 +60,10 @@ const DEFAULT_OPTIONS: BigTradesPrimitiveOptions = {
   labelMinSize: 1,
   textColor: "#F5F5F5",
   backgroundColor: "#000000",
+  showProjection: false,
+  projectionLineWidth: 1,
+  projectionLineStyle: "dashed",
+  projectionOpacity: 55,
 };
 
 function formatVolume(volume: number) {
@@ -95,6 +119,44 @@ class BigTradesRenderer implements ISeriesPrimitivePaneRenderer {
           else high = middle;
         }
         lastMarker = Math.min(markers.length, low + 1);
+      }
+
+      if (options.showProjection) {
+        /*
+         * Levels are drawn in their own pass, under every marker, so a line
+         * can never be painted over the print that created it.
+         */
+        context.save();
+        context.lineWidth = Math.max(0.5, options.projectionLineWidth);
+        context.setLineDash(
+          options.projectionLineStyle === "dotted"
+            ? [1, 3]
+            : options.projectionLineStyle === "dashed"
+              ? [5, 4]
+              : [],
+        );
+        for (let markerIndex = firstMarker; markerIndex < lastMarker; markerIndex += 1) {
+          const marker = markers[markerIndex];
+          const startX = timeScale.timeToCoordinate(marker.time);
+          const y = params.series.priceToCoordinate(marker.price);
+          if (startX === null || y === null || y < 0 || y > mediaSize.height) continue;
+          // No resolving bar yet means nothing has closed through it, so the
+          // level is still live and runs to the edge of the chart.
+          const endX = marker.projectionEndTime == null
+            ? mediaSize.width
+            : timeScale.timeToCoordinate(marker.projectionEndTime);
+          if (endX === null) continue;
+          const left = Math.min(startX, endX);
+          const right = Math.max(startX, endX);
+          if (right < 0 || left > mediaSize.width) continue;
+          context.globalAlpha = marker.opacity * Math.max(0, Math.min(100, options.projectionOpacity)) / 100;
+          context.strokeStyle = marker.side === "ASK" ? options.askColor : options.bidColor;
+          context.beginPath();
+          context.moveTo(left, y);
+          context.lineTo(right, y);
+          context.stroke();
+        }
+        context.restore();
       }
 
       for (let markerIndex = firstMarker; markerIndex < lastMarker; markerIndex += 1) {

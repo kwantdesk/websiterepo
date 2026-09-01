@@ -1784,6 +1784,16 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     enableAlertSound: false,
     askColor: theme?.upColor ?? "#22C55E",
     bidColor: theme?.downColor ?? "#EF4444",
+    /*
+     * A large print leaves a level. The study marked where size traded and
+     * stopped there, so the price it happened at - the thing you trade against
+     * afterwards - had to be eyed off the marker. Off by default so an
+     * existing workspace opens unchanged.
+     */
+    showProjection: false,
+    projectionLineWidth: 1,
+    projectionLineStyle: "dashed",
+    projectionOpacity: 55,
     bigTradesSettingsVersion: 4,
   } : {}),
   ...(indicatorId === "deep-m-effort-nq" ? {
@@ -2072,6 +2082,9 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     gradientPreset: VOLUME_PROFILE_GRADIENT_OFF,
     // Which windows a split profile actually draws. All on reproduces the
     // untouched split; unticking one simply omits that profile.
+    // False until the trader picks a session, so the first pick isolates and
+    // every pick after it toggles.
+    sessionSelectionArmed: false,
     sessionGlobexEnabled: true,
     sessionAsiaEnabled: true,
     sessionLondonEnabled: true,

@@ -2418,14 +2418,27 @@ export default function ChartIndicatorsControl({
                                * pick isolates it either way and only a real
                                * selection toggles.
                                */
-                              const nothingPickedYet = DESK_SESSION_SETTING_KEYS
-                                .every((sessionKey) => settings[sessionKey] !== false);
+                              /*
+                               * Whether the trader has picked before, recorded
+                               * rather than inferred.
+                               *
+                               * It used to be inferred from "are all four still
+                               * on", which is true again as soon as you build
+                               * the selection back up to all four - so the next
+                               * click isolated instead of removing, and a lit
+                               * session could not be switched off. Clicking a
+                               * session did the opposite of what it looked like
+                               * it would do, which is the "it doesn't do
+                               * anything" that was reported.
+                               */
+                              const nothingPickedYet = settings.sessionSelectionArmed !== true;
                               if (!wasSplitting || nothingPickedYet) {
                                 // First pick: arm the split and start from this
                                 // session alone, which is what clicking one asks
                                 // for. Turning on the split with everything still
                                 // enabled would draw all three.
                                 settings.filterMode = "triple";
+                                settings.sessionSelectionArmed = true;
                                 for (const sessionKey of DESK_SESSION_SETTING_KEYS) {
                                   settings[sessionKey] = sessionKey === key;
                                 }
@@ -2439,6 +2452,10 @@ export default function ChartIndicatorsControl({
                                 // which reads as a broken study rather than a
                                 // choice. Fall back to the whole session.
                                 settings.filterMode = "none";
+                                // Back to no selection, so the next click
+                                // isolates again rather than removing from a
+                                // set the trader never chose.
+                                settings.sessionSelectionArmed = false;
                                 for (const sessionKey of DESK_SESSION_SETTING_KEYS) settings[sessionKey] = true;
                               }
                               return { ...current, settings };
