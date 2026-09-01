@@ -14010,6 +14010,7 @@ function Chart({
           showProfileOutline: profileSettings.showProfileOutline !== false,
           automaticGrouping: profileSettings.groupingMode !== "manual",
           autoGroupFactor: clamp(Number(profileSettings.autoGroupFactor ?? 1), 0.5, 4),
+          manualGroupTicks: clamp(Number(profileSettings.groupTicks ?? 4), 1, 500),
           valueAreaPercent: clamp(
             Number(profileSettings.valueAreaPercent ?? STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT),
             1,

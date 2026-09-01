@@ -22,23 +22,67 @@ import { volumeProfileBinTick } from "../src/lib/volumeProfileMath.ts";
     "utf8",
   );
 
+  /*
+   * BOTH modes now fetch at tick resolution, not just Automatic.
+   *
+   * Manual used to send its row size to the server, so the profile came back
+   * pre-binned and the fine data was never fetched: those rows could not get
+   * finer however far you zoomed, and the profile carried fewer levels.
+   * DeepChart applies the same control as a display bin over full-resolution
+   * data - which is why 4 ticks there barely changes anything at ordinary zoom
+   * and only bites once you zoom past the legibility floor. The manual size is
+   * applied in the renderer instead, as a floor on the row.
+   */
   for (const scope of ["daily", "weekly"]) {
-    const pattern = new RegExp(
-      `const requested${scope[0].toUpperCase()}${scope.slice(1)}GroupTicks = ${scope}ProfileSettings\\.groupingMode === "manual"\\s*\\?[^:]+:\\s*([^;]+);`,
-    );
-    const match = workspace.match(pattern);
+    const name = `requested${scope[0].toUpperCase()}${scope.slice(1)}GroupTicks`;
+    const match = workspace.match(new RegExp(`const ${name} = ([^;]+);`));
     assert.ok(match, `${scope} group-ticks request not found — update this guard`);
     assert.equal(
       match[1].trim(),
       "1",
-      `${scope} profiles must request tick resolution in Automatic mode, not a pre-grouped row size`,
+      `${scope} profiles must request tick resolution in BOTH modes, not a pre-grouped row size`,
+    );
+    assert.ok(
+      !new RegExp(`const ${name}[^;]*groupingMode`).test(workspace),
+      `${scope} profiles are choosing a request row size from the grouping mode again`,
     );
   }
+
+  // And the renderer has to be the one honouring the manual size.
+  const chart = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
+  assert.match(
+    chart,
+    /manualGroupTicks: clamp\(Number\(profileSettings\.groupTicks \?\? 4\), 1, 500\)/,
+    "the manual row size no longer reaches the renderer",
+  );
 
   assert.ok(
     !workspace.includes("automaticVolumeProfileGroupTicks"),
     "the request must not derive its own automatic row size",
   );
+
+  /*
+   * Manual is a FLOOR on the row, never a coarser fetch.
+   *
+   * Taking the larger of the arrived bin and the trader's own size means it
+   * cannot draw finer than asked and cannot discard detail the pre-binned
+   * request used to throw away.
+   */
+  {
+    const primitiveSource = readFileSync(
+      new URL("../src/lib/nativeVolumeProfilePrimitive.ts", import.meta.url), "utf8",
+    );
+    assert.match(
+      primitiveSource,
+      /: Math\.max\(profile\.groupTicks, Math\.max\(1, Math\.round\(style\.manualGroupTicks \?\? 1\)\)\)/,
+      "the renderer no longer applies the manual row size",
+    );
+    assert.match(
+      primitiveSource,
+      /const groupedTicks = requestedTicks \* automaticMultiplier;/,
+      "the legibility multiplier no longer applies on top of the manual size",
+    );
+  }
 
   // The renderer's adaptive multiplier is the one true automatic grouping.
   const primitive = readFileSync(
@@ -69,7 +113,7 @@ import { volumeProfileBinTick } from "../src/lib/volumeProfileMath.ts";
   );
   assert.match(
     primitive,
-    /groupedTicks = profile\.groupTicks \* automaticMultiplier/,
+    /groupedTicks = requestedTicks \* automaticMultiplier/,
     "which is what actually coarsens the rows",
   );
 }

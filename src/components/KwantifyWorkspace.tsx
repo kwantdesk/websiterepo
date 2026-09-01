@@ -8603,19 +8603,24 @@ function WorkspaceChartPaneComponent({
     const activeRoot = displayCmeSymbol(pane.symbol);
     const activeTradingDates = new Set(tradingDates);
     const normalizedContractSymbol = resolvedContractSymbol.toUpperCase().replace(/[^A-Z0-9]/g, "");
-    // Automatic tick grouping is resolved by the RENDERER, not here: it knows
-    // how many pixels one tick row occupies and collapses rows only as far as
-    // the current zoom requires, so zooming in recovers per-tick detail. The
-    // request must therefore stay at tick resolution — pre-grouping it here
-    // once produced permanently fat bars, because the renderer multiplied an
-    // already-coarsened row and the fine data had never been fetched.
-    // Auto group factory scales that renderer-side multiplier.
-    const requestedDailyGroupTicks = dailyProfileSettings.groupingMode === "manual"
-      ? Math.max(1, Math.round(Number(dailyProfileSettings.groupTicks ?? 4) || 4))
-      : 1;
-    const requestedWeeklyGroupTicks = weeklyProfileSettings.groupingMode === "manual"
-      ? Math.max(1, Math.round(Number(weeklyProfileSettings.groupTicks ?? 4) || 4))
-      : 1;
+    /*
+     * Always fetched at TICK resolution, in BOTH grouping modes.
+     *
+     * Grouping is resolved by the renderer, which knows how many pixels a row
+     * occupies and collapses only as far as the current zoom requires - so
+     * zooming in recovers per-tick detail. Automatic already did this; manual
+     * was sent here instead, which returned the profile pre-binned and threw
+     * the fine data away before it ever arrived. Those rows could never get
+     * finer, whatever the zoom, and the profile came back with fewer levels.
+     *
+     * DeepChart treats the same control as a display bin over full-resolution
+     * data, which is why setting 4 ticks there barely changes what you see at
+     * ordinary zoom: the legibility floor is already coarser than four ticks,
+     * so the setting only bites once you zoom past it. Ours now matches, with
+     * the manual size applied in the renderer as a floor on the row.
+     */
+    const requestedDailyGroupTicks = 1;
+    const requestedWeeklyGroupTicks = 1;
     const requestedDailyMinVolume = Math.max(0, Number(dailyProfileSettings.minTradeVolume ?? 0) || 0);
     const requestedDailyMaxVolume = Math.max(0, Number(dailyProfileSettings.maxTradeVolume ?? 0) || 0);
     const requestedWeeklyMinVolume = Math.max(0, Number(weeklyProfileSettings.minTradeVolume ?? 0) || 0);

@@ -139,6 +139,17 @@ export type NativeVolumeProfileStyle = {
   showProfileOutline: boolean;
   automaticGrouping: boolean;
   autoGroupFactor: number;
+  /**
+   * Manual row height in ticks, applied HERE rather than to the request.
+   *
+   * It used to be sent to the server, which returned the profile pre-binned at
+   * that size - so the fine data was never fetched and zooming in could not
+   * recover it. DeepChart treats the same control as a display bin over
+   * full-resolution data, which is why setting 4 ticks there barely changes
+   * what you see at ordinary zoom: the legibility floor is already coarser
+   * than four ticks, and the setting only bites once you zoom in past it.
+   */
+  manualGroupTicks?: number;
   valueAreaPercent: number;
   snapMode: "off" | "left" | "right";
   /** Point of Control line weight. */
@@ -853,7 +864,18 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           1,
           Math.ceil((PROFILE_MIN_ROW_PIXELS * groupingFloorFactor) / sourceRowPixels),
         );
-        const groupedTicks = profile.groupTicks * automaticMultiplier;
+        /*
+         * The trader's manual bin is a floor on the ROW, not a coarser fetch.
+         *
+         * `profile.groupTicks` is whatever the data arrived binned at, which is
+         * now always tick resolution. Taking the larger of the two means manual
+         * never draws finer than asked and never throws away detail the way a
+         * pre-binned request did.
+         */
+        const requestedTicks = style.automaticGrouping
+          ? profile.groupTicks
+          : Math.max(profile.groupTicks, Math.max(1, Math.round(style.manualGroupTicks ?? 1)));
+        const groupedTicks = requestedTicks * automaticMultiplier;
         // Everything below depends only on the profile, its grouping and the
         // value-area percentage — never on the viewport — so it is computed
         // once per change instead of once per repaint.
@@ -861,6 +883,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           profile.asOf,
           profile.levels.length,
           groupedTicks,
+          requestedTicks,
           profile.groupTicks,
           profile.tickSize,
           requestedValueAreaPercent,
