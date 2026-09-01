@@ -13991,6 +13991,16 @@ function Chart({
           mode: profileMode,
           widthBasis: "chart",
           widthPercent: clamp(Number(profileSettings.profileWidth ?? (profile.period === "weekly" ? 18 : 9)), 0, 100),
+          // Completed profiles fall back to the current width, so a chart that
+          // has never set these draws exactly as it did.
+          previousWidthPercent: clamp(
+            Number(profileSettings.previousProfileWidth
+              ?? profileSettings.profileWidth
+              ?? (profile.period === "weekly" ? 18 : 9)),
+            0, 100,
+          ),
+          currentOffsetPx: clamp(Number(profileSettings.currentProfileOffset ?? 0), -400, 400),
+          previousOffsetPx: clamp(Number(profileSettings.previousProfileOffset ?? 0), -400, 400),
           opacity: clamp(Number(profileSettings.opacity ?? (profile.period === "weekly" ? 42 : 68)) / 100, 0.1, 1),
           positiveDeltaColor: useThemeColors ? settings.upColor : String(profileSettings.askColor ?? settings.upColor),
           negativeDeltaColor: useThemeColors ? settings.downColor : String(profileSettings.bidColor ?? settings.downColor),

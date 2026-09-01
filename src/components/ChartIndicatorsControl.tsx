@@ -2205,22 +2205,33 @@ export default function ChartIndicatorsControl({
                       );
                     })}
                   </div>
+                  {/*
+                    * The three line widths were honoured by the renderer and had
+                    * no control anywhere, so a peak, valley or business zone
+                    * could only ever be drawn at the width it shipped with.
+                    */}
                   {([
-                    ["Sensitivity", "pvSensitivity", 40, 0, 100],
-                    ["Peak min volume %", "peakMinVolumePercent", 0, 0, 100],
-                    ["Valley max volume %", "valleyMaxVolumePercent", 100, 0, 100],
-                    ["Business zone opacity", "businessZoneOpacity", 18, 2, 100],
-                  ] as const).map(([label, key, fallback, min, max]) => (
+                    ["Sensitivity", "pvSensitivity", 40, 0, 100, 1],
+                    ["Peak min volume %", "peakMinVolumePercent", 0, 0, 100, 1],
+                    ["Valley max volume %", "valleyMaxVolumePercent", 100, 0, 100, 1],
+                    ["Business zone opacity", "businessZoneOpacity", 18, 2, 100, 1],
+                    ["Peak line width", "peakLineWidth", 1, 0.5, 6, 0.5],
+                    ["Valley line width", "valleyLineWidth", 1, 0.5, 6, 0.5],
+                    ["Business zone line width", "businessZoneLineWidth", 1, 0.5, 6, 0.5],
+                  ] as const).map(([label, key, fallback, min, max, step]) => (
                     <label key={key} className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
                       <span>{label}</span>
                       <input
                         type="number"
                         min={min}
                         max={max}
-                        step={1}
+                        step={step}
                         value={Number(settingsInstance.settings?.[key] ?? fallback)}
                         onChange={(event) => {
-                          const next = Math.min(max, Math.max(min, Math.round(Number(event.target.value) || 0)));
+                          const raw = Number(event.target.value) || 0;
+                          // A half-step control must not be rounded to whole numbers.
+                          const quantised = step < 1 ? Math.round(raw / step) * step : Math.round(raw);
+                          const next = Math.min(max, Math.max(min, quantised));
                           replace(settingsInstance.instanceId, (current) => ({
                             ...current,
                             settings: { ...(current.settings ?? {}), [key]: next },
@@ -2766,6 +2777,35 @@ export default function ChartIndicatorsControl({
                   >
                     Label price · {settingsInstance.settings?.showLevelLabelPrice === false ? "OFF" : "ON"}
                   </button>
+                  {/*
+                    * DeepChart's Plot Width/Offset tab. The live profile and the
+                    * completed ones behind it are sized and nudged separately.
+                    */}
+                  {([
+                    ["Current width %", "profileWidth", 24, 0, 100, 1],
+                    ["Previous width %", "previousProfileWidth", 24, 0, 100, 1],
+                    ["Current offset", "currentProfileOffset", 0, -400, 400, 1],
+                    ["Previous offset", "previousProfileOffset", 0, -400, 400, 1],
+                  ] as const).map(([label, key, fallback, min, max, step]) => (
+                    <label key={key} className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                      <span>{label}</span>
+                      <input
+                        type="number"
+                        min={min}
+                        max={max}
+                        step={step}
+                        value={Number(settingsInstance.settings?.[key] ?? fallback)}
+                        onChange={(event) => {
+                          const next = Math.min(max, Math.max(min, Math.round(Number(event.target.value) || 0)));
+                          replace(settingsInstance.instanceId, (current) => ({
+                            ...current,
+                            settings: { ...(current.settings ?? {}), [key]: next },
+                          }));
+                        }}
+                        className="h-9 w-full border border-border bg-background px-3 text-right font-mono text-[10px] text-foreground outline-none focus:border-primary/40"
+                      />
+                    </label>
+                  ))}
                   <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
                     <span>Number of profiles</span>
                     <input

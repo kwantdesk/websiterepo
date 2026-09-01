@@ -87,6 +87,35 @@ check("the four that were dead are genuinely wired now", () => {
   }
 });
 
+check("every setting has a way to be set", () => {
+  /*
+   * The other half of a dead control: honoured by the renderer with nothing in
+   * the dialog to reach it. Four line widths and the whole Plot Width/Offset
+   * family were in that state.
+   *
+   * Booleans and colours are covered by the dialog's generated section, and the
+   * session toggles by DESK_SESSION_SETTING_KEYS - neither names the key
+   * literally, so only numbers and strings need an explicit control.
+   */
+  const dialog = files.find((file) => file.path.endsWith(DIALOG));
+  assert.ok(dialog, "the settings dialog is gone");
+  const unreachable = [];
+  for (const id of PROFILE_IDS) {
+    const settings = defaultIndicatorSettings(id, THEME);
+    for (const [key, value] of Object.entries(settings)) {
+      if (BOOKKEEPING.has(key)) continue;
+      if (typeof value === "boolean" || /colou?r$/i.test(key)) continue;
+      if (/^session[A-Za-z]+Enabled$/.test(key)) continue;
+      if (!consumersOf(key).length) continue;
+      // Same shape as a consumer: a control reads it as `settings?.key` or
+      // names it as a quoted key in a control table. Either is reachable.
+      if (!new RegExp(`(\\.|\\?\\.|["'\`])${key}\\b`).test(dialog.source)) unreachable.push(`${id}.${key}`);
+    }
+  }
+  const missing = [...new Set(unreachable)];
+  assert.deepEqual(missing, [], `these are honoured with no control to set them: ${missing.join(", ")}`);
+});
+
 check("the POC highlight is not painted at a fixed opacity", () => {
   // It was hardcoded to 0.72, so its slider moved a stored number and nothing
   // else.

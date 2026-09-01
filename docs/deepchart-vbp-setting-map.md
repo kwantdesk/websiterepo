@@ -88,11 +88,11 @@ is absent rather than partly present.
 | `ShowText` | `showText` | ✅ |
 | `Text` | — | ❌ nested text settings |
 | `Background` | — | ❌ nested background settings |
-| `ShowOnTheRight` / `AlignToRight` | `snapMode` / `align` | ⚠️ partial |
+| `ShowOnTheRight` / `AlignToRight` | `snapMode` | ✅ (`align` was dead weight and is removed) |
 | `WidthType` | — | ❌ |
-| `WidthCurrLength` | `profileWidth` | ⚠️ one width, no current/previous split |
-| `WidthPrevLength` | — | ❌ |
-| `VbpCurrOffset` / `VbpPrevOffset` | — | ❌ |
+| `WidthCurrLength` | `profileWidth` | ✅ |
+| `WidthPrevLength` | `previousProfileWidth` | ✅ **built** |
+| `VbpCurrOffset` / `VbpPrevOffset` | `currentProfileOffset` / `previousProfileOffset` | ✅ **built** |
 | `ShowAboveBars` | — | ❌ |
 | `AlwaysVisible` | — | ❌ |
 
@@ -126,11 +126,12 @@ one to one. `PeakMinVol`, `ValleyMaxVol`, `PeakOnlyOutsideVA` and
 
 ## Settings of ours with no control
 
-Honoured by the renderer, but nothing in the dialog sets them. Booleans and
-colours are covered by the generated section; these are the numbers, which need
-an explicit control:
+**None.** `profileWidth`, `peakLineWidth`, `valleyLineWidth` and
+`businessZoneLineWidth` all have controls now, and `align` — which was stored,
+migrated and read by nothing, a legacy duplicate of `snapMode` — is gone.
 
-`profileWidth`, `peakLineWidth`, `valleyLineWidth`, `businessZoneLineWidth`.
+`scripts/test-volume-profile-settings-live.mjs` fails if a setting becomes
+unreadable OR unreachable, so both halves of a dead control are caught.
 
 ## Where the value area is measured
 

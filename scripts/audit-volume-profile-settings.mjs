@@ -37,9 +37,19 @@ const settings = defaultIndicatorSettings("kwant-profile", {
 
 const rows = [];
 for (const key of Object.keys(settings).sort()) {
+  const value = settings[key];
   const pattern = new RegExp(`(\\.|\\?\\.|["'\`])${key}\\b`);
   const hits = files.filter(({ path, source }) => !path.endsWith(DECLARING) && pattern.test(source));
-  const dialog = hits.some(({ path }) => path.endsWith(DIALOG));
+  /*
+   * The dialog renders booleans and colours from a GENERATED section that
+   * iterates the settings object, and the session toggles from
+   * DESK_SESSION_SETTING_KEYS - so neither names the key literally. Only
+   * numbers and strings need a control written by hand, which is what this is
+   * really looking for.
+   */
+  const generated = typeof value === "boolean" || /colou?r$/i.test(key);
+  const sessionToggle = /^session[A-Za-z]+Enabled$/.test(key);
+  const dialog = generated || sessionToggle || hits.some(({ path }) => path.endsWith(DIALOG));
   const consumers = hits.filter(({ path }) => !path.endsWith(DIALOG)).map(({ path }) => path);
   rows.push({ key, value: settings[key], dialog, consumers });
 }

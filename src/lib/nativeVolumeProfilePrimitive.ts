@@ -63,6 +63,18 @@ export function zoomScaledVolumeProfileWidth({
   visibleLogicalTo: number;
   referenceLogicalBars: number;
   widthPercent: number;
+  /**
+   * DeepChart's Plot Width/Offset tab: the CURRENT profile and the completed
+   * ones behind it are sized and nudged independently.
+   *
+   * `widthPercent` is the current profile's width and stays the fallback for
+   * both, so a chart that has never touched these draws exactly as it did.
+   * Offsets are in pixels and shift a profile along the time axis - what a desk
+   * uses to lift the live profile clear of the bars it is measuring.
+   */
+  previousWidthPercent?: number;
+  currentOffsetPx?: number;
+  previousOffsetPx?: number;
   maxPaneFraction?: number;
 }) {
   const visibleLogicalSpan = Math.abs(visibleLogicalTo - visibleLogicalFrom);
@@ -728,16 +740,27 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
         // ("an older right-facing profile hangs off the end of its own period
         // and opens back across it"); the volume profile did not, which is why
         // only some profiles looked reversed.
-        const rawAnchorX = customProfile
+        /*
+         * DeepChart's Vbp offset, in pixels along the time axis.
+         *
+         * Applied to a profile sitting at its own session anchor only. A docked
+         * profile is deliberately pinned to a screen edge and a fixed-range one
+         * is deliberately at the trader's own anchors; nudging either would move
+         * it off the thing it was pinned to.
+         */
+        const profileOffsetPx = customProfile || pinned
+          ? 0
+          : Number((isNewestOfKind ? style.currentOffsetPx : style.previousOffsetPx) ?? 0);
+        const rawAnchorX = (customProfile
           ? (customLeft + customRight) / 2
           : pinned
           ? pinnedRight ? rightEdge - 2 : leftEdge + 2
-          : facesLeft ? sessionEndX : sessionAnchorX;
-        const endX = customProfile
+          : facesLeft ? sessionEndX : sessionAnchorX) + profileOffsetPx;
+        const endX = (customProfile
           ? customRight
           : pinned
           ? pinnedRight ? leftEdge : rightEdge
-          : sessionEndX;
+          : sessionEndX) + profileOffsetPx;
 
         // Where this profile's level lines must stop: the back of the profile
         // in front, or the right edge when nothing follows.
@@ -821,8 +844,15 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
               referenceLogicalBars,
               widthPercent: style.widthPercent,
             });
+        /*
+         * A completed profile may be drawn narrower than the live one, which is
+         * how DeepChart separates "what is forming" from "what is settled".
+         */
+        const effectiveWidthPercent = isNewestOfKind
+          ? style.widthPercent
+          : Number(style.previousWidthPercent ?? style.widthPercent);
         const profileWidth = zoomScaledWidth
-          ?? (style.widthPercent <= 0
+          ?? (effectiveWidthPercent <= 0
             ? 0
             : Math.min(
                 usablePaneWidth * MAX_PROFILE_PANE_FRACTION,
@@ -831,7 +861,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
                     PROFILE_MIN_READABLE_WIDTH_PX,
                     usablePaneWidth * MAX_PROFILE_PANE_FRACTION,
                   ),
-                  sessionWidth * style.widthPercent / 100,
+                  sessionWidth * effectiveWidthPercent / 100,
                 ),
               ));
         // A daily profile has two independent halves: volume to the right of

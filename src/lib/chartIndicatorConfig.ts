@@ -2034,6 +2034,14 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     visualStyle: "automatic",
     borderWidth: 1,
     numberOfProfiles: 0,
+    /*
+     * DeepChart's Plot Width/Offset tab. Completed profiles default to the
+     * current width and both offsets to none, so switching to this build
+     * changes nothing until the trader asks for it.
+     */
+    previousProfileWidth: 24,
+    currentProfileOffset: 0,
+    previousProfileOffset: 0,
     sessionStartMinutes: 8 * 60 + 30,
     sessionEndMinutes: 15 * 60 + 15,
     useEndSessionAsStartDay: false,
@@ -2076,9 +2084,11 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     showVwapBands: false,
     showSummary: false,
     profileSettingsVersion: 13,
-    align: indicatorId === "kwant-profile"
-      ? "session"
-      : indicatorId === "weekly-volume-profile" ? "left" : "right",
+    /*
+     * `align` is gone: it was stored, migrated and read by nothing. Alignment
+     * is `snapMode`, which is the live control and the one the dialog offers -
+     * DeepChart's ShowOnTheRight / AlignToRight map onto it.
+     */
     volumeColor: theme?.borderUpColor ?? theme?.upColor ?? "#22C55E",
     askColor: theme?.upColor ?? "#22C55E",
     bidColor: theme?.downColor ?? "#EF4444",
@@ -2589,7 +2599,6 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
       ...normalizedInstance,
       settings: {
         ...(normalizedInstance.settings ?? {}),
-        align: "session",
         showText: false,
         showPocHighlight: true,
         showProfileOutline: true,
@@ -2637,6 +2646,10 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         visualStyle: normalizedInstance.settings?.visualStyle ?? "automatic",
         borderWidth: normalizedInstance.settings?.borderWidth ?? 1,
         numberOfProfiles: normalizedInstance.settings?.numberOfProfiles ?? 0,
+        previousProfileWidth: normalizedInstance.settings?.previousProfileWidth
+          ?? normalizedInstance.settings?.profileWidth ?? 24,
+        currentProfileOffset: normalizedInstance.settings?.currentProfileOffset ?? 0,
+        previousProfileOffset: normalizedInstance.settings?.previousProfileOffset ?? 0,
         filterTime: normalizedInstance.settings?.filterTime ?? "rth",
         sessionStartMinutes: normalizedInstance.settings?.sessionStartMinutes ?? 8 * 60 + 30,
         sessionEndMinutes: normalizedInstance.settings?.sessionEndMinutes ?? 15 * 60 + 15,
@@ -2704,6 +2717,10 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         visualStyle: normalizedInstance.settings?.visualStyle ?? "automatic",
         borderWidth: normalizedInstance.settings?.borderWidth ?? 1,
         numberOfProfiles: normalizedInstance.settings?.numberOfProfiles ?? 0,
+        previousProfileWidth: normalizedInstance.settings?.previousProfileWidth
+          ?? normalizedInstance.settings?.profileWidth ?? 24,
+        currentProfileOffset: normalizedInstance.settings?.currentProfileOffset ?? 0,
+        previousProfileOffset: normalizedInstance.settings?.previousProfileOffset ?? 0,
         filterTime: normalizedInstance.settings?.filterTime ?? "rth",
         sessionStartMinutes: normalizedInstance.settings?.sessionStartMinutes ?? 8 * 60 + 30,
         sessionEndMinutes: normalizedInstance.settings?.sessionEndMinutes ?? 15 * 60 + 15,
