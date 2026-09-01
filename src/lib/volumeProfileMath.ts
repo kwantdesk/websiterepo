@@ -41,7 +41,20 @@ export function calculateVolumeProfileValueArea(
 
   const volumesByTick = new Map<number, number>();
   for (const level of sourceLevels) {
-    const tick = Math.round(level.price / priceIncrement);
+    /*
+     * Floored, because that is how the rows on screen are bucketed.
+     *
+     * `volumeProfileBinTick` floors; this rounded. While the levels arrived
+     * already binned the two agreed, because every price was an exact multiple
+     * of the increment. They stopped agreeing the moment profiles began
+     * arriving at tick resolution: rounding puts the upper half of every bin
+     * into the NEXT row, so the value area was measured over rows sitting half
+     * a bin above the ones being drawn.
+     *
+     * The epsilon is for the division, not the data - 19990.25 / 1 can land a
+     * hair under an integer and floor a whole row too low.
+     */
+    const tick = Math.floor(level.price / priceIncrement + 1e-9);
     volumesByTick.set(tick, (volumesByTick.get(tick) ?? 0) + Math.max(0, level.volume));
   }
   const occupiedTicks = [...volumesByTick.keys()].sort((a, b) => a - b);

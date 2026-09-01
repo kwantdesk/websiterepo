@@ -934,9 +934,21 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
             maxVolume,
             maxAbsDelta,
             maxSideVolume,
+            /*
+             * Measured over the rows the TRADER asked for.
+             *
+             * Not `profile.groupTicks`, which is now always tick resolution
+             * because the fetch is - that measured a 4-tick profile's value
+             * area over single ticks, and the two-row expansion then covered a
+             * quarter of the price distance, which moved the edges.
+             *
+             * Not `groupedTicks` either: that carries the zoom-dependent
+             * legibility multiplier, and a value area that moved when you
+             * zoomed would be worse than one that is merely off.
+             */
             valueArea: calculateVolumeProfileValueArea(
               sourceLevels,
-              profile.tickSize * profile.groupTicks,
+              profile.tickSize * requestedTicks,
               requestedValueAreaPercent,
             ),
           };
