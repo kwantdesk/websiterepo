@@ -20388,7 +20388,7 @@ export default function KwantifyWorkspace({
                 <div className="flex items-center justify-between gap-3 px-3 py-3">
                   <div className="min-w-0">
                     <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-foreground">Daily P&amp;L</div>
-                    <div className="mt-0.5 text-[9px] text-muted">Closed today · New York</div>
+                    <div className="mt-0.5 text-[9px] text-muted">Closed this trading day · from the 17:00 CT open</div>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
                     <span className={`font-mono text-[13px] font-semibold tabular-nums ${selectedPaperDailyPnl > 0 ? "text-primary" : selectedPaperDailyPnl < 0 ? "text-danger" : "text-foreground"}`}>

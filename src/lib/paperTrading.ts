@@ -3,6 +3,7 @@ import {
   type PaperTradingAccountRecord,
 } from "./paperAccounts.ts";
 import { writeProtectedItem, type StorageWriteResult } from "./browserStorageQuota.ts";
+import { cmeSessionDateKey } from "./chartHistoryWindow.ts";
 
 export type PaperOrderSide = "buy" | "sell";
 export type PaperOrderType = "market" | "limit" | "stop";
@@ -203,14 +204,29 @@ const paperPnlDayFormatter = new Intl.DateTimeFormat("en-US", {
 });
 
 /**
- * The New York trading day a timestamp belongs to.
+ * The TRADING day a timestamp belongs to, not the calendar one.
  *
- * Exported so anything reporting on "today" - the daily P&L readout and the
- * export of the trades behind it - draws the same boundary. Two definitions of
- * today would let a figure and the list explaining it disagree.
+ * This drew a New York midnight-to-midnight boundary, which is not a futures
+ * day. Trading the Asia session at 20:00 New York put those fills in the same
+ * "today" as that morning's cash session - nine hours and one trading day
+ * apart - so the figure lumped the session just opened together with the one
+ * that had already closed. The readout also called itself "New York" while the
+ * trader was in Asia, which is how it was noticed.
+ *
+ * The CME day rolls at the 17:00 open, and the rest of the platform - candles,
+ * profiles, journal dates - already keys on that. The daily P&L now does too,
+ * so a trade cannot land on one day here and another everywhere else.
+ *
+ * Exported so anything reporting on "today" - this readout and the export of
+ * the trades behind it - draws the same boundary. Two definitions would let a
+ * figure and the list explaining it disagree.
  */
 export function paperPnlDayKey(timestamp: number): string {
   if (!Number.isFinite(timestamp)) return "";
+  const session = cmeSessionDateKey(timestamp);
+  if (session) return session;
+  // A weekend or holiday timestamp has no CME session; fall back to the
+  // calendar day so a figure is never silently dropped.
   const parts = paperPnlDayFormatter.formatToParts(new Date(timestamp));
   const year = parts.find((part) => part.type === "year")?.value;
   const month = parts.find((part) => part.type === "month")?.value;

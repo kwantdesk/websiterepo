@@ -7,7 +7,7 @@ import {
 /**
  * The day's closed trades, as a file another journal will accept.
  *
- * This exports the trades BEHIND the daily P&L figure - the same New York day
+ * This exports the trades BEHIND the daily P&L figure - the same CME trading day
  * and the same exit fills the figure is summed from, so the list always
  * explains the number sitting next to it. Clearing the account's fills empties
  * both at once, because both read the same place.
