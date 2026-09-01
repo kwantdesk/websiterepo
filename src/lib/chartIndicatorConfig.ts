@@ -1704,6 +1704,16 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
   } : {}),
   ...(indicatorId === "ib-levels" ? {
     durationMinutes: 60,
+    /*
+     * Each opening range is its own toggle, so a session can carry its 15, 30
+     * and 60 at once and they can be read against each other. All off keeps
+     * the single `durationMinutes` the study always drew, which is what every
+     * saved workspace is expecting to see.
+     */
+    ibDuration15: false,
+    ibDuration30: false,
+    ibDuration45: false,
+    ibDuration60: false,
     showGlobex: true,
     showTokyo: true,
     showLondon: true,

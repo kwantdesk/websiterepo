@@ -10508,10 +10508,9 @@ function Chart({
       // them.
       labelAnchor: "end" as const,
     }));
-    // Optional fib over EVERY completed initial balance on the chart — each
-    // session type (Asia/London/New York) in every lookback day gets its own
-    // 50% / 61.8% / 78.6% set between that IBH and IBL, mirrored by the
-    // Long/Short direction and anchored at the bar that completed the pair.
+    // Optional fib over every initial balance on the chart - each session type
+    // gets its own 50% / 61.8% / 78.6% set between that IBH and IBL, mirrored
+    // by the Long/Short direction and anchored at the session open.
     const fibLevels: SessionHighLowRenderLevel[] = [];
     if (initialBalanceSettings.showFib === true && initialBalanceLevels.length) {
       const bySession = new Map<string, { high?: (typeof initialBalanceLevels)[number]; low?: (typeof initialBalanceLevels)[number] }>();
@@ -10523,21 +10522,24 @@ function Chart({
       }
       const long = String(initialBalanceSettings.fibDirection ?? "long") !== "short";
       const color = long ? settings.upColor : settings.downColor;
-      // Each fib set ends where the NEXT session opens (any session type), so
-      // it reads as that balance's own retracement block instead of a ray
-      // running under every later session. The newest set stays open-ended.
-      const sessionStarts = [...new Set(initialBalanceLevels.map((level) => level.session.startTimestamp))]
-        .sort((left, right) => left - right);
       for (const pair of bySession.values()) {
         if (!pair.high || !pair.low) continue;
         const range = pair.high.price - pair.low.price;
         if (!(range > 0)) continue;
-        const fibStart = Math.max(pair.high.startTimestamp, pair.low.startTimestamp);
-        const nextSessionStart = sessionStarts.find((start) => start > pair.high!.session.startTimestamp);
-        const fibEnd = nextSessionStart !== undefined && nextSessionStart > fibStart
-          ? (eventChartTimeBySourceTimeRef.current.get(nextSessionStart)
-            ?? Math.floor(nextSessionStart / 1_000)) as Time
-          : undefined;
+        /*
+         * The set begins at the candle the SESSION opened on, and runs to the
+         * right edge.
+         *
+         * It used to begin at whichever extreme was made last - so a fib for a
+         * balance that put its low in at 09:47 started there, floating in the
+         * middle of the session that produced it rather than lining up with
+         * the open. It was also cut off at the next session's open, which made
+         * it a block over old price instead of a level to trade against now.
+         * A retracement of the opening range is a level that stays live, so it
+         * is anchored to the open and left open-ended.
+         */
+        const fibStart = pair.high.session.startTimestamp;
+        const fibEnd = undefined;
         for (const ratio of [0.5, 0.618, 0.786]) {
           fibLevels.push({
             id: `${pair.high.id}-fib-${ratio}-${long ? "long" : "short"}`,

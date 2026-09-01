@@ -248,6 +248,28 @@ export function buildPreviousSessionHighLowLevels(
   });
 }
 
+/**
+ * Every opening range the trader asked to see, not just one.
+ *
+ * A desk watches the 15, the 30 and the 60 of the same session against each
+ * other - where the 15 sits inside the 30 says something the 60 alone cannot.
+ * There was room for exactly one duration, so comparing them meant changing
+ * the setting and losing the other.
+ *
+ * Each duration is its own toggle. With none of them on, the study keeps
+ * drawing the single `durationMinutes` it always drew, so a saved workspace
+ * opens looking exactly as it was left.
+ */
+export function requestedInitialBalanceDurations(
+  settings: SessionSettings,
+): InitialBalanceDuration[] {
+  const chosen = INITIAL_BALANCE_DURATIONS
+    .filter((duration) => settings[`ibDuration${duration}`] === true);
+  return chosen.length
+    ? [...chosen]
+    : [normalizeInitialBalanceDuration(settings.durationMinutes)];
+}
+
 function normalizeInitialBalanceDuration(value: unknown): InitialBalanceDuration {
   const requested = Number(value);
   return INITIAL_BALANCE_DURATIONS.includes(requested as InitialBalanceDuration)
@@ -271,8 +293,7 @@ export function buildInitialBalanceLevels(
   intervalMs = 60_000,
 ): InitialBalanceLevel[] {
   if (!candles.length) return [];
-  const durationMinutes = normalizeInitialBalanceDuration(settings.durationMinutes);
-  const formationDurationMs = durationMinutes * 60_000;
+  const durations = requestedInitialBalanceDurations(settings);
   const latestTimestamp = candles.at(-1)!.timestamp;
   const candlesByTimestamp = new Map(candles.map((candle) => [candle.timestamp, candle]));
   const windows = buildMarketSessionWindows(candles, settings, intervalMs);
@@ -288,8 +309,8 @@ export function buildInitialBalanceLevels(
     .filter((session) => session.key !== "sydney")
     .sort((left, right) => left.startTimestamp - right.startTimestamp);
 
-  return latestWindows.flatMap((session) => {
-    const formationEndTimestamp = session.startTimestamp + formationDurationMs;
+  return latestWindows.flatMap((session) => durations.flatMap((durationMinutes) => {
+    const formationEndTimestamp = session.startTimestamp + durationMinutes * 60_000;
     const formationCandles = candles.filter((candle) =>
       candle.timestamp >= session.startTimestamp
       && candle.timestamp < formationEndTimestamp
@@ -344,5 +365,5 @@ export function buildInitialBalanceLevels(
         label: `${session.label} IBL ${durationMinutes}m${suffix}`,
       }]),
     ];
-  });
+  }));
 }
