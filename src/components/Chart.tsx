@@ -427,6 +427,15 @@ const DEEP_HISTORY_INDICATOR_MAX_BARS = 20_000;
  * loads. Counting only traded bars makes a strict threshold safe.
  */
 const CUMULATIVE_DELTA_MINIMUM_COVERAGE = 0.95;
+/**
+ * How much of the traded window the footprint needs before it draws at all.
+ *
+ * Lower than the CVD gate deliberately. A cumulative series is wrong end to end
+ * if one bar is missing; a footprint with a couple of thin bars still un-filled
+ * is readable, and holding the whole chart back for them would trade one
+ * complaint for another.
+ */
+const FOOTPRINT_MINIMUM_FLOW_COVERAGE = 0.85;
 const DEEP_HISTORY_INDICATOR_IDS = new Set([
   "moving-average",
   "volume",
@@ -6075,7 +6084,49 @@ function Chart({
     sampledIndicatorMarketTradesVersion,
     timeframe,
   ]);
-  const footprintHasPriceLevelFlow = liveFootprintRenderBars.some((bar) => bar.hasPriceLevelFlow);
+  /**
+   * Coverage, not existence.
+   *
+   * This was `.some`, so the FIRST bar to receive price-level flow painted the
+   * whole footprint - fully drawn cells beside bars that were still bare
+   * numbers, with the footers of the empty ones colliding because a bar with no
+   * rows does not claim its width. It corrected itself once the execution tape
+   * finished arriving, which is the twenty seconds of glitching before it looks
+   * right.
+   *
+   * A bar that never traded is legitimately empty rather than missing its flow,
+   * so it must not count against coverage - the same rule the CVD gate above
+   * had to learn, for the same reason: counting quiet bars as gaps forces a
+   * threshold loose enough to let a half-built chart paint.
+   *
+   * That question has to be put to the CANDLE. A footprint bar builds its own
+   * volume out of the executions it received, so a bar still waiting for flow
+   * reports zero volume and is indistinguishable from a bar that never traded -
+   * measuring coverage against it asks the missing data whether it is missing,
+   * and every window scores a perfect one.
+   */
+  const footprintHasPriceLevelFlow = useMemo(() => {
+    if (!liveFootprintRenderBars.length) return false;
+    const flowAt = new Map<number, boolean>();
+    for (const bar of liveFootprintRenderBars) flowAt.set(bar.timestamp, bar.hasPriceLevelFlow);
+    let sampled = 0;
+    let covered = 0;
+    for (const candle of footprintSourceCandles) {
+      if (Number(candle.volume ?? 0) <= 0) continue;
+      const flow = flowAt.get(candle.timestamp);
+      // Outside the footprint's own window; not its gap to answer for.
+      if (flow === undefined) continue;
+      sampled += 1;
+      if (flow) covered += 1;
+    }
+    /*
+     * No candle in the window reports volume, so there is nothing to measure
+     * against - an instrument that publishes none, or history that arrived
+     * without it. Fall back to the old test rather than inventing a verdict.
+     */
+    if (!sampled) return liveFootprintRenderBars.some((bar) => bar.hasPriceLevelFlow);
+    return covered / sampled >= FOOTPRINT_MINIMUM_FLOW_COVERAGE;
+  }, [footprintSourceCandles, liveFootprintRenderBars]);
   const footprintHasClassifiedFlow = liveFootprintRenderBars.some((bar) =>
     bar.classifiedVolume > 0);
   const stackedImbalanceSettings = useMemo(() => {
