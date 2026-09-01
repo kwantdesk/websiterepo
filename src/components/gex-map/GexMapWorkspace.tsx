@@ -452,6 +452,41 @@ function rgbHex(color: RgbColor) {
   return `#${channel(color.r)}${channel(color.g)}${channel(color.b)}`;
 }
 
+const PURE_WHITE = { r: 255, g: 255, b: 255 };
+const PURE_BLACK = { r: 0, g: 0, b: 0 };
+const readableTextCache = new Map<string, string>();
+
+/**
+ * Black or white, whichever can actually be read on this cell.
+ *
+ * The rows painted their text with the THEME foreground while the cell behind
+ * it came from the palette - two colours with no relationship to each other. On
+ * a theme with a dark foreground the negative nodes went unreadable, and on a
+ * light palette slot the light foreground did the same: the text was there and
+ * simply could not be seen.
+ *
+ * The contrast maths already existed for the Star accent; every row uses it
+ * now. Black and white are the choices deliberately - a third colour from the
+ * palette would contrast against some slots of its own scale and not others,
+ * which is the failure being fixed.
+ *
+ * Cached because a strike ladder renders hundreds of rows several times a
+ * second and the answer only depends on the colour.
+ */
+function readableTextOn(background: string): string {
+  const cached = readableTextCache.get(background);
+  if (cached) return cached;
+  const rgb = parseResolvedColor(background);
+  const resolved = !rgb
+    ? "#FFFFFF"
+    : contrastRatio(rgb, PURE_BLACK) >= contrastRatio(rgb, PURE_WHITE)
+      ? "#000000"
+      : "#FFFFFF";
+  if (readableTextCache.size > 512) readableTextCache.clear();
+  readableTextCache.set(background, resolved);
+  return resolved;
+}
+
 /** Pick the accent with the strongest worst-case contrast against this theme. */
 function resolveStarPalette(host: HTMLElement): StarPalette {
   const probe = document.createElement("span");
@@ -1279,6 +1314,10 @@ function ExposurePanel({
                   </div>
                 );
               }
+              // Resolved once per row: the cell's own colour, and the text
+              // that can actually be read on it.
+              const rowBackground = heatColor(row.net, strength, signedScale);
+              const rowText = readableTextOn(rowBackground);
               return (
                 <div
                   key={row.strike}
@@ -1287,8 +1326,15 @@ function ExposurePanel({
                   data-gex-strike-node="true"
                   className={`gex-map-strike-row relative grid grid-cols-[96px_minmax(72px,1fr)_minmax(0,86px)] items-center border-b border-black/10 px-2 font-mono text-[9px] transition-[height,margin,background-color] ${nearSpot ? "mx-1 my-1 h-[35px]" : isStar ? "mx-1 my-0.5 h-[29px]" : "h-[25px]"} ${isStar ? `gex-star-node z-[3] ${nearSpot ? "gex-star-is-current" : ""}` : nearSpot ? "gex-current-price-marker z-[2]" : ""}`}
                   style={{
-                    textShadow: "0 1px 2px rgba(0,0,0,0.72)",
-                    backgroundColor: heatColor(row.net, strength, signedScale),
+                    /*
+                     * The shadow follows the text, not the theme. A dark halo
+                     * under black text on a bright cell just smears it.
+                     */
+                    textShadow: rowText === "#000000"
+                      ? "0 1px 2px rgba(255,255,255,0.55)"
+                      : "0 1px 2px rgba(0,0,0,0.72)",
+                    backgroundColor: rowBackground,
+                    "--gex-row-text": rowText,
                     ...(isStar ? {
                       "--gex-star-accent": starContrastFor(row.net),
                       "--gex-star-text": starPalette.text,
@@ -1297,7 +1343,10 @@ function ExposurePanel({
                   } as CSSProperties}
                   title={`${greek.short} ${formatCompact(row.net)} · Call ${formatCompact(row.call)} · Put ${formatCompact(row.put)}`}
                 >
-                  <span className={`relative flex min-w-0 items-center gap-1 font-semibold ${nearSpot ? "text-foreground" : "text-foreground/90"}`}>
+                  <span
+                    className="relative flex min-w-0 items-center gap-1 font-semibold"
+                    style={{ color: "var(--gex-row-text)" }}
+                  >
                     {nearSpot ? <span className="gex-current-price-dash absolute -left-2 h-6 w-1.5" /> : null}
                     <span
                       className={`${nearSpot && !isStar ? "gex-current-price-pill" : ""} shrink-0`}
@@ -1312,7 +1361,12 @@ function ExposurePanel({
                       </span>
                     ) : null}
                   </span>
-                  <span className="truncate text-right font-semibold text-foreground drop-shadow-sm">{formatRowValue(row.net)}</span>
+                  <span
+                    className="truncate text-right font-semibold drop-shadow-sm"
+                    style={{ color: "var(--gex-row-text)" }}
+                  >
+                    {formatRowValue(row.net)}
+                  </span>
                   <span className="gex-map-change-column flex items-center justify-end gap-1">
                     {changeRatio !== null ? (
                       <span className={`rounded px-1 py-0.5 text-[8px] font-semibold ${changeRatio >= 0 ? "bg-primary/15 text-primary" : "bg-danger/15 text-danger"}`}>
