@@ -83,7 +83,32 @@ export function loadProtocol(protoDir) {
     decode(buffer) {
       const templateId = this.templateId(buffer);
       const typeName = RESPONSE_TYPES.get(templateId);
-      if (!typeName) return { templateId, typeName: null, payload: null };
+      if (!typeName) {
+        /*
+         * A message type we cannot name yet. Keep the WIRE BYTES.
+         *
+         * Widening the subscription brought in settlement, open interest,
+         * market mode, the price limits and the official open and close - real
+         * market data, arriving now, whose template ids Rithmic does not
+         * publish in the .proto files. Returning a null payload recorded only
+         * that something happened, which is precisely the failure the archive
+         * exists to prevent, and the bytes were then gone for good.
+         *
+         * Guessing a mapping would be worse than the gap: a wrong message
+         * type decodes into confident nonsense. So the bytes are kept
+         * verbatim. Rithmic derives field numbers from a global id space, so
+         * the set of numbers in a message identifies which message it is - and
+         * that can be worked out offline from these bytes, then applied
+         * retroactively to everything recorded in the meantime. Nothing is
+         * lost while the mapping is established.
+         */
+        return {
+          templateId,
+          typeName: null,
+          payload: null,
+          raw: Buffer.from(buffer).toString("base64"),
+        };
+      }
       const messageType = type(typeName);
       const decoded = messageType.decode(buffer);
       return {
