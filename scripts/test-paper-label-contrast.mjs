@@ -116,9 +116,26 @@ console.log(`\npaper label contrast: ${passed}/${passed} checks passed`);
     );
   }
   assert.ok(
-    workspace.includes('getPropertyValue("--surface")'),
-    "the ticket does not read the surface it is actually drawn on",
+    workspace.includes('"--panel"'),
+    "the ticket does not read the token the panel is actually painted with",
   );
+
+  /*
+   * Chromey Mono is the theme that broke it: candleDown is deliberately pure
+   * black, for hollow down candles, and the panel is near-black too - so
+   * border, fill and label were all black on black.
+   */
+  for (const panel of ["#000000", "#040504", "#0A0C0A"]) {
+    const resolved = legibleOn("#000000", panel);
+    const ratio = contrastRatio(parseResolvedColor(resolved), parseResolvedColor(panel));
+    // Epsilon because the search stops at the first step that MEETS 3:1, so an
+    // exact landing recomputes as 2.9999...; the point is that black on black
+    // no longer survives, not the third decimal place.
+    assert.ok(ratio >= 2.99, `Chromey down on ${panel} resolved to ${resolved} at ${ratio.toFixed(2)}:1`);
+    assert.notEqual(resolved.toUpperCase(), "#000000", `Chromey down stayed black on ${panel}`);
+  }
+  // Its green is already legible and must survive untouched.
+  assert.equal(legibleOn("#00FF00", "#040504"), "#00FF00", "Chromey's up colour was altered");
 
   // The reported failure: a pale down colour on a near-white panel.
   const palePanel = "#F7F7FA";

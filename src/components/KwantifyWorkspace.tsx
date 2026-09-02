@@ -9977,8 +9977,15 @@ export default function KwantifyWorkspace({
   useEffect(() => {
     const readSurface = () => {
       const root = document.documentElement;
-      const value = getComputedStyle(root).getPropertyValue("--surface").trim()
-        || getComputedStyle(root).getPropertyValue("--background").trim();
+      const style = getComputedStyle(root);
+      /*
+       * --panel first, because that is the token the right panel is actually
+       * painted with. Measuring against the wrong surface is how a button can
+       * still come out invisible on a theme where panel and surface differ.
+       */
+      const value = ["--panel", "--surface", "--background"]
+        .map((token) => style.getPropertyValue(token).trim())
+        .find(Boolean);
       if (value) setOrderTicketSurface(value);
     };
     readSurface();
