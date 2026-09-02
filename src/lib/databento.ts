@@ -16,6 +16,7 @@ import {
   vendorMarketDataFetch,
 } from "@/lib/vendorMarketData.server";
 import { availableEndFromError, clampEndToLicence, rememberAvailableEnd } from "@/lib/databentoAvailableEnd";
+import { fetchInstitutionalMarketData } from "@/lib/institutionalMarketData.server";
 
 export const DATABENTO_HISTORICAL_BASE_URL = "https://api.databento.com/v0";
 
@@ -427,6 +428,19 @@ function resample(rows: DatabentoBar[], timeframe: string) {
   return [...buckets.values()].sort((a, b) => a.timestamp - b.timestamp);
 }
 
+/**
+ * "NQ.c.0" and "NQZ5" both mean the NQ book to the collector, which resolves
+ * the front month itself from its own subscriptions.
+ */
+export function contractRootSymbol(symbol: string) {
+  const upper = String(symbol || "").toUpperCase();
+  // .c / .v / .n are continuous, volume and tick-bar roots respectively; all
+  // three name the same book to the collector.
+  const continuous = upper.match(/^([A-Z0-9]{1,3})\.[A-Z]\.\d+$/);
+  if (continuous) return continuous[1];
+  return upper.replace(/[A-Z]\d$/, "") || upper;
+}
+
 export function isContinuousFuture(symbol: string) {
   return /\.[vnc]\.\d+$/.test(symbol);
 }
@@ -495,24 +509,50 @@ export async function getDatabentoBars(symbol: string, timeframe: string, start:
     }));
   }
 
-  const rows = await historicalRequest({
-    symbols: symbol,
-    stype_in: isContinuousFuture(symbol) ? "continuous" : "raw_symbol",
-    schema: sourceSchema(timeframe),
-    start,
-    end: completedHistoricalEnd(end),
+  /*
+   * Bars come from the desk's own recorded Rithmic prints.
+   *
+   * They used to be bought per request from Databento. That subscription is
+   * gone: the account answers 402 "insufficient budget", and because the
+   * busiest window of the day is the most expensive request, the US cash
+   * session was precisely the part that stopped being served - charts drew a
+   * live right-hand edge with a hole through the middle of the day.
+   *
+   * The collector has been recording every print the whole time. The gateway
+   * aggregates them into minute bars and serves them from its own disk, so
+   * history no longer depends on anyone's billing and cannot be revoked.
+   */
+  const requestedFrom = Date.parse(start);
+  const requestedTo = Date.parse(completedHistoricalEnd(end));
+  const query = new URLSearchParams({
+    symbol: contractRootSymbol(symbol),
+    interval: timeframe,
   });
-  const bars = rows
-    .map((row) => ({
-      timestamp: time(row.ts_event ?? row.ts_recv ?? (row.hd as Record<string, unknown> | undefined)?.ts_event),
-      open: price(row.open),
-      high: price(row.high),
-      low: price(row.low),
-      close: price(row.close),
-      volume: Number(row.volume ?? 0),
-    }))
+  if (Number.isFinite(requestedFrom)) query.set("fromMs", String(requestedFrom));
+  if (Number.isFinite(requestedTo)) query.set("toMs", String(requestedTo));
+  const response = await fetchInstitutionalMarketData(`/v1/market-data/history?${query}`);
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(`Chart history is unavailable (${response.status}): ${detail.slice(0, 300)}`);
+  }
+  const payload = (await response.json()) as { candles?: unknown };
+  const bars = (Array.isArray(payload.candles) ? payload.candles : [])
+    .map((row) => {
+      const candle = row as Record<string, unknown>;
+      return {
+        timestamp: Number(candle.timestamp),
+        open: Number(candle.open),
+        high: Number(candle.high),
+        low: Number(candle.low),
+        close: Number(candle.close),
+        volume: Number(candle.volume ?? 0),
+      };
+    })
     .filter((row) => row.timestamp > 0 && row.close > 0)
     .sort((a, b) => a.timestamp - b.timestamp);
+  // The gateway already rolls its minutes up to the requested interval; this
+  // is a no-op for anything it served and still correct if it ever returns
+  // finer bars than were asked for.
   return resample(bars, timeframe);
 }
 

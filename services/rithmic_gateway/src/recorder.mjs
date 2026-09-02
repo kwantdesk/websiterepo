@@ -34,7 +34,7 @@ function instrumentFileName(exchange, symbol, compress) {
 
 // The collector emits `instrument: "CME:NQU6"` as a single key on book events
 // and explicit exchange/symbol fields on raw wire messages. Accept both.
-function resolveInstrument(record) {
+export function resolveInstrument(record) {
   const payload = record.payload || record;
   const exchange = Array.isArray(record.exchange)
     ? record.exchange[0]
@@ -70,7 +70,7 @@ function resolveInstrument(record) {
 
 // receivedAt arrives as an ISO string; a bare Number() cast yields NaN and
 // would silently file every record under the wrong trading date.
-function toEpochMs(value) {
+export function toEpochMs(value) {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   const parsed = Date.parse(value);
   return Number.isFinite(parsed) ? parsed : Date.now();

@@ -179,6 +179,7 @@
     "test:paper-label-contrast": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-paper-label-contrast.mjs",
     "test:ib-durations": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-ib-durations.mjs",
     "test:big-trade-levels": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-big-trade-levels.mjs",
+    "test:rithmic-bar-source": "node scripts/test-rithmic-bar-source.mjs",
     "test:chart-watermark": "node scripts/test-chart-watermark.mjs",
     "test:desktop-auth": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types scripts/test-desktop-auth-protocol.mjs && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-desktop-auth-service.mjs && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-desktop-auth-http.mjs && node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-desktop-auth-revocations.mjs && node scripts/test-desktop-auth-migration.mjs && node --test services/rithmic_gateway/test/desktop-ticket-verifier.test.mjs",
     "research:gexmap-vs-trinity": "node scripts/compare-gexmap-vs-trinity-scope.mjs",

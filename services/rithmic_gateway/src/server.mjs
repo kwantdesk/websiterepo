@@ -9,7 +9,7 @@ import { LabRepositoryStore } from "./lab-repository.mjs";
 import { RithmicBookStore } from "./book-store.mjs";
 import { loadConfig } from "./config.mjs";
 import { DatabentoEquitiesTradeStream } from "./databento-equities-stream.mjs";
-import { DatabentoHistoryService, HistoryRequestError } from "./databento-history.mjs";
+import { FuturesBarArchive, HistoryRequestError } from "./futures-bar-archive.mjs";
 import { DatabentoOptionsCatalog, OptionsCatalogError } from "./databento-options-catalog.mjs";
 import { DatabentoOptionTradeStream } from "./databento-option-trades.mjs";
 import { createDesktopStreamGuard } from "./desktop-stream-guard.mjs";
@@ -133,9 +133,27 @@ const exposureArchiver = new ExposureArchiver({
   enabled: config.exposureArchiveEnabled,
 });
 const vendorDataEdge = new VendorDataEdge(config, fetch, exposureArchiver);
-const chartHistory = new DatabentoHistoryService({
-  apiKey: config.databentoApiKey,
-  timeoutMs: config.vendorRequestTimeoutMs,
+/*
+ * Chart history comes from the desk's own recorded Rithmic prints.
+ *
+ * It used to be bought per request from a vendor. That vendor is gone - the
+ * account answers 402 "insufficient budget", and the busiest window of the day
+ * is the most expensive request, so the US cash session was exactly the part
+ * that stopped being served. Charts showed live prices with a hole through the
+ * middle of the day.
+ *
+ * Every print was already being recorded here. Turning them into bars as they
+ * arrive costs nothing, cannot be revoked, and does not depend on anyone's
+ * billing.
+ */
+const chartHistory = new FuturesBarArchive({
+  dir: config.recordDir,
+  enabled: config.recordEnabled,
+});
+chartHistory.attach(client);
+chartHistory.restore().catch((error) => {
+  process.stderr.write(`[bars] restore failed: ${error.message}
+`);
 });
 const optionCatalog = new DatabentoOptionsCatalog({
   apiKey: config.databentoApiKey,
