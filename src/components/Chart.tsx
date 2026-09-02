@@ -121,7 +121,7 @@ import {
   type IvRankQuery,
   type IvRankResourceState,
 } from "@/lib/impliedVolatilityRankClient";
-import { readableTextOn } from "@/lib/readableContrast";
+import { legibleOn, readableTextOn } from "@/lib/readableContrast";
 import ChartIndicatorPanes, {
   type IndicatorPaneDock,
   type IndicatorPaneGroup,
@@ -14952,6 +14952,22 @@ function Chart({
     })),
     status: "open",
   });
+  /*
+   * The side colours a stop, target or entry line is drawn in, forced to stay
+   * visible against the chart itself.
+   *
+   * These take the candle colours straight, and a theme is free to set a
+   * candle colour TO the chart background - Chromey Mono deliberately sets the
+   * down candle to black on a black chart so that a down bar reads as a hollow
+   * outline. That made every stop line, and every sell entry line, black on
+   * black: no line, no price-scale chip, nothing to drag. The level was still
+   * there and still armed; it simply could not be seen.
+   *
+   * Measured against the chart background rather than a panel, because that is
+   * what these are drawn on top of.
+   */
+  const paperUpInk = legibleOn(settings.upColor, settings.backgroundColor);
+  const paperDownInk = legibleOn(settings.downColor, settings.backgroundColor);
   const workingOrderOverlayLevels = visibleWorkingOrders.flatMap((order) => {
     const anchor = workingOrderAnchor(order);
     return [
@@ -14960,7 +14976,7 @@ function Chart({
         kind: "entry" as const,
         price: anchor.entryPrice,
         label: `${order.side === "buy" ? "BUY" : "SELL"} ${order.quantity} ${order.type.toUpperCase()} · ${anchor.entryPrice.toFixed(priceFormat.precision)} · working`,
-        color: order.side === "buy" ? settings.upColor : settings.downColor,
+        color: order.side === "buy" ? paperUpInk : paperDownInk,
         position: anchor,
         targetId: null as string | null,
       },
@@ -14985,7 +15001,7 @@ function Chart({
           order.stopLoss,
           order.quantity,
         ))}`,
-        color: settings.downColor,
+        color: paperDownInk,
         position: anchor,
         targetId: null as string | null,
       }]),
@@ -15000,7 +15016,7 @@ function Chart({
           target.price,
           target.quantity,
         ))}`,
-        color: settings.upColor,
+        color: paperUpInk,
         position: anchor,
         targetId: `${order.id}-tp-${index}` as string | null,
       })),
@@ -15013,7 +15029,7 @@ function Chart({
       kind: "entry" as const,
       price: position.entryPrice,
       label: `${paperPositionSizeLabel(position.side, position.remainingQuantity)} · ${formatPaperMoney(livePositionPnl)}`,
-      color: position.side === "buy" ? settings.upColor : settings.downColor,
+      color: position.side === "buy" ? paperUpInk : paperDownInk,
       position,
       targetId: null as string | null,
     }];
@@ -15028,7 +15044,7 @@ function Chart({
         position.stopLoss,
         position.remainingQuantity,
       ))}`,
-      color: settings.downColor,
+      color: paperDownInk,
       position,
       targetId: null as string | null,
     }];
@@ -15045,7 +15061,7 @@ function Chart({
           target.price,
           target.quantity - target.filledQuantity,
         ))}`,
-        color: settings.upColor,
+        color: paperUpInk,
         position,
         targetId: target.id,
       }));
@@ -15198,7 +15214,7 @@ function Chart({
       id: "armed-order",
       price: armedOrderPrice,
       label: `${armedOrder.side === "buy" ? "BUY" : "SELL"} ${armedOrder.quantity} ${armedOrder.type.toUpperCase()} · ${armedOrderPrice.toFixed(priceFormat.precision)} · click to place`,
-      color: armedOrder.side === "buy" ? settings.upColor : settings.downColor,
+      color: armedOrder.side === "buy" ? paperUpInk : paperDownInk,
       kind: "entry" as const,
       y: candleSeriesRef.current?.priceToCoordinate(armedOrderPrice) ?? null,
     }] : []),
@@ -16459,7 +16475,7 @@ function Chart({
                   className="flex touch-none cursor-ns-resize self-stretch items-center justify-center border-r font-mono font-bold transition-colors hover:bg-danger/15 active:cursor-grabbing"
                   style={{
                     borderColor: level.color,
-                    color: settings.downColor,
+                    color: paperDownInk,
                     width: PAPER_LABEL_HANDLE_WIDTH,
                     fontSize: PAPER_LABEL_FONT_PX,
                   }}
@@ -16476,7 +16492,7 @@ function Chart({
                   className="flex touch-none cursor-ns-resize self-stretch items-center justify-center border-r font-mono font-bold transition-colors hover:bg-success/15 active:cursor-grabbing"
                   style={{
                     borderColor: level.color,
-                    color: settings.upColor,
+                    color: paperUpInk,
                     width: PAPER_LABEL_HANDLE_WIDTH,
                     fontSize: PAPER_LABEL_FONT_PX,
                   }}

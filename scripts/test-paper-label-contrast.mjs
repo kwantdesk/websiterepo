@@ -32,7 +32,11 @@ check("the contrast maths has one home, not two", () => {
     !/^function readableTextOn\(/m.test(gexMap),
     "GEX Map has its own copy of readableTextOn again",
   );
-  assert.match(chart, /import \{ readableTextOn \} from "@\/lib\/readableContrast";/);
+  // The chart shares the helper module; it may pull more than one export from
+  // it, so this pins the dependency rather than the exact import list.
+  // The chart shares the helper module; it may pull more than one export from
+  // it, so this pins the dependency rather than the exact import list.
+  assert.match(chart, /import \{[^}]*readableTextOn[^}]*\} from "@\/lib\/readableContrast";/);
 });
 
 check("the chip is the inverse of the chart background", () => {
