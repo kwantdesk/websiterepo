@@ -156,6 +156,65 @@ test("the response is bounded and keeps the most recent prints", async () => {
   });
 });
 
+test("the micros are taped, not just the minis", async () => {
+  /*
+   * MNQU6 does not start with "NQ" and MESU6 does not start with "ES", so a
+   * tape configured only for the minis records nothing at all for the micros -
+   * which is what it did before, silently.
+   */
+  const { DEFAULT_TAPE_ROOTS } = await import("../src/trade-tape-archive.mjs");
+  for (const root of ["NQ", "MNQ", "ES", "MES"]) {
+    assert.ok(DEFAULT_TAPE_ROOTS.includes(root), `${root} has no tape`);
+  }
+  const dir = mkdtempSync(join(tmpdir(), "kwant-tape-"));
+  try {
+    const archive = new TradeTapeArchive({ dir, flushMs: 10_000 });
+    const client = new EventEmitter();
+    archive.attach(client);
+    for (const symbol of ["NQU6", "MNQU6", "ESU6", "MESU6"]) {
+      client.emit("rawMessage", { ...print(0, 29000, 1), symbol });
+    }
+    await archive.close();
+    for (const symbol of ["NQU6", "MNQU6", "ESU6", "MESU6"]) {
+      const { trades } = await archive.load({
+        exchange: "CME", symbol, fromMs: T0 - 1, toMs: T0 + 1_000,
+      });
+      assert.equal(trades.length, 1, `${symbol} was not taped`);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("the tape is readable while the session is still running", async () => {
+  /*
+   * The failure this was shipped with. Deflate holds its output until it has
+   * enough to emit, so the file was write-only until the session closed: a
+   * chart asking for the last hour got an empty response while thousands of
+   * prints sat in the compressor. Measured live: 2,744 written, 0 readable.
+   */
+  const dir = mkdtempSync(join(tmpdir(), "kwant-tape-"));
+  try {
+    const archive = new TradeTapeArchive({ dir, roots: ["NQ"], flushMs: 10_000 });
+    const client = new EventEmitter();
+    archive.attach(client);
+    for (let index = 0; index < 25; index += 1) {
+      client.emit("rawMessage", print(index * 1_000, 29000 + index, 1));
+    }
+    // Flushed, but deliberately NOT closed - the session is still live.
+    archive.flush();
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    const { trades } = await archive.load({
+      exchange: "CME", symbol: "NQU6", fromMs: T0 - 1, toMs: T0 + 60_000,
+    });
+    assert.ok(trades.length >= 25, `only ${trades.length} of 25 prints were readable mid-session`);
+    await archive.close();
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("an absent session is empty, not an error", async () => {
   await withArchive(async (archive) => {
     const { trades } = await archive.load({

@@ -1,5 +1,5 @@
 import { createWriteStream, existsSync, mkdirSync } from "node:fs";
-import { createGzip } from "node:zlib";
+import { constants as zlibConstants, createGzip } from "node:zlib";
 import { join } from "node:path";
 
 import { chicagoTradingDate } from "./trading-session.mjs";
@@ -38,10 +38,15 @@ const GZIP_LEVEL = 1;
  * Which instruments get a tape.
  *
  * Not everything: a tape is ~400,000 rows a session per instrument and the
- * disk is the binding constraint. Event bars are a futures chart type and are
- * used on the majors, so those are what earn the space.
+ * disk is the binding constraint. These four are the ones event bars are
+ * actually traded on - the Nasdaq and S&P minis and their micros.
+ *
+ * Order matters. Roots are matched by PREFIX so a contract roll does not
+ * silently stop the tape, and the micros are checked first: "NQ" is not a
+ * prefix of "MNQU6", but listing them the other way round invites a later
+ * edit that makes one root swallow another.
  */
-export const DEFAULT_TAPE_ROOTS = ["NQ", "ES"];
+export const DEFAULT_TAPE_ROOTS = ["MNQ", "MES", "NQ", "ES"];
 
 const sideCode = (payload) => {
   const aggressor = String(payload?.aggressor ?? payload?.side ?? "").toUpperCase();
@@ -91,6 +96,12 @@ export class TradeTapeArchive {
   /** NQU6 -> NQ, so a contract roll does not silently stop the tape. */
   #wanted(symbol) {
     const upper = String(symbol || "").toUpperCase();
+    /*
+     * Prefix, so NQU6 keeps taping as NQZ6 when the contract rolls. The
+     * micros are distinct roots rather than a variant: MNQU6 does not start
+     * with "NQ", so a tape configured only for the minis silently records
+     * nothing for them - which is exactly what happened before this.
+     */
     return this.roots.some((root) => upper.startsWith(root));
   }
 
@@ -148,6 +159,18 @@ export class TradeTapeArchive {
       const stream = this.streams.get(key);
       if (!stream || !lines.length) continue;
       stream.write(`${lines.join("\n")}\n`);
+      /*
+       * Sync-flush after every batch, or the tape is write-only until the
+       * session closes.
+       *
+       * Deflate holds its output until it has enough to emit, so a chart
+       * asking for the last hour got an empty response while thousands of
+       * prints sat in the compressor - measured live: 2,744 written, 0
+       * readable. A sync flush ends the deflate block so what is on disk can
+       * be read straight back, at the cost of a slightly larger file. The
+       * exposure archiver does the same thing for the same reason.
+       */
+      try { stream.flush(zlibConstants.Z_SYNC_FLUSH); } catch { /* closing */ }
       lines.length = 0;
     }
   }
