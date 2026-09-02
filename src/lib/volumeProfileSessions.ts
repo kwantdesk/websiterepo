@@ -294,3 +294,49 @@ export function currentDeskSession(timestampMs: number = Date.now()): DeskSessio
   if (!segment) return null;
   return { id: segment.id, label: segment.label, minutesRemaining: segment.end - offset };
 }
+
+/**
+ * The session windows a study is currently asking for, or null when it wants
+ * one profile over the whole day.
+ *
+ * A daily profile's identity includes its SESSION, not just its trading date:
+ * a split day produces one profile per window, all sharing that date. Without
+ * this the retention filter kept any profile matching the symbol, grouping and
+ * date, so unticking a session left its profile on the chart - turning
+ * everything off except Asia still drew Globex, London and New York until
+ * something else happened to evict them. Switching Filter time did the same,
+ * keeping the RTH profile after a move to Overnight.
+ */
+export function requestedSessionIds(settings: Record<string, unknown>): Set<string> | null {
+  const requestedMode = String(settings.filterMode ?? "none").toLowerCase();
+  const mode = (["none", "filter", "splitted", "triple"].includes(requestedMode)
+    ? requestedMode
+    : "none") as SessionFilterMode;
+  // "none" draws one profile over the whole day and carries no session id.
+  if (mode === "none") return null;
+  if (mode === "triple") {
+    return new Set(DESK_SESSIONS
+      .filter(({ settingsKey }) => settings[settingsKey] !== false)
+      .map(({ id }) => id));
+  }
+  const requestedWindow = String(settings.filterTime ?? "rth").toLowerCase();
+  return new Set([
+    (["rth", "eth", "custom"].includes(requestedWindow) ? requestedWindow : "rth"),
+  ]);
+}
+
+/**
+ * Whether a profile already on the chart still belongs there.
+ *
+ * A profile built for a window the study no longer asks for is stale however
+ * well it matches everything else, and a leftover SPLIT profile is equally
+ * stale once the split is turned off - the day is meant to be one profile
+ * again.
+ */
+export function profileMatchesRequestedSessions(
+  profileSessionId: string | undefined,
+  requested: Set<string> | null,
+): boolean {
+  if (!requested) return !profileSessionId;
+  return requested.has(profileSessionId ?? "");
+}

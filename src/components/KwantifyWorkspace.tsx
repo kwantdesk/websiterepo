@@ -298,7 +298,7 @@ import {
   type ChartIntervalKind,
 } from "@/lib/chartIntervals";
 import { applyMarketTradesToEventBars, futuresTickSize } from "@/lib/eventBars";
-import { RTH_END_MINUTES, RTH_START_MINUTES, currentDeskSession, resolveSessionSegments, sessionTradingDate } from "@/lib/volumeProfileSessions";
+import { DESK_SESSIONS, RTH_END_MINUTES, profileMatchesRequestedSessions, requestedSessionIds, RTH_START_MINUTES, currentDeskSession, resolveSessionSegments, sessionTradingDate } from "@/lib/volumeProfileSessions";
 import type { ValueAreaProfile } from "@/lib/valueArea";
 import {
   DATABENTO_LIVE_TICK_EVENT,
@@ -8666,12 +8666,20 @@ function WorkspaceChartPaneComponent({
         || profile.minTradeVolume !== expectedMinVolume
         || profile.maxTradeVolume !== expectedMaxVolume
       ) return false;
-      return (
-        (profile.period === "daily"
-          && Boolean(dailyProfileInstance)
-          && activeTradingDates.has(chicagoTradingDate(profile.startMs)))
-        || (profile.period === "weekly" && Boolean(weeklyProfileInstance))
-      );
+      if (profile.period === "daily") {
+        if (!dailyProfileInstance) return false;
+        if (!activeTradingDates.has(chicagoTradingDate(profile.startMs))) return false;
+        /*
+         * A profile built for a window the study is no longer asking for is
+         * stale, however well it matches everything else. Keeping it is what
+         * left unticked sessions on the chart.
+         */
+        return profileMatchesRequestedSessions(
+          profile.sessionId,
+          requestedSessionIds(dailyProfileSettings),
+        );
+      }
+      return profile.period === "weekly" && Boolean(weeklyProfileInstance);
     };
     /*
      * The session is part of a daily profile's identity.

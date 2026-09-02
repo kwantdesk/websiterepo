@@ -93,6 +93,7 @@
     "test:gex-vue-replay": "node --experimental-strip-types scripts/test-gex-vue-replay.mjs",
     "test:volume-profile-sessions": "node --experimental-strip-types scripts/test-volume-profile-sessions.mjs",
     "test:tpo-single-prints": "node --import ./scripts/alias-hook.mjs --experimental-strip-types scripts/test-tpo-single-prints.mjs",
+    "test:volume-profile-data-settings": "node --experimental-strip-types scripts/test-volume-profile-data-settings.mjs",
     "test:volume-profile-structure": "node --experimental-strip-types scripts/test-volume-profile-structure.mjs",
     "test:volume-profile-data": "node --experimental-strip-types scripts/test-volume-profile-data-settings.mjs",
     "test:chart-magnet": "node --experimental-strip-types scripts/test-chart-magnet.mjs",

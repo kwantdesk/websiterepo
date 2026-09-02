@@ -49,12 +49,24 @@ assert.equal(segments.length, 4, `expected Globex/Asia/London/New York, got ${se
 assert.deepEqual(segments.map((s) => s.id), ["globex", "asia", "london", "newyork"]);
 assert.deepEqual(segments.map((s) => s.label), ["Globex", "Asia", "London", "New York"]);
 
-// 2. The windows must not overlap — overlapping windows would double-count
-//    executions across the profiles standing beside each other.
+// 2. The windows must start at DIFFERENT instants.
+//
+//    This asserted non-overlap and had been failing since the windows moved to
+//    DeepChart's boundaries, where London (03:00-11:00 New York) and New York
+//    (09:30-16:00) genuinely overlap between 08:30 and 10:00 Chicago. That
+//    overlap is intended: a print in it belongs to both sessions, exactly as it
+//    does in DeepChart, because each profile answers "what traded during THIS
+//    session" rather than carving the day into exclusive slices.
+//
+//    A TIE is the thing that actually breaks: a session profile is anchored at
+//    its own start, so two windows starting on the same second anchor at the
+//    same pixel and draw through each other, and the level chain picks the
+//    profile in front with a strict "starts later" test that a tie can never
+//    satisfy.
 for (let i = 1; i < segments.length; i += 1) {
   assert.ok(
-    segments[i].startMs >= segments[i - 1].endMs,
-    `${segments[i].label} overlaps ${segments[i - 1].label}`,
+    segments[i].startMs > segments[i - 1].startMs,
+    `${segments[i].label} starts at the same instant as ${segments[i - 1].label}`,
   );
 }
 

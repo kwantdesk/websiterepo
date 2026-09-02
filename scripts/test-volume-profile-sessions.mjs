@@ -8,6 +8,8 @@ import {
   isWithinSessionSegments,
   resolveSessionSegments,
   sessionTradingDate,
+  profileMatchesRequestedSessions,
+  requestedSessionIds,
 } from "../src/lib/volumeProfileSessions.ts";
 
 /**
@@ -78,11 +80,22 @@ const DAY_END = chicago("2026-08-21T00:00:00Z");
   for (const segment of segments) {
     assert.ok(segment.endMs > segment.startMs, `${segment.id} window has positive length`);
   }
-  // Sorted and non-overlapping.
+  /*
+   * Sorted, with STRICTLY increasing starts.
+   *
+   * This asserted non-overlap and had been failing since the windows were
+   * moved to DeepChart's boundaries, where London (03:00-11:00 New York) and
+   * New York (09:30-16:00) genuinely overlap between 08:30 and 10:00 Chicago.
+   * Overlap is fine; a TIE is not. A session profile is anchored at its own
+   * start, so two windows starting on the same second anchor at the same pixel
+   * and draw through each other, and the level chain picks the profile in
+   * front with a strict "starts later" test that a tie can never satisfy -
+   * which is what "profiles sitting in random spots" was.
+   */
   for (let index = 1; index < segments.length; index += 1) {
     assert.ok(
-      segments[index].startMs >= segments[index - 1].endMs,
-      `${segments[index].id} must not overlap ${segments[index - 1].id}`,
+      segments[index].startMs > segments[index - 1].startMs,
+      `${segments[index].id} starts at the same instant as ${segments[index - 1].id}`,
     );
   }
 
@@ -116,9 +129,20 @@ const DAY_END = chicago("2026-08-21T00:00:00Z");
       // The final window of the range has no partner because its successor
       // falls outside the requested span, which is correct, not a gap.
       if (window.endMs >= DAY_END) continue;
+      /*
+       * No GAP, rather than an exact handover. London and New York overlap by
+       * design once the windows follow DeepChart's boundaries - London runs to
+       * 10:00 Chicago and New York opens at 08:30 - so requiring equality here
+       * failed for a real and intended arrangement. What must never happen is
+       * a stretch of the day belonging to no window at all.
+       */
+      const successor = segments
+        .filter((segment) => segment.id === later && segment.startMs > window.startMs)
+        .sort((left, right) => left.startMs - right.startMs)[0];
+      assert.ok(successor, `${earlier} has no following ${later} window`);
       assert.ok(
-        segments.some((segment) => segment.id === later && segment.startMs === window.endMs),
-        `${earlier} must hand straight over to ${later}`,
+        successor.startMs <= window.endMs,
+        `a gap sits between ${earlier} and ${later}`,
       );
     }
   }
@@ -175,6 +199,64 @@ const DAY_END = chicago("2026-08-21T00:00:00Z");
       "an impossible range produces no windows",
     );
   }
+}
+
+/**
+ * A profile already on the chart belongs to a SESSION, not just to a date.
+ *
+ * Reported as: "when i only select asia some dont show and sometiems it shoes
+ * others". The retention filter kept any profile matching the symbol, the
+ * grouping and the trading date, and a split day produces one profile per
+ * window all sharing that date - so unticking a session left its profile
+ * drawn until something else happened to evict it, while the one still ticked
+ * had to wait for a fetch. This is the third fault in this area; the first two
+ * are covered by test:volume-profile-session-toggle.
+ */
+{
+  const triple = (enabled) => ({
+    filterMode: "triple",
+    sessionGlobexEnabled: enabled.includes("globex"),
+    sessionAsiaEnabled: enabled.includes("asia"),
+    sessionLondonEnabled: enabled.includes("london"),
+    sessionNewYorkEnabled: enabled.includes("newyork"),
+  });
+
+  const asiaOnly = requestedSessionIds(triple(["asia"]));
+  assert.deepEqual([...asiaOnly].sort(), ["asia"], "only the ticked session may be requested");
+  assert.ok(profileMatchesRequestedSessions("asia", asiaOnly), "the ticked session was dropped");
+  for (const stale of ["globex", "london", "newyork"]) {
+    assert.ok(
+      !profileMatchesRequestedSessions(stale, asiaOnly),
+      `${stale} survived being unticked - this is the reported bug`,
+    );
+  }
+
+  // An unset flag means enabled, so a saved workspace from before these
+  // existed still shows every session rather than none.
+  assert.deepEqual(
+    [...requestedSessionIds({ filterMode: "triple" })].sort(),
+    ["asia", "globex", "london", "newyork"],
+    "absent flags must default to enabled",
+  );
+
+  // Every session unticked asks for nothing, and nothing may be retained.
+  assert.equal(requestedSessionIds(triple([])).size, 0);
+  assert.ok(!profileMatchesRequestedSessions("asia", requestedSessionIds(triple([]))));
+
+  // Filter time is the same identity for the non-split modes: moving from RTH
+  // to Overnight must not keep the RTH profile.
+  const overnight = requestedSessionIds({ filterMode: "filter", filterTime: "eth" });
+  assert.ok(profileMatchesRequestedSessions("eth", overnight));
+  assert.ok(!profileMatchesRequestedSessions("rth", overnight), "the RTH profile outlived the switch");
+
+  /*
+   * With no session filter the day is one profile again, so a leftover split
+   * profile is stale - and a whole-day profile carries no session id, so it
+   * must not be judged against a session set.
+   */
+  assert.equal(requestedSessionIds({ filterMode: "none" }), null);
+  assert.ok(profileMatchesRequestedSessions(undefined, null), "the whole-day profile was dropped");
+  assert.ok(!profileMatchesRequestedSessions("asia", null), "a split profile survived turning splits off");
 }
 
 console.log("Volume profile session filtering (RTH, overnight, triple, custom) tests passed.");
