@@ -299,7 +299,20 @@ export class TradeTapeArchive {
     const dates = new Set();
     for (let at = start; at < end; at += 6 * 60 * 60_000) dates.add(chicagoTradingDate(at));
     dates.add(chicagoTradingDate(end));
-    for (const tradingDate of [...dates].sort()) {
+    /*
+     * Newest session first, stopping once the limit is met.
+     *
+     * The cap used to be applied after reading everything: a six-day NQ
+     * request loaded 6.8 million prints, sorted them, and returned the newest
+     * 500,000 - so the box did thirteen times the work to serve the same
+     * answer, on a machine that is also carrying the live feed. Reading
+     * backwards means the sessions that get skipped are the ones that would
+     * have been discarded anyway.
+     */
+    let truncated = false;
+    const ordered = [...dates].sort().reverse();
+    for (const tradingDate of ordered) {
+      if (trades.length >= limit) { truncated = true; break; }
       // Recorded live and backfilled from the raw archive, in that order. A
       // session recorded before the tape existed has only the sidecar; the one
       // in progress has both, meeting at the live tape's first print.
@@ -317,13 +330,22 @@ export class TradeTapeArchive {
       }
     }
     trades.sort((left, right) => left.timestamp - right.timestamp);
+    const kept = trades.length > limit ? trades.slice(-limit) : trades;
     return {
       exchange: upper,
       symbol: upperSymbol,
       source: "Rithmic recorded trade tape",
       startMs: start,
       endMs: end,
-      trades: trades.length > limit ? trades.slice(-limit) : trades,
+      /*
+       * Say so when the window was cut short. A range chart that simply stops
+       * part-way through the requested history is indistinguishable from one
+       * whose archive genuinely ends there, and the caller needs to be able to
+       * tell those apart.
+       */
+      truncated: truncated || trades.length > limit,
+      earliestMs: kept.length ? kept[0].timestamp : null,
+      trades: kept,
     };
   }
 }

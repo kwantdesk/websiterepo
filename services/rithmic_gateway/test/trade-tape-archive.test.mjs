@@ -352,3 +352,45 @@ test("a multi-day window reads every session it covers", async () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("a cut-short window says so, and stops reading once it is full", async () => {
+  /*
+   * Two separate failures. The cap was applied after reading everything, so a
+   * six-day NQ request loaded 6.8 million prints, sorted them, and returned
+   * the newest 500,000 - thirteen times the work for the same answer, on a
+   * box that is also carrying the live feed. And the response said nothing
+   * about being cut short, which makes a chart that stops part-way through
+   * the requested history look exactly like one whose archive ends there.
+   */
+  const dir = mkdtempSync(join(tmpdir(), "kwant-tape-"));
+  try {
+    const archive = new TradeTapeArchive({ dir, roots: ["NQ"], flushMs: 10_000 });
+    const DAY = 24 * 60 * 60_000;
+    for (let back = 0; back < 4; back += 1) {
+      const at = T0 - back * DAY;
+      const dayDir = join(dir, "trades", chicagoTradingDate(at));
+      mkdirSync(dayDir, { recursive: true });
+      const rows = [0, 1, 2].map((n) => JSON.stringify([at + n * 1_000, 29000 + back, 1, 1]));
+      writeFileSync(
+        join(dayDir, backfillFileName("CME", "NQU6")),
+        gzipSync(Buffer.from(`${rows.join("\n")}\n`)),
+      );
+    }
+    const window = { exchange: "CME", symbol: "NQU6", fromMs: T0 - 4 * DAY, toMs: T0 + 60_000 };
+
+    const full = await archive.load(window);
+    assert.equal(full.trades.length, 12);
+    assert.equal(full.truncated, false, "a complete window must not claim to be cut short");
+    assert.equal(full.earliestMs, full.trades[0].timestamp);
+
+    // A limit that only the newest sessions can satisfy.
+    const capped = await archive.load({ ...window, limit: 4 });
+    assert.equal(capped.truncated, true, "a cut-short window did not say so");
+    assert.equal(capped.trades.length, 4);
+    // The newest prints are the ones kept - a chart needs the live edge.
+    assert.equal(capped.trades.at(-1).timestamp, full.trades.at(-1).timestamp);
+    assert.equal(capped.earliestMs, capped.trades[0].timestamp);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
