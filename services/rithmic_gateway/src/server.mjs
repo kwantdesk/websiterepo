@@ -2470,27 +2470,47 @@ server.listen(config.port, config.host, () => {
   }
 });
 
-// Flush the manifest and close files cleanly on shutdown so a restart never
-// leaves a session file without its completeness record.
-for (const signal of ["SIGINT", "SIGTERM"]) {
-  process.on(signal, () => {
-    void Promise.resolve(desktopRevocationSynchronizer?.stop())
-      .catch(() => {})
-      .then(() => exposureArchiver.stop())
-      .catch(() => {})
-      .then(() => recorder.close())
-      .finally(() => process.exit(0));
-  });
-}
-
+/**
+ * One shutdown, in order, and nothing exits before the tape is on disk.
+ *
+ * There were TWO handlers registered for the same signals and both called
+ * process.exit(0). Whichever won killed the process while the other was still
+ * working, and process.exit does not wait for pending writes - so the
+ * recorder's gzip trailers were never written and every restart truncated the
+ * last member of every open file. A reader stops at that point, which is why
+ * roughly a third of each recorded session was unreadable.
+ *
+ * The recorder closes FIRST and is awaited, because its files are the only
+ * copy of data that cannot be re-requested from anyone.
+ */
+let shuttingDown = false;
 async function shutdown() {
-  await desktopRevocationSynchronizer?.stop();
-  massiveIndices.stop();
-  databentoEquities.stop();
-  optionTrades.stop();
-  quantDataMarketSnapshots.stop();
-  await client.stop();
+  if (shuttingDown) return;
+  shuttingDown = true;
+
+  // The tape first, and awaited.
+  try { await recorder.close(); } catch { /* keep shutting down */ }
+  try { await chartHistory.flush(); } catch { /* keep shutting down */ }
+
+  try { await desktopRevocationSynchronizer?.stop(); } catch { /* ignore */ }
+  try { await exposureArchiver.stop(); } catch { /* ignore */ }
+  for (const stop of [
+    () => massiveIndices.stop(),
+    () => databentoEquities.stop(),
+    () => optionTrades.stop(),
+    () => quantDataMarketSnapshots.stop(),
+  ]) {
+    try { stop(); } catch { /* ignore */ }
+  }
+  try { await client.stop(); } catch { /* ignore */ }
+
   server.close(() => process.exit(0));
+  /*
+   * A held-open connection must not outlast the container stop grace period,
+   * or the runtime SIGKILLs us and the ordering above buys nothing.
+   */
+  const failsafe = setTimeout(() => process.exit(0), 5_000);
+  if (typeof failsafe.unref === "function") failsafe.unref();
 }
 
 process.on("SIGINT", shutdown);

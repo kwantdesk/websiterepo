@@ -67,6 +67,11 @@ const NON_MARKET_TEMPLATE_IDS = new Set([
  * market event is gone for good.
  */
 
+// A refused login retries four times an hour at worst, which cannot lock an
+// account, and recovers by itself from a session Rithmic had not yet released.
+const AUTH_RETRY_MIN_MS = 60_000;
+const AUTH_RETRY_MAX_MS = 15 * 60_000;
+
 function openSocket(url, timeoutMs = 10_000) {
   return new Promise((resolve, reject) => {
     const socket = new WebSocket(url, {
@@ -306,7 +311,23 @@ export class RithmicMarketDataClient extends EventEmitter {
       this.status.authenticated = false;
       this.status.lastError = error instanceof Error ? error.message : String(error);
       this.emit("gatewayError", error);
-      if (error?.code !== "RITHMIC_AUTH_REJECTED") this.scheduleReconnect();
+      /*
+       * A refused login is retried too, just slowly.
+       *
+       * It used to schedule nothing at all, so one rejection left the
+       * collector permanently dead with the process still running and Docker
+       * still reporting it healthy - it had to be restarted by hand, and every
+       * print that arrived meanwhile is gone for good. The rejection that
+       * caused this was transient: Rithmic would not accept a new login while
+       * it still held the session from the process we had just replaced.
+       *
+       * Retrying on the normal one-second backoff would hammer the account and
+       * risk a real lockout, so an auth failure gets its own much longer
+       * schedule: a minute, backing off to a quarter of an hour. Wrong
+       * credentials therefore retry four times an hour, which locks nothing,
+       * while a session that simply had not been released recovers on its own.
+       */
+      this.scheduleReconnect(error?.code === "RITHMIC_AUTH_REJECTED");
       throw error;
     }
   }
@@ -627,13 +648,16 @@ export class RithmicMarketDataClient extends EventEmitter {
     this.scheduleReconnect();
   }
 
-  scheduleReconnect() {
+  scheduleReconnect(authRejected = false) {
     if (this.stopped || this.reconnectTimer) return;
     this.reconnectAttempt += 1;
     this.status.reconnectAttempt = this.reconnectAttempt;
+    // A refused login backs off on its own far slower schedule; see connect().
+    const minMs = authRejected ? AUTH_RETRY_MIN_MS : this.config.reconnectMinMs;
+    const maxMs = authRejected ? AUTH_RETRY_MAX_MS : this.config.reconnectMaxMs;
     const base = Math.min(
-      this.config.reconnectMaxMs,
-      this.config.reconnectMinMs * 2 ** Math.min(8, this.reconnectAttempt - 1),
+      maxMs,
+      minMs * 2 ** Math.min(8, this.reconnectAttempt - 1),
     );
     const delay = Math.round(base * (0.8 + Math.random() * 0.4));
     this.reconnectTimer = setTimeout(async () => {

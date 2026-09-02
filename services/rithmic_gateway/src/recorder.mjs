@@ -87,6 +87,7 @@ export class MarketDataRecorder {
       ? Number(options.maxPendingBytes)
       : DEFAULT_MAX_PENDING_BYTES;
     this.streams = new Map();
+    this.files = new Map();
     this.buffers = new Map();
     this.counts = new Map();
     this.dropped = new Map();
@@ -119,7 +120,13 @@ export class MarketDataRecorder {
     const tradingDate = chicagoTradingDate(timestampMs);
     if (tradingDate !== this.tradingDate) {
       this.flush();
-      this.closeStreams();
+      /*
+       * The roll closes yesterday's files. Not awaited: streamFor is
+       * synchronous and on the hot path. Safe because closeStreams takes the
+       * handles and empties the maps before its first await, so the stream
+       * created immediately below cannot be swept up by it.
+       */
+      void this.closeStreams();
       this.tradingDate = tradingDate;
     }
     const key = `${exchange}:${symbol}`;
@@ -155,6 +162,9 @@ export class MarketDataRecorder {
       stream = gzip;
     }
     this.streams.set(key, stream);
+    // The gzip is what we write to, but the FILE is what has to reach disk.
+    // Closing has to wait on this one, not on the compressor.
+    this.files.set(key, file);
     return stream;
   }
 
@@ -301,10 +311,60 @@ export class MarketDataRecorder {
     }
   }
 
-  closeStreams() {
-    for (const stream of this.streams.values()) stream.end();
-    this.streams.clear();
+  /**
+   * End every open file and WAIT for it to reach disk.
+   *
+   * This used to call end() and return immediately. Ending a gzip stream is
+   * asynchronous - the final deflate block and the gzip trailer are still to
+   * be written - and the shutdown path then called process.exit, which does
+   * not wait for pending writes. So every restart truncated the last member of
+   * every open file, and a reader hits "invalid block type" there and stops.
+   * It cost roughly a third of each session: 933 readable minutes out of about
+   * 1,380 on a day that recorded normally.
+   *
+   * Bounded, because a stuck file must not hold the process open past the
+   * SIGKILL that follows a container stop - losing the tail of one file is
+   * better than losing the shutdown.
+   */
+  async closeStreams(timeoutMs = 4_000) {
+    /*
+     * Take the open handles and hand the maps back empty IMMEDIATELY, before
+     * the first await.
+     *
+     * Clearing them after awaiting let a stream created in between be wiped
+     * from the map while still open: nothing ever ended it, so its gzip
+     * trailer was never written and the file read as truncated. The session
+     * roll calls this from a synchronous path, so that window is real.
+     */
+    const streams = this.streams;
+    const files = this.files;
+    this.streams = new Map();
+    this.files = new Map();
     this.buffers.clear();
+
+    const closing = [];
+    for (const [key, stream] of streams) {
+      const file = files.get(key);
+      closing.push(new Promise((resolve) => {
+        let settled = false;
+        const done = () => {
+          if (settled) return;
+          settled = true;
+          resolve();
+        };
+        const timer = setTimeout(() => {
+          this.lastError = `timed out closing ${key}`;
+          done();
+        }, timeoutMs);
+        if (typeof timer.unref === "function") timer.unref();
+        // The file emits close once the compressor has flushed through it.
+        const target = file ?? stream;
+        target.once("close", () => { clearTimeout(timer); done(); });
+        target.once("error", () => { clearTimeout(timer); done(); });
+        stream.end();
+      }));
+    }
+    await Promise.all(closing);
   }
 
   async close() {
@@ -312,6 +372,6 @@ export class MarketDataRecorder {
     this.detach = null;
     this.flush();
     await this.writeManifest();
-    this.closeStreams();
+    await this.closeStreams();
   }
 }
