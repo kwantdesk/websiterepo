@@ -85,7 +85,7 @@ check("both merge paths agree on that identity", () => {
 check("a session the trader unticked is omitted, not folded away", () => {
   // Each remaining window has to keep its own boundaries, or turning one off
   // would silently widen its neighbour.
-  for (const flag of ["sessionGlobexEnabled", "sessionAsiaEnabled", "sessionLondonEnabled", "sessionNewYorkEnabled"]) {
+  for (const flag of ["sessionAsiaEnabled", "sessionLondonEnabled", "sessionNewYorkEnabled"]) {
     assert.ok(workspace.includes(flag), `${flag} is no longer honoured`);
   }
   assert.match(workspace, /enabledSessionIds/, "the enabled-session set is gone");

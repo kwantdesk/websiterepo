@@ -37,7 +37,13 @@ const DIALOG = "ChartIndicatorsControl.tsx";
  * Bookkeeping rather than behaviour: the schema version decides which
  * migrations run and is deliberately never read by a renderer.
  */
-const BOOKKEEPING = new Set(["profileSettingsVersion"]);
+const BOOKKEEPING = new Set([
+  "profileSettingsVersion",
+  // Interaction state for the settings dialog: it distinguishes the first
+  // session pick (isolate) from later multi-select toggles. It is consumed by
+  // the dialog itself rather than by the profile renderer.
+  "sessionSelectionArmed",
+]);
 
 const files = walk(root).map((path) => ({
   path: path.slice(path.indexOf("src")).split("\\").join("/"),

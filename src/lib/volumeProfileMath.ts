@@ -25,6 +25,46 @@ export function volumeProfileBinTick(tick: number, groupTicks: number) {
   return Math.floor(tick / size) * size;
 }
 
+export type GroupableVolumeProfileLevel = VolumeProfileMathLevel & {
+  bidVolume: number;
+  askVolume: number;
+  delta: number;
+  trades: number;
+};
+
+/** Collapse tick-resolution execution rows onto one deterministic row grid. */
+export function groupVolumeProfileLevels<Level extends GroupableVolumeProfileLevel>(
+  sourceLevels: readonly Level[],
+  tickSize: number,
+  groupTicks: number,
+): GroupableVolumeProfileLevel[] {
+  const size = Math.max(1, Math.round(groupTicks));
+  if (size === 1) return sourceLevels.map((level) => ({ ...level }));
+  const buckets = new Map<number, GroupableVolumeProfileLevel>();
+  for (const level of sourceLevels) {
+    const sourceTick = Math.round(level.price / tickSize);
+    const groupedTick = volumeProfileBinTick(sourceTick, size);
+    const existing = buckets.get(groupedTick);
+    if (existing) {
+      existing.volume += level.volume;
+      existing.bidVolume += level.bidVolume;
+      existing.askVolume += level.askVolume;
+      existing.trades += level.trades;
+      existing.delta = existing.askVolume - existing.bidVolume;
+      continue;
+    }
+    buckets.set(groupedTick, {
+      price: Number((groupedTick * tickSize).toFixed(10)),
+      volume: level.volume,
+      bidVolume: level.bidVolume,
+      askVolume: level.askVolume,
+      delta: level.askVolume - level.bidVolume,
+      trades: level.trades,
+    });
+  }
+  return [...buckets.values()].sort((left, right) => left.price - right.price);
+}
+
 /**
  * Calculates a contiguous value area around POC. Empty price rows are kept so
  * gaps are not treated as adjacent, and each expansion compares two-row blocks

@@ -67,19 +67,12 @@ export const RTH_END_MINUTES = 15 * 60 + 15;
  * early. Two different windows over one tape give two different value areas,
  * which is why the mismatch read as a constant offset rather than drift.
  *
- * The overnight is the one place we deliberately do NOT copy them. DeepChart
- * runs a single Asian window; we split the same stretch into Globex and Asia,
- * because 09:00 JST is 19:00 Chicago and the thin headline-led hours straight
- * after the bell trade nothing like Tokyo's session. DeepChart's Asian is
- * therefore our Globex and Asia TOGETHER, and that is the comparison to make
- * against it - neither of ours on its own.
- *
- * The two shared a 17:00 start for one commit, to match that Asian window
- * exactly. That is what "profiles sitting in random spots" was: a session
- * profile is anchored at its own start, so two starting on the same second
- * anchor at the same pixel and draw through each other, and the level chain
- * picks the profile in front with a strict "starts later" test that a tie can
- * never satisfy. The windows tile again, so each has its own place.
+ * A Triple split is exactly DeepChart's three windows. It used to introduce a
+ * fourth, KwantDesk-only Globex profile and shorten Asia to start at 19:00.
+ * Selecting "Asia only" therefore measured a different tape from DeepChart
+ * before any grouping or value-area maths even ran. Product-specific session
+ * clocks may still name Globex separately; the DeepChart-compatible volume
+ * profile must not.
  *
  * London and New York still overlap between 08:30 and 10:00, which is
  * DeepChart's own behaviour and is fine: their starts differ, so the chain
@@ -97,10 +90,8 @@ const DESK_SESSION_SEGMENTS: {
   start: number;
   end: number;
 }[] = [
-  // 17:00 -> 19:00 Chicago. Ours; the CME open through to Tokyo's.
-  { id: "globex", label: "Globex", settingsKey: "sessionGlobexEnabled", start: 17 * 60, end: 19 * 60 },
-  // 19:00 -> 02:00. Tokyo's own session; with Globex it is DeepChart's Asian.
-  { id: "asia", label: "Asia", settingsKey: "sessionAsiaEnabled", start: 19 * 60, end: 26 * 60 },
+  // DeepChart "Asian", 15:00 -> 03:00 New York.
+  { id: "asia", label: "Asia", settingsKey: "sessionAsiaEnabled", start: 17 * 60, end: 26 * 60 },
   // DeepChart "Europe", 03:00 -> 11:00 New York.
   { id: "london", label: "London", settingsKey: "sessionLondonEnabled", start: 26 * 60, end: 34 * 60 },
   // DeepChart "Usa", 09:30 -> 16:00 New York - the cash session, not the CME close.

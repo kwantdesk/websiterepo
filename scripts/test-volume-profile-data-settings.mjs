@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-import { volumeProfileBinTick } from "../src/lib/volumeProfileMath.ts";
+import { groupVolumeProfileLevels, volumeProfileBinTick } from "../src/lib/volumeProfileMath.ts";
 
 /**
  * Data Settings parity with DeepChart's DP: DeltaVol tab — tick grouping
@@ -145,6 +145,27 @@ import { volumeProfileBinTick } from "../src/lib/volumeProfileMath.ts";
   for (const [bucket, count] of seen) {
     assert.ok(count <= 4, `bucket ${bucket} holds ${count} ticks, expected at most 4`);
   }
+
+  // The actual renderer helper must combine the four rows, not merely enlarge
+  // four overlapping single-tick rectangles to the same visual height.
+  const rows = [0, 1, 2, 3, 4].map((tick) => ({
+    price: 100 + tick * 0.25,
+    volume: tick + 1,
+    askVolume: tick + 1,
+    bidVolume: 0,
+    delta: tick + 1,
+    trades: 1,
+  }));
+  const grouped = groupVolumeProfileLevels(rows, 0.25, 4);
+  assert.equal(grouped.length, 2, "manual four-tick mode still paints single-tick rows");
+  assert.deepEqual(grouped[0], {
+    price: 100,
+    volume: 10,
+    askVolume: 10,
+    bidVolume: 0,
+    delta: 10,
+    trades: 4,
+  });
 }
 
 // --- the trade-size filter mirrors the server's row handler ---

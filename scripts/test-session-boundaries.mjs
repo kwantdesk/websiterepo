@@ -42,14 +42,9 @@ const middleOf = (id) => {
   return found[Math.floor(found.length / 2)];
 };
 
-check("Asia runs 19:00 to 02:00, closing with DeepChart's Asian", () => {
-  /*
-   * The close is theirs exactly. The open is not, and deliberately: DeepChart
-   * runs one Asian window where we run Globex and Asia, so THEIR Asian is our
-   * two together and neither of ours alone should be compared against it.
-   */
+check("Asia runs 17:00 to 02:00, matching DeepChart's Asian", () => {
   const asia = middleOf("asia");
-  assert.equal(wallClock(asia.startMs), "19:00");
+  assert.equal(wallClock(asia.startMs), "17:00");
   assert.equal(wallClock(asia.endMs), "02:00");
 });
 
@@ -69,19 +64,8 @@ check("New York runs 08:30 to 15:00, matching DeepChart's Usa", () => {
   assert.equal(wallClock(newYork.endMs), "15:00");
 });
 
-check("Globex hands over to Asia rather than sitting on top of it", () => {
-  /*
-   * This is the regression this file exists to stop. Both once started at
-   * 17:00, and a session profile is anchored at its own start - so the two
-   * anchored at the same pixel and drew through each other, which is what
-   * "profiles in random spots" was. They must tile.
-   */
-  const globex = middleOf("globex");
-  assert.equal(wallClock(globex.startMs), "17:00");
-  assert.equal(wallClock(globex.endMs), "19:00");
-  const asia = middleOf("asia");
-  assert.notEqual(globex.startMs, asia.startMs, "Globex and Asia anchor at the same instant again");
-  assert.equal(globex.endMs, asia.startMs, "Globex no longer hands straight over to Asia");
+check("Triple exposes exactly DeepChart's three sessions", () => {
+  assert.deepEqual(DESK_SESSIONS.map((session) => session.id), ["asia", "london", "newyork"]);
 });
 
 check("no two desk sessions share a start", () => {
@@ -121,7 +105,7 @@ check("the day session and the overnight together leave no hole", () => {
    * close belongs to at least one session at every moment.
    */
   const asia = segments.find(
-    (segment) => segment.id === "asia" && wallClock(segment.startMs) === "19:00",
+    (segment) => segment.id === "asia" && wallClock(segment.startMs) === "17:00",
   );
   assert.ok(asia, "no unclipped Asia in the range");
   // The neighbours of that particular Asia, not the middle of their own runs -

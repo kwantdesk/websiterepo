@@ -8,7 +8,7 @@ import { readFileSync } from "node:fs";
  * which alone was enough to make the click inert:
  *
  * 1. The effect that requests profiles listed filterMode, filterTime and the
- *    custom window in its dependency array but NOT the four per-session flags.
+ *    custom window in its dependency array but NOT the per-session flags.
  *    Clicking Asia wrote a stored flag and React never re-ran anything - no
  *    refetch, no redraw.
  *
@@ -17,7 +17,7 @@ import { readFileSync } from "node:fs";
  *    effect did re-run, the surviving sessions were replaced and the Asia
  *    profile - never revisited - stayed on the chart indefinitely.
  *
- * The sessions themselves are Globex, Asia, London and New York, and the list
+ * The sessions themselves are Asia, London and New York, and the list
  * lives in one place so a button cannot exist without a window behind it.
  */
 
@@ -30,19 +30,17 @@ let passed = 0;
 const check = (name, fn) => { fn(); passed += 1; console.log(`  ok  ${name}`); };
 
 const SESSION_KEYS = [
-  "sessionGlobexEnabled",
   "sessionAsiaEnabled",
   "sessionLondonEnabled",
   "sessionNewYorkEnabled",
 ];
 
-check("the four desk sessions are Globex, Asia, London, New York", () => {
+check("the three volume-profile sessions match DeepChart", () => {
   const block = sessions.slice(
     sessions.indexOf("const DESK_SESSION_SEGMENTS"),
     sessions.indexOf("export const DESK_SESSIONS"),
   );
   for (const [id, key] of [
-    ["globex", "sessionGlobexEnabled"],
     ["asia", "sessionAsiaEnabled"],
     ["london", "sessionLondonEnabled"],
     ["newyork", "sessionNewYorkEnabled"],
@@ -50,9 +48,7 @@ check("the four desk sessions are Globex, Asia, London, New York", () => {
     assert.ok(block.includes(`id: "${id}"`), `${id} window is missing`);
     assert.ok(block.includes(`settingsKey: "${key}"`), `${id} has no settings flag`);
   }
-  // Globex hands over to Asia at Tokyo's 19:00 Chicago open, not at the bell.
-  assert.match(block, /id: "globex".*start: 17 \* 60, end: 19 \* 60/);
-  assert.match(block, /id: "asia".*start: 19 \* 60, end: 26 \* 60/);
+  assert.match(block, /id: "asia".*start: 17 \* 60, end: 26 \* 60/);
 });
 
 check("the toggles are in the effect's dependency array", () => {
@@ -86,8 +82,7 @@ check("a deselected session's profile is removed from state", () => {
   assert.match(refresh, /kept\.length === current\.length \? current : kept/);
 });
 
-check("Globex reaches the window resolver", () => {
-  assert.match(workspace, /settings\.sessionGlobexEnabled === false \? \[\] : \["globex"\]/);
+check("every DeepChart session reaches the window resolver", () => {
   for (const key of SESSION_KEYS) {
     assert.ok(config.includes(`${key}: true`), `${key} needs a default`);
     assert.ok(
@@ -103,9 +98,9 @@ check("the buttons render from the shared list, not a second copy", () => {
   assert.match(control, /\{DESK_SESSIONS\.map\(\(\{ label, settingsKey: key \}\) => \{/);
   assert.match(control, /import \{ DESK_SESSIONS, DESK_SESSION_SETTING_KEYS \}/);
   assert.doesNotMatch(control, /\["Asia", "sessionAsiaEnabled"\]/, "the hard-coded button list must be gone");
-  // Clearing the last session falls back to one whole-session profile rather
-  // than drawing nothing, which would read as a broken study.
-  assert.match(control, /const noneLeft = DESK_SESSION_SETTING_KEYS\s*\n?\s*\.every\(\(sessionKey\) => settings\[sessionKey\] === false\);/);
+  // The final selected session cannot silently turn into an unrelated
+  // whole-day profile.
+  assert.match(control, /enabledCount === 1\) return current/);
 });
 
 console.log(`\nvolume profile session toggle: ${passed}/${passed} checks passed`);

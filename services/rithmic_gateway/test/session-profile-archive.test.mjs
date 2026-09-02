@@ -36,8 +36,8 @@ test("volume lands on the price it traded at", () => {
   ], TICK);
   assert.equal(minutes.length, 1);
   const levels = new Map(minutes[0].levels.map((row) => [row[0] * TICK, row]));
-  assert.deepEqual(levels.get(29000.25).slice(1), [5, 3, 2, 2], "volume/ask/bid/trades at 29000.25");
-  assert.deepEqual(levels.get(29000.5).slice(1), [5, 5, 0, 1]);
+  assert.deepEqual(levels.get(29000.25).slice(1, 5), [5, 3, 2, 2], "volume/ask/bid/trades at 29000.25");
+  assert.deepEqual(levels.get(29000.5).slice(1, 5), [5, 5, 0, 1]);
 });
 
 test("a price is keyed as an integer tick, not a float", () => {
@@ -102,6 +102,22 @@ test("a window boundary belongs to one session, not both", () => {
   assert.equal(second.totals.size, 1);
   assert.ok(first.totals.has(Math.round(29000 / TICK)));
   assert.ok(second.totals.has(Math.round(29001 / TICK)));
+});
+
+test("trade-size filters remain exact after a session is folded", () => {
+  const minutes = foldPrintsToMinuteLevels([
+    print(0, 29000, 1, 1),
+    print(1_000, 29000, 4, -1),
+    print(2_000, 29000, 8, 0),
+    print(3_000, 29001, 5, 1),
+  ], TICK);
+  const { totals } = sumMinuteLevels(minutes, T0, T0 + 60_000, {
+    minTradeVolume: 4,
+    maxTradeVolume: 5,
+  });
+  const at = (price) => totals.get(Math.round(price / TICK));
+  assert.deepEqual(at(29000), { volume: 4, askVolume: 0, bidVolume: 4, trades: 1 });
+  assert.deepEqual(at(29001), { volume: 5, askVolume: 5, bidVolume: 0, trades: 1 });
 });
 
 const withTape = (rows) => {

@@ -14,6 +14,11 @@ import { QuantDataSurfacePoller } from "./quantdata-surface-poller.mjs";
 import { TradeTapeArchive, MAX_TAPE_PRINTS } from "./trade-tape-archive.mjs";
 import { BarFlowArchive } from "./bar-flow-archive.mjs";
 import { SessionProfileArchive } from "./session-profile-archive.mjs";
+import {
+  combinedVolumeProfileCoverage,
+  volumeProfileSourcesHaveGap,
+  volumeProfileTailTrades,
+} from "./volume-profile-fold-merge.mjs";
 import { compareInstrumentCandidates } from "./instrument-resolution.mjs";
 import { DatabentoOptionsCatalog, OptionsCatalogError } from "./databento-options-catalog.mjs";
 import { DatabentoOptionTradeStream } from "./databento-option-trades.mjs";
@@ -178,6 +183,12 @@ barFlow.startWarming();
 const sessionProfiles = new SessionProfileArchive({
   dir: config.recordDir,
   enabled: config.recordEnabled,
+  // Profile folds run in the single shared worker queue, never on the HTTP
+  // event loop. Permit a missing live-session baseline to be built while the
+  // market is open unless measured loop lag says the gateway is under load;
+  // pausing for the entire session left Asia/Europe unavailable after any
+  // intraday restart.
+  maintenanceAllowed: () => !eventLoopLoadGuard.isOverloaded(),
 });
 sessionProfiles.startWarming();
 chartHistory.attach(client);
@@ -2437,11 +2448,15 @@ const server = createServer(async (request, response) => {
           tickSize: priceTick,
           fromMs: startMs,
           toMs: endMs,
+          minTradeVolume,
+          maxTradeVolume,
         });
-      const coverageStartMs = foldedProfile?.coverageStartMs
-        ?? profileTrades[0]?.timestampMs ?? null;
-      const coverageEndMs = foldedProfile?.coverageEndMs
-        ?? profileTrades.at(-1)?.timestampMs ?? null;
+      const tailTrades = volumeProfileTailTrades(profileTrades, foldedProfile);
+      const { coverageStartMs, coverageEndMs } = combinedVolumeProfileCoverage(
+        foldedProfile,
+        tailTrades,
+      );
+      const coverageHasGap = volumeProfileSourcesHaveGap(foldedProfile, tailTrades);
       let weightedPrice = 0;
       let weightedSquaredPrice = 0;
       let includedTrades = 0;
@@ -2451,10 +2466,7 @@ const server = createServer(async (request, response) => {
        * folding is precisely the act of discarding. They are only ever set on
        * the developing profile, where the ring still reaches.
        */
-      const foldedLevels = foldedProfile
-        && !(minTradeVolume > 0 || maxTradeVolume > 0)
-        ? foldedProfile.levels
-        : null;
+      const foldedLevels = foldedProfile?.levels ?? null;
       for (const level of foldedLevels ?? []) {
         const groupedTick = Math.floor(Math.round(level.price / priceTick) / groupTicks) * groupTicks;
         let row = rows.get(groupedTick);
@@ -2474,7 +2486,10 @@ const server = createServer(async (request, response) => {
         weightedSquaredPrice += level.price * level.price * level.volume;
         includedTrades += level.trades;
       }
-      for (const trade of foldedLevels ? [] : profileTrades) {
+      // A folded live session is a checkpoint, not a replacement for the live
+      // ring. Append only prints newer than its coverage edge, otherwise the
+      // profile freezes at the fold time until the next expensive rebuild.
+      for (const trade of tailTrades) {
         if (trade.size < minTradeVolume || (maxTradeVolume > 0 && trade.size > maxTradeVolume)) continue;
         const groupedTick =
           Math.floor(Math.round(trade.price / priceTick) / groupTicks) * groupTicks;
@@ -2549,7 +2564,9 @@ const server = createServer(async (request, response) => {
          * start, since there is then nothing to have fallen short of.
          */
         complete: startMs > 0
-          ? coverageStartMs !== null && coverageStartMs <= startMs + 5 * 60_000
+          ? coverageStartMs !== null
+            && coverageStartMs <= startMs + 5 * 60_000
+            && !coverageHasGap
           : null,
         tickSize: priceTick,
         groupTicks,

@@ -29,7 +29,7 @@ async function run() {
   if (workerData?.kind === "bar-flow") return foldPrintsToMinutes(trades);
   if (workerData?.kind === "session-profile") {
     const tickSize = Number(workerData.tickSize) > 0 ? Number(workerData.tickSize) : 0.25;
-    return { tickSize, minutes: foldPrintsToMinuteLevels(trades, tickSize) };
+    return { schemaVersion: 2, tickSize, minutes: foldPrintsToMinuteLevels(trades, tickSize) };
   }
   throw new Error("Unsupported archive fold job.");
 }

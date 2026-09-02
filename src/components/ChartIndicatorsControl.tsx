@@ -2098,9 +2098,6 @@ export default function ChartIndicatorsControl({
                     >
                       <option value="volume">Volume</option>
                       <option value="trades">Number of trades</option>
-                      <option value="aggregate-trades" disabled>Aggregate trades — needs MBO</option>
-                      <option value="order" disabled>Order — needs MBO</option>
-                      <option value="number-orders" disabled>Number of orders — needs MBO</option>
                     </KwantSelect>
                   </label>
                   {([
@@ -2169,7 +2166,7 @@ export default function ChartIndicatorsControl({
                     );
                   })}
                   <div className="border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
-                    Order-based inputs need order-by-order (MBO) data, which this feed does not carry — they stay disabled rather than silently counting trades instead. Filter min and max bound the trade sizes that reach the profile; max 0 means no upper bound. Automatic sizes each row from the range the profile covers and multiplies it by the group factory. Manual pins every row to a fixed number of ticks.
+                    This profile is calculated from Rithmic executions. Volume and number of trades are fully supported. Rithmic MBO powers the DOM and liquidity tools, but order-profile modes are not shown here until their live and historical calculations are complete. Filter min and max bound individual execution sizes; max 0 means no upper bound. Automatic sizes rows from the profile range and group factor. Manual pins every row to a fixed number of ticks.
                   </div>
                 </div>
               ) : null}
@@ -2354,7 +2351,7 @@ export default function ChartIndicatorsControl({
                       ["none", "None · whole session"],
                       ["filter", "Filter · keep the window"],
                       ["splitted", "Splitted · per session"],
-                      ["triple", "Sessions · Globex / Asia / London / NY"],
+                      ["triple", "Sessions · Asia / London / New York"],
                     ]],
                     ["Filter time", "filterTime", "rth", [
                       ["rth", "RTH · cash session"],
@@ -2444,20 +2441,18 @@ export default function ChartIndicatorsControl({
                                 }
                                 return { ...current, settings };
                               }
+                              const enabledCount = DESK_SESSION_SETTING_KEYS
+                                .filter((sessionKey) => settings[sessionKey] !== false).length;
+                              // Never translate "turn off the last selected
+                              // session" into the unrelated whole-day mode.
+                              // Keeping the final selection is deterministic
+                              // and prevents the study appearing to vanish or
+                              // silently changing what it measures.
+                              if (settings[key] !== false && enabledCount === 1) return current;
                               settings[key] = settings[key] === false;
                               const noneLeft = DESK_SESSION_SETTING_KEYS
                                 .every((sessionKey) => settings[sessionKey] === false);
-                              if (noneLeft) {
-                                // An empty selection would draw nothing at all,
-                                // which reads as a broken study rather than a
-                                // choice. Fall back to the whole session.
-                                settings.filterMode = "none";
-                                // Back to no selection, so the next click
-                                // isolates again rather than removing from a
-                                // set the trader never chose.
-                                settings.sessionSelectionArmed = false;
-                                for (const sessionKey of DESK_SESSION_SETTING_KEYS) settings[sessionKey] = true;
-                              }
+                              if (noneLeft) return current;
                               return { ...current, settings };
                             })}
                             aria-pressed={on}
@@ -2474,9 +2469,10 @@ export default function ChartIndicatorsControl({
                     </div>
                     <span className="block text-[8px] leading-4 text-muted">
                       Picking a session splits the day and draws only what is selected; the rest keep their own
-                      boundaries rather than absorbing the ones left out. Globex runs from the 17:00 open to
-                      Tokyo at 19:00, then Asia to 02:00, London to 08:30 and New York to 15:15, Chicago time.
-                      Clearing every session returns to one profile for the whole session.
+                      boundaries rather than absorbing the ones left out. Asia runs 17:00–02:00,
+                      London 02:00–10:00 and New York 08:30–15:00,
+                      Chicago time, matching DeepChart&apos;s Asian / Europe / USA windows. At least one
+                      session remains selected; choose “None · whole session” explicitly for a whole-day profile.
                     </span>
                   </div>
                   {([

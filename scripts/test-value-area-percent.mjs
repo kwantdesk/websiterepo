@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 
 const { calculateVolumeProfileValueArea, STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT } =
   await import("../src/lib/volumeProfileMath.ts");
+const { buildChartVolumeProfile } = await import("../src/lib/institutionalMarketData.ts");
 
 /**
  * The trader's own value-area percentage, all the way to the screen.
@@ -111,6 +112,27 @@ check("the fetch keeps the percentage the profile was built at", () => {
   );
   // The request itself must still carry what the trader asked for.
   assert.match(body, /valueAreaPercent: String\(askedValueAreaPercent\)/, "the request no longer sends the setting");
+});
+
+check("the candle-volume fallback honours the configured percentage", () => {
+  const profile = buildChartVolumeProfile({
+    candles: [{
+      timestamp: 1_000,
+      open: 100,
+      high: 104,
+      low: 100,
+      close: 103,
+      volume: 100,
+    }],
+    root: "TEST",
+    contractSymbol: "TEST",
+    startMs: 0,
+    endMs: 2_000,
+    tickSize: 1,
+    valueAreaPercent: 68,
+  });
+  assert.ok(profile);
+  assert.equal(profile.valueAreaPercent, 68, "the fallback silently reset the trader to 70%");
 });
 
 check("an absent percentage still falls back to the convention", () => {

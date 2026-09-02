@@ -18,6 +18,7 @@ import {
 import { mixHexColors } from "@/lib/volumeProfileGradients";
 import {
   calculateVolumeProfileValueArea,
+  groupVolumeProfileLevels,
   STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
   volumeProfileBinTick,
 } from "@/lib/volumeProfileMath";
@@ -941,31 +942,16 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
         const cachedDerived = this.derived.get(model.id);
         let derived = cachedDerived?.key === derivedKey ? cachedDerived.value : null;
         if (!derived) {
-          const levels = automaticMultiplier === 1
-          ? sourceLevels
-          : [...sourceLevels.reduce((buckets, level) => {
-              const sourceTick = Math.round(level.price / profile.tickSize);
-              const groupedTick = volumeProfileBinTick(sourceTick, groupedTicks);
-              const existing = buckets.get(groupedTick);
-              if (existing) {
-                existing.volume += level.volume;
-                existing.bidVolume += level.bidVolume;
-                existing.askVolume += level.askVolume;
-                existing.delta += level.delta;
-                existing.trades += level.trades;
-              } else {
-                buckets.set(groupedTick, {
-                  price: Number((groupedTick * profile.tickSize).toFixed(10)),
-                  volume: level.volume,
-                  bidVolume: level.bidVolume,
-                  askVolume: level.askVolume,
-                  delta: level.delta,
-                  trades: level.trades,
-                });
-              }
-              return buckets;
-            }, new Map<number, InstitutionalVolumeProfile["levels"][number]>()).values()]
-            .sort((a, b) => a.price - b.price);
+          // Group whenever the row requested by the trader is coarser than
+          // the data that arrived. The old condition looked only at the
+          // zoom-driven multiplier. In manual 4-tick mode that multiplier is
+          // normally 1, so four single-tick rows were painted on top of one
+          // another at a four-tick height while POC/VAH/VAL were calculated
+          // from real four-tick bins. The picture and its levels therefore
+          // described different profiles.
+          const levels = groupedTicks === profile.groupTicks
+            ? sourceLevels
+            : groupVolumeProfileLevels(sourceLevels, profile.tickSize, groupedTicks);
           let maxVolume = 1;
           let maxAbsDelta = 1;
           let maxSideVolume = 1;

@@ -14,13 +14,13 @@ slot) and **Use sec. axis**.
 
 | Tab | DeepChart | Ours |
 | --- | --- | --- |
-| **GENERAL** | Vbp type, Vbp period, Length type, Length value, custom Start/End Date-Time | **missing** |
-| **DATA SETTINGS** | Input data, Filter min, Filter max, Auto grouping, Auto group factor, Manual ticks | complete |
+| **GENERAL** | Vbp type, Vbp period, Length type, Length value, custom Start/End Date-Time | partial — profile count works; arbitrary periods/date ranges remain absent |
+| **DATA SETTINGS** | Input data, Filter min, Filter max, Auto grouping, Auto group factor, Manual ticks | execution Volume/Trades complete; MBO order-profile modes intentionally hidden until implemented |
 | **PLOT · Background/Text** | Background (nested dialog), Show text, Text (nested dialog) | partial — no nested text dialog |
-| **PLOT · Width/Offset** | Width type, Current Width, Current Offset, Previous Width, Previous Offset | **only a width %** |
-| **PLOT · Visual Appearance** | Number of profile, Vbp opacity, Border width, Show above bars, Visual style, Align to the right, Mirroring, Always visible | **opacity + border only** |
-| **POINT OF CONTROL** | Enable, Highlight, Highlight Colour, Show Line, Extend Line, Line Colour, Line Width, Dev. POC Start Time, Shifted POC Tick Grouping, Opacity POC Grouping, + shift alerts | no Dev. POC start time, no shifted-POC grouping, no alerts |
-| **VALUE AREA** | Enable, % Value Area, Highlight, Outside Colour, Show Line, **Developing**, Extend Line, Line Colour, Line Width | no **Developing** |
+| **PLOT · Width/Offset** | Width type, Current Width, Current Offset, Previous Width, Previous Offset | current/previous width and offsets work; width type absent |
+| **PLOT · Visual Appearance** | Number of profile, Vbp opacity, Border width, Show above bars, Visual style, Align to the right, Mirroring, Always visible | profile count, opacity, border, style and right alignment work; remaining modes absent |
+| **POINT OF CONTROL** | Enable, Highlight, Highlight Colour, Show Line, Extend Line, Line Colour, Line Width, Dev. POC Start Time, Shifted POC Tick Grouping, Opacity POC Grouping, + shift alerts | complete except alerts |
+| **VALUE AREA** | Enable, % Value Area, Highlight, Outside Colour, Show Line, **Developing**, Extend Line, Line Colour, Line Width | developing and lines work; separate highlight mode absent |
 | **PEAK AND VALLEY** | Peak/Valley enable, Sensitivity, Exclude High/Low, + Peak, Valley, Business Zone sections | complete |
 | **VWAP** | Enable, Highlight, Show Line, Developing VWAP, Extend, Colour, Width, Line style, + configurable Envelopes | we ship three fixed σ bands |
 | **FILTER/SPLIT TIME** | Filter Mode, Filter Time, custom Ini/End session (**exchange time zone**), "use end session as start day" | complete |
@@ -28,7 +28,7 @@ slot) and **Use sec. axis**.
 `Filter Mode` options are **None / Filter / Splitted / Triple** — our four names
 match exactly.
 
-## The session split does not match, structurally
+## Session split parity
 
 This is the cause of a profile being consistently out by a fixed amount rather
 than drifting.
@@ -43,26 +43,22 @@ EuropeEnabled  EuropeStartTime  EuropeEndTime
 UsaEnabled     UsaStartTime     UsaEndTime
 ```
 
-Ours carries **four** (`src/lib/volumeProfileSessions.ts`), Chicago time:
+KwantDesk now carries the same **three** (`src/lib/volumeProfileSessions.ts`),
+Chicago time:
 
 ```
-Globex     17:00 -> 19:00
-Asia       19:00 -> 02:00
-London     02:00 -> 08:30
-New York   08:30 -> 15:15
+Asia       17:00 -> 02:00
+London     02:00 -> 10:00
+New York   08:30 -> 15:00
 ```
 
-So our Globex is a window DeepChart does not have, and our Asia therefore starts
-two hours after whatever DeepChart's Asian session starts at. Two different
-windows over the same tape produce two different POC/VAH/VAL — a constant
-offset, not a rounding difference.
+The former KwantDesk-only 17:00–19:00 Globex split was removed from the volume
+profile. It shortened the selected Asia window and guaranteed different
+POC/VAH/VAL values before any grouping or value-area calculation ran.
 
-**Still unknown:** DeepChart's three default times. They are not compile-time
-constants (the constructor carries none), the workspace files are encrypted
-(`.xmle`, a hex key then ciphertext), and the enum that would name them is
-obfuscated to `StreamBuildControllerUpdate`. The remaining routes are the
-`Sessions Marker (multiple)` study's own dialog, or the `DefaultValue`
-attributes on those properties via the CustomAttribute table.
+The defaults were subsequently read from the installed Sessions Marker dialog:
+Asian 15:00–03:00, Europe 03:00–11:00 and USA 09:30–16:00 New York time. The
+table above is their Chicago conversion.
 
 ## Fixed as a result of this audit
 

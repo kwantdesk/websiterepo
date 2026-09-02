@@ -8574,7 +8574,6 @@ function WorkspaceChartPaneComponent({
     // Unticking a window omits its profile entirely rather than folding it
     // into a neighbour, so the remaining sessions keep their own boundaries.
     const enabledSessionIds = new Set<string>([
-      ...(settings.sessionGlobexEnabled === false ? [] : ["globex"]),
       ...(settings.sessionAsiaEnabled === false ? [] : ["asia"]),
       ...(settings.sessionLondonEnabled === false ? [] : ["london"]),
       ...(settings.sessionNewYorkEnabled === false ? [] : ["newyork"]),
@@ -8686,7 +8685,7 @@ function WorkspaceChartPaneComponent({
      *
      * A split day produces several daily profiles sharing one trading date.
      * Keying on the date alone collapsed them into a single map entry, so
-     * ticking Globex, Asia, London and New York drew exactly what ticking none
+     * ticking Asia, London and New York drew exactly what ticking none
      * of them drew - and because this merge rebuilds the map from the CURRENT
      * profiles, it also flattened correctly split ones that had already
      * arrived from the live fetch.
@@ -8967,7 +8966,6 @@ function WorkspaceChartPaneComponent({
     dailyProfileSettings.useEndSessionAsStartDay,
     // Without these the effect never re-ran on a session toggle, so clicking
     // Asia off changed a stored flag and nothing else: no refetch, no prune.
-    dailyProfileSettings.sessionGlobexEnabled,
     dailyProfileSettings.sessionAsiaEnabled,
     dailyProfileSettings.sessionLondonEnabled,
     dailyProfileSettings.sessionNewYorkEnabled,

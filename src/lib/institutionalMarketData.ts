@@ -92,6 +92,8 @@ export type InstitutionalVolumeProfile = {
   endMs: number;
   coverageStartMs?: number | null;
   coverageEndMs?: number | null;
+  /** False means the archive/ring sources leave a known hole in this window. */
+  complete?: boolean | null;
   tickSize: number;
   groupTicks: number;
   valueAreaPercent: number;
@@ -141,6 +143,7 @@ export function isExecutionBackedVolumeProfile(
 ): profile is InstitutionalVolumeProfile {
   if (!profile || profile.schemaVersion !== "kwantify-volume-profile-v1") return false;
   if (profile.provider !== "Databento" && profile.provider !== "Rithmic") return false;
+  if (profile.complete === false) return false;
   // Defensive provenance guard for old browser caches and older gateway
   // builds that may have labelled an OHLCV reconstruction as a native
   // profile. Those rows must never flash before the execution tape arrives.
@@ -411,7 +414,11 @@ export function buildChartVolumeProfile(args: {
 }): InstitutionalVolumeProfile | null {
   const tickSize = Number(args.tickSize);
   const groupTicks = Math.max(1, Math.round(args.groupTicks ?? 1));
-  const valueAreaPercent = STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT;
+  const requestedValueAreaPercent = Number(args.valueAreaPercent);
+  const valueAreaPercent = Number.isFinite(requestedValueAreaPercent)
+    && requestedValueAreaPercent > 0
+    ? Math.min(100, requestedValueAreaPercent)
+    : STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT;
   const minTradeVolume = Math.max(0, Number(args.minTradeVolume ?? 0));
   const maxTradeVolume = Math.max(0, Number(args.maxTradeVolume ?? 0));
   if (
@@ -961,6 +968,7 @@ export async function fetchInstitutionalVolumeProfile(args: {
         payload.schemaVersion !== "kwantify-volume-profile-v1"
         || !Array.isArray(payload.levels)
         || payload.levels.length === 0
+        || payload.complete === false
         || !Number.isFinite(payload.startMs)
         || payload.startMs <= 0
         || !Number.isFinite(payload.endMs)
