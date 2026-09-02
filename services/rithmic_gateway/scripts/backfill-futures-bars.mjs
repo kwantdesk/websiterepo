@@ -15,15 +15,14 @@
  *
  *   node scripts/backfill-futures-bars.mjs [--dir /recordings] [--date 2026-09-01] [--dry]
  */
-import { createReadStream, existsSync, readdirSync, mkdirSync } from "node:fs";
+import { existsSync, readdirSync, mkdirSync } from "node:fs";
 import { readFile, writeFile, rename } from "node:fs/promises";
-import { createGunzip } from "node:zlib";
-import { createInterface } from "node:readline";
 import { join } from "node:path";
+
+import { readArchiveRecords } from "../src/archive-reader.mjs";
 
 import { chicagoTradingDate } from "../src/trading-session.mjs";
 import { tradeFromRecord } from "../src/futures-bar-archive.mjs";
-import { resolveInstrument } from "../src/recorder.mjs";
 
 const args = process.argv.slice(2);
 const flag = (name, fallback = null) => {
@@ -63,45 +62,38 @@ async function backfillFile(tradingDate, name) {
   const bars = new Map();
   let prints = 0;
   let gaps = 0;
+  let breaks = 0;
 
-  const stream = name.endsWith(".gz")
-    ? createReadStream(source).pipe(createGunzip())
-    : createReadStream(source);
-  // A truncated tail is normal: the collector appends and may have been
-  // killed mid-write. Recover what was flushed rather than discarding the day.
-  stream.on("error", () => {});
-  const lines = createInterface({ input: stream, crlfDelay: Infinity });
-
-  try {
-    for await (const line of lines) {
-      if (!line) continue;
-      let record;
-      try { record = JSON.parse(line); } catch { continue; }
-      if (record?.type === "GAP" || record?.type === "DROPPED") { gaps += 1; continue; }
-      const trade = tradeFromRecord(record);
-      if (!trade) continue;
-      // The print's own trading date, not the file's: the last minutes before
-      // 17:00 Chicago belong to the session that is ending.
-      if (chicagoTradingDate(trade.timestamp) !== tradingDate) continue;
-      prints += 1;
-      const bucket = Math.floor(trade.timestamp / BAR_MS) * BAR_MS;
-      const existing = bars.get(bucket);
-      if (!existing) {
-        bars.set(bucket, {
-          t: bucket, o: trade.price, h: trade.price, l: trade.price, c: trade.price, v: trade.size,
-        });
-      } else {
-        if (trade.price > existing.h) existing.h = trade.price;
-        if (trade.price < existing.l) existing.l = trade.price;
-        existing.c = trade.price;
-        existing.v += trade.size;
-      }
+  /*
+   * Read member by member so a truncated one costs only itself. Piping the
+   * whole file through a single gunzip aborted at the first break and
+   * discarded everything after it - which is a third of a session on a day
+   * the collector was restarted.
+   */
+  const summary = await readArchiveRecords(source, (record) => {
+    if (record?.type === "GAP" || record?.type === "DROPPED") { gaps += 1; return; }
+    const trade = tradeFromRecord(record);
+    if (!trade) return;
+    // The print's own trading date, not the file's: the last minutes before
+    // 17:00 Chicago belong to the session that is ending.
+    if (chicagoTradingDate(trade.timestamp) !== tradingDate) return;
+    prints += 1;
+    const bucket = Math.floor(trade.timestamp / BAR_MS) * BAR_MS;
+    const existing = bars.get(bucket);
+    if (!existing) {
+      bars.set(bucket, {
+        t: bucket, o: trade.price, h: trade.price, l: trade.price, c: trade.price, v: trade.size,
+      });
+    } else {
+      if (trade.price > existing.h) existing.h = trade.price;
+      if (trade.price < existing.l) existing.l = trade.price;
+      existing.c = trade.price;
+      existing.v += trade.size;
     }
-  } catch (error) {
-    process.stderr.write(`  ${name}: read stopped (${error.message}) - keeping what was parsed\n`);
-  }
+  });
+  breaks = summary.breaks;
 
-  if (!bars.size) return { exchange, symbol, prints, bars: 0, gaps };
+  if (!bars.size) return { exchange, symbol, prints, bars: 0, gaps, breaks };
 
   const outDir = join(ROOT, "bars", tradingDate);
   const outFile = join(outDir, `${exchange}-${symbol}.json`);
@@ -117,7 +109,7 @@ async function backfillFile(tradingDate, name) {
     await writeFile(temporary, JSON.stringify({ tradingDate, exchange, symbol, bars: rows }));
     await rename(temporary, outFile);
   }
-  return { exchange, symbol, prints, bars: bars.size, gaps };
+  return { exchange, symbol, prints, bars: bars.size, gaps, breaks };
 }
 
 async function main() {
@@ -148,6 +140,7 @@ async function main() {
       process.stdout.write(
         `  ${result.exchange}:${result.symbol}  ${result.bars} bars from ${result.prints} prints`
         + `${result.gaps ? ` (${result.gaps} gap markers)` : ""}`
+        + `${result.breaks ? ` [${result.breaks} damaged members skipped]` : ""}`
         + `  ${((Date.now() - began) / 1000).toFixed(1)}s\n`,
       );
     }
