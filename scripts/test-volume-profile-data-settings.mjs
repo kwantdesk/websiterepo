@@ -201,44 +201,35 @@ console.log("Volume profile Data Settings (grouping + filters) tests passed.");
     "utf8",
   );
 
-  /*
-   * Pinned to behaviour, not to identifiers.
-   *
-   * The chaining was rebuilt to measure where the profile in front is DRAWN
-   * rather than where its time sits - so a docked profile stops the lines at
-   * its body instead of being painted over. The old names went with it, and
-   * these assertions failed the suite over a rewrite they were not testing.
-   */
+  // Occlusion uses exact painted spans, not time projections. This covers
+  // docked, overlapping, weekly/daily and split-session combinations alike.
   assert.match(
     primitive,
-    /blockerStartMsById/,
-    "the renderer must know where the profile in front begins",
+    /const drawnBodySpans = new Map<string, VolumeProfileBodySpan>\(\);/,
+    "the renderer must record every painted profile body",
   );
   assert.match(
     primitive,
-    /blockerIdById/,
-    "and which profile that is",
+    /forwardVolumeProfileLevelSegment/,
+    "the level must be clipped against those painted bodies",
   );
-  // Chaining is per profile kind so a split session follows its own kind.
+  // Every profile kind on the same instrument participates.
   assert.match(
     primitive,
-    /\$\{model\.profile\.period\}:\$\{model\.profile\.root\}/,
-    "profiles chain within their own period and root",
+    /body\.root !== root/,
+    "profiles must be isolated by instrument, not profile period",
   );
-  // The newest profile has nothing in front of it and runs to the live edge.
-  // A profile that HAS one in front but could not place it must stop at its own
-  // end instead - running on there is what made levels shoot forward across
-  // every profile ahead of them on a zoom.
+  // A covered source draws nothing; it never reverses toward the left.
   assert.match(
     primitive,
-    /blockerId !== undefined && !blockerPlacedBehind\s*\?\s*endX\s*:\s*mediaSize\.width/,
-    "only a profile with nothing in front of it reaches the live edge",
+    /return endX > sourceFrontX \+ 0\.5 \? \{ startX: sourceFrontX, endX \} : null/,
+    "a level segment can only travel forward",
   );
-  // Level lines start from the chained boundary, not the profile band.
+  // Level lines start at the profile body's forward edge.
   assert.match(
     primitive,
-    /let lineEndX = resolveLevelChainEndX\(\);/,
-    "levels extend to the next profile by default",
+    /context\.moveTo\(lineSegment\.startX, y\)/,
+    "levels must not emerge backwards through their own profile",
   );
   // Extend modes may only pull a level in, never push it past the next profile.
   assert.match(

@@ -91,7 +91,7 @@ assert.doesNotMatch(
 // the end of its own period and opens back across it").
 assert.match(
   primitive,
-  /: facesLeft \? sessionEndX : sessionAnchorX;/,
+  /: facesLeft \? sessionEndX : sessionAnchorX\) \+ profileOffsetPx;/,
   "facing left must anchor at the session END so the profile covers what it measured",
 );
 // Docking is unchanged: a pinned profile still goes to the screen edge.

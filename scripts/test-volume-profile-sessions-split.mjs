@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 const { resolveSessionSegments } = await import("../src/lib/volumeProfileSessions.ts");
+const { applyInstitutionalTradesToVolumeProfile } = await import("../src/lib/institutionalMarketData.ts");
 
 const workspace = readFileSync(
   new URL("../src/components/KwantifyWorkspace.tsx", import.meta.url), "utf8",
@@ -89,6 +90,61 @@ check("a session the trader unticked is omitted, not folded away", () => {
     assert.ok(workspace.includes(flag), `${flag} is no longer honoured`);
   }
   assert.match(workspace, /enabledSessionIds/, "the enabled-session set is gone");
+});
+
+check("a completed split session rejects later same-date trades", () => {
+  const startMs = Date.parse("2026-08-19T22:00:00.000Z");
+  const endMs = Date.parse("2026-08-20T07:00:00.000Z");
+  const profile = {
+    schemaVersion: "kwantify-volume-profile-v1",
+    provider: "Rithmic",
+    source: "CME executions",
+    root: "NQ",
+    contractSymbol: "NQU6",
+    period: "daily",
+    tradingDate: "2026-08-20",
+    sessionId: "asia",
+    sessionLabel: "Asia",
+    startMs,
+    endMs,
+    coverageStartMs: startMs,
+    coverageEndMs: endMs - 120_000,
+    complete: true,
+    tickSize: 0.25,
+    groupTicks: 1,
+    valueAreaPercent: 68,
+    minTradeVolume: 0,
+    maxTradeVolume: 0,
+    totalVolume: 10,
+    bidVolume: 5,
+    askVolume: 5,
+    delta: 0,
+    trades: 1,
+    poc: 20_000,
+    vah: 20_000,
+    val: 20_000,
+    vwap: 20_000,
+    standardDeviation: 0,
+    levels: [{ price: 20_000, volume: 10, bidVolume: 5, askVolume: 5, delta: 0, trades: 1 }],
+    developingPoc: [],
+    developingValueArea: [],
+    asOf: new Date(endMs - 120_000).toISOString(),
+  };
+  const trade = (timestamp, close) => ({
+    recordIndex: 1, timestamp, open: close, high: close, low: close, close,
+    trades: 1, volume: 2, bidVolume: 1, askVolume: 1, delta: 0, aggressor: "UNKNOWN",
+  });
+  const next = applyInstitutionalTradesToVolumeProfile(profile, [
+    trade(endMs - 60_000, 20_001),
+    trade(endMs + 60_000, 19_000),
+  ]);
+  assert.equal(next.totalVolume, 12, "only the execution inside Asia belongs to Asia");
+  assert.ok(next.levels.some((level) => level.price === 20_001), "the in-session print was lost");
+  assert.ok(!next.levels.some((level) => level.price === 19_000),
+    "a post-session/current-low print contaminated the historical profile");
+  assert.equal(next.endMs, endMs, "a named session's closing boundary must never expand");
+  assert.equal(next.coverageEndMs, endMs - 60_000,
+    "coverage must stop at the newest accepted in-session execution");
 });
 
 console.log(`\nvolume profile session split: ${passed}/${passed} checks passed`);

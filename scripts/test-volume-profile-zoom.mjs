@@ -57,18 +57,12 @@ assert.ok(widthAt(REFERENCE_BARS / 2) > FULL, "zooming in must still enlarge the
 assert.ok(widthAt(1) <= PANE * 0.36 + 1e-9, "the pane fraction ceiling still bounds it");
 
 rmSync(outDir, { recursive: true, force: true });
-// A blocker off screen still stops the lines.
-//
-// Value-area lines stop at the back of the profile in FRONT. That profile's
-// position was projected from the last candle, so zooming into a region far
-// behind the live edge put the last candle off screen too and the projection
-// returned null - exactly when it was needed. With no position for the blocker,
-// a week-old profile's lines ran straight through everything to the right edge,
-// which looked like the lines releasing on zoom.
+// Profile placement remains stable when the live candle is off screen.
 //
 // The scale is linear in logical space, so ANY resolvable anchor plus the bar
 // interval places any time. The last candle when it is visible, otherwise the
-// start of whatever is.
+// start of whatever is. Once placed, level occlusion uses the resulting screen
+// body rather than trying to project a separate time-only blocker.
 {
   const primitive = readFileSync("src/lib/nativeVolumeProfilePrimitive.ts", "utf8");
   assert.match(
@@ -82,10 +76,8 @@ rmSync(outDir, { recursive: true, force: true });
     /\+ \(timestamp - Number\(anchorTime\)\) \/ model\.intervalSeconds;/,
     "the offset must be measured from the anchor actually used, not always the last candle",
   );
-  // The blocker is still projected through the model being drawn, which always
-  // has a usable basis, rather than giving up because it could not measure
-  // itself.
-  assert.match(primitive, /const blockerX = blockerDrawnX \?\? \(blockerStartMs === undefined/);
+  assert.match(primitive, /const drawnBodySpans = new Map<string, VolumeProfileBodySpan>\(\);/);
+  assert.match(primitive, /forwardVolumeProfileLevelSegment/);
 }
 
 console.log("volume profile zoom curve: 6/6 checks passed");

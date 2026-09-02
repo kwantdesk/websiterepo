@@ -58,8 +58,8 @@ assert.doesNotMatch(
 );
 assert.match(primitive, /groupingFloorFactor/);
 
-// 6. The value area must be measured at the PROFILE's grouping, never at the
-//    display-collapsed grouping. Row size genuinely changes the answer, so
+// 6. The value area must be measured at the TRADER-REQUESTED grouping, never
+//    at the display-collapsed grouping. Row size genuinely changes the answer, so
 //    deriving it from the zoom-collapsed rows made VAH/VAL/POC move by points
 //    as the chart was zoomed and disagree with the server's own profile.
 const { execSync } = await import("node:child_process");
@@ -91,8 +91,8 @@ const vaCall = primitive.slice(
   primitive.indexOf("this.derived.set(model.id"),
 );
 assert.ok(
-  vaCall.includes("sourceLevels") && vaCall.includes("profile.tickSize * profile.groupTicks"),
-  "the value area must be measured at the profile's own grouping",
+  vaCall.includes("sourceLevels") && vaCall.includes("profile.tickSize * requestedTicks"),
+  "the value area must be measured at the trader-requested grouping",
 );
 assert.ok(
   !vaCall.includes("groupedTicks,"),

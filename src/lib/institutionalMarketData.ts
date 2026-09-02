@@ -1105,8 +1105,14 @@ export function applyInstitutionalTradesToVolumeProfile(
         : profile.endMs - 1,
     )
     : null;
+  const isBoundedDailySession = profile.period === "daily" && Boolean(profile.sessionId);
   const eligibleRecords = records.filter((record) =>
     record.timestamp >= profile.startMs
+    // Asia/London/New York are closed intervals owned by that session only.
+    // A completed split profile must never absorb later prints merely because
+    // they share the same CME trading date; doing so drags a historical
+    // histogram toward the current market and changes its apparent height.
+    && (!isBoundedDailySession || record.timestamp < profile.endMs)
     && (
       profile.period === "daily"
         ? dailyTradingDate !== null && cmeSessionDateKey(record.timestamp) === dailyTradingDate
@@ -1232,10 +1238,9 @@ export function applyInstitutionalTradesToVolumeProfile(
     // downstream could see that the trader had asked for something else.
     valueAreaPercent: activeValueAreaPercent,
     asOf: new Date(latestTimestamp).toISOString(),
-    // Active daily and weekly profiles grow from the Rithmic execution tape.
-    // Their original endMs is the snapshot edge, not a boundary that should
-    // make the profile wait for the next server refresh.
-    endMs: profile.period === "daily" || profile.period === "weekly"
+    // Unsplit daily and weekly profiles grow from the Rithmic execution tape.
+    // A named split session has a real closing boundary and keeps it forever.
+    endMs: (profile.period === "daily" || profile.period === "weekly") && !isBoundedDailySession
       ? Math.max(profile.endMs, latestTimestamp + 1)
       : profile.endMs,
     coverageEndMs: Math.max(coverageEndMs, latestTimestamp),

@@ -27,6 +27,44 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
+export type VolumeProfileBodySpan = {
+  id: string;
+  root: string;
+  leftX: number;
+  rightX: number;
+};
+
+/**
+ * Resolve only the visible, forward section of a profile level.
+ *
+ * A later profile body is opaque geometry for level purposes: the line stops
+ * at its back edge and is never painted through it. If a body already covers
+ * the source profile's front edge there is no honest line segment to draw.
+ */
+export function forwardVolumeProfileLevelSegment(
+  sourceId: string,
+  root: string,
+  sourceFrontX: number,
+  rightEdge: number,
+  bodies: readonly VolumeProfileBodySpan[],
+): { startX: number; endX: number } | null {
+  if (!Number.isFinite(sourceFrontX) || !Number.isFinite(rightEdge) || rightEdge <= sourceFrontX) {
+    return null;
+  }
+  let endX = rightEdge;
+  for (const body of bodies) {
+    if (body.id === sourceId || body.root !== root) continue;
+    const leftX = Math.min(body.leftX, body.rightX);
+    const bodyRightX = Math.max(body.leftX, body.rightX);
+    if (!Number.isFinite(leftX) || !Number.isFinite(bodyRightX) || bodyRightX <= sourceFrontX) continue;
+    // The source edge is already underneath another profile: draw no line,
+    // rather than reversing it out of the back toward the left side.
+    const stopX = Math.max(sourceFrontX, leftX);
+    if (stopX < endX) endX = stopX;
+  }
+  return endX > sourceFrontX + 0.5 ? { startX: sourceFrontX, endX } : null;
+}
+
 // Chart-width profiles are expressed against a stable logical viewport rather
 // than the full Globex session. Treating a 24% KWANT Profile as 24% of all
 // 1,380 one-minute bars made it consume the whole pane after a refresh.
@@ -551,121 +589,16 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
       const ownsLeftDock = (model: NativeVolumeProfileModel) =>
         leftDockByKind.get(`${model.profile.period}:${model.profile.root}`)?.id === model.id;
 
-      // Where each profile's spine is actually DRAWN.
-      //
-      // A docked profile is deliberately painted at a screen edge rather than
-      // at its own time, so its time coordinate says nothing about where its
-      // body ended up. Level lines were stopped at that time coordinate, which
-      // meant they halted in empty space and ran straight through the docked
-      // body — and a docked profile's own levels ran from the edge across
-      // every profile between it and its successor's time. Docking only
-      // engages once the anchor scrolls off, which is why the lines behaved
-      // until the chart was moved away.
-      const latestEndMsByKindForDock = latestEndMsByKind;
-      const drawnAnchorXById = new Map<string, number>();
-      // The BACK of each profile's drawn body — its leftmost painted pixel,
-      // which is the edge an incoming level line has to stop at. The anchor is
-      // not that edge: a body that extends left from its spine (any docked or
-      // right-anchored profile, and the delta half of a normal daily) has its
-      // back a full width earlier, so stopping a line at the anchor ran it
-      // straight across the profile it was supposed to stop behind.
-      const drawnBackXById = new Map<string, number>();
+      // Exact screen-space body spans. Level occlusion is a visual rule, so it
+      // must use where every body was actually painted — including docked,
+      // right-facing, weekly and overlapping session profiles — rather than a
+      // time-only guess at where its spine ought to be.
+      const drawnBodySpans = new Map<string, VolumeProfileBodySpan>();
       // Level lines are drawn after every body has been placed. Within one
       // pass a profile can only see the geometry of models drawn before it,
-      // and the profile in front is frequently drawn after — which is why the
-      // stop edge could not be measured at the point the line was drawn.
+      // and the profile in front is frequently drawn after. Deferral makes
+      // every body's exact back edge available before any line is clipped.
       const deferredLevelDraws: Array<() => void> = [];
-      for (const model of this.models) {
-        const rawAnchorX = this.timeToCoordinate(
-          model,
-          model.drawingBounds?.startTime ?? model.profile.startMs / 1_000,
-        );
-        if (rawAnchorX == null) continue;
-        const isNewestOfKind = model.profile.endMs >= (
-          latestEndMsByKindForDock.get(`${model.profile.period}:${model.profile.root}`)
-          ?? model.profile.endMs
-        );
-        if (model.style.snapMode === "right" && isNewestOfKind) {
-          drawnAnchorXById.set(model.id, rightEdge - 2);
-          continue;
-        }
-        if (model.style.snapMode === "left" && ownsLeftDock(model) && rawAnchorX < leftEdge + 2) {
-          drawnAnchorXById.set(model.id, leftEdge + 2);
-          continue;
-        }
-        drawnAnchorXById.set(model.id, rawAnchorX);
-      }
-
-      // A session's POC and value area stay live until the next session takes
-      // over, so their lines run on to the START of the profile in front and
-      // stop there — never underneath it. Chaining is per profile kind, so a
-      // split session follows the next segment of its own kind rather than
-      // jumping to an unrelated one, and the newest profile has nothing in
-      // front of it and runs to the live edge.
-      const blockerIdById = new Map<string, string>();
-      // The blocker's start in TIME, kept alongside its id so a level can still
-      // be stopped when the blocker itself is not on screen to be measured.
-      const blockerStartMsById = new Map<string, number>();
-      const chainGroups = new Map<string, { id: string; startMs: number; endMs: number; period: string }[]>();
-      for (const model of this.models) {
-        // Every profile on the same instrument competes for the same space, so
-        // they all share one chain: daily, weekly, split sessions and fixed
-        // ranges alike. Chaining per profile KIND meant a level only ever
-        // yielded to another of its own kind and ran straight underneath
-        // anything else standing in front of it.
-        const group = chainGroups.get(model.profile.root) ?? [];
-        group.push({
-          id: model.id,
-          startMs: model.drawingBounds ? model.drawingBounds.startTime * 1_000 : model.profile.startMs,
-          endMs: model.drawingBounds ? model.drawingBounds.endTime * 1_000 : model.profile.endMs,
-          period: model.profile.period,
-        });
-        chainGroups.set(model.profile.root, group);
-      }
-      for (const group of chainGroups.values()) {
-        group.sort((left, right) => left.startMs - right.startMs);
-        for (const entry of group) {
-          // "In front" means starting at or after this profile ENDS, never
-          // merely after it starts. Comparing against the end is what lets a
-          // weekly keep its levels running across the dailies drawn inside its
-          // own span while still stopping at the week in front of it, and it
-          // is what makes a split session stop at the back of the next session
-          // rather than painting underneath it.
-          //
-          // Sessions of the SAME period are the exception, and they are the
-          // hard rule: whichever one begins next stops the one before it, to
-          // the second, even where the two spans overlap. A Globex profile
-          // running from the evening open through to the cash close overlaps
-          // the New York session sitting inside it, so the end-based test
-          // never saw New York as being "in front" and Globex's POC, VAH and
-          // VAL ran straight through it and on across the chart. Only the
-          // profiles actually being drawn are considered, so the level stops
-          // at the next session the trader has switched ON — turn Asia off
-          // and the line carries through to London instead.
-          let blockerStartMs: number | null = null;
-          let blockerId: string | null = null;
-          const considerBlocker = (candidate: typeof entry) => {
-            if (blockerStartMs === null || candidate.startMs < blockerStartMs) {
-              blockerStartMs = candidate.startMs;
-              blockerId = candidate.id;
-            }
-          };
-          for (const candidate of group) {
-            if (candidate.id === entry.id) continue;
-            const samePeriod = candidate.period === entry.period;
-            // Same period: the next one to begin, overlap or not.
-            if (samePeriod && candidate.startMs > entry.startMs) considerBlocker(candidate);
-            // A different period nests — a weekly holds its levels across the
-            // dailies drawn inside its own span — so it only yields to one
-            // that begins at or after it ends.
-            else if (!samePeriod && candidate.startMs >= entry.endMs) considerBlocker(candidate);
-          }
-          if (blockerId !== null) {
-            blockerIdById.set(entry.id, blockerId);
-            if (blockerStartMs !== null) blockerStartMsById.set(entry.id, blockerStartMs);
-          }
-        }
-      }
 
       for (const model of this.models) {
         const { profile, style } = model;
@@ -762,60 +695,6 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           : pinned
           ? pinnedRight ? leftEdge : rightEdge
           : sessionEndX) + profileOffsetPx;
-
-        // Where this profile's level lines must stop: the back of the profile
-        // in front, or the right edge when nothing follows.
-        //
-        // Measured where that profile is DRAWN, not where its time sits, so a
-        // docked profile stops the lines at its body instead of being painted
-        // over. A blocker drawn to the left of this profile is not in front of
-        // it on screen and cannot stop anything.
-        const blockerId = blockerIdById.get(model.id);
-        const blockerDrawnX = blockerId === undefined
-          ? null
-          : drawnAnchorXById.get(blockerId) ?? null;
-        // A blocker that is off screen, or whose own anchor time the scale
-        // cannot resolve, has no drawn position — but it is still in front.
-        // Project its start through THIS model, which is being drawn and so
-        // always has a usable projection basis, rather than giving up because
-        // the blocker could not measure itself.
-        const blockerStartMs = blockerStartMsById.get(model.id);
-        const blockerX = blockerDrawnX ?? (blockerStartMs === undefined
-          ? null
-          : this.timeToCoordinate(model, blockerStartMs / 1_000));
-        const ownDrawnX = drawnAnchorXById.get(model.id) ?? null;
-        const nextProfileStartX = blockerX == null
-          || (ownDrawnX != null && blockerX <= ownDrawnX)
-          ? null
-          : blockerX;
-        // Three distinct cases, and only one of them may reach the live edge:
-        //   - the profile in front is placed: stop at its back;
-        //   - it is placed BEHIND this one (a dock pinned it left), so nothing
-        //     is actually in front on screen: run on;
-        //   - it exists but could not be placed at all: stop at this profile's
-        //     own end. Running to the live edge there is what made levels
-        //     shoot forward across every profile ahead of them on a zoom.
-        const blockerPlacedBehind = blockerX != null
-          && ownDrawnX != null
-          && blockerX <= ownDrawnX;
-        // Resolved when the level is actually drawn, by which time every body
-        // has recorded where it was painted. Prefers the blocker's measured
-        // back edge and falls back to its anchor for a blocker that never
-        // drew a body (off screen, or zero width at this zoom).
-        const resolveLevelChainEndX = () => {
-          const blockerBackX = blockerId === undefined
-            ? null
-            : drawnBackXById.get(blockerId) ?? null;
-          const stopX = blockerBackX != null
-            && (ownDrawnX == null || blockerBackX > ownDrawnX)
-            ? blockerBackX
-            : nextProfileStartX;
-          return stopX != null
-            ? Math.max(endX, stopX)
-            : blockerId !== undefined && !blockerPlacedBehind
-              ? endX
-              : mediaSize.width;
-        };
 
         // Decimals come from the contract's own tick, so a level never prints
         // more precision than the instrument actually trades in.
@@ -1010,7 +889,15 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           : style.mode !== "volume" && style.showDelta && !pinned
             ? deltaScaleWidth
             : 0;
-        drawnBackXById.set(model.id, anchorX - bodyReachesLeftBy);
+        drawnBodySpans.set(model.id, {
+          id: model.id,
+          root: profile.root,
+          leftX: anchorX - bodyReachesLeftBy,
+          // Levels always travel forward on screen from the rightmost point
+          // the source profile can paint. This prevents right-facing and
+          // docked profiles from emitting a line out of their back.
+          rightX: anchorX + (facesLeft ? 0 : profileWidth),
+        });
         const groupedPoc = derived.valueArea.poc ?? profile.poc;
         const groupedVah = derived.valueArea.vah ?? profile.vah;
         const groupedVal = derived.valueArea.val ?? profile.val;
@@ -1376,7 +1263,17 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           // A level runs on until the session in front begins. Extend modes may
           // stop it EARLIER — never later — so a line can never be drawn
           // underneath the next profile, whatever the split settings are.
-          let lineEndX = resolveLevelChainEndX();
+          const sourceBody = drawnBodySpans.get(model.id);
+          if (!sourceBody) return;
+          const lineSegment = forwardVolumeProfileLevelSegment(
+            model.id,
+            profile.root,
+            sourceBody.rightX,
+            rightEdge,
+            [...drawnBodySpans.values()],
+          );
+          if (!lineSegment) return;
+          let lineEndX = lineSegment.endX;
           const extendMode = style.extendMode ?? "none";
           if (extendMode === "till-interaction") {
             const bars = style.interactionBars ?? [];
@@ -1384,7 +1281,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
             for (const bar of bars) {
               if (bar.low <= price && bar.high >= price) {
                 const barX = this.timeToCoordinate(model, bar.time);
-                if (barX != null && barX > endX) { touchedX = barX; break; }
+                if (barX != null && barX > lineSegment.startX) { touchedX = barX; break; }
               }
             }
             if (touchedX != null) lineEndX = Math.min(lineEndX, touchedX);
@@ -1394,7 +1291,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           context.lineWidth = Math.max(0.5, Number.isFinite(lineWidth) ? Number(lineWidth) : 1);
           context.setLineDash(style.levelDash ?? dash);
           context.beginPath();
-          context.moveTo(anchorX, y);
+          context.moveTo(lineSegment.startX, y);
           context.lineTo(lineEndX, y);
           context.stroke();
           // Named levels, matching how IB levels are labelled: the name and its
@@ -1413,8 +1310,8 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
             const labelOnLeft = (style.levelLabelSide ?? "right") === "left";
             // Where the label naturally belongs: at the line's own terminus.
             const naturalX = labelOnLeft
-              ? Math.min(anchorX, lineEndX) + 5
-              : Math.max(anchorX, lineEndX) - 5;
+              ? lineSegment.startX + 5
+              : lineEndX - 5;
             // The clamp exists so a partly visible level keeps its label clear
             // of the fixed drawing rail. It must NOT drag a label belonging to
             // a level that has scrolled away back into view: doing that piled
@@ -1523,9 +1420,9 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           }
           context.setLineDash([]);
         }
-        // Queued rather than drawn: see deferredLevelDraws. This also puts
-        // every level above every body, so a profile drawn later can no longer
-        // paint over an earlier profile's POC and value area.
+        // Queued rather than drawn: see deferredLevelDraws. The queue has the
+        // geometry of every visible body, so each segment can terminate at
+        // the nearest back edge and none is painted through a histogram.
         if (style.showPocLine || style.showValueAreaLines) {
           deferredLevelDraws.push(() => {
             if (style.showPocLine) {
