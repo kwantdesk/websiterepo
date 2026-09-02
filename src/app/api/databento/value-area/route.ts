@@ -11,7 +11,6 @@ import {
   getDatabentoValueAreaProfile,
   getDatabentoValueAreaProfiles,
 } from "@/lib/databento";
-import { vendorMarketDataConfigured } from "@/lib/vendorMarketData.server";
 import { futuresTickSize } from "@/lib/eventBars";
 import {
   marketDataGatewayToken,
@@ -343,10 +342,6 @@ export async function buildValueAreaPayload(symbol: string, now: number): Promis
 }
 
 export async function GET(request: Request) {
-  if (!vendorMarketDataConfigured("databento")) {
-    return NextResponse.json({ error: "CME market data is not configured." }, { status: 503 });
-  }
-
   const searchParams = new URL(request.url).searchParams;
   const requestedSymbol = searchParams.get("symbol")?.trim();
   const instrument = requestedSymbol

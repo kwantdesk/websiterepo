@@ -65,7 +65,21 @@ export async function fetchRecordedTape(args: {
   startMs: number;
   endMs: number;
   limit?: number;
-}): Promise<{ symbol: string; trades: RecordedTrade[] }> {
+}): Promise<{
+  symbol: string;
+  trades: RecordedTrade[];
+  /**
+   * The oldest print the collector could actually supply for this window, and
+   * whether it had to stop short of the whole of it.
+   *
+   * A caller that measures a window - a value area is the price band holding a
+   * share of ALL the volume in it - has to know the window was covered. Half a
+   * week's prints produce a perfectly plausible weekly value area at the wrong
+   * prices.
+   */
+  earliestMs: number | null;
+  truncated: boolean;
+}> {
   const end = Number.isFinite(args.endMs) && args.endMs > 0 ? args.endMs : Date.now();
   const start = Number.isFinite(args.startMs) && args.startMs > 0 ? args.startMs : end - 6 * 60 * 60_000;
   const query = new URLSearchParams({
@@ -85,7 +99,9 @@ export async function fetchRecordedTape(args: {
      */
     throw new Error(`The recorded trade tape is unavailable (${response.status}): ${detail.slice(0, 200)}`);
   }
-  const payload = (await response.json()) as { trades?: unknown; symbol?: unknown };
+  const payload = (await response.json()) as {
+    trades?: unknown; symbol?: unknown; earliestMs?: unknown; truncated?: unknown;
+  };
   const rows = Array.isArray(payload.trades) ? payload.trades : [];
   const trades: RecordedTrade[] = [];
   for (const row of rows) {
@@ -98,7 +114,15 @@ export async function fetchRecordedTape(args: {
     if (!Number.isFinite(price) || price <= 0 || size <= 0) continue;
     trades.push({ timestamp, price, size, side: Number(record.side ?? 0) });
   }
-  return { symbol: String(payload.symbol || contractRootSymbol(args.symbol)), trades };
+  const earliest = Number(payload.earliestMs);
+  return {
+    symbol: String(payload.symbol || contractRootSymbol(args.symbol)),
+    trades,
+    earliestMs: Number.isFinite(earliest) && earliest > 0
+      ? earliest
+      : trades[0]?.timestamp ?? null,
+    truncated: payload.truncated === true,
+  };
 }
 
 export async function fetchRecordedTrades(args: {

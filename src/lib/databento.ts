@@ -17,6 +17,7 @@ import {
 } from "@/lib/vendorMarketData.server";
 import { availableEndFromError, clampEndToLicence, rememberAvailableEnd } from "@/lib/databentoAvailableEnd";
 import { fetchInstitutionalMarketData } from "@/lib/institutionalMarketData.server";
+import { fetchRecordedTape, fetchRecordedTrades } from "@/lib/recordedTradeTape.server";
 
 export const DATABENTO_HISTORICAL_BASE_URL = "https://api.databento.com/v0";
 
@@ -346,36 +347,54 @@ export async function getDatabentoValueAreaProfiles(
   const accumulators = parsedWindows.map(() => createValueAreaAccumulator(tickSize));
   const requestStart = Math.min(...parsedWindows.map((window) => window.start));
   const requestEnd = Math.max(...parsedWindows.map((window) => window.end));
-  await streamHistoricalRows({
-    symbols: symbol,
-    stype_in: isContinuousFuture(symbol) ? "continuous" : "raw_symbol",
-    schema: "trades",
-    start: new Date(requestStart).toISOString(),
-    end: new Date(requestEnd).toISOString(),
-    // Price and timestamp formatting plus symbol mapping add substantial JSON
-    // weight to a weekly tick stream. Raw numeric fields retain the exact same
-    // CME trades while transferring and parsing much faster.
-    pretty_px: "false",
-    pretty_ts: "false",
-    map_symbols: "false",
-  }, (row) => {
-    const timestamp = time(
-      row.ts_event
-      ?? row.ts_recv
-      ?? (row.hd as Record<string, unknown> | undefined)?.ts_event,
-    );
-    const trade = {
-      timestamp,
-      price: price(row.price),
-      size: Math.max(0, Number(row.size ?? 0)),
-    };
-    parsedWindows.forEach((window, index) => {
-      if (timestamp >= window.start && timestamp < window.end) {
+  /*
+   * Exact trade-by-trade profiles from the desk's own recorded prints.
+   *
+   * A value area is the price band that held a share of the session's traded
+   * volume, so it has to be counted print by print - bars would put a minute's
+   * whole volume on one price. These were bought from the vendor, whose
+   * account answers 402 "insufficient budget", so every daily and weekly value
+   * area failed outright.
+   *
+   * One request covers the union of the windows and fills each accumulator
+   * from it. That matters at the Sunday/Monday reopen: the prior daily session
+   * (Friday) sits completely inside the prior weekly window, and fetching them
+   * separately would carry Friday's whole tape twice.
+   */
+  const recorded = await fetchRecordedTape({
+    symbol,
+    startMs: requestStart,
+    endMs: requestEnd,
+  });
+  for (const print of recorded.trades) {
+    const trade = { timestamp: print.timestamp, price: print.price, size: print.size };
+    for (let index = 0; index < parsedWindows.length; index += 1) {
+      const window = parsedWindows[index];
+      if (print.timestamp >= window.start && print.timestamp < window.end) {
         addValueAreaTrade(accumulators[index], trade);
       }
-    });
+    }
+  }
+  /*
+   * A window the archive does not fully cover has no value area.
+   *
+   * The value area is the band that held a share of ALL the volume in its
+   * window, so a partly covered one is not a rougher answer - it is a
+   * confident answer at the wrong prices. The recorder started mid-way through
+   * the earliest week it can serve, and half a week of prints produces a
+   * perfectly plausible weekly profile nobody could tell was wrong.
+   *
+   * The tolerance allows for a window opening in a quiet moment; it is far
+   * smaller than a missing session.
+   */
+  const coverageToleranceMs = 5 * 60_000;
+  const earliest = recorded.earliestMs;
+  return accumulators.map((accumulator, index) => {
+    const window = parsedWindows[index];
+    const covered = earliest !== null && earliest <= window.start + coverageToleranceMs;
+    if (!covered) return null;
+    return finalizeValueAreaProfile(accumulator);
   });
-  return accumulators.map((accumulator) => finalizeValueAreaProfile(accumulator));
 }
 
 function sourceSchema(timeframe: string) {
