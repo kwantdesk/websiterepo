@@ -2474,6 +2474,24 @@ const server = createServer(async (request, response) => {
         endMs,
         coverageStartMs,
         coverageEndMs,
+        /*
+         * Whether the window asked for was actually covered.
+         *
+         * The tape is bounded per request, so a multi-session window can come
+         * back holding only its newest part - and every field below is then
+         * computed correctly over the wrong span. Measured: a prior-week NQ
+         * profile reported a POC and value area from prints starting on the
+         * Tuesday of that week, and an ES one from the Thursday, with nothing
+         * in the response to say so.
+         *
+         * A value area is the band holding a share of ALL the volume in its
+         * window, so a partly covered one is not a rougher answer - it is a
+         * confident answer at the wrong prices. null when the request named no
+         * start, since there is then nothing to have fallen short of.
+         */
+        complete: startMs > 0
+          ? coverageStartMs !== null && coverageStartMs <= startMs + 5 * 60_000
+          : null,
         tickSize: priceTick,
         groupTicks,
         valueAreaPercent,
