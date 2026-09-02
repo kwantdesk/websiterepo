@@ -145,11 +145,47 @@ export class BarFlowArchive {
     this.tapeDir = join(String(options.dir || "recordings"), "trades");
     this.enabled = options.enabled !== false;
     this.memory = new Map();
+    this.pending = new Set();
+    this.warmTimer = null;
     this.lastError = null;
   }
 
   status() {
-    return { enabled: this.enabled, dir: this.dir, cached: this.memory.size, lastError: this.lastError };
+    return {
+      enabled: this.enabled,
+      dir: this.dir,
+      cached: this.memory.size,
+      pending: this.pending.size,
+      lastError: this.lastError,
+    };
+  }
+
+  /**
+   * Fold the sessions requests have asked for, one at a time, off the request
+   * path.
+   *
+   * Serialised on purpose: the whole failure being fixed is several folds
+   * landing on the event loop at once.
+   */
+  startWarming(intervalMs = 20_000) {
+    if (!this.enabled || this.warmTimer) return () => {};
+    const tick = async () => {
+      const next = this.pending.values().next();
+      if (next.done) return;
+      this.pending.delete(next.value);
+      const [exchange, symbol, tradingDate] = String(next.value).split(":");
+      try {
+        await this.sessionFlow(tradingDate, exchange, symbol, true);
+      } catch (error) {
+        this.lastError = error instanceof Error ? error.message : String(error);
+      }
+    };
+    this.warmTimer = setInterval(() => { void tick(); }, intervalMs);
+    if (typeof this.warmTimer.unref === "function") this.warmTimer.unref();
+    return () => {
+      if (this.warmTimer) clearInterval(this.warmTimer);
+      this.warmTimer = null;
+    };
   }
 
   #tapeFiles(tradingDate, exchange, symbol) {
@@ -175,12 +211,26 @@ export class BarFlowArchive {
     return trades;
   }
 
-  /** One session's minute flow, from disk when it is already known. */
-  async sessionFlow(tradingDate, exchange, symbol) {
+  /**
+   * One session's minute flow, from disk when it is already known.
+   *
+   * `foldIfMissing` false means "answer from what is already folded, or not at
+   * all". Folding reads a whole session of prints, and the gateway is one Node
+   * process: doing that inside a request blocks the event loop that also
+   * serves options, GEX, quotes and the live feed. It took the desk down at
+   * the open, so no request path is allowed to trigger it.
+   */
+  async sessionFlow(tradingDate, exchange, symbol, foldIfMissing = true) {
     const key = `${exchange}:${symbol}:${tradingDate}`;
     const live = tradingDate === chicagoTradingDate(Date.now());
     const cached = this.memory.get(key);
     if (cached && (!live || Date.now() - cached.builtAt < LIVE_REBUILD_MS)) return cached;
+    if (cached && live && !foldIfMissing) {
+      // Stale by a minute is fine; re-folding a growing live session inside a
+      // request is not. The warmer refreshes it.
+      this.pending.add(key);
+      return cached;
+    }
 
     const file = join(this.dir, tradingDate, flowFileName(exchange, symbol));
     if (!live && !cached && existsSync(file)) {
@@ -197,6 +247,12 @@ export class BarFlowArchive {
       }
     }
 
+    if (!foldIfMissing) {
+      // Nothing folded yet for this session: the caller gets no flow rather
+      // than a stalled gateway. The warmer below fills it in shortly.
+      this.pending.add(`${exchange}:${symbol}:${tradingDate}`);
+      return null;
+    }
     const built = foldPrintsToMinutes(await this.#readSession(tradingDate, exchange, symbol));
     const entry = { ...built, builtAt: Date.now() };
     this.memory.set(key, entry);
@@ -240,7 +296,8 @@ export class BarFlowArchive {
     const executions = [];
     for (const tradingDate of tradingDatesBetween(start, end)) {
       if (!this.#tapeFiles(tradingDate, upper, upperSymbol).length) continue;
-      const session = await this.sessionFlow(tradingDate, upper, upperSymbol);
+      const session = await this.sessionFlow(tradingDate, upper, upperSymbol, false);
+      if (!session) continue;
       for (const row of session.minutes) {
         if (row.t + MINUTE_MS <= start || row.t > end) continue;
         minutes.push(row);

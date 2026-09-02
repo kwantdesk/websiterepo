@@ -164,6 +164,8 @@ const barFlow = new BarFlowArchive({
   dir: config.recordDir,
   enabled: config.recordEnabled,
 });
+// Folds sessions in the background, one at a time. Never inside a request.
+barFlow.startWarming();
 chartHistory.attach(client);
 /*
  * Range, volume, renko and tick bars cannot be built from minute bars: they
