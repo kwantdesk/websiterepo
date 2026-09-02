@@ -4,10 +4,68 @@ import WebSocket from "ws";
 import { loadProtocol, TEMPLATE_IDS } from "./protocol.mjs";
 import { RithmicBookStore, instrumentKey } from "./book-store.mjs";
 
-// Templates that carry market data worth archiving: last trade, BBO, order
-// book, depth-by-order snapshot and depth-by-order update. Login, heartbeat
-// and subscription-response traffic is deliberately excluded.
-const MARKET_DATA_TEMPLATE_IDS = new Set([150, 151, 156, 116, 160, 161]);
+/*
+ * Everything Rithmic will send for an instrument.
+ *
+ * The subscription asked for update_bits 7 - LAST_TRADE | BBO | ORDER_BOOK -
+ * which is three of the seventeen types the protocol defines. Settlement,
+ * open interest, market mode (the halts), the official open and close, the
+ * price limits and the opening/closing indicators were never requested, so
+ * for every session recorded before this they do not exist and cannot be
+ * recovered: Rithmic sells no history for them.
+ *
+ * The value is the OR of every UpdateBits constant in
+ * request_market_data_update.proto, written out so a reader can see that
+ * nothing was left out on purpose.
+ */
+const UPDATE_BITS = {
+  LAST_TRADE: 1,
+  BBO: 2,
+  ORDER_BOOK: 4,
+  OPEN: 8,
+  OPENING_INDICATOR: 16,
+  HIGH_LOW: 32,
+  HIGH_BID_LOW_ASK: 64,
+  CLOSE: 128,
+  CLOSING_INDICATOR: 256,
+  SETTLEMENT: 512,
+  MARKET_MODE: 1024,
+  OPEN_INTEREST: 2048,
+  MARGIN_RATE: 4096,
+  HIGH_PRICE_LIMIT: 8192,
+  LOW_PRICE_LIMIT: 16384,
+  PROJECTED_SETTLEMENT: 32768,
+  ADJUSTED_CLOSE: 65536,
+};
+export const ALL_UPDATE_BITS = Object.values(UPDATE_BITS)
+  .reduce((all, bit) => all | bit, 0);
+
+/*
+ * What is NOT archived, rather than what is.
+ *
+ * This was an allowlist of six template ids, so a message type we had not
+ * enumerated was discarded before it ever reached the recorder - including
+ * every type the widened subscription now brings in, whose ids are not
+ * published in the .proto files. An allowlist silently drops what it does not
+ * know about, which is the opposite of what an archive is for.
+ *
+ * Session plumbing is excluded because it carries no market data and would
+ * only add noise: login, logout, system info, heartbeats and the responses to
+ * our own subscription requests.
+ */
+const NON_MARKET_TEMPLATE_IDS = new Set([
+  // Login, logout, system info and heartbeats - the ids we send ourselves and
+  // their direct responses, from TEMPLATE_IDS above.
+  10, 11, 12, 13, 16, 17, 18, 19,
+  // The acknowledgements of our own market-data and depth subscriptions.
+  101, 118,
+]);
+/*
+ * Deliberately short. Every id not listed is written to the archive, including
+ * ones we cannot name yet - a message we failed to anticipate is exactly the
+ * message worth keeping, and noise on disk costs a few bytes while a dropped
+ * market event is gone for good.
+ */
 
 function openSocket(url, timeoutMs = 10_000) {
   return new Promise((resolve, reject) => {
@@ -380,7 +438,7 @@ export class RithmicMarketDataClient extends EventEmitter {
         symbol: row.symbol,
         exchange: row.exchange,
         request: 2,
-        updateBits: 7,
+        updateBits: ALL_UPDATE_BITS,
       });
       if (this.config.enableDepthByOrder) {
         this.send("RequestDepthByOrderUpdates", {
@@ -402,7 +460,7 @@ export class RithmicMarketDataClient extends EventEmitter {
       symbol: row.symbol,
       exchange: row.exchange,
       request: 1,
-      updateBits: 7,
+      updateBits: ALL_UPDATE_BITS,
     });
     if (this.config.enableDepthByOrder) {
       this.send("RequestDepthByOrderSnapshot", {
@@ -431,7 +489,7 @@ export class RithmicMarketDataClient extends EventEmitter {
     // those to disk would archive the fact that an update happened without
     // what it contained. The decoded wire payload is the only faithful
     // record, and L3 depth cannot be re-requested from Rithmic later.
-    if (MARKET_DATA_TEMPLATE_IDS.has(decoded.templateId)) {
+    if (!NON_MARKET_TEMPLATE_IDS.has(decoded.templateId)) {
       this.emit("rawMessage", {
         templateId: decoded.templateId,
         exchange: decoded.payload?.exchange,
