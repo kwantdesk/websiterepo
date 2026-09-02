@@ -48,6 +48,23 @@ const GZIP_LEVEL = 1;
  */
 export const DEFAULT_TAPE_ROOTS = ["MNQ", "MES", "NQ", "ES"];
 
+/**
+ * How many prints one request may return.
+ *
+ * Measured against the live collector: 500,000 NQ prints is 2.0 MB gzipped on
+ * the wire, five seconds, 16% CPU and 445 MB of the container's 3.3 GB - so
+ * the old cap was costing about two and a half sessions of range-bar history
+ * to save resources that were never under pressure. A busy NQ session is
+ * roughly 400,000 prints, so this covers a normal trading week, which is the
+ * window the charts are actually asked for.
+ *
+ * It stays a hard ceiling. Range bars need every print - the geometry closes
+ * on price travelled, so a thinned tape draws different bars, not coarser
+ * ones - which means the only safe way to bound this is to return fewer
+ * sessions and say so, never to sample.
+ */
+export const MAX_TAPE_PRINTS = 1_500_000;
+
 /*
  * Exported so the backfill classifies a print exactly as the live tape does.
  * A second copy of this would drift, and a delta bar built from backfilled
@@ -274,7 +291,7 @@ export class TradeTapeArchive {
    * hours, and handing back a whole session unasked is megabytes nobody
    * requested.
    */
-  async load({ exchange, symbol, fromMs, toMs, limit = 500_000 }) {
+  async load({ exchange, symbol, fromMs, toMs, limit = MAX_TAPE_PRINTS }) {
     const upper = String(exchange || "").toUpperCase();
     const upperSymbol = String(symbol || "").toUpperCase();
     const end = Number.isFinite(Number(toMs)) && Number(toMs) > 0 ? Number(toMs) : Date.now();

@@ -485,7 +485,7 @@ export async function getDatabentoBars(symbol: string, timeframe: string, start:
       symbol: contractRootSymbol(symbol),
       fromMs: String(recentStart),
       toMs: String(Number.isFinite(requestedEnd) ? requestedEnd : Date.now()),
-      limit: "500000",
+      limit: "1500000",
     });
     const response = await fetchInstitutionalMarketData(`/v1/market-data/trade-tape?${query}`);
     if (!response.ok) {

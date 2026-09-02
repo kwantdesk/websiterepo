@@ -41,6 +41,18 @@ export function contractRootSymbol(symbol: string) {
   return upper.replace(/[A-Z]\d$/, "") || upper;
 }
 
+/**
+ * The gateway's own ceiling, matched here so a request is never quietly cut
+ * shorter than the collector was willing to serve.
+ *
+ * A busy NQ session is roughly 400,000 prints, so this covers a normal
+ * trading week. Range bars need every print - the geometry closes on price
+ * travelled, so a thinned tape draws different bars rather than coarser ones -
+ * which means the only safe way to bound a window is to cover fewer sessions,
+ * never to sample within them.
+ */
+export const MAX_RECORDED_PRINTS = 1_500_000;
+
 export async function fetchRecordedTrades(args: {
   symbol: string;
   startMs: number;
@@ -54,7 +66,7 @@ export async function fetchRecordedTrades(args: {
     symbol: contractRootSymbol(args.symbol),
     fromMs: String(Math.round(start)),
     toMs: String(Math.round(end)),
-    limit: String(args.limit ?? 500_000),
+    limit: String(args.limit ?? MAX_RECORDED_PRINTS),
   });
   const response = await fetchInstitutionalMarketData(`/v1/market-data/trade-tape?${query}`);
   if (!response.ok) {

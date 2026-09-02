@@ -11,7 +11,7 @@ import { loadConfig } from "./config.mjs";
 import { DatabentoEquitiesTradeStream } from "./databento-equities-stream.mjs";
 import { FuturesBarArchive, HistoryRequestError } from "./futures-bar-archive.mjs";
 import { QuantDataSurfacePoller } from "./quantdata-surface-poller.mjs";
-import { TradeTapeArchive } from "./trade-tape-archive.mjs";
+import { TradeTapeArchive, MAX_TAPE_PRINTS } from "./trade-tape-archive.mjs";
 import { DatabentoOptionsCatalog, OptionsCatalogError } from "./databento-options-catalog.mjs";
 import { DatabentoOptionTradeStream } from "./databento-option-trades.mjs";
 import { createDesktopStreamGuard } from "./desktop-stream-guard.mjs";
@@ -1495,7 +1495,7 @@ const server = createServer(async (request, response) => {
           symbol: instrument.symbol,
           fromMs: url.searchParams.get("fromMs"),
           toMs: url.searchParams.get("toMs"),
-          limit: Math.min(500_000, Number(url.searchParams.get("limit")) || 500_000),
+          limit: Math.min(MAX_TAPE_PRINTS, Number(url.searchParams.get("limit")) || MAX_TAPE_PRINTS),
         }));
       } catch (error) {
         return json(response, 502, {
