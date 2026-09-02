@@ -32,7 +32,7 @@ const OVERNIGHT = Date.parse("2026-09-02T04:00:00Z"); // midnight New York
 
 let passed = 0;
 
-test("it polls hardest while the options session is open", () => {
+test("it recognises the options session that must be protected", () => {
   assert.equal(optionsSessionOpen(SESSION), true);
   assert.equal(optionsSessionOpen(OVERNIGHT), false);
   // Weekends move nothing.
@@ -156,7 +156,7 @@ test("it goes through the vendor edge, never straight to the provider", async ()
       return { ok: true, status: 200, text: async () => "{}" };
     },
   });
-  await poller.tick(SESSION);
+  await poller.tick(OVERNIGHT);
   assert.equal(seen.length, 1);
   assert.match(seen[0].url, /^http:\/\/127\.0\.0\.1:8793\/v1\/vendors\/quantdata\//);
   assert.ok(!/api\.quantdata\.us/.test(seen[0].url), "it called the provider directly");
@@ -181,11 +181,11 @@ test("a 429 holds every surface, not just the one refused", async () => {
       return { ok: false, status: 429, text: async () => "rate limited" };
     },
   });
-  await poller.tick(SESSION);
+  await poller.tick(OVERNIGHT);
   const afterFirst = calls;
   assert.equal(afterFirst, 1, "it kept asking after being refused");
   // Nothing is due again until the hold expires.
-  await poller.tick(SESSION + 30_000);
+  await poller.tick(OVERNIGHT + 30_000);
   assert.equal(calls, afterFirst, "it polled again during the hold");
   assert.equal(poller.status().rateLimited, 1);
 });
@@ -200,9 +200,9 @@ test("a failure does not become a retry storm", async () => {
     spacingMs: 0,
     fetchImpl: async () => { calls += 1; throw new Error("connection reset"); },
   });
-  await poller.tick(SESSION);
-  await poller.tick(SESSION + 1_000);
-  await poller.tick(SESSION + 2_000);
+  await poller.tick(OVERNIGHT);
+  await poller.tick(OVERNIGHT + 1_000);
+  await poller.tick(OVERNIGHT + 2_000);
   assert.equal(calls, 1, "a failing surface was retried on every tick");
   assert.equal(poller.status().failed, 1);
 });
@@ -216,6 +216,22 @@ test("it stays well inside the account quota", () => {
   const poller = new QuantDataSurfacePoller({ token: "t" });
   assert.ok(poller.budgetPerMinute <= 60, `budget ${poller.budgetPerMinute} is too close to the 240 limit`);
   assert.ok(poller.spacingMs > 0, "requests are not spaced");
+});
+
+test("an explicit enable flag still cannot spend live-session quota", async () => {
+  let calls = 0;
+  const poller = new QuantDataSurfacePoller({
+    token: "test-token",
+    surfaces: [DEFAULT_SURFACES[0]],
+    tickers: ["SPX"],
+    spacingMs: 0,
+    fetchImpl: async () => {
+      calls += 1;
+      return { ok: true, status: 200, text: async () => "{}" };
+    },
+  });
+  assert.equal(await poller.tick(SESSION), 0);
+  assert.equal(calls, 0, "the archive stole quota from the live GEX desk");
 });
 
 test("it does nothing without a token", async () => {

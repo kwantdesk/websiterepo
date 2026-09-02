@@ -25,27 +25,8 @@
  * yields the budget it is not using rather than reserving it.
  */
 
-const SESSION_CLOCK = new Intl.DateTimeFormat("en-US", {
-  timeZone: "America/New_York",
-  hour12: false,
-  weekday: "short",
-  hour: "2-digit",
-  minute: "2-digit",
-});
-
-/** US options hours, which is when these surfaces actually move. */
-export function optionsSessionOpen(nowMs = Date.now()) {
-  const parts = Object.fromEntries(
-    SESSION_CLOCK.formatToParts(new Date(nowMs))
-      .filter((part) => part.type !== "literal")
-      .map((part) => [part.type, part.value]),
-  );
-  if (parts.weekday === "Sat" || parts.weekday === "Sun") return false;
-  const minutes = (Number(parts.hour) % 24) * 60 + Number(parts.minute);
-  // 09:30 to 16:15 New York, with a little either side so the open and the
-  // settlement print are both captured.
-  return minutes >= 9 * 60 + 20 && minutes <= 16 * 60 + 20;
-}
+import { optionsSessionOpen } from "./live-session-guard.mjs";
+export { optionsSessionOpen } from "./live-session-guard.mjs";
 
 /**
  * What to pull, and how often.
@@ -215,6 +196,13 @@ export class QuantDataSurfacePoller {
 
   async tick(nowMs = Date.now()) {
     if (!this.enabled || this.inFlight) return 0;
+    /*
+     * This is an archive, not the live product. Even with an explicit enable
+     * flag it may never compete with traders for the account-wide QuantData
+     * quota while options are open. The incident this guards exhausted that
+     * shared quota and made every GEX surface fail together.
+     */
+    if (optionsSessionOpen(nowMs)) return 0;
     this.inFlight = true;
     try {
       // The budget is per minute; a tick may only spend its own share of it.

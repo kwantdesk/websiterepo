@@ -30,6 +30,7 @@ import { discoverRithmicSystems, RithmicMarketDataClient } from "./rithmic-clien
 import { RTraderExcelMarketDataClient } from "./rtrader-excel-client.mjs";
 import { MarketDataRecorder } from "./recorder.mjs";
 import { ExposureArchiver } from "./exposure-archiver.mjs";
+import { EventLoopLoadGuard, isDeferrableDuringOverload } from "./event-loop-load-guard.mjs";
 import { VendorDataEdge } from "./vendor-data-edge.mjs";
 import { ZyonServiceProxy, zyonServiceProblem } from "./zyon-service-proxy.mjs";
 import {
@@ -65,6 +66,8 @@ const gatewayAuthorizer = new GatewayAuthorizer({
   gatewayToken: config.gatewayToken,
   desktopTicketVerifier,
 });
+const eventLoopLoadGuard = new EventLoopLoadGuard();
+eventLoopLoadGuard.start();
 const client = config.sourceMode === "rtrader-excel"
   ? new RTraderExcelMarketDataClient(config)
   : new RithmicMarketDataClient(config);
@@ -1230,6 +1233,8 @@ const server = createServer(async (request, response) => {
       vendorData: vendorDataEdge.health(),
       chartHistory: chartHistory.status(),
       tradeTape: tradeTape.status(),
+      barFlow: barFlow.status(),
+      sessionProfiles: sessionProfiles.status(),
       massiveIndices: massiveIndices.status(),
       databentoEquities: databentoEquities.status(),
       quantDataMarketSnapshots: quantDataMarketSnapshots.status(),
@@ -1242,6 +1247,7 @@ const server = createServer(async (request, response) => {
       socials: socialsService.health(),
       journal: journalService.health(),
       desktopRevocations: desktopRevocationSynchronizer?.status() ?? { configured: false },
+      eventLoop: eventLoopLoadGuard.status(),
     });
   }
   const authorization = await gatewayAuthorizer.authorize(request, url.pathname);
@@ -1253,6 +1259,13 @@ const server = createServer(async (request, response) => {
           ? "Authorization unavailable"
           : "Unauthorized",
       code: authorization.code,
+    });
+  }
+  if (eventLoopLoadGuard.isOverloaded() && isDeferrableDuringOverload(url.pathname)) {
+    response.setHeader("Retry-After", "30");
+    return json(response, 503, {
+      error: "Archive work is temporarily paused to protect the live market-data feed.",
+      code: "live_feed_priority",
     });
   }
   try {

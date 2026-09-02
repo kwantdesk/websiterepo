@@ -25,6 +25,7 @@ foreach ($required in @("vendor\proto\request_login.proto", "operator.env")) {
 
 Write-Output "==> creating $RemoteDir on $target"
 ssh $target "mkdir -p $RemoteDir"
+if ($LASTEXITCODE -ne 0) { throw "Could not create $RemoteDir on $target." }
 
 # The VM is the authority for paid vendor credentials. A developer's local
 # operator.env may intentionally contain only the Rithmic login, so preserve
@@ -33,6 +34,7 @@ ssh $target "mkdir -p $RemoteDir"
 # Databento, QuantData, or Massive edge.
 Write-Output "==> preserving VPS-owned provider credentials"
 ssh $target "if [ -f '$RemoteDir/operator.env' ]; then cp '$RemoteDir/operator.env' '$RemoteDir/operator.env.before-ship'; chmod 600 '$RemoteDir/operator.env.before-ship'; fi"
+if ($LASTEXITCODE -ne 0) { throw "Could not preserve VPS-owned provider credentials." }
 
 # scp -r is used rather than rsync so this works from a stock Windows box.
 # node_modules and recordings are excluded: the image installs its own
@@ -47,14 +49,26 @@ try {
         }
     }
 
+    # Git may materialize tracked files with CRLF in a Windows worktree. Linux
+    # reads the carriage return as part of a shebang ("bash\r"), so normalize
+    # every staged shell script before it leaves this machine.
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    Get-ChildItem -LiteralPath $staging -Recurse -File -Filter "*.sh" | ForEach-Object {
+        $content = [System.IO.File]::ReadAllText($_.FullName)
+        [System.IO.File]::WriteAllText($_.FullName, $content.Replace("`r`n", "`n"), $utf8NoBom)
+    }
+
     Write-Output "==> copying service (SDK + credentials travel here, never via git)"
     scp -r "$staging/*" "${target}:$RemoteDir/"
+    if ($LASTEXITCODE -ne 0) { throw "Service transfer failed." }
 
     Write-Output "==> restoring VPS-owned provider credentials"
     ssh $target "python3 '$RemoteDir/deploy/preserve-provider-env.py' '$RemoteDir/operator.env.before-ship' '$RemoteDir/operator.env'"
+    if ($LASTEXITCODE -ne 0) { throw "Could not restore VPS-owned provider credentials." }
 
     Write-Output "==> bootstrapping"
     ssh $target "chmod +x $RemoteDir/deploy/bootstrap-vm.sh && $RemoteDir/deploy/bootstrap-vm.sh"
+    if ($LASTEXITCODE -ne 0) { throw "Remote bootstrap failed; deployment is not complete." }
 }
 finally {
     Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction SilentlyContinue

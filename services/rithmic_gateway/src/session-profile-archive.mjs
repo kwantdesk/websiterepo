@@ -1,14 +1,19 @@
 import { existsSync, mkdirSync } from "node:fs";
 import { readFile, writeFile, rename } from "node:fs/promises";
-import { gzipSync, gunzipSync } from "node:zlib";
+import { gzip, gunzip } from "node:zlib";
 import { join } from "node:path";
+import { promisify } from "node:util";
 
-import { readArchiveRecords } from "./archive-reader.mjs";
+import { runArchiveFold } from "./archive-fold-worker-client.mjs";
+import { optionsSessionOpen } from "./live-session-guard.mjs";
 import { chicagoTradingDate } from "./trading-session.mjs";
 import { tradingDatesBetween } from "./futures-bar-archive.mjs";
 import {
-  backfillFileName, decodeTrade, instrumentFileName,
+  backfillFileName, instrumentFileName,
 } from "./trade-tape-archive.mjs";
+
+const gzipAsync = promisify(gzip);
+const gunzipAsync = promisify(gunzip);
 
 /**
  * Traded volume per price, per minute - the substrate every volume profile is
@@ -134,6 +139,7 @@ export class SessionProfileArchive {
     this.pending = new Set();
     this.warmTimer = null;
     this.lastError = null;
+    this.maintenanceAllowed = options.maintenanceAllowed || (() => !optionsSessionOpen());
   }
 
   status() {
@@ -142,6 +148,7 @@ export class SessionProfileArchive {
       dir: this.dir,
       cached: this.memory.size,
       pending: this.pending.size,
+      maintenancePaused: !this.maintenanceAllowed(),
       lastError: this.lastError,
     };
   }
@@ -154,6 +161,7 @@ export class SessionProfileArchive {
   startWarming(intervalMs = 20_000) {
     if (!this.enabled || this.warmTimer) return () => {};
     const tick = async () => {
+      if (!this.maintenanceAllowed()) return;
       const next = this.pending.values().next();
       if (next.done) return;
       this.pending.delete(next.value);
@@ -179,22 +187,6 @@ export class SessionProfileArchive {
       .filter((file) => existsSync(file));
   }
 
-  async #readSession(tradingDate, exchange, symbol) {
-    const trades = [];
-    for (const file of this.#tapeFiles(tradingDate, exchange, symbol)) {
-      await readArchiveRecords(file, (row) => {
-        if (trades.length >= SESSION_PRINT_CEILING) return;
-        const trade = decodeTrade(row);
-        // The print's own trading date, not the file's: a tape written across
-        // the 17:00 Chicago roll carries the tail of the session before it.
-        if (!trade || chicagoTradingDate(trade.timestamp) !== tradingDate) return;
-        trades.push(trade);
-      });
-    }
-    trades.sort((left, right) => left.timestamp - right.timestamp);
-    return trades;
-  }
-
   /**
    * One session's minute histograms.
    *
@@ -216,7 +208,7 @@ export class SessionProfileArchive {
     const file = join(this.dir, tradingDate, profileFileName(exchange, symbol));
     if (!live && !cached && existsSync(file)) {
       try {
-        const parsed = JSON.parse(gunzipSync(await readFile(file)).toString("utf8"));
+        const parsed = JSON.parse((await gunzipAsync(await readFile(file))).toString("utf8"));
         if (Array.isArray(parsed?.minutes) && parsed.tickSize === tickSize) {
           const restored = { ...parsed, builtAt: Date.now() };
           this.memory.set(key, restored);
@@ -233,11 +225,14 @@ export class SessionProfileArchive {
       return null;
     }
 
-    const minutes = foldPrintsToMinuteLevels(
-      await this.#readSession(tradingDate, exchange, symbol),
+    const built = await runArchiveFold({
+      kind: "session-profile",
+      files: this.#tapeFiles(tradingDate, exchange, symbol),
+      tradingDate,
       tickSize,
-    );
-    const entry = { tickSize, minutes, builtAt: Date.now() };
+      ceiling: SESSION_PRINT_CEILING,
+    });
+    const entry = { ...built, builtAt: Date.now() };
     this.memory.set(key, entry);
 
     /*
@@ -246,12 +241,12 @@ export class SessionProfileArchive {
      * chart asked, and every later request would read that back instead of the
      * prints that have arrived since.
      */
-    if (!live && minutes.length) {
+    if (!live && built.minutes.length) {
       try {
         const dayDir = join(this.dir, tradingDate);
         if (!existsSync(dayDir)) mkdirSync(dayDir, { recursive: true });
         const temporary = `${file}.tmp`;
-        await writeFile(temporary, gzipSync(Buffer.from(JSON.stringify({ tickSize, minutes })), { level: 6 }));
+        await writeFile(temporary, await gzipAsync(Buffer.from(JSON.stringify(built)), { level: 6 }));
         await rename(temporary, file);
       } catch (error) {
         this.lastError = error instanceof Error ? error.message : String(error);

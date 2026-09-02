@@ -1096,3 +1096,55 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
 - Verification: focused ESLint clean; `npx tsc --noEmit` passed;
   `npm run test:gex-box` passed 15/15; `node scripts/test-gex-box-dashboard.mjs`
   passed; production `npm run build` passed.
+
+## Temporary engineering log — 2026-09-03 — live-feed outage containment
+
+### Completed
+- Confirmed the 2026-09-02 outage had two shared causes rather than three
+  independent route bugs: whole-session archive work blocked the collector's
+  single Node event loop, and the QuantData surface archive exhausted quota
+  shared by every options/GEX request.
+- Moved both bar-flow and session-profile folds into one serial worker-thread
+  queue. Archive reading, sorting and aggregation no longer execute on the
+  event loop that serves Rithmic ticks, SSE, options, GEX and `/health`.
+- Replaced synchronous gzip/gunzip in those warmers with asynchronous zlib.
+- Paused both archive warmers throughout the protected live options session,
+  so their worker CPU cannot compete with the feed on the 1-vCPU collector.
+- Made the optional QuantData archive incapable of polling during the live US
+  options session, even if its environment flag is enabled accidentally.
+- Added an event-loop load guard to `/health`; after a measured stall it sheds
+  only deferrable archive/history routes for 30 seconds while live streams,
+  snapshots and health retain priority.
+- Hardened the Windows-to-Linux deploy helper: staged shell scripts are
+  normalized to LF and any failed SSH, SCP or bootstrap step now aborts rather
+  than printing a false successful-deployment message.
+
+### Commit
+- Current scoped local commit: `Keep archive work from freezing the live desk`.
+
+### Verification
+- Gateway suite: 300/300 passed.
+- A real 250,000-print worker fold completed while a 5ms main-thread heartbeat
+  remained below the 250ms failure ceiling.
+- Scoped ESLint and `node --check` passed; `npx tsc --noEmit` passed; production
+  `npm run build` passed.
+
+### Production/VPS actions
+- VPS gateway deployed outside RTH on 2026-09-03 from an isolated clean
+  worktree; unrelated native and SOCIALS changes were not shipped.
+- Post-deploy health was connected and authenticated, `lastMessageAt` and
+  recorder counts advanced, 30 concurrent health requests returned 30/30
+  HTTP 200, and the event-loop guard reported zero trips.
+- No Vercel deployment was triggered, avoiding another billed build.
+- Vercel `main` push remains subject to the explicit duplicate-project hold in
+  `AGENTS.md`; do not bypass it.
+
+### Remaining risks
+- Production verification must check that `/health.eventLoop` is present,
+  both archive statuses are present, `lastMessageAt` advances, expected
+  instruments remain populated and recorder counts advance. A non-RTH
+  deployment cannot prove live RTH behavior.
+
+### Worktree state
+- Numerous native rebuild, SOCIALS, PDF and local test artifacts belong to
+  other workstreams. They were preserved and excluded from this task.

@@ -231,3 +231,29 @@ test("a request never folds a session itself; the warmer does", async () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("the scheduled warmer pauses throughout the protected live session", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "kwant-flow-"));
+  try {
+    const tradingDate = chicagoTradingDate(T0);
+    const dayDir = join(dir, "trades", tradingDate);
+    mkdirSync(dayDir, { recursive: true });
+    writeFileSync(
+      join(dayDir, backfillFileName("CME", "NQU6")),
+      gzipSync(Buffer.from(`${JSON.stringify([T0, 29000, 4, 1])}\n`)),
+    );
+    const archive = new BarFlowArchive({ dir, maintenanceAllowed: () => false });
+    await archive.load({
+      exchange: "CME", symbol: "NQU6", interval: "1m", fromMs: T0 - 1, toMs: T0 + 60_000,
+    });
+
+    const stop = archive.startWarming(5);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    stop();
+
+    assert.equal(archive.status().maintenancePaused, true);
+    assert.equal(archive.status().pending, 1, "protected-session work was removed from the queue");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
