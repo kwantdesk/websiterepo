@@ -11,6 +11,7 @@ import { loadConfig } from "./config.mjs";
 import { DatabentoEquitiesTradeStream } from "./databento-equities-stream.mjs";
 import { FuturesBarArchive, HistoryRequestError } from "./futures-bar-archive.mjs";
 import { QuantDataSurfacePoller } from "./quantdata-surface-poller.mjs";
+import { TradeTapeArchive } from "./trade-tape-archive.mjs";
 import { DatabentoOptionsCatalog, OptionsCatalogError } from "./databento-options-catalog.mjs";
 import { DatabentoOptionTradeStream } from "./databento-option-trades.mjs";
 import { createDesktopStreamGuard } from "./desktop-stream-guard.mjs";
@@ -152,6 +153,22 @@ const chartHistory = new FuturesBarArchive({
   enabled: config.recordEnabled,
 });
 chartHistory.attach(client);
+/*
+ * Range, volume, renko and tick bars cannot be built from minute bars: they
+ * close on price travelled or contracts traded, so they need the individual
+ * prints, and the path WITHIN a minute is exactly what an OHLC bar discards.
+ * The website asked the vendor for a raw trades feed to build them and that
+ * subscription is gone, so those chart types have had no history at all.
+ *
+ * The prints are in the raw tape, but a 2.2 GB session that takes 198 seconds
+ * to extract is not a serving format - so they are written again in the four
+ * fields a bar builder needs, at about a hundredth of the size.
+ */
+const tradeTape = new TradeTapeArchive({
+  dir: config.recordDir,
+  enabled: config.recordEnabled,
+});
+tradeTape.attach(client);
 chartHistory.restore().catch((error) => {
   process.stderr.write(`[bars] restore failed: ${error.message}
 `);
@@ -1165,6 +1182,7 @@ const server = createServer(async (request, response) => {
       exposure: exposureArchiver.status(),
       vendorData: vendorDataEdge.health(),
       chartHistory: chartHistory.status(),
+      tradeTape: tradeTape.status(),
       massiveIndices: massiveIndices.status(),
       databentoEquities: databentoEquities.status(),
       quantDataMarketSnapshots: quantDataMarketSnapshots.status(),
@@ -1441,6 +1459,29 @@ const server = createServer(async (request, response) => {
           code: error instanceof OptionsCatalogError
             ? error.code
             : "options_catalog_unavailable",
+        });
+      }
+    }
+    if (request.method === "GET" && url.pathname === "/v1/market-data/trade-tape") {
+      /*
+       * The prints behind an event-bar chart. Bounded by window and by count:
+       * a range chart asks for a few hours, and a whole session unasked is
+       * megabytes nobody wanted.
+       */
+      const instrument = requestedInstrument(url);
+      try {
+        return json(response, 200, await tradeTape.load({
+          exchange: instrument.exchange,
+          symbol: instrument.symbol,
+          fromMs: url.searchParams.get("fromMs"),
+          toMs: url.searchParams.get("toMs"),
+          limit: Math.min(500_000, Number(url.searchParams.get("limit")) || 500_000),
+        }));
+      } catch (error) {
+        return json(response, 502, {
+          error: "The recorded trade tape is unavailable.",
+          code: "trade_tape_unavailable",
+          detail: error instanceof Error ? error.message : String(error),
         });
       }
     }
@@ -2517,6 +2558,7 @@ async function shutdown() {
   // The tape first, and awaited.
   try { await recorder.close(); } catch { /* keep shutting down */ }
   try { await chartHistory.flush(); } catch { /* keep shutting down */ }
+  try { await tradeTape.close(); } catch { /* keep shutting down */ }
 
   try { await desktopRevocationSynchronizer?.stop(); } catch { /* ignore */ }
   try { await exposureArchiver.stop(); } catch { /* ignore */ }
