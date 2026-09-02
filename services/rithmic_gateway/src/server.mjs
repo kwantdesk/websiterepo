@@ -2371,11 +2371,45 @@ const server = createServer(async (request, response) => {
       const maxTradeVolume = Math.max(0, Number(url.searchParams.get("maxTradeVolume") || 0));
       const priceTick = tickSize(instrument.symbol);
       const rows = new Map();
-      const profileTrades = client.book.trades(
+      /*
+       * The live ring first, the recorded tape when it cannot reach back.
+       *
+       * client.book.trades() is a bounded in-memory ring of recent executions,
+       * so a request for a PRIOR session found almost nothing in it and the
+       * route answered with a profile built from the handful that happened to
+       * remain. Measured: NQ for 2026-08-31 returned one price level and three
+       * contracts - a prior-day POC and value area that were real numbers from
+       * real prints, and completely wrong.
+       *
+       * The ring is still preferred when it covers the window: it is current to
+       * the tick, where the tape is flushed every few seconds.
+       */
+      const liveTrades = client.book.trades(
         instrument.exchange,
         instrument.symbol,
         { fromMs: startMs, toMs: endMs },
       );
+      const ringCoversWindow = liveTrades.length > 0
+        && liveTrades[0].timestampMs <= startMs + 60_000;
+      let profileTrades = liveTrades;
+      if (!ringCoversWindow) {
+        const taped = await tradeTape.load({
+          exchange: instrument.exchange,
+          symbol: instrument.symbol,
+          fromMs: startMs,
+          toMs: endMs,
+        });
+        if (taped.trades.length > liveTrades.length) {
+          profileTrades = taped.trades.map((trade) => ({
+            timestampMs: trade.timestamp,
+            price: trade.price,
+            size: trade.size,
+            // The tape records the side the feed reported; 0 means it did not
+            // say, and an unknown side must not be counted as either.
+            aggressor: trade.side > 0 ? "BUY" : trade.side < 0 ? "SELL" : "UNKNOWN",
+          }));
+        }
+      }
       const coverageStartMs = profileTrades[0]?.timestampMs ?? null;
       const coverageEndMs = profileTrades.at(-1)?.timestampMs ?? null;
       let weightedPrice = 0;
