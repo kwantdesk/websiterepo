@@ -316,3 +316,39 @@ test("a bid-hitting print is a sell, not a buy", () => {
   assert.equal(sideCode({ aggressor: "BUY" }), 1);
   assert.equal(sideCode({ aggressor: "SELL" }), -1);
 });
+
+test("a multi-day window reads every session it covers", async () => {
+  /*
+   * The loader took only the window's first and last trading dates, so a
+   * five-day chart request read two session files and silently skipped
+   * everything between them. Measured live: NQ asked for five days of
+   * 40-range bars and got three sessions - which reads as "the archive has no
+   * more", not as a bug.
+   */
+  const dir = mkdtempSync(join(tmpdir(), "kwant-tape-"));
+  try {
+    const archive = new TradeTapeArchive({ dir, roots: ["NQ"], flushMs: 10_000 });
+    const DAY = 24 * 60 * 60_000;
+    // Five consecutive sessions, one print each.
+    const written = [];
+    for (let back = 0; back < 5; back += 1) {
+      const at = T0 - back * DAY;
+      const dayDir = join(dir, "trades", chicagoTradingDate(at));
+      mkdirSync(dayDir, { recursive: true });
+      writeFileSync(
+        join(dayDir, backfillFileName("CME", "NQU6")),
+        gzipSync(Buffer.from(`${JSON.stringify([at, 29000 + back, 1, 1])}\n`)),
+      );
+      written.push(29000 + back);
+    }
+    const { trades } = await archive.load({
+      exchange: "CME", symbol: "NQU6", fromMs: T0 - 5 * DAY, toMs: T0 + 60_000,
+    });
+    assert.equal(
+      trades.length, written.length,
+      `only ${trades.length} of ${written.length} sessions in the window were read`,
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

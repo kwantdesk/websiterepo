@@ -283,7 +283,22 @@ export class TradeTapeArchive {
       : end - 6 * 60 * 60_000;
 
     const trades = [];
-    const dates = new Set([chicagoTradingDate(start), chicagoTradingDate(end)]);
+    /*
+     * Every trading date the window touches, not just its ends.
+     *
+     * This took only the first and last, so a five-day chart request read two
+     * session files and silently skipped everything between them - a range
+     * chart asking for a week showed three sessions and looked like the
+     * archive simply had no more.
+     *
+     * Stepped in six-hour increments rather than calendar days: a CME trading
+     * date runs about twenty-three hours from 17:00 Chicago, so it does not
+     * line up with a calendar day, and the boundary moves with US daylight
+     * saving. Six hours cannot step over a session.
+     */
+    const dates = new Set();
+    for (let at = start; at < end; at += 6 * 60 * 60_000) dates.add(chicagoTradingDate(at));
+    dates.add(chicagoTradingDate(end));
     for (const tradingDate of [...dates].sort()) {
       // Recorded live and backfilled from the raw archive, in that order. A
       // session recorded before the tape existed has only the sidecar; the one
