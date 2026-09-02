@@ -7,6 +7,7 @@ import {
   vendorMarketDataConfigured,
   vendorMarketDataFetch,
 } from "@/lib/vendorMarketData.server";
+import { fetchRecordedTape } from "@/lib/recordedTradeTape.server";
 
 
 type CachedTpoSession = { promise: Promise<TpoSessionInput> };
@@ -167,52 +168,48 @@ export async function getNqOutrightDefinitions(start: number, end: number) {
 }
 
 async function getNqSessionTrades(
-  definition: NqInstrumentDefinition,
   window: { date: string; start: number; end: number },
 ): Promise<TpoSessionInput> {
-  const trades: TpoSessionInput["trades"] = [];
-  await databentoStream({
-    symbols: definition.rawSymbol,
-    stype_in: "raw_symbol",
-    schema: "trades",
-    start: new Date(window.start).toISOString(),
-    // End is deliberately exact and the engine is also end-exclusive. A CME
-    // print stamped 16:00:00 New York must never become a clamped 14th bracket.
-    end: new Date(window.end).toISOString(),
-  }, (record, line) => {
-    const hd = header(record);
-    const timestamp = millisecondsFromNanoseconds(
-      record.ts_event ?? hd.ts_event ?? record.ts_recv,
-      exactInteger(line, "ts_event") ?? exactInteger(line, "ts_recv"),
-    );
-    const price = fixedPointPrice(record.price, exactInteger(line, "price"));
-    const size = Math.max(0, Number(record.size ?? 0));
-    const instrumentId = record.instrument_id ?? hd.instrument_id ?? definition.instrumentId;
-    if (timestamp < window.start || timestamp >= window.end || price <= 0 || size <= 0) return;
-    trades.push({
-      timestamp,
-      price,
-      size,
-      instrumentId: instrumentId == null ? null : String(instrumentId),
-      symbol: definition.rawSymbol,
-    });
+  /*
+   * Built from the desk's own recorded prints.
+   *
+   * TPO needs to know which prices traded inside each half-hour bracket, so it
+   * genuinely needs individual prints - a minute bar's high and low would
+   * merge the bracket's shape away. It used to buy them from the vendor, whose
+   * CME account now answers 422 for the whole window, so TPO Levels returned
+   * "unavailable" on every request.
+   *
+   * The window is asked for exactly: the engine is end-exclusive, and a CME
+   * print stamped 16:00:00 New York must never become a clamped 14th bracket.
+   */
+  const { symbol, trades: prints } = await fetchRecordedTape({
+    symbol: "NQ",
+    startMs: window.start,
+    endMs: window.end,
   });
+  const trades: TpoSessionInput["trades"] = [];
+  for (const print of prints) {
+    if (print.timestamp < window.start || print.timestamp >= window.end) continue;
+    if (print.price <= 0 || print.size <= 0) continue;
+    trades.push({
+      timestamp: print.timestamp,
+      price: print.price,
+      size: print.size,
+      // The collector does not carry the vendor's numeric instrument ids, and
+      // inventing one would make a fabricated value look like a real record.
+      instrumentId: null,
+      symbol,
+    });
+  }
   trades.sort((left, right) => left.timestamp - right.timestamp || left.price - right.price);
-  return {
-    ...window,
-    trades,
-    contract: definition.rawSymbol,
-  };
+  return { ...window, trades, contract: symbol };
 }
 
-function cachedNqSessionTrades(
-  definition: NqInstrumentDefinition,
-  window: { date: string; start: number; end: number },
-) {
-  const key = `${definition.rawSymbol}:${window.start}:${window.end}`;
+function cachedNqSessionTrades(window: { date: string; start: number; end: number }) {
+  const key = `${window.start}:${window.end}`;
   const cached = tpoSessionCache.get(key);
   if (cached) return cached.promise;
-  const promise = getNqSessionTrades(definition, window);
+  const promise = getNqSessionTrades(window);
   tpoSessionCache.set(key, { promise });
   void promise.catch(() => {
     if (tpoSessionCache.get(key)?.promise === promise) tpoSessionCache.delete(key);
@@ -243,19 +240,14 @@ export async function getDatabentoTpoSessions(
 ) {
   if (!windowsNewestFirst.length) return [];
   const windows = windowsNewestFirst.slice().sort((left, right) => left.start - right.start);
-  const definitions = await getNqOutrightDefinitions(
-    windows[0].start - 24 * 60 * 60_000,
-    windows.at(-1)!.end + 24 * 60 * 60_000,
-  );
-  if (!definitions.length) throw new Error("Databento returned no NQ outright definitions.");
-  // Completed RTH sessions never mutate. Keep each session promise on the warm
-  // server and pull cold-cache sessions in a small parallel pool rather than
-  // making ten large historical requests serially.
-  return mapWithConcurrency(windows, 3, async (window) => {
-    const front = resolveFrontMonthDefinition(definitions, window.end);
-    if (!front) {
-      return { ...window, trades: [], contract: null };
-    }
-    return cachedNqSessionTrades(front, window);
-  });
+  /*
+   * The contract no longer has to be resolved from a vendor definition feed:
+   * the collector records the book it is subscribed to and names it back, so
+   * each session reports the contract its own prints came from.
+   *
+   * Completed RTH sessions never mutate. Keep each session promise on the warm
+   * server and pull cold-cache sessions in a small parallel pool rather than
+   * asking for ten sessions of prints at once.
+   */
+  return mapWithConcurrency(windows, 2, async (window) => cachedNqSessionTrades(window));
 }

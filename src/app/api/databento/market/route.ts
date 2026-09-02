@@ -18,6 +18,14 @@ import {
 } from "@/lib/databentoEventHistory.server";
 import { vendorMarketDataConfigured } from "@/lib/vendorMarketData.server";
 
+/*
+ * What these bars actually are. They said GLBX.MDP3 while every one of them
+ * was being read off the desk's own recorder - and the source field is the
+ * first thing anyone checks when a number looks wrong, so a label naming a
+ * provider we no longer buy this from is worse than no label at all.
+ */
+const RECORDED_DATASET = "Rithmic recorded trade tape";
+
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -299,7 +307,7 @@ export async function GET(request: Request) {
         candles: cached.candles,
         executions: includeExecutions ? cached.executions : [],
         source: "CME",
-        dataset: "GLBX.MDP3",
+        dataset: RECORDED_DATASET,
         range: rangeLabel,
         cached: true,
         cachedAt: cached.updatedAt,
@@ -351,7 +359,7 @@ export async function GET(request: Request) {
         candles,
         executions: includeExecutions ? executions : [],
         source: "CME",
-        dataset: "GLBX.MDP3",
+        dataset: RECORDED_DATASET,
         range: rangeLabel,
         cached: false,
         cachedAt: now,
@@ -368,7 +376,7 @@ export async function GET(request: Request) {
           candles: cached.candles,
           executions: includeExecutions ? cached.executions : [],
           source: "CME",
-          dataset: "GLBX.MDP3",
+          dataset: RECORDED_DATASET,
           range: rangeLabel,
           cached: true,
           stale: true,

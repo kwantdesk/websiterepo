@@ -53,12 +53,19 @@ export function contractRootSymbol(symbol: string) {
  */
 export const MAX_RECORDED_PRINTS = 1_500_000;
 
-export async function fetchRecordedTrades(args: {
+/**
+ * The prints plus the contract they actually came from.
+ *
+ * Callers that record provenance need the resolved symbol: "NQ" is a root, and
+ * writing it down as though it were the contract hides which book the numbers
+ * describe.
+ */
+export async function fetchRecordedTape(args: {
   symbol: string;
   startMs: number;
   endMs: number;
   limit?: number;
-}): Promise<RecordedTrade[]> {
+}): Promise<{ symbol: string; trades: RecordedTrade[] }> {
   const end = Number.isFinite(args.endMs) && args.endMs > 0 ? args.endMs : Date.now();
   const start = Number.isFinite(args.startMs) && args.startMs > 0 ? args.startMs : end - 6 * 60 * 60_000;
   const query = new URLSearchParams({
@@ -78,7 +85,7 @@ export async function fetchRecordedTrades(args: {
      */
     throw new Error(`The recorded trade tape is unavailable (${response.status}): ${detail.slice(0, 200)}`);
   }
-  const payload = (await response.json()) as { trades?: unknown };
+  const payload = (await response.json()) as { trades?: unknown; symbol?: unknown };
   const rows = Array.isArray(payload.trades) ? payload.trades : [];
   const trades: RecordedTrade[] = [];
   for (const row of rows) {
@@ -91,5 +98,14 @@ export async function fetchRecordedTrades(args: {
     if (!Number.isFinite(price) || price <= 0 || size <= 0) continue;
     trades.push({ timestamp, price, size, side: Number(record.side ?? 0) });
   }
-  return trades;
+  return { symbol: String(payload.symbol || contractRootSymbol(args.symbol)), trades };
+}
+
+export async function fetchRecordedTrades(args: {
+  symbol: string;
+  startMs: number;
+  endMs: number;
+  limit?: number;
+}): Promise<RecordedTrade[]> {
+  return (await fetchRecordedTape(args)).trades;
 }

@@ -55,7 +55,7 @@ export async function buildTpoLevelsPayload(
     replay: result.replay,
     currentPrice: result.currentPrice,
     source: {
-      dataset: "GLBX.MDP3",
+      dataset: "Rithmic recorded trade tape",
       schema: "trades",
       instrument: "NQ front-month outright",
       rowSize: config.rowSize,

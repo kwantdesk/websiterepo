@@ -180,7 +180,13 @@ export type TpoLevelsPayload = {
   replay: TpoReplaySummary;
   currentPrice: number | null;
   source: {
-    dataset: "GLBX.MDP3";
+    /*
+     * Where these brackets actually came from. It said GLBX.MDP3 while the
+     * prints were being read off our own recorder - a label naming a provider
+     * we no longer buy this from is worse than no label, because it is the
+     * field someone checks when a number looks wrong.
+     */
+    dataset: "Rithmic recorded trade tape";
     schema: "trades";
     instrument: "NQ front-month outright";
     rowSize: number;
