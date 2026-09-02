@@ -56,19 +56,42 @@ export function optionsSessionOpen(nowMs = Date.now()) {
  * the session cadence; outside the session everything falls back to `idleMs`.
  */
 export const DEFAULT_SURFACES = [
-  { path: "/v1/options/tool/exposure-by-strike", everyMs: 60_000, greekMode: "GAMMA" },
-  { path: "/v1/options/tool/exposure-by-strike", everyMs: 60_000, greekMode: "DELTA" },
-  { path: "/v1/options/tool/exposure-by-strike", everyMs: 300_000, greekMode: "VANNA" },
-  { path: "/v1/options/tool/exposure-by-strike", everyMs: 300_000, greekMode: "CHARM" },
-  { path: "/v1/options/tool/interval-map", everyMs: 60_000 },
-  { path: "/v1/options/tool/open-interest-by-strike", everyMs: 900_000 },
-  { path: "/v1/options/tool/max-pain", everyMs: 300_000 },
-  { path: "/v1/options/tool/net-drift", everyMs: 300_000 },
-  { path: "/v1/options/tool/volatility-skew", everyMs: 900_000 },
-  { path: "/v1/options/tool/term-structure", everyMs: 900_000 },
-  { path: "/v1/options/tool/iv-rank", everyMs: 900_000 },
-  { path: "/v1/options/tool/contract-statistics", everyMs: 300_000 },
+  { id: "gex", path: "/v1/options/tool/exposure-by-strike", everyMs: 60_000,
+    build: (t, d) => ({ sessionDate: d, greekMode: "GAMMA", representationMode: "PER_ONE_PERCENT_MOVE", filter: { ticker: t } }) },
+  { id: "dex", path: "/v1/options/tool/exposure-by-strike", everyMs: 60_000,
+    build: (t, d) => ({ sessionDate: d, greekMode: "DELTA", representationMode: "PER_ONE_PERCENT_MOVE", filter: { ticker: t } }) },
+  { id: "vex", path: "/v1/options/tool/exposure-by-strike", everyMs: 300_000,
+    build: (t, d) => ({ sessionDate: d, greekMode: "VANNA", representationMode: "PER_ONE_PERCENT_MOVE", filter: { ticker: t } }) },
+  { id: "chex", path: "/v1/options/tool/exposure-by-strike", everyMs: 300_000,
+    build: (t, d) => ({ sessionDate: d, greekMode: "CHARM", representationMode: "PER_ONE_PERCENT_MOVE", filter: { ticker: t } }) },
+  { id: "interval-gex", path: "/v1/options/tool/interval-map", everyMs: 60_000,
+    build: (t, d) => ({ sessionDate: d, aggregationPeriod: "1m", greekMode: "GAMMA", filter: { ticker: t } }) },
+  { id: "interval-dex", path: "/v1/options/tool/interval-map", everyMs: 300_000,
+    build: (t, d) => ({ sessionDate: d, aggregationPeriod: "1m", greekMode: "DELTA", filter: { ticker: t } }) },
+  { id: "oi", path: "/v1/options/tool/open-interest-by-strike", everyMs: 900_000,
+    build: (t, d) => ({ sessionDate: d, filter: { ticker: t } }) },
+  { id: "max-pain", path: "/v1/options/tool/max-pain", everyMs: 300_000,
+    build: (t, d) => ({ sessionDate: d, filter: { ticker: t, expirationDate: d } }) },
+  { id: "net-drift", path: "/v1/options/tool/net-drift", everyMs: 300_000,
+    build: (t, d) => ({ sessionDate: d, aggregationPeriod: "5m", filter: { ticker: t } }) },
+  { id: "skew", path: "/v1/options/tool/volatility-skew", everyMs: 900_000,
+    build: (t, d) => ({ sessionDate: d, filter: { ticker: t, expirationDate: d } }) },
+  { id: "term-structure", path: "/v1/options/tool/term-structure", everyMs: 900_000,
+    build: (t, d) => ({ sessionDate: d, filter: { ticker: t, expirationDateRange: { startDate: d, endDate: offsetDate(d, 120) } } }) },
+  { id: "iv-rank", path: "/v1/options/tool/iv-rank", everyMs: 900_000,
+    // No sessionDate on this one, and it refuses the request without both of
+    // these - checked against the live API rather than assumed.
+    build: (t) => ({ filter: { ticker: t }, lookBackPeriod: 252, maturity: 30 }) },
+  { id: "contract-stats", path: "/v1/options/tool/contract-statistics", everyMs: 300_000,
+    build: (t, d) => ({ sessionDate: d, filter: { ticker: t } }) },
 ];
+
+/** Calendar days from an ISO date, for the expiration ranges. */
+export function offsetDate(isoDate, days) {
+  const value = new Date(`${isoDate}T12:00:00Z`);
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
+}
 
 export const DEFAULT_TICKERS = ["SPX", "SPY", "QQQ", "NDX", "IWM"];
 
@@ -84,19 +107,23 @@ export function sessionDateFor(nowMs = Date.now()) {
   return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
+/*
+ * Each surface builds its own body, because they genuinely differ and a
+ * generic one is simply wrong for most of them.
+ *
+ * Every shape below was checked against the live API, not inferred: a first
+ * pass with one generic body had ten of forty-four requests refused with HTTP
+ * 400. interval-map needs an aggregation period AND a greek, max-pain refuses
+ * the request without an expiration date, iv-rank takes no session date at all
+ * but demands a look-back and a maturity, and term-structure wants a date
+ * RANGE rather than a date.
+ */
 export function requestBodyFor(surface, ticker, nowMs = Date.now()) {
-  const sessionDate = sessionDateFor(nowMs);
-  const body = { sessionDate, filter: { ticker } };
-  if (surface.greekMode) {
-    body.greekMode = surface.greekMode;
-    body.representationMode = "PER_ONE_PERCENT_MOVE";
-  }
-  return body;
+  return surface.build(ticker, sessionDateFor(nowMs));
 }
 
 /** A stable identity for one (surface, ticker) job. */
-export const jobKey = (surface, ticker) =>
-  `${surface.path}|${surface.greekMode ?? ""}|${ticker}`;
+export const jobKey = (surface, ticker) => `${surface.id}|${ticker}`;
 
 /**
  * The jobs due at this moment, oldest-overdue first.
@@ -156,7 +183,7 @@ export class QuantDataSurfacePoller {
     this.lastRunAt = new Map();
     this.timer = null;
     this.inFlight = false;
-    this.stats = { requests: 0, ok: 0, rateLimited: 0, failed: 0, lastAt: null, lastError: null };
+    this.stats = { requests: 0, ok: 0, empty: 0, rateLimited: 0, failed: 0, lastAt: null, lastError: null };
   }
 
   status() {
@@ -252,9 +279,17 @@ export class QuantDataSurfacePoller {
         return true;
       }
       if (response.ok) this.stats.ok += 1;
-      else {
+      else if (response.status === 422) {
+        /*
+         * The provider understood the request and has nothing for it - an
+         * expiration with no open interest yet, most often before the session
+         * opens. That is an empty surface, not a fault, and counting it as a
+         * failure would bury the requests that really are malformed.
+         */
+        this.stats.empty += 1;
+      } else {
         this.stats.failed += 1;
-        this.stats.lastError = `${job.surface.path} ${job.ticker}: HTTP ${response.status}`;
+        this.stats.lastError = `${job.surface.id} ${job.ticker}: HTTP ${response.status}`;
       }
     } catch (error) {
       this.stats.failed += 1;

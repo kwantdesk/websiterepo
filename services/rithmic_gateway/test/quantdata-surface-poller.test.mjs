@@ -72,7 +72,7 @@ test("the most overdue surface is taken first", () => {
 });
 
 test("a surface just polled is not polled again", () => {
-  const surfaces = [{ path: "/v1/options/tool/exposure-by-strike", everyMs: 60_000, greekMode: "GAMMA" }];
+  const surfaces = [DEFAULT_SURFACES[0]];
   const lastRunAt = new Map([[jobKey(surfaces[0], "SPX"), SESSION - 10_000]]);
   const due = dueJobs({ surfaces, tickers: ["SPX"], lastRunAt, nowMs: SESSION, sessionOpen: true });
   assert.equal(due.length, 0);
@@ -86,7 +86,7 @@ test("overnight cadence collapses to the idle interval", () => {
    * Nothing is repriced quickly out of session, so a fast cadence would spend
    * quota to archive bytes the dedupe then discards.
    */
-  const surfaces = [{ path: "/v1/options/tool/exposure-by-strike", everyMs: 60_000, greekMode: "GAMMA" }];
+  const surfaces = [DEFAULT_SURFACES[0]];
   const lastRunAt = new Map([[jobKey(surfaces[0], "SPX"), OVERNIGHT - 120_000]]);
   const due = dueJobs({
     surfaces, tickers: ["SPX"], lastRunAt, nowMs: OVERNIGHT, sessionOpen: false, idleMs: 900_000,
@@ -100,10 +100,41 @@ test("the request carries the session date and greek the provider expects", () =
   assert.equal(body.sessionDate, sessionDateFor(SESSION));
   assert.equal(body.greekMode, "GAMMA");
   assert.equal(body.representationMode, "PER_ONE_PERCENT_MOVE");
-  // A surface with no greek must not invent one.
-  const plain = requestBodyFor({ path: "/v1/options/tool/max-pain", everyMs: 1 }, "SPY", SESSION);
-  assert.equal(plain.greekMode, undefined);
-  assert.equal(plain.filter.ticker, "SPY");
+  /*
+   * Each surface builds its own body because they genuinely differ - a generic
+   * one had ten of forty-four live requests refused with HTTP 400. iv-rank in
+   * particular takes NO session date and refuses the request without a
+   * look-back and a maturity.
+   */
+  const ivRank = DEFAULT_SURFACES.find((surface) => surface.id === "iv-rank");
+  const ivBody = requestBodyFor(ivRank, "SPY", SESSION);
+  assert.equal(ivBody.sessionDate, undefined, "iv-rank does not accept a session date");
+  assert.equal(ivBody.lookBackPeriod, 252);
+  assert.equal(ivBody.maturity, 30);
+  assert.equal(ivBody.filter.ticker, "SPY");
+
+  // interval-map is refused without both an aggregation period and a greek.
+  const interval = DEFAULT_SURFACES.find((surface) => surface.id === "interval-gex");
+  const intervalBody = requestBodyFor(interval, "QQQ", SESSION);
+  assert.equal(intervalBody.aggregationPeriod, "1m");
+  assert.equal(intervalBody.greekMode, "GAMMA");
+
+  // max-pain is refused without an expiration date.
+  const maxPain = DEFAULT_SURFACES.find((surface) => surface.id === "max-pain");
+  assert.equal(requestBodyFor(maxPain, "SPX", SESSION).filter.expirationDate, sessionDateFor(SESSION));
+
+  // term-structure wants a RANGE, not a date.
+  const term = DEFAULT_SURFACES.find((surface) => surface.id === "term-structure");
+  const termBody = requestBodyFor(term, "SPX", SESSION);
+  assert.ok(termBody.filter.expirationDateRange?.startDate);
+  assert.ok(termBody.filter.expirationDateRange?.endDate > termBody.filter.expirationDateRange?.startDate);
+
+  // Every surface must be buildable; one without a builder throws at runtime.
+  for (const surface of DEFAULT_SURFACES) {
+    assert.equal(typeof surface.build, "function", `${surface.id} has no body builder`);
+    assert.ok(surface.id, "a surface has no id");
+    assert.ok(requestBodyFor(surface, "SPX", SESSION).filter.ticker === "SPX", `${surface.id} lost its ticker`);
+  }
 });
 
 test("it goes through the vendor edge, never straight to the provider", async () => {
@@ -164,7 +195,7 @@ test("a failure does not become a retry storm", async () => {
   let calls = 0;
   const poller = new QuantDataSurfacePoller({
     token: "test-token",
-    surfaces: [{ path: "/v1/options/tool/max-pain", everyMs: 300_000 }],
+    surfaces: [DEFAULT_SURFACES.find((surface) => surface.id === "max-pain")],
     tickers: ["SPX"],
     spacingMs: 0,
     fetchImpl: async () => { calls += 1; throw new Error("connection reset"); },
