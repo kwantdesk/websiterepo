@@ -99,11 +99,26 @@ async function backfillFile(tradingDate, name) {
   const outFile = join(outDir, `${exchange}-${symbol}.json`);
   if (!DRY) {
     if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true });
+    /*
+     * For the same minute, the bar built from MORE prints wins.
+     *
+     * Keeping whatever was already on disk sounds safe and is not: a pass that
+     * stopped at a damaged member leaves one partial bar at the break, with
+     * too little volume and possibly the wrong high or low, and that wrong bar
+     * would then be preserved forever against a later, more complete read.
+     * Volume is the honest measure of completeness - a bar built from strictly
+     * more prints cannot have less of it.
+     *
+     * It also protects the session in progress: a finished live bar always has
+     * at least as much volume as anything reconstructed from the tape, so the
+     * collector's own bars are never replaced by a smaller one.
+     */
     const merged = new Map();
-    // Anything already on disk wins nothing and loses nothing: the live
-    // archive may be writing this same session right now.
     for (const bar of await readExisting(outFile)) merged.set(bar.t, bar);
-    for (const bar of bars.values()) if (!merged.has(bar.t)) merged.set(bar.t, bar);
+    for (const bar of bars.values()) {
+      const existing = merged.get(bar.t);
+      if (!existing || Number(bar.v ?? 0) > Number(existing.v ?? 0)) merged.set(bar.t, bar);
+    }
     const rows = [...merged.values()].sort((a, b) => a.t - b.t).map(encode);
     const temporary = `${outFile}.tmp`;
     await writeFile(temporary, JSON.stringify({ tradingDate, exchange, symbol, bars: rows }));
