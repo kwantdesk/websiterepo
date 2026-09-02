@@ -461,40 +461,53 @@ function completedHistoricalEnd(end: string) {
 export async function getDatabentoBars(symbol: string, timeframe: string, start: string, end: string): Promise<DatabentoBar[]> {
   if (!getChartInterval(timeframe)) throw new Error(`Unsupported chart interval: ${timeframe}`);
   if (isEventBasedChartInterval(timeframe)) {
+    /*
+     * Range, volume, renko and tick bars are BUILT from individual prints.
+     *
+     * They close on price travelled or contracts traded, so the path taken
+     * within a minute is exactly the information they need and exactly what an
+     * OHLC bar discards - a minute-bar history cannot produce them at any
+     * resolution. This asked the vendor for a raw trades feed; that
+     * subscription is gone (the account answers 402), so these chart types had
+     * no history at all.
+     *
+     * The prints come from the desk's own recorded tape now, served by the
+     * collector in the four fields a bar builder needs.
+     */
     const requestedStart = Date.parse(start);
     const requestedEnd = Date.parse(end);
-    const recentStart = new Date(Math.max(
+    const recentStart = Math.max(
       Number.isFinite(requestedStart) ? requestedStart : 0,
       (Number.isFinite(requestedEnd) ? requestedEnd : Date.now()) - 6 * 60 * 60_000,
-    )).toISOString();
-    let tradeRows = await historicalRequest({
-      symbols: symbol,
-      stype_in: isContinuousFuture(symbol) ? "continuous" : "raw_symbol",
-      schema: "trades",
-      start: recentStart,
-      end,
-      limit: "200000",
+    );
+    const query = new URLSearchParams({
+      exchange: "CME",
+      symbol: contractRootSymbol(symbol),
+      fromMs: String(recentStart),
+      toMs: String(Number.isFinite(requestedEnd) ? requestedEnd : Date.now()),
+      limit: "500000",
     });
-    if (tradeRows.length === 0 && recentStart !== start) {
-      tradeRows = await historicalRequest({
-        symbols: symbol,
-        stype_in: isContinuousFuture(symbol) ? "continuous" : "raw_symbol",
-        schema: "trades",
-        start,
-        end,
-        limit: "200000",
-      });
+    const response = await fetchInstitutionalMarketData(`/v1/market-data/trade-tape?${query}`);
+    if (!response.ok) {
+      const detail = await response.text();
+      throw new Error(`The recorded trade tape is unavailable (${response.status}): ${detail.slice(0, 200)}`);
     }
+    const payload = (await response.json()) as { trades?: unknown };
+    const tradeRows = Array.isArray(payload.trades) ? payload.trades : [];
+
     const trades: MarketTrade[] = tradeRows
       .map((row) => {
-        const size = Math.max(0, Number(row.size ?? 0));
-        const aggressor = databentoTradeAggressor(row.side ?? row.aggressor_side);
+        const record = row as Record<string, unknown>;
+        const size = Math.max(0, Number(record.size ?? 0));
+        // The tape carries the aggressor as 1 / -1 / 0, recorded rather than
+        // inferred; 0 means the feed did not say and must not be guessed.
+        const side = Number(record.side ?? 0);
         return {
-          timestamp: time(row.ts_event ?? row.ts_recv ?? (row.hd as Record<string, unknown> | undefined)?.ts_event),
-          price: price(row.price),
+          timestamp: Number(record.timestamp),
+          price: Number(record.price),
           size,
           trades: 1,
-          delta: aggressor === "BUY" ? size : aggressor === "SELL" ? -size : 0,
+          delta: side > 0 ? size : side < 0 ? -size : 0,
         };
       })
       .filter((row) => row.timestamp > 0 && row.price > 0)
