@@ -1,41 +1,60 @@
 import { createReadStream } from "node:fs";
 import { open, stat } from "node:fs/promises";
-import { gunzipSync } from "node:zlib";
+import { createGunzip } from "node:zlib";
 import { createInterface } from "node:readline";
 
 /**
  * Reads a recorded session all the way through, past the damage.
  *
- * The recorder appends one gzip member per flush, so a session file is a
- * multi-member archive. A process killed mid-write leaves that member
- * truncated, and every reader we had - gunzip, zcat, createGunzip, the LIQ MAP
- * replay, the bar backfill - stopped at the first bad member and reported what
- * it had. Restarts happen more than once in a session, so the damage is not
- * only at the tail: everything after the FIRST break was being discarded while
- * sitting perfectly readable on disk. Measured on the collector, an affected
- * session gave 933 readable minutes against 1,380 on a clean one.
+ * A session file is written by appending, so it is a gzip stream per RUN of
+ * the collector, not per flush - the recorder's periodic flushes are deflate
+ * blocks inside one continuous member. A 2.2 GB session is therefore usually a
+ * single member, and a restart is what starts a new one. A process killed
+ * mid-write truncates the member it was in, and every reader we had stopped
+ * there and reported what it had. Since restarts happen more than once in a
+ * session, everything after the FIRST break was being discarded while sitting
+ * perfectly readable on disk: an affected session gave 933 readable minutes
+ * against 1,380 on a clean one.
  *
- * Piping the whole file through one gunzip cannot fix it. zlib buffers, so a
- * corrupt member aborts the stream before it emits ANY of the intact members
- * that preceded it - measured: "incorrect data check" with zero bytes
- * delivered. Members are independent, so they are decompressed one at a time
- * and a bad one costs only itself.
+ * Two things have to be true at once, and getting either wrong loses the file:
  *
- * Member starts are found by scanning for the gzip magic. That sequence also
- * occurs inside compressed data, so a candidate is only believed if the slice
- * it begins actually decompresses; a false positive costs one failed attempt.
+ *   - Output already decoded before an error must be KEPT. zlib's async
+ *     iterator rejects and discards its buffer, so `for await` throws away
+ *     every intact record that preceded the damage. Measured on a fixture:
+ *     "incorrect data check" with zero bytes delivered. Data events keep them.
+ *
+ *   - Damage must not end the read. Resume at the next member, bounded to that
+ *     member's byte range so a later break cannot poison an earlier recovery.
+ *
+ * Member starts are found by scanning for the gzip magic and validating the
+ * header, because that byte sequence also occurs inside compressed data - an
+ * unvalidated candidate slices a healthy member in half and loses all of it.
  */
 
-const GZIP_MAGIC = Buffer.from([0x1f, 0x8b, 0x08]);
 const SCAN_CHUNK_BYTES = 1 << 22;
-// A member is one flush of the recorder's buffer. This bound exists so a
-// corrupt length cannot make us try to hold a gigabyte in memory.
-const MAX_MEMBER_BYTES = 256 << 20;
 
-/** Every offset where a gzip member might begin, in order. */
-async function memberOffsets(path, size) {
-  const offsets = [];
-  let offset = 0;
+/**
+ * A member header, checked on eight bytes rather than three.
+ *
+ * Both writers put the same prefix down: magic 1f 8b, CM=08 deflate, FLG=00
+ * (no name, no comment, no extra), and a zero MTIME - measured on a real
+ * session file, 1f 8b 08 00 00 00 00 00 04 03. Only XFL and OS vary. Eight
+ * fixed bytes make a false positive effectively impossible.
+ *
+ * The three-byte check that preceded this matched compressed data regularly,
+ * and every false positive cut a healthy member in half: reading a real
+ * session recovered 468 bars where reading it straight through gave 933.
+ */
+const MEMBER_HEADER = Buffer.from([0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00]);
+
+function looksLikeHeader(buffer, at) {
+  if (at + MEMBER_HEADER.length > buffer.length) return false;
+  return buffer.compare(MEMBER_HEADER, 0, MEMBER_HEADER.length, at, at + MEMBER_HEADER.length) === 0;
+}
+
+/** The next plausible member start at or after `from`, or null. */
+async function nextMemberOffset(path, from, size) {
+  let offset = Math.max(0, from);
   while (offset < size) {
     const end = Math.min(size, offset + SCAN_CHUNK_BYTES);
     const chunks = [];
@@ -44,27 +63,52 @@ async function memberOffsets(path, size) {
     }
     if (!chunks.length) break;
     const buffer = Buffer.concat(chunks);
-    let at = buffer.indexOf(GZIP_MAGIC);
+    let at = buffer.indexOf(MEMBER_HEADER);
     while (at >= 0) {
-      const absolute = offset + at;
-      if (offsets.at(-1) !== absolute) offsets.push(absolute);
-      at = buffer.indexOf(GZIP_MAGIC, at + 1);
+      if (looksLikeHeader(buffer, at)) return offset + at;
+      at = buffer.indexOf(MEMBER_HEADER, at + 1);
     }
     // Overlap so a header straddling the chunk edge is still seen, while the
     // offset always advances - without that guard a final short chunk spins.
-    const advanced = Math.max(offset + 1, end - (GZIP_MAGIC.length - 1));
-    if (advanced >= size) break;
+    const advanced = Math.max(offset + 1, end - (MEMBER_HEADER.length - 1));
+    if (advanced >= size) return null;
     offset = advanced;
   }
-  return offsets;
+  return null;
 }
 
 /**
- * Yields every parseable NDJSON record, skipping only the damaged members.
+ * Decompress one byte range, handing every line to `take` as it arrives.
  *
- * `onRecord` receives each decoded object. The summary reports what was
- * skipped so a caller can say honestly that a session was partly unreadable
- * rather than presenting it as whole.
+ * Resolves whether or not the member was whole: what decoded before a failure
+ * is real data and is kept.
+ */
+function readMember(path, start, end, take) {
+  return new Promise((resolve) => {
+    const source = createReadStream(path, { start, end: Math.max(start, end - 1) });
+    const gunzip = createGunzip();
+    let failed = false;
+    let error = null;
+    // pipe() does not forward source errors; make one a gunzip failure so a
+    // single handler settles this.
+    source.on("error", (cause) => { gunzip.destroy(cause); });
+    gunzip.on("data", (chunk) => take(chunk.toString("utf8")));
+    gunzip.on("end", () => { source.destroy(); resolve({ failed, error }); });
+    gunzip.on("error", (cause) => {
+      failed = true;
+      error = cause instanceof Error ? cause.message : String(cause);
+      source.destroy();
+      resolve({ failed, error });
+    });
+    source.pipe(gunzip);
+  });
+}
+
+/**
+ * Yields every parseable NDJSON record, resuming past damaged members.
+ *
+ * The summary reports what was skipped so a caller can say honestly that a
+ * session was partly unreadable rather than presenting it as whole.
  */
 export async function readArchiveRecords(path, onRecord, options = {}) {
   const { size } = await stat(path);
@@ -81,49 +125,54 @@ export async function readArchiveRecords(path, onRecord, options = {}) {
     }
     return { records, malformed, breaks, members: 1, bytes: size, lastError };
   }
+  if (!size) return { records, malformed, breaks, members: 0, bytes: size, lastError };
 
-  const starts = await memberOffsets(path, size);
-  if (!starts.length) return { records, malformed, breaks, members: 0, bytes: size, lastError };
-
-  const handle = await open(path, "r");
-  // A record can straddle a member boundary, so the tail of one member may be
-  // half a line. It is carried into the next rather than counted as junk.
+  // A record can straddle a member boundary, so the tail of one may be half a
+  // line. It is carried into the next rather than counted as junk.
   let carry = "";
   let members = 0;
-  try {
-    for (let index = 0; index < starts.length; index += 1) {
-      const start = starts[index];
-      const end = index + 1 < starts.length ? starts[index + 1] : size;
-      const length = end - start;
-      if (length <= 0 || length > MAX_MEMBER_BYTES) continue;
+  const maxResumes = Number.isFinite(options.maxResumes) ? options.maxResumes : 200;
 
-      const buffer = Buffer.allocUnsafe(length);
-      const { bytesRead } = await handle.read(buffer, 0, length, start);
-      let text;
-      try {
-        text = gunzipSync(buffer.subarray(0, bytesRead)).toString("utf8");
-      } catch (error) {
-        // Only this member is lost. A half-line carried into it is not a
-        // record either, so it is dropped rather than joined to the next.
-        breaks += 1;
-        carry = "";
-        lastError = error instanceof Error ? error.message : String(error);
-        continue;
-      }
-      members += 1;
-      const lines = (carry + text).split("\n");
-      carry = lines.pop() ?? "";
-      for (const line of lines) {
-        if (!line) continue;
-        try { onRecord(JSON.parse(line)); records += 1; } catch { malformed += 1; }
-      }
-      if (options.onProgress && members % 500 === 0) options.onProgress({ records, breaks });
+  const take = (text) => {
+    const lines = (carry + text).split("\n");
+    carry = lines.pop() ?? "";
+    for (const line of lines) {
+      if (!line) continue;
+      try { onRecord(JSON.parse(line)); records += 1; } catch { malformed += 1; }
     }
-    if (carry.trim()) {
-      try { onRecord(JSON.parse(carry)); records += 1; } catch { malformed += 1; }
+  };
+
+  /*
+   * One member at a time, bounded to its own byte range.
+   *
+   * Bounding is only safe because the header check above is eight bytes: with
+   * a weaker one a false positive splits a healthy member and everything past
+   * the split is lost. It is necessary because reading onward to the end of
+   * the file re-reads members already decoded and emits them twice, and
+   * because a truncated tail does not always raise an error - zlib can treat
+   * it as a clean end of stream, which silently ended the read with the
+   * remaining members never looked at.
+   */
+  let start = 0;
+  let guard = 0;
+  while (start !== null && start < size && guard <= maxResumes) {
+    guard += 1;
+    const next = await nextMemberOffset(path, start + MEMBER_HEADER.length, size);
+    const before = records;
+    const { failed, error } = await readMember(path, start, next ?? size, take);
+    if (records > before) members += 1;
+    if (failed) {
+      breaks += 1;
+      lastError = error;
+      // A half-line at the point of damage is not a record.
+      carry = "";
     }
-  } finally {
-    await handle.close();
+    if (options.onProgress) options.onProgress({ records, breaks });
+    start = next;
+  }
+
+  if (carry.trim()) {
+    try { onRecord(JSON.parse(carry)); records += 1; } catch { malformed += 1; }
   }
 
   return { records, malformed, breaks, members, bytes: size, lastError };
