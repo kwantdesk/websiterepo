@@ -2593,7 +2593,20 @@ const server = createServer(async (request, response) => {
 const quantDataSurfaces = new QuantDataSurfacePoller({
   origin: `http://127.0.0.1:${config.port}`,
   token: config.gatewayToken,
-  enabled: Boolean(config.quantDataApiKey && config.gatewayToken),
+  /*
+   * Off unless explicitly switched on.
+   *
+   * The account allows 240 requests a minute for EVERYTHING, and the desk's
+   * own GEX panes are spending it live. This poller takes up to 45 of those to
+   * fill an archive, and a 429 is not a degraded surface - it is account-level,
+   * so it kills every GEX page at once. Measured during a session: 79 requests,
+   * 3 of them rate-limited, while GEX was dropping in and out.
+   *
+   * The archive is worth having; it is not worth it during a session. Set
+   * QUANTDATA_SURFACE_POLLER=1 to run it, and run it out of hours.
+   */
+  enabled: Boolean(config.quantDataApiKey && config.gatewayToken)
+    && process.env.QUANTDATA_SURFACE_POLLER === "1",
   log: (line) => process.stdout.write(`${line}
 `),
 });

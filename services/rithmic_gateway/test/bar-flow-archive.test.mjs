@@ -131,6 +131,13 @@ test("flow is read from the recorded tape and keyed by bar", async () => {
     );
 
     const archive = new BarFlowArchive({ dir });
+    /*
+     * Folded up front, because load() deliberately will not do it. Folding
+     * reads a whole session and the gateway is one process, so doing it inside
+     * a request blocked the event loop that also serves options, GEX and the
+     * live feed - it took the desk down at the open.
+     */
+    await archive.sessionFlow(tradingDate, "CME", "NQU6", true);
     const minute = await archive.load({
       exchange: "CME", symbol: "NQU6", interval: "1m", fromMs: T0 - 60_000, toMs: T0 + 300_000,
     });
@@ -184,6 +191,42 @@ test("a completed session is cached on disk, the live one never is", async () =>
       !existsSync(join(dir, "flow", today, "CME-NQU6.flow.json.gz")),
       "the live session was frozen to disk",
     );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a request never folds a session itself; the warmer does", async () => {
+  /*
+   * The outage this is guarding. Folding reads a whole session's prints, and
+   * the gateway is one Node process: doing that on the request path blocked
+   * the event loop serving options, GEX, quotes and the live feed. Measured
+   * during the incident: /health timing out at 25s.
+   */
+  const dir = mkdtempSync(join(tmpdir(), "kwant-flow-"));
+  try {
+    const tradingDate = chicagoTradingDate(T0);
+    const dayDir = join(dir, "trades", tradingDate);
+    mkdirSync(dayDir, { recursive: true });
+    writeFileSync(
+      join(dayDir, backfillFileName("CME", "NQU6")),
+      gzipSync(Buffer.from(`${JSON.stringify([T0, 29000, 4, 1])}
+`)),
+    );
+    const archive = new BarFlowArchive({ dir });
+
+    const cold = await archive.load({
+      exchange: "CME", symbol: "NQU6", interval: "1m", fromMs: T0 - 1, toMs: T0 + 60_000,
+    });
+    assert.equal(cold.flow.size, 0, "a request folded a session on the spot");
+    assert.equal(archive.status().pending, 1, "the session was not queued for the warmer");
+
+    // What the warmer does, minus the timer.
+    await archive.sessionFlow(tradingDate, "CME", "NQU6", true);
+    const warm = await archive.load({
+      exchange: "CME", symbol: "NQU6", interval: "1m", fromMs: T0 - 1, toMs: T0 + 60_000,
+    });
+    assert.equal(warm.flow.get(T0).delta, 4, "the warmer did not fill the flow in");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
