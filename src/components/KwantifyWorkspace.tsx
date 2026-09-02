@@ -356,6 +356,7 @@ import {
 import { mergeOneFamilyPositioning } from "@/lib/gexBotFlow";
 import { writeProtectedItem } from "@/lib/browserStorageQuota";
 import { cmeWeekRange } from "@/lib/cmeProfileWindows";
+import { legibleOn } from "@/lib/readableContrast";
 
 function workspaceLoader(title: string, detail: string) {
   return (
@@ -9963,6 +9964,27 @@ export default function KwantifyWorkspace({
   // mismatch: a refresh painted the server's default-open watchlist for the
   // seconds hydration took, then snapped it shut.
   const [rightPanel, setRightPanel] = useState<RightPanel | null>(null);
+  /*
+   * The surface the order ticket sits on, so its Buy and Sell buttons can be
+   * kept legible against it.
+   *
+   * Both buttons take their border, fill AND label from one chart colour, so
+   * on a theme whose down colour sits close to the panel there is nothing left
+   * to see and the control reads as missing rather than unreadable. That is
+   * how the Sell button disappeared on a pale theme.
+   */
+  const [orderTicketSurface, setOrderTicketSurface] = useState("#151515");
+  useEffect(() => {
+    const readSurface = () => {
+      const root = document.documentElement;
+      const value = getComputedStyle(root).getPropertyValue("--surface").trim()
+        || getComputedStyle(root).getPropertyValue("--background").trim();
+      if (value) setOrderTicketSurface(value);
+    };
+    readSurface();
+    window.addEventListener("kwantdesk:theme-change", readSurface);
+    return () => window.removeEventListener("kwantdesk:theme-change", readSurface);
+  }, []);
   // The icon rail can be pushed off the right edge entirely and pulled back by
   // its own tab. On a phone those 44px are a real share of the screen, and the
   // tab was previously only able to REOPEN a panel - there was no way to get
@@ -20334,9 +20356,12 @@ export default function KwantifyWorkspace({
                   onClick={() => { setOrderSide("sell"); setChartPlacementSuspended(false); }}
                   className="rounded-xl border px-3 py-2 text-left transition-all"
                   style={{
-                    borderColor: colorWithAlpha(chartSettings.downColor, orderSide === "sell" ? 0.62 : 0.28),
+                    borderColor: colorWithAlpha(
+                      legibleOn(chartSettings.downColor, orderTicketSurface),
+                      orderSide === "sell" ? 0.62 : 0.28,
+                    ),
                     backgroundColor: colorWithAlpha(chartSettings.downColor, orderSide === "sell" ? 0.22 : 0.1),
-                    color: chartSettings.downColor,
+                    color: legibleOn(chartSettings.downColor, orderTicketSurface),
                   }}
                 ><div className="text-[12px] font-semibold">Sell</div><div className="font-mono text-[13px]">{orderPanelBidLabel}</div></button>
                 <div className="pointer-events-none absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 rounded-full bg-surface px-2 py-0.5 font-mono text-[10px] text-muted">{orderPanelSpreadLabel}</div>
@@ -20344,9 +20369,12 @@ export default function KwantifyWorkspace({
                   onClick={() => { setOrderSide("buy"); setChartPlacementSuspended(false); }}
                   className="rounded-xl border px-3 py-2 text-right transition-all"
                   style={{
-                    borderColor: colorWithAlpha(chartSettings.upColor, orderSide === "buy" ? 0.62 : 0.28),
+                    borderColor: colorWithAlpha(
+                      legibleOn(chartSettings.upColor, orderTicketSurface),
+                      orderSide === "buy" ? 0.62 : 0.28,
+                    ),
                     backgroundColor: colorWithAlpha(chartSettings.upColor, orderSide === "buy" ? 0.22 : 0.1),
-                    color: chartSettings.upColor,
+                    color: legibleOn(chartSettings.upColor, orderTicketSurface),
                   }}
                 ><div className="text-[12px] font-semibold">Buy</div><div className="font-mono text-[13px]">{orderPanelAskLabel}</div></button>
               </div>

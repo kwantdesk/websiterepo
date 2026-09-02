@@ -98,3 +98,54 @@ export function readableTextOn(background: string): string {
   readableTextCache.set(background, resolved);
   return resolved;
 }
+
+const legibleColorCache = new Map<string, string>();
+
+/**
+ * Keep a colour's hue, but push it until it can actually be seen.
+ *
+ * A control that takes its border, its fill AND its text from one
+ * user-chosen colour disappears completely when that colour sits close to the
+ * surface behind it - there is nothing left to see, so it reads as a missing
+ * control rather than an unreadable one. That is exactly how the order
+ * ticket's Sell button vanished on a pale theme: down colour, panel and label
+ * were all near-white.
+ *
+ * The hue carries the meaning here - red is sell, green is buy - so this
+ * darkens or lightens toward black or white rather than substituting one of
+ * them outright, keeping the button recognisable as its own side.
+ *
+ * 3:1 is the WCAG minimum for a control's boundary and for large text, which
+ * is what these labels are.
+ */
+export function legibleOn(color: string, background: string, minimumRatio = 3): string {
+  const key = `${color}|${background}|${minimumRatio}`;
+  const cached = legibleColorCache.get(key);
+  if (cached) return cached;
+
+  const foreground = parseResolvedColor(color);
+  const behind = parseResolvedColor(background);
+  // Nothing to reason about; better the author's colour than a guess.
+  const resolve = () => {
+    if (!foreground || !behind) return color;
+    if (contrastRatio(foreground, behind) >= minimumRatio) return color;
+    // Away from the surface: darken on a light one, lighten on a dark one.
+    const target = colorLuminance(behind) > 0.5 ? PURE_BLACK : PURE_WHITE;
+    let candidate = foreground;
+    for (let step = 1; step <= 20; step += 1) {
+      const ratio = step / 20;
+      candidate = {
+        r: foreground.r + (target.r - foreground.r) * ratio,
+        g: foreground.g + (target.g - foreground.g) * ratio,
+        b: foreground.b + (target.b - foreground.b) * ratio,
+      };
+      if (contrastRatio(candidate, behind) >= minimumRatio) break;
+    }
+    return rgbHex(candidate);
+  };
+
+  const resolved = resolve();
+  if (legibleColorCache.size > 512) legibleColorCache.clear();
+  legibleColorCache.set(key, resolved);
+  return resolved;
+}

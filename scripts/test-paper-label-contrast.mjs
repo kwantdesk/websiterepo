@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-const { readableTextOn, contrastRatio, parseResolvedColor } =
+const { readableTextOn, contrastRatio, parseResolvedColor, legibleOn } =
   await import("../src/lib/readableContrast.ts");
 
 const chart = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
@@ -93,3 +93,51 @@ check("rgb() and hex forms agree", () => {
 });
 
 console.log(`\npaper label contrast: ${passed}/${passed} checks passed`);
+
+
+/**
+ * The order ticket's Buy and Sell buttons survive any theme.
+ *
+ * Both took their border, their fill AND their label from one chart colour, so
+ * on a theme whose down colour sits close to the panel there was nothing left
+ * to see at all - the control read as MISSING rather than unreadable, which is
+ * exactly how it was reported: "the sell button is missing from side panel".
+ */
+{
+  const workspace = readFileSync(
+    new URL("../src/components/KwantifyWorkspace.tsx", import.meta.url), "utf8",
+  );
+  for (const side of ["downColor", "upColor"]) {
+    // Border AND label: if either is left raw the button can still vanish.
+    const uses = workspace.split(`legibleOn(chartSettings.${side}, orderTicketSurface)`).length - 1;
+    assert.ok(
+      uses >= 2,
+      `the order ticket paints ${side} raw ${uses} of the times it should check it`,
+    );
+  }
+  assert.ok(
+    workspace.includes('getPropertyValue("--surface")'),
+    "the ticket does not read the surface it is actually drawn on",
+  );
+
+  // The reported failure: a pale down colour on a near-white panel.
+  const palePanel = "#F7F7FA";
+  for (const chosen of ["#FDE7EF", "#FFFFFF", "#F7F7FA", "#FFF0F5"]) {
+    const resolved = legibleOn(chosen, palePanel);
+    const ratio = contrastRatio(parseResolvedColor(resolved), parseResolvedColor(palePanel));
+    assert.ok(
+      ratio >= 3,
+      `${chosen} on ${palePanel} resolved to ${resolved} at ${ratio.toFixed(2)}:1 - still invisible`,
+    );
+  }
+  // ...and the same on a dark theme, where it has to lighten instead.
+  const darkPanel = "#0B0B0D";
+  for (const chosen of ["#101014", "#000000", "#0B0B0D"]) {
+    const resolved = legibleOn(chosen, darkPanel);
+    const ratio = contrastRatio(parseResolvedColor(resolved), parseResolvedColor(darkPanel));
+    assert.ok(ratio >= 3, `${chosen} on ${darkPanel} resolved to ${resolved} at ${ratio.toFixed(2)}:1`);
+  }
+  // A colour that is already legible is left exactly as the user chose it.
+  assert.equal(legibleOn("#E11D48", "#FFFFFF"), "#E11D48", "a usable colour was altered");
+  console.log("  ok  order ticket Buy/Sell stay visible on any theme");
+}
