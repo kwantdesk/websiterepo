@@ -1,11 +1,15 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { gzipSync } from "node:zlib";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { EventEmitter } from "node:events";
 
-import { TradeTapeArchive, encodeTrade, decodeTrade } from "../src/trade-tape-archive.mjs";
+import {
+  TradeTapeArchive, backfillFileName, encodeTrade, decodeTrade,
+} from "../src/trade-tape-archive.mjs";
+import { chicagoTradingDate } from "../src/trading-session.mjs";
 
 /**
  * Range and volume bars get a history.
@@ -222,4 +226,64 @@ test("an absent session is empty, not an error", async () => {
     });
     assert.deepEqual(trades, []);
   });
+});
+
+test("a backfilled sidecar is read as one series with the live tape", async () => {
+  /*
+   * The collector only records from the moment it starts, so the first hours
+   * of a session it was restarted into have no live tape at all. Rewriting the
+   * live file to add them is not an option - the collector holds it open, and
+   * publishing over it by rename would strand that handle and send the rest of
+   * the session to a file nothing reads. So the backfill writes a sidecar and
+   * the loader reads the pair.
+   */
+  const dir = mkdtempSync(join(tmpdir(), "kwant-tape-"));
+  try {
+    const archive = new TradeTapeArchive({ dir, roots: ["NQ"], flushMs: 10_000 });
+    const client = new EventEmitter();
+    archive.attach(client);
+    // The live tape starts late, at T0 + 5 minutes.
+    client.emit("rawMessage", print(5 * 60_000, 29005, 1));
+    client.emit("rawMessage", print(6 * 60_000, 29006, 1));
+    await archive.close();
+
+    // The backfill fills in what came before it.
+    const dayDir = join(dir, "trades", chicagoTradingDate(T0));
+    const rows = [0, 1, 2].map((minute) => JSON.stringify([T0 + minute * 60_000, 29000 + minute, 1, 1]));
+    writeFileSync(
+      join(dayDir, backfillFileName("CME", "NQU6")),
+      gzipSync(Buffer.from(`${rows.join("\n")}\n`)),
+    );
+
+    const { trades } = await archive.load({
+      exchange: "CME", symbol: "NQU6", fromMs: T0 - 1, toMs: T0 + 10 * 60_000,
+    });
+    assert.deepEqual(
+      trades.map((trade) => trade.price),
+      [29000, 29001, 29002, 29005, 29006],
+      "the backfill and the live tape did not merge into one ordered series",
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a session with only a backfill still loads", async () => {
+  // Every session recorded before the tape existed is this case.
+  const dir = mkdtempSync(join(tmpdir(), "kwant-tape-"));
+  try {
+    const archive = new TradeTapeArchive({ dir, roots: ["NQ"], flushMs: 10_000 });
+    const dayDir = join(dir, "trades", chicagoTradingDate(T0));
+    mkdirSync(dayDir, { recursive: true });
+    writeFileSync(
+      join(dayDir, backfillFileName("CME", "NQU6")),
+      gzipSync(Buffer.from(`${JSON.stringify([T0, 29000, 4, -1])}\n`)),
+    );
+    const { trades } = await archive.load({
+      exchange: "CME", symbol: "NQU6", fromMs: T0 - 1, toMs: T0 + 1_000,
+    });
+    assert.deepEqual(trades, [{ timestamp: T0, price: 29000, size: 4, side: -1 }]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

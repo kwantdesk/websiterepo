@@ -48,7 +48,13 @@ const GZIP_LEVEL = 1;
  */
 export const DEFAULT_TAPE_ROOTS = ["MNQ", "MES", "NQ", "ES"];
 
-const sideCode = (payload) => {
+/*
+ * Exported so the backfill classifies a print exactly as the live tape does.
+ * A second copy of this would drift, and a delta bar built from backfilled
+ * prints would then disagree with the same bar built live - silently, because
+ * both look like perfectly ordinary bars.
+ */
+export const sideCode = (payload) => {
   const aggressor = String(payload?.aggressor ?? payload?.side ?? "").toUpperCase();
   if (aggressor.startsWith("B") || aggressor === "ASK") return 1;
   if (aggressor.startsWith("S") || aggressor === "BID") return -1;
@@ -62,8 +68,23 @@ export const decodeTrade = (row) => (Array.isArray(row)
   ? { timestamp: row[0], price: row[1], size: row[2], side: row[3] ?? 0 }
   : null);
 
-function instrumentFileName(exchange, symbol) {
+export function instrumentFileName(exchange, symbol) {
   return `${String(exchange).toUpperCase()}-${String(symbol).toUpperCase()}.trades.ndjson.gz`;
+}
+
+/*
+ * Backfilled prints live in a sidecar, never in the live file.
+ *
+ * The collector holds the live tape open and appends to it, so rewriting that
+ * file would strand the open handle and send the rest of the session to a file
+ * nothing reads. A sidecar also means a backfill can run at any time, against
+ * the session in progress, without a restart - and a restart writes a GAP
+ * marker into the archive, so "just restart it" is not free either.
+ *
+ * The two never overlap: the backfill stops at the live tape's earliest print.
+ */
+export function backfillFileName(exchange, symbol) {
+  return `${String(exchange).toUpperCase()}-${String(symbol).toUpperCase()}.trades.backfill.ndjson.gz`;
 }
 
 export class TradeTapeArchive {
@@ -235,13 +256,21 @@ export class TradeTapeArchive {
     const trades = [];
     const dates = new Set([chicagoTradingDate(start), chicagoTradingDate(end)]);
     for (const tradingDate of [...dates].sort()) {
-      const file = join(this.dir, tradingDate, instrumentFileName(upper, upperSymbol));
-      if (!existsSync(file)) continue;
-      await readArchiveRecords(file, (row) => {
-        const trade = decodeTrade(row);
-        if (!trade || trade.timestamp < start || trade.timestamp > end) return;
-        trades.push(trade);
-      });
+      // Recorded live and backfilled from the raw archive, in that order. A
+      // session recorded before the tape existed has only the sidecar; the one
+      // in progress has both, meeting at the live tape's first print.
+      for (const name of [
+        instrumentFileName(upper, upperSymbol),
+        backfillFileName(upper, upperSymbol),
+      ]) {
+        const file = join(this.dir, tradingDate, name);
+        if (!existsSync(file)) continue;
+        await readArchiveRecords(file, (row) => {
+          const trade = decodeTrade(row);
+          if (!trade || trade.timestamp < start || trade.timestamp > end) return;
+          trades.push(trade);
+        });
+      }
     }
     trades.sort((left, right) => left.timestamp - right.timestamp);
     return {
