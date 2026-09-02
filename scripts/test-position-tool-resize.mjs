@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { medianBarStep, timeAtPixelPastLastBar } from "../src/lib/chartDrawGeometry.ts";
+import {
+  medianBarStep,
+  positionToolScreenGeometry,
+  timeAtPixelPastLastBar,
+} from "../src/lib/chartDrawGeometry.ts";
 
 /**
  * The long/short position calculator must resize by its corners.
@@ -111,6 +115,31 @@ check("the box can still never be turned inside out", () => {
   );
   assert.match(drag, /Math\.min\(time, next\[1\]\.time - 1\)/, "the left edge stays left of the right");
   assert.match(drag, /Math\.max\(time, next\[0\]\.time \+ 1\)/, "the right edge stays right of the left");
+});
+
+check("all four handles remain welded to the painted box at narrow widths", () => {
+  // This is the reported drift. The old body widened this 12px projection to
+  // 40px while the handles remained at x=112, leaving them floating inside.
+  const geometry = positionToolScreenGeometry([
+    { x: 100, y: 80 },
+    { x: 112, y: 120 },
+    { x: 112, y: 40 },
+  ]);
+  assert.ok(geometry);
+  assert.equal(geometry.width, 12, "screen geometry must not invent a second width");
+  assert.deepEqual(geometry.corners.map(({ x, y }) => [x, y]), [
+    [100, 120], [112, 120], [100, 40], [112, 40],
+  ]);
+});
+
+check("the renderer and the handles consume the same position geometry", () => {
+  const source = readFileSync(new URL("../src/components/ChartDrawLayer.tsx", import.meta.url), "utf8");
+  const render = source.slice(source.indexOf("const renderDrawing"), source.indexOf("const previewDrawing"));
+  assert.match(render, /const positionGeometry = isPositionTool \? positionToolScreenGeometry\(coords\) : null;/);
+  assert.match(render, /left: xL, right: xR, stopY, targetY.*positionGeometry/);
+  assert.match(render, /const positionCorners = positionGeometry\?\.corners \?\? null;/);
+  assert.doesNotMatch(render, /Math\.max\(xL \+ 40/,
+    "a visual width clamp would detach the handles again");
 });
 
 console.log(`\nposition tool resize: ${passed}/${passed} checks passed`);

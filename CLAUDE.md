@@ -1148,3 +1148,38 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
 ### Worktree state
 - Numerous native rebuild, SOCIALS, PDF and local test artifacts belong to
   other workstreams. They were preserved and excluded from this task.
+
+## Temporary engineering log — 2026-09-03 — position-tool handles welded to corners
+
+### Product direction confirmed by owner
+- The launch target is a professional multi-user release next month, with the
+  website feeding the later .NET desktop conversion.
+- Active market-data providers are Rithmic and QuantData. Databento is legacy
+  and must not be treated as an active runtime dependency. QuantData is an
+  interim non-redistributable source; a distributable provider such as Theta
+  Data is planned subject to licensing.
+
+### Completed
+- Traced the moving Long/Short Position SL/TP handles to two competing screen
+  geometries. The painted zones imposed a hidden 40px minimum width while the
+  handles followed the real time anchors, so zooming or narrowing the tool
+  made the dots slide inside the box.
+- Added one shared `positionToolScreenGeometry` result for both painted zones
+  and all four corner handles. Removed the visual width clamp; the drag model
+  remains the authority for the minimum time span.
+- Corrected two stale position-tool assertions left behind by the earlier
+  colour override and legacy-toolbar removal changes.
+
+### Verification
+- Position resize regression: 9/9; generic handle-grab: 10/10; position
+  colours: 7/7; migration: 7/7; default size: 5/5; primitive: 6/6; anchoring:
+  7/7; magnet: 7/7; chart drawing + precision suites: 33/33.
+- A temporary local render of the real `ChartDrawLayer` at a 12px projected
+  width measured both painted zones at x=100..112 and all four handle centres
+  exactly on x=100/112. The harness was removed after inspection.
+- Scoped ESLint, `npx tsc --noEmit`, and the 80-page production build passed.
+
+### Deployment
+- No Vercel build or push was triggered. `AGENTS.md` still requires explicit
+  owner confirmation that the duplicate `websiterepo` Vercel project is
+  disconnected before `main` may be pushed; keep only `websiterepo-yfmi`.

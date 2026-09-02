@@ -64,6 +64,52 @@ export function timeAtPixelPastLastBar(input: PastEdgeTimeInput): number | null 
   return lastTime + ((localX - lastX) / pixelsPerBar) * step;
 }
 
+export type PositionToolScreenPoint = { x: number | null; y: number | null };
+export type PositionToolCorner = {
+  id: "ls" | "rs" | "lt" | "rt";
+  x: number;
+  y: number;
+  side: "left" | "right";
+  edge: "stop" | "target";
+};
+
+/**
+ * One screen-space rectangle for both a position tool's painted zones and its
+ * four resize handles.
+ *
+ * The renderer used to impose a 40px minimum width while the handles used the
+ * raw time anchors. At narrow widths and after zooming, those were two
+ * different rectangles: the handles appeared to wander inside the box. There
+ * is deliberately no visual width clamp here. The drag model owns the minimum
+ * time span; pixels are only its current projection.
+ */
+export function positionToolScreenGeometry(
+  points: readonly PositionToolScreenPoint[],
+): { left: number; right: number; width: number; stopY: number; targetY: number; corners: PositionToolCorner[] } | null {
+  if (points.length < 3) return null;
+  const [entry, stop, target] = points;
+  const values = [entry.x, entry.y, stop.x, stop.y, target.x, target.y];
+  if (!values.every((value) => value != null && Number.isFinite(value))) return null;
+
+  const left = Math.min(entry.x as number, stop.x as number, target.x as number);
+  const right = Math.max(entry.x as number, stop.x as number, target.x as number);
+  const stopY = stop.y as number;
+  const targetY = target.y as number;
+  return {
+    left,
+    right,
+    width: right - left,
+    stopY,
+    targetY,
+    corners: [
+      { id: "ls", x: left, y: stopY, side: "left", edge: "stop" },
+      { id: "rs", x: right, y: stopY, side: "right", edge: "stop" },
+      { id: "lt", x: left, y: targetY, side: "left", edge: "target" },
+      { id: "rt", x: right, y: targetY, side: "right", edge: "target" },
+    ],
+  };
+}
+
 /**
  * Geometry for an entry/exit fill marker, in pixels.
  *

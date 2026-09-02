@@ -17,7 +17,7 @@ import {
   magnetStrengthSpec,
   type MagnetStrength,
 } from "@/lib/chartDrawTools";
-import { fillMarkerGeometry, timeAtPixelPastLastBar } from "@/lib/chartDrawGeometry";
+import { fillMarkerGeometry, positionToolScreenGeometry, timeAtPixelPastLastBar } from "@/lib/chartDrawGeometry";
 
 // Self-contained SVG overlay that owns the new charting tools end to end:
 // point placement (fixed-count, poly-click and freehand-drag), live preview,
@@ -1036,6 +1036,8 @@ export default function ChartDrawLayer({
       <text x={x} y={y} fill={color} fontSize={10} fontFamily="monospace">{text}</text>;
 
     const a = coords[0]; const b = coords[1]; const c = coords[2];
+    const isPositionTool = drawing.tool === "longPosition" || drawing.tool === "shortPosition";
+    const positionGeometry = isPositionTool ? positionToolScreenGeometry(coords) : null;
     const body: ReactElement | null = (() => {
       switch (drawing.tool) {
         case "trendLine":
@@ -1176,12 +1178,10 @@ export default function ChartDrawLayer({
           // entry for a long, risk below) bounded left by the entry anchor and
           // right by the stop/target points' time, with centred price chips
           // and a risk/reward readout riding the entry line.
-          if (!b || !c || a.x == null) return null;
+          if (!b || !c || !positionGeometry) return null;
           const long = drawing.tool === "longPosition";
-          const entryY = a.y!; const stopY = b.y!; const targetY = c.y!;
-          const xL = a.x!;
-          const xrCandidates = [b.x, c.x].filter((v): v is number => v != null);
-          const xR = Math.max(xL + 40, ...(xrCandidates.length ? xrCandidates : [xL + 180]));
+          const entryY = a.y!;
+          const { left: xL, right: xR, stopY, targetY } = positionGeometry;
           // The zones follow the theme's two candle colours by default, so the
           // calculator matches the chart it is drawn on. A trader who wants
           // plain red-and-green regardless of theme sets them per drawing in
@@ -1491,23 +1491,7 @@ export default function ChartDrawLayer({
                 : null}
       </g>
     ) : null;
-    const isPositionTool = drawing.tool === "longPosition" || drawing.tool === "shortPosition";
-    const positionCorners = isPositionTool && coords.length >= 3
-      && coords[0].x != null && coords[1].x != null && coords[2].x != null
-      && coords[0].y != null && coords[1].y != null && coords[2].y != null
-      ? (() => {
-        const leftX = Math.min(coords[0].x as number, coords[1].x as number);
-        const rightX = Math.max(coords[0].x as number, coords[1].x as number, coords[2].x as number);
-        const stopY = coords[1].y as number;
-        const targetY = coords[2].y as number;
-        return [
-          { id: "ls", x: leftX, y: stopY, side: "left" as const, edge: "stop" as const },
-          { id: "rs", x: rightX, y: stopY, side: "right" as const, edge: "stop" as const },
-          { id: "lt", x: leftX, y: targetY, side: "left" as const, edge: "target" as const },
-          { id: "rt", x: rightX, y: targetY, side: "right" as const, edge: "target" as const },
-        ];
-      })()
-      : null;
+    const positionCorners = positionGeometry?.corners ?? null;
     // One handle, at the point of the triangle. Anywhere closer would sit
     // under the anchor dot and be unreachable.
     const fillMarkerHandle = (drawing.tool === "entryArrow" || drawing.tool === "exitArrow")

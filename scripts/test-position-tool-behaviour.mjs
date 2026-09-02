@@ -103,16 +103,20 @@ const points = [
     "the layer must resize through the shared helper");
   // The zones were pinned to TradingView's palette, so the calculator was the
   // one tool that never matched the theme.
-  assert.ok(layer.includes("themeColor || \"#089981\""), "the target zone follows the bullish candle");
-  assert.ok(layer.includes("themeBearColor || \"#F23645\""), "the risk zone follows the bearish candle");
+  assert.ok(layer.includes("style.profitColor ?? themeColor ?? \"#089981\""),
+    "the target zone follows its override, then the bullish candle");
+  assert.ok(layer.includes("style.lossColor ?? themeBearColor ?? \"#F23645\""),
+    "the risk zone follows its override, then the bearish candle");
 
   const chart = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
   assert.ok(chart.includes("themeBearColor={settings.downColor}"), "and the chart supplies it");
-  // The other position implementation is behind a disabled flag; asserting it
-  // stays disabled keeps a future reader from editing the dead one, which is
-  // exactly the mistake this change corrects.
-  assert.ok(chart.includes("const LEGACY_LEFT_TOOLBAR_ENABLED = false"),
-    "the legacy toolbar must stay off, or there are two live position tools");
+  // The dead toolbar was subsequently deleted altogether. Keep this test on
+  // the stronger contract: one live drawing toolbar, with no legacy switch
+  // that could silently bring a second position implementation back.
+  assert.equal((chart.match(/<ChartDrawToolbar/g) ?? []).length, 1,
+    "there must be exactly one live drawing toolbar");
+  assert.ok(!chart.includes("LEGACY_LEFT_TOOLBAR_ENABLED"),
+    "the deleted legacy position toolbar must not be restorable by a flag");
 }
 
 console.log("Position calculator tests passed.");
