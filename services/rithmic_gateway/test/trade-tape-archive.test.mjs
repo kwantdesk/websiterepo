@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { EventEmitter } from "node:events";
 
 import {
-  TradeTapeArchive, backfillFileName, encodeTrade, decodeTrade,
+  TradeTapeArchive, backfillFileName, encodeTrade, decodeTrade, sideCode,
 } from "../src/trade-tape-archive.mjs";
 import { chicagoTradingDate } from "../src/trading-session.mjs";
 
@@ -286,4 +286,33 @@ test("a session with only a backfill still loads", async () => {
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("the wire's numeric aggressor is understood", () => {
+  /*
+   * The failure this shipped with. Rithmic sends the aggressor as an enum -
+   * 1 = buy, 2 = sell, the same two values book-store.mjs has always mapped -
+   * and this read the field as text, so every live print stringified to "1",
+   * matched nothing, and was stored as "the feed did not say". Measured on the
+   * live tape: 4,060 of 4,060 prints sided 0, which would have made every
+   * delta bar built from this tape read flat.
+   */
+  assert.equal(sideCode({ aggressor: 1 }), 1);
+  assert.equal(sideCode({ aggressor: 2 }), -1);
+  assert.equal(sideCode({ aggressor: "1" }), 1, "the archived record stores it as a string on some paths");
+  assert.equal(sideCode({ aggressor: "2" }), -1);
+  // An unrecognised code is not a side. A guess is worse than an absence.
+  assert.equal(sideCode({ aggressor: 0 }), 0);
+  assert.equal(sideCode({ aggressor: 7 }), 0);
+  assert.equal(sideCode({}), 0);
+});
+
+test("a bid-hitting print is a sell, not a buy", () => {
+  // ASK and BID name the side that was HIT, so they invert. "BID" also starts
+  // with a B, and the previous ordering let the B-prefix branch claim it -
+  // classifying every seller-aggressive print as a buy.
+  assert.equal(sideCode({ aggressor: "BID" }), -1);
+  assert.equal(sideCode({ aggressor: "ASK" }), 1);
+  assert.equal(sideCode({ aggressor: "BUY" }), 1);
+  assert.equal(sideCode({ aggressor: "SELL" }), -1);
 });

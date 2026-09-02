@@ -55,9 +55,38 @@ export const DEFAULT_TAPE_ROOTS = ["MNQ", "MES", "NQ", "ES"];
  * both look like perfectly ordinary bars.
  */
 export const sideCode = (payload) => {
-  const aggressor = String(payload?.aggressor ?? payload?.side ?? "").toUpperCase();
-  if (aggressor.startsWith("B") || aggressor === "ASK") return 1;
-  if (aggressor.startsWith("S") || aggressor === "BID") return -1;
+  const raw = payload?.aggressor ?? payload?.side;
+  if (raw === null || raw === undefined || raw === "") return 0;
+
+  /*
+   * On the wire Rithmic sends the aggressor as an enum, not a word: 1 = buy,
+   * 2 = sell. book-store.mjs has mapped those two values all along; this read
+   * the field as text, so every live print stringified to "1", matched no
+   * branch, and was stored as "the feed did not say". Measured on the live
+   * tape before the fix: 4,060 of 4,060 prints sided 0, which would have made
+   * every delta bar built from this tape read flat.
+   *
+   * Anything other than 1 or 2 stays 0. An unrecognised code means we do not
+   * know the side, and a guessed side is worse than an absent one.
+   */
+  if (typeof raw === "number" || /^-?\d+$/.test(String(raw).trim())) {
+    const code = Number(raw);
+    if (code === 1) return 1;
+    if (code === 2) return -1;
+    return 0;
+  }
+
+  const text = String(raw).trim().toUpperCase();
+  /*
+   * ASK and BID name the side that was HIT, so they invert: a trade at the ask
+   * is a buyer lifting it. These are tested before the B/S prefixes because
+   * "BID" starts with a B - the previous ordering classified every
+   * bid-hitting, i.e. seller-aggressive, print as a buy.
+   */
+  if (text === "ASK") return 1;
+  if (text === "BID") return -1;
+  if (text.startsWith("B")) return 1;
+  if (text.startsWith("S")) return -1;
   return 0;
 };
 
