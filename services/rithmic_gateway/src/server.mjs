@@ -10,6 +10,7 @@ import { RithmicBookStore } from "./book-store.mjs";
 import { loadConfig } from "./config.mjs";
 import { DatabentoEquitiesTradeStream } from "./databento-equities-stream.mjs";
 import { FuturesBarArchive, HistoryRequestError } from "./futures-bar-archive.mjs";
+import { QuantDataSurfacePoller } from "./quantdata-surface-poller.mjs";
 import { DatabentoOptionsCatalog, OptionsCatalogError } from "./databento-options-catalog.mjs";
 import { DatabentoOptionTradeStream } from "./databento-option-trades.mjs";
 import { createDesktopStreamGuard } from "./desktop-stream-guard.mjs";
@@ -1167,6 +1168,7 @@ const server = createServer(async (request, response) => {
       massiveIndices: massiveIndices.status(),
       databentoEquities: databentoEquities.status(),
       quantDataMarketSnapshots: quantDataMarketSnapshots.status(),
+      quantDataSurfaces: quantDataSurfaces.status(),
       labRepository: labRepository.health(),
       normalizedAnalytics: normalizedAnalytics.health(),
       zyon: zyonService.health(),
@@ -2417,10 +2419,34 @@ const server = createServer(async (request, response) => {
   }
 });
 
+/*
+ * Pull the options surfaces whether or not anyone is looking at them.
+ *
+ * The exposure archiver only ever sees what the product requests, so the
+ * options archive recorded what was looked at rather than what the market did
+ * - 4.0 GB on a day the desk was in use against 4.6 MB on a day GEX was
+ * broken, and the provider sells no history to fill that back in.
+ *
+ * It polls through this gateway's OWN vendor edge over loopback, so the
+ * payload is archived, cached and coalesced exactly as a pane's request would
+ * be, and it holds a hard budget well under the account's 240/minute because
+ * exhausting that kills every GEX page at once.
+ */
+const quantDataSurfaces = new QuantDataSurfacePoller({
+  origin: `http://127.0.0.1:${config.port}`,
+  token: config.gatewayToken,
+  enabled: Boolean(config.quantDataApiKey && config.gatewayToken),
+  log: (line) => process.stdout.write(`${line}
+`),
+});
+
 server.listen(config.port, config.host, () => {
   process.stdout.write(
     `Olisa Labs Platform Rithmic gateway listening on http://${config.host}:${config.port}\n`,
   );
+  // Started here rather than at construction: it talks to this server, so the
+  // socket has to be accepting connections first.
+  quantDataSurfaces.start();
   desktopRevocationSynchronizer?.start();
   if (recorder.enabled) {
     process.stdout.write(`[recorder] capturing raw stream to ${config.recordDir}\n`);
@@ -2499,6 +2525,7 @@ async function shutdown() {
     () => databentoEquities.stop(),
     () => optionTrades.stop(),
     () => quantDataMarketSnapshots.stop(),
+    () => quantDataSurfaces.stop(),
   ]) {
     try { stop(); } catch { /* ignore */ }
   }
