@@ -13,6 +13,7 @@ import { FuturesBarArchive, HistoryRequestError } from "./futures-bar-archive.mj
 import { QuantDataSurfacePoller } from "./quantdata-surface-poller.mjs";
 import { TradeTapeArchive, MAX_TAPE_PRINTS } from "./trade-tape-archive.mjs";
 import { BarFlowArchive } from "./bar-flow-archive.mjs";
+import { SessionProfileArchive } from "./session-profile-archive.mjs";
 import { compareInstrumentCandidates } from "./instrument-resolution.mjs";
 import { DatabentoOptionsCatalog, OptionsCatalogError } from "./databento-options-catalog.mjs";
 import { DatabentoOptionTradeStream } from "./databento-option-trades.mjs";
@@ -166,6 +167,16 @@ const barFlow = new BarFlowArchive({
 });
 // Folds sessions in the background, one at a time. Never inside a request.
 barFlow.startWarming();
+/*
+ * Traded volume per price, for windows the live execution ring can no longer
+ * reach. Same discipline as the flow archive: folded once per session in the
+ * background, never on the request path.
+ */
+const sessionProfiles = new SessionProfileArchive({
+  dir: config.recordDir,
+  enabled: config.recordEnabled,
+});
+sessionProfiles.startWarming();
 chartHistory.attach(client);
 /*
  * Range, volume, renko and tick bars cannot be built from minute bars: they
@@ -2390,12 +2401,67 @@ const server = createServer(async (request, response) => {
         instrument.symbol,
         { fromMs: startMs, toMs: endMs },
       );
-      const coverageStartMs = profileTrades[0]?.timestampMs ?? null;
-      const coverageEndMs = profileTrades.at(-1)?.timestampMs ?? null;
+      /*
+       * The ring is bounded, so a window that has rolled out of it comes back
+       * covering a fraction of what was asked for - measured mid-session, that
+       * day's Asia window returned one hour of seven and London's was missing
+       * its first six. Every figure below was then computed correctly over the
+       * wrong span, which is how the daily session profiles "kept
+       * disappearing" as the day went on.
+       *
+       * The folded session covers it, and is read only when it is ALREADY
+       * folded: a fold reads a whole session, and doing that on the request
+       * path is what took the desk down twice.
+       */
+      const ringReachesBack = startMs > 0
+        && profileTrades.length > 0
+        && profileTrades[0].timestampMs <= startMs + 60_000;
+      const foldedProfile = ringReachesBack
+        ? null
+        : await sessionProfiles.load({
+          exchange: instrument.exchange,
+          symbol: instrument.symbol,
+          tickSize: priceTick,
+          fromMs: startMs,
+          toMs: endMs,
+        });
+      const coverageStartMs = foldedProfile?.coverageStartMs
+        ?? profileTrades[0]?.timestampMs ?? null;
+      const coverageEndMs = foldedProfile?.coverageEndMs
+        ?? profileTrades.at(-1)?.timestampMs ?? null;
       let weightedPrice = 0;
       let weightedSquaredPrice = 0;
       let includedTrades = 0;
-      for (const trade of profileTrades) {
+      /*
+       * A folded session arrives already summed per price, so the trade-size
+       * filters cannot be applied to it - those need individual prints, which
+       * folding is precisely the act of discarding. They are only ever set on
+       * the developing profile, where the ring still reaches.
+       */
+      const foldedLevels = foldedProfile
+        && !(minTradeVolume > 0 || maxTradeVolume > 0)
+        ? foldedProfile.levels
+        : null;
+      for (const level of foldedLevels ?? []) {
+        const groupedTick = Math.floor(Math.round(level.price / priceTick) / groupTicks) * groupTicks;
+        let row = rows.get(groupedTick);
+        if (!row) {
+          row = {
+            price: groupedTick * priceTick,
+            volume: 0, bidVolume: 0, askVolume: 0, delta: 0, trades: 0,
+          };
+          rows.set(groupedTick, row);
+        }
+        row.volume += level.volume;
+        row.trades += level.trades;
+        row.askVolume += level.askVolume;
+        row.bidVolume += level.bidVolume;
+        row.delta = row.askVolume - row.bidVolume;
+        weightedPrice += level.price * level.volume;
+        weightedSquaredPrice += level.price * level.price * level.volume;
+        includedTrades += level.trades;
+      }
+      for (const trade of foldedLevels ? [] : profileTrades) {
         if (trade.size < minTradeVolume || (maxTradeVolume > 0 && trade.size > maxTradeVolume)) continue;
         const groupedTick =
           Math.floor(Math.round(trade.price / priceTick) / groupTicks) * groupTicks;
