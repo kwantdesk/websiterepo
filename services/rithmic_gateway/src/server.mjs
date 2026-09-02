@@ -12,6 +12,8 @@ import { DatabentoEquitiesTradeStream } from "./databento-equities-stream.mjs";
 import { FuturesBarArchive, HistoryRequestError } from "./futures-bar-archive.mjs";
 import { QuantDataSurfacePoller } from "./quantdata-surface-poller.mjs";
 import { TradeTapeArchive, MAX_TAPE_PRINTS } from "./trade-tape-archive.mjs";
+import { BarFlowArchive } from "./bar-flow-archive.mjs";
+import { compareInstrumentCandidates } from "./instrument-resolution.mjs";
 import { DatabentoOptionsCatalog, OptionsCatalogError } from "./databento-options-catalog.mjs";
 import { DatabentoOptionTradeStream } from "./databento-option-trades.mjs";
 import { createDesktopStreamGuard } from "./desktop-stream-guard.mjs";
@@ -152,6 +154,16 @@ const chartHistory = new FuturesBarArchive({
   dir: config.recordDir,
   enabled: config.recordEnabled,
 });
+/*
+ * The bid/ask split behind every time-based chart. It reads the same
+ * recordings directory as the bars and the tape - a flow archive pointed
+ * somewhere else would answer "no flow" for every instrument and look exactly
+ * like an instrument that simply is not taped.
+ */
+const barFlow = new BarFlowArchive({
+  dir: config.recordDir,
+  enabled: config.recordEnabled,
+});
 chartHistory.attach(client);
 /*
  * Range, volume, renko and tick bars cannot be built from minute bars: they
@@ -269,6 +281,17 @@ function requestedInstrument(url, body = {}, options = {}) {
       "",
   ).toUpperCase();
   const requestedRoot = asRoot(String(body.root || requestedSymbol).toUpperCase());
+  /*
+   * The root as ASKED FOR, before micro aliasing.
+   *
+   * "NQ" aliases to root NQ and so does "MNQ", so once the micros were
+   * actually subscribed both NQU6 and MNQU6 became candidates for a plain NQ
+   * request - and MNQU6 sorted first, so NQ charts were served the micro's
+   * history. The micro had only been recorded since the morning it was
+   * subscribed, so every NQ timeframe showed about forty minutes and looked
+   * like the archive had been wiped.
+   */
+  const requestedOwnRoot = contractRoot(String(body.root || requestedSymbol).toUpperCase());
   const requestedExchange = String(
     body.exchange || url.searchParams.get("exchange") || "",
   ).toUpperCase();
@@ -278,10 +301,8 @@ function requestedInstrument(url, body = {}, options = {}) {
       asRoot(row.symbol) === requestedRoot
       && (!requestedExchange || String(row.exchange || "").toUpperCase() === requestedExchange)
     ))
-    .sort((left, right) => {
-      const statusRank = (value) => value === "LIVE" ? 2 : value === "STALE" ? 1 : 0;
-      return statusRank(right.status) - statusRank(left.status);
-    });
+    .sort((left, right) =>
+      compareInstrumentCandidates(left, right, requestedOwnRoot, contractRoot));
   const exact = candidates.find((row) => (
     row.symbol === requestedSymbol
     && (!requestedExchange || String(row.exchange || "").toUpperCase() === requestedExchange)
@@ -394,13 +415,12 @@ function requestedQuoteInstrument(requestedSymbol) {
   const alias = String(requestedSymbol || "").trim();
   const raw = alias.toUpperCase().replace(/\.[VNC]\.\d+$/i, "");
   const root = parentRoot(contractRoot(raw));
+  // The root as asked for, so an NQ quote is NQ's book and not the micro's.
+  const ownRoot = contractRoot(raw);
   const candidates = client.book
     .list()
     .filter((row) => parentRoot(contractRoot(row.symbol)) === root)
-    .sort((left, right) => {
-      const statusRank = (value) => value === "LIVE" ? 2 : value === "STALE" ? 1 : 0;
-      return statusRank(right.status) - statusRank(left.status);
-    });
+    .sort((left, right) => compareInstrumentCandidates(left, right, ownRoot, contractRoot));
   const exact = candidates.find((row) => row.symbol === raw);
   const resolved = exact || candidates[0];
   return {
@@ -1534,14 +1554,59 @@ const server = createServer(async (request, response) => {
         });
       }
       try {
-        return json(response, 200, await chartHistory.load({
+        const history = await chartHistory.load({
           exchange: instrument.exchange,
           symbol: instrument.symbol,
           interval: url.searchParams.get("interval"),
           fromMs: url.searchParams.get("fromMs"),
           toMs: url.searchParams.get("toMs"),
           limit: url.searchParams.get("limit"),
-        }));
+        });
+        if (url.searchParams.get("orderFlow") !== "1") return json(response, 200, history);
+
+        /*
+         * Aggressor flow for footprint, CVD, delta and Big Trades.
+         *
+         * Attached to the bars rather than fetched separately, because the two
+         * have to describe the same bars - and returned as a MISSING field
+         * rather than as zeros when the instrument has no tape, since a real
+         * zero delta means balanced trade and an absent one means nobody
+         * recorded the side.
+         */
+        const candles = Array.isArray(history.candles) ? history.candles : [];
+        const flowWindow = await barFlow.load({
+          exchange: instrument.exchange,
+          symbol: instrument.symbol,
+          interval: url.searchParams.get("interval"),
+          fromMs: candles.length ? candles[0].timestamp : url.searchParams.get("fromMs"),
+          toMs: url.searchParams.get("toMs"),
+        });
+        let covered = 0;
+        const withFlow = candles.map((candle) => {
+          const flow = flowWindow.flow.get(candle.timestamp);
+          if (!flow) return candle;
+          covered += 1;
+          return {
+            ...candle,
+            // The recorder's own count is the honest one where they differ:
+            // the bar archive counts every print, flow only the sided ones.
+            volume: Math.max(Number(candle.volume ?? 0), flow.volume),
+            trades: flow.trades,
+            askVolume: flow.askVolume,
+            bidVolume: flow.bidVolume,
+            delta: flow.delta,
+            deltaOpen: 0,
+            deltaHigh: flow.deltaHigh,
+            deltaLow: flow.deltaLow,
+            deltaClose: flow.delta,
+          };
+        });
+        return json(response, 200, {
+          ...history,
+          candles: withFlow,
+          executions: url.searchParams.get("exec") === "0" ? [] : flowWindow.executions,
+          flowCoverage: candles.length ? covered / candles.length : 0,
+        });
       } catch (error) {
         const status = error instanceof HistoryRequestError ? error.status : 502;
         return json(response, status, {

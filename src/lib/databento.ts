@@ -575,136 +575,83 @@ export async function getDatabentoOrderFlowHistory(
   start: string,
   end: string,
 ): Promise<DatabentoOrderFlowHistory> {
-  const bars = await getDatabentoBars(symbol, timeframe, start, end);
-  if (!bars.length || isEventBasedChartInterval(timeframe)) {
+  if (isEventBasedChartInterval(timeframe)) {
+    const bars = await getDatabentoBars(symbol, timeframe, start, end);
     return { candles: bars, executions: [] };
   }
 
-  const requestedStart = Date.parse(start);
-  const requestedEnd = Date.parse(end);
-  const safeEnd = Number.isFinite(requestedEnd) ? requestedEnd : Date.now();
-  const size = timeframeMs(timeframe);
-  const latestBarEnd = (bars.at(-1)?.timestamp ?? safeEnd) + size;
-  const flowEndMs = Math.min(safeEnd, latestBarEnd);
-  const flowStartMs = Math.max(
-    Number.isFinite(requestedStart) ? requestedStart : 0,
-    bars[0]?.timestamp ?? 0,
-  );
-  if (flowEndMs <= flowStartMs) {
-    return { candles: bars, executions: [] };
-  }
-  const flowByBucket = new Map<number, {
-    volume: number;
-    trades: number;
-    askVolume: number;
-    bidVolume: number;
-    delta: number;
-    deltaHigh: number;
-    deltaLow: number;
-  }>();
-  type CompactExecution = {
-    timestamp: number;
-    price: number;
-    tradeSize: number;
-    delta: number;
-  };
-  const strongestByMinute = new Map<number, CompactExecution[]>();
-  const consumeTrade = (row: Record<string, unknown>) => {
-    const timestamp = time(
-      row.ts_event
-      ?? row.ts_recv
-      ?? (row.hd as Record<string, unknown> | undefined)?.ts_event,
-    );
-    const tradePrice = price(row.price);
-    const tradeSize = Math.max(0, Number(row.size ?? 0));
-    const aggressor = databentoTradeAggressor(row.side ?? row.aggressor_side);
-    const delta = aggressor === "BUY"
-      ? tradeSize
-      : aggressor === "SELL" ? -tradeSize : 0;
-    if (
-      timestamp < flowStartMs
-      || timestamp >= flowEndMs
-      || tradePrice <= 0
-      || tradeSize <= 0
-      || delta === 0
-    ) return;
-
-    const bucket = Math.floor(timestamp / size) * size;
-    const current = flowByBucket.get(bucket) ?? {
-      volume: 0,
-      trades: 0,
-      askVolume: 0,
-      bidVolume: 0,
-      delta: 0,
-      deltaHigh: 0,
-      deltaLow: 0,
-    };
-    current.volume += tradeSize;
-    current.trades += 1;
-    if (delta > 0) current.askVolume += tradeSize;
-    if (delta < 0) current.bidVolume += tradeSize;
-    current.delta += delta;
-    current.deltaHigh = Math.max(current.deltaHigh, current.delta);
-    current.deltaLow = Math.min(current.deltaLow, current.delta);
-    flowByBucket.set(bucket, current);
-
-    const minute = Math.floor(timestamp / 60_000) * 60_000;
-    const strongest = strongestByMinute.get(minute) ?? [];
-    strongest.push({ timestamp, price: tradePrice, tradeSize, delta });
-    strongest.sort((left, right) =>
-      right.tradeSize - left.tradeSize || left.timestamp - right.timestamp);
-    if (strongest.length > 12) strongest.length = 12;
-    strongestByMinute.set(minute, strongest);
-  };
-  const streamFlow = (availableEndMs: number) => streamHistoricalTradeRows({
-    symbols: symbol,
-    stype_in: isContinuousFuture(symbol) ? "continuous" : "raw_symbol",
-    start: new Date(flowStartMs).toISOString(),
-    end: new Date(availableEndMs).toISOString(),
-  }, consumeTrade);
-  try {
-    await streamFlow(flowEndMs);
-  } catch (error) {
-    const availableEndMs = Number((error as Error & { availableEndMs?: number }).availableEndMs);
-    if (!Number.isFinite(availableEndMs) || availableEndMs <= flowStartMs) throw error;
-    await streamFlow(Math.min(flowEndMs, availableEndMs - 1));
-  }
-
-  const candles = bars.map((bar) => {
-    const flow = flowByBucket.get(Math.floor(bar.timestamp / size) * size);
-    if (!flow) return bar;
-    return {
-      ...bar,
-      volume: Math.max(Number(bar.volume ?? 0), flow.volume),
-      trades: flow.trades,
-      askVolume: flow.askVolume,
-      bidVolume: flow.bidVolume,
-      delta: flow.delta,
-      deltaOpen: 0,
-      deltaHigh: flow.deltaHigh,
-      deltaLow: flow.deltaLow,
-      deltaClose: flow.delta,
-    };
+  /*
+   * Bars and their aggressor flow come back together, from the collector.
+   *
+   * This used to fetch the bars and then stream the vendor's raw trades to
+   * rebuild the bid/ask split. That subscription is gone, and because the
+   * flow was fetched inside the same call, its failure threw away the BARS
+   * too - so every time-based chart fell back to whatever it had accumulated
+   * live and showed only the last few minutes. The bars were sitting on our
+   * own disk the whole time.
+   *
+   * The aggregation happens on the gateway rather than here: a five-day NQ
+   * window is 1.5 million prints and 6 MB gzipped per pane per load, against
+   * roughly 1,400 rows once folded into bars.
+   */
+  const requestedFrom = Date.parse(start);
+  const requestedTo = Date.parse(completedHistoricalEnd(end));
+  const query = new URLSearchParams({
+    symbol: contractRootSymbol(symbol),
+    interval: timeframe,
+    orderFlow: "1",
   });
+  if (Number.isFinite(requestedFrom)) query.set("fromMs", String(requestedFrom));
+  if (Number.isFinite(requestedTo)) query.set("toMs", String(requestedTo));
+  const response = await fetchInstitutionalMarketData(`/v1/market-data/history?${query}`);
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(`Chart history is unavailable (${response.status}): ${detail.slice(0, 300)}`);
+  }
+  const payload = (await response.json()) as { candles?: unknown; executions?: unknown };
 
-  // Raw GLBX trades are extremely dense. Keeping only the latest prints made
-  // Big Trades appear to begin at the moment the indicator was enabled. Keep
-  // the strongest executions from every minute instead: the full tape still
-  // builds exact CVD/effort candles above, while this compact, time-distributed
-  // sample preserves historical large prints without shipping millions of
-  // ordinary executions to the browser.
-  const compactExecutions = [...strongestByMinute.values()]
-    .flat()
-    .sort((left, right) => left.timestamp - right.timestamp)
-    .slice(-50_000)
-    .map((trade): DatabentoExecutionTuple => [
-      trade.timestamp,
-      trade.price,
-      trade.tradeSize,
-      trade.delta,
-    ]);
+  const candles = (Array.isArray(payload.candles) ? payload.candles : [])
+    .map((row) => {
+      const candle = row as Record<string, unknown>;
+      const bar: DatabentoBar & Record<string, unknown> = {
+        timestamp: Number(candle.timestamp),
+        open: Number(candle.open),
+        high: Number(candle.high),
+        low: Number(candle.low),
+        close: Number(candle.close),
+        volume: Number(candle.volume ?? 0),
+      };
+      /*
+       * Flow is copied across only when the bar actually carries it. An
+       * untaped instrument returns bars with no flow fields at all, and
+       * filling those in as zeros would claim the market traded perfectly
+       * balanced when the truth is that nobody recorded the side.
+       */
+      if (candle.delta !== undefined) {
+        bar.trades = Number(candle.trades ?? 0);
+        bar.askVolume = Number(candle.askVolume ?? 0);
+        bar.bidVolume = Number(candle.bidVolume ?? 0);
+        bar.delta = Number(candle.delta ?? 0);
+        bar.deltaOpen = 0;
+        bar.deltaHigh = Number(candle.deltaHigh ?? 0);
+        bar.deltaLow = Number(candle.deltaLow ?? 0);
+        bar.deltaClose = Number(candle.delta ?? 0);
+      }
+      return bar;
+    })
+    .filter((row) => row.timestamp > 0 && row.close > 0)
+    .sort((a, b) => a.timestamp - b.timestamp);
 
-  return { candles, executions: compactExecutions };
+  const executions = (Array.isArray(payload.executions) ? payload.executions : [])
+    .map((row) => {
+      const tuple = row as unknown[];
+      return [
+        Number(tuple[0]), Number(tuple[1]), Number(tuple[2]), Number(tuple[3]),
+      ] as DatabentoExecutionTuple;
+    })
+    .filter((tuple) => tuple[0] > 0 && tuple[1] > 0 && tuple[2] > 0);
+
+  return { candles, executions };
 }
 
 export async function getDatabentoBarsWithOrderFlow(
