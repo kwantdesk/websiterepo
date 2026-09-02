@@ -244,7 +244,21 @@ async function bodyJson(request) {
   return JSON.parse(Buffer.concat(chunks).toString("utf8"));
 }
 
-function requestedInstrument(url, body = {}) {
+/**
+ * Resolve a requested symbol to a contract the collector actually carries.
+ *
+ * `exactRoot` refuses the micro-to-parent aliasing below. That aliasing is
+ * right for a quote - a micro tracks its parent tick for tick, and for a long
+ * time the micros were not subscribed at all, so NQ's book was the only
+ * honest price available for MNQ. It is wrong for anything that returns the
+ * instrument's OWN data: asked for MNQ prints it hands back NQ's, and the
+ * caller cannot tell, because NQ prints look exactly like the MNQ prints it
+ * expected. Measured before this: an MNQ range chart and an NQ range chart
+ * returned byte-identical bars.
+ */
+function requestedInstrument(url, body = {}, options = {}) {
+  const exactRoot = options.exactRoot === true;
+  const asRoot = (value) => (exactRoot ? contractRoot(value) : parentRoot(contractRoot(value)));
   const requestedSymbol = String(
     body.contractSymbol ||
       body.symbol ||
@@ -254,14 +268,14 @@ function requestedInstrument(url, body = {}) {
       url.searchParams.get("root") ||
       "",
   ).toUpperCase();
-  const requestedRoot = parentRoot(contractRoot(String(body.root || requestedSymbol).toUpperCase()));
+  const requestedRoot = asRoot(String(body.root || requestedSymbol).toUpperCase());
   const requestedExchange = String(
     body.exchange || url.searchParams.get("exchange") || "",
   ).toUpperCase();
   const candidates = client.book
     .list()
     .filter((row) => (
-      parentRoot(contractRoot(row.symbol)) === requestedRoot
+      asRoot(row.symbol) === requestedRoot
       && (!requestedExchange || String(row.exchange || "").toUpperCase() === requestedExchange)
     ))
     .sort((left, right) => {
@@ -1468,7 +1482,13 @@ const server = createServer(async (request, response) => {
        * a range chart asks for a few hours, and a whole session unasked is
        * megabytes nobody wanted.
        */
-      const instrument = requestedInstrument(url);
+      /*
+       * Exact root: an MNQ chart must be built from MNQ prints. The default
+       * resolution aliases a micro to its parent, which for a tape means
+       * silently serving NQ's prints as MNQ's - indistinguishable to the
+       * caller, and wrong.
+       */
+      const instrument = requestedInstrument(url, {}, { exactRoot: true });
       try {
         return json(response, 200, await tradeTape.load({
           exchange: instrument.exchange,

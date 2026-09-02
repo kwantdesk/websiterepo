@@ -6,6 +6,7 @@ import {
   type MarketTrade,
 } from "@/lib/eventBars";
 import type { Candle } from "@/lib/backtester";
+import { fetchRecordedTrades } from "@/lib/recordedTradeTape.server";
 import { cmeEventTailCutoffMs } from "@/lib/chartHistoryWindow";
 import { replayEventFlowWindow } from "@/lib/replayExecutionWindow";
 import {
@@ -137,89 +138,44 @@ async function streamEventBars(args: {
   end: number;
   canRetryEnd?: boolean;
 }): Promise<Candle[]> {
-  if (!vendorMarketDataConfigured("databento")) throw new Error("CME market data is not configured.");
-  const schema = eventHistorySchema(args.timeframe);
-  const form = new URLSearchParams({
-    dataset: "GLBX.MDP3",
-    encoding: "json",
-    pretty_px: "false",
-    pretty_ts: "false",
-    map_symbols: "false",
-    symbols: args.symbol,
-    stype_in: isContinuousFuture(args.symbol) ? "continuous" : "raw_symbol",
-    schema,
-    start: new Date(args.start).toISOString(),
-    end: new Date(args.end).toISOString(),
-  });
-  const response = await vendorMarketDataFetch("databento", "/v0/timeseries.get_range", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      // The VPS may retain this large rolling archive for several minutes.
-      // Event geometry is continued by live executions, unlike ordinary
-      // clock candles where a stale archive could create missing buckets.
-      "X-KwantDesk-Event-History": "1",
-    },
-    body: form,
-    cache: "no-store",
-    signal: AbortSignal.timeout(280_000),
-  });
-  if (!response.ok) {
-    const detail = await response.text();
-    const completedEnd = response.status === 422 && args.canRetryEnd !== false
-      ? availableEnd(detail)
-      : null;
-    if (completedEnd && completedEnd > args.start && completedEnd < args.end) {
-      return streamEventBars({ ...args, end: completedEnd - 1, canRetryEnd: false });
-    }
-    throw new Error(`CME event history failed (${response.status}): ${detail.slice(0, 180)}`);
-  }
-  if (!response.body) throw new Error("CME returned an empty event-history stream.");
+  /*
+   * Built from the desk's own recorded prints.
+   *
+   * This asked the vendor for a raw GLBX trades feed, which now answers 422
+   * "requires a subscription" for the whole window - so every range, volume,
+   * renko and tick chart returned no history at all. The prints the geometry
+   * needs are the ones the collector has been recording the whole time.
+   */
+  const trades = (await fetchRecordedTrades({
+    symbol: args.symbol,
+    startMs: args.start,
+    endMs: args.end,
+  })).map((trade) => ({
+    timestamp: trade.timestamp,
+    price: trade.price,
+    size: trade.size,
+    trades: 1,
+    // The tape carries the recorded aggressor as 1 / -1 / 0. Zero means the
+    // feed did not say, and a delta bar must show no delta rather than a
+    // guessed one.
+    delta: trade.side > 0 ? trade.size : trade.side < 0 ? -trade.size : 0,
+  } satisfies MarketTrade));
 
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
   let bars: Candle[] = [];
-  let batch: MarketTrade[] = [];
-  let malformed = 0;
-  const flush = () => {
-    if (!batch.length) return;
-    bars = applyMarketTradesToEventBars(bars, batch, args.timeframe, args.symbol, MAX_EVENT_BARS);
-    batch = [];
-  };
-  const consume = (line: string) => {
-    const text = line.trim();
-    if (!text) return;
-    try {
-      const decoded = JSON.parse(text) as unknown;
-      const rows = Array.isArray(decoded) ? decoded : [decoded];
-      rows.forEach((row) => {
-        if (!row || typeof row !== "object" || Array.isArray(row)) return;
-        const record = row as Record<string, unknown>;
-        const trade = decodeTrade(record);
-        if (trade) batch.push(trade);
-      });
-      if (batch.length >= EVENT_BAR_FLUSH_SIZE) flush();
-    } catch {
-      malformed += 1;
-    }
-  };
-
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    let newline = buffer.indexOf("\n");
-    while (newline >= 0) {
-      consume(buffer.slice(0, newline));
-      buffer = buffer.slice(newline + 1);
-      newline = buffer.indexOf("\n");
-    }
+  /*
+   * In batches, exactly as the streaming path did. The builder carries the
+   * open bar across calls, so this is only about peak memory - a whole
+   * session handed over in one array would hold every print live at once.
+   */
+  for (let index = 0; index < trades.length; index += EVENT_BAR_FLUSH_SIZE) {
+    bars = applyMarketTradesToEventBars(
+      bars,
+      trades.slice(index, index + EVENT_BAR_FLUSH_SIZE),
+      args.timeframe,
+      args.symbol,
+      MAX_EVENT_BARS,
+    );
   }
-  buffer += decoder.decode();
-  consume(buffer);
-  flush();
-  if (malformed > 10 && !bars.length) throw new Error("CME returned malformed event-history records.");
   return bars;
 }
 
@@ -237,129 +193,49 @@ async function streamEventFlow(args: {
   end: number;
   canRetryEnd?: boolean;
 }): Promise<{ candles: Candle[]; executions: DatabentoEventExecutionTuple[] }> {
-  if (!vendorMarketDataConfigured("databento")) throw new Error("CME market data is not configured.");
-  const form = new URLSearchParams({
-    dataset: "GLBX.MDP3",
-    encoding: "json",
-    pretty_px: "false",
-    pretty_ts: "false",
-    map_symbols: "false",
-    symbols: args.symbol,
-    stype_in: isContinuousFuture(args.symbol) ? "continuous" : "raw_symbol",
-    schema: "trades",
-    // CVD must cover the same requested history as the chart. Aggregate the
-    // complete raw tape into its event-bar boundaries on the server instead
-    // of returning hundreds of thousands of one-second flow buckets.
-    start: new Date(args.start).toISOString(),
-    end: new Date(args.end).toISOString(),
+  // The same recorded prints the geometry above was built from, bucketed for
+  // Big Trades and live-seam repair.
+  const trades = await fetchRecordedTrades({
+    symbol: args.symbol,
+    startMs: args.start,
+    endMs: args.end,
   });
-  const response = await vendorMarketDataFetch("databento", "/v0/timeseries.get_range", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: form,
-    cache: "no-store",
-    signal: AbortSignal.timeout(280_000),
-  });
-  if (!response.ok) {
-    const detail = await response.text();
-    const completedEnd = response.status === 422 && args.canRetryEnd !== false
-      ? availableEnd(detail)
-      : null;
-    if (completedEnd && completedEnd > args.start && completedEnd < args.end) {
-      return streamEventFlow({
-        ...args,
-        end: completedEnd - 1,
-        canRetryEnd: false,
-      });
-    }
-    throw new Error(`CME execution history failed (${response.status}): ${detail.slice(0, 180)}`);
-  }
-  if (!response.body) return { candles: args.candles, executions: [] };
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
   const executions: DatabentoEventExecutionTuple[] = [];
   const recentExecutionStart = args.end - EVENT_EXECUTION_LOOKBACK_MS;
-  let buffer = "";
-  const append = (row: Record<string, unknown>) => {
-    const timestamp = eventTime(
-      row.ts_event
-      ?? row.ts_recv
-      ?? (row.hd as Record<string, unknown> | undefined)?.ts_event,
-    );
-    const tradePrice = fixedPrice(row.price);
-    const size = Math.max(0, Number(row.size ?? 0));
-    const aggressor = databentoTradeAggressor(row.side ?? row.aggressor_side);
-    // Databento's trade side is the aggressor: Bid is a buyer and Ask a seller.
-    const askVolume = aggressor === "BUY" ? size : 0;
-    const bidVolume = aggressor === "SELL" ? size : 0;
-    const delta = askVolume - bidVolume;
-    if (timestamp <= 0 || tradePrice <= 0 || size <= 0 || delta === 0 || !args.candles.length) return;
 
+  for (const trade of trades) {
+    const askVolume = trade.side > 0 ? trade.size : 0;
+    const bidVolume = trade.side < 0 ? trade.size : 0;
+    const delta = askVolume - bidVolume;
+    // A print the feed gave no side for carries no delta, so it cannot belong
+    // to a flow bucket - the same test the vendor path applied.
+    if (delta === 0 || !args.candles.length) continue;
     // Big Trades and live seam repair only need the recent compact tape. CVD
-    // has already received the full-history flow above.
-    if (timestamp < recentExecutionStart) return;
-    const bucketTimestamp = Math.floor(timestamp / EVENT_FLOW_BUCKET_MS) * EVENT_FLOW_BUCKET_MS;
+    // has already received the full-history flow through the bar geometry.
+    if (trade.timestamp < recentExecutionStart) continue;
+
+    const bucketTimestamp = Math.floor(trade.timestamp / EVENT_FLOW_BUCKET_MS) * EVENT_FLOW_BUCKET_MS;
     const previous = executions.at(-1);
     if (previous?.[0] === bucketTimestamp) {
-      previous[1] = tradePrice;
-      previous[2] += size;
+      previous[1] = trade.price;
+      previous[2] += trade.size;
       previous[3] += delta;
       previous[4] = Number(previous[4] ?? 0) + askVolume;
       previous[5] = Number(previous[5] ?? 0) + bidVolume;
       previous[6] = Number(previous[6] ?? 0) + 1;
-      return;
+      continue;
     }
-    executions.push([
-      bucketTimestamp,
-      tradePrice,
-      size,
-      delta,
-      askVolume,
-      bidVolume,
-      1,
-      "flow",
-    ]);
+    executions.push([bucketTimestamp, trade.price, trade.size, delta, askVolume, bidVolume, 1, "flow"]);
     if (executions.length > MAX_EVENT_FLOW_BUCKETS) {
       executions.splice(0, executions.length - MAX_EVENT_FLOW_BUCKETS);
     }
-  };
-  const consume = (line: string) => {
-    const text = line.trim();
-    if (!text) return;
-    try {
-      const decoded = JSON.parse(text) as unknown;
-      const rows = Array.isArray(decoded) ? decoded : [decoded];
-      rows.forEach((row) => {
-        if (row && typeof row === "object" && !Array.isArray(row)) {
-          append(row as Record<string, unknown>);
-        }
-      });
-    } catch {
-      // One malformed line must not discard the valid tape around it.
-    }
-  };
-
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    let newline = buffer.indexOf("\n");
-    while (newline >= 0) {
-      consume(buffer.slice(0, newline));
-      buffer = buffer.slice(newline + 1);
-      newline = buffer.indexOf("\n");
-    }
   }
-  buffer += decoder.decode();
-  consume(buffer);
+
   return {
     // Geometry and full-window order flow were already calculated from the
-    // exact same native execution stream. Never overwrite a threshold bar
-    // with a second-pass aggregate: one large execution can legitimately be
-    // split across several volume bars at the same source timestamp.
+    // exact same execution stream. Never overwrite a threshold bar with a
+    // second-pass aggregate: one large execution can legitimately be split
+    // across several volume bars at the same source timestamp.
     candles: args.candles,
     executions,
   };
