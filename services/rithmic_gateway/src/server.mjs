@@ -2786,6 +2786,10 @@ async function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true;
 
+  // A planned restart still creates a period the collector did not observe.
+  // Mark it before detaching/closing so replay never silently joins the two
+  // sides of a deployment boundary and calls them continuous.
+  recorder.writeGapMarker("collector shutdown");
   // The tape first, and awaited.
   try { await recorder.close(); } catch { /* keep shutting down */ }
   try { await chartHistory.flush(); } catch { /* keep shutting down */ }

@@ -12,11 +12,13 @@ on a persistent Docker volume.
 
 Two silent coverage defects were fixed: unmapped Rithmic market messages kept
 their bytes inside the decoder but lost them at the recorder event boundary;
-and three direct QuantData clients bypassed the otherwise central response
-archive. Unmapped Rithmic wire bytes now reach disk, and the live QuantData
+three direct QuantData clients bypassed the otherwise central response
+archive; and planned collector restarts did not write the GAP marker used for
+unplanned disconnects. Unmapped Rithmic wire bytes now reach disk, and the live QuantData
 snapshot stream, cash/index history service and daily cash-index collector now
 archive every successful provider response alongside the request that produced
-it. `/health.archiveStorage` now makes archive disk exhaustion visible.
+it. Every future shutdown marks the unobserved interval explicitly, and
+`/health.archiveStorage` now makes archive disk exhaustion visible.
 
 Verified by the 309-test gateway suite plus focused syntax and archive tests.
 Deployed to the VPS and checked against the live archive after restart.

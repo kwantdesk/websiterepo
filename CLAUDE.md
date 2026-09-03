@@ -1191,6 +1191,8 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
   than configuration alone.
 - Fixed unmapped Rithmic templates losing their preserved wire bytes between
   protocol decoding and the recorder event.
+- Made planned collector shutdowns write the same explicit GAP boundary used
+  for unplanned feed loss before the recorder closes.
 - Routed the direct QuantData snapshot, history and cash-session collectors
   into the central raw-response archive; vendor-edge requests were already
   covered.

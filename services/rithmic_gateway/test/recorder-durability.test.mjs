@@ -116,8 +116,10 @@ test("there is one shutdown path and it flushes the tape first", () => {
   assert.match(server, /let shuttingDown = false;/, "shutdown is not guarded against re-entry");
 
   const body = server.slice(server.indexOf("async function shutdown() {"));
+  const gapAt = body.indexOf('recorder.writeGapMarker("collector shutdown")');
   const recorderAt = body.indexOf("await recorder.close()");
   const exitAt = body.indexOf("process.exit(0)");
+  assert.ok(gapAt > 0 && gapAt < recorderAt, "a planned restart is not recorded as a GAP");
   assert.ok(recorderAt > 0, "shutdown no longer closes the recorder");
   assert.ok(recorderAt < exitAt, "the process can exit before the tape is written");
   assert.match(body.slice(0, 900), /await chartHistory\.flush\(\)/, "the bar archive is not flushed on shutdown");
