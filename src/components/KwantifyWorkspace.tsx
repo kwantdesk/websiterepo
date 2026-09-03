@@ -8009,7 +8009,12 @@ function WorkspaceChartPaneComponent({
         if (
           usingDatabentoPaneFeed
           && !isEventBasedChartInterval(pane.timeframe)
-          && cmeChartTailNeedsReconciliation(previous, pane.timeframe)
+          && cmeChartTailNeedsReconciliation(
+            previous,
+            pane.timeframe,
+            Date.now(),
+            ticks.map((tick) => tick.timestamp),
+          )
         ) {
           // A stale history seam must never stop the live chart. The old path
           // returned here on every subsequent tick, but did not actually start

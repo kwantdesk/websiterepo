@@ -26,6 +26,11 @@ also lower the generic loading flag before price continuity had recovered.
   first version of that watchdog. It now observes behind the wall clock by a
   bounded, timeframe-aware grace period, preventing a healthy new bucket from
   being quarantined before its first exchange packet arrives.
+- A second real rollover check found that the packet-driven validator examined
+  retained candles before considering the incoming tick it was about to append.
+  The validator now includes the in-flight packet timestamps: the first tick of
+  a healthy bucket satisfies that bucket, but it cannot conceal a genuinely
+  missing earlier bucket.
 - The quarantine cannot be lowered by unrelated order-flow work.
 - Only a reconciled candle series that passes the shared CME continuity check
   clears the quarantine.
@@ -41,7 +46,8 @@ also lower the generic loading flag before price continuity had recovered.
 - Chart hydration/loading-cover tests: 9/9 passed, including the live
   minute-boundary grace regression.
 - Chart history-state regression tests: 5/5 passed.
-- CME session and continuity tests: 13/13 passed.
+- CME session and continuity tests: 14/14 passed, including in-flight
+  new-bucket timestamps versus a genuinely skipped prior bucket.
 - Rithmic candle matrix: 53 instruments x 50 intervals = 2,650 combinations
   passed.
 - Focused ESLint: passed.

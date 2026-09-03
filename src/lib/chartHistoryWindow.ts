@@ -333,8 +333,9 @@ export function cmeChartTailNeedsReconciliation(
   candles: Candle[],
   timeframe: string,
   now = Date.now(),
+  observedTimestamps: readonly number[] = [],
 ) {
-  if (!candles.length) return true;
+  if (!candles.length && !observedTimestamps.length) return true;
   const durationMs = timeframeDurationMs(timeframe);
   if (durationMs === null) return false;
 
@@ -350,7 +351,14 @@ export function cmeChartTailNeedsReconciliation(
   if (!marketIsOpen) return false;
 
   const activeBucket = Math.floor(now / durationMs) * durationMs;
-  const latestBucket = Math.floor((candles.at(-1)?.timestamp ?? 0) / durationMs) * durationMs;
+  const latestObservedTimestamp = observedTimestamps.reduce(
+    (latest, timestamp) => Number.isFinite(timestamp) ? Math.max(latest, timestamp) : latest,
+    Number.NEGATIVE_INFINITY,
+  );
+  const latestBucket = Math.floor(Math.max(
+    candles.at(-1)?.timestamp ?? Number.NEGATIVE_INFINITY,
+    latestObservedTimestamp,
+  ) / durationMs) * durationMs;
   if (latestBucket < activeBucket) return true;
 
   // Validate the recent seam as well as the final timestamp. A single current
@@ -363,8 +371,15 @@ export function cmeChartTailNeedsReconciliation(
     sessionStart ?? Number.NEGATIVE_INFINITY,
     activeBucket - Math.max(30 * 60_000, durationMs * 12),
   );
-  const recentBuckets = [...new Set(candles
-    .map((candle) => Math.floor(candle.timestamp / durationMs) * durationMs)
+  // The live handler validates before it mutates the retained candle array.
+  // Count the timestamps in the packet batch being processed, otherwise the
+  // first healthy tick of every new minute looks one bucket stale and starts a
+  // needless quarantine before that very tick is appended.
+  const recentBuckets = [...new Set([
+    ...candles.map((candle) => candle.timestamp),
+    ...observedTimestamps,
+  ]
+    .map((timestamp) => Math.floor(timestamp / durationMs) * durationMs)
     .filter((timestamp) => timestamp >= recentStart && timestamp <= activeBucket))]
     .sort((left, right) => left - right);
   if (!recentBuckets.length) return true;

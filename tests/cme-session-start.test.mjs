@@ -146,6 +146,26 @@ test("an active chart rejects a fresh cache with missing recent candles", () => 
   ], "5m", Date.parse("2026-08-11T14:12:00.000Z")), false);
 });
 
+test("the first incoming tick satisfies its new bucket before retained state mutates", () => {
+  const now = Date.parse("2026-08-11T14:07:01.000Z");
+  const candle = (iso) => ({
+    timestamp: Date.parse(iso),
+    open: 100,
+    high: 101,
+    low: 99,
+    close: 100,
+  });
+  const incoming = Date.parse("2026-08-11T14:07:00.250Z");
+  assert.equal(cmeChartTailNeedsReconciliation([
+    candle("2026-08-11T14:05:00.000Z"),
+    candle("2026-08-11T14:06:00.000Z"),
+  ], "1m", now, [incoming]), false, "a healthy rollover was quarantined before its tick was appended");
+  assert.equal(cmeChartTailNeedsReconciliation([
+    candle("2026-08-11T14:04:00.000Z"),
+    candle("2026-08-11T14:05:00.000Z"),
+  ], "1m", now, [incoming]), true, "an incoming current tick concealed a genuinely missing prior bucket");
+});
+
 test("the scheduled weekend closure is not reported as a chart-data hole", () => {
   const candle = {
     timestamp: Date.parse("2026-08-07T20:55:00.000Z"),

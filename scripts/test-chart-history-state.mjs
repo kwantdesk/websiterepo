@@ -70,6 +70,11 @@ check("a live continuity failure quarantines the already-settled chart", () => {
   );
   assert.match(
     workspace,
+    /cmeChartTailNeedsReconciliation\(\s*previous,\s*pane\.timeframe,\s*Date\.now\(\),\s*ticks\.map\(\(tick\) => tick\.timestamp\),\s*\)/,
+    "the first tick of a healthy new bucket is checked against stale retained state",
+  );
+  assert.match(
+    workspace,
     /setContinuityRecoveryKey\(\(current\) => current === requestedChartHydrationKey \? null : current\);\s*void writeChartHistoryCache/,
     "successful authoritative reconciliation does not release the continuity quarantine",
   );
