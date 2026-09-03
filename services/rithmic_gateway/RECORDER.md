@@ -46,6 +46,34 @@ market event is gone for good.
 
 What actually arrives can be read from `/health` → `templateCounts`.
 
+Unmapped market-data templates are retained as base64 `raw` wire bytes. They
+are not guessed into a schema: guessing can turn one valid message into
+confidently wrong values. The original bytes allow the correct schema to be
+applied retrospectively once identified. Check the archive record itself, not
+only `protocol.decode()`—a 2026-09-03 audit found that the decoder preserved
+the bytes but the client event accidentally discarded them before recording.
+
+## QuantData capture
+
+Every successful QuantData response received by the production gateway is
+written with its request body and complete provider payload under
+`/recordings/exposure/<CME-trading-date>/`. This includes:
+
+- every options/equities tool response crossing the shared vendor edge;
+- the always-on shared equity and cash-index snapshot poller;
+- direct bounded cash/index history reads; and
+- the completed-session cash-index archiver.
+
+Identical request/payload pairs are deduplicated. A cache hit is not another
+market observation and is not written twice. Provider failures and 429s are
+not archived as data.
+
+QuantData is REST, not a push tape. “Everything received” does **not** mean
+poll every possible endpoint continuously. The autonomous all-surface poller
+stays disabled during the live options session because it previously consumed
+the account-wide request quota and froze every GEX surface. Sampling more
+surfaces is a quota/licensing decision; it is not free historical coverage.
+
 ## Where it is stored
 
 On the VPS, in the Docker volume `deploy_recordings`
@@ -117,6 +145,11 @@ exchange order must sort on the exchange timestamp, not on file position.
   would recover the rest; not built.
 - Retention is unbounded. Nothing prunes, and the tape is 2-3.8 GB per session.
   **Watch the disk.**
+- `/health.archiveStorage` reports real filesystem capacity and enters
+  `critical` at 8 GiB free. This is intentionally not a container-health
+  failure: restarting cannot create space and would add another feed gap.
+- The VPS disk is not a backup. Off-box object storage must be configured and
+  verified before any retention/pruning job is permitted to delete a session.
 
 ## Reading it back
 

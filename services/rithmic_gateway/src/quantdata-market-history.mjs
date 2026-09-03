@@ -33,6 +33,7 @@ export class QuantDataMarketHistoryService {
     archiveReadSession = null,
     timeoutMs = 15_000,
     maxCacheEntries = 64,
+    archiveResponse = null,
     now = () => Date.now(),
   } = {}) {
     this.apiKey = String(apiKey || "").trim();
@@ -40,6 +41,7 @@ export class QuantDataMarketHistoryService {
     this.archiveReadSession = typeof archiveReadSession === "function" ? archiveReadSession : null;
     this.timeoutMs = Math.max(1, Number(timeoutMs) || 15_000);
     this.maxCacheEntries = Math.max(1, Number(maxCacheEntries) || 64);
+    this.archiveResponse = typeof archiveResponse === "function" ? archiveResponse : null;
     this.now = now;
     this.cache = new Map();
     this.inFlight = new Map();
@@ -203,6 +205,11 @@ export class QuantDataMarketHistoryService {
           502,
         );
       }
+      this.archiveResponse?.({
+        path: "/v1/equities/tool/stock-price-over-time",
+        requestBody: Buffer.from(JSON.stringify(body)),
+        payload: Buffer.from(text),
+      });
       try {
         return JSON.parse(text);
       } catch {

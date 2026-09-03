@@ -1183,3 +1183,51 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
 - No Vercel build or push was triggered. `AGENTS.md` still requires explicit
   owner confirmation that the duplicate `websiterepo` Vercel project is
   disconnected before `main` may be pushed; keep only `websiterepo-yfmi`.
+
+## Temporary engineering log — 2026-09-03 — continuous archive truth audit
+
+### Completed
+- Verified the production recorder against advancing live VPS evidence rather
+  than configuration alone.
+- Fixed unmapped Rithmic templates losing their preserved wire bytes between
+  protocol decoding and the recorder event.
+- Routed the direct QuantData snapshot, history and cash-session collectors
+  into the central raw-response archive; vendor-edge requests were already
+  covered.
+- Added real archive-filesystem capacity to `/health` without making low disk
+  trigger a destructive autoheal restart loop.
+- Classified the standalone VPS gateway as unshipped website code in the
+  Vercel ignored-build gate, with regression coverage.
+
+### Verification
+- Gateway suite: 309/309 passed after the final changes.
+- Focused archive, QuantData and unmapped-wire tests plus `node --check`
+  passed. Deploy-cost suite remains blocked by an unrelated stale Gamma
+  Heatmap revision assertion that predates this task; the new build-gate case
+  itself was also exercised with a synthetic Git range.
+
+### Production/VPS actions
+- Gateway deployed from an isolated clean worktree so the in-flight native and
+  SOCIALS changes were not shipped.
+- Production re-check: connected/authenticated, advancing timestamp and
+  recorder counts, no writer drops, raw bytes present on newly arriving
+  unmapped records, QuantData archive advancing, and archive storage reported
+  critical at the real filesystem capacity.
+- Main pushed; the Vercel ignored-build gate skips this gateway/docs/scripts
+  only commit, avoiding a website build that cannot change production bytes.
+
+### Remaining risks
+- The VPS filesystem is 92% used: 52 GB of recordings on an 80 GB disk, only
+  5.8 GB free. No off-box backup credentials, backup client or scheduled job
+  exists. Indefinite retention is impossible until the owner supplies an
+  S3-compatible object-store destination or a larger attached volume. Nothing
+  was deleted.
+- QuantData is request/response, not a push tape. Every response the gateway
+  receives is now archived, but polling every endpoint continuously remains
+  disabled in live hours because it previously exhausted the shared quota and
+  froze GEX. More sampling requires an explicit quota/licensing decision.
+
+### Worktree state
+- Native rebuild, SOCIALS, PDF and local test artifacts from other workstreams
+  remain dirty and were preserved. Only the scoped archive/gateway/cost files
+  were staged.

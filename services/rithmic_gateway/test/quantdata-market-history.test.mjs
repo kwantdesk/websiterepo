@@ -75,11 +75,13 @@ test("completed VPS cash-index archives are aggregated before QuantData is calle
 
 test("SPXW history uses the SPX cash tape and keeps the vendor credential VPS-side", async () => {
   const calls = [];
+  const archived = [];
   const start = Date.UTC(2026, 7, 18, 13, 30);
   const service = new QuantDataMarketHistoryService({
     apiKey: "qd-secret-test",
     now: () => NOW,
     archiveReadSession: async () => null,
+    archiveResponse: (entry) => archived.push(entry),
     fetchImpl: async (url, init) => {
       calls.push({ url, init, body: JSON.parse(init.body) });
       return jsonResponse(providerCandles([
@@ -103,6 +105,10 @@ test("SPXW history uses the SPX cash tape and keeps the vendor credential VPS-si
   assert.equal(result.symbol, "SPXW");
   assert.equal(result.candles[0].close, 6501);
   assert.equal(JSON.stringify(result).includes("qd-secret-test"), false);
+  assert.equal(archived.length, 1, "the direct history response bypassed the QuantData archive");
+  assert.match(archived[0].path, /stock-price-over-time$/);
+  assert.equal(JSON.parse(archived[0].requestBody).filter.ticker, "SPX");
+  assert.ok(JSON.parse(archived[0].payload).data, "the provider payload was not preserved");
 });
 
 test("identical QuantData history requests coalesce and then use the bounded VPS cache", async () => {

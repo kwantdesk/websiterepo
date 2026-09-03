@@ -6,6 +6,7 @@ import { join } from "node:path";
 import protobuf from "protobufjs";
 
 import { loadProtocol } from "../src/protocol.mjs";
+import { RithmicMarketDataClient } from "../src/rithmic-client.mjs";
 
 const PROTO_DIR = fileURLToPath(new URL("../vendor/proto", import.meta.url));
 const protoFile = (name) => join(PROTO_DIR, name);
@@ -44,6 +45,27 @@ test("an unmapped template keeps its wire bytes", async () => {
     buffer.toString("hex"),
     "the retained bytes are not the message that arrived",
   );
+});
+
+test("the client forwards unmapped wire bytes to the recorder boundary", async () => {
+  const root = await protobuf.load([protoFile("message_type.proto")]);
+  const MessageType = root.lookupType("rti.MessageType");
+  const buffer = Buffer.from(MessageType.encode(MessageType.create({ templateId: 153 })).finish());
+  const client = new RithmicMarketDataClient({
+    protoDir: PROTO_DIR,
+    maxTrades: 10,
+    subscriptions: [],
+    allowedInstruments: [],
+    allowedRoots: [],
+  });
+
+  const recorded = new Promise((resolve) => client.once("rawMessage", resolve));
+  client.handleMessage(buffer);
+  const event = await recorded;
+
+  assert.equal(event.templateId, 153);
+  assert.equal(event.payload, null);
+  assert.equal(event.raw, buffer.toString("base64"), "the client dropped the preserved wire bytes");
 });
 
 test("a mapped template still decodes to a payload, not bytes", async () => {

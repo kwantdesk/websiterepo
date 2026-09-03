@@ -100,13 +100,14 @@ function parseSessionCandles(payload) {
 }
 
 export class CashIndexArchiver {
-  constructor({ dir, apiKey, tickers, fetchImpl, log = () => {}, now = () => Date.now() }) {
+  constructor({ dir, apiKey, tickers, fetchImpl, archiveResponse = null, log = () => {}, now = () => Date.now() }) {
     this.dir = dir ? join(dir, DIR_NAME) : null;
     this.apiKey = apiKey || null;
     this.tickers = (tickers && tickers.length ? tickers : DEFAULT_TICKERS)
       .map((ticker) => String(ticker).trim().toUpperCase())
       .filter(Boolean);
     this.fetchImpl = fetchImpl || fetch;
+    this.archiveResponse = typeof archiveResponse === "function" ? archiveResponse : null;
     this.log = log;
     this.now = now;
     this.timer = null;
@@ -223,6 +224,15 @@ export class CashIndexArchiver {
         throw new Error(`provider answered ${response.status}`);
       }
       const payload = await response.json();
+      this.archiveResponse?.({
+        path: "/v1/equities/tool/stock-price-over-time",
+        requestBody: Buffer.from(JSON.stringify({
+          sessionDate,
+          aggregationPeriod: "1m",
+          filter: { ticker },
+        })),
+        payload: Buffer.from(JSON.stringify(payload)),
+      });
       const candles = parseSessionCandles(payload);
       if (!candles.length) {
         // A holiday or unpublished session. Counted attempts stop the retries

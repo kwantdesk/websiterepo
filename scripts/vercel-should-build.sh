@@ -58,7 +58,11 @@ if [ -z "$CHANGED" ]; then
 fi
 
 # Paths that never reach the deployed application.
-SHIPPED=$(printf '%s\n' "$CHANGED" | grep -vE '^(scripts/|docs/|tmp/|tests/|\.github/|CLAUDE\.md$|AGENTS\.md$|README\.md$|.*\.md$)' || true)
+# The Rithmic gateway is built and deployed on its VPS from its own Dockerfile.
+# Nothing under that service is imported by the Next application or included
+# in Vercel's runtime. Rebuilding the 80-page website for a collector-only
+# release spends Build CPU without changing one production website byte.
+SHIPPED=$(printf '%s\n' "$CHANGED" | grep -vE '^(scripts/|docs/|tmp/|tests/|services/rithmic_gateway/|\.github/|CLAUDE\.md$|AGENTS\.md$|README\.md$|.*\.md$)' || true)
 
 if [ -z "$SHIPPED" ]; then
   echo "Only unshipped paths changed — skipping the build:"

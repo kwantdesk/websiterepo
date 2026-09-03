@@ -104,4 +104,9 @@ test("the raw wire payload is what gets archived", () => {
    * that an update happened without what it contained.
    */
   assert.match(client, /this\.emit\("rawMessage", \{[\s\S]{0,200}?payload: decoded\.payload,/);
+  assert.match(
+    client,
+    /\.\.\.\(decoded\.raw \? \{ raw: decoded\.raw \} : \{\}\)/,
+    "unmapped template bytes are not forwarded to the recorder",
+  );
 });

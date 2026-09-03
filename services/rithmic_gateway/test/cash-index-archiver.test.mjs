@@ -43,11 +43,13 @@ function fakeFetch(responder) {
 test("archives a completed session's real minute bars to disk", async () => {
   const dir = mkdtempSync(join(tmpdir(), "cash-index-"));
   const { impl, calls } = fakeFetch(() => providerPayload(390));
+  const rawResponses = [];
   const archiver = new CashIndexArchiver({
     dir,
     apiKey: "test-key",
     tickers: ["SPY"],
     fetchImpl: impl,
+    archiveResponse: (entry) => rawResponses.push(entry),
     now: () => AFTER_CLOSE,
   });
   assert.equal(archiver.latestCompletedSessionDate(), "2026-08-19", "after the close, today is archivable");
@@ -63,6 +65,9 @@ test("archives a completed session's real minute bars to disk", async () => {
   assert.equal(stored.candles.length, 390);
   const sample = stored.candles[10];
   assert.ok(sample.high > Math.max(sample.open, sample.close), "real wicks survive the round trip");
+  assert.ok(rawResponses.length >= 1, "the direct cash-index pull bypassed the raw QuantData archive");
+  assert.equal(JSON.parse(rawResponses[0].requestBody).filter.ticker, "SPY");
+  assert.equal(Object.keys(JSON.parse(rawResponses[0].payload).data).length, 390);
 });
 
 test("mid-session it archives the PRIOR day, never today's partial", async () => {

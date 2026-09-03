@@ -35,6 +35,7 @@ import { discoverRithmicSystems, RithmicMarketDataClient } from "./rithmic-clien
 import { RTraderExcelMarketDataClient } from "./rtrader-excel-client.mjs";
 import { MarketDataRecorder } from "./recorder.mjs";
 import { ExposureArchiver } from "./exposure-archiver.mjs";
+import { archiveStorageHealth } from "./archive-storage-health.mjs";
 import { EventLoopLoadGuard, isDeferrableDuringOverload } from "./event-loop-load-guard.mjs";
 import { VendorDataEdge } from "./vendor-data-edge.mjs";
 import { ZyonServiceProxy, zyonServiceProblem } from "./zyon-service-proxy.mjs";
@@ -124,6 +125,14 @@ const journalService = new JournalServiceProxy({
   serviceToken: config.journalServiceToken,
   timeoutMs: config.journalServiceTimeoutMs,
 });
+// The QuantData counterpart to the Rithmic recorder. It stores the complete
+// successful provider payload plus the request that gives it meaning. The
+// vendor edge and every direct VPS QuantData client feed this same writer.
+const exposureArchiver = new ExposureArchiver({
+  dir: config.recordDir,
+  enabled: config.exposureArchiveEnabled,
+});
+const archiveQuantDataResponse = (entry) => exposureArchiver.archive(entry);
 // Our OWN daily copy of each completed cash-index session's real minute OHLC
 // (the provider only serves it after the close, and keeps it on its own
 // terms). Archived minutes after every close, retried until complete,
@@ -135,15 +144,8 @@ const cashIndexArchiver = new CashIndexArchiver({
     .split(",")
     .map((ticker) => ticker.trim())
     .filter(Boolean),
+  archiveResponse: archiveQuantDataResponse,
   log: (line) => process.stdout.write(`${line}\n`),
-});
-// The options counterpart to the recorder. Every GEX surface in the product —
-// Map, Cal, VUE, BOX, the Gamma page — fetches through the vendor edge, so one
-// writer there captures all of them, and a surface added later is archived
-// without touching this wiring.
-const exposureArchiver = new ExposureArchiver({
-  dir: config.recordDir,
-  enabled: config.exposureArchiveEnabled,
 });
 const vendorDataEdge = new VendorDataEdge(config, fetch, exposureArchiver);
 /*
@@ -238,10 +240,11 @@ const quantDataMarketSnapshots = new QuantDataMarketSnapshotStream({
   timeoutMs: Math.min(10_000, config.vendorRequestTimeoutMs),
   equitySymbols: ["SPY", "QQQ", "IWM", "AAPL", "NVDA", "TSLA", "MSFT", "AMZN", "META", "AMD"],
   indexSymbols: ["SPX", "NDX"],
-});
+}, fetch, archiveQuantDataResponse);
 const quantDataMarketHistory = new QuantDataMarketHistoryService({
   apiKey: config.quantDataApiKey,
   timeoutMs: Math.min(15_000, config.vendorRequestTimeoutMs),
+  archiveResponse: archiveQuantDataResponse,
   archiveReadSession: (ticker, sessionDate) => cashIndexArchiver.readSession(ticker, sessionDate),
 });
 const massiveIndices = new MassiveIndicesStream({
@@ -1237,10 +1240,12 @@ const server = createServer(async (request, response) => {
     return json(response, config.configured ? 200 : 503, {
       ...client.health(),
       recorder: recorder.status(),
+      archiveStorage: await archiveStorageHealth(config.recordDir),
       // Checked the same way as the recorder: archived counts climbing while
       // the options market is open means gamma history is accumulating. A
       // skipped count far above archived is healthy — it is the dedupe working.
       exposure: exposureArchiver.status(),
+      quantDataArchive: exposureArchiver.status(),
       vendorData: vendorDataEdge.health(),
       chartHistory: chartHistory.status(),
       tradeTape: tradeTape.status(),

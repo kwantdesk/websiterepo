@@ -150,6 +150,10 @@ check("a commit that only touches unshipped paths skips the build", () => {
   assert.equal(shouldBuild(["scripts/test-something.mjs"]), false);
   assert.equal(shouldBuild(["docs/notes.md", "CLAUDE.md"]), false);
   assert.equal(shouldBuild(["tests/thing.test.mjs", "scripts/a.mjs", "README.md"]), false);
+  assert.equal(shouldBuild([
+    "services/rithmic_gateway/src/recorder.mjs",
+    "services/rithmic_gateway/deploy/docker-compose.yml",
+  ]), false, "the VPS-only collector must not spend a Vercel website build");
 });
 
 check("anything that ships still builds", () => {

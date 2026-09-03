@@ -76,10 +76,11 @@ function retryDelay(response, fallbackMs) {
  * and never multiply the upstream request count.
  */
 export class QuantDataMarketSnapshotStream extends EventEmitter {
-  constructor(config, fetchImpl = fetch) {
+  constructor(config, fetchImpl = fetch, archiveResponse = null) {
     super();
     this.config = config;
     this.fetch = fetchImpl;
+    this.archiveResponse = typeof archiveResponse === "function" ? archiveResponse : null;
     this.equitySymbols = [...new Set((config.equitySymbols || []).map((value) => String(value).trim().toUpperCase()).filter(Boolean))];
     this.indexSymbols = [...new Set((config.indexSymbols || []).map((value) => String(value).trim().toUpperCase()).filter(Boolean))];
     this.snapshots = new Map();
@@ -135,8 +136,8 @@ export class QuantDataMarketSnapshotStream extends EventEmitter {
     } finally {
       clearTimeout(timeout);
     }
+    const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
-      const payload = await response.json().catch(() => ({}));
       const validationErrors = Array.isArray(payload?.properties?.errors)
         ? payload.properties.errors.map((item) => item?.message).filter(Boolean).join(" | ")
         : "";
@@ -147,7 +148,16 @@ export class QuantDataMarketSnapshotStream extends EventEmitter {
       });
       throw error;
     }
-    return response.json();
+    // This poller talks to QuantData directly rather than through the vendor
+    // edge. Archive the successful provider response here so its continuous
+    // market-map/index observations are not the one blind spot in the central
+    // QuantData archive.
+    this.archiveResponse?.({
+      path,
+      requestBody: Buffer.from(JSON.stringify(body)),
+      payload: Buffer.from(JSON.stringify(payload)),
+    });
+    return payload;
   }
 
   #store(snapshot) {

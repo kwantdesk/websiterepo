@@ -516,6 +516,12 @@ export class RithmicMarketDataClient extends EventEmitter {
         exchange: decoded.payload?.exchange,
         symbol: decoded.payload?.symbol,
         payload: decoded.payload,
+        // Unmapped market-data templates cannot be decoded safely until their
+        // vendor schema is identified. protocol.decode() preserves those
+        // original wire bytes; forwarding them here is essential. Previously
+        // this property was accidentally discarded at the event boundary, so
+        // the recorder wrote { payload: null } and the data itself was lost.
+        ...(decoded.raw ? { raw: decoded.raw } : {}),
         receivedAt: this.status.lastMessageAt,
       });
     }
