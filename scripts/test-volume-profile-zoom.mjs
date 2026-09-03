@@ -10,7 +10,7 @@ execSync(
   `npx esbuild src/lib/nativeVolumeProfilePrimitive.ts --bundle --format=esm --platform=node --alias:@=./src --outfile="${bundle}"`,
   { stdio: "pipe" },
 );
-const { zoomScaledVolumeProfileWidth } = await import(`file://${bundle.replaceAll("\\", "/")}`);
+const { resolveVolumeProfileWidth, zoomScaledVolumeProfileWidth } = await import(`file://${bundle.replaceAll("\\", "/")}`);
 
 const PANE = 1_400;
 const REFERENCE_BARS = 80;
@@ -56,6 +56,25 @@ for (const bars of [REFERENCE_BARS * 8, REFERENCE_BARS * 20, REFERENCE_BARS * 10
 assert.ok(widthAt(REFERENCE_BARS / 2) > FULL, "zooming in must still enlarge the profile");
 assert.ok(widthAt(1) <= PANE * 0.36 + 1e-9, "the pane fraction ceiling still bounds it");
 
+// DeepCharts Width type modes have distinct units. A number must not silently
+// mean the same thing in all four dropdown choices.
+assert.equal(resolveVolumeProfileWidth({
+  mode: "period-percent", value: 50, paneWidth: 1_000, sessionWidth: 600,
+  visibleLogicalSpan: 100, automaticWidth: 123,
+}), 300, "50 period-percent means half the profile period on screen");
+assert.equal(resolveVolumeProfileWidth({
+  mode: "window-percent", value: 50, paneWidth: 1_000, sessionWidth: 600,
+  visibleLogicalSpan: 100, automaticWidth: 123,
+}), 500, "50 window-percent means half the chart window");
+assert.equal(resolveVolumeProfileWidth({
+  mode: "bars", value: 50, paneWidth: 1_000, sessionWidth: 600,
+  visibleLogicalSpan: 100, automaticWidth: 123,
+}), 500, "50 fixed bars means the on-screen width of 50 candles");
+assert.equal(resolveVolumeProfileWidth({
+  mode: "automatic", value: 50, paneWidth: 1_000, sessionWidth: 600,
+  visibleLogicalSpan: 100, automaticWidth: 123,
+}), 123, "automatic retains the chart's adaptive width curve");
+
 rmSync(outDir, { recursive: true, force: true });
 // Profile placement remains stable when the live candle is off screen.
 //
@@ -80,4 +99,4 @@ rmSync(outDir, { recursive: true, force: true });
   assert.match(primitive, /forwardVolumeProfileLevelSegment/);
 }
 
-console.log("volume profile zoom curve: 6/6 checks passed");
+console.log("volume profile zoom and DeepCharts width modes: 10/10 checks passed");

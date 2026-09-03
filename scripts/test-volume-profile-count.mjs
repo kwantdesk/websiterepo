@@ -98,7 +98,7 @@ check("recomputing when the count changes", () => {
 check("the setting is reachable in the dialog", () => {
   // It was stored and migrated but had no control anywhere, so the only way to
   // change it was to hand-edit saved workspace state.
-  assert.ok(control.includes("<span>Number of profiles</span>"), "there is no control for it");
+  assert.ok(control.includes('label="Number of profiles"'), "there is no control for it");
   assert.ok(
     control.includes("numberOfProfiles: next"),
     "the control does not write the setting",

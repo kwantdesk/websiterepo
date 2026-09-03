@@ -2012,27 +2012,33 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     pocHighlightOpacity: 100,
     developingPocStartMinutes: 0,
     shiftedPocTicks: 4,
-    shiftedPocOpacity: 100,
+    shiftedPocOpacity: 35,
+    pocLineMode: "show",
+    pocExtensionMode: "to-window-end",
     // Value Area
-    valueAreaLineWidth: 1,
+    valueAreaLineWidth: 2,
     valueAreaDeveloping: "no",
+    valueAreaExtensionMode: "to-window-end",
     // Peak and Valley: high- and low-volume nodes plus the band between the
     // outermost peaks. Off by default so existing profiles look unchanged.
     showPeaks: false,
     showValleys: false,
     pvSensitivity: 40,
     pvExcludeHighLow: true,
-    peakMinVolumePercent: 0,
-    valleyMaxVolumePercent: 100,
+    peakMinVolumePercent: 1,
+    valleyMaxVolumePercent: 0,
     peakOnlyOutsideValueArea: false,
     valleyOnlyOutsideValueArea: false,
-    peakLineWidth: 1,
-    valleyLineWidth: 1,
+    peakLineWidth: 2,
+    valleyLineWidth: 2,
+    peakExtensionMode: "none",
+    valleyExtensionMode: "none",
     showBusinessZone: false,
-    businessZoneOpacity: 18,
-    businessZoneLineWidth: 1,
+    businessZoneOpacity: 3,
+    businessZoneLineWidth: 0,
     // VWAP of the profile itself, with up to three deviation envelopes.
     vwapLineWidth: 1,
+    vwapExtensionMode: "none",
     vwapBand1: 1,
     vwapBand2: 2,
     vwapBand3: 0,
@@ -2052,6 +2058,7 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     levelLabelSide: "right",
     showLevelLabelPrice: true,
     visualStyle: "automatic",
+    widthMode: "period-percent",
     borderWidth: 1,
     numberOfProfiles: 0,
     /*
@@ -2105,7 +2112,7 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     showVwapLine: false,
     showVwapBands: false,
     showSummary: false,
-    profileSettingsVersion: 13,
+    profileSettingsVersion: 14,
     /*
      * `align` is gone: it was stored, migrated and read by nothing. Alignment
      * is `snapMode`, which is the live control and the one the dialog offers -
@@ -2615,7 +2622,7 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
   }
   if (
     normalizedInstance.indicatorId === "kwant-profile"
-    && Number(normalizedInstance.settings?.profileSettingsVersion) < 13
+    && Number(normalizedInstance.settings?.profileSettingsVersion) < 14
   ) {
     return {
       ...normalizedInstance,
@@ -2645,8 +2652,8 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         showBusinessZone: normalizedInstance.settings?.showBusinessZone ?? false,
         pvSensitivity: normalizedInstance.settings?.pvSensitivity ?? 40,
         pvExcludeHighLow: normalizedInstance.settings?.pvExcludeHighLow ?? true,
-        peakMinVolumePercent: normalizedInstance.settings?.peakMinVolumePercent ?? 0,
-        valleyMaxVolumePercent: normalizedInstance.settings?.valleyMaxVolumePercent ?? 100,
+        peakMinVolumePercent: normalizedInstance.settings?.peakMinVolumePercent ?? 1,
+        valleyMaxVolumePercent: normalizedInstance.settings?.valleyMaxVolumePercent ?? 0,
         showSummaryVolume: normalizedInstance.settings?.showSummaryVolume ?? true,
         showSummaryTrades: normalizedInstance.settings?.showSummaryTrades ?? false,
         filterMode: normalizedInstance.settings?.filterMode ?? "none",
@@ -2655,7 +2662,13 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         developingPocStartMinutes: normalizedInstance.settings?.developingPocStartMinutes ?? 0,
         shiftedPocTicks: normalizedInstance.settings?.shiftedPocTicks ?? 4,
         shiftedPocOpacity: normalizedInstance.settings?.shiftedPocOpacity ?? 35,
+        pocLineMode: normalizedInstance.settings?.pocLineMode ?? "show",
+        pocExtensionMode: normalizedInstance.settings?.pocExtensionMode ?? "to-window-end",
         valueAreaDeveloping: normalizedInstance.settings?.valueAreaDeveloping ?? "no",
+        valueAreaExtensionMode: normalizedInstance.settings?.valueAreaExtensionMode ?? "to-window-end",
+        peakExtensionMode: normalizedInstance.settings?.peakExtensionMode ?? "none",
+        valleyExtensionMode: normalizedInstance.settings?.valleyExtensionMode ?? "none",
+        vwapExtensionMode: normalizedInstance.settings?.vwapExtensionMode ?? "none",
         // A profile shows volume as standard, but "Delta and total volume" is
         // a real choice in the dropdown and must survive. Coercing it back to
         // plain volume here meant the setting silently reverted every time the
@@ -2665,6 +2678,7 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         showLevelLabelPrice: normalizedInstance.settings?.showLevelLabelPrice ?? true,
         levelLineStyle: normalizedInstance.settings?.levelLineStyle ?? "dash",
         visualStyle: normalizedInstance.settings?.visualStyle ?? "automatic",
+        widthMode: normalizedInstance.settings?.widthMode ?? "period-percent",
         borderWidth: normalizedInstance.settings?.borderWidth ?? 1,
         numberOfProfiles: normalizedInstance.settings?.numberOfProfiles ?? 0,
         previousProfileWidth: normalizedInstance.settings?.previousProfileWidth
@@ -2675,24 +2689,23 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         sessionStartMinutes: normalizedInstance.settings?.sessionStartMinutes ?? 8 * 60 + 30,
         sessionEndMinutes: normalizedInstance.settings?.sessionEndMinutes ?? 15 * 60 + 15,
         useEndSessionAsStartDay: normalizedInstance.settings?.useEndSessionAsStartDay ?? false,
-        // Desk standard (v13): manual 4-tick rows and a 68% value area on
-        // every profile. Forced, not defaulted — this is a deliberate reset of
-        // the granularity and value area across saved charts.
-        groupingMode: "manual",
+        // DeepCharts baseline. Existing trader choices always win during a
+        // schema upgrade; a settings migration must never retune a profile.
+        groupingMode: normalizedInstance.settings?.groupingMode ?? "manual",
         gradientPreset: normalizedInstance.settings?.gradientPreset ?? VOLUME_PROFILE_GRADIENT_OFF,
         sessionAsiaEnabled: normalizedInstance.settings?.sessionAsiaEnabled ?? true,
         sessionLondonEnabled: normalizedInstance.settings?.sessionLondonEnabled ?? true,
         sessionNewYorkEnabled: normalizedInstance.settings?.sessionNewYorkEnabled ?? true,
-        groupTicks: 4,
-        valueAreaPercent: DEFAULT_VOLUME_PROFILE_VALUE_AREA_PERCENT,
-        profileSettingsVersion: 13,
+        groupTicks: normalizedInstance.settings?.groupTicks ?? 4,
+        valueAreaPercent: normalizedInstance.settings?.valueAreaPercent ?? DEFAULT_VOLUME_PROFILE_VALUE_AREA_PERCENT,
+        profileSettingsVersion: 14,
       },
     };
   }
   if (
     ["weekly-volume-profile", "custom-draw-on-volume-profile", "ask-bid-volume-profile", "delta-profile"]
       .includes(normalizedInstance.indicatorId)
-    && Number(normalizedInstance.settings?.profileSettingsVersion) < 13
+    && Number(normalizedInstance.settings?.profileSettingsVersion) < 14
   ) {
     return {
       ...normalizedInstance,
@@ -2714,8 +2727,8 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         showBusinessZone: normalizedInstance.settings?.showBusinessZone ?? false,
         pvSensitivity: normalizedInstance.settings?.pvSensitivity ?? 40,
         pvExcludeHighLow: normalizedInstance.settings?.pvExcludeHighLow ?? true,
-        peakMinVolumePercent: normalizedInstance.settings?.peakMinVolumePercent ?? 0,
-        valleyMaxVolumePercent: normalizedInstance.settings?.valleyMaxVolumePercent ?? 100,
+        peakMinVolumePercent: normalizedInstance.settings?.peakMinVolumePercent ?? 1,
+        valleyMaxVolumePercent: normalizedInstance.settings?.valleyMaxVolumePercent ?? 0,
         showSummaryVolume: normalizedInstance.settings?.showSummaryVolume ?? true,
         showSummaryTrades: normalizedInstance.settings?.showSummaryTrades ?? false,
         filterMode: normalizedInstance.settings?.filterMode ?? "none",
@@ -2724,7 +2737,13 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         developingPocStartMinutes: normalizedInstance.settings?.developingPocStartMinutes ?? 0,
         shiftedPocTicks: normalizedInstance.settings?.shiftedPocTicks ?? 4,
         shiftedPocOpacity: normalizedInstance.settings?.shiftedPocOpacity ?? 35,
+        pocLineMode: normalizedInstance.settings?.pocLineMode ?? "show",
+        pocExtensionMode: normalizedInstance.settings?.pocExtensionMode ?? "to-window-end",
         valueAreaDeveloping: normalizedInstance.settings?.valueAreaDeveloping ?? "no",
+        valueAreaExtensionMode: normalizedInstance.settings?.valueAreaExtensionMode ?? "to-window-end",
+        peakExtensionMode: normalizedInstance.settings?.peakExtensionMode ?? "none",
+        valleyExtensionMode: normalizedInstance.settings?.valleyExtensionMode ?? "none",
+        vwapExtensionMode: normalizedInstance.settings?.vwapExtensionMode ?? "none",
         // A profile shows volume as standard, but "Delta and total volume" is
         // a real choice in the dropdown and must survive. Coercing it back to
         // plain volume here meant the setting silently reverted every time the
@@ -2734,6 +2753,7 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         showLevelLabelPrice: normalizedInstance.settings?.showLevelLabelPrice ?? true,
         levelLineStyle: normalizedInstance.settings?.levelLineStyle ?? "dash",
         visualStyle: normalizedInstance.settings?.visualStyle ?? "automatic",
+        widthMode: normalizedInstance.settings?.widthMode ?? "period-percent",
         borderWidth: normalizedInstance.settings?.borderWidth ?? 1,
         numberOfProfiles: normalizedInstance.settings?.numberOfProfiles ?? 0,
         previousProfileWidth: normalizedInstance.settings?.previousProfileWidth
@@ -2744,17 +2764,14 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         sessionStartMinutes: normalizedInstance.settings?.sessionStartMinutes ?? 8 * 60 + 30,
         sessionEndMinutes: normalizedInstance.settings?.sessionEndMinutes ?? 15 * 60 + 15,
         useEndSessionAsStartDay: normalizedInstance.settings?.useEndSessionAsStartDay ?? false,
-        // Desk standard (v13): manual 4-tick rows and a 68% value area on
-        // every profile. Forced, not defaulted — this is a deliberate reset of
-        // the granularity and value area across saved charts.
-        groupingMode: "manual",
+        groupingMode: normalizedInstance.settings?.groupingMode ?? "manual",
         gradientPreset: normalizedInstance.settings?.gradientPreset ?? VOLUME_PROFILE_GRADIENT_OFF,
         sessionAsiaEnabled: normalizedInstance.settings?.sessionAsiaEnabled ?? true,
         sessionLondonEnabled: normalizedInstance.settings?.sessionLondonEnabled ?? true,
         sessionNewYorkEnabled: normalizedInstance.settings?.sessionNewYorkEnabled ?? true,
-        groupTicks: 4,
-        valueAreaPercent: DEFAULT_VOLUME_PROFILE_VALUE_AREA_PERCENT,
-        profileSettingsVersion: 13,
+        groupTicks: normalizedInstance.settings?.groupTicks ?? 4,
+        valueAreaPercent: normalizedInstance.settings?.valueAreaPercent ?? DEFAULT_VOLUME_PROFILE_VALUE_AREA_PERCENT,
+        profileSettingsVersion: 14,
       },
     };
   }

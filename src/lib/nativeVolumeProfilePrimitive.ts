@@ -127,6 +127,36 @@ export function forwardVolumeProfileLevelSegment(
   return endX > sourceFrontX + 0.5 ? { startX: sourceFrontX, endX } : null;
 }
 
+export type VolumeProfileInteractionBar = {
+  timestamp: number;
+  high: number;
+  low: number;
+};
+
+/**
+ * First later real bar that trades through a profile level.
+ *
+ * DeepCharts calls this "Till interaction". Touching the level with either
+ * wick counts; using closes would leave already-tested auction levels on the
+ * chart and using nearest-price tolerances would stop them before a trade
+ * actually occurred.
+ */
+export function firstVolumeProfileLevelInteraction(
+  price: number,
+  bars: readonly VolumeProfileInteractionBar[],
+): VolumeProfileInteractionBar | null {
+  for (const bar of bars) {
+    if (
+      Number.isFinite(bar.timestamp)
+      && Number.isFinite(bar.low)
+      && Number.isFinite(bar.high)
+      && bar.low <= price
+      && bar.high >= price
+    ) return bar;
+  }
+  return null;
+}
+
 /**
  * Return the screen-space front edge of the row that owns a profile level.
  *
@@ -303,6 +333,33 @@ export function zoomScaledVolumeProfileWidth({
   );
 }
 
+/** Resolve the four DeepCharts Width type contracts without conflating units. */
+export function resolveVolumeProfileWidth({
+  mode,
+  value,
+  paneWidth,
+  sessionWidth,
+  visibleLogicalSpan,
+  automaticWidth,
+}: {
+  mode: "automatic" | "period-percent" | "window-percent" | "bars";
+  value: number;
+  paneWidth: number;
+  sessionWidth: number;
+  visibleLogicalSpan: number | null;
+  automaticWidth: number | null;
+}) {
+  const safeValue = Math.max(0, Number.isFinite(value) ? value : 0);
+  if (mode === "period-percent") return Math.max(0, sessionWidth) * safeValue / 100;
+  if (mode === "window-percent") return Math.max(0, paneWidth) * safeValue / 100;
+  if (mode === "bars") {
+    return visibleLogicalSpan != null && Number.isFinite(visibleLogicalSpan) && visibleLogicalSpan > 0
+      ? Math.max(0, paneWidth) * safeValue / visibleLogicalSpan
+      : null;
+  }
+  return automaticWidth;
+}
+
 export type NativeVolumeProfileStyle = {
   /**
    * What the bars measure. `volume` is the plain traded-volume profile;
@@ -312,7 +369,7 @@ export type NativeVolumeProfileStyle = {
    * thin row that traded one-sided reads as strongly as a heavy one.
    */
   mode: "volume" | "delta-volume" | "bid-ask" | "delta" | "delta-percentage";
-  widthBasis: "chart" | "session";
+  widthBasis: "automatic" | "period-percent" | "window-percent" | "bars";
   widthPercent: number;
   /**
    * DeepChart's Plot Width/Offset tab: the CURRENT profile and the completed
@@ -383,6 +440,8 @@ export type NativeVolumeProfileStyle = {
   snapMode: "off" | "left" | "right";
   /** Point of Control line weight. */
   pocLineWidth?: number;
+  /** DeepCharts line-extension contract. */
+  pocExtensionMode?: "none" | "until-first-interaction" | "to-window-end";
   /** Trace the POC as it migrated through the session. */
   showDevelopingPoc?: boolean;
   /**
@@ -396,6 +455,7 @@ export type NativeVolumeProfileStyle = {
   developingPocStartMs?: number;
   /** Value Area boundary line weight. */
   valueAreaLineWidth?: number;
+  valueAreaExtensionMode?: "none" | "until-first-interaction" | "to-window-end";
   /** Peak and Valley tab. Peaks are high-volume nodes, valleys low-volume ones. */
   showPeaks?: boolean;
   showValleys?: boolean;
@@ -403,6 +463,8 @@ export type NativeVolumeProfileStyle = {
   valleyColor?: string;
   peakLineWidth?: number;
   valleyLineWidth?: number;
+  peakExtensionMode?: "none" | "until-first-interaction" | "to-window-end";
+  valleyExtensionMode?: "none" | "until-first-interaction" | "to-window-end";
   pvSensitivity?: number;
   pvExcludeHighLow?: boolean;
   peakMinVolumePercent?: number;
@@ -418,6 +480,7 @@ export type NativeVolumeProfileStyle = {
   showVwap?: boolean;
   vwapColor?: string;
   vwapLineWidth?: number;
+  vwapExtensionMode?: "none" | "until-first-interaction" | "to-window-end";
   vwapDash?: number[];
   /** Standard deviations to draw as envelopes around VWAP. */
   vwapBandDeviations?: number[];
@@ -452,6 +515,8 @@ export type NativeVolumeProfileModel = {
   maxAbsDelta: number;
   lowPrice: number;
   highPrice: number;
+  /** Later real candles used to stop "Till interaction" at the first touch. */
+  laterBars?: readonly VolumeProfileInteractionBar[];
   drawingBounds?: {
     startTime: number;
     endTime: number;
@@ -845,27 +910,42 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
         const durationLogicalBars = model.intervalSeconds == null || model.intervalSeconds <= 0
           ? null
           : profileDurationSeconds / model.intervalSeconds;
-        const referenceLogicalBars = customProfile || style.widthBasis === "session"
-          ? durationLogicalBars
-          : CHART_PROFILE_REFERENCE_BARS;
-        const zoomScaledWidth = visibleLogicalRange == null || model.intervalSeconds == null
-          || referenceLogicalBars == null
+        /*
+         * Current and Previous Width are independent in DeepCharts. Resolve
+         * the active value before zoom conversion; the old order converted
+         * every completed profile with the CURRENT width and made Previous
+         * Width a saved control that did nothing on normal chart viewports.
+         */
+        const effectiveWidthPercent = isNewestOfKind
+          ? style.widthPercent
+          : Number(style.previousWidthPercent ?? style.widthPercent);
+        const visibleLogicalSpan = visibleLogicalRange == null
+          ? null
+          : Math.abs(Number(visibleLogicalRange.to) - Number(visibleLogicalRange.from));
+        const automaticWidth = visibleLogicalRange == null || model.intervalSeconds == null
           ? null
           : zoomScaledVolumeProfileWidth({
               paneWidth: usablePaneWidth,
               visibleLogicalFrom: Number(visibleLogicalRange.from),
               visibleLogicalTo: Number(visibleLogicalRange.to),
-              referenceLogicalBars,
-              widthPercent: style.widthPercent,
+              referenceLogicalBars: customProfile
+                ? durationLogicalBars ?? CHART_PROFILE_REFERENCE_BARS
+                : CHART_PROFILE_REFERENCE_BARS,
+              widthPercent: effectiveWidthPercent,
             });
+        const resolvedModeWidth = resolveVolumeProfileWidth({
+          mode: style.widthBasis,
+          value: effectiveWidthPercent,
+          paneWidth: usablePaneWidth,
+          sessionWidth,
+          visibleLogicalSpan,
+          automaticWidth,
+        });
         /*
          * A completed profile may be drawn narrower than the live one, which is
          * how DeepChart separates "what is forming" from "what is settled".
          */
-        const effectiveWidthPercent = isNewestOfKind
-          ? style.widthPercent
-          : Number(style.previousWidthPercent ?? style.widthPercent);
-        const profileWidth = zoomScaledWidth
+        const profileWidth = resolvedModeWidth
           ?? (effectiveWidthPercent <= 0
             ? 0
             : Math.min(
@@ -1425,6 +1505,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           dash: number[],
           label: string | null,
           lineWidth?: number,
+          extensionMode: "none" | "until-first-interaction" | "to-window-end" = "to-window-end",
         ) => {
           if (price == null) return;
           const y = params.series.priceToCoordinate(price);
@@ -1450,8 +1531,17 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
             rightEdge,
             [...drawnBodySpans.values()],
           );
-          const lineEndX = lineSegment?.endX ?? sourceFrontX;
-          if (lineSegment) {
+          let lineEndX = lineSegment?.endX ?? sourceFrontX;
+          if (extensionMode === "none") {
+            lineEndX = sourceFrontX;
+          } else if (extensionMode === "until-first-interaction" && lineSegment) {
+            const touched = firstVolumeProfileLevelInteraction(price, model.laterBars ?? []);
+            if (touched) {
+              const touchX = this.timeToCoordinate(model, Math.floor(touched.timestamp / 1000));
+              if (touchX != null && touchX > sourceFrontX) lineEndX = Math.min(lineEndX, touchX);
+            }
+          }
+          if (lineSegment && lineEndX > sourceFrontX + 0.5) {
             context.globalAlpha = 0.82;
             context.strokeStyle = color;
             context.lineWidth = Math.max(0.5, Number.isFinite(lineWidth) ? Number(lineWidth) : 1);
@@ -1596,11 +1686,11 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
         if (style.showPocLine || style.showValueAreaLines) {
           deferredLevelDraws.push(() => {
             if (style.showPocLine) {
-              drawLevel(groupedPoc, levelPocColor, [2, 3], "POC", style.pocLineWidth);
+              drawLevel(groupedPoc, levelPocColor, [2, 3], "POC", style.pocLineWidth, style.pocExtensionMode);
             }
             if (style.showValueAreaLines) {
-              drawLevel(groupedVah, levelValueAreaColor, [3, 3], "VAH", style.valueAreaLineWidth);
-              drawLevel(groupedVal, levelValueAreaColor, [3, 3], "VAL", style.valueAreaLineWidth);
+              drawLevel(groupedVah, levelValueAreaColor, [3, 3], "VAH", style.valueAreaLineWidth, style.valueAreaExtensionMode);
+              drawLevel(groupedVal, levelValueAreaColor, [3, 3], "VAL", style.valueAreaLineWidth, style.valueAreaExtensionMode);
             }
           });
         }
@@ -1635,26 +1725,29 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
                 Math.abs(endX - anchorX),
                 Math.max(1, zoneHeight),
               );
-              context.globalAlpha = 0.7;
-              context.strokeStyle = style.businessZoneColor ?? style.valueAreaColor;
-              context.lineWidth = Math.max(0.5, style.businessZoneLineWidth ?? 1);
-              context.setLineDash([4, 3]);
-              context.strokeRect(
-                Math.min(anchorX, endX),
-                zoneTop,
-                Math.abs(endX - anchorX),
-                Math.max(1, zoneHeight),
-              );
+              const businessLineWidth = Math.max(0, style.businessZoneLineWidth ?? 0);
+              if (businessLineWidth > 0) {
+                context.globalAlpha = 0.7;
+                context.strokeStyle = style.businessZoneColor ?? style.valueAreaColor;
+                context.lineWidth = businessLineWidth;
+                context.setLineDash([4, 3]);
+                context.strokeRect(
+                  Math.min(anchorX, endX),
+                  zoneTop,
+                  Math.abs(endX - anchorX),
+                  Math.max(1, zoneHeight),
+                );
+              }
             }
           }
           if (style.showPeaks) {
             for (const peak of structure.peaks) {
-              drawLevel(peak.price, style.peakColor ?? style.positiveDeltaColor, [1, 2], "PEAK", style.peakLineWidth);
+              drawLevel(peak.price, style.peakColor ?? style.positiveDeltaColor, [1, 2], "PEAK", style.peakLineWidth, style.peakExtensionMode);
             }
           }
           if (style.showValleys) {
             for (const valley of structure.valleys) {
-              drawLevel(valley.price, style.valleyColor ?? style.negativeDeltaColor, [1, 2], "VLY", style.valleyLineWidth);
+              drawLevel(valley.price, style.valleyColor ?? style.negativeDeltaColor, [1, 2], "VLY", style.valleyLineWidth, style.valleyExtensionMode);
             }
           }
         }
@@ -1663,11 +1756,11 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
         if (style.showVwap) {
           const vwap = calculateVolumeProfileVwap(levels, style.vwapBandDeviations ?? []);
           if (vwap.vwap !== null) {
-            drawLevel(vwap.vwap, style.vwapColor ?? style.pocColor, style.vwapDash ?? [6, 3], "VWAP", style.vwapLineWidth);
+            drawLevel(vwap.vwap, style.vwapColor ?? style.pocColor, style.vwapDash ?? [6, 3], "VWAP", style.vwapLineWidth, style.vwapExtensionMode);
             for (const band of vwap.bands) {
               const bandColor = style.vwapBandColor ?? style.vwapColor ?? style.pocColor;
-              drawLevel(band.upper, bandColor, [2, 4], null, style.vwapLineWidth);
-              drawLevel(band.lower, bandColor, [2, 4], null, style.vwapLineWidth);
+              drawLevel(band.upper, bandColor, [2, 4], null, style.vwapLineWidth, style.vwapExtensionMode);
+              drawLevel(band.lower, bandColor, [2, 4], null, style.vwapLineWidth, style.vwapExtensionMode);
             }
           }
         }

@@ -3,7 +3,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const { defaultIndicatorSettings, INDICATOR_NUMERIC_SETTINGS } = await import("../src/lib/chartIndicatorConfig.ts");
+const { defaultIndicatorSettings, INDICATOR_NUMERIC_SETTINGS, normalizeStoredIndicator } = await import("../src/lib/chartIndicatorConfig.ts");
 
 /**
  * No volume-profile setting is stored and then ignored.
@@ -91,6 +91,27 @@ check("the four that were dead are genuinely wired now", () => {
     const consumers = consumersOf(key);
     assert.ok(consumers.length, `${key} is inert again`);
   }
+});
+
+check("DeepCharts extension modes survive migration without retuning the trader", () => {
+  const migrated = normalizeStoredIndicator({
+    instanceId: "vp-1",
+    indicatorId: "kwant-profile",
+    enabled: true,
+    settings: {
+      profileSettingsVersion: 13,
+      valueAreaPercent: 69,
+      groupTicks: 5,
+      groupingMode: "automatic",
+    },
+  });
+  assert.equal(migrated.settings?.valueAreaPercent, 69);
+  assert.equal(migrated.settings?.groupTicks, 5);
+  assert.equal(migrated.settings?.groupingMode, "automatic");
+  assert.equal(migrated.settings?.pocExtensionMode, "to-window-end");
+  assert.equal(migrated.settings?.valueAreaExtensionMode, "to-window-end");
+  assert.equal(migrated.settings?.vwapExtensionMode, "none");
+  assert.equal(migrated.settings?.profileSettingsVersion, 14);
 });
 
 check("every setting has a way to be set", () => {

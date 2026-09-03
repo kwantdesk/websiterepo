@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
+  firstVolumeProfileLevelInteraction,
   forwardVolumeProfileLevelSegment,
   volumeProfileLevelFrontX,
 } from "../src/lib/nativeVolumeProfilePrimitive.ts";
@@ -20,6 +21,21 @@ assert.deepEqual(
   segment([{ id: "ahead", root: "NQ", startMs: 200, leftX: 400, rightX: 520 }]),
   { startX: 200, endX: 400 },
   "a level must stop at the back edge of the profile in front",
+);
+
+assert.deepEqual(
+  firstVolumeProfileLevelInteraction(100, [
+    { timestamp: 1, low: 101, high: 103 },
+    { timestamp: 2, low: 100, high: 102 },
+    { timestamp: 3, low: 99, high: 101 },
+  ]),
+  { timestamp: 2, low: 100, high: 102 },
+  "Till interaction must stop on the first wick touch, including an exact boundary touch",
+);
+assert.equal(
+  firstVolumeProfileLevelInteraction(100, [{ timestamp: 1, low: 100.25, high: 101 }]),
+  null,
+  "Till interaction must not stop before price actually trades through the level",
 );
 
 assert.deepEqual(
@@ -106,8 +122,8 @@ assert.match(primitive, /frontX: volumeProfileLevelFrontX/);
 assert.match(primitive, /body\.startMs <= source\.startMs/);
 assert.match(primitive, /if \(!profileVerticallyVisible\) continue;/);
 assert.match(primitive, /context\.moveTo\(lineSegment\.startX, y\)/);
-assert.doesNotMatch(primitive, /till-interaction/,
-  "VAH, VAL and POC must not be shortened by a later candle touch");
+assert.match(primitive, /firstVolumeProfileLevelInteraction/,
+  "Till interaction must be driven by real later candle ranges");
 assert.doesNotMatch(primitive, /Math\.max\(endX, stopX\)/,
   "the old rule forced rear lines through an overlapping profile");
 assert.ok(

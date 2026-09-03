@@ -14112,6 +14112,11 @@ function Chart({
       const current = newestStartByKind.get(kind);
       if (current == null || profile.startMs > current) newestStartByKind.set(kind, profile.startMs);
     }
+    const extensionMode = (value: unknown, fallback: "none" | "until-first-interaction" | "to-window-end") => (
+      ["none", "until-first-interaction", "to-window-end"].includes(String(value))
+        ? String(value)
+        : fallback
+    ) as "none" | "until-first-interaction" | "to-window-end";
     const models = volumeProfiles.flatMap((profile): NativeVolumeProfileModel[] => {
       const instance = profile.period === "weekly" ? weeklyInstance : dailyInstance;
       if (!instance || profile.period === "custom" || profile.levels.length === 0) return [];
@@ -14128,6 +14133,13 @@ function Chart({
           : profile.period === "weekly" ? "left" : "off"
       ) as "off" | "left" | "right";
       const requestedProfileMode = String(profileSettings.profileMode);
+      const requestedWidthMode = ["automatic", "period-percent", "window-percent", "fixed-bars"]
+        .includes(String(profileSettings.widthMode))
+        ? String(profileSettings.widthMode)
+        : "period-percent";
+      const pocLineMode = ["none", "show", "developing", "extend-shifted"].includes(String(profileSettings.pocLineMode))
+        ? String(profileSettings.pocLineMode)
+        : profileSettings.showPocLine === false ? "none" : "show";
       const profileMode = (
         ["volume", "delta-volume", "bid-ask", "delta", "delta-percentage"].includes(requestedProfileMode)
           ? requestedProfileMode
@@ -14149,9 +14161,16 @@ function Chart({
         maxAbsDelta: Math.max(1, ...rendered.levels.map((level) => Math.abs(level.delta))),
         lowPrice: rendered.levels[0]?.price ?? Number.POSITIVE_INFINITY,
         highPrice: rendered.levels[rendered.levels.length - 1]?.price ?? Number.NEGATIVE_INFINITY,
+        laterBars: candles
+          .filter((candle) => candle.timestamp >= profile.endMs)
+          .map((candle) => ({ timestamp: candle.timestamp, high: candle.high, low: candle.low })),
         style: {
           mode: profileMode,
-          widthBasis: "chart",
+          widthBasis: requestedWidthMode === "fixed-bars"
+            ? "bars"
+            : requestedWidthMode === "window-percent"
+              ? "window-percent"
+              : requestedWidthMode === "automatic" ? "automatic" : "period-percent",
           widthPercent: clamp(Number(profileSettings.profileWidth ?? (profile.period === "weekly" ? 18 : 9)), 0, 100),
           // Completed profiles fall back to the current width, so a chart that
           // has never set these draws exactly as it did.
@@ -14175,7 +14194,10 @@ function Chart({
           showValueArea: profileSettings.showValueArea !== false,
           showDelta: profileSettings.showDelta !== false,
           showProfileSpine: profileSettings.showProfileSpine !== false,
-          showPocLine: profileSettings.showPocLine !== false && levelsVisible,
+          showPocLine: profileSettings.showPocLine !== false
+            && pocLineMode !== "none"
+            && pocLineMode !== "developing"
+            && levelsVisible,
           showValueAreaLines: profileSettings.showValueAreaLines !== false && levelsVisible,
           showText: profileSettings.showText === true,
           showPocHighlight: profileSettings.showPocHighlight !== false,
@@ -14203,11 +14225,15 @@ function Chart({
             : "automatic") as "automatic" | "solid" | "hollow" | "line" | "combined",
           borderWidth: clamp(Number(profileSettings.borderWidth ?? 1), 0.5, 6),
           pocLineWidth: clamp(Number(profileSettings.pocLineWidth ?? 1), 0.5, 6),
-          showDevelopingPoc: profileSettings.showDevelopingPoc === true,
+          pocExtensionMode: extensionMode(profileSettings.pocExtensionMode, "to-window-end"),
+          showDevelopingPoc: pocLineMode === "developing"
+            || pocLineMode === "extend-shifted"
+            || profileSettings.showDevelopingPoc === true,
           developingPocStartMs: Number(profileSettings.developingPocStartMinutes ?? 0) > 0
             ? Number(profileSettings.developingPocStartMinutes) * 60_000
             : 0,
-          valueAreaLineWidth: clamp(Number(profileSettings.valueAreaLineWidth ?? 1), 0.5, 6),
+          valueAreaLineWidth: clamp(Number(profileSettings.valueAreaLineWidth ?? 2), 0.5, 6),
+          valueAreaExtensionMode: extensionMode(profileSettings.valueAreaExtensionMode, "to-window-end"),
           /*
            * The Value Area tab's "Developing" control, which had been stored
            * and migrated since the tab was built and read by nothing - the
@@ -14221,24 +14247,27 @@ function Chart({
           showValleys: profileSettings.showValleys === true,
           peakColor: useThemeColors ? settings.upColor : String(profileSettings.peakColor ?? settings.upColor),
           valleyColor: useThemeColors ? settings.downColor : String(profileSettings.valleyColor ?? settings.downColor),
-          peakLineWidth: clamp(Number(profileSettings.peakLineWidth ?? 1), 0.5, 6),
-          valleyLineWidth: clamp(Number(profileSettings.valleyLineWidth ?? 1), 0.5, 6),
+          peakLineWidth: clamp(Number(profileSettings.peakLineWidth ?? 2), 0.5, 6),
+          valleyLineWidth: clamp(Number(profileSettings.valleyLineWidth ?? 2), 0.5, 6),
+          peakExtensionMode: extensionMode(profileSettings.peakExtensionMode, "none"),
+          valleyExtensionMode: extensionMode(profileSettings.valleyExtensionMode, "none"),
           pvSensitivity: clamp(Number(profileSettings.pvSensitivity ?? 40), 0, 100),
           pvExcludeHighLow: profileSettings.pvExcludeHighLow !== false,
-          peakMinVolumePercent: clamp(Number(profileSettings.peakMinVolumePercent ?? 0), 0, 100),
-          valleyMaxVolumePercent: clamp(Number(profileSettings.valleyMaxVolumePercent ?? 100), 0, 100),
+          peakMinVolumePercent: clamp(Number(profileSettings.peakMinVolumePercent ?? 1), 0, 100),
+          valleyMaxVolumePercent: clamp(Number(profileSettings.valleyMaxVolumePercent ?? 0), 0, 100),
           peakOnlyOutsideValueArea: profileSettings.peakOnlyOutsideValueArea === true,
           valleyOnlyOutsideValueArea: profileSettings.valleyOnlyOutsideValueArea === true,
           showBusinessZone: profileSettings.showBusinessZone === true,
           businessZoneColor: useThemeColors
             ? settings.borderUpColor
             : String(profileSettings.businessZoneColor ?? settings.borderUpColor),
-          businessZoneOpacity: clamp(Number(profileSettings.businessZoneOpacity ?? 18), 2, 100),
-          businessZoneLineWidth: clamp(Number(profileSettings.businessZoneLineWidth ?? 1), 0.5, 6),
+          businessZoneOpacity: clamp(Number(profileSettings.businessZoneOpacity ?? 3), 0, 100),
+          businessZoneLineWidth: clamp(Number(profileSettings.businessZoneLineWidth ?? 0), 0, 6),
           // VWAP of this profile plus its deviation envelopes.
           showVwap: profileSettings.showVwapLine === true,
           vwapColor: useThemeColors ? settings.borderUpColor : String(profileSettings.vwapColor ?? settings.borderUpColor),
           vwapLineWidth: clamp(Number(profileSettings.vwapLineWidth ?? 1), 0.5, 6),
+          vwapExtensionMode: extensionMode(profileSettings.vwapExtensionMode, "none"),
           vwapBandColor: String(profileSettings.vwapBandColor ?? settings.gridColor),
           vwapBandDeviations: profileSettings.showVwapBands === true
             ? [
@@ -14259,6 +14288,7 @@ function Chart({
     primitive.setModels(models);
   }, [
     candleIntervalMs,
+    candles,
     chartReadyRevision,
     indicatorSignature,
     indicators,

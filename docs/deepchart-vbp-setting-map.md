@@ -24,7 +24,7 @@ Two separate questions are asked of every row, because they fail differently:
 | `PocLineColor` | `pocColor` | ✅ |
 | `PocLineWidth` | `pocLineWidth` | ✅ |
 | `PocLineMode` | `pocLineMode` | ✅ |
-| `PocExtendMode` | `extendMode` | ✅ |
+| `PocExtendMode` | `pocExtensionMode` | ✅ None / Till interaction / Till end window |
 | `PocDevStartTime` | `developingPocStartMinutes` | ✅ |
 | `ShiftPocTick` | `shiftedPocTicks` | ✅ **feature was never built — built** |
 | `ShiftPocAlert`, `EnableShiftPocAlert`, `EnableShiftPocPopup` | — | ❌ alerts, not built |
@@ -38,7 +38,7 @@ Two separate questions are asked of every row, because they fail differently:
 | `VAShowLine` | `showValueAreaLines` | ✅ |
 | `VALineColor` / `VABackColor` | `valueAreaColor` | ✅ |
 | `VALineWidth` | `valueAreaLineWidth` | ✅ |
-| `VAExtendMode` | `extendMode` | ✅ |
+| `VAExtendMode` | `valueAreaExtensionMode` | ✅ None / Till interaction / Till end window |
 | `VADeveloping` | `valueAreaDeveloping` | ✅ **was inert — fixed** |
 | `VAHighlight` | — | ❌ |
 | `VADeveloping2` | — | ❌ purpose unknown; a second developing mode |
@@ -89,9 +89,9 @@ is absent rather than partly present.
 | `Text` | — | ❌ nested text settings |
 | `Background` | — | ❌ nested background settings |
 | `ShowOnTheRight` / `AlignToRight` | `snapMode` | ✅ (`align` was dead weight and is removed) |
-| `WidthType` | — | ❌ |
+| `WidthType` | `widthMode` | ✅ Automatic / Percentual period / Window width / Fixed bars |
 | `WidthCurrLength` | `profileWidth` | ✅ |
-| `WidthPrevLength` | `previousProfileWidth` | ✅ **built** |
+| `WidthPrevLength` | `previousProfileWidth` | ✅ **renderer bug fixed: completed profiles now use it** |
 | `VbpCurrOffset` / `VbpPrevOffset` | `currentProfileOffset` / `previousProfileOffset` | ✅ **built** |
 | `ShowAboveBars` | — | ❌ |
 | `AlwaysVisible` | — | ❌ |
@@ -112,7 +112,8 @@ one to one. `PeakMinVol`, `ValleyMaxVol`, `PeakOnlyOutsideVA` and
 | `VWapEnvEnabled` | `showVwapBands` | ✅ |
 | `ShowDevVwap` | — | ❌ developing VWAP |
 | `VWapEnvSett`, `VWapEnvelopeStyle` | — | ⚠️ we ship three fixed σ bands, theirs are configurable |
-| `VwapHighlight`, `VwapBackColor`, `VwapExtendMode`, `VwapLineStyle` | — | ❌ |
+| `VwapExtendMode` | `vwapExtensionMode` | ✅ None / Till interaction / Till end window |
+| `VwapHighlight`, `VwapBackColor`, `VwapLineStyle` | — | ❌ |
 
 ## Summary
 

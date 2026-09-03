@@ -2234,12 +2234,12 @@ export default function ChartIndicatorsControl({
                     */}
                   {([
                     ["Sensitivity", "pvSensitivity", 40, 0, 100, 1],
-                    ["Peak min volume %", "peakMinVolumePercent", 0, 0, 100, 1],
-                    ["Valley max volume %", "valleyMaxVolumePercent", 100, 0, 100, 1],
-                    ["Business zone opacity", "businessZoneOpacity", 18, 2, 100, 1],
-                    ["Peak line width", "peakLineWidth", 1, 0.5, 6, 0.5],
-                    ["Valley line width", "valleyLineWidth", 1, 0.5, 6, 0.5],
-                    ["Business zone line width", "businessZoneLineWidth", 1, 0.5, 6, 0.5],
+                    ["Peak min volume %", "peakMinVolumePercent", 1, 0, 100, 1],
+                    ["Valley max volume %", "valleyMaxVolumePercent", 0, 0, 100, 1],
+                    ["Business zone opacity", "businessZoneOpacity", 3, 0, 100, 1],
+                    ["Peak line width", "peakLineWidth", 2, 0.5, 6, 0.5],
+                    ["Valley line width", "valleyLineWidth", 2, 0.5, 6, 0.5],
+                    ["Business zone line width", "businessZoneLineWidth", 0, 0, 6, 0.5],
                   ] as const).map(([label, key, fallback, min, max, step]) => (
                     <IndicatorNumericSlider
                       key={key}
@@ -2277,6 +2277,28 @@ export default function ChartIndicatorsControl({
                       );
                     })}
                   </div>
+                  {([[
+                    "peakExtensionMode", "Peak extend line",
+                  ], [
+                    "valleyExtensionMode", "Valley extend line",
+                  ]] as const).map(([key, label]) => (
+                    <label key={key} className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                      <span>{label}</span>
+                      <KwantSelect
+                        value={String(settingsInstance.settings?.[key] ?? "none")}
+                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                          ...current,
+                          settings: { ...(current.settings ?? {}), [key]: event.target.value },
+                        }))}
+                        className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                        menuLabel={label}
+                      >
+                        <option value="none">None</option>
+                        <option value="until-first-interaction">Till interaction</option>
+                        <option value="to-window-end">Till end window</option>
+                      </KwantSelect>
+                    </label>
+                  ))}
 
                 </div>
               ) : null}
@@ -2303,6 +2325,22 @@ export default function ChartIndicatorsControl({
                       }))}
                     />
                   ))}
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">
+                    <span>Extend line</span>
+                    <KwantSelect
+                      value={String(settingsInstance.settings?.vwapExtensionMode ?? "none")}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                        ...current,
+                        settings: { ...(current.settings ?? {}), vwapExtensionMode: event.target.value },
+                      }))}
+                      className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                      menuLabel="VWAP extend line"
+                    >
+                      <option value="none">None</option>
+                      <option value="until-first-interaction">Till interaction</option>
+                      <option value="to-window-end">Till end window</option>
+                    </KwantSelect>
+                  </label>
                 </div>
               ) : null}
 
@@ -2560,6 +2598,43 @@ export default function ChartIndicatorsControl({
                       );
                     })}
                   </div>
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                    <span>Show line</span>
+                    <KwantSelect
+                      value={String(settingsInstance.settings?.pocLineMode ?? "show")}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                        ...current,
+                        settings: {
+                          ...(current.settings ?? {}),
+                          pocLineMode: event.target.value,
+                          showPocLine: event.target.value !== "none",
+                        },
+                      }))}
+                      className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                      menuLabel="POC show line"
+                    >
+                      <option value="none">None</option>
+                      <option value="show">Show</option>
+                      <option value="developing">Developing</option>
+                      <option value="extend-shifted">Extend shifted</option>
+                    </KwantSelect>
+                  </label>
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                    <span>Extend line</span>
+                    <KwantSelect
+                      value={String(settingsInstance.settings?.pocExtensionMode ?? "to-window-end")}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                        ...current,
+                        settings: { ...(current.settings ?? {}), pocExtensionMode: event.target.value },
+                      }))}
+                      className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                      menuLabel="POC extend line"
+                    >
+                      <option value="none">None</option>
+                      <option value="until-first-interaction">Till interaction</option>
+                      <option value="to-window-end">Till end window</option>
+                    </KwantSelect>
+                  </label>
                   {([
                     ["Line width", "pocLineWidth", 1, 0.5, 6, 0.5],
                     ["Highlight opacity", "pocHighlightOpacity", 55, 2, 100, 1],
@@ -2667,6 +2742,22 @@ export default function ChartIndicatorsControl({
                       settings: { ...(current.settings ?? {}), valueAreaLineWidth: next },
                     }))}
                   />
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">
+                    <span>Extend line</span>
+                    <KwantSelect
+                      value={String(settingsInstance.settings?.valueAreaExtensionMode ?? "to-window-end")}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                        ...current,
+                        settings: { ...(current.settings ?? {}), valueAreaExtensionMode: event.target.value },
+                      }))}
+                      className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                      menuLabel="Value area extend line"
+                    >
+                      <option value="none">None</option>
+                      <option value="until-first-interaction">Till interaction</option>
+                      <option value="to-window-end">Till end window</option>
+                    </KwantSelect>
+                  </label>
                   <IndicatorNumericSlider
                     label="% value area"
                     min={1}
@@ -2698,6 +2789,23 @@ export default function ChartIndicatorsControl({
               {VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) && volumeProfileTab === "plot" ? (
                 <div className="grid gap-3 border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
                   <div className="text-[9px] uppercase tracking-[0.14em] text-foreground sm:col-span-2">Plot settings</div>
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">
+                    <span>Width type</span>
+                    <KwantSelect
+                      value={String(settingsInstance.settings?.widthMode ?? "period-percent")}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                        ...current,
+                        settings: { ...(current.settings ?? {}), widthMode: event.target.value },
+                      }))}
+                      className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                      menuLabel="Width type"
+                    >
+                      <option value="automatic">Automatic</option>
+                      <option value="period-percent">Percentual period</option>
+                      <option value="window-percent">Window width</option>
+                      <option value="fixed-bars">Fixed bars</option>
+                    </KwantSelect>
+                  </label>
                   {([
                     ["Line style", "levelLineStyle", "dash", [
                       ["solid", "Solid"],
@@ -2780,8 +2888,8 @@ export default function ChartIndicatorsControl({
                     * completed ones behind it are sized and nudged separately.
                     */}
                   {([
-                    ["Current width %", "profileWidth", 24, 0, 100, 1],
-                    ["Previous width %", "previousProfileWidth", 24, 0, 100, 1],
+                    [String(settingsInstance.settings?.widthMode ?? "period-percent") === "fixed-bars" ? "Current width (bars)" : "Current width %", "profileWidth", 24, 0, String(settingsInstance.settings?.widthMode ?? "period-percent") === "fixed-bars" ? 400 : 100, 1],
+                    [String(settingsInstance.settings?.widthMode ?? "period-percent") === "fixed-bars" ? "Previous width (bars)" : "Previous width %", "previousProfileWidth", 24, 0, String(settingsInstance.settings?.widthMode ?? "period-percent") === "fixed-bars" ? 400 : 100, 1],
                     ["Current offset", "currentProfileOffset", 0, -400, 400, 1],
                     ["Previous offset", "previousProfileOffset", 0, -400, 400, 1],
                     ["Profile opacity %", "opacity", 100, 10, 100, 1],
