@@ -88,6 +88,23 @@ check("Save establishes a clean baseline without closing the dialog", () => {
   );
 });
 
+check("Footprint cannot bypass the shared clean-baseline save", () => {
+  const footerAt = source.indexOf("Save and Cancel, on EVERY indicator");
+  const footprintActionsAt = source.lastIndexOf("value={footprintTemplateName}", footerAt);
+  assert.ok(footprintActionsAt > 0, "the Footprint template controls were not found");
+  const footprintActions = source.slice(footprintActionsAt, footerAt);
+  assert.doesNotMatch(
+    footprintActions,
+    /Save settings/,
+    "Footprint still exposes a second save path that can leave the dialog dirty",
+  );
+  assert.doesNotMatch(
+    footprintActions,
+    /saveFootprintSettings\(settingsInstance\.instanceId, validated\)/,
+    "Footprint still persists settings without updating the shared saved baseline",
+  );
+});
+
 check("clicking away after Save is clean", () => {
   const instance = { instanceId: "kwant-profile-1", enabled: true, settings: { valueAreaPercent: 68 } };
   const opened = captureIndicatorSettingsSnapshot(instance);

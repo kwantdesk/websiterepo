@@ -6079,23 +6079,6 @@ export default function ChartIndicatorsControl({
                     <BookmarkPlus className="h-3.5 w-3.5" />
                     Save template
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const validated = validateFootprintSettings(settingsInstance.settings);
-                      replace(settingsInstance.instanceId, (current) => ({
-                        ...current,
-                        settings: { ...(current.settings ?? {}), ...validated },
-                      }));
-                      saveFootprintSettings(settingsInstance.instanceId, validated);
-                      window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
-                      setFootprintSaveStatus("Footprint settings saved locally");
-                    }}
-                    className="flex h-9 items-center justify-center gap-1.5 rounded-lg bg-primary px-4 text-[9px] font-semibold uppercase tracking-[0.08em] text-on-primary"
-                  >
-                    <Save className="h-3.5 w-3.5" />
-                    Save settings
-                  </button>
                 </div>
                 {footprintSaveStatus ? (
                   <div className="mt-2 text-[8px] text-primary" role="status">{footprintSaveStatus}</div>
