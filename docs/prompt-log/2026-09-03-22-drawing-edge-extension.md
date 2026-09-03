@@ -25,4 +25,20 @@ changing the drawing.
 
 ## Verification
 
-Pending implementation and production verification.
+- Drawing edge regression: 6/6 passed. It covers unchanged bounds, left,
+  right, both, the Rectangle class's full-width computed geometry, and hit
+  testing inside the extended area.
+- Existing drawing anchoring regression: 7/7 passed.
+- Existing drawing handle regression: 10/10 passed.
+- Focused ESLint: passed with zero warnings or errors.
+- TypeScript: passed.
+- Production build: passed; all 80 static pages generated.
+- Implementation commit `7e719dc7` reached `main`; the signed-in production
+  chart loaded successfully from deployment `dpl_FSEU1i2dLhqwZLz2JXfbXYgDGyZs`
+  with the Rectangle tool and both edge-extension controls available.
+
+## Outcome
+
+Rectangle no longer has fake extension settings. Left, right, and both now
+reach the corresponding visible chart edges exactly, remain below the chart
+axis/chrome, and stay selectable across the extended area.
