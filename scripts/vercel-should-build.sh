@@ -45,29 +45,28 @@ if ! git cat-file -e "${VERCEL_GIT_PREVIOUS_SHA}^{commit}" 2>/dev/null \
   git fetch --depth=2 origin "$VERCEL_GIT_COMMIT_REF" >/dev/null 2>&1 || true
 fi
 
-# Vercel's sanitized clone leaves `origin` unable to deepen and does not expose
-# repo owner/slug variables during this early hook. This gate belongs only to
-# the active websiterepo-yfmi project, whose vercel.json enables main alone, so
-# use its fixed public repository URL. This avoids the shared-IP REST quota and
-# cannot be redirected by an environment value.
-if ! git cat-file -e "${VERCEL_GIT_PREVIOUS_SHA}^{commit}" 2>/dev/null; then
-  git fetch --depth=2 \
-    "https://github.com/kwantdesk/websiterepo.git" \
-    "main" >/dev/null 2>&1 || true
-fi
-
 # Still not there — compare against HEAD's own parent instead, which a
 # depth-2 clone can answer.
+COMPARE_WITH_PUBLIC_DIFF=0
 if git cat-file -e "${VERCEL_GIT_PREVIOUS_SHA}^{commit}" 2>/dev/null; then
   BASE="$VERCEL_GIT_PREVIOUS_SHA"
 elif git cat-file -e "HEAD^{commit}" 2>/dev/null && git cat-file -e "HEAD^^{commit}" 2>/dev/null; then
   BASE="HEAD^"
 else
-  echo "No comparable base after public branch fetch — building."
-  exit 1
+  # .vercelignore removes .git before this hook runs. GitHub's public `.diff`
+  # transport is not subject to the shared-IP REST API quota and exposes only
+  # repository source changes. The parser fails closed on malformed/ambiguous
+  # output, so a response it cannot prove safe becomes a real build.
+  COMPARE_WITH_PUBLIC_DIFF=1
 fi
 
-CHANGED=$(git diff --name-only "$BASE" "$VERCEL_GIT_COMMIT_SHA" 2>/dev/null || true)
+if [ "$COMPARE_WITH_PUBLIC_DIFF" -eq 0 ]; then
+  CHANGED=$(git diff --name-only "$BASE" "$VERCEL_GIT_COMMIT_SHA" 2>/dev/null || true)
+elif ! CHANGED=$(node scripts/github-compare-diff.mjs \
+    "$VERCEL_GIT_PREVIOUS_SHA" "$VERCEL_GIT_COMMIT_SHA"); then
+  echo "No trustworthy local or public comparison — building."
+  exit 1
+fi
 
 # An empty diff here means git could not answer, not that nothing changed —
 # a real no-op push does not produce a deployment. Build rather than guess.

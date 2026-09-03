@@ -45,6 +45,11 @@ project and `main` is its only enabled deployment branch, its final recovery
 uses that fixed public repository/branch rather than unavailable environment
 metadata.
 
+The next live log exposed the underlying constraint: `.vercelignore` removes
+`.git` before the hook, so a Git fetch cannot work at all. The final fallback
+uses GitHub's non-REST public `.diff` transport with strict size, completeness
+and path parsing, and was verified from a directory containing no `.git`.
+
 Unfinished external requirement: the 80 GB VPS disk is 92% full (5.8 GB free),
 the archive is 52 GB, and there is no off-box backup target or credential on
 the server. Indefinite retention cannot be truthfully guaranteed until an

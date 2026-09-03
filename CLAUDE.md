@@ -1250,3 +1250,6 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
 - The live hook also omitted repo owner/slug variables. The recovery URL is
   therefore fixed to this project's public `kwantdesk/websiterepo` `main`
   branch; `vercel.json` already disables deployments from other branches.
+- Final live finding: `.vercelignore` removes `.git` before the hook. The gate
+  now uses GitHub's non-REST public `.diff` transport, with strict size,
+  truncation and path validation, and is tested from a non-Git directory.
