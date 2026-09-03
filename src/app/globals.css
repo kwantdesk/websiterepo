@@ -38,6 +38,15 @@
   --danger: #FF1F78;
   --panel: #050607;
   --surface: #0B0D10;
+  /*
+   * Scrollbars are part of the active skin, not browser-default chrome. Keep
+   * their track close to the surface and their thumb legible without letting
+   * either become a black strip in light themes. These remain derived values,
+   * so every current and future palette updates them in the same transaction.
+   */
+  --scrollbar-track: color-mix(in srgb, var(--panel) 82%, var(--background));
+  --scrollbar-thumb: color-mix(in srgb, var(--muted) 86%, var(--surface));
+  --scrollbar-thumb-hover: color-mix(in srgb, var(--primary) 58%, var(--muted));
   --chart-background: #020304;
   --grid-color: #11151A;
   --crosshair-color: rgba(255,31,120,.72);
@@ -696,7 +705,7 @@ table,
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: #363A45 #131722;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
 }
 
 /* Kwant Desk retains its own restricted Google entry point; the authenticated
@@ -1420,7 +1429,7 @@ header.kwant-command-rail .kwant-primary-nav-control {
     transform: none;
     align-items: flex-start;
     scrollbar-width: thin;
-    scrollbar-color: color-mix(in srgb, var(--primary) 48%, transparent) transparent;
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
   }
 
   .kwant-primary-workspace-nav-track {
@@ -1438,12 +1447,12 @@ header.kwant-command-rail .kwant-primary-nav-control {
   }
 
   .kwant-primary-workspace-nav::-webkit-scrollbar-track {
-    background: transparent;
+    background: var(--scrollbar-track);
   }
 
   .kwant-primary-workspace-nav::-webkit-scrollbar-thumb {
     border-radius: 999px;
-    background: color-mix(in srgb, var(--primary) 48%, transparent);
+    background: var(--scrollbar-thumb);
   }
 }
 
@@ -1683,23 +1692,38 @@ body.kwant-cockpit-ui td {
   border-color: color-mix(in srgb, var(--border) 70%, transparent);
 }
 
-body.kwant-cockpit-ui ::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
 }
 
-body.kwant-cockpit-ui ::-webkit-scrollbar-track {
-  background: #030405;
+::-webkit-scrollbar-track {
+  border-radius: 999px;
+  background: var(--scrollbar-track);
 }
 
-body.kwant-cockpit-ui ::-webkit-scrollbar-thumb {
-  border: 1px solid #030405;
-  border-radius: 0;
-  background: #343a41;
+::-webkit-scrollbar-thumb {
+  min-width: 28px;
+  min-height: 28px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: var(--scrollbar-thumb);
+  background-clip: padding-box;
 }
 
-body.kwant-cockpit-ui ::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--primary) 58%, #343a41);
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+::-webkit-scrollbar-corner {
+  background: var(--scrollbar-track);
 }
 
 /* Lightweight Charts and custom market canvases remain the hero. Their host

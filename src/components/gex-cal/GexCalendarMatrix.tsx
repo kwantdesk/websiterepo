@@ -147,7 +147,7 @@ function GexCalendarMatrix({ matrix, differenceMode, normalization, selected, on
       </div>
       <div
         ref={viewportRef}
-        className="absolute inset-x-0 bottom-0 top-9 overflow-x-scroll overflow-y-auto [scrollbar-color:var(--primary)_var(--panel)] [scrollbar-width:thin]"
+        className="absolute inset-x-0 bottom-0 top-9 overflow-x-scroll overflow-y-auto"
         onScroll={handleScroll}
         aria-label="Scrollable GEX calendar surface"
       >

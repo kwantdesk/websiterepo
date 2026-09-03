@@ -1290,3 +1290,35 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
 
 - Documentation-only change. No runtime code, provider connection, production
   service or customer data was changed.
+
+## 2026-09-03 — Theme-aware scrollbar system
+
+### Completed
+
+- Replaced the global hard-coded black/dark-grey scrollbar colours with track,
+  thumb and hover tokens derived from each theme's existing background, panel,
+  surface, muted and primary colours.
+- Applied the WebKit skin at document scope so first paint and workspace
+  restoration cannot fall back to native dark chrome while the cockpit body
+  class is absent. Removed native scrollbar arrow blocks, rounded the geometry
+  and themed the corner where horizontal and vertical tracks meet.
+- Removed GEX Calendar's feature-local scrollbar override so it inherits the
+  same site-wide contract.
+- Added a regression test that proves every current preset keeps both the
+  resting and hover thumb at a minimum 3:1 contrast against its track.
+
+### Verification
+
+- `npm run test:theme-scrollbars`: 4/4 passed.
+- `npm run test:themes`: 8/8 passed.
+- Scoped ESLint passed; `npx tsc --noEmit` passed; the 80-page production build
+  passed.
+- Rendered the real local Settings workspace in Inverted Mono, Playdough Parade
+  and Kwant Desk. Light and dark vertical scrollbars followed their themes,
+  retained visible thumbs and no longer showed the black native track/arrow
+  blocks from the owner screenshots. The overflowing chart/navigation header
+  was also checked at a 1,111px viewport.
+
+### Production/VPS actions
+
+- Website-only change. No VPS or provider process changed.
