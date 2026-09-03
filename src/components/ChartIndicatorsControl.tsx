@@ -86,6 +86,7 @@ import {
   indicatorSettingsAreDirty,
   type IndicatorSettingsSnapshot,
 } from "@/lib/indicatorSettingsDraft";
+import IndicatorNumericSlider from "@/components/ui/IndicatorNumericSlider";
 
 const FAVOURITES_STORAGE_KEY = "kwantdesk-chart-indicator-favourites";
 
@@ -1648,23 +1649,14 @@ export default function ChartIndicatorsControl({
               />
 
               <div data-settings-section="Body" className="space-y-3 rounded-xl border border-border bg-surface/30 p-3">
-                <label className="block">
-                  <span className="mb-2 flex items-center justify-between text-[10px] text-muted">
-                    <span>Body opacity</span>
-                    <input
-                      type="number"
-                      min={5}
-                      max={100}
-                      step={5}
-                      value={Number(candleSettings?.[CANDLE_SETTING_KEYS.bodyOpacity] ?? 100)}
-                      onChange={(event) => setCandleSetting(
-                        CANDLE_SETTING_KEYS.bodyOpacity,
-                        Math.min(100, Math.max(5, Number(event.target.value) || 100)),
-                      )}
-                      className="h-6 w-16 rounded-[3px] border border-border bg-background px-1.5 text-right text-[10px] text-foreground outline-none focus:border-primary/60"
-                    />
-                  </span>
-                </label>
+                <IndicatorNumericSlider
+                  label="Body opacity"
+                  min={5}
+                  max={100}
+                  step={5}
+                  value={Number(candleSettings?.[CANDLE_SETTING_KEYS.bodyOpacity] ?? 100)}
+                  onChange={(next) => setCandleSetting(CANDLE_SETTING_KEYS.bodyOpacity, next)}
+                />
                 {([
                   ["Borders", CANDLE_SETTING_KEYS.borderVisible],
                   ["Wicks", CANDLE_SETTING_KEYS.wickVisible],
@@ -2140,25 +2132,24 @@ export default function ChartIndicatorsControl({
                   {([
                     ["Filter min", "minTradeVolume", 0],
                     ["Filter max", "maxTradeVolume", 0],
-                  ] as const).map(([label, key, fallback]) => (
-                    <label key={key} className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
-                      <span>{label}</span>
-                      <input
-                        type="number"
-                        min={0}
-                        step={1}
+                  ] as const).map(([label, key, fallback]) => {
+                    const definition = INDICATOR_NUMERIC_SETTINGS[settingsDefinition.id]
+                      ?.find((setting) => setting.key === key);
+                    return (
+                      <IndicatorNumericSlider
+                        key={key}
+                        label={label}
+                        min={definition?.min ?? 0}
+                        max={definition?.max ?? 1_000_000}
+                        step={definition?.step ?? 1}
                         value={Number(settingsInstance.settings?.[key] ?? fallback)}
-                        onChange={(event) => {
-                          const next = Math.max(0, Math.round(Number(event.target.value) || 0));
-                          replace(settingsInstance.instanceId, (current) => ({
-                            ...current,
-                            settings: { ...(current.settings ?? {}), [key]: next },
-                          }));
-                        }}
-                        className="h-9 w-full border border-border bg-background px-3 text-right font-mono text-[10px] text-foreground outline-none focus:border-primary/40"
+                        onChange={(next) => replace(settingsInstance.instanceId, (current) => ({
+                          ...current,
+                          settings: { ...(current.settings ?? {}), [key]: next },
+                        }))}
                       />
-                    </label>
-                  ))}
+                    );
+                  })}
                   <div className="text-[9px] uppercase tracking-[0.14em] text-foreground sm:col-span-2">Tick grouping</div>
                   <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">
                     <span>Auto grouping</span>
@@ -2181,25 +2172,22 @@ export default function ChartIndicatorsControl({
                   ] as const).map(([label, key, fallback, mode]) => {
                     const activeMode = String(settingsInstance.settings?.groupingMode ?? "automatic");
                     const applies = activeMode === mode;
+                    const definition = INDICATOR_NUMERIC_SETTINGS[settingsDefinition.id]
+                      ?.find((setting) => setting.key === key);
                     return (
-                      <label key={key} className={`space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted ${applies ? "" : "opacity-40"}`}>
-                        <span>{label}</span>
-                        <input
-                          type="number"
-                          min={1}
-                          step={1}
-                          disabled={!applies}
-                          value={Number(settingsInstance.settings?.[key] ?? fallback)}
-                          onChange={(event) => {
-                            const next = Math.max(1, Math.round(Number(event.target.value) || fallback));
-                            replace(settingsInstance.instanceId, (current) => ({
-                              ...current,
-                              settings: { ...(current.settings ?? {}), [key]: next },
-                            }));
-                          }}
-                          className="h-9 w-full border border-border bg-background px-3 text-right font-mono text-[10px] text-foreground outline-none focus:border-primary/40 disabled:cursor-not-allowed"
-                        />
-                      </label>
+                      <IndicatorNumericSlider
+                        key={key}
+                        label={label}
+                        min={definition?.min ?? 1}
+                        max={definition?.max ?? 500}
+                        step={definition?.step ?? 1}
+                        disabled={!applies}
+                        value={Number(settingsInstance.settings?.[key] ?? fallback)}
+                        onChange={(next) => replace(settingsInstance.instanceId, (current) => ({
+                          ...current,
+                          settings: { ...(current.settings ?? {}), [key]: next },
+                        }))}
+                      />
                     );
                   })}
                   <div className="border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
@@ -2253,27 +2241,18 @@ export default function ChartIndicatorsControl({
                     ["Valley line width", "valleyLineWidth", 1, 0.5, 6, 0.5],
                     ["Business zone line width", "businessZoneLineWidth", 1, 0.5, 6, 0.5],
                   ] as const).map(([label, key, fallback, min, max, step]) => (
-                    <label key={key} className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
-                      <span>{label}</span>
-                      <input
-                        type="number"
-                        min={min}
-                        max={max}
-                        step={step}
-                        value={Number(settingsInstance.settings?.[key] ?? fallback)}
-                        onChange={(event) => {
-                          const raw = Number(event.target.value) || 0;
-                          // A half-step control must not be rounded to whole numbers.
-                          const quantised = step < 1 ? Math.round(raw / step) * step : Math.round(raw);
-                          const next = Math.min(max, Math.max(min, quantised));
-                          replace(settingsInstance.instanceId, (current) => ({
-                            ...current,
-                            settings: { ...(current.settings ?? {}), [key]: next },
-                          }));
-                        }}
-                        className="h-9 w-full border border-border bg-background px-3 text-right font-mono text-[10px] text-foreground outline-none focus:border-primary/40"
-                      />
-                    </label>
+                    <IndicatorNumericSlider
+                      key={key}
+                      label={label}
+                      min={min}
+                      max={max}
+                      step={step}
+                      value={Number(settingsInstance.settings?.[key] ?? fallback)}
+                      onChange={(next) => replace(settingsInstance.instanceId, (current) => ({
+                        ...current,
+                        settings: { ...(current.settings ?? {}), [key]: next },
+                      }))}
+                    />
                   ))}
                   <div className="grid grid-cols-2 gap-2 sm:col-span-2">
                     {([
@@ -2311,25 +2290,18 @@ export default function ChartIndicatorsControl({
                     ["VWAP band 3 (σ)", "vwapBand3", 0],
                     ["Line width", "vwapLineWidth", 1],
                   ] as const).map(([label, key, fallback]) => (
-                    <label key={key} className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
-                      <span>{label}</span>
-                      <input
-                        type="number"
-                        min={0}
-                        max={10}
-                        step={key === "vwapLineWidth" ? 1 : 0.5}
-                        value={Number(settingsInstance.settings?.[key] ?? fallback)}
-                        onChange={(event) => {
-                          const raw = Number(event.target.value);
-                          const next = Math.min(10, Math.max(0, Number.isFinite(raw) ? raw : fallback));
-                          replace(settingsInstance.instanceId, (current) => ({
-                            ...current,
-                            settings: { ...(current.settings ?? {}), [key]: next },
-                          }));
-                        }}
-                        className="h-9 w-full border border-border bg-background px-3 text-right font-mono text-[10px] text-foreground outline-none focus:border-primary/40"
-                      />
-                    </label>
+                    <IndicatorNumericSlider
+                      key={key}
+                      label={label}
+                      min={0}
+                      max={10}
+                      step={key === "vwapLineWidth" ? 1 : 0.5}
+                      value={Number(settingsInstance.settings?.[key] ?? fallback)}
+                      onChange={(next) => replace(settingsInstance.instanceId, (current) => ({
+                        ...current,
+                        settings: { ...(current.settings ?? {}), [key]: next },
+                      }))}
+                    />
                   ))}
                 </div>
               ) : null}
@@ -2595,25 +2567,18 @@ export default function ChartIndicatorsControl({
                     ["Shifted POC tick grouping", "shiftedPocTicks", 4, 1, 100, 1],
                     ["Shifted POC opacity", "shiftedPocOpacity", 35, 2, 100, 1],
                   ] as const).map(([label, key, fallback, min, max, step]) => (
-                    <label key={key} className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
-                      <span>{label}</span>
-                      <input
-                        type="number"
-                        min={min}
-                        max={max}
-                        step={step}
-                        value={Number(settingsInstance.settings?.[key] ?? fallback)}
-                        onChange={(event) => {
-                          const raw = Number(event.target.value);
-                          const next = Math.min(max, Math.max(min, Number.isFinite(raw) ? raw : fallback));
-                          replace(settingsInstance.instanceId, (current) => ({
-                            ...current,
-                            settings: { ...(current.settings ?? {}), [key]: next },
-                          }));
-                        }}
-                        className="h-9 w-full border border-border bg-background px-3 text-right font-mono text-[10px] text-foreground outline-none focus:border-primary/40"
-                      />
-                    </label>
+                    <IndicatorNumericSlider
+                      key={key}
+                      label={label}
+                      min={min}
+                      max={max}
+                      step={step}
+                      value={Number(settingsInstance.settings?.[key] ?? fallback)}
+                      onChange={(next) => replace(settingsInstance.instanceId, (current) => ({
+                        ...current,
+                        settings: { ...(current.settings ?? {}), [key]: next },
+                      }))}
+                    />
                   ))}
                   <div className="border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
                     Developing POC traces where control sat through the session; a start offset skips the first minutes, which are usually noise. Shifted POC grouping is the tick bucket the migration study uses.
@@ -2691,42 +2656,29 @@ export default function ChartIndicatorsControl({
                       <option value="solid">Solid</option>
                     </KwantSelect>
                   </label>
-                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
-                    <span>Line width</span>
-                    <input
-                      type="number"
-                      min={0.5}
-                      max={6}
-                      step={0.5}
-                      value={Number(settingsInstance.settings?.valueAreaLineWidth ?? 1)}
-                      onChange={(event) => {
-                        const next = Math.min(6, Math.max(0.5, Number(event.target.value) || 1));
-                        replace(settingsInstance.instanceId, (current) => ({
-                          ...current,
-                          settings: { ...(current.settings ?? {}), valueAreaLineWidth: next },
-                        }));
-                      }}
-                      className="h-9 w-full border border-border bg-background px-3 text-right font-mono text-[10px] text-foreground outline-none focus:border-primary/40"
-                    />
-                  </label>
-                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">
-                    <span>% value area</span>
-                    <input
-                      type="number"
-                      min={1}
-                      max={100}
-                      step={1}
-                      value={Number(settingsInstance.settings?.valueAreaPercent ?? 68)}
-                      onChange={(event) => {
-                        const next = Math.min(100, Math.max(1, Math.round(Number(event.target.value) || 68)));
-                        replace(settingsInstance.instanceId, (current) => ({
-                          ...current,
-                          settings: { ...(current.settings ?? {}), valueAreaPercent: next },
-                        }));
-                      }}
-                      className="h-9 w-full border border-border bg-background px-3 text-right font-mono text-[10px] text-foreground outline-none focus:border-primary/40"
-                    />
-                  </label>
+                  <IndicatorNumericSlider
+                    label="Line width"
+                    min={0.5}
+                    max={6}
+                    step={0.5}
+                    value={Number(settingsInstance.settings?.valueAreaLineWidth ?? 1)}
+                    onChange={(next) => replace(settingsInstance.instanceId, (current) => ({
+                      ...current,
+                      settings: { ...(current.settings ?? {}), valueAreaLineWidth: next },
+                    }))}
+                  />
+                  <IndicatorNumericSlider
+                    label="% value area"
+                    min={1}
+                    max={100}
+                    step={1}
+                    value={Number(settingsInstance.settings?.valueAreaPercent ?? 68)}
+                    className="sm:col-span-2"
+                    onChange={(next) => replace(settingsInstance.instanceId, (current) => ({
+                      ...current,
+                      settings: { ...(current.settings ?? {}), valueAreaPercent: next },
+                    }))}
+                  />
                   <div className="border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
                     Developing traces both value-area edges as they widened through the session, dashed or solid.
                     It is recorded minute by minute while the session runs, so a day that finished before the chart
@@ -2834,64 +2786,41 @@ export default function ChartIndicatorsControl({
                     ["Previous offset", "previousProfileOffset", 0, -400, 400, 1],
                     ["Profile opacity %", "opacity", 100, 10, 100, 1],
                   ] as const).map(([label, key, fallback, min, max, step]) => (
-                    <label key={key} className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
-                      <span>{label}</span>
-                      <input
-                        type="number"
-                        min={min}
-                        max={max}
-                        step={step}
-                        value={Number(settingsInstance.settings?.[key] ?? fallback)}
-                        onChange={(event) => {
-                          const next = Math.min(max, Math.max(min, Math.round(Number(event.target.value) || 0)));
-                          replace(settingsInstance.instanceId, (current) => ({
-                            ...current,
-                            settings: { ...(current.settings ?? {}), [key]: next },
-                          }));
-                        }}
-                        className="h-9 w-full border border-border bg-background px-3 text-right font-mono text-[10px] text-foreground outline-none focus:border-primary/40"
-                      />
-                    </label>
+                    <IndicatorNumericSlider
+                      key={key}
+                      label={label}
+                      min={min}
+                      max={max}
+                      step={step}
+                      value={Number(settingsInstance.settings?.[key] ?? fallback)}
+                      onChange={(next) => replace(settingsInstance.instanceId, (current) => ({
+                        ...current,
+                        settings: { ...(current.settings ?? {}), [key]: next },
+                      }))}
+                    />
                   ))}
-                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
-                    <span>Number of profiles</span>
-                    <input
-                      type="number"
-                      min={0}
-                      max={MAXIMUM_DAILY_VOLUME_PROFILES}
-                      step={1}
-                      value={Number(settingsInstance.settings?.numberOfProfiles ?? 0)}
-                      onChange={(event) => {
-                        const next = Math.min(
-                          MAXIMUM_DAILY_VOLUME_PROFILES,
-                          Math.max(0, Math.round(Number(event.target.value) || 0)),
-                        );
-                        replace(settingsInstance.instanceId, (current) => ({
-                          ...current,
-                          settings: { ...(current.settings ?? {}), numberOfProfiles: next },
-                        }));
-                      }}
-                      className="h-9 w-full border border-border bg-background px-3 text-right font-mono text-[10px] text-foreground outline-none focus:border-primary/40"
-                    />
-                  </label>
-                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
-                    <span>Border width</span>
-                    <input
-                      type="number"
-                      min={0.5}
-                      max={6}
-                      step={0.5}
-                      value={Number(settingsInstance.settings?.borderWidth ?? 1)}
-                      onChange={(event) => {
-                        const next = Math.min(6, Math.max(0.5, Number(event.target.value) || 1));
-                        replace(settingsInstance.instanceId, (current) => ({
-                          ...current,
-                          settings: { ...(current.settings ?? {}), borderWidth: next },
-                        }));
-                      }}
-                      className="h-9 w-full border border-border bg-background px-3 text-right font-mono text-[10px] text-foreground outline-none focus:border-primary/40"
-                    />
-                  </label>
+                  <IndicatorNumericSlider
+                    label="Number of profiles"
+                    min={0}
+                    max={MAXIMUM_DAILY_VOLUME_PROFILES}
+                    step={1}
+                    value={Number(settingsInstance.settings?.numberOfProfiles ?? 0)}
+                    onChange={(next) => replace(settingsInstance.instanceId, (current) => ({
+                      ...current,
+                      settings: { ...(current.settings ?? {}), numberOfProfiles: next },
+                    }))}
+                  />
+                  <IndicatorNumericSlider
+                    label="Border width"
+                    min={0.5}
+                    max={6}
+                    step={0.5}
+                    value={Number(settingsInstance.settings?.borderWidth ?? 1)}
+                    onChange={(next) => replace(settingsInstance.instanceId, (current) => ({
+                      ...current,
+                      settings: { ...(current.settings ?? {}), borderWidth: next },
+                    }))}
+                  />
                   <div className="border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
                     VAH, POC and VAL are named on the plot like IB levels — set Level labels to move them beside the profile or hide them. POC, value area, peak, valley and VWAP lines carry on to the back of the profile in front — the live edge for the newest one — and are never drawn underneath it, whatever the split settings. Till interaction stops a level earlier, at the first later bar that traded back through it. Visual style paints the histogram filled, outlined, as an edge line, or both. Number of profiles is how many trading days are drawn, newest first — 0 keeps the standing {DEFAULT_DAILY_VOLUME_PROFILE_COUNT}. A chart cannot draw more days than it has candles for, and a split day requests one profile per session window, so a large number is real work.
                   </div>
@@ -3562,18 +3491,17 @@ export default function ChartIndicatorsControl({
                         <div className="text-[9px] uppercase tracking-[0.14em] text-foreground">Exposure population</div>
                         <div className="mt-1 text-[9px] leading-4 text-muted">Only populate the strongest gamma nodes by absolute signed exposure. Positive and negative exposure are ranked equally.</div>
                       </div>
-                      <span className="shrink-0 border border-primary/30 bg-primary/10 px-2 py-1 font-mono text-[9px] text-primary">
-                        Top {Math.round(Number(settingsInstance.settings?.topExposurePercent ?? 10))}%
-                      </span>
                     </div>
-                    <input
-                      type="range"
+                    <IndicatorNumericSlider
+                      label="Strongest exposure shown (%)"
                       min={1}
                       max={100}
                       step={1}
                       value={Number(settingsInstance.settings?.topExposurePercent ?? 10)}
-                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), topExposurePercent: Number(event.target.value) } }))}
-                      className="w-full accent-primary"
+                      onChange={(next) => replace(settingsInstance.instanceId, (current) => ({
+                        ...current,
+                        settings: { ...(current.settings ?? {}), topExposurePercent: next },
+                      }))}
                     />
                     <div className="grid grid-cols-5 gap-1.5">
                       {[5, 10, 25, 50, 100].map((percent) => (
@@ -4380,33 +4308,26 @@ export default function ChartIndicatorsControl({
                       settingsInstance.settings?.perBarProfileTicksPerRow,
                     );
                     return (
-                      <label className="block rounded-lg border border-border bg-surface/30 p-2.5">
-                        <span className="mb-2 flex items-center justify-between text-[9px] text-muted">
-                          <span>Profile row size</span>
-                          <span className="font-mono text-foreground">
-                            {ticksPerRow} {ticksPerRow === 1 ? "tick" : "ticks"} per row
-                          </span>
-                        </span>
-                        <input
-                          type="range"
+                      <div className="rounded-lg border border-border bg-surface/30 p-2.5">
+                        <IndicatorNumericSlider
+                          label="Profile row size (ticks)"
                           min={1}
                           max={FOOTPRINT_PROFILE_MAX_TICKS_PER_ROW}
                           step={1}
                           value={ticksPerRow}
-                          onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                          onChange={(next) => replace(settingsInstance.instanceId, (current) => ({
                             ...current,
                             settings: {
                               ...(current.settings ?? {}),
-                              perBarProfileTicksPerRow: Number(event.target.value),
+                              perBarProfileTicksPerRow: next,
                             },
                           }))}
-                          className="w-full accent-primary"
                         />
                         <span className="mt-1.5 flex justify-between text-[8px] text-muted">
                           <span>Fine · one tick</span>
                           <span>Coarse · {FOOTPRINT_PROFILE_MAX_TICKS_PER_ROW} ticks</span>
                         </span>
-                      </label>
+                      </div>
                     );
                   })()}
                   <div className="grid gap-2 sm:grid-cols-2">
@@ -4419,24 +4340,19 @@ export default function ChartIndicatorsControl({
                     ].map(([label, key, fallback, minimum, maximum, step, suffix]) => {
                       const value = Number(settingsInstance.settings?.[String(key)] ?? fallback);
                       return (
-                        <label key={String(key)} className="block rounded-lg border border-border bg-surface/30 p-2.5">
-                          <span className="mb-2 flex items-center justify-between text-[9px] text-muted">
-                            <span>{String(label)}</span>
-                            <span className="font-mono text-foreground">{value}{String(suffix)}</span>
-                          </span>
-                          <input
-                            type="range"
-                            min={Number(minimum)}
-                            max={Number(maximum)}
-                            step={Number(step)}
-                            value={value}
-                            onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
-                              ...current,
-                              settings: { ...(current.settings ?? {}), [String(key)]: Number(event.target.value) },
-                            }))}
-                            className="w-full accent-primary"
-                          />
-                        </label>
+                        <IndicatorNumericSlider
+                          key={String(key)}
+                          label={`${String(label)}${String(suffix) ? ` (${String(suffix)})` : ""}`}
+                          min={Number(minimum)}
+                          max={Number(maximum)}
+                          step={Number(step)}
+                          value={value}
+                          className="rounded-lg border border-border bg-surface/30 p-2.5"
+                          onChange={(next) => replace(settingsInstance.instanceId, (current) => ({
+                            ...current,
+                            settings: { ...(current.settings ?? {}), [String(key)]: next },
+                          }))}
+                        />
                       );
                     })}
                   </div>
@@ -5019,21 +4935,15 @@ export default function ChartIndicatorsControl({
                   </label>
                 );
                 const slider = (label: string, key: string, fallback: number, min: number, max: number, step = 1) => (
-                  <label key={key} className="block space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
-                    <span className="flex items-center justify-between">
-                      <span>{label}</span>
-                      <span className="font-mono text-foreground">{Number(settingsInstance.settings?.[key] ?? fallback)}</span>
-                    </span>
-                    <input
-                      type="range"
-                      min={min}
-                      max={max}
-                      step={step}
-                      value={Number(settingsInstance.settings?.[key] ?? fallback)}
-                      onChange={(event) => setValue(key, Number(event.target.value))}
-                      className="w-full accent-primary"
-                    />
-                  </label>
+                  <IndicatorNumericSlider
+                    key={key}
+                    label={label}
+                    min={min}
+                    max={max}
+                    step={step}
+                    value={Number(settingsInstance.settings?.[key] ?? fallback)}
+                    onChange={(next) => setValue(key, next)}
+                  />
                 );
                 const toggle = (label: string, key: string, defaultOn: boolean, hint?: string) => {
                   const on = settingsInstance.settings?.[key] === undefined
@@ -5438,25 +5348,18 @@ export default function ChartIndicatorsControl({
                       <option value="bottom-right">Bottom right</option>
                     </KwantSelect>
                   </label>
-                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">
-                    <span className="flex items-center justify-between">
-                      <span>Box size</span>
-                      <span className="font-mono normal-case text-foreground">{Math.round(Number(settingsInstance.settings?.badgeScale ?? 1) * 100)}%</span>
-                    </span>
-                    <input
-                      type="range"
-                      min={0.6}
-                      max={2}
-                      step={0.05}
-                      value={Number(settingsInstance.settings?.badgeScale ?? 1)}
-                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
-                        ...current,
-                        settings: { ...(current.settings ?? {}), badgeScale: Number(event.target.value) },
-                      }))}
-                      className="w-full accent-primary"
-                      aria-label="Gamma Environment box size"
-                    />
-                  </label>
+                  <IndicatorNumericSlider
+                    label="Box size · %"
+                    min={60}
+                    max={200}
+                    step={5}
+                    value={Number(settingsInstance.settings?.badgeScale ?? 1) * 100}
+                    className="sm:col-span-2"
+                    onChange={(next) => replace(settingsInstance.instanceId, (current) => ({
+                      ...current,
+                      settings: { ...(current.settings ?? {}), badgeScale: next / 100 },
+                    }))}
+                  />
                   <label className="flex items-center gap-2 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">
                     <input
                       type="checkbox"
@@ -5538,25 +5441,18 @@ export default function ChartIndicatorsControl({
                       <option value="AUTO">Auto · match instrument family</option>
                     </KwantSelect>
                   </label>
-                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">
-                    <span className="flex items-center justify-between">
-                      <span>Box size</span>
-                      <span className="font-mono normal-case text-foreground">{Math.round(Number(settingsInstance.settings?.badgeScale ?? 1) * 100)}%</span>
-                    </span>
-                    <input
-                      type="range"
-                      min={0.6}
-                      max={2}
-                      step={0.05}
-                      value={Number(settingsInstance.settings?.badgeScale ?? 1)}
-                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
-                        ...current,
-                        settings: { ...(current.settings ?? {}), badgeScale: Number(event.target.value) },
-                      }))}
-                      className="w-full accent-primary"
-                      aria-label="VIX Environment box size"
-                    />
-                  </label>
+                  <IndicatorNumericSlider
+                    label="Box size · %"
+                    min={60}
+                    max={200}
+                    step={5}
+                    value={Number(settingsInstance.settings?.badgeScale ?? 1) * 100}
+                    className="sm:col-span-2"
+                    onChange={(next) => replace(settingsInstance.instanceId, (current) => ({
+                      ...current,
+                      settings: { ...(current.settings ?? {}), badgeScale: next / 100 },
+                    }))}
+                  />
                   {[
                     ["showChange", "Daily change"],
                     ["showRange", "Session range"],
@@ -5597,21 +5493,18 @@ export default function ChartIndicatorsControl({
                       ["highThreshold", "High from", 25],
                       ["extremeThreshold", "Extreme from", 30],
                     ].map(([key, label, fallback]) => (
-                      <label key={String(key)} className="space-y-1 text-[8px] uppercase tracking-[0.1em] text-muted">
-                        <span>{String(label)}</span>
-                        <input
-                          type="number"
-                          min={5}
-                          max={100}
-                          step={1}
-                          value={Number(settingsInstance.settings?.[String(key)] ?? fallback)}
-                          onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
-                            ...current,
-                            settings: { ...(current.settings ?? {}), [String(key)]: Number(event.target.value) },
-                          }))}
-                          className="h-8 w-full border border-border bg-background px-2 font-mono text-[10px] text-foreground"
-                        />
-                      </label>
+                      <IndicatorNumericSlider
+                        key={String(key)}
+                        label={String(label)}
+                        min={5}
+                        max={100}
+                        step={1}
+                        value={Number(settingsInstance.settings?.[String(key)] ?? fallback)}
+                        onChange={(next) => replace(settingsInstance.instanceId, (current) => ({
+                          ...current,
+                          settings: { ...(current.settings ?? {}), [String(key)]: next },
+                        }))}
+                      />
                     ))}
                   </div>
                   {settingsInstance.settings?.useThemeColors !== true ? (
@@ -5935,49 +5828,22 @@ export default function ChartIndicatorsControl({
                     {group.map((setting) => {
                 const value = Number(settingsInstance.settings?.[setting.key] ?? setting.defaultValue);
                 return (
-                  <label key={setting.key} className="block rounded-xl border border-border bg-surface/30 p-3">
-                    <span className="mb-2 flex items-center justify-between text-[10px] text-muted">
-                      <span>{setting.label}</span>
-                      <input
-                        type="number"
-                        min={setting.min}
-                        max={setting.max}
-                        step={setting.step ?? 1}
-                        value={value}
-                        onChange={(event) => {
-                          const requested = Number(event.target.value);
-                          const nextValue = Math.min(setting.max, Math.max(setting.min, Number.isFinite(requested) ? requested : setting.defaultValue));
-                          replace(settingsInstance.instanceId, (current) => ({
-                            ...current,
-                            settings: {
-                              ...applyNumericIndicatorSetting(settingsDefinition.id, current.settings, setting.key, nextValue),
-                              ...bigTradeModeFor(settingsDefinition.id, setting.key, nextValue),
-                            },
-                          }));
-                        }}
-                        className="h-7 w-24 rounded-lg border border-border bg-background px-2 text-right font-mono text-[10px] text-foreground outline-none focus:border-primary/40"
-                      />
-                    </span>
-                    <input
-                      type="range"
-                      min={setting.min}
-                      max={setting.max}
-                      step={setting.step ?? 1}
-                      value={value}
-                      onChange={(event) => {
-                        const requested = Number(event.target.value);
-                        const nextValue = Math.min(setting.max, Math.max(setting.min, Number.isFinite(requested) ? requested : setting.defaultValue));
-                        replace(settingsInstance.instanceId, (current) => ({
-                          ...current,
-                          settings: {
-                            ...applyNumericIndicatorSetting(settingsDefinition.id, current.settings, setting.key, nextValue),
-                            ...bigTradeModeFor(settingsDefinition.id, setting.key, nextValue),
-                          },
-                        }));
-                      }}
-                      className="w-full accent-primary"
-                    />
-                  </label>
+                  <IndicatorNumericSlider
+                    key={setting.key}
+                    label={setting.label}
+                    min={setting.min}
+                    max={setting.max}
+                    step={setting.step ?? 1}
+                    value={value}
+                    className="rounded-xl border border-border bg-surface/30 p-3"
+                    onChange={(nextValue) => replace(settingsInstance.instanceId, (current) => ({
+                      ...current,
+                      settings: {
+                        ...applyNumericIndicatorSetting(settingsDefinition.id, current.settings, setting.key, nextValue),
+                        ...bigTradeModeFor(settingsDefinition.id, setting.key, nextValue),
+                      },
+                    }))}
+                  />
                 );
                     })}
                   </div>

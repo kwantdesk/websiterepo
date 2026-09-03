@@ -223,6 +223,7 @@
     "test:socials-reaction": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-socials-reaction.mjs",
     "test:socials-notifications": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-socials-notifications.mjs",
     "test:indicator-settings-save": "node --experimental-strip-types scripts/test-indicator-settings-save.mjs",
+    "test:indicator-numeric-sliders": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-indicator-numeric-sliders.mjs",
     "test:candle-style": "node --import ./scripts/alias-hook.mjs scripts/test-candle-style.mjs",
     "test:candle-gaps": "node --import ./scripts/alias-hook.mjs scripts/test-candle-gaps.mjs",
     "test:interval-menu": "node scripts/test-interval-menu.mjs",

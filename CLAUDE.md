@@ -1433,3 +1433,25 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
   Daily Volume Profile.
 - Verification: indicator settings Save 11/11, scoped ESLint, TypeScript and
   the complete 80-page production build passed.
+
+## 2026-09-03 — Catalogue-wide numeric indicator sliders
+
+- Replaced native spinner-only and slider-only numeric settings with one shared
+  editable numeric field and theme-native precision rail. Browser up/down
+  spinner arrows are removed; users can drag, use the keyboard, click into the
+  value, or double-click to select and type an exact number.
+- Applied the shared control to all 300+ numeric definitions in the chart
+  indicator catalogue, every purpose-built Daily/Session/Composite Volume
+  Profile tab, Footprint, TPO, POC, Value Area, Gamma/VIX Environment and the
+  separate Single Volume Profile/TPO workspaces. Drawing-tool geometry remains
+  a separate subsystem.
+- Every control clamps to its declared minimum/maximum and exact step. Very
+  large positive ranges use a logarithmic rail, while large signed ranges use a
+  symmetric logarithmic rail around zero, preserving usable precision without
+  changing the value stored by the indicator.
+- Gamma and VIX box scale is presented as an understandable 60–200 percent
+  rather than exposing its internal 0.6–2 multiplier.
+- Verification: slider contract 9/9, indicator Save 11/11, Volume Profile live
+  settings 8/8, TPO wiring 6/6, Footprint chart types and theme suite 12/12 all
+  passed. Scoped ESLint, TypeScript and the complete 80-page production build
+  passed.

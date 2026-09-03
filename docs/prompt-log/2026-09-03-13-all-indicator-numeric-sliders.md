@@ -1,0 +1,11 @@
+# Prompt
+
+Okay, this is an important one. This is a big task, and I don't want you to ignore it. For example, in our daily volume profile, we've got the plot set things, right? We've got the ones like current width where you can tap this little arrow. Now that little arrow is not good enough. Okay? What we need is a slider bar underneath. Okay? Slider bar underneath that's really sleek and slick, so you can just slide it up and down, right? This should go for every setting that you can change. Okay? Change the number. It should have a slidey bar. The highest of the bar should be maxed out. You can't go any higher, and the lowest should be the lowest. Okay? Be reasonable. Okay? This should be fixed for every single indicator, starting with the volume profile. Even if I go look at point of control or something, we've got little arrows that go up, down, up, down. This needs to be a slidey bar just underneath, a little slick slidey bar with no up, down arrows. You can double-click and type in the number, right? You can even click one, okay? For most. But we need a slidey bar instead of that little clicky button, and you need to fix this for all indicators. I don't want to just do it for a daily volume profile. I don't want to have to ask you to do this again, okay? Do it for all of them.
+
+# Answer
+
+Implemented one reusable numeric-setting control across the complete chart-indicator catalogue and the separate Volume Profile/TPO workspaces. Every numeric setting now has a theme-native slider beneath an editable value field, no browser increment/decrement arrows, enforced minimum/maximum/step limits, keyboard control, and double-click-to-select direct typing. Large positive and signed institutional ranges use logarithmic rails so low and high values remain practically adjustable without weakening their exact stored values.
+
+# Outcome
+
+Implementation verified locally: 9/9 slider-contract checks, 11/11 indicator Save checks, 8/8 Volume Profile live-setting checks, 6/6 TPO settings-wiring checks, Footprint chart-type checks, 12/12 theme checks, scoped ESLint, TypeScript and the complete 80-page production build all passed. Production commit and deployment are recorded below after the active `websiterepo-yfmi` deployment completes.

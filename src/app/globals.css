@@ -47,6 +47,81 @@
   --candle-down: #FF1F78;
 }
 
+/* Shared precision rail for every numeric chart/indicator setting. */
+.kwant-indicator-number {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.kwant-indicator-number::-webkit-inner-spin-button,
+.kwant-indicator-number::-webkit-outer-spin-button {
+  margin: 0;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.kwant-indicator-slider {
+  height: 16px;
+  margin: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  cursor: ew-resize;
+}
+
+.kwant-indicator-slider::-webkit-slider-runnable-track {
+  height: 3px;
+  border: 1px solid color-mix(in srgb, var(--border) 78%, var(--primary));
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    var(--primary) 0 var(--kwant-slider-fill),
+    color-mix(in srgb, var(--surface) 82%, var(--foreground)) var(--kwant-slider-fill) 100%
+  );
+}
+
+.kwant-indicator-slider::-webkit-slider-thumb {
+  width: 12px;
+  height: 12px;
+  margin-top: -5px;
+  appearance: none;
+  -webkit-appearance: none;
+  border: 2px solid var(--panel);
+  border-radius: 999px;
+  background: var(--primary);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 72%, var(--foreground)), 0 0 10px color-mix(in srgb, var(--primary) 38%, transparent);
+}
+
+.kwant-indicator-slider::-moz-range-track {
+  height: 3px;
+  border: 1px solid color-mix(in srgb, var(--border) 78%, var(--primary));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 82%, var(--foreground));
+}
+
+.kwant-indicator-slider::-moz-range-progress {
+  height: 3px;
+  border-radius: 999px;
+  background: var(--primary);
+}
+
+.kwant-indicator-slider::-moz-range-thumb {
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--panel);
+  border-radius: 999px;
+  background: var(--primary);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 72%, var(--foreground)), 0 0 10px color-mix(in srgb, var(--primary) 38%, transparent);
+}
+
+.kwant-indicator-slider:focus-visible {
+  outline: none;
+}
+
+.kwant-indicator-slider:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 28%, transparent), 0 0 0 1px var(--primary);
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
