@@ -5575,7 +5575,6 @@ function WorkspaceChartPaneComponent({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [settledChartRequestKey, setSettledChartRequestKey] = useState<string | null>(null);
-  const [continuityRecoveryKey, setContinuityRecoveryKey] = useState<string | null>(null);
   const [liveFeedError, setLiveFeedError] = useState<string | null>(null);
   const [resolvedContractSymbol, setResolvedContractSymbol] = useState<string | null>(() =>
     pane.broker === "Databento" ? currentCmeContract(pane.symbol) : null);
@@ -5842,19 +5841,17 @@ function WorkspaceChartPaneComponent({
   const chartIsLoading = chartNeedsLoadingCover({
     requestKey: requestedChartHydrationKey,
     settledRequestKey: settledChartRequestKey,
-    continuityRecoveryKey,
     loading,
     error,
     candleCount: candles.length,
   });
   const beginContinuityRecovery = useCallback(() => {
-    // Request-keyed separately from `loading`: optional order-flow work can
-    // finish while the price seam is still broken and must not uncover it.
-    setContinuityRecoveryKey(requestedChartHydrationKey);
-    setLoading(true);
-    setError(null);
+    // Initial hydration is covered until it is verified, but a continuity
+    // check on an already-live chart must repair in place. Reapplying the
+    // loading cover every time a minute was late looked like a random chart
+    // refresh and hid fresh Rithmic ticks behind historical HTTP work.
     requestTailReconciliationRef.current?.();
-  }, [requestedChartHydrationKey]);
+  }, []);
 
   // Every visible chart continues to ingest and imperatively paint the latest
   // candle. Only the selected pane needs high-frequency React reconciliation
@@ -6438,7 +6435,6 @@ function WorkspaceChartPaneComponent({
           setError(null);
           visibleHistoryReady = true;
           setSettledChartRequestKey(requestedChartHydrationKey);
-          setContinuityRecoveryKey((current) => current === requestedChartHydrationKey ? null : current);
           setLoading(false);
         } catch (loadError) {
           if (cancelled || (loadError instanceof DOMException && loadError.name === "AbortError")) return;
@@ -6731,7 +6727,6 @@ function WorkspaceChartPaneComponent({
         setOrderFlowHistoryReady(true);
         visibleHistoryReady = true;
         setSettledChartRequestKey(requestedChartHydrationKey);
-        setContinuityRecoveryKey((current) => current === requestedChartHydrationKey ? null : current);
         setLoading(false);
         return;
       }
@@ -6791,7 +6786,6 @@ function WorkspaceChartPaneComponent({
             if (historyHydratedRef.current) {
               visibleHistoryReady = true;
               setSettledChartRequestKey(requestedChartHydrationKey);
-              setContinuityRecoveryKey((current) => current === requestedChartHydrationKey ? null : current);
               setLoading(false);
             }
             setError(null);
@@ -6904,7 +6898,6 @@ function WorkspaceChartPaneComponent({
         } else {
           visibleHistoryReady = true;
           setSettledChartRequestKey(requestedChartHydrationKey);
-          setContinuityRecoveryKey((current) => current === requestedChartHydrationKey ? null : current);
           setLoading(false);
         }
         if (tailNeedsReconciliation && !isEventBasedChartInterval(pane.timeframe)) {
@@ -7016,7 +7009,6 @@ function WorkspaceChartPaneComponent({
           setError(null);
           visibleHistoryReady = true;
           setSettledChartRequestKey(requestedChartHydrationKey);
-          setContinuityRecoveryKey((current) => current === requestedChartHydrationKey ? null : current);
           void writeChartHistoryCache(pane.symbol, pane.timeframe, repaired);
           return;
         }
@@ -8076,8 +8068,9 @@ function WorkspaceChartPaneComponent({
           // returned here on every subsequent tick, but did not actually start
           // reconciliation, leaving price frozen until a page refresh. Repair
           // the seam in the background while the current candle keeps painting.
-          // Quarantine immediately. Reconciliation clears the key only after
-          // the repaired candles pass the continuity check.
+          // Keep painting real packets while the missing closed bucket repairs
+          // in the background. A known visible chart must never remount merely
+          // because its historical seam needs maintenance.
           beginContinuityRecovery();
         }
         const useLightweightLiveTail = usingDatabentoPaneFeed
@@ -13155,7 +13148,7 @@ export default function KwantifyWorkspace({
           // Gameplan's moving Session Ladder consumes the same authoritative
           // futures stream as Charts. Publishing it here prevents delayed REST
           // snapshots from briefly displacing the live "You are here" marker.
-          if (activeWorkspaceSectionRef.current !== "charts" && activeWorkspaceSectionRef.current !== "gameplan" && activeWorkspaceSectionRef.current !== "heatmap" && activeWorkspaceSectionRef.current !== "gamvue") return;
+          if (activeWorkspaceSectionRef.current !== "charts" && activeWorkspaceSectionRef.current !== "gameplan" && activeWorkspaceSectionRef.current !== "heatmap" && activeWorkspaceSectionRef.current !== "gamvue" && activeWorkspaceSectionRef.current !== "gexmap") return;
           if (isPriorityLiveSymbol(displayName)) {
             window.dispatchEvent(new CustomEvent(DATABENTO_LIVE_TICK_EVENT, { detail: price }));
           }

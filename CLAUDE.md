@@ -1542,3 +1542,25 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
 - Existing native, SOCIALS, PDF and local test work remains untouched and
   unstaged. Only the route, shared profile client, workspace profile lifecycle,
   focused tests and this handoff entry belong to this change.
+
+## 2026-09-04 — Liquidity Map Chromey contrast and live-chart continuity
+
+- Fixed the Liquidity Map's misuse of Chromey Mono's black hollow-candle body
+  as Sell/Ask UI ink. Bid/Buy remains bright green; Sell/Ask DOM values and
+  trade bubbles now use a distinct pale green. Both market sides are resolved
+  against chart and ladder surfaces at a 4.5:1 minimum across all 44 themes.
+- Best-price labels now derive readable black/white ink from their actual fill,
+  and the embedded module chain is cache-busted so an existing browser cannot
+  retain the black-on-black palette.
+- Diagnosed the reported Rithmic lag with a direct production-path sample:
+  92 NQ/ES packets in 12 seconds, 117 ms average inter-packet gap. The gateway
+  was live; the perceived refresh was a client continuity watchdog placing the
+  loading cover over an already-settled chart during background seam repair.
+- Runtime seam repair now stays silent and in-place while fresh Rithmic ticks
+  continue painting. Initial instrument/timeframe loads remain atomically
+  covered. The nested live dispatch guard now includes GEX Map as well.
+- Verification: theme contrast 2/2, theme suite 12/12, Liquidity Map embed and
+  volume colours 8/8, chart hydration 6/6, live-market routing passed, and the
+  53-instrument x 50-interval Rithmic matrix passed. Scoped ESLint reported no
+  errors (20 existing warnings remain). TypeScript and the full production
+  build both pass.

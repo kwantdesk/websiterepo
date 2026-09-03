@@ -30,7 +30,7 @@ test("liquidity-map styles use a cache-busted deployment revision", () => {
   assert.match(workspace, /src="\/heatmap-app\/index\.html"/);
   assert.match(html, /styles\.css\?v=20260814-square-instruments/);
   assert.match(html, /embed\.css\?v=20260814-workspace-controls/);
-  assert.match(html, /src\/main\.js\?v=20260817-live-stability/);
+  assert.match(html, /src\/main\.js\?v=20260904-liq-contrast/);
 });
 
 test("liquidity map hides its provider badge and workspace embeds hide fullscreen", () => {

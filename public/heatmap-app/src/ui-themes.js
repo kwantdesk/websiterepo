@@ -17,6 +17,8 @@ const WEBSITE_DEFAULTS = Object.freeze({
   gridColor: '#1a1a1d',
   candleUp: '#00f5a0',
   candleDown: '#ef4444',
+  candleUpBorder: '#00f5a0',
+  candleDownBorder: '#ef4444',
 });
 
 let websiteThemeOverride = null;

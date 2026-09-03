@@ -1,6 +1,6 @@
 import { SYMBOLS } from './market-simulator.js?v=20260828-trade-frames';
 import { BOOKMAP_VISUAL_DEFAULTS, RollingDepthEngine } from './depth-engine.js?v=20260828-trade-frames';
-import { DepthRenderer, priceLabel, timeLabel } from './renderer.js?v=20260828-trade-frames';
+import { DepthRenderer, priceLabel, timeLabel } from './renderer.js?v=20260904-liq-contrast';
 import {
   DepthMarketFeed,
   INSTITUTIONAL_MARKET_DATA_ORIGIN,
@@ -14,7 +14,7 @@ import {
   symbolMatchesSnapshot,
   updateLivePresentationEdge,
 } from './live-market.js?v=20260828-trade-frames';
-import { DEFAULT_PALETTE, paletteCssGradient } from './palettes.js?v=20260828-trade-frames';
+import { DEFAULT_PALETTE, paletteCssGradient } from './palettes.js?v=20260904-liq-contrast';
 import {
   DEFAULT_INDICATOR_SETTINGS,
   analyzeOrderFlow,
@@ -28,7 +28,7 @@ import {
   WEBSITE_THEME_STORAGE_KEY,
   applyUiTheme,
   setWebsiteThemeColors,
-} from './ui-themes.js?v=20260828-trade-frames';
+} from './ui-themes.js?v=20260904-liq-contrast';
 
 // Retain genuine Rithmic book frames, not monitor presentation frames. The
 // gateway emits full books at 20 FPS; 1,800 frames therefore preserves the

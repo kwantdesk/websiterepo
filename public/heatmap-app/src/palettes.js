@@ -1,4 +1,4 @@
-import { websiteThemeColors } from './ui-themes.js?v=20260828-trade-frames';
+import { websiteThemeColors } from './ui-themes.js?v=20260904-liq-contrast';
 
 export const DEFAULT_PALETTE = 'auto';
 
@@ -142,6 +142,52 @@ function mix(from, to, amount) {
   return from.map((part, index) => Math.round(part + (to[index] - part) * amount));
 }
 
+function luminance(parts) {
+  return parts
+    .map(part => {
+      const channel = Math.max(0, Math.min(255, part)) / 255;
+      return channel <= .04045 ? channel / 12.92 : ((channel + .055) / 1.055) ** 2.4;
+    })
+    .reduce((total, channel, index) => total + channel * [.2126, .7152, .0722][index], 0);
+}
+
+export function colorContrast(left, right) {
+  const leftLuminance = luminance(left);
+  const rightLuminance = luminance(right);
+  return (Math.max(leftLuminance, rightLuminance) + .05)
+    / (Math.min(leftLuminance, rightLuminance) + .05);
+}
+
+function minimumContrast(color, backgrounds) {
+  return Math.min(...backgrounds.map(background => colorContrast(color, background)));
+}
+
+/**
+ * Preserve the side's hue while guaranteeing that its fine DOM text, bars and
+ * trade bubbles remain visible on both the chart and its price ladder.
+ */
+export function legibleMarketAccent(preferred, fallback, backgrounds, minimumRatio = 4.5) {
+  if (minimumContrast(preferred, backgrounds) >= minimumRatio) return preferred;
+  if (minimumContrast(fallback, backgrounds) >= minimumRatio) return fallback;
+
+  const black = [0, 0, 0];
+  const white = [255, 255, 255];
+  const target = minimumContrast(black, backgrounds) >= minimumContrast(white, backgrounds)
+    ? black
+    : white;
+  for (let step = 1; step <= 20; step += 1) {
+    const candidate = mix(fallback, target, step / 20);
+    if (minimumContrast(candidate, backgrounds) >= minimumRatio) return candidate;
+  }
+  return target;
+}
+
+export function readableAccentText(accent) {
+  const black = [0, 0, 0];
+  const white = [255, 255, 255];
+  return colorContrast(accent, black) >= colorContrast(accent, white) ? black : white;
+}
+
 function automaticThemePalette() {
   const site = websiteThemeColors();
   const background = rgb(site.chartBackground || site.background, [10, 10, 11]);
@@ -203,14 +249,32 @@ export const PALETTE_LUTS = Object.freeze(Object.fromEntries(
 ));
 
 export function paletteAccents(name) {
+  const site = websiteThemeColors();
+  const backgrounds = [
+    rgb(site.chartBackground || site.background, [10, 10, 11]),
+    rgb(site.panel, [12, 12, 14]),
+  ];
   if (name === DEFAULT_PALETTE) {
-    const site = websiteThemeColors();
+    const bid = rgb(site.candleUp || site.primary, [0, 245, 160]);
+    const ask = rgb(site.candleDown || site.danger, [239, 68, 68]);
+    // A hollow candle legitimately uses the chart background as its body. It
+    // is not, however, a usable Sell/Ask colour. Chromey Mono is intentionally
+    // monochrome, so derive a light green partner rather than painting its DOM
+    // values and sell bubbles black-on-black.
+    const hollowAsk = minimumContrast(ask, backgrounds) < 1.2;
+    const askFallback = hollowAsk
+      ? mix(rgb(site.primary, [0, 245, 160]), rgb(site.foreground, [250, 250, 250]), .55)
+      : rgb(site.danger || site.candleDownBorder, [239, 68, 68]);
     return {
-      bid: rgb(site.candleUp || site.primary, [0, 245, 160]),
-      ask: rgb(site.candleDown || site.danger, [239, 68, 68]),
+      bid: legibleMarketAccent(bid, rgb(site.primary, bid), backgrounds),
+      ask: legibleMarketAccent(ask, askFallback, backgrounds),
     };
   }
-  return PALETTE_ACCENTS[name] || PALETTE_ACCENTS.kwantify;
+  const accents = PALETTE_ACCENTS[name] || PALETTE_ACCENTS.kwantify;
+  return {
+    bid: legibleMarketAccent(accents.bid, accents.bid, backgrounds),
+    ask: legibleMarketAccent(accents.ask, accents.ask, backgrounds),
+  };
 }
 
 export function paletteRenderKey(name) {

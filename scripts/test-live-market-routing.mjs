@@ -20,6 +20,21 @@ assert.ok(
   gexMapLiveGuards.length >= 6,
   `GEX Map must activate every global live-feed path; found ${gexMapLiveGuards.length} guards`,
 );
+assert.match(
+  workspace,
+  /activeWorkspaceSectionRef\.current !== "charts"[^\n]+activeWorkspaceSectionRef\.current !== "gexmap"/,
+  "Rithmic packets must reach chart panes embedded in the GEX Map workspace",
+);
+assert.match(
+  workspace,
+  /beginContinuityRecovery = useCallback\(\(\) => \{[\s\S]*?requestTailReconciliationRef\.current\?\.\(\);[\s\S]*?\}, \[\]\)/,
+  "a live continuity repair must stay in place instead of remounting the visible chart",
+);
+assert.doesNotMatch(
+  workspace,
+  /beginContinuityRecovery = useCallback\(\(\) => \{[\s\S]{0,500}?setLoading\(true\)/,
+  "runtime continuity repair must not cover fresh Rithmic ticks with a loading refresh",
+);
 
 assert.match(
   proxy,

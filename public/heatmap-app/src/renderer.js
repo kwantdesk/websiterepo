@@ -1,5 +1,5 @@
-import { paletteAccents, paletteLut, paletteRenderKey } from './palettes.js?v=20260828-trade-frames';
-import { canvasUiTheme } from './ui-themes.js?v=20260828-trade-frames';
+import { paletteAccents, paletteLut, paletteRenderKey, readableAccentText } from './palettes.js?v=20260904-liq-contrast';
+import { canvasUiTheme } from './ui-themes.js?v=20260904-liq-contrast';
 
 function colorCss([red, green, blue], alpha = 1) {
   return alpha >= 1
@@ -1081,8 +1081,8 @@ export class DepthRenderer {
     ctx.font = this.#font(11, 600, true);
     ctx.textBaseline = 'middle';
     for (const [tick, y, fill, textFill, size] of [
-      [current.bestAsk, bestAskY, colorCss(accents.ask), '#fafafa', current.asks.get(Math.round(current.bestAsk)) || 0],
-      [current.bestBid, bestBidY, colorCss(accents.bid), '#09090b', current.bids.get(Math.round(current.bestBid)) || 0],
+      [current.bestAsk, bestAskY, colorCss(accents.ask), colorCss(readableAccentText(accents.ask)), current.asks.get(Math.round(current.bestAsk)) || 0],
+      [current.bestBid, bestBidY, colorCss(accents.bid), colorCss(readableAccentText(accents.bid)), current.bids.get(Math.round(current.bestBid)) || 0],
     ]) {
       if (y < headerHeight || y > layout.plotHeight) continue;
       ctx.fillStyle = fill;
