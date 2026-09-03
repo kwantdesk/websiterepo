@@ -22,6 +22,10 @@ also lower the generic loading flag before price continuity had recovered.
   error and starts authoritative tail reconciliation.
 - Added a five-second wall-clock watchdog, so a stream that stops completely is
   detected without waiting for the nonexistent next packet to report itself.
+- The production minute-rollover check found and corrected an overly eager
+  first version of that watchdog. It now observes behind the wall clock by a
+  bounded, timeframe-aware grace period, preventing a healthy new bucket from
+  being quarantined before its first exchange packet arrives.
 - The quarantine cannot be lowered by unrelated order-flow work.
 - Only a reconciled candle series that passes the shared CME continuity check
   clears the quarantine.
@@ -34,7 +38,8 @@ also lower the generic loading flag before price continuity had recovered.
 
 ## Verification
 
-- Chart hydration/loading-cover tests: 8/8 passed.
+- Chart hydration/loading-cover tests: 9/9 passed, including the live
+  minute-boundary grace regression.
 - Chart history-state regression tests: 5/5 passed.
 - CME session and continuity tests: 13/13 passed.
 - Rithmic candle matrix: 53 instruments x 50 intervals = 2,650 combinations

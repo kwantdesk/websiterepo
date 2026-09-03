@@ -60,7 +60,12 @@ check("a live continuity failure quarantines the already-settled chart", () => {
   );
   assert.match(
     workspace,
-    /cmeChartTailNeedsReconciliation\(latestCandlesRef\.current, pane\.timeframe\)\) \{\s*beginContinuityRecovery\(\);/,
+    /chartContinuityInspectionTime\(Date\.now\(\), timeframeMs\)/,
+    "the watchdog can falsely quarantine the first seconds of a healthy new bucket",
+  );
+  assert.match(
+    workspace,
+    /cmeChartTailNeedsReconciliation\(\s*latestCandlesRef\.current,\s*pane\.timeframe,\s*inspectionTime,\s*\)\) \{\s*beginContinuityRecovery\(\);/,
     "the watchdog does not quarantine a stale or internally broken live tail",
   );
   assert.match(

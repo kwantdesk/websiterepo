@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  chartContinuityInspectionTime,
   chartHydrationKey,
   chartNeedsLoadingCover,
 } from "../src/lib/chartHydration.ts";
@@ -78,6 +79,16 @@ test("continuity recovery for an old chart cannot cover a newly selected chart",
     error: null,
     candleCount: 2_000,
   }), false);
+});
+
+test("the watchdog observes behind a just-opened candle boundary", () => {
+  const boundary = Date.parse("2026-09-03T07:48:08.000Z");
+  assert.equal(
+    chartContinuityInspectionTime(boundary, 60_000),
+    Date.parse("2026-09-03T07:47:53.000Z"),
+  );
+  assert.equal(chartContinuityInspectionTime(boundary, 15_000), boundary - 3_750);
+  assert.equal(chartContinuityInspectionTime(boundary, 1_000), boundary - 1_000);
 });
 
 test("a settled failure reveals the honest error instead of dots or an endless loader", () => {

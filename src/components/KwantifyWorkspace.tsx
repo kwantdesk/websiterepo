@@ -24,7 +24,11 @@ import { STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT } from "@/lib/volumeProfileM
 import { groupByNewYorkDate } from "@/lib/newYorkTradingDay";
 import { clearChartViewportGroup } from "@/lib/chartViewportSync";
 import { saveChartCrosshairSyncEnabled } from "@/lib/chartCrosshairSync";
-import { chartHydrationKey, chartNeedsLoadingCover } from "@/lib/chartHydration";
+import {
+  chartContinuityInspectionTime,
+  chartHydrationKey,
+  chartNeedsLoadingCover,
+} from "@/lib/chartHydration";
 import {
   clampGexVueReplayTimestamp,
   createGexVueReplayState,
@@ -5850,7 +5854,15 @@ function WorkspaceChartPaneComponent({
     // own message handler to report the missing bucket.
     const inspectContinuity = () => {
       if (!historyHydratedRef.current) return;
-      if (cmeChartTailNeedsReconciliation(latestCandlesRef.current, pane.timeframe)) {
+      const timeframeMs = timeframeDurationMs(pane.timeframe);
+      const inspectionTime = timeframeMs === null
+        ? Date.now()
+        : chartContinuityInspectionTime(Date.now(), timeframeMs);
+      if (cmeChartTailNeedsReconciliation(
+        latestCandlesRef.current,
+        pane.timeframe,
+        inspectionTime,
+      )) {
         beginContinuityRecovery();
       }
     };

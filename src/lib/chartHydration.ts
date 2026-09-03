@@ -16,6 +16,16 @@ export function chartHydrationKey(identity: ChartHydrationIdentity) {
   ].join("::");
 }
 
+export function chartContinuityInspectionTime(now: number, timeframeMs: number) {
+  if (!Number.isFinite(now) || !Number.isFinite(timeframeMs) || timeframeMs <= 0) return now;
+  // The first packet in a newly-opened bucket is not guaranteed to arrive on
+  // the exact wall-clock boundary. Inspect slightly behind real time so a
+  // healthy chart is not quarantined during those first seconds, while the
+  // packet-driven check still catches an internal gap immediately.
+  const boundaryGraceMs = Math.min(15_000, Math.max(1_000, timeframeMs / 4));
+  return now - boundaryGraceMs;
+}
+
 export function chartNeedsLoadingCover({
   requestKey,
   settledRequestKey,
