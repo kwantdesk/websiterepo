@@ -48,4 +48,15 @@
 
 ## Outcome
 
-Pending production deployment and live interaction verification in this task.
+- Production code commit: `bfc76db65b57da58d5a7b5ff565b91f603277cdc`.
+- Vercel deployment `7QTdxkUXXaFDgPWZJEurkc8Jsrez` completed successfully
+  in the sole active `websiterepo-yfmi` project and is assigned to
+  `www.kwantdesk.com`.
+- Live production verification confirmed that the NQ chart restored its
+  candles, the shared magnet control activates, and the deployed strength menu
+  exposes `Standard magnet · 18px` and `Strong magnet · 36px`.
+- No drawing was saved during production verification.
+- Result: magnet placement now selects the nearest visible candle wick/body
+  target across the shared non-freehand drawing-tool engine, including
+  same-second event bars, with a practical standard capture range and a
+  stronger optional mode.
