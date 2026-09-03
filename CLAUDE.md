@@ -1643,3 +1643,17 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
   SVG/canvas primitives and create no Lightweight Charts price tabs.
 - Regression coverage now requires every generated plot in all three VWAP
   indicator families to keep its last-value tab disabled.
+
+## 2026-09-04 — Chain IB levels at session boundaries
+
+- IBH, IBL and the optional IB Fibonacci set were all open-ended, so every
+  enabled historical session ran through later profiles to the live edge.
+- A strict next-distinct-session resolver now gives historical IB levels the
+  same hand-off geometry as volume-profile value-area levels: each old set
+  stops exactly at the next enabled session start and only the newest set
+  remains open to the right edge.
+- The comparison is strict so multiple 15/30/45/60-minute balances sharing one
+  session do not cut one another off. IB fibs consume the same boundary as
+  their IBH/IBL pair, and end-anchored labels remain inside their own segment.
+- Verification: IB duration/chain 8/8, Initial Balance calculation,
+  timeframe-independence and Globex suites pass.

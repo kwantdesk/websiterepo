@@ -270,6 +270,28 @@ export function requestedInitialBalanceDurations(
     : [normalizeInitialBalanceDuration(settings.durationMinutes)];
 }
 
+/**
+ * The boundary that owns an older Initial Balance level.
+ *
+ * IBH/IBL are born inside a session, but once a later enabled session starts
+ * its opening range becomes the level set in front. Use a strict comparison
+ * because several durations and both sides share the same session start; they
+ * must all stop at the next distinct session rather than stopping each other.
+ * The newest session has no later boundary and therefore remains live.
+ */
+export function nextInitialBalanceSessionStart(
+  levels: readonly Pick<InitialBalanceLevel, "session">[],
+  sessionStartTimestamp: number,
+): number | undefined {
+  let next: number | undefined;
+  for (const level of levels) {
+    const candidate = Number(level.session.startTimestamp);
+    if (!(candidate > sessionStartTimestamp)) continue;
+    if (next === undefined || candidate < next) next = candidate;
+  }
+  return next;
+}
+
 function normalizeInitialBalanceDuration(value: unknown): InitialBalanceDuration {
   const requested = Number(value);
   return INITIAL_BALANCE_DURATIONS.includes(requested as InitialBalanceDuration)

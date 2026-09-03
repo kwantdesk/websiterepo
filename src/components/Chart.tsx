@@ -457,6 +457,7 @@ import {
   buildInitialBalanceLevels,
   buildMarketSessionWindows,
   buildPreviousSessionHighLowLevels,
+  nextInitialBalanceSessionStart,
 } from "@/lib/marketSessions";
 import { calculateKwantStats } from "@/lib/kwantStats";
 import {
@@ -10567,14 +10568,28 @@ function Chart({
     const ibFontSize = ibLabelSize === "tiny" ? 8 : ibLabelSize === "normal" ? 11 : 9;
     const useIbSessionColors = initialBalanceSettings.useSessionColors === true;
     const useIbThemeColors = initialBalanceSettings.useThemeColors !== false;
+    const ibEndTimeFor = (sessionStartTimestamp: number): Time | undefined => {
+      const nextSessionStart = nextInitialBalanceSessionStart(
+        initialBalanceLevels,
+        sessionStartTimestamp,
+      );
+      if (nextSessionStart === undefined) return undefined;
+      return (
+        eventChartTimeBySourceTimeRef.current.get(nextSessionStart)
+        ?? Math.floor(nextSessionStart / 1_000)
+      ) as Time;
+    };
     const ibLevels: SessionHighLowRenderLevel[] = initialBalanceLevels.map((level) => ({
       id: level.id,
       startTime: (
         eventChartTimeBySourceTimeRef.current.get(level.startTimestamp)
         ?? Math.floor(level.startTimestamp / 1_000)
       ) as Time,
-      // IB levels are forward levels: begin at the exact wick that formed the
-      // extreme and continue through all future/right-side chart space.
+      // The newest IB remains live to the chart edge. Older IBs stop exactly
+      // where the next enabled session begins, matching the profile chain and
+      // preventing a historical opening range from crossing the profile in
+      // front of it.
+      endTime: ibEndTimeFor(level.session.startTimestamp),
       price: level.price,
       label: initialBalanceSettings.showLabels === false ? "" : level.label,
       color: useIbSessionColors
@@ -10589,9 +10604,8 @@ function Chart({
         : String(initialBalanceSettings.fixedLineStyle ?? "dashed") === "dotted" ? "dotted" as const : String(initialBalanceSettings.fixedLineStyle ?? "dashed") === "solid" ? "solid" as const : "dashed" as const,
       fontSize: ibFontSize,
       precision: priceFormat.precision,
-      // IB lines run forward to the right edge; their names belong there too,
-      // clear of the candles rather than stacked over the session that made
-      // them.
+      // Current labels sit at the live edge; historical labels sit just inside
+      // their own next-session boundary.
       labelAnchor: "end" as const,
     }));
     // Optional fib over every initial balance on the chart - each session type
@@ -10613,19 +10627,12 @@ function Chart({
         const range = pair.high.price - pair.low.price;
         if (!(range > 0)) continue;
         /*
-         * The set begins at the candle the SESSION opened on, and runs to the
-         * right edge.
-         *
-         * It used to begin at whichever extreme was made last - so a fib for a
-         * balance that put its low in at 09:47 started there, floating in the
-         * middle of the session that produced it rather than lining up with
-         * the open. It was also cut off at the next session's open, which made
-         * it a block over old price instead of a level to trade against now.
-         * A retracement of the opening range is a level that stays live, so it
-         * is anchored to the open and left open-ended.
+         * The set begins at the candle the SESSION opened on. The current set
+         * reaches the live edge; a historical set hands over exactly at the
+         * next enabled session, just like its IBH/IBL pair.
          */
         const fibStart = pair.high.session.startTimestamp;
-        const fibEnd = undefined;
+        const fibEnd = ibEndTimeFor(fibStart);
         for (const ratio of [0.5, 0.618, 0.786]) {
           fibLevels.push({
             id: `${pair.high.id}-fib-${ratio}-${long ? "long" : "short"}`,

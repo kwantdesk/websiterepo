@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-const { buildInitialBalanceLevels, requestedInitialBalanceDurations, INITIAL_BALANCE_DURATIONS } =
+const {
+  buildInitialBalanceLevels,
+  nextInitialBalanceSessionStart,
+  requestedInitialBalanceDurations,
+  INITIAL_BALANCE_DURATIONS,
+} =
   await import("../src/lib/marketSessions.ts");
 const { defaultIndicatorSettings } = await import("../src/lib/chartIndicatorConfig.ts");
 
@@ -17,8 +22,8 @@ const chart = readFileSync(new URL("../src/components/Chart.tsx", import.meta.ur
  * The fib set is also anchored differently: it used to start at whichever
  * extreme was made LAST, so a balance that printed its low at 09:47 drew a fib
  * beginning there - floating mid-session instead of lining up with the open -
- * and it was cut off at the next session, which made it a block over old price
- * rather than a level still in play.
+ * The current session reaches the live edge; historical ranges hand over at
+ * the next enabled session so they do not cross the profile in front.
  */
 
 let passed = 0;
@@ -123,11 +128,29 @@ check("the fib starts at the session open, not at the last extreme", () => {
   );
 });
 
-check("the fib runs to the right edge", () => {
-  assert.match(chart, /const fibEnd = undefined;/, "the fib is bounded again");
-  assert.ok(
-    !/const nextSessionStart = sessionStarts\.find/.test(chart),
-    "the fib is still cut off at the next session open",
+check("historical IB sets stop at the next distinct session", () => {
+  const levels = [
+    { session: { startTimestamp: 100 } },
+    { session: { startTimestamp: 100 } },
+    { session: { startTimestamp: 200 } },
+    { session: { startTimestamp: 300 } },
+  ];
+  assert.equal(nextInitialBalanceSessionStart(levels, 100), 200);
+  assert.equal(nextInitialBalanceSessionStart(levels, 200), 300);
+  assert.equal(
+    nextInitialBalanceSessionStart(levels, 300),
+    undefined,
+    "the current session must remain open to the live edge",
+  );
+  assert.match(
+    chart,
+    /endTime: ibEndTimeFor\(level\.session\.startTimestamp\)/,
+    "IBH/IBL do not consume the session-chain boundary",
+  );
+  assert.match(
+    chart,
+    /const fibEnd = ibEndTimeFor\(fibStart\)/,
+    "IB fibs do not share the IBH/IBL boundary",
   );
 });
 
