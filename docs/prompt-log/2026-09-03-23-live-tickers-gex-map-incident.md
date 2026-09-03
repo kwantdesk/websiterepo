@@ -81,5 +81,10 @@ This was two faults in series.
   provider cadence or paid QuantData calls; it prevents a cold/busy Vercel
   health probe from aborting a valid recovery response before it can repaint
   the affected pane.
+- A cash-index cache now always performs one silent authoritative history
+  reconciliation during New York RTH, even when its timestamp appears current.
+  This repairs caches produced while prices were frozen (current timestamp,
+  old value) instead of trusting their metadata. The cached chart still paints
+  immediately, and identical requests are coalesced/cached at the gateway.
 
 Verification and production deployment are recorded below after completion.

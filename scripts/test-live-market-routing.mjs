@@ -47,5 +47,10 @@ assert.match(
   /cachedMarketIndexTailIsCurrent/,
   "a recently written but session-stale cash-index cache must not suppress the opening-session backfill",
 );
+assert.match(
+  workspace,
+  /cachedIsHydrated && !mustReconcileLiveMarketIndexHistory/,
+  "a current-timestamp cache must still reconcile once against authoritative cash-index history during RTH",
+);
 
 console.log("live market routing: shared cash-index SSE, proxy lifetime, and GEX Map subscriptions verified");

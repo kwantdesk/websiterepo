@@ -6724,7 +6724,9 @@ function WorkspaceChartPaneComponent({
         setLoading(false);
         setError(null);
       }
-      if (cachedIsHydrated) {
+      const mustReconcileLiveMarketIndexHistory = pane.broker === "Market Index"
+        && newYorkCashSessionIsOpen();
+      if (cachedIsHydrated && !mustReconcileLiveMarketIndexHistory) {
         historyHydratedRef.current = true;
         setOrderFlowHistoryReady(true);
         visibleHistoryReady = true;
