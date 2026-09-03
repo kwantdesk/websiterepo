@@ -3050,14 +3050,6 @@ function getLiveMoveLimit(symbol: string) {
   return 0.12;
 }
 
-function getCandleRangeLimit(symbol: string) {
-  const root = displayCmeSymbol(symbol);
-  if (["EURUSD", "GBPUSD", "AUDUSD", "NZDUSD", "USDCAD", "USDCHF"].includes(root)) return 0.12;
-  if (root === "USDJPY") return 0.15;
-  if (["XAUUSD", "XAGUSD", "MGC", "GC"].includes(root)) return 0.25;
-  return 0.4;
-}
-
 function getSingleTickMoveRatio(symbol: string) {
   const root = displayCmeSymbol(symbol);
   if (["MNQ", "NQ", "MES", "ES", "MYM", "YM", "M2K", "RTY"].includes(root)) return 0.002;
@@ -3162,37 +3154,15 @@ function validateLiveTick(args: {
 }
 
 function sanitizeCandle(candle: Candle, symbol: string, referencePrice?: number): Candle | null {
-  let { open, high, low, close } = candle;
+  const { open, high, low, close } = candle;
   if (![open, high, low, close].every(isPositiveFinite)) return null;
-
-  if (referencePrice && isPositiveFinite(referencePrice)) {
-    const bodyMoveLimit = getLiveMoveLimit(symbol) * 2;
-    const openMoveRatio = Math.abs(open - referencePrice) / referencePrice;
-    const closeMoveRatio = Math.abs(close - referencePrice) / referencePrice;
-
-    if (openMoveRatio > bodyMoveLimit && closeMoveRatio > bodyMoveLimit) return null;
-    if (openMoveRatio > bodyMoveLimit) open = close;
-    if (closeMoveRatio > bodyMoveLimit) close = open;
-  }
-
-  const bodyHigh = Math.max(open, close);
-  const bodyLow = Math.min(open, close);
-  const rawHigh = Math.max(open, high, low, close);
-  const rawLow = Math.min(open, high, low, close);
-  const reference = Math.max(Math.abs(close), 1e-9);
-  const rangeRatio = (rawHigh - rawLow) / reference;
-
-  if (rangeRatio > getCandleRangeLimit(symbol)) {
-    return { ...candle, open, close, high: bodyHigh, low: bodyLow };
-  }
-
-  return {
-    ...candle,
-    open,
-    close,
-    high: Math.max(rawHigh, bodyHigh),
-    low: Math.min(rawLow, bodyLow),
-  };
+  void symbol;
+  void referencePrice;
+  // Reject structurally impossible OHLC. Never "repair" an exchange bar by
+  // clipping its wick or moving its body: that produces a plausible candle
+  // that no sequence of executions actually made.
+  if (high < Math.max(open, close) || low > Math.min(open, close) || low > high) return null;
+  return candle;
 }
 
 /**
@@ -3219,56 +3189,7 @@ function sanitizeCandles(candles: Candle[], symbol: string, timeframe?: string) 
     if (cleanCandle) cleanCandles.push(cleanCandle);
   }
 
-  const despiked = cleanCandles.map((candle, index, rows) => {
-    if (index === 0) return candle;
-    const previous = rows[index - 1];
-    const next = rows[index + 1];
-    const reference = previous.close;
-    // Only the recent volatility window is used by getSingleTickMoveLimit.
-    // Slicing the entire history for every candle made this pass O(n²) and
-    // blocked the chart thread on multi-day intraday histories.
-    const recentHistory = rows.slice(Math.max(0, index - 20), index);
-    const moveLimit = getSingleTickMoveLimit(recentHistory, symbol, reference);
-    const nextConfirmsReference = Boolean(
-      next && Math.abs(next.close - reference) <= moveLimit,
-    );
-    let open = candle.open;
-    let close = candle.close;
-
-    if (
-      Math.abs(open - reference) > moveLimit
-      && (Math.abs(close - reference) <= moveLimit || nextConfirmsReference)
-    ) open = reference;
-    if (
-      Math.abs(close - reference) > moveLimit
-      && nextConfirmsReference
-    ) close = Math.abs(next.open - reference) <= moveLimit ? next.open : reference;
-
-    const bodyHigh = Math.max(open, close);
-    const bodyLow = Math.min(open, close);
-    const bodyNearReference =
-      Math.abs(open - reference) <= moveLimit
-      || Math.abs(close - reference) <= moveLimit;
-    const repairIsConfirmed = nextConfirmsReference && bodyNearReference;
-    const high = repairIsConfirmed
-      ? Math.min(candle.high, bodyHigh + moveLimit)
-      : Math.max(candle.high, bodyHigh);
-    const low = repairIsConfirmed
-      ? Math.max(candle.low, bodyLow - moveLimit)
-      : Math.min(candle.low, bodyLow);
-
-    return {
-      ...candle,
-      open,
-      close,
-      high: Math.max(high, bodyHigh),
-      low: Math.min(low, bodyLow),
-    };
-  });
-
-  // Filled AFTER the spike repair, so a flat bar carries a corrected close
-  // rather than a bad print held across the quiet minutes that follow it.
-  return timeframe ? repairInstitutionalCandleSeries(despiked, timeframe, symbol) : despiked;
+  return timeframe ? repairInstitutionalCandleSeries(cleanCandles, timeframe, symbol) : cleanCandles;
 }
 
 function mergeLiveMidIntoCandles(
@@ -3376,24 +3297,8 @@ function mergeLiveMidIntoCandles(
     );
   }
 
-  const reference = repairedLast.close || repairedLast.open;
-  const moveRatio = reference > 0 ? Math.abs(mid - reference) / reference : 0;
-  if (moveRatio > getLiveMoveLimit(symbol)) {
-    return reanchorLiveMidIntoCandles(candles, mid, symbol);
-  }
-
-  const typicalRange = getRecentTypicalRange(candles);
-  const retainedWickLimit = Math.max(typicalRange * 2.5, reference * 0.0012);
-  const bodyHigh = Math.max(repairedLast.open, mid);
-  const bodyLow = Math.min(repairedLast.open, mid);
-  const cappedHigh = Math.min(
-    Math.max(repairedLast.high, repairedLast.open, mid),
-    bodyHigh + retainedWickLimit,
-  );
-  const cappedLow = Math.max(
-    Math.min(repairedLast.low, repairedLast.open, mid),
-    bodyLow - retainedWickLimit,
-  );
+  const exactHigh = Math.max(repairedLast.high, repairedLast.open, mid);
+  const exactLow = Math.min(repairedLast.low, repairedLast.open, mid);
 
   const previousDeltaClose = Number(
     repairedLast.deltaClose ?? repairedLast.delta ?? 0,
@@ -3402,8 +3307,8 @@ function mergeLiveMidIntoCandles(
   updated[lastIndex] = {
     ...repairedLast,
     close: mid,
-    high: cappedHigh,
-    low: cappedLow,
+    high: exactHigh,
+    low: exactLow,
     volume: Math.max(0, Number(repairedLast.volume ?? 0)) + executedSize,
     trades: Math.max(0, Number(repairedLast.trades ?? 0)) + executedTrades,
     delta: Number(repairedLast.delta ?? 0) + executedDelta,
@@ -3440,30 +3345,6 @@ function hasUsableOrderFlowHistory(candles: Candle[]) {
   const first = verified[0]?.timestamp ?? 0;
   const last = verified.at(-1)?.timestamp ?? 0;
   return last > first;
-}
-
-function reanchorLiveMidIntoCandles(candles: Candle[], mid: number, symbol: string) {
-  if (!isPositiveFinite(mid) || candles.length === 0) return candles;
-
-  const lastIndex = candles.length - 1;
-  const previousClose = lastIndex > 0 ? candles[lastIndex - 1].close : candles[lastIndex].open;
-  const anchor = isPositiveFinite(previousClose) ? previousClose : mid;
-  const baseline = sanitizeCandle(
-    {
-      ...candles[lastIndex],
-      open: anchor,
-      high: Math.max(anchor, mid),
-      low: Math.min(anchor, mid),
-      close: mid,
-    },
-    symbol,
-    lastIndex > 1 ? candles[lastIndex - 2].close : undefined,
-  );
-
-  if (!baseline) return candles;
-  const updated = [...candles];
-  updated[lastIndex] = baseline;
-  return updated;
 }
 
 // Favourite intervals and instruments are GLOBAL to the trader: one bar,
@@ -7980,7 +7861,14 @@ function WorkspaceChartPaneComponent({
         liveFrameRef.current = null;
         const ticks = usingDatabentoPaneFeed && isEventBasedChartInterval(pane.timeframe)
           ? queuedTicks
-          : compactTimeBasedTicks(queuedTicks, pane.timeframe);
+          : compactTimeBasedTicks(
+              // Rithmic BBO packets update the displayed quote, not candle
+              // OHLC. Only an exchange execution is allowed to make a wick.
+              usingDatabentoPaneFeed
+                ? queuedTicks.filter((tick) => tick.isTrade)
+                : queuedTicks,
+              pane.timeframe,
+            );
         if (!ticks.length) return;
         if (usingDatabentoPaneFeed && needsOrderFlowHistory) {
           const liveExecutions = ticks.flatMap((tick, index): InstitutionalTrade[] => {

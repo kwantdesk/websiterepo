@@ -1322,3 +1322,52 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
 ### Production/VPS actions
 
 - Website-only change. No VPS or provider process changed.
+
+## 2026-09-03 — Rithmic candle-history integrity overhaul
+
+### Completed
+
+- Removed the six-hour event-history clamp that made a five-session 40R chart
+  look like roughly twenty minutes of history. Full requested windows now page
+  through the compact Rithmic execution archive, with a dedicated bounded
+  timeout sized from the measured production response time.
+- Tape requests now use the contract's real CME, CBOT, COMEX or NYMEX venue.
+  Micro contracts are resolved exactly and are never silently substituted with
+  their parent mini.
+- The gateway compact tape now follows every configured Rithmic subscription
+  and allow-listed root instead of only NQ, ES and their micros. The offline
+  backfill accepts an explicit root list for restoring pre-change sessions.
+- Same-millisecond executions remain atomic across archive pagination. A page
+  boundary can no longer lose legitimate prints or replay them twice.
+- One-, five-, fifteen-, thirty- and forty-five-second candles are now folded
+  directly from individual executions with exact OHLCV and aggressor flow.
+  Minute bars are no longer relabelled as second bars. Daily bars follow the
+  17:00 America/Chicago trading-session boundary; monthly intervals no longer
+  parse as one minute.
+- Rithmic quote/BBO midpoints no longer create or extend candle wicks. Removed
+  heuristic wick clipping, body movement, despiking, re-anchoring and synthetic
+  zero-volume gap candles; malformed OHLC is rejected instead of rewritten into
+  plausible false data.
+- Renko and range bridge geometry attributes each execution's volume/trades/
+  delta exactly once. Point & Figure now preserves its box anchor, extends by
+  complete boxes and requires its configured reversal distance.
+- Default event-chart requests fail closed unless the returned candles cover
+  at least five trading sessions. Partial history is explicit, never presented
+  as a complete quiet market.
+
+### Verification
+
+- `npm run test:rithmic-candle-integrity`: 53 futures instruments x 50 interval
+  definitions, 2,650 combinations passed with deterministic batch parity,
+  tick alignment, structural OHLC and exact volume conservation.
+- Rithmic gateway suite: 314/314 passed, including exact sub-minute bars,
+  session boundaries and lossless page cutoffs.
+- Event/history/gap/interval/execution regression suites passed; TypeScript and
+  scoped ESLint passed with zero errors. The 80-page production build passed.
+
+### Operational constraint
+
+- The production recorder disk was observed at 92.7% used (5.84 GB free). No
+  raw market data was deleted. Extending live capture beyond the currently
+  configured/entitled Rithmic roots requires off-box backup or a larger volume;
+  silently trading retention for breadth is prohibited.

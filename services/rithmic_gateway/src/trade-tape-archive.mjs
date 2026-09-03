@@ -33,13 +33,16 @@ const DEFAULT_FLUSH_MS = 5_000;
 // Enough to matter, small enough that a kill loses little. Matches the
 // recorder's reasoning: throughput beats ratio when the alternative is a hole.
 const GZIP_LEVEL = 1;
+const MAX_SERVED_TIME_BARS = 500_000;
 
 /**
- * Which instruments get a tape.
+ * Fallback roots used outside the configured production server.
  *
- * Not everything: a tape is ~400,000 rows a session per instrument and the
- * disk is the binding constraint. These four are the ones event bars are
- * actually traded on - the Nasdaq and S&P minis and their micros.
+ * Production passes every configured Rithmic subscription explicitly. The
+ * compact tape is roughly a hundredth of the raw L3 recorder and is the only
+ * source from which exact range/volume/tick/Renko bars can be reconstructed;
+ * silently recording just four of the enabled contracts made every other
+ * event chart look like a quiet market.
  *
  * Order matters. Roots are matched by PREFIX so a contract roll does not
  * silently stop the tape, and the micros are checked first: "NQ" is not a
@@ -347,7 +350,14 @@ export class TradeTapeArchive {
       }
     }
     trades.sort((left, right) => left.timestamp - right.timestamp);
-    const kept = trades.length > limit ? trades.slice(-limit) : trades;
+    let kept = trades;
+    if (trades.length > limit) {
+      const nominalCutoff = trades.length - limit;
+      const cutoffTimestamp = trades[nominalCutoff].timestamp;
+      let cutoff = nominalCutoff;
+      while (cutoff > 0 && trades[cutoff - 1].timestamp === cutoffTimestamp) cutoff -= 1;
+      kept = trades.slice(cutoff);
+    }
     return {
       exchange: upper,
       symbol: upperSymbol,
@@ -363,6 +373,84 @@ export class TradeTapeArchive {
       truncated: truncated || trades.length > limit,
       earliestMs: kept.length ? kept[0].timestamp : null,
       trades: kept,
+    };
+  }
+
+  /**
+   * Exact sub-minute OHLCV/flow, folded from executions rather than relabelled
+   * minute candles. The old history route returned 1m rows for 1s/5s/15s/30s
+   * requests, so the selector changed while the data did not.
+   */
+  async loadTimeBars({ exchange, symbol, interval, intervalMs, fromMs, toMs, limit }) {
+    const upper = String(exchange || "").toUpperCase();
+    const upperSymbol = String(symbol || "").toUpperCase();
+    const end = Number.isFinite(Number(toMs)) && Number(toMs) > 0 ? Number(toMs) : Date.now();
+    const start = Number.isFinite(Number(fromMs)) && Number(fromMs) > 0
+      ? Number(fromMs)
+      : end - 5 * 86_400_000;
+    const bucketMs = Number(intervalMs);
+    if (!Number.isFinite(bucketMs) || bucketMs < 1_000 || bucketMs >= 60_000) {
+      throw new Error("A sub-minute execution interval is required.");
+    }
+
+    const bars = new Map();
+    const dates = new Set();
+    for (let at = start; at < end; at += 6 * 60 * 60_000) dates.add(chicagoTradingDate(at));
+    dates.add(chicagoTradingDate(end));
+    for (const tradingDate of [...dates].sort()) {
+      for (const name of [
+        backfillFileName(upper, upperSymbol),
+        instrumentFileName(upper, upperSymbol),
+      ]) {
+        const file = join(this.dir, tradingDate, name);
+        if (!existsSync(file)) continue;
+        await readArchiveRecords(file, (row) => {
+          const trade = decodeTrade(row);
+          if (!trade || trade.timestamp < start || trade.timestamp > end) return;
+          const price = Number(trade.price);
+          const size = Math.max(0, Number(trade.size) || 0);
+          if (!Number.isFinite(price) || price <= 0 || size <= 0) return;
+          const timestamp = Math.floor(trade.timestamp / bucketMs) * bucketMs;
+          let bar = bars.get(timestamp);
+          if (!bar) {
+            bar = {
+              timestamp, open: price, high: price, low: price, close: price,
+              volume: 0, trades: 0, askVolume: 0, bidVolume: 0,
+              delta: 0, deltaOpen: 0, deltaHigh: 0, deltaLow: 0, deltaClose: 0,
+            };
+            bars.set(timestamp, bar);
+          }
+          bar.high = Math.max(bar.high, price);
+          bar.low = Math.min(bar.low, price);
+          bar.close = price;
+          bar.volume += size;
+          bar.trades += 1;
+          const signed = Number(trade.side) > 0 ? size : Number(trade.side) < 0 ? -size : 0;
+          if (signed > 0) bar.askVolume += size;
+          if (signed < 0) bar.bidVolume += size;
+          bar.delta += signed;
+          bar.deltaClose = bar.delta;
+          bar.deltaHigh = Math.max(bar.deltaHigh, bar.delta);
+          bar.deltaLow = Math.min(bar.deltaLow, bar.delta);
+        });
+      }
+    }
+
+    const ordered = [...bars.values()].sort((left, right) => left.timestamp - right.timestamp);
+    const cap = Number.isFinite(Number(limit)) && Number(limit) > 0
+      ? Math.min(MAX_SERVED_TIME_BARS, Math.floor(Number(limit)))
+      : MAX_SERVED_TIME_BARS;
+    const candles = ordered.length > cap ? ordered.slice(-cap) : ordered;
+    return {
+      exchange: upper,
+      symbol: upperSymbol,
+      interval: String(interval),
+      source: "Rithmic recorded trade tape",
+      startMs: start,
+      endMs: end,
+      truncated: ordered.length > cap,
+      earliestMs: candles[0]?.timestamp ?? null,
+      candles,
     };
   }
 }

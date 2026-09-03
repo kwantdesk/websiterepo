@@ -3,17 +3,12 @@ import { readFileSync } from "node:fs";
 
 const bars = readFileSync(new URL("../src/lib/databento.ts", import.meta.url), "utf8");
 
-/*
- * The event branch, sliced from the guard to the bar builder AFTER it -
- * applyMarketTradesToEventBars is also imported at the top of the file, so an
- * unanchored indexOf finds the import and yields an empty slice that every
- * assertion then passes or fails for the wrong reason.
- */
+/* The public helper must delegate to the one authoritative event builder. */
 const eventBranch = (() => {
   const from = bars.indexOf("if (isEventBasedChartInterval(timeframe)) {");
   if (from < 0) throw new Error("the event-bar branch is gone");
-  const to = bars.indexOf("applyMarketTradesToEventBars", from);
-  if (to < 0) throw new Error("the event-bar builder is gone");
+  const to = bars.indexOf("\n  }", from);
+  if (to < 0) throw new Error("the event-bar branch is malformed");
   return bars.slice(from, to);
 })();
 /*
@@ -52,7 +47,8 @@ let passed = 0;
 const check = (name, fn) => { fn(); passed += 1; console.log(`  ok  ${name}`); };
 
 check("event bars ask the collector, not the vendor", () => {
-  assert.match(eventBranch, /\/v1\/market-data\/trade-tape\?/, "event bars do not read the recorded tape");
+  assert.match(eventBranch, /fetchRecordedTrades\(/,
+    "event bars do not use the complete paged recorded tape");
   assert.ok(
     !/schema: "trades"/.test(eventBranch),
     "the event-bar path still asks the vendor for a raw trades feed",
@@ -65,10 +61,9 @@ check("the recorded aggressor is used, never re-derived", () => {
    * means the feed did not say, and a delta bar must show no delta rather than
    * a guessed one.
    */
-  assert.match(eventBranch, /const side = Number\(record\.side \?\? 0\);/);
-  assert.match(eventBranch, /delta: side > 0 \? size : side < 0 \? -size : 0,/);
+  assert.match(eventHistory, /delta: trade\.side > 0 \? trade\.size : trade\.side < 0 \? -trade\.size : 0,/);
   assert.ok(
-    !/databentoTradeAggressor/.test(eventBranch),
+    !/databentoTradeAggressor\(trade\.side/.test(eventHistory),
     "the vendor's aggressor inference is still in the event-bar path",
   );
 });
@@ -76,7 +71,7 @@ check("the recorded aggressor is used, never re-derived", () => {
 check("an unavailable tape is reported, never silently empty", () => {
   // An empty range chart reads as a quiet market rather than a failed request,
   // which is how the vendor outage went unnoticed for so long.
-  assert.match(bars, /throw new Error\(`The recorded trade tape is unavailable \(\$\{response\.status\}\)/);
+  assert.match(tapeReader, /throw new Error\(`The recorded trade tape is unavailable \(\$\{response\.status\}\)/);
 });
 
 check("the gateway serves the tape", () => {

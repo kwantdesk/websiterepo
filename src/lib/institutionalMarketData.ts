@@ -1362,28 +1362,13 @@ export function repairInstitutionalCandleSeries(
   symbol: string,
 ) {
   const threshold = eventThreshold(timeframe, symbol);
-  // A range or volume bar is not on a clock, so there is no bucket to be
-  // missing - only a time-bucketed series can have a hole in it.
-  if (!threshold) {
-    const intervalMs = timeframeMilliseconds(timeframe);
-    return intervalMs ? fillNoTradeCandleGaps(candles, intervalMs) : candles;
-  }
-  if (threshold.kind !== "r") return candles;
-  const maximumRange = threshold.value + futuresTickSize(symbol) * 0.5;
-  return candles.map((candle) => {
-    const range = candle.high - candle.low;
-    const body = Math.abs(candle.close - candle.open);
-    if (range <= maximumRange && body <= maximumRange) return candle;
-    // A range bar must never bridge a session or contract discontinuity. Keep
-    // the real execution price and its order-flow totals, but start a fresh bar
-    // at that price instead of drawing a hundreds-of-points synthetic candle.
-    return {
-      ...candle,
-      open: candle.close,
-      high: candle.close,
-      low: candle.close,
-    };
-  });
+  void threshold;
+  void symbol;
+  // Integrity is validated at ingestion. A missing time bucket remains
+  // missing and an over-range execution remains visible; synthesizing a flat
+  // no-trade bar or rewriting a real wick conceals the very outage/bad print
+  // an operator must investigate.
+  return candles;
 }
 
 export function applyInstitutionalTradesToCandles(

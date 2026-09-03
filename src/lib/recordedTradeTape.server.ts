@@ -1,4 +1,5 @@
 import { fetchInstitutionalMarketData } from "@/lib/institutionalMarketData.server";
+import { futuresVenue } from "@/lib/futuresVenue";
 
 /**
  * The desk's own recorded prints, for the charts that are built from prints.
@@ -41,6 +42,13 @@ export function contractRootSymbol(symbol: string) {
   return upper.replace(/[A-Z]\d$/, "") || upper;
 }
 
+/** The venue that owns a futures root. Tape requests must address the file's
+ * real exchange; asking CME for a CBOT/COMEX/NYMEX contract returns an honest
+ * empty array that is otherwise indistinguishable from "nothing traded". */
+export function exchangeForRecordedSymbol(symbol: string) {
+  return futuresVenue(symbol);
+}
+
 /**
  * The gateway's own ceiling, matched here so a request is never quietly cut
  * shorter than the collector was willing to serve.
@@ -52,6 +60,8 @@ export function contractRootSymbol(symbol: string) {
  * never to sample within them.
  */
 export const MAX_RECORDED_PRINTS = 1_500_000;
+const MAX_RECORDED_TAPE_PAGES = 4;
+const RECORDED_TAPE_TIMEOUT_MS = 90_000;
 
 /**
  * The prints plus the contract they actually came from.
@@ -83,13 +93,21 @@ export async function fetchRecordedTape(args: {
   const end = Number.isFinite(args.endMs) && args.endMs > 0 ? args.endMs : Date.now();
   const start = Number.isFinite(args.startMs) && args.startMs > 0 ? args.startMs : end - 6 * 60 * 60_000;
   const query = new URLSearchParams({
-    exchange: "CME",
+    exchange: exchangeForRecordedSymbol(args.symbol),
     symbol: contractRootSymbol(args.symbol),
     fromMs: String(Math.round(start)),
     toMs: String(Math.round(end)),
     limit: String(args.limit ?? MAX_RECORDED_PRINTS),
   });
-  const response = await fetchInstitutionalMarketData(`/v1/market-data/trade-tape?${query}`);
+  // A full NQ page is intentionally large and was measured at ~33 seconds.
+  // The generic 15-second gateway deadline aborted every complete event-bar
+  // request, leaving the browser to display only its short live cache. Keep a
+  // dedicated bounded deadline below the route's 285/300-second ceilings.
+  const response = await fetchInstitutionalMarketData(
+    `/v1/market-data/trade-tape?${query}`,
+    {},
+    RECORDED_TAPE_TIMEOUT_MS,
+  );
   if (!response.ok) {
     const detail = await response.text();
     /*
@@ -131,5 +149,26 @@ export async function fetchRecordedTrades(args: {
   endMs: number;
   limit?: number;
 }): Promise<RecordedTrade[]> {
-  return (await fetchRecordedTape(args)).trades;
+  const pages: RecordedTrade[][] = [];
+  let pageEndMs = args.endMs;
+  let previousEarliest = Number.POSITIVE_INFINITY;
+
+  for (let pageIndex = 0; pageIndex < MAX_RECORDED_TAPE_PAGES; pageIndex += 1) {
+    const page = await fetchRecordedTape({ ...args, endMs: pageEndMs });
+    pages.unshift(page.trades);
+    if (!page.truncated || page.earliestMs === null || page.earliestMs <= args.startMs) {
+      return pages.flat().sort((left, right) => left.timestamp - right.timestamp);
+    }
+    if (page.earliestMs >= previousEarliest || page.earliestMs >= pageEndMs) {
+      throw new Error("The recorded trade tape did not advance while paging older history.");
+    }
+    previousEarliest = page.earliestMs;
+    // The gateway retains every print sharing the cutoff millisecond, so the
+    // next page can be exclusive without dropping same-timestamp executions.
+    pageEndMs = page.earliestMs - 1;
+  }
+
+  throw new Error(
+    `The complete execution window exceeds ${(MAX_RECORDED_TAPE_PAGES * (args.limit ?? MAX_RECORDED_PRINTS)).toLocaleString()} recorded prints.`,
+  );
 }

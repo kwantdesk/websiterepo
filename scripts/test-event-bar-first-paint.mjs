@@ -17,8 +17,8 @@ assert.match(route, /: DEFAULT_HISTORY_DAYS;/);
 
 // 3. The window must reach the durable cache key, or every window would share
 //    one cached payload.
-assert.ok(route.includes('"cme-event-bars-v2", symbol, timeframe, `${historyDays}d`'));
-assert.ok(route.includes('"cme-event-flow-v2", symbol, timeframe, `${historyDays}d`'));
+assert.ok(route.includes('["cme-event-bars-v3", symbol, timeframe, cacheScope]'));
+assert.ok(route.includes('["cme-event-flow-v3", symbol, timeframe, cacheScope]'));
 
 // 4. The live stream must never BUILD event bars from an empty series. Volume,
 //    range and tick bars close on cumulative traded size, so starting from
@@ -44,6 +44,6 @@ assert.ok(
 
 // 7. The request key must still carry the window so distinct windows do not
 //    deduplicate onto each other.
-assert.ok(workspace.includes('${healOnly ? "::heal" : ""}::${historyDays}d'));
+assert.ok(workspace.includes('${healOnly ? "::heal" : ""}::${rangeScope}'));
 
 console.log("event bar first paint: 7/7 checks passed");

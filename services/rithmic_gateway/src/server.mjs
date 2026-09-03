@@ -9,7 +9,7 @@ import { LabRepositoryStore } from "./lab-repository.mjs";
 import { RithmicBookStore } from "./book-store.mjs";
 import { loadConfig } from "./config.mjs";
 import { DatabentoEquitiesTradeStream } from "./databento-equities-stream.mjs";
-import { FuturesBarArchive, HistoryRequestError } from "./futures-bar-archive.mjs";
+import { FuturesBarArchive, HistoryRequestError, parseIntervalMs } from "./futures-bar-archive.mjs";
 import { QuantDataSurfacePoller } from "./quantdata-surface-poller.mjs";
 import { TradeTapeArchive, MAX_TAPE_PRINTS } from "./trade-tape-archive.mjs";
 import { BarFlowArchive } from "./bar-flow-archive.mjs";
@@ -208,6 +208,14 @@ chartHistory.attach(client);
 const tradeTape = new TradeTapeArchive({
   dir: config.recordDir,
   enabled: config.recordEnabled,
+  // Every Rithmic contract exposed by this gateway needs the compact print
+  // tape. Minute OHLC cannot reconstruct event bars, so limiting this to the
+  // four equity minis made YM/RTY/GC/CL/ZN/6E silently live-only.
+  roots: [...new Set([
+    ...config.subscriptions,
+    ...config.allowedInstruments,
+    ...config.allowedRoots,
+  ].map((row) => contractRoot(row.symbol)).filter(Boolean))],
 });
 tradeTape.attach(client);
 chartHistory.restore().catch((error) => {
@@ -1568,7 +1576,9 @@ const server = createServer(async (request, response) => {
       }
     }
     if (request.method === "GET" && url.pathname === "/v1/market-data/history") {
-      let instrument = requestedInstrument(url);
+      // History is the requested contract's own tape. Micro-to-parent aliasing
+      // is acceptable for a display quote and is false data for candles.
+      let instrument = requestedInstrument(url, {}, { exactRoot: true });
       const root = parentRoot(contractRoot(instrument.symbol));
       let allowed = gatewayInstrumentCatalog().some((row) => (
         row.root === root
@@ -1596,15 +1606,33 @@ const server = createServer(async (request, response) => {
         });
       }
       try {
-        const history = await chartHistory.load({
-          exchange: instrument.exchange,
-          symbol: instrument.symbol,
-          interval: url.searchParams.get("interval"),
-          fromMs: url.searchParams.get("fromMs"),
-          toMs: url.searchParams.get("toMs"),
-          limit: url.searchParams.get("limit"),
-        });
+        const interval = url.searchParams.get("interval");
+        const intervalMs = parseIntervalMs(interval);
+        const subMinute = /^\d+s$/.test(String(interval || "").trim()) && intervalMs < 60_000;
+        const history = subMinute
+          ? await tradeTape.loadTimeBars({
+              exchange: instrument.exchange,
+              symbol: instrument.symbol,
+              interval,
+              intervalMs,
+              fromMs: url.searchParams.get("fromMs"),
+              toMs: url.searchParams.get("toMs"),
+              limit: url.searchParams.get("limit"),
+            })
+          : await chartHistory.load({
+              exchange: instrument.exchange,
+              symbol: instrument.symbol,
+              interval,
+              fromMs: url.searchParams.get("fromMs"),
+              toMs: url.searchParams.get("toMs"),
+              limit: url.searchParams.get("limit"),
+            });
         if (url.searchParams.get("orderFlow") !== "1") return json(response, 200, history);
+
+        // Sub-minute bars were folded directly from the sided execution tape;
+        // a minute-level flow cache cannot enrich them and must not overwrite
+        // their exact per-second totals.
+        if (subMinute) return json(response, 200, { ...history, executions: [] });
 
         /*
          * Aggressor flow for footprint, CVD, delta and Big Trades.

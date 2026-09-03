@@ -100,7 +100,11 @@ check("bars that are not on a clock are never filled", () => {
     const out = repairInstitutionalCandleSeries(uneven, timeframe, "GC.c.0");
     assert.equal(out.length, uneven.length, `${timeframe} gained invented bars`);
   }
-  assert.equal(repairInstitutionalCandleSeries(uneven, "1m", "GC.c.0").length, 31);
+  assert.deepEqual(
+    repairInstitutionalCandleSeries(uneven, "1m", "GC.c.0"),
+    uneven,
+    "the integrity seam concealed a missing time bucket",
+  );
 });
 
 check("the fill is reached from the seam every candle passes through", () => {
@@ -119,8 +123,8 @@ check("the fill is reached from the seam every candle passes through", () => {
   );
   assert.match(
     workspace,
-    /return timeframe \? repairInstitutionalCandleSeries\(despiked, timeframe, symbol\) : despiked;/,
-    "sanitizeCandles no longer fills gaps",
+    /return timeframe \? repairInstitutionalCandleSeries\(cleanCandles, timeframe, symbol\) : cleanCandles;/,
+    "sanitizeCandles no longer validates through the integrity seam",
   );
   // And the history paths must actually hand it one.
   const calls = workspace.match(/sanitizeCandles\(/g) ?? [];

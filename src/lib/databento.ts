@@ -493,51 +493,32 @@ export async function getDatabentoBars(symbol: string, timeframe: string, start:
      * The prints come from the desk's own recorded tape now, served by the
      * collector in the four fields a bar builder needs.
      */
+    // Read the complete requested window through the shared paged tape reader.
+    // The old code clipped this path to six hours, hard-coded CME and bypassed
+    // truncation metadata—the direct cause of a 40R chart showing only minutes.
     const requestedStart = Date.parse(start);
     const requestedEnd = Date.parse(end);
-    const recentStart = Math.max(
-      Number.isFinite(requestedStart) ? requestedStart : 0,
-      (Number.isFinite(requestedEnd) ? requestedEnd : Date.now()) - 6 * 60 * 60_000,
-    );
-    const query = new URLSearchParams({
-      exchange: "CME",
-      symbol: contractRootSymbol(symbol),
-      fromMs: String(recentStart),
-      toMs: String(Number.isFinite(requestedEnd) ? requestedEnd : Date.now()),
-      limit: "1500000",
-    });
-    const response = await fetchInstitutionalMarketData(`/v1/market-data/trade-tape?${query}`);
-    if (!response.ok) {
-      const detail = await response.text();
-      throw new Error(`The recorded trade tape is unavailable (${response.status}): ${detail.slice(0, 200)}`);
+    if (!Number.isFinite(requestedStart) || !Number.isFinite(requestedEnd) || requestedEnd <= requestedStart) {
+      throw new Error("A valid CME event-history window is required.");
     }
-    const payload = (await response.json()) as { trades?: unknown };
-    const tradeRows = Array.isArray(payload.trades) ? payload.trades : [];
-
-    const trades: MarketTrade[] = tradeRows
-      .map((row) => {
-        const record = row as Record<string, unknown>;
-        const size = Math.max(0, Number(record.size ?? 0));
-        // The tape carries the aggressor as 1 / -1 / 0, recorded rather than
-        // inferred; 0 means the feed did not say and must not be guessed.
-        const side = Number(record.side ?? 0);
-        return {
-          timestamp: Number(record.timestamp),
-          price: Number(record.price),
-          size,
-          trades: 1,
-          delta: side > 0 ? size : side < 0 ? -size : 0,
-        };
-      })
-      .filter((row) => row.timestamp > 0 && row.price > 0)
-      .sort((a, b) => a.timestamp - b.timestamp);
-    return applyMarketTradesToEventBars([], trades, timeframe, symbol, 3_000).map((bar) => ({
+    const trades: MarketTrade[] = (await fetchRecordedTrades({
+      symbol,
+      startMs: requestedStart,
+      endMs: requestedEnd,
+    })).map((trade) => ({
+      timestamp: trade.timestamp,
+      price: trade.price,
+      size: trade.size,
+      trades: 1,
+      delta: trade.side > 0 ? trade.size : trade.side < 0 ? -trade.size : 0,
+    }));
+    return applyMarketTradesToEventBars([], trades, timeframe, symbol, 120_000).map((bar) => ({
       timestamp: bar.timestamp,
       open: bar.open,
       high: bar.high,
       low: bar.low,
       close: bar.close,
-      volume: bar.volume ?? 0,
+      volume: Number(bar.volume ?? 0),
     }));
   }
 

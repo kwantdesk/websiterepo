@@ -9,7 +9,10 @@ import {
   type DatabentoExecutionTuple,
 } from "@/lib/databento";
 import type { Candle } from "@/lib/backtester";
-import { DEFAULT_CHART_HISTORY_CALENDAR_DAYS } from "@/lib/chartHistoryWindow";
+import {
+  DEFAULT_CHART_HISTORY_CALENDAR_DAYS,
+  hasMinimumChartHistory,
+} from "@/lib/chartHistoryWindow";
 import { isEventBasedChartInterval } from "@/lib/chartIntervals";
 import {
   getDatabentoEventBars,
@@ -106,7 +109,7 @@ async function getDurableEventBars(
         executions: [] as DatabentoExecutionTuple[],
       });
     },
-    ["cme-event-bars-v2", symbol, timeframe, cacheScope],
+    ["cme-event-bars-v3", symbol, timeframe, cacheScope],
     { revalidate: DURABLE_EVENT_HISTORY_REVALIDATE_SECONDS },
   )();
   return decodeHistory<EventBarsPayload>(encoded);
@@ -136,7 +139,7 @@ async function getDurableEventHistory(
       }
       return encodeHistory(history);
     },
-    ["cme-event-flow-v2", symbol, timeframe, cacheScope],
+    ["cme-event-flow-v3", symbol, timeframe, cacheScope],
     { revalidate: DURABLE_EVENT_HISTORY_REVALIDATE_SECONDS },
   )();
   return decodeHistory<EventHistoryPayload>(encoded);
@@ -352,6 +355,11 @@ export async function GET(request: Request) {
             executions: [] as DatabentoExecutionTuple[],
           };
     const { candles, executions } = history;
+    if (!hasExplicitRange && !hasMinimumChartHistory(candles, timeframe)) {
+      throw new Error(
+        `Rithmic has not recorded five complete trading sessions for ${symbol} ${timeframe}; partial candle history was rejected.`,
+      );
+    }
     if (candles.length) historyCache.set(cacheKey, { candles, executions, updatedAt: now });
     return conditionalJson(
       request,

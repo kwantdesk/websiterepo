@@ -49,7 +49,10 @@ const REDO = args.includes("--redo");
 // a hole, and this already competes with the collector for the same core.
 const GZIP_LEVEL = 1;
 
-const roots = DEFAULT_TAPE_ROOTS.map((root) => root.toUpperCase());
+const roots = String(flag("roots", DEFAULT_TAPE_ROOTS.join(",")))
+  .split(",")
+  .map((root) => root.trim().toUpperCase())
+  .filter(Boolean);
 const wanted = (symbol) => roots.some((root) => String(symbol).toUpperCase().startsWith(root));
 
 /**

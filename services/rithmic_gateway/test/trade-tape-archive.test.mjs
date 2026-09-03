@@ -394,3 +394,49 @@ test("a cut-short window says so, and stops reading once it is full", async () =
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("a page cutoff retains every execution sharing its millisecond", async () => {
+  await withArchive(async (archive) => {
+    const client = new EventEmitter();
+    archive.attach(client);
+    for (let index = 0; index < 6; index += 1) {
+      client.emit("rawMessage", print(index < 3 ? 0 : index * 1_000, 29000 + index, 1));
+    }
+    await archive.close();
+    const page = await archive.load({
+      exchange: "CME", symbol: "NQU6", fromMs: T0 - 1, toMs: T0 + 10_000, limit: 5,
+    });
+    assert.equal(page.truncated, true);
+    assert.equal(
+      page.trades.filter((trade) => trade.timestamp === T0).length,
+      3,
+      "pagination split legitimate same-millisecond executions",
+    );
+  });
+});
+
+test("sub-minute bars are folded from executions with exact OHLCV and flow", async () => {
+  await withArchive(async (archive) => {
+    const client = new EventEmitter();
+    archive.attach(client);
+    client.emit("rawMessage", print(0, 100, 2, "BUY"));
+    client.emit("rawMessage", print(1_000, 105, 3, "SELL"));
+    client.emit("rawMessage", print(2_000, 95, 4, "BUY"));
+    client.emit("rawMessage", print(6_000, 102, 5, "SELL"));
+    await archive.close();
+    const result = await archive.loadTimeBars({
+      exchange: "CME", symbol: "NQU6", interval: "5s", intervalMs: 5_000,
+      fromMs: T0 - 1, toMs: T0 + 10_000,
+    });
+    assert.equal(result.candles.length, 2);
+    assert.deepEqual(
+      result.candles.map(({ open, high, low, close, volume, askVolume, bidVolume, delta }) => (
+        { open, high, low, close, volume, askVolume, bidVolume, delta }
+      )),
+      [
+        { open: 100, high: 105, low: 95, close: 95, volume: 9, askVolume: 6, bidVolume: 3, delta: 3 },
+        { open: 102, high: 102, low: 102, close: 102, volume: 5, askVolume: 0, bidVolume: 5, delta: -5 },
+      ],
+    );
+  });
+});

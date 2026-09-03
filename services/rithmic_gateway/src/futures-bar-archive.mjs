@@ -96,10 +96,12 @@ export function tradeFromRecord(record) {
 }
 
 export function parseIntervalMs(interval) {
-  const match = String(interval || "1m").trim().match(/^(\d+)\s*(s|m|h|d|D|W)$/);
+  const match = String(interval || "1m").trim().match(/^(\d+)\s*(s|m|h|d|D|W|M)$/);
   if (!match) return BAR_MS;
   const value = Math.max(1, Number(match[1]));
-  const unit = match[2].toLowerCase();
+  const rawUnit = match[2];
+  if (rawUnit === "M") return value * 30 * 86_400_000;
+  const unit = rawUnit.toLowerCase();
   const units = { s: 1_000, m: 60_000, h: 3_600_000, d: 86_400_000, w: 7 * 86_400_000 };
   return value * (units[unit] ?? 60_000);
 }
@@ -112,14 +114,32 @@ export function parseIntervalMs(interval) {
  * caller is told by getting the minutes back unchanged rather than a series
  * that claims to be seconds.
  */
-export function resampleBars(bars, intervalMs) {
+export function resampleBars(bars, intervalMs, interval = "") {
   if (!Number.isFinite(intervalMs) || intervalMs <= BAR_MS) return bars;
   const buckets = new Map();
   for (const bar of bars) {
-    const key = Math.floor(bar.t / intervalMs) * intervalMs;
-    const existing = buckets.get(key);
+    const tradingDate = chicagoTradingDate(bar.t);
+    let identity;
+    let timestamp;
+    if (/^\d+D$/.test(interval)) {
+      identity = `D:${tradingDate}`;
+      timestamp = cmeSessionBounds(tradingDate)?.startMs ?? bar.t;
+    } else if (/^\d+W$/.test(interval)) {
+      const date = new Date(`${tradingDate}T00:00:00Z`);
+      const mondayOffset = (date.getUTCDay() + 6) % 7;
+      date.setUTCDate(date.getUTCDate() - mondayOffset);
+      identity = `W:${date.toISOString().slice(0, 10)}`;
+      timestamp = bar.t;
+    } else if (/^\d+M$/.test(interval)) {
+      identity = `M:${tradingDate.slice(0, 7)}`;
+      timestamp = bar.t;
+    } else {
+      timestamp = Math.floor(bar.t / intervalMs) * intervalMs;
+      identity = `T:${timestamp}`;
+    }
+    const existing = buckets.get(identity);
     if (!existing) {
-      buckets.set(key, { t: key, o: bar.o, h: bar.h, l: bar.l, c: bar.c, v: bar.v });
+      buckets.set(identity, { t: timestamp, o: bar.o, h: bar.h, l: bar.l, c: bar.c, v: bar.v });
       continue;
     }
     existing.h = Math.max(existing.h, bar.h);
@@ -392,7 +412,7 @@ export class FuturesBarArchive {
     const bars = [...merged.values()]
       .filter((bar) => bar.t >= start && bar.t <= end)
       .sort((a, b) => a.t - b.t);
-    const resampled = resampleBars(bars, intervalMs);
+    const resampled = resampleBars(bars, intervalMs, String(interval || ""));
     const cap = Number.isFinite(Number(limit)) && Number(limit) > 0
       ? Math.min(Number(limit), MAX_SERVED_BARS)
       : MAX_SERVED_BARS;

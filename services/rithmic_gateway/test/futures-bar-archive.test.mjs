@@ -160,6 +160,19 @@ test("resolution we do not have is not invented", () => {
   assert.equal(resampleBars(minutes, parseIntervalMs("30s")), minutes);
 });
 
+test("daily bars follow the 17:00 Chicago trading-session boundary", () => {
+  const beforeRoll = Date.parse("2026-08-31T21:59:00Z");
+  const afterRoll = Date.parse("2026-08-31T22:01:00Z");
+  const rows = [
+    { t: beforeRoll, o: 100, h: 101, l: 99, c: 100, v: 1 },
+    { t: afterRoll, o: 200, h: 201, l: 199, c: 200, v: 1 },
+  ];
+  const daily = resampleBars(rows, parseIntervalMs("1D"), "1D");
+  assert.equal(daily.length, 2, "UTC bucketing merged two CME sessions into one day");
+  assert.deepEqual(daily.map((bar) => bar.c), [100, 200]);
+  assert.equal(parseIntervalMs("1M"), 30 * 86_400_000, "monthly was silently parsed as one minute");
+});
+
 test("a window spanning the 17:00 roll reads both session files", async () => {
   /*
    * A print at 16:59 Chicago and one at 17:01 belong to different trading

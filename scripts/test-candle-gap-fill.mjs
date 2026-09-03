@@ -76,15 +76,14 @@ check("nothing is drawn outside the real series", () => {
   assert.deepEqual(fillNoTradeCandleGaps(rows, Number.NaN), rows);
 });
 
-check("only a clock-bucketed series can have a hole", () => {
-  // A range or volume bar closes on a threshold, not on a clock, so there is no
-  // missing bucket to draw and its timestamps are legitimately uneven.
+check("the integrity repair never invents a candle or rewrites a wick", () => {
+  // Missing buckets are operational evidence. They remain visible so an
+  // outage cannot be concealed by plausible-looking zero-volume candles.
   const rows = [bar(0, 100), bar(9, 101)];
-  assert.equal(repairInstitutionalCandleSeries(rows, "1m", "GC").length, 10);
+  assert.deepEqual(repairInstitutionalCandleSeries(rows, "1m", "GC"), rows);
   assert.deepEqual(repairInstitutionalCandleSeries(rows, "10r", "GC"), rows);
-  // A 5m series fills in 5m steps, not 1m ones.
-  const coarse = repairInstitutionalCandleSeries([bar(0, 100), bar(15, 101)], "5m", "GC");
-  assert.deepEqual(coarse.map((row) => row.timestamp / 60_000), [0, 5, 10, 15]);
+  const wick = bar(10, 100, { high: 125, low: 80 });
+  assert.deepEqual(repairInstitutionalCandleSeries([wick], "40r", "NQ"), [wick]);
 });
 
 const LIVE = fileURLToPath(new URL("../tmp/gold-1m-live-2026-08-27.json", import.meta.url));

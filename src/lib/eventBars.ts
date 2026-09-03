@@ -148,6 +148,19 @@ function updateCandle(
   candle.bidVolume = Math.max(0, Number(candle.bidVolume ?? 0)) + (delta < 0 ? volume : 0);
 }
 
+function updateCandleFlow(
+  candle: EventCandle,
+  volume: number,
+  trades: number,
+  delta: number,
+) {
+  candle.volume = Math.max(0, Number(candle.volume ?? 0)) + volume;
+  candle.trades = Math.max(0, Number(candle.trades ?? 0)) + trades;
+  candle.delta = Number(candle.delta ?? 0) + delta;
+  candle.askVolume = Math.max(0, Number(candle.askVolume ?? 0)) + (delta > 0 ? volume : 0);
+  candle.bidVolume = Math.max(0, Number(candle.bidVolume ?? 0)) + (delta < 0 ? volume : 0);
+}
+
 function addThresholdTrade(
   bars: EventCandle[],
   record: MarketTrade,
@@ -277,12 +290,18 @@ function addRenkoTrade(
   }
 
   const direction = distance > 0 ? 1 : -1;
-  const volumePart = Math.max(0, record.size) / brickCount;
-  const tradesPart = Math.max(1, record.trades ?? 1) / brickCount;
-  const deltaPart = (record.delta ?? 0) / brickCount;
+  let unassignedVolume = Math.max(0, record.size);
+  let unassignedTrades = Math.max(1, record.trades ?? 1);
+  let unassignedDelta = record.delta ?? 0;
   for (let index = 0; index < brickCount; index += 1) {
     const close = forming.open + direction * threshold.value;
-    updateCandle(forming, close, volumePart, tradesPart, deltaPart);
+    // A gap may construct several price bricks, but the source execution is
+    // real only once. Fractionally copying it into every brick invented trade
+    // counts and delta at prices where nothing executed.
+    updateCandle(forming, close, unassignedVolume, unassignedTrades, unassignedDelta);
+    unassignedVolume = 0;
+    unassignedTrades = 0;
+    unassignedDelta = 0;
     forming.close = close;
     forming.high = Math.max(forming.open, close);
     forming.low = Math.min(forming.open, close);
@@ -305,24 +324,56 @@ function addPointFigureTrade(
     bars.push(makeCandle(record, safeTimestamp(record.timestamp), record.size, record.trades ?? 1, record.delta ?? 0));
     return;
   }
-  const direction = last.close >= last.open ? 1 : -1;
-  const continuation = direction > 0
-    ? record.price >= last.close + threshold.value
-    : record.price <= last.close - threshold.value;
-  const reversal = direction > 0
-    ? record.price <= last.close - threshold.secondary
-    : record.price >= last.close + threshold.secondary;
-  if (!continuation && !reversal) {
-    updateCandle(last, record.price, record.size, record.trades ?? 1, record.delta ?? 0);
+  const volume = Math.max(0, Number(record.size) || 0);
+  const trades = Math.max(1, Number(record.trades) || 1);
+  const delta = Number(record.delta) || 0;
+  const direction = Math.sign(last.close - last.open);
+
+  if (direction === 0) {
+    const boxes = Math.floor(Math.abs(record.price - last.open) / threshold.value + 1e-10);
+    updateCandleFlow(last, volume, trades, delta);
+    if (boxes > 0) {
+      last.close = last.open + Math.sign(record.price - last.open) * boxes * threshold.value;
+      last.high = Math.max(last.open, last.close);
+      last.low = Math.min(last.open, last.close);
+    }
     return;
   }
-  bars.push(makeCandle(
-    record,
+
+  const continuationDistance = direction > 0
+    ? record.price - last.close
+    : last.close - record.price;
+  if (continuationDistance >= threshold.value - 1e-10) {
+    const boxes = Math.floor((continuationDistance + 1e-10) / threshold.value);
+    updateCandleFlow(last, volume, trades, delta);
+    last.close += direction * boxes * threshold.value;
+    last.high = Math.max(last.open, last.close);
+    last.low = Math.min(last.open, last.close);
+    return;
+  }
+
+  const reversalDistance = direction > 0
+    ? last.close - record.price
+    : record.price - last.close;
+  if (reversalDistance < threshold.secondary - 1e-10) {
+    // Sub-box and sub-reversal executions belong to the active column's flow,
+    // but must not move its box boundary and destroy the reversal anchor.
+    updateCandleFlow(last, volume, trades, delta);
+    return;
+  }
+
+  const boxes = Math.floor((reversalDistance + 1e-10) / threshold.value);
+  const next = makeCandle(
+    { ...record, price: last.close },
     safeTimestamp(record.timestamp, last),
-    record.size,
-    record.trades ?? 1,
-    record.delta ?? 0,
-  ));
+    volume,
+    trades,
+    delta,
+  );
+  next.close = last.close - direction * boxes * threshold.value;
+  next.high = Math.max(next.open, next.close);
+  next.low = Math.min(next.open, next.close);
+  bars.push(next);
 }
 
 /**

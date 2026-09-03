@@ -56,18 +56,20 @@ check("the website asks the gateway, not the vendor", () => {
   );
 });
 
-check("event bars are still the vendor's, and that is recorded", () => {
+check("event bars use the complete paged Rithmic tape", () => {
   /*
-   * Volume, range and tick bars are BUILT from raw prints, and the gateway
-   * serves minute bars rather than a historical tape - so this path is not
-   * fixed by the swap and will fail while the vendor account is out of budget.
-   * Asserted rather than left implicit so it cannot be mistaken for done.
+   * There must be one builder. The removed inline copy clipped the requested
+   * window to six hours and hard-coded CME, so 40R and non-CME contracts had
+   * short or empty histories even while the archive held the prints.
    */
   const eventBranch = bars.slice(
     bars.indexOf("if (isEventBasedChartInterval(timeframe))"),
     bars.indexOf("export async function getDatabentoOrderFlowHistory"),
   );
-  assert.match(eventBranch, /schema: "trades"/, "the event-bar path changed without this test changing");
+  assert.match(eventBranch, /await fetchRecordedTrades\(/);
+  assert.match(eventBranch, /applyMarketTradesToEventBars\(\[\], trades, timeframe, symbol, 120_000\)/);
+  assert.doesNotMatch(eventBranch, /6 \* 60 \* 60_000/);
+  assert.doesNotMatch(eventBranch, /exchange: "CME"/);
 });
 
 check("an unavailable history is reported, never silently empty", () => {
