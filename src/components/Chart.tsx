@@ -16652,17 +16652,7 @@ function Chart({
           <span>Syncing {instrument} Gamma</span>
         </div>
       ) : null}
-      {footprintIndicator && !footprintHasPriceLevelFlow ? (
-        <div
-          className="pointer-events-none absolute right-[76px] top-3 z-[19] max-w-[360px] border border-border/70 bg-background/92 px-3 py-2 font-mono text-[9px] leading-4 text-muted-foreground shadow-lg backdrop-blur"
-          role="status"
-        >
-          <div className="font-semibold uppercase tracking-[0.08em] text-foreground">
-            {orderFlowHistoryReady ? "No executed trade data" : "Loading executed trade history"}
-          </div>
-          {orderFlowHistoryReady ? "No executed trade data is available for this visible period." : "The Footprint will paint as classified executions arrive."}
-        </div>
-      ) : footprintIndicator && footprintHasPriceLevelFlow && !footprintHasClassifiedFlow ? (
+      {footprintIndicator && footprintHasPriceLevelFlow && !footprintHasClassifiedFlow ? (
         <div
           className="pointer-events-none absolute right-[76px] top-3 z-[19] max-w-[390px] border border-border/70 bg-background/92 px-3 py-2 font-mono text-[9px] leading-4 text-muted-foreground shadow-lg backdrop-blur"
           role="status"
