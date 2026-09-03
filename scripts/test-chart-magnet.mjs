@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 
-import { createMagnetResolver, magnetRadiusPx } from "../src/lib/chartMagnet.ts";
+import {
+  buildMagnetCandles,
+  createMagnetResolver,
+  magnetRadiusPx,
+  nearestCandleMagnetCandidate,
+} from "../src/lib/chartMagnet.ts";
 
 const candle = (time, o, h, l, c, x, yFor) => ([
   { key: `${time}:open`, time, price: o, x, y: yFor(o) },
@@ -127,4 +132,61 @@ const lowY = yFor(100); // 300
 assert.ok(magnetRadiusPx("weak") < magnetRadiusPx("medium"));
 assert.ok(magnetRadiusPx("medium") < magnetRadiusPx("strong"));
 
-console.log("Chart magnet snap, velocity gating and stickiness tests passed.");
+// --- each placement click resolves afresh instead of inheriting a stale lock ---
+{
+  const magnet = createMagnetResolver();
+  const closeTargets = [
+    { key: "left:high", time: 1, price: 110, x: 100, y: highY },
+    { key: "right:high", time: 2, price: 110, x: 110, y: highY },
+  ];
+  const first = magnet.resolve({
+    x: 100, y: highY, timestampMs: 0, mode: "medium", intent: "place", candidates: closeTargets,
+  });
+  assert.equal(first.key, "left:high");
+  const second = magnet.resolve({
+    x: 106, y: highY, timestampMs: 10, mode: "medium", intent: "place", candidates: closeTargets,
+  });
+  assert.equal(second.key, "right:high", "a new click must choose its own nearest candle level");
+}
+
+// --- visually nearest adjacent wick wins, not merely nearest timestamp ---
+{
+  const compressed = [
+    { time: 10, open: 100, high: 102, low: 98, close: 101, volume: 1 },
+    { time: 11, open: 109, high: 110, low: 108, close: 109, volume: 1 },
+  ];
+  const hit = nearestCandleMagnetCandidate({
+    candles: compressed,
+    pointerTime: 10,
+    x: 108,
+    y: yFor(110),
+    radiusPx: 18,
+    toX: (time) => time === 10 ? 100 : 110,
+    toY: yFor,
+  });
+  assert.equal(hit?.key, "11:high", "the closest wick on screen must win across neighbouring bars");
+}
+
+// --- event bars sharing one source second keep distinct display columns ---
+{
+  const source = [100, 350, 900].map((offset, index) => ({
+    timestamp: 1_000_000 + offset,
+    open: 100 + index,
+    high: 101 + index,
+    low: 99 + index,
+    close: 100.5 + index,
+    volume: 10,
+  }));
+  assert.deepEqual(
+    buildMagnetCandles(source, true).map((entry) => entry.time),
+    [1000, 1001, 1002],
+    "event-bar magnet coordinates must match the chart's unique monotonic times",
+  );
+  assert.deepEqual(
+    buildMagnetCandles(source, false).map((entry) => entry.time),
+    [1000, 1000, 1000],
+    "ordinary time bars retain their natural timestamp mapping",
+  );
+}
+
+console.log("Chart magnet snap, multi-candle accuracy, event timing and stickiness tests passed.");

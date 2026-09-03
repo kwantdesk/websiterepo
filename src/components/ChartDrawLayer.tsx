@@ -18,6 +18,7 @@ import {
   type MagnetStrength,
 } from "@/lib/chartDrawTools";
 import { fillMarkerGeometry, positionToolScreenGeometry, timeAtPixelPastLastBar } from "@/lib/chartDrawGeometry";
+import { nearestCandleMagnetCandidate } from "@/lib/chartMagnet";
 
 // Self-contained SVG overlay that owns the new charting tools end to end:
 // point placement (fixed-count, poly-click and freehand-drag), live preview,
@@ -126,19 +127,6 @@ export default function ChartDrawLayer({
   const snapStateRef = useRef<{ lastX: number; lastY: number; lastAt: number; lock: DrawPoint | null }>({
     lastX: 0, lastY: 0, lastAt: 0, lock: null,
   });
-  const nearestCandleByTime = (time: number) => {
-    let low = 0;
-    let high = candles.length - 1;
-    while (low < high) {
-      const middle = (low + high) >>> 1;
-      if (candles[middle].time < time) low = middle + 1;
-      else high = middle;
-    }
-    const after = candles[low];
-    const before = candles[low - 1];
-    if (!before) return after;
-    return Math.abs(after.time - time) < Math.abs(before.time - time) ? after : before;
-  };
   const snapAt = (x: number, y: number, options: { velocityAware: boolean }): DrawPoint | null => {
     const raw = fromXY(x, y);
     if (!raw || !magnet || candles.length === 0) return raw;
@@ -148,7 +136,12 @@ export default function ChartDrawLayer({
     const speed = Math.hypot(x - state.lastX, y - state.lastY) / elapsed;
     state.lastX = x; state.lastY = y; state.lastAt = now;
 
-    // Hysteresis: a held lock survives until the pointer clearly leaves it.
+    // A click is a new deliberate anchor. It must choose the target nearest
+    // that click rather than inheriting a hover/previous-anchor lock.
+    if (!options.velocityAware) state.lock = null;
+
+    // Hysteresis: a held drag/preview lock survives until the pointer clearly
+    // leaves it.
     if (state.lock) {
       const lx = toX(state.lock.time); const ly = toY(state.lock.price);
       if (lx != null && ly != null && Math.hypot(lx - x, ly - y) <= SNAP_RELEASE_PX) return state.lock;
@@ -156,20 +149,19 @@ export default function ChartDrawLayer({
     }
     if (options.velocityAware && speed > SNAP_FAST_PX_PER_MS) return raw;
 
-    const candle = nearestCandleByTime(raw.time);
-    const cx = toX(candle.time);
-    if (cx == null || Math.abs(cx - x) > SNAP_RADIUS_PX) return raw;
-    let best: DrawPoint | null = null;
-    let bestDist = SNAP_RADIUS_PX;
-    for (const value of [candle.high, candle.low, candle.open, candle.close]) {
-      const vy = toY(value);
-      if (vy == null) continue;
-      const distance = Math.abs(vy - y);
-      if (distance <= bestDist) { bestDist = distance; best = { time: candle.time, price: value }; }
-    }
-    if (!best) return raw;
-    state.lock = best;
-    return best;
+    const candidate = nearestCandleMagnetCandidate({
+      candles,
+      pointerTime: raw.time,
+      x,
+      y,
+      radiusPx: SNAP_RADIUS_PX,
+      toX,
+      toY,
+    });
+    if (!candidate) return raw;
+    const snapped = { time: candidate.time, price: candidate.price };
+    state.lock = snapped;
+    return snapped;
   };
   // The nearest candle level to a pixel position, ignoring both the hysteresis
   // lock and pointer velocity. The preview path deliberately drops the magnet
@@ -179,18 +171,18 @@ export default function ChartDrawLayer({
   const hardSnap = (x: number, y: number): { point: DrawPoint; distance: number } | null => {
     const raw = fromXY(x, y);
     if (!raw || !magnet || candles.length === 0) return null;
-    const candle = nearestCandleByTime(raw.time);
-    const cx = toX(candle.time);
-    if (cx == null || Math.abs(cx - x) > SNAP_RADIUS_PX) return null;
-    let best: DrawPoint | null = null;
-    let bestDist = SNAP_RADIUS_PX;
-    for (const value of [candle.high, candle.low, candle.open, candle.close]) {
-      const vy = toY(value);
-      if (vy == null) continue;
-      const distance = Math.abs(vy - y);
-      if (distance <= bestDist) { bestDist = distance; best = { time: candle.time, price: value }; }
-    }
-    return best ? { point: best, distance: bestDist } : null;
+    const candidate = nearestCandleMagnetCandidate({
+      candles,
+      pointerTime: raw.time,
+      x,
+      y,
+      radiusPx: SNAP_RADIUS_PX,
+      toX,
+      toY,
+    });
+    return candidate
+      ? { point: { time: candidate.time, price: candidate.price }, distance: Math.hypot(candidate.x - x, candidate.y - y) }
+      : null;
   };
 
   // Freehand samples must never magnet. Snapping every sample of a stroke to

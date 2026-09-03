@@ -34,6 +34,117 @@ export type MagnetCandidate = {
   key: string;
 };
 
+export type MagnetCandle = {
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+};
+
+type MagnetSourceCandle = Omit<MagnetCandle, "time"> & { timestamp: number };
+
+/**
+ * Give the drawing layer the exact same time coordinates as the candle
+ * series. Event bars can complete several times inside one wall-clock second;
+ * collapsing those timestamps made every such bar point at the same screen
+ * column and left the magnet snapping to an apparently random neighbour.
+ */
+export function buildMagnetCandles(
+  candles: readonly MagnetSourceCandle[],
+  preserveEventBars: boolean,
+): MagnetCandle[] {
+  let previousChartTime = Number.NEGATIVE_INFINITY;
+  return candles.map((candle) => {
+    const naturalTime = Math.floor(Number(candle.timestamp) / 1_000);
+    const time = preserveEventBars
+      ? Math.max(naturalTime, previousChartTime + 1)
+      : naturalTime;
+    previousChartTime = time;
+    return {
+      time,
+      open: candle.open,
+      high: candle.high,
+      low: candle.low,
+      close: candle.close,
+      volume: candle.volume,
+    };
+  });
+}
+
+/**
+ * Resolve against every candle visibly inside the horizontal capture band,
+ * not just the candle whose timestamp happens to be nearest. At compressed
+ * zoom levels several bars share that band; the nearest wick/body on screen
+ * is the target the trader is actually pointing at.
+ */
+export function nearestCandleMagnetCandidate(args: {
+  candles: readonly MagnetCandle[];
+  pointerTime: number;
+  x: number;
+  y: number;
+  radiusPx: number;
+  toX: (time: number) => number | null;
+  toY: (price: number) => number | null;
+}): MagnetCandidate | null {
+  const { candles, pointerTime, x, y, radiusPx, toX, toY } = args;
+  if (!candles.length || radiusPx <= 0) return null;
+
+  let low = 0;
+  let high = candles.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if (candles[middle].time < pointerTime) low = middle + 1;
+    else high = middle;
+  }
+
+  let best: MagnetCandidate | null = null;
+  let bestDistance = radiusPx;
+  const inspect = (index: number) => {
+    const candle = candles[index];
+    const candleX = toX(candle.time);
+    if (candleX == null || !Number.isFinite(candleX)) return candleX;
+    const horizontalDistance = Math.abs(candleX - x);
+    if (horizontalDistance > radiusPx) return candleX;
+
+    // Wick extremes deliberately win exact ties against body edges.
+    for (const [field, price] of [
+      ["high", candle.high],
+      ["low", candle.low],
+      ["open", candle.open],
+      ["close", candle.close],
+    ] as const) {
+      const candidateY = toY(price);
+      if (candidateY == null || !Number.isFinite(candidateY)) continue;
+      const distance = Math.hypot(candleX - x, candidateY - y);
+      if (distance > radiusPx || (best !== null && distance >= bestDistance)) continue;
+      bestDistance = distance;
+      best = {
+        key: `${candle.time}:${field}`,
+        time: candle.time,
+        price,
+        x: candleX,
+        y: candidateY,
+      };
+    }
+    return candleX;
+  };
+
+  // Screen X is monotonic with candle order. Walk out from the time insertion
+  // point and stop each direction only after it has left the capture band.
+  for (let index = low; index < candles.length; index += 1) {
+    const candleX = inspect(index);
+    if (candleX != null && candleX > x + radiusPx) break;
+  }
+  for (let index = Math.min(low - 1, candles.length - 1); index >= 0; index -= 1) {
+    const candleX = inspect(index);
+    if (candleX != null && candleX < x - radiusPx) break;
+  }
+
+  return best;
+}
+
 /** Pixel radius inside which a pointer can lock onto a candidate. */
 export function magnetRadiusPx(mode: MagnetMode): number {
   return mode === "weak" ? 10 : mode === "medium" ? 18 : 28;
@@ -133,6 +244,10 @@ export function createMagnetResolver(): MagnetResolver {
         lastTimestampMs = null;
         smoothedSpeed = 0;
         aiming = true;
+        // It is also a new anchor. Reusing the previous hover/anchor lock can
+        // pull a second click back to the first candle even when another wick
+        // is now visibly nearer.
+        lockedKey = null;
       }
 
       const radius = magnetRadiusPx(mode);

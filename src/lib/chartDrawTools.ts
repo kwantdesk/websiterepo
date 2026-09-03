@@ -99,10 +99,9 @@ export type DrawToolGroupId =
   | "measure";
 
 /**
- * Magnet strength. Weak only takes a point that is already almost on the
- * level, so ordinary drawing is unaffected; strong reaches out and is for
- * deliberately pinning to wicks. Weak is first because it is the default and
- * the one that does not surprise you mid-drawing.
+ * Magnet strength. Standard is stored as `weak` for preference compatibility,
+ * but has a practical capture area around the candle. Strong reaches farther
+ * for deliberately pinning to compressed or thin wicks.
  */
 export type MagnetStrength = "weak" | "strong";
 
@@ -114,8 +113,8 @@ export const MAGNET_STRENGTHS: {
   /** How far it must travel to break a snap it already holds. */
   releasePx: number;
 }[] = [
-  { id: "weak", label: "Weak magnet", radiusPx: 9, releasePx: 15 },
-  { id: "strong", label: "Strong magnet", radiusPx: 26, releasePx: 40 },
+  { id: "weak", label: "Standard magnet", radiusPx: 18, releasePx: 28 },
+  { id: "strong", label: "Strong magnet", radiusPx: 36, releasePx: 54 },
 ];
 
 export const DEFAULT_MAGNET_STRENGTH: MagnetStrength = "weak";

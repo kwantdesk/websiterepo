@@ -84,6 +84,18 @@ assert.doesNotMatch(layer, /Math\.abs\(nearest\.timestamp - anchor\.time\) < 60_
 // failing on its own.)
 assert.match(drawLayer, /const SNAP_RADIUS_PX = magnetStrengthSpec\(magnetStrength\)\.radiusPx;/);
 assert.match(drawLayer, /const SNAP_RELEASE_PX = magnetStrengthSpec\(magnetStrength\)\.releasePx;/);
+assert.match(drawLayer, /nearestCandleMagnetCandidate\(/,
+  "the shared drawing layer must resolve every candle inside the visible capture band");
+assert.match(drawLayer, /if \(!options\.velocityAware\) state\.lock = null;/,
+  "each placement click must discard a stale hover or previous-anchor lock");
+assert.match(drawLayer, /distance: Math\.hypot\(candidate\.x - x, candidate\.y - y\)/,
+  "settling must compare true screen distance rather than price-only distance");
+
+const chart = readFileSync("src/components/Chart.tsx", "utf8");
+assert.match(chart, /buildMagnetCandles\([\s\S]*?timeframeToMs\(timeframe\) === null/,
+  "event-bar drawing targets must use the chart's unique display-time sequence");
+assert.match(chart, /eventChartTimeBySourceTimeRef\.current\.get\(sourceTimestamp\)/,
+  "professional drawing targets must look up the full source timestamp");
 
 // --- the magnet applies to MOVING a drawing, not only to placing one ---
 {
@@ -117,4 +129,4 @@ assert.match(drawLayer, /const SNAP_RELEASE_PX = magnetStrengthSpec\(magnetStren
   assert.match(move, /let dx = event\.clientX/, "dx must be reassignable for the snap to adjust it");
 }
 
-console.log("magnet snapping: 7/7 checks passed");
+console.log("Magnet snapping integration contracts passed.");

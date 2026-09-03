@@ -372,6 +372,7 @@ import { buildOptionsDeltaSeries, optionsDeltaSourceForInstrument } from "@/lib/
 import { isMarketIndexSymbol } from "@/lib/marketIndices";
 import { volumeProfileWithInputData } from "@/lib/volumeProfileMath";
 import {
+  buildMagnetCandles,
   createMagnetResolver,
   magnetRadiusPx,
   type MagnetCandidate,
@@ -3523,12 +3524,18 @@ function Chart({
   const drawTextDismissRef = useRef(false);
   const [drawSettingsOpen, setDrawSettingsOpen] = useState(false);
   const chartingDrawCandles = useMemo(
-    () => candles.map((candle) => ({
-      time: Math.floor(candle.timestamp / 1000),
-      open: candle.open, high: candle.high, low: candle.low, close: candle.close,
-      volume: candle.volume ?? 0,
-    })),
-    [candles],
+    () => buildMagnetCandles(
+      candles.map((candle) => ({
+        timestamp: candle.timestamp,
+        open: candle.open,
+        high: candle.high,
+        low: candle.low,
+        close: candle.close,
+        volume: candle.volume ?? 0,
+      })),
+      timeframeToMs(timeframe) === null,
+    ),
+    [candles, timeframe],
   );
   // Lets the drawing overlay redraw in lockstep with the chart's own viewport
   // changes (read chartRef at call time so chart recreation is handled).
@@ -13011,8 +13018,9 @@ function Chart({
     const magnetCandidates = (x: number, radius: number): MagnetCandidate[] => {
       const found: MagnetCandidate[] = [];
       for (const candle of candles) {
-        const sourceTime = Math.floor(candle.timestamp / 1_000);
-        const chartTime = eventChartTimeBySourceTimeRef.current.get(sourceTime) ?? sourceTime;
+        const sourceTimestamp = Number(candle.timestamp);
+        const sourceTime = Math.floor(sourceTimestamp / 1_000);
+        const chartTime = eventChartTimeBySourceTimeRef.current.get(sourceTimestamp) ?? sourceTime;
         const candidateX = chart.timeScale().timeToCoordinate(chartTime as Time);
         if (candidateX === null || Math.abs(candidateX - x) > radius) continue;
         for (const [field, candidatePrice] of [
