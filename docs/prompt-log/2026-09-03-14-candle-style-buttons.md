@@ -8,4 +8,4 @@ Traced the candle-style buttons through the per-pane settings store and Lightwei
 
 # Outcome
 
-The complete four-button catalogue is wired to the same style key consumed by the renderer, and every style transition now performs an immediate full-series replacement. Candle style tests passed 11/11, candle context-menu tests 6/6, candle visibility tests 5/5, focused test lint and TypeScript passed, and the complete 80-page production build passed. Production commit and deployment are recorded below after the active `websiterepo-yfmi` deployment completes.
+The complete four-button catalogue is wired to the same style key consumed by the renderer, and every style transition now performs an immediate full-series replacement. Candle style tests passed 11/11, candle context-menu tests 6/6, candle visibility tests 5/5, focused test lint and TypeScript passed, and the complete 80-page production build passed. Production code commit `2c5a5a79` deployed successfully through the sole active Vercel project `websiterepo-yfmi` as deployment `AotUqU9JAxXfPiwML1FoUdYY3Rf1` / GitHub deployment `6238144729`: `https://websiterepo-yfmi-6q8o3fbvf-kwant-desk.vercel.app`.
