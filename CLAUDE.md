@@ -1244,6 +1244,6 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
   They are retired production providers; only QuantData is preserved alongside
   VPS-owned internal-service credentials.
 - Vercel's live deployment log showed `No comparable base in this shallow
-  clone — building.` Added a named-branch depth-two recovery and a bounded
-  public GitHub compare fallback so unshipped-only commits can actually skip;
-  ambiguous and truncated comparisons continue to build safely.
+  clone — building.` Its shared-IP GitHub REST fallback then hit a live 403.
+  The final gate uses a validated, public, depth-two Git fetch with no REST
+  quota; ambiguous history continues to build safely.

@@ -45,30 +45,30 @@ if ! git cat-file -e "${VERCEL_GIT_PREVIOUS_SHA}^{commit}" 2>/dev/null \
   git fetch --depth=2 origin "$VERCEL_GIT_COMMIT_REF" >/dev/null 2>&1 || true
 fi
 
+# Vercel's sanitized clone can leave `origin` unable to deepen. Use the public
+# repository URL directly rather than GitHub's rate-limited REST API. Validate
+# every URL component first; on any ambiguity the gate falls through to BUILD.
+if ! git cat-file -e "${VERCEL_GIT_PREVIOUS_SHA}^{commit}" 2>/dev/null \
+   && printf '%s' "$VERCEL_GIT_REPO_OWNER" | grep -Eq '^[A-Za-z0-9_.-]+$' \
+   && printf '%s' "$VERCEL_GIT_REPO_SLUG" | grep -Eq '^[A-Za-z0-9_.-]+$' \
+   && printf '%s' "$VERCEL_GIT_COMMIT_REF" | grep -Eq '^[A-Za-z0-9_./-]+$'; then
+  git fetch --depth=2 \
+    "https://github.com/${VERCEL_GIT_REPO_OWNER}/${VERCEL_GIT_REPO_SLUG}.git" \
+    "$VERCEL_GIT_COMMIT_REF" >/dev/null 2>&1 || true
+fi
+
 # Still not there — compare against HEAD's own parent instead, which a
 # depth-2 clone can answer.
-COMPARE_WITH_GITHUB=0
 if git cat-file -e "${VERCEL_GIT_PREVIOUS_SHA}^{commit}" 2>/dev/null; then
   BASE="$VERCEL_GIT_PREVIOUS_SHA"
 elif git cat-file -e "HEAD^{commit}" 2>/dev/null && git cat-file -e "HEAD^^{commit}" 2>/dev/null; then
   BASE="HEAD^"
 else
-  COMPARE_WITH_GITHUB=1
+  echo "No comparable base after public branch fetch — building."
+  exit 1
 fi
 
-if [ "$COMPARE_WITH_GITHUB" -eq 0 ]; then
-  CHANGED=$(git diff --name-only "$BASE" "$VERCEL_GIT_COMMIT_SHA" 2>/dev/null || true)
-else
-  # The repository is public, so this needs no credential and sends no secret.
-  # This exact fallback covers the parentless Vercel clone observed in
-  # production. Any API ambiguity fails closed into a real build.
-  if ! CHANGED=$(node scripts/github-compare-files.mjs \
-      "$VERCEL_GIT_REPO_OWNER" "$VERCEL_GIT_REPO_SLUG" \
-      "$VERCEL_GIT_PREVIOUS_SHA" "$VERCEL_GIT_COMMIT_SHA"); then
-    echo "No comparable base in this shallow clone or GitHub — building."
-    exit 1
-  fi
-fi
+CHANGED=$(git diff --name-only "$BASE" "$VERCEL_GIT_COMMIT_SHA" 2>/dev/null || true)
 
 # An empty diff here means git could not answer, not that nothing changed —
 # a real no-op push does not produce a deployment. Build rather than guess.

@@ -34,9 +34,10 @@ retired provider credentials were removed from production and cannot return on
 the next release.
 
 The active Vercel deployment log proved the first ignored-build implementation
-still built when Vercel supplied a parentless shallow clone. The gate now tries
-a depth-two named-branch fetch and then a bounded public GitHub comparison;
-ambiguous or 300-file-truncated comparisons still fail safely into a build.
+still built when Vercel supplied a parentless shallow clone. A REST comparison
+fallback was rejected after the live runner hit GitHub's shared-IP API limit.
+The gate now performs a validated public depth-two Git fetch instead; ambiguous
+history still fails safely into a build.
 
 Unfinished external requirement: the 80 GB VPS disk is 92% full (5.8 GB free),
 the archive is 52 GB, and there is no off-box backup target or credential on
