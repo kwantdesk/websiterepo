@@ -1266,3 +1266,27 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
   chain boundaries so vertical panning cannot create overhangs.
 - Removed the unused per-render candle-to-interaction-bar mapping and added
   focused regression coverage for the line-chain invariants.
+
+## 2026-09-03 — Public launch direction and capacity charter
+
+- The owner set an October 2026 paid website launch target. Product completion
+  and professional-quality bug repair lead the month; the native
+  .NET/Avalonia/Skia application follows the website launch.
+- The durable owner-approved launch brief is
+  `docs/PUBLIC_LAUNCH_ENGINEERING_CHARTER.md`. It records the quality standard,
+  reported product acceptance requirements, provider/licensing boundaries,
+  subscription sequence, 100-user launch architecture, 250-user sustained and
+  500-user burst proof targets, latency objectives, reliability/chaos gates and
+  the working USD 500-800 monthly launch budget with an $800 cap.
+- Public customers bring their own Rithmic entitlement. QuantData is interim
+  and non-redistributable. Subscriber options data must come from the separately
+  licensed distributable source. Databento and Massive remain retired active
+  production providers.
+- One hundred users is the initial admitted load, not a design ceiling. The
+  production system must scale by adding isolated session workers and stateless
+  gateways rather than requiring an application rewrite.
+
+### Verification
+
+- Documentation-only change. No runtime code, provider connection, production
+  service or customer data was changed.
