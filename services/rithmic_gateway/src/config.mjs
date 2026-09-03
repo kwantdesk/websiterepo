@@ -114,8 +114,14 @@ export function loadConfig(env = process.env) {
     massiveRequestTimeoutMs: positiveInteger(env.MASSIVE_REQUEST_TIMEOUT_MS, 15_000),
     massiveStaleMs: positiveInteger(env.MASSIVE_STALE_MS, 30_000),
     vendorRequestTimeoutMs: positiveInteger(env.VENDOR_REQUEST_TIMEOUT_MS, 30_000),
-    quantDataMinSpacingMs: positiveInteger(env.QUANTDATA_MIN_SPACING_MS, 80),
-    quantDataCacheMs: positiveInteger(env.QUANTDATA_EDGE_CACHE_MS, 2_500),
+    // The account allows 240 requests/minute. The shared cash-index poller
+    // uses roughly 48/minute outside this lane, so 350ms caps this edge near
+    // 171/minute and leaves safe headroom instead of permitting 750/minute.
+    quantDataMinSpacingMs: positiveInteger(env.QUANTDATA_MIN_SPACING_MS, 350),
+    // QuantData's live surfaces do not justify refetching identical payloads
+    // several times inside one ten-second window. This is also the website's
+    // cash-index snapshot cache horizon.
+    quantDataCacheMs: positiveInteger(env.QUANTDATA_EDGE_CACHE_MS, 10_000),
     configured:
       sourceMode === "rtrader-excel"
         ? Boolean(gatewayToken)

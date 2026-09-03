@@ -26,6 +26,8 @@ test("deploys preserve QuantData but cannot resurrect retired provider credentia
   const source = await readFile(preserveEnvUrl, "utf8");
 
   assert.match(source, /"QUANTDATA_API_KEY"/);
+  assert.match(source, /"QUANTDATA_MIN_SPACING_MS"/);
+  assert.match(source, /"QUANTDATA_EDGE_CACHE_MS"/);
   assert.doesNotMatch(source, /"DATABENTO_API_KEY"/);
   assert.doesNotMatch(source, /"MASSIVE_API_KEY"/);
 });

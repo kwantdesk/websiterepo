@@ -43,5 +43,10 @@ This was two faults in series.
   Charts and GEX VUE.
 - Added a deployment preflight that refuses to replace the running production
   gateway when `QUANTDATA_API_KEY` is absent.
+- Raised the central QuantData start spacing from 80ms (a theoretical 750
+  requests/minute) to 350ms (about 171/minute), leaving headroom beneath the
+  240/minute account allowance for the one shared cash-index poller. Identical
+  successful requests are now held for ten seconds at the VPS edge instead of
+  2.5 seconds. The two controls are VPS-owned and survive future deployments.
 
 Verification and production deployment are recorded below after completion.
