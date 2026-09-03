@@ -2,7 +2,6 @@ import type { Candle } from "@/lib/backtester";
 import type { InstitutionalTrade } from "@/lib/institutionalMarketData";
 
 export const LIVE_CHART_CANDLE_EVENT = "kwantdesk:live-chart-candle";
-export const LIVE_CHART_QUOTE_EVENT = "kwantdesk:live-chart-quote";
 export const LIVE_CHART_EXECUTION_EVENT = "kwantdesk:live-chart-executions";
 export const WORKSPACE_LAYOUT_SETTLED_EVENT = "kwantdesk:workspace-layout-settled";
 export const DATABENTO_LIVE_TICK_EVENT = "kwantdesk:databento-tick";
@@ -11,13 +10,6 @@ export const DATABENTO_LIVE_STATUS_EVENT = "kwantdesk:databento-status";
 export type LiveChartCandleDetail = {
   key: string;
   candle: Candle;
-};
-
-export type LiveChartQuoteDetail = {
-  key: string;
-  bid: number;
-  ask: number;
-  timestamp: number;
 };
 
 /**

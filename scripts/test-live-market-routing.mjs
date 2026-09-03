@@ -3,7 +3,6 @@ import { readFile } from "node:fs/promises";
 
 const client = await readFile(new URL("../src/lib/marketIndexLiveClient.ts", import.meta.url), "utf8");
 const workspace = await readFile(new URL("../src/components/KwantifyWorkspace.tsx", import.meta.url), "utf8");
-const chart = await readFile(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
 const proxy = await readFile(new URL("../src/app/api/institutional-market-data/[...path]/route.ts", import.meta.url), "utf8");
 
 for (const symbol of ["SPX", "SPXW", "NDX", "SPY", "QQQ", "IWM"]) {
@@ -38,18 +37,18 @@ assert.doesNotMatch(
 );
 assert.match(
   workspace,
-  /window\.dispatchEvent\(new CustomEvent\(LIVE_CHART_QUOTE_EVENT,[\s\S]{0,500}?bid: liveBid,[\s\S]{0,200}?ask: liveAsk/,
-  "every accepted Rithmic book packet must publish its true BID and ASK to the chart",
+  /: compactTimeBasedTicks\(queuedTicks, pane\.timeframe\)/,
+  "time candles must consume accepted Rithmic price packets instead of freezing between trade-tagged packets",
+);
+assert.doesNotMatch(
+  workspace,
+  /queuedTicks\.filter\(\(tick\) => tick\.isTrade\)/,
+  "time candles must not regress to the sparse execution-only display path",
 );
 assert.match(
-  chart,
-  /window\.addEventListener\(LIVE_CHART_QUOTE_EVENT, receive\)/,
-  "the chart must consume the live Rithmic BID/ASK path",
-);
-assert.match(
-  chart,
-  /title: "BID"[\s\S]{0,600}?title: "ASK"/,
-  "book movement must be labelled honestly rather than altering execution-only candle OHLC",
+  workspace,
+  /const delay = activeRef\.current\s*\? footprintLiveActive \? 40 : 120\s*: 750/,
+  "the active Footprint must paint at worker cadence while background panes remain throttled",
 );
 
 assert.match(

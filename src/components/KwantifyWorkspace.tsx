@@ -308,7 +308,6 @@ import type { ValueAreaProfile } from "@/lib/valueArea";
 import {
   DATABENTO_LIVE_TICK_EVENT,
   LIVE_CHART_CANDLE_EVENT,
-  LIVE_CHART_QUOTE_EVENT,
   LIVE_CHART_EXECUTION_EVENT,
   WORKSPACE_LAYOUT_SETTLED_EVENT,
   publishDatabentoLiveStatus,
@@ -6216,10 +6215,10 @@ function WorkspaceChartPaneComponent({
       if (!records.length) return;
       appendBoundedPaneRecords(pendingExecutionRecords, records);
       if (executionSyncTimer !== null) return;
-      // Footprint remains visually live at 10 fps while multiple panes share
-      // one bounded main-thread workload. Background panes reconcile slower.
+      // The active footprint paints at the same cadence as the execution-tape
+      // worker. Background panes remain deliberately throttled.
       const delay = activeRef.current
-        ? footprintLiveActive ? 125 : 200
+        ? footprintLiveActive ? 40 : 120
         : 750;
       executionSyncTimer = window.setTimeout(flushExecutionRecords, delay);
     };
@@ -7936,26 +7935,6 @@ function WorkspaceChartPaneComponent({
         contractSymbol: price.contractSymbol ?? latestFuturesRef.current.contractSymbol,
         tickSize: futuresTickSize(pane.symbol),
       };
-      const liveBid = Number(price.bid);
-      const liveAsk = Number(price.ask);
-      if (
-        Number.isFinite(liveBid)
-        && Number.isFinite(liveAsk)
-        && liveBid > 0
-        && liveAsk >= liveBid
-      ) {
-        // The visible market must not appear frozen merely because no contract
-        // traded during this quote. BID/ASK markers follow the genuine Rithmic
-        // book on every accepted packet; candle OHLC remains execution-only.
-        window.dispatchEvent(new CustomEvent(LIVE_CHART_QUOTE_EVENT, {
-          detail: {
-            key: pane.id,
-            bid: liveBid,
-            ask: liveAsk,
-            timestamp: tickTimestamp,
-          },
-        }));
-      }
       if (onLiveExecutionQuote) {
         const tickSize = futuresTickSize(pane.symbol);
         const mid = snapPaperPrice(pane.symbol, Number(price.mid));
@@ -8016,14 +7995,7 @@ function WorkspaceChartPaneComponent({
         liveFrameRef.current = null;
         const ticks = usingDatabentoPaneFeed && isEventBasedChartInterval(pane.timeframe)
           ? queuedTicks
-          : compactTimeBasedTicks(
-              // Rithmic BBO packets update the displayed quote, not candle
-              // OHLC. Only an exchange execution is allowed to make a wick.
-              usingDatabentoPaneFeed
-                ? queuedTicks.filter((tick) => tick.isTrade)
-                : queuedTicks,
-              pane.timeframe,
-            );
+          : compactTimeBasedTicks(queuedTicks, pane.timeframe);
         if (!ticks.length) return;
         if (usingDatabentoPaneFeed && needsOrderFlowHistory) {
           const liveExecutions = ticks.flatMap((tick, index): InstitutionalTrade[] => {

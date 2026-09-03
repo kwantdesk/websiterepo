@@ -1581,3 +1581,21 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
 - The routing regression and TypeScript checks pass. The gateway health audit
   also exposed a separate urgent capacity risk: `/recordings` is 97.7% full
   (about 1.8 GB free). No historical data was deleted.
+
+## 2026-09-04 — Rithmic candle-cadence correction
+
+- Trader verification rejected the ordinary-chart BID/ASK markers; they were
+  the wrong UI and did not address the slow candle. The quote event, price-line
+  listeners, marker refs and compatibility export have been removed. BID/ASK
+  remain a Liquidity Map concern only.
+- Root cause was the September 3 execution-only filter in the ordinary Rithmic
+  time-chart path. It discarded accepted price packets between sparse packets
+  tagged as trades, making NQ and Footprint appear to freeze for seconds.
+- Ordinary time candles once again consume every validated Rithmic price packet
+  through the existing animation-frame live-tail path. Execution-only event bars
+  remain execution-only, and volume/delta/trade counts still require trade tags.
+- Active Footprint delivery now matches the 40 ms execution-worker cadence;
+  inactive panes remain bounded at 750 ms to protect multi-pane performance.
+- Verification passed: live routing, the 2,650-combination Rithmic matrix,
+  candle gap/gap-fill, event source/first-paint, Footprint bar window, execution
+  worker backpressure, live chart memory, TypeScript and the 80-page build.

@@ -24,17 +24,26 @@ Date: 2026-09-04
 
 ## Fix and outcome
 
-- Added a pane-scoped live quote event carrying the genuine accepted Rithmic
-  bid and ask.
-- Added BID and ASK axis markers that update through a direct animation-frame
-  path, independently of React state and candle reconciliation.
-- Candle OHLC remains execution-only. Quote movement cannot create a false
-  candle close, body, high, low or wick.
-- Added routing assertions that require the quote event, its chart listener,
-  and honest BID/ASK labels.
+- Correction after live trader verification: the BID and ASK axis markers were
+  not requested and did not solve the candle regression. They have been removed
+  completely from ordinary charts. Liquidity Map retains its own book display.
+- The actual regression was an execution-only filter added to the ordinary
+  time-candle display. Rithmic price packets continued arriving, but the chart
+  discarded them until a packet was tagged as a trade. The filter is removed,
+  restoring the prior quote-responsive forming candle on every animation frame.
+- Volume, delta and trade-count fields still advance only from execution-tagged
+  packets. The authoritative history reconciliation remains in place.
+- Active Footprint tape-to-canvas batching is reduced from 125 ms to 40 ms,
+  matching the execution worker cadence; inactive panes remain throttled.
+- Routing assertions now prohibit the execution-only time-chart filter, require
+  the smooth accepted-packet path, and lock the Footprint foreground cadence.
 
 ## Verification
 
-- Live routing regression passed.
-- TypeScript passed.
-- Full production build passed before deployment.
+- Live routing regression passed with the execution-only filter prohibition and
+  40 ms Footprint cadence contract.
+- Rithmic's 53-instrument x 50-interval matrix passed (2,650 combinations).
+- Candle gaps 7/7, candle gap fill 5/5, event source 10/10, event first paint
+  7/7, Footprint bar window 6/6, execution-worker backpressure and the live
+  chart memory guard all passed.
+- TypeScript and the complete 80-page production build passed.

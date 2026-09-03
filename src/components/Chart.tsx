@@ -7,7 +7,6 @@ import {
   LineStyle,
   LineType,
   type IChartApi,
-  type IPriceLine,
   type ISeriesPrimitive,
   type ISeriesPrimitivePaneRenderer,
   type ISeriesPrimitivePaneView,
@@ -90,13 +89,11 @@ import type { VixEnvironmentSnapshot } from "@/lib/vixEnvironment";
 import {
   DATABENTO_LIVE_TICK_EVENT,
   LIVE_CHART_CANDLE_EVENT,
-  LIVE_CHART_QUOTE_EVENT,
   LIVE_CHART_EXECUTION_EVENT,
   WORKSPACE_LAYOUT_SETTLED_EVENT,
   mergeLiveIndicatorCandle,
   type DatabentoLiveTick,
   type LiveChartCandleDetail,
-  type LiveChartQuoteDetail,
   type LiveChartExecutionDetail,
 } from "@/lib/chartLiveEvents";
 import {
@@ -3146,8 +3143,6 @@ function Chart({
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ReturnType<IChartApi["addCandlestickSeries"]> | null>(null);
-  const liveBidPriceLineRef = useRef<IPriceLine | null>(null);
-  const liveAskPriceLineRef = useRef<IPriceLine | null>(null);
   const viewportSyncApplyingRef = useRef(false);
   const viewportSyncPublishFrameRef = useRef<number | null>(null);
   const viewportSyncUserInteractionRef = useRef(false);
@@ -4193,66 +4188,6 @@ function Chart({
       pendingLiveVolumeCandleRef.current = null;
     };
   }, [footprintSamplingEnabled, instrument, keyboardActive, liveCandleEventKey, nonFootprintOrderFlowIndicatorEnabled, timeframe, volumeIndicatorEnabled]);
-
-  useEffect(() => {
-    if (!liveCandleEventKey || !candleSeriesRef.current) return;
-    const series = candleSeriesRef.current;
-    let pendingQuote: LiveChartQuoteDetail | null = null;
-    let frame: number | null = null;
-
-    const removeMarkers = () => {
-      for (const line of [liveBidPriceLineRef.current, liveAskPriceLineRef.current]) {
-        if (!line) continue;
-        try { series.removePriceLine(line); } catch { /* stale chart handle */ }
-      }
-      liveBidPriceLineRef.current = null;
-      liveAskPriceLineRef.current = null;
-    };
-    const flush = () => {
-      frame = null;
-      const quote = pendingQuote;
-      pendingQuote = null;
-      if (!quote || !Number.isFinite(quote.bid) || !Number.isFinite(quote.ask)) return;
-      if (!liveBidPriceLineRef.current) {
-        liveBidPriceLineRef.current = series.createPriceLine({
-          price: quote.bid,
-          color: settings.borderUpColor,
-          lineWidth: 1,
-          lineStyle: LineStyle.Dotted,
-          lineVisible: false,
-          axisLabelVisible: true,
-          title: "BID",
-        });
-      }
-      if (!liveAskPriceLineRef.current) {
-        liveAskPriceLineRef.current = series.createPriceLine({
-          price: quote.ask,
-          color: settings.borderDownColor,
-          lineWidth: 1,
-          lineStyle: LineStyle.Dotted,
-          lineVisible: false,
-          axisLabelVisible: true,
-          title: "ASK",
-        });
-      }
-      liveBidPriceLineRef.current.applyOptions({ price: quote.bid, color: settings.borderUpColor });
-      liveAskPriceLineRef.current.applyOptions({ price: quote.ask, color: settings.borderDownColor });
-    };
-    const receive = (event: Event) => {
-      const detail = (event as CustomEvent<LiveChartQuoteDetail>).detail;
-      if (!detail || detail.key !== liveCandleEventKey) return;
-      if (liveReplayActiveRef.current) return;
-      pendingQuote = detail;
-      if (frame === null) frame = window.requestAnimationFrame(flush);
-    };
-
-    window.addEventListener(LIVE_CHART_QUOTE_EVENT, receive);
-    return () => {
-      window.removeEventListener(LIVE_CHART_QUOTE_EVENT, receive);
-      if (frame !== null) window.cancelAnimationFrame(frame);
-      removeMarkers();
-    };
-  }, [chartReadyRevision, liveCandleEventKey, settings.borderDownColor, settings.borderUpColor]);
 
   useEffect(() => {
     if (!liveCandleEventKey) return;
