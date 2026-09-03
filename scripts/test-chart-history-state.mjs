@@ -15,8 +15,9 @@ const workspace = readFileSync(
  * seconds later. For an EVENT interval that retry is explicitly skipped, so
  * nothing ever ran again and the spinner outlived the tab.
  *
- * The pane renders `loading ? loader : error ? message : chart`, so a stuck
- * loader also hides the message that was already sitting in state.
+ * The pane now binds loading/error settlement to the exact chart request. A
+ * retry keeps the cover up; a terminal failure settles the request and reveals
+ * the provider error. Partial cache geometry is never the fallback.
  */
 
 let passed = 0;
@@ -30,8 +31,13 @@ check("the loader only stays up when a retry is actually coming", () => {
   );
   assert.match(
     workspace,
-    /setLoading\(!haveSomethingToDraw && willRetry\);/,
-    "the loader can still be left up with nothing scheduled to clear it",
+    /setLoading\(willRetry\);/,
+    "the loader and the scheduled retry can still disagree",
+  );
+  assert.match(
+    workspace,
+    /if \(!willRetry\) \{\s*setError\(loadFailure\);\s*setSettledChartRequestKey\(requestedChartHydrationKey\);/,
+    "a terminal failure can still leave the exact chart request unsettled",
   );
   // The exact shape of the bug, which must not come back.
   assert.doesNotMatch(
@@ -69,7 +75,7 @@ check("the reason reaches the trader instead of a fixed sentence", () => {
    */
   assert.match(
     workspace,
-    /setError\(loadError instanceof Error && loadError\.message\s*\n?\s*\? loadError\.message/,
+    /const loadFailure = loadError instanceof Error && loadError\.message\s*\n?\s*\? loadError\.message/,
     "the route's own message is discarded",
   );
   assert.doesNotMatch(workspace, /setError\("CME history is temporarily unavailable\."\);/);

@@ -6,7 +6,10 @@ const workspace = readFileSync(new URL("../src/components/KwantifyWorkspace.tsx"
 const chart = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
 
 test("every workspace chart keeps a loader over empty candle state", () => {
-  assert.match(workspace, /const chartIsLoading = loading \|\| \(!error && candles\.length === 0\)/);
+  assert.match(workspace, /const chartIsLoading = chartNeedsLoadingCover\(\{/);
+  assert.match(workspace, /settledRequestKey: settledChartRequestKey/);
+  assert.match(workspace, /Cached rows may be used as merge input[\s\S]*?setLoading\(true\);/);
+  assert.match(workspace, /if \(cachedIsHydrated\) \{[\s\S]*?setSettledChartRequestKey\(requestedChartHydrationKey\)/);
   assert.match(workspace, /data-chart-loading="true"/);
   assert.match(workspace, /title="Loading chart"/);
   assert.match(workspace, /chartIsLoading \? \(/);

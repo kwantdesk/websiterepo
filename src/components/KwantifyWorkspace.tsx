@@ -24,6 +24,7 @@ import { STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT } from "@/lib/volumeProfileM
 import { groupByNewYorkDate } from "@/lib/newYorkTradingDay";
 import { clearChartViewportGroup } from "@/lib/chartViewportSync";
 import { saveChartCrosshairSyncEnabled } from "@/lib/chartCrosshairSync";
+import { chartHydrationKey, chartNeedsLoadingCover } from "@/lib/chartHydration";
 import {
   clampGexVueReplayTimestamp,
   createGexVueReplayState,
@@ -5551,6 +5552,7 @@ function WorkspaceChartPaneComponent({
   const [initialBalanceStudyCandles, setInitialBalanceStudyCandles] = useState<Candle[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [settledChartRequestKey, setSettledChartRequestKey] = useState<string | null>(null);
   const [liveFeedError, setLiveFeedError] = useState<string | null>(null);
   const [resolvedContractSymbol, setResolvedContractSymbol] = useState<string | null>(() =>
     pane.broker === "Databento" ? currentCmeContract(pane.symbol) : null);
@@ -5791,7 +5793,20 @@ function WorkspaceChartPaneComponent({
     : null;
   const expectedGammaContract =
     pane.broker === "Databento" ? currentCmeContract(pane.symbol) : null;
-  const chartIsLoading = loading || (!error && candles.length === 0);
+  const requestedChartHydrationKey = chartHydrationKey({
+    broker: pane.broker,
+    symbol: pane.symbol,
+    timeframe: pane.timeframe,
+    period,
+    historicalRangeKey: replayHistoryRange?.key,
+  });
+  const chartIsLoading = chartNeedsLoadingCover({
+    requestKey: requestedChartHydrationKey,
+    settledRequestKey: settledChartRequestKey,
+    loading,
+    error,
+    candleCount: candles.length,
+  });
 
   // Every visible chart continues to ingest and imperatively paint the latest
   // candle. Only the selected pane needs high-frequency React reconciliation
@@ -6282,6 +6297,7 @@ function WorkspaceChartPaneComponent({
 
   useEffect(() => {
     let cancelled = false;
+    let visibleHistoryReady = false;
     const requestController = new AbortController();
     let reconciliationTimer: number | null = null;
 
@@ -6343,6 +6359,8 @@ function WorkspaceChartPaneComponent({
             || replayTape.length > 0,
           );
           setError(null);
+          visibleHistoryReady = true;
+          setSettledChartRequestKey(requestedChartHydrationKey);
           setLoading(false);
         } catch (loadError) {
           if (cancelled || (loadError instanceof DOMException && loadError.name === "AbortError")) return;
@@ -6351,6 +6369,7 @@ function WorkspaceChartPaneComponent({
           setError(loadError instanceof Error
             ? loadError.message
             : "Historical replay data is temporarily unavailable.");
+          setSettledChartRequestKey(requestedChartHydrationKey);
         }
       };
 
@@ -6424,12 +6443,11 @@ function WorkspaceChartPaneComponent({
     const liveSeamRequest = pane.broker === "Databento" && resolvedContractSymbol
       ? fetchWorkspaceLiveSeam(pane.symbol, pane.timeframe, resolvedContractSymbol)
       : Promise.resolve([] as Candle[]);
-    // A usable cached chart must paint immediately. Seam reconciliation is a
-    // background data-quality task, not permission to cover valid candles with
-    // a full-page loader for tens of seconds. Live ticks remain buffered until
-    // the missing buckets are repaired, so revealing history cannot create a
-    // fabricated join.
-    setLoading(!hasImmediateHistory);
+    // Cached rows may be used as merge input, but they do not earn a visible
+    // first paint until their freshness, requested depth and live seam have
+    // been verified below. Revealing a short/stale cache is what produced a
+    // field of one-price dots before the authoritative bars replaced it.
+    setLoading(true);
     setError(null);
     setCandles(hasImmediateHistory ? immediateHydratedCandles : []);
     setMarketTrades(immediateMarketTrades);
@@ -6624,6 +6642,8 @@ function WorkspaceChartPaneComponent({
       if (cachedIsHydrated) {
         historyHydratedRef.current = true;
         setOrderFlowHistoryReady(true);
+        visibleHistoryReady = true;
+        setSettledChartRequestKey(requestedChartHydrationKey);
         setLoading(false);
         return;
       }
@@ -6680,7 +6700,11 @@ function WorkspaceChartPaneComponent({
             if (hasUsableOrderFlowHistory(cachedCandles)) {
               setOrderFlowHistoryReady(true);
             }
-            setLoading(false);
+            if (historyHydratedRef.current) {
+              visibleHistoryReady = true;
+              setSettledChartRequestKey(requestedChartHydrationKey);
+              setLoading(false);
+            }
             setError(null);
             // If the independent Rithmic history request won the race, this is
             // already a complete OHLC + flow snapshot. Persist that exact
@@ -6774,7 +6798,13 @@ function WorkspaceChartPaneComponent({
         setCandles(merged);
         setMarketTrades(nextMarketTrades);
         setError(null);
-        setLoading(false);
+        if (tailNeedsReconciliation) {
+          setLoading(true);
+        } else {
+          visibleHistoryReady = true;
+          setSettledChartRequestKey(requestedChartHydrationKey);
+          setLoading(false);
+        }
         if (tailNeedsReconciliation && !isEventBasedChartInterval(pane.timeframe)) {
           reconciliationTimer = window.setTimeout(() => {
             reconciliationTimer = null;
@@ -6784,20 +6814,17 @@ function WorkspaceChartPaneComponent({
       } catch (loadError) {
         if (cancelled) return;
         if (loadError instanceof DOMException && loadError.name === "AbortError") return;
-        if (!cachedCandles.length && !immediateCandles.length) {
-          historyHydratedRef.current = false;
-          /*
-           * The route's own words, when it has any.
-           *
-           * It already answers provider-neutrally and specifically - "CME
-           * history is only available up to 2026-08-30" tells a trader what is
-           * actually wrong, where a fixed "temporarily unavailable" tells them
-           * to keep waiting for something that is not coming back on its own.
-           */
-          setError(loadError instanceof Error && loadError.message
-            ? loadError.message
-            : "CME history is unavailable right now.");
-        }
+        /*
+         * The route's own words, when it has any.
+         *
+         * It already answers provider-neutrally and specifically - "CME
+         * history is only available up to 2026-08-30" tells a trader what is
+         * actually wrong, where a fixed "temporarily unavailable" tells them
+         * to keep waiting for something that is not coming back on its own.
+         */
+        const loadFailure = loadError instanceof Error && loadError.message
+          ? loadError.message
+          : "CME history is unavailable right now.";
         const tailNeedsReconciliation = cmeChartTailNeedsReconciliation(
           latestCandlesRef.current.length ? latestCandlesRef.current : cachedCandles,
           pane.timeframe,
@@ -6814,8 +6841,16 @@ function WorkspaceChartPaneComponent({
          * real reason already in hand and never shown.
          */
         const willRetry = tailNeedsReconciliation && !isEventBasedChartInterval(pane.timeframe);
-        const haveSomethingToDraw = Boolean(latestCandlesRef.current.length || cachedCandles.length);
-        setLoading(!haveSomethingToDraw && willRetry);
+        if (visibleHistoryReady) {
+          setLoading(false);
+          return;
+        }
+        historyHydratedRef.current = false;
+        setLoading(willRetry);
+        if (!willRetry) {
+          setError(loadFailure);
+          setSettledChartRequestKey(requestedChartHydrationKey);
+        }
         if (willRetry) {
           reconciliationTimer = window.setTimeout(() => {
             reconciliationTimer = null;
@@ -6877,6 +6912,8 @@ function WorkspaceChartPaneComponent({
           }
           setLoading(false);
           setError(null);
+          visibleHistoryReady = true;
+          setSettledChartRequestKey(requestedChartHydrationKey);
           void writeChartHistoryCache(pane.symbol, pane.timeframe, repaired);
           return;
         }
@@ -6918,6 +6955,7 @@ function WorkspaceChartPaneComponent({
     period,
     replayHistoryRange,
     replayOrderFlowRequired,
+    requestedChartHydrationKey,
     resolvedContractSymbol,
   ]);
 

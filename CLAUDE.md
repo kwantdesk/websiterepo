@@ -1487,3 +1487,23 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
   ESLint, TypeScript and the complete 80-page production build passed. The
   unrelated legacy drawing-selection source-shape assertion was confirmed
   already stale against the unchanged committed `ChartDrawLayer.tsx`.
+
+## 2026-09-03 — Atomic chart history first paint
+
+- The shared chart pane used to remove its loading cover when it found any
+  cached rows. A stale, shallow or live-only cache could therefore appear as a
+  field of one-price dots before the authoritative ES/NQ history replaced it.
+- Readiness is now bound to the exact broker, instrument, timeframe, period and
+  replay window. Changing any of them synchronously covers the previous series,
+  before the loading effect gets a chance to clear old state.
+- Cached rows remain useful merge input, but become visible only after freshness,
+  required history depth and the live seam pass verification. A completed
+  authoritative download also releases the cover atomically; broken seams stay
+  covered through reconciliation.
+- Failed requests show the provider's honest error instead of partial candles
+  or an endless loader. The contract lives in the one workspace chart pane, so
+  it applies to every supported instrument and time/event interval.
+- Verification: hydration cover 6/6, chart-history failure state 4/4,
+  event-bar first paint 7/7, candle-gap integrity 7/7, page loaders 5/5 and the
+  Rithmic 53-instrument × 50-interval matrix (2,650 combinations) passed;
+  focused ESLint, TypeScript and the complete 80-page production build passed.
