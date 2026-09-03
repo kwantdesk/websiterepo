@@ -14,4 +14,4 @@ Verified brand-mark behaviour 9/9 across every current preset, brand geometry 4/
 
 # Outcome
 
-Pending production push and Vercel verification.
+Shipped to `main` in commit `ae1a8c399f464f024b62035a888a34af5dd5f957`. The single active Vercel project, `websiterepo-yfmi`, completed production deployment `G9bxxX5z3a6jBzG2FgvYpszZSmqb` successfully at `https://websiterepo-yfmi-87kuc4yfj-kwant-desk.vercel.app`.
