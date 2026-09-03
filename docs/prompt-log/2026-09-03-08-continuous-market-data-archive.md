@@ -23,6 +23,16 @@ it. Every future shutdown marks the unobserved interval explicitly, and
 Verified by the 309-test gateway suite plus focused syntax and archive tests.
 Deployed to the VPS and checked against the live archive after restart.
 
+The VM deploy health probe now runs inside the gateway container. Port 8793 is
+intentionally private to Docker, so the old host-side curl waited through the
+entire timeout and printed an empty result even after a successful deployment.
+
+The live audit also caught retired Databento and Massive credentials being
+silently resurrected on every deployment by the credential-preservation
+helper. Preservation is now limited to QuantData and internal services; the
+retired provider credentials were removed from production and cannot return on
+the next release.
+
 Unfinished external requirement: the 80 GB VPS disk is 92% full (5.8 GB free),
 the archive is 52 GB, and there is no off-box backup target or credential on
 the server. Indefinite retention cannot be truthfully guaranteed until an

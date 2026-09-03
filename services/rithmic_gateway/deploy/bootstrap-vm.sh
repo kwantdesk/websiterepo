@@ -53,7 +53,9 @@ docker compose up -d --build
 echo "==> waiting for the Rithmic session"
 for _ in $(seq 1 30); do
   sleep 5
-  if curl -fsS --max-time 5 http://127.0.0.1:8793/health 2>/dev/null \
+  if docker compose exec -T gateway node -e \
+       "fetch('http://127.0.0.1:8793/health').then(async response => { if (!response.ok) process.exit(1); process.stdout.write(await response.text()); }).catch(() => process.exit(1))" \
+       2>/dev/null \
      | grep -Eq '"authenticated"[[:space:]]*:[[:space:]]*true'; then
     echo "==> authenticated"
     break
@@ -65,7 +67,9 @@ echo "==> container status"
 docker compose ps
 echo
 echo "==> health"
-curl -s --max-time 10 http://127.0.0.1:8793/health || true
+docker compose exec -T gateway node -e \
+  "fetch('http://127.0.0.1:8793/health').then(async response => process.stdout.write(await response.text())).catch(error => { console.error(error.message); process.exit(1); })" \
+  || true
 echo
 echo
 echo "A live feed means connected:true AND lastMessageAt advancing between"

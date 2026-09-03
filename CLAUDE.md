@@ -1233,3 +1233,13 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
 - Native rebuild, SOCIALS, PDF and local test artifacts from other workstreams
   remain dirty and were preserved. Only the scoped archive/gateway/cost files
   were staged.
+
+## 2026-09-03 — Gateway deployment health probe
+
+- Replaced the VM host's unreachable `127.0.0.1:8793` deployment probe with a
+  probe executed inside the private gateway container network.
+- Added a regression test so future deployments fail fast instead of waiting
+  through a false 150-second health timeout and reporting a blank result.
+- Removed Databento and Massive from the deploy credential-preservation list.
+  They are retired production providers; only QuantData is preserved alongside
+  VPS-owned internal-service credentials.

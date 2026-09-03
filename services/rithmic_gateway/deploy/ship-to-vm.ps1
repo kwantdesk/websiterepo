@@ -31,7 +31,9 @@ if ($LASTEXITCODE -ne 0) { throw "Could not create $RemoteDir on $target." }
 # operator.env may intentionally contain only the Rithmic login, so preserve
 # the provider keys before copying the release and merge them back afterwards.
 # This avoids a routine gateway deploy silently disabling the centralized
-# Databento, QuantData, or Massive edge.
+# QuantData edge and the other VPS-owned internal-service configuration.
+# Databento and Massive are retired providers and are intentionally not
+# restored from an older VM environment.
 Write-Output "==> preserving VPS-owned provider credentials"
 ssh $target "if [ -f '$RemoteDir/operator.env' ]; then cp '$RemoteDir/operator.env' '$RemoteDir/operator.env.before-ship'; chmod 600 '$RemoteDir/operator.env.before-ship'; fi"
 if ($LASTEXITCODE -ne 0) { throw "Could not preserve VPS-owned provider credentials." }
@@ -76,7 +78,7 @@ finally {
 
 Write-Output ""
 Write-Output "Shipped. Verify the session is genuinely live:"
-Write-Output "  ssh $target 'curl -s localhost:8793/health' "
+Write-Output "  Invoke-RestMethod https://feed.kwantdesk.com/health"
 Write-Output ""
 Write-Output "REMINDER: stop the local gateway now and leave it stopped."
 Write-Output "Two processes on one Rithmic credential force-logout each other."

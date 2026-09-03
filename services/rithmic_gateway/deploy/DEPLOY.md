@@ -90,10 +90,7 @@ Do not chase it and do not lower the healthcheck thresholds because of it.
    KWANTDESK_JOURNAL_SERVICE_ORIGIN=https://www.kwantdesk.com # fixed server-side JOURNAL state/analysis service
    KWANTDESK_JOURNAL_SERVICE_TOKEN=... # separate 32+ character internal token; set identically on the web service
    KWANTDESK_JOURNAL_SERVICE_TIMEOUT_MS=120000
-   DATABENTO_API_KEY=...                    # VPS-only vendor credential
    QUANTDATA_API_KEY=...                    # VPS-only vendor credential
-   MASSIVE_API_KEY=...                      # VPS-only cash-index credential
-   MASSIVE_INDICES_WS_URL=wss://socket.massive.com/indices
    KWANTDESK_LAB_REPOSITORY_ROOT=/opt/kwantify/QUANT-DESK-sync
    OPENAI_API_KEY=...                       # VPS-only ZYON transcription credential
    OPENAI_ZYON_TRANSCRIPTION_MODEL=gpt-4o-mini-transcribe-2025-12-15
@@ -144,12 +141,10 @@ Do not chase it and do not lower the healthcheck thresholds because of it.
 
    Required: `"connected": true`, `"authenticated": true`, a `lastMessageAt`
    that **advances between calls**, and a populated `instruments` array.
-   Also require `vendorData.databentoConfigured: true` and
-   `vendorData.quantDataConfigured: true` before removing the temporary direct
-   vendor-key fallback from Vercel.
-   Cash indices additionally require `massiveIndices.configured: true` and a
-   fresh `massiveIndices.lastValueAt`. The website never opens a Massive
-   session itself; the single VPS WebSocket fans out through the shared SSE.
+   Also require `vendorData.quantDataConfigured: true`. Databento and Massive
+   are retired production providers: do not add their credentials back to the
+   VM or Vercel. Rithmic owns futures market data and QuantData owns the
+   licensed options/equities surface until the planned provider migration.
    Before enabling native ZYON dictation, additionally require
    `zyonTranscription.configured: true` and verify an authenticated bounded WAV
    fixture through `POST /v1/zyon/transcriptions`. The credential must exist
