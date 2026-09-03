@@ -52,5 +52,10 @@ assert.match(
   /cachedIsHydrated && !mustReconcileLiveMarketIndexHistory/,
   "a current-timestamp cache must still reconcile once against authoritative cash-index history during RTH",
 );
+assert.match(
+  workspace,
+  /pane\.broker === "Market Index" && latestMarketIndexFrameRef\.current[\s\S]*?mergeLiveMidIntoCandles/,
+  "a completed history response must reapply the newest verified live index frame before rendering",
+);
 
 console.log("live market routing: shared cash-index SSE, proxy lifetime, and GEX Map subscriptions verified");

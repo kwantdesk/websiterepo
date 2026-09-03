@@ -86,5 +86,9 @@ This was two faults in series.
   This repairs caches produced while prices were frozen (current timestamp,
   old value) instead of trusting their metadata. The cached chart still paints
   immediately, and identical requests are coalesced/cached at the gateway.
+- The authoritative history completion now merges the newest verified live
+  index frame before repainting React/chart state. A slower backfill therefore
+  cannot undo an already received SPX/NDX/SPY/QQQ quote and leave the visible
+  last price at the older completed-candle close.
 
 Verification and production deployment are recorded below after completion.

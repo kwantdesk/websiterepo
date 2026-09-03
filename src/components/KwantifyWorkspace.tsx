@@ -6857,7 +6857,19 @@ function WorkspaceChartPaneComponent({
               pane.timeframe,
               liveTailStartTimestampRef.current,
             )
-          : clean;
+          : pane.broker === "Market Index" && latestMarketIndexFrameRef.current
+            // History is authoritative for completed OHLC, but it may finish
+            // after one or more live quotes. Reapply the newest verified frame
+            // before committing the array so a backfill can never repaint an
+            // options chart back to its older completed-bar close.
+            ? mergeLiveMidIntoCandles(
+                clean,
+                latestMarketIndexFrameRef.current.lastPrice,
+                pane.symbol,
+                pane.timeframe,
+                latestMarketIndexFrameRef.current.timestamp,
+              )
+            : clean;
         const merged = needsOrderFlowHistory
           ? isEventBasedChartInterval(pane.timeframe)
             ? enrichCandlesWithInstitutionalTrades(
