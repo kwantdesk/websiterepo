@@ -32,13 +32,15 @@ const lastDeliveredFrame = new Map<string, MarketIndexFrameIdentity>();
 const LIVE_POLL_MS = 4_000;
 const IDLE_POLL_MS = 15_000;
 const STREAM_STALE_MS = 5_000;
-// The VPS index stream and snapshot endpoints were Massive-backed. With that
-// subscription ended they refuse every symbol, and a single failing VPS batch
-// rejected the whole poll — including symbols other providers can serve. All
-// symbols now flow through the website route, which owns the provider
-// fallback chain. Restore entries here only when the VPS regains a live
-// index entitlement.
-const VPS_STREAM_SYMBOLS = new Set<string>([]);
+// QuantData is polled once on the VPS and broadcast through one shared SSE
+// stream. Keep these symbols on that stream: sending every browser through the
+// REST fallback both freezes the ticker behind its short client timeout and
+// multiplies paid provider requests at the opening bell.
+const VPS_STREAM_SYMBOLS = new Set([
+  "SPX", "SPXW", "NDX",
+  "SPY", "QQQ", "IWM",
+  "AAPL", "NVDA", "TSLA", "MSFT", "AMZN", "META", "AMD",
+]);
 
 function supportedSnapshot(value: unknown): value is MarketIndexLiveSnapshot {
   if (!value || typeof value !== "object") return false;

@@ -46,6 +46,16 @@ if [ ! -f "$HERE/../vendor/proto/request_login.proto" ]; then
   exit 1
 fi
 
+# QuantData owns the licensed options and cash-index surfaces in production.
+# Refuse before touching the running container if a workstation upload and a
+# failed credential restore have left the VPS environment without its key.
+# This exact omission caused GEX, SPX and NDX to be dead at the opening bell
+# while the gateway itself still appeared deployable.
+if ! grep -Eq '^QUANTDATA_API_KEY=.+$' "$HERE/../operator.env"; then
+  echo "ERROR: QUANTDATA_API_KEY is missing; refusing to replace the live gateway." >&2
+  exit 1
+fi
+
 echo "==> building and starting (image stays local; never pushed to a registry)"
 cd "$HERE"
 docker compose up -d --build

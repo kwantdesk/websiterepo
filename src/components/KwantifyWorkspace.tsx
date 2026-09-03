@@ -10832,7 +10832,7 @@ export default function KwantifyWorkspace({
   useEffect(() => {
     const indexFeedActive = activeChartBrokerLabel === "Market Index" || activeChartBrokerLabel === "Massive";
     if (!indexFeedActive || !databentoWatchlistSymbolsCsv) return;
-    if (bottomWorkspaceSection !== "charts" && bottomWorkspaceSection !== "gameplan" && bottomWorkspaceSection !== "heatmap" && bottomWorkspaceSection !== "gamvue") return;
+    if (bottomWorkspaceSection !== "charts" && bottomWorkspaceSection !== "gameplan" && bottomWorkspaceSection !== "heatmap" && bottomWorkspaceSection !== "gamvue" && bottomWorkspaceSection !== "gexmap") return;
     // The main live stream only runs for the active broker; this bounded
     // companion stream keeps CME watchlist rows ticking while every pane is
     // on the index feed. One EventSource per workspace, closed on cleanup.
@@ -12859,7 +12859,7 @@ export default function KwantifyWorkspace({
   useEffect(() => {
     if (
       !usingDatabentoFeed
-      || (bottomWorkspaceSection !== "charts" && bottomWorkspaceSection !== "gameplan" && bottomWorkspaceSection !== "heatmap" && bottomWorkspaceSection !== "gamvue")
+      || (bottomWorkspaceSection !== "charts" && bottomWorkspaceSection !== "gameplan" && bottomWorkspaceSection !== "heatmap" && bottomWorkspaceSection !== "gamvue" && bottomWorkspaceSection !== "gexmap")
     ) return;
     let cancelled = false;
     let animationFrame: number | null = null;
@@ -12930,7 +12930,7 @@ export default function KwantifyWorkspace({
   }, [bottomWorkspaceSection, usingDatabentoFeed, watchlistSymbolsCsv]);
 
   useEffect(() => {
-    if (bottomWorkspaceSection !== "charts" && bottomWorkspaceSection !== "gameplan" && bottomWorkspaceSection !== "heatmap" && bottomWorkspaceSection !== "gamvue") return;
+    if (bottomWorkspaceSection !== "charts" && bottomWorkspaceSection !== "gameplan" && bottomWorkspaceSection !== "heatmap" && bottomWorkspaceSection !== "gamvue" && bottomWorkspaceSection !== "gexmap") return;
     if (activeChartBrokerLabel === "Market Index" || activeChartBrokerLabel === "Massive") return;
     const priorityLiveSymbols = new Set(priorityLiveSymbolsCsv.split(",").filter(Boolean));
     const canonicalPriorityLiveSymbols = new Set(
@@ -13338,7 +13338,7 @@ export default function KwantifyWorkspace({
   }, [activeChartBrokerLabel, bottomWorkspaceSection, priorityLiveSymbolsCsv, selectedInstrument, streamReconnectNonce, usingCTraderFeed, usingDatabentoFeed, watchlistSymbolsCsv]);
 
   useEffect(() => {
-    if (section !== "charts" && section !== "gamvue") return;
+    if (section !== "charts" && section !== "gamvue" && section !== "gexmap") return;
     const symbols = marketIndexWatchSymbolsCsv.split(",").filter(Boolean);
     if (!symbols.length) return;
 
@@ -13454,7 +13454,7 @@ export default function KwantifyWorkspace({
     // backed by the same normalized quote stores as Charts. Keeping this
     // refresher Charts-only left Market Index rows (SPX/NDX/SPY/QQQ, etc.)
     // permanently stale whenever GEX VUE was the active route.
-    if (section !== "charts" && section !== "gamvue") return;
+    if (section !== "charts" && section !== "gamvue" && section !== "gexmap") return;
     if (
       activeChartBrokerLabel === "Massive"
       || activeChartBrokerLabel === "Databento"
@@ -13589,7 +13589,7 @@ export default function KwantifyWorkspace({
     // Refresh broker groups that are not driving the selected pane as well.
     // This is especially important in GEX VUE, where a CME futures chart and
     // options-underlying watchlist rows are commonly visible together.
-    if (section !== "charts" && section !== "gamvue") return;
+    if (section !== "charts" && section !== "gamvue" && section !== "gexmap") return;
     const nameMap: Record<string, string> = {
       EUR_USD: "EURUSD",
       GBP_USD: "GBPUSD",

@@ -12,6 +12,16 @@ test("VM bootstrap checks gateway health inside the private Docker network", asy
   assert.doesNotMatch(source, /curl[^\n]*127\.0\.0\.1:8793/);
 });
 
+test("VM bootstrap refuses to replace production without QuantData", async () => {
+  const source = await readFile(bootstrapUrl, "utf8");
+
+  const credentialCheck = source.indexOf("^QUANTDATA_API_KEY=.+$");
+  const deployment = source.indexOf("docker compose up -d --build");
+  assert.ok(credentialCheck >= 0, "QuantData credential preflight is missing");
+  assert.ok(credentialCheck < deployment, "credential preflight must run before deployment");
+  assert.match(source, /refusing to replace the live gateway/);
+});
+
 test("deploys preserve QuantData but cannot resurrect retired provider credentials", async () => {
   const source = await readFile(preserveEnvUrl, "utf8");
 
