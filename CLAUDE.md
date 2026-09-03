@@ -1469,3 +1469,21 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
   passed; focused test lint, TypeScript and the complete 80-page production
   build passed. Direct ESLint parsing of the 18,000-line chart component exceeded
   Node's 8 GB heap; TypeScript and the production compiler both validated it.
+
+## 2026-09-03 — Last-used quick action on the live drawing rail
+
+- The mounted `ChartDrawToolbar` always fell back to the first tool in a group
+  after a drawing completed. A separate last-used state existed in the hidden
+  legacy toolbar but the live rail neither read nor wrote it.
+- Every live rail group now validates and remembers its latest selection. An
+  Extended Line selection immediately makes Extended Line the Lines button's
+  visible one-click action after the active tool returns to Cursor.
+- Recent tools are independent per group, synchronized between all mounted
+  chart panes with a same-window event, synchronized between tabs with the
+  storage event, and restored after reload. Invalid/stale cross-group values
+  are rejected before they can replace a rail icon.
+- Verification: recent-tool contract 5/5, single-toolbar audit 9/9, drawing
+  anchoring 7/7, grab handles 10/10 and position-tool behaviour passed; scoped
+  ESLint, TypeScript and the complete 80-page production build passed. The
+  unrelated legacy drawing-selection source-shape assertion was confirmed
+  already stale against the unchanged committed `ChartDrawLayer.tsx`.

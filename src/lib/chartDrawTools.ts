@@ -305,6 +305,45 @@ export const DRAW_TOOL_GROUPS: { id: DrawToolGroupId; label: string }[] = [
   { id: "measure", label: "Measure" },
 ];
 
+export type LastUsedDrawTools = Partial<Record<DrawToolGroupId, DrawToolId>>;
+
+export const DRAW_TOOL_LAST_USED_STORAGE_KEY = "kwantdesk:drawing-last-used:v1";
+export const DRAW_TOOL_LAST_USED_EVENT = "kwantdesk:drawing-last-used-change";
+
+/** Reject stale or cross-group values before they can replace a rail icon. */
+export function normalizeLastUsedDrawTools(value: unknown): LastUsedDrawTools {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const candidate = value as Record<string, unknown>;
+  const normalized: LastUsedDrawTools = {};
+  for (const group of DRAW_TOOL_GROUPS) {
+    const tool = candidate[group.id];
+    if (typeof tool === "string" && DRAW_TOOL_SPECS[tool as DrawToolId]?.group === group.id) {
+      normalized[group.id] = tool as DrawToolId;
+    }
+  }
+  return normalized;
+}
+
+/** Record one selection without discarding the recent tool for other groups. */
+export function rememberLastUsedDrawTool(current: LastUsedDrawTools, tool: DrawToolId): LastUsedDrawTools {
+  return { ...current, [DRAW_TOOL_SPECS[tool].group]: tool };
+}
+
+/**
+ * The active tool wins while it belongs to this group. Once drawing returns to
+ * the cursor, the group's most recent choice remains as its one-click action.
+ */
+export function quickDrawToolForGroup(
+  group: DrawToolGroupId,
+  activeTool: DrawToolId,
+  lastUsed: LastUsedDrawTools,
+): DrawToolId {
+  if (DRAW_TOOL_SPECS[activeTool].group === group) return activeTool;
+  const remembered = lastUsed[group];
+  if (remembered && DRAW_TOOL_SPECS[remembered]?.group === group) return remembered;
+  return DRAW_TOOL_LIST.find((tool) => tool.group === group)!.id;
+}
+
 // Standard Fibonacci levels and TradingView's conventional colour per level.
 export type FibLevel = { coeff: number; color: string };
 export const FIB_LEVELS: FibLevel[] = [

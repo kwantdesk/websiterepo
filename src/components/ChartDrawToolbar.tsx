@@ -3,7 +3,21 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown } from "lucide-react";
-import { DRAW_TOOL_GROUPS, DRAW_TOOL_LIST, DRAW_TOOL_SPECS, MAGNET_STRENGTHS, type DrawToolGroupId, type DrawToolId, type MagnetStrength } from "@/lib/chartDrawTools";
+import {
+  DRAW_TOOL_GROUPS,
+  DRAW_TOOL_LAST_USED_EVENT,
+  DRAW_TOOL_LAST_USED_STORAGE_KEY,
+  DRAW_TOOL_LIST,
+  DRAW_TOOL_SPECS,
+  MAGNET_STRENGTHS,
+  normalizeLastUsedDrawTools,
+  quickDrawToolForGroup,
+  rememberLastUsedDrawTool,
+  type DrawToolGroupId,
+  type DrawToolId,
+  type LastUsedDrawTools,
+  type MagnetStrength,
+} from "@/lib/chartDrawTools";
 
 // Top charting-tools bar. Clean-room line-art icons (nothing copied from
 // TradingView's assets), grouped exactly the way TradingView collapses its
@@ -91,7 +105,6 @@ const ICONS: Partial<Record<DrawToolId, ToolIcon>> = {
 
 const fallbackIcon = svg(<circle cx="12" cy="12" r="7" />);
 const iconFor = (id: DrawToolId): ToolIcon => ICONS[id] ?? fallbackIcon;
-const primaryOf = (group: DrawToolGroupId): DrawToolId => DRAW_TOOL_LIST.find((t) => t.group === group)!.id;
 const toolsOf = (group: DrawToolGroupId): DrawToolId[] => DRAW_TOOL_LIST.filter((t) => t.group === group).map((t) => t.id);
 
 type Props = {
@@ -117,9 +130,42 @@ export default function ChartDrawToolbar({
   const magnetTrigger = useRef<HTMLButtonElement | null>(null);
   const magnetMenuRef = useRef<HTMLDivElement>(null);
   const [openGroup, setOpenGroup] = useState<DrawToolGroupId | null>(null);
+  const [lastUsedToolByGroup, setLastUsedToolByGroup] = useState<LastUsedDrawTools>({});
   const [menuPos, setMenuPos] = useState<{ left: number; top: number } | null>(null);
   const triggers = useRef<Record<string, HTMLButtonElement | null>>({});
   const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const syncLastUsed = (event?: Event) => {
+      if (event instanceof StorageEvent && event.key !== DRAW_TOOL_LAST_USED_STORAGE_KEY) return;
+      try {
+        const stored = JSON.parse(window.localStorage.getItem(DRAW_TOOL_LAST_USED_STORAGE_KEY) ?? "{}");
+        setLastUsedToolByGroup(normalizeLastUsedDrawTools(stored));
+      } catch {
+        setLastUsedToolByGroup({});
+      }
+    };
+
+    syncLastUsed();
+    window.addEventListener("storage", syncLastUsed);
+    window.addEventListener(DRAW_TOOL_LAST_USED_EVENT, syncLastUsed);
+    return () => {
+      window.removeEventListener("storage", syncLastUsed);
+      window.removeEventListener(DRAW_TOOL_LAST_USED_EVENT, syncLastUsed);
+    };
+  }, []);
+
+  const selectTool = (tool: DrawToolId) => {
+    const next = rememberLastUsedDrawTool(lastUsedToolByGroup, tool);
+    setLastUsedToolByGroup(next);
+    try {
+      window.localStorage.setItem(DRAW_TOOL_LAST_USED_STORAGE_KEY, JSON.stringify(next));
+      window.dispatchEvent(new Event(DRAW_TOOL_LAST_USED_EVENT));
+    } catch {
+      // The current chart still remembers in memory when storage is blocked.
+    }
+    onSelectTool(tool);
+  };
 
   useEffect(() => {
     if (!openGroup) return;
@@ -164,9 +210,8 @@ export default function ChartDrawToolbar({
   return (
     <div className="pointer-events-auto z-[26] flex h-full w-9 shrink-0 flex-col items-center gap-0.5 overflow-y-auto border-r border-border/70 bg-panel/85 py-1 backdrop-blur [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {DRAW_TOOL_GROUPS.map((group) => {
-        const primary = primaryOf(group.id);
         const groupTools = toolsOf(group.id);
-        const shown = groupTools.includes(activeTool) ? activeTool : primary;
+        const shown = quickDrawToolForGroup(group.id, activeTool, lastUsedToolByGroup);
         const Icon = iconFor(shown);
         const groupActive = groupTools.includes(activeTool);
         const multi = groupTools.length > 1;
@@ -174,7 +219,7 @@ export default function ChartDrawToolbar({
           <div key={group.id} className="relative shrink-0">
             <button
               type="button"
-              onClick={() => onSelectTool(shown)}
+              onClick={() => selectTool(shown)}
               className={`${chip} ${groupActive ? "border-primary/40 bg-primary/[0.10] text-primary" : "border-transparent text-muted hover:bg-surface hover:text-foreground"}`}
               title={DRAW_TOOL_SPECS[shown].label}
             >
@@ -257,7 +302,7 @@ export default function ChartDrawToolbar({
               const Icon = iconFor(toolId);
               const isActive = activeTool === toolId;
               return (
-                <button key={toolId} type="button" onClick={() => { onSelectTool(toolId); setOpenGroup(null); }} className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left ${isActive ? "bg-primary/10 text-primary" : "text-foreground hover:bg-surface"}`}>
+                <button key={toolId} type="button" onClick={() => { selectTool(toolId); setOpenGroup(null); }} className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left ${isActive ? "bg-primary/10 text-primary" : "text-foreground hover:bg-surface"}`}>
                   <Icon className="h-4 w-4 shrink-0" />
                   <span className="text-[11px]">{DRAW_TOOL_SPECS[toolId].label}</span>
                 </button>
