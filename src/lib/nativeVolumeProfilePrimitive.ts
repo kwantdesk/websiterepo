@@ -34,6 +34,62 @@ export type VolumeProfileBodySpan = {
   rightX: number;
 };
 
+export type VolumeProfileLabelBox = {
+  id: string;
+  preferredLeft: number;
+  preferredTop: number;
+  width: number;
+  height: number;
+};
+
+/**
+ * Keep every enabled profile label inside the pane and out of labels already
+ * placed there. Profiles frequently share a high (or dock to the same edge),
+ * so drawing all captions at their raw top coordinate makes later text paint
+ * directly over earlier text and appear to replace it.
+ */
+export function placeVolumeProfileLabelBoxes(
+  candidates: readonly VolumeProfileLabelBox[],
+  bounds: { left: number; top: number; right: number; bottom: number },
+): Array<VolumeProfileLabelBox & { left: number; top: number }> {
+  const placed: Array<VolumeProfileLabelBox & { left: number; top: number }> = [];
+  for (const candidate of candidates) {
+    const width = Math.max(1, Math.min(candidate.width, Math.max(1, bounds.right - bounds.left)));
+    const height = Math.max(1, Math.min(candidate.height, Math.max(1, bounds.bottom - bounds.top)));
+    const left = clamp(candidate.preferredLeft, bounds.left, Math.max(bounds.left, bounds.right - width));
+    const preferredTop = clamp(candidate.preferredTop, bounds.top, Math.max(bounds.top, bounds.bottom - height));
+    const step = Math.max(3, height + 2);
+    const maximumSteps = Math.max(1, Math.ceil((bounds.bottom - bounds.top) / step));
+    let top = preferredTop;
+    for (let distance = 0; distance <= maximumSteps; distance += 1) {
+      const offsets = distance === 0 ? [0] : [distance * step, -distance * step];
+      const available = offsets.find((offset) => {
+        const trialTop = clamp(
+          preferredTop + offset,
+          bounds.top,
+          Math.max(bounds.top, bounds.bottom - height),
+        );
+        return !placed.some((other) => (
+          left < other.left + other.width + 2
+          && left + width + 2 > other.left
+          && trialTop < other.top + other.height + 2
+          && trialTop + height + 2 > other.top
+        ));
+      });
+      if (available !== undefined) {
+        top = clamp(
+          preferredTop + available,
+          bounds.top,
+          Math.max(bounds.top, bounds.bottom - height),
+        );
+        break;
+      }
+    }
+    placed.push({ ...candidate, width, height, left, top });
+  }
+  return placed;
+}
+
 /**
  * Resolve only the visible, forward section of a profile level.
  *
@@ -628,6 +684,10 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
       // and the profile in front is frequently drawn after. Deferral makes
       // every body's exact back edge available before any line is clipped.
       const deferredLevelDraws: Array<() => void> = [];
+      const deferredProfileText: Array<{
+        box: VolumeProfileLabelBox;
+        draw: (left: number, top: number) => void;
+      }> = [];
 
       for (const model of this.models) {
         const { profile, style } = model;
@@ -1246,28 +1306,41 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
         // off-screen profile's name back into view stacked every scrolled-past
         // session on the same few pixels, so panning right built a pile of
         // overlapping words in the corner.
-        const sessionLabelVisible = profile.sessionLabel
+        const bodySpan = drawnBodySpans.get(model.id);
+        const profileTop = top == null || bottom == null ? null : Math.min(top, bottom);
+        const profileBottom = top == null || bottom == null ? null : Math.max(top, bottom);
+        const sessionLabelVisible = style.showLevelLabels !== false
+          && profile.sessionLabel
           && top != null
           && bottom != null
-          && Math.max(anchorX, endX) > leftEdge
-          && Math.min(anchorX, endX) - profileWidth < mediaSize.width
-          && Math.min(top, bottom) > 0
-          && Math.max(top, bottom) < mediaSize.height;
+          && bodySpan != null
+          && Math.max(bodySpan.leftX, bodySpan.rightX) > leftEdge
+          && Math.min(bodySpan.leftX, bodySpan.rightX) < rightEdge
+          && profileBottom != null
+          && profileTop != null
+          && profileBottom > 0
+          && profileTop < mediaSize.height;
         if (sessionLabelVisible && profile.sessionLabel && top != null && bottom != null) {
           const sessionLabel = profile.sessionLabel;
-          const labelY = Math.min(top, bottom) - 4;
-          context.globalAlpha = 0.92;
           context.font = "600 9px 'JetBrains Mono', monospace";
-          context.textAlign = facesLeft ? "right" : "left";
-          context.textBaseline = "alphabetic";
           const measured = context.measureText(sessionLabel).width;
-          const labelX = clamp(
-            facesLeft ? anchorX - 2 : anchorX + 2,
-            leftEdge + (facesLeft ? measured + 4 : 4),
-            mediaSize.width - (facesLeft ? 4 : measured + 4),
-          );
-          context.fillStyle = style.pocColor;
-          context.fillText(sessionLabel, labelX, labelY);
+          deferredProfileText.push({
+            box: {
+              id: `${model.id}:session`,
+              preferredLeft: facesLeft ? anchorX - measured - 2 : anchorX + 2,
+              preferredTop: Math.min(top, bottom) - 13,
+              width: measured,
+              height: 11,
+            },
+            draw: (left, labelTop) => {
+              context.globalAlpha = 0.92;
+              context.font = "600 9px 'JetBrains Mono', monospace";
+              context.textAlign = "left";
+              context.textBaseline = "top";
+              context.fillStyle = style.pocColor;
+              context.fillText(sessionLabel, left, labelTop);
+            },
+          });
         }
 
         const drawLevel = (
@@ -1295,10 +1368,9 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
             rightEdge,
             [...drawnBodySpans.values()],
           );
-          if (!lineSegment) return;
-          let lineEndX = lineSegment.endX;
+          let lineEndX = lineSegment?.endX ?? sourceBody.rightX;
           const extendMode = style.extendMode ?? "none";
-          if (extendMode === "till-interaction") {
+          if (lineSegment && extendMode === "till-interaction") {
             const bars = style.interactionBars ?? [];
             let touchedX: number | null = null;
             for (const bar of bars) {
@@ -1309,14 +1381,16 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
             }
             if (touchedX != null) lineEndX = Math.min(lineEndX, touchedX);
           }
-          context.globalAlpha = 0.82;
-          context.strokeStyle = color;
-          context.lineWidth = Math.max(0.5, Number.isFinite(lineWidth) ? Number(lineWidth) : 1);
-          context.setLineDash(style.levelDash ?? dash);
-          context.beginPath();
-          context.moveTo(lineSegment.startX, y);
-          context.lineTo(lineEndX, y);
-          context.stroke();
+          if (lineSegment) {
+            context.globalAlpha = 0.82;
+            context.strokeStyle = color;
+            context.lineWidth = Math.max(0.5, Number.isFinite(lineWidth) ? Number(lineWidth) : 1);
+            context.setLineDash(style.levelDash ?? dash);
+            context.beginPath();
+            context.moveTo(lineSegment.startX, y);
+            context.lineTo(lineEndX, y);
+            context.stroke();
+          }
           // Named levels, matching how IB levels are labelled: the name and its
           // price at the line's terminus, which for a forward level is the
           // screen edge. Left keeps them beside the profile that produced them.
@@ -1324,28 +1398,31 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
             const labelText = style.showLevelLabelPrice === false
               ? label
               : `${label} ${price.toFixed(pricePrecision)}`;
-            context.globalAlpha = 0.9;
-            context.fillStyle = color;
             context.font = "700 9px 'JetBrains Mono', monospace";
-            context.textBaseline = "bottom";
             const measured = context.measureText(labelText).width;
             const labelY = Math.max(11, Math.min(mediaSize.height - 3, y - 3));
             const labelOnLeft = (style.levelLabelSide ?? "right") === "left";
             // Where the label naturally belongs: at the line's own terminus.
             const naturalX = labelOnLeft
-              ? lineSegment.startX + 5
+              ? sourceBody.rightX + 5
               : lineEndX - 5;
-            // The clamp exists so a partly visible level keeps its label clear
-            // of the fixed drawing rail. It must NOT drag a label belonging to
-            // a level that has scrolled away back into view: doing that piled
-            // every previous session's VAH, VAL and POC into one unreadable
-            // column against the left edge as soon as the chart was panned.
-            const labelLow = leftEdge + (labelOnLeft ? 4 : measured + 4);
-            const labelHigh = mediaSize.width - (labelOnLeft ? measured + 4 : 4);
-            if (naturalX >= leftEdge && naturalX <= mediaSize.width) {
-              context.textAlign = labelOnLeft ? "left" : "right";
-              context.fillText(labelText, clamp(naturalX, labelLow, labelHigh), labelY);
-            }
+            deferredProfileText.push({
+              box: {
+                id: `${model.id}:${label}:${price}`,
+                preferredLeft: labelOnLeft ? naturalX : naturalX - measured,
+                preferredTop: labelY - 11,
+                width: measured,
+                height: 11,
+              },
+              draw: (left, top) => {
+                context.globalAlpha = 0.9;
+                context.fillStyle = color;
+                context.font = "700 9px 'JetBrains Mono', monospace";
+                context.textAlign = "left";
+                context.textBaseline = "top";
+                context.fillText(labelText, left, top);
+              },
+            });
           }
         };
         // Developing POC: where control sat at each recorded minute. Drawn as
@@ -1547,16 +1624,29 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
               color: style.summaryTextColor ?? style.pocColor,
             });
           }
-          context.globalAlpha = 0.9;
           context.font = "600 8px 'JetBrains Mono', monospace";
-          context.textAlign = "left";
-          context.textBaseline = "top";
-          let summaryY = 6;
-          for (const line of lines) {
-            context.fillStyle = line.color;
-            context.fillText(line.text, clamp(Math.min(anchorX, endX) + 4, 4, mediaSize.width - 60), summaryY);
-            summaryY += 10;
-          }
+          const summaryWidth = Math.max(1, ...lines.map((line) => context.measureText(line.text).width));
+          const summaryLeft = Math.min(anchorX, endX) + 4;
+          const summaryTop = (profileTop ?? 0) + 4;
+          deferredProfileText.push({
+            box: {
+              id: `${model.id}:summary`,
+              preferredLeft: summaryLeft,
+              preferredTop: summaryTop,
+              width: summaryWidth,
+              height: Math.max(10, lines.length * 10),
+            },
+            draw: (left, top) => {
+              context.globalAlpha = 0.9;
+              context.font = "600 8px 'JetBrains Mono', monospace";
+              context.textAlign = "left";
+              context.textBaseline = "top";
+              lines.forEach((line, index) => {
+                context.fillStyle = line.color;
+                context.fillText(line.text, left, top + index * 10);
+              });
+            },
+          });
         }
 
       }
@@ -1573,6 +1663,20 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
         drawDeferredLevel();
         context.restore();
       }
+
+      // Text is the final paint layer. No later profile body may cover a
+      // caption, and labels sharing a high or dock are assigned stable lanes.
+      const placedProfileText = placeVolumeProfileLabelBoxes(
+        deferredProfileText.map((item) => item.box),
+        { left: leftEdge + 4, top: 2, right: rightEdge - 4, bottom: mediaSize.height - 2 },
+      );
+      deferredProfileText.forEach((item, index) => {
+        const placed = placedProfileText[index];
+        if (!placed) return;
+        context.save();
+        item.draw(placed.left, placed.top);
+        context.restore();
+      });
 
       context.restore();
     });

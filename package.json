@@ -109,6 +109,7 @@
     "test:volume-profile-gradients": "node scripts/test-volume-profile-gradients.mjs",
     "test:event-bar-first-paint": "node scripts/test-event-bar-first-paint.mjs",
     "test:volume-profile-dock": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-volume-profile-dock.mjs",
+    "test:volume-profile-labels": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-volume-profile-labels.mjs",
     "test:big-trades-anchor": "node scripts/test-big-trades-anchor.mjs",
     "test:execution-tape": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-execution-tape-merge.mjs",
     "bench:execution-tape": "node --experimental-strip-types --expose-gc --import ./scripts/alias-hook.mjs scripts/bench-execution-tape.mjs",
