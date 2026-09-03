@@ -34,7 +34,7 @@ test("manually customised workspace colours survive later account theme changes"
 
 test("chart colour templates are shared by Charts and GEX Vue", () => {
   assert.match(workspace, /localStorage\.getItem\(CHART_TEMPLATES_STORAGE_KEY\)/);
-  assert.match(workspace, /localStorage\.setItem\(\s*CHART_TEMPLATES_STORAGE_KEY,[\s\S]{0,120}JSON\.stringify\(nextTemplates\)/);
+  assert.match(workspace, /writeProtectedItem\(\s*CHART_TEMPLATES_STORAGE_KEY,[\s\S]{0,120}JSON\.stringify\(nextTemplates\)/);
   assert.match(workspace, /savedSettings = normalizeChartSettings\(\{ \.\.\.draftChartSettings, themeLinked: false \}\)/);
   assert.match(workspace, /Link colours to website theme/);
 });
@@ -60,12 +60,12 @@ test("account themes override linked indicators and theme-linked chart colours",
   assert.match(indicatorConfig, /useThemeColors: true/);
   assert.match(workspace, /addEventListener\("kwantdesk:theme-change", relinkIndicators\)/);
   assert.match(settings, /themeLinked: true,[\s\S]*?backgroundColor: color/);
-  assert.match(settings, /const next = \{ \.\.\.current, themeLinked: true, \[key\]: color \}/);
+  assert.match(settings, /const nextChartSettings = \{ \.\.\.chartSettingsRef\.current, themeLinked: true, \[key\]: color \}/);
 });
 
 test("legacy chart migration never overwrites the selected account palette", () => {
   const migration = workspace.match(/const migrationKey = "kwantdesk:midnight-cockpit-chart:v1";[\s\S]*?\}, \[authChecked\]\);/)?.[0] ?? "";
-  assert.match(migration, /localStorage\.setItem\(migrationKey, "applied"\)/);
+  assert.match(migration, /writeProtectedItem\(migrationKey, "applied"\)/);
   assert.doesNotMatch(migration, /upColor:/);
   assert.doesNotMatch(migration, /setChartSettings\(/);
 });

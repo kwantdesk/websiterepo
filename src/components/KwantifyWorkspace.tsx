@@ -129,7 +129,7 @@ import { DEFAULT_CROSSHAIR_STYLE, loadCrosshairStyle, normalizeCrosshairStyle, s
 import { loadGexMapPalette, saveGexMapPalette, type GexMapPalette } from "@/lib/gexMapPalette";
 import { normalizeTimeZone } from "@/lib/timeZones";
 import { clearSavedStrategiesRaw, loadSavedStrategiesRaw, saveSavedStrategiesRaw } from "@/lib/automation";
-import { CHART_SETTINGS_CHANGE_EVENT, CHART_SETTINGS_STORAGE_KEY, applyActiveThemeToWorkspaceChartSettings, chartSettingsEqual, defaultChartSettings, extractUserChartSettings, loadStoredChartSettings, mergeWorkspaceChartSettingsWithActiveTheme, normalizeChartSettings, saveStoredChartSettings, type ChartSettings } from "@/lib/chartSettings";
+import { CHART_SETTINGS_CHANGE_EVENT, CHART_SETTINGS_STORAGE_KEY, applyActiveThemeToWorkspaceChartSettings, chartSettingsEqual, chartSettingsFromChangeEvent, defaultChartSettings, extractUserChartSettings, loadStoredChartSettings, mergeWorkspaceChartSettingsWithActiveTheme, normalizeChartSettings, saveStoredChartSettings, type ChartSettings } from "@/lib/chartSettings";
 import type { ChartLevel, ChartZone } from "@/components/Chart";
 import {
   CHART_INDICATOR_BY_ID,
@@ -14261,8 +14261,8 @@ export default function KwantifyWorkspace({
   }, [authChecked, preferenceUserId]);
 
   useEffect(() => {
-    const syncChartPalette = () => {
-      const activeThemeSettings = loadStoredChartSettings();
+    const syncChartPalette = (event?: Event) => {
+      const activeThemeSettings = chartSettingsFromChangeEvent(event);
       const applyGlobalPalette = (current: ChartSettings) => {
         const next = applyActiveThemeToWorkspaceChartSettings(current, activeThemeSettings);
         return chartSettingsEqual(current, next) ? current : next;
@@ -14272,7 +14272,7 @@ export default function KwantifyWorkspace({
       setChartSettingsSnapshot(applyGlobalPalette);
     };
     const syncChartPaletteAcrossTabs = (event: StorageEvent) => {
-      if (event.key === CHART_SETTINGS_STORAGE_KEY) syncChartPalette();
+      if (event.key === CHART_SETTINGS_STORAGE_KEY) syncChartPalette(event);
     };
     window.addEventListener(CHART_SETTINGS_CHANGE_EVENT, syncChartPalette);
     window.addEventListener("storage", syncChartPaletteAcrossTabs);

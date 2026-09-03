@@ -4,12 +4,12 @@ import test from "node:test";
 
 const settingsPath = new URL("../src/lib/themePresets.ts", import.meta.url);
 
-test("theme catalogue keeps three originals and adds forty distinct palettes", async () => {
+test("theme catalogue keeps its foundation themes and forty distinct palettes", async () => {
   const source = await readFile(settingsPath, "utf8");
   const names = [...source.matchAll(/palette\("([^"]+)"/g)].map((match) => match[1]);
 
-  assert.equal(names.length, 43);
-  assert.equal(new Set(names).size, 43);
+  assert.equal(names.length, 44);
+  assert.equal(new Set(names).size, 44);
   assert.deepEqual(names.slice(0, 3), ["Midnight Cockpit", "Kwant Desk", "Mr. Quant"]);
 
   for (const name of ["Playdough Parade", "Tangerine Terminal", "Creamsicle OS", "Paper & Ink", "Mono Protocol", "Inverted Mono"]) {

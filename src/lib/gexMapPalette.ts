@@ -254,10 +254,9 @@ export function saveGexMapPalette(palette: GexMapPalette) {
 }
 
 /**
- * Choosing a site theme overrides every surface, the GEX Map included: a
- * saved custom palette relinks to the theme until the trader customises the
- * colours again. Called from deliberate theme changes only (saveTheme /
- * resetTheme) — never from hydration, which must not erase saved colours.
+ * Explicitly relink a custom GEX Map palette when the trader asks to use site
+ * colours again. Ordinary site-theme changes intentionally do not call this:
+ * `useThemeColors: false` is a deliberate per-surface exception.
  */
 export function relinkGexMapPaletteToTheme() {
   if (typeof window === "undefined") return;

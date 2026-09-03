@@ -134,6 +134,20 @@ export function loadStoredChartSettings() {
   }
 }
 
+/**
+ * Resolve the palette carried by a same-tab settings event before consulting
+ * storage. The event payload is the authoritative value for the interaction
+ * that just happened; re-reading localStorage here used to let a failed or
+ * delayed write repaint mounted canvases with the previous theme.
+ *
+ * Storage events do not carry our CustomEvent detail, so cross-tab changes
+ * continue to fall back to the newly-written storage value.
+ */
+export function chartSettingsFromChangeEvent(event?: Event): ChartSettings {
+  const detail = (event as CustomEvent<unknown> | undefined)?.detail;
+  return detail === undefined ? loadStoredChartSettings() : normalizeChartSettings(detail);
+}
+
 export function saveStoredChartSettings(settings: ChartSettings) {
   if (typeof window === "undefined") return;
   const normalized = normalizeChartSettings(settings);

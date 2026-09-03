@@ -28,7 +28,7 @@ import type { ChartLevel, ChartZone } from "@/components/Chart";
 import type { ChartGammaLevelsPayload, ChartGammaSourceLevelKind } from "@/lib/chartGammaLevels";
 import { mergeGammaLevelsAtSamePrice } from "@/lib/chartGammaLevels";
 import type { GameplanPayload, GameplanRole } from "@/lib/gameplan";
-import { CHART_SETTINGS_CHANGE_EVENT, CHART_SETTINGS_STORAGE_KEY, chartSettingsEqual, defaultChartSettings, loadStoredChartSettings, type ChartSettings } from "@/lib/chartSettings";
+import { CHART_SETTINGS_CHANGE_EVENT, CHART_SETTINGS_STORAGE_KEY, chartSettingsEqual, chartSettingsFromChangeEvent, defaultChartSettings, loadStoredChartSettings, type ChartSettings } from "@/lib/chartSettings";
 import KwantLoader from "@/components/KwantLoader";
 import ChartIndicatorsControl, { type ChartLevelControl } from "@/components/ChartIndicatorsControl";
 import HistoricalGexPanel from "@/components/backtesting/HistoricalGexPanel";
@@ -830,12 +830,12 @@ export default function BacktestingWorkspace({
   }, []);
 
   useEffect(() => {
-    const syncSettings = () => {
-      const next = loadStoredChartSettings();
+    const syncSettings = (event?: Event) => {
+      const next = chartSettingsFromChangeEvent(event);
       setSettings((current) => chartSettingsEqual(current, next) ? current : next);
     };
     const syncSettingsAcrossTabs = (event: StorageEvent) => {
-      if (event.key === CHART_SETTINGS_STORAGE_KEY) syncSettings();
+      if (event.key === CHART_SETTINGS_STORAGE_KEY) syncSettings(event);
     };
     window.addEventListener(CHART_SETTINGS_CHANGE_EVENT, syncSettings);
     window.addEventListener("storage", syncSettingsAcrossTabs);

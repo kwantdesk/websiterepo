@@ -26,7 +26,7 @@ import {
   readDatabentoLiveStatus,
   type DatabentoLiveStatus,
 } from "@/lib/chartLiveEvents";
-import { CHART_SETTINGS_CHANGE_EVENT, CHART_SETTINGS_STORAGE_KEY, chartSettingsEqual, defaultChartSettings, loadStoredChartSettings, type ChartSettings } from "@/lib/chartSettings";
+import { CHART_SETTINGS_CHANGE_EVENT, CHART_SETTINGS_STORAGE_KEY, chartSettingsEqual, chartSettingsFromChangeEvent, defaultChartSettings, loadStoredChartSettings, type ChartSettings } from "@/lib/chartSettings";
 import type { GameplanPayload } from "@/lib/gameplan";
 import {
   nativeGammaStatusLabel,
@@ -1514,12 +1514,12 @@ export default function LevelzWorkspace() {
       setIntelligenceCollapsed(window.localStorage.getItem(LEVELZ_INTELLIGENCE_COLLAPSED_STORAGE_KEY) === "true");
     } catch {}
     setLayoutReady(true);
-    const syncSettings = () => {
-      const next = loadStoredChartSettings();
+    const syncSettings = (event?: Event) => {
+      const next = chartSettingsFromChangeEvent(event);
       setSettings((current) => chartSettingsEqual(current, next) ? current : next);
     };
     const syncSettingsAcrossTabs = (event: StorageEvent) => {
-      if (event.key === CHART_SETTINGS_STORAGE_KEY) syncSettings();
+      if (event.key === CHART_SETTINGS_STORAGE_KEY) syncSettings(event);
     };
     window.addEventListener(CHART_SETTINGS_CHANGE_EVENT, syncSettings);
     window.addEventListener("storage", syncSettingsAcrossTabs);

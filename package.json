@@ -250,6 +250,7 @@
     "test:gex-map-text-contrast": "node --import ./scripts/alias-hook.mjs scripts/test-gex-map-text-contrast.mjs",
     "test:side-rail-tap": "node --import ./scripts/alias-hook.mjs scripts/test-side-rail-tap.mjs",
     "test:theme-account-sync": "node --import ./scripts/alias-hook.mjs scripts/test-theme-account-sync.mjs",
+    "test:theme-first-click": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-theme-first-click.mjs",
     "test:session-boundaries": "node --import ./scripts/alias-hook.mjs scripts/test-session-boundaries.mjs",
     "test:developing-value-area": "node --import ./scripts/alias-hook.mjs scripts/test-developing-value-area.mjs",
     "test:volume-profile-count": "node --import ./scripts/alias-hook.mjs scripts/test-volume-profile-count.mjs",

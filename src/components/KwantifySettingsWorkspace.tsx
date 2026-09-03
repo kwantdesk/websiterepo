@@ -32,7 +32,7 @@ import {
   Video,
   Wallet,
 } from "lucide-react";
-import { defaultTheme, readStoredTheme, resetTheme, saveTheme as saveAppTheme, type ThemeColors } from "@/lib/theme";
+import { defaultTheme, readStoredTheme, saveTheme as saveAppTheme, type ThemeColors } from "@/lib/theme";
 import { defaultChartSettings, extractUserChartSettings, loadStoredChartSettings, mergeChartSettingsIntoTheme, saveStoredChartSettings, type ChartSettings } from "@/lib/chartSettings";
 import { linkStoredPaneIndicatorsToTheme } from "@/lib/chartIndicatorConfig";
 import { createClient } from "@/lib/supabase";
@@ -266,6 +266,14 @@ export default function SettingsPage() {
     return readStoredTheme();
   });
   const [chartSettings, setChartSettings] = useState<ChartSettings>(() => loadStoredChartSettings());
+  // Keep the latest committed pair available inside rapid pointer/preset
+  // interactions. React state does not update until the handler returns, so
+  // deriving the next palette from a render closure could drop the immediately
+  // preceding colour selection.
+  const themeSettingsRef = useRef(themeSettings);
+  const chartSettingsRef = useRef(chartSettings);
+  themeSettingsRef.current = themeSettings;
+  chartSettingsRef.current = chartSettings;
   const [fontSize, setFontSize] = useState(() => {
     if (typeof window === "undefined") return "Default";
     const saved = window.localStorage.getItem("kwantdesk-settings-font-size");
@@ -461,18 +469,6 @@ export default function SettingsPage() {
   }, [presenceLoading, profileUsername, savedHandle]);
 
   useEffect(() => {
-    saveAppTheme(themeSettings);
-  }, [themeSettings]);
-
-  useEffect(() => {
-    saveStoredChartSettings(chartSettings);
-  }, [chartSettings]);
-
-  useEffect(() => {
-    setThemeSettings((current) => mergeChartSettingsIntoTheme(current, chartSettings));
-  }, [chartSettings]);
-
-  useEffect(() => {
     writeProtectedItem("kwantdesk-settings-toggles", JSON.stringify(toggles));
     window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
   }, [toggles]);
@@ -611,18 +607,38 @@ export default function SettingsPage() {
     && isValidProfileHandle(normalizeProfileHandle(profileUsername))
     && (normalizeProfileHandle(profileUsername) === savedHandle || handleCheck.state === "available");
 
-  function updateThemeColor(key: keyof ThemeColors, color: string) {
+  function commitAppearance(nextTheme: ThemeColors, nextChartSettings: ChartSettings) {
+    const normalizedChartSettings = { ...nextChartSettings, themeLinked: true };
+    themeSettingsRef.current = nextTheme;
+    chartSettingsRef.current = normalizedChartSettings;
+    setThemeSettings(nextTheme);
+    setChartSettings(normalizedChartSettings);
     linkStoredPaneIndicatorsToTheme();
-    setThemeSettings((current) => ({
-      ...current,
+
+    // Canvas charts receive their exact palette payload first. Applying the
+    // CSS theme then emits the global theme event in the same interaction, so
+    // every surface commits one coherent palette on the first click.
+    saveStoredChartSettings(normalizedChartSettings);
+    saveAppTheme(nextTheme);
+  }
+
+  function commitChartPreference(nextChartSettings: ChartSettings) {
+    chartSettingsRef.current = nextChartSettings;
+    setChartSettings(nextChartSettings);
+    saveStoredChartSettings(nextChartSettings);
+  }
+
+  function updateThemeColor(key: keyof ThemeColors, color: string) {
+    const nextTheme = {
+      ...themeSettingsRef.current,
       [key]: color,
       ...(key === "background" ? { chartBackground: color } : {}),
       ...(key === "primary" ? { candleUp: color, crosshairColor: color } : {}),
       ...(key === "danger" ? { candleDown: color } : {}),
-    }));
-    if (key === "background" || key === "primary" || key === "danger") {
-      setChartSettings((current) => ({
-        ...current,
+    } as ThemeColors;
+    const nextChartSettings = key === "background" || key === "primary" || key === "danger"
+      ? {
+        ...chartSettingsRef.current,
         themeLinked: true,
         ...(key === "background" ? { backgroundColor: color } : {}),
         ...(key === "primary" ? {
@@ -635,22 +651,20 @@ export default function SettingsPage() {
           borderDownColor: color,
           wickDownColor: color,
         } : {}),
-      }));
-    }
+      }
+      : chartSettingsRef.current;
+    commitAppearance(nextTheme, nextChartSettings);
   }
 
   function updateChartColor(key: keyof ChartSettings, color: string) {
-    linkStoredPaneIndicatorsToTheme();
-    setChartSettings((current) => {
-      const next = { ...current, themeLinked: true, [key]: color };
-      setThemeSettings((theme) => mergeChartSettingsIntoTheme(theme, next));
-      return next;
-    });
+    const nextChartSettings = { ...chartSettingsRef.current, themeLinked: true, [key]: color };
+    const nextTheme = mergeChartSettingsIntoTheme(themeSettingsRef.current, nextChartSettings);
+    commitAppearance(nextTheme, nextChartSettings);
   }
 
   function applyThemePreset(theme: ThemeColors) {
     const nextChartSettings: ChartSettings = {
-      ...chartSettings,
+      ...chartSettingsRef.current,
       themeLinked: true,
       backgroundColor: theme.chartBackground,
       gridColor: theme.gridColor,
@@ -663,30 +677,18 @@ export default function SettingsPage() {
       wickUpColor: theme.candleUpBorder ?? theme.candleUp,
       wickDownColor: theme.candleDownBorder ?? theme.candleDown,
     };
-    setThemeSettings(theme);
-    setChartSettings(nextChartSettings);
-    linkStoredPaneIndicatorsToTheme();
-    saveAppTheme(theme);
-    saveStoredChartSettings(nextChartSettings);
+    commitAppearance(theme, nextChartSettings);
   }
 
   async function saveThemeSettings() {
-    const linkedChartSettings = { ...chartSettings, themeLinked: true };
-    const syncedTheme = mergeChartSettingsIntoTheme(themeSettings, linkedChartSettings);
-    setThemeSettings(syncedTheme);
-    setChartSettings(linkedChartSettings);
-    linkStoredPaneIndicatorsToTheme();
-    saveAppTheme(syncedTheme);
-    saveStoredChartSettings(linkedChartSettings);
+    const linkedChartSettings = { ...chartSettingsRef.current, themeLinked: true };
+    const syncedTheme = mergeChartSettingsIntoTheme(themeSettingsRef.current, linkedChartSettings);
+    commitAppearance(syncedTheme, linkedChartSettings);
   }
 
   function resetThemeSettings() {
-    resetTheme();
-    linkStoredPaneIndicatorsToTheme();
     const syncedTheme = mergeChartSettingsIntoTheme(defaultTheme, defaultChartSettings);
-    setThemeSettings(syncedTheme);
-    setChartSettings(defaultChartSettings);
-    saveStoredChartSettings(defaultChartSettings);
+    commitAppearance(syncedTheme, defaultChartSettings);
   }
 
   function saveChartDefaults() {
@@ -979,7 +981,7 @@ export default function SettingsPage() {
                 </div>
                 <div className="mt-5 flex items-center justify-between rounded-xl border border-border bg-surface/40 px-4 py-3 text-[13px]">
                   <span className="text-muted">Show grid lines</span>
-                  <Toggle checked={chartSettings.gridLines} onChange={() => setChartSettings((current) => ({ ...current, gridLines: !current.gridLines }))} />
+                  <Toggle checked={chartSettings.gridLines} onChange={() => commitChartPreference({ ...chartSettingsRef.current, gridLines: !chartSettingsRef.current.gridLines })} />
                 </div>
               </section>
 
@@ -1013,7 +1015,7 @@ export default function SettingsPage() {
                   Chart timezone
                   <TimeZoneSelect
                     value={chartSettings.timezone}
-                    onChange={(timeZone) => setChartSettings((current) => ({ ...current, timezone: timeZone }))}
+                    onChange={(timeZone) => commitChartPreference({ ...chartSettingsRef.current, timezone: timeZone })}
                     menuLabel="Chart timezone"
                   />
                 </label>
