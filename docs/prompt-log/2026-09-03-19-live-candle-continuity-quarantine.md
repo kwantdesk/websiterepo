@@ -53,8 +53,25 @@ also lower the generic loading flag before price continuity had recovered.
 - Focused ESLint: passed.
 - TypeScript: passed.
 - Production build: passed; all 80 static pages generated.
-- Production deployment and live verification: pending.
+- Production build passed after every correction; all 80 static pages were
+  generated.
+- Live production was deliberately held through real NQ 1m minute rollovers.
+  The first two passes exposed boundary timing defects and were corrected
+  before sign-off. The final pass stayed continuously visible immediately
+  after rollover, at eight seconds, and beyond the fifteen-second grace while
+  the next candle continued forming.
 
 ## Outcome
 
-Pending production deployment.
+- Continuity quarantine commit: `e8ceb340cc5e7890e1b367164c3a4521d4a9fe1f`.
+- Boundary-grace commit: `01322f0bd4be926875e70686626a0ea61d8e7fe6`.
+- Final incoming-bucket ordering commit:
+  `7a5559d0339103315246610c9c7a261b63f821f6`.
+- Final Vercel deployment: `4TBLrZC3Gvqpmbn24sUqGrQZg3Yb`, Ready in the
+  sole active `websiterepo-yfmi` project and assigned to `www.kwantdesk.com`.
+- NQ 1m was visually verified continuous on production and remained healthy
+  through a real live candle rollover.
+- Result: a genuinely missing live time bucket is hidden immediately and
+  repaired from authoritative history/seam data; a healthy new bucket no
+  longer triggers false recovery. The protection is shared by all CME futures
+  time charts and scoped per instrument/timeframe request.
