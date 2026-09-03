@@ -8,4 +8,4 @@ Implemented one reusable numeric-setting control across the complete chart-indic
 
 # Outcome
 
-Implementation verified locally: 9/9 slider-contract checks, 11/11 indicator Save checks, 8/8 Volume Profile live-setting checks, 6/6 TPO settings-wiring checks, Footprint chart-type checks, 12/12 theme checks, scoped ESLint, TypeScript and the complete 80-page production build all passed. Production commit and deployment are recorded below after the active `websiterepo-yfmi` deployment completes.
+Implementation verified locally: 9/9 slider-contract checks, 11/11 indicator Save checks, 8/8 Volume Profile live-setting checks, 6/6 TPO settings-wiring checks, Footprint chart-type checks, 12/12 theme checks, scoped ESLint, TypeScript and the complete 80-page production build all passed. Production code commit `79628eb1` deployed successfully through the sole active Vercel project `websiterepo-yfmi` as deployment `8ySanmMM1kteeUMKfHAtHRdDaXvj` / GitHub deployment `6237997411`: `https://websiterepo-yfmi-puzryy82d-kwant-desk.vercel.app`.
