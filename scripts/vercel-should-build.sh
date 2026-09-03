@@ -45,16 +45,15 @@ if ! git cat-file -e "${VERCEL_GIT_PREVIOUS_SHA}^{commit}" 2>/dev/null \
   git fetch --depth=2 origin "$VERCEL_GIT_COMMIT_REF" >/dev/null 2>&1 || true
 fi
 
-# Vercel's sanitized clone can leave `origin` unable to deepen. Use the public
-# repository URL directly rather than GitHub's rate-limited REST API. Validate
-# every URL component first; on any ambiguity the gate falls through to BUILD.
-if ! git cat-file -e "${VERCEL_GIT_PREVIOUS_SHA}^{commit}" 2>/dev/null \
-   && printf '%s' "$VERCEL_GIT_REPO_OWNER" | grep -Eq '^[A-Za-z0-9_.-]+$' \
-   && printf '%s' "$VERCEL_GIT_REPO_SLUG" | grep -Eq '^[A-Za-z0-9_.-]+$' \
-   && printf '%s' "$VERCEL_GIT_COMMIT_REF" | grep -Eq '^[A-Za-z0-9_./-]+$'; then
+# Vercel's sanitized clone leaves `origin` unable to deepen and does not expose
+# repo owner/slug variables during this early hook. This gate belongs only to
+# the active websiterepo-yfmi project, whose vercel.json enables main alone, so
+# use its fixed public repository URL. This avoids the shared-IP REST quota and
+# cannot be redirected by an environment value.
+if ! git cat-file -e "${VERCEL_GIT_PREVIOUS_SHA}^{commit}" 2>/dev/null; then
   git fetch --depth=2 \
-    "https://github.com/${VERCEL_GIT_REPO_OWNER}/${VERCEL_GIT_REPO_SLUG}.git" \
-    "$VERCEL_GIT_COMMIT_REF" >/dev/null 2>&1 || true
+    "https://github.com/kwantdesk/websiterepo.git" \
+    "main" >/dev/null 2>&1 || true
 fi
 
 # Still not there — compare against HEAD's own parent instead, which a

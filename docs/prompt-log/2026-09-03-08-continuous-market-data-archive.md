@@ -39,6 +39,12 @@ fallback was rejected after the live runner hit GitHub's shared-IP API limit.
 The gate now performs a validated public depth-two Git fetch instead; ambiguous
 history still fails safely into a build.
 
+Vercel also withheld repository owner/slug variables during the early ignore
+hook. Because this gate is scoped to the single active `websiterepo-yfmi`
+project and `main` is its only enabled deployment branch, its final recovery
+uses that fixed public repository/branch rather than unavailable environment
+metadata.
+
 Unfinished external requirement: the 80 GB VPS disk is 92% full (5.8 GB free),
 the archive is 52 GB, and there is no off-box backup target or credential on
 the server. Indefinite retention cannot be truthfully guaranteed until an

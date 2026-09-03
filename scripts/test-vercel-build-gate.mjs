@@ -10,7 +10,7 @@ const gate = readFileSync(new URL("vercel-should-build.sh", import.meta.url), "u
 const gatePath = fileURLToPath(new URL("vercel-should-build.sh", import.meta.url));
 
 assert.match(gate, /git fetch --depth=2 origin "\$VERCEL_GIT_COMMIT_REF"/);
-assert.match(gate, /https:\/\/github\.com\/\$\{VERCEL_GIT_REPO_OWNER\}\/\$\{VERCEL_GIT_REPO_SLUG\}\.git/);
+assert.match(gate, /https:\/\/github\.com\/kwantdesk\/websiterepo\.git/);
 assert.doesNotMatch(gate, /api\.github\.com/, "the gate must not depend on shared-IP REST quotas");
 
 const shell = process.platform === "win32" ? "C:\\Program Files\\Git\\bin\\sh.exe" : "sh";
@@ -36,8 +36,6 @@ try {
       VERCEL_GIT_PREVIOUS_SHA: previous,
       VERCEL_GIT_COMMIT_SHA: head,
       VERCEL_GIT_COMMIT_REF: "main",
-      VERCEL_GIT_REPO_OWNER: "kwantdesk",
-      VERCEL_GIT_REPO_SLUG: "websiterepo",
     },
   });
   assert.match(output, /Only unshipped paths changed — skipping the build/);

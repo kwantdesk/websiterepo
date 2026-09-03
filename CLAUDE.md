@@ -1247,3 +1247,6 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
   clone — building.` Its shared-IP GitHub REST fallback then hit a live 403.
   The final gate uses a validated, public, depth-two Git fetch with no REST
   quota; ambiguous history continues to build safely.
+- The live hook also omitted repo owner/slug variables. The recovery URL is
+  therefore fixed to this project's public `kwantdesk/websiterepo` `main`
+  branch; `vercel.json` already disables deployments from other branches.
