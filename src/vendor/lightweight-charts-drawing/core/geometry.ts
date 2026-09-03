@@ -274,6 +274,32 @@ export function extendLineToViewport(
 }
 
 /**
+ * Resolve the horizontal span of an axis-aligned drawing that may extend to
+ * either visible pane edge.
+ *
+ * Extension is screen geometry, not a mutation of the drawing's time anchors:
+ * panning/zooming therefore keeps the rectangle flush with the current pane,
+ * while switching the option off restores the exact two points the trader
+ * placed. The primitive pane is already clipped before the price scale, so
+ * `viewportWidth` is the content edge and never the outer application edge.
+ */
+export function extendHorizontalBoundsToViewport(
+  firstX: number,
+  secondX: number,
+  viewportWidth: number,
+  extendLeft: boolean,
+  extendRight: boolean,
+): { left: number; right: number } {
+  const width = Math.max(0, Number.isFinite(viewportWidth) ? viewportWidth : 0);
+  const anchorLeft = Math.min(firstX, secondX);
+  const anchorRight = Math.max(firstX, secondX);
+  return {
+    left: extendLeft ? 0 : anchorLeft,
+    right: extendRight ? width : anchorRight,
+  };
+}
+
+/**
  * Get angle of line in radians
  */
 export function getLineAngle(start: Point, end: Point): number {

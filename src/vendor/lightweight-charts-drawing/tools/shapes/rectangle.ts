@@ -3,6 +3,7 @@ import type { IPrimitivePaneView } from 'lightweight-charts';
 import { Drawing } from '../../core/drawing';
 import type { Anchor, Point, Viewport, DrawingStyle, DrawingOptions, IDrawing } from '../../core/types';
 import type { Geometry, RectangleGeometry } from '../../core/geometry';
+import { extendHorizontalBoundsToViewport } from '../../core/geometry';
 import { RectanglePaneView } from './rectangle-pane-view';
 
 /**
@@ -70,11 +71,18 @@ export class Rectangle extends Drawing {
 
     if (!p1 || !p2) return [];
 
+    const horizontal = extendHorizontalBoundsToViewport(
+      p1.x,
+      p2.x,
+      viewport.width,
+      this.options.extendLeft === true,
+      this.options.extendRight === true,
+    );
     const topLeft: Point = {
-      x: Math.min(p1.x, p2.x),
+      x: horizontal.left,
       y: Math.min(p1.y, p2.y),
     };
-    const width = Math.abs(p2.x - p1.x);
+    const width = Math.max(0, horizontal.right - horizontal.left);
     const height = Math.abs(p2.y - p1.y);
 
     const rectGeometry: RectangleGeometry = {
@@ -95,8 +103,13 @@ export class Rectangle extends Drawing {
 
     if (!p1 || !p2) return false;
 
-    const left = Math.min(p1.x, p2.x);
-    const right = Math.max(p1.x, p2.x);
+    const { left, right } = extendHorizontalBoundsToViewport(
+      p1.x,
+      p2.x,
+      viewport.width,
+      this.options.extendLeft === true,
+      this.options.extendRight === true,
+    );
     const top = Math.min(p1.y, p2.y);
     const bottom = Math.max(p1.y, p2.y);
 

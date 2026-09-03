@@ -3,6 +3,7 @@ import type { CanvasRenderingTarget2D, BitmapCoordinatesRenderingScope } from 'f
 
 import type { Rectangle } from './rectangle';
 import type { Point } from '../../core/types';
+import { extendHorizontalBoundsToViewport } from '../../core/geometry';
 import { applyStyle, drawRect, drawControlPoints, drawLabel, formatPrice } from '../../rendering/canvas-utils';
 
 export class RectanglePaneView implements IPrimitivePaneView {
@@ -49,11 +50,18 @@ class RectanglePaneRenderer implements IPrimitivePaneRenderer {
 
     if (!p1 || !p2) return;
 
+    const horizontal = extendHorizontalBoundsToViewport(
+      p1.x,
+      p2.x,
+      viewport.width,
+      this._drawing.options.extendLeft === true,
+      this._drawing.options.extendRight === true,
+    );
     const topLeft: Point = {
-      x: Math.min(p1.x, p2.x),
+      x: horizontal.left,
       y: Math.min(p1.y, p2.y),
     };
-    const width = Math.abs(p2.x - p1.x);
+    const width = Math.max(0, horizontal.right - horizontal.left);
     const height = Math.abs(p2.y - p1.y);
 
     applyStyle(ctx, this._drawing.style, pixelRatio);
