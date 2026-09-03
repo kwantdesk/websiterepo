@@ -233,6 +233,7 @@
     "test:paper-journal": "node --import ./scripts/alias-hook.mjs scripts/test-paper-journal.mjs",
     "test:paper-trade-export": "node --import ./scripts/alias-hook.mjs scripts/test-paper-trade-export.mjs",
     "test:candle-context-menu": "node --import ./scripts/alias-hook.mjs scripts/test-candle-context-menu.mjs",
+    "test:quick-measure": "node --experimental-strip-types --import ./scripts/alias-hook.mjs --test tests/chart-quick-measure.test.mjs",
     "test:paper-account-visibility": "node --import ./scripts/alias-hook.mjs scripts/test-paper-account-visibility.mjs",
     "test:trade-analytics": "node --import ./scripts/alias-hook.mjs scripts/test-trade-analytics.mjs",
     "test:money-precision": "node --import ./scripts/alias-hook.mjs scripts/test-money-precision.mjs",

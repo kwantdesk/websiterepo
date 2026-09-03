@@ -1371,3 +1371,32 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
   raw market data was deleted. Extending live capture beyond the currently
   configured/entitled Rithmic roots requires off-box backup or a larger volume;
   silently trading retention for breadth is prohibited.
+
+## 2026-09-03 — Theme-aware quick measurement gesture
+
+### Completed
+
+- The transient right-drag chart ruler now derives its outline, fill and value
+  label from the chart's current bullish/theme colour instead of fixed blue.
+  The colour is adjusted only when necessary to retain 4.5:1 contrast against
+  the actual chart background; elapsed-time text also follows that background.
+- Fixed the Windows browser event-order bug where `mouseup` cleared the active
+  drag before the subsequent `contextmenu` event arrived. A completed drag now
+  carries a bounded, one-use release latch across that boundary and cannot open
+  the standard chart menu when the trader lets go.
+- A stationary right-click still opens the menu. Starting another deliberate
+  right-click clears any stale latch, so suppression cannot leak into a later
+  interaction.
+- Tightened the shared contrast helper to test the final rounded CSS hex value.
+  Its previous floating-point candidate could pass 4.5:1 and then round down to
+  4.4908:1 when painted.
+
+### Verification
+
+- Quick-measure regression: 4/4, including every current theme palette.
+- Theme suite: 12/12; chart drawing system: 18/18; candle context menu: 6/6.
+- Scoped ESLint and `npx tsc --noEmit` passed.
+- The 80-page production build passed.
+- Local browser navigation reached the expected Google sign-in boundary; the
+  local origin did not share an authenticated application session, so no live
+  signed-in visual claim is made.

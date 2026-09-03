@@ -3422,7 +3422,17 @@ function Chart({
   const [draftDrawing, setDraftDrawing] = useState<ChartDrawing | null>(null);
   // Right-drag ruler: a throwaway measurement that lives only while the right
   // button is held. It never becomes a saved drawing.
-  const quickMeasureRef = useRef<{ startX: number; startY: number; active: boolean } | null>(null);
+  const quickMeasureRef = useRef<{
+    startX: number;
+    startY: number;
+    active: boolean;
+    contextMenuConsumed: boolean;
+  } | null>(null);
+  // On Windows the contextmenu event is normally emitted after mouseup. Keep
+  // the completed right-drag identifiable across that event boundary; clearing
+  // quickMeasureRef on release used to turn the release into a second, ordinary
+  // right-click and open the chart menu underneath the ruler.
+  const quickMeasureContextMenuDeadlineRef = useRef(0);
   const [quickMeasure, setQuickMeasure] = useState<ChartDrawing | null>(null);
   const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
   const [positionSettingsDrawingId, setPositionSettingsDrawingId] = useState<string | null>(null);
@@ -12115,7 +12125,13 @@ function Chart({
     const ay = a ? priceToY(a.price) : null;
     const bx = b ? timeToX(b.time) : null;
     const by = b ? priceToY(b.price) : null;
-    const color = drawing.color ?? "#60A5FA";
+    const isQuickMeasurement = drawing.id === "__quick-measure__";
+    // The throwaway right-drag ruler belongs to the chart, not the application
+    // chrome. Follow the chart's bullish/theme ink and retain WCAG contrast when
+    // a custom candle colour is too close to the chart background.
+    const color = isQuickMeasurement
+      ? legibleOn(settings.upColor, settings.backgroundColor, 4.5)
+      : drawing.color ?? "#60A5FA";
     const commonStroke = { stroke: color, strokeWidth: 1.6, fill: "none" as const };
 
     if (ax == null || ay == null) return null;
@@ -12194,13 +12210,23 @@ function Chart({
           const measurement = drawing.tool !== "rectangle";
           return (
             <g key={`${keyPrefix}-${drawing.id}`}>
-              <rect x={x} y={y} width={Math.max(width, 1)} height={Math.max(height, 1)} stroke={color} strokeWidth={1.5} fill={measurement ? "rgba(96,165,250,0.08)" : "rgba(96,165,250,0.10)"} strokeDasharray={measurement ? "6 4" : undefined} />
+              <rect
+                x={x}
+                y={y}
+                width={Math.max(width, 1)}
+                height={Math.max(height, 1)}
+                stroke={color}
+                strokeWidth={1.5}
+                fill={measurement && isQuickMeasurement ? color : "#60A5FA"}
+                fillOpacity={measurement ? (isQuickMeasurement ? 0.1 : 0.08) : 0.1}
+                strokeDasharray={measurement ? "6 4" : undefined}
+              />
               {measurement && (
                 <>
-                  <text x={x + 8} y={y + 18} fill="#E4E4E7" fontSize="11" fontFamily="'JetBrains Mono', monospace">
+                  <text x={x + 8} y={y + 18} fill={isQuickMeasurement ? color : "#E4E4E7"} fontSize="11" fontFamily="'JetBrains Mono', monospace" fontWeight={isQuickMeasurement ? 700 : undefined}>
                     {formatPriceDistance(a.price, b.price, priceFormat.precision)}
                   </text>
-                  <text x={x + 8} y={y + 34} fill="#A1A1AA" fontSize="10" fontFamily="'JetBrains Mono', monospace">
+                  <text x={x + 8} y={y + 34} fill={isQuickMeasurement ? readableTextOn(settings.backgroundColor) : "#A1A1AA"} fontSize="10" fontFamily="'JetBrains Mono', monospace">
                     {formatDateRangeLabel(a.time, b.time)}
                   </text>
                 </>
@@ -13272,7 +13298,15 @@ function Chart({
     const handleContextMenu = (e: MouseEvent) => {
       e.preventDefault();
       // A right-drag measured something; it must not also open the menu.
-      if (quickMeasureRef.current?.active) return;
+      const quickMeasureGesture = quickMeasureRef.current;
+      if (quickMeasureGesture?.active) {
+        quickMeasureGesture.contextMenuConsumed = true;
+        return;
+      }
+      if (performance.now() <= quickMeasureContextMenuDeadlineRef.current) {
+        quickMeasureContextMenuDeadlineRef.current = 0;
+        return;
+      }
       const rect = chartContainerRef.current!.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
@@ -13460,7 +13494,15 @@ function Chart({
     };
     const handleQuickMeasureDown = (event: MouseEvent) => {
       if (event.button !== 2) return;
-      quickMeasureRef.current = { startX: event.clientX, startY: event.clientY, active: false };
+      // A new deliberate right-click supersedes any stale post-release latch,
+      // so a genuine click can always open the menu.
+      quickMeasureContextMenuDeadlineRef.current = 0;
+      quickMeasureRef.current = {
+        startX: event.clientX,
+        startY: event.clientY,
+        active: false,
+        contextMenuConsumed: false,
+      };
     };
     const handleQuickMeasureMove = (event: MouseEvent) => {
       const state = quickMeasureRef.current;
@@ -13488,6 +13530,11 @@ function Chart({
       if (!state?.active) return;
       // The measurement is transient by design: let go and it is gone.
       setQuickMeasure(null);
+      if (!state.contextMenuConsumed) {
+        // Long enough to cover the browser's post-mouseup contextmenu dispatch,
+        // bounded so it cannot affect an unrelated later interaction.
+        quickMeasureContextMenuDeadlineRef.current = performance.now() + 500;
+      }
       event.preventDefault();
     };
     container.addEventListener("mousedown", handleQuickMeasureDown);

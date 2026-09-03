@@ -139,7 +139,12 @@ export function legibleOn(color: string, background: string, minimumRatio = 3): 
         g: foreground.g + (target.g - foreground.g) * ratio,
         b: foreground.b + (target.b - foreground.b) * ratio,
       };
-      if (contrastRatio(candidate, behind) >= minimumRatio) break;
+      // Test the serialized 8-bit colour that CSS will actually paint. The
+      // unrounded float can scrape past the threshold and then round back below
+      // it (Sandstorm's ruler measured 4.4908:1 despite asking for 4.5:1).
+      const serialized = rgbHex(candidate);
+      const painted = parseResolvedColor(serialized);
+      if (painted && contrastRatio(painted, behind) >= minimumRatio) return serialized;
     }
     return rgbHex(candidate);
   };
