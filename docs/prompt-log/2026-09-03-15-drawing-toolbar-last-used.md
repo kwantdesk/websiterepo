@@ -8,4 +8,6 @@ Replaced the live left toolbar's fixed first-tool fallback with a validated, per
 
 # Outcome
 
-The live toolbar now shows and one-click reuses the most recently selected tool in every group across every chart. The new recent-tool contract passed 5/5; the single-toolbar audit passed 9/9; drawing anchoring passed 7/7; grab handles passed 10/10; position-tool behavior, scoped ESLint, TypeScript and the complete 80-page production build passed. The unrelated legacy `test:drawing-selection` source-shape assertion was confirmed already stale against the unchanged committed `ChartDrawLayer.tsx`; this task does not conceal or alter that separate issue. Production commit and deployment are recorded below after the active `websiterepo-yfmi` deployment completes.
+The live toolbar now shows and one-click reuses the most recently selected tool in every group across every chart. The new recent-tool contract passed 5/5; the single-toolbar audit passed 9/9; drawing anchoring passed 7/7; grab handles passed 10/10; position-tool behavior, scoped ESLint, TypeScript and the complete 80-page production build passed. The unrelated legacy `test:drawing-selection` source-shape assertion was confirmed already stale against the unchanged committed `ChartDrawLayer.tsx`; this task does not conceal or alter that separate issue.
+
+Production commit `e35d755c` deployed successfully to the sole active Vercel project `websiterepo-yfmi`. Vercel deployment `BgKUTCkFV5KoC6GzgYjnJqX5FYhK` reached **Ready** at <https://websiterepo-yfmi-8qkwdsi54-kwant-desk.vercel.app>.
