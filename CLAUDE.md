@@ -1243,3 +1243,7 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
 - Removed Databento and Massive from the deploy credential-preservation list.
   They are retired production providers; only QuantData is preserved alongside
   VPS-owned internal-service credentials.
+- Vercel's live deployment log showed `No comparable base in this shallow
+  clone — building.` Added a named-branch depth-two recovery and a bounded
+  public GitHub compare fallback so unshipped-only commits can actually skip;
+  ambiguous and truncated comparisons continue to build safely.

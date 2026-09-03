@@ -37,18 +37,38 @@ if ! git cat-file -e "${VERCEL_GIT_PREVIOUS_SHA}^{commit}" 2>/dev/null; then
   git fetch --depth=1 origin "$VERCEL_GIT_PREVIOUS_SHA" >/dev/null 2>&1 || true
 fi
 
+# Vercel can strip enough of .git that both generic fetches above remain
+# parentless. Fetching the named branch at depth two is the cheapest final git
+# recovery and works when an arbitrary-SHA fetch is refused.
+if ! git cat-file -e "${VERCEL_GIT_PREVIOUS_SHA}^{commit}" 2>/dev/null \
+   && [ -n "$VERCEL_GIT_COMMIT_REF" ]; then
+  git fetch --depth=2 origin "$VERCEL_GIT_COMMIT_REF" >/dev/null 2>&1 || true
+fi
+
 # Still not there — compare against HEAD's own parent instead, which a
 # depth-2 clone can answer.
+COMPARE_WITH_GITHUB=0
 if git cat-file -e "${VERCEL_GIT_PREVIOUS_SHA}^{commit}" 2>/dev/null; then
   BASE="$VERCEL_GIT_PREVIOUS_SHA"
 elif git cat-file -e "HEAD^{commit}" 2>/dev/null && git cat-file -e "HEAD^^{commit}" 2>/dev/null; then
   BASE="HEAD^"
 else
-  echo "No comparable base in this shallow clone — building."
-  exit 1
+  COMPARE_WITH_GITHUB=1
 fi
 
-CHANGED=$(git diff --name-only "$BASE" "$VERCEL_GIT_COMMIT_SHA" 2>/dev/null || true)
+if [ "$COMPARE_WITH_GITHUB" -eq 0 ]; then
+  CHANGED=$(git diff --name-only "$BASE" "$VERCEL_GIT_COMMIT_SHA" 2>/dev/null || true)
+else
+  # The repository is public, so this needs no credential and sends no secret.
+  # This exact fallback covers the parentless Vercel clone observed in
+  # production. Any API ambiguity fails closed into a real build.
+  if ! CHANGED=$(node scripts/github-compare-files.mjs \
+      "$VERCEL_GIT_REPO_OWNER" "$VERCEL_GIT_REPO_SLUG" \
+      "$VERCEL_GIT_PREVIOUS_SHA" "$VERCEL_GIT_COMMIT_SHA"); then
+    echo "No comparable base in this shallow clone or GitHub — building."
+    exit 1
+  fi
+fi
 
 # An empty diff here means git could not answer, not that nothing changed —
 # a real no-op push does not produce a deployment. Build rather than guess.

@@ -33,6 +33,11 @@ helper. Preservation is now limited to QuantData and internal services; the
 retired provider credentials were removed from production and cannot return on
 the next release.
 
+The active Vercel deployment log proved the first ignored-build implementation
+still built when Vercel supplied a parentless shallow clone. The gate now tries
+a depth-two named-branch fetch and then a bounded public GitHub comparison;
+ambiguous or 300-file-truncated comparisons still fail safely into a build.
+
 Unfinished external requirement: the 80 GB VPS disk is 92% full (5.8 GB free),
 the archive is 52 GB, and there is no off-box backup target or credential on
 the server. Indefinite retention cannot be truthfully guaranteed until an
