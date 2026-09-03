@@ -44,7 +44,8 @@
 ## Verification
 
 - TypeScript: passed.
-- Volume-profile setting reachability/migration: 9/9 passed.
+- Volume-profile setting reachability/migration: 10/10 passed, including raw
+  Developing POC versus tick-grouped Extend shifted behavior.
 - Value-area percentage: 7/7 passed.
 - Grouping: 7/7 passed.
 - Width modes/zoom: 10/10 passed.
@@ -73,6 +74,7 @@ parity tranche, with remaining data-model and feature gaps explicitly recorded
 rather than misrepresented as complete.
 
 - Implementation commit: `1ffc6d51ddf24828952a89dd4b72df93fea53abe`.
+- POC-mode distinction commit: `a8601030a5f565c19370ebb0146d59fb256b42dd`.
 - Pushed to `main` in the sole linked Vercel project, `websiterepo-yfmi`.
 - Production was reloaded after deployment. The signed-in Plot Settings modal
   exposed Width type with Automatic, Percentual period, Window width and Fixed
@@ -80,3 +82,5 @@ rather than misrepresented as complete.
   Till interaction and Till end window.
 - The production dialog was closed without saving; no live chart, order, stop
   loss or take-profit state was altered during verification.
+- Production was reloaded again after the POC-mode correction and the settings
+  surface remained healthy. The dialog was again closed without saving.
