@@ -65,6 +65,48 @@ export function forwardVolumeProfileLevelSegment(
   return endX > sourceFrontX + 0.5 ? { startX: sourceFrontX, endX } : null;
 }
 
+export type VolumeProfileLeftDockCandidate = {
+  id: string;
+  root: string;
+  anchorMs: number;
+  endMs: number;
+  anchorX: number | null;
+  snapMode: "off" | "left" | "right";
+};
+
+/**
+ * Pick the single profile that owns each instrument's left dock.
+ *
+ * Ownership follows the stable session anchor, which is the order profiles
+ * physically cross the viewport. `endMs` is only a deterministic tie-breaker:
+ * live coverage and old cached profiles may extend it, so it must never make
+ * an older profile retain the dock after a newer one has crossed.
+ */
+export function resolveVolumeProfileLeftDockOwners(
+  candidates: readonly VolumeProfileLeftDockCandidate[],
+  leftEdge: number,
+): Map<string, string> {
+  const owners = new Map<string, VolumeProfileLeftDockCandidate>();
+  for (const candidate of candidates) {
+    if (candidate.snapMode !== "left") continue;
+    if (candidate.anchorX == null || candidate.anchorX >= leftEdge + 2) continue;
+    const current = owners.get(candidate.root);
+    if (
+      !current
+      || candidate.anchorMs > current.anchorMs
+      || (candidate.anchorMs === current.anchorMs && candidate.endMs > current.endMs)
+      || (
+        candidate.anchorMs === current.anchorMs
+        && candidate.endMs === current.endMs
+        && candidate.id.localeCompare(current.id) > 0
+      )
+    ) {
+      owners.set(candidate.root, candidate);
+    }
+  }
+  return new Map([...owners].map(([root, owner]) => [root, owner.id]));
+}
+
 // Chart-width profiles are expressed against a stable logical viewport rather
 // than the full Globex session. Treating a 24% KWANT Profile as 24% of all
 // 1,380 one-minute bars made it consume the whole pane after a refresh.
@@ -533,27 +575,15 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
       context.rect(leftEdge, 0, usablePaneWidth, mediaSize.height);
       context.clip();
 
-      const weeklyProfileOccupiesLeftEdge = this.models.some((model) => {
-        const { profile, style } = model;
-        if (profile.period !== "weekly" || style.snapMode !== "left") return false;
-        const anchorX = this.timeToCoordinate(
-          model,
-          model.drawingBounds?.startTime ?? profile.startMs / 1_000,
-        );
-        return anchorX != null && anchorX < leftEdge + 2;
-      });
       const latestDailyEndMs = this.models.reduce((latestEndMs, model) => {
         const { profile } = model;
         if (profile.period !== "daily") return latestEndMs;
         return Math.max(latestEndMs, profile.endMs);
       }, Number.NEGATIVE_INFINITY);
-      // The newest profile of each kind, per instrument.
+      // The newest profile of each kind, per instrument, for RIGHT docking.
       //
-      // Only that one is allowed to dock to a screen edge. Docking keeps the
-      // CURRENT profile reachable once its anchor scrolls away — it is not a
-      // parking space. Every older profile of the same kind used to dock to the
-      // same two pixels as well, so scrolling forward piled them onto one
-      // another and they read as a single combined profile.
+      // Right docking keeps the CURRENT profile reachable at the live edge.
+      // Left docking has separate viewport-crossing ownership below.
       const latestEndMsByKind = new Map<string, number>();
       for (const model of this.models) {
         const kind = `${model.profile.period}:${model.profile.root}`;
@@ -563,31 +593,30 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
         );
       }
 
-      // Which profile owns the LEFT dock, per kind.
+      // Which profile owns the LEFT dock, per instrument.
       //
-      // The dock belongs to the most recent profile that has actually scrolled
-      // past the left edge — not to the newest profile in the pane. Those are
-      // the same thing at the live edge, but they diverge the moment the chart
-      // is scrolled back through history, and using the newest one meant an
-      // older profile kept the dock after a newer one had passed it. As each
-      // profile slides off, it takes the dock from the one before it and that
-      // one simply leaves the screen.
-      const leftDockByKind = new Map<string, { id: string; endMs: number }>();
-      for (const model of this.models) {
-        if (model.style.snapMode !== "left") continue;
-        const anchorX = this.timeToCoordinate(
-          model,
-          model.drawingBounds?.startTime ?? model.profile.startMs / 1_000,
-        );
-        if (anchorX == null || anchorX >= leftEdge + 2) continue;
-        const kind = `${model.profile.period}:${model.profile.root}`;
-        const current = leftDockByKind.get(kind);
-        if (!current || model.profile.endMs > current.endMs) {
-          leftDockByKind.set(kind, { id: model.id, endMs: model.profile.endMs });
-        }
-      }
+      // Daily and weekly used to own separate docks at the same two pixels,
+      // then a special case hid whichever daily happened to collide with the
+      // weekly. That is the random/stuck profile: the visible winner was not
+      // the next profile to cross. One physical dock has one owner.
+      const leftDockOwners = resolveVolumeProfileLeftDockOwners(
+        this.models.map((model) => {
+          const anchorMs = model.drawingBounds?.startTime != null
+            ? model.drawingBounds.startTime * 1_000
+            : model.profile.startMs;
+          return {
+            id: model.id,
+            root: model.profile.root,
+            anchorMs,
+            endMs: model.profile.endMs,
+            anchorX: this.timeToCoordinate(model, anchorMs / 1_000),
+            snapMode: model.style.snapMode,
+          };
+        }),
+        leftEdge,
+      );
       const ownsLeftDock = (model: NativeVolumeProfileModel) =>
-        leftDockByKind.get(`${model.profile.period}:${model.profile.root}`)?.id === model.id;
+        leftDockOwners.get(model.profile.root) === model.id;
 
       // Exact screen-space body spans. Level occlusion is a visual rule, so it
       // must use where every body was actually painted — including docked,
@@ -631,8 +660,8 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           Math.max(leftEdge + 2, rightEdge - 122),
         );
         const customRight = Math.min(rightEdge - 2, customLeft + customWidth);
-        // Keep the newest daily execution profile visible when its Globex
-        // open has moved off the left edge. The old renderer only pinned once
+        // Keep the current left-dock owner visible when its session open has
+        // moved off the left edge. The old renderer only pinned once
         // the *entire* session was off-screen, so a cash-session viewport had
         // real profile data loaded but drew every bar beyond the canvas.
         const autoPinnedDailyLeft = profile.period === "daily"
@@ -640,13 +669,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           && ownsLeftDock(model);
         const latestDailyProfile = profile.period === "daily"
           && profile.endMs === latestDailyEndMs;
-        const pinnedDailyLeft = profile.period === "daily"
-          && latestDailyProfile
-          && style.snapMode === "left"
-          && autoPinnedDailyLeft;
-        if (pinnedDailyLeft && weeklyProfileOccupiesLeftEdge) continue;
-        // Docking is reserved for the newest profile of this kind; an older one
-        // whose anchor has scrolled past simply leaves the screen with it.
+        // Right docking is reserved for the newest profile of this kind.
         const isNewestOfKind = profile.endMs
           >= (latestEndMsByKind.get(`${profile.period}:${profile.root}`) ?? profile.endMs);
         const pinnedRight = style.snapMode === "right"
