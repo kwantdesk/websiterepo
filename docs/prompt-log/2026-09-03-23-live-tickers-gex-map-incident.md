@@ -76,5 +76,10 @@ This was two faults in series.
   was merely rewritten recently no longer suppresses the authoritative market-
   open history fetch. Direct gateway verification returned all 36 SPY one-
   minute bars from 09:30 through the current minute with no internal gap.
+- Extended the stale-stream watchdog request budget from four to twelve
+  seconds. The fallback still runs only when SSE frames stop, so this adds no
+  provider cadence or paid QuantData calls; it prevents a cold/busy Vercel
+  health probe from aborting a valid recovery response before it can repaint
+  the affected pane.
 
 Verification and production deployment are recorded below after completion.

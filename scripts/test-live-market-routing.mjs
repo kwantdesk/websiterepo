@@ -9,6 +9,12 @@ for (const symbol of ["SPX", "SPXW", "NDX", "SPY", "QQQ", "IWM"]) {
   assert.match(client, new RegExp(`\\"${symbol}\\"`), `${symbol} must use the shared VPS index stream`);
 }
 
+assert.match(
+  client,
+  /const WATCHDOG_REQUEST_TIMEOUT_MS = 12_000/,
+  "the stale-stream recovery request must survive a cold Vercel health probe",
+);
+
 const gexMapLiveGuards = workspace.match(/(?:section|bottomWorkspaceSection) !== "gexmap"/g) ?? [];
 assert.ok(
   gexMapLiveGuards.length >= 6,

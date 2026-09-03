@@ -32,6 +32,11 @@ const lastDeliveredFrame = new Map<string, MarketIndexFrameIdentity>();
 const LIVE_POLL_MS = 4_000;
 const IDLE_POLL_MS = 15_000;
 const STREAM_STALE_MS = 5_000;
+// The watchdog runs only after the shared SSE is stale. Its request can cross
+// a cold Vercel function plus the gateway health probe; aborting at four
+// seconds repeatedly discarded healthy recovery snapshots during the opening
+// burst and left individual panes frozen. This changes patience, not cadence.
+const WATCHDOG_REQUEST_TIMEOUT_MS = 12_000;
 // QuantData is polled once on the VPS and broadcast through one shared SSE
 // stream. Keep these symbols on that stream: sending every browser through the
 // REST fallback both freezes the ticker behind its short client timeout and
@@ -159,7 +164,10 @@ async function pollMarketIndices() {
   let requestTimeout: number | null = null;
   try {
     const requestController = new AbortController();
-    requestTimeout = window.setTimeout(() => requestController.abort(), 4_000);
+    requestTimeout = window.setTimeout(
+      () => requestController.abort(),
+      WATCHDOG_REQUEST_TIMEOUT_MS,
+    );
     const vpsSymbols = symbols.filter((symbol) => VPS_STREAM_SYMBOLS.has(symbol));
     const legacySymbols = symbols.filter((symbol) => !VPS_STREAM_SYMBOLS.has(symbol));
     const requests = [
