@@ -50,6 +50,36 @@ test("verified candles release the cover only for their exact request", () => {
   }), false);
 });
 
+test("a settled chart is covered again while its live continuity is being repaired", () => {
+  assert.equal(chartNeedsLoadingCover({
+    requestKey: esOneMinute,
+    settledRequestKey: esOneMinute,
+    continuityRecoveryKey: esOneMinute,
+    // Unrelated flow hydration is allowed to lower this while the price seam
+    // is still broken. The recovery key must continue to win.
+    loading: false,
+    error: null,
+    candleCount: 2_000,
+  }), true);
+});
+
+test("continuity recovery for an old chart cannot cover a newly selected chart", () => {
+  const nqOneMinute = chartHydrationKey({
+    broker: "Databento",
+    symbol: "NQ",
+    timeframe: "1m",
+    period: "5D",
+  });
+  assert.equal(chartNeedsLoadingCover({
+    requestKey: nqOneMinute,
+    settledRequestKey: nqOneMinute,
+    continuityRecoveryKey: esOneMinute,
+    loading: false,
+    error: null,
+    candleCount: 2_000,
+  }), false);
+});
+
 test("a settled failure reveals the honest error instead of dots or an endless loader", () => {
   assert.equal(chartNeedsLoadingCover({
     requestKey: esOneMinute,

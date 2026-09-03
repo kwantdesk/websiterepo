@@ -47,6 +47,29 @@ check("the loader only stays up when a retry is actually coming", () => {
   );
 });
 
+check("a live continuity failure quarantines the already-settled chart", () => {
+  assert.match(
+    workspace,
+    /const beginContinuityRecovery = useCallback\(\(\) => \{\s*[^}]*setContinuityRecoveryKey\(requestedChartHydrationKey\);\s*setLoading\(true\);\s*setError\(null\);\s*requestTailReconciliationRef\.current\?\.\(\);/,
+    "a detected live gap can remain visible while background repair runs",
+  );
+  assert.match(
+    workspace,
+    /window\.setInterval\(inspectContinuity, 5_000\)/,
+    "a stopped packet stream has no independent continuity watchdog",
+  );
+  assert.match(
+    workspace,
+    /cmeChartTailNeedsReconciliation\(latestCandlesRef\.current, pane\.timeframe\)\) \{\s*beginContinuityRecovery\(\);/,
+    "the watchdog does not quarantine a stale or internally broken live tail",
+  );
+  assert.match(
+    workspace,
+    /setContinuityRecoveryKey\(\(current\) => current === requestedChartHydrationKey \? null : current\);\s*void writeChartHistoryCache/,
+    "successful authoritative reconciliation does not release the continuity quarantine",
+  );
+});
+
 check("the retry and the loader agree with each other", () => {
   /*
    * These were two separate conditions saying different things: the loader

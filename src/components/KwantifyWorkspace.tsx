@@ -5553,6 +5553,7 @@ function WorkspaceChartPaneComponent({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [settledChartRequestKey, setSettledChartRequestKey] = useState<string | null>(null);
+  const [continuityRecoveryKey, setContinuityRecoveryKey] = useState<string | null>(null);
   const [liveFeedError, setLiveFeedError] = useState<string | null>(null);
   const [resolvedContractSymbol, setResolvedContractSymbol] = useState<string | null>(() =>
     pane.broker === "Databento" ? currentCmeContract(pane.symbol) : null);
@@ -5803,10 +5804,19 @@ function WorkspaceChartPaneComponent({
   const chartIsLoading = chartNeedsLoadingCover({
     requestKey: requestedChartHydrationKey,
     settledRequestKey: settledChartRequestKey,
+    continuityRecoveryKey,
     loading,
     error,
     candleCount: candles.length,
   });
+  const beginContinuityRecovery = useCallback(() => {
+    // Request-keyed separately from `loading`: optional order-flow work can
+    // finish while the price seam is still broken and must not uncover it.
+    setContinuityRecoveryKey(requestedChartHydrationKey);
+    setLoading(true);
+    setError(null);
+    requestTailReconciliationRef.current?.();
+  }, [requestedChartHydrationKey]);
 
   // Every visible chart continues to ingest and imperatively paint the latest
   // candle. Only the selected pane needs high-frequency React reconciliation
@@ -5826,6 +5836,27 @@ function WorkspaceChartPaneComponent({
   useEffect(() => {
     if (!chartIsLoading) onInitialSettled?.();
   }, [chartIsLoading, onInitialSettled]);
+
+  useEffect(() => {
+    if (
+      replayActive
+      || pane.broker !== "Databento"
+      || isEventBasedChartInterval(pane.timeframe)
+    ) return;
+
+    // Do not rely on the next packet to discover that the packet stream has
+    // stopped. While CME is open, inspect the shared candle series on a wall
+    // clock as well: a feed that dies after its final packet cannot call its
+    // own message handler to report the missing bucket.
+    const inspectContinuity = () => {
+      if (!historyHydratedRef.current) return;
+      if (cmeChartTailNeedsReconciliation(latestCandlesRef.current, pane.timeframe)) {
+        beginContinuityRecovery();
+      }
+    };
+    const timer = window.setInterval(inspectContinuity, 5_000);
+    return () => window.clearInterval(timer);
+  }, [beginContinuityRecovery, pane.broker, pane.timeframe, replayActive]);
   const gammaDataReady = Boolean(
     expectedGammaContract
     && contractMatchesChartInstrument(pane.symbol, resolvedContractSymbol)
@@ -6361,6 +6392,7 @@ function WorkspaceChartPaneComponent({
           setError(null);
           visibleHistoryReady = true;
           setSettledChartRequestKey(requestedChartHydrationKey);
+          setContinuityRecoveryKey((current) => current === requestedChartHydrationKey ? null : current);
           setLoading(false);
         } catch (loadError) {
           if (cancelled || (loadError instanceof DOMException && loadError.name === "AbortError")) return;
@@ -6644,6 +6676,7 @@ function WorkspaceChartPaneComponent({
         setOrderFlowHistoryReady(true);
         visibleHistoryReady = true;
         setSettledChartRequestKey(requestedChartHydrationKey);
+        setContinuityRecoveryKey((current) => current === requestedChartHydrationKey ? null : current);
         setLoading(false);
         return;
       }
@@ -6703,6 +6736,7 @@ function WorkspaceChartPaneComponent({
             if (historyHydratedRef.current) {
               visibleHistoryReady = true;
               setSettledChartRequestKey(requestedChartHydrationKey);
+              setContinuityRecoveryKey((current) => current === requestedChartHydrationKey ? null : current);
               setLoading(false);
             }
             setError(null);
@@ -6803,6 +6837,7 @@ function WorkspaceChartPaneComponent({
         } else {
           visibleHistoryReady = true;
           setSettledChartRequestKey(requestedChartHydrationKey);
+          setContinuityRecoveryKey((current) => current === requestedChartHydrationKey ? null : current);
           setLoading(false);
         }
         if (tailNeedsReconciliation && !isEventBasedChartInterval(pane.timeframe)) {
@@ -6914,6 +6949,7 @@ function WorkspaceChartPaneComponent({
           setError(null);
           visibleHistoryReady = true;
           setSettledChartRequestKey(requestedChartHydrationKey);
+          setContinuityRecoveryKey((current) => current === requestedChartHydrationKey ? null : current);
           void writeChartHistoryCache(pane.symbol, pane.timeframe, repaired);
           return;
         }
@@ -7967,7 +8003,9 @@ function WorkspaceChartPaneComponent({
           // returned here on every subsequent tick, but did not actually start
           // reconciliation, leaving price frozen until a page refresh. Repair
           // the seam in the background while the current candle keeps painting.
-          requestTailReconciliationRef.current?.();
+          // Quarantine immediately. Reconciliation clears the key only after
+          // the repaired candles pass the continuity check.
+          beginContinuityRecovery();
         }
         const useLightweightLiveTail = usingDatabentoPaneFeed
           && !isEventBasedChartInterval(pane.timeframe)
@@ -8108,7 +8146,7 @@ function WorkspaceChartPaneComponent({
       stream.close();
       clearPendingFrame();
     };
-  }, [markMarketActive, needsOrderFlowHistory, onLiveExecutionQuote, pane.broker, pane.id, pane.symbol, pane.timeframe, requiresExecutionStream, streamReconnectNonce]);
+  }, [beginContinuityRecovery, markMarketActive, needsOrderFlowHistory, onLiveExecutionQuote, pane.broker, pane.id, pane.symbol, pane.timeframe, requiresExecutionStream, streamReconnectNonce]);
 
   useEffect(() => {
     const usingMassivePaneFeed = pane.broker === "Massive" || isMassiveFuturesSymbol(pane.symbol);
