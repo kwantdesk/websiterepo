@@ -3,7 +3,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const { defaultIndicatorSettings } = await import("../src/lib/chartIndicatorConfig.ts");
+const { defaultIndicatorSettings, INDICATOR_NUMERIC_SETTINGS } = await import("../src/lib/chartIndicatorConfig.ts");
 
 /**
  * No volume-profile setting is stored and then ignored.
@@ -160,6 +160,33 @@ check("a grouping of one is the untouched trail", () => {
     /shiftTicks > 1\s*\n?\s*\?/,
     "grouping is applied even when it is set to one",
   );
+});
+
+check("the redundant generic Inputs page is suppressed for every volume profile", () => {
+  const dialog = files.find((file) => file.path.endsWith(DIALOG));
+  assert.ok(dialog, "the settings dialog is gone");
+  assert.match(
+    dialog.source,
+    /VOLUME_PROFILE_INDICATOR_IDS\.has\(settingsDefinition\.id\)\s*\n\s*\? \[\]\s*\n\s*: INDICATOR_NUMERIC_SETTINGS\[settingsDefinition\.id\] \?\? \[\]/,
+    "volume profiles still flow through the generic Inputs generator",
+  );
+});
+
+check("every removed Inputs control still exists in a named profile tab", () => {
+  const dialog = files.find((file) => file.path.endsWith(DIALOG));
+  assert.ok(dialog, "the settings dialog is gone");
+  const profileEditor = dialog.source.slice(
+    dialog.source.indexOf("VOLUME_PROFILE_SETTINGS_TABS.map"),
+    dialog.source.indexOf('settingsDefinition.id === "implied-volatility-rank"'),
+  );
+  const numericKeys = new Set(PROFILE_IDS.flatMap((id) =>
+    (INDICATOR_NUMERIC_SETTINGS[id] ?? []).map((setting) => setting.key)));
+  for (const key of numericKeys) {
+    assert.ok(
+      profileEditor.includes(`"${key}"`) || profileEditor.includes(`?.${key}`),
+      `${key} was removed with Inputs but has no dedicated profile control`,
+    );
+  }
 });
 
 console.log(`\nvolume profile settings live: ${passed}/${passed} checks passed`);

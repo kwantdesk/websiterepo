@@ -2156,7 +2156,7 @@ export default function ChartIndicatorsControl({
                     </KwantSelect>
                   </label>
                   {([
-                    ["Auto group factory", "autoGroupFactor", 1, "automatic"],
+                    ["Auto group factor", "autoGroupFactor", 1, "automatic"],
                     ["Manual ticks", "groupTicks", 4, "manual"],
                   ] as const).map(([label, key, fallback, mode]) => {
                     const activeMode = String(settingsInstance.settings?.groupingMode ?? "automatic");
@@ -2816,6 +2816,7 @@ export default function ChartIndicatorsControl({
                     ["Previous width %", "previousProfileWidth", 24, 0, 100, 1],
                     ["Current offset", "currentProfileOffset", 0, -400, 400, 1],
                     ["Previous offset", "previousProfileOffset", 0, -400, 400, 1],
+                    ["Profile opacity %", "opacity", 100, 10, 100, 1],
                   ] as const).map(([label, key, fallback, min, max, step]) => (
                     <label key={key} className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
                       <span>{label}</span>
@@ -5896,7 +5897,17 @@ export default function ChartIndicatorsControl({
               ) : null}
 
               {(() => {
-                const numericSettings = (INDICATOR_NUMERIC_SETTINGS[settingsDefinition.id] ?? [])
+                /*
+                 * Volume profiles own a purpose-built tabbed editor above.
+                 * Every numeric setting is already placed in Data settings or
+                 * Plot settings, so feeding the same six definitions through
+                 * the generic generator created a second outer "Inputs" page
+                 * with duplicate controls. Keep the generator for every other
+                 * study; new profile controls belong in their named tab.
+                 */
+                const numericSettings = (VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id)
+                  ? []
+                  : INDICATOR_NUMERIC_SETTINGS[settingsDefinition.id] ?? [])
                   .filter((setting) => !(settingsDefinition.id === "bounce-levels" && setting.key === "topExposurePercent"));
                 const bySection = new Map<string, typeof numericSettings>();
                 for (const setting of numericSettings) {
