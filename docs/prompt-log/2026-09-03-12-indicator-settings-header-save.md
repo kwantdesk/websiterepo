@@ -12,4 +12,4 @@ Verified the universal Save/Discard regression 11/11, scoped ESLint, TypeScript 
 
 # Outcome
 
-Pending production push and Vercel verification.
+Shipped to `main` in commit `054b6654`. The single active Vercel project, `websiterepo-yfmi`, completed production deployment `J8t7sypcNsg72WPCZnmvGjkR5p5K` successfully at `https://websiterepo-yfmi-4hzmobeks-kwant-desk.vercel.app`.
