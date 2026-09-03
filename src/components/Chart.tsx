@@ -14229,6 +14229,7 @@ function Chart({
           showDevelopingPoc: pocLineMode === "developing"
             || pocLineMode === "extend-shifted"
             || profileSettings.showDevelopingPoc === true,
+          developingPocMode: pocLineMode === "extend-shifted" ? "extend-shifted" : "developing",
           developingPocStartMs: Number(profileSettings.developingPocStartMinutes ?? 0) > 0
             ? Number(profileSettings.developingPocStartMinutes) * 60_000
             : 0,

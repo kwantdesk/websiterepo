@@ -33,6 +33,9 @@
   completed profiles.
 - Added DeepCharts' POC Show Line choices and independent peak, valley and VWAP
   extension controls.
+- Kept Developing POC as the raw migration trail while Extend shifted alone
+  applies the shifted-POC tick grouping; the two menu choices do not alias the
+  same renderer behavior.
 - Aligned observed defaults for value-area line width, peak/valley thresholds
   and widths, shifted-POC opacity and business-zone border/opacity.
 - Upgraded profile settings to v14 without overwriting a trader's saved value

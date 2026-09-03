@@ -173,6 +173,14 @@ check("the shifted POC groups on the row grid", () => {
   assert.match(primitive.source, /const shiftTicks = Math\.max\(1, Math\.round\(Number\(style\.shiftedPocTicks \?\? 1\)\)\)/);
 });
 
+check("Developing and Extend shifted do not share the same POC trail", () => {
+  const chart = files.find((file) => file.path.endsWith("Chart.tsx"));
+  const primitive = files.find((file) => file.path.endsWith("nativeVolumeProfilePrimitive.ts"));
+  assert.ok(chart && primitive, "the profile renderer wiring is gone");
+  assert.match(chart.source, /developingPocMode: pocLineMode === "extend-shifted"/);
+  assert.match(primitive.source, /style\.developingPocMode === "extend-shifted" && shiftTicks > 1/);
+});
+
 check("a grouping of one is the untouched trail", () => {
   // The default must not quietly change what an existing chart draws.
   const primitive = files.find((file) => file.path.endsWith("nativeVolumeProfilePrimitive.ts"));

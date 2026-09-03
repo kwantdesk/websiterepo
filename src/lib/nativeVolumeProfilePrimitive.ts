@@ -444,6 +444,8 @@ export type NativeVolumeProfileStyle = {
   pocExtensionMode?: "none" | "until-first-interaction" | "to-window-end";
   /** Trace the POC as it migrated through the session. */
   showDevelopingPoc?: boolean;
+  /** Raw developing movement or DeepCharts' tick-grouped shifted movement. */
+  developingPocMode?: "developing" | "extend-shifted";
   /**
    * Trace both value-area edges as they widened through the session.
    *
@@ -1636,7 +1638,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
            */
           const shiftTicks = Math.max(1, Math.round(Number(style.shiftedPocTicks ?? 1)));
           const trail = withinDevelopingWindow(profile.developingPoc);
-          const grouped = shiftTicks > 1
+          const grouped = style.developingPocMode === "extend-shifted" && shiftTicks > 1
             ? trail.map((point) => ({
               timestamp: point.timestamp,
               price: volumeProfileBinTick(
