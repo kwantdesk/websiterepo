@@ -68,3 +68,12 @@ calculation behavior, the newly added DeepCharts controls are functional, and
 saved charts are not silently retuned by migration. This is a materially closer
 parity tranche, with remaining data-model and feature gaps explicitly recorded
 rather than misrepresented as complete.
+
+- Implementation commit: `1ffc6d519f28cae56c7a7036a64f6df3c01265cb`.
+- Pushed to `main` in the sole linked Vercel project, `websiterepo-yfmi`.
+- Production was reloaded after deployment. The signed-in Plot Settings modal
+  exposed Width type with Automatic, Percentual period, Window width and Fixed
+  bars; the Point of Control tab exposed Show line and Extend line with None,
+  Till interaction and Till end window.
+- The production dialog was closed without saving; no live chart, order, stop
+  loss or take-profit state was altered during verification.
