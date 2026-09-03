@@ -5873,6 +5873,18 @@ function Chart({
     candleSettings, settings.upColor, settings.downColor, settings.borderUpColor,
     settings.borderDownColor, settings.wickUpColor, settings.wickDownColor,
   ]);
+  /*
+   * Lightweight Charts normally borrows the current bar's body colour for
+   * the live-price line and its scale label. That is unsafe for a hollow
+   * theme: Chromey Mono deliberately paints a falling body black on a black
+   * chart, so the price line alternated green / invisible as the forming bar
+   * crossed its open. Keep the trader's bullish theme ink, but lift it only
+   * when necessary to retain readable contrast against the chart surface.
+   */
+  const livePriceLineColor = useMemo(
+    () => legibleOn(settings.upColor, settings.backgroundColor, 4.5),
+    [settings.backgroundColor, settings.upColor],
+  );
 
   const indicatorPaletteTheme = useMemo(() => ({
     up: settings.upColor,
@@ -6301,7 +6313,11 @@ function Chart({
       borderDownColor: "rgba(0,0,0,0)",
       wickUpColor: "rgba(0,0,0,0)",
       wickDownColor: "rgba(0,0,0,0)",
-    } : resolvedCandleColors);
+      priceLineColor: livePriceLineColor,
+    } : {
+      ...resolvedCandleColors,
+      priceLineColor: livePriceLineColor,
+    });
 
     if (footprintIndicator) {
       const profileLayerEnabled = footprintPrimitiveOptions.showPerBarVolumeProfile
@@ -6365,6 +6381,7 @@ function Chart({
      * candle style, colour or scheme did not.
      */
     candlesVisible,
+    livePriceLineColor,
     resolvedCandleColors,
     chartReadyRevision,
     footprintHasPriceLevelFlow,
@@ -12692,6 +12709,7 @@ function Chart({
       borderDownColor: settings.borderDownColor,
       wickUpColor: settings.wickUpColor,
       wickDownColor: settings.wickDownColor,
+      priceLineColor: legibleOn(settings.upColor, settings.backgroundColor, 4.5),
       priceFormat,
       crosshairMarkerVisible: false,
     } as Parameters<typeof chart.addCandlestickSeries>[0] & { crosshairMarkerVisible: boolean });

@@ -6,6 +6,8 @@ const {
   isHollowStyle, isHeikinAshiStyle, toHeikinAshi,
 } = await import("../src/lib/candleStyle.ts");
 const { indicatorColorRoles } = await import("../src/lib/indicatorPalettes.ts");
+const { themePresets } = await import("../src/lib/themePresets.ts");
+const { contrastRatio, legibleOn, parseResolvedColor } = await import("../src/lib/readableContrast.ts");
 const settingsPanel = readFileSync(new URL("../src/components/ChartIndicatorsControl.tsx", import.meta.url), "utf8");
 
 /**
@@ -151,6 +153,38 @@ check("the pickers write the keys the resolver reads", () => {
     .map(([, key]) => key)
     .sort();
   assert.deepEqual(pickerKeys, resolverKeys, "the candle pickers and the candle resolver disagree");
+});
+
+check("the live-price line cannot inherit an invisible falling-candle colour", () => {
+  const chart = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
+  assert.match(
+    chart,
+    /const livePriceLineColor = useMemo\([\s\S]*?legibleOn\(settings\.upColor, settings\.backgroundColor, 4\.5\)/,
+    "the price-line colour is not resolved against the chart background",
+  );
+  assert.match(
+    chart,
+    /\.\.\.resolvedCandleColors,[\s\S]*?priceLineColor: livePriceLineColor/,
+    "candle setting or theme changes can restore the library's direction-dependent price line",
+  );
+  assert.match(
+    chart,
+    /addCandlestickSeries\(\{[\s\S]*?priceLineColor: legibleOn\(settings\.upColor, settings\.backgroundColor, 4\.5\)/,
+    "the first chart paint can still create an invisible live-price line",
+  );
+});
+
+check("every theme gives the live-price line institutional contrast", () => {
+  for (const theme of themePresets) {
+    const line = legibleOn(theme.colors.candleUp, theme.colors.chartBackground, 4.5);
+    const lineRgb = parseResolvedColor(line);
+    const backgroundRgb = parseResolvedColor(theme.colors.chartBackground);
+    assert.ok(lineRgb && backgroundRgb, `${theme.name} uses an unresolved chart colour`);
+    assert.ok(
+      contrastRatio(lineRgb, backgroundRgb) >= 4.5,
+      `${theme.name} live-price line is not readable on its chart`,
+    );
+  }
 });
 
 check("an averaged series is redrawn rather than updated bar by bar", () => {

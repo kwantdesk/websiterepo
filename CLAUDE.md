@@ -1613,3 +1613,20 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
 - Verification passed: live-routing anti-refresh contract, the 2,650-case
   Rithmic matrix, candle gap/gap-fill, Footprint bar-window, execution-worker
   backpressure, live-chart memory, TypeScript and the full 80-page build.
+
+## 2026-09-04 — Stable live-price contrast and cadence audit
+
+- Lightweight Charts was allowed to inherit the forming bar's body colour for
+  its live-price line. Chromey Mono's intentional black falling body therefore
+  made the line and price label alternate between green and black-on-black.
+- The candlestick series now owns a stable live-price colour derived from the
+  theme's bright/up ink and forced to 4.5:1 contrast against the chart. It is
+  supplied on first creation and every later settings repaint; candle colours
+  themselves remain untouched.
+- A simultaneous 12-second production trace recorded 151 raw NQ events (133
+  depth, 17 BBO, one trade) and 50 priority quote frames. Delivered frame gaps
+  tracked the raw exchange-event gaps, confirming there is no remaining
+  client FPS throttle or two-second chart refresh to remove. Quiet intervals
+  were not padded with synthetic prices.
+- Verification: candle-style regression and all-theme contrast checks pass;
+  TypeScript passes.
