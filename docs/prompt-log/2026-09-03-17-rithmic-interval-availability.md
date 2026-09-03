@@ -57,4 +57,14 @@
 
 ## Outcome
 
-Pending production deployment and live alias verification in this task.
+Production commit `4a276389` deployed successfully to the sole active Vercel
+project `websiterepo-yfmi`. Vercel deployment
+`3r6PYisUPZXtR5vFTqdtT3cEPfKM` reached **Ready** at
+<https://websiterepo-yfmi-7ohscuseu-kwant-desk.vercel.app> and was assigned to
+<https://www.kwantdesk.com>.
+
+The released artifact is the same production build exercised above against the
+live authenticated Rithmic collector. No synthetic candles or retired Databento
+fallback were introduced. Exact historical event bars remain limited to periods
+the recorder actually captured; missing past subscriptions are reported honestly
+instead of manufacturing market data.
