@@ -8,4 +8,6 @@ Replaced the shared chart pane's “any cached candles are ready” behavior wit
 
 # Outcome
 
-The exact-request loading transition passed 6/6; chart-history failure/retry behavior passed 4/4; event-bar first paint passed 7/7; candle-gap integrity passed 7/7; page-loader coverage passed 5/5; and the Rithmic matrix passed all 2,650 combinations across 53 instruments and 50 time/event intervals. Focused ESLint, TypeScript and the complete 80-page production build passed. Production commit and deployment are recorded below after the active `websiterepo-yfmi` deployment completes.
+The exact-request loading transition passed 6/6; chart-history failure/retry behavior passed 4/4; event-bar first paint passed 7/7; candle-gap integrity passed 7/7; page-loader coverage passed 5/5; and the Rithmic matrix passed all 2,650 combinations across 53 instruments and 50 time/event intervals. Focused ESLint, TypeScript and the complete 80-page production build passed.
+
+Production commit `c8d229ba` deployed successfully to the sole active Vercel project `websiterepo-yfmi`. Vercel deployment `9hbRhJJ7zYqF7gt6mmPtzxmNv5xc` reached **Ready** at <https://websiterepo-yfmi-pnm8dwc9i-kwant-desk.vercel.app> and was assigned to <https://www.kwantdesk.com>.
