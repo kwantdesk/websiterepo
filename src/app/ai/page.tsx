@@ -1840,7 +1840,7 @@ export default function AIPage() {
             <button
               onClick={() => void send()}
               className={`flex h-10 w-10 items-center justify-center rounded-full transition ${
-                composerCanSend ? "bg-primary text-background hover:bg-primary/90" : "bg-primary/20 text-primary/60 hover:bg-primary/25"
+                composerCanSend ? "bg-primary text-on-primary hover:bg-primary/90" : "bg-primary/20 text-primary/60 hover:bg-primary/25"
               }`}
               title="Send"
             >
@@ -1857,7 +1857,7 @@ export default function AIPage() {
       <Sidebar />
       {sidebarOpen && (
         <aside className="w-[260px] shrink-0 border-r border-border bg-panel p-4 overflow-y-auto">
-          <button onClick={startNewChat} className="mb-4 flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-2.5 text-[13px] font-semibold text-background"><Plus className="h-4 w-4" />New Chat</button>
+          <button onClick={startNewChat} className="mb-4 flex w-full items-center justify-center gap-2 rounded-xl bg-primary py-2.5 text-[13px] font-semibold text-on-primary"><Plus className="h-4 w-4" />New Chat</button>
           <div className="mb-4 rounded-xl border border-border bg-surface px-3 py-2 flex items-center gap-2"><Search className="h-4 w-4 text-muted" /><input placeholder="Search chats..." className="w-full bg-transparent text-[13px] outline-none placeholder:text-muted" /></div>
           <button onClick={() => setFoldersOpen(!foldersOpen)} className="mb-2 flex w-full items-center gap-2 text-[12px] font-semibold uppercase tracking-wider text-muted">{foldersOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}Folders</button>
           {foldersOpen && <div className="mb-5 space-y-1">{[["All Chats", 0], ["Favourites", 0]].map(([name, count]) => <button key={name} className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-[13px] text-muted hover:bg-surface hover:text-foreground"><span className="flex items-center gap-2"><Folder className="h-4 w-4" />{name}</span><span>{count}</span></button>)}</div>}

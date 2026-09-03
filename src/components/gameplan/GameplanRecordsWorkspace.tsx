@@ -247,7 +247,7 @@ function EntryReportForm({
       {error ? <div className="mt-3 rounded-lg border border-danger/20 bg-danger/[0.05] px-3 py-2 text-[8px] text-danger">{error}</div> : null}
       <div className="mt-4 flex justify-end gap-2">
         <button type="button" onClick={onCancel} disabled={busy || saving} className="h-9 rounded-xl border border-border px-4 text-[8px] font-semibold text-muted disabled:opacity-50">Cancel</button>
-        <button type="button" onClick={() => void submit()} disabled={busy || saving} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[8px] font-semibold text-background disabled:opacity-50">{saving ? <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-background/30 border-t-background" /> : <Clock3 className="h-3.5 w-3.5" />}{saving ? "Timestamping…" : "Timestamp entry"}</button>
+        <button type="button" onClick={() => void submit()} disabled={busy || saving} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[8px] font-semibold text-on-primary disabled:opacity-50">{saving ? <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-background/30 border-t-background" /> : <Clock3 className="h-3.5 w-3.5" />}{saving ? "Timestamping…" : "Timestamp entry"}</button>
       </div>
     </div>
   );
@@ -300,7 +300,7 @@ function OutcomeReportForm({
       {error ? <div className="mt-3 rounded-lg border border-danger/20 bg-danger/[0.05] px-3 py-2 text-[8px] text-danger">{error}</div> : null}
       <div className="mt-4 flex justify-end gap-2">
         <button type="button" onClick={onCancel} disabled={busy} className="h-9 rounded-xl border border-border px-4 text-[8px] font-semibold text-muted disabled:opacity-50">Do later</button>
-        <button type="button" onClick={() => void submit()} disabled={busy} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[8px] font-semibold text-background disabled:opacity-50">{busy ? <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-background/30 border-t-background" /> : <Save className="h-3.5 w-3.5" />}{busy ? "Scoring against plan…" : "Save outcome & score"}</button>
+        <button type="button" onClick={() => void submit()} disabled={busy} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[8px] font-semibold text-on-primary disabled:opacity-50">{busy ? <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-background/30 border-t-background" /> : <Save className="h-3.5 w-3.5" />}{busy ? "Scoring against plan…" : "Save outcome & score"}</button>
       </div>
     </div>
   );

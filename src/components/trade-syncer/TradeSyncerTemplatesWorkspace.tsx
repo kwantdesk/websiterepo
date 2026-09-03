@@ -85,7 +85,7 @@ function TradeSyncerTemplatesWorkspaceContent({
           </Link>
           <Link
             href="/trade-syncer/templates?modal=add"
-            className="rounded-xl bg-primary px-4 py-2.5 text-[13px] font-semibold text-background"
+            className="rounded-xl bg-primary px-4 py-2.5 text-[13px] font-semibold text-on-primary"
           >
             Add Template
           </Link>
@@ -182,7 +182,7 @@ function TradeSyncerTemplatesWorkspaceContent({
             <Link href="/trade-syncer/templates" className="flex-1 rounded-xl border border-border bg-background/40 py-3 text-center text-[13px] text-foreground">
               Cancel
             </Link>
-            <Link href="/trade-syncer/templates?modal=import&result=imported" className="flex-1 rounded-xl bg-primary py-3 text-center text-[13px] font-semibold text-background">
+            <Link href="/trade-syncer/templates?modal=import&result=imported" className="flex-1 rounded-xl bg-primary py-3 text-center text-[13px] font-semibold text-on-primary">
               Import Template
             </Link>
           </div>
@@ -271,7 +271,7 @@ function TradeSyncerTemplatesWorkspaceContent({
               type="button"
               onClick={handleSaveTemplate}
               disabled={isPending}
-              className="flex-1 rounded-xl bg-primary py-3 text-center text-[13px] font-semibold text-background disabled:opacity-60"
+              className="flex-1 rounded-xl bg-primary py-3 text-center text-[13px] font-semibold text-on-primary disabled:opacity-60"
             >
               {isPending ? "Saving..." : "Save Template"}
             </button>
@@ -297,7 +297,7 @@ function TradeSyncerTemplatesWorkspaceContent({
             <Link href="/trade-syncer/templates" className="flex-1 rounded-xl border border-border bg-background/40 py-3 text-center text-[13px] text-foreground">
               Cancel
             </Link>
-            <Link href={`/trade-syncer/templates?modal=delete&template=${encodeURIComponent(activeTemplate?.id ?? "")}&result=deleted`} className="flex-1 rounded-xl bg-danger py-3 text-center text-[13px] font-semibold text-background">
+            <Link href={`/trade-syncer/templates?modal=delete&template=${encodeURIComponent(activeTemplate?.id ?? "")}&result=deleted`} className="flex-1 rounded-xl bg-danger py-3 text-center text-[13px] font-semibold text-on-danger">
               Confirm Delete
             </Link>
           </div>

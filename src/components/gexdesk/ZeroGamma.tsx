@@ -241,7 +241,7 @@ export default function ZeroGamma({
           <button
             type="button"
             onClick={() => void load()}
-            className="mt-5 inline-flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[8px] font-semibold text-background"
+            className="mt-5 inline-flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[8px] font-semibold text-on-primary"
           >
             <RefreshCw className="h-3.5 w-3.5" />Retry
           </button>

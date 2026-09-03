@@ -100,7 +100,7 @@ function TradeSyncerIntegrationsPageContent() {
             </Link>
             <Link
               href={`/trade-syncer/integrations?${integration ? `integration=${encodeURIComponent(integration)}` : `premium=${encodeURIComponent(premium ?? "")}`}&result=enabled`}
-              className="flex-1 rounded-xl bg-primary py-3 text-center text-[13px] font-semibold text-background"
+              className="flex-1 rounded-xl bg-primary py-3 text-center text-[13px] font-semibold text-on-primary"
             >
               Continue
             </Link>

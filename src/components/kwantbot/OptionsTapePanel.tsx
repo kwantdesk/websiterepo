@@ -390,7 +390,7 @@ export default function OptionsTapePanel({
                 <div className="flex items-center justify-between">
                   <span className={`text-[11px] font-semibold ${active ? "text-primary" : "text-foreground"}`}>{root}</span>
                   {optionsUnread[root] > 0 ? (
-                    <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[8px] font-semibold text-background">
+                    <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[8px] font-semibold text-on-primary">
                       {optionsUnread[root]}
                     </span>
                   ) : (

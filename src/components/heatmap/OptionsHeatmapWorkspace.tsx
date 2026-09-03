@@ -841,7 +841,7 @@ export default function OptionsHeatmapWorkspace() {
           <AlertTriangle className="mx-auto h-7 w-7 text-danger" />
           <h2 className="mt-4 text-[13px] font-semibold">Heat Map could not open</h2>
           <p className="mt-2 text-[9px] leading-5 text-muted">{error}</p>
-          <button type="button" onClick={() => void load()} className="mt-5 inline-flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[8px] font-semibold text-background"><RefreshCw className="h-3.5 w-3.5" />Retry</button>
+          <button type="button" onClick={() => void load()} className="mt-5 inline-flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[8px] font-semibold text-on-primary"><RefreshCw className="h-3.5 w-3.5" />Retry</button>
         </div>
       </div>
     );

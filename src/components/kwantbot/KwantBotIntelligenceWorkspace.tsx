@@ -599,10 +599,10 @@ export default function KwantBotIntelligenceWorkspace({
                 key={root}
                 type="button"
                 onClick={() => selectRoot(root)}
-                className={`min-w-16 rounded-lg px-3 py-1.5 text-left transition-all ${selectedRoot === root ? "bg-primary text-background shadow-[0_0_16px_color-mix(in_srgb,var(--primary)_18%,transparent)]" : "text-muted hover:bg-surface hover:text-foreground"}`}
+                className={`min-w-16 rounded-lg px-3 py-1.5 text-left transition-all ${selectedRoot === root ? "bg-primary text-on-primary shadow-[0_0_16px_color-mix(in_srgb,var(--primary)_18%,transparent)]" : "text-muted hover:bg-surface hover:text-foreground"}`}
               >
                 <span className="block text-[10px] font-semibold">{root}</span>
-                <span className={`block font-mono text-[7px] ${selectedRoot === root ? "text-background/70" : "text-muted"}`}>
+                <span className={`block font-mono text-[7px] ${selectedRoot === root ? "text-on-primary/70" : "text-muted"}`}>
                   {livePrices[root] === null ? "WAITING" : formatKwantBotPrice(root, livePrices[root] as number)}
                 </span>
               </button>

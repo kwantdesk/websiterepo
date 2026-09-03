@@ -21,12 +21,12 @@ test("the right rail exposes Trade below Watchlist and before Live GEX", () => {
   assert.match(workspace, /title: "Trade"/);
 });
 
-test("trade Buy and Sell controls inherit the active chart candle colours", () => {
-  assert.match(workspace, /color: chartSettings\.downColor/);
-  assert.match(workspace, /color: chartSettings\.upColor/);
-  assert.match(workspace, /colorWithAlpha\(chartSettings\.downColor, orderSide === "sell"/);
-  assert.match(workspace, /colorWithAlpha\(chartSettings\.upColor, orderSide === "buy"/);
-  assert.match(workspace, /backgroundColor: orderSide === "buy" \? chartSettings\.upColor : chartSettings\.downColor/);
+test("trade Buy and Sell controls retain chart colours only when they remain legible", () => {
+  assert.match(workspace, /legibleSemanticColor\(\s*chartSettings\.downColor,\s*orderTicketTheme\.danger/);
+  assert.match(workspace, /legibleSemanticColor\(\s*chartSettings\.upColor,\s*orderTicketTheme\.primary/);
+  assert.match(workspace, /backgroundColor: orderSide === "sell"\s*\? orderTicketSellColor/);
+  assert.match(workspace, /backgroundColor: orderSide === "buy"\s*\? orderTicketBuyColor/);
+  assert.match(workspace, /color: readableTextOn\(orderSide === "buy" \? orderTicketBuyColor : orderTicketSellColor\)/);
   assert.doesNotMatch(workspace, /style=\{\{ color: "#EF4444" \}\}>\{orderPanelBidLabel\}/);
   assert.doesNotMatch(workspace, /style=\{\{ color: "#22C55E" \}\}>\{orderPanelAskLabel\}/);
 });

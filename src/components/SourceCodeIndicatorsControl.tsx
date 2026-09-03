@@ -351,7 +351,7 @@ export default function SourceCodeIndicatorsControl({
                   <button type="button" disabled={!draft || errors.length > 0} onClick={persistDraft} className="flex h-9 w-full items-center justify-center gap-2 rounded-xl border border-border bg-surface text-[10px] font-semibold text-foreground hover:border-primary/30 disabled:cursor-not-allowed disabled:opacity-40">
                     <Save className="h-3.5 w-3.5" /> Save script
                   </button>
-                  <button type="button" disabled={!draft || errors.length > 0} onClick={addToChart} className="flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-primary text-[10px] font-semibold text-background disabled:cursor-not-allowed disabled:opacity-40">
+                  <button type="button" disabled={!draft || errors.length > 0} onClick={addToChart} className="flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-primary text-[10px] font-semibold text-on-primary disabled:cursor-not-allowed disabled:opacity-40">
                     {selectedIsOnChart ? <Copy className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
                     {selectedIsOnChart
                       ? "Update chart indicator"

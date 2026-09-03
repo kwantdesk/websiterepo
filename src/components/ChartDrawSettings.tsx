@@ -165,7 +165,7 @@ export default function ChartDrawSettings({
                 ) : <div className="mb-2 text-[10px] text-muted">No saved templates for {spec.label}.</div>}
                 <div className="flex gap-2">
                   <input value={templateName} onChange={(e) => setTemplateName(e.target.value)} placeholder="Template name" className="h-8 min-w-0 flex-1 rounded-lg border border-border bg-background px-2 text-[11px] outline-none focus:border-primary/40" />
-                  <button type="button" disabled={!templateName.trim()} onClick={() => { setTemplates(saveDrawTemplate(drawing.tool, templateName.trim(), drawing.style)); setTemplateName(""); }} className={`h-8 rounded-lg px-3 text-[11px] font-semibold ${templateName.trim() ? "bg-primary text-background" : "bg-surface text-muted"}`}>Save</button>
+                  <button type="button" disabled={!templateName.trim()} onClick={() => { setTemplates(saveDrawTemplate(drawing.tool, templateName.trim(), drawing.style)); setTemplateName(""); }} className={`h-8 rounded-lg px-3 text-[11px] font-semibold ${templateName.trim() ? "bg-primary text-on-primary" : "bg-surface text-muted"}`}>Save</button>
                 </div>
               </div>
             </>
@@ -198,7 +198,7 @@ export default function ChartDrawSettings({
         </div>
 
         <footer className="flex justify-end border-t border-border px-4 py-2.5">
-          <button type="button" onClick={onClose} className="rounded-lg bg-primary px-4 py-2 text-[12px] font-semibold text-background">Done</button>
+          <button type="button" onClick={onClose} className="rounded-lg bg-primary px-4 py-2 text-[12px] font-semibold text-on-primary">Done</button>
         </footer>
       </section>
     </div>,

@@ -1754,7 +1754,7 @@ export default function BacktestingWorkspace({
       <div className="flex items-center gap-3 border-t border-border bg-background/25 px-5 py-4">
         <div className="mr-auto flex items-center gap-2 text-[9px] text-muted"><Check className="h-3.5 w-3.5 text-primary" /> No future bars are rendered</div>
         {overlay ? <button type="button" onClick={() => setShowSetup(false)} className="h-10 rounded-xl border border-border px-4 text-[10px] font-semibold text-muted hover:text-foreground">Cancel</button> : null}
-        <button type="button" onClick={() => void startReplay()} disabled={loading || !date || !time} className="flex h-10 items-center gap-2 rounded-xl bg-primary px-5 text-[10px] font-semibold text-background hover:brightness-110 disabled:opacity-40">
+        <button type="button" onClick={() => void startReplay()} disabled={loading || !date || !time} className="flex h-10 items-center gap-2 rounded-xl bg-primary px-5 text-[10px] font-semibold text-on-primary hover:brightness-110 disabled:opacity-40">
           {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
           Start replay
         </button>
@@ -2137,7 +2137,7 @@ export default function BacktestingWorkspace({
           {started ? (
           <div className="absolute bottom-8 left-1/2 z-30 w-[min(920px,calc(100%-32px))] -translate-x-1/2 rounded-2xl border border-border bg-panel/95 px-3 py-3 shadow-2xl backdrop-blur-xl">
             <div className="flex flex-wrap items-center gap-2">
-              <button type="button" onClick={() => void togglePlayback()} disabled={tickerLoading} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary text-background hover:brightness-110 disabled:cursor-wait disabled:opacity-60">
+              <button type="button" onClick={() => void togglePlayback()} disabled={tickerLoading} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary text-on-primary hover:brightness-110 disabled:cursor-wait disabled:opacity-60">
                 {tickerLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
               </button>
               <button type="button" onClick={resetReplay} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border text-muted hover:text-foreground" title="Reset to replay start">
@@ -2175,7 +2175,7 @@ export default function BacktestingWorkspace({
                     key={option}
                     type="button"
                     onClick={() => setSpeed(option)}
-                    className={`h-7 shrink-0 rounded-lg px-2 font-mono text-[9px] ${speed === option ? "bg-primary text-background" : "text-muted hover:bg-surface hover:text-foreground"}`}
+                    className={`h-7 shrink-0 rounded-lg px-2 font-mono text-[9px] ${speed === option ? "bg-primary text-on-primary" : "text-muted hover:bg-surface hover:text-foreground"}`}
                   >
                     {option}×
                   </button>
@@ -2283,7 +2283,7 @@ export default function BacktestingWorkspace({
             <div className="flex items-center gap-3 border-t border-border bg-background/25 px-5 py-4">
               <div className="mr-auto flex items-center gap-2 text-[9px] text-muted"><Check className="h-3.5 w-3.5 text-primary" /> No future bars are rendered</div>
               <button type="button" onClick={() => setShowSetup(false)} className="h-10 rounded-xl border border-border px-4 text-[10px] font-semibold text-muted hover:text-foreground">Cancel</button>
-              <button type="button" onClick={() => void startReplay()} disabled={loading || !date || !time} className="flex h-10 items-center gap-2 rounded-xl bg-primary px-5 text-[10px] font-semibold text-background hover:brightness-110 disabled:opacity-40">
+              <button type="button" onClick={() => void startReplay()} disabled={loading || !date || !time} className="flex h-10 items-center gap-2 rounded-xl bg-primary px-5 text-[10px] font-semibold text-on-primary hover:brightness-110 disabled:opacity-40">
                 {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
                 Start replay
               </button>

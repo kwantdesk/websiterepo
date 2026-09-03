@@ -814,7 +814,7 @@ export default function AutomationBacktestsPage() {
               <button
                 onClick={runUniversalBacktest}
                 disabled={backtesting || !selectedVersionOption}
-                className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-[12px] font-semibold text-background disabled:opacity-60"
+                className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-[12px] font-semibold text-on-primary disabled:opacity-60"
               >
                 {backtesting ? <TimerReset className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
                 {snapshot ? "Rerun Backtest" : "Run Backtest"}

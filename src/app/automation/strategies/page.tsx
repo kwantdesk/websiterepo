@@ -645,7 +645,7 @@ export default function AutomationStrategiesPage() {
                   </button>
                   <button
                     onClick={() => saveBot("armed")}
-                    className="rounded-xl bg-primary px-4 py-2 text-[12px] font-semibold text-background"
+                    className="rounded-xl bg-primary px-4 py-2 text-[12px] font-semibold text-on-primary"
                   >
                     Arm Bot
                   </button>

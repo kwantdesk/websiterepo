@@ -835,7 +835,7 @@ export default function SingleProfileWorkspace({
         footer={(
           <div className="grid grid-cols-2 gap-2">
             <button type="button" onClick={() => setDraft({ ...DEFAULT_SETTINGS, customStart: dateInputValue(Date.now() - 86_400_000), customEnd: dateInputValue(Date.now()) })} className="h-9 border border-border font-mono text-[8px] uppercase tracking-[0.12em] text-muted hover:text-foreground">Reset</button>
-            <button type="button" onClick={save} disabled={(draft.preset === "merge-days" && draft.selectedDates.length < 2) || (draft.preset === "custom" && (!Number.isFinite(Date.parse(draft.customStart)) || !Number.isFinite(Date.parse(draft.customEnd)) || Date.parse(draft.customEnd) <= Date.parse(draft.customStart)))} className="h-9 bg-primary font-mono text-[8px] font-semibold uppercase tracking-[0.12em] text-background disabled:opacity-40">Apply profile</button>
+            <button type="button" onClick={save} disabled={(draft.preset === "merge-days" && draft.selectedDates.length < 2) || (draft.preset === "custom" && (!Number.isFinite(Date.parse(draft.customStart)) || !Number.isFinite(Date.parse(draft.customEnd)) || Date.parse(draft.customEnd) <= Date.parse(draft.customStart)))} className="h-9 bg-primary font-mono text-[8px] font-semibold uppercase tracking-[0.12em] text-on-primary disabled:opacity-40">Apply profile</button>
           </div>
         )}
       >

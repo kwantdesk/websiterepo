@@ -356,7 +356,7 @@ import {
 import { mergeOneFamilyPositioning } from "@/lib/gexBotFlow";
 import { writeProtectedItem } from "@/lib/browserStorageQuota";
 import { cmeWeekRange } from "@/lib/cmeProfileWindows";
-import { legibleOn } from "@/lib/readableContrast";
+import { legibleSemanticColor, readableTextOn } from "@/lib/readableContrast";
 
 function workspaceLoader(title: string, detail: string) {
   return (
@@ -9979,7 +9979,11 @@ export default function KwantifyWorkspace({
    * to see and the control reads as missing rather than unreadable. That is
    * how the Sell button disappeared on a pale theme.
    */
-  const [orderTicketSurface, setOrderTicketSurface] = useState("#151515");
+  const [orderTicketTheme, setOrderTicketTheme] = useState({
+    surface: "#151515",
+    primary: "#FFFFFF",
+    danger: "#FF1F78",
+  });
   useEffect(() => {
     const readSurface = () => {
       const root = document.documentElement;
@@ -9992,7 +9996,11 @@ export default function KwantifyWorkspace({
       const value = ["--panel", "--surface", "--background"]
         .map((token) => style.getPropertyValue(token).trim())
         .find(Boolean);
-      if (value) setOrderTicketSurface(value);
+      setOrderTicketTheme({
+        surface: value || "#151515",
+        primary: style.getPropertyValue("--primary").trim() || "#FFFFFF",
+        danger: style.getPropertyValue("--danger").trim() || "#FF1F78",
+      });
     };
     readSurface();
     window.addEventListener("kwantdesk:theme-change", readSurface);
@@ -10526,6 +10534,16 @@ export default function KwantifyWorkspace({
   const [showSaveTemplate, setShowSaveTemplate] = useState(false);
   const [templateName, setTemplateName] = useState("");
   const [chartSettings, setChartSettings] = useState<ChartSettings>(initialChartWorkspaceRuntime.chartSettings);
+  const orderTicketBuyColor = legibleSemanticColor(
+    chartSettings.upColor,
+    orderTicketTheme.primary,
+    orderTicketTheme.surface,
+  );
+  const orderTicketSellColor = legibleSemanticColor(
+    chartSettings.downColor,
+    orderTicketTheme.danger,
+    orderTicketTheme.surface,
+  );
   const [draftChartSettings, setDraftChartSettings] = useState<ChartSettings>(chartSettings);
   const [chartSettingsSnapshot, setChartSettingsSnapshot] = useState<ChartSettings>(chartSettings);
   const [templates, setTemplates] = useState<ChartTemplate[]>(initialChartWorkspaceRuntime.templates);
@@ -18576,7 +18594,7 @@ export default function KwantifyWorkspace({
             {loading && <div className="flex gap-1.5"><div className="h-2 w-2 animate-pulse rounded-full bg-primary" /><div className="h-2 w-2 animate-pulse rounded-full bg-primary [animation-delay:0.2s]" /><div className="h-2 w-2 animate-pulse rounded-full bg-primary [animation-delay:0.4s]" /></div>}
             <div ref={messagesEndRef} />
           </div>
-          <div className="border-t border-border p-3"><div className="flex gap-2 rounded-2xl border border-border bg-surface p-2 focus-within:border-primary/40"><input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && sendChat("full")} placeholder="Describe your strategy..." className="flex-1 bg-transparent px-2 text-[13px] outline-none placeholder:text-muted/60" /><button onClick={() => sendChat("full")} disabled={loading || !input.trim()} className="rounded-xl bg-primary px-3 py-2 text-[13px] font-semibold text-background disabled:opacity-40">Build</button></div></div>
+          <div className="border-t border-border p-3"><div className="flex gap-2 rounded-2xl border border-border bg-surface p-2 focus-within:border-primary/40"><input value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && sendChat("full")} placeholder="Describe your strategy..." className="flex-1 bg-transparent px-2 text-[13px] outline-none placeholder:text-muted/60" /><button onClick={() => sendChat("full")} disabled={loading || !input.trim()} className="rounded-xl bg-primary px-3 py-2 text-[13px] font-semibold text-on-primary disabled:opacity-40">Build</button></div></div>
           <div onMouseDown={(e) => { setIsResizingAI(true); aiDragRef.current = { startX: e.clientX, startWidth: aiWidth }; }} className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-primary/30" />
         </div>
       )}
@@ -18713,7 +18731,7 @@ export default function KwantifyWorkspace({
                       <button
                         type="button"
                         onClick={openPaperOrderTicket}
-                        className="flex h-9 w-full items-center justify-center gap-2 rounded-[4px] border border-primary/40 bg-primary text-[10px] font-bold uppercase tracking-[0.11em] text-background transition-[filter] hover:brightness-110"
+                        className="flex h-9 w-full items-center justify-center gap-2 rounded-[4px] border border-primary/40 bg-primary text-[10px] font-bold uppercase tracking-[0.11em] text-on-primary transition-[filter] hover:brightness-110"
                       >
                         <Zap className="h-3.5 w-3.5" />
                         Open order ticket
@@ -18727,7 +18745,7 @@ export default function KwantifyWorkspace({
                       <button
                         type="button"
                         onClick={openPaperAccountLinker}
-                        className="mt-3 h-8 rounded-[3px] border border-primary/35 bg-primary px-4 text-[10px] font-bold uppercase tracking-[0.1em] text-background"
+                        className="mt-3 h-8 rounded-[3px] border border-primary/35 bg-primary px-4 text-[10px] font-bold uppercase tracking-[0.1em] text-on-primary"
                       >
                         Create paper account
                       </button>
@@ -19077,7 +19095,7 @@ export default function KwantifyWorkspace({
               className={`flex h-7 shrink-0 items-center justify-center gap-1.5 rounded-[3px] border px-2.5 text-[10px] font-semibold uppercase tracking-[0.075em] transition-colors ${
                 workspaceLocked
                   ? "cursor-not-allowed border-border text-muted/40"
-                  : "border-primary/30 bg-primary/10 text-primary hover:bg-primary hover:text-background"
+                  : "border-primary/30 bg-primary/10 text-primary hover:bg-primary hover:text-on-primary"
               }`}
             >
               <Plus className="h-3.5 w-3.5" />
@@ -19147,7 +19165,7 @@ export default function KwantifyWorkspace({
                     <button
                       type="button"
                       onClick={quickSaveWorkspacePreset}
-                      className="flex h-9 items-center justify-center gap-1.5 rounded-xl bg-primary text-[10px] font-semibold text-background transition-opacity hover:opacity-90"
+                      className="flex h-9 items-center justify-center gap-1.5 rounded-xl bg-primary text-[10px] font-semibold text-on-primary transition-opacity hover:opacity-90"
                     >
                       <Save className="h-3.5 w-3.5" />
                       Quick Save
@@ -19231,7 +19249,7 @@ export default function KwantifyWorkspace({
                           type="button"
                           onClick={saveCurrentWorkspacePreset}
                           disabled={!workspacePresetName.trim()}
-                          className="h-8 rounded-lg bg-primary px-3 text-[10px] font-semibold text-background disabled:opacity-40"
+                          className="h-8 rounded-lg bg-primary px-3 text-[10px] font-semibold text-on-primary disabled:opacity-40"
                         >
                           Save As
                         </button>
@@ -19471,7 +19489,7 @@ export default function KwantifyWorkspace({
                             }`}
                           >
                             <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${
-                              active ? "border-primary bg-primary text-background" : "border-border bg-background"
+                              active ? "border-primary bg-primary text-on-primary" : "border-border bg-background"
                             }`}>
                               {active ? <Check className="h-3 w-3" /> : null}
                             </span>
@@ -19527,7 +19545,7 @@ export default function KwantifyWorkspace({
                             }`}
                           >
                             <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${
-                              active ? "border-primary bg-primary text-background" : "border-border bg-surface"
+                              active ? "border-primary bg-primary text-on-primary" : "border-border bg-surface"
                             }`}>
                               {active ? <Check className="h-3 w-3" /> : null}
                             </span>
@@ -19614,7 +19632,7 @@ export default function KwantifyWorkspace({
                   <button
                     type="button"
                     onClick={exportSelectedLevels}
-                    className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[10px] font-semibold text-background hover:brightness-110"
+                    className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[10px] font-semibold text-on-primary hover:brightness-110"
                   >
                     <Download className="h-3.5 w-3.5" />
                     Export
@@ -19764,7 +19782,7 @@ export default function KwantifyWorkspace({
                     {showExits && <div className="space-y-4 border-t border-border p-3"><div className="space-y-2"><div className="flex items-center justify-between"><div className="flex items-center gap-2"><span className="text-[13px] text-muted">Take profit</span><KwantSelect value={tpType} onChange={(e) => setTpType(e.target.value as typeof tpType)} className="rounded-lg border border-border bg-surface px-2 py-1 text-[11px] text-muted outline-none"><option value="price">price</option><option value="ticks">ticks</option><option value="pctPrice">% of price</option><option value="rewardUsd">reward USD</option><option value="rewardPct">reward % balance</option></KwantSelect></div><button onClick={() => setTpEnabled((value) => !value)} className={`h-5 w-10 rounded-full transition-all ${tpEnabled ? "bg-primary" : "border border-border bg-surface"}`}><span className={`block h-4 w-4 rounded-full bg-background transition-transform ${tpEnabled ? "translate-x-5" : "translate-x-0.5"}`} /></button></div><div className="flex items-center gap-2"><input disabled={!tpEnabled} value={orderTP} onChange={(e) => setOrderTP(e.target.value)} className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-right font-mono text-[13px] outline-none disabled:opacity-50" /><button className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-surface text-muted hover:text-foreground"><ArrowLeftRight className="h-4 w-4" /></button><span className="w-14 text-right font-mono text-[11px] text-muted">{orderPreviewTakeProfitTicks ? `${orderPreviewTakeProfitTicks} ticks` : "--"}</span></div></div><div className="space-y-2"><div className="flex items-center justify-between"><div className="flex items-center gap-2"><span className="text-[13px] text-muted">Stop loss</span><KwantSelect value={slType} onChange={(e) => setSlType(e.target.value as typeof slType)} className="rounded-lg border border-border bg-surface px-2 py-1 text-[11px] text-muted outline-none"><option value="price">price</option><option value="ticks">ticks</option><option value="pctPrice">% of price</option><option value="riskUsd">risk USD</option><option value="riskPct">risk % balance</option></KwantSelect></div><button onClick={() => setSlEnabled((value) => !value)} className={`h-5 w-10 rounded-full transition-all ${slEnabled ? "bg-primary" : "border border-border bg-surface"}`}><span className={`block h-4 w-4 rounded-full bg-background transition-transform ${slEnabled ? "translate-x-5" : "translate-x-0.5"}`} /></button></div><div className="flex items-center gap-2"><input disabled={!slEnabled} value={orderSL} onChange={(e) => setOrderSL(e.target.value)} className="min-w-0 flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-right font-mono text-[13px] outline-none disabled:opacity-50" /><button className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-surface text-muted hover:text-foreground"><ArrowLeftRight className="h-4 w-4" /></button><span className="w-14 text-right font-mono text-[11px] text-muted">{orderPreviewStopLossTicks ? `${orderPreviewStopLossTicks} ticks` : "--"}</span></div></div></div>}
                   </div>
                   <div className="mb-4 space-y-2 text-[13px]"><h3 className="font-semibold text-primary">Order info</h3><div className="flex justify-between"><span className="text-muted">Margin</span><span className="font-mono">581.92 / 81,682.73</span></div><div className="h-1.5 overflow-hidden rounded-full bg-surface"><div className="h-full w-[18%] rounded-full bg-primary" /></div><div className="flex justify-between"><span className="text-muted">Leverage</span><span className="font-mono">50:1</span></div><div className="flex justify-between"><span className="text-muted">Tick value</span><span className="font-mono">0.1 USD</span></div><div className="flex justify-between"><span className="text-muted">Trade value</span><span className="font-mono">29,096.20 USD</span></div></div>
-                  <button className={`w-full rounded-xl py-3 font-semibold text-background ${orderSide === "buy" ? "bg-primary" : "bg-danger"}`}>{orderSide === "buy" ? "Buy" : "Sell"} {orderUnits || "1"} {displayCmeSymbol(selectedInstrument)} {orderType.toUpperCase()}</button>
+                  <button className={`w-full rounded-xl py-3 font-semibold ${orderSide === "buy" ? "bg-primary text-on-primary" : "bg-danger text-on-danger"}`}>{orderSide === "buy" ? "Buy" : "Sell"} {orderUnits || "1"} {displayCmeSymbol(selectedInstrument)} {orderType.toUpperCase()}</button>
                 </div>
               )}
               {rightPanel === "watchlist" && (
@@ -20249,7 +20267,7 @@ export default function KwantifyWorkspace({
                     <>
                       <div className="flex h-14 shrink-0 items-center justify-between border-b border-border px-5">
                         <div className="flex items-center gap-3"><h3 className="text-[15px] font-semibold">{selectedStrategyItem.name}</h3><KwantSelect value={viewedVersionNumber} onChange={(e) => setSelectedVersion(Number(e.target.value))} className="rounded-lg border border-border bg-surface px-2 py-1 text-[11px] text-muted outline-none">{selectedStrategyVersions.map((version) => <option key={version.version} value={version.version}>v{version.version} ? {formatStrategyDate(version.timestamp)}</option>)}</KwantSelect><span className="rounded-full border border-border bg-surface px-2.5 py-1 text-[11px] text-muted">{selectedStrategyItem.language}</span></div>
-                        <div className="flex items-center gap-2">{!isViewingCurrentVersion && viewedVersion && <button onClick={() => revertStrategyVersion(selectedStrategyItem.id, viewedVersion)} className="rounded-xl border border-border bg-surface px-4 py-2 text-[13px] text-muted hover:text-foreground">Revert to this version</button>}<button onClick={() => saveStrategyVersion(selectedStrategyItem.id)} className="rounded-xl bg-primary px-4 py-2 text-[13px] font-semibold text-background">Save</button><button onClick={handleRunBacktest} className="flex items-center gap-2 rounded-xl border border-border bg-surface px-4 py-2 text-[13px] text-muted hover:text-foreground"><Play className="h-4 w-4 text-primary" />Run Backtest</button><button onClick={() => toggleStrategyOnChart(selectedStrategyItem.id)} className={`rounded-xl border px-4 py-2 text-[13px] ${selectedStrategyItem.addedToChart ? selectedStrategyItem.visible ? "border-primary/30 bg-primary/10 text-primary" : "border-border bg-surface text-muted" : "border-border bg-surface text-muted hover:text-foreground"}`}>{selectedStrategyItem.addedToChart ? selectedStrategyItem.visible ? "On Chart" : "Hidden" : "Add to Chart"}</button></div>
+                        <div className="flex items-center gap-2">{!isViewingCurrentVersion && viewedVersion && <button onClick={() => revertStrategyVersion(selectedStrategyItem.id, viewedVersion)} className="rounded-xl border border-border bg-surface px-4 py-2 text-[13px] text-muted hover:text-foreground">Revert to this version</button>}<button onClick={() => saveStrategyVersion(selectedStrategyItem.id)} className="rounded-xl bg-primary px-4 py-2 text-[13px] font-semibold text-on-primary">Save</button><button onClick={handleRunBacktest} className="flex items-center gap-2 rounded-xl border border-border bg-surface px-4 py-2 text-[13px] text-muted hover:text-foreground"><Play className="h-4 w-4 text-primary" />Run Backtest</button><button onClick={() => toggleStrategyOnChart(selectedStrategyItem.id)} className={`rounded-xl border px-4 py-2 text-[13px] ${selectedStrategyItem.addedToChart ? selectedStrategyItem.visible ? "border-primary/30 bg-primary/10 text-primary" : "border-border bg-surface text-muted" : "border-border bg-surface text-muted hover:text-foreground"}`}>{selectedStrategyItem.addedToChart ? selectedStrategyItem.visible ? "On Chart" : "Hidden" : "Add to Chart"}</button></div>
                       </div>
                       <div className="flex min-h-0 flex-1 overflow-hidden p-4">
                         <div className="flex min-h-0 flex-1 overflow-hidden rounded-xl border border-border bg-background font-mono text-[13px] leading-6">
@@ -20310,7 +20328,7 @@ export default function KwantifyWorkspace({
                 <div className="mt-3 space-y-1.5 font-mono text-[12px]">
                   <div className="flex justify-between">
                     <span className="text-muted">Side</span>
-                    <span style={{ color: pendingChartOrder.side === "buy" ? chartSettings.upColor : chartSettings.downColor }}>
+                    <span style={{ color: pendingChartOrder.side === "buy" ? orderTicketBuyColor : orderTicketSellColor }}>
                       {pendingChartOrder.side === "buy" ? "BUY" : "SELL"}
                     </span>
                   </div>
@@ -20345,8 +20363,11 @@ export default function KwantifyWorkspace({
                         price: order.price,
                       });
                     }}
-                    className="rounded-lg px-3 py-2 text-[12px] font-semibold text-background"
-                    style={{ backgroundColor: pendingChartOrder.side === "buy" ? chartSettings.upColor : chartSettings.downColor }}
+                    className="rounded-lg px-3 py-2 text-[12px] font-semibold"
+                    style={{
+                      backgroundColor: pendingChartOrder.side === "buy" ? orderTicketBuyColor : orderTicketSellColor,
+                      color: readableTextOn(pendingChartOrder.side === "buy" ? orderTicketBuyColor : orderTicketSellColor),
+                    }}
                   >Yes, place it</button>
                 </div>
               </section>
@@ -20370,11 +20391,13 @@ export default function KwantifyWorkspace({
                   className="rounded-xl border px-3 py-2 text-left transition-all"
                   style={{
                     borderColor: colorWithAlpha(
-                      legibleOn(chartSettings.downColor, orderTicketSurface),
-                      orderSide === "sell" ? 0.62 : 0.28,
+                      orderTicketSellColor,
+                      orderSide === "sell" ? 0.9 : 0.45,
                     ),
-                    backgroundColor: colorWithAlpha(chartSettings.downColor, orderSide === "sell" ? 0.22 : 0.1),
-                    color: legibleOn(chartSettings.downColor, orderTicketSurface),
+                    backgroundColor: orderSide === "sell"
+                      ? orderTicketSellColor
+                      : colorWithAlpha(orderTicketSellColor, 0.08),
+                    color: orderSide === "sell" ? readableTextOn(orderTicketSellColor) : orderTicketSellColor,
                   }}
                 ><div className="text-[12px] font-semibold">Sell</div><div className="font-mono text-[13px]">{orderPanelBidLabel}</div></button>
                 <div className="pointer-events-none absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 rounded-full bg-surface px-2 py-0.5 font-mono text-[10px] text-muted">{orderPanelSpreadLabel}</div>
@@ -20383,11 +20406,13 @@ export default function KwantifyWorkspace({
                   className="rounded-xl border px-3 py-2 text-right transition-all"
                   style={{
                     borderColor: colorWithAlpha(
-                      legibleOn(chartSettings.upColor, orderTicketSurface),
-                      orderSide === "buy" ? 0.62 : 0.28,
+                      orderTicketBuyColor,
+                      orderSide === "buy" ? 0.9 : 0.45,
                     ),
-                    backgroundColor: colorWithAlpha(chartSettings.upColor, orderSide === "buy" ? 0.22 : 0.1),
-                    color: legibleOn(chartSettings.upColor, orderTicketSurface),
+                    backgroundColor: orderSide === "buy"
+                      ? orderTicketBuyColor
+                      : colorWithAlpha(orderTicketBuyColor, 0.08),
+                    color: orderSide === "buy" ? readableTextOn(orderTicketBuyColor) : orderTicketBuyColor,
                   }}
                 ><div className="text-[12px] font-semibold">Buy</div><div className="font-mono text-[13px]">{orderPanelAskLabel}</div></button>
               </div>
@@ -20589,8 +20614,11 @@ export default function KwantifyWorkspace({
               <button
                 onClick={tradingUnlocked ? () => submitPaperOrder() : undefined}
                 disabled={!tradingUnlocked}
-                className={`w-full rounded-xl py-3 font-semibold ${tradingUnlocked ? "text-background" : "cursor-not-allowed bg-muted/30 text-muted"}`}
-                style={tradingUnlocked ? { backgroundColor: orderSide === "buy" ? chartSettings.upColor : chartSettings.downColor } : undefined}
+                className={`w-full rounded-xl py-3 font-semibold ${tradingUnlocked ? "" : "cursor-not-allowed bg-muted/30 text-muted"}`}
+                style={tradingUnlocked ? {
+                  backgroundColor: orderSide === "buy" ? orderTicketBuyColor : orderTicketSellColor,
+                  color: readableTextOn(orderSide === "buy" ? orderTicketBuyColor : orderTicketSellColor),
+                } : undefined}
               >{tradingUnlocked ? `${orderSide === "buy" ? "Buy" : "Sell"} ${selectedOrderQuantityLabel} ${orderType.toUpperCase()}` : currentBrokerConnection.connectionState === "connected" ? "Order routing unavailable" : "Connect Your Broker To Trade"}</button>
               {orderTicketMessage && <div className={`mt-2 rounded-xl border px-3 py-2 text-[11px] ${orderTicketMessage.tone === "success" ? "border-primary/25 bg-primary/10 text-primary" : "border-danger/25 bg-danger/10 text-danger"}`}>{orderTicketMessage.text}</div>}
               {selectedPaperOpenPositions.length > 0 && <div className="mt-4 space-y-2"><div className="flex items-center justify-between"><div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">Open positions</div><button onClick={handleFlattenPaperAccount} className="rounded-md border border-danger/25 px-2 py-1 text-[9px] font-semibold uppercase tracking-[0.1em] text-danger hover:bg-danger/10">Flatten all</button></div>{selectedPaperOpenPositions.map((position) => <div key={position.id} className="rounded-xl border border-border bg-background/40 p-3"><div className="flex items-center justify-between"><span className="text-[12px] font-semibold">{position.side === "buy" ? "Long" : "Short"} {position.remainingQuantity} {position.symbol}</span><LivePaperPositionPnl position={position} /></div><div className="mt-1 flex justify-between font-mono text-[10px] text-muted"><span>Entry {formatPrice(position.entryPrice, position.symbol)}</span><LivePaperPositionMark position={position} /></div><div className="mt-1 flex justify-between font-mono text-[9px] text-muted"><span>{position.stopLoss == null ? "SL not set" : `SL ${formatPrice(position.stopLoss, position.symbol)}`}</span><span>{position.takeProfits.filter((target) => target.quantity > target.filledQuantity).length} active TP</span></div><div className="mt-2 flex gap-2"><button onClick={() => handleFlattenPaperPosition(position)} className="flex flex-1 items-center justify-center gap-1 rounded-lg border border-danger/25 px-2 py-1.5 text-[10px] font-semibold text-danger hover:bg-danger/10"><X className="h-3 w-3" /> Close position</button></div></div>)}</div>}
@@ -20832,7 +20860,7 @@ export default function KwantifyWorkspace({
                                 <span className="text-[9px] text-muted">{formatKwantBotMessageTime(message.receivedAt)}</span>
                                 <span className="text-[10px] font-semibold text-foreground">You</span>
                               </div>
-                              <div className="relative rounded-[18px] rounded-br-[6px] border border-primary/30 bg-primary px-3.5 py-2.5 text-background shadow-[0_8px_24px_rgba(0,0,0,0.16)]">
+                              <div className="relative rounded-[18px] rounded-br-[6px] border border-primary/30 bg-primary px-3.5 py-2.5 text-on-primary shadow-[0_8px_24px_rgba(0,0,0,0.16)]">
                                 <span
                                   aria-hidden="true"
                                   className="absolute -right-[5px] bottom-0 h-3 w-3 bg-primary [clip-path:polygon(0_0,100%_100%,0_100%)]"
@@ -20949,7 +20977,7 @@ export default function KwantifyWorkspace({
                     type="button"
                     onClick={() => void handleSendKwantBotMessage()}
                     disabled={kwantBotAttaching || kwantBotReplying || (!kwantBotDraft.trim() && !kwantBotDraftAttachments.length)}
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-background shadow-[0_0_16px_color-mix(in_srgb,var(--primary)_24%,transparent)] transition-transform hover:scale-105 disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:scale-100"
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-on-primary shadow-[0_0_16px_color-mix(in_srgb,var(--primary)_24%,transparent)] transition-transform hover:scale-105 disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:scale-100"
                     title={kwantBotReplying ? "Kwant Bot is replying" : "Send message"}
                     aria-label={kwantBotReplying ? "Kwant Bot is replying" : "Send message"}
                   >
@@ -20969,7 +20997,7 @@ export default function KwantifyWorkspace({
                 <div className="flex items-center gap-2">
                   <h3 className="text-[14px] font-semibold">Alerts</h3>
                   {socialNotifications.unreadCount > 0 ? (
-                    <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-semibold text-background">
+                    <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-semibold text-on-primary">
                       {Math.min(99, socialNotifications.unreadCount)}
                     </span>
                   ) : null}
@@ -21210,11 +21238,11 @@ export default function KwantifyWorkspace({
               className={`relative flex h-9 w-9 items-center justify-center rounded-lg transition-colors ${active ? "bg-surface text-foreground" : "text-muted hover:bg-surface hover:text-foreground"}`}
             >
               <Icon className="h-[18px] w-[18px]" />
-              {item.id === "kwantbot" && kwantBotInterpreter.unreadTotal > 0 && <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-semibold text-background">{Math.min(99, kwantBotInterpreter.unreadTotal)}</span>}
-              {item.id === "optionstape" && kwantBotInterpreter.optionsUnreadTotal > 0 && <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-semibold text-background">{Math.min(99, kwantBotInterpreter.optionsUnreadTotal)}</span>}
-              {item.id === "friends" && friendsOnlineCount > 0 && <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full border border-background bg-primary px-1 text-[9px] font-semibold text-background shadow-[0_0_10px_color-mix(in_srgb,var(--primary)_45%,transparent)]" aria-label={`${friendsOnlineCount} friends online`}>{Math.min(99, friendsOnlineCount)}</span>}
+              {item.id === "kwantbot" && kwantBotInterpreter.unreadTotal > 0 && <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-semibold text-on-primary">{Math.min(99, kwantBotInterpreter.unreadTotal)}</span>}
+              {item.id === "optionstape" && kwantBotInterpreter.optionsUnreadTotal > 0 && <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[9px] font-semibold text-on-primary">{Math.min(99, kwantBotInterpreter.optionsUnreadTotal)}</span>}
+              {item.id === "friends" && friendsOnlineCount > 0 && <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full border border-background bg-primary px-1 text-[9px] font-semibold text-on-primary shadow-[0_0_10px_color-mix(in_srgb,var(--primary)_45%,transparent)]" aria-label={`${friendsOnlineCount} friends online`}>{Math.min(99, friendsOnlineCount)}</span>}
               {item.id === "friends" && friendsUnreadCount > 0 && <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-background bg-danger" aria-label={`${friendsUnreadCount} unread friend notifications`} />}
-              {item.id === "messages" && friendMessageUnreadCount > 0 && <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full border border-background bg-primary px-1 text-[9px] font-semibold text-background shadow-[0_0_10px_color-mix(in_srgb,var(--primary)_45%,transparent)]" aria-label={`${friendMessageUnreadCount} unread messages`}>{Math.min(99, friendMessageUnreadCount)}</span>}
+              {item.id === "messages" && friendMessageUnreadCount > 0 && <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full border border-background bg-primary px-1 text-[9px] font-semibold text-on-primary shadow-[0_0_10px_color-mix(in_srgb,var(--primary)_45%,transparent)]" aria-label={`${friendMessageUnreadCount} unread messages`}>{Math.min(99, friendMessageUnreadCount)}</span>}
             </button>
           );
         })}
@@ -21405,7 +21433,7 @@ export default function KwantifyWorkspace({
                           <button
                             onClick={createQuickPaperTradingAccount}
                             disabled={!paperAccountName.trim()}
-                            className="w-full rounded-xl bg-primary py-3 text-[13px] font-semibold text-background disabled:cursor-not-allowed disabled:opacity-40"
+                            className="w-full rounded-xl bg-primary py-3 text-[13px] font-semibold text-on-primary disabled:cursor-not-allowed disabled:opacity-40"
                           >
                             Create paper account
                           </button>
@@ -21460,12 +21488,12 @@ export default function KwantifyWorkspace({
                     {selectedBroker.type === "ctrader" ? (
                       <>
                         <button onClick={() => connectBroker(selectedBroker.name)} className="rounded-xl border border-border bg-surface px-4 py-2 text-[13px] text-muted hover:text-foreground">Use Shared Feed</button>
-                        <button onClick={() => startCTraderBrokerConnect(selectedBroker.name)} className="rounded-xl bg-primary px-5 py-2 text-[13px] font-semibold text-background">Continue to cTrader</button>
+                        <button onClick={() => startCTraderBrokerConnect(selectedBroker.name)} className="rounded-xl bg-primary px-5 py-2 text-[13px] font-semibold text-on-primary">Continue to cTrader</button>
                       </>
                     ) : selectedBroker.type === "paper" ? (
-                      <button onClick={() => connectBroker(selectedBroker.name)} disabled={selectedBrokerPaperAccounts.length === 0} className="rounded-xl bg-primary px-5 py-2 text-[13px] font-semibold text-background disabled:cursor-not-allowed disabled:opacity-40">Use Selected Paper Account</button>
+                      <button onClick={() => connectBroker(selectedBroker.name)} disabled={selectedBrokerPaperAccounts.length === 0} className="rounded-xl bg-primary px-5 py-2 text-[13px] font-semibold text-on-primary disabled:cursor-not-allowed disabled:opacity-40">Use Selected Paper Account</button>
                     ) : (
-                      <button onClick={() => connectBroker(selectedBroker.name)} disabled={selectedBroker.type === "soon"} className="rounded-xl bg-primary px-5 py-2 text-[13px] font-semibold text-background disabled:cursor-not-allowed disabled:opacity-40">Connect</button>
+                      <button onClick={() => connectBroker(selectedBroker.name)} disabled={selectedBroker.type === "soon"} className="rounded-xl bg-primary px-5 py-2 text-[13px] font-semibold text-on-primary disabled:cursor-not-allowed disabled:opacity-40">Connect</button>
                     )}
                   </div>
                 </div>
@@ -21736,7 +21764,7 @@ export default function KwantifyWorkspace({
               <input value={newUsername} onChange={(e) => setNewUsername(e.target.value)} placeholder="Choose a username" className="w-full rounded-xl border border-border bg-surface py-3 pl-8 pr-4 text-[13px] outline-none focus:border-primary/40" />
             </div>
             {usernameError && <p className="mt-2 text-[12px] text-danger">{usernameError}</p>}
-            <button onClick={saveUsername} className="mt-5 w-full rounded-xl bg-primary py-3 text-[13px] font-semibold text-background">Continue</button>
+            <button onClick={saveUsername} className="mt-5 w-full rounded-xl bg-primary py-3 text-[13px] font-semibold text-on-primary">Continue</button>
           </div>
         </div>
       )}
@@ -21802,7 +21830,7 @@ export default function KwantifyWorkspace({
         document.body,
       ) : null}
       {showMiniAI && !miniExpanded && <button onClick={() => setMiniExpanded(true)} className="fixed bottom-20 left-16 z-30 flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-4 py-2 text-sm font-semibold text-primary shadow-2xl shadow-black/30"><Bot className="h-4 w-4" />AI</button>}
-      {showMiniAI && miniExpanded && <div className="fixed bottom-20 left-16 z-30 flex h-[500px] w-[380px] flex-col overflow-hidden rounded-2xl border border-border bg-panel shadow-2xl shadow-black/40"><div className="flex h-12 shrink-0 items-center justify-between border-b border-border px-4"><div className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-primary" /><span className="text-sm font-semibold">Strategy Builder</span></div><div className="flex items-center gap-1"><button onClick={() => setMiniExpanded(false)} className="flex h-6 w-6 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"><Minus className="h-4 w-4" /></button><button onClick={maximizeMiniAI} className="flex h-6 w-6 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"><Maximize2 className="h-4 w-4" /></button><button onClick={() => { setShowMiniAI(false); setMiniExpanded(false); sessionStorage.removeItem("ai-messages"); sessionStorage.removeItem("ai-minimized"); }} className="flex h-6 w-6 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"><X className="h-4 w-4" /></button></div></div><div className="flex-1 space-y-4 overflow-y-auto p-4">{miniMessages.length === 0 && <div className="flex h-full flex-col items-center justify-center text-center"><Bot className="mb-3 h-6 w-6 text-primary" /><p className="text-sm font-semibold">Ask Kwantify to build a strategy</p><p className="mt-1 text-xs leading-5 text-muted">Describe an entry, risk model, session, or market condition.</p></div>}{miniMessages.map((msg, i) => <div key={i} className={msg.role === "user" ? "flex justify-end" : "flex gap-3"}>{msg.role === "user" ? <div className="max-w-[80%] rounded-2xl bg-surface px-3 py-2 text-[13px] leading-6">{msg.content}</div> : <div className="text-[13px] leading-6 text-muted"><AssistantContent text={msg.content} copiedKey={copiedKey} onCopy={copyCode} /></div>}</div>)}{miniLoading && <div className="flex gap-1.5"><div className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" /><div className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary [animation-delay:0.2s]" /><div className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary [animation-delay:0.4s]" /></div>}<div ref={miniMessagesEndRef} /></div><div className="border-t border-border p-3"><div className="rounded-2xl border border-border bg-surface p-2 focus-within:border-primary/35"><textarea value={miniInput} onChange={(e) => setMiniInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChat("mini"); } }} placeholder="Describe your strategy..." rows={2} className="max-h-24 w-full resize-none bg-transparent px-2 py-1 text-[13px] leading-6 outline-none placeholder:text-muted/60" /><div className="flex justify-end"><button onClick={() => sendChat("mini")} disabled={miniLoading || !miniInput.trim()} className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-background disabled:opacity-40"><ArrowUp className="h-4 w-4" /></button></div></div></div></div>}
+      {showMiniAI && miniExpanded && <div className="fixed bottom-20 left-16 z-30 flex h-[500px] w-[380px] flex-col overflow-hidden rounded-2xl border border-border bg-panel shadow-2xl shadow-black/40"><div className="flex h-12 shrink-0 items-center justify-between border-b border-border px-4"><div className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-primary" /><span className="text-sm font-semibold">Strategy Builder</span></div><div className="flex items-center gap-1"><button onClick={() => setMiniExpanded(false)} className="flex h-6 w-6 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"><Minus className="h-4 w-4" /></button><button onClick={maximizeMiniAI} className="flex h-6 w-6 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"><Maximize2 className="h-4 w-4" /></button><button onClick={() => { setShowMiniAI(false); setMiniExpanded(false); sessionStorage.removeItem("ai-messages"); sessionStorage.removeItem("ai-minimized"); }} className="flex h-6 w-6 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"><X className="h-4 w-4" /></button></div></div><div className="flex-1 space-y-4 overflow-y-auto p-4">{miniMessages.length === 0 && <div className="flex h-full flex-col items-center justify-center text-center"><Bot className="mb-3 h-6 w-6 text-primary" /><p className="text-sm font-semibold">Ask Kwantify to build a strategy</p><p className="mt-1 text-xs leading-5 text-muted">Describe an entry, risk model, session, or market condition.</p></div>}{miniMessages.map((msg, i) => <div key={i} className={msg.role === "user" ? "flex justify-end" : "flex gap-3"}>{msg.role === "user" ? <div className="max-w-[80%] rounded-2xl bg-surface px-3 py-2 text-[13px] leading-6">{msg.content}</div> : <div className="text-[13px] leading-6 text-muted"><AssistantContent text={msg.content} copiedKey={copiedKey} onCopy={copyCode} /></div>}</div>)}{miniLoading && <div className="flex gap-1.5"><div className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" /><div className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary [animation-delay:0.2s]" /><div className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary [animation-delay:0.4s]" /></div>}<div ref={miniMessagesEndRef} /></div><div className="border-t border-border p-3"><div className="rounded-2xl border border-border bg-surface p-2 focus-within:border-primary/35"><textarea value={miniInput} onChange={(e) => setMiniInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChat("mini"); } }} placeholder="Describe your strategy..." rows={2} className="max-h-24 w-full resize-none bg-transparent px-2 py-1 text-[13px] leading-6 outline-none placeholder:text-muted/60" /><div className="flex justify-end"><button onClick={() => sendChat("mini")} disabled={miniLoading || !miniInput.trim()} className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-on-primary disabled:opacity-40"><ArrowUp className="h-4 w-4" /></button></div></div></div></div>}
       {showBacktestSettings && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60" onClick={() => setShowBacktestSettings(false)}>
           <div className="w-[500px] overflow-hidden rounded-2xl border border-border bg-panel shadow-2xl" onClick={(event) => event.stopPropagation()}>
@@ -21824,7 +21852,7 @@ export default function KwantifyWorkspace({
                 <div className="grid grid-cols-3 gap-3"><label className="block space-y-1.5"><span className="text-[12px] text-muted">Date Range</span><KwantSelect value={backtestSettingsDraft.datePreset} onChange={(e) => setBacktestSettingsDraft((current) => ({ ...current, datePreset: e.target.value }))} className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-[13px] outline-none"><option value="7d">Last 7 days</option><option value="30d">Last 30 days</option><option value="90d">Last 90 days</option><option value="365d">Last 365 days</option><option value="all">All available</option></KwantSelect></label><label className="block space-y-1.5"><span className="text-[12px] text-muted">From</span><input type="date" value={backtestSettingsDraft.dateFrom} onChange={(e) => setBacktestSettingsDraft((current) => ({ ...current, dateFrom: e.target.value }))} className="w-full rounded-lg border border-border bg-surface px-3 py-2 font-mono text-[12px] outline-none" /></label><label className="block space-y-1.5"><span className="text-[12px] text-muted">To</span><input type="date" value={backtestSettingsDraft.dateTo} onChange={(e) => setBacktestSettingsDraft((current) => ({ ...current, dateTo: e.target.value }))} className="w-full rounded-lg border border-border bg-surface px-3 py-2 font-mono text-[12px] outline-none" /></label></div>
               </div>
             ) : <div className="p-8 text-center text-[13px] text-muted">Strategy inputs will appear here when a strategy with configurable parameters is selected</div>}
-            <div className="flex items-center justify-between border-t border-border px-5 py-4"><button onClick={() => setBacktestSettingsDraft(defaultBacktestSettings)} className="rounded-lg border border-border bg-surface px-4 py-2 text-[13px] text-muted hover:text-foreground">Reset to Default</button><button onClick={() => { setBacktestSettings(backtestSettingsDraft); setShowBacktestSettings(false); }} className="rounded-lg bg-primary px-5 py-2 text-[13px] font-semibold text-background">Apply</button></div>
+            <div className="flex items-center justify-between border-t border-border px-5 py-4"><button onClick={() => setBacktestSettingsDraft(defaultBacktestSettings)} className="rounded-lg border border-border bg-surface px-4 py-2 text-[13px] text-muted hover:text-foreground">Reset to Default</button><button onClick={() => { setBacktestSettings(backtestSettingsDraft); setShowBacktestSettings(false); }} className="rounded-lg bg-primary px-5 py-2 text-[13px] font-semibold text-on-primary">Apply</button></div>
           </div>
         </div>
       )}
@@ -21891,7 +21919,7 @@ export default function KwantifyWorkspace({
                   </div>
                 )}
               </div>
-              <div className="flex gap-2"><button onClick={cancelChartSettings} className="rounded-xl border border-border bg-surface px-4 py-2 text-[13px] text-muted hover:text-foreground">Cancel</button><button onClick={applyChartSettings} className="rounded-xl bg-primary px-5 py-2 text-[13px] font-semibold text-background">Ok</button></div>
+              <div className="flex gap-2"><button onClick={cancelChartSettings} className="rounded-xl border border-border bg-surface px-4 py-2 text-[13px] text-muted hover:text-foreground">Cancel</button><button onClick={applyChartSettings} className="rounded-xl bg-primary px-5 py-2 text-[13px] font-semibold text-on-primary">Ok</button></div>
             </div>
           </div>
         </div>
@@ -21901,7 +21929,7 @@ export default function KwantifyWorkspace({
           <div className="w-[320px] rounded-2xl border border-border bg-panel p-5 shadow-2xl" onClick={(event) => event.stopPropagation()}>
             <h3 className="text-base font-semibold">Save as template</h3>
             <input value={templateName} onChange={(event) => setTemplateName(event.target.value)} autoFocus placeholder="Template name" className="mt-4 w-full rounded-xl border border-border bg-surface px-4 py-3 text-[13px] outline-none focus:border-primary/40" />
-            <div className="mt-4 flex justify-end gap-2"><button onClick={() => { setShowSaveTemplate(false); setTemplateName(""); }} className="rounded-xl border border-border bg-surface px-4 py-2 text-[13px] text-muted hover:text-foreground">Cancel</button><button onClick={saveChartTemplate} className="rounded-xl bg-primary px-4 py-2 text-[13px] font-semibold text-background">Save</button></div>
+            <div className="mt-4 flex justify-end gap-2"><button onClick={() => { setShowSaveTemplate(false); setTemplateName(""); }} className="rounded-xl border border-border bg-surface px-4 py-2 text-[13px] text-muted hover:text-foreground">Cancel</button><button onClick={saveChartTemplate} className="rounded-xl bg-primary px-4 py-2 text-[13px] font-semibold text-on-primary">Save</button></div>
           </div>
         </div>
       )}

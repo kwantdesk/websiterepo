@@ -309,7 +309,7 @@ export default function LabWorkspace() {
           </div>
           <div className="ml-2 flex items-center border border-border bg-background p-0.5">
             {(["NQ", "ES"] as LabRoot[]).map((item) => (
-              <button key={item} type="button" disabled={running} onClick={() => setRoot(item)} className={`h-7 min-w-10 px-2 font-mono text-[9px] font-semibold disabled:cursor-not-allowed disabled:opacity-50 ${root === item ? "bg-primary text-background" : "text-muted hover:text-foreground"}`}>{item}</button>
+              <button key={item} type="button" disabled={running} onClick={() => setRoot(item)} className={`h-7 min-w-10 px-2 font-mono text-[9px] font-semibold disabled:cursor-not-allowed disabled:opacity-50 ${root === item ? "bg-primary text-on-primary" : "text-muted hover:text-foreground"}`}>{item}</button>
             ))}
           </div>
           <div className="ml-auto hidden items-center gap-5 xl:flex">

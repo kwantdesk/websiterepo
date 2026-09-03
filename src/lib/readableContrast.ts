@@ -149,3 +149,23 @@ export function legibleOn(color: string, background: string, minimumRatio = 3): 
   legibleColorCache.set(key, resolved);
   return resolved;
 }
+
+/**
+ * Preserve a user-selected directional colour when it is readable, otherwise
+ * fall back to the theme's semantic action colour. Hollow candle bodies are a
+ * valid chart choice, but they must never turn a Sell control into black on
+ * black (or white on white) UI.
+ */
+export function legibleSemanticColor(
+  preferred: string,
+  fallback: string,
+  background: string,
+  minimumRatio = 4.5,
+): string {
+  const preferredRgb = parseResolvedColor(preferred);
+  const backgroundRgb = parseResolvedColor(background);
+  if (preferredRgb && backgroundRgb && contrastRatio(preferredRgb, backgroundRgb) >= minimumRatio) {
+    return preferred;
+  }
+  return legibleOn(fallback, background, minimumRatio);
+}

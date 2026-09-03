@@ -103,7 +103,7 @@ export default function SocialNotificationsPanel({
                     avatarUrl={item.sourceAvatarUrl}
                     size="sm"
                   />
-                  <span className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full border-2 border-panel bg-primary text-background">
+                  <span className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full border-2 border-panel bg-primary text-on-primary">
                     {item.kind === "new_follower" ? <UserPlus className="h-2.5 w-2.5" /> : <Bell className="h-2.5 w-2.5" />}
                   </span>
                 </span>

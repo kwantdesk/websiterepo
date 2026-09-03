@@ -842,7 +842,7 @@ export default function SettingsPage() {
                     <button
                       onClick={() => void saveIdentity()}
                       disabled={!identityCanSave}
-                      className="flex min-w-24 items-center justify-center rounded-xl bg-primary px-4 py-2 text-[12px] font-semibold text-background disabled:opacity-50"
+                      className="flex min-w-24 items-center justify-center rounded-xl bg-primary px-4 py-2 text-[12px] font-semibold text-on-primary disabled:opacity-50"
                     >
                       {presenceSaving ? "Saving..." : "Save"}
                     </button>
@@ -912,7 +912,7 @@ export default function SettingsPage() {
                   <button
                     onClick={() => void saveIdentity()}
                     disabled={!identityCanSave}
-                    className="mt-2 rounded-xl bg-primary px-5 py-2.5 text-[12px] font-semibold text-background disabled:opacity-40"
+                    className="mt-2 rounded-xl bg-primary px-5 py-2.5 text-[12px] font-semibold text-on-primary disabled:opacity-40"
                   >
                     {presenceSaving ? "Saving..." : "Save identity"}
                   </button>
@@ -921,7 +921,7 @@ export default function SettingsPage() {
               <section className="rounded-2xl border border-border bg-panel p-6">
                 <h2 className="mb-5 text-lg font-semibold">Social and website links</h2>
                 <div className="grid gap-3 md:grid-cols-2"><div className="relative"><span className="absolute left-4 top-3 text-[13px] text-muted">X</span><input className={`${input} pl-10`} placeholder="X profile" /></div><div className="relative"><Video className="absolute left-4 top-3 h-4 w-4 text-muted" /><input className={`${input} pl-10`} placeholder="YouTube channel" /></div><div className="relative"><span className="absolute left-4 top-3 text-[13px] text-muted">◎</span><input className={`${input} pl-10`} placeholder="Instagram profile" /></div><div className="relative"><Globe className="absolute left-4 top-3 h-4 w-4 text-muted" /><input className={`${input} pl-10`} placeholder="Website URL" /></div></div>
-                <button className="mt-4 rounded-xl bg-primary px-5 py-2.5 text-[13px] font-semibold text-background">Save links</button>
+                <button className="mt-4 rounded-xl bg-primary px-5 py-2.5 text-[13px] font-semibold text-on-primary">Save links</button>
               </section>
             </div>
           )}
@@ -988,7 +988,7 @@ export default function SettingsPage() {
               <section className="rounded-2xl border border-border bg-panel p-6">
                 <h2 className={sectionTitle}>Live Preview</h2>
                 <div className="rounded-xl border border-border bg-background p-4">
-                  <button className="rounded-xl bg-primary px-4 py-2 text-[13px] font-semibold text-background">Primary button</button>
+                  <button className="rounded-xl bg-primary px-4 py-2 text-[13px] font-semibold text-on-primary">Primary button</button>
                   <button className="ml-3 rounded-xl border border-border bg-surface px-4 py-2 text-[13px] text-foreground">Secondary button</button>
                   <span className="ml-4 text-[13px] text-primary">Preview link</span>
                   <span className="ml-4 text-[13px] text-danger">Loss -$42.00</span>
@@ -1001,7 +1001,7 @@ export default function SettingsPage() {
               </section>
 
               <div className="flex gap-3">
-                <button onClick={saveThemeSettings} className="rounded-xl bg-primary px-6 py-3 text-[13px] font-semibold text-background">Save</button>
+                <button onClick={saveThemeSettings} className="rounded-xl bg-primary px-6 py-3 text-[13px] font-semibold text-on-primary">Save</button>
                 <button onClick={resetThemeSettings} className={secondaryButton}>Reset to defaults</button>
               </div>
             </div>
@@ -1021,15 +1021,15 @@ export default function SettingsPage() {
                 </label>
               </div>
               <div className="mt-5 space-y-4"><div className="flex items-center justify-between"><span>Show volume</span><Toggle checked={toggles.volume} onChange={() => toggle("volume")} /></div><div className="flex items-center justify-between"><span>Show grid</span><Toggle checked={toggles.grid} onChange={() => toggle("grid")} /></div></div>
-              <button onClick={saveChartDefaults} className="mt-6 rounded-xl bg-primary px-6 py-3 text-[13px] font-semibold text-background">Save defaults</button>
+              <button onClick={saveChartDefaults} className="mt-6 rounded-xl bg-primary px-6 py-3 text-[13px] font-semibold text-on-primary">Save defaults</button>
             </div>
           )}
 
           {activeTab === "Subscriptions" && (
-            <div className="mt-8 space-y-6"><section className="rounded-2xl border border-primary bg-primary/10 p-6"><div className="text-[13px] text-muted">Current plan</div><h2 className="mt-1 text-2xl font-semibold">Free</h2><p className="mt-2 text-[13px] text-muted">AI builder usage is measured on 5-hour and monthly credit windows.</p><button className="mt-4 rounded-xl bg-primary px-5 py-2.5 text-[13px] font-semibold text-background">Upgrade now</button></section><div className="grid gap-4 md:grid-cols-4">{Object.values(usagePlans).map((plan) => <div key={plan.id} className={`rounded-2xl border bg-panel p-6 ${plan.id === "free" ? "border-primary" : "border-border"}`}><h3 className="text-lg font-semibold">{plan.name}</h3><p className="mt-2 min-h-[42px] text-[13px] leading-6 text-muted">{plan.description}</p><div className="mt-4 space-y-2 border-t border-border pt-4 text-[12px] text-muted"><div className="flex justify-between"><span>5hr credits</span><span className="font-mono text-foreground">{plan.limits.ai_builder.fiveHour}</span></div><div className="flex justify-between"><span>Monthly credits</span><span className="font-mono text-foreground">{plan.limits.ai_builder.monthly}</span></div></div></div>)}</div></div>
+            <div className="mt-8 space-y-6"><section className="rounded-2xl border border-primary bg-primary/10 p-6"><div className="text-[13px] text-muted">Current plan</div><h2 className="mt-1 text-2xl font-semibold">Free</h2><p className="mt-2 text-[13px] text-muted">AI builder usage is measured on 5-hour and monthly credit windows.</p><button className="mt-4 rounded-xl bg-primary px-5 py-2.5 text-[13px] font-semibold text-on-primary">Upgrade now</button></section><div className="grid gap-4 md:grid-cols-4">{Object.values(usagePlans).map((plan) => <div key={plan.id} className={`rounded-2xl border bg-panel p-6 ${plan.id === "free" ? "border-primary" : "border-border"}`}><h3 className="text-lg font-semibold">{plan.name}</h3><p className="mt-2 min-h-[42px] text-[13px] leading-6 text-muted">{plan.description}</p><div className="mt-4 space-y-2 border-t border-border pt-4 text-[12px] text-muted"><div className="flex justify-between"><span>5hr credits</span><span className="font-mono text-foreground">{plan.limits.ai_builder.fiveHour}</span></div><div className="flex justify-between"><span>Monthly credits</span><span className="font-mono text-foreground">{plan.limits.ai_builder.monthly}</span></div></div></div>)}</div></div>
           )}
 
-          {activeTab === "Payment methods" && <div className="mt-8 rounded-2xl border border-border bg-panel p-8 text-center"><CreditCard className="mx-auto mb-3 h-8 w-8 text-muted" /><h2 className="font-semibold">No saved payment methods</h2><p className="mt-2 text-[13px] text-muted">Accepts credit card and debit card. Stripe integration placeholder.</p><button className="mt-5 rounded-xl bg-primary px-5 py-2.5 text-[13px] font-semibold text-background">Add payment method</button></div>}
+          {activeTab === "Payment methods" && <div className="mt-8 rounded-2xl border border-border bg-panel p-8 text-center"><CreditCard className="mx-auto mb-3 h-8 w-8 text-muted" /><h2 className="font-semibold">No saved payment methods</h2><p className="mt-2 text-[13px] text-muted">Accepts credit card and debit card. Stripe integration placeholder.</p><button className="mt-5 rounded-xl bg-primary px-5 py-2.5 text-[13px] font-semibold text-on-primary">Add payment method</button></div>}
           {activeTab === "Billing history" && <div className="mt-8 rounded-2xl border border-border bg-panel p-8 text-center text-[13px] text-muted">No billing history yet</div>}
           {activeTab === "Alerts delivery" && <div className="mt-8 rounded-2xl border border-border bg-panel p-6"><div className="space-y-4"><div className="flex items-center justify-between"><span>In-app notifications</span><Toggle checked={toggles.inApp} onChange={() => toggle("inApp")} /></div><div className="flex items-center justify-between"><span>Email notifications</span><Toggle checked={toggles.email} onChange={() => toggle("email")} /></div><div className="flex items-center justify-between"><span>Telegram</span><Link href="/alerts" className={secondaryButton}>Setup AI Briefings</Link></div><input className={input} placeholder="Webhook URL" /></div></div>}
           {activeTab === "Email subscriptions" && <div className="mt-8 rounded-2xl border border-border bg-panel p-6"><div className="space-y-4">{[["Weekly market digest", "weekly"], ["Strategy performance updates", "performance"], ["New features and updates", "features"], ["Community activity", "community"], ["Promotional offers", "promo"]].map(([label, key]) => <div key={key} className="flex items-center justify-between"><span>{label}</span><Toggle checked={toggles[key]} onChange={() => toggle(key)} /></div>)}<button className="pt-3 text-[13px] font-semibold text-danger">Unsubscribe from all</button></div></div>}

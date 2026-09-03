@@ -483,7 +483,7 @@ export default function AutomationExecutionPage() {
             <button
               onClick={submitPaperRun}
               disabled={submitState === "running"}
-              className={`w-full rounded-xl py-3 text-[13px] font-semibold text-background disabled:opacity-60 ${orderSide === "buy" ? "bg-primary" : "bg-danger"}`}
+              className={`w-full rounded-xl py-3 text-[13px] font-semibold disabled:opacity-60 ${orderSide === "buy" ? "bg-primary text-on-primary" : "bg-danger text-on-danger"}`}
             >
               {submitState === "running"
                 ? "Routing..."
@@ -587,7 +587,7 @@ export default function AutomationExecutionPage() {
             <button
               onClick={runAutomationBacktest}
               disabled={backtesting || !selectedBacktestStrategy}
-              className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-[12px] font-semibold text-background disabled:opacity-60"
+              className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-[12px] font-semibold text-on-primary disabled:opacity-60"
             >
               {backtesting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
               Run Bot Backtest

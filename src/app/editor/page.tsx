@@ -225,7 +225,7 @@ export default function EditorPage() {
             <span className="rounded-full border border-border bg-surface px-2.5 py-1 text-[11px] text-muted">{strategy.language}</span>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={saveNow} className="rounded-xl bg-primary px-4 py-2 text-[13px] font-semibold text-background">Save</button>
+            <button onClick={saveNow} className="rounded-xl bg-primary px-4 py-2 text-[13px] font-semibold text-on-primary">Save</button>
             <button onClick={runBacktest} className="flex items-center gap-2 rounded-xl border border-border bg-surface px-4 py-2 text-[13px] hover:bg-card"><Play className="h-4 w-4 text-primary" />Run Backtest</button>
             <button
               onClick={() => setStrategy((current) => ({ ...current, addedToChart: !current.addedToChart }))}

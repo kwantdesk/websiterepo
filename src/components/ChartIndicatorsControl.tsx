@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { Children, isValidElement, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -1291,7 +1291,7 @@ export default function ChartIndicatorsControl({
                   setLibraryOpen(true);
                   setOpen(false);
                 }}
-                className="flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-[10px] font-semibold text-background"
+                className="flex h-8 items-center gap-1.5 rounded-lg bg-primary px-3 text-[10px] font-semibold text-on-primary"
               >
                 <Plus className="h-3.5 w-3.5" />
                 Add
@@ -1583,7 +1583,7 @@ export default function ChartIndicatorsControl({
             </div>
             <div className="flex items-center justify-between border-t border-border px-5 py-3">
               <span className="text-[9px] text-muted">{indicators.length} saved to this chart</span>
-              <button type="button" onClick={() => setLibraryOpen(false)} className="rounded-lg bg-primary px-4 py-2 text-[10px] font-semibold text-background">Done</button>
+              <button type="button" onClick={() => setLibraryOpen(false)} className="rounded-lg bg-primary px-4 py-2 text-[10px] font-semibold text-on-primary">Done</button>
             </div>
           </div>
         </div>,
@@ -1689,7 +1689,7 @@ export default function ChartIndicatorsControl({
               <button
                 type="button"
                 onClick={() => setCandleSettingsOpen(false)}
-                className="flex h-9 items-center justify-center gap-1.5 rounded-lg bg-primary px-4 text-[9px] font-semibold uppercase tracking-[0.08em] text-background"
+                className="flex h-9 items-center justify-center gap-1.5 rounded-lg bg-primary px-4 text-[9px] font-semibold uppercase tracking-[0.08em] text-on-primary"
               >
                 <Save className="h-3.5 w-3.5" />
                 Save
@@ -1750,7 +1750,7 @@ export default function ChartIndicatorsControl({
                       <button
                         type="button"
                         onClick={commitSettingsAndClose}
-                        className="h-8 rounded-lg bg-primary text-[9px] font-semibold uppercase tracking-[0.08em] text-background"
+                        className="h-8 rounded-lg bg-primary text-[9px] font-semibold uppercase tracking-[0.08em] text-on-primary"
                       >
                         Save
                       </button>
@@ -6091,7 +6091,7 @@ export default function ChartIndicatorsControl({
                       window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
                       setFootprintSaveStatus("Footprint settings saved locally");
                     }}
-                    className="flex h-9 items-center justify-center gap-1.5 rounded-lg bg-primary px-4 text-[9px] font-semibold uppercase tracking-[0.08em] text-background"
+                    className="flex h-9 items-center justify-center gap-1.5 rounded-lg bg-primary px-4 text-[9px] font-semibold uppercase tracking-[0.08em] text-on-primary"
                   >
                     <Save className="h-3.5 w-3.5" />
                     Save settings
@@ -6131,7 +6131,7 @@ export default function ChartIndicatorsControl({
               <button
                 type="button"
                 onClick={commitSettings}
-                className="flex h-9 items-center justify-center gap-1.5 rounded-lg bg-primary px-4 text-[9px] font-semibold uppercase tracking-[0.08em] text-background transition-opacity hover:opacity-90"
+                className="flex h-9 items-center justify-center gap-1.5 rounded-lg bg-primary px-4 text-[9px] font-semibold uppercase tracking-[0.08em] text-on-primary transition-opacity hover:opacity-90"
               >
                 <Save className="h-3.5 w-3.5" />
                 Save

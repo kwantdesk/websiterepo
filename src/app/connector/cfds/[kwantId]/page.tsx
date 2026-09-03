@@ -1011,7 +1011,7 @@ export default function CfdConnectorDetailPage() {
               {session && needsViewerSignIn ? (
                 <Link
                   href={signInActionHref}
-                  className="rounded-2xl bg-primary px-5 py-3 text-[14px] font-semibold text-background"
+                  className="rounded-2xl bg-primary px-5 py-3 text-[14px] font-semibold text-on-primary"
                 >
                   {signInActionLabel}
                 </Link>
@@ -1019,7 +1019,7 @@ export default function CfdConnectorDetailPage() {
                 <button
                   onClick={() => void runSeatTest("signal")}
                   disabled={!session || !canManageSeat || testAction !== null || productionStoreMisconfigured}
-                  className="rounded-2xl bg-primary px-5 py-3 text-[14px] font-semibold text-background disabled:cursor-not-allowed disabled:opacity-60"
+                  className="rounded-2xl bg-primary px-5 py-3 text-[14px] font-semibold text-on-primary disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {testAction === "signal" ? "Sending Test Trade..." : "Send Test Trade"}
                 </button>
@@ -1220,7 +1220,7 @@ export default function CfdConnectorDetailPage() {
                 {session && needsViewerSignIn ? (
                   <Link
                     href={signInActionHref}
-                    className="rounded-2xl bg-primary px-5 py-3 text-[14px] font-semibold text-background"
+                    className="rounded-2xl bg-primary px-5 py-3 text-[14px] font-semibold text-on-primary"
                   >
                     {signInActionLabel}
                   </Link>
@@ -1228,7 +1228,7 @@ export default function CfdConnectorDetailPage() {
                   <button
                     onClick={() => void runSeatTest("signal")}
                     disabled={!session || !canManageSeat || testAction !== null || productionStoreMisconfigured}
-                    className="rounded-2xl bg-primary px-5 py-3 text-[14px] font-semibold text-background disabled:cursor-not-allowed disabled:opacity-60"
+                    className="rounded-2xl bg-primary px-5 py-3 text-[14px] font-semibold text-on-primary disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {testAction === "signal" ? "Sending Test Trade..." : "Send Test Trade"}
                   </button>
@@ -1367,7 +1367,7 @@ export default function CfdConnectorDetailPage() {
                           href="/downloads/mt5/KwantifyConnectorMT5-DragDrop.zip"
                           target="_blank"
                           rel="noreferrer"
-                          className="inline-flex items-center gap-2 rounded-2xl bg-primary px-4 py-3 text-[13px] font-semibold text-background"
+                          className="inline-flex items-center gap-2 rounded-2xl bg-primary px-4 py-3 text-[13px] font-semibold text-on-primary"
                         >
                           Download Drag-And-Drop Pack
                           <ExternalLink className="h-4 w-4" />
@@ -1671,7 +1671,7 @@ export default function CfdConnectorDetailPage() {
                           <button
                             onClick={() => void recordValidationOutcome(item.title, "passed")}
                             disabled={!canManageSeat || validationAction !== null}
-                            className="rounded-2xl bg-primary px-3 py-2 text-[12px] font-semibold text-background disabled:cursor-not-allowed disabled:opacity-60"
+                            className="rounded-2xl bg-primary px-3 py-2 text-[12px] font-semibold text-on-primary disabled:cursor-not-allowed disabled:opacity-60"
                           >
                             {validationAction === `passed:${item.title}` ? "Logging..." : "Mark Passed"}
                           </button>
@@ -1698,7 +1698,7 @@ export default function CfdConnectorDetailPage() {
                     href="/downloads/mt5/KwantifyConnectorValidationRunbook.md"
                     target="_blank"
                     rel="noreferrer"
-                    className="inline-flex items-center gap-2 rounded-2xl bg-primary px-4 py-3 text-[13px] font-semibold text-background"
+                    className="inline-flex items-center gap-2 rounded-2xl bg-primary px-4 py-3 text-[13px] font-semibold text-on-primary"
                   >
                     Open Validation Runbook
                     <ExternalLink className="h-4 w-4" />

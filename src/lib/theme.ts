@@ -1,4 +1,5 @@
 import { writeProtectedItem } from "./browserStorageQuota.ts";
+import { readableTextOn } from "./readableContrast.ts";
 
 export const defaultTheme = {
   background: "#000000",
@@ -61,7 +62,12 @@ export function readStoredTheme() {
 
 export function themeBootstrapScript() {
   const fallback = JSON.stringify(defaultTheme).replace(/</g, "\\u003c");
-  return `(()=>{const r=document.documentElement;r.dataset.${THEME_UPDATING_ATTRIBUTE}="true";try{const d=${fallback};const v=JSON.parse(localStorage.getItem(${JSON.stringify(THEME_STORAGE_KEY)})||"null");const t=v&&typeof v==="object"&&!Array.isArray(v)?{...d,...v}:d;for(const [k,x] of Object.entries(t)){if(typeof x!=="string"||!x)continue;r.style.setProperty("--"+k.replace(/([A-Z])/g,"-$1").toLowerCase(),x)}r.style.backgroundColor=t.background;r.style.color=t.foreground;const m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute("content",t.background);r.dataset.themeReady="true"}catch{r.dataset.themeReady="true"}requestAnimationFrame(()=>requestAnimationFrame(()=>delete r.dataset.${THEME_UPDATING_ATTRIBUTE}))})()`;
+  return `(()=>{const r=document.documentElement;r.dataset.${THEME_UPDATING_ATTRIBUTE}="true";try{const d=${fallback};const v=JSON.parse(localStorage.getItem(${JSON.stringify(THEME_STORAGE_KEY)})||"null");const t=v&&typeof v==="object"&&!Array.isArray(v)?{...d,...v}:d;for(const [k,x] of Object.entries(t)){if(typeof x!=="string"||!x)continue;r.style.setProperty("--"+k.replace(/([A-Z])/g,"-$1").toLowerCase(),x)}const q=x=>{const h=x.match(/^#([\\da-f]{6})$/i);if(!h)return"#fff";const n=parseInt(h[1],16),c=[n>>16,n>>8&255,n&255].map(y=>{y/=255;return y<=.04045?y/12.92:((y+.055)/1.055)**2.4}),l=.2126*c[0]+.7152*c[1]+.0722*c[2];return(l+.05)/.05>=1.05/(l+.05)?"#000":"#fff"};r.style.setProperty("--on-primary",q(t.primary));r.style.setProperty("--on-danger",q(t.danger));r.style.backgroundColor=t.background;r.style.color=t.foreground;const m=document.querySelector('meta[name="theme-color"]');if(m)m.setAttribute("content",t.background);r.dataset.themeReady="true"}catch{r.dataset.themeReady="true"}requestAnimationFrame(()=>requestAnimationFrame(()=>delete r.dataset.${THEME_UPDATING_ATTRIBUTE}))})()`;
+}
+
+function applyContrastTokens(root: HTMLElement, theme: ThemeColors) {
+  root.style.setProperty("--on-primary", readableTextOn(theme.primary));
+  root.style.setProperty("--on-danger", readableTextOn(theme.danger));
 }
 
 function finishThemeUpdate(root: HTMLElement) {
@@ -80,6 +86,7 @@ export function applyTheme(theme?: Partial<ThemeColors>) {
   Object.entries(saved).forEach(([key, value]) => {
     root.style.setProperty(cssVarName(key), value as string);
   });
+  applyContrastTokens(root, saved);
   // Keep the browser canvas itself on the active skin while React replaces a
   // route or a recovery reload briefly removes the page body.
   root.style.backgroundColor = saved.background;

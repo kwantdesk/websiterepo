@@ -338,7 +338,7 @@ export default function SupportAssistantWidget() {
                 <button
                   type="submit"
                   disabled={loading || !input.trim()}
-                  className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-background transition disabled:opacity-40"
+                  className="flex h-9 w-9 items-center justify-center rounded-full bg-primary text-on-primary transition disabled:opacity-40"
                 >
                   <ArrowUp className="h-4 w-4" />
                 </button>

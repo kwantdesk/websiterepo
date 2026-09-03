@@ -2591,7 +2591,7 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
               <button
                 type="submit"
                 disabled={sending || (!draft.trim() && !attachments.length)}
-                className="ml-auto flex h-8 w-8 items-center justify-center rounded-full bg-primary text-background transition hover:brightness-110 disabled:opacity-30"
+                className="ml-auto flex h-8 w-8 items-center justify-center rounded-full bg-primary text-on-primary transition hover:brightness-110 disabled:opacity-30"
                 title="Send to ZYON"
                 aria-label="Send to ZYON"
               >
@@ -3182,7 +3182,7 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
                         <button
                           type="submit"
                           disabled={sending || (!draft.trim() && !attachments.length)}
-                          className="ml-auto flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[9px] font-semibold text-background transition hover:brightness-110 disabled:cursor-default disabled:opacity-30"
+                          className="ml-auto flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[9px] font-semibold text-on-primary transition hover:brightness-110 disabled:cursor-default disabled:opacity-30"
                         >
                           {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
                           Start
@@ -3349,7 +3349,7 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
                     <button
                       type="submit"
                       disabled={sending || (!draft.trim() && !attachments.length)}
-                      className="flex h-8 items-center gap-2 rounded-xl bg-primary px-3.5 text-[9px] font-semibold text-background transition hover:brightness-110 disabled:cursor-default disabled:opacity-30"
+                      className="flex h-8 items-center gap-2 rounded-xl bg-primary px-3.5 text-[9px] font-semibold text-on-primary transition hover:brightness-110 disabled:cursor-default disabled:opacity-30"
                     >
                       {sending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
                       Send
@@ -3551,7 +3551,7 @@ ${sections || "<p>No conversation summaries are stored in this folder yet.</p>"}
               <button
                 type="submit"
                 disabled={!folderName.trim() || folderActionBusy}
-                className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[9px] font-semibold text-background disabled:opacity-40"
+                className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[9px] font-semibold text-on-primary disabled:opacity-40"
               >
                 {folderActionBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FolderPlus className="h-3.5 w-3.5" />}
                 Create folder

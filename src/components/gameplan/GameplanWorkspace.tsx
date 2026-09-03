@@ -2249,7 +2249,7 @@ function GameplanLiveWorkspace({ initialInstrument = "NQ" }: { initialInstrument
           <ShieldAlert className="mx-auto h-6 w-6 text-danger" />
           <h2 className="mt-3 text-[15px] font-semibold">Gameplan feed unavailable</h2>
           <p className="mt-2 text-[11px] leading-5 text-muted">{error}</p>
-          <button type="button" onClick={() => void loadPlan()} className="mt-4 rounded-xl bg-primary px-4 py-2 text-[11px] font-semibold text-background">Try again</button>
+          <button type="button" onClick={() => void loadPlan()} className="mt-4 rounded-xl bg-primary px-4 py-2 text-[11px] font-semibold text-on-primary">Try again</button>
         </Panel>
       </div>
     );
@@ -2298,7 +2298,7 @@ function GameplanLiveWorkspace({ initialInstrument = "NQ" }: { initialInstrument
         </div>
         <div className="flex rounded-xl border border-border bg-surface p-1">
           {(["NQ", "ES"] as const).map((item) => (
-            <button key={item} type="button" onClick={() => setRoot(item)} className={`rounded-lg px-3 py-1.5 font-mono text-[10px] font-semibold ${root === item ? "bg-primary text-background" : "text-muted hover:text-foreground"}`}>{item}</button>
+            <button key={item} type="button" onClick={() => setRoot(item)} className={`rounded-lg px-3 py-1.5 font-mono text-[10px] font-semibold ${root === item ? "bg-primary text-on-primary" : "text-muted hover:text-foreground"}`}>{item}</button>
           ))}
         </div>
         <div className="flex h-9 items-center gap-2 rounded-xl border border-primary/20 bg-primary/[0.06] px-3">

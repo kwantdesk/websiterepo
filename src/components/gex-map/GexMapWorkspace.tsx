@@ -597,7 +597,7 @@ export function GexMapDropdown<T extends string>({
                   >
                     <span className={`flex h-7 min-w-12 shrink-0 items-center justify-center rounded-lg px-2 font-mono text-[10px] font-semibold ${
                       active
-                        ? "bg-primary text-background shadow-[0_0_14px_color-mix(in_srgb,var(--color-primary)_22%,transparent)]"
+                        ? "bg-primary text-on-primary shadow-[0_0_14px_color-mix(in_srgb,var(--color-primary)_22%,transparent)]"
                         : "border border-border bg-card text-foreground"
                     }`}>
                       {option.label}
@@ -2546,7 +2546,7 @@ function GexMapWorkspace({
               <div className="flex items-center gap-1 rounded-lg border border-border bg-surface p-1">
                 <button type="button" onClick={() => setCursor(0)} className="flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-panel hover:text-foreground" title="Session open"><SkipBack className="h-3.5 w-3.5" /></button>
                 <button type="button" onClick={() => setCursor((value) => Math.max(0, value - 1))} className="flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-panel hover:text-foreground" title="Previous frame"><ChevronLeft className="h-3.5 w-3.5" /></button>
-                <button type="button" onClick={() => setPlaying((value) => !value)} disabled={timeline.length < 2} className="flex h-7 w-8 items-center justify-center rounded-md bg-primary text-background disabled:opacity-40" title={playing ? "Pause" : "Play"}>
+                <button type="button" onClick={() => setPlaying((value) => !value)} disabled={timeline.length < 2} className="flex h-7 w-8 items-center justify-center rounded-md bg-primary text-on-primary disabled:opacity-40" title={playing ? "Pause" : "Play"}>
                   {playing ? <Pause className="h-3.5 w-3.5 fill-current" /> : <Play className="h-3.5 w-3.5 fill-current" />}
                 </button>
                 <button type="button" onClick={() => setCursor((value) => Math.min(timeline.length - 1, value + 1))} className="flex h-7 w-7 items-center justify-center rounded-md text-muted hover:bg-panel hover:text-foreground" title="Next frame"><ChevronRight className="h-3.5 w-3.5" /></button>

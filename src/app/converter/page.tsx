@@ -169,7 +169,7 @@ export default function ConverterPage() {
 
           <div onMouseDown={startDrag} className="relative z-10 w-2 shrink-0 cursor-col-resize bg-panel hover:bg-surface">
             <div className="absolute left-1/2 top-1/2 flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-2">
-              <button onClick={(event) => { event.stopPropagation(); convert(); }} disabled={loading || !inputCode.trim()} className="flex h-12 w-12 items-center justify-center rounded-full bg-primary text-background shadow-2xl shadow-primary/20 transition-all hover:scale-105 disabled:cursor-not-allowed disabled:opacity-40">
+              <button onClick={(event) => { event.stopPropagation(); convert(); }} disabled={loading || !inputCode.trim()} className="flex h-12 w-12 items-center justify-center rounded-full bg-primary text-on-primary shadow-2xl shadow-primary/20 transition-all hover:scale-105 disabled:cursor-not-allowed disabled:opacity-40">
                 <ArrowRight className="h-5 w-5" />
               </button>
               <span className="w-24 text-center text-[11px] text-muted">Powered by Kwantify AI</span>

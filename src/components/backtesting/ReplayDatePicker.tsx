@@ -207,7 +207,7 @@ export default function ReplayDatePicker({
                       type="button"
                       disabled={item.key < min || item.key > max}
                       onClick={() => choose(item.key)}
-                      className={`relative flex h-8 items-center justify-center rounded-lg font-mono text-[9px] transition-all disabled:cursor-not-allowed disabled:opacity-20 ${item.key === value ? "bg-primary font-bold text-background shadow-[0_0_18px_color-mix(in_srgb,var(--color-primary)_28%,transparent)]" : item.key === todayKey ? "border border-primary/35 text-primary hover:bg-primary/10" : "text-muted hover:bg-surface hover:text-foreground"}`}
+                      className={`relative flex h-8 items-center justify-center rounded-lg font-mono text-[9px] transition-all disabled:cursor-not-allowed disabled:opacity-20 ${item.key === value ? "bg-primary font-bold text-on-primary shadow-[0_0_18px_color-mix(in_srgb,var(--color-primary)_28%,transparent)]" : item.key === todayKey ? "border border-primary/35 text-primary hover:bg-primary/10" : "text-muted hover:bg-surface hover:text-foreground"}`}
                     >
                       {item.day}
                     </button>

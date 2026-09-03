@@ -840,7 +840,7 @@ export default function ConnectorCfdsPage() {
                       </Link>
                       <Link
                         href={detailHref}
-                        className="rounded-2xl bg-primary px-5 py-3 text-[13px] font-semibold text-background transition-opacity hover:opacity-90"
+                        className="rounded-2xl bg-primary px-5 py-3 text-[13px] font-semibold text-on-primary transition-opacity hover:opacity-90"
                       >
                         Open Full Seat
                       </Link>

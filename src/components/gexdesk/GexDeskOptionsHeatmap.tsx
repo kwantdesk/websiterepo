@@ -597,7 +597,7 @@ export default function GexDeskOptionsHeatmap({
                     setPlaying(false);
                     setSelectedPrice(null);
                   }}
-                  className={`rounded-lg px-2.5 py-1.5 text-[7px] font-semibold transition-colors ${view === value ? "bg-primary text-background" : "text-muted hover:text-foreground"}`}
+                  className={`rounded-lg px-2.5 py-1.5 text-[7px] font-semibold transition-colors ${view === value ? "bg-primary text-on-primary" : "text-muted hover:text-foreground"}`}
                 >
                   {value === "LIVE" ? "Live" : "Replay"}
                 </button>
@@ -606,7 +606,7 @@ export default function GexDeskOptionsHeatmap({
             {view === "LIVE" ? <>
               <div className="flex rounded-xl border border-border bg-background p-1">
                 {HEAT_WINDOWS.map((minutes) => (
-                  <button key={minutes} type="button" onClick={() => setWindowMinutes(minutes)} className={`rounded-lg px-2.5 py-1.5 text-[7px] font-semibold transition-colors ${windowMinutes === minutes ? "bg-primary text-background" : "text-muted hover:text-foreground"}`}>
+                  <button key={minutes} type="button" onClick={() => setWindowMinutes(minutes)} className={`rounded-lg px-2.5 py-1.5 text-[7px] font-semibold transition-colors ${windowMinutes === minutes ? "bg-primary text-on-primary" : "text-muted hover:text-foreground"}`}>
                     {minutes < 60 ? `${minutes}m` : `${minutes / 60}h`}
                   </button>
                 ))}
@@ -772,7 +772,7 @@ export default function GexDeskOptionsHeatmap({
                       {formatHeatValue(callValue)}
                       {view === "LIVE" ? <small className="ml-1 text-[5px] text-muted">{level.calls}</small> : null}
                     </span>
-                    <span className={`relative z-10 rounded-md px-1.5 py-1 text-center font-semibold ${nearLive ? "bg-primary text-background shadow-[0_0_12px_color-mix(in_srgb,var(--primary)_35%,transparent)]" : active ? "border border-foreground/20 text-foreground" : "text-foreground"}`}>{level.price.toFixed(0)}</span>
+                    <span className={`relative z-10 rounded-md px-1.5 py-1 text-center font-semibold ${nearLive ? "bg-primary text-on-primary shadow-[0_0_12px_color-mix(in_srgb,var(--primary)_35%,transparent)]" : active ? "border border-foreground/20 text-foreground" : "text-foreground"}`}>{level.price.toFixed(0)}</span>
                     <span className="relative z-10 text-right text-accent">
                       {formatHeatValue(putValue)}
                       {view === "LIVE" ? <small className="ml-1 text-[5px] text-muted">{level.puts}</small> : null}
@@ -857,7 +857,7 @@ export default function GexDeskOptionsHeatmap({
                   key={speed}
                   type="button"
                   onClick={() => setReplaySpeed(speed)}
-                  className={`rounded-lg px-2 py-1.5 text-[7px] font-semibold transition-colors ${replaySpeed === speed ? "bg-primary text-background" : "text-muted hover:text-foreground"}`}
+                  className={`rounded-lg px-2 py-1.5 text-[7px] font-semibold transition-colors ${replaySpeed === speed ? "bg-primary text-on-primary" : "text-muted hover:text-foreground"}`}
                 >
                   {speed}×
                 </button>

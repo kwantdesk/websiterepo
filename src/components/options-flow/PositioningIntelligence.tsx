@@ -511,7 +511,7 @@ function FlowView({ data }: { data: OptionsFlowPayload }) {
             {liveLabel}
           </span>
           <div className="ml-auto flex rounded-lg border border-border bg-panel p-0.5">
-            {(Object.keys(MODE_META) as GreekMode[]).map((item) => <button key={item} type="button" onClick={() => setMode(item)} className={`rounded-md px-2.5 py-1 text-[8px] font-semibold ${mode === item ? "bg-primary text-background" : "text-muted hover:text-foreground"}`}>{MODE_META[item].short}</button>)}
+            {(Object.keys(MODE_META) as GreekMode[]).map((item) => <button key={item} type="button" onClick={() => setMode(item)} className={`rounded-md px-2.5 py-1 text-[8px] font-semibold ${mode === item ? "bg-primary text-on-primary" : "text-muted hover:text-foreground"}`}>{MODE_META[item].short}</button>)}
           </div>
         </div>
         <ExposureFlowChart series={series} drift={data.drift} />

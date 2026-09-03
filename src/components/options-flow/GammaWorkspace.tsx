@@ -1108,7 +1108,7 @@ export default function GammaWorkspace() {
                         }`}
                       >
                         <span className={`flex h-7 w-11 shrink-0 items-center justify-center rounded-lg font-mono text-[11px] font-semibold ${
-                          selected ? "bg-primary text-background" : "border border-border bg-card text-foreground"
+                          selected ? "bg-primary text-on-primary" : "border border-border bg-card text-foreground"
                         }`}>
                           {instrument.symbol}
                         </span>
@@ -1148,7 +1148,7 @@ export default function GammaWorkspace() {
               <Database className="mx-auto h-6 w-6 text-danger" />
               <h2 className="mt-3 text-[15px] font-semibold">Live options data unavailable</h2>
               <p className="mt-2 text-[12px] leading-5 text-muted">{error || "Gamma data is unavailable right now."}</p>
-              <button type="button" onClick={() => void loadData(symbol, priceMode)} className="mt-4 rounded-lg bg-primary px-4 py-2 text-[12px] font-semibold text-background">Try again</button>
+              <button type="button" onClick={() => void loadData(symbol, priceMode)} className="mt-4 rounded-lg bg-primary px-4 py-2 text-[12px] font-semibold text-on-primary">Try again</button>
             </Panel>
           </div>
         ) : (
@@ -1197,7 +1197,7 @@ export default function GammaWorkspace() {
                 />
                 <div className="flex gap-1 border-b border-border px-4 py-2">
                   {(Object.keys(GREEK_LABELS) as GreekMode[]).map((mode) => (
-                    <button key={mode} type="button" onClick={() => { setActiveGreek(mode); if (mode !== "GAMMA") setGexScope("FULL_CHAIN"); }} className={`rounded-lg px-3 py-1.5 text-[10px] font-semibold transition-colors ${activeGreek === mode ? "bg-primary text-background" : "text-muted hover:bg-surface hover:text-foreground"}`}>{GREEK_LABELS[mode].short}</button>
+                    <button key={mode} type="button" onClick={() => { setActiveGreek(mode); if (mode !== "GAMMA") setGexScope("FULL_CHAIN"); }} className={`rounded-lg px-3 py-1.5 text-[10px] font-semibold transition-colors ${activeGreek === mode ? "bg-primary text-on-primary" : "text-muted hover:bg-surface hover:text-foreground"}`}>{GREEK_LABELS[mode].short}</button>
                   ))}
                   {activeGreek === "GAMMA" ? <div className="ml-auto flex items-center gap-1 rounded-lg border border-border bg-surface p-0.5"><button type="button" onClick={() => setGexScope("FULL_CHAIN")} className={`rounded-md px-2 py-1 text-[9px] font-semibold ${gexScope === "FULL_CHAIN" ? "bg-panel text-foreground" : "text-muted"}`}>Full chain</button><button type="button" disabled={!data.levels.zeroDteAvailable} onClick={() => setGexScope("ZERO_DTE")} className={`rounded-md px-2 py-1 text-[9px] font-semibold disabled:opacity-40 ${gexScope === "ZERO_DTE" ? "bg-panel text-foreground" : "text-muted"}`}>0DTE</button></div> : null}
                 </div>

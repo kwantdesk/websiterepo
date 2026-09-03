@@ -524,7 +524,7 @@ export default function SocialProfileView({
 
             <div className="flex flex-wrap gap-2 pb-1 sm:pt-5">
               {isOwnProfile ? (
-                <button type="button" onClick={onEdit} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[9px] font-semibold text-background"><Pencil className="h-3.5 w-3.5" />Edit profile</button>
+                <button type="button" onClick={onEdit} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[9px] font-semibold text-on-primary"><Pencil className="h-3.5 w-3.5" />Edit profile</button>
               ) : (
                 <>
                   <button
@@ -533,7 +533,7 @@ export default function SocialProfileView({
                     className={`flex h-9 items-center gap-2 rounded-xl px-4 text-[9px] font-semibold transition-[transform,background-color,color,border-color] active:scale-[0.96] ${
                       visibleFollowSummary.viewerFollows
                         ? "border border-primary/25 bg-primary/10 text-primary"
-                        : "bg-primary text-background"
+                        : "bg-primary text-on-primary"
                     }`}
                   >
                     {visibleFollowSummary.viewerFollows ? (

@@ -127,7 +127,7 @@ export default function TradeSyncerWorkspace({ overview }: { overview: TradeSync
           </Link>
           <Link
             href="/trade-syncer/copier-engine"
-            className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-[13px] font-semibold text-background"
+            className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-[13px] font-semibold text-on-primary"
           >
             <Plus className="h-4 w-4" />
             Add Master Copier

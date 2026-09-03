@@ -137,7 +137,7 @@ function GroupAvatar({ group, size = "md" }: { group: FriendGroupSummary; size?:
   return (
     <div className={`relative flex shrink-0 items-center justify-center rounded-full border border-primary/25 bg-primary/10 font-semibold text-primary ${dimensions}`}>
       {initials(group.name)}
-      <span className="absolute -bottom-0.5 -right-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full border-2 border-panel bg-primary px-0.5 text-[6px] font-bold text-background">
+      <span className="absolute -bottom-0.5 -right-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full border-2 border-panel bg-primary px-0.5 text-[6px] font-bold text-on-primary">
         {Math.min(99, group.members.length)}
       </span>
     </div>
@@ -711,7 +711,7 @@ export default function FriendsPanel({ onClose, onUnreadCountChange, onMessageUn
             && isSingleEmojiMessage(message.body);
           return (
             <div key={message.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
-              <div className={`max-w-[84%] ${sharedCard || standaloneEmoji ? "bg-transparent p-0 text-foreground" : `rounded-2xl px-3 py-2 ${mine ? "rounded-br-md bg-primary text-background" : "rounded-bl-md border border-border bg-surface text-foreground"}`} ${deliveryStatus === "failed" ? "ring-1 ring-danger" : ""}`}>
+              <div className={`max-w-[84%] ${sharedCard || standaloneEmoji ? "bg-transparent p-0 text-foreground" : `rounded-2xl px-3 py-2 ${mine ? "rounded-br-md bg-primary text-on-primary" : "rounded-bl-md border border-border bg-surface text-foreground"}`} ${deliveryStatus === "failed" ? "ring-1 ring-danger" : ""}`}>
                 {group && !mine ? (
                   <div className="mb-1 text-[8px] font-semibold text-primary">{sender?.displayName ?? "Group member"}</div>
                 ) : null}
@@ -721,7 +721,7 @@ export default function FriendsPanel({ onClose, onUnreadCountChange, onMessageUn
                   ? <div className="select-text px-1 py-1 text-[56px] leading-none" aria-label={message.body.trim()}>{message.body.trim()}</div>
                   : <LinkedMessageBody body={message.body} className={`${sharedOneLiner ? "rounded-xl border border-primary/25 bg-panel px-3 py-2.5 shadow-[inset_0_0_16px_color-mix(in_srgb,var(--primary)_3%,transparent)]" : ""} text-[12px] leading-5`} />
                   : null}
-                <div className={`mt-1 flex items-center justify-end gap-1 text-right text-[8px] ${sharedCard || standaloneEmoji ? "px-1 text-muted" : mine ? "text-background/65" : "text-muted"}`}>
+                <div className={`mt-1 flex items-center justify-end gap-1 text-right text-[8px] ${sharedCard || standaloneEmoji ? "px-1 text-muted" : mine ? "text-on-primary/65" : "text-muted"}`}>
                   <span>{messageTime(message.sentAt)}</span>
                   {deliveryStatus === "sending" ? (
                     <span className="inline-flex items-center gap-0.5"><Clock3 className="h-2.5 w-2.5" /> Sending…</span>
@@ -735,7 +735,7 @@ export default function FriendsPanel({ onClose, onUnreadCountChange, onMessageUn
                       onClick={() => {
                         if (optimisticMessage) void deliverOptimisticMessage(optimisticMessage);
                       }}
-                      className={`font-semibold underline underline-offset-2 ${sharedCard ? "text-danger" : "text-background"}`}
+                      className={`font-semibold underline underline-offset-2 ${sharedCard ? "text-danger" : "text-on-primary"}`}
                     >
                       Not sent · Retry
                     </button>
@@ -852,7 +852,7 @@ export default function FriendsPanel({ onClose, onUnreadCountChange, onMessageUn
           type="button"
           onClick={sendMessage}
           disabled={chatLoading || (!draft.trim() && !attachments.length)}
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary text-background disabled:cursor-not-allowed disabled:opacity-30"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary text-on-primary disabled:cursor-not-allowed disabled:opacity-30"
         >
           <Send className="h-3.5 w-3.5" />
         </button>
@@ -956,7 +956,7 @@ export default function FriendsPanel({ onClose, onUnreadCountChange, onMessageUn
                   type="button"
                   onClick={() => void saveGroupSettings()}
                   disabled={!groupSettingsName.trim() || busyId === activeGroup.id}
-                  className="mt-2 w-full rounded-xl bg-primary px-3 py-2.5 text-[10px] font-semibold text-background disabled:opacity-40"
+                  className="mt-2 w-full rounded-xl bg-primary px-3 py-2.5 text-[10px] font-semibold text-on-primary disabled:opacity-40"
                 >
                   Save group settings
                 </button>
@@ -1252,7 +1252,7 @@ export default function FriendsPanel({ onClose, onUnreadCountChange, onMessageUn
                         <FriendName friend={friend} className="text-[10px] font-medium" />
                         <span className="block truncate text-[8px] text-muted">@{friend.handle}</span>
                       </span>
-                      <span className={`flex h-4 w-4 items-center justify-center rounded-full border ${selected ? "border-primary bg-primary text-background" : "border-border"}`}>
+                      <span className={`flex h-4 w-4 items-center justify-center rounded-full border ${selected ? "border-primary bg-primary text-on-primary" : "border-border"}`}>
                         {selected ? <Check className="h-2.5 w-2.5" /> : null}
                       </span>
                     </button>
@@ -1265,7 +1265,7 @@ export default function FriendsPanel({ onClose, onUnreadCountChange, onMessageUn
                 type="button"
                 onClick={() => void createGroup()}
                 disabled={!groupName.trim() || !groupMemberIds.length || busyId === "create-group"}
-                className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-3 py-2.5 text-[10px] font-semibold text-background disabled:opacity-35"
+                className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-3 py-2.5 text-[10px] font-semibold text-on-primary disabled:opacity-35"
               >
                 {busyId === "create-group" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MessageSquarePlus className="h-3.5 w-3.5" />}
                 Create group chat
@@ -1338,7 +1338,7 @@ export default function FriendsPanel({ onClose, onUnreadCountChange, onMessageUn
                         <div className="min-w-0 flex-1"><FriendName friend={person} className="text-[11px] font-medium" /><div className="truncate text-[9px] text-muted">@{person.handle}</div></div>
                       </div>
                       <div className="mt-2 grid grid-cols-2 gap-1.5">
-                        <button disabled={busyId === person.userId} onClick={() => void runAction("accept", { targetUserId: person.userId })} className="rounded-lg bg-primary px-2 py-1.5 text-[9px] font-semibold text-background disabled:opacity-40">Accept</button>
+                        <button disabled={busyId === person.userId} onClick={() => void runAction("accept", { targetUserId: person.userId })} className="rounded-lg bg-primary px-2 py-1.5 text-[9px] font-semibold text-on-primary disabled:opacity-40">Accept</button>
                         <button disabled={busyId === person.userId} onClick={() => void runAction("decline", { targetUserId: person.userId })} className="rounded-lg border border-border bg-surface px-2 py-1.5 text-[9px] text-muted disabled:opacity-40">Decline</button>
                       </div>
                     </div>
@@ -1372,7 +1372,7 @@ export default function FriendsPanel({ onClose, onUnreadCountChange, onMessageUn
                         </div>
                       </div>
                       {group.unreadCount > 0 && !group.muted ? (
-                        <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[8px] font-semibold text-background">{Math.min(99, group.unreadCount)}</span>
+                        <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[8px] font-semibold text-on-primary">{Math.min(99, group.unreadCount)}</span>
                       ) : <MessageCircle className="h-3.5 w-3.5 text-muted" />}
                     </button>
                   ))}
@@ -1391,7 +1391,7 @@ export default function FriendsPanel({ onClose, onUnreadCountChange, onMessageUn
                         <div className="flex items-center gap-1"><FriendName friend={friend} className="text-[11px] font-medium" />{friend.desks.length > 0 && <span className="rounded bg-primary/10 px-1 py-0.5 text-[7px] text-primary">{friend.desks.length} desk{friend.desks.length === 1 ? "" : "s"}</span>}</div>
                         <div className="truncate text-[9px] text-muted">{friend.presenceMessage || presenceOption(friend.presenceStatus).label}</div>
                       </div>
-                      {friend.unreadCount > 0 ? <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[8px] font-semibold text-background">{Math.min(99, friend.unreadCount)}</span> : <MessageCircle className="h-3.5 w-3.5 text-muted" />}
+                      {friend.unreadCount > 0 ? <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[8px] font-semibold text-on-primary">{Math.min(99, friend.unreadCount)}</span> : <MessageCircle className="h-3.5 w-3.5 text-muted" />}
                     </button>
                   ))}
                 </div>
@@ -1409,7 +1409,7 @@ export default function FriendsPanel({ onClose, onUnreadCountChange, onMessageUn
                         <FriendName friend={friend} className="text-[11px] font-medium" />
                         <div className="flex items-center gap-1 truncate text-[9px] text-muted"><Clock3 className="h-2.5 w-2.5" />{friend.lastSeenAt ? `Last seen ${timeLabel(friend.lastSeenAt)}` : "Offline"}{friend.desks.length > 0 ? ` · ${friend.desks.length} desks` : ""}</div>
                       </div>
-                      {friend.unreadCount > 0 && <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[8px] font-semibold text-background">{Math.min(99, friend.unreadCount)}</span>}
+                      {friend.unreadCount > 0 && <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[8px] font-semibold text-on-primary">{Math.min(99, friend.unreadCount)}</span>}
                     </button>
                   ))}
                 </div>
@@ -1475,7 +1475,7 @@ export default function FriendsPanel({ onClose, onUnreadCountChange, onMessageUn
                 <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-border bg-surface"><UsersRound className="h-5 w-5 text-primary" /></div>
                 <div className="mt-3 text-[12px] font-medium">Your trading circle starts here</div>
                 <div className="mt-1 text-[10px] leading-5 text-muted">Add a trader, see their presence and shared Desks, then message privately from this rail.</div>
-                <button onClick={() => setShowAdd(true)} className="mt-3 rounded-xl bg-primary px-3 py-2 text-[10px] font-semibold text-background">Find friends</button>
+                <button onClick={() => setShowAdd(true)} className="mt-3 rounded-xl bg-primary px-3 py-2 text-[10px] font-semibold text-on-primary">Find friends</button>
               </div>
             )}
           </div>

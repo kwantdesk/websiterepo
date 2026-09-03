@@ -36,6 +36,9 @@
   --border: #24282D;
   --card: #07090B;
   --danger: #FF1F78;
+  /* Text placed on solid action fills must follow the fill, not the page. */
+  --on-primary: #000000;
+  --on-danger: #000000;
   --panel: #050607;
   --surface: #0B0D10;
   /*
@@ -64,6 +67,8 @@
   --color-border: var(--border);
   --color-card: var(--card);
   --color-danger: var(--danger);
+  --color-on-primary: var(--on-primary);
+  --color-on-danger: var(--on-danger);
   --color-panel: var(--panel);
   --color-surface: var(--surface);
   --color-chart-background: var(--chart-background);

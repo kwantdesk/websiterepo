@@ -110,7 +110,7 @@ export default function AlertsPage() {
               <p className="text-[13px] text-muted">Price alerts, trade notifications & AI briefings</p>
             </div>
           </div>
-          <button onClick={() => setShowCreate(true)} className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-[13px] font-semibold text-background"><Plus className="h-4 w-4" />Create Alert</button>
+          <button onClick={() => setShowCreate(true)} className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-[13px] font-semibold text-on-primary"><Plus className="h-4 w-4" />Create Alert</button>
           <button className="flex items-center gap-2 rounded-xl border border-border bg-surface px-4 py-2 text-[13px] text-muted hover:text-foreground"><Send className="h-4 w-4 text-primary" />Connect Telegram</button>
         </header>
 
@@ -187,7 +187,7 @@ export default function AlertsPage() {
                     <p>1. Open Telegram and search for @KwantifyBot</p>
                     <p>2. Send /start to the bot</p>
                     <p>3. Copy your Chat ID and paste it below</p>
-                    <div className="mt-4 flex gap-2"><input placeholder="Telegram Chat ID" className="flex-1 rounded-xl border border-border bg-surface px-3 py-2 font-mono text-[13px] outline-none" /><button onClick={() => setTelegram(true)} className="rounded-xl bg-primary px-4 py-2 text-[13px] font-semibold text-background">Test Connection</button></div>
+                    <div className="mt-4 flex gap-2"><input placeholder="Telegram Chat ID" className="flex-1 rounded-xl border border-border bg-surface px-3 py-2 font-mono text-[13px] outline-none" /><button onClick={() => setTelegram(true)} className="rounded-xl bg-primary px-4 py-2 text-[13px] font-semibold text-on-primary">Test Connection</button></div>
                   </div>
                   <div className="rounded-2xl border border-border bg-background/50 p-4 text-[13px] text-muted"><div className="mb-2 flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-primary" /><span className="font-semibold text-foreground">Kwantify</span></div>Test message from Kwantify. Telegram alerts are ready.</div>
                 </div>
@@ -228,7 +228,7 @@ export default function AlertsPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => setShowCreate(false)}>
           <div className="max-h-[88vh] w-[520px] overflow-y-auto rounded-2xl border border-border bg-panel p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <div className="mb-5 flex items-center justify-between"><h2 className="text-lg font-semibold">Create Alert</h2><button onClick={() => setShowCreate(false)} className="text-muted hover:text-foreground"><X className="h-5 w-5" /></button></div>
-            <div className="mb-5 flex flex-wrap gap-2">{(["price", "indicator", "strategy", "natural"] as const).map((type) => <button key={type} onClick={() => setAlertType(type)} className={`rounded-xl px-3 py-1.5 text-[12px] capitalize ${alertType === type ? "bg-primary text-background" : "bg-surface text-muted hover:text-foreground"}`}>{type === "natural" ? "Natural Language" : type}</button>)}</div>
+            <div className="mb-5 flex flex-wrap gap-2">{(["price", "indicator", "strategy", "natural"] as const).map((type) => <button key={type} onClick={() => setAlertType(type)} className={`rounded-xl px-3 py-1.5 text-[12px] capitalize ${alertType === type ? "bg-primary text-on-primary" : "bg-surface text-muted hover:text-foreground"}`}>{type === "natural" ? "Natural Language" : type}</button>)}</div>
 
             {alertType === "price" && <div className="space-y-3"><KwantSelect className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-[13px] outline-none">{instruments.map((i) => <option key={i}>{i}</option>)}</KwantSelect><KwantSelect className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-[13px] outline-none">{["Crossing", "Crossing Up", "Crossing Down", "Greater Than", "Less Than", "Entering Channel", "Exiting Channel", "Moving Up %", "Moving Down %"].map((i) => <option key={i}>{i}</option>)}</KwantSelect><div className="grid grid-cols-2 gap-2"><input placeholder="Value / upper bound" className="rounded-lg border border-border bg-surface px-3 py-2 font-mono text-[13px] outline-none" /><input placeholder="Lower bound / bars" className="rounded-lg border border-border bg-surface px-3 py-2 font-mono text-[13px] outline-none" /></div></div>}
             {alertType === "indicator" && <div className="space-y-3"><KwantSelect className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-[13px] outline-none">{instruments.map((i) => <option key={i}>{i}</option>)}</KwantSelect><KwantSelect className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-[13px] outline-none">{["EMA 20", "EMA 50", "EMA 200", "RSI 14", "ATR 14", "MACD"].map((i) => <option key={i}>{i}</option>)}</KwantSelect><KwantSelect className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-[13px] outline-none">{["Above", "Below", "Crossing Up", "Crossing Down"].map((i) => <option key={i}>{i}</option>)}</KwantSelect><input placeholder="Value or another indicator" className="w-full rounded-lg border border-border bg-surface px-3 py-2 font-mono text-[13px] outline-none" /></div>}
@@ -241,7 +241,7 @@ export default function AlertsPage() {
               {webhook && <input placeholder="Webhook URL" className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-[13px] outline-none" />}
               <div className="grid grid-cols-2 gap-2"><KwantSelect className="rounded-lg border border-border bg-surface px-3 py-2 text-[13px] outline-none"><option>Once</option><option>Once Per Bar</option><option>Every Time</option></KwantSelect><KwantSelect className="rounded-lg border border-border bg-surface px-3 py-2 text-[13px] outline-none"><option>1 day</option><option>1 week</option><option>1 month</option><option>No expiry</option></KwantSelect></div>
               <textarea rows={3} defaultValue="Alert triggered — check your chart for details" className="w-full resize-none rounded-xl border border-border bg-surface px-3 py-2 text-[13px] outline-none" />
-              <button onClick={() => setShowCreate(false)} className="w-full rounded-xl bg-primary py-3 text-[13px] font-semibold text-background">Create Alert</button>
+              <button onClick={() => setShowCreate(false)} className="w-full rounded-xl bg-primary py-3 text-[13px] font-semibold text-on-primary">Create Alert</button>
             </div>
           </div>
         </div>

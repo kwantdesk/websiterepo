@@ -2421,10 +2421,10 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
               <span className={`h-1.5 w-1.5 rounded-full ${cloudState === "cloud" ? "bg-primary" : cloudState === "error" || saveStatus === "error" ? "bg-danger" : cloudState === "loading" || saveStatus === "loading" ? "animate-pulse bg-warning" : "bg-muted"}`} />
               {cloudState === "cloud" ? "Account saved" : cloudState === "loading" ? "Connecting" : cloudState === "error" || saveStatus === "error" ? "Save interrupted" : "Local until connected"}
             </span>
-            {selectedAccountIsManual ? <button type="button" onClick={openManualTrade} className="flex h-8 items-center gap-1.5 rounded-xl bg-primary px-3 text-[9px] font-semibold text-background hover:brightness-110"><Plus className="h-3.5 w-3.5" />Add trade</button> : null}
+            {selectedAccountIsManual ? <button type="button" onClick={openManualTrade} className="flex h-8 items-center gap-1.5 rounded-xl bg-primary px-3 text-[9px] font-semibold text-on-primary hover:brightness-110"><Plus className="h-3.5 w-3.5" />Add trade</button> : null}
             {accountFilter !== "all" && !isZyonJournalAccountName(accountFilter) ? <button type="button" onClick={() => openImportIntoJournal(accountFilter)} className="flex h-8 items-center gap-1.5 rounded-xl border border-primary/30 bg-primary/[0.06] px-3 text-[9px] font-semibold text-primary hover:bg-primary/[0.11]"><Upload className="h-3.5 w-3.5" />Import</button> : null}
-            <button type="button" onClick={() => openTradePost()} disabled={!postableTrades.length} className="flex h-8 items-center gap-1.5 rounded-xl bg-primary px-3 text-[9px] font-semibold text-background hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-35"><Share2 className="h-3.5 w-3.5" />Post trade</button>
-            <button type="button" onClick={() => setShowArchive(true)} className="relative flex h-8 items-center gap-1.5 rounded-xl border border-border bg-surface px-3 text-[9px] font-semibold text-muted hover:text-foreground"><FolderArchive className="h-3.5 w-3.5" />Archive{archivedAccounts.length ? <span className="ml-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 font-mono text-[7px] font-semibold text-background">{archivedAccounts.length}</span> : null}</button>
+            <button type="button" onClick={() => openTradePost()} disabled={!postableTrades.length} className="flex h-8 items-center gap-1.5 rounded-xl bg-primary px-3 text-[9px] font-semibold text-on-primary hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-35"><Share2 className="h-3.5 w-3.5" />Post trade</button>
+            <button type="button" onClick={() => setShowArchive(true)} className="relative flex h-8 items-center gap-1.5 rounded-xl border border-border bg-surface px-3 text-[9px] font-semibold text-muted hover:text-foreground"><FolderArchive className="h-3.5 w-3.5" />Archive{archivedAccounts.length ? <span className="ml-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 font-mono text-[7px] font-semibold text-on-primary">{archivedAccounts.length}</span> : null}</button>
             <button type="button" onClick={() => exportJournal("json")} disabled={!allTrades.length && !state.evidence.length} className="flex h-8 items-center gap-1.5 rounded-xl border border-border bg-surface px-3 text-[9px] font-semibold text-muted hover:text-foreground disabled:opacity-35"><Download className="h-3.5 w-3.5" />Backup</button>
             <button type="button" onClick={openAddAccountDialog} className="flex h-8 items-center gap-1.5 rounded-xl border border-border bg-surface px-3 text-[9px] font-semibold text-muted hover:text-foreground"><BookPlus className="h-3.5 w-3.5" />Add account</button>
           </div>
@@ -2518,10 +2518,10 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
               <h2 className="relative mt-5 text-[22px] font-semibold tracking-[-0.03em] text-foreground">{accountFilter === "ZYON Journal" ? zyonLoading ? "Loading your ZYON outcomes…" : "Your first reviewed Gameplan starts this Journal." : selectedAccountIsManual ? "Document your first trade." : accountFilter === "all" ? "Build your consolidated trading record." : `${accountFilter} is ready for its first import.`}</h2>
               <p className="relative mx-auto mt-2 max-w-xl text-[11px] leading-5 text-muted">{accountFilter === "ZYON Journal" ? "When a ZYON Gameplan completes its outcome review, it appears here automatically with its execution, P&L, reasoning score, timestamps, and review." : selectedAccountIsManual ? "Record the setup, entry, exit, risk, outcome, screenshots and an optional honest review. The trade will flow into every Journal view automatically." : "Import closed trades, executions, screenshots, or notes. Overall Journal combines every account while each account keeps its own statistics."}</p>
               {accountFilter === "ZYON Journal"
-                ? <button type="button" onClick={() => { window.location.href = "/zyon"; }} className="relative mt-6 inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-5 text-[10px] font-semibold text-background"><Bot className="h-4 w-4" />Open ZYON</button>
+                ? <button type="button" onClick={() => { window.location.href = "/zyon"; }} className="relative mt-6 inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-5 text-[10px] font-semibold text-on-primary"><Bot className="h-4 w-4" />Open ZYON</button>
                 : selectedAccountIsManual
-                  ? <button type="button" onClick={openManualTrade} className="relative mt-6 inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-5 text-[10px] font-semibold text-background"><Plus className="h-4 w-4" />Add manual trade</button>
-                  : <button type="button" onClick={openAddAccountDialog} className="relative mt-6 inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-5 text-[10px] font-semibold text-background"><Plus className="h-4 w-4" />Add account</button>}
+                  ? <button type="button" onClick={openManualTrade} className="relative mt-6 inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-5 text-[10px] font-semibold text-on-primary"><Plus className="h-4 w-4" />Add manual trade</button>
+                  : <button type="button" onClick={openAddAccountDialog} className="relative mt-6 inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-5 text-[10px] font-semibold text-on-primary"><Plus className="h-4 w-4" />Add account</button>}
               <div className="relative mx-auto mt-7 grid max-w-3xl gap-2 sm:grid-cols-3">
                 {[
                   [FileSpreadsheet, "Trades", "TradingView XLSX, broker workbooks, CSV, TSV and JSON exports"],
@@ -2794,7 +2794,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
                   type="button"
                   onClick={() => void runJournalAnalysis()}
                   disabled={analysisEvidence.performance.trades < 3 || analysisStatus === "generating"}
-                  className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[9px] font-semibold text-background transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+                  className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[9px] font-semibold text-on-primary transition-all hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <RefreshCw className={`h-3.5 w-3.5 ${analysisStatus === "generating" ? "animate-spin" : ""}`} />
                   {analysisStatus === "generating" ? `Analyzing · ${analysisElapsedSeconds}s` : journalAnalysis ? "Refresh analysis" : "Run analysis"}
@@ -2850,7 +2850,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
                 <span className="relative mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-primary/25 bg-primary/10 text-primary"><BrainCircuit className="h-6 w-6" /></span>
                 <h3 className="relative mt-5 text-[18px] font-semibold tracking-[-0.025em] text-foreground">Turn the record into a measurable operating plan.</h3>
                 <p className="relative mx-auto mt-2 max-w-2xl text-[10px] leading-5 text-muted">The review will identify supported strengths, probable leaks, conditional edges and the three highest-value improvements. Every claim carries its sample and confidence.</p>
-                <button type="button" onClick={() => void runJournalAnalysis()} className="relative mt-6 inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-5 text-[10px] font-semibold text-background hover:brightness-110"><BrainCircuit className="h-4 w-4" />Run evidence-backed analysis</button>
+                <button type="button" onClick={() => void runJournalAnalysis()} className="relative mt-6 inline-flex h-10 items-center gap-2 rounded-xl bg-primary px-5 text-[10px] font-semibold text-on-primary hover:brightness-110"><BrainCircuit className="h-4 w-4" />Run evidence-backed analysis</button>
               </Card>
             ) : null}
 
@@ -2904,7 +2904,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
                   <div className="grid gap-2 p-3 xl:grid-cols-3">
                     {journalAnalysis.priorities.map((priority) => (
                       <div key={`${priority.rank}-${priority.action}`} className="rounded-2xl border border-border bg-background/35 p-4">
-                        <div className="flex items-center gap-2"><span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary text-[10px] font-bold text-background">{priority.rank}</span><h4 className="text-[10px] font-semibold leading-4 text-foreground">{priority.action}</h4></div>
+                        <div className="flex items-center gap-2"><span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary text-[10px] font-bold text-on-primary">{priority.rank}</span><h4 className="text-[10px] font-semibold leading-4 text-foreground">{priority.action}</h4></div>
                         <div className="mt-3 space-y-2 text-[8px] leading-4">
                           <div><span className="font-semibold uppercase tracking-[0.1em] text-muted">Measure</span><p className="mt-0.5 text-foreground/85">{priority.measurement}</p></div>
                           <div><span className="font-semibold uppercase tracking-[0.1em] text-muted">Target</span><p className="mt-0.5 font-mono text-primary">{priority.target}</p></div>
@@ -2969,7 +2969,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
             <Card className="flex flex-wrap items-center gap-3 p-4">
               <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary"><FolderArchive className="h-4 w-4" /></span>
               <div><h2 className="text-[11px] font-semibold text-foreground">Import lineage</h2><p className="mt-0.5 text-[8px] text-muted">Every source stays visible, including rejected rows, duplicates, and parsing warnings</p></div>
-              <button type="button" onClick={openImportDialog} className="ml-auto flex h-8 items-center gap-1.5 rounded-xl bg-primary px-3 text-[9px] font-semibold text-background"><Upload className="h-3.5 w-3.5" />New import</button>
+              <button type="button" onClick={openImportDialog} className="ml-auto flex h-8 items-center gap-1.5 rounded-xl bg-primary px-3 text-[9px] font-semibold text-on-primary"><Upload className="h-3.5 w-3.5" />New import</button>
             </Card>
             <div className="space-y-2">
               {filteredImports.map((batch) => (
@@ -3137,7 +3137,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
             </div>
             <div className="flex items-center justify-end gap-2 border-t border-border bg-background/20 px-5 py-4">
               <button type="button" onClick={() => setShowImport(false)} className="h-9 rounded-xl border border-border px-4 text-[9px] font-semibold text-muted hover:bg-surface hover:text-foreground">Close</button>
-              <button type="button" onClick={accountCreationMode === "manual" ? createNativeJournal : runImport} disabled={importing || importTargetsZyon || (accountCreationMode === "import" && !pendingFiles.length) || !importAccount.trim()} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[9px] font-semibold text-background disabled:opacity-40">{importing ? <span className="h-3 w-3 animate-spin rounded-full border border-background/30 border-t-background" /> : accountCreationMode === "manual" ? <BookPlus className="h-3.5 w-3.5" /> : <Upload className="h-3.5 w-3.5" />}{importing ? (importDialogPurpose === "append-trades" ? "Importing trades" : "Creating account") : accountCreationMode === "manual" ? "Create KwantDesk Journal" : importDialogPurpose === "append-trades" ? `Import ${pendingFiles.length || ""}` : `Create & import ${pendingFiles.length || ""}`}</button>
+              <button type="button" onClick={accountCreationMode === "manual" ? createNativeJournal : runImport} disabled={importing || importTargetsZyon || (accountCreationMode === "import" && !pendingFiles.length) || !importAccount.trim()} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[9px] font-semibold text-on-primary disabled:opacity-40">{importing ? <span className="h-3 w-3 animate-spin rounded-full border border-background/30 border-t-background" /> : accountCreationMode === "manual" ? <BookPlus className="h-3.5 w-3.5" /> : <Upload className="h-3.5 w-3.5" />}{importing ? (importDialogPurpose === "append-trades" ? "Importing trades" : "Creating account") : accountCreationMode === "manual" ? "Create KwantDesk Journal" : importDialogPurpose === "append-trades" ? `Import ${pendingFiles.length || ""}` : `Create & import ${pendingFiles.length || ""}`}</button>
             </div>
           </div>
         </div>
@@ -3189,7 +3189,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
               </section>
             </div>
             {postTradeError ? <div className="mx-5 mb-3 flex items-start gap-2 rounded-xl border border-danger/25 bg-danger/[0.07] px-3 py-2 text-[9px] text-danger"><CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />{postTradeError}</div> : null}
-            <div className="flex items-center gap-2 border-t border-border bg-background/20 px-5 py-4"><span className="mr-auto flex items-center gap-1.5 text-[8px] text-muted"><Eye className="h-3.5 w-3.5 text-primary" />Publishes to the Socials community feed</span><button type="button" disabled={postTradeSaving} onClick={() => setShowTradePost(false)} className="h-9 rounded-xl border border-border px-4 text-[9px] font-semibold text-muted hover:bg-surface hover:text-foreground disabled:opacity-40">Cancel</button><button type="button" disabled={!postTrade || postTradeSaving} onClick={() => void publishTradePost()} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-5 text-[9px] font-semibold text-background hover:brightness-110 disabled:opacity-40">{postTradeSaving ? <span className="h-3 w-3 animate-spin rounded-full border border-background/30 border-t-background" /> : <Share2 className="h-3.5 w-3.5" />}{postTradeSaving ? "Posting trade" : "Post trade"}</button></div>
+            <div className="flex items-center gap-2 border-t border-border bg-background/20 px-5 py-4"><span className="mr-auto flex items-center gap-1.5 text-[8px] text-muted"><Eye className="h-3.5 w-3.5 text-primary" />Publishes to the Socials community feed</span><button type="button" disabled={postTradeSaving} onClick={() => setShowTradePost(false)} className="h-9 rounded-xl border border-border px-4 text-[9px] font-semibold text-muted hover:bg-surface hover:text-foreground disabled:opacity-40">Cancel</button><button type="button" disabled={!postTrade || postTradeSaving} onClick={() => void publishTradePost()} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-5 text-[9px] font-semibold text-on-primary hover:brightness-110 disabled:opacity-40">{postTradeSaving ? <span className="h-3 w-3 animate-spin rounded-full border border-background/30 border-t-background" /> : <Share2 className="h-3.5 w-3.5" />}{postTradeSaving ? "Posting trade" : "Post trade"}</button></div>
           </div>
         </div>
       ) : null}
@@ -3299,7 +3299,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
             <div className="flex items-center gap-2 border-t border-border bg-background/20 px-5 py-4">
               <span className="mr-auto text-[8px] text-muted">Notes and evidence are optional.</span>
               <button type="button" disabled={manualTradeSaving} onClick={closeManualTrade} className="h-9 rounded-xl border border-border px-4 text-[9px] font-semibold text-muted hover:bg-surface hover:text-foreground disabled:opacity-40">Cancel</button>
-              <button type="button" disabled={manualTradeSaving} onClick={() => void submitManualTrade()} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[9px] font-semibold text-background disabled:opacity-50">{manualTradeSaving ? <span className="h-3 w-3 animate-spin rounded-full border border-background/30 border-t-background" /> : <Save className="h-3.5 w-3.5" />}{manualTradeSaving ? "Saving entry" : editingTrade ? "Save changes" : "Save trade"}</button>
+              <button type="button" disabled={manualTradeSaving} onClick={() => void submitManualTrade()} className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[9px] font-semibold text-on-primary disabled:opacity-50">{manualTradeSaving ? <span className="h-3 w-3 animate-spin rounded-full border border-background/30 border-t-background" /> : <Save className="h-3.5 w-3.5" />}{manualTradeSaving ? "Saving entry" : editingTrade ? "Save changes" : "Save trade"}</button>
             </div>
           </div>
         </div>
@@ -3372,7 +3372,7 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
                     return (
                       <button key={item.id} type="button" onClick={() => updateEvidence(item.id, { tradeId: attached ? null : selectedTrade.id })} className={`relative h-20 overflow-hidden rounded-xl border text-left ${attached ? "border-primary shadow-[0_0_0_1px_var(--primary)]" : "border-border opacity-65 hover:opacity-100"}`} title={attached ? `Detach ${item.name}` : `Attach ${item.name}`}>
                         {item.mimeType.startsWith("image/") ? <Image src={item.dataUrl} alt={item.name} width={180} height={100} unoptimized className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center bg-background"><FileText className="h-5 w-5 text-muted" /></div>}
-                        {attached ? <span className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-background"><Check className="h-3 w-3" /></span> : null}
+                        {attached ? <span className="absolute right-1 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-on-primary"><Check className="h-3 w-3" /></span> : null}
                       </button>
                     );
                   })}
@@ -3387,11 +3387,11 @@ export default function JournalWorkspace({ accountKey }: { accountKey: string })
                 disabled={selectedTrade.entryPrice === null || selectedTrade.exitPrice === null}
                 onClick={() => { setSelectedTradeId(null); openTradePost(selectedTrade.id); }}
                 title={selectedTrade.entryPrice === null || selectedTrade.exitPrice === null ? "Add entry and exit prices before posting this trade" : "Post this trade to your Socials feed"}
-                className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[9px] font-semibold text-background hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-35"
+                className="flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[9px] font-semibold text-on-primary hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-35"
               >
                 <Share2 className="h-3.5 w-3.5" />Post this trade
               </button>
-              {selectedTradeIsZyon ? <span className="flex h-9 items-center gap-2 rounded-xl border border-primary/20 bg-primary/[0.07] px-4 text-[9px] font-semibold text-primary"><ShieldCheck className="h-3.5 w-3.5" />ZYON reviewed</span> : <button type="button" onClick={() => updateTrade(selectedTrade.id, { reviewedAt: selectedTrade.reviewedAt ? null : new Date().toISOString() })} className={`flex h-9 items-center gap-2 rounded-xl px-4 text-[9px] font-semibold ${selectedTrade.reviewedAt ? "border border-border bg-surface text-muted hover:text-foreground" : "bg-primary text-background"}`}>{selectedTrade.reviewedAt ? <CircleAlert className="h-3.5 w-3.5" /> : <Check className="h-3.5 w-3.5" />}{selectedTrade.reviewedAt ? "Reopen review" : "Mark reviewed"}</button>}
+              {selectedTradeIsZyon ? <span className="flex h-9 items-center gap-2 rounded-xl border border-primary/20 bg-primary/[0.07] px-4 text-[9px] font-semibold text-primary"><ShieldCheck className="h-3.5 w-3.5" />ZYON reviewed</span> : <button type="button" onClick={() => updateTrade(selectedTrade.id, { reviewedAt: selectedTrade.reviewedAt ? null : new Date().toISOString() })} className={`flex h-9 items-center gap-2 rounded-xl px-4 text-[9px] font-semibold ${selectedTrade.reviewedAt ? "border border-border bg-surface text-muted hover:text-foreground" : "bg-primary text-on-primary"}`}>{selectedTrade.reviewedAt ? <CircleAlert className="h-3.5 w-3.5" /> : <Check className="h-3.5 w-3.5" />}{selectedTrade.reviewedAt ? "Reopen review" : "Mark reviewed"}</button>}
             </div>
           </aside>
         </div>

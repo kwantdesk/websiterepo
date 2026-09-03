@@ -302,7 +302,7 @@ function GexBoxWorkspacesMenu({ activeId, snapshotName, onApply, onSave, onImpor
       <button
         type="button"
         onClick={() => commit(activeId ? snapshotName : "GEX BOX")}
-        className="flex h-9 items-center justify-center gap-1.5 rounded-xl bg-primary text-[10px] font-semibold text-background"
+        className="flex h-9 items-center justify-center gap-1.5 rounded-xl bg-primary text-[10px] font-semibold text-on-primary"
       >
         <Save className="h-3.5 w-3.5" />
         Quick Save
@@ -353,7 +353,7 @@ function GexBoxWorkspacesMenu({ activeId, snapshotName, onApply, onSave, onImpor
           placeholder="Workspace name"
           className="h-8 min-w-0 flex-1 rounded-lg border border-border bg-background px-2 text-[10px] text-foreground outline-none focus:border-primary/40"
         />
-        <button type="button" onClick={() => commit(name)} className="h-8 rounded-lg bg-primary px-3 text-[9px] font-semibold uppercase text-background">Save</button>
+        <button type="button" onClick={() => commit(name)} className="h-8 rounded-lg bg-primary px-3 text-[9px] font-semibold uppercase text-on-primary">Save</button>
       </div> : null}
       <button
         type="button"

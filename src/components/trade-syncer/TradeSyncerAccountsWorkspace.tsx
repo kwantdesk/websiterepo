@@ -540,7 +540,7 @@ function TradeSyncerAccountsWorkspaceContent({
           </Link>
           <Link
             href="/trade-syncer/accounts?modal=add-account"
-            className="rounded-xl bg-primary px-4 py-2.5 text-[13px] font-semibold text-background"
+            className="rounded-xl bg-primary px-4 py-2.5 text-[13px] font-semibold text-on-primary"
           >
             Add Account
           </Link>
@@ -643,7 +643,7 @@ function TradeSyncerAccountsWorkspaceContent({
               </div>
               <Link
                 href={`/trade-syncer/accounts?account=${encodeURIComponent(currentAccount.id)}&tab=Managed%20Futures%20Binding&modal=bind-managed`}
-                className="rounded-xl bg-primary px-4 py-2.5 text-[13px] font-semibold text-background"
+                className="rounded-xl bg-primary px-4 py-2.5 text-[13px] font-semibold text-on-primary"
               >
                 {currentManagedAccount ? "Rebind Lane" : "Bind Lane"}
               </Link>
@@ -988,7 +988,7 @@ function TradeSyncerAccountsWorkspaceContent({
                 </Link>
                 <Link
                   href={tradovateBrokerConnectHref}
-                  className="flex-1 rounded-xl bg-primary py-3 text-center text-[13px] font-semibold text-background"
+                  className="flex-1 rounded-xl bg-primary py-3 text-center text-[13px] font-semibold text-on-primary"
                 >
                   Connect to Tradovate
                 </Link>
@@ -1004,7 +1004,7 @@ function TradeSyncerAccountsWorkspaceContent({
                 <button
                   type="submit"
                   form="trade-syncer-add-account-form"
-                  className="flex-1 rounded-xl bg-primary py-3 text-center text-[13px] font-semibold text-background"
+                  className="flex-1 rounded-xl bg-primary py-3 text-center text-[13px] font-semibold text-on-primary"
                 >
                   {selectedPlatform.id === "tradovate" && selectedConnectionOption?.id === "api"
                     ? "Save Advanced API Account"
@@ -1030,7 +1030,7 @@ function TradeSyncerAccountsWorkspaceContent({
                 </Link>
                 <Link
                   href={tradovateBrokerConnectHref}
-                  className="flex-1 rounded-xl bg-primary py-3 text-center text-[13px] font-semibold text-background"
+                  className="flex-1 rounded-xl bg-primary py-3 text-center text-[13px] font-semibold text-on-primary"
                 >
                   Connect to Tradovate
                 </Link>
@@ -1049,7 +1049,7 @@ function TradeSyncerAccountsWorkspaceContent({
                   href={buildAccountModalHref({
                     step: requestedSetupStep === "Select Platform" ? "Connection Method" : "Credentials",
                   })}
-                  className="flex-1 rounded-xl bg-primary py-3 text-center text-[13px] font-semibold text-background"
+                  className="flex-1 rounded-xl bg-primary py-3 text-center text-[13px] font-semibold text-on-primary"
                 >
                   {requestedSetupStep === "Select Platform" ? "Next Step" : "Use Connection Path"}
                 </Link>
@@ -1085,7 +1085,7 @@ function TradeSyncerAccountsWorkspaceContent({
             </Link>
             <Link
               href={`/trade-syncer/accounts?modal=test-login&account=${encodeURIComponent(currentAccount.id)}&tab=${encodeURIComponent(activeTab)}&result=healthy`}
-              className="flex-1 rounded-xl bg-primary py-3 text-center text-[13px] font-semibold text-background"
+              className="flex-1 rounded-xl bg-primary py-3 text-center text-[13px] font-semibold text-on-primary"
             >
               Mark Healthy
             </Link>
@@ -1148,7 +1148,7 @@ function TradeSyncerAccountsWorkspaceContent({
               type="button"
               onClick={handleManagedBindingSave}
               disabled={isPending}
-              className="flex-1 rounded-xl bg-primary py-3 text-center text-[13px] font-semibold text-background disabled:opacity-60"
+              className="flex-1 rounded-xl bg-primary py-3 text-center text-[13px] font-semibold text-on-primary disabled:opacity-60"
             >
               {isPending ? "Saving..." : "Save Binding"}
             </button>

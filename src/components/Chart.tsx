@@ -2898,7 +2898,7 @@ function CandleCountdownBadge({
 
   return (
     <div
-      className="pointer-events-none absolute z-10 flex h-3.5 w-[27px] items-center justify-center rounded-[3px] bg-primary px-0.5 font-mono text-[6px] font-semibold leading-none text-background shadow-sm shadow-black/25"
+      className="pointer-events-none absolute z-10 flex h-3.5 w-[27px] items-center justify-center rounded-[3px] bg-primary px-0.5 font-mono text-[6px] font-semibold leading-none text-on-primary shadow-sm shadow-black/25"
       style={{ bottom, right: rightInset }}
       title="Time until next candle opens"
     >
@@ -17723,7 +17723,7 @@ function Chart({
                 }
                 setTextEditor(null);
               }}
-              className="rounded-xl bg-primary px-3 py-2 text-[12px] font-semibold text-background"
+              className="rounded-xl bg-primary px-3 py-2 text-[12px] font-semibold text-on-primary"
             >
               Add
             </button>

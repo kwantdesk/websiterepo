@@ -59,7 +59,7 @@ export default function AutomationShell({ children }: { children: ReactNode }) {
                 <Bell className="h-4 w-4 text-primary" />
                 Alerts
               </button>
-              <button className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-[13px] font-semibold text-background">
+              <button className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-[13px] font-semibold text-on-primary">
                 <Play className="h-4 w-4" />
                 New Automation
               </button>

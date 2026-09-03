@@ -20,7 +20,7 @@ export default function AutomationReplayPage() {
                     <div className="text-[14px] font-semibold text-foreground">{session.name}</div>
                     <div className="mt-1 text-[12px] text-muted">{session.market} • {session.mode}</div>
                   </div>
-                  <button className="rounded-xl bg-primary px-3 py-2 text-[12px] font-semibold text-background">Open</button>
+                  <button className="rounded-xl bg-primary px-3 py-2 text-[12px] font-semibold text-on-primary">Open</button>
                 </div>
                 <div className="mt-3 text-[12px] text-muted">{session.detail}</div>
               </div>

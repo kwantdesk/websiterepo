@@ -79,7 +79,7 @@ export default function AutomationRiskPage() {
         </div>
 
         <div className="mt-4">
-          <button onClick={persistRisk} className="rounded-xl bg-primary px-4 py-2 text-[13px] font-semibold text-background">
+          <button onClick={persistRisk} className="rounded-xl bg-primary px-4 py-2 text-[13px] font-semibold text-on-primary">
             Save Risk Profile
           </button>
         </div>

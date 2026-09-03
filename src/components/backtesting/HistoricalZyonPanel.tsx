@@ -237,7 +237,7 @@ export default function HistoricalZyonPanel({
         {messages.map((message) => (
           <div key={message.id} className={`flex gap-2 ${message.role === "user" ? "justify-end" : "justify-start"}`}>
             {message.role === "assistant" ? <span className="mt-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border border-primary/20 bg-primary/10 text-primary"><Bot className="h-3 w-3" /></span> : null}
-            <div className={`max-w-[86%] rounded-2xl px-3 py-2.5 text-[9px] leading-[1.55] ${message.role === "user" ? "rounded-br-md bg-primary text-background" : "rounded-bl-md border border-border bg-surface/55 text-foreground"}`}>
+            <div className={`max-w-[86%] rounded-2xl px-3 py-2.5 text-[9px] leading-[1.55] ${message.role === "user" ? "rounded-br-md bg-primary text-on-primary" : "rounded-bl-md border border-border bg-surface/55 text-foreground"}`}>
               {message.degraded ? (
                 <div className="mb-2 text-[7px] font-semibold uppercase tracking-[0.1em] text-warning">
                   Verified replay fallback{message.providerState ? ` / model ${message.providerState}` : ""}
@@ -273,7 +273,7 @@ export default function HistoricalZyonPanel({
             <button type="button" onClick={speech.toggle} disabled={!speech.supported || sending} className={`flex h-8 w-8 items-center justify-center rounded-xl transition disabled:opacity-30 ${speech.listening ? "bg-primary/15 text-primary" : "text-muted hover:bg-surface hover:text-primary"}`} aria-label={speech.listening ? "Stop dictation" : "Dictate message"}><Mic className="h-3.5 w-3.5" /></button>
             <button type="button" onClick={() => { setMessages([initialMessage(context)]); setError(""); }} disabled={sending} className="flex h-8 w-8 items-center justify-center rounded-xl text-muted hover:bg-surface hover:text-foreground disabled:opacity-30" aria-label="Reset historical chat"><RotateCcw className="h-3.5 w-3.5" /></button>
             <span className="ml-1 flex items-center gap-1 text-[7px] text-muted"><ShieldCheck className="h-3 w-3 text-primary" />No lookahead</span>
-            <button type="submit" disabled={sending || !draft.trim()} className="ml-auto flex h-8 items-center gap-1.5 rounded-xl bg-primary px-3 text-[8px] font-semibold text-background disabled:opacity-30">{sending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}Send</button>
+            <button type="submit" disabled={sending || !draft.trim()} className="ml-auto flex h-8 items-center gap-1.5 rounded-xl bg-primary px-3 text-[8px] font-semibold text-on-primary disabled:opacity-30">{sending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}Send</button>
           </div>
         </div>
         {error || speech.error ? <div className="mt-2 text-[8px] leading-4 text-danger">{error || speech.error}</div> : null}

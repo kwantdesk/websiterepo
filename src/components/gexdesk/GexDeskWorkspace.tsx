@@ -533,7 +533,7 @@ export default function GexDeskWorkspace() {
           <AlertTriangle className="mx-auto h-7 w-7 text-danger" />
           <h2 className="mt-4 text-[13px] font-semibold">Gexdesk could not open</h2>
           <p className="mt-2 text-[9px] leading-5 text-muted">{error}</p>
-          <button type="button" onClick={() => void load()} className="mt-5 inline-flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[8px] font-semibold text-background"><RefreshCw className="h-3.5 w-3.5" />Retry</button>
+          <button type="button" onClick={() => void load()} className="mt-5 inline-flex h-9 items-center gap-2 rounded-xl bg-primary px-4 text-[8px] font-semibold text-on-primary"><RefreshCw className="h-3.5 w-3.5" />Retry</button>
         </div>
       </div>
     );
@@ -750,7 +750,7 @@ export default function GexDeskWorkspace() {
                   })}
                   {livePrice !== null ? (
                     <span
-                      className="absolute right-[6%] min-w-[100px] -translate-y-1/2 rounded-md bg-primary px-2.5 py-1 text-center text-[10px] font-bold tabular-nums text-background shadow-[0_0_18px_color-mix(in_srgb,var(--primary)_20%,transparent)]"
+                      className="absolute right-[6%] min-w-[100px] -translate-y-1/2 rounded-md bg-primary px-2.5 py-1 text-center text-[10px] font-bold tabular-nums text-on-primary shadow-[0_0_18px_color-mix(in_srgb,var(--primary)_20%,transparent)]"
                       style={{ top: `${yForPrice(livePrice) / DISPLAY_HEIGHT * 100}%` }}
                     >
                       NQ {formatNumber(livePrice)}

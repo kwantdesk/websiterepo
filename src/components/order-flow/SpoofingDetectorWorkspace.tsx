@@ -565,7 +565,7 @@ export default function SpoofingDetectorWorkspace({
         footer={(
           <div className="flex gap-2">
             <button type="button" onClick={resetSettings} className="flex h-8 items-center gap-1.5 border border-border px-3 text-[9px] font-semibold uppercase tracking-[0.1em] text-muted hover:text-foreground"><RotateCcw className="h-3 w-3" /> Reset</button>
-            <button type="button" onClick={saveSettings} className="flex h-8 flex-1 items-center justify-center gap-1.5 bg-primary px-3 text-[9px] font-semibold uppercase tracking-[0.1em] text-background"><Save className="h-3 w-3" /> Save to workspace</button>
+            <button type="button" onClick={saveSettings} className="flex h-8 flex-1 items-center justify-center gap-1.5 bg-primary px-3 text-[9px] font-semibold uppercase tracking-[0.1em] text-on-primary"><Save className="h-3 w-3" /> Save to workspace</button>
           </div>
         )}
       >

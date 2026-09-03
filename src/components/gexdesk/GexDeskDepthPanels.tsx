@@ -528,7 +528,7 @@ export function EvolutionPanel({
                       setHoveredCell(null);
                       onInstrumentChange?.(value);
                     }}
-                    className={`rounded-lg px-3 py-1.5 font-mono text-[7px] font-semibold transition ${instrument === value ? "bg-primary text-background" : "text-muted hover:text-foreground"}`}
+                    className={`rounded-lg px-3 py-1.5 font-mono text-[7px] font-semibold transition ${instrument === value ? "bg-primary text-on-primary" : "text-muted hover:text-foreground"}`}
                   >
                     {value}
                   </button>
@@ -540,7 +540,7 @@ export function EvolutionPanel({
                     key={value}
                     type="button"
                     onClick={() => setMode(value)}
-                    className={`rounded-lg px-3 py-1.5 text-[7px] font-semibold ${mode === value ? "bg-primary text-background" : "text-muted hover:text-foreground"}`}
+                    className={`rounded-lg px-3 py-1.5 text-[7px] font-semibold ${mode === value ? "bg-primary text-on-primary" : "text-muted hover:text-foreground"}`}
                   >
                     {value === "EXPOSURE" ? "Exposure" : "Change"}
                   </button>
@@ -817,8 +817,8 @@ export function EvolutionPanel({
                     {axisTimeLabel(tick.timestamp, timeframe)}
                   </span>
                 ))}
-                <span className="absolute left-[87.5%] top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-md border border-primary/40 bg-primary px-2 py-1 font-mono text-[7px] font-semibold text-background shadow-[0_0_12px_var(--primary)]">{historyInstrument} {live?.toFixed(2) ?? "--"} · {secondTimeLabel(timeline.currentTimestamp)}</span>
-                {hovered ? <span className="absolute top-1/2 z-20 -translate-x-1/2 -translate-y-1/2 rounded-md border border-primary/40 bg-primary px-2 py-1 font-mono text-[7px] font-semibold text-background shadow-[0_0_12px_var(--primary)]" style={{ left: `clamp(30px, ${hovered.x}%, calc(100% - 30px))` }}>{timeLabel(hovered.timestamp)}</span> : null}
+                <span className="absolute left-[87.5%] top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-md border border-primary/40 bg-primary px-2 py-1 font-mono text-[7px] font-semibold text-on-primary shadow-[0_0_12px_var(--primary)]">{historyInstrument} {live?.toFixed(2) ?? "--"} · {secondTimeLabel(timeline.currentTimestamp)}</span>
+                {hovered ? <span className="absolute top-1/2 z-20 -translate-x-1/2 -translate-y-1/2 rounded-md border border-primary/40 bg-primary px-2 py-1 font-mono text-[7px] font-semibold text-on-primary shadow-[0_0_12px_var(--primary)]" style={{ left: `clamp(30px, ${hovered.x}%, calc(100% - 30px))` }}>{timeLabel(hovered.timestamp)}</span> : null}
               </div>
 
               <div className="pointer-events-none absolute bottom-0 right-0 top-0 w-[88px] border-l border-border bg-panel/95">
@@ -840,7 +840,7 @@ export function EvolutionPanel({
                       {live?.toFixed(2)}
                     </span>
                   ) : null}
-                  {hovered ? <span className="absolute left-1/2 z-20 -translate-x-1/2 -translate-y-1/2 rounded-md border border-primary/40 bg-primary px-2 py-1 font-mono text-[7px] font-semibold text-background shadow-[0_0_12px_var(--primary)]" style={{ top: `clamp(12px, ${hovered.y}%, calc(100% - 12px))` }}>{hovered.row.price.toFixed(0)}</span> : null}
+                  {hovered ? <span className="absolute left-1/2 z-20 -translate-x-1/2 -translate-y-1/2 rounded-md border border-primary/40 bg-primary px-2 py-1 font-mono text-[7px] font-semibold text-on-primary shadow-[0_0_12px_var(--primary)]" style={{ top: `clamp(12px, ${hovered.y}%, calc(100% - 12px))` }}>{hovered.row.price.toFixed(0)}</span> : null}
                 </div>
               </div>
             </div>
