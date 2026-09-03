@@ -14,19 +14,9 @@
 :root {
   /* The CHARTS workspace header is the shell's vertical rhythm reference. */
   --kwant-shell-bar-height: 36px;
-  /*
-   * The KwantDesk mark, on whatever theme is running.
-   *
-   * Derived rather than fixed, so it moves with every palette without anyone
-   * maintaining a list. The foreground is the colour each theme already
-   * guarantees is readable on its own surfaces; mixing a quarter of the theme
-   * signature into it gives the mark the palette character without spending
-   * the contrast the foreground was chosen for.
-   *
-   * Every surface that shows the mark reads this - the header wordmark, the
-   * chart watermark and the liquidity map - so the three cannot drift apart.
-   */
-  --brand-mark: color-mix(in srgb, var(--foreground) 76%, var(--primary));
+  /* First-paint fallbacks; theme.ts replaces both with measured palette ink. */
+  --brand-mark: var(--primary);
+  --chart-brand-mark: var(--primary);
   --background: #020304;
   --foreground: #DDE2E7;
   --primary: #FF1F78;

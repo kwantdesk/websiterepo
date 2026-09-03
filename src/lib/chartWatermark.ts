@@ -73,7 +73,14 @@ export function chartWatermarkSize(paneWidth: number, paneHeight: number, scale 
  */
 export function chartWatermarkPaint(): CSSProperties {
   return {
-    backgroundColor: "var(--brand-mark)",
+    ...brandWordmarkPaint("--chart-brand-mark"),
+  };
+}
+
+/** Paint the same wordmark stencil on non-chart brand surfaces. */
+export function brandWordmarkPaint(variable: "--brand-mark" | "--chart-brand-mark" = "--brand-mark"): CSSProperties {
+  return {
+    backgroundColor: `var(${variable})`,
     WebkitMaskImage: `url("${CHART_WATERMARK_SRC}")`,
     maskImage: `url("${CHART_WATERMARK_SRC}")`,
     WebkitMaskSize: "100% 100%",

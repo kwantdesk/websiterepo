@@ -1400,3 +1400,21 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
 - Local browser navigation reached the expected Google sign-in boundary; the
   local origin did not share an authenticated application session, so no live
   signed-in visual claim is made.
+
+## 2026-09-03 — Bright theme signature on every KwantDesk mark
+
+- Replaced the 76%-foreground logo mix that made every palette look grey with
+  one shared brand-colour resolver. Neutral surfaces use the exact bright
+  primary; coloured surfaces choose the exact primary/accent/secondary hue
+  furthest from the background while retaining at least 3:1 graphical contrast.
+- Shell and chart tokens are measured separately against `background` and
+  `chartBackground`. Both are installed during first-paint bootstrap and live
+  theme updates, preventing a neutral flash or hydration colour change.
+- Applied the shared masked wordmark paint to the top-left header, standard
+  charts, Liquidity Map and the large authenticated home-workspace mark.
+  Public landing/auth branding was intentionally left outside the cockpit theme.
+- Forest Fire explicitly resolves orange on green; Midnight resolves pink on
+  black; Chromey resolves green on black; Tangerine resolves orange on teal.
+- Verification: brand marks 9/9 across every current preset, wordmark geometry
+  4/4, themes 12/12, first-click theme sync 5/5, scoped ESLint, TypeScript and
+  the complete 80-page production build all passed.
