@@ -69,7 +69,7 @@ saved charts are not silently retuned by migration. This is a materially closer
 parity tranche, with remaining data-model and feature gaps explicitly recorded
 rather than misrepresented as complete.
 
-- Implementation commit: `1ffc6d519f28cae56c7a7036a64f6df3c01265cb`.
+- Implementation commit: `1ffc6d51ddf24828952a89dd4b72df93fea53abe`.
 - Pushed to `main` in the sole linked Vercel project, `websiterepo-yfmi`.
 - Production was reloaded after deployment. The signed-in Plot Settings modal
   exposed Width type with Automatic, Percentual period, Window width and Fixed
