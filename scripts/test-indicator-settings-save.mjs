@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import {
+  captureIndicatorSettingsSnapshot,
+  indicatorSettingsAreDirty,
+} from "../src/lib/indicatorSettingsDraft.ts";
 
 /**
  * Every indicator's settings dialog offers somewhere to save.
@@ -35,7 +39,7 @@ check("the footer is not conditional on which indicator is open", () => {
 
 check("it offers both keeping and discarding", () => {
   const footer = source.slice(source.indexOf("Save and Cancel, on EVERY indicator"));
-  assert.match(footer, /onClick=\{commitSettingsAndClose\}/, "there is no way to save");
+  assert.match(footer, /onClick=\{commitSettings\}/, "there is no way to save without closing");
   assert.match(footer, /onClick=\{discardSettingsAndClose\}/, "there is no way to cancel");
 });
 
@@ -44,7 +48,7 @@ check("the save sits bottom right, after the cancel", () => {
   // owner asked for it there specifically.
   const footer = source.slice(source.indexOf("Save and Cancel, on EVERY indicator"));
   const cancelAt = footer.indexOf("discardSettingsAndClose");
-  const saveAt = footer.indexOf("commitSettingsAndClose");
+  const saveAt = footer.indexOf("onClick={commitSettings}");
   assert.ok(cancelAt > 0 && saveAt > cancelAt, "save is not the rightmost action");
   assert.match(footer, /justify-between/, "the footer does not push its actions right");
 });
@@ -72,6 +76,41 @@ check("closing without the button still asks rather than silently keeping", () =
   // The prompt is not replaced by the button; it is the safety net for anyone
   // who clicks away, which is how this was reported in the first place.
   assert.match(source, /if \(settingsAreDirty\(\)\) \{\s*\n\s*setUnsavedSettingsPrompt\(true\);/);
+});
+
+check("Save establishes a clean baseline without closing the dialog", () => {
+  assert.match(source, /settingsOpenSnapshotRef\.current = captureIndicatorSettingsSnapshot\(committedInstance\);/);
+  const footer = source.slice(source.indexOf("Save and Cancel, on EVERY indicator"));
+  assert.doesNotMatch(
+    footer.slice(0, footer.indexOf("</div>\n        </div>")),
+    /onClick=\{commitSettingsAndClose\}/,
+    "the permanent Save action still closes the settings dialog",
+  );
+});
+
+check("clicking away after Save is clean", () => {
+  const instance = { instanceId: "kwant-profile-1", enabled: true, settings: { valueAreaPercent: 68 } };
+  const opened = captureIndicatorSettingsSnapshot(instance);
+  const edited = { ...instance, settings: { valueAreaPercent: 70 } };
+  assert.equal(indicatorSettingsAreDirty(opened, edited), true);
+  const saved = captureIndicatorSettingsSnapshot(edited);
+  assert.equal(indicatorSettingsAreDirty(saved, edited), false);
+});
+
+check("visibility participates in Save and Discard", () => {
+  const instance = { instanceId: "volume-1", enabled: true, settings: { opacity: 70 } };
+  const opened = captureIndicatorSettingsSnapshot(instance);
+  assert.equal(indicatorSettingsAreDirty(opened, { ...instance, enabled: false }), true);
+  assert.match(source, /enabled: opened\.enabled/,
+    "Discard does not restore the indicator's saved visibility");
+});
+
+check("the baseline cannot be mutated by live preview edits", () => {
+  const instance = { instanceId: "macd-1", enabled: true, settings: { length: 12 } };
+  const opened = captureIndicatorSettingsSnapshot(instance);
+  instance.settings.length = 26;
+  assert.equal(opened.settings.length, 12);
+  assert.equal(indicatorSettingsAreDirty(opened, instance), true);
 });
 
 console.log(`\nindicator settings save: ${passed}/${passed} checks passed`);

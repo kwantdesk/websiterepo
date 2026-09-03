@@ -81,6 +81,11 @@ import { TAPE_SPEED_PRESETS } from "@/lib/tapeSpeedOrderFlowBurst";
 import IndicatorTemplateBar from "@/components/IndicatorTemplateBar";
 import { STATS_PALETTES, resolveStatsPalette, statsPaletteSettings } from "@/lib/statsPalettes";
 import { writeProtectedItem } from "@/lib/browserStorageQuota";
+import {
+  captureIndicatorSettingsSnapshot,
+  indicatorSettingsAreDirty,
+  type IndicatorSettingsSnapshot,
+} from "@/lib/indicatorSettingsDraft";
 
 const FAVOURITES_STORAGE_KEY = "kwantdesk-chart-indicator-favourites";
 
@@ -1103,52 +1108,62 @@ export default function ChartIndicatorsControl({
    * also means there is nothing to compare against at close time unless the
    * original is kept. Discard restores exactly this.
    */
-  const settingsOpenSnapshotRef = useRef<Record<string, string | number | boolean> | null>(null);
+  const settingsOpenSnapshotRef = useRef<IndicatorSettingsSnapshot | null>(null);
   const [unsavedSettingsPrompt, setUnsavedSettingsPrompt] = useState(false);
 
   useEffect(() => {
-    if (!settingsInstanceId) {
+    if (!settingsInstanceId || !settingsInstance) {
       settingsOpenSnapshotRef.current = null;
       setUnsavedSettingsPrompt(false);
       return;
     }
-    // Only on OPEN. Re-capturing as the instance object changes would make
-    // every edit its own baseline and nothing would ever look modified.
-    if (!settingsOpenSnapshotRef.current) {
-      settingsOpenSnapshotRef.current = { ...(settingsInstance?.settings ?? {}) };
+    // Only once per opened INSTANCE. Re-capturing as its object changes would
+    // make every live preview edit its own baseline. Including the instance id
+    // also prevents opening one indicator over another from borrowing the old
+    // indicator's save state.
+    if (settingsOpenSnapshotRef.current?.instanceId !== settingsInstanceId) {
+      settingsOpenSnapshotRef.current = captureIndicatorSettingsSnapshot(settingsInstance);
     }
   }, [settingsInstance, settingsInstanceId]);
 
   const settingsAreDirty = useCallback(() => {
-    const opened = settingsOpenSnapshotRef.current;
-    if (!opened || !settingsInstance) return false;
-    try {
-      return JSON.stringify(opened) !== JSON.stringify(settingsInstance.settings ?? {});
-    } catch {
-      return false;
-    }
+    return indicatorSettingsAreDirty(settingsOpenSnapshotRef.current, settingsInstance);
   }, [settingsInstance]);
 
-  /** Persist and close. The footprint keeps its own local store as well. */
-  const commitSettingsAndClose = useCallback(() => {
+  /** Persist without closing, so the trader may keep tuning after Save. */
+  const commitSettings = useCallback(() => {
+    if (!settingsInstance) return;
+    let committedInstance = settingsInstance;
     if (settingsInstance?.indicatorId === "deep-print-footprint") {
       const validated = validateFootprintSettings(settingsInstance.settings);
+      const committedSettings = { ...(settingsInstance.settings ?? {}), ...validated };
       replace(settingsInstance.instanceId, (current) => ({
         ...current,
-        settings: { ...(current.settings ?? {}), ...validated },
+        settings: committedSettings,
       }));
       saveFootprintSettings(settingsInstance.instanceId, validated);
+      committedInstance = { ...settingsInstance, settings: committedSettings };
     }
     window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
-    settingsOpenSnapshotRef.current = null;
+    settingsOpenSnapshotRef.current = captureIndicatorSettingsSnapshot(committedInstance);
     setUnsavedSettingsPrompt(false);
-    setSettingsInstanceId(null);
   }, [replace, settingsInstance]);
+
+  /** Save from the leave-confirmation prompt, then complete the close. */
+  const commitSettingsAndClose = useCallback(() => {
+    commitSettings();
+    settingsOpenSnapshotRef.current = null;
+    setSettingsInstanceId(null);
+  }, [commitSettings]);
 
   const discardSettingsAndClose = useCallback(() => {
     const opened = settingsOpenSnapshotRef.current;
     if (opened && settingsInstance) {
-      replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...opened } }));
+      replace(settingsInstance.instanceId, (current) => ({
+        ...current,
+        enabled: opened.enabled,
+        settings: { ...opened.settings },
+      }));
     }
     settingsOpenSnapshotRef.current = null;
     setUnsavedSettingsPrompt(false);
@@ -1163,8 +1178,10 @@ export default function ChartIndicatorsControl({
       setUnsavedSettingsPrompt(true);
       return;
     }
-    commitSettingsAndClose();
-  }, [commitSettingsAndClose, settingsAreDirty]);
+    settingsOpenSnapshotRef.current = null;
+    setUnsavedSettingsPrompt(false);
+    setSettingsInstanceId(null);
+  }, [settingsAreDirty]);
 
   useEffect(() => {
     if (!settingsInstanceId) return;
@@ -6106,7 +6123,7 @@ export default function ChartIndicatorsControl({
               </button>
               <button
                 type="button"
-                onClick={commitSettingsAndClose}
+                onClick={commitSettings}
                 className="flex h-9 items-center justify-center gap-1.5 rounded-lg bg-primary px-4 text-[9px] font-semibold uppercase tracking-[0.08em] text-background transition-opacity hover:opacity-90"
               >
                 <Save className="h-3.5 w-3.5" />
