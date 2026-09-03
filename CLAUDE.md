@@ -1418,3 +1418,18 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
 - Verification: brand marks 9/9 across every current preset, wordmark geometry
   4/4, themes 12/12, first-click theme sync 5/5, scoped ESLint, TypeScript and
   the complete 80-page production build all passed.
+
+## 2026-09-03 — Indicator Save restored to the dialog header
+
+- The shared Save/Cancel row was accidentally rendered as a sibling of the
+  settings window inside its centring overlay. Flex layout therefore placed it
+  beside the modal and over the chart instead of inside the indicator dialog.
+- Removed the floating footer and moved the catalogue-wide Save action into
+  the fixed title bar immediately before Close. Long settings pages now scroll
+  beneath fixed actions; long names truncate safely on narrow windows.
+- The existing live preview, clean-baseline Save and close-time Save/Discard
+  safety behavior are unchanged. Because all studies use this one dialog, the
+  correction covers every current and future chart indicator rather than only
+  Daily Volume Profile.
+- Verification: indicator settings Save 11/11, scoped ESLint, TypeScript and
+  the complete 80-page production build passed.

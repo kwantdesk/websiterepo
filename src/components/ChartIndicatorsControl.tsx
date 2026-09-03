@@ -1711,16 +1711,16 @@ export default function ChartIndicatorsControl({
             className="pointer-events-auto relative flex max-h-[88vh] w-full max-w-[540px] flex-col overflow-hidden rounded-2xl border border-border bg-panel shadow-2xl shadow-black/60"
           >
             <div
-              className="flex touch-none select-none items-center justify-between border-b border-border px-5 py-4 cursor-move active:cursor-grabbing"
+              className="flex shrink-0 touch-none select-none items-center justify-between border-b border-border px-5 py-4 cursor-move active:cursor-grabbing"
               title="Drag settings window"
               onPointerDown={beginSettingsDialogDrag}
               onPointerMove={moveSettingsDialog}
               onPointerUp={endSettingsDialogDrag}
               onPointerCancel={endSettingsDialogDrag}
             >
-              <div>
-                <div className="text-[15px] font-semibold text-foreground">{settingsInstance.indicatorId === "source-code-indicator" ? String(settingsInstance.settings?.scriptName ?? settingsDefinition.name) : settingsDefinition.name}</div>
-                <div className="mt-0.5 text-[9px] uppercase tracking-[0.12em] text-muted">{settingsDefinition.category} · live calculation</div>
+              <div className="min-w-0">
+                <div className="truncate text-[15px] font-semibold text-foreground">{settingsInstance.indicatorId === "source-code-indicator" ? String(settingsInstance.settings?.scriptName ?? settingsDefinition.name) : settingsDefinition.name}</div>
+                <div className="mt-0.5 truncate text-[9px] uppercase tracking-[0.12em] text-muted">{settingsDefinition.category} · live calculation</div>
               </div>
               {unsavedSettingsPrompt ? (
                 <div className="absolute inset-0 z-[60] flex items-center justify-center rounded-xl bg-background/85 p-4 backdrop-blur-sm">
@@ -1758,9 +1758,29 @@ export default function ChartIndicatorsControl({
                   </div>
                 </div>
               ) : null}
-              <button type="button" onClick={closeSettingsDialog} className="flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground">
-                <X className="h-4 w-4" />
-              </button>
+              {/* One shared header action rail serves every current and future indicator. */}
+              <div className="ml-3 flex shrink-0 items-center gap-2">
+                <span className="hidden text-[8px] uppercase tracking-[0.12em] text-muted sm:inline" role="status">
+                  {settingsAreDirty() ? "Unsaved changes" : "All changes saved"}
+                </span>
+                <button
+                  type="button"
+                  onClick={commitSettings}
+                  className="flex h-8 items-center justify-center gap-1.5 rounded-lg bg-primary px-3 text-[9px] font-semibold uppercase tracking-[0.08em] text-on-primary transition-opacity hover:opacity-90"
+                  aria-label={`Save ${settingsDefinition.name} settings`}
+                >
+                  <Save className="h-3.5 w-3.5" />
+                  Save
+                </button>
+                <button
+                  type="button"
+                  onClick={closeSettingsDialog}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg text-muted hover:bg-surface hover:text-foreground"
+                  aria-label={`Close ${settingsDefinition.name} settings`}
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
             </div>
             <IndicatorSettingsSections>
               <label className="flex items-center justify-between rounded-xl border border-border bg-surface/40 px-4 py-3">
@@ -6087,40 +6107,6 @@ export default function ChartIndicatorsControl({
             ) : null}
           </div>
 
-          {/*
-            * Save and Cancel, on EVERY indicator.
-            *
-            * The dialog applies each change as it is made, so closing it was
-            * the only way to keep or drop them - and clicking away asked
-            * "unsaved changes?" instead of offering anywhere to save. Only the
-            * footprint had a button, so every other study made a trader answer
-            * a prompt to do the ordinary thing.
-            *
-            * Pinned outside the scrolling body, so it is reachable on a long
-            * settings list without scrolling to the end of it.
-            */}
-          <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border bg-panel px-5 py-3">
-            <span className="text-[8px] uppercase tracking-[0.12em] text-muted" role="status">
-              {settingsAreDirty() ? "Unsaved changes" : "All changes saved"}
-            </span>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={discardSettingsAndClose}
-                className="flex h-9 items-center rounded-lg border border-border px-3 text-[9px] font-semibold uppercase tracking-[0.08em] text-muted transition-colors hover:border-danger/40 hover:text-foreground"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={commitSettings}
-                className="flex h-9 items-center justify-center gap-1.5 rounded-lg bg-primary px-4 text-[9px] font-semibold uppercase tracking-[0.08em] text-on-primary transition-opacity hover:opacity-90"
-              >
-                <Save className="h-3.5 w-3.5" />
-                Save
-              </button>
-            </div>
-          </div>
         </div>,
         document.body,
       ) : null}

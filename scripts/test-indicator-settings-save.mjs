@@ -13,7 +13,7 @@ import {
  * offering anywhere to answer that properly. Only the footprint had a button,
  * so every other study made a trader dismiss a prompt to do the ordinary thing.
  *
- * One footer serves all of them. A per-indicator button would be one more
+ * One header action serves all of them. A per-indicator button would be one more
  * thing to forget for the next study added, which is how the footprint ended
  * up being the only one that had it.
  */
@@ -26,31 +26,34 @@ const source = readFileSync(
 let passed = 0;
 const check = (name, fn) => { fn(); passed += 1; console.log(`  ok  ${name}`); };
 
-check("the footer is not conditional on which indicator is open", () => {
+check("the header Save is not conditional on which indicator is open", () => {
   /*
    * The thing that went wrong before: the only save lived inside the
    * footprint's own block, so it existed for exactly one study.
    */
-  const footerAt = source.indexOf('Save and Cancel, on EVERY indicator');
-  assert.ok(footerAt > 0, "there is no shared settings footer");
-  const footprintBlockEnds = source.lastIndexOf("footprintSaveStatus", footerAt);
-  assert.ok(footprintBlockEnds > 0 && footprintBlockEnds < footerAt, "the footer sits inside the footprint block");
+  const headerAt = source.indexOf("One shared header action rail serves every current and future indicator");
+  const settingsBodyAt = source.indexOf("<IndicatorSettingsSections>", headerAt);
+  assert.ok(headerAt > 0, "there is no shared settings header action");
+  assert.ok(settingsBodyAt > headerAt, "the shared Save is not in the fixed dialog header");
 });
 
-check("it offers both keeping and discarding", () => {
-  const footer = source.slice(source.indexOf("Save and Cancel, on EVERY indicator"));
-  assert.match(footer, /onClick=\{commitSettings\}/, "there is no way to save without closing");
-  assert.match(footer, /onClick=\{discardSettingsAndClose\}/, "there is no way to cancel");
+check("Save is immediately beside Close", () => {
+  const header = source.slice(
+    source.indexOf("One shared header action rail serves every current and future indicator"),
+    source.indexOf("<IndicatorSettingsSections>"),
+  );
+  const saveAt = header.indexOf("onClick={commitSettings}");
+  const closeAt = header.indexOf("onClick={closeSettingsDialog}");
+  assert.ok(saveAt > 0 && closeAt > saveAt, "Save is not immediately before the close action");
+  assert.match(header, /aria-label=\{`Save \$\{settingsDefinition\.name\} settings`\}/);
+  assert.match(header, /aria-label=\{`Close \$\{settingsDefinition\.name\} settings`\}/);
 });
 
-check("the save sits bottom right, after the cancel", () => {
-  // Right-hand side is where a dialog's confirming action belongs, and the
-  // owner asked for it there specifically.
-  const footer = source.slice(source.indexOf("Save and Cancel, on EVERY indicator"));
-  const cancelAt = footer.indexOf("discardSettingsAndClose");
-  const saveAt = footer.indexOf("onClick={commitSettings}");
-  assert.ok(cancelAt > 0 && saveAt > cancelAt, "save is not the rightmost action");
-  assert.match(footer, /justify-between/, "the footer does not push its actions right");
+check("the broken floating footer is gone", () => {
+  assert.doesNotMatch(source, /Save and Cancel, on EVERY indicator/);
+  const afterDialog = source.slice(source.indexOf("</IndicatorSettingsSections>"));
+  assert.doesNotMatch(afterDialog, /onClick=\{commitSettings\}[\s\S]*?<\/div>\s*<\/div>,/,
+    "a Save action still floats outside the settings dialog");
 });
 
 check("it says whether anything is actually unsaved", () => {
@@ -59,17 +62,19 @@ check("it says whether anything is actually unsaved", () => {
    * interrupt on the way out. Saying it up front is what makes the button
    * feel like it did something.
    */
-  const footer = source.slice(source.indexOf("Save and Cancel, on EVERY indicator"));
-  assert.match(footer, /settingsAreDirty\(\)/, "the footer does not report unsaved changes");
-  assert.match(footer, /Unsaved changes/);
-  assert.match(footer, /All changes saved/);
+  const header = source.slice(
+    source.indexOf("One shared header action rail serves every current and future indicator"),
+    source.indexOf("<IndicatorSettingsSections>"),
+  );
+  assert.match(header, /settingsAreDirty\(\)/, "the header does not report unsaved changes");
+  assert.match(header, /Unsaved changes/);
+  assert.match(header, /All changes saved/);
 });
 
 check("it stays reachable on a long settings list", () => {
-  // Pinned outside the scrolling body: a study with forty settings must not
-  // hide its save at the bottom of them.
-  const footer = source.slice(source.indexOf("Save and Cancel, on EVERY indicator"));
-  assert.match(footer, /shrink-0/, "the footer can be scrolled away or squashed");
+  const headerStart = source.lastIndexOf("className=", source.indexOf("title=\"Drag settings window\""));
+  const header = source.slice(headerStart, source.indexOf("<IndicatorSettingsSections>"));
+  assert.match(header, /flex shrink-0 touch-none/, "the title bar can be scrolled away or squashed");
 });
 
 check("closing without the button still asks rather than silently keeping", () => {
@@ -80,19 +85,22 @@ check("closing without the button still asks rather than silently keeping", () =
 
 check("Save establishes a clean baseline without closing the dialog", () => {
   assert.match(source, /settingsOpenSnapshotRef\.current = captureIndicatorSettingsSnapshot\(committedInstance\);/);
-  const footer = source.slice(source.indexOf("Save and Cancel, on EVERY indicator"));
+  const header = source.slice(
+    source.indexOf("One shared header action rail serves every current and future indicator"),
+    source.indexOf("<IndicatorSettingsSections>"),
+  );
   assert.doesNotMatch(
-    footer.slice(0, footer.indexOf("</div>\n        </div>")),
+    header,
     /onClick=\{commitSettingsAndClose\}/,
     "the permanent Save action still closes the settings dialog",
   );
 });
 
 check("Footprint cannot bypass the shared clean-baseline save", () => {
-  const footerAt = source.indexOf("Save and Cancel, on EVERY indicator");
-  const footprintActionsAt = source.lastIndexOf("value={footprintTemplateName}", footerAt);
+  const footprintActionsAt = source.indexOf("value={footprintTemplateName}");
+  const dialogEnd = source.indexOf("</div>,\n        document.body", footprintActionsAt);
   assert.ok(footprintActionsAt > 0, "the Footprint template controls were not found");
-  const footprintActions = source.slice(footprintActionsAt, footerAt);
+  const footprintActions = source.slice(footprintActionsAt, dialogEnd);
   assert.doesNotMatch(
     footprintActions,
     /Save settings/,
