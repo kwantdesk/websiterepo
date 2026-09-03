@@ -84,5 +84,10 @@ assert.doesNotMatch(
   /readCachedInstitutionalVolumeProfiles/,
   "the chart startup path must not return to all-profile cache enumeration",
 );
+assert.match(
+  workspace,
+  /const requiresExecutionStream = needsOrderFlowHistory\s*\|\| needsLiveVolumeProfiles\s*\|\| isEventBasedChartInterval\(pane\.timeframe\)/,
+  "volume-profile-only charts must open the shared Rithmic execution stream",
+);
 
-console.log("indicator hydration fast path: 6/6 checks passed");
+console.log("indicator hydration fast path: 7/7 checks passed");

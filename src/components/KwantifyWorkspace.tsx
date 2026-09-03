@@ -5735,7 +5735,15 @@ function WorkspaceChartPaneComponent({
     };
   }, [initialBalanceNeedsMinuteSeries, pane.broker, pane.symbol]);
   const needsLiveVolumeProfiles = Boolean(dailyProfileInstance || weeklyProfileInstance);
-  const requiresExecutionStream = needsOrderFlowHistory || isEventBasedChartInterval(pane.timeframe);
+  // Daily/weekly profiles are execution-tape studies too. Leaving them out of
+  // this gate meant a profile-only chart never opened the Rithmic execution
+  // stream: it sat blank behind the HTTP snapshot (often for several seconds)
+  // and, once painted, could stop developing until the next 15-second poll.
+  // The shared subscriber is deduplicated by contract, so this does not open
+  // one upstream connection per indicator or per profile.
+  const requiresExecutionStream = needsOrderFlowHistory
+    || needsLiveVolumeProfiles
+    || isEventBasedChartInterval(pane.timeframe);
   useEffect(() => {
     if (requiresExecutionStream) return;
     // Removing the last order-flow study must release its large React-held
