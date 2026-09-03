@@ -1507,3 +1507,38 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
   event-bar first paint 7/7, candle-gap integrity 7/7, page loaders 5/5 and the
   Rithmic 53-instrument × 50-interval matrix (2,650 combinations) passed;
   focused ESLint, TypeScript and the complete 80-page production build passed.
+
+## 2026-09-04 — Vercel volume-profile retry-storm containment
+
+### Completed
+
+- Vercel observability identified the dominant current-cycle leak: roughly
+  274,000 `/api/institutional-market-data/v1/market-data/volume-profile`
+  invocations in twelve hours, 98.5% failing.
+- Root cause: one failed developing profile kept `currentDailyProfileLoaded`
+  false, which re-requested every visible historical date/session for every
+  pane every two seconds. Failed keys were not cached, so duplicate callers
+  immediately repeated the same request.
+- Completed sessions now load once, recover on a bounded five-minute cadence,
+  and never join the live reconciliation loop. The developing profile
+  reconciles once per minute while healthy and backs off from 15 seconds to
+  five minutes during failure.
+- Added a bounded per-request-key negative cache so concurrent panes and
+  repeated effects respect the same exponential retry window.
+- Removed the retired Databento execution-profile branch from the production
+  market-data route. Volume profiles now have one active authority: the Rithmic
+  execution archive on the VPS gateway.
+
+### Verification
+
+- Cost-containment regression: 8/8.
+- Volume-profile session toggle 5/5, filter 5/5, split 7/7.
+- Shared live-market routing regression passed.
+- Scoped ESLint: zero errors (existing workspace warnings remain).
+- `npx tsc --noEmit` passed and the complete 80-page production build passed.
+
+### Worktree safety
+
+- Existing native, SOCIALS, PDF and local test work remains untouched and
+  unstaged. Only the route, shared profile client, workspace profile lifecycle,
+  focused tests and this handoff entry belong to this change.

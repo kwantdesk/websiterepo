@@ -156,10 +156,17 @@ const volumeProfileResponseCache = new Map<string, {
   storedAt: number;
 }>();
 const volumeProfileRequests = new Map<string, Promise<InstitutionalVolumeProfile | null>>();
+const volumeProfileFailures = new Map<string, {
+  attempts: number;
+  retryAfter: number;
+}>();
 const VOLUME_PROFILE_RESPONSE_CACHE_MS = 10_000;
+const VOLUME_PROFILE_FAILURE_BACKOFF_BASE_MS = 15_000;
+const VOLUME_PROFILE_FAILURE_BACKOFF_MAX_MS = 5 * 60_000;
 // Each profile holds a full per-tick level array; cap the in-memory response
 // cache so distinct sessions/symbols cannot accumulate for the tab lifetime.
 const VOLUME_PROFILE_RESPONSE_CACHE_MAX = 16;
+const VOLUME_PROFILE_FAILURE_CACHE_MAX = 32;
 const INDICATOR_CACHE_NAME = "kwantify-indicator-data-v3";
 const INDICATOR_IDB_NAME = "kwantify-indicator-data-v3";
 const INDICATOR_IDB_STORE = "entries";
@@ -975,6 +982,8 @@ export async function fetchInstitutionalVolumeProfile(
   if (cached && Date.now() - cached.storedAt <= VOLUME_PROFILE_RESPONSE_CACHE_MS) {
     return cached.profile;
   }
+  const failed = volumeProfileFailures.get(cacheKey);
+  if (failed && Date.now() < failed.retryAfter) return null;
   const pending = volumeProfileRequests.get(cacheKey);
   if (pending) return pending;
 
@@ -984,6 +993,7 @@ export async function fetchInstitutionalVolumeProfile(
         cache: "no-store",
       });
       if (!response.ok) {
+        rememberVolumeProfileFailure(cacheKey);
         console.warn(
           `Exact volume profile request failed: HTTP ${response.status} · ${args.symbol}`
           + ` · ${args.contractSymbol ?? "continuous"} · ${args.period}`
@@ -1002,6 +1012,7 @@ export async function fetchInstitutionalVolumeProfile(
         || !Number.isFinite(payload.endMs)
         || payload.endMs <= payload.startMs
       ) {
+        rememberVolumeProfileFailure(cacheKey);
         console.warn(
           `Exact volume profile response was incomplete: ${payload.provider ?? "unknown"}`
           + ` · ${args.symbol} · ${args.contractSymbol ?? "continuous"}`
@@ -1040,6 +1051,7 @@ export async function fetchInstitutionalVolumeProfile(
         vah: valueArea.vah,
         val: valueArea.val,
       };
+      volumeProfileFailures.delete(cacheKey);
       if (volumeProfileResponseCache.has(cacheKey)) volumeProfileResponseCache.delete(cacheKey);
       volumeProfileResponseCache.set(cacheKey, { profile: normalizedPayload, storedAt: Date.now() });
       while (volumeProfileResponseCache.size > VOLUME_PROFILE_RESPONSE_CACHE_MAX) {
@@ -1050,6 +1062,7 @@ export async function fetchInstitutionalVolumeProfile(
       void writePersistentIndicatorCache(`volume-profile:${cacheKey}`, normalizedPayload);
       return normalizedPayload;
     } catch (error) {
+      rememberVolumeProfileFailure(cacheKey);
       console.warn(
         `Exact volume profile request could not complete: ${args.symbol}`
         + ` · ${args.contractSymbol ?? "continuous"} · ${args.period}`
@@ -1063,6 +1076,22 @@ export async function fetchInstitutionalVolumeProfile(
   })();
   volumeProfileRequests.set(cacheKey, request);
   return request;
+}
+
+function rememberVolumeProfileFailure(cacheKey: string) {
+  const previousAttempts = volumeProfileFailures.get(cacheKey)?.attempts ?? 0;
+  const attempts = Math.min(previousAttempts + 1, 6);
+  const retryAfter = Date.now() + Math.min(
+    VOLUME_PROFILE_FAILURE_BACKOFF_MAX_MS,
+    VOLUME_PROFILE_FAILURE_BACKOFF_BASE_MS * 2 ** (attempts - 1),
+  );
+  volumeProfileFailures.delete(cacheKey);
+  volumeProfileFailures.set(cacheKey, { attempts, retryAfter });
+  while (volumeProfileFailures.size > VOLUME_PROFILE_FAILURE_CACHE_MAX) {
+    const oldest = volumeProfileFailures.keys().next().value;
+    if (oldest === undefined) break;
+    volumeProfileFailures.delete(oldest);
+  }
 }
 
 // Every trading date in a week maps to the same Monday, so the two Date

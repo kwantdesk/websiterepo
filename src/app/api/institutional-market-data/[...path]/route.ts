@@ -1,6 +1,5 @@
 import { providerErrorMessage, logProviderError } from "@/lib/providerErrorMessage";
 import { NextRequest, NextResponse } from "next/server";
-import { buildDatabentoExecutionProfile } from "@/lib/databentoExecutionProfile.server";
 import {
   RTH_END_MINUTES,
   RTH_START_MINUTES,
@@ -9,15 +8,11 @@ import {
   type SessionFilterMode,
   type SessionWindowKind,
 } from "@/lib/volumeProfileSessions";
-import { futuresTickSize } from "@/lib/eventBars";
 import {
   configuredInstitutionalProvider,
   fetchInstitutionalMarketData,
   isInstitutionalMarketDataConfigured,
 } from "@/lib/institutionalMarketData.server";
-import { cmeSessionStartMs, cmeSessionWindowForDate } from "@/lib/chartHistoryWindow";
-import { STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT } from "@/lib/volumeProfileMath";
-import { vendorMarketDataConfigured } from "@/lib/vendorMarketData.server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -42,96 +37,6 @@ const ALLOWED_PATHS = new Set([
 ]);
 
 type RouteContext = { params: Promise<{ path: string[] }> };
-
-// The Rithmic collector can only serve the tape it has observed since it
-// started, so its profile is thin near a restart and holds nothing from
-// before this session. Databento has the complete historical execution
-// record, which is what produced real nodes in the original build — so the
-// volume profile is served from executions and only falls through to the
-// collector if Databento cannot answer.
-async function executionProfileResponse(request: NextRequest) {
-  const params = request.nextUrl.searchParams;
-  const symbol = (params.get("symbol") || params.get("root") || "").trim().toUpperCase();
-  if (!symbol || !vendorMarketDataConfigured("databento")) return null;
-
-  const contractSymbol = (params.get("contractSymbol") || "").trim().toUpperCase();
-  const period = params.get("period") === "weekly" ? "weekly" : "daily";
-  const now = Date.now();
-  const explicitStart = Number(params.get("startMs"));
-  const explicitEnd = Number(params.get("endMs"));
-  const tradingDate = params.get("tradingDate");
-  const sessionStart = cmeSessionStartMs(now);
-
-  // A daily request identifies its session by tradingDate, not by timestamps.
-  // Resolving that to the session's own window is what lets PRIOR days get a
-  // real profile; ignoring it silently returned today's data for every day.
-  const dateWindow = period === "daily" && tradingDate
-    ? cmeSessionWindowForDate(tradingDate)
-    : null;
-
-  const startMs = Number.isFinite(explicitStart) && explicitStart > 0
-    ? explicitStart
-    : dateWindow
-      ? dateWindow.startMs
-      : period === "weekly"
-        ? (sessionStart ?? now) - 5 * 24 * 60 * 60_000
-        : sessionStart ?? now - 24 * 60 * 60_000;
-  const requestedEnd = Number.isFinite(explicitEnd) && explicitEnd > startMs
-    ? explicitEnd
-    : dateWindow
-      ? dateWindow.endMs
-      : now;
-  // Databento rejects the whole request if `end` runs past the dataset's
-  // available edge, which is minutes behind live. Never ask beyond it.
-  const endMs = Math.min(requestedEnd, now);
-  const requestedFilterMode = String(params.get("filterMode") ?? "none").toLowerCase();
-  const sessionFilterMode = (["none", "filter", "splitted", "triple"].includes(requestedFilterMode)
-    ? requestedFilterMode
-    : "none") as SessionFilterMode;
-  const requestedWindow = String(params.get("filterTime") ?? "rth").toLowerCase();
-  const sessionWindow = (["rth", "eth", "custom"].includes(requestedWindow)
-    ? requestedWindow
-    : "rth") as SessionWindowKind;
-
-  try {
-    const profile = await buildDatabentoExecutionProfile({
-      symbol,
-      contractSymbol,
-      startMs,
-      endMs,
-      tickSize: futuresTickSize(contractSymbol || symbol),
-      groupTicks: Number(params.get("groupTicks") ?? 1),
-      // The trader's own % Value Area, not the 70% convention.
-      valueAreaPercent: Number(params.get("valueAreaPercent"))
-        > 0
-        ? Number(params.get("valueAreaPercent"))
-        : STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT,
-      minTradeVolume: Number(params.get("minTradeVolume") ?? 0),
-      maxTradeVolume: Number(params.get("maxTradeVolume") ?? 0),
-      period,
-      tradingDate: params.get("tradingDate"),
-      sessionSegments: resolveSessionSegments(startMs, endMs, {
-        mode: sessionFilterMode,
-        window: sessionWindow,
-        customStartMinutes: Number(params.get("sessionStartMinutes") ?? RTH_START_MINUTES),
-        customEndMinutes: Number(params.get("sessionEndMinutes") ?? RTH_END_MINUTES),
-        useEndSessionAsStartDay: params.get("useEndSessionAsStartDay") === "true",
-      }),
-    });
-    if (!profile) return null;
-    return NextResponse.json(profile, { headers: { "Cache-Control": "no-store" } });
-  } catch (error) {
-    console.error("Exact Databento volume profile failed.", {
-      symbol,
-      contractSymbol,
-      period,
-      tradingDate,
-      message: error instanceof Error ? error.message : String(error),
-    });
-    // Fall through to the collector rather than failing the request.
-    return null;
-  }
-}
 
 /**
  * The one session window a proxied request can be narrowed to, or null.
@@ -185,8 +90,6 @@ async function proxy(request: NextRequest, context: RouteContext) {
    */
   const forwarded = new URL(request.url);
   if (request.method === "GET" && path === "v1/market-data/volume-profile") {
-    const executionProfile = await executionProfileResponse(request);
-    if (executionProfile) return executionProfile;
     const only = sessionWindowForForwarding(request);
     if (only) {
       forwarded.searchParams.set("startMs", String(only.startMs));

@@ -8649,6 +8649,8 @@ function WorkspaceChartPaneComponent({
 
     let cancelled = false;
     let refreshTimer: number | null = null;
+    let consecutiveCurrentProfileFailures = 0;
+    let nextCompletedProfilesRefreshAt = Date.now() + 5 * 60_000;
     const chartStepMs = Math.max(1, getTimeframeMs(pane.timeframe));
     const tradingDates = dailyTradingDateSignature
       ? dailyTradingDateSignature.split(",")
@@ -8781,7 +8783,7 @@ function WorkspaceChartPaneComponent({
       });
     };
 
-    const refreshExactProfiles = async () => {
+    const refreshExactProfiles = async (includeCompletedProfiles: boolean) => {
       const requests: Promise<unknown>[] = [];
       let currentDailyProfileLoaded = !dailyProfileInstance;
       if (dailyProfileInstance) {
@@ -8830,6 +8832,12 @@ function WorkspaceChartPaneComponent({
           return kept.length === current.length ? current : kept;
         });
         tradingDates.forEach((tradingDate) => {
+          // Completed sessions are immutable. Load them once when the effect
+          // starts or settings change; recurring reconciliation only needs the
+          // developing session. Refetching every visible historical profile
+          // on every timer multiplied one outage into hundreds of thousands
+          // of identical Vercel invocations.
+          if (!includeCompletedProfiles && tradingDate !== currentDailyTradingDate) return;
           // Splitting a day means one profile PER window, so Asia, London and
           // New York stand beside each other. Each segment is requested as its
           // own explicit span with no further filtering; the server then has
@@ -8895,7 +8903,7 @@ function WorkspaceChartPaneComponent({
           });
         });
       }
-      if (weeklyProfileInstance) {
+      if (weeklyProfileInstance && includeCompletedProfiles) {
         /*
          * THIS WEEK, from the Sunday Globex open - not the last five sessions
          * the chart happened to have loaded.
@@ -8951,17 +8959,30 @@ function WorkspaceChartPaneComponent({
       }
       await Promise.allSettled(requests);
       if (!cancelled) {
-        // The first request can legitimately beat the first Globex execution.
-        // Retry that empty active session promptly; once it exists, retain the
-        // normal low-frequency snapshot reconciliation while Rithmic develops
-        // the profile trade by trade in memory.
+        consecutiveCurrentProfileFailures = currentDailyProfileLoaded
+          ? 0
+          : consecutiveCurrentProfileFailures + 1;
+        const failureDelay = Math.min(
+          5 * 60_000,
+          15_000 * 2 ** Math.min(5, Math.max(0, consecutiveCurrentProfileFailures - 1)),
+        );
+        // Live trades develop the current daily/weekly model in memory. The
+        // server refresh is a reconciliation, not a second live feed. On an
+        // outage, back off rather than synchronising every open pane into a
+        // two-second retry storm.
         refreshTimer = window.setTimeout(
-          () => void refreshExactProfiles(),
-          currentDailyProfileLoaded ? 15_000 : 2_000,
+          () => {
+            const includeCompletedProfiles = Date.now() >= nextCompletedProfilesRefreshAt;
+            if (includeCompletedProfiles) {
+              nextCompletedProfilesRefreshAt = Date.now() + 5 * 60_000;
+            }
+            void refreshExactProfiles(includeCompletedProfiles);
+          },
+          currentDailyProfileLoaded ? 60_000 : failureDelay,
         );
       }
     };
-    void refreshExactProfiles();
+    void refreshExactProfiles(true);
 
     return () => {
       cancelled = true;

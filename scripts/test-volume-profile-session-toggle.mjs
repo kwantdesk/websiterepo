@@ -66,7 +66,7 @@ check("the toggles are in the effect's dependency array", () => {
 check("a deselected session's profile is removed from state", () => {
   // THE SECOND BUG. Adding and replacing is not enough - something has to drop
   // the window that is no longer requested.
-  const start = workspace.indexOf("const refreshExactProfiles = async () => {");
+  const start = workspace.indexOf("const refreshExactProfiles = async (includeCompletedProfiles: boolean) => {");
   // The weekly branch appears earlier in the file too, so search from the
   // function's own start rather than from the top.
   const refresh = workspace.slice(start, workspace.indexOf("      if (weeklyProfileInstance) {", start));
