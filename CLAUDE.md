@@ -1455,3 +1455,17 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
   settings 8/8, TPO wiring 6/6, Footprint chart types and theme suite 12/12 all
   passed. Scoped ESLint, TypeScript and the complete 80-page production build
   passed.
+
+## 2026-09-03 — Candle-style transition buttons restored
+
+- The Candles, Hollow Candles, Heikin Ashi and Heikin Ashi Hollow buttons were
+  correctly saving and highlighting their style id, but the chart's incremental
+  drawing guard did not treat every style selection as a full-series change.
+- Leaving Heikin Ashi therefore replaced only the newest bar with real OHLC and
+  left the historical chart averaged, making the selected button appear to do
+  nothing. Every explicit style change now replaces the complete visible series
+  once, while normal incoming candles retain the incremental path.
+- Verification: candle style 11/11, context menu 6/6 and candle visibility 5/5
+  passed; focused test lint, TypeScript and the complete 80-page production
+  build passed. Direct ESLint parsing of the 18,000-line chart component exceeded
+  Node's 8 GB heap; TypeScript and the production compiler both validated it.

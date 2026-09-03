@@ -12438,6 +12438,14 @@ function Chart({
     const previousCandleCount = prevCandlesLengthRef.current;
     const needsFullRedraw =
       /*
+       * A style button is an explicit series transition. In particular,
+       * leaving Heikin Ashi must replace every averaged historical bar with
+       * its real OHLC counterpart. Updating only the newest candle leaves the
+       * chart visually stuck in the old style even though the dialog reports
+       * the new selection.
+       */
+      styleChanged ||
+      /*
        * An averaged bar has no incremental form: every Heikin Ashi bar is
        * computed from the one before it, so advancing the series means
        * recomputing it. Redrawing is the only correct way to move it forward,

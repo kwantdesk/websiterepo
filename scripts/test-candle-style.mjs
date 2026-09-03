@@ -6,6 +6,7 @@ const {
   isHollowStyle, isHeikinAshiStyle, toHeikinAshi,
 } = await import("../src/lib/candleStyle.ts");
 const { indicatorColorRoles } = await import("../src/lib/indicatorPalettes.ts");
+const settingsPanel = readFileSync(new URL("../src/components/ChartIndicatorsControl.tsx", import.meta.url), "utf8");
 
 /**
  * The price series' own settings.
@@ -129,6 +130,16 @@ check("the style flags agree with the style list", () => {
   assert.equal(isHeikinAshiStyle("hollow"), false);
 });
 
+check("every style button writes its own catalogue id", () => {
+  assert.match(settingsPanel, /CANDLE_STYLES\.map\(\(style\) => \(/);
+  assert.match(settingsPanel, /aria-pressed=\{candleStyleId === style\.id\}/);
+  assert.match(
+    settingsPanel,
+    /onClick=\{\(\) => setCandleSetting\(CANDLE_SETTING_KEYS\.style, style\.id\)\}/,
+    "the candle-style buttons are not connected to the setting consumed by the renderer",
+  );
+});
+
 check("the pickers write the keys the resolver reads", () => {
   /*
    * Two lists naming the same colours is how a picker ends up controlling
@@ -153,6 +164,11 @@ check("an averaged series is redrawn rather than updated bar by bar", () => {
   assert.match(chart, /if \(heikinAshiActiveRef\.current\) return;/, "the live tick path still pushes raw bars");
   // And a style change must redraw even when no new bar has arrived.
   assert.match(chart, /const styleChanged = lastDrawnCandleStyleRef\.current !== candleStyle;/);
+  assert.match(
+    chart,
+    /const needsFullRedraw =[\s\S]*?styleChanged \|\|[\s\S]*?isHeikinAshiStyle\(candleStyle\)/,
+    "leaving Heikin Ashi updates only the newest bar instead of restoring the full real-OHLC series",
+  );
 });
 
 console.log(`\ncandle style: ${passed}/${passed} checks passed`);
