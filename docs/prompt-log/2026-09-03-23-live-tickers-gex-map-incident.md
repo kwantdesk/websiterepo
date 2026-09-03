@@ -14,6 +14,10 @@ Follow-ups:
 
 > what is this bug mate, it happens ever market open mate very annoying it cant keep happneing
 
+> shit frozen again the tickers man the fuck is going on
+
+> they come and go keep coming and going
+
 ## Diagnosis
 
 This was two faults in series.
@@ -29,6 +33,11 @@ This was two faults in series.
    VPS market-snapshot stream had replaced Massive, but the client was still
    sending every cash ticker through a four-second REST fallback. GEX Map was
    also omitted from the global futures and cash-index subscription guards.
+4. The remaining intermittent failure was deterministic: the Next.js proxy
+   only granted a long-lived timeout to paths ending exactly in `/stream`, but
+   the cash ticker endpoint is `/index-stream`. Vercel therefore aborted the
+   healthy upstream SSE every 30 seconds. The browser automatically reconnected,
+   producing the reported cycle where prices came back and disappeared again.
 
 ## Fix and outcome
 
@@ -48,5 +57,9 @@ This was two faults in series.
   240/minute account allowance for the one shared cash-index poller. Identical
   successful requests are now held for ten seconds at the VPS edge instead of
   2.5 seconds. The two controls are VPS-owned and survive future deployments.
+- Classified every `*stream*` proxy route as long-lived before the upstream
+  request begins. `/index-stream` now receives the 295-second Vercel request
+  budget and reconnects at the platform boundary instead of being killed every
+  30 seconds. Added a regression assertion covering this exact route-name bug.
 
 Verification and production deployment are recorded below after completion.

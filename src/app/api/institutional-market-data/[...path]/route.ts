@@ -204,6 +204,11 @@ async function proxy(request: NextRequest, context: RouteContext) {
   const body = request.method === "GET" || request.method === "HEAD"
     ? undefined
     : await request.arrayBuffer();
+  // Stream endpoints are not consistently named `/stream`: the cash-index
+  // feed is `/index-stream`. Treat every stream path as long-lived before the
+  // upstream request starts, otherwise the default 30s abort makes quotes
+  // disappear and reconnect in a loop at precisely the busiest time of day.
+  const isLongLivedStream = path.endsWith("/trades") || path.includes("stream");
   try {
     const upstream = await fetchInstitutionalMarketData(
       `${path}${forwarded.search}`,
@@ -216,7 +221,7 @@ async function proxy(request: NextRequest, context: RouteContext) {
       // order-flow backfill is a large payload and needs far more than the
       // 30s default — a server budget below the client's simply aborts the
       // backfill and leaves the earlier session with no executions.
-      path.endsWith("/trades") || path.endsWith("/stream")
+      isLongLivedStream
         ? 295_000
         : path.endsWith("/order-flow-levels")
           ? 150_000
@@ -248,7 +253,7 @@ async function proxy(request: NextRequest, context: RouteContext) {
       "Content-Type": upstream.headers.get("content-type") || "application/json",
       "Cache-Control": "no-store",
     });
-    if (path.endsWith("/trades") || path.endsWith("/stream")) {
+    if (isLongLivedStream) {
       headers.set("X-Accel-Buffering", "no");
       return new Response(upstream.body, { status: upstream.status, headers });
     }
