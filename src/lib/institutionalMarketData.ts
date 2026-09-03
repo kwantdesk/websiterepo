@@ -896,7 +896,7 @@ export async function fetchInstitutionalSnapshot(args: {
   }
 }
 
-export async function fetchInstitutionalVolumeProfile(args: {
+export type InstitutionalVolumeProfileRequest = {
   symbol: string;
   contractSymbol?: string;
   period: InstitutionalVolumeProfile["period"];
@@ -913,7 +913,9 @@ export async function fetchInstitutionalVolumeProfile(args: {
   sessionStartMinutes?: number;
   sessionEndMinutes?: number;
   useEndSessionAsStartDay?: boolean;
-}): Promise<InstitutionalVolumeProfile | null> {
+};
+
+function institutionalVolumeProfileRequest(args: InstitutionalVolumeProfileRequest) {
   const requestedValueArea = Number(args.valueAreaPercent);
   // The trader's own % Value Area. This was previously pinned to the 70%
   // convention here as well as on the route, so the setting never arrived.
@@ -942,7 +944,33 @@ export async function fetchInstitutionalVolumeProfile(args: {
   if (/^\d{4}-\d{2}-\d{2}$/.test(args.tradingDate ?? "")) query.set("tradingDate", args.tradingDate!);
   if (Number.isFinite(args.startMs)) query.set("startMs", String(args.startMs));
   if (Number.isFinite(args.endMs)) query.set("endMs", String(args.endMs));
-  const cacheKey = query.toString();
+  return { askedValueAreaPercent, query, cacheKey: query.toString() };
+}
+
+/**
+ * Restore one exact profile in O(1) cache lookups.
+ *
+ * The former startup path enumerated and decoded every cached profile for
+ * every symbol before filtering to the active chart. A user's sixth NQ
+ * profile therefore waited behind unrelated ES, CL, GC and prior-contract
+ * entries. The request key is deterministic, so read the item we need.
+ */
+export async function readCachedInstitutionalVolumeProfile(
+  args: InstitutionalVolumeProfileRequest,
+): Promise<InstitutionalVolumeProfile | null> {
+  const { cacheKey } = institutionalVolumeProfileRequest(args);
+  const memory = volumeProfileResponseCache.get(cacheKey)?.profile ?? null;
+  if (isExecutionBackedVolumeProfile(memory)) return memory;
+  const persistent = await readPersistentIndicatorCache<InstitutionalVolumeProfile>(
+    `volume-profile:${cacheKey}`,
+  );
+  return isExecutionBackedVolumeProfile(persistent) ? persistent : null;
+}
+
+export async function fetchInstitutionalVolumeProfile(
+  args: InstitutionalVolumeProfileRequest,
+): Promise<InstitutionalVolumeProfile | null> {
+  const { askedValueAreaPercent, query, cacheKey } = institutionalVolumeProfileRequest(args);
   const cached = volumeProfileResponseCache.get(cacheKey);
   if (cached && Date.now() - cached.storedAt <= VOLUME_PROFILE_RESPONSE_CACHE_MS) {
     return cached.profile;

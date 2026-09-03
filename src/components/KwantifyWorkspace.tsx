@@ -159,7 +159,7 @@ import {
   fetchInstitutionalOrderFlowLevels,
   fetchInstitutionalVolumeProfile,
   isExecutionBackedVolumeProfile,
-  readCachedInstitutionalVolumeProfiles,
+  readCachedInstitutionalVolumeProfile,
   repairInstitutionalCandleSeries,
   type InstitutionalOrderFlowResult,
   type InstitutionalTrade,
@@ -8687,42 +8687,6 @@ function WorkspaceChartPaneComponent({
         .sort((left, right) => left.startMs - right.startMs);
     });
 
-    // Restore exact daily and weekly profiles for every native profile mode.
-    // Previously only two delta-labelled variants used this cache, while the
-    // ordinary profile installed its OHLCV proxy first and then blocked the
-    // exact cached session from replacing it.
-    const cachedProfileRequests: Promise<InstitutionalVolumeProfile[]>[] = [];
-    if (dailyProfileInstance) {
-      cachedProfileRequests.push(readCachedInstitutionalVolumeProfiles(activeRoot, "daily"));
-    }
-    if (weeklyProfileInstance) {
-      cachedProfileRequests.push(readCachedInstitutionalVolumeProfiles(activeRoot, "weekly"));
-    }
-    if (cachedProfileRequests.length) {
-      void Promise.all(cachedProfileRequests).then((profileGroups) => {
-        if (cancelled) return;
-        const cachedExact = profileGroups.flat().filter(matchesRequestedProfile)
-          .map((profile) => applyInstitutionalTradesToVolumeProfile(
-            profile,
-            latestMarketTradesRef.current,
-          ));
-        if (!cachedExact.length) return;
-        setVolumeProfiles((current) => {
-          const next = new Map(current
-            .filter(matchesRequestedProfile)
-            .map((profile) => [profileSessionKey(profile), profile]));
-          cachedExact.forEach((profile) => {
-            const key = profileSessionKey(profile);
-            const existing = next.get(key);
-            const existingCoverage = Number(existing?.coverageEndMs ?? existing?.endMs ?? 0);
-            const cachedCoverage = Number(profile.coverageEndMs ?? profile.endMs);
-            if (!existing || cachedCoverage > existingCoverage) next.set(key, profile);
-          });
-          return [...next.values()].sort((left, right) => left.startMs - right.startMs);
-        });
-      });
-    }
-
     const replaceExactProfile = (
       profile: InstitutionalVolumeProfile | null,
       expectedTradingDate?: string,
@@ -8775,7 +8739,9 @@ function WorkspaceChartPaneComponent({
         const dailyFilterMode = sessionFilterModeFor(dailyProfileSettings);
         const requestedSplits = dailySessionSplitsFor(dailyProfileSettings);
         const segmentsByDate = new Map<string, ReturnType<typeof sessionSegmentsForTradingDate>>();
-        tradingDates.forEach((tradingDate) => {
+        // Newest first: the live profile must not sit behind five historical
+        // network jobs in the browser/gateway connection queue.
+        [...tradingDates].reverse().forEach((tradingDate) => {
           segmentsByDate.set(
             tradingDate,
             requestedSplits ? sessionSegmentsForTradingDate(tradingDate, dailyProfileSettings) : [],
@@ -8838,7 +8804,7 @@ function WorkspaceChartPaneComponent({
                 sessionLabel: undefined,
               }];
           jobs.forEach((job) => {
-            requests.push(fetchInstitutionalVolumeProfile({
+            const requestArgs = {
               symbol: displayCmeSymbol(pane.symbol),
               contractSymbol: resolvedContractSymbol,
               period: "daily",
@@ -8854,7 +8820,19 @@ function WorkspaceChartPaneComponent({
               sessionStartMinutes: Number(dailyProfileSettings.sessionStartMinutes ?? RTH_START_MINUTES),
               sessionEndMinutes: Number(dailyProfileSettings.sessionEndMinutes ?? RTH_END_MINUTES),
               useEndSessionAsStartDay: dailyProfileSettings.useEndSessionAsStartDay === true,
-            }).then((profile) => {
+            } as const;
+            requests.push((async () => {
+              // Paint the exact last-known profile first, then reconcile from
+              // the gateway. This read is keyed; it never scans the user's
+              // entire multi-instrument indicator cache.
+              const cachedProfile = await readCachedInstitutionalVolumeProfile(requestArgs);
+              replaceExactProfile(
+                cachedProfile && job.sessionId
+                  ? { ...cachedProfile, sessionId: job.sessionId, sessionLabel: job.sessionLabel }
+                  : cachedProfile,
+                tradingDate,
+              );
+              const profile = await fetchInstitutionalVolumeProfile(requestArgs);
               if (tradingDate === currentDailyTradingDate && profile) {
                 currentDailyProfileLoaded = true;
               }
@@ -8864,7 +8842,7 @@ function WorkspaceChartPaneComponent({
                   : profile,
                 tradingDate,
               );
-            }));
+            })());
           });
         });
       }
@@ -8897,7 +8875,7 @@ function WorkspaceChartPaneComponent({
         const weeklyCandles = candles.filter((candle) => (
           candle.timestamp >= weekStartMs && (weekEndMs === null || candle.timestamp < weekEndMs)
         ));
-        requests.push(fetchInstitutionalVolumeProfile({
+        const weeklyRequestArgs = {
           symbol: displayCmeSymbol(pane.symbol),
           contractSymbol: resolvedContractSymbol,
           period: "weekly",
@@ -8916,7 +8894,11 @@ function WorkspaceChartPaneComponent({
           sessionStartMinutes: Number(weeklyProfileSettings.sessionStartMinutes ?? RTH_START_MINUTES),
           sessionEndMinutes: Number(weeklyProfileSettings.sessionEndMinutes ?? RTH_END_MINUTES),
           useEndSessionAsStartDay: weeklyProfileSettings.useEndSessionAsStartDay === true,
-        }).then(replaceExactProfile));
+        } as const;
+        requests.push((async () => {
+          replaceExactProfile(await readCachedInstitutionalVolumeProfile(weeklyRequestArgs));
+          replaceExactProfile(await fetchInstitutionalVolumeProfile(weeklyRequestArgs));
+        })());
       }
       await Promise.allSettled(requests);
       if (!cancelled) {
