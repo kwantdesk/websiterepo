@@ -2043,9 +2043,9 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     // behaviour every existing profile already has.
     filterMode: "none",
     filterTime: "rth",
-    // Plot Settings: how far level lines run, their dash pattern, and how the
-    // histogram itself is painted.
-    extendMode: "none",
+    // Plot Settings: level dash pattern and how the histogram itself is
+    // painted. VAH/VAL/POC spans are structural: prior sessions finish at the
+    // next profile and the newest finishes at the pane edge.
     levelLineStyle: "dash",
     // VAH / POC / VAL are named on the plot by default, the way IB levels are.
     showLevelLabels: true,
@@ -2650,7 +2650,6 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         showSummaryVolume: normalizedInstance.settings?.showSummaryVolume ?? true,
         showSummaryTrades: normalizedInstance.settings?.showSummaryTrades ?? false,
         filterMode: normalizedInstance.settings?.filterMode ?? "none",
-        extendMode: normalizedInstance.settings?.extendMode ?? "none",
         showLevelLabels: normalizedInstance.settings?.showLevelLabels ?? true,
         pocHighlightOpacity: normalizedInstance.settings?.pocHighlightOpacity ?? 55,
         developingPocStartMinutes: normalizedInstance.settings?.developingPocStartMinutes ?? 0,
@@ -2720,7 +2719,6 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         showSummaryVolume: normalizedInstance.settings?.showSummaryVolume ?? true,
         showSummaryTrades: normalizedInstance.settings?.showSummaryTrades ?? false,
         filterMode: normalizedInstance.settings?.filterMode ?? "none",
-        extendMode: normalizedInstance.settings?.extendMode ?? "none",
         showLevelLabels: normalizedInstance.settings?.showLevelLabels ?? true,
         pocHighlightOpacity: normalizedInstance.settings?.pocHighlightOpacity ?? 55,
         developingPocStartMinutes: normalizedInstance.settings?.developingPocStartMinutes ?? 0,

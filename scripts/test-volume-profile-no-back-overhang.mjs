@@ -62,9 +62,9 @@ const style = {
   peakOnlyOutsideValueArea: false, valleyOnlyOutsideValueArea: false, showBusinessZone: false,
   businessZoneColor: "#0f0", businessZoneOpacity: 20, businessZoneLineWidth: 1,
   showVwap: false, vwapColor: "#00f", vwapLineWidth: 1, vwapDash: "solid",
-  vwapBandDeviations: [], vwapBandColor: "#00f", extendMode: "none", levelDash: "solid",
+  vwapBandDeviations: [], vwapBandColor: "#00f", levelDash: "solid",
   showLevelLabels: false, levelLabelSide: "right", showLevelLabelPrice: false,
-  interactionBars: [], visualStyle: "automatic", borderWidth: 1,
+  visualStyle: "automatic", borderWidth: 1,
   showSummaryVolume: false, showSummaryTrades: false,
   summaryTextColor: "#fff", summaryAskColor: "#0f0", summaryBidColor: "#f00",
 };

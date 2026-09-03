@@ -1253,3 +1253,16 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
 - Final live finding: `.vercelignore` removes `.git` before the hook. The gate
   now uses GitHub's non-REST public `.diff` transport, with strict size,
   truncation and path validation, and is tested from a non-Git directory.
+
+## 2026-09-03 — Volume-profile level chaining
+
+- VAH, POC and VAL now obey a structural geometry invariant: each level starts
+  at its own profile, historical levels stop at the nearest newer profile, and
+  the newest level reaches the chart pane's right edge.
+- Removed candle-interaction shortening and the associated UI/config option;
+  price crossing a level no longer causes arbitrary mid-chart cutoffs.
+- Chronological ordering prevents older or same-session profile bodies from
+  clipping newer levels. Vertically off-screen profile bodies remain valid
+  chain boundaries so vertical panning cannot create overhangs.
+- Removed the unused per-render candle-to-interaction-bar mapping and added
+  focused regression coverage for the line-chain invariants.

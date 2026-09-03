@@ -30,6 +30,7 @@ function clamp(value: number, min: number, max: number) {
 export type VolumeProfileBodySpan = {
   id: string;
   root: string;
+  startMs: number;
   leftX: number;
   rightX: number;
 };
@@ -93,9 +94,11 @@ export function placeVolumeProfileLabelBoxes(
 /**
  * Resolve only the visible, forward section of a profile level.
  *
- * A later profile body is opaque geometry for level purposes: the line stops
- * at its back edge and is never painted through it. If a body already covers
- * the source profile's front edge there is no honest line segment to draw.
+ * A chronologically later profile body is opaque geometry for level purposes:
+ * the line stops flush at its back edge and is never painted through it. An
+ * older body that happens to be docked or offset to the right cannot truncate
+ * the newest profile. If a later body already covers the source profile's
+ * front edge there is no honest line segment to draw.
  */
 export function forwardVolumeProfileLevelSegment(
   sourceId: string,
@@ -107,9 +110,12 @@ export function forwardVolumeProfileLevelSegment(
   if (!Number.isFinite(sourceFrontX) || !Number.isFinite(rightEdge) || rightEdge <= sourceFrontX) {
     return null;
   }
+  const source = bodies.find((body) => body.id === sourceId && body.root === root);
+  if (!source || !Number.isFinite(source.startMs)) return null;
   let endX = rightEdge;
   for (const body of bodies) {
     if (body.id === sourceId || body.root !== root) continue;
+    if (!Number.isFinite(body.startMs) || body.startMs <= source.startMs) continue;
     const leftX = Math.min(body.leftX, body.rightX);
     const bodyRightX = Math.max(body.leftX, body.rightX);
     if (!Number.isFinite(leftX) || !Number.isFinite(bodyRightX) || bodyRightX <= sourceFrontX) continue;
@@ -362,13 +368,6 @@ export type NativeVolumeProfileStyle = {
   /** Standard deviations to draw as envelopes around VWAP. */
   vwapBandDeviations?: number[];
   vwapBandColor?: string;
-  /**
-   * How far a level line runs to the right.
-   * `none` carries it to the back of the profile in front (the live edge for
-   * the newest profile); `till-interaction` stops it earlier, at the first bar
-   * that traded back through it. A level is never drawn past the next profile.
-   */
-  extendMode?: "none" | "till-interaction";
   /** Dash pattern shared by the level lines, from the Line style dropdown. */
   levelDash?: number[];
   /** Name the POC and value area on the plot, the way IB levels are named. */
@@ -377,8 +376,6 @@ export type NativeVolumeProfileStyle = {
   levelLabelSide?: "right" | "left";
   /** Print the level's price beside its name. */
   showLevelLabelPrice?: boolean;
-  /** Bars after the profile, used to resolve `till-interaction`. */
-  interactionBars?: readonly { time: number; high: number; low: number }[];
   /** Histogram appearance: filled, outlined, or a single edge line. */
   visualStyle?: "automatic" | "solid" | "hollow" | "line" | "combined";
   /** Outline weight when the style draws borders. */
@@ -699,7 +696,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
         const visibleHigh = topPrice == null || bottomPrice == null
           ? Number.POSITIVE_INFINITY
           : Math.max(topPrice, bottomPrice);
-        if (model.highPrice < visibleLow || model.lowPrice > visibleHigh) continue;
+        const profileVerticallyVisible = !(model.highPrice < visibleLow || model.lowPrice > visibleHigh);
         const sessionAnchorX = this.timeToCoordinate(
           model,
           model.drawingBounds?.startTime ?? profile.startMs / 1_000,
@@ -975,12 +972,20 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
         drawnBodySpans.set(model.id, {
           id: model.id,
           root: profile.root,
+          startMs: model.drawingBounds?.startTime != null
+            ? model.drawingBounds.startTime * 1_000
+            : profile.startMs,
           leftX: anchorX - bodyReachesLeftBy,
           // Levels always travel forward on screen from the rightmost point
           // the source profile can paint. This prevents right-facing and
           // docked profiles from emitting a line out of their back.
           rightX: anchorX + (facesLeft ? 0 : profileWidth),
         });
+        // Even when this profile's traded price range is above or below the
+        // viewport, its session body still owns the horizontal boundary. Keep
+        // the span in the chain, then skip only its paint work. Otherwise a
+        // visible older VAH/VAL can blow straight through the hidden session.
+        if (!profileVerticallyVisible) continue;
         const groupedPoc = derived.valueArea.poc ?? profile.poc;
         const groupedVah = derived.valueArea.vah ?? profile.vah;
         const groupedVal = derived.valueArea.val ?? profile.val;
@@ -1353,12 +1358,10 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           if (price == null) return;
           const y = params.series.priceToCoordinate(price);
           if (y == null) return;
-          // Extend Line. `till-interaction` runs on until a later bar trades
-          // back through the level, which is the point the line stops being
-          // untested — drawing past it would overstate the level.
-          // A level runs on until the session in front begins. Extend modes may
-          // stop it EARLIER — never later — so a line can never be drawn
-          // underneath the next profile, whatever the split settings are.
+          // VAH, VAL and POC obey one spatial contract: start at the source
+          // profile's front, finish flush with the next chronological profile,
+          // and let the newest profile reach the pane edge. Candle interaction
+          // must not shorten these structural session levels.
           const sourceBody = drawnBodySpans.get(model.id);
           if (!sourceBody) return;
           const lineSegment = forwardVolumeProfileLevelSegment(
@@ -1368,19 +1371,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
             rightEdge,
             [...drawnBodySpans.values()],
           );
-          let lineEndX = lineSegment?.endX ?? sourceBody.rightX;
-          const extendMode = style.extendMode ?? "none";
-          if (lineSegment && extendMode === "till-interaction") {
-            const bars = style.interactionBars ?? [];
-            let touchedX: number | null = null;
-            for (const bar of bars) {
-              if (bar.low <= price && bar.high >= price) {
-                const barX = this.timeToCoordinate(model, bar.time);
-                if (barX != null && barX > lineSegment.startX) { touchedX = barX; break; }
-              }
-            }
-            if (touchedX != null) lineEndX = Math.min(lineEndX, touchedX);
-          }
+          const lineEndX = lineSegment?.endX ?? sourceBody.rightX;
           if (lineSegment) {
             context.globalAlpha = 0.82;
             context.strokeStyle = color;

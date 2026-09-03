@@ -231,11 +231,12 @@ console.log("Volume profile Data Settings (grouping + filters) tests passed.");
     /context\.moveTo\(lineSegment\.startX, y\)/,
     "levels must not emerge backwards through their own profile",
   );
-  // Extend modes may only pull a level in, never push it past the next profile.
-  assert.match(
+  // Candle touches must not produce arbitrary mid-session cutoffs. Structural
+  // profile levels chain only to the next profile or the live pane edge.
+  assert.doesNotMatch(
     primitive,
-    /lineEndX = Math\.min\(lineEndX, touchedX\)/,
-    "till-interaction may only shorten a level, never extend it",
+    /till-interaction|interactionBars|touchedX/,
+    "VAH, VAL and POC must not stop at an intervening candle touch",
   );
   assert.ok(
     !primitive.includes('"till-end-window"'),

@@ -14037,13 +14037,6 @@ function Chart({
       ? null
       : Math.floor(volumeProfileLastCandleTimestamp / 1_000);
     const intervalSeconds = candleIntervalMs ? candleIntervalMs / 1_000 : null;
-    // Compact bar list for `till-interaction` level lines: a level stops at
-    // the first later bar whose range trades back through it.
-    const profileInteractionBars = candles.map((candle) => ({
-      time: Math.floor(candle.timestamp / 1000),
-      high: candle.high,
-      low: candle.low,
-    }));
     // "Recent lines only". With a week of daily profiles on screen every one
     // of them extends its own POC and value-area lines and the chart turns
     // into a grid. This keeps the levels on the newest profile of each kind —
@@ -14136,10 +14129,6 @@ function Chart({
           ),
           snapMode: requestedSnapMode,
           // Plot Settings
-          // Saved profiles may still carry the retired till-end-window value.
-          extendMode: (String(profileSettings.extendMode) === "till-interaction"
-            ? "till-interaction"
-            : "none") as "none" | "till-interaction",
           levelDash: PROFILE_LEVEL_DASH[String(profileSettings.levelLineStyle ?? "dash")] ?? [2, 3],
           showLevelLabels: profileSettings.showLevelLabels !== false,
           levelLabelSide: String(profileSettings.levelLabelSide) === "left" ? "left" : "right",
@@ -14149,10 +14138,6 @@ function Chart({
             ? String(profileSettings.visualStyle)
             : "automatic") as "automatic" | "solid" | "hollow" | "line" | "combined",
           borderWidth: clamp(Number(profileSettings.borderWidth ?? 1), 0.5, 6),
-          // Only the bars after the profile can resolve a till-interaction line.
-          interactionBars: String(profileSettings.extendMode) === "till-interaction"
-            ? profileInteractionBars
-            : undefined,
           pocLineWidth: clamp(Number(profileSettings.pocLineWidth ?? 1), 0.5, 6),
           showDevelopingPoc: profileSettings.showDevelopingPoc === true,
           developingPocStartMs: Number(profileSettings.developingPocStartMinutes ?? 0) > 0

@@ -2727,10 +2727,6 @@ export default function ChartIndicatorsControl({
                 <div className="grid gap-3 border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
                   <div className="text-[9px] uppercase tracking-[0.14em] text-foreground sm:col-span-2">Plot settings</div>
                   {([
-                    ["Extend line", "extendMode", "none", [
-                      ["none", "To the next session"],
-                      ["till-interaction", "Till interaction"],
-                    ]],
                     ["Line style", "levelLineStyle", "dash", [
                       ["solid", "Solid"],
                       ["dash", "Dash"],
