@@ -1564,3 +1564,20 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
   53-instrument x 50-interval Rithmic matrix passed. Scoped ESLint reported no
   errors (20 existing warnings remain). TypeScript and the full production
   build both pass.
+
+## 2026-09-04 — Rithmic visible quote cadence
+
+- A live NQ/ES trace proved the shared Rithmic book was reaching the browser
+  without a two-second throttle: packets arrived as close as 20–50 ms apart
+  and about 300 ms behind their provider timestamps. The apparent pause came
+  from the chart deliberately painting only packets flagged as executions;
+  during quiet Globex periods, executions arrived in multi-second clusters
+  while genuine best-bid/best-ask updates continued between them.
+- Every accepted Rithmic book packet now publishes a pane-scoped live quote
+  event. Chart BID and ASK axis markers consume it directly through one
+  animation-frame coalescer, bypassing React and updating without waiting for
+  a trade. Candle bodies, closes, highs and lows remain execution-only, so the
+  faster display cannot manufacture false wicks or traded prices.
+- The routing regression and TypeScript checks pass. The gateway health audit
+  also exposed a separate urgent capacity risk: `/recordings` is 97.7% full
+  (about 1.8 GB free). No historical data was deleted.

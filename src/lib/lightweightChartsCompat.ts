@@ -49,6 +49,7 @@ export function createChart(
 
 export { LineStyle, LineType } from "lightweight-charts";
 export type {
+  IPriceLine,
   ISeriesApi,
   ISeriesPrimitive,
   Logical,

@@ -308,6 +308,7 @@ import type { ValueAreaProfile } from "@/lib/valueArea";
 import {
   DATABENTO_LIVE_TICK_EVENT,
   LIVE_CHART_CANDLE_EVENT,
+  LIVE_CHART_QUOTE_EVENT,
   LIVE_CHART_EXECUTION_EVENT,
   WORKSPACE_LAYOUT_SETTLED_EVENT,
   publishDatabentoLiveStatus,
@@ -7935,6 +7936,26 @@ function WorkspaceChartPaneComponent({
         contractSymbol: price.contractSymbol ?? latestFuturesRef.current.contractSymbol,
         tickSize: futuresTickSize(pane.symbol),
       };
+      const liveBid = Number(price.bid);
+      const liveAsk = Number(price.ask);
+      if (
+        Number.isFinite(liveBid)
+        && Number.isFinite(liveAsk)
+        && liveBid > 0
+        && liveAsk >= liveBid
+      ) {
+        // The visible market must not appear frozen merely because no contract
+        // traded during this quote. BID/ASK markers follow the genuine Rithmic
+        // book on every accepted packet; candle OHLC remains execution-only.
+        window.dispatchEvent(new CustomEvent(LIVE_CHART_QUOTE_EVENT, {
+          detail: {
+            key: pane.id,
+            bid: liveBid,
+            ask: liveAsk,
+            timestamp: tickTimestamp,
+          },
+        }));
+      }
       if (onLiveExecutionQuote) {
         const tickSize = futuresTickSize(pane.symbol);
         const mid = snapPaperPrice(pane.symbol, Number(price.mid));
