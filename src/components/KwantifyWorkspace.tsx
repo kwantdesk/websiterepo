@@ -2967,6 +2967,24 @@ function marketTimestamp(value: unknown) {
     : now;
 }
 
+function newYorkCashSessionIsOpen(timestamp = Date.now()) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    weekday: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date(timestamp));
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((item) => item.type === type)?.value ?? "";
+  const weekday = part("weekday");
+  const minute = Number(part("hour")) * 60 + Number(part("minute"));
+  return weekday !== "Sat"
+    && weekday !== "Sun"
+    && minute >= 9 * 60 + 30
+    && minute < 16 * 60;
+}
+
 function compactTimeBasedTicks(ticks: QueuedLiveTick[], timeframe: string) {
   if (ticks.length <= 4) return ticks;
   const buckets = new Map<number, {
@@ -5614,6 +5632,14 @@ function WorkspaceChartPaneComponent({
     contractSymbol: currentCmeContract(pane.symbol),
     tickSize: futuresTickSize(pane.symbol),
   });
+  // Cash-index history and the live quote stream resolve independently. Keep
+  // the stream's ordering watermark separate from the generic candle seed:
+  // a late history render must never make a valid SPX/NDX/SPY/QQQ quote look
+  // older and freeze that pane until the provider's next timestamp bucket.
+  const latestMarketIndexFrameRef = useRef<{
+    timestamp: number;
+    lastPrice: number;
+  } | null>(null);
   const pendingLiveTicksRef = useRef<QueuedLiveTick[]>([]);
   const liveOutlierCandidateRef = useRef<LiveOutlierCandidate | null>(null);
   const liveFrameRef = useRef<number | null>(null);
@@ -6678,8 +6704,15 @@ function WorkspaceChartPaneComponent({
           isEventBasedChartInterval(pane.timeframe) ? 15 * 60_000 : 20_000
         ),
       );
+      const cachedMarketIndexTailIsCurrent = pane.broker !== "Market Index"
+        || !newYorkCashSessionIsOpen()
+        || Number(cachedCandles.at(-1)?.timestamp ?? 0) >= Date.now() - Math.max(
+          5 * 60_000,
+          getTimeframeMs(pane.timeframe) * 2,
+        );
       const cachedIsHydrated = cachedCandles.length > 0
         && cachedTailIsFresh
+        && cachedMarketIndexTailIsCurrent
         && !cmeChartTailNeedsReconciliation(cachedCandles, pane.timeframe)
         && (!needsFiveDayBackfill || hasFiveDayHistory(cachedHistory, pane.timeframe))
         && (!needsOrderFlowHistory || hasUsableOrderFlowHistory(cachedCandles));
@@ -7219,7 +7252,7 @@ function WorkspaceChartPaneComponent({
   useEffect(() => {
     latestCandlesRef.current = candles;
     const latest = candles.at(-1);
-    if (latest && (
+    if (latest && latestMarketIndexFrameRef.current === null && (
       latestFuturesRef.current.asOfMs === null
       || latest.timestamp >= latestFuturesRef.current.asOfMs
     )) {
@@ -7244,6 +7277,7 @@ function WorkspaceChartPaneComponent({
       contractSymbol,
       tickSize: futuresTickSize(pane.symbol),
     };
+    latestMarketIndexFrameRef.current = null;
     liveOutlierCandidateRef.current = null;
     pendingLiveTicksRef.current = [];
     if (liveFrameRef.current !== null) {
@@ -8187,16 +8221,9 @@ function WorkspaceChartPaneComponent({
           // chart must never animate an EOD snapshot as though it were live.
           if (!snapshot.marketOpen) return;
           const tickTimestamp = marketTimestamp(snapshot.timestamp);
-          const previousTimestamp = latestFuturesRef.current.asOfMs;
-          const previousPrice = latestFuturesRef.current.price;
-          if (
-            previousTimestamp !== null
-            && tickTimestamp < previousTimestamp
-          ) return;
-          if (
-            previousTimestamp === tickTimestamp
-            && previousPrice === snapshot.lastPrice
-          ) return;
+          const nextFrame = { timestamp: tickTimestamp, lastPrice: snapshot.lastPrice };
+          if (!shouldAcceptMarketIndexFrame(latestMarketIndexFrameRef.current, nextFrame)) return;
+          latestMarketIndexFrameRef.current = nextFrame;
           latestFuturesRef.current = {
             ...latestFuturesRef.current,
             price: snapshot.lastPrice,

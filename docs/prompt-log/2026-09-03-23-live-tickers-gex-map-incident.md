@@ -18,6 +18,8 @@ Follow-ups:
 
 > they come and go keep coming and going
 
+> now there is fucked gaps in the options tickers need to fix this from market open man fuck
+
 ## Diagnosis
 
 This was two faults in series.
@@ -38,6 +40,12 @@ This was two faults in series.
    the cash ticker endpoint is `/index-stream`. Vercel therefore aborted the
    healthy upstream SSE every 30 seconds. The browser automatically reconnected,
    producing the reported cycle where prices came back and disappeared again.
+5. A second client race let a late historical-candle render replace a verified
+   live quote watermark with the wall clock. QuantData cash snapshots retain
+   their provider timestamp within the current minute, so valid later prices
+   then appeared older and were rejected independently in each pane. A stale
+   pre-open cache could also mark itself freshly written and suppress the real
+   current-session backfill, leaving the opening bars visibly absent.
 
 ## Fix and outcome
 
@@ -61,5 +69,12 @@ This was two faults in series.
   request begins. `/index-stream` now receives the 295-second Vercel request
   budget and reconnects at the platform boundary instead of being killed every
   30 seconds. Added a regression assertion covering this exact route-name bug.
+- Separated the cash-index stream watermark from historical candle state, so a
+  slow cache/history render cannot take authority back from live prices.
+- During New York cash hours, a cached SPX/NDX/SPY/QQQ series is accepted as
+  hydrated only when its final candle reaches the active session. A cache that
+  was merely rewritten recently no longer suppresses the authoritative market-
+  open history fetch. Direct gateway verification returned all 36 SPY one-
+  minute bars from 09:30 through the current minute with no internal gap.
 
 Verification and production deployment are recorded below after completion.

@@ -26,4 +26,20 @@ assert.doesNotMatch(
   "stream detection must not depend on the broken /stream suffix check",
 );
 
+assert.match(
+  workspace,
+  /latestMarketIndexFrameRef\.current, nextFrame/,
+  "cash-index frame ordering must use its dedicated live watermark instead of the history candle timestamp",
+);
+assert.match(
+  workspace,
+  /latestMarketIndexFrameRef\.current === null/,
+  "history renders must stop seeding the live quote reference after the first verified index frame",
+);
+assert.match(
+  workspace,
+  /cachedMarketIndexTailIsCurrent/,
+  "a recently written but session-stale cash-index cache must not suppress the opening-session backfill",
+);
+
 console.log("live market routing: shared cash-index SSE, proxy lifetime, and GEX Map subscriptions verified");
