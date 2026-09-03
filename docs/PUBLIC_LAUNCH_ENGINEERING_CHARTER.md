@@ -1,6 +1,6 @@
 # KwantDesk Public Launch Engineering Charter
 
-Status: owner-approved direction recorded 2026-09-03  
+Status: owner-approved direction recorded 2026-09-03
 Target: public subscription launch in October 2026
 
 This is the durable product, engineering, capacity, licensing, cost and quality
@@ -288,4 +288,3 @@ visual or live-data verification recorded in the handoff.
   launch.
 - Reuse normalized feed contracts, indicator semantics and parity fixtures.
 - Do not fork business logic into incompatible web and desktop definitions.
-
