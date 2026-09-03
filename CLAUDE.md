@@ -1599,3 +1599,17 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
 - Verification passed: live routing, the 2,650-combination Rithmic matrix,
   candle gap/gap-fill, event source/first-paint, Footprint bar window, execution
   worker backpressure, live chart memory, TypeScript and the 80-page build.
+
+## 2026-09-04 — Remove periodic NQ chart refreshes
+
+- The Rithmic quote path and the exact execution/Footprint path were both
+  imperatively painting live data and also forcing the complete React candle
+  array through the chart every two seconds. The duplicate full-state commits
+  caused the visible periodic pulse/refresh and unnecessary indicator work.
+- Both Rithmic paths now publish forming-bar updates only through their direct
+  chart events. The complete candle array is committed to React only when a
+  genuine new bar opens. Exact execution accumulation continues in refs, and
+  active Footprint canvas delivery remains at 40 ms.
+- Verification passed: live-routing anti-refresh contract, the 2,650-case
+  Rithmic matrix, candle gap/gap-fill, Footprint bar-window, execution-worker
+  backpressure, live-chart memory, TypeScript and the full 80-page build.

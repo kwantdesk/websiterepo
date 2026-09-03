@@ -50,6 +50,21 @@ assert.match(
   /const delay = activeRef\.current\s*\? footprintLiveActive \? 40 : 120\s*: 750/,
   "the active Footprint must paint at worker cadence while background panes remain throttled",
 );
+assert.doesNotMatch(
+  workspace,
+  /const reconciliationCadence = activeRef\.current \? 2_000 : 5_000/,
+  "Rithmic execution updates must not force a whole-chart React refresh every two seconds",
+);
+assert.match(
+  workspace,
+  /const newBar = flushedNewBar;\s*if \(newBar\)/,
+  "execution history must commit to React only on a genuine bar boundary",
+);
+assert.match(
+  workspace,
+  /const newBar = previous\.at\(-1\)\?\.timestamp !== latest\.timestamp;\s*if \(newBar\) \{\s*lastCandleStateSyncRef\.current = Date\.now\(\);\s*\/\/ The direct event above owns every forming-bar paint/,
+  "Rithmic quote history must commit to React only on a genuine bar boundary",
+);
 
 assert.match(
   proxy,

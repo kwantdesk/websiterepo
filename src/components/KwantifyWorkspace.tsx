@@ -6199,14 +6199,12 @@ function WorkspaceChartPaneComponent({
       window.dispatchEvent(new CustomEvent(LIVE_CHART_CANDLE_EVENT, {
         detail: { key: pane.id, candle: latest },
       }));
-      const now = flushNow;
       const newBar = flushedNewBar;
-      const reconciliationCadence = activeRef.current ? 2_000 : 5_000;
-      if (newBar || now - lastCandleStateSyncRef.current >= reconciliationCadence) {
-        lastCandleStateSyncRef.current = now;
-        // The selected pane is the trader's price display, so its candle
-        // commit must never sit behind lower-priority React work. Background
-        // panes can still reconcile as transitions to protect shell latency.
+      if (newBar) {
+        lastCandleStateSyncRef.current = flushNow;
+        // Direct candle and execution events already paint the forming bar.
+        // Commit the full React history only at a real bar boundary; the old
+        // two-second commit duplicated that work and visibly pulsed the chart.
         if (activeRef.current) setCandles(reconciledCandles);
         else startTransition(() => setCandles(reconciledCandles));
       }
@@ -8103,14 +8101,12 @@ function WorkspaceChartPaneComponent({
             detail: { key: pane.id, candle: latest },
           }));
           const newBar = previous.at(-1)?.timestamp !== latest.timestamp;
-          const now = Date.now();
-          const reconciliationCadence = activeRef.current ? 5_000 : 10_000;
-          if (newBar || now - lastCandleStateSyncRef.current >= reconciliationCadence) {
+          if (newBar) {
             const committed = [
               ...previous.slice(0, tailStart),
               ...mergedTail,
             ];
-            lastCandleStateSyncRef.current = now;
+            lastCandleStateSyncRef.current = Date.now();
             latestCandlesRef.current = committed;
             lightweightLiveTailRef.current = null;
             if (activeRef.current) setCandles(committed);
@@ -8156,13 +8152,11 @@ function WorkspaceChartPaneComponent({
           detail: { key: pane.id, candle: latest },
         }));
         const newBar = previous.at(-1)?.timestamp !== latest.timestamp;
-        const now = Date.now();
-        const reconciliationCadence = activeRef.current ? 2_000 : 5_000;
-        if (newBar || now - lastCandleStateSyncRef.current >= reconciliationCadence) {
-          lastCandleStateSyncRef.current = now;
-          // A transition can be starved indefinitely while several live
-          // canvases are busy. Commit the active chart directly so its price
-          // cannot appear frozen even though ticks are still arriving.
+        if (newBar) {
+          lastCandleStateSyncRef.current = Date.now();
+          // The direct event above owns every forming-bar paint. React only
+          // receives structural history changes, so it cannot periodically
+          // redraw the chart while the trader is watching live price.
           if (activeRef.current) setCandles([...next]);
           else startTransition(() => setCandles([...next]));
         }
