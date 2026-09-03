@@ -1630,3 +1630,16 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
   were not padded with synthetic prices.
 - Verification: candle-style regression and all-theme contrast checks pass;
   TypeScript passes.
+
+## 2026-09-04 — Remove VWAP price-scale tabs
+
+- VWAP, VWAP Envelopes and Rolling VWAP inherited the overlay renderer's
+  default right-axis last-value label. The six upper/lower envelope plots made
+  that especially noisy and appeared as a stack of anonymous coloured prices.
+- Every session VWAP, Rolling VWAP and corresponding upper/lower band now sets
+  `lastValueVisible: false`. Lines, calculations, crosshair values and scale
+  participation remain unchanged; only the right-axis tabs are removed.
+- Anchored, volume-profile and Footprint VWAPs already draw through custom
+  SVG/canvas primitives and create no Lightweight Charts price tabs.
+- Regression coverage now requires every generated plot in all three VWAP
+  indicator families to keep its last-value tab disabled.

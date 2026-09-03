@@ -802,6 +802,7 @@ function computeIndicatorSeries(
           color,
           lineWidth: 1 as const,
           lineStyle: "dotted" as const,
+          lastValueVisible: false,
           data: stats.map(({ time, value, deviation, breakBefore }) => ({
             time,
             value: value + deviation * multiplier,
@@ -816,6 +817,7 @@ function computeIndicatorSeries(
           color,
           lineWidth: 1 as const,
           lineStyle: "dotted" as const,
+          lastValueVisible: false,
           data: stats.map(({ time, value, deviation, breakBefore }) => ({
             time,
             value: value - deviation * multiplier,
@@ -833,6 +835,7 @@ function computeIndicatorSeries(
         color: theme.primary,
         lineWidth: 2,
         lineStyle: "solid",
+        lastValueVisible: false,
         data: stats.map(({ time, value, breakBefore }) => ({ time, value, breakBefore })),
       },
       ...bands,
@@ -1183,6 +1186,7 @@ function computeIndicatorSeries(
       color: theme.primary,
       lineWidth: 2,
       lineStyle: "solid",
+      lastValueVisible: false,
       data: rows.map(({ time, value, breakBefore }) => ({ time, value, breakBefore })),
     }];
     if (key === "vwap-envelopes") {
@@ -1197,6 +1201,7 @@ function computeIndicatorSeries(
             color: vwapBandColor(theme, index),
             lineWidth: 1,
             lineStyle: "dotted",
+            lastValueVisible: false,
             data: rows.map(({ time, value, deviation, breakBefore }) => ({
               time,
               value: value + deviation * factor,
@@ -1211,6 +1216,7 @@ function computeIndicatorSeries(
             color: vwapBandColor(theme, index),
             lineWidth: 1,
             lineStyle: "dotted",
+            lastValueVisible: false,
             data: rows.map(({ time, value, deviation, breakBefore }) => ({
               time,
               value: value - deviation * factor,
