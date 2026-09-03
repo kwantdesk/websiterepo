@@ -49,6 +49,23 @@ function isFastMarketRead(pathname: string) {
   ));
 }
 
+// These machine-to-machine endpoints cannot carry the browser's site-access
+// or Supabase cookies. Each route enforces the desktop protocol's own bounded
+// credential (PKCE code, renewable handle, or revocation-sync bearer token).
+// Keep /api/desktop-auth/authorize out of this list: consent is a browser-only
+// action and must retain the signed-in website session boundary.
+const DESKTOP_PROTOCOL_PATHS = [
+  "/api/desktop-auth/jwks",
+  "/api/desktop-auth/refresh",
+  "/api/desktop-auth/revoke",
+  "/api/desktop-auth/revocations",
+  "/api/desktop-auth/token",
+] as const;
+
+function isDesktopProtocolRequest(pathname: string) {
+  return DESKTOP_PROTOCOL_PATHS.includes(pathname as (typeof DESKTOP_PROTOCOL_PATHS)[number]);
+}
+
 export async function middleware(request: NextRequest) {
   const response = NextResponse.next({ request });
   const pathname = request.nextUrl.pathname;
@@ -58,6 +75,8 @@ export async function middleware(request: NextRequest) {
     && ["localhost", "127.0.0.1", "::1"].includes(request.nextUrl.hostname);
 
   if (localPreviewBypass) return response;
+
+  if (isDesktopProtocolRequest(pathname)) return response;
 
   if (
     pathname === "/" ||
