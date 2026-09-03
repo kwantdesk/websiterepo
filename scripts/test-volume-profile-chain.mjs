@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { forwardVolumeProfileLevelSegment } from "../src/lib/nativeVolumeProfilePrimitive.ts";
+import {
+  forwardVolumeProfileLevelSegment,
+  volumeProfileLevelFrontX,
+} from "../src/lib/nativeVolumeProfilePrimitive.ts";
 
 /**
  * Regression coverage for profile-level occlusion in actual screen space.
@@ -60,9 +63,46 @@ assert.deepEqual(
   "another study at the same session anchor is not the next chronological profile",
 );
 
+assert.equal(
+  volumeProfileLevelFrontX({
+    anchorX: 200,
+    facesLeft: false,
+    pinned: false,
+    splitPinnedDaily: false,
+    visualStyle: "solid",
+    mode: "volume",
+    deltaOnRight: false,
+    volumeWidth: 42,
+    deltaWidth: 0,
+    askWidth: 0,
+    bidWidth: 0,
+  }),
+  242,
+  "a level must begin at its own histogram row edge, not the profile's maximum width",
+);
+
+assert.equal(
+  volumeProfileLevelFrontX({
+    anchorX: 900,
+    facesLeft: true,
+    pinned: true,
+    splitPinnedDaily: false,
+    visualStyle: "solid",
+    mode: "volume",
+    deltaOnRight: false,
+    volumeWidth: 42,
+    deltaWidth: 0,
+    askWidth: 0,
+    bidWidth: 0,
+  }),
+  900,
+  "a left-facing row must emit its forward level from the profile spine",
+);
+
 const primitive = readFileSync("src/lib/nativeVolumeProfilePrimitive.ts", "utf8");
 assert.match(primitive, /const drawnBodySpans = new Map<string, VolumeProfileBodySpan>\(\);/);
-assert.match(primitive, /sourceBody\.rightX/);
+assert.match(primitive, /const sourceFrontX = levelFrontRows\.reduce/);
+assert.match(primitive, /frontX: volumeProfileLevelFrontX/);
 assert.match(primitive, /body\.startMs <= source\.startMs/);
 assert.match(primitive, /if \(!profileVerticallyVisible\) continue;/);
 assert.match(primitive, /context\.moveTo\(lineSegment\.startX, y\)/);

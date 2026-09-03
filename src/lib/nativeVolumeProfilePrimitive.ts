@@ -127,6 +127,60 @@ export function forwardVolumeProfileLevelSegment(
   return endX > sourceFrontX + 0.5 ? { startX: sourceFrontX, endX } : null;
 }
 
+/**
+ * Return the screen-space front edge of the row that owns a profile level.
+ *
+ * A profile's configured width is only the maximum available width. Most rows
+ * are shorter, so starting every VAH/VAL/POC line at `anchor + profileWidth`
+ * leaves the line floating in empty space. This mirrors the actual row paths
+ * below and connects each level to the histogram that produced it.
+ */
+export function volumeProfileLevelFrontX(input: {
+  anchorX: number;
+  facesLeft: boolean;
+  pinned: boolean;
+  splitPinnedDaily: boolean;
+  visualStyle: "automatic" | "solid" | "hollow" | "line" | "combined";
+  mode: "volume" | "delta-volume" | "bid-ask" | "delta" | "delta-percentage";
+  deltaOnRight: boolean;
+  volumeWidth: number;
+  deltaWidth: number;
+  askWidth: number;
+  bidWidth: number;
+}): number {
+  const {
+    anchorX,
+    facesLeft,
+    pinned,
+    splitPinnedDaily,
+    visualStyle,
+    mode,
+    deltaOnRight,
+    volumeWidth,
+    deltaWidth,
+    askWidth,
+    bidWidth,
+  } = input;
+  if (facesLeft) return anchorX;
+  if (visualStyle === "line") return anchorX + volumeWidth;
+  if (mode === "volume") return anchorX + volumeWidth;
+  if (mode === "delta-volume") {
+    return anchorX + (
+      pinned && !splitPinnedDaily
+        ? Math.max(volumeWidth, deltaWidth)
+        : volumeWidth
+    );
+  }
+  if (mode === "bid-ask") {
+    return anchorX + (
+      pinned && !splitPinnedDaily
+        ? Math.max(askWidth, bidWidth)
+        : askWidth
+    );
+  }
+  return anchorX + (pinned && !splitPinnedDaily || deltaOnRight ? deltaWidth : 0);
+}
+
 export type VolumeProfileLeftDockCandidate = {
   id: string;
   root: string;
@@ -1022,6 +1076,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
         const bidVolumePath = new Path2D();
         const outlinePath = new Path2D();
         const pocPath = new Path2D();
+        const levelFrontRows: Array<{ price: number; frontX: number }> = [];
         for (let levelIndex = firstVisible; levelIndex < lastVisible; levelIndex += 1) {
           const level = levels[levelIndex];
           const volume = level.volume;
@@ -1057,6 +1112,22 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           const deltaOnRight = delta >= 0 && !facesLeft;
           const askWidth = Math.max(0, level.askVolume / groupedMaxSideVolume * profileWidth);
           const bidWidth = Math.max(0, level.bidVolume / groupedMaxSideVolume * profileWidth);
+          levelFrontRows.push({
+            price: level.price,
+            frontX: volumeProfileLevelFrontX({
+              anchorX,
+              facesLeft,
+              pinned,
+              splitPinnedDaily,
+              visualStyle: style.visualStyle ?? "automatic",
+              mode: style.mode,
+              deltaOnRight,
+              volumeWidth,
+              deltaWidth,
+              askWidth,
+              bidWidth,
+            }),
+          });
           const inValueArea = groupedVah !== null && groupedVal !== null
             && level.price <= groupedVah && level.price >= groupedVal;
           const isPoc = groupedPoc !== null
@@ -1364,14 +1435,22 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           // must not shorten these structural session levels.
           const sourceBody = drawnBodySpans.get(model.id);
           if (!sourceBody) return;
+          const sourceFrontX = levelFrontRows.reduce<{ price: number; frontX: number } | null>(
+            (nearest, row) => (
+              nearest == null || Math.abs(row.price - price) < Math.abs(nearest.price - price)
+                ? row
+                : nearest
+            ),
+            null,
+          )?.frontX ?? (facesLeft ? anchorX : sourceBody.rightX);
           const lineSegment = forwardVolumeProfileLevelSegment(
             model.id,
             profile.root,
-            sourceBody.rightX,
+            sourceFrontX,
             rightEdge,
             [...drawnBodySpans.values()],
           );
-          const lineEndX = lineSegment?.endX ?? sourceBody.rightX;
+          const lineEndX = lineSegment?.endX ?? sourceFrontX;
           if (lineSegment) {
             context.globalAlpha = 0.82;
             context.strokeStyle = color;
@@ -1395,7 +1474,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
             const labelOnLeft = (style.levelLabelSide ?? "right") === "left";
             // Where the label naturally belongs: at the line's own terminus.
             const naturalX = labelOnLeft
-              ? sourceBody.rightX + 5
+              ? sourceFrontX + 5
               : lineEndX - 5;
             deferredProfileText.push({
               box: {

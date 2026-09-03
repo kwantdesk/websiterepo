@@ -47,7 +47,7 @@ assert.ok(
     > primitive.lastIndexOf("for (const drawDeferredLevel of deferredLevelDraws)"),
   "profile text is not the final layer",
 );
-assert.match(primitive, /const lineEndX = lineSegment\?\.endX \?\? sourceBody\.rightX/,
+assert.match(primitive, /const lineEndX = lineSegment\?\.endX \?\? sourceFrontX/,
   "an occluded level still drops its enabled label with its line");
 assert.match(primitive, /sessionLabelVisible = style\.showLevelLabels !== false/,
   "the visible Labels setting does not govern the profile heading");
