@@ -10,6 +10,7 @@
  * inline on the main thread when a worker cannot be created.
  */
 import { admitRecords, decodeRecords, type ExecutionTapeBuffer } from "@/lib/executionTape";
+import { futuresVenue } from "@/lib/futuresVenue";
 import type { InstitutionalTrade } from "@/lib/institutionalMarketData";
 
 export type ExecutionTapeStatus = "checking" | "connected" | "unavailable";
@@ -125,7 +126,19 @@ export function createExecutionTapeEngine(
         return;
       }
 
-      const query = new URLSearchParams({ exchange: "CME", symbol, contractSymbol });
+      /*
+       * CME Group is not one exchange code. YM/treasuries/agriculture trade on
+       * CBOT, energy on NYMEX and metals on COMEX. Sending all of those as
+       * `exchange=CME` lets stored candles load but asks the live execution
+       * stream for a book that does not exist, leaving event charts and
+       * order-flow studies looking paused. Resolve the venue from the same
+       * canonical root mapping used by the recorded-history reader.
+       */
+      const query = new URLSearchParams({
+        exchange: futuresVenue(symbol),
+        symbol,
+        contractSymbol,
+      });
       const stream = new EventSource(
         `/api/institutional-market-data/v1/market-data/trades?${query.toString()}`,
       );

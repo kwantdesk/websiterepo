@@ -512,7 +512,7 @@ export async function getDatabentoBars(symbol: string, timeframe: string, start:
       trades: 1,
       delta: trade.side > 0 ? trade.size : trade.side < 0 ? -trade.size : 0,
     }));
-    return applyMarketTradesToEventBars([], trades, timeframe, symbol, 120_000).map((bar) => ({
+    return applyMarketTradesToEventBars([], trades, timeframe, symbol, 250_000).map((bar) => ({
       timestamp: bar.timestamp,
       open: bar.open,
       high: bar.high,

@@ -15,6 +15,7 @@ import { subscribeRithmicLiquidity, type RithmicLiquidityStatus } from "@/lib/ri
 import type { ChartIndicatorInstance } from "@/lib/chartIndicatorCatalog";
 import type { ChartSettings } from "@/lib/chartSettings";
 import type { RithmicLiquiditySnapshot } from "@/lib/structureLevels";
+import { futuresVenue } from "@/lib/futuresVenue";
 
 type Props = {
   instrument: string;
@@ -212,7 +213,7 @@ export default function DepthOfMarketPanel({
 
   useEffect(() => {
     const unsubscribe = subscribeRithmicLiquidity({
-      root: instrument, contractSymbol, exchange: "CME",
+      root: instrument, contractSymbol, exchange: futuresVenue(instrument),
       onSnapshot: (snapshot) => {
         pendingSnapshotRef.current = snapshot;
         const remaining = settings.refreshRateMs - (Date.now() - lastFrameAtRef.current);

@@ -19,7 +19,6 @@ import {
   getDatabentoEventHistory,
   type DatabentoEventExecutionTuple,
 } from "@/lib/databentoEventHistory.server";
-import { vendorMarketDataConfigured } from "@/lib/vendorMarketData.server";
 
 /*
  * What these bars actually are. They said GLBX.MDP3 while every one of them
@@ -229,10 +228,6 @@ async function durableTimeHistoryOrDirect(
 }
 
 export async function GET(request: Request) {
-  if (!vendorMarketDataConfigured("databento")) {
-    return NextResponse.json({ error: "CME market data is not configured." }, { status: 503 });
-  }
-
   const url = new URL(request.url);
   const symbol = url.searchParams.get("symbol")?.trim();
   const timeframe = url.searchParams.get("timeframe")?.trim() || "5m";

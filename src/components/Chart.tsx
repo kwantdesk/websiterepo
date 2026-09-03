@@ -173,6 +173,7 @@ import {
   OPEN_CANDLE_SETTINGS_EVENT,
 } from "@/lib/candleStyle";
 import { visibleIndicatorTheme } from "@/lib/indicatorPlotColors";
+import { futuresVenue } from "@/lib/futuresVenue";
 import { PositionCalculatorPrimitive, type PositionCalculatorModel } from "@/lib/positionCalculatorPrimitive";
 import { ImbalanceZonesPrimitive, type ImbalanceZoneModel } from "@/lib/imbalanceZonesPrimitive";
 import { retainLiveFootprintRows } from "@/lib/footprintLive";
@@ -4547,7 +4548,7 @@ function Chart({
     const unsubscribe = subscribeRithmicLiquidity({
       root,
       contractSymbol: explicitContract,
-      exchange: "CME",
+      exchange: futuresVenue(root),
       replayHistory: true,
       onStatus: setPullingStackingStatus,
       onSnapshot: (snapshot) => {
@@ -4665,7 +4666,7 @@ function Chart({
     const unsubscribe = subscribeRithmicLiquidity({
       root,
       contractSymbol: explicitContract,
-      exchange: "CME",
+      exchange: futuresVenue(root),
       replayHistory: true,
       onStatus: setAbsorptionStatus,
       onSnapshot: (snapshot) => {
@@ -4778,7 +4779,7 @@ function Chart({
     const unsubscribe = subscribeRithmicLiquidity({
       root,
       contractSymbol: explicitContract,
-      exchange: "CME",
+      exchange: futuresVenue(root),
       replayHistory: true,
       onStatus: setIcebergRefreshStatus,
       onSnapshot: (snapshot) => {
@@ -4895,7 +4896,7 @@ function Chart({
     const unsubscribe = subscribeRithmicLiquidity({
       root,
       contractSymbol: explicitContract,
-      exchange: "CME",
+      exchange: futuresVenue(root),
       replayHistory: true,
       onStatus: setLiquidityStopSweepStatus,
       onSnapshot: (snapshot) => {
@@ -5432,7 +5433,7 @@ function Chart({
     const unsubscribe = subscribeRithmicLiquidity({
       root,
       contractSymbol: explicitContract,
-      exchange: "CME",
+      exchange: futuresVenue(root),
       // The ladder has to reach as far as the chart is zoomed out, and the
       // shared default — 800 ticks, which is 200 points of NQ — is why it
       // stopped a couple of hundred points either side of price. Counted in

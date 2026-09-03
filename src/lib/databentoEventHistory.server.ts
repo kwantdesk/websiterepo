@@ -22,7 +22,12 @@ import {
 // charts. The previous 5,000-bar tail was too small for active contracts on
 // 200/500-volume and smaller range intervals, so a fresh selection appeared to
 // begin at the current tick even though Databento returned older executions.
-const MAX_EVENT_BARS = 120_000;
+// Four-tick range bars on NQ can exceed 120,000 rows inside five complete
+// sessions. Capping at 120k and then requiring five sessions made the route
+// reject its own correctly-built result as incomplete. Keep this aligned with
+// the browser's 500k persistent-history ceiling while retaining headroom for
+// the other chart state held alongside it.
+const MAX_EVENT_BARS = 250_000;
 const EVENT_BAR_FLUSH_SIZE = 16_384;
 // Keep one exact aggressor-flow bucket per second instead of retaining only
 // the final 25,000 raw prints. NQ can exhaust 25,000 executions in minutes,

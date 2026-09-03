@@ -67,7 +67,7 @@ check("event bars use the complete paged Rithmic tape", () => {
     bars.indexOf("export async function getDatabentoOrderFlowHistory"),
   );
   assert.match(eventBranch, /await fetchRecordedTrades\(/);
-  assert.match(eventBranch, /applyMarketTradesToEventBars\(\[\], trades, timeframe, symbol, 120_000\)/);
+  assert.match(eventBranch, /applyMarketTradesToEventBars\(\[\], trades, timeframe, symbol, 250_000\)/);
   assert.doesNotMatch(eventBranch, /6 \* 60 \* 60_000/);
   assert.doesNotMatch(eventBranch, /exchange: "CME"/);
 });
