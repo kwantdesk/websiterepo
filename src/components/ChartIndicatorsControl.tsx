@@ -2503,10 +2503,19 @@ export default function ChartIndicatorsControl({
                       <span>{label}</span>
                       <KwantSelect
                         value={String(settingsInstance.settings?.[key] ?? fallback)}
-                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
-                          ...current,
-                          settings: { ...(current.settings ?? {}), [key]: event.target.value },
-                        }))}
+                        onChange={(event) => replace(settingsInstance.instanceId, (current) => {
+                          const nextValue = event.target.value;
+                          const settings = { ...(current.settings ?? {}), [key]: nextValue };
+                          // A custom clock with Filter mode still on "None"
+                          // looks configured but deliberately filters nothing.
+                          // Selecting Custom is an explicit request to use that
+                          // clock, so arm the single-window filter immediately.
+                          if (key === "filterTime" && nextValue === "custom") {
+                            const mode = String(settings.filterMode ?? "none");
+                            if (mode !== "filter" && mode !== "splitted") settings.filterMode = "filter";
+                          }
+                          return { ...current, settings };
+                        })}
                         className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
                         menuLabel={label}
                       >
@@ -2621,7 +2630,9 @@ export default function ChartIndicatorsControl({
                   ] as const).map(([label, key, fallback]) => {
                     const minutes = Number(settingsInstance.settings?.[key] ?? fallback);
                     const value = `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
-                    const custom = String(settingsInstance.settings?.filterTime ?? "rth") === "custom";
+                    const mode = String(settingsInstance.settings?.filterMode ?? "none");
+                    const custom = String(settingsInstance.settings?.filterTime ?? "rth") === "custom"
+                      && (mode === "filter" || mode === "splitted");
                     return (
                       <label key={key} className={`space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted ${custom ? "" : "opacity-40"}`}>
                         <span>{label} · exchange time</span>
@@ -2634,7 +2645,12 @@ export default function ChartIndicatorsControl({
                             if (!Number.isFinite(hours) || !Number.isFinite(mins)) return;
                             replace(settingsInstance.instanceId, (current) => ({
                               ...current,
-                              settings: { ...(current.settings ?? {}), [key]: hours * 60 + mins },
+                              settings: {
+                                ...(current.settings ?? {}),
+                                filterMode: "filter",
+                                filterTime: "custom",
+                                [key]: hours * 60 + mins,
+                              },
                             }));
                           }}
                           className="h-9 w-full border border-border bg-background px-3 font-mono text-[10px] text-foreground outline-none focus:border-primary/40 disabled:cursor-not-allowed"
@@ -2644,6 +2660,7 @@ export default function ChartIndicatorsControl({
                   })}
                   <button
                     type="button"
+                    disabled={String(settingsInstance.settings?.filterTime ?? "rth") !== "custom"}
                     onClick={() => replace(settingsInstance.instanceId, (current) => ({
                       ...current,
                       settings: {
@@ -2651,7 +2668,7 @@ export default function ChartIndicatorsControl({
                         useEndSessionAsStartDay: current.settings?.useEndSessionAsStartDay !== true,
                       },
                     }))}
-                    className={`h-9 border px-2 text-[8px] uppercase tracking-[0.1em] sm:col-span-2 ${
+                    className={`h-9 border px-2 text-[8px] uppercase tracking-[0.1em] disabled:cursor-not-allowed disabled:opacity-40 sm:col-span-2 ${
                       settingsInstance.settings?.useEndSessionAsStartDay === true
                         ? "border-primary/55 bg-primary/10 text-primary"
                         : "border-border bg-background text-muted"

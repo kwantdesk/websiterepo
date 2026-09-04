@@ -8679,6 +8679,10 @@ function WorkspaceChartPaneComponent({
     const requestedDailyMaxVolume = Math.max(0, Number(dailyProfileSettings.maxTradeVolume ?? 0) || 0);
     const requestedWeeklyMinVolume = Math.max(0, Number(weeklyProfileSettings.minTradeVolume ?? 0) || 0);
     const requestedWeeklyMaxVolume = Math.max(0, Number(weeklyProfileSettings.maxTradeVolume ?? 0) || 0);
+    const profileTradingDateFor = (profile: InstitutionalVolumeProfile) =>
+      /^\d{4}-\d{2}-\d{2}$/.test(profile.tradingDate ?? "")
+        ? profile.tradingDate!
+        : chicagoTradingDate(profile.startMs);
     const matchesRequestedProfile = (profile: InstitutionalVolumeProfile) => {
       if (!isExecutionBackedVolumeProfile(profile) || profile.root !== activeRoot) return false;
       if (profile.contractSymbol.toUpperCase().replace(/[^A-Z0-9]/g, "") !== normalizedContractSymbol) return false;
@@ -8698,7 +8702,7 @@ function WorkspaceChartPaneComponent({
       ) return false;
       if (profile.period === "daily") {
         if (!dailyProfileInstance) return false;
-        if (!activeTradingDates.has(chicagoTradingDate(profile.startMs))) return false;
+        if (!activeTradingDates.has(profileTradingDateFor(profile))) return false;
         /*
          * A profile built for a window the study is no longer asking for is
          * stale, however well it matches everything else. Keeping it is what
@@ -8725,7 +8729,7 @@ function WorkspaceChartPaneComponent({
      * this is the same identity, applied to the cached path that missed it.
      */
     const profileSessionKey = (profile: InstitutionalVolumeProfile) =>
-      `${profile.period}:${profile.period === "daily" ? chicagoTradingDate(profile.startMs) : "weekly"}:${profile.sessionId ?? ""}`;
+      `${profile.period}:${profile.period === "daily" ? profileTradingDateFor(profile) : "weekly"}:${profile.sessionId ?? ""}`;
 
     // A volume profile is an execution-tape surface. OHLCV cannot recover the
     // traded-at-price distribution or aggressor-side delta, so it is never an
@@ -8752,13 +8756,14 @@ function WorkspaceChartPaneComponent({
         || !profile.levels.length
         || (
           expectedTradingDate
-          && chicagoTradingDate(profile.startMs) !== expectedTradingDate
+          && profileTradingDateFor(profile) !== expectedTradingDate
         )
       ) return;
       let replacement = profile;
-      // Databento's historical edge trails live Rithmic. Reapply the current
-      // execution tape before replacing the profile so a 15-second refresh
-      // cannot erase prints that have already developed the live session.
+      // A recorded historical checkpoint can trail the live Rithmic edge.
+      // Reapply the current execution tape before replacing the profile so a
+      // reconciliation cannot erase prints that already developed the live
+      // session.
       replacement = applyInstitutionalTradesToVolumeProfile(
         replacement,
         latestMarketTradesRef.current,
@@ -8773,7 +8778,7 @@ function WorkspaceChartPaneComponent({
             // the last window ever survived — which is why selecting Triple
             // still showed a single profile.
             if ((candidate.sessionId ?? "") !== (replacement.sessionId ?? "")) return true;
-            return chicagoTradingDate(candidate.startMs) !== chicagoTradingDate(replacement.startMs);
+            return profileTradingDateFor(candidate) !== profileTradingDateFor(replacement);
           }
           return false;
         });
@@ -8794,7 +8799,9 @@ function WorkspaceChartPaneComponent({
         [...tradingDates].reverse().forEach((tradingDate) => {
           segmentsByDate.set(
             tradingDate,
-            requestedSplits ? sessionSegmentsForTradingDate(tradingDate, dailyProfileSettings) : [],
+            dailyFilterMode !== "none"
+              ? sessionSegmentsForTradingDate(tradingDate, dailyProfileSettings)
+              : [],
           );
         });
         /*
@@ -8820,7 +8827,7 @@ function WorkspaceChartPaneComponent({
         // Pruning here rather than on arrival makes it disappear immediately
         // instead of waiting on the surviving sessions' network round trip.
         const drawnSessionIds = new Set<string>(
-          dailySplits
+          [...segmentsByDate.values()].some((segments) => segments.length > 0)
             ? [...segmentsByDate.values()].flat().map((segment) => segment.id)
             : [""],
         );
@@ -8851,14 +8858,14 @@ function WorkspaceChartPaneComponent({
                 sessionId: segment.id,
                 sessionLabel: segment.label,
               }))
-            : [{
+            : dailyFilterMode === "none" || (requestedSplits && !dailySplits) ? [{
                 startMs: undefined,
                 endMs: undefined,
                 tradingDate,
                 filterMode: dailyFilterMode,
                 sessionId: undefined,
                 sessionLabel: undefined,
-              }];
+              }] : [];
           jobs.forEach((job) => {
             const requestArgs = {
               symbol: displayCmeSymbol(pane.symbol),
@@ -8884,7 +8891,7 @@ function WorkspaceChartPaneComponent({
               const cachedProfile = await readCachedInstitutionalVolumeProfile(requestArgs);
               replaceExactProfile(
                 cachedProfile && job.sessionId
-                  ? { ...cachedProfile, sessionId: job.sessionId, sessionLabel: job.sessionLabel }
+                  ? { ...cachedProfile, tradingDate, sessionId: job.sessionId, sessionLabel: job.sessionLabel }
                   : cachedProfile,
                 tradingDate,
               );
@@ -8894,7 +8901,7 @@ function WorkspaceChartPaneComponent({
               }
               replaceExactProfile(
                 profile && job.sessionId
-                  ? { ...profile, sessionId: job.sessionId, sessionLabel: job.sessionLabel }
+                  ? { ...profile, tradingDate, sessionId: job.sessionId, sessionLabel: job.sessionLabel }
                   : profile,
                 tradingDate,
               );

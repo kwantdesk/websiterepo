@@ -28,6 +28,8 @@ const route = readFileSync(
   "utf8",
 );
 const builder = readFileSync(new URL("../src/lib/databentoExecutionProfile.server.ts", import.meta.url), "utf8");
+const workspace = readFileSync(new URL("../src/components/KwantifyWorkspace.tsx", import.meta.url), "utf8");
+const control = readFileSync(new URL("../src/components/ChartIndicatorsControl.tsx", import.meta.url), "utf8");
 
 let passed = 0;
 const check = (name, fn) => { fn(); passed += 1; console.log(`  ok  ${name}`); };
@@ -77,6 +79,27 @@ check("the proxy narrows a single window and forwards the narrowed one", () => {
   // And the narrowed URL is what actually goes upstream.
   assert.match(route, /`\$\{path\}\$\{forwarded\.search\}`/, "the original search is still forwarded");
   assert.doesNotMatch(route, /`\$\{path\}\$\{request\.nextUrl\.search\}`/, "the unnarrowed search survived");
+});
+
+check("the chart sends every filtered daily profile as an explicit exchange-time span", () => {
+  assert.match(
+    workspace,
+    /dailyFilterMode !== "none"\s*\? sessionSegmentsForTradingDate\(tradingDate, dailyProfileSettings\)/,
+    "Filter mode still sends only a trading date, which the Rithmic collector cannot session-filter",
+  );
+  assert.match(workspace, /startMs: segment\.startMs,\s*\n\s*endMs: segment\.endMs,/);
+  assert.match(workspace, /filterMode: "none" as const,\s*\n\s*sessionId: segment\.id,/);
+  assert.match(
+    workspace,
+    /\{ \.\.\.profile, tradingDate, sessionId: job\.sessionId, sessionLabel: job\.sessionLabel \}/,
+    "the bounded response has no stable session/date identity",
+  );
+});
+
+check("choosing or editing a custom clock cannot leave filtering disabled", () => {
+  assert.match(control, /key === "filterTime" && nextValue === "custom"/);
+  assert.match(control, /settings\.filterMode = "filter"/);
+  assert.match(control, /filterMode: "filter",\s*\n\s*filterTime: "custom",/);
 });
 
 check("the execution builder keeps its own filtering, keyed by the windows", () => {
