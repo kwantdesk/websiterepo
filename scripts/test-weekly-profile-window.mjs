@@ -75,6 +75,15 @@ check("the workspace asks from the week open, not the first loaded candle", () =
   // Anchored to the week, so a pane holding less history than that still gets
   // the whole week rather than silently shrinking to what it happens to have.
   assert.match(workspace, /period: "weekly",\s*\r?\n\s*startMs: weekStartMs,/);
+  // A developing week must reuse one cache identity. The gateway owns the
+  // moving `now`; putting the latest candle timestamp into the request key
+  // made every timeframe and every new bar miss the exact-profile cache.
+  assert.match(workspace, /endMs: weekEndMs \?\? undefined,/);
+  assert.doesNotMatch(
+    workspace,
+    /endMs: weekEndMs \?\? \(weeklyCandles\.length/,
+    "the developing weekly cache key changes with the last candle",
+  );
 });
 
 console.log(`\nweekly profile window: ${passed}/${passed} checks passed`);

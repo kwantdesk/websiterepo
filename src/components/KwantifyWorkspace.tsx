@@ -8761,7 +8761,6 @@ function WorkspaceChartPaneComponent({
     let refreshTimer: number | null = null;
     let consecutiveCurrentProfileFailures = 0;
     let nextCompletedProfilesRefreshAt = Date.now() + 5 * 60_000;
-    const chartStepMs = Math.max(1, getTimeframeMs(pane.timeframe));
     const tradingDates = dailyTradingDateSignature
       ? dailyTradingDateSignature.split(",")
       : [];
@@ -9057,9 +9056,6 @@ function WorkspaceChartPaneComponent({
           Date.now(),
           weeklyProfileSettings.weekSelection === "previous" ? "previous" : "current",
         );
-        const weeklyCandles = candles.filter((candle) => (
-          candle.timestamp >= weekStartMs && (weekEndMs === null || candle.timestamp < weekEndMs)
-        ));
         const weeklyRequestArgs = {
           symbol: displayCmeSymbol(pane.symbol),
           contractSymbol: resolvedContractSymbol,
@@ -9067,9 +9063,13 @@ function WorkspaceChartPaneComponent({
           startMs: weekStartMs,
           // A finished week is bounded at this week's open so no part of the
           // live week can leak into it.
-          endMs: weekEndMs ?? (weeklyCandles.length
-            ? weeklyCandles[weeklyCandles.length - 1].timestamp + chartStepMs
-            : undefined),
+          // Keep the developing week's request identity stable. The gateway
+          // resolves an omitted end to its current clock, while the browser's
+          // cache key remains the same from one candle/timeframe to the next.
+          // Including the latest candle timestamp here made every load a cold
+          // cache miss, so the chart waited for a full five-session archive
+          // aggregation even when it had an exact weekly snapshot locally.
+          endMs: weekEndMs ?? undefined,
           groupTicks: requestedWeeklyGroupTicks,
           valueAreaPercent: Number(weeklyProfileSettings.valueAreaPercent ?? STANDARD_VOLUME_PROFILE_VALUE_AREA_PERCENT),
           minTradeVolume: requestedWeeklyMinVolume,
@@ -9160,7 +9160,6 @@ function WorkspaceChartPaneComponent({
     dailyTradingDateSignature,
     currentDailyTradingDate,
     pane.symbol,
-    pane.timeframe,
     resolvedContractSymbol,
     weeklyProfileInstance?.instanceId,
     weeklyProfileSettings.autoGroupFactor,

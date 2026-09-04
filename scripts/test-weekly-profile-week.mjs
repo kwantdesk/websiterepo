@@ -59,7 +59,7 @@ check("it holds on every day of the week", () => {
   }
 });
 
-check("the chart asks for the selected week and filters its bars to it", () => {
+check("the chart asks for the selected week with a stable live cache key", () => {
   const workspace = readFileSync(
     new URL("../src/components/KwantifyWorkspace.tsx", import.meta.url), "utf8",
   );
@@ -69,10 +69,11 @@ check("the chart asks for the selected week and filters its bars to it", () => {
     /weeklyProfileSettings\.weekSelection === "previous" \? "previous" : "current"/,
     "an unrecognised value must fall back to the current week",
   );
-  // The bars handed to the profile must respect the closing bound too, or a
-  // finished week would be drawn against live candles.
-  assert.match(workspace, /candle\.timestamp >= weekStartMs && \(weekEndMs === null \|\| candle\.timestamp < weekEndMs\)/);
-  assert.match(workspace, /endMs: weekEndMs \?\?/, "the request does not close the finished week");
+  // Previous week is explicitly closed. Current week omits the moving end so
+  // receiving a candle does not create a brand-new cache identity; the
+  // gateway resolves its own current clock.
+  assert.match(workspace, /endMs: weekEndMs \?\? undefined,/, "the selected week is not bounded correctly");
+  assert.doesNotMatch(workspace, /const weeklyCandles = candles\.filter/);
 });
 
 check("the option is offered on the weekly profile only", () => {

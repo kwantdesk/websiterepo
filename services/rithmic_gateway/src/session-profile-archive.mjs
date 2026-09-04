@@ -191,6 +191,44 @@ export function sumMinuteLevels(minutes, fromMs, toMs, filters = {}) {
   };
 }
 
+/**
+ * Materialise the unfiltered whole-session histogram once.
+ *
+ * Weekly profiles used to walk every price row of every minute on every
+ * request. A busy NQ week contains hundreds of thousands of those rows even
+ * though the result has only a few hundred prices. Session folds are immutable
+ * once complete, so retain that small reduction beside the minute detail.
+ * Custom/session filters still use the minutes and remain exact.
+ */
+export function aggregateSessionMinuteLevels(minutes) {
+  const { totals, coverageStartMs, coverageEndMs } = sumMinuteLevels(
+    minutes,
+    Number.NEGATIVE_INFINITY,
+    Number.POSITIVE_INFINITY,
+  );
+  return {
+    coverageStartMs,
+    coverageEndMs,
+    // Compact rows: [priceTicks, volume, askVolume, bidVolume, trades].
+    levels: [...totals.entries()]
+      .sort((left, right) => left[0] - right[0])
+      .map(([priceTicks, row]) => [
+        priceTicks,
+        row.volume,
+        row.askVolume,
+        row.bidVolume,
+        row.trades,
+      ]),
+  };
+}
+
+function sessionAggregate(entry) {
+  if (entry?.aggregate && Array.isArray(entry.aggregate.levels)) return entry.aggregate;
+  const aggregate = aggregateSessionMinuteLevels(entry?.minutes ?? []);
+  if (entry) entry.aggregate = aggregate;
+  return aggregate;
+}
+
 export class SessionProfileArchive {
   constructor(options = {}) {
     this.dir = join(String(options.dir || "recordings"), DIR_NAME);
@@ -276,6 +314,10 @@ export class SessionProfileArchive {
           && parsed.tickSize === tickSize
         ) {
           const restored = { ...parsed, builtAt: Date.now() };
+          // Schema-2 files predate the materialised whole-session reduction.
+          // Build it once on cold restore, then every weekly request is O(price
+          // levels) rather than O(minutes x price levels).
+          sessionAggregate(restored);
           this.memory.set(key, restored);
           return restored;
         }
@@ -298,6 +340,7 @@ export class SessionProfileArchive {
       ceiling: SESSION_PRINT_CEILING,
     });
     const entry = { ...built, schemaVersion: PROFILE_FOLD_SCHEMA, builtAt: Date.now() };
+    sessionAggregate(entry);
     this.memory.set(key, entry);
 
     /*
@@ -336,22 +379,68 @@ export class SessionProfileArchive {
     const start = Number(fromMs) > 0 ? Number(fromMs) : end - 24 * 60 * 60_000;
     const tick = Number(tickSize) > 0 ? Number(tickSize) : 0.25;
 
-    const minutes = [];
-    let folded = false;
-    for (const tradingDate of tradingDatesBetween(start, end)) {
-      if (!this.#tapeFiles(tradingDate, upper, upperSymbol).length) continue;
-      const session = await this.sessionLevels(tradingDate, upper, upperSymbol, tick, false);
-      if (!session) continue;
-      folded = true;
-      minutes.push(...session.minutes);
-    }
-    if (!folded) return null;
-    minutes.sort((left, right) => left.t - right.t);
+    // Restore independent completed days concurrently. The old serial awaits
+    // made a cold weekly request pay five gzip+JSON restore times in sequence.
+    const sessions = (await Promise.all(
+      tradingDatesBetween(start, end).map(async (tradingDate) => {
+        if (!this.#tapeFiles(tradingDate, upper, upperSymbol).length) return null;
+        return this.sessionLevels(tradingDate, upper, upperSymbol, tick, false);
+      }),
+    )).filter(Boolean);
+    if (!sessions.length) return null;
 
-    const { totals, coverageStartMs, coverageEndMs } = sumMinuteLevels(minutes, start, end, {
-      minTradeVolume,
-      maxTradeVolume,
-    });
+    const filtered = minTradeVolume > 0 || maxTradeVolume > 0;
+    const totals = new Map();
+    let coverageStartMs = null;
+    let coverageEndMs = null;
+    const addRow = (priceTicks, volume, askVolume, bidVolume, trades) => {
+      let row = totals.get(priceTicks);
+      if (!row) {
+        row = { volume: 0, askVolume: 0, bidVolume: 0, trades: 0 };
+        totals.set(priceTicks, row);
+      }
+      row.volume += volume;
+      row.askVolume += askVolume;
+      row.bidVolume += bidVolume;
+      row.trades += trades;
+    };
+    for (const session of sessions) {
+      const aggregate = sessionAggregate(session);
+      const wholeSession = !filtered
+        && aggregate.coverageStartMs !== null
+        && aggregate.coverageEndMs !== null
+        && aggregate.coverageStartMs >= start
+        && aggregate.coverageEndMs < end;
+      if (wholeSession) {
+        coverageStartMs = coverageStartMs === null
+          ? aggregate.coverageStartMs
+          : Math.min(coverageStartMs, aggregate.coverageStartMs);
+        coverageEndMs = coverageEndMs === null
+          ? aggregate.coverageEndMs
+          : Math.max(coverageEndMs, aggregate.coverageEndMs);
+        for (const [priceTicks, volume, askVolume, bidVolume, trades] of aggregate.levels) {
+          addRow(priceTicks, volume, askVolume, bidVolume, trades);
+        }
+        continue;
+      }
+      const partial = sumMinuteLevels(session.minutes, start, end, {
+        minTradeVolume,
+        maxTradeVolume,
+      });
+      if (partial.coverageStartMs !== null) {
+        coverageStartMs = coverageStartMs === null
+          ? partial.coverageStartMs
+          : Math.min(coverageStartMs, partial.coverageStartMs);
+      }
+      if (partial.coverageEndMs !== null) {
+        coverageEndMs = coverageEndMs === null
+          ? partial.coverageEndMs
+          : Math.max(coverageEndMs, partial.coverageEndMs);
+      }
+      for (const [priceTicks, row] of partial.totals) {
+        addRow(priceTicks, row.volume, row.askVolume, row.bidVolume, row.trades);
+      }
+    }
     return {
       tickSize: tick,
       coverageStartMs,

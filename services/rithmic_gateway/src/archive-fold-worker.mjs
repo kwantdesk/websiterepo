@@ -2,7 +2,10 @@ import { parentPort, workerData } from "node:worker_threads";
 
 import { readArchiveRecords } from "./archive-reader.mjs";
 import { foldPrintsToMinutes } from "./bar-flow-archive.mjs";
-import { foldPrintsToMinuteLevels } from "./session-profile-archive.mjs";
+import {
+  aggregateSessionMinuteLevels,
+  foldPrintsToMinuteLevels,
+} from "./session-profile-archive.mjs";
 import { chicagoTradingDate } from "./trading-session.mjs";
 import { decodeTrade } from "./trade-tape-archive.mjs";
 
@@ -29,7 +32,13 @@ async function run() {
   if (workerData?.kind === "bar-flow") return foldPrintsToMinutes(trades);
   if (workerData?.kind === "session-profile") {
     const tickSize = Number(workerData.tickSize) > 0 ? Number(workerData.tickSize) : 0.25;
-    return { schemaVersion: 2, tickSize, minutes: foldPrintsToMinuteLevels(trades, tickSize) };
+    const minutes = foldPrintsToMinuteLevels(trades, tickSize);
+    return {
+      schemaVersion: 2,
+      tickSize,
+      minutes,
+      aggregate: aggregateSessionMinuteLevels(minutes),
+    };
   }
   throw new Error("Unsupported archive fold job.");
 }

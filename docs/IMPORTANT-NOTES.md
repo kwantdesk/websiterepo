@@ -191,3 +191,18 @@ recap of the open items below and update this file when their state changes.
 - Cash-index/ETF roots must be calibrated to the NQ/ES futures price scale
   before entering a futures chart, and display scale must be part of every
   point/cache identity.
+
+## 2026-09-04 — Weekly Volume Profile latency
+
+- A developing profile's cache identity must describe its stable market
+  window, not the pane's latest candle timestamp. The gateway can resolve the
+  current end time while an exact durable snapshot paints immediately and is
+  reconciled in the background.
+- Changing chart timeframe must not refetch an unchanged weekly execution
+  window.
+- Completed session-profile folds must retain a materialised whole-session
+  price histogram. Weekly profiles merge those compact immutable reductions;
+  they must not rescan every minute/price row of five sessions per request.
+- Cold restores of independent daily fold files may run concurrently, but raw
+  tape folding remains off the request path and outside the live-feed event
+  loop.

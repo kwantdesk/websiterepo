@@ -227,3 +227,40 @@ test("a completed session is cached on disk, the live one never is", async () =>
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("whole-session requests reuse the materialised aggregate", async () => {
+  /*
+   * A weekly profile is the sum of whole trading sessions. Once a day has
+   * been folded it must not rescan every minute/price row each time somebody
+   * opens the weekly indicator.
+   */
+  const { dir, tradingDate } = withTape([
+    [T0, 29000, 4, 1],
+    [T0 + 60_000, 29001, 2, -1],
+  ]);
+  try {
+    const archive = new SessionProfileArchive({ dir });
+    await archive.sessionLevels(tradingDate, "CME", "NQU6", TICK, true);
+    const key = `CME:NQU6:${tradingDate}:${TICK}`;
+    const entry = archive.memory.get(key);
+    assert.ok(entry?.aggregate?.levels?.length, "the fold did not materialise its aggregate");
+
+    // Prove the fast whole-session path does not touch minute detail.
+    Object.defineProperty(entry, "minutes", {
+      configurable: true,
+      get() { throw new Error("whole-session profile rescanned minute rows"); },
+    });
+    const profile = await archive.load({
+      exchange: "CME",
+      symbol: "NQU6",
+      tickSize: TICK,
+      fromMs: T0 - 1,
+      toMs: T0 + 300_000,
+    });
+    assert.equal(profile.levels.length, 2);
+    assert.equal(profile.levels[0].volume, 4);
+    assert.equal(profile.levels[1].volume, 2);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
