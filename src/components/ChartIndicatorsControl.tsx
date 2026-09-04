@@ -443,6 +443,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "liquidity-stop-sweep-detector",
   "poc-auction-suite",
   "tape-speed-order-flow-burst",
+  "speed-of-tape-instant",
   "delta-cumulative-candlestick",
   "delta-cumulative-histogram",
   "imbalance-tracker",
@@ -5609,6 +5610,26 @@ export default function ChartIndicatorsControl({
                     <label className="space-y-1.5 text-[8px] uppercase tracking-[0.1em] text-muted"><span>Resolution</span><KwantSelect value={String(settingsInstance.settings?.auctionResolutionMode ?? "first-touch")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), auctionResolutionMode: event.target.value, preset: "custom" } }))} className="h-9 w-full"><option value="first-touch">First touch</option><option value="trade-through">Trade through</option><option value="minimum-volume-at-level">Minimum volume at level</option><option value="new-finished-extreme">New finished extreme</option><option value="combined">Combined</option></KwantSelect></label>
                   </div>
                   <p className="text-[8px] leading-4 text-muted">Uses the shared Footprint execution stream. Auction extremes use exact one-tick rows when available and never fabricate bid/ask behaviour from OHLC bars.</p>
+                </div>
+              ) : null}
+
+              {settingsDefinition.id === "speed-of-tape-instant" ? (
+                <div className="space-y-3 border border-primary/20 bg-primary/[0.035] p-3">
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <label className="space-y-1.5 text-[8px] uppercase tracking-[0.1em] text-muted">
+                      <span>Input data</span>
+                      <KwantSelect value={String(settingsInstance.settings?.inputData ?? "volume")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), inputData: event.target.value } }))} className="h-9 w-full">
+                        <option value="volume">Volume</option><option value="trades">Trades</option>
+                      </KwantSelect>
+                    </label>
+                    <label className="space-y-1.5 text-[8px] uppercase tracking-[0.1em] text-muted">
+                      <span>Display value</span>
+                      <KwantSelect value={String(settingsInstance.settings?.displayValue ?? "total")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), displayValue: event.target.value } }))} className="h-9 w-full">
+                        <option value="total">Total</option><option value="buy">Buy</option><option value="sell">Sell</option><option value="delta">Delta</option>
+                      </KwantSelect>
+                    </label>
+                  </div>
+                  <p className="text-[8px] leading-4 text-muted">Vertical instant tape beside the live price scale. It is calculated only from direct Rithmic executions; candles are never substituted when the tape is unavailable.</p>
                 </div>
               ) : null}
 

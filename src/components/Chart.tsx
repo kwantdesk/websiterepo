@@ -278,6 +278,11 @@ import {
   TapeSpeedOrderFlowBurstPrimitive,
   type TapeSpeedHit,
 } from "@/lib/tapeSpeedOrderFlowBurstPrimitive";
+import SpeedOfTapeInstantOverlay from "@/components/SpeedOfTapeInstantOverlay";
+import {
+  buildSpeedOfTapeInstantFrame,
+  normalizeSpeedOfTapeInstantSettings,
+} from "@/lib/speedOfTapeInstant";
 import { subscribeRithmicLiquidity, type RithmicLiquidityStatus } from "@/lib/rithmicLiquidityStream";
 import { MiniDomPrimitive, miniDomLayout, type MiniDomLevel, type MiniDomOptions } from "@/lib/miniDomPrimitive";
 import { DeltaLadderPrimitive, type DeltaLadderLevel, type DeltaLadderOptions, type DeltaLadderSide } from "@/lib/deltaLadderPrimitive";
@@ -5254,6 +5259,30 @@ function Chart({
   const tapeSpeedIndicator = useMemo(
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "tape-speed-order-flow-burst") ?? null,
     [indicatorSignature, indicators],
+  );
+  const instantTapeIndicator = useMemo(
+    () => indicators.find((instance) => instance.enabled && instance.indicatorId === "speed-of-tape-instant") ?? null,
+    [indicatorSignature, indicators],
+  );
+  const instantTapeSettings = useMemo(() => {
+    const normalized = normalizeSpeedOfTapeInstantSettings(instantTapeIndicator?.settings);
+    if (normalized.useThemeColors) {
+      const visible = visibleIndicatorTheme(settings);
+      normalized.positiveBorderColor = visible.positive;
+      normalized.positiveFillColor = visible.positive;
+      normalized.negativeBorderColor = visible.negative;
+      normalized.negativeFillColor = visible.negative;
+    }
+    return normalized;
+  }, [instantTapeIndicator, settings.backgroundColor, settings.borderDownColor, settings.borderUpColor, settings.downColor, settings.gridColor, settings.upColor]);
+  // This deliberately follows the unsampled execution prop. The indicator is
+  // the instant view: batching it behind the heavier order-flow studies would
+  // make a healthy Rithmic tape look as if it were updating every 1-2 seconds.
+  const instantTapeFrame = useMemo(
+    () => instantTapeIndicator
+      ? buildSpeedOfTapeInstantFrame(marketTrades, instantTapeSettings)
+      : null,
+    [instantTapeIndicator, instantTapeSettings, marketTrades, marketTradesVersion],
   );
   const tapeSpeedSettings = useMemo(() => {
     const normalized = normalizeTapeSpeedSettings(tapeSpeedIndicator?.settings);
@@ -17421,6 +17450,19 @@ function Chart({
             );
           })}
         </svg>
+      ) : null}
+
+      {instantTapeIndicator && instantTapeFrame ? (
+        <SpeedOfTapeInstantOverlay
+          frame={instantTapeFrame}
+          settings={instantTapeSettings}
+          right={nativePriceScaleWidth + miniDomReservedWidth}
+          top={topIndicatorPaneHeight}
+          bottom={indicatorPaneHeight + CHART_TIME_AXIS_HEIGHT}
+          width={nativePriceScaleWidth}
+          backgroundColor={settings.backgroundColor}
+          eventKey={liveCandleEventKey}
+        />
       ) : null}
 
       <ChartIndicatorPanes

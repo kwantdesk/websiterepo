@@ -5691,6 +5691,8 @@ function WorkspaceChartPaneComponent({
   ), DEFAULT_CHART_HISTORY_CALENDAR_DAYS);
   const footprintLiveActive = indicators.some((instance) =>
     instance.enabled && instance.indicatorId === "deep-print-footprint");
+  const instantTapeLiveActive = indicators.some((instance) =>
+    instance.enabled && instance.indicatorId === "speed-of-tape-instant");
   const nonFootprintOrderFlowActive = indicators.some((instance) =>
     instance.enabled
     && instance.indicatorId !== "deep-print-footprint"
@@ -6147,7 +6149,7 @@ function WorkspaceChartPaneComponent({
           records,
         );
         latestMarketTradesRef.current = next;
-        if (footprintLiveActive) {
+        if (footprintLiveActive || instantTapeLiveActive) {
           window.dispatchEvent(new CustomEvent(LIVE_CHART_EXECUTION_EVENT, {
             detail: {
               key: pane.id,
@@ -6320,6 +6322,7 @@ function WorkspaceChartPaneComponent({
     needsLiveVolumeProfiles,
     needsOrderFlowHistory,
     footprintLiveActive,
+    instantTapeLiveActive,
     nonFootprintOrderFlowActive,
     pane.broker,
     pane.symbol,

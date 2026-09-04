@@ -12,6 +12,10 @@ import { DEFAULT_ICEBERG_REFRESH_SETTINGS, ICEBERG_REFRESH_SETTINGS_VERSION, nor
 import { DEFAULT_LIQUIDITY_STOP_SWEEP_SETTINGS, LIQUIDITY_STOP_SWEEP_SETTINGS_VERSION, normalizeLiquidityStopSweepSettings } from "@/lib/liquidityStopSweepDetector";
 import { DEFAULT_POC_AUCTION_SUITE_SETTINGS, POC_AUCTION_SUITE_SETTINGS_VERSION, normalizePocAuctionSuiteSettings } from "@/lib/pocAuctionSuite";
 import { DEFAULT_TAPE_SPEED_SETTINGS, normalizeTapeSpeedSettings } from "@/lib/tapeSpeedOrderFlowBurst";
+import {
+  DEFAULT_SPEED_OF_TAPE_INSTANT_SETTINGS,
+  normalizeSpeedOfTapeInstantSettings,
+} from "@/lib/speedOfTapeInstant";
 import { defaultIndicatorPlotColors, visibleIndicatorTheme } from "@/lib/indicatorPlotColors";
 import { normalizeExpectedMoveSettings } from "@/lib/expectedMove";
 
@@ -44,6 +48,7 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "liquidity-stop-sweep-detector",
   "poc-auction-suite",
   "tape-speed-order-flow-burst",
+  "speed-of-tape-instant",
   "moving-average",
   "vwap",
   "vwap-envelopes",
@@ -182,6 +187,15 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "paneHeight", label: "Lower pane height", defaultValue: 190, min: 120, max: 520, step: 5 },
     { key: "markerSize", label: "Marker size", defaultValue: 7, min: 4, max: 18, step: 1 },
     { key: "opacity", label: "Overlay opacity (%)", defaultValue: 100, min: 0, max: 100, step: 1 },
+  ],
+  "speed-of-tape-instant": [
+    { key: "filterMin", label: "Filter minimum", defaultValue: 1, min: 0, max: 1000000, step: 1 },
+    { key: "filterMax", label: "Filter maximum · 0 is unlimited", defaultValue: 0, min: 0, max: 1000000, step: 1 },
+    { key: "numberOfSeconds", label: "Number of seconds", defaultValue: 10, min: 1, max: 3600, step: 1 },
+    { key: "barsToShow", label: "Bars to show", defaultValue: 3, min: 1, max: 20, step: 1 },
+    { key: "scaleMinValue", label: "Scale minimum value", defaultValue: 0, min: 0, max: 1000000000, step: 1 },
+    { key: "lineWidth", label: "Candle line width", defaultValue: 1, min: 0.5, max: 6, step: 0.5 },
+    { key: "standardDeviationLookback", label: "Standard deviation lookback", defaultValue: 60, min: 10, max: 500, step: 1 },
   ],
   "poc-auction-suite": [
     { key: "customGroupSizeTicks", label: "Custom grouping (ticks)", defaultValue: 1, min: 1, max: 1000, step: 1 },
@@ -1203,6 +1217,13 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     sellColor: theme?.downColor ?? DEFAULT_TAPE_SPEED_SETTINGS.sellColor,
     totalColor: theme?.borderUpColor ?? DEFAULT_TAPE_SPEED_SETTINGS.totalColor,
     neutralColor: theme?.gridColor ?? DEFAULT_TAPE_SPEED_SETTINGS.neutralColor,
+  } : {}),
+  ...(indicatorId === "speed-of-tape-instant" ? {
+    ...DEFAULT_SPEED_OF_TAPE_INSTANT_SETTINGS,
+    positiveBorderColor: theme?.borderUpColor ?? theme?.upColor ?? DEFAULT_SPEED_OF_TAPE_INSTANT_SETTINGS.positiveBorderColor,
+    positiveFillColor: theme?.upColor ?? DEFAULT_SPEED_OF_TAPE_INSTANT_SETTINGS.positiveFillColor,
+    negativeBorderColor: theme?.borderDownColor ?? theme?.downColor ?? DEFAULT_SPEED_OF_TAPE_INSTANT_SETTINGS.negativeBorderColor,
+    negativeFillColor: theme?.downColor ?? DEFAULT_SPEED_OF_TAPE_INSTANT_SETTINGS.negativeFillColor,
   } : {}),
   ...(indicatorId === "gamma-heatmap" ? {
     preset: "intraday",
@@ -2250,6 +2271,17 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
       settings: {
         ...normalizeTapeSpeedSettings({
           ...defaultIndicatorSettings("tape-speed-order-flow-burst"),
+          ...(normalizedInstance.settings ?? {}),
+        }),
+      },
+    };
+  }
+  if (normalizedInstance.indicatorId === "speed-of-tape-instant") {
+    return {
+      ...normalizedInstance,
+      settings: {
+        ...normalizeSpeedOfTapeInstantSettings({
+          ...defaultIndicatorSettings("speed-of-tape-instant"),
           ...(normalizedInstance.settings ?? {}),
         }),
       },
