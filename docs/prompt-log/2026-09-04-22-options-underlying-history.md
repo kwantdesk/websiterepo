@@ -41,3 +41,15 @@ notes ledger.
 - Production unit verification also caught systemd's default startup timeout
   terminating the deliberate five-minute safety delay. The unit now gives that
   pre-start guard a bounded six-minute window.
+
+## Production verification
+
+- The deployed worker entered `active/running`, created its persisted ledger
+  and reached 88 complete sessions out of its first 113 attempts. Twenty-four
+  holiday/empty results remained deliberately unconfirmed until repeat probes;
+  one partial session remained queued for retry.
+- The chart-facing gateway served the newly archived 2025-01-03 sessions with
+  no truncation: QQQ 405 bars, META 390 and VIX 424.
+- Four consecutive live-feed health samples remained connected/authenticated,
+  advanced their Rithmic timestamps every five seconds, reported zero recorder
+  drops and showed no event-loop overload. QuantData remained healthy.

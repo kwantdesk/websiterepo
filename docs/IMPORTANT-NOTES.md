@@ -9,8 +9,11 @@ recap of the open items below and update this file when their state changes.
 - **Options-underlying candles:** QuantData was directly verified on
   2026-09-04 to return real 2025-01-03 one-minute bars for all 13 physical
   targets: SPX, SPY, QQQ, NDX, IWM, AAPL, NVDA, TSLA, MSFT, AMZN, META, AMD
-  and VIX. A checkpointed VPS backfill now targets every physical
-  options-underlying ticker from 2025-01-01. It is intentionally blocked
+  and VIX. The checkpointed production VPS backfill is active and targets
+  every physical options-underlying ticker from 2025-01-01. At the first
+  post-deploy snapshot it had completed 88 of 113 attempted ticker/sessions,
+  with 24 holiday/empty observations awaiting confirmation and one partial
+  awaiting retry. It is intentionally blocked
   during the US cash session so history can never consume the quota needed by
   live GEX/tickers. Keep this item open until the production ledger proves all
   available sessions are complete.
