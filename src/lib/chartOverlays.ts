@@ -27,6 +27,24 @@ export type ChartOverlaySeries = ChartOverlaySettings & {
   id: string;
   name: string;
   candles: Candle[];
+  spanIntervalMs?: number;
+  fixedWidthPercent?: number;
+  drawCloseBoundary?: boolean;
+  closeBoundaryColor?: string;
+};
+
+export type OverlayTimeframeSettings = {
+  timeframe: string;
+  intervalMs: number;
+  filled: boolean;
+  candleWidthPercent: number;
+  borderWidth: 1 | 2 | 3 | 4;
+  opacity: number;
+  drawCloseBoundary: boolean;
+  useThemeColors: boolean;
+  upColor: string;
+  downColor: string;
+  closeBoundaryColor: string;
 };
 
 const bounded = (value: unknown, fallback: number, minimum: number, maximum: number) => {
@@ -120,4 +138,40 @@ export function aggregateCandlesByMilliseconds(candles: Candle[], intervalMs: nu
     });
   }
   return [...buckets.values()].sort((left, right) => left.timestamp - right.timestamp);
+}
+
+export function overlayTimeframeMilliseconds(value: unknown, fallback = 15 * 60_000) {
+  const match = String(value ?? "").trim().match(/^(\d+(?:\.\d+)?)\s*(s|m|h|d|w|mo)$/i);
+  if (!match) return fallback;
+  const amount = Number(match[1]);
+  const unit = match[2].toLowerCase();
+  const factor = unit === "s" ? 1_000
+    : unit === "m" ? 60_000
+      : unit === "h" ? 3_600_000
+        : unit === "d" ? 86_400_000
+          : unit === "w" ? 7 * 86_400_000
+            : 30 * 86_400_000;
+  return Math.min(365 * 86_400_000, Math.max(1_000, amount * factor));
+}
+
+export function normalizeOverlayTimeframeSettings(
+  input: Record<string, unknown> | null | undefined,
+  theme: { upColor: string; downColor: string; accentColor: string },
+): OverlayTimeframeSettings {
+  const timeframe = typeof input?.timeframe === "string" && input.timeframe.trim()
+    ? input.timeframe.trim()
+    : "15m";
+  return {
+    timeframe,
+    intervalMs: overlayTimeframeMilliseconds(timeframe),
+    filled: input?.filled !== false,
+    candleWidthPercent: bounded(input?.candleWidthPercent, 94, 10, 100),
+    borderWidth: Math.round(bounded(input?.borderWidth, 1, 1, 4)) as 1 | 2 | 3 | 4,
+    opacity: bounded(input?.opacity, 34, 5, 100),
+    drawCloseBoundary: input?.drawCloseBoundary === true,
+    useThemeColors: input?.useThemeColors !== false,
+    upColor: typeof input?.upColor === "string" ? input.upColor : theme.upColor,
+    downColor: typeof input?.downColor === "string" ? input.downColor : theme.downColor,
+    closeBoundaryColor: typeof input?.closeBoundaryColor === "string" ? input.closeBoundaryColor : theme.accentColor,
+  };
 }

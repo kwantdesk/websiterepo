@@ -54,11 +54,54 @@ Legend: `[ ]` not complete, `[~]` in progress, `[x]` complete and addable.
 | 16 | Kwant Levels | `gamma-levels` | [x] | [x] | [x] | [x] | [~] | Pending · deployment QA |
 | 17 | Overlay Chart | `overlay-chart` | [x] | [x] | [x] | [x] | [~] | Pending · deployment QA |
 | 18 | Overlay Symbol | `overlay-symbol` | [x] | [x] | [x] | [x] | [~] | Pending · deployment QA |
-| 19 | Overlay Timeframe Candlestick | `overlay-timeframe-candlestick` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
-| 20 | KWANT-M IVB | `deep-m-ivb` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
+| 19 | Overlay Timeframe Candlestick | `overlay-timeframe-candlestick` | [x] | [x] | [x] | [x] | [~] | Pending · deployment QA |
+| 20 | KWANT-M IVB | `deep-m-ivb` | [x] | [x] | [x] | [x] | [~] | Pending · deployment QA |
 | 21 | KWANT Pattern Builder | `deep-pattern-builder` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
 
 ## Audit notes
+
+### 20: KWANT-M IVB
+
+- Official DeepCharts help defines a 15/30/60-minute RTH opening range (30 is
+  recommended), its high/middle/low, positive/negative/neutral environment,
+  Protection/Average/one-standard-deviation projections, support/resistance
+  zones and the corresponding style controls. It says the proprietary levels
+  were derived from years of historical study but does not publish their
+  coefficients; protected metadata cannot establish that formula.
+- Quant Desk therefore implements the observable contract transparently rather
+  than labelling guessed constants as DeepCharts. It calculates the Chicago RTH
+  opening range with DST-safe exchange time. Projection distance is learned
+  without lookahead from completed loaded sessions: the lower quartile is the
+  Protection distance, the mean is Average, and mean plus one standard
+  deviation is the outer projection. The active session never trains itself.
+- A native price-pane renderer draws the range, current environment, bounded
+  support/resistance zones and the three projection families. Only the newest
+  session may extend to the live edge; historical sessions stop at their own
+  final loaded bar. The 15/30/60 selector, lookback, line/zone styling,
+  visibility toggles, theme/custom palette, save state and templates are wired.
+- Focused normalization and opening-range/projection tests, finite slider
+  coverage, theme following and scoped lint pass. Exact deployment and
+  production add/render/settings/save/reload/removal QA remain open.
+
+### 19: Overlay Timeframe Candlestick
+
+- Official DeepCharts help defines a live higher-timeframe aggregation over the
+  active chart, with parameter type/value, up/down colours, filled bodies,
+  candle and border width, opacity and an optional vertical line at each higher
+  timeframe close.
+- Quant Desk accepts seconds, minutes, hours, days, weeks and months, aggregates
+  the already authoritative loaded/live candle stream in one linear pass, and
+  updates the forming higher-timeframe OHLCV candle on every parent candle
+  change. It therefore works over time, range and volume host charts without a
+  second provider subscription or delayed polling loop.
+- A native primitive spans each higher-timeframe candle across its real chart
+  interval instead of drawing a misleading one-bar-width candle at the open.
+  Width, fill, border, opacity, close boundaries and theme/custom colours are
+  persisted and template-compatible. Invalid interval text safely retains the
+  15-minute default rather than breaking the chart.
+- Focused interval parsing, bounds and OHLCV/delta aggregation tests, numeric
+  slider coverage, theme following and scoped lint pass. Exact deployment and
+  production add/render/settings/save/reload/removal QA remain open.
 
 ### 17–18: Overlay Chart and Overlay Symbol
 

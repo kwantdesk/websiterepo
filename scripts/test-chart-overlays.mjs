@@ -3,6 +3,8 @@ import {
   aggregateCandlesByMilliseconds,
   normalizeChartOverlaySettings,
   pairedOverlaySymbol,
+  normalizeOverlayTimeframeSettings,
+  overlayTimeframeMilliseconds,
 } from "../src/lib/chartOverlays.ts";
 
 assert.equal(pairedOverlaySymbol("NQ.v.0"), "ES");
@@ -33,6 +35,15 @@ const inherited = normalizeChartOverlaySettings({ symbol: "AUTO", timeframe: "1D
 assert.equal(inherited.symbol, "NQ");
 assert.equal(inherited.timeframe, "500v");
 
+assert.equal(overlayTimeframeMilliseconds("4h"), 14_400_000);
+assert.equal(overlayTimeframeMilliseconds("2D"), 172_800_000);
+const higherTimeframe = normalizeOverlayTimeframeSettings({
+  timeframe: "30m", candleWidthPercent: 500, opacity: 0,
+}, { upColor: "#0f0", downColor: "#f00", accentColor: "#0ff" });
+assert.equal(higherTimeframe.intervalMs, 1_800_000);
+assert.equal(higherTimeframe.candleWidthPercent, 100);
+assert.equal(higherTimeframe.opacity, 5);
+
 const aggregated = aggregateCandlesByMilliseconds([
   { timestamp: 0, open: 10, high: 12, low: 9, close: 11, volume: 5, delta: 2 },
   { timestamp: 30_000, open: 11, high: 13, low: 10, close: 12, volume: 7, delta: -1 },
@@ -53,4 +64,3 @@ assert.deepEqual(aggregated[0], {
 });
 
 console.log("Chart overlay pairing, settings bounds and aggregation passed.");
-

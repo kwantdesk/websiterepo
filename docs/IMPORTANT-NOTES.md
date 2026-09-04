@@ -352,3 +352,11 @@ recap of the open items below and update this file when their state changes.
   Rithmic execution subscription and merge delayed history behind the live
   seam. Volume-based candle width is actual rendered width, never relabelled
   opacity, and an unavailable secondary feed must not disturb the main chart.
+- Overlay Timeframe Candlestick derives only from the host chart's current
+  authoritative candles and must update the forming aggregate immediately. Its
+  painted body spans the real higher-timeframe interval; do not replace it with
+  a narrow ordinary series candle or another network polling loop.
+- KWANT-M IVB is an exchange-time RTH opening-range model. Its projections are
+  explicitly estimated from prior completed loaded sessions with no lookahead;
+  never claim unpublished DeepCharts historical coefficients or allow the
+  forming session to train its own displayed levels.

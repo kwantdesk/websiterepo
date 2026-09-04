@@ -164,3 +164,17 @@ task until the full pending library is complete, without shortcuts.
   and dated ES/NQ micro/full contracts correctly, and renders genuine
   per-candle volume-scaled width through a native primitive. Focused tests and
   scoped lint pass; exact deployment and production QA remain open.
+  Item 19, **Overlay Timeframe Candlestick**, is also a release candidate. It
+  aggregates the authoritative loaded/live parent bars into seconds through
+  monthly candles in one pass, redraws the forming candle immediately, spans
+  each higher-timeframe interval with real geometry, and exposes the reference
+  fill, width, border, opacity, close-boundary and colour controls. Focused
+  aggregation, bounds, slider, theme and lint checks pass; production QA is
+  still required.
+  Item 20, **KWANT-M IVB**, is a release candidate. It implements the public
+  15/30/60-minute Chicago RTH opening range, environment, Protection, Average,
+  one-standard-deviation and support/resistance-zone contract. Because the
+  reference's years-derived coefficients are protected and unpublished,
+  Quant Desk uses an explicit no-lookahead model learned from completed loaded
+  sessions instead of inventing parity. It is themed, configurable, persisted
+  and focused-test clean; production QA remains.

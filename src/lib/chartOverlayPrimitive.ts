@@ -24,7 +24,7 @@ class Renderer implements ISeriesPrimitivePaneRenderer {
     const model = this.primitive.model();
     const chart = this.primitive.chart();
     const series = this.primitive.series();
-    if (!model || !chart || !series || !model.overlay.widthBasedOnVolume) return;
+    if (!model || !chart || !series || (!model.overlay.widthBasedOnVolume && !model.overlay.spanIntervalMs)) return;
     target.useMediaCoordinateSpace(({ context, mediaSize }) => {
       const { overlay, palette } = model;
       const candles = overlay.candles.filter((candle) => Number.isFinite(candle.timestamp));
@@ -59,8 +59,14 @@ class Renderer implements ISeriesPrimitivePaneRenderer {
         const color = overlay.useThemeColors
           ? (isUp ? palette.upColor : palette.downColor)
           : (isUp ? overlay.upColor : overlay.downColor);
-        const width = Math.max(1, maximumWidth * Math.sqrt(volumes[pointIndex] / maxVolume));
-        const center = Number(x);
+        const spanRight = overlay.spanIntervalMs
+          ? chart.timeScale().timeToCoordinate(Math.floor((candle.timestamp + overlay.spanIntervalMs) / 1_000) as Time)
+          : null;
+        const spanWidth = spanRight === null ? maximumWidth : Math.max(1, Number(spanRight) - Number(x));
+        const width = overlay.spanIntervalMs
+          ? spanWidth * Math.max(0.1, Math.min(1, Number(overlay.fixedWidthPercent ?? 94) / 100))
+          : Math.max(1, maximumWidth * Math.sqrt(volumes[pointIndex] / maxVolume));
+        const center = overlay.spanIntervalMs ? Number(x) + spanWidth / 2 : Number(x);
         context.strokeStyle = alpha(color, opacity);
         context.fillStyle = alpha(color, opacity);
         context.lineWidth = overlay.borderWidth;
@@ -85,6 +91,17 @@ class Renderer implements ISeriesPrimitivePaneRenderer {
         const height = Math.max(1, Math.abs(Number(close) - Number(open)));
         if (overlay.filled) context.fillRect(center - width / 2, top, width, height);
         if (overlay.openCloseBorder || !overlay.filled) context.strokeRect(center - width / 2, top, width, height);
+        if (overlay.drawCloseBoundary) {
+          const right = overlay.spanIntervalMs ? Number(x) + spanWidth : center + width / 2;
+          context.strokeStyle = alpha(overlay.closeBoundaryColor ?? color, opacity);
+          context.lineWidth = 1;
+          context.setLineDash([3, 3]);
+          context.beginPath();
+          context.moveTo(right, 0);
+          context.lineTo(right, mediaSize.height);
+          context.stroke();
+          context.setLineDash([]);
+        }
       });
       context.restore();
     });

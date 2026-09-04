@@ -187,7 +187,7 @@ export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
   indicator("Candlestick Bar", "Overlays", "Alternative candlestick rendering layer."),
   indicator("Overlay Chart", "Overlays", "Independent-symbol and independent-timeframe comparison with a secondary price axis.", false, "Kwantify"),
   indicator("Overlay Symbol", "Overlays", "A second Rithmic instrument kept on the active chart timeframe.", false, "Kwantify"),
-  indicator("Overlay Timeframe Candlestick", "Overlays", "Higher-timeframe candles on the active chart."),
+  indicator("Overlay Timeframe Candlestick", "Overlays", "Live higher-timeframe candles aggregated over the active chart with optional close boundaries.", false, "Kwantify"),
   indicator("Overlay Timeframe Highlight", "Overlays", "Highlights higher-timeframe candle boundaries."),
   indicator("Annotations Overlay", "Overlays", "Displays structured annotations over price."),
   indicator("Text on Chart", "Overlays", "Data-driven text labels on the chart."),
@@ -195,7 +195,7 @@ export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
 
   indicator("KWANT Stats", "KWANT Systems", "Per-bar bid/ask volume, delta, trade pace, exhaustion and effort statistics.", true, "Kwantify"),
   indicator("Hedge Levels", "KWANT Systems", "The five dealer-hedging levels - cage ceiling and floor, magnet, accelerator and the flip - as simple full-width bands with plain-language labels.", false, "Kwantify"),
-  indicator("KWANT-M IVB", "KWANT Systems", "Opening-range and initial-value breakout structure.", true, "Reference", "Deep-M IVB"),
+  indicator("KWANT-M IVB", "KWANT Systems", "RTH opening-range environment with empirical protection, average and deviation projections.", false, "Kwantify", "Deep-M IVB"),
   indicator("KWANT Pattern Builder", "KWANT Systems", "Composable market-pattern rules.", true, "Reference", "Deep Pattern Builder"),
   indicator("Big Blocks", "KWANT Systems", "Instrument-adaptive futures effort blocks anchored behind price.", true, "Reference", "Deep M Effort NQ"),
 ];

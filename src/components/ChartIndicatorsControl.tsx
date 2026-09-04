@@ -450,6 +450,8 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "gamma-levels",
   "overlay-chart",
   "overlay-symbol",
+  "overlay-timeframe-candlestick",
+  "deep-m-ivb",
   "gamma-environment",
   "vix-environment",
   "zero-gamma-line",
@@ -5992,6 +5994,54 @@ export default function ChartIndicatorsControl({
                       <option value="hidden">Hidden</option>
                     </select>
                   </label>
+                  {[
+                    ["Secondary price axis", "useSecondaryAxis"],
+                    ["Width based on volume", "widthBasedOnVolume"],
+                    ["Colour based on delta", "colorBasedOnDelta"],
+                    ["Open / close border", "openCloseBorder"],
+                    ["Filled candles", "filled"],
+                  ].map(([label, key]) => {
+                    const on = settingsInstance.settings?.[key] !== false
+                      && (key !== "widthBasedOnVolume" && key !== "colorBasedOnDelta" || settingsInstance.settings?.[key] === true);
+                    return <button key={key} type="button" aria-pressed={on} onClick={() => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [key]: !on } }))} className="flex h-9 items-center justify-between rounded-lg border border-border bg-background px-3 text-[9px] uppercase tracking-[0.1em] text-muted"><span>{label}</span><span className={on ? "text-primary" : "text-muted"}>{on ? "On" : "Off"}</span></button>;
+                  })}
+                </div>
+              ) : null}
+
+              {settingsDefinition.id === "overlay-timeframe-candlestick" ? (
+                <div data-settings-section="General" className="space-y-3 rounded-xl border border-border bg-surface/30 p-3">
+                  <label className="space-y-1.5 text-[9px] text-muted">
+                    <span>Higher timeframe</span>
+                    <input
+                      value={String(settingsInstance.settings?.timeframe ?? "15m")}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                        ...current,
+                        settings: { ...(current.settings ?? {}), timeframe: event.target.value },
+                      }))}
+                      placeholder="15m · 4h · 1D · 1W"
+                      className="h-10 w-full rounded-lg border border-border bg-background px-3 font-mono text-[11px] text-foreground outline-none focus:border-primary/45"
+                    />
+                  </label>
+                  <p className="text-[8px] leading-4 text-muted">
+                    Aggregates the loaded chart bars into the selected higher timeframe and updates the forming candle on every live chart update.
+                  </p>
+                  {[["Filled candles", "filled", true], ["Vertical close boundary", "drawCloseBoundary", false]].map(([label, key, fallback]) => {
+                    const on = settingsInstance.settings?.[String(key)] === undefined ? Boolean(fallback) : settingsInstance.settings?.[String(key)] === true;
+                    return <button key={String(key)} type="button" aria-pressed={on} onClick={() => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [String(key)]: !on } }))} className="flex h-9 items-center justify-between rounded-lg border border-border bg-background px-3 text-[9px] uppercase tracking-[0.1em] text-muted"><span>{String(label)}</span><span className={on ? "text-primary" : "text-muted"}>{on ? "On" : "Off"}</span></button>;
+                  })}
+                </div>
+              ) : null}
+
+              {settingsDefinition.id === "deep-m-ivb" ? (
+                <div data-settings-section="General" className="grid gap-3 rounded-xl border border-border bg-surface/30 p-3 sm:grid-cols-2">
+                  <label className="space-y-1.5 text-[9px] text-muted sm:col-span-2"><span>RTH opening range</span><KwantSelect value={String(settingsInstance.settings?.openingRangeMinutes ?? 30)} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), openingRangeMinutes: Number(event.target.value) } }))} className="h-10 w-full border border-border bg-background px-3 text-[10px] text-foreground" menuLabel="KWANT-M IVB opening range"><option value="15">15 minutes</option><option value="30">30 minutes · recommended</option><option value="60">60 minutes</option></KwantSelect></label>
+                  {[
+                    ["Opening range", "showRange"], ["Protection projection", "showProtection"],
+                    ["Average projection", "showAverage"], ["One standard deviation", "showStandardDeviation"],
+                    ["Support / resistance zones", "showZones"], ["Environment summary", "showSummary"],
+                    ["Extend to live edge", "extendToLiveEdge"],
+                  ].map(([label, key]) => { const on = settingsInstance.settings?.[key] !== false; return <button key={key} type="button" aria-pressed={on} onClick={() => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [key]: !on } }))} className="flex h-9 items-center justify-between border border-border bg-background px-3 text-[9px] uppercase tracking-[0.1em] text-muted"><span>{label}</span><span className={on ? "text-primary" : "text-muted"}>{on ? "On" : "Off"}</span></button>; })}
+                  <p className="text-[8px] leading-4 text-muted sm:col-span-2">Protection, average and deviation distances are calculated from completed loaded sessions only. No private DeepCharts coefficient is claimed or guessed.</p>
                 </div>
               ) : null}
 

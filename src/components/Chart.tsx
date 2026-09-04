@@ -85,7 +85,11 @@ import {
   X,
 } from "lucide-react";
 import { Candle, Trade } from "@/lib/backtester";
-import type { ChartOverlaySeries as ChartOverlaySeriesModel } from "@/lib/chartOverlays";
+import {
+  aggregateCandlesByMilliseconds,
+  normalizeOverlayTimeframeSettings,
+  type ChartOverlaySeries as ChartOverlaySeriesModel,
+} from "@/lib/chartOverlays";
 import { OverlayVolumeWidthPrimitive } from "@/lib/chartOverlayPrimitive";
 export type ChartOverlaySeries = ChartOverlaySeriesModel;
 import type { VixEnvironmentSnapshot } from "@/lib/vixEnvironment";
@@ -309,6 +313,8 @@ import { buildDeepWallFrame, normalizeDeepWallSettings, type DeepWallFrame } fro
 import { DeepWallPrimitive } from "@/lib/deepWallPrimitive";
 import { buildDeepVTrackerFrame, normalizeDeepVTrackerSettings, type DeepVTrackerFrame } from "@/lib/deepVTracker";
 import { DeepVTrackerPrimitive } from "@/lib/deepVTrackerPrimitive";
+import { calculateDeepMIVB, normalizeDeepMIVBSettings } from "@/lib/deepMIVB";
+import { DeepMIVBPrimitive } from "@/lib/deepMIVBPrimitive";
 import { buildDeepProfileSwingFrame, normalizeDeepProfileSwingSettings, type DeepProfileSwingFrame } from "@/lib/deepProfileSwing";
 import { buildDeepProfileValuesFrame, normalizeDeepProfileValuesSettings, type DeepProfileValuesFrame } from "@/lib/deepProfileValues";
 import {
@@ -3341,6 +3347,7 @@ function Chart({
   const deepWallSeenMarkerIdsRef = useRef(new Set<string>());
   const deepWallAlertBaselineReadyRef = useRef(false);
   const deepVTrackerPrimitiveRef = useRef<DeepVTrackerPrimitive | null>(null);
+  const deepMIVBPrimitiveRef = useRef<DeepMIVBPrimitive | null>(null);
   const deepVTrackerLastReactPublishRef = useRef(0);
   const deepVTrackerSeenEventIdsRef = useRef(new Set<string>());
   const deepVTrackerAlertBaselineReadyRef = useRef(false);
@@ -5792,6 +5799,10 @@ function Chart({
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "deep-v-tracker") ?? null,
     [indicatorSignature, indicators],
   );
+  const deepMIVBIndicator = useMemo(
+    () => indicators.find((instance) => instance.enabled && instance.indicatorId === "deep-m-ivb") ?? null,
+    [indicatorSignature, indicators],
+  );
   const deepProfileSwingIndicator = useMemo(
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "deep-profile-swing") ?? null,
     [indicatorSignature, indicators],
@@ -6713,6 +6724,14 @@ function Chart({
       askColor: visible.positive,
     };
   }, [deepVTrackerIndicator, settings]);
+  const deepMIVBSettings = useMemo(() => {
+    const visible = visibleIndicatorTheme(settings);
+    return normalizeDeepMIVBSettings(deepMIVBIndicator?.settings, {
+      upColor: visible.positive,
+      downColor: visible.negative,
+      neutralColor: visible.muted,
+    });
+  }, [deepMIVBIndicator, settings]);
   const deepProfileSwingSettings = useMemo(() => {
     const normalized = normalizeDeepProfileSwingSettings(deepProfileSwingIndicator?.settings);
     if (!normalized.useThemeColors) return normalized;
@@ -6883,6 +6902,18 @@ function Chart({
     dynamicPocPrimitiveRef.current?.update({ frame, settings: dynamicPocSettings });
     startTransition(() => setDynamicPocFrame(frame));
   }, [dynamicPocIndicator, dynamicPocSettings, instrument, priceFormat.minMove, rawPocAuctionBars]);
+
+  useEffect(() => {
+    if (!deepMIVBIndicator) {
+      deepMIVBPrimitiveRef.current?.update(null);
+      return;
+    }
+    deepMIVBPrimitiveRef.current?.update({
+      frames: calculateDeepMIVB(indicatorWindowCandles, deepMIVBSettings),
+      settings: deepMIVBSettings,
+      tickSize: priceFormat.minMove,
+    });
+  }, [deepMIVBIndicator, deepMIVBSettings, indicatorWindowCandles, priceFormat.minMove]);
 
   useEffect(() => {
     if (!ratioHighlightIndicator) {
@@ -13994,6 +14025,9 @@ function Chart({
     const deepVTrackerPrimitive = new DeepVTrackerPrimitive();
     candleSeries.attachPrimitive(deepVTrackerPrimitive);
     deepVTrackerPrimitiveRef.current = deepVTrackerPrimitive;
+    const deepMIVBPrimitive = new DeepMIVBPrimitive();
+    candleSeries.attachPrimitive(deepMIVBPrimitive);
+    deepMIVBPrimitiveRef.current = deepMIVBPrimitive;
     const tapeSpeedPrimitive = new TapeSpeedOrderFlowBurstPrimitive();
     candleSeries.attachPrimitive(tapeSpeedPrimitive);
     tapeSpeedPrimitiveRef.current = tapeSpeedPrimitive;
@@ -15104,6 +15138,9 @@ function Chart({
         if (candleSeriesRef.current && deepVTrackerPrimitiveRef.current) {
           try { candleSeriesRef.current.detachPrimitive(deepVTrackerPrimitiveRef.current); } catch { /* chart may already be disposed */ }
         }
+        if (candleSeriesRef.current && deepMIVBPrimitiveRef.current) {
+          try { candleSeriesRef.current.detachPrimitive(deepMIVBPrimitiveRef.current); } catch { /* chart may already be disposed */ }
+        }
         if (candleSeriesRef.current && tapeSpeedPrimitiveRef.current) {
           try { candleSeriesRef.current.detachPrimitive(tapeSpeedPrimitiveRef.current); } catch { /* chart may already be disposed */ }
         }
@@ -15138,6 +15175,7 @@ function Chart({
       stopSpotterPrimitiveRef.current = null;
       deepWallPrimitiveRef.current = null;
       deepVTrackerPrimitiveRef.current = null;
+      deepMIVBPrimitiveRef.current = null;
       tapeSpeedPrimitiveRef.current = null;
       netGammaExposurePrimitiveRef.current = null;
       gexIntervalMapPrimitiveRef.current = null;
@@ -15170,7 +15208,41 @@ function Chart({
   useEffect(() => {
     const chart = chartRef.current;
     if (!chart) return;
-    const visible = overlaySeries.filter((overlay) => overlay.style !== "hidden");
+    const timeframeOverlays: ChartOverlaySeries[] = indicators
+      .filter((instance) => instance.enabled && instance.indicatorId === "overlay-timeframe-candlestick")
+      .map((instance) => {
+        const higher = normalizeOverlayTimeframeSettings(instance.settings, {
+          upColor: settings.upColor,
+          downColor: settings.downColor,
+          accentColor: settings.borderUpColor,
+        });
+        return {
+          id: instance.instanceId,
+          name: `${higher.timeframe} overlay`,
+          symbol: instrument,
+          timeframe: higher.timeframe,
+          style: "candlestick" as const,
+          useSecondaryAxis: false,
+          widthBasedOnVolume: false,
+          colorBasedOnDelta: false,
+          openCloseBorder: true,
+          filled: higher.filled,
+          maxVolumeWidthPercent: 100,
+          standardDeviation: 2,
+          borderWidth: higher.borderWidth,
+          opacity: higher.opacity,
+          useThemeColors: higher.useThemeColors,
+          upColor: higher.upColor,
+          downColor: higher.downColor,
+          lineColor: higher.closeBoundaryColor,
+          candles: aggregateCandlesByMilliseconds(candles, higher.intervalMs),
+          spanIntervalMs: higher.intervalMs,
+          fixedWidthPercent: higher.candleWidthPercent,
+          drawCloseBoundary: higher.drawCloseBoundary,
+          closeBoundaryColor: higher.closeBoundaryColor,
+        };
+      });
+    const visible = [...overlaySeries, ...timeframeOverlays].filter((overlay) => overlay.style !== "hidden");
     const visibleIds = new Set(visible.map((overlay) => overlay.id));
     for (const [id, runtime] of overlayChartSeriesRef.current) {
       if (visibleIds.has(id)) continue;
@@ -15225,12 +15297,12 @@ function Chart({
           runtime = {
             kind,
             series: chart.addCandlestickSeries({
-              upColor: overlay.widthBasedOnVolume || !overlay.filled ? "rgba(0,0,0,0)" : withAlpha(upColor, opacity),
-              downColor: overlay.widthBasedOnVolume || !overlay.filled ? "rgba(0,0,0,0)" : withAlpha(downColor, opacity),
-              borderUpColor: overlay.widthBasedOnVolume ? "rgba(0,0,0,0)" : withAlpha(upColor, opacity),
-              borderDownColor: overlay.widthBasedOnVolume ? "rgba(0,0,0,0)" : withAlpha(downColor, opacity),
-              wickUpColor: overlay.widthBasedOnVolume || overlay.style === "candlebody" ? "rgba(0,0,0,0)" : withAlpha(upColor, opacity),
-              wickDownColor: overlay.widthBasedOnVolume || overlay.style === "candlebody" ? "rgba(0,0,0,0)" : withAlpha(downColor, opacity),
+              upColor: overlay.widthBasedOnVolume || overlay.spanIntervalMs || !overlay.filled ? "rgba(0,0,0,0)" : withAlpha(upColor, opacity),
+              downColor: overlay.widthBasedOnVolume || overlay.spanIntervalMs || !overlay.filled ? "rgba(0,0,0,0)" : withAlpha(downColor, opacity),
+              borderUpColor: overlay.widthBasedOnVolume || overlay.spanIntervalMs ? "rgba(0,0,0,0)" : withAlpha(upColor, opacity),
+              borderDownColor: overlay.widthBasedOnVolume || overlay.spanIntervalMs ? "rgba(0,0,0,0)" : withAlpha(downColor, opacity),
+              wickUpColor: overlay.widthBasedOnVolume || overlay.spanIntervalMs || overlay.style === "candlebody" ? "rgba(0,0,0,0)" : withAlpha(upColor, opacity),
+              wickDownColor: overlay.widthBasedOnVolume || overlay.spanIntervalMs || overlay.style === "candlebody" ? "rgba(0,0,0,0)" : withAlpha(downColor, opacity),
               borderVisible: true,
               wickVisible: overlay.style !== "candlebody",
               priceScaleId,
@@ -15260,12 +15332,12 @@ function Chart({
         });
       } else {
         runtime.series.applyOptions({
-          upColor: overlay.widthBasedOnVolume || !overlay.filled ? "rgba(0,0,0,0)" : withAlpha(upColor, opacity),
-          downColor: overlay.widthBasedOnVolume || !overlay.filled ? "rgba(0,0,0,0)" : withAlpha(downColor, opacity),
-          borderUpColor: overlay.widthBasedOnVolume ? "rgba(0,0,0,0)" : withAlpha(upColor, opacity),
-          borderDownColor: overlay.widthBasedOnVolume ? "rgba(0,0,0,0)" : withAlpha(downColor, opacity),
-          wickUpColor: overlay.widthBasedOnVolume || overlay.style === "candlebody" ? "rgba(0,0,0,0)" : withAlpha(upColor, opacity),
-          wickDownColor: overlay.widthBasedOnVolume || overlay.style === "candlebody" ? "rgba(0,0,0,0)" : withAlpha(downColor, opacity),
+          upColor: overlay.widthBasedOnVolume || overlay.spanIntervalMs || !overlay.filled ? "rgba(0,0,0,0)" : withAlpha(upColor, opacity),
+          downColor: overlay.widthBasedOnVolume || overlay.spanIntervalMs || !overlay.filled ? "rgba(0,0,0,0)" : withAlpha(downColor, opacity),
+          borderUpColor: overlay.widthBasedOnVolume || overlay.spanIntervalMs ? "rgba(0,0,0,0)" : withAlpha(upColor, opacity),
+          borderDownColor: overlay.widthBasedOnVolume || overlay.spanIntervalMs ? "rgba(0,0,0,0)" : withAlpha(downColor, opacity),
+          wickUpColor: overlay.widthBasedOnVolume || overlay.spanIntervalMs || overlay.style === "candlebody" ? "rgba(0,0,0,0)" : withAlpha(upColor, opacity),
+          wickDownColor: overlay.widthBasedOnVolume || overlay.spanIntervalMs || overlay.style === "candlebody" ? "rgba(0,0,0,0)" : withAlpha(downColor, opacity),
           wickVisible: overlay.style !== "candlebody",
         });
         runtime.volumeWidth.update({ overlay, palette: { upColor, downColor } });
@@ -15297,13 +15369,13 @@ function Chart({
           high: candle.high,
           low: candle.low,
           close: candle.close,
-          color: overlay.widthBasedOnVolume || !overlay.filled ? "rgba(0,0,0,0)" : color,
-          borderColor: overlay.widthBasedOnVolume
+          color: overlay.widthBasedOnVolume || overlay.spanIntervalMs || !overlay.filled ? "rgba(0,0,0,0)" : color,
+          borderColor: overlay.widthBasedOnVolume || overlay.spanIntervalMs
             ? "rgba(0,0,0,0)"
             : overlay.openCloseBorder
             ? withAlpha(candle.close >= candle.open ? upColor : downColor, opacity)
             : color,
-          wickColor: overlay.widthBasedOnVolume ? "rgba(0,0,0,0)" : color,
+          wickColor: overlay.widthBasedOnVolume || overlay.spanIntervalMs ? "rgba(0,0,0,0)" : color,
         };
       });
       if (runtime.kind === "line") {
@@ -15314,7 +15386,7 @@ function Chart({
         runtime.series.setData(data as Parameters<ReturnType<IChartApi["addCandlestickSeries"]>["setData"]>[0]);
       }
     }
-  }, [chartReadyRevision, overlaySeries, settings.borderUpColor, settings.downColor, settings.upColor]);
+  }, [candles, chartReadyRevision, indicators, instrument, overlaySeries, settings.borderUpColor, settings.downColor, settings.upColor]);
 
   useEffect(() => {
     const chart = chartRef.current;
