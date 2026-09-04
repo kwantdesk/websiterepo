@@ -315,3 +315,8 @@ recap of the open items below and update this file when their state changes.
   never substituted, and missing exact data must remain a visible waiting
   state. Preserve all four Swing/Stop detector modes and the VWAP min/max/break
   contract when evolving it.
+- Event-chart profile ranges may contain an open-ended forming bar. Never pass
+  `Infinity`, `NaN` or another non-finite boundary to Date serialization,
+  Lightweight Charts time coordinates or a renderer; resolve it to the latest
+  finite execution/bar timestamp first. This is covered by the KWANT Profile
+  Swing regression added after the first production QA crash.

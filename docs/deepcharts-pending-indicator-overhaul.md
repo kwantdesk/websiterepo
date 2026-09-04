@@ -47,7 +47,7 @@ Legend: `[ ]` not complete, `[~]` in progress, `[x]` complete and addable.
 | 9 | KWANT Wall | `deep-wall` | [x] | [x] | [x] | [x] | [x] | Add |
 | 10 | KWANT V-Tracker | `deep-v-tracker` | [x] | [x] | [x] | [x] | [x] | Add |
 | 11 | Custom Draw-On Volume Profile | `custom-draw-on-volume-profile` | [x] | [x] | [x] | [x] | [x] | Add |
-| 12 | KWANT Profile Swing | `deep-profile-swing` | [x] | [x] | [x] | [x] | [~] | Release candidate |
+| 12 | KWANT Profile Swing | `deep-profile-swing` | [x] | [x] | [x] | [x] | [x] | Add |
 | 13 | KWANT Profile Values | `deep-profile-values` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
 | 14 | Market Statistics | `market-statistics` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
 | 15 | Confluence Identifier | `confluence-identifier` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
@@ -388,7 +388,14 @@ Legend: `[ ]` not complete, `[~]` in progress, `[x]` complete and addable.
 - Focused normalization, four detector families, exact aggregation, execution
   filtering, missing-data and 20,000-bar performance tests pass, together with
   TypeScript, focused lint, templates, theme-following, numeric-slider checks
-  and the production build. Exact deployment and production visual QA remain.
+  and the production build. The first production pass exposed an open-ended
+  event-bar boundary (`Infinity`) reaching date/renderer code; commit
+  `f9ca54e4` now guarantees finite profile boundaries and includes that exact
+  regression. The final default-precision correction is commit `3c76312c`,
+  Ready in deployment `4t5xj1ZgP6yXE9VFiGeP1EMJnrN8`. Cache-busted
+  production QA on NQ 500-volume confirmed a live profile with VAH/POC/VAL,
+  exact `10` and `5` reversal defaults, immediate saved state, recovery of the
+  persisted study after reload and clean removal back to 11 studies.
 
 - Quant Desk already has a tested `PocAuctionSuiteEngine` driven by exact
   execution-classified Footprint rows. It calculates raw-tick unfinished

@@ -97,11 +97,16 @@ task until the full pending library is complete, without shortcuts.
   fixed-profile level, template, theme, slider and TypeScript checks pass.
   Commit `efad055c` reached Ready and production QA confirmed exact NQ profile
   placement, POC/VAH/VAL, settings changes and clean removal, completing item
-  11. Item 12, **KWANT Profile Swing**, is now a release candidate: all five
+  11. Item 12, **KWANT Profile Swing**, is complete: all five
   profile modes, Swing/VWAP length, four main/stop detector families,
   reversal-bar inclusion and profile/lines display are wired over exact
   Rithmic volume-at-price. Execution filters operate before aggregation;
   missing exact flow is refused. It has an isolated native renderer,
   theme/custom colours, sliders and synced templates. Focused formula,
   filter, data-refusal and 20,000-bar tests plus TypeScript, lint and the
-  production build pass; exact deployment and visual QA remain.
+  production build pass. Production QA exposed and then verified the fix for
+  a non-finite forming event-bar end time (`f9ca54e4`). The exact default
+  precision fix (`3c76312c`) reached Ready as deployment
+  `4t5xj1ZgP6yXE9VFiGeP1EMJnrN8`; cache-busted NQ 500-volume QA confirmed the
+  live profile and levels, exact 10/5 reversal defaults, immediate saved state
+  and clean removal.
