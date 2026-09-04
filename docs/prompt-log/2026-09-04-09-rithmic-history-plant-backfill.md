@@ -25,6 +25,9 @@ live recorder to accumulate them.
   data always wins, and micros never fall back to minis.
 - Added a restart-safe queue for all 53 enabled CME, CBOT, NYMEX and COMEX
   product roots, ordered with the main equity-index contracts first.
+- The provider rejected a single 20-month replay with code 12 (`output
+  inhibited`). The importer therefore requests seven-day windows and commits
+  each independently; the same NQ week then completed with 5,581 valid bars.
 
 # Outcome
 
@@ -40,4 +43,5 @@ OHLC is not misrepresented as those data types.
 - History Plant production login: accepted.
 - January 2, 2025 `CME:NQ` pilot: 1,380 rows, 0 invalid, 202,849 bytes.
 - Current-session `CME:NQU6` control: 1,380 rows, 0 invalid, 205,372 bytes.
+- January 1-7 bounded `CME:NQ` window: 5,581 rows, 0 invalid, 818,737 bytes.
 - Gateway focused tests: 15/15 passed.
