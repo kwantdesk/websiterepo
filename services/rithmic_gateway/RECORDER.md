@@ -85,7 +85,7 @@ On the VPS, in the Docker volume `deploy_recordings`
 │   └── <EXCHANGE>-<SYMBOL>.ndjson.gz     the raw tape, ~2-3.8 GB per session
 ├── bars/<YYYY-MM-DD>/
 │   └── <EXCHANGE>-<SYMBOL>.json          minute OHLCV, ~332 KB per session
-├── cash-index/                    SPX/SPY/QQQ/NDX/IWM session OHLC
+├── cash-index/                    all options-underlying + VIX session OHLC
 ├── exposure/                      options surfaces
 └── heatmap-replay/                distilled LIQ MAP replay packs
 ```
@@ -97,6 +97,13 @@ exchange timestamp**, not our arrival time.
 
 Bars are ~1/6600th the size of the tape they came from. Keeping bars is
 effectively free; keeping raw tape is what consumes the disk.
+
+The cash-underlying archive has two coordinated writers. The gateway captures
+the recent completed sessions after the US close. The separate
+`kwantdesk-cash-history-backfill.service` walks every offered physical
+underlying from 2025-01-01 with a persisted ledger. Both refuse bulk provider
+work during the US cash session, and the daily writer yields while the bulk
+service owns the provider lane.
 
 ## Ordering and time
 

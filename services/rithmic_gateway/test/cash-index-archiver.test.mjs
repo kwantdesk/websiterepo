@@ -51,6 +51,7 @@ test("archives a completed session's real minute bars to disk", async () => {
     fetchImpl: impl,
     archiveResponse: (entry) => rawResponses.push(entry),
     now: () => AFTER_CLOSE,
+    requestSpacingMs: 0,
   });
   assert.equal(archiver.latestCompletedSessionDate(), "2026-08-19", "after the close, today is archivable");
   await archiver.runOnce();
@@ -70,7 +71,7 @@ test("archives a completed session's real minute bars to disk", async () => {
   assert.equal(Object.keys(JSON.parse(rawResponses[0].payload).data).length, 390);
 });
 
-test("mid-session it archives the PRIOR day, never today's partial", async () => {
+test("mid-session identifies the prior completed day but defers provider work", async () => {
   const dir = mkdtempSync(join(tmpdir(), "cash-index-"));
   const { impl, calls } = fakeFetch((body) => providerPayload(390, Date.parse(`${body.sessionDate}T13:30:00Z`)));
   const archiver = new CashIndexArchiver({
@@ -79,11 +80,11 @@ test("mid-session it archives the PRIOR day, never today's partial", async () =>
     tickers: ["SPX"],
     fetchImpl: impl,
     now: () => MID_SESSION,
+    requestSpacingMs: 0,
   });
   assert.equal(archiver.latestCompletedSessionDate(), "2026-08-18");
   await archiver.runOnce();
-  assert.ok(calls.every((body) => body.sessionDate !== "2026-08-19"), "today is never requested before the close");
-  assert.ok(await archiver.readSession("SPX", "2026-08-18"));
+  assert.equal(calls.length, 0, "even prior-day history must not compete with the live options session");
 });
 
 test("partial pulls are stored, flagged, and retried until complete", async () => {
@@ -96,6 +97,7 @@ test("partial pulls are stored, flagged, and retried until complete", async () =
     tickers: ["QQQ"],
     fetchImpl: impl,
     now: () => AFTER_CLOSE,
+    requestSpacingMs: 0,
   });
   await archiver.runOnce();
   let stored = await archiver.readSession("QQQ", "2026-08-19");
@@ -125,6 +127,7 @@ test("weekends resolve to the prior Friday and backfill skips weekend dates", as
     tickers: ["SPY"],
     fetchImpl: impl,
     now: () => Date.parse("2026-08-22T16:00:00Z"),
+    requestSpacingMs: 0,
   });
   assert.equal(archiver.latestCompletedSessionDate(), "2026-08-21", "Saturday archives Friday");
   await archiver.runOnce();
@@ -142,4 +145,20 @@ test("disabled without an API key or archive directory", async () => {
   const noKey = new CashIndexArchiver({ dir: mkdtempSync(join(tmpdir(), "cash-index-")), apiKey: "", fetchImpl: async () => { throw new Error("no"); } });
   assert.equal(noKey.enabled, false);
   await noKey.runOnce();
+});
+
+test("the live-session guard applies to every newly covered single-stock ticker", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "cash-index-"));
+  const { impl, calls } = fakeFetch(() => providerPayload(390));
+  const archiver = new CashIndexArchiver({
+    dir,
+    apiKey: "test-key",
+    tickers: ["META"],
+    fetchImpl: impl,
+    now: () => MID_SESSION,
+    requestSpacingMs: 0,
+  });
+
+  await archiver.runOnce();
+  assert.equal(calls.length, 0, "historical requests must stay off the provider during market hours");
 });

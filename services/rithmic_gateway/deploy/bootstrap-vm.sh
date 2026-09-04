@@ -89,8 +89,16 @@ docker compose up -d --build
 install -m 0644 \
   "$HERE/kwantdesk-history-backfill.service" \
   /etc/systemd/system/kwantdesk-history-backfill.service
+install -m 0644 \
+  "$HERE/kwantdesk-cash-history-backfill.service" \
+  /etc/systemd/system/kwantdesk-cash-history-backfill.service
 systemctl daemon-reload
 systemctl enable kwantdesk-history-backfill.service
+systemctl enable kwantdesk-cash-history-backfill.service
+# Start asynchronously: the unit deliberately waits five minutes so the live
+# gateway's tiny post-close catch-up and the bulk backfill never race each
+# other for the same QuantData quota or archive files.
+systemctl restart --no-block kwantdesk-cash-history-backfill.service
 
 echo "==> waiting for the Rithmic session"
 for _ in $(seq 1 30); do

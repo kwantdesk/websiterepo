@@ -1,0 +1,19 @@
+[Unit]
+Description=KwantDesk QuantData options-underlying candle backfill
+After=docker.service network-online.target
+Requires=docker.service
+Wants=network-online.target
+RequiresMountsFor=/srv/kwantdesk-recordings
+
+[Service]
+Type=exec
+Restart=on-failure
+RestartSec=900
+TimeoutStopSec=45
+# Let the gateway's small completed-session catch-up finish first after a boot.
+ExecStartPre=/usr/bin/sleep 300
+ExecStart=/usr/bin/docker run --rm --name kwantdesk-cash-history --cpus 0.20 --memory 256m --log-opt max-size=10m --log-opt max-file=3 --env-file /opt/kwantify/rithmic_gateway/operator.env -e RITHMIC_RECORD_DIR=/recordings -e CASH_INDEX_HISTORY_FROM=2025-01-01 -e CASH_INDEX_HISTORY_REQUEST_SPACING_MS=1500 -v /srv/kwantdesk-recordings:/recordings kwantify-rithmic-gateway:local node scripts/backfill-cash-index-history.mjs
+ExecStop=-/usr/bin/docker stop --time 30 kwantdesk-cash-history
+
+[Install]
+WantedBy=multi-user.target

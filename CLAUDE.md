@@ -1736,3 +1736,20 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
 - This covers authoritative minute bars from 2025-01-01 and aggregation to
   larger timeframes. Event-based chart history still requires the separate
   trade-tick/VAP import and is never synthesized from minute OHLC.
+
+## 2026-09-04 — Options-underlying history and important-notes ledger
+
+- `docs/IMPORTANT-NOTES.md` is the persistent high-priority launch ledger.
+  Every task handoff must recap its still-open items briefly and update their
+  status when work closes or discovers a new material dependency.
+- QuantData production probes proved January-2025 minute bars for all 13
+  physical targets behind the offered options underlyings plus VIX. VXN
+  returned no data and the separate index provider is not configured, so VXN
+  remains explicitly provider-blocked.
+- Permanent session capture now covers every physical ticker behind all 13
+  options-flow symbols (SPXW correctly aliases SPX), plus VIX. A dedicated,
+  checkpointed service backfills from 2025-01-01 sequentially and stops during
+  the US cash session so it cannot repeat the live-feed quota incident.
+- Chart history reads the full local archive range before a tightly bounded
+  provider fallback. Historical option chains/Greeks/trades remain distinct
+  from underlying candles and are still an unresolved licensed-data task.

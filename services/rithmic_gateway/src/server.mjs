@@ -247,7 +247,7 @@ const quantDataMarketSnapshots = new QuantDataMarketSnapshotStream({
   requestSpacingMs: Math.max(100, config.quantDataMinSpacingMs),
   timeoutMs: Math.min(10_000, config.vendorRequestTimeoutMs),
   equitySymbols: ["SPY", "QQQ", "IWM", "AAPL", "NVDA", "TSLA", "MSFT", "AMZN", "META", "AMD"],
-  indexSymbols: ["SPX", "NDX"],
+  indexSymbols: ["SPX", "NDX", "VIX"],
 }, fetch, archiveQuantDataResponse);
 const quantDataMarketHistory = new QuantDataMarketHistoryService({
   apiKey: config.quantDataApiKey,

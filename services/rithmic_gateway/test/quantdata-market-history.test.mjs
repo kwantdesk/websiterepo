@@ -137,7 +137,7 @@ test("identical QuantData history requests coalesce and then use the bounded VPS
   assert.equal(third.cached, true);
 });
 
-test("minute history is explicitly truncated to forty recent weekday sessions", async () => {
+test("minute history reads every available local session before bounded provider fallback", async () => {
   let archiveReads = 0;
   const service = new QuantDataMarketHistoryService({
     now: () => NOW,
@@ -159,9 +159,9 @@ test("minute history is explicitly truncated to forty recent weekday sessions", 
     to: Date.UTC(2026, 7, 28, 23),
   });
 
-  assert.equal(archiveReads, 40);
-  assert.equal(result.truncated, true);
-  assert.ok(result.candles.length <= 40);
+  assert.ok(archiveReads > 80, "the complete requested archive window was not inspected");
+  assert.equal(result.truncated, false);
+  assert.ok(result.candles.length > 80, "the locally available historical range was truncated");
 });
 
 test("history validation rejects unsupported symbols, intervals and unbounded windows", async () => {
@@ -176,7 +176,7 @@ test("history validation rejects unsupported symbols, intervals and unbounded wi
     (error) => error instanceof MarketIndexHistoryError && error.code === "index_history_interval_unsupported",
   );
   await assert.rejects(
-    () => service.load({ symbol: "SPY", timeframe: "5m", from: NOW - 371 * 86_400_000, to: NOW }),
+    () => service.load({ symbol: "SPY", timeframe: "5m", from: NOW - 731 * 86_400_000, to: NOW }),
     (error) => error instanceof MarketIndexHistoryError && error.code === "index_history_window_invalid",
   );
 });

@@ -1,8 +1,8 @@
 const QUANTDATA_ORIGIN = "https://api.quantdata.us";
 const MAX_HISTORY_CANDLES = 20_000;
 const MAX_RESPONSE_BYTES = 32 * 1024 * 1024;
-const MAX_RANGE_MS = 370 * 24 * 60 * 60_000;
-const MAX_SESSION_REQUESTS = 40;
+const MAX_RANGE_MS = 730 * 24 * 60 * 60_000;
+const MAX_PROVIDER_SESSION_REQUESTS = 10;
 const MAX_CONCURRENT_REQUESTS = 3;
 const ROLLING_CACHE_MS = 10_000;
 const HISTORICAL_CACHE_MS = 5 * 60_000;
@@ -10,6 +10,7 @@ const HISTORICAL_CACHE_MS = 5 * 60_000;
 const UNDERLYING_SYMBOLS = new Set([
   "SPX", "SPXW", "SPY", "NDX", "QQQ", "IWM",
   "AAPL", "NVDA", "TSLA", "MSFT", "AMZN", "META", "AMD",
+  "VIX",
 ]);
 
 export class MarketIndexHistoryError extends Error {
@@ -90,16 +91,37 @@ export class QuantDataMarketHistoryService {
     let payloads = [];
     let truncated = false;
     if (plan.sessionScoped) {
-      let dates = weekdaySessionDates(request.from, request.to);
-      if (dates.length > MAX_SESSION_REQUESTS) {
-        dates = dates.slice(-MAX_SESSION_REQUESTS);
+      const dates = weekdaySessionDates(request.from, request.to);
+      let providerDates = dates;
+      if (this.archiveReadSession) {
+        providerDates = [];
+        for (let offset = 0; offset < dates.length; offset += 50) {
+          const batchDates = dates.slice(offset, offset + 50);
+          const archived = await Promise.all(batchDates.map(async (sessionDate) => ({
+            sessionDate,
+            value: await this.archiveReadSession(ticker, sessionDate).catch(() => null),
+          })));
+          for (const row of archived) {
+            if (row.value?.complete === true && Array.isArray(row.value.candles) && row.value.candles.length) {
+              payloads.push({
+                payload: row.value,
+                sourceAggregation: String(row.value.aggregationPeriod || "1m"),
+              });
+            } else {
+              providerDates.push(row.sessionDate);
+            }
+          }
+        }
+      }
+      if (providerDates.length > MAX_PROVIDER_SESSION_REQUESTS) {
+        providerDates = providerDates.slice(-MAX_PROVIDER_SESSION_REQUESTS);
         truncated = true;
       }
       const failures = [];
-      for (let offset = 0; offset < dates.length; offset += MAX_CONCURRENT_REQUESTS) {
+      for (let offset = 0; offset < providerDates.length; offset += MAX_CONCURRENT_REQUESTS) {
         const batch = await Promise.allSettled(
-          dates.slice(offset, offset + MAX_CONCURRENT_REQUESTS)
-            .map((sessionDate) => this.#loadSession(ticker, plan.sourceAggregation, sessionDate)),
+          providerDates.slice(offset, offset + MAX_CONCURRENT_REQUESTS)
+            .map((sessionDate) => this.#loadSession(ticker, plan.sourceAggregation, sessionDate, false)),
         );
         for (const result of batch) {
           if (result.status === "fulfilled" && result.value) payloads.push(result.value);
@@ -147,8 +169,8 @@ export class QuantDataMarketHistoryService {
     };
   }
 
-  async #loadSession(ticker, sourceAggregation, sessionDate) {
-    if (this.archiveReadSession) {
+  async #loadSession(ticker, sourceAggregation, sessionDate, readArchive = true) {
+    if (readArchive && this.archiveReadSession) {
       const archived = await this.archiveReadSession(ticker, sessionDate).catch(() => null);
       if (archived?.complete === true && Array.isArray(archived.candles) && archived.candles.length) {
         return {
@@ -250,7 +272,7 @@ function normalizeRequest(raw, nowMs) {
       to > nowMs + 5 * 60_000 || to - from > MAX_RANGE_MS) {
     throw new MarketIndexHistoryError(
       "index_history_window_invalid",
-      "Cash-underlying history requires a positive window no longer than 370 days.",
+      "Cash-underlying history requires a positive window no longer than 730 days.",
     );
   }
   return Object.freeze({ symbol, timeframe, from: Math.floor(from), to: Math.floor(to) });

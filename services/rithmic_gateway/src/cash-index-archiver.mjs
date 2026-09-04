@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, statSync } from "node:fs";
 import { readFile, writeFile, rename } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -13,7 +13,11 @@ import { join } from "node:path";
 // ticker per day is a few hundred kilobytes; retention is effectively free.
 
 const QUANTDATA_ORIGIN = "https://api.quantdata.us";
-const DEFAULT_TICKERS = ["SPX", "SPY", "QQQ", "NDX", "IWM"];
+export const DEFAULT_CASH_INDEX_TICKERS = Object.freeze([
+  "SPX", "SPY", "QQQ", "NDX", "IWM",
+  "AAPL", "NVDA", "TSLA", "MSFT", "AMZN", "META", "AMD",
+  "VIX",
+]);
 const DIR_NAME = "cash-index";
 const CHECK_INTERVAL_MS = 10 * 60_000;
 // A full regular session is 390 one-minute bars. Below this the provider is
@@ -22,6 +26,8 @@ const COMPLETE_BAR_THRESHOLD = 350;
 const MAX_ATTEMPTS_PER_DATE = 14;
 const BACKFILL_SESSIONS = 10;
 const REQUEST_SPACING_MS = 1_500;
+const HISTORICAL_HALF_DAY_THRESHOLD = 180;
+const BACKFILL_ACTIVE_TTL_MS = 5 * 60_000;
 
 const NY_PARTS = new Intl.DateTimeFormat("en-US", {
   timeZone: "America/New_York",
@@ -49,6 +55,11 @@ function newYorkNow(nowMs = Date.now()) {
 
 function isWeekend(weekday) {
   return weekday === "Sat" || weekday === "Sun";
+}
+
+export function isCashSessionOpen(nowMs = Date.now()) {
+  const ny = newYorkNow(nowMs);
+  return !isWeekend(ny.weekday) && ny.minutes >= 9 * 60 + 15 && ny.minutes < 16 * 60 + 15;
 }
 
 function shiftDateKey(dateKey, days) {
@@ -100,16 +111,17 @@ function parseSessionCandles(payload) {
 }
 
 export class CashIndexArchiver {
-  constructor({ dir, apiKey, tickers, fetchImpl, archiveResponse = null, log = () => {}, now = () => Date.now() }) {
+  constructor({ dir, apiKey, tickers, fetchImpl, archiveResponse = null, log = () => {}, now = () => Date.now(), requestSpacingMs = REQUEST_SPACING_MS }) {
     this.dir = dir ? join(dir, DIR_NAME) : null;
     this.apiKey = apiKey || null;
-    this.tickers = (tickers && tickers.length ? tickers : DEFAULT_TICKERS)
+    this.tickers = (tickers && tickers.length ? tickers : DEFAULT_CASH_INDEX_TICKERS)
       .map((ticker) => String(ticker).trim().toUpperCase())
       .filter(Boolean);
     this.fetchImpl = fetchImpl || fetch;
     this.archiveResponse = typeof archiveResponse === "function" ? archiveResponse : null;
     this.log = log;
     this.now = now;
+    this.requestSpacingMs = Math.max(0, Number(requestSpacingMs) || 0);
     this.timer = null;
     this.running = false;
     this.attempts = new Map();
@@ -128,6 +140,7 @@ export class CashIndexArchiver {
       tickers: this.tickers,
       lastRunAt: this.lastRunAt,
       lastError: this.lastError,
+      running: this.running,
     };
   }
 
@@ -183,13 +196,28 @@ export class CashIndexArchiver {
 
   async runOnce() {
     if (!this.enabled || this.running) return;
+    if (isCashSessionOpen(this.now())) {
+      this.log("[cash-index] daily archive deferred until the US cash session closes");
+      return;
+    }
+    const bulkMarker = join(this.dir, ".history-backfill-active");
+    if (existsSync(bulkMarker)) {
+      try {
+        if (this.now() - statSync(bulkMarker).mtimeMs <= BACKFILL_ACTIVE_TTL_MS) {
+          this.log("[cash-index] daily archive deferred while the bulk history backfill owns the provider lane");
+          return;
+        }
+      } catch {
+        // The marker disappeared between exists/stat; continue normally.
+      }
+    }
     this.running = true;
     this.lastRunAt = new Date(this.now()).toISOString();
     try {
       const dates = recentSessionDates(this.latestCompletedSessionDate(), BACKFILL_SESSIONS);
       for (const sessionDate of dates) {
         for (const ticker of this.tickers) {
-          await this.#archiveSession(ticker, sessionDate);
+          await this.archiveSession(ticker, sessionDate);
         }
       }
     } finally {
@@ -197,15 +225,17 @@ export class CashIndexArchiver {
     }
   }
 
-  async #archiveSession(ticker, sessionDate) {
+  async archiveSession(ticker, sessionDate, { acceptHistoricalHalfDay = false } = {}) {
     const key = `${ticker}:${sessionDate}`;
     const existing = await this.readSession(ticker, sessionDate);
-    if (existing?.complete) return;
+    if (existing?.complete) return { status: "existing", bars: existing.candles.length };
     const attempts = this.attempts.get(key) ?? 0;
-    if (attempts >= MAX_ATTEMPTS_PER_DATE) return;
+    if (attempts >= MAX_ATTEMPTS_PER_DATE) return { status: "attempt-limit", bars: existing?.candles?.length ?? 0 };
     this.attempts.set(key, attempts + 1);
     try {
-      await new Promise((resolve) => setTimeout(resolve, REQUEST_SPACING_MS));
+      if (this.requestSpacingMs) {
+        await new Promise((resolve) => setTimeout(resolve, this.requestSpacingMs));
+      }
       const response = await this.fetchImpl(`${QUANTDATA_ORIGIN}/v1/equities/tool/stock-price-over-time`, {
         method: "POST",
         headers: {
@@ -238,12 +268,15 @@ export class CashIndexArchiver {
         // A holiday or unpublished session. Counted attempts stop the retries
         // eventually; nothing is written because nothing exists.
         this.log(`[cash-index] ${key}: provider returned no bars (attempt ${attempts + 1})`);
-        return;
+        return { status: "empty", bars: 0 };
       }
       // Never regress a stored session: only replace when the new pull holds
       // at least as many bars as what is already on disk.
-      if (existing && existing.candles.length > candles.length) return;
-      const complete = candles.length >= COMPLETE_BAR_THRESHOLD;
+      if (existing && existing.candles.length > candles.length) {
+        return { status: existing.complete ? "existing" : "partial", bars: existing.candles.length };
+      }
+      const complete = candles.length >= COMPLETE_BAR_THRESHOLD
+        || (acceptHistoricalHalfDay && candles.length >= HISTORICAL_HALF_DAY_THRESHOLD);
       const { dayDir, file } = this.#paths(ticker, sessionDate);
       mkdirSync(dayDir, { recursive: true });
       const record = {
@@ -261,9 +294,11 @@ export class CashIndexArchiver {
       await rename(`${file}.partial`, file);
       if (complete) this.attempts.delete(key);
       this.log(`[cash-index] archived ${key}: ${candles.length} bars${complete ? "" : " (partial, will retry)"}`);
+      return { status: complete ? "complete" : "partial", bars: candles.length };
     } catch (error) {
       this.lastError = `${key}: ${error instanceof Error ? error.message : String(error)}`;
       this.log(`[cash-index] ${key} failed: ${this.lastError}`);
+      return { status: "failed", bars: existing?.candles?.length ?? 0, error: this.lastError };
     }
   }
 }
