@@ -573,25 +573,38 @@ function ChartIndicatorPaneSurface({
                         const color = point.color ?? definition.color;
                         const openY = yFor(open, definition);
                         const closeY = yFor(close, definition);
+                        const candleStyle = definition.candleStyle ?? "candlestick";
                         return (
                           <g key={`${definition.key}-${point.time}`}>
-                            <line
-                              x1={point.x}
-                              x2={point.x}
-                              y1={yFor(high, definition)}
-                              y2={yFor(low, definition)}
-                              stroke={color}
-                              strokeWidth="1"
-                              vectorEffect="non-scaling-stroke"
-                            />
-                            <rect
-                              x={point.x - barWidth / 2}
-                              y={Math.min(openY, closeY)}
-                              width={barWidth}
-                              height={Math.max(2, Math.abs(openY - closeY))}
-                              fill={color}
-                              opacity="0.96"
-                            />
+                            {candleStyle !== "candle-body" ? (
+                              <line
+                                x1={point.x}
+                                x2={point.x}
+                                y1={yFor(high, definition)}
+                                y2={yFor(low, definition)}
+                                stroke={color}
+                                strokeWidth={definition.lineWidth ?? 1}
+                                vectorEffect="non-scaling-stroke"
+                              />
+                            ) : null}
+                            {candleStyle === "ohlc" ? (
+                              <path
+                                d={`M ${point.x - barWidth / 2} ${openY} H ${point.x} M ${point.x} ${closeY} H ${point.x + barWidth / 2}`}
+                                fill="none"
+                                stroke={color}
+                                strokeWidth={definition.lineWidth ?? 1}
+                                vectorEffect="non-scaling-stroke"
+                              />
+                            ) : (
+                              <rect
+                                x={point.x - barWidth / 2}
+                                y={Math.min(openY, closeY)}
+                                width={barWidth}
+                                height={Math.max(2, Math.abs(openY - closeY))}
+                                fill={color}
+                                opacity="0.96"
+                              />
+                            )}
                           </g>
                         );
                       })}

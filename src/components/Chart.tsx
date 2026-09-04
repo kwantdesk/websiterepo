@@ -7105,6 +7105,7 @@ function Chart({
           indicatorId: instance.indicatorId,
           settings: instance.settings,
           series,
+          showHeader: instance.settings?.showName !== false,
           showLegend: instance.indicatorId === "delta-bar" ? false : undefined,
         }];
       }

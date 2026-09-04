@@ -881,6 +881,7 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "ladderFontSize", label: "Delta text (px)", defaultValue: 8, min: 6, max: 14, step: 1 },
   ],
   "cumulative-volume-delta": [
+    { key: "periodValue", label: "Period value", defaultValue: 1, min: 1, max: 100000, step: 1 },
     { key: "lineWidth", label: "Line width", defaultValue: 2, min: 1, max: 4 },
     { key: "filterMinVolume", label: "Filtered CVD minimum bar volume", defaultValue: 0, min: 0, max: 10000000 },
     { key: "filterMaxVolume", label: "Filtered CVD maximum bar volume (0 = no maximum)", defaultValue: 0, min: 0, max: 10000000 },
@@ -1570,9 +1571,14 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     inputData: "Volumes",
     resetToSession: true,
     displayStyle: "candles",
+    candleStyle: "candlestick",
     showAverage: false,
+    averageType: "simple",
+    averageLineStyle: "solid",
     showAverageDeviations: false,
     showZeroLine: true,
+    showName: true,
+    showValue: true,
     useThemeColors: true,
     deltaAskColor: theme?.upColor ?? "#22C55E",
     deltaBidColor: theme?.downColor ?? "#EF4444",
@@ -1599,8 +1605,15 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
   } : {}),
   ...(indicatorId === "cumulative-volume-delta" ? {
     displayStyle: "candles",
+    inputData: "Volumes",
+    periodMode: "days",
+    periodValue: 1,
+    lineStyle: "solid",
     useThemeColors: true,
-    cvdSettingsVersion: 4,
+    cvdSettingsVersion: 5,
+    showName: true,
+    showValue: true,
+    customName: "Cumulative Volume Delta",
     showBidAskVolumes: false,
     filteredEnabled: false,
     filteredSeparateAxis: false,
@@ -3007,22 +3020,28 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
   if (normalizedInstance.indicatorId !== "cumulative-volume-delta") return normalizedInstance;
   const settings = normalizedInstance.settings ?? {};
   if (
-    Number(settings.cvdSettingsVersion) >= 4
-    && !("periodMode" in settings)
-    && !("periodValue" in settings)
-    && !("sessionStartHour" in settings)
+    Number(settings.cvdSettingsVersion) >= 5
+    && "periodMode" in settings
+    && "periodValue" in settings
   ) return normalizedInstance;
   const standardSettings = { ...settings };
-  delete standardSettings.periodMode;
-  delete standardSettings.periodValue;
+  // `sessionStartHour` was an older free-form reset control. DeepCharts uses
+  // the configured futures session for day periods, which KwantDesk anchors
+  // to the CME 17:00 Chicago boundary instead of allowing an arbitrary hour.
   delete standardSettings.sessionStartHour;
   return {
     ...normalizedInstance,
     settings: {
       ...standardSettings,
       displayStyle: typeof settings.displayStyle === "string" ? settings.displayStyle : "candles",
+      inputData: typeof settings.inputData === "string" ? settings.inputData : "Volumes",
+      periodMode: ["days", "minutes", "seconds"].includes(String(settings.periodMode))
+        ? settings.periodMode
+        : "days",
+      periodValue: Math.max(1, Math.round(Number(settings.periodValue) || 1)),
+      lineStyle: typeof settings.lineStyle === "string" ? settings.lineStyle : "solid",
       useThemeColors: typeof settings.useThemeColors === "boolean" ? settings.useThemeColors : true,
-      cvdSettingsVersion: 4,
+      cvdSettingsVersion: 5,
     },
   };
 };

@@ -5887,12 +5887,18 @@ export default function ChartIndicatorsControl({
                 </div>
               ) : null}
 
-              {settingsDefinition.id === "cumulative-volume-delta" ? (
+              {[
+                "cumulative-volume-delta",
+                "delta-cumulative-candlestick",
+                "delta-cumulative-histogram",
+              ].includes(settingsDefinition.id) ? (
                 <div className="grid gap-3 border border-primary/20 bg-primary/[0.035] p-3 sm:grid-cols-2">
+                  {settingsDefinition.id !== "delta-cumulative-candlestick" ? (
                   <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
                     <span>Display style</span>
                     <KwantSelect
-                      value={String(settingsInstance.settings?.displayStyle ?? "candles")}
+                      value={String(settingsInstance.settings?.displayStyle
+                        ?? (settingsDefinition.id === "delta-cumulative-histogram" ? "bars" : "candles"))}
                       onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
                         ...current,
                         settings: { ...(current.settings ?? {}), displayStyle: event.target.value },
@@ -5900,11 +5906,12 @@ export default function ChartIndicatorsControl({
                       className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
                       menuLabel="CVD display style"
                     >
-                      <option value="candles">CVD candles</option>
+                      {settingsDefinition.id === "cumulative-volume-delta" ? <option value="candles">CVD candles</option> : null}
                       <option value="line">CVD line</option>
                       <option value="bars">CVD bars</option>
                     </KwantSelect>
                   </label>
+                  ) : null}
                   <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
                     <span>Input data</span>
                     <KwantSelect
@@ -5920,8 +5927,113 @@ export default function ChartIndicatorsControl({
                       <option value="Aggregate Trades">Aggregate trades</option>
                     </KwantSelect>
                   </label>
+                  {settingsDefinition.id === "cumulative-volume-delta" ? (
+                    <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                      <span>Period mode</span>
+                      <KwantSelect
+                        value={String(settingsInstance.settings?.periodMode ?? "days")}
+                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                          ...current,
+                          settings: { ...(current.settings ?? {}), periodMode: event.target.value },
+                        }))}
+                        className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                        menuLabel="CVD period mode"
+                      >
+                        <option value="days">Trading days</option>
+                        <option value="minutes">Minutes</option>
+                        <option value="seconds">Seconds</option>
+                      </KwantSelect>
+                    </label>
+                  ) : null}
+                  {settingsDefinition.id === "delta-cumulative-candlestick" ? (
+                    <>
+                      <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                        <span>Candle plot</span>
+                        <KwantSelect
+                          value={String(settingsInstance.settings?.candleStyle ?? "candlestick")}
+                          onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                            ...current,
+                            settings: { ...(current.settings ?? {}), candleStyle: event.target.value },
+                          }))}
+                          className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                          menuLabel="Cumulative delta candle plot"
+                        >
+                          <option value="candlestick">Candlestick</option>
+                          <option value="ohlc">OHLC</option>
+                          <option value="candle-body">Candle body</option>
+                        </KwantSelect>
+                      </label>
+                      <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                        <span>Average type</span>
+                        <KwantSelect
+                          value={String(settingsInstance.settings?.averageType ?? "simple")}
+                          onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                            ...current,
+                            settings: { ...(current.settings ?? {}), averageType: event.target.value },
+                          }))}
+                          className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                          menuLabel="Cumulative delta average type"
+                        >
+                          <option value="simple">Simple</option>
+                          <option value="exponential">Exponential</option>
+                        </KwantSelect>
+                      </label>
+                      <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                        <span>Average line</span>
+                        <KwantSelect
+                          value={String(settingsInstance.settings?.averageLineStyle ?? "solid")}
+                          onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                            ...current,
+                            settings: { ...(current.settings ?? {}), averageLineStyle: event.target.value },
+                          }))}
+                          className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                          menuLabel="Cumulative delta average line style"
+                        >
+                          <option value="solid">Solid</option>
+                          <option value="dashed">Dashed</option>
+                          <option value="dotted">Dotted</option>
+                        </KwantSelect>
+                      </label>
+                    </>
+                  ) : null}
+                  {settingsDefinition.id !== "delta-cumulative-candlestick" ? (
+                    <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                      <span>Line style</span>
+                      <KwantSelect
+                        value={String(settingsInstance.settings?.lineStyle ?? "solid")}
+                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                          ...current,
+                          settings: { ...(current.settings ?? {}), lineStyle: event.target.value },
+                        }))}
+                        className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                        menuLabel="CVD line style"
+                      >
+                        <option value="solid">Solid</option>
+                        <option value="hatch">Hatch</option>
+                      </KwantSelect>
+                    </label>
+                  ) : null}
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">
+                    <span>Series name</span>
+                    <input
+                      type="text"
+                      value={String(settingsInstance.settings?.customName
+                        ?? (settingsDefinition.id === "delta-cumulative-candlestick"
+                          ? "Cumulative Delta Candlestick"
+                          : settingsDefinition.id === "delta-cumulative-histogram"
+                            ? "Cumulative Delta Histogram"
+                            : "Cumulative Volume Delta"))}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                        ...current,
+                        settings: { ...(current.settings ?? {}), customName: event.target.value },
+                      }))}
+                      className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none focus:border-primary/55"
+                    />
+                  </label>
                   <p className="text-[8px] leading-4 text-muted sm:col-span-2">
-                    CVD resets at the 17:00 Chicago futures-session boundary and accumulates real aggressor-side executions. Display and colour choices moved here from the chart pane.
+                    {settingsDefinition.id === "cumulative-volume-delta"
+                      ? "CVD accumulates verified aggressor-side executions. Trading-day periods use the 17:00 Chicago CME boundary; minute and second periods reset on their exact time bucket."
+                      : "This study accumulates verified aggressor-side executions. Reset to session uses the selected Chicago session-start hour; turning it off keeps one continuous cumulative series."}
                   </p>
                 </div>
               ) : null}

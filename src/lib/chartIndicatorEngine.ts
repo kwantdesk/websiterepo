@@ -16,6 +16,7 @@ export type CalculatedIndicatorSeries = {
   lineWidth?: 1 | 2 | 3 | 4;
   lineStyle?: "solid" | "dashed" | "dotted";
   lineType?: "simple" | "with-steps";
+  candleStyle?: "candlestick" | "ohlc" | "candle-body";
   lastValueVisible?: boolean;
   independentScale?: boolean;
   priceScaleId?: string;
@@ -524,10 +525,14 @@ function computeIndicatorSeries(
     const dedicatedCandlestick = key === "delta-cumulative-candlestick";
     const dedicatedHistogram = key === "delta-cumulative-histogram";
     const dedicatedStudy = dedicatedCandlestick || dedicatedHistogram;
-    // One canonical CME-session CVD: always reset at the 17:00 Chicago
-    // futures-session boundary. Rolling and arbitrary time windows are not
-    // alternate CVD calculations in KwantDesk.
-    const startHour = 17;
+    const startHour = dedicatedStudy
+      ? Math.min(23, Math.max(0, Math.round(settingNumber(instance, "sessionStartHour", 17))))
+      : 17;
+    const resetToSession = dedicatedStudy
+      ? settingBoolean(instance, "resetToSession", true)
+      : true;
+    const periodMode = settingString(instance, "periodMode", "days");
+    const periodValue = Math.max(1, Math.round(settingNumber(instance, "periodValue", 1)));
     const displayStyle = settingString(instance, "displayStyle", dedicatedHistogram ? "bars" : "candles");
     const inputData = settingString(instance, "inputData", "Volumes");
     const useTradeCounts = inputData === "Aggregate Trades" || inputData === "Orders";
@@ -544,26 +549,30 @@ function computeIndicatorSeries(
     const showZeroLine = settingBoolean(instance, "showZeroLine", true);
     const zeroLineColor = useThemeColors ? theme.muted : settingString(instance, "zeroLineColor", theme.muted);
     const zeroLineWidth = Math.min(4, Math.max(1, Math.round(settingNumber(instance, "zeroLineWidth", 1)))) as 1 | 2 | 3 | 4;
-    const sessionOrdinals = new Map<string, number>();
-    let nextSessionOrdinal = 0;
     let activePeriod = "";
     let cumulative = 0;
     let cumulativeAsk = 0;
     let cumulativeBid = 0;
     let cumulativeFiltered = 0;
     const cvd: CalculatedIndicatorSeries["data"] = [];
-    const askVolume: Array<{ time: number; value: number }> = [];
-    const bidVolume: Array<{ time: number; value: number }> = [];
-    const filtered: Array<{ time: number; value: number; color: string }> = [];
+    const askVolume: Array<{ time: number; value: number; breakBefore?: boolean }> = [];
+    const bidVolume: Array<{ time: number; value: number; breakBefore?: boolean }> = [];
+    const filtered: Array<{ time: number; value: number; color: string; breakBefore?: boolean }> = [];
 
     candles.forEach((candle) => {
       // Saved OHLCV-only bars have no aggressor-side split. They must not be
       // rendered as zero delta because that creates a false flat CVD history.
       if (!hasVerifiedOrderFlow(candle)) return;
       const session = sessionKey(candle.timestamp, startHour);
-      if (!sessionOrdinals.has(session)) sessionOrdinals.set(session, nextSessionOrdinal++);
-      const sessionOrdinal = sessionOrdinals.get(session) ?? 0;
-      const nextPeriod = `d:${sessionOrdinal}`;
+      const sessionDay = Math.floor(Date.parse(`${session}T00:00:00Z`) / 86_400_000);
+      const timestampSeconds = Math.floor(candle.timestamp / 1000);
+      const nextPeriod = dedicatedStudy
+        ? (resetToSession ? `d:${session}` : "continuous")
+        : periodMode === "minutes"
+          ? `m:${Math.floor(timestampSeconds / (periodValue * 60))}`
+          : periodMode === "seconds"
+            ? `s:${Math.floor(timestampSeconds / periodValue)}`
+            : `d:${Math.floor(sessionDay / periodValue)}`;
       const periodChanged = nextPeriod !== activePeriod;
       if (periodChanged) {
         activePeriod = nextPeriod;
@@ -622,17 +631,22 @@ function computeIndicatorSeries(
         color: displayStyle === "line" ? undefined : cumulative >= cumulativeOpen ? askColor : bidColor,
         breakBefore: periodChanged,
       });
-      askVolume.push({ time, value: cumulativeAsk });
-      bidVolume.push({ time, value: cumulativeBid });
+      askVolume.push({ time, value: cumulativeAsk, breakBefore: periodChanged });
+      bidVolume.push({ time, value: cumulativeBid, breakBefore: periodChanged });
       filtered.push({
         time,
         value: cumulativeFiltered,
+        breakBefore: periodChanged,
         color: cumulativeFiltered >= 0
           ? (useThemeColors ? theme.positive : settingString(instance, "filteredAskColor", askColor))
           : (useThemeColors ? theme.negative : settingString(instance, "filteredBidColor", bidColor)),
       });
     });
 
+    const requestedCandleStyle = settingString(instance, "candleStyle", "candlestick");
+    const candleStyle: CalculatedIndicatorSeries["candleStyle"] = ["candlestick", "ohlc", "candle-body"].includes(requestedCandleStyle)
+      ? requestedCandleStyle as CalculatedIndicatorSeries["candleStyle"]
+      : "candlestick";
     const series: CalculatedIndicatorSeries[] = [{
       key,
       label: dedicatedStudy
@@ -641,14 +655,21 @@ function computeIndicatorSeries(
             "customName",
             dedicatedCandlestick ? "Cumulative Delta Candlestick" : "Cumulative Delta Histogram",
           )
-        : "Cumulative Volume Delta",
+        : settingString(instance, "customName", "Cumulative Volume Delta"),
       kind: displayStyle === "candles" ? "candlestick" : displayStyle === "bars" ? "histogram" : "line",
       placement: "pane",
       color: displayStyle === "line" ? lineColor : theme.primary,
       lineWidth,
       lineStyle: displayStyle === "line"
-        ? settingString(instance, "lineStyle", "solid") === "hatch" ? "dotted" : "solid"
+        ? settingString(instance, "lineStyle", "solid") === "hatch"
+          ? "dotted"
+          : settingString(instance, "lineStyle", "solid") === "dashed"
+            ? "dashed"
+            : settingString(instance, "lineStyle", "solid") === "dotted"
+              ? "dotted"
+              : "solid"
         : undefined,
+      candleStyle: dedicatedCandlestick ? candleStyle : "candlestick",
       lastValueVisible: settingBoolean(instance, "showValue", true),
       showZeroLine,
       zeroLineColor,
@@ -699,15 +720,28 @@ function computeIndicatorSeries(
     }
     if (dedicatedCandlestick && settingBoolean(instance, "showAverage", false)) {
       const averageLength = Math.max(1, Math.round(settingNumber(instance, "averageLength", 20)));
+      const averageType = settingString(instance, "averageType", "simple");
       const averages = Array<number | null>(cvd.length).fill(null);
       const deviations = Array<number | null>(cvd.length).fill(null);
       const averageWindow: number[] = [];
+      let exponentialAverage: number | null = null;
       cvd.forEach((point, index) => {
-        if (point.breakBefore) averageWindow.length = 0;
+        if (point.breakBefore) {
+          averageWindow.length = 0;
+          exponentialAverage = null;
+        }
         averageWindow.push(point.value);
         if (averageWindow.length > averageLength) averageWindow.shift();
+        if (averageType === "exponential") {
+          const alpha = 2 / (averageLength + 1);
+          exponentialAverage = exponentialAverage == null
+            ? point.value
+            : point.value * alpha + exponentialAverage * (1 - alpha);
+        }
         if (averageWindow.length < averageLength) return;
-        const average = averageWindow.reduce((sum, value) => sum + value, 0) / averageLength;
+        const average = averageType === "exponential"
+          ? exponentialAverage as number
+          : averageWindow.reduce((sum, value) => sum + value, 0) / averageLength;
         averages[index] = average;
         deviations[index] = Math.sqrt(
           Math.max(
@@ -736,7 +770,7 @@ function computeIndicatorSeries(
             : "solid",
         data: cvd.flatMap((point, index) => averages[index] == null
           ? []
-          : [{ time: point.time, value: averages[index] as number }]),
+          : [{ time: point.time, value: averages[index] as number, breakBefore: point.breakBefore }]),
       });
       if (settingBoolean(instance, "showAverageDeviations", false)) {
         const deviationMultiplier = Math.max(0.1, settingNumber(instance, "averageDeviation", 2));
@@ -759,6 +793,7 @@ function computeIndicatorSeries(
               return [{
                 time: point.time,
                 value: average + (side === "upper" ? 1 : -1) * deviation * deviationMultiplier,
+                breakBefore: point.breakBefore,
               }];
             }),
           });

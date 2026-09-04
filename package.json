@@ -252,6 +252,7 @@
     "test:stall-watchdog": "node --import ./scripts/alias-hook.mjs scripts/test-stall-watchdog.mjs",
     "test:indicator-theme-follow": "node --import ./scripts/alias-hook.mjs scripts/test-indicator-theme-follow.mjs",
     "test:cvd-candle-direction": "node --import ./scripts/alias-hook.mjs scripts/test-cvd-candle-direction.mjs",
+    "test:cvd-settings-parity": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-cvd-settings-parity.mjs",
     "test:indicator-both-sides": "node --import ./scripts/alias-hook.mjs scripts/test-indicator-both-sides.mjs",
     "test:brand-mark-theme": "node --import ./scripts/alias-hook.mjs scripts/test-brand-mark-theme.mjs",
     "test:daily-pnl-day": "node --import ./scripts/alias-hook.mjs scripts/test-daily-pnl-day.mjs",
