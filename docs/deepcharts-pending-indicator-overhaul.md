@@ -51,7 +51,7 @@ Legend: `[ ]` not complete, `[~]` in progress, `[x]` complete and addable.
 | 13 | KWANT Profile Values | `deep-profile-values` | [x] | [x] | [x] | [x] | [x] | Add |
 | 14 | Market Statistics | `market-statistics` | [x] | [x] | [x] | [x] | [x] | Add |
 | 15 | Confluence Identifier | `confluence-identifier` | [x] | [x] | [x] | [x] | [x] | Add |
-| 16 | Kwant Levels | `gamma-levels` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
+| 16 | Kwant Levels | `gamma-levels` | [x] | [x] | [x] | [x] | [~] | Pending · deployment QA |
 | 17 | Overlay Chart | `overlay-chart` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
 | 18 | Overlay Symbol | `overlay-symbol` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
 | 19 | Overlay Timeframe Candlestick | `overlay-timeframe-candlestick` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
@@ -59,6 +59,39 @@ Legend: `[ ]` not complete, `[~]` in progress, `[x]` complete and addable.
 | 21 | KWANT Pattern Builder | `deep-pattern-builder` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
 
 ## Audit notes
+
+### 16: Kwant Levels
+
+- Current official DeepCharts help calls the comparable study **Option Levels**.
+  Its observable default input is signed `Gex (Call - Put)` and it maps the
+  strongest positive and negative option concentrations into horizontal chart
+  levels. The installed DLL metadata also exposes `Call/Put Σ` and proprietary
+  `OI (R.T.)` input names, but its protected formula body is not inspectable.
+- The pre-existing Quant Desk row was split between a Pending catalogue item
+  and a separate global level toggle. Although it could draw, the instance's
+  source, maximum level count, label visibility, environment visibility, line
+  style, width and colours were not consistently used. Its fallback could also
+  select or advertise a retired Databento futures-options path.
+- One normalized v3 settings contract now drives both the catalogue instance
+  and the compatible legacy toolbar toggle. It permits only licensed
+  QuantData cash-option sources (QQQ/NDX for NQ/MNQ and SPY/SPX/SPXW for
+  ES/MES), calibrates those strikes against the live Rithmic futures price,
+  deduplicates converted prices at the instrument tick, prioritizes named
+  structural levels inside the selected level budget, and applies labels,
+  environment badge, style, width and theme/custom colours immediately.
+- `Call/Put Σ` and `OI (R.T.)` are not exposed as working buttons. The current
+  bounded consolidated-flow response is not a complete session-volume source,
+  and dated open interest is not proprietary real-time open interest. The UI
+  states this limitation instead of inventing equivalence. A shared 15-second
+  client refresh floor and Vercel's shared CDN cache keep the overlay current
+  without multiplying one provider rebuild per chart or user.
+- Focused tests cover source compatibility, rejection of native/retired paths,
+  bounds, structural ranking and theme/custom colours. Scoped lint and
+  whitespace checks pass. Repository-wide TypeScript remains blocked only by
+  the pre-existing duplicate Three.js type packages at
+  `src/app/landing/page.tsx:51`. Exact-commit deployment and production add,
+  render, settings, persistence and removal QA remain before the row can move
+  to Add.
 
 ### 15: Confluence Identifier
 

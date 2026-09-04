@@ -71,6 +71,10 @@ import {
   DEFAULT_CONFLUENCE_IDENTIFIER_SETTINGS,
   normalizeConfluenceIdentifierSettings,
 } from "@/lib/confluenceIdentifier";
+import {
+  KWANT_LEVELS_SETTINGS_VERSION,
+  normalizeKwantLevelsSettings,
+} from "@/lib/kwantLevels";
 
 export const LIVE_CHART_INDICATOR_IDS = new Set([
   "gamma-environment",
@@ -2421,6 +2425,7 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
   } : {}),
   ...(indicatorId === "gamma-levels" ? {
     conversion: "AUTO",
+    dataSource: "GEX_CALL_MINUS_PUT",
     showLabels: true,
     showEnvironment: true,
     useThemeColors: true,
@@ -2429,7 +2434,7 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     negativeColor: theme?.downColor ?? "#EF4444",
     magnetColor: "#8B5CF6",
     centreColor: "#06B6D4",
-    gammaSettingsVersion: 2,
+    gammaSettingsVersion: KWANT_LEVELS_SETTINGS_VERSION,
   } : {}),
   ...(indicatorId === "classic-gex-profile" ? {
     mappingSource: "QQQ",
@@ -3567,14 +3572,18 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
   }
   if (
     normalizedInstance.indicatorId === "gamma-levels"
-    && Number(normalizedInstance.settings?.gammaSettingsVersion) < 2
   ) {
+    const settings = normalizeKwantLevelsSettings(normalizedInstance.settings, {
+      upColor: "#22C55E",
+      downColor: "#EF4444",
+    });
     return {
       ...normalizedInstance,
       settings: {
         ...defaultIndicatorSettings("gamma-levels"),
         ...(normalizedInstance.settings ?? {}),
-        gammaSettingsVersion: 2,
+        ...settings,
+        gammaSettingsVersion: KWANT_LEVELS_SETTINGS_VERSION,
       },
     };
   }

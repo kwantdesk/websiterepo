@@ -89,6 +89,11 @@ import {
   type IndicatorSettingsSnapshot,
 } from "@/lib/indicatorSettingsDraft";
 import IndicatorNumericSlider from "@/components/ui/IndicatorNumericSlider";
+import {
+  gammaConversionOptions,
+  isGammaChartInstrument,
+  isNativeGammaConversion,
+} from "@/lib/chartGammaConversion";
 
 const FAVOURITES_STORAGE_KEY = "kwantdesk-chart-indicator-favourites";
 
@@ -442,6 +447,7 @@ const sectionForSetting = (indicatorId: string, key: string, fallback: string) =
   (isTpoIndicator(indicatorId) ? TPO_SETTING_SECTIONS[key] ?? "General" : fallback);
 
 export const RENDERED_CHART_INDICATOR_IDS = new Set([
+  "gamma-levels",
   "gamma-environment",
   "vix-environment",
   "zero-gamma-line",
@@ -5934,6 +5940,65 @@ export default function ChartIndicatorsControl({
                   <p className="text-[8px] leading-4 text-muted">Uses the shared direct Rithmic execution tape. Unknown-side contracts remain in total speed but are excluded from directional speed and delta; OHLCV is never substituted for missing executions.</p>
                 </div>
               ) : null}
+
+              {settingsDefinition.id === "gamma-levels" ? (() => {
+                const upperInstrument = instrument.trim().toUpperCase();
+                const target = (["MNQ", "MES", "NQ", "ES"] as const).find((root) => upperInstrument.startsWith(root));
+                const conversions = target && isGammaChartInstrument(target)
+                  ? gammaConversionOptions(target).filter((conversion) => !isNativeGammaConversion(conversion))
+                  : [];
+                return (
+                  <div className="grid gap-3 border border-primary/20 bg-primary/[0.035] p-3 sm:grid-cols-2">
+                    <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                      <span>Options source</span>
+                      <KwantSelect
+                        value={String(settingsInstance.settings?.conversion ?? "AUTO")}
+                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                          ...current,
+                          settings: { ...(current.settings ?? {}), conversion: event.target.value },
+                        }))}
+                        className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                        menuLabel="Kwant Levels options source"
+                      >
+                        <option value="AUTO">Automatic</option>
+                        {conversions.map((conversion) => (
+                          <option key={conversion.id} value={conversion.id}>{conversion.label}</option>
+                        ))}
+                      </KwantSelect>
+                    </label>
+                    <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                      <span>Input data</span>
+                      <KwantSelect
+                        value="GEX_CALL_MINUS_PUT"
+                        onChange={() => undefined}
+                        className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                        menuLabel="Kwant Levels input data"
+                      >
+                        <option value="GEX_CALL_MINUS_PUT">GEX · Call − Put</option>
+                      </KwantSelect>
+                    </label>
+                    <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">
+                      <span>Line style</span>
+                      <KwantSelect
+                        value={String(settingsInstance.settings?.lineStyle ?? "dashed")}
+                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                          ...current,
+                          settings: { ...(current.settings ?? {}), lineStyle: event.target.value },
+                        }))}
+                        className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                        menuLabel="Kwant Levels line style"
+                      >
+                        <option value="solid">Solid</option>
+                        <option value="dashed">Dashed</option>
+                        <option value="dotted">Dotted</option>
+                      </KwantSelect>
+                    </label>
+                    <p className="text-[8px] leading-4 text-muted sm:col-span-2">
+                      QuantData supplies the signed Call − Put gamma surface; live Rithmic futures prices calibrate its strikes onto the chart. DeepCharts&apos; Call/Put volume and proprietary OI (R.T.) inputs stay unavailable until the licensed feed provides complete equivalent data—partial flow or dated open interest is never presented as real-time OI.
+                    </p>
+                  </div>
+                );
+              })() : null}
 
               {settingsDefinition.id === "gamma-environment" ? (
                 <div className="grid gap-3 border border-primary/20 bg-primary/[0.035] p-3 sm:grid-cols-2">

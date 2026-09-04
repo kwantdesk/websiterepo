@@ -147,7 +147,7 @@ export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
   indicator("Sessions", "Market Structure", "DST-aware Tokyo, London, New York and Sydney session boxes, levels and labels.", false, "Kwantify"),
   indicator("Session Highs & Lows", "Market Structure", "Extends the latest completed Globex, Asia, London and New York highs and lows to the live edge.", false, "Kwantify"),
   indicator("IB Levels", "Market Structure", "Developing initial-balance high and low for each enabled session, frozen after 15, 30, 45 or 60 minutes.", false, "Kwantify"),
-  indicator("Kwant Levels", "Market Structure", "Session-anchored KwantData gamma walls with selectable QQQ/NDX-to-NQ/MNQ and SPY/SPX/SPXW-to-ES/MES conversion.", false, "Kwantify", "Gamma Levels"),
+  indicator("Kwant Levels", "Market Structure", "Session-anchored QuantData option levels calibrated onto live Rithmic NQ/MNQ and ES/MES prices.", false, "Kwantify", "Gamma Levels"),
   indicator("Classic GEX Profile", "Market Structure", "Live call and put gamma exposure ladder anchored to the NQ/MNQ chart price scale.", false, "Kwantify"),
   indicator("Session Marker", "Market Structure", "Marks configurable market sessions."),
   indicator("Shift Candle", "Market Structure", "Offsets candle reference and comparison logic."),

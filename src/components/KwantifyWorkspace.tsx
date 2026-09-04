@@ -150,6 +150,12 @@ import {
 } from "@/lib/chartIndicatorConfig";
 import { mergeGammaLevelsAtSamePrice, type ChartGammaLevelsPayload } from "@/lib/chartGammaLevels";
 import {
+  kwantLevelColor,
+  normalizeKwantLevelsSettings,
+  resolveKwantLevelsConversion,
+  selectKwantLevels,
+} from "@/lib/kwantLevels";
+import {
   applyInstitutionalTradesToCandles,
   buildChartVolumeProfile,
   applyInstitutionalTradesToVolumeProfile,
@@ -4938,21 +4944,6 @@ function buildDirectGammaEnvironment(
   };
 }
 
-function gammaLevelColor(kind: string, settings: ChartSettings) {
-  if (
-    kind === "CALL_WALL"
-    || kind === "POSITIVE_GEX"
-    || kind === "MAJOR_POSITIVE_OI"
-    || kind === "MAJOR_POSITIVE_VOLUME"
-  ) return settings.upColor;
-  if (kind === "PUT_WALL" || kind === "NEGATIVE_GEX") return settings.downColor;
-  if (kind === "GAMMA_CENTRE") return "#06B6D4";
-  if (kind === "ZERO_GAMMA") return "#F8FAFC";
-  if (kind === "HIGH_VOL_LEVEL") return "#F59E0B";
-  if (kind === "EXPECTED_MOVE_MAX" || kind === "EXPECTED_MOVE_MIN") return "#F59E0B";
-  return "#8B5CF6";
-}
-
 function buildGammaChartOverlay(args: {
   payload: ChartGammaLevelsPayload;
   conversion: GammaConversionDefinition;
@@ -4962,6 +4953,7 @@ function buildGammaChartOverlay(args: {
   futuresContract: string;
   tickSize: number;
   settings: ChartSettings;
+  indicatorSettings?: Record<string, unknown>;
 }): GammaChartOverlay | null {
   const { payload, conversion } = args;
   if (payload.root !== conversion.futuresRoot || payload.requestedSource !== conversion.source) return null;
@@ -5026,30 +5018,27 @@ function buildGammaChartOverlay(args: {
 
   if (!calibration) return null;
 
-  const levels = mergeGammaLevelsAtSamePrice(source.levels
+  const levelSettings = normalizeKwantLevelsSettings(args.indicatorSettings, {
+    upColor: args.settings.upColor,
+    downColor: args.settings.downColor,
+  });
+  const levels = selectKwantLevels(mergeGammaLevelsAtSamePrice(source.levels
     .map((level) => ({
       ...level,
       price: roundedGammaPrice(level.price, calibration.scale, args.tickSize),
-    })), args.tickSize)
-    .sort((left, right) => {
-      const leftPrimary = ["CALL_WALL", "PUT_WALL", "GAMMA_MAGNET", "GAMMA_CENTRE", "HIGH_VOL_LEVEL", "ZERO_GAMMA", "MAJOR_POSITIVE_OI", "MAJOR_POSITIVE_VOLUME"].includes(left.kind) ? 0 : 1;
-      const rightPrimary = ["CALL_WALL", "PUT_WALL", "GAMMA_MAGNET", "GAMMA_CENTRE", "HIGH_VOL_LEVEL", "ZERO_GAMMA", "MAJOR_POSITIVE_OI", "MAJOR_POSITIVE_VOLUME"].includes(right.kind) ? 0 : 1;
-      return leftPrimary - rightPrimary || left.rank - right.rank;
-    })
-    .slice(0, 24)
+    })), args.tickSize), levelSettings.maxLevels)
     .map((level): ChartLevel => ({
       id: `gamma-${conversion.id}-${level.id}`,
       price: level.price,
-      color: gammaLevelColor(level.kind, args.settings),
-      label: level.label,
+      color: kwantLevelColor(level.kind, levelSettings, {
+        upColor: args.settings.upColor,
+        downColor: args.settings.downColor,
+      }),
+      label: levelSettings.showLabels ? level.label : "",
       kind: level.kind,
-      lineStyle: level.kind === "MAJOR_POSITIVE_VOLUME" || /(^| \/ )MPV($| \/ )/.test(level.label)
-        ? "solid"
-        : level.kind === "POSITIVE_GEX" || level.kind === "NEGATIVE_GEX"
-          ? "dotted"
-          : "dashed",
-      lineWidth: level.kind === "CALL_WALL" || level.kind === "PUT_WALL" || level.kind === "MAJOR_POSITIVE_VOLUME" || /(^| \/ )MPV($| \/ )/.test(level.label) ? 2 : 1,
-      axisLabelVisible: true,
+      lineStyle: levelSettings.lineStyle,
+      lineWidth: levelSettings.lineWidth,
+      axisLabelVisible: levelSettings.showLabels,
     }));
 
   if (!levels.length) return null;
@@ -5060,9 +5049,7 @@ function buildGammaChartOverlay(args: {
     label: payload.environment.gammaStateLabel,
     regime: payload.environment.gammaRegime,
     checkedAt: payload.checkedAt,
-    sourceLabel: isNativeGammaConversion(conversion)
-      ? `Kwant levels · Databento futures options · ${payload.marketOpen ? "LIVE NY OPTIONS" : "STALE"}`
-      : `Kwant levels · ${payload.marketOpen ? "LIVE NY OPTIONS" : "STALE"} · ${calibration.scale.toFixed(6)}×`,
+    sourceLabel: `Kwant levels · QuantData ${conversion.source} options → Rithmic ${conversion.target} · ${payload.marketOpen ? "LIVE NY OPTIONS" : "STALE"} · ${calibration.scale.toFixed(6)}×`,
     stale: !payload.marketOpen,
   };
 }
@@ -5123,7 +5110,14 @@ function readGammaOverlayCache(
         // price/labels are authoritative; an old theme colour is not.
         levels: overlay.levels.map((level) => ({
           ...level,
-          color: level.kind ? gammaLevelColor(level.kind, settings) : level.color,
+          color: level.kind ? kwantLevelColor(
+            level.kind,
+            normalizeKwantLevelsSettings(undefined, {
+              upColor: settings.upColor,
+              downColor: settings.downColor,
+            }),
+            { upColor: settings.upColor, downColor: settings.downColor },
+          ) : level.color,
         })),
         stale: overlay.stale || Date.now() - checkedAt > 2 * 60_000,
       };
@@ -5624,6 +5618,14 @@ function WorkspaceChartPaneComponent({
   const gexBotFlow = useGexBotFlow(
     gammaInstrument === "NQ" || gammaInstrument === "MNQ",
   ).payload;
+  const gammaLevelsIndicator = indicators.find((instance) =>
+    instance.enabled && instance.indicatorId === "gamma-levels") ?? null;
+  const gammaLevelsRequested = gammaLevelsEnabled || Boolean(gammaLevelsIndicator);
+  const gammaLevelsIndicatorSettings = gammaLevelsIndicator?.settings ?? {};
+  const kwantLevelsSettings = useMemo(() => normalizeKwantLevelsSettings(
+    gammaLevelsIndicatorSettings,
+    { upColor: settings.upColor, downColor: settings.downColor },
+  ), [gammaLevelsIndicatorSettings, settings.downColor, settings.upColor]);
   const classicGexIndicator = indicators.find((instance) =>
     instance.enabled && instance.indicatorId === "classic-gex-profile") ?? null;
   const expectedMoveIndicator = indicators.find((instance) =>
@@ -5815,11 +5817,11 @@ function WorkspaceChartPaneComponent({
   const valueAreaLevelsAvailable =
     (pane.broker === "Databento" && isContinuousFuture(pane.symbol))
     || valueAreaIndexRoot !== null;
-  const primaryGammaConversion = gammaLevelsAvailable
-    ? cashFallbackGammaConversion(gammaInstrument)
+  const primaryGammaConversion = gammaLevelsAvailable && isGammaChartInstrument(gammaInstrument)
+    ? resolveKwantLevelsConversion(gammaInstrument, gammaLevelsIndicatorSettings.conversion)
     : null;
   const fallbackGammaConversion = gammaLevelsAvailable
-    ? resolveGammaConversion(undefined, gammaInstrument)
+    ? primaryGammaConversion
     : null;
   const expectedMoveSource = String(expectedMoveIndicator?.settings?.mappingSource ?? "QQQ") === "NDX"
     ? "NDX"
@@ -5928,15 +5930,15 @@ function WorkspaceChartPaneComponent({
         ...nearest,
         id: `gexbot-flow-${object.kind.toLowerCase()}-${object.price}`,
         price: object.price,
-        label: `GEX Bot ${object.name} · contested`,
-        lineStyle: "dotted" as const,
-        lineWidth: 1 as const,
-        axisLabelVisible: true,
+        label: kwantLevelsSettings.showLabels ? `GEX Bot ${object.name} · contested` : "",
+        lineStyle: kwantLevelsSettings.lineStyle,
+        lineWidth: kwantLevelsSettings.lineWidth,
+        axisLabelVisible: kwantLevelsSettings.showLabels,
       }),
     );
     const untouched = base.filter((level) => !level.kind);
     return [...untouched, ...merged].sort((left, right) => left.price - right.price || left.id.localeCompare(right.id));
-  }, [currentGammaOverlay?.levels, gexBotFlow]);
+  }, [currentGammaOverlay?.levels, gexBotFlow, kwantLevelsSettings]);
   const classicGexProfileWithZero = useMemo(() => {
     if (!classicGexProfile || classicGexProfile.zeroGamma) return classicGexProfile;
     const zero = currentGammaOverlay?.levels.find((level) => level.label.startsWith("Zero Gamma"));
@@ -5968,7 +5970,7 @@ function WorkspaceChartPaneComponent({
   });
   const chartLevels = useMemo(
     () => {
-      const gammaLevels = gammaLevelsEnabled
+      const gammaLevels = gammaLevelsRequested
         ? flowConfirmedGammaLevels.filter((level) =>
             !expectedMoveIndicator || !level.id.toLowerCase().includes("expected-move"))
         : [];
@@ -5989,7 +5991,7 @@ function WorkspaceChartPaneComponent({
       currentGammaOverlay,
       expectedMoveIndicator,
       flowConfirmedGammaLevels,
-      gammaLevelsEnabled,
+      gammaLevelsRequested,
       pane.symbol,
       historicalStructureEnabled,
       structure.snapshot.levels,
@@ -7325,6 +7327,7 @@ function WorkspaceChartPaneComponent({
               futuresContract: contractSymbol ?? conversion.futuresRoot,
               tickSize: futuresTickSize(pane.symbol),
               settings,
+              indicatorSettings: gammaLevelsIndicatorSettings,
             })
           : null,
       }))
@@ -7346,7 +7349,7 @@ function WorkspaceChartPaneComponent({
     setGammaOverlay(cachedGammaOverlay);
     setGammaLevelsError(null);
     setGammaLevelsLoading(
-      (gammaLevelsEnabled || Boolean(gammaEnvironmentIndicator))
+      (gammaLevelsRequested || Boolean(gammaEnvironmentIndicator))
       && gammaLevelsAvailable
       && !cachedGammaOverlay,
     );
@@ -7480,17 +7483,16 @@ function WorkspaceChartPaneComponent({
 
   useEffect(() => {
     if (
-      (!gammaLevelsEnabled && !levelExportRequested && !gammaEnvironmentIndicator)
+      (!gammaLevelsRequested && !levelExportRequested && !gammaEnvironmentIndicator)
       || !gammaLevelsAvailable
       || !fallbackGammaConversion
     ) return;
 
     let cancelled = false;
-    // Native futures gamma is independent of cash/futures calibration and can
-    // start as soon as the pane knows its symbol. This request is shared with
-    // the full loader below, so it removes the candle-history waterfall
-    // without creating another provider request.
-    void fetchGammaPayload(fallbackGammaConversion)
+    // Warm the same licensed cash-options frame used by the full loader. The
+    // module cache shares the promise, so this removes the candle-history
+    // waterfall without opening a second provider request.
+    void fetchGammaPayload(fallbackGammaConversion, { refreshMinimumMs: 15_000 })
       .then((payload) => {
         if (cancelled) return;
         const future = latestFuturesRef.current;
@@ -7503,6 +7505,7 @@ function WorkspaceChartPaneComponent({
           futuresContract: future.contractSymbol ?? currentCmeContract(pane.symbol) ?? fallbackGammaConversion.futuresRoot,
           tickSize: future.tickSize,
           settings,
+          indicatorSettings: gammaLevelsIndicatorSettings,
         });
         if (!overlay) return;
         writeGammaOverlayCache(overlay);
@@ -7531,7 +7534,8 @@ function WorkspaceChartPaneComponent({
     gammaEnvironmentIndicator?.instanceId,
     gammaInstrument,
     gammaLevelsAvailable,
-    gammaLevelsEnabled,
+    gammaLevelsRequested,
+    gammaLevelsIndicatorSettings,
     levelExportRequested,
     pane.symbol,
     settings.downColor,
@@ -7634,7 +7638,7 @@ function WorkspaceChartPaneComponent({
   }, [classicGexIndicator?.instanceId, classicGexSettingsSignature, gammaInstrument, pane.broker]);
 
   useEffect(() => {
-    if ((!gammaLevelsEnabled && !levelExportRequested && !classicGexIndicator && !expectedMoveIndicator && !gammaEnvironmentIndicator) || !gammaLevelsAvailable || !primaryGammaConversion) {
+    if ((!gammaLevelsRequested && !levelExportRequested && !classicGexIndicator && !expectedMoveIndicator && !gammaEnvironmentIndicator) || !gammaLevelsAvailable || !primaryGammaConversion) {
       setGammaLevelsLoading(false);
       setGammaLevelsError(null);
       if (!gammaLevelsAvailable) setGammaOverlay(null);
@@ -7642,7 +7646,7 @@ function WorkspaceChartPaneComponent({
       return;
     }
     if (!gammaDataReady) {
-      setGammaLevelsLoading(gammaLevelsEnabled || Boolean(gammaEnvironmentIndicator));
+      setGammaLevelsLoading(gammaLevelsRequested || Boolean(gammaEnvironmentIndicator));
       setGammaLevelsError(null);
       return;
     }
@@ -7654,7 +7658,7 @@ function WorkspaceChartPaneComponent({
     let nativeTransitionOverlay: GammaChartOverlay | null = null;
 
     const applyConversion = async (conversion: GammaConversionDefinition) => {
-      const payload = await fetchGammaPayload(conversion);
+      const payload = await fetchGammaPayload(conversion, { refreshMinimumMs: 15_000 });
       if (cancelled) return null;
       const future = latestFuturesRef.current;
       const overlay = buildGammaChartOverlay({
@@ -7666,6 +7670,7 @@ function WorkspaceChartPaneComponent({
         futuresContract: future.contractSymbol ?? currentCmeContract(pane.symbol) ?? conversion.futuresRoot,
         tickSize: future.tickSize,
         settings,
+        indicatorSettings: gammaLevelsIndicatorSettings,
       });
       if (!overlay) throw new Error(
         isNativeGammaConversion(conversion)
@@ -7693,7 +7698,7 @@ function WorkspaceChartPaneComponent({
     };
 
     const loadGamma = async () => {
-      setGammaLevelsLoading((gammaLevelsEnabled || Boolean(gammaEnvironmentIndicator)) && !retainedOverlay);
+      setGammaLevelsLoading((gammaLevelsRequested || Boolean(gammaEnvironmentIndicator)) && !retainedOverlay);
       const conversions = [
         fallbackGammaConversion,
         primaryGammaConversion,
@@ -7720,7 +7725,7 @@ function WorkspaceChartPaneComponent({
       const refreshAfterMs = fulfilled.length
         ? Math.min(...fulfilled.map((payload) => payload.refreshAfterMs))
         : 10_000;
-      timer = window.setTimeout(() => void loadGamma(), gammaRefreshDelay(refreshAfterMs));
+      timer = window.setTimeout(() => void loadGamma(), gammaRefreshDelay(refreshAfterMs, 15_000));
     };
 
     timer = window.setTimeout(() => void loadGamma(), 50);
@@ -7732,7 +7737,8 @@ function WorkspaceChartPaneComponent({
     fallbackGammaConversion?.id,
     gammaDataReady,
     gammaLevelsAvailable,
-    gammaLevelsEnabled,
+    gammaLevelsRequested,
+    gammaLevelsIndicatorSettings,
     gammaEnvironmentIndicator?.instanceId,
     classicGexIndicator?.instanceId,
     expectedMoveConversion?.id,
@@ -9356,9 +9362,9 @@ function WorkspaceChartPaneComponent({
           gammaLevelsAvailable={gammaLevelsAvailable}
           gammaLevelsLoading={gammaLevelsLoading}
           gammaLevelsError={gammaLevelsError}
-          gammaEnvironment={gammaEnvironmentIndicator ? currentGammaEnvironment : null}
-          gammaEnvironmentLoading={Boolean(gammaEnvironmentIndicator && currentGammaEnvironmentLoading)}
-          gammaEnvironmentError={gammaEnvironmentIndicator ? currentGammaEnvironmentError : null}
+          gammaEnvironment={gammaEnvironmentIndicator || (gammaLevelsIndicator && kwantLevelsSettings.showEnvironment) ? currentGammaEnvironment : null}
+          gammaEnvironmentLoading={Boolean((gammaEnvironmentIndicator || (gammaLevelsIndicator && kwantLevelsSettings.showEnvironment)) && currentGammaEnvironmentLoading)}
+          gammaEnvironmentError={gammaEnvironmentIndicator || (gammaLevelsIndicator && kwantLevelsSettings.showEnvironment) ? currentGammaEnvironmentError : null}
           vixEnvironment={vixEnvironmentIndicator ? vixEnvironment : null}
           vixEnvironmentLoading={Boolean(vixEnvironmentIndicator && vixEnvironmentLoading)}
           vixEnvironmentError={vixEnvironmentIndicator ? vixEnvironmentError : null}

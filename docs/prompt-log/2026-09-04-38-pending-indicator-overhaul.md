@@ -146,3 +146,12 @@ task until the full pending library is complete, without shortcuts.
   confirmed the Add catalogue state, complete settings, immediate dirty/save
   feedback, persisted settings after reload, honest partial rendering, and
   clean removal of the temporary QA instance.
+  Item 16, **Kwant Levels**, is now a release candidate. The old split-brain
+  implementation had a Pending catalogue row but a separately active toolbar
+  overlay, and ignored most instance controls. A normalized settings contract
+  now owns licensed QuantData source selection, Rithmic price calibration,
+  level ranking/count, labels, environment badge, line style/width and
+  theme/custom colours. Native/retired Databento paths are excluded. The UI
+  explicitly declines to fake DeepCharts' Call/Put Σ or proprietary OI (R.T.)
+  from incomplete flow or dated OI. Focused tests and scoped lint pass;
+  production QA remains before item 16 is marked complete.
