@@ -32,6 +32,7 @@
     "test:unfinished-auction": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-unfinished-auction.mjs",
     "test:bar-poc-indicator": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-bar-poc-indicator.mjs",
     "test:dynamic-poc": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-dynamic-poc.mjs",
+    "test:ratio-highlight": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-ratio-highlight.mjs",
     "test:tape-speed-order-flow-burst": "node --experimental-strip-types scripts/test-tape-speed-order-flow-burst.mjs",
     "test:speed-of-tape-instant": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-speed-of-tape-instant.mjs",
     "test:economic-calendar-forward": "node --experimental-strip-types scripts/test-economic-calendar-forward.mjs",

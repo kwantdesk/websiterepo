@@ -29,6 +29,7 @@ import {
   normalizeBarPocSettings,
 } from "@/lib/barPocIndicator";
 import { DEFAULT_DYNAMIC_POC_SETTINGS, DYNAMIC_POC_SETTINGS_VERSION, normalizeDynamicPocSettings } from "@/lib/dynamicPoc";
+import { DEFAULT_RATIO_HIGHLIGHT_SETTINGS, normalizeRatioHighlightSettings, RATIO_HIGHLIGHT_SETTINGS_VERSION } from "@/lib/ratioHighlight";
 
 export const LIVE_CHART_INDICATOR_IDS = new Set([
   "gamma-environment",
@@ -53,6 +54,7 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "unfinished-auction",
   "bar-poc-indicator",
   "dynamic-poc",
+  "ratio-highlight",
   "cumulative-volume-delta",
   "cvd-divergence",
   "pulling-stacking",
@@ -156,6 +158,11 @@ export function resolveDailyVolumeProfileCount(value: unknown): number {
 }
 
 export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[]> = {
+  "ratio-highlight": [
+    { key: "minRatio", label: "Minimum ratio", defaultValue: 10, min: 0, max: 100, step: 0.25 },
+    { key: "maxRatio", label: "Maximum ratio (0 = no maximum)", defaultValue: 20, min: 0, max: 100, step: 0.25 },
+    { key: "opacity", label: "Marker opacity (%)", defaultValue: 70, min: 0, max: 100, step: 1 },
+  ],
   "dynamic-poc": [
     { key: "periodValue", label: "Period value", defaultValue: 20, min: 1, max: 10000, step: 1 },
     { key: "firstEnvelope", label: "First envelope deviation", defaultValue: 1, min: 0.25, max: 100, step: 0.25 },
@@ -1335,6 +1342,12 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     thirdEnvelopeColor: theme?.downColor ?? DEFAULT_DYNAMIC_POC_SETTINGS.thirdEnvelopeColor,
     schemaVersion: DYNAMIC_POC_SETTINGS_VERSION,
   } : {}),
+  ...(indicatorId === "ratio-highlight" ? {
+    ...DEFAULT_RATIO_HIGHLIGHT_SETTINGS,
+    bidColor: theme?.downColor ?? DEFAULT_RATIO_HIGHLIGHT_SETTINGS.bidColor,
+    askColor: theme?.upColor ?? DEFAULT_RATIO_HIGHLIGHT_SETTINGS.askColor,
+    schemaVersion: RATIO_HIGHLIGHT_SETTINGS_VERSION,
+  } : {}),
   ...(indicatorId === "tape-speed-order-flow-burst" ? {
     ...DEFAULT_TAPE_SPEED_SETTINGS,
     buyColor: theme?.upColor ?? DEFAULT_TAPE_SPEED_SETTINGS.buyColor,
@@ -2507,6 +2520,10 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
   if (normalizedInstance.indicatorId === "dynamic-poc") {
     const defaults = defaultIndicatorSettings("dynamic-poc");
     return { ...normalizedInstance, settings: { ...defaults, ...normalizeDynamicPocSettings({ ...defaults, ...(normalizedInstance.settings ?? {}) }) } };
+  }
+  if (normalizedInstance.indicatorId === "ratio-highlight") {
+    const defaults = defaultIndicatorSettings("ratio-highlight");
+    return { ...normalizedInstance, settings: { ...defaults, ...normalizeRatioHighlightSettings({ ...defaults, ...(normalizedInstance.settings ?? {}) }) } };
   }
   if (normalizedInstance.indicatorId === "tape-speed-order-flow-burst") {
     return {

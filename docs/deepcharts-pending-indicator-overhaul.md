@@ -38,8 +38,8 @@ Legend: `[ ]` not complete, `[~]` in progress, `[x]` complete and addable.
 |---:|---|---|---|---|---|---|---|---|
 | 1 | Unfinished Auction | `unfinished-auction` | [x] | [x] | [x] | [x] | [x] | Add |
 | 2 | Bar POC Indicator | `bar-poc-indicator` | [x] | [x] | [x] | [x] | [x] | Add |
-| 3 | Dynamic POC | `dynamic-poc` | [x] | [x] | [x] | [x] | [~] | Release candidate |
-| 4 | Ratio Highlight | `ratio-highlight` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
+| 3 | Dynamic POC | `dynamic-poc` | [x] | [x] | [x] | [x] | [x] | Add |
+| 4 | Ratio Highlight | `ratio-highlight` | [x] | [x] | [x] | [x] | [~] | Release candidate |
 | 5 | Stop Spotter | `stop-spotter` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
 | 6 | Cumulative Iceberg/Stop | `cumulative-iceberg-stop` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
 | 7 | Book Speed | `book-speed` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
@@ -121,7 +121,31 @@ Legend: `[ ]` not complete, `[~]` in progress, `[x]` complete and addable.
   breaks safely when data is unavailable, and exposes period, envelope,
   visibility, width, colour, template and save controls. Focused rolling-window,
   envelope, bounds and unavailable-data tests plus TypeScript pass; deployment
-  and production visual QA remain.
+  pass. Production commit `dd308fba` reached Ready; a cache-busted production
+  load confirmed the study is addable, reports LIVE, renders without a pane,
+  and exposes the complete General/Input/Style editor with templates, numeric
+  sliders and theme-linked colours. The temporary QA instance was removed.
+
+### 4: Ratio Highlight
+
+- Official help and the installed `CombinedViewerNode` metadata agree on three
+  modes: Bar, High and Low; decimal minimum/maximum ratio; separate Bid and Ask
+  absorption colours; and marker opacity capped at 100. The reference defaults
+  visible in DeepCharts are Bar, minimum 10, maximum 20 and opacity 70.
+- This standalone study is not Footprint's diagonal cell imbalance ratio.
+  Ratio High is Ask at the penultimate upper tick divided by Ask at the bar's
+  highest tick; Ratio Low is Bid at the penultimate lower tick divided by Bid
+  at the lowest tick. Bar mode tests High only on bearish candles and Low only
+  on bullish candles, matching the documented contract.
+- Quant Desk now calculates those values only from exact one-tick classified
+  Rithmic execution rows. Zero/missing extreme denominators and OHLC-only bars
+  are refused instead of fabricating a marker. The minimum and optional maximum
+  filters apply to the raw ratio.
+- The main-pane primitive paints a full-height stripe aligned to the qualifying
+  candle, behind price, using theme-linked Ask/High and Bid/Low colours. The
+  settings modal exposes the three modes, both bounds, opacity, colours,
+  templates and saved-state handling. Focused formula/mode/bound/missing-data
+  tests, TypeScript and whitespace checks pass; deployment visual QA remains.
 
 - Quant Desk already has a tested `PocAuctionSuiteEngine` driven by exact
   execution-classified Footprint rows. It calculates raw-tick unfinished

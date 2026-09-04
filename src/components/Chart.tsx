@@ -292,6 +292,8 @@ import {
 import { BarPocPrimitive } from "@/lib/barPocPrimitive";
 import { buildDynamicPocFrame, normalizeDynamicPocSettings, type DynamicPocFrame } from "@/lib/dynamicPoc";
 import { DynamicPocPrimitive } from "@/lib/dynamicPocPrimitive";
+import { buildRatioHighlightFrame, normalizeRatioHighlightSettings, type RatioHighlightFrame } from "@/lib/ratioHighlight";
+import { RatioHighlightPrimitive } from "@/lib/ratioHighlightPrimitive";
 import {
   buildTapeSpeedFrame,
   normalizeTapeSpeedSettings,
@@ -3278,6 +3280,7 @@ function Chart({
   const unfinishedAuctionPrimitiveRef = useRef<UnfinishedAuctionPrimitive | null>(null);
   const barPocPrimitiveRef = useRef<BarPocPrimitive | null>(null);
   const dynamicPocPrimitiveRef = useRef<DynamicPocPrimitive | null>(null);
+  const ratioHighlightPrimitiveRef = useRef<RatioHighlightPrimitive | null>(null);
   const tapeSpeedPrimitiveRef = useRef<TapeSpeedOrderFlowBurstPrimitive | null>(null);
   const tapeSpeedAlertIdsRef = useRef(new Set<string>());
   const pocAuctionEngineRef = useRef(new PocAuctionSuiteEngine());
@@ -3794,6 +3797,7 @@ function Chart({
   const [unfinishedAuctionFrame, setUnfinishedAuctionFrame] = useState<UnfinishedAuctionFrame | null>(null);
   const [barPocFrame, setBarPocFrame] = useState<BarPocFrame | null>(null);
   const [dynamicPocFrame, setDynamicPocFrame] = useState<DynamicPocFrame | null>(null);
+  const [ratioHighlightFrame, setRatioHighlightFrame] = useState<RatioHighlightFrame | null>(null);
   const [pocAuctionTooltip, setPocAuctionTooltip] = useState<PocAuctionHit | null>(null);
   const [tapeSpeedTooltip, setTapeSpeedTooltip] = useState<TapeSpeedHit | null>(null);
   const [netGammaProfile, setNetGammaProfile] = useState<NetGammaProfileSnapshot | null>(null);
@@ -5621,6 +5625,10 @@ function Chart({
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "dynamic-poc") ?? null,
     [indicatorSignature, indicators],
   );
+  const ratioHighlightIndicator = useMemo(
+    () => indicators.find((instance) => instance.enabled && instance.indicatorId === "ratio-highlight") ?? null,
+    [indicatorSignature, indicators],
+  );
   const deltaBarIndicator = useMemo(
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "delta-bar") ?? null,
     [indicatorSignature, indicators],
@@ -5649,7 +5657,7 @@ function Chart({
       fontSize: clamp(Math.round(Number(source.ladderFontSize ?? 8)), 6, 14),
     };
   }, [deltaBarIndicator, deltaLadderSide, settings.downColor, settings.gridColor, settings.upColor]);
-  const footprintDataConsumer = footprintIndicator ?? stackedImbalanceIndicator ?? pocAuctionIndicator ?? unfinishedAuctionIndicator ?? barPocIndicator ?? dynamicPocIndicator
+  const footprintDataConsumer = footprintIndicator ?? stackedImbalanceIndicator ?? pocAuctionIndicator ?? unfinishedAuctionIndicator ?? barPocIndicator ?? dynamicPocIndicator ?? ratioHighlightIndicator
     ?? (deltaLadderSide ? deltaBarIndicator : null);
   const footprintCandles = useMemo(
     () => footprintDataConsumer ? sampledIndicatorCandles.slice(-indicatorHistoryLimit) : [],
@@ -5902,13 +5910,13 @@ function Chart({
     [footprintDataKey, footprintRenderBars],
   );
   const rawPocAuctionBars = useMemo(() => {
-    if ((!pocAuctionIndicator && !unfinishedAuctionIndicator && !dynamicPocIndicator) || !footprintSourceCandles.length) return [];
+    if ((!pocAuctionIndicator && !unfinishedAuctionIndicator && !dynamicPocIndicator && !ratioHighlightIndicator) || !footprintSourceCandles.length) return [];
     return buildFootprintBarsCached(pocAuctionBuildCacheRef, footprintSourceCandles, footprintMarketTrades, {
       ...footprintBuildSettings,
       groupTicks: 1,
       showEmptyPriceRows: false,
     });
-  }, [dynamicPocIndicator, footprintBuildSettings, footprintMarketTrades, footprintSourceCandles, pocAuctionIndicator, unfinishedAuctionIndicator]);
+  }, [dynamicPocIndicator, footprintBuildSettings, footprintMarketTrades, footprintSourceCandles, pocAuctionIndicator, ratioHighlightIndicator, unfinishedAuctionIndicator]);
   const rawBarPocBars = useMemo(() => {
     if (!barPocIndicator || !footprintSourceCandles.length) return [];
     const normalized = normalizeBarPocSettings(barPocIndicator.settings);
@@ -6313,6 +6321,11 @@ function Chart({
     if (!normalized.useThemeColors) return normalized;
     return { ...normalized, pocColor: settings.upColor, firstEnvelopeColor: settings.borderUpColor, secondEnvelopeColor: settings.gridColor, thirdEnvelopeColor: settings.downColor };
   }, [dynamicPocIndicator, settings.borderUpColor, settings.downColor, settings.gridColor, settings.upColor]);
+  const ratioHighlightSettings = useMemo(() => {
+    const normalized = normalizeRatioHighlightSettings(ratioHighlightIndicator?.settings);
+    if (!normalized.useThemeColors) return normalized;
+    return { ...normalized, bidColor: settings.downColor, askColor: settings.upColor };
+  }, [ratioHighlightIndicator, settings.downColor, settings.upColor]);
 
   useEffect(() => {
     if (!unfinishedAuctionIndicator) {
@@ -6352,6 +6365,17 @@ function Chart({
     dynamicPocPrimitiveRef.current?.update({ frame, settings: dynamicPocSettings });
     startTransition(() => setDynamicPocFrame(frame));
   }, [dynamicPocIndicator, dynamicPocSettings, instrument, priceFormat.minMove, rawPocAuctionBars]);
+
+  useEffect(() => {
+    if (!ratioHighlightIndicator) {
+      ratioHighlightPrimitiveRef.current?.update(null);
+      setRatioHighlightFrame(null);
+      return;
+    }
+    const frame = buildRatioHighlightFrame(rawPocAuctionBars, instrument, ratioHighlightSettings);
+    ratioHighlightPrimitiveRef.current?.update({ frame, settings: ratioHighlightSettings });
+    startTransition(() => setRatioHighlightFrame(frame));
+  }, [instrument, ratioHighlightIndicator, ratioHighlightSettings, rawPocAuctionBars]);
 
   useEffect(() => {
     if (!pocAuctionIndicator) {
@@ -13158,6 +13182,9 @@ function Chart({
     const dynamicPocPrimitive = new DynamicPocPrimitive();
     candleSeries.attachPrimitive(dynamicPocPrimitive);
     dynamicPocPrimitiveRef.current = dynamicPocPrimitive;
+    const ratioHighlightPrimitive = new RatioHighlightPrimitive();
+    candleSeries.attachPrimitive(ratioHighlightPrimitive);
+    ratioHighlightPrimitiveRef.current = ratioHighlightPrimitive;
     const tapeSpeedPrimitive = new TapeSpeedOrderFlowBurstPrimitive();
     candleSeries.attachPrimitive(tapeSpeedPrimitive);
     tapeSpeedPrimitiveRef.current = tapeSpeedPrimitive;
@@ -14236,6 +14263,9 @@ function Chart({
         if (candleSeriesRef.current && dynamicPocPrimitiveRef.current) {
           try { candleSeriesRef.current.detachPrimitive(dynamicPocPrimitiveRef.current); } catch { /* chart may already be disposed */ }
         }
+        if (candleSeriesRef.current && ratioHighlightPrimitiveRef.current) {
+          try { candleSeriesRef.current.detachPrimitive(ratioHighlightPrimitiveRef.current); } catch { /* chart may already be disposed */ }
+        }
         if (candleSeriesRef.current && tapeSpeedPrimitiveRef.current) {
           try { candleSeriesRef.current.detachPrimitive(tapeSpeedPrimitiveRef.current); } catch { /* chart may already be disposed */ }
         }
@@ -14266,6 +14296,7 @@ function Chart({
       unfinishedAuctionPrimitiveRef.current = null;
       barPocPrimitiveRef.current = null;
       dynamicPocPrimitiveRef.current = null;
+      ratioHighlightPrimitiveRef.current = null;
       tapeSpeedPrimitiveRef.current = null;
       netGammaExposurePrimitiveRef.current = null;
       gexIntervalMapPrimitiveRef.current = null;
@@ -16509,6 +16540,12 @@ function Chart({
         <div className="pointer-events-none absolute right-2 z-[72] flex items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur" style={{ top: (pocAuctionIndicator && pocAuctionSettings.showHeader ? 38 : 8) + (unfinishedAuctionIndicator ? 26 : 0) + (barPocIndicator ? 26 : 0) }} title="Rolling point of control and envelopes from exact Rithmic volume-at-price">
           <span className={`h-1.5 w-1.5 rounded-full ${!dynamicPocFrame || dynamicPocFrame.status === "WAITING_FOR_VOLUME_AT_PRICE" ? "animate-pulse bg-warning" : "bg-primary"}`} />
           <span className="text-foreground">Dynamic POC</span><span>{dynamicPocFrame?.status.replaceAll("_", " ") ?? "CALCULATING"}</span>
+        </div>
+      ) : null}
+      {ratioHighlightIndicator ? (
+        <div className="pointer-events-none absolute right-2 z-[72] flex items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur" style={{ top: (pocAuctionIndicator && pocAuctionSettings.showHeader ? 38 : 8) + (unfinishedAuctionIndicator ? 26 : 0) + (barPocIndicator ? 26 : 0) + (dynamicPocIndicator ? 26 : 0) }} title="DeepCharts-compatible high/low auction-extreme ratios from exact Rithmic volume-at-price">
+          <span className={`h-1.5 w-1.5 rounded-full ${!ratioHighlightFrame || ratioHighlightFrame.status === "WAITING_FOR_VOLUME_AT_PRICE" ? "animate-pulse bg-warning" : "bg-primary"}`} />
+          <span className="text-foreground">Ratio Highlight</span><span>{ratioHighlightFrame?.status.replaceAll("_", " ") ?? "CALCULATING"}</span><span>{ratioHighlightFrame?.markers.length ?? 0} MARKERS</span>
         </div>
       ) : null}
       {pocAuctionTooltip ? (

@@ -33,5 +33,8 @@ task until the full pending library is complete, without shortcuts.
   finally complete. Production QA then passed on the exact commit and the
   temporary test instance was removed, completing item 1. Item 2, **Bar POC**,
   then passed the same exact-commit deployment and production QA gate. Item 3,
-  **Dynamic POC**, is implemented and locally verified pending deployment and
-  production visual QA.
+  **Dynamic POC**, passed local regression, exact-commit deployment and
+  production add/render/settings/removal QA. Item 4, **Ratio Highlight**, now
+  implements the documented extreme Ask/Bid ratios, DeepCharts defaults and
+  vertical main-pane markers from exact Rithmic volume-at-price; local tests
+  pass and deployment QA is next.

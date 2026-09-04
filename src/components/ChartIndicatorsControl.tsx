@@ -451,6 +451,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "unfinished-auction",
   "bar-poc-indicator",
   "dynamic-poc",
+  "ratio-highlight",
   "moving-average",
   "vwap",
   "vwap-envelopes",
@@ -639,6 +640,12 @@ const themeColourMapFor = (indicatorId: string, chartSettings: ChartSettings) =>
       firstEnvelopeColor: chartSettings.borderUpColor,
       secondEnvelopeColor: chartSettings.gridColor,
       thirdEnvelopeColor: chartSettings.downColor,
+    } as Record<string, string>;
+  }
+  if (indicatorId === "ratio-highlight") {
+    return {
+      bidColor: chartSettings.downColor,
+      askColor: chartSettings.upColor,
     } as Record<string, string>;
   }
   // Big Contracts and Big Blocks paint their two sides from the theme's up and
@@ -6536,6 +6543,20 @@ export default function ChartIndicatorsControl({
                     </KwantSelect>
                   </label>
                   <p className="text-[8px] leading-4 text-muted sm:col-span-2">The VPOC and all enabled envelopes recalculate from exact Rithmic volume-at-price rows as the rolling window advances.</p>
+                </div>
+              ) : null}
+
+              {settingsDefinition.id === "ratio-highlight" ? (
+                <div className="grid gap-3 border border-primary/20 bg-primary/[0.035] p-3 sm:grid-cols-2">
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">
+                    <span>Ratio mode</span>
+                    <KwantSelect value={String(settingsInstance.settings?.ratioMode ?? "bar")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), ratioMode: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel="Ratio Highlight mode">
+                      <option value="bar">Bar — high on bearish, low on bullish</option>
+                      <option value="high">High ratio only</option>
+                      <option value="low">Low ratio only</option>
+                    </KwantSelect>
+                  </label>
+                  <p className="text-[8px] leading-4 text-muted sm:col-span-2">Ratio High compares Ask at the penultimate upper tick with Ask at the high. Ratio Low compares Bid at the penultimate lower tick with Bid at the low. Markers require exact one-tick Rithmic executions and are never inferred from OHLC.</p>
                 </div>
               ) : null}
 

@@ -262,3 +262,7 @@ recap of the open items below and update this file when their state changes.
 - DeepCharts' protected DLL exposes useful names and setting metadata but not
   trustworthy formula bodies. Record what is observable and what is inferred;
   never claim 1:1 formula parity from strings or a similar-looking plot.
+- DeepCharts Ratio Highlight is an auction-extreme ratio, not Footprint's
+  diagonal cell imbalance: High uses Ask at high-1 divided by Ask at the high;
+  Low uses Bid at low+1 divided by Bid at the low. Its documented Bar mode
+  selects High on bearish bars and Low on bullish bars.
