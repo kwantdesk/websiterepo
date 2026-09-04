@@ -1753,3 +1753,6 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
 - Chart history reads the full local archive range before a tightly bounded
   provider fallback. Historical option chains/Greeks/trades remain distinct
   from underlying candles and are still an unresolved licensed-data task.
+- Gateway Docker builds use lockfile-clean production installs without npm's
+  optional audit/funding network calls; those calls stalled a live deployment
+  while adding no runtime integrity beyond `npm ci` itself.

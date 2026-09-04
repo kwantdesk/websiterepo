@@ -35,3 +35,6 @@ notes ledger.
 - Added an exact catalogue coverage regression and created
   `docs/IMPORTANT-NOTES.md` for the unresolved VXN, full historical options,
   futures completion, event-history and off-site-backup requirements.
+- The first production image attempt exposed `npm ci` waiting on optional
+  registry audit/funding work. Production dependency installation now disables
+  those non-runtime calls while retaining the lockfile-verifying clean install.
