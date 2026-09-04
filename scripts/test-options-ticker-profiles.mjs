@@ -159,14 +159,15 @@ const profilesFor = (instrument, variant) => buildTpoProfiles({
   const { readFileSync } = await import("node:fs");
   const workspace = readFileSync(new URL("../src/components/KwantifyWorkspace.tsx", import.meta.url), "utf8");
   const projection = workspace.slice(
-    workspace.indexOf("const projectionRoot = valueAreaIndexSourceRoot"),
+    workspace.indexOf("const projectionRoot = volumeProfileIndexSourceRoot"),
     workspace.indexOf("const results = await Promise.allSettled(requests)"),
   );
   assert.ok(projection.length > 400, "the projection block was not located");
 
-  // Options underlyings have no execution tape of their own, so their volume
-  // profiles are the REAL CME profiles of the futures that hedge them,
-  // projected onto the cash scale. That much already worked - but it asked
+  // Non-traded cash indices have no execution tape of their own, so their
+  // volume profiles are the REAL CME profiles of the futures that hedge them,
+  // projected onto the cash scale. Traded ETFs use their own bar volume. The
+  // cash-index projection already worked - but it asked
   // only for TODAY, leaving the chart with one profile and nothing behind it
   // while the futures path loaded the prior sessions a profile trader reads.
   assert.ok(projection.includes("for (const tradingDate of dates)"),
@@ -183,6 +184,17 @@ const profilesFor = (instrument, variant) => buildTpoProfiles({
   }
   assert.ok(!projection.includes("groupTicks: 1,"), "grouping must not be pinned");
   assert.ok(!projection.includes("groupTicks: 4,"), "weekly grouping must not be pinned");
+
+  const profileRootHelper = workspace.slice(
+    workspace.indexOf("function volumeProfileIndexSourceRoot"),
+    workspace.indexOf("function newYorkCashSessionIsOpen"),
+  );
+  assert.match(profileRootHelper, /normalized === "SPX"/);
+  assert.match(profileRootHelper, /normalized === "NDX"/);
+  assert.doesNotMatch(profileRootHelper, /normalized === "SPY"/,
+    "SPY must use its own executed volume, not ES");
+  assert.doesNotMatch(profileRootHelper, /normalized === "QQQ"/,
+    "QQQ must use its own executed volume, not NQ");
 
   // Several daily profiles can only coexist if each stops on its own session.
   const anchor = workspace.slice(workspace.indexOf("const anchorToCashSession"));

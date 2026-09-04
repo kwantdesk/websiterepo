@@ -99,6 +99,7 @@ import {
   indicatorMatchesLibraryCategory,
   sortIndicatorLibraryAlphabetically,
 } from "@/lib/indicatorLibrary";
+import { indicatorCompatibility } from "@/lib/indicatorInstrumentCompatibility";
 
 const FAVOURITES_STORAGE_KEY = "kwantdesk-chart-indicator-favourites";
 
@@ -549,6 +550,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
 type Props = {
   chartInstanceId?: string;
   instrument: string;
+  broker?: string;
   timeframe: string;
   indicators: ChartIndicatorInstance[];
   chartSettings: ChartSettings;
@@ -941,6 +943,7 @@ function toggleOn(
 export default function ChartIndicatorsControl({
   chartInstanceId = "primary",
   instrument,
+  broker,
   timeframe,
   indicators,
   chartSettings,
@@ -989,7 +992,6 @@ export default function ChartIndicatorsControl({
     "All" | typeof INDICATOR_LIBRARY_FAVORITES_CATEGORY | ChartIndicatorCategory
   >("All");
   const [favourites, setFavourites] = useState<string[]>(readFavourites);
-  const [rithmicStatus, setRithmicStatus] = useState<"checking" | "connected" | "fallback">("checking");
   const [footprintTemplates, setFootprintTemplates] = useState<FootprintTemplate[]>([]);
   const [footprintTemplateName, setFootprintTemplateName] = useState("");
   const [selectedFootprintPreset, setSelectedFootprintPreset] = useState<FootprintPresetName | "">("");
@@ -1072,25 +1074,6 @@ export default function ChartIndicatorsControl({
       window.removeEventListener("scroll", positionMenu, true);
     };
   }, [open]);
-
-  useEffect(() => {
-    if (!open && !libraryOpen) return;
-    let cancelled = false;
-    const check = async () => {
-      setRithmicStatus("checking");
-      try {
-        const response = await fetch("/api/institutional-market-data?path=health", {
-          cache: "no-store",
-          signal: AbortSignal.timeout(5_000),
-        });
-        if (!cancelled) setRithmicStatus(response.ok ? "connected" : "fallback");
-      } catch {
-        if (!cancelled) setRithmicStatus("fallback");
-      }
-    };
-    void check();
-    return () => { cancelled = true; };
-  }, [libraryOpen, open]);
 
   useEffect(() => {
     if (!settingsInstanceId?.startsWith("deep-print-footprint-")) return;
@@ -1495,6 +1478,8 @@ export default function ChartIndicatorsControl({
 
   const add = (indicatorId: string) => {
     if (!RENDERED_CHART_INDICATOR_IDS.has(indicatorId)) return;
+    const definition = CHART_INDICATOR_BY_ID.get(indicatorId);
+    if (!definition || !indicatorCompatibility(definition, instrument, broker).canAdd) return;
     // A draw-on profile is a placement tool, not a study that can exist with
     // no anchors. Arm the real fixed-range profile on the active chart. The
     // resulting drawing is what persists and owns its settings/templates.
@@ -1772,7 +1757,10 @@ export default function ChartIndicatorsControl({
               <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
                 <BarChart3 className="h-4 w-4" />
               </span>
-              <div className="text-[15px] font-semibold text-foreground">Indicator library</div>
+              <div>
+                <div className="text-[15px] font-semibold text-foreground">Indicator library</div>
+                <div className="mt-0.5 text-[8px] uppercase tracking-[0.12em] text-muted">{instrument} · instrument-aware data</div>
+              </div>
               <div className="ml-auto flex h-8 w-[360px] items-center gap-2 border border-border bg-surface px-2.5 transition-colors focus-within:border-primary/50">
                 <Search className="h-3.5 w-3.5 text-muted" />
                 <input
@@ -1827,8 +1815,10 @@ export default function ChartIndicatorsControl({
                       : indicators.some((instance) => instance.indicatorId === definition.id);
                     const favourite = favourites.includes(definition.id);
                     const live = LIVE_CHART_INDICATOR_IDS.has(definition.id) && RENDERED_CHART_INDICATOR_IDS.has(definition.id);
+                    const compatibility = indicatorCompatibility(definition, instrument, broker);
+                    const available = live && compatibility.canAdd;
                     return (
-                      <div key={definition.id} className="group flex items-center gap-3 rounded-xl border border-transparent px-3 py-3 hover:border-border hover:bg-surface/55">
+                      <div key={definition.id} title={compatibility.reason} className={`group flex items-center gap-3 rounded-xl border border-transparent px-3 py-3 hover:border-border hover:bg-surface/55 ${!compatibility.canAdd ? "opacity-60" : ""}`}>
                         <button
                           type="button"
                           onClick={() => toggleFavourite(definition.id)}
@@ -1847,26 +1837,29 @@ export default function ChartIndicatorsControl({
                             {!live ? (
                               <span className="rounded-md border border-amber-400/20 bg-amber-400/10 px-1.5 py-0.5 text-[7px] font-medium uppercase tracking-[0.12em] text-amber-300">In development</span>
                             ) : null}
+                            {live && compatibility.status !== "native" ? (
+                              <span className={`rounded-md border px-1.5 py-0.5 text-[7px] font-medium uppercase tracking-[0.12em] ${compatibility.status === "adapted" ? "border-sky-400/20 bg-sky-400/10 text-sky-300" : "border-border bg-surface text-muted"}`}>{compatibility.label}</span>
+                            ) : null}
                           </div>
-                          <div className="mt-1 truncate text-[9px] text-muted">{definition.description}</div>
+                          <div className="mt-1 truncate text-[9px] text-muted">{live && !compatibility.canAdd ? compatibility.reason : definition.description}</div>
                         </div>
                         <div className="w-[150px] shrink-0 text-right text-[8px] uppercase tracking-[0.12em] text-muted/70">{definition.category}{definition.subcategory ? ` / ${definition.subcategory}` : ""}</div>
                         <button
                           type="button"
-                          disabled={!live}
+                          disabled={!added && !available}
                           aria-pressed={added}
                           aria-label={`${added ? "Remove" : "Add"} ${definition.name}`}
                           onClick={() => toggleLibraryIndicator(definition.id)}
                           className={`flex h-8 min-w-[76px] items-center justify-center gap-1.5 rounded-lg px-3 text-[10px] font-medium ${
                             added
                               ? "bg-primary/10 text-primary hover:bg-primary/15"
-                              : live
+                              : available
                                 ? "border border-border bg-background text-foreground hover:border-primary/30"
                                 : "cursor-not-allowed border border-border bg-background text-muted opacity-45"
                           }`}
                         >
-                          {added ? <Check className="h-3.5 w-3.5" /> : live ? <Plus className="h-3.5 w-3.5" /> : null}
-                          {added ? "Added" : live ? "Add" : "Pending"}
+                          {added ? <Check className="h-3.5 w-3.5" /> : available ? <Plus className="h-3.5 w-3.5" /> : null}
+                          {added ? "Added" : !live ? "Pending" : available ? "Add" : "Unavailable"}
                         </button>
                       </div>
                     );

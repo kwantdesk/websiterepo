@@ -2946,6 +2946,15 @@ function marketTimestamp(value: unknown) {
     : now;
 }
 
+// Only non-traded cash indices need a hedge-futures volume proxy. ETFs have
+// their own executed volume and must never silently inherit ES/NQ volume.
+function volumeProfileIndexSourceRoot(chartSymbol: string): "NQ" | "ES" | null {
+  const normalized = displayCmeSymbol(chartSymbol).toUpperCase();
+  if (normalized === "SPX" || normalized === "SPXW") return "ES";
+  if (normalized === "NDX") return "NQ";
+  return null;
+}
+
 function newYorkCashSessionIsOpen(timestamp = Date.now()) {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/New_York",
@@ -8509,7 +8518,7 @@ function WorkspaceChartPaneComponent({
   useEffect(() => {
     const usingMarketIndexPaneFeed = pane.broker === "Market Index" || isMarketIndexSymbol(pane.symbol);
     if (!usingMarketIndexPaneFeed) return;
-    const projectionRoot = valueAreaIndexSourceRoot(pane.symbol);
+    const projectionRoot = volumeProfileIndexSourceRoot(pane.symbol);
     if (!projectionRoot) return;
     const wantsDaily = Boolean(dailyProfileInstance);
     const wantsWeekly = Boolean(weeklyProfileInstance);
@@ -8700,7 +8709,7 @@ function WorkspaceChartPaneComponent({
   // volume fallback: real provider bar volume, neutral buy/sell split.
   useEffect(() => {
     const usingMarketIndexPaneFeed = pane.broker === "Market Index" || isMarketIndexSymbol(pane.symbol);
-    if (!usingMarketIndexPaneFeed || valueAreaIndexSourceRoot(pane.symbol)) return;
+    if (!usingMarketIndexPaneFeed || volumeProfileIndexSourceRoot(pane.symbol)) return;
     const wantsDaily = dailyProfileInstance?.indicatorId === "kwant-profile";
     const wantsWeekly = Boolean(weeklyProfileInstance);
     const wantsComposite = Boolean(compositeProfileInstance && compositeProfileRange);
@@ -19625,6 +19634,7 @@ export default function KwantifyWorkspace({
           <ChartIndicatorsControl
             chartInstanceId={activePaneId}
             instrument={displayCmeSymbol(activeWorkspacePane.symbol)}
+            broker={activeWorkspacePane.broker}
             timeframe={formatChartInterval(activeWorkspacePane.timeframe)}
             indicators={paneIndicators[activePaneId] ?? []}
             chartSettings={chartSettings}
