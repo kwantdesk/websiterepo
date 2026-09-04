@@ -43,8 +43,8 @@ Legend: `[ ]` not complete, `[~]` in progress, `[x]` complete and addable.
 | 5 | Stop Spotter | `stop-spotter` | [x] | [x] | [x] | [x] | [x] | Add |
 | 6 | Cumulative Iceberg/Stop | `cumulative-iceberg-stop` | [x] | [x] | [x] | [x] | [x] | Add |
 | 7 | Book Speed | `book-speed` | [x] | [x] | [x] | [x] | [x] | Add |
-| 8 | KWANT Delta | `deep-delta` | [x] | [x] | [x] | [x] | [~] | Release candidate |
-| 9 | KWANT Wall | `deep-wall` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
+| 8 | KWANT Delta | `deep-delta` | [x] | [x] | [x] | [x] | [x] | Add |
+| 9 | KWANT Wall | `deep-wall` | [x] | [x] | [x] | [x] | [~] | Release candidate |
 | 10 | KWANT V-Tracker | `deep-v-tracker` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
 | 11 | Custom Draw-On Volume Profile | `custom-draw-on-volume-profile` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
 | 12 | KWANT Profile Swing | `deep-profile-swing` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
@@ -276,8 +276,33 @@ Legend: `[ ]` not complete, `[~]` in progress, `[x]` complete and addable.
   templates. Index/OHLC-only feeds show a capability message instead of fake
   delta. Focused tests cover normalization, ranges, grouping, sequenced
   extremes, the live partial group, count inputs, missing-data refusal and a
-  20,000-bar linear-performance case. TypeScript and the production build pass;
-  exact-commit deployment and production visual QA remain the release gate.
+  20,000-bar linear-performance case. TypeScript and the production build pass.
+  Commit `1933bbca` reached Ready as deployment
+  `2o38r1KkND2RoC36UdqYevd9GK4C` on the sole active Vercel project.
+  Cache-busted production QA on NQ 500-volume confirmed Add, real positive and
+  negative grouped bars with live values, every General/Input/Style control,
+  Classic/Multi Range switching, immediate saved state with no false close
+  prompt and clean removal of the temporary study back to 11 indicators.
+
+### 9: KWANT Wall
+
+- Official DeepCharts help scopes Deep Wall to ES and describes passive walls
+  that absorb aggressive flow at an important high/low and reject price.
+  Installed DLL metadata recovers its exposed defaults: tick breakout 1,
+  delta 70%, per-bar volume 20, cluster volume 300, grouping 1, extreme minimum
+  2 bars, nearness 50 bars, Price Slope/High/Low plot price, sound and popup.
+- The protected formula is not inspectable. Quant Desk implements an explicit
+  detector: ES/MES only; classified Rithmic volume-at-price concentrated at a
+  recent extreme; extreme-side aggressive delta and volume; then a confirmed
+  rejection. OHLC-only candles, unclassified volume and cancellations cannot
+  create a wall marker.
+- Its compact horizontal markers follow the shared contrast-safe theme by
+  default and allow custom side colours, width and opacity. Every recovered
+  input has a typed value and slider; templates, save state, alert controls,
+  unsupported-instrument and missing-data states are wired.
+- Focused formula, rejection, scope, missing-data and bounds tests pass, as do
+  TypeScript, focused lint, templates, theme following, numeric sliders and the
+  full production build. Exact-deployment production QA is the remaining gate.
 
 - Quant Desk already has a tested `PocAuctionSuiteEngine` driven by exact
   execution-classified Footprint rows. It calculates raw-tick unfinished

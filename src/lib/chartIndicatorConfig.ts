@@ -46,6 +46,7 @@ import {
   DEFAULT_DEEP_DELTA_SETTINGS,
   normalizeDeepDeltaSettings,
 } from "@/lib/deepDelta";
+import { DEEP_WALL_SETTINGS_VERSION, DEFAULT_DEEP_WALL_SETTINGS, normalizeDeepWallSettings } from "@/lib/deepWall";
 
 export const LIVE_CHART_INDICATOR_IDS = new Set([
   "gamma-environment",
@@ -75,6 +76,7 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "cumulative-iceberg-stop",
   "book-speed",
   "deep-delta",
+  "deep-wall",
   "cumulative-volume-delta",
   "cvd-divergence",
   "pulling-stacking",
@@ -227,6 +229,18 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "level2LineWidth", label: "Threshold 2 line width", defaultValue: 1, min: 0.5, max: 6, step: 0.5 },
     { key: "markerMinimumDelta", label: "Struggle marker minimum delta", defaultValue: 0, min: 0, max: 10000000, step: 1 },
     { key: "lineWidth", label: "Delta body and shadow width", defaultValue: 1, min: 0.5, max: 6, step: 0.5 },
+  ],
+  "deep-wall": [
+    { key: "minimumTickBreakout", label: "Minimum tick breakout", defaultValue: 1, min: 0, max: 2000, step: 1 },
+    { key: "minimumDeltaPercent", label: "Minimum delta (%)", defaultValue: 70, min: 0, max: 100, step: 1 },
+    { key: "minimumPerBarVolume", label: "Minimum per bar volume", defaultValue: 20, min: 0, max: 10000000, step: 1 },
+    { key: "minimumClusterVolume", label: "Minimum cluster volume", defaultValue: 300, min: 0, max: 10000000, step: 1 },
+    { key: "tickGrouping", label: "Tick grouping", defaultValue: 1, min: 1, max: 2000, step: 1 },
+    { key: "highestLowestMinimumBars", label: "Highest/lowest minimum bars", defaultValue: 2, min: 2, max: 100, step: 1 },
+    { key: "highestLowestNearnessBars", label: "Highest/lowest nearness bars", defaultValue: 50, min: 1, max: 1000, step: 1 },
+    { key: "markerWidthBars", label: "Marker width (bars)", defaultValue: 1.6, min: 0.25, max: 12, step: 0.25 },
+    { key: "lineWidth", label: "Marker line width", defaultValue: 2, min: 0.5, max: 8, step: 0.5 },
+    { key: "opacity", label: "Marker opacity (%)", defaultValue: 92, min: 0, max: 100, step: 1 },
   ],
   "ratio-highlight": [
     { key: "minRatio", label: "Minimum ratio", defaultValue: 10, min: 0, max: 100, step: 0.25 },
@@ -1464,6 +1478,12 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     markerColor: theme?.borderDownColor ?? theme?.downColor ?? "#16106F",
     schemaVersion: DEEP_DELTA_SETTINGS_VERSION,
   } : {}),
+  ...(indicatorId === "deep-wall" ? {
+    ...DEFAULT_DEEP_WALL_SETTINGS,
+    buyWallColor: theme?.borderUpColor ?? theme?.upColor ?? DEFAULT_DEEP_WALL_SETTINGS.buyWallColor,
+    sellWallColor: theme?.borderDownColor ?? theme?.downColor ?? DEFAULT_DEEP_WALL_SETTINGS.sellWallColor,
+    schemaVersion: DEEP_WALL_SETTINGS_VERSION,
+  } : {}),
   ...(indicatorId === "tape-speed-order-flow-burst" ? {
     ...DEFAULT_TAPE_SPEED_SETTINGS,
     buyColor: theme?.upColor ?? DEFAULT_TAPE_SPEED_SETTINGS.buyColor,
@@ -2656,6 +2676,10 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
   if (normalizedInstance.indicatorId === "deep-delta") {
     const defaults = defaultIndicatorSettings("deep-delta");
     return { ...normalizedInstance, settings: { ...defaults, ...normalizeDeepDeltaSettings({ ...defaults, ...(normalizedInstance.settings ?? {}) }) } };
+  }
+  if (normalizedInstance.indicatorId === "deep-wall") {
+    const defaults = defaultIndicatorSettings("deep-wall");
+    return { ...normalizedInstance, settings: { ...defaults, ...normalizeDeepWallSettings({ ...defaults, ...(normalizedInstance.settings ?? {}) }) } };
   }
   if (normalizedInstance.indicatorId === "tape-speed-order-flow-burst") {
     return {

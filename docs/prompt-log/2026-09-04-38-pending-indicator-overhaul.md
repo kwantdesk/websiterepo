@@ -65,5 +65,12 @@ task until the full pending library is complete, without shortcuts.
   grouping with a live partial group, delta extremes, mirrored thresholds and
   Struggle markers. Its data refusal, theme/custom colours, sliders and synced
   templates are wired; focused math/performance tests, TypeScript and the full
-  production build pass. Deployment and production visual QA are the remaining
-  release gate before item 8 is finally complete.
+  production build pass. Exact-deployment production QA then confirmed live
+  NQ 500-volume rendering, mode switching, the complete settings surface,
+  immediate saved state, no false close prompt and clean temporary removal,
+  completing item 8. Item 9, **KWANT Wall**, is now a release candidate using
+  the official ES-focused settings contract and defaults. It requires exact
+  Rithmic volume-at-price absorption at a recent extreme plus a confirmed
+  rejection, and exposes explicit unsupported/data-wait states, theme/custom
+  markers, alerts, sliders and templates. Focused tests, TypeScript and the
+  production build pass; exact-deployment production QA is the remaining gate.

@@ -292,3 +292,8 @@ recap of the open items below and update this file when their state changes.
   counts and never pretend contract volume is an order count. Keep the forming
   partial group live, preserve stable plot/colour identities across
   Classic/Multi Range, and refuse feeds without classified Bid/Ask executions.
+- KWANT Wall is deliberately ES/MES-family only, matching the observable
+  DeepCharts scope. It must require classified Rithmic volume-at-price at a
+  recent high/low and a confirmed rejection; never infer a passive wall from
+  an OHLC wick, unclassified volume or a cancellation. Do not claim the
+  protected reference formula was copied.

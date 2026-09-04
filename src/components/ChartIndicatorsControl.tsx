@@ -458,6 +458,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "cumulative-iceberg-stop",
   "book-speed",
   "deep-delta",
+  "deep-wall",
   "moving-average",
   "vwap",
   "vwap-envelopes",
@@ -703,6 +704,10 @@ const themeColourMapFor = (indicatorId: string, chartSettings: ChartSettings) =>
       level2Color: visible.secondary,
       markerColor: visible.muted,
     } as Record<string, string>;
+  }
+  if (indicatorId === "deep-wall") {
+    const visible = visibleIndicatorTheme(chartSettings);
+    return { buyWallColor: visible.positive, sellWallColor: visible.negative } as Record<string, string>;
   }
   // Big Contracts and Big Blocks paint their two sides from the theme's up and
   // down colours (see the primitive updates in Chart.tsx), so the swatches must
@@ -6727,6 +6732,29 @@ export default function ChartIndicatorsControl({
                   })}
                   <button type="button" aria-pressed={settingsInstance.settings?.markerEnabled === true} onClick={() => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), markerEnabled: current.settings?.markerEnabled !== true } }))} className="flex h-9 items-center justify-between border border-border bg-background px-3 text-[9px] uppercase tracking-[0.1em] text-muted sm:col-span-2"><span>Struggle marker</span><span className={settingsInstance.settings?.markerEnabled === true ? "text-primary" : "text-muted"}>{settingsInstance.settings?.markerEnabled === true ? "On" : "Off"}</span></button>
                   <p className="text-[8px] leading-4 text-muted sm:col-span-2">Bars grouped is the number of consecutive chart bars accumulated into one delta candle. Volume keeps the exchange-sequenced delta high and low; Aggregate trades preserves the same signed quantity after price aggregation. Trades and Order use the recorded signed execution counts, never invented order-book volume.</p>
+                </div>
+              ) : null}
+
+              {settingsDefinition.id === "deep-wall" ? (
+                <div className="grid gap-3 border border-primary/20 bg-primary/[0.035] p-3 sm:grid-cols-2">
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                    <span>Marker price</span>
+                    <KwantSelect value={String(settingsInstance.settings?.plotPrice ?? "price-slope")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), plotPrice: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel="KWANT Wall marker price">
+                      <option value="price-slope">Price slope</option><option value="high">High</option><option value="low">Low</option>
+                    </KwantSelect>
+                  </label>
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                    <span>Alert tone</span>
+                    <KwantSelect value={String(settingsInstance.settings?.alertTone ?? "chime")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), alertTone: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel="KWANT Wall alert tone">
+                      <option value="chime">Chime</option><option value="bell">Bell</option><option value="pulse">Pulse</option>
+                    </KwantSelect>
+                  </label>
+                  {[['Alert sound', 'alertSoundEnabled'], ['Message popup', 'messagePopupEnabled']].map(([label, key]) => {
+                    const on = settingsInstance.settings?.[key] === true;
+                    return <button key={key} type="button" aria-pressed={on} onClick={() => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [key]: !on } }))} className="flex h-9 items-center justify-between border border-border bg-background px-3 text-[9px] uppercase tracking-[0.1em] text-muted"><span>{label}</span><span className={on ? "text-primary" : "text-muted"}>{on ? "On" : "Off"}</span></button>;
+                  })}
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2"><span>Popup message</span><input type="text" maxLength={160} value={String(settingsInstance.settings?.messageText ?? "KWANT Wall")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), messageText: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none" /></label>
+                  <p className="text-[8px] leading-4 text-muted sm:col-span-2">ES-family only, matching the reference scope. A marker requires classified Rithmic executions concentrated at a recent high or low, the configured extreme-side delta and cluster volume, then a confirmed rejection. It never treats a cancellation or an OHLC wick as an executed wall.</p>
                 </div>
               ) : null}
 
