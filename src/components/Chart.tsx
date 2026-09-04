@@ -14397,6 +14397,8 @@ function Chart({
       ].includes(instance.indicatorId));
     const weeklyInstance = indicators.find((instance) =>
       instance.enabled && instance.indicatorId === "weekly-volume-profile");
+    const compositeInstance = indicators.find((instance) =>
+      instance.enabled && instance.indicatorId === "composite-volume-profile");
     const lastCandleTime = volumeProfileLastCandleTimestamp === null
       ? null
       : Math.floor(volumeProfileLastCandleTimestamp / 1_000);
@@ -14418,8 +14420,10 @@ function Chart({
         : fallback
     ) as "none" | "until-first-interaction" | "to-window-end";
     const models = volumeProfiles.flatMap((profile): NativeVolumeProfileModel[] => {
-      const instance = profile.period === "weekly" ? weeklyInstance : dailyInstance;
-      if (!instance || profile.period === "custom" || profile.levels.length === 0) return [];
+      const instance = profile.period === "weekly"
+        ? weeklyInstance
+        : profile.period === "custom" ? compositeInstance : dailyInstance;
+      if (!instance || profile.levels.length === 0) return [];
       // No native volume-profile mode may render a candle-distributed proxy.
       // It has neither true traded-at-price volume nor aggressor-side delta.
       if (!isExecutionBackedVolumeProfile(profile) && !isCandleBackedVolumeProfile(profile)) return [];

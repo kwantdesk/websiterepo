@@ -104,6 +104,7 @@
     "test:volume-profile-data-settings": "node --experimental-strip-types scripts/test-volume-profile-data-settings.mjs",
     "test:volume-profile-structure": "node --experimental-strip-types scripts/test-volume-profile-structure.mjs",
     "test:volume-profile-data": "node --experimental-strip-types scripts/test-volume-profile-data-settings.mjs",
+    "test:composite-volume-profile": "node --experimental-strip-types scripts/test-composite-volume-profile.mjs",
     "test:chart-magnet": "node --experimental-strip-types scripts/test-chart-magnet.mjs",
     "test:spxw": "node --test --experimental-strip-types tests/gex-map-spxw-provider.test.mjs",
     "test:themes": "node --experimental-strip-types --import ./scripts/alias-hook.mjs --test tests/feminine-theme-presets.test.mjs tests/mono-default-theme.test.mjs tests/mr-quant-theme.test.mjs tests/theme-scrollbars.test.mjs tests/theme-action-contrast.test.mjs",

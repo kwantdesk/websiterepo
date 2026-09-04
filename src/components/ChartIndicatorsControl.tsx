@@ -482,6 +482,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "tpo-chart",
   "weekly-tpo",
   "weekly-volume-profile",
+  "composite-volume-profile",
   "ask-bid-volume-profile",
   "delta-profile",
   "classic-gex-profile",
@@ -1966,6 +1967,98 @@ export default function ChartIndicatorsControl({
                   <div className="border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
                     Volume is the plain traded-volume profile. Delta and total volume adds the signed delta bar beside it; delta percentage scales that delta by the row&apos;s own volume, so a thin one-sided row reads as strongly as a heavy balanced one.
                   </div>
+                  {settingsDefinition.id === "composite-volume-profile" ? (
+                    <>
+                      <div className="mt-1 text-[9px] uppercase tracking-[0.14em] text-foreground sm:col-span-2">Composite range</div>
+                      <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">
+                        <span>Length type</span>
+                        <KwantSelect
+                          value={String(settingsInstance.settings?.compositeRangeMode ?? "loaded-range")}
+                          onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                            ...current,
+                            settings: { ...(current.settings ?? {}), compositeRangeMode: event.target.value },
+                          }))}
+                          className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                          menuLabel="Composite range"
+                        >
+                          <option value="loaded-range">Complete loaded range</option>
+                          <option value="rolling-bars">Rolling bars</option>
+                          <option value="rolling-minutes">Rolling minutes</option>
+                          <option value="rolling-days">Rolling calendar days</option>
+                          <option value="rolling-weeks">Rolling weeks</option>
+                          <option value="rolling-months">Rolling calendar months</option>
+                          <option value="custom">Custom start and end</option>
+                        </KwantSelect>
+                      </label>
+                      {String(settingsInstance.settings?.compositeRangeMode).startsWith("rolling-") ? (
+                        <IndicatorNumericSlider
+                          label={`Number of ${String(settingsInstance.settings?.compositeRangeMode ?? "rolling-bars").replace("rolling-", "")}`}
+                          min={1}
+                          max={String(settingsInstance.settings?.compositeRangeMode) === "rolling-months"
+                            ? 120
+                            : String(settingsInstance.settings?.compositeRangeMode) === "rolling-weeks"
+                              ? 520
+                              : String(settingsInstance.settings?.compositeRangeMode) === "rolling-days" ? 3650 : 100000}
+                          step={1}
+                          value={Number(settingsInstance.settings?.compositeLengthValue ?? 500)}
+                          className="sm:col-span-2"
+                          onChange={(next) => replace(settingsInstance.instanceId, (current) => ({
+                            ...current,
+                            settings: { ...(current.settings ?? {}), compositeLengthValue: next },
+                          }))}
+                        />
+                      ) : null}
+                      {String(settingsInstance.settings?.compositeRangeMode) === "custom" ? (
+                        <>
+                          <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                            <span>Custom start</span>
+                            <input
+                              type="datetime-local"
+                              value={String(settingsInstance.settings?.compositeCustomStartMs ?? "")}
+                              onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                                ...current,
+                                settings: { ...(current.settings ?? {}), compositeCustomStartMs: event.target.value },
+                              }))}
+                              className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none focus:border-primary/40"
+                            />
+                          </label>
+                          <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                            <span>Custom end</span>
+                            <input
+                              type="datetime-local"
+                              disabled={settingsInstance.settings?.compositeCustomEndFollowsLatest !== false}
+                              value={String(settingsInstance.settings?.compositeCustomEndMs ?? "")}
+                              onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                                ...current,
+                                settings: { ...(current.settings ?? {}), compositeCustomEndMs: event.target.value },
+                              }))}
+                              className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none disabled:opacity-40 focus:border-primary/40"
+                            />
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => replace(settingsInstance.instanceId, (current) => ({
+                              ...current,
+                              settings: {
+                                ...(current.settings ?? {}),
+                                compositeCustomEndFollowsLatest: current.settings?.compositeCustomEndFollowsLatest === false,
+                              },
+                            }))}
+                            className={`h-9 border px-2 text-[8px] uppercase tracking-[0.1em] sm:col-span-2 ${
+                              settingsInstance.settings?.compositeCustomEndFollowsLatest === false
+                                ? "border-border bg-background text-muted"
+                                : "border-primary/55 bg-primary/10 text-primary"
+                            }`}
+                          >
+                            End follows live edge · {settingsInstance.settings?.compositeCustomEndFollowsLatest === false ? "OFF" : "ON"}
+                          </button>
+                        </>
+                      ) : null}
+                      <div className="border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
+                        One execution-accurate profile is rebuilt over this complete range and develops from the same live Rithmic prints as the candle. It is docked to the right by default; its POC, value area, VWAP and structure controls below use the same engine as Daily Volume Profile.
+                      </div>
+                    </>
+                  ) : null}
                 </div>
               ) : null}
 

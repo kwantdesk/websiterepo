@@ -1779,3 +1779,14 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
   TypeScript and the complete 80-route production build passed. Interactive
   pixel parity remains explicitly open until safe native-window control is
   available.
+
+## 2026-09-04 — Composite Volume Profile
+
+- `composite-volume-profile` is active and uses one exact custom-period Rithmic
+  execution request over the complete loaded candle range.
+- It renders through `NativeVolumeProfilePrimitive`, is right-docked by default
+  and develops from the shared immediate profile execution path.
+- Keep Composite on the shared Volume Profile settings/template schema. Do not
+  replace it with merged daily histograms or an OHLC volume-at-price proxy.
+- The parity audit is `docs/deepcharts-composite-volume-profile-audit.md` and
+  the prompt outcome is `docs/prompt-log/2026-09-04-25-composite-volume-profile.md`.

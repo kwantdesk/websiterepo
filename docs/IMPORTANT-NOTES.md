@@ -59,3 +59,19 @@ recap of the open items below and update this file when their state changes.
   fresh interactive Deep Charts/KWANTDESK screenshot pair when native-window
   control is available; do not describe pixel-level visual parity as complete
   until that final comparison is recorded.
+- **Composite Volume Profile:** the installed assembly contract and official
+  Volume Profile reference have been mapped to the live KWANTDESK engine. The
+  indicator is calculation/settings complete, right-docked and execution-live.
+  Capture the final side-by-side screenshot sweep when safe native-window
+  control can expose Deep Charts; do not claim pixel-identical parity before
+  that evidence is recorded.
+
+## 2026-09-04 — Composite Volume Profile
+
+- Activated the existing catalogue entry as a live indicator. It requests one
+  exact Rithmic execution profile over the complete loaded range, stays fixed
+  to the right by default and develops from the direct execution path.
+- It inherits the full tested Volume Profile contract: input/filter/grouping,
+  style/width/offset, POC, value area, peak/valley, VWAP/envelopes, summary and
+  session filtering. Focused regressions, TypeScript and the production build
+  passed; only the interactive screenshot comparison remains open above.

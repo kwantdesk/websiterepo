@@ -16,7 +16,12 @@ for (const dailySetting of dailyVp) {
   const weeklySetting = weeklyVp.find(({ key }) => key === dailySetting.key);
   assert.deepEqual(weeklySetting, dailySetting, `weekly VP ${dailySetting.key} must match daily VP`);
 }
-assert.match(chart, /const instance = profile\.period === "weekly" \? weeklyInstance : dailyInstance/);
+assert.match(chart, /profile\.period === "custom" \? compositeInstance : dailyInstance/);
+
+// Composite owns one extra length control, then inherits the same grouping,
+// width, opacity and execution filters as the daily/weekly engine.
+const compositeVp = INDICATOR_NUMERIC_SETTINGS["composite-volume-profile"];
+assert.deepEqual(compositeVp.slice(1).map(({ key }) => key), dailyVp.map(({ key }) => key));
 
 // Daily and Weekly TPO share every calculation/presentation default except
 // the intended period boundary and visible profile count.

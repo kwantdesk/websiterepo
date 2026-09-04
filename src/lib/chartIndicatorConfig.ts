@@ -73,6 +73,7 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "tpo-chart",
   "weekly-tpo",
   "weekly-volume-profile",
+  "composite-volume-profile",
   "custom-draw-on-volume-profile",
   "ask-bid-volume-profile",
   "delta-profile",
@@ -96,6 +97,7 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
 export const VOLUME_PROFILE_INDICATOR_IDS = new Set([
   "kwant-profile",
   "weekly-volume-profile",
+  "composite-volume-profile",
   "custom-draw-on-volume-profile",
   "ask-bid-volume-profile",
   "delta-profile",
@@ -867,6 +869,15 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "fpsCap", label: "Render FPS cap", defaultValue: 60, min: 15, max: 144, step: 1 },
   ],
   "weekly-volume-profile": [
+    { key: "groupTicks", label: "Price grouping (ticks)", defaultValue: 4, min: 1, max: 500 },
+    { key: "autoGroupFactor", label: "Automatic grouping factor", defaultValue: 1, min: 0.5, max: 4, step: 0.25 },
+    { key: "profileWidth", label: "Profile width (% of chart)", defaultValue: 24, min: 0, max: 60, step: 0.5 },
+    { key: "opacity", label: "Profile opacity (%)", defaultValue: 100, min: 10, max: 100 },
+    { key: "minTradeVolume", label: "Minimum execution size", defaultValue: 0, min: 0, max: 100000 },
+    { key: "maxTradeVolume", label: "Maximum execution size (0 = no maximum)", defaultValue: 0, min: 0, max: 1000000 },
+  ],
+  "composite-volume-profile": [
+    { key: "compositeLengthValue", label: "Composite length", defaultValue: 500, min: 1, max: 100000, step: 1 },
     { key: "groupTicks", label: "Price grouping (ticks)", defaultValue: 4, min: 1, max: 500 },
     { key: "autoGroupFactor", label: "Automatic grouping factor", defaultValue: 1, min: 0.5, max: 4, step: 0.25 },
     { key: "profileWidth", label: "Profile width (% of chart)", defaultValue: 24, min: 0, max: 60, step: 0.5 },
@@ -2060,7 +2071,7 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
    * this setting existed.
    */
   ...(indicatorId === "weekly-volume-profile" ? { weekSelection: "current" } : {}),
-  ...(["kwant-profile", "weekly-volume-profile", "custom-draw-on-volume-profile", "ask-bid-volume-profile", "delta-profile"].includes(indicatorId) ? {
+  ...(["kwant-profile", "weekly-volume-profile", "composite-volume-profile", "custom-draw-on-volume-profile", "ask-bid-volume-profile", "delta-profile"].includes(indicatorId) ? {
     valueAreaPercent: DEFAULT_VOLUME_PROFILE_VALUE_AREA_PERCENT,
     // Data Settings — the input series, the trade-size band applied before
     // binning, and how many ticks share a profile row. Automatic derives the
@@ -2167,7 +2178,9 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     sessionAsiaEnabled: true,
     sessionLondonEnabled: true,
     sessionNewYorkEnabled: true,
-    snapMode: indicatorId === "custom-draw-on-volume-profile" ? "off" : "left",
+    snapMode: indicatorId === "custom-draw-on-volume-profile"
+      ? "off"
+      : indicatorId === "composite-volume-profile" ? "right" : "left",
     useThemeColors: true,
     showText: false,
     showValueArea: true,
@@ -2200,6 +2213,19 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     vwapHighlightColor: theme?.borderUpColor ?? "#F59E0B",
     vwapBandColor: theme?.gridColor ?? "#71717A",
     summaryTextColor: theme?.upColor ?? "#22C55E",
+    ...(indicatorId === "composite-volume-profile" ? {
+      // DeepCharts' Composite Profile is one profile over a chosen length,
+      // docked on the right as its stock presentation. Loaded range is the
+      // safest default because it never implies execution history the chart
+      // has not asked the gateway to restore.
+      compositeRangeMode: "loaded-range",
+      compositeLengthValue: 500,
+      compositeCustomStartMs: "",
+      compositeCustomEndMs: "",
+      compositeCustomEndFollowsLatest: true,
+      showProfileSpine: false,
+      recentLevelsOnly: true,
+    } : {}),
   } : {}),
 });
 
@@ -2711,7 +2737,7 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
     };
   }
   if (
-    ["kwant-profile", "weekly-volume-profile", "custom-draw-on-volume-profile", "ask-bid-volume-profile", "delta-profile"]
+    ["kwant-profile", "weekly-volume-profile", "composite-volume-profile", "custom-draw-on-volume-profile", "ask-bid-volume-profile", "delta-profile"]
       .includes(normalizedInstance.indicatorId)
   ) {
     // This used to overwrite valueAreaPercent on every normalize, which pinned
@@ -2826,7 +2852,7 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
     };
   }
   if (
-    ["weekly-volume-profile", "custom-draw-on-volume-profile", "ask-bid-volume-profile", "delta-profile"]
+    ["weekly-volume-profile", "composite-volume-profile", "custom-draw-on-volume-profile", "ask-bid-volume-profile", "delta-profile"]
       .includes(normalizedInstance.indicatorId)
     && Number(normalizedInstance.settings?.profileSettingsVersion) < 15
   ) {
@@ -2836,7 +2862,9 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         ...(normalizedInstance.settings ?? {}),
         snapMode: normalizedInstance.indicatorId === "custom-draw-on-volume-profile"
           ? "off"
-          : normalizedInstance.settings?.snapMode === "right" ? "right" : "left",
+          : normalizedInstance.indicatorId === "composite-volume-profile"
+            ? normalizedInstance.settings?.snapMode === "left" ? "left" : "right"
+            : normalizedInstance.settings?.snapMode === "right" ? "right" : "left",
         // Data Settings arrived in v7. Existing values always win so a
         // migration never silently re-tunes a saved profile.
         inputData: normalizedInstance.settings?.inputData ?? "volume",
@@ -2907,6 +2935,14 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         sessionNewYorkEnabled: normalizedInstance.settings?.sessionNewYorkEnabled ?? true,
         groupTicks: normalizedInstance.settings?.groupTicks ?? 4,
         valueAreaPercent: normalizedInstance.settings?.valueAreaPercent ?? DEFAULT_VOLUME_PROFILE_VALUE_AREA_PERCENT,
+        ...(normalizedInstance.indicatorId === "composite-volume-profile" ? {
+          compositeRangeMode: normalizedInstance.settings?.compositeRangeMode ?? "loaded-range",
+          compositeLengthValue: normalizedInstance.settings?.compositeLengthValue ?? 500,
+          compositeCustomStartMs: normalizedInstance.settings?.compositeCustomStartMs ?? "",
+          compositeCustomEndMs: normalizedInstance.settings?.compositeCustomEndMs ?? "",
+          compositeCustomEndFollowsLatest: normalizedInstance.settings?.compositeCustomEndFollowsLatest ?? true,
+          recentLevelsOnly: normalizedInstance.settings?.recentLevelsOnly ?? true,
+        } : {}),
         profileSettingsVersion: 15,
       },
     };
