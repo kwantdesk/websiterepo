@@ -53,6 +53,8 @@ nothing visible.
 - TypeScript passed with no errors.
 - Full optimized Next.js production build passed, including all 80 generated
   routes.
+- Production commit `822fd7e8` reached **Ready** on the sole active Vercel
+  project `websiterepo-yfmi`; `https://www.kwantdesk.com/charts` returned 200.
 - Existing broader opacity and indicator-save checks still report unrelated
   pre-existing failures in volume-profile shifted-POC defaults and the dirty
   shared dialog header work; neither is changed by this prompt.
