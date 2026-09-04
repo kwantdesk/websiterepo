@@ -85,6 +85,8 @@ check("closing without the button still asks rather than silently keeping", () =
 
 check("Save establishes a clean baseline without closing the dialog", () => {
   assert.match(source, /settingsOpenSnapshotRef\.current = captureIndicatorSettingsSnapshot\(committedInstance\);/);
+  assert.match(source, /settingsHasPendingEditRef\.current = false;\s*\n\s*refreshSettingsSaveState/,
+    "Save does not repaint the clean state until the debounced parent update arrives");
   const header = source.slice(
     source.indexOf("One shared header action rail serves every current and future indicator"),
     source.indexOf("<IndicatorSettingsSections>"),
@@ -94,6 +96,13 @@ check("Save establishes a clean baseline without closing the dialog", () => {
     /onClick=\{commitSettingsAndClose\}/,
     "the permanent Save action still closes the settings dialog",
   );
+});
+
+check("edit and save status do not wait for debounced workspace persistence", () => {
+  assert.match(source, /settingsHasPendingEditRef\.current = true;\s*\n\s*refreshSettingsSaveState/,
+    "an edit is not shown as unsaved synchronously");
+  assert.match(source, /if \(\s*settingsHasPendingEditRef\.current[\s\S]*?\) return true;/,
+    "the close guard does not recognise the synchronous pending-edit state");
 });
 
 check("Footprint cannot bypass the shared clean-baseline save", () => {

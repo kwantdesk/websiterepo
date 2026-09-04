@@ -1136,6 +1136,12 @@ export default function ChartIndicatorsControl({
     return () => window.removeEventListener(PREFERENCES_HYDRATED_EVENT, reloadAccountTemplates);
   }, [openSettingsIndicatorId]);
 
+  const settingsOpenSnapshotRef = useRef<IndicatorSettingsSnapshot | null>(null);
+  // Parent workspace persistence is deliberately debounced. Keep the dialog's
+  // save state synchronous so its label and close guard never wait for that
+  // slower round trip through props.
+  const settingsHasPendingEditRef = useRef(false);
+  const [, refreshSettingsSaveState] = useState(0);
   const indicatorsRef = useRef(indicators);
   useEffect(() => {
     indicatorsRef.current = indicators;
@@ -1144,6 +1150,10 @@ export default function ChartIndicatorsControl({
   const replace = useCallback((instanceId: string, update: (current: ChartIndicatorInstance) => ChartIndicatorInstance) => {
     const next = indicatorsRef.current.map((instance) => instance.instanceId === instanceId ? update(instance) : instance);
     indicatorsRef.current = next;
+    if (settingsOpenSnapshotRef.current?.instanceId === instanceId) {
+      settingsHasPendingEditRef.current = true;
+      refreshSettingsSaveState((revision) => revision + 1);
+    }
     onChange(next);
   }, [onChange]);
 
@@ -1154,12 +1164,12 @@ export default function ChartIndicatorsControl({
    * also means there is nothing to compare against at close time unless the
    * original is kept. Discard restores exactly this.
    */
-  const settingsOpenSnapshotRef = useRef<IndicatorSettingsSnapshot | null>(null);
   const [unsavedSettingsPrompt, setUnsavedSettingsPrompt] = useState(false);
 
   useEffect(() => {
     if (!settingsInstanceId || !settingsInstance) {
       settingsOpenSnapshotRef.current = null;
+      settingsHasPendingEditRef.current = false;
       setUnsavedSettingsPrompt(false);
       return;
     }
@@ -1169,29 +1179,41 @@ export default function ChartIndicatorsControl({
     // indicator's save state.
     if (settingsOpenSnapshotRef.current?.instanceId !== settingsInstanceId) {
       settingsOpenSnapshotRef.current = captureIndicatorSettingsSnapshot(settingsInstance);
+      settingsHasPendingEditRef.current = false;
     }
   }, [settingsInstance, settingsInstanceId]);
 
   const settingsAreDirty = useCallback(() => {
+    if (
+      settingsHasPendingEditRef.current
+      && settingsOpenSnapshotRef.current?.instanceId === settingsInstance?.instanceId
+    ) return true;
     return indicatorSettingsAreDirty(settingsOpenSnapshotRef.current, settingsInstance);
   }, [settingsInstance]);
 
   /** Persist without closing, so the trader may keep tuning after Save. */
   const commitSettings = useCallback(() => {
     if (!settingsInstance) return;
-    let committedInstance = settingsInstance;
-    if (settingsInstance?.indicatorId === "deep-print-footprint") {
-      const validated = validateFootprintSettings(settingsInstance.settings);
-      const committedSettings = { ...(settingsInstance.settings ?? {}), ...validated };
-      replace(settingsInstance.instanceId, (current) => ({
+    // The ref is updated at the instant a control changes; props may still be
+    // one render behind when Save is clicked immediately after a slider move.
+    const liveInstance = indicatorsRef.current.find(
+      (instance) => instance.instanceId === settingsInstance.instanceId,
+    ) ?? settingsInstance;
+    let committedInstance = liveInstance;
+    if (liveInstance.indicatorId === "deep-print-footprint") {
+      const validated = validateFootprintSettings(liveInstance.settings);
+      const committedSettings = { ...(liveInstance.settings ?? {}), ...validated };
+      replace(liveInstance.instanceId, (current) => ({
         ...current,
         settings: committedSettings,
       }));
-      saveFootprintSettings(settingsInstance.instanceId, validated);
-      committedInstance = { ...settingsInstance, settings: committedSettings };
+      saveFootprintSettings(liveInstance.instanceId, validated);
+      committedInstance = { ...liveInstance, settings: committedSettings };
     }
     window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
     settingsOpenSnapshotRef.current = captureIndicatorSettingsSnapshot(committedInstance);
+    settingsHasPendingEditRef.current = false;
+    refreshSettingsSaveState((revision) => revision + 1);
     setUnsavedSettingsPrompt(false);
   }, [replace, settingsInstance]);
 
@@ -1212,6 +1234,8 @@ export default function ChartIndicatorsControl({
       }));
     }
     settingsOpenSnapshotRef.current = null;
+    settingsHasPendingEditRef.current = false;
+    refreshSettingsSaveState((revision) => revision + 1);
     setUnsavedSettingsPrompt(false);
     setSettingsInstanceId(null);
   }, [replace, settingsInstance]);
@@ -1225,6 +1249,7 @@ export default function ChartIndicatorsControl({
       return;
     }
     settingsOpenSnapshotRef.current = null;
+    settingsHasPendingEditRef.current = false;
     setUnsavedSettingsPrompt(false);
     setSettingsInstanceId(null);
   }, [settingsAreDirty]);
