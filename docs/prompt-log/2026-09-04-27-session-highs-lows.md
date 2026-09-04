@@ -30,4 +30,8 @@ Initial Balance session regressions. Scoped lint reports zero errors, and the
 complete 80-page production build passes compilation, TypeScript and static
 generation.
 
-Deployment details are appended after the production deployment reaches Ready.
+Production commit `e7b944ff` deployed successfully through the sole active
+Vercel project `websiterepo-yfmi`. GitHub deployment `6259501775` / Vercel
+deployment `9dCqHMutY3wwqvRkP2MTg5DJrr3A` reached Ready at
+`https://websiterepo-yfmi-hem0g4afh-kwant-desk.vercel.app`; the deployed
+`/charts` route returned HTTP 200.
