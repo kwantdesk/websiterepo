@@ -1720,3 +1720,19 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
   is required.
 - Verification: focused fixed-profile regression and native-control audit
   passed; TypeScript and the complete 80-page production build passed.
+
+## 2026-09-04 — Guard history coverage for every offered future
+
+- The website catalogue and the Rithmic History Plant runner both currently
+  contain the same 53 CME-group futures roots, including distinct mini and
+  micro products.
+- The futures routing regression now requires exact catalogue/queue equality
+  and rejects omissions, extras, exchange mismatches and duplicates, so a new
+  offered future cannot silently launch without historical-bar coverage.
+- Production's restart-safe backfill service was verified active. At the audit
+  snapshot 1,235 seven-day windows were complete and the remaining queue and
+  failed checkpoints were still being processed/retried under the 36 GiB
+  weekly safety ceiling.
+- This covers authoritative minute bars from 2025-01-01 and aggregation to
+  larger timeframes. Event-based chart history still requires the separate
+  trade-tick/VAP import and is never synthesized from minute OHLC.

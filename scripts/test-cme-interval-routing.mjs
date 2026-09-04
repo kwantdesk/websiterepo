@@ -39,6 +39,20 @@ const eventHistory = readFileSync(
   new URL("../src/lib/databentoEventHistory.server.ts", import.meta.url),
   "utf8",
 );
+const historyBackfill = readFileSync(
+  new URL(
+    "../services/rithmic_gateway/scripts/run-history-bar-backfill.mjs",
+    import.meta.url,
+  ),
+  "utf8",
+);
+const historyQueueMatch = historyBackfill.match(
+  /const instruments = \[([\s\S]*?)\n\];/,
+);
+assert.ok(historyQueueMatch, "Rithmic History Plant queue could not be parsed");
+const historyQueue = [...historyQueueMatch[1].matchAll(
+  /\["(CME|CBOT|NYMEX|COMEX)", "([A-Z0-9]+)"\]/g,
+)].map((match) => ({ venue: match[1], root: match[2] }));
 
 let passed = 0;
 const check = (name, test) => {
@@ -87,6 +101,26 @@ check("all 53 advertised futures roots have a deterministic venue", () => {
       `${instrument.symbol} routes to the wrong exchange`,
     );
   }
+});
+
+check("History Plant queue covers every advertised future exactly once", () => {
+  const advertised = advertisedFutures
+    .map(({ symbol, venue }) => `${venue}:${symbol.replace(/\.v\.0$/, "")}`)
+    .sort();
+  const queued = historyQueue
+    .map(({ root, venue }) => `${venue}:${root}`)
+    .sort();
+
+  assert.equal(
+    new Set(queued).size,
+    queued.length,
+    "History Plant queue contains a duplicate future",
+  );
+  assert.deepEqual(
+    queued,
+    advertised,
+    "website futures and the History Plant backfill queue have diverged",
+  );
 });
 
 check("chart liquidity and DOM streams are not pinned to CME", () => {
