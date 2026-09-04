@@ -5,6 +5,7 @@ import { Check, ChevronDown, GripHorizontal, Minus, Plus, RefreshCw, Settings2 }
 import type { CalculatedIndicatorSeries } from "@/lib/chartIndicatorEngine";
 import type { KwantStatsTable } from "@/lib/kwantStats";
 import { chartCandleBodyWidth, paneBarSpacing } from "@/lib/chartBarWidth";
+import { sampledPanePoints, sampledVerticalPanePoints } from "@/lib/chartIndicatorPaneSampling";
 
 type IndicatorPaneGroup = {
   key: string;
@@ -93,85 +94,6 @@ function isCvdIndicator(indicatorId: string) {
     "delta-cumulative-candlestick",
     "delta-cumulative-histogram",
   ].includes(indicatorId);
-}
-
-type PanePoint = CalculatedIndicatorSeries["data"][number] & { x: number };
-
-function sampledPanePoints(
-  definition: CalculatedIndicatorSeries,
-  xForTime: (time: number) => number | null,
-  plotWidth: number,
-) {
-  const visible = definition.data
-    .map((point) => ({ ...point, x: xForTime(point.time) }))
-    .filter((point): point is PanePoint =>
-      point.x !== null && point.x >= -10 && point.x <= plotWidth + 10);
-  const maximumPoints = Math.max(160, Math.floor(plotWidth * 1.25));
-  if (visible.length <= maximumPoints) return visible;
-
-  const bucketWidth = Math.max(1, plotWidth / maximumPoints);
-  const buckets = new Map<number, PanePoint>();
-  visible.forEach((point) => {
-    const bucket = Math.floor(Math.max(0, point.x) / bucketWidth);
-    const current = buckets.get(bucket);
-    if (!current) {
-      buckets.set(bucket, { ...point });
-      return;
-    }
-    if (definition.kind === "candlestick") {
-      const currentOpen = current.open ?? current.value;
-      const pointClose = point.close ?? point.value;
-      current.open = currentOpen;
-      current.close = pointClose;
-      current.value = point.value;
-      current.high = Math.max(
-        current.high ?? currentOpen,
-        point.high ?? pointClose,
-      );
-      current.low = Math.min(
-        current.low ?? currentOpen,
-        point.low ?? pointClose,
-      );
-      current.color = point.color ?? current.color;
-      current.time = point.time;
-      current.x = point.x;
-      return;
-    }
-    // CVD bars and lines are cumulative values. Keep the final value in each
-    // screen bucket rather than creating thousands of SVG nodes per refresh.
-    buckets.set(bucket, { ...point, breakBefore: current.breakBefore || point.breakBefore });
-  });
-  return [...buckets.values()].sort((a, b) => a.x - b.x);
-}
-
-function sampledVerticalPanePoints(
-  definition: CalculatedIndicatorSeries,
-  yForTime: (time: number) => number | null,
-  plotHeight: number,
-) {
-  const visible = definition.data
-    .map((point) => ({ ...point, y: yForTime(point.time) }))
-    .filter((point): point is CalculatedIndicatorSeries["data"][number] & { y: number } =>
-      point.y !== null && point.y >= -10 && point.y <= plotHeight + 10);
-  if (visible.length <= Math.max(240, plotHeight * 2)) return visible;
-  const buckets = new Map<number, (typeof visible)[number]>();
-  visible.forEach((point) => {
-    const bucket = Math.max(0, Math.min(Math.ceil(plotHeight), Math.round(point.y)));
-    const current = buckets.get(bucket);
-    if (!current || definition.kind !== "candlestick") {
-      buckets.set(bucket, point);
-      return;
-    }
-    buckets.set(bucket, {
-      ...point,
-      open: current.open ?? current.value,
-      high: Math.max(current.high ?? current.value, point.high ?? point.value),
-      low: Math.min(current.low ?? current.value, point.low ?? point.value),
-      close: point.close ?? point.value,
-      breakBefore: current.breakBefore || point.breakBefore,
-    });
-  });
-  return [...buckets.values()].sort((left, right) => left.y - right.y);
 }
 
 function ChartIndicatorPaneSurface({
