@@ -298,6 +298,8 @@ import { buildStopSpotterFrame, normalizeStopSpotterSettings, type StopSpotterFr
 import { StopSpotterPrimitive } from "@/lib/stopSpotterPrimitive";
 import { buildDeepWallFrame, normalizeDeepWallSettings, type DeepWallFrame } from "@/lib/deepWall";
 import { DeepWallPrimitive } from "@/lib/deepWallPrimitive";
+import { buildDeepVTrackerFrame, normalizeDeepVTrackerSettings, type DeepVTrackerFrame } from "@/lib/deepVTracker";
+import { DeepVTrackerPrimitive } from "@/lib/deepVTrackerPrimitive";
 import {
   buildCumulativeIcebergStopFrame,
   normalizeCumulativeIcebergStopSettings,
@@ -3311,6 +3313,10 @@ function Chart({
   const deepWallLastReactPublishRef = useRef(0);
   const deepWallSeenMarkerIdsRef = useRef(new Set<string>());
   const deepWallAlertBaselineReadyRef = useRef(false);
+  const deepVTrackerPrimitiveRef = useRef<DeepVTrackerPrimitive | null>(null);
+  const deepVTrackerLastReactPublishRef = useRef(0);
+  const deepVTrackerSeenEventIdsRef = useRef(new Set<string>());
+  const deepVTrackerAlertBaselineReadyRef = useRef(false);
   const tapeSpeedPrimitiveRef = useRef<TapeSpeedOrderFlowBurstPrimitive | null>(null);
   const tapeSpeedAlertIdsRef = useRef(new Set<string>());
   const pocAuctionEngineRef = useRef(new PocAuctionSuiteEngine());
@@ -3834,6 +3840,7 @@ function Chart({
   const [ratioHighlightFrame, setRatioHighlightFrame] = useState<RatioHighlightFrame | null>(null);
   const [stopSpotterFrame, setStopSpotterFrame] = useState<StopSpotterFrame | null>(null);
   const [deepWallFrame, setDeepWallFrame] = useState<DeepWallFrame | null>(null);
+  const [deepVTrackerFrame, setDeepVTrackerFrame] = useState<DeepVTrackerFrame | null>(null);
   const [pocAuctionTooltip, setPocAuctionTooltip] = useState<PocAuctionHit | null>(null);
   const [tapeSpeedTooltip, setTapeSpeedTooltip] = useState<TapeSpeedHit | null>(null);
   const [netGammaProfile, setNetGammaProfile] = useState<NetGammaProfileSnapshot | null>(null);
@@ -5673,6 +5680,10 @@ function Chart({
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "deep-wall") ?? null,
     [indicatorSignature, indicators],
   );
+  const deepVTrackerIndicator = useMemo(
+    () => indicators.find((instance) => instance.enabled && instance.indicatorId === "deep-v-tracker") ?? null,
+    [indicatorSignature, indicators],
+  );
   const cumulativeIcebergStopIndicator = useMemo(
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "cumulative-iceberg-stop") ?? null,
     [indicatorSignature, indicators],
@@ -5861,7 +5872,7 @@ function Chart({
       fontSize: clamp(Math.round(Number(source.ladderFontSize ?? 8)), 6, 14),
     };
   }, [deltaBarIndicator, deltaLadderSide, settings.downColor, settings.gridColor, settings.upColor]);
-  const footprintDataConsumer = footprintIndicator ?? stackedImbalanceIndicator ?? pocAuctionIndicator ?? unfinishedAuctionIndicator ?? barPocIndicator ?? dynamicPocIndicator ?? ratioHighlightIndicator ?? stopSpotterIndicator ?? deepWallIndicator
+  const footprintDataConsumer = footprintIndicator ?? stackedImbalanceIndicator ?? pocAuctionIndicator ?? unfinishedAuctionIndicator ?? barPocIndicator ?? dynamicPocIndicator ?? ratioHighlightIndicator ?? stopSpotterIndicator ?? deepWallIndicator ?? deepVTrackerIndicator
     ?? (deltaLadderSide ? deltaBarIndicator : null);
   const footprintCandles = useMemo(
     () => footprintDataConsumer ? sampledIndicatorCandles.slice(-indicatorHistoryLimit) : [],
@@ -6114,13 +6125,13 @@ function Chart({
     [footprintDataKey, footprintRenderBars],
   );
   const rawPocAuctionBars = useMemo(() => {
-    if ((!pocAuctionIndicator && !unfinishedAuctionIndicator && !dynamicPocIndicator && !ratioHighlightIndicator && !stopSpotterIndicator && !deepWallIndicator) || !footprintSourceCandles.length) return [];
+    if ((!pocAuctionIndicator && !unfinishedAuctionIndicator && !dynamicPocIndicator && !ratioHighlightIndicator && !stopSpotterIndicator && !deepWallIndicator && !deepVTrackerIndicator) || !footprintSourceCandles.length) return [];
     return buildFootprintBarsCached(pocAuctionBuildCacheRef, footprintSourceCandles, footprintMarketTrades, {
       ...footprintBuildSettings,
       groupTicks: 1,
       showEmptyPriceRows: false,
     });
-  }, [deepWallIndicator, dynamicPocIndicator, footprintBuildSettings, footprintMarketTrades, footprintSourceCandles, pocAuctionIndicator, ratioHighlightIndicator, stopSpotterIndicator, unfinishedAuctionIndicator]);
+  }, [deepVTrackerIndicator, deepWallIndicator, dynamicPocIndicator, footprintBuildSettings, footprintMarketTrades, footprintSourceCandles, pocAuctionIndicator, ratioHighlightIndicator, stopSpotterIndicator, unfinishedAuctionIndicator]);
   const rawBarPocBars = useMemo(() => {
     if (!barPocIndicator || !footprintSourceCandles.length) return [];
     const normalized = normalizeBarPocSettings(barPocIndicator.settings);
@@ -6555,6 +6566,19 @@ function Chart({
     const visible = visibleIndicatorTheme(settings);
     return { ...normalized, buyWallColor: visible.positive, sellWallColor: visible.negative };
   }, [deepWallIndicator, settings]);
+  const deepVTrackerSettings = useMemo(() => {
+    const normalized = normalizeDeepVTrackerSettings(deepVTrackerIndicator?.settings);
+    if (!normalized.useThemeColors) return normalized;
+    const visible = visibleIndicatorTheme(settings);
+    return {
+      ...normalized,
+      accelerationColor: visible.secondary,
+      exhaustionColor: visible.negative,
+      slowdownColor: visible.muted,
+      bidColor: visible.negative,
+      askColor: visible.positive,
+    };
+  }, [deepVTrackerIndicator, settings]);
 
   useEffect(() => {
     if (!unfinishedAuctionIndicator) {
@@ -6683,6 +6707,42 @@ function Chart({
       }
     }
   }, [deepWallIndicator, deepWallSettings, instrument, priceFormat.minMove, rawPocAuctionBars]);
+
+  useEffect(() => {
+    if (!deepVTrackerIndicator) {
+      deepVTrackerPrimitiveRef.current?.update(null);
+      deepVTrackerLastReactPublishRef.current = 0;
+      deepVTrackerSeenEventIdsRef.current.clear();
+      deepVTrackerAlertBaselineReadyRef.current = false;
+      setDeepVTrackerFrame(null);
+      return;
+    }
+    const frame = buildDeepVTrackerFrame(rawPocAuctionBars, instrument, priceFormat.minMove, deepVTrackerSettings);
+    deepVTrackerPrimitiveRef.current?.update({ frame, settings: deepVTrackerSettings });
+    const now = performance.now();
+    if (deepVTrackerLastReactPublishRef.current === 0 || now - deepVTrackerLastReactPublishRef.current >= LIVE_INDICATOR_REACT_SUMMARY_INTERVAL_MS) {
+      deepVTrackerLastReactPublishRef.current = now;
+      setDeepVTrackerFrame(frame);
+    }
+    const events = [...frame.patterns, ...frame.levels];
+    const recentCutoff = rawPocAuctionBars.at(-3)?.startTime ?? rawPocAuctionBars.at(-1)?.startTime ?? Number.POSITIVE_INFINITY;
+    if (!deepVTrackerAlertBaselineReadyRef.current) {
+      for (const event of events) deepVTrackerSeenEventIdsRef.current.add(event.id);
+      deepVTrackerAlertBaselineReadyRef.current = true;
+    } else {
+      for (const event of events) {
+        if (deepVTrackerSeenEventIdsRef.current.has(event.id)) continue;
+        deepVTrackerSeenEventIdsRef.current.add(event.id);
+        if (event.timestamp < recentCutoff || (!deepVTrackerSettings.alertSoundEnabled && !deepVTrackerSettings.messagePopupEnabled)) continue;
+        window.dispatchEvent(new CustomEvent("kwantdesk:chart-indicator-alert", { detail: {
+          indicatorId: "deep-v-tracker", instanceId: deepVTrackerIndicator.instanceId, instrument,
+          title: deepVTrackerSettings.messageText || "KWANT V-Tracker",
+          sound: deepVTrackerSettings.alertSoundEnabled ? deepVTrackerSettings.alertTone : null,
+          popup: deepVTrackerSettings.messagePopupEnabled, event,
+        } }));
+      }
+    }
+  }, [deepVTrackerIndicator, deepVTrackerSettings, instrument, priceFormat.minMove, rawPocAuctionBars]);
 
   useEffect(() => {
     if (!pocAuctionIndicator) {
@@ -13666,6 +13726,9 @@ function Chart({
     const deepWallPrimitive = new DeepWallPrimitive();
     candleSeries.attachPrimitive(deepWallPrimitive);
     deepWallPrimitiveRef.current = deepWallPrimitive;
+    const deepVTrackerPrimitive = new DeepVTrackerPrimitive();
+    candleSeries.attachPrimitive(deepVTrackerPrimitive);
+    deepVTrackerPrimitiveRef.current = deepVTrackerPrimitive;
     const tapeSpeedPrimitive = new TapeSpeedOrderFlowBurstPrimitive();
     candleSeries.attachPrimitive(tapeSpeedPrimitive);
     tapeSpeedPrimitiveRef.current = tapeSpeedPrimitive;
@@ -14753,6 +14816,9 @@ function Chart({
         if (candleSeriesRef.current && deepWallPrimitiveRef.current) {
           try { candleSeriesRef.current.detachPrimitive(deepWallPrimitiveRef.current); } catch { /* chart may already be disposed */ }
         }
+        if (candleSeriesRef.current && deepVTrackerPrimitiveRef.current) {
+          try { candleSeriesRef.current.detachPrimitive(deepVTrackerPrimitiveRef.current); } catch { /* chart may already be disposed */ }
+        }
         if (candleSeriesRef.current && tapeSpeedPrimitiveRef.current) {
           try { candleSeriesRef.current.detachPrimitive(tapeSpeedPrimitiveRef.current); } catch { /* chart may already be disposed */ }
         }
@@ -14786,6 +14852,7 @@ function Chart({
       ratioHighlightPrimitiveRef.current = null;
       stopSpotterPrimitiveRef.current = null;
       deepWallPrimitiveRef.current = null;
+      deepVTrackerPrimitiveRef.current = null;
       tapeSpeedPrimitiveRef.current = null;
       netGammaExposurePrimitiveRef.current = null;
       gexIntervalMapPrimitiveRef.current = null;
@@ -17047,6 +17114,12 @@ function Chart({
         <div className="pointer-events-none absolute right-2 z-[72] flex items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur" style={{ top: (pocAuctionIndicator && pocAuctionSettings.showHeader ? 38 : 8) + (unfinishedAuctionIndicator ? 26 : 0) + (barPocIndicator ? 26 : 0) + (dynamicPocIndicator ? 26 : 0) + (ratioHighlightIndicator ? 26 : 0) + (stopSpotterIndicator ? 26 : 0) }} title="Execution-confirmed ES-family passive-wall rejection markers from exact Rithmic volume-at-price">
           <span className={`h-1.5 w-1.5 rounded-full ${!deepWallFrame || deepWallFrame.status === "WAITING_FOR_VOLUME_AT_PRICE" ? "animate-pulse bg-warning" : deepWallFrame.status === "UNSUPPORTED_INSTRUMENT" ? "bg-muted" : "bg-primary"}`} />
           <span className="text-foreground">KWANT Wall</span><span>{deepWallFrame?.status.replaceAll("_", " ") ?? "CALCULATING"}</span><span>{deepWallFrame?.markers.length ?? 0} WALLS</span>
+        </div>
+      ) : null}
+      {deepVTrackerIndicator ? (
+        <div className="pointer-events-none absolute right-2 z-[72] flex items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur" style={{ top: (pocAuctionIndicator && pocAuctionSettings.showHeader ? 38 : 8) + (unfinishedAuctionIndicator ? 26 : 0) + (barPocIndicator ? 26 : 0) + (dynamicPocIndicator ? 26 : 0) + (ratioHighlightIndicator ? 26 : 0) + (stopSpotterIndicator ? 26 : 0) + (deepWallIndicator ? 26 : 0) }} title="Execution-confirmed acceleration, exhaustion, slowdown, absorption and pressure from Rithmic volume-at-price">
+          <span className={`h-1.5 w-1.5 rounded-full ${!deepVTrackerFrame || deepVTrackerFrame.status === "WAITING_FOR_VOLUME_AT_PRICE" ? "animate-pulse bg-warning" : "bg-primary"}`} />
+          <span className="text-foreground">KWANT V-Tracker</span><span>{deepVTrackerFrame?.status.replaceAll("_", " ") ?? "CALCULATING"}</span><span>{deepVTrackerFrame ? deepVTrackerFrame.patterns.length + deepVTrackerFrame.levels.length : 0} SIGNALS</span>
         </div>
       ) : null}
       {pocAuctionTooltip ? (

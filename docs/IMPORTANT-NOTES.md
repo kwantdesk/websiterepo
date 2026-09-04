@@ -297,3 +297,8 @@ recap of the open items below and update this file when their state changes.
   recent high/low and a confirmed rejection; never infer a passive wall from
   an OHLC wick, unclassified volume or a cancellation. Do not claim the
   protected reference formula was copied.
+- KWANT V-Tracker must remain execution-backed. Acceleration, Exhaustion and
+  Slowdown use classified Rithmic participation/delta, while Pressure and
+  Absorption use exact volume-at-price rows; never synthesize them from an
+  OHLC candle. Preserve its explicit `WAITING FOR VOLUME AT PRICE` state, the
+  independently switchable modules and the `PC/PE/AC/AE` invalidation lifecycle.

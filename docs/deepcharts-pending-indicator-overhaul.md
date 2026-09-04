@@ -44,8 +44,8 @@ Legend: `[ ]` not complete, `[~]` in progress, `[x]` complete and addable.
 | 6 | Cumulative Iceberg/Stop | `cumulative-iceberg-stop` | [x] | [x] | [x] | [x] | [x] | Add |
 | 7 | Book Speed | `book-speed` | [x] | [x] | [x] | [x] | [x] | Add |
 | 8 | KWANT Delta | `deep-delta` | [x] | [x] | [x] | [x] | [x] | Add |
-| 9 | KWANT Wall | `deep-wall` | [x] | [x] | [x] | [x] | [~] | Release candidate |
-| 10 | KWANT V-Tracker | `deep-v-tracker` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
+| 9 | KWANT Wall | `deep-wall` | [x] | [x] | [x] | [x] | [x] | Add |
+| 10 | KWANT V-Tracker | `deep-v-tracker` | [x] | [x] | [x] | [x] | [~] | Release candidate |
 | 11 | Custom Draw-On Volume Profile | `custom-draw-on-volume-profile` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
 | 12 | KWANT Profile Swing | `deep-profile-swing` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
 | 13 | KWANT Profile Values | `deep-profile-values` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
@@ -302,7 +302,40 @@ Legend: `[ ]` not complete, `[~]` in progress, `[x]` complete and addable.
   unsupported-instrument and missing-data states are wired.
 - Focused formula, rejection, scope, missing-data and bounds tests pass, as do
   TypeScript, focused lint, templates, theme following, numeric sliders and the
-  full production build. Exact-deployment production QA is the remaining gate.
+  full production build. Commit `763da125` reached Ready as deployment
+  `FihkgZxzX6viWZwFLxGZ6gHkvoaK` on the sole active Vercel project. Cache-busted
+  production QA confirmed Add, an explicit `UNSUPPORTED INSTRUMENT` state on
+  NQ rather than a false wall, the complete General/Input/Style surface,
+  immediate saved state with no false close prompt and clean removal back to
+  11 indicators.
+
+### 10: KWANT V-Tracker
+
+- Official DeepCharts help defines two modules. Patterns detects Acceleration,
+  Exhaustion and Slowdown; Absorption & Pressure draws bid/ask control (`C`)
+  and extreme (`E`) levels. The installed 16.0.9 DLL metadata exposes Weak,
+  Medium and Strong modes for all four detectors, Conservative/Aggressive/
+  Medium level modes, control/extreme widths (0-8), bid/ask colours, text size,
+  Number of Bar, Extend far right and sound/message alerts.
+- The DLL's protected detector body is not inspectable. Quant Desk therefore
+  implements the observable contract without claiming private coefficients:
+  classified Rithmic execution-speed anomalies for Acceleration/Slowdown,
+  failed extremes with fading signed flow for Exhaustion, and exact row-level
+  dominance plus close location for Pressure/Absorption. OHLC-only candles
+  return `WAITING FOR VOLUME AT PRICE` and cannot manufacture a signal.
+- The stock view follows DeepCharts' current recommendation: Acceleration and
+  Absorption/Pressure enabled, Exhaustion and Slowdown available but off to
+  avoid clutter. Pattern fills and `PC/PE/AC/AE` levels render on the price
+  pane, terminate at their configured projection or invalidating close, and
+  can extend to the live edge. Every exposed control has a typed setting,
+  theme/custom colours, slider where numeric, account-synced templates and
+  alerts.
+- Focused behavior, data-refusal, bounds and 20,000-bar linear-performance
+  tests pass, along with TypeScript, focused new-file lint, templates,
+  theme-following, numeric sliders, the shared Rithmic frame budget and the
+  production build. The broad plot-colour test still stops only at its existing
+  unrelated MACD custom-signal assertion. Exact-deployment production QA is
+  the remaining gate.
 
 - Quant Desk already has a tested `PocAuctionSuiteEngine` driven by exact
   execution-classified Footprint rows. It calculates raw-tick unfinished

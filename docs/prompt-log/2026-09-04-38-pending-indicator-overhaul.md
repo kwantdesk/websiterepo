@@ -68,9 +68,20 @@ task until the full pending library is complete, without shortcuts.
   production build pass. Exact-deployment production QA then confirmed live
   NQ 500-volume rendering, mode switching, the complete settings surface,
   immediate saved state, no false close prompt and clean temporary removal,
-  completing item 8. Item 9, **KWANT Wall**, is now a release candidate using
+  completing item 8. Item 9, **KWANT Wall**, uses
   the official ES-focused settings contract and defaults. It requires exact
   Rithmic volume-at-price absorption at a recent extreme plus a confirmed
   rejection, and exposes explicit unsupported/data-wait states, theme/custom
-  markers, alerts, sliders and templates. Focused tests, TypeScript and the
-  production build pass; exact-deployment production QA is the remaining gate.
+  markers, alerts, sliders and templates. Commit `763da125` reached Ready on
+  the sole Vercel project; cache-busted production QA confirmed Add, the NQ
+  unsupported guard, the complete settings surface, immediate save/no false
+  prompt and clean removal, completing item 9. Item 10, **KWANT V-Tracker**, is
+  now a release candidate. Official help and DLL metadata establish the three
+  pattern modes and the Absorption/Pressure control/extreme level contract.
+  The protected coefficients were not copied: the implementation uses exact
+  classified Rithmic execution speed, delta, close location and price-level
+  dominance, refuses OHLC-only data, renders theme-safe price-pane patterns
+  and levels, and exposes all documented modes, projection, far-right,
+  widths, labels, colours, alerts, sliders and synced templates. Focused
+  behavior/bounds/20,000-bar tests and the production build pass; exact
+  deployment QA remains.

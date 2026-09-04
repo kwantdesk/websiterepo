@@ -47,6 +47,11 @@ import {
   normalizeDeepDeltaSettings,
 } from "@/lib/deepDelta";
 import { DEEP_WALL_SETTINGS_VERSION, DEFAULT_DEEP_WALL_SETTINGS, normalizeDeepWallSettings } from "@/lib/deepWall";
+import {
+  DEEP_V_TRACKER_SETTINGS_VERSION,
+  DEFAULT_DEEP_V_TRACKER_SETTINGS,
+  normalizeDeepVTrackerSettings,
+} from "@/lib/deepVTracker";
 
 export const LIVE_CHART_INDICATOR_IDS = new Set([
   "gamma-environment",
@@ -77,6 +82,7 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "book-speed",
   "deep-delta",
   "deep-wall",
+  "deep-v-tracker",
   "cumulative-volume-delta",
   "cvd-divergence",
   "pulling-stacking",
@@ -241,6 +247,13 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "markerWidthBars", label: "Marker width (bars)", defaultValue: 1.6, min: 0.25, max: 12, step: 0.25 },
     { key: "lineWidth", label: "Marker line width", defaultValue: 2, min: 0.5, max: 8, step: 0.5 },
     { key: "opacity", label: "Marker opacity (%)", defaultValue: 92, min: 0, max: 100, step: 1 },
+  ],
+  "deep-v-tracker": [
+    { key: "controlLineWidth", label: "Control level line width", defaultValue: 2, min: 0, max: 8, step: 0.5 },
+    { key: "extremeLineWidth", label: "Extreme level line width", defaultValue: 1, min: 0, max: 8, step: 0.5 },
+    { key: "textSize", label: "Level label size", defaultValue: 10, min: 6, max: 50, step: 0.5 },
+    { key: "projectionBars", label: "Number of bars", defaultValue: 20, min: 1, max: 5000, step: 1 },
+    { key: "patternOpacity", label: "Pattern fill opacity (%)", defaultValue: 32, min: 0, max: 100, step: 1 },
   ],
   "ratio-highlight": [
     { key: "minRatio", label: "Minimum ratio", defaultValue: 10, min: 0, max: 100, step: 0.25 },
@@ -1484,6 +1497,15 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     sellWallColor: theme?.borderDownColor ?? theme?.downColor ?? DEFAULT_DEEP_WALL_SETTINGS.sellWallColor,
     schemaVersion: DEEP_WALL_SETTINGS_VERSION,
   } : {}),
+  ...(indicatorId === "deep-v-tracker" ? {
+    ...DEFAULT_DEEP_V_TRACKER_SETTINGS,
+    accelerationColor: theme?.borderUpColor ?? theme?.upColor ?? DEFAULT_DEEP_V_TRACKER_SETTINGS.accelerationColor,
+    exhaustionColor: theme?.borderDownColor ?? theme?.downColor ?? DEFAULT_DEEP_V_TRACKER_SETTINGS.exhaustionColor,
+    slowdownColor: theme?.gridColor ?? DEFAULT_DEEP_V_TRACKER_SETTINGS.slowdownColor,
+    bidColor: theme?.downColor ?? DEFAULT_DEEP_V_TRACKER_SETTINGS.bidColor,
+    askColor: theme?.upColor ?? DEFAULT_DEEP_V_TRACKER_SETTINGS.askColor,
+    schemaVersion: DEEP_V_TRACKER_SETTINGS_VERSION,
+  } : {}),
   ...(indicatorId === "tape-speed-order-flow-burst" ? {
     ...DEFAULT_TAPE_SPEED_SETTINGS,
     buyColor: theme?.upColor ?? DEFAULT_TAPE_SPEED_SETTINGS.buyColor,
@@ -2680,6 +2702,10 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
   if (normalizedInstance.indicatorId === "deep-wall") {
     const defaults = defaultIndicatorSettings("deep-wall");
     return { ...normalizedInstance, settings: { ...defaults, ...normalizeDeepWallSettings({ ...defaults, ...(normalizedInstance.settings ?? {}) }) } };
+  }
+  if (normalizedInstance.indicatorId === "deep-v-tracker") {
+    const defaults = defaultIndicatorSettings("deep-v-tracker");
+    return { ...normalizedInstance, settings: { ...defaults, ...normalizeDeepVTrackerSettings({ ...defaults, ...(normalizedInstance.settings ?? {}) }) } };
   }
   if (normalizedInstance.indicatorId === "tape-speed-order-flow-burst") {
     return {

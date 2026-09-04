@@ -459,6 +459,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "book-speed",
   "deep-delta",
   "deep-wall",
+  "deep-v-tracker",
   "moving-average",
   "vwap",
   "vwap-envelopes",
@@ -708,6 +709,16 @@ const themeColourMapFor = (indicatorId: string, chartSettings: ChartSettings) =>
   if (indicatorId === "deep-wall") {
     const visible = visibleIndicatorTheme(chartSettings);
     return { buyWallColor: visible.positive, sellWallColor: visible.negative } as Record<string, string>;
+  }
+  if (indicatorId === "deep-v-tracker") {
+    const visible = visibleIndicatorTheme(chartSettings);
+    return {
+      accelerationColor: visible.secondary,
+      exhaustionColor: visible.negative,
+      slowdownColor: visible.muted,
+      bidColor: visible.negative,
+      askColor: visible.positive,
+    } as Record<string, string>;
   }
   // Big Contracts and Big Blocks paint their two sides from the theme's up and
   // down colours (see the primitive updates in Chart.tsx), so the swatches must
@@ -6755,6 +6766,30 @@ export default function ChartIndicatorsControl({
                   })}
                   <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2"><span>Popup message</span><input type="text" maxLength={160} value={String(settingsInstance.settings?.messageText ?? "KWANT Wall")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), messageText: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none" /></label>
                   <p className="text-[8px] leading-4 text-muted sm:col-span-2">ES-family only, matching the reference scope. A marker requires classified Rithmic executions concentrated at a recent high or low, the configured extreme-side delta and cluster volume, then a confirmed rejection. It never treats a cancellation or an OHLC wick as an executed wall.</p>
+                </div>
+              ) : null}
+
+              {settingsDefinition.id === "deep-v-tracker" ? (
+                <div className="grid gap-3 border border-primary/20 bg-primary/[0.035] p-3 sm:grid-cols-2">
+                  {[
+                    ["Acceleration", "accelerationEnabled", "accelerationMode"],
+                    ["Exhaustion", "exhaustionEnabled", "exhaustionMode"],
+                    ["Slowdown", "slowdownEnabled", "slowdownMode"],
+                  ].map(([label, enabledKey, modeKey]) => {
+                    const on = settingsInstance.settings?.[enabledKey] === true;
+                    return <Fragment key={enabledKey}>
+                      <button type="button" aria-pressed={on} onClick={() => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [enabledKey]: !on } }))} className="flex h-9 items-center justify-between border border-border bg-background px-3 text-[9px] uppercase tracking-[0.1em] text-muted"><span>{label}</span><span className={on ? "text-primary" : "text-muted"}>{on ? "On" : "Off"}</span></button>
+                      <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"><span>{label} mode</span><KwantSelect value={String(settingsInstance.settings?.[modeKey] ?? (label === "Acceleration" ? "strong" : "medium"))} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [modeKey]: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel={`KWANT V-Tracker ${label.toLowerCase()} mode`}><option value="weak">Weak</option><option value="medium">Medium</option><option value="strong">Strong</option></KwantSelect></label>
+                    </Fragment>;
+                  })}
+                  <button type="button" aria-pressed={settingsInstance.settings?.absorptionPressureEnabled !== false} onClick={() => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), absorptionPressureEnabled: current.settings?.absorptionPressureEnabled === false } }))} className="flex h-9 items-center justify-between border border-border bg-background px-3 text-[9px] uppercase tracking-[0.1em] text-muted"><span>Absorption &amp; Pressure</span><span className={settingsInstance.settings?.absorptionPressureEnabled !== false ? "text-primary" : "text-muted"}>{settingsInstance.settings?.absorptionPressureEnabled !== false ? "On" : "Off"}</span></button>
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"><span>Intensity</span><KwantSelect value={String(settingsInstance.settings?.absorptionIntensity ?? "medium")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), absorptionIntensity: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel="KWANT V-Tracker absorption intensity"><option value="weak">Weak</option><option value="medium">Medium</option><option value="strong">Strong</option></KwantSelect></label>
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"><span>Level mode</span><KwantSelect value={String(settingsInstance.settings?.levelMode ?? "medium")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), levelMode: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel="KWANT V-Tracker level mode"><option value="conservative">Conservative</option><option value="medium">Medium</option><option value="aggressive">Aggressive</option></KwantSelect></label>
+                  <button type="button" aria-pressed={settingsInstance.settings?.extendFarRight === true} onClick={() => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), extendFarRight: current.settings?.extendFarRight !== true } }))} className="flex h-9 items-center justify-between border border-border bg-background px-3 text-[9px] uppercase tracking-[0.1em] text-muted"><span>Extend far right</span><span className={settingsInstance.settings?.extendFarRight === true ? "text-primary" : "text-muted"}>{settingsInstance.settings?.extendFarRight === true ? "On" : "Off"}</span></button>
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"><span>Alert tone</span><KwantSelect value={String(settingsInstance.settings?.alertTone ?? "chime")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), alertTone: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel="KWANT V-Tracker alert tone"><option value="chime">Chime</option><option value="bell">Bell</option><option value="pulse">Pulse</option></KwantSelect></label>
+                  {[['Alert sound', 'alertSoundEnabled'], ['Message popup', 'messagePopupEnabled']].map(([label, key]) => { const on = settingsInstance.settings?.[key] === true; return <button key={key} type="button" aria-pressed={on} onClick={() => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [key]: !on } }))} className="flex h-9 items-center justify-between border border-border bg-background px-3 text-[9px] uppercase tracking-[0.1em] text-muted"><span>{label}</span><span className={on ? "text-primary" : "text-muted"}>{on ? "On" : "Off"}</span></button>; })}
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2"><span>Popup message</span><input type="text" maxLength={160} value={String(settingsInstance.settings?.messageText ?? "KWANT V-Tracker")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), messageText: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none" /></label>
+                  <p className="text-[8px] leading-4 text-muted sm:col-span-2">Signals require classified Rithmic executions. Acceleration and Slowdown compare execution speed with an adaptive participation baseline; Exhaustion requires a failed extreme with fading signed flow. Pressure and Absorption use exact price-level volume and invalidate on a close beyond the extreme.</p>
                 </div>
               ) : null}
 
