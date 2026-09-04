@@ -45,4 +45,3 @@ export function chartAnchoredEmojiScreenSize(input: EmojiScreenSizeInput) {
   const scaleAtReference = Math.min(...candidates);
   return Math.max(2, Math.min(320, scaleAtReference * nominalSize / referenceSize));
 }
-

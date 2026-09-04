@@ -15,7 +15,6 @@ const sizeAt = (pixelsPerTime, pixelsPerPrice, nominalSize = 36) => chartAnchore
   toX: (time) => 400 + (time - 1_000) * pixelsPerTime,
   toY: (price) => 300 - (price - 100) * pixelsPerPrice,
 });
-
 test("emoji keeps its placed size at the reference chart scale", () => {
   assert.equal(sizeAt(1, 1), 36);
 });
@@ -40,4 +39,3 @@ test("legacy emoji remains visible until the chart layer captures its scale", ()
     toY: () => null,
   }), 48);
 });
-
