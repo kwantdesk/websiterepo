@@ -189,4 +189,10 @@ task until the full pending library is complete, without shortcuts.
   Focused rule, offset, advanced-expression and data-refusal tests pass;
   the first production QA caught the renderer release gate missing even though
   the live-engine gate was present. That separate allowlist is now covered by
-  the focused regression and corrected; final production QA remains.
+  the focused regression and corrected. Commit `874d727e` reached Ready on the
+  sole production project. Cache-busted production QA confirmed all six final
+  rows expose enabled Add controls. Pattern Builder additionally passed the
+  complete UI lifecycle: add, full Rules editor, immediate UNSAVED CHANGES,
+  Save returning immediately to ALL CHANGES SAVED, reload persistence, and
+  clean removal of the temporary QA instance. The original 21-row frozen
+  pending inventory is therefore complete and addable.

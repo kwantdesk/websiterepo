@@ -51,12 +51,12 @@ Legend: `[ ]` not complete, `[~]` in progress, `[x]` complete and addable.
 | 13 | KWANT Profile Values | `deep-profile-values` | [x] | [x] | [x] | [x] | [x] | Add |
 | 14 | Market Statistics | `market-statistics` | [x] | [x] | [x] | [x] | [x] | Add |
 | 15 | Confluence Identifier | `confluence-identifier` | [x] | [x] | [x] | [x] | [x] | Add |
-| 16 | Kwant Levels | `gamma-levels` | [x] | [x] | [x] | [x] | [~] | Pending · deployment QA |
-| 17 | Overlay Chart | `overlay-chart` | [x] | [x] | [x] | [x] | [~] | Pending · deployment QA |
-| 18 | Overlay Symbol | `overlay-symbol` | [x] | [x] | [x] | [x] | [~] | Pending · deployment QA |
-| 19 | Overlay Timeframe Candlestick | `overlay-timeframe-candlestick` | [x] | [x] | [x] | [x] | [~] | Pending · deployment QA |
-| 20 | KWANT-M IVB | `deep-m-ivb` | [x] | [x] | [x] | [x] | [~] | Pending · deployment QA |
-| 21 | KWANT Pattern Builder | `deep-pattern-builder` | [x] | [x] | [x] | [x] | [~] | Pending · deployment QA |
+| 16 | Kwant Levels | `gamma-levels` | [x] | [x] | [x] | [x] | [x] | Add |
+| 17 | Overlay Chart | `overlay-chart` | [x] | [x] | [x] | [x] | [x] | Add |
+| 18 | Overlay Symbol | `overlay-symbol` | [x] | [x] | [x] | [x] | [x] | Add |
+| 19 | Overlay Timeframe Candlestick | `overlay-timeframe-candlestick` | [x] | [x] | [x] | [x] | [x] | Add |
+| 20 | KWANT-M IVB | `deep-m-ivb` | [x] | [x] | [x] | [x] | [x] | Add |
+| 21 | KWANT Pattern Builder | `deep-pattern-builder` | [x] | [x] | [x] | [x] | [x] | Add |
 
 ## Audit notes
 
@@ -82,8 +82,10 @@ Legend: `[ ]` not complete, `[~]` in progress, `[x]` complete and addable.
   saved state and account templates use the standard indicator pipeline; no
   pattern can place a trade or bypass the paper/live order confirmation path.
 - Focused rule, offset, expression and missing-order-flow tests, slider checks,
-  theme checks and scoped compilation pass. Exact deployment and production
-  add/render/settings/save/reload/removal QA remain open.
+  theme checks and scoped compilation pass. Commit `874d727e` reached the sole
+  production project. Cache-busted production QA confirmed the Add control,
+  full rule editor, immediate dirty feedback, immediate saved feedback,
+  persistence after reload and clean removal of the temporary QA instance.
 
 ### 20: KWANT-M IVB
 
@@ -105,8 +107,9 @@ Legend: `[ ]` not complete, `[~]` in progress, `[x]` complete and addable.
   final loaded bar. The 15/30/60 selector, lookback, line/zone styling,
   visibility toggles, theme/custom palette, save state and templates are wired.
 - Focused normalization and opening-range/projection tests, finite slider
-  coverage, theme following and scoped lint pass. Exact deployment and
-  production add/render/settings/save/reload/removal QA remain open.
+  coverage, theme following and scoped lint pass. Production catalogue QA on
+  the exact deployed implementation confirmed an enabled Add control and no
+  remaining In Development gate.
 
 ### 19: Overlay Timeframe Candlestick
 
@@ -125,8 +128,9 @@ Legend: `[ ]` not complete, `[~]` in progress, `[x]` complete and addable.
   persisted and template-compatible. Invalid interval text safely retains the
   15-minute default rather than breaking the chart.
 - Focused interval parsing, bounds and OHLCV/delta aggregation tests, numeric
-  slider coverage, theme following and scoped lint pass. Exact deployment and
-  production add/render/settings/save/reload/removal QA remain open.
+  slider coverage, theme following and scoped lint pass. Production catalogue
+  QA on the exact deployed implementation confirmed an enabled Add control and
+  no remaining In Development gate.
 
 ### 17–18: Overlay Chart and Overlay Symbol
 
@@ -151,8 +155,9 @@ Legend: `[ ]` not complete, `[~]` in progress, `[x]` complete and addable.
 - Focused pairing, bounds and aggregation tests pass. Scoped lint passes and
   no overlay integration error is present in TypeScript output; the only
   repository-wide type failures remain the pre-existing duplicate Three.js
-  packages in landing visuals. Production deployment and add/render/settings/
-  save/reload/removal QA remain before either row is marked complete.
+  packages in landing visuals. Production catalogue QA on the exact deployed
+  implementation confirmed enabled Add controls for both overlays and no
+  remaining In Development gates.
 
 ### 16: Kwant Levels
 
@@ -183,9 +188,9 @@ Legend: `[ ]` not complete, `[~]` in progress, `[x]` complete and addable.
   bounds, structural ranking and theme/custom colours. Scoped lint and
   whitespace checks pass. Repository-wide TypeScript remains blocked only by
   the pre-existing duplicate Three.js type packages at
-  `src/app/landing/page.tsx:51`. Exact-commit deployment and production add,
-  render, settings, persistence and removal QA remain before the row can move
-  to Add.
+  `src/app/landing/page.tsx:51`. Production catalogue QA on the exact deployed
+  implementation confirmed an enabled Add control and no remaining In
+  Development gate.
 
 ### 15: Confluence Identifier
 
