@@ -565,7 +565,8 @@ function bigTradeModeFor(
   return {};
 }
 
-function titleFromKey(key: string) {
+function titleFromKey(key: string, indicatorId?: string) {
+  if (indicatorId === "session-highs-lows" && key === "showTokyo") return "Show Asia";
   return key
     .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
     .replace(/[-_]+/g, " ")
@@ -6508,13 +6509,13 @@ export default function ChartIndicatorsControl({
                           }))}
                           className="accent-primary"
                         />
-                        <span>{titleFromKey(key)}</span>
+                        <span>{titleFromKey(key, settingsDefinition.id)}</span>
                       </label>
                     ) : (
                       <div key={key} className="flex min-h-10 items-center justify-between gap-2 rounded-lg border border-border bg-surface/30 px-3 text-[9px] text-muted">
-                        <span className="truncate">{titleFromKey(key)}</span>
+                        <span className="truncate">{titleFromKey(key, settingsDefinition.id)}</span>
                         <ChartColorField
-                          ariaLabel={`${titleFromKey(key)} colour`}
+                          ariaLabel={`${titleFromKey(key, settingsDefinition.id)} colour`}
                           disabled={gradientLocked}
                           title={gradientLocked
                             ? "The gradient scheme owns this colour. Set the scheme to Off to pick colours individually."

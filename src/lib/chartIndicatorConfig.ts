@@ -1757,40 +1757,35 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     labelSize: "small",
   } : {}),
   ...(indicatorId === "session-highs-lows" ? {
+    showGlobex: true,
     showTokyo: true,
     showLondon: true,
     showNewYork: true,
-    showSydney: false,
-    tokyoLabel: "Tokyo",
+    globexLabel: "Globex",
+    tokyoLabel: "Asia",
     londonLabel: "London",
     newYorkLabel: "New York",
-    sydneyLabel: "Sydney",
-    tokyoStart: "09:00",
-    tokyoEnd: "18:00",
-    londonStart: "08:00",
-    londonEnd: "17:00",
-    newYorkStart: "09:00",
-    newYorkEnd: "18:00",
-    sydneyStart: "08:00",
-    sydneyEnd: "17:00",
-    tokyoColor: "#FF9900",
-    londonColor: "#4CAF50",
-    newYorkColor: "#2196F3",
-    sydneyColor: "#A461BB",
-    followSessionsStudy: true,
-    showPrevious1: true,
-    showPrevious2: true,
-    showPrevious3: true,
+    // Exchange-time session contract, matching the established DeepChart
+    // futures windows used by KwantDesk's profile studies.
+    globexTimezone: "America/Chicago",
+    tokyoTimezone: "America/Chicago",
+    londonTimezone: "America/Chicago",
+    newYorkTimezone: "America/Chicago",
+    globexStart: "17:00",
+    globexEnd: "16:00",
+    tokyoStart: "17:00",
+    tokyoEnd: "02:00",
+    londonStart: "02:00",
+    londonEnd: "10:00",
+    newYorkStart: "08:30",
+    newYorkEnd: "15:00",
     showHighs: true,
     showLows: true,
     showLabels: true,
     hideWeekends: true,
-    useSessionColors: true,
-    highColor: theme?.upColor ?? "#22C55E",
-    lowColor: theme?.downColor ?? "#EF4444",
     lineStyle: "dashed",
     labelSize: "small",
-    sessionHighLowSettingsVersion: 1,
+    sessionHighLowSettingsVersion: 2,
   } : {}),
   ...(indicatorId === "ib-levels" ? {
     durationMinutes: 60,
@@ -3177,6 +3172,57 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
       useThemeColors: settings.useThemeColors === true,
       vixEnvironmentSettingsVersion: 1,
     });
+    return { ...normalizedInstance, settings };
+  }
+  if (normalizedInstance.indicatorId === "session-highs-lows") {
+    const settings: Record<string, number | string | boolean> = {
+      ...defaultIndicatorSettings("session-highs-lows"),
+      ...(normalizedInstance.settings ?? {}),
+    };
+    // This is a named four-session futures study, not a colour-linked copy of
+    // the separate Sessions overlay. Force legacy workspaces onto the same
+    // institutional contract so Tokyo/Sydney labels and saved random colours
+    // cannot survive a theme change.
+    const legacyContract = Number(normalizedInstance.settings?.sessionHighLowSettingsVersion ?? 0) < 2;
+    Object.assign(settings, {
+      ...(legacyContract ? {
+        showGlobex: true,
+        showTokyo: true,
+        showLondon: true,
+        showNewYork: true,
+      } : {}),
+      globexLabel: "Globex",
+      tokyoLabel: "Asia",
+      londonLabel: "London",
+      newYorkLabel: "New York",
+      globexTimezone: "America/Chicago",
+      tokyoTimezone: "America/Chicago",
+      londonTimezone: "America/Chicago",
+      newYorkTimezone: "America/Chicago",
+      globexStart: "17:00",
+      globexEnd: "16:00",
+      tokyoStart: "17:00",
+      tokyoEnd: "02:00",
+      londonStart: "02:00",
+      londonEnd: "10:00",
+      newYorkStart: "08:30",
+      newYorkEnd: "15:00",
+      sessionHighLowSettingsVersion: 2,
+    });
+    for (const obsoleteKey of [
+      "showSydney", "sydneyLabel", "sydneyStart", "sydneyEnd", "sydneyColor",
+      "globexColor", "tokyoColor", "londonColor", "newYorkColor",
+      "highColor", "lowColor", "useThemeColors", "useSessionColors", "followSessionsStudy",
+      "showPrevious1", "showPrevious2", "showPrevious3",
+    ]) delete settings[obsoleteKey];
+    for (const definition of INDICATOR_NUMERIC_SETTINGS["session-highs-lows"] ?? []) {
+      const parsed = Number(settings[definition.key]);
+      settings[definition.key] = Math.min(
+        definition.max,
+        Math.max(definition.min, Number.isFinite(parsed) ? parsed : definition.defaultValue),
+      );
+    }
+    if (!["solid", "dashed", "dotted"].includes(String(settings.lineStyle))) settings.lineStyle = "dashed";
     return { ...normalizedInstance, settings };
   }
   if (normalizedInstance.indicatorId === "ib-levels") {

@@ -863,6 +863,7 @@ type SessionHighLowRenderLevel = {
   lineStyle: "solid" | "dashed" | "dotted";
   fontSize: number;
   precision: number;
+  showPriceInLabel?: boolean;
   // "start" keeps the label beside the wick that formed the level (session
   // high/low behaviour). "end" pins it to the right end of the line — the
   // screen edge for forward levels — which is where IB and IB-fib labels
@@ -932,7 +933,9 @@ class SessionHighLowRenderer implements ISeriesPrimitivePaneRenderer {
           ? endX > this.primitive.leftInset()
           : rawX >= -8 && rawX < mediaSize.width - 8;
         if (level.label && labelVisible) {
-          const labelText = `${level.label} ${level.price.toFixed(level.precision)}`;
+          const labelText = level.showPriceInLabel === false
+            ? level.label
+            : `${level.label} ${level.price.toFixed(level.precision)}`;
           context.setLineDash([]);
           context.font = `700 ${level.fontSize}px 'JetBrains Mono', monospace`;
           // Keep the label attached to the wick that created the level. If the
@@ -10736,21 +10739,8 @@ function Chart({
   );
   const sessionHighLowSettings = useMemo(() => {
     const own = sessionHighLowIndicator?.settings ?? {};
-    if (!sessionHighLowIndicator || own.followSessionsStudy === false || !sessionsIndicator) return own;
-    const linked = sessionsIndicator.settings ?? {};
-    const keys = [
-      "showTokyo", "showLondon", "showNewYork", "showSydney",
-      "tokyoLabel", "tokyoStart", "tokyoEnd", "tokyoColor",
-      "londonLabel", "londonStart", "londonEnd", "londonColor",
-      "newYorkLabel", "newYorkStart", "newYorkEnd", "newYorkColor",
-      "sydneyLabel", "sydneyStart", "sydneyEnd", "sydneyColor",
-      "hideWeekends",
-    ] as const;
-    return keys.reduce<Record<string, number | string | boolean>>((result, key) => {
-      if (linked[key] !== undefined) result[key] = linked[key]!;
-      return result;
-    }, { ...own });
-  }, [sessionHighLowIndicator, sessionsIndicator]);
+    return own;
+  }, [sessionHighLowIndicator]);
   const initialBalanceSettings = useMemo(() => {
     const own = initialBalanceIndicator?.settings ?? {};
     if (!initialBalanceIndicator || own.followSessionsStudy !== true || !sessionsIndicator) return own;
@@ -10799,7 +10789,7 @@ function Chart({
     [candleIntervalMs, indicatorCandles, initialBalanceCandles, initialBalanceIndicator, initialBalanceSettings],
   );
   const sessionHighLowRenderData = useMemo<SessionHighLowRenderLevel[]>(() => {
-    const useSessionColors = sessionHighLowSettings.useSessionColors !== false;
+    const sessionTheme = visibleIndicatorTheme(settings);
     const opacity = clamp(Number(sessionHighLowSettings.lineOpacity ?? 82) / 100, 0.05, 1);
     const labelSize = String(sessionHighLowSettings.labelSize ?? "small");
     const fontSize = labelSize === "tiny" ? 8 : labelSize === "normal" ? 11 : 9;
@@ -10816,16 +10806,16 @@ function Chart({
       ) as Time,
       price: level.price,
       label: sessionHighLowSettings.showLabels === false ? "" : level.label,
-      color: useSessionColors
-        ? level.session.color
-        : level.side === "high"
-          ? String(sessionHighLowSettings.highColor ?? settings.upColor)
-          : String(sessionHighLowSettings.lowColor ?? settings.downColor),
+      color: level.side === "high" ? sessionTheme.positive : sessionTheme.negative,
       opacity,
       lineWidth: clamp(Number(sessionHighLowSettings.lineWidth ?? 1), 1, 4),
       lineStyle,
       fontSize,
       precision: priceFormat.precision,
+      // The session name is the chart annotation; price is already encoded by
+      // the line and axis. This deliberately removes legacy "P3" and numeric
+      // suffixes so the result reads simply "Asia High", for example.
+      showPriceInLabel: false,
     }));
     const ibOpacity = clamp(Number(initialBalanceSettings.lineOpacity ?? 88) / 100, 0.05, 1);
     const ibLabelSize = String(initialBalanceSettings.labelSize ?? "small");
@@ -10931,6 +10921,10 @@ function Chart({
     priceFormat.precision,
     sessionHighLowSettings,
     settings.downColor,
+    settings.borderDownColor,
+    settings.borderUpColor,
+    settings.backgroundColor,
+    settings.gridColor,
     settings.upColor,
   ]);
   sessionHighLowRenderDataRef.current = sessionHighLowRenderData;

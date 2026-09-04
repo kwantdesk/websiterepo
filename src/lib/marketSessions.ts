@@ -22,7 +22,6 @@ export type MarketSessionWindow = MarketSessionDefinition & {
 
 export type PreviousSessionHighLowLevel = {
   id: string;
-  rank: 1 | 2 | 3;
   side: "high" | "low";
   session: MarketSessionWindow;
   price: number;
@@ -105,15 +104,18 @@ export function resolveMarketSessions(settings: SessionSettings) {
   return DEFAULT_MARKET_SESSIONS.map((session) => ({
     ...session,
     label: String(settings[`${session.key}Label`] ?? session.label),
+    timezone: String(settings[`${session.key}Timezone`] ?? session.timezone),
     start: String(settings[`${session.key}Start`] ?? session.start),
     end: String(settings[`${session.key}End`] ?? session.end),
     color: String(settings[`${session.key}Color`] ?? session.color),
   })).filter((session) => {
     const visibility = settings[`show${session.key[0].toUpperCase()}${session.key.slice(1)}`];
-    // Globex is an IB-specific addition. Keep it opt-in so the existing
-    // Sessions and Previous Session studies do not unexpectedly gain a fifth
-    // overlapping session when their saved settings are restored.
-    return session.key === "globex" ? visibility === true : visibility !== false;
+    // Globex and legacy Sydney are opt-in. This lets each study declare the
+    // exact session set it owns and prevents a missing old saved key from
+    // silently adding an overlapping range after restoration.
+    return session.key === "globex" || session.key === "sydney"
+      ? visibility === true
+      : visibility !== false;
   });
 }
 
@@ -214,34 +216,38 @@ export function buildPreviousSessionHighLowLevels(
   }, intervalMs)
     .filter((session) => session.endTimestamp <= latestTimestamp)
     .sort((left, right) =>
-      right.endTimestamp - left.endTimestamp || right.startTimestamp - left.startTimestamp)
-    .slice(0, 3);
+      right.endTimestamp - left.endTimestamp || right.startTimestamp - left.startTimestamp);
 
-  return completed.flatMap((session, index) => {
-    const rank = (index + 1) as 1 | 2 | 3;
-    if (settings[`showPrevious${rank}`] === false) return [];
-    const prefix = `P${rank} ${session.label}`;
+  // One authoritative set per enabled market session. The old implementation
+  // took the latest three windows across every session, which meant one of the
+  // four named sessions was always absent and the result changed identity as
+  // the day progressed. Keep the latest completed occurrence of each enabled
+  // session instead: Globex, Asia, London and New York can all be read at once.
+  const latestBySession = new Map<MarketSessionDefinition["key"], MarketSessionWindow>();
+  for (const session of completed) {
+    if (!latestBySession.has(session.key)) latestBySession.set(session.key, session);
+  }
+
+  return [...latestBySession.values()].flatMap((session) => {
     const levels: PreviousSessionHighLowLevel[] = [];
     if (settings.showHighs !== false) {
       levels.push({
         id: `${session.key}-${session.startTimestamp}-high`,
-        rank,
         side: "high",
         session,
         price: session.high,
         startTimestamp: session.highTimestamp,
-        label: `${prefix} High`,
+        label: `${session.label} High`,
       });
     }
     if (settings.showLows !== false) {
       levels.push({
         id: `${session.key}-${session.startTimestamp}-low`,
-        rank,
         side: "low",
         session,
         price: session.low,
         startTimestamp: session.lowTimestamp,
-        label: `${prefix} Low`,
+        label: `${session.label} Low`,
       });
     }
     return levels;

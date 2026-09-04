@@ -1805,3 +1805,17 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
   rail or legacy `Chart.tsx` toolbar.
 - Audit: `docs/deepcharts-vwap-family-audit.md`. Prompt outcome:
   `docs/prompt-log/2026-09-04-26-vwap-family-overhaul.md`.
+
+## 2026-09-04 — Session Highs & Lows contract
+
+- The study owns four DST-aware Chicago exchange-time windows: Globex
+  17:00–16:00, Asia 17:00–02:00, London 02:00–10:00 and New York
+  08:30–15:00. Do not relabel Sydney or a Tokyo-local window as either Globex
+  or the defined Asia window.
+- Draw the latest completed high and low for every enabled named session. The
+  chart labels are names only (`Asia High`, for example): no `P1/P2/P3` rank
+  and no numeric price suffix.
+- Session Highs & Lows colours always come from `visibleIndicatorTheme` for
+  the current chart. Do not restore the old Sessions-study colour link or
+  persisted per-session swatches.
+- Prompt outcome: `docs/prompt-log/2026-09-04-27-session-highs-lows.md`.
