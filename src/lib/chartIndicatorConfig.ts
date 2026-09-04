@@ -220,6 +220,9 @@ export function resolveDailyVolumeProfileCount(value: unknown): number {
 }
 
 export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[]> = {
+  "volume": [
+    { key: "minimumTotalVolume", label: "Minimum total volume", defaultValue: 0, min: 0, max: 10000000, step: 1 },
+  ],
   "stop-spotter": [
     { key: "minimumDeltaPercent", label: "Minimum delta (%)", defaultValue: 25, min: 0, max: 100, step: 1 },
     { key: "minimumVolume", label: "Minimum volume", defaultValue: 1500, min: 0, max: 1000000, step: 50 },
@@ -1463,6 +1466,11 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
   ...Object.fromEntries(
     (INDICATOR_NUMERIC_SETTINGS[indicatorId] ?? []).map((setting) => [setting.key, setting.defaultValue]),
   ),
+  ...(indicatorId === "volume" ? {
+    backgroundMode: "dominant",
+    deltaInputData: "volume",
+    useThemeColors: true,
+  } : {}),
   ...(["vwap", "vwap-envelopes", "rolling-vwap"].includes(indicatorId) ? {
     source: "hlc3",
     periodMode: indicatorId === "rolling-vwap" ? "bars" : "days",

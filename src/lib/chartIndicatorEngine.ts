@@ -245,7 +245,12 @@ function orderFlowAvailable(candles: Candle[]) {
 // studies must vanish honestly on such feeds instead of silently degrading
 // (e.g. VWAP collapsing into a typical-price line), which would be fake data.
 function volumeAvailable(candles: Candle[]) {
-  return candles.some((candle) => Number.isFinite(Number(candle.volume)) && Number(candle.volume) > 0);
+  return candles.some((candle) => {
+    const reported = Number(candle.volume);
+    const classified = Number(candle.askVolume ?? 0) + Number(candle.bidVolume ?? 0);
+    return (Number.isFinite(reported) && reported > 0)
+      || (Number.isFinite(classified) && classified > 0);
+  });
 }
 
 export function calculateDeltaPercentHighlights(
@@ -355,17 +360,50 @@ function computeIndicatorSeries(
 
   if (key === "volume") {
     if (!volumeAvailable(candles)) return [];
+    const backgroundMode = settingString(instance, "backgroundMode", "dominant");
+    const deltaInputData = settingString(instance, "deltaInputData", "volume");
+    const minimumTotalVolume = Math.max(0, settingNumber(instance, "minimumTotalVolume", 0));
+    let previousVolume: number | null = null;
+    let previousClose: number | null = null;
     return [{
       key,
       label: "Volume",
       kind: "histogram",
       placement: "pane",
       color: theme.muted,
-      data: candles.map((candle) => ({
-        time: candle.timestamp / 1000,
-        value: Math.max(0, finite(candle.volume)),
-        color: candle.close >= candle.open ? theme.positive : theme.negative,
-      })),
+      data: candles.flatMap((candle) => {
+        const reportedVolume = Math.max(0, finite(candle.volume));
+        const askVolume = Math.max(0, finite(candle.askVolume));
+        const bidVolume = Math.max(0, finite(candle.bidVolume));
+        const classifiedVolume = askVolume + bidVolume;
+        // Rithmic's total-volume field remains authoritative. The side sum is
+        // only a safe repair when the total is absent; taking max(total, sides)
+        // double-counts feeds whose side classification and total differ.
+        const value = reportedVolume > 0 ? reportedVolume : classifiedVolume;
+        const priorVolume = previousVolume;
+        const priorClose = previousClose;
+        previousVolume = value;
+        previousClose = finite(candle.close);
+        if (value < minimumTotalVolume) return [];
+
+        let color = theme.muted;
+        if (backgroundMode === "price-slope" && priorClose !== null) {
+          color = finite(candle.close) >= priorClose ? theme.positive : theme.negative;
+        } else if (backgroundMode === "volume-slope" && priorVolume !== null) {
+          color = value >= priorVolume ? theme.positive : theme.negative;
+        } else if (backgroundMode === "dominant") {
+          const ask = deltaInputData === "trades"
+            ? Math.max(0, finite(candle.askTrades))
+            : askVolume;
+          const bid = deltaInputData === "trades"
+            ? Math.max(0, finite(candle.bidTrades))
+            : bidVolume;
+          // No execution-side history means neutral, not a made-up signal
+          // from candle direction. DeepCharts defines Dominant from delta.
+          if (ask + bid > 0) color = ask >= bid ? theme.positive : theme.negative;
+        }
+        return [{ time: candle.timestamp / 1000, value, color }];
+      }),
     }];
   }
 

@@ -7258,6 +7258,46 @@ export default function ChartIndicatorsControl({
                 }))}
               />
 
+              {settingsDefinition.id === "volume" ? (
+                <div data-settings-section="General" className="grid gap-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                    <span>Background mode</span>
+                    <KwantSelect
+                      value={String(settingsInstance.settings?.backgroundMode ?? "dominant")}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                        ...current,
+                        settings: { ...(current.settings ?? {}), backgroundMode: event.target.value },
+                      }))}
+                      className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                      menuLabel="Volume background mode"
+                    >
+                      <option value="dominant">Dominant delta</option>
+                      <option value="fixed">Fixed</option>
+                      <option value="volume-slope">Volume slope</option>
+                      <option value="price-slope">Price slope</option>
+                    </KwantSelect>
+                  </label>
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                    <span>Delta input data</span>
+                    <KwantSelect
+                      value={String(settingsInstance.settings?.deltaInputData ?? "volume")}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                        ...current,
+                        settings: { ...(current.settings ?? {}), deltaInputData: event.target.value },
+                      }))}
+                      className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                      menuLabel="Volume delta input data"
+                    >
+                      <option value="volume">Executed volume</option>
+                      <option value="trades">Trade count</option>
+                    </KwantSelect>
+                  </label>
+                  <p className="text-[8px] leading-4 text-muted sm:col-span-2">
+                    Dominant uses Rithmic executed bid/ask delta. Bars without verified side data stay neutral; price direction is never substituted for order flow.
+                  </p>
+                </div>
+              ) : null}
+
               {/*
                 * Colours, for any indicator that declares what it paints.
                 *

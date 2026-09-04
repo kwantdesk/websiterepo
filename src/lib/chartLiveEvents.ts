@@ -55,16 +55,59 @@ export function mergeLiveIndicatorCandle(
 
   const liveVolume = Math.max(0, Number(liveCandle.volume ?? 0));
   const previousVolume = Math.max(0, Number(last.volume ?? 0));
+  const askVolume = Math.max(
+    Math.max(0, Number(last.askVolume ?? 0)),
+    Math.max(0, Number(liveCandle.askVolume ?? 0)),
+  );
+  const bidVolume = Math.max(
+    Math.max(0, Number(last.bidVolume ?? 0)),
+    Math.max(0, Number(liveCandle.bidVolume ?? 0)),
+  );
+  const trades = Math.max(
+    Math.max(0, Number(last.trades ?? 0)),
+    Math.max(0, Number(liveCandle.trades ?? 0)),
+  );
+  const askTrades = Math.max(
+    Math.max(0, Number(last.askTrades ?? 0)),
+    Math.max(0, Number(liveCandle.askTrades ?? 0)),
+  );
+  const bidTrades = Math.max(
+    Math.max(0, Number(last.bidTrades ?? 0)),
+    Math.max(0, Number(liveCandle.bidTrades ?? 0)),
+  );
   const merged = {
     ...last,
     ...liveCandle,
     volume: Math.max(previousVolume, liveVolume),
+    trades,
+    askVolume,
+    bidVolume,
+    askTrades,
+    bidTrades,
+    delta: askVolume - bidVolume,
+    deltaOpen: Number(last.deltaOpen ?? liveCandle.deltaOpen ?? 0),
+    deltaHigh: Math.max(
+      Number(last.deltaHigh ?? last.delta ?? 0),
+      Number(liveCandle.deltaHigh ?? liveCandle.delta ?? 0),
+      askVolume - bidVolume,
+    ),
+    deltaLow: Math.min(
+      Number(last.deltaLow ?? last.delta ?? 0),
+      Number(liveCandle.deltaLow ?? liveCandle.delta ?? 0),
+      askVolume - bidVolume,
+    ),
+    deltaClose: askVolume - bidVolume,
   };
   if (
     merged.close === last.close
     && merged.high === last.high
     && merged.low === last.low
     && merged.volume === previousVolume
+    && merged.askVolume === Number(last.askVolume ?? 0)
+    && merged.bidVolume === Number(last.bidVolume ?? 0)
+    && merged.trades === Number(last.trades ?? 0)
+    && merged.askTrades === Number(last.askTrades ?? 0)
+    && merged.bidTrades === Number(last.bidTrades ?? 0)
   ) return snapshot;
   return [...snapshot.slice(0, -1), merged];
 }
