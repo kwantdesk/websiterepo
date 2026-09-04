@@ -3281,6 +3281,7 @@ function Chart({
   const barPocPrimitiveRef = useRef<BarPocPrimitive | null>(null);
   const dynamicPocPrimitiveRef = useRef<DynamicPocPrimitive | null>(null);
   const ratioHighlightPrimitiveRef = useRef<RatioHighlightPrimitive | null>(null);
+  const ratioHighlightLastReactPublishRef = useRef(0);
   const tapeSpeedPrimitiveRef = useRef<TapeSpeedOrderFlowBurstPrimitive | null>(null);
   const tapeSpeedAlertIdsRef = useRef(new Set<string>());
   const pocAuctionEngineRef = useRef(new PocAuctionSuiteEngine());
@@ -6369,12 +6370,17 @@ function Chart({
   useEffect(() => {
     if (!ratioHighlightIndicator) {
       ratioHighlightPrimitiveRef.current?.update(null);
+      ratioHighlightLastReactPublishRef.current = 0;
       setRatioHighlightFrame(null);
       return;
     }
     const frame = buildRatioHighlightFrame(rawPocAuctionBars, instrument, ratioHighlightSettings);
     ratioHighlightPrimitiveRef.current?.update({ frame, settings: ratioHighlightSettings });
-    startTransition(() => setRatioHighlightFrame(frame));
+    const now = performance.now();
+    if (ratioHighlightLastReactPublishRef.current === 0 || now - ratioHighlightLastReactPublishRef.current >= LIVE_INDICATOR_REACT_SUMMARY_INTERVAL_MS) {
+      ratioHighlightLastReactPublishRef.current = now;
+      setRatioHighlightFrame(frame);
+    }
   }, [instrument, ratioHighlightIndicator, ratioHighlightSettings, rawPocAuctionBars]);
 
   useEffect(() => {
