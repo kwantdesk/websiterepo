@@ -3,6 +3,8 @@ import fs from "node:fs";
 import {
   buildSpeedOfTapeInstantFrame,
   normalizeSpeedOfTapeInstantSettings,
+  speedOfTapeMeterHeightPercent,
+  speedOfTapeMeterTopPercent,
 } from "../src/lib/speedOfTapeInstant.ts";
 
 const trade = (timestamp, volume, aggressor, recordIndex, trades = 1, flowOnly = false) => ({
@@ -28,6 +30,14 @@ const tape = [
   assert.equal(settings.barsToShow, 20);
   assert.equal(settings.lineWidth, 6);
   assert.equal(settings.inputData, "volume");
+  assert.equal(settings.textEnabled, true);
+  assert.equal(settings.textSize, 10);
+}
+
+{
+  assert.equal(speedOfTapeMeterHeightPercent(100, 100), 90);
+  assert.equal(speedOfTapeMeterTopPercent(100, 100), 10);
+  assert.equal(speedOfTapeMeterTopPercent(50, 100), 55);
 }
 
 {
@@ -66,6 +76,10 @@ const tape = [
   assert.match(chart, /buildSpeedOfTapeInstantFrame\(marketTrades, instantTapeSettings\)/);
   assert.match(chart, /right=\{nativePriceScaleWidth \+ miniDomReservedWidth\}/);
   assert.match(workspace, /footprintLiveActive \|\| instantTapeLiveActive/);
+  const overlay = fs.readFileSync(new URL("../src/components/SpeedOfTapeInstantOverlay.tsx", import.meta.url), "utf8");
+  assert.match(overlay, /bottom: settings\.textEnabled \? 16 : 0/);
+  assert.match(overlay, /speedOfTapeMeterTopPercent\(value, largest\)/);
+  assert.match(overlay, /S-T\(\{settings\.numberOfSeconds\}\)/);
 }
 
-console.log("Speed of Tape (Instant) fixtures passed: 5/5");
+console.log("Speed of Tape (Instant) fixtures passed: 6/6");

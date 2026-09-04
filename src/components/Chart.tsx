@@ -5289,6 +5289,7 @@ function Chart({
       normalized.positiveFillColor = visible.positive;
       normalized.negativeBorderColor = visible.negative;
       normalized.negativeFillColor = visible.negative;
+      normalized.textColor = "var(--foreground)";
     }
     return normalized;
   }, [instantTapeIndicator, settings.backgroundColor, settings.borderDownColor, settings.borderUpColor, settings.downColor, settings.gridColor, settings.upColor]);

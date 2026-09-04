@@ -197,6 +197,7 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "barsToShow", label: "Bars to show", defaultValue: 3, min: 1, max: 20, step: 1 },
     { key: "scaleMinValue", label: "Scale minimum value", defaultValue: 0, min: 0, max: 1000000000, step: 1 },
     { key: "lineWidth", label: "Candle line width", defaultValue: 1, min: 0.5, max: 6, step: 0.5 },
+    { key: "textSize", label: "Text size", defaultValue: 10, min: 6, max: 24, step: 1 },
     { key: "standardDeviationLookback", label: "Standard deviation lookback", defaultValue: 60, min: 10, max: 500, step: 1 },
   ],
   "poc-auction-suite": [

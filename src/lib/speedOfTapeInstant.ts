@@ -1,6 +1,11 @@
 import type { InstitutionalTrade } from "@/lib/institutionalMarketData";
 
-export const SPEED_OF_TAPE_INSTANT_SETTINGS_VERSION = 1;
+export const SPEED_OF_TAPE_INSTANT_SETTINGS_VERSION = 2;
+
+// Deep Charts leaves a stable ten-percent meter margin above the largest
+// visible/SD reference. Without it SD+2 was pinned to the top border and the
+// bars looked stretched compared with the licensed reference rail.
+export const SPEED_OF_TAPE_PLOT_TOP_MARGIN_PERCENT = 10;
 
 export type SpeedOfTapeInputData = "volume" | "trades";
 export type SpeedOfTapeDisplayValue = "total" | "buy" | "sell" | "delta";
@@ -23,6 +28,9 @@ export type SpeedOfTapeInstantSettings = {
   positiveFillColor: string;
   negativeBorderColor: string;
   negativeFillColor: string;
+  textEnabled: boolean;
+  textSize: number;
+  textColor: string;
 };
 
 export const DEFAULT_SPEED_OF_TAPE_INSTANT_SETTINGS: SpeedOfTapeInstantSettings = {
@@ -43,6 +51,9 @@ export const DEFAULT_SPEED_OF_TAPE_INSTANT_SETTINGS: SpeedOfTapeInstantSettings 
   positiveFillColor: "#22C55E",
   negativeBorderColor: "#EF4444",
   negativeFillColor: "#EF4444",
+  textEnabled: true,
+  textSize: 10,
+  textColor: "#F8FAFC",
 };
 
 export type SpeedOfTapeInstantBar = {
@@ -97,7 +108,20 @@ export function normalizeSpeedOfTapeInstantSettings(
     positiveFillColor: String(source.positiveFillColor ?? DEFAULT_SPEED_OF_TAPE_INSTANT_SETTINGS.positiveFillColor),
     negativeBorderColor: String(source.negativeBorderColor ?? DEFAULT_SPEED_OF_TAPE_INSTANT_SETTINGS.negativeBorderColor),
     negativeFillColor: String(source.negativeFillColor ?? DEFAULT_SPEED_OF_TAPE_INSTANT_SETTINGS.negativeFillColor),
+    textEnabled: source.textEnabled !== false,
+    textSize: clamp(finite(source.textSize, DEFAULT_SPEED_OF_TAPE_INSTANT_SETTINGS.textSize), 6, 24),
+    textColor: String(source.textColor ?? DEFAULT_SPEED_OF_TAPE_INSTANT_SETTINGS.textColor),
   };
+}
+
+export function speedOfTapeMeterHeightPercent(value: number, scaleMaximum: number) {
+  const usable = 100 - SPEED_OF_TAPE_PLOT_TOP_MARGIN_PERCENT;
+  if (!Number.isFinite(value) || !Number.isFinite(scaleMaximum) || scaleMaximum <= 0) return 0;
+  return clamp((Math.abs(value) / scaleMaximum) * usable, 0, usable);
+}
+
+export function speedOfTapeMeterTopPercent(value: number, scaleMaximum: number) {
+  return 100 - speedOfTapeMeterHeightPercent(value, scaleMaximum);
 }
 
 function selectedValue(

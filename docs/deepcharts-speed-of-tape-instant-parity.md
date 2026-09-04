@@ -14,6 +14,7 @@ DeepCharts exposes:
 - a configurable number of seconds;
 - bars to show, minimum scale, line width and plot reversal;
 - positive/negative candle border and fill colours;
+- text enabled, text size and text colour controls;
 - standard-deviation reference levels.
 
 ## KwantDesk implementation
@@ -37,6 +38,15 @@ larger `Tape Speed & Order-Flow Burst` research tool.
   preventing black-on-black or same-colour positive/negative bars.
 - SD+1 and SD+2 are calculated from the configured trailing window and share
   the same vertical scale as the visible bars.
+- The meter plot now uses one shared coordinate area for both columns and SD
+  levels, reserves the same footer-height strip for the `S-T(10) V` caption,
+  and leaves a ten-percent auto-scale margin above the largest bar/reference.
+  This prevents SD+2 from sticking to the top border and removes the former
+  level-to-column alignment error.
+- Deep Charts' exposed stock settings were checked directly from the installed
+  16.0.9 assembly and supplied settings screenshots: Volume, filter 1/0,
+  Total, 10 seconds, three bars, scale minimum 0, line width 1 and plot reverse
+  off. Those remain KWANTDESK's defaults.
 
 ## Honest boundary
 
@@ -50,9 +60,14 @@ An `Order` database choice is not exposed until the indicator receives a
 lossless order-lifecycle stream with stable order identity. Counting trade
 prints as placed orders would be a false implementation.
 
+The vendor's published Speed of Tape documentation defines the calculation as
+tick-by-tick market intensity over the selected seconds and distinguishes
+Volume, Orders and Trades. KWANTDESK exposes only the lossless execution-backed
+choices it currently owns; that data-integrity boundary is intentionally not
+weakened for visual parity.
+
 ## Verification
 
 - `npm run test:speed-of-tape-instant`
 - `npm run test:tape-speed-order-flow-burst`
 - `npm run build`
-
