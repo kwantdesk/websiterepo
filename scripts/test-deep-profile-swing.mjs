@@ -41,6 +41,12 @@ assert.equal(normalized.groupTicks, 1);
 assert.equal(normalized.valueAreaPercent, 100);
 assert.equal(normalized.swingMaxTicks, 30);
 
+const absoluteDefinitions = [
+  { min: 0.01, step: 0.01, value: DEFAULT_DEEP_PROFILE_SWING_SETTINGS.absoluteReversal },
+  { min: 0.01, step: 0.01, value: DEFAULT_DEEP_PROFILE_SWING_SETTINGS.stopAbsoluteReversal },
+];
+assert.ok(absoluteDefinitions.every(({ min, step, value }) => Math.abs((value - min) / step - Math.round((value - min) / step)) < 1e-9), "absolute-reversal defaults align exactly to their slider grid");
+
 const turns = [100, 102, 105, 107, 104, 101, 98, 101, 105].map((close, index) => bar(index, close));
 const ranges = detectDeepProfileSwingRanges(turns, normalizeDeepProfileSwingSettings({ reversalTicks: 3, includeReversalBar: true }), tickSize);
 assert.ok(ranges.length >= 2, "tick reversal produces multiple confirmed swing ranges");

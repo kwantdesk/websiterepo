@@ -262,11 +262,11 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "patternOpacity", label: "Pattern fill opacity (%)", defaultValue: 32, min: 0, max: 100, step: 1 },
   ],
   "deep-profile-swing": [
-    { key: "absoluteReversal", label: "Absolute reversal", defaultValue: 10, min: 0.01, max: 100000, step: 0.25 },
+    { key: "absoluteReversal", label: "Absolute reversal", defaultValue: 10, min: 0.01, max: 100000, step: 0.01 },
     { key: "reversalTicks", label: "Reversal ticks / highest-lowest lookback", defaultValue: 20, min: 1, max: 100000, step: 1 },
     { key: "leftBars", label: "Left bars", defaultValue: 3, min: 1, max: 500, step: 1 },
     { key: "rightBars", label: "Right bars", defaultValue: 3, min: 1, max: 500, step: 1 },
-    { key: "stopAbsoluteReversal", label: "Stop swing absolute reversal", defaultValue: 5, min: 0.01, max: 100000, step: 0.25 },
+    { key: "stopAbsoluteReversal", label: "Stop swing absolute reversal", defaultValue: 5, min: 0.01, max: 100000, step: 0.01 },
     { key: "stopReversalTicks", label: "Stop swing reversal ticks / lookback", defaultValue: 10, min: 1, max: 100000, step: 1 },
     { key: "stopLeftBars", label: "Stop swing left bars", defaultValue: 2, min: 1, max: 500, step: 1 },
     { key: "stopRightBars", label: "Stop swing right bars", defaultValue: 2, min: 1, max: 500, step: 1 },
