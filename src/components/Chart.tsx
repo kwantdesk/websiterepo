@@ -6342,20 +6342,21 @@ function Chart({
     const normalized = normalizeStopSpotterSettings(stopSpotterIndicator?.settings);
     const markerUsesChartColours = normalized.chartColorForMarker || normalized.autoColor === "direction";
     if (!normalized.useThemeColors && !markerUsesChartColours) return normalized;
+    const visible = visibleIndicatorTheme(settings);
     return {
       ...normalized,
       ...(normalized.useThemeColors
         ? {
-            contractBuyTextColor: settings.upColor,
-            contractSellTextColor: settings.downColor,
+            contractBuyTextColor: visible.positive,
+            contractSellTextColor: visible.negative,
             contractBackgroundColor: settings.backgroundColor,
           }
         : {}),
       ...(normalized.useThemeColors || markerUsesChartColours
-        ? { buyColor: settings.upColor, sellColor: settings.downColor }
+        ? { buyColor: visible.positive, sellColor: visible.negative }
         : {}),
     };
-  }, [settings.backgroundColor, settings.downColor, settings.upColor, stopSpotterIndicator]);
+  }, [settings, stopSpotterIndicator]);
 
   useEffect(() => {
     if (!unfinishedAuctionIndicator) {

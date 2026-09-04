@@ -77,6 +77,7 @@ import { ICEBERG_REFRESH_PRESETS } from "@/lib/icebergRefreshDetector";
 import { LIQUIDITY_STOP_SWEEP_PRESETS } from "@/lib/liquidityStopSweepDetector";
 import { POC_AUCTION_PRESETS } from "@/lib/pocAuctionSuite";
 import { TAPE_SPEED_PRESETS } from "@/lib/tapeSpeedOrderFlowBurst";
+import { visibleIndicatorTheme } from "@/lib/indicatorPlotColors";
 import IndicatorTemplateBar from "@/components/IndicatorTemplateBar";
 import { PREFERENCES_HYDRATED_EVENT } from "@/lib/userPreferences";
 import { STATS_PALETTES, resolveStatsPalette, statsPaletteSettings } from "@/lib/statsPalettes";
@@ -650,11 +651,12 @@ const themeColourMapFor = (indicatorId: string, chartSettings: ChartSettings) =>
     } as Record<string, string>;
   }
   if (indicatorId === "stop-spotter") {
+    const visible = visibleIndicatorTheme(chartSettings);
     return {
-      buyColor: chartSettings.upColor,
-      sellColor: chartSettings.downColor,
-      contractBuyTextColor: chartSettings.upColor,
-      contractSellTextColor: chartSettings.downColor,
+      buyColor: visible.positive,
+      sellColor: visible.negative,
+      contractBuyTextColor: visible.positive,
+      contractSellTextColor: visible.negative,
       contractBackgroundColor: chartSettings.backgroundColor,
     } as Record<string, string>;
   }

@@ -172,8 +172,11 @@ Legend: `[ ]` not complete, `[~]` in progress, `[x]` complete and addable.
   alert fields and instrument tick-value-aware contract sizing are wired.
 - Focused tests cover both sides, each independent detection threshold, forming
   bar timing, missing source data, settings bounds and contract sizing. The full
-  TypeScript and whitespace checks pass; exact-commit deployment and production
-  add/render/settings/removal QA remain before the catalogue row is final.
+  TypeScript and whitespace checks pass. First production QA on `e1915095`
+  confirmed Add, LIVE state and the complete General/Input/Style contract, and
+  caught an invisible Chromey Mono sell-marker seed before release. Marker and
+  contract colours now use the shared visibility-safe theme palette; the
+  corrective exact-commit deployment and final removal check remain.
 
 - Quant Desk already has a tested `PocAuctionSuiteEngine` driven by exact
   execution-classified Footprint rows. It calculates raw-tick unfinished

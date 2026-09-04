@@ -41,4 +41,7 @@ task until the full pending library is complete, without shortcuts.
   temporary instance was removed. Item 5, **Stop Spotter**, now implements the
   complete observable settings contract, exact execution-data gate, both-side
   markers, deterministic close timing and contract sizing. Focused tests and
-  TypeScript pass; deployment QA is next.
+  TypeScript pass. Its first production pass confirmed Add, LIVE state and all
+  settings, then exposed a Chromey Mono sell-marker contrast defect; that is
+  corrected through the shared visibility-safe indicator palette and is being
+  redeployed for the final gate.
