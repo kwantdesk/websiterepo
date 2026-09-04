@@ -67,6 +67,7 @@ export default function ChartDrawSettings({
   const isShape = SHAPE_TOOLS.includes(drawing.tool);
   const isText = TEXT_TOOLS.includes(drawing.tool);
   const isProfile = PROFILE_TOOLS.includes(drawing.tool);
+  const isAnchoredVwap = drawing.tool === "anchoredVwap";
   const isPosition = POSITION_TOOLS.includes(drawing.tool);
   const supportsHorizontalExtension = HORIZONTAL_EXTENSION_TOOLS.has(drawing.tool);
   const toolTemplates = templates[drawing.tool] ?? {};
@@ -186,6 +187,27 @@ export default function ChartDrawSettings({
                   <Row label={`POC line width · ${drawing.style.pocLineWidth ?? drawing.style.width}px`}><input type="range" min={0.5} max={4} step={0.5} value={drawing.style.pocLineWidth ?? drawing.style.width} onChange={(e) => patchStyle({ pocLineWidth: Number(e.target.value) })} className="w-40 accent-primary" /></Row>
                   <Row label={`VAH / VAL width · ${drawing.style.valueAreaLineWidth ?? drawing.style.width}px`}><input type="range" min={0.5} max={4} step={0.5} value={drawing.style.valueAreaLineWidth ?? drawing.style.width} onChange={(e) => patchStyle({ valueAreaLineWidth: Number(e.target.value) })} className="w-40 accent-primary" /></Row>
                   <Row label="Outside value area"><ChartColorField ariaLabel="Outside value area colour" value={drawing.style.outsideColor ?? "#787B86"} onChange={(hex) => patchStyle({ outsideColor: hex })} /></Row>
+                </div>
+              ) : null}
+
+              {isAnchoredVwap ? (
+                <div className="space-y-3 border-t border-border pt-3">
+                  <div className="text-[10px] uppercase tracking-[0.1em] text-muted">Anchored VWAP</div>
+                  <Row label="Price source"><Select value={drawing.style.vwapSource ?? "hlc3"} onChange={(value) => patchStyle({ vwapSource: value as "hlc3" | "hl2" | "ohlc4" | "close" })} options={[["hlc3", "HLC3"], ["hl2", "HL2"], ["ohlc4", "OHLC4"], ["close", "Close"]]} /></Row>
+                  {([1, 2, 3] as const).map((band) => {
+                    const enabledKey = `vwapBand${band}Enabled` as const;
+                    const valueKey = `vwapBand${band}` as const;
+                    const enabled = drawing.style[enabledKey] ?? band <= 2;
+                    const value = Number(drawing.style[valueKey] ?? band);
+                    return <div key={band} className="space-y-2 rounded-lg border border-border bg-background/50 p-2.5">
+                      <Row label={`Band ${band}`}><input type="checkbox" checked={enabled} onChange={(event) => patchStyle({ [enabledKey]: event.target.checked })} className="h-4 w-4 accent-primary" /></Row>
+                      <Row label={`${value.toFixed(1)}σ`}><input type="range" min={0.1} max={5} step={0.1} value={value} disabled={!enabled} onChange={(event) => patchStyle({ [valueKey]: Number(event.target.value) })} className="w-40 accent-primary disabled:opacity-40" /></Row>
+                    </div>;
+                  })}
+                  <Row label="Upper bands"><ChartColorField ariaLabel="Anchored VWAP upper band colour" value={drawing.style.vwapUpperColor ?? resolveDrawColor(drawing.style, themeColor)} onChange={(hex) => patchStyle({ vwapUpperColor: hex })} /></Row>
+                  <Row label="Lower bands"><ChartColorField ariaLabel="Anchored VWAP lower band colour" value={drawing.style.vwapLowerColor ?? resolveDrawColor(drawing.style, themeColor)} onChange={(hex) => patchStyle({ vwapLowerColor: hex })} /></Row>
+                  <Row label="Fill first envelope"><input type="checkbox" checked={drawing.style.vwapBandFill !== false} onChange={(event) => patchStyle({ vwapBandFill: event.target.checked })} className="h-4 w-4 accent-primary" /></Row>
+                  <Row label={`Fill opacity · ${Math.round((drawing.style.vwapBandFillOpacity ?? 0.08) * 100)}%`}><input type="range" min={0} max={0.35} step={0.01} value={drawing.style.vwapBandFillOpacity ?? 0.08} onChange={(event) => patchStyle({ vwapBandFillOpacity: Number(event.target.value) })} className="w-40 accent-primary" /></Row>
                 </div>
               ) : null}
 

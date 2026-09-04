@@ -975,18 +975,35 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
   ],
   "moving-average": [{ key: "length", label: "Length", defaultValue: 20, min: 1, max: 1000 }],
   "rolling-vwap": [
-    { key: "length", label: "Rolling window (bars)", defaultValue: 60, min: 2, max: 1000 },
-    { key: "sessionStartHour", label: "Futures session start hour (America/Chicago)", defaultValue: 17, min: 0, max: 23 },
+    { key: "periodValue", label: "Rolling period", defaultValue: 60, min: 1, max: 100000 },
+    { key: "lineWidth", label: "VWAP line width", defaultValue: 2, min: 1, max: 4 },
+    { key: "bandLineWidth", label: "Envelope line width", defaultValue: 1, min: 1, max: 4 },
     { key: "band1", label: "Band 1 σ", defaultValue: 1, min: 0.1, max: 10, step: 0.1 },
     { key: "band2", label: "Band 2 σ", defaultValue: 2, min: 0.1, max: 10, step: 0.1 },
     { key: "band3", label: "Band 3 σ", defaultValue: 3, min: 0.1, max: 10, step: 0.1 },
+    { key: "band4", label: "Band 4 σ", defaultValue: 4, min: 0.1, max: 10, step: 0.1 },
+    { key: "band5", label: "Band 5 σ", defaultValue: 5, min: 0.1, max: 10, step: 0.1 },
   ],
-  vwap: [{ key: "sessionStartHour", label: "Futures session start hour (America/Chicago)", defaultValue: 17, min: 0, max: 23 }],
-  "vwap-envelopes": [
+  vwap: [
+    { key: "periodValue", label: "Period value", defaultValue: 1, min: 1, max: 100000 },
     { key: "sessionStartHour", label: "Futures session start hour (America/Chicago)", defaultValue: 17, min: 0, max: 23 },
-    { key: "band1", label: "Band 1 σ", defaultValue: 1, min: 0.1, max: 10, step: 0.1 },
-    { key: "band2", label: "Band 2 σ", defaultValue: 2, min: 0.1, max: 10, step: 0.1 },
-    { key: "band3", label: "Band 3 σ", defaultValue: 3, min: 0.1, max: 10, step: 0.1 },
+    { key: "lineWidth", label: "VWAP line width", defaultValue: 2, min: 1, max: 4 },
+    { key: "bandLineWidth", label: "Envelope line width", defaultValue: 1, min: 1, max: 4 },
+    { key: "band1", label: "Band 1", defaultValue: 1, min: 0.1, max: 10, step: 0.1 },
+    { key: "band2", label: "Band 2", defaultValue: 2, min: 0.1, max: 10, step: 0.1 },
+    { key: "band3", label: "Band 3", defaultValue: 3, min: 0.1, max: 10, step: 0.1 },
+    { key: "band4", label: "Band 4", defaultValue: 4, min: 0.1, max: 10, step: 0.1 },
+    { key: "band5", label: "Band 5", defaultValue: 5, min: 0.1, max: 10, step: 0.1 },
+  ],
+  "vwap-envelopes": [
+    { key: "periodValue", label: "Continuous period", defaultValue: 1, min: 1, max: 100000 },
+    { key: "lineWidth", label: "VWAP line width", defaultValue: 2, min: 1, max: 4 },
+    { key: "bandLineWidth", label: "Envelope line width", defaultValue: 1, min: 1, max: 4 },
+    { key: "band1", label: "Band 1", defaultValue: 1, min: 0.1, max: 10, step: 0.1 },
+    { key: "band2", label: "Band 2", defaultValue: 2, min: 0.1, max: 10, step: 0.1 },
+    { key: "band3", label: "Band 3", defaultValue: 3, min: 0.1, max: 10, step: 0.1 },
+    { key: "band4", label: "Band 4", defaultValue: 4, min: 0.1, max: 10, step: 0.1 },
+    { key: "band5", label: "Band 5", defaultValue: 5, min: 0.1, max: 10, step: 0.1 },
   ],
   "relative-strength-index-rsi": [{ key: "length", label: "Length", defaultValue: 14, min: 2, max: 500 }],
   "rate-of-change-roc": [{ key: "length", label: "Length", defaultValue: 12, min: 1, max: 500 }],
@@ -1150,6 +1167,21 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
   ...Object.fromEntries(
     (INDICATOR_NUMERIC_SETTINGS[indicatorId] ?? []).map((setting) => [setting.key, setting.defaultValue]),
   ),
+  ...(["vwap", "vwap-envelopes", "rolling-vwap"].includes(indicatorId) ? {
+    source: "hlc3",
+    periodMode: indicatorId === "rolling-vwap" ? "bars" : "days",
+    envelopeMode: "standard-deviation",
+    lineStyle: "solid",
+    bandLineStyle: "dotted",
+    band1Enabled: indicatorId !== "vwap",
+    band2Enabled: indicatorId !== "vwap",
+    band3Enabled: indicatorId !== "vwap",
+    band4Enabled: false,
+    band5Enabled: false,
+    showCurrentValue: false,
+    useThemeColors: true,
+    vwapSettingsVersion: 2,
+  } : {}),
   ...(indicatorId === "gamma-environment" ? {
     position: "top-right",
     showFreshness: true,
@@ -2245,6 +2277,46 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
       : instance;
   if (normalizedInstance.indicatorId === "market-profile-tpo") {
     normalizedInstance = { ...normalizedInstance, indicatorId: "tpo-chart" };
+  }
+  if (["vwap", "vwap-envelopes", "rolling-vwap"].includes(normalizedInstance.indicatorId)) {
+    const indicatorId = normalizedInstance.indicatorId;
+    const persisted = normalizedInstance.settings ?? {};
+    const settings: Record<string, number | string | boolean> = {
+      ...defaultIndicatorSettings(indicatorId),
+      ...persisted,
+    };
+    // Rolling VWAP previously reset each CME session and stored its bar window
+    // as `length`. Preserve that chosen window while moving to the continuous
+    // period contract.
+    if (indicatorId === "rolling-vwap" && persisted.periodValue === undefined && persisted.length !== undefined) {
+      settings.periodValue = Math.max(1, Math.round(Number(persisted.length) || 60));
+    }
+    settings.source = ["hlc3", "hl2", "ohlc4", "close"].includes(String(settings.source)) ? settings.source : "hlc3";
+    const allowedPeriods = indicatorId === "vwap"
+      ? ["days", "minutes", "seconds", "orders"]
+      : indicatorId === "rolling-vwap" ? ["bars", "minutes", "days"] : ["days", "minutes"];
+    settings.periodMode = allowedPeriods.includes(String(settings.periodMode))
+      ? settings.periodMode
+      : allowedPeriods[0];
+    settings.envelopeMode = ["standard-deviation", "price-percentage"].includes(String(settings.envelopeMode))
+      ? settings.envelopeMode
+      : "standard-deviation";
+    settings.lineStyle = ["solid", "dashed", "dotted"].includes(String(settings.lineStyle)) ? settings.lineStyle : "solid";
+    settings.bandLineStyle = ["solid", "dashed", "dotted"].includes(String(settings.bandLineStyle)) ? settings.bandLineStyle : "dotted";
+    for (const definition of INDICATOR_NUMERIC_SETTINGS[indicatorId] ?? []) {
+      const parsed = Number(settings[definition.key]);
+      settings[definition.key] = Math.min(definition.max, Math.max(definition.min,
+        Number.isFinite(parsed) ? parsed : definition.defaultValue));
+    }
+    for (let band = 1; band <= 5; band += 1) {
+      settings[`band${band}Enabled`] = typeof settings[`band${band}Enabled`] === "boolean"
+        ? settings[`band${band}Enabled`]
+        : indicatorId !== "vwap" && band <= 3;
+    }
+    delete settings.length;
+    if (indicatorId !== "vwap") delete settings.sessionStartHour;
+    settings.vwapSettingsVersion = 2;
+    return { ...normalizedInstance, settings };
   }
   if (normalizedInstance.indicatorId === "imbalance-tracker") {
     const storedVersion = Number(normalizedInstance.settings?.imbalanceTrackerSettingsVersion ?? 0);

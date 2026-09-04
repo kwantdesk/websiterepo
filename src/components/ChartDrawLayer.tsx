@@ -577,12 +577,12 @@ export default function ChartDrawLayer({
     return prof;
   };
   const vwapCache = useMemo(() => {
-    const cache = new Map<string, Array<{ time: number; vwap: number }>>();
+    const cache = new Map<string, Array<{ time: number; vwap: number; deviation: number }>>();
     for (const drawing of drawings) {
       if (drawing.tool !== "anchoredVwap") continue;
       const pr = drawing.points;
       if (pr.length < 1) continue;
-      cache.set(drawing.id, anchoredVwapSeries(candles, pr[0].time));
+      cache.set(drawing.id, anchoredVwapSeries(candles, pr[0].time, drawing.style.vwapSource ?? "hlc3"));
     }
     return cache;
   }, [drawings, candles]);
@@ -1426,15 +1426,41 @@ export default function ChartDrawLayer({
         case "anchoredVwap": {
           if (a.x == null) return null;
           const from = pr[0].time;
-          const series = preview ? anchoredVwapSeries(candles, from) : (vwapCache.get(drawing.id) ?? anchoredVwapSeries(candles, from));
+          const series = preview
+            ? anchoredVwapSeries(candles, from, style.vwapSource ?? "hlc3")
+            : (vwapCache.get(drawing.id) ?? anchoredVwapSeries(candles, from, style.vwapSource ?? "hlc3"));
           if (series.length < 2) return null;
-          const pts: string[] = [];
-          for (const point of series) {
-            const px = toX(point.time); const py = toY(point.vwap);
-            if (px != null && py != null) pts.push(`${px},${py}`);
-          }
+          const pointsFor = (price: (point: typeof series[number]) => number) => series.flatMap((point) => {
+            const px = toX(point.time); const py = toY(price(point));
+            return px == null || py == null ? [] : [`${px},${py}`];
+          });
+          const pts = pointsFor((point) => point.vwap);
           if (pts.length < 2) return null;
-          return <g><polyline points={pts.join(" ")} fill="none" stroke={stroke} strokeWidth={w} strokeDasharray={dash} />{style.showLabels ? label(a.x, a.y! - 4, "AVWAP") : null}</g>;
+          const upperColor = style.vwapUpperColor ?? stroke;
+          const lowerColor = style.vwapLowerColor ?? stroke;
+          const bands = ([1, 2, 3] as const).flatMap((band) => {
+            const enabled = style[`vwapBand${band}Enabled`] ?? band <= 2;
+            if (!enabled) return [];
+            const multiplier = Math.max(0.1, Number(style[`vwapBand${band}`] ?? band));
+            return [{
+              band,
+              upper: pointsFor((point) => point.vwap + point.deviation * multiplier),
+              lower: pointsFor((point) => point.vwap - point.deviation * multiplier),
+            }];
+          });
+          const firstBand = bands[0];
+          const fillPoints = firstBand && style.vwapBandFill !== false
+            ? [...firstBand.upper, ...[...firstBand.lower].reverse()].join(" ")
+            : "";
+          return <g>
+            {fillPoints ? <polygon points={fillPoints} fill={stroke} fillOpacity={Math.max(0, Math.min(0.35, style.vwapBandFillOpacity ?? 0.08))} /> : null}
+            {bands.map((band) => <g key={band.band}>
+              <polyline points={band.upper.join(" ")} fill="none" stroke={upperColor} strokeWidth={Math.max(0.5, w * 0.75)} strokeDasharray={dash} />
+              <polyline points={band.lower.join(" ")} fill="none" stroke={lowerColor} strokeWidth={Math.max(0.5, w * 0.75)} strokeDasharray={dash} />
+            </g>)}
+            <polyline points={pts.join(" ")} fill="none" stroke={stroke} strokeWidth={w} strokeDasharray={dash} />
+            {style.showLabels ? label(a.x, a.y! - 4, "AVWAP") : null}
+          </g>;
         }
         case "gannFan": {
           if (!b || a.x == null || b.x == null) return null;
@@ -1721,15 +1747,20 @@ function previewStyle(tool: DrawToolId) {
 // Price-space anchored-VWAP series (viewport-invariant): one cumulative pass
 // over the candles from the anchor time forward, returning {time, vwap} pairs.
 // The per-frame render maps these to pixels; it does not recompute the sum.
-function anchoredVwapSeries(candles: DrawCandle[], from: number) {
-  const series: Array<{ time: number; vwap: number }> = [];
-  let cumPV = 0; let cumV = 0;
+export function anchoredVwapSeries(candles: DrawCandle[], from: number, source: "hlc3" | "hl2" | "ohlc4" | "close" = "hlc3") {
+  const series: Array<{ time: number; vwap: number; deviation: number }> = [];
+  let cumPV = 0; let cumP2V = 0; let cumV = 0;
   for (const cd of candles) {
     if (cd.time < from) continue;
     const v = Math.max(0, cd.volume ?? 0);
-    const typical = (cd.high + cd.low + cd.close) / 3;
-    if (v > 0) { cumPV += typical * v; cumV += v; }
-    series.push({ time: cd.time, vwap: cumV > 0 ? cumPV / cumV : typical });
+    const price = source === "close" ? cd.close
+      : source === "hl2" ? (cd.high + cd.low) / 2
+        : source === "ohlc4" ? (cd.open + cd.high + cd.low + cd.close) / 4
+          : (cd.high + cd.low + cd.close) / 3;
+    if (v > 0) { cumPV += price * v; cumP2V += price * price * v; cumV += v; }
+    const vwap = cumV > 0 ? cumPV / cumV : price;
+    const variance = cumV > 0 ? Math.max(0, cumP2V / cumV - vwap * vwap) : 0;
+    series.push({ time: cd.time, vwap, deviation: Math.sqrt(variance) });
   }
   return series;
 }

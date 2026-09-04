@@ -1790,3 +1790,18 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
   replace it with merged daily histograms or an OHLC volume-at-price proxy.
 - The parity audit is `docs/deepcharts-composite-volume-profile-audit.md` and
   the prompt outcome is `docs/prompt-log/2026-09-04-25-composite-volume-profile.md`.
+
+## 2026-09-04 — VWAP-family overhaul
+
+- `src/lib/vwap.ts` is the shared deterministic VWAP calculator. Base VWAP is
+  period-reset; VWAP Envelopes and Rolling VWAP are continuous and must not be
+  reset at the CME reopen.
+- Keep the five-band source/period/envelope settings backward-compatible via
+  `normalizeStoredIndicator`. Old Rolling VWAP `length` migrates to
+  `periodValue`; do not restore its removed session reset.
+- The authoritative visible draw-on tool is `ChartDrawLayer`'s `anchoredVwap`,
+  with settings in `ChartDrawSettings` and style persistence in
+  `chartDrawTools`. Do not implement VWAP work only in the hidden precision
+  rail or legacy `Chart.tsx` toolbar.
+- Audit: `docs/deepcharts-vwap-family-audit.md`. Prompt outcome:
+  `docs/prompt-log/2026-09-04-26-vwap-family-overhaul.md`.

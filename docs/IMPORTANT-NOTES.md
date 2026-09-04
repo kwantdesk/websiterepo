@@ -65,6 +65,13 @@ recap of the open items below and update this file when their state changes.
   Capture the final side-by-side screenshot sweep when safe native-window
   control can expose Deep Charts; do not claim pixel-identical parity before
   that evidence is recorded.
+- **VWAP family:** VWAP, continuous VWAP Envelopes, Rolling VWAP, Anchored VWAP
+  drawing and Volume Profile VWAP now share an audited period/source/envelope,
+  five-band, colour and persistence contract. Capture the final interactive
+  Deep Charts/KWANTDESK screenshot sweep when native-window control is
+  available. Also compare Orders-period VWAP directly on raw executions when a
+  period boundary falls inside an aggregated candle; candle trade counts
+  cannot split that candle exactly.
 
 ## 2026-09-04 — Composite Volume Profile
 
@@ -75,3 +82,16 @@ recap of the open items below and update this file when their state changes.
   style/width/offset, POC, value area, peak/valley, VWAP/envelopes, summary and
   session filtering. Focused regressions, TypeScript and the production build
   passed; only the interactive screenshot comparison remains open above.
+
+## 2026-09-04 — VWAP family
+
+- Corrected VWAP Envelopes and Rolling VWAP so their continuous windows no
+  longer reset at the CME reopen. Base VWAP now supports documented trading-day,
+  minute, second and order-count periods.
+- Added four price sources, standard-deviation/percentage envelopes, five
+  independently enabled bands and complete theme/custom colour controls.
+- Anchored VWAP now renders live deviation bands and optional fill, and its
+  settings survive drawing templates. Shared indicator templates continue to
+  account-sync and import/export the complete VWAP settings record.
+- Calculation, migration, theme, template, profile, TypeScript and production
+  build checks passed. Evidence limits remain listed under Reference parity.

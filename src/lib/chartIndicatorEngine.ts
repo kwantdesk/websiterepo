@@ -5,6 +5,13 @@ import { calculateDeepEffort } from "@/lib/deepEffort";
 import { detectCvdDivergences, sessionCvdBars, type CvdDivergenceSegment } from "@/lib/cvdDivergence";
 import { runSourceIndicator, type SourceIndicatorLanguage } from "@/lib/indicatorSourceAdapters";
 import { applyIndicatorPlotColors } from "@/lib/indicatorPlotColors";
+import {
+  calculatePeriodVwap,
+  calculateRollingVwap,
+  vwapEnvelopeOffset,
+  type VwapEnvelopeMode,
+  type VwapSource,
+} from "@/lib/vwap";
 
 export type CalculatedIndicatorSeries = {
   key: string;
@@ -66,6 +73,14 @@ const settingString = (instance: ChartIndicatorInstance, key: string, fallback: 
     ? String(instance.settings[key])
     : fallback;
 
+const vwapLineWidth = (instance: ChartIndicatorInstance, key: string, fallback: number): 1 | 2 | 3 | 4 =>
+  Math.max(1, Math.min(4, Math.round(settingNumber(instance, key, fallback)))) as 1 | 2 | 3 | 4;
+
+const vwapLineStyle = (instance: ChartIndicatorInstance, key: string, fallback: "solid" | "dashed" | "dotted") => {
+  const value = settingString(instance, key, fallback);
+  return (value === "dashed" || value === "dotted" ? value : "solid") as "solid" | "dashed" | "dotted";
+};
+
 const blendHexColors = (from: string, to: string, amount: number) => {
   const normalize = (color: string) => {
     const match = color.trim().match(/^#([\da-f]{6})$/i);
@@ -104,81 +119,6 @@ function sma(candles: Candle[], length: number) {
     sum += candle.close;
     if (index >= length) sum -= candles[index - length].close;
     if (index >= length - 1) output.push({ time: candle.timestamp / 1000, value: sum / length });
-  });
-  return output;
-}
-
-function sessionVwap(candles: Candle[], sessionStartHour: number) {
-  let key = "";
-  let weightedPrice = 0;
-  let weightedVariance = 0;
-  let volume = 0;
-  return candles.map((candle) => {
-    const nextKey = sessionKey(candle.timestamp, sessionStartHour);
-    const breakBefore = key !== "" && nextKey !== key;
-    if (nextKey !== key) {
-      key = nextKey;
-      weightedPrice = 0;
-      weightedVariance = 0;
-      volume = 0;
-    }
-    const typical = (candle.high + candle.low + candle.close) / 3;
-    const barVolume = Math.max(0, finite(candle.volume));
-    weightedPrice += typical * barVolume;
-    weightedVariance += typical * typical * barVolume;
-    volume += barVolume;
-    const value = volume > 0 ? weightedPrice / volume : typical;
-    const variance = volume > 0 ? Math.max(0, weightedVariance / volume - value * value) : 0;
-    return { time: candle.timestamp / 1000, value, deviation: Math.sqrt(variance), breakBefore };
-  });
-}
-
-function rollingVwap(candles: Candle[], length: number, sessionStartHour: number) {
-  const output: Array<{ time: number; value: number; deviation: number; breakBefore: boolean }> = [];
-  let pv = 0;
-  let p2v = 0;
-  let volume = 0;
-  let activeSession = "";
-  let pendingSessionBreak = false;
-  const queue: Array<{ pv: number; p2v: number; volume: number }> = [];
-  candles.forEach((candle) => {
-    const nextSession = sessionKey(candle.timestamp, sessionStartHour);
-    if (activeSession !== nextSession) {
-      pendingSessionBreak = activeSession !== "";
-      activeSession = nextSession;
-      pv = 0;
-      p2v = 0;
-      volume = 0;
-      queue.length = 0;
-    }
-    const typical = (candle.high + candle.low + candle.close) / 3;
-    const barVolume = Math.max(0, finite(candle.volume));
-    const item = {
-      pv: typical * barVolume,
-      p2v: typical * typical * barVolume,
-      volume: barVolume,
-    };
-    queue.push(item);
-    pv += item.pv;
-    p2v += item.p2v;
-    volume += item.volume;
-    if (queue.length > length) {
-      const removed = queue.shift()!;
-      pv -= removed.pv;
-      p2v -= removed.p2v;
-      volume -= removed.volume;
-    }
-    if (queue.length === length) {
-      const value = volume > 0 ? pv / volume : candle.close;
-      const variance = volume > 0 ? Math.max(0, p2v / volume - value * value) : 0;
-      output.push({
-        time: candle.timestamp / 1000,
-        value,
-        deviation: Math.sqrt(variance),
-        breakBefore: pendingSessionBreak,
-      });
-      pendingSessionBreak = false;
-    }
   });
   return output;
 }
@@ -818,59 +758,58 @@ function computeIndicatorSeries(
 
   if (key === "rolling-vwap") {
     if (!volumeAvailable(candles)) return [];
-    const length = Math.max(2, Math.round(settingNumber(instance, "length", 60)));
-    const sessionStartHour = settingNumber(instance, "sessionStartHour", 17);
-    const bandMultipliers = [
-      Math.max(0.1, settingNumber(instance, "band1", 1)),
-      Math.max(0.1, settingNumber(instance, "band2", 2)),
-      Math.max(0.1, settingNumber(instance, "band3", 3)),
-    ];
-    const stats = rollingVwap(candles, length, sessionStartHour);
-    const bands = bandMultipliers.flatMap((multiplier, index) => {
+    const periodValue = Math.max(1, Math.round(settingNumber(instance, "periodValue", settingNumber(instance, "length", 60))));
+    const periodMode = settingString(instance, "periodMode", "bars") as "bars" | "minutes" | "days";
+    const source = settingString(instance, "source", "hlc3") as VwapSource;
+    const envelopeMode = settingString(instance, "envelopeMode", "standard-deviation") as VwapEnvelopeMode;
+    const stats = calculateRollingVwap(candles, { source, periodMode, periodValue });
+    const bands = [1, 2, 3, 4, 5].flatMap((bandNumber, index) => {
+      const enabled = settingBoolean(instance, `band${bandNumber}Enabled`, bandNumber <= 3);
+      const multiplier = Math.max(0, settingNumber(instance, `band${bandNumber}`, bandNumber));
       const color = vwapBandColor(theme, index);
       return [
         {
           key: `${key}-upper-${index + 1}`,
-          label: `Rolling VWAP +${multiplier}σ`,
+          label: `Rolling VWAP +${multiplier}${envelopeMode === "price-percentage" ? "%" : "σ"}`,
           kind: "line" as const,
           placement: "overlay" as const,
           color,
-          lineWidth: 1 as const,
-          lineStyle: "dotted" as const,
+          lineWidth: vwapLineWidth(instance, "bandLineWidth", 1),
+          lineStyle: vwapLineStyle(instance, "bandLineStyle", "dotted"),
           lastValueVisible: false,
-          data: stats.map(({ time, value, deviation, breakBefore }) => ({
+          data: enabled ? stats.map(({ time, value, deviation, breakBefore }) => ({
             time,
-            value: value + deviation * multiplier,
+            value: value + vwapEnvelopeOffset({ value, deviation }, multiplier, envelopeMode),
             breakBefore,
-          })),
+          })) : [],
         },
         {
           key: `${key}-lower-${index + 1}`,
-          label: `Rolling VWAP -${multiplier}σ`,
+          label: `Rolling VWAP -${multiplier}${envelopeMode === "price-percentage" ? "%" : "σ"}`,
           kind: "line" as const,
           placement: "overlay" as const,
           color,
-          lineWidth: 1 as const,
-          lineStyle: "dotted" as const,
+          lineWidth: vwapLineWidth(instance, "bandLineWidth", 1),
+          lineStyle: vwapLineStyle(instance, "bandLineStyle", "dotted"),
           lastValueVisible: false,
-          data: stats.map(({ time, value, deviation, breakBefore }) => ({
+          data: enabled ? stats.map(({ time, value, deviation, breakBefore }) => ({
             time,
-            value: value - deviation * multiplier,
+            value: value - vwapEnvelopeOffset({ value, deviation }, multiplier, envelopeMode),
             breakBefore,
-          })),
+          })) : [],
         },
       ];
     });
     return [
       {
         key,
-        label: `Rolling VWAP ${length}`,
+        label: `Rolling VWAP ${periodValue} ${periodMode}`,
         kind: "line",
         placement: "overlay",
         color: theme.primary,
-        lineWidth: 2,
-        lineStyle: "solid",
-        lastValueVisible: false,
+        lineWidth: vwapLineWidth(instance, "lineWidth", 2),
+        lineStyle: vwapLineStyle(instance, "lineStyle", "solid"),
+        lastValueVisible: settingBoolean(instance, "showCurrentValue", false),
         data: stats.map(({ time, value, breakBefore }) => ({ time, value, breakBefore })),
       },
       ...bands,
@@ -1211,56 +1150,73 @@ function computeIndicatorSeries(
 
   if (key === "vwap" || key === "vwap-envelopes") {
     if (!volumeAvailable(candles)) return [];
-    const startHour = settingNumber(instance, "sessionStartHour", 17);
-    const rows = sessionVwap(candles, startHour);
+    const source = settingString(instance, "source", "hlc3") as VwapSource;
+    const envelopeMode = settingString(instance, "envelopeMode", "standard-deviation") as VwapEnvelopeMode;
+    const periodValue = Math.max(1, Math.round(settingNumber(instance, "periodValue", 1)));
+    const periodMode = settingString(instance, "periodMode", key === "vwap-envelopes" ? "days" : "days");
+    const rows = key === "vwap-envelopes"
+      ? calculateRollingVwap(candles, {
+        source,
+        periodMode: periodMode === "minutes" ? "minutes" : "days",
+        periodValue,
+      })
+      : calculatePeriodVwap(candles, {
+        source,
+        periodMode: ["days", "minutes", "seconds", "orders"].includes(periodMode)
+          ? periodMode as "days" | "minutes" | "seconds" | "orders"
+          : "days",
+        periodValue,
+        sessionStartHour: settingNumber(instance, "sessionStartHour", 17),
+      });
     const series: CalculatedIndicatorSeries[] = [{
       key: `${key}-main`,
       label: "VWAP",
       kind: "line",
       placement: "overlay",
       color: theme.primary,
-      lineWidth: 2,
-      lineStyle: "solid",
-      lastValueVisible: false,
+      lineWidth: vwapLineWidth(instance, "lineWidth", 2),
+      lineStyle: vwapLineStyle(instance, "lineStyle", "solid"),
+      lastValueVisible: settingBoolean(instance, "showCurrentValue", false),
       data: rows.map(({ time, value, breakBefore }) => ({ time, value, breakBefore })),
     }];
-    if (key === "vwap-envelopes") {
-      [1, 2, 3].forEach((multiplier, index) => {
-        const factor = settingNumber(instance, `band${multiplier}`, multiplier);
-        series.push(
+    [1, 2, 3, 4, 5].forEach((bandNumber, index) => {
+      const defaultEnabled = key === "vwap-envelopes" && bandNumber <= 3;
+      const enabled = settingBoolean(instance, `band${bandNumber}Enabled`, defaultEnabled);
+      const factor = Math.max(0, settingNumber(instance, `band${bandNumber}`, bandNumber));
+      const suffix = envelopeMode === "price-percentage" ? "%" : "σ";
+      series.push(
           {
-            key: `${key}-upper-${multiplier}`,
-            label: `VWAP +${factor}σ`,
+            key: `${key}-upper-${bandNumber}`,
+            label: `VWAP +${factor}${suffix}`,
             kind: "line",
             placement: "overlay",
             color: vwapBandColor(theme, index),
-            lineWidth: 1,
-            lineStyle: "dotted",
+            lineWidth: vwapLineWidth(instance, "bandLineWidth", 1),
+            lineStyle: vwapLineStyle(instance, "bandLineStyle", "dotted"),
             lastValueVisible: false,
-            data: rows.map(({ time, value, deviation, breakBefore }) => ({
+            data: enabled ? rows.map(({ time, value, deviation, breakBefore }) => ({
               time,
-              value: value + deviation * factor,
+              value: value + vwapEnvelopeOffset({ value, deviation }, factor, envelopeMode),
               breakBefore,
-            })),
+            })) : [],
           },
           {
-            key: `${key}-lower-${multiplier}`,
-            label: `VWAP -${factor}σ`,
+            key: `${key}-lower-${bandNumber}`,
+            label: `VWAP -${factor}${suffix}`,
             kind: "line",
             placement: "overlay",
             color: vwapBandColor(theme, index),
-            lineWidth: 1,
-            lineStyle: "dotted",
+            lineWidth: vwapLineWidth(instance, "bandLineWidth", 1),
+            lineStyle: vwapLineStyle(instance, "bandLineStyle", "dotted"),
             lastValueVisible: false,
-            data: rows.map(({ time, value, deviation, breakBefore }) => ({
+            data: enabled ? rows.map(({ time, value, deviation, breakBefore }) => ({
               time,
-              value: value - deviation * factor,
+              value: value - vwapEnvelopeOffset({ value, deviation }, factor, envelopeMode),
               breakBefore,
-            })),
+            })) : [],
           },
-        );
-      });
-    }
+      );
+    });
     return series;
   }
 

@@ -6001,6 +6001,96 @@ export default function ChartIndicatorsControl({
                 </div>
               ) : null}
 
+              {["vwap", "vwap-envelopes", "rolling-vwap"].includes(settingsDefinition.id) ? (
+                <div className="grid gap-3 border border-primary/20 bg-primary/[0.035] p-3 sm:grid-cols-2">
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                    <span>Price source</span>
+                    <KwantSelect
+                      value={String(settingsInstance.settings?.source ?? "hlc3")}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                        ...current,
+                        settings: { ...(current.settings ?? {}), source: event.target.value },
+                      }))}
+                      className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                      menuLabel="VWAP price source"
+                    >
+                      <option value="hlc3">Typical price (HLC3)</option>
+                      <option value="hl2">Median price (HL2)</option>
+                      <option value="ohlc4">OHLC average</option>
+                      <option value="close">Close</option>
+                    </KwantSelect>
+                  </label>
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                    <span>Period</span>
+                    <KwantSelect
+                      value={String(settingsInstance.settings?.periodMode ?? (settingsDefinition.id === "rolling-vwap" ? "bars" : "days"))}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                        ...current,
+                        settings: { ...(current.settings ?? {}), periodMode: event.target.value },
+                      }))}
+                      className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                      menuLabel="VWAP period"
+                    >
+                      {settingsDefinition.id === "rolling-vwap" ? <option value="bars">Bars</option> : null}
+                      <option value="days">Trading days</option>
+                      <option value="minutes">Minutes</option>
+                      {settingsDefinition.id === "vwap" ? <option value="seconds">Seconds</option> : null}
+                      {settingsDefinition.id === "vwap" ? <option value="orders">Orders</option> : null}
+                    </KwantSelect>
+                  </label>
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                    <span>Envelope calculation</span>
+                    <KwantSelect
+                      value={String(settingsInstance.settings?.envelopeMode ?? "standard-deviation")}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                        ...current,
+                        settings: { ...(current.settings ?? {}), envelopeMode: event.target.value },
+                      }))}
+                      className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                      menuLabel="VWAP envelope calculation"
+                    >
+                      <option value="standard-deviation">Standard deviation</option>
+                      <option value="price-percentage">Price percentage</option>
+                    </KwantSelect>
+                  </label>
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                    <span>VWAP line</span>
+                    <KwantSelect
+                      value={String(settingsInstance.settings?.lineStyle ?? "solid")}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                        ...current,
+                        settings: { ...(current.settings ?? {}), lineStyle: event.target.value },
+                      }))}
+                      className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                      menuLabel="VWAP line style"
+                    >
+                      <option value="solid">Solid</option><option value="dashed">Dashed</option><option value="dotted">Dotted</option>
+                    </KwantSelect>
+                  </label>
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">
+                    <span>Envelope lines</span>
+                    <KwantSelect
+                      value={String(settingsInstance.settings?.bandLineStyle ?? "dotted")}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                        ...current,
+                        settings: { ...(current.settings ?? {}), bandLineStyle: event.target.value },
+                      }))}
+                      className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                      menuLabel="VWAP envelope line style"
+                    >
+                      <option value="solid">Solid</option><option value="dashed">Dashed</option><option value="dotted">Dotted</option>
+                    </KwantSelect>
+                  </label>
+                  <p className="text-[8px] leading-4 text-muted sm:col-span-2">
+                    {settingsDefinition.id === "vwap-envelopes"
+                      ? "Continuous VWAP Envelopes replace observations outside the selected rolling window; they do not reset at midnight or the CME reopen."
+                      : settingsDefinition.id === "rolling-vwap"
+                        ? "Rolling VWAP is continuous across sessions and evicts only observations outside the selected bars, minutes, or days window."
+                        : "VWAP resets on the selected trading-day, minute, second, or order-count period. Trading days use the 17:00 Chicago CME boundary."}
+                  </p>
+                </div>
+              ) : null}
+
               {[
                 "cumulative-volume-delta",
                 "delta-cumulative-candlestick",

@@ -164,6 +164,18 @@ export type DrawStyle = {
   valueAreaLineWidth?: number; // 0.5..4; absent follows the drawing line width
   outsideColor?: string;       // rows outside the value area (default #787B86)
   profileWidthPercent?: number; // widest row as % of the range width, 10..80
+  // Anchored VWAP. Optional fields keep existing saved drawings compatible.
+  vwapSource?: "hlc3" | "hl2" | "ohlc4" | "close";
+  vwapBand1Enabled?: boolean;
+  vwapBand2Enabled?: boolean;
+  vwapBand3Enabled?: boolean;
+  vwapBand1?: number;
+  vwapBand2?: number;
+  vwapBand3?: number;
+  vwapUpperColor?: string;
+  vwapLowerColor?: string;
+  vwapBandFill?: boolean;
+  vwapBandFillOpacity?: number;
   /**
    * Long/Short position zones. The profit and risk bands were pinned to the
    * theme's two candle colours with no way to override them, so a desk that
