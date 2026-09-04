@@ -66,6 +66,11 @@ import {
   DEFAULT_MARKET_STATISTICS_SETTINGS,
   normalizeMarketStatisticsSettings,
 } from "@/lib/marketStatistics";
+import {
+  CONFLUENCE_IDENTIFIER_SETTINGS_VERSION,
+  DEFAULT_CONFLUENCE_IDENTIFIER_SETTINGS,
+  normalizeConfluenceIdentifierSettings,
+} from "@/lib/confluenceIdentifier";
 
 export const LIVE_CHART_INDICATOR_IDS = new Set([
   "gamma-environment",
@@ -100,6 +105,7 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "deep-profile-swing",
   "deep-profile-values",
   "market-statistics",
+  "confluence-identifier",
   "cumulative-volume-delta",
   "cvd-divergence",
   "pulling-stacking",
@@ -326,6 +332,32 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "initialFilterMinutes", label: "Initial filter · exchange minutes", defaultValue: 0, min: 0, max: 1439, step: 1 },
     { key: "endFilterMinutes", label: "End filter · exchange minutes", defaultValue: 1439, min: 0, max: 1439, step: 1 },
     { key: "panelOpacity", label: "Panel opacity (%)", defaultValue: 72, min: 0, max: 100, step: 1 },
+  ],
+  "confluence-identifier": [
+    { key: "filterMin", label: "Filter minimum", defaultValue: 0, min: 0, max: 10000000, step: 1 },
+    { key: "filterMax", label: "Filter maximum · 0 is unlimited", defaultValue: 0, min: 0, max: 10000000, step: 1 },
+    { key: "tickSensitivity", label: "Confluence tick sensitivity", defaultValue: 3, min: 1, max: 500, step: 1 },
+    { key: "minimumConfluences", label: "Minimum confluences", defaultValue: 5, min: 1, max: 500, step: 1 },
+    { key: "trendReversalPercent", label: "Trend reversal (%)", defaultValue: 3, min: 0.01, max: 10, step: 0.2 },
+    { key: "trendSwingCount", label: "Trend swings", defaultValue: 9, min: 1, max: 100, step: 1 },
+    { key: "swingReversalPercent", label: "Confluence swing reversal (%)", defaultValue: 1, min: 0.01, max: 10, step: 0.1 },
+    { key: "firstGroupTicks", label: "Profile 1 manual grouping ticks", defaultValue: 4, min: 1, max: 500, step: 1 },
+    { key: "firstProfileCount", label: "Profile 1 count", defaultValue: 6, min: 1, max: 250, step: 1 },
+    { key: "secondGroupTicks", label: "Profile 2 manual grouping ticks", defaultValue: 4, min: 1, max: 500, step: 1 },
+    { key: "secondProfileCount", label: "Profile 2 count", defaultValue: 4, min: 1, max: 250, step: 1 },
+    { key: "thirdGroupTicks", label: "Profile 3 manual grouping ticks", defaultValue: 4, min: 1, max: 500, step: 1 },
+    { key: "thirdProfileCount", label: "Profile 3 count", defaultValue: 1, min: 1, max: 250, step: 1 },
+    { key: "peakMinimumVolumePercent", label: "Peak minimum volume (%)", defaultValue: 60, min: 0, max: 100, step: 1 },
+    { key: "valleyMaximumVolumePercent", label: "Valley maximum volume (%)", defaultValue: 25, min: 0, max: 100, step: 1 },
+    { key: "deltaImbalancePercent", label: "Delta imbalance (%)", defaultValue: 70, min: 0, max: 100, step: 1 },
+    { key: "supportRange2", label: "Support strength 2 starts", defaultValue: 6, min: 1, max: 500, step: 1 },
+    { key: "supportRange3", label: "Support strength 3 starts", defaultValue: 8, min: 1, max: 500, step: 1 },
+    { key: "supportRange4", label: "Support strength 4 starts", defaultValue: 10, min: 1, max: 500, step: 1 },
+    { key: "resistanceRange2", label: "Resistance strength 2 starts", defaultValue: 6, min: 1, max: 500, step: 1 },
+    { key: "resistanceRange3", label: "Resistance strength 3 starts", defaultValue: 8, min: 1, max: 500, step: 1 },
+    { key: "resistanceRange4", label: "Resistance strength 4 starts", defaultValue: 10, min: 1, max: 500, step: 1 },
+    { key: "lineWidth", label: "Source line width", defaultValue: 1, min: 0.5, max: 6, step: 0.5 },
+    { key: "zoneOpacity", label: "Confluence zone opacity (%)", defaultValue: 18, min: 0, max: 100, step: 1 },
   ],
   "ratio-highlight": [
     { key: "minRatio", label: "Minimum ratio", defaultValue: 10, min: 0, max: 100, step: 0.25 },
@@ -1613,6 +1645,23 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     deviationColor: theme?.downColor ?? "#EF4444",
     backgroundColor: theme?.backgroundColor ?? "#09090B",
   } : {}),
+  ...(indicatorId === "confluence-identifier" ? {
+    ...DEFAULT_CONFLUENCE_IDENTIFIER_SETTINGS,
+    supportColor1: theme?.upColor ?? DEFAULT_CONFLUENCE_IDENTIFIER_SETTINGS.supportColor1,
+    supportColor2: theme?.borderUpColor ?? theme?.upColor ?? DEFAULT_CONFLUENCE_IDENTIFIER_SETTINGS.supportColor2,
+    supportColor3: theme?.upColor ?? DEFAULT_CONFLUENCE_IDENTIFIER_SETTINGS.supportColor3,
+    supportColor4: theme?.borderUpColor ?? theme?.upColor ?? DEFAULT_CONFLUENCE_IDENTIFIER_SETTINGS.supportColor4,
+    resistanceColor1: theme?.downColor ?? DEFAULT_CONFLUENCE_IDENTIFIER_SETTINGS.resistanceColor1,
+    resistanceColor2: theme?.borderDownColor ?? theme?.downColor ?? DEFAULT_CONFLUENCE_IDENTIFIER_SETTINGS.resistanceColor2,
+    resistanceColor3: theme?.downColor ?? DEFAULT_CONFLUENCE_IDENTIFIER_SETTINGS.resistanceColor3,
+    resistanceColor4: theme?.borderDownColor ?? theme?.downColor ?? DEFAULT_CONFLUENCE_IDENTIFIER_SETTINGS.resistanceColor4,
+    trendUpColor: theme?.upColor ?? DEFAULT_CONFLUENCE_IDENTIFIER_SETTINGS.trendUpColor,
+    trendDownColor: theme?.downColor ?? DEFAULT_CONFLUENCE_IDENTIFIER_SETTINGS.trendDownColor,
+    swingUpColor: theme?.borderUpColor ?? theme?.upColor ?? DEFAULT_CONFLUENCE_IDENTIFIER_SETTINGS.swingUpColor,
+    swingDownColor: theme?.borderDownColor ?? theme?.downColor ?? DEFAULT_CONFLUENCE_IDENTIFIER_SETTINGS.swingDownColor,
+    startLineColor: theme?.gridColor ?? DEFAULT_CONFLUENCE_IDENTIFIER_SETTINGS.startLineColor,
+    schemaVersion: CONFLUENCE_IDENTIFIER_SETTINGS_VERSION,
+  } : {}),
   ...(indicatorId === "tape-speed-order-flow-burst" ? {
     ...DEFAULT_TAPE_SPEED_SETTINGS,
     buyColor: theme?.upColor ?? DEFAULT_TAPE_SPEED_SETTINGS.buyColor,
@@ -2829,6 +2878,11 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
       ...normalizedInstance,
       settings: { ...incoming, ...normalizeMarketStatisticsSettings(incoming) },
     };
+  }
+  if (normalizedInstance.indicatorId === "confluence-identifier") {
+    const defaults = defaultIndicatorSettings("confluence-identifier");
+    const incoming = { ...defaults, ...(normalizedInstance.settings ?? {}) };
+    return { ...normalizedInstance, settings: { ...incoming, ...normalizeConfluenceIdentifierSettings(incoming) } };
   }
   if (normalizedInstance.indicatorId === "tape-speed-order-flow-burst") {
     return {

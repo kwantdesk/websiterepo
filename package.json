@@ -42,6 +42,7 @@
     "test:deep-profile-swing": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-deep-profile-swing.mjs",
     "test:deep-profile-values": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-deep-profile-values.mjs",
     "test:market-statistics": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-market-statistics.mjs",
+    "test:confluence-identifier": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-confluence-identifier.mjs",
     "test:custom-draw-volume-profile": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-custom-draw-volume-profile.mjs",
     "test:tape-speed-order-flow-burst": "node --experimental-strip-types scripts/test-tape-speed-order-flow-burst.mjs",
     "test:speed-of-tape-instant": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-speed-of-tape-instant.mjs",

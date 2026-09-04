@@ -50,7 +50,7 @@ Legend: `[ ]` not complete, `[~]` in progress, `[x]` complete and addable.
 | 12 | KWANT Profile Swing | `deep-profile-swing` | [x] | [x] | [x] | [x] | [x] | Add |
 | 13 | KWANT Profile Values | `deep-profile-values` | [x] | [x] | [x] | [x] | [x] | Add |
 | 14 | Market Statistics | `market-statistics` | [x] | [x] | [x] | [x] | [x] | Add |
-| 15 | Confluence Identifier | `confluence-identifier` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
+| 15 | Confluence Identifier | `confluence-identifier` | [x] | [x] | [x] | [x] | [~] | Pending |
 | 16 | Kwant Levels | `gamma-levels` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
 | 17 | Overlay Chart | `overlay-chart` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
 | 18 | Overlay Symbol | `overlay-symbol` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
@@ -59,6 +59,34 @@ Legend: `[ ]` not complete, `[~]` in progress, `[x]` complete and addable.
 | 21 | KWANT Pattern Builder | `deep-pattern-builder` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
 
 ## Audit notes
+
+### 15: Confluence Identifier
+
+- Official DeepCharts help defines this as support/resistance confluence from
+  Volume Profile POC, value area, peaks, valleys and delta imbalances, price
+  swings, and trend retracements. Installed DLL metadata confirms the complete
+  public contract: Volume/Orders inputs and filters; tick sensitivity and
+  minimum confluences (1–500); Zig Zag/Date start; trend reversal up to 10%
+  in 0.2 increments and 1–100 swings; an optional second Zig Zag swing; three
+  independently enabled Daily/Weekly/Monthly/Composite VBP sources; 38.2,
+  50, 61.8 and 75% retracements; developing lines; and four support plus four
+  resistance strength colour ranges.
+- Quant Desk combines distinct source levels inside the selected tick radius,
+  requires the selected number of distinct confluences, classifies the zone
+  relative to current price, and paints bounded support/resistance bands with
+  strength, source and developing-line controls. Its three profile inputs use
+  exact classified Rithmic volume-at-price via the existing validated profile
+  engine; historical Order mode remains explicitly waiting and is never
+  substituted with executed trades.
+- The implementation includes normalized/migrated settings, theme and custom
+  colours, numeric sliders, date input, profile-source controls, templates,
+  live/historical/partial/waiting states, and a chart-coordinate SVG overlay.
+  Focused normalization, multi-source clustering, missing-order, sparse-data
+  and 50,000-bar performance tests pass. Scoped TypeScript is clean and the
+  Next production compiler succeeds; repository-wide type checking is blocked
+  later by the pre-existing duplicate Three.js type mismatch in
+  `src/app/landing/page.tsx:51`. Exact-deployment browser QA remains open, so
+  the catalogue is deliberately not marked Add yet.
 
 ### 1: Unfinished Auction
 

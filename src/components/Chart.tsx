@@ -309,6 +309,13 @@ import { DeepVTrackerPrimitive } from "@/lib/deepVTrackerPrimitive";
 import { buildDeepProfileSwingFrame, normalizeDeepProfileSwingSettings, type DeepProfileSwingFrame } from "@/lib/deepProfileSwing";
 import { buildDeepProfileValuesFrame, normalizeDeepProfileValuesSettings, type DeepProfileValuesFrame } from "@/lib/deepProfileValues";
 import {
+  buildConfluenceIdentifierFrame,
+  normalizeConfluenceIdentifierSettings,
+  type ConfluenceIdentifierFrame,
+  type ConfluenceProfileInput,
+  type ConfluenceProfileSlot,
+} from "@/lib/confluenceIdentifier";
+import {
   buildCumulativeIcebergStopFrame,
   normalizeCumulativeIcebergStopSettings,
   type CumulativeIcebergStopFrame,
@@ -3931,6 +3938,7 @@ function Chart({
   const [deepProfileSwingFrame, setDeepProfileSwingFrame] = useState<DeepProfileSwingFrame | null>(null);
   const [deepProfileValuesFrame, setDeepProfileValuesFrame] = useState<DeepProfileValuesFrame | null>(null);
   const [marketStatisticsFrame, setMarketStatisticsFrame] = useState<MarketStatisticsFrame | null>(null);
+  const [confluenceIdentifierFrame, setConfluenceIdentifierFrame] = useState<ConfluenceIdentifierFrame | null>(null);
   const [pocAuctionTooltip, setPocAuctionTooltip] = useState<PocAuctionHit | null>(null);
   const [tapeSpeedTooltip, setTapeSpeedTooltip] = useState<TapeSpeedHit | null>(null);
   const [netGammaProfile, setNetGammaProfile] = useState<NetGammaProfileSnapshot | null>(null);
@@ -5786,6 +5794,10 @@ function Chart({
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "market-statistics") ?? null,
     [indicatorSignature, indicators],
   );
+  const confluenceIdentifierIndicator = useMemo(
+    () => indicators.find((instance) => instance.enabled && instance.indicatorId === "confluence-identifier") ?? null,
+    [indicatorSignature, indicators],
+  );
   const cumulativeIcebergStopIndicator = useMemo(
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "cumulative-iceberg-stop") ?? null,
     [indicatorSignature, indicators],
@@ -6227,13 +6239,13 @@ function Chart({
     [footprintDataKey, footprintRenderBars],
   );
   const rawPocAuctionBars = useMemo(() => {
-    if ((!pocAuctionIndicator && !unfinishedAuctionIndicator && !dynamicPocIndicator && !ratioHighlightIndicator && !stopSpotterIndicator && !deepWallIndicator && !deepVTrackerIndicator && !deepProfileSwingIndicator) || !footprintSourceCandles.length) return [];
+    if ((!pocAuctionIndicator && !unfinishedAuctionIndicator && !dynamicPocIndicator && !ratioHighlightIndicator && !stopSpotterIndicator && !deepWallIndicator && !deepVTrackerIndicator && !deepProfileSwingIndicator && !confluenceIdentifierIndicator) || !footprintSourceCandles.length) return [];
     return buildFootprintBarsCached(pocAuctionBuildCacheRef, footprintSourceCandles, footprintMarketTrades, {
       ...footprintBuildSettings,
       groupTicks: 1,
       showEmptyPriceRows: false,
     });
-  }, [deepProfileSwingIndicator, deepVTrackerIndicator, deepWallIndicator, dynamicPocIndicator, footprintBuildSettings, footprintMarketTrades, footprintSourceCandles, pocAuctionIndicator, ratioHighlightIndicator, stopSpotterIndicator, unfinishedAuctionIndicator]);
+  }, [confluenceIdentifierIndicator, deepProfileSwingIndicator, deepVTrackerIndicator, deepWallIndicator, dynamicPocIndicator, footprintBuildSettings, footprintMarketTrades, footprintSourceCandles, pocAuctionIndicator, ratioHighlightIndicator, stopSpotterIndicator, unfinishedAuctionIndicator]);
   const rawBarPocBars = useMemo(() => {
     if (!barPocIndicator || !footprintSourceCandles.length) return [];
     const normalized = normalizeBarPocSettings(barPocIndicator.settings);
@@ -6740,6 +6752,27 @@ function Chart({
       backgroundColor: themed ? settings.backgroundColor : String(raw.backgroundColor ?? settings.backgroundColor),
     };
   }, [marketStatisticsIndicator, settings]);
+  const confluenceIdentifierSettings = useMemo(() => {
+    const normalized = normalizeConfluenceIdentifierSettings(confluenceIdentifierIndicator?.settings);
+    if (!normalized.useThemeColors) return normalized;
+    const visible = visibleIndicatorTheme(settings);
+    return {
+      ...normalized,
+      supportColor1: visible.positive,
+      supportColor2: visible.secondary,
+      supportColor3: visible.positive,
+      supportColor4: visible.primary,
+      resistanceColor1: visible.negative,
+      resistanceColor2: visible.muted,
+      resistanceColor3: visible.negative,
+      resistanceColor4: visible.primary,
+      trendUpColor: visible.positive,
+      trendDownColor: visible.negative,
+      swingUpColor: visible.secondary,
+      swingDownColor: visible.muted,
+      startLineColor: visible.muted,
+    };
+  }, [confluenceIdentifierIndicator, settings]);
 
   useEffect(() => {
     if (!marketStatisticsIndicator) {
@@ -6755,6 +6788,52 @@ function Chart({
     });
     startTransition(() => setMarketStatisticsFrame(frame));
   }, [indicatorMarketTrades, indicatorWindowCandles, marketStatisticsBars, marketStatisticsIndicator, marketStatisticsSettings, replayTimestampMs]);
+
+  useEffect(() => {
+    if (!confluenceIdentifierIndicator) {
+      setConfluenceIdentifierFrame(null);
+      return;
+    }
+    const profileInputs: ConfluenceProfileInput[] = (["first", "second", "third"] as ConfluenceProfileSlot[])
+      .filter((slot) => confluenceIdentifierSettings[`${slot}Enabled`])
+      .map((slot) => {
+        const period = confluenceIdentifierSettings[`${slot}Period`];
+        const profileSettings = normalizeDeepProfileValuesSettings({
+          periodMode: period === "composite" ? "composite" : "multiples",
+          lengthType: period === "daily" ? "days" : period === "weekly" ? "weeks" : period === "monthly" ? "months" : "days",
+          lengthValue: 1,
+          inputData: confluenceIdentifierSettings.inputData,
+          filterMin: confluenceIdentifierSettings.filterMin,
+          filterMax: confluenceIdentifierSettings.filterMax,
+          groupingMode: confluenceIdentifierSettings[`${slot}GroupingMode`],
+          groupTicks: confluenceIdentifierSettings[`${slot}GroupTicks`],
+          numberOfProfiles: confluenceIdentifierSettings[`${slot}IncludeByNumber`]
+            ? confluenceIdentifierSettings[`${slot}ProfileCount`]
+            : 250,
+          showPeaks: confluenceIdentifierSettings[`${slot}UsePeaks`],
+          showValleys: confluenceIdentifierSettings[`${slot}UseValleys`],
+          peakMinimumVolumePercent: confluenceIdentifierSettings.peakMinimumVolumePercent,
+          valleyMaximumVolumePercent: confluenceIdentifierSettings.valleyMaximumVolumePercent,
+        });
+        const profileFrame = buildDeepProfileValuesFrame(
+          rawPocAuctionBars,
+          instrument,
+          contractSymbol ?? instrument,
+          priceFormat.minMove,
+          profileSettings,
+          footprintMarketTrades,
+        );
+        return { slot, status: profileFrame.status, profiles: profileFrame.profiles } as ConfluenceProfileInput;
+      });
+    const frame = buildConfluenceIdentifierFrame({
+      candles: indicatorWindowCandles,
+      profileInputs,
+      tickSize: priceFormat.minMove,
+      settings: confluenceIdentifierSettings,
+      isLive: replayTimestampMs == null,
+    });
+    startTransition(() => setConfluenceIdentifierFrame(frame));
+  }, [confluenceIdentifierIndicator, confluenceIdentifierSettings, contractSymbol, footprintMarketTrades, indicatorWindowCandles, instrument, priceFormat.minMove, rawPocAuctionBars, replayTimestampMs]);
 
   useEffect(() => {
     if (!unfinishedAuctionIndicator) {
@@ -17506,6 +17585,50 @@ function Chart({
           <span className="text-foreground">KWANT Profile Values</span><span>{deepProfileValuesFrame?.status.replaceAll("_", " ") ?? "CALCULATING"}</span><span>{deepProfileValuesFrame?.profiles.length ?? 0} PROFILES</span>
         </div>
       ) : null}
+      {confluenceIdentifierIndicator && confluenceIdentifierFrame ? (() => {
+        const chart = chartRef.current;
+        const series = candleSeriesRef.current;
+        if (!chart || !series) return null;
+        const right = Math.max(toolbarPlotLeftInset, overlaySize.width - 64);
+        const sourceX = confluenceIdentifierFrame.startTime == null ? toolbarPlotLeftInset : chart.timeScale().timeToCoordinate((eventChartTimeBySourceTimeRef.current.get(confluenceIdentifierFrame.startTime) ?? Math.floor(confluenceIdentifierFrame.startTime / 1_000)) as Time) ?? toolbarPlotLeftInset;
+        const clampedStartX = Math.max(toolbarPlotLeftInset, Math.min(right, sourceX));
+        const pivotPoints = confluenceIdentifierFrame.pivots.map((pivot) => ({
+          ...pivot,
+          x: chart.timeScale().timeToCoordinate((eventChartTimeBySourceTimeRef.current.get(pivot.timestamp) ?? Math.floor(pivot.timestamp / 1_000)) as Time),
+          y: series.priceToCoordinate(pivot.price),
+        })).filter((point): point is typeof point & { x: number; y: number } => point.x != null && point.y != null);
+        return <>
+          <svg className="pointer-events-none absolute inset-0 z-[69] h-full w-full" aria-hidden="true" data-confluence-status={confluenceIdentifierFrame.status}>
+            {confluenceIdentifierFrame.zones.map((zone) => {
+              const highY = series.priceToCoordinate(zone.high);
+              const lowY = series.priceToCoordinate(zone.low);
+              if (highY == null || lowY == null) return null;
+              const top = Math.min(highY, lowY);
+              const height = Math.max(2, Math.abs(lowY - highY));
+              return <g key={zone.id}>
+                <rect x={clampedStartX} y={top} width={Math.max(0, right - clampedStartX)} height={height} fill={zone.color} opacity={confluenceIdentifierSettings.zoneOpacity / 100} />
+                <line x1={clampedStartX} x2={right} y1={top + height / 2} y2={top + height / 2} stroke={zone.color} strokeWidth={confluenceIdentifierSettings.lineWidth} />
+                {confluenceIdentifierSettings.showLabels ? <text x={right - 4} y={top + height / 2 - 3} textAnchor="end" fill={zone.color} fontSize="9" fontFamily="monospace">{`${zone.side.toUpperCase()} ${zone.confluences} · ${zone.centre.toFixed(priceFormat.precision)}`}</text> : null}
+              </g>;
+            })}
+            {confluenceIdentifierSettings.showSourceLines ? confluenceIdentifierFrame.sourceLevels.map((level) => {
+              const y = series.priceToCoordinate(level.price);
+              if (y == null) return null;
+              return <line key={level.id} x1={clampedStartX} x2={right} y1={y} y2={y} stroke={level.sideHint === "support" ? confluenceIdentifierSettings.supportColor1 : level.sideHint === "resistance" ? confluenceIdentifierSettings.resistanceColor1 : confluenceIdentifierSettings.startLineColor} strokeWidth={Math.max(0.5, confluenceIdentifierSettings.lineWidth * 0.65)} strokeDasharray="3 4" opacity="0.5" />;
+            }) : null}
+            {confluenceIdentifierSettings.showDevelopingLines ? pivotPoints.slice(1).map((point, index) => {
+              const previous = pivotPoints[index];
+              const color = point.price >= previous.price ? confluenceIdentifierSettings.swingUpColor : confluenceIdentifierSettings.swingDownColor;
+              return <line key={`${previous.timestamp}:${point.timestamp}`} x1={previous.x} y1={previous.y} x2={point.x} y2={point.y} stroke={color} strokeWidth={confluenceIdentifierSettings.lineWidth} />;
+            }) : null}
+            {confluenceIdentifierSettings.startMode === "date" && confluenceIdentifierFrame.startTime != null ? <line x1={clampedStartX} x2={clampedStartX} y1={0} y2={overlaySize.height} stroke={confluenceIdentifierSettings.startLineColor} strokeWidth={confluenceIdentifierSettings.lineWidth} strokeDasharray="4 4" /> : null}
+          </svg>
+          <div className="pointer-events-none absolute right-2 z-[72] flex items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur" style={{ top: 8 }} title="Support and resistance confluence from exact profile structure, swings and retracements">
+            <span className={`h-1.5 w-1.5 rounded-full ${confluenceIdentifierFrame.status.startsWith("WAITING") ? "animate-pulse bg-warning" : confluenceIdentifierFrame.status === "PARTIAL" ? "bg-warning" : "bg-primary"}`} />
+            <span className="text-foreground">Confluence</span><span>{confluenceIdentifierFrame.status.replaceAll("_", " ")}</span><span>{confluenceIdentifierFrame.zones.length} ZONES</span>
+          </div>
+        </>;
+      })() : null}
       {marketStatisticsIndicator && marketStatisticsFrame ? (
         <div
           className="pointer-events-none absolute left-2 top-2 z-[71] min-w-[188px] border border-border/70 px-2 py-1.5 font-mono shadow-lg backdrop-blur-sm"

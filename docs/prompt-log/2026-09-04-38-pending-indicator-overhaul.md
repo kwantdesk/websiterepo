@@ -134,3 +134,13 @@ task until the full pending library is complete, without shortcuts.
   `EDeAGCbqqSixxs5qzAEceuEzXEhg`. Live QA confirmed Add, exact-execution output,
   the complete settings UI, immediate unsaved/saved state, persisted settings
   after a full reload, and clean removal of the QA instance.
+  Item 15, **Confluence Identifier**, is now a release candidate. Official
+  help and installed DLL metadata establish its Volume/Orders filters, dual
+  Zig Zag controls, Date start, tick clustering, minimum strength, three
+  independently configurable profile sources, retracements, developing plots
+  and four support/resistance strength tiers. Quant Desk now calculates those
+  zones from exact profile levels plus deterministic price swings and
+  retracements, follows chart themes, persists every setting/template, and
+  reports honest partial/waiting capability states. Focused correctness and
+  50,000-bar performance tests pass; exact-deployment production QA remains
+  before the row may be marked Add.

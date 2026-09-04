@@ -157,6 +157,16 @@ const DEEP_PROFILE_VALUES_MANAGED_SETTINGS = new Set([
 const MARKET_STATISTICS_MANAGED_SETTINGS = new Set([
   "statMode", "dataType", "barInput", "showHeader", "showEmptyRanges",
 ]);
+const CONFLUENCE_IDENTIFIER_MANAGED_SETTINGS = new Set([
+  "inputData", "startMode", "startDateMs",
+  ...["first", "second", "third"].flatMap((slot) => [
+    `${slot}Enabled`, `${slot}Period`, `${slot}GroupingMode`, `${slot}IncludeByNumber`,
+    `${slot}UsePoc`, `${slot}UseValueArea`, `${slot}UsePeaks`, `${slot}UseValleys`, `${slot}UseDeltaImbalances`,
+  ]),
+  "enableZigZagSwing", "includeSwingBeforeMidTrend", "enableRetracements",
+  "enableRetracement382", "enableRetracement50", "enableRetracement618", "enableRetracement75",
+  "excludePreviousRetracements", "showDevelopingLines", "showSourceLines", "showLabels",
+]);
 
 const TPO_PRESETS = [
   {
@@ -474,6 +484,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "deep-profile-swing",
   "deep-profile-values",
   "market-statistics",
+  "confluence-identifier",
   "moving-average",
   "vwap",
   "vwap-envelopes",
@@ -6952,6 +6963,57 @@ export default function ChartIndicatorsControl({
                 </div>
               ) : null}
 
+              {settingsDefinition.id === "confluence-identifier" ? (() => {
+                const update = (patch: Record<string, string | number | boolean>) => replace(settingsInstance.instanceId, (current) => ({
+                  ...current,
+                  settings: { ...(current.settings ?? {}), ...patch },
+                }));
+                const toggle = (label: string, key: string) => {
+                  const on = settingsInstance.settings?.[key] === true;
+                  return <button key={key} type="button" aria-pressed={on} onClick={() => update({ [key]: !on })} className="flex h-9 items-center justify-between border border-border bg-background px-3 text-[9px] uppercase tracking-[0.1em] text-muted"><span>{label}</span><span className={on ? "text-primary" : "text-muted"}>{on ? "On" : "Off"}</span></button>;
+                };
+                const select = (label: string, key: string, options: Array<[string, string]>) => (
+                  <label key={key} className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"><span>{label}</span><KwantSelect value={String(settingsInstance.settings?.[key] ?? options[0][0])} onChange={(event) => update({ [key]: event.target.value })} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel={label}>{options.map(([value, text]) => <option key={value} value={value}>{text}</option>)}</KwantSelect></label>
+                );
+                return (
+                  <div className="space-y-4 border border-primary/20 bg-primary/[0.035] p-3">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {select("Input data", "inputData", [["volume", "Volume"], ["order", "Orders"]])}
+                      {select("Starting mode", "startMode", [["zig-zag", "Zig Zag"], ["date", "Date"]])}
+                      {String(settingsInstance.settings?.startMode ?? "zig-zag") === "date" ? <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2"><span>Start date</span><input type="datetime-local" value={Number(settingsInstance.settings?.startDateMs ?? 0) > 0 ? new Date(Number(settingsInstance.settings?.startDateMs)).toISOString().slice(0, 16) : ""} onChange={(event) => update({ startDateMs: event.target.value ? new Date(event.target.value).getTime() : 0 })} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none" /></label> : null}
+                      {toggle("Enable Zig Zag swing", "enableZigZagSwing")}
+                      {toggle("Include swings in first half", "includeSwingBeforeMidTrend")}
+                      {toggle("Enable retracements", "enableRetracements")}
+                      {toggle("38.2% retracement", "enableRetracement382")}
+                      {toggle("50% retracement", "enableRetracement50")}
+                      {toggle("61.8% retracement", "enableRetracement618")}
+                      {toggle("75% retracement", "enableRetracement75")}
+                      {toggle("Exclude previous retracements", "excludePreviousRetracements")}
+                      {toggle("Show developing Zig Zag", "showDevelopingLines")}
+                      {toggle("Show source levels", "showSourceLines")}
+                      {toggle("Show zone labels", "showLabels")}
+                    </div>
+                    {(["first", "second", "third"] as const).map((slot, index) => (
+                      <div key={slot} className="space-y-3 border border-border bg-background/70 p-3">
+                        <div className="text-[9px] uppercase tracking-[0.14em] text-foreground">Volume profile source {index + 1}</div>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          {toggle("Enabled", `${slot}Enabled`)}
+                          {select("Profile", `${slot}Period`, [["daily", "Daily"], ["weekly", "Weekly"], ["monthly", "Monthly"], ["composite", "Composite"]])}
+                          {select("Tick grouping", `${slot}GroupingMode`, [["automatic", "Automatic"], ["manual", "Manual"]])}
+                          {toggle("Include by number", `${slot}IncludeByNumber`)}
+                          {toggle("POC", `${slot}UsePoc`)}
+                          {toggle("Value area", `${slot}UseValueArea`)}
+                          {toggle("Peaks", `${slot}UsePeaks`)}
+                          {toggle("Valleys", `${slot}UseValleys`)}
+                          {toggle("Delta imbalances", `${slot}UseDeltaImbalances`)}
+                        </div>
+                      </div>
+                    ))}
+                    {settingsInstance.settings?.inputData === "order" ? <p className="text-[8px] leading-4 text-warning">Order mode requires historical resting-order-at-price snapshots. The chart reports a waiting state and never substitutes executed volume.</p> : null}
+                  </div>
+                );
+              })() : null}
+
               {/*
                 * Save, open and import — on every indicator, not just the
                 * footprint. Rendered before the settings themselves so a
@@ -7050,6 +7112,7 @@ export default function ChartIndicatorsControl({
                     && !(settingsDefinition.id === "deep-profile-swing" && DEEP_PROFILE_SWING_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "deep-profile-values" && DEEP_PROFILE_VALUES_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "market-statistics" && MARKET_STATISTICS_MANAGED_SETTINGS.has(key))
+                    && !(settingsDefinition.id === "confluence-identifier" && CONFLUENCE_IDENTIFIER_MANAGED_SETTINGS.has(key))
                     && !(VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) && VOLUME_PROFILE_VWAP_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "bounce-levels" && key === "syncGexMapColors")
                     && (typeof value === "boolean" || isColourSetting(key, value)))

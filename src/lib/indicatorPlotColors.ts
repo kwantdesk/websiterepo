@@ -208,6 +208,21 @@ export const INDICATOR_PLOT_COLOR_SLOTS: Record<string, IndicatorPlotColorSlot[]
   "average-true-range-atr": [
     { key: "plotColor", role: "primary" },
   ],
+  "confluence-identifier": [
+    { key: "supportColor1", role: "positive" },
+    { key: "supportColor2", role: "positive" },
+    { key: "supportColor3", role: "positive" },
+    { key: "supportColor4", role: "positive" },
+    { key: "resistanceColor1", role: "negative" },
+    { key: "resistanceColor2", role: "negative" },
+    { key: "resistanceColor3", role: "negative" },
+    { key: "resistanceColor4", role: "negative" },
+    { key: "trendUpColor", role: "positive" },
+    { key: "trendDownColor", role: "negative" },
+    { key: "swingUpColor", role: "positive" },
+    { key: "swingDownColor", role: "negative" },
+    { key: "startLineColor", role: "muted" },
+  ],
 };
 
 /**

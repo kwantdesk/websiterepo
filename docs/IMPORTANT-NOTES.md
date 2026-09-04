@@ -341,3 +341,9 @@ recap of the open items below and update this file when their state changes.
   narrows the admitted observations around the dataset mean using an explicit
   standard-score window; never claim the protected DeepCharts coefficients
   were recovered from metadata.
+- Confluence Identifier clusters distinct profile, swing and retracement
+  sources within an explicit tick radius; duplicated observations from one
+  source must never inflate the confluence count. Its three VBP inputs inherit
+  the exact Rithmic volume-at-price contract. Historical Orders must remain
+  `WAITING FOR ORDER HISTORY` until recorded resting-book snapshots exist, and
+  protected DeepCharts formula internals must not be claimed from metadata.
