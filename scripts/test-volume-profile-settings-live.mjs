@@ -111,7 +111,10 @@ check("DeepCharts extension modes survive migration without retuning the trader"
   assert.equal(migrated.settings?.pocExtensionMode, "to-window-end");
   assert.equal(migrated.settings?.valueAreaExtensionMode, "to-window-end");
   assert.equal(migrated.settings?.vwapExtensionMode, "none");
-  assert.equal(migrated.settings?.profileSettingsVersion, 14);
+  assert.equal(migrated.settings?.profileSettingsVersion, 15);
+  assert.equal(migrated.settings?.vwapEnabled, false);
+  assert.equal(migrated.settings?.showVwapLine, true);
+  assert.equal(migrated.settings?.showDevelopingVwap, false);
 });
 
 check("every setting has a way to be set", () => {
@@ -216,6 +219,27 @@ check("every removed Inputs control still exists in a named profile tab", () => 
       `${key} was removed with Inputs but has no dedicated profile control`,
     );
   }
+});
+
+check("DeepCharts VWAP controls live together and drive real renderer settings", () => {
+  const dialog = files.find((file) => file.path.endsWith(DIALOG));
+  const chart = files.find((file) => file.path.endsWith("Chart.tsx"));
+  const primitive = files.find((file) => file.path.endsWith("nativeVolumeProfilePrimitive.ts"));
+  assert.ok(dialog && chart && primitive, "the VWAP settings or renderer is gone");
+  const vwapTab = dialog.source.slice(
+    dialog.source.indexOf('volumeProfileTab === "vwap"'),
+    dialog.source.indexOf('volumeProfileTab === "summary"'),
+  );
+  for (const key of [
+    "vwapEnabled", "vwapHighlight", "showVwapLine", "showDevelopingVwap",
+    "showVwapBands", "vwapExtensionMode", "vwapLineStyle", "vwapLineWidth",
+    "vwapColor", "vwapHighlightColor", "vwapBandColor",
+  ]) assert.ok(vwapTab.includes(key), `${key} is missing from the dedicated VWAP tab`);
+  assert.match(chart.source, /showVwap: vwapEnabled/);
+  assert.match(chart.source, /showVwapLine: vwapEnabled/);
+  assert.match(chart.source, /showDevelopingVwap: vwapEnabled/);
+  assert.match(primitive.source, /style\.showDevelopingVwap/);
+  assert.match(primitive.source, /deferredLevelDraws\.push\(\(\) =>/);
 });
 
 console.log(`\nvolume profile settings live: ${passed}/${passed} checks passed`);

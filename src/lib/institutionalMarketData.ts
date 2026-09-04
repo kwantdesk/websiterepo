@@ -122,6 +122,8 @@ export type InstitutionalVolumeProfile = {
    * nothing.
    */
   developingValueArea?: Array<{ timestamp: number; vah: number; val: number }>;
+  /** The profile's cumulative VWAP at each captured minute. */
+  developingVwap?: Array<{ timestamp: number; price: number }>;
   asOf: string;
 };
 
@@ -1288,6 +1290,12 @@ export function applyInstitutionalTradesToVolumeProfile(
     if (developingValueArea.at(-1)?.timestamp === latestMinute) developingValueArea[developingValueArea.length - 1] = sample;
     else developingValueArea.push(sample);
   }
+  const developingVwap = [...(profile.developingVwap ?? [])];
+  if (nextVwap !== null) {
+    const sample = { timestamp: latestMinute, price: nextVwap };
+    if (developingVwap.at(-1)?.timestamp === latestMinute) developingVwap[developingVwap.length - 1] = sample;
+    else developingVwap.push(sample);
+  }
   return {
     ...profile,
     // Reporting the standard here as well is what made the drift invisible:
@@ -1314,6 +1322,7 @@ export function applyInstitutionalTradesToVolumeProfile(
     levels: nextLevels,
     developingPoc: developingPoc.slice(-2_000),
     developingValueArea: developingValueArea.slice(-2_000),
+    developingVwap: developingVwap.slice(-2_000),
   };
 }
 
@@ -1591,6 +1600,10 @@ export function mergeInstitutionalVolumeProfiles(
     developingValueArea: [
       ...(historical.developingValueArea ?? []),
       ...(exact.developingValueArea ?? []),
+    ].slice(-2_000),
+    developingVwap: [
+      ...(historical.developingVwap ?? []),
+      ...(exact.developingVwap ?? []),
     ].slice(-2_000),
   };
 }

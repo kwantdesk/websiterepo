@@ -8412,6 +8412,10 @@ function WorkspaceChartPaneComponent({
         coverageEndMs: endMs,
         developingPoc: profile.developingPoc.filter((point) =>
           point.timestamp >= startMs && point.timestamp <= endMs),
+        developingValueArea: (profile.developingValueArea ?? []).filter((point) =>
+          point.timestamp >= startMs && point.timestamp <= endMs),
+        developingVwap: (profile.developingVwap ?? []).filter((point) =>
+          point.timestamp >= startMs && point.timestamp <= endMs),
       };
     };
     const scaleProfile = (profile: InstitutionalVolumeProfile, ratio: number): InstitutionalVolumeProfile => anchorToCashSession({
@@ -8426,6 +8430,15 @@ function WorkspaceChartPaneComponent({
       standardDeviation: profile.standardDeviation * ratio,
       levels: profile.levels.map((level) => ({ ...level, price: level.price * ratio })),
       developingPoc: profile.developingPoc.map((point) => ({ ...point, price: point.price * ratio })),
+      developingValueArea: (profile.developingValueArea ?? []).map((point) => ({
+        ...point,
+        vah: point.vah * ratio,
+        val: point.val * ratio,
+      })),
+      developingVwap: (profile.developingVwap ?? []).map((point) => ({
+        ...point,
+        price: point.price * ratio,
+      })),
     });
     const load = async () => {
       try {

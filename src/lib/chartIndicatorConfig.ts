@@ -2036,8 +2036,17 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     showBusinessZone: false,
     businessZoneOpacity: 3,
     businessZoneLineWidth: 0,
-    // VWAP of the profile itself, with up to three deviation envelopes.
+    // VWAP of the profile itself. `vwapEnabled` is DeepCharts' master switch;
+    // the line, live developing trail, highlight and envelopes remain
+    // independently selectable underneath it.
+    vwapEnabled: false,
+    showVwapLine: true,
+    vwapHighlight: false,
+    showDevelopingVwap: false,
+    showVwapBands: false,
     vwapLineWidth: 1,
+    vwapLineStyle: "dash",
+    vwapHighlightOpacity: 18,
     vwapExtensionMode: "none",
     vwapBand1: 1,
     vwapBand2: 2,
@@ -2109,10 +2118,8 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     showDevelopingPoc: false,
     showPocHighlight: true,
     showProfileOutline: true,
-    showVwapLine: false,
-    showVwapBands: false,
     showSummary: false,
-    profileSettingsVersion: 14,
+    profileSettingsVersion: 15,
     /*
      * `align` is gone: it was stored, migrated and read by nothing. Alignment
      * is `snapMode`, which is the live control and the one the dialog offers -
@@ -2127,6 +2134,7 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     valleyColor: theme?.downColor ?? "#EF4444",
     businessZoneColor: theme?.borderUpColor ?? theme?.upColor ?? "#22C55E",
     vwapColor: theme?.borderUpColor ?? "#F59E0B",
+    vwapHighlightColor: theme?.borderUpColor ?? "#F59E0B",
     vwapBandColor: theme?.gridColor ?? "#71717A",
     summaryTextColor: theme?.upColor ?? "#22C55E",
   } : {}),
@@ -2622,7 +2630,7 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
   }
   if (
     normalizedInstance.indicatorId === "kwant-profile"
-    && Number(normalizedInstance.settings?.profileSettingsVersion) < 14
+    && Number(normalizedInstance.settings?.profileSettingsVersion) < 15
   ) {
     return {
       ...normalizedInstance,
@@ -2631,8 +2639,23 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         showText: false,
         showPocHighlight: true,
         showProfileOutline: true,
-        showVwapLine: false,
-        showVwapBands: false,
+        vwapEnabled: normalizedInstance.settings?.vwapEnabled
+          ?? (normalizedInstance.settings?.showVwapLine === true
+            || normalizedInstance.settings?.showVwapBands === true),
+        // Old defaults stored both VWAP children as false. Keep VWAP itself
+        // disabled during migration, but prime Show line so turning the new
+        // master switch on has an immediate visible result. Preserve the
+        // intentional bands-only combination.
+        showVwapLine: normalizedInstance.settings?.showVwapLine === true
+          || normalizedInstance.settings?.showVwapBands !== true,
+        vwapHighlight: normalizedInstance.settings?.vwapHighlight ?? false,
+        showDevelopingVwap: normalizedInstance.settings?.showDevelopingVwap ?? false,
+        showVwapBands: normalizedInstance.settings?.showVwapBands ?? false,
+        vwapLineStyle: normalizedInstance.settings?.vwapLineStyle ?? "dash",
+        vwapHighlightOpacity: normalizedInstance.settings?.vwapHighlightOpacity ?? 18,
+        vwapHighlightColor: normalizedInstance.settings?.vwapHighlightColor
+          ?? normalizedInstance.settings?.vwapColor
+          ?? "#F59E0B",
         showSummary: false,
         showDelta: true,
         showProfileSpine: true,
@@ -2698,14 +2721,14 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         sessionNewYorkEnabled: normalizedInstance.settings?.sessionNewYorkEnabled ?? true,
         groupTicks: normalizedInstance.settings?.groupTicks ?? 4,
         valueAreaPercent: normalizedInstance.settings?.valueAreaPercent ?? DEFAULT_VOLUME_PROFILE_VALUE_AREA_PERCENT,
-        profileSettingsVersion: 14,
+        profileSettingsVersion: 15,
       },
     };
   }
   if (
     ["weekly-volume-profile", "custom-draw-on-volume-profile", "ask-bid-volume-profile", "delta-profile"]
       .includes(normalizedInstance.indicatorId)
-    && Number(normalizedInstance.settings?.profileSettingsVersion) < 14
+    && Number(normalizedInstance.settings?.profileSettingsVersion) < 15
   ) {
     return {
       ...normalizedInstance,
@@ -2744,6 +2767,19 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         peakExtensionMode: normalizedInstance.settings?.peakExtensionMode ?? "none",
         valleyExtensionMode: normalizedInstance.settings?.valleyExtensionMode ?? "none",
         vwapExtensionMode: normalizedInstance.settings?.vwapExtensionMode ?? "none",
+        vwapEnabled: normalizedInstance.settings?.vwapEnabled
+          ?? (normalizedInstance.settings?.showVwapLine === true
+            || normalizedInstance.settings?.showVwapBands === true),
+        showVwapLine: normalizedInstance.settings?.showVwapLine === true
+          || normalizedInstance.settings?.showVwapBands !== true,
+        vwapHighlight: normalizedInstance.settings?.vwapHighlight ?? false,
+        showDevelopingVwap: normalizedInstance.settings?.showDevelopingVwap ?? false,
+        showVwapBands: normalizedInstance.settings?.showVwapBands ?? false,
+        vwapLineStyle: normalizedInstance.settings?.vwapLineStyle ?? "dash",
+        vwapHighlightOpacity: normalizedInstance.settings?.vwapHighlightOpacity ?? 18,
+        vwapHighlightColor: normalizedInstance.settings?.vwapHighlightColor
+          ?? normalizedInstance.settings?.vwapColor
+          ?? "#F59E0B",
         // A profile shows volume as standard, but "Delta and total volume" is
         // a real choice in the dropdown and must survive. Coercing it back to
         // plain volume here meant the setting silently reverted every time the
@@ -2771,7 +2807,7 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         sessionNewYorkEnabled: normalizedInstance.settings?.sessionNewYorkEnabled ?? true,
         groupTicks: normalizedInstance.settings?.groupTicks ?? 4,
         valueAreaPercent: normalizedInstance.settings?.valueAreaPercent ?? DEFAULT_VOLUME_PROFILE_VALUE_AREA_PERCENT,
-        profileSettingsVersion: 14,
+        profileSettingsVersion: 15,
       },
     };
   }

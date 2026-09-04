@@ -22,7 +22,7 @@ slot) and **Use sec. axis**.
 | **POINT OF CONTROL** | Enable, Highlight, Highlight Colour, Show Line, Extend Line, Line Colour, Line Width, Dev. POC Start Time, Shifted POC Tick Grouping, Opacity POC Grouping, + shift alerts | line modes and None/Till interaction/Till end window are live; alerts remain absent |
 | **VALUE AREA** | Enable, % Value Area, Highlight, Outside Colour, Show Line, **Developing**, Extend Line, Line Colour, Line Width | calculation, developing trace and all extension modes work; separate fill-highlight toggle remains absent |
 | **PEAK AND VALLEY** | Peak/Valley enable, Sensitivity, Exclude High/Low, + Peak, Valley, Business Zone sections | calculation plus independent peak/valley extensions complete |
-| **VWAP** | Enable, Highlight, Show Line, Developing VWAP, Extend, Colour, Width, Line style, + configurable Envelopes | line and extensions work; three fixed σ bands; developing historical VWAP and arbitrary envelopes remain absent |
+| **VWAP** | Enable, Highlight, Show Line, Developing VWAP, Extend, Colour, Width, Line style, + configurable Envelopes | master/child switches, highlight, line styling, extension, live developing trail and three σ bands work; arbitrary envelope definitions and an untaped historical developing trail remain absent |
 | **FILTER/SPLIT TIME** | Filter Mode, Filter Time, custom Ini/End session (**exchange time zone**), "use end session as start day" | complete |
 
 `Filter Mode` options are **None / Filter / Splitted / Triple** — our four names
@@ -88,9 +88,9 @@ table above is their Chicago conversion.
   that archive and calculator exist; presenting those options now would be a
   fake control.
 - DeepCharts Composite/Latest periods, Show above bars, full nested text and
-  background editors, profile shift alerts, developing historical VWAP and
-  arbitrary envelope definitions are not yet implemented. They are gaps, not
-  claimed parity.
+  background editors, profile shift alerts, untaped developing historical
+  VWAP and arbitrary envelope definitions are not yet implemented. They are
+  gaps, not claimed parity.
 
 ## The tool
 

@@ -112,6 +112,20 @@ const VOLUME_PROFILE_SETTINGS_TABS: { id: VolumeProfileSettingsTab; label: strin
   { id: "sessions", label: "Filter / split time" },
 ];
 
+// These controls live together in the dedicated VWAP tab. Keeping them out
+// of the generic Style generator prevents a second, disconnected-looking set
+// of switches and colour pickers elsewhere in the dialog.
+const VOLUME_PROFILE_VWAP_MANAGED_SETTINGS = new Set([
+  "vwapEnabled",
+  "showVwapLine",
+  "vwapHighlight",
+  "showDevelopingVwap",
+  "showVwapBands",
+  "vwapColor",
+  "vwapHighlightColor",
+  "vwapBandColor",
+]);
+
 const FOOTPRINT_PROFILE_MANAGED_SETTINGS = new Set([
   "showPerBarVolumeProfile",
   "showPerBarDeltaProfile",
@@ -581,6 +595,8 @@ const volumeProfileThemeColours = (chartSettings: ChartSettings) => ({
   valleyColor: chartSettings.downColor,
   businessZoneColor: chartSettings.borderUpColor,
   vwapColor: chartSettings.borderUpColor,
+  vwapHighlightColor: chartSettings.borderUpColor,
+  vwapBandColor: chartSettings.gridColor,
   summaryTextColor: chartSettings.upColor,
 });
 
@@ -2305,18 +2321,51 @@ export default function ChartIndicatorsControl({
               {VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) && volumeProfileTab === "vwap" ? (
                 <div className="grid gap-3 border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
                   <div className="text-[9px] uppercase tracking-[0.14em] text-foreground sm:col-span-2">VWAP</div>
+                  <div className="grid grid-cols-2 gap-2 sm:col-span-2">
+                    {([
+                      ["vwapEnabled", "Enable"],
+                      ["vwapHighlight", "Highlight"],
+                      ["showVwapLine", "Show line"],
+                      ["showDevelopingVwap", "Developing VWAP"],
+                      ["showVwapBands", "Envelopes"],
+                    ] as const).map(([key, label]) => {
+                      const enabled = key === "vwapEnabled"
+                        ? settingsInstance.settings?.vwapEnabled === true
+                          || (settingsInstance.settings?.vwapEnabled == null
+                            && (settingsInstance.settings?.showVwapLine === true
+                              || settingsInstance.settings?.showVwapBands === true))
+                        : toggleOn(settingsInstance, key);
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          aria-pressed={enabled}
+                          onClick={() => replace(settingsInstance.instanceId, (current) => ({
+                            ...current,
+                            settings: { ...(current.settings ?? {}), [key]: !enabled },
+                          }))}
+                          className={`h-8 border px-2 text-[8px] uppercase tracking-[0.1em] ${
+                            enabled ? "border-primary/55 bg-primary/10 text-primary" : "border-border bg-background text-muted"
+                          }`}
+                        >
+                          {label} · {enabled ? "ON" : "OFF"}
+                        </button>
+                      );
+                    })}
+                  </div>
                   {([
                     ["VWAP band 1 (σ)", "vwapBand1", 1],
                     ["VWAP band 2 (σ)", "vwapBand2", 2],
                     ["VWAP band 3 (σ)", "vwapBand3", 0],
                     ["Line width", "vwapLineWidth", 1],
+                    ["Highlight opacity %", "vwapHighlightOpacity", 18],
                   ] as const).map(([label, key, fallback]) => (
                     <IndicatorNumericSlider
                       key={key}
                       label={label}
                       min={0}
-                      max={10}
-                      step={key === "vwapLineWidth" ? 1 : 0.5}
+                      max={key === "vwapHighlightOpacity" ? 100 : key === "vwapLineWidth" ? 6 : 10}
+                      step={key === "vwapHighlightOpacity" ? 1 : 0.5}
                       value={Number(settingsInstance.settings?.[key] ?? fallback)}
                       onChange={(next) => replace(settingsInstance.instanceId, (current) => ({
                         ...current,
@@ -2324,7 +2373,7 @@ export default function ChartIndicatorsControl({
                       }))}
                     />
                   ))}
-                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
                     <span>Extend line</span>
                     <KwantSelect
                       value={String(settingsInstance.settings?.vwapExtensionMode ?? "none")}
@@ -2340,6 +2389,51 @@ export default function ChartIndicatorsControl({
                       <option value="to-window-end">Till end window</option>
                     </KwantSelect>
                   </label>
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                    <span>Line style</span>
+                    <KwantSelect
+                      value={String(settingsInstance.settings?.vwapLineStyle ?? "dash")}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                        ...current,
+                        settings: { ...(current.settings ?? {}), vwapLineStyle: event.target.value },
+                      }))}
+                      className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                      menuLabel="VWAP line style"
+                    >
+                      <option value="solid">Solid</option>
+                      <option value="dash">Dash</option>
+                      <option value="dot">Dot</option>
+                      <option value="dash-dot">Dash dot</option>
+                      <option value="dash-dot-dot">Dash dot dot</option>
+                    </KwantSelect>
+                  </label>
+                  {([
+                    ["Line colour", "vwapColor", chartSettings.borderUpColor],
+                    ["Highlight colour", "vwapHighlightColor", chartSettings.borderUpColor],
+                    ["Envelope colour", "vwapBandColor", chartSettings.gridColor],
+                  ] as const).map(([label, key, themeValue]) => (
+                    <div key={key} className="flex min-h-10 items-center justify-between gap-2 border border-border bg-background px-3 text-[9px] text-muted">
+                      <span>{label}</span>
+                      <ChartColorField
+                        ariaLabel={label}
+                        value={settingsInstance.settings?.useThemeColors !== false
+                          ? themeValue
+                          : String(settingsInstance.settings?.[key] ?? themeValue)}
+                        onChange={(hex) => replace(settingsInstance.instanceId, (current) => ({
+                          ...current,
+                          settings: {
+                            ...(current.settings ?? {}),
+                            ...volumeProfileThemeColours(chartSettings),
+                            useThemeColors: false,
+                            [key]: hex,
+                          },
+                        }))}
+                      />
+                    </div>
+                  ))}
+                  <div className="border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
+                    Enable is the master switch. Show line controls the final profile VWAP; Developing VWAP traces its live minute-by-minute path. Envelopes use the enabled positive σ values, and 0 disables an individual band.
+                  </div>
                 </div>
               ) : null}
 
@@ -5959,6 +6053,7 @@ export default function ChartIndicatorsControl({
                   .filter(([key, value]) =>
                     !INDICATOR_NUMERIC_SETTINGS[settingsDefinition.id]?.some((setting) => setting.key === key)
                     && !(settingsDefinition.id === "deep-print-footprint" && FOOTPRINT_PROFILE_MANAGED_SETTINGS.has(key))
+                    && !(VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) && VOLUME_PROFILE_VWAP_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "bounce-levels" && key === "syncGexMapColors")
                     && (typeof value === "boolean" || isColourSetting(key, value)))
                   .map(([key, value]) => [key, value, sectionForSetting(settingsDefinition.id, key, "Style")] as const);

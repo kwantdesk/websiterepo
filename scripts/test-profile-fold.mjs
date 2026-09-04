@@ -35,6 +35,7 @@ const makeProfile = (ticks) => {
     trades: levels.reduce((s, l) => s + l.trades, 0),
     vwap: 29050, standardDeviation: 12,
     minTradeVolume: 0, maxTradeVolume: 0, developingPoc: [],
+    developingVwap: [],
   };
 };
 
@@ -102,6 +103,12 @@ const makeBatch = (n, spread, offset = 0) => Array.from({ length: n }, () => {
   // Every row appears once.
   assert.equal(new Set(live.levels.map((l) => l.price)).size, live.levels.length,
     "a price level was duplicated");
+  assert.ok(live.developingVwap.length > 0, "the live profile did not record developing VWAP");
+  assert.equal(
+    live.developingVwap.at(-1).price,
+    live.vwap,
+    "the latest developing VWAP sample does not match the live profile",
+  );
 }
 
 // --- the cached row index must not survive a change of row order ---

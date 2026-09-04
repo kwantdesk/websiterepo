@@ -14165,6 +14165,9 @@ function Chart({
       const pocLineMode = ["none", "show", "developing", "extend-shifted"].includes(String(profileSettings.pocLineMode))
         ? String(profileSettings.pocLineMode)
         : profileSettings.showPocLine === false ? "none" : "show";
+      const vwapEnabled = profileSettings.vwapEnabled === true
+        || (profileSettings.vwapEnabled == null
+          && (profileSettings.showVwapLine === true || profileSettings.showVwapBands === true));
       const profileMode = (
         ["volume", "delta-volume", "bid-ask", "delta", "delta-percentage"].includes(requestedProfileMode)
           ? requestedProfileMode
@@ -14289,13 +14292,25 @@ function Chart({
             : String(profileSettings.businessZoneColor ?? settings.borderUpColor),
           businessZoneOpacity: clamp(Number(profileSettings.businessZoneOpacity ?? 3), 0, 100),
           businessZoneLineWidth: clamp(Number(profileSettings.businessZoneLineWidth ?? 0), 0, 6),
-          // VWAP of this profile plus its deviation envelopes.
-          showVwap: profileSettings.showVwapLine === true,
+          // DeepCharts' VWAP master switch plus independent children. The
+          // legacy fallback keeps a saved pre-v15 line/band visible until its
+          // normalizer writes the explicit master setting.
+          showVwap: vwapEnabled,
+          showVwapLine: vwapEnabled && profileSettings.showVwapLine !== false && levelsVisible,
+          showVwapHighlight: vwapEnabled && profileSettings.vwapHighlight === true,
+          showDevelopingVwap: vwapEnabled && profileSettings.showDevelopingVwap === true,
           vwapColor: useThemeColors ? settings.borderUpColor : String(profileSettings.vwapColor ?? settings.borderUpColor),
+          vwapHighlightColor: useThemeColors
+            ? settings.borderUpColor
+            : String(profileSettings.vwapHighlightColor ?? profileSettings.vwapColor ?? settings.borderUpColor),
+          vwapHighlightOpacity: clamp(Number(profileSettings.vwapHighlightOpacity ?? 18), 2, 100),
           vwapLineWidth: clamp(Number(profileSettings.vwapLineWidth ?? 1), 0.5, 6),
+          vwapDash: PROFILE_LEVEL_DASH[String(profileSettings.vwapLineStyle ?? "dash")] ?? [4, 3],
           vwapExtensionMode: extensionMode(profileSettings.vwapExtensionMode, "none"),
-          vwapBandColor: String(profileSettings.vwapBandColor ?? settings.gridColor),
-          vwapBandDeviations: profileSettings.showVwapBands === true
+          vwapBandColor: useThemeColors
+            ? settings.gridColor
+            : String(profileSettings.vwapBandColor ?? settings.gridColor),
+          vwapBandDeviations: vwapEnabled && levelsVisible && profileSettings.showVwapBands === true
             ? [
               Number(profileSettings.vwapBand1 ?? 1),
               Number(profileSettings.vwapBand2 ?? 2),

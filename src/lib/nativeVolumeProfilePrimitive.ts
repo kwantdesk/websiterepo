@@ -480,7 +480,12 @@ export type NativeVolumeProfileStyle = {
   businessZoneLineWidth?: number;
   /** VWAP tab: the profile's own volume-weighted average price. */
   showVwap?: boolean;
+  showVwapLine?: boolean;
+  showVwapHighlight?: boolean;
+  showDevelopingVwap?: boolean;
   vwapColor?: string;
+  vwapHighlightColor?: string;
+  vwapHighlightOpacity?: number;
   vwapLineWidth?: number;
   vwapExtensionMode?: "none" | "until-first-interaction" | "to-window-end";
   vwapDash?: number[];
@@ -1508,6 +1513,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           label: string | null,
           lineWidth?: number,
           extensionMode: "none" | "until-first-interaction" | "to-window-end" = "to-window-end",
+          ownDash = false,
         ) => {
           if (price == null) return;
           const y = params.series.priceToCoordinate(price);
@@ -1547,7 +1553,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
             context.globalAlpha = 0.82;
             context.strokeStyle = color;
             context.lineWidth = Math.max(0.5, Number.isFinite(lineWidth) ? Number(lineWidth) : 1);
-            context.setLineDash(style.levelDash ?? dash);
+            context.setLineDash(ownDash ? dash : style.levelDash ?? dash);
             context.beginPath();
             context.moveTo(lineSegment.startX, y);
             context.lineTo(lineEndX, y);
@@ -1754,16 +1760,54 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
           }
         }
 
-        // VWAP of this profile, with optional standard-deviation envelopes.
+        // VWAP of this profile, with independently selectable line,
+        // developing trail, row highlight and standard-deviation envelopes.
+        // DeepCharts has a master Enable switch above those controls; no
+        // child may paint while it is off.
         if (style.showVwap) {
           const vwap = calculateVolumeProfileVwap(levels, style.vwapBandDeviations ?? []);
           if (vwap.vwap !== null) {
-            drawLevel(vwap.vwap, style.vwapColor ?? style.pocColor, style.vwapDash ?? [6, 3], "VWAP", style.vwapLineWidth, style.vwapExtensionMode);
-            for (const band of vwap.bands) {
-              const bandColor = style.vwapBandColor ?? style.vwapColor ?? style.pocColor;
-              drawLevel(band.upper, bandColor, [2, 4], null, style.vwapLineWidth, style.vwapExtensionMode);
-              drawLevel(band.lower, bandColor, [2, 4], null, style.vwapLineWidth, style.vwapExtensionMode);
+            if (style.showVwapHighlight) {
+              const sourceBody = drawnBodySpans.get(model.id);
+              const highY = params.series.priceToCoordinate(
+                vwap.vwap + profile.tickSize * groupedTicks / 2,
+              );
+              const lowY = params.series.priceToCoordinate(
+                vwap.vwap - profile.tickSize * groupedTicks / 2,
+              );
+              if (sourceBody && highY != null && lowY != null) {
+                context.globalAlpha = clamp(Number(style.vwapHighlightOpacity ?? 18) / 100, 0.02, 1);
+                context.fillStyle = style.vwapHighlightColor ?? style.vwapColor ?? style.pocColor;
+                context.fillRect(
+                  Math.min(sourceBody.leftX, sourceBody.rightX),
+                  Math.min(highY, lowY),
+                  Math.abs(sourceBody.rightX - sourceBody.leftX),
+                  Math.max(1, Math.abs(lowY - highY)),
+                );
+              }
             }
+            if (style.showDevelopingVwap && (profile.developingVwap?.length ?? 0) > 1) {
+              drawDevelopingTrail(
+                withinDevelopingWindow(profile.developingVwap ?? []),
+                style.vwapColor ?? style.pocColor,
+                Number(style.vwapLineWidth ?? 1),
+                style.vwapDash ?? [6, 3],
+                0.82,
+              );
+            }
+            // Queue extension lines until every later profile body has been
+            // measured. This gives VWAP the same hard occlusion boundary as
+            // VAH/POC/VAL instead of letting a later histogram cover it.
+            if (style.showVwapLine || vwap.bands.length) deferredLevelDraws.push(() => {
+              if (style.showVwapLine) {
+                drawLevel(vwap.vwap, style.vwapColor ?? style.pocColor, style.vwapDash ?? [6, 3], "VWAP", style.vwapLineWidth, style.vwapExtensionMode, true);
+              }
+              for (const band of vwap.bands) {
+                const bandColor = style.vwapBandColor ?? style.vwapColor ?? style.pocColor;
+                drawLevel(band.upper, bandColor, [2, 4], null, style.vwapLineWidth, style.vwapExtensionMode, true);
+                drawLevel(band.lower, bandColor, [2, 4], null, style.vwapLineWidth, style.vwapExtensionMode, true);
+              }
+            });
           }
         }
 

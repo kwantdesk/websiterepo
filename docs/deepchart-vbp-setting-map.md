@@ -107,13 +107,13 @@ one to one. `PeakMinVol`, `ValleyMaxVol`, `PeakOnlyOutsideVA` and
 
 | DeepChart | Ours | State |
 | --- | --- | --- |
-| `VwapEnable` / `VwapShowLine` | `showVwapLine` | ✅ |
+| `VwapEnable` / `VwapShowLine` | `vwapEnabled` / `showVwapLine` | ✅ independent master and line switches |
 | `VwapLineColor` / `VwapLineWidth` | `vwapColor` / width | ✅ |
 | `VWapEnvEnabled` | `showVwapBands` | ✅ |
-| `ShowDevVwap` | — | ❌ developing VWAP |
+| `ShowDevVwap` | `showDevelopingVwap` | ✅ minute-by-minute while the profile is live; older untaped trails are not invented |
 | `VWapEnvSett`, `VWapEnvelopeStyle` | — | ⚠️ we ship three fixed σ bands, theirs are configurable |
 | `VwapExtendMode` | `vwapExtensionMode` | ✅ None / Till interaction / Till end window |
-| `VwapHighlight`, `VwapBackColor`, `VwapLineStyle` | — | ❌ |
+| `VwapHighlight`, `VwapBackColor`, `VwapLineStyle` | `vwapHighlight` / `vwapHighlightColor` / `vwapLineStyle` | ✅ |
 
 ## Summary
 
