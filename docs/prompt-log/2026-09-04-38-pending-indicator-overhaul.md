@@ -30,4 +30,6 @@ task until the full pending library is complete, without shortcuts.
   missing-data state and extension lifecycle are wired. Focused calculation
   tests and the full TypeScript check pass. Native DeepCharts default-value
   inspection and deployed visual QA remain open, so it is not recorded as
-  finally complete.
+  finally complete. Production QA then passed on the exact commit and the
+  temporary test instance was removed, completing item 1. Item 2, **Bar POC**,
+  is now a locally tested release candidate pending deployed visual QA.

@@ -23,6 +23,11 @@ import {
   UNFINISHED_AUCTION_SETTINGS_VERSION,
   normalizeUnfinishedAuctionSettings,
 } from "@/lib/unfinishedAuction";
+import {
+  BAR_POC_SETTINGS_VERSION,
+  DEFAULT_BAR_POC_SETTINGS,
+  normalizeBarPocSettings,
+} from "@/lib/barPocIndicator";
 
 export const LIVE_CHART_INDICATOR_IDS = new Set([
   "gamma-environment",
@@ -45,6 +50,7 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "imbalance-tracker",
   "imbalance-rejector",
   "unfinished-auction",
+  "bar-poc-indicator",
   "cumulative-volume-delta",
   "cvd-divergence",
   "pulling-stacking",
@@ -148,6 +154,22 @@ export function resolveDailyVolumeProfileCount(value: unknown): number {
 }
 
 export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[]> = {
+  "bar-poc-indicator": [
+    { key: "daysToLoad", label: "Days to load", defaultValue: 5, min: 1, max: 365, step: 1 },
+    { key: "filterMin", label: "Minimum execution size", defaultValue: 0, min: 0, max: 1000000, step: 1 },
+    { key: "filterMax", label: "Maximum execution size (0 = no maximum)", defaultValue: 0, min: 0, max: 10000000, step: 1 },
+    { key: "autoStdDev", label: "Automatic filter standard deviations", defaultValue: 1, min: 0, max: 4, step: 0.5 },
+    { key: "manualMinimumVolume", label: "Manual minimum POC value", defaultValue: 0, min: 0, max: 10000000, step: 50 },
+    { key: "rthAutoStdDev", label: "RTH automatic standard deviations", defaultValue: 1, min: 0, max: 4, step: 0.5 },
+    { key: "rthManualMinimumVolume", label: "RTH manual minimum POC value", defaultValue: 0, min: 0, max: 10000000, step: 50 },
+    { key: "rthStartMinutes", label: "Custom RTH start (exchange minutes)", defaultValue: 510, min: 0, max: 1439, step: 1 },
+    { key: "rectangleLineWidth", label: "POC rectangle line width", defaultValue: 1, min: 1, max: 8, step: 1 },
+    { key: "backgroundOpacity", label: "POC background opacity (%)", defaultValue: 22, min: 0, max: 100, step: 1 },
+    { key: "extensionLineWidth", label: "Extension line width", defaultValue: 1, min: 1, max: 8, step: 1 },
+    { key: "maxBarsExtension", label: "Maximum extension bars (0 = unlimited)", defaultValue: 0, min: 0, max: 100000, step: 1 },
+    { key: "tickMarginBreakout", label: "Close breakout tick margin", defaultValue: 0, min: 0, max: 10000, step: 1 },
+    { key: "durationFontSize", label: "Duration text size", defaultValue: 9, min: 6, max: 50, step: 0.2 },
+  ],
   "unfinished-auction": [
     { key: "daysToLoad", label: "Days to load", defaultValue: 5, min: 1, max: 365, step: 1 },
     { key: "lineWidth", label: "Line width", defaultValue: 1, min: 1, max: 8, step: 1 },
@@ -1287,6 +1309,13 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     badHighColor: theme?.downColor ?? DEFAULT_UNFINISHED_AUCTION_SETTINGS.badHighColor,
     badLowColor: theme?.upColor ?? DEFAULT_UNFINISHED_AUCTION_SETTINGS.badLowColor,
     schemaVersion: UNFINISHED_AUCTION_SETTINGS_VERSION,
+  } : {}),
+  ...(indicatorId === "bar-poc-indicator" ? {
+    ...DEFAULT_BAR_POC_SETTINGS,
+    bidColor: theme?.downColor ?? DEFAULT_BAR_POC_SETTINGS.bidColor,
+    askColor: theme?.upColor ?? DEFAULT_BAR_POC_SETTINGS.askColor,
+    durationTextColor: theme?.borderUpColor ?? DEFAULT_BAR_POC_SETTINGS.durationTextColor,
+    schemaVersion: BAR_POC_SETTINGS_VERSION,
   } : {}),
   ...(indicatorId === "tape-speed-order-flow-burst" ? {
     ...DEFAULT_TAPE_SPEED_SETTINGS,
@@ -2444,6 +2473,16 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
           ...defaults,
           ...(normalizedInstance.settings ?? {}),
         }),
+      },
+    };
+  }
+  if (normalizedInstance.indicatorId === "bar-poc-indicator") {
+    const defaults = defaultIndicatorSettings("bar-poc-indicator");
+    return {
+      ...normalizedInstance,
+      settings: {
+        ...defaults,
+        ...normalizeBarPocSettings({ ...defaults, ...(normalizedInstance.settings ?? {}) }),
       },
     };
   }

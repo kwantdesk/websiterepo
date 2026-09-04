@@ -36,8 +36,8 @@ Legend: `[ ]` not complete, `[~]` in progress, `[x]` complete and addable.
 
 | # | Quant Desk indicator | Stable id | DeepCharts help/settings | Data + formula | Renderer + theme | Settings + persistence | Tests + visual QA | Catalogue |
 |---:|---|---|---|---|---|---|---|---|
-| 1 | Unfinished Auction | `unfinished-auction` | [x] | [x] | [x] | [x] | [~] | Release candidate |
-| 2 | Bar POC Indicator | `bar-poc-indicator` | [ ] | [~] | [ ] | [ ] | [ ] | Pending |
+| 1 | Unfinished Auction | `unfinished-auction` | [x] | [x] | [x] | [x] | [x] | Add |
+| 2 | Bar POC Indicator | `bar-poc-indicator` | [x] | [x] | [x] | [x] | [~] | Release candidate |
 | 3 | Dynamic POC | `dynamic-poc` | [ ] | [~] | [ ] | [ ] | [ ] | Pending |
 | 4 | Ratio Highlight | `ratio-highlight` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
 | 5 | Stop Spotter | `stop-spotter` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
@@ -79,10 +79,32 @@ Legend: `[ ]` not complete, `[~]` in progress, `[x]` complete and addable.
 - Automated coverage passes for normal-vs-unfinished extremes, manual volume
   filtering, wick-vs-close triggering, settings bounds, missing-data refusal,
   and the 08:30 Chicago RTH reset. TypeScript and whitespace validation pass.
-- Visual QA and confirmation of the DeepCharts factory defaults remain before
-  this release candidate is considered finally addable.
+- Production QA on commit `5bbd1758` confirmed the sole active Vercel project
+  reached Ready, the study adds/removes normally, reports live state, and its
+  stable General/Input/Style editor exposes theme colours, numeric sliders,
+  templates and saved-state status without leaking controls into other studies.
 
-### 2–3: POC family
+### 2: Bar POC Indicator
+
+- Official DeepCharts help and installed DLL metadata agree on Volume, Order
+  and Aggregate Trades inputs; execution-size min/max; None/Manual/Automatic
+  POC filters; a separate exchange/custom-RTH filter; bid/ask rectangle
+  colours; background and opacity; virgin POC extensions; new-day reset;
+  wick-touch or close-break termination; maximum bars; tick breakout margin;
+  hide-on-break; and duration text.
+- Quant Desk computes the maximum metric on each candle's exact price rows,
+  resolves tied maxima deterministically toward the metric-weighted centre and
+  close, and colours the row by its actual signed Bid/Ask delta. Its automatic
+  filter is an explicit population mean plus the selected standard-deviation
+  multiple; it is not presented as a recovered proprietary algorithm.
+- The extension lifecycle evaluates every later candle, stops at the optional
+  CME trading-day boundary, respects max-bars and tick margin, and distinguishes
+  wick-touch from close-through. Missing volume-at-price produces a visible
+  waiting state rather than an OHLC-derived fake POC.
+- Focused tests and TypeScript pass. Deployed renderer/settings visual QA and
+  confirmation of factory defaults remain before final Add status.
+
+### 3: Dynamic POC
 
 - Quant Desk already has a tested `PocAuctionSuiteEngine` driven by exact
   execution-classified Footprint rows. It calculates raw-tick unfinished

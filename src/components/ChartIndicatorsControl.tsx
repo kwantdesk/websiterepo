@@ -449,6 +449,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "imbalance-tracker",
   "imbalance-rejector",
   "unfinished-auction",
+  "bar-poc-indicator",
   "moving-average",
   "vwap",
   "vwap-envelopes",
@@ -622,6 +623,13 @@ const themeColourMapFor = (indicatorId: string, chartSettings: ChartSettings) =>
     return {
       badHighColor: chartSettings.downColor,
       badLowColor: chartSettings.upColor,
+    } as Record<string, string>;
+  }
+  if (indicatorId === "bar-poc-indicator") {
+    return {
+      bidColor: chartSettings.downColor,
+      askColor: chartSettings.upColor,
+      durationTextColor: chartSettings.borderUpColor,
     } as Record<string, string>;
   }
   // Big Contracts and Big Blocks paint their two sides from the theme's up and
@@ -6446,6 +6454,60 @@ export default function ChartIndicatorsControl({
                   </label>
                   <p className="text-[8px] leading-4 text-muted sm:col-span-2">
                     A normal auction high has zero Bid at its exact highest tick and a normal auction low has zero Ask at its exact lowest tick. This study marks the opposite-side prints and never infers them from candle direction or OHLC history.
+                  </p>
+                </div>
+              ) : null}
+
+              {settingsDefinition.id === "bar-poc-indicator" ? (
+                <div className="grid gap-3 border border-primary/20 bg-primary/[0.035] p-3 sm:grid-cols-2">
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                    <span>Input data</span>
+                    <KwantSelect
+                      value={String(settingsInstance.settings?.inputData ?? "volume")}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), inputData: event.target.value } }))}
+                      className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                      menuLabel="Bar POC input data"
+                    >
+                      <option value="volume">Volume</option>
+                      <option value="order">Order count</option>
+                      <option value="aggregate-trades">Aggregate trades</option>
+                    </KwantSelect>
+                  </label>
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                    <span>POC filter</span>
+                    <KwantSelect
+                      value={String(settingsInstance.settings?.filterMode ?? "none")}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), filterMode: event.target.value } }))}
+                      className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                      menuLabel="Bar POC filter mode"
+                    >
+                      <option value="none">None</option><option value="manual">Manual</option><option value="auto">Automatic</option>
+                    </KwantSelect>
+                  </label>
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                    <span>RTH filter window</span>
+                    <KwantSelect
+                      value={String(settingsInstance.settings?.rthFilterWindow ?? "disabled")}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), rthFilterWindow: event.target.value } }))}
+                      className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                      menuLabel="Bar POC RTH filter window"
+                    >
+                      <option value="disabled">Disabled</option><option value="exchange-rth">Exchange RTH</option><option value="custom">Custom start</option>
+                    </KwantSelect>
+                  </label>
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                    <span>RTH POC filter</span>
+                    <KwantSelect
+                      value={String(settingsInstance.settings?.rthFilterMode ?? "none")}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), rthFilterMode: event.target.value } }))}
+                      className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                      menuLabel="Bar POC RTH filter mode"
+                    >
+                      <option value="none">None</option><option value="manual">Manual</option><option value="auto">Automatic</option>
+                    </KwantSelect>
+                  </label>
+                  <p className="text-[8px] leading-4 text-muted sm:col-span-2">
+                    Bar POC ranks exact Rithmic volume-at-price rows. Automatic filtering uses the selected standard-deviation threshold; the optional RTH filter overrides it only from the exchange or custom RTH open.
                   </p>
                 </div>
               ) : null}
