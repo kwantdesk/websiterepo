@@ -43,3 +43,12 @@ recap of the open items below and update this file when their state changes.
 - The dedicated Vultr volume is primary recording storage, not an off-site
   backup. Add and restore-test nightly object-storage replication before the
   public launch.
+
+## P1 — Reference parity evidence
+
+- **Imbalance Tracker:** the installed licensed Deep Charts assembly metadata,
+  calculation fixtures and KWANTDESK renderer have been reconciled. The
+  live-edge width, real opacity and saved-settings faults are fixed. Capture a
+  fresh interactive Deep Charts/KWANTDESK screenshot pair when native-window
+  control is available; do not describe pixel-level visual parity as complete
+  until that final comparison is recorded.

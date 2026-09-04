@@ -10462,6 +10462,7 @@ function Chart({
           : zone.triggered ? sellTriggeredColor : sellColor,
         opacity,
         lineWidth,
+        futureBars: zone.futureBars,
       }];
     });
   }, [

@@ -6,6 +6,7 @@ import type {
   SeriesAttachedParameter,
   Time,
 } from "@/lib/lightweightChartsCompat";
+import { imbalanceZoneHorizontalBounds } from "@/lib/imbalanceZoneGeometry";
 
 /**
  * One imbalance zone in PRICE/TIME space. The renderer projects it every frame
@@ -30,6 +31,8 @@ export type ImbalanceZoneModel = {
   /** 0..1 — applied identically to every zone, fresh or triggered. */
   opacity: number;
   lineWidth: number;
+  /** Configured extension that currently falls beyond the loaded series. */
+  futureBars: number;
 };
 
 class ImbalanceZonesRenderer implements ISeriesPrimitivePaneRenderer {
@@ -55,8 +58,12 @@ class ImbalanceZonesRenderer implements ISeriesPrimitivePaneRenderer {
         const bottomY = series.priceToCoordinate(zone.bottom);
         if (startX === null || endX === null || topY === null || bottomY === null) continue;
 
-        const left = Math.min(Number(startX), Number(endX));
-        const width = Math.max(2, Math.abs(Number(endX) - Number(startX)));
+        const { left, width } = imbalanceZoneHorizontalBounds(
+          Number(startX),
+          Number(endX),
+          zone.futureBars,
+          Number(timeScale.options().barSpacing ?? 1),
+        );
         const top = Math.min(Number(topY), Number(bottomY));
         const height = Math.max(2, Math.abs(Number(bottomY) - Number(topY)));
         if (left > mediaSize.width || left + width < 0) continue;
@@ -64,7 +71,10 @@ class ImbalanceZonesRenderer implements ISeriesPrimitivePaneRenderer {
         // Every zone is drawn identically — solid outline, same fill weight,
         // same opacity. Fresh and triggered differ ONLY by their configured
         // colour, never by a dashed stroke or a faded rectangle.
-        context.globalAlpha = zone.opacity * 0.14;
+        // Deep Charts' opacity is the actual zone-fill opacity. The old
+        // hidden 14% multiplier meant even a selected 100% rendered as 14%,
+        // which made stock zones effectively invisible on several themes.
+        context.globalAlpha = zone.opacity;
         context.fillStyle = zone.color;
         context.fillRect(left, top, width, height);
 

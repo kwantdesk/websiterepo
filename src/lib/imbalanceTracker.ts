@@ -14,6 +14,8 @@ export type ImbalanceZone = {
   top: number;
   bottom: number;
   triggered: boolean;
+  /** Bars still owed to the zone beyond the newest candle currently loaded. */
+  futureBars: number;
 };
 
 type Level = { tick: number; bid: number; ask: number };
@@ -160,9 +162,9 @@ export function calculateImbalanceZones(
   const mode = String(settings.calculationMode ?? "diagonal");
   const minimumPercent = Math.max(0, finite(
     settings.minimumPercent,
-    mode === "delta-percentage-horizontal" ? 50 : 300,
+    mode === "delta-percentage-horizontal" ? 50 : 400,
   ));
-  const minimumDelta = Math.max(0, finite(settings.minimumDelta, 10));
+  const minimumDelta = Math.max(0, finite(settings.minimumDelta, 0));
   const minimumConsecutive = Math.max(1, Math.round(finite(settings.minimumConsecutive, 3)));
   const extendedBars = Math.max(1, Math.round(finite(settings.extendedBars, 10)));
   const groupingTicks = Math.max(1, Math.round(finite(settings.tickGroupingTicks, 1)));
@@ -222,7 +224,8 @@ export function calculateImbalanceZones(
         const top = (lastTick + groupingTicks - 0.5 + zonesExtraTicks) * tickSize;
         // Reset mode ends every zone at its session/day/week boundary rather
         // than letting it run the full extension.
-        const extensionEnd = Math.min(candles.length - 1, candleIndex + extendedBars);
+        const requestedExtensionEnd = candleIndex + extendedBars;
+        const extensionEnd = Math.min(candles.length - 1, requestedExtensionEnd);
         let intendedEnd = extensionEnd;
         if (resetMode !== "none") {
           const originKey = sessionKeyFor(candles[candleIndex].timestamp, resetMode);
@@ -243,6 +246,13 @@ export function calculateImbalanceZones(
           settings.triggerOnlyTouch === true,
         );
         if (lifecycle.triggered && !showTriggered) return;
+        // A live-edge zone must still occupy its configured number of bars.
+        // Clamping it to the last loaded candle made every newly detected
+        // imbalance a two-pixel mark until ten more candles happened to load.
+        // Reset and trigger boundaries are authoritative and never project.
+        const futureBars = lifecycle.triggered || intendedEnd < extensionEnd
+          ? 0
+          : Math.max(0, requestedExtensionEnd - lifecycle.index);
         output.push({
           id: `${candles[candleIndex].timestamp}:${side}:${firstTick}:${lastTick}`,
           side,
@@ -252,6 +262,7 @@ export function calculateImbalanceZones(
           top,
           bottom,
           triggered: lifecycle.triggered,
+          futureBars,
         });
       });
     });

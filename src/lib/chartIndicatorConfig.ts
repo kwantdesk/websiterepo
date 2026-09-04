@@ -1577,7 +1577,7 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     sellColor: theme?.downColor ?? "#EF4444",
     buyTriggeredColor: theme?.borderUpColor ?? theme?.upColor ?? "#86EFAC",
     sellTriggeredColor: theme?.borderDownColor ?? theme?.downColor ?? "#FCA5A5",
-    imbalanceTrackerSettingsVersion: 2,
+    imbalanceTrackerSettingsVersion: 3,
   } : {}),
   ...(indicatorId === "imbalance-rejector" ? {
     includeZero: false,
@@ -2190,6 +2190,32 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
       : instance;
   if (normalizedInstance.indicatorId === "market-profile-tpo") {
     normalizedInstance = { ...normalizedInstance, indicatorId: "tpo-chart" };
+  }
+  if (normalizedInstance.indicatorId === "imbalance-tracker") {
+    const storedVersion = Number(normalizedInstance.settings?.imbalanceTrackerSettingsVersion ?? 0);
+    const settings: Record<string, number | string | boolean> = {
+      ...defaultIndicatorSettings("imbalance-tracker"),
+      ...(normalizedInstance.settings ?? {}),
+    };
+    for (const definition of INDICATOR_NUMERIC_SETTINGS["imbalance-tracker"] ?? []) {
+      const parsed = Number(settings[definition.key]);
+      settings[definition.key] = Math.min(
+        definition.max,
+        Math.max(definition.min, Number.isFinite(parsed) ? parsed : definition.defaultValue),
+      );
+    }
+    if (!["diagonal", "horizontal", "delta-percentage-horizontal"].includes(String(settings.calculationMode))) {
+      settings.calculationMode = "diagonal";
+    }
+    if (!["none", "session", "week"].includes(String(settings.resetMode))) settings.resetMode = "none";
+    if (!["none", "custom"].includes(String(settings.filterTime))) settings.filterTime = "none";
+    // Versions before the visible-zone contract advertised opacity as 78/100
+    // while the renderer silently reduced it again. Upgrade that stock value
+    // to the real Deep Charts-style full-opacity default; preserve deliberate
+    // custom values from current workspaces.
+    if (storedVersion < 3 && Number(settings.opacity) === 78) settings.opacity = 100;
+    settings.imbalanceTrackerSettingsVersion = 3;
+    return { ...normalizedInstance, settings };
   }
   if (normalizedInstance.indicatorId === "tpo-chart" || normalizedInstance.indicatorId === "weekly-tpo") {
     const variant = normalizedInstance.indicatorId === "weekly-tpo" ? "weekly-tpo" : "daily-tpo";
