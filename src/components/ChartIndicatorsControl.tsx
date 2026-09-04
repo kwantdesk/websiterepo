@@ -45,7 +45,7 @@ import {
   loadFootprintTemplates,
   saveFootprintSelection,
   saveFootprintSettings,
-  saveFootprintTemplate,
+  trySaveFootprintTemplate,
   FOOTPRINT_PROFILE_MAX_TICKS_PER_ROW,
   footprintProfileGranularityTicks,
   validateFootprintSettings,
@@ -78,6 +78,7 @@ import { LIQUIDITY_STOP_SWEEP_PRESETS } from "@/lib/liquidityStopSweepDetector";
 import { POC_AUCTION_PRESETS } from "@/lib/pocAuctionSuite";
 import { TAPE_SPEED_PRESETS } from "@/lib/tapeSpeedOrderFlowBurst";
 import IndicatorTemplateBar from "@/components/IndicatorTemplateBar";
+import { PREFERENCES_HYDRATED_EVENT } from "@/lib/userPreferences";
 import { STATS_PALETTES, resolveStatsPalette, statsPaletteSettings } from "@/lib/statsPalettes";
 import { writeProtectedItem } from "@/lib/browserStorageQuota";
 import {
@@ -254,9 +255,11 @@ function readVolumeProfileTemplates(): VolumeProfileTemplate[] {
   }
 }
 
-function persistVolumeProfileTemplates(templates: VolumeProfileTemplate[]) {
-  writeProtectedItem(VOLUME_PROFILE_TEMPLATES_STORAGE_KEY, JSON.stringify(templates));
+function persistVolumeProfileTemplates(templates: VolumeProfileTemplate[]): boolean {
+  const stored = writeProtectedItem(VOLUME_PROFILE_TEMPLATES_STORAGE_KEY, JSON.stringify(templates));
+  if (!stored.ok) return false;
   window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
+  return true;
 }
 
 /**
@@ -782,6 +785,7 @@ export default function ChartIndicatorsControl({
   const [tpoUserPresets, setTpoUserPresets] = useState<TpoUserPreset[]>([]);
   const [volumeProfileTemplates, setVolumeProfileTemplates] = useState<VolumeProfileTemplate[]>([]);
   const [volumeProfileTemplateName, setVolumeProfileTemplateName] = useState("");
+  const [volumeProfileTemplateStatus, setVolumeProfileTemplateStatus] = useState("");
   const volumeProfileImportRef = useRef<HTMLInputElement | null>(null);
   const [selectedTpoPresetId, setSelectedTpoPresetId] = useState("");
   const [tpoPresetName, setTpoPresetName] = useState("");
@@ -905,7 +909,6 @@ export default function ChartIndicatorsControl({
   useEffect(() => {
     if (!settingsInstanceId?.startsWith("tpo-chart-") && !settingsInstanceId?.startsWith("weekly-tpo-")) return;
     setTpoUserPresets(readTpoUserPresets());
-    setVolumeProfileTemplates(readVolumeProfileTemplates());
     setSelectedTpoPresetId("");
     setTpoPresetName("");
   }, [settingsInstanceId]);
@@ -1104,7 +1107,34 @@ export default function ChartIndicatorsControl({
   const settingsDefinition = settingsInstance
     ? CHART_INDICATOR_BY_ID.get(settingsInstance.indicatorId) ?? null
     : null;
+  const openSettingsIndicatorId = settingsInstance?.indicatorId;
+  const openSettingsInstanceId = settingsInstance?.instanceId;
   const activeLayerCount = indicators.length + levelControls.filter((control) => control.enabled).length;
+
+  useEffect(() => {
+    if (!openSettingsIndicatorId || !VOLUME_PROFILE_INDICATOR_IDS.has(openSettingsIndicatorId)) return;
+    setVolumeProfileTemplates(readVolumeProfileTemplates());
+    setVolumeProfileTemplateName("");
+  }, [openSettingsIndicatorId, openSettingsInstanceId]);
+
+  useEffect(() => {
+    const reloadAccountTemplates = () => {
+      if (openSettingsIndicatorId === "deep-print-footprint") {
+        setFootprintTemplates(loadFootprintTemplates());
+      }
+      if (openSettingsIndicatorId && VOLUME_PROFILE_INDICATOR_IDS.has(openSettingsIndicatorId)) {
+        setVolumeProfileTemplates(readVolumeProfileTemplates());
+      }
+      if (openSettingsIndicatorId && ["tpo-chart", "weekly-tpo"].includes(openSettingsIndicatorId)) {
+        setTpoUserPresets(readTpoUserPresets());
+      }
+      if (openSettingsIndicatorId === "gex-interval-map") {
+        setGexIntervalUserPresets(readGexIntervalUserPresets());
+      }
+    };
+    window.addEventListener(PREFERENCES_HYDRATED_EVENT, reloadAccountTemplates);
+    return () => window.removeEventListener(PREFERENCES_HYDRATED_EVENT, reloadAccountTemplates);
+  }, [openSettingsIndicatorId]);
 
   const indicatorsRef = useRef(indicators);
   useEffect(() => {
@@ -1963,8 +1993,12 @@ export default function ChartIndicatorsControl({
                           ...volumeProfileTemplates,
                           { id: crypto.randomUUID(), name, savedAt: new Date().toISOString(), settings: payload },
                         ];
+                      if (!persistVolumeProfileTemplates(next)) {
+                        setVolumeProfileTemplateStatus("Could not save: browser storage is unavailable or full.");
+                        return;
+                      }
                       setVolumeProfileTemplates(next);
-                      persistVolumeProfileTemplates(next);
+                      setVolumeProfileTemplateStatus(`Saved ${name}`);
                     }}
                     disabled={!volumeProfileTemplateName.trim()}
                     className={`h-9 border px-2 text-[8px] uppercase tracking-[0.1em] ${
@@ -1984,9 +2018,13 @@ export default function ChartIndicatorsControl({
                       );
                       if (!target) return;
                       const next = volumeProfileTemplates.filter((candidate) => candidate.id !== target.id);
+                      if (!persistVolumeProfileTemplates(next)) {
+                        setVolumeProfileTemplateStatus("Could not delete: browser storage is unavailable.");
+                        return;
+                      }
                       setVolumeProfileTemplates(next);
-                      persistVolumeProfileTemplates(next);
                       setVolumeProfileTemplateName("");
+                      setVolumeProfileTemplateStatus(`Deleted ${target.name}`);
                     }}
                     className="h-9 border border-border bg-background px-2 text-[8px] uppercase tracking-[0.1em] text-muted hover:text-foreground"
                   >
@@ -2007,8 +2045,11 @@ export default function ChartIndicatorsControl({
                       const link = document.createElement("a");
                       link.href = url;
                       link.download = `${payload.name.replace(/[^\w.-]+/g, "-").toLowerCase()}.json`;
+                      document.body.appendChild(link);
                       link.click();
-                      URL.revokeObjectURL(url);
+                      link.remove();
+                      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+                      setVolumeProfileTemplateStatus(`Exported ${payload.name}`);
                     }}
                     className="h-9 border border-border bg-background px-2 text-[8px] uppercase tracking-[0.1em] text-muted hover:text-foreground"
                   >
@@ -2024,7 +2065,7 @@ export default function ChartIndicatorsControl({
                   <input
                     ref={volumeProfileImportRef}
                     type="file"
-                    accept="application/json,.json"
+                    accept="application/json,.json,.kwantdesk.json"
                     className="hidden"
                     onChange={async (event) => {
                       const file = event.target.files?.[0];
@@ -2032,27 +2073,43 @@ export default function ChartIndicatorsControl({
                       if (!file) return;
                       try {
                         const parsed = JSON.parse(await file.text());
-                        const settings = volumeProfileTemplatePayload(parsed?.settings);
+                        if (parsed?.kind !== "kwantdesk-volume-profile-template" || parsed?.version !== 1) {
+                          setVolumeProfileTemplateStatus("That is not a supported KwantDesk volume-profile template.");
+                          return;
+                        }
+                        const settings = volumeProfileTemplatePayload(parsed.settings);
                         // An empty or foreign file leaves the profile alone
                         // rather than clearing it to defaults.
-                        if (!Object.keys(settings).length) return;
-                        replace(settingsInstance.instanceId, (current) => ({
-                          ...current,
-                          settings: { ...(current.settings ?? {}), ...settings },
-                        }));
+                        if (!Object.keys(settings).length) {
+                          setVolumeProfileTemplateStatus("That template contains no usable settings.");
+                          return;
+                        }
                         const name = typeof parsed?.name === "string" ? parsed.name : file.name.replace(/\.json$/i, "");
-                        setVolumeProfileTemplateName(name);
                         const next = [
                           ...volumeProfileTemplates.filter((candidate) => candidate.name.toLowerCase() !== name.toLowerCase()),
                           { id: crypto.randomUUID(), name, savedAt: new Date().toISOString(), settings },
                         ];
+                        if (!persistVolumeProfileTemplates(next)) {
+                          setVolumeProfileTemplateStatus("Could not import: browser storage is unavailable or full.");
+                          return;
+                        }
+                        replace(settingsInstance.instanceId, (current) => ({
+                          ...current,
+                          settings: { ...(current.settings ?? {}), ...settings },
+                        }));
+                        setVolumeProfileTemplateName(name);
                         setVolumeProfileTemplates(next);
-                        persistVolumeProfileTemplates(next);
+                        setVolumeProfileTemplateStatus(`Imported and saved ${name}`);
                       } catch {
-                        // A malformed file is ignored; the profile keeps its settings.
+                        setVolumeProfileTemplateStatus("That template file could not be read.");
                       }
                     }}
                   />
+                  {volumeProfileTemplateStatus ? (
+                    <div className="text-[8px] text-primary sm:col-span-2" role="status">
+                      {volumeProfileTemplateStatus}
+                    </div>
+                  ) : null}
                   <div className="border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
                     A template stores this profile&apos;s settings only — never its chart or pane — so it can be applied to any profile on any chart. Saving under an existing name overwrites it. Templates sync with your account; export writes a JSON file you can share.
                   </div>
@@ -4324,7 +4381,12 @@ export default function ChartIndicatorsControl({
                           onClick={() => {
                             const selected = footprintTemplates.find((template) => template.id === selectedFootprintTemplateId);
                             if (!selected) return;
-                            setFootprintTemplates(deleteFootprintTemplate(selected.id));
+                            const next = deleteFootprintTemplate(selected.id);
+                            if (next.some((template) => template.id === selected.id)) {
+                              setFootprintSaveStatus("Could not delete: browser storage is unavailable.");
+                              return;
+                            }
+                            setFootprintTemplates(next);
                             setSelectedFootprintTemplateId("");
                             saveFootprintSelection(settingsInstance.instanceId, {
                               preset: selectedFootprintPreset,
@@ -6163,18 +6225,22 @@ export default function ChartIndicatorsControl({
                     type="button"
                     disabled={!footprintTemplateName.trim()}
                     onClick={() => {
-                      const next = saveFootprintTemplate(footprintTemplateName, settingsInstance.settings);
-                      const saved = next.find((template) => template.name.toLowerCase() === footprintTemplateName.trim().toLowerCase());
-                      setFootprintTemplates(next);
-                      setSelectedFootprintTemplateId(saved?.id ?? "");
+                      const result = trySaveFootprintTemplate(footprintTemplateName, settingsInstance.settings);
+                      setFootprintTemplates(result.templates);
+                      if (!result.ok) {
+                        setFootprintSaveStatus(result.error);
+                        return;
+                      }
+                      const saved = result.template;
+                      setSelectedFootprintTemplateId(saved.id);
                       if (saved) {
                         saveFootprintSelection(settingsInstance.instanceId, {
                           preset: selectedFootprintPreset,
                           templateId: saved.id,
                         });
                       }
-                      setFootprintSaveStatus(saved ? `Saved template ${saved.name}` : "Template name required");
-                      if (saved) setFootprintTemplateName("");
+                      setFootprintSaveStatus(`Saved template ${saved.name}`);
+                      setFootprintTemplateName("");
                     }}
                     className="flex h-9 items-center justify-center gap-1.5 rounded-lg border border-border bg-background px-3 text-[9px] font-semibold uppercase tracking-[0.08em] text-foreground hover:border-primary/35 disabled:cursor-not-allowed disabled:opacity-40"
                   >

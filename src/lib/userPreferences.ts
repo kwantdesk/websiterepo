@@ -8,6 +8,12 @@ const LEGACY_PREFERENCES_OWNER_KEY = "kwantdesk:legacy-preferences-owner:v1";
 const ACTIVE_PREFERENCES_OWNER_KEY = "kwantdesk:active-preferences-owner:v1";
 const SOCIAL_OBJECTS_TABLE = "social_objects";
 const SOCIAL_PREFERENCES_ID = "account-preferences";
+const ACCOUNT_TEMPLATE_STORAGE_KEYS = [
+  "kwantdesk:indicator-templates:v1",
+  "kwantdesk:footprint:templates:v1",
+  "kwantdesk:tpo-user-presets:v1",
+  "kwantdesk:gex-interval-map-presets:v1",
+] as const;
 
 const TRACKED_STORAGE_KEYS = new Set([
   "olisa-theme",
@@ -39,6 +45,10 @@ const TRACKED_STORAGE_KEYS = new Set([
   "kwantdesk:chart-value-area-levels-enabled:v1",
   "kwantdesk:chart-pane-level-visibility:v1",
   "kwantdesk:volume-profile-templates:v1",
+  "kwantdesk:indicator-templates:v1",
+  "kwantdesk:footprint:templates:v1",
+  "kwantdesk:tpo-user-presets:v1",
+  "kwantdesk:gex-interval-map-presets:v1",
   "kwantdesk:gex-map-palette:v1",
   "kwantdesk:gex-map-zoom:v1",
   "kwantdesk:gex-map-future:v1",
@@ -371,6 +381,30 @@ export async function hydrateUserPreferences(
     // before the debounced upload could complete. Applying the older snapshot
     // would destroy that work, so keep the live state and upload it instead.
     selected = { ...current, updatedAt: new Date().toISOString() };
+    await saveUserPreferences(supabase, user.id, selected);
+  }
+
+  // These template stores were historically browser-only. On the first
+  // release that tracks them, preserve a store already belonging to this
+  // account when the older cloud snapshot has no copy yet, then upload the
+  // migrated snapshot immediately. Never merge when another account owns the
+  // browser state: shared-computer templates must not cross users.
+  const localPreferencesBelongToUser = activePreferenceOwner === user.id
+    || (!activePreferenceOwner && legacyPreferenceOwner === user.id);
+  const migratedTemplateValues: Record<string, string> = {};
+  if (selected && localPreferencesBelongToUser) {
+    for (const key of ACCOUNT_TEMPLATE_STORAGE_KEYS) {
+      if (current.values[key] && !selected.values[key]) {
+        migratedTemplateValues[key] = current.values[key];
+      }
+    }
+  }
+  if (selected && Object.keys(migratedTemplateValues).length) {
+    selected = {
+      ...selected,
+      updatedAt: new Date().toISOString(),
+      values: { ...selected.values, ...migratedTemplateValues },
+    };
     await saveUserPreferences(supabase, user.id, selected);
   }
 

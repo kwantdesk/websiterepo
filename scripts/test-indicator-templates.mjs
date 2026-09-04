@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 /**
  * Indicator templates live in browser storage, so every read is a read of
@@ -20,7 +21,11 @@ class MemoryStorage {
   removeItem(key) { this.map.delete(key); }
 }
 const storage = new MemoryStorage();
-globalThis.window = { localStorage: storage, dispatchEvent: () => true };
+const dispatchedEvents = [];
+globalThis.window = {
+  localStorage: storage,
+  dispatchEvent: (event) => { dispatchedEvents.push(event.type); return true; },
+};
 globalThis.CustomEvent = class { constructor(type) { this.type = type; } };
 
 const {
@@ -28,6 +33,7 @@ const {
   MAX_TEMPLATES_PER_INDICATOR,
   deleteIndicatorTemplate,
   exportIndicatorTemplate,
+  indicatorTemplateFileName,
   importIndicatorTemplate,
   loadIndicatorTemplates,
   saveIndicatorTemplate,
@@ -35,7 +41,7 @@ const {
 
 let passed = 0;
 const check = (name, fn) => { fn(); passed += 1; console.log(`  ok  ${name}`); };
-const reset = () => { storage.map.clear(); storage.failWrites = false; };
+const reset = () => { storage.map.clear(); storage.failWrites = false; dispatchedEvents.length = 0; };
 
 check("a saved template comes back", () => {
   reset();
@@ -45,6 +51,8 @@ check("a saved template comes back", () => {
   assert.equal(templates.length, 1);
   assert.equal(templates[0].name, "Scalping");
   assert.deepEqual(templates[0].settings, { signalColor: "#ABCDEF", length: 9 });
+  assert.ok(dispatchedEvents.includes("kwantdesk:indicator-templates-changed"));
+  assert.ok(dispatchedEvents.includes("kwantdesk:preferences-changed"), "saving must trigger signed-in account sync");
 });
 
 check("saving the same name again updates rather than duplicating", () => {
@@ -129,6 +137,20 @@ check("export and import round-trip", () => {
   assert.equal(imported.ok, true);
   assert.equal(imported.name, "Wide");
   assert.deepEqual(imported.settings, { upperColor: "#AA0000" });
+  assert.equal(indicatorTemplateFileName(saved.template), "bollinger-bands-wide.kwantdesk.json");
+});
+
+check("unsupported and oversized template files are refused", () => {
+  const unsupported = JSON.stringify({
+    kind: "kwantdesk.indicator-template",
+    version: 99,
+    indicatorId: "volume",
+    name: "Future",
+    settings: { a: 1 },
+  });
+  assert.equal(importIndicatorTemplate("volume", unsupported).ok, false);
+  assert.match(importIndicatorTemplate("volume", unsupported).error, /version/i);
+  assert.match(importIndicatorTemplate("volume", "x".repeat(300_000)).error, /large/i);
 });
 
 check("importing another study's template is refused, not silently applied", () => {
@@ -156,6 +178,28 @@ check("the per-indicator count is bounded", () => {
   assert.equal(overflow.ok, false);
   // An existing name must still be updatable once the cap is reached.
   assert.equal(saveIndicatorTemplate("volume", "T0", { i: -1 }).ok, true);
+});
+
+check("the shared UI downloads real files and saves imported templates", () => {
+  const source = readFileSync(new URL("../src/components/IndicatorTemplateBar.tsx", import.meta.url), "utf8");
+  assert.match(source, /new Blob\(/);
+  assert.match(source, /link\.download = indicatorTemplateFileName/);
+  assert.match(source, /fileRef\.current\?\.click\(\)/, "Import must open the browser's file picker");
+  assert.match(source, /saveIndicatorTemplate\(indicatorId, result\.name, importedSettings\)/);
+  assert.match(source, /PREFERENCES_HYDRATED_EVENT/, "cloud-restored templates must refresh the open panel");
+});
+
+check("all indicator-specific template stores are account-synced", () => {
+  const source = readFileSync(new URL("../src/lib/userPreferences.ts", import.meta.url), "utf8");
+  for (const key of [
+    "kwantdesk:indicator-templates:v1",
+    "kwantdesk:footprint:templates:v1",
+    "kwantdesk:volume-profile-templates:v1",
+    "kwantdesk:tpo-user-presets:v1",
+    "kwantdesk:gex-interval-map-presets:v1",
+  ]) {
+    assert.match(source, new RegExp(key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), `${key} is missing from account preferences`);
+  }
 });
 
 console.log(`\nindicator templates: ${passed}/${passed} checks passed`);

@@ -7,11 +7,13 @@ import {
   INDICATOR_TEMPLATES_EVENT,
   deleteIndicatorTemplate,
   exportIndicatorTemplate,
+  indicatorTemplateFileName,
   importIndicatorTemplate,
   loadIndicatorTemplates,
   saveIndicatorTemplate,
   type IndicatorTemplate,
 } from "@/lib/indicatorTemplates";
+import { PREFERENCES_HYDRATED_EVENT } from "@/lib/userPreferences";
 
 /**
  * Save, open and import settings templates — the same bar on every indicator.
@@ -43,6 +45,7 @@ type Props = {
 const asIndicatorSettings = (value: Record<string, unknown>): IndicatorSettings => {
   const out: IndicatorSettings = {};
   for (const [key, entry] of Object.entries(value)) {
+    if (key === "__proto__" || key === "prototype" || key === "constructor") continue;
     if (typeof entry === "string" || typeof entry === "number" || typeof entry === "boolean") {
       out[key] = entry;
     }
@@ -61,7 +64,11 @@ export default function IndicatorTemplateBar({ indicatorId, settings, onApply }:
     const refresh = () => setTemplates(loadIndicatorTemplates(indicatorId));
     refresh();
     window.addEventListener(INDICATOR_TEMPLATES_EVENT, refresh);
-    return () => window.removeEventListener(INDICATOR_TEMPLATES_EVENT, refresh);
+    window.addEventListener(PREFERENCES_HYDRATED_EVENT, refresh);
+    return () => {
+      window.removeEventListener(INDICATOR_TEMPLATES_EVENT, refresh);
+      window.removeEventListener(PREFERENCES_HYDRATED_EVENT, refresh);
+    };
   }, [indicatorId]);
 
   const report = (tone: "ok" | "error", text: string) => {
@@ -94,12 +101,20 @@ export default function IndicatorTemplateBar({ indicatorId, settings, onApply }:
       report("error", "Choose a template to export.");
       return;
     }
-    // A data: URL download is blocked in some embedded viewers, so the text is
-    // put on the clipboard instead, which works everywhere the desk runs.
-    const text = exportIndicatorTemplate(template);
-    void navigator.clipboard?.writeText(text)
-      .then(() => report("ok", `${template.name} copied as JSON`))
-      .catch(() => report("error", "Could not copy the template."));
+    try {
+      const blob = new Blob([exportIndicatorTemplate(template)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = indicatorTemplateFileName(template);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+      report("ok", `Exported ${template.name}`);
+    } catch {
+      report("error", "Could not export that template file.");
+    }
   };
 
   const importFile = (file: File | null | undefined) => {
@@ -110,9 +125,17 @@ export default function IndicatorTemplateBar({ indicatorId, settings, onApply }:
         report("error", result.error);
         return;
       }
-      onApply({ ...settings, ...asIndicatorSettings(result.settings) });
-      setName(result.name);
-      report("ok", `Imported ${result.name}`);
+      const importedSettings = asIndicatorSettings(result.settings);
+      const saved = saveIndicatorTemplate(indicatorId, result.name, importedSettings);
+      if (!saved.ok) {
+        report("error", saved.error);
+        return;
+      }
+      onApply({ ...settings, ...importedSettings });
+      setTemplates(saved.templates);
+      setSelectedId(saved.template.id);
+      setName("");
+      report("ok", `Imported and saved ${saved.template.name}`);
     }).catch(() => report("error", "That file could not be read."));
   };
 
@@ -176,7 +199,7 @@ export default function IndicatorTemplateBar({ indicatorId, settings, onApply }:
       <input
         ref={fileRef}
         type="file"
-        accept="application/json,.json,.txt"
+        accept="application/json,.json,.kwantdesk.json"
         className="hidden"
         onChange={(event) => {
           importFile(event.target.files?.[0]);

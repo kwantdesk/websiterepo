@@ -639,11 +639,15 @@ export function loadFootprintTemplates(): FootprintTemplate[] {
   }
 }
 
-export function saveFootprintTemplate(name: string, settings: unknown): FootprintTemplate[] {
-  if (typeof window === "undefined") return [];
+export type FootprintTemplateSaveResult =
+  | { ok: true; templates: FootprintTemplate[]; template: FootprintTemplate }
+  | { ok: false; templates: FootprintTemplate[]; error: string };
+
+export function trySaveFootprintTemplate(name: string, settings: unknown): FootprintTemplateSaveResult {
+  if (typeof window === "undefined") return { ok: false, templates: [], error: "Templates require a browser session." };
   const normalizedName = name.trim().slice(0, 48);
-  if (!normalizedName) return loadFootprintTemplates();
   const current = loadFootprintTemplates();
+  if (!normalizedName) return { ok: false, templates: current, error: "Template name required." };
   const existing = current.find((template) => template.name.toLowerCase() === normalizedName.toLowerCase());
   const nextTemplate: FootprintTemplate = {
     id: existing?.id ?? `footprint-${Date.now().toString(36)}`,
@@ -652,17 +656,23 @@ export function saveFootprintTemplate(name: string, settings: unknown): Footprin
     updatedAt: Date.now(),
   };
   const next = [nextTemplate, ...current.filter((template) => template.id !== nextTemplate.id)].slice(0, 24);
-  try {
-    window.localStorage.setItem(FOOTPRINT_TEMPLATES_STORAGE_KEY, JSON.stringify(next));
-  } catch {
-    // Return the new in-memory list so the settings panel updates immediately.
+  const stored = writeProtectedItem(FOOTPRINT_TEMPLATES_STORAGE_KEY, JSON.stringify(next));
+  if (!stored.ok) {
+    return { ok: false, templates: current, error: "Could not save: browser storage is unavailable or full." };
   }
-  return next;
+  window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
+  return { ok: true, templates: next, template: nextTemplate };
+}
+
+export function saveFootprintTemplate(name: string, settings: unknown): FootprintTemplate[] {
+  return trySaveFootprintTemplate(name, settings).templates;
 }
 
 export function deleteFootprintTemplate(templateId: string): FootprintTemplate[] {
   if (typeof window === "undefined") return [];
-  const next = loadFootprintTemplates().filter((template) => template.id !== templateId);
-  writeProtectedItem(FOOTPRINT_TEMPLATES_STORAGE_KEY, JSON.stringify(next));
+  const current = loadFootprintTemplates();
+  const next = current.filter((template) => template.id !== templateId);
+  if (!writeProtectedItem(FOOTPRINT_TEMPLATES_STORAGE_KEY, JSON.stringify(next)).ok) return current;
+  window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
   return next;
 }

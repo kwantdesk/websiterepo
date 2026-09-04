@@ -43,6 +43,7 @@ const ACTIVE_OWNER_KEY = "kwantdesk:active-preferences-owner:v1";
 const SCOPED_KEY = `kwantdesk:user-preferences:${USER_ID}:v1`;
 const PRESETS_KEY = "kwantdesk-chart-workspace-presets";
 const LAYOUT_KEY = "olisa-chart-workspace-layout";
+const INDICATOR_TEMPLATES_KEY = "kwantdesk:indicator-templates:v1";
 
 function createSupabaseStub(cloudSnapshot) {
   const upserts = [];
@@ -120,6 +121,24 @@ localStorage.setItem(PRESETS_KEY, JSON.stringify([{ id: "px", name: "Foreign lef
   assert.equal(localStorage.getItem(LAYOUT_KEY), "quad");
   assert.equal(localStorage.getItem(PRESETS_KEY), null);
   assert.equal(localStorage.getItem(ACTIVE_OWNER_KEY), USER_ID);
+}
+
+// 4. Template stores that pre-date account sync are merged into this user's
+//    newer cloud snapshot once, instead of disappearing during the upgrade.
+localStorage.clear();
+localStorage.setItem(ACTIVE_OWNER_KEY, USER_ID);
+localStorage.setItem(SCOPED_KEY, JSON.stringify(snapshotAt(T1, { [LAYOUT_KEY]: "single" })));
+localStorage.setItem(LAYOUT_KEY, "single");
+localStorage.setItem(INDICATOR_TEMPLATES_KEY, JSON.stringify({ volume: [{ id: "t1", name: "Shared profile", settings: { width: 42 } }] }));
+{
+  const supabase = createSupabaseStub(snapshotAt(T2, { [LAYOUT_KEY]: "quad" }));
+  await hydrateUserPreferences(supabase, user);
+  assert.ok(localStorage.getItem(INDICATOR_TEMPLATES_KEY)?.includes("Shared profile"));
+  const uploaded = supabase.upserts.find(({ table, row }) => (
+    table === "user_preferences" && row.preferences.values[INDICATOR_TEMPLATES_KEY]
+  ));
+  assert.ok(uploaded, "legacy local templates must be uploaded into the signed-in account snapshot");
+  assert.equal(uploaded.row.preferences.values[LAYOUT_KEY], "quad", "newer unrelated cloud settings remain authoritative");
 }
 
 console.log("Preference hydration tests passed.");

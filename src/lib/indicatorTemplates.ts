@@ -104,6 +104,10 @@ function persist(store: TemplateStore): boolean {
       return false;
     }
     window.dispatchEvent(new CustomEvent(INDICATOR_TEMPLATES_EVENT));
+    // This key is part of the signed-in preference snapshot. The account sync
+    // is event-driven, so without this event a template could remain only in
+    // this browser until an unrelated setting happened to change.
+    window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
     return true;
   } catch {
     // A full quota must not lose the settings the trader is working on; the
@@ -191,6 +195,17 @@ export function exportIndicatorTemplate(template: IndicatorTemplate): string {
   );
 }
 
+/** Stable, filesystem-safe name for a shareable KwantDesk template file. */
+export function indicatorTemplateFileName(template: Pick<IndicatorTemplate, "indicatorId" | "name">): string {
+  const clean = `${template.indicatorId}-${template.name}`
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 100);
+  return `${clean || "kwantdesk-indicator-template"}.kwantdesk.json`;
+}
+
 export type TemplateImportResult =
   | { ok: true; name: string; settings: Record<string, unknown> }
   | { ok: false; error: string };
@@ -203,6 +218,9 @@ export type TemplateImportResult =
  * it does not understand, which is far harder to notice than a refusal.
  */
 export function importIndicatorTemplate(indicatorId: string, raw: string): TemplateImportResult {
+  if (raw.length > MAX_TEMPLATE_BYTES * 2) {
+    return { ok: false, error: "That template file is too large." };
+  }
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
@@ -212,6 +230,9 @@ export function importIndicatorTemplate(indicatorId: string, raw: string): Templ
   if (!isPlainRecord(parsed)) return { ok: false, error: "That file is not a saved template." };
   if (parsed.kind !== "kwantdesk.indicator-template") {
     return { ok: false, error: "That file is not a saved template." };
+  }
+  if (parsed.version !== 1) {
+    return { ok: false, error: "That template version is not supported by this KwantDesk release." };
   }
   if (typeof parsed.indicatorId === "string" && parsed.indicatorId !== indicatorId) {
     return { ok: false, error: `That template belongs to ${parsed.indicatorId}, not this indicator.` };
