@@ -3873,7 +3873,7 @@ function Chart({
   const viewportFrameRef = useRef<number | null>(null);
   const viewportRefreshTimerRef = useRef<number | null>(null);
   const viewportRefreshLastAtRef = useRef(0);
-  const footprintViewportRefreshTimerRef = useRef<number | null>(null);
+  const footprintViewportCoverageRef = useRef<{ first: number; last: number } | null>(null);
   const latestCandleRef = useRef<Candle | null>(candles.at(-1) ?? null);
   const drawingCandlesRef = useRef(candles);
   const drawingMarketTradesRef = useRef(marketTrades);
@@ -5607,43 +5607,56 @@ function Chart({
   }, [deltaBarIndicator, deltaLadderSide, settings.downColor, settings.gridColor, settings.upColor]);
   const footprintDataConsumer = footprintIndicator ?? stackedImbalanceIndicator ?? pocAuctionIndicator
     ?? (deltaLadderSide ? deltaBarIndicator : null);
+  const footprintCandles = useMemo(
+    () => footprintDataConsumer ? sampledIndicatorCandles.slice(-indicatorHistoryLimit) : [],
+    [footprintDataConsumer, indicatorHistoryLimit, sampledIndicatorCandles],
+  );
   useEffect(() => {
-    if (!footprintDataConsumer || footprintViewportRefreshTimerRef.current !== null) return;
-    footprintViewportRefreshTimerRef.current = window.setTimeout(() => {
-      footprintViewportRefreshTimerRef.current = null;
-      queueChartFrameWork(`footprint-viewport:${chartFrameWorkKey}`, () => {
-        startTransition(() => {
-          setFootprintViewportVersion((current) => current + 1);
-        });
-      });
-      // How long the footprint may lag the viewport.
-      //
-      // At 500ms a zoom outran the retained bars and the footprint dropped out
-      // until the refresh landed — a margin cannot cover a large zoom, because
-      // it is measured against the span the view had BEFORE it changed. Since
-      // 8ddbfb08 the build is incremental and closed bars come back from cache,
-      // so catching up costs far less than it did when this delay was chosen.
-    }, keyboardActive ? 120 : 180);
-  }, [chartFrameWorkKey, footprintDataConsumer, keyboardActive, viewportVersion]);
-  useEffect(() => () => {
-    if (footprintViewportRefreshTimerRef.current !== null) {
-      window.clearTimeout(footprintViewportRefreshTimerRef.current);
-      footprintViewportRefreshTimerRef.current = null;
+    if (!footprintDataConsumer) {
+      footprintViewportCoverageRef.current = null;
+      return;
     }
+    const logical = chartRef.current?.timeScale().getVisibleLogicalRange();
+    const coverage = footprintViewportCoverageRef.current;
+    if (!logical || !coverage) return;
+    const sourceOffset = candles.length - footprintCandles.length;
+    const visibleFirst = Math.max(0, Math.floor(Number(logical.from)) - sourceOffset);
+    const visibleLast = Math.min(footprintCandles.length, Math.ceil(Number(logical.to)) - sourceOffset);
+    const visibleSpan = Math.max(8, visibleLast - visibleFirst);
+    const guard = Math.ceil(visibleSpan * 0.15) + 2;
+    // The primitive already owns half a screen of prefetched bars on either
+    // side. While the visible range remains inside that safe area it can pan
+    // natively with the candles; rebuilding its rows would only steal time
+    // from the pointer. Once the view approaches an edge, refresh on the next
+    // shared frame instead of waiting for the old 120-180 ms trailing timer.
+    const leftSafe = coverage.first === 0 || visibleFirst >= coverage.first + guard;
+    const rightSafe = coverage.last === footprintCandles.length || visibleLast <= coverage.last - guard;
+    if (leftSafe && rightSafe) return;
+    queueChartFrameWork(`footprint-viewport:${chartFrameWorkKey}`, () => {
+      startTransition(() => {
+        setFootprintViewportVersion((current) => current + 1);
+      });
+    });
+  }, [candles.length, chartFrameWorkKey, footprintCandles.length, footprintDataConsumer, viewportVersion]);
+  useEffect(() => () => {
+    footprintViewportCoverageRef.current = null;
     cancelChartFrameWork(`footprint-viewport:${chartFrameWorkKey}`);
   }, [chartFrameWorkKey]);
   const footprintSettings = useMemo(
     () => footprintIndicator?.settings ?? {},
     [footprintIndicator],
   );
-  const footprintCandles = useMemo(
-    () => footprintDataConsumer ? sampledIndicatorCandles.slice(-indicatorHistoryLimit) : [],
-    [footprintDataConsumer, indicatorHistoryLimit, sampledIndicatorCandles],
-  );
   const footprintVisibleCandles = useMemo(() => {
-    if (!footprintDataConsumer || !footprintCandles.length) return [];
+    if (!footprintDataConsumer || !footprintCandles.length) {
+      footprintViewportCoverageRef.current = null;
+      return [];
+    }
     const logical = chartRef.current?.timeScale().getVisibleLogicalRange();
-    if (!logical) return footprintCandles.slice(-160);
+    if (!logical) {
+      const first = Math.max(0, footprintCandles.length - 160);
+      footprintViewportCoverageRef.current = { first, last: footprintCandles.length };
+      return footprintCandles.slice(first);
+    }
     const sourceOffset = candles.length - footprintCandles.length;
     // Keep half a screen of bars either side of the view.
     //
@@ -5658,6 +5671,7 @@ function Chart({
     const margin = Math.ceil(visibleSpan * 0.5) + 8;
     const first = Math.max(0, Math.floor(Number(logical.from)) - sourceOffset - margin);
     const last = Math.min(footprintCandles.length, Math.ceil(Number(logical.to)) - sourceOffset + margin);
+    footprintViewportCoverageRef.current = { first, last };
     // Scrolled clear of the retained history there is genuinely nothing to
     // draw. Falling back to the newest 160 bars, as this did, put the
     // footprint somewhere off screen to the right and left it stale for the
@@ -13259,10 +13273,28 @@ function Chart({
       setProfessionalDrawings(records);
       setDrawingHistoryRevision((revision) => revision + 1);
     };
+    let professionalDrawingStateTimer: number | null = null;
+    const scheduleProfessionalDrawingStateSync = () => {
+      if (professionalDrawingStateTimer !== null) window.clearTimeout(professionalDrawingStateTimer);
+      // The drawing primitive already follows the pointer imperatively. Do not
+      // serialize every drag sample, export every drawing and reconcile this
+      // large Chart component while the hand is still moving. Persist the
+      // latest geometry on release (or after a short pause) instead.
+      professionalDrawingStateTimer = window.setTimeout(() => {
+        professionalDrawingStateTimer = null;
+        syncProfessionalDrawingState();
+      }, 90);
+    };
+    const flushProfessionalDrawingStateSync = () => {
+      if (professionalDrawingStateTimer === null) return;
+      window.clearTimeout(professionalDrawingStateTimer);
+      professionalDrawingStateTimer = null;
+      syncProfessionalDrawingState();
+    };
     const drawingUnsubscribers = [
       drawingManager.on("drawing:added", syncProfessionalDrawingState),
       drawingManager.on("drawing:removed", syncProfessionalDrawingState),
-      drawingManager.on("drawing:updated", syncProfessionalDrawingState),
+      drawingManager.on("drawing:updated", scheduleProfessionalDrawingStateSync),
       drawingManager.on("drawing:cleared", syncProfessionalDrawingState),
       drawingManager.on("drawing:selected", (event) => setSelectedProfessionalDrawingId(event.drawingId ?? null)),
       drawingManager.on("drawing:double-clicked", (event) => {
@@ -13274,11 +13306,21 @@ function Chart({
     ];
     replaceProfessionalManagerDrawings(professionalDrawingsRef.current);
 
-    // Every visible candle's O/H/L/C in pane pixels, limited to bars near the
-    // pointer so a long history does not cost a full scan per mouse move.
+    // Only nearby candle O/H/L/C points are projected into pane pixels. The
+    // old implementation said this but still scanned the full history on
+    // every mouse move — very visible with months of bars and magnet enabled.
     const magnetCandidates = (x: number, radius: number): MagnetCandidate[] => {
       const found: MagnetCandidate[] = [];
-      for (const candle of candles) {
+      const sourceCandles = drawingCandlesRef.current;
+      const logical = chart.timeScale().coordinateToLogical(x);
+      if (logical === null || !Number.isFinite(Number(logical)) || !sourceCandles.length) return found;
+      const barSpacing = Math.max(1, Number(chart.timeScale().options().barSpacing ?? 6));
+      const indexRadius = Math.max(2, Math.ceil(radius / barSpacing) + 2);
+      const centreIndex = Math.round(Number(logical));
+      const firstIndex = Math.max(0, centreIndex - indexRadius);
+      const lastIndex = Math.min(sourceCandles.length - 1, centreIndex + indexRadius);
+      for (let index = firstIndex; index <= lastIndex; index += 1) {
+        const candle = sourceCandles[index];
         const sourceTimestamp = Number(candle.timestamp);
         const sourceTime = Math.floor(sourceTimestamp / 1_000);
         const chartTime = eventChartTimeBySourceTimeRef.current.get(sourceTimestamp) ?? sourceTime;
@@ -13347,6 +13389,7 @@ function Chart({
     // A finished gesture must not leak its pointer speed into the next one.
     const resetMagnetGesture = () => magnetResolverRef.current.reset();
     window.addEventListener("mouseup", resetMagnetGesture, true);
+    window.addEventListener("mouseup", flushProfessionalDrawingStateSync);
 
     const isDrawingUiTarget = (event: MouseEvent) => {
       const target = event.target instanceof Element ? event.target : null;
@@ -13841,6 +13884,11 @@ function Chart({
       chartContainerRef.current?.removeEventListener("mousedown", handleProfessionalDrawingPointerDown, true);
       window.removeEventListener("mouseup", handleProfessionalDrawingPointerUp, true);
       window.removeEventListener("mouseup", resetMagnetGesture, true);
+      window.removeEventListener("mouseup", flushProfessionalDrawingStateSync);
+      if (professionalDrawingStateTimer !== null) {
+        window.clearTimeout(professionalDrawingStateTimer);
+        professionalDrawingStateTimer = null;
+      }
       drawingManager.setAnchorSnapResolver(null);
       professionalBrushDrawingRef.current = null;
       removeProfessionalPreview();

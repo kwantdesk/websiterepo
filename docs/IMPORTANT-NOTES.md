@@ -221,3 +221,20 @@ recap of the open items below and update this file when their state changes.
 - Bid/Ask and Delta remain sourced only from classified Rithmic executions.
   Unknown executions may contribute to total/POC but must never be assigned a
   side from candle direction or price movement.
+
+## 2026-09-04 — Chart interaction budget
+
+- Pan, zoom and drag movement belongs on the native chart or imperative
+  primitive path. Do not make pointer frequency equal whole-Chart React render
+  frequency, indicator recalculation frequency or persistence frequency.
+- A viewport-backed study should retain a prefetched coverage window and
+  rebuild only near its edge. Never restore a trailing delay that can leave a
+  Footprint visibly behind the viewport after a fast zoom.
+- Drawing persistence must flush on gesture release, but exporting and
+  JSON-comparing every drawing on every pointer sample is prohibited.
+- Magnet lookup must be bounded by the pointer's logical/pixel neighbourhood
+  and read current candle refs. Its cost must not grow linearly with months of
+  loaded history.
+- Smoothness work must not reduce market-data fidelity, execution admission or
+  indicator calculation cadence. Optimise scheduling, projection and retained
+  work before considering any lower-frequency data path.

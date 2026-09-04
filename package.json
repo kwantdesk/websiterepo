@@ -51,6 +51,7 @@
     "test:crosshair-link": "node --import ./scripts/alias-hook.mjs scripts/test-crosshair-link.mjs",
     "test:index-timeframes": "node --import ./scripts/alias-hook.mjs scripts/test-index-timeframes.mjs",
     "test:chart-frame-work": "node --import ./scripts/alias-hook.mjs scripts/test-chart-frame-work.mjs",
+    "test:chart-interaction-budget": "node scripts/test-chart-interaction-budget.mjs",
     "test:browser-storage-quota": "node --import ./scripts/alias-hook.mjs scripts/test-browser-storage-quota.mjs",
     "test:workspace-cache-size": "node --import ./scripts/alias-hook.mjs scripts/test-workspace-cache-size.mjs",
     "test:new-york-trading-day": "node --import ./scripts/alias-hook.mjs scripts/test-new-york-trading-day.mjs",
