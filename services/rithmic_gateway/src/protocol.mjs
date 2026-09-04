@@ -23,7 +23,13 @@ const PROTO_FILES = [
   "depth_by_order.proto",
   "depth_by_order_end_event.proto",
   "request_front_month_contract.proto",
-  "response_front_month_contract.proto"
+  "response_front_month_contract.proto",
+  "request_time_bar_replay.proto",
+  "response_time_bar_replay.proto",
+  "request_tick_bar_replay.proto",
+  "response_tick_bar_replay.proto",
+  "request_volume_profile_minute_bars.proto",
+  "response_volume_profile_minute_bars.proto"
 ];
 
 const RESPONSE_TYPES = new Map([
@@ -39,6 +45,9 @@ const RESPONSE_TYPES = new Map([
   [156, "OrderBook"],
   [160, "DepthByOrder"],
   [161, "DepthByOrderEndEvent"],
+  [203, "ResponseTimeBarReplay"],
+  [207, "ResponseTickBarReplay"],
+  [209, "ResponseVolumeProfileMinuteBars"],
   [154467, "ResponseFrontMonthContract"]
 ]);
 
@@ -139,4 +148,10 @@ export const TEMPLATE_IDS = Object.freeze({
   DEPTH_UPDATES_REQUEST: 117,
   FRONT_MONTH_REQUEST: 154467,
   FRONT_MONTH_RESPONSE: 154467,
+  TIME_BAR_REPLAY_REQUEST: 202,
+  TIME_BAR_REPLAY_RESPONSE: 203,
+  TICK_BAR_REPLAY_REQUEST: 206,
+  TICK_BAR_REPLAY_RESPONSE: 207,
+  VOLUME_PROFILE_REPLAY_REQUEST: 208,
+  VOLUME_PROFILE_REPLAY_RESPONSE: 209,
 });

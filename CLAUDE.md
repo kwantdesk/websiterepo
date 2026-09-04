@@ -1678,3 +1678,24 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
   counters advancing, zero reported recorder drops, event loop not overloaded.
 - This same-region block volume is not an off-box backup. Add nightly verified
   archival-object-storage replication before public launch.
+
+## 2026-09-04 — Rithmic History Plant candle backfill
+
+- Production History Plant entitlement was verified with `rp_code 0` on its
+  independent infra-type-3 session; the live Ticker Plant remained connected.
+- Added replay protocol coverage for time bars (202/203), tick bars (206/207)
+  and volume-profile minute bars (208/209), plus a standalone heartbeat-aware
+  one-request-at-a-time history client.
+- A restart-safe importer now merges one-minute bars atomically into the
+  permanent archive, rejects malformed OHLC and accounts response bytes under
+  a hard 36 GiB weekly safety ceiling below Rithmic's 40 GB allowance.
+- Historical continuous bars are requested by product root (`NQ`), not expired
+  contract (`NQH5`). The January 2, 2025 NQ pilot returned 1,380 rows with zero
+  invalid bars. Chart history falls back from the current exact contract to
+  that same root only for sessions where the exact contract file is absent;
+  exact live recordings win and micro/mini products remain separate.
+- The queue covers all 53 enabled CME-group roots from January 1, 2025, with
+  the liquid equity-index roots first. Minute history serves all intervals of
+  one minute or greater. Tick/volume/range/Footprint history remains a separate
+  trade-tick and volume-at-price import phase and is never fabricated from
+  minute OHLC.

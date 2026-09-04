@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { EventEmitter } from "node:events";
@@ -13,6 +13,7 @@ import {
   tradeTimestampMs,
   tradingDatesBetween,
 } from "../src/futures-bar-archive.mjs";
+import { chicagoTradingDate } from "../src/trading-session.mjs";
 
 /**
  * Chart history built from the desk's own recorded Rithmic prints.
@@ -114,6 +115,27 @@ test("bars survive a restart", async () => {
     });
     assert.equal(candles.length, 2, "the session did not survive the restart");
     assert.equal(candles[1].close, 101);
+  });
+});
+
+test("old sessions fall back from today's contract to History Plant root bars", async () => {
+  await withArchive(async (archive, dir) => {
+    const timestamp = Date.parse("2025-01-02T15:00:00Z");
+    const tradingDate = chicagoTradingDate(timestamp);
+    const dayDir = join(dir, "bars", tradingDate);
+    mkdirSync(dayDir, { recursive: true });
+    writeFileSync(join(dayDir, "CME-NQ.json"), JSON.stringify({
+      tradingDate,
+      exchange: "CME",
+      symbol: "NQ",
+      source: "Rithmic History Plant minute bars",
+      bars: [[timestamp, 21_000, 21_010, 20_995, 21_005, 123]],
+    }));
+    const result = await archive.load({
+      exchange: "CME", symbol: "NQU6", interval: "1m", fromMs: timestamp - 1, toMs: timestamp + 1,
+    });
+    assert.equal(result.candles.length, 1);
+    assert.equal(result.candles[0].close, 21_005);
   });
 });
 

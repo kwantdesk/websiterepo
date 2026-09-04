@@ -65,6 +65,10 @@ function instrumentFileName(exchange, symbol) {
   return `${String(exchange).toUpperCase()}-${String(symbol).toUpperCase()}.json`;
 }
 
+function contractRoot(symbol) {
+  return String(symbol || "").toUpperCase().replace(/[FGHJKMNQUVXZ]\d{1,2}$/u, "");
+}
+
 /**
  * The exchange's own timestamp, not our arrival time.
  *
@@ -405,7 +409,18 @@ export class FuturesBarArchive {
     for (const tradingDate of tradingDatesBetween(start, end)) {
       const live = this.open.get(tradingDate)?.get(`${upper}:${upperSymbol}`);
       const file = join(this.dayDir(tradingDate), instrumentFileName(upper, upperSymbol));
-      for (const bar of await this.readFile(file)) merged.set(bar.t, bar);
+      const exactBars = await this.readFile(file);
+      // History Plant continuous bars are keyed by product root (NQ), while
+      // the live archive is keyed by active contract (NQU6). Fall back only
+      // when that exact contract has no session file, preserving captured
+      // live truth and keeping micros separate from their parent products.
+      const archived = exactBars.length
+        ? exactBars
+        : await this.readFile(join(
+            this.dayDir(tradingDate),
+            instrumentFileName(upper, contractRoot(upperSymbol)),
+          ));
+      for (const bar of archived) merged.set(bar.t, bar);
       if (live) for (const bar of live.values()) merged.set(bar.t, bar);
     }
 
