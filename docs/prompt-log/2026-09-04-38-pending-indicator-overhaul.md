@@ -122,3 +122,12 @@ task until the full pending library is complete, without shortcuts.
   waiting state was verified rather than accepting fabricated OHLC-derived
   output. Filtered developing POC/VA/VWAP now uses the same accepted individual
   executions as the completed filtered profile. Item 13 is complete.
+  Item 14, **Market Statistics**, is now a release candidate. Official help
+  and installed DLL metadata establish Trades/Bars modes, execution and bar
+  inputs, filters, ranges, time window and the compact Filter/AVG/Dev view.
+  Quant Desk uses exact individual or same-time-and-price aggregated Rithmic
+  executions, exact bar volume/POC/Delta-POC inputs, and explicit capability
+  states where historical order or volume-at-price data is unavailable. The
+  calculation, themed overlay, bounded controls, persistence and templates are
+  wired; focused correctness and 50,000-execution performance tests pass.
+  Exact-deployment production QA is still required before item 14 is complete.

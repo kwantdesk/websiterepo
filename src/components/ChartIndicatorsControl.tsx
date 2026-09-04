@@ -154,6 +154,9 @@ const DEEP_PROFILE_VALUES_MANAGED_SETTINGS = new Set([
   "showPeaks", "showValleys", "excludeHighLow", "showVwap", "showDevelopingVwap",
   "showVwapBands", "showSummary", "showSummaryTrades", "showLevelLabels", "showLevelLabelPrice",
 ]);
+const MARKET_STATISTICS_MANAGED_SETTINGS = new Set([
+  "statMode", "dataType", "barInput", "showHeader", "showEmptyRanges",
+]);
 
 const TPO_PRESETS = [
   {
@@ -470,6 +473,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "deep-v-tracker",
   "deep-profile-swing",
   "deep-profile-values",
+  "market-statistics",
   "moving-average",
   "vwap",
   "vwap-envelopes",
@@ -6916,6 +6920,38 @@ export default function ChartIndicatorsControl({
                 </div>
               ) : null}
 
+              {settingsDefinition.id === "market-statistics" ? (
+                <div className="grid gap-3 border border-primary/20 bg-primary/[0.035] p-3 sm:grid-cols-2">
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                    <span>Stat mode</span>
+                    <KwantSelect value={String(settingsInstance.settings?.statMode ?? "trades")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), statMode: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel="Market Statistics stat mode">
+                      <option value="trades">Trades</option><option value="bars">Bars</option>
+                    </KwantSelect>
+                  </label>
+                  {String(settingsInstance.settings?.statMode ?? "trades") === "trades" ? (
+                    <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                      <span>Data type</span>
+                      <KwantSelect value={String(settingsInstance.settings?.dataType ?? "volume")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), dataType: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel="Market Statistics data type">
+                        <option value="volume">Volume</option><option value="order">Order</option><option value="aggregate-trades">Aggregate trades</option>
+                      </KwantSelect>
+                    </label>
+                  ) : (
+                    <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                      <span>Base data bar</span>
+                      <KwantSelect value={String(settingsInstance.settings?.barInput ?? "volume")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), barInput: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel="Market Statistics base data bar">
+                        <option value="poc">POC</option><option value="delta-poc">Delta POC</option><option value="volume">Volume</option>
+                      </KwantSelect>
+                    </label>
+                  )}
+                  {[["Show header", "showHeader"], ["Show empty ranges", "showEmptyRanges"]].map(([label, key]) => {
+                    const on = settingsInstance.settings?.[key] !== false;
+                    return <button key={key} type="button" aria-pressed={on} onClick={() => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [key]: !on } }))} className="flex h-9 items-center justify-between border border-border bg-background px-3 text-[9px] uppercase tracking-[0.1em] text-muted"><span>{label}</span><span className={on ? "text-primary" : "text-muted"}>{on ? "On" : "Off"}</span></button>;
+                  })}
+                  {settingsInstance.settings?.dataType === "order" && settingsInstance.settings?.statMode !== "bars" ? <p className="text-[8px] leading-4 text-warning sm:col-span-2">Order mode requires historical resting-order events. Quant Desk reports that requirement instead of substituting executed volume.</p> : null}
+                  <p className="text-[8px] leading-4 text-muted sm:col-span-2">Ranges count exact Rithmic executions or exact bar statistics per exchange day. % Dev. Std. controls how far from the dataset mean observations are admitted; AVG is mean daily frequency and Dev is the maximum daily frequency.</p>
+                </div>
+              ) : null}
+
               {/*
                 * Save, open and import — on every indicator, not just the
                 * footprint. Rendered before the settings themselves so a
@@ -7013,6 +7049,7 @@ export default function ChartIndicatorsControl({
                     && !(settingsDefinition.id === "deep-print-footprint" && FOOTPRINT_PROFILE_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "deep-profile-swing" && DEEP_PROFILE_SWING_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "deep-profile-values" && DEEP_PROFILE_VALUES_MANAGED_SETTINGS.has(key))
+                    && !(settingsDefinition.id === "market-statistics" && MARKET_STATISTICS_MANAGED_SETTINGS.has(key))
                     && !(VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) && VOLUME_PROFILE_VWAP_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "bounce-levels" && key === "syncGexMapColors")
                     && (typeof value === "boolean" || isColourSetting(key, value)))

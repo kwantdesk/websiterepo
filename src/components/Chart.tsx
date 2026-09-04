@@ -184,6 +184,11 @@ import {
   OPEN_CANDLE_SETTINGS_EVENT,
 } from "@/lib/candleStyle";
 import { visibleIndicatorTheme } from "@/lib/indicatorPlotColors";
+import {
+  calculateMarketStatistics,
+  normalizeMarketStatisticsSettings,
+  type MarketStatisticsFrame,
+} from "@/lib/marketStatistics";
 import { futuresVenue } from "@/lib/futuresVenue";
 import { PositionCalculatorPrimitive, type PositionCalculatorModel } from "@/lib/positionCalculatorPrimitive";
 import { ImbalanceZonesPrimitive, type ImbalanceZoneModel } from "@/lib/imbalanceZonesPrimitive";
@@ -3372,6 +3377,7 @@ function Chart({
   const footprintProfileBuildCacheRef = useRef<FootprintBuildCache | null>(null);
   const pocAuctionBuildCacheRef = useRef<FootprintBuildCache | null>(null);
   const barPocBuildCacheRef = useRef<FootprintBuildCache | null>(null);
+  const marketStatisticsBuildCacheRef = useRef<FootprintBuildCache | null>(null);
   const paperFillMarkersPrimitiveRef = useRef<PaperFillMarkersPrimitive | null>(null);
   /**
    * The order labels are DOM, not canvas, because they have to sit above the
@@ -3924,6 +3930,7 @@ function Chart({
   const [deepVTrackerFrame, setDeepVTrackerFrame] = useState<DeepVTrackerFrame | null>(null);
   const [deepProfileSwingFrame, setDeepProfileSwingFrame] = useState<DeepProfileSwingFrame | null>(null);
   const [deepProfileValuesFrame, setDeepProfileValuesFrame] = useState<DeepProfileValuesFrame | null>(null);
+  const [marketStatisticsFrame, setMarketStatisticsFrame] = useState<MarketStatisticsFrame | null>(null);
   const [pocAuctionTooltip, setPocAuctionTooltip] = useState<PocAuctionHit | null>(null);
   const [tapeSpeedTooltip, setTapeSpeedTooltip] = useState<TapeSpeedHit | null>(null);
   const [netGammaProfile, setNetGammaProfile] = useState<NetGammaProfileSnapshot | null>(null);
@@ -5775,6 +5782,10 @@ function Chart({
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "deep-profile-values") ?? null,
     [indicatorSignature, indicators],
   );
+  const marketStatisticsIndicator = useMemo(
+    () => indicators.find((instance) => instance.enabled && instance.indicatorId === "market-statistics") ?? null,
+    [indicatorSignature, indicators],
+  );
   const cumulativeIcebergStopIndicator = useMemo(
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "cumulative-iceberg-stop") ?? null,
     [indicatorSignature, indicators],
@@ -6234,6 +6245,16 @@ function Chart({
       showEmptyPriceRows: false,
     });
   }, [barPocIndicator, footprintBuildSettings, footprintMarketTrades, footprintSourceCandles]);
+  const marketStatisticsBars = useMemo(() => {
+    if (!marketStatisticsIndicator || !indicatorWindowCandles.length) return [];
+    return buildFootprintBarsCached(marketStatisticsBuildCacheRef, indicatorWindowCandles, indicatorMarketTrades, {
+      ...footprintBuildSettings,
+      groupTicks: 1,
+      minimumTradeVolume: 0,
+      maximumTradeVolume: 0,
+      showEmptyPriceRows: false,
+    });
+  }, [footprintBuildSettings, indicatorMarketTrades, indicatorWindowCandles, marketStatisticsIndicator]);
   useEffect(() => {
     if (!footprintDataConsumer) {
       retainedFootprintBarsRef.current = null;
@@ -6701,6 +6722,39 @@ function Chart({
       bidColor: visible.negative,
     };
   }, [deepProfileValuesIndicator, settings]);
+  const marketStatisticsSettings = useMemo(() => {
+    const raw = marketStatisticsIndicator?.settings ?? {};
+    const core = normalizeMarketStatisticsSettings(raw);
+    const visible = visibleIndicatorTheme(settings);
+    const themed = raw.useThemeColors !== false;
+    return {
+      ...raw,
+      ...core,
+      fontSize: Math.min(32, Math.max(6, Number(raw.fontSize ?? 10))),
+      panelOpacity: Math.min(100, Math.max(0, Number(raw.panelOpacity ?? 72))),
+      showHeader: raw.showHeader !== false,
+      showEmptyRanges: raw.showEmptyRanges !== false,
+      textColor: themed ? visible.primary : String(raw.textColor ?? visible.primary),
+      averageColor: themed ? visible.positive : String(raw.averageColor ?? visible.positive),
+      deviationColor: themed ? visible.negative : String(raw.deviationColor ?? visible.negative),
+      backgroundColor: themed ? settings.backgroundColor : String(raw.backgroundColor ?? settings.backgroundColor),
+    };
+  }, [marketStatisticsIndicator, settings]);
+
+  useEffect(() => {
+    if (!marketStatisticsIndicator) {
+      setMarketStatisticsFrame(null);
+      return;
+    }
+    const frame = calculateMarketStatistics({
+      candles: indicatorWindowCandles,
+      trades: indicatorMarketTrades,
+      footprintBars: marketStatisticsBars,
+      settings: marketStatisticsSettings,
+      isLive: replayTimestampMs == null,
+    });
+    startTransition(() => setMarketStatisticsFrame(frame));
+  }, [indicatorMarketTrades, indicatorWindowCandles, marketStatisticsBars, marketStatisticsIndicator, marketStatisticsSettings, replayTimestampMs]);
 
   useEffect(() => {
     if (!unfinishedAuctionIndicator) {
@@ -17450,6 +17504,35 @@ function Chart({
         <div className="pointer-events-none absolute right-2 z-[72] flex items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur" style={{ top: (pocAuctionIndicator && pocAuctionSettings.showHeader ? 38 : 8) + (unfinishedAuctionIndicator ? 26 : 0) + (barPocIndicator ? 26 : 0) + (dynamicPocIndicator ? 26 : 0) + (ratioHighlightIndicator ? 26 : 0) + (stopSpotterIndicator ? 26 : 0) + (deepWallIndicator ? 26 : 0) + (deepVTrackerIndicator ? 26 : 0) + (deepProfileSwingIndicator ? 26 : 0) }} title="POC, value area, VWAP and profile structure from exact Rithmic volume-at-price">
           <span className={`h-1.5 w-1.5 rounded-full ${!deepProfileValuesFrame || deepProfileValuesFrame.status.startsWith("WAITING") ? "animate-pulse bg-warning" : "bg-primary"}`} />
           <span className="text-foreground">KWANT Profile Values</span><span>{deepProfileValuesFrame?.status.replaceAll("_", " ") ?? "CALCULATING"}</span><span>{deepProfileValuesFrame?.profiles.length ?? 0} PROFILES</span>
+        </div>
+      ) : null}
+      {marketStatisticsIndicator && marketStatisticsFrame ? (
+        <div
+          className="pointer-events-none absolute left-2 top-2 z-[71] min-w-[188px] border border-border/70 px-2 py-1.5 font-mono shadow-lg backdrop-blur-sm"
+          style={{
+            color: marketStatisticsSettings.textColor,
+            backgroundColor: `color-mix(in srgb, ${marketStatisticsSettings.backgroundColor} ${marketStatisticsSettings.panelOpacity}%, transparent)`,
+            fontSize: `${marketStatisticsSettings.fontSize}px`,
+          }}
+          title={`${marketStatisticsFrame.sampleDays} exchange days · ${marketStatisticsFrame.eventCount} exact observations`}
+          data-market-statistics-status={marketStatisticsFrame.status}
+        >
+          {marketStatisticsSettings.showHeader ? (
+            <div className="mb-1 flex items-center justify-between gap-4 border-b border-current/20 pb-1 uppercase tracking-[0.08em]">
+              <span>Filter</span><span>{marketStatisticsFrame.status.replaceAll("_", " ")}</span>
+            </div>
+          ) : null}
+          {marketStatisticsFrame.status.startsWith("WAITING") ? (
+            <div className="py-1 uppercase tracking-[0.06em]">{marketStatisticsFrame.status.replaceAll("_", " ")}</div>
+          ) : marketStatisticsFrame.ranges
+            .filter((range) => marketStatisticsSettings.showEmptyRanges || range.peak > 0)
+            .map((range) => (
+              <div key={`${range.lower}:${range.upper}`} className="grid grid-cols-[minmax(56px,1fr)_auto_auto] gap-2 tabular-nums" title={`Peak ${range.peak.toLocaleString()}`}>
+                <span>{range.lower.toLocaleString()}–{range.upper.toLocaleString()}</span>
+                <span style={{ color: marketStatisticsSettings.averageColor }}>Avg: {range.average.toFixed(range.average < 10 ? 1 : 0)}</span>
+                <span style={{ color: marketStatisticsSettings.deviationColor }}>Dev: {range.deviation.toFixed(range.deviation < 10 ? 1 : 0)}</span>
+              </div>
+            ))}
         </div>
       ) : null}
       {pocAuctionTooltip ? (

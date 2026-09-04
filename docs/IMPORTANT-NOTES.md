@@ -332,3 +332,12 @@ recap of the open items below and update this file when their state changes.
   final POC/VA/VWAP and every developing trail must use the same accepted
   individual prints. Never let filtered developing levels fall back to the
   unfiltered bar ladder.
+- Market Statistics is a frequency calibration study, not a substitute data
+  feed. Trade Volume and Aggregate Trades must use exact Rithmic executions;
+  POC and Delta POC bar inputs require exact price-level rows. Historical Order
+  input remains `WAITING FOR ORDER HISTORY` until recorded resting-order events
+  exist. Its documented `AVG` is mean daily range frequency and Quant Desk's
+  `Dev` is the maximum observed daily frequency. `% Dev. Std.` broadens or
+  narrows the admitted observations around the dataset mean using an explicit
+  standard-score window; never claim the protected DeepCharts coefficients
+  were recovered from metadata.

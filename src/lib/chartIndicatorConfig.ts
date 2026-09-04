@@ -62,6 +62,10 @@ import {
   DEFAULT_DEEP_PROFILE_VALUES_SETTINGS,
   normalizeDeepProfileValuesSettings,
 } from "@/lib/deepProfileValues";
+import {
+  DEFAULT_MARKET_STATISTICS_SETTINGS,
+  normalizeMarketStatisticsSettings,
+} from "@/lib/marketStatistics";
 
 export const LIVE_CHART_INDICATOR_IDS = new Set([
   "gamma-environment",
@@ -95,6 +99,7 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "deep-v-tracker",
   "deep-profile-swing",
   "deep-profile-values",
+  "market-statistics",
   "cumulative-volume-delta",
   "cvd-divergence",
   "pulling-stacking",
@@ -309,6 +314,18 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "vwapBand2", label: "VWAP band 2 · standard deviations", defaultValue: 2, min: 0, max: 20, step: 0.25 },
     { key: "vwapBand3", label: "VWAP band 3 · standard deviations", defaultValue: 0, min: 0, max: 20, step: 0.25 },
     { key: "lineWidth", label: "Level line width", defaultValue: 1, min: 0.5, max: 6, step: 0.5 },
+  ],
+  "market-statistics": [
+    { key: "fontSize", label: "Font size", defaultValue: 10, min: 6, max: 32, step: 1 },
+    { key: "standardDeviationPercent", label: "% Dev. Std.", defaultValue: 2, min: 0.1, max: 5, step: 0.1 },
+    { key: "filterMin", label: "Filter minimum", defaultValue: 0, min: 0, max: 10000000, step: 1 },
+    { key: "filterMax", label: "Filter maximum · 0 is unlimited", defaultValue: 0, min: 0, max: 10000000, step: 1 },
+    { key: "initialRange", label: "Initial range", defaultValue: 0, min: 0, max: 10000000, step: 1 },
+    { key: "endRange", label: "End range", defaultValue: 500, min: 1, max: 10000000, step: 1 },
+    { key: "stepRange", label: "Range step", defaultValue: 50, min: 1, max: 1000000, step: 1 },
+    { key: "initialFilterMinutes", label: "Initial filter · exchange minutes", defaultValue: 0, min: 0, max: 1439, step: 1 },
+    { key: "endFilterMinutes", label: "End filter · exchange minutes", defaultValue: 1439, min: 0, max: 1439, step: 1 },
+    { key: "panelOpacity", label: "Panel opacity (%)", defaultValue: 72, min: 0, max: 100, step: 1 },
   ],
   "ratio-highlight": [
     { key: "minRatio", label: "Minimum ratio", defaultValue: 10, min: 0, max: 100, step: 0.25 },
@@ -1584,6 +1601,18 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     bidColor: theme?.downColor ?? DEFAULT_DEEP_PROFILE_VALUES_SETTINGS.bidColor,
     schemaVersion: DEEP_PROFILE_VALUES_SETTINGS_VERSION,
   } : {}),
+  ...(indicatorId === "market-statistics" ? {
+    ...DEFAULT_MARKET_STATISTICS_SETTINGS,
+    fontSize: 10,
+    panelOpacity: 72,
+    showHeader: true,
+    showEmptyRanges: true,
+    useThemeColors: true,
+    textColor: theme?.borderUpColor ?? theme?.upColor ?? "#60A5FA",
+    averageColor: theme?.upColor ?? "#22C55E",
+    deviationColor: theme?.downColor ?? "#EF4444",
+    backgroundColor: theme?.backgroundColor ?? "#09090B",
+  } : {}),
   ...(indicatorId === "tape-speed-order-flow-burst" ? {
     ...DEFAULT_TAPE_SPEED_SETTINGS,
     buyColor: theme?.upColor ?? DEFAULT_TAPE_SPEED_SETTINGS.buyColor,
@@ -2792,6 +2821,14 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
   if (normalizedInstance.indicatorId === "deep-profile-values") {
     const defaults = defaultIndicatorSettings("deep-profile-values");
     return { ...normalizedInstance, settings: { ...defaults, ...normalizeDeepProfileValuesSettings({ ...defaults, ...(normalizedInstance.settings ?? {}) }) } };
+  }
+  if (normalizedInstance.indicatorId === "market-statistics") {
+    const defaults = defaultIndicatorSettings("market-statistics");
+    const incoming = { ...defaults, ...(normalizedInstance.settings ?? {}) };
+    return {
+      ...normalizedInstance,
+      settings: { ...incoming, ...normalizeMarketStatisticsSettings(incoming) },
+    };
   }
   if (normalizedInstance.indicatorId === "tape-speed-order-flow-burst") {
     return {

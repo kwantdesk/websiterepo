@@ -31,6 +31,12 @@ export type IndicatorPlotColorSlot = {
 };
 
 export const INDICATOR_PLOT_COLOR_SLOTS: Record<string, IndicatorPlotColorSlot[]> = {
+  "market-statistics": [
+    { key: "textColor", role: "primary" },
+    { key: "averageColor", role: "positive" },
+    { key: "deviationColor", role: "negative" },
+    { key: "backgroundColor", role: "muted" },
+  ],
   "deep-profile-values": [
     { key: "pocColor", role: "primary" },
     { key: "valueAreaColor", role: "secondary" },

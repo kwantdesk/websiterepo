@@ -49,7 +49,7 @@ Legend: `[ ]` not complete, `[~]` in progress, `[x]` complete and addable.
 | 11 | Custom Draw-On Volume Profile | `custom-draw-on-volume-profile` | [x] | [x] | [x] | [x] | [x] | Add |
 | 12 | KWANT Profile Swing | `deep-profile-swing` | [x] | [x] | [x] | [x] | [x] | Add |
 | 13 | KWANT Profile Values | `deep-profile-values` | [x] | [x] | [x] | [x] | [x] | Add |
-| 14 | Market Statistics | `market-statistics` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
+| 14 | Market Statistics | `market-statistics` | [x] | [x] | [x] | [x] | [~] | Pending |
 | 15 | Confluence Identifier | `confluence-identifier` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
 | 16 | Kwant Levels | `gamma-levels` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
 | 17 | Overlay Chart | `overlay-chart` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
@@ -439,6 +439,40 @@ Legend: `[ ]` not complete, `[~]` in progress, `[x]` complete and addable.
   volume-at-price (the Footprint panel itself remained in history restore), so
   the study correctly displayed `WAITING FOR VOLUME AT PRICE` instead of
   manufacturing levels from candles. Item 13 is released as Add.
+
+### 14: Market Statistics
+
+- Official DeepCharts help (updated 8 July 2026) defines an upper-left compact
+  range-frequency display used to calibrate downstream order-flow filters. Its
+  observable settings are Trades/Bars Stat Mode, font size, `% Dev. Std.`,
+  Volume/Order/Aggregate Trades input, min/max filter, initial/end/step ranges,
+  POC/Delta POC/Volume bar input and initial/end exchange-time filters.
+  Installed 16.0.9 DLL metadata independently confirms the corresponding
+  `StatMode`, `FontSize`, `StdDevPerc`, `DataType`, `FilterMin`, `FilterMax`,
+  `IniRange`, `EndRange`, `StepRange`, `BarInput`, `IniFilter` and `EndFilter`
+  properties. The protected formula body is not inspectable.
+- Quant Desk implements that public contract transparently. Trade Volume uses
+  exact individual Rithmic executions; Aggregate Trades combines executions at
+  the same timestamp and price before sizing; Bars uses real bar total volume
+  or the exact price-level POC/absolute Delta-POC value. Order mode reports
+  `WAITING FOR ORDER HISTORY`, and price-level bar modes report
+  `WAITING FOR VOLUME AT PRICE` when their required history is absent.
+- Each configured size range counts events per exchange trading day. `AVG` is
+  mean daily frequency including zero-count loaded days; `Dev` is the maximum
+  daily frequency observed, exactly as the help example defines it. `% Dev.
+  Std.` controls how broadly observations are admitted around the dataset mean
+  using a transparent standard-score window. The in-chart upper-left list
+  follows the reference `Filter / Avg / Dev` layout and updates with the shared
+  execution tape. It has bounded 200-range work, theme-safe/custom colours,
+  sliders, selectors, save state and shared account-synced templates.
+- Focused tests pass for normalization, individual and aggregate execution
+  inputs, per-day averages, guarded order/price-level modes, POC/Delta-POC
+  bars and a 50,000-execution performance case. Template and history-depth
+  regressions pass; Turbopack compilation succeeds. The broad plot-colour test
+  still stops only at its pre-existing MACD custom-signal assertion, and the
+  repository type phase remains blocked by the unrelated duplicate Three.js
+  typings in `landing/page.tsx`. Exact deployment and production visual/save/
+  reload/removal QA remain required before item 14 is marked Add.
 
 - Quant Desk already has a tested `PocAuctionSuiteEngine` driven by exact
   execution-classified Footprint rows. It calculates raw-tick unfinished
