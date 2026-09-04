@@ -185,8 +185,8 @@ export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
   indicator("Expected Move", "Volatility", "The options market's priced one-sigma travel for the session - a top and bottom rail from ATM implied volatility, anchored at the session open.", false, "Kwantify"),
 
   indicator("Candlestick Bar", "Overlays", "Alternative candlestick rendering layer."),
-  indicator("Overlay Chart", "Overlays", "Overlays a secondary chart series."),
-  indicator("Overlay Symbol", "Overlays", "Compares another instrument on the same chart."),
+  indicator("Overlay Chart", "Overlays", "Independent-symbol and independent-timeframe comparison with a secondary price axis.", false, "Kwantify"),
+  indicator("Overlay Symbol", "Overlays", "A second Rithmic instrument kept on the active chart timeframe.", false, "Kwantify"),
   indicator("Overlay Timeframe Candlestick", "Overlays", "Higher-timeframe candles on the active chart."),
   indicator("Overlay Timeframe Highlight", "Overlays", "Highlights higher-timeframe candle boundaries."),
   indicator("Annotations Overlay", "Overlays", "Displays structured annotations over price."),

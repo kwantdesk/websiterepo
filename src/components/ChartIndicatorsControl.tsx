@@ -448,6 +448,8 @@ const sectionForSetting = (indicatorId: string, key: string, fallback: string) =
 
 export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "gamma-levels",
+  "overlay-chart",
+  "overlay-symbol",
   "gamma-environment",
   "vix-environment",
   "zero-gamma-line",
@@ -5938,6 +5940,58 @@ export default function ChartIndicatorsControl({
                     <label className="space-y-1.5 text-[8px] uppercase tracking-[0.1em] text-muted"><span>Confirmed alerts</span><KwantSelect value={settingsInstance.settings?.alertsEnabled === true ? "on" : "off"} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), alertsEnabled: event.target.value === "on", preset: "custom" } }))} className="h-9 w-full"><option value="off">Off</option><option value="on">On</option></KwantSelect></label>
                   </div>
                   <p className="text-[8px] leading-4 text-muted">Uses the shared direct Rithmic execution tape. Unknown-side contracts remain in total speed but are excluded from directional speed and delta; OHLCV is never substituted for missing executions.</p>
+                </div>
+              ) : null}
+
+              {settingsDefinition.id === "overlay-chart" || settingsDefinition.id === "overlay-symbol" ? (
+                <div data-settings-section="General" className="grid gap-3 rounded-xl border border-border bg-surface/30 p-3 sm:grid-cols-2">
+                  <label className="space-y-1.5 text-[9px] text-muted">
+                    <span>Overlay symbol</span>
+                    <input
+                      value={String(settingsInstance.settings?.symbol ?? "AUTO")}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                        ...current,
+                        settings: { ...(current.settings ?? {}), symbol: event.target.value.toUpperCase() },
+                      }))}
+                      placeholder="AUTO · NQ · ES · CL"
+                      className="h-10 w-full rounded-lg border border-border bg-background px-3 font-mono text-[11px] text-foreground outline-none focus:border-primary/45"
+                    />
+                  </label>
+                  {settingsDefinition.id === "overlay-chart" ? (
+                    <label className="space-y-1.5 text-[9px] text-muted">
+                      <span>Secondary timeframe</span>
+                      <input
+                        value={String(settingsInstance.settings?.timeframe ?? "AUTO")}
+                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                          ...current,
+                          settings: { ...(current.settings ?? {}), timeframe: event.target.value },
+                        }))}
+                        placeholder="AUTO · 5m · 30m · 40r · 500v"
+                        className="h-10 w-full rounded-lg border border-border bg-background px-3 font-mono text-[11px] text-foreground outline-none focus:border-primary/45"
+                      />
+                    </label>
+                  ) : (
+                    <div className="rounded-lg border border-border bg-background px-3 py-2 text-[9px] leading-4 text-muted">
+                      Timeframe follows the active chart automatically.
+                    </div>
+                  )}
+                  <label className="space-y-1.5 text-[9px] text-muted sm:col-span-2">
+                    <span>Chart style</span>
+                    <select
+                      value={String(settingsInstance.settings?.style ?? "candlestick")}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                        ...current,
+                        settings: { ...(current.settings ?? {}), style: event.target.value },
+                      }))}
+                      className="h-10 w-full rounded-lg border border-border bg-background px-3 text-[10px] text-foreground outline-none focus:border-primary/45"
+                    >
+                      <option value="candlestick">Candlestick</option>
+                      <option value="candlebody">Candle body</option>
+                      <option value="ohlc">OHLC</option>
+                      <option value="line">Line</option>
+                      <option value="hidden">Hidden</option>
+                    </select>
+                  </label>
                 </div>
               ) : null}
 

@@ -155,3 +155,12 @@ task until the full pending library is complete, without shortcuts.
   explicitly declines to fake DeepCharts' Call/Put Σ or proprietary OI (R.T.)
   from incomplete flow or dated OI. Focused tests and scoped lint pass;
   production QA remains before item 16 is marked complete.
+  Items 17 and 18, **Overlay Chart** and **Overlay Symbol**, are release
+  candidates. Official help establishes the independent-timeframe versus
+  inherited-timeframe split and the shared five styles, secondary scale,
+  volume width, delta colour, border, fill, deviation and colour controls.
+  Quant Desk now uses bounded history plus the shared Rithmic live stream,
+  protects the live seam from late history replacement, resolves continuous
+  and dated ES/NQ micro/full contracts correctly, and renders genuine
+  per-candle volume-scaled width through a native primitive. Focused tests and
+  scoped lint pass; exact deployment and production QA remain open.

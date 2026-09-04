@@ -52,13 +52,39 @@ Legend: `[ ]` not complete, `[~]` in progress, `[x]` complete and addable.
 | 14 | Market Statistics | `market-statistics` | [x] | [x] | [x] | [x] | [x] | Add |
 | 15 | Confluence Identifier | `confluence-identifier` | [x] | [x] | [x] | [x] | [x] | Add |
 | 16 | Kwant Levels | `gamma-levels` | [x] | [x] | [x] | [x] | [~] | Pending · deployment QA |
-| 17 | Overlay Chart | `overlay-chart` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
-| 18 | Overlay Symbol | `overlay-symbol` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
+| 17 | Overlay Chart | `overlay-chart` | [x] | [x] | [x] | [x] | [~] | Pending · deployment QA |
+| 18 | Overlay Symbol | `overlay-symbol` | [x] | [x] | [x] | [x] | [~] | Pending · deployment QA |
 | 19 | Overlay Timeframe Candlestick | `overlay-timeframe-candlestick` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
 | 20 | KWANT-M IVB | `deep-m-ivb` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
 | 21 | KWANT Pattern Builder | `deep-pattern-builder` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
 
 ## Audit notes
+
+### 17–18: Overlay Chart and Overlay Symbol
+
+- Official DeepCharts help separates these contracts. Overlay Chart owns an
+  independent symbol and timeframe and can use a secondary price axis; Overlay
+  Symbol follows the active chart timeframe and can size each candle from its
+  real volume. Both expose Candlestick, OHLC, Candle Body, Line and Hidden
+  styles, open/close borders, delta colouring, fixed/fading colours, standard
+  deviation sensitivity and themeable plot colours.
+- Quant Desk now loads a bounded historical secondary series and subscribes to
+  the existing shared Rithmic execution stream for its live tail. A late
+  history response merges behind that tail instead of overwriting fresh
+  executions. `AUTO` pairs ES/NQ and MES/MNQ safely even when a dated contract
+  such as `MESU6` is supplied; Overlay Symbol inherits every supported time,
+  range and volume interval from the host chart.
+- The renderer uses an isolated price scale by default, supports all five
+  documented styles and derives optional colour intensity from classified
+  execution delta. Overlay Symbol's volume-width option is genuine geometry:
+  a chart primitive scales each candle body/OHLC width by the square root of
+  recorded volume up to the chosen maximum; it is not an opacity substitute.
+  All options are persisted through the shared indicator save/template path.
+- Focused pairing, bounds and aggregation tests pass. Scoped lint passes and
+  no overlay integration error is present in TypeScript output; the only
+  repository-wide type failures remain the pre-existing duplicate Three.js
+  packages in landing visuals. Production deployment and add/render/settings/
+  save/reload/removal QA remain before either row is marked complete.
 
 ### 16: Kwant Levels
 

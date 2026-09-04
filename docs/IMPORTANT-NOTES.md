@@ -347,3 +347,8 @@ recap of the open items below and update this file when their state changes.
   the exact Rithmic volume-at-price contract. Historical Orders must remain
   `WAITING FOR ORDER HISTORY` until recorded resting-book snapshots exist, and
   protected DeepCharts formula internals must not be claimed from metadata.
+- Overlay Chart may own a different interval and secondary price scale;
+  Overlay Symbol must inherit the host chart interval. Both use the shared
+  Rithmic execution subscription and merge delayed history behind the live
+  seam. Volume-based candle width is actual rendered width, never relabelled
+  opacity, and an unavailable secondary feed must not disturb the main chart.

@@ -85,6 +85,9 @@ import {
   X,
 } from "lucide-react";
 import { Candle, Trade } from "@/lib/backtester";
+import type { ChartOverlaySeries as ChartOverlaySeriesModel } from "@/lib/chartOverlays";
+import { OverlayVolumeWidthPrimitive } from "@/lib/chartOverlayPrimitive";
+export type ChartOverlaySeries = ChartOverlaySeriesModel;
 import type { VixEnvironmentSnapshot } from "@/lib/vixEnvironment";
 import {
   DATABENTO_LIVE_TICK_EVENT,
@@ -692,6 +695,7 @@ interface ChartProps {
   chartingDrawings?: Drawing[];
   onChartingDrawingsChange?: (drawings: Drawing[]) => void;
   indicators?: ChartIndicatorInstance[];
+  overlaySeries?: ChartOverlaySeries[];
   initialBalanceCandles?: Candle[];
   classicGexProfile?: ClassicGexProfilePayload | null;
   classicGexHistory?: ClassicGexHistorySnapshot[];
@@ -3103,6 +3107,7 @@ function Chart({
   chartingDrawings = EMPTY_CHARTING_DRAWINGS,
   onChartingDrawingsChange,
   indicators: rawIndicators = EMPTY_CHART_ITEMS,
+  overlaySeries = EMPTY_CHART_ITEMS,
   initialBalanceCandles,
   classicGexProfile = null,
   classicGexHistory = EMPTY_CHART_ITEMS,
@@ -3217,6 +3222,11 @@ function Chart({
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candleSeriesRef = useRef<ReturnType<IChartApi["addCandlestickSeries"]> | null>(null);
+  const overlayChartSeriesRef = useRef(new Map<string,
+    | { kind: "line"; series: ReturnType<IChartApi["addLineSeries"]> }
+    | { kind: "candlestick"; series: ReturnType<IChartApi["addCandlestickSeries"]>; volumeWidth: OverlayVolumeWidthPrimitive }
+    | { kind: "bar"; series: ReturnType<IChartApi["addBarSeries"]> }
+  >());
   const viewportSyncApplyingRef = useRef(false);
   const viewportSyncPublishFrameRef = useRef<number | null>(null);
   const viewportSyncUserInteractionRef = useRef(false);
@@ -15148,6 +15158,7 @@ function Chart({
       footprintActiveRef.current = false;
       footprintBarWidthRef.current = null;
       indicatorSeriesRefs.current = [];
+      overlayChartSeriesRef.current.clear();
       priceLinesRef.current = [];
       prevCandlesLengthRef.current = 0;
       prevFirstTimestampRef.current = null;
@@ -15155,6 +15166,155 @@ function Chart({
       lastRenderedCandleTimeRef.current = null;
     };
   }, [chartConstructionSettingsKey, chartInstanceId, crosshairSyncInstrumentKey, instrument, priceFormat, themeVersion]);
+
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    const visible = overlaySeries.filter((overlay) => overlay.style !== "hidden");
+    const visibleIds = new Set(visible.map((overlay) => overlay.id));
+    for (const [id, runtime] of overlayChartSeriesRef.current) {
+      if (visibleIds.has(id)) continue;
+      try { chart.removeSeries(runtime.series); } catch { /* chart may have rebuilt */ }
+      overlayChartSeriesRef.current.delete(id);
+    }
+
+    for (const overlay of visible) {
+      const kind = overlay.style === "line"
+        ? "line"
+        : overlay.style === "ohlc" && !overlay.widthBasedOnVolume
+          ? "bar"
+          : "candlestick";
+      let runtime = overlayChartSeriesRef.current.get(overlay.id);
+      if (runtime && runtime.kind !== kind) {
+        try { chart.removeSeries(runtime.series); } catch { /* chart may have rebuilt */ }
+        overlayChartSeriesRef.current.delete(overlay.id);
+        runtime = undefined;
+      }
+      const upColor = overlay.useThemeColors ? settings.upColor : overlay.upColor;
+      const downColor = overlay.useThemeColors ? settings.downColor : overlay.downColor;
+      const lineColor = overlay.useThemeColors ? settings.borderUpColor : overlay.lineColor;
+      const opacity = overlay.opacity / 100;
+      const priceScaleId = overlay.useSecondaryAxis ? `overlay-${overlay.id}` : "right";
+
+      if (!runtime) {
+        if (kind === "line") {
+          runtime = {
+            kind,
+            series: chart.addLineSeries({
+              color: withAlpha(lineColor, opacity),
+              lineWidth: overlay.borderWidth,
+              priceScaleId,
+              priceLineVisible: false,
+              lastValueVisible: true,
+              crosshairMarkerVisible: false,
+            }),
+          };
+        } else if (kind === "bar") {
+          runtime = {
+            kind,
+            series: chart.addBarSeries({
+              upColor: withAlpha(upColor, opacity),
+              downColor: withAlpha(downColor, opacity),
+              thinBars: overlay.borderWidth <= 1,
+              priceScaleId,
+              priceLineVisible: false,
+            }),
+          };
+        } else {
+          const volumeWidth = new OverlayVolumeWidthPrimitive();
+          runtime = {
+            kind,
+            series: chart.addCandlestickSeries({
+              upColor: overlay.widthBasedOnVolume || !overlay.filled ? "rgba(0,0,0,0)" : withAlpha(upColor, opacity),
+              downColor: overlay.widthBasedOnVolume || !overlay.filled ? "rgba(0,0,0,0)" : withAlpha(downColor, opacity),
+              borderUpColor: overlay.widthBasedOnVolume ? "rgba(0,0,0,0)" : withAlpha(upColor, opacity),
+              borderDownColor: overlay.widthBasedOnVolume ? "rgba(0,0,0,0)" : withAlpha(downColor, opacity),
+              wickUpColor: overlay.widthBasedOnVolume || overlay.style === "candlebody" ? "rgba(0,0,0,0)" : withAlpha(upColor, opacity),
+              wickDownColor: overlay.widthBasedOnVolume || overlay.style === "candlebody" ? "rgba(0,0,0,0)" : withAlpha(downColor, opacity),
+              borderVisible: true,
+              wickVisible: overlay.style !== "candlebody",
+              priceScaleId,
+              priceLineVisible: false,
+            }),
+            volumeWidth,
+          };
+          runtime.series.attachPrimitive(volumeWidth);
+        }
+        overlayChartSeriesRef.current.set(overlay.id, runtime);
+        if (overlay.useSecondaryAxis) {
+          chart.priceScale(priceScaleId).applyOptions({
+            visible: true,
+            borderVisible: false,
+            scaleMargins: { top: 0.12, bottom: 0.12 },
+          });
+        }
+      }
+
+      if (runtime.kind === "line") {
+        runtime.series.applyOptions({ color: withAlpha(lineColor, opacity), lineWidth: overlay.borderWidth });
+      } else if (runtime.kind === "bar") {
+        runtime.series.applyOptions({
+          upColor: withAlpha(upColor, opacity),
+          downColor: withAlpha(downColor, opacity),
+          thinBars: overlay.borderWidth <= 1,
+        });
+      } else {
+        runtime.series.applyOptions({
+          upColor: overlay.widthBasedOnVolume || !overlay.filled ? "rgba(0,0,0,0)" : withAlpha(upColor, opacity),
+          downColor: overlay.widthBasedOnVolume || !overlay.filled ? "rgba(0,0,0,0)" : withAlpha(downColor, opacity),
+          borderUpColor: overlay.widthBasedOnVolume ? "rgba(0,0,0,0)" : withAlpha(upColor, opacity),
+          borderDownColor: overlay.widthBasedOnVolume ? "rgba(0,0,0,0)" : withAlpha(downColor, opacity),
+          wickUpColor: overlay.widthBasedOnVolume || overlay.style === "candlebody" ? "rgba(0,0,0,0)" : withAlpha(upColor, opacity),
+          wickDownColor: overlay.widthBasedOnVolume || overlay.style === "candlebody" ? "rgba(0,0,0,0)" : withAlpha(downColor, opacity),
+          wickVisible: overlay.style !== "candlebody",
+        });
+        runtime.volumeWidth.update({ overlay, palette: { upColor, downColor } });
+      }
+
+      const ordered = [...overlay.candles]
+        .filter((candle) => Number.isFinite(candle.timestamp) && candle.timestamp > 0)
+        .sort((left, right) => left.timestamp - right.timestamp);
+      const deltaValues = ordered.map((candle) => Number(candle.delta ?? ((candle.askVolume ?? 0) - (candle.bidVolume ?? 0))));
+      const deltaMean = deltaValues.length
+        ? deltaValues.reduce((total, value) => total + value, 0) / deltaValues.length
+        : 0;
+      const deltaDeviation = Math.sqrt(deltaValues.reduce((total, value) => total + (value - deltaMean) ** 2, 0) / Math.max(1, deltaValues.length));
+      let previousTime = 0;
+      const data = ordered.map((candle, index) => {
+        const nominalTime = Math.floor(candle.timestamp / 1_000);
+        const time = Math.max(nominalTime, previousTime + 1);
+        previousTime = time;
+        const delta = deltaValues[index];
+        const strength = overlay.colorBasedOnDelta && deltaDeviation > 0
+          ? Math.min(1, Math.abs(delta - deltaMean) / (deltaDeviation * overlay.standardDeviation))
+          : 1;
+        const directional = delta >= 0 ? upColor : downColor;
+        const color = withAlpha(directional, opacity * (0.35 + strength * 0.65));
+        if (kind === "line") return { time: time as Time, value: candle.close, color };
+        return {
+          time: time as Time,
+          open: candle.open,
+          high: candle.high,
+          low: candle.low,
+          close: candle.close,
+          color: overlay.widthBasedOnVolume || !overlay.filled ? "rgba(0,0,0,0)" : color,
+          borderColor: overlay.widthBasedOnVolume
+            ? "rgba(0,0,0,0)"
+            : overlay.openCloseBorder
+            ? withAlpha(candle.close >= candle.open ? upColor : downColor, opacity)
+            : color,
+          wickColor: overlay.widthBasedOnVolume ? "rgba(0,0,0,0)" : color,
+        };
+      });
+      if (runtime.kind === "line") {
+        runtime.series.setData(data as Parameters<ReturnType<IChartApi["addLineSeries"]>["setData"]>[0]);
+      } else if (runtime.kind === "bar") {
+        runtime.series.setData(data as Parameters<ReturnType<IChartApi["addBarSeries"]>["setData"]>[0]);
+      } else {
+        runtime.series.setData(data as Parameters<ReturnType<IChartApi["addCandlestickSeries"]>["setData"]>[0]);
+      }
+    }
+  }, [chartReadyRevision, overlaySeries, settings.borderUpColor, settings.downColor, settings.upColor]);
 
   useEffect(() => {
     const chart = chartRef.current;

@@ -75,6 +75,7 @@ import {
   KWANT_LEVELS_SETTINGS_VERSION,
   normalizeKwantLevelsSettings,
 } from "@/lib/kwantLevels";
+import { CHART_OVERLAY_SETTINGS_VERSION } from "@/lib/chartOverlays";
 
 export const LIVE_CHART_INDICATOR_IDS = new Set([
   "gamma-environment",
@@ -158,6 +159,8 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "deep-print-footprint",
   "kwant-stats",
   "gamma-levels",
+  "overlay-chart",
+  "overlay-symbol",
   "classic-gex-profile",
   "tpo-levels",
   "expected-move",
@@ -1193,6 +1196,18 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
   "gamma-levels": [
     { key: "maxLevels", label: "Maximum displayed levels", defaultValue: 14, min: 4, max: 24, step: 1 },
     { key: "lineWidth", label: "Base line width", defaultValue: 1, min: 1, max: 4, step: 1 },
+  ],
+  "overlay-chart": [
+    { key: "maxVolumeWidthPercent", label: "Maximum width based on volume (%)", defaultValue: 100, min: 10, max: 200, step: 1 },
+    { key: "standardDeviation", label: "Delta colour standard deviations", defaultValue: 2, min: 0.1, max: 10, step: 0.1 },
+    { key: "borderWidth", label: "Border width", defaultValue: 1, min: 1, max: 4, step: 1 },
+    { key: "opacity", label: "Overlay opacity (%)", defaultValue: 68, min: 5, max: 100, step: 1 },
+  ],
+  "overlay-symbol": [
+    { key: "maxVolumeWidthPercent", label: "Maximum width based on volume (%)", defaultValue: 100, min: 10, max: 200, step: 1 },
+    { key: "standardDeviation", label: "Delta colour standard deviations", defaultValue: 2, min: 0.1, max: 10, step: 0.1 },
+    { key: "borderWidth", label: "Border width", defaultValue: 1, min: 1, max: 4, step: 1 },
+    { key: "opacity", label: "Overlay opacity (%)", defaultValue: 68, min: 5, max: 100, step: 1 },
   ],
   "classic-gex-profile": [
     { key: "refreshIntervalMs", label: "Refresh interval (milliseconds)", defaultValue: 1000, min: 1000, max: 10000, step: 250 },
@@ -2435,6 +2450,21 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     magnetColor: "#8B5CF6",
     centreColor: "#06B6D4",
     gammaSettingsVersion: KWANT_LEVELS_SETTINGS_VERSION,
+  } : {}),
+  ...(["overlay-chart", "overlay-symbol"].includes(indicatorId) ? {
+    symbol: "AUTO",
+    timeframe: "AUTO",
+    style: "candlestick",
+    useSecondaryAxis: true,
+    widthBasedOnVolume: false,
+    colorBasedOnDelta: false,
+    openCloseBorder: true,
+    filled: true,
+    useThemeColors: true,
+    upColor: theme?.upColor ?? "#22C55E",
+    downColor: theme?.downColor ?? "#EF4444",
+    lineColor: theme?.borderUpColor ?? theme?.upColor ?? "#60A5FA",
+    overlaySettingsVersion: CHART_OVERLAY_SETTINGS_VERSION,
   } : {}),
   ...(indicatorId === "classic-gex-profile" ? {
     mappingSource: "QQQ",

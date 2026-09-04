@@ -1,4 +1,5 @@
 import {
+  BarSeries,
   CandlestickSeries,
   HistogramSeries,
   LineSeries,
@@ -23,6 +24,7 @@ type LegacyCandlestickSeries = ISeriesApi<"Candlestick"> & {
 };
 
 export type IChartApi = IChartApiV5 & {
+  addBarSeries(options?: unknown): ISeriesApi<"Bar">;
   addCandlestickSeries(options?: unknown): LegacyCandlestickSeries;
   addHistogramSeries(options?: unknown): ISeriesApi<"Histogram">;
   addLineSeries(options?: unknown): ISeriesApi<"Line">;
@@ -39,6 +41,8 @@ export function createChart(
     series.setMarkers = (markers) => markerPrimitive.setMarkers(markers);
     return series;
   };
+  chart.addBarSeries = (options) =>
+    chart.addSeries(BarSeries, options as never);
   chart.addHistogramSeries = (options) =>
     chart.addSeries(HistogramSeries, options as never);
   chart.addLineSeries = (options) =>

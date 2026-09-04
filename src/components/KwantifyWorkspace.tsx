@@ -136,7 +136,7 @@ import { loadGexMapPalette, saveGexMapPalette, type GexMapPalette } from "@/lib/
 import { normalizeTimeZone } from "@/lib/timeZones";
 import { clearSavedStrategiesRaw, loadSavedStrategiesRaw, saveSavedStrategiesRaw } from "@/lib/automation";
 import { CHART_SETTINGS_CHANGE_EVENT, CHART_SETTINGS_STORAGE_KEY, applyActiveThemeToWorkspaceChartSettings, chartSettingsEqual, chartSettingsFromChangeEvent, defaultChartSettings, extractUserChartSettings, loadStoredChartSettings, mergeWorkspaceChartSettingsWithActiveTheme, normalizeChartSettings, saveStoredChartSettings, type ChartSettings } from "@/lib/chartSettings";
-import type { ChartLevel, ChartZone } from "@/components/Chart";
+import type { ChartLevel, ChartOverlaySeries, ChartZone } from "@/components/Chart";
 import {
   CHART_INDICATOR_BY_ID,
   type ChartIndicatorInstance,
@@ -155,6 +155,7 @@ import {
   resolveKwantLevelsConversion,
   selectKwantLevels,
 } from "@/lib/kwantLevels";
+import { normalizeChartOverlaySettings } from "@/lib/chartOverlays";
 import {
   applyInstitutionalTradesToCandles,
   buildChartVolumeProfile,
@@ -5111,7 +5112,7 @@ function readGammaOverlayCache(
         levels: overlay.levels.map((level) => ({
           ...level,
           color: level.kind ? kwantLevelColor(
-            level.kind,
+            level.kind as Parameters<typeof kwantLevelColor>[0],
             normalizeKwantLevelsSettings(undefined, {
               upColor: settings.upColor,
               downColor: settings.downColor,
@@ -5285,6 +5286,7 @@ function WorkspaceChartPaneComponent({
 }) {
   const gammaInstrument = displayCmeSymbol(pane.symbol);
   const [candles, setCandles] = useState<Candle[]>([]);
+  const [chartOverlaySeries, setChartOverlaySeries] = useState<ChartOverlaySeries[]>([]);
   // Real futures flow projected onto options-family cash bars: Volume, TPO,
   // volume profiles and every flow study need genuine traded volume and
   // aggressor sides, which the cash provider does not publish at all.
@@ -5700,6 +5702,96 @@ function WorkspaceChartPaneComponent({
   const initialBalanceNeedsMinuteSeries = Boolean(initialBalanceInstance)
     && !replayActive
     && !["1s", "5s", "10s", "15s", "30s", "1m"].includes(pane.timeframe);
+  const chartOverlaySignature = JSON.stringify(indicators
+    .filter((instance) => instance.enabled && ["overlay-chart", "overlay-symbol"].includes(instance.indicatorId))
+    .map((instance) => [instance.instanceId, instance.indicatorId, instance.settings]));
+  useEffect(() => {
+    const requested = indicators
+      .filter((instance) => instance.enabled && ["overlay-chart", "overlay-symbol"].includes(instance.indicatorId))
+      .map((instance) => ({
+        instance,
+        settings: normalizeChartOverlaySettings(instance.settings, {
+          chartSymbol: pane.symbol,
+          chartTimeframe: pane.timeframe,
+          inheritTimeframe: instance.indicatorId === "overlay-symbol",
+          theme: {
+            upColor: settings.upColor,
+            downColor: settings.downColor,
+            accentColor: settings.borderUpColor,
+          },
+        }),
+      }));
+    if (!requested.length) {
+      setChartOverlaySeries((current) => current.length ? [] : current);
+      return;
+    }
+
+    let cancelled = false;
+    const controller = new AbortController();
+    const unsubscribers: Array<() => void> = [];
+    setChartOverlaySeries(requested.map(({ instance, settings: overlaySettings }) => ({
+      id: instance.instanceId,
+      name: `${overlaySettings.symbol} · ${overlaySettings.timeframe}`,
+      ...overlaySettings,
+      candles: [],
+    })));
+
+    requested.forEach(({ instance, settings: overlaySettings }) => {
+      const broker = ["SPX", "NDX", "SPY", "QQQ"].includes(overlaySettings.symbol)
+        ? "Market Index"
+        : "Databento";
+      void fetchWorkspaceCandles(
+        overlaySettings.symbol,
+        overlaySettings.timeframe,
+        broker,
+        period,
+        2_500,
+        overlaySettings.colorBasedOnDelta || overlaySettings.widthBasedOnVolume,
+        controller.signal,
+      ).then((loaded) => {
+        if (cancelled) return;
+        setChartOverlaySeries((current) => current.map((series) => series.id === instance.instanceId
+          // The history response may arrive after live executions. Merge it
+          // behind the live seam instead of replacing the live overlay tail.
+          ? { ...series, candles: mergeChartHistory(loaded, series.candles).slice(-2_500) }
+          : series));
+      }).catch(() => {
+        // An overlay remains installed and empty while its selected source is
+        // unavailable; the main chart must never be disrupted by it.
+      });
+
+      const contractSymbol = currentCmeContract(overlaySettings.symbol);
+      if (!contractSymbol) return;
+      unsubscribers.push(subscribeRithmicIndicatorTrades({
+        symbol: overlaySettings.symbol,
+        contractSymbol,
+        onTrades: (records) => {
+          if (cancelled || !records.length) return;
+          setChartOverlaySeries((current) => current.map((series) => series.id === instance.instanceId
+            ? {
+                ...series,
+                candles: applyInstitutionalTradesToCandles(
+                  series.candles,
+                  records,
+                  overlaySettings.timeframe,
+                  overlaySettings.symbol,
+                  2_500,
+                ),
+              }
+            : series));
+        },
+      }));
+    });
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+      unsubscribers.forEach((unsubscribe) => unsubscribe());
+    };
+    // The signature contains exactly the persisted instance settings; keeping
+    // the full array out prevents unrelated indicator toggles reconnecting feeds.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chartOverlaySignature, pane.symbol, pane.timeframe, period, settings.borderUpColor, settings.downColor, settings.upColor]);
   useEffect(() => {
     if (!initialBalanceNeedsMinuteSeries) {
       setInitialBalanceStudyCandles((current) => (current.length ? [] : current));
@@ -9343,6 +9435,7 @@ function WorkspaceChartPaneComponent({
           chartingDrawings={chartingDrawings}
           onChartingDrawingsChange={onChartingDrawingsChange}
           indicators={indicators}
+          overlaySeries={chartOverlaySeries}
           classicGexProfile={classicGexProfileWithZero}
           classicGexHistory={classicGexHistory}
           classicGexLoading={classicGexLoading}
