@@ -21,6 +21,8 @@ export type CalculatedIndicatorSeries = {
   placement: "overlay" | "pane";
   color: string;
   lineWidth?: 1 | 2 | 3 | 4;
+  /** Optional histogram outline; absent keeps every existing study unchanged. */
+  histogramOutlineWidth?: number;
   lineStyle?: "solid" | "dashed" | "dotted";
   lineType?: "simple" | "with-steps";
   candleStyle?: "candlestick" | "ohlc" | "candle-body";

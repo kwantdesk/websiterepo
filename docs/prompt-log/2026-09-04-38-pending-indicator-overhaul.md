@@ -51,4 +51,11 @@ task until the full pending library is complete, without shortcuts.
   order IDs and native iceberg flags are not exposed by the current gateway,
   Order mode clearly reports that capability requirement instead of inventing
   counts. Focused calculation tests and TypeScript pass; build/deployed visual
-  QA are the remaining gate before it is recorded as complete.
+  production QA passed on NQ 500-volume, including event anchoring, guarded
+  Order mode, saved-state handling and clean temporary removal. Item 7,
+  **Book Speed**, now implements the official consumed-level contract with
+  execution-confirmed Bid/Ask exhaustion, Seconds and Tick Reversal windows,
+  opposing histograms, averages, markers, full themed settings and explicit
+  data states. Focused tests, TypeScript, templates and the shared Rithmic
+  frame-budget check and production build pass; deployed visual QA remains its
+  release gate.

@@ -36,6 +36,11 @@ import {
   DEFAULT_CUMULATIVE_ICEBERG_STOP_SETTINGS,
   normalizeCumulativeIcebergStopSettings,
 } from "@/lib/cumulativeIcebergStop";
+import {
+  BOOK_SPEED_SETTINGS_VERSION,
+  DEFAULT_BOOK_SPEED_SETTINGS,
+  normalizeBookSpeedSettings,
+} from "@/lib/bookSpeed";
 
 export const LIVE_CHART_INDICATOR_IDS = new Set([
   "gamma-environment",
@@ -63,6 +68,7 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "ratio-highlight",
   "stop-spotter",
   "cumulative-iceberg-stop",
+  "book-speed",
   "cumulative-volume-delta",
   "cvd-divergence",
   "pulling-stacking",
@@ -189,6 +195,14 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "lineWidth", label: "Line width", defaultValue: 2, min: 1, max: 4, step: 1 },
     { key: "alertStopThreshold", label: "Stop alert threshold", defaultValue: 100, min: 0, max: 10000000, step: 1 },
     { key: "alertIcebergThreshold", label: "Iceberg alert threshold", defaultValue: 100, min: 0, max: 10000000, step: 1 },
+    { key: "paneHeight", label: "Pane height", defaultValue: 190, min: 120, max: 520, step: 1 },
+  ],
+  "book-speed": [
+    { key: "parameterValue", label: "Parameter value", defaultValue: 10, min: 1, max: 3600, step: 1 },
+    { key: "averageLength", label: "Average length", defaultValue: 10, min: 1, max: 1000, step: 1 },
+    { key: "markerValue", label: "Marker value", defaultValue: 10, min: 0, max: 100000, step: 1 },
+    { key: "lineWidth", label: "Histogram and average width", defaultValue: 1, min: 0.5, max: 6, step: 0.5 },
+    { key: "historyBuckets", label: "History buckets", defaultValue: 360, min: 20, max: 10000, step: 10 },
     { key: "paneHeight", label: "Pane height", defaultValue: 190, min: 120, max: 520, step: 1 },
   ],
   "ratio-highlight": [
@@ -1398,6 +1412,16 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     stopAskColor: theme?.borderDownColor ?? theme?.downColor ?? DEFAULT_CUMULATIVE_ICEBERG_STOP_SETTINGS.stopAskColor,
     schemaVersion: CUMULATIVE_ICEBERG_STOP_SETTINGS_VERSION,
   } : {}),
+  ...(indicatorId === "book-speed" ? {
+    ...DEFAULT_BOOK_SPEED_SETTINGS,
+    bidColor: theme?.upColor ?? DEFAULT_BOOK_SPEED_SETTINGS.bidColor,
+    askColor: theme?.downColor ?? DEFAULT_BOOK_SPEED_SETTINGS.askColor,
+    averageBidColor: theme?.borderUpColor ?? theme?.upColor ?? DEFAULT_BOOK_SPEED_SETTINGS.averageBidColor,
+    averageAskColor: theme?.borderDownColor ?? theme?.downColor ?? DEFAULT_BOOK_SPEED_SETTINGS.averageAskColor,
+    markerBidColor: theme?.borderUpColor ?? theme?.upColor ?? DEFAULT_BOOK_SPEED_SETTINGS.markerBidColor,
+    markerAskColor: theme?.borderDownColor ?? theme?.downColor ?? DEFAULT_BOOK_SPEED_SETTINGS.markerAskColor,
+    schemaVersion: BOOK_SPEED_SETTINGS_VERSION,
+  } : {}),
   ...(indicatorId === "tape-speed-order-flow-burst" ? {
     ...DEFAULT_TAPE_SPEED_SETTINGS,
     buyColor: theme?.upColor ?? DEFAULT_TAPE_SPEED_SETTINGS.buyColor,
@@ -2582,6 +2606,10 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
   if (normalizedInstance.indicatorId === "cumulative-iceberg-stop") {
     const defaults = defaultIndicatorSettings("cumulative-iceberg-stop");
     return { ...normalizedInstance, settings: { ...defaults, ...normalizeCumulativeIcebergStopSettings({ ...defaults, ...(normalizedInstance.settings ?? {}) }) } };
+  }
+  if (normalizedInstance.indicatorId === "book-speed") {
+    const defaults = defaultIndicatorSettings("book-speed");
+    return { ...normalizedInstance, settings: { ...defaults, ...normalizeBookSpeedSettings({ ...defaults, ...(normalizedInstance.settings ?? {}) }) } };
   }
   if (normalizedInstance.indicatorId === "tape-speed-order-flow-burst") {
     return {

@@ -41,8 +41,8 @@ Legend: `[ ]` not complete, `[~]` in progress, `[x]` complete and addable.
 | 3 | Dynamic POC | `dynamic-poc` | [x] | [x] | [x] | [x] | [x] | Add |
 | 4 | Ratio Highlight | `ratio-highlight` | [x] | [x] | [x] | [x] | [x] | Add |
 | 5 | Stop Spotter | `stop-spotter` | [x] | [x] | [x] | [x] | [x] | Add |
-| 6 | Cumulative Iceberg/Stop | `cumulative-iceberg-stop` | [x] | [x] | [x] | [x] | [~] | Release candidate |
-| 7 | Book Speed | `book-speed` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
+| 6 | Cumulative Iceberg/Stop | `cumulative-iceberg-stop` | [x] | [x] | [x] | [x] | [x] | Add |
+| 7 | Book Speed | `book-speed` | [x] | [x] | [x] | [x] | [~] | Release candidate |
 | 8 | KWANT Delta | `deep-delta` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
 | 9 | KWANT Wall | `deep-wall` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
 | 10 | KWANT V-Tracker | `deep-v-tracker` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
@@ -208,7 +208,39 @@ Legend: `[ ]` not complete, `[~]` in progress, `[x]` complete and addable.
   volume and other synthetic-time charts are anchored to their actual chart
   bars rather than creating whitespace. Focused tests cover signed accumulation,
   rolling expiry, both filters, capability refusal and frame construction;
-  TypeScript passes. Production build and visual QA remain the release gate.
+  TypeScript passes. Commit `d635bf8e` reached Ready on the sole active Vercel
+  project. Cache-busted production QA on NQ 500-volume confirmed Add, event-bar
+  anchoring, honest no-event state, every numeric slider and settings group,
+  the explicit maker-ID refusal in Order mode, save-without-false-prompt and
+  clean removal of the temporary instance back to the original 11 studies.
+
+### 7: Book Speed
+
+- Official DeepCharts help (updated 19 June 2026) defines Book Speed as the
+  number of Bid and Ask book price levels consumed per measurement. The two
+  documented modes are Seconds and Tick Reversal, both driven by one parameter
+  value. The plot contract is opposing Bid/Ask histograms around zero, optional
+  moving-average lines with length and colours, and optional positive/negative
+  marker thresholds with colours.
+- Quant Desk counts a level only when displayed liquidity at that exact price
+  is exhausted and the same shared Rithmic frame contains an aggressive trade
+  through that price. A pull, cancellation or partial reduction cannot count.
+  Duplicate execution batches are suppressed. Seconds mode creates fixed
+  exchange-time windows; Tick Reversal closes the active measurement only
+  after price reverses the requested number of instrument ticks from its
+  running extreme.
+- The study shares the existing coalesced Rithmic subscription, adding no new
+  endpoint polling. It renders Bid above zero and Ask below, two optional
+  rolling averages, paired marker lines, exact current values, status, tooltips
+  and explicit stale/unavailable/warm-up states. Synthetic event charts remap
+  every bucket to a real drawn candle and never insert time-scale whitespace.
+- General/Input/Style settings include the two modes, parameter, average,
+  marker, width, bounded history, pane height, theme-safe/custom colours and
+  shared account-synced template import/export. Focused tests cover both sides,
+  duplicate suppression, cancellation refusal, partial-consumption refusal,
+  fixed time windows, averages and tick-reversal closure. TypeScript, template
+  and shared Rithmic frame-budget checks pass, as does the full production
+  build. Deployed visual QA is the remaining release gate.
 
 - Quant Desk already has a tested `PocAuctionSuiteEngine` driven by exact
   execution-classified Footprint rows. It calculates raw-tick unfinished

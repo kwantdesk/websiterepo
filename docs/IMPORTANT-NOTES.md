@@ -280,3 +280,9 @@ recap of the open items below and update this file when their state changes.
   number of individual MBO orders. Until the Rithmic gateway exposes stable
   maker/order IDs, Cumulative Iceberg/Stop Order mode must remain an explicit
   `ORDER_IDS_REQUIRED` capability state.
+- Book Speed means fully consumed book price levels, not message rate, changed
+  depth or traded contracts. Count a Bid/Ask level only when it is exhausted
+  with a matching aggressive execution at that exact price; never turn a pull,
+  cancellation or partial reduction into consumption. Seconds and tick-reversal
+  measurement windows must share the existing Rithmic stream and remain aligned
+  to real chart bars on event-based charts.

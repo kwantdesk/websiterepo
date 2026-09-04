@@ -31,6 +31,14 @@ export type IndicatorPlotColorSlot = {
 };
 
 export const INDICATOR_PLOT_COLOR_SLOTS: Record<string, IndicatorPlotColorSlot[]> = {
+  "book-speed": [
+    { key: "bidColor", role: "positive" },
+    { key: "askColor", role: "negative" },
+    { key: "averageBidColor", role: "secondary" },
+    { key: "averageAskColor", role: "negative" },
+    { key: "markerBidColor", role: "positive" },
+    { key: "markerAskColor", role: "negative" },
+  ],
   "cumulative-volume-delta": [
     { key: "plotColor", role: "primary" },
   ],

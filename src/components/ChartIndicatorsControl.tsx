@@ -455,6 +455,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "ratio-highlight",
   "stop-spotter",
   "cumulative-iceberg-stop",
+  "book-speed",
   "moving-average",
   "vwap",
   "vwap-envelopes",
@@ -668,6 +669,17 @@ const themeColourMapFor = (indicatorId: string, chartSettings: ChartSettings) =>
       icebergBidColor: visible.positive,
       stopBidColor: visible.secondary,
       stopAskColor: visible.muted,
+    } as Record<string, string>;
+  }
+  if (indicatorId === "book-speed") {
+    const visible = visibleIndicatorTheme(chartSettings);
+    return {
+      bidColor: visible.positive,
+      askColor: visible.negative,
+      averageBidColor: visible.secondary,
+      averageAskColor: visible.negative,
+      markerBidColor: visible.positive,
+      markerAskColor: visible.negative,
     } as Record<string, string>;
   }
   // Big Contracts and Big Blocks paint their two sides from the theme's up and
@@ -6628,6 +6640,23 @@ export default function ChartIndicatorsControl({
                     </button>
                   ))}
                   <p className="text-[8px] leading-4 text-muted sm:col-span-2">Volume mode uses direct Rithmic executions plus price-level book lifecycle. Stop values are auditable sweep inference because resting stops are not published. Order mode stays unavailable until the gateway exposes individual maker/order IDs; it never substitutes trade count.</p>
+                </div>
+              ) : null}
+
+              {settingsDefinition.id === "book-speed" ? (
+                <div className="grid gap-3 border border-primary/20 bg-primary/[0.035] p-3 sm:grid-cols-2">
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">
+                    <span>Parameter mode</span>
+                    <KwantSelect value={String(settingsInstance.settings?.parameterMode ?? "seconds")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), parameterMode: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel="Book Speed parameter mode">
+                      <option value="seconds">Seconds</option><option value="tick-reversal">Tick reversal</option>
+                    </KwantSelect>
+                  </label>
+                  {[["Show average", "showAverage"], ["Show marker", "showMarker"]].map(([label, key]) => (
+                    <button key={key} type="button" aria-pressed={settingsInstance.settings?.[key] !== false} onClick={() => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [key]: current.settings?.[key] === false } }))} className="flex h-9 items-center justify-between border border-border bg-background px-3 text-[9px] uppercase tracking-[0.1em] text-muted">
+                      <span>{label}</span><span className={settingsInstance.settings?.[key] === false ? "text-muted" : "text-primary"}>{settingsInstance.settings?.[key] === false ? "Off" : "On"}</span>
+                    </button>
+                  ))}
+                  <p className="text-[8px] leading-4 text-muted sm:col-span-2">A price level counts only after the Rithmic book exhausts it and the same frame confirms an aggressive execution at that price. Bid consumption plots above zero and Ask consumption below it; pulls and cancellations are excluded.</p>
                 </div>
               ) : null}
 
