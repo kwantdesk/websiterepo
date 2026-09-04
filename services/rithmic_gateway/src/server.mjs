@@ -346,16 +346,20 @@ function requestedInstrument(url, body = {}, options = {}) {
     && (!requestedExchange || String(row.exchange || "").toUpperCase() === requestedExchange)
   ));
   const resolved = exact || candidates[0];
+  const fallbackExchange = requestedExchange || resolved?.exchange || exchangeForRoot(requestedOwnRoot);
+  const providerResolved = client.frontMonthCache.get(
+    instrumentKey(fallbackExchange, requestedOwnRoot),
+  );
   // On an empty book, resolve micro requests through the PARENT root as well
   // — otherwise a cold-started collector asked for MNQU6 would try to
   // subscribe the micro itself and be refused by the instrument allowlist.
   const requestedIsAliased = contractRoot(requestedSymbol) !== requestedRoot;
   return {
-    exchange: requestedExchange || resolved?.exchange || exchangeForRoot(requestedRoot),
+    exchange: fallbackExchange,
     symbol: resolved?.symbol || (
       requestedSymbol && requestedSymbol !== requestedRoot && !requestedIsAliased
         ? requestedSymbol
-        : activeContractSymbol(requestedRoot)
+        : providerResolved?.contractSymbol || requestedOwnRoot
     ),
   };
 }
@@ -469,7 +473,7 @@ function requestedQuoteInstrument(requestedSymbol, preferredContractSymbol = "")
       || preferred?.symbol
       || preferredContractSymbol
       || resolved?.symbol
-      || (raw !== root ? raw : activeContractSymbol(root)),
+      || raw,
   };
 }
 
@@ -630,43 +634,8 @@ function parentRoot(root) {
 function exchangeForRoot(root) {
   if (["GC", "MGC", "SI", "SIL", "HG"].includes(root)) return "COMEX";
   if (["CL", "MCL", "QM", "NG", "QG", "HO", "RB", "PL", "PA"].includes(root)) return "NYMEX";
-  if (["YM", "MYM", "ZN", "TN", "ZB", "UB", "ZF", "ZT", "ZC", "ZS", "ZW", "ZM", "ZL"].includes(root)) return "CBOT";
+  if (["YM", "MYM", "ZN", "TN", "ZB", "UB", "ZF", "ZT", "10Y", "ZC", "ZS", "ZW", "ZM", "ZL"].includes(root)) return "CBOT";
   return "CME";
-}
-
-function activeContractSymbol(root, now = new Date()) {
-  if (!root) return "";
-  const quarterly = new Set([
-    "MNQ", "NQ", "MES", "ES", "MYM", "YM", "M2K", "RTY",
-    "ZN", "TN", "ZB", "UB", "ZF", "ZT", "10Y", "SR3",
-    "6E", "M6E", "6J", "6B", "M6B", "6A", "M6A", "6C", "6S", "6N", "6M",
-  ]);
-  const deliveryMonths = {
-    GC: [2, 4, 6, 8, 10, 12], MGC: [2, 4, 6, 8, 10, 12],
-    SI: [3, 5, 7, 9, 12], SIL: [3, 5, 7, 9, 12], HG: [3, 5, 7, 9, 12],
-    PL: [1, 4, 7, 10], PA: [3, 6, 9, 12],
-    ZC: [3, 5, 7, 9, 12], ZW: [3, 5, 7, 9, 12],
-    ZS: [1, 3, 5, 7, 8, 9, 11],
-    ZM: [1, 3, 5, 7, 8, 9, 10, 12], ZL: [1, 3, 5, 7, 8, 9, 10, 12],
-    LE: [2, 4, 6, 8, 10, 12], HE: [2, 4, 5, 6, 7, 8, 10, 12],
-    GF: [1, 3, 4, 5, 8, 9, 10, 11],
-  };
-  const months = quarterly.has(root)
-    ? [3, 6, 9, 12]
-    : deliveryMonths[root] || [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
-  const currentMonth = now.getUTCMonth() + 1;
-  let year = now.getUTCFullYear();
-  // Quarterly contracts remain usable through their delivery month. Physical
-  // and monthly products roll before delivery, so never guess the expiring
-  // current-month contract when a user opens a product for the first time.
-  let month = months.find((candidate) => (
-    quarterly.has(root) ? candidate >= currentMonth : candidate > currentMonth
-  ));
-  if (!month) {
-    month = months[0];
-    year += 1;
-  }
-  return `${root}${MONTH_CODES[month - 1]}${String(year).slice(-1)}`;
 }
 
 function contractMetadata(symbol) {
@@ -941,7 +910,8 @@ function gatewayInstrumentCatalog() {
       const live = liveRows
         .filter((row) => contractRoot(row.symbol) === root)
         .sort((left, right) => (right.status === "LIVE" ? 1 : 0) - (left.status === "LIVE" ? 1 : 0))[0];
-      const contractSymbol = live?.symbol || activeContractSymbol(root);
+      const providerResolved = client.frontMonthCache.get(instrumentKey(exchange, root));
+      const contractSymbol = providerResolved?.contractSymbol || live?.symbol || root;
       const metadata = contractMetadata(contractSymbol);
       return {
         root,
@@ -1837,12 +1807,8 @@ const server = createServer(async (request, response) => {
           // the provider's front-month answer. Explicit contracts remain
           // explicit so replay and diagnostics can intentionally inspect one.
           if (raw === ownRoot) {
-            try {
-              const resolved = await client.resolveFrontMonth(exchangeForRoot(ownRoot), ownRoot);
-              preferredContractSymbol = resolved.contractSymbol;
-            } catch {
-              // requestedQuoteInstrument has a bounded live-book fallback.
-            }
+            const resolved = await client.resolveFrontMonth(exchangeForRoot(ownRoot), ownRoot);
+            preferredContractSymbol = resolved.contractSymbol;
           }
           const instrument = requestedQuoteInstrument(alias, preferredContractSymbol);
           client.subscribe(instrument.exchange, instrument.symbol);

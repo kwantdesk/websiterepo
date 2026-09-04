@@ -27,6 +27,11 @@ does not break live bars, historical candles, caches or recording.
   reloads data keyed to the concrete contract without restarting the service.
 - Kept mini and micro roots separate, and preserved explicit old-contract
   selection for replay/diagnostics.
+- Removed the collector catalogue's final calendar guess too. A cold product
+  now remains labelled by root until Rithmic supplies an exact contract, so it
+  cannot advertise a plausible but wrong delivery month. Corrected `10Y` to
+  its CBOT venue after the live subscription audit exposed the former CME
+  mapping being rejected.
 - Made local continuous history cross the exact-contract boundary. Rithmic
   History Plant root bars remain canonical, and overlapping locally recorded
   contracts select the highest-volume minute without double counting.
