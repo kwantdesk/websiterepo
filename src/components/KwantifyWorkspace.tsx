@@ -521,19 +521,12 @@ const SocialNotificationsPanel = dynamic(() => import("@/components/socials/Soci
   loading: () => workspaceLoader("Opening activity", "Restoring social notifications."),
 });
 
-// How often a developing profile is committed to React.
-//
-// Every commit re-renders the workspace and each chart, rebuilds the profile
-// models and repaints the primitive — so this cadence is a render cost, not a
-// data cost. Prints keep accumulating between commits and are folded in one
-// batch, and the fold makes a single pass over the levels however many prints
-// it carries, so committing less often is strictly less total work as well as
-// fewer renders. Price is unaffected: candles reach the chart imperatively on
-// every flush regardless.
-//
-// 250ms bought four repaints a second of a distribution a trader reads as a
-// shape, on a workspace where each repaint costs the whole component tree.
-const PROFILE_COMMIT_INTERVAL_MS = 1_000;
+// Hidden panes do not need to repaint a developing profile at trading cadence.
+// The active pane is deliberately different: its execution batch is committed
+// in the same flush as its candle below, so the histogram cannot visibly trail
+// price behind a second timer. The execution worker already losslessly
+// coalesces prints into 40ms batches and the pane folds those in 40-120ms
+// batches, which bounds React work without withholding live profile data.
 const PROFILE_COMMIT_INTERVAL_BACKGROUND_MS = 3_000;
 const MAX_PENDING_PANE_EXECUTION_RECORDS = 25_000;
 
@@ -6110,18 +6103,31 @@ function WorkspaceChartPaneComponent({
         setMarketTradesVersion((current) => current + 1);
       }, delay);
     };
+    const flushProfileRecords = () => {
+      profileSyncTimer = null;
+      if (!pendingProfileRecords.length) return;
+      const batch = pendingProfileRecords;
+      pendingProfileRecords = [];
+      setVolumeProfiles((current) => current.length
+        ? current.map((profile) => applyInstitutionalTradesToVolumeProfile(profile, batch))
+        : current);
+    };
     const queueProfileUpdate = (records: InstitutionalTrade[]) => {
       if (!needsLiveVolumeProfiles || !records.length) return;
       appendBoundedPaneRecords(pendingProfileRecords, records);
+      // The active candle and its volume profile are two views of the same
+      // Rithmic executions. Commit them together. Waiting another full second
+      // here made the histogram appear frozen while the candle was trading.
+      if (activeRef.current) {
+        if (profileSyncTimer !== null) window.clearTimeout(profileSyncTimer);
+        flushProfileRecords();
+        return;
+      }
       if (profileSyncTimer !== null) return;
-      profileSyncTimer = window.setTimeout(() => {
-        profileSyncTimer = null;
-        const batch = pendingProfileRecords;
-        pendingProfileRecords = [];
-        setVolumeProfiles((current) => current.length
-          ? current.map((profile) => applyInstitutionalTradesToVolumeProfile(profile, batch))
-          : current);
-      }, activeRef.current ? PROFILE_COMMIT_INTERVAL_MS : PROFILE_COMMIT_INTERVAL_BACKGROUND_MS);
+      profileSyncTimer = window.setTimeout(
+        flushProfileRecords,
+        PROFILE_COMMIT_INTERVAL_BACKGROUND_MS,
+      );
     };
 
     const flushExecutionRecords = () => {

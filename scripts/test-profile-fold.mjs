@@ -117,21 +117,20 @@ const makeBatch = (n, spread, offset = 0) => Array.from({ length: n }, () => {
   }
 }
 
-// --- the commit cadence is a render cost, and prints are never dropped ---
+// --- active profiles commit with candles, and prints are never dropped ---
 {
   const workspace = readFileSync(new URL("../src/components/KwantifyWorkspace.tsx", import.meta.url), "utf8");
-  // Every commit re-renders the workspace and each chart and repaints the
-  // primitive, so this must stay a named, explained value rather than drifting
-  // back to a bare 250ms.
-  assert.match(workspace, /const PROFILE_COMMIT_INTERVAL_MS = 1_000;/);
+  // The execution stream and pane already batch the market burst. The active
+  // profile must not add another timer after the matching candle update.
+  assert.doesNotMatch(workspace, /const PROFILE_COMMIT_INTERVAL_MS = 1_000;/);
   assert.match(workspace, /const PROFILE_COMMIT_INTERVAL_BACKGROUND_MS = 3_000;/);
   assert.match(
     workspace,
-    /activeRef\.current \? PROFILE_COMMIT_INTERVAL_MS : PROFILE_COMMIT_INTERVAL_BACKGROUND_MS/,
+    /if \(activeRef\.current\) \{[\s\S]*?flushProfileRecords\(\);[\s\S]*?return;/,
   );
-  // Committing less often may not mean seeing less: prints accumulate between
-  // commits and are folded as one batch.
-  assert.match(workspace, /pendingProfileRecords\.push\(\.\.\.records\)/);
+  // Background batching may not mean seeing less: prints accumulate between
+  // commits and are folded as one bounded batch.
+  assert.match(workspace, /appendBoundedPaneRecords\(pendingProfileRecords, records\)/);
   assert.ok(
     workspace.includes("const batch = pendingProfileRecords;")
       && workspace.includes("pendingProfileRecords = [];"),

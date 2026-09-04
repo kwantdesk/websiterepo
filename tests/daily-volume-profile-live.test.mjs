@@ -76,6 +76,18 @@ test("the active daily profile develops from live executions without crossing se
   );
 });
 
+test("the active live profile commits in the same execution flush as its candle", () => {
+  assert.doesNotMatch(workspace, /PROFILE_COMMIT_INTERVAL_MS\s*=\s*1_000/);
+  assert.match(
+    workspace,
+    /if \(activeRef\.current\) \{[\s\S]*?flushProfileRecords\(\);[\s\S]*?return;[\s\S]*?PROFILE_COMMIT_INTERVAL_BACKGROUND_MS/,
+  );
+  assert.match(
+    workspace,
+    /const flushExecutionRecords = \(\) => \{[\s\S]*?queueProfileUpdate\(records\);[\s\S]*?LIVE_CHART_CANDLE_EVENT/,
+  );
+});
+
 test("the active weekly profile develops immediately instead of waiting for snapshot refresh", () => {
   assert.match(
     workspace,
