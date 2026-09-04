@@ -56,6 +56,28 @@ if ! grep -Eq '^QUANTDATA_API_KEY=.+$' "$HERE/../operator.env"; then
   exit 1
 fi
 
+# Raw Rithmic/L3 history is irreplaceable.  Never let Compose fall back to a
+# normal directory on the small root disk when the dedicated recording disk
+# is detached or failed to mount.
+RECORDINGS_HOST_DIR=/srv/kwantdesk-recordings
+if ! mountpoint -q "$RECORDINGS_HOST_DIR"; then
+  echo "ERROR: $RECORDINGS_HOST_DIR is not a mounted filesystem; refusing to start the recorder on the VM root disk." >&2
+  exit 1
+fi
+if [ ! -w "$RECORDINGS_HOST_DIR" ]; then
+  echo "ERROR: $RECORDINGS_HOST_DIR is not writable; refusing to start the recorder." >&2
+  exit 1
+fi
+
+# Docker's restart policy must not race the block-device mount after a reboot.
+# Requiring the mount at the service boundary fails closed instead of letting
+# the gateway recreate /srv/kwantdesk-recordings on the small root disk.
+install -d -m 0755 /etc/systemd/system/docker.service.d
+install -m 0644 \
+  "$HERE/docker.service.d/kwantdesk-recordings.conf" \
+  /etc/systemd/system/docker.service.d/kwantdesk-recordings.conf
+systemctl daemon-reload
+
 echo "==> building and starting (image stays local; never pushed to a registry)"
 cd "$HERE"
 docker compose up -d --build

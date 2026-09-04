@@ -1657,3 +1657,24 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
   their IBH/IBL pair, and end-anchored labels remain inside their own segment.
 - Verification: IB duration/chain 8/8, Initial Balance calculation,
   timeframe-independence and Globex suites pass.
+
+## 2026-09-04 — Dedicated Vultr recording storage
+
+- The gateway's 80 GB root disk reached 98% usage because the 57 GB Rithmic
+  archive lived in the Compose-managed `deploy_recordings` volume. It was a
+  direct feed/recording outage risk, not Vercel storage.
+- A dedicated 250 GB Chicago Vultr NVMe volume now mounts persistently at
+  `/srv/kwantdesk-recordings`; Compose bind-mounts it at `/recordings`.
+- Bootstrap fails closed when that filesystem is absent or unwritable, and a
+  Docker systemd drop-in requires the mount before restart-policy containers
+  can start after a reboot.
+- The archive was copied live, checksum-synchronized, final-synchronized while
+  the gateway was stopped, and matched at 877 files / 60,230,195,587 bytes.
+  The controlled gateway cutover lasted about ten seconds. Only after live
+  health and advancing recorder counters passed was the verified root-disk
+  duplicate removed.
+- Post-cutover: root disk 19% used with about 58 GiB free; recording disk 25%
+  used with about 177 GiB free; Rithmic connected/authenticated, NQ and ES
+  counters advancing, zero reported recorder drops, event loop not overloaded.
+- This same-region block volume is not an off-box backup. Add nightly verified
+  archival-object-storage replication before public launch.

@@ -36,7 +36,11 @@ services:
       # into the drop guard.
       UV_THREADPOOL_SIZE: "16"
     volumes:
-      - recordings:/recordings
+      # The raw L3 archive is larger than the VM root disk and must stay on
+      # the dedicated Vultr NVMe volume.  A host bind also makes a missing
+      # mount visible to bootstrap instead of silently creating another
+      # Docker volume on the root filesystem.
+      - /srv/kwantdesk-recordings:/recordings
       # The signed website snapshot is verified before the gateway atomically
       # replaces this bounded local cache. Keep it outside the image so a
       # restart starts from the last valid snapshot and fails closed if stale.
@@ -104,5 +108,3 @@ services:
 volumes:
   caddy_data:
   caddy_config:
-  # Back this up off-box. It is the one asset here that cannot be recreated.
-  recordings:
