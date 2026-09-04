@@ -94,6 +94,11 @@ import {
   isGammaChartInstrument,
   isNativeGammaConversion,
 } from "@/lib/chartGammaConversion";
+import {
+  INDICATOR_LIBRARY_FAVORITES_CATEGORY,
+  indicatorMatchesLibraryCategory,
+  sortIndicatorLibraryAlphabetically,
+} from "@/lib/indicatorLibrary";
 
 const FAVOURITES_STORAGE_KEY = "kwantdesk-chart-indicator-favourites";
 
@@ -980,7 +985,9 @@ export default function ChartIndicatorsControl({
     onCandleSettingsChange?.({ ...(candleSettings ?? {}), [key]: value });
   };
   const [search, setSearch] = useState("");
-  const [category, setCategory] = useState<"All" | ChartIndicatorCategory>("All");
+  const [category, setCategory] = useState<
+    "All" | typeof INDICATOR_LIBRARY_FAVORITES_CATEGORY | ChartIndicatorCategory
+  >("All");
   const [favourites, setFavourites] = useState<string[]>(readFavourites);
   const [rithmicStatus, setRithmicStatus] = useState<"checking" | "connected" | "fallback">("checking");
   const [footprintTemplates, setFootprintTemplates] = useState<FootprintTemplate[]>([]);
@@ -1217,19 +1224,17 @@ export default function ChartIndicatorsControl({
 
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase();
-    // Typing in the search box always browses the ENTIRE library. The
-    // category selection only scopes the browse view when no search is
-    // active — searching "volume" from the Trend tab must still surface
-    // every volume study.
+    const favouriteIds = new Set(favourites);
+    // Typing in the search box normally browses the entire library. Favorites
+    // is deliberately a hard scope, though: once selected, even its search
+    // results contain only studies the trader has starred.
     const pool = CHART_INDICATOR_CATALOG
       .filter((definition) => definition.id !== "source-code-indicator")
-      .filter((definition) => Boolean(needle) || category === "All" || definition.category === category);
+      .filter((definition) => category === INDICATOR_LIBRARY_FAVORITES_CATEGORY
+        ? indicatorMatchesLibraryCategory(definition, category, favouriteIds)
+        : Boolean(needle) || indicatorMatchesLibraryCategory(definition, category, favouriteIds));
     if (!needle) {
-      return pool.sort((left, right) => {
-        const favouriteDifference =
-          Number(favourites.includes(right.id)) - Number(favourites.includes(left.id));
-        return favouriteDifference || left.name.localeCompare(right.name);
-      });
+      return sortIndicatorLibraryAlphabetically(pool);
     }
     // Relevance-ranked search: the closest name matches surface FIRST, and
     // trader abbreviations (CVD, VP, TPO, DOM, IB...) resolve to their
@@ -1295,7 +1300,6 @@ export default function ChartIndicatorsControl({
     });
     return scored
       .sort((left, right) => right.score - left.score
-        || Number(favourites.includes(right.definition.id)) - Number(favourites.includes(left.definition.id))
         || left.definition.name.localeCompare(right.definition.name))
       .map((entry) => entry.definition);
   }, [category, favourites, search]);
@@ -1796,7 +1800,7 @@ export default function ChartIndicatorsControl({
             </div>
             <div className="flex min-h-0 flex-1">
               <aside className="w-[190px] shrink-0 border-r border-border p-3">
-                {(["All", ...CHART_INDICATOR_CATEGORIES] as const).map((item) => (
+                {(["All", INDICATOR_LIBRARY_FAVORITES_CATEGORY, ...CHART_INDICATOR_CATEGORIES] as const).map((item) => (
                   <button
                     key={item}
                     type="button"
@@ -1809,7 +1813,7 @@ export default function ChartIndicatorsControl({
                   </button>
                 ))}
                 <div className="mt-4 rounded-xl border border-border bg-surface/35 p-3 text-[9px] leading-4 text-muted">
-                  Favourites appear first. Live studies inherit the chart theme.
+                  All is always A–Z. Starred studies live in Favorites. Live studies inherit the chart theme.
                 </div>
               </aside>
               <section className="min-w-0 flex-1 overflow-y-auto p-3">
@@ -1867,6 +1871,13 @@ export default function ChartIndicatorsControl({
                       </div>
                     );
                   })}
+                  {!filtered.length ? (
+                    <div className="rounded-xl border border-dashed border-border px-5 py-10 text-center text-[10px] text-muted">
+                      {category === INDICATOR_LIBRARY_FAVORITES_CATEGORY && !search.trim()
+                        ? "No favorite indicators yet. Star an indicator to keep it here."
+                        : "No indicators match this search."}
+                    </div>
+                  ) : null}
                 </div>
               </section>
             </div>

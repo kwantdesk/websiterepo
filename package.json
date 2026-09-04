@@ -55,6 +55,7 @@
     "test:event-bar-block-prints": "node --import ./scripts/alias-hook.mjs scripts/test-event-bar-block-prints.mjs",
     "test:workspace-colour-persistence": "node --import ./scripts/alias-hook.mjs scripts/test-workspace-colour-persistence.mjs",
     "test:indicator-templates": "node --import ./scripts/alias-hook.mjs scripts/test-indicator-templates.mjs",
+    "test:indicator-library-favorites": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-indicator-library-favorites.mjs",
     "test:vwap-family": "node --experimental-strip-types --import ./scripts/alias-hook.mjs --test tests/vwap-family.test.mjs",
     "test:mini-dom": "node --import ./scripts/alias-hook.mjs scripts/test-mini-dom.mjs",
     "test:delta-ladder": "node --import ./scripts/alias-hook.mjs scripts/test-delta-ladder.mjs",
