@@ -10,7 +10,7 @@ import {
   replayWindow,
   type NativePricePoint,
 } from "@/lib/gex-box/native";
-import { getChartGammaLevels, getGexMapPanel } from "@/lib/quantData.server";
+import { getCashCalibratedChartGammaLevels, getChartGammaLevels, getGexMapPanel } from "@/lib/quantData.server";
 import { ZERO_GAMMA_ARTIFACT_DEVIATION, rejectZeroGammaArtifacts, zeroGammaSourceForInstrument } from "./zeroGammaLine";
 import type { ZeroGammaLinePayload, ZeroGammaLinePoint, ZeroGammaLineSource } from "@/lib/zeroGammaLine";
 
@@ -270,8 +270,11 @@ async function computeHistoricalPoint(
   root: NativeGammaRoot,
   sourceSymbol: ZeroGammaLineSource,
   date: string,
+  displayScale: ZeroGammaDisplayScale,
 ): Promise<ZeroGammaLinePoint> {
-  const snapshot = await getChartGammaLevels(root, sourceSymbol, date);
+  const snapshot = displayScale === "futures" && sourceSymbol !== root
+    ? await getCashCalibratedChartGammaLevels(root, sourceSymbol, date)
+    : await getChartGammaLevels(root, sourceSymbol, date);
   const zeroGamma = zeroGammaFromPayload(snapshot);
   if (zeroGamma === null) throw new Error(`No verified ${root} zero-Gamma point for ${date}.`);
   return {
@@ -291,9 +294,10 @@ const cachedHistoricalPoint = (
   root: NativeGammaRoot,
   sourceSymbol: ZeroGammaLineSource,
   date: string,
+  displayScale: ZeroGammaDisplayScale,
 ) => unstable_cache(
-  () => computeHistoricalPoint(root, sourceSymbol, date),
-  ["zero-gamma-point-v1", root, sourceSymbol, date],
+  () => computeHistoricalPoint(root, sourceSymbol, date, displayScale),
+  ["zero-gamma-point-v2", root, sourceSymbol, date, displayScale],
   { revalidate: 6 * 60 * 60 },
 )();
 
@@ -319,11 +323,11 @@ export async function getZeroGammaLinePayload(
 
   const [historical, current] = await Promise.all([
     Promise.all(completedDates.map(async (date): Promise<ZeroGammaLinePoint | null> => {
-      const cacheKey = `${root}:${sourceSymbol}:${date}`;
+      const cacheKey = `${root}:${sourceSymbol}:${date}:${displayScale}`;
       const cached = historicalPointCache.get(cacheKey);
       if (cached) return cached;
       try {
-        const point = await cachedHistoricalPoint(root, sourceSymbol, date);
+        const point = await cachedHistoricalPoint(root, sourceSymbol, date, displayScale);
         if (historicalPointCache.size >= HISTORICAL_POINT_CACHE_LIMIT) {
           const oldest = historicalPointCache.keys().next().value;
           if (oldest !== undefined) historicalPointCache.delete(oldest);
@@ -334,7 +338,9 @@ export async function getZeroGammaLinePayload(
         return null;
       }
     })),
-    getChartGammaLevels(root, sourceSymbol, sessionDate).catch(() => null),
+    (displayScale === "futures" && sourceSymbol !== root
+      ? getCashCalibratedChartGammaLevels(root, sourceSymbol, sessionDate)
+      : getChartGammaLevels(root, sourceSymbol, sessionDate)).catch(() => null),
   ]);
   const points = historical.filter((point): point is ZeroGammaLinePoint => point !== null);
   // Trails are computed sequentially and only where they pay for themselves:
@@ -365,11 +371,10 @@ export async function getZeroGammaLinePayload(
       Math.max(MIN_TRAIL_BUDGET_MS, trailDeadline - Date.now()),
     ));
   }
-  if (marketOpen) {
-    // The live trace only exists while the session is producing buckets.
-    const liveTrail = await intradayTrailSafe(root, sourceSymbol, sessionDate, false, displayScale);
-    points.push(...liveTrail.map((point) => ({ ...point, status: "LIVE" as const })));
-  }
+  // Never mix the interval-map reconstruction with the true scenario root in
+  // the live session. The browser retains each successive scenario snapshot,
+  // producing one clean causal trail as the options surface changes. Mixing
+  // both methods at alternating timestamps was the saw-tooth line traders saw.
   const currentZeroGamma = current ? zeroGammaFromPayload(current) : null;
   if (current && currentZeroGamma !== null) {
     points.push({
@@ -396,6 +401,6 @@ export async function getZeroGammaLinePayload(
         : null,
     points: deduplicated,
     method: sourceSymbol === root ? "TRUE_OI_SCENARIO" : "OPTIONS_GAMMA_CROSSING",
-    disclosure: "Zero Gamma is the verified aggregate dealer-Gamma sign crossing for the chart's own options family. The intraday trail derives one crossing per completed one-minute positioning bucket; completed-session values are never painted backward. Price above the line is the positive-Gamma environment, below is negative.",
+    disclosure: "Zero Gamma is the verified aggregate dealer-Gamma sign crossing for the chart's own options family. The live trail contains only successive scenario-repriced roots; completed-session reconstruction uses a fixed strike universe and continuous root selection. Sessions are never joined across the overnight gap. Price above the line is the positive-Gamma environment, below is negative.",
   };
 }

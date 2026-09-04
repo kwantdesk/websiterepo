@@ -262,11 +262,12 @@ console.log("Zero Gamma Line source-pinning and display-scale tests passed.");
 // --- the line drifts between observations instead of stepping ---
 {
   // Two verified observations ten minutes apart, one bar a minute.
+  const sessionStart = Date.parse("2026-08-20T13:30:00.000Z");
   const points = [
-    { timestampMs: 0, sessionDate: "2026-08-20", value: 100, status: "HISTORICAL" },
-    { timestampMs: 600_000, sessionDate: "2026-08-20", value: 200, status: "HISTORICAL" },
+    { timestampMs: sessionStart, sessionDate: "2026-08-20", value: 100, status: "HISTORICAL" },
+    { timestampMs: sessionStart + 600_000, sessionDate: "2026-08-20", value: 200, status: "HISTORICAL" },
   ];
-  const bars = Array.from({ length: 11 }, (_, index) => index * 60);
+  const bars = Array.from({ length: 11 }, (_, index) => sessionStart / 1000 + index * 60);
   const painted = paintZeroGammaLineOnBars(points, bars, 60);
 
   // Holding 100 for ten bars and then jumping to 200 is the staircase the
@@ -294,11 +295,29 @@ console.log("Zero Gamma Line source-pinning and display-scale tests passed.");
 
   // Bars that precede the whole trail stay empty rather than back-painting.
   const later = paintZeroGammaLineOnBars(
-    [{ timestampMs: 3_600_000, sessionDate: "2026-08-20", value: 150, status: "HISTORICAL" }],
-    [0, 60, 120],
+    [{ timestampMs: sessionStart + 3_600_000, sessionDate: "2026-08-20", value: 150, status: "HISTORICAL" }],
+    [sessionStart / 1000, sessionStart / 1000 + 60, sessionStart / 1000 + 120],
     60,
   );
   assert.equal(later.length, 0, "a completed value is never painted backward");
+
+  // A completed options session must stop at the cash close. It must never
+  // slope through Globex toward the next day's first root.
+  const nextSessionStart = Date.parse("2026-08-21T13:30:00.000Z");
+  const separated = paintZeroGammaLineOnBars([
+    ...points,
+    { timestampMs: nextSessionStart, sessionDate: "2026-08-21", value: 300, status: "HISTORICAL" },
+    { timestampMs: nextSessionStart + 600_000, sessionDate: "2026-08-21", value: 320, status: "HISTORICAL" },
+  ], [
+    Date.parse("2026-08-20T19:59:00.000Z") / 1000,
+    Date.parse("2026-08-20T22:00:00.000Z") / 1000,
+    nextSessionStart / 1000,
+  ], 60);
+  assert.deepEqual(
+    separated.map((point) => point.time),
+    [Date.parse("2026-08-20T19:59:00.000Z") / 1000, nextSessionStart / 1000],
+    "the zero-gamma line has a hard overnight gap",
+  );
 }
 
 // --- the crossing nearest price, not the lowest strike ---
@@ -316,7 +335,7 @@ console.log("Zero Gamma Line source-pinning and display-scale tests passed.");
   // Nearest-to-price selection, without pinning how spot is spelled at the
   // comparison — that has already changed once and the naming is not the
   // behaviour under test.
-  assert.match(native, /Math\.abs\(crossing - \w+\) < Math\.abs\(best - \w+\)/);
+  assert.match(native, /Math\.abs\(crossing - continuityReference\) < Math\.abs\(best - continuityReference\)/);
   // Callers without a price reference keep the previous answer exactly.
   assert.match(native, /return crossings\[0\];/);
   // The flip is looked for in the chain AROUND price. The listed ladder runs
@@ -340,7 +359,9 @@ console.log("Zero Gamma Line source-pinning and display-scale tests passed.");
     !native.includes("if ((previous < 0 && cumulative >= 0) || (previous > 0 && cumulative <= 0))"),
     "the zero-cumulative search cannot answer on a one-signed chain",
   );
-  assert.match(native, /zeroCrossing\(oiPairs\.map\(\(\[strike, exposure\]\) => \(\{ strike, exposure \}\)\), displaySpot\)/);
+  assert.match(native, /const zeroGammaStrikeUniverse = new Set/);
+  assert.match(native, /previousZeroGamma/);
+  assert.match(native, /fixedZeroGammaPairs/);
 }
 
 // --- above the line is positive Gamma, below is negative ---
@@ -384,3 +405,24 @@ console.log("Zero Gamma Line source-pinning and display-scale tests passed.");
 }
 
 console.log("Zero Gamma Line drift, crossing-selection and regime-shading tests passed.");
+
+// --- live line uses one calculation and pinned cash sources use chart scale ---
+{
+  // Mixing interval-map balance estimates with true scenario roots at
+  // alternating timestamps is the exact saw-tooth failure reported live.
+  assert.doesNotMatch(
+    server,
+    /points\.push\(\.\.\.liveTrail/,
+    "the live line must contain scenario roots only",
+  );
+  assert.match(server, /successive scenario snapshot/);
+  // NDX/QQQ/SPX/SPY crossings must be converted to the futures axis before
+  // they are merged with NQ/ES candles and historical points.
+  assert.match(server, /getCashCalibratedChartGammaLevels/);
+  assert.match(server, /zero-gamma-point-v2/);
+  // Event charts pass real source times separately from synthetic chart slots,
+  // allowing the same cash-session boundary logic on 500V/40R/etc.
+  assert.match(chart, /candles\.map\(\(candle\) => candle\.timestamp \/ 1_000\)/);
+}
+
+console.log("Zero Gamma Line single-method live trail and session-boundary tests passed.");

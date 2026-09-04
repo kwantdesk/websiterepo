@@ -104,20 +104,64 @@ export function paintZeroGammaLineOnBars(
   points: ZeroGammaLinePoint[],
   barTimesSeconds: number[],
   barIntervalSeconds: number | null,
+  sourceBarTimesSeconds: number[] = barTimesSeconds,
 ): Array<{ time: number; value: number }> {
   if (!barTimesSeconds.length) return paintZeroGammaLine(points);
-  const trail = paintZeroGammaLine(points);
-  if (!trail.length) return [];
+  const sessionTrails = new Map<string, Array<{ time: number; value: number }>>();
+  for (const point of points
+    .filter((item) => Number.isFinite(item.timestampMs) && Number.isFinite(item.value))
+    .sort((left, right) => left.timestampMs - right.timestampMs)) {
+    const trail = sessionTrails.get(point.sessionDate) ?? [];
+    const time = Math.floor(point.timestampMs / 1_000);
+    if (trail.at(-1)?.time === time) trail[trail.length - 1] = { time, value: point.value };
+    else trail.push({ time, value: point.value });
+    sessionTrails.set(point.sessionDate, trail);
+  }
+  if (!sessionTrails.size) return [];
   const interval = barIntervalSeconds !== null && barIntervalSeconds > 0
     ? barIntervalSeconds
     : barTimesSeconds.length > 1
       ? Math.max(1, barTimesSeconds[1] - barTimesSeconds[0])
       : 60;
   const painted: Array<{ time: number; value: number }> = [];
-  let cursor = 0;
-  for (const barTime of barTimesSeconds) {
-    const barClose = barTime + interval;
+  const cursorBySession = new Map<string, number>();
+  const clockCache = new Map<number, { sessionDate: string; minutes: number }>();
+  const newYorkClock = (timeSeconds: number) => {
+    const minuteKey = Math.floor(timeSeconds / 60);
+    const cached = clockCache.get(minuteKey);
+    if (cached) return cached;
+    const parts = Object.fromEntries(new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/New_York",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(new Date(timeSeconds * 1_000))
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value]));
+    const value = {
+      sessionDate: `${parts.year}-${parts.month}-${parts.day}`,
+      minutes: Number(parts.hour) * 60 + Number(parts.minute),
+    };
+    clockCache.set(minuteKey, value);
+    return value;
+  };
+  for (let index = 0; index < barTimesSeconds.length; index += 1) {
+    const barTime = barTimesSeconds[index];
+    const sourceBarTime = sourceBarTimesSeconds[index] ?? barTime;
+    const clock = newYorkClock(sourceBarTime);
+    // Options Gamma is defined while its source market is building. Do not
+    // carry the 16:00 close through Globex or interpolate it toward tomorrow's
+    // first observation — that diagonal overnight join is a false level.
+    if (interval < 86_400 && (clock.minutes < 570 || clock.minutes >= 960)) continue;
+    const trail = sessionTrails.get(clock.sessionDate);
+    if (!trail?.length) continue;
+    let cursor = cursorBySession.get(clock.sessionDate) ?? 0;
+    const barClose = sourceBarTime + interval;
     while (cursor + 1 < trail.length && trail[cursor + 1].time < barClose) cursor += 1;
+    cursorBySession.set(clock.sessionDate, cursor);
     const observation = trail[cursor];
     if (observation.time >= barClose) continue;
     // Straight-line the level between two verified observations. Holding the

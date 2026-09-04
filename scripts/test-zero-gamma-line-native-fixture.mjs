@@ -47,10 +47,19 @@ assert.equal(normalized.settings.lineWidth, 4);
 assert.equal(normalized.settings.lineStyle, "solid");
 assert.equal("apiKey" in normalized.settings, false);
 
+const fixtureSessionStart = Date.parse("2026-08-20T13:30:00.000Z");
+const fixtureFirstPoint = fixture.paintCase.points[0].timestampMs;
+const fixturePoints = fixture.paintCase.points.map((point) => ({
+  ...point,
+  timestampMs: fixtureSessionStart + point.timestampMs - fixtureFirstPoint,
+}));
+const sourceBarTimes = fixture.paintCase.barTimesMs.map((value) =>
+  (fixtureSessionStart + value - fixture.paintCase.barTimesMs[0]) / 1000);
 const painted = paintZeroGammaLineOnBars(
-  fixture.paintCase.points,
+  fixturePoints,
   fixture.paintCase.barTimesMs.map((value) => value / 1000),
   fixture.paintCase.barIntervalMs / 1000,
+  sourceBarTimes,
 );
 assert.deepEqual(painted.map((point) => point.value), fixture.paintCase.expectedValues);
 assert.equal(fixture.snapshots[0].points.at(-1).status, "LIVE");

@@ -6835,6 +6835,7 @@ function Chart({
         timeframe && !isEventBasedChartInterval(timeframe)
           ? (timeframeToMs(timeframe) ?? 60_000) / 1_000
           : null,
+        candles.map((candle) => candle.timestamp / 1_000),
       );
       // The crossing is the boundary between the two dealer-Gamma
       // environments: while price holds above it market makers are net long

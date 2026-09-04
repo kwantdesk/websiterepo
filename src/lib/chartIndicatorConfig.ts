@@ -147,7 +147,7 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     // The crossing moves slowly; refreshing faster than ~30s multiplied the
     // shared provider quota across panes and machines for identical values.
     { key: "refreshSeconds", label: "Live refresh (seconds)", defaultValue: 30, min: 15, max: 120, step: 5 },
-    { key: "opacity", label: "Line visibility (%)", defaultValue: 100, min: 5, max: 100, step: 1 },
+    { key: "opacity", label: "Line visibility (%)", defaultValue: 72, min: 5, max: 100, step: 1 },
     { key: "lineWidth", label: "Line width", defaultValue: 2, min: 1, max: 4, step: 1 },
   ],
   "options-delta": [
@@ -1146,9 +1146,9 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     sourceTicker: "AUTO",
     historySessions: 5,
     refreshSeconds: 30,
-      opacity: 100,
-      lineWidth: 2,
-      lineStyle: "solid",
+    opacity: 72,
+    lineWidth: 2,
+    lineStyle: "solid",
     useThemeColors: true,
     lineColor: theme?.borderUpColor ?? theme?.upColor ?? "#A3FF12",
     showCurrentValue: true,

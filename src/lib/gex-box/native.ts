@@ -127,7 +127,11 @@ const ZERO_GAMMA_STRIKE_SAMPLE = 40;
  * Without a usable spot the first crossing is kept, so callers with no price
  * reference behave as they did.
  */
-function zeroCrossing(rows: Array<{ strike: number; exposure: number }>, spot?: number | null) {
+function zeroCrossing(
+  rows: Array<{ strike: number; exposure: number }>,
+  spot?: number | null,
+  previousCrossing?: number | null,
+) {
   const usableSpot = Number.isFinite(spot) && (spot as number) > 0 ? (spot as number) : null;
   const scoped = usableSpot === null
     ? rows
@@ -152,9 +156,12 @@ function zeroCrossing(rows: Array<{ strike: number; exposure: number }>, spot?: 
     }
   }
   if (!crossings.length) return null;
-  if (usableSpot === null) return crossings[0];
+  const continuityReference = Number.isFinite(previousCrossing)
+    ? previousCrossing as number
+    : usableSpot;
+  if (continuityReference === null) return crossings[0];
   return crossings.reduce((best, crossing) =>
-    Math.abs(crossing - usableSpot) < Math.abs(best - usableSpot) ? crossing : best);
+    Math.abs(crossing - continuityReference) < Math.abs(best - continuityReference) ? crossing : best);
 }
 
 function strongest(rows: Array<[number, number]>, direction: "positive" | "negative") {
@@ -188,7 +195,15 @@ export function nativeProfileFrames(
 ): GexBotProfileFrame[] {
   const surfaces = completeSurfaces(panel);
   const opening = new Map(surfaces[0]?.rows.map((row) => [row.strike, row.net]) ?? []);
+  // Keep one strike universe for the entire session. Re-selecting the nearest
+  // forty every minute makes strikes enter and leave the equation as spot
+  // moves, changing the question and making the calculated root chatter.
+  const zeroGammaStrikeUniverse = new Set([...(surfaces[0]?.rows ?? [])]
+    .sort((left, right) => Math.abs(left.strike - surfaces[0].sourceSpot) - Math.abs(right.strike - surfaces[0].sourceSpot))
+    .slice(0, ZERO_GAMMA_STRIKE_SAMPLE)
+    .map((row) => row.strike));
   const trails = new Map<number, number[]>();
+  let previousZeroGamma: number | null = null;
 
   return surfaces.map((surface) => {
     const { displaySpot, ratio } = mappedPriceAt(surface, displayPrices);
@@ -209,11 +224,23 @@ export function nativeProfileFrames(
     const negativeVolume = strongest(volumePairs, "negative");
     const positiveOi = strongest(oiPairs, "positive");
     const negativeOi = strongest(oiPairs, "negative");
+    const fixedZeroGammaPairs = surface.rows.flatMap((row): Array<{ strike: number; exposure: number }> => {
+      if (!zeroGammaStrikeUniverse.has(row.strike)) return [];
+      return [{ strike: row.strike * ratio, exposure: row.net }];
+    });
+    const zeroGamma = zeroCrossing(
+      fixedZeroGammaPairs.length > 1
+        ? fixedZeroGammaPairs
+        : oiPairs.map(([strike, exposure]) => ({ strike, exposure })),
+      displaySpot,
+      previousZeroGamma,
+    );
+    if (zeroGamma !== null) previousZeroGamma = zeroGamma;
     return {
       timestamp: surface.timestamp,
       ticker,
       spot: displaySpot,
-      zero_gamma: zeroCrossing(oiPairs.map(([strike, exposure]) => ({ strike, exposure })), displaySpot),
+      zero_gamma: zeroGamma,
       major_pos_vol: positiveVolume?.[0] ?? null,
       major_pos_oi: positiveOi?.[0] ?? null,
       major_neg_vol: negativeVolume?.[0] ?? null,

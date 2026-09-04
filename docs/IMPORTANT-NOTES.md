@@ -173,3 +173,21 @@ recap of the open items below and update this file when their state changes.
   until a later live event closes.
 - CVD and other execution-dependent studies must use verified flow coverage.
   Preserve genuine archive gaps; never manufacture bid/ask flow from OHLCV.
+
+## 2026-09-04 — Zero Gamma Line integrity
+
+- Never mix true scenario-repriced Gamma roots and interval-map balance roots
+  inside the same live series. The alternating methodologies create a false
+  saw-tooth even when the structural boundary is stable.
+- Live Zero Gamma is a causal history of successive Black-76/open-interest
+  scenario roots. Do not smooth or force it toward price; that would fabricate
+  a level. Price above the root is the positive-Gamma regime and price below it
+  is the negative-Gamma regime.
+- A completed-session reconstruction must freeze its strike universe and stay
+  on the prior root branch. Re-selecting strikes or the nearest root every
+  minute causes structural chatter unrelated to an options-positioning change.
+- Never interpolate Zero Gamma across the New York options close into the next
+  day. Paint each 09:30–16:00 ET session independently with an overnight gap.
+- Cash-index/ETF roots must be calibrated to the NQ/ES futures price scale
+  before entering a futures chart, and display scale must be part of every
+  point/cache identity.
