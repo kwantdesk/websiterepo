@@ -21,6 +21,8 @@ export const TPO_V2_RESET_KEYS = [
 export type TpoIndicatorVariant = "daily-tpo" | "weekly-tpo";
 export type TpoVisitSource = "exact-trades" | "bar-range" | "automatic";
 export type TpoDisplayType = "automatic" | "letters" | "blocks";
+export type TpoProfileType = "blocks" | "profile";
+export type TpoVisualStyle = "automatic" | "solid" | "hollow" | "line" | "combined";
 export type TpoSplitMode = "none" | "last" | "all";
 export type TpoScheduleKind = "daily" | "weekly" | "generic-period" | "custom-range";
 export type TpoPeriodMode = "all-loaded-bars" | "multiple-profiles" | "custom-range";
@@ -96,13 +98,18 @@ export interface TpoIndicatorSettings {
   customEndMs: number | null;
   customEndFollowsLatest: boolean;
   subperiodMinutes: number;
+  /** Blocks preserve each subperiod visit; Profile paints the continuous distribution. */
+  tpoType: TpoProfileType;
+  /** Text is independent of profile type, matching the DeepCharts control. */
+  showText: boolean;
+  /** Legacy display preference retained so existing saved workspaces migrate cleanly. */
   displayType: TpoDisplayType;
   /**
    * How a block is painted: filled, outlined, or reduced to the profile's
    * outer edge. Matches the volume profile's appearance control so the two
    * studies can be made to read the same way.
    */
-  visualStyle: "solid" | "hollow" | "line";
+  visualStyle: TpoVisualStyle;
   splitMode: TpoSplitMode;
   profileCount: number;
   visitSource: TpoVisitSource;

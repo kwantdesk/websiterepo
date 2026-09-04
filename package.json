@@ -154,6 +154,7 @@
     "test:gex-map-node-detail": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-gex-map-node-detail.mjs",
     "test:options-ticker-profiles": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-options-ticker-profiles.mjs",
     "test:tpo-settings-wired": "node --import ./scripts/alias-hook.mjs scripts/test-tpo-settings-wired.mjs",
+    "test:profile-indicator-parity": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-profile-indicator-parity.mjs",
     "bench:tpo-build": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/bench-tpo-build.mjs",
     "test:exchange-clock": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-exchange-clock.mjs",
     "bench:indicator-clock": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/bench-indicator-clock.mjs",

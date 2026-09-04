@@ -70,10 +70,11 @@ check("the workspace asks from the week open, not the first loaded candle", () =
   const workspace = readFileSync(new URL("../src/components/KwantifyWorkspace.tsx", import.meta.url), "utf8");
   // The rolling five-session window IS the bug. It must not come back.
   assert.doesNotMatch(workspace, /new Set\(tradingDates\.slice\(-5\)\)/);
-  assert.match(workspace, /const weekStartMs = currentCmeWeekStart\(Date\.now\(\)\);/);
+  assert.match(workspace, /const \{ startMs: weekStartMs, endMs: weekEndMs \} = cmeWeekRange\(/);
+  assert.match(workspace, /weeklyProfileSettings\.weekSelection === "previous" \? "previous" : "current"/);
   // Anchored to the week, so a pane holding less history than that still gets
   // the whole week rather than silently shrinking to what it happens to have.
-  assert.match(workspace, /period: "weekly",\s*\n\s*startMs: weekStartMs,/);
+  assert.match(workspace, /period: "weekly",\s*\r?\n\s*startMs: weekStartMs,/);
 });
 
 console.log(`\nweekly profile window: ${passed}/${passed} checks passed`);

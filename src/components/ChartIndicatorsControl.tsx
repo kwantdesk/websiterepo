@@ -1,6 +1,6 @@
 "use client";
 
-import { Children, isValidElement, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { Children, Fragment, isValidElement, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import {
   BarChart3,
@@ -148,15 +148,15 @@ const FOOTPRINT_PROFILE_MANAGED_SETTINGS = new Set([
 const TPO_PRESETS = [
   {
     label: "Classic 30m",
-    settings: { subperiodMinutes: 30, displayType: "blocks", splitMode: "none", groupingMode: "automatic", valueAreaPercent: 70 },
+    settings: { subperiodMinutes: 30, tpoType: "blocks", showText: false, displayType: "blocks", splitMode: "none", groupingMode: "automatic", valueAreaPercent: 70 },
   },
   {
     label: "Letter profile",
-    settings: { subperiodMinutes: 30, displayType: "letters", splitMode: "none", groupingMode: "automatic", valueAreaPercent: 70 },
+    settings: { subperiodMinutes: 30, tpoType: "blocks", showText: true, displayType: "letters", splitMode: "none", groupingMode: "automatic", valueAreaPercent: 70 },
   },
   {
     label: "Bid / Ask split",
-    settings: { displayType: "blocks", splitMode: "all", colourCalculation: "delta", colourReference: "fading" },
+    settings: { tpoType: "blocks", showText: false, displayType: "blocks", splitMode: "all", colourCalculation: "delta", colourReference: "fading" },
   },
   {
     label: "Developing auction",
@@ -338,7 +338,7 @@ const assignTpoSections = (section: string, keys: readonly string[]) => {
   for (const key of keys) TPO_SETTING_SECTIONS[key] = section;
 };
 assignTpoSections("General", [
-  "scheduleKind", "periodMode", "lengthValue", "lengthUnit", "displayType", "visualStyle", "splitMode",
+  "scheduleKind", "periodMode", "lengthValue", "lengthUnit", "tpoType", "splitMode",
   "subperiodMinutes", "profileCount", "visitSource", "groupingMode", "ticksPerRow",
   "autoTargetRows", "autoGroupFactor", "freezeActiveGrouping", "allowDevelopingComposite",
   "maximumMergeMembers", "maximumRenderedBlocks", "fpsCap",
@@ -348,7 +348,7 @@ assignTpoSections("General", [
   "initialBalanceLineColor", "initialBalanceLineWidth",
 ]);
 assignTpoSections("Background/Text", [
-  "colourCalculation", "colourReference", "minimumTextSize", "maximumTextSize",
+  "showText", "displayType", "colourCalculation", "colourReference", "minimumTextSize", "maximumTextSize",
   "fixedVolumeColor", "fixedBidColor", "fixedAskColor",
   "range1Enabled", "range1Minimum", "range1VolumeColor", "range1BidColor", "range1AskColor",
   "range2Enabled", "range2Minimum", "range2VolumeColor", "range2BidColor", "range2AskColor",
@@ -362,7 +362,7 @@ assignTpoSections("Background/Text", [
 assignTpoSections("Plot settings", [
   "barMarkerEnabled", "barMarkerStyle", "barMarkerWidth", "barMarkerUpColor",
   "barMarkerDownColor", "barMarkerShowOpenClose",
-  "widthMode", "currentWidth", "currentOffset", "previousWidth", "previousOffset",
+  "visualStyle", "widthMode", "currentWidth", "currentOffset", "previousWidth", "previousOffset",
   "showOnRight", "mirror", "lockPosition", "showAboveBars",
 ]);
 assignTpoSections("Point of control", [
@@ -668,11 +668,16 @@ function divergenceMarketPair(instrument: string) {
  * The strip only appears when a dialog actually has more than one section.
  */
 function IndicatorSettingsSections({ children }: { children: ReactNode }) {
-  const entries = Children.toArray(children).flatMap((child) => {
-    if (!isValidElement(child)) return [];
-    const props = child.props as { "data-settings-section"?: string };
-    return [{ section: props["data-settings-section"] ?? "General", node: child }];
-  });
+  const collectEntries = (nodes: ReactNode): Array<{ section: string; node: ReactNode }> =>
+    Children.toArray(nodes).flatMap((child) => {
+      if (!isValidElement(child)) return [];
+      if (child.type === Fragment) {
+        return collectEntries((child.props as { children?: ReactNode }).children);
+      }
+      const props = child.props as { "data-settings-section"?: string };
+      return [{ section: props["data-settings-section"] ?? "General", node: child }];
+    });
+  const entries = collectEntries(children);
   const sections: string[] = [];
   for (const entry of entries) if (!sections.includes(entry.section)) sections.push(entry.section);
   const [active, setActive] = useState(sections[0] ?? "General");
@@ -1770,7 +1775,7 @@ export default function ChartIndicatorsControl({
           <div
             ref={settingsDialogRef}
             data-indicator-settings-dialog
-            className="pointer-events-auto relative flex max-h-[88vh] w-full max-w-[540px] flex-col overflow-hidden rounded-2xl border border-border bg-panel shadow-2xl shadow-black/60"
+            className="pointer-events-auto relative flex h-[min(760px,calc(100vh-2rem))] w-[min(900px,calc(100vw-2rem))] max-w-none flex-col overflow-hidden rounded-2xl border border-border bg-panel shadow-2xl shadow-black/60"
           >
             <div
               className="flex shrink-0 touch-none select-none items-center justify-between border-b border-border px-5 py-4 cursor-move active:cursor-grabbing"
@@ -1844,7 +1849,7 @@ export default function ChartIndicatorsControl({
                 </button>
               </div>
             </div>
-            <IndicatorSettingsSections>
+            <IndicatorSettingsSections key={settingsDefinition.id}>
               <label className="flex items-center justify-between rounded-xl border border-border bg-surface/40 px-4 py-3">
                 <span>
                   <span className="block text-[11px] font-medium text-foreground">Visible</span>
@@ -5026,8 +5031,7 @@ export default function ChartIndicatorsControl({
                     {([
                       ["Schedule", "scheduleKind", [["daily", "Daily"], ["weekly", "Weekly"], ["generic-period", "Generic period"], ["custom-range", "Custom range"]]],
                       ["Period mode", "periodMode", [["multiple-profiles", "Multiple profiles"], ["all-loaded-bars", "All loaded bars"], ["custom-range", "Custom range"]]],
-                      ["Display", "displayType", [["blocks", "Blocks"], ["letters", "Letters"], ["automatic", "Automatic"]]],
-                      ["Appearance", "visualStyle", [["solid", "Solid"], ["hollow", "Hollow"], ["line", "Line"]]],
+                      ["TPO type", "tpoType", [["blocks", "Blocks"], ["profile", "Profile"]]],
                       ["Split TPO", "splitMode", [["none", "None"], ["last", "Last"], ["all", "All"]]],
                       ["Data fidelity", "visitSource", [["automatic", "Automatic"], ["exact-trades", "Exact trades"], ["bar-range", "Bar range"]]],
                       ["Tick grouping", "groupingMode", [["automatic", "Automatic"], ["manual", "Manual"]]],
@@ -5278,13 +5282,17 @@ export default function ChartIndicatorsControl({
                 return (
                   <>
                     {page("Background/Text", (
-                      <div className="grid gap-2 sm:grid-cols-2">
-                        {dropdown("Color mode", "colourCalculation", [["time", "Time"], ["volume", "Volume"], ["delta", "Delta"]] as const)}
-                        {dropdown("Color reference", "colourReference", [["fixed", "Fixed"], ["fading", "Fading color"], ["multiple-ranges", "Multiple ranges"]] as const)}
+                      <div className="space-y-3">
+                        {toggle("Show text", "showText", false, "Draw each TPO letter independently of Blocks or Profile mode.")}
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          {dropdown("Color mode", "colourCalculation", [["time", "Time"], ["volume", "Volume"], ["delta", "Delta"]] as const)}
+                          {dropdown("Color reference", "colourReference", [["fixed", "Fixed"], ["fading", "Fading color"], ["multiple-ranges", "Multiple ranges"]] as const)}
+                        </div>
                       </div>
                     ))}
                     {page("Plot settings", (
                       <div className="grid gap-2 sm:grid-cols-2">
+                        {dropdown("Visual style", "visualStyle", [["automatic", "Automatic"], ["solid", "Solid"], ["hollow", "Hollow"], ["line", "Line"], ["combined", "Combined"]] as const)}
                         {dropdown("Bar market style", "barMarkerStyle", [["body", "Body"], ["candle", "Candle"]] as const)}
                         {dropdown("Width mode", "widthMode", [["automatic", "Automatic"], ["period-percent", "Period percent"], ["window-percent", "Window percent"], ["fixed-bars", "Fixed bars"]] as const)}
                       </div>

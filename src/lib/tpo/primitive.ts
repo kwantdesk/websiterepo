@@ -217,8 +217,11 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
         // sessions are rendered as compact profiles at the same chart zoom.
         const sharedCellWidth = minimumCellWidthByInstance.get(model.instanceId) ?? cellWidth;
         const detailed = sharedCellWidth >= 6;
-        const showLetters = settings.displayType === "letters"
-          || (settings.displayType === "automatic" && detailed);
+        const showLetters = settings.showText;
+        const paintAsProfile = settings.tpoType === "profile";
+        const visualStyle = settings.visualStyle === "automatic"
+          ? (detailed ? "solid" : "line")
+          : settings.visualStyle;
         let renderedBlocks = 0;
         const allCells = profile.rows.flatMap((row) => row.cells);
         const maxCellVolume = Math.max(1, ...allCells.map((cell) => cell.volume ?? 0));
@@ -280,6 +283,36 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
           const splitGap = cellWidth * 0.35;
           const rowWidth = Math.min(width, row.tpoCount * cellWidth + (splitGapCount + sessionGapCount) * splitGap);
           const rowLeft = direction < 0 ? anchorX - rowWidth : anchorX;
+          if (paintAsProfile) {
+            let profileRowColor = pocRow && settings.pocHighlight
+              ? settings.pocHighlightColor
+              : rowColor;
+            if (settings.showValueArea && settings.valueAreaHighlight) {
+              const highlighted = settings.valueAreaHighlightInside ? inValueArea : !inValueArea;
+              if (highlighted) profileRowColor = settings.valueAreaHighlightInside
+                ? valueAreaColor
+                : settings.valueAreaOutsideColor;
+            }
+            context.globalAlpha = opacity * (inValueArea ? 0.92 : 0.68);
+            if (visualStyle === "solid" || visualStyle === "combined") {
+              context.fillStyle = schemeFill ?? profileRowColor;
+              context.fillRect(rowLeft, rowTop, rowWidth, rowHeight);
+            }
+            if (visualStyle === "hollow" || visualStyle === "combined") {
+              context.strokeStyle = schemeFill ?? profileRowColor;
+              context.lineWidth = Math.max(0.5, settings.borderWidth || 1);
+              context.strokeRect(rowLeft, rowTop, rowWidth, rowHeight);
+            }
+            if (visualStyle === "line") {
+              const edgeX = direction < 0 ? rowLeft : rowLeft + rowWidth;
+              context.strokeStyle = schemeFill ?? profileRowColor;
+              context.lineWidth = Math.max(0.5, settings.borderWidth || 1);
+              context.beginPath();
+              context.moveTo(edgeX, rowTop);
+              context.lineTo(edgeX, rowTop + rowHeight);
+              context.stroke();
+            }
+          }
           for (let cell = 0; cell < row.tpoCount && renderedBlocks < settings.maximumRenderedBlocks; cell += 1) {
             renderedBlocks += 1;
             const separatedBefore = settings.splitMode === "all"
@@ -333,48 +366,48 @@ export class TpoProfilePrimitive implements ISeriesPrimitive<Time> {
               * (inValueArea ? 0.92 : 0.68);
             const blockX = x + gap / 2;
             const blockY = rowTop + (rowHeight - size) / 2;
-            if (settings.visualStyle === "solid") {
+            if (!paintAsProfile && (visualStyle === "solid" || visualStyle === "combined")) {
               context.fillStyle = schemeFill ?? cellColor;
               context.fillRect(blockX, blockY, size, size);
-            } else if (settings.visualStyle === "hollow") {
+            } else if (!paintAsProfile && visualStyle === "hollow") {
               // Outline only, so overlapping structure stays readable through
               // the profile rather than being a solid wall of colour.
               context.strokeStyle = schemeFill ?? cellColor;
               context.lineWidth = Math.max(0.5, settings.borderWidth || 1);
               context.strokeRect(blockX, blockY, size, size);
-            } else {
+            } else if (!paintAsProfile && visualStyle === "line") {
               // "line" reduces the profile to its outer edge, drawn per row as
               // the block furthest from the spine.
               if (cell === row.tpoCount - 1) {
                 context.strokeStyle = schemeFill ?? cellColor;
                 context.lineWidth = Math.max(0.5, settings.borderWidth || 1);
                 context.beginPath();
-                context.moveTo(blockX + (direction < 0 ? size : 0), rowTop);
-                context.lineTo(blockX + (direction < 0 ? size : 0), rowTop + rowHeight);
+                context.moveTo(blockX + (direction < 0 ? 0 : size), rowTop);
+                context.lineTo(blockX + (direction < 0 ? 0 : size), rowTop + rowHeight);
                 context.stroke();
               }
             }
-            if (settings.visualStyle === "solid" && settings.borderWidth > 0 && size >= 2.5) {
+            if (!paintAsProfile && visualStyle === "solid" && settings.borderWidth > 0 && size >= 2.5) {
               context.globalAlpha = opacity * 0.62;
               context.strokeStyle = theme.background;
               context.lineWidth = settings.borderWidth;
               context.strokeRect(blockX, blockY, size, size);
             }
-            // Choosing "letters" must show letters.
-            //
-            // The gate used to demand a block taller than the minimum FONT
-            // size, but at ordinary zoom rows are only a few pixels tall, so
-            // the setting silently fell back to blocks and looked broken. An
-            // explicit choice now draws whenever there is room for a glyph at
-            // all; Automatic keeps the conservative threshold, which is the
-            // point of Automatic.
-            const lettersFit = settings.displayType === "letters"
-              ? size >= 4
-              : size >= settings.minimumTextSize + 1;
-            if (showLetters && settings.visualStyle !== "line" && lettersFit) {
-              const fontSize = settings.displayType === "letters"
-                ? clamp(size * 0.82, 4, settings.maximumTextSize)
-                : clamp(size * 0.72, settings.minimumTextSize, settings.maximumTextSize);
+            if (!paintAsProfile && visualStyle === "combined" && cell === row.tpoCount - 1) {
+              context.globalAlpha = opacity;
+              context.strokeStyle = schemeFill ?? cellColor;
+              context.lineWidth = Math.max(0.5, settings.borderWidth || 1);
+              context.beginPath();
+              context.moveTo(blockX + (direction < 0 ? 0 : size), rowTop);
+              context.lineTo(blockX + (direction < 0 ? 0 : size), rowTop + rowHeight);
+              context.stroke();
+            }
+            // Show Text is independent of the profile body style. At ordinary
+            // zoom a four-pixel glyph is still readable, so do not silently
+            // hide an explicit trader choice behind the minimum-font setting.
+            const lettersFit = size >= 4;
+            if (showLetters && visualStyle !== "line" && lettersFit) {
+              const fontSize = clamp(size * 0.82, 4, settings.maximumTextSize);
               context.globalAlpha = 0.96;
               context.fillStyle = theme.foreground;
               context.font = `600 ${fontSize}px 'JetBrains Mono', monospace`;

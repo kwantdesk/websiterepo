@@ -21,7 +21,7 @@ assert.ok(
 );
 
 // 2. The controls the trader reaches for most must be wired end to end.
-for (const key of ["displayType", "groupingMode", "ticksPerRow", "autoTargetRows", "visualStyle"]) {
+for (const key of ["tpoType", "showText", "groupingMode", "ticksPerRow", "autoTargetRows", "visualStyle"]) {
   assert.ok(fields.includes(key), `${key} must exist on the settings type`);
   assert.ok(consumers.includes(`settings.${key}`), `${key} must be read by the engine or renderer`);
 }
@@ -32,7 +32,8 @@ assert.match(engine, /if \(settings\.groupingMode === "manual"\) return Math\.ma
 // 4. THE BUG: choosing Letters must show letters. The gate used to demand a
 //    block taller than the minimum FONT size, so at ordinary zoom — where rows
 //    are a few pixels — it silently fell back to blocks.
-assert.match(primitive, /settings\.displayType === "letters"\s*\r?\n?\s*\? size >= 4/);
+assert.match(primitive, /const showLetters = settings\.showText/);
+assert.match(primitive, /const lettersFit = size >= 4/);
 assert.doesNotMatch(
   primitive,
   /if \(showLetters && size >= settings\.minimumTextSize \+ 1\)/,
@@ -40,14 +41,16 @@ assert.doesNotMatch(
 );
 
 // 5. Appearance matches the volume profile's options and is honoured.
-assert.match(types, /visualStyle: "solid" \| "hollow" \| "line";/);
-for (const style of ['"solid"', '"hollow"', '"line"']) {
-  assert.ok(primitive.includes(`settings.visualStyle === ${style}`) || primitive.includes(`visualStyle !== "line"`),
+assert.match(types, /export type TpoVisualStyle = "automatic" \| "solid" \| "hollow" \| "line" \| "combined";/);
+for (const style of ['"solid"', '"hollow"', '"line"', '"combined"']) {
+  assert.ok(primitive.includes(`visualStyle === ${style}`) || primitive.includes(`visualStyle !== "line"`),
     `visual style ${style} must be handled`);
 }
-assert.match(settings, /visualStyle: enumValue\("visualStyle", \["solid", "hollow", "line"\]/);
+assert.match(settings, /visualStyle: enumValue\("visualStyle", \["automatic", "solid", "hollow", "line", "combined"\]/);
 
-// 6. It is reachable in the UI, beside Display.
-assert.match(control, /\["Appearance", "visualStyle", \[\["solid", "Solid"\], \["hollow", "Hollow"\], \["line", "Line"\]\]\]/);
+// 6. DeepCharts' Profile/Blocks type and independent text toggle are reachable.
+assert.match(control, /\["TPO type", "tpoType", \[\["blocks", "Blocks"\], \["profile", "Profile"\]\]\]/);
+assert.match(control, /toggle\("Show text", "showText"/);
+assert.match(control, /\["combined", "Combined"\]/);
 
 console.log(`TPO settings wiring: 6/6 checks passed (${fields.length - unread.length}/${fields.length} settings read)`);

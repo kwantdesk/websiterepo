@@ -101,6 +101,8 @@ export function defaultTpoSettings(
     customEndMs: null,
     customEndFollowsLatest: false,
     subperiodMinutes: 30,
+    tpoType: "blocks",
+    showText: false,
     visualStyle: "solid",
     displayType: "blocks",
     splitMode: "none",
@@ -306,7 +308,11 @@ export function validateTpoSettings(
     dailyEndMode: enumValue("dailyEndMode", ["next-daily-start", "explicit-time"], defaults.dailyEndMode),
     weekEndMode: enumValue("weekEndMode", ["next-week-start", "explicit-day-time"], defaults.weekEndMode),
     lengthUnit: enumValue("lengthUnit", ["minute", "day", "week", "month"], defaults.lengthUnit),
-    visualStyle: enumValue("visualStyle", ["solid", "hollow", "line"], defaults.visualStyle),
+    tpoType: enumValue("tpoType", ["blocks", "profile"], defaults.tpoType),
+    showText: typeof source.showText === "boolean"
+      ? source.showText
+      : source.displayType === "letters" || source.displayType === "automatic",
+    visualStyle: enumValue("visualStyle", ["automatic", "solid", "hollow", "line", "combined"], defaults.visualStyle),
     displayType: enumValue("displayType", ["automatic", "letters", "blocks"], defaults.displayType),
     splitMode: enumValue("splitMode", ["none", "last", "all"], defaults.splitMode),
     visitSource: enumValue("visitSource", ["exact-trades", "bar-range", "automatic"], defaults.visitSource),

@@ -14393,7 +14393,11 @@ function Chart({
     for (const cachedInstanceId of tpoProfileCacheRef.current.keys()) {
       if (!activeInstanceIds.has(cachedInstanceId)) tpoProfileCacheRef.current.delete(cachedInstanceId);
     }
-    const rebuildThrottleMs = 5_000;
+    // A developing TPO is market data, not a five-second snapshot. A complete
+    // exact-trade rebuild can be expensive, so live changes refresh only the
+    // active profile at a bounded cadence while completed profiles retain
+    // their already-validated models.
+    const rebuildThrottleMs = 250;
     const now = Date.now();
     let earliestStaleBuiltAt: number | null = null;
     const baseModels = instances.flatMap((instance): TpoPrimitiveModel[] => {
@@ -14418,9 +14422,32 @@ function Chart({
           ? cached.builtAt
           : Math.min(earliestStaleBuiltAt, cached.builtAt);
       }
-      const profiles = exactHit || throttledHit
-        ? cached.profiles
-        : buildTpoProfiles({ trades: sourceTrades, bars: sourceBars, settings: calculationSettings });
+      let profiles: TpoProfileModel[];
+      if (exactHit || throttledHit) {
+        profiles = cached.profiles;
+      } else {
+        const developing = cached?.profiles.at(-1);
+        const canRefreshDevelopingOnly = Boolean(
+          cached
+          && developing?.developing
+          && cached.calculationKey === calculationKey
+          && calculationSettings.periodMode !== "custom-range",
+        );
+        if (canRefreshDevelopingOnly && developing) {
+          const liveProfiles = buildTpoProfiles({
+            trades: sourceTrades.filter((trade) => trade.timestampMs >= developing.startTimeMs),
+            bars: sourceBars.filter((bar) => bar.endTimeMs > developing.startTimeMs),
+            settings: { ...calculationSettings, profileCount: 1 },
+          });
+          const refreshed = liveProfiles.find((profile) => profile.id === developing.id)
+            ?? liveProfiles.at(-1);
+          profiles = refreshed
+            ? [...cached!.profiles.slice(0, -1), refreshed]
+            : cached!.profiles;
+        } else {
+          profiles = buildTpoProfiles({ trades: sourceTrades, bars: sourceBars, settings: calculationSettings });
+        }
+      }
       if (profiles !== cached?.profiles) {
         tpoProfileCacheRef.current.set(instance.instanceId, {
           trades: sourceTrades,
@@ -14526,7 +14553,7 @@ function Chart({
     }
     setTpoDataStatus(levelledModels.length ? null : "TPO · NO PROFILE IN THE SELECTED RANGE");
     // Trailing rebuild: when the run above served a throttled grid, re-enter
-    // once the throttle window closes so the letters catch up to the tape.
+    // once the throttle window closes so the active profile catches the tape.
     if (earliestStaleBuiltAt !== null && tpoRebuildTimerRef.current === null) {
       const delay = Math.max(250, earliestStaleBuiltAt + rebuildThrottleMs - now);
       tpoRebuildTimerRef.current = window.setTimeout(() => {
