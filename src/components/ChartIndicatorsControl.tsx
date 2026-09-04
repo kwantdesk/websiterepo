@@ -452,6 +452,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "overlay-symbol",
   "overlay-timeframe-candlestick",
   "deep-m-ivb",
+  "deep-pattern-builder",
   "gamma-environment",
   "vix-environment",
   "zero-gamma-line",

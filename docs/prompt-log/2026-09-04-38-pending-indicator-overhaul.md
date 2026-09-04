@@ -187,4 +187,6 @@ task until the full pending library is complete, without shortcuts.
   themed marker/background rendering, sliders, settings/templates and
   confirmed-signal alerts are wired; the study cannot execute an order.
   Focused rule, offset, advanced-expression and data-refusal tests pass;
-  production QA remains.
+  the first production QA caught the renderer release gate missing even though
+  the live-engine gate was present. That separate allowlist is now covered by
+  the focused regression and corrected; final production QA remains.

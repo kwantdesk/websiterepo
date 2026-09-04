@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { buildDeepPatternSignals, normalizeDeepPatternBuilderSettings } from "../src/lib/deepPatternBuilder.ts";
 
 const base = Date.parse("2026-09-04T13:30:00Z");
@@ -27,4 +28,7 @@ const longHistory = Array.from({ length: 20_000 }, (_, index) => ({ timestamp: b
 const started = performance.now();
 buildDeepPatternSignals(longHistory, [], defaults, 0.25, base + 20_001 * 60_000);
 assert.ok(performance.now() - started < 1_500, "20,000-bar rule evaluation is unexpectedly slow");
+const controlsSource = readFileSync(new URL("../src/components/ChartIndicatorsControl.tsx", import.meta.url), "utf8");
+const renderedGate = controlsSource.slice(controlsSource.indexOf("export const RENDERED_CHART_INDICATOR_IDS"), controlsSource.indexOf("type Props"));
+assert.match(renderedGate, /"deep-pattern-builder"/, "Pattern Builder is missing from the renderer release gate");
 console.log("KWANT Pattern Builder rules, offsets, grouping and fail-closed order-flow inputs passed.");
