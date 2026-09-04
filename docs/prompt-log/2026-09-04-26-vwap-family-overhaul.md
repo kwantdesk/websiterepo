@@ -27,3 +27,8 @@ contract are reconciled. A fresh interactive Deep Charts screenshot sweep and
 raw-execution validation of an Orders period that crosses within one candle
 remain explicitly open; neither is represented as completed evidence.
 
+Production commit `c743c973` deployed successfully through the sole active
+Vercel project `websiterepo-yfmi`. GitHub deployment `6259191618` / Vercel
+deployment `9qwhBugh8o8rTqhiwmD7MRGxdwtx` reached Ready at
+`https://websiterepo-yfmi-ke7hqedvf-kwant-desk.vercel.app`; the production
+`/charts` route returned HTTP 200.
