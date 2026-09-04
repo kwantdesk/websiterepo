@@ -186,6 +186,7 @@
     "bench:indicator-clock": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/bench-indicator-clock.mjs",
     "test:tpo-default-visuals": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-tpo-default-visuals.mjs",
     "test:footprint-bar-window": "node --import ./scripts/alias-hook.mjs scripts/test-footprint-bar-window.mjs",
+    "test:footprint-reconcile-budget": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-footprint-reconcile-budget.mjs",
     "test:footprint-profile-rows": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-footprint-profile-rows.mjs",
     "test:footprint-chart-types": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-footprint-chart-types.mjs",
     "test:footprint-replay": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-footprint-replay.mjs",

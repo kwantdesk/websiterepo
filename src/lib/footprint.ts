@@ -315,13 +315,19 @@ export type FootprintBuildCache = {
   bars: FootprintBar[];
   builtAt: number;
   lastBarTimestamp: number;
+  nextReconcileAt: number;
+  reconcileCursor: number;
 };
 
-// Late prints and dedupe corrections can retouch a closed bar, so the
-// incremental path still reconciles everything on a bounded clock.
-const FOOTPRINT_FULL_REBUILD_MS = 30_000;
+// Late prints and dedupe corrections can retouch a closed bar. Reconcile a
+// small rolling slice instead of rebuilding the complete visible tape on a
+// shared clock: several order-flow studies can own independent caches, and
+// their old 30-second full rebuilds synchronized into a main-thread stall.
+const FOOTPRINT_RECONCILE_INTERVAL_MS = 1_000;
+const FOOTPRINT_RECONCILE_BARS = 8;
+let footprintCacheSequence = 0;
 
-function footprintWindowKey(candles: Candle[], settings: FootprintBuildSettings) {
+function footprintWindowKey(settings: FootprintBuildSettings) {
   return [
     settings.tickSize,
     settings.groupTicks,
@@ -339,10 +345,66 @@ function footprintWindowKey(candles: Candle[], settings: FootprintBuildSettings)
     settings.stackedImbalanceLevels,
     settings.unfinishedAuctionEnabled,
     settings.unfinishedAuctionMinimumVolume,
-    candles.length,
-    candles[0]?.timestamp,
-    candles.length > 1 ? candles[candles.length - 2].timestamp : 0,
   ].join("|");
+}
+
+function lowerBoundRecord(records: InstitutionalTrade[], timestamp: number) {
+  let low = 0;
+  let high = records.length;
+  while (low < high) {
+    const middle = (low + high) >>> 1;
+    if (records[middle].timestamp < timestamp) low = middle + 1;
+    else high = middle;
+  }
+  return low;
+}
+
+function buildFootprintRange(
+  candles: Candle[],
+  records: InstitutionalTrade[],
+  settings: FootprintBuildSettings,
+  from: number,
+  to: number,
+) {
+  if (from >= to) return [];
+  const start = candles[from].timestamp;
+  const end = candles[to]?.timestamp;
+  // Include the following candle as a boundary so the final requested bar
+  // receives the same end time as it would in a complete build. Its records
+  // are deliberately excluded and the boundary result is discarded.
+  const sourceCandles = candles.slice(from, Math.min(candles.length, to + 1));
+  const sourceRecords = records.slice(
+    lowerBoundRecord(records, start),
+    end === undefined ? records.length : lowerBoundRecord(records, end),
+  );
+  return buildFootprintBars(sourceCandles, sourceRecords, settings)
+    .slice(0, to - from)
+    .map((bar, offset) => ({
+      ...bar,
+      endTime: candles[from + offset + 1]?.timestamp ?? Number.POSITIVE_INFINITY,
+      isClosed: from + offset < candles.length - 1,
+    }));
+}
+
+function sameCandle(bar: FootprintBar, candle: Candle) {
+  return bar.timestamp === candle.timestamp
+    && bar.open === candle.open
+    && bar.high === candle.high
+    && bar.low === candle.low
+    && bar.close === candle.close;
+}
+
+function mergeBuildRanges(ranges: Array<[number, number]>) {
+  const ordered = ranges
+    .filter(([from, to]) => from < to)
+    .sort((left, right) => left[0] - right[0]);
+  const merged: Array<[number, number]> = [];
+  for (const range of ordered) {
+    const previous = merged.at(-1);
+    if (!previous || range[0] > previous[1]) merged.push([...range]);
+    else previous[1] = Math.max(previous[1], range[1]);
+  }
+  return merged;
 }
 
 /**
@@ -352,8 +414,9 @@ function footprintWindowKey(candles: Candle[], settings: FootprintBuildSettings)
  * profile uses its own grouping — pegged the main thread and froze the whole
  * site. Closed bars are immutable between full reconciles: while the candle
  * window and settings are unchanged, only the forming bar is rebuilt from its
- * own prints; a full rebuild runs on window/settings change, bar roll, or the
- * bounded reconcile clock.
+ * own prints. A settings change still requires one complete rebuild, while
+ * bar rolls, viewport shifts and late-print correction reuse matching bars
+ * and rebuild bounded ranges only.
  */
 export function buildFootprintBarsCached(
   cache: { current: FootprintBuildCache | null },
@@ -363,36 +426,74 @@ export function buildFootprintBarsCached(
 ): FootprintBar[] {
   if (!candlesInput.length) return [];
   const lastCandle = candlesInput[candlesInput.length - 1];
-  const windowKey = footprintWindowKey(candlesInput, settings);
+  const windowKey = footprintWindowKey(settings);
   const now = Date.now();
   const entry = cache.current;
-  if (
-    entry
-    && entry.key === windowKey
-    && entry.lastBarTimestamp === lastCandle.timestamp
-    && entry.bars.length === candlesInput.length
-    && now - entry.builtAt < FOOTPRINT_FULL_REBUILD_MS
-  ) {
-    // Only the forming bar can have gained prints; the tape is ordered, so
-    // its slice starts at the bar's own open.
-    let low = 0;
-    let high = records.length;
-    while (low < high) {
-      const middle = (low + high) >>> 1;
-      if (records[middle].timestamp < lastCandle.timestamp) low = middle + 1;
-      else high = middle;
+  if (entry && entry.key === windowKey) {
+    const timestampsAligned = entry.bars.length === candlesInput.length
+      && entry.bars[0]?.timestamp === candlesInput[0]?.timestamp
+      && entry.bars.at(-1)?.timestamp === lastCandle.timestamp;
+    const cachedByTimestamp = timestampsAligned
+      ? null
+      : new Map(entry.bars.map((bar) => [bar.timestamp, bar]));
+    const bars = candlesInput.map((candle, index) => {
+      const previous = timestampsAligned
+        ? entry.bars[index]
+        : cachedByTimestamp?.get(candle.timestamp);
+      if (!previous || !sameCandle(previous, candle)) return null;
+      const endTime = candlesInput[index + 1]?.timestamp ?? Number.POSITIVE_INFINITY;
+      const isClosed = index < candlesInput.length - 1;
+      return previous.endTime === endTime && previous.isClosed === isClosed
+        ? previous
+        : { ...previous, endTime, isClosed };
+    });
+    const missing = bars.reduce<[number, number] | null>((range, bar, index) => {
+      if (bar) return range;
+      return range ? [Math.min(range[0], index), index + 1] : [index, index + 1];
+    }, null);
+    const ranges: Array<[number, number]> = [];
+    if (missing) ranges.push(missing);
+    // The forming bar owns all new executions and is the only mandatory live
+    // rebuild. It stays independent from the background correction cursor.
+    ranges.push([candlesInput.length - 1, candlesInput.length]);
+
+    let reconcileCursor = entry.reconcileCursor;
+    let nextReconcileAt = entry.nextReconcileAt;
+    const closedCount = Math.max(0, candlesInput.length - 1);
+    if (closedCount > 0 && now >= nextReconcileAt) {
+      reconcileCursor = Math.min(Math.max(0, reconcileCursor), closedCount - 1);
+      const reconcileEnd = Math.min(closedCount, reconcileCursor + FOOTPRINT_RECONCILE_BARS);
+      ranges.push([reconcileCursor, reconcileEnd]);
+      reconcileCursor = reconcileEnd >= closedCount ? 0 : reconcileEnd;
+      nextReconcileAt = now + FOOTPRINT_RECONCILE_INTERVAL_MS;
     }
-    const tail = candlesInput.length > 1 ? candlesInput.slice(-2) : candlesInput;
-    const rebuilt = buildFootprintBars(tail, records.slice(low), settings);
-    const formingBar = rebuilt[rebuilt.length - 1];
-    if (formingBar && formingBar.timestamp === lastCandle.timestamp) {
-      const bars = [...entry.bars.slice(0, -1), formingBar];
-      cache.current = { ...entry, bars };
+
+    for (const [from, to] of mergeBuildRanges(ranges)) {
+      const rebuilt = buildFootprintRange(candlesInput, records, settings, from, to);
+      for (let index = from; index < to; index += 1) bars[index] = rebuilt[index - from] ?? null;
+    }
+    if (bars.every((bar): bar is FootprintBar => bar !== null)) {
+      cache.current = {
+        ...entry,
+        bars,
+        lastBarTimestamp: lastCandle.timestamp,
+        nextReconcileAt,
+        reconcileCursor,
+      };
       return bars;
     }
   }
   const bars = buildFootprintBars(candlesInput, records, settings);
-  cache.current = { key: windowKey, bars, builtAt: now, lastBarTimestamp: lastCandle.timestamp };
+  const phase = (footprintCacheSequence++ % 8) * 125;
+  cache.current = {
+    key: windowKey,
+    bars,
+    builtAt: now,
+    lastBarTimestamp: lastCandle.timestamp,
+    nextReconcileAt: now + FOOTPRINT_RECONCILE_INTERVAL_MS + phase,
+    // Correct the most recently closed bars first, then walk old history.
+    reconcileCursor: Math.max(0, candlesInput.length - 1 - FOOTPRINT_RECONCILE_BARS),
+  };
   return bars;
 }
 
