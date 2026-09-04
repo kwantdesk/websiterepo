@@ -1046,6 +1046,7 @@ type WorkspacePreset = {
   panes: WorkspacePane[];
   chartSettings: ChartSettings;
   indicators?: Record<string, ChartIndicatorInstance[]>;
+  candleSettings?: Record<string, Record<string, unknown>>;
   levelVisibility?: Record<string, PaneLevelVisibility>;
   floatingWindows?: WorkspaceFloatingWindow[];
   /** Overall theme at save time, so applying the workspace restores its full look. */
@@ -2261,6 +2262,21 @@ function clonePaneLevelVisibility(value: Record<string, PaneLevelVisibility>) {
   );
 }
 
+function normalizePaneCandleSettings(value: unknown): Record<string, Record<string, unknown>> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(([paneId, entry]) => Boolean(paneId) && entry && typeof entry === "object" && !Array.isArray(entry))
+      .map(([paneId, entry]) => [paneId, { ...(entry as Record<string, unknown>) }]),
+  );
+}
+
+function clonePaneCandleSettings(value: Record<string, Record<string, unknown>>) {
+  return Object.fromEntries(
+    Object.entries(value).map(([paneId, settings]) => [paneId, { ...settings }]),
+  );
+}
+
 function isWorkspacePreset(value: unknown): value is WorkspacePreset {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const preset = value as Partial<WorkspacePreset>;
@@ -2295,6 +2311,7 @@ function normalizeWorkspacePresets(
         layout,
         chartSettings: normalizeChartSettings(preset.chartSettings),
         indicators: normalizePaneIndicatorState(preset.indicators),
+        candleSettings: normalizePaneCandleSettings(preset.candleSettings),
         levelVisibility: normalizePaneLevelVisibility(preset.levelVisibility),
         floatingWindows: normalizeWorkspaceFloatingWindows(
           preset.floatingWindows,
@@ -16170,6 +16187,7 @@ export default function KwantifyWorkspace({
         workspacePanes,
         chartSettings,
         paneIndicators,
+        candleSettingsByPane,
         paneLevelVisibility,
         workspaceFloatingWindows,
         [...linkedViewportPaneIds].sort(),
@@ -16181,6 +16199,7 @@ export default function KwantifyWorkspace({
     }
   }, [
     chartSettings,
+    candleSettingsByPane,
     linkedViewportPaneIds,
     paneIndicators,
     paneLevelVisibility,
@@ -16218,6 +16237,7 @@ export default function KwantifyWorkspace({
     panes: workspacePanes,
     chartSettings,
     indicators: clonePaneIndicatorState(paneIndicators),
+    candleSettings: clonePaneCandleSettings(candleSettingsByPane),
     levelVisibility: clonePaneLevelVisibility(paneLevelVisibility),
     floatingWindows: workspaceFloatingWindows,
     // A workspace is its complete look: the overall theme and every custom
@@ -16297,15 +16317,14 @@ export default function KwantifyWorkspace({
     }
     setWorkspaceLayout("custom");
     if (preset.chartSettings) {
-      // Theme-linked workspaces follow the active account palette. A workspace
-      // that the trader customised keeps its exact saved candle palette.
-      const nextChartSettings = mergeWorkspaceChartSettingsWithActiveTheme(
-        preset.chartSettings,
-        loadStoredChartSettings(),
-      );
+      // Applying a named workspace is an explicit restore operation. Use its
+      // exact saved palette; a global theme only becomes part of this preset
+      // after the trader presses Quick Save.
+      const nextChartSettings = normalizeChartSettings(preset.chartSettings);
       setChartSettings(nextChartSettings);
       setDraftChartSettings(nextChartSettings);
       setChartSettingsSnapshot(nextChartSettings);
+      saveStoredChartSettings(nextChartSettings);
       saveScopedChartSettings(chartWorkspaceScopeRef.current, nextChartSettings);
     }
     if (preset.indicators) {
@@ -16320,6 +16339,7 @@ export default function KwantifyWorkspace({
       // workspace it was saved into.
       setPaneIndicators(clonePaneIndicatorState(preset.indicators));
     }
+    setCandleSettingsByPane(clonePaneCandleSettings(preset.candleSettings ?? {}));
     setPaneLevelVisibility(clonePaneLevelVisibility(preset.levelVisibility ?? {}));
     const firstPaneId = collectWorkspacePaneIds(normalizedTree)[0];
     if (firstPaneId) setActivePaneId(firstPaneId);

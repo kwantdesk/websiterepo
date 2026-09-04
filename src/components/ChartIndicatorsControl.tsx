@@ -36,7 +36,7 @@ import { DESK_SESSIONS, DESK_SESSION_SETTING_KEYS } from "@/lib/volumeProfileSes
 import type { ChartSettings } from "@/lib/chartSettings";
 import IndicatorPaletteSection from "@/components/indicators/IndicatorPaletteSection";
 import { supportsPalette as indicatorSupportsPalette } from "@/lib/indicatorPaletteRegistry";
-import { CANDLE_STYLES, CANDLE_SETTING_KEYS, OPEN_CANDLE_SETTINGS_EVENT, resolveCandleStyle } from "@/lib/candleStyle";
+import { CANDLE_STYLES, CANDLE_SETTING_KEYS, OPEN_CANDLE_SETTINGS_EVENT, candleSettingsUseThemeColors, resolveCandleStyle } from "@/lib/candleStyle";
 import {
   applyFootprintPreset,
   deleteFootprintTemplate,
@@ -984,6 +984,7 @@ export default function ChartIndicatorsControl({
     return () => window.removeEventListener(OPEN_CANDLE_SETTINGS_EVENT, open);
   }, []);
   const candleStyleId = resolveCandleStyle(candleSettings?.[CANDLE_SETTING_KEYS.style]);
+  const candlesUseThemeColors = candleSettingsUseThemeColors(candleSettings);
   const setCandleSetting = (key: string, value: unknown) => {
     onCandleSettingsChange?.({ ...(candleSettings ?? {}), [key]: value });
   };
@@ -1902,6 +1903,18 @@ export default function ChartIndicatorsControl({
             </div>
 
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
+              <label className="flex items-center justify-between gap-3 rounded-xl border border-border bg-surface/30 p-3 text-[10px] text-foreground">
+                <span>
+                  <span className="block font-medium">Use theme colours</span>
+                  <span className="mt-0.5 block text-[8px] text-muted">Turn off only when this chart needs its own candle palette.</span>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={candlesUseThemeColors}
+                  onChange={(event) => setCandleSetting(CANDLE_SETTING_KEYS.useThemeColors, event.target.checked)}
+                  className="h-3.5 w-3.5 accent-[var(--primary)]"
+                />
+              </label>
               <div data-settings-section="Style" className="space-y-2">
                 <span className="block text-[11px] font-medium text-foreground">Style</span>
                 <div className="grid grid-cols-2 gap-1.5">
@@ -1937,7 +1950,10 @@ export default function ChartIndicatorsControl({
                   accent: chartSettings.borderUpColor,
                   text: chartSettings.upColor,
                 }}
-                onChange={(next) => onCandleSettingsChange?.(next)}
+                onChange={(next) => onCandleSettingsChange?.({
+                  ...next,
+                  [CANDLE_SETTING_KEYS.useThemeColors]: false,
+                })}
               />
 
               <div data-settings-section="Body" className="space-y-3 rounded-xl border border-border bg-surface/30 p-3">

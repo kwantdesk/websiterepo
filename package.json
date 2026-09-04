@@ -54,6 +54,7 @@
     "test:gamma-heatmap": "node --test tests/gamma-heatmap.test.mjs",
     "test:event-bar-block-prints": "node --import ./scripts/alias-hook.mjs scripts/test-event-bar-block-prints.mjs",
     "test:workspace-colour-persistence": "node --import ./scripts/alias-hook.mjs scripts/test-workspace-colour-persistence.mjs",
+    "test:global-theme-chart-ownership": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-global-theme-chart-ownership.mjs",
     "test:indicator-templates": "node --import ./scripts/alias-hook.mjs scripts/test-indicator-templates.mjs",
     "test:indicator-library-favorites": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-indicator-library-favorites.mjs",
     "test:gex-vue-indicator-compatibility": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-gex-vue-indicator-compatibility.mjs",

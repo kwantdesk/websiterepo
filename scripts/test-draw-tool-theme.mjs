@@ -113,7 +113,9 @@ const points = [{ time: 1, price: 10 }, { time: 2, price: 20 }];
 
   // Picking a colour has to claim the override or it is silently ignored.
   const settings = readFileSync(new URL("../src/components/ChartDrawSettings.tsx", import.meta.url), "utf8");
-  assert.ok(settings.includes("color: e.target.value, useThemeColor: false"),
+  assert.ok(
+    settings.includes("patchStyle({ color: hex, useThemeColor: false })")
+      || settings.includes("color: e.target.value, useThemeColor: false"),
     "the colour picker must opt out of the theme");
 }
 

@@ -4212,11 +4212,8 @@ function Chart({
     return () => window.removeEventListener("kwantdesk:theme-change", handleThemeChange);
   }, []);
 
-  // Drawing tools are linked to the selected theme: new drawings already
-  // default to the theme accent, and a theme change re-links every existing
-  // drawing (Fibonacci tools included) to the new accent. Custom per-drawing
-  // colours therefore persist exactly until the next theme change overrides
-  // them, matching how indicators and chart palettes behave.
+  // Drawing tools follow the selected theme unless the trader explicitly
+  // chose a custom colour for that drawing.
   const drawingThemeRelinkReadyRef = useRef(false);
   useEffect(() => {
     if (!drawingThemeRelinkReadyRef.current) {
@@ -4229,6 +4226,7 @@ function Chart({
     const themeColor = themeStyles.getPropertyValue("--primary").trim() || settings.upColor;
     manager.getAllDrawings().forEach((drawing) => {
       if (drawing.id === "__kwantdesk_drawing_preview__") return;
+      if (drawing.style?.useThemeColor === false) return;
       const fillOpacity = Number(drawing.style?.fillOpacity);
       drawing.updateStyle({
         lineColor: themeColor,

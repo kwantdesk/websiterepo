@@ -88,6 +88,7 @@ export type CandleSeriesColors = {
 
 /** The settings keys the dialog writes, so the pickers and this agree. */
 export const CANDLE_SETTING_KEYS = {
+  useThemeColors: "useThemeColors",
   style: "candleStyle",
   up: "candleUpColor",
   down: "candleDownColor",
@@ -99,6 +100,25 @@ export const CANDLE_SETTING_KEYS = {
   borderVisible: "candleBorderVisible",
   wickVisible: "candleWickVisible",
 } as const;
+
+const CANDLE_CUSTOM_COLOR_KEYS = [
+  CANDLE_SETTING_KEYS.up,
+  CANDLE_SETTING_KEYS.down,
+  CANDLE_SETTING_KEYS.borderUp,
+  CANDLE_SETTING_KEYS.borderDown,
+  CANDLE_SETTING_KEYS.wickUp,
+  CANDLE_SETTING_KEYS.wickDown,
+] as const;
+
+/** Missing means theme-linked unless a legacy pane already carries a colour. */
+export function candleSettingsUseThemeColors(
+  settings: Record<string, unknown> | null | undefined,
+) {
+  const explicit = settings?.[CANDLE_SETTING_KEYS.useThemeColors];
+  if (typeof explicit === "boolean") return explicit;
+  if (resolveVolumeProfileGradient(settings?.[INDICATOR_GRADIENT_KEY])) return false;
+  return !CANDLE_CUSTOM_COLOR_KEYS.some((key) => hexOrNull(settings?.[key]) !== null);
+}
 
 export function resolveCandleStyle(value: unknown): CandleStyleId {
   return CANDLE_STYLES.some((style) => style.id === value) ? value as CandleStyleId : "candles";
@@ -124,8 +144,11 @@ export function resolveCandleSeriesColors(
   theme: CandleThemeColors,
 ): CandleSeriesColors {
   const style = resolveCandleStyle(settings?.[CANDLE_SETTING_KEYS.style]);
-  const gradient = resolveVolumeProfileGradient(settings?.[INDICATOR_GRADIENT_KEY]);
-  const pick = (key: string, fallback: string) => hexOrNull(settings?.[key]) ?? fallback;
+  const useThemeColors = candleSettingsUseThemeColors(settings);
+  const gradient = useThemeColors ? null : resolveVolumeProfileGradient(settings?.[INDICATOR_GRADIENT_KEY]);
+  const pick = (key: string, fallback: string) => useThemeColors
+    ? fallback
+    : hexOrNull(settings?.[key]) ?? fallback;
 
   // A scheme spreads across the pair the way it does on a two-role study: the
   // falling side takes its start, the rising side its end.

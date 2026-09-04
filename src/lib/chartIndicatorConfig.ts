@@ -3937,7 +3937,11 @@ export const linkPaneIndicatorStateToTheme = (state: Record<string, ChartIndicat
 
 export function linkStoredPaneIndicatorsToTheme() {
   if (typeof window === "undefined") return;
-  for (const key of ["kwantdesk-chart-indicators", "olisa-chart-pane-indicators"]) {
+  for (const key of [
+    "kwantdesk-chart-indicators",
+    "olisa-chart-pane-indicators",
+    "kwantdesk:gamma-charting:kwantdesk-chart-indicators",
+  ]) {
     const raw = window.localStorage.getItem(key);
     if (!raw) continue;
     try {

@@ -24,6 +24,11 @@ export const CHART_SETTINGS_STORAGE_KEY = "olisa-chart-settings";
 export const CHART_SETTINGS_METADATA_KEY = "chartSettings";
 export const CHART_SETTINGS_CHANGE_EVENT = "kwantdesk:chart-settings-change";
 
+const SCOPED_CHART_SETTINGS_STORAGE_KEYS = [
+  "kwantdesk:chart-workspace-settings:v1",
+  "kwantdesk:gamma-charting:kwantdesk:chart-workspace-settings:v1",
+] as const;
+
 export const defaultChartSettings: ChartSettings = {
   themeLinked: true,
   colorBarsPreviousClose: false,
@@ -122,6 +127,26 @@ export function applyActiveThemeToWorkspaceChartSettings(
   merged.themeLinked = true;
   for (const field of CHART_THEME_COLOR_FIELDS) merged[field] = active[field];
   return merged;
+}
+
+/**
+ * Repaint the current Charts and GEX VUE runtimes even when those routes are
+ * not mounted when the account theme changes. Named workspace presets are
+ * intentionally separate and are never touched here: only Quick Save may
+ * commit a new appearance to one of those.
+ */
+export function relinkStoredChartWorkspaceSettingsToActiveTheme(activeSettings: unknown) {
+  if (typeof window === "undefined") return;
+  for (const key of SCOPED_CHART_SETTINGS_STORAGE_KEYS) {
+    let stored: unknown = {};
+    try {
+      stored = JSON.parse(window.localStorage.getItem(key) ?? "{}");
+    } catch {
+      // A malformed runtime snapshot is safely replaced by normalized data.
+    }
+    const linked = applyActiveThemeToWorkspaceChartSettings(stored, activeSettings);
+    writeProtectedItem(key, JSON.stringify(linked));
+  }
 }
 
 export function loadStoredChartSettings() {

@@ -33,7 +33,7 @@ import {
   Wallet,
 } from "lucide-react";
 import { defaultTheme, readStoredTheme, saveTheme as saveAppTheme, type ThemeColors } from "@/lib/theme";
-import { defaultChartSettings, extractUserChartSettings, loadStoredChartSettings, mergeChartSettingsIntoTheme, saveStoredChartSettings, type ChartSettings } from "@/lib/chartSettings";
+import { defaultChartSettings, extractUserChartSettings, loadStoredChartSettings, mergeChartSettingsIntoTheme, relinkStoredChartWorkspaceSettingsToActiveTheme, saveStoredChartSettings, type ChartSettings } from "@/lib/chartSettings";
 import { linkStoredPaneIndicatorsToTheme } from "@/lib/chartIndicatorConfig";
 import { createClient } from "@/lib/supabase";
 import { usagePlans } from "@/lib/usagePlans";
@@ -614,6 +614,7 @@ export default function SettingsPage() {
     setThemeSettings(nextTheme);
     setChartSettings(normalizedChartSettings);
     linkStoredPaneIndicatorsToTheme();
+    relinkStoredChartWorkspaceSettingsToActiveTheme(normalizedChartSettings);
 
     // Canvas charts receive their exact palette payload first. Applying the
     // CSS theme then emits the global theme event in the same interaction, so
