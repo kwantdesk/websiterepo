@@ -1705,3 +1705,18 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
   one minute or greater. Tick/volume/range/Footprint history remains a separate
   trade-tick and volume-at-price import phase and is never fabricated from
   minute OHLC.
+
+## 2026-09-04 — Fixed range volume-profile VAH and VAL
+
+- The fixed/anchored drawing calculator already produced the correct value-area
+  boundaries, but its dedicated SVG renderer threw them away and painted only
+  POC. VAH and VAL now use those calculated prices and span the same selected
+  profile range as POC.
+- Both value-area levels carry their proper labels. The existing label switch
+  controls all three level labels.
+- The double-click drawing settings now expose a VAH/VAL visibility switch and
+  independent POC and value-area line colour/width controls. Existing drawings
+  default the missing VAH/VAL switch to on, so no workspace migration or redraw
+  is required.
+- Verification: focused fixed-profile regression and native-control audit
+  passed; TypeScript and the complete 80-page production build passed.

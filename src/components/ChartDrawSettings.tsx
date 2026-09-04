@@ -180,6 +180,11 @@ export default function ChartDrawSettings({
                     <input type="range" min={10} max={80} step={2} value={drawing.style.profileWidthPercent ?? 32} onChange={(e) => patchStyle({ profileWidthPercent: Number(e.target.value) })} className="w-40 accent-primary" />
                   </Row>
                   <Row label="Show POC line"><input type="checkbox" checked={drawing.style.showPoc !== false} onChange={(e) => patchStyle({ showPoc: e.target.checked })} className="h-4 w-4 accent-primary" /></Row>
+                  <Row label="Show VAH / VAL lines"><input type="checkbox" checked={drawing.style.showValueAreaLines !== false} onChange={(e) => patchStyle({ showValueAreaLines: e.target.checked })} className="h-4 w-4 accent-primary" /></Row>
+                  <Row label="POC line colour"><ChartColorField ariaLabel="Point of control line colour" value={drawing.style.pocColor ?? resolveDrawColor(drawing.style, themeColor)} onChange={(hex) => patchStyle({ pocColor: hex })} /></Row>
+                  <Row label="VAH / VAL colour"><ChartColorField ariaLabel="Value area line colour" value={drawing.style.valueAreaColor ?? resolveDrawColor(drawing.style, themeColor)} onChange={(hex) => patchStyle({ valueAreaColor: hex })} /></Row>
+                  <Row label={`POC line width · ${drawing.style.pocLineWidth ?? drawing.style.width}px`}><input type="range" min={0.5} max={4} step={0.5} value={drawing.style.pocLineWidth ?? drawing.style.width} onChange={(e) => patchStyle({ pocLineWidth: Number(e.target.value) })} className="w-40 accent-primary" /></Row>
+                  <Row label={`VAH / VAL width · ${drawing.style.valueAreaLineWidth ?? drawing.style.width}px`}><input type="range" min={0.5} max={4} step={0.5} value={drawing.style.valueAreaLineWidth ?? drawing.style.width} onChange={(e) => patchStyle({ valueAreaLineWidth: Number(e.target.value) })} className="w-40 accent-primary" /></Row>
                   <Row label="Outside value area"><ChartColorField ariaLabel="Outside value area colour" value={drawing.style.outsideColor ?? "#787B86"} onChange={(hex) => patchStyle({ outsideColor: hex })} /></Row>
                 </div>
               ) : null}

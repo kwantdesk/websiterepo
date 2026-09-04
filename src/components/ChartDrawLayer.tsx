@@ -1394,7 +1394,14 @@ export default function ChartDrawLayer({
           const maxBarW = Math.max(30, (boxRight - boxLeft) * (widthPercent / 100));
           const outside = style.outsideColor ?? "#787B86";
           const showPoc = style.showPoc !== false;
+          const showValueAreaLines = style.showValueAreaLines !== false;
+          const pocStroke = style.pocColor ?? stroke;
+          const valueAreaStroke = style.valueAreaColor ?? stroke;
+          const pocLineWidth = Math.max(0.5, Math.min(4, style.pocLineWidth ?? w));
+          const valueAreaLineWidth = Math.max(0.5, Math.min(4, style.valueAreaLineWidth ?? w));
           const pocY = toY(prof.poc);
+          const vahY = toY(prof.vahHigh);
+          const valY = toY(prof.valLow);
           return <g>
             {prof.bins.map((bin, i) => {
               const yTop = toY(bin.priceHigh); const yBot = toY(bin.priceLow);
@@ -1408,8 +1415,12 @@ export default function ChartDrawLayer({
               return <rect key={i} x={boxLeft} y={Math.min(yTop, yBot) + 0.175} width={Math.max(0.5, w)} height={rowHeight} rx={Math.min(1.5, rowHeight / 2)}
                 fill={isPoc ? stroke : inVA ? stroke : outside} fillOpacity={isPoc ? 0.95 : inVA ? 0.62 : 0.32} />;
             })}
-            {showPoc && pocY != null ? line(boxLeft, pocY, boxRight, pocY, stroke, 1) : null}
-            {showPoc && style.showLabels && pocY != null ? label(boxLeft + 3, pocY - 2, `POC ${prof.poc.toFixed(2)}`, stroke) : null}
+            {showValueAreaLines && vahY != null ? line(boxLeft, vahY, boxRight, vahY, valueAreaStroke, valueAreaLineWidth) : null}
+            {showValueAreaLines && valY != null ? line(boxLeft, valY, boxRight, valY, valueAreaStroke, valueAreaLineWidth) : null}
+            {showPoc && pocY != null ? line(boxLeft, pocY, boxRight, pocY, pocStroke, pocLineWidth) : null}
+            {showValueAreaLines && style.showLabels && vahY != null ? label(boxLeft + 3, vahY - 2, `VAH ${prof.vahHigh.toFixed(2)}`, valueAreaStroke) : null}
+            {showPoc && style.showLabels && pocY != null ? label(boxLeft + 3, pocY - 2, `POC ${prof.poc.toFixed(2)}`, pocStroke) : null}
+            {showValueAreaLines && style.showLabels && valY != null ? label(boxLeft + 3, valY - 2, `VAL ${prof.valLow.toFixed(2)}`, valueAreaStroke) : null}
           </g>;
         }
         case "anchoredVwap": {

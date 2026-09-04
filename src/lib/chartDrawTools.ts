@@ -157,6 +157,11 @@ export type DrawStyle = {
   profileRows?: number;        // row count, 20..200 (default 80)
   valueAreaPercent?: number;   // 50..95 (default 70)
   showPoc?: boolean;           // POC line + label (default true)
+  showValueAreaLines?: boolean; // VAH + VAL lines and labels (default true)
+  pocColor?: string;           // optional POC line override; absent follows drawing colour
+  valueAreaColor?: string;     // optional VAH / VAL override; absent follows drawing colour
+  pocLineWidth?: number;       // 0.5..4; absent follows the drawing line width
+  valueAreaLineWidth?: number; // 0.5..4; absent follows the drawing line width
   outsideColor?: string;       // rows outside the value area (default #787B86)
   profileWidthPercent?: number; // widest row as % of the range width, 10..80
   /**
