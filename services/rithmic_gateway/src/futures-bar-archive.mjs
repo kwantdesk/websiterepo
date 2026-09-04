@@ -61,6 +61,40 @@ const decodeBar = (row) => (Array.isArray(row)
   // hand-repaired - still loads rather than being silently dropped.
   : { t: row.t ?? row.timestamp, o: row.o ?? row.open, h: row.h ?? row.high, l: row.l ?? row.low, c: row.c ?? row.close, v: row.v ?? row.volume });
 
+function validArchivedBar(bar) {
+  return [bar?.t, bar?.o, bar?.h, bar?.l, bar?.c, bar?.v].every(Number.isFinite)
+    && bar.t > 0
+    && bar.o > 0
+    && bar.h > 0
+    && bar.l > 0
+    && bar.c > 0
+    && bar.v >= 0
+    && bar.h >= Math.max(bar.o, bar.c)
+    && bar.l <= Math.min(bar.o, bar.c)
+    && bar.h >= bar.l;
+}
+
+/**
+ * Join canonical History Plant minutes with the desk's captured trade bars.
+ *
+ * History Plant is the exchange-side closed-bar baseline. A local recording
+ * is valuable beyond that baseline and can fill a minute absent from it, but
+ * it may have crossed a collector reconnect or an explicit recorder GAP. It
+ * therefore cannot replace a canonical minute merely because the session has
+ * an exact-contract file. This per-minute join is what prevents one partial
+ * recording from hiding an otherwise complete historical session.
+ */
+export function mergeRithmicHistoryBars(historyPlantBars, recordedBars) {
+  const merged = new Map();
+  for (const bar of historyPlantBars) {
+    if (validArchivedBar(bar)) merged.set(bar.t, bar);
+  }
+  for (const bar of recordedBars) {
+    if (validArchivedBar(bar) && !merged.has(bar.t)) merged.set(bar.t, bar);
+  }
+  return [...merged.values()].sort((left, right) => left.t - right.t);
+}
+
 function instrumentFileName(exchange, symbol) {
   return `${String(exchange).toUpperCase()}-${String(symbol).toUpperCase()}.json`;
 }
@@ -355,7 +389,7 @@ export class FuturesBarArchive {
       if (!Array.isArray(rows)) return [];
       return rows
         .map(decodeBar)
-        .filter((bar) => Number.isFinite(bar.t) && Number.isFinite(bar.c));
+        .filter(validArchivedBar);
     } catch {
       // Absent or unreadable is simply "no bars for that session".
       return [];
@@ -408,20 +442,35 @@ export class FuturesBarArchive {
 
     for (const tradingDate of tradingDatesBetween(start, end)) {
       const live = this.open.get(tradingDate)?.get(`${upper}:${upperSymbol}`);
-      const file = join(this.dayDir(tradingDate), instrumentFileName(upper, upperSymbol));
+      const dayDir = this.dayDir(tradingDate);
+      const file = join(dayDir, instrumentFileName(upper, upperSymbol));
       const exactBars = await this.readFile(file);
-      // History Plant continuous bars are keyed by product root (NQ), while
-      // the live archive is keyed by active contract (NQU6). Fall back only
-      // when that exact contract has no session file, preserving captured
-      // live truth and keeping micros separate from their parent products.
-      const archived = exactBars.length
-        ? exactBars
-        : await this.readFile(join(
-            this.dayDir(tradingDate),
-            instrumentFileName(upper, contractRoot(upperSymbol)),
-          ));
+      // History Plant bars are stored by product root (NQ), while live capture
+      // is stored by exact active contract (NQU6). Read BOTH. The old all-or-
+      // nothing fallback discarded the complete History Plant session as soon
+      // as one exact-contract minute existed, preserving every local gap and
+      // partial wick for the chart.
+      const root = contractRoot(upperSymbol);
+      const historyPlantBars = root === upperSymbol
+        ? []
+        : await this.readFile(join(dayDir, instrumentFileName(upper, root)));
+      const archived = mergeRithmicHistoryBars(historyPlantBars, exactBars);
       for (const bar of archived) merged.set(bar.t, bar);
-      if (live) for (const bar of live.values()) merged.set(bar.t, bar);
+      if (live) {
+        const canonicalEnd = historyPlantBars.at(-1)?.t ?? Number.NEGATIVE_INFINITY;
+        for (const bar of live.values()) {
+          if (!validArchivedBar(bar)) continue;
+          const existing = merged.get(bar.t);
+          // The current edge continues after History Plant's last closed bar.
+          // If both sources contain that final minute, accept the live version
+          // only when it has accumulated at least as much traded volume.
+          if (
+            !existing
+            || bar.t > canonicalEnd
+            || (bar.t === canonicalEnd && bar.v >= existing.v)
+          ) merged.set(bar.t, bar);
+        }
+      }
     }
 
     const bars = [...merged.values()]
@@ -437,7 +486,7 @@ export class FuturesBarArchive {
       exchange: upper,
       symbol: upperSymbol,
       interval: String(interval || "1m"),
-      source: "Rithmic recorded trade tape",
+      source: "Rithmic History Plant + recorded trade tape",
       startMs: start,
       endMs: end,
       candles: served.map((bar) => ({

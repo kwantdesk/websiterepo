@@ -50,7 +50,7 @@ const check = (name, test) => {
 check("CME history has no retired Databento credential gate", () => {
   assert.doesNotMatch(route, /vendorMarketDataConfigured\("databento"\)/);
   assert.doesNotMatch(route, /CME market data is not configured/);
-  assert.match(route, /RECORDED_DATASET = "Rithmic recorded trade tape"/);
+  assert.match(route, /RECORDED_DATASET = "Rithmic History Plant \+ recorded trade tape"/);
 });
 
 check("every advertised futures interval is routed to Rithmic", () => {

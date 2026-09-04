@@ -7,6 +7,7 @@ import { EventEmitter } from "node:events";
 
 import {
   FuturesBarArchive,
+  mergeRithmicHistoryBars,
   parseIntervalMs,
   resampleBars,
   tradeFromRecord,
@@ -137,6 +138,69 @@ test("old sessions fall back from today's contract to History Plant root bars", 
     assert.equal(result.candles.length, 1);
     assert.equal(result.candles[0].close, 21_005);
   });
+});
+
+test("History Plant remains the baseline when an exact recording is partial", async () => {
+  const first = { t: T0, o: 100, h: 104, l: 99, c: 103, v: 50 };
+  const second = { t: T0 + 60_000, o: 103, h: 106, l: 102, c: 105, v: 60 };
+  const partialExact = { t: T0, o: 100, h: 101, l: 100, c: 101, v: 5 };
+  assert.deepEqual(
+    mergeRithmicHistoryBars([first, second], [partialExact]),
+    [first, second],
+    "one recorded minute replaced the canonical bar or hid the next History Plant minute",
+  );
+});
+
+test("archive load reads History Plant and exact-contract files together", async () => {
+  await withArchive(async (archive, dir) => {
+    const tradingDate = chicagoTradingDate(T0);
+    const dayDir = join(dir, "bars", tradingDate);
+    mkdirSync(dayDir, { recursive: true });
+    writeFileSync(join(dayDir, "CME-NQ.json"), JSON.stringify({
+      bars: [
+        [T0, 100, 104, 99, 103, 50],
+        [T0 + 60_000, 103, 106, 102, 105, 60],
+      ],
+    }));
+    writeFileSync(join(dayDir, "CME-NQU6.json"), JSON.stringify({
+      // This partial first minute used to make the complete root file vanish.
+      bars: [
+        [T0, 100, 101, 100, 101, 5],
+        [T0 + 120_000, 105, 107, 104, 106, 20],
+      ],
+    }));
+    const result = await archive.load({
+      exchange: "CME",
+      symbol: "NQU6",
+      interval: "1m",
+      fromMs: T0,
+      toMs: T0 + 120_000,
+    });
+    assert.deepEqual(
+      result.candles.map((bar) => [bar.timestamp, bar.high, bar.low, bar.close]),
+      [
+        [T0, 104, 99, 103],
+        [T0 + 60_000, 106, 102, 105],
+        [T0 + 120_000, 107, 104, 106],
+      ],
+    );
+  });
+});
+
+test("recorded Rithmic minutes fill holes beyond and inside History Plant coverage", () => {
+  const first = { t: T0, o: 100, h: 101, l: 99, c: 100, v: 10 };
+  const missing = { t: T0 + 60_000, o: 100, h: 102, l: 100, c: 101, v: 12 };
+  const last = { t: T0 + 120_000, o: 101, h: 103, l: 101, c: 102, v: 14 };
+  assert.deepEqual(
+    mergeRithmicHistoryBars([first, last], [missing]),
+    [first, missing, last],
+  );
+});
+
+test("structurally impossible archived OHLC is rejected", () => {
+  const valid = { t: T0, o: 100, h: 102, l: 99, c: 101, v: 10 };
+  const impossible = { t: T0 + 60_000, o: 100, h: 99, l: 98, c: 101, v: 20 };
+  assert.deepEqual(mergeRithmicHistoryBars([valid], [impossible]), [valid]);
 });
 
 test("a flush merges with the session already on disk", async () => {

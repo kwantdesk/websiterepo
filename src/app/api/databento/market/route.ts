@@ -26,7 +26,7 @@ import {
  * first thing anyone checks when a number looks wrong, so a label naming a
  * provider we no longer buy this from is worse than no label at all.
  */
-const RECORDED_DATASET = "Rithmic recorded trade tape";
+const RECORDED_DATASET = "Rithmic History Plant + recorded trade tape";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
