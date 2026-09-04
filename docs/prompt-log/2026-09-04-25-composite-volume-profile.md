@@ -38,5 +38,10 @@ Weekly studies.
 
 ## Deployment
 
-Pending the feature commit, single production deployment and public route
-verification.
+- Feature commit `9989ed57` was pushed to `main`.
+- The sole active Vercel project `websiterepo-yfmi` completed deployment
+  `BWcMkgubtDU9BWPHWjd3vWwaaANE` successfully.
+- The public `/charts` route returned the expected authenticated 307 redirect;
+  following it returned 200 from production.
+- This documentation-only evidence commit is excluded by the repository's
+  Vercel ignore rules and must not create a second build.
