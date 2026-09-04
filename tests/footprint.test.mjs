@@ -281,7 +281,7 @@ test("legacy footprint detail gates migrate to adaptive readable defaults", () =
     minimumWidthToShowText: 58,
     minimumRowHeightToShowText: 13,
   });
-  assert.equal(settings.footprintSettingsVersion, 6);
+  assert.equal(settings.footprintSettingsVersion, DEFAULT_FOOTPRINT_SETTINGS.footprintSettingsVersion);
   assert.equal(settings.minimumWidthToShowText, 32);
   assert.equal(settings.minimumRowHeightToShowText, 9);
 

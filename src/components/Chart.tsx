@@ -188,7 +188,7 @@ import { futuresVenue } from "@/lib/futuresVenue";
 import { PositionCalculatorPrimitive, type PositionCalculatorModel } from "@/lib/positionCalculatorPrimitive";
 import { ImbalanceZonesPrimitive, type ImbalanceZoneModel } from "@/lib/imbalanceZonesPrimitive";
 import { retainLiveFootprintRows } from "@/lib/footprintLive";
-import { FOOTPRINT_DATA_REFRESH_INTERVAL_MS, ORDER_FLOW_DATA_REFRESH_INTERVAL_MS } from "@/lib/footprintRuntime";
+import { ORDER_FLOW_DATA_REFRESH_INTERVAL_MS } from "@/lib/footprintRuntime";
 import { footprintProfileGranularityTicks } from "@/lib/footprintSettings";
 import { calculateDeepEffort } from "@/lib/deepEffort";
 import { cancelChartFrameWork, queueChartFrameWork } from "@/lib/chartFrameWork";
@@ -3302,7 +3302,6 @@ function Chart({
   const liveFootprintEnabledRef = useRef(false);
   const liveFootprintRenderBarsRef = useRef<FootprintRenderBar[]>([]);
   const liveFootprintTapeRef = useRef<InstitutionalTrade[]>([]);
-  const liveFootprintRefreshTimerRef = useRef<number | null>(null);
   const retainedFootprintBarsRef = useRef<{ key: string; bars: FootprintRenderBar[] } | null>(null);
   // Incremental build caches — one per consumer per grouping, so each path
   // reuses its own closed bars and rebuilds only the forming bar per refresh.
@@ -4230,7 +4229,6 @@ function Chart({
       return low;
     };
     const refreshVisibleFootprint = () => {
-      liveFootprintRefreshTimerRef.current = null;
       if (!liveFootprintEnabledRef.current) return;
       const sourceCandles = liveFootprintSourceCandlesRef.current;
       const buildSettings = liveFootprintBuildSettingsRef.current;
@@ -4287,25 +4285,15 @@ function Chart({
       // The tape is the shared canonical reference; assigning it is O(1).
       // Only the visible bars are rebuilt, directly into the canvas primitive.
       liveFootprintTapeRef.current = detail.tape;
-      if (liveFootprintRefreshTimerRef.current !== null) return;
-      liveFootprintRefreshTimerRef.current = window.setTimeout(
-        () => {
-          liveFootprintRefreshTimerRef.current = null;
-          queueChartFrameWork(footprintWorkKey, refreshVisibleFootprint);
-        },
-        // One cadence either way: the tape does not care whether the keyboard
-        // is in use, and the slower branch was the one a trader watching price
-        // actually sat in.
-        FOOTPRINT_DATA_REFRESH_INTERVAL_MS,
-      );
+      // The workspace has already losslessly coalesced execution packets.
+      // A second timer here used to add another 80 ms before the cell values
+      // and POC followed the candle. The shared frame queue is itself the
+      // coalescer, so schedule the latest canonical tape for the next paint.
+      queueChartFrameWork(footprintWorkKey, refreshVisibleFootprint);
     };
     window.addEventListener(LIVE_CHART_EXECUTION_EVENT, receive);
     return () => {
       window.removeEventListener(LIVE_CHART_EXECUTION_EVENT, receive);
-      if (liveFootprintRefreshTimerRef.current !== null) {
-        window.clearTimeout(liveFootprintRefreshTimerRef.current);
-        liveFootprintRefreshTimerRef.current = null;
-      }
       cancelChartFrameWork(footprintWorkKey);
       liveFootprintTapeRef.current = [];
     };
@@ -5735,6 +5723,7 @@ function Chart({
   const footprintBuildSettings = useMemo((): FootprintBuildSettings => ({
       tickSize: priceFormat.minMove,
       groupTicks: resolvedFootprintGroupTicks,
+      inputType: footprintSettings.inputType === "num-trades" ? "num-trades" : "volume",
       instrument,
       minimumTradeVolume: Number(footprintSettings.minimumTradeVolume ?? 0),
       maximumTradeVolume: Number(footprintSettings.maximumTradeVolume ?? 0),
@@ -5752,6 +5741,7 @@ function Chart({
       unfinishedAuctionMinimumVolume: Number(footprintSettings.unfinishedAuctionMinimumVolume ?? 1),
     }), [
     footprintSettings.imbalanceMode,
+    footprintSettings.inputType,
     footprintSettings.includeZero,
     footprintSettings.showEmptyPriceRows,
     footprintSettings.maximumTradeVolume,
@@ -5956,7 +5946,7 @@ function Chart({
     return {
       contentMode: option(
         footprintSettings.contentMode ?? footprintSettings.type,
-        ["bid-ask", "delta", "volume", "volume-delta", "trades", "bid-ask-histogram", "volume-histogram", "delta-histogram", "ladder"],
+        ["bid-ask", "delta", "volume", "volume-delta", "volume-trades", "trades", "trades-histogram", "bid-ask-histogram", "volume-histogram", "delta-histogram", "ladder"],
         "bid-ask",
       ),
       visualizationMode: option(

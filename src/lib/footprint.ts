@@ -15,6 +15,7 @@ export type FootprintImbalanceMode = "diagonal" | "horizontal" | "same-row" | "d
 export type FootprintBuildSettings = {
   tickSize: number;
   groupTicks: number;
+  inputType?: "volume" | "num-trades";
   minimumTradeVolume: number;
   maximumTradeVolume: number;
   imbalanceMode: FootprintImbalanceMode;
@@ -54,6 +55,8 @@ type MutableBar = {
   candle: Candle;
   levels: Map<number, FootprintPriceLevel>;
   weightedPriceVolume: number;
+  weightedPriceTrades: number;
+  tradeWeight: number;
   delta: number;
   deltaHigh: number;
   deltaLow: number;
@@ -154,6 +157,8 @@ export function buildFootprintBars(
     candle,
     levels: new Map(),
     weightedPriceVolume: 0,
+    weightedPriceTrades: 0,
+    tradeWeight: 0,
     delta: 0,
     deltaHigh: 0,
     deltaLow: 0,
@@ -190,6 +195,8 @@ export function buildFootprintBars(
     level.deltaPercent = level.classifiedVolume > 0 ? level.delta / level.classifiedVolume : 0;
     bar.levels.set(groupedTick, level);
     bar.weightedPriceVolume += trade.price * trade.size;
+    bar.weightedPriceTrades += trade.price * trade.tradeCount;
+    bar.tradeWeight += trade.tradeCount;
     bar.delta += trade.askVolume - trade.bidVolume;
     bar.deltaHigh = Math.max(bar.deltaHigh, bar.delta);
     bar.deltaLow = Math.min(bar.deltaLow, bar.delta);
@@ -209,6 +216,7 @@ export function buildFootprintBars(
       mutable.candle.close,
       groupTicks,
       {
+        inputType: settings.inputType === "num-trades" ? "num-trades" : "volume",
         valueAreaPercent: Math.min(1, Math.max(0.5, finite(settings.valueAreaPercent, 0.7))),
         comparisonMode: comparisonMode(settings.imbalanceMode),
         imbalanceRatio: Math.max(1, finite(settings.minimumImbalancePercent, 300) / 100),
@@ -243,8 +251,14 @@ export function buildFootprintBars(
     const pocPrice = analytics.pocTick === null ? null : tickIndexToPrice(analytics.pocTick, tickSize);
     const vah = analytics.valueAreaHighTick === null ? null : tickIndexToPrice(analytics.valueAreaHighTick, tickSize);
     const val = analytics.valueAreaLowTick === null ? null : tickIndexToPrice(analytics.valueAreaLowTick, tickSize);
-    const deltaPoc = levels.reduce<FootprintPriceLevel | null>((best, level) =>
-      !best || Math.abs(level.delta) > Math.abs(best.delta) ? level : best, null);
+    const useTrades = settings.inputType === "num-trades";
+    const deltaPoc = levels.reduce<FootprintPriceLevel | null>((best, level) => {
+      const levelDelta = useTrades ? level.askTrades - level.bidTrades : level.delta;
+      const bestDelta = best
+        ? useTrades ? best.askTrades - best.bidTrades : best.delta
+        : Number.NEGATIVE_INFINITY;
+      return !best || Math.abs(levelDelta) > Math.abs(bestDelta) ? level : best;
+    }, null);
     const candle = mutable.candle;
     return {
       id: `${instrument}:${candle.timestamp}`,
@@ -281,7 +295,11 @@ export function buildFootprintBars(
       levels: new Map(levels.map((level) => [level.tickIndex, level])),
       rows,
       ...analytics,
-      vwap: totalVolume > 0 ? mutable.weightedPriceVolume / totalVolume : analytics.vwap,
+      // Keep VWAP on exact execution prices rather than grouped-row prices,
+      // and weight it from the same input selected for the footprint.
+      vwap: useTrades
+        ? mutable.tradeWeight > 0 ? mutable.weightedPriceTrades / mutable.tradeWeight : null
+        : totalVolume > 0 ? mutable.weightedPriceVolume / totalVolume : null,
       isClosed: index < mutableBars.length - 1,
       hasPriceLevelFlow: rows.length > 0,
       pocPrice,
@@ -307,6 +325,7 @@ function footprintWindowKey(candles: Candle[], settings: FootprintBuildSettings)
   return [
     settings.tickSize,
     settings.groupTicks,
+    settings.inputType,
     settings.minimumTradeVolume,
     settings.maximumTradeVolume,
     settings.imbalanceMode,

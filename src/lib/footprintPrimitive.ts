@@ -911,9 +911,14 @@ class FootprintRenderer implements ISeriesPrimitivePaneRenderer {
           }
         }
         if (options.showSummary && barWidth >= 58 && lowY !== null && lowY < mediaSize.height - 14) {
+          const summaryTotal = options.inputType === "num-trades" ? bar.totalTrades : bar.totalVolume;
+          const summaryDelta = options.inputType === "num-trades"
+            ? bar.askTrades - bar.bidTrades
+            : bar.delta;
+          const summaryPrefix = options.inputType === "num-trades" ? "T" : "V";
           const label = options.showBarDelta
-            ? `V ${formatFootprintValue(bar.totalVolume, options.numberFormat)}  Δ ${bar.delta >= 0 ? "+" : ""}${formatFootprintValue(bar.delta, options.numberFormat)}`
-            : `V ${formatFootprintValue(bar.totalVolume, options.numberFormat)}`;
+            ? `${summaryPrefix} ${formatFootprintValue(summaryTotal, options.numberFormat)}  Δ ${summaryDelta >= 0 ? "+" : ""}${formatFootprintValue(summaryDelta, options.numberFormat)}`
+            : `${summaryPrefix} ${formatFootprintValue(summaryTotal, options.numberFormat)}`;
           context.save();
           context.font = `500 9px 'JetBrains Mono', ui-monospace, monospace`;
           context.textAlign = "center";

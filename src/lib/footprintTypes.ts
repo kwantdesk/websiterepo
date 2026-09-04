@@ -123,6 +123,9 @@ export interface FootprintBarModel {
 }
 
 export interface FootprintAnalyticsSettings {
+  /** The dataset the footprint is presenting. POC/value area/maxima must use
+   * the same numbers that are printed in the cells. */
+  inputType?: "volume" | "num-trades";
   valueAreaPercent: number;
   comparisonMode: FootprintComparisonMode;
   imbalanceRatio: number;

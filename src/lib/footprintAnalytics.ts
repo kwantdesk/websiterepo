@@ -9,6 +9,20 @@ function levelTradeCount(level: FootprintPriceLevel) {
   return level.bidTrades + level.askTrades + level.unknownTrades;
 }
 
+function analysisValues(level: FootprintPriceLevel, inputType: FootprintAnalyticsSettings["inputType"]) {
+  if (inputType === "num-trades") {
+    const bid = level.bidTrades;
+    const ask = level.askTrades;
+    return { bid, ask, total: bid + ask + level.unknownTrades, delta: ask - bid };
+  }
+  return {
+    bid: level.bidVolume,
+    ask: level.askVolume,
+    total: level.totalVolume,
+    delta: level.delta,
+  };
+}
+
 function chooseMaximum(
   levels: FootprintPriceLevel[],
   metric: (level: FootprintPriceLevel) => number,
@@ -131,11 +145,12 @@ export function calculateFootprintAnalytics(
     };
   }
 
-  const totalVolume = levels.reduce((sum, level) => sum + level.totalVolume, 0);
-  const weighted = levels.reduce((sum, level) => sum + level.price * level.totalVolume, 0);
-  const vwap = totalVolume > 0 ? weighted / totalVolume : null;
-  const maximumVolume = Math.max(...levels.map((level) => level.totalVolume));
-  const tiedPocLevels = levels.filter((level) => Math.abs(level.totalVolume - maximumVolume) <= EPSILON);
+  const metric = (level: FootprintPriceLevel) => analysisValues(level, settings.inputType);
+  const totalInput = levels.reduce((sum, level) => sum + metric(level).total, 0);
+  const weighted = levels.reduce((sum, level) => sum + level.price * metric(level).total, 0);
+  const vwap = totalInput > 0 ? weighted / totalInput : null;
+  const maximumInput = Math.max(...levels.map((level) => metric(level).total));
+  const tiedPocLevels = levels.filter((level) => Math.abs(metric(level).total - maximumInput) <= EPSILON);
   tiedPocLevels.sort((left, right) => {
     const leftVwapDistance = vwap === null ? 0 : Math.abs(left.price - vwap);
     const rightVwapDistance = vwap === null ? 0 : Math.abs(right.price - vwap);
@@ -151,10 +166,10 @@ export function calculateFootprintAnalytics(
 
   let valueAreaLowTick = poc?.tickIndex ?? null;
   let valueAreaHighTick = poc?.tickIndex ?? null;
-  if (poc && totalVolume > 0) {
+  if (poc && totalInput > 0) {
     const byTick = new Map(levels.map((level) => [level.tickIndex, level]));
-    const target = totalVolume * Math.min(1, Math.max(0.5, settings.valueAreaPercent));
-    let included = poc.totalVolume;
+    const target = totalInput * Math.min(1, Math.max(0.5, settings.valueAreaPercent));
+    let included = metric(poc).total;
     let lower = poc.tickIndex - groupedTickDistance;
     let upper = poc.tickIndex + groupedTickDistance;
     const minimumTick = levels[0].tickIndex;
@@ -164,18 +179,18 @@ export function calculateFootprintAnalytics(
       while (upper <= maximumTick && !byTick.has(upper)) upper += groupedTickDistance;
       const below = lower >= minimumTick ? byTick.get(lower) : undefined;
       const above = upper <= maximumTick ? byTick.get(upper) : undefined;
-      if (below && above && Math.abs(below.totalVolume - above.totalVolume) <= EPSILON) {
-        included += below.totalVolume + above.totalVolume;
+      if (below && above && Math.abs(metric(below).total - metric(above).total) <= EPSILON) {
+        included += metric(below).total + metric(above).total;
         valueAreaLowTick = below.tickIndex;
         valueAreaHighTick = above.tickIndex;
         lower -= groupedTickDistance;
         upper += groupedTickDistance;
-      } else if (above && (!below || above.totalVolume > below.totalVolume)) {
-        included += above.totalVolume;
+      } else if (above && (!below || metric(above).total > metric(below).total)) {
+        included += metric(above).total;
         valueAreaHighTick = above.tickIndex;
         upper += groupedTickDistance;
       } else if (below) {
-        included += below.totalVolume;
+        included += metric(below).total;
         valueAreaLowTick = below.tickIndex;
         lower -= groupedTickDistance;
       } else break;
@@ -217,10 +232,10 @@ export function calculateFootprintAnalytics(
       && low.askVolume >= settings.unfinishedAuctionMinimumVolume;
   }
 
-  const maxBid = chooseMaximum(levels, (level) => level.bidVolume);
-  const maxAsk = chooseMaximum(levels, (level) => level.askVolume);
-  const maxPositiveDelta = chooseMaximum(levels, (level) => level.delta);
-  const maxNegativeDelta = chooseMaximum(levels, (level) => -level.delta);
+  const maxBid = chooseMaximum(levels, (level) => metric(level).bid);
+  const maxAsk = chooseMaximum(levels, (level) => metric(level).ask);
+  const maxPositiveDelta = chooseMaximum(levels, (level) => metric(level).delta);
+  const maxNegativeDelta = chooseMaximum(levels, (level) => -metric(level).delta);
   const maxTrades = chooseMaximum(levels, levelTradeCount);
   if (maxBid) maxBid.isMaxBid = true;
   if (maxAsk) maxAsk.isMaxAsk = true;

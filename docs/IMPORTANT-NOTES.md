@@ -206,3 +206,18 @@ recap of the open items below and update this file when their state changes.
 - Cold restores of independent daily fold files may run concurrently, but raw
   tape folding remains off the request path and outside the live-feed event
   loop.
+
+## 2026-09-04 — Footprint input and live-paint integrity
+
+- The workspace is the only execution-packet batching boundary. Footprint
+  charts consume that canonical tape through the shared animation-frame queue;
+  do not add a second per-chart timeout between a packet and its row/POC paint.
+- A Footprint's selected input is one calculation contract, not just a label.
+  Volume mode uses contract volume; Trades mode uses execution count for cell
+  numbers, POC, value area, exact-price VWAP, Delta POC, maxima and summary.
+- Every named Footprint chart variant must survive settings validation and the
+  final chart resolver. Keep `volume-trades` and `trades-histogram` in those
+  allowlists and in regression coverage.
+- Bid/Ask and Delta remain sourced only from classified Rithmic executions.
+  Unknown executions may contribute to total/POC but must never be assigned a
+  side from candle direction or price movement.

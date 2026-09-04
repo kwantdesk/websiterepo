@@ -444,7 +444,7 @@ export function validateFootprintSettings(input: unknown): FootprintSettings {
     // footprint rendering a combination nobody picked.
     chartType: resolvedChartType.id,
     chartVariant: resolvedVariant.id,
-    contentMode: option(source.contentMode ?? source.type, ["bid-ask", "delta", "volume", "volume-delta", "trades", "bid-ask-histogram", "volume-histogram", "delta-histogram", "ladder"], "bid-ask"),
+    contentMode: option(source.contentMode ?? source.type, ["bid-ask", "delta", "volume", "volume-delta", "volume-trades", "trades", "trades-histogram", "bid-ask-histogram", "volume-histogram", "delta-histogram", "ladder"], "bid-ask"),
     visualizationMode: option(source.visualizationMode, ["solid", "heatmap", "histogram", "heatmap-histogram", "text-only"], "heatmap-histogram"),
     scaleMode: option(source.scaleMode, ["per-bar", "all-loaded", "visible-region", "fixed-maximum"], "visible-region"),
     numberFormat: option(source.numberFormat ?? source.textFormat, ["full", "compact", "automatic"], "automatic"),
