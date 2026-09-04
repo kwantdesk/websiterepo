@@ -26,7 +26,6 @@ import {
   type ChartIndicatorInstance,
 } from "@/lib/chartIndicatorCatalog";
 import {
-  DEFAULT_DAILY_VOLUME_PROFILE_COUNT,
   INDICATOR_NUMERIC_SETTINGS,
   LIVE_CHART_INDICATOR_IDS,
   MAXIMUM_DAILY_VOLUME_PROFILES,
@@ -2929,9 +2928,6 @@ export default function ChartIndicatorsControl({
                       settings: { ...(current.settings ?? {}), borderWidth: next },
                     }))}
                   />
-                  <div className="border border-border bg-background/55 px-3 py-2 text-[9px] leading-4 text-muted sm:col-span-2">
-                    VAH, POC and VAL are named on the plot like IB levels — set Level labels to move them beside the profile or hide them. POC, value area, peak, valley and VWAP lines carry on to the back of the profile in front — the live edge for the newest one — and are never drawn underneath it, whatever the split settings. Till interaction stops a level earlier, at the first later bar that traded back through it. Visual style paints the histogram filled, outlined, as an edge line, or both. Number of profiles is how many trading days are drawn, newest first — 0 keeps the standing {DEFAULT_DAILY_VOLUME_PROFILE_COUNT}. A chart cannot draw more days than it has candles for, and a split day requests one profile per session window, so a large number is real work.
-                  </div>
                 </div>
               ) : null}
 
