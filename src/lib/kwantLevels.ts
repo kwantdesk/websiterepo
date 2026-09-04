@@ -17,7 +17,7 @@ export type KwantLevelsSettings = {
   conversion: string;
   dataSource: KwantLevelsDataSource;
   maxLevels: number;
-  lineWidth: number;
+  lineWidth: 1 | 2 | 3 | 4;
   lineStyle: "solid" | "dashed" | "dotted";
   showLabels: boolean;
   showEnvironment: boolean;
@@ -50,7 +50,7 @@ export function normalizeKwantLevelsSettings(
     conversion: typeof input?.conversion === "string" ? input.conversion : "AUTO",
     dataSource: "GEX_CALL_MINUS_PUT",
     maxLevels: Math.round(finiteBounded(input?.maxLevels, 14, 4, 24)),
-    lineWidth: finiteBounded(input?.lineWidth, 1, 1, 4),
+    lineWidth: Math.round(finiteBounded(input?.lineWidth, 1, 1, 4)) as 1 | 2 | 3 | 4,
     lineStyle: lineStyle === "solid" || lineStyle === "dotted" ? lineStyle : "dashed",
     showLabels: input?.showLabels !== false,
     showEnvironment: input?.showEnvironment !== false,
