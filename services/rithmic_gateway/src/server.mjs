@@ -6,7 +6,7 @@ import { replayArchiveIntoBook } from "./archive-replay.mjs";
 import { CashIndexArchiver } from "./cash-index-archiver.mjs";
 import { HeatmapReplayStore } from "./heatmap-replay.mjs";
 import { LabRepositoryStore } from "./lab-repository.mjs";
-import { RithmicBookStore } from "./book-store.mjs";
+import { RithmicBookStore, instrumentKey } from "./book-store.mjs";
 import { loadConfig } from "./config.mjs";
 import { DatabentoEquitiesTradeStream } from "./databento-equities-stream.mjs";
 import { FuturesBarArchive, HistoryRequestError, parseIntervalMs } from "./futures-bar-archive.mjs";
