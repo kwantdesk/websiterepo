@@ -38,3 +38,6 @@ notes ledger.
 - The first production image attempt exposed `npm ci` waiting on optional
   registry audit/funding work. Production dependency installation now disables
   those non-runtime calls while retaining the lockfile-verifying clean install.
+- Production unit verification also caught systemd's default startup timeout
+  terminating the deliberate five-minute safety delay. The unit now gives that
+  pre-start guard a bounded six-minute window.

@@ -9,6 +9,7 @@ RequiresMountsFor=/srv/kwantdesk-recordings
 Type=exec
 Restart=on-failure
 RestartSec=900
+TimeoutStartSec=360
 TimeoutStopSec=45
 # Let the gateway's small completed-session catch-up finish first after a boot.
 ExecStartPre=/usr/bin/sleep 300
