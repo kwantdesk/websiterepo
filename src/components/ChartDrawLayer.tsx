@@ -8,6 +8,7 @@ import {
   FIB_RETRACEMENT_LEVELS,
   FIB_TIME_COEFFS,
   createDrawing,
+  horizontalExtensionBounds,
   resolveDrawColor,
   updateDrawingHandle,
   type DrawLineStyle,
@@ -1002,7 +1003,15 @@ export default function ChartDrawLayer({
       const xs = coords.map((c) => c.x).filter((v): v is number => v != null);
       const ys = coords.map((c) => c.y).filter((v): v is number => v != null);
       if (!xs.length) return false;
-      return px >= Math.min(...xs) - 4 && px <= Math.max(...xs) + 4 && py >= Math.min(...ys) - 4 && py <= Math.max(...ys) + 4;
+      const horizontalBounds = drawing.tool === "rectangle" || drawing.tool === "fibRetracement"
+        ? horizontalExtensionBounds(
+            Math.min(...xs),
+            Math.max(...xs),
+            Math.max(0, width - priceScaleWidth),
+            drawing.style.horizontalExtension,
+          )
+        : { left: Math.min(...xs), right: Math.max(...xs) };
+      return px >= horizontalBounds.left - 4 && px <= horizontalBounds.right + 4 && py >= Math.min(...ys) - 4 && py <= Math.max(...ys) + 4;
     }
     // default: near any segment
     for (let i = 0; i < coords.length - 1; i += 1) {
@@ -1074,7 +1083,14 @@ export default function ChartDrawLayer({
         }
         case "rectangle": {
           if (!b || a.x == null || b.x == null) return null;
-          return <rect x={Math.min(a.x!, b.x)} y={Math.min(a.y!, b.y!)} width={Math.abs(b.x - a.x!)} height={Math.abs(b.y! - a.y!)} fill={stroke} fillOpacity={style.fillOpacity} stroke={stroke} strokeWidth={w} strokeDasharray={dash} />;
+          const bounds = horizontalExtensionBounds(
+            a.x,
+            b.x,
+            Math.max(0, width - priceScaleWidth),
+            style.horizontalExtension,
+            EDGE_OVERSCAN,
+          );
+          return <rect x={bounds.left} y={Math.min(a.y!, b.y!)} width={bounds.right - bounds.left} height={Math.abs(b.y! - a.y!)} fill={stroke} fillOpacity={style.fillOpacity} stroke={stroke} strokeWidth={w} strokeDasharray={dash} />;
         }
         case "rotatedRectangle": {
           if (!b || !c || a.x == null || b.x == null || c.y == null) return null;
@@ -1122,11 +1138,18 @@ export default function ChartDrawLayer({
         }
         case "fibRetracement": {
           if (!b || a.x == null || b.x == null) return null;
-          const left = Math.min(a.x!, b.x); const right = Math.max(a.x!, b.x);
+          const { left, right } = horizontalExtensionBounds(
+            a.x,
+            b.x,
+            Math.max(0, width - priceScaleWidth),
+            style.horizontalExtension,
+            EDGE_OVERSCAN,
+          );
+          const labelX = Math.min(a.x, b.x) + 2;
           const p0 = pr[0].price; const p1 = pr[1].price;
           return <g>{FIB_RETRACEMENT_LEVELS.map((lv) => {
             const price = p1 + (p0 - p1) * lv.coeff; const ly = toY(price);
-            return ly == null ? null : <g key={lv.coeff}>{line(left, ly, right, ly, stroke)}{style.showLabels ? label(left + 2, ly - 2, `${lv.coeff} (${price.toFixed(2)})`, stroke) : null}</g>;
+            return ly == null ? null : <g key={lv.coeff}>{line(left, ly, right, ly, stroke)}{style.showLabels ? label(labelX, ly - 2, `${lv.coeff} (${price.toFixed(2)})`, stroke) : null}</g>;
           })}</g>;
         }
         case "fibExtension": {
@@ -1465,6 +1488,15 @@ export default function ChartDrawLayer({
     const bodyMovable = drawing.tool !== "fixedRangeVolumeProfile" && drawing.tool !== "anchoredVolumeProfile";
     const valid = coords.filter((p) => p.x != null && p.y != null) as { x: number; y: number }[];
     const xs = valid.map((p) => p.x); const ys = valid.map((p) => p.y);
+    const hitHorizontalBounds = valid.length >= 2 && (drawing.tool === "rectangle" || drawing.tool === "fibRetracement")
+      ? horizontalExtensionBounds(
+          Math.min(...xs),
+          Math.max(...xs),
+          Math.max(0, width - priceScaleWidth),
+          drawing.style.horizontalExtension,
+          EDGE_OVERSCAN,
+        )
+      : null;
     // Transparent fat hit layer so thin lines and shape interiors are easy to
     // grab; single-anchor tools get a hit line/dot instead.
     const hit = interactive ? (
@@ -1476,7 +1508,7 @@ export default function ChartDrawLayer({
             : valid.length >= 2
               ? <>
                   <polyline points={valid.map((p) => `${p.x},${p.y}`).join(" ")} fill="none" stroke="transparent" strokeWidth={12} />
-                  <rect x={Math.min(...xs)} y={Math.min(...ys)} width={Math.max(1, Math.max(...xs) - Math.min(...xs))} height={Math.max(1, Math.max(...ys) - Math.min(...ys))} fill="transparent" />
+                  <rect x={hitHorizontalBounds?.left ?? Math.min(...xs)} y={Math.min(...ys)} width={Math.max(1, (hitHorizontalBounds?.right ?? Math.max(...xs)) - (hitHorizontalBounds?.left ?? Math.min(...xs)))} height={Math.max(1, Math.max(...ys) - Math.min(...ys))} fill="transparent" />
                 </>
               : valid.length === 1
                 ? <circle cx={valid[0].x} cy={valid[0].y} r={12} fill="transparent" />

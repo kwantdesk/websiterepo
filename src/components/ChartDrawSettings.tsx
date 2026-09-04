@@ -5,7 +5,14 @@ import ChartColorField from "@/components/ChartColorField";
 import KwantSelect from "@/components/ui/KwantSelect";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
-import { DRAW_TOOL_SPECS, resolveDrawColor, type DrawLineStyle, type Drawing } from "@/lib/chartDrawTools";
+import {
+  DRAW_TOOL_SPECS,
+  HORIZONTAL_EXTENSION_TOOLS,
+  resolveDrawColor,
+  type DrawHorizontalExtension,
+  type DrawLineStyle,
+  type Drawing,
+} from "@/lib/chartDrawTools";
 import { deleteDrawTemplate, loadDrawTemplates, saveDrawTemplate, type DrawTemplateStore } from "@/lib/chartDrawTemplates";
 
 // Tabbed settings dialog for a charting drawing — Style, Text, Coordinates and
@@ -61,6 +68,7 @@ export default function ChartDrawSettings({
   const isText = TEXT_TOOLS.includes(drawing.tool);
   const isProfile = PROFILE_TOOLS.includes(drawing.tool);
   const isPosition = POSITION_TOOLS.includes(drawing.tool);
+  const supportsHorizontalExtension = HORIZONTAL_EXTENSION_TOOLS.has(drawing.tool);
   const toolTemplates = templates[drawing.tool] ?? {};
 
   const patchStyle = (next: Partial<Drawing["style"]>) => onChange({ ...drawing, style: { ...drawing.style, ...next } });
@@ -101,6 +109,31 @@ export default function ChartDrawSettings({
               {isShape ? (
                 <Row label="Fill opacity">
                   <input type="range" min={0} max={0.6} step={0.02} value={drawing.style.fillOpacity} onChange={(e) => patchStyle({ fillOpacity: Number(e.target.value) })} className="w-40 accent-primary" />
+                </Row>
+              ) : null}
+              {supportsHorizontalExtension ? (
+                <Row label="Extend">
+                  <div className="grid grid-cols-4 overflow-hidden rounded-lg border border-border bg-background" role="group" aria-label="Horizontal extension">
+                    {([
+                      ["none", "None"],
+                      ["left", "Left"],
+                      ["right", "Right"],
+                      ["both", "Both"],
+                    ] as const).map(([value, label]) => {
+                      const active = (drawing.style.horizontalExtension ?? "none") === value;
+                      return (
+                        <button
+                          key={value}
+                          type="button"
+                          aria-pressed={active}
+                          onClick={() => patchStyle({ horizontalExtension: value as DrawHorizontalExtension })}
+                          className={`h-8 border-l border-border px-2 text-[10px] font-semibold first:border-l-0 ${active ? "bg-primary text-on-primary" : "text-muted hover:bg-surface hover:text-foreground"}`}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </Row>
               ) : null}
               <Row label="Show labels"><input type="checkbox" checked={drawing.style.showLabels} onChange={(e) => patchStyle({ showLabels: e.target.checked })} className="h-4 w-4 accent-primary" /></Row>

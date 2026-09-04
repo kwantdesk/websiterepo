@@ -123,6 +123,7 @@ export const magnetStrengthSpec = (strength: MagnetStrength) =>
   MAGNET_STRENGTHS.find((entry) => entry.id === strength) ?? MAGNET_STRENGTHS[0];
 
 export type DrawLineStyle = "solid" | "dashed" | "dotted";
+export type DrawHorizontalExtension = "none" | "left" | "right" | "both";
 
 export type DrawStyle = {
   /**
@@ -140,6 +141,13 @@ export type DrawStyle = {
   lineStyle: DrawLineStyle;
   fillOpacity: number;  // 0..1, used by shapes
   showLabels: boolean;
+  /**
+   * Extend horizontal geometry to the visible plot edge. Rectangle and Fib
+   * Retracement support this because their vertical anchors remain meaningful
+   * when their horizontal span is open-ended. Missing means `none`, preserving
+   * every drawing saved before the control existed.
+   */
+  horizontalExtension?: DrawHorizontalExtension;
   fontSize?: number;    // text tools
   visible?: boolean;    // hide without deleting
   /** Stamped by migrateDrawStyle so the width halving runs exactly once. */
@@ -178,9 +186,35 @@ export const DEFAULT_DRAW_STYLE: DrawStyle = {
   lineStyle: "solid",
   fillOpacity: 0.12,
   showLabels: true,
+  horizontalExtension: "none",
   fontSize: 13,
   visible: true,
 };
+
+/** Tools whose geometry has a truthful left/right open-ended interpretation. */
+export const HORIZONTAL_EXTENSION_TOOLS: ReadonlySet<DrawToolId> = new Set([
+  "rectangle",
+  "fibRetracement",
+]);
+
+/**
+ * Resolve an anchored horizontal span against the plot viewport. Overscan is
+ * optional so SVG geometry can survive a frame of pan/zoom while hit-testing
+ * can stay clipped to the actual visible plot.
+ */
+export function horizontalExtensionBounds(
+  x1: number,
+  x2: number,
+  plotWidth: number,
+  extension: DrawHorizontalExtension | undefined,
+  overscan = 0,
+): { left: number; right: number } {
+  const mode = extension ?? "none";
+  return {
+    left: mode === "left" || mode === "both" ? (overscan > 0 ? -overscan : 0) : Math.min(x1, x2),
+    right: mode === "right" || mode === "both" ? plotWidth + overscan : Math.max(x1, x2),
+  };
+}
 
 // pointsMode: fixed number, or a freehand/multi behaviour.
 export type DrawPointsMode = number | "freehand" | "poly";
