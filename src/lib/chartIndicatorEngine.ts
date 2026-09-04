@@ -494,6 +494,7 @@ function computeIndicatorSeries(
     let cumulativeAsk = 0;
     let cumulativeBid = 0;
     let cumulativeFiltered = 0;
+    let missingFlowSinceLastVerified = false;
     const cvd: CalculatedIndicatorSeries["data"] = [];
     const askVolume: Array<{ time: number; value: number; breakBefore?: boolean }> = [];
     const bidVolume: Array<{ time: number; value: number; breakBefore?: boolean }> = [];
@@ -502,7 +503,10 @@ function computeIndicatorSeries(
     candles.forEach((candle) => {
       // Saved OHLCV-only bars have no aggressor-side split. They must not be
       // rendered as zero delta because that creates a false flat CVD history.
-      if (!hasVerifiedOrderFlow(candle)) return;
+      if (!hasVerifiedOrderFlow(candle)) {
+        missingFlowSinceLastVerified = true;
+        return;
+      }
       const session = sessionKey(candle.timestamp, startHour);
       const sessionDay = Math.floor(Date.parse(`${session}T00:00:00Z`) / 86_400_000);
       const timestampSeconds = Math.floor(candle.timestamp / 1000);
@@ -514,13 +518,15 @@ function computeIndicatorSeries(
             ? `s:${Math.floor(timestampSeconds / periodValue)}`
             : `d:${Math.floor(sessionDay / periodValue)}`;
       const periodChanged = nextPeriod !== activePeriod;
-      if (periodChanged) {
+      const seriesBreak = periodChanged || missingFlowSinceLastVerified;
+      if (seriesBreak) {
         activePeriod = nextPeriod;
         cumulative = 0;
         cumulativeAsk = 0;
         cumulativeBid = 0;
         cumulativeFiltered = 0;
       }
+      missingFlowSinceLastVerified = false;
 
       const ask = Math.max(0, finite(useTradeCounts ? candle.askTrades : candle.askVolume));
       const bid = Math.max(0, finite(useTradeCounts ? candle.bidTrades : candle.bidVolume));
@@ -569,14 +575,14 @@ function computeIndicatorSeries(
         low: Math.min(cumulativeOpen, cumulativeLow, cumulative),
         close: cumulative,
         color: displayStyle === "line" ? undefined : cumulative >= cumulativeOpen ? askColor : bidColor,
-        breakBefore: periodChanged,
+        breakBefore: seriesBreak,
       });
-      askVolume.push({ time, value: cumulativeAsk, breakBefore: periodChanged });
-      bidVolume.push({ time, value: cumulativeBid, breakBefore: periodChanged });
+      askVolume.push({ time, value: cumulativeAsk, breakBefore: seriesBreak });
+      bidVolume.push({ time, value: cumulativeBid, breakBefore: seriesBreak });
       filtered.push({
         time,
         value: cumulativeFiltered,
-        breakBefore: periodChanged,
+        breakBefore: seriesBreak,
         color: cumulativeFiltered >= 0
           ? (useThemeColors ? theme.positive : settingString(instance, "filteredAskColor", askColor))
           : (useThemeColors ? theme.negative : settingString(instance, "filteredBidColor", bidColor)),

@@ -149,4 +149,23 @@ check("supplementary ask, bid and filtered lines do not bridge period resets", (
   }
 });
 
+check("missing aggressor history creates a new honest CVD segment", () => {
+  const missingFlow = {
+    ...candle(afterSession + 60_000, 15, 5),
+    askVolume: undefined,
+    bidVolume: undefined,
+  };
+  const series = calculate("cumulative-volume-delta", {
+    periodMode: "days",
+    periodValue: 1,
+  }, [
+    candle(afterSession, 15, 5),
+    missingFlow,
+    candle(afterSession + 120_000, 17, 7),
+  ]);
+  assert.equal(series[0].data.length, 2);
+  assert.equal(series[0].data[1].breakBefore, true);
+  assert.equal(series[0].data[1].close, 10);
+});
+
 console.log(`\nCVD settings parity: ${passed}/${passed} checks passed`);

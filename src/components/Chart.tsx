@@ -420,6 +420,12 @@ const ORDER_FLOW_PANE_INDICATOR_IDS = new Set([
   "delta-cumulative-histogram",
   "delta-bar",
 ]);
+const CUMULATIVE_DELTA_INDICATOR_IDS = new Set([
+  "cumulative-volume-delta",
+  "delta-cumulative-candlestick",
+  "delta-cumulative-histogram",
+  "delta-bar",
+]);
 const DEEP_HISTORY_INDICATOR_MAX_BARS = 20_000;
 
 /**
@@ -6649,13 +6655,11 @@ function Chart({
     const intervalId = window.setInterval(tick, refreshMs);
     return () => { cancelled = true; window.clearInterval(intervalId); };
   }, [indicatorSignature, instrument, zeroGammaLineIndicator]);
-  // orderFlowHistoryReady flips as soon as a TOKEN slice of bars carries
-  // aggressor volume (that gate exists to stop history re-downloading). Using
-  // it to render CVD painted a half-built series: a flat stretch over the bars
-  // whose flow had not landed yet, then a straight diagonal as the enriched
-  // tail accumulated — the "retarded" load the trader sees for the first few
-  // seconds. Rendering waits for flow to actually cover the window; until then
-  // the pane keeps its honest restoring state.
+  // Coverage is a completeness signal, not a render gate. Price-bar history can
+  // reach farther back than locally recorded aggressor-side executions, so a
+  // strict coverage gate can never complete for that part of the chart. CVD is
+  // allowed to draw its verified execution-backed segments below; the engine
+  // omits unknown bars and preserves a visual break instead of inventing delta.
   const orderFlowSeriesReady = useMemo(() => {
     if (!orderFlowHistoryReady) return false;
     if (!indicatorCandles.length) return false;
@@ -6690,13 +6694,17 @@ function Chart({
       instance.enabled && ORDER_FLOW_PANE_INDICATOR_IDS.has(instance.indicatorId));
     if (!waiting) return null;
     return orderFlowHistoryReady
-      ? "CVD · BUILDING FROM EXECUTIONS"
+      ? "CVD · PARTIAL EXECUTION HISTORY"
       : "CVD · LOADING EXECUTION HISTORY";
   }, [indicatorSignature, indicators, orderFlowHistoryReady, orderFlowSeriesReady]);
 
   const baseCalculatedIndicatorSeries = useMemo(
     () => indicators.flatMap((instance) => {
-      if (!orderFlowSeriesReady && ORDER_FLOW_PANE_INDICATOR_IDS.has(instance.indicatorId)) return [];
+      if (
+        !orderFlowSeriesReady
+        && ORDER_FLOW_PANE_INDICATOR_IDS.has(instance.indicatorId)
+        && !CUMULATIVE_DELTA_INDICATOR_IDS.has(instance.indicatorId)
+      ) return [];
       const requiresOrderFlowWindow = CHART_INDICATOR_BY_ID.get(instance.indicatorId)?.requiresOrderFlow === true;
       const studyCandles = requiresOrderFlowWindow
         ? indicatorCandles
@@ -7110,35 +7118,12 @@ function Chart({
       if (instance.indicatorId === "delta-bar" && deltaLadderSide) return [];
       const series = calculatedIndicatorSeries.filter((definition) =>
         definition.groupKey === instance.instanceId && definition.placement === "pane");
-      /*
-       * A cumulative-delta study needs most of its bars before it can be read.
-       *
-       * The running total skips any candle whose aggressor volume has not
-       * arrived, so a session that is still being restored produces a handful
-       * of points spread across the whole window - and the chart joins them
-       * into a long straight line that looks like a real, flat CVD. It then
-       * "jumps" when the rest lands, which is what made it look like the study
-       * was hanging.
-       *
-       * A straight line that is wrong is worse than a spinner, so while flow is
-       * still arriving AND coverage is thin, the pane keeps saying so. The test
-       * is coverage rather than emptiness because one bar is enough to draw the
-       * misleading line. It resolves itself: once the flow stream reports
-       * ready, whatever exists is drawn honestly, however sparse.
-       */
-      const cumulativeDeltaStudy = [
-        "cumulative-volume-delta",
-        "delta-cumulative-candlestick",
-        "delta-cumulative-histogram",
-        "delta-bar",
-      ].includes(instance.indicatorId);
-      const plotted = series[0]?.data?.length ?? 0;
-      const stillRestoring = cumulativeDeltaStudy
-        && !orderFlowSeriesReady
-        && indicatorCandles.length > 0
-        && plotted < indicatorCandles.length * CUMULATIVE_DELTA_MINIMUM_COVERAGE;
+      const cumulativeDeltaStudy = CUMULATIVE_DELTA_INDICATOR_IDS.has(instance.indicatorId);
 
-      if (series.length && !stillRestoring) {
+      // Render any verified CVD segment immediately. calculateIndicatorSeries
+      // deliberately excludes OHLCV-only candles and marks discontinuities, so
+      // partial history is honest and cannot be mistaken for zero delta.
+      if (series.length) {
         return [{
           key: instance.instanceId,
           title: series[0].label,

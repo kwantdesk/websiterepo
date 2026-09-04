@@ -139,3 +139,13 @@ recap of the open items below and update this file when their state changes.
 - QuantData options surfaces already select from provider-listed, non-expired
   dates and include the New York session date in cache identities. Options
   therefore advance by expiration/session date, not CME month-code logic.
+
+## 2026-09-04 — CVD partial-history integrity
+
+- Do not gate the entire CVD pane on near-total coverage of the visible candle
+  window. Rithmic OHLCV history can extend behind the locally recorded
+  aggressor-side execution archive, making such a gate impossible to complete.
+- Render verified execution-backed CVD segments immediately. Exclude OHLCV-only
+  candles, insert a hard break at every missing-flow region and reset the next
+  segment instead of fabricating zero delta or carrying an unknown cumulative
+  total across the gap.
