@@ -18,6 +18,11 @@ import {
 } from "@/lib/speedOfTapeInstant";
 import { defaultIndicatorPlotColors, visibleIndicatorTheme } from "@/lib/indicatorPlotColors";
 import { normalizeExpectedMoveSettings } from "@/lib/expectedMove";
+import {
+  DEFAULT_UNFINISHED_AUCTION_SETTINGS,
+  UNFINISHED_AUCTION_SETTINGS_VERSION,
+  normalizeUnfinishedAuctionSettings,
+} from "@/lib/unfinishedAuction";
 
 export const LIVE_CHART_INDICATOR_IDS = new Set([
   "gamma-environment",
@@ -39,6 +44,7 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "delta-cumulative-histogram",
   "imbalance-tracker",
   "imbalance-rejector",
+  "unfinished-auction",
   "cumulative-volume-delta",
   "cvd-divergence",
   "pulling-stacking",
@@ -142,6 +148,14 @@ export function resolveDailyVolumeProfileCount(value: unknown): number {
 }
 
 export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[]> = {
+  "unfinished-auction": [
+    { key: "daysToLoad", label: "Days to load", defaultValue: 5, min: 1, max: 365, step: 1 },
+    { key: "lineWidth", label: "Line width", defaultValue: 1, min: 1, max: 8, step: 1 },
+    { key: "opacity", label: "Background opacity (%)", defaultValue: 22, min: 0, max: 100, step: 1 },
+    { key: "manualMinimumVolume", label: "Manual minimum volume", defaultValue: 0, min: 0, max: 10000000, step: 1 },
+    { key: "customStartMinutes", label: "Custom session start (exchange minutes)", defaultValue: 510, min: 0, max: 1439, step: 1 },
+    { key: "customEndMinutes", label: "Custom session end (exchange minutes)", defaultValue: 900, min: 0, max: 1439, step: 1 },
+  ],
   "zero-gamma-line": [
     { key: "historySessions", label: "Trading sessions of history", defaultValue: 5, min: 1, max: 5, step: 1 },
     // The crossing moves slowly; refreshing faster than ~30s multiplied the
@@ -1267,6 +1281,12 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     excessLowColor: theme?.upColor ?? DEFAULT_POC_AUCTION_SUITE_SETTINGS.excessLowColor,
     neutralColor: theme?.gridColor ?? DEFAULT_POC_AUCTION_SUITE_SETTINGS.neutralColor,
     schemaVersion: POC_AUCTION_SUITE_SETTINGS_VERSION,
+  } : {}),
+  ...(indicatorId === "unfinished-auction" ? {
+    ...DEFAULT_UNFINISHED_AUCTION_SETTINGS,
+    badHighColor: theme?.downColor ?? DEFAULT_UNFINISHED_AUCTION_SETTINGS.badHighColor,
+    badLowColor: theme?.upColor ?? DEFAULT_UNFINISHED_AUCTION_SETTINGS.badLowColor,
+    schemaVersion: UNFINISHED_AUCTION_SETTINGS_VERSION,
   } : {}),
   ...(indicatorId === "tape-speed-order-flow-burst" ? {
     ...DEFAULT_TAPE_SPEED_SETTINGS,
@@ -2409,6 +2429,19 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
       settings: {
         ...normalizePocAuctionSuiteSettings({
           ...defaultIndicatorSettings("poc-auction-suite"),
+          ...(normalizedInstance.settings ?? {}),
+        }),
+      },
+    };
+  }
+  if (normalizedInstance.indicatorId === "unfinished-auction") {
+    const defaults = defaultIndicatorSettings("unfinished-auction");
+    return {
+      ...normalizedInstance,
+      settings: {
+        ...defaults,
+        ...normalizeUnfinishedAuctionSettings({
+          ...defaults,
           ...(normalizedInstance.settings ?? {}),
         }),
       },

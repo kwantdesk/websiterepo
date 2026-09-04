@@ -29,6 +29,7 @@
     "test:rithmic-candle-integrity": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-rithmic-candle-integrity.mjs",
     "test:cme-interval-routing": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-cme-interval-routing.mjs",
     "test:poc-auction-suite": "node --experimental-strip-types scripts/test-poc-auction-suite.mjs",
+    "test:unfinished-auction": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-unfinished-auction.mjs",
     "test:tape-speed-order-flow-burst": "node --experimental-strip-types scripts/test-tape-speed-order-flow-burst.mjs",
     "test:speed-of-tape-instant": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-speed-of-tape-instant.mjs",
     "test:economic-calendar-forward": "node --experimental-strip-types scripts/test-economic-calendar-forward.mjs",

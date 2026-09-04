@@ -279,6 +279,12 @@ import {
   type PocAuctionHit,
 } from "@/lib/pocAuctionPrimitive";
 import {
+  buildUnfinishedAuctionFrame,
+  normalizeUnfinishedAuctionSettings,
+  type UnfinishedAuctionFrame,
+} from "@/lib/unfinishedAuction";
+import { UnfinishedAuctionPrimitive } from "@/lib/unfinishedAuctionPrimitive";
+import {
   buildTapeSpeedFrame,
   normalizeTapeSpeedSettings,
   tapeSpeedPaneSeries,
@@ -3261,6 +3267,7 @@ function Chart({
   const liquidityStopSweepAlertIdsRef = useRef(new Set<string>());
   const liquidityStopSweepReferencesRef = useRef<SweepReferenceLevel[]>([]);
   const pocAuctionPrimitiveRef = useRef<PocAuctionPrimitive | null>(null);
+  const unfinishedAuctionPrimitiveRef = useRef<UnfinishedAuctionPrimitive | null>(null);
   const tapeSpeedPrimitiveRef = useRef<TapeSpeedOrderFlowBurstPrimitive | null>(null);
   const tapeSpeedAlertIdsRef = useRef(new Set<string>());
   const pocAuctionEngineRef = useRef(new PocAuctionSuiteEngine());
@@ -3773,6 +3780,7 @@ function Chart({
   const [liquidityStopSweepFrame, setLiquidityStopSweepFrame] = useState<LiquidityStopSweepFrame | null>(null);
   const [liquidityStopSweepTooltip, setLiquidityStopSweepTooltip] = useState<LiquidityStopSweepHit | null>(null);
   const [pocAuctionFrame, setPocAuctionFrame] = useState<PocAuctionFrame | null>(null);
+  const [unfinishedAuctionFrame, setUnfinishedAuctionFrame] = useState<UnfinishedAuctionFrame | null>(null);
   const [pocAuctionTooltip, setPocAuctionTooltip] = useState<PocAuctionHit | null>(null);
   const [tapeSpeedTooltip, setTapeSpeedTooltip] = useState<TapeSpeedHit | null>(null);
   const [netGammaProfile, setNetGammaProfile] = useState<NetGammaProfileSnapshot | null>(null);
@@ -5588,6 +5596,10 @@ function Chart({
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "poc-auction-suite") ?? null,
     [indicatorSignature, indicators],
   );
+  const unfinishedAuctionIndicator = useMemo(
+    () => indicators.find((instance) => instance.enabled && instance.indicatorId === "unfinished-auction") ?? null,
+    [indicatorSignature, indicators],
+  );
   const deltaBarIndicator = useMemo(
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "delta-bar") ?? null,
     [indicatorSignature, indicators],
@@ -5616,7 +5628,7 @@ function Chart({
       fontSize: clamp(Math.round(Number(source.ladderFontSize ?? 8)), 6, 14),
     };
   }, [deltaBarIndicator, deltaLadderSide, settings.downColor, settings.gridColor, settings.upColor]);
-  const footprintDataConsumer = footprintIndicator ?? stackedImbalanceIndicator ?? pocAuctionIndicator
+  const footprintDataConsumer = footprintIndicator ?? stackedImbalanceIndicator ?? pocAuctionIndicator ?? unfinishedAuctionIndicator
     ?? (deltaLadderSide ? deltaBarIndicator : null);
   const footprintCandles = useMemo(
     () => footprintDataConsumer ? sampledIndicatorCandles.slice(-indicatorHistoryLimit) : [],
@@ -5869,13 +5881,13 @@ function Chart({
     [footprintDataKey, footprintRenderBars],
   );
   const rawPocAuctionBars = useMemo(() => {
-    if (!pocAuctionIndicator || !footprintSourceCandles.length) return [];
+    if ((!pocAuctionIndicator && !unfinishedAuctionIndicator) || !footprintSourceCandles.length) return [];
     return buildFootprintBarsCached(pocAuctionBuildCacheRef, footprintSourceCandles, footprintMarketTrades, {
       ...footprintBuildSettings,
       groupTicks: 1,
       showEmptyPriceRows: false,
     });
-  }, [footprintBuildSettings, footprintMarketTrades, footprintSourceCandles, pocAuctionIndicator]);
+  }, [footprintBuildSettings, footprintMarketTrades, footprintSourceCandles, pocAuctionIndicator, unfinishedAuctionIndicator]);
   useEffect(() => {
     if (!footprintDataConsumer) {
       retainedFootprintBarsRef.current = null;
@@ -6245,6 +6257,32 @@ function Chart({
       neutralColor: settings.gridColor,
     };
   }, [pocAuctionIndicator, settings.borderDownColor, settings.borderUpColor, settings.downColor, settings.gridColor, settings.upColor]);
+  const unfinishedAuctionSettings = useMemo(() => {
+    const normalized = normalizeUnfinishedAuctionSettings(unfinishedAuctionIndicator?.settings);
+    if (!normalized.useThemeColors) return normalized;
+    return {
+      ...normalized,
+      badHighColor: settings.downColor,
+      badLowColor: settings.upColor,
+    };
+  }, [unfinishedAuctionIndicator, settings.downColor, settings.upColor]);
+
+  useEffect(() => {
+    if (!unfinishedAuctionIndicator) {
+      unfinishedAuctionPrimitiveRef.current?.update(null);
+      setUnfinishedAuctionFrame(null);
+      return;
+    }
+    const frame = buildUnfinishedAuctionFrame(
+      liveFootprintRenderBars,
+      rawPocAuctionBars,
+      instrument,
+      priceFormat.minMove,
+      unfinishedAuctionSettings,
+    );
+    unfinishedAuctionPrimitiveRef.current?.update({ frame, settings: unfinishedAuctionSettings });
+    startTransition(() => setUnfinishedAuctionFrame(frame));
+  }, [instrument, liveFootprintRenderBars, priceFormat.minMove, rawPocAuctionBars, unfinishedAuctionIndicator, unfinishedAuctionSettings]);
 
   useEffect(() => {
     if (!pocAuctionIndicator) {
@@ -13042,6 +13080,9 @@ function Chart({
     const pocAuctionPrimitive = new PocAuctionPrimitive();
     candleSeries.attachPrimitive(pocAuctionPrimitive);
     pocAuctionPrimitiveRef.current = pocAuctionPrimitive;
+    const unfinishedAuctionPrimitive = new UnfinishedAuctionPrimitive();
+    candleSeries.attachPrimitive(unfinishedAuctionPrimitive);
+    unfinishedAuctionPrimitiveRef.current = unfinishedAuctionPrimitive;
     const tapeSpeedPrimitive = new TapeSpeedOrderFlowBurstPrimitive();
     candleSeries.attachPrimitive(tapeSpeedPrimitive);
     tapeSpeedPrimitiveRef.current = tapeSpeedPrimitive;
@@ -14111,6 +14152,9 @@ function Chart({
         if (candleSeriesRef.current && pocAuctionPrimitiveRef.current) {
           try { candleSeriesRef.current.detachPrimitive(pocAuctionPrimitiveRef.current); } catch { /* chart may already be disposed */ }
         }
+        if (candleSeriesRef.current && unfinishedAuctionPrimitiveRef.current) {
+          try { candleSeriesRef.current.detachPrimitive(unfinishedAuctionPrimitiveRef.current); } catch { /* chart may already be disposed */ }
+        }
         if (candleSeriesRef.current && tapeSpeedPrimitiveRef.current) {
           try { candleSeriesRef.current.detachPrimitive(tapeSpeedPrimitiveRef.current); } catch { /* chart may already be disposed */ }
         }
@@ -14138,6 +14182,7 @@ function Chart({
       icebergRefreshPrimitiveRef.current = null;
       liquidityStopSweepPrimitiveRef.current = null;
       pocAuctionPrimitiveRef.current = null;
+      unfinishedAuctionPrimitiveRef.current = null;
       tapeSpeedPrimitiveRef.current = null;
       netGammaExposurePrimitiveRef.current = null;
       gexIntervalMapPrimitiveRef.current = null;
@@ -16350,6 +16395,19 @@ function Chart({
           <span>POC {pocAuctionFrame?.activePocs.length ?? 0}</span>
           <span>UA {pocAuctionFrame?.auctions.filter((item) => item.completionState === "unfinished").length ?? 0}</span>
           <span>EXCESS {pocAuctionFrame?.auctions.filter((item) => item.completionState === "excess").length ?? 0}</span>
+        </div>
+      ) : null}
+      {unfinishedAuctionIndicator ? (
+        <div
+          className="pointer-events-none absolute right-2 z-[72] flex max-w-[min(600px,calc(100%-80px))] items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur"
+          style={{ top: pocAuctionIndicator && pocAuctionSettings.showHeader ? 38 : 8 }}
+          title="Exact one-tick unfinished-auction extremes from classified Rithmic executions"
+        >
+          <span className={`h-1.5 w-1.5 rounded-full ${!unfinishedAuctionFrame || unfinishedAuctionFrame.status === "WAITING_FOR_VOLUME_AT_PRICE" ? "animate-pulse bg-warning" : unfinishedAuctionFrame.status === "GROUPED_EXTREMES" ? "bg-warning" : "bg-primary"}`} />
+          <span className="text-foreground">Unfinished Auction</span>
+          <span>{unfinishedAuctionFrame?.status.replaceAll("_", " ") ?? "CALCULATING"}</span>
+          <span>FRESH {unfinishedAuctionFrame?.levels.filter((level) => level.state === "fresh").length ?? 0}</span>
+          <span>TRIGGERED {unfinishedAuctionFrame?.levels.filter((level) => level.state === "triggered").length ?? 0}</span>
         </div>
       ) : null}
       {pocAuctionTooltip ? (

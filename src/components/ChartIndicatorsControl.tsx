@@ -448,6 +448,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "delta-cumulative-histogram",
   "imbalance-tracker",
   "imbalance-rejector",
+  "unfinished-auction",
   "moving-average",
   "vwap",
   "vwap-envelopes",
@@ -617,6 +618,12 @@ const volumeProfileThemeColours = (chartSettings: ChartSettings) => ({
  */
 const themeColourMapFor = (indicatorId: string, chartSettings: ChartSettings) => {
   if (indicatorId === "bounce-levels") return bounceThemeColours(chartSettings) as Record<string, string>;
+  if (indicatorId === "unfinished-auction") {
+    return {
+      badHighColor: chartSettings.downColor,
+      badLowColor: chartSettings.upColor,
+    } as Record<string, string>;
+  }
   // Big Contracts and Big Blocks paint their two sides from the theme's up and
   // down colours (see the primitive updates in Chart.tsx), so the swatches must
   // show those while theme mode is on rather than the values stored when the
@@ -6383,6 +6390,62 @@ export default function ChartIndicatorsControl({
                   <p className="text-[8px] leading-4 text-muted">
                     A scheme sets all five colours and switches this study off the chart theme, which would otherwise
                     stay in charge and leave the choice doing nothing.
+                  </p>
+                </div>
+              ) : null}
+
+              {settingsDefinition.id === "unfinished-auction" ? (
+                <div className="grid gap-3 border border-primary/20 bg-primary/[0.035] p-3 sm:grid-cols-2">
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                    <span>Filter mode</span>
+                    <KwantSelect
+                      value={String(settingsInstance.settings?.filterMode ?? "none")}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                        ...current,
+                        settings: { ...(current.settings ?? {}), filterMode: event.target.value },
+                      }))}
+                      className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                      menuLabel="Unfinished Auction filter mode"
+                    >
+                      <option value="none">None</option>
+                      <option value="manual">Manual minimum volume</option>
+                    </KwantSelect>
+                  </label>
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                    <span>Extension reset</span>
+                    <KwantSelect
+                      value={String(settingsInstance.settings?.resetMode ?? "session-open")}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                        ...current,
+                        settings: { ...(current.settings ?? {}), resetMode: event.target.value },
+                      }))}
+                      className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                      menuLabel="Unfinished Auction extension reset"
+                    >
+                      <option value="none">None</option>
+                      <option value="session-open">Session open</option>
+                      <option value="eth-and-rth-open">ETH and RTH open</option>
+                    </KwantSelect>
+                  </label>
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted sm:col-span-2">
+                    <span>Filter time</span>
+                    <KwantSelect
+                      value={String(settingsInstance.settings?.filterTime ?? "none")}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                        ...current,
+                        settings: { ...(current.settings ?? {}), filterTime: event.target.value },
+                      }))}
+                      className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground"
+                      menuLabel="Unfinished Auction time filter"
+                    >
+                      <option value="none">None</option>
+                      <option value="eth">ETH only</option>
+                      <option value="rth">RTH only</option>
+                      <option value="custom">Custom exchange time</option>
+                    </KwantSelect>
+                  </label>
+                  <p className="text-[8px] leading-4 text-muted sm:col-span-2">
+                    A normal auction high has zero Bid at its exact highest tick and a normal auction low has zero Ask at its exact lowest tick. This study marks the opposite-side prints and never infers them from candle direction or OHLC history.
                   </p>
                 </div>
               ) : null}

@@ -248,3 +248,17 @@ recap of the open items below and update this file when their state changes.
   picker that includes the magnet and the shared desk emoji catalogue.
 - A selected emoji may be dragged or resized from 16–160 px. Clicking away
   hides its handle without moving or deleting it.
+
+## 2026-09-04 — Pending indicator release gate
+
+- The pending-indicator overhaul starts from the frozen 21-row inventory in
+  `docs/deepcharts-pending-indicator-overhaul.md`. Existing addable indicators
+  are out of scope and must not be changed to make a pending row appear done.
+- Never remove **Pending / In development** merely because a catalogue id,
+  placeholder, or related shared engine exists. A study becomes addable only
+  after its real data contract, calculation, defaults, full settings,
+  theme-aware renderer, persistence, loading/error states, performance and
+  regression/visual checks are complete.
+- DeepCharts' protected DLL exposes useful names and setting metadata but not
+  trustworthy formula bodies. Record what is observable and what is inferred;
+  never claim 1:1 formula parity from strings or a similar-looking plot.
