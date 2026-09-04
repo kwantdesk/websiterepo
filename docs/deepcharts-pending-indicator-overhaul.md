@@ -37,8 +37,8 @@ Legend: `[ ]` not complete, `[~]` in progress, `[x]` complete and addable.
 | # | Quant Desk indicator | Stable id | DeepCharts help/settings | Data + formula | Renderer + theme | Settings + persistence | Tests + visual QA | Catalogue |
 |---:|---|---|---|---|---|---|---|---|
 | 1 | Unfinished Auction | `unfinished-auction` | [x] | [x] | [x] | [x] | [x] | Add |
-| 2 | Bar POC Indicator | `bar-poc-indicator` | [x] | [x] | [x] | [x] | [~] | Release candidate |
-| 3 | Dynamic POC | `dynamic-poc` | [ ] | [~] | [ ] | [ ] | [ ] | Pending |
+| 2 | Bar POC Indicator | `bar-poc-indicator` | [x] | [x] | [x] | [x] | [x] | Add |
+| 3 | Dynamic POC | `dynamic-poc` | [x] | [x] | [x] | [x] | [~] | Release candidate |
 | 4 | Ratio Highlight | `ratio-highlight` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
 | 5 | Stop Spotter | `stop-spotter` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
 | 6 | Cumulative Iceberg/Stop | `cumulative-iceberg-stop` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
@@ -101,10 +101,27 @@ Legend: `[ ]` not complete, `[~]` in progress, `[x]` complete and addable.
   CME trading-day boundary, respects max-bars and tick margin, and distinguishes
   wick-touch from close-through. Missing volume-at-price produces a visible
   waiting state rather than an OHLC-derived fake POC.
-- Focused tests and TypeScript pass. Deployed renderer/settings visual QA and
-  confirmation of factory defaults remain before final Add status.
+- Focused tests and TypeScript pass. Production commit `5b48a67d` reached Ready;
+  visual QA confirmed a LIVE exact-price level, stable settings, templates,
+  theme-linked colours and clean add/remove behaviour.
 
 ### 3: Dynamic POC
+
+- Official help defines the rolling/developing POC of the last n minutes or
+  bars with optional standard-deviation envelopes. Installed DLL metadata adds
+  the complete modes Daily, Minute, Bars, Last Days and Last Minutes; period
+  range 1–10,000; Standard Deviation or Price Percentage envelopes; and three
+  independently adjustable deviations in 0.25 increments.
+- Quant Desk maintains an incremental exact-price volume histogram: entering
+  bars are added once and expired bars are subtracted once. Each point resolves
+  the maximum-volume tick deterministically, with envelope distances calculated
+  about that POC. Minute buckets use Chicago exchange time and daily mode uses
+  the CME trading-day boundary.
+- The themed canvas renderer draws the VPOC and each enabled upper/lower band,
+  breaks safely when data is unavailable, and exposes period, envelope,
+  visibility, width, colour, template and save controls. Focused rolling-window,
+  envelope, bounds and unavailable-data tests plus TypeScript pass; deployment
+  and production visual QA remain.
 
 - Quant Desk already has a tested `PocAuctionSuiteEngine` driven by exact
   execution-classified Footprint rows. It calculates raw-tick unfinished

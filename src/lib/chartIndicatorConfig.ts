@@ -28,6 +28,7 @@ import {
   DEFAULT_BAR_POC_SETTINGS,
   normalizeBarPocSettings,
 } from "@/lib/barPocIndicator";
+import { DEFAULT_DYNAMIC_POC_SETTINGS, DYNAMIC_POC_SETTINGS_VERSION, normalizeDynamicPocSettings } from "@/lib/dynamicPoc";
 
 export const LIVE_CHART_INDICATOR_IDS = new Set([
   "gamma-environment",
@@ -51,6 +52,7 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "imbalance-rejector",
   "unfinished-auction",
   "bar-poc-indicator",
+  "dynamic-poc",
   "cumulative-volume-delta",
   "cvd-divergence",
   "pulling-stacking",
@@ -154,6 +156,14 @@ export function resolveDailyVolumeProfileCount(value: unknown): number {
 }
 
 export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[]> = {
+  "dynamic-poc": [
+    { key: "periodValue", label: "Period value", defaultValue: 20, min: 1, max: 10000, step: 1 },
+    { key: "firstEnvelope", label: "First envelope deviation", defaultValue: 1, min: 0.25, max: 100, step: 0.25 },
+    { key: "secondEnvelope", label: "Second envelope deviation", defaultValue: 2, min: 0.25, max: 100, step: 0.25 },
+    { key: "thirdEnvelope", label: "Third envelope deviation", defaultValue: 3, min: 0.25, max: 100, step: 0.25 },
+    { key: "lineWidth", label: "VPOC line width", defaultValue: 2, min: 0.5, max: 8, step: 0.5 },
+    { key: "envelopeLineWidth", label: "Envelope line width", defaultValue: 1, min: 0.5, max: 8, step: 0.5 },
+  ],
   "bar-poc-indicator": [
     { key: "daysToLoad", label: "Days to load", defaultValue: 5, min: 1, max: 365, step: 1 },
     { key: "filterMin", label: "Minimum execution size", defaultValue: 0, min: 0, max: 1000000, step: 1 },
@@ -1316,6 +1326,14 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     askColor: theme?.upColor ?? DEFAULT_BAR_POC_SETTINGS.askColor,
     durationTextColor: theme?.borderUpColor ?? DEFAULT_BAR_POC_SETTINGS.durationTextColor,
     schemaVersion: BAR_POC_SETTINGS_VERSION,
+  } : {}),
+  ...(indicatorId === "dynamic-poc" ? {
+    ...DEFAULT_DYNAMIC_POC_SETTINGS,
+    pocColor: theme?.upColor ?? DEFAULT_DYNAMIC_POC_SETTINGS.pocColor,
+    firstEnvelopeColor: theme?.borderUpColor ?? DEFAULT_DYNAMIC_POC_SETTINGS.firstEnvelopeColor,
+    secondEnvelopeColor: theme?.gridColor ?? DEFAULT_DYNAMIC_POC_SETTINGS.secondEnvelopeColor,
+    thirdEnvelopeColor: theme?.downColor ?? DEFAULT_DYNAMIC_POC_SETTINGS.thirdEnvelopeColor,
+    schemaVersion: DYNAMIC_POC_SETTINGS_VERSION,
   } : {}),
   ...(indicatorId === "tape-speed-order-flow-burst" ? {
     ...DEFAULT_TAPE_SPEED_SETTINGS,
@@ -2485,6 +2503,10 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         ...normalizeBarPocSettings({ ...defaults, ...(normalizedInstance.settings ?? {}) }),
       },
     };
+  }
+  if (normalizedInstance.indicatorId === "dynamic-poc") {
+    const defaults = defaultIndicatorSettings("dynamic-poc");
+    return { ...normalizedInstance, settings: { ...defaults, ...normalizeDynamicPocSettings({ ...defaults, ...(normalizedInstance.settings ?? {}) }) } };
   }
   if (normalizedInstance.indicatorId === "tape-speed-order-flow-burst") {
     return {

@@ -450,6 +450,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "imbalance-rejector",
   "unfinished-auction",
   "bar-poc-indicator",
+  "dynamic-poc",
   "moving-average",
   "vwap",
   "vwap-envelopes",
@@ -630,6 +631,14 @@ const themeColourMapFor = (indicatorId: string, chartSettings: ChartSettings) =>
       bidColor: chartSettings.downColor,
       askColor: chartSettings.upColor,
       durationTextColor: chartSettings.borderUpColor,
+    } as Record<string, string>;
+  }
+  if (indicatorId === "dynamic-poc") {
+    return {
+      pocColor: chartSettings.upColor,
+      firstEnvelopeColor: chartSettings.borderUpColor,
+      secondEnvelopeColor: chartSettings.gridColor,
+      thirdEnvelopeColor: chartSettings.downColor,
     } as Record<string, string>;
   }
   // Big Contracts and Big Blocks paint their two sides from the theme's up and
@@ -6509,6 +6518,24 @@ export default function ChartIndicatorsControl({
                   <p className="text-[8px] leading-4 text-muted sm:col-span-2">
                     Bar POC ranks exact Rithmic volume-at-price rows. Automatic filtering uses the selected standard-deviation threshold; the optional RTH filter overrides it only from the exchange or custom RTH open.
                   </p>
+                </div>
+              ) : null}
+
+              {settingsDefinition.id === "dynamic-poc" ? (
+                <div className="grid gap-3 border border-primary/20 bg-primary/[0.035] p-3 sm:grid-cols-2">
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                    <span>Period mode</span>
+                    <KwantSelect value={String(settingsInstance.settings?.periodMode ?? "bars")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), periodMode: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel="Dynamic POC period mode">
+                      <option value="daily">Daily</option><option value="minute">Minute buckets</option><option value="bars">Last bars</option><option value="last-days">Last days</option><option value="last-minutes">Last minutes</option>
+                    </KwantSelect>
+                  </label>
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                    <span>Envelope mode</span>
+                    <KwantSelect value={String(settingsInstance.settings?.envelopeMode ?? "standard-deviation")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), envelopeMode: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel="Dynamic POC envelope mode">
+                      <option value="standard-deviation">Standard deviation</option><option value="price-percentage">Price percentage</option>
+                    </KwantSelect>
+                  </label>
+                  <p className="text-[8px] leading-4 text-muted sm:col-span-2">The VPOC and all enabled envelopes recalculate from exact Rithmic volume-at-price rows as the rolling window advances.</p>
                 </div>
               ) : null}
 
