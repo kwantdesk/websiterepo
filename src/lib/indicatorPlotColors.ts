@@ -31,6 +31,14 @@ export type IndicatorPlotColorSlot = {
 };
 
 export const INDICATOR_PLOT_COLOR_SLOTS: Record<string, IndicatorPlotColorSlot[]> = {
+  "deep-profile-swing": [
+    { key: "volumeColor", role: "muted" },
+    { key: "valueAreaColor", role: "secondary" },
+    { key: "askColor", role: "positive" },
+    { key: "bidColor", role: "negative" },
+    { key: "pocColor", role: "primary" },
+    { key: "vwapColor", role: "secondary" },
+  ],
   "deep-v-tracker": [
     { key: "accelerationColor", role: "secondary" },
     { key: "exhaustionColor", role: "negative" },

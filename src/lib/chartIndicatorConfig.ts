@@ -52,6 +52,11 @@ import {
   DEFAULT_DEEP_V_TRACKER_SETTINGS,
   normalizeDeepVTrackerSettings,
 } from "@/lib/deepVTracker";
+import {
+  DEEP_PROFILE_SWING_SETTINGS_VERSION,
+  DEFAULT_DEEP_PROFILE_SWING_SETTINGS,
+  normalizeDeepProfileSwingSettings,
+} from "@/lib/deepProfileSwing";
 
 export const LIVE_CHART_INDICATOR_IDS = new Set([
   "gamma-environment",
@@ -83,6 +88,7 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "deep-delta",
   "deep-wall",
   "deep-v-tracker",
+  "deep-profile-swing",
   "cumulative-volume-delta",
   "cvd-divergence",
   "pulling-stacking",
@@ -254,6 +260,28 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "textSize", label: "Level label size", defaultValue: 10, min: 6, max: 50, step: 0.5 },
     { key: "projectionBars", label: "Number of bars", defaultValue: 20, min: 1, max: 5000, step: 1 },
     { key: "patternOpacity", label: "Pattern fill opacity (%)", defaultValue: 32, min: 0, max: 100, step: 1 },
+  ],
+  "deep-profile-swing": [
+    { key: "absoluteReversal", label: "Absolute reversal", defaultValue: 10, min: 0.01, max: 100000, step: 0.25 },
+    { key: "reversalTicks", label: "Reversal ticks / highest-lowest lookback", defaultValue: 20, min: 1, max: 100000, step: 1 },
+    { key: "leftBars", label: "Left bars", defaultValue: 3, min: 1, max: 500, step: 1 },
+    { key: "rightBars", label: "Right bars", defaultValue: 3, min: 1, max: 500, step: 1 },
+    { key: "stopAbsoluteReversal", label: "Stop swing absolute reversal", defaultValue: 5, min: 0.01, max: 100000, step: 0.25 },
+    { key: "stopReversalTicks", label: "Stop swing reversal ticks / lookback", defaultValue: 10, min: 1, max: 100000, step: 1 },
+    { key: "stopLeftBars", label: "Stop swing left bars", defaultValue: 2, min: 1, max: 500, step: 1 },
+    { key: "stopRightBars", label: "Stop swing right bars", defaultValue: 2, min: 1, max: 500, step: 1 },
+    { key: "swingMinTicks", label: "VWAP swing minimum ticks", defaultValue: 12, min: 1, max: 100000, step: 1 },
+    { key: "swingMaxTicks", label: "VWAP swing maximum ticks", defaultValue: 240, min: 1, max: 1000000, step: 1 },
+    { key: "vwapBreakTicks", label: "VWAP break ticks", defaultValue: 8, min: 1, max: 100000, step: 1 },
+    { key: "filterMin", label: "Minimum execution size", defaultValue: 0, min: 0, max: 10000000, step: 1 },
+    { key: "filterMax", label: "Maximum execution size · 0 is unlimited", defaultValue: 0, min: 0, max: 10000000, step: 1 },
+    { key: "autoGroupFactor", label: "Automatic group factor", defaultValue: 1, min: 0.5, max: 4, step: 0.25 },
+    { key: "groupTicks", label: "Manual grouping ticks", defaultValue: 4, min: 1, max: 500, step: 1 },
+    { key: "valueAreaPercent", label: "Value area (%)", defaultValue: 68, min: 1, max: 100, step: 1 },
+    { key: "maxProfiles", label: "Profiles to show", defaultValue: 12, min: 1, max: 100, step: 1 },
+    { key: "profileWidth", label: "Profile width (%)", defaultValue: 34, min: 1, max: 100, step: 1 },
+    { key: "opacity", label: "Profile opacity (%)", defaultValue: 68, min: 0, max: 100, step: 1 },
+    { key: "lineWidth", label: "Level line width", defaultValue: 1, min: 0.5, max: 6, step: 0.5 },
   ],
   "ratio-highlight": [
     { key: "minRatio", label: "Minimum ratio", defaultValue: 10, min: 0, max: 100, step: 0.25 },
@@ -1506,6 +1534,16 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     askColor: theme?.upColor ?? DEFAULT_DEEP_V_TRACKER_SETTINGS.askColor,
     schemaVersion: DEEP_V_TRACKER_SETTINGS_VERSION,
   } : {}),
+  ...(indicatorId === "deep-profile-swing" ? {
+    ...DEFAULT_DEEP_PROFILE_SWING_SETTINGS,
+    volumeColor: theme?.borderDownColor ?? DEFAULT_DEEP_PROFILE_SWING_SETTINGS.volumeColor,
+    valueAreaColor: theme?.borderUpColor ?? DEFAULT_DEEP_PROFILE_SWING_SETTINGS.valueAreaColor,
+    askColor: theme?.upColor ?? DEFAULT_DEEP_PROFILE_SWING_SETTINGS.askColor,
+    bidColor: theme?.downColor ?? DEFAULT_DEEP_PROFILE_SWING_SETTINGS.bidColor,
+    pocColor: theme?.upColor ?? DEFAULT_DEEP_PROFILE_SWING_SETTINGS.pocColor,
+    vwapColor: theme?.borderUpColor ?? theme?.upColor ?? DEFAULT_DEEP_PROFILE_SWING_SETTINGS.vwapColor,
+    schemaVersion: DEEP_PROFILE_SWING_SETTINGS_VERSION,
+  } : {}),
   ...(indicatorId === "tape-speed-order-flow-burst" ? {
     ...DEFAULT_TAPE_SPEED_SETTINGS,
     buyColor: theme?.upColor ?? DEFAULT_TAPE_SPEED_SETTINGS.buyColor,
@@ -2706,6 +2744,10 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
   if (normalizedInstance.indicatorId === "deep-v-tracker") {
     const defaults = defaultIndicatorSettings("deep-v-tracker");
     return { ...normalizedInstance, settings: { ...defaults, ...normalizeDeepVTrackerSettings({ ...defaults, ...(normalizedInstance.settings ?? {}) }) } };
+  }
+  if (normalizedInstance.indicatorId === "deep-profile-swing") {
+    const defaults = defaultIndicatorSettings("deep-profile-swing");
+    return { ...normalizedInstance, settings: { ...defaults, ...normalizeDeepProfileSwingSettings({ ...defaults, ...(normalizedInstance.settings ?? {}) }) } };
   }
   if (normalizedInstance.indicatorId === "tape-speed-order-flow-burst") {
     return {

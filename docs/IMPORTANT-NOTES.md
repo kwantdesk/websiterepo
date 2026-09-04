@@ -308,3 +308,10 @@ recap of the open items below and update this file when their state changes.
   must replace its immediate candle-volume preview with exact custom-period
   Rithmic price rows, and anchor/setting changes must be debounced and protected
   against stale responses.
+- KWANT Profile Swing must remain separate from the existing Daily, Weekly,
+  Composite and fixed-range profile render paths. Its profiles require exact
+  classified Rithmic volume-at-price; nonzero min/max filters apply to each
+  execution before aggregation, flow-only summaries and OHLC direction are
+  never substituted, and missing exact data must remain a visible waiting
+  state. Preserve all four Swing/Stop detector modes and the VWAP min/max/break
+  contract when evolving it.

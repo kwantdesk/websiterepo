@@ -46,8 +46,8 @@ Legend: `[ ]` not complete, `[~]` in progress, `[x]` complete and addable.
 | 8 | KWANT Delta | `deep-delta` | [x] | [x] | [x] | [x] | [x] | Add |
 | 9 | KWANT Wall | `deep-wall` | [x] | [x] | [x] | [x] | [x] | Add |
 | 10 | KWANT V-Tracker | `deep-v-tracker` | [x] | [x] | [x] | [x] | [x] | Add |
-| 11 | Custom Draw-On Volume Profile | `custom-draw-on-volume-profile` | [x] | [x] | [x] | [x] | [~] | Release candidate |
-| 12 | KWANT Profile Swing | `deep-profile-swing` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
+| 11 | Custom Draw-On Volume Profile | `custom-draw-on-volume-profile` | [x] | [x] | [x] | [x] | [x] | Add |
+| 12 | KWANT Profile Swing | `deep-profile-swing` | [x] | [x] | [x] | [x] | [~] | Release candidate |
 | 13 | KWANT Profile Values | `deep-profile-values` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
 | 14 | Market Statistics | `market-statistics` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
 | 15 | Confluence Identifier | `confluence-identifier` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
@@ -359,8 +359,36 @@ Legend: `[ ]` not complete, `[~]` in progress, `[x]` complete and addable.
   and VAL lines/labels. Price grouping, execution filters, row density, value
   area, width, fills, line toggles/widths/colours and templates are exposed.
   Focused exact-row conversion and arming tests, fixed-range level regression,
-  templates, theme following, numeric sliders and TypeScript pass. Exact-build
-  deployment and production placement/settings/removal QA remain open.
+  templates, theme following, numeric sliders and TypeScript pass. Commit
+  `efad055c` reached Ready as deployment `CCdWn32JQCkX8BtaNG7YSwVxQUBy`.
+  Cache-busted production QA drew an exact custom profile on NQ with visible
+  VAH 29172.27, POC 29165.21 and VAL 29150.09, changed price grouping from 4
+  to 21, verified the full settings surface and removed the temporary drawing.
+
+### 12: KWANT Profile Swing
+
+- Official DeepCharts help defines five profile modes (Volume, Ask Bid Volume,
+  Delta, Delta and Total Volumes, Delta Percentage), Swing/VWAP length,
+  optional reversal-bar inclusion and Profile And Lines/Lines Only display.
+  Its main and optional stop swing groups expose Highest Lowest, Left Right
+  Bar, Absolute Reversal and Reversal Tick detection; VWAP mode exposes swing
+  minimum, maximum and break ticks. DLL metadata confirms those groups plus
+  the shared profile data, grouping, visual, POC, Value Area and VWAP controls.
+- Quant Desk detects the selected swing contract over chart bars and builds
+  each resulting distribution exclusively from exact classified Rithmic
+  volume-at-price. Nonzero execution filters are applied to individual prints
+  before price aggregation; flow-only historical summaries and OHLC direction
+  cannot manufacture rows. Missing exact flow produces an explicit waiting
+  state.
+- The active swing updates with the shared execution tape and renders through
+  an independent native profile primitive, insulating all existing Daily,
+  Weekly, Composite and fixed-range profiles. Profile modes, lines-only,
+  POC/VAH/VAL/VWAP, theme/custom colours, numeric sliders and account-synced
+  templates are wired. Detection is bounded for long event-bar histories.
+- Focused normalization, four detector families, exact aggregation, execution
+  filtering, missing-data and 20,000-bar performance tests pass, together with
+  TypeScript, focused lint, templates, theme-following, numeric-slider checks
+  and the production build. Exact deployment and production visual QA remain.
 
 - Quant Desk already has a tested `PocAuctionSuiteEngine` driven by exact
   execution-classified Footprint rows. It calculates raw-tick unfinished

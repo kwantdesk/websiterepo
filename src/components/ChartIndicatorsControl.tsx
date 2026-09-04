@@ -146,6 +146,9 @@ const FOOTPRINT_PROFILE_MANAGED_SETTINGS = new Set([
   "perBarNegativeDeltaColor",
   "perBarProfilePocColor",
 ]);
+const DEEP_PROFILE_SWING_MANAGED_SETTINGS = new Set([
+  "includeReversalBar", "stopSwingEnabled", "showPocLine", "showValueAreaLines", "showVwapLine", "showLevelLabels",
+]);
 
 const TPO_PRESETS = [
   {
@@ -460,6 +463,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "deep-delta",
   "deep-wall",
   "deep-v-tracker",
+  "deep-profile-swing",
   "moving-average",
   "vwap",
   "vwap-envelopes",
@@ -720,6 +724,17 @@ const themeColourMapFor = (indicatorId: string, chartSettings: ChartSettings) =>
       slowdownColor: visible.muted,
       bidColor: visible.negative,
       askColor: visible.positive,
+    } as Record<string, string>;
+  }
+  if (indicatorId === "deep-profile-swing") {
+    const visible = visibleIndicatorTheme(chartSettings);
+    return {
+      volumeColor: visible.muted,
+      valueAreaColor: visible.secondary,
+      askColor: visible.positive,
+      bidColor: visible.negative,
+      pocColor: visible.primary,
+      vwapColor: visible.secondary,
     } as Record<string, string>;
   }
   // Big Contracts and Big Blocks paint their two sides from the theme's up and
@@ -6808,6 +6823,36 @@ export default function ChartIndicatorsControl({
                 </div>
               ) : null}
 
+              {settingsDefinition.id === "deep-profile-swing" ? (
+                <div className="grid gap-3 border border-primary/20 bg-primary/[0.035] p-3 sm:grid-cols-2">
+                  {[
+                    ["Profile type", "profileMode", [["volume", "Volume"], ["bid-ask", "Ask Bid Volume"], ["delta", "Delta"], ["delta-volume", "Delta and Total Volumes"], ["delta-percentage", "Delta Percentage"]]],
+                    ["Length type", "lengthType", [["swing", "Swing"], ["vwap", "VWAP"]]],
+                    ["Display mode", "displayMode", [["profile-and-lines", "Profile and lines"], ["lines-only", "Lines only"]]],
+                    ["Main swing type", "swingType", [["highest-lowest", "Highest Lowest"], ["left-right-bars", "Left Right Bar"], ["absolute-reversal", "Absolute Reversal"], ["reversal-ticks", "Reversal Tick"]]],
+                    ["Stop swing type", "stopSwingType", [["highest-lowest", "Highest Lowest"], ["left-right-bars", "Left Right Bar"], ["absolute-reversal", "Absolute Reversal"], ["reversal-ticks", "Reversal Tick"]]],
+                    ["Input data", "inputData", [["volume", "Volume"], ["trades", "Number of trades"]]],
+                    ["Tick grouping", "groupingMode", [["automatic", "Automatic"], ["manual", "Manual"]]],
+                  ].map(([label, key, choices]) => (
+                    <label key={String(key)} className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                      <span>{String(label)}</span>
+                      <KwantSelect value={String(settingsInstance.settings?.[String(key)] ?? (choices as string[][])[0][0])} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [String(key)]: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel={`KWANT Profile Swing ${String(label).toLowerCase()}`}>
+                        {(choices as string[][]).map(([value, name]) => <option key={value} value={value}>{name}</option>)}
+                      </KwantSelect>
+                    </label>
+                  ))}
+                  {[
+                    ["Include reversal bar", "includeReversalBar"],
+                    ["Enable stop swing", "stopSwingEnabled"],
+                    ["Show POC line", "showPocLine"],
+                    ["Show VAH / VAL", "showValueAreaLines"],
+                    ["Show VWAP", "showVwapLine"],
+                    ["Show level labels", "showLevelLabels"],
+                  ].map(([label, key]) => { const on = settingsInstance.settings?.[key] === true; return <button key={key} type="button" aria-pressed={on} onClick={() => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [key]: !on } }))} className="flex h-9 items-center justify-between border border-border bg-background px-3 text-[9px] uppercase tracking-[0.1em] text-muted"><span>{label}</span><span className={on ? "text-primary" : "text-muted"}>{on ? "On" : "Off"}</span></button>; })}
+                  <p className="text-[8px] leading-4 text-muted sm:col-span-2">Profiles are built only from exact Rithmic classified executions at price. The active swing develops on every print; no candle-direction volume approximation is used.</p>
+                </div>
+              ) : null}
+
               {/*
                 * Save, open and import — on every indicator, not just the
                 * footprint. Rendered before the settings themselves so a
@@ -6903,6 +6948,7 @@ export default function ChartIndicatorsControl({
                   .filter(([key, value]) =>
                     !INDICATOR_NUMERIC_SETTINGS[settingsDefinition.id]?.some((setting) => setting.key === key)
                     && !(settingsDefinition.id === "deep-print-footprint" && FOOTPRINT_PROFILE_MANAGED_SETTINGS.has(key))
+                    && !(settingsDefinition.id === "deep-profile-swing" && DEEP_PROFILE_SWING_MANAGED_SETTINGS.has(key))
                     && !(VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) && VOLUME_PROFILE_VWAP_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "bounce-levels" && key === "syncGexMapColors")
                     && (typeof value === "boolean" || isColourSetting(key, value)))

@@ -301,6 +301,7 @@ import { buildDeepWallFrame, normalizeDeepWallSettings, type DeepWallFrame } fro
 import { DeepWallPrimitive } from "@/lib/deepWallPrimitive";
 import { buildDeepVTrackerFrame, normalizeDeepVTrackerSettings, type DeepVTrackerFrame } from "@/lib/deepVTracker";
 import { DeepVTrackerPrimitive } from "@/lib/deepVTrackerPrimitive";
+import { buildDeepProfileSwingFrame, normalizeDeepProfileSwingSettings, type DeepProfileSwingFrame } from "@/lib/deepProfileSwing";
 import {
   buildCumulativeIcebergStopFrame,
   normalizeCumulativeIcebergStopSettings,
@@ -3252,6 +3253,7 @@ function Chart({
   const sessionHighLowRenderDataRef = useRef<SessionHighLowRenderLevel[]>([]);
   const sessionWindowRenderDataRef = useRef<SessionWindowRenderData[]>([]);
   const volumeProfilePrimitiveRef = useRef<NativeVolumeProfilePrimitive | null>(null);
+  const deepProfileSwingPrimitiveRef = useRef<NativeVolumeProfilePrimitive | null>(null);
   const tpoProfilePrimitiveRef = useRef<TpoProfilePrimitive | null>(null);
   const miniDomPrimitiveRef = useRef<MiniDomPrimitive | null>(null);
   const deltaLadderPrimitiveRef = useRef<DeltaLadderPrimitive | null>(null);
@@ -3918,6 +3920,7 @@ function Chart({
   const [stopSpotterFrame, setStopSpotterFrame] = useState<StopSpotterFrame | null>(null);
   const [deepWallFrame, setDeepWallFrame] = useState<DeepWallFrame | null>(null);
   const [deepVTrackerFrame, setDeepVTrackerFrame] = useState<DeepVTrackerFrame | null>(null);
+  const [deepProfileSwingFrame, setDeepProfileSwingFrame] = useState<DeepProfileSwingFrame | null>(null);
   const [pocAuctionTooltip, setPocAuctionTooltip] = useState<PocAuctionHit | null>(null);
   const [tapeSpeedTooltip, setTapeSpeedTooltip] = useState<TapeSpeedHit | null>(null);
   const [netGammaProfile, setNetGammaProfile] = useState<NetGammaProfileSnapshot | null>(null);
@@ -5761,6 +5764,10 @@ function Chart({
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "deep-v-tracker") ?? null,
     [indicatorSignature, indicators],
   );
+  const deepProfileSwingIndicator = useMemo(
+    () => indicators.find((instance) => instance.enabled && instance.indicatorId === "deep-profile-swing") ?? null,
+    [indicatorSignature, indicators],
+  );
   const cumulativeIcebergStopIndicator = useMemo(
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "cumulative-iceberg-stop") ?? null,
     [indicatorSignature, indicators],
@@ -5949,7 +5956,7 @@ function Chart({
       fontSize: clamp(Math.round(Number(source.ladderFontSize ?? 8)), 6, 14),
     };
   }, [deltaBarIndicator, deltaLadderSide, settings.downColor, settings.gridColor, settings.upColor]);
-  const footprintDataConsumer = footprintIndicator ?? stackedImbalanceIndicator ?? pocAuctionIndicator ?? unfinishedAuctionIndicator ?? barPocIndicator ?? dynamicPocIndicator ?? ratioHighlightIndicator ?? stopSpotterIndicator ?? deepWallIndicator ?? deepVTrackerIndicator
+  const footprintDataConsumer = footprintIndicator ?? stackedImbalanceIndicator ?? pocAuctionIndicator ?? unfinishedAuctionIndicator ?? barPocIndicator ?? dynamicPocIndicator ?? ratioHighlightIndicator ?? stopSpotterIndicator ?? deepWallIndicator ?? deepVTrackerIndicator ?? deepProfileSwingIndicator
     ?? (deltaLadderSide ? deltaBarIndicator : null);
   const footprintCandles = useMemo(
     () => footprintDataConsumer ? sampledIndicatorCandles.slice(-indicatorHistoryLimit) : [],
@@ -6202,13 +6209,13 @@ function Chart({
     [footprintDataKey, footprintRenderBars],
   );
   const rawPocAuctionBars = useMemo(() => {
-    if ((!pocAuctionIndicator && !unfinishedAuctionIndicator && !dynamicPocIndicator && !ratioHighlightIndicator && !stopSpotterIndicator && !deepWallIndicator && !deepVTrackerIndicator) || !footprintSourceCandles.length) return [];
+    if ((!pocAuctionIndicator && !unfinishedAuctionIndicator && !dynamicPocIndicator && !ratioHighlightIndicator && !stopSpotterIndicator && !deepWallIndicator && !deepVTrackerIndicator && !deepProfileSwingIndicator) || !footprintSourceCandles.length) return [];
     return buildFootprintBarsCached(pocAuctionBuildCacheRef, footprintSourceCandles, footprintMarketTrades, {
       ...footprintBuildSettings,
       groupTicks: 1,
       showEmptyPriceRows: false,
     });
-  }, [deepVTrackerIndicator, deepWallIndicator, dynamicPocIndicator, footprintBuildSettings, footprintMarketTrades, footprintSourceCandles, pocAuctionIndicator, ratioHighlightIndicator, stopSpotterIndicator, unfinishedAuctionIndicator]);
+  }, [deepProfileSwingIndicator, deepVTrackerIndicator, deepWallIndicator, dynamicPocIndicator, footprintBuildSettings, footprintMarketTrades, footprintSourceCandles, pocAuctionIndicator, ratioHighlightIndicator, stopSpotterIndicator, unfinishedAuctionIndicator]);
   const rawBarPocBars = useMemo(() => {
     if (!barPocIndicator || !footprintSourceCandles.length) return [];
     const normalized = normalizeBarPocSettings(barPocIndicator.settings);
@@ -6656,6 +6663,20 @@ function Chart({
       askColor: visible.positive,
     };
   }, [deepVTrackerIndicator, settings]);
+  const deepProfileSwingSettings = useMemo(() => {
+    const normalized = normalizeDeepProfileSwingSettings(deepProfileSwingIndicator?.settings);
+    if (!normalized.useThemeColors) return normalized;
+    const visible = visibleIndicatorTheme(settings);
+    return {
+      ...normalized,
+      volumeColor: visible.muted,
+      valueAreaColor: visible.secondary,
+      askColor: visible.positive,
+      bidColor: visible.negative,
+      pocColor: visible.primary,
+      vwapColor: visible.secondary,
+    };
+  }, [deepProfileSwingIndicator, settings]);
 
   useEffect(() => {
     if (!unfinishedAuctionIndicator) {
@@ -13827,6 +13848,9 @@ function Chart({
     const volumeProfilePrimitive = new NativeVolumeProfilePrimitive();
     candleSeries.attachPrimitive(volumeProfilePrimitive);
     volumeProfilePrimitiveRef.current = volumeProfilePrimitive;
+    const deepProfileSwingPrimitive = new NativeVolumeProfilePrimitive();
+    candleSeries.attachPrimitive(deepProfileSwingPrimitive);
+    deepProfileSwingPrimitiveRef.current = deepProfileSwingPrimitive;
     const tpoProfilePrimitive = new TpoProfilePrimitive();
     candleSeries.attachPrimitive(tpoProfilePrimitive);
     tpoProfilePrimitiveRef.current = tpoProfilePrimitive;
@@ -14734,6 +14758,13 @@ function Chart({
             // Chart teardown can detach primitives before React cleanup runs.
           }
         }
+        if (candleSeriesRef.current && deepProfileSwingPrimitiveRef.current) {
+          try {
+            candleSeriesRef.current.detachPrimitive(deepProfileSwingPrimitiveRef.current);
+          } catch {
+            // Chart teardown can detach primitives before React cleanup runs.
+          }
+        }
         if (candleSeriesRef.current && sessionHighLowPrimitiveRef.current) {
           try {
             candleSeriesRef.current.detachPrimitive(sessionHighLowPrimitiveRef.current);
@@ -14938,6 +14969,7 @@ function Chart({
       darkPoolMapPrimitiveRef.current = null;
       darkPoolGexPrimitiveRef.current = null;
       volumeProfilePrimitiveRef.current = null;
+      deepProfileSwingPrimitiveRef.current = null;
       tpoProfilePrimitiveRef.current = null;
       bigTradesPrimitiveRef.current = null;
       deepContractsPrimitiveRef.current = null;
@@ -15441,6 +15473,73 @@ function Chart({
     volumeProfileLastCandleTimestamp,
     volumeProfiles,
   ]);
+
+  useEffect(() => {
+    const primitive = deepProfileSwingPrimitiveRef.current;
+    if (!primitive) return;
+    primitive.setPaneInsets({ left: toolbarPlotLeftInset, right: 0 });
+    if (!deepProfileSwingIndicator) {
+      primitive.setModels([]);
+      setDeepProfileSwingFrame(null);
+      return;
+    }
+    const frame = buildDeepProfileSwingFrame(rawPocAuctionBars, instrument, contractSymbol ?? instrument, priceFormat.minMove, deepProfileSwingSettings, footprintMarketTrades);
+    const lastCandleTime = volumeProfileLastCandleTimestamp === null ? null : Math.floor(volumeProfileLastCandleTimestamp / 1_000);
+    const intervalSeconds = candleIntervalMs ? candleIntervalMs / 1_000 : null;
+    const linesOnly = deepProfileSwingSettings.displayMode === "lines-only";
+    const models: NativeVolumeProfileModel[] = frame.profiles.map((profile, index) => ({
+      id: `deep-profile-swing:${profile.startMs}:${profile.endMs}:${index}`,
+      profile,
+      lastCandleTime,
+      intervalSeconds,
+      maxVolume: Math.max(1, ...profile.levels.map((level) => level.volume)),
+      maxAbsDelta: Math.max(1, ...profile.levels.map((level) => Math.abs(level.delta))),
+      lowPrice: profile.levels[0]?.price ?? Number.POSITIVE_INFINITY,
+      highPrice: profile.levels[profile.levels.length - 1]?.price ?? Number.NEGATIVE_INFINITY,
+      laterBars: candles.filter((candle) => candle.timestamp >= profile.endMs).map((candle) => ({ timestamp: candle.timestamp, high: candle.high, low: candle.low })),
+      style: {
+        mode: deepProfileSwingSettings.profileMode,
+        widthBasis: "period-percent",
+        widthPercent: deepProfileSwingSettings.profileWidth,
+        opacity: linesOnly ? 0 : deepProfileSwingSettings.opacity / 100,
+        positiveDeltaColor: deepProfileSwingSettings.askColor,
+        negativeDeltaColor: deepProfileSwingSettings.bidColor,
+        outsideValueAreaColor: deepProfileSwingSettings.volumeColor,
+        valueAreaColor: deepProfileSwingSettings.valueAreaColor,
+        pocColor: deepProfileSwingSettings.pocColor,
+        showValueArea: !linesOnly,
+        showDelta: !linesOnly,
+        showProfileSpine: !linesOnly,
+        showPocLine: deepProfileSwingSettings.showPocLine,
+        showValueAreaLines: deepProfileSwingSettings.showValueAreaLines,
+        showText: false,
+        showPocHighlight: !linesOnly,
+        showProfileOutline: !linesOnly,
+        automaticGrouping: false,
+        autoGroupFactor: deepProfileSwingSettings.autoGroupFactor,
+        manualGroupTicks: 1,
+        valueAreaPercent: deepProfileSwingSettings.valueAreaPercent,
+        snapMode: "off",
+        pocLineWidth: deepProfileSwingSettings.lineWidth,
+        pocExtensionMode: "none",
+        valueAreaLineWidth: deepProfileSwingSettings.lineWidth,
+        valueAreaExtensionMode: "none",
+        showVwap: deepProfileSwingSettings.showVwapLine,
+        showVwapLine: deepProfileSwingSettings.showVwapLine,
+        vwapColor: deepProfileSwingSettings.vwapColor,
+        vwapLineWidth: deepProfileSwingSettings.lineWidth,
+        vwapExtensionMode: "none",
+        showLevelLabels: deepProfileSwingSettings.showLevelLabels,
+        showLevelLabelPrice: true,
+        levelLabelSide: "right",
+        levelDash: [3, 3],
+        visualStyle: "solid",
+        borderWidth: 1,
+      },
+    }));
+    primitive.setModels(models);
+    setDeepProfileSwingFrame(frame);
+  }, [candleIntervalMs, candles, chartReadyRevision, contractSymbol, deepProfileSwingIndicator, deepProfileSwingSettings, footprintMarketTrades, instrument, priceFormat.minMove, rawPocAuctionBars, toolbarPlotLeftInset, volumeProfileLastCandleTimestamp]);
 
   useEffect(() => {
     const primitive = tpoProfilePrimitiveRef.current;
@@ -17198,6 +17297,12 @@ function Chart({
         <div className="pointer-events-none absolute right-2 z-[72] flex items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur" style={{ top: (pocAuctionIndicator && pocAuctionSettings.showHeader ? 38 : 8) + (unfinishedAuctionIndicator ? 26 : 0) + (barPocIndicator ? 26 : 0) + (dynamicPocIndicator ? 26 : 0) + (ratioHighlightIndicator ? 26 : 0) + (stopSpotterIndicator ? 26 : 0) + (deepWallIndicator ? 26 : 0) }} title="Execution-confirmed acceleration, exhaustion, slowdown, absorption and pressure from Rithmic volume-at-price">
           <span className={`h-1.5 w-1.5 rounded-full ${!deepVTrackerFrame || deepVTrackerFrame.status === "WAITING_FOR_VOLUME_AT_PRICE" ? "animate-pulse bg-warning" : "bg-primary"}`} />
           <span className="text-foreground">KWANT V-Tracker</span><span>{deepVTrackerFrame?.status.replaceAll("_", " ") ?? "CALCULATING"}</span><span>{deepVTrackerFrame ? deepVTrackerFrame.patterns.length + deepVTrackerFrame.levels.length : 0} SIGNALS</span>
+        </div>
+      ) : null}
+      {deepProfileSwingIndicator ? (
+        <div className="pointer-events-none absolute right-2 z-[72] flex items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur" style={{ top: (pocAuctionIndicator && pocAuctionSettings.showHeader ? 38 : 8) + (unfinishedAuctionIndicator ? 26 : 0) + (barPocIndicator ? 26 : 0) + (dynamicPocIndicator ? 26 : 0) + (ratioHighlightIndicator ? 26 : 0) + (stopSpotterIndicator ? 26 : 0) + (deepWallIndicator ? 26 : 0) + (deepVTrackerIndicator ? 26 : 0) }} title="Automatic swing profiles from exact Rithmic volume-at-price">
+          <span className={`h-1.5 w-1.5 rounded-full ${!deepProfileSwingFrame || deepProfileSwingFrame.status === "WAITING_FOR_VOLUME_AT_PRICE" ? "animate-pulse bg-warning" : "bg-primary"}`} />
+          <span className="text-foreground">KWANT Profile Swing</span><span>{deepProfileSwingFrame?.status.replaceAll("_", " ") ?? "CALCULATING"}</span><span>{deepProfileSwingFrame?.profiles.length ?? 0} PROFILES</span>
         </div>
       ) : null}
       {pocAuctionTooltip ? (

@@ -94,5 +94,14 @@ task until the full pending library is complete, without shortcuts.
   area and execution filters; requests are drag-debounced and signature-guarded
   against stale responses. The histogram, POC, VAH and VAL, themed controls,
   drawing persistence and templates are wired. Focused conversion/arming,
-  fixed-profile level, template, theme, slider and TypeScript checks pass;
-  exact deployment and production visual QA remain.
+  fixed-profile level, template, theme, slider and TypeScript checks pass.
+  Commit `efad055c` reached Ready and production QA confirmed exact NQ profile
+  placement, POC/VAH/VAL, settings changes and clean removal, completing item
+  11. Item 12, **KWANT Profile Swing**, is now a release candidate: all five
+  profile modes, Swing/VWAP length, four main/stop detector families,
+  reversal-bar inclusion and profile/lines display are wired over exact
+  Rithmic volume-at-price. Execution filters operate before aggregation;
+  missing exact flow is refused. It has an isolated native renderer,
+  theme/custom colours, sliders and synced templates. Focused formula,
+  filter, data-refusal and 20,000-bar tests plus TypeScript, lint and the
+  production build pass; exact deployment and visual QA remain.
