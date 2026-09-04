@@ -276,6 +276,18 @@ function profileForRange(
   bars: readonly FootprintBar[], range: SwingRange, instrument: string, contractSymbol: string,
   tickSize: number, settings: DeepProfileSwingSettings, trades?: readonly InstitutionalTrade[],
 ): InstitutionalVolumeProfile | null {
+  const rawStartMs = bars[range.start].startTime;
+  const rawEndMs = bars[range.end].endTime;
+  const startMs = Number.isFinite(rawStartMs)
+    ? rawStartMs
+    : Number.isFinite(bars[range.start].timestamp) ? bars[range.start].timestamp : 0;
+  // Forming event bars may intentionally expose an open-ended boundary.
+  // Profiles, chart times and ISO dates may not: cap it at the latest real
+  // event timestamp rather than sending Infinity into Date/toISOString.
+  const fallbackEndMs = Number.isFinite(bars[range.end].timestamp)
+    ? bars[range.end].timestamp + 1
+    : startMs + 1;
+  const endMs = Number.isFinite(rawEndMs) && rawEndMs > startMs ? rawEndMs : Math.max(startMs + 1, fallbackEndMs);
   let rangeHigh = Number.NEGATIVE_INFINITY;
   let rangeLow = Number.POSITIVE_INFINITY;
   for (let index = range.start; index <= range.end; index += 1) {
@@ -288,8 +300,6 @@ function profileForRange(
   const rows = new Map<number, InstitutionalVolumeProfileLevel>();
   const filterExecutions = settings.filterMin > 0 || settings.filterMax > 0;
   if (filterExecutions) {
-    const startMs = bars[range.start].startTime;
-    const endMs = bars[range.end].endTime;
     for (const trade of trades ?? []) {
       if (trade.flowOnly || trade.timestamp < startMs || trade.timestamp >= endMs) continue;
       if (trade.volume < settings.filterMin || (settings.filterMax > 0 && trade.volume > settings.filterMax)) continue;
@@ -337,14 +347,14 @@ function profileForRange(
   return {
     schemaVersion: "kwantify-volume-profile-v1", provider: "Rithmic",
     source: "Rithmic classified executions · automatic swing", root: instrument, contractSymbol,
-    period: "custom", startMs: bars[range.start].startTime, endMs: bars[range.end].endTime,
-    coverageStartMs: bars[range.start].startTime, coverageEndMs: bars[range.end].endTime,
+    period: "custom", startMs, endMs,
+    coverageStartMs: startMs, coverageEndMs: endMs,
     complete: range.end < bars.length - 1 ? true : null, tickSize, groupTicks,
     valueAreaPercent: settings.valueAreaPercent, minTradeVolume: settings.filterMin,
     maxTradeVolume: settings.filterMax, totalVolume, bidVolume, askVolume,
     delta: askVolume - bidVolume, trades: tradeCount, poc: valueArea.poc, vah: valueArea.vah, val: valueArea.val,
     vwap, standardDeviation: Math.sqrt(Math.max(0, variance)), levels, developingPoc: [],
-    asOf: new Date(bars[range.end].endTime).toISOString(),
+    asOf: new Date(endMs).toISOString(),
   };
 }
 

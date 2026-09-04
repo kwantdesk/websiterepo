@@ -68,6 +68,11 @@ const filtered = buildDeepProfileSwingFrame(turns, "NQ", "NQZ6", tickSize, {
 assert.ok(filtered.profiles.length > 0);
 assert.ok(filtered.profiles.every((profile) => profile.totalVolume === 15), "execution filters apply before price aggregation");
 
+const openEnded = turns.map((item, index) => index === turns.length - 1 ? { ...item, endTime: Number.POSITIVE_INFINITY, isClosed: false } : item);
+const openFrame = buildDeepProfileSwingFrame(openEnded, "NQ", "NQZ6", tickSize, { ...DEFAULT_DEEP_PROFILE_SWING_SETTINGS, reversalTicks: 3 });
+assert.equal(openFrame.status, "LIVE");
+assert.ok(openFrame.profiles.every((profile) => Number.isFinite(profile.endMs) && !Number.isNaN(Date.parse(profile.asOf))), "forming event bars never leak an infinite time into the renderer");
+
 const noFlow = turns.map((item) => ({ ...item, rows: [], hasPriceLevelFlow: false }));
 assert.deepEqual(buildDeepProfileSwingFrame(noFlow, "NQ", "NQZ6", tickSize), { status: "WAITING_FOR_VOLUME_AT_PRICE", profiles: [] });
 
