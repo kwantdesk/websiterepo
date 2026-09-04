@@ -19448,7 +19448,11 @@ function Chart({
                 <ChartColorField
                   ariaLabel="Drawing line colour"
                   value={selectedProfessionalDrawing.style.lineColor}
-                  onChange={(hex) => updateSelectedProfessionalDrawing({ lineColor: hex, labelColor: hex })}
+                  onChange={(hex) => updateSelectedProfessionalDrawing({
+                    useThemeColor: false,
+                    lineColor: hex,
+                    labelColor: hex,
+                  })}
                 />
               </div>
               <label className="block text-[12px] text-muted">

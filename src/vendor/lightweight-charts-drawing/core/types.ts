@@ -29,6 +29,8 @@ export interface Point {
  * Visual style for drawings
  */
 export interface DrawingStyle {
+  /** False only after the trader explicitly selects a drawing colour. */
+  useThemeColor?: boolean;
   lineColor: string;
   lineWidth: number;
   lineDash?: number[];
@@ -43,6 +45,7 @@ export interface DrawingStyle {
  * Default drawing style
  */
 export const DEFAULT_DRAWING_STYLE: DrawingStyle = {
+  useThemeColor: true,
   lineColor: '#2962FF',
   lineWidth: 2,
   lineDash: [],

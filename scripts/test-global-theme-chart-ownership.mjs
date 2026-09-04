@@ -86,5 +86,7 @@ assert.match(workspace, /const nextChartSettings = normalizeChartSettings\(prese
 const chart = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
 assert.match(chart, /if \(drawing\.style\?\.useThemeColor === false\) return;/,
   "custom drawing colours must not be repainted by a theme change");
+assert.match(chart, /useThemeColor: false,[\s\S]*lineColor: hex/,
+  "the professional drawing colour picker must claim a custom override");
 
 console.log("Global theme/chart ownership regression checks passed.");

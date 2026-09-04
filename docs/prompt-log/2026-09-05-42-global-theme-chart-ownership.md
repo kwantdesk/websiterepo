@@ -20,3 +20,4 @@ Changing the overall theme must immediately repaint every chart and GEX VUE pane
 - Named workspaces now save and restore per-pane candle settings and their exact saved chart palette. Quick Save is the boundary that commits a new theme to the preset.
 - Theme-linked drawings repaint; explicitly custom drawings remain custom.
 - Added `test:global-theme-chart-ownership` to lock the behavior down.
+- Cleared the production deploy gate caused by duplicate Three.js type identities at the landing-page SVG mesh boundary; the geometry remains unchanged at runtime.

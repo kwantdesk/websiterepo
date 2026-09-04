@@ -2,7 +2,7 @@
 
 import { Suspense, useMemo, useRef } from "react";
 import Link from "next/link";
-import { Canvas, useFrame, useLoader } from "@react-three/fiber";
+import { Canvas, useFrame, useLoader, type ThreeElements } from "@react-three/fiber";
 import { Environment, Float, RoundedBox, Text } from "@react-three/drei";
 import { motion } from "framer-motion";
 import { ArrowRight, Check, Play } from "lucide-react";
@@ -46,9 +46,14 @@ function BrandMark3D() {
 
   return (
     <Float speed={1.4} rotationIntensity={0.18} floatIntensity={0.45}>
-      <group ref={group} position={[0, 0.08, -0.08]} scale={[0.00146, -0.00146, 0.00146]}>
+      <group ref={group as unknown as ThreeElements["group"]["ref"]} position={[0, 0.08, -0.08]} scale={[0.00146, -0.00146, 0.00146]}>
         {logoGeometry.map((geometry, index) => (
-          <mesh key={index} geometry={geometry} material={material} position={[-2250, -2146, -80]} />
+          <mesh
+            key={index}
+            geometry={geometry as unknown as ThreeElements["mesh"]["geometry"]}
+            material={material as unknown as ThreeElements["mesh"]["material"]}
+            position={[-2250, -2146, -80]}
+          />
         ))}
       </group>
     </Float>
@@ -91,9 +96,14 @@ function Wordmark3D() {
   });
 
   return (
-    <group ref={group} position={[0.02, -0.02, 0]} scale={[0.00112, -0.00112, 0.00112]}>
+    <group ref={group as unknown as ThreeElements["group"]["ref"]} position={[0.02, -0.02, 0]} scale={[0.00112, -0.00112, 0.00112]}>
       {wordmarkGeometry.map((geometry, index) => (
-        <mesh key={index} geometry={geometry} material={material} position={[-2117, -2133, -52]} />
+        <mesh
+          key={index}
+          geometry={geometry as unknown as ThreeElements["mesh"]["geometry"]}
+          material={material as unknown as ThreeElements["mesh"]["material"]}
+          position={[-2117, -2133, -52]}
+        />
       ))}
     </group>
   );
@@ -179,7 +189,7 @@ function GlassPanel({
               <meshStandardMaterial color="#2962FF" emissive="#2962FF" emissiveIntensity={0.35} />
             </mesh>
           ))}
-          <mesh position={[0.02, 0.01, 0.08]} geometry={curveGeometry}>
+          <mesh position={[0.02, 0.01, 0.08]} geometry={curveGeometry as unknown as ThreeElements["mesh"]["geometry"]}>
             <meshStandardMaterial color="#D1D4DC" emissive="#2962FF" emissiveIntensity={0.3} />
           </mesh>
         </>
@@ -189,7 +199,7 @@ function GlassPanel({
     if (variant === "backtest") {
       return (
         <>
-          <mesh position={[0.02, 0.08, 0.08]} geometry={curveGeometry}>
+          <mesh position={[0.02, 0.08, 0.08]} geometry={curveGeometry as unknown as ThreeElements["mesh"]["geometry"]}>
             <meshStandardMaterial color="#089981" emissive="#089981" emissiveIntensity={0.55} />
           </mesh>
           {[-0.66, -0.28, 0.1, 0.48].map((x, index) => (
@@ -225,7 +235,7 @@ function GlassPanel({
 
   return (
     <Float speed={1.35} rotationIntensity={0.1} floatIntensity={0.32}>
-      <group ref={group} position={position} rotation={rotation} scale={scale}>
+      <group ref={group as unknown as ThreeElements["group"]["ref"]} position={position} rotation={rotation} scale={scale}>
         <RoundedBox args={[2.35, 1.32, 0.12]} radius={0.1} smoothness={10}>
           <meshPhysicalMaterial color="#D1D4DC" transparent opacity={0.18} roughness={0.06} metalness={0.08} transmission={0.52} thickness={0.55} clearcoat={0.95} clearcoatRoughness={0.12} />
         </RoundedBox>
@@ -234,7 +244,7 @@ function GlassPanel({
         </RoundedBox>
         <mesh position={[0, 0.43, 0.11]}>
           <boxGeometry args={[1.45, 0.035, 0.025]} />
-          <meshStandardMaterial ref={glow} color="#2962FF" emissive="#2962FF" emissiveIntensity={0.5} />
+          <meshStandardMaterial ref={glow as unknown as ThreeElements["meshStandardMaterial"]["ref"]} color="#2962FF" emissive="#2962FF" emissiveIntensity={0.5} />
         </mesh>
         {renderDesign()}
         <Text position={[0, -0.47, 0.11]} fontSize={0.105} color="#D1D4DC" anchorX="center" anchorY="middle">

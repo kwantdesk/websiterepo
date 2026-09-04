@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
-import { Canvas, useFrame } from "@react-three/fiber";
+import { Canvas, useFrame, type ThreeElements } from "@react-three/fiber";
 import * as THREE from "three";
 import { terrainHeight } from "@/lib/simplexNoise";
 
@@ -345,12 +345,17 @@ function MountainPoints({ data }: { data: TerrainData }) {
 
   return (
     <group
-      ref={groupRef}
+      ref={groupRef as unknown as ThreeElements["group"]["ref"]}
       position={[0, -10.1, -1.2]}
       rotation={[-0.34, -0.08, 0]}
       scale={[1.42, 0.48, 1]}
     >
-      <points ref={pointsRef} geometry={geometry} material={material} frustumCulled={false} />
+      <points
+        ref={pointsRef as unknown as ThreeElements["points"]["ref"]}
+        geometry={geometry as unknown as ThreeElements["points"]["geometry"]}
+        material={material as unknown as ThreeElements["points"]["material"]}
+        frustumCulled={false}
+      />
     </group>
   );
 }
@@ -433,7 +438,14 @@ function StarField({ data }: { data: StarData }) {
     material.dispose();
   }, [geometry, material]);
 
-  return <points ref={pointsRef} geometry={geometry} material={material} frustumCulled={false} />;
+  return (
+    <points
+      ref={pointsRef as unknown as ThreeElements["points"]["ref"]}
+      geometry={geometry as unknown as ThreeElements["points"]["geometry"]}
+      material={material as unknown as ThreeElements["points"]["material"]}
+      frustumCulled={false}
+    />
+  );
 }
 
 function FirstFrameSignal({ onReady }: { onReady?: () => void }) {
