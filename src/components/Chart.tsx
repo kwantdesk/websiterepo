@@ -110,6 +110,10 @@ import {
   type CalculatedIndicatorSeries,
 } from "@/lib/chartIndicatorEngine";
 import {
+  alignIndicatorSeriesToEventBars,
+  buildEventIndicatorTimeMap,
+} from "@/lib/eventIndicatorAlignment";
+import {
   automaticIvSourceTicker,
   deriveIvRankDisplayStatus,
   displayIvPercent,
@@ -6800,30 +6804,24 @@ function Chart({
    * A point with no bar to sit on is dropped rather than kept at a time the
    * chart cannot place, which is what created the whitespace.
    */
-  const eventChartSeriesTimeBySecond = useMemo(() => {
+  const eventChartIndicatorTimeMap = useMemo(() => {
     if (!timeframe || !isEventBasedChartInterval(timeframe)) return null;
-    const map = new Map<number, number>();
-    for (const candle of candles) {
-      const chartTime = eventChartTimeBySourceTimeRef.current.get(candle.timestamp);
-      if (chartTime != null) map.set(Math.floor(candle.timestamp / 1_000), chartTime);
-    }
-    return map.size ? map : null;
-  }, [candles, timeframe]);
+    return buildEventIndicatorTimeMap(
+      candles,
+      eventChartTimeBySourceTimeRef.current,
+    );
+    // The source-to-chart map is populated when the price series is installed,
+    // after the candle render that supplied `candles`. chartReadyRevision makes
+    // this memo observe that completed map instead of remaining null until the
+    // next live event bar happens to close.
+  }, [candles, chartReadyRevision, timeframe]);
 
   const chartAlignedIndicatorSeries = useMemo(() => {
-    const remap = eventChartSeriesTimeBySecond;
-    if (!remap) return baseCalculatedIndicatorSeries;
-    return baseCalculatedIndicatorSeries.map((series) => {
-      let moved = false;
-      const data = series.data.flatMap((point) => {
-        const chartTime = remap.get(Number(point.time));
-        if (chartTime == null) return [];
-        if (chartTime !== point.time) moved = true;
-        return [{ ...point, time: chartTime }];
-      });
-      return moved || data.length !== series.data.length ? { ...series, data } : series;
-    });
-  }, [baseCalculatedIndicatorSeries, eventChartSeriesTimeBySecond]);
+    return alignIndicatorSeriesToEventBars(
+      baseCalculatedIndicatorSeries,
+      eventChartIndicatorTimeMap,
+    );
+  }, [baseCalculatedIndicatorSeries, eventChartIndicatorTimeMap]);
 
   const calculatedIndicatorSeries = useMemo(() => [
     ...chartAlignedIndicatorSeries,
@@ -9836,7 +9834,7 @@ function Chart({
   const deltaHighlightMarkers = useMemo(() => {
     if (!deltaHighlightInstance || !candleSeriesRef.current) return [];
     const candleByTime = new Map(
-      indicatorCandles.map((candle) => [Math.floor(candle.timestamp / 1_000), candle]),
+      indicatorCandles.map((candle) => [candle.timestamp / 1_000, candle]),
     );
     const settingsForIndicator = deltaHighlightInstance.settings ?? {};
     const useThemeColors = settingsForIndicator.useThemeColors !== false;

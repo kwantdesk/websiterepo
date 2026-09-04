@@ -15,12 +15,18 @@ const response = await fetch(`http://127.0.0.1:${process.env.RITHMIC_GATEWAY_POR
   headers: { Authorization: `Bearer ${process.env.KWANTIFY_MARKET_DATA_GATEWAY_TOKEN}` },
 });
 const payload = await response.json();
+const candles = Array.isArray(payload.candles) ? payload.candles : [];
+const flowCandles = candles.filter((candle) => (
+  Number(candle.askVolume || 0) + Number(candle.bidVolume || 0) > 0
+));
 console.log(JSON.stringify({
   symbol,
   interval,
   status: response.status,
   elapsedMs: Date.now() - started,
-  candles: payload.candles?.length ?? 0,
+  candles: candles.length,
+  flowCandles: flowCandles.length,
+  flowCoverage: candles.length ? flowCandles.length / candles.length : 0,
   executions: payload.executions?.length ?? 0,
   sourceRecords: payload.sourceRecordCount ?? 0,
   first: payload.candles?.[0]?.timestamp ?? null,

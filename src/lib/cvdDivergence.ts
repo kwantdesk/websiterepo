@@ -83,7 +83,7 @@ export function sessionCvdPoints(candles: CvdCandleLike[]): CvdPoint[] {
       cumulative = 0;
     }
     cumulative += delta;
-    points.push({ time: Math.floor(candle.timestamp / 1000), value: cumulative });
+    points.push({ time: candle.timestamp / 1000, value: cumulative });
   }
   return points;
 }
@@ -118,7 +118,7 @@ export function sessionCvdBars(candles: CvdCandleLike[]): CvdBar[] {
     const open = cumulative;
     cumulative += delta;
     bars.push({
-      time: Math.floor(candle.timestamp / 1_000),
+      time: candle.timestamp / 1_000,
       open,
       // Within a bar the running total travels from open to close, so those
       // are its extremes. Intrabar excursions are not recoverable from a
@@ -175,7 +175,7 @@ export function detectCvdDivergences(
     const pivots: Array<{ candle: CvdCandleLike; bar: CvdBar }> = [];
     for (let index = pivotStrength; index < window.length - pivotStrength; index += 1) {
       if (!isPivot(window, index, pivotStrength, direction)) continue;
-      const bar = cvdByTime.get(Math.floor(window[index].timestamp / 1_000));
+      const bar = cvdByTime.get(window[index].timestamp / 1_000);
       if (!bar) continue;
       pivots.push({ candle: window[index], bar });
     }
@@ -239,7 +239,7 @@ export function detectCvdDivergence(
   const latestCvd = cvd[cvd.length - 1].value;
   const start = Math.max(0, candles.length - lookbackBars);
   const window = candles.slice(start);
-  const cvdAt = (candle: CvdCandleLike) => cvdByTime.get(Math.floor(candle.timestamp / 1000));
+  const cvdAt = (candle: CvdCandleLike) => cvdByTime.get(candle.timestamp / 1000);
 
   const attempt = (direction: "high" | "low"): CvdDivergenceResult | null => {
     // Anchor two: the extreme of the recent live candles.
@@ -270,8 +270,8 @@ export function detectCvdDivergence(
         if (diverges && latestCvd < anchorOneCvd) {
           return {
             kind: "bearish",
-            fromTime: Math.floor(anchorOne.timestamp / 1000),
-            toTime: Math.floor(anchorTwo.timestamp / 1000),
+            fromTime: anchorOne.timestamp / 1000,
+            toTime: anchorTwo.timestamp / 1000,
             fromPrice: anchorOne.high,
             toPrice: anchorTwo.high,
             fromCvd: anchorOneCvd,
@@ -283,8 +283,8 @@ export function detectCvdDivergence(
         if (diverges && latestCvd > anchorOneCvd) {
           return {
             kind: "bullish",
-            fromTime: Math.floor(anchorOne.timestamp / 1000),
-            toTime: Math.floor(anchorTwo.timestamp / 1000),
+            fromTime: anchorOne.timestamp / 1000,
+            toTime: anchorTwo.timestamp / 1000,
             fromPrice: anchorOne.low,
             toPrice: anchorTwo.low,
             fromCvd: anchorOneCvd,

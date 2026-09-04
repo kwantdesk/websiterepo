@@ -267,7 +267,7 @@ export function calculateDeltaPercentHighlights(
     const side = deltaPercent >= 0 ? "ask" : "bid";
     if ((side === "ask" && !showAsk) || (side === "bid" && !showBid)) return [];
     return [{
-      time: Math.floor(candle.timestamp / 1_000),
+      time: candle.timestamp / 1_000,
       deltaPercent,
       side,
     }];

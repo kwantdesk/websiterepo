@@ -120,6 +120,7 @@
     "test:volume-profile-chain": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-volume-profile-chain.mjs",
     "test:volume-profile-gradients": "node scripts/test-volume-profile-gradients.mjs",
     "test:event-bar-first-paint": "node scripts/test-event-bar-first-paint.mjs",
+    "test:event-indicator-alignment": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-event-indicator-alignment.mjs",
     "test:volume-profile-dock": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-volume-profile-dock.mjs",
     "test:volume-profile-labels": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-volume-profile-labels.mjs",
     "test:big-trades-anchor": "node scripts/test-big-trades-anchor.mjs",

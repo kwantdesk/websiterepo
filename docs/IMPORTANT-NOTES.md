@@ -158,3 +158,18 @@ recap of the open items below and update this file when their state changes.
   candles, insert a hard break at every missing-flow region and reset the next
   segment instead of fabricating zero delta or carrying an unknown cumulative
   total across the gap.
+
+## 2026-09-04 — Event-chart indicator time integrity
+
+- Volume, Range, Trade, Delta, Renko, Volume Bar and Point & Figure candles can
+  close many times inside one wall-clock second. Never align their indicators
+  with a map keyed only by whole seconds; it overwrites real bars and makes
+  studies disappear.
+- Exact source milliseconds must map to the same unique synthetic chart slots
+  as the price series. A whole-second fallback is safe only when exactly one
+  source candle exists in that second.
+- Indicator alignment must recompute when the price series installs its time
+  map, not only when candles change. Otherwise first paint can remain blank
+  until a later live event closes.
+- CVD and other execution-dependent studies must use verified flow coverage.
+  Preserve genuine archive gaps; never manufacture bid/ask flow from OHLCV.
