@@ -185,6 +185,7 @@ export class RithmicMarketDataClient extends EventEmitter {
       ),
     );
     this.frontMonthCache = new Map();
+    this.frontMonthPromises = new Map();
     this.pendingFrontMonthRequests = new Map();
     this.frontMonthRequestSequence = 0;
     this.status = {
@@ -355,32 +356,39 @@ export class RithmicMarketDataClient extends EventEmitter {
     }
     const key = instrumentKey(normalizedExchange, normalizedRoot);
     const cached = this.frontMonthCache.get(key);
-    if (cached && Date.now() - cached.resolvedAt < 6 * 60 * 60_000) {
+    // A six-hour answer can straddle the exact session in which liquidity
+    // moves. Ten minutes is still effectively free because every browser and
+    // route shares this one collector-side result.
+    if (cached && Date.now() - cached.resolvedAt < 10 * 60_000) {
       return cached;
     }
-    const live = this.book.list()
+    const pending = this.frontMonthPromises.get(key);
+    if (pending) return pending;
+    const liveFallback = () => this.book.list()
       .filter((row) => (
         String(row.exchange || "").toUpperCase() === normalizedExchange
         && String(row.symbol || "").toUpperCase().replace(/[FGHJKMNQUVXZ]\d{1,2}$/u, "") === normalizedRoot
         && ["LIVE", "STALE"].includes(row.status)
       ))
       .sort((left, right) => (right.status === "LIVE" ? 1 : 0) - (left.status === "LIVE" ? 1 : 0))[0];
-    if (live?.symbol) {
-      const resolved = {
+
+    if (this.socket?.readyState !== WebSocket.OPEN) {
+      const live = liveFallback();
+      if (live?.symbol) return {
         exchange: normalizedExchange,
         root: normalizedRoot,
         contractSymbol: String(live.symbol).toUpperCase(),
         resolvedAt: Date.now(),
-        source: "live-book",
+        source: "live-book-fallback",
       };
-      this.frontMonthCache.set(key, resolved);
-      return resolved;
-    }
-    if (this.socket?.readyState !== WebSocket.OPEN) {
       throw new Error("Rithmic Ticker Plant is not connected.");
     }
+
+    // Ask Rithmic before looking at the local book. Around roll both the old
+    // and new contract are legitimately live, so "first live row" is not a
+    // front-month decision and can pin every client to the expiring contract.
     const requestId = `front-month:${normalizedExchange}:${normalizedRoot}:${++this.frontMonthRequestSequence}`;
-    return await new Promise((resolve, reject) => {
+    const request = new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         this.pendingFrontMonthRequests.delete(requestId);
         reject(new Error(`Timed out resolving ${normalizedExchange}:${normalizedRoot} front month.`));
@@ -405,7 +413,23 @@ export class RithmicMarketDataClient extends EventEmitter {
         this.pendingFrontMonthRequests.delete(requestId);
         reject(error);
       }
+    }).catch((error) => {
+      const live = liveFallback();
+      if (!live?.symbol) throw error;
+      const resolved = {
+        exchange: normalizedExchange,
+        root: normalizedRoot,
+        contractSymbol: String(live.symbol).toUpperCase(),
+        resolvedAt: Date.now(),
+        source: "live-book-fallback",
+      };
+      this.frontMonthCache.set(key, resolved);
+      return resolved;
+    }).finally(() => {
+      if (this.frontMonthPromises.get(key) === request) this.frontMonthPromises.delete(key);
     });
+    this.frontMonthPromises.set(key, request);
+    return await request;
   }
 
   subscribe(exchange, symbol) {

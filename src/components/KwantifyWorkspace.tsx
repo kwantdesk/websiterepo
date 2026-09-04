@@ -156,6 +156,7 @@ import {
   enrichCandlesWithInstitutionalCandleFlow,
   healClosedCandleFlow,
   enrichCandlesWithInstitutionalTrades,
+  fetchInstitutionalFrontMonth,
   fetchInstitutionalSnapshot,
   fetchInstitutionalOrderFlowLevels,
   fetchInstitutionalVolumeProfile,
@@ -1445,48 +1446,25 @@ function sameLiveInstrument(left: string | null | undefined, right: string | nul
   return normalizePaperSymbol(left) === normalizePaperSymbol(right);
 }
 
-function fallbackFuturesContract(root: string, now = new Date()) {
-  const quarterly = new Set([
-    "MNQ", "NQ", "MES", "ES", "MYM", "YM", "M2K", "RTY",
-    "ZN", "TN", "ZB", "UB", "ZF", "ZT", "10Y", "SR3",
-    "6E", "M6E", "6J", "6B", "M6B", "6A", "M6A", "6C", "6S", "6N", "6M",
-  ]);
-  const deliveryMonths: Record<string, number[]> = {
-    GC: [2, 4, 6, 8, 10, 12], MGC: [2, 4, 6, 8, 10, 12],
-    SI: [3, 5, 7, 9, 12], SIL: [3, 5, 7, 9, 12], HG: [3, 5, 7, 9, 12],
-    PL: [1, 4, 7, 10], PA: [3, 6, 9, 12],
-    ZC: [3, 5, 7, 9, 12], ZW: [3, 5, 7, 9, 12],
-    ZS: [1, 3, 5, 7, 8, 9, 11],
-    ZM: [1, 3, 5, 7, 8, 9, 10, 12], ZL: [1, 3, 5, 7, 8, 9, 10, 12],
-    LE: [2, 4, 6, 8, 10, 12], HE: [2, 4, 5, 6, 7, 8, 10, 12],
-    GF: [1, 3, 4, 5, 8, 9, 10, 11],
-  };
-  const eligibleMonths = quarterly.has(root)
-    ? [3, 6, 9, 12]
-    : deliveryMonths[root] ?? [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
-  const currentMonth = now.getUTCMonth() + 1;
-  let year = now.getUTCFullYear();
-  let month = eligibleMonths.find((candidate) => (
-    quarterly.has(root) ? candidate >= currentMonth : candidate > currentMonth
-  ));
-  if (!month) {
-    month = eligibleMonths[0];
-    year += 1;
-  }
-  const monthCode = "FGHJKMNQUVXZ"[month - 1];
-  return {
-    contractSymbol: `${root}${monthCode}${String(year).slice(-1)}`,
-    contractLabel: new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString("en-US", {
-      month: "short",
-      year: "numeric",
-      timeZone: "UTC",
-    }),
-  };
+// Continuous roots are resolved by Rithmic, never guessed from the calendar.
+// Equity-index liquidity normally migrates before the delivery month ends,
+// while physical products each follow different schedules. A browser guess
+// can therefore be syntactically valid and still subscribe the dead contract.
+const resolvedCmeContracts = new Map<string, string>();
+const FUTURES_CONTRACT_ROLLOVER_EVENT = "kwantdesk:futures-contract-rollover";
+
+function rememberResolvedCmeContract(symbol: string, contractSymbol: string) {
+  const root = displayCmeSymbol(symbol).toUpperCase();
+  const normalized = contractSymbol.trim().toUpperCase();
+  if (!root || !normalized || !contractMatchesChartInstrument(root, normalized)) return null;
+  const previous = resolvedCmeContracts.get(root) ?? null;
+  resolvedCmeContracts.set(root, normalized);
+  return previous;
 }
 
 function currentCmeContract(symbol: string) {
   if (!isContinuousFuture(symbol)) return null;
-  return fallbackFuturesContract(displayCmeSymbol(symbol)).contractSymbol;
+  return resolvedCmeContracts.get(displayCmeSymbol(symbol).toUpperCase()) ?? null;
 }
 
 const CME_MICRO_PARENT_ROOTS: Record<string, string> = {
@@ -7380,6 +7358,56 @@ function WorkspaceChartPaneComponent({
   }, [pane.broker, pane.symbol]);
 
   useEffect(() => {
+    if (pane.broker !== "Databento" || !isContinuousFuture(pane.symbol)) return;
+    let cancelled = false;
+    let timer: number | null = null;
+
+    const reconcileContract = async () => {
+      const resolved = await fetchInstitutionalFrontMonth(displayCmeSymbol(pane.symbol));
+      if (cancelled || !resolved || !contractMatchesChartInstrument(pane.symbol, resolved.contractSymbol)) return;
+      const previous = rememberResolvedCmeContract(pane.symbol, resolved.contractSymbol);
+      setResolvedContractSymbol((current) => current === resolved.contractSymbol
+        ? current
+        : resolved.contractSymbol);
+      latestFuturesRef.current = {
+        ...latestFuturesRef.current,
+        contractSymbol: resolved.contractSymbol,
+      };
+      if (previous && previous !== resolved.contractSymbol) {
+        // Everything keyed to the concrete contract must reopen together. The
+        // history effect above depends on resolvedContractSymbol, while this
+        // event rotates the one shared futures SSE connection for all panes.
+        historyHydratedRef.current = false;
+        liveOutlierCandidateRef.current = null;
+        pendingLiveTicksRef.current = [];
+        window.dispatchEvent(new CustomEvent(FUTURES_CONTRACT_ROLLOVER_EVENT, {
+          detail: { root: resolved.root, previous, contractSymbol: resolved.contractSymbol },
+        }));
+      }
+    };
+    const schedule = () => {
+      if (timer !== null) window.clearInterval(timer);
+      // Rithmic's answer is cached and shared; every ten minutes here does not
+      // create one provider request per chart or per user.
+      timer = window.setInterval(() => void reconcileContract(), 10 * 60_000);
+    };
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void reconcileContract();
+    };
+
+    void reconcileContract();
+    schedule();
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("online", onVisible);
+    return () => {
+      cancelled = true;
+      if (timer !== null) window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("online", onVisible);
+    };
+  }, [pane.broker, pane.symbol]);
+
+  useEffect(() => {
     if (!gammaEnvironmentIndicator || !directGammaEnvironmentConversion) {
       setDirectGammaEnvironment(null);
       setDirectGammaEnvironmentLoading(false);
@@ -7955,7 +7983,17 @@ function WorkspaceChartPaneComponent({
           : Math.min(liveTailStartTimestampRef.current, tickTimestamp);
       }
       if (usingDatabentoPaneFeed && price.contractSymbol) {
+        const previousContract = rememberResolvedCmeContract(pane.symbol, price.contractSymbol);
         setResolvedContractSymbol(price.contractSymbol);
+        if (previousContract && previousContract !== price.contractSymbol) {
+          window.dispatchEvent(new CustomEvent(FUTURES_CONTRACT_ROLLOVER_EVENT, {
+            detail: {
+              root: displayCmeSymbol(pane.symbol),
+              previous: previousContract,
+              contractSymbol: price.contractSymbol,
+            },
+          }));
+        }
       }
       latestFuturesRef.current = {
         price: price.mid,
@@ -13035,6 +13073,17 @@ export default function KwantifyWorkspace({
     };
     window.addEventListener("kwantdesk:gamma-chart-symbols-change", receiveGammaChartSymbols);
     return () => window.removeEventListener("kwantdesk:gamma-chart-symbols-change", receiveGammaChartSymbols);
+  }, []);
+
+  useEffect(() => {
+    // One SSE connection fans futures quotes out to every open pane. Rotate it
+    // when any pane observes a provider-confirmed roll so none of the other
+    // panes remains mapped to the expiring contract until its normal lease.
+    const reconnectForContractRollover = () => {
+      setStreamReconnectNonce((value) => value + 1);
+    };
+    window.addEventListener(FUTURES_CONTRACT_ROLLOVER_EVENT, reconnectForContractRollover);
+    return () => window.removeEventListener(FUTURES_CONTRACT_ROLLOVER_EVENT, reconnectForContractRollover);
   }, []);
 
   useEffect(() => {

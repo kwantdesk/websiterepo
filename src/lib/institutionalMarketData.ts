@@ -24,6 +24,15 @@ export type InstitutionalInstrument = {
   isPrimary: boolean;
 };
 
+export type InstitutionalFrontMonth = {
+  root: string;
+  contractSymbol: string;
+  exchange: InstitutionalInstrument["exchange"];
+  contractLabel: string;
+  resolvedAt: number;
+  resolutionSource: string;
+};
+
 export type InstitutionalSnapshot = {
   root: string;
   contractSymbol: string;
@@ -815,6 +824,48 @@ export async function fetchInstitutionalInstruments(): Promise<InstitutionalInst
         isPrimary: item.isPrimary === true,
       } satisfies InstitutionalInstrument];
     });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Resolve a continuous futures root through Rithmic itself.
+ *
+ * Contract months are not selected from the browser clock: liquidity can roll
+ * before expiry and the date differs by product. The gateway deduplicates this
+ * request, subscribes the returned contract, and reports the provider source.
+ */
+export async function fetchInstitutionalFrontMonth(
+  symbol: string,
+  timeoutMs = 8_000,
+): Promise<InstitutionalFrontMonth | null> {
+  const root = String(symbol || "")
+    .trim()
+    .toUpperCase()
+    .replace(/\.[VNC]\.\d+$/i, "")
+    .replace(/[FGHJKMNQUVXZ]\d{1,2}$/i, "");
+  if (!root) return null;
+  try {
+    const response = await gatewayFetch(
+      `/v1/market-data/resolve?root=${encodeURIComponent(root)}`,
+      undefined,
+      timeoutMs,
+    );
+    const payload: unknown = await response.json().catch(() => null);
+    if (!response.ok || !isRecord(payload)) return null;
+    const contractSymbol = String(payload.contractSymbol || payload.symbol || "").toUpperCase();
+    const resolvedRoot = String(payload.root || "").toUpperCase();
+    const exchange = normalizeExchange(payload.exchange);
+    if (!contractSymbol || futuresContractRoot(contractSymbol) !== resolvedRoot || !exchange) return null;
+    return {
+      root: resolvedRoot,
+      contractSymbol,
+      exchange,
+      contractLabel: String(payload.contractLabel || "").trim(),
+      resolvedAt: Date.now(),
+      resolutionSource: String(payload.resolutionSource || "Rithmic").trim(),
+    };
   } catch {
     return null;
   }

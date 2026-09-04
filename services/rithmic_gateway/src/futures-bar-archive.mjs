@@ -103,6 +103,16 @@ function contractRoot(symbol) {
   return String(symbol || "").toUpperCase().replace(/[FGHJKMNQUVXZ]\d{1,2}$/u, "");
 }
 
+function preferLiquidContractBar(target, bar) {
+  if (!validArchivedBar(bar)) return;
+  const existing = target.get(bar.t);
+  // During the roll both contracts trade at the same timestamp. A continuous
+  // chart must choose one contract, never sum them or alternate arbitrarily;
+  // the more-liquid minute is the deterministic front-contract proxy when a
+  // canonical History Plant root bar is not present.
+  if (!existing || bar.v > existing.v) target.set(bar.t, bar);
+}
+
 /**
  * The exchange's own timestamp, not our arrival time.
  *
@@ -441,7 +451,7 @@ export class FuturesBarArchive {
     const merged = new Map();
 
     for (const tradingDate of tradingDatesBetween(start, end)) {
-      const live = this.open.get(tradingDate)?.get(`${upper}:${upperSymbol}`);
+      const openDay = this.open.get(tradingDate);
       const dayDir = this.dayDir(tradingDate);
       const file = join(dayDir, instrumentFileName(upper, upperSymbol));
       const exactBars = await this.readFile(file);
@@ -454,11 +464,36 @@ export class FuturesBarArchive {
       const historyPlantBars = root === upperSymbol
         ? []
         : await this.readFile(join(dayDir, instrumentFileName(upper, root)));
-      const archived = mergeRithmicHistoryBars(historyPlantBars, exactBars);
+      const recordedByMinute = new Map();
+      for (const bar of exactBars) preferLiquidContractBar(recordedByMinute, bar);
+      // Read every concrete contract for this product. Otherwise asking for
+      // NQZ6 after roll loses the locally-recorded NQU6 side of the requested
+      // window whenever History Plant has not filled that older minute yet.
+      if (existsSync(dayDir)) {
+        let names = [];
+        try { names = readdirSync(dayDir).filter((name) => name.endsWith(".json")); } catch {}
+        for (const name of names) {
+          const match = name.match(/^([A-Z0-9]+)-([A-Z0-9]+)\.json$/i);
+          if (!match || match[1].toUpperCase() !== upper) continue;
+          const candidateSymbol = match[2].toUpperCase();
+          if (candidateSymbol === root || candidateSymbol === upperSymbol || contractRoot(candidateSymbol) !== root) continue;
+          for (const bar of await this.readFile(join(dayDir, name))) {
+            preferLiquidContractBar(recordedByMinute, bar);
+          }
+        }
+      }
+      if (openDay) {
+        for (const [instrument, liveBars] of openDay) {
+          const [liveExchange, liveSymbol] = instrument.split(":");
+          if (liveExchange !== upper || contractRoot(liveSymbol) !== root) continue;
+          for (const bar of liveBars.values()) preferLiquidContractBar(recordedByMinute, bar);
+        }
+      }
+      const archived = mergeRithmicHistoryBars(historyPlantBars, [...recordedByMinute.values()]);
       for (const bar of archived) merged.set(bar.t, bar);
-      if (live) {
+      if (recordedByMinute.size) {
         const canonicalEnd = historyPlantBars.at(-1)?.t ?? Number.NEGATIVE_INFINITY;
-        for (const bar of live.values()) {
+        for (const bar of recordedByMinute.values()) {
           if (!validArchivedBar(bar)) continue;
           const existing = merged.get(bar.t);
           // The current edge continues after History Plant's last closed bar.

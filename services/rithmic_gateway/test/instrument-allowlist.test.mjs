@@ -75,3 +75,34 @@ test("case and whitespace do not bypass the allowlist", () => {
   // The configured set still normalizes to a hit.
   assert.equal(client.subscribe(" cme ", " nqu6 ").symbol, "NQU6");
 });
+
+test("front-month resolution asks Rithmic even while the expiring contract is live", async () => {
+  const client = offlineClient({ RITHMIC_ALLOWED_ROOTS: "CME:NQ" });
+  client.book.ensure("CME", "NQU6").asOfMs = Date.now();
+  client.socket = { readyState: 1 };
+  const sent = [];
+  client.send = (name, payload) => {
+    sent.push({ name, payload });
+    setImmediate(() => {
+      const requestId = payload.userMsg[0];
+      const pending = client.pendingFrontMonthRequests.get(requestId);
+      clearTimeout(pending.timeout);
+      client.pendingFrontMonthRequests.delete(requestId);
+      const resolved = {
+        exchange: "CME", root: "NQ", contractSymbol: "NQZ6",
+        resolvedAt: Date.now(), source: "rithmic-front-month",
+      };
+      client.frontMonthCache.set("CME:NQ", resolved);
+      pending.resolve(resolved);
+    });
+  };
+
+  const [first, second] = await Promise.all([
+    client.resolveFrontMonth("CME", "NQ"),
+    client.resolveFrontMonth("CME", "NQ"),
+  ]);
+  assert.equal(first.contractSymbol, "NQZ6");
+  assert.equal(second.contractSymbol, "NQZ6");
+  assert.equal(sent.length, 1, "simultaneous users opened duplicate provider requests");
+  assert.equal(sent[0].name, "RequestFrontMonthContract");
+});

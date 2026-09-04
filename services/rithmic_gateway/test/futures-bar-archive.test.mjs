@@ -187,6 +187,41 @@ test("archive load reads History Plant and exact-contract files together", async
   });
 });
 
+test("continuous history spans locally recorded contracts across a rollover", async () => {
+  await withArchive(async (archive, dir) => {
+    const tradingDate = chicagoTradingDate(T0);
+    const dayDir = join(dir, "bars", tradingDate);
+    mkdirSync(dayDir, { recursive: true });
+    writeFileSync(join(dayDir, "CME-NQU6.json"), JSON.stringify({
+      bars: [
+        [T0, 100, 101, 99, 100.5, 200],
+        [T0 + 60_000, 100.5, 102, 100, 101.5, 50],
+      ],
+    }));
+    writeFileSync(join(dayDir, "CME-NQZ6.json"), JSON.stringify({
+      bars: [
+        // Both contracts trade during the handover. The higher-volume minute
+        // wins rather than combining two different price series.
+        [T0 + 60_000, 110, 112, 109, 111, 500],
+        [T0 + 120_000, 111, 113, 110, 112, 600],
+      ],
+    }));
+
+    const result = await archive.load({
+      exchange: "CME", symbol: "NQZ6", interval: "1m",
+      fromMs: T0, toMs: T0 + 120_000,
+    });
+    assert.deepEqual(
+      result.candles.map((bar) => [bar.timestamp, bar.close, bar.volume]),
+      [
+        [T0, 100.5, 200],
+        [T0 + 60_000, 111, 500],
+        [T0 + 120_000, 112, 600],
+      ],
+    );
+  });
+});
+
 test("recorded Rithmic minutes fill holes beyond and inside History Plant coverage", () => {
   const first = { t: T0, o: 100, h: 101, l: 99, c: 100, v: 10 };
   const missing = { t: T0 + 60_000, o: 100, h: 102, l: 100, c: 101, v: 12 };

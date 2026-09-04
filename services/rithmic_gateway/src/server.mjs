@@ -449,7 +449,7 @@ function contractRoot(symbol) {
   return String(symbol || "").toUpperCase().replace(/[FGHJKMNQUVXZ]\d{1,2}$/, "");
 }
 
-function requestedQuoteInstrument(requestedSymbol) {
+function requestedQuoteInstrument(requestedSymbol, preferredContractSymbol = "") {
   const alias = String(requestedSymbol || "").trim();
   const raw = alias.toUpperCase().replace(/\.[VNC]\.\d+$/i, "");
   const root = parentRoot(contractRoot(raw));
@@ -460,11 +460,16 @@ function requestedQuoteInstrument(requestedSymbol) {
     .filter((row) => parentRoot(contractRoot(row.symbol)) === root)
     .sort((left, right) => compareInstrumentCandidates(left, right, ownRoot, contractRoot));
   const exact = candidates.find((row) => row.symbol === raw);
-  const resolved = exact || candidates[0];
+  const preferred = candidates.find((row) => row.symbol === preferredContractSymbol);
+  const resolved = exact || preferred || candidates[0];
   return {
     alias,
     exchange: resolved?.exchange || exchangeForRoot(root),
-    symbol: resolved?.symbol || (raw !== root ? raw : activeContractSymbol(root)),
+    symbol: exact?.symbol
+      || preferred?.symbol
+      || preferredContractSymbol
+      || resolved?.symbol
+      || (raw !== root ? raw : activeContractSymbol(root)),
   };
 }
 
@@ -924,7 +929,7 @@ function gatewayInstrumentCatalog() {
   const liveRows = client.book.list();
   const roots = new Map();
   for (const row of configured) {
-    const root = parentRoot(contractRoot(row.symbol));
+    const root = contractRoot(row.symbol);
     if (!root) continue;
     roots.set(root, {
       root,
@@ -934,7 +939,7 @@ function gatewayInstrumentCatalog() {
   return [...roots.values()]
     .map(({ root, exchange }) => {
       const live = liveRows
-        .filter((row) => parentRoot(contractRoot(row.symbol)) === root)
+        .filter((row) => contractRoot(row.symbol) === root)
         .sort((left, right) => (right.status === "LIVE" ? 1 : 0) - (left.status === "LIVE" ? 1 : 0))[0];
       const contractSymbol = live?.symbol || activeContractSymbol(root);
       const metadata = contractMetadata(contractSymbol);
@@ -1824,7 +1829,21 @@ const server = createServer(async (request, response) => {
       const rejected = [];
       for (const alias of symbols) {
         try {
-          const instrument = requestedQuoteInstrument(alias);
+          const raw = String(alias || "").trim().toUpperCase().replace(/\.[VNC]\.\d+$/i, "");
+          const ownRoot = contractRoot(raw);
+          let preferredContractSymbol = "";
+          // A continuous/root quote must be remapped on every SSE lease from
+          // the provider's front-month answer. Explicit contracts remain
+          // explicit so replay and diagnostics can intentionally inspect one.
+          if (raw === ownRoot) {
+            try {
+              const resolved = await client.resolveFrontMonth(exchangeForRoot(ownRoot), ownRoot);
+              preferredContractSymbol = resolved.contractSymbol;
+            } catch {
+              // requestedQuoteInstrument has a bounded live-book fallback.
+            }
+          }
+          const instrument = requestedQuoteInstrument(alias, preferredContractSymbol);
           client.subscribe(instrument.exchange, instrument.symbol);
           const key = `${instrument.exchange}:${instrument.symbol}`;
           const aliases = aliasesByKey.get(key) || [];
@@ -2291,9 +2310,9 @@ const server = createServer(async (request, response) => {
       });
     }
     if (request.method === "GET" && url.pathname === "/v1/market-data/resolve") {
-      const requestedRoot = parentRoot(contractRoot(
+      const requestedRoot = contractRoot(
         String(url.searchParams.get("root") || url.searchParams.get("symbol") || "").toUpperCase(),
-      ));
+      );
       const requestedExchange = String(
         url.searchParams.get("exchange") || exchangeForRoot(requestedRoot),
       ).toUpperCase();

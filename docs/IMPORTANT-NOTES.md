@@ -43,6 +43,14 @@ recap of the open items below and update this file when their state changes.
 - The dedicated Vultr volume is primary recording storage, not an off-site
   backup. Add and restore-test nightly object-storage replication before the
   public launch.
+- **Contract rollover monitoring:** continuous futures now resolve their exact
+  active contract from Rithmic, re-check every ten minutes/visibility restore,
+  and rotate the shared live stream plus contract-keyed pane data when the
+  provider changes month. Keep an operational alert on a root whose resolved
+  contract, live quote contract and recorder contract disagree. Options use
+  provider-listed expiration dates and the New York session date rather than
+  futures month codes; keep historical option-chain availability as the
+  separate provider-blocked item above.
 
 ## P1 — Reference parity evidence
 
@@ -95,3 +103,26 @@ recap of the open items below and update this file when their state changes.
   account-sync and import/export the complete VWAP settings record.
 - Calculation, migration, theme, template, profile, TypeScript and production
   build checks passed. Evidence limits remain listed under Reference parity.
+
+## 2026-09-04 — Futures and options rollover safety
+
+- Removed the website's calendar guess for active futures contracts. A valid
+  delivery-month code is not proof of the liquid/front contract; Rithmic's
+  `RequestFrontMonthContract` response is now authoritative.
+- The collector refreshes that answer every ten minutes and coalesces all
+  simultaneous users into one provider request per exchange/root. On every
+  new SSE lease, continuous symbols are bound to that resolved contract.
+- Each chart resolves immediately, on a ten-minute cadence, after reconnect
+  and when the tab becomes visible. A changed contract invalidates the old
+  contract identity, reloads contract-keyed seam/order-flow data and rotates
+  the shared futures stream for every pane.
+- Mini and micro roots remain distinct in the catalog and resolver. Exact
+  contracts remain selectable for diagnostics/replay; only continuous roots
+  auto-roll.
+- Continuous history now reads all locally recorded contracts sharing the
+  requested product root. Canonical History Plant root minutes remain the
+  baseline; where only overlapping local contracts exist, one highest-volume
+  minute is selected rather than adding or alternating contracts.
+- QuantData options surfaces already select from provider-listed, non-expired
+  dates and include the New York session date in cache identities. Options
+  therefore advance by expiration/session date, not CME month-code logic.

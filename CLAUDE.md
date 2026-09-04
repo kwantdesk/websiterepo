@@ -1819,3 +1819,19 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
   the current chart. Do not restore the old Sessions-study colour link or
   persisted per-session swatches.
 - Prompt outcome: `docs/prompt-log/2026-09-04-27-session-highs-lows.md`.
+
+## 2026-09-04 — Contract rollover safety
+
+- Never infer the active futures contract from the current calendar month.
+  Resolve continuous roots through Rithmic front-month and keep exact contract
+  symbols only for explicit replay/diagnostic requests.
+- The collector owns a ten-minute, single-flight front-month cache. Continuous
+  SSE leases resolve through it; the browser reconciles on mount, visibility,
+  reconnect and the same cadence, then rotates shared futures streaming when
+  a provider-confirmed contract changes.
+- Keep mini/micro roots distinct. History Plant root minutes are canonical;
+  locally recorded exact contracts may bridge a roll but must choose one
+  highest-volume minute during overlap and never sum two contracts.
+- Options roll by provider-listed expiration and New York session date, not a
+  futures month code. Prompt outcome:
+  `docs/prompt-log/2026-09-04-28-contract-rollovers.md`.
