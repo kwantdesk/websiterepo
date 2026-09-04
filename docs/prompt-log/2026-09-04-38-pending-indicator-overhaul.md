@@ -83,5 +83,16 @@ task until the full pending library is complete, without shortcuts.
   dominance, refuses OHLC-only data, renders theme-safe price-pane patterns
   and levels, and exposes all documented modes, projection, far-right,
   widths, labels, colours, alerts, sliders and synced templates. Focused
-  behavior/bounds/20,000-bar tests and the production build pass; exact
-  deployment QA remains.
+  behavior/bounds/20,000-bar tests and the production build pass. Commit
+  `85cc2949` reached Ready and cache-busted production QA confirmed nine live
+  NQ 500-volume signals, the full editor, immediate save/no stale close prompt,
+  and clean removal, completing item 10. Item 11, **Custom Draw-On Volume
+  Profile**, is now a release candidate. DeepCharts metadata confirms it is a
+  chart drawing action, so its library Add button arms the selected chart's
+  fixed-range profile instead of creating a dead zero-anchor study. Committed
+  anchors request exact custom-period Rithmic price rows with grouping, value
+  area and execution filters; requests are drag-debounced and signature-guarded
+  against stale responses. The histogram, POC, VAH and VAL, themed controls,
+  drawing persistence and templates are wired. Focused conversion/arming,
+  fixed-profile level, template, theme, slider and TypeScript checks pass;
+  exact deployment and production visual QA remain.

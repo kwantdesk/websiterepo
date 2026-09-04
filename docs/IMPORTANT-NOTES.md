@@ -302,3 +302,9 @@ recap of the open items below and update this file when their state changes.
   Absorption use exact volume-at-price rows; never synthesize them from an
   OHLC candle. Preserve its explicit `WAITING FOR VOLUME AT PRICE` state, the
   independently switchable modules and the `PC/PE/AC/AE` invalidation lifecycle.
+- Custom Draw-On Volume Profile is a chart drawing action, not a saved
+  zero-anchor indicator instance. Adding it must arm the selected chart's fixed
+  range profile; the drawing owns persistence and templates. A committed range
+  must replace its immediate candle-volume preview with exact custom-period
+  Rithmic price rows, and anchor/setting changes must be debounced and protected
+  against stale responses.

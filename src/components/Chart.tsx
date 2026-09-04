@@ -195,6 +195,7 @@ import { cancelChartFrameWork, queueChartFrameWork } from "@/lib/chartFrameWork"
 import { calculateImbalanceRejectorSignals } from "@/lib/imbalanceRejector";
 import { calculateImbalanceZones } from "@/lib/imbalanceTracker";
 import {
+  fetchInstitutionalVolumeProfile,
   fetchInstitutionalSnapshot,
   isCandleBackedVolumeProfile,
   isExecutionBackedVolumeProfile,
@@ -3617,6 +3618,21 @@ function Chart({
   // is not a cancellation, and the box puts the caret back instead of closing.
   const drawTextDismissRef = useRef(false);
   const [drawSettingsOpen, setDrawSettingsOpen] = useState(false);
+  useEffect(() => {
+    const activateDrawing = (event: Event) => {
+      const detail = (event as CustomEvent<{
+        chartInstanceId?: string;
+        tool?: DrawToolId;
+      }>).detail;
+      if (detail?.chartInstanceId !== chartInstanceId) return;
+      if (detail.tool !== "fixedRangeVolumeProfile") return;
+      setDrawSelectedId(null);
+      setDrawSettingsOpen(false);
+      setDrawTool(detail.tool);
+    };
+    window.addEventListener("kwantdesk:activate-chart-drawing", activateDrawing);
+    return () => window.removeEventListener("kwantdesk:activate-chart-drawing", activateDrawing);
+  }, [chartInstanceId]);
   const chartingDrawCandles = useMemo(
     () => buildMagnetCandles(
       candles.map((candle) => ({
@@ -3631,6 +3647,67 @@ function Chart({
     ),
     [candles, timeframe],
   );
+  const [drawVolumeProfiles, setDrawVolumeProfiles] = useState<Record<string, InstitutionalVolumeProfile>>({});
+  const drawVolumeProfileSignaturesRef = useRef<Record<string, string>>({});
+  useEffect(() => {
+    const requested = chartingDrawings.flatMap((drawing) => {
+      if (drawing.tool !== "fixedRangeVolumeProfile" || drawing.points.length < 2) return [];
+      const startMs = Math.min(drawing.points[0].time, drawing.points[1].time) * 1000;
+      const endMs = Math.max(drawing.points[0].time, drawing.points[1].time) * 1000;
+      if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return [];
+      const groupTicks = Number(drawing.style.profileGroupTicks ?? 4);
+      const valueAreaPercent = Number(drawing.style.valueAreaPercent ?? 68);
+      const minTradeVolume = Number(drawing.style.profileMinTradeVolume ?? 0);
+      const maxTradeVolume = Number(drawing.style.profileMaxTradeVolume ?? 0);
+      const signature = [instrument, contractSymbol, startMs, endMs, groupTicks, valueAreaPercent, minTradeVolume, maxTradeVolume].join(":");
+      return [{ drawing, startMs, endMs, groupTicks, valueAreaPercent, minTradeVolume, maxTradeVolume, signature }];
+    });
+    const activeIds = new Set(requested.map(({ drawing }) => drawing.id));
+    const requestedSignatures = Object.fromEntries(requested.map(({ drawing, signature }) => [drawing.id, signature]));
+    setDrawVolumeProfiles((current) => {
+      const retained = Object.fromEntries(Object.entries(current).filter(([id]) => (
+        activeIds.has(id) && drawVolumeProfileSignaturesRef.current[id] === requestedSignatures[id]
+      )));
+      return Object.keys(retained).length === Object.keys(current).length ? current : retained;
+    });
+    drawVolumeProfileSignaturesRef.current = requestedSignatures;
+    if (!requested.length) return;
+
+    // Anchor drags can emit dozens of intermediate ranges. Wait until the
+    // pointer settles, then ask the recorder once for the exact price tape.
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void Promise.all(requested.map(async ({ drawing, startMs, endMs, groupTicks, valueAreaPercent, minTradeVolume, maxTradeVolume, signature }) => {
+        const profile = await fetchInstitutionalVolumeProfile({
+          symbol: instrument,
+          contractSymbol: contractSymbol || undefined,
+          period: "custom",
+          startMs,
+          endMs,
+          groupTicks,
+          valueAreaPercent,
+          minTradeVolume,
+          maxTradeVolume,
+        });
+        return { id: drawing.id, profile, signature };
+      })).then((results) => {
+        if (cancelled) return;
+        setDrawVolumeProfiles((current) => {
+          const next = { ...current };
+          for (const result of results) {
+            if (result.profile && drawVolumeProfileSignaturesRef.current[result.id] === result.signature) {
+              next[result.id] = result.profile;
+            }
+          }
+          return next;
+        });
+      });
+    }, 300);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [chartingDrawings, contractSymbol, instrument]);
   // Lets the drawing overlay redraw in lockstep with the chart's own viewport
   // changes (read chartRef at call time so chart recreation is handled).
   const subscribeDrawViewport = useCallback((callback: () => void) => {
@@ -16728,6 +16805,7 @@ function Chart({
               return time != null && price != null && Number.isFinite(price) ? { time, price: Number(price) } : null;
             }}
             candles={chartingDrawCandles}
+            volumeProfiles={drawVolumeProfiles}
             magnet={drawMagnet}
             magnetStrength={drawMagnetStrength}
             viewportVersion={viewportVersion}

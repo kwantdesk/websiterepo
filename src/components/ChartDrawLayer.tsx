@@ -20,6 +20,8 @@ import {
 } from "@/lib/chartDrawTools";
 import { fillMarkerGeometry, positionToolScreenGeometry, timeAtPixelPastLastBar } from "@/lib/chartDrawGeometry";
 import { nearestCandleMagnetCandidate } from "@/lib/chartMagnet";
+import type { InstitutionalVolumeProfile } from "@/lib/institutionalMarketData";
+import { exactCustomDrawVolumeProfile } from "@/lib/customDrawVolumeProfile";
 
 // Self-contained SVG overlay that owns the new charting tools end to end:
 // point placement (fixed-count, poly-click and freehand-drag), live preview,
@@ -48,6 +50,8 @@ type Props = {
   toY: (price: number) => number | null;
   fromXY: (x: number, y: number) => DrawPoint | null;
   candles: DrawCandle[];
+  /** Exact Rithmic execution profiles keyed by committed drawing id. */
+  volumeProfiles?: Readonly<Record<string, InstitutionalVolumeProfile>>;
   magnet: boolean;
   magnetStrength: MagnetStrength;
   viewportVersion: number;
@@ -84,7 +88,7 @@ const TEXT_INPUT_TOOLS: DrawToolId[] = ["text", "note", "callout", "signpost", "
 
 export default function ChartDrawLayer({
   width, height, priceScaleWidth = 0, activeTool, emoji, keepDrawing, drawings, selectedId,
-  toX, toY, fromXY, candles, magnet, magnetStrength, viewportVersion, chartReady, subscribeViewport,
+  toX, toY, fromXY, candles, volumeProfiles = {}, magnet, magnetStrength, viewportVersion, chartReady, subscribeViewport,
   plotTopInset = 0, plotBottomInset = 0, onCommit, onUpdate, onDelete, onSelect, onToolConsumed, onRequestText, onOpenSettings, themeColor, themeBearColor,
 }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
@@ -552,16 +556,17 @@ export default function ChartDrawLayer({
       if (pr.length < (anchored ? 1 : 2)) continue;
       const t0 = anchored ? pr[0].time : Math.min(pr[0].time, pr[1].time);
       const t1 = anchored ? (candles[candles.length - 1]?.time ?? pr[0].time) : Math.max(pr[0].time, pr[1].time);
-      cache.set(drawing.id, volumeProfile(
-        candles,
-        t0,
-        t1,
-        drawing.style.profileRows ?? 80,
-        drawing.style.valueAreaPercent ?? 68,
-      ));
+      const exact = exactCustomDrawVolumeProfile(volumeProfiles[drawing.id]);
+      cache.set(drawing.id, exact ?? volumeProfile(
+          candles,
+          t0,
+          t1,
+          drawing.style.profileRows ?? 80,
+          drawing.style.valueAreaPercent ?? 68,
+        ));
     }
     return cache;
-  }, [drawings, candles]);
+  }, [drawings, candles, volumeProfiles]);
   // Between the first and second placement click the preview histogram used to
   // recompute on EVERY mousemove — a full candle scan per pixel of cursor
   // travel, which is what made drawing the fixed range feel glitchy. The

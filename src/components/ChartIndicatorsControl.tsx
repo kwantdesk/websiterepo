@@ -495,6 +495,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "weekly-tpo",
   "weekly-volume-profile",
   "composite-volume-profile",
+  "custom-draw-on-volume-profile",
   "ask-bid-volume-profile",
   "delta-profile",
   "classic-gex-profile",
@@ -505,6 +506,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
 ]);
 
 type Props = {
+  chartInstanceId?: string;
   instrument: string;
   timeframe: string;
   indicators: ChartIndicatorInstance[];
@@ -855,6 +857,7 @@ function toggleOn(
 }
 
 export default function ChartIndicatorsControl({
+  chartInstanceId = "primary",
   instrument,
   timeframe,
   indicators,
@@ -1411,6 +1414,16 @@ export default function ChartIndicatorsControl({
 
   const add = (indicatorId: string) => {
     if (!RENDERED_CHART_INDICATOR_IDS.has(indicatorId)) return;
+    // A draw-on profile is a placement tool, not a study that can exist with
+    // no anchors. Arm the real fixed-range profile on the active chart. The
+    // resulting drawing is what persists and owns its settings/templates.
+    if (indicatorId === "custom-draw-on-volume-profile") {
+      window.dispatchEvent(new CustomEvent("kwantdesk:activate-chart-drawing", {
+        detail: { chartInstanceId, tool: "fixedRangeVolumeProfile" },
+      }));
+      setLibraryOpen(false);
+      return;
+    }
     const existing = indicators.find((instance) => instance.indicatorId === indicatorId);
     if (existing) {
       replace(existing.instanceId, (instance) => ({ ...instance, enabled: true }));
@@ -1728,7 +1741,9 @@ export default function ChartIndicatorsControl({
                 </div>
                 <div className="space-y-1">
                   {filtered.map((definition) => {
-                    const added = indicators.some((instance) => instance.indicatorId === definition.id);
+                    const added = definition.id === "custom-draw-on-volume-profile"
+                      ? false
+                      : indicators.some((instance) => instance.indicatorId === definition.id);
                     const favourite = favourites.includes(definition.id);
                     const live = LIVE_CHART_INDICATOR_IDS.has(definition.id) && RENDERED_CHART_INDICATOR_IDS.has(definition.id);
                     return (

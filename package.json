@@ -39,6 +39,7 @@
     "test:deep-delta": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-deep-delta.mjs",
     "test:deep-wall": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-deep-wall.mjs",
     "test:deep-v-tracker": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-deep-v-tracker.mjs",
+    "test:custom-draw-volume-profile": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-custom-draw-volume-profile.mjs",
     "test:tape-speed-order-flow-burst": "node --experimental-strip-types scripts/test-tape-speed-order-flow-burst.mjs",
     "test:speed-of-tape-instant": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-speed-of-tape-instant.mjs",
     "test:economic-calendar-forward": "node --experimental-strip-types scripts/test-economic-calendar-forward.mjs",

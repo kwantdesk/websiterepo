@@ -183,6 +183,15 @@ export default function ChartDrawSettings({
                   <Row label={`Rows · ${drawing.style.profileRows ?? 80}`}>
                     <input type="range" min={20} max={200} step={5} value={drawing.style.profileRows ?? 80} onChange={(e) => patchStyle({ profileRows: Number(e.target.value) })} className="w-40 accent-primary" />
                   </Row>
+                  <Row label={`Price grouping · ${drawing.style.profileGroupTicks ?? 4} ticks`}>
+                    <input type="range" min={1} max={40} step={1} value={drawing.style.profileGroupTicks ?? 4} onChange={(e) => patchStyle({ profileGroupTicks: Number(e.target.value) })} className="w-40 accent-primary" />
+                  </Row>
+                  <Row label={`Minimum trade · ${drawing.style.profileMinTradeVolume ?? 0}`}>
+                    <input type="range" min={0} max={500} step={1} value={drawing.style.profileMinTradeVolume ?? 0} onChange={(e) => patchStyle({ profileMinTradeVolume: Number(e.target.value) })} className="w-40 accent-primary" />
+                  </Row>
+                  <Row label={`Maximum trade · ${drawing.style.profileMaxTradeVolume ?? 0}${(drawing.style.profileMaxTradeVolume ?? 0) === 0 ? " (off)" : ""}`}>
+                    <input type="range" min={0} max={5000} step={10} value={drawing.style.profileMaxTradeVolume ?? 0} onChange={(e) => patchStyle({ profileMaxTradeVolume: Number(e.target.value) })} className="w-40 accent-primary" />
+                  </Row>
                   <Row label={`Value area · ${drawing.style.valueAreaPercent ?? 68}%`}>
                     <input type="range" min={50} max={95} step={1} value={drawing.style.valueAreaPercent ?? 68} onChange={(e) => patchStyle({ valueAreaPercent: Number(e.target.value) })} className="w-40 accent-primary" />
                   </Row>

@@ -19524,6 +19524,7 @@ export default function KwantifyWorkspace({
           >
           <div className="flex shrink-0 items-center gap-2">
           <ChartIndicatorsControl
+            chartInstanceId={activePaneId}
             instrument={displayCmeSymbol(activeWorkspacePane.symbol)}
             timeframe={formatChartInterval(activeWorkspacePane.timeframe)}
             indicators={paneIndicators[activePaneId] ?? []}

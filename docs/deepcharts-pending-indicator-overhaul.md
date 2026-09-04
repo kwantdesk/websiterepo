@@ -45,8 +45,8 @@ Legend: `[ ]` not complete, `[~]` in progress, `[x]` complete and addable.
 | 7 | Book Speed | `book-speed` | [x] | [x] | [x] | [x] | [x] | Add |
 | 8 | KWANT Delta | `deep-delta` | [x] | [x] | [x] | [x] | [x] | Add |
 | 9 | KWANT Wall | `deep-wall` | [x] | [x] | [x] | [x] | [x] | Add |
-| 10 | KWANT V-Tracker | `deep-v-tracker` | [x] | [x] | [x] | [x] | [~] | Release candidate |
-| 11 | Custom Draw-On Volume Profile | `custom-draw-on-volume-profile` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
+| 10 | KWANT V-Tracker | `deep-v-tracker` | [x] | [x] | [x] | [x] | [x] | Add |
+| 11 | Custom Draw-On Volume Profile | `custom-draw-on-volume-profile` | [x] | [x] | [x] | [x] | [~] | Release candidate |
 | 12 | KWANT Profile Swing | `deep-profile-swing` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
 | 13 | KWANT Profile Values | `deep-profile-values` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
 | 14 | Market Statistics | `market-statistics` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
@@ -334,8 +334,33 @@ Legend: `[ ]` not complete, `[~]` in progress, `[x]` complete and addable.
   tests pass, along with TypeScript, focused new-file lint, templates,
   theme-following, numeric sliders, the shared Rithmic frame budget and the
   production build. The broad plot-colour test still stops only at its existing
-  unrelated MACD custom-signal assertion. Exact-deployment production QA is
-  the remaining gate.
+  unrelated MACD custom-signal assertion. Commit `85cc2949` reached Ready as
+  deployment `4UDZQyZQgzee6X3mQcdDkTdd1aDQ`; cache-busted production QA on NQ
+  500-volume confirmed nine live signals, every documented control, immediate
+  saved state with no stale close prompt, and clean removal back to 11 studies.
+
+### 11: Custom Draw-On Volume Profile
+
+- Installed DeepCharts 16.0.9 metadata identifies this as the chart drawing
+  action `CHART_DRAW_VOL_PROFILE`, with visible Volume Profile, Profile
+  Settings, `% Value Area`, Filter outside Value Area and Show As Profile
+  concepts. It is therefore correctly modelled as an anchored chart object,
+  not as a persistent zero-anchor study row.
+- The library Add action now arms Fixed Range Volume Profile on the selected
+  chart. Its two anchors, drawing settings and templates use the existing chart
+  drawing persistence contract, so the entry stays reusable rather than
+  pretending a singleton study was added.
+- Committed ranges request exact custom-period Rithmic execution rows with
+  contract, start/end, tick grouping, value-area percentage and min/max trade
+  filters. Anchor movement is debounced so dragging cannot create an API storm;
+  response signatures prevent stale ranges or settings from painting. The
+  existing candle-volume geometry is only the immediate loading fallback.
+- The renderer draws the histogram plus independently configurable POC, VAH
+  and VAL lines/labels. Price grouping, execution filters, row density, value
+  area, width, fills, line toggles/widths/colours and templates are exposed.
+  Focused exact-row conversion and arming tests, fixed-range level regression,
+  templates, theme following, numeric sliders and TypeScript pass. Exact-build
+  deployment and production placement/settings/removal QA remain open.
 
 - Quant Desk already has a tested `PocAuctionSuiteEngine` driven by exact
   execution-classified Footprint rows. It calculates raw-tick unfinished
