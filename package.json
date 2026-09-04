@@ -110,6 +110,7 @@
     "test:indicator-history-depth": "node --import ./scripts/alias-hook.mjs scripts/test-indicator-history-depth.mjs",
     "test:toolbar-single-source": "node --experimental-strip-types scripts/test-toolbar-single-source.mjs",
     "test:drawing-toolbar-last-used": "node --experimental-strip-types --import ./scripts/alias-hook.mjs --test tests/chart-draw-toolbar-last-used.test.mjs",
+    "test:chart-emoji-zoom-scale": "node --experimental-strip-types --import ./scripts/alias-hook.mjs --test tests/chart-emoji-tool.test.mjs tests/chart-emoji-zoom-scale.test.mjs",
     "test:drawing-horizontal-extension": "node --experimental-strip-types --import ./scripts/alias-hook.mjs --test tests/chart-drawing-horizontal-extension.test.mjs",
     "test:fixed-range-volume-profile-levels": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-fixed-range-volume-profile-levels.mjs",
     "test:cvd-divergence": "node --import ./scripts/alias-hook.mjs --experimental-strip-types scripts/test-cvd-divergence.mjs",

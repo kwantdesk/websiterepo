@@ -22,6 +22,7 @@ import { fillMarkerGeometry, positionToolScreenGeometry, timeAtPixelPastLastBar 
 import { nearestCandleMagnetCandidate } from "@/lib/chartMagnet";
 import type { InstitutionalVolumeProfile } from "@/lib/institutionalMarketData";
 import { exactCustomDrawVolumeProfile } from "@/lib/customDrawVolumeProfile";
+import { chartAnchoredEmojiScreenSize } from "@/lib/chartEmojiScale";
 
 // Self-contained SVG overlay that owns the new charting tools end to end:
 // point placement (fixed-count, poly-click and freehand-drag), live preview,
@@ -251,6 +252,57 @@ export default function ChartDrawLayer({
       recentTimes: candles.slice(-12).map((candle) => candle.time),
     });
   };
+
+  const emojiScreenSize = (drawing: Drawing, anchorX: number, anchorY: number) =>
+    chartAnchoredEmojiScreenSize({
+      nominalSize: Number(drawing.style.fontSize ?? 36),
+      referenceSize: drawing.style.emojiScaleReferenceSize,
+      timeRadius: drawing.style.emojiTimeRadius,
+      priceRadius: drawing.style.emojiPriceRadius,
+      anchorTime: drawing.points[0]?.time ?? 0,
+      anchorPrice: drawing.points[0]?.price ?? 0,
+      anchorX,
+      anchorY,
+      toX,
+      toY,
+    });
+
+  const emojiScaleAtAnchor = (drawing: Drawing) => {
+    const anchor = drawing.points[0];
+    if (!anchor) return null;
+    const anchorX = toX(anchor.time);
+    const anchorY = toY(anchor.price);
+    if (anchorX == null || anchorY == null) return null;
+    const referenceSize = Math.max(16, Math.min(160, Number(drawing.style.fontSize ?? 36)));
+    const half = referenceSize / 2;
+    const edgeTime = timeAtX(anchorX + half);
+    const edgePrice = priceAtY(anchorY + half);
+    const timeRadius = edgeTime == null ? null : Math.abs(edgeTime - anchor.time);
+    const priceRadius = edgePrice == null ? null : Math.abs(edgePrice - anchor.price);
+    if (!(Number(timeRadius) > 0) && !(Number(priceRadius) > 0)) return null;
+    return {
+      ...(Number(timeRadius) > 0 ? { emojiTimeRadius: timeRadius as number } : {}),
+      ...(Number(priceRadius) > 0 ? { emojiPriceRadius: priceRadius as number } : {}),
+      emojiScaleReferenceSize: referenceSize,
+    };
+  };
+
+  // Drawings saved before chart-relative emoji sizing had only a pixel font
+  // size. Capture their current on-screen footprint once, then every viewport
+  // change uses those chart-unit radii. This is a compatibility migration,
+  // not a repeated save on each zoom.
+  useEffect(() => {
+    const legacy = drawings.find((drawing) => drawing.tool === "emoji"
+      && !(Number(drawing.style.emojiTimeRadius) > 0)
+      && !(Number(drawing.style.emojiPriceRadius) > 0));
+    if (!legacy) return;
+    const scale = emojiScaleAtAnchor(legacy);
+    if (!scale) return;
+    onUpdate({ ...legacy, style: { ...legacy.style, ...scale } });
+  // `emojiScaleAtAnchor` intentionally reads the current chart transforms;
+  // the explicit viewport tokens below are the stable invalidation contract.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chartReady, drawings, onUpdate, viewportVersion]);
   // Unique per layer: two charts on screen must not share one clip.
   const plotClipId = useId().replace(/:/g, "");
   const freehandCleanupRef = useRef<(() => void) | null>(null);
@@ -354,7 +406,9 @@ export default function ChartDrawLayer({
         }
       }
     }
-    onCommit(createDrawing(tool, committed, tool === "emoji" ? emoji : undefined));
+    const created = createDrawing(tool, committed, tool === "emoji" ? emoji : undefined);
+    const scale = tool === "emoji" ? emojiScaleAtAnchor(created) : null;
+    onCommit(scale ? { ...created, style: { ...created.style, ...scale } } : created);
     setPending(null);
     // Drawing is repetitive by nature: finishing one stroke should leave the
     // pencil in hand rather than dropping back to the cursor every time.
@@ -710,7 +764,7 @@ export default function ChartDrawLayer({
     window.addEventListener("pointercancel", cleanup);
   };
 
-  /** Resize an emoji in pixels while leaving its time/price anchor untouched. */
+  /** Resize the emoji's chart-relative nominal size without moving its anchor. */
   const beginEmojiResize = (drawing: Drawing, event: ReactPointerEvent) => {
     event.stopPropagation();
     onSelect(drawing.id);
@@ -718,12 +772,16 @@ export default function ChartDrawLayer({
     const anchorX = anchor ? toX(anchor.time) : null;
     const anchorY = anchor ? toY(anchor.price) : null;
     if (anchorX == null || anchorY == null) return;
+    const currentScreenSize = emojiScreenSize(drawing, anchorX, anchorY);
+    const currentNominalSize = Math.max(16, Math.min(160, Number(drawing.style.fontSize ?? 36)));
+    const screenPixelsPerNominalPixel = Math.max(0.01, currentScreenSize / currentNominalSize);
     const onMove = (moveEvent: PointerEvent) => {
       const rect = svgRef.current?.getBoundingClientRect();
       if (!rect) return;
       const dx = Math.abs(moveEvent.clientX - rect.left - anchorX);
       const dy = Math.abs(moveEvent.clientY - rect.top - anchorY);
-      const fontSize = Math.round(Math.max(16, Math.min(160, Math.max(dx, dy) * 2)));
+      const targetScreenSize = Math.max(dx, dy) * 2;
+      const fontSize = Math.round(Math.max(16, Math.min(160, targetScreenSize / screenPixelsPerNominalPixel)));
       onUpdate({ ...drawing, style: { ...drawing.style, fontSize } });
     };
     const cleanup = () => {
@@ -1029,7 +1087,7 @@ export default function ChartDrawLayer({
     const a = coords[0];
     if (a.x == null || a.y == null) return false;
     if (drawing.tool === "emoji") {
-      const size = Math.max(16, Math.min(160, Number(drawing.style.fontSize ?? 36)));
+      const size = emojiScreenSize(drawing, a.x, a.y);
       return Math.abs(px - a.x) <= size / 2 + 5 && Math.abs(py - a.y) <= size / 2 + 5;
     }
     if (drawing.tool === "horizontalLine" || drawing.tool === "horizontalRay") {
@@ -1310,7 +1368,7 @@ export default function ChartDrawLayer({
         }
         case "emoji": {
           if (a.x == null || a.y == null) return null;
-          const size = Math.max(16, Math.min(160, Number(style.fontSize ?? 36)));
+          const size = emojiScreenSize(drawing, a.x, a.y);
           return <text
             x={a.x}
             y={a.y}
@@ -1602,10 +1660,10 @@ export default function ChartDrawLayer({
               : valid.length === 1
                 ? drawing.tool === "emoji"
                   ? <rect
-                      x={valid[0].x - Math.max(16, Math.min(160, Number(drawing.style.fontSize ?? 36))) / 2 - 5}
-                      y={valid[0].y - Math.max(16, Math.min(160, Number(drawing.style.fontSize ?? 36))) / 2 - 5}
-                      width={Math.max(16, Math.min(160, Number(drawing.style.fontSize ?? 36))) + 10}
-                      height={Math.max(16, Math.min(160, Number(drawing.style.fontSize ?? 36))) + 10}
+                      x={valid[0].x - emojiScreenSize(drawing, valid[0].x, valid[0].y) / 2 - 5}
+                      y={valid[0].y - emojiScreenSize(drawing, valid[0].x, valid[0].y) / 2 - 5}
+                      width={emojiScreenSize(drawing, valid[0].x, valid[0].y) + 10}
+                      height={emojiScreenSize(drawing, valid[0].x, valid[0].y) + 10}
                       fill="transparent"
                     />
                   : <circle cx={valid[0].x} cy={valid[0].y} r={12} fill="transparent" />
@@ -1630,7 +1688,8 @@ export default function ChartDrawLayer({
         })
       : null;
     const emojiSize = drawing.tool === "emoji"
-      ? Math.max(16, Math.min(160, Number(drawing.style.fontSize ?? 36)))
+      && a.x != null && a.y != null
+      ? emojiScreenSize(drawing, a.x, a.y)
       : null;
     const emojiResizeHandle = emojiSize != null && a.x != null && a.y != null
       ? { x: a.x + emojiSize / 2, y: a.y + emojiSize / 2 }

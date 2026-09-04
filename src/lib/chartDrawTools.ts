@@ -152,6 +152,12 @@ export type DrawStyle = {
    */
   horizontalExtension?: DrawHorizontalExtension;
   fontSize?: number;    // text tools
+  /** Half-width in chart time units; makes an emoji respond to time zoom. */
+  emojiTimeRadius?: number;
+  /** Half-height in chart price units; makes an emoji respond to price zoom. */
+  emojiPriceRadius?: number;
+  /** Nominal font size when the chart-unit radii were captured. */
+  emojiScaleReferenceSize?: number;
   visible?: boolean;    // hide without deleting
   /** Stamped by migrateDrawStyle so the width halving runs exactly once. */
   styleVersion?: number;
