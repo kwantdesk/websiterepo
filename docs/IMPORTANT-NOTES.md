@@ -112,6 +112,14 @@ recap of the open items below and update this file when their state changes.
 - The collector refreshes that answer every ten minutes and coalesces all
   simultaneous users into one provider request per exchange/root. On every
   new SSE lease, continuous symbols are bound to that resolved contract.
+- The Rithmic wire identifiers are request `113`, response `114` and live
+  update `159`; `154467` is the protobuf field number for `template_id`, not a
+  template value. Keep a regression on all three because a wrong value fails
+  by timeout and can otherwise leave an apparently healthy stale contract.
+- On login and every ten minutes, configured subscriptions reconcile to an
+  exact dated contract. Provider updates subscribe the replacement and remove
+  the old contract. Never accept an undated root such as `MNQ` as a resolved
+  contract.
 - Each chart resolves immediately, on a ten-minute cadence, after reconnect
   and when the tab becomes visible. A changed contract invalidates the old
   contract identity, reloads contract-keyed seam/order-flow data and rotates

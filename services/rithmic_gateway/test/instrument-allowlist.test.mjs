@@ -32,18 +32,18 @@ test("configured instruments resolve without transmitting upstream", () => {
   assert.deepEqual(sent, [], "reads must not transmit to Rithmic");
 });
 
-test("an instrument outside the allowlist is refused, not subscribed", () => {
+test("a configured contract permits only its own rollover family", () => {
   const client = offlineClient();
   const sent = [];
   client.send = (name) => sent.push(name);
 
+  assert.equal(client.subscribe("CME", "NQZ6").symbol, "NQZ6");
   assert.throws(
-    () => client.subscribe("CME", "NQZ6"),
+    () => client.subscribe("CME", "NGU6"),
     (error) => error.code === "RITHMIC_INSTRUMENT_NOT_ALLOWED",
-    "an unconfigured contract month must be refused",
+    "an unrelated product must remain refused",
   );
-  assert.equal(client.subscriptions.has("CME:NQZ6"), false);
-  assert.deepEqual(sent, [], "a refused instrument must not reach Rithmic");
+  assert.equal(client.subscriptions.has("CME:NGU6"), false);
 });
 
 test("the allowlist can be widened deliberately", () => {
@@ -69,7 +69,7 @@ test("an allowed product root permits the active contract without allowing unrel
 test("case and whitespace do not bypass the allowlist", () => {
   const client = offlineClient();
   assert.throws(
-    () => client.subscribe(" cme ", " nqz6 "),
+    () => client.subscribe(" cme ", " ngu6 "),
     (error) => error.code === "RITHMIC_INSTRUMENT_NOT_ALLOWED",
   );
   // The configured set still normalizes to a hit.
@@ -105,4 +105,48 @@ test("front-month resolution asks Rithmic even while the expiring contract is li
   assert.equal(second.contractSymbol, "NQZ6");
   assert.equal(sent.length, 1, "simultaneous users opened duplicate provider requests");
   assert.equal(sent[0].name, "RequestFrontMonthContract");
+  assert.equal(sent[0].payload.templateId, 113);
+  assert.equal(sent[0].payload.needUpdates, true);
+});
+
+test("front-month fallback refuses an undated root subscription", async () => {
+  const client = offlineClient({
+    RITHMIC_SUBSCRIPTIONS: "CME:MNQ",
+    RITHMIC_ALLOWED_ROOTS: "CME:MNQ",
+  });
+  client.book.ensure("CME", "MNQ").asOfMs = Date.now();
+
+  await assert.rejects(
+    client.resolveFrontMonth("CME", "MNQ", 5),
+    /not connected/u,
+  );
+});
+
+test("a provider response replaces the expiring configured subscription", async () => {
+  const client = offlineClient();
+  client.socket = { readyState: 1 };
+  const sent = [];
+  client.send = (name, payload) => {
+    sent.push({ name, payload });
+    if (name !== "RequestFrontMonthContract") return;
+    setImmediate(() => {
+      client.handleMessage(client.protocol.encode("ResponseFrontMonthContract", {
+        templateId: 114,
+        userMsg: [payload.userMsg[0]],
+        rpCode: ["0"],
+        symbol: "NQ",
+        exchange: "CME",
+        isFrontMonthSymbol: true,
+        tradingSymbol: "NQZ6",
+        tradingExchange: "CME",
+      }));
+    });
+  };
+
+  const resolved = await client.resolveFrontMonth("CME", "NQ");
+  assert.equal(resolved.contractSymbol, "NQZ6");
+  assert.equal(client.subscriptions.has("CME:NQZ6"), true);
+  assert.equal(client.subscriptions.has("CME:NQU6"), false);
+  assert.ok(sent.some((row) => row.name === "RequestMarketDataUpdate" && row.payload.symbol === "NQZ6"));
+  assert.ok(sent.some((row) => row.name === "RequestMarketDataUpdate" && row.payload.symbol === "NQU6" && row.payload.request === 2));
 });

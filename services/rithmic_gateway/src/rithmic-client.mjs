@@ -72,6 +72,18 @@ const NON_MARKET_TEMPLATE_IDS = new Set([
 const AUTH_RETRY_MIN_MS = 60_000;
 const AUTH_RETRY_MAX_MS = 15 * 60_000;
 
+const CONTRACT_SUFFIX = /[FGHJKMNQUVXZ]\d{1,2}$/u;
+
+function contractRoot(symbol) {
+  return String(symbol || "").trim().toUpperCase().replace(CONTRACT_SUFFIX, "");
+}
+
+function isExactContractForRoot(symbol, root) {
+  const normalizedSymbol = String(symbol || "").trim().toUpperCase();
+  const normalizedRoot = String(root || "").trim().toUpperCase();
+  return CONTRACT_SUFFIX.test(normalizedSymbol) && contractRoot(normalizedSymbol) === normalizedRoot;
+}
+
 function openSocket(url, timeoutMs = 10_000) {
   return new Promise((resolve, reject) => {
     const socket = new WebSocket(url, {
@@ -165,6 +177,7 @@ export class RithmicMarketDataClient extends EventEmitter {
     this.startPromise = null;
     this.connectPromise = null;
     this.heartbeatTimer = null;
+    this.frontMonthTimer = null;
     this.reconnectTimer = null;
     this.reconnectAttempt = 0;
     this.stopped = true;
@@ -180,9 +193,15 @@ export class RithmicMarketDataClient extends EventEmitter {
       ),
     );
     this.allowedRoots = new Set(
-      (config.allowedRoots ?? []).map((row) =>
-        instrumentKey(row.exchange, row.symbol),
-      ),
+      [
+        ...(config.allowedRoots ?? []).map((row) =>
+          instrumentKey(row.exchange, row.symbol)),
+        // Every explicitly configured contract grants only its own product
+        // root. This lets that bounded subscription roll from U6 to Z6 after
+        // a restart without opening an unrelated instrument family.
+        ...config.subscriptions.map((row) =>
+          instrumentKey(row.exchange, contractRoot(row.symbol))),
+      ],
     );
     this.frontMonthCache = new Map();
     this.frontMonthPromises = new Map();
@@ -306,6 +325,18 @@ export class RithmicMarketDataClient extends EventEmitter {
       for (const subscription of this.subscriptions.values()) {
         this.sendSubscription(subscription);
       }
+      // Static deployment configuration names product roots or the contract
+      // that was current when it was written. Reconcile those roots through
+      // Rithmic after every login so a process restart cannot resurrect an
+      // expired contract. Provider updates handle an in-session roll; this
+      // bounded timer is the reconnect/recovery check.
+      void this.reconcileSubscribedFrontMonths();
+      clearInterval(this.frontMonthTimer);
+      this.frontMonthTimer = setInterval(
+        () => void this.reconcileSubscribedFrontMonths(),
+        10 * 60_000,
+      );
+      this.frontMonthTimer.unref?.();
       this.emit("status", this.health());
     } catch (error) {
       this.status.connected = false;
@@ -367,7 +398,7 @@ export class RithmicMarketDataClient extends EventEmitter {
     const liveFallback = () => this.book.list()
       .filter((row) => (
         String(row.exchange || "").toUpperCase() === normalizedExchange
-        && String(row.symbol || "").toUpperCase().replace(/[FGHJKMNQUVXZ]\d{1,2}$/u, "") === normalizedRoot
+        && isExactContractForRoot(row.symbol, normalizedRoot)
         && ["LIVE", "STALE"].includes(row.status)
       ))
       .sort((left, right) => (right.status === "LIVE" ? 1 : 0) - (left.status === "LIVE" ? 1 : 0))[0];
@@ -406,7 +437,9 @@ export class RithmicMarketDataClient extends EventEmitter {
           userMsg: [requestId],
           symbol: normalizedRoot,
           exchange: normalizedExchange,
-          needUpdates: false,
+          // Rithmic sends template 159 when the designated contract changes.
+          // The ten-minute poll remains a recovery path after reconnects.
+          needUpdates: true,
         });
       } catch (error) {
         clearTimeout(timeout);
@@ -430,6 +463,43 @@ export class RithmicMarketDataClient extends EventEmitter {
     });
     this.frontMonthPromises.set(key, request);
     return await request;
+  }
+
+  applyFrontMonthResolution(resolved) {
+    const exchange = String(resolved?.exchange || "").trim().toUpperCase();
+    const root = String(resolved?.root || "").trim().toUpperCase();
+    const contractSymbol = String(resolved?.contractSymbol || "").trim().toUpperCase();
+    if (!exchange || !root || !isExactContractForRoot(contractSymbol, root)) return false;
+
+    this.subscribe(exchange, contractSymbol);
+    for (const row of [...this.subscriptions.values()]) {
+      if (
+        row.exchange === exchange
+        && contractRoot(row.symbol) === root
+        && row.symbol !== contractSymbol
+      ) {
+        this.unsubscribe(row.exchange, row.symbol);
+      }
+    }
+    return true;
+  }
+
+  async reconcileSubscribedFrontMonths() {
+    if (this.socket?.readyState !== WebSocket.OPEN || !this.status.authenticated) return;
+    const roots = [...new Set(
+      [...this.subscriptions.values()].map((row) => `${row.exchange}:${contractRoot(row.symbol)}`),
+    )];
+    for (const key of roots) {
+      const separator = key.indexOf(":");
+      const exchange = key.slice(0, separator);
+      const root = key.slice(separator + 1);
+      try {
+        const resolved = await this.resolveFrontMonth(exchange, root);
+        this.applyFrontMonthResolution(resolved);
+      } catch (error) {
+        this.status.lastFrontMonthError = error instanceof Error ? error.message : String(error);
+      }
+    }
   }
 
   subscribe(exchange, symbol) {
@@ -573,7 +643,7 @@ export class RithmicMarketDataClient extends EventEmitter {
         // Both paths must commit the staged book exactly once.
         event = this.book.applyDepthSnapshot(decoded.payload);
         break;
-      case 154467: {
+      case 114: {
         const payload = decoded.payload || {};
         const requestId = payload.userMsg?.[0];
         const pending = requestId ? this.pendingFrontMonthRequests.get(requestId) : null;
@@ -582,9 +652,9 @@ export class RithmicMarketDataClient extends EventEmitter {
         this.pendingFrontMonthRequests.delete(requestId);
         const failureCode = payload.rpCode?.find((code) => code !== "0");
         const contractSymbol = String(payload.tradingSymbol || payload.symbol || "").toUpperCase();
-        if (failureCode || !contractSymbol) {
+        if (failureCode || !isExactContractForRoot(contractSymbol, pending.root)) {
           pending.reject(new Error(
-            `Rithmic could not resolve ${pending.exchange}:${pending.root} front month${failureCode ? ` (${failureCode})` : ""}.`,
+            `Rithmic could not resolve ${pending.exchange}:${pending.root} to an exact front-month contract${failureCode ? ` (${failureCode})` : ""}.`,
           ));
           break;
         }
@@ -596,7 +666,28 @@ export class RithmicMarketDataClient extends EventEmitter {
           source: "rithmic-front-month",
         };
         this.frontMonthCache.set(instrumentKey(pending.exchange, pending.root), resolved);
+        this.applyFrontMonthResolution(resolved);
         pending.resolve(resolved);
+        break;
+      }
+      case 159: {
+        const payload = decoded.payload || {};
+        if (payload.isFrontMonthSymbol === false) break;
+        const contractSymbol = String(payload.tradingSymbol || "").trim().toUpperCase();
+        const root = contractRoot(payload.symbol || contractSymbol);
+        if (!root || !isExactContractForRoot(contractSymbol, root)) break;
+        const exchange = String(payload.tradingExchange || payload.exchange || "").trim().toUpperCase();
+        if (!exchange) break;
+        const resolved = {
+          exchange,
+          root,
+          contractSymbol,
+          resolvedAt: Date.now(),
+          source: "rithmic-front-month-update",
+        };
+        this.frontMonthCache.set(instrumentKey(exchange, root), resolved);
+        this.applyFrontMonthResolution(resolved);
+        this.emit("frontMonth", resolved);
         break;
       }
       case 101:
@@ -704,8 +795,10 @@ export class RithmicMarketDataClient extends EventEmitter {
     this.stopped = true;
     clearTimeout(this.reconnectTimer);
     clearInterval(this.heartbeatTimer);
+    clearInterval(this.frontMonthTimer);
     this.reconnectTimer = null;
     this.heartbeatTimer = null;
+    this.frontMonthTimer = null;
     if (this.socket?.readyState === WebSocket.OPEN) {
       try {
         this.send("RequestLogout", {
@@ -727,6 +820,7 @@ export class RithmicMarketDataClient extends EventEmitter {
       ...this.status,
       subscriptions: [...this.subscriptions.values()],
       instruments: this.book.list(),
+      frontMonths: [...this.frontMonthCache.values()],
     };
   }
 }

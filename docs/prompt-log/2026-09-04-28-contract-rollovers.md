@@ -14,6 +14,13 @@ does not break live bars, historical candles, caches or recording.
 - Changed the gateway to ask Rithmic before accepting a locally live contract,
   shortened the shared answer from six hours to ten minutes and coalesced
   concurrent requests so 100 users do not create 100 provider calls.
+- Corrected the live Rithmic wire contract to request `113`, response `114`
+  and provider rollover update `159`. The protobuf field number `154467` is
+  not a message template id and is no longer sent as one.
+- The collector now requests provider rollover updates, reconciles every
+  configured product after login and every ten minutes, subscribes the new
+  exact contract and removes the expired subscription. A root-only value such
+  as `MNQ` is rejected as a contract instead of being published as one.
 - Continuous quote streams now resolve the provider contract on every SSE
   lease. Charts reconcile immediately, every ten minutes, after reconnect and
   when returning to the tab. A detected change rotates the shared stream and
@@ -30,9 +37,11 @@ does not break live bars, historical candles, caches or recording.
 
 ## Outcome
 
-The new regressions prove that an already-live expiring contract cannot outrank
-Rithmic's new front-month response, simultaneous clients coalesce into one
-request, and history spanning `NQU6`/`NQZ6` retains both sides while choosing
-one liquid contract during overlap. The complete 324-test gateway suite and
-TypeScript compilation pass. Production deployment details are appended after
-the single feature push reaches the active `websiterepo-yfmi` project.
+The regressions prove the three provider wire ids, that an already-live
+expiring contract cannot outrank Rithmic's new front-month response, that an
+undated root cannot leak through fallback, that simultaneous clients coalesce
+into one request, that the old live subscription is replaced, and that history
+spanning `NQU6`/`NQZ6` retains both sides while choosing one liquid contract
+during overlap. The complete gateway suite, TypeScript and production build
+pass. Production evidence is recorded after both the active Vercel project and
+the collector have been checked.

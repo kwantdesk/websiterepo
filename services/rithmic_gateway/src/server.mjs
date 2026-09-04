@@ -1160,6 +1160,7 @@ client.on("marketData", (event) => {
   }
 });
 client.on("status", (status) => emitRawSse("status", status));
+client.on("frontMonth", (resolved) => emitRawSse("frontMonth", resolved));
 client.on("gatewayError", (error) => {
   process.stderr.write(`[rithmic] ${error instanceof Error ? error.message : String(error)}\n`);
 });
