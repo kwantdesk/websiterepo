@@ -193,6 +193,7 @@
     "test:kwant-levels": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-kwant-levels.mjs",
     "test:chart-overlays": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-chart-overlays.mjs",
     "test:deep-m-ivb": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-deep-m-ivb.mjs",
+    "test:deep-pattern-builder": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-deep-pattern-builder.mjs",
     "test:vix-environment-native-fixture": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-vix-environment-native-fixture.mjs",
     "test:zero-gamma-line-native-fixture": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-zero-gamma-line-native-fixture.mjs",
     "test:options-delta-native-fixture": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-options-delta-native-fixture.mjs",

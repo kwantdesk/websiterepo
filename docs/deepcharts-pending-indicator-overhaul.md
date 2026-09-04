@@ -56,9 +56,34 @@ Legend: `[ ]` not complete, `[~]` in progress, `[x]` complete and addable.
 | 18 | Overlay Symbol | `overlay-symbol` | [x] | [x] | [x] | [x] | [~] | Pending · deployment QA |
 | 19 | Overlay Timeframe Candlestick | `overlay-timeframe-candlestick` | [x] | [x] | [x] | [x] | [~] | Pending · deployment QA |
 | 20 | KWANT-M IVB | `deep-m-ivb` | [x] | [x] | [x] | [x] | [~] | Pending · deployment QA |
-| 21 | KWANT Pattern Builder | `deep-pattern-builder` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
+| 21 | KWANT Pattern Builder | `deep-pattern-builder` | [x] | [x] | [x] | [x] | [~] | Pending · deployment QA |
 
 ## Audit notes
+
+### 21: KWANT Pattern Builder
+
+- Official DeepCharts help defines four A/B/C/D conditions, per-operand source
+  and previous-bar offset, arithmetic operators, six comparisons, AND/OR or an
+  advanced logical expression, calculate-on-close, imbalance filtering,
+  marker/background plotting, history depth and alerts. Its reference list
+  includes candle OHLC, bid/ask/total volume and trades, delta, POC metrics and
+  cumulative delta, plus indicator or constant operands.
+- Quant Desk implements that observable contract as a deterministic rule
+  engine. Four independent conditions accept candle, classified Rithmic
+  execution, POC, cumulative-delta, SMA, EMA, VWAP, constant and unused
+  operands. Division by zero, invalid expressions and absent required
+  volume-at-price fail closed. Candle volume is never relabelled as bid/ask
+  flow. Advanced grouping is parsed from `C1`–`C4`, `AND`, `OR`, `NOT` and
+  parentheses without evaluating user code.
+- Previous-bar offsets are bounded, technical lengths and every numeric input
+  use the shared typed slider, close-only mode excludes the forming candle,
+  and history is bounded by days. A native price-pane primitive draws themed
+  diamonds, background columns or both. Settings, custom colours, alerts,
+  saved state and account templates use the standard indicator pipeline; no
+  pattern can place a trade or bypass the paper/live order confirmation path.
+- Focused rule, offset, expression and missing-order-flow tests, slider checks,
+  theme checks and scoped compilation pass. Exact deployment and production
+  add/render/settings/save/reload/removal QA remain open.
 
 ### 20: KWANT-M IVB
 

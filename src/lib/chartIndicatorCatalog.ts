@@ -196,7 +196,7 @@ export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
   indicator("KWANT Stats", "KWANT Systems", "Per-bar bid/ask volume, delta, trade pace, exhaustion and effort statistics.", true, "Kwantify"),
   indicator("Hedge Levels", "KWANT Systems", "The five dealer-hedging levels - cage ceiling and floor, magnet, accelerator and the flip - as simple full-width bands with plain-language labels.", false, "Kwantify"),
   indicator("KWANT-M IVB", "KWANT Systems", "RTH opening-range environment with empirical protection, average and deviation projections.", false, "Kwantify", "Deep-M IVB"),
-  indicator("KWANT Pattern Builder", "KWANT Systems", "Composable market-pattern rules.", true, "Reference", "Deep Pattern Builder"),
+  indicator("KWANT Pattern Builder", "KWANT Systems", "Four-condition price and order-flow rule builder with arithmetic, advanced grouping and themed chart signals.", true, "Kwantify", "Deep Pattern Builder"),
   indicator("Big Blocks", "KWANT Systems", "Instrument-adaptive futures effort blocks anchored behind price.", true, "Reference", "Deep M Effort NQ"),
 ];
 

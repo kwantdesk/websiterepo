@@ -315,6 +315,8 @@ import { buildDeepVTrackerFrame, normalizeDeepVTrackerSettings, type DeepVTracke
 import { DeepVTrackerPrimitive } from "@/lib/deepVTrackerPrimitive";
 import { calculateDeepMIVB, normalizeDeepMIVBSettings } from "@/lib/deepMIVB";
 import { DeepMIVBPrimitive } from "@/lib/deepMIVBPrimitive";
+import { buildDeepPatternSignals, normalizeDeepPatternBuilderSettings } from "@/lib/deepPatternBuilder";
+import { DeepPatternBuilderPrimitive } from "@/lib/deepPatternBuilderPrimitive";
 import { buildDeepProfileSwingFrame, normalizeDeepProfileSwingSettings, type DeepProfileSwingFrame } from "@/lib/deepProfileSwing";
 import { buildDeepProfileValuesFrame, normalizeDeepProfileValuesSettings, type DeepProfileValuesFrame } from "@/lib/deepProfileValues";
 import {
@@ -3348,6 +3350,9 @@ function Chart({
   const deepWallAlertBaselineReadyRef = useRef(false);
   const deepVTrackerPrimitiveRef = useRef<DeepVTrackerPrimitive | null>(null);
   const deepMIVBPrimitiveRef = useRef<DeepMIVBPrimitive | null>(null);
+  const deepPatternBuilderPrimitiveRef = useRef<DeepPatternBuilderPrimitive | null>(null);
+  const deepPatternBuilderSeenSignalsRef = useRef(new Set<string>());
+  const deepPatternBuilderAlertBaselineRef = useRef(false);
   const deepVTrackerLastReactPublishRef = useRef(0);
   const deepVTrackerSeenEventIdsRef = useRef(new Set<string>());
   const deepVTrackerAlertBaselineReadyRef = useRef(false);
@@ -5803,6 +5808,12 @@ function Chart({
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "deep-m-ivb") ?? null,
     [indicatorSignature, indicators],
   );
+  const deepPatternBuilderIndicator = useMemo(
+    () => indicators.find((instance) => instance.enabled && instance.indicatorId === "deep-pattern-builder") ?? null,
+    [indicatorSignature, indicators],
+  );
+  const deepPatternBuilderNeedsOrderFlow = useMemo(() => Object.entries(deepPatternBuilderIndicator?.settings ?? {}).some(([key, value]) =>
+    /[ABCD]Source$/.test(key) && ["bid-volume", "ask-volume", "total-volume", "bid-trades", "ask-trades", "total-trades", "delta-volume", "delta-trades", "poc-percent", "poc-volume", "poc-shadow", "cumulative-delta"].includes(String(value))), [deepPatternBuilderIndicator]);
   const deepProfileSwingIndicator = useMemo(
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "deep-profile-swing") ?? null,
     [indicatorSignature, indicators],
@@ -6260,13 +6271,13 @@ function Chart({
     [footprintDataKey, footprintRenderBars],
   );
   const rawPocAuctionBars = useMemo(() => {
-    if ((!pocAuctionIndicator && !unfinishedAuctionIndicator && !dynamicPocIndicator && !ratioHighlightIndicator && !stopSpotterIndicator && !deepWallIndicator && !deepVTrackerIndicator && !deepProfileSwingIndicator && !confluenceIdentifierIndicator) || !footprintSourceCandles.length) return [];
+    if ((!pocAuctionIndicator && !unfinishedAuctionIndicator && !dynamicPocIndicator && !ratioHighlightIndicator && !stopSpotterIndicator && !deepWallIndicator && !deepVTrackerIndicator && !deepProfileSwingIndicator && !confluenceIdentifierIndicator && !deepPatternBuilderNeedsOrderFlow) || !footprintSourceCandles.length) return [];
     return buildFootprintBarsCached(pocAuctionBuildCacheRef, footprintSourceCandles, footprintMarketTrades, {
       ...footprintBuildSettings,
       groupTicks: 1,
       showEmptyPriceRows: false,
     });
-  }, [confluenceIdentifierIndicator, deepProfileSwingIndicator, deepVTrackerIndicator, deepWallIndicator, dynamicPocIndicator, footprintBuildSettings, footprintMarketTrades, footprintSourceCandles, pocAuctionIndicator, ratioHighlightIndicator, stopSpotterIndicator, unfinishedAuctionIndicator]);
+  }, [confluenceIdentifierIndicator, deepPatternBuilderNeedsOrderFlow, deepProfileSwingIndicator, deepVTrackerIndicator, deepWallIndicator, dynamicPocIndicator, footprintBuildSettings, footprintMarketTrades, footprintSourceCandles, pocAuctionIndicator, ratioHighlightIndicator, stopSpotterIndicator, unfinishedAuctionIndicator]);
   const rawBarPocBars = useMemo(() => {
     if (!barPocIndicator || !footprintSourceCandles.length) return [];
     const normalized = normalizeBarPocSettings(barPocIndicator.settings);
@@ -6732,6 +6743,13 @@ function Chart({
       neutralColor: visible.muted,
     });
   }, [deepMIVBIndicator, settings]);
+  const deepPatternBuilderSettings = useMemo(() => {
+    const visible = visibleIndicatorTheme(settings);
+    return normalizeDeepPatternBuilderSettings(deepPatternBuilderIndicator?.settings, {
+      accent: visible.positive,
+      background: settings.backgroundColor,
+    });
+  }, [deepPatternBuilderIndicator, settings]);
   const deepProfileSwingSettings = useMemo(() => {
     const normalized = normalizeDeepProfileSwingSettings(deepProfileSwingIndicator?.settings);
     if (!normalized.useThemeColors) return normalized;
@@ -6914,6 +6932,34 @@ function Chart({
       tickSize: priceFormat.minMove,
     });
   }, [deepMIVBIndicator, deepMIVBSettings, indicatorWindowCandles, priceFormat.minMove]);
+
+  useEffect(() => {
+    if (!deepPatternBuilderIndicator) {
+      deepPatternBuilderPrimitiveRef.current?.update(null);
+      deepPatternBuilderSeenSignalsRef.current.clear();
+      deepPatternBuilderAlertBaselineRef.current = false;
+      return;
+    }
+    const signals = buildDeepPatternSignals(indicatorWindowCandles, rawPocAuctionBars, deepPatternBuilderSettings, priceFormat.minMove);
+    deepPatternBuilderPrimitiveRef.current?.update({
+      signals,
+      settings: deepPatternBuilderSettings,
+      background: settings.backgroundColor,
+    });
+    if (!deepPatternBuilderAlertBaselineRef.current) {
+      signals.forEach((signal) => deepPatternBuilderSeenSignalsRef.current.add(signal.id));
+      deepPatternBuilderAlertBaselineRef.current = true;
+    } else if (deepPatternBuilderSettings.alertsEnabled) {
+      for (const signal of signals) {
+        if (deepPatternBuilderSeenSignalsRef.current.has(signal.id)) continue;
+        deepPatternBuilderSeenSignalsRef.current.add(signal.id);
+        window.dispatchEvent(new CustomEvent("kwantdesk:chart-indicator-alert", { detail: {
+          indicatorId: "deep-pattern-builder", instanceId: deepPatternBuilderIndicator.instanceId, instrument,
+          title: `Pattern matched · ${instrument}`, event: signal,
+        } }));
+      }
+    }
+  }, [deepPatternBuilderIndicator, deepPatternBuilderSettings, indicatorWindowCandles, instrument, priceFormat.minMove, rawPocAuctionBars, settings.backgroundColor]);
 
   useEffect(() => {
     if (!ratioHighlightIndicator) {
@@ -14028,6 +14074,9 @@ function Chart({
     const deepMIVBPrimitive = new DeepMIVBPrimitive();
     candleSeries.attachPrimitive(deepMIVBPrimitive);
     deepMIVBPrimitiveRef.current = deepMIVBPrimitive;
+    const deepPatternBuilderPrimitive = new DeepPatternBuilderPrimitive();
+    candleSeries.attachPrimitive(deepPatternBuilderPrimitive);
+    deepPatternBuilderPrimitiveRef.current = deepPatternBuilderPrimitive;
     const tapeSpeedPrimitive = new TapeSpeedOrderFlowBurstPrimitive();
     candleSeries.attachPrimitive(tapeSpeedPrimitive);
     tapeSpeedPrimitiveRef.current = tapeSpeedPrimitive;

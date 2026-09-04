@@ -360,3 +360,9 @@ recap of the open items below and update this file when their state changes.
   explicitly estimated from prior completed loaded sessions with no lookahead;
   never claim unpublished DeepCharts historical coefficients or allow the
   forming session to train its own displayed levels.
+- KWANT Pattern Builder conditions must fail closed when an operand requires
+  classified bid/ask or price-level history that Rithmic has not supplied.
+  Never substitute OHLC or total candle volume for bid/ask flow. Advanced
+  expressions are parsed from C1-C4 and logical operators only; never evaluate
+  user-authored code, and never let an indicator signal bypass order
+  confirmation or place a trade.

@@ -76,6 +76,7 @@ import {
   normalizeKwantLevelsSettings,
 } from "@/lib/kwantLevels";
 import { CHART_OVERLAY_SETTINGS_VERSION } from "@/lib/chartOverlays";
+import { DEEP_PATTERN_BUILDER_SETTINGS_VERSION } from "@/lib/deepPatternBuilder";
 
 export const LIVE_CHART_INDICATOR_IDS = new Set([
   "gamma-environment",
@@ -163,6 +164,7 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "overlay-symbol",
   "overlay-timeframe-candlestick",
   "deep-m-ivb",
+  "deep-pattern-builder",
   "classic-gex-profile",
   "tpo-levels",
   "expected-move",
@@ -1221,6 +1223,13 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "zoneWidthTicks", label: "Support / resistance zone width (ticks)", defaultValue: 4, min: 1, max: 40, step: 1 },
     { key: "lineWidth", label: "Projection line width", defaultValue: 1, min: 1, max: 4, step: 1 },
     { key: "zoneOpacity", label: "Zone opacity (%)", defaultValue: 14, min: 0, max: 60, step: 1 },
+  ],
+  "deep-pattern-builder": [
+    { key: "minImbalancePercent", label: "Minimum bar imbalance (%)", defaultValue: 0, min: 0, max: 1000, step: 1 },
+    { key: "maxImbalancePercent", label: "Maximum bar imbalance (%) · 0 = unlimited", defaultValue: 0, min: 0, max: 1000, step: 1 },
+    { key: "markerSize", label: "Marker size", defaultValue: 7, min: 3, max: 24, step: 1 },
+    { key: "backgroundOpacity", label: "Background opacity (%)", defaultValue: 8, min: 0, max: 40, step: 1 },
+    { key: "daysToShow", label: "Trading days to show", defaultValue: 10, min: 1, max: 365, step: 1 },
   ],
   "classic-gex-profile": [
     { key: "refreshIntervalMs", label: "Refresh interval (milliseconds)", defaultValue: 1000, min: 1000, max: 10000, step: 250 },
@@ -2510,6 +2519,30 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     negativeColor: theme?.downColor ?? "#EF4444",
     neutralColor: theme?.gridColor ?? "#94A3B8",
     deepMIVBSettingsVersion: 1,
+  } : {}),
+  ...(indicatorId === "deep-pattern-builder" ? {
+    condition1Enabled: true,
+    condition1ASource: "close", condition1AOffset: 0, condition1AValue: 0,
+    condition1BSource: "unused", condition1BOffset: 0, condition1BValue: 0, condition1LeftMath: "+",
+    condition1Comparator: ">",
+    condition1CSource: "open", condition1COffset: 0, condition1CValue: 0,
+    condition1DSource: "unused", condition1DOffset: 0, condition1DValue: 0, condition1RightMath: "+",
+    condition2Enabled: false, condition3Enabled: false, condition4Enabled: false,
+    combineMode: "and",
+    advancedExpression: "C1 AND C2",
+    calculateOnClose: true,
+    minImbalancePercent: 0,
+    maxImbalancePercent: 0,
+    plotMode: "marker",
+    markerPosition: "high",
+    markerSize: 7,
+    backgroundOpacity: 8,
+    daysToShow: 10,
+    alertsEnabled: false,
+    useThemeColors: true,
+    markerColor: theme?.upColor ?? "#22C55E",
+    patternBackgroundColor: theme?.upColor ?? "#22C55E",
+    deepPatternBuilderSettingsVersion: DEEP_PATTERN_BUILDER_SETTINGS_VERSION,
   } : {}),
   ...(indicatorId === "classic-gex-profile" ? {
     mappingSource: "QQQ",

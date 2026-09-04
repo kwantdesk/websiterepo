@@ -178,3 +178,13 @@ task until the full pending library is complete, without shortcuts.
   Quant Desk uses an explicit no-lookahead model learned from completed loaded
   sessions instead of inventing parity. It is themed, configurable, persisted
   and focused-test clean; production QA remains.
+  Item 21, **KWANT Pattern Builder**, is a release candidate. It implements
+  the public four-condition A/B/C/D contract with bounded prior-bar offsets,
+  candle and exact classified-Rithmic order-flow references, POC metrics,
+  cumulative delta, SMA/EMA/VWAP and constants. Arithmetic, six comparisons,
+  AND/OR and safely parsed advanced expressions work without evaluating user
+  code. Missing required order flow and invalid arithmetic fail closed. Native
+  themed marker/background rendering, sliders, settings/templates and
+  confirmed-signal alerts are wired; the study cannot execute an order.
+  Focused rule, offset, advanced-expression and data-refusal tests pass;
+  production QA remains.

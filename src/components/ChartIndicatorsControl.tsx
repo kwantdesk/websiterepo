@@ -757,6 +757,22 @@ const themeColourMapFor = (indicatorId: string, chartSettings: ChartSettings) =>
       askColor: visible.positive,
     } as Record<string, string>;
   }
+  if (indicatorId === "deep-m-ivb") {
+    const visible = visibleIndicatorTheme(chartSettings);
+    return { positiveColor: visible.positive, negativeColor: visible.negative, neutralColor: visible.muted } as Record<string, string>;
+  }
+  if (indicatorId === "deep-pattern-builder") {
+    const visible = visibleIndicatorTheme(chartSettings);
+    return { markerColor: visible.positive, patternBackgroundColor: visible.positive } as Record<string, string>;
+  }
+  if (indicatorId === "overlay-chart" || indicatorId === "overlay-symbol") {
+    const visible = visibleIndicatorTheme(chartSettings);
+    return { upColor: visible.positive, downColor: visible.negative, lineColor: visible.secondary } as Record<string, string>;
+  }
+  if (indicatorId === "overlay-timeframe-candlestick") {
+    const visible = visibleIndicatorTheme(chartSettings);
+    return { upColor: visible.positive, downColor: visible.negative, closeBoundaryColor: visible.secondary } as Record<string, string>;
+  }
   if (indicatorId === "deep-profile-swing") {
     const visible = visibleIndicatorTheme(chartSettings);
     return {
@@ -6042,6 +6058,29 @@ export default function ChartIndicatorsControl({
                     ["Extend to live edge", "extendToLiveEdge"],
                   ].map(([label, key]) => { const on = settingsInstance.settings?.[key] !== false; return <button key={key} type="button" aria-pressed={on} onClick={() => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [key]: !on } }))} className="flex h-9 items-center justify-between border border-border bg-background px-3 text-[9px] uppercase tracking-[0.1em] text-muted"><span>{label}</span><span className={on ? "text-primary" : "text-muted"}>{on ? "On" : "Off"}</span></button>; })}
                   <p className="text-[8px] leading-4 text-muted sm:col-span-2">Protection, average and deviation distances are calculated from completed loaded sessions only. No private DeepCharts coefficient is claimed or guessed.</p>
+                </div>
+              ) : null}
+
+              {settingsDefinition.id === "deep-pattern-builder" ? (
+                <div data-settings-section="Rules" className="space-y-3 rounded-xl border border-border bg-surface/30 p-3">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="space-y-1.5 text-[9px] text-muted"><span>Combine conditions</span><KwantSelect value={String(settingsInstance.settings?.combineMode ?? "and")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), combineMode: event.target.value } }))} className="h-10 w-full border border-border bg-background px-3 text-[10px] text-foreground" menuLabel="Pattern condition combination"><option value="and">All enabled conditions · AND</option><option value="or">Any enabled condition · OR</option><option value="advanced">Advanced expression</option></KwantSelect></label>
+                    <label className="space-y-1.5 text-[9px] text-muted"><span>Plot</span><KwantSelect value={String(settingsInstance.settings?.plotMode ?? "marker")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), plotMode: event.target.value } }))} className="h-10 w-full border border-border bg-background px-3 text-[10px] text-foreground" menuLabel="Pattern plot mode"><option value="marker">Marker</option><option value="background">Background</option><option value="both">Marker and background</option></KwantSelect></label>
+                    {settingsInstance.settings?.combineMode === "advanced" ? <label className="space-y-1.5 text-[9px] text-muted sm:col-span-2"><span>Advanced expression · C1–C4, AND, OR, NOT, parentheses</span><input value={String(settingsInstance.settings?.advancedExpression ?? "C1 AND C2")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), advancedExpression: event.target.value.toUpperCase() } }))} className="h-10 w-full rounded-lg border border-border bg-background px-3 font-mono text-[10px] text-foreground outline-none focus:border-primary/45" /></label> : null}
+                  </div>
+                  {[1, 2, 3, 4].map((number) => {
+                    const prefix = `condition${number}`;
+                    const enabled = settingsInstance.settings?.[`${prefix}Enabled`] === undefined ? number === 1 : settingsInstance.settings?.[`${prefix}Enabled`] === true;
+                    const sources = ["unused", "constant", "open", "high", "low", "close", "volume", "range-ticks", "body-ticks", "bid-volume", "ask-volume", "total-volume", "bid-trades", "ask-trades", "total-trades", "delta-volume", "delta-trades", "poc-percent", "poc-volume", "poc-shadow", "cumulative-delta", "sma", "ema", "vwap"];
+                    const update = (key: string, value: string | number | boolean) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [`${prefix}${key}`]: value } }));
+                    const operand = (letter: "A" | "B" | "C" | "D", fallback: string) => <div className="grid gap-2 sm:grid-cols-3"><KwantSelect value={String(settingsInstance.settings?.[`${prefix}${letter}Source`] ?? fallback)} onChange={(event) => update(`${letter}Source`, event.target.value)} className="h-9 min-w-0 border border-border bg-background px-2 text-[9px] text-foreground" menuLabel={`Condition ${number} ${letter} source`}>{sources.map((source) => <option key={source} value={source}>{source.replaceAll("-", " ")}</option>)}</KwantSelect><IndicatorNumericSlider label="Previous bars" min={0} max={100} step={1} value={Number(settingsInstance.settings?.[`${prefix}${letter}Offset`] ?? 0)} onChange={(value) => update(`${letter}Offset`, value)} /><IndicatorNumericSlider label="Constant / length" min={-1_000_000} max={1_000_000} step={1} value={Number(settingsInstance.settings?.[`${prefix}${letter}Value`] ?? 0)} onChange={(value) => update(`${letter}Value`, value)} /></div>;
+                    return <div key={number} className="space-y-2 border border-border bg-background/55 p-2"><button type="button" aria-pressed={enabled} onClick={() => update("Enabled", !enabled)} className="flex h-8 w-full items-center justify-between px-1 text-[9px] font-semibold uppercase tracking-[0.12em] text-muted"><span>Condition {number}</span><span className={enabled ? "text-primary" : "text-muted"}>{enabled ? "On" : "Off"}</span></button>{enabled ? <><div className="grid grid-cols-[18px_minmax(0,1fr)] items-center gap-1 text-[8px] text-muted"><span>A</span>{operand("A", "close")}<span>B</span>{operand("B", "unused")}</div><div className="grid grid-cols-3 gap-1"><KwantSelect value={String(settingsInstance.settings?.[`${prefix}LeftMath`] ?? "+")} onChange={(event) => update("LeftMath", event.target.value)} className="h-9 border border-border bg-background px-2 text-[9px] text-foreground" menuLabel={`Condition ${number} left arithmetic`}>{["+", "-", "*", "/"].map((item) => <option key={item}>{item}</option>)}</KwantSelect><KwantSelect value={String(settingsInstance.settings?.[`${prefix}Comparator`] ?? ">")} onChange={(event) => update("Comparator", event.target.value)} className="h-9 border border-border bg-background px-2 text-[9px] text-foreground" menuLabel={`Condition ${number} comparator`}>{[">", ">=", "=", "<>", "<", "<="].map((item) => <option key={item}>{item}</option>)}</KwantSelect><KwantSelect value={String(settingsInstance.settings?.[`${prefix}RightMath`] ?? "+")} onChange={(event) => update("RightMath", event.target.value)} className="h-9 border border-border bg-background px-2 text-[9px] text-foreground" menuLabel={`Condition ${number} right arithmetic`}>{["+", "-", "*", "/"].map((item) => <option key={item}>{item}</option>)}</KwantSelect></div><div className="grid grid-cols-[18px_minmax(0,1fr)] items-center gap-1 text-[8px] text-muted"><span>C</span>{operand("C", "open")}<span>D</span>{operand("D", "unused")}</div><p className="text-[8px] leading-4 text-muted">Each operand has source, previous-bar offset and value. Value is the constant or SMA/EMA/VWAP length.</p></> : null}</div>;
+                  })}
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <label className="space-y-1.5 text-[9px] text-muted"><span>Marker position</span><KwantSelect value={String(settingsInstance.settings?.markerPosition ?? "high")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), markerPosition: event.target.value } }))} className="h-9 w-full border border-border bg-background px-2 text-[9px] text-foreground" menuLabel="Pattern marker position"><option value="high">Bar high</option><option value="low">Bar low</option><option value="current">Close / current</option><option value="middle">Bar middle</option></KwantSelect></label>
+                    {[['Calculate on bar close', 'calculateOnClose', true], ['Confirmed-signal alerts', 'alertsEnabled', false]].map(([label, key, fallback]) => { const on = settingsInstance.settings?.[String(key)] === undefined ? Boolean(fallback) : settingsInstance.settings?.[String(key)] === true; return <button key={String(key)} type="button" aria-pressed={on} onClick={() => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [String(key)]: !on } }))} className="flex h-9 items-center justify-between border border-border bg-background px-3 text-[9px] uppercase tracking-[0.1em] text-muted"><span>{String(label)}</span><span className={on ? "text-primary" : "text-muted"}>{on ? "On" : "Off"}</span></button>; })}
+                  </div>
+                  <p className="text-[8px] leading-4 text-muted">Order-flow references use classified Rithmic executions. If required trade-side data is absent, that condition returns false; candle volume is never substituted.</p>
                 </div>
               ) : null}
 
