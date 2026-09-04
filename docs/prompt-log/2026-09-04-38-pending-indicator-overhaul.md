@@ -122,7 +122,7 @@ task until the full pending library is complete, without shortcuts.
   waiting state was verified rather than accepting fabricated OHLC-derived
   output. Filtered developing POC/VA/VWAP now uses the same accepted individual
   executions as the completed filtered profile. Item 13 is complete.
-  Item 14, **Market Statistics**, is now a release candidate. Official help
+  Item 14, **Market Statistics**, is complete. Official help
   and installed DLL metadata establish Trades/Bars modes, execution and bar
   inputs, filters, ranges, time window and the compact Filter/AVG/Dev view.
   Quant Desk uses exact individual or same-time-and-price aggregated Rithmic
@@ -130,4 +130,7 @@ task until the full pending library is complete, without shortcuts.
   states where historical order or volume-at-price data is unavailable. The
   calculation, themed overlay, bounded controls, persistence and templates are
   wired; focused correctness and 50,000-execution performance tests pass.
-  Exact-deployment production QA is still required before item 14 is complete.
+  Commit `3b58b834` reached Ready in Production as deployment
+  `EDeAGCbqqSixxs5qzAEceuEzXEhg`. Live QA confirmed Add, exact-execution output,
+  the complete settings UI, immediate unsaved/saved state, persisted settings
+  after a full reload, and clean removal of the QA instance.

@@ -49,7 +49,7 @@ Legend: `[ ]` not complete, `[~]` in progress, `[x]` complete and addable.
 | 11 | Custom Draw-On Volume Profile | `custom-draw-on-volume-profile` | [x] | [x] | [x] | [x] | [x] | Add |
 | 12 | KWANT Profile Swing | `deep-profile-swing` | [x] | [x] | [x] | [x] | [x] | Add |
 | 13 | KWANT Profile Values | `deep-profile-values` | [x] | [x] | [x] | [x] | [x] | Add |
-| 14 | Market Statistics | `market-statistics` | [x] | [x] | [x] | [x] | [~] | Pending |
+| 14 | Market Statistics | `market-statistics` | [x] | [x] | [x] | [x] | [x] | Add |
 | 15 | Confluence Identifier | `confluence-identifier` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
 | 16 | Kwant Levels | `gamma-levels` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
 | 17 | Overlay Chart | `overlay-chart` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
@@ -471,8 +471,13 @@ Legend: `[ ]` not complete, `[~]` in progress, `[x]` complete and addable.
   regressions pass; Turbopack compilation succeeds. The broad plot-colour test
   still stops only at its pre-existing MACD custom-signal assertion, and the
   repository type phase remains blocked by the unrelated duplicate Three.js
-  typings in `landing/page.tsx`. Exact deployment and production visual/save/
-  reload/removal QA remain required before item 14 is marked Add.
+  typings in `landing/page.tsx`. Commit `3b58b834` reached the sole active
+  Vercel project as Ready Production deployment
+  `EDeAGCbqqSixxs5qzAEceuEzXEhg`. Cache-busted production QA confirmed the Add
+  gate, a live exact-execution overlay, the complete settings surface,
+  immediate dirty/saved state, persistence of `Show empty ranges` after a full
+  reload, and clean removal of the temporary QA instance. Item 14 is released
+  as Add.
 
 - Quant Desk already has a tested `PocAuctionSuiteEngine` driven by exact
   execution-classified Footprint rows. It calculates raw-tick unfinished
