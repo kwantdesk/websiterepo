@@ -451,6 +451,7 @@ const ORDER_FLOW_PANE_INDICATOR_IDS = new Set([
   "delta-cumulative-candlestick",
   "delta-cumulative-histogram",
   "delta-bar",
+  "deep-delta",
 ]);
 const CUMULATIVE_DELTA_INDICATOR_IDS = new Set([
   "cumulative-volume-delta",
@@ -7676,7 +7677,7 @@ function Chart({
           settings: instance.settings,
           series,
           showHeader: instance.settings?.showName !== false,
-          showLegend: instance.indicatorId === "delta-bar" ? false : undefined,
+          showLegend: instance.indicatorId === "delta-bar" || instance.indicatorId === "deep-delta" ? false : undefined,
         }];
       }
       if (cumulativeDeltaStudy) {
@@ -7697,6 +7698,21 @@ function Chart({
               : instance.indicatorId === "delta-bar"
                 ? "Restoring delta bar history."
                 : "Restoring cumulative volume delta history.",
+        }];
+      }
+      if (instance.indicatorId === "deep-delta") {
+        return [{
+          key: instance.instanceId,
+          title: "KWANT Delta",
+          indicatorId: instance.indicatorId,
+          settings: instance.settings,
+          series: [],
+          showLegend: false,
+          unavailableReason: isMarketIndexSymbol(instrument)
+            ? "This index feed publishes no executed bid/ask volume — KWANT Delta needs a CME futures chart."
+            : orderFlowSeriesReady
+              ? "Waiting for executed CME bid/ask volume."
+              : "Restoring KWANT Delta execution history.",
         }];
       }
       if (["volume", "chaikin-accumulation-distribution"].includes(instance.indicatorId)) {

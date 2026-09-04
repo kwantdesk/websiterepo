@@ -5,6 +5,7 @@ import { calculateDeepEffort } from "@/lib/deepEffort";
 import { detectCvdDivergences, sessionCvdBars, type CvdDivergenceSegment } from "@/lib/cvdDivergence";
 import { runSourceIndicator, type SourceIndicatorLanguage } from "@/lib/indicatorSourceAdapters";
 import { applyIndicatorPlotColors } from "@/lib/indicatorPlotColors";
+import { calculateDeepDeltaBars, normalizeDeepDeltaSettings } from "@/lib/deepDelta";
 import {
   calculatePeriodVwap,
   calculateRollingVwap,
@@ -25,7 +26,7 @@ export type CalculatedIndicatorSeries = {
   histogramOutlineWidth?: number;
   lineStyle?: "solid" | "dashed" | "dotted";
   lineType?: "simple" | "with-steps";
-  candleStyle?: "candlestick" | "ohlc" | "candle-body";
+  candleStyle?: "candlestick" | "ohlc" | "candle-body" | "wick-only";
   lastValueVisible?: boolean;
   independentScale?: boolean;
   priceScaleId?: string;
@@ -385,6 +386,93 @@ function computeIndicatorSeries(
         };
       }),
     }];
+  }
+
+  if (key === "deep-delta") {
+    if (!orderFlowAvailable(candles)) return [];
+    const settings = normalizeDeepDeltaSettings(instance.settings);
+    const bars = calculateDeepDeltaBars(candles.filter(hasVerifiedOrderFlow), instance.settings);
+    if (!bars.length) return [];
+    const useTheme = settings.useThemeColors;
+    const readColor = (name: string, fallback: string) => useTheme ? fallback : settingString(instance, name, fallback);
+    const askColors = [
+      theme.positive,
+      blendHexColors(theme.muted, theme.positive, 0.35),
+      blendHexColors(theme.muted, theme.positive, 0.58),
+      blendHexColors(theme.muted, theme.positive, 0.78),
+      theme.positive,
+    ];
+    const bidColors = [
+      theme.negative,
+      blendHexColors(theme.muted, theme.negative, 0.35),
+      blendHexColors(theme.muted, theme.negative, 0.58),
+      blendHexColors(theme.muted, theme.negative, 0.78),
+      theme.negative,
+    ];
+    const series: CalculatedIndicatorSeries[] = [];
+    // Keep the full series contract stable even when a mode or toggle makes a
+    // plot empty. That lets saved palettes continue to address the same plots
+    // when the trader swaps between Classic and Multi Range.
+    const ranges = [0, 1, 2, 3, 4];
+    for (const range of ranges) {
+      for (const side of ["ask", "bid"] as const) {
+        const colorKey = range === 0 ? `${side === "ask" ? "positive" : "negative"}Color` : `range${range}${side === "ask" ? "Ask" : "Bid"}Color`;
+        const fallback = side === "ask" ? askColors[range] : bidColors[range];
+        const rangeActive = settings.deltaMode === "classic" ? range === 0 : range > 0;
+        const data = rangeActive ? bars.filter((bar) => bar.range === range && bar.side === side).map((bar) => ({
+          time: bar.time,
+          value: bar.close,
+          open: bar.open,
+          high: Math.max(bar.open, bar.close),
+          low: Math.min(bar.open, bar.close),
+          close: bar.close,
+        })) : [];
+        series.push({
+          key: range === 0 ? `${key}-${side === "ask" ? "positive" : "negative"}` : `${key}-range${range}-${side}`,
+          label: "KWANT Delta",
+          kind: "candlestick",
+          candleStyle: "candle-body",
+          placement: "pane",
+          color: readColor(colorKey, fallback),
+          lineWidth: Math.max(1, Math.min(4, Math.round(settings.lineWidth))) as 1 | 2 | 3 | 4,
+          includeZeroInScale: true,
+          data,
+        });
+      }
+    }
+    const positiveShadow = readColor("maximumPositiveColor", theme.positive);
+    const negativeShadow = readColor("minimumNegativeColor", theme.negative);
+    series.push({
+      key: `${key}-maximum-positive`, label: "Maximum positive Delta", kind: "candlestick", candleStyle: "wick-only", placement: "pane", color: positiveShadow,
+      lineWidth: Math.max(1, Math.min(4, Math.round(settings.lineWidth))) as 1 | 2 | 3 | 4,
+      data: bars.filter((bar) => bar.high > Math.max(0, bar.close)).map((bar) => { const base = Math.max(0, bar.close); return { time: bar.time, value: base, open: base, close: base, low: base, high: bar.high }; }),
+    }, {
+      key: `${key}-minimum-negative`, label: "Minimum negative Delta", kind: "candlestick", candleStyle: "wick-only", placement: "pane", color: negativeShadow,
+      lineWidth: Math.max(1, Math.min(4, Math.round(settings.lineWidth))) as 1 | 2 | 3 | 4,
+      data: bars.filter((bar) => bar.low < Math.min(0, bar.close)).map((bar) => { const base = Math.min(0, bar.close); return { time: bar.time, value: base, open: base, close: base, low: bar.low, high: base }; }),
+    });
+    const first = bars[0]?.time;
+    const last = bars.at(-1)?.time;
+    if (first != null && last != null) {
+      for (const number of [1, 2] as const) {
+        const value = settings[`level${number}Value`];
+        const color = readColor(`level${number}Color`, theme.secondary);
+        const width = Math.max(1, Math.min(4, Math.round(settings[`level${number}LineWidth`]))) as 1 | 2 | 3 | 4;
+        const style = settings[`level${number}LineStyle`];
+        const positiveData = settings[`level${number}Enabled`] && value > 0 ? [{ time: first, value }, { time: last, value }] : [];
+        const negativeData = settings[`level${number}Enabled`] && value > 0 ? [{ time: first, value: -value }, { time: last, value: -value }] : [];
+        series.push(
+          { key: `${key}-level${number}`, label: `Level ${number}`, kind: "line", placement: "pane", color, lineWidth: width, lineStyle: style, data: positiveData },
+          { key: `${key}-level${number}-negative`, label: `Level ${number} negative`, kind: "line", placement: "pane", color, lineWidth: width, lineStyle: style, data: negativeData },
+        );
+      }
+    }
+    series.push({
+      key: `${key}-marker`, label: "Struggle", kind: "candlestick", candleStyle: "wick-only", placement: "pane",
+      color: readColor("markerColor", theme.muted), lineWidth: 2,
+      data: settings.markerEnabled ? bars.filter((bar) => bar.struggle).map((bar) => ({ time: bar.time, value: 0, open: 0, close: 0, high: bar.high, low: bar.low })) : [],
+    });
+    return series;
   }
 
   if (key === "cvd-divergence") {

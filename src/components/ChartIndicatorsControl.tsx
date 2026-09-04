@@ -57,6 +57,7 @@ import {
   VOLUME_PROFILE_GRADIENTS,
   VOLUME_PROFILE_GRADIENT_OFF,
   isVolumeProfileGradientActive,
+  mixHexColors,
 } from "@/lib/volumeProfileGradients";
 import { isInsideKwantSelectMenu } from "@/components/ui/KwantSelect";
 import KwantSelect from "@/components/ui/KwantSelect";
@@ -456,6 +457,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "stop-spotter",
   "cumulative-iceberg-stop",
   "book-speed",
+  "deep-delta",
   "moving-average",
   "vwap",
   "vwap-envelopes",
@@ -682,6 +684,26 @@ const themeColourMapFor = (indicatorId: string, chartSettings: ChartSettings) =>
       markerAskColor: visible.negative,
     } as Record<string, string>;
   }
+  if (indicatorId === "deep-delta") {
+    const visible = visibleIndicatorTheme(chartSettings);
+    return {
+      positiveColor: visible.positive,
+      negativeColor: visible.negative,
+      range1AskColor: mixHexColors(visible.muted, visible.positive, 0.35),
+      range1BidColor: mixHexColors(visible.muted, visible.negative, 0.35),
+      range2AskColor: mixHexColors(visible.muted, visible.positive, 0.58),
+      range2BidColor: mixHexColors(visible.muted, visible.negative, 0.58),
+      range3AskColor: mixHexColors(visible.muted, visible.positive, 0.78),
+      range3BidColor: mixHexColors(visible.muted, visible.negative, 0.78),
+      range4AskColor: visible.positive,
+      range4BidColor: visible.negative,
+      maximumPositiveColor: visible.positive,
+      minimumNegativeColor: visible.negative,
+      level1Color: visible.secondary,
+      level2Color: visible.secondary,
+      markerColor: visible.muted,
+    } as Record<string, string>;
+  }
   // Big Contracts and Big Blocks paint their two sides from the theme's up and
   // down colours (see the primitive updates in Chart.tsx), so the swatches must
   // show those while theme mode is on rather than the values stored when the
@@ -708,6 +730,21 @@ function applyNumericIndicatorSetting(
     ...(currentSettings ?? {}),
     [key]: value,
   };
+  if (indicatorId === "deep-delta") {
+    const match = /^range([1-4])(Minimum|Maximum)$/.exec(key);
+    if (match) {
+      const number = match[1];
+      const minimumKey = `range${number}Minimum`;
+      const maximumKey = `range${number}Maximum`;
+      const minimum = Number(next[minimumKey] ?? 0);
+      const maximum = Number(next[maximumKey] ?? 0);
+      if (maximum > 0 && maximum < minimum) {
+        if (match[2] === "Minimum") next[maximumKey] = value;
+        else next[minimumKey] = value;
+      }
+    }
+    return next;
+  }
   if (indicatorId !== "bounce-levels") return next;
 
   // Bounce Levels has paired controls. Keep them valid while the user drags a
@@ -6657,6 +6694,39 @@ export default function ChartIndicatorsControl({
                     </button>
                   ))}
                   <p className="text-[8px] leading-4 text-muted sm:col-span-2">A price level counts only after the Rithmic book exhausts it and the same frame confirms an aggressive execution at that price. Bid consumption plots above zero and Ask consumption below it; pulls and cancellations are excluded.</p>
+                </div>
+              ) : null}
+
+              {settingsDefinition.id === "deep-delta" ? (
+                <div className="grid gap-3 border border-primary/20 bg-primary/[0.035] p-3 sm:grid-cols-2">
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                    <span>Input data</span>
+                    <KwantSelect value={String(settingsInstance.settings?.inputData ?? "volume")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), inputData: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel="KWANT Delta input data">
+                      <option value="volume">Volume</option><option value="aggregate-trades">Aggregate trades</option><option value="trades">Trades</option><option value="order">Order</option>
+                    </KwantSelect>
+                  </label>
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                    <span>Delta mode</span>
+                    <KwantSelect value={String(settingsInstance.settings?.deltaMode ?? "multi-range")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), deltaMode: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel="KWANT Delta mode">
+                      <option value="classic">Classic</option><option value="multi-range">Multi range</option>
+                    </KwantSelect>
+                  </label>
+                  {[1, 2, 3, 4].map((number) => {
+                    const key = `range${number}Enabled`;
+                    const on = settingsInstance.settings?.[key] !== false;
+                    return <button key={key} type="button" aria-pressed={on} onClick={() => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [key]: !on } }))} className="flex h-9 items-center justify-between border border-border bg-background px-3 text-[9px] uppercase tracking-[0.1em] text-muted"><span>Range {number}</span><span className={on ? "text-primary" : "text-muted"}>{on ? "On" : "Off"}</span></button>;
+                  })}
+                  {[1, 2].map((number) => {
+                    const enabledKey = `level${number}Enabled`;
+                    const styleKey = `level${number}LineStyle`;
+                    const on = settingsInstance.settings?.[enabledKey] === true;
+                    return <Fragment key={enabledKey}>
+                      <button type="button" aria-pressed={on} onClick={() => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [enabledKey]: !on } }))} className="flex h-9 items-center justify-between border border-border bg-background px-3 text-[9px] uppercase tracking-[0.1em] text-muted"><span>Threshold {number}</span><span className={on ? "text-primary" : "text-muted"}>{on ? "On" : "Off"}</span></button>
+                      <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"><span>Threshold {number} style</span><KwantSelect value={String(settingsInstance.settings?.[styleKey] ?? "dashed")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [styleKey]: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel={`KWANT Delta threshold ${number} line style`}><option value="solid">Solid</option><option value="dashed">Dashed</option><option value="dotted">Dotted</option></KwantSelect></label>
+                    </Fragment>;
+                  })}
+                  <button type="button" aria-pressed={settingsInstance.settings?.markerEnabled === true} onClick={() => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), markerEnabled: current.settings?.markerEnabled !== true } }))} className="flex h-9 items-center justify-between border border-border bg-background px-3 text-[9px] uppercase tracking-[0.1em] text-muted sm:col-span-2"><span>Struggle marker</span><span className={settingsInstance.settings?.markerEnabled === true ? "text-primary" : "text-muted"}>{settingsInstance.settings?.markerEnabled === true ? "On" : "Off"}</span></button>
+                  <p className="text-[8px] leading-4 text-muted sm:col-span-2">Bars grouped is the number of consecutive chart bars accumulated into one delta candle. Volume keeps the exchange-sequenced delta high and low; Aggregate trades preserves the same signed quantity after price aggregation. Trades and Order use the recorded signed execution counts, never invented order-book volume.</p>
                 </div>
               ) : null}
 

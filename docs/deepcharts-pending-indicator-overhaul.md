@@ -42,8 +42,8 @@ Legend: `[ ]` not complete, `[~]` in progress, `[x]` complete and addable.
 | 4 | Ratio Highlight | `ratio-highlight` | [x] | [x] | [x] | [x] | [x] | Add |
 | 5 | Stop Spotter | `stop-spotter` | [x] | [x] | [x] | [x] | [x] | Add |
 | 6 | Cumulative Iceberg/Stop | `cumulative-iceberg-stop` | [x] | [x] | [x] | [x] | [x] | Add |
-| 7 | Book Speed | `book-speed` | [x] | [x] | [x] | [x] | [~] | Release candidate |
-| 8 | KWANT Delta | `deep-delta` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
+| 7 | Book Speed | `book-speed` | [x] | [x] | [x] | [x] | [x] | Add |
+| 8 | KWANT Delta | `deep-delta` | [x] | [x] | [x] | [x] | [~] | Release candidate |
 | 9 | KWANT Wall | `deep-wall` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
 | 10 | KWANT V-Tracker | `deep-v-tracker` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
 | 11 | Custom Draw-On Volume Profile | `custom-draw-on-volume-profile` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
@@ -240,7 +240,44 @@ Legend: `[ ]` not complete, `[~]` in progress, `[x]` complete and addable.
   duplicate suppression, cancellation refusal, partial-consumption refusal,
   fixed time windows, averages and tick-reversal closure. TypeScript, template
   and shared Rithmic frame-budget checks pass, as does the full production
-  build. Deployed visual QA is the remaining release gate.
+  build. Commit `a3213f64` reached Ready as deployment
+  `86oE7DzFHzsDZ3LrbKv2BZyPESdF` on the sole active Vercel project.
+  Cache-busted production QA on NQ 500-volume confirmed real shared-Rithmic
+  Bid/Ask counts, LIVE state, Seconds/Tick Reversal switching, every numeric
+  slider, immediate saved state with no false close prompt and clean removal
+  of the temporary study back to the original 11 indicators.
+
+### 8: KWANT Delta
+
+- Current official DeepCharts help describes Deep Delta as an advanced Delta
+  Bar with Volume, Aggregate Trades, Trades and Order inputs; Classic and
+  Multi Range modes; consecutive bar grouping; four independently enabled
+  min/max magnitude ranges where zero means unlimited; two optional mirrored
+  threshold levels; and a Struggle marker when both positive and negative
+  delta extremes cross its threshold in one grouped bar. Current help images
+  show the observable defaults: Volume, Multi Range, four bars grouped,
+  ranges 1-10 / 11-20 / 21-30 / 31+, disabled 1000 and 1500 dashed threshold
+  pairs, and a disabled zero-threshold Struggle marker.
+- Quant Desk implements that observable contract as its own deterministic
+  KWANT Delta calculation. Volume and Aggregate Trades consume only classified
+  Rithmic Bid/Ask executions and retain the exchange-sequenced delta high/low
+  carried by each candle. Trades and Order use recorded signed execution
+  counts; they never relabel contract volume as an order count. Consecutive
+  source bars accumulate from zero and the forming partial group remains live,
+  so a four-bar setting does not freeze the pane until the fourth close.
+- The separate pane renders Classic positive/negative bodies or all four
+  Multi Range colour tiers, plus distinct maximum-positive and
+  minimum-negative shadows, optional mirrored threshold rails and optional
+  Struggle markers. Empty plots retain stable colour-slot identities across
+  mode/toggle changes. Theme-following colours remain contrast safe, while a
+  trader can explicitly choose every DeepCharts-visible subgraph colour.
+- General/Input/Style exposes all modes and toggles, finite numeric bounds and
+  shared number sliders, line styles, theme/custom palettes and account-synced
+  templates. Index/OHLC-only feeds show a capability message instead of fake
+  delta. Focused tests cover normalization, ranges, grouping, sequenced
+  extremes, the live partial group, count inputs, missing-data refusal and a
+  20,000-bar linear-performance case. TypeScript and the production build pass;
+  exact-commit deployment and production visual QA remain the release gate.
 
 - Quant Desk already has a tested `PocAuctionSuiteEngine` driven by exact
   execution-classified Footprint rows. It calculates raw-tick unfinished

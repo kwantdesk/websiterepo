@@ -31,6 +31,23 @@ export type IndicatorPlotColorSlot = {
 };
 
 export const INDICATOR_PLOT_COLOR_SLOTS: Record<string, IndicatorPlotColorSlot[]> = {
+  "deep-delta": [
+    { key: "positiveColor", role: "positive" },
+    { key: "negativeColor", role: "negative" },
+    { key: "range1AskColor", role: "positive" },
+    { key: "range1BidColor", role: "negative" },
+    { key: "range2AskColor", role: "positive" },
+    { key: "range2BidColor", role: "negative" },
+    { key: "range3AskColor", role: "positive" },
+    { key: "range3BidColor", role: "negative" },
+    { key: "range4AskColor", role: "positive" },
+    { key: "range4BidColor", role: "negative" },
+    { key: "maximumPositiveColor", role: "positive" },
+    { key: "minimumNegativeColor", role: "negative" },
+    { key: "level1Color", role: "secondary" },
+    { key: "level2Color", role: "secondary" },
+    { key: "markerColor", role: "muted" },
+  ],
   "book-speed": [
     { key: "bidColor", role: "positive" },
     { key: "askColor", role: "negative" },
@@ -170,6 +187,10 @@ export const INDICATOR_PLOT_COLOR_SLOTS: Record<string, IndicatorPlotColorSlot[]
  * disagree about where a colour is stored.
  */
 export function indicatorSeriesColorKey(indicatorId: string, seriesKey: string): string {
+  if (indicatorId === "deep-delta") {
+    const mirroredLevel = seriesKey.match(/^deep-delta-level([12])-negative$/);
+    if (mirroredLevel) return `level${mirroredLevel[1]}Color`;
+  }
   const suffix = seriesKey === indicatorId
     ? "plot"
     : seriesKey.startsWith(indicatorId)

@@ -57,5 +57,13 @@ task until the full pending library is complete, without shortcuts.
   execution-confirmed Bid/Ask exhaustion, Seconds and Tick Reversal windows,
   opposing histograms, averages, markers, full themed settings and explicit
   data states. Focused tests, TypeScript, templates and the shared Rithmic
-  frame-budget check and production build pass; deployed visual QA remains its
-  release gate.
+  frame-budget check and production build pass. Exact-deployment production QA
+  confirmed live values, both modes, settings persistence and clean removal.
+  Item 8, **KWANT Delta**, now implements the current observable DeepCharts
+  contract without claiming access to its protected formula body: classified
+  execution delta, four magnitude tiers, Classic/Multi Range, consecutive bar
+  grouping with a live partial group, delta extremes, mirrored thresholds and
+  Struggle markers. Its data refusal, theme/custom colours, sliders and synced
+  templates are wired; focused math/performance tests, TypeScript and the full
+  production build pass. Deployment and production visual QA are the remaining
+  release gate before item 8 is finally complete.

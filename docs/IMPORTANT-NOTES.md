@@ -286,3 +286,9 @@ recap of the open items below and update this file when their state changes.
   cancellation or partial reduction into consumption. Seconds and tick-reversal
   measurement windows must share the existing Rithmic stream and remain aligned
   to real chart bars on event-based charts.
+- KWANT Delta must remain an execution-derived grouped delta study, separate
+  from the already available Delta Bar and CVD. Volume/Aggregate inputs retain
+  recorded signed volume and delta extremes; Trades/Order use signed execution
+  counts and never pretend contract volume is an order count. Keep the forming
+  partial group live, preserve stable plot/colour identities across
+  Classic/Multi Range, and refuse feeds without classified Bid/Ask executions.

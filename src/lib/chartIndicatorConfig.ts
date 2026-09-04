@@ -41,6 +41,11 @@ import {
   DEFAULT_BOOK_SPEED_SETTINGS,
   normalizeBookSpeedSettings,
 } from "@/lib/bookSpeed";
+import {
+  DEEP_DELTA_SETTINGS_VERSION,
+  DEFAULT_DEEP_DELTA_SETTINGS,
+  normalizeDeepDeltaSettings,
+} from "@/lib/deepDelta";
 
 export const LIVE_CHART_INDICATOR_IDS = new Set([
   "gamma-environment",
@@ -69,6 +74,7 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "stop-spotter",
   "cumulative-iceberg-stop",
   "book-speed",
+  "deep-delta",
   "cumulative-volume-delta",
   "cvd-divergence",
   "pulling-stacking",
@@ -204,6 +210,23 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "lineWidth", label: "Histogram and average width", defaultValue: 1, min: 0.5, max: 6, step: 0.5 },
     { key: "historyBuckets", label: "History buckets", defaultValue: 360, min: 20, max: 10000, step: 10 },
     { key: "paneHeight", label: "Pane height", defaultValue: 190, min: 120, max: 520, step: 1 },
+  ],
+  "deep-delta": [
+    { key: "barGrouping", label: "Bars grouped", defaultValue: 4, min: 1, max: 100, step: 1 },
+    { key: "range1Minimum", label: "Range 1 minimum", defaultValue: 1, min: 0, max: 10000000, step: 1 },
+    { key: "range1Maximum", label: "Range 1 maximum · 0 is unlimited", defaultValue: 10, min: 0, max: 10000000, step: 1 },
+    { key: "range2Minimum", label: "Range 2 minimum", defaultValue: 11, min: 0, max: 10000000, step: 1 },
+    { key: "range2Maximum", label: "Range 2 maximum · 0 is unlimited", defaultValue: 20, min: 0, max: 10000000, step: 1 },
+    { key: "range3Minimum", label: "Range 3 minimum", defaultValue: 21, min: 0, max: 10000000, step: 1 },
+    { key: "range3Maximum", label: "Range 3 maximum · 0 is unlimited", defaultValue: 30, min: 0, max: 10000000, step: 1 },
+    { key: "range4Minimum", label: "Range 4 minimum", defaultValue: 31, min: 0, max: 10000000, step: 1 },
+    { key: "range4Maximum", label: "Range 4 maximum · 0 is unlimited", defaultValue: 0, min: 0, max: 10000000, step: 1 },
+    { key: "level1Value", label: "Threshold level 1", defaultValue: 1000, min: 0, max: 10000000, step: 1 },
+    { key: "level1LineWidth", label: "Threshold 1 line width", defaultValue: 1, min: 0.5, max: 6, step: 0.5 },
+    { key: "level2Value", label: "Threshold level 2", defaultValue: 1500, min: 0, max: 10000000, step: 1 },
+    { key: "level2LineWidth", label: "Threshold 2 line width", defaultValue: 1, min: 0.5, max: 6, step: 0.5 },
+    { key: "markerMinimumDelta", label: "Struggle marker minimum delta", defaultValue: 0, min: 0, max: 10000000, step: 1 },
+    { key: "lineWidth", label: "Delta body and shadow width", defaultValue: 1, min: 0.5, max: 6, step: 0.5 },
   ],
   "ratio-highlight": [
     { key: "minRatio", label: "Minimum ratio", defaultValue: 10, min: 0, max: 100, step: 0.25 },
@@ -1422,6 +1445,25 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     markerAskColor: theme?.borderDownColor ?? theme?.downColor ?? DEFAULT_BOOK_SPEED_SETTINGS.markerAskColor,
     schemaVersion: BOOK_SPEED_SETTINGS_VERSION,
   } : {}),
+  ...(indicatorId === "deep-delta" ? {
+    ...DEFAULT_DEEP_DELTA_SETTINGS,
+    positiveColor: theme?.upColor ?? "#C8FFC8",
+    negativeColor: theme?.downColor ?? "#F2D3FF",
+    range1AskColor: theme?.upColor ?? "#C8FFC8",
+    range1BidColor: theme?.downColor ?? "#F2D3FF",
+    range2AskColor: theme?.borderUpColor ?? theme?.upColor ?? "#77F277",
+    range2BidColor: theme?.borderDownColor ?? theme?.downColor ?? "#C26DE0",
+    range3AskColor: theme?.upColor ?? "#39C96A",
+    range3BidColor: theme?.downColor ?? "#8B3EC1",
+    range4AskColor: theme?.borderUpColor ?? theme?.upColor ?? "#00FF68",
+    range4BidColor: theme?.borderDownColor ?? theme?.downColor ?? "#6D18A8",
+    maximumPositiveColor: theme?.borderUpColor ?? theme?.upColor ?? "#00FF68",
+    minimumNegativeColor: theme?.borderDownColor ?? theme?.downColor ?? "#7416B5",
+    level1Color: theme?.borderUpColor ?? theme?.upColor ?? "#FFD600",
+    level2Color: theme?.borderUpColor ?? theme?.upColor ?? "#FFD600",
+    markerColor: theme?.borderDownColor ?? theme?.downColor ?? "#16106F",
+    schemaVersion: DEEP_DELTA_SETTINGS_VERSION,
+  } : {}),
   ...(indicatorId === "tape-speed-order-flow-burst" ? {
     ...DEFAULT_TAPE_SPEED_SETTINGS,
     buyColor: theme?.upColor ?? DEFAULT_TAPE_SPEED_SETTINGS.buyColor,
@@ -2610,6 +2652,10 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
   if (normalizedInstance.indicatorId === "book-speed") {
     const defaults = defaultIndicatorSettings("book-speed");
     return { ...normalizedInstance, settings: { ...defaults, ...normalizeBookSpeedSettings({ ...defaults, ...(normalizedInstance.settings ?? {}) }) } };
+  }
+  if (normalizedInstance.indicatorId === "deep-delta") {
+    const defaults = defaultIndicatorSettings("deep-delta");
+    return { ...normalizedInstance, settings: { ...defaults, ...normalizeDeepDeltaSettings({ ...defaults, ...(normalizedInstance.settings ?? {}) }) } };
   }
   if (normalizedInstance.indicatorId === "tape-speed-order-flow-burst") {
     return {

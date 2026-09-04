@@ -589,7 +589,7 @@ function ChartIndicatorPaneSurface({
                                 vectorEffect="non-scaling-stroke"
                               />
                             ) : null}
-                            {candleStyle === "ohlc" ? (
+                            {candleStyle === "wick-only" ? null : candleStyle === "ohlc" ? (
                               <path
                                 d={`M ${point.x - barWidth / 2} ${openY} H ${point.x} M ${point.x} ${closeY} H ${point.x + barWidth / 2}`}
                                 fill="none"
@@ -1132,16 +1132,19 @@ function ChartVerticalIndicatorPaneSurface({
                             const color = point.color ?? definition.color;
                             const openX = xForValue(open);
                             const closeX = xForValue(close);
+                            const candleStyle = definition.candleStyle ?? "candlestick";
                             return (
                               <g key={`${definition.key}-${point.time}`}>
-                                <line x1={xForValue(low)} x2={xForValue(high)} y1={point.y} y2={point.y} stroke={color} strokeWidth="1" />
-                                <rect
-                                  x={Math.min(openX, closeX)}
-                                  y={point.y - barHeight / 2}
-                                  width={Math.max(2, Math.abs(openX - closeX))}
-                                  height={barHeight}
-                                  fill={color}
-                                />
+                                {candleStyle !== "candle-body" ? <line x1={xForValue(low)} x2={xForValue(high)} y1={point.y} y2={point.y} stroke={color} strokeWidth={definition.lineWidth ?? 1} /> : null}
+                                {candleStyle === "wick-only" ? null : (
+                                  <rect
+                                    x={Math.min(openX, closeX)}
+                                    y={point.y - barHeight / 2}
+                                    width={Math.max(2, Math.abs(openX - closeX))}
+                                    height={barHeight}
+                                    fill={color}
+                                  />
+                                )}
                               </g>
                             );
                           })}
