@@ -48,7 +48,7 @@ Legend: `[ ]` not complete, `[~]` in progress, `[x]` complete and addable.
 | 10 | KWANT V-Tracker | `deep-v-tracker` | [x] | [x] | [x] | [x] | [x] | Add |
 | 11 | Custom Draw-On Volume Profile | `custom-draw-on-volume-profile` | [x] | [x] | [x] | [x] | [x] | Add |
 | 12 | KWANT Profile Swing | `deep-profile-swing` | [x] | [x] | [x] | [x] | [x] | Add |
-| 13 | KWANT Profile Values | `deep-profile-values` | [x] | [x] | [x] | [x] | [~] | Pending |
+| 13 | KWANT Profile Values | `deep-profile-values` | [x] | [x] | [x] | [x] | [x] | Add |
 | 14 | Market Statistics | `market-statistics` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
 | 15 | Confluence Identifier | `confluence-identifier` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
 | 16 | Kwant Levels | `gamma-levels` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
@@ -426,12 +426,19 @@ Legend: `[ ]` not complete, `[~]` in progress, `[x]` complete and addable.
 - Focused tests pass for normalization, exact POC/VA/VWAP accumulation,
   developing trails, Visible clipping, volume-length boundaries, Filter/Split
   sessions, honest order-history refusal, missing-data refusal and a 20,000-bar
-  performance case. Focused new-engine/config lint and Turbopack compilation
+  performance case. A filtered-developing regression also proves that POC,
+  VA and VWAP trails advance from the same accepted individual executions as
+  the final filtered profile, never from the unfiltered bar ladder. Focused new-engine/config lint and Turbopack compilation
   pass. The repository-wide TypeScript phase is currently blocked earlier by
   an unrelated duplicate `@types/three` installation in `landing/page.tsx`;
   no Profile Values integration error appears in filtered compiler output.
-  Deployed visual/persistence QA remains open, so the catalogue still reads
-  Pending.
+  Commit `80fef169` reached Ready in Production as deployment
+  `CxgpRkQyMvbT2jhraxHykjgd3DzG`. Cache-busted production QA confirmed Add,
+  full settings, immediate saved state and per-chart persistence after reload.
+  On both tested panels the live session supplied no historical
+  volume-at-price (the Footprint panel itself remained in history restore), so
+  the study correctly displayed `WAITING FOR VOLUME AT PRICE` instead of
+  manufacturing levels from candles. Item 13 is released as Add.
 
 - Quant Desk already has a tested `PocAuctionSuiteEngine` driven by exact
   execution-classified Footprint rows. It calculates raw-tick unfinished

@@ -115,5 +115,10 @@ task until the full pending library is complete, without shortcuts.
   over exact Rithmic volume-at-price. It renders through an isolated level-only
   native primitive, refuses unavailable historical order-book data, follows
   themes, persists settings/templates and passes focused correctness and
-  20,000-bar performance tests. Production visual and reload QA is the only
-  remaining release gate, so it remains Pending until that pass.
+  20,000-bar performance tests. Commit `80fef169` reached Ready in Production
+  as deployment `CxgpRkQyMvbT2jhraxHykjgd3DzG`; production QA confirmed Add,
+  immediate save and restoration after reload. The current session exposed no
+  historical volume-at-price even on the Footprint panel, so the honest
+  waiting state was verified rather than accepting fabricated OHLC-derived
+  output. Filtered developing POC/VA/VWAP now uses the same accepted individual
+  executions as the completed filtered profile. Item 13 is complete.

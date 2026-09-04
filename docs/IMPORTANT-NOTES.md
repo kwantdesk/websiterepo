@@ -328,3 +328,7 @@ recap of the open items below and update this file when their state changes.
   midnight. Historical Order input requires recorded resting-book-at-price
   snapshots and must remain `WAITING FOR ORDER HISTORY` until that capability
   exists—never relabel execution rows as orders.
+- Profile Values execution-size filters are a single calculation contract:
+  final POC/VA/VWAP and every developing trail must use the same accepted
+  individual prints. Never let filtered developing levels fall back to the
+  unfiltered bar ladder.

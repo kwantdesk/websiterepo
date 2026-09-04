@@ -315,10 +315,17 @@ function buildProfile(
   const groupTicks = groupedTicks(bars, range, tickSize, settings);
   const rows = new Map<number, InstitutionalVolumeProfileLevel>();
   const filteredExecutions = settings.filterMin > 0 || settings.filterMax > 0;
-  if (filteredExecutions && trades?.length) {
-    for (const trade of trades) {
-      if (trade.flowOnly || trade.timestamp < startMs || trade.timestamp >= endMs) continue;
-      if (trade.volume < settings.filterMin || (settings.filterMax > 0 && trade.volume > settings.filterMax)) continue;
+  const acceptedTrades = filteredExecutions && trades?.length
+    ? trades
+      .filter((trade) => !trade.flowOnly
+        && trade.timestamp >= startMs
+        && trade.timestamp < endMs
+        && trade.volume >= settings.filterMin
+        && (settings.filterMax <= 0 || trade.volume <= settings.filterMax))
+      .sort((left, right) => left.timestamp - right.timestamp || left.recordIndex - right.recordIndex)
+    : [];
+  if (filteredExecutions && acceptedTrades.length) {
+    for (const trade of acceptedTrades) {
       const groupedTick = Math.floor(Math.round(trade.close / tickSize) / groupTicks) * groupTicks;
       const current = rows.get(groupedTick) ?? { price: groupedTick * tickSize, volume: 0, bidVolume: 0, askVolume: 0, delta: 0, trades: 0 };
       const weight = settings.inputData === "trades" ? Math.max(1, trade.trades) : trade.volume;
@@ -365,23 +372,45 @@ function buildProfile(
     const cumulative = new Map<number, InstitutionalVolumeProfileLevel>();
     let cumulativeVolume = 0;
     let cumulativeWeighted = 0;
+    let tradeCursor = 0;
     for (let index = range.start; index <= range.end; index += 1) {
-      for (const row of bars[index].rows) {
-        const groupedTick = Math.floor(row.tickIndex / groupTicks) * groupTicks;
-        const current = cumulative.get(groupedTick) ?? { price: groupedTick * tickSize, volume: 0, bidVolume: 0, askVolume: 0, delta: 0, trades: 0 };
-        const tradesMode = settings.inputData === "trades";
-        const bid = tradesMode ? row.bidTrades : row.bidVolume;
-        const ask = tradesMode ? row.askTrades : row.askVolume;
-        const unknown = tradesMode ? row.unknownTrades : row.unknownVolume;
-        const volume = bid + ask + unknown;
-        current.bidVolume += bid;
-        current.askVolume += ask;
-        current.volume += volume;
-        current.delta = current.askVolume - current.bidVolume;
-        current.trades += row.bidTrades + row.askTrades + row.unknownTrades;
-        cumulative.set(groupedTick, current);
-        cumulativeVolume += volume;
-        cumulativeWeighted += current.price * volume;
+      if (filteredExecutions) {
+        const currentBarStart = barStart(bars[index]);
+        const currentBarEnd = barEnd(bars[index]);
+        while (tradeCursor < acceptedTrades.length && acceptedTrades[tradeCursor].timestamp < currentBarStart) tradeCursor += 1;
+        while (tradeCursor < acceptedTrades.length && acceptedTrades[tradeCursor].timestamp < currentBarEnd) {
+          const trade = acceptedTrades[tradeCursor];
+          const groupedTick = Math.floor(Math.round(trade.close / tickSize) / groupTicks) * groupTicks;
+          const current = cumulative.get(groupedTick) ?? { price: groupedTick * tickSize, volume: 0, bidVolume: 0, askVolume: 0, delta: 0, trades: 0 };
+          const volume = settings.inputData === "trades" ? Math.max(1, trade.trades) : trade.volume;
+          if (trade.aggressor === "BUY") current.askVolume += volume;
+          else if (trade.aggressor === "SELL") current.bidVolume += volume;
+          current.volume += volume;
+          current.delta = current.askVolume - current.bidVolume;
+          current.trades += Math.max(1, trade.trades);
+          cumulative.set(groupedTick, current);
+          cumulativeVolume += volume;
+          cumulativeWeighted += current.price * volume;
+          tradeCursor += 1;
+        }
+      } else {
+        for (const row of bars[index].rows) {
+          const groupedTick = Math.floor(row.tickIndex / groupTicks) * groupTicks;
+          const current = cumulative.get(groupedTick) ?? { price: groupedTick * tickSize, volume: 0, bidVolume: 0, askVolume: 0, delta: 0, trades: 0 };
+          const tradesMode = settings.inputData === "trades";
+          const bid = tradesMode ? row.bidTrades : row.bidVolume;
+          const ask = tradesMode ? row.askTrades : row.askVolume;
+          const unknown = tradesMode ? row.unknownTrades : row.unknownVolume;
+          const volume = bid + ask + unknown;
+          current.bidVolume += bid;
+          current.askVolume += ask;
+          current.volume += volume;
+          current.delta = current.askVolume - current.bidVolume;
+          current.trades += row.bidTrades + row.askTrades + row.unknownTrades;
+          cumulative.set(groupedTick, current);
+          cumulativeVolume += volume;
+          cumulativeWeighted += current.price * volume;
+        }
       }
       const timestamp = Math.max(barStart(bars[index]), bars[index].timestamp);
       const currentLevels = [...cumulative.values()].sort((left, right) => left.price - right.price);

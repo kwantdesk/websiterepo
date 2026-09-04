@@ -84,6 +84,18 @@ assert.deepEqual(buildDeepProfileValuesFrame(bars, "NQ", "NQZ6", tickSize, {
 const noFlow = bars.map((item) => ({ ...item, rows: [], hasPriceLevelFlow: false }));
 assert.deepEqual(buildDeepProfileValuesFrame(noFlow, "NQ", "NQZ6", tickSize), { status: "WAITING_FOR_VOLUME_AT_PRICE", profiles: [] });
 
+const filteredTrades = [
+  { recordIndex: 1, timestamp: 30_000, open: 110, high: 110, low: 110, close: 110, trades: 1, volume: 12, bidVolume: 0, askVolume: 12, delta: 12, aggressor: "BUY" },
+  { recordIndex: 2, timestamp: 90_000, open: 90, high: 90, low: 90, close: 90, trades: 1, volume: 5, bidVolume: 5, askVolume: 0, delta: -5, aggressor: "SELL" },
+];
+const filteredDeveloping = buildDeepProfileValuesFrame(bars.slice(0, 2), "NQ", "NQZ6", tickSize, {
+  ...DEFAULT_DEEP_PROFILE_VALUES_SETTINGS, periodMode: "composite", filterMin: 10,
+  pocLineMode: "developing", showDevelopingValueArea: true, showDevelopingVwap: true,
+}, filteredTrades);
+assert.equal(filteredDeveloping.profiles[0].totalVolume, 12);
+assert.deepEqual(filteredDeveloping.profiles[0].developingPoc.map((point) => point.price), [110, 110]);
+assert.deepEqual(filteredDeveloping.profiles[0].developingVwap.map((point) => point.price), [110, 110]);
+
 const many = Array.from({ length: 20_000 }, (_, index) => bar(index));
 const started = performance.now();
 const performanceFrame = buildDeepProfileValuesFrame(many, "NQ", "NQZ6", tickSize, {
