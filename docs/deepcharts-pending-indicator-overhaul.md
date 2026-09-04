@@ -40,8 +40,8 @@ Legend: `[ ]` not complete, `[~]` in progress, `[x]` complete and addable.
 | 2 | Bar POC Indicator | `bar-poc-indicator` | [x] | [x] | [x] | [x] | [x] | Add |
 | 3 | Dynamic POC | `dynamic-poc` | [x] | [x] | [x] | [x] | [x] | Add |
 | 4 | Ratio Highlight | `ratio-highlight` | [x] | [x] | [x] | [x] | [x] | Add |
-| 5 | Stop Spotter | `stop-spotter` | [x] | [x] | [x] | [x] | [~] | Release candidate |
-| 6 | Cumulative Iceberg/Stop | `cumulative-iceberg-stop` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
+| 5 | Stop Spotter | `stop-spotter` | [x] | [x] | [x] | [x] | [x] | Add |
+| 6 | Cumulative Iceberg/Stop | `cumulative-iceberg-stop` | [x] | [x] | [x] | [x] | [~] | Release candidate |
 | 7 | Book Speed | `book-speed` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
 | 8 | KWANT Delta | `deep-delta` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
 | 9 | KWANT Wall | `deep-wall` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
@@ -176,7 +176,39 @@ Legend: `[ ]` not complete, `[~]` in progress, `[x]` complete and addable.
   confirmed Add, LIVE state and the complete General/Input/Style contract, and
   caught an invisible Chromey Mono sell-marker seed before release. Marker and
   contract colours now use the shared visibility-safe theme palette; the
-  corrective exact-commit deployment and final removal check remain.
+  corrective commit `fe45bbf4` reached Ready. Cache-busted production QA
+  confirmed the Chromey Mono sell and contract text are now `#B9C0B9`, then
+  removed the temporary instance and restored the chart to 11 indicators.
+
+### 6: Cumulative Iceberg/Stop
+
+- The current official DeepCharts help exposes Volume/Order input, minimum and
+  optional maximum filtering, separate Iceberg Ask/Bid and Stop Bid/Ask
+  colours, Sum/Last Minutes/Last Seconds display modes, a display parameter,
+  line width, optional separate axes and independent Stop/Iceberg alerts.
+  Sum is a signed cumulative total; the two rolling modes retain only the
+  selected minute/second window.
+- Quant Desk's Volume mode is wired to a dedicated Rithmic stream consumer. It
+  combines verified aggressive executions with price-level book lifecycle:
+  confirmed replenishment candidates feed the Iceberg line, while aggressive
+  sweeps that breach an auditable candle/chart reference feed the possible
+  Stop line. Bid-side activity adds and Ask-side activity subtracts. A detector
+  event is replaced at its latest size rather than counted again on every book
+  update.
+- DeepCharts states that its stop reconstruction is proprietary, and protected
+  DLL metadata does not disclose that formula. Quant Desk therefore labels the
+  Stop plot as inference and does not claim source-code parity. The current
+  gateway also reports `nativeSupport: false` and `makerOrderSupport: false`;
+  Order mode is present to match the contract but explicitly reports
+  `ORDER_IDS_REQUIRED` and never substitutes trade count for individual MBO
+  orders.
+- The lower pane has two side-coloured lines, a zero reference, shared or
+  independent scaling, status/count/badge output, tooltips, theme/custom
+  palettes, numeric sliders, templates and alert controls. Events on range,
+  volume and other synthetic-time charts are anchored to their actual chart
+  bars rather than creating whitespace. Focused tests cover signed accumulation,
+  rolling expiry, both filters, capability refusal and frame construction;
+  TypeScript passes. Production build and visual QA remain the release gate.
 
 - Quant Desk already has a tested `PocAuctionSuiteEngine` driven by exact
   execution-classified Footprint rows. It calculates raw-tick unfinished

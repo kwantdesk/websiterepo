@@ -454,6 +454,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "dynamic-poc",
   "ratio-highlight",
   "stop-spotter",
+  "cumulative-iceberg-stop",
   "moving-average",
   "vwap",
   "vwap-envelopes",
@@ -658,6 +659,15 @@ const themeColourMapFor = (indicatorId: string, chartSettings: ChartSettings) =>
       contractBuyTextColor: visible.positive,
       contractSellTextColor: visible.negative,
       contractBackgroundColor: chartSettings.backgroundColor,
+    } as Record<string, string>;
+  }
+  if (indicatorId === "cumulative-iceberg-stop") {
+    const visible = visibleIndicatorTheme(chartSettings);
+    return {
+      icebergAskColor: visible.negative,
+      icebergBidColor: visible.positive,
+      stopBidColor: visible.secondary,
+      stopAskColor: visible.muted,
     } as Record<string, string>;
   }
   // Big Contracts and Big Blocks paint their two sides from the theme's up and
@@ -6592,6 +6602,32 @@ export default function ChartIndicatorsControl({
                   <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"><span>Short name</span><input type="text" maxLength={40} value={String(settingsInstance.settings?.shortName ?? "Stop Run")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), shortName: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none" /></label>
                   <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"><span>Popup message</span><input type="text" maxLength={160} value={String(settingsInstance.settings?.messageText ?? "Stop Run")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), messageText: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none" /></label>
                   <p className="text-[8px] leading-4 text-muted sm:col-span-2">Stop Spotter requires every documented condition on the same directional bar: delta, total and increased volume, body and price continuation, horizontal delta, and consecutive diagonal imbalances. Closed-bar mode never signals a forming candle.</p>
+                </div>
+              ) : null}
+
+              {settingsDefinition.id === "cumulative-iceberg-stop" ? (
+                <div className="grid gap-3 border border-primary/20 bg-primary/[0.035] p-3 sm:grid-cols-2">
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                    <span>Input data</span>
+                    <KwantSelect value={String(settingsInstance.settings?.inputData ?? "volume")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), inputData: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel="Cumulative Iceberg Stop input data">
+                      <option value="volume">Volume</option><option value="orders">Order count · requires maker IDs</option>
+                    </KwantSelect>
+                  </label>
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                    <span>Display mode</span>
+                    <KwantSelect value={String(settingsInstance.settings?.displayMode ?? "sum")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), displayMode: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel="Cumulative Iceberg Stop display mode">
+                      <option value="sum">Sum</option><option value="last-minutes">Last minutes</option><option value="last-seconds">Last seconds</option>
+                    </KwantSelect>
+                  </label>
+                  {[
+                    ["Show Iceberg", "showIceberg"], ["Show Stop", "showStop"], ["Use separate axes", "useSeparateAxes"],
+                    ["Alert Stop", "alertStopEnabled"], ["Stop popup", "alertStopShowMessage"], ["Alert Iceberg", "alertIcebergEnabled"], ["Iceberg popup", "alertIcebergShowMessage"],
+                  ].map(([label, key]) => (
+                    <button key={key} type="button" aria-pressed={settingsInstance.settings?.[key] !== false} onClick={() => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [key]: current.settings?.[key] === false } }))} className="flex h-9 items-center justify-between border border-border bg-background px-3 text-[9px] uppercase tracking-[0.1em] text-muted">
+                      <span>{label}</span><span className={settingsInstance.settings?.[key] === false ? "text-muted" : "text-primary"}>{settingsInstance.settings?.[key] === false ? "Off" : "On"}</span>
+                    </button>
+                  ))}
+                  <p className="text-[8px] leading-4 text-muted sm:col-span-2">Volume mode uses direct Rithmic executions plus price-level book lifecycle. Stop values are auditable sweep inference because resting stops are not published. Order mode stays unavailable until the gateway exposes individual maker/order IDs; it never substitutes trade count.</p>
                 </div>
               ) : null}
 

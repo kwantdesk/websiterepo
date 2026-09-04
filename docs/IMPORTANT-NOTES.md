@@ -271,3 +271,12 @@ recap of the open items below and update this file when their state changes.
   classified Rithmic executions at one-tick price rows; otherwise it must show
   `WAITING_FOR_VOLUME_AT_PRICE`. `Seconds to close` is permitted on a forming
   bar only when the chart has a deterministic clock-based close.
+- Cumulative Iceberg/Stop is two signed cumulative series: Bid activity adds,
+  Ask activity subtracts. Volume mode may use execution-confirmed replenishment
+  and reference-crossing stop-sweep evidence; both limitations must remain
+  visible because stop orders themselves are not published and DeepCharts'
+  reconstruction is proprietary.
+- Never label trade count, refresh-cycle count or price-level changes as the
+  number of individual MBO orders. Until the Rithmic gateway exposes stable
+  maker/order IDs, Cumulative Iceberg/Stop Order mode must remain an explicit
+  `ORDER_IDS_REQUIRED` capability state.

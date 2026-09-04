@@ -297,6 +297,11 @@ import { RatioHighlightPrimitive } from "@/lib/ratioHighlightPrimitive";
 import { buildStopSpotterFrame, normalizeStopSpotterSettings, type StopSpotterFrame } from "@/lib/stopSpotter";
 import { StopSpotterPrimitive } from "@/lib/stopSpotterPrimitive";
 import {
+  buildCumulativeIcebergStopFrame,
+  normalizeCumulativeIcebergStopSettings,
+  type CumulativeIcebergStopFrame,
+} from "@/lib/cumulativeIcebergStop";
+import {
   buildTapeSpeedFrame,
   normalizeTapeSpeedSettings,
   tapeSpeedPaneSeries,
@@ -3278,6 +3283,10 @@ function Chart({
   const liquidityStopSweepFrameRef = useRef<LiquidityStopSweepFrame | null>(null);
   const liquidityStopSweepAlertIdsRef = useRef(new Set<string>());
   const liquidityStopSweepReferencesRef = useRef<SweepReferenceLevel[]>([]);
+  const cumulativeIcebergEngineRef = useRef(new IcebergRefreshDetectorEngine());
+  const cumulativeStopEngineRef = useRef(new LiquidityStopSweepDetectorEngine());
+  const cumulativeStopReferencesRef = useRef<SweepReferenceLevel[]>([]);
+  const cumulativeIcebergStopAlertKeysRef = useRef(new Set<string>());
   const pocAuctionPrimitiveRef = useRef<PocAuctionPrimitive | null>(null);
   const unfinishedAuctionPrimitiveRef = useRef<UnfinishedAuctionPrimitive | null>(null);
   const barPocPrimitiveRef = useRef<BarPocPrimitive | null>(null);
@@ -3800,6 +3809,8 @@ function Chart({
   const [liquidityStopSweepStatus, setLiquidityStopSweepStatus] = useState<RithmicLiquidityStatus>("checking");
   const [liquidityStopSweepFrame, setLiquidityStopSweepFrame] = useState<LiquidityStopSweepFrame | null>(null);
   const [liquidityStopSweepTooltip, setLiquidityStopSweepTooltip] = useState<LiquidityStopSweepHit | null>(null);
+  const [cumulativeIcebergStopStreamStatus, setCumulativeIcebergStopStreamStatus] = useState<RithmicLiquidityStatus>("checking");
+  const [cumulativeIcebergStopFrame, setCumulativeIcebergStopFrame] = useState<CumulativeIcebergStopFrame | null>(null);
   const [pocAuctionFrame, setPocAuctionFrame] = useState<PocAuctionFrame | null>(null);
   const [unfinishedAuctionFrame, setUnfinishedAuctionFrame] = useState<UnfinishedAuctionFrame | null>(null);
   const [barPocFrame, setBarPocFrame] = useState<BarPocFrame | null>(null);
@@ -5641,6 +5652,107 @@ function Chart({
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "stop-spotter") ?? null,
     [indicatorSignature, indicators],
   );
+  const cumulativeIcebergStopIndicator = useMemo(
+    () => indicators.find((instance) => instance.enabled && instance.indicatorId === "cumulative-iceberg-stop") ?? null,
+    [indicatorSignature, indicators],
+  );
+  const cumulativeIcebergStopSettings = useMemo(() => {
+    const normalized = normalizeCumulativeIcebergStopSettings(cumulativeIcebergStopIndicator?.settings);
+    if (!normalized.useThemeColors) return normalized;
+    const visible = visibleIndicatorTheme(settings);
+    return {
+      ...normalized,
+      icebergBidColor: visible.positive,
+      icebergAskColor: visible.negative,
+      stopBidColor: visible.secondary,
+      stopAskColor: visible.muted,
+    };
+  }, [cumulativeIcebergStopIndicator, settings]);
+
+  useEffect(() => {
+    if (!cumulativeIcebergStopIndicator) {
+      cumulativeStopReferencesRef.current = [];
+      return;
+    }
+    const referenceCandles = candles.length > 4_000 ? candles.slice(-4_000) : candles;
+    const currentPrice = referenceCandles.at(-1)?.close ?? 0;
+    const validFromMs = referenceCandles[0]?.timestamp ?? Date.now();
+    cumulativeStopReferencesRef.current = [
+      ...buildSweepReferencesFromCandles(referenceCandles, priceFormat.minMove),
+      ...[...resolvedLevelLayers.foreground, ...resolvedLevelLayers.background].map((level): SweepReferenceLevel => ({
+        id: `cumulative-chart-level:${level.id}`,
+        type: "user-horizontal-level",
+        label: level.label,
+        priceTick: Math.round(level.price / priceFormat.minMove),
+        validFromMs,
+        side: level.price >= currentPrice ? "high" : "low",
+        priority: 80,
+        isUserLevel: true,
+      })),
+    ];
+  }, [candles, cumulativeIcebergStopIndicator, priceFormat.minMove, resolvedLevelLayers.background, resolvedLevelLayers.foreground]);
+
+  useEffect(() => {
+    if (!cumulativeIcebergStopIndicator) {
+      cumulativeIcebergEngineRef.current.reset();
+      cumulativeStopEngineRef.current.reset();
+      cumulativeIcebergStopAlertKeysRef.current.clear();
+      setCumulativeIcebergStopFrame(null);
+      return;
+    }
+    const normalized = String(contractSymbol || instrument || "NQ").trim().toUpperCase().replace(/\.[VNC]\.\d+$/i, "");
+    const explicitContract = /[FGHJKMNQUVXZ]\d{1,2}$/i.test(normalized) ? normalized : null;
+    const chartRoot = normalized.replace(/[FGHJKMNQUVXZ]\d{1,2}$/i, "") || "NQ";
+    const microParents: Record<string, string> = { MNQ: "NQ", MES: "ES", MYM: "YM", M2K: "RTY", MGC: "GC", MCL: "CL", MBT: "BTC", MET: "ETH" };
+    const root = microParents[chartRoot] ?? chartRoot;
+    cumulativeIcebergEngineRef.current.reset();
+    cumulativeStopEngineRef.current.reset();
+    cumulativeIcebergStopAlertKeysRef.current.clear();
+    setCumulativeIcebergStopFrame(null);
+    let publishTimer: number | null = null;
+    let lastPublishedAt = 0;
+    let latestFrame: CumulativeIcebergStopFrame | null = null;
+    const publish = () => {
+      publishTimer = null;
+      if (!latestFrame) return;
+      lastPublishedAt = performance.now();
+      setCumulativeIcebergStopFrame(latestFrame);
+    };
+    const unsubscribe = subscribeRithmicLiquidity({
+      root,
+      contractSymbol: explicitContract,
+      exchange: futuresVenue(root),
+      replayHistory: true,
+      onStatus: setCumulativeIcebergStopStreamStatus,
+      onSnapshot: (snapshot) => {
+        const iceberg = cumulativeIcebergEngineRef.current.apply(snapshot);
+        const stop = cumulativeStopEngineRef.current.apply(snapshot, undefined, cumulativeStopReferencesRef.current);
+        latestFrame = buildCumulativeIcebergStopFrame(iceberg, stop, cumulativeIcebergStopSettings);
+        const alerts = [
+          { type: "stop", enabled: cumulativeIcebergStopSettings.alertStopEnabled, threshold: cumulativeIcebergStopSettings.alertStopThreshold, popup: cumulativeIcebergStopSettings.alertStopShowMessage, point: latestFrame.stop.at(-1) },
+          { type: "iceberg", enabled: cumulativeIcebergStopSettings.alertIcebergEnabled, threshold: cumulativeIcebergStopSettings.alertIcebergThreshold, popup: cumulativeIcebergStopSettings.alertIcebergShowMessage, point: latestFrame.iceberg.at(-1) },
+        ];
+        for (const alert of alerts) {
+          if (!alert.enabled || !alert.point || alert.point.eventValue < alert.threshold) continue;
+          const key = `${alert.type}:${alert.point.timestampMs}:${alert.point.eventValue}`;
+          if (cumulativeIcebergStopAlertKeysRef.current.has(key)) continue;
+          cumulativeIcebergStopAlertKeysRef.current.add(key);
+          window.dispatchEvent(new CustomEvent("kwantdesk:chart-indicator-alert", { detail: {
+            indicatorId: "cumulative-iceberg-stop",
+            instanceId: cumulativeIcebergStopIndicator.instanceId,
+            instrument,
+            title: `${alert.type === "stop" ? "Stop" : "Iceberg"} activity · ${Math.round(alert.point.eventValue).toLocaleString()}`,
+            popup: alert.popup,
+            event: alert.point,
+          } }));
+        }
+        const elapsed = performance.now() - lastPublishedAt;
+        if (elapsed >= LIVE_INDICATOR_REACT_SUMMARY_INTERVAL_MS) publish();
+        else if (publishTimer === null) publishTimer = window.setTimeout(publish, Math.max(16, LIVE_INDICATOR_REACT_SUMMARY_INTERVAL_MS - elapsed));
+      },
+    });
+    return () => { unsubscribe(); if (publishTimer !== null) window.clearTimeout(publishTimer); };
+  }, [contractSymbol, cumulativeIcebergStopIndicator, cumulativeIcebergStopSettings, instrument]);
   const deltaBarIndicator = useMemo(
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "delta-bar") ?? null,
     [indicatorSignature, indicators],
@@ -7141,6 +7253,75 @@ function Chart({
   const calculatedIndicatorPanes = useMemo(() => {
     return indicators.flatMap((instance): IndicatorPaneGroup[] => {
       if (!instance.enabled) return [];
+      if (instance.indicatorId === "cumulative-iceberg-stop") {
+        const frame = cumulativeIcebergStopFrame;
+        const source = cumulativeIcebergStopSettings;
+        const chartTimeFor = (timestampMs: number) => {
+          if (!timeframe || !isEventBasedChartInterval(timeframe)) return Math.floor(timestampMs / 1_000);
+          if (!indicatorCandles.length) return null;
+          let low = 0;
+          let high = indicatorCandles.length - 1;
+          while (low < high) {
+            const middle = Math.ceil((low + high) / 2);
+            if (indicatorCandles[middle].timestamp <= timestampMs) low = middle;
+            else high = middle - 1;
+          }
+          const candle = indicatorCandles[low];
+          return eventChartIndicatorTimeMap?.exact.get(candle.timestamp) ?? null;
+        };
+        const pointsFor = (points: CumulativeIcebergStopFrame["iceberg"], bidColor: string, askColor: string) => {
+          const mapped = new Map<number, { time: number; value: number; color: string }>();
+          for (const point of points) {
+            const time = chartTimeFor(point.timestampMs);
+            if (time == null) continue;
+            mapped.set(time, { time, value: point.value, color: point.side === "bid" ? bidColor : askColor });
+          }
+          return [...mapped.values()].sort((left, right) => left.time - right.time);
+        };
+        const series: CalculatedIndicatorSeries[] = [];
+        if (source.showIceberg) series.push({
+          key: `${instance.instanceId}-iceberg`, label: "Iceberg", kind: "line", placement: "pane",
+          color: source.icebergBidColor, lineWidth: source.lineWidth as 1 | 2 | 3 | 4,
+          showZeroLine: true, zeroLineColor: settings.gridColor, includeZeroInScale: true,
+          data: pointsFor(frame?.iceberg ?? [], source.icebergBidColor, source.icebergAskColor),
+        });
+        if (source.showStop) series.push({
+          key: `${instance.instanceId}-stop`, label: "Stop", kind: "line", placement: "pane",
+          color: source.stopBidColor, lineWidth: source.lineWidth as 1 | 2 | 3 | 4,
+          independentScale: source.useSeparateAxes, priceScaleId: source.useSeparateAxes ? `stop-${instance.instanceId}` : undefined,
+          includeZeroInScale: true,
+          data: pointsFor(frame?.stop ?? [], source.stopBidColor, source.stopAskColor),
+        });
+        const unavailableReason = source.inputData === "orders"
+          ? "Individual MBO maker/order IDs are required for Order mode; this gateway does not expose them yet."
+          : cumulativeIcebergStopStreamStatus === "unavailable"
+            ? "Rithmic execution/order-book stream is unavailable for this instrument."
+            : !frame || frame.status === "CONNECTING"
+            ? "Synchronising Rithmic executions and order-book lifecycle."
+            : !series.some((definition) => definition.data.length)
+              ? "No qualified iceberg or stop activity in the loaded Rithmic window."
+              : undefined;
+        return [{
+          key: instance.instanceId,
+          title: `Cumulative Iceberg/Stop · ${frame?.status.replaceAll("_", " ") ?? "CONNECTING"}`,
+          indicatorId: instance.indicatorId,
+          settings: instance.settings,
+          series,
+          statusLabel: frame ? `ICE ${frame.icebergEventCount} · STOP ${frame.stopEventCount}` : "RITHMIC",
+          currentBadgeValue: frame?.currentIceberg,
+          currentBadge: frame ? `ICE ${Math.round(frame.currentIceberg).toLocaleString()} · STOP ${Math.round(frame.currentStop).toLocaleString()}` : undefined,
+          secondaryAxisSeriesKey: source.useSeparateAxes && source.showStop ? `${instance.instanceId}-stop` : undefined,
+          secondaryAxisLabel: source.useSeparateAxes && source.showStop ? "STOP" : undefined,
+          showHeader: true,
+          showLegend: true,
+          defaultHeight: source.paneHeight,
+          minimumHeight: 120,
+          maximumHeight: 520,
+          unavailableReason,
+          tooltipPoints: [...(frame?.iceberg ?? []).map((point) => ({ time: chartTimeFor(point.timestampMs), rows: [{ label: "Iceberg", value: Math.round(point.value).toLocaleString() }, { label: "Event", value: Math.round(point.eventValue).toLocaleString() }, { label: "Side", value: point.side.toUpperCase() }] })), ...(frame?.stop ?? []).map((point) => ({ time: chartTimeFor(point.timestampMs), rows: [{ label: "Stop", value: Math.round(point.value).toLocaleString() }, { label: "Event", value: Math.round(point.eventValue).toLocaleString() }, { label: "Side", value: point.side.toUpperCase() }] }))]
+            .filter((point): point is { time: number; rows: Array<{ label: string; value: string }> } => point.time != null),
+        }];
+      }
       if (instance.indicatorId === "tape-speed-order-flow-burst") {
         if (!tapeSpeedFrame || tapeSpeedSettings.showPane === false) return [];
         const metricLabel = tapeSpeedSettings.paneMode === "trades-per-second" ? "trades/s" : tapeSpeedSettings.paneMode === "delta-per-second" ? "delta/s" : "contracts/s";
@@ -7392,6 +7573,10 @@ function Chart({
     });
   }, [
     calculatedIndicatorSeries,
+    cumulativeIcebergStopFrame,
+    cumulativeIcebergStopSettings,
+    cumulativeIcebergStopStreamStatus,
+    eventChartIndicatorTimeMap,
     indicatorCandles,
     indicatorSignature,
     indicators,
@@ -7406,6 +7591,7 @@ function Chart({
     settings.upColor,
     tapeSpeedFrame,
     tapeSpeedSettings,
+    timeframe,
   ]);
   const defaultIndicatorPaneHeight = Math.max(88, Math.min(140, overlaySize.height * 0.18));
   const resolvedIndicatorPaneHeights = useMemo(

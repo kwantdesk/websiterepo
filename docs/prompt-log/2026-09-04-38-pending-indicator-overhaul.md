@@ -43,5 +43,12 @@ task until the full pending library is complete, without shortcuts.
   markers, deterministic close timing and contract sizing. Focused tests and
   TypeScript pass. Its first production pass confirmed Add, LIVE state and all
   settings, then exposed a Chromey Mono sell-marker contrast defect; that is
-  corrected through the shared visibility-safe indicator palette and is being
-  redeployed for the final gate.
+  corrected through the shared visibility-safe indicator palette; production
+  QA passed and the temporary study was removed. Item 6, **Cumulative
+  Iceberg/Stop**, now implements the full observable DeepCharts settings
+  contract as a signed two-line Rithmic order-flow pane. Volume mode uses
+  execution plus price-level lifecycle evidence. Because individual maker
+  order IDs and native iceberg flags are not exposed by the current gateway,
+  Order mode clearly reports that capability requirement instead of inventing
+  counts. Focused calculation tests and TypeScript pass; build/deployed visual
+  QA are the remaining gate before it is recorded as complete.

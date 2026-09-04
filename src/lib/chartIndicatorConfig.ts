@@ -31,6 +31,11 @@ import {
 import { DEFAULT_DYNAMIC_POC_SETTINGS, DYNAMIC_POC_SETTINGS_VERSION, normalizeDynamicPocSettings } from "@/lib/dynamicPoc";
 import { DEFAULT_RATIO_HIGHLIGHT_SETTINGS, normalizeRatioHighlightSettings, RATIO_HIGHLIGHT_SETTINGS_VERSION } from "@/lib/ratioHighlight";
 import { DEFAULT_STOP_SPOTTER_SETTINGS, normalizeStopSpotterSettings, STOP_SPOTTER_SETTINGS_VERSION } from "@/lib/stopSpotter";
+import {
+  CUMULATIVE_ICEBERG_STOP_SETTINGS_VERSION,
+  DEFAULT_CUMULATIVE_ICEBERG_STOP_SETTINGS,
+  normalizeCumulativeIcebergStopSettings,
+} from "@/lib/cumulativeIcebergStop";
 
 export const LIVE_CHART_INDICATOR_IDS = new Set([
   "gamma-environment",
@@ -57,6 +62,7 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "dynamic-poc",
   "ratio-highlight",
   "stop-spotter",
+  "cumulative-iceberg-stop",
   "cumulative-volume-delta",
   "cvd-divergence",
   "pulling-stacking",
@@ -175,6 +181,15 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "contractFontSize", label: "Contract calculation font size", defaultValue: 10, min: 6, max: 30, step: 0.2 },
     { key: "contractTickOffset", label: "Contract calculation tick offset", defaultValue: 2, min: 0, max: 500, step: 1 },
     { key: "lineWidth", label: "Marker line width", defaultValue: 2, min: 1, max: 8, step: 1 },
+  ],
+  "cumulative-iceberg-stop": [
+    { key: "filterMin", label: "Filter minimum", defaultValue: 1, min: 0, max: 10000000, step: 1 },
+    { key: "filterMax", label: "Filter maximum (0 = no maximum)", defaultValue: 0, min: 0, max: 10000000, step: 1 },
+    { key: "displayParameter", label: "Display parameter", defaultValue: 1, min: 1, max: 86400, step: 1 },
+    { key: "lineWidth", label: "Line width", defaultValue: 2, min: 1, max: 4, step: 1 },
+    { key: "alertStopThreshold", label: "Stop alert threshold", defaultValue: 100, min: 0, max: 10000000, step: 1 },
+    { key: "alertIcebergThreshold", label: "Iceberg alert threshold", defaultValue: 100, min: 0, max: 10000000, step: 1 },
+    { key: "paneHeight", label: "Pane height", defaultValue: 190, min: 120, max: 520, step: 1 },
   ],
   "ratio-highlight": [
     { key: "minRatio", label: "Minimum ratio", defaultValue: 10, min: 0, max: 100, step: 0.25 },
@@ -1375,6 +1390,14 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     contractBackgroundColor: theme?.backgroundColor ?? DEFAULT_STOP_SPOTTER_SETTINGS.contractBackgroundColor,
     schemaVersion: STOP_SPOTTER_SETTINGS_VERSION,
   } : {}),
+  ...(indicatorId === "cumulative-iceberg-stop" ? {
+    ...DEFAULT_CUMULATIVE_ICEBERG_STOP_SETTINGS,
+    icebergAskColor: theme?.downColor ?? DEFAULT_CUMULATIVE_ICEBERG_STOP_SETTINGS.icebergAskColor,
+    icebergBidColor: theme?.upColor ?? DEFAULT_CUMULATIVE_ICEBERG_STOP_SETTINGS.icebergBidColor,
+    stopBidColor: theme?.borderUpColor ?? theme?.upColor ?? DEFAULT_CUMULATIVE_ICEBERG_STOP_SETTINGS.stopBidColor,
+    stopAskColor: theme?.borderDownColor ?? theme?.downColor ?? DEFAULT_CUMULATIVE_ICEBERG_STOP_SETTINGS.stopAskColor,
+    schemaVersion: CUMULATIVE_ICEBERG_STOP_SETTINGS_VERSION,
+  } : {}),
   ...(indicatorId === "tape-speed-order-flow-burst" ? {
     ...DEFAULT_TAPE_SPEED_SETTINGS,
     buyColor: theme?.upColor ?? DEFAULT_TAPE_SPEED_SETTINGS.buyColor,
@@ -2555,6 +2578,10 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
   if (normalizedInstance.indicatorId === "stop-spotter") {
     const defaults = defaultIndicatorSettings("stop-spotter");
     return { ...normalizedInstance, settings: { ...defaults, ...normalizeStopSpotterSettings({ ...defaults, ...(normalizedInstance.settings ?? {}) }) } };
+  }
+  if (normalizedInstance.indicatorId === "cumulative-iceberg-stop") {
+    const defaults = defaultIndicatorSettings("cumulative-iceberg-stop");
+    return { ...normalizedInstance, settings: { ...defaults, ...normalizeCumulativeIcebergStopSettings({ ...defaults, ...(normalizedInstance.settings ?? {}) }) } };
   }
   if (normalizedInstance.indicatorId === "tape-speed-order-flow-burst") {
     return {

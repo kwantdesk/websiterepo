@@ -95,7 +95,7 @@ export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
   indicator("Iceberg / Refresh Detector", "Order Flow", "Repeated passive-liquidity replenishment inferred from aggressive executions and the shared Level 3 order-book lifecycle.", true, "Kwantify", undefined, "Liquidity"),
   indicator("Liquidity Sweep / Stop Sweep Detector", "Order Flow", "Direct multi-level aggressive execution sweeps with inferred reference-level stop sweeps, continuation and rejection.", true, "Kwantify", undefined, "Signals"),
   indicator("POC & Auction Suite", "Order Flow", "Professional bar, session, rolling and anchored POC analysis with naked-level lifecycle, finished and unfinished auctions, excess and migration.", true, "Kwantify", undefined, "Auction"),
-  indicator("Cumulative Iceberg/Stop", "Order Flow", "Accumulates inferred iceberg and stop activity.", true),
+  indicator("Cumulative Iceberg/Stop", "Order Flow", "Signed cumulative or rolling Rithmic iceberg-replenishment and inferred stop-sweep activity.", true),
   indicator("Book Speed", "Order Flow", "Measures order-book update velocity.", true),
   indicator("DOM Pro", "Order Flow", "High-DPI Rithmic MBO ladder with resting depth, aggressor trades, order counts, queue-aware capability states and configurable professional columns.", true, "Kwantify", "Depth of Market"),
   indicator("Mini DOM", "Order Flow", "The resting book drawn on the chart itself, pinned beside the price scale with every row at its own price so depth lines up with the candles.", true, "Kwantify"),

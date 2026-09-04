@@ -611,22 +611,32 @@ function ChartIndicatorPaneSurface({
                     </g>
                   );
                 }
-                const path = visible.map((point, index) =>
-                  `${index === 0 || point.breakBefore ? "M" : "L"} ${point.x} ${yFor(point.value, definition)}`,
-                ).join(" ");
-                return (
+                const segments: Array<{ color: string; path: string }> = [];
+                visible.forEach((point, index) => {
+                  const color = point.color ?? definition.color;
+                  const command = `${index === 0 || point.breakBefore ? "M" : "L"} ${point.x} ${yFor(point.value, definition)}`;
+                  const previous = visible[index - 1];
+                  const active = segments.at(-1);
+                  if (!active || active.color !== color || point.breakBefore) {
+                    const bridge = index > 0 && !point.breakBefore && previous
+                      ? `M ${previous.x} ${yFor(previous.value, definition)} `
+                      : "";
+                    segments.push({ color, path: `${bridge}${command}` });
+                  } else active.path += ` ${command}`;
+                });
+                return segments.map((segment, segmentIndex) => (
                   <path
-                    key={definition.key}
-                    d={path}
+                    key={`${definition.key}-${segmentIndex}`}
+                    d={segment.path}
                     fill="none"
-                    stroke={definition.color}
+                    stroke={segment.color}
                     strokeWidth={definition.lineWidth ?? 2}
                     strokeDasharray={definition.lineStyle === "dashed" ? "6 4" : definition.lineStyle === "dotted" ? "2 3" : undefined}
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     vectorEffect="non-scaling-stroke"
                   />
-                );
+                ));
               })}
             </g> : null}
             {!collapsed && !stats && !group.percentageAxis ? <text x={plotWidth + 6} y={innerTop + 2} fill="var(--muted)" fontSize="8" fontFamily="monospace">{compact(sharedDomain.max)}</text> : null}
