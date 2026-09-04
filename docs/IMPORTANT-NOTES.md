@@ -129,7 +129,9 @@ recap of the open items below and update this file when their state changes.
   auto-roll.
 - Do not restore calendar-generated front-month labels as a fallback. Until a
   provider answer or exact live book exists, display the product root. `10Y`
-  is a CBOT product; the former CME mapping was rejected by Rithmic.
+  is a CBOT product; after correcting the former CME mapping, the production
+  account still rejects its front-month request with code 7. Keep `10Y`
+  provider entitlement/catalogue access open and never guess around it.
 - Continuous history now reads all locally recorded contracts sharing the
   requested product root. Canonical History Plant root minutes remain the
   baseline; where only overlapping local contracts exist, one highest-volume

@@ -50,3 +50,20 @@ spanning `NQU6`/`NQZ6` retains both sides while choosing one liquid contract
 during overlap. The complete gateway suite, TypeScript and production build
 pass. Production evidence is recorded after both the active Vercel project and
 the collector have been checked.
+
+## Production evidence
+
+- Website commits `e35b6f0a`, `0852d1af`, `29097c69` and `cc5bcfa5` were
+  pushed to `main`, the branch connected to the sole active Vercel project
+  `websiterepo-yfmi`. The public site returned HTTP 200 after the push.
+- The collector runtime was rebuilt on the Chicago VPS. Live authenticated
+  resolution returned `NQU6`, `MNQU6`, `ESU6` and `MESU6`, each with source
+  `rithmic-front-month`; no calendar fallback was involved.
+- Two production health samples showed `lastMessageAt` advancing, recorded
+  events increasing from 97,524 to 98,576 in 2.5 seconds, no dropped recorder
+  events, no recorder error, no event-loop overload and 187 GB archive space
+  free.
+- `10Y` is now correctly routed to CBOT, but the licensed production account
+  rejects its front-month request with Rithmic code 7. It therefore fails
+  closed and is not presented as a working guessed contract. Provider access
+  for that one product remains an explicit entitlement/catalogue blocker.
