@@ -277,7 +277,8 @@
     "test:volume-profile-count": "node --import ./scripts/alias-hook.mjs scripts/test-volume-profile-count.mjs",
     "test:volume-profile-sessions-split": "node --import ./scripts/alias-hook.mjs scripts/test-volume-profile-sessions-split.mjs",
     "test:indicator-side-colours": "node --import ./scripts/alias-hook.mjs scripts/test-indicator-side-colours.mjs",
-    "test:value-area-percent": "node --import ./scripts/alias-hook.mjs scripts/test-value-area-percent.mjs"
+    "test:value-area-percent": "node --import ./scripts/alias-hook.mjs scripts/test-value-area-percent.mjs",
+    "test:chart-emoji-tool": "node --experimental-strip-types --import ./scripts/alias-hook.mjs --test tests/chart-emoji-tool.test.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",

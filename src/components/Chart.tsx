@@ -3509,6 +3509,17 @@ function Chart({
     });
   }, [toolbarPinnedStorageKey]);
   const [drawTool, setDrawTool] = useState<DrawToolId>("cursor");
+  const [drawEmoji, setDrawEmoji] = useState(() => {
+    if (typeof window === "undefined") return "🧲";
+    try { return window.localStorage.getItem("kwantdesk:chart-emoji:v1") || "🧲"; } catch { return "🧲"; }
+  });
+  const selectDrawEmoji = useCallback((emoji: string) => {
+    setDrawEmoji(emoji);
+    try {
+      window.localStorage.setItem("kwantdesk:chart-emoji:v1", emoji);
+      window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
+    } catch {}
+  }, []);
   const [drawSelectedId, setDrawSelectedId] = useState<string | null>(null);
   const [drawKeepDrawing, setDrawKeepDrawing] = useState(false);
   const [drawMagnet, setDrawMagnet] = useState(false);
@@ -15907,10 +15918,12 @@ function Chart({
           keepDrawing={drawKeepDrawing}
           magnet={drawMagnet}
           magnetStrength={drawMagnetStrength}
+          emoji={drawEmoji}
           onSelectTool={(tool) => { setDrawTool(tool); if (tool !== "cursor") setDrawSelectedId(null); }}
           onToggleKeepDrawing={() => setDrawKeepDrawing((value) => !value)}
           onToggleMagnet={toggleDrawMagnet}
           onSelectMagnetStrength={selectDrawMagnetStrength}
+          onSelectEmoji={selectDrawEmoji}
           onOpenSettings={() => setDrawSettingsOpen(true)}
           hasSelection={Boolean(drawSelectedId)}
           onDeleteSelection={() => {
@@ -15988,6 +16001,7 @@ function Chart({
             themeColor={settings.upColor}
             themeBearColor={settings.downColor}
             activeTool={drawTool}
+            emoji={drawEmoji}
             keepDrawing={drawKeepDrawing}
             drawings={chartingDrawings}
             selectedId={drawSelectedId}

@@ -81,7 +81,9 @@ export type DrawToolId =
   | "arrowMarker"
   | "flagMark"
   // measure
-  | "measure";
+  | "measure"
+  // chart-anchored emoji
+  | "emoji";
 
 export type DrawToolGroupId =
   | "cursor"
@@ -96,7 +98,8 @@ export type DrawToolGroupId =
   | "volume"
   | "shapes"
   | "annotation"
-  | "measure";
+  | "measure"
+  | "emoji";
 
 /**
  * Magnet strength. Standard is stored as `weak` for preference compatibility,
@@ -326,6 +329,7 @@ export const DRAW_TOOL_LIST: DrawToolSpec[] = [
   T("flagMark", "annotation", "Flag", 1),
 
   T("measure", "measure", "Measure", 2),
+  T("emoji", "emoji", "Emoji", 1),
 ];
 
 export const DRAW_TOOL_SPECS: Record<DrawToolId, DrawToolSpec> = Object.fromEntries(
@@ -353,6 +357,7 @@ export const DRAW_TOOL_GROUPS: { id: DrawToolGroupId; label: string }[] = [
   { id: "shapes", label: "Shapes" },
   { id: "annotation", label: "Text" },
   { id: "measure", label: "Measure" },
+  { id: "emoji", label: "Emoji" },
 ];
 
 export type LastUsedDrawTools = Partial<Record<DrawToolGroupId, DrawToolId>>;
@@ -484,6 +489,9 @@ export const PAPER_FILL_BUY_COLOR = "#22e887";
 export const PAPER_FILL_SELL_COLOR = "#ff3b5c";
 
 const defaultStyleFor = (tool: DrawToolId): DrawStyle => {
+  if (tool === "emoji") {
+    return { ...DEFAULT_DRAW_STYLE, useThemeColor: false, fontSize: 36, showLabels: false };
+  }
   if (tool === "highlighter") return { ...DEFAULT_DRAW_STYLE, color: "#FFEB3B", width: 4, fillOpacity: 0.25 };
   // The calculators land as clean target/risk boxes. Their readout is three
   // stacked pills across the middle of the box; on by default it covers the

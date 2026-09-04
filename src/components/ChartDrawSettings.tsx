@@ -66,6 +66,7 @@ export default function ChartDrawSettings({
   const spec = DRAW_TOOL_SPECS[drawing.tool];
   const isShape = SHAPE_TOOLS.includes(drawing.tool);
   const isText = TEXT_TOOLS.includes(drawing.tool);
+  const isEmoji = drawing.tool === "emoji";
   const isProfile = PROFILE_TOOLS.includes(drawing.tool);
   const isAnchoredVwap = drawing.tool === "anchoredVwap";
   const isPosition = POSITION_TOOLS.includes(drawing.tool);
@@ -78,7 +79,7 @@ export default function ChartDrawSettings({
 
   const tabs: { key: typeof tab; label: string; show: boolean }[] = [
     { key: "style", label: "Style", show: true },
-    { key: "text", label: "Text", show: isText },
+    { key: "text", label: isEmoji ? "Emoji" : "Text", show: isText || isEmoji },
     { key: "coordinates", label: "Coordinates", show: true },
     { key: "visibility", label: "Visibility", show: true },
   ];
@@ -104,9 +105,17 @@ export default function ChartDrawSettings({
         <div className="max-h-[50vh] space-y-3 overflow-y-auto p-4">
           {tab === "style" ? (
             <>
-              <Row label="Colour"><ChartColorField ariaLabel="Drawing colour" value={resolveDrawColor(drawing.style, themeColor)} onChange={(hex) => patchStyle({ color: hex, useThemeColor: false })} /></Row>
-              <Row label="Line width"><Select value={String(drawing.style.width)} onChange={(v) => patchStyle({ width: Number(v) })} options={[["0.5", "0.5px"], ["1", "1px"], ["2", "2px"], ["3", "3px"], ["4", "4px"]]} /></Row>
-              <Row label="Line style"><Select value={drawing.style.lineStyle} onChange={(v) => patchStyle({ lineStyle: v as DrawLineStyle })} options={[["solid", "Solid"], ["dashed", "Dashed"], ["dotted", "Dotted"]]} /></Row>
+              {isEmoji ? (
+                <Row label={`Size · ${Math.round(drawing.style.fontSize ?? 36)}px`}>
+                  <input type="range" min={16} max={160} step={1} value={drawing.style.fontSize ?? 36} onChange={(event) => patchStyle({ fontSize: Number(event.target.value) })} className="w-48 accent-primary" />
+                </Row>
+              ) : (
+                <>
+                  <Row label="Colour"><ChartColorField ariaLabel="Drawing colour" value={resolveDrawColor(drawing.style, themeColor)} onChange={(hex) => patchStyle({ color: hex, useThemeColor: false })} /></Row>
+                  <Row label="Line width"><Select value={String(drawing.style.width)} onChange={(v) => patchStyle({ width: Number(v) })} options={[["0.5", "0.5px"], ["1", "1px"], ["2", "2px"], ["3", "3px"], ["4", "4px"]]} /></Row>
+                  <Row label="Line style"><Select value={drawing.style.lineStyle} onChange={(v) => patchStyle({ lineStyle: v as DrawLineStyle })} options={[["solid", "Solid"], ["dashed", "Dashed"], ["dotted", "Dotted"]]} /></Row>
+                </>
+              )}
               {isShape ? (
                 <Row label="Fill opacity">
                   <input type="range" min={0} max={0.6} step={0.02} value={drawing.style.fillOpacity} onChange={(e) => patchStyle({ fillOpacity: Number(e.target.value) })} className="w-40 accent-primary" />
@@ -137,7 +146,7 @@ export default function ChartDrawSettings({
                   </div>
                 </Row>
               ) : null}
-              <Row label="Show labels"><input type="checkbox" checked={drawing.style.showLabels} onChange={(e) => patchStyle({ showLabels: e.target.checked })} className="h-4 w-4 accent-primary" /></Row>
+              {!isEmoji ? <Row label="Show labels"><input type="checkbox" checked={drawing.style.showLabels} onChange={(e) => patchStyle({ showLabels: e.target.checked })} className="h-4 w-4 accent-primary" /></Row> : null}
 
               {isPosition ? (
                 <div className="space-y-3 border-t border-border pt-3">
@@ -234,10 +243,14 @@ export default function ChartDrawSettings({
           {tab === "text" ? (
             <>
               <label className="block">
-                <span className="mb-1 block text-[11px] text-muted">Text</span>
-                <textarea value={drawing.text ?? ""} onChange={(e) => onChange({ ...drawing, text: e.target.value })} rows={3} className="w-full rounded-lg border border-border bg-background p-2 text-[12px] outline-none focus:border-primary/40" />
+                <span className="mb-1 block text-[11px] text-muted">{isEmoji ? "Emoji" : "Text"}</span>
+                {isEmoji
+                  ? <input value={drawing.text ?? ""} onChange={(event) => onChange({ ...drawing, text: event.target.value })} className="h-12 w-full rounded-lg border border-border bg-background px-3 text-center text-2xl outline-none focus:border-primary/40" />
+                  : <textarea value={drawing.text ?? ""} onChange={(e) => onChange({ ...drawing, text: e.target.value })} rows={3} className="w-full rounded-lg border border-border bg-background p-2 text-[12px] outline-none focus:border-primary/40" />}
               </label>
-              <Row label="Font size"><Select value={String(drawing.style.fontSize)} onChange={(v) => patchStyle({ fontSize: Number(v) })} options={[["10", "10"], ["11", "11"], ["12", "12"], ["13", "13"], ["14", "14"], ["16", "16"], ["18", "18"], ["22", "22"]]} /></Row>
+              {isEmoji
+                ? <Row label={`Size · ${Math.round(drawing.style.fontSize ?? 36)}px`}><input type="range" min={16} max={160} step={1} value={drawing.style.fontSize ?? 36} onChange={(event) => patchStyle({ fontSize: Number(event.target.value) })} className="w-48 accent-primary" /></Row>
+                : <Row label="Font size"><Select value={String(drawing.style.fontSize)} onChange={(v) => patchStyle({ fontSize: Number(v) })} options={[["10", "10"], ["11", "11"], ["12", "12"], ["13", "13"], ["14", "14"], ["16", "16"], ["18", "18"], ["22", "22"]]} /></Row>}
             </>
           ) : null}
 

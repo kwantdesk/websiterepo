@@ -39,6 +39,8 @@ type Props = {
   plotBottomInset?: number;
   height: number;
   activeTool: DrawToolId;
+  /** Emoji armed in the toolbar; persisted in Drawing.text when placed. */
+  emoji: string;
   keepDrawing: boolean;
   drawings: Drawing[];
   selectedId: string | null;
@@ -81,7 +83,7 @@ const dashFor = (style: DrawLineStyle, width: number) =>
 const TEXT_INPUT_TOOLS: DrawToolId[] = ["text", "note", "callout", "signpost", "priceLabel", "flagMark"];
 
 export default function ChartDrawLayer({
-  width, height, priceScaleWidth = 0, activeTool, keepDrawing, drawings, selectedId,
+  width, height, priceScaleWidth = 0, activeTool, emoji, keepDrawing, drawings, selectedId,
   toX, toY, fromXY, candles, magnet, magnetStrength, viewportVersion, chartReady, subscribeViewport,
   plotTopInset = 0, plotBottomInset = 0, onCommit, onUpdate, onDelete, onSelect, onToolConsumed, onRequestText, onOpenSettings, themeColor, themeBearColor,
 }: Props) {
@@ -348,7 +350,7 @@ export default function ChartDrawLayer({
         }
       }
     }
-    onCommit(createDrawing(tool, committed));
+    onCommit(createDrawing(tool, committed, tool === "emoji" ? emoji : undefined));
     setPending(null);
     // Drawing is repetitive by nature: finishing one stroke should leave the
     // pencil in hand rather than dropping back to the cursor every time.
@@ -703,6 +705,34 @@ export default function ChartDrawLayer({
     window.addEventListener("pointercancel", cleanup);
   };
 
+  /** Resize an emoji in pixels while leaving its time/price anchor untouched. */
+  const beginEmojiResize = (drawing: Drawing, event: ReactPointerEvent) => {
+    event.stopPropagation();
+    onSelect(drawing.id);
+    const anchor = drawing.points[0];
+    const anchorX = anchor ? toX(anchor.time) : null;
+    const anchorY = anchor ? toY(anchor.price) : null;
+    if (anchorX == null || anchorY == null) return;
+    const onMove = (moveEvent: PointerEvent) => {
+      const rect = svgRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const dx = Math.abs(moveEvent.clientX - rect.left - anchorX);
+      const dy = Math.abs(moveEvent.clientY - rect.top - anchorY);
+      const fontSize = Math.round(Math.max(16, Math.min(160, Math.max(dx, dy) * 2)));
+      onUpdate({ ...drawing, style: { ...drawing.style, fontSize } });
+    };
+    const cleanup = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", cleanup);
+      window.removeEventListener("pointercancel", cleanup);
+      dragCleanupRef.current = null;
+    };
+    dragCleanupRef.current = cleanup;
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", cleanup);
+    window.addEventListener("pointercancel", cleanup);
+  };
+
   const beginDrag = (drawing: Drawing, mode: "move" | number, event: ReactPointerEvent) => {
     event.stopPropagation();
     onSelect(drawing.id);
@@ -993,6 +1023,10 @@ export default function ChartDrawLayer({
   const bodyHit = (drawing: Drawing, coords: XY[], px: number, py: number): boolean => {
     const a = coords[0];
     if (a.x == null || a.y == null) return false;
+    if (drawing.tool === "emoji") {
+      const size = Math.max(16, Math.min(160, Number(drawing.style.fontSize ?? 36)));
+      return Math.abs(px - a.x) <= size / 2 + 5 && Math.abs(py - a.y) <= size / 2 + 5;
+    }
     if (drawing.tool === "horizontalLine" || drawing.tool === "horizontalRay") {
       return Math.abs(py - a.y) <= 6 && (drawing.tool === "horizontalLine" || px >= a.x);
     }
@@ -1268,6 +1302,19 @@ export default function ChartDrawLayer({
           const d = pr[1].price - pr[0].price; const pct = pr[0].price ? (d / pr[0].price) * 100 : 0; const bars = Math.round((pr[1].time - pr[0].time) / 60);
           const green = d >= 0 ? "#089981" : "#F23645";
           return <g><rect x={Math.min(a.x!, b.x)} y={Math.min(a.y!, b.y!)} width={Math.abs(b.x - a.x!)} height={Math.abs(b.y! - a.y!)} fill={green} fillOpacity={0.12} stroke={green} strokeWidth={1} />{line(a.x!, a.y!, b.x, b.y!, green)}{label(Math.min(a.x!, b.x) + 4, Math.min(a.y!, b.y!) - 4, `${d >= 0 ? "+" : ""}${d.toFixed(2)} (${pct.toFixed(2)}%) · ${bars}m`, green)}</g>;
+        }
+        case "emoji": {
+          if (a.x == null || a.y == null) return null;
+          const size = Math.max(16, Math.min(160, Number(style.fontSize ?? 36)));
+          return <text
+            x={a.x}
+            y={a.y}
+            textAnchor="middle"
+            dominantBaseline="central"
+            fontSize={size}
+            fontFamily={'"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif'}
+            style={{ userSelect: "none" }}
+          >{drawing.text || "🙂"}</text>;
         }
         case "entryArrow":
         case "exitArrow": {
@@ -1548,7 +1595,15 @@ export default function ChartDrawLayer({
                   <rect x={hitHorizontalBounds?.left ?? Math.min(...xs)} y={Math.min(...ys)} width={Math.max(1, (hitHorizontalBounds?.right ?? Math.max(...xs)) - (hitHorizontalBounds?.left ?? Math.min(...xs)))} height={Math.max(1, Math.max(...ys) - Math.min(...ys))} fill="transparent" />
                 </>
               : valid.length === 1
-                ? <circle cx={valid[0].x} cy={valid[0].y} r={12} fill="transparent" />
+                ? drawing.tool === "emoji"
+                  ? <rect
+                      x={valid[0].x - Math.max(16, Math.min(160, Number(drawing.style.fontSize ?? 36))) / 2 - 5}
+                      y={valid[0].y - Math.max(16, Math.min(160, Number(drawing.style.fontSize ?? 36))) / 2 - 5}
+                      width={Math.max(16, Math.min(160, Number(drawing.style.fontSize ?? 36))) + 10}
+                      height={Math.max(16, Math.min(160, Number(drawing.style.fontSize ?? 36))) + 10}
+                      fill="transparent"
+                    />
+                  : <circle cx={valid[0].x} cy={valid[0].y} r={12} fill="transparent" />
                 : null}
       </g>
     ) : null;
@@ -1568,6 +1623,12 @@ export default function ChartDrawLayer({
           minHalfWidth: FILL_MARKER_MIN_HALF_WIDTH_PX,
           minHalfHeight: FILL_MARKER_MIN_HALF_HEIGHT_PX,
         })
+      : null;
+    const emojiSize = drawing.tool === "emoji"
+      ? Math.max(16, Math.min(160, Number(drawing.style.fontSize ?? 36)))
+      : null;
+    const emojiResizeHandle = emojiSize != null && a.x != null && a.y != null
+      ? { x: a.x + emojiSize / 2, y: a.y + emojiSize / 2 }
       : null;
     /**
      * A grab handle: a small visible dot with a much larger invisible target.
@@ -1602,6 +1663,14 @@ export default function ChartDrawLayer({
         "ew-resize",
         (event) => beginFillMarkerResize(drawing, event),
       )
+      : emojiResizeHandle
+        ? grabHandle(
+          "emoji-size",
+          emojiResizeHandle.x,
+          emojiResizeHandle.y,
+          "nwse-resize",
+          (event) => beginEmojiResize(drawing, event),
+        )
       : positionCorners
         ? positionCorners.map((corner) => grabHandle(
           `c${corner.id}`,
@@ -1646,7 +1715,7 @@ export default function ChartDrawLayer({
   };
 
   const previewDrawing: Drawing | null = pending && cursor
-    ? { id: "__preview__", tool: pending.tool, points: freehandRef.current ? pending.points : [...pending.points, cursor], style: previewStyle(pending.tool) }
+    ? { id: "__preview__", tool: pending.tool, points: freehandRef.current ? pending.points : [...pending.points, cursor], style: previewStyle(pending.tool), text: pending.tool === "emoji" ? emoji : undefined }
     : null;
 
   const captureActive = active || activeTool === "eraser";

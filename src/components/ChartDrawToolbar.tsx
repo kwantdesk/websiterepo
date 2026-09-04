@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown } from "lucide-react";
+import { CHAT_EMOJIS } from "@/lib/emojis";
 import {
   DRAW_TOOL_GROUPS,
   DRAW_TOOL_LAST_USED_EVENT,
@@ -87,6 +88,7 @@ const ICONS: Partial<Record<DrawToolId, ToolIcon>> = {
   arrowMarker: svg(<><line x1="4" y1="20" x2="18" y2="6" /><path d="M13 5h6v6" /></>),
   flagMark: svg(<><line x1="6" y1="4" x2="6" y2="20" /><path d="M6 5h11l-3 4 3 4H6z" /></>),
   measure: svg(<><rect x="4" y="7" width="16" height="10" /><line x1="8" y1="7" x2="8" y2="11" /><line x1="12" y1="7" x2="12" y2="11" /><line x1="16" y1="7" x2="16" y2="11" /></>),
+  emoji: ({ className }) => <span className={`${className ?? ""} flex items-center justify-center leading-none`}>🙂</span>,
   regressionTrend: svg(<><line x1="4" y1="17" x2="20" y2="7" /><line x1="4" y1="20" x2="20" y2="10" strokeDasharray="2 2" /><line x1="4" y1="14" x2="20" y2="4" strokeDasharray="2 2" /></>),
   gannFan: svg(<><line x1="4" y1="20" x2="20" y2="4" /><line x1="4" y1="20" x2="20" y2="12" /><line x1="4" y1="20" x2="12" y2="4" /><line x1="4" y1="20" x2="20" y2="18" /></>),
   gannBox: svg(<><rect x="4" y="5" width="16" height="14" /><line x1="4" y1="12" x2="20" y2="12" /><line x1="12" y1="5" x2="12" y2="19" /></>),
@@ -103,6 +105,11 @@ const ICONS: Partial<Record<DrawToolId, ToolIcon>> = {
   anchoredVwap: svg(<><path d="M4 18v2" /><path d="M4 18c4 0 6-9 9-9s3 5 7-4" strokeDasharray="1 0" /></>),
 };
 
+const CHART_EMOJIS = Array.from(new Set([
+  "🧲", "📍", "⬆️", "⬇️", "➡️", "⬅️", "🟢", "🔴", "🟡", "🔵",
+  ...CHAT_EMOJIS,
+]));
+
 const fallbackIcon = svg(<circle cx="12" cy="12" r="7" />);
 const iconFor = (id: DrawToolId): ToolIcon => ICONS[id] ?? fallbackIcon;
 const toolsOf = (group: DrawToolGroupId): DrawToolId[] => DRAW_TOOL_LIST.filter((t) => t.group === group).map((t) => t.id);
@@ -112,10 +119,12 @@ type Props = {
   keepDrawing: boolean;
   magnet: boolean;
   magnetStrength: MagnetStrength;
+  emoji: string;
   onSelectTool: (tool: DrawToolId) => void;
   onToggleKeepDrawing: () => void;
   onToggleMagnet: () => void;
   onSelectMagnetStrength: (strength: MagnetStrength) => void;
+  onSelectEmoji: (emoji: string) => void;
   onOpenSettings: () => void;
   hasSelection: boolean;
   onDeleteSelection: () => void;
@@ -123,7 +132,7 @@ type Props = {
 };
 
 export default function ChartDrawToolbar({
-  activeTool, keepDrawing, magnet, magnetStrength, onSelectTool, onToggleKeepDrawing, onToggleMagnet, onSelectMagnetStrength, onOpenSettings, hasSelection, onDeleteSelection, onClearAll,
+  activeTool, keepDrawing, magnet, magnetStrength, emoji, onSelectTool, onToggleKeepDrawing, onToggleMagnet, onSelectMagnetStrength, onSelectEmoji, onOpenSettings, hasSelection, onDeleteSelection, onClearAll,
 }: Props) {
   const [magnetMenuOpen, setMagnetMenuOpen] = useState(false);
   const [magnetMenuPos, setMagnetMenuPos] = useState<{ left: number; top: number } | null>(null);
@@ -214,14 +223,15 @@ export default function ChartDrawToolbar({
         const shown = quickDrawToolForGroup(group.id, activeTool, lastUsedToolByGroup);
         const Icon = iconFor(shown);
         const groupActive = groupTools.includes(activeTool);
-        const multi = groupTools.length > 1;
+        const emojiGroup = group.id === "emoji";
+        const multi = groupTools.length > 1 || emojiGroup;
         return (
           <div key={group.id} className="relative shrink-0">
             <button
               type="button"
               onClick={() => selectTool(shown)}
               className={`${chip} ${groupActive ? "border-primary/40 bg-primary/[0.10] text-primary" : "border-transparent text-muted hover:bg-surface hover:text-foreground"}`}
-              title={DRAW_TOOL_SPECS[shown].label}
+              title={emojiGroup ? `Emoji · ${emoji}` : DRAW_TOOL_SPECS[shown].label}
             >
               <Icon className="h-4 w-4" />
             </button>
@@ -298,7 +308,29 @@ export default function ChartDrawToolbar({
       {openGroup && menuPos && typeof document !== "undefined"
         ? createPortal(
           <div ref={menuRef} className="fixed z-[280] max-h-[70vh] w-[218px] overflow-y-auto rounded-xl border border-border bg-panel/97 p-1.5 shadow-[0_22px_70px_rgba(0,0,0,0.55)] backdrop-blur-xl" style={{ left: menuPos.left, top: menuPos.top } as CSSProperties}>
-            {flyoutTools.map((toolId) => {
+            {openGroup === "emoji" ? (
+              <>
+                <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-panel/95 px-2 py-2 backdrop-blur-xl">
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted">Emoji</span>
+                  <span className="text-xl leading-none" aria-label="Selected emoji">{emoji}</span>
+                </div>
+                <div className="grid grid-cols-6 gap-1 p-1" role="listbox" aria-label="Chart emojis">
+                  {CHART_EMOJIS.map((value) => (
+                    <button
+                      key={value}
+                      type="button"
+                      role="option"
+                      aria-selected={value === emoji}
+                      aria-label={`Place ${value} on chart`}
+                      onClick={() => { onSelectEmoji(value); selectTool("emoji"); setOpenGroup(null); }}
+                      className={`flex h-8 w-8 items-center justify-center rounded-md text-lg leading-none transition-colors ${value === emoji ? "bg-primary/15 ring-1 ring-primary/50" : "hover:bg-surface"}`}
+                    >
+                      {value}
+                    </button>
+                  ))}
+                </div>
+              </>
+            ) : flyoutTools.map((toolId) => {
               const Icon = iconFor(toolId);
               const isActive = activeTool === toolId;
               return (

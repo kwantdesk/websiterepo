@@ -238,3 +238,13 @@ recap of the open items below and update this file when their state changes.
 - Smoothness work must not reduce market-data fidelity, execution admission or
   indicator calculation cadence. Optimise scheduling, projection and retained
   work before considering any lower-frequency data path.
+
+## 2026-09-04 — Chart emoji drawings
+
+- Emoji marks are chart drawings, never DOM stickers. Persist their emoji,
+  time, price and pixel size through the same chart/workspace drawing store as
+  lines and shapes so they remain attached during pan, zoom and reload.
+- Keep the Emoji rail group directly below Measure and give it a scrollable
+  picker that includes the magnet and the shared desk emoji catalogue.
+- A selected emoji may be dragged or resized from 16–160 px. Clicking away
+  hides its handle without moving or deleting it.
