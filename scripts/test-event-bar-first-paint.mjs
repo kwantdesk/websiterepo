@@ -17,8 +17,8 @@ assert.match(route, /: DEFAULT_HISTORY_DAYS;/);
 
 // 3. The window must reach the durable cache key, or every window would share
 //    one cached payload.
-assert.ok(route.includes('["cme-event-bars-v3", symbol, timeframe, cacheScope]'));
-assert.ok(route.includes('["cme-event-flow-v3", symbol, timeframe, cacheScope]'));
+assert.ok(route.includes('["cme-event-bars-v4", symbol, timeframe, cacheScope]'));
+assert.ok(route.includes('["cme-event-flow-v4", symbol, timeframe, cacheScope]'));
 
 // 4. The live stream must never BUILD event bars from an empty series. Volume,
 //    range and tick bars close on cumulative traded size, so starting from
@@ -46,4 +46,12 @@ assert.ok(
 //    deduplicate onto each other.
 assert.ok(workspace.includes('${healOnly ? "::heal" : ""}::${rangeScope}'));
 
-console.log("event bar first paint: 7/7 checks passed");
+// 8. The gateway event response already includes its recent exact flow tail.
+//    Starting the separate order-flow request as well makes the chart wait on
+//    a duplicate multi-hour tape download.
+assert.match(
+  workspace,
+  /const orderFlowRequest = includeOrderFlow && !eventBased && contractSymbol/,
+);
+
+console.log("event bar first paint: 8/8 checks passed");

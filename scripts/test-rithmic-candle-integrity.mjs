@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { CHART_INTERVAL_OPTIONS, isEventBasedChartInterval } from "../src/lib/chartIntervals.ts";
 import { applyMarketTradesToEventBars, futuresTickSize } from "../src/lib/eventBars.ts";
 import { futuresVenue } from "../src/lib/futuresVenue.ts";
+import { buildEventBars as buildGatewayEventBars } from "../services/rithmic_gateway/src/event-bar-builder.mjs";
 
 const catalogSource = readFileSync(new URL("../src/lib/databento.ts", import.meta.url), "utf8");
 const catalogBlock = catalogSource.slice(
@@ -43,7 +44,9 @@ for (const instrument of DATABENTO_FUTURES) {
       applyMarketTradesToEventBars([], records.slice(0, 60), interval.id, instrument.symbol, 5_000),
       records.slice(60), interval.id, instrument.symbol, 5_000,
     );
+    const gatewayBars = buildGatewayEventBars(records, interval.id, instrument.symbol, 5_000);
     assert.deepEqual(incremental, oneShot, `${instrument.symbol} ${interval.id} differs after an incremental update`);
+    assert.deepEqual(gatewayBars, oneShot, `${instrument.symbol} ${interval.id} differs between gateway and browser builders`);
     assert.ok(oneShot.length > 0, `${instrument.symbol} ${interval.id} produced no bars`);
     let previousTimestamp = -Infinity;
     for (const candle of oneShot) {

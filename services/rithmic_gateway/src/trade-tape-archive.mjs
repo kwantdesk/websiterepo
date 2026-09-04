@@ -6,6 +6,7 @@ import { chicagoTradingDate } from "./trading-session.mjs";
 import { resolveInstrument } from "./recorder.mjs";
 import { tradeFromRecord } from "./futures-bar-archive.mjs";
 import { readArchiveRecords } from "./archive-reader.mjs";
+import { createEventBarBuilder, eventInterval } from "./event-bar-builder.mjs";
 
 /**
  * Every print, compactly, so range and volume bars have a history.
@@ -34,6 +35,10 @@ const DEFAULT_FLUSH_MS = 5_000;
 // recorder's reasoning: throughput beats ratio when the alternative is a hole.
 const GZIP_LEVEL = 1;
 const MAX_SERVED_TIME_BARS = 500_000;
+const MAX_SERVED_EVENT_BARS = 250_000;
+const EVENT_CACHE_MS = 15_000;
+const EVENT_FLOW_LOOKBACK_MS = 6 * 60 * 60_000;
+const MAX_EVENT_FLOW_BUCKETS = 30_000;
 
 /**
  * Fallback roots used outside the configured production server.
@@ -150,6 +155,7 @@ export class TradeTapeArchive {
     this.lastError = null;
     this.flushTimer = null;
     this.detach = () => {};
+    this.eventRequests = new Map();
   }
 
   status() {
@@ -374,6 +380,108 @@ export class TradeTapeArchive {
       earliestMs: kept.length ? kept[0].timestamp : null,
       trades: kept,
     };
+  }
+
+  /**
+   * Build range, volume, trade, delta, Renko and point/figure bars beside the
+   * archive instead of sending millions of raw prints through Vercel.
+   *
+   * The scan is chronological and bounded in memory: only finished bars and a
+   * six-hour one-second flow tail are retained. Identical requests from many
+   * browser panes share one promise, and the live bucket is refreshed every
+   * fifteen seconds so a newly opened chart has no historical/live hole.
+   */
+  async loadEventBars({ exchange, symbol, interval, fromMs, toMs, limit = MAX_SERVED_EVENT_BARS }) {
+    if (!eventInterval(interval)) throw new Error(`Unsupported event interval: ${interval}`);
+    const upper = String(exchange || "").toUpperCase();
+    const upperSymbol = String(symbol || "").toUpperCase();
+    const end = Number.isFinite(Number(toMs)) && Number(toMs) > 0 ? Number(toMs) : Date.now();
+    const start = Number.isFinite(Number(fromMs)) && Number(fromMs) > 0
+      ? Number(fromMs)
+      : end - 10 * 86_400_000;
+    const cap = Math.max(1, Math.min(MAX_SERVED_EVENT_BARS, Number(limit) || MAX_SERVED_EVENT_BARS));
+    const startDate = chicagoTradingDate(start);
+    const endBucket = Math.floor(end / EVENT_CACHE_MS);
+    const key = `${upper}:${upperSymbol}:${interval}:${startDate}:${endBucket}:${cap}`;
+    const existing = this.eventRequests.get(key);
+    if (existing) return existing;
+
+    const request = (async () => {
+      const builder = createEventBarBuilder(interval, upperSymbol, cap);
+      const executions = [];
+      const flowStart = end - EVENT_FLOW_LOOKBACK_MS;
+      const dates = new Set();
+      for (let at = start; at < end; at += 6 * 60 * 60_000) dates.add(chicagoTradingDate(at));
+      dates.add(chicagoTradingDate(end));
+      let sourceRecordCount = 0;
+      let earliestMs = null;
+      let latestMs = null;
+
+      const accept = (row) => {
+        const trade = decodeTrade(row);
+        if (!trade || trade.timestamp < start || trade.timestamp > end) return;
+        const price = Number(trade.price);
+        const size = Math.max(0, Number(trade.size) || 0);
+        if (!Number.isFinite(price) || price <= 0 || size <= 0) return;
+        const delta = Number(trade.side) > 0 ? size : Number(trade.side) < 0 ? -size : 0;
+        builder.add({ timestamp: trade.timestamp, price, size, trades: 1, delta });
+        sourceRecordCount += 1;
+        earliestMs = earliestMs === null ? trade.timestamp : Math.min(earliestMs, trade.timestamp);
+        latestMs = latestMs === null ? trade.timestamp : Math.max(latestMs, trade.timestamp);
+        if (!delta || trade.timestamp < flowStart) return;
+        const bucket = Math.floor(trade.timestamp / 1_000) * 1_000;
+        const previous = executions.at(-1);
+        const ask = delta > 0 ? size : 0;
+        const bid = delta < 0 ? size : 0;
+        if (previous?.[0] === bucket) {
+          previous[1] = price;
+          previous[2] += size;
+          previous[3] += delta;
+          previous[4] += ask;
+          previous[5] += bid;
+          previous[6] += 1;
+        } else {
+          executions.push([bucket, price, size, delta, ask, bid, 1, "flow"]);
+          if (executions.length > MAX_EVENT_FLOW_BUCKETS) executions.shift();
+        }
+      };
+
+      for (const tradingDate of [...dates].sort()) {
+        // Backfill is older than the first live print by construction.
+        for (const name of [
+          backfillFileName(upper, upperSymbol),
+          instrumentFileName(upper, upperSymbol),
+        ]) {
+          const file = join(this.dir, tradingDate, name);
+          if (existsSync(file)) await readArchiveRecords(file, accept);
+        }
+      }
+
+      return {
+        exchange: upper,
+        symbol: upperSymbol,
+        interval: String(interval),
+        source: "Rithmic recorded trade tape",
+        startMs: start,
+        endMs: end,
+        earliestMs,
+        latestMs,
+        sourceRecordCount,
+        truncated: false,
+        candles: builder.finish(),
+        executions,
+      };
+    })().finally(() => {
+      // Retain the settled promise for this live time bucket, while preventing
+      // a long-running process from accumulating old buckets forever.
+      if (this.eventRequests.size > 128) {
+        for (const oldKey of [...this.eventRequests.keys()].slice(0, this.eventRequests.size - 96)) {
+          this.eventRequests.delete(oldKey);
+        }
+      }
+    });
+    this.eventRequests.set(key, request);
+    return request;
   }
 
   /**

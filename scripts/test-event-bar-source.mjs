@@ -47,8 +47,8 @@ let passed = 0;
 const check = (name, fn) => { fn(); passed += 1; console.log(`  ok  ${name}`); };
 
 check("event bars ask the collector, not the vendor", () => {
-  assert.match(eventBranch, /fetchRecordedTrades\(/,
-    "event bars do not use the complete paged recorded tape");
+  assert.match(eventHistory, /fetchGatewayEventHistory\(/,
+    "event bars are not folded beside the recorder");
   assert.ok(
     !/schema: "trades"/.test(eventBranch),
     "the event-bar path still asks the vendor for a raw trades feed",
@@ -61,7 +61,7 @@ check("the recorded aggressor is used, never re-derived", () => {
    * means the feed did not say, and a delta bar must show no delta rather than
    * a guessed one.
    */
-  assert.match(eventHistory, /delta: trade\.side > 0 \? trade\.size : trade\.side < 0 \? -trade\.size : 0,/);
+  assert.match(tape, /const delta = Number\(trade\.side\) > 0 \? size : Number\(trade\.side\) < 0 \? -size : 0;/);
   assert.ok(
     !/databentoTradeAggressor\(trade\.side/.test(eventHistory),
     "the vendor's aggressor inference is still in the event-bar path",
@@ -78,6 +78,7 @@ check("the gateway serves the tape", () => {
   assert.match(server, /url\.pathname === "\/v1\/market-data\/trade-tape"/);
   assert.match(server, /tradeTape\.attach\(client\);/, "the tape is not fed by the live stream");
   assert.match(server, /await tradeTape\.close\(\)/, "shutdown does not flush the tape");
+  assert.match(server, /await tradeTape\.loadEventBars\(/, "history does not use the compact gateway event builder");
 });
 
 check("all four contracts are taped", () => {
@@ -100,7 +101,7 @@ check("the tape is readable while the session is still running", () => {
 });
 
 check("the module the chart route actually calls reads the tape", () => {
-  assert.match(eventHistory, /fetchRecordedTrades\(/, "event bars do not read the recorded tape");
+  assert.match(eventHistory, /\/v1\/market-data\/history\?\$\{query\}/, "event bars do not call the recorder history route");
   /*
    * The vendor answered 422 "requires a subscription" for the whole window, so
    * every range, volume, renko and tick chart returned no history at all.
@@ -109,10 +110,7 @@ check("the module the chart route actually calls reads the tape", () => {
     !/GLBX\.MDP3/.test(eventHistory),
     "the event-history module still asks the vendor for CME data",
   );
-  assert.ok(
-    !/vendorMarketDataFetch\(/.test(eventHistory),
-    "an event-history path still calls the vendor",
-  );
+  assert.match(tape, /createEventBarBuilder\(interval, upperSymbol, cap\)/);
 });
 
 check("order flow comes from the same prints as the geometry", () => {
@@ -122,12 +120,11 @@ check("order flow comes from the same prints as the geometry", () => {
    * second-pass aggregate over a different tape produces flow that does not
    * match the bars it is drawn on.
    */
-  const flow = eventHistory.slice(eventHistory.indexOf("async function streamEventFlow"));
-  assert.match(flow, /fetchRecordedTrades\(/);
-  assert.match(flow, /const askVolume = trade\.side > 0 \? trade\.size : 0;/);
-  assert.match(flow, /const bidVolume = trade\.side < 0 \? trade\.size : 0;/);
-  // A print with no reported side carries no delta and cannot bucket.
-  assert.match(flow, /if \(delta === 0 \|\| !args\.candles\.length\) continue;/);
+  const fold = tape.slice(tape.indexOf("async loadEventBars"));
+  assert.match(fold, /builder\.add\(\{ timestamp: trade\.timestamp, price, size, trades: 1, delta \}\)/);
+  assert.match(fold, /const ask = delta > 0 \? size : 0;/);
+  assert.match(fold, /const bid = delta < 0 \? size : 0;/);
+  assert.match(fold, /if \(!delta \|\| trade\.timestamp < flowStart\) return;/);
 });
 
 check("there is one reader, not a copy per consumer", () => {

@@ -3761,7 +3761,11 @@ async function fetchWorkspaceCandles(
     const request = (async () => {
       const eventBased = isEventBasedChartInterval(timeframe);
       const contractSymbol = currentCmeContract(symbol);
-      const orderFlowRequest = includeOrderFlow && contractSymbol && !healOnly && !historicalRange
+      // Event history already returns its compact recent execution tail from
+      // the recorder in the same response as the bars. Opening the separate
+      // live-book archive as well duplicated tens of hours of prints and made
+      // the chart wait for the slower of two equivalent requests.
+      const orderFlowRequest = includeOrderFlow && !eventBased && contractSymbol && !healOnly && !historicalRange
         ? fetchWorkspaceOrderFlow(symbol, timeframe, contractSymbol)
         : Promise.resolve(null);
       const response = await fetch(

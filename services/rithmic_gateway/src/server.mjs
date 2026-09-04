@@ -1583,6 +1583,23 @@ const server = createServer(async (request, response) => {
       }
       try {
         const interval = url.searchParams.get("interval");
+        if (isEventBasedInterval(interval)) {
+          const eventHistory = await tradeTape.loadEventBars({
+            exchange: instrument.exchange,
+            symbol: instrument.symbol,
+            interval,
+            fromMs: url.searchParams.get("fromMs"),
+            toMs: url.searchParams.get("toMs"),
+            limit: url.searchParams.get("limit"),
+          });
+          return json(response, 200, {
+            ...eventHistory,
+            executions: url.searchParams.get("orderFlow") === "1"
+              && url.searchParams.get("exec") !== "0"
+              ? eventHistory.executions
+              : [],
+          });
+        }
         const intervalMs = parseIntervalMs(interval);
         const subMinute = /^\d+s$/.test(String(interval || "").trim()) && intervalMs < 60_000;
         const history = subMinute

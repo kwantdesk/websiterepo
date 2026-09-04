@@ -17,6 +17,7 @@ import {
   vendorMarketDataConfigured,
   vendorMarketDataFetch,
 } from "@/lib/vendorMarketData.server";
+import { fetchInstitutionalMarketData } from "@/lib/institutionalMarketData.server";
 
 // Event charts must retain the same five-session history window as time-based
 // charts. The previous 5,000-bar tail was too small for active contracts on
@@ -64,6 +65,47 @@ export type DatabentoEventExecutionTuple = [
   trades?: number,
   kind?: "flow",
 ];
+
+type GatewayEventHistory = {
+  candles: Candle[];
+  executions: DatabentoEventExecutionTuple[];
+};
+
+async function fetchGatewayEventHistory(args: {
+  symbol: string;
+  timeframe: string;
+  startMs: number;
+  endMs: number;
+  includeExecutions: boolean;
+}): Promise<GatewayEventHistory> {
+  const query = new URLSearchParams({
+    symbol: args.symbol,
+    interval: args.timeframe,
+    fromMs: String(Math.round(args.startMs)),
+    toMs: String(Math.round(args.endMs)),
+    limit: String(MAX_EVENT_BARS),
+    orderFlow: args.includeExecutions ? "1" : "0",
+    exec: args.includeExecutions ? "1" : "0",
+  });
+  const response = await fetchInstitutionalMarketData(
+    `/v1/market-data/history?${query}`,
+    { method: "GET" },
+    120_000,
+  );
+  const payload = await response.json().catch(() => null) as {
+    candles?: unknown;
+    executions?: unknown;
+    error?: unknown;
+  } | null;
+  if (!response.ok) {
+    throw new Error(String(payload?.error || `Rithmic event history failed (${response.status}).`));
+  }
+  const candles = Array.isArray(payload?.candles) ? payload.candles as Candle[] : [];
+  const executions = Array.isArray(payload?.executions)
+    ? payload.executions as DatabentoEventExecutionTuple[]
+    : [];
+  return { candles, executions };
+}
 
 function fixedPrice(value: unknown) {
   const parsed = typeof value === "number" ? value : Number(value);
@@ -258,13 +300,14 @@ export async function getDatabentoEventBars(
     throw new Error("A valid CME event-history window is required.");
   }
   if (!isEventBasedChartInterval(timeframe)) throw new Error(`Unsupported event interval: ${timeframe}`);
-  const schema = eventHistorySchema(timeframe);
-  return streamEventBars({
+  const history = await fetchGatewayEventHistory({
     symbol,
     timeframe,
-    start: adaptiveEventStart(timeframe, requestedStart, requestedEnd, schema),
-    end: requestedEnd,
+    startMs: adaptiveEventStart(timeframe, requestedStart, requestedEnd, eventHistorySchema(timeframe)),
+    endMs: requestedEnd,
+    includeExecutions: false,
   });
+  return history.candles;
 }
 
 export async function getDatabentoEventHistory(
@@ -284,6 +327,21 @@ export async function getDatabentoEventHistory(
     throw new Error("A valid CME event-history window is required.");
   }
   if (!isEventBasedChartInterval(timeframe)) throw new Error(`Unsupported event interval: ${timeframe}`);
+
+  // The recorder scans and folds the tape once beside the NVMe files. The old
+  // path downloaded the complete raw tape to Vercel to build candles, then
+  // downloaded the newest six hours again for indicator flow. That made a
+  // cold 40R selection take 10-20 seconds and charged serverless CPU/origin
+  // transfer for work the recorder can do once for every user.
+  if (executionStartMs === undefined) {
+    return fetchGatewayEventHistory({
+      symbol,
+      timeframe,
+      startMs: requestedStart,
+      endMs: requestedEnd,
+      includeExecutions: true,
+    });
+  }
 
   const candles = await getDatabentoEventBars(symbol, timeframe, start, end);
   const latestCandleTimestamp = Number(candles.at(-1)?.timestamp ?? 0);

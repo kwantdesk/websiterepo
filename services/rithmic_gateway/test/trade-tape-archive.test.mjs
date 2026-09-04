@@ -440,3 +440,34 @@ test("sub-minute bars are folded from executions with exact OHLCV and flow", asy
     );
   });
 });
+
+test("event bars are folded once beside the tape with exact flow and a shared cache", async () => {
+  await withArchive(async (archive) => {
+    const client = new EventEmitter();
+    archive.attach(client);
+    const rows = [
+      [0, 100, 2, "BUY"],
+      [1_000, 105, 3, "SELL"],
+      [2_000, 110, 4, "BUY"],
+      [3_000, 99, 5, "SELL"],
+      [4_000, 112, 6, "BUY"],
+    ];
+    for (const [offset, price, size, side] of rows) {
+      client.emit("rawMessage", print(offset, price, size, side));
+    }
+    await archive.close();
+
+    const args = {
+      exchange: "CME", symbol: "NQU6", interval: "40r",
+      fromMs: T0 - 1, toMs: T0 + 10_000,
+    };
+    const first = await archive.loadEventBars(args);
+    const second = await archive.loadEventBars(args);
+    assert.strictEqual(second, first, "identical pane requests did not share the settled event result");
+    assert.ok(first.candles.length >= 2);
+    assert.equal(first.sourceRecordCount, rows.length);
+    assert.equal(first.executions.reduce((sum, row) => sum + row[2], 0), 20);
+    assert.equal(first.candles.reduce((sum, candle) => sum + candle.volume, 0), 20);
+    assert.ok(first.candles.every((candle) => candle.high >= candle.low));
+  });
+});

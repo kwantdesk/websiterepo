@@ -108,7 +108,7 @@ async function getDurableEventBars(
         executions: [] as DatabentoExecutionTuple[],
       });
     },
-    ["cme-event-bars-v3", symbol, timeframe, cacheScope],
+    ["cme-event-bars-v4", symbol, timeframe, cacheScope],
     { revalidate: DURABLE_EVENT_HISTORY_REVALIDATE_SECONDS },
   )();
   return decodeHistory<EventBarsPayload>(encoded);
@@ -138,7 +138,7 @@ async function getDurableEventHistory(
       }
       return encodeHistory(history);
     },
-    ["cme-event-flow-v3", symbol, timeframe, cacheScope],
+    ["cme-event-flow-v4", symbol, timeframe, cacheScope],
     { revalidate: DURABLE_EVENT_HISTORY_REVALIDATE_SECONDS },
   )();
   return decodeHistory<EventHistoryPayload>(encoded);
