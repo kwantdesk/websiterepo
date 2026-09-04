@@ -266,3 +266,8 @@ recap of the open items below and update this file when their state changes.
   diagonal cell imbalance: High uses Ask at high-1 divided by Ask at the high;
   Low uses Bid at low+1 divided by Bid at the low. Its documented Bar mode
   selects High on bearish bars and Low on bullish bars.
+- Stop Spotter must never infer its inputs from OHLC candles. Its delta,
+  horizontal-delta and consecutive diagonal-imbalance gates require exact
+  classified Rithmic executions at one-tick price rows; otherwise it must show
+  `WAITING_FOR_VOLUME_AT_PRICE`. `Seconds to close` is permitted on a forming
+  bar only when the chart has a deterministic clock-based close.

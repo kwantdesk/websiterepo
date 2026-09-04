@@ -452,6 +452,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "bar-poc-indicator",
   "dynamic-poc",
   "ratio-highlight",
+  "stop-spotter",
   "moving-average",
   "vwap",
   "vwap-envelopes",
@@ -646,6 +647,15 @@ const themeColourMapFor = (indicatorId: string, chartSettings: ChartSettings) =>
     return {
       bidColor: chartSettings.downColor,
       askColor: chartSettings.upColor,
+    } as Record<string, string>;
+  }
+  if (indicatorId === "stop-spotter") {
+    return {
+      buyColor: chartSettings.upColor,
+      sellColor: chartSettings.downColor,
+      contractBuyTextColor: chartSettings.upColor,
+      contractSellTextColor: chartSettings.downColor,
+      contractBackgroundColor: chartSettings.backgroundColor,
     } as Record<string, string>;
   }
   // Big Contracts and Big Blocks paint their two sides from the theme's up and
@@ -6557,6 +6567,29 @@ export default function ChartIndicatorsControl({
                     </KwantSelect>
                   </label>
                   <p className="text-[8px] leading-4 text-muted sm:col-span-2">Ratio High compares Ask at the penultimate upper tick with Ask at the high. Ratio Low compares Bid at the penultimate lower tick with Bid at the low. Markers require exact one-tick Rithmic executions and are never inferred from OHLC.</p>
+                </div>
+              ) : null}
+
+              {settingsDefinition.id === "stop-spotter" ? (
+                <div className="grid gap-3 border border-primary/20 bg-primary/[0.035] p-3 sm:grid-cols-2">
+                  {[
+                    ["Calculation mode", "calculationMode", "Stop Spotter calculation mode", [["close", "Close"], ["seconds-to-close", "Seconds to close"]]],
+                    ["Marker price", "plotPrice", "Stop Spotter marker price", [["price-slope", "Price slope"], ["high", "High"], ["low", "Low"]]],
+                    ["Marker style", "markerStyle", "Stop Spotter marker style", [["square", "Square"], ["circle", "Circle"], ["diamond", "Diamond"], ["cross", "Cross"], ["triangle", "Triangle"]]],
+                    ["Auto colour", "autoColor", "Stop Spotter auto colour", [["none", "None"], ["direction", "Direction"]]],
+                    ["Line style", "lineStyle", "Stop Spotter line style", [["solid", "Solid"], ["dashed", "Dashed"], ["dotted", "Dotted"]]],
+                    ["Alert tone", "alertTone", "Stop Spotter alert tone", [["chime", "Chime"], ["bell", "Bell"], ["pulse", "Pulse"]]],
+                  ].map(([label, key, menuLabel, options]) => (
+                    <label key={String(key)} className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                      <span>{String(label)}</span>
+                      <KwantSelect value={String(settingsInstance.settings?.[String(key)] ?? options[0][0])} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [String(key)]: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel={String(menuLabel)}>
+                        {(options as string[][]).map(([value, text]) => <option key={value} value={value}>{text}</option>)}
+                      </KwantSelect>
+                    </label>
+                  ))}
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"><span>Short name</span><input type="text" maxLength={40} value={String(settingsInstance.settings?.shortName ?? "Stop Run")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), shortName: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none" /></label>
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"><span>Popup message</span><input type="text" maxLength={160} value={String(settingsInstance.settings?.messageText ?? "Stop Run")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), messageText: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none" /></label>
+                  <p className="text-[8px] leading-4 text-muted sm:col-span-2">Stop Spotter requires every documented condition on the same directional bar: delta, total and increased volume, body and price continuation, horizontal delta, and consecutive diagonal imbalances. Closed-bar mode never signals a forming candle.</p>
                 </div>
               ) : null}
 

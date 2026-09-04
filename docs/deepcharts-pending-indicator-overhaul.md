@@ -39,8 +39,8 @@ Legend: `[ ]` not complete, `[~]` in progress, `[x]` complete and addable.
 | 1 | Unfinished Auction | `unfinished-auction` | [x] | [x] | [x] | [x] | [x] | Add |
 | 2 | Bar POC Indicator | `bar-poc-indicator` | [x] | [x] | [x] | [x] | [x] | Add |
 | 3 | Dynamic POC | `dynamic-poc` | [x] | [x] | [x] | [x] | [x] | Add |
-| 4 | Ratio Highlight | `ratio-highlight` | [x] | [x] | [x] | [x] | [~] | Release candidate |
-| 5 | Stop Spotter | `stop-spotter` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
+| 4 | Ratio Highlight | `ratio-highlight` | [x] | [x] | [x] | [x] | [x] | Add |
+| 5 | Stop Spotter | `stop-spotter` | [x] | [x] | [x] | [x] | [~] | Release candidate |
 | 6 | Cumulative Iceberg/Stop | `cumulative-iceberg-stop` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
 | 7 | Book Speed | `book-speed` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
 | 8 | KWANT Delta | `deep-delta` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
@@ -145,7 +145,35 @@ Legend: `[ ]` not complete, `[~]` in progress, `[x]` complete and addable.
   candle, behind price, using theme-linked Ask/High and Bid/Low colours. The
   settings modal exposes the three modes, both bounds, opacity, colours,
   templates and saved-state handling. Focused formula/mode/bound/missing-data
-  tests, TypeScript and whitespace checks pass; deployment visual QA remains.
+  tests, TypeScript and whitespace checks pass. Production commit `62dab2d3`
+  reached Ready; production QA found and corrected a React status-publication
+  starvation edge case in `c4f837db`. A cache-busted production load then
+  confirmed LIVE state, visible marker rendering under permissive test bounds,
+  complete settings and clean removal of the temporary QA instance.
+
+### 5: Stop Spotter
+
+- Current official help and the installed `ProxyNode` metadata expose the full
+  detection contract: minimum delta percentage, total volume, volume increase,
+  body ticks, price continuation ticks, horizontal delta, imbalance percentage
+  and count, Close/Seconds-to-close calculation modes, plot price, contract
+  sizing, alert/popup and generic subgraph controls. The observable defaults are
+  25%, 1,500, 500, 6, 1, 60, 200%, 2, Close and 15 seconds.
+- The protected formula body is not inspectable, so Quant Desk implements and
+  documents an explicit conjunction of those conditions rather than claiming a
+  copied proprietary formula. It operates only on exact Rithmic classified
+  volume-at-price rows and refuses OHLC-only data. Close mode evaluates closed
+  bars; Seconds-to-close can evaluate the forming bar only when a deterministic
+  clock-bar close is known.
+- Buy and sell candidates require aligned candle direction and delta, then pass
+  every threshold. Horizontal delta is evaluated at each price row and the
+  imbalance gate uses consecutive diagonal Ask/Bid comparisons. Marker price,
+  five shapes, width/style, labels, backgrounds, theme/custom/chart colour,
+  alert fields and instrument tick-value-aware contract sizing are wired.
+- Focused tests cover both sides, each independent detection threshold, forming
+  bar timing, missing source data, settings bounds and contract sizing. The full
+  TypeScript and whitespace checks pass; exact-commit deployment and production
+  add/render/settings/removal QA remain before the catalogue row is final.
 
 - Quant Desk already has a tested `PocAuctionSuiteEngine` driven by exact
   execution-classified Footprint rows. It calculates raw-tick unfinished

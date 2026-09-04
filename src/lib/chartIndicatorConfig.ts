@@ -30,6 +30,7 @@ import {
 } from "@/lib/barPocIndicator";
 import { DEFAULT_DYNAMIC_POC_SETTINGS, DYNAMIC_POC_SETTINGS_VERSION, normalizeDynamicPocSettings } from "@/lib/dynamicPoc";
 import { DEFAULT_RATIO_HIGHLIGHT_SETTINGS, normalizeRatioHighlightSettings, RATIO_HIGHLIGHT_SETTINGS_VERSION } from "@/lib/ratioHighlight";
+import { DEFAULT_STOP_SPOTTER_SETTINGS, normalizeStopSpotterSettings, STOP_SPOTTER_SETTINGS_VERSION } from "@/lib/stopSpotter";
 
 export const LIVE_CHART_INDICATOR_IDS = new Set([
   "gamma-environment",
@@ -55,6 +56,7 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "bar-poc-indicator",
   "dynamic-poc",
   "ratio-highlight",
+  "stop-spotter",
   "cumulative-volume-delta",
   "cvd-divergence",
   "pulling-stacking",
@@ -158,6 +160,22 @@ export function resolveDailyVolumeProfileCount(value: unknown): number {
 }
 
 export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[]> = {
+  "stop-spotter": [
+    { key: "minimumDeltaPercent", label: "Minimum delta (%)", defaultValue: 25, min: 0, max: 100, step: 1 },
+    { key: "minimumVolume", label: "Minimum volume", defaultValue: 1500, min: 0, max: 1000000, step: 50 },
+    { key: "minimumVolumeIncrease", label: "Minimum volume increase", defaultValue: 500, min: 0, max: 1000000, step: 50 },
+    { key: "minimumBodyTicks", label: "Minimum body ticks", defaultValue: 6, min: 2, max: 100, step: 1 },
+    { key: "minimumPriceTicksIncrease", label: "Minimum price ticks increase", defaultValue: 1, min: 0, max: 100, step: 1 },
+    { key: "minimumHorizontalDelta", label: "Minimum horizontal delta", defaultValue: 60, min: 0, max: 100000, step: 10 },
+    { key: "minimumImbalancePercent", label: "Minimum imbalance (%)", defaultValue: 200, min: 100, max: 1000, step: 25 },
+    { key: "minimumImbalanceCount", label: "Minimum consecutive imbalances", defaultValue: 2, min: 1, max: 20, step: 1 },
+    { key: "secondsToClose", label: "Seconds to close", defaultValue: 15, min: 0, max: 300, step: 1 },
+    { key: "maximumLoss", label: "Contract calculation maximum loss", defaultValue: 500, min: 0, max: 100000, step: 50 },
+    { key: "tickValueDivider", label: "Contract tick value divider", defaultValue: 1, min: 1, max: 100, step: 0.25 },
+    { key: "contractFontSize", label: "Contract calculation font size", defaultValue: 10, min: 6, max: 30, step: 0.2 },
+    { key: "contractTickOffset", label: "Contract calculation tick offset", defaultValue: 2, min: 0, max: 500, step: 1 },
+    { key: "lineWidth", label: "Marker line width", defaultValue: 2, min: 1, max: 8, step: 1 },
+  ],
   "ratio-highlight": [
     { key: "minRatio", label: "Minimum ratio", defaultValue: 10, min: 0, max: 100, step: 0.25 },
     { key: "maxRatio", label: "Maximum ratio (0 = no maximum)", defaultValue: 20, min: 0, max: 100, step: 0.25 },
@@ -1348,6 +1366,15 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     askColor: theme?.upColor ?? DEFAULT_RATIO_HIGHLIGHT_SETTINGS.askColor,
     schemaVersion: RATIO_HIGHLIGHT_SETTINGS_VERSION,
   } : {}),
+  ...(indicatorId === "stop-spotter" ? {
+    ...DEFAULT_STOP_SPOTTER_SETTINGS,
+    buyColor: theme?.upColor ?? DEFAULT_STOP_SPOTTER_SETTINGS.buyColor,
+    sellColor: theme?.downColor ?? DEFAULT_STOP_SPOTTER_SETTINGS.sellColor,
+    contractBuyTextColor: theme?.upColor ?? DEFAULT_STOP_SPOTTER_SETTINGS.contractBuyTextColor,
+    contractSellTextColor: theme?.downColor ?? DEFAULT_STOP_SPOTTER_SETTINGS.contractSellTextColor,
+    contractBackgroundColor: theme?.backgroundColor ?? DEFAULT_STOP_SPOTTER_SETTINGS.contractBackgroundColor,
+    schemaVersion: STOP_SPOTTER_SETTINGS_VERSION,
+  } : {}),
   ...(indicatorId === "tape-speed-order-flow-burst" ? {
     ...DEFAULT_TAPE_SPEED_SETTINGS,
     buyColor: theme?.upColor ?? DEFAULT_TAPE_SPEED_SETTINGS.buyColor,
@@ -2524,6 +2551,10 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
   if (normalizedInstance.indicatorId === "ratio-highlight") {
     const defaults = defaultIndicatorSettings("ratio-highlight");
     return { ...normalizedInstance, settings: { ...defaults, ...normalizeRatioHighlightSettings({ ...defaults, ...(normalizedInstance.settings ?? {}) }) } };
+  }
+  if (normalizedInstance.indicatorId === "stop-spotter") {
+    const defaults = defaultIndicatorSettings("stop-spotter");
+    return { ...normalizedInstance, settings: { ...defaults, ...normalizeStopSpotterSettings({ ...defaults, ...(normalizedInstance.settings ?? {}) }) } };
   }
   if (normalizedInstance.indicatorId === "tape-speed-order-flow-burst") {
     return {
