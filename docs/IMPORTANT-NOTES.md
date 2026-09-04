@@ -320,3 +320,11 @@ recap of the open items below and update this file when their state changes.
   Lightweight Charts time coordinates or a renderer; resolve it to the latest
   finite execution/bar timestamp first. This is covered by the KWANT Profile
   Swing regression added after the first production QA crash.
+- KWANT Profile Values is a level-only profile, not a second histogram. Build
+  POC/VA/VWAP/peak/valley reads only from exact classified Rithmic
+  volume-at-price, and keep its primitive independent from existing Daily,
+  Weekly, Composite and fixed-range profiles. Visible mode follows the native
+  viewport; overnight Filter/Split windows must not break at calendar
+  midnight. Historical Order input requires recorded resting-book-at-price
+  snapshots and must remain `WAITING FOR ORDER HISTORY` until that capability
+  exists—never relabel execution rows as orders.

@@ -302,6 +302,7 @@ import { DeepWallPrimitive } from "@/lib/deepWallPrimitive";
 import { buildDeepVTrackerFrame, normalizeDeepVTrackerSettings, type DeepVTrackerFrame } from "@/lib/deepVTracker";
 import { DeepVTrackerPrimitive } from "@/lib/deepVTrackerPrimitive";
 import { buildDeepProfileSwingFrame, normalizeDeepProfileSwingSettings, type DeepProfileSwingFrame } from "@/lib/deepProfileSwing";
+import { buildDeepProfileValuesFrame, normalizeDeepProfileValuesSettings, type DeepProfileValuesFrame } from "@/lib/deepProfileValues";
 import {
   buildCumulativeIcebergStopFrame,
   normalizeCumulativeIcebergStopSettings,
@@ -3254,6 +3255,7 @@ function Chart({
   const sessionWindowRenderDataRef = useRef<SessionWindowRenderData[]>([]);
   const volumeProfilePrimitiveRef = useRef<NativeVolumeProfilePrimitive | null>(null);
   const deepProfileSwingPrimitiveRef = useRef<NativeVolumeProfilePrimitive | null>(null);
+  const deepProfileValuesPrimitiveRef = useRef<NativeVolumeProfilePrimitive | null>(null);
   const tpoProfilePrimitiveRef = useRef<TpoProfilePrimitive | null>(null);
   const miniDomPrimitiveRef = useRef<MiniDomPrimitive | null>(null);
   const deltaLadderPrimitiveRef = useRef<DeltaLadderPrimitive | null>(null);
@@ -3921,6 +3923,7 @@ function Chart({
   const [deepWallFrame, setDeepWallFrame] = useState<DeepWallFrame | null>(null);
   const [deepVTrackerFrame, setDeepVTrackerFrame] = useState<DeepVTrackerFrame | null>(null);
   const [deepProfileSwingFrame, setDeepProfileSwingFrame] = useState<DeepProfileSwingFrame | null>(null);
+  const [deepProfileValuesFrame, setDeepProfileValuesFrame] = useState<DeepProfileValuesFrame | null>(null);
   const [pocAuctionTooltip, setPocAuctionTooltip] = useState<PocAuctionHit | null>(null);
   const [tapeSpeedTooltip, setTapeSpeedTooltip] = useState<TapeSpeedHit | null>(null);
   const [netGammaProfile, setNetGammaProfile] = useState<NetGammaProfileSnapshot | null>(null);
@@ -5768,6 +5771,10 @@ function Chart({
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "deep-profile-swing") ?? null,
     [indicatorSignature, indicators],
   );
+  const deepProfileValuesIndicator = useMemo(
+    () => indicators.find((instance) => instance.enabled && instance.indicatorId === "deep-profile-values") ?? null,
+    [indicatorSignature, indicators],
+  );
   const cumulativeIcebergStopIndicator = useMemo(
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "cumulative-iceberg-stop") ?? null,
     [indicatorSignature, indicators],
@@ -6677,6 +6684,23 @@ function Chart({
       vwapColor: visible.secondary,
     };
   }, [deepProfileSwingIndicator, settings]);
+  const deepProfileValuesSettings = useMemo(() => {
+    const normalized = normalizeDeepProfileValuesSettings(deepProfileValuesIndicator?.settings);
+    if (!normalized.useThemeColors) return normalized;
+    const visible = visibleIndicatorTheme(settings);
+    return {
+      ...normalized,
+      pocColor: visible.primary,
+      valueAreaColor: visible.secondary,
+      peakColor: visible.positive,
+      valleyColor: visible.negative,
+      vwapColor: visible.secondary,
+      vwapBandColor: visible.muted,
+      summaryTextColor: visible.primary,
+      askColor: visible.positive,
+      bidColor: visible.negative,
+    };
+  }, [deepProfileValuesIndicator, settings]);
 
   useEffect(() => {
     if (!unfinishedAuctionIndicator) {
@@ -13851,6 +13875,9 @@ function Chart({
     const deepProfileSwingPrimitive = new NativeVolumeProfilePrimitive();
     candleSeries.attachPrimitive(deepProfileSwingPrimitive);
     deepProfileSwingPrimitiveRef.current = deepProfileSwingPrimitive;
+    const deepProfileValuesPrimitive = new NativeVolumeProfilePrimitive();
+    candleSeries.attachPrimitive(deepProfileValuesPrimitive);
+    deepProfileValuesPrimitiveRef.current = deepProfileValuesPrimitive;
     const tpoProfilePrimitive = new TpoProfilePrimitive();
     candleSeries.attachPrimitive(tpoProfilePrimitive);
     tpoProfilePrimitiveRef.current = tpoProfilePrimitive;
@@ -14765,6 +14792,13 @@ function Chart({
             // Chart teardown can detach primitives before React cleanup runs.
           }
         }
+        if (candleSeriesRef.current && deepProfileValuesPrimitiveRef.current) {
+          try {
+            candleSeriesRef.current.detachPrimitive(deepProfileValuesPrimitiveRef.current);
+          } catch {
+            // Chart teardown can detach primitives before React cleanup runs.
+          }
+        }
         if (candleSeriesRef.current && sessionHighLowPrimitiveRef.current) {
           try {
             candleSeriesRef.current.detachPrimitive(sessionHighLowPrimitiveRef.current);
@@ -14970,6 +15004,7 @@ function Chart({
       darkPoolGexPrimitiveRef.current = null;
       volumeProfilePrimitiveRef.current = null;
       deepProfileSwingPrimitiveRef.current = null;
+      deepProfileValuesPrimitiveRef.current = null;
       tpoProfilePrimitiveRef.current = null;
       bigTradesPrimitiveRef.current = null;
       deepContractsPrimitiveRef.current = null;
@@ -15540,6 +15575,112 @@ function Chart({
     primitive.setModels(models);
     setDeepProfileSwingFrame(frame);
   }, [candleIntervalMs, candles, chartReadyRevision, contractSymbol, deepProfileSwingIndicator, deepProfileSwingSettings, footprintMarketTrades, instrument, priceFormat.minMove, rawPocAuctionBars, toolbarPlotLeftInset, volumeProfileLastCandleTimestamp]);
+
+  useEffect(() => {
+    const primitive = deepProfileValuesPrimitiveRef.current;
+    if (!primitive) return;
+    primitive.setPaneInsets({ left: toolbarPlotLeftInset, right: 0 });
+    if (!deepProfileValuesIndicator) {
+      primitive.setModels([]);
+      setDeepProfileValuesFrame(null);
+      return;
+    }
+    const visible = chartRef.current?.timeScale().getVisibleRange();
+    const visibleRange = visible && typeof visible.from === "number" && typeof visible.to === "number"
+      ? { startMs: visible.from * 1_000, endMs: visible.to * 1_000 }
+      : null;
+    const frame = buildDeepProfileValuesFrame(
+      rawPocAuctionBars,
+      instrument,
+      contractSymbol ?? instrument,
+      priceFormat.minMove,
+      deepProfileValuesSettings,
+      footprintMarketTrades,
+      visibleRange,
+    );
+    const lastCandleTime = volumeProfileLastCandleTimestamp === null ? null : Math.floor(volumeProfileLastCandleTimestamp / 1_000);
+    const intervalSeconds = candleIntervalMs ? candleIntervalMs / 1_000 : null;
+    const models: NativeVolumeProfileModel[] = frame.profiles.map((profile, index) => ({
+      id: `deep-profile-values:${profile.startMs}:${profile.endMs}:${profile.sessionId ?? "all"}:${index}`,
+      profile,
+      lastCandleTime,
+      intervalSeconds,
+      maxVolume: Math.max(1, ...profile.levels.map((level) => level.volume)),
+      maxAbsDelta: Math.max(1, ...profile.levels.map((level) => Math.abs(level.delta))),
+      lowPrice: profile.levels[0]?.price ?? Number.POSITIVE_INFINITY,
+      highPrice: profile.levels[profile.levels.length - 1]?.price ?? Number.NEGATIVE_INFINITY,
+      laterBars: candles.filter((candle) => candle.timestamp >= profile.endMs).map((candle) => ({ timestamp: candle.timestamp, high: candle.high, low: candle.low })),
+      style: {
+        mode: "volume",
+        widthBasis: "period-percent",
+        widthPercent: 0,
+        opacity: 0,
+        positiveDeltaColor: deepProfileValuesSettings.askColor,
+        negativeDeltaColor: deepProfileValuesSettings.bidColor,
+        outsideValueAreaColor: deepProfileValuesSettings.summaryTextColor,
+        valueAreaColor: deepProfileValuesSettings.valueAreaColor,
+        pocColor: deepProfileValuesSettings.pocColor,
+        showValueArea: false,
+        showDelta: false,
+        showProfileSpine: false,
+        showPocLine: deepProfileValuesSettings.showPocLine,
+        showValueAreaLines: deepProfileValuesSettings.showValueAreaLines,
+        showText: false,
+        showPocHighlight: false,
+        showProfileOutline: false,
+        automaticGrouping: false,
+        autoGroupFactor: deepProfileValuesSettings.autoGroupFactor,
+        manualGroupTicks: 1,
+        valueAreaPercent: deepProfileValuesSettings.valueAreaPercent,
+        snapMode: "off",
+        pocLineWidth: deepProfileValuesSettings.lineWidth,
+        pocExtensionMode: deepProfileValuesSettings.pocExtensionMode,
+        showDevelopingPoc: deepProfileValuesSettings.pocLineMode !== "show",
+        developingPocMode: deepProfileValuesSettings.pocLineMode === "extend-shifted" ? "extend-shifted" : "developing",
+        developingPocStartMs: deepProfileValuesSettings.developingPocStartMinutes * 60_000,
+        shiftedPocTicks: deepProfileValuesSettings.shiftedPocTicks,
+        shiftedPocOpacity: deepProfileValuesSettings.shiftedPocOpacity,
+        developingValueArea: deepProfileValuesSettings.showDevelopingValueArea ? "dash" : "no",
+        valueAreaLineWidth: deepProfileValuesSettings.lineWidth,
+        valueAreaExtensionMode: deepProfileValuesSettings.valueAreaExtensionMode,
+        showPeaks: deepProfileValuesSettings.showPeaks,
+        showValleys: deepProfileValuesSettings.showValleys,
+        peakColor: deepProfileValuesSettings.peakColor,
+        valleyColor: deepProfileValuesSettings.valleyColor,
+        peakLineWidth: deepProfileValuesSettings.lineWidth,
+        valleyLineWidth: deepProfileValuesSettings.lineWidth,
+        peakExtensionMode: deepProfileValuesSettings.peakExtensionMode,
+        valleyExtensionMode: deepProfileValuesSettings.valleyExtensionMode,
+        pvSensitivity: deepProfileValuesSettings.peakValleySensitivity,
+        pvExcludeHighLow: deepProfileValuesSettings.excludeHighLow,
+        peakMinVolumePercent: deepProfileValuesSettings.peakMinimumVolumePercent,
+        valleyMaxVolumePercent: deepProfileValuesSettings.valleyMaximumVolumePercent,
+        showVwap: deepProfileValuesSettings.showVwap,
+        showVwapLine: deepProfileValuesSettings.showVwap,
+        showDevelopingVwap: deepProfileValuesSettings.showDevelopingVwap,
+        vwapColor: deepProfileValuesSettings.vwapColor,
+        vwapLineWidth: deepProfileValuesSettings.lineWidth,
+        vwapExtensionMode: deepProfileValuesSettings.vwapExtensionMode,
+        vwapBandDeviations: deepProfileValuesSettings.showVwapBands
+          ? [deepProfileValuesSettings.vwapBand1, deepProfileValuesSettings.vwapBand2, deepProfileValuesSettings.vwapBand3].filter((value) => value > 0)
+          : [],
+        vwapBandColor: deepProfileValuesSettings.vwapBandColor,
+        showSummaryVolume: deepProfileValuesSettings.showSummary,
+        showSummaryTrades: deepProfileValuesSettings.showSummary && deepProfileValuesSettings.showSummaryTrades,
+        summaryTextColor: deepProfileValuesSettings.summaryTextColor,
+        summaryAskColor: deepProfileValuesSettings.askColor,
+        summaryBidColor: deepProfileValuesSettings.bidColor,
+        showLevelLabels: deepProfileValuesSettings.showLevelLabels,
+        showLevelLabelPrice: deepProfileValuesSettings.showLevelLabelPrice,
+        levelLabelSide: "right",
+        levelDash: [3, 3],
+        visualStyle: "solid",
+        borderWidth: 0,
+      },
+    }));
+    primitive.setModels(models);
+    setDeepProfileValuesFrame(frame);
+  }, [candleIntervalMs, candles, chartReadyRevision, contractSymbol, deepProfileValuesIndicator, deepProfileValuesSettings, footprintMarketTrades, instrument, priceFormat.minMove, rawPocAuctionBars, toolbarPlotLeftInset, viewportVersion, volumeProfileLastCandleTimestamp]);
 
   useEffect(() => {
     const primitive = tpoProfilePrimitiveRef.current;
@@ -17303,6 +17444,12 @@ function Chart({
         <div className="pointer-events-none absolute right-2 z-[72] flex items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur" style={{ top: (pocAuctionIndicator && pocAuctionSettings.showHeader ? 38 : 8) + (unfinishedAuctionIndicator ? 26 : 0) + (barPocIndicator ? 26 : 0) + (dynamicPocIndicator ? 26 : 0) + (ratioHighlightIndicator ? 26 : 0) + (stopSpotterIndicator ? 26 : 0) + (deepWallIndicator ? 26 : 0) + (deepVTrackerIndicator ? 26 : 0) }} title="Automatic swing profiles from exact Rithmic volume-at-price">
           <span className={`h-1.5 w-1.5 rounded-full ${!deepProfileSwingFrame || deepProfileSwingFrame.status === "WAITING_FOR_VOLUME_AT_PRICE" ? "animate-pulse bg-warning" : "bg-primary"}`} />
           <span className="text-foreground">KWANT Profile Swing</span><span>{deepProfileSwingFrame?.status.replaceAll("_", " ") ?? "CALCULATING"}</span><span>{deepProfileSwingFrame?.profiles.length ?? 0} PROFILES</span>
+        </div>
+      ) : null}
+      {deepProfileValuesIndicator ? (
+        <div className="pointer-events-none absolute right-2 z-[72] flex items-center gap-2 border border-border bg-panel/92 px-2 py-1 font-mono text-[8px] uppercase tracking-[0.08em] text-muted shadow-lg backdrop-blur" style={{ top: (pocAuctionIndicator && pocAuctionSettings.showHeader ? 38 : 8) + (unfinishedAuctionIndicator ? 26 : 0) + (barPocIndicator ? 26 : 0) + (dynamicPocIndicator ? 26 : 0) + (ratioHighlightIndicator ? 26 : 0) + (stopSpotterIndicator ? 26 : 0) + (deepWallIndicator ? 26 : 0) + (deepVTrackerIndicator ? 26 : 0) + (deepProfileSwingIndicator ? 26 : 0) }} title="POC, value area, VWAP and profile structure from exact Rithmic volume-at-price">
+          <span className={`h-1.5 w-1.5 rounded-full ${!deepProfileValuesFrame || deepProfileValuesFrame.status.startsWith("WAITING") ? "animate-pulse bg-warning" : "bg-primary"}`} />
+          <span className="text-foreground">KWANT Profile Values</span><span>{deepProfileValuesFrame?.status.replaceAll("_", " ") ?? "CALCULATING"}</span><span>{deepProfileValuesFrame?.profiles.length ?? 0} PROFILES</span>
         </div>
       ) : null}
       {pocAuctionTooltip ? (

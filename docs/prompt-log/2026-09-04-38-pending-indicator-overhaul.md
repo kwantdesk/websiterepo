@@ -110,3 +110,10 @@ task until the full pending library is complete, without shortcuts.
   `4t5xj1ZgP6yXE9VFiGeP1EMJnrN8`; cache-busted NQ 500-volume QA confirmed the
   live profile and levels, exact 10/5 reversal defaults, immediate saved state
   and clean removal.
+  Item 13, **KWANT Profile Values**, now has the complete observable DeepCharts
+  period/input/grouping/POC/value-area/peak-valley/VWAP/summary/session contract
+  over exact Rithmic volume-at-price. It renders through an isolated level-only
+  native primitive, refuses unavailable historical order-book data, follows
+  themes, persists settings/templates and passes focused correctness and
+  20,000-bar performance tests. Production visual and reload QA is the only
+  remaining release gate, so it remains Pending until that pass.

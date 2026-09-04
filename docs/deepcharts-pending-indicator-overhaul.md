@@ -48,7 +48,7 @@ Legend: `[ ]` not complete, `[~]` in progress, `[x]` complete and addable.
 | 10 | KWANT V-Tracker | `deep-v-tracker` | [x] | [x] | [x] | [x] | [x] | Add |
 | 11 | Custom Draw-On Volume Profile | `custom-draw-on-volume-profile` | [x] | [x] | [x] | [x] | [x] | Add |
 | 12 | KWANT Profile Swing | `deep-profile-swing` | [x] | [x] | [x] | [x] | [x] | Add |
-| 13 | KWANT Profile Values | `deep-profile-values` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
+| 13 | KWANT Profile Values | `deep-profile-values` | [x] | [x] | [x] | [x] | [~] | Pending |
 | 14 | Market Statistics | `market-statistics` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
 | 15 | Confluence Identifier | `confluence-identifier` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
 | 16 | Kwant Levels | `gamma-levels` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
@@ -396,6 +396,42 @@ Legend: `[ ]` not complete, `[~]` in progress, `[x]` complete and addable.
   production QA on NQ 500-volume confirmed a live profile with VAH/POC/VAL,
   exact `10` and `5` reversal defaults, immediate saved state, recovery of the
   persisted study after reload and clean removal back to 11 studies.
+
+### 13: KWANT Profile Values
+
+- Official DeepCharts help (updated 18 June 2026) defines a level-only volume
+  profile: POC, Value Area, VWAP/deviation bands, peaks and valleys without a
+  histogram. Its VBP Period choices are Composite, Multiples, Visible and
+  Personalized; Multiples supports Minutes, Days, Weeks, Months and Volume.
+  The documented settings also include Volume/Order/Aggregate Trades/Number
+  of Trades input, execution filters, automatic/manual grouping, profile
+  count, custom dates, POC/developing/shifted lines, Till Interaction/Till End
+  Window extensions, Value Area percentage/developing lines, peak/valley
+  sensitivity and exclusions, VWAP bands, summary and exchange-time
+  Filter/Split windows. Installed DLL metadata independently confirms those
+  setting names, but its protected formula body is not inspectable.
+- Quant Desk builds each level set only from exact classified Rithmic
+  volume-at-price rows. It supports all four period modes and five multiple
+  lengths, clips Visible to the native chart viewport, keeps overnight custom
+  sessions together across midnight, and applies min/max filters to individual
+  executions before aggregation. Order mode explicitly reports
+  `WAITING FOR ORDER HISTORY`: historical resting-book-at-price snapshots are
+  not present in the current gateway and are never fabricated from prints.
+- A separate native profile primitive draws only the calculated levels; its
+  histogram is fully suppressed. This reuses the already-tested POC/VA/VWAP/
+  peak/valley line engine, including forward occlusion, Till Interaction and
+  newest-profile live-edge behavior, without changing existing available
+  profile indicators. Theme/custom colours, sliders, selectors, date inputs,
+  save state and account-synced template import/export are wired.
+- Focused tests pass for normalization, exact POC/VA/VWAP accumulation,
+  developing trails, Visible clipping, volume-length boundaries, Filter/Split
+  sessions, honest order-history refusal, missing-data refusal and a 20,000-bar
+  performance case. Focused new-engine/config lint and Turbopack compilation
+  pass. The repository-wide TypeScript phase is currently blocked earlier by
+  an unrelated duplicate `@types/three` installation in `landing/page.tsx`;
+  no Profile Values integration error appears in filtered compiler output.
+  Deployed visual/persistence QA remains open, so the catalogue still reads
+  Pending.
 
 - Quant Desk already has a tested `PocAuctionSuiteEngine` driven by exact
   execution-classified Footprint rows. It calculates raw-tick unfinished

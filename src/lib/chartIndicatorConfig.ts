@@ -57,6 +57,11 @@ import {
   DEFAULT_DEEP_PROFILE_SWING_SETTINGS,
   normalizeDeepProfileSwingSettings,
 } from "@/lib/deepProfileSwing";
+import {
+  DEEP_PROFILE_VALUES_SETTINGS_VERSION,
+  DEFAULT_DEEP_PROFILE_VALUES_SETTINGS,
+  normalizeDeepProfileValuesSettings,
+} from "@/lib/deepProfileValues";
 
 export const LIVE_CHART_INDICATOR_IDS = new Set([
   "gamma-environment",
@@ -89,6 +94,7 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "deep-wall",
   "deep-v-tracker",
   "deep-profile-swing",
+  "deep-profile-values",
   "cumulative-volume-delta",
   "cvd-divergence",
   "pulling-stacking",
@@ -281,6 +287,27 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "maxProfiles", label: "Profiles to show", defaultValue: 12, min: 1, max: 100, step: 1 },
     { key: "profileWidth", label: "Profile width (%)", defaultValue: 34, min: 1, max: 100, step: 1 },
     { key: "opacity", label: "Profile opacity (%)", defaultValue: 68, min: 0, max: 100, step: 1 },
+    { key: "lineWidth", label: "Level line width", defaultValue: 1, min: 0.5, max: 6, step: 0.5 },
+  ],
+  "deep-profile-values": [
+    { key: "lengthValue", label: "Length value", defaultValue: 1, min: 1, max: 1000000, step: 1 },
+    { key: "filterMin", label: "Minimum execution size", defaultValue: 0, min: 0, max: 10000000, step: 1 },
+    { key: "filterMax", label: "Maximum execution size · 0 is unlimited", defaultValue: 0, min: 0, max: 10000000, step: 1 },
+    { key: "autoGroupFactor", label: "Automatic grouping factor", defaultValue: 1, min: 0.5, max: 4, step: 0.25 },
+    { key: "groupTicks", label: "Manual grouping ticks", defaultValue: 4, min: 1, max: 500, step: 1 },
+    { key: "numberOfProfiles", label: "Number of profiles", defaultValue: 6, min: 1, max: 250, step: 1 },
+    { key: "valueAreaPercent", label: "Value area (%)", defaultValue: 68, min: 1, max: 100, step: 1 },
+    { key: "sessionStartMinutes", label: "Session start · exchange minutes", defaultValue: 510, min: 0, max: 1439, step: 1 },
+    { key: "sessionEndMinutes", label: "Session end · exchange minutes", defaultValue: 915, min: 0, max: 1439, step: 1 },
+    { key: "developingPocStartMinutes", label: "Developing POC start · session minutes", defaultValue: 0, min: 0, max: 1439, step: 1 },
+    { key: "shiftedPocTicks", label: "Shifted POC grouping ticks", defaultValue: 1, min: 1, max: 500, step: 1 },
+    { key: "shiftedPocOpacity", label: "Shifted POC opacity (%)", defaultValue: 68, min: 0, max: 100, step: 1 },
+    { key: "peakValleySensitivity", label: "Peak / valley sensitivity", defaultValue: 40, min: 0, max: 100, step: 1 },
+    { key: "peakMinimumVolumePercent", label: "Peak minimum volume (%)", defaultValue: 0, min: 0, max: 100, step: 1 },
+    { key: "valleyMaximumVolumePercent", label: "Valley maximum volume (%)", defaultValue: 100, min: 0, max: 100, step: 1 },
+    { key: "vwapBand1", label: "VWAP band 1 · standard deviations", defaultValue: 1, min: 0, max: 20, step: 0.25 },
+    { key: "vwapBand2", label: "VWAP band 2 · standard deviations", defaultValue: 2, min: 0, max: 20, step: 0.25 },
+    { key: "vwapBand3", label: "VWAP band 3 · standard deviations", defaultValue: 0, min: 0, max: 20, step: 0.25 },
     { key: "lineWidth", label: "Level line width", defaultValue: 1, min: 0.5, max: 6, step: 0.5 },
   ],
   "ratio-highlight": [
@@ -1544,6 +1571,19 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     vwapColor: theme?.borderUpColor ?? theme?.upColor ?? DEFAULT_DEEP_PROFILE_SWING_SETTINGS.vwapColor,
     schemaVersion: DEEP_PROFILE_SWING_SETTINGS_VERSION,
   } : {}),
+  ...(indicatorId === "deep-profile-values" ? {
+    ...DEFAULT_DEEP_PROFILE_VALUES_SETTINGS,
+    pocColor: theme?.upColor ?? DEFAULT_DEEP_PROFILE_VALUES_SETTINGS.pocColor,
+    valueAreaColor: theme?.borderUpColor ?? DEFAULT_DEEP_PROFILE_VALUES_SETTINGS.valueAreaColor,
+    peakColor: theme?.upColor ?? DEFAULT_DEEP_PROFILE_VALUES_SETTINGS.peakColor,
+    valleyColor: theme?.downColor ?? DEFAULT_DEEP_PROFILE_VALUES_SETTINGS.valleyColor,
+    vwapColor: theme?.borderUpColor ?? theme?.upColor ?? DEFAULT_DEEP_PROFILE_VALUES_SETTINGS.vwapColor,
+    vwapBandColor: theme?.gridColor ?? DEFAULT_DEEP_PROFILE_VALUES_SETTINGS.vwapBandColor,
+    summaryTextColor: theme?.borderUpColor ?? DEFAULT_DEEP_PROFILE_VALUES_SETTINGS.summaryTextColor,
+    askColor: theme?.upColor ?? DEFAULT_DEEP_PROFILE_VALUES_SETTINGS.askColor,
+    bidColor: theme?.downColor ?? DEFAULT_DEEP_PROFILE_VALUES_SETTINGS.bidColor,
+    schemaVersion: DEEP_PROFILE_VALUES_SETTINGS_VERSION,
+  } : {}),
   ...(indicatorId === "tape-speed-order-flow-burst" ? {
     ...DEFAULT_TAPE_SPEED_SETTINGS,
     buyColor: theme?.upColor ?? DEFAULT_TAPE_SPEED_SETTINGS.buyColor,
@@ -2748,6 +2788,10 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
   if (normalizedInstance.indicatorId === "deep-profile-swing") {
     const defaults = defaultIndicatorSettings("deep-profile-swing");
     return { ...normalizedInstance, settings: { ...defaults, ...normalizeDeepProfileSwingSettings({ ...defaults, ...(normalizedInstance.settings ?? {}) }) } };
+  }
+  if (normalizedInstance.indicatorId === "deep-profile-values") {
+    const defaults = defaultIndicatorSettings("deep-profile-values");
+    return { ...normalizedInstance, settings: { ...defaults, ...normalizeDeepProfileValuesSettings({ ...defaults, ...(normalizedInstance.settings ?? {}) }) } };
   }
   if (normalizedInstance.indicatorId === "tape-speed-order-flow-burst") {
     return {

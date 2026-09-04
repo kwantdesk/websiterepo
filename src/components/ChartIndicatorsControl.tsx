@@ -149,6 +149,11 @@ const FOOTPRINT_PROFILE_MANAGED_SETTINGS = new Set([
 const DEEP_PROFILE_SWING_MANAGED_SETTINGS = new Set([
   "includeReversalBar", "stopSwingEnabled", "showPocLine", "showValueAreaLines", "showVwapLine", "showLevelLabels",
 ]);
+const DEEP_PROFILE_VALUES_MANAGED_SETTINGS = new Set([
+  "useEndSessionAsStartDay", "showPocLine", "showValueAreaLines", "showDevelopingValueArea",
+  "showPeaks", "showValleys", "excludeHighLow", "showVwap", "showDevelopingVwap",
+  "showVwapBands", "showSummary", "showSummaryTrades", "showLevelLabels", "showLevelLabelPrice",
+]);
 
 const TPO_PRESETS = [
   {
@@ -464,6 +469,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "deep-wall",
   "deep-v-tracker",
   "deep-profile-swing",
+  "deep-profile-values",
   "moving-average",
   "vwap",
   "vwap-envelopes",
@@ -735,6 +741,20 @@ const themeColourMapFor = (indicatorId: string, chartSettings: ChartSettings) =>
       bidColor: visible.negative,
       pocColor: visible.primary,
       vwapColor: visible.secondary,
+    } as Record<string, string>;
+  }
+  if (indicatorId === "deep-profile-values") {
+    const visible = visibleIndicatorTheme(chartSettings);
+    return {
+      pocColor: visible.primary,
+      valueAreaColor: visible.secondary,
+      peakColor: visible.positive,
+      valleyColor: visible.negative,
+      vwapColor: visible.secondary,
+      vwapBandColor: visible.muted,
+      summaryTextColor: visible.primary,
+      askColor: visible.positive,
+      bidColor: visible.negative,
     } as Record<string, string>;
   }
   // Big Contracts and Big Blocks paint their two sides from the theme's up and
@@ -6853,6 +6873,49 @@ export default function ChartIndicatorsControl({
                 </div>
               ) : null}
 
+              {settingsDefinition.id === "deep-profile-values" ? (
+                <div className="grid gap-3 border border-primary/20 bg-primary/[0.035] p-3 sm:grid-cols-2">
+                  {[
+                    ["VBP period", "periodMode", [["composite", "Composite"], ["multiples", "Multiples"], ["visible", "Visible"], ["personalized", "Personalized"]]],
+                    ["Length type", "lengthType", [["minutes", "Minutes"], ["days", "Days"], ["weeks", "Weeks"], ["months", "Months"], ["volume", "Volume"]]],
+                    ["Input data", "inputData", [["volume", "Volume"], ["order", "Order"], ["aggregate-trades", "Aggregate trades"], ["trades", "Number of trades"]]],
+                    ["Tick grouping", "groupingMode", [["automatic", "Automatic"], ["manual", "Manual"]]],
+                    ["Filter / split time", "filterMode", [["none", "None"], ["filter", "Filter"], ["split", "Split"]]],
+                    ["POC line", "pocLineMode", [["show", "Show"], ["developing", "Developing"], ["extend-shifted", "Extend shifted"]]],
+                    ["POC extension", "pocExtensionMode", [["none", "None"], ["until-first-interaction", "Till interaction"], ["to-window-end", "Till end window"]]],
+                    ["Value area extension", "valueAreaExtensionMode", [["none", "None"], ["until-first-interaction", "Till interaction"], ["to-window-end", "Till end window"]]],
+                    ["Peak extension", "peakExtensionMode", [["none", "None"], ["until-first-interaction", "Till interaction"], ["to-window-end", "Till end window"]]],
+                    ["Valley extension", "valleyExtensionMode", [["none", "None"], ["until-first-interaction", "Till interaction"], ["to-window-end", "Till end window"]]],
+                    ["VWAP extension", "vwapExtensionMode", [["none", "None"], ["until-first-interaction", "Till interaction"], ["to-window-end", "Till end window"]]],
+                  ].map(([label, key, choices]) => (
+                    <label key={String(key)} className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                      <span>{String(label)}</span>
+                      <KwantSelect value={String(settingsInstance.settings?.[String(key)] ?? (choices as string[][])[0][0])} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [String(key)]: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel={`KWANT Profile Values ${String(label).toLowerCase()}`}>
+                        {(choices as string[][]).map(([value, name]) => <option key={value} value={value}>{name}</option>)}
+                      </KwantSelect>
+                    </label>
+                  ))}
+                  {String(settingsInstance.settings?.periodMode ?? "multiples") === "personalized" ? ([
+                    ["Custom start", "customStartMs"], ["Custom end", "customEndMs"],
+                  ] as const).map(([label, key]) => (
+                    <label key={key} className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                      <span>{label}</span>
+                      <input type="datetime-local" value={Number(settingsInstance.settings?.[key] ?? 0) > 0 ? new Date(Number(settingsInstance.settings?.[key])).toISOString().slice(0, 16) : ""} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [key]: event.target.value ? new Date(event.target.value).getTime() : 0 } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none" />
+                    </label>
+                  )) : null}
+                  {[
+                    ["Use end session as start day", "useEndSessionAsStartDay"], ["Show POC", "showPocLine"],
+                    ["Show VAH / VAL", "showValueAreaLines"], ["Developing value area", "showDevelopingValueArea"],
+                    ["Show peaks", "showPeaks"], ["Show valleys", "showValleys"], ["Exclude profile high / low", "excludeHighLow"],
+                    ["Show VWAP", "showVwap"], ["Developing VWAP", "showDevelopingVwap"], ["Show VWAP bands", "showVwapBands"],
+                    ["Show summary", "showSummary"], ["Summary trades", "showSummaryTrades"],
+                    ["Show level labels", "showLevelLabels"], ["Show label prices", "showLevelLabelPrice"],
+                  ].map(([label, key]) => { const on = settingsInstance.settings?.[key] === true; return <button key={key} type="button" aria-pressed={on} onClick={() => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [key]: !on } }))} className="flex h-9 items-center justify-between border border-border bg-background px-3 text-[9px] uppercase tracking-[0.1em] text-muted"><span>{label}</span><span className={on ? "text-primary" : "text-muted"}>{on ? "On" : "Off"}</span></button>; })}
+                  {settingsInstance.settings?.inputData === "order" ? <p className="text-[8px] leading-4 text-warning sm:col-span-2">Order mode requires historical resting-order-at-price snapshots. Quant Desk will show a waiting state rather than fabricate this from executed trades.</p> : null}
+                  <p className="text-[8px] leading-4 text-muted sm:col-span-2">Level-only profiles use exact Rithmic classified volume at price. Composite, Multiples, Visible and Personalized windows recalculate live as the forming execution row changes.</p>
+                </div>
+              ) : null}
+
               {/*
                 * Save, open and import — on every indicator, not just the
                 * footprint. Rendered before the settings themselves so a
@@ -6949,6 +7012,7 @@ export default function ChartIndicatorsControl({
                     !INDICATOR_NUMERIC_SETTINGS[settingsDefinition.id]?.some((setting) => setting.key === key)
                     && !(settingsDefinition.id === "deep-print-footprint" && FOOTPRINT_PROFILE_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "deep-profile-swing" && DEEP_PROFILE_SWING_MANAGED_SETTINGS.has(key))
+                    && !(settingsDefinition.id === "deep-profile-values" && DEEP_PROFILE_VALUES_MANAGED_SETTINGS.has(key))
                     && !(VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) && VOLUME_PROFILE_VWAP_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "bounce-levels" && key === "syncGexMapColors")
                     && (typeof value === "boolean" || isColourSetting(key, value)))
