@@ -33,6 +33,15 @@ recap of the open items below and update this file when their state changes.
 - **Futures event charts:** historical tick, volume, range, Renko and Footprint
   require the separate trade-tick/VAP import. They must never be fabricated
   from minute OHLC.
+- **Event-timeframe serving:** Range, volume, trade, delta, Renko, volume-bar
+  and point/figure history is now folded on the Vultr recorder and returned as
+  bounded candles plus a compact execution-flow tail. Never restore the old
+  Vercel path that downloaded and parsed up to 1.5 million raw prints per pane.
+  The 53-root × 50-interval deterministic matrix passes, but that proves logic,
+  not archive existence: a root/session still needs recorded or backfilled
+  executions. A first uncached ten-day NQ 40R fold is about 9–10 seconds; warm
+  and concurrent requests share cache. Persistent precomputed indexes are the
+  remaining route to sub-second first-ever loads for every combination.
 
 ## P0 — Launch reliability
 

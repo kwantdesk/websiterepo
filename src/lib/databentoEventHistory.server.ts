@@ -6,7 +6,10 @@ import {
   type MarketTrade,
 } from "@/lib/eventBars";
 import type { Candle } from "@/lib/backtester";
-import { fetchRecordedTrades } from "@/lib/recordedTradeTape.server";
+import {
+  contractRootSymbol,
+  fetchRecordedTrades,
+} from "@/lib/recordedTradeTape.server";
 import { cmeEventTailCutoffMs } from "@/lib/chartHistoryWindow";
 import { replayEventFlowWindow } from "@/lib/replayExecutionWindow";
 import {
@@ -79,7 +82,10 @@ async function fetchGatewayEventHistory(args: {
   includeExecutions: boolean;
 }): Promise<GatewayEventHistory> {
   const query = new URLSearchParams({
-    symbol: args.symbol,
+    // The browser catalog can carry continuous aliases such as NQ.v.0, while
+    // the Rithmic recorder is keyed by the provider root/contract. Normalise
+    // here so every catalog instrument reaches the same event-history path.
+    symbol: contractRootSymbol(args.symbol),
     interval: args.timeframe,
     fromMs: String(Math.round(args.startMs)),
     toMs: String(Math.round(args.endMs)),
