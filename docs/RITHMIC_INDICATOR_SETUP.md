@@ -1,8 +1,8 @@
 # Kwant Desk Rithmic indicator feed
 
 Kwant Desk uses a private, read-only gateway for live executions and full-depth
-liquidity. Databento remains the historical fallback, so closing the Rithmic
-gateway does not remove stored chart history.
+liquidity. Rithmic History Plant plus Kwant Desk's own recorded archive supply
+the historical path; Databento is not an active provider.
 
 During the RTrader Pro trial, the supported source is RTrader Pro's native
 Excel live-stream workbook. It supplies the full displayed price ladder,

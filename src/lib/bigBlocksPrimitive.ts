@@ -15,6 +15,8 @@ export type BigBlockRenderZone = {
   top: number;
   bottom: number;
   side: "ASK" | "BID";
+  /** Bars projected beyond the final time coordinate already on the chart. */
+  extensionBars?: number;
 };
 
 export type BigBlocksPrimitiveOptions = {
@@ -65,7 +67,8 @@ class BigBlocksRenderer implements ISeriesPrimitivePaneRenderer {
         const bodyWidth = chartCandleBodyWidth(Number(timeScale.options().barSpacing));
         const halfBody = bodyWidth / 2;
         const left = Math.min(rawStartX, rawEndX) - halfBody;
-        const right = Math.max(rawStartX, rawEndX) + halfBody;
+        const right = Math.max(rawStartX, rawEndX) + halfBody
+          + Math.max(0, Number(zone.extensionBars ?? 0)) * Number(timeScale.options().barSpacing);
         const top = Math.min(topY, bottomY);
         const bottom = Math.max(topY, bottomY);
         if (right < 0 || left > mediaSize.width || bottom < 0 || top > mediaSize.height) continue;

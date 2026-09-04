@@ -46,6 +46,13 @@ recap of the open items below and update this file when their state changes.
 
 ## P1 — Reference parity evidence
 
+- **Big/Deep Contracts and Big Blocks:** calculation/settings/live-event
+  contract parity has been audited against the installed Deep Charts assembly.
+  Deep Contracts now lives inside Big Contracts and Big Blocks updates from
+  the forming Rithmic bar. Capture a fresh interactive screenshot sweep when
+  safe native-window control is available; the proprietary protected formula
+  body is not inspectable, so do not call it pixel/formula identical without
+  that evidence.
 - **Imbalance Tracker:** the installed licensed Deep Charts assembly metadata,
   calculation fixtures and KWANTDESK renderer have been reconciled. The
   live-edge width, real opacity and saved-settings faults are fixed. Capture a

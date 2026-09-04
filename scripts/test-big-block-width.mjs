@@ -18,11 +18,11 @@ const check = (name, fn) => { fn(); passed += 1; console.log(`  ok  ${name}`); }
 const source = readFileSync(new URL("../src/lib/bigBlocksPrimitive.ts", import.meta.url), "utf8");
 
 /** The primitive's own arithmetic, so the numbers below are the drawn ones. */
-function drawnWidth(startX, endX, barSpacing) {
+function drawnWidth(startX, endX, barSpacing, extensionBars = 0) {
   const bodyWidth = chartCandleBodyWidth(barSpacing);
   const halfBody = bodyWidth / 2;
   const left = Math.min(startX, endX) - halfBody;
-  const right = Math.max(startX, endX) + halfBody;
+  const right = Math.max(startX, endX) + halfBody + Math.max(0, extensionBars) * barSpacing;
   return { width: Math.max(bodyWidth, right - left), left, right, bodyWidth };
 }
 
@@ -58,6 +58,11 @@ check("a multi-bar block covers its first and last bars completely", () => {
   assert.equal(drawn.right, 400 + barSpacing * 5 + body / 2, "ends at the right edge of the last");
 });
 
+check("a forming block can project into future chart space", () => {
+  const drawn = drawnWidth(500, 500, 12, 22);
+  assert.equal(drawn.width, chartCandleBodyWidth(12) + 22 * 12);
+});
+
 check("it does not care which way round the two times resolve", () => {
   assert.deepEqual(drawnWidth(600, 400, 12), drawnWidth(400, 600, 12));
 });
@@ -75,7 +80,8 @@ check("zooming does not change how many bars it covers", () => {
 check("the primitive really uses this, and the old clamp is gone", () => {
   assert.match(source, /const bodyWidth = chartCandleBodyWidth\(Number\(timeScale\.options\(\)\.barSpacing\)\)/);
   assert.match(source, /const left = Math\.min\(rawStartX, rawEndX\) - halfBody;/);
-  assert.match(source, /const right = Math\.max\(rawStartX, rawEndX\) \+ halfBody;/);
+  assert.match(source, /const right = Math\.max\(rawStartX, rawEndX\) \+ halfBody/);
+  assert.match(source, /zone\.extensionBars/, "unelapsed zone bars must project beyond the live edge");
   assert.match(source, /const width = Math\.max\(bodyWidth, right - left\);/);
   assert.doesNotMatch(source, /Math\.max\(2, right - left\)/, "the 2px sliver clamp must be gone");
 });

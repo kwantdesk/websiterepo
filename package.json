@@ -61,6 +61,7 @@
     "test:position-tool-migration": "node --import ./scripts/alias-hook.mjs scripts/test-position-tool-migration.mjs",
     "test:mini-dom-edge": "node --import ./scripts/alias-hook.mjs scripts/test-mini-dom-edge.mjs",
     "test:big-block-width": "node --import ./scripts/alias-hook.mjs scripts/test-big-block-width.mjs",
+    "test:deep-contracts-effort": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-deep-contracts-effort.mjs",
     "test:deploy-cost": "node --import ./scripts/alias-hook.mjs scripts/test-deploy-cost.mjs",
     "test:interval-menu": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-interval-menu.mjs",
     "test:quantdata-coalescing": "node scripts/test-quantdata-coalescing.mjs",

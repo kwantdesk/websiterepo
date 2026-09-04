@@ -1756,3 +1756,26 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
 - Gateway Docker builds use lockfile-clean production installs without npm's
   optional audit/funding network calls; those calls stalled a live deployment
   while adding no runtime integrity beyond `npm ci` itself.
+
+## 2026-09-04 — Big/Deep Contracts and Deep Effort live parity
+
+- The installed licensed Deep Charts metadata separates marker-based Big
+  Trades, box/projection-based Deep Trades and effort-versus-result Deep
+  Effort. KWANTDESK keeps those calculations separate internally while Big
+  Contracts presents simple `Show Big Contracts` and `Show Deep Contracts`
+  controls in one settings panel.
+- Deep Contracts uses only exact aggressive Rithmic executions, applies a real
+  minimum size, clusters same-side nearby prints, keeps the box centred on the
+  volume-weighted traded price and supports tick height, margin, opacity,
+  border, projection length and close-cross termination.
+- Big/Deep Contracts now paint directly from the execution event. Big Blocks
+  paints directly from the forming Rithmic candle's executed ask/bid fields;
+  neither waits for React's 750 ms indicator snapshot.
+- Big Blocks now wires the exposed minimum/maximum delta percentage, maximum
+  Delta Effort, minimum bars, average length, entry-zone range and maximum
+  extension controls. Delta Effort uses the documented delta divided by bar
+  width definition in contracts per tick.
+- Focused regressions, existing Big Contracts/Big Blocks regressions,
+  TypeScript and the complete 80-route production build passed. Interactive
+  pixel parity remains explicitly open until safe native-window control is
+  available.

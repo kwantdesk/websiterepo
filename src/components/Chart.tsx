@@ -148,7 +148,14 @@ import {
 import {
   BigBlocksPrimitive,
   type BigBlockRenderZone,
+  type BigBlocksPrimitiveOptions,
 } from "@/lib/bigBlocksPrimitive";
+import {
+  admitLiveDeepContractEvents,
+  calculateDeepContractEvents,
+  retainDeepContractEvents,
+  type DeepContractEvent,
+} from "@/lib/deepContracts";
 import {
   buildFootprintBarsCached,
   type FootprintBuildCache,
@@ -3269,6 +3276,7 @@ function Chart({
     lastFired: Map<string, number>;
   }>({ key: "", printIds: new Set(), levelIds: new Set(), zoneStates: new Map(), lastFired: new Map() });
   const bigTradesPrimitiveRef = useRef<BigTradesPrimitive | null>(null);
+  const deepContractsPrimitiveRef = useRef<BigBlocksPrimitive | null>(null);
   const bigBlocksPrimitiveRef = useRef<BigBlocksPrimitive | null>(null);
   const smtDivergencePrimitiveRef = useRef<SmtDivergencePrimitive | null>(null);
   const footprintPrimitiveRef = useRef<FootprintPrimitive | null>(null);
@@ -9946,15 +9954,53 @@ function Chart({
           zoneBars: Number(deepEffortIndicator.settings?.zoneBars ?? 22),
           tickSize: priceFormat.minMove,
           instrument,
+          minimumBars: Number(deepEffortIndicator.settings?.minimumBars ?? 20),
+          minimumDeltaPercent: Number(deepEffortIndicator.settings?.minimumDeltaPercent ?? 20),
+          maximumDeltaPercent: Number(deepEffortIndicator.settings?.maximumDeltaPercent ?? 100),
+          maximumDeltaEffort: Number(deepEffortIndicator.settings?.maximumDeltaEffort ?? 0),
+          averageLength: Number(deepEffortIndicator.settings?.averageLength ?? 21),
+          entryZoneRangePercent: Number(deepEffortIndicator.settings?.entryZoneRangePercent ?? 28),
         })
       : null,
     [deepEffortIndicator, indicatorCandles, instrument, priceFormat.minMove],
   );
+  const deepEffortLiveCandlesRef = useRef<Candle[]>([]);
+  const bigBlocksPrimitiveOptionsRef = useRef<BigBlocksPrimitiveOptions | null>(null);
+  const bigBlocksCommittedZonesRef = useRef<BigBlockRenderZone[]>([]);
   const bigTradesIndicator = useMemo(
     () => indicators.find((instance) =>
       instance.enabled && instance.indicatorId === "big-trades") ?? null,
     [indicatorSignature, indicators],
   );
+  const retainedDeepContractsRef = useRef<DeepContractEvent[]>([]);
+  const deepContractTapeWatermarkRef = useRef(0);
+  const deepContractCommittedRef = useRef<{ zones: BigBlockRenderZone[]; watermark: number }>({
+    zones: [], watermark: 0,
+  });
+  const deepContractPrimitiveOptionsRef = useRef<BigBlocksPrimitiveOptions | null>(null);
+  const deepContractEvents = useMemo(() => {
+    if (!bigTradesIndicator || bigTradesIndicator.settings?.showDeepContracts !== true) return [];
+    const settings = bigTradesIndicator.settings ?? {};
+    const next = calculateDeepContractEvents(
+      indicatorMarketTrades,
+      settings,
+      priceFormat.minMove,
+      replayTimestampMs ?? Date.now(),
+    );
+    deepContractTapeWatermarkRef.current = Number(indicatorMarketTrades.at(-1)?.timestamp ?? 0);
+    const days = Math.min(30, Math.max(1, Number(settings.daysToLoad ?? 1)));
+    const newestKnown = Math.max(
+      Number(indicatorMarketTrades.at(-1)?.timestamp ?? 0),
+      Number(indicatorCandles.at(-1)?.timestamp ?? 0),
+    );
+    const retained = retainDeepContractEvents(
+      retainedDeepContractsRef.current,
+      next,
+      (newestKnown || Date.now()) - days * 86_400_000,
+    );
+    retainedDeepContractsRef.current = retained;
+    return retained;
+  }, [bigTradesIndicator, indicatorCandles, indicatorMarketTrades, priceFormat.minMove, replayTimestampMs]);
   const depthOfMarketIndicator = useMemo(
     () => indicators.find((instance) =>
       instance.enabled && instance.indicatorId === "depth-of-market") ?? null,
@@ -9976,7 +10022,7 @@ function Chart({
   const bigTradePrimitiveOptionsRef = useRef<BigTradesPrimitiveOptions | null>(null);
   const bigTradePrints = useMemo(
     () => {
-      if (!bigTradesIndicator) {
+      if (!bigTradesIndicator || bigTradesIndicator.settings?.showBigContracts === false) {
         bigTradeLiveContextRef.current = null;
         return [];
       }
@@ -10153,7 +10199,7 @@ function Chart({
    * still settle within the sample interval.
    */
   useEffect(() => {
-    if (!bigTradesIndicator) return;
+    if (!bigTradesIndicator || bigTradesIndicator.settings?.showBigContracts === false) return;
     const receive = (event: Event) => {
       const detail = (event as CustomEvent<LiveChartExecutionDetail>).detail;
       if (!detail || detail.key !== liveCandleEventKey) return;
@@ -10189,6 +10235,71 @@ function Chart({
       : null,
     [sampledIndicatorCandles, timeframe],
   );
+  const deepContractRenderZones = useMemo<BigBlockRenderZone[]>(() => {
+    if (!bigTradesIndicator || bigTradesIndicator.settings?.showDeepContracts !== true) return [];
+    const byId = new Map(deepContractEvents.map((event) => [event.id, event]));
+    const candleIndexByTimestamp = new Map(
+      indicatorCandles.map((candle, index) => [candle.timestamp, index] as const),
+    );
+    const anchored = anchorBigTradePrintsToCandles(
+      deepContractEvents.map((event) => ({ ...event, radius: 1, opacity: 1 })),
+      candles,
+      timeframe && isEventBasedChartInterval(timeframe) ? null : candleIntervalMs,
+    );
+    const projectionBars = Math.max(1, Math.min(600, Number(bigTradesIndicator.settings?.deepProjectionBars ?? 22)));
+    const project = bigTradesIndicator.settings?.deepShowProjection !== false;
+    const stopOnCloseCross = bigTradesIndicator.settings?.deepExtendTillCloseCross !== false;
+    return anchored.flatMap((anchor) => {
+      const event = byId.get(anchor.id);
+      if (!event) return [];
+      let startIndex = candleIndexByTimestamp.get(anchor.chartTimestamp) ?? -1;
+      if (startIndex < 0) startIndex = Math.max(0, indicatorCandles.length - 1);
+      const targetEndIndex = startIndex + (project ? projectionBars : 0);
+      let endIndex = project
+        ? Math.min(indicatorCandles.length - 1, targetEndIndex)
+        : startIndex;
+      let crossed = false;
+      if (project && stopOnCloseCross) {
+        let previous = indicatorCandles[startIndex]?.close ?? event.price;
+        for (let index = startIndex + 1; index <= endIndex; index += 1) {
+          const close = indicatorCandles[index]?.close;
+          if (close === undefined) break;
+          if ((previous - event.price) * (close - event.price) < 0) {
+            endIndex = index;
+            crossed = true;
+            break;
+          }
+          previous = close;
+        }
+      }
+      const endTimestamp = indicatorCandles[endIndex]?.timestamp ?? anchor.chartTimestamp;
+      const startTime = bigTradeEventChartTimes?.get(anchor.chartTimestamp)
+        ?? eventChartTimeBySourceTimeRef.current.get(anchor.chartTimestamp)
+        ?? Math.floor(anchor.chartTimestamp / 1_000);
+      const endTime = bigTradeEventChartTimes?.get(endTimestamp)
+        ?? eventChartTimeBySourceTimeRef.current.get(endTimestamp)
+        ?? Math.floor(endTimestamp / 1_000);
+      return [{
+        id: event.id,
+        startTime: startTime as Time,
+        endTime: endTime as Time,
+        top: event.top,
+        bottom: event.bottom,
+        side: event.side,
+        extensionBars: project && !crossed
+          ? Math.max(0, targetEndIndex - endIndex)
+          : 0,
+      }];
+    });
+  }, [
+    bigTradeEventChartTimes,
+    bigTradesIndicator,
+    candleIntervalMs,
+    candles,
+    deepContractEvents,
+    indicatorCandles,
+    timeframe,
+  ]);
   /**
    * Where each big print's level stops: the first later bar that CLOSED
    * through it.
@@ -10328,6 +10439,74 @@ function Chart({
     settings.upColor,
     themeVersion,
   ]);
+  useEffect(() => {
+    const settings = bigTradesIndicator?.settings ?? {};
+    const palette = resolveIndicatorPalette(
+      "big-contracts",
+      settings,
+      indicatorPaletteTheme,
+      settings.useThemeColors !== false,
+    );
+    const options: BigBlocksPrimitiveOptions = {
+      askColor: palette.askColor,
+      bidColor: palette.bidColor,
+      opacity: clamp(Number(settings.deepOpacity ?? 20) / 100, 0.01, 1),
+      lineWidth: clamp(Number(settings.deepLineWidth ?? 1), 0, 4),
+    };
+    deepContractPrimitiveOptionsRef.current = options;
+    const zones = bigTradesIndicator?.settings?.showDeepContracts === true
+      ? deepContractRenderZones
+      : [];
+    deepContractCommittedRef.current = {
+      zones,
+      watermark: deepContractTapeWatermarkRef.current,
+    };
+    deepContractsPrimitiveRef.current?.update(zones, options);
+  }, [
+    bigTradesIndicator,
+    chartReadyRevision,
+    deepContractRenderZones,
+    settings.downColor,
+    settings.upColor,
+    themeVersion,
+  ]);
+
+  useEffect(() => {
+    if (!bigTradesIndicator || bigTradesIndicator.settings?.showDeepContracts !== true) return;
+    const receive = (event: Event) => {
+      const detail = (event as CustomEvent<LiveChartExecutionDetail>).detail;
+      if (!detail || detail.key !== liveCandleEventKey || liveReplayActiveRef.current) return;
+      const primitive = deepContractsPrimitiveRef.current;
+      const options = deepContractPrimitiveOptionsRef.current;
+      const committed = deepContractCommittedRef.current;
+      if (!primitive || !options || !committed.watermark) return;
+      const fresh = admitLiveDeepContractEvents(
+        detail.tape,
+        committed.watermark,
+        bigTradesIndicator.settings ?? {},
+        priceFormat.minMove,
+      );
+      if (!fresh.length) return;
+      const lastChartTime = lastRenderedCandleTimeRef.current;
+      if (lastChartTime === null) return;
+      primitive.update([
+        ...committed.zones,
+        ...fresh.map((item) => ({
+          id: item.id,
+          startTime: lastChartTime as Time,
+          endTime: lastChartTime as Time,
+          top: item.top,
+          bottom: item.bottom,
+          side: item.side,
+          extensionBars: bigTradesIndicator.settings?.deepShowProjection !== false
+            ? Math.max(1, Math.min(600, Number(bigTradesIndicator.settings?.deepProjectionBars ?? 22)))
+            : 0,
+        })),
+      ], options);
+    };
+    window.addEventListener(LIVE_CHART_EXECUTION_EVENT, receive);
+    return () => window.removeEventListener(LIVE_CHART_EXECUTION_EVENT, receive);
+  }, [bigTradesIndicator, liveCandleEventKey, priceFormat.minMove]);
   const bigBlockRenderZones = useMemo<BigBlockRenderZone[]>(() => {
     if (!deepEffort || deepEffortIndicator?.settings?.showZones === false) return [];
     return deepEffort.zones.flatMap((zone) => {
@@ -10348,6 +10527,7 @@ function Chart({
         top: zone.top,
         bottom: zone.bottom,
         side: zone.side,
+        extensionBars: Math.max(0, zone.endIndex - Math.min(zone.endIndex, indicatorCandles.length - 1)),
       }];
     });
   }, [
@@ -10366,23 +10546,76 @@ function Chart({
       indicatorPaletteTheme,
       useThemeColors,
     );
-    bigBlocksPrimitiveRef.current?.update(
-      deepEffortIndicator ? bigBlockRenderZones : [],
-      {
-        askColor: blockPalette.askColor,
-        bidColor: blockPalette.bidColor,
-        opacity: clamp(Number(effortSettings.zoneOpacity ?? 20) / 100, 0.01, 1),
-        lineWidth: clamp(Number(effortSettings.zoneLineWidth ?? 1), 0, 4),
-      },
-    );
+    const options: BigBlocksPrimitiveOptions = {
+      askColor: blockPalette.askColor,
+      bidColor: blockPalette.bidColor,
+      opacity: clamp(Number(effortSettings.zoneOpacity ?? 20) / 100, 0.01, 1),
+      lineWidth: clamp(Number(effortSettings.zoneLineWidth ?? 1), 0, 4),
+    };
+    deepEffortLiveCandlesRef.current = indicatorCandles;
+    bigBlocksPrimitiveOptionsRef.current = options;
+    const zones = deepEffortIndicator ? bigBlockRenderZones : [];
+    bigBlocksCommittedZonesRef.current = zones;
+    bigBlocksPrimitiveRef.current?.update(zones, options);
   }, [
     bigBlockRenderZones,
     chartReadyRevision,
     deepEffortIndicator,
+    indicatorCandles,
     settings.downColor,
     settings.upColor,
     themeVersion,
   ]);
+  useEffect(() => {
+    if (!deepEffortIndicator || deepEffortIndicator.settings?.showZones === false) return;
+    const receive = (event: Event) => {
+      const detail = (event as CustomEvent<LiveChartCandleDetail>).detail;
+      if (!detail || detail.key !== liveCandleEventKey || liveReplayActiveRef.current) return;
+      const primitive = bigBlocksPrimitiveRef.current;
+      const options = bigBlocksPrimitiveOptionsRef.current;
+      if (!primitive || !options) return;
+      // Deep Effort is a BAR study, so the honest live input is the forming
+      // Rithmic candle (with its executed ask/bid split), not a periodic React
+      // snapshot. Bound the calculation to its maximum lookback and paint the
+      // primitive directly; no component render or indicator refresh timer is
+      // involved.
+      const source = mergeLiveIndicatorCandle(deepEffortLiveCandlesRef.current, detail.candle).slice(-240);
+      deepEffortLiveCandlesRef.current = source;
+      const effortSettings = deepEffortIndicator.settings ?? {};
+      const liveResult = calculateDeepEffort(source, {
+        zoneBars: Number(effortSettings.zoneBars ?? 22),
+        tickSize: priceFormat.minMove,
+        instrument,
+        minimumBars: Number(effortSettings.minimumBars ?? 20),
+        minimumDeltaPercent: Number(effortSettings.minimumDeltaPercent ?? 20),
+        maximumDeltaPercent: Number(effortSettings.maximumDeltaPercent ?? 100),
+        maximumDeltaEffort: Number(effortSettings.maximumDeltaEffort ?? 0),
+        averageLength: Number(effortSettings.averageLength ?? 21),
+        entryZoneRangePercent: Number(effortSettings.entryZoneRangePercent ?? 28),
+      });
+      const liveZones = liveResult.zones.flatMap((zone) => {
+        const start = source[zone.startIndex];
+        const end = source[Math.min(zone.endIndex, source.length - 1)];
+        if (!start || !end) return [];
+        return [{
+          id: zone.id,
+          startTime: (eventChartTimeBySourceTimeRef.current.get(start.timestamp)
+            ?? Math.floor(start.timestamp / 1_000)) as Time,
+          endTime: (eventChartTimeBySourceTimeRef.current.get(end.timestamp)
+            ?? Math.floor(end.timestamp / 1_000)) as Time,
+          top: zone.top,
+          bottom: zone.bottom,
+          side: zone.side,
+          extensionBars: Math.max(0, zone.endIndex - Math.min(zone.endIndex, source.length - 1)),
+        }];
+      });
+      const merged = new Map(bigBlocksCommittedZonesRef.current.map((zone) => [zone.id, zone]));
+      for (const zone of liveZones) merged.set(zone.id, zone);
+      primitive.update([...merged.values()], options);
+    };
+    window.addEventListener(LIVE_CHART_CANDLE_EVENT, receive);
+    return () => window.removeEventListener(LIVE_CHART_CANDLE_EVENT, receive);
+  }, [deepEffortIndicator, instrument, liveCandleEventKey, priceFormat.minMove]);
   const imbalanceTracker = useMemo(() => {
     const instance = indicators.find((candidate) =>
       candidate.enabled && candidate.indicatorId === "imbalance-tracker");
@@ -12848,6 +13081,9 @@ function Chart({
     const bigTradesPrimitive = new BigTradesPrimitive();
     candleSeries.attachPrimitive(bigTradesPrimitive);
     bigTradesPrimitiveRef.current = bigTradesPrimitive;
+    const deepContractsPrimitive = new BigBlocksPrimitive();
+    candleSeries.attachPrimitive(deepContractsPrimitive);
+    deepContractsPrimitiveRef.current = deepContractsPrimitive;
     const bigBlocksPrimitive = new BigBlocksPrimitive();
     candleSeries.attachPrimitive(bigBlocksPrimitive);
     bigBlocksPrimitiveRef.current = bigBlocksPrimitive;
@@ -13797,6 +14033,13 @@ function Chart({
             // Chart teardown can detach primitives before React cleanup runs.
           }
         }
+        if (candleSeriesRef.current && deepContractsPrimitiveRef.current) {
+          try {
+            candleSeriesRef.current.detachPrimitive(deepContractsPrimitiveRef.current);
+          } catch {
+            // Chart teardown can detach primitives before React cleanup runs.
+          }
+        }
         if (candleSeriesRef.current && bigBlocksPrimitiveRef.current) {
           try {
             candleSeriesRef.current.detachPrimitive(bigBlocksPrimitiveRef.current);
@@ -13877,6 +14120,7 @@ function Chart({
       volumeProfilePrimitiveRef.current = null;
       tpoProfilePrimitiveRef.current = null;
       bigTradesPrimitiveRef.current = null;
+      deepContractsPrimitiveRef.current = null;
       bigBlocksPrimitiveRef.current = null;
       smtDivergencePrimitiveRef.current = null;
       footprintPrimitiveRef.current = null;

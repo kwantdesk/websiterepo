@@ -714,6 +714,13 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "maximumDetailedVisibleBars", label: "Maximum bars with cell text", defaultValue: 180, min: 20, max: 350, step: 10 },
   ],
   "deep-m-effort-nq": [
+    { key: "minimumBars", label: "Minimum bars before a signal", defaultValue: 20, min: 12, max: 200, step: 1 },
+    { key: "minimumDeltaPercent", label: "Minimum absolute delta (%)", defaultValue: 20, min: 0, max: 100, step: 1 },
+    { key: "maximumDeltaPercent", label: "Maximum absolute delta (%)", defaultValue: 100, min: 1, max: 100, step: 1 },
+    { key: "maximumDeltaEffort", label: "Maximum delta effort · 0 = unlimited", defaultValue: 0, min: 0, max: 100000, step: 1 },
+    { key: "averageLength", label: "Effort average length", defaultValue: 21, min: 2, max: 200, step: 1 },
+    { key: "entryZoneRangePercent", label: "Entry zone range (%)", defaultValue: 28, min: 5, max: 100, step: 1 },
+    { key: "zoneBars", label: "Maximum zone extension (bars)", defaultValue: 22, min: 4, max: 120, step: 1 },
     { key: "zoneOpacity", label: "Zone opacity (%)", defaultValue: 20, min: 1, max: 100 },
     { key: "zoneLineWidth", label: "Zone border width", defaultValue: 1, min: 0, max: 4, step: 0.5 },
     { key: "maLineWidth", label: "Moving average width", defaultValue: 2, min: 1, max: 4 },
@@ -738,6 +745,12 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     // 1 = always. Shrinking the markers used to silently erase the contract
     // counts, so the number now stays by default and hiding it is opt-in.
     { key: "labelMinSize", label: "Show number from marker size", defaultValue: 1, min: 1, max: 160 },
+    { key: "deepMinimumTradeSize", label: "Deep contracts minimum trade size", defaultValue: 30, min: 1, max: 5000, step: 1 },
+    { key: "deepBoxTickRange", label: "Deep contracts box height (ticks)", defaultValue: 4, min: 1, max: 100, step: 1 },
+    { key: "deepTickMargin", label: "Deep contracts cluster margin (ticks)", defaultValue: 1, min: 0, max: 100, step: 1 },
+    { key: "deepProjectionBars", label: "Deep contracts projection (bars)", defaultValue: 22, min: 1, max: 600, step: 1 },
+    { key: "deepOpacity", label: "Deep contracts box opacity (%)", defaultValue: 20, min: 1, max: 100, step: 1 },
+    { key: "deepLineWidth", label: "Deep contracts border width", defaultValue: 1, min: 0, max: 4, step: 0.5 },
   ],
   sessions: [
     { key: "lookbackDays", label: "Lookback (days)", defaultValue: 30, min: 1, max: 365 },
@@ -1788,6 +1801,8 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     initialBalanceSettingsVersion: 2,
   } : {}),
   ...(indicatorId === "big-trades" ? {
+    showBigContracts: true,
+    showDeepContracts: false,
     daysToLoad: 1,
     filterMode: "manual",
     automaticIntensity: "medium",
@@ -1828,7 +1843,15 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     projectionLineWidth: 1,
     projectionLineStyle: "dashed",
     projectionOpacity: 55,
-    bigTradesSettingsVersion: 4,
+    deepMinimumTradeSize: 30,
+    deepBoxTickRange: 4,
+    deepTickMargin: 1,
+    deepProjectionBars: 22,
+    deepOpacity: 20,
+    deepLineWidth: 1,
+    deepShowProjection: true,
+    deepExtendTillCloseCross: true,
+    bigTradesSettingsVersion: 6,
   } : {}),
   ...(indicatorId === "deep-m-effort-nq" ? {
     useThemeColors: true,
@@ -1851,7 +1874,13 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     enableMessage: false,
     alertMessage: "Big Blocks directional bias changed",
     zoneBars: 22,
-    effortSettingsVersion: 4,
+    minimumBars: 20,
+    minimumDeltaPercent: 20,
+    maximumDeltaPercent: 100,
+    maximumDeltaEffort: 0,
+    averageLength: 21,
+    entryZoneRangePercent: 28,
+    effortSettingsVersion: 5,
   } : {}),
   ...(indicatorId === "delta-bar" ? {
     // "pane" keeps the histogram every existing chart already has; the side
@@ -2884,7 +2913,7 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
   }
   if (
     normalizedInstance.indicatorId === "deep-m-effort-nq"
-    && Number(normalizedInstance.settings?.effortSettingsVersion) < 4
+    && Number(normalizedInstance.settings?.effortSettingsVersion) < 5
   ) {
     return {
       ...normalizedInstance,
@@ -2895,7 +2924,7 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         alertMessage: "Big Blocks directional bias changed",
         // Saved charts carry the old always-on moving average.
         showMovingAverage: false,
-        effortSettingsVersion: 4,
+        effortSettingsVersion: 5,
       },
     };
   }
@@ -2929,7 +2958,22 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         combineByCandle: false,
         adaptiveTimeframeFilter: false,
         maxMarkersPerBar: 50,
-        bigTradesSettingsVersion: 5,
+        bigTradesSettingsVersion: 6,
+      },
+    };
+  }
+  if (
+    normalizedInstance.indicatorId === "big-trades"
+    && Number(normalizedInstance.settings?.bigTradesSettingsVersion) < 6
+  ) {
+    normalizedInstance = {
+      ...normalizedInstance,
+      settings: {
+        ...defaultIndicatorSettings("big-trades"),
+        ...(normalizedInstance.settings ?? {}),
+        showBigContracts: normalizedInstance.settings?.showBigContracts ?? true,
+        showDeepContracts: normalizedInstance.settings?.showDeepContracts ?? false,
+        bigTradesSettingsVersion: 6,
       },
     };
   }

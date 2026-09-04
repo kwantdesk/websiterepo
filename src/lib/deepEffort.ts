@@ -38,6 +38,18 @@ export type EffortInstrumentProfile = {
   rangeThicknessFactor: number;
 };
 
+export type DeepEffortOptions = {
+  zoneBars?: number;
+  tickSize?: number;
+  instrument?: string;
+  minimumBars?: number;
+  minimumDeltaPercent?: number;
+  maximumDeltaPercent?: number;
+  maximumDeltaEffort?: number;
+  averageLength?: number;
+  entryZoneRangePercent?: number;
+};
+
 const deepEffortCache = new WeakMap<Candle[], Map<string, DeepEffortResult>>();
 
 function cacheDeepEffort(candles: Candle[], key: string, result: DeepEffortResult) {
@@ -138,21 +150,27 @@ function kaufmanAverage(candles: Candle[], length = 21, fastLength = 2, slowLeng
  */
 export function calculateDeepEffort(
   candles: Candle[],
-  options: { zoneBars?: number; tickSize?: number; instrument?: string } = {},
+  options: DeepEffortOptions = {},
 ): DeepEffortResult {
-  const cacheKey = `${options.instrument ?? ""}:${options.tickSize ?? ""}:${options.zoneBars ?? 22}`;
+  const cacheKey = JSON.stringify(options);
   const cached = deepEffortCache.get(candles)?.get(cacheKey);
   if (cached) return cached;
   const profile = resolveEffortInstrumentProfile(options.instrument, options.tickSize);
   const zoneBars = Math.max(4, Math.min(120, Math.round(options.zoneBars ?? 22)));
+  const minimumBars = Math.max(12, Math.min(200, Math.round(options.minimumBars ?? 20)));
+  const minimumDeltaShare = clamp(finite(options.minimumDeltaPercent, 20) / 100, 0, 1);
+  const maximumDeltaShare = clamp(finite(options.maximumDeltaPercent, 100) / 100, minimumDeltaShare, 1);
+  const maximumDeltaEffort = Math.max(0, finite(options.maximumDeltaEffort));
+  const averageLength = Math.max(2, Math.min(200, Math.round(options.averageLength ?? profile.averageLength)));
+  const entryZoneRange = clamp(finite(options.entryZoneRangePercent, profile.rangeThicknessFactor * 100) / 100, 0.05, 1);
   const tickSize = profile.tickSize;
-  const average = kaufmanAverage(candles, profile.averageLength);
+  const average = kaufmanAverage(candles, averageLength);
   const hasOrderFlow = candles.some((candle) => {
     const ask = finite(candle.askVolume);
     const bid = finite(candle.bidVolume);
     return ask + bid > 0;
   });
-  if (!hasOrderFlow || candles.length < 20) {
+  if (!hasOrderFlow || candles.length < minimumBars) {
     const result = { average, zones: [], hasOrderFlow, instrumentRoot: profile.root, profileLabel: profile.label };
     cacheDeepEffort(candles, cacheKey, result);
     return result;
@@ -164,7 +182,7 @@ export function calculateDeepEffort(
   let lastSignalIndex = -cooldown;
 
   candles.forEach((candle, index) => {
-    if (index < 12 || index - lastSignalIndex < cooldown) return;
+    if (index < minimumBars - 1 || index - lastSignalIndex < cooldown) return;
     const windowStart = Math.max(0, index - lookback + 1);
     const window = candles.slice(windowStart, index + 1);
     const volumes = window.map((bar) => Math.max(0, finite(bar.volume)));
@@ -184,6 +202,13 @@ export function calculateDeepEffort(
     const delta = finite(candle.delta, ask - bid);
     const deltaShare = clamp(delta / Math.max(ask + bid, 1), -1, 1);
     const range = Math.max(tickSize, candle.high - candle.low);
+    const absoluteDeltaShare = Math.abs(deltaShare);
+    if (absoluteDeltaShare < minimumDeltaShare || absoluteDeltaShare > maximumDeltaShare) return;
+    // Deep Charts defines Delta Effort as delta divided by bar width. Keep the
+    // unit explicit (contracts per tick) so its exposed maximum is stable
+    // across instruments instead of depending on a price-point convention.
+    const deltaEffort = Math.abs(delta) / Math.max(1, range / tickSize);
+    if (maximumDeltaEffort > 0 && deltaEffort > maximumDeltaEffort) return;
     const displacement = clamp((candle.close - candle.open) / range, -1, 1);
     const closeLocation = clamp(((candle.close - candle.low) / range) * 2 - 1, -1, 1);
     const directionalEffort = deltaShare * 0.58 + displacement * 0.24 + closeLocation * 0.18;
@@ -197,7 +222,7 @@ export function calculateDeepEffort(
       / Math.max(1, recentRanges.length);
     const minimumThickness = Math.max(
       tickSize * profile.minimumThicknessTicks,
-      averageRange * profile.rangeThicknessFactor,
+      averageRange * entryZoneRange,
     );
     const bodyLow = Math.min(candle.open, candle.close);
     const bodyHigh = Math.max(candle.open, candle.close);
