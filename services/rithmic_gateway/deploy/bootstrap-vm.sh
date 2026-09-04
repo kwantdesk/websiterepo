@@ -82,6 +82,16 @@ echo "==> building and starting (image stays local; never pushed to a registry)"
 cd "$HERE"
 docker compose up -d --build
 
+# The History Plant importer is separate from the latency-sensitive live
+# gateway. Its persistent ledger makes every seven-day window idempotent, and
+# this boot unit resumes the queue after host maintenance only after the
+# dedicated recordings filesystem and Docker are both available.
+install -m 0644 \
+  "$HERE/kwantdesk-history-backfill.service" \
+  /etc/systemd/system/kwantdesk-history-backfill.service
+systemctl daemon-reload
+systemctl enable kwantdesk-history-backfill.service
+
 echo "==> waiting for the Rithmic session"
 for _ in $(seq 1 30); do
   sleep 5

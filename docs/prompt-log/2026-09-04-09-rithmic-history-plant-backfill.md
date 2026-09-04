@@ -28,6 +28,10 @@ live recorder to accumulate them.
 - The provider rejected a single 20-month replay with code 12 (`output
   inhibited`). The importer therefore requests seven-day windows and commits
   each independently; the same NQ week then completed with 5,581 valid bars.
+- Added a boot-enabled systemd unit which requires both Docker and the
+  dedicated recordings mount. It resumes unfinished checkpoint windows after
+  VPS maintenance and catches up newer dates without re-downloading completed
+  windows.
 
 # Outcome
 

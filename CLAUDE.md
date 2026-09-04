@@ -1692,6 +1692,9 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
 - Rithmic rejects a single 20-month replay with code 12 (`output inhibited`),
   so imports run as independently committed seven-day windows. This bounds
   provider output and limits any reconnect/reboot retry to one week.
+- The importer is installed as a boot-enabled systemd service with explicit
+  Docker and `/srv/kwantdesk-recordings` mount dependencies. Its persisted
+  window ledger skips completed work and resumes/catches up after maintenance.
 - Historical continuous bars are requested by product root (`NQ`), not expired
   contract (`NQH5`). The January 2, 2025 NQ pilot returned 1,380 rows with zero
   invalid bars. Chart history falls back from the current exact contract to
