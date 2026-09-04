@@ -50,7 +50,7 @@ Legend: `[ ]` not complete, `[~]` in progress, `[x]` complete and addable.
 | 12 | KWANT Profile Swing | `deep-profile-swing` | [x] | [x] | [x] | [x] | [x] | Add |
 | 13 | KWANT Profile Values | `deep-profile-values` | [x] | [x] | [x] | [x] | [x] | Add |
 | 14 | Market Statistics | `market-statistics` | [x] | [x] | [x] | [x] | [x] | Add |
-| 15 | Confluence Identifier | `confluence-identifier` | [x] | [x] | [x] | [x] | [~] | Pending |
+| 15 | Confluence Identifier | `confluence-identifier` | [x] | [x] | [x] | [x] | [x] | Add |
 | 16 | Kwant Levels | `gamma-levels` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
 | 17 | Overlay Chart | `overlay-chart` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
 | 18 | Overlay Symbol | `overlay-symbol` | [ ] | [ ] | [ ] | [ ] | [ ] | Pending |
@@ -85,8 +85,14 @@ Legend: `[ ]` not complete, `[~]` in progress, `[x]` complete and addable.
   and 50,000-bar performance tests pass. Scoped TypeScript is clean and the
   Next production compiler succeeds; repository-wide type checking is blocked
   later by the pre-existing duplicate Three.js type mismatch in
-  `src/app/landing/page.tsx:51`. Exact-deployment browser QA remains open, so
-  the catalogue is deliberately not marked Add yet.
+  `src/app/landing/page.tsx:51`.
+- Production QA on commit `0077c1b1` confirmed the sole active Vercel project
+  deployed the study as Add. The indicator rendered without a chart crash,
+  exposed the complete General/Input/Style surface, reported an honest
+  `PARTIAL` capability state when complete profile inputs were unavailable,
+  switched to `UNSAVED CHANGES` immediately, saved immediately, and preserved
+  the edited minimum-confluence value after a full reload. The temporary QA
+  instance was removed and the production chart restored to 11 indicators.
 
 ### 1: Unfinished Auction
 
