@@ -1,5 +1,19 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-06 — Super Trend pair release verified locally
+
+- Supersedes the older gated-status entries below. Both studies are now
+  implemented and registered: 100 registered / 28 Pending / zero orphan gates.
+- Isolated committed release tree at `293d23df` passed the normal Turbopack
+  production build (TypeScript and 80 pages), 90 combined regression tests and
+  18 template checks. No unrelated dirty native/social/gateway files included.
+- Both studies use the existing 20,000-bar history path; live updates preserve
+  that history. Browser synthetic live updates, settings/save/reload/export,
+  pane placement and retained auto-centre-off scales were checked.
+- One main-only Git release follows this note. Exact production SHA must be
+  verified before reporting live. No native pixel/protected formula parity or
+  market-open soak claim. Continue the 28-row pending ledger, not the old list.
+
 ## 2026-09-06 — Super Trend live plotting wired, release QA remains
 
 - Incremental callback now drives both studies with alerts off as well. Shared

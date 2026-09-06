@@ -346,4 +346,11 @@ New 20k-history/forming-tick/routing regression passes: 38 focused tests now.
 Measured full 20k calculation p95 4.245ms across 30 warmed local samples.
 Rebuild isolated release tree at the updated commit before one main push.
 
+Final isolated result at `293d23df`: normal Turbopack production build passed,
+including TypeScript and all 80 pages. 90 combined indicator/registration tests
+and 18 template checks passed in that same committed release tree. The earlier
+temporary dependency-link/webpack failures above are resolved for the actual
+production build path; no TPO route or unrelated files were changed. One main
+push follows; exact deployment verification remains a distinct release check.
+
 No available indicator modified. No production release for this prerequisite.

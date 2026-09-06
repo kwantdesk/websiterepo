@@ -91,3 +91,8 @@ no unrelated route changed. Physical local dependency copy completed. Final
 review fixed 1500-bar truncation: both studies now use 20k deep history and the
 live merge retains it. 38 focused tests pass. Updated isolated Turbopack build
 and exact deployment verification still outstanding; local tally 28 Pending.
+
+Release check outcome: updated isolated committed tree `293d23df` passes the
+normal production build, 90 combined tests and 18 template checks. Ready for
+one scoped main-only push and exact live SHA verification. This completes the
+two-study implementation batch, not the remaining 28 Pending indicators.
