@@ -1,6 +1,7 @@
 "use client";
 
 import { indicatorHistogramWidth } from "@/lib/indicatorHistogramWidth";
+import { useSuperTrendLivePanes } from "@/components/useSuperTrendLivePanes";
 
 import { memo, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { Check, ChevronDown, GripHorizontal, Minus, Plus, RefreshCw, Settings2 } from "lucide-react";
@@ -1239,7 +1240,8 @@ function ChartVerticalIndicatorPaneSurface({
 }
 
 function ChartIndicatorPanes({
-  groups,
+  groups: baseGroups,
+  liveChartKey,
   width,
   leftInset = 0,
   priceScaleWidth,
@@ -1258,6 +1260,7 @@ function ChartIndicatorPanes({
   onOpenSettings,
 }: {
   groups: IndicatorPaneGroup[];
+  liveChartKey?: string;
   width: number;
   leftInset?: number;
   priceScaleWidth: number;
@@ -1275,6 +1278,7 @@ function ChartIndicatorPanes({
   onUpdateSetting?: (instanceId: string, key: string, value: number | string | boolean) => void;
   onOpenSettings?: (instanceId: string) => void;
 }) {
+  const groups = useSuperTrendLivePanes(baseGroups, liveChartKey);
   const rootRef = useRef<HTMLDivElement>(null);
   const suppressToggleRef = useRef<string | null>(null);
   const [drag, setDrag] = useState<{

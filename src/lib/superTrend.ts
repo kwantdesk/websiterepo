@@ -93,6 +93,8 @@ export function calculateSuperTrendValues(
  * Holds only two numerical states, never the history array or emitted points.
  */
 export class SuperTrendLiveCalculator {
+  private currentPoint: SuperTrendPoint | null = null;
+  private priorPoint: SuperTrendPoint | null = null;
   private state = initialState();
   private beforeLast = initialState();
   private lastInputTime = -Infinity;
@@ -105,20 +107,26 @@ export class SuperTrendLiveCalculator {
   reseed(candles: readonly Candle[]): SuperTrendPoint | null {
     this.state = initialState(); this.beforeLast = initialState(); this.lastInputTime = -Infinity;
     let point: SuperTrendPoint | null = null;
+    this.currentPoint = null; this.priorPoint = null;
     for (const candle of candles) {
+      this.priorPoint = point;
       this.beforeLast = { ...this.state };
       point = advance(this.state, candle, this.parameters);
       this.lastInputTime = candle.timestamp;
     }
+    this.currentPoint = point;
     return point;
   }
+
+  previousPoint() { return this.priorPoint; }
 
   update(candle: Candle): SuperTrendPoint | null {
     // Late/corrupt timestamps cannot roll the current live state backwards.
     if (!Number.isFinite(candle.timestamp) || candle.timestamp < this.lastInputTime) return null;
     if (candle.timestamp === this.lastInputTime) this.state = { ...this.beforeLast };
-    else this.beforeLast = { ...this.state };
+    else { this.beforeLast = { ...this.state }; this.priorPoint = this.currentPoint; }
     this.lastInputTime = candle.timestamp;
-    return advance(this.state, candle, this.parameters);
+    this.currentPoint = advance(this.state, candle, this.parameters);
+    return this.currentPoint;
   }
 }

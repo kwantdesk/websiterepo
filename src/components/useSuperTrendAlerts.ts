@@ -4,18 +4,23 @@ import { useEffect, useRef, useState } from "react";
 import type { Candle } from "@/lib/backtester";
 import type { ChartIndicatorInstance } from "@/lib/chartIndicatorCatalog";
 import { LIVE_CHART_CANDLE_EVENT, type LiveChartCandleDetail } from "@/lib/chartLiveEvents";
-import { SuperTrendLiveCalculator } from "@/lib/superTrend";
+import { SuperTrendLiveCalculator, type SuperTrendPoint } from "@/lib/superTrend";
 import { SuperTrendAlertTracker } from "@/lib/superTrendAlerts";
 import { normalizeSuperTrendSettings } from "@/lib/superTrendSettings";
 
 type Entry = { calculator: SuperTrendLiveCalculator; tracker: SuperTrendAlertTracker;
-  scope: string; settings: ReturnType<typeof normalizeSuperTrendSettings> };
+  scope: string; difference: boolean; settings: ReturnType<typeof normalizeSuperTrendSettings> };
 
 /** No network/subscriptions to providers; consumes the existing chart's live event. */
-export function useSuperTrendAlerts({ indicators, history, liveKey, instrument, timeframe, live }: {
+export function useSuperTrendAlerts({ indicators, history, liveKey, instrument, timeframe, live, onPoint, onReset }: {
   indicators: readonly ChartIndicatorInstance[]; history: readonly Candle[];
   liveKey?: string | null; instrument: string; timeframe?: string; live: boolean;
+  onPoint?: (instanceId: string, point: SuperTrendPoint, previous: SuperTrendPoint | null,
+    settings: ReturnType<typeof normalizeSuperTrendSettings>, difference: boolean) => void;
+  onReset?: (instanceId: string) => void;
 }) {
+  const paint = useRef(onPoint); paint.current = onPoint;
+  const resetPaint = useRef(onReset); resetPaint.current = onReset;
   const entries = useRef(new Map<string, Entry>());
   const [notice, setNotice] = useState<string | null>(null);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -34,18 +39,19 @@ export function useSuperTrendAlerts({ indicators, history, liveKey, instrument, 
   useEffect(() => {
     const keep = new Set<string>();
     for (const instance of indicators) {
-      if (!instance.enabled || instance.indicatorId !== "super-trend") continue;
-      const s = normalizeSuperTrendSettings(instance.settings ?? {});
-      if (!s.alertSoundEnabled && !s.messagePopupEnabled) continue;
+      if (!instance.enabled || !["super-trend", "super-trend-difference"].includes(instance.indicatorId)) continue;
+      const difference = instance.indicatorId === "super-trend-difference";
+      const s = normalizeSuperTrendSettings(instance.settings ?? {}, difference);
       keep.add(instance.instanceId);
-      const scope = JSON.stringify([liveKey, instrument, timeframe, s.length, s.multiplier]);
+      const scope = JSON.stringify([liveKey, instrument, timeframe, instance.indicatorId, s.length, s.multiplier]);
       let entry = entries.current.get(instance.instanceId);
       if (!entry || entry.scope !== scope) {
-        entry = { scope, settings: s, tracker: new SuperTrendAlertTracker(),
+        entry = { scope, difference, settings: s, tracker: new SuperTrendAlertTracker(),
           calculator: new SuperTrendLiveCalculator({ length: Number(s.length), multiplier: Number(s.multiplier) }) };
         entries.current.set(instance.instanceId, entry);
       }
       entry.settings = s;
+      resetPaint.current?.(instance.instanceId);
       entry.tracker.seed(scope, entry.calculator.reseed(history));
     }
     for (const key of entries.current.keys()) if (!keep.has(key)) entries.current.delete(key);
@@ -62,6 +68,11 @@ export function useSuperTrendAlerts({ indicators, history, liveKey, instrument, 
           continue;
         }
         const point = entry.calculator.update(detail.candle);
+        if (point && Number.isFinite(detail.sourceTimestampMs) && Date.now() - Number(detail.sourceTimestampMs) <= 15000
+          && Date.now() - Number(detail.sourceTimestampMs) >= -1000) {
+          paint.current?.(instanceId, point, entry.calculator.previousPoint(), entry.settings, entry.difference);
+        }
+        if (entry.difference || (!entry.settings.alertSoundEnabled && !entry.settings.messagePopupEnabled)) continue;
         const alert = entry.tracker.update({ scopeKey: entry.scope, live: true,
           sourceTimestamp: Number(detail.sourceTimestampMs), now: Date.now(), point: point ?? undefined });
         if (!alert) continue;
@@ -79,6 +90,7 @@ export function useSuperTrendAlerts({ indicators, history, liveKey, instrument, 
             const context = audio.current;
             void context.resume().then(() => {
               if (!mounted.current || !isLive.current || context.state !== "running"
+                || entries.current.get(instanceId) !== entry || !entry.settings.alertSoundEnabled
                 || Date.now() - Number(detail.sourceTimestampMs) > 15000) return;
               const tone = context.createOscillator(), gain = context.createGain();
               tone.type = "sine"; tone.frequency.value = alert.direction === "up" ? 880 : 440;

@@ -34,3 +34,9 @@ listener existed, so event emission alone was insufficient. 19 tests pass,
 including actual hook execution and all four source-publisher checks. Scoped
 lint/TypeScript pass. Browser audio/visuals and live plot cadence still unproved;
 both Pending gates stay off and this remains local until the release gate.
+
+Plot continuation: wired frame-coalesced native overlay and pane-local histogram
+updates using the incremental calculation; fixed per-instance series-key
+collisions and same-bar slope colour; bounded tail/history/style/replay guards.
+22 tests and scoped lint pass. Browser/performance/build verification remains;
+still 30 Pending, not deployed or falsely claimed complete.

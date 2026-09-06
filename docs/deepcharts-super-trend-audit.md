@@ -2,6 +2,35 @@
 
 Status: calculation prerequisite only. Both catalogue entries remain Pending.
 
+## Live plot integration continuation
+
+Both enabled studies now use the incremental hook even with alerts off.
+`paintSuperTrendSeries` shares the batch colour/style mapping with one-point
+live paints. Slope colour compares with the preceding candle, not the previous
+tick. Series keys include instance IDs; the prior static keys would collide
+when more than one copy was added.
+
+Chart coalesces live paints with requestAnimationFrame after the candle's own
+paint, using its event-bar time map rather than inventing coordinates. Native
+overlay series update directly; own-series labels receive merged live data.
+Difference sends a local event consumed only within ChartIndicatorPanes,
+which merges the scoped tail and recomputes pane geometry/domain. Main chart,
+footprint and profile calculations are not called by that event.
+
+`SuperTrendPlotBuffer` caps stored tail points at 1500, replaces by chart time,
+keeps completed history authoritative and rejects mismatching style/config
+keys. History reseed clears the relevant pending paints/buffers. Replay removes
+the pane channel immediately, and chart cleanup cancels pending frames.
+Three additional tests cover bounded tails, historical correction ownership,
+style changes, instance keys and same-bar colour parity with the full engine.
+22 Super Trend tests and scoped lint pass. Browser/performance inspection is
+still required: this is structural/test evidence, not measured live FPS.
+
+Next release work: official screenshots; actual browser settings/labels,
+horizontal/vertical pane behavior, audio permission behavior and Save/reload/
+templates; full build and single scoped push with exact live SHA verification.
+Both gates are still off (30 Pending), and local changes are not deployed.
+
 ## Live calculator and alert integration
 
 The batch and live calculators now share one `advance` recurrence. The live

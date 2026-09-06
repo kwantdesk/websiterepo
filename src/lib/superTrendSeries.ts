@@ -1,6 +1,6 @@
 import type { Candle } from "./backtester";
 import type { CalculatedIndicatorSeries, IndicatorTheme } from "./chartIndicatorEngine";
-import { calculateSuperTrendValues } from "./superTrend";
+import { calculateSuperTrendValues, type SuperTrendPoint } from "./superTrend";
 import { normalizeSuperTrendSettings } from "./superTrendSettings";
 import { resolveVolumeProfileGradient } from "./volumeProfileGradients";
 
@@ -10,13 +10,21 @@ export function calculateSuperTrendSeries(
 ): CalculatedIndicatorSeries[] {
   const s = normalizeSuperTrendSettings(raw, difference);
   const values = calculateSuperTrendValues(candles, { length: Number(s.length), multiplier: Number(s.multiplier) });
+  return paintSuperTrendSeries(values, s, theme, instanceId, difference);
+}
+
+export function paintSuperTrendSeries(
+  values: readonly SuperTrendPoint[], raw: Record<string, unknown>, theme: IndicatorTheme,
+  instanceId: string, difference = false, previousValue?: number,
+): CalculatedIndicatorSeries[] {
+  const s = normalizeSuperTrendSettings(raw, difference);
   if (!values.length) return [];
   const gradient = resolveVolumeProfileGradient(s.gradientPreset);
   const pick = (key: string, fallback: string) => s.useThemeColors === false
     && typeof s[key] === "string" && String(s[key]).trim() ? String(s[key]) : fallback;
   const primary = gradient?.from ?? pick("plotColor", theme.positive);
   const secondary = gradient?.to ?? pick("secondaryColor", theme.negative);
-  let previous: number | undefined;
+  let previous = previousValue;
   const data = values.map(point => {
     if (point.breakBefore) previous = undefined;
     const value = difference ? point.difference : point.value;
@@ -26,7 +34,8 @@ export function calculateSuperTrendSeries(
     return { time: point.time, value, color: negative ? secondary : primary,
       ...(point.breakBefore ? { breakBefore: true } : {}) };
   });
-  return [{ key: difference ? "super-trend-difference" : "super-trend", label: String(s.shortName),
+  return [{ key: `${difference ? "super-trend-difference" : "super-trend"}-${instanceId}`, label: String(s.shortName),
+    superTrendStyleKey: JSON.stringify([s, theme]),
     kind: difference && s.displayStyle === "histogram" ? "histogram" : "line",
     placement: difference ? "pane" : "overlay", color: primary,
     lineWidth: s.lineWidth as 1 | 2 | 3 | 4,

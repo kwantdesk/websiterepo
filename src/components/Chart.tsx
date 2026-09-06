@@ -2,6 +2,8 @@
 
 import { SuperTrendLabels } from "@/lib/superTrendLabels";
 import { useSuperTrendAlerts } from "@/components/useSuperTrendAlerts";
+import { paintSuperTrendSeries } from "@/lib/superTrendSeries";
+import { SUPER_TREND_LIVE_PLOT_EVENT, SuperTrendPlotBuffer } from "@/lib/superTrendLivePlot";
 
 import { memo, startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
 import KwantSelect from "@/components/ui/KwantSelect";
@@ -3273,6 +3275,7 @@ function Chart({
   const priceLinesRef = useRef<any[]>([]);
   const indicatorSeriesRefs = useRef<Array<{
     superTrendLabels?: SuperTrendLabels;
+    superTrendDefinition?: CalculatedIndicatorSeries;
     key: string;
     kind: "line" | "histogram";
     series: {
@@ -3283,6 +3286,13 @@ function Chart({
     dataSnapshot: LightweightSeriesDataSnapshot;
     optionsSignature: string;
   }>>([]);
+  const superTrendPlotBuffersRef = useRef(new Map<string, SuperTrendPlotBuffer>());
+  const superTrendPaintQueueRef = useRef(new Map<string, { instanceId: string; series: CalculatedIndicatorSeries }>());
+  const superTrendPaintFrameRef = useRef<number | null>(null);
+  useEffect(() => () => {
+    if (superTrendPaintFrameRef.current !== null) cancelAnimationFrame(superTrendPaintFrameRef.current);
+    superTrendPaintFrameRef.current = null; superTrendPaintQueueRef.current.clear(); superTrendPlotBuffersRef.current.clear();
+  }, [liveCandleEventKey, replayTimestampMs !== null && replayTimestampMs !== undefined && replayTimestampMs > 0]);
   const chartConstructionSettingsKey = stableSeriesOptionsSignature(settings);
   const backgroundLevelsRef = useRef<ChartLevel[]>([]);
   const backgroundZonesRef = useRef<ChartZone[]>([]);
@@ -7580,7 +7590,49 @@ function Chart({
   }, [indicatorSignature, indicators, orderFlowHistoryReady, orderFlowSeriesReady]);
 
   const superTrendAlertNotice = useSuperTrendAlerts({ indicators, history: indicatorCandlesLite, liveKey: liveCandleEventKey,
-    instrument, timeframe, live: marketIsActive === true && !(replayTimestampMs !== null && replayTimestampMs !== undefined && replayTimestampMs > 0) });
+    instrument, timeframe, live: marketIsActive === true && !(replayTimestampMs !== null && replayTimestampMs !== undefined && replayTimestampMs > 0),
+    onReset: instanceId => {
+      superTrendPlotBuffersRef.current.delete(`super-trend-${instanceId}`);
+      for (const [key, item] of superTrendPaintQueueRef.current) if (item.instanceId === instanceId) superTrendPaintQueueRef.current.delete(key);
+      window.dispatchEvent(new CustomEvent(SUPER_TREND_LIVE_PLOT_EVENT, { detail: { chartKey: liveCandleEventKey, instanceId, reset: true } }));
+    },
+    onPoint: (instanceId, point, previous, studySettings, difference) => {
+      const [series] = paintSuperTrendSeries([point], studySettings, visibleIndicatorTheme(settings), instanceId, difference,
+        previous ? difference ? previous.difference : previous.value : undefined);
+      if (!series) return;
+      superTrendPaintQueueRef.current.set(`${instanceId}:${point.time}`, { instanceId, series });
+      while (superTrendPaintQueueRef.current.size > 1500) superTrendPaintQueueRef.current.delete(superTrendPaintQueueRef.current.keys().next().value!);
+      if (superTrendPaintFrameRef.current !== null) return;
+      superTrendPaintFrameRef.current = requestAnimationFrame(() => {
+        superTrendPaintFrameRef.current = null;
+        const queue = [...superTrendPaintQueueRef.current.values()]; superTrendPaintQueueRef.current.clear();
+        for (const item of queue) {
+          const naturalTime = item.series.data[0].time;
+          const time = timeframe && isEventBasedChartInterval(timeframe)
+            ? eventChartTimeBySourceTimeRef.current.get(Math.round(naturalTime * 1000)) : naturalTime;
+          if (time === undefined) continue;
+          const painted = { ...item.series, data: [{ ...item.series.data[0], time }] };
+          if (painted.placement === "pane") {
+            window.dispatchEvent(new CustomEvent(SUPER_TREND_LIVE_PLOT_EVENT, { detail: {
+              chartKey: liveCandleEventKey, instanceId: item.instanceId, series: painted,
+            } }));
+            continue;
+          }
+          const target = indicatorSeriesRefs.current.find(entry => entry.key === painted.key);
+          const base = target?.superTrendDefinition;
+          if (!target || !base || base.superTrendStyleKey !== painted.superTrendStyleKey) continue;
+          let buffer = superTrendPlotBuffersRef.current.get(painted.key);
+          if (!buffer) { buffer = new SuperTrendPlotBuffer(); superTrendPlotBuffersRef.current.set(painted.key, buffer); }
+          buffer.push(painted);
+          try {
+            target.series.update(painted.data[0]);
+            const merged = buffer.merge(base);
+            if (merged.superTrendLabels) target.superTrendLabels?.update(merged.data, merged.superTrendLabels,
+              settings.backgroundColor, merged.color, priceFormat.precision);
+          } catch { /* A chart disposed during a queued paint does not receive late data. */ }
+        }
+      });
+    } });
 
   const baseCalculatedIndicatorSeries = useMemo(
     () => indicators.flatMap((instance) => {
@@ -16444,7 +16496,9 @@ function Chart({
       reusable.delete(entry.key);
     });
 
-    indicatorSeriesRefs.current = overlayDefinitions.map((definition) => {
+    for (const key of superTrendPlotBuffersRef.current.keys()) if (!nextKeys.has(key)) superTrendPlotBuffersRef.current.delete(key);
+    indicatorSeriesRefs.current = overlayDefinitions.map((baseDefinition) => {
+      const definition = superTrendPlotBuffersRef.current.get(baseDefinition.key)?.merge(baseDefinition) ?? baseDefinition;
       const kind = definition.kind === "histogram" ? "histogram" : "line";
       const existing = reusable.get(definition.key);
       const options = kind === "histogram"
@@ -16499,7 +16553,7 @@ function Chart({
         } else if (syncPlan === "replace") {
           existing.series.setData(data);
         }
-        return { ...existing, dataSnapshot, optionsSignature };
+        return { ...existing, dataSnapshot, optionsSignature, superTrendDefinition: definition.superTrendStyleKey ? definition : undefined };
       }
       const series = kind === "histogram"
         ? chart.addHistogramSeries({
@@ -16519,6 +16573,7 @@ function Chart({
       }
       return {
         superTrendLabels,
+        superTrendDefinition: definition.superTrendStyleKey ? definition : undefined,
         key: definition.key,
         kind,
         series: series as unknown as {
@@ -19391,6 +19446,7 @@ function Chart({
 
       <ChartIndicatorPanes
         groups={orderedIndicatorPanes}
+        liveChartKey={replayTimestampMs !== null && replayTimestampMs !== undefined && replayTimestampMs > 0 ? undefined : liveCandleEventKey ?? undefined}
         width={overlaySize.width}
         leftInset={toolbarPlotLeftInset}
         priceScaleWidth={nativePriceScaleWidth}

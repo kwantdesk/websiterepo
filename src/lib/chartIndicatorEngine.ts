@@ -24,6 +24,7 @@ import {
 
 export type CalculatedIndicatorSeries = {
   superTrendLabels?: SuperTrendLabelOptions;
+  superTrendStyleKey?: string;
   kstPresentation?: KstPanePresentation;
   key: string;
   groupKey?: string;

@@ -1,5 +1,17 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-06 — Super Trend live plotting wired, release QA remains
+
+- Incremental callback now drives both studies with alerts off as well. Shared
+  point painter preserves previous-CANDLE slope colour, and series keys now
+  include instance IDs. Native overlay updates direct; Difference uses pane-
+  local frame-coalesced updates instead of the main Chart calculation tree.
+- Bounded `SuperTrendPlotBuffer` and history/replay/style isolation implemented;
+  22 Super Trend tests and scoped lint pass. Not a live-FPS/visual-parity claim.
+- Both gates remain off: 30 Pending. Next actual reference/browser/audio/
+  settings/template QA and full build, then batch local commits into one main
+  push. Detailed sources/status in `docs/deepcharts-super-trend-audit.md`.
+
 ## 2026-09-06 — Super Trend incremental calculator and actual alerts
 
 - Shared `advance` recurrence now powers batch and O(1) live forming-bar
