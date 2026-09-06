@@ -19,3 +19,10 @@ Found that histogram width ignored lineWidth; added opt-in width handling to
 both pane orientations without changing existing candle-width behavior.
 19 combined tests pass. Both gates remain off until labels/alerts/browser and
 release verification are complete. This remains local, not deployed.
+
+Label continuation: implemented actual own-series labels/backgrounds, visible
+point anchoring, theme updates and auto-centre re-enable reset. Three primitive
+tests plus math/integration total 14 passing; scoped lint and TypeScript pass.
+Found candle events lack provider timestamp and execution events depend on
+other indicators. Recorded the correct source publishers for safe alert wiring.
+Still 30 Pending; not released until remaining live/UI verification is done.

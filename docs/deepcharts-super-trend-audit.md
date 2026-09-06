@@ -2,6 +2,31 @@
 
 Status: calculation prerequisite only. Both catalogue entries remain Pending.
 
+## Label rendering continuation
+
+`SuperTrendLabels` is now attached to the overlay's own line series and updated
+on series reuse/theme changes. It draws separate name/value labels and their
+independent backgrounds at the latest visible point, using that point's trend
+colour. Marker background switches between chart background and trend colour.
+Native price-axis value badges are disabled for this study so the custom
+value-background setting controls the actual displayed label. Three real
+primitive tests cover visibility, colour, backgrounds, precision and detachment.
+14 combined Super Trend tests, scoped lint and TypeScript pass.
+
+Auto-centre opt-out now resets its override when re-enabled, only for this new
+study. Existing studies retain their previous options branch. Exact vendor
+marker semantics/geometry still need screenshot/browser comparison; this is
+not a pixel-parity claim.
+
+Alert source investigation: `LiveChartCandleDetail` currently contains only
+key/candle, not provider observation time. `LIVE_CHART_EXECUTION_EVENT` has real
+record times but is dispatched only when footprint/instant tape is active, so
+depending on it would silently disable alerts on a plain price chart. The
+workspace's four candle publishers have source records, tick.timestamp or
+snapshot.timestamp available. Next integration must explicitly carry verified
+source time (never Date.now fallback), and reconcile the forming candle without
+introducing a full-history calculator pass on every tick. No feed edits yet.
+
 ## Integration in progress
 
 The real engine now routes both IDs to `superTrendSeries.ts`; gates remain off.

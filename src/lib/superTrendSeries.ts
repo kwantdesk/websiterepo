@@ -33,9 +33,12 @@ export function calculateSuperTrendSeries(
     lineStyle: s.lineStyle as "solid" | "dashed" | "dotted",
     lineVisible: difference || s.displayStyle !== "points",
     pointMarkersVisible: !difference && s.displayStyle !== "line",
-    lastValueVisible: !difference && s.valueLabel === true,
+    lastValueVisible: false,
     excludeFromAutoScale: !difference && s.includeOnAutoCenter === false,
     independentScale: !difference && s.useSecondaryAxis === true,
     priceScaleId: !difference && s.useSecondaryAxis === true ? `super-trend-${instanceId}` : undefined,
-    ...(difference ? { showZeroLine: true, includeZeroInScale: true, histogramBarWidth: Number(s.lineWidth) } : {}), data }];
+    ...(difference ? { showZeroLine: true, includeZeroInScale: true, histogramBarWidth: Number(s.lineWidth) }
+      : { superTrendLabels: { name: String(s.shortName), nameLabel: s.nameLabel === true, valueLabel: s.valueLabel === true,
+        nameBackground: s.nameBackground === true, valueBackground: s.valueBackground === true,
+        chartColorForMarker: s.chartColorForMarker === true } }), data }];
 }

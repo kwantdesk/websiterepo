@@ -1,5 +1,7 @@
 "use client";
 
+import { SuperTrendLabels } from "@/lib/superTrendLabels";
+
 import { memo, startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
 import KwantSelect from "@/components/ui/KwantSelect";
 import { candleCountdownRemainingMs } from "@/lib/chartCountdown";
@@ -3269,6 +3271,7 @@ function Chart({
   const levelsRef = useRef<ChartLevel[]>([]);
   const priceLinesRef = useRef<any[]>([]);
   const indicatorSeriesRefs = useRef<Array<{
+    superTrendLabels?: SuperTrendLabels;
     key: string;
     kind: "line" | "histogram";
     series: {
@@ -16469,7 +16472,8 @@ function Chart({
               priceLineStyle: definition.lineStyle === "dashed" ? LineStyle.Dashed
                 : definition.lineStyle === "dotted" ? LineStyle.Dotted : LineStyle.Solid,
             } : {}),
-            ...(definition.excludeFromAutoScale ? { autoscaleInfoProvider: () => null } : {}),
+            ...(definition.superTrendLabels ? { autoscaleInfoProvider: definition.excludeFromAutoScale ? () => null : undefined }
+              : definition.excludeFromAutoScale ? { autoscaleInfoProvider: () => null } : {}),
             crosshairMarkerVisible: false,
             ...(definition.priceScaleId?.startsWith("iv-rank-") ? {
               autoscaleInfoProvider: () => ({ priceRange: { minValue: 0, maxValue: 100 } }),
@@ -16479,6 +16483,8 @@ function Chart({
       const dataSnapshot = buildLightweightSeriesDataSnapshot(data, existing?.dataSnapshot ?? null);
       const optionsSignature = stableSeriesOptionsSignature(options);
       if (existing && existing.kind === kind) {
+        if (definition.superTrendLabels) existing.superTrendLabels?.update(definition.data, definition.superTrendLabels,
+          settings.backgroundColor, definition.color, priceFormat.precision);
         if (existing.optionsSignature !== optionsSignature) {
           existing.series.applyOptions(options);
         }
@@ -16502,7 +16508,13 @@ function Chart({
             priceScaleId: definition.priceScaleId ?? "right",
           });
       series.setData(data);
+      const superTrendLabels = definition.superTrendLabels ? new SuperTrendLabels() : undefined;
+      if (superTrendLabels && definition.superTrendLabels) {
+        series.attachPrimitive(superTrendLabels);
+        superTrendLabels.update(definition.data, definition.superTrendLabels, settings.backgroundColor, definition.color, priceFormat.precision);
+      }
       return {
+        superTrendLabels,
         key: definition.key,
         kind,
         series: series as unknown as {
@@ -16514,7 +16526,7 @@ function Chart({
         optionsSignature,
       };
     });
-  }, [calculatedIndicatorSeries, chartReadyRevision]);
+  }, [calculatedIndicatorSeries, chartReadyRevision, settings.backgroundColor, priceFormat.precision]);
 
   useEffect(() => {
     const series = candleSeriesRef.current;

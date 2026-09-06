@@ -5,6 +5,7 @@ import { calculateParabolicSar } from "@/lib/parabolicSar";
 import { calculateLinearRegression } from "@/lib/linearRegression";
 import { calculateTillsonT3 } from "@/lib/tillsonT3";
 import { calculateSuperTrendSeries } from "@/lib/superTrendSeries";
+import type { SuperTrendLabelOptions } from "@/lib/superTrendLabels";
 import { calculateKstSeries, type KstPanePresentation } from "@/lib/knowSureThingSeries";
 import { exchangeClockParts } from "@/lib/exchangeClock";
 import type { ChartIndicatorInstance } from "@/lib/chartIndicatorCatalog";
@@ -22,6 +23,7 @@ import {
 } from "@/lib/vwap";
 
 export type CalculatedIndicatorSeries = {
+  superTrendLabels?: SuperTrendLabelOptions;
   kstPresentation?: KstPanePresentation;
   key: string;
   groupKey?: string;

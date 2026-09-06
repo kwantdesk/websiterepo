@@ -43,7 +43,8 @@ test("numeric bounds, scalar roundtrip, styles and per-instance scale", () => {
   const [plot] = calculateIndicatorSeries(instance("super-trend", { displayStyle: "points", lineStyle: "dashed",
     includeOnAutoCenter: false, useSecondaryAxis: true, valueLabel: true }), bars, theme);
   assert.equal(plot.lineVisible, false); assert.equal(plot.pointMarkersVisible, true);
-  assert.equal(plot.lastValueVisible, true); assert.equal(plot.excludeFromAutoScale, true);
+  assert.equal(plot.lastValueVisible, false); assert.equal(plot.superTrendLabels.valueLabel, true);
+  assert.equal(plot.excludeFromAutoScale, true);
   assert.equal(plot.priceScaleId, "super-trend-test-st");
   assert.equal(plot.lineStyle, "dashed");
 });

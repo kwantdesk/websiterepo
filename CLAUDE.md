@@ -1,5 +1,18 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-06 — Super Trend labels and alert-source investigation
+
+- New overlay-only `SuperTrendLabels` primitive is attached to the study's own
+  series (secondary-axis safe), updates with colours, labels latest visible
+  point, independent backgrounds and marker background. Native value badge
+  disabled for this study; auto-centre true resets previous false override.
+- 14 Super Trend tests, scoped lint and TypeScript pass. Still gated, 30 Pending.
+- Alert integration cannot rely on candle-open or render time. Candle event
+  lacks provider time; execution event exists only with footprint/instant tape.
+  Four workspace candle publishers have source times available. Next: carry
+  real source time, then bounded forming-candle update/alert dispatch, official
+  screenshot/browser verification, full build and batch main push.
+
 ## 2026-09-06 — Super Trend integration in progress
 
 - Both IDs now have real engine outputs and scalar settings/style UI/colour
