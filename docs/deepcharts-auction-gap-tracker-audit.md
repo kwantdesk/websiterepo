@@ -1,5 +1,25 @@
 # Auction Gap Tracker — implementation in progress
 
+### Worker history-to-live connection — 2026-09-07
+
+`prepareAuctionGapStudy` exposes the validated raw segments used by both batch
+calculation and `AuctionGapStudySession`. The worker now owns a session seeded
+from those segments and accepts complete current **time-bar** snapshots. Every
+tail still passes contract/coverage, execution, session, volume and actual OHLC
+validation. Scope/configuration changes, replay rewind, missed bars and advancing
+before finalizing the previous bar return requires-rebuild. Failed new history
+invalidates the old seed. A failed tail leaves prior valid lifecycle intact.
+This does not invent incremental event ownership: event tails require history
+reconstruction until that path is implemented. The worker client exposes the
+operation; coalesced updates which skip a close must trigger reconstruction.
+
+68 tests, scoped lint and tsc pass. End-to-end session tests cover forming
+correction, finalization, next-bar retest, corrected retest, data failure and
+reseed failure. Separate-thread test additionally proves two actual worker
+messages retain state; eight worker tests pass after that extension. Browser
+bundle, real Chart source and complete per-tick performance remain unverified.
+Not registered/released; controls/render/template/alerts and event-live work due.
+
 ### Incremental forming-bar lifecycle — 2026-09-07
 
 `AuctionGapLiveLifecycle` shares the historical zone transition and checkpoints

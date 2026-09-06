@@ -1,5 +1,12 @@
 # Pending-library continuation — Auction Gap Tracker
 
+2026-09-07 worker-state continuation: connected strict history validation to
+retained worker lifecycle and validated current time-bar replacements. Finalize
+then advance; skipped updates/configuration changes/rewind request rebuild.
+68 tests, source lint and tsc pass; real worker history-to-tail messaging also
+passes. Not yet connected to chart controls/source; event incremental work and
+browser/render/template/alert QA remain. No deployment or gate change, 28 Pending.
+
 2026-09-07 incremental continuation: implemented active-zone checkpoints and
 forming-bar replacement without rescanning historical rows. Seven incremental
 tests compare against full reconstruction, including 1,000 replacements,

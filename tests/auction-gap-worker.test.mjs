@@ -99,5 +99,14 @@ test('actual entry calculates cloned execution data on a separate thread', { tim
     assert.equal(reply.scope, 'nq:1m'); assert.equal(reply.revision, 17);
     assert.equal(reply.result.status, 'ready'); assert.equal(reply.result.zones.length, 1);
     assert.deepEqual([reply.result.zones[0].lowTick, reply.result.zones[0].highTick], [401, 403]);
+    const tail = structuredClone(input);
+    tail.records = tail.records.slice(0, 1);
+    Object.assign(tail.candles[0], { high: 100.25, close: 100.25, volume: 10 });
+    Object.assign(tail.geometry[0], { highTick: 401, closeTick: 401 });
+    const tailReplyPromise = once(worker, 'message');
+    worker.postMessage({ scope: 'nq:1m', revision: 18, operation: 'time-tail', chartIndex: 0, input: tail });
+    const [tailReply] = await tailReplyPromise;
+    assert.equal(tailReply.result.status, 'ready'); assert.equal(tailReply.result.zones.length, 0);
+    assert.equal(tailReply.revision, 18);
   } finally { await worker.terminate(); }
 });

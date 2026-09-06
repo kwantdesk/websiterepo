@@ -1,5 +1,24 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-07 — Auction Gap worker history-to-live state
+
+- Extracted validated `prepareAuctionGapStudy` stages; batch calculator retained.
+  `AuctionGapStudySession` seeds incremental lifecycle from complete validated
+  history, then accepts complete current time-bar snapshots (not tick deltas).
+- Actual worker owns session state across messages. Client exposes time-tail
+  requests. Changed scope/configuration, rewind, skipped bars or unfinalized
+  prior bar require rebuild. Failed replacement history invalidates old seed.
+  Tail OHLC/volume/source validation remains mandatory; no timestamp event proxy.
+- 68 tests, scoped lint and full tsc pass. Actual separate-thread test now sends
+  history then a corrected tail through the real entry; eight worker tests pass
+  after that extension. No browser bundling/live-source/full-FPS claim.
+- Still 28 Pending. Next exact incremental event-source allocation (or explicit
+  history reconstruction path), actual Chart source/coverage adapter and controls/
+  render/template/alert/browser QA. Current time-tail protocol requires finalizing
+  old bar before advancing; skipped/coalesced closing updates must request history.
+  Snapshot creation copies zones; don't call at execution cadence from UI.
+  No production push for isolated foundation.
+
 ## 2026-09-07 — Auction Gap incremental zone lifecycle
 
 - `AuctionGapLiveLifecycle` now replaces all reset segments of the forming

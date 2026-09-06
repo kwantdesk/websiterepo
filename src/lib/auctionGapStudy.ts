@@ -5,7 +5,7 @@ import { prepareAuctionGapExecutions } from "./auctionGapExecutions.ts";
 import { allocateAuctionGapTimeExecutions } from "./auctionGapTimeAllocation.ts";
 import { allocateAuctionGapEventExecutions } from "./auctionGapEventAllocation.ts";
 import { buildAuctionGapRows, type AuctionGapChartGeometry } from "./auctionGapRows.ts";
-import { buildAuctionGapLifecycle, type AuctionGapLifecycleSettings, type AuctionGapZone } from "./auctionGapLifecycle.ts";
+import { buildAuctionGapLifecycle, type AuctionGapLifecycleSettings, type AuctionGapZone, type AuctionGapSourceBar } from "./auctionGapLifecycle.ts";
 
 export type AuctionGapStudyInput = {
   contractSymbol: string;
@@ -32,8 +32,11 @@ export type AuctionGapStudyResult = {
  * empty-success: UI must retain prior display with a truthful unavailable state.
  * Caller must supply fully source-matched/replay-clipped candles and coverage.
  */
-export function calculateAuctionGapStudy(input: AuctionGapStudyInput): AuctionGapStudyResult {
-  const unavailable = (reason: string): AuctionGapStudyResult => ({ status: "unavailable", reason, zones: [] });
+export type AuctionGapPreparedStudy = { status: "ready"; reason: null; segments: AuctionGapSourceBar[] }
+  | { status: "unavailable"; reason: string; segments: [] };
+
+export function prepareAuctionGapStudy(input: AuctionGapStudyInput): AuctionGapPreparedStudy {
+  const unavailable = (reason: string): AuctionGapPreparedStudy => ({ status: "unavailable", reason, segments: [] });
   let clock: AuctionGapSessionClock;
   try { clock = new AuctionGapSessionClock(input.calendar, input.timeSettings); }
   catch { return unavailable("invalid-calendar"); }
@@ -73,8 +76,15 @@ export function calculateAuctionGapStudy(input: AuctionGapStudyInput): AuctionGa
   const rows = buildAuctionGapRows({ executions: source.executions, assignments: allocation.assignments,
     bars: input.geometry, instrument: input.contractSymbol });
   if (rows.status !== "ready") return unavailable(rows.status);
-  const frame = buildAuctionGapLifecycle(rows.segments.map(segment => ({ ...segment, bar: segment.rawBar, detect: true })),
+  return { status: "ready", reason: null,
+    segments: rows.segments.map(segment => ({ ...segment, bar: segment.rawBar, detect: true })) };
+}
+
+export function calculateAuctionGapStudy(input: AuctionGapStudyInput): AuctionGapStudyResult {
+  const prepared = prepareAuctionGapStudy(input);
+  if (prepared.status !== "ready") return { status: "unavailable", reason: prepared.reason, zones: [] };
+  const frame = buildAuctionGapLifecycle(prepared.segments,
     { groupTicks: 1, inputType: "volume", sizeFiltered: false }, input.detectionSettings, input.lifecycleSettings);
-  if (frame.status !== "ready") return unavailable(frame.status);
+  if (frame.status !== "ready") return { status: "unavailable", reason: frame.status, zones: [] };
   return { status: "ready", reason: null, zones: frame.zones };
 }

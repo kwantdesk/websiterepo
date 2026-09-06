@@ -32,11 +32,21 @@ export class AuctionGapWorkerClient {
   }
 
   request(scope: string, input: AuctionGapStudyInput): boolean {
+    return this.enqueue({ scope, revision: ++this.revision, input });
+  }
+
+  /** Complete validated current-bar snapshot. If coalescing skips a closed bar,
+   * worker returns requires-rebuild; caller must submit a new full history seed.
+   */
+  requestTimeTail(scope: string, chartIndex: number, input: AuctionGapStudyInput): boolean {
+    return this.enqueue({ scope, revision: ++this.revision, input, operation: "time-tail", chartIndex });
+  }
+
+  private enqueue(job: AuctionGapWorkerJob): boolean {
     if (this.disposed) return false;
-    if (scope !== this.scope) {
-      this.stop(); this.scope = scope;
+    if (job.scope !== this.scope) {
+      this.stop(); this.scope = job.scope;
     }
-    const job = { scope, revision: ++this.revision, input };
     if (this.active) { this.pending = job; return true; }
     this.dispatch(job);
     return true;
