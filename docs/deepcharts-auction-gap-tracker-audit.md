@@ -51,6 +51,30 @@ the successful project-config check; it is not a production build claim.
 
 ## Required before release
 
+### Lifecycle foundation, subsequent continuation
+
+`auctionGapLifecycle.ts` adds deterministic correction-safe rebuilds: actual
+chart-index extensions (same-ms bars remain separate), caller-resolved exchange
+reset keys, filtered detection with independent retests, first-retest identity
+and fresh/triggered visibility. Retests require an actual nonempty row in the
+zone. Internal cross mode additionally requires a close beyond its far edge;
+this is an explicit convention, not proven native TriggerOnlyTouch semantics.
+No mapping from that native checkbox to the internal controls has been made.
+
+Input must be contract-specific, source-ordered and already replay-clipped.
+Duplicate IDs, reversed time, mixed contracts and unavailable intervening raw
+data reject the frame instead of showing falsely fresh zones. Caller must
+retain prior display with an honest unavailable state; never hide such failure.
+These integration responsibilities are not yet wired.
+
+17 detector/lifecycle tests, scoped ESLint and full project TypeScript pass
+after the six location modes and lifecycle changes. A single local synthetic
+20,000-bar / 1,000,000-row full rebuild took 127.1ms and produced 20,000 zones.
+This is NOT suitable for rebuilding on the UI thread per tick. Before release,
+use incremental forming-bar updates and off-thread historical reconstruction,
+with correction/replay cancellation and bounded retained state. No live-FPS
+or market-data/visual/native-parity claim. Gates remain OFF.
+
 - Independent raw one-tick consumer even when Footprint is grouped/filtered;
   correct event-bar allocation, source completeness and replay clipping.
 - Retest lifecycle, extension by actual chart bars, session/time filtering,

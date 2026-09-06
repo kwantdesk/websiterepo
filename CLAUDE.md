@@ -1,5 +1,17 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-06 — Auction Gap lifecycle foundation
+
+- Added `auctionGapLifecycle.ts` with actual-bar extensions, caller-provided
+  exchange reset keys, actual-print retests, correction rebuilds and honest
+  mixed/invalid/unavailable rejection. Native TriggerOnlyTouch mapping unproved;
+  internal touch/cross and visibility conventions explicitly documented.
+- 17 tests, scoped lint and full tsc pass. Single 20k-bar/1m-row rebuild 127.1ms:
+  do not wire full rebuild on each UI tick. Worker history + incremental live,
+  stable cancellation, full settings/render/session adapter still needed.
+- No gate enabled/deployment: 28 Pending. Preserve working studies and keep
+  exact raw one-tick dataset independent of Footprint display filters/grouping.
+
 ## 2026-09-06 — Auction Gap detector foundation (still Pending)
 
 - `auctionGapTracker.ts`: raw unfiltered one-tick volume detector, inclusive
