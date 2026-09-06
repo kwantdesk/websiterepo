@@ -1,5 +1,7 @@
 "use client";
 
+import { fineVolumeProfileWidth } from "@/lib/volumeProfileWidth";
+
 import { type PointerEvent as ReactPointerEvent, type ReactElement, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   DRAW_TOOL_SPECS,
@@ -1500,8 +1502,9 @@ export default function ChartDrawLayer({
           if (!prof) return null;
           const boxRight = anchored ? x1 : Math.max(x0, x1);
           const boxLeft = Math.min(x0, x1);
-          const widthPercent = Math.max(10, Math.min(80, style.profileWidthPercent ?? 32));
-          const maxBarW = Math.max(30, (boxRight - boxLeft) * (widthPercent / 100));
+          const widthSetting = Math.max(1, Math.min(80, style.profileWidthPercent ?? 32));
+          const widthPercent = Math.max(10, widthSetting);
+          const maxBarW = fineVolumeProfileWidth(Math.max(30, (boxRight - boxLeft) * (widthPercent / 100)), widthSetting);
           const outside = style.outsideColor ?? "#787B86";
           const showPoc = style.showPoc !== false;
           const showValueAreaLines = style.showValueAreaLines !== false;

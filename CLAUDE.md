@@ -1,5 +1,15 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-06 — Finer minimum volume-profile width
+
+- Shared final-pixel scaling makes width 1 one-quarter of its former size,
+  2 half, 3 three-quarters; 4+ and default widths unchanged. Applied after
+  minimum-pixel floors across native and both draw-on VP renderers. Current
+  and previous profiles use their own setting; level geometry shares the
+  resulting width. Draw-on sliders now reach 1 in single-unit steps.
+- Prompt, tests and visual-verification limit:
+  `docs/prompt-log/2026-09-06-volume-profile-fine-width.md`.
+
 ## 2026-09-06 — Theme and chart palette stay together
 
 - Shared saveTheme/resetTheme now commit chart colours and Charts/GEX VUE

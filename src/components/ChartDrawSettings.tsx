@@ -196,7 +196,7 @@ export default function ChartDrawSettings({
                     <input type="range" min={50} max={95} step={1} value={drawing.style.valueAreaPercent ?? 68} onChange={(e) => patchStyle({ valueAreaPercent: Number(e.target.value) })} className="w-40 accent-primary" />
                   </Row>
                   <Row label={`Profile width · ${drawing.style.profileWidthPercent ?? 32}%`}>
-                    <input type="range" min={10} max={80} step={2} value={drawing.style.profileWidthPercent ?? 32} onChange={(e) => patchStyle({ profileWidthPercent: Number(e.target.value) })} className="w-40 accent-primary" />
+                    <input type="range" min={1} max={80} step={1} value={drawing.style.profileWidthPercent ?? 32} onChange={(e) => patchStyle({ profileWidthPercent: Number(e.target.value) })} className="w-40 accent-primary" />
                   </Row>
                   <Row label="Show POC line"><input type="checkbox" checked={drawing.style.showPoc !== false} onChange={(e) => patchStyle({ showPoc: e.target.checked })} className="h-4 w-4 accent-primary" /></Row>
                   <Row label="Show VAH / VAL lines"><input type="checkbox" checked={drawing.style.showValueAreaLines !== false} onChange={(e) => patchStyle({ showValueAreaLines: e.target.checked })} className="h-4 w-4 accent-primary" /></Row>

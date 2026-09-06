@@ -1,4 +1,5 @@
 import type { CanvasRenderingTarget2D } from "fancy-canvas";
+import { fineVolumeProfileWidth } from "./volumeProfileWidth";
 import type {
   ISeriesPrimitive,
   Logical,
@@ -952,7 +953,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
          * A completed profile may be drawn narrower than the live one, which is
          * how DeepChart separates "what is forming" from "what is settled".
          */
-        const profileWidth = resolvedModeWidth
+        const baseProfileWidth = resolvedModeWidth
           ?? (effectiveWidthPercent <= 0
             ? 0
             : Math.min(
@@ -965,6 +966,7 @@ export class NativeVolumeProfilePrimitive implements ISeriesPrimitive<Time> {
                   sessionWidth * effectiveWidthPercent / 100,
                 ),
               ));
+        const profileWidth = fineVolumeProfileWidth(baseProfileWidth, effectiveWidthPercent);
         // A daily profile has two independent halves: volume to the right of
         // its spine and signed delta to the left. Once its session anchor has
         // moved beyond the viewport, dock the volume-only half to the left

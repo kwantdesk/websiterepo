@@ -175,7 +175,7 @@ export type DrawStyle = {
   pocLineWidth?: number;       // 0.5..4; absent follows the drawing line width
   valueAreaLineWidth?: number; // 0.5..4; absent follows the drawing line width
   outsideColor?: string;       // rows outside the value area (default #787B86)
-  profileWidthPercent?: number; // widest row as % of the range width, 10..80
+  profileWidthPercent?: number; // 1..80; widths below 4 add fine-scale control
   // Anchored VWAP. Optional fields keep existing saved drawings compatible.
   vwapSource?: "hlc3" | "hl2" | "ohlc4" | "close";
   vwapBand1Enabled?: boolean;
