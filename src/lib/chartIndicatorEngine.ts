@@ -4,6 +4,8 @@ import { calculatePivotPoints } from "@/lib/pivotPoints";
 import type { PivotPointLabelOptions } from "@/lib/pivotPointLabels";
 import { calculateGapDetector } from "@/lib/gapDetector";
 import type { GapZoneRenderOptions } from "@/lib/gapZonePrimitive";
+import { calculateZigZag } from "@/lib/zigZag";
+import type { ZigZagRetracementOptions } from "@/lib/zigZagRetracementPrimitive";
 import { calculateAverageDirectionalIndex } from "@/lib/averageDirectionalIndex";
 import { calculateParabolicSar } from "@/lib/parabolicSar";
 import { calculateLinearRegression } from "@/lib/linearRegression";
@@ -28,6 +30,7 @@ import {
 
 export type CalculatedIndicatorSeries = {
   gapZones?: GapZoneRenderOptions;
+  zigZagRetracements?: ZigZagRetracementOptions;
   pivotLabels?: PivotPointLabelOptions;
   superTrendLabels?: SuperTrendLabelOptions;
   superTrendStyleKey?: string;
@@ -349,6 +352,7 @@ function computeIndicatorSeries(
   if (key === "absolute-levels") return calculateAbsoluteLevels(candles, instance.settings ?? {}, theme);
   if (key === "pivot-points") return calculatePivotPoints(candles, instance.settings ?? {}, theme);
   if (key === "gap-detector") return calculateGapDetector(candles, instance.settings ?? {}, theme, context.tickSize);
+  if (key === "zig-zag") return calculateZigZag(candles, instance.settings ?? {}, theme, context.tickSize, instance.instanceId);
   if (key === "average-directional-index-adx") return calculateAverageDirectionalIndex(candles, instance.settings ?? {}, theme);
   if (key === "parabolic-sar") return calculateParabolicSar(candles, instance.settings ?? {}, theme, instance.instanceId);
   if (key === "linear-regression") return calculateLinearRegression(candles, instance.settings ?? {}, theme, instance.instanceId, context.instrument);

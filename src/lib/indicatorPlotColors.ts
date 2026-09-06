@@ -78,6 +78,11 @@ export const INDICATOR_PLOT_COLOR_SLOTS: Record<string, IndicatorPlotColorSlot[]
     { key: "upColor", role: "positive" },
     { key: "downColor", role: "negative" },
   ],
+  "zig-zag": [
+    { key: "upColor", role: "positive" },
+    { key: "downColor", role: "negative" },
+    { key: "retracementLineColor", role: "secondary" },
+  ],
   "market-statistics": [
     { key: "textColor", role: "primary" },
     { key: "averageColor", role: "positive" },
@@ -281,6 +286,11 @@ export const INDICATOR_PLOT_COLOR_SLOTS: Record<string, IndicatorPlotColorSlot[]
  * disagree about where a colour is stored.
  */
 export function indicatorSeriesColorKey(indicatorId: string, seriesKey: string): string {
+  if (indicatorId === "zig-zag") {
+    if (seriesKey.endsWith("-zig-zag-up")) return "upColor";
+    if (seriesKey.endsWith("-zig-zag-down")) return "downColor";
+    if (seriesKey.endsWith("-zig-zag-retracement")) return "retracementLineColor";
+  }
   if (indicatorId === "deep-delta") {
     const mirroredLevel = seriesKey.match(/^deep-delta-level([12])-negative$/);
     if (mirroredLevel) return `level${mirroredLevel[1]}Color`;

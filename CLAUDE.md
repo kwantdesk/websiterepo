@@ -1,5 +1,15 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-07 — Zig Zag converted from Pending
+
+- Added Highest lowest, Absolute reversal and real instrument-tick reversal,
+  separate themed swing plots, a developing final leg and latest-swing
+  38.2/50/61.8/75 retracement rendering with Extend right.
+- DeepCharts public help and licensed DLL metadata define settings/defaults;
+  protected tie/intrabar behavior is explicitly not claimed identical.
+- Eight focused tests, TypeScript and isolated synthetic browser rendering/
+  settings QA pass. Pending inventory is 25; scoped release verification due.
+
 ## 2026-09-07 — Auction Gap consumes the direct live execution seam
 
 - Auction Gap now opts into the existing per-pane exact-execution fan-out and

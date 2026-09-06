@@ -3,6 +3,7 @@
 import { SuperTrendLabels } from "@/lib/superTrendLabels";
 import { PivotPointLabels } from "@/lib/pivotPointLabels";
 import { GapZonePrimitive } from "@/lib/gapZonePrimitive";
+import { ZigZagRetracementPrimitive } from "@/lib/zigZagRetracementPrimitive";
 import { useSuperTrendAlerts } from "@/components/useSuperTrendAlerts";
 import { paintSuperTrendSeries } from "@/lib/superTrendSeries";
 import { SUPER_TREND_LIVE_PLOT_EVENT, SuperTrendPlotBuffer } from "@/lib/superTrendLivePlot";
@@ -541,6 +542,9 @@ const DEEP_HISTORY_INDICATOR_IDS = new Set([
   // O(n) centered rolling fit: 20k-bar p95 < 1.6ms in the local calculator
   // check. Its selectable 10k length must not receive only 1.5k lite candles.
   "linear-regression",
+  // Single-pass running extremes; the selectable 10k confirmation window and
+  // long structural swings must not be truncated to the 1.5k lite tail.
+  "zig-zag",
   "moving-average",
   "volume",
   "standard-deviation",
@@ -3334,6 +3338,7 @@ function Chart({
     superTrendLabels?: SuperTrendLabels;
     pivotPointLabels?: PivotPointLabels;
     gapZonePrimitive?: GapZonePrimitive;
+    zigZagRetracementPrimitive?: ZigZagRetracementPrimitive;
     superTrendDefinition?: CalculatedIndicatorSeries;
     key: string;
     kind: "line" | "histogram";
@@ -16864,6 +16869,7 @@ function Chart({
           settings.backgroundColor, definition.color, priceFormat.precision);
         if (definition.pivotLabels) existing.pivotPointLabels?.update(definition.data, definition.pivotLabels, definition.color);
         if (definition.gapZones) existing.gapZonePrimitive?.update(definition.gapZones, definition.color);
+        if (definition.zigZagRetracements) existing.zigZagRetracementPrimitive?.update(definition.zigZagRetracements);
         if (existing.optionsSignature !== optionsSignature) {
           existing.series.applyOptions(options);
         }
@@ -16902,10 +16908,16 @@ function Chart({
         series.attachPrimitive(gapZonePrimitive);
         gapZonePrimitive.update(definition.gapZones, definition.color);
       }
+      const zigZagRetracementPrimitive = definition.zigZagRetracements ? new ZigZagRetracementPrimitive() : undefined;
+      if (zigZagRetracementPrimitive && definition.zigZagRetracements) {
+        series.attachPrimitive(zigZagRetracementPrimitive);
+        zigZagRetracementPrimitive.update(definition.zigZagRetracements);
+      }
       return {
         superTrendLabels,
         pivotPointLabels,
         gapZonePrimitive,
+        zigZagRetracementPrimitive,
         superTrendDefinition: definition.superTrendStyleKey ? definition : undefined,
         key: definition.key,
         kind,

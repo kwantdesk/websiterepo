@@ -102,7 +102,7 @@ Live diagnostics returned exact SHA `18a17c4d5ba23233ae678c4a75e324f596f0927b`.
 Isolated final tree passed 90 combined tests, 18 template checks and the normal
 production build. This supersedes the local-only deployment status above/below.
 
-## Remaining 26 — not released by blanket enablement
+## Remaining 25 — not released by blanket enablement
 
 Each row needs evidence, settings/data implementation, calculation tests,
 renderer/theme/persistence verification and explicit visual/latency limits.
@@ -138,7 +138,7 @@ Do not tick a row just because its Add gate changes.
 | `super-trend` | [x] Implemented; Batch 8 production SHA verified, documented parity limits |
 | `super-trend-difference` | [x] Implemented; Batch 8 production SHA verified, documented parity limits |
 | `tillson-t3` | [x] Implemented; explicit seed and reference limits |
-| `zig-zag` | [ ] Audit / implement / verify |
+| `zig-zag` | [x] Three modes, live developing leg and retracement renderer implemented; documented protected-parity limits |
 | `inverse-cyber-cycle` | [ ] Audit / implement / verify |
 | `average-directional-index-adx` | [x] Batch 3; seed and vendor-parity limitations documented |
 | `candlestick-bar` | [ ] Audit / implement / verify |

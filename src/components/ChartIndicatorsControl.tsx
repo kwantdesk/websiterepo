@@ -462,6 +462,8 @@ const sectionForSetting = (indicatorId: string, key: string, fallback: string) =
       ? ["fontSize", "lineWidth", "periodsToShow"].includes(key) ? "Plot settings" : "Custom reference"
     : indicatorId === "gap-detector"
       ? key === "backgroundOpacity" || /Color$/.test(key) || key === "useThemeColors" ? "Color settings" : "General"
+    : indicatorId === "zig-zag"
+      ? key.startsWith("retracement") || /^showRetracement/.test(key) || key === "extendRight" ? "Retracement settings" : "Zig Zag settings"
     : (isTpoIndicator(indicatorId) ? TPO_SETTING_SECTIONS[key] ?? "General" : fallback);
 
 const PIVOT_POINT_MANAGED_SETTINGS = new Set([
@@ -481,6 +483,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "absolute-levels",
   "pivot-points",
   "gap-detector",
+  "zig-zag",
   "gamma-levels",
   "overlay-chart",
   "overlay-symbol",
@@ -705,6 +708,16 @@ const volumeProfileThemeColours = (chartSettings: ChartSettings) => ({
 const themeColourMapFor = (indicatorId: string, chartSettings: ChartSettings) => {
   if (indicatorId === "auction-gap-tracker") return auctionGapThemeColors(chartSettings) as Record<string, string>;
   if (indicatorId === "bounce-levels") return bounceThemeColours(chartSettings) as Record<string, string>;
+  if (indicatorId === "zig-zag") {
+    const visible = visibleIndicatorTheme(chartSettings);
+    return {
+      upColor: visible.positive,
+      downColor: visible.negative,
+      retracementLineColor: visible.secondary,
+      retracementBackgroundColor: visible.muted,
+      retracementTextColor: visible.primary,
+    } as Record<string, string>;
+  }
   if (indicatorId === "unfinished-auction") {
     return {
       badHighColor: chartSettings.downColor,
@@ -6602,6 +6615,43 @@ export default function ChartIndicatorsControl({
                       <option value="percent">Percentual</option>
                     </KwantSelect>
                   </label>
+                </div>
+              ) : null}
+
+              {settingsDefinition.id === "zig-zag" ? (
+                <div data-settings-section="Zig Zag settings" className="grid gap-3 sm:grid-cols-2">
+                  <label className="block space-y-1 text-[10px] text-muted">
+                    <span>Mode</span>
+                    <KwantSelect value={String(settingsInstance.settings?.zigZagMode ?? "highest-lowest")}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                        ...current, settings: { ...(current.settings ?? {}), zigZagMode: event.target.value },
+                      }))} menuLabel="Zig Zag mode"
+                      className="h-9 w-full border border-border bg-background px-3 text-foreground">
+                      <option value="highest-lowest">Highest lowest</option>
+                      <option value="absolute-reversal">Absolute reversal</option>
+                      <option value="tick-reversal">Tick reversal</option>
+                    </KwantSelect>
+                  </label>
+                  <label className="block space-y-1 text-[10px] text-muted">
+                    <span>Line style</span>
+                    <KwantSelect value={String(settingsInstance.settings?.lineStyle ?? "solid")}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                        ...current, settings: { ...(current.settings ?? {}), lineStyle: event.target.value },
+                      }))} menuLabel="Zig Zag line style"
+                      className="h-9 w-full border border-border bg-background px-3 text-foreground">
+                      <option value="solid">Solid</option><option value="dashed">Dash</option><option value="dotted">Dot</option>
+                    </KwantSelect>
+                  </label>
+                  <label className="block space-y-1 text-[10px] text-muted sm:col-span-2">
+                    <span>Short name</span>
+                    <input aria-label="Zig Zag short name" type="text" maxLength={80}
+                      value={String(settingsInstance.settings?.shortName ?? "Zig Zag")}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                        ...current, settings: { ...(current.settings ?? {}), shortName: event.target.value },
+                      }))}
+                      className="h-9 w-full border border-border bg-background px-3 text-foreground" />
+                  </label>
+                  <p className="text-[10px] text-muted sm:col-span-2">Highest-lowest confirms an extreme after the selected number of bars. Absolute reversal uses percentage distance; tick reversal uses the instrument's real tick size.</p>
                 </div>
               ) : null}
 

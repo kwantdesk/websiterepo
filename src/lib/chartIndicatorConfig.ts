@@ -3,6 +3,7 @@ import { AUCTION_GAP_DEFAULTS, AUCTION_GAP_NUMERIC_SETTINGS, auctionGapThemeColo
 import { ABSOLUTE_LEVEL_DEFAULTS } from "@/lib/absoluteLevels";
 import { PIVOT_POINT_DEFAULTS } from "@/lib/pivotPoints";
 import { GAP_DETECTOR_DEFAULTS } from "@/lib/gapDetector";
+import { ZIG_ZAG_DEFAULTS, ZIG_ZAG_NUMERIC_SETTINGS, normalizeZigZagSettings } from "@/lib/zigZag";
 import { ADX_DEFAULTS } from "@/lib/averageDirectionalIndex";
 import { PARABOLIC_SAR_DEFAULTS } from "@/lib/parabolicSar";
 import { LINEAR_REGRESSION_DEFAULTS } from "@/lib/linearRegression";
@@ -90,6 +91,7 @@ import { CHART_OVERLAY_SETTINGS_VERSION } from "@/lib/chartOverlays";
 import { DEEP_PATTERN_BUILDER_SETTINGS_VERSION } from "@/lib/deepPatternBuilder";
 
 export const LIVE_CHART_INDICATOR_IDS = new Set([
+  "zig-zag",
   "super-trend",
   "super-trend-difference",
   "know-sure-thing-kst",
@@ -241,6 +243,7 @@ export function resolveDailyVolumeProfileCount(value: unknown): number {
 }
 
 export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[]> = {
+  "zig-zag": [...ZIG_ZAG_NUMERIC_SETTINGS],
   "auction-gap-tracker": AUCTION_GAP_NUMERIC_SETTINGS,
   "know-sure-thing-kst": KST_NUMERIC_SETTINGS,
   "super-trend": superTrendNumericSettings(),
@@ -1491,6 +1494,11 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
   ...(indicatorId === "absolute-levels" ? ABSOLUTE_LEVEL_DEFAULTS : {}),
   ...(indicatorId === "pivot-points" ? PIVOT_POINT_DEFAULTS : {}),
   ...(indicatorId === "gap-detector" ? GAP_DETECTOR_DEFAULTS : {}),
+  ...(indicatorId === "zig-zag" ? {
+    ...ZIG_ZAG_DEFAULTS,
+    retracementBackgroundColor: theme?.gridColor ?? ZIG_ZAG_DEFAULTS.retracementBackgroundColor,
+    retracementTextColor: theme?.upColor ?? ZIG_ZAG_DEFAULTS.retracementTextColor,
+  } : {}),
   ...(indicatorId === "average-directional-index-adx" ? ADX_DEFAULTS : {}),
   ...(indicatorId === "parabolic-sar" ? PARABOLIC_SAR_DEFAULTS : {}),
   ...(indicatorId === "linear-regression" ? LINEAR_REGRESSION_DEFAULTS : {}),
@@ -2861,6 +2869,13 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
       : instance;
   if (normalizedInstance.indicatorId === "market-profile-tpo") {
     normalizedInstance = { ...normalizedInstance, indicatorId: "tpo-chart" };
+  }
+  if (normalizedInstance.indicatorId === "zig-zag") {
+    const settings = normalizeZigZagSettings({
+      ...defaultIndicatorSettings("zig-zag"),
+      ...(normalizedInstance.settings ?? {}),
+    });
+    return { ...normalizedInstance, settings };
   }
   if (["vwap", "vwap-envelopes", "rolling-vwap"].includes(normalizedInstance.indicatorId)) {
     const indicatorId = normalizedInstance.indicatorId;
