@@ -2695,3 +2695,12 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
 - COT, trade-side delta and price-level ratios require ordered executions and
   must remain blank when the tape is unavailable. Never infer those fields
   from OHLC direction.
+
+## 2026-09-07 — Shift Candle
+
+- `shift-candle` uses exact execution-derived one-tick footprint rows and a
+  documented no-lookahead interpretation of the public Trinity controls. It
+  must remain empty without POC/delta/imbalance evidence; never backfill those
+  inputs from candle direction or total volume.
+- The protected vendor trigger formula and pixel parity remain unclaimed.
+  Alerts are live-new-confirmation only, never history/replay/closed market.

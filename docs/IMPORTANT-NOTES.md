@@ -481,3 +481,13 @@ recap of the open items below and update this file when their state changes.
 - COT High/Low/Bar, delta-trade and high/low ratios require ordered exact
   executions. When that sequence is unavailable, those cells remain absent;
   never derive them from candle direction or total OHLC volume.
+
+## 2026-09-07 — Shift Candle
+
+- DeepCharts' protected Trinity formula was not recoverable from readable DLL
+  metadata. Quant Desk implements the complete public control contract with a
+  documented no-lookahead reversal model; do not call it proprietary formula
+  parity without additional evidence.
+- Shift Candle requires exact execution-derived footprint POC, delta and
+  imbalance rows. It must fail closed without them. Historical/replay/closed-
+  market calculations never emit alerts; only a newly confirmed live bar may.

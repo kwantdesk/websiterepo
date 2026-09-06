@@ -9,6 +9,7 @@ import { SwingPointLevelPrimitive } from "@/lib/swingPointLevelPrimitive";
 import { TextOnChartPrimitive } from "@/lib/textOnChartPrimitive";
 import { OverlayTimeframeHighlightPrimitive } from "@/lib/overlayTimeframeHighlightPrimitive";
 import { OnCandleStatsPrimitive } from "@/lib/onCandleStatsPrimitive";
+import { ShiftCandlePrimitive } from "@/lib/shiftCandlePrimitive";
 import { useSuperTrendAlerts } from "@/components/useSuperTrendAlerts";
 import { paintSuperTrendSeries } from "@/lib/superTrendSeries";
 import { SUPER_TREND_LIVE_PLOT_EVENT, SuperTrendPlotBuffer } from "@/lib/superTrendLivePlot";
@@ -3372,6 +3373,7 @@ function Chart({
     textOnChartPrimitive?: TextOnChartPrimitive;
     overlayTimeframeHighlightPrimitive?: OverlayTimeframeHighlightPrimitive;
     onCandleStatsPrimitive?: OnCandleStatsPrimitive;
+    shiftCandlePrimitive?: ShiftCandlePrimitive;
     superTrendDefinition?: CalculatedIndicatorSeries;
     key: string;
     kind: "line" | "histogram";
@@ -3384,6 +3386,7 @@ function Chart({
     optionsSignature: string;
   }>>([]);
   const superTrendPlotBuffersRef = useRef(new Map<string, SuperTrendPlotBuffer>());
+  const shiftCandleAlertSeedRef = useRef(new Map<string, number>());
   const superTrendPaintQueueRef = useRef(new Map<string, { instanceId: string; series: CalculatedIndicatorSeries }>());
   const superTrendPaintFrameRef = useRef<number | null>(null);
   useEffect(() => () => {
@@ -3533,6 +3536,7 @@ function Chart({
   const pocAuctionBuildCacheRef = useRef<FootprintBuildCache | null>(null);
   const barPocBuildCacheRef = useRef<FootprintBuildCache | null>(null);
   const marketStatisticsBuildCacheRef = useRef<FootprintBuildCache | null>(null);
+  const shiftCandleBuildCacheRef = useRef<FootprintBuildCache | null>(null);
   const paperFillMarkersPrimitiveRef = useRef<PaperFillMarkersPrimitive | null>(null);
   /**
    * The order labels are DOM, not canvas, because they have to sit above the
@@ -6192,6 +6196,10 @@ function Chart({
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "market-statistics") ?? null,
     [indicatorSignature, indicators],
   );
+  const shiftCandleIndicator = useMemo(
+    () => indicators.find((instance) => instance.enabled && instance.indicatorId === "shift-candle") ?? null,
+    [indicatorSignature, indicators],
+  );
   const confluenceIdentifierIndicator = useMemo(
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "confluence-identifier") ?? null,
     [indicatorSignature, indicators],
@@ -6665,6 +6673,16 @@ function Chart({
       showEmptyPriceRows: false,
     });
   }, [footprintBuildSettings, indicatorMarketTrades, indicatorWindowCandles, marketStatisticsIndicator]);
+  const shiftCandleBars = useMemo(() => {
+    if (!shiftCandleIndicator || !indicatorWindowCandles.length) return [];
+    return buildFootprintBarsCached(shiftCandleBuildCacheRef, indicatorWindowCandles, indicatorMarketTrades, {
+      ...footprintBuildSettings,
+      groupTicks: 1,
+      minimumTradeVolume: 0,
+      maximumTradeVolume: 0,
+      showEmptyPriceRows: false,
+    });
+  }, [footprintBuildSettings, indicatorMarketTrades, indicatorWindowCandles, shiftCandleIndicator]);
   useEffect(() => {
     if (!footprintDataConsumer) {
       retainedFootprintBarsRef.current = null;
@@ -7988,7 +8006,7 @@ function Chart({
         // Resolved so a study is never painted the chart's own colour: a
         // hollow-candle theme makes downColor the background.
         visibleIndicatorTheme(settings),
-        { instrument, tickSize: priceFormat.minMove },
+        { instrument, tickSize: priceFormat.minMove, footprintBars: instance.indicatorId === "shift-candle" ? shiftCandleBars : undefined },
       ).map((series) => ({ ...series, groupKey: instance.instanceId }));
     }),
     [
@@ -8004,6 +8022,7 @@ function Chart({
       settings.downColor,
       settings.gridColor,
       settings.upColor,
+      shiftCandleBars,
     ],
   );
   // The Delta surface changes at most once per refresh interval, while the
@@ -8225,6 +8244,32 @@ function Chart({
       }];
     }),
   ], [chartAlignedIndicatorSeries, candles, eventChartIndicatorTimeMap, indicatorCandles, indicatorMarketTrades, indicatorSignature, indicators, ivRankByInstance, optionsDeltaSeries, priceFormat.minMove, settings.borderUpColor, settings.downColor, settings.gridColor, settings.upColor, timeframe, zeroGammaBarsSeries, zeroGammaChartBarTimes, zeroGammaLinePayload]);
+  useEffect(() => {
+    const activeIds = new Set(indicators.filter((instance) => instance.enabled && instance.indicatorId === "shift-candle").map((instance) => instance.instanceId));
+    for (const id of shiftCandleAlertSeedRef.current.keys()) if (!activeIds.has(id)) shiftCandleAlertSeedRef.current.delete(id);
+    for (const instance of indicators) {
+      if (!instance.enabled || instance.indicatorId !== "shift-candle") continue;
+      const signals = baseCalculatedIndicatorSeries
+        .filter((series) => series.groupKey === instance.instanceId && series.shiftCandle)
+        .flatMap((series) => series.shiftCandle?.signals ?? [])
+        .sort((left, right) => left.time - right.time);
+      const latest = signals.at(-1);
+      if (!latest) continue;
+      const previous = shiftCandleAlertSeedRef.current.get(instance.instanceId);
+      shiftCandleAlertSeedRef.current.set(instance.instanceId, latest.time);
+      if (previous === undefined || latest.time <= previous || marketIsActive !== true || replayTimestampMs != null) continue;
+      const latestBarTime = indicatorCandles.at(-1)?.timestamp;
+      if (latestBarTime == null || Math.abs(latestBarTime / 1_000 - latest.time) > 1) continue;
+      const title = String(instance.settings?.alertName ?? "Trinity Trigger");
+      if (instance.settings?.alertEnabled === true) window.dispatchEvent(new CustomEvent("kwantdesk:chart-indicator-alert", { detail: {
+        indicatorId: "shift-candle", instanceId: instance.instanceId, instrument,
+        title: `${title} · ${latest.direction.toUpperCase()}`, event: latest,
+      } }));
+      if (instance.settings?.popupEnabled === true && typeof Notification !== "undefined" && Notification.permission === "granted") {
+        new Notification(title, { body: `${String(instance.settings?.popupMessage ?? "Trinity Trigger")} · ${instrument} ${latest.direction.toUpperCase()}` });
+      }
+    }
+  }, [baseCalculatedIndicatorSeries, indicatorCandles, indicatorSignature, indicators, instrument, marketIsActive, replayTimestampMs]);
   const calculatedIndicatorPanes = useMemo(() => {
     return indicators.flatMap((instance): IndicatorPaneGroup[] => {
       if (!instance.enabled) return [];
@@ -17243,6 +17288,7 @@ function Chart({
         if (definition.textOnChart) existing.textOnChartPrimitive?.update(definition.textOnChart);
         if (definition.overlayTimeframeHighlight) existing.overlayTimeframeHighlightPrimitive?.update(definition.overlayTimeframeHighlight);
         if (definition.onCandleStats) existing.onCandleStatsPrimitive?.update(definition.onCandleStats);
+        if (definition.shiftCandle) existing.shiftCandlePrimitive?.update(definition.shiftCandle);
         if (existing.optionsSignature !== optionsSignature) {
           existing.series.applyOptions(options);
         }
@@ -17311,6 +17357,11 @@ function Chart({
         series.attachPrimitive(onCandleStatsPrimitive);
         onCandleStatsPrimitive.update(definition.onCandleStats);
       }
+      const shiftCandlePrimitive = definition.shiftCandle ? new ShiftCandlePrimitive() : undefined;
+      if (shiftCandlePrimitive && definition.shiftCandle) {
+        series.attachPrimitive(shiftCandlePrimitive);
+        shiftCandlePrimitive.update(definition.shiftCandle);
+      }
       return {
         superTrendLabels,
         pivotPointLabels,
@@ -17321,6 +17372,7 @@ function Chart({
         textOnChartPrimitive,
         overlayTimeframeHighlightPrimitive,
         onCandleStatsPrimitive,
+        shiftCandlePrimitive,
         superTrendDefinition: definition.superTrendStyleKey ? definition : undefined,
         key: definition.key,
         kind,

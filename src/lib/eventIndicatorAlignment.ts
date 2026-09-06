@@ -45,18 +45,34 @@ export function alignIndicatorSeriesToEventBars(
 ) {
   if (!map) return series;
   return series.map((definition) => {
+    const alignTime = (time: number) => map.exact.get(Math.round(time * 1_000))
+      ?? map.uniqueSecond.get(Math.floor(time));
     let moved = false;
     const data = definition.data.flatMap((point) => {
       const pointTime = Number(point.time);
       const sourceTimestamp = Math.round(pointTime * 1_000);
-      const chartTime = map.exact.get(sourceTimestamp)
-        ?? map.uniqueSecond.get(Math.floor(pointTime));
+      const chartTime = map.exact.get(sourceTimestamp) ?? map.uniqueSecond.get(Math.floor(pointTime));
       if (chartTime == null) return [];
       if (chartTime !== pointTime) moved = true;
       return [{ ...point, time: chartTime }];
     });
-    return moved || data.length !== definition.data.length
-      ? { ...definition, data }
+    const shiftCandle = definition.shiftCandle ? {
+      ...definition.shiftCandle,
+      signals: definition.shiftCandle.signals.flatMap((signal) => {
+        const time = alignTime(signal.time);
+        return time == null ? [] : [{ ...signal, time }];
+      }),
+    } : undefined;
+    const gapZones = definition.gapZones ? {
+      ...definition.gapZones,
+      zones: definition.gapZones.zones.flatMap((zone) => {
+        const startTime = alignTime(zone.startTime);
+        const endTime = alignTime(zone.endTime);
+        return startTime == null ? [] : [{ ...zone, startTime, endTime: endTime ?? startTime }];
+      }),
+    } : undefined;
+    return moved || data.length !== definition.data.length || shiftCandle || gapZones
+      ? { ...definition, data, ...(shiftCandle ? { shiftCandle } : {}), ...(gapZones ? { gapZones } : {}) }
       : definition;
   });
 }

@@ -519,6 +519,10 @@ const CANDLESTICK_BAR_MANAGED_SETTINGS = new Set([
   "parameterType", "filled", "showVerticalLineOnClose", "candlestickBarSettingsVersion",
 ]);
 const ON_CANDLE_STATS_MANAGED_SETTINGS = new Set(["inputData", "pricePlot", "onCandleStatsSettingsVersion"]);
+const SHIFT_CANDLE_MANAGED_SETTINGS = new Set([
+  "plotPrice", "markerShape", "imbalanceEnabled", "freshZonesEnabled", "autoCenter",
+  "alertEnabled", "alertName", "popupEnabled", "popupMessage", "shiftCandleSettingsVersion",
+]);
 
 export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "inverse-cyber-cycle",
@@ -543,6 +547,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "overlay-timeframe-highlight",
   "candlestick-bar",
   "on-candle-stats",
+  "shift-candle",
   "anchored-vwap",
   "zig-zag",
   "gamma-levels",
@@ -7925,6 +7930,32 @@ export default function ChartIndicatorsControl({
                 }))}
               />
 
+              {settingsDefinition.id === "shift-candle" ? (() => {
+                const update = (patch: Record<string, string | number | boolean>) => replace(settingsInstance.instanceId, (current) => ({
+                  ...current, settings: { ...(current.settings ?? {}), ...patch },
+                }));
+                const toggle = (label: string, key: string, fallback: boolean) => {
+                  const on = settingsInstance.settings?.[key] === undefined ? fallback : settingsInstance.settings?.[key] === true;
+                  return <button key={key} type="button" aria-pressed={on} onClick={() => update({ [key]: !on })} className="flex h-9 items-center justify-between rounded-lg border border-border bg-background px-3 text-[9px] uppercase tracking-[0.1em] text-muted"><span>{label}</span><span className={on ? "text-primary" : "text-muted"}>{on ? "On" : "Off"}</span></button>;
+                };
+                return (
+                  <div data-settings-section="Trinity" className="space-y-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"><span>Plot price</span><KwantSelect value={String(settingsInstance.settings?.plotPrice ?? "high-low")} onChange={(event) => update({ plotPrice: event.target.value })} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel="Shift Candle plot price"><option value="high-low">High / low</option><option value="open">Open</option><option value="close">Close</option><option value="poc">Footprint POC</option></KwantSelect></label>
+                      <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"><span>Marker shape</span><KwantSelect value={String(settingsInstance.settings?.markerShape ?? "square")} onChange={(event) => update({ markerShape: event.target.value })} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel="Shift Candle marker shape"><option value="square">Square</option><option value="circle">Circle</option><option value="diamond">Diamond</option></KwantSelect></label>
+                      {toggle("Require footprint imbalance", "imbalanceEnabled", true)}
+                      {toggle("Fresh zones", "freshZonesEnabled", true)}
+                      {toggle("Include markers in auto scale", "autoCenter", true)}
+                      {toggle("Alert", "alertEnabled", false)}
+                      {toggle("Popup", "popupEnabled", false)}
+                      <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"><span>Alert name</span><input value={String(settingsInstance.settings?.alertName ?? "Trinity Trigger")} onChange={(event) => update({ alertName: event.target.value })} className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none focus:border-primary/45" /></label>
+                      <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"><span>Popup message</span><input value={String(settingsInstance.settings?.popupMessage ?? "Trinity Trigger")} onChange={(event) => update({ popupMessage: event.target.value })} className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none focus:border-primary/45" /></label>
+                    </div>
+                    <p className="text-[8px] leading-4 text-muted">Uses exact execution-derived delta, POC and footprint imbalance rows. Historical signals are confirmed without look-ahead; when exact order flow is unavailable the study stays empty instead of estimating it from candle direction.</p>
+                  </div>
+                );
+              })() : null}
+
               {settingsDefinition.id === "session-marker" ? (
                 <div data-settings-section="General" className="space-y-4 rounded-xl border border-primary/15 bg-primary/[0.035] p-3">
                   <div className="grid gap-3 sm:grid-cols-2">
@@ -8190,6 +8221,7 @@ export default function ChartIndicatorsControl({
                     && !(settingsDefinition.id === "overlay-timeframe-highlight" && OVERLAY_TIMEFRAME_HIGHLIGHT_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "candlestick-bar" && CANDLESTICK_BAR_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "on-candle-stats" && ON_CANDLE_STATS_MANAGED_SETTINGS.has(key))
+                    && !(settingsDefinition.id === "shift-candle" && SHIFT_CANDLE_MANAGED_SETTINGS.has(key))
                     && !(VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) && VOLUME_PROFILE_VWAP_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "bounce-levels" && key === "syncGexMapColors")
                     && !(settingsDefinition.id === "super-trend" && settingsInstance.settings?.chartArea === "pane" && key === "useSecondaryAxis")

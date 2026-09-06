@@ -23,6 +23,9 @@ import { calculateVolumeDeltaSprint } from "@/lib/volumeDeltaSprint";
 import { calculateOverlayTimeframeHighlight } from "@/lib/overlayTimeframeHighlight";
 import type { OverlayTimeframeHighlightModel } from "@/lib/overlayTimeframeHighlight";
 import type { OnCandleStatsModel } from "@/lib/onCandleStatsPrimitive";
+import { calculateShiftCandleSeries } from "@/lib/shiftCandle";
+import type { ShiftCandlePrimitiveModel } from "@/lib/shiftCandle";
+import type { FootprintBarModel } from "@/lib/footprintTypes";
 import type { TextOnChartOptions } from "@/lib/textOnChartPrimitive";
 import { calculateTillsonT3 } from "@/lib/tillsonT3";
 import { calculateSuperTrendSeries } from "@/lib/superTrendSeries";
@@ -55,6 +58,7 @@ export type CalculatedIndicatorSeries = {
   kstPresentation?: KstPanePresentation;
   overlayTimeframeHighlight?: OverlayTimeframeHighlightModel;
   onCandleStats?: OnCandleStatsModel;
+  shiftCandle?: ShiftCandlePrimitiveModel;
   key: string;
   groupKey?: string;
   label: string;
@@ -341,7 +345,7 @@ export function calculateIndicatorSeries(
   instance: ChartIndicatorInstance,
   candles: Candle[],
   theme: IndicatorTheme,
-  context: { instrument?: string; tickSize?: number } = {},
+  context: { instrument?: string; tickSize?: number; footprintBars?: readonly FootprintBarModel[] } = {},
 ): CalculatedIndicatorSeries[] {
   // KST owns both slope colours per plot. The generic post-colour pass would
   // flatten those deliberate two-colour paths into one custom swatch.
@@ -364,7 +368,7 @@ function computeIndicatorSeries(
   instance: ChartIndicatorInstance,
   candles: Candle[],
   theme: IndicatorTheme,
-  context: { instrument?: string; tickSize?: number } = {},
+  context: { instrument?: string; tickSize?: number; footprintBars?: readonly FootprintBarModel[] } = {},
 ): CalculatedIndicatorSeries[] {
   if (!instance.enabled || candles.length === 0) return [];
   const key = instance.indicatorId;
@@ -386,6 +390,7 @@ function computeIndicatorSeries(
   if (key === "average-daily-range-target") return calculateAverageDailyRangeTarget(candles, instance.settings ?? {}, theme);
   if (key === "volume-delta-sprint") return calculateVolumeDeltaSprint(candles, instance.settings ?? {}, theme);
   if (key === "overlay-timeframe-highlight") return calculateOverlayTimeframeHighlight(candles, instance.settings ?? {}, theme);
+  if (key === "shift-candle") return calculateShiftCandleSeries(candles, context.footprintBars ?? [], instance.settings ?? {}, theme, context.tickSize);
   if (key === "tillson-t3") return calculateTillsonT3(candles, instance.settings ?? {}, theme, instance.instanceId, context.instrument);
 
   if (key === "source-code-indicator") {

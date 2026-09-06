@@ -157,7 +157,7 @@ export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
   indicator("Kwant Levels", "Market Structure", "Session-anchored QuantData option levels calibrated onto live Rithmic NQ/MNQ and ES/MES prices.", false, "Kwantify", "Gamma Levels"),
   indicator("Classic GEX Profile", "Market Structure", "Live call and put gamma exposure ladder anchored to the NQ/MNQ chart price scale.", false, "Kwantify"),
   indicator("Session Marker", "Market Structure", "Marks configurable market sessions."),
-  indicator("Shift Candle", "Market Structure", "Offsets candle reference and comparison logic."),
+  indicator("Shift Candle", "Market Structure", "Execution-confirmed Trinity-style reversal markers with POC, delta, imbalance and fresh-zone filters.", true),
 
   indicator("Moving Average", "Trend", "Configurable moving-average overlay."),
   indicator("Ichimoku Indicator", "Trend", "Ichimoku cloud, conversion and base lines."),

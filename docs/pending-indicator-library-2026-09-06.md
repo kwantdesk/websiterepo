@@ -130,7 +130,7 @@ Do not tick a row just because its Add gate changes.
 | `swing-point` | [x] Confirmed high/low segments, full public settings contract, gap safety and browser QA; protected tie/filter parity documented |
 | `average-daily-range-target` | [x] Completed-period Daily/Weekly/Monthly range targets, CME rollover, deep-history routing, labels/theme/persistence and focused tests; multiplier mapping is screenshot-supported inference and protected parity/live soak are not claimed |
 | `session-marker` | [x] DST-aware Asian/Europe/USA windows, imbalance, OHLC/mid/VWAP, range fills, settings/theme/persistence and focused tests; protected pixel/formula and live-market soak limits documented |
-| `shift-candle` | [ ] Audit / implement / verify |
+| `shift-candle` | [x] Published Trinity settings contract implemented as a documented no-lookahead structure/delta/POC/exact-imbalance model; fresh zones, marker shapes, theme/persistence, event-chart alignment and live-only alerts covered; protected trigger/pixel parity remains unclaimed |
 | `ichimoku-indicator` | [x] Standard five-line/cloud calculation; public `9/26/52` defaults and DLL bounds; browser/release gates recorded in dedicated audit |
 | `parabolic-sar` | [x] Implemented; documented seed and parity limits |
 | `linear-regression` | [x] Implemented; documented endpoint and parity limits |
@@ -191,6 +191,8 @@ Do not tick a row just because its Add gate changes.
   exact-execution limits: `docs/deepcharts-candlestick-bar-audit.md`.
 - On Candle Stats public contract, ordered-execution calculations and
   renderer limits: `docs/deepcharts-on-candle-stats-audit.md`.
+- Shift Candle public contract, exact-footprint implementation and protected
+  trigger limits: `docs/deepcharts-shift-candle-audit.md`.
 - Full formula/pixel parity remains unclaimed until suitable reference evidence
   and side-by-side verification exist. No provider spending is authorised by
   this task and no vendor DLL/source is to be redistributed.

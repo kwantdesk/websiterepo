@@ -102,6 +102,7 @@ import { AVERAGE_DAILY_RANGE_TARGET_DEFAULTS, normalizeAverageDailyRangeTargetSe
 import { VOLUME_DELTA_SPRINT_DEFAULTS, normalizeVolumeDeltaSprintSettings } from "@/lib/volumeDeltaSprint";
 import { OVERLAY_TIMEFRAME_HIGHLIGHT_DEFAULTS, normalizeOverlayTimeframeHighlightSettings } from "@/lib/overlayTimeframeHighlight";
 import { CANDLESTICK_BAR_DEFAULTS, normalizeCandlestickBarSettings } from "@/lib/candlestickBar";
+import { SHIFT_CANDLE_DEFAULTS, normalizeShiftCandleSettings } from "@/lib/shiftCandle";
 
 export const LIVE_CHART_INDICATOR_IDS = new Set([
   "zig-zag",
@@ -123,6 +124,7 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "volume-delta-sprint",
   "overlay-timeframe-highlight",
   "candlestick-bar",
+  "shift-candle",
   "anchored-vwap",
   "pivot-points",
   "gap-detector",
@@ -272,6 +274,19 @@ export function resolveDailyVolumeProfileCount(value: unknown): number {
 }
 
 export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[]> = {
+  "shift-candle": [
+    { key: "maxBarsAfterReversal", label: "Maximum bars after reversal", defaultValue: 3, min: 1, max: 50, step: 1 },
+    { key: "minimumTickBreakout", label: "Minimum tick breakout", defaultValue: 1, min: 0, max: 1000, step: 1 },
+    { key: "minimumDeltaPercentDifference", label: "Minimum delta % difference", defaultValue: 20, min: 0, max: 200, step: 1 },
+    { key: "minimumDeltaValueDifference", label: "Minimum delta value difference", defaultValue: 100, min: 0, max: 10000000, step: 10 },
+    { key: "maximumTickPocDistance", label: "Maximum tick POC distance", defaultValue: 4, min: 0, max: 1000, step: 1 },
+    { key: "highestLowestLookback", label: "Highest / lowest reversal lookback", defaultValue: 5, min: 2, max: 1000, step: 1 },
+    { key: "markerTickOffset", label: "Marker tick offset", defaultValue: 2, min: -1000, max: 1000, step: 1 },
+    { key: "minimumImbalancePercent", label: "Minimum imbalance %", defaultValue: 300, min: 100, max: 10000, step: 25 },
+    { key: "minimumImbalanceVolumeDifference", label: "Minimum imbalance volume difference", defaultValue: 20, min: 0, max: 10000000, step: 1 },
+    { key: "zoneOpacity", label: "Fresh zone opacity", defaultValue: 18, min: 0, max: 100, step: 1 },
+    { key: "markerLineWidth", label: "Marker width", defaultValue: 2, min: 0.5, max: 8, step: 0.5 },
+  ],
   "zig-zag": [...ZIG_ZAG_NUMERIC_SETTINGS],
   "inverse-cyber-cycle": [
     { key: "smoothingAlpha", label: "Smoothing Alpha", defaultValue: 0.01, min: 0.001, max: 1, step: 0.001 },
@@ -1636,6 +1651,13 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
   ...(indicatorId === "volume-delta-sprint" ? VOLUME_DELTA_SPRINT_DEFAULTS : {}),
   ...(indicatorId === "overlay-timeframe-highlight" ? OVERLAY_TIMEFRAME_HIGHLIGHT_DEFAULTS : {}),
   ...(indicatorId === "candlestick-bar" ? CANDLESTICK_BAR_DEFAULTS : {}),
+  ...(indicatorId === "shift-candle" ? {
+    ...SHIFT_CANDLE_DEFAULTS,
+    buyMarkerColor: theme?.upColor ?? SHIFT_CANDLE_DEFAULTS.buyMarkerColor,
+    sellMarkerColor: theme?.downColor ?? SHIFT_CANDLE_DEFAULTS.sellMarkerColor,
+    freshBuyZoneColor: theme?.upColor ?? SHIFT_CANDLE_DEFAULTS.freshBuyZoneColor,
+    freshSellZoneColor: theme?.downColor ?? SHIFT_CANDLE_DEFAULTS.freshSellZoneColor,
+  } : {}),
   ...(indicatorId === "price-movement-levels" ? {
     textColor: theme?.borderUpColor ?? theme?.upColor ?? "#FFFFFF",
   } : {}),
@@ -3196,6 +3218,11 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
       }),
       candlestickBarSettingsVersion: 1,
     } };
+  }
+  if (normalizedInstance.indicatorId === "shift-candle") {
+    return { ...normalizedInstance, settings: normalizeShiftCandleSettings({
+      ...defaultIndicatorSettings("shift-candle"), ...(normalizedInstance.settings ?? {}),
+    }) };
   }
   if (["vwap", "vwap-envelopes", "rolling-vwap"].includes(normalizedInstance.indicatorId)) {
     const indicatorId = normalizedInstance.indicatorId;
