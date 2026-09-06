@@ -523,6 +523,9 @@ const SHIFT_CANDLE_MANAGED_SETTINGS = new Set([
   "plotPrice", "markerShape", "imbalanceEnabled", "freshZonesEnabled", "autoCenter",
   "alertEnabled", "alertName", "popupEnabled", "popupMessage", "shiftCandleSettingsVersion",
 ]);
+const ANNOTATIONS_OVERLAY_MANAGED_SETTINGS = new Set([
+  "sourceChartId", "sourceIndicatorId", "preserveSourceColors", "annotationsOverlaySettingsVersion",
+]);
 
 export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "inverse-cyber-cycle",
@@ -548,6 +551,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "candlestick-bar",
   "on-candle-stats",
   "shift-candle",
+  "annotations-overlay",
   "anchored-vwap",
   "zig-zag",
   "gamma-levels",
@@ -7956,6 +7960,18 @@ export default function ChartIndicatorsControl({
                 );
               })() : null}
 
+              {settingsDefinition.id === "annotations-overlay" ? (
+                <div data-settings-section="Source" className="space-y-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"><span>Source chart ID</span><input value={String(settingsInstance.settings?.sourceChartId ?? "")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), sourceChartId: event.target.value.trim() } }))} placeholder="Paste another open chart ID" className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none focus:border-primary/45" /></label>
+                    <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"><span>Source indicator ID</span><input value={String(settingsInstance.settings?.sourceIndicatorId ?? "")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), sourceIndicatorId: event.target.value.trim() } }))} placeholder="Indicator name or instance ID" className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none focus:border-primary/45" /></label>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-2 border border-border bg-background/70 px-3 py-2 text-[9px] uppercase tracking-[0.1em] text-muted"><span>This chart ID</span><code className="select-all normal-case text-foreground">{chartInstanceId}</code></div>
+                  <button type="button" aria-pressed={settingsInstance.settings?.preserveSourceColors !== false} onClick={() => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), preserveSourceColors: current.settings?.preserveSourceColors === false } }))} className="flex h-9 w-full items-center justify-between rounded-lg border border-border bg-background px-3 text-[9px] uppercase tracking-[0.1em] text-muted"><span>Preserve source colours</span><span className={settingsInstance.settings?.preserveSourceColors !== false ? "text-primary" : "text-muted"}>{settingsInstance.settings?.preserveSourceColors !== false ? "On" : "Off"}</span></button>
+                  <p className="text-[8px] leading-4 text-muted">Mirrors annotations from another chart that is open in this workspace. Use the source chart ID above and either its indicator instance ID or catalogue ID; the source calculation remains authoritative.</p>
+                </div>
+              ) : null}
+
               {settingsDefinition.id === "session-marker" ? (
                 <div data-settings-section="General" className="space-y-4 rounded-xl border border-primary/15 bg-primary/[0.035] p-3">
                   <div className="grid gap-3 sm:grid-cols-2">
@@ -8222,6 +8238,7 @@ export default function ChartIndicatorsControl({
                     && !(settingsDefinition.id === "candlestick-bar" && CANDLESTICK_BAR_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "on-candle-stats" && ON_CANDLE_STATS_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "shift-candle" && SHIFT_CANDLE_MANAGED_SETTINGS.has(key))
+                    && !(settingsDefinition.id === "annotations-overlay" && ANNOTATIONS_OVERLAY_MANAGED_SETTINGS.has(key))
                     && !(VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) && VOLUME_PROFILE_VWAP_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "bounce-levels" && key === "syncGexMapColors")
                     && !(settingsDefinition.id === "super-trend" && settingsInstance.settings?.chartArea === "pane" && key === "useSecondaryAxis")

@@ -10,6 +10,7 @@ import { TextOnChartPrimitive } from "@/lib/textOnChartPrimitive";
 import { OverlayTimeframeHighlightPrimitive } from "@/lib/overlayTimeframeHighlightPrimitive";
 import { OnCandleStatsPrimitive } from "@/lib/onCandleStatsPrimitive";
 import { ShiftCandlePrimitive } from "@/lib/shiftCandlePrimitive";
+import { publishChartAnnotations, readChartAnnotations, removeChartAnnotations, subscribeChartAnnotations } from "@/lib/chartAnnotationRegistry";
 import { useSuperTrendAlerts } from "@/components/useSuperTrendAlerts";
 import { paintSuperTrendSeries } from "@/lib/superTrendSeries";
 import { SUPER_TREND_LIVE_PLOT_EVENT, SuperTrendPlotBuffer } from "@/lib/superTrendLivePlot";
@@ -4182,6 +4183,7 @@ function Chart({
     }
   }, [chartReadyRevision, crosshairStyle]);
   const [sampledIndicatorCandles, setSampledIndicatorCandles] = useState(candles);
+  const [annotationRegistryRevision, setAnnotationRegistryRevision] = useState(0);
   const [sampledIndicatorMarketTrades, setSampledIndicatorMarketTrades] = useState(marketTrades);
   const [sampledIndicatorMarketTradesVersion, setSampledIndicatorMarketTradesVersion] = useState(marketTradesVersion);
   const [smtComparisonCandles, setSmtComparisonCandles] = useState<Candle[]>([]);
@@ -8025,6 +8027,39 @@ function Chart({
       shiftCandleBars,
     ],
   );
+  useEffect(() => {
+    const entries = indicators
+      .filter((instance) => instance.enabled && instance.indicatorId !== "annotations-overlay")
+      .map((instance) => ({
+        indicatorId: instance.indicatorId,
+        instanceId: instance.instanceId,
+        series: baseCalculatedIndicatorSeries.filter((definition) => definition.groupKey === instance.instanceId && definition.placement === "overlay"),
+      }))
+      .filter((entry) => entry.series.length > 0);
+    publishChartAnnotations(chartInstanceId, entries);
+    return () => removeChartAnnotations(chartInstanceId);
+  }, [baseCalculatedIndicatorSeries, chartInstanceId, indicatorSignature, indicators]);
+  useEffect(() => subscribeChartAnnotations(() => setAnnotationRegistryRevision((revision) => revision + 1)), []);
+  const annotationOverlaySeries = useMemo(() => indicators.flatMap((instance): CalculatedIndicatorSeries[] => {
+    if (!instance.enabled || instance.indicatorId !== "annotations-overlay") return [];
+    const sourceChartId = String(instance.settings?.sourceChartId ?? "").trim();
+    const sourceIndicatorId = String(instance.settings?.sourceIndicatorId ?? "").trim();
+    if (!sourceChartId || !sourceIndicatorId || sourceChartId === chartInstanceId) return [];
+    const preserveSourceColors = instance.settings?.preserveSourceColors !== false;
+    const visible = visibleIndicatorTheme(settings);
+    return readChartAnnotations(sourceChartId, sourceIndicatorId).map((definition, index) => {
+      const fallbackColor = /sell|bear|low|down/i.test(definition.label) ? visible.negative
+        : /buy|bull|high|up/i.test(definition.label) ? visible.positive : visible.primary;
+      return {
+        ...definition,
+        key: `${instance.instanceId}-annotation-${index}-${definition.key}`,
+        groupKey: instance.instanceId,
+        label: `Annotation · ${definition.label}`,
+        color: preserveSourceColors ? definition.color : fallbackColor,
+        data: preserveSourceColors ? definition.data : definition.data.map((point) => ({ ...point, color: undefined })),
+      };
+    });
+  }), [annotationRegistryRevision, chartInstanceId, indicatorSignature, indicators, settings.borderUpColor, settings.downColor, settings.gridColor, settings.upColor]);
   // The Delta surface changes at most once per refresh interval, while the
   // series list recomputes on every live indicator sample. Deriving these
   // bars in their own memo keeps the per-tick recompute from re-walking the
@@ -8103,10 +8138,10 @@ function Chart({
 
   const chartAlignedIndicatorSeries = useMemo(() => {
     return alignIndicatorSeriesToEventBars(
-      baseCalculatedIndicatorSeries,
+      [...baseCalculatedIndicatorSeries, ...annotationOverlaySeries],
       eventChartIndicatorTimeMap,
     );
-  }, [baseCalculatedIndicatorSeries, eventChartIndicatorTimeMap]);
+  }, [annotationOverlaySeries, baseCalculatedIndicatorSeries, eventChartIndicatorTimeMap]);
 
   const calculatedIndicatorSeries = useMemo(() => [
     ...chartAlignedIndicatorSeries,

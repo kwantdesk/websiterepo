@@ -143,7 +143,7 @@ Do not tick a row just because its Add gate changes.
 | `average-directional-index-adx` | [x] Batch 3; seed and vendor-parity limitations documented |
 | `candlestick-bar` | [x] Independent Minutes, DeepCharts-style target/reversal Vol Bars and tick Range candles; exact execution allocation, filled/outline styling, width/border/opacity, close boundaries, theme/persistence and focused tests. Event modes fail closed without exact tape; protected pixel parity/live soak remain explicit |
 | `overlay-timeframe-highlight` | [x] Dedicated HTF aggregation/primitive, fixed or delta-fading highlight, body/shadow/range styling, high/low targets, bounded summaries, theme/persistence and focused tests; protected edge/pixel/live-soak limits documented |
-| `annotations-overlay` | [ ] Audit / implement / verify |
+| `annotations-overlay` | [x] Live workspace registry mirrors a selected open chart's calculated annotations by Chart ID and Indicator ID; target time alignment, source/theme colour, persistence and cleanup tested; cross-process/manual-drawing mirroring remains out of scope |
 | `text-on-chart` | [x] Fixed multiline viewport overlay, full public/DLL settings contract, autoscale safety and browser Save QA |
 
 ## Reference evidence and constraints
@@ -193,6 +193,8 @@ Do not tick a row just because its Add gate changes.
   renderer limits: `docs/deepcharts-on-candle-stats-audit.md`.
 - Shift Candle public contract, exact-footprint implementation and protected
   trigger limits: `docs/deepcharts-shift-candle-audit.md`.
+- Annotations Overlay public Chart ID / Indicator ID contract and runtime
+  boundaries: `docs/deepcharts-annotations-overlay-audit.md`.
 - Full formula/pixel parity remains unclaimed until suitable reference evidence
   and side-by-side verification exist. No provider spending is authorised by
   this task and no vendor DLL/source is to be redistributed.

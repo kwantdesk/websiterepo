@@ -125,6 +125,7 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "overlay-timeframe-highlight",
   "candlestick-bar",
   "shift-candle",
+  "annotations-overlay",
   "anchored-vwap",
   "pivot-points",
   "gap-detector",
@@ -1657,6 +1658,12 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     sellMarkerColor: theme?.downColor ?? SHIFT_CANDLE_DEFAULTS.sellMarkerColor,
     freshBuyZoneColor: theme?.upColor ?? SHIFT_CANDLE_DEFAULTS.freshBuyZoneColor,
     freshSellZoneColor: theme?.downColor ?? SHIFT_CANDLE_DEFAULTS.freshSellZoneColor,
+  } : {}),
+  ...(indicatorId === "annotations-overlay" ? {
+    sourceChartId: "",
+    sourceIndicatorId: "",
+    preserveSourceColors: true,
+    annotationsOverlaySettingsVersion: 1,
   } : {}),
   ...(indicatorId === "price-movement-levels" ? {
     textColor: theme?.borderUpColor ?? theme?.upColor ?? "#FFFFFF",
@@ -3223,6 +3230,16 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
     return { ...normalizedInstance, settings: normalizeShiftCandleSettings({
       ...defaultIndicatorSettings("shift-candle"), ...(normalizedInstance.settings ?? {}),
     }) };
+  }
+  if (normalizedInstance.indicatorId === "annotations-overlay") {
+    const settings = { ...defaultIndicatorSettings("annotations-overlay"), ...(normalizedInstance.settings ?? {}) };
+    return { ...normalizedInstance, settings: {
+      ...settings,
+      sourceChartId: String(settings.sourceChartId ?? "").trim(),
+      sourceIndicatorId: String(settings.sourceIndicatorId ?? "").trim(),
+      preserveSourceColors: settings.preserveSourceColors !== false,
+      annotationsOverlaySettingsVersion: 1,
+    } };
   }
   if (["vwap", "vwap-envelopes", "rolling-vwap"].includes(normalizedInstance.indicatorId)) {
     const indicatorId = normalizedInstance.indicatorId;

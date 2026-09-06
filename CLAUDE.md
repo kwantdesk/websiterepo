@@ -2704,3 +2704,11 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
   inputs from candle direction or total volume.
 - The protected vendor trigger formula and pixel parity remain unclaimed.
   Alerts are live-new-confirmation only, never history/replay/closed market.
+
+## 2026-09-07 — Annotations Overlay
+
+- `annotations-overlay` is an in-memory, workspace-local mirror keyed by the
+  source chart instance and source indicator instance/catalogue ID. Publish
+  raw annotation timestamps and align only on the target chart.
+- Never open a duplicate market-data connection for a mirror, mutate the
+  source series, permit self-reference, or retain a source after unmount.

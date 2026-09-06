@@ -491,3 +491,12 @@ recap of the open items below and update this file when their state changes.
 - Shift Candle requires exact execution-derived footprint POC, delta and
   imbalance rows. It must fail closed without them. Historical/replay/closed-
   market calculations never emit alerts; only a newly confirmed live bar may.
+
+## 2026-09-07 — Annotations Overlay
+
+- Annotations Overlay mirrors calculated indicator annotations between open
+  charts in the same workspace runtime by Chart ID and indicator instance or
+  catalogue ID. It must never create a second provider subscription or
+  recompute/mutate the source indicator.
+- Source unmount removes the registry entry; self-reference and absent source
+  IDs fail closed. Cross-process windows and manual drawings are not covered.

@@ -196,7 +196,7 @@ export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
   indicator("Overlay Symbol", "Overlays", "A second Rithmic instrument kept on the active chart timeframe.", false, "Kwantify"),
   indicator("Overlay Timeframe Candlestick", "Overlays", "Live higher-timeframe candles aggregated over the active chart with optional close boundaries.", false, "Kwantify"),
   indicator("Overlay Timeframe Highlight", "Overlays", "Highlights higher-timeframe candle boundaries."),
-  indicator("Annotations Overlay", "Overlays", "Displays structured annotations over price."),
+  indicator("Annotations Overlay", "Overlays", "Mirrors an indicator's annotations from another open chart by Chart ID and Indicator ID."),
   indicator("Text on Chart", "Overlays", "Data-driven text labels on the chart."),
   indicator("Source Code Indicator", "Overlays", "A sandboxed Pine Script v5/v6 compatibility indicator authored or imported in Kwant Desk.", false, "Kwantify"),
 
