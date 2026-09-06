@@ -1,6 +1,7 @@
 import type { Candle } from "@/lib/backtester";
 import { calculateAbsoluteLevels } from "@/lib/absoluteLevels";
 import { calculateAverageDirectionalIndex } from "@/lib/averageDirectionalIndex";
+import { calculateParabolicSar } from "@/lib/parabolicSar";
 import { exchangeClockParts } from "@/lib/exchangeClock";
 import type { ChartIndicatorInstance } from "@/lib/chartIndicatorCatalog";
 import { calculateDeepEffort } from "@/lib/deepEffort";
@@ -28,6 +29,8 @@ export type CalculatedIndicatorSeries = {
   histogramOutlineWidth?: number;
   lineStyle?: "solid" | "dashed" | "dotted";
   lineType?: "simple" | "with-steps";
+  pointMarkersVisible?: boolean;
+  lineVisible?: boolean;
   candleStyle?: "candlestick" | "ohlc" | "candle-body" | "wick-only";
   lastValueVisible?: boolean;
   /** Full-pane, user-defined reference; does not alter price autoscaling. */
@@ -320,6 +323,7 @@ function computeIndicatorSeries(
 
   if (key === "absolute-levels") return calculateAbsoluteLevels(candles, instance.settings ?? {}, theme);
   if (key === "average-directional-index-adx") return calculateAverageDirectionalIndex(candles, instance.settings ?? {}, theme);
+  if (key === "parabolic-sar") return calculateParabolicSar(candles, instance.settings ?? {}, theme, instance.instanceId);
 
   if (key === "source-code-indicator") {
     const source = settingString(instance, "source", "");

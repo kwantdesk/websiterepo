@@ -9,8 +9,9 @@ import { createChart } from "../../src/lib/lightweightChartsCompat";
 import actualOverlayOptions from "kwant-preview-overlay-options";
 
 // Isolated, clearly labelled fixtures: never a market feed or production page.
-const previewId = new URLSearchParams(location.search).get("indicator") === "adx" ? "average-directional-index-adx" : "absolute-levels";
-const previewName = previewId === "absolute-levels" ? "Absolute Levels" : "ADX";
+const requestedPreview = new URLSearchParams(location.search).get("indicator");
+const previewId = requestedPreview === "sar" ? "parabolic-sar" : requestedPreview === "adx" ? "average-directional-index-adx" : "absolute-levels";
+const previewName = previewId === "absolute-levels" ? "Absolute Levels" : previewId === "parabolic-sar" ? "Parabolic SAR" : "ADX";
 const storageKey = `qa-indicators-${previewId}`;
 const candles = Array.from({ length: previewId === "absolute-levels" ? 30 : 100 }, (_, i) => {
   const close = previewId === "absolute-levels" ? 100.2 + i / 40 : 100 + Math.sin(i / 8) * 2 + i / 40;
@@ -36,7 +37,7 @@ function Preview() {
     <button onClick={() => setRequest({ instanceId: "qa-study", requestId: Date.now() })}>Open {previewName} settings</button>
     <ChartIndicatorsControl chartInstanceId="qa" instrument="NQ" broker="Rithmic" timeframe="1m" chartSettings={defaultChartSettings} indicators={indicators} onChange={setIndicators} settingsOpenRequest={request}/>
     <div ref={host}/>
-    {previewId !== "absolute-levels" ? <div style={{ position: "relative", width: 1000, height: 260 }}>
+    {previewId === "average-directional-index-adx" ? <div style={{ position: "relative", width: 1000, height: 260 }}>
       <ChartIndicatorPanes groups={indicators.map(instance => ({ key: instance.instanceId, indicatorId: instance.indicatorId, title: previewName, settings: instance.settings, series: calculateIndicatorSeries(instance, candles, theme) }))}
         width={1000} priceScaleWidth={65} height={260} chartHeight={260} bottom={0} viewportVersion={0}
         paneHeights={{}} collapsedPanes={{}} paneLayout={{}} timeToX={time => (time - candles[0].timestamp / 1000) / (99 * 60) * 935}

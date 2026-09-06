@@ -55,5 +55,7 @@ Full indicator-library goal remains unfinished.
 
 Release checks: 34 targeted tests passed (31 calculation/profile tests and
 3 catalogue-registration tests); scoped ESLint passed; production build passed
-including TypeScript and all 80 static pages. Deployment still requires exact
-commit verification after the main push.
+including TypeScript and all 80 static pages. Main release
+`98c22db1d8def89972ff14ec0304cd21ca03e018` was pushed once to the existing
+integration. Vercel reported success for `websiterepo-yfmi`; the live
+`/api/market-data/diagnostics` endpoint returned that exact commit.

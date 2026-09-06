@@ -16440,6 +16440,12 @@ function Chart({
                 ? LineStyle.Dotted
                 : LineStyle.Solid,
             lineType: definition.lineType === "with-steps" ? LineType.WithSteps : LineType.Simple,
+            ...(definition.pointMarkersVisible !== undefined ? {
+              pointMarkersVisible: definition.pointMarkersVisible,
+              pointMarkersRadius: (definition.lineWidth ?? 1) + 1,
+              lineVisible: definition.lineVisible !== false,
+              priceScaleId: definition.priceScaleId ?? "right",
+            } : {}),
             lastValueVisible: definition.lastValueVisible !== false,
             priceLineVisible: definition.horizontalPriceLine === true,
             ...(definition.horizontalPriceLine ? {

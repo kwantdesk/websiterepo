@@ -1,5 +1,16 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-06 — Parabolic SAR pending-library batch
+
+- Real high/low stop/reversal calculator, explicit seed and acceleration cap,
+  points/line modes, directional/theme/custom colours, instance-specific scale.
+  New point-rendering options are opt-in; existing overlays are unchanged.
+- Seven SAR tests, 23 combined tests, scoped ESLint and production build pass.
+  Real isolated browser verified dots/line, acceleration changes, clean Save,
+  close and reload persistence. See `docs/deepcharts-parabolic-sar-audit.md`.
+- 33 pending remain. No exact protected-DLL seed/parity or live-market-soak
+  claim. Continue the full checklist; profiles still need actual integration.
+
 ## 2026-09-06 — ADX and owned-profile validation
 
 - ADX now uses its own Wilder calculator, explicit 2N−1 warmup, three-line pane,

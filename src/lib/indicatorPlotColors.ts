@@ -31,6 +31,10 @@ export type IndicatorPlotColorSlot = {
 };
 
 export const INDICATOR_PLOT_COLOR_SLOTS: Record<string, IndicatorPlotColorSlot[]> = {
+  "parabolic-sar": [
+    { key: "plotColor", role: "primary" },
+    { key: "secondaryColor", role: "secondary" },
+  ],
   "average-directional-index-adx": [
     { key: "adxColor", role: "primary" },
     { key: "plusDiColor", role: "positive" },

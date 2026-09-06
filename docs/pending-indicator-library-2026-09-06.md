@@ -51,7 +51,14 @@ reachable catalogue row and that catalogue IDs are unique.
 - Profile-family loading/validation/live-fold groundwork continues; no profile
   entry was enabled. Multi-session filtering needs genuine disjoint windows.
 
-## Remaining 34 — not released by blanket enablement
+## Batch 4 — Parabolic SAR
+
+- [x] Implemented stop/reversal calculation, acceleration controls, points/line
+  rendering, theme/custom/directional colours and per-instance secondary scale.
+  Seven tests and actual settings/rendering browser QA passed. Exact vendor
+  seed/visual parity remains unproven; `docs/deepcharts-parabolic-sar-audit.md`.
+
+## Remaining 33 — not released by blanket enablement
 
 Each row needs evidence, settings/data implementation, calculation tests,
 renderer/theme/persistence verification and explicit visual/latency limits.
@@ -81,7 +88,7 @@ Do not tick a row just because its Add gate changes.
 | `session-marker` | [ ] Audit / implement / verify |
 | `shift-candle` | [ ] Audit / implement / verify |
 | `ichimoku-indicator` | [ ] Audit / implement / verify |
-| `parabolic-sar` | [ ] Audit / implement / verify |
+| `parabolic-sar` | [x] Implemented; documented seed and parity limits |
 | `linear-regression` | [ ] Audit / implement / verify |
 | `regression-channel` | [ ] Audit / implement / verify |
 | `super-trend` | [ ] Audit / implement / verify |

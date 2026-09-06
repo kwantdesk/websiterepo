@@ -454,6 +454,7 @@ const sectionForSetting = (indicatorId: string, key: string, fallback: string) =
   (isTpoIndicator(indicatorId) ? TPO_SETTING_SECTIONS[key] ?? "General" : fallback);
 
 export const RENDERED_CHART_INDICATOR_IDS = new Set([
+  "parabolic-sar",
   "average-directional-index-adx",
   "absolute-levels",
   "gamma-levels",
@@ -6399,6 +6400,27 @@ export default function ChartIndicatorsControl({
                     <option value="dotted">Dotted</option>
                   </KwantSelect>
                 </label>
+              ) : null}
+
+              {settingsDefinition.id === "parabolic-sar" ? (
+                <div data-settings-section="Style" className="space-y-3">
+                  {[
+                    { key: "displayStyle", label: "Display style", fallback: "points", options: [["points", "Points"], ["line", "Line"], ["line-points", "Line and points"]] },
+                    { key: "lineStyle", label: "Line style", fallback: "solid", options: [["solid", "Solid"], ["dashed", "Dashed"], ["dotted", "Dotted"]] },
+                  ].map((control) => (
+                    <label key={control.key} className="block space-y-1 text-[10px] text-muted">
+                      <span>{control.label}</span>
+                      <KwantSelect value={String(settingsInstance.settings?.[control.key] ?? control.fallback)}
+                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                          ...current, settings: { ...(current.settings ?? {}), [control.key]: event.target.value },
+                        }))} menuLabel={`SAR ${control.label.toLowerCase()}`}
+                        className="h-9 w-full border border-border bg-background px-3 text-foreground">
+                        {control.options.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                      </KwantSelect>
+                    </label>
+                  ))}
+                  <p className="text-[10px] text-muted">Step is capped by Maximum. Secondary colour marks the downward trend. A secondary axis uses an independent scale, so its vertical position is not directly comparable with candle prices.</p>
+                </div>
               ) : null}
 
               {settingsDefinition.id === "absolute-levels" ? (

@@ -69,3 +69,11 @@ manual math, warmup, invalid data, source times, settings, theme and persistence
 Actual browser pane/settings check passed (period edit, dashed lines, +DI hide,
 immediate clean Save/close). 34 rows remain. Reference defaults/seed/pixel parity
 and production live-market performance are not claimed from this local QA.
+
+Batch 4: continued the pending-library request with Parabolic SAR. Added actual
+stop/reversal math, documented startup seed, DeepCharts-documented controls and
+dot rendering. Verified seven SAR tests plus 16 preceding regressions, scoped
+lint and production build. Browser verified dots, acceleration changes, line
+mode, directional colours, immediate clean Save, close and reload persistence.
+Removed a misleading duplicate colour control found during QA. 33 rows remain;
+the library goal and explicit DeepCharts parity limitations remain open.
