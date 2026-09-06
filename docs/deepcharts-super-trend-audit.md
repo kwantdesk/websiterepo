@@ -172,7 +172,7 @@ and an independent array recurrence across four lengths/four multipliers.
 ## Remaining release checklist
 
 - [x] Shared calculator and independent deterministic tests.
-- [ ] Inspect official settings screenshots for exact control choices.
+- [x] Inspect official general/subgraph screenshots for visible control choices (alert screenshot and behavioural parity still outstanding).
 - [ ] Persisted bounded settings, sliders and individual theme/custom colours.
 - [ ] Wire price overlay and independently scaled difference histogram.
 - [ ] Labels/backgrounds/auto-centre and actual supported orientation choices.
@@ -183,5 +183,39 @@ and an independent array recurrence across four lengths/four multipliers.
 - [ ] Browser settings/geometry/Save/reload and template roundtrip.
 - [ ] Actual engine/history/data-path integration, performance checks and build.
 - [ ] Enable only after release tests; scoped main push and exact live SHA check.
+
+## Reference screenshot and local browser continuation
+
+Visually inspected the official Super Trend general/subgraph and Difference
+subgraph images. Difference also exposes name/value labels, independent label
+backgrounds, chart-colour marker and auto-centre controls. Added these to the
+Difference defaults, actual engine and both pane orientations. Its vertical
+line renderer now retains per-point colours/dashes using the existing tested
+segmented plot renderer. No working indicator's rendering is changed.
+
+Reference images: `HpNZWlg40C6mTl6I0bLeXAKnfE.png`,
+`FFdNny707FBsnKL4Gayb0gnR2I.png`, `g7orDof7S6w1G2jKZlLfU9gxc.png`
+on `https://framerusercontent.com/images/`. Observed UI states are not proof of
+protected constructor defaults. In particular Super Trend's reference shows
+AutoColor None; our natural direction colouring remains an explicitly
+unresolved naming/behaviour comparison. Difference's style selection is blank
+in the image; the article describes histogram, not proof of the selected text.
+
+The isolated browser fixture uses synthetic candles, the real engine, settings
+dialog, Lightweight Charts and label primitive / real pane component. Super
+Trend name `Trend QA` and name/value/background selections survived reload.
+Both studies saved and immediately closed without a second unsaved prompt.
+Difference's name/value/value-background selections also survived reload.
+This verifies fixture-local persistence, not authenticated account sync or
+template import/export. The Difference pane was below the screenshot viewport;
+its label geometry is covered by component tests but still needs visual QA.
+
+Full TypeScript check found the new `findLast` unsupported by this repository's
+target library; replaced it with a backwards scan without copying the array.
+25 Super Trend tests now pass, including actual rendered pane-label markup,
+offscreen/invalid suppression and engine control propagation. Full TypeScript
+and scoped ESLint pass. No production build/release this continuation. The
+two gates remain off; 30 entries are still Pending. Remaining checks include
+orientation geometry, template roundtrip, live plotting performance and audio.
 
 No available indicator modified. No production release for this prerequisite.

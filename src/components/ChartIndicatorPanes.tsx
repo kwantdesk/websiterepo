@@ -2,6 +2,7 @@
 
 import { indicatorHistogramWidth } from "@/lib/indicatorHistogramWidth";
 import { useSuperTrendLivePanes } from "@/components/useSuperTrendLivePanes";
+import SuperTrendPaneLabels from "@/components/SuperTrendPaneLabels";
 
 import { memo, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { Check, ChevronDown, GripHorizontal, Minus, Plus, RefreshCw, Settings2 } from "lucide-react";
@@ -63,7 +64,7 @@ function formatStatValue(value: number, format: "number" | "percent" | "seconds"
 }
 
 function seriesDomain(series: CalculatedIndicatorSeries[]) {
-  const values = series.filter((definition) => !definition.kstPresentation || !definition.excludeFromAutoScale).flatMap((definition) => definition.data.flatMap((point) => [
+  const values = series.filter((definition) => !(definition.kstPresentation || definition.superTrendStyleKey) || !definition.excludeFromAutoScale).flatMap((definition) => definition.data.flatMap((point) => [
     point.value,
     point.open,
     point.high,
@@ -652,6 +653,11 @@ function ChartIndicatorPaneSurface({
                 ));
               })}
             </g> : null}
+            {!collapsed && group.indicatorId === "super-trend-difference" ? group.series.map(definition => (
+              <SuperTrendPaneLabels key={`labels-${definition.key}`} series={definition}
+                bounds={{ left: leftAxisWidth, top: innerTop, right: plotWidth, bottom: innerBottom }}
+                points={sampledPanePoints(definition, xForTime, plotWidth).map(point => ({ ...point, y: yFor(point.value, definition) }))} />
+            )) : null}
             {!collapsed && !stats && !group.percentageAxis ? <text x={plotWidth + 6} y={innerTop + 2} fill="var(--muted)" fontSize="8" fontFamily="monospace">{compact(sharedDomain.max)}</text> : null}
             {!collapsed && !stats && !group.percentageAxis ? <text x={plotWidth + 6} y={innerBottom} fill="var(--muted)" fontSize="8" fontFamily="monospace">{compact(sharedDomain.min)}</text> : null}
             {!collapsed && group.percentageAxis && secondaryDomain && group.secondaryAxisLabel ? (
@@ -1169,6 +1175,9 @@ function ChartVerticalIndicatorPaneSurface({
                         </g>
                       );
                     }
+                    if (group.indicatorId === "super-trend-difference") return <KstPanePlot key={definition.key}
+                      series={definition} vertical bounds={{ left: innerLeft, top: plotTop, right: innerRight, bottom: plotBottom }}
+                      points={visible.map(point => ({ ...point, x: xForValue(point.value) }))} />;
                     const path = visible.map((point, index) =>
                       `${index === 0 || point.breakBefore ? "M" : "L"} ${xForValue(point.value)} ${point.y}`,
                     ).join(" ");
@@ -1185,6 +1194,11 @@ function ChartVerticalIndicatorPaneSurface({
                       />
                     );
                   })}
+                  {group.indicatorId === "super-trend-difference" ? group.series.map(definition => (
+                    <SuperTrendPaneLabels key={`labels-${definition.key}`} series={definition}
+                      bounds={{ left: innerLeft, top: plotTop, right: innerRight, bottom: plotBottom }}
+                      points={sampledVerticalPanePoints(definition, yForTime, plotHeight).map(point => ({ ...point, x: xForValue(point.value), y: point.y + plotTop }))} />
+                  )) : null}
                   <text x={innerLeft} y={height - 1} fill="var(--muted)" fontSize="7" fontFamily="monospace">{compact(domain.min)}</text>
                   <text x={innerRight} y={height - 1} fill="var(--muted)" fontSize="7" fontFamily="monospace" textAnchor="end">{compact(domain.max)}</text>
                 </>

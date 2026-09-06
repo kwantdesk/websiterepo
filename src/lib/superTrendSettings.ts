@@ -11,7 +11,9 @@ export const SUPER_TREND_DEFAULTS = {
 export const SUPER_TREND_DIFFERENCE_DEFAULTS = {
   length: 10, multiplier: 3, lineWidth: 4, lineStyle: "solid",
   displayStyle: "histogram", colorMode: "sign", shortName: "STD",
-  useThemeColors: true,
+  useThemeColors: true, includeOnAutoCenter: true,
+  valueLabel: false, nameLabel: false, nameBackground: false,
+  valueBackground: false, chartColorForMarker: false,
 };
 
 export const superTrendNumericSettings = (difference = false): IndicatorNumericSetting[] => [

@@ -40,3 +40,12 @@ updates using the incremental calculation; fixed per-instance series-key
 collisions and same-bar slope colour; bounded tail/history/style/replay guards.
 22 tests and scoped lint pass. Browser/performance/build verification remains;
 still 30 Pending, not deployed or falsely claimed complete.
+
+Reference/browser continuation: inspected three official screenshots and found
+missing Difference label/background/auto-centre controls; wired these into
+settings, engine and both pane orientations. Corrected an ES target compatibility
+error in label lookup. Added three actual component/engine tests: 25 pass,
+full TypeScript and scoped lint pass. Both real dialogs save and close without
+re-prompt; local fixture settings survive reload. Account template roundtrip,
+full visual/orientation/live/audio checks remain. No gates enabled, no push;
+30 Pending remains the honest count.
