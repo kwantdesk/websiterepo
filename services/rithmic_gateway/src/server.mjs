@@ -1583,6 +1583,7 @@ const server = createServer(async (request, response) => {
       }
       try {
         const interval = url.searchParams.get("interval");
+        const wantsAuctionGap = url.searchParams.get("auctionGap") === "1";
         if (isEventBasedInterval(interval)) {
           const eventHistory = await tradeTape.loadEventBars({
             exchange: instrument.exchange,
@@ -1591,7 +1592,7 @@ const server = createServer(async (request, response) => {
             fromMs: url.searchParams.get("fromMs"),
             toMs: url.searchParams.get("toMs"),
             limit: url.searchParams.get("limit"),
-            auctionGap: url.searchParams.get("auctionGap") === "1",
+            auctionGap: wantsAuctionGap,
           });
           return json(response, 200, {
             ...eventHistory,
@@ -1612,6 +1613,7 @@ const server = createServer(async (request, response) => {
               fromMs: url.searchParams.get("fromMs"),
               toMs: url.searchParams.get("toMs"),
               limit: url.searchParams.get("limit"),
+              auctionGap: wantsAuctionGap,
             })
           : await chartHistory.load({
               exchange: instrument.exchange,
@@ -1621,12 +1623,21 @@ const server = createServer(async (request, response) => {
               toMs: url.searchParams.get("toMs"),
               limit: url.searchParams.get("limit"),
             });
-        if (url.searchParams.get("orderFlow") !== "1") return json(response, 200, history);
+        const responseHistory = wantsAuctionGap && !subMinute ? {
+          ...history,
+          auctionGap: await tradeTape.loadAuctionGapTimeRows({
+            exchange: instrument.exchange,
+            symbol: instrument.symbol,
+            candles: history.candles,
+            intervalMs,
+          }),
+        } : history;
+        if (url.searchParams.get("orderFlow") !== "1") return json(response, 200, responseHistory);
 
         // Sub-minute bars were folded directly from the sided execution tape;
         // a minute-level flow cache cannot enrich them and must not overwrite
         // their exact per-second totals.
-        if (subMinute) return json(response, 200, { ...history, executions: [] });
+        if (subMinute) return json(response, 200, { ...responseHistory, executions: [] });
 
         /*
          * Aggressor flow for footprint, CVD, delta and Big Trades.
@@ -1637,7 +1648,7 @@ const server = createServer(async (request, response) => {
          * zero delta means balanced trade and an absent one means nobody
          * recorded the side.
          */
-        const candles = Array.isArray(history.candles) ? history.candles : [];
+        const candles = Array.isArray(responseHistory.candles) ? responseHistory.candles : [];
         const flowWindow = await barFlow.load({
           exchange: instrument.exchange,
           symbol: instrument.symbol,
@@ -1666,7 +1677,7 @@ const server = createServer(async (request, response) => {
           };
         });
         return json(response, 200, {
-          ...history,
+          ...responseHistory,
           candles: withFlow,
           executions: url.searchParams.get("exec") === "0" ? [] : flowWindow.executions,
           flowCoverage: candles.length ? covered / candles.length : 0,

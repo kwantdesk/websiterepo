@@ -567,3 +567,116 @@ test("ordinary event-history cache cannot hide a later Auction Gap request", asy
     assert.equal("auctionGap" in requested, true);
   });
 });
+
+test("canonical time candles receive compact Auction Gap rows only after tape reconciliation", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "kwant-tape-"));
+  try {
+    const archive = new TradeTapeArchive({ dir, roots: ["NQ"], flushMs: 10_000 });
+    const tradingDate = chicagoTradingDate(T0);
+    const dayDir = join(dir, "trades", tradingDate);
+    mkdirSync(dayDir, { recursive: true });
+    const rows = [
+      [T0, 100, 2, 1], [T0 + 10_000, 100.5, 3, -1], [T0 + 50_000, 100.25, 4, 0],
+      [T0 + 60_000, 100.25, 5, -1], [T0 + 110_000, 100.5, 6, 1],
+    ];
+    writeFileSync(join(dayDir, backfillFileName("CME", "NQU6")), gzipSync(Buffer.from(
+      `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`,
+    )));
+    const receipt = createBackfillCoverageReceipt({
+      exchange: "CME", symbol: "NQU6", tradingDate,
+      observationFromMs: T0 - 1_000, observationToMs: T0 + 121_000,
+      sourcePrintCount: rows.length, gapMarkers: 0, damagedMembers: 0,
+    });
+    await writeCoverageReceipt(join(dayDir, coverageFileName("CME", "NQU6")), receipt);
+    const candles = [
+      { timestamp: T0, open: 100, high: 100.5, low: 100, close: 100.25, volume: 9 },
+      { timestamp: T0 + 60_000, open: 100.25, high: 100.5, low: 100.25, close: 100.5, volume: 11 },
+    ];
+    const result = await archive.loadAuctionGapTimeRows({
+      exchange: "CME", symbol: "NQU6", candles, intervalMs: 60_000,
+    });
+    assert.equal(result.coverageComplete, true);
+    assert.equal(result.rows.length, 2);
+    assert.equal(result.rows[0].rows.reduce(
+      (sum, row) => sum + row.bidVolume + row.askVolume + row.unknownVolume, 0,
+    ), 9);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("time-row source fails closed on missing coverage or canonical volume mismatch", async () => {
+  await withArchive(async (archive) => {
+    const client = new EventEmitter();
+    archive.attach(client);
+    client.emit("rawMessage", print(0, 100, 2));
+    await archive.close();
+    const missing = await archive.loadAuctionGapTimeRows({
+      exchange: "CME", symbol: "NQU6",
+      candles: [{ timestamp: T0, open: 100, high: 100, low: 100, close: 100, volume: 2 }],
+      intervalMs: 60_000,
+    });
+    assert.equal(missing.reason, "historical-coverage-unproved");
+    assert.deepEqual(missing.rows, []);
+    const mismatch = await archive.loadAuctionGapTimeRows({
+      exchange: "CME", symbol: "NQU6",
+      candles: [{ timestamp: T0, open: 100, high: 100, low: 100, close: 100, volume: 3 }],
+      intervalMs: 60_000,
+    });
+    assert.equal(mismatch.reason, "source-volume-mismatch");
+    assert.deepEqual(mismatch.rows, []);
+  });
+});
+
+test("sub-minute history emits proven Auction Gap rows in its existing tape scan", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "kwant-tape-"));
+  try {
+    const archive = new TradeTapeArchive({ dir, roots: ["NQ"], flushMs: 10_000 });
+    const tradingDate = chicagoTradingDate(T0);
+    const dayDir = join(dir, "trades", tradingDate);
+    mkdirSync(dayDir, { recursive: true });
+    const rows = [
+      [T0, 100, 2, 1], [T0 + 1_000, 100.25, 3, -1],
+      [T0 + 6_000, 100.5, 4, 0], [T0 + 9_000, 100.25, 5, 1],
+    ];
+    writeFileSync(join(dayDir, backfillFileName("CME", "NQU6")), gzipSync(Buffer.from(
+      `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`,
+    )));
+    await writeCoverageReceipt(join(dayDir, coverageFileName("CME", "NQU6")), createBackfillCoverageReceipt({
+      exchange: "CME", symbol: "NQU6", tradingDate,
+      observationFromMs: T0 - 1_000, observationToMs: T0 + 11_000,
+      sourcePrintCount: rows.length, gapMarkers: 0, damagedMembers: 0,
+    }));
+    const result = await archive.loadTimeBars({
+      exchange: "CME", symbol: "NQU6", interval: "5s", intervalMs: 5_000,
+      fromMs: T0, toMs: T0 + 10_000, auctionGap: true,
+    });
+    assert.equal(result.auctionGap.coverageComplete, true);
+    assert.equal(result.auctionGap.rows.length, result.candles.length);
+    assert.equal(result.auctionGap.rows.flatMap((bar) => bar.rows)
+      .reduce((sum, row) => sum + row.unknownVolume, 0), 4);
+    const ordinary = await archive.loadTimeBars({
+      exchange: "CME", symbol: "NQU6", interval: "5s", intervalMs: 5_000,
+      fromMs: T0, toMs: T0 + 10_000,
+    });
+    assert.equal("auctionGap" in ordinary, false);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("sub-minute Auction Gap output fails closed without a coverage receipt", async () => {
+  await withArchive(async (archive) => {
+    const client = new EventEmitter();
+    archive.attach(client);
+    client.emit("rawMessage", print(0, 100, 2));
+    await archive.close();
+    const result = await archive.loadTimeBars({
+      exchange: "CME", symbol: "NQU6", interval: "5s", intervalMs: 5_000,
+      fromMs: T0, toMs: T0 + 5_000, auctionGap: true,
+    });
+    assert.equal(result.auctionGap.coverageComplete, false);
+    assert.equal(result.auctionGap.reason, "historical-coverage-unproved");
+    assert.deepEqual(result.auctionGap.rows, []);
+  });
+});

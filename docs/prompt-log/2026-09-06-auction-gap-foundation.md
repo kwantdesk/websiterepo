@@ -1,5 +1,12 @@
 # Pending-library continuation — Auction Gap Tracker
 
+2026-09-07 time-route continuation: `auctionGap=1` now returns coverage-proven
+compact rows for minute+ canonical history and collects them in the existing
+sub-minute tape fold without a second scan. Ordinary responses are unchanged;
+missing proof/truncation/off-tick/mismatch returns empty failure. 50 combined
+tests and lint pass. Historical gateway paths cover time + event; live proof,
+settings segmentation and web Chart wiring remain. Still Pending/no deploy.
+
 2026-09-07 event-route continuation: `auctionGap=1` now folds compact one-tick
 rows inside the existing event-history scan, validates volume and coverage, and
 returns a versioned complete envelope or explicit empty failure. Retention is

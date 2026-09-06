@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import { foldAuctionGapEventRows, foldAuctionGapTimeRows } from "../src/auction-gap-row-fold.mjs";
 import { buildEventBars } from "../src/event-bar-builder.mjs";
@@ -118,4 +119,12 @@ test("event fold rejects off-tick, reversed and invalid-side source prints", () 
     "invalid-execution");
   assert.equal(foldAuctionGapEventRows({ trades: [{ ...eventTrades[0], side: 3 }], interval: "4r", symbol: "NQU6" }).reason,
     "invalid-execution");
+});
+
+test("history route opts into compact Auction Gap rows without changing ordinary requests", () => {
+  const source = readFileSync(new URL("../src/server.mjs", import.meta.url), "utf8");
+  assert.match(source, /const wantsAuctionGap = url\.searchParams\.get\("auctionGap"\) === "1"/);
+  assert.match(source, /auctionGap: await tradeTape\.loadAuctionGapTimeRows\(/);
+  assert.match(source, /auctionGap: wantsAuctionGap/);
+  assert.match(source, /wantsAuctionGap && !subMinute/);
 });

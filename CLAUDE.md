@@ -1,5 +1,16 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-07 — Auction Gap compact rows on all history chart families
+
+- History `auctionGap=1` attaches compact proven rows to minute-and-higher
+  canonical responses after exact tape OHLC/volume/coverage reconciliation.
+- Sub-minute history aggregates the rows in its existing tape pass; no duplicate
+  scan. Event support was already integrated. Ordinary requests are unchanged.
+- Missing receipts, truncation, off-tick input or source mismatches return an
+  explicit empty failure. 50 combined tests and scoped lint pass.
+- Remaining: live coverage receipts, settings-time segmentation, web envelope
+  validation, worker/primitive Chart wiring and browser QA. Gate OFF/no deploy.
+
 ## 2026-09-07 — Auction Gap rows in the existing event-history scan
 
 - Event history accepts opt-in `auctionGap=1` and aggregates one-tick rows in

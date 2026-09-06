@@ -1,5 +1,19 @@
 # Auction Gap Tracker — implementation in progress
 
+### Time history routes return proven compact rows — 2026-09-07
+
+`auctionGap=1` now attaches the versioned compact row envelope to canonical
+minute-and-higher History Plant responses after gateway-side exact-tape volume/
+OHLC and coverage reconciliation. Sub-minute 1s/5s/15s/30s history collects the
+same rows inside its existing execution fold, avoiding a second disk scan.
+Ordinary requests remain byte/behaviour compatible. Both paths reject missing
+receipts, truncation, off-tick input and source mismatches with empty rows.
+
+50 combined route/fold/archive/coverage tests and scoped lint pass. Historical
+gateway source plumbing now covers time and all event families. Remaining work
+is live coverage receipts, settings-time segmentation, web response validation,
+worker/primitive Chart wiring and browser QA. Gate stays Pending, no deployment.
+
 ### Event history route performs the compact fold once — 2026-09-07
 
 The existing event-history archive scan can now opt into Auction Gap rows via

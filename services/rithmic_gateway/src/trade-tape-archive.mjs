@@ -7,6 +7,7 @@ import { resolveInstrument } from "./recorder.mjs";
 import { tradeFromRecord } from "./futures-bar-archive.mjs";
 import { readArchiveRecords } from "./archive-reader.mjs";
 import { createEventBarBuilder, eventInterval, futuresTickSize } from "./event-bar-builder.mjs";
+import { foldAuctionGapTimeRows } from "./auction-gap-row-fold.mjs";
 import {
   coverageFileName, provesCoverageIntervals, readCoverageReceipt,
 } from "./trade-tape-coverage.mjs";
@@ -393,6 +394,50 @@ export class TradeTapeArchive {
     };
   }
 
+  /** Reconcile canonical time candles against exact prints on the gateway and
+   * return only compact price rows. This is opt-in and leaves existing chart
+   * history unchanged. */
+  async loadAuctionGapTimeRows({ exchange, symbol, candles, intervalMs }) {
+    const unavailable = (reason) => ({
+      schemaVersion: "kwantify-auction-gap-rows-v1",
+      provider: "Rithmic",
+      contractSymbol: String(symbol || "").toUpperCase(),
+      coverageComplete: false,
+      executionOrderComplete: false,
+      reason,
+      rows: [],
+    });
+    if (!Array.isArray(candles) || !candles.length || !Number.isFinite(Number(intervalMs))
+      || Number(intervalMs) <= 0) return unavailable("invalid-bars");
+    const start = Number(candles[0]?.timestamp);
+    const end = Number(candles.at(-1)?.timestamp) + Number(intervalMs);
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return unavailable("invalid-bars");
+    const tape = await this.load({ exchange, symbol, fromMs: start, toMs: end });
+    if (tape.truncated) return unavailable("time-history-truncated");
+    const canonical = candles.map((candle) => ({
+      timestamp: Number(candle.timestamp),
+      endTime: Number(candle.timestamp) + Number(intervalMs),
+      open: Number(candle.open), high: Number(candle.high), low: Number(candle.low), close: Number(candle.close),
+      volume: Number(candle.volume),
+    }));
+    const folded = foldAuctionGapTimeRows({
+      tickSize: futuresTickSize(symbol), bars: canonical, trades: tape.trades,
+    });
+    if (folded.status !== "ready") return unavailable(folded.reason);
+    const covered = provesCoverageIntervals(tape.coverageReceipts,
+      { exchange: String(exchange || "").toUpperCase(), symbol: String(symbol || "").toUpperCase() },
+      canonical.map((bar) => ({ fromMs: bar.timestamp, toMs: bar.endTime })));
+    if (!covered) return unavailable("historical-coverage-unproved");
+    return {
+      schemaVersion: "kwantify-auction-gap-rows-v1",
+      provider: "Rithmic",
+      contractSymbol: String(symbol || "").toUpperCase(),
+      coverageComplete: true,
+      executionOrderComplete: true,
+      rows: folded.bars,
+    };
+  }
+
   /**
    * Build range, volume, trade, delta, Renko and point/figure bars beside the
    * archive instead of sending millions of raw prints through Vercel.
@@ -572,7 +617,7 @@ export class TradeTapeArchive {
    * minute candles. The old history route returned 1m rows for 1s/5s/15s/30s
    * requests, so the selector changed while the data did not.
    */
-  async loadTimeBars({ exchange, symbol, interval, intervalMs, fromMs, toMs, limit }) {
+  async loadTimeBars({ exchange, symbol, interval, intervalMs, fromMs, toMs, limit, auctionGap = false }) {
     const upper = String(exchange || "").toUpperCase();
     const upperSymbol = String(symbol || "").toUpperCase();
     const end = Number.isFinite(Number(toMs)) && Number(toMs) > 0 ? Number(toMs) : Date.now();
@@ -585,10 +630,19 @@ export class TradeTapeArchive {
     }
 
     const bars = new Map();
+    const auctionRows = new Map();
+    const coverageReceipts = [];
+    let auctionGapInvalid = false;
     const dates = new Set();
     for (let at = start; at < end; at += 6 * 60 * 60_000) dates.add(chicagoTradingDate(at));
     dates.add(chicagoTradingDate(end));
     for (const tradingDate of [...dates].sort()) {
+      if (auctionGap) {
+        const receipt = await readCoverageReceipt(join(
+          this.dir, tradingDate, coverageFileName(upper, upperSymbol),
+        ));
+        if (receipt) coverageReceipts.push(receipt);
+      }
       for (const name of [
         backfillFileName(upper, upperSymbol),
         instrumentFileName(upper, upperSymbol),
@@ -623,6 +677,22 @@ export class TradeTapeArchive {
           bar.deltaClose = bar.delta;
           bar.deltaHigh = Math.max(bar.deltaHigh, bar.delta);
           bar.deltaLow = Math.min(bar.deltaLow, bar.delta);
+          if (auctionGap) {
+            const tickSize = futuresTickSize(upperSymbol);
+            const tickIndex = Math.round(price / tickSize);
+            if (!Number.isSafeInteger(tickIndex) || Math.abs(price / tickSize - tickIndex) > 1e-6) {
+              auctionGapInvalid = true;
+              return;
+            }
+            const rows = auctionRows.get(timestamp) ?? new Map();
+            const row = rows.get(tickIndex)
+              ?? { tickIndex, bidVolume: 0, askVolume: 0, unknownVolume: 0 };
+            if (trade.side > 0) row.askVolume += size;
+            else if (trade.side < 0) row.bidVolume += size;
+            else row.unknownVolume += size;
+            rows.set(tickIndex, row);
+            auctionRows.set(timestamp, rows);
+          }
         });
       }
     }
@@ -632,6 +702,42 @@ export class TradeTapeArchive {
       ? Math.min(MAX_SERVED_TIME_BARS, Math.floor(Number(limit)))
       : MAX_SERVED_TIME_BARS;
     const candles = ordered.length > cap ? ordered.slice(-cap) : ordered;
+    let auctionGapRows = null;
+    if (auctionGap) {
+      const compact = candles.map((candle, chartIndex) => ({
+        chartIndex,
+        timestamp: candle.timestamp,
+        endTime: candle.timestamp + bucketMs,
+        openTick: Math.round(candle.open / futuresTickSize(upperSymbol)),
+        highTick: Math.round(candle.high / futuresTickSize(upperSymbol)),
+        lowTick: Math.round(candle.low / futuresTickSize(upperSymbol)),
+        closeTick: Math.round(candle.close / futuresTickSize(upperSymbol)),
+        volume: candle.volume,
+        rows: [...(auctionRows.get(candle.timestamp)?.values() ?? [])]
+          .sort((left, right) => left.tickIndex - right.tickIndex),
+      }));
+      const volumesMatch = compact.every((bar) => Math.abs(
+        bar.rows.reduce((sum, row) => sum + row.bidVolume + row.askVolume + row.unknownVolume, 0) - bar.volume,
+      ) <= 1e-8);
+      const tickSize = futuresTickSize(upperSymbol);
+      const geometryValid = candles.every((candle) => [candle.open, candle.high, candle.low, candle.close]
+        .every((price) => Number.isFinite(price) && Number.isSafeInteger(Math.round(price / tickSize))
+          && Math.abs(price / tickSize - Math.round(price / tickSize)) <= 1e-6));
+      const coverageComplete = !auctionGapInvalid && geometryValid && ordered.length <= cap && volumesMatch && compact.length > 0
+        && provesCoverageIntervals(coverageReceipts, { exchange: upper, symbol: upperSymbol },
+          compact.map((bar) => ({ fromMs: bar.timestamp, toMs: bar.endTime })));
+      auctionGapRows = coverageComplete ? {
+        schemaVersion: "kwantify-auction-gap-rows-v1", provider: "Rithmic", contractSymbol: upperSymbol,
+        coverageComplete: true, executionOrderComplete: true, rows: compact,
+      } : {
+        schemaVersion: "kwantify-auction-gap-rows-v1", provider: "Rithmic", contractSymbol: upperSymbol,
+        coverageComplete: false, executionOrderComplete: ordered.length <= cap,
+        reason: auctionGapInvalid || !geometryValid ? "off-tick-execution"
+          : ordered.length > cap ? "time-history-truncated"
+          : !volumesMatch ? "source-volume-mismatch" : "historical-coverage-unproved",
+        rows: [],
+      };
+    }
     return {
       exchange: upper,
       symbol: upperSymbol,
@@ -642,6 +748,7 @@ export class TradeTapeArchive {
       truncated: ordered.length > cap,
       earliestMs: candles[0]?.timestamp ?? null,
       candles,
+      ...(auctionGap ? { auctionGap: auctionGapRows } : {}),
     };
   }
 }
