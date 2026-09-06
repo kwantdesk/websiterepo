@@ -1,5 +1,16 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-07 — Compact Auction Gap history feeds the study engine
+
+- Added a v2 slice adapter that classifies each exchange minute with the real
+  session clock, groups reset boundaries inside one chart candle, and keeps
+  unfiltered raw rows separate from filtered detection rows for later retests.
+- The existing worker study pipeline can now seed directly from compact history
+  without rebuilding or transferring the raw execution archive.
+- Adapter/study/session tests, TypeScript and scoped lint pass. Remaining:
+  workspace-to-Chart worker/primitive wiring, event live continuation, live
+  coverage receipts and browser QA. Gate OFF/no push/deploy.
+
 ## 2026-09-07 — Auction Gap v2 retains exact settings boundaries
 
 - Compact rows now include ordered one-minute execution slices with their own

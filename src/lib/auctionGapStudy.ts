@@ -6,6 +6,8 @@ import { allocateAuctionGapTimeExecutions } from "./auctionGapTimeAllocation.ts"
 import { allocateAuctionGapEventExecutions, type AuctionGapEventContinuation } from "./auctionGapEventAllocation.ts";
 import { buildAuctionGapRows, type AuctionGapChartGeometry } from "./auctionGapRows.ts";
 import { buildAuctionGapLifecycle, type AuctionGapLifecycleSettings, type AuctionGapZone, type AuctionGapSourceBar } from "./auctionGapLifecycle.ts";
+import { buildAuctionGapCompactSegments } from "./auctionGapCompactSegments.ts";
+import type { AuctionGapCompactRowsResult } from "./auctionGapCompactRows.ts";
 
 export type AuctionGapStudyInput = {
   contractSymbol: string;
@@ -14,6 +16,7 @@ export type AuctionGapStudyInput = {
   asOfMs: number;
   coverage: "complete" | "partial";
   records: InstitutionalTrade[];
+  compactHistory?: AuctionGapCompactRowsResult;
   candles: Candle[];
   geometry: AuctionGapChartGeometry[];
   chart: { kind: "time" } | { kind: "event"; timeframe: string; symbol: string };
@@ -54,9 +57,24 @@ export function prepareAuctionGapStudy(input: AuctionGapStudyInput): AuctionGapP
   let clock: AuctionGapSessionClock;
   try { clock = new AuctionGapSessionClock(input.calendar, input.timeSettings); }
   catch { return unavailable("invalid-calendar"); }
+  if (!auctionGapGeometryMatches(input)) return unavailable("geometry-mismatch");
+  if (input.compactHistory) {
+    const compact = buildAuctionGapCompactSegments({
+      history: input.compactHistory,
+      candles: input.candles,
+      expectedContract: input.expectedContract,
+      chartKind: input.chart.kind,
+      tickSize: input.tickSize,
+      asOfMs: input.asOfMs,
+      calendar: input.calendar,
+      timeSettings: input.timeSettings,
+    });
+    if (compact.status !== "ready") return unavailable(compact.reason);
+    return { status: "ready", reason: null, segments: compact.segments,
+      executions: [], assignments: [], eventContinuation: null };
+  }
   const source = prepareAuctionGapExecutions(input, clock);
   if (source.status !== "ready") return unavailable(source.status);
-  if (!auctionGapGeometryMatches(input)) return unavailable("geometry-mismatch");
   const eventAllocation = input.chart.kind === "event"
     ? allocateAuctionGapEventExecutions({ executions: source.executions, expectedCandles: input.candles,
       timeframe: input.chart.timeframe, symbol: input.chart.symbol, tickSize: input.tickSize }) : null;

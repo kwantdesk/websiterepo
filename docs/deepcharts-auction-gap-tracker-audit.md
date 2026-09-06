@@ -1,5 +1,20 @@
 # Auction Gap Tracker — implementation in progress
 
+### Compact slices feed the existing lifecycle — 2026-09-07
+
+Added the browser/worker adapter from validated v2 bars to Auction Gap source
+segments. It classifies every minute through the exchange-aware/DST-safe clock,
+groups adjacent slices by reset key, keeps all raw rows for subsequent retest
+evidence, and applies ETH/RTH/custom filtering only to detection rows. A reset
+inside one long chart candle becomes two ordered segments sharing its true
+chart index, so extension logic still counts chart bars rather than minutes.
+
+The existing pure study pipeline can now seed from compact history with no raw
+execution reconstruction. Adapter, whole-study and retained-session tests,
+TypeScript and scoped lint pass. Workspace-to-Chart worker/primitive wiring,
+event live continuation, live coverage receipts and browser QA remain. Gate
+stays Pending; no production deployment.
+
 ### V2 minute slices preserve every settings boundary — 2026-09-07
 
 The compact gateway format now carries ordered minute slices inside every time

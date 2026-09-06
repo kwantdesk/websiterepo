@@ -1,5 +1,12 @@
 # Pending-library continuation — Auction Gap Tracker
 
+2026-09-07 compact-study continuation: added the v2 slice-to-source adapter;
+exchange/DST classification splits reset boundaries within a chart bar, raw
+rows remain available for retests and filters affect detection rows only. The
+existing study/worker seed accepts compact history without rebuilding raw tape.
+Adapter/study/session tests, tsc and lint pass. Chart/primitive wiring, event
+live continuation, live receipts and QA remain; Pending, no push/deploy.
+
 2026-09-07 settings-boundary continuation: v2 compact rows add ordered minute
 slices with source time, OHLC ticks and bid/ask/unknown rows for every time and
 event bar. All session/custom filters and reset modes can now be classified
