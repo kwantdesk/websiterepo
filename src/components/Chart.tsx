@@ -6691,13 +6691,13 @@ function Chart({
     [footprintDataKey, footprintRenderBars],
   );
   const rawPocAuctionBars = useMemo(() => {
-    if ((!pocAuctionIndicator && !unfinishedAuctionIndicator && !dynamicPocIndicator && !ratioHighlightIndicator && !stopSpotterIndicator && !deepWallIndicator && !deepVTrackerIndicator && !deepProfileSwingIndicator && !confluenceIdentifierIndicator && !deepPatternBuilderNeedsOrderFlow) || !footprintSourceCandles.length) return [];
+    if ((!pocAuctionIndicator && !unfinishedAuctionIndicator && !dynamicPocIndicator && !ratioHighlightIndicator && !stopSpotterIndicator && !deepWallIndicator && !deepVTrackerIndicator && !deepProfileSwingIndicator && !deepProfileValuesIndicator && !confluenceIdentifierIndicator && !deepPatternBuilderNeedsOrderFlow) || !footprintSourceCandles.length) return [];
     return buildFootprintBarsCached(pocAuctionBuildCacheRef, footprintSourceCandles, footprintMarketTrades, {
       ...footprintBuildSettings,
       groupTicks: 1,
       showEmptyPriceRows: false,
     });
-  }, [confluenceIdentifierIndicator, deepPatternBuilderNeedsOrderFlow, deepProfileSwingIndicator, deepVTrackerIndicator, deepWallIndicator, dynamicPocIndicator, footprintBuildSettings, footprintMarketTrades, footprintSourceCandles, pocAuctionIndicator, ratioHighlightIndicator, stopSpotterIndicator, unfinishedAuctionIndicator]);
+  }, [confluenceIdentifierIndicator, deepPatternBuilderNeedsOrderFlow, deepProfileSwingIndicator, deepProfileValuesIndicator, deepVTrackerIndicator, deepWallIndicator, dynamicPocIndicator, footprintBuildSettings, footprintMarketTrades, footprintSourceCandles, pocAuctionIndicator, ratioHighlightIndicator, stopSpotterIndicator, unfinishedAuctionIndicator]);
   const rawBarPocBars = useMemo(() => {
     if (!barPocIndicator || !footprintSourceCandles.length) return [];
     const normalized = normalizeBarPocSettings(barPocIndicator.settings);
@@ -17014,22 +17014,22 @@ function Chart({
         manualGroupTicks: 1,
         valueAreaPercent: deepProfileValuesSettings.valueAreaPercent,
         snapMode: "off",
-        pocLineWidth: deepProfileValuesSettings.lineWidth,
+        pocLineWidth: deepProfileValuesSettings.pocLineWidth,
         pocExtensionMode: deepProfileValuesSettings.pocExtensionMode,
         showDevelopingPoc: deepProfileValuesSettings.pocLineMode !== "show",
         developingPocMode: deepProfileValuesSettings.pocLineMode === "extend-shifted" ? "extend-shifted" : "developing",
         developingPocStartMs: deepProfileValuesSettings.developingPocStartMinutes * 60_000,
         shiftedPocTicks: deepProfileValuesSettings.shiftedPocTicks,
         shiftedPocOpacity: deepProfileValuesSettings.shiftedPocOpacity,
-        developingValueArea: deepProfileValuesSettings.showDevelopingValueArea ? "dash" : "no",
-        valueAreaLineWidth: deepProfileValuesSettings.lineWidth,
+        developingValueArea: deepProfileValuesSettings.developingValueArea,
+        valueAreaLineWidth: deepProfileValuesSettings.valueAreaLineWidth,
         valueAreaExtensionMode: deepProfileValuesSettings.valueAreaExtensionMode,
         showPeaks: deepProfileValuesSettings.showPeaks,
         showValleys: deepProfileValuesSettings.showValleys,
         peakColor: deepProfileValuesSettings.peakColor,
         valleyColor: deepProfileValuesSettings.valleyColor,
-        peakLineWidth: deepProfileValuesSettings.lineWidth,
-        valleyLineWidth: deepProfileValuesSettings.lineWidth,
+        peakLineWidth: deepProfileValuesSettings.peakLineWidth,
+        valleyLineWidth: deepProfileValuesSettings.valleyLineWidth,
         peakExtensionMode: deepProfileValuesSettings.peakExtensionMode,
         valleyExtensionMode: deepProfileValuesSettings.valleyExtensionMode,
         pvSensitivity: deepProfileValuesSettings.peakValleySensitivity,
@@ -17040,7 +17040,7 @@ function Chart({
         showVwapLine: deepProfileValuesSettings.showVwap,
         showDevelopingVwap: deepProfileValuesSettings.showDevelopingVwap,
         vwapColor: deepProfileValuesSettings.vwapColor,
-        vwapLineWidth: deepProfileValuesSettings.lineWidth,
+        vwapLineWidth: deepProfileValuesSettings.vwapLineWidth,
         vwapExtensionMode: deepProfileValuesSettings.vwapExtensionMode,
         vwapBandDeviations: deepProfileValuesSettings.showVwapBands
           ? [deepProfileValuesSettings.vwapBand1, deepProfileValuesSettings.vwapBand2, deepProfileValuesSettings.vwapBand3].filter((value) => value > 0)
@@ -17053,8 +17053,8 @@ function Chart({
         summaryBidColor: deepProfileValuesSettings.bidColor,
         showLevelLabels: deepProfileValuesSettings.showLevelLabels,
         showLevelLabelPrice: deepProfileValuesSettings.showLevelLabelPrice,
-        levelLabelSide: "right",
-        levelDash: [3, 3],
+        levelLabelSide: deepProfileValuesSettings.levelLabelSide,
+        levelDash: PROFILE_LEVEL_DASH[deepProfileValuesSettings.levelLineStyle] ?? [2, 3],
         visualStyle: "solid",
         borderWidth: 0,
       },

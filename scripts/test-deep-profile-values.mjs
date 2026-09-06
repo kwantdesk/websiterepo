@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { performance } from "node:perf_hooks";
 import {
   DEFAULT_DEEP_PROFILE_VALUES_SETTINGS,
   buildDeepProfileValuesFrame,
   normalizeDeepProfileValuesSettings,
 } from "../src/lib/deepProfileValues.ts";
+import { calculateVolumeProfileValueArea } from "../src/lib/volumeProfileMath.ts";
+import { normalizeStoredIndicator } from "../src/lib/chartIndicatorConfig.ts";
 
 const tickSize = 1;
 const row = (price, bid = 2, ask = 3, unknown = 0) => ({
@@ -41,10 +44,54 @@ assert.equal(normalized.groupTicks, 1);
 assert.equal(normalized.valueAreaPercent, 100);
 assert.equal(normalized.numberOfProfiles, 1);
 
+const migrated = normalizeDeepProfileValuesSettings({
+  lineWidth: 3,
+  showDevelopingValueArea: true,
+});
+assert.equal(migrated.schemaVersion, 2);
+assert.equal(migrated.developingValueArea, "dash");
+assert.equal(migrated.pocLineWidth, 3);
+assert.equal(migrated.valueAreaLineWidth, 3);
+assert.equal(migrated.peakLineWidth, 3);
+assert.equal(migrated.valleyLineWidth, 3);
+assert.equal(migrated.vwapLineWidth, 3);
+
+const migratedStored = normalizeStoredIndicator({
+  instanceId: "legacy-profile-values",
+  indicatorId: "deep-profile-values",
+  enabled: true,
+  settings: { lineWidth: 3, showDevelopingValueArea: true },
+});
+assert.equal(migratedStored.settings.developingValueArea, "dash");
+assert.equal(migratedStored.settings.pocLineWidth, 3);
+assert.equal(migratedStored.settings.valueAreaLineWidth, 3);
+assert.equal(migratedStored.settings.peakLineWidth, 3);
+assert.equal(migratedStored.settings.valleyLineWidth, 3);
+assert.equal(migratedStored.settings.vwapLineWidth, 3);
+
+const styled = normalizeDeepProfileValuesSettings({
+  developingValueArea: "solid",
+  levelLabelSide: "left",
+  levelLineStyle: "dash-dot-dot",
+  pocLineWidth: 0,
+  valueAreaLineWidth: 9,
+  peakLineWidth: 1.5,
+  valleyLineWidth: 2.5,
+  vwapLineWidth: 4,
+});
+assert.equal(styled.developingValueArea, "solid");
+assert.equal(styled.levelLabelSide, "left");
+assert.equal(styled.levelLineStyle, "dash-dot-dot");
+assert.equal(styled.pocLineWidth, 0.5);
+assert.equal(styled.valueAreaLineWidth, 6);
+assert.equal(styled.peakLineWidth, 1.5);
+assert.equal(styled.valleyLineWidth, 2.5);
+assert.equal(styled.vwapLineWidth, 4);
+
 const bars = Array.from({ length: 12 }, (_, index) => ({ ...bar(index), isClosed: index < 11 }));
 const composite = buildDeepProfileValuesFrame(bars, "NQ", "NQZ6", tickSize, {
   ...DEFAULT_DEEP_PROFILE_VALUES_SETTINGS, periodMode: "composite", groupingMode: "manual", groupTicks: 1,
-  pocLineMode: "developing", showDevelopingValueArea: true, showDevelopingVwap: true,
+  pocLineMode: "developing", developingValueArea: "dash", showDevelopingVwap: true,
 });
 assert.equal(composite.status, "LIVE");
 assert.equal(composite.profiles.length, 1);
@@ -54,6 +101,14 @@ assert.equal(composite.profiles[0].developingPoc.length, bars.length);
 assert.equal(composite.profiles[0].developingValueArea.length, bars.length);
 assert.equal(composite.profiles[0].developingVwap.length, bars.length);
 assert.ok(composite.profiles[0].poc !== null && composite.profiles[0].vah !== null && composite.profiles[0].val !== null);
+const sharedValueArea = calculateVolumeProfileValueArea(
+  composite.profiles[0].levels,
+  tickSize,
+  DEFAULT_DEEP_PROFILE_VALUES_SETTINGS.valueAreaPercent,
+);
+assert.equal(composite.profiles[0].poc, sharedValueArea.poc);
+assert.equal(composite.profiles[0].vah, sharedValueArea.vah);
+assert.equal(composite.profiles[0].val, sharedValueArea.val);
 
 const visible = buildDeepProfileValuesFrame(bars, "NQ", "NQZ6", tickSize, {
   ...DEFAULT_DEEP_PROFILE_VALUES_SETTINGS, periodMode: "visible", groupingMode: "manual", groupTicks: 1,
@@ -84,17 +139,67 @@ assert.deepEqual(buildDeepProfileValuesFrame(bars, "NQ", "NQZ6", tickSize, {
 const noFlow = bars.map((item) => ({ ...item, rows: [], hasPriceLevelFlow: false }));
 assert.deepEqual(buildDeepProfileValuesFrame(noFlow, "NQ", "NQZ6", tickSize), { status: "WAITING_FOR_VOLUME_AT_PRICE", profiles: [] });
 
+const positiveVolumeGap = bars.map((item, index) => index === 5 ? { ...item, rows: [], hasPriceLevelFlow: false } : item);
+assert.deepEqual(
+  buildDeepProfileValuesFrame(positiveVolumeGap, "NQ", "NQZ6", tickSize, {
+    ...DEFAULT_DEEP_PROFILE_VALUES_SETTINGS,
+    periodMode: "composite",
+  }),
+  { status: "WAITING_FOR_VOLUME_AT_PRICE", profiles: [] },
+  "a positive-volume VAP hole must fail closed rather than join levels across it",
+);
+
+const zeroVolumeBridge = bars.map((item, index) => index === 5 ? {
+  ...item,
+  rows: [],
+  hasPriceLevelFlow: false,
+  bidVolume: 0,
+  askVolume: 0,
+  classifiedVolume: 0,
+  totalVolume: 0,
+  delta: 0,
+  totalTrades: 0,
+  volume: 0,
+  trades: 0,
+} : item);
+const bridged = buildDeepProfileValuesFrame(zeroVolumeBridge, "NQ", "NQZ6", tickSize, {
+  ...DEFAULT_DEEP_PROFILE_VALUES_SETTINGS,
+  periodMode: "composite",
+});
+assert.equal(bridged.profiles.length, 1);
+assert.equal(bridged.profiles[0].totalVolume, 55, "a genuine zero-volume bridge contributes no fabricated volume");
+
 const filteredTrades = [
   { recordIndex: 1, timestamp: 30_000, open: 110, high: 110, low: 110, close: 110, trades: 1, volume: 12, bidVolume: 0, askVolume: 12, delta: 12, aggressor: "BUY" },
   { recordIndex: 2, timestamp: 90_000, open: 90, high: 90, low: 90, close: 90, trades: 1, volume: 5, bidVolume: 5, askVolume: 0, delta: -5, aggressor: "SELL" },
 ];
 const filteredDeveloping = buildDeepProfileValuesFrame(bars.slice(0, 2), "NQ", "NQZ6", tickSize, {
   ...DEFAULT_DEEP_PROFILE_VALUES_SETTINGS, periodMode: "composite", filterMin: 10,
-  pocLineMode: "developing", showDevelopingValueArea: true, showDevelopingVwap: true,
+  pocLineMode: "developing", developingValueArea: "dash", showDevelopingVwap: true,
 }, filteredTrades);
 assert.equal(filteredDeveloping.profiles[0].totalVolume, 12);
 assert.deepEqual(filteredDeveloping.profiles[0].developingPoc.map((point) => point.price), [110, 110]);
 assert.deepEqual(filteredDeveloping.profiles[0].developingVwap.map((point) => point.price), [110, 110]);
+
+const fragmentedTrades = [
+  { recordIndex: 1, timestamp: 30_000, open: 110, high: 110, low: 110, close: 110, trades: 1, volume: 6, bidVolume: 0, askVolume: 6, delta: 6, aggressor: "BUY" },
+  { recordIndex: 2, timestamp: 30_000, open: 110, high: 110, low: 110, close: 110, trades: 1, volume: 6, bidVolume: 0, askVolume: 6, delta: 6, aggressor: "BUY" },
+];
+const rejectedIndividualPrints = buildDeepProfileValuesFrame(bars.slice(0, 1), "NQ", "NQZ6", tickSize, {
+  ...DEFAULT_DEEP_PROFILE_VALUES_SETTINGS,
+  periodMode: "composite",
+  inputData: "volume",
+  filterMin: 10,
+}, fragmentedTrades);
+assert.equal(rejectedIndividualPrints.profiles.length, 0, "Volume filters individual prints before price aggregation");
+const acceptedAggregateTrade = buildDeepProfileValuesFrame(bars.slice(0, 1), "NQ", "NQZ6", tickSize, {
+  ...DEFAULT_DEEP_PROFILE_VALUES_SETTINGS,
+  periodMode: "composite",
+  inputData: "aggregate-trades",
+  filterMin: 10,
+}, fragmentedTrades);
+assert.equal(acceptedAggregateTrade.profiles[0].totalVolume, 12, "Aggregate Trades combines matching fragments before filtering");
+assert.equal(acceptedAggregateTrade.profiles[0].askVolume, 12);
 
 const many = Array.from({ length: 20_000 }, (_, index) => bar(index));
 const started = performance.now();
@@ -104,5 +209,19 @@ const performanceFrame = buildDeepProfileValuesFrame(many, "NQ", "NQZ6", tickSiz
 });
 assert.equal(performanceFrame.profiles.length, 6);
 assert.ok(performance.now() - started < 1_500, "20k exact rows remain interactive");
+
+const chartSource = readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
+const rawPocSourceGuard = chartSource.match(/const rawPocAuctionBars = useMemo\(\(\) => \{([\s\S]*?)return buildFootprintBarsCached/);
+assert.ok(rawPocSourceGuard, "the shared exact price-ladder source guard remains discoverable");
+assert.match(rawPocSourceGuard[1], /deepProfileValuesIndicator/, "Profile Values must activate its own exact VAP source");
+assert.match(chartSource, /pocLineWidth: deepProfileValuesSettings\.pocLineWidth/);
+assert.match(chartSource, /valueAreaLineWidth: deepProfileValuesSettings\.valueAreaLineWidth/);
+assert.match(chartSource, /levelLabelSide: deepProfileValuesSettings\.levelLabelSide/);
+assert.match(chartSource, /PROFILE_LEVEL_DASH\[deepProfileValuesSettings\.levelLineStyle\]/);
+
+const settingsSource = readFileSync(new URL("../src/components/ChartIndicatorsControl.tsx", import.meta.url), "utf8");
+for (const label of ["Developing value area", "Level line style", "Level label side"]) {
+  assert.match(settingsSource, new RegExp(`\\["${label}"`), `${label} remains available in Profile Values settings`);
+}
 
 console.log("deep profile values tests passed");

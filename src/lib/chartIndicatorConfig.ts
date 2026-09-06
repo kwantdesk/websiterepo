@@ -533,7 +533,11 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "vwapBand1", label: "VWAP band 1 · standard deviations", defaultValue: 1, min: 0, max: 20, step: 0.25 },
     { key: "vwapBand2", label: "VWAP band 2 · standard deviations", defaultValue: 2, min: 0, max: 20, step: 0.25 },
     { key: "vwapBand3", label: "VWAP band 3 · standard deviations", defaultValue: 0, min: 0, max: 20, step: 0.25 },
-    { key: "lineWidth", label: "Level line width", defaultValue: 1, min: 0.5, max: 6, step: 0.5 },
+    { key: "pocLineWidth", label: "POC line width", defaultValue: 1, min: 0.5, max: 6, step: 0.5 },
+    { key: "valueAreaLineWidth", label: "VAH / VAL line width", defaultValue: 2, min: 0.5, max: 6, step: 0.5 },
+    { key: "peakLineWidth", label: "Peak line width", defaultValue: 2, min: 0.5, max: 6, step: 0.5 },
+    { key: "valleyLineWidth", label: "Valley line width", defaultValue: 2, min: 0.5, max: 6, step: 0.5 },
+    { key: "vwapLineWidth", label: "VWAP line width", defaultValue: 1, min: 0.5, max: 6, step: 0.5 },
   ],
   "market-statistics": [
     { key: "fontSize", label: "Font size", defaultValue: 10, min: 6, max: 32, step: 1 },
@@ -3543,7 +3547,25 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
   }
   if (normalizedInstance.indicatorId === "deep-profile-values") {
     const defaults = defaultIndicatorSettings("deep-profile-values");
-    return { ...normalizedInstance, settings: { ...defaults, ...normalizeDeepProfileValuesSettings({ ...defaults, ...(normalizedInstance.settings ?? {}) }) } };
+    const saved = normalizedInstance.settings ?? {};
+    const legacyLineWidth = saved.lineWidth;
+    return {
+      ...normalizedInstance,
+      settings: {
+        ...defaults,
+        ...normalizeDeepProfileValuesSettings({
+          ...defaults,
+          ...saved,
+          developingValueArea: saved.developingValueArea
+            ?? (saved.showDevelopingValueArea === true ? "dash" : defaults.developingValueArea),
+          pocLineWidth: saved.pocLineWidth ?? legacyLineWidth ?? defaults.pocLineWidth,
+          valueAreaLineWidth: saved.valueAreaLineWidth ?? legacyLineWidth ?? defaults.valueAreaLineWidth,
+          peakLineWidth: saved.peakLineWidth ?? legacyLineWidth ?? defaults.peakLineWidth,
+          valleyLineWidth: saved.valleyLineWidth ?? legacyLineWidth ?? defaults.valleyLineWidth,
+          vwapLineWidth: saved.vwapLineWidth ?? legacyLineWidth ?? defaults.vwapLineWidth,
+        }),
+      },
+    };
   }
   if (normalizedInstance.indicatorId === "market-statistics") {
     const defaults = defaultIndicatorSettings("market-statistics");

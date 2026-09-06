@@ -47,6 +47,15 @@ This is the persistent launch ledger for material work that is incomplete,
 provider-blocked or unsafe to forget. Every task handoff should include a short
 recap of the open items below and update this file when their state changes.
 
+## 2026-09-07 — Standalone value-area levels
+
+- `KWANT Profile Values` now owns its exact Rithmic VAP activation instead of
+  relying on another order-flow indicator. It shares the corrected standard
+  profile POC/VAH/VAL calculator, fails closed across positive-volume ladder
+  holes, and exposes independently persisted level/developing/style/label
+  controls. Live-market visual verification remains desirable; local
+  deterministic calculation and integration gates pass.
+
 ## P0 — Historical market-data coverage
 
 - **Options-underlying candles:** QuantData was directly verified on

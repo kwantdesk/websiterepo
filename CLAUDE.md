@@ -1,5 +1,23 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-07 — KWANT Profile Values accuracy and settings overhaul
+
+- Fixed the standalone level-only profile failing to activate its own exact
+  Footprint/VAP source. It no longer depends on another order-flow study being
+  open before POC, VAH, VAL, VWAP, peaks or valleys can calculate.
+- Profile Values remains on the shared corrected Volume Profile value-area
+  calculator and native level renderer. Positive-volume VAP holes now fail
+  closed instead of joining a plausible-looking level set across missing data;
+  genuine zero-volume bridge bars remain valid.
+- Settings schema v2 adds independent POC, VAH/VAL, peak, valley and VWAP
+  widths, developing VA Off/Dashed/Solid, level line styles and beside-profile/
+  line-end labels. Old shared-width and developing-VA saves migrate intact.
+- Aggregate Trades now combines same-time/price/side fragments before its
+  execution-size filter; ordinary Volume continues to filter each print.
+- Focused math/source/migration/gap/performance tests, numeric-slider checks,
+  scoped ESLint and TypeScript pass. Prompt/outcome:
+  `docs/prompt-log/2026-09-07-profile-values-overhaul.md`.
+
 ## 2026-09-07 — Session Marker converted from Pending
 
 - Added real DST-aware Asian, Europe and USA windows over chart OHLCV, plus

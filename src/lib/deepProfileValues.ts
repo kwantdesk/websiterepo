@@ -7,7 +7,7 @@ import type {
 import { calculateVolumeProfileValueArea } from "./volumeProfileMath.ts";
 import { exchangeMidnightMs, exchangeMinuteOfDay } from "./volumeProfileSessions.ts";
 
-export const DEEP_PROFILE_VALUES_SETTINGS_VERSION = 1;
+export const DEEP_PROFILE_VALUES_SETTINGS_VERSION = 2;
 
 export type DeepProfileValuesSettings = {
   schemaVersion: number;
@@ -31,12 +31,14 @@ export type DeepProfileValuesSettings = {
   showPocLine: boolean;
   pocLineMode: "show" | "developing" | "extend-shifted";
   pocExtensionMode: "none" | "until-first-interaction" | "to-window-end";
+  pocLineWidth: number;
   developingPocStartMinutes: number;
   shiftedPocTicks: number;
   shiftedPocOpacity: number;
   showValueAreaLines: boolean;
-  showDevelopingValueArea: boolean;
+  developingValueArea: "no" | "dash" | "solid";
   valueAreaExtensionMode: "none" | "until-first-interaction" | "to-window-end";
+  valueAreaLineWidth: number;
   showPeaks: boolean;
   showValleys: boolean;
   peakValleySensitivity: number;
@@ -45,10 +47,13 @@ export type DeepProfileValuesSettings = {
   valleyMaximumVolumePercent: number;
   peakExtensionMode: "none" | "until-first-interaction" | "to-window-end";
   valleyExtensionMode: "none" | "until-first-interaction" | "to-window-end";
+  peakLineWidth: number;
+  valleyLineWidth: number;
   showVwap: boolean;
   showDevelopingVwap: boolean;
   showVwapBands: boolean;
   vwapExtensionMode: "none" | "until-first-interaction" | "to-window-end";
+  vwapLineWidth: number;
   vwapBand1: number;
   vwapBand2: number;
   vwapBand3: number;
@@ -56,7 +61,8 @@ export type DeepProfileValuesSettings = {
   showSummaryTrades: boolean;
   showLevelLabels: boolean;
   showLevelLabelPrice: boolean;
-  lineWidth: number;
+  levelLabelSide: "left" | "right";
+  levelLineStyle: "solid" | "dash" | "dot" | "dash-dot" | "dash-dot-dot";
   pocColor: string;
   valueAreaColor: string;
   peakColor: string;
@@ -96,12 +102,14 @@ export const DEFAULT_DEEP_PROFILE_VALUES_SETTINGS: DeepProfileValuesSettings = {
   showPocLine: true,
   pocLineMode: "show",
   pocExtensionMode: "to-window-end",
+  pocLineWidth: 1,
   developingPocStartMinutes: 0,
   shiftedPocTicks: 1,
   shiftedPocOpacity: 68,
   showValueAreaLines: true,
-  showDevelopingValueArea: false,
+  developingValueArea: "no",
   valueAreaExtensionMode: "to-window-end",
+  valueAreaLineWidth: 2,
   showPeaks: false,
   showValleys: false,
   peakValleySensitivity: 40,
@@ -110,10 +118,13 @@ export const DEFAULT_DEEP_PROFILE_VALUES_SETTINGS: DeepProfileValuesSettings = {
   valleyMaximumVolumePercent: 100,
   peakExtensionMode: "none",
   valleyExtensionMode: "none",
+  peakLineWidth: 2,
+  valleyLineWidth: 2,
   showVwap: true,
   showDevelopingVwap: false,
   showVwapBands: false,
   vwapExtensionMode: "none",
+  vwapLineWidth: 1,
   vwapBand1: 1,
   vwapBand2: 2,
   vwapBand3: 0,
@@ -121,7 +132,8 @@ export const DEFAULT_DEEP_PROFILE_VALUES_SETTINGS: DeepProfileValuesSettings = {
   showSummaryTrades: false,
   showLevelLabels: true,
   showLevelLabelPrice: true,
-  lineWidth: 1,
+  levelLabelSide: "right",
+  levelLineStyle: "dash",
   pocColor: "#F59E0B",
   valueAreaColor: "#22C55E",
   peakColor: "#22C55E",
@@ -151,10 +163,17 @@ export function normalizeDeepProfileValuesSettings(input?: Record<string, unknow
   result.filterMode = enumValue(source.filterMode, ["none", "filter", "split"], "none");
   result.pocLineMode = enumValue(source.pocLineMode, ["show", "developing", "extend-shifted"], "show");
   result.pocExtensionMode = enumValue(source.pocExtensionMode, ["none", "until-first-interaction", "to-window-end"], "to-window-end");
+  result.developingValueArea = enumValue(
+    source.developingValueArea,
+    ["no", "dash", "solid"],
+    source.showDevelopingValueArea === true ? "dash" : "no",
+  );
   result.valueAreaExtensionMode = enumValue(source.valueAreaExtensionMode, ["none", "until-first-interaction", "to-window-end"], "to-window-end");
   result.peakExtensionMode = enumValue(source.peakExtensionMode, ["none", "until-first-interaction", "to-window-end"], "none");
   result.valleyExtensionMode = enumValue(source.valleyExtensionMode, ["none", "until-first-interaction", "to-window-end"], "none");
   result.vwapExtensionMode = enumValue(source.vwapExtensionMode, ["none", "until-first-interaction", "to-window-end"], "none");
+  result.levelLabelSide = enumValue(source.levelLabelSide, ["left", "right"], "right");
+  result.levelLineStyle = enumValue(source.levelLineStyle, ["solid", "dash", "dot", "dash-dot", "dash-dot-dot"], "dash");
   result.lengthValue = integer(source.lengthValue, 1, 1, 1_000_000);
   result.customStartMs = Math.max(0, finite(source.customStartMs, 0));
   result.customEndMs = Math.max(0, finite(source.customEndMs, 0));
@@ -175,7 +194,12 @@ export function normalizeDeepProfileValuesSettings(input?: Record<string, unknow
   result.vwapBand1 = clamp(finite(source.vwapBand1, 1), 0, 20);
   result.vwapBand2 = clamp(finite(source.vwapBand2, 2), 0, 20);
   result.vwapBand3 = clamp(finite(source.vwapBand3, 0), 0, 20);
-  result.lineWidth = clamp(finite(source.lineWidth, 1), 0.5, 6);
+  const legacyLineWidth = clamp(finite(source.lineWidth, 1), 0.5, 6);
+  result.pocLineWidth = clamp(finite(source.pocLineWidth, legacyLineWidth), 0.5, 6);
+  result.valueAreaLineWidth = clamp(finite(source.valueAreaLineWidth, source.lineWidth == null ? 2 : legacyLineWidth), 0.5, 6);
+  result.peakLineWidth = clamp(finite(source.peakLineWidth, source.lineWidth == null ? 2 : legacyLineWidth), 0.5, 6);
+  result.valleyLineWidth = clamp(finite(source.valleyLineWidth, source.lineWidth == null ? 2 : legacyLineWidth), 0.5, 6);
+  result.vwapLineWidth = clamp(finite(source.vwapLineWidth, legacyLineWidth), 0.5, 6);
   return result;
 }
 
@@ -306,23 +330,57 @@ function groupedTicks(bars: readonly FootprintBar[], range: Range, tickSize: num
   return Math.max(1, Math.round(settings.autoGroupFactor * Math.max(1, Math.ceil((high - low) / Math.max(tickSize, 1e-9) / 90))));
 }
 
+function acceptedProfileTrades(
+  trades: readonly InstitutionalTrade[],
+  startMs: number,
+  endMs: number,
+  settings: DeepProfileValuesSettings,
+) {
+  const exact = trades
+    .filter((trade) => !trade.flowOnly && trade.timestamp >= startMs && trade.timestamp < endMs)
+    .sort((left, right) => left.timestamp - right.timestamp || left.recordIndex - right.recordIndex);
+  const candidates = settings.inputData !== "aggregate-trades"
+    ? exact
+    : [...exact.reduce((groups, trade) => {
+      // Aggregate only prints that share exchange time, price and aggressor.
+      // Joining opposite sides would erase the direction of the price row.
+      const price = Number.isFinite(trade.close) ? trade.close : trade.open;
+      const key = `${trade.timestamp}:${price}:${trade.aggressor ?? "UNKNOWN"}`;
+      const current = groups.get(key);
+      if (current) {
+        current.volume += trade.volume;
+        current.trades += Math.max(1, trade.trades);
+      } else {
+        groups.set(key, { ...trade, open: price, high: price, low: price, close: price });
+      }
+      return groups;
+    }, new Map<string, InstitutionalTrade>()).values()]
+      .sort((left, right) => left.timestamp - right.timestamp || left.recordIndex - right.recordIndex);
+  return candidates.filter((trade) => {
+    const selectedValue = settings.inputData === "trades" ? Math.max(1, trade.trades) : trade.volume;
+    return selectedValue >= settings.filterMin
+      && (settings.filterMax <= 0 || selectedValue <= settings.filterMax);
+  });
+}
+
 function buildProfile(
   bars: readonly FootprintBar[], range: Range, instrument: string, contractSymbol: string,
   tickSize: number, settings: DeepProfileValuesSettings, trades?: readonly InstitutionalTrade[],
 ): InstitutionalVolumeProfile | null {
+  // A missing positive-volume price ladder is a real coverage hole. Never
+  // squeeze the bars around it together and present the result as one exact
+  // profile. Zero-volume bridge bars are safe because they contribute no VAP.
+  for (let index = range.start; index <= range.end; index += 1) {
+    const bar = bars[index];
+    if (bar.totalVolume > 0 && (!bar.hasPriceLevelFlow || !bar.rows.length)) return null;
+  }
   const startMs = barStart(bars[range.start]);
   const endMs = Math.max(startMs + 1, barEnd(bars[range.end]));
   const groupTicks = groupedTicks(bars, range, tickSize, settings);
   const rows = new Map<number, InstitutionalVolumeProfileLevel>();
   const filteredExecutions = settings.filterMin > 0 || settings.filterMax > 0;
   const acceptedTrades = filteredExecutions && trades?.length
-    ? trades
-      .filter((trade) => !trade.flowOnly
-        && trade.timestamp >= startMs
-        && trade.timestamp < endMs
-        && trade.volume >= settings.filterMin
-        && (settings.filterMax <= 0 || trade.volume <= settings.filterMax))
-      .sort((left, right) => left.timestamp - right.timestamp || left.recordIndex - right.recordIndex)
+    ? acceptedProfileTrades(trades, startMs, endMs, settings)
     : [];
   if (filteredExecutions && acceptedTrades.length) {
     for (const trade of acceptedTrades) {
@@ -368,7 +426,7 @@ function buildProfile(
   const developingPoc: Array<{ timestamp: number; price: number }> = [];
   const developingValueArea: Array<{ timestamp: number; vah: number; val: number }> = [];
   const developingVwap: Array<{ timestamp: number; price: number }> = [];
-  if (settings.pocLineMode !== "show" || settings.showDevelopingValueArea || settings.showDevelopingVwap) {
+  if (settings.pocLineMode !== "show" || settings.developingValueArea !== "no" || settings.showDevelopingVwap) {
     const cumulative = new Map<number, InstitutionalVolumeProfileLevel>();
     let cumulativeVolume = 0;
     let cumulativeWeighted = 0;
@@ -441,13 +499,13 @@ export function buildDeepProfileValuesFrame(
 ): DeepProfileValuesFrame {
   const settings = normalizeDeepProfileValuesSettings(input);
   if (settings.inputData === "order") return { status: "WAITING_FOR_ORDER_HISTORY", profiles: [] };
-  const exact = bars.filter((bar) => bar.hasPriceLevelFlow && bar.rows.length > 0);
-  if (!exact.length) return { status: "WAITING_FOR_VOLUME_AT_PRICE", profiles: [] };
-  const ranges = applySessionMode(exact, baseRanges(exact, settings, visibleRange), settings).slice(-settings.numberOfProfiles);
+  const hasExactVolume = bars.some((bar) => bar.totalVolume > 0 && bar.hasPriceLevelFlow && bar.rows.length > 0);
+  if (!hasExactVolume) return { status: "WAITING_FOR_VOLUME_AT_PRICE", profiles: [] };
+  const ranges = applySessionMode(bars, baseRanges(bars, settings, visibleRange), settings).slice(-settings.numberOfProfiles);
   const profiles = ranges.flatMap((range) => {
-    const profile = buildProfile(exact, range, instrument, contractSymbol, tickSize, settings, trades);
+    const profile = buildProfile(bars, range, instrument, contractSymbol, tickSize, settings, trades);
     return profile ? [profile] : [];
   });
   if (!profiles.length) return { status: "WAITING_FOR_VOLUME_AT_PRICE", profiles: [] };
-  return { status: exact.at(-1)?.isClosed === false ? "LIVE" : "HISTORICAL", profiles };
+  return { status: bars.at(-1)?.isClosed === false ? "LIVE" : "HISTORICAL", profiles };
 }

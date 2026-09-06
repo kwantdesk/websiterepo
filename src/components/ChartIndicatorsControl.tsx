@@ -167,7 +167,7 @@ const DEEP_PROFILE_SWING_MANAGED_SETTINGS = new Set([
   "includeReversalBar", "stopSwingEnabled", "showPocLine", "showValueAreaLines", "showVwapLine", "showLevelLabels",
 ]);
 const DEEP_PROFILE_VALUES_MANAGED_SETTINGS = new Set([
-  "useEndSessionAsStartDay", "showPocLine", "showValueAreaLines", "showDevelopingValueArea",
+  "useEndSessionAsStartDay", "showPocLine", "showValueAreaLines",
   "showPeaks", "showValleys", "excludeHighLow", "showVwap", "showDevelopingVwap",
   "showVwapBands", "showSummary", "showSummaryTrades", "showLevelLabels", "showLevelLabelPrice",
 ]);
@@ -7813,6 +7813,9 @@ export default function ChartIndicatorsControl({
                     ["POC line", "pocLineMode", [["show", "Show"], ["developing", "Developing"], ["extend-shifted", "Extend shifted"]]],
                     ["POC extension", "pocExtensionMode", [["none", "None"], ["until-first-interaction", "Till interaction"], ["to-window-end", "Till end window"]]],
                     ["Value area extension", "valueAreaExtensionMode", [["none", "None"], ["until-first-interaction", "Till interaction"], ["to-window-end", "Till end window"]]],
+                    ["Developing value area", "developingValueArea", [["no", "Off"], ["dash", "Dashed"], ["solid", "Solid"]]],
+                    ["Level line style", "levelLineStyle", [["solid", "Solid"], ["dash", "Dash"], ["dot", "Dot"], ["dash-dot", "Dash dot"], ["dash-dot-dot", "Dash dot dot"]]],
+                    ["Level label side", "levelLabelSide", [["left", "Beside profile"], ["right", "Line end"]]],
                     ["Peak extension", "peakExtensionMode", [["none", "None"], ["until-first-interaction", "Till interaction"], ["to-window-end", "Till end window"]]],
                     ["Valley extension", "valleyExtensionMode", [["none", "None"], ["until-first-interaction", "Till interaction"], ["to-window-end", "Till end window"]]],
                     ["VWAP extension", "vwapExtensionMode", [["none", "None"], ["until-first-interaction", "Till interaction"], ["to-window-end", "Till end window"]]],
@@ -7834,7 +7837,7 @@ export default function ChartIndicatorsControl({
                   )) : null}
                   {[
                     ["Use end session as start day", "useEndSessionAsStartDay"], ["Show POC", "showPocLine"],
-                    ["Show VAH / VAL", "showValueAreaLines"], ["Developing value area", "showDevelopingValueArea"],
+                    ["Show VAH / VAL", "showValueAreaLines"],
                     ["Show peaks", "showPeaks"], ["Show valleys", "showValleys"], ["Exclude profile high / low", "excludeHighLow"],
                     ["Show VWAP", "showVwap"], ["Developing VWAP", "showDevelopingVwap"], ["Show VWAP bands", "showVwapBands"],
                     ["Show summary", "showSummary"], ["Summary trades", "showSummaryTrades"],

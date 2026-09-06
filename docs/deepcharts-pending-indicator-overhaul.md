@@ -570,6 +570,24 @@ Legend: `[ ]` not complete, `[~]` in progress, `[x]` complete and addable.
 
 ### 13: KWANT Profile Values
 
+#### 2026-09-07 accuracy/settings follow-up
+
+- The standalone study now activates the exact Footprint/VAP build path by
+  itself. Previously it could receive an empty ladder unless another order-flow
+  indicator was enabled, leaving an otherwise valid profile waiting/blank.
+- Its POC, VAH and VAL are asserted against the same
+  `calculateVolumeProfileValueArea` result as the standard Volume Profile.
+  Any missing positive-volume price ladder invalidates that profile range;
+  levels are never joined across a data hole. Zero-volume bridge bars remain
+  valid and contribute no volume.
+- Settings schema v2 exposes separate widths for POC, VAH/VAL, peaks, valleys
+  and VWAP; developing VA Off/Dashed/Solid; five level line styles; and label
+  placement beside the source or at the line end. Existing shared-width and
+  developing-VA saves migrate without changing their visible intent.
+- Aggregate Trades groups same exchange time, price and aggressor before its
+  size filter. Volume retains per-print filtering, so those choices now have
+  distinct, tested behavior.
+
 - Official DeepCharts help (updated 18 June 2026) defines a level-only volume
   profile: POC, Value Area, VWAP/deviation bands, peaks and valleys without a
   histogram. Its VBP Period choices are Composite, Multiples, Visible and
