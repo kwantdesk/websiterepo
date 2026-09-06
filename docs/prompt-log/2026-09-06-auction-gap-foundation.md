@@ -199,3 +199,13 @@ cancellation and explicit error recovery. 57 tests, scoped source lint and full
 tsc pass, including actual separate-thread calculation. No browser/live-FPS
 claim; not wired into Chart yet. Still 28 Pending, no production push for this
 foundation. Incremental live state and full integration/visual QA are next.
+
+2026-09-07 live-continuity continuation: diagnosed and closed a real seed/live
+race in both futures and option execution SSE routes. The gateway now queues
+prints while taking its retained snapshot and emits a stream-ID plus monotonic
+batch receipt. The browser worker verifies every transition, clears unproved
+pending batches on reconnect, and Auction Gap calculates live only while that
+receipt is continuous. Focused gateway and browser receipt tests, 108 existing
+Auction Gap tests and project TypeScript pass. This is delivery-boundary proof,
+not an upstream Rithmic completeness claim. Pending remains unchanged; browser,
+alerts, closed-market and live-session soak still block release.

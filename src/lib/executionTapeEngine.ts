@@ -12,6 +12,12 @@
 import { admitRecords, decodeRecords, type ExecutionTapeBuffer } from "@/lib/executionTape";
 import { futuresVenue } from "@/lib/futuresVenue";
 import type { InstitutionalTrade } from "@/lib/institutionalMarketData";
+import {
+  acceptExecutionStreamSeed,
+  advanceExecutionStreamReceipt,
+  type ExecutionStreamContinuity,
+  type ExecutionStreamReceipt,
+} from "@/lib/executionStreamContinuity";
 
 export type ExecutionTapeStatus = "checking" | "connected" | "unavailable";
 
@@ -43,6 +49,7 @@ export const STREAM_RECONNECT_DELAY_MS = 4_000;
 
 export type ExecutionTapeEngineHandlers = {
   onStatus: (status: ExecutionTapeStatus) => void;
+  onContinuity: (continuity: ExecutionStreamContinuity) => void;
   /** The full retained tape, published once per connection. */
   onSeed: (records: InstitutionalTrade[]) => void;
   /** Genuinely new prints only, batched. */
@@ -57,6 +64,8 @@ export function createExecutionTapeEngine(
   const tape: ExecutionTapeBuffer = { records: [], recordKeys: new Set<string>() };
   let source: EventSource | null = null;
   let status: ExecutionTapeStatus = "checking";
+  let continuity: ExecutionStreamContinuity = "checking";
+  let receipt: ExecutionStreamReceipt | null = null;
   let generation = 0;
   let seedPublished = false;
   let stopped = false;
@@ -69,6 +78,11 @@ export function createExecutionTapeEngine(
   const setStatus = (next: ExecutionTapeStatus) => {
     status = next;
     handlers.onStatus(next);
+  };
+
+  const setContinuity = (next: ExecutionStreamContinuity) => {
+    continuity = next;
+    handlers.onContinuity(next);
   };
 
   const flush = () => {
@@ -97,9 +111,18 @@ export function createExecutionTapeEngine(
     watchdogTimer = null;
   };
 
+  const discardPending = () => {
+    if (publishTimer !== null) clearTimeout(publishTimer);
+    publishTimer = null;
+    pending = [];
+  };
+
   const scheduleReconnect = (delayMs: number = STREAM_RECONNECT_DELAY_MS) => {
     if (stopped) return;
     closeConnection();
+    discardPending();
+    receipt = null;
+    setContinuity("checking");
     setStatus("checking");
     if (reconnectTimer !== null) return;
     reconnectTimer = setTimeout(() => {
@@ -114,6 +137,8 @@ export function createExecutionTapeEngine(
     generation += 1;
     const thisGeneration = generation;
     setStatus("checking");
+    receipt = null;
+    setContinuity("checking");
     try {
       const health = await fetch("/api/institutional-market-data?path=health", {
         cache: "no-store",
@@ -161,7 +186,19 @@ export function createExecutionTapeEngine(
       stream.addEventListener("seed", (event) => {
         if (!markActivity()) return;
         try {
-          const payload = JSON.parse((event as MessageEvent<string>).data) as { records?: unknown };
+          const payload = JSON.parse((event as MessageEvent<string>).data) as {
+            records?: unknown;
+            streamId?: unknown;
+            batchSequence?: unknown;
+            continuity?: unknown;
+          };
+          const nextReceipt = acceptExecutionStreamSeed(payload);
+          if (!nextReceipt) {
+            setContinuity("broken");
+            scheduleReconnect(STREAM_STALE_RECONNECT_DELAY_MS);
+            return;
+          }
+          receipt = nextReceipt;
           const additions = admitRecords(tape, decodeRecords(payload.records));
           if (!seedPublished) {
             // The hosting proxy rotates long-running streams. Re-emitting a
@@ -176,14 +213,30 @@ export function createExecutionTapeEngine(
           } else if (additions.length) {
             queue(additions);
           }
+          setContinuity("continuous");
         } catch {
-          // A malformed seed must not interrupt the live stream.
+          setContinuity("broken");
+          scheduleReconnect(STREAM_STALE_RECONNECT_DELAY_MS);
         }
       });
       stream.addEventListener("trades", (event) => {
         if (!markActivity()) return;
         try {
-          const payload = JSON.parse((event as MessageEvent<string>).data) as { records?: unknown };
+          const payload = JSON.parse((event as MessageEvent<string>).data) as {
+            records?: unknown;
+            streamId?: unknown;
+            batchSequence?: unknown;
+            continuity?: unknown;
+          };
+          const nextReceipt = receipt
+            ? advanceExecutionStreamReceipt(receipt, payload)
+            : null;
+          if (!nextReceipt || continuity !== "continuous") {
+            setContinuity("broken");
+            scheduleReconnect(STREAM_STALE_RECONNECT_DELAY_MS);
+            return;
+          }
+          receipt = nextReceipt;
           // A reconnect can replay the tail of the execution stream. Publish
           // only genuinely new prints so CVD and volume profiles cannot count
           // the same execution twice.
@@ -221,6 +274,7 @@ export function createExecutionTapeEngine(
     /** The retained tape, for a subscriber attaching after the seed. */
     snapshot: () => tape.records.slice(),
     status: () => status,
+    continuity: () => continuity,
     /** Publish anything queued now, so a new subscriber cannot be sent the
      *  same records in its seed and again in a pending batch. */
     flushPending: flush,

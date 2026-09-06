@@ -34,6 +34,7 @@ self.addEventListener("message", (event: MessageEvent<InboundMessage>) => {
     const key = message.key;
     const engine = createExecutionTapeEngine(message.symbol, message.contractSymbol, {
       onStatus: (status) => post({ type: "status", key, status }),
+      onContinuity: (continuity) => post({ type: "continuity", key, continuity }),
       onSeed: (records) => post({ type: "seed", key, records }),
       onTrades: (records) => tradePublisher.publish(key, records),
     });

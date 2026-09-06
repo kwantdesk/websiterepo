@@ -1,5 +1,6 @@
 import type { Candle } from "@/lib/backtester";
 import type { InstitutionalTrade } from "@/lib/institutionalMarketData";
+import type { ExecutionStreamContinuity } from "@/lib/executionStreamContinuity";
 
 export const LIVE_CHART_CANDLE_EVENT = "kwantdesk:live-chart-candle";
 export const LIVE_CHART_EXECUTION_EVENT = "kwantdesk:live-chart-executions";
@@ -24,6 +25,8 @@ export type LiveChartExecutionDetail = {
   key: string;
   records: InstitutionalTrade[];
   tape: InstitutionalTrade[];
+  /** Browser-verified atomic seed and uninterrupted SSE batch sequence. */
+  continuity: ExecutionStreamContinuity;
 };
 
 export type DatabentoLiveStatus = "connecting" | "live" | "reconnecting";

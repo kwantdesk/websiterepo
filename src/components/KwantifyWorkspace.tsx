@@ -185,6 +185,7 @@ import {
 } from "@/lib/liveExecutionTape";
 import { ORDER_FLOW_DATA_REFRESH_INTERVAL_MS } from "@/lib/footprintRuntime";
 import { subscribeRithmicIndicatorTrades } from "@/lib/rithmicIndicatorStream";
+import type { ExecutionStreamContinuity } from "@/lib/executionStreamContinuity";
 import {
   currentGameplanSession,
   gameplanSessionLabel,
@@ -5643,6 +5644,7 @@ function WorkspaceChartPaneComponent({
   const lastMarketTradeStateSyncRef = useRef(0);
   const classicGexHistoryRef = useRef<ClassicGexHistorySnapshot[]>([]);
   const rithmicConnectedRef = useRef(false);
+  const executionContinuityRef = useRef<ExecutionStreamContinuity>("checking");
   const historyHydratedRef = useRef(false);
   const requestTailReconciliationRef = useRef<(() => void) | null>(null);
   const liveInstrumentIdentityRef = useRef(`${pane.broker}:${pane.symbol}`);
@@ -6178,6 +6180,7 @@ function WorkspaceChartPaneComponent({
   useEffect(() => {
     marketActiveRef.current = false;
     rithmicConnectedRef.current = false;
+    executionContinuityRef.current = "checking";
     setMarketIsActive(false);
     if (marketInactiveTimerRef.current !== null) {
       window.clearTimeout(marketInactiveTimerRef.current);
@@ -6321,6 +6324,7 @@ function WorkspaceChartPaneComponent({
               key: pane.id,
               records,
               tape: next,
+              continuity: executionContinuityRef.current,
             },
           }));
         }
@@ -6403,6 +6407,22 @@ function WorkspaceChartPaneComponent({
       onStatus: (status) => {
         if (status === "connected") rithmicConnectedRef.current = true;
         if (status === "unavailable") rithmicConnectedRef.current = false;
+      },
+      onContinuity: (continuity) => {
+        executionContinuityRef.current = continuity;
+        // Auction Gap is execution-order sensitive. Propagate a reconnect or
+        // broken receipt immediately even when there is no trade batch, so it
+        // cannot keep calculating against a previously trusted stream state.
+        if (auctionGapLiveActive) {
+          window.dispatchEvent(new CustomEvent(LIVE_CHART_EXECUTION_EVENT, {
+            detail: {
+              key: pane.id,
+              records: [],
+              tape: latestMarketTradesRef.current,
+              continuity,
+            },
+          }));
+        }
       },
       onSeed: (records) => {
         if (!records.length) return;
@@ -6494,6 +6514,7 @@ function WorkspaceChartPaneComponent({
     instantTapeLiveActive,
     nonFootprintOrderFlowActive,
     pane.broker,
+    pane.id,
     pane.symbol,
     pane.timeframe,
     requiresExecutionStream,

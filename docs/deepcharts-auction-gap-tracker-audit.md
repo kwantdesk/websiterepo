@@ -565,3 +565,29 @@ or market-data/visual/native-parity claim. Gates remain OFF.
   sustained interaction checks, regression/build and exact production SHA.
 - Clarify touch semantics, marker BarDirection placement, time-filter overlap
   and native boundary conventions. Never change Pending just to satisfy count.
+
+### Atomic live handoff and browser continuity receipt, 2026-09-07
+
+The retained execution snapshot previously ran before the gateway registered
+the SSE subscriber. A genuine print could therefore arrive after the snapshot
+but before registration and be absent from both the seed and the live stream.
+Futures and option execution routes now register in a seeding phase first,
+queue prints observed during the snapshot, deduplicate them into the seed, and
+only then switch synchronously to live delivery.
+
+Every seed now owns a random stream ID and sequence zero; every subsequent
+trade event carries the same ID and the next integer sequence. The execution
+worker verifies this receipt, discards unproved pending batches across a
+reconnect and reconnects on missing, duplicate, reordered or cross-stream
+batches. Continuity propagates through the shared worker and workspace event.
+Auction Gap supplies `coverage: complete` to its calculation only while that
+receipt is continuous; reconnecting or broken streams fail closed and retain
+the last proven plot.
+
+This receipt proves the gateway snapshot-to-browser delivery boundary. It
+does not prove an upstream Rithmic session had no source disconnect; historical
+coverage receipts and exact candle OHLC/volume reconciliation remain separate
+source-integrity gates. Two gateway handoff tests, two browser receipt tests,
+108 existing Auction Gap tests and full TypeScript compilation pass. The
+indicator remains Pending until browser rendering, settings interaction, alert
+lifecycle, closed-market behavior and live-market soak are verified.

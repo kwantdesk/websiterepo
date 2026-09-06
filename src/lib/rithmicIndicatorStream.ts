@@ -2,6 +2,7 @@
 
 import { createExecutionTapeEngine, type ExecutionTapeEngine, type ExecutionTapeStatus } from "@/lib/executionTapeEngine";
 import type { InstitutionalTrade } from "@/lib/institutionalMarketData";
+import type { ExecutionStreamContinuity } from "@/lib/executionStreamContinuity";
 
 export type RithmicIndicatorStreamStatus = ExecutionTapeStatus;
 
@@ -9,6 +10,7 @@ type Subscriber = {
   onSeed?: (records: InstitutionalTrade[]) => void;
   onTrades: (records: InstitutionalTrade[]) => void;
   onStatus?: (status: RithmicIndicatorStreamStatus) => void;
+  onContinuity?: (continuity: ExecutionStreamContinuity) => void;
 };
 
 /**
@@ -24,6 +26,7 @@ type SharedStream = {
   subscribers: Set<Subscriber>;
   records: InstitutionalTrade[];
   status: RithmicIndicatorStreamStatus;
+  continuity: ExecutionStreamContinuity;
   seeded: boolean;
   symbol: string;
   contractSymbol: string;
@@ -35,6 +38,7 @@ const streams = new Map<string, SharedStream>();
 
 type WorkerMessage =
   | { type: "status"; key: string; status: RithmicIndicatorStreamStatus }
+  | { type: "continuity"; key: string; continuity: ExecutionStreamContinuity }
   | { type: "seed"; key: string; records: InstitutionalTrade[] }
   | { type: "trades"; key: string; records: InstitutionalTrade[] };
 
@@ -80,6 +84,11 @@ function ensureWorker(): Worker | null {
       stream.subscribers.forEach((subscriber) => subscriber.onStatus?.(message.status));
       return;
     }
+    if (message.type === "continuity") {
+      stream.continuity = message.continuity;
+      stream.subscribers.forEach((subscriber) => subscriber.onContinuity?.(message.continuity));
+      return;
+    }
     if (message.type === "seed") {
       stream.records = message.records;
       stream.seeded = true;
@@ -105,6 +114,10 @@ function startInlineEngine(key: string, stream: SharedStream) {
       stream.status = status;
       stream.subscribers.forEach((subscriber) => subscriber.onStatus?.(status));
     },
+    onContinuity: (continuity) => {
+      stream.continuity = continuity;
+      stream.subscribers.forEach((subscriber) => subscriber.onContinuity?.(continuity));
+    },
     onSeed: (records) => {
       stream.records = records;
       stream.seeded = true;
@@ -125,6 +138,7 @@ export function subscribeRithmicIndicatorTrades(args: {
   onSeed?: Subscriber["onSeed"];
   onTrades: Subscriber["onTrades"];
   onStatus?: Subscriber["onStatus"];
+  onContinuity?: Subscriber["onContinuity"];
 }) {
   const symbol = args.symbol.trim().toUpperCase();
   const contractSymbol = args.contractSymbol.trim().toUpperCase();
@@ -136,6 +150,7 @@ export function subscribeRithmicIndicatorTrades(args: {
       subscribers: new Set(),
       records: [],
       status: "checking",
+      continuity: "checking",
       seeded: false,
       symbol,
       contractSymbol,
@@ -152,9 +167,11 @@ export function subscribeRithmicIndicatorTrades(args: {
     onSeed: args.onSeed,
     onTrades: args.onTrades,
     onStatus: args.onStatus,
+    onContinuity: args.onContinuity,
   };
   stream.subscribers.add(subscriber);
   subscriber.onStatus?.(stream.status);
+  subscriber.onContinuity?.(stream.continuity);
   if (stream.records.length) subscriber.onSeed?.(stream.records.slice());
 
   if (fresh) {

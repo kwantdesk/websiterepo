@@ -12,6 +12,11 @@ import { DatabentoEquitiesTradeStream } from "./databento-equities-stream.mjs";
 import { FuturesBarArchive, HistoryRequestError, parseIntervalMs } from "./futures-bar-archive.mjs";
 import { QuantDataSurfacePoller } from "./quantdata-surface-poller.mjs";
 import { TradeTapeArchive, MAX_TAPE_PRINTS } from "./trade-tape-archive.mjs";
+import {
+  completeTradeSseSeed,
+  createTradeSseSubscriber,
+  queueTradeSseRecord,
+} from "./trade-sse-continuity.mjs";
 import { BarFlowArchive } from "./bar-flow-archive.mjs";
 import { SessionProfileArchive } from "./session-profile-archive.mjs";
 import {
@@ -475,6 +480,10 @@ function requestedQuoteInstrument(requestedSymbol, preferredContractSymbol = "")
       || resolved?.symbol
       || raw,
   };
+}
+
+function writeSseEvent(response, eventName, payload) {
+  response.write(`event: ${eventName}\ndata: ${JSON.stringify(payload)}\n\n`);
 }
 
 function quotePayload(alias, instrument, event = null) {
@@ -1080,11 +1089,10 @@ client.on("marketData", (event) => {
       continue;
     }
     if (event.type !== "trade" || subscriber.key !== event.instrument) continue;
-    subscriber.response.write(
-      `event: trades\ndata: ${JSON.stringify({
-        historicalSeed: false,
-        records: [normalizedTradeRecord(event.trade)],
-      })}\n\n`,
+    queueTradeSseRecord(
+      subscriber,
+      normalizedTradeRecord(event.trade),
+      (eventName, payload) => writeSseEvent(subscriber.response, eventName, payload),
     );
   }
   const capturedHeatmapFrame = event.instrument
@@ -2049,31 +2057,41 @@ const server = createServer(async (request, response) => {
             code: "option_live_limit",
           });
         }
-        const seedTrades = optionTrades.trades(option.symbol);
         response.writeHead(200, {
           "Content-Type": "text/event-stream",
           "Cache-Control": "no-cache, no-transform",
           Connection: "keep-alive",
           "X-Accel-Buffering": "no",
         });
-        response.write(`event: ready\ndata: ${JSON.stringify({
+        const subscriber = createTradeSseSubscriber(option.symbol, response);
+        const onTrade = (event) => {
+          if (event.symbol !== option.symbol || response.destroyed || response.writableEnded) return;
+          queueTradeSseRecord(
+            subscriber,
+            normalizedTradeRecord(event.trade),
+            (eventName, payload) => writeSseEvent(response, eventName, payload),
+          );
+        };
+        // Register before reading the option ring for the same atomic handoff
+        // guarantee as futures.
+        optionTrades.on("trade", onTrade);
+        const seedTrades = optionTrades.trades(option.symbol);
+        writeSseEvent(response, "ready", {
           provider: "Databento",
           dataset: "GLBX.MDP3",
           symbol: option.symbol,
-        })}\n\n`);
-        response.write(`event: seed\ndata: ${JSON.stringify({
-          candles: aggregateCandles(seedTrades, 1_000, 7_200),
-          records: seedTrades.map(normalizedTradeRecord),
-          historicalAvailable: false,
-        })}\n\n`);
-        const onTrade = (event) => {
-          if (event.symbol !== option.symbol || response.destroyed || response.writableEnded) return;
-          response.write(`event: trades\ndata: ${JSON.stringify({
-            historicalSeed: false,
-            records: [normalizedTradeRecord(event.trade)],
-          })}\n\n`);
-        };
-        optionTrades.on("trade", onTrade);
+          streamId: subscriber.streamId,
+          continuity: "seeding",
+        });
+        completeTradeSseSeed(
+          subscriber,
+          seedTrades.map(normalizedTradeRecord),
+          (eventName, payload) => writeSseEvent(response, eventName, payload),
+          {
+            candles: aggregateCandles(seedTrades, 1_000, 7_200),
+            historicalAvailable: false,
+          },
+        );
         const keepalive = setInterval(() => response.write(": keepalive\n\n"), 10_000);
         const streamGuard = createDesktopStreamGuard({
           authorization,
@@ -2095,8 +2113,26 @@ const server = createServer(async (request, response) => {
         return;
       }
       client.subscribe(instrument.exchange, instrument.symbol);
-      const snapshot = client.book.snapshot(instrument.exchange, instrument.symbol, 1);
-      // The browser keeps one shared execution stream per instrument.  Seed it
+      response.writeHead(200, {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache, no-transform",
+        Connection: "keep-alive",
+        "X-Accel-Buffering": "no",
+      });
+      // Register in seeding mode BEFORE reading the retained book. Any print
+      // arriving during the snapshot is queued into this subscriber and
+      // folded into its seed atomically. Registering afterward left a real
+      // one-print loss window at every first connection and reconnect.
+      const subscriber = createTradeSseSubscriber(
+        `${instrument.exchange}:${instrument.symbol}`,
+        response,
+      );
+      tradeSseClients.add(subscriber);
+      writeSseEvent(response, "ready", {
+        streamId: subscriber.streamId,
+        continuity: "seeding",
+      });
+      // The browser keeps one shared execution stream per instrument. Seed it
       // with enough retained prints to restore markers across the visible
       // session, while keeping the generic book snapshot intentionally small.
       const indicatorTrades = client.book.trades(
@@ -2104,25 +2140,16 @@ const server = createServer(async (request, response) => {
         instrument.symbol,
         { limit: 25_000 },
       );
-      response.writeHead(200, {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache, no-transform",
-        Connection: "keep-alive",
-        "X-Accel-Buffering": "no",
-      });
-      response.write("event: ready\ndata: {}\n\n");
-      response.write(
-        `event: seed\ndata: ${JSON.stringify({
+      const normalizedSeed = indicatorTrades.map(normalizedTradeRecord);
+      completeTradeSseSeed(
+        subscriber,
+        normalizedSeed,
+        (eventName, payload) => writeSseEvent(response, eventName, payload),
+        {
           candles: aggregateCandles(indicatorTrades, 1_000, 7_200),
-          records: indicatorTrades.map(normalizedTradeRecord),
           historicalAvailable: false,
-        })}\n\n`,
+        },
       );
-      const subscriber = {
-        key: `${instrument.exchange}:${instrument.symbol}`,
-        response,
-      };
-      tradeSseClients.add(subscriber);
       const keepalive = setInterval(() => response.write(": keepalive\n\n"), 10_000);
       const streamGuard = createDesktopStreamGuard({
         authorization,
@@ -2137,6 +2164,7 @@ const server = createServer(async (request, response) => {
         streamGuard.dispose();
         tradeSseClients.delete(subscriber);
       };
+      subscriber.cleanup = cleanup;
       request.on("close", cleanup);
       response.on("close", cleanup);
       response.on("error", cleanup);

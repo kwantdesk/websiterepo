@@ -109,6 +109,7 @@ import {
   type LiveChartCandleDetail,
   type LiveChartExecutionDetail,
 } from "@/lib/chartLiveEvents";
+import type { ExecutionStreamContinuity } from "@/lib/executionStreamContinuity";
 import {
   CHART_INDICATOR_BY_ID,
   type ChartIndicatorInstance,
@@ -828,6 +829,7 @@ type AuctionGapChartRuntime = {
   history: Extract<AuctionGapCompactRowsResult, { status: "ready" }>;
   candles: Candle[];
   records: InstitutionalTrade[];
+  continuity: ExecutionStreamContinuity;
   settings: Record<string, number | string | boolean>;
   hasPainted: boolean;
 };
@@ -5937,6 +5939,7 @@ function Chart({
       history: aligned.history,
       candles: aligned.candles,
       records: [],
+      continuity: "checking",
       settings: normalized,
       hasPainted: false,
     };
@@ -6010,6 +6013,7 @@ function Chart({
       const runtime = auctionGapRuntimeRef.current;
       if (!detail || detail.key !== liveCandleEventKey || !runtime) return;
       runtime.records = detail.tape;
+      runtime.continuity = detail.continuity;
     };
     const receiveCandle = (event: Event) => {
       const detail = (event as CustomEvent<LiveChartCandleDetail>).detail;
@@ -6026,7 +6030,7 @@ function Chart({
         expectedContract: runtime.contract,
         tickSize: runtime.tickSize,
         asOfMs,
-        coverage: "complete",
+        coverage: runtime.continuity === "continuous" ? "complete" : "partial",
         records: runtime.records,
         compactHistory: runtime.history,
         candles: runtime.candles,
