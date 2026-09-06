@@ -1,5 +1,32 @@
 # Auction Gap Tracker — implementation in progress
 
+### Incremental forming-bar lifecycle — 2026-09-07
+
+`AuctionGapLiveLifecycle` shares the historical zone transition and checkpoints
+only active zones before the latest chart bar. Replacing the bar means supplying
+all of its reset subsegments: restores prior retests/endpoints, removes obsolete
+provisional zones and then applies the replacement. No historical price rows
+are retained/revisited. All replacement data is validated before mutation;
+failed input leaves prior state intact. Older corrections and skipped chart
+indices explicitly request reconstruction rather than silently losing retests.
+Retained source IDs and zones have a configurable explicit capacity (250,000
+each by default); exceeding it reports capacity-limit, never evicts silently.
+Snapshots copy visible zones separately from update processing.
+
+Tests compare incremental output with the batch result after each append and
+1,000 tail replacements, plus reset subsegments, cross/visibility modes, atomic
+errors, capacity, settings/snapshot isolation and historical-row nonaccess.
+64 combined tests, lint and tsc passed before a final skipped-bar guard; seven
+incremental tests passed after it. This is lifecycle performance structure, not
+proof of whole-indicator live latency: execution validation/ownership and worker
+state still need connection, followed by Chart controls/render and browser QA.
+
+Current Chart source inspection found only a marketTrades array/version prop,
+not an execution coverage envelope. Shared indicator rows are timestamp-sliced;
+Footprint is viewport-limited/grouped/filtered. Integration cannot treat these
+as authoritative raw ownership/completeness merely because a chart is visible.
+The strict study pipeline and explicit provenance remain necessary. Gate OFF.
+
 ### Background history execution — 2026-09-07
 
 The whole calculation path now has a lazy module-worker entry and scoped client.

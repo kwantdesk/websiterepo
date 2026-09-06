@@ -28,6 +28,8 @@ export type AuctionGapSourceBar = {
   detect: boolean;
 };
 
+export type AuctionGapActiveZone = { zone: AuctionGapZone; resetKey: string | null; expires: number };
+
 function tradedInRange(ticks: readonly number[], low: number, high: number) {
   let left = 0, right = ticks.length;
   while (left < right) {
@@ -36,6 +38,37 @@ function tradedInRange(ticks: readonly number[], low: number, high: number) {
     else right = middle;
   }
   return left < ticks.length && ticks[left] <= high;
+}
+
+/** Shared transition for historical rebuilds and incremental tail replacements.
+ * Mutates only supplied active zones; caller owns correction checkpoints.
+ */
+export function advanceAuctionGapActive(active: AuctionGapActiveZone[], bar: AuctionGapBar,
+  index: number, resetKey: string | null, settings: AuctionGapLifecycleSettings) {
+  const tradedTicks = bar.rows.filter(row => row.bidVolume + row.askVolume + row.unknownVolume > 0)
+    .map(row => row.tickIndex).sort((a, b) => a - b);
+  let write = 0;
+  for (const item of active) {
+    const { zone } = item;
+    const reset = item.resetKey !== resetKey;
+    if (reset || index > item.expires) {
+      zone.stoppedBy = reset ? "reset" : "extension";
+      continue;
+    }
+    zone.endIndex = index;
+    if (zone.state === "fresh" && index > zone.sourceIndex) {
+      const touched = tradedInRange(tradedTicks, zone.lowTick, zone.highTick);
+      const crossed = touched && Number.isSafeInteger(bar.closeTick)
+        && (zone.side === "buy" ? bar.closeTick < zone.lowTick : bar.closeTick > zone.highTick);
+      if (settings.retestMode === "touch" ? touched : crossed) {
+        zone.state = "triggered";
+        zone.triggeredAtBarId = bar.id;
+        zone.triggeredAtIndex = index;
+      }
+    }
+    active[write++] = item;
+  }
+  active.length = write;
 }
 
 /** Deterministic rebuild, including historical corrections and forming-bar
@@ -52,7 +85,7 @@ export function buildAuctionGapLifecycle(
   if (!Number.isInteger(settings.extendedBars) || settings.extendedBars < 0 || settings.extendedBars > 10000
     || !["touch", "cross"].includes(settings.retestMode)) return { status: "invalid-data", zones: [] };
   const all: AuctionGapZone[] = [];
-  const active: { zone: AuctionGapZone; resetKey: string | null; expires: number }[] = [];
+  const active: AuctionGapActiveZone[] = [];
   const ids = new Set<string>();
   let priorTime = -Infinity;
   let instrument: string | null = null;
@@ -71,33 +104,7 @@ export function buildAuctionGapLifecycle(
     if (result.status !== "ready") return { status: result.status, zones: [] };
     const detectionResult = detectionBar ? detectAuctionGaps(detectionBar, source, detection) : result;
     if (detectionResult.status !== "ready") return { status: detectionResult.status, zones: [] };
-    const tradedTicks = bar.rows.filter(row => row.bidVolume + row.askVolume + row.unknownVolume > 0)
-      .map(row => row.tickIndex).sort((a, b) => a - b);
-    let write = 0;
-    for (const item of active) {
-      const { zone } = item;
-      const reset = item.resetKey !== resetKey;
-      const expired = index > item.expires;
-      if (reset || expired) {
-        zone.stoppedBy = reset ? "reset" : "extension";
-        continue;
-      }
-      zone.endIndex = index;
-      if (zone.state === "fresh" && index > zone.sourceIndex) {
-        const touched = tradedInRange(tradedTicks, zone.lowTick, zone.highTick);
-        // Crossing needs an actual print inside the zone plus a close beyond
-        // the far edge. A price jump over an untraded zone is not a retest.
-        const crossed = touched && Number.isSafeInteger(bar.closeTick)
-          && (zone.side === "buy" ? bar.closeTick < zone.lowTick : bar.closeTick > zone.highTick);
-        if (settings.retestMode === "touch" ? touched : crossed) {
-          zone.state = "triggered";
-          zone.triggeredAtBarId = bar.id;
-          zone.triggeredAtIndex = index;
-        }
-      }
-      active[write++] = item;
-    }
-    active.length = write;
+    advanceAuctionGapActive(active, bar, index, resetKey, settings);
     if (!detect) continue;
     for (const gap of detectionResult.gaps) {
       const zone: AuctionGapZone = { ...gap, sourceIndex: index, endIndex: index,

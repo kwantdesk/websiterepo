@@ -1,5 +1,14 @@
 # Pending-library continuation — Auction Gap Tracker
 
+2026-09-07 incremental continuation: implemented active-zone checkpoints and
+forming-bar replacement without rescanning historical rows. Seven incremental
+tests compare against full reconstruction, including 1,000 replacements,
+provisional removal/retest rollback, resets, rejected corrections and capacity.
+64 combined tests, lint and tsc passed before final skipped-index guard; seven
+incremental tests rerun afterward. Still not connected to live Chart: source
+coverage/ownership, worker state, controls and rendering remain. No gate change
+or production push. 28 Pending; this is not yet a finished indicator.
+
 Prompt: engineer the remaining studies with correct reference logic/settings,
 data, themes, save/templates and responsive rendering; preserve working studies.
 

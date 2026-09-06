@@ -1,5 +1,25 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-07 — Auction Gap incremental zone lifecycle
+
+- `AuctionGapLiveLifecycle` now replaces all reset segments of the forming
+  chart bar from an active-zone checkpoint, without revisiting historical rows.
+  Reuses the batch lifecycle transition. Retests/provisional gaps roll back;
+  historical corrections or skipped chart bars explicitly require rebuild.
+- Full validation precedes mutation. Retained segment/zone capacity is explicit
+  (250k default), not silent eviction. Snapshot copies are separate from updates.
+  64 combined tests, scoped lint and full tsc pass before final skipped-bar guard;
+  seven incremental tests rerun after that guard. No existing indicator changed.
+- Source integration check: Chart receives `marketTrades` plus a version, but
+  no execution coverage envelope. Its indicator tape is timestamp-sliced;
+  Footprint tape is viewport-limited and settings-dependent. Neither alone proves
+  Auction Gap source ownership/completeness. Use the strict source/study pipeline
+  and explicit provenance; do not flip its gate against display-filtered rows.
+- Still 28 Pending. Next connect worker history state and validated live-tail
+  processing, then actual chart source/settings/render/template/alert QA. Source
+  validation/event ownership is not yet incremental; do not claim per-tick speed
+  for the whole indicator. No production push for this isolated groundwork.
+
 ## 2026-09-07 — Auction Gap bounded history worker
 
 - Added `auctionGap.worker.ts` and lazy `AuctionGapWorkerClient`: one active
