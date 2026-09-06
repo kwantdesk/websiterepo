@@ -1,5 +1,18 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-07 — Session Marker converted from Pending
+
+- Added real DST-aware Asian, Europe and USA windows over chart OHLCV, plus
+  live high/low, first-N-minute imbalance, open/close, midpoint and optional
+  per-session VWAP.
+- Added public/DLL-backed clocks, styles, ranges, colours, theme ownership,
+  Save/templates/export/import and saved normalization. The public guide's
+  implausible `20` line-width typo is not reproduced; web width is safely 1–4.
+- Four focused tests, source/test ESLint, TypeScript and the full 80-page build
+  pass. Pending inventory is 16; production SHA verification follows push.
+- Evidence: `docs/deepcharts-session-marker-audit.md`; prompt/outcome:
+  `docs/prompt-log/2026-09-07-session-marker.md`.
+
 ## 2026-09-07 — Anchored VWAP catalogue entry activated
 
 - The Pending Anchored VWAP library entry now arms the existing authoritative
@@ -8,7 +21,8 @@
   four sources, three optional deviation bands, fill/opacity, theme colours and
   drawing persistence. No duplicate calculator or static placeholder was added.
 - Existing VWAP-family and drawing-system tests plus the catalogue audit are the
-  release gate. Pending inventory is 17; production verification is due.
+  release gate. Pending inventory is 17; production SHA
+  `5948c5be81f17684fd4e38831ae7ddac29f0882d` is verified live.
 - Prompt/outcome: `docs/prompt-log/2026-09-07-anchored-vwap-library.md`.
 
 ## 2026-09-07 — Price Movement Levels converted from Pending

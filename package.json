@@ -174,6 +174,7 @@
     "test:initial-balance-timeframe": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-initial-balance-timeframe.mjs",
     "test:globex-initial-balance": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-globex-initial-balance.mjs",
     "test:session-highs-lows": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-session-highs-lows.mjs",
+    "test:session-marker": "node --experimental-strip-types --import ./scripts/alias-hook.mjs --test tests/session-marker.test.mjs",
     "test:chart-viewport-reset": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-chart-viewport-reset.mjs",
     "test:paper-limit-orders": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-paper-limit-orders.mjs",
     "test:chart-limit-placement": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-chart-limit-placement.mjs",

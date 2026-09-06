@@ -96,6 +96,7 @@ import { CHART_OVERLAY_SETTINGS_VERSION } from "@/lib/chartOverlays";
 import { DEEP_PATTERN_BUILDER_SETTINGS_VERSION } from "@/lib/deepPatternBuilder";
 import { FAIR_VALUE_GAP_DEFAULTS, normalizeFairValueGapSettings } from "@/lib/fairValueGap";
 import { PRICE_MOVEMENT_LEVEL_DEFAULTS, normalizePriceMovementLevelSettings } from "@/lib/priceMovementLevels";
+import { SESSION_MARKER_DEFAULTS, normalizeSessionMarkerSettings } from "@/lib/sessionMarker";
 
 export const LIVE_CHART_INDICATOR_IDS = new Set([
   "zig-zag",
@@ -190,6 +191,7 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "delta-profile",
   "sessions",
   "session-highs-lows",
+  "session-marker",
   "ib-levels",
   "big-trades",
   "deep-m-effort-nq",
@@ -1168,6 +1170,15 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "lookbackDays", label: "Session search lookback (days)", defaultValue: 30, min: 7, max: 365 },
     { key: "lineOpacity", label: "Line opacity (%)", defaultValue: 100, min: 5, max: 100 },
     { key: "lineWidth", label: "Line width", defaultValue: 1, min: 1, max: 4, step: 1 },
+  ],
+  "session-marker": [
+    { key: "lookbackDays", label: "Lookback (days)", defaultValue: 5, min: 1, max: 30, step: 1 },
+    { key: "lineOpacity", label: "Line opacity (%)", defaultValue: 100, min: 5, max: 100, step: 1 },
+    { key: "lineWidth", label: "Line width", defaultValue: 2, min: 1, max: 4, step: 0.5 },
+    { key: "textSize", label: "Text size", defaultValue: 11, min: 6, max: 32, step: 0.5 },
+    { key: "asianImbalanceMinutes", label: "Asian imbalance minutes", defaultValue: 60, min: 1, max: 240, step: 1 },
+    { key: "europeImbalanceMinutes", label: "Europe imbalance minutes", defaultValue: 60, min: 1, max: 240, step: 1 },
+    { key: "usaImbalanceMinutes", label: "USA imbalance minutes", defaultValue: 60, min: 1, max: 240, step: 1 },
   ],
   "ib-levels": [
     { key: "lookbackDays", label: "Lookback (days)", defaultValue: 7, min: 1, max: 30 },
@@ -2399,6 +2410,42 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     lineStyle: "dashed",
     labelSize: "small",
     sessionHighLowSettingsVersion: 2,
+  } : {}),
+  ...(indicatorId === "session-marker" ? {
+    ...SESSION_MARKER_DEFAULTS,
+    textColor: theme?.borderUpColor ?? theme?.upColor ?? "#E5E7EB",
+    asianHighColor: theme?.upColor ?? "#22C55E",
+    asianLowColor: theme?.downColor ?? "#EF4444",
+    asianImbalanceHighColor: theme?.borderUpColor ?? theme?.upColor ?? "#4ADE80",
+    asianImbalanceLowColor: theme?.borderDownColor ?? theme?.downColor ?? "#F87171",
+    asianOpenColor: theme?.borderUpColor ?? theme?.upColor ?? "#38BDF8",
+    asianCloseColor: theme?.gridColor ?? "#94A3B8",
+    asianSessionRangeColor: theme?.borderUpColor ?? theme?.upColor ?? "#38BDF8",
+    asianImbalanceRangeColor: theme?.gridColor ?? "#94A3B8",
+    asianMidColor: theme?.borderUpColor ?? theme?.upColor ?? "#38BDF8",
+    asianVwapColor: theme?.borderUpColor ?? theme?.upColor ?? "#38BDF8",
+    europeHighColor: theme?.upColor ?? "#22C55E",
+    europeLowColor: theme?.downColor ?? "#EF4444",
+    europeImbalanceHighColor: theme?.borderUpColor ?? theme?.upColor ?? "#4ADE80",
+    europeImbalanceLowColor: theme?.borderDownColor ?? theme?.downColor ?? "#F87171",
+    europeOpenColor: theme?.borderUpColor ?? theme?.upColor ?? "#38BDF8",
+    europeCloseColor: theme?.gridColor ?? "#94A3B8",
+    europeSessionRangeColor: theme?.borderUpColor ?? theme?.upColor ?? "#38BDF8",
+    europeImbalanceRangeColor: theme?.gridColor ?? "#94A3B8",
+    europeMidColor: theme?.borderUpColor ?? theme?.upColor ?? "#38BDF8",
+    europeVwapColor: theme?.borderUpColor ?? theme?.upColor ?? "#38BDF8",
+    usaHighColor: theme?.upColor ?? "#22C55E",
+    usaLowColor: theme?.downColor ?? "#EF4444",
+    usaImbalanceHighColor: theme?.borderUpColor ?? theme?.upColor ?? "#4ADE80",
+    usaImbalanceLowColor: theme?.borderDownColor ?? theme?.downColor ?? "#F87171",
+    usaOpenColor: theme?.borderUpColor ?? theme?.upColor ?? "#38BDF8",
+    usaCloseColor: theme?.gridColor ?? "#94A3B8",
+    usaSessionRangeColor: theme?.borderUpColor ?? theme?.upColor ?? "#38BDF8",
+    usaImbalanceRangeColor: theme?.gridColor ?? "#94A3B8",
+    usaMidColor: theme?.borderUpColor ?? theme?.upColor ?? "#38BDF8",
+    usaVwapColor: theme?.borderUpColor ?? theme?.upColor ?? "#38BDF8",
+    markerPositiveColor: theme?.upColor ?? "#22C55E",
+    markerNegativeColor: theme?.downColor ?? "#EF4444",
   } : {}),
   ...(indicatorId === "ib-levels" ? {
     durationMinutes: 60,
@@ -4039,6 +4086,15 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
     }
     if (!["solid", "dashed", "dotted"].includes(String(settings.lineStyle))) settings.lineStyle = "dashed";
     return { ...normalizedInstance, settings };
+  }
+  if (normalizedInstance.indicatorId === "session-marker") {
+    return {
+      ...normalizedInstance,
+      settings: normalizeSessionMarkerSettings({
+        ...defaultIndicatorSettings("session-marker"),
+        ...(normalizedInstance.settings ?? {}),
+      }),
+    };
   }
   if (normalizedInstance.indicatorId === "ib-levels") {
     const defaults = defaultIndicatorSettings("ib-levels");

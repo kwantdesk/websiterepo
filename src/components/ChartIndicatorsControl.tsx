@@ -597,6 +597,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "keltner-channel",
   "sessions",
   "session-highs-lows",
+  "session-marker",
   "ib-levels",
   "divergence-detector",
   "big-trades",
@@ -753,6 +754,25 @@ const volumeProfileThemeColours = (chartSettings: ChartSettings) => ({
 const themeColourMapFor = (indicatorId: string, chartSettings: ChartSettings) => {
   if (indicatorId === "auction-gap-tracker") return auctionGapThemeColors(chartSettings) as Record<string, string>;
   if (indicatorId === "bounce-levels") return bounceThemeColours(chartSettings) as Record<string, string>;
+  if (indicatorId === "session-marker") {
+    const visible = visibleIndicatorTheme(chartSettings);
+    return Object.fromEntries(["asian", "europe", "usa"].flatMap((session) => [
+      [`${session}HighColor`, visible.positive],
+      [`${session}LowColor`, visible.negative],
+      [`${session}ImbalanceHighColor`, visible.positive],
+      [`${session}ImbalanceLowColor`, visible.negative],
+      [`${session}OpenColor`, visible.secondary],
+      [`${session}CloseColor`, visible.muted],
+      [`${session}SessionRangeColor`, visible.secondary],
+      [`${session}ImbalanceRangeColor`, visible.muted],
+      [`${session}MidColor`, visible.secondary],
+      [`${session}VwapColor`, visible.secondary],
+    ]).concat([
+      ["textColor", visible.primary],
+      ["markerPositiveColor", visible.positive],
+      ["markerNegativeColor", visible.negative],
+    ])) as Record<string, string>;
+  }
   if (indicatorId === "zig-zag") {
     const visible = visibleIndicatorTheme(chartSettings);
     return {
@@ -7845,6 +7865,38 @@ export default function ChartIndicatorsControl({
                   settings: next,
                 }))}
               />
+
+              {settingsDefinition.id === "session-marker" ? (
+                <div data-settings-section="General" className="space-y-4 rounded-xl border border-primary/15 bg-primary/[0.035] p-3">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {([
+                      ["Time reference", "timeReference", [["exchange", "Exchange time"], ["local", "Local time"]]],
+                      ["Line style", "lineStyle", [["solid", "Solid"], ["dashed", "Dashed"], ["dotted", "Dotted"]]],
+                    ] as const).map(([label, key, choices]) => (
+                      <label key={key} className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
+                        <span>{label}</span>
+                        <KwantSelect value={String(settingsInstance.settings?.[key] ?? choices[0][0])} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [key]: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel={`Session Marker ${label.toLowerCase()}`}>
+                          {choices.map(([value, text]) => <option key={value} value={value}>{text}</option>)}
+                        </KwantSelect>
+                      </label>
+                    ))}
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    {([
+                      ["Asian", "asian", "15:00", "03:00"],
+                      ["Europe", "europe", "03:00", "11:00"],
+                      ["USA", "usa", "09:30", "16:00"],
+                    ] as const).map(([label, key, start, end]) => (
+                      <div key={key} className="space-y-3 border border-border bg-background/70 p-3">
+                        <div className="text-[9px] uppercase tracking-[0.14em] text-foreground">{label}</div>
+                        <label className="space-y-1.5 text-[8px] uppercase tracking-[0.12em] text-muted"><span>Start session</span><input type="time" step={60} value={String(settingsInstance.settings?.[`${key}StartTime`] ?? start)} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [`${key}StartTime`]: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none" /></label>
+                        <label className="space-y-1.5 text-[8px] uppercase tracking-[0.12em] text-muted"><span>End session</span><input type="time" step={60} value={String(settingsInstance.settings?.[`${key}EndTime`] ?? end)} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [`${key}EndTime`]: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none" /></label>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[8px] leading-4 text-muted">Asian, Europe and USA use the reference platform's recovered stock session clocks. High, low, opening range, open, close, midpoint and optional session VWAP are calculated from the chart's real candles; no synthetic prints are inserted.</p>
+                </div>
+              ) : null}
 
               {settingsDefinition.id === "volume" ? (
                 <div data-settings-section="General" className="grid gap-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">

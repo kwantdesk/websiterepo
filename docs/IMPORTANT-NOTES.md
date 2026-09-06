@@ -30,8 +30,9 @@
   percentage/true-tick spacing, complete support/resistance/zero styling and
   custom-time controls. The Pending Anchored VWAP entry now opens the already
   verified live draw-on implementation instead of remaining a dead duplicate.
-  17
-  still require individual work. Monthly/Session/
+  Session Marker now has real DST-aware Asian/Europe/USA windows, imbalance,
+  OHLC/mid/VWAP levels and persisted theme/custom settings. 16 still require
+  individual work. Monthly/Session/
   Visible profile data/settings integration remains unfinished, including exact
   multi-session filtering and event-allocation-aware visible boundaries.
   Track `docs/pending-indicator-library-2026-09-06.md`, not the old completion

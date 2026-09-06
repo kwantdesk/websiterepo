@@ -573,6 +573,12 @@ import {
   buildPreviousSessionHighLowLevels,
   nextInitialBalanceSessionStart,
 } from "@/lib/marketSessions";
+import {
+  buildSessionMarkerLevels,
+  buildSessionMarkerWindows,
+  normalizeSessionMarkerSettings,
+  type SessionMarkerLevelRole,
+} from "@/lib/sessionMarker";
 import { calculateKwantStats } from "@/lib/kwantStats";
 import {
   resetChartViewport as resetChartViewportCore,
@@ -1011,6 +1017,7 @@ type SessionHighLowRenderLevel = {
   price: number;
   label: string;
   color: string;
+  labelColor?: string;
   opacity: number;
   lineWidth: number;
   lineStyle: "solid" | "dashed" | "dotted";
@@ -1111,7 +1118,7 @@ class SessionHighLowRenderer implements ISeriesPrimitivePaneRenderer {
             y: Math.max(level.fontSize + 3, Math.min(mediaSize.height - 3, y - 4)),
             width: measuredWidth,
             fontSize: level.fontSize,
-            color: level.color,
+            color: level.labelColor ?? level.color,
             opacity: level.opacity,
             anchor,
           });
@@ -12176,6 +12183,11 @@ function Chart({
       candidate.enabled && candidate.indicatorId === "session-highs-lows") ?? null,
     [indicatorSignature, indicators],
   );
+  const sessionMarkerIndicator = useMemo(
+    () => indicators.find((candidate) =>
+      candidate.enabled && candidate.indicatorId === "session-marker") ?? null,
+    [indicatorSignature, indicators],
+  );
   const initialBalanceIndicator = useMemo(
     () => indicators.find((candidate) =>
       candidate.enabled && candidate.indicatorId === "ib-levels") ?? null,
@@ -12231,6 +12243,28 @@ function Chart({
         )
       : [],
     [candleIntervalMs, indicatorCandles, initialBalanceCandles, initialBalanceIndicator, initialBalanceSettings],
+  );
+  const sessionMarkerSettings = useMemo(
+    () => normalizeSessionMarkerSettings(sessionMarkerIndicator?.settings ?? {}),
+    [sessionMarkerIndicator],
+  );
+  const sessionMarkerWindows = useMemo(
+    () => sessionMarkerIndicator
+      ? buildSessionMarkerWindows(
+          indicatorCandles,
+          sessionMarkerSettings,
+          candleIntervalMs ?? 60_000,
+        )
+      : [],
+    [candleIntervalMs, indicatorCandles, sessionMarkerIndicator, sessionMarkerSettings],
+  );
+  const sessionMarkerLevels = useMemo(
+    () => buildSessionMarkerLevels(
+      sessionMarkerWindows,
+      sessionMarkerSettings,
+      candleIntervalMs ?? 60_000,
+    ),
+    [candleIntervalMs, sessionMarkerSettings, sessionMarkerWindows],
   );
   const sessionHighLowRenderData = useMemo<SessionHighLowRenderLevel[]>(() => {
     const sessionTheme = visibleIndicatorTheme(settings);
@@ -12356,13 +12390,56 @@ function Chart({
         }
       }
     }
-    return [...previousLevels, ...ibLevels, ...fibLevels];
+    const markerTheme = visibleIndicatorTheme(settings);
+    const markerUsesTheme = sessionMarkerSettings.useThemeColors !== false;
+    const markerRoleColor = (role: SessionMarkerLevelRole, saved: string) => {
+      if (!markerUsesTheme) return saved || markerTheme.primary;
+      if (role === "high" || role === "imbalanceHigh") return markerTheme.positive;
+      if (role === "low" || role === "imbalanceLow") return markerTheme.negative;
+      if (role === "close") return markerTheme.muted;
+      return markerTheme.secondary;
+    };
+    const markerStyle = String(sessionMarkerSettings.lineStyle ?? "solid");
+    const markerChartTime = (timestamp: number) => (
+      eventChartTimeBySourceTimeRef.current.get(timestamp)
+      ?? Math.floor(timestamp / 1_000)
+    ) as Time;
+    const markerLevels: SessionHighLowRenderLevel[] = sessionMarkerLevels.map((level) => ({
+      id: level.id,
+      startTime: markerChartTime(level.startTimestamp),
+      endTime: sessionMarkerSettings.extendLine === true
+        ? undefined
+        : markerChartTime(level.endTimestamp),
+      price: level.price,
+      label: sessionMarkerSettings.showLabels === false ? "" : level.label,
+      color: level.role === "open" && sessionMarkerSettings.markerEnabled === true
+        ? String((sessionMarkerSettings.useThemeColors !== false
+          ? (sessionMarkerWindows.find((window) => window.startTimestamp === level.startTimestamp)?.openingPositive !== false
+            ? markerTheme.positive : markerTheme.negative)
+          : (sessionMarkerWindows.find((window) => window.startTimestamp === level.startTimestamp)?.openingPositive !== false
+            ? sessionMarkerSettings.markerPositiveColor : sessionMarkerSettings.markerNegativeColor)) ?? markerTheme.primary)
+        : markerRoleColor(level.role, level.color),
+      labelColor: sessionMarkerSettings.useThemeColors !== false
+        ? markerTheme.primary
+        : String(sessionMarkerSettings.textColor ?? markerTheme.primary),
+      opacity: clamp(Number(sessionMarkerSettings.lineOpacity ?? 100) / 100, 0.05, 1),
+      lineWidth: clamp(Number(sessionMarkerSettings.lineWidth ?? 2), 1, 4),
+      lineStyle: markerStyle === "dashed" || markerStyle === "dotted" ? markerStyle : "solid",
+      fontSize: clamp(Number(sessionMarkerSettings.textSize ?? 11), 6, 32),
+      precision: priceFormat.precision,
+      showPriceInLabel: false,
+      labelAnchor: "start",
+    }));
+    return [...previousLevels, ...ibLevels, ...fibLevels, ...markerLevels];
   }, [
     chartReadyRevision,
     initialBalanceLevels,
     initialBalanceSettings,
     previousSessionLevels,
     priceFormat.precision,
+    sessionMarkerLevels,
+    sessionMarkerSettings,
+    sessionMarkerWindows,
     sessionHighLowSettings,
     settings.downColor,
     settings.borderDownColor,
@@ -12388,7 +12465,7 @@ function Chart({
       ?? Math.floor(timestamp / 1_000)
     ) as Time;
 
-    return marketSessionWindows.map((session) => {
+    const regularSessions: SessionWindowRenderData[] = marketSessionWindows.map((session) => {
       const change = session.close - session.open;
       const suffix = sessionSettings.showPercentChange === true && session.open
         ? ` ${(change / session.open * 100).toFixed(2)}%`
@@ -12421,12 +12498,73 @@ function Chart({
         showLabel: sessionSettings.showLabels !== false,
       };
     });
+    const markerTheme = visibleIndicatorTheme(settings);
+    const markerUsesTheme = sessionMarkerSettings.useThemeColors !== false;
+    const markerSessions: SessionWindowRenderData[] = sessionMarkerWindows.flatMap((session) => {
+      const customColor = String(sessionMarkerSettings[`${session.markerKey}SessionRangeColor`] ?? "");
+      const color = markerUsesTheme ? markerTheme.secondary : customColor || markerTheme.secondary;
+      const sessionRange: SessionWindowRenderData = {
+        id: `session-marker-window-${session.markerKey}-${session.startTimestamp}`,
+        startTime: chartTimeForTimestamp(session.startTimestamp),
+        endTime: chartTimeForTimestamp(Math.max(session.startTimestamp, session.endTimestamp - sessionIntervalMs)),
+        high: session.high,
+        low: session.low,
+        open: session.open,
+        close: session.close,
+        label: session.label,
+        color,
+        fillOpacity: sessionMarkerSettings.showSessionRange === false ? 0 : 0.08,
+        lineOpacity: clamp(Number(sessionMarkerSettings.lineOpacity ?? 100) / 100, 0.05, 1),
+        borderWidth: sessionMarkerSettings.showSessionRange === false
+          ? 0
+          : clamp(Number(sessionMarkerSettings.lineWidth ?? 2), 1, 4),
+        lineStyle: String(sessionMarkerSettings.lineStyle) === "dashed"
+          ? "dashed"
+          : String(sessionMarkerSettings.lineStyle) === "dotted" ? "dotted" : "solid",
+        fontSize: clamp(Number(sessionMarkerSettings.textSize ?? 11), 6, 32),
+        showBackground: sessionMarkerSettings.showSessionRange !== false,
+        showBorders: sessionMarkerSettings.showSessionRange !== false,
+        // The marker's independently coloured open/close levels are rendered
+        // by the level primitive; do not paint a second same-colour pair here.
+        showOpenClose: false,
+        showLabel: sessionMarkerSettings.showLabels !== false,
+      };
+      if (sessionMarkerSettings.showImbalanceRange === false) return [sessionRange];
+      const imbalanceColor = markerUsesTheme
+        ? markerTheme.muted
+        : String(sessionMarkerSettings[`${session.markerKey}ImbalanceRangeColor`] ?? markerTheme.muted);
+      const imbalanceEnd = Math.min(
+        session.endTimestamp - sessionIntervalMs,
+        session.startTimestamp + Number(sessionMarkerSettings[`${session.markerKey}ImbalanceMinutes`] ?? 60) * 60_000,
+      );
+      return [sessionRange, {
+        ...sessionRange,
+        id: `session-marker-imbalance-${session.markerKey}-${session.startTimestamp}`,
+        endTime: chartTimeForTimestamp(Math.max(session.startTimestamp, imbalanceEnd)),
+        high: session.imbalanceHigh,
+        low: session.imbalanceLow,
+        label: "",
+        color: imbalanceColor,
+        fillOpacity: 0.12,
+        showLabel: false,
+        showOpenClose: false,
+      }];
+    });
+    return [...regularSessions, ...markerSessions];
   }, [
     candleIntervalMs,
     chartReadyRevision,
     marketSessionWindows,
     priceFormat.precision,
+    sessionMarkerSettings,
+    sessionMarkerWindows,
     sessionsIndicator,
+    settings.backgroundColor,
+    settings.borderDownColor,
+    settings.borderUpColor,
+    settings.downColor,
+    settings.gridColor,
+    settings.upColor,
   ]);
   sessionWindowRenderDataRef.current = sessionWindowRenderData;
   const toolbarMetrics = useMemo(() => {
