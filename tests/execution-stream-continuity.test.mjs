@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   acceptExecutionStreamSeed,
   advanceExecutionStreamReceipt,
+  hasExecutionStreamReceiptMetadata,
 } from "../src/lib/executionStreamContinuity.ts";
 
 test("only a named, sequence-zero continuous seed proves a stream", () => {
@@ -12,6 +13,13 @@ test("only a named, sequence-zero continuous seed proves a stream", () => {
   assert.equal(acceptExecutionStreamSeed({ streamId: "", batchSequence: 0, continuity: "continuous" }), null);
   assert.equal(acceptExecutionStreamSeed({ streamId: "stream-a", batchSequence: 1, continuity: "continuous" }), null);
   assert.equal(acceptExecutionStreamSeed({ streamId: "stream-a", batchSequence: 0 }), null);
+});
+
+test("legacy payloads are distinguishable from malformed receipt payloads during rollout", () => {
+  assert.equal(hasExecutionStreamReceiptMetadata({ records: [] }), false);
+  assert.equal(hasExecutionStreamReceiptMetadata({ streamId: "stream-a" }), true);
+  assert.equal(hasExecutionStreamReceiptMetadata({ batchSequence: 0 }), true);
+  assert.equal(hasExecutionStreamReceiptMetadata({ continuity: "continuous" }), true);
 });
 
 test("missing, duplicate, reordered and cross-stream trade batches break continuity", () => {

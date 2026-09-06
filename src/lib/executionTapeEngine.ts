@@ -15,6 +15,7 @@ import type { InstitutionalTrade } from "@/lib/institutionalMarketData";
 import {
   acceptExecutionStreamSeed,
   advanceExecutionStreamReceipt,
+  hasExecutionStreamReceiptMetadata,
   type ExecutionStreamContinuity,
   type ExecutionStreamReceipt,
 } from "@/lib/executionStreamContinuity";
@@ -194,6 +195,19 @@ export function createExecutionTapeEngine(
           };
           const nextReceipt = acceptExecutionStreamSeed(payload);
           if (!nextReceipt) {
+            // Rolling deploys briefly pair a new website with the preceding
+            // gateway. Preserve the legacy tape for studies that never claim
+            // exact stream coverage, but leave continuity unproved so Auction
+            // Gap and future order-sensitive studies fail closed.
+            if (!hasExecutionStreamReceiptMetadata(payload)) {
+              const additions = admitRecords(tape, decodeRecords(payload.records));
+              if (!seedPublished) {
+                discardPending();
+                seedPublished = true;
+                handlers.onSeed(tape.records.slice());
+              } else if (additions.length) queue(additions);
+              return;
+            }
             setContinuity("broken");
             scheduleReconnect(STREAM_STALE_RECONNECT_DELAY_MS);
             return;
@@ -232,6 +246,11 @@ export function createExecutionTapeEngine(
             ? advanceExecutionStreamReceipt(receipt, payload)
             : null;
           if (!nextReceipt || continuity !== "continuous") {
+            if (!receipt && !hasExecutionStreamReceiptMetadata(payload)) {
+              const additions = admitRecords(tape, decodeRecords(payload.records));
+              if (additions.length && seedPublished) queue(additions);
+              return;
+            }
             setContinuity("broken");
             scheduleReconnect(STREAM_STALE_RECONNECT_DELAY_MS);
             return;

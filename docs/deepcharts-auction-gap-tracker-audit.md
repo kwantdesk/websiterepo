@@ -609,3 +609,15 @@ replay-equivalent silence, continuity failure, settings changes, corrections
 and muted deduplication. The complete focused Auction Gap suite is 112/112;
 project TypeScript and the new module's ESLint pass. Browser sound/popup
 presentation and live-market observation are still required before release.
+
+### Rolling-deploy compatibility
+
+The browser distinguishes a fully legacy payload (no receipt fields) from a
+malformed new-protocol payload. During a website-before-gateway rolling deploy,
+legacy seeds/trades continue feeding existing non-order-sensitive studies but
+never promote continuity beyond `checking`; Auction Gap therefore remains
+fail-closed. A partially present or invalid receipt is treated as damage and
+reconnected. This prevents a protocol rollout from freezing every existing
+Footprint/CVD/profile consumer while still refusing unproved Auction Gap data.
+Three receipt tests plus the full 112-test Auction Gap suite pass (115 total),
+with TypeScript and scoped lint clean.

@@ -217,3 +217,9 @@ damage, historical corrections, scope changes and disabled channels are silent
 and become the new baseline. Four alert lifecycle tests bring the focused suite
 to 112/112; TypeScript and module lint pass. Interactive authenticated-browser
 presentation and live-session soak remain, so the Pending gate stays unchanged.
+
+Rolling-deploy guard: a new website paired briefly with the old gateway now
+continues processing receipt-less legacy tape for existing indicators without
+claiming continuity. Auction Gap remains unavailable on that unproved path;
+partially present/invalid receipts still force recovery. Receipt + Auction Gap
+tests are 115/115; TypeScript and scoped lint pass.

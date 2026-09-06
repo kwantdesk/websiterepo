@@ -11,6 +11,12 @@ type ContinuityPayload = {
   continuity?: unknown;
 };
 
+export function hasExecutionStreamReceiptMetadata(payload: ContinuityPayload): boolean {
+  return payload.streamId !== undefined
+    || payload.batchSequence !== undefined
+    || payload.continuity !== undefined;
+}
+
 export function acceptExecutionStreamSeed(payload: ContinuityPayload): ExecutionStreamReceipt | null {
   const streamId = String(payload.streamId ?? "").trim();
   const batchSequence = Number(payload.batchSequence);
