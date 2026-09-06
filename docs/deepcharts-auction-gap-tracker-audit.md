@@ -51,6 +51,22 @@ the successful project-config check; it is not a production build claim.
 
 ## Required before release
 
+### Time-chart allocation foundation, 2026-09-07
+
+`auctionGapTimeAllocation.ts` assigns prepared executions using explicit,
+nonoverlapping half-open bar intervals and reconciles exact per-bar execution
+volume. A boundary print belongs to the next bar, distinct same-ms identities
+remain distinct, and session gaps do not absorb prints into adjacent candles.
+Missing/extra volume, out-of-window prints and invalid order/IDs are explicit
+failures. Empty confirmed zero-volume bars remain empty. Expected intervals and
+volumes must come from the same authoritative replay-clipped source window;
+this utility cannot prove that caller provenance by itself.
+
+39 combined Auction Gap tests, scoped ESLint and full project TypeScript pass,
+including the final stricter event allocation validation. This is still isolated
+data-path work. Row materialization, reset subsegments, worker/incremental path,
+full renderer/settings and live/browser/release verification remain.
+
 ### Exact event ownership foundation, 2026-09-07
 
 `auctionGapEventAllocation.ts` replays the unchanged existing event builder's

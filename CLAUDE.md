@@ -1,5 +1,15 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-07 — Auction Gap time allocation foundation
+
+- Added explicit half-open time-bar allocation with per-bar volume reconciliation;
+  real session gaps, same-ms execution IDs and empty zero-volume bars preserved.
+- 39 combined tests, scoped lint and full tsc pass (also covers latest event
+  allocation tightening). No runtime integration/gate/deployment yet, 28 Pending.
+- Next join prepared executions + time/event ownership into independent raw
+  detection/retest rows and reset subsegments; then worker/live/settings/render.
+  Expected intervals/volumes require authoritative source provenance, not guesses.
+
 ## 2026-09-07 — Auction Gap exact event allocation foundation
 
 - New `auctionGapEventAllocation.ts` uses unchanged chart builder tail replay,

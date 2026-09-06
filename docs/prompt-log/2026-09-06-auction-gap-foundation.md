@@ -32,3 +32,7 @@ unchanged event engine tail replay with full expected candle reconciliation.
 34 tests pass; no bridge-volume duplication or same-ms timestamp guessing.
 No production push/enablement; exact row generation and UI/live integration
 remain, with explicit synthetic-boundary and nonpositive-price limitations.
+
+Time allocation continuation: explicit start/end intervals, exact bar-volume
+reconciliation and no assignment across genuine session gaps. 39 combined
+tests, scoped lint and full TypeScript pass. No release; integration remains.
