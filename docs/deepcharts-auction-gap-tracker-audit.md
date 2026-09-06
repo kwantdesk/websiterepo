@@ -51,6 +51,30 @@ the successful project-config check; it is not a production build claim.
 
 ## Required before release
 
+### Execution source boundary, 2026-09-07
+
+`auctionGapExecutions.ts` validates exact source/expected contract, explicit
+coverage, tick alignment, source order, volume consistency and individual-print
+OHLC equality. Rejects flowOnly aggregates and conflicting duplicate identities;
+identical repeats deduplicate. Replay excludes prints after asOfMs. Explicit
+aggressor fills an otherwise unclassified print, but partially classified data
+retains unknown volume. Zero/negative tick-aligned futures prices are accepted.
+Per-execution session classification retains unfiltered prints with a detection
+flag. No new HTTP/stream/login or working-study changes.
+
+29 combined tests, scoped lint and full project TypeScript pass. This strict
+boundary still requires integration evidence from real provider payloads; the
+coverage assertion is supplied by the caller, not inferred from record count.
+Records lack their own contract field, so response provenance must be validated.
+No numerical parity, live soak, or complete source adapter is claimed yet.
+
+Current existing `buildFootprintBars` allocates by lowerBoundCandle timestamp
+and approximate end; the raw auction path also inherits footprintBuildSettings
+including display size filters. Do NOT reuse these as proof of exact allocation
+for same-timestamp event bars. Next adapter must assign execution identities/
+volumes to actual chart-bar IDs, preserve split-execution conservation and
+separate filtered detection from unfiltered retests/reset subsegments.
+
 ### Exchange clock foundation
 
 `auctionGapSessionClock.ts` now classifies source executions against an explicit

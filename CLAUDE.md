@@ -1,5 +1,17 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-07 — Auction Gap source validation foundation
+
+- `auctionGapExecutions.ts` validates provider execution response contract/
+  coverage, exact ticks and volumes, record identity, replay cutoff and clock
+  classification. Rejects aggregates and conflicting duplicates; preserves
+  unknown-side volume. 29 tests, scoped lint and full tsc pass.
+- Still not connected/enabled; 28 Pending. Next exact bar allocation is needed:
+  existing Footprint builder maps timestamps and inherits display filters.
+  Cannot silently use that for same-ms event bars or time-filter boundaries.
+- Notes in auction audit. No production push for disconnected foundation;
+  retain batching policy and preserve unrelated native/social work.
+
 ## 2026-09-06 — Auction Gap exchange-time policy foundation
 
 - `auctionGapSessionClock.ts` requires explicit instrument timezone/calendar,

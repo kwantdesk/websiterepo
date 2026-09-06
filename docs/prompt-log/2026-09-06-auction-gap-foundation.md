@@ -20,3 +20,9 @@ Exchange-time continuation: explicit calendar clock with per-execution filtering
 overnight windows, DST-safe reset dates and bounded cache. 23 combined tests,
 lint and TypeScript pass. Clock is not yet connected to source aggregation;
 no runtime deployment or gate change. Native boundary parity remains unproved.
+
+2026-09-07 source continuation: strict provider-execution validation and replay
+cutoff, exact identity/tick/volume checks and per-print session flags. 29 tests,
+lint and full TypeScript pass. Found existing timestamp allocation/display-filter
+inheritance unsuitable as proof for this new study. Exact allocation/source
+integration still required. No production change; 28 Pending.
