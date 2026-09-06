@@ -306,6 +306,16 @@ recap of the open items below and update this file when their state changes.
   `docs/deepcharts-session-imbalance-audit.md`. Do not invent the optional DLL
   volume-line formula while it remains undocumented.
 
+### Auction Gap Tracker release contract — 2026-09-07
+
+- Auction Gap is an exact classified one-tick volume-at-price study. It must
+  fail closed on partial history, mismatched contracts/bar geometry or broken
+  live-stream continuity; never substitute candle gaps or grouped Footprint.
+- Its background worker and incremental lifecycle are the only released path.
+  Preserve historical hydration, replay and closed-market alert silence.
+- Full evidence and protected-parity limits remain in
+  `docs/deepcharts-auction-gap-tracker-audit.md`.
+
 - The pending-indicator overhaul starts from the frozen 21-row inventory in
   `docs/deepcharts-pending-indicator-overhaul.md`. Existing addable indicators
   are out of scope and must not be changed to make a pending row appear done.

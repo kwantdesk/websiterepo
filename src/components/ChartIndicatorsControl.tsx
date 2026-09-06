@@ -557,6 +557,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "poc-auction-suite",
   "tape-speed-order-flow-burst",
   "speed-of-tape-instant",
+  "auction-gap-tracker",
   "delta-cumulative-candlestick",
   "delta-cumulative-histogram",
   "imbalance-tracker",

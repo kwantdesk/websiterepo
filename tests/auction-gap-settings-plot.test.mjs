@@ -28,13 +28,13 @@ test('numeric boundaries, booleans, enums and colour/string inputs normalize wit
   for (const field of AUCTION_GAP_NUMERIC_SETTINGS) assert.ok(field.max >= field.defaultValue && field.min <= field.defaultValue && field.step === 1);
 });
 
-test('all saved settings survive the real template export/import; pending gate stays off', () => {
+test('all saved settings survive the real template export/import; release gate is on', () => {
   const settings = { ...defaultIndicatorSettings('auction-gap-tracker'), includeMode: 'wick-only', plotMode: 'marker-and-zones',
     markerPlacement: 'high', resetMode: 'eth-and-rth-open', filterTime: 'custom', customStartMinutes: 1020, customEndMinutes: 510,
     onlyTriggered: true, useThemeColors: false, buyColor: '#123456', alertMessage: 'My gap', alertSoundEnabled: true };
   const imported = importIndicatorTemplate('auction-gap-tracker', exportIndicatorTemplate({ indicatorId: 'auction-gap-tracker', name: 'All fields', settings }));
   assert.equal(imported.ok, true); assert.deepEqual(imported.settings, settings);
-  assert.equal(LIVE_CHART_INDICATOR_IDS.has('auction-gap-tracker'), false);
+  assert.equal(LIVE_CHART_INDICATOR_IDS.has('auction-gap-tracker'), true);
   assert.equal(auctionGapSettingsSection('alertSoundEnabled'), 'Alerts'); assert.equal(auctionGapSettingsSection('extendedBars'), 'Style');
 });
 

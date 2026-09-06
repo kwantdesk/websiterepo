@@ -2639,3 +2639,10 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
 - `session-imbalance` is an independent 17:00 Chicago CME opening-range study,
   not an alias of `ib-levels`. Keep its developing range no-lookahead, its
   50/100% extensions exact, and historical hydration silent.
+
+## 2026-09-07 — Auction Gap Tracker
+
+- `auction-gap-tracker` is released only on complete classified one-tick rows
+  with matching contract/bar geometry and continuous stream receipts. Keep its
+  worker lifecycle fail-closed and its history/replay/closed-market alerts
+  silent; never replace it with an OHLC opening-gap shortcut.

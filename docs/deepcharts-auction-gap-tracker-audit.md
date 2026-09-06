@@ -621,3 +621,18 @@ reconnected. This prevents a protocol rollout from freezing every existing
 Footprint/CVD/profile consumer while still refusing unproved Auction Gap data.
 Three receipt tests plus the full 112-test Auction Gap suite pass (115 total),
 with TypeScript and scoped lint clean.
+
+### Release gate — 2026-09-07
+
+The catalogue now exposes the completed implementation. Both engine and
+renderer gates point at the exact-data Chart path described above; stored
+settings are normalized through `normalizeAuctionGapSettings` on restoration.
+The focused 112-test suite, shared 18-check template suite and project
+TypeScript pass after activation. Production build and deployed-SHA checks are
+recorded in the release prompt log.
+
+This release does not change the calculation to make the badge disappear. It
+continues to fail closed when complete raw one-tick rows, matching contract/bar
+geometry or continuous stream receipts are unavailable. A weekend cannot
+provide a genuine market-open soak, so live native visual/numerical parity
+remains unclaimed and is a launch QA follow-up rather than fabricated evidence.

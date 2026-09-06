@@ -1,5 +1,5 @@
 import type { ChartSettings } from "@/lib/chartSettings";
-import { AUCTION_GAP_DEFAULTS, AUCTION_GAP_NUMERIC_SETTINGS, auctionGapThemeColors } from "@/lib/auctionGapSettings";
+import { AUCTION_GAP_DEFAULTS, AUCTION_GAP_NUMERIC_SETTINGS, auctionGapThemeColors, normalizeAuctionGapSettings } from "@/lib/auctionGapSettings";
 import { ABSOLUTE_LEVEL_DEFAULTS } from "@/lib/absoluteLevels";
 import { PIVOT_POINT_DEFAULTS } from "@/lib/pivotPoints";
 import { GAP_DETECTOR_DEFAULTS } from "@/lib/gapDetector";
@@ -162,6 +162,7 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "poc-auction-suite",
   "tape-speed-order-flow-burst",
   "speed-of-tape-instant",
+  "auction-gap-tracker",
   "moving-average",
   "vwap",
   "vwap-envelopes",
@@ -3023,6 +3024,15 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
       : instance;
   if (normalizedInstance.indicatorId === "market-profile-tpo") {
     normalizedInstance = { ...normalizedInstance, indicatorId: "tpo-chart" };
+  }
+  if (normalizedInstance.indicatorId === "auction-gap-tracker") {
+    return {
+      ...normalizedInstance,
+      settings: normalizeAuctionGapSettings({
+        ...defaultIndicatorSettings("auction-gap-tracker"),
+        ...(normalizedInstance.settings ?? {}),
+      }),
+    };
   }
   if (normalizedInstance.indicatorId === "zig-zag") {
     const settings = normalizeZigZagSettings({
