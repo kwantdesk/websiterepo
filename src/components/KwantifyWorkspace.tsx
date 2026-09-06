@@ -5725,6 +5725,14 @@ function WorkspaceChartPaneComponent({
     instance.enabled && CHART_INDICATOR_BY_ID.get(instance.indicatorId)?.requiresOrderFlow);
   const needsAuctionGapHistory = indicators.some((instance) =>
     instance.enabled && instance.indicatorId === "auction-gap-tracker");
+  const auctionGapHistory = resolvedContractSymbol && needsAuctionGapHistory
+    ? workspaceAuctionGapHistory.get(workspaceAuctionGapKey(
+        pane.symbol,
+        pane.timeframe,
+        resolvedContractSymbol,
+        replayHistoryRange?.key ?? `${DEFAULT_CHART_HISTORY_CALENDAR_DAYS}d`,
+      )) ?? null
+    : null;
   const replayOrderFlowRequired = Boolean(replayHistoryRange && needsOrderFlowHistory);
   // Big Contracts is the one study with an explicit lookback in days; the
   // execution archive request has to cover it.
@@ -9503,6 +9511,7 @@ function WorkspaceChartPaneComponent({
           marketIsActive={replayTimestampMs ? false : marketIsActive}
           replayTimestampMs={replayTimestampMs}
           orderFlowHistoryReady={orderFlowHistoryReady}
+          auctionGapHistory={auctionGapHistory}
           settings={settings}
           onOpenSettings={onOpenSettings}
           onCreateAlertAtPrice={onCreateAlertAtPrice}

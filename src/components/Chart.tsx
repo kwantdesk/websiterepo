@@ -580,6 +580,14 @@ import {
   type KwantMarketDataSource,
 } from "@/lib/professionalDrawingEngine";
 import { isEventBasedChartInterval } from "@/lib/chartIntervals";
+import {
+  alignAuctionGapCompactRows,
+  type AuctionGapCompactRowsResult,
+} from "@/lib/auctionGapCompactRows";
+import { AuctionGapWorkerClient } from "@/lib/auctionGapWorkerClient";
+import { buildAuctionGapPlotModels, type AuctionGapPlotModel } from "@/lib/auctionGapPlot";
+import { AuctionGapPrimitive } from "@/lib/auctionGapPrimitive";
+import { normalizeAuctionGapSettings } from "@/lib/auctionGapSettings";
 import { compactTimeZoneLabel, normalizeTimeZone } from "@/lib/timeZones";
 import { resolveChartLevelOverlaps } from "@/lib/chartLevelOverlap";
 import type {
@@ -714,6 +722,7 @@ interface ChartProps {
   marketIsActive?: boolean;
   replayTimestampMs?: number | null;
   orderFlowHistoryReady?: boolean;
+  auctionGapHistory?: AuctionGapCompactRowsResult | null;
   onOpenSettings?: () => void;
   onCreateAlertAtPrice?: (price: string) => void;
   onRemoveAllIndicators?: () => void;
@@ -3127,6 +3136,7 @@ function Chart({
   marketIsActive,
   replayTimestampMs = null,
   orderFlowHistoryReady = true,
+  auctionGapHistory = null,
   onOpenSettings,
   onCreateAlertAtPrice,
   onRemoveAllIndicators,
@@ -3303,6 +3313,8 @@ function Chart({
   const fixedPriceLevelLabelsRef = useRef<FixedPriceLevelLabelsPrimitive | null>(null);
   const sessionHighLowPrimitiveRef = useRef<SessionHighLowPrimitive | null>(null);
   const imbalanceZonesPrimitiveRef = useRef<ImbalanceZonesPrimitive | null>(null);
+  const auctionGapPrimitiveRef = useRef<AuctionGapPrimitive | null>(null);
+  const auctionGapModelsRef = useRef<AuctionGapPlotModel[]>([]);
   const positionCalculatorPrimitiveRef = useRef<PositionCalculatorPrimitive | null>(null);
   const repaintNotifierRef = useRef<ChartRepaintNotifierPrimitive | null>(null);
   const imbalanceZoneModelsRef = useRef<ImbalanceZoneModel[]>([]);
@@ -5814,6 +5826,131 @@ function Chart({
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "unfinished-auction") ?? null,
     [indicatorSignature, indicators],
   );
+  const auctionGapIndicator = useMemo(
+    () => indicators.find((instance) => instance.enabled && instance.indicatorId === "auction-gap-tracker") ?? null,
+    [indicatorSignature, indicators],
+  );
+  const auctionGapSettingsSignature = useMemo(
+    () => JSON.stringify(auctionGapIndicator?.settings ?? {}),
+    [auctionGapIndicator],
+  );
+  const auctionGapReplayActive = replayTimestampMs !== null;
+  const auctionGapReplayWindowKey = auctionGapReplayActive ? `replay:${candles.length}` : "live";
+
+  useEffect(() => {
+    const primitive = auctionGapPrimitiveRef.current;
+    const expectedContract = String(contractSymbol ?? "").trim().toUpperCase();
+    if (!auctionGapIndicator || !expectedContract || !timeframe) {
+      auctionGapModelsRef.current = [];
+      primitive?.update([]);
+      return;
+    }
+    const chartCandles = viewportSyncCandlesRef.current;
+    const aligned = alignAuctionGapCompactRows(auctionGapHistory, chartCandles, expectedContract);
+    if (aligned.status !== "ready") {
+      auctionGapModelsRef.current = [];
+      primitive?.update([]);
+      return;
+    }
+
+    const normalized = normalizeAuctionGapSettings(auctionGapIndicator.settings);
+    const tickSize = priceFormat.minMove;
+    const geometry = aligned.history.bars.map((bar, index) => {
+      const candle = aligned.candles[index];
+      return {
+        id: JSON.stringify([expectedContract, timeframe, bar.timestamp, index]),
+        timestamp: bar.timestamp,
+        endTime: Number(bar.endTime ?? bar.sourceEndTimestamp ?? bar.timestamp),
+        openTick: Math.round(candle.open / tickSize),
+        highTick: Math.round(candle.high / tickSize),
+        lowTick: Math.round(candle.low / tickSize),
+        closeTick: Math.round(candle.close / tickSize),
+        isClosed: index < aligned.candles.length - 1,
+      };
+    });
+    const scope = JSON.stringify([
+      chartInstanceId, expectedContract, timeframe, auctionGapIndicator.instanceId,
+      auctionGapSettingsSignature, aligned.history.bars[0]?.timestamp,
+      aligned.history.bars.at(-1)?.timestamp, aligned.history.bars.length,
+      auctionGapReplayWindowKey,
+    ]);
+    let disposed = false;
+    const client = new AuctionGapWorkerClient((reply) => {
+      if (disposed || reply.scope !== scope) return;
+      if (reply.result.status !== "ready") {
+        auctionGapModelsRef.current = [];
+        auctionGapPrimitiveRef.current?.update([]);
+        return;
+      }
+      const models = buildAuctionGapPlotModels(
+        reply.result.zones,
+        aligned.candles,
+        normalized,
+        tickSize,
+        settings,
+        aligned.logicalOffset,
+      );
+      auctionGapModelsRef.current = models;
+      auctionGapPrimitiveRef.current?.update(models);
+    });
+    client.request(scope, {
+      contractSymbol: expectedContract,
+      expectedContract,
+      tickSize,
+      asOfMs: auctionGapReplayActive
+        ? Number(aligned.history.bars.at(-1)?.endTime
+          ?? aligned.history.bars.at(-1)?.sourceEndTimestamp
+          ?? aligned.history.bars.at(-1)?.timestamp)
+        : Date.now(),
+      coverage: "complete",
+      records: [],
+      compactHistory: aligned.history,
+      candles: aligned.candles,
+      geometry,
+      chart: isEventBasedChartInterval(timeframe)
+        ? { kind: "event", timeframe, symbol: expectedContract }
+        : { kind: "time" },
+      calendar: {
+        timeZone: "America/Chicago",
+        sessionOpenMinutes: 17 * 60,
+        rthStartMinutes: 8 * 60 + 30,
+        rthEndMinutes: 15 * 60,
+      },
+      timeSettings: {
+        resetMode: normalized.resetMode as "none" | "session-open" | "eth-and-rth-open",
+        filterTime: normalized.filterTime as "none" | "eth" | "rth" | "custom",
+        customStartMinutes: Number(normalized.customStartMinutes),
+        customEndMinutes: Number(normalized.customEndMinutes),
+      },
+      detectionSettings: normalized,
+      lifecycleSettings: {
+        retestMode: normalized.retestMode as "touch" | "cross",
+        extendedBars: Number(normalized.extendedBars),
+        showTriggered: Boolean(normalized.showTriggered),
+        onlyTriggered: Boolean(normalized.onlyTriggered),
+      },
+    });
+    return () => {
+      disposed = true;
+      client.dispose();
+    };
+  }, [
+    auctionGapHistory,
+    auctionGapIndicator,
+    auctionGapReplayActive,
+    auctionGapReplayWindowKey,
+    auctionGapSettingsSignature,
+    chartInstanceId,
+    contractSymbol,
+    priceFormat.minMove,
+    settings.backgroundColor,
+    settings.borderDownColor,
+    settings.borderUpColor,
+    settings.downColor,
+    settings.gridColor,
+    settings.upColor,
+    timeframe,
+  ]);
   const barPocIndicator = useMemo(
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "bar-poc-indicator") ?? null,
     [indicatorSignature, indicators],
@@ -14129,6 +14266,10 @@ function Chart({
     imbalanceZonesPrimitive.update(imbalanceZoneModelsRef.current);
     candleSeries.attachPrimitive(imbalanceZonesPrimitive);
     imbalanceZonesPrimitiveRef.current = imbalanceZonesPrimitive;
+    const auctionGapPrimitive = new AuctionGapPrimitive();
+    auctionGapPrimitive.update(auctionGapModelsRef.current);
+    candleSeries.attachPrimitive(auctionGapPrimitive);
+    auctionGapPrimitiveRef.current = auctionGapPrimitive;
     const sessionWindowPrimitive = new SessionWindowPrimitive();
     sessionWindowPrimitive.update(sessionWindowRenderDataRef.current);
     candleSeries.attachPrimitive(sessionWindowPrimitive);
@@ -15114,6 +15255,13 @@ function Chart({
             // Chart teardown can detach primitives before React cleanup runs.
           }
         }
+        if (candleSeriesRef.current && auctionGapPrimitiveRef.current) {
+          try {
+            candleSeriesRef.current.detachPrimitive(auctionGapPrimitiveRef.current);
+          } catch {
+            // Chart teardown can detach primitives before React cleanup runs.
+          }
+        }
         if (candleSeriesRef.current && volumeProfilePrimitiveRef.current) {
           try {
             candleSeriesRef.current.detachPrimitive(volumeProfilePrimitiveRef.current);
@@ -15315,6 +15463,7 @@ function Chart({
       fixedPriceLevelLabelsRef.current = null;
       sessionHighLowPrimitiveRef.current = null;
       imbalanceZonesPrimitiveRef.current = null;
+      auctionGapPrimitiveRef.current = null;
       positionCalculatorPrimitiveRef.current = null;
       repaintNotifierRef.current = null;
       sessionWindowPrimitiveRef.current = null;

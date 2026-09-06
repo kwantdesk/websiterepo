@@ -1,5 +1,17 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-07 — Auction Gap history reaches the chart primitive
+
+- Active Auction Gap panes now pass their contract/timeframe-scoped compact
+  history into Chart, calculate the lifecycle in the existing Web Worker and
+  paint the resulting zones/markers with the native chart primitive.
+- Added a fail-closed alignment boundary for history trimmed on the left or
+  followed by a changed/developing live bar. Contract, unique timestamps,
+  contiguity and exact volume must still match before rows can paint.
+- 106 Auction Gap tests, 51 gateway tests, TypeScript and scoped lint pass.
+  Remaining: incremental live execution continuation, live coverage receipts,
+  user-visible unavailable state/alerts and browser QA. Gate OFF/no push/deploy.
+
 ## 2026-09-07 — Compact Auction Gap history feeds the study engine
 
 - Added a v2 slice adapter that classifies each exchange minute with the real

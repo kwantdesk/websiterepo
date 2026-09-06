@@ -33,6 +33,15 @@ export type AuctionGapCompactRowsResult =
   | { status: "ready"; coverage: "complete"; contractSymbol: string; bars: AuctionGapCompactBar[] }
   | { status: "unavailable"; coverage: "partial"; reason: string; bars: [] };
 
+export type AuctionGapAlignedCompactRows =
+  | {
+      status: "ready";
+      history: Extract<AuctionGapCompactRowsResult, { status: "ready" }>;
+      candles: Candle[];
+      logicalOffset: number;
+    }
+  | { status: "unavailable"; reason: string };
+
 const record = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 const finite = (value: unknown): value is number =>
@@ -61,6 +70,71 @@ function copyPriceRows(value: unknown, lowTick: number, highTick: number) {
 const rowsVolume = (rows: readonly AuctionGapCompactPriceRow[]) => rows.reduce(
   (sum, row) => sum + row.bidVolume + row.askVolume + row.unknownVolume, 0,
 );
+
+/**
+ * Align already-validated history to the candles currently owned by a chart.
+ *
+ * A workspace can trim the left side of a provider response and can append or
+ * replace a developing live bar after the response was validated. Indexing the
+ * compact rows directly in either case would paint a real gap on the wrong bar.
+ * Only one contiguous, volume-identical overlap is admitted; a changed forming
+ * bar is allowed solely as a trailing boundary and is left for the live path.
+ */
+export function alignAuctionGapCompactRows(
+  history: AuctionGapCompactRowsResult | null | undefined,
+  candles: readonly Candle[],
+  expectedContract: string,
+): AuctionGapAlignedCompactRows {
+  const fail = (reason: string): AuctionGapAlignedCompactRows => ({ status: "unavailable", reason });
+  const contract = expectedContract.trim().toUpperCase();
+  if (!history || history.status !== "ready" || history.coverage !== "complete"
+    || !contract || history.contractSymbol !== contract || !candles.length) {
+    return fail(history?.status === "unavailable" ? history.reason : "history-unavailable");
+  }
+
+  const chartIndexByTimestamp = new Map<number, number>();
+  for (let index = 0; index < candles.length; index += 1) {
+    const timestamp = candles[index].timestamp;
+    if (!finite(timestamp) || chartIndexByTimestamp.has(timestamp)) return fail("ambiguous-chart-time");
+    chartIndexByTimestamp.set(timestamp, index);
+  }
+
+  const matches: Array<{ sourceIndex: number; chartIndex: number }> = [];
+  let encounteredChangedOverlap = false;
+  for (let sourceIndex = 0; sourceIndex < history.bars.length; sourceIndex += 1) {
+    const bar = history.bars[sourceIndex];
+    const chartIndex = chartIndexByTimestamp.get(bar.timestamp);
+    if (chartIndex === undefined) continue;
+    const candle = candles[chartIndex];
+    const sameVolume = finite(candle.volume) && closeEnough(rowsVolume(bar.rows), candle.volume);
+    if (!sameVolume) {
+      encounteredChangedOverlap = true;
+      continue;
+    }
+    if (encounteredChangedOverlap) return fail("non-trailing-chart-change");
+    matches.push({ sourceIndex, chartIndex });
+  }
+  if (!matches.length) return fail("no-aligned-history");
+  for (let index = 1; index < matches.length; index += 1) {
+    if (matches[index].sourceIndex !== matches[index - 1].sourceIndex + 1
+      || matches[index].chartIndex !== matches[index - 1].chartIndex + 1) {
+      return fail("non-contiguous-history");
+    }
+  }
+
+  const logicalOffset = matches[0].chartIndex;
+  const alignedCandles = matches.map(({ chartIndex }) => ({ ...candles[chartIndex] }));
+  const bars = matches.map(({ sourceIndex }, chartIndex) => ({
+    ...structuredClone(history.bars[sourceIndex]),
+    chartIndex,
+  }));
+  return {
+    status: "ready",
+    logicalOffset,
+    candles: alignedCandles,
+    history: { status: "ready", coverage: "complete", contractSymbol: contract, bars },
+  };
+}
 
 /**
  * Validate the gateway's compact Auction Gap rows against the chart candles

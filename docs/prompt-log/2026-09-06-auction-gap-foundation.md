@@ -1,5 +1,14 @@
 # Pending-library continuation — Auction Gap Tracker
 
+2026-09-07 chart-wiring continuation: enabled Auction Gap panes now pass their
+resolved-contract/timeframe-scoped compact history to Chart, calculate through
+the retained Web Worker pipeline and paint via the chart-native primitive.
+Added fail-closed trim/live-edge alignment requiring unique contiguous candle
+identity and exact source volume; only a trailing developing mismatch is left
+for live continuation. 106 Auction Gap tests, 51 gateway tests, tsc and scoped
+lint pass. Incremental live rows/receipts, state UX, alerts and browser QA
+remain; still Pending, no push/deploy.
+
 2026-09-07 compact-study continuation: added the v2 slice-to-source adapter;
 exchange/DST classification splits reset boundaries within a chart bar, raw
 rows remain available for retests and filters affect detection rows only. The

@@ -1,5 +1,22 @@
 # Auction Gap Tracker — implementation in progress
 
+### Validated history now paints through the real chart path — 2026-09-07
+
+An enabled Auction Gap pane now retrieves the exact compact payload retained
+for its resolved contract, timeframe and live/replay scope, hands it to the
+existing dedicated worker, and updates the chart-owned Auction Gap primitive
+with logical-index plot models. Primitive attachment and teardown follow the
+same chart lifecycle as the existing footprint/order-flow studies.
+
+Added a second fail-closed alignment boundary because the chart may left-trim
+the provider window or append/replace its live edge after server validation.
+Only a contiguous unique-timestamp overlap with exact source volume can paint;
+a differing developing candle is accepted only at the trailing boundary and is
+reserved for the incremental live path. 106 Auction Gap and 51 gateway tests,
+TypeScript and scoped lint pass. Live continuation/receipts, unavailable-state
+UX, alerts and browser QA remain, so the catalogue gate stays Pending and no
+production push/deployment was made.
+
 ### Compact slices feed the existing lifecycle — 2026-09-07
 
 Added the browser/worker adapter from validated v2 bars to Auction Gap source
