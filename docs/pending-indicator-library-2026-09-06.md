@@ -102,7 +102,7 @@ Live diagnostics returned exact SHA `18a17c4d5ba23233ae678c4a75e324f596f0927b`.
 Isolated final tree passed 90 combined tests, 18 template checks and the normal
 production build. This supersedes the local-only deployment status above/below.
 
-## Remaining 14 — not released by blanket enablement
+## Remaining 13 — not released by blanket enablement
 
 Each row needs evidence, settings/data implementation, calculation tests,
 renderer/theme/persistence verification and explicit visual/latency limits.
@@ -118,7 +118,7 @@ Do not tick a row just because its Add gate changes.
 | `monthly-volume-profile` | [ ] Owned range/job foundation tested; workspace/live/settings integration outstanding |
 | `session-volume-profile` | [ ] Shared-engine routing audited; session/workspace integration outstanding |
 | `visible-range-volume-profile` | [ ] Owned range/job foundation tested; viewport/sequence-aware data integration outstanding |
-| `market-profile-tpo` | [ ] Audit / implement / verify |
+| `market-profile-tpo` | [x] Removed duplicate catalogue row; legacy ID/favourites/workspaces canonicalize to the already-complete `tpo-chart` (TPO Daily) engine and settings instead of presenting a false second Pending study |
 | `anchored-vwap` | [x] Library entry now arms the existing live draw-on Anchored VWAP with four sources, three deviation bands, fill, theme styling and persistent drawing settings |
 | `on-candle-stats` | [ ] Audit / implement / verify |
 | `important-levels` | [ ] Audit / implement / verify |

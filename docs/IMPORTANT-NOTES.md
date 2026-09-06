@@ -316,6 +316,12 @@ recap of the open items below and update this file when their state changes.
 - Full evidence and protected-parity limits remain in
   `docs/deepcharts-auction-gap-tracker-audit.md`.
 
+### Market Profile TPO catalogue identity — 2026-09-07
+
+- `market-profile-tpo` is a legacy display-derived alias for the complete
+  `tpo-chart` / TPO Daily study, not a second formula. Keep it canonicalized
+  for saved workspaces and favourites; do not restore a duplicate Pending row.
+
 - The pending-indicator overhaul starts from the frozen 21-row inventory in
   `docs/deepcharts-pending-indicator-overhaul.md`. Existing addable indicators
   are out of scope and must not be changed to make a pending row appear done.

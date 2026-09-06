@@ -2646,3 +2646,9 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
   with matching contract/bar geometry and continuous stream receipts. Keep its
   worker lifecycle fail-closed and its history/replay/closed-market alerts
   silent; never replace it with an OHLC opening-gap shortcut.
+
+## 2026-09-07 — TPO catalogue alias
+
+- `market-profile-tpo` is a legacy alias of `tpo-chart` / TPO Daily. Preserve
+  canonical migration for old workspaces and favourites; never reintroduce it
+  as a separate Pending catalogue row.

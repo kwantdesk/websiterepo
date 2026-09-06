@@ -36,3 +36,17 @@ test("unimplemented studies are still reported rather than enabled", () => {
   const pending = auditIndicatorLibrary().pending.map(row => row.id);
   assert.ok(pending.includes("volume-delta-sprint"));
 });
+
+test("legacy Market Profile TPO resolves to the complete TPO Daily study", () => {
+  assert.equal(canonicalChartIndicatorId("market-profile-tpo"), "tpo-chart");
+  assert.equal(CHART_INDICATOR_BY_ID.has("market-profile-tpo"), false, "do not show a duplicate pending row");
+  assert.equal(CHART_INDICATOR_BY_ID.get("tpo-chart")?.name, "TPO Daily");
+  const restored = normalizePaneIndicatorState({ pane: [{
+    instanceId: "old-tpo",
+    indicatorId: "market-profile-tpo",
+    enabled: true,
+    settings: { subperiodMinutes: 15 },
+  }] }).pane[0];
+  assert.equal(restored.indicatorId, "tpo-chart");
+  assert.equal(restored.settings.subperiodMinutes, 15);
+});
