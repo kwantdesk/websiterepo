@@ -36,3 +36,9 @@ remain, with explicit synthetic-boundary and nonpositive-price limitations.
 Time allocation continuation: explicit start/end intervals, exact bar-volume
 reconciliation and no assignment across genuine session gaps. 39 combined
 tests, scoped lint and full TypeScript pass. No release; integration remains.
+
+Row continuation: materialized independent raw and filtered price rows with
+reset subsegments; connected to lifecycle with real chart-index accounting.
+Empty bridges require explicit source time/reset metadata. Integration tests
+prove filtered-out prints still retest zones. Project tsc passes. No deployment
+or gate change; live pipeline/UI/settings/performance verification remain.

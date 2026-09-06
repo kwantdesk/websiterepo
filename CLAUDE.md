@@ -1,5 +1,15 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-07 — Auction Gap rows connected to lifecycle in tests
+
+- `auctionGapRows.ts` materializes raw and filtered maps, preserves trade prices,
+  splits reset subsegments, validates ownership and explicit empty-bar provenance.
+- Lifecycle accepts detectionBar/chartIndex; subsegments no longer count as
+  extra bars. Source/detector use minimal Footprint-compatible raw-bar shape.
+- Actual filtered-detection/raw-retest integration test passes. Final row tests
+  and project tsc pass. Still disconnected from live Chart/settings/renderer;
+  all 28 remain Pending. Next worker/incremental pipeline and controls/visual QA.
+
 ## 2026-09-07 — Auction Gap time allocation foundation
 
 - Added explicit half-open time-bar allocation with per-bar volume reconciliation;

@@ -1,5 +1,10 @@
 import type { FootprintBar } from "./footprint.ts";
 
+export type AuctionGapBar = Pick<FootprintBar, "id" | "instrument" | "startTime" | "endTime" | "lowTick" | "highTick"
+  | "openTick" | "closeTick" | "hasPriceLevelFlow" | "isClosed"> & {
+  rows: Pick<FootprintBar["rows"][number], "tickIndex" | "bidVolume" | "askVolume" | "unknownVolume">[];
+};
+
 export type AuctionGapDetectionSettings = {
   minimumTickVolume: number;
   maximumOppositeVolume: number;
@@ -48,7 +53,7 @@ export function normalizeAuctionGapDetection(input: Record<string, unknown> = {}
  * No OHLC interpolation, omitted-row filling or missing-side classification.
  */
 export function detectAuctionGaps(
-  bar: FootprintBar,
+  bar: AuctionGapBar,
   source: { groupTicks: number; inputType: "volume" | "num-trades"; sizeFiltered: boolean },
   input: Record<string, unknown> = {},
 ): { status: "ready" | "requires-raw-volume" | "invalid-data"; gaps: AuctionGapCandidate[] } {

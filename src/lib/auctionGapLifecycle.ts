@@ -1,5 +1,4 @@
-import type { FootprintBar } from "./footprint.ts";
-import { detectAuctionGaps, type AuctionGapCandidate } from "./auctionGapTracker.ts";
+import { detectAuctionGaps, type AuctionGapCandidate, type AuctionGapBar } from "./auctionGapTracker.ts";
 
 export type AuctionGapZone = AuctionGapCandidate & {
   sourceIndex: number;
@@ -19,7 +18,10 @@ export type AuctionGapLifecycleSettings = {
 };
 
 export type AuctionGapSourceBar = {
-  bar: FootprintBar;
+  bar: AuctionGapBar;
+  detectionBar?: AuctionGapBar;
+  /** Reset subsegments can share an actual chart index. */
+  chartIndex?: number;
   /** Exchange-aware bucket resolved by caller. Null disables resets. */
   resetKey: string | null;
   /** Detection filtering only: excluded bars can still retest existing zones. */
@@ -54,8 +56,12 @@ export function buildAuctionGapLifecycle(
   const ids = new Set<string>();
   let priorTime = -Infinity;
   let instrument: string | null = null;
-  for (let index = 0; index < input.length; index++) {
-    const { bar, resetKey, detect } = input[index];
+  let previousChartIndex = -1;
+  for (let position = 0; position < input.length; position++) {
+    const { bar, resetKey, detect, detectionBar } = input[position];
+    const index = input[position].chartIndex ?? position;
+    if (!Number.isInteger(index) || index < previousChartIndex || index < 0) return { status: "invalid-data", zones: [] };
+    previousChartIndex = index;
     if (ids.has(bar.id) || bar.startTime < priorTime || (instrument !== null && bar.instrument !== instrument)) {
       return { status: "invalid-data", zones: [] };
     }
@@ -63,6 +69,8 @@ export function buildAuctionGapLifecycle(
     const result = detectAuctionGaps(bar, source, detection);
     // Never leave zones falsely fresh when intervening data is unavailable.
     if (result.status !== "ready") return { status: result.status, zones: [] };
+    const detectionResult = detectionBar ? detectAuctionGaps(detectionBar, source, detection) : result;
+    if (detectionResult.status !== "ready") return { status: detectionResult.status, zones: [] };
     const tradedTicks = bar.rows.filter(row => row.bidVolume + row.askVolume + row.unknownVolume > 0)
       .map(row => row.tickIndex).sort((a, b) => a - b);
     let write = 0;
@@ -75,7 +83,7 @@ export function buildAuctionGapLifecycle(
         continue;
       }
       zone.endIndex = index;
-      if (zone.state === "fresh") {
+      if (zone.state === "fresh" && index > zone.sourceIndex) {
         const touched = tradedInRange(tradedTicks, zone.lowTick, zone.highTick);
         // Crossing needs an actual print inside the zone plus a close beyond
         // the far edge. A price jump over an untraded zone is not a retest.
@@ -91,7 +99,7 @@ export function buildAuctionGapLifecycle(
     }
     active.length = write;
     if (!detect) continue;
-    for (const gap of result.gaps) {
+    for (const gap of detectionResult.gaps) {
       const zone: AuctionGapZone = { ...gap, sourceIndex: index, endIndex: index,
         state: "fresh", triggeredAtBarId: null, triggeredAtIndex: null, stoppedBy: null };
       all.push(zone);

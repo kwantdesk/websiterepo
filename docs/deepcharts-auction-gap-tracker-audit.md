@@ -51,6 +51,26 @@ the successful project-config check; it is not a production build claim.
 
 ## Required before release
 
+### Raw row materialization and lifecycle connection
+
+`auctionGapRows.ts` joins exact execution assignments with chart geometry,
+produces independent raw/retest and time-filtered detection maps, and splits
+reset changes inside one bar into separate segments. Lifecycle now accepts
+those separate detection rows and actual chart indices, so reset segments do
+not consume fictitious chart bars or self-trigger a source bar's zone.
+Empty confirmed bars require explicit source-time/reset provenance, never a
+guessed synthetic timestamp. Duplicate/unknown/reversed allocation rejects.
+
+Actual trade ticks remain untouched. Raw price bounds encompass both chart
+geometry and actual prints; this is an explicit convention for prints outside
+synthetic range boundaries, not native-parity proof. Detector and lifecycle
+now accept a minimal structural raw-bar type (existing FootprintBar-compatible),
+without requiring unrelated footprint analytics or modifying working studies.
+Integration test proves filtered detection plus unfiltered later retest. Full
+provider pipeline, worker/incremental UI wiring, controls and visual QA remain.
+Final row tests and project TypeScript pass; combined/lint verification recorded
+in this continuation. Still no gate registration or deployment.
+
 ### Time-chart allocation foundation, 2026-09-07
 
 `auctionGapTimeAllocation.ts` assigns prepared executions using explicit,
