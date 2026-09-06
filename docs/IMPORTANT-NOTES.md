@@ -509,3 +509,13 @@ recap of the open items below and update this file when their state changes.
 - Average Value is implemented as period high/low midpoint. Current-to-Right
   and Current-to-Last retain their saved option but currently use right-edge
   label placement; do not claim exact vendor viewport anchoring.
+
+## 2026-09-07 — Speed of Tape
+
+- `speed-of-tape` is the ordinary fixed-window activity histogram, not
+  `speed-of-tape-instant` and not `tape-speed-order-flow-burst`.
+- Volume and Trades use exact non-flow-only executions. Order mode must fail
+  closed until the web feed supplies historical order-placement events; never
+  reinterpret executions as placed orders.
+- A standard-deviation value of zero disables deviation filtering. Positive
+  values use mean plus the selected population-standard-deviation multiple.

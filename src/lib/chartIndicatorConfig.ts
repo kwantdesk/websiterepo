@@ -104,6 +104,7 @@ import { OVERLAY_TIMEFRAME_HIGHLIGHT_DEFAULTS, normalizeOverlayTimeframeHighligh
 import { CANDLESTICK_BAR_DEFAULTS, normalizeCandlestickBarSettings } from "@/lib/candlestickBar";
 import { SHIFT_CANDLE_DEFAULTS, normalizeShiftCandleSettings } from "@/lib/shiftCandle";
 import { IMPORTANT_LEVELS_DEFAULTS } from "@/lib/importantLevels";
+import { SPEED_OF_TAPE_DEFAULTS } from "@/lib/speedOfTape";
 
 export const LIVE_CHART_INDICATOR_IDS = new Set([
   "zig-zag",
@@ -128,6 +129,7 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "shift-candle",
   "annotations-overlay",
   "important-levels",
+  "speed-of-tape",
   "anchored-vwap",
   "pivot-points",
   "gap-detector",
@@ -296,6 +298,13 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "months", label: "Months", defaultValue: 1, min: 0, max: 100, step: 1 },
     { key: "fontSize", label: "Font size", defaultValue: 10, min: 6, max: 40, step: 0.5 },
     { key: "lineWidth", label: "Line width", defaultValue: 1, min: 1, max: 4, step: 1 },
+  ],
+  "speed-of-tape": [
+    { key: "filterMin", label: "Filter min", defaultValue: 1, min: 0, max: 10000000, step: 1 },
+    { key: "filterMax", label: "Filter max · 0 is unlimited", defaultValue: 0, min: 0, max: 10000000, step: 1 },
+    { key: "numberSeconds", label: "Number seconds", defaultValue: 10, min: 1, max: 3600, step: 1 },
+    { key: "standardDeviationPerFilter", label: "Standard dev per filter", defaultValue: 0, min: 0, max: 10, step: 0.1 },
+    { key: "paneHeight", label: "Pane height", defaultValue: 190, min: 120, max: 520, step: 1 },
   ],
   "zig-zag": [...ZIG_ZAG_NUMERIC_SETTINGS],
   "inverse-cyber-cycle": [
@@ -1657,10 +1666,34 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
   ...(indicatorId === "auction-gap-tracker" ? { ...AUCTION_GAP_DEFAULTS, ...(theme ? auctionGapThemeColors(theme) : {}) } : {}),
   ...(indicatorId === "absolute-levels" ? ABSOLUTE_LEVEL_DEFAULTS : {}),
   ...(indicatorId === "price-movement-levels" ? PRICE_MOVEMENT_LEVEL_DEFAULTS : {}),
-  ...(indicatorId === "average-daily-range-target" ? AVERAGE_DAILY_RANGE_TARGET_DEFAULTS : {}),
-  ...(indicatorId === "volume-delta-sprint" ? VOLUME_DELTA_SPRINT_DEFAULTS : {}),
-  ...(indicatorId === "overlay-timeframe-highlight" ? OVERLAY_TIMEFRAME_HIGHLIGHT_DEFAULTS : {}),
-  ...(indicatorId === "candlestick-bar" ? CANDLESTICK_BAR_DEFAULTS : {}),
+  ...(indicatorId === "average-daily-range-target" ? {
+    ...AVERAGE_DAILY_RANGE_TARGET_DEFAULTS,
+    backgroundColor: theme?.backgroundColor ?? AVERAGE_DAILY_RANGE_TARGET_DEFAULTS.backgroundColor,
+    textColor: theme?.borderUpColor ?? theme?.upColor ?? AVERAGE_DAILY_RANGE_TARGET_DEFAULTS.textColor,
+  } : {}),
+  ...(indicatorId === "volume-delta-sprint" ? {
+    ...VOLUME_DELTA_SPRINT_DEFAULTS,
+    positiveColor: theme?.upColor ?? VOLUME_DELTA_SPRINT_DEFAULTS.positiveColor,
+    negativeColor: theme?.downColor ?? VOLUME_DELTA_SPRINT_DEFAULTS.negativeColor,
+    askColor: theme?.upColor ?? VOLUME_DELTA_SPRINT_DEFAULTS.askColor,
+    bidColor: theme?.downColor ?? VOLUME_DELTA_SPRINT_DEFAULTS.bidColor,
+  } : {}),
+  ...(indicatorId === "overlay-timeframe-highlight" ? {
+    ...OVERLAY_TIMEFRAME_HIGHLIGHT_DEFAULTS,
+    upColor: theme?.upColor ?? OVERLAY_TIMEFRAME_HIGHLIGHT_DEFAULTS.upColor,
+    downColor: theme?.downColor ?? OVERLAY_TIMEFRAME_HIGHLIGHT_DEFAULTS.downColor,
+    highColor: theme?.upColor ?? OVERLAY_TIMEFRAME_HIGHLIGHT_DEFAULTS.highColor,
+    lowColor: theme?.downColor ?? OVERLAY_TIMEFRAME_HIGHLIGHT_DEFAULTS.lowColor,
+    askColor: theme?.upColor ?? OVERLAY_TIMEFRAME_HIGHLIGHT_DEFAULTS.askColor,
+    bidColor: theme?.downColor ?? OVERLAY_TIMEFRAME_HIGHLIGHT_DEFAULTS.bidColor,
+    textColor: theme?.borderUpColor ?? theme?.upColor ?? OVERLAY_TIMEFRAME_HIGHLIGHT_DEFAULTS.textColor,
+    summaryTextColor: theme?.borderUpColor ?? theme?.upColor ?? OVERLAY_TIMEFRAME_HIGHLIGHT_DEFAULTS.summaryTextColor,
+  } : {}),
+  ...(indicatorId === "candlestick-bar" ? {
+    ...CANDLESTICK_BAR_DEFAULTS,
+    positiveColor: theme?.upColor ?? CANDLESTICK_BAR_DEFAULTS.positiveColor,
+    negativeColor: theme?.downColor ?? CANDLESTICK_BAR_DEFAULTS.negativeColor,
+  } : {}),
   ...(indicatorId === "shift-candle" ? {
     ...SHIFT_CANDLE_DEFAULTS,
     buyMarkerColor: theme?.upColor ?? SHIFT_CANDLE_DEFAULTS.buyMarkerColor,
@@ -1674,7 +1707,20 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     preserveSourceColors: true,
     annotationsOverlaySettingsVersion: 1,
   } : {}),
-  ...(indicatorId === "important-levels" ? IMPORTANT_LEVELS_DEFAULTS : {}),
+  ...(indicatorId === "important-levels" ? {
+    ...IMPORTANT_LEVELS_DEFAULTS,
+    lowColor: theme?.downColor ?? IMPORTANT_LEVELS_DEFAULTS.lowColor,
+    highColor: theme?.upColor ?? IMPORTANT_LEVELS_DEFAULTS.highColor,
+    openColor: theme?.gridColor ?? IMPORTANT_LEVELS_DEFAULTS.openColor,
+    closeColor: theme?.borderUpColor ?? theme?.upColor ?? IMPORTANT_LEVELS_DEFAULTS.closeColor,
+  } : {}),
+  ...(indicatorId === "speed-of-tape" ? {
+    ...SPEED_OF_TAPE_DEFAULTS,
+    bullBorderColor: theme?.borderUpColor ?? theme?.upColor ?? SPEED_OF_TAPE_DEFAULTS.bullBorderColor,
+    bullFillColor: theme?.upColor ?? SPEED_OF_TAPE_DEFAULTS.bullFillColor,
+    bearBorderColor: theme?.borderDownColor ?? theme?.downColor ?? SPEED_OF_TAPE_DEFAULTS.bearBorderColor,
+    bearFillColor: theme?.downColor ?? SPEED_OF_TAPE_DEFAULTS.bearFillColor,
+  } : {}),
   ...(indicatorId === "price-movement-levels" ? {
     textColor: theme?.borderUpColor ?? theme?.upColor ?? "#FFFFFF",
   } : {}),
@@ -3261,6 +3307,15 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
       settings[definition.key] = Math.min(definition.max, Math.max(definition.min, Number.isFinite(parsed) ? parsed : definition.defaultValue));
     }
     settings.importantLevelsSettingsVersion = 1;
+    return { ...normalizedInstance, settings };
+  }
+  if (normalizedInstance.indicatorId === "speed-of-tape") {
+    const settings: Record<string, number | string | boolean> = { ...defaultIndicatorSettings("speed-of-tape"), ...(normalizedInstance.settings ?? {}) };
+    settings.database = ["volume", "order", "trades"].includes(String(settings.database)) ? settings.database : "volume";
+    for (const definition of INDICATOR_NUMERIC_SETTINGS["speed-of-tape"] ?? []) {
+      const parsed = Number(settings[definition.key]); settings[definition.key] = Math.min(definition.max, Math.max(definition.min, Number.isFinite(parsed) ? parsed : definition.defaultValue));
+    }
+    settings.speedOfTapeSettingsVersion = 1;
     return { ...normalizedInstance, settings };
   }
   if (["vwap", "vwap-envelopes", "rolling-vwap"].includes(normalizedInstance.indicatorId)) {

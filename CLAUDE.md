@@ -2720,3 +2720,11 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
   use exact footprint rows and fail closed without them.
 - Do not infer profile levels from total candle volume or call current-to-right
   label placement exact DeepCharts viewport parity without further evidence.
+
+## 2026-09-07 — Speed of Tape
+
+- Keep ordinary `speed-of-tape`, `speed-of-tape-instant` and
+  `tape-speed-order-flow-burst` as separate studies.
+- Ordinary Speed of Tape may aggregate exact execution Volume and Trades into
+  fixed windows. Its Order database fails closed until true order-placement
+  history is available; do not fake orders from prints.

@@ -11,6 +11,7 @@ import { OverlayTimeframeHighlightPrimitive } from "@/lib/overlayTimeframeHighli
 import { OnCandleStatsPrimitive } from "@/lib/onCandleStatsPrimitive";
 import { ShiftCandlePrimitive } from "@/lib/shiftCandlePrimitive";
 import { publishChartAnnotations, readChartAnnotations, removeChartAnnotations, subscribeChartAnnotations } from "@/lib/chartAnnotationRegistry";
+import { buildSpeedOfTapeFrame as buildSimpleSpeedOfTapeFrame, normalizeSpeedOfTapeSettings as normalizeSimpleSpeedOfTapeSettings, speedOfTapeSeries as simpleSpeedOfTapeSeries } from "@/lib/speedOfTape";
 import { useSuperTrendAlerts } from "@/components/useSuperTrendAlerts";
 import { paintSuperTrendSeries } from "@/lib/superTrendSeries";
 import { SUPER_TREND_LIVE_PLOT_EVENT, SuperTrendPlotBuffer } from "@/lib/superTrendLivePlot";
@@ -8312,6 +8313,26 @@ function Chart({
   const calculatedIndicatorPanes = useMemo(() => {
     return indicators.flatMap((instance): IndicatorPaneGroup[] => {
       if (!instance.enabled) return [];
+      if (instance.indicatorId === "speed-of-tape") {
+        const source = normalizeSimpleSpeedOfTapeSettings(instance.settings);
+        const visible = visibleIndicatorTheme(settings);
+        const frame = buildSimpleSpeedOfTapeFrame(indicatorMarketTrades, instance.settings ?? {}, visible);
+        let series = simpleSpeedOfTapeSeries(frame, instance.instanceId);
+        if (timeframe && isEventBasedChartInterval(timeframe) && eventChartIndicatorTimeMap) {
+          series = series.map((definition) => ({ ...definition, data: definition.data.flatMap((point) => {
+            const sourceMs = point.time * 1_000;
+            let low = 0, high = indicatorCandles.length - 1;
+            while (low < high) { const middle = Math.ceil((low + high) / 2); if (indicatorCandles[middle].timestamp <= sourceMs) low = middle; else high = middle - 1; }
+            const mapped = indicatorCandles[low] ? eventChartIndicatorTimeMap.exact.get(indicatorCandles[low].timestamp) : undefined;
+            return mapped == null ? [] : [{ ...point, time: mapped }];
+          }) }));
+        }
+        return [{ key: instance.instanceId, title: "Speed of Tape", indicatorId: instance.indicatorId, settings: instance.settings, series,
+          statusLabel: frame.status === "ready" ? `${source.numberSeconds}s · μ ${Math.round(frame.mean).toLocaleString()} · σ ${Math.round(frame.standardDeviation).toLocaleString()}` : frame.status.replaceAll("-", " ").toUpperCase(),
+          currentBadgeValue: frame.bars.at(-1)?.value, currentBadge: frame.bars.length ? Math.round(frame.bars.at(-1)!.value).toLocaleString() : undefined,
+          showHeader: true, showLegend: true, defaultHeight: source.paneHeight, minimumHeight: 120, maximumHeight: 520,
+          unavailableReason: frame.status === "orders-unavailable" ? "Historical order-placement events are unavailable; Trades are not substituted." : frame.status === "waiting-for-executions" ? "Waiting for exact Rithmic executions." : undefined }];
+      }
       if (instance.indicatorId === "book-speed") {
         const source = bookSpeedSettings;
         const chartTimeFor = (timestampMs: number) => {

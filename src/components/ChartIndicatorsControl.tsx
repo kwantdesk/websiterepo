@@ -529,6 +529,7 @@ const ANNOTATIONS_OVERLAY_MANAGED_SETTINGS = new Set([
 const IMPORTANT_LEVELS_MANAGED_SETTINGS = new Set([
   "filterTime", "customStartTime", "customEndTime", "plotType", "textAlign", "skipLast", "importantLevelsSettingsVersion",
 ]);
+const SPEED_OF_TAPE_MANAGED_SETTINGS = new Set(["database", "speedOfTapeSettingsVersion"]);
 
 export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "inverse-cyber-cycle",
@@ -556,6 +557,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "shift-candle",
   "annotations-overlay",
   "important-levels",
+  "speed-of-tape",
   "anchored-vwap",
   "zig-zag",
   "gamma-levels",
@@ -7989,6 +7991,13 @@ export default function ChartIndicatorsControl({
                 </div>
               ) : null}
 
+              {settingsDefinition.id === "speed-of-tape" ? (
+                <div data-settings-section="General" className="space-y-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3">
+                  <label className="block space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"><span>Database</span><KwantSelect value={String(settingsInstance.settings?.database ?? "volume")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), database: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel="Speed of Tape database"><option value="volume">Volume</option><option value="order">Order</option><option value="trades">Trades</option></KwantSelect></label>
+                  {String(settingsInstance.settings?.database ?? "volume") === "order" ? <p className="text-[8px] leading-4 text-warning">Order mode requires historical order-placement events. The current execution feed does not expose them, so this mode reports unavailable instead of substituting trades.</p> : <p className="text-[8px] leading-4 text-muted">Measures exact execution intensity inside fixed N-second windows. Deviation filtering keeps only windows at or above mean plus the selected standard-deviation multiple.</p>}
+                </div>
+              ) : null}
+
               {settingsDefinition.id === "session-marker" ? (
                 <div data-settings-section="General" className="space-y-4 rounded-xl border border-primary/15 bg-primary/[0.035] p-3">
                   <div className="grid gap-3 sm:grid-cols-2">
@@ -8257,6 +8266,7 @@ export default function ChartIndicatorsControl({
                     && !(settingsDefinition.id === "shift-candle" && SHIFT_CANDLE_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "annotations-overlay" && ANNOTATIONS_OVERLAY_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "important-levels" && IMPORTANT_LEVELS_MANAGED_SETTINGS.has(key))
+                    && !(settingsDefinition.id === "speed-of-tape" && SPEED_OF_TAPE_MANAGED_SETTINGS.has(key))
                     && !(VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) && VOLUME_PROFILE_VWAP_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "bounce-levels" && key === "syncGexMapColors")
                     && !(settingsDefinition.id === "super-trend" && settingsInstance.settings?.chartArea === "pane" && key === "useSecondaryAxis")
