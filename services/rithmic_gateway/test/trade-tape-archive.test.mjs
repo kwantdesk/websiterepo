@@ -531,6 +531,8 @@ test("event history can include coverage-proven compact Auction Gap rows in the 
     assert.equal(result.auctionGap.rows.length, result.candles.length);
     assert.equal(result.auctionGap.rows.flatMap((bar) => bar.rows)
       .reduce((sum, row) => sum + row.unknownVolume, 0), 4);
+    assert.ok(result.auctionGap.rows.every((bar, index) => bar.slices
+      .reduce((sum, slice) => sum + slice.volume, 0) === result.candles[index].volume));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -600,6 +602,7 @@ test("canonical time candles receive compact Auction Gap rows only after tape re
     assert.equal(result.rows[0].rows.reduce(
       (sum, row) => sum + row.bidVolume + row.askVolume + row.unknownVolume, 0,
     ), 9);
+    assert.deepEqual(result.rows.map((bar) => bar.slices.length), [1, 1]);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -655,6 +658,8 @@ test("sub-minute history emits proven Auction Gap rows in its existing tape scan
     assert.equal(result.auctionGap.rows.length, result.candles.length);
     assert.equal(result.auctionGap.rows.flatMap((bar) => bar.rows)
       .reduce((sum, row) => sum + row.unknownVolume, 0), 4);
+    assert.ok(result.auctionGap.rows.every((bar, index) => bar.slices
+      .reduce((sum, slice) => sum + slice.volume, 0) === result.candles[index].volume));
     const ordinary = await archive.loadTimeBars({
       exchange: "CME", symbol: "NQU6", interval: "5s", intervalMs: 5_000,
       fromMs: T0, toMs: T0 + 10_000,

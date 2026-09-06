@@ -144,7 +144,7 @@ async function getDurableEventHistory(
       }
       return encodeHistory(history);
     },
-    ["cme-event-flow-v5", symbol, timeframe, cacheScope, includeAuctionGap ? "gap" : "base"],
+    ["cme-event-flow-v6", symbol, timeframe, cacheScope, includeAuctionGap ? "gap-v2" : "base"],
     { revalidate: DURABLE_EVENT_HISTORY_REVALIDATE_SECONDS },
   )();
   return decodeHistory<EventHistoryPayload>(encoded);
@@ -170,7 +170,7 @@ async function getDurableTimeHistory(
       }
       return encodeHistory(history);
     },
-    ["cme-time-flow-v4", symbol, timeframe, cacheScope, includeAuctionGap ? "gap" : "base"],
+    ["cme-time-flow-v5", symbol, timeframe, cacheScope, includeAuctionGap ? "gap-v2" : "base"],
     { revalidate: DURABLE_TIME_HISTORY_REVALIDATE_SECONDS },
   )();
   return decodeHistory<TimeHistoryPayload>(encoded);

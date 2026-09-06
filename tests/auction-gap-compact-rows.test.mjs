@@ -11,9 +11,16 @@ const rows = () => [
   { tickIndex: 401, bidVolume: 0, askVolume: 0, unknownVolume: 3 },
   { tickIndex: 402, bidVolume: 0, askVolume: 2, unknownVolume: 0 },
 ];
+const withSlices = (bar) => bar?.slices ? bar : ({ ...bar, slices: bar?.rows?.length ? [{
+  minute: 0, startTime: bar.timestamp, endTime: bar.timestamp + 3,
+  openTick: bar.openTick ?? 400, highTick: bar.highTick ?? 402,
+  lowTick: bar.lowTick ?? 399, closeTick: bar.closeTick ?? 401,
+  volume: bar.rows.reduce((sum, row) => sum + row.bidVolume + row.askVolume + row.unknownVolume, 0),
+  rows: structuredClone(bar.rows),
+}] : [] });
 const envelope = (bar, patch = {}) => ({
-  schemaVersion: 'kwantify-auction-gap-rows-v1', provider: 'Rithmic', contractSymbol: 'NQU6',
-  coverageComplete: true, executionOrderComplete: true, rows: [bar], ...patch,
+  schemaVersion: 'kwantify-auction-gap-rows-v2', provider: 'Rithmic', contractSymbol: 'NQU6',
+  coverageComplete: true, executionOrderComplete: true, rows: [withSlices(bar)], ...patch,
 });
 
 test('accepts and copies exact time-bar rows reconciled to chart geometry and volume', () => {
@@ -86,4 +93,20 @@ test('browser handoff rejects stale contract/candle generations and copies accep
   assert.equal(accepted.status, 'ready'); assert.notEqual(accepted.bars, validated.bars);
   assert.equal(acceptAuctionGapCompactRows(validated, [candle()], 'NQZ6').reason, 'browser-history-mismatch');
   assert.equal(acceptAuctionGapCompactRows(validated, [candle(2_000)], 'NQU6').reason, 'browser-history-mismatch');
+});
+
+test('minute-slice proof rejects missing, inconsistent, and out-of-bar settings data', () => {
+  const base = withSlices({ chartIndex: 0, timestamp: 1_000, endTime: 61_000,
+    openTick: 400, highTick: 402, lowTick: 399, closeTick: 401, volume: 10, rows: rows() });
+  assert.equal(validateAuctionGapCompactRows(envelope({ ...base, slices: [] }),
+    [candle()], 'NQU6', 0.25).reason, 'invalid-time-slices');
+  const changed = structuredClone(base);
+  changed.slices[0].rows[0].bidVolume = 1;
+  changed.slices[0].volume = 9;
+  assert.equal(validateAuctionGapCompactRows(envelope(changed),
+    [candle()], 'NQU6', 0.25).reason, 'slice-row-mismatch');
+  const outside = structuredClone(base);
+  outside.slices[0].startTime = 0;
+  assert.equal(validateAuctionGapCompactRows(envelope(outside),
+    [candle()], 'NQU6', 0.25).reason, 'slice-time-mismatch');
 });

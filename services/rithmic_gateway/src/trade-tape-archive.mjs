@@ -7,7 +7,11 @@ import { resolveInstrument } from "./recorder.mjs";
 import { tradeFromRecord } from "./futures-bar-archive.mjs";
 import { readArchiveRecords } from "./archive-reader.mjs";
 import { createEventBarBuilder, eventInterval, futuresTickSize } from "./event-bar-builder.mjs";
-import { foldAuctionGapTimeRows } from "./auction-gap-row-fold.mjs";
+import {
+  appendAuctionGapMinuteSlice,
+  compactAuctionGapMinuteSlices,
+  foldAuctionGapTimeRows,
+} from "./auction-gap-row-fold.mjs";
 import {
   coverageFileName, provesCoverageIntervals, readCoverageReceipt,
 } from "./trade-tape-coverage.mjs";
@@ -399,7 +403,7 @@ export class TradeTapeArchive {
    * history unchanged. */
   async loadAuctionGapTimeRows({ exchange, symbol, candles, intervalMs }) {
     const unavailable = (reason) => ({
-      schemaVersion: "kwantify-auction-gap-rows-v1",
+      schemaVersion: "kwantify-auction-gap-rows-v2",
       provider: "Rithmic",
       contractSymbol: String(symbol || "").toUpperCase(),
       coverageComplete: false,
@@ -429,7 +433,7 @@ export class TradeTapeArchive {
       canonical.map((bar) => ({ fromMs: bar.timestamp, toMs: bar.endTime })));
     if (!covered) return unavailable("historical-coverage-unproved");
     return {
-      schemaVersion: "kwantify-auction-gap-rows-v1",
+      schemaVersion: "kwantify-auction-gap-rows-v2",
       provider: "Rithmic",
       contractSymbol: String(symbol || "").toUpperCase(),
       coverageComplete: true,
@@ -467,6 +471,7 @@ export class TradeTapeArchive {
       const builder = createEventBarBuilder(interval, upperSymbol, cap);
       const executions = [];
       let auctionRows = new Map();
+      let auctionSlices = new Map();
       const coverageReceipts = [];
       let ownershipTruncated = false;
       const flowStart = end - EVENT_FLOW_LOOKBACK_MS;
@@ -494,6 +499,9 @@ export class TradeTapeArchive {
               auctionRows = new Map([...auctionRows]
                 .filter(([index]) => index >= ownership.removed)
                 .map(([index, rows]) => [index - ownership.removed, rows]));
+              auctionSlices = new Map([...auctionSlices]
+                .filter(([index]) => index >= ownership.removed)
+                .map(([index, slices]) => [index - ownership.removed, slices]));
             }
             const tickSize = futuresTickSize(upperSymbol);
             const tickIndex = Math.round(price / tickSize);
@@ -505,6 +513,9 @@ export class TradeTapeArchive {
             else row.unknownVolume += size;
             rows.set(tickIndex, row);
             auctionRows.set(ownership.chartIndex, rows);
+            const slices = auctionSlices.get(ownership.chartIndex) ?? new Map();
+            appendAuctionGapMinuteSlice(slices, { timestamp: trade.timestamp, size }, tickIndex, trade.side);
+            auctionSlices.set(ownership.chartIndex, slices);
           }
         }
         sourceRecordCount += 1;
@@ -555,6 +566,7 @@ export class TradeTapeArchive {
           sourceEndTimestamp: candle.sourceEndTimestamp,
           rows: [...(auctionRows.get(chartIndex)?.values() ?? [])]
             .sort((left, right) => left.tickIndex - right.tickIndex),
+          slices: compactAuctionGapMinuteSlices(auctionSlices.get(chartIndex) ?? new Map()),
         }));
         const volumesMatch = compact.every((bar, index) => Math.abs(
           bar.rows.reduce((sum, row) => sum + row.bidVolume + row.askVolume + row.unknownVolume, 0)
@@ -567,14 +579,14 @@ export class TradeTapeArchive {
         const coverageComplete = !ownershipTruncated && volumesMatch && intervals.length > 0
           && provesCoverageIntervals(coverageReceipts, { exchange: upper, symbol: upperSymbol }, intervals);
         auctionGapRows = coverageComplete ? {
-          schemaVersion: "kwantify-auction-gap-rows-v1",
+          schemaVersion: "kwantify-auction-gap-rows-v2",
           provider: "Rithmic",
           contractSymbol: upperSymbol,
           coverageComplete: true,
           executionOrderComplete: true,
           rows: compact,
         } : {
-          schemaVersion: "kwantify-auction-gap-rows-v1",
+          schemaVersion: "kwantify-auction-gap-rows-v2",
           provider: "Rithmic",
           contractSymbol: upperSymbol,
           coverageComplete: false,
@@ -631,6 +643,7 @@ export class TradeTapeArchive {
 
     const bars = new Map();
     const auctionRows = new Map();
+    const auctionSlices = new Map();
     const coverageReceipts = [];
     let auctionGapInvalid = false;
     const dates = new Set();
@@ -692,6 +705,9 @@ export class TradeTapeArchive {
             else row.unknownVolume += size;
             rows.set(tickIndex, row);
             auctionRows.set(timestamp, rows);
+            const slices = auctionSlices.get(timestamp) ?? new Map();
+            appendAuctionGapMinuteSlice(slices, { timestamp: trade.timestamp, size }, tickIndex, trade.side);
+            auctionSlices.set(timestamp, slices);
           }
         });
       }
@@ -715,6 +731,7 @@ export class TradeTapeArchive {
         volume: candle.volume,
         rows: [...(auctionRows.get(candle.timestamp)?.values() ?? [])]
           .sort((left, right) => left.tickIndex - right.tickIndex),
+        slices: compactAuctionGapMinuteSlices(auctionSlices.get(candle.timestamp) ?? new Map()),
       }));
       const volumesMatch = compact.every((bar) => Math.abs(
         bar.rows.reduce((sum, row) => sum + row.bidVolume + row.askVolume + row.unknownVolume, 0) - bar.volume,
@@ -727,10 +744,10 @@ export class TradeTapeArchive {
         && provesCoverageIntervals(coverageReceipts, { exchange: upper, symbol: upperSymbol },
           compact.map((bar) => ({ fromMs: bar.timestamp, toMs: bar.endTime })));
       auctionGapRows = coverageComplete ? {
-        schemaVersion: "kwantify-auction-gap-rows-v1", provider: "Rithmic", contractSymbol: upperSymbol,
+        schemaVersion: "kwantify-auction-gap-rows-v2", provider: "Rithmic", contractSymbol: upperSymbol,
         coverageComplete: true, executionOrderComplete: true, rows: compact,
       } : {
-        schemaVersion: "kwantify-auction-gap-rows-v1", provider: "Rithmic", contractSymbol: upperSymbol,
+        schemaVersion: "kwantify-auction-gap-rows-v2", provider: "Rithmic", contractSymbol: upperSymbol,
         coverageComplete: false, executionOrderComplete: ordered.length <= cap,
         reason: auctionGapInvalid || !geometryValid ? "off-tick-execution"
           : ordered.length > cap ? "time-history-truncated"

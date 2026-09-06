@@ -31,7 +31,28 @@ test("exact prints fold into sorted one-tick rows with source sides preserved", 
     { tickIndex: 401, bidVolume: 5, askVolume: 0, unknownVolume: 0 },
     { tickIndex: 402, bidVolume: 0, askVolume: 4, unknownVolume: 0 },
   ]);
+  assert.deepEqual(result.bars[0].slices.map((slice) => [slice.minute, slice.volume]), [[0, 6]]);
   assert.deepEqual(input, before, "fold mutated caller-owned chart or tape data");
+});
+
+test("ordered minute slices preserve boundary geometry without exposing raw prints", () => {
+  const result = foldAuctionGapTimeRows({
+    tickSize: 0.25,
+    bars: [{ timestamp: 0, endTime: 120_000, open: 100, high: 101, low: 100, close: 101, volume: 10 }],
+    trades: [
+      { timestamp: 59_999, price: 100, size: 4, side: -1 },
+      { timestamp: 60_000, price: 100.5, size: 3, side: 1 },
+      { timestamp: 60_001, price: 101, size: 3, side: 1 },
+    ],
+  });
+  assert.equal(result.status, "ready");
+  assert.deepEqual(result.bars[0].slices.map((slice) => [
+    slice.minute, slice.startTime, slice.endTime, slice.openTick,
+    slice.highTick, slice.lowTick, slice.closeTick, slice.volume,
+  ]), [
+    [0, 59_999, 59_999, 400, 400, 400, 400, 4],
+    [60_000, 60_000, 60_001, 402, 404, 402, 404, 6],
+  ]);
 });
 
 test("half-open boundaries assign an exact timestamp to the next candle", () => {
@@ -97,6 +118,8 @@ for (const interval of ["10v", "2t", "10dv", "4r", "4R", "4/8PF"]) {
         (sum, row) => sum + row.bidVolume + row.askVolume + row.unknownVolume, 0,
       );
       assert.equal(volume, result.candles[index].volume);
+      assert.equal(result.bars[index].slices.reduce((sum, slice) => sum + slice.volume, 0),
+        result.candles[index].volume);
     }
     assert.equal(result.bars.flatMap((bar) => bar.rows).reduce((sum, row) => sum + row.unknownVolume, 0), 5);
   });

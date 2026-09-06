@@ -1,5 +1,21 @@
 # Auction Gap Tracker — implementation in progress
 
+### V2 minute slices preserve every settings boundary — 2026-09-07
+
+The compact gateway format now carries ordered minute slices inside every time
+and event candle. Each slice has actual first/last execution time, OHLC ticks,
+volume, and sorted bid/ask/unknown price rows. That is sufficient to classify
+RTH, ETH, custom-minute filters and both reset modes even when a 4h/range/
+volume/trade/delta/Renko/P&F bar crosses the boundary; no raw execution archive
+is sent through Vercel. Aggregate rows remain for fast default-mode painting.
+
+The v2 web validator requires slice time/order/range, per-slice geometry and
+volume, whole-candle OHLC, and exact recombination of every side at every tick.
+Durable cache namespaces were bumped so a pre-v2 payload cannot be reused.
+98 Auction Gap tests, 51 gateway tests, TypeScript and scoped lint pass. The
+slice-to-worker adapter, primitive/live receipts and browser QA remain; Pending,
+no production push/deployment.
+
 ### Browser panes opt into exact history — 2026-09-07
 
 The workspace now adds `auctionGap=1` only for a pane with the Auction Gap

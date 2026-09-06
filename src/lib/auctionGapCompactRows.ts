@@ -14,6 +14,19 @@ export type AuctionGapCompactBar = {
   sourceStartTimestamp?: number;
   sourceEndTimestamp?: number;
   rows: AuctionGapCompactPriceRow[];
+  slices: AuctionGapCompactSlice[];
+};
+
+export type AuctionGapCompactSlice = {
+  minute: number;
+  startTime: number;
+  endTime: number;
+  openTick: number;
+  highTick: number;
+  lowTick: number;
+  closeTick: number;
+  volume: number;
+  rows: AuctionGapCompactPriceRow[];
 };
 
 export type AuctionGapCompactRowsResult =
@@ -26,6 +39,28 @@ const finite = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value);
 const closeEnough = (left: number, right: number) =>
   Math.abs(left - right) <= Math.max(1e-8, Math.abs(right) * 1e-10);
+
+function copyPriceRows(value: unknown, lowTick: number, highTick: number) {
+  if (!Array.isArray(value)) return null;
+  const rows: AuctionGapCompactPriceRow[] = [];
+  let previousTick = -Infinity;
+  for (const item of value) {
+    if (!record(item) || !finite(item.tickIndex) || !Number.isSafeInteger(item.tickIndex)
+      || item.tickIndex <= previousTick || item.tickIndex < lowTick || item.tickIndex > highTick
+      || !finite(item.bidVolume) || !finite(item.askVolume) || !finite(item.unknownVolume)
+      || item.bidVolume < 0 || item.askVolume < 0 || item.unknownVolume < 0) return null;
+    const volume = item.bidVolume + item.askVolume + item.unknownVolume;
+    if (!finite(volume) || volume <= 0) return null;
+    previousTick = item.tickIndex;
+    rows.push({ tickIndex: item.tickIndex, bidVolume: item.bidVolume,
+      askVolume: item.askVolume, unknownVolume: item.unknownVolume });
+  }
+  return rows;
+}
+
+const rowsVolume = (rows: readonly AuctionGapCompactPriceRow[]) => rows.reduce(
+  (sum, row) => sum + row.bidVolume + row.askVolume + row.unknownVolume, 0,
+);
 
 /**
  * Validate the gateway's compact Auction Gap rows against the chart candles
@@ -46,7 +81,7 @@ export function validateAuctionGapCompactRows(
   if (!record(value) || !normalizedContract || !finite(tickSize) || tickSize <= 0 || !candles.length) {
     return fail("invalid-source");
   }
-  if (value.schemaVersion !== "kwantify-auction-gap-rows-v1" || value.provider !== "Rithmic") {
+  if (value.schemaVersion !== "kwantify-auction-gap-rows-v2" || value.provider !== "Rithmic") {
     return fail("unsupported-source-schema");
   }
   if (String(value.contractSymbol ?? "").trim().toUpperCase() !== normalizedContract) {
@@ -87,7 +122,7 @@ export function validateAuctionGapCompactRows(
       || source.sourceEndTimestamp !== undefined;
     if (hasTimeGeometry === hasEventGeometry) return fail("ambiguous-bar-geometry");
 
-    let barGeometry: Omit<AuctionGapCompactBar, "chartIndex" | "timestamp" | "rows">;
+    let barGeometry: Omit<AuctionGapCompactBar, "chartIndex" | "timestamp" | "rows" | "slices">;
     if (hasTimeGeometry) {
       if (!finite(source.endTime) || source.endTime <= source.timestamp
         || source.openTick !== candleTicks[0] || source.highTick !== candleTicks[1]
@@ -110,29 +145,50 @@ export function validateAuctionGapCompactRows(
       };
     }
 
-    const rows: AuctionGapCompactPriceRow[] = [];
-    let previousTick = -Infinity;
-    let sourceVolume = 0;
-    for (const item of source.rows) {
-      if (!record(item) || !finite(item.tickIndex) || !Number.isSafeInteger(item.tickIndex)
-        || item.tickIndex <= previousTick || item.tickIndex < candleTicks[2] || item.tickIndex > candleTicks[1]
-        || !finite(item.bidVolume) || !finite(item.askVolume) || !finite(item.unknownVolume)
-        || item.bidVolume < 0 || item.askVolume < 0 || item.unknownVolume < 0) {
-        return fail("invalid-price-row");
-      }
-      const rowVolume = item.bidVolume + item.askVolume + item.unknownVolume;
-      if (!finite(rowVolume) || rowVolume <= 0) return fail("invalid-price-row");
-      previousTick = item.tickIndex;
-      sourceVolume += rowVolume;
-      rows.push({
-        tickIndex: item.tickIndex,
-        bidVolume: item.bidVolume,
-        askVolume: item.askVolume,
-        unknownVolume: item.unknownVolume,
-      });
-    }
+    const rows = copyPriceRows(source.rows, candleTicks[2], candleTicks[1]);
+    if (!rows) return fail("invalid-price-row");
+    const sourceVolume = rowsVolume(rows);
     if (!closeEnough(sourceVolume, volume)) return fail("source-volume-mismatch");
-    bars.push({ chartIndex: index, timestamp: source.timestamp, ...barGeometry, rows });
+    if (!Array.isArray(source.slices)) return fail("invalid-time-slices");
+    const slices: AuctionGapCompactSlice[] = [];
+    const aggregate = new Map<number, AuctionGapCompactPriceRow>();
+    let previousMinute = -Infinity;
+    for (const item of source.slices) {
+      if (!record(item) || !finite(item.minute) || item.minute % 60_000 !== 0
+        || item.minute <= previousMinute || !finite(item.startTime) || !finite(item.endTime)
+        || item.startTime > item.endTime || item.startTime < item.minute || item.endTime >= item.minute + 60_000
+        || !finite(item.openTick) || !finite(item.highTick) || !finite(item.lowTick) || !finite(item.closeTick)
+        || ![item.openTick, item.highTick, item.lowTick, item.closeTick].every(Number.isSafeInteger)
+        || item.lowTick > Math.min(item.openTick, item.closeTick)
+        || item.highTick < Math.max(item.openTick, item.closeTick)
+        || item.lowTick < candleTicks[2] || item.highTick > candleTicks[1]
+        || !finite(item.volume) || item.volume <= 0) return fail("invalid-time-slices");
+      const sliceRows = copyPriceRows(item.rows, item.lowTick, item.highTick);
+      if (!sliceRows || !closeEnough(rowsVolume(sliceRows), item.volume)) return fail("invalid-time-slices");
+      previousMinute = item.minute;
+      for (const row of sliceRows) {
+        const total = aggregate.get(row.tickIndex) ?? { tickIndex: row.tickIndex, bidVolume: 0, askVolume: 0, unknownVolume: 0 };
+        total.bidVolume += row.bidVolume; total.askVolume += row.askVolume; total.unknownVolume += row.unknownVolume;
+        aggregate.set(row.tickIndex, total);
+      }
+      slices.push({ minute: item.minute, startTime: item.startTime, endTime: item.endTime,
+        openTick: item.openTick, highTick: item.highTick, lowTick: item.lowTick,
+        closeTick: item.closeTick, volume: item.volume, rows: sliceRows });
+    }
+    if ((volume > 0) !== (slices.length > 0)) return fail("invalid-time-slices");
+    if (slices.length && (slices[0].openTick !== candleTicks[0]
+      || slices.at(-1)!.closeTick !== candleTicks[3]
+      || Math.max(...slices.map((slice) => slice.highTick)) !== candleTicks[1]
+      || Math.min(...slices.map((slice) => slice.lowTick)) !== candleTicks[2])) return fail("slice-geometry-mismatch");
+    const aggregateRows = [...aggregate.values()].sort((left, right) => left.tickIndex - right.tickIndex);
+    if (JSON.stringify(aggregateRows) !== JSON.stringify(rows)) return fail("slice-row-mismatch");
+    const lowerBound = hasTimeGeometry ? source.timestamp : source.sourceStartTimestamp as number;
+    const upperBound = hasTimeGeometry ? source.endTime as number : source.sourceEndTimestamp as number;
+    if (slices.some((slice) => slice.startTime < lowerBound
+      || slice.endTime > upperBound || (hasTimeGeometry && slice.endTime >= upperBound))) {
+      return fail("slice-time-mismatch");
+    }
+    bars.push({ chartIndex: index, timestamp: source.timestamp, ...barGeometry, rows, slices });
   }
 
   return { status: "ready", coverage: "complete", contractSymbol: normalizedContract, bars };
@@ -153,7 +209,7 @@ export function acceptAuctionGapCompactRows(
   const contract = expectedContract.trim().toUpperCase();
   if (!record(value) || value.status !== "ready" || value.coverage !== "complete"
     || String(value.contractSymbol ?? "").trim().toUpperCase() !== contract
-    || !contract || !Array.isArray(value.bars) || value.bars.length !== candles.length) {
+      || !contract || !Array.isArray(value.bars) || value.bars.length !== candles.length) {
     return fail(record(value) && typeof value.reason === "string" && value.reason
       ? value.reason : "browser-history-mismatch");
   }
@@ -162,7 +218,7 @@ export function acceptAuctionGapCompactRows(
     const source = value.bars[index];
     const candle = candles[index];
     if (!record(source) || source.chartIndex !== index || source.timestamp !== candle.timestamp
-      || !Array.isArray(source.rows)) return fail("browser-history-mismatch");
+      || !Array.isArray(source.rows) || !Array.isArray(source.slices)) return fail("browser-history-mismatch");
     const rows: AuctionGapCompactPriceRow[] = [];
     let volume = 0;
     let previousTick = -Infinity;
@@ -186,7 +242,8 @@ export function acceptAuctionGapCompactRows(
             sourceEndTimestamp: source.sourceEndTimestamp }
         : null;
     if (!geometry) return fail("browser-history-mismatch");
-    bars.push({ chartIndex: index, timestamp: source.timestamp as number, ...geometry, rows });
+    const slices = source.slices.map((slice) => structuredClone(slice)) as AuctionGapCompactSlice[];
+    bars.push({ chartIndex: index, timestamp: source.timestamp as number, ...geometry, rows, slices });
   }
   return { status: "ready", coverage: "complete", contractSymbol: contract, bars };
 }

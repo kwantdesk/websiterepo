@@ -1,5 +1,17 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-07 — Auction Gap v2 retains exact settings boundaries
+
+- Compact rows now include ordered one-minute execution slices with their own
+  source times, OHLC ticks and bid/ask/unknown rows for every time/event bar.
+- This lets RTH/ETH/custom filters and session resets split long time, range,
+  volume, trade, delta, Renko and P&F bars without raw-tape transfer or guesses.
+- Web validation requires slices to recombine exactly to aggregate rows and
+  candle geometry/volume. Durable cache versions were bumped for v2.
+- 98 Auction Gap tests, 51 gateway tests, TypeScript and scoped lint pass.
+  Remaining: slice-to-worker adapter, Chart primitive/live receipts/browser QA.
+  Gate OFF/no push/deploy.
+
 ## 2026-09-07 — Active Auction Gap panes request and retain exact history
 
 - The chart workspace requests compact rows only when Auction Gap is enabled;

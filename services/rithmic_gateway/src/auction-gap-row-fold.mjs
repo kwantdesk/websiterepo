@@ -2,6 +2,35 @@ import { createEventBarBuilder, eventInterval, futuresTickSize } from "./event-b
 
 const finite = (value) => typeof value === "number" && Number.isFinite(value);
 
+export function appendAuctionGapMinuteSlice(slices, trade, tick, side) {
+  const bucket = Math.floor(trade.timestamp / 60_000) * 60_000;
+  const slice = slices.get(bucket) ?? {
+    minute: bucket, startTime: trade.timestamp, endTime: trade.timestamp,
+    openTick: tick, highTick: tick, lowTick: tick, closeTick: tick,
+    volume: 0, rows: new Map(),
+  };
+  slice.endTime = trade.timestamp;
+  slice.highTick = Math.max(slice.highTick, tick);
+  slice.lowTick = Math.min(slice.lowTick, tick);
+  slice.closeTick = tick;
+  slice.volume += trade.size;
+  const row = slice.rows.get(tick) ?? { tickIndex: tick, bidVolume: 0, askVolume: 0, unknownVolume: 0 };
+  if (side > 0) row.askVolume += trade.size;
+  else if (side < 0) row.bidVolume += trade.size;
+  else row.unknownVolume += trade.size;
+  slice.rows.set(tick, row);
+  slices.set(bucket, slice);
+}
+
+export function compactAuctionGapMinuteSlices(slices) {
+  return [...slices.values()].map((slice) => ({
+    minute: slice.minute, startTime: slice.startTime, endTime: slice.endTime,
+    openTick: slice.openTick, highTick: slice.highTick, lowTick: slice.lowTick,
+    closeTick: slice.closeTick, volume: slice.volume,
+    rows: [...slice.rows.values()].sort((left, right) => left.tickIndex - right.tickIndex),
+  }));
+}
+
 /**
  * Fold exact prints into compact one-tick price rows for canonical time bars.
  * The browser should never need the full execution tape for this study.
@@ -35,6 +64,7 @@ export function foldAuctionGapTimeRows(input) {
       openTick: ticks[0], highTick: ticks[1], lowTick: ticks[2], closeTick: ticks[3],
       volume: bar.volume,
       rows: new Map(),
+      slices: new Map(),
       sourceOpenTick: null, sourceHighTick: null, sourceLowTick: null, sourceCloseTick: null,
       sourceVolume: 0,
     });
@@ -59,6 +89,7 @@ export function foldAuctionGapTimeRows(input) {
     else if (side < 0) row.bidVolume += size;
     else row.unknownVolume += size;
     target.rows.set(tick, row);
+    appendAuctionGapMinuteSlice(target.slices, { timestamp, size }, tick, side);
     target.sourceVolume += size;
     target.sourceOpenTick ??= tick;
     target.sourceHighTick = target.sourceHighTick === null ? tick : Math.max(target.sourceHighTick, tick);
@@ -85,6 +116,7 @@ export function foldAuctionGapTimeRows(input) {
       closeTick: bar.closeTick,
       volume: bar.volume,
       rows: [...bar.rows.values()].sort((left, right) => left.tickIndex - right.tickIndex),
+      slices: compactAuctionGapMinuteSlices(bar.slices),
     })),
   };
 }
@@ -107,6 +139,7 @@ export function foldAuctionGapEventRows(input) {
   // only after every print has a stable absolute bar index.
   const builder = createEventBarBuilder(interval, symbol, Number.MAX_SAFE_INTEGER);
   const rowsByBar = new Map();
+  const slicesByBar = new Map();
   let previousTime = -Infinity;
   for (const trade of trades) {
     const timestamp = trade?.timestamp;
@@ -132,6 +165,9 @@ export function foldAuctionGapEventRows(input) {
     else row.unknownVolume += size;
     rows.set(tickIndex, row);
     rowsByBar.set(ownership.chartIndex, rows);
+    const slices = slicesByBar.get(ownership.chartIndex) ?? new Map();
+    appendAuctionGapMinuteSlice(slices, { timestamp, size }, tickIndex, side);
+    slicesByBar.set(ownership.chartIndex, slices);
   }
   const allCandles = builder.finish();
   const offset = Math.max(0, allCandles.length - cap);
@@ -148,6 +184,7 @@ export function foldAuctionGapEventRows(input) {
       sourceStartTimestamp: candle.sourceStartTimestamp,
       sourceEndTimestamp: candle.sourceEndTimestamp,
       rows,
+      slices: compactAuctionGapMinuteSlices(slicesByBar.get(absoluteIndex) ?? new Map()),
     };
   });
   if (bars.some((bar) => bar === null)) return fail("source-volume-mismatch");

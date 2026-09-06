@@ -1,5 +1,13 @@
 # Pending-library continuation — Auction Gap Tracker
 
+2026-09-07 settings-boundary continuation: v2 compact rows add ordered minute
+slices with source time, OHLC ticks and bid/ask/unknown rows for every time and
+event bar. All session/custom filters and reset modes can now be classified
+without raw-tape transfer. Web validation proves slice geometry/volume and exact
+aggregate recombination; durable caches were bumped. 98 Auction Gap tests, 51
+gateway tests, tsc/lint pass. Worker adapter/render/live receipts/QA remain;
+still Pending, no push/deploy.
+
 2026-09-07 browser-opt-in continuation: only enabled Auction Gap panes request
 compact history; resolved-contract request keys isolate rollovers and replay.
 The browser rechecks the approved DTO against exact candle timestamps/volume,
