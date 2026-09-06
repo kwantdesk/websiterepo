@@ -109,7 +109,10 @@ lite window is insufficient. No data is fetched by this module.
 - [x] Browser: rendering, selected controls, Save/close/reload; theme/custom
   ownership additionally checked by deterministic series tests.
 - [x] Full production build: TypeScript and all 80 static pages passed.
-- [ ] Deployment commit verification after push.
+- [x] Deployment verified after push: GitHub/Vercel reported success for
+  `65ee30838a716df8c76d972753c1cbb312515560`; the live
+  `www.kwantdesk.com/api/market-data/diagnostics` endpoint independently returned
+  that exact commit. Existing main-only `websiterepo-yfmi` integration used.
 - [ ] Authenticated cloud-template import/export/account roundtrip and a
   representative multi-pane live-session performance soak remain unproved.
 

@@ -1,5 +1,16 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-06 — Super Trend prerequisite, not released
+
+- Shared `superTrend.ts` calculator implements explicit Wilder ATR seed,
+  trailing bands, trend flips and price-minus-trend. Six independent/hand
+  tests pass; 26 combined Super Trend/KST/T3/SAR tests and scoped lint pass.
+- Official docs and DLL setting shapes audited, protected numerical seed
+  unproved. Both entries remain Pending (30 total); no engine/gate changed.
+- Next: actual UI/plots, labels/scale and deduplicated live-only alerts,
+  persistence/browser/performance/build before enabling. Follow
+  `docs/deepcharts-super-trend-audit.md`; batch push with complete integration.
+
 ## 2026-09-06 — KST integration batch
 
 - KST now routes through real scalar settings, engine, dockable pane and deep

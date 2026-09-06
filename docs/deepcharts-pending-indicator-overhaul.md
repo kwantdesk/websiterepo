@@ -32,6 +32,10 @@ Started: 2026-09-04
 
 ## Ordered checklist
 
+Super Trend pair prerequisite: shared calculator and six tests implemented;
+settings/plot/alert integration still outstanding. Both remain Pending. See
+`deepcharts-super-trend-audit.md` for sources, conventions and release gates.
+
 Legend: `[ ]` not complete, `[~]` in progress, `[x]` complete and addable.
 
 | # | Quant Desk indicator | Stable id | DeepCharts help/settings | Data + formula | Renderer + theme | Settings + persistence | Tests + visual QA | Catalogue |
