@@ -506,6 +506,10 @@ const PRICE_MOVEMENT_LEVELS_MANAGED_SETTINGS = new Set([
   "customStartTime", "customEndTime",
 ]);
 const ADR_TARGET_MANAGED_SETTINGS = new Set(["lengthType", "textAlign"]);
+const VOLUME_DELTA_SPRINT_MANAGED_SETTINGS = new Set([
+  "inputData", "deltaColorMode", "smoothingEnabled", "smoothingType",
+  "showDelta", "showBid", "showAsk", "shortName",
+]);
 
 export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "inverse-cyber-cycle",
@@ -526,6 +530,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "fvg-identifier",
   "price-movement-levels",
   "average-daily-range-target",
+  "volume-delta-sprint",
   "anchored-vwap",
   "zig-zag",
   "gamma-levels",
@@ -790,6 +795,10 @@ const themeColourMapFor = (indicatorId: string, chartSettings: ChartSettings) =>
   if (indicatorId === "average-daily-range-target") {
     const visible = visibleIndicatorTheme(chartSettings);
     return { textColor: visible.primary, backgroundColor: visible.muted } as Record<string, string>;
+  }
+  if (indicatorId === "volume-delta-sprint") {
+    const visible = visibleIndicatorTheme(chartSettings);
+    return { positiveColor: visible.positive, negativeColor: visible.negative, bidColor: visible.negative, askColor: visible.positive } as Record<string, string>;
   }
   if (indicatorId === "zig-zag") {
     const visible = visibleIndicatorTheme(chartSettings);
@@ -7934,6 +7943,21 @@ export default function ChartIndicatorsControl({
                 </div>
               ) : null}
 
+              {settingsDefinition.id === "volume-delta-sprint" ? (
+                <div data-settings-section="General" className="space-y-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"><span>Input data</span><KwantSelect value={String(settingsInstance.settings?.inputData ?? "volume")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), inputData: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel="Volume Delta Sprint input"><option value="volume">Executed volume</option><option value="trades">Executed trades</option></KwantSelect></label>
+                    <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"><span>Delta colour mode</span><KwantSelect value={String(settingsInstance.settings?.deltaColorMode ?? "fading")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), deltaColorMode: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel="Volume Delta Sprint colour mode"><option value="fading">Fading</option><option value="fixed">Fixed</option></KwantSelect></label>
+                    <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"><span>Smoothing average</span><KwantSelect value={String(settingsInstance.settings?.smoothingType ?? "simple")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), smoothingType: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel="Volume Delta Sprint smoothing"><option value="simple">Simple</option><option value="exponential">Exponential</option><option value="triangular">Triangular</option><option value="weighted">Weighted</option></KwantSelect></label>
+                    <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"><span>Short name</span><input value={String(settingsInstance.settings?.shortName ?? "Volume/Delta Sprint")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), shortName: event.target.value } }))} className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none focus:border-primary/45" /></label>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {[["Smoothing", "smoothingEnabled", false], ["Delta subgraph", "showDelta", true], ["Bid subgraph", "showBid", false], ["Ask subgraph", "showAsk", false]].map(([label, key, fallback]) => { const on = settingsInstance.settings?.[String(key)] === undefined ? Boolean(fallback) : settingsInstance.settings?.[String(key)] === true; return <button key={String(key)} type="button" aria-pressed={on} onClick={() => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [String(key)]: !on } }))} className="flex h-9 items-center justify-between rounded-lg border border-border bg-background px-3 text-[9px] uppercase tracking-[0.1em] text-muted"><span>{String(label)}</span><span className={on ? "text-primary" : "text-muted"}>{on ? "On" : "Off"}</span></button>; })}
+                  </div>
+                  <p className="text-[8px] leading-4 text-muted">Uses only classified Bid/Ask executions. Executed-trade counts are supported; historical resting-order input is never fabricated from candle volume.</p>
+                </div>
+              ) : null}
+
               {settingsDefinition.id === "session-imbalance" ? (
                 <div data-settings-section="General" className="space-y-4 rounded-xl border border-primary/15 bg-primary/[0.035] p-3">
                   <div className="grid gap-3 sm:grid-cols-2">
@@ -8106,6 +8130,7 @@ export default function ChartIndicatorsControl({
                     && !(settingsDefinition.id === "swing-point" && SWING_POINT_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "price-movement-levels" && PRICE_MOVEMENT_LEVELS_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "average-daily-range-target" && ADR_TARGET_MANAGED_SETTINGS.has(key))
+                    && !(settingsDefinition.id === "volume-delta-sprint" && VOLUME_DELTA_SPRINT_MANAGED_SETTINGS.has(key))
                     && !(VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) && VOLUME_PROFILE_VWAP_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "bounce-levels" && key === "syncGexMapColors")
                     && !(settingsDefinition.id === "super-trend" && settingsInstance.settings?.chartArea === "pane" && key === "useSecondaryAxis")

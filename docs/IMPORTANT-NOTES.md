@@ -446,3 +446,12 @@ recap of the open items below and update this file when their state changes.
   trading date. Scaling is the current period open and the visible 0.5x/1x/
   1.5x target mapping is a screenshot-supported interpretation, not claimed
   protected formula parity.
+
+## 2026-09-07 — Volume/Delta Sprint
+
+- Volume/Delta Sprint is a rolling classified-execution study, not Tape Speed
+  and not a resting-book proxy. Volume uses aggressive Bid/Ask contracts;
+  Trades uses classified execution counts. Missing classification must break
+  the segment, never become a zero bar, and filters apply to the selected
+  per-bar side values unless future provider evidence establishes a different
+  protected allocation.

@@ -102,7 +102,7 @@ Live diagnostics returned exact SHA `18a17c4d5ba23233ae678c4a75e324f596f0927b`.
 Isolated final tree passed 90 combined tests, 18 template checks and the normal
 production build. This supersedes the local-only deployment status above/below.
 
-## Remaining 12 — not released by blanket enablement
+## Remaining 11 — not released by blanket enablement
 
 Each row needs evidence, settings/data implementation, calculation tests,
 renderer/theme/persistence verification and explicit visual/latency limits.
@@ -111,7 +111,7 @@ Do not tick a row just because its Add gate changes.
 | Indicator ID | Status |
 |---|---|
 | `speed-of-tape` | [ ] Audit / implement / verify |
-| `volume-delta-sprint` | [ ] DLL settings enums audited; numerical/data semantics outstanding |
+| `volume-delta-sprint` | [x] Rolling classified Volume/Trades Delta plus optional Bid/Ask subgraphs, filters, four smoothing modes, fading/fixed colours, theme/persistence and focused tests; protected filter allocation/pixel/live-soak limits documented |
 | `auction-gap-tracker` | [x] Exact one-tick detector, six location modes, time/event allocation, correction-safe worker lifecycle, zones/markers, source continuity, settings/theme/templates and closed/replay-safe alerts; 112 focused tests pass, live-market/native parity limits documented |
 | `session-imbalance` | [x] Dedicated CME-session range engine, IBH/IBL/mid and exact ±50/100% extensions, documented settings, theme/persistence/alerts and focused tests; protected pixel/formula and live-soak limits documented |
 | `volume-swing` | [ ] Audit / implement / verify |
@@ -181,6 +181,9 @@ Do not tick a row just because its Add gate changes.
 - Average Daily Range Target public/DLL settings, no-lookahead calculation and
   explicit formula/pixel limits:
   `docs/deepcharts-average-daily-range-target-audit.md`.
+- Volume/Delta Sprint public/DLL settings, rolling execution contract and
+  explicit allocation/pixel limits:
+  `docs/deepcharts-volume-delta-sprint-audit.md`.
 - Full formula/pixel parity remains unclaimed until suitable reference evidence
   and side-by-side verification exist. No provider spending is authorised by
   this task and no vendor DLL/source is to be redistributed.

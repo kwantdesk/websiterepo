@@ -19,6 +19,7 @@ import type { SwingPointLevelOptions } from "@/lib/swingPointLevelPrimitive";
 import { calculateTextOnChart } from "@/lib/textOnChart";
 import { calculatePriceMovementLevels } from "@/lib/priceMovementLevels";
 import { calculateAverageDailyRangeTarget } from "@/lib/averageDailyRangeTarget";
+import { calculateVolumeDeltaSprint } from "@/lib/volumeDeltaSprint";
 import type { TextOnChartOptions } from "@/lib/textOnChartPrimitive";
 import { calculateTillsonT3 } from "@/lib/tillsonT3";
 import { calculateSuperTrendSeries } from "@/lib/superTrendSeries";
@@ -378,6 +379,7 @@ function computeIndicatorSeries(
   if (key === "text-on-chart") return calculateTextOnChart(candles, instance.settings ?? {}, theme);
   if (key === "price-movement-levels") return calculatePriceMovementLevels(candles, instance.settings ?? {}, theme, context.tickSize);
   if (key === "average-daily-range-target") return calculateAverageDailyRangeTarget(candles, instance.settings ?? {}, theme);
+  if (key === "volume-delta-sprint") return calculateVolumeDeltaSprint(candles, instance.settings ?? {}, theme);
   if (key === "tillson-t3") return calculateTillsonT3(candles, instance.settings ?? {}, theme, instance.instanceId, context.instrument);
 
   if (key === "source-code-indicator") {

@@ -34,7 +34,7 @@ test("Big Contracts and Liquidity Sweep use their genuine engines and settings",
 
 test("unimplemented studies are still reported rather than enabled", () => {
   const pending = auditIndicatorLibrary().pending.map(row => row.id);
-  assert.ok(pending.includes("volume-delta-sprint"));
+  assert.ok(pending.includes("speed-of-tape"));
 });
 
 test("legacy Market Profile TPO resolves to the complete TPO Daily study", () => {

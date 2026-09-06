@@ -501,6 +501,7 @@ const ORDER_FLOW_PANE_INDICATOR_IDS = new Set([
   "delta-cumulative-histogram",
   "delta-bar",
   "deep-delta",
+  "volume-delta-sprint",
 ]);
 const CUMULATIVE_DELTA_INDICATOR_IDS = new Set([
   "cumulative-volume-delta",

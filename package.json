@@ -177,6 +177,7 @@
     "test:session-marker": "node --experimental-strip-types --import ./scripts/alias-hook.mjs --test tests/session-marker.test.mjs",
     "test:session-imbalance": "node --experimental-strip-types --import ./scripts/alias-hook.mjs --test tests/session-imbalance.test.mjs",
     "test:average-daily-range-target": "node --experimental-strip-types --import ./scripts/alias-hook.mjs --test tests/average-daily-range-target.test.mjs",
+    "test:volume-delta-sprint": "node --experimental-strip-types --import ./scripts/alias-hook.mjs --test tests/volume-delta-sprint.test.mjs",
     "test:chart-viewport-reset": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-chart-viewport-reset.mjs",
     "test:paper-limit-orders": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-paper-limit-orders.mjs",
     "test:chart-limit-placement": "node --experimental-strip-types --import ./scripts/alias-hook.mjs scripts/test-chart-limit-placement.mjs",

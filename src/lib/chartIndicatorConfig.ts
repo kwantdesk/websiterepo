@@ -99,6 +99,7 @@ import { PRICE_MOVEMENT_LEVEL_DEFAULTS, normalizePriceMovementLevelSettings } fr
 import { SESSION_MARKER_DEFAULTS, normalizeSessionMarkerSettings } from "@/lib/sessionMarker";
 import { SESSION_IMBALANCE_DEFAULTS, normalizeSessionImbalanceSettings } from "@/lib/sessionImbalance";
 import { AVERAGE_DAILY_RANGE_TARGET_DEFAULTS, normalizeAverageDailyRangeTargetSettings } from "@/lib/averageDailyRangeTarget";
+import { VOLUME_DELTA_SPRINT_DEFAULTS, normalizeVolumeDeltaSprintSettings } from "@/lib/volumeDeltaSprint";
 
 export const LIVE_CHART_INDICATOR_IDS = new Set([
   "zig-zag",
@@ -117,6 +118,7 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "absolute-levels",
   "price-movement-levels",
   "average-daily-range-target",
+  "volume-delta-sprint",
   "anchored-vwap",
   "pivot-points",
   "gap-detector",
@@ -346,6 +348,13 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
   "average-daily-range-target": [
     { key: "length", label: "Completed periods", defaultValue: 1, min: 1, max: 500, step: 1 },
     { key: "fontSize", label: "Label font size", defaultValue: 12, min: 6, max: 40, step: 0.5 },
+  ],
+  "volume-delta-sprint": [
+    { key: "filterMin", label: "Minimum side filter", defaultValue: 0, min: 0, max: 10000000, step: 1 },
+    { key: "filterMax", label: "Maximum side filter · 0 = unlimited", defaultValue: 0, min: 0, max: 10000000, step: 1 },
+    { key: "length", label: "Sprint length", defaultValue: 10, min: 1, max: 10000, step: 1 },
+    { key: "smoothingLength", label: "Smoothing length", defaultValue: 3, min: 1, max: 1000, step: 1 },
+    { key: "lineWidth", label: "Histogram width", defaultValue: 3, min: 1, max: 4, step: 1 },
   ],
   "pivot-points": [
     { key: "fontSize", label: "Font size", defaultValue: 12, min: 6, max: 40, step: 0.5 },
@@ -1593,6 +1602,7 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
   ...(indicatorId === "absolute-levels" ? ABSOLUTE_LEVEL_DEFAULTS : {}),
   ...(indicatorId === "price-movement-levels" ? PRICE_MOVEMENT_LEVEL_DEFAULTS : {}),
   ...(indicatorId === "average-daily-range-target" ? AVERAGE_DAILY_RANGE_TARGET_DEFAULTS : {}),
+  ...(indicatorId === "volume-delta-sprint" ? VOLUME_DELTA_SPRINT_DEFAULTS : {}),
   ...(indicatorId === "price-movement-levels" ? {
     textColor: theme?.borderUpColor ?? theme?.upColor ?? "#FFFFFF",
   } : {}),
@@ -3092,6 +3102,11 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
   if (normalizedInstance.indicatorId === "average-daily-range-target") {
     return { ...normalizedInstance, settings: normalizeAverageDailyRangeTargetSettings({
       ...defaultIndicatorSettings("average-daily-range-target"), ...(normalizedInstance.settings ?? {}),
+    }) };
+  }
+  if (normalizedInstance.indicatorId === "volume-delta-sprint") {
+    return { ...normalizedInstance, settings: normalizeVolumeDeltaSprintSettings({
+      ...defaultIndicatorSettings("volume-delta-sprint"), ...(normalizedInstance.settings ?? {}),
     }) };
   }
   if (["vwap", "vwap-envelopes", "rolling-vwap"].includes(normalizedInstance.indicatorId)) {
