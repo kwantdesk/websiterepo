@@ -141,7 +141,7 @@ Do not tick a row just because its Add gate changes.
 | `zig-zag` | [x] Three modes, live developing leg and retracement renderer implemented; documented protected-parity limits |
 | `inverse-cyber-cycle` | [x] Two-window inverse-Fisher oscillator, levels, complete public settings contract and persistence implemented; protected seed/pixel parity remains limited |
 | `average-directional-index-adx` | [x] Batch 3; seed and vendor-parity limitations documented |
-| `candlestick-bar` | [ ] Audit / implement / verify |
+| `candlestick-bar` | [x] Independent Minutes, DeepCharts-style target/reversal Vol Bars and tick Range candles; exact execution allocation, filled/outline styling, width/border/opacity, close boundaries, theme/persistence and focused tests. Event modes fail closed without exact tape; protected pixel parity/live soak remain explicit |
 | `overlay-timeframe-highlight` | [x] Dedicated HTF aggregation/primitive, fixed or delta-fading highlight, body/shadow/range styling, high/low targets, bounded summaries, theme/persistence and focused tests; protected edge/pixel/live-soak limits documented |
 | `annotations-overlay` | [ ] Audit / implement / verify |
 | `text-on-chart` | [x] Fixed multiline viewport overlay, full public/DLL settings contract, autoscale safety and browser Save QA |
@@ -187,6 +187,8 @@ Do not tick a row just because its Add gate changes.
 - Overlay Timeframe Highlight public contract, aggregation/primitive and
   explicit edge/pixel limits:
   `docs/deepcharts-overlay-timeframe-highlight-audit.md`.
+- Candlestick Bar public contract, target/reversal Vol Bars semantics and
+  exact-execution limits: `docs/deepcharts-candlestick-bar-audit.md`.
 - Full formula/pixel parity remains unclaimed until suitable reference evidence
   and side-by-side verification exist. No provider spending is authorised by
   this task and no vendor DLL/source is to be redistributed.

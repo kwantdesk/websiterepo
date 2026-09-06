@@ -24,7 +24,7 @@ class Renderer implements ISeriesPrimitivePaneRenderer {
     const model = this.primitive.model();
     const chart = this.primitive.chart();
     const series = this.primitive.series();
-    if (!model || !chart || !series || (!model.overlay.widthBasedOnVolume && !model.overlay.spanIntervalMs)) return;
+    if (!model || !chart || !series || (!model.overlay.widthBasedOnVolume && !model.overlay.spanIntervalMs && !model.overlay.fixedWidthPercent)) return;
     target.useMediaCoordinateSpace(({ context, mediaSize }) => {
       const { overlay, palette } = model;
       const candles = overlay.candles.filter((candle) => Number.isFinite(candle.timestamp));
@@ -65,6 +65,8 @@ class Renderer implements ISeriesPrimitivePaneRenderer {
         const spanWidth = spanRight === null ? maximumWidth : Math.max(1, Number(spanRight) - Number(x));
         const width = overlay.spanIntervalMs
           ? spanWidth * Math.max(0.1, Math.min(1, Number(overlay.fixedWidthPercent ?? 94) / 100))
+          : overlay.fixedWidthPercent
+            ? maximumWidth * Math.max(0.1, Math.min(1, Number(overlay.fixedWidthPercent) / 100))
           : Math.max(1, maximumWidth * Math.sqrt(volumes[pointIndex] / maxVolume));
         const center = overlay.spanIntervalMs ? Number(x) + spanWidth / 2 : Number(x);
         context.strokeStyle = alpha(color, opacity);

@@ -191,7 +191,7 @@ export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
   indicator("Average True Range (ATR)", "Volatility", "Average true trading range."),
   indicator("Expected Move", "Volatility", "The options market's priced one-sigma travel for the session - a top and bottom rail from ATM implied volatility, anchored at the session open.", false, "Kwantify"),
 
-  indicator("Candlestick Bar", "Overlays", "Alternative candlestick rendering layer."),
+  indicator("Candlestick Bar", "Overlays", "Independent minute, target/reversal Vol Bar, or tick-range Japanese candle overlay built from authoritative chart history and executions.", true),
   indicator("Overlay Chart", "Overlays", "Independent-symbol and independent-timeframe comparison with a secondary price axis.", false, "Kwantify"),
   indicator("Overlay Symbol", "Overlays", "A second Rithmic instrument kept on the active chart timeframe.", false, "Kwantify"),
   indicator("Overlay Timeframe Candlestick", "Overlays", "Live higher-timeframe candles aggregated over the active chart with optional close boundaries.", false, "Kwantify"),

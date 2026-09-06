@@ -462,3 +462,13 @@ recap of the open items below and update this file when their state changes.
   ordered candles and owns no feed subscription. Invalid/duplicate/out-of-order
   input breaks a visual segment. Delta colour and Bid/Ask summaries require
   classified execution fields; never infer them from candle direction.
+
+## 2026-09-07 — Candlestick Bar
+
+- DeepCharts `Vol Bars` means target/reversal price bars: Parameter 1 is the
+  target in ticks and Parameter 2 is the reversal in ticks. It is not a volume
+  threshold. Keep it distinct from `500v` and other fixed-volume chart modes.
+- Minute overlays may aggregate authoritative loaded OHLC. Range and Vol Bars
+  require exact non-`flowOnly` executions and fail closed without them. A
+  reversal print belongs to the new bar exactly once; never multiply its
+  volume or delta across both bars.

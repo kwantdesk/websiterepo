@@ -377,6 +377,56 @@ function addPointFigureTrade(
 }
 
 /**
+ * DeepCharts calls this construction "Vol Bars", but it is a price
+ * target/reversal bar: parameter one is the initial target in ticks and
+ * parameter two is the reversal in ticks. It is deliberately separate from
+ * fixed-volume bars (`500v`, etc.).
+ */
+function addTargetReversalTrade(
+  bars: EventCandle[],
+  record: MarketTrade,
+  threshold: EventThreshold,
+) {
+  let last = bars.at(-1);
+  const volume = Math.max(0, Number(record.size) || 0);
+  const trades = Math.max(1, Number(record.trades) || 1);
+  const delta = Number(record.delta) || 0;
+  if (!last) {
+    bars.push(makeCandle(record, safeTimestamp(record.timestamp), volume, trades, delta));
+    return;
+  }
+
+  const direction = Math.sign(Number(last.close) - Number(last.open));
+  const targetReached = Math.abs(Number(last.close) - Number(last.open)) >= threshold.value - 1e-10;
+  if (!targetReached || direction === 0) {
+    updateCandle(last, record.price, volume, trades, delta);
+    return;
+  }
+
+  const reversalDistance = direction > 0
+    ? last.high - record.price
+    : record.price - last.low;
+  if (reversalDistance < threshold.secondary - 1e-10) {
+    updateCandle(last, record.price, volume, trades, delta);
+    return;
+  }
+
+  // The reversal execution belongs to the new bar exactly once. Opening at
+  // the prior extreme preserves a continuous price path without copying its
+  // volume/delta into the completed bar.
+  const anchor = direction > 0 ? last.high : last.low;
+  const next = makeCandle(
+    { ...record, price: anchor },
+    safeTimestamp(record.timestamp, last),
+    0,
+    0,
+    0,
+  );
+  updateCandle(next, record.price, volume, trades, delta);
+  bars.push(next);
+}
+
+/**
  * Deterministically build non-time-based CME bars from an ordered execution
  * tape. Overflow is carried into the next bar instead of being discarded.
  */
@@ -413,6 +463,8 @@ export function applyMarketTradesToEventBars(
     if (record.timestamp < processedThrough) continue;
     if (threshold.kind === "volume" || threshold.kind === "trade" || threshold.kind === "delta") {
       addThresholdTrade(bars, record, threshold);
+    } else if (threshold.kind === "volume-bars") {
+      addTargetReversalTrade(bars, record, threshold);
     } else if (threshold.kind === "renko") {
       addRenkoTrade(bars, record, threshold);
     } else if (threshold.kind === "point-figure") {

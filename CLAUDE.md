@@ -2677,3 +2677,13 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
   ordered candles and owns no feed subscription. Invalid/duplicate/out-of-order
   input breaks a visual segment. Delta colour and Bid/Ask summaries require
   classified execution fields; never infer them from candle direction.
+
+## 2026-09-07 — Candlestick Bar
+
+- `candlestick-bar` owns an independent Japanese-candle overlay with Minutes,
+  Range and target/reversal `Vol Bars`. Despite the name, Vol Bars is not a
+  fixed-volume threshold: Parameter 1 is target ticks and Parameter 2 is
+  reversal ticks.
+- Range/Vol Bars must use exact executions and remain empty without them;
+  `flowOnly` history cannot reconstruct an intrabar price path. Preserve
+  one-execution/one-bar order-flow accounting at reversals.

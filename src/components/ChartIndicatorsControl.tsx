@@ -515,6 +515,9 @@ const OVERLAY_TIMEFRAME_HIGHLIGHT_MANAGED_SETTINGS = new Set([
   "targetEnabled", "targetLineStyle", "extendLineLeft", "showTargetText",
   "summaryEnabled", "volumeSummary", "tradeSummary",
 ]);
+const CANDLESTICK_BAR_MANAGED_SETTINGS = new Set([
+  "parameterType", "filled", "showVerticalLineOnClose", "candlestickBarSettingsVersion",
+]);
 
 export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "inverse-cyber-cycle",
@@ -537,6 +540,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "average-daily-range-target",
   "volume-delta-sprint",
   "overlay-timeframe-highlight",
+  "candlestick-bar",
   "anchored-vwap",
   "zig-zag",
   "gamma-levels",
@@ -809,6 +813,10 @@ const themeColourMapFor = (indicatorId: string, chartSettings: ChartSettings) =>
   if (indicatorId === "overlay-timeframe-highlight") {
     const visible = visibleIndicatorTheme(chartSettings);
     return { upColor: visible.positive, downColor: visible.negative, highColor: visible.positive, lowColor: visible.negative, textColor: visible.primary, summaryTextColor: visible.primary, askColor: visible.positive, bidColor: visible.negative } as Record<string, string>;
+  }
+  if (indicatorId === "candlestick-bar") {
+    const visible = visibleIndicatorTheme(chartSettings);
+    return { positiveColor: visible.positive, negativeColor: visible.negative } as Record<string, string>;
   }
   if (indicatorId === "zig-zag") {
     const visible = visibleIndicatorTheme(chartSettings);
@@ -7982,6 +7990,16 @@ export default function ChartIndicatorsControl({
                 </div>
               ) : null}
 
+              {settingsDefinition.id === "candlestick-bar" ? (
+                <div data-settings-section="General" className="space-y-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3">
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"><span>Parameter type</span><KwantSelect value={String(settingsInstance.settings?.parameterType ?? "minutes")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), parameterType: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel="Candlestick Bar parameter type"><option value="minutes">Minutes</option><option value="vol-bars">Vol Bars · target / reversal</option><option value="range">Range · ticks</option></KwantSelect></label>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {[["Show filled bar", "filled", true], ["Vertical line on close", "showVerticalLineOnClose", false]].map(([label, key, fallback]) => { const on = settingsInstance.settings?.[String(key)] === undefined ? Boolean(fallback) : settingsInstance.settings?.[String(key)] === true; return <button key={String(key)} type="button" aria-pressed={on} onClick={() => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [String(key)]: !on } }))} className="flex h-9 items-center justify-between rounded-lg border border-border bg-background px-3 text-[9px] uppercase tracking-[0.1em] text-muted"><span>{String(label)}</span><span className={on ? "text-primary" : "text-muted"}>{on ? "On" : "Off"}</span></button>; })}
+                  </div>
+                  <p className="text-[8px] leading-4 text-muted">Minutes use loaded authoritative OHLC history. Range and Vol Bars are built only from the exact execution tape; Vol Bars means target/reversal ticks, not fixed contract volume.</p>
+                </div>
+              ) : null}
+
               {settingsDefinition.id === "session-imbalance" ? (
                 <div data-settings-section="General" className="space-y-4 rounded-xl border border-primary/15 bg-primary/[0.035] p-3">
                   <div className="grid gap-3 sm:grid-cols-2">
@@ -8156,6 +8174,7 @@ export default function ChartIndicatorsControl({
                     && !(settingsDefinition.id === "average-daily-range-target" && ADR_TARGET_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "volume-delta-sprint" && VOLUME_DELTA_SPRINT_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "overlay-timeframe-highlight" && OVERLAY_TIMEFRAME_HIGHLIGHT_MANAGED_SETTINGS.has(key))
+                    && !(settingsDefinition.id === "candlestick-bar" && CANDLESTICK_BAR_MANAGED_SETTINGS.has(key))
                     && !(VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) && VOLUME_PROFILE_VWAP_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "bounce-levels" && key === "syncGexMapColors")
                     && !(settingsDefinition.id === "super-trend" && settingsInstance.settings?.chartArea === "pane" && key === "useSecondaryAxis")
