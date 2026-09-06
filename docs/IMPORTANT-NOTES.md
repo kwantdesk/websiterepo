@@ -566,3 +566,5 @@ recap of the open items below and update this file when their state changes.
   selected emoji moves to the front, is deduplicated by Unicode presentation
   identity, and the oldest item is evicted. Keep the original set as first-run
   defaults and synchronize changes across open charts.
+- Keep the picker heading and pager clean: do not show the total catalogue or
+  filtered-result emoji count.

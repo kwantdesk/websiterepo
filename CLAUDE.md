@@ -1,5 +1,12 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-07 — Chart emoji counts hidden
+
+- Removed the total catalogue count from the picker heading and the filtered
+  result count from its pager. Search, categories, paging and recent quick
+  picks are unchanged. Prompt/outcome:
+  `docs/prompt-log/2026-09-07-hide-chart-emoji-count.md`.
+
 ## 2026-09-07 — Session windows no longer overlap by default
 
 - Sessions and Session Marker now use one New York exchange-time hand-off:

@@ -26,7 +26,7 @@ export default function ChartEmojiPicker({ emoji, quickEmojis, onSelect }: { emo
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden p-1 text-foreground" onKeyDown={(event) => event.stopPropagation()} onPointerDown={(event) => event.stopPropagation()} onWheel={(event) => event.stopPropagation()}>
       <div className="flex shrink-0 items-center justify-between text-[11px]">
-        <span>Emojis <span className="text-muted">· {CHART_EMOJI_CATALOG.length.toLocaleString("en-US")}</span></span>
+        <span>Emojis</span>
         <span style={emojiFont} className="text-xl" aria-label="Selected emoji">{emoji}</span>
       </div>
       <input type="search" aria-label="Search chart emojis" placeholder="Search emojis: magnet, rocket, bull…" value={query}
@@ -52,7 +52,7 @@ export default function ChartEmojiPicker({ emoji, quickEmojis, onSelect }: { emo
       </div>
       <div className="flex shrink-0 items-center justify-between gap-2 border-t border-border pt-2 text-[11px]">
         <button type="button" disabled={visible.page === 0} onClick={() => { setPage(visible.page - 1); resetScroll(); }} className="rounded border border-border px-2 py-1 disabled:opacity-40 hover:enabled:bg-surface">Previous</button>
-        <span aria-live="polite" className="text-muted">{visible.page + 1} / {visible.pages} · {matches.length} emojis</span>
+        <span aria-live="polite" className="text-muted">{visible.page + 1} / {visible.pages}</span>
         <button type="button" disabled={visible.page + 1 === visible.pages} onClick={() => { setPage(visible.page + 1); resetScroll(); }} className="rounded border border-border px-2 py-1 disabled:opacity-40 hover:enabled:bg-surface">Next</button>
       </div>
       <p className="shrink-0 text-[10px] leading-tight text-muted">Newer emojis depend on your device’s emoji font.</p>

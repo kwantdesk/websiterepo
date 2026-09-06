@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import source from "emojibase-data/en/compact.json" with { type: "json" };
 import { CHART_EMOJI_CATALOG, CHART_EMOJI_CATEGORIES, CHART_EMOJI_PAGE_SIZE, CHART_QUICK_EMOJI_LIMIT, CHART_QUICK_EMOJIS, chartEmojiIdentity, chartEmojiPage, filterChartEmojis, normalizeChartQuickEmojis, promoteChartQuickEmoji } from "../src/lib/chartEmojiCatalog.ts";
@@ -68,4 +69,10 @@ test("every complete emoji sequence survives the existing drawing persistence", 
     const restored = normalizeDrawings(JSON.parse(JSON.stringify([drawing])))[0];
     assert.equal(restored.text, drawing.text);
   }
+});
+
+test("the picker does not advertise catalogue or result counts", () => {
+  const picker = readFileSync(new URL("../src/components/ChartEmojiPicker.tsx", import.meta.url), "utf8");
+  assert.ok(!picker.includes("CHART_EMOJI_CATALOG.length.toLocaleString"));
+  assert.ok(!picker.includes("{matches.length} emojis"));
 });
