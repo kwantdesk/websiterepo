@@ -124,7 +124,7 @@ Do not tick a row just because its Add gate changes.
 | `important-levels` | [ ] Audit / implement / verify |
 | `absolute-levels` | [x] Batch 2; reference/default limits recorded above |
 | `pivot-points` | [x] Public formula + exact DLL/UI contract implemented; synthetic browser QA passed; native pixel/open-session parity remains limited |
-| `price-movement-levels` | [ ] Audit / implement / verify |
+| `price-movement-levels` | [x] Exchange-session Open/prior-Close anchors, percentage/tick steps, dynamic support/resistance/zero levels, full public settings surface and persistence; protected rounding/pixel limits documented |
 | `fvg-identifier` | [x] Standard future-safe three-candle zones, full public/DLL settings contract, bounded mitigation lookup and browser Save/reload QA; protected formula/pixel parity limits documented |
 | `gap-detector` | [x] Public behavior + exact DLL settings contract implemented; synthetic renderer/settings QA passed; market-open parity remains limited |
 | `swing-point` | [x] Confirmed high/low segments, full public settings contract, gap safety and browser QA; protected tie/filter parity documented |

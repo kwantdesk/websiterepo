@@ -95,6 +95,7 @@ import {
 import { CHART_OVERLAY_SETTINGS_VERSION } from "@/lib/chartOverlays";
 import { DEEP_PATTERN_BUILDER_SETTINGS_VERSION } from "@/lib/deepPatternBuilder";
 import { FAIR_VALUE_GAP_DEFAULTS, normalizeFairValueGapSettings } from "@/lib/fairValueGap";
+import { PRICE_MOVEMENT_LEVEL_DEFAULTS, normalizePriceMovementLevelSettings } from "@/lib/priceMovementLevels";
 
 export const LIVE_CHART_INDICATOR_IDS = new Set([
   "zig-zag",
@@ -111,6 +112,7 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "parabolic-sar",
   "average-directional-index-adx",
   "absolute-levels",
+  "price-movement-levels",
   "pivot-points",
   "gap-detector",
   "fvg-identifier",
@@ -323,6 +325,15 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "secondValue", label: "Second value", defaultValue: 0, min: -1000000000, max: 1000000000, step: 0.00000001 },
     { key: "firstLineWidth", label: "First line width", defaultValue: 1, min: 1, max: 4, step: 1 },
     { key: "secondLineWidth", label: "Second line width", defaultValue: 1, min: 1, max: 4, step: 1 },
+  ],
+  "price-movement-levels": [
+    { key: "daysToLoad", label: "Days to load", defaultValue: 3, min: 1, max: 365, step: 1 },
+    { key: "stepValue", label: "Step value", defaultValue: 0.5, min: 0.001, max: 1000000, step: 0.05 },
+    { key: "fontSize", label: "Font size", defaultValue: 11, min: 6, max: 50, step: 0.2 },
+    { key: "minimumLevels", label: "Minimum levels per side", defaultValue: 5, min: 1, max: 20, step: 1 },
+    { key: "supportLineWidth", label: "Support line width", defaultValue: 2, min: 1, max: 4, step: 1 },
+    { key: "resistanceLineWidth", label: "Resistance line width", defaultValue: 2, min: 1, max: 4, step: 1 },
+    { key: "zeroLineWidth", label: "Zero line width", defaultValue: 2, min: 1, max: 4, step: 1 },
   ],
   "pivot-points": [
     { key: "fontSize", label: "Font size", defaultValue: 12, min: 6, max: 40, step: 0.5 },
@@ -1552,6 +1563,10 @@ export const defaultIndicatorSettings = (indicatorId: string, rawTheme?: ChartSe
 const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) => ({
   ...(indicatorId === "auction-gap-tracker" ? { ...AUCTION_GAP_DEFAULTS, ...(theme ? auctionGapThemeColors(theme) : {}) } : {}),
   ...(indicatorId === "absolute-levels" ? ABSOLUTE_LEVEL_DEFAULTS : {}),
+  ...(indicatorId === "price-movement-levels" ? PRICE_MOVEMENT_LEVEL_DEFAULTS : {}),
+  ...(indicatorId === "price-movement-levels" ? {
+    textColor: theme?.borderUpColor ?? theme?.upColor ?? "#FFFFFF",
+  } : {}),
   ...(indicatorId === "pivot-points" ? PIVOT_POINT_DEFAULTS : {}),
   ...(indicatorId === "gap-detector" ? GAP_DETECTOR_DEFAULTS : {}),
   ...(indicatorId === "fvg-identifier" ? FAIR_VALUE_GAP_DEFAULTS : {}),
@@ -2985,6 +3000,11 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
   if (normalizedInstance.indicatorId === "fvg-identifier") {
     return { ...normalizedInstance, settings: normalizeFairValueGapSettings({
       ...defaultIndicatorSettings("fvg-identifier"), ...(normalizedInstance.settings ?? {}),
+    }) };
+  }
+  if (normalizedInstance.indicatorId === "price-movement-levels") {
+    return { ...normalizedInstance, settings: normalizePriceMovementLevelSettings({
+      ...defaultIndicatorSettings("price-movement-levels"), ...(normalizedInstance.settings ?? {}),
     }) };
   }
   if (["vwap", "vwap-envelopes", "rolling-vwap"].includes(normalizedInstance.indicatorId)) {

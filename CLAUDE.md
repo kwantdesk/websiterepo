@@ -1,5 +1,19 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-07 — Price Movement Levels converted from Pending
+
+- Added exchange-session Open and future-safe prior-Close anchors, percentage
+  and true-instrument-tick steps, dynamic minimum levels, labels and separate
+  support/resistance/zero plots.
+- Added the complete public/DLL setting surface, custom exchange-time windows,
+  theme/custom colours, deep history and saved/template normalization.
+- Seven focused tests plus shared sliders/templates/theme and TypeScript pass.
+  Pending inventory is 18. The prior FVG production SHA `98d550f44d646891ae4df2b5eda82615118c8812`
+  is verified live; this release's build/deployment verification is due.
+- Evidence and honest width/private-formula limits:
+  `docs/deepcharts-price-movement-levels-audit.md`; prompt/outcome:
+  `docs/prompt-log/2026-09-07-price-movement-levels.md`.
+
 ## 2026-09-07 — FVG Identifier converted from Pending
 
 - Added standard future-safe three-candle bullish/bearish fair-value gaps with

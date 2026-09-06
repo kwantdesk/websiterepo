@@ -1,6 +1,6 @@
 import type { ISeriesPrimitive, ISeriesPrimitivePaneView, SeriesAttachedParameter, Time } from "@/lib/lightweightChartsCompat";
 
-export type PivotPointLabelOptions = { label: string; align: "left" | "right"; fontSize: number };
+export type PivotPointLabelOptions = { label: string; align: "left" | "right"; fontSize: number; color?: string };
 type Point = { time: number; value: number; breakBefore?: boolean };
 
 export class PivotPointLabels implements ISeriesPrimitive<Time> {
@@ -24,7 +24,7 @@ export class PivotPointLabels implements ISeriesPrimitive<Time> {
         context.beginPath();
         context.rect(0, 0, mediaSize.width, mediaSize.height);
         context.clip();
-        context.fillStyle = this.color;
+        context.fillStyle = options.color ?? this.color;
         context.font = `600 ${Math.max(6, Math.min(40, options.fontSize))}px monospace`;
         context.textBaseline = "bottom";
         context.textAlign = options.align;

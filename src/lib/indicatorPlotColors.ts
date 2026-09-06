@@ -80,6 +80,11 @@ export const INDICATOR_PLOT_COLOR_SLOTS: Record<string, IndicatorPlotColorSlot[]
     { key: "firstLineColor", role: "primary" },
     { key: "secondLineColor", role: "secondary" },
   ],
+  "price-movement-levels": [
+    { key: "supportLineColor", role: "positive" },
+    { key: "resistanceLineColor", role: "secondary" },
+    { key: "zeroLineColor", role: "primary" },
+  ],
   "pivot-points": [
     { key: "pivotPointColor", role: "primary" },
     { key: "r1Color", role: "negative" },
@@ -319,6 +324,11 @@ export const INDICATOR_PLOT_COLOR_SLOTS: Record<string, IndicatorPlotColorSlot[]
  * disagree about where a colour is stored.
  */
 export function indicatorSeriesColorKey(indicatorId: string, seriesKey: string): string {
+  if (indicatorId === "price-movement-levels") {
+    if (seriesKey.includes("-support-")) return "supportLineColor";
+    if (seriesKey.includes("-resistance-")) return "resistanceLineColor";
+    if (seriesKey.endsWith("-zero")) return "zeroLineColor";
+  }
   if (indicatorId === "zig-zag") {
     if (seriesKey.endsWith("-zig-zag-up")) return "upColor";
     if (seriesKey.endsWith("-zig-zag-down")) return "downColor";

@@ -25,7 +25,10 @@
   audits. Text on Chart now has a fixed multiline viewport overlay and the
   complete public settings contract. FVG Identifier now has future-safe
   three-candle zones, the complete observed public/DLL settings contract,
-  bounded mitigation lookup and browser-verified Save/reload behavior. 19
+  bounded mitigation lookup and browser-verified Save/reload behavior. Price
+  Movement Levels now has exchange-session Open/prior-Close anchors,
+  percentage/true-tick spacing, complete support/resistance/zero styling and
+  custom-time controls. 18
   still require individual work. Monthly/Session/
   Visible profile data/settings integration remains unfinished, including exact
   multi-session filtering and event-allocation-aware visible boundaries.

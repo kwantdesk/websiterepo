@@ -477,6 +477,10 @@ const sectionForSetting = (indicatorId: string, key: string, fallback: string) =
     : indicatorId === "swing-point"
       ? /^(leftBars|rightBars|filterSwing)$/.test(key) ? "General" : "Plot settings"
     : indicatorId === "text-on-chart" ? "Text settings"
+    : indicatorId === "price-movement-levels"
+      ? /^(daysToLoad|levelBasedOn|stepMode|stepValue|fontSize|minimumLevels|textColor)$/.test(key) ? "General"
+        : /^support/.test(key) ? "Support Line" : /^resistance/.test(key) ? "Resistance Line"
+          : /^zero/.test(key) ? "Zero Line" : "Custom Time Session"
     : (isTpoIndicator(indicatorId) ? TPO_SETTING_SECTIONS[key] ?? "General" : fallback);
 
 const PIVOT_POINT_MANAGED_SETTINGS = new Set([
@@ -497,6 +501,10 @@ const REGRESSION_CHANNEL_MANAGED_SETTINGS = new Set([
   "mode", "zigZagMode", "midLineStyle", "upperLineStyle", "lowerLineStyle",
 ]);
 const SWING_POINT_MANAGED_SETTINGS = new Set(["displayMode", "lineStyle"]);
+const PRICE_MOVEMENT_LEVELS_MANAGED_SETTINGS = new Set([
+  "levelBasedOn", "stepMode", "supportLineStyle", "resistanceLineStyle", "zeroLineStyle",
+  "customStartTime", "customEndTime",
+]);
 
 export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "inverse-cyber-cycle",
@@ -515,6 +523,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "pivot-points",
   "gap-detector",
   "fvg-identifier",
+  "price-movement-levels",
   "zig-zag",
   "gamma-levels",
   "overlay-chart",
@@ -6662,6 +6671,47 @@ export default function ChartIndicatorsControl({
                 </div>
               ) : null}
 
+              {settingsDefinition.id === "price-movement-levels" ? (
+                <>
+                  <div data-settings-section="General" className="grid gap-3 sm:grid-cols-2">
+                    <label className="block space-y-1 text-[10px] text-muted"><span>Level based on</span>
+                      <KwantSelect value={String(settingsInstance.settings?.levelBasedOn ?? "open")}
+                        onChange={(event) => replace(settingsInstance.instanceId, current => ({ ...current, settings: { ...(current.settings ?? {}), levelBasedOn: event.target.value } }))}
+                        menuLabel="Price movement reference" className="h-9 w-full border border-border bg-background px-3 text-foreground">
+                        <option value="open">Open</option><option value="close">Close</option>
+                      </KwantSelect>
+                    </label>
+                    <label className="block space-y-1 text-[10px] text-muted"><span>Step mode</span>
+                      <KwantSelect value={String(settingsInstance.settings?.stepMode ?? "percentual")}
+                        onChange={(event) => replace(settingsInstance.instanceId, current => ({ ...current, settings: { ...(current.settings ?? {}), stepMode: event.target.value } }))}
+                        menuLabel="Price movement step mode" className="h-9 w-full border border-border bg-background px-3 text-foreground">
+                        <option value="percentual">Percentual</option><option value="tick">Tick</option>
+                      </KwantSelect>
+                    </label>
+                  </div>
+                  {(["support", "resistance", "zero"] as const).map((side) => (
+                    <label key={side} data-settings-section={`${side[0].toUpperCase()}${side.slice(1)} Line`} className="block space-y-1 text-[10px] text-muted">
+                      <span>{side[0].toUpperCase() + side.slice(1)} line style</span>
+                      <KwantSelect value={String(settingsInstance.settings?.[`${side}LineStyle`] ?? (side === "zero" ? "dotted" : "dashed"))}
+                        onChange={(event) => replace(settingsInstance.instanceId, current => ({ ...current, settings: { ...(current.settings ?? {}), [`${side}LineStyle`]: event.target.value } }))}
+                        menuLabel={`${side} line style`} className="h-9 w-full border border-border bg-background px-3 text-foreground">
+                        <option value="solid">Solid</option><option value="dashed">Dash</option><option value="dotted">Dot</option>
+                      </KwantSelect>
+                    </label>
+                  ))}
+                  <div data-settings-section="Custom Time Session" className="grid gap-3 sm:grid-cols-2">
+                    {(["customStartTime", "customEndTime"] as const).map((key) => (
+                      <label key={key} className="block space-y-1 text-[10px] text-muted">
+                        <span>{key === "customStartTime" ? "Ini Time" : "End Time"} · exchange time</span>
+                        <input type="time" step="1" value={String(settingsInstance.settings?.[key] ?? "00:00:00")}
+                          onChange={(event) => replace(settingsInstance.instanceId, current => ({ ...current, settings: { ...(current.settings ?? {}), [key]: event.target.value } }))}
+                          className="h-9 w-full border border-border bg-background px-3 text-foreground" />
+                      </label>
+                    ))}
+                  </div>
+                </>
+              ) : null}
+
               {settingsDefinition.id === "tillson-t3" ? (
                 <div data-settings-section="Inputs" className="space-y-3">
                   {[
@@ -7928,6 +7978,7 @@ export default function ChartIndicatorsControl({
                     && !(settingsDefinition.id === "ichimoku-indicator" && ICHIMOKU_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "regression-channel" && REGRESSION_CHANNEL_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "swing-point" && SWING_POINT_MANAGED_SETTINGS.has(key))
+                    && !(settingsDefinition.id === "price-movement-levels" && PRICE_MOVEMENT_LEVELS_MANAGED_SETTINGS.has(key))
                     && !(VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) && VOLUME_PROFILE_VWAP_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "bounce-levels" && key === "syncGexMapColors")
                     && !(settingsDefinition.id === "super-trend" && settingsInstance.settings?.chartArea === "pane" && key === "useSecondaryAxis")

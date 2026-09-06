@@ -17,6 +17,7 @@ import { calculateRegressionChannel } from "@/lib/regressionChannel";
 import { calculateSwingPoints } from "@/lib/swingPointLevels";
 import type { SwingPointLevelOptions } from "@/lib/swingPointLevelPrimitive";
 import { calculateTextOnChart } from "@/lib/textOnChart";
+import { calculatePriceMovementLevels } from "@/lib/priceMovementLevels";
 import type { TextOnChartOptions } from "@/lib/textOnChartPrimitive";
 import { calculateTillsonT3 } from "@/lib/tillsonT3";
 import { calculateSuperTrendSeries } from "@/lib/superTrendSeries";
@@ -374,6 +375,7 @@ function computeIndicatorSeries(
   if (key === "regression-channel") return calculateRegressionChannel(candles, instance.settings ?? {}, theme, instance.instanceId, context.tickSize);
   if (key === "swing-point") return calculateSwingPoints(candles, instance.settings ?? {}, theme, context.tickSize);
   if (key === "text-on-chart") return calculateTextOnChart(candles, instance.settings ?? {}, theme);
+  if (key === "price-movement-levels") return calculatePriceMovementLevels(candles, instance.settings ?? {}, theme, context.tickSize);
   if (key === "tillson-t3") return calculateTillsonT3(candles, instance.settings ?? {}, theme, instance.instanceId, context.instrument);
 
   if (key === "source-code-indicator") {

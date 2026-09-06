@@ -550,6 +550,7 @@ const DEEP_HISTORY_INDICATOR_IDS = new Set([
   "regression-channel",
   "swing-point",
   "fvg-identifier",
+  "price-movement-levels",
   // Single-pass running extremes; the selectable 10k confirmation window and
   // long structural swings must not be truncated to the 1.5k lite tail.
   "zig-zag",
