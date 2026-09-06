@@ -1,5 +1,20 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-07 — Swing Point converted from Pending
+
+- Implemented confirmed high/low horizontal segments with the public `2 / 2`
+  lookback defaults, optional alternating filter and no future leakage.
+- Added every public/DLL display and plot control, theme/custom colours, shared
+  sliders/templates, saved normalization, deep history and a custom primitive.
+- Invalid or out-of-order candles are hard boundaries; levels never bridge a
+  suspect history gap. Explicit formula/tie/filter parity limits:
+  `docs/deepcharts-swing-point-audit.md`.
+- Nine focused and 39 combined tests, slider/template/theme checks, scoped
+  ESLint, TypeScript, browser plot/settings/Save QA and the complete 80-page
+  production build pass. Pending inventory is 21; production SHA verification
+  is due after the scoped release push.
+- Prompt and outcome: `docs/prompt-log/2026-09-07-swing-point.md`.
+
 ## 2026-09-07 — Regression Channel converted from Pending
 
 - Owner request: continue the complete Pending-library overhaul one real study

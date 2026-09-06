@@ -10,6 +10,7 @@ import { ADX_DEFAULTS } from "@/lib/averageDirectionalIndex";
 import { PARABOLIC_SAR_DEFAULTS } from "@/lib/parabolicSar";
 import { LINEAR_REGRESSION_DEFAULTS } from "@/lib/linearRegression";
 import { REGRESSION_CHANNEL_DEFAULTS, normalizeRegressionChannelSettings } from "@/lib/regressionChannel";
+import { SWING_POINT_DEFAULTS, normalizeSwingPointSettings } from "@/lib/swingPointLevels";
 import { TILLSON_T3_DEFAULTS } from "@/lib/tillsonT3";
 import { SUPER_TREND_DEFAULTS, SUPER_TREND_DIFFERENCE_DEFAULTS, superTrendNumericSettings } from "@/lib/superTrendSettings";
 import { KST_DEFAULTS, KST_NUMERIC_SETTINGS } from "@/lib/knowSureThingSettings";
@@ -103,6 +104,7 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "tillson-t3",
   "linear-regression",
   "regression-channel",
+  "swing-point",
   "parabolic-sar",
   "average-directional-index-adx",
   "absolute-levels",
@@ -292,6 +294,13 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "midLineWidth", label: "MID line width", defaultValue: 2, min: 1, max: 4, step: 1 },
     { key: "upperLineWidth", label: "UP line width", defaultValue: 2, min: 1, max: 4, step: 1 },
     { key: "lowerLineWidth", label: "DN line width", defaultValue: 2, min: 1, max: 4, step: 1 },
+  ],
+  "swing-point": [
+    { key: "leftBars", label: "Left bars", defaultValue: 2, min: 1, max: 500, step: 1 },
+    { key: "rightBars", label: "Right bars", defaultValue: 2, min: 0, max: 500, step: 1 },
+    { key: "lineWidth", label: "Line width", defaultValue: 2, min: 1, max: 4, step: 1 },
+    { key: "textTickOffset", label: "Text tick offset", defaultValue: 1, min: -1000, max: 1000, step: 1 },
+    { key: "textSize", label: "Text size", defaultValue: 11, min: 6, max: 50, step: 0.1 },
   ],
   "parabolic-sar": [
     { key: "accelerationStep", label: "Acceleration step", defaultValue: 0.02, min: 0, max: 1, step: 0.001 },
@@ -1541,6 +1550,7 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
   ...(indicatorId === "parabolic-sar" ? PARABOLIC_SAR_DEFAULTS : {}),
   ...(indicatorId === "linear-regression" ? LINEAR_REGRESSION_DEFAULTS : {}),
   ...(indicatorId === "regression-channel" ? REGRESSION_CHANNEL_DEFAULTS : {}),
+  ...(indicatorId === "swing-point" ? SWING_POINT_DEFAULTS : {}),
   ...(indicatorId === "tillson-t3" ? TILLSON_T3_DEFAULTS : {}),
   ...(indicatorId === "super-trend" ? SUPER_TREND_DEFAULTS : {}),
   ...(indicatorId === "super-trend-difference" ? SUPER_TREND_DIFFERENCE_DEFAULTS : {}),
@@ -1556,6 +1566,10 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     gridColor: theme?.gridColor ?? "#8A8F98",
     backgroundColor: theme?.backgroundColor ?? "#000000",
   })),
+  ...(indicatorId === "swing-point" ? {
+    highTextColor: theme?.borderUpColor ?? theme?.upColor ?? "#FFFFFF",
+    lowTextColor: theme?.borderUpColor ?? theme?.upColor ?? "#FFFFFF",
+  } : {}),
   ...(indicatorId === "zero-gamma-line" ? {
     // AUTO follows the chart's own options family (NQ -> NDX, ES -> SPX).
     // Naming a source pins the line to that chain instead.
@@ -2936,6 +2950,11 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
       ...(normalizedInstance.settings ?? {}),
     });
     return { ...normalizedInstance, settings };
+  }
+  if (normalizedInstance.indicatorId === "swing-point") {
+    return { ...normalizedInstance, settings: normalizeSwingPointSettings({
+      ...defaultIndicatorSettings("swing-point"), ...(normalizedInstance.settings ?? {}),
+    }) };
   }
   if (["vwap", "vwap-envelopes", "rolling-vwap"].includes(normalizedInstance.indicatorId)) {
     const indicatorId = normalizedInstance.indicatorId;

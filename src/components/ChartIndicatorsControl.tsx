@@ -471,6 +471,8 @@ const sectionForSetting = (indicatorId: string, key: string, fallback: string) =
     : indicatorId === "regression-channel"
       ? /^(bars|standardDeviationValue)$/.test(key) ? "General" : /^zigZag/.test(key) ? "Zig Zag settings"
         : /^mid/.test(key) ? "MID plot settings" : /^upper/.test(key) ? "UP plot settings" : "DN plot settings"
+    : indicatorId === "swing-point"
+      ? /^(leftBars|rightBars|filterSwing)$/.test(key) ? "General" : "Plot settings"
     : (isTpoIndicator(indicatorId) ? TPO_SETTING_SECTIONS[key] ?? "General" : fallback);
 
 const PIVOT_POINT_MANAGED_SETTINGS = new Set([
@@ -489,11 +491,13 @@ const ICHIMOKU_MANAGED_SETTINGS = new Set([
 const REGRESSION_CHANNEL_MANAGED_SETTINGS = new Set([
   "mode", "zigZagMode", "midLineStyle", "upperLineStyle", "lowerLineStyle",
 ]);
+const SWING_POINT_MANAGED_SETTINGS = new Set(["displayMode", "lineStyle"]);
 
 export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "inverse-cyber-cycle",
   "ichimoku-indicator",
   "regression-channel",
+  "swing-point",
   "super-trend",
   "super-trend-difference",
   "know-sure-thing-kst",
@@ -6609,6 +6613,31 @@ export default function ChartIndicatorsControl({
                 </>
               ) : null}
 
+              {settingsDefinition.id === "swing-point" ? (
+                <>
+                  <div data-settings-section="General" className="space-y-3">
+                    <p className="text-[10px] text-muted">A swing is confirmed only after the selected bars on both sides. Filtering keeps alternating structural highs and lows and replaces weaker consecutive pivots.</p>
+                  </div>
+                  <div data-settings-section="Plot settings" className="grid gap-3 sm:grid-cols-2">
+                    <label className="block space-y-1 text-[10px] text-muted"><span>Display mode</span>
+                      <KwantSelect value={String(settingsInstance.settings?.displayMode ?? "line")}
+                        onChange={(event) => replace(settingsInstance.instanceId, current => ({ ...current, settings: { ...(current.settings ?? {}), displayMode: event.target.value } }))}
+                        menuLabel="Swing point display mode" className="h-9 w-full border border-border bg-background px-3 text-foreground">
+                        <option value="line">Line</option><option value="text">Text</option><option value="line-and-text">Line and text</option>
+                      </KwantSelect>
+                    </label>
+                    <label className="block space-y-1 text-[10px] text-muted"><span>Line style</span>
+                      <KwantSelect value={String(settingsInstance.settings?.lineStyle ?? "dashed")}
+                        onChange={(event) => replace(settingsInstance.instanceId, current => ({ ...current, settings: { ...(current.settings ?? {}), lineStyle: event.target.value } }))}
+                        menuLabel="Swing point line style" className="h-9 w-full border border-border bg-background px-3 text-foreground">
+                        <option value="solid">Solid</option><option value="dashed">Dash</option><option value="dotted">Dot</option>
+                        <option value="dash-dot">Dash Dot</option><option value="dash-dot-dot">Dash Dot Dot</option>
+                      </KwantSelect>
+                    </label>
+                  </div>
+                </>
+              ) : null}
+
               {settingsDefinition.id === "tillson-t3" ? (
                 <div data-settings-section="Inputs" className="space-y-3">
                   {[
@@ -7873,6 +7902,7 @@ export default function ChartIndicatorsControl({
                     && !(settingsDefinition.id === "inverse-cyber-cycle" && INVERSE_CYBER_CYCLE_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "ichimoku-indicator" && ICHIMOKU_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "regression-channel" && REGRESSION_CHANNEL_MANAGED_SETTINGS.has(key))
+                    && !(settingsDefinition.id === "swing-point" && SWING_POINT_MANAGED_SETTINGS.has(key))
                     && !(VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) && VOLUME_PROFILE_VWAP_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "bounce-levels" && key === "syncGexMapColors")
                     && !(settingsDefinition.id === "super-trend" && settingsInstance.settings?.chartArea === "pane" && key === "useSecondaryAxis")

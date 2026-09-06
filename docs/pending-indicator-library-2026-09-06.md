@@ -102,7 +102,7 @@ Live diagnostics returned exact SHA `18a17c4d5ba23233ae678c4a75e324f596f0927b`.
 Isolated final tree passed 90 combined tests, 18 template checks and the normal
 production build. This supersedes the local-only deployment status above/below.
 
-## Remaining 22 — not released by blanket enablement
+## Remaining 21 — not released by blanket enablement
 
 Each row needs evidence, settings/data implementation, calculation tests,
 renderer/theme/persistence verification and explicit visual/latency limits.
@@ -127,7 +127,7 @@ Do not tick a row just because its Add gate changes.
 | `price-movement-levels` | [ ] Audit / implement / verify |
 | `fvg-identifier` | [ ] Audit / implement / verify |
 | `gap-detector` | [x] Public behavior + exact DLL settings contract implemented; synthetic renderer/settings QA passed; market-open parity remains limited |
-| `swing-point` | [ ] Audit / implement / verify |
+| `swing-point` | [x] Confirmed high/low segments, full public settings contract, gap safety and browser QA; protected tie/filter parity documented |
 | `average-daily-range-target` | [ ] Audit / implement / verify |
 | `session-marker` | [ ] Audit / implement / verify |
 | `shift-candle` | [ ] Audit / implement / verify |
@@ -168,6 +168,8 @@ Do not tick a row just because its Add gate changes.
   `docs/deepcharts-pivot-points-audit.md`.
 - Gap Detector behavior, settings, renderer and explicit parity limits:
   `docs/deepcharts-gap-detector-audit.md`.
+- Swing Point settings, calculation conventions and explicit parity limits:
+  `docs/deepcharts-swing-point-audit.md`.
 - Full formula/pixel parity remains unclaimed until suitable reference evidence
   and side-by-side verification exist. No provider spending is authorised by
   this task and no vendor DLL/source is to be redistributed.

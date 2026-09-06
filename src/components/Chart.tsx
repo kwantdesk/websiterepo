@@ -5,6 +5,7 @@ import { PivotPointLabels } from "@/lib/pivotPointLabels";
 import { GapZonePrimitive } from "@/lib/gapZonePrimitive";
 import { ZigZagRetracementPrimitive } from "@/lib/zigZagRetracementPrimitive";
 import { IchimokuCloudPrimitive } from "@/lib/ichimokuCloudPrimitive";
+import { SwingPointLevelPrimitive } from "@/lib/swingPointLevelPrimitive";
 import { useSuperTrendAlerts } from "@/components/useSuperTrendAlerts";
 import { paintSuperTrendSeries } from "@/lib/superTrendSeries";
 import { SUPER_TREND_LIVE_PLOT_EVENT, SuperTrendPlotBuffer } from "@/lib/superTrendLivePlot";
@@ -546,6 +547,7 @@ const DEEP_HISTORY_INDICATOR_IDS = new Set([
   // check. Its selectable 10k length must not receive only 1.5k lite candles.
   "linear-regression",
   "regression-channel",
+  "swing-point",
   // Single-pass running extremes; the selectable 10k confirmation window and
   // long structural swings must not be truncated to the 1.5k lite tail.
   "zig-zag",
@@ -3344,6 +3346,7 @@ function Chart({
     gapZonePrimitive?: GapZonePrimitive;
     zigZagRetracementPrimitive?: ZigZagRetracementPrimitive;
     ichimokuCloudPrimitive?: IchimokuCloudPrimitive;
+    swingPointLevelPrimitive?: SwingPointLevelPrimitive;
     superTrendDefinition?: CalculatedIndicatorSeries;
     key: string;
     kind: "line" | "histogram";
@@ -16892,6 +16895,7 @@ function Chart({
         if (definition.gapZones) existing.gapZonePrimitive?.update(definition.gapZones, definition.color);
         if (definition.zigZagRetracements) existing.zigZagRetracementPrimitive?.update(definition.zigZagRetracements);
         if (definition.ichimokuCloud) existing.ichimokuCloudPrimitive?.update(definition.ichimokuCloud);
+        if (definition.swingPointLevels) existing.swingPointLevelPrimitive?.update(definition.data, definition.swingPointLevels);
         if (existing.optionsSignature !== optionsSignature) {
           existing.series.applyOptions(options);
         }
@@ -16940,12 +16944,18 @@ function Chart({
         series.attachPrimitive(ichimokuCloudPrimitive);
         ichimokuCloudPrimitive.update(definition.ichimokuCloud);
       }
+      const swingPointLevelPrimitive = definition.swingPointLevels ? new SwingPointLevelPrimitive() : undefined;
+      if (swingPointLevelPrimitive && definition.swingPointLevels) {
+        series.attachPrimitive(swingPointLevelPrimitive);
+        swingPointLevelPrimitive.update(definition.data, definition.swingPointLevels);
+      }
       return {
         superTrendLabels,
         pivotPointLabels,
         gapZonePrimitive,
         zigZagRetracementPrimitive,
         ichimokuCloudPrimitive,
+        swingPointLevelPrimitive,
         superTrendDefinition: definition.superTrendStyleKey ? definition : undefined,
         key: definition.key,
         kind,
