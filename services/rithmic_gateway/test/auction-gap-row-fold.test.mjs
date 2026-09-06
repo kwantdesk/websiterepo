@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { foldAuctionGapTimeRows } from "../src/auction-gap-row-fold.mjs";
+import { foldAuctionGapEventRows, foldAuctionGapTimeRows } from "../src/auction-gap-row-fold.mjs";
+import { buildEventBars } from "../src/event-bar-builder.mjs";
 
 const bars = [
   { timestamp: 1_000, endTime: 2_000, open: 100, high: 100.5, low: 100, close: 100.25, volume: 6 },
@@ -72,4 +73,49 @@ test("zero-volume bridge candles remain empty without manufacturing price rows",
   const result = foldAuctionGapTimeRows({ tickSize: 0.25, bars: [...bars, bridge], trades });
   assert.equal(result.status, "ready");
   assert.deepEqual(result.bars[2].rows, []);
+});
+
+const eventTrades = [
+  { timestamp: 1_000, price: 100, size: 3, side: 1 },
+  { timestamp: 2_000, price: 101.5, size: 4, side: -1 },
+  { timestamp: 3_000, price: 99.5, size: 5, side: 0 },
+  { timestamp: 4_000, price: 102, size: 6, side: -1 },
+];
+
+for (const interval of ["10v", "2t", "10dv", "4r", "4R", "4/8PF"]) {
+  test(`${interval} compact rows share the authoritative event-candle ownership`, () => {
+    const result = foldAuctionGapEventRows({ trades: eventTrades, interval, symbol: "NQU6", limit: 100 });
+    assert.equal(result.status, "ready");
+    const expected = buildEventBars(eventTrades.map((trade) => ({
+      ...trade, trades: 1, delta: trade.side > 0 ? trade.size : trade.side < 0 ? -trade.size : 0,
+    })), interval, "NQU6", 100);
+    assert.deepEqual(result.candles, expected);
+    assert.equal(result.bars.length, result.candles.length);
+    for (let index = 0; index < result.bars.length; index += 1) {
+      const volume = result.bars[index].rows.reduce(
+        (sum, row) => sum + row.bidVolume + row.askVolume + row.unknownVolume, 0,
+      );
+      assert.equal(volume, result.candles[index].volume);
+    }
+    assert.equal(result.bars.flatMap((bar) => bar.rows).reduce((sum, row) => sum + row.unknownVolume, 0), 5);
+  });
+}
+
+test("event fold bounds output only after stable absolute ownership is established", () => {
+  const result = foldAuctionGapEventRows({ trades: eventTrades, interval: "2t", symbol: "NQU6", limit: 1 });
+  assert.equal(result.status, "ready");
+  assert.equal(result.candles.length, 1);
+  assert.equal(result.bars[0].chartIndex, 0);
+  assert.equal(result.bars[0].rows.reduce(
+    (sum, row) => sum + row.bidVolume + row.askVolume + row.unknownVolume, 0,
+  ), result.candles[0].volume);
+});
+
+test("event fold rejects off-tick, reversed and invalid-side source prints", () => {
+  assert.equal(foldAuctionGapEventRows({ trades: [{ ...eventTrades[0], price: 100.1 }], interval: "4r", symbol: "NQU6" }).reason,
+    "off-tick-execution");
+  assert.equal(foldAuctionGapEventRows({ trades: [...eventTrades].reverse(), interval: "4r", symbol: "NQU6" }).reason,
+    "invalid-execution");
+  assert.equal(foldAuctionGapEventRows({ trades: [{ ...eventTrades[0], side: 3 }], interval: "4r", symbol: "NQU6" }).reason,
+    "invalid-execution");
 });

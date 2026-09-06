@@ -136,19 +136,21 @@ function addThreshold(bars, record, threshold) {
     bars.push(last);
   }
   update(last, record.price, volume, trades, delta);
+  return bars.length - 1;
 }
 
 function addRange(bars, record, threshold) {
   let last = bars.at(-1);
   if (!last) {
     bars.push(makeCandle(record, safeTimestamp(record.timestamp), record.size, record.trades || 1, record.delta || 0));
-    return;
+    return 0;
   }
+  const owner = bars.length - 1;
   const ranges = Math.floor((Math.abs(record.price - last.close) + 1e-10) / threshold.value);
   const gap = Math.max(0, record.timestamp - last.timestamp) >= RANGE_DATA_GAP_MS && ranges >= 2;
   if (ranges > MAX_RANGE_BARS_PER_EXECUTION || gap) {
     bars.push(makeCandle(record, safeTimestamp(record.timestamp, last), Math.max(0, Number(record.size) || 0), Math.max(1, Number(record.trades) || 1), Number(record.delta) || 0));
-    return;
+    return bars.length - 1;
   }
   let guard = 0;
   let volume = Math.max(0, Number(record.size) || 0);
@@ -159,7 +161,7 @@ function addRange(bars, record, threshold) {
     const low = Math.min(last.low, record.price);
     if (high - low < threshold.value - 1e-10) {
       update(last, record.price, volume, trades, delta);
-      return;
+      return owner;
     }
     const boundary = record.price >= last.close ? low + threshold.value : high - threshold.value;
     update(last, boundary, volume, trades, delta);
@@ -171,24 +173,26 @@ function addRange(bars, record, threshold) {
       const forming = makeCandle({ ...record, price: boundary }, safeTimestamp(record.timestamp, last));
       update(forming, record.price, 0, 0, 0);
       bars.push(forming);
-      return;
+      return owner;
     }
     last = makeCandle({ ...record, price: boundary }, safeTimestamp(record.timestamp, last));
     bars.push(last);
   }
+  return owner;
 }
 
 function addRenko(bars, record, threshold) {
   let forming = bars.at(-1);
   if (!forming) {
     bars.push(makeCandle(record, safeTimestamp(record.timestamp), record.size, record.trades || 1, record.delta || 0));
-    return;
+    return 0;
   }
+  const owner = bars.length - 1;
   const distance = record.price - forming.open;
   const count = Math.floor(Math.abs(distance) / threshold.value);
   if (!count) {
     update(forming, record.price, record.size, record.trades || 1, record.delta || 0);
-    return;
+    return owner;
   }
   const direction = distance > 0 ? 1 : -1;
   let volume = Math.max(0, record.size);
@@ -205,13 +209,14 @@ function addRenko(bars, record, threshold) {
     bars.push(forming);
   }
   update(forming, record.price, 0, 0, 0);
+  return owner;
 }
 
 function addPointFigure(bars, record, threshold) {
   const last = bars.at(-1);
   if (!last) {
     bars.push(makeCandle(record, safeTimestamp(record.timestamp), record.size, record.trades || 1, record.delta || 0));
-    return;
+    return 0;
   }
   const volume = Math.max(0, Number(record.size) || 0);
   const trades = Math.max(1, Number(record.trades) || 1);
@@ -225,7 +230,7 @@ function addPointFigure(bars, record, threshold) {
       last.high = Math.max(last.open, last.close);
       last.low = Math.min(last.open, last.close);
     }
-    return;
+    return bars.length - 1;
   }
   const continuation = direction > 0 ? record.price - last.close : last.close - record.price;
   if (continuation >= threshold.value - 1e-10) {
@@ -234,12 +239,12 @@ function addPointFigure(bars, record, threshold) {
     last.close += direction * boxes * threshold.value;
     last.high = Math.max(last.open, last.close);
     last.low = Math.min(last.open, last.close);
-    return;
+    return bars.length - 1;
   }
   const reversal = direction > 0 ? last.close - record.price : record.price - last.close;
   if (reversal < threshold.secondary - 1e-10) {
     updateFlow(last, volume, trades, delta);
-    return;
+    return bars.length - 1;
   }
   const boxes = Math.floor((reversal + 1e-10) / threshold.value);
   const next = makeCandle({ ...record, price: last.close }, safeTimestamp(record.timestamp, last), volume, trades, delta);
@@ -247,6 +252,7 @@ function addPointFigure(bars, record, threshold) {
   next.high = Math.max(next.open, next.close);
   next.low = Math.min(next.open, next.close);
   bars.push(next);
+  return bars.length - 1;
 }
 
 export function createEventBarBuilder(interval, symbol, limit = 250_000) {
@@ -258,17 +264,25 @@ export function createEventBarBuilder(interval, symbol, limit = 250_000) {
     add(record) {
       if (!Number.isFinite(record?.timestamp) || !Number.isFinite(record?.price) || record.price <= 0) return;
       if (record.timestamp < processedThrough) return;
-      if (["volume", "trade", "delta"].includes(threshold.kind)) addThreshold(bars, record, threshold);
-      else if (threshold.kind === "renko") addRenko(bars, record, threshold);
-      else if (threshold.kind === "point-figure") addPointFigure(bars, record, threshold);
-      else addRange(bars, record, threshold);
+      let owner;
+      if (["volume", "trade", "delta"].includes(threshold.kind)) owner = addThreshold(bars, record, threshold);
+      else if (threshold.kind === "renko") owner = addRenko(bars, record, threshold);
+      else if (threshold.kind === "point-figure") owner = addPointFigure(bars, record, threshold);
+      else owner = addRange(bars, record, threshold);
       const forming = bars.at(-1);
       if (forming) {
         forming.sourceStartTimestamp = Number.isFinite(Number(forming.sourceStartTimestamp)) ? Number(forming.sourceStartTimestamp) : record.timestamp;
         forming.sourceEndTimestamp = Math.max(Number(forming.sourceEndTimestamp ?? record.timestamp), record.timestamp);
       }
       processedThrough = Math.max(processedThrough, record.timestamp);
-      if (bars.length > limit * 2) bars.splice(0, bars.length - limit);
+      let removed = 0;
+      if (bars.length > limit * 2) {
+        removed = bars.length - limit;
+        bars.splice(0, removed);
+      }
+      return Number.isSafeInteger(owner) && owner >= removed
+        ? { chartIndex: owner - removed }
+        : null;
     },
     finish() {
       return bars.length > limit ? bars.slice(-limit) : bars;

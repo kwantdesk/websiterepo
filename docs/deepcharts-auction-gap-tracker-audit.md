@@ -1,5 +1,18 @@
 # Auction Gap Tracker — implementation in progress
 
+### Gateway compact event-bar row fold — 2026-09-07
+
+Extended the authoritative event builder to return the one bar that owns each
+execution, without changing existing callers. Added a compact Auction Gap fold
+for volume, trade, delta, range, Renko and point-and-figure charts. Ownership is
+derived while the unchanged builder processes the print, never from synthetic
+timestamps; unknown side remains unknown and zero-volume bridge bars receive no
+duplicated flow. Output bounding happens only after stable absolute ownership.
+
+49 combined fold/ownership/archive/coverage tests and scoped lint pass across
+all six event families. Route, coverage attachment, settings-time segmentation,
+live cache and Chart consumption remain. Still Pending, no push/deployment.
+
 ### Gateway compact time-bar row fold — 2026-09-07
 
 Added a pure gateway fold from exact ordered prints into sorted one-tick

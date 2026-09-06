@@ -1,5 +1,16 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-07 — Gateway-side Auction Gap event-row fold
+
+- Existing event builder now returns the sole owning bar for each accepted
+  execution; current callers ignore the compatible return value.
+- Compact rows now cover volume, trade, delta, range, Renko and point/figure.
+  Allocation uses builder ownership, never synthetic chart time; unknown sides
+  remain unknown and bridge bars receive no duplicated volume.
+- Output is bounded only after stable absolute ownership. 49 combined tests and
+  scoped lint pass. Route/coverage/settings-time/live/Chart work remains; gate
+  OFF and no deploy.
+
 ## 2026-09-07 — Gateway-side Auction Gap time-row fold
 
 - Added a pure gateway fold that assigns ordered exact prints into explicit

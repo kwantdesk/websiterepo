@@ -1,3 +1,5 @@
+import { createEventBarBuilder, eventInterval, futuresTickSize } from "./event-bar-builder.mjs";
+
 const finite = (value) => typeof value === "number" && Number.isFinite(value);
 
 /**
@@ -85,4 +87,69 @@ export function foldAuctionGapTimeRows(input) {
       rows: [...bar.rows.values()].sort((left, right) => left.tickIndex - right.tickIndex),
     })),
   };
+}
+
+/** Build event candles and their exact one-tick rows in the same pass. The
+ * existing event builder is authoritative and reports the owning bar for each
+ * print, so synthetic timestamps and zero-volume bridge bars are never used as
+ * allocation guesses. */
+export function foldAuctionGapEventRows(input) {
+  const fail = (reason) => ({ status: "unavailable", reason, candles: [], bars: [] });
+  const trades = input?.trades;
+  const interval = String(input?.interval || "");
+  const symbol = String(input?.symbol || "").toUpperCase();
+  const tickSize = futuresTickSize(symbol);
+  const cap = Number.isSafeInteger(input?.limit) && input.limit > 0 ? input.limit : 250_000;
+  if (!Array.isArray(trades) || !eventInterval(interval) || !symbol || !finite(tickSize) || tickSize <= 0) {
+    return fail("invalid-source");
+  }
+  // No internal trim while assigning ownership. The bounded output is sliced
+  // only after every print has a stable absolute bar index.
+  const builder = createEventBarBuilder(interval, symbol, Number.MAX_SAFE_INTEGER);
+  const rowsByBar = new Map();
+  let previousTime = -Infinity;
+  for (const trade of trades) {
+    const timestamp = trade?.timestamp;
+    const price = trade?.price;
+    const size = trade?.size;
+    const side = Number(trade?.side ?? 0);
+    if (![timestamp, price, size].every(finite) || timestamp < previousTime || price <= 0 || size <= 0
+      || ![-1, 0, 1].includes(side)) return fail("invalid-execution");
+    const tickIndex = Math.round(price / tickSize);
+    if (!Number.isSafeInteger(tickIndex) || Math.abs(price / tickSize - tickIndex) > 1e-6) {
+      return fail("off-tick-execution");
+    }
+    previousTime = timestamp;
+    const ownership = builder.add({
+      timestamp, price, size, trades: 1,
+      delta: side > 0 ? size : side < 0 ? -size : 0,
+    });
+    if (!ownership || !Number.isSafeInteger(ownership.chartIndex)) return fail("event-allocation-failed");
+    const rows = rowsByBar.get(ownership.chartIndex) ?? new Map();
+    const row = rows.get(tickIndex) ?? { tickIndex, bidVolume: 0, askVolume: 0, unknownVolume: 0 };
+    if (side > 0) row.askVolume += size;
+    else if (side < 0) row.bidVolume += size;
+    else row.unknownVolume += size;
+    rows.set(tickIndex, row);
+    rowsByBar.set(ownership.chartIndex, rows);
+  }
+  const allCandles = builder.finish();
+  const offset = Math.max(0, allCandles.length - cap);
+  const candles = allCandles.slice(offset);
+  const bars = candles.map((candle, index) => {
+    const absoluteIndex = offset + index;
+    const rows = [...(rowsByBar.get(absoluteIndex)?.values() ?? [])]
+      .sort((left, right) => left.tickIndex - right.tickIndex);
+    const rowVolume = rows.reduce((sum, row) => sum + row.bidVolume + row.askVolume + row.unknownVolume, 0);
+    if (Math.abs(rowVolume - Number(candle.volume || 0)) > 1e-8) return null;
+    return {
+      chartIndex: index,
+      timestamp: candle.timestamp,
+      sourceStartTimestamp: candle.sourceStartTimestamp,
+      sourceEndTimestamp: candle.sourceEndTimestamp,
+      rows,
+    };
+  });
+  if (bars.some((bar) => bar === null)) return fail("source-volume-mismatch");
+  return { status: "ready", reason: null, candles, bars };
 }

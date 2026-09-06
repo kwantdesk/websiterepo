@@ -1,5 +1,12 @@
 # Pending-library continuation — Auction Gap Tracker
 
+2026-09-07 event-fold continuation: the unchanged event builder now reports
+the exact owning bar per execution. Gateway compact rows cover volume/trade/
+delta/range/Renko/point-and-figure without timestamp guesses, duplicated bridge
+flow or unknown-side invention; output bounds after stable ownership. 49
+combined tests and lint pass. Route/proof/settings-time/live/Chart work remains;
+still Pending, no push/deploy.
+
 2026-09-07 compact-fold continuation: added a gateway-side exact print to
 one-tick bid/ask/unknown row fold for canonical time candles. It reconciles
 volume and OHLC and rejects missing/extra/unassigned/reversed/off-tick sources;
