@@ -102,7 +102,7 @@ Live diagnostics returned exact SHA `18a17c4d5ba23233ae678c4a75e324f596f0927b`.
 Isolated final tree passed 90 combined tests, 18 template checks and the normal
 production build. This supersedes the local-only deployment status above/below.
 
-## Remaining 27 — not released by blanket enablement
+## Remaining 26 — not released by blanket enablement
 
 Each row needs evidence, settings/data implementation, calculation tests,
 renderer/theme/persistence verification and explicit visual/latency limits.
@@ -126,7 +126,7 @@ Do not tick a row just because its Add gate changes.
 | `pivot-points` | [x] Public formula + exact DLL/UI contract implemented; synthetic browser QA passed; native pixel/open-session parity remains limited |
 | `price-movement-levels` | [ ] Audit / implement / verify |
 | `fvg-identifier` | [ ] Audit / implement / verify |
-| `gap-detector` | [ ] Audit / implement / verify |
+| `gap-detector` | [x] Public behavior + exact DLL settings contract implemented; synthetic renderer/settings QA passed; market-open parity remains limited |
 | `swing-point` | [ ] Audit / implement / verify |
 | `average-daily-range-target` | [ ] Audit / implement / verify |
 | `session-marker` | [ ] Audit / implement / verify |
@@ -166,6 +166,8 @@ Do not tick a row just because its Add gate changes.
   `docs/deepcharts-big-deep-contracts-effort-audit.md`.
 - Pivot Points formula, settings, renderer and explicit parity limits:
   `docs/deepcharts-pivot-points-audit.md`.
+- Gap Detector behavior, settings, renderer and explicit parity limits:
+  `docs/deepcharts-gap-detector-audit.md`.
 - Full formula/pixel parity remains unclaimed until suitable reference evidence
   and side-by-side verification exist. No provider spending is authorised by
   this task and no vendor DLL/source is to be redistributed.

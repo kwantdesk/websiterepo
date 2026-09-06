@@ -74,6 +74,10 @@ export const INDICATOR_PLOT_COLOR_SLOTS: Record<string, IndicatorPlotColorSlot[]
     { key: "s1Color", role: "positive" },
     { key: "s2Color", role: "positive" },
   ],
+  "gap-detector": [
+    { key: "upColor", role: "positive" },
+    { key: "downColor", role: "negative" },
+  ],
   "market-statistics": [
     { key: "textColor", role: "primary" },
     { key: "averageColor", role: "positive" },

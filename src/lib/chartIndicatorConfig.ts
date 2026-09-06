@@ -2,6 +2,7 @@ import type { ChartSettings } from "@/lib/chartSettings";
 import { AUCTION_GAP_DEFAULTS, AUCTION_GAP_NUMERIC_SETTINGS, auctionGapThemeColors } from "@/lib/auctionGapSettings";
 import { ABSOLUTE_LEVEL_DEFAULTS } from "@/lib/absoluteLevels";
 import { PIVOT_POINT_DEFAULTS } from "@/lib/pivotPoints";
+import { GAP_DETECTOR_DEFAULTS } from "@/lib/gapDetector";
 import { ADX_DEFAULTS } from "@/lib/averageDirectionalIndex";
 import { PARABOLIC_SAR_DEFAULTS } from "@/lib/parabolicSar";
 import { LINEAR_REGRESSION_DEFAULTS } from "@/lib/linearRegression";
@@ -98,6 +99,7 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "average-directional-index-adx",
   "absolute-levels",
   "pivot-points",
+  "gap-detector",
   "gamma-environment",
   "vix-environment",
   "zero-gamma-line",
@@ -272,6 +274,11 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "lineWidth", label: "Line width", defaultValue: 1, min: 1, max: 4, step: 1 },
     { key: "periodsToShow", label: "Periods to show", defaultValue: 1, min: 1, max: 30, step: 1 },
     { key: "referenceValue", label: "Reference timeframe value", defaultValue: 1, min: 1, max: 10000, step: 1 },
+  ],
+  "gap-detector": [
+    { key: "percentValue", label: "Percentage value", defaultValue: 1, min: 0, max: 100, step: 0.01 },
+    { key: "tickValue", label: "Tick value", defaultValue: 20, min: 0, max: 100000, step: 1 },
+    { key: "backgroundOpacity", label: "Background opacity", defaultValue: 40, min: 0, max: 100, step: 1 },
   ],
   "volume": [
     { key: "minimumTotalVolume", label: "Minimum total volume", defaultValue: 0, min: 0, max: 10000000, step: 1 },
@@ -1483,6 +1490,7 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
   ...(indicatorId === "auction-gap-tracker" ? { ...AUCTION_GAP_DEFAULTS, ...(theme ? auctionGapThemeColors(theme) : {}) } : {}),
   ...(indicatorId === "absolute-levels" ? ABSOLUTE_LEVEL_DEFAULTS : {}),
   ...(indicatorId === "pivot-points" ? PIVOT_POINT_DEFAULTS : {}),
+  ...(indicatorId === "gap-detector" ? GAP_DETECTOR_DEFAULTS : {}),
   ...(indicatorId === "average-directional-index-adx" ? ADX_DEFAULTS : {}),
   ...(indicatorId === "parabolic-sar" ? PARABOLIC_SAR_DEFAULTS : {}),
   ...(indicatorId === "linear-regression" ? LINEAR_REGRESSION_DEFAULTS : {}),

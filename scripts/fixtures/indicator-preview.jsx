@@ -8,6 +8,7 @@ import { calculateIndicatorSeries } from "../../src/lib/chartIndicatorEngine";
 import { createChart } from "../../src/lib/lightweightChartsCompat";
 import { SuperTrendLabels } from "../../src/lib/superTrendLabels";
 import { PivotPointLabels } from "../../src/lib/pivotPointLabels";
+import { GapZonePrimitive } from "../../src/lib/gapZonePrimitive";
 import { useSuperTrendAlerts } from "../../src/components/useSuperTrendAlerts";
 import { paintSuperTrendSeries } from "../../src/lib/superTrendSeries";
 import { LIVE_CHART_CANDLE_EVENT } from "../../src/lib/chartLiveEvents";
@@ -17,11 +18,12 @@ import actualOverlayOptions from "kwant-preview-overlay-options";
 // Isolated, clearly labelled fixtures: never a market feed or production page.
 const requestedPreview = new URLSearchParams(location.search).get("indicator");
 const autoOpenSettings = new URLSearchParams(location.search).get("settings") === "1";
-const previewId = requestedPreview === "pivot" ? "pivot-points" : requestedPreview === "supertrend" ? "super-trend" : requestedPreview === "supertrend-difference" ? "super-trend-difference" : requestedPreview === "kst" ? "know-sure-thing-kst" : requestedPreview === "t3" ? "tillson-t3" : requestedPreview === "regression" ? "linear-regression" : requestedPreview === "sar" ? "parabolic-sar" : requestedPreview === "adx" ? "average-directional-index-adx" : "absolute-levels";
-const previewName = previewId === "pivot-points" ? "Pivot Points" : previewId === "super-trend" ? "Super Trend" : previewId === "super-trend-difference" ? "Super Trend Difference" : previewId === "know-sure-thing-kst" ? "Know Sure Thing" : previewId === "tillson-t3" ? "Tillson T3" : previewId === "linear-regression" ? "Linear Regression" : previewId === "absolute-levels" ? "Absolute Levels" : previewId === "parabolic-sar" ? "Parabolic SAR" : "ADX";
+const previewId = requestedPreview === "gap" ? "gap-detector" : requestedPreview === "pivot" ? "pivot-points" : requestedPreview === "supertrend" ? "super-trend" : requestedPreview === "supertrend-difference" ? "super-trend-difference" : requestedPreview === "kst" ? "know-sure-thing-kst" : requestedPreview === "t3" ? "tillson-t3" : requestedPreview === "regression" ? "linear-regression" : requestedPreview === "sar" ? "parabolic-sar" : requestedPreview === "adx" ? "average-directional-index-adx" : "absolute-levels";
+const previewName = previewId === "gap-detector" ? "Gap Detector" : previewId === "pivot-points" ? "Pivot Points" : previewId === "super-trend" ? "Super Trend" : previewId === "super-trend-difference" ? "Super Trend Difference" : previewId === "know-sure-thing-kst" ? "Know Sure Thing" : previewId === "tillson-t3" ? "Tillson T3" : previewId === "linear-regression" ? "Linear Regression" : previewId === "absolute-levels" ? "Absolute Levels" : previewId === "parabolic-sar" ? "Parabolic SAR" : "ADX";
 const storageKey = `qa-indicators-${previewId}`;
 const candles = Array.from({ length: previewId === "absolute-levels" ? 30 : previewId === "pivot-points" ? 96 : 100 }, (_, i) => {
-  const close = previewId === "absolute-levels" ? 100.2 + i / 40 : 100 + Math.sin(i / 8) * 2 + i / 40;
+  const gapStep = previewId === "gap-detector" ? (Math.floor(i / 18) % 2) * 3 : 0;
+  const close = previewId === "absolute-levels" ? 100.2 + i / 40 : 100 + Math.sin(i / 8) * 2 + i / 40 + gapStep;
   return { timestamp: 1700000000000 + i * (previewId === "pivot-points" ? 3600000 : 60000), open: close - 0.2, close, high: close + 0.3, low: close - 0.4, volume: 10 };
 });
 const theme = { primary: "#11ff44", secondary: "#ffaa22", positive: "#44ff66", negative: "#ff7777", muted: "#bbbbbb" };
@@ -31,7 +33,7 @@ function Preview() {
   const liveCandle = useRef(null);
   const liveStatus = useRef(null);
   const syntheticDirection = useRef(1);
-  const [indicators, setIndicators] = useState(() => JSON.parse(localStorage.getItem(storageKey) || "null") ?? [{ instanceId: "qa-study", indicatorId: previewId, enabled: true, settings: { ...defaultIndicatorSettings(previewId), ...(previewId === "absolute-levels" ? { firstValue: 100.25, secondValue: 101.5, firstLineStyle: "dashed", secondLineStyle: "dotted" } : {}) } }]);
+  const [indicators, setIndicators] = useState(() => JSON.parse(localStorage.getItem(storageKey) || "null") ?? [{ instanceId: "qa-study", indicatorId: previewId, enabled: true, settings: { ...defaultIndicatorSettings(previewId), ...(previewId === "absolute-levels" ? { firstValue: 100.25, secondValue: 101.5, firstLineStyle: "dashed", secondLineStyle: "dotted" } : {}), ...(previewId === "gap-detector" ? { gapMode: "always", tickValue: 4 } : {}) } }]);
   const [request, setRequest] = useState(() => autoOpenSettings ? { instanceId: "qa-study", requestId: Date.now() } : null);
   const [paneLayout, setPaneLayout] = useState({});
   const alert = useSuperTrendAlerts({ indicators, history: candles, liveKey: "qa-synthetic", instrument: "NQ", timeframe: "1m", live: true,
@@ -81,6 +83,10 @@ function Preview() {
         if (definition.pivotLabels) {
           labels = new PivotPointLabels(); plot.attachPrimitive(labels);
           labels.update(definition.data, definition.pivotLabels, definition.color);
+        }
+        if (definition.gapZones) {
+          labels = new GapZonePrimitive(); plot.attachPrimitive(labels);
+          labels.update(definition.gapZones, definition.color);
         }
         livePlots.current.set(definition.key, { plot, labels, definition, buffer: new SuperTrendPlotBuffer() });
       }

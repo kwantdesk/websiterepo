@@ -2,6 +2,7 @@
 
 import { SuperTrendLabels } from "@/lib/superTrendLabels";
 import { PivotPointLabels } from "@/lib/pivotPointLabels";
+import { GapZonePrimitive } from "@/lib/gapZonePrimitive";
 import { useSuperTrendAlerts } from "@/components/useSuperTrendAlerts";
 import { paintSuperTrendSeries } from "@/lib/superTrendSeries";
 import { SUPER_TREND_LIVE_PLOT_EVENT, SuperTrendPlotBuffer } from "@/lib/superTrendLivePlot";
@@ -3332,6 +3333,7 @@ function Chart({
   const indicatorSeriesRefs = useRef<Array<{
     superTrendLabels?: SuperTrendLabels;
     pivotPointLabels?: PivotPointLabels;
+    gapZonePrimitive?: GapZonePrimitive;
     superTrendDefinition?: CalculatedIndicatorSeries;
     key: string;
     kind: "line" | "histogram";
@@ -16836,9 +16838,9 @@ function Chart({
             ...(definition.pointMarkersVisible !== undefined ? {
               pointMarkersVisible: definition.pointMarkersVisible,
               pointMarkersRadius: (definition.lineWidth ?? 1) + 1,
-              lineVisible: definition.lineVisible !== false,
               priceScaleId: definition.priceScaleId ?? "right",
             } : {}),
+            ...(definition.lineVisible !== undefined ? { lineVisible: definition.lineVisible } : {}),
             lastValueVisible: definition.lastValueVisible !== false,
             priceLineVisible: definition.horizontalPriceLine === true,
             ...(definition.horizontalPriceLine ? {
@@ -16861,6 +16863,7 @@ function Chart({
         if (definition.superTrendLabels) existing.superTrendLabels?.update(definition.data, definition.superTrendLabels,
           settings.backgroundColor, definition.color, priceFormat.precision);
         if (definition.pivotLabels) existing.pivotPointLabels?.update(definition.data, definition.pivotLabels, definition.color);
+        if (definition.gapZones) existing.gapZonePrimitive?.update(definition.gapZones, definition.color);
         if (existing.optionsSignature !== optionsSignature) {
           existing.series.applyOptions(options);
         }
@@ -16894,9 +16897,15 @@ function Chart({
         series.attachPrimitive(pivotPointLabels);
         pivotPointLabels.update(definition.data, definition.pivotLabels, definition.color);
       }
+      const gapZonePrimitive = definition.gapZones ? new GapZonePrimitive() : undefined;
+      if (gapZonePrimitive && definition.gapZones) {
+        series.attachPrimitive(gapZonePrimitive);
+        gapZonePrimitive.update(definition.gapZones, definition.color);
+      }
       return {
         superTrendLabels,
         pivotPointLabels,
+        gapZonePrimitive,
         superTrendDefinition: definition.superTrendStyleKey ? definition : undefined,
         key: definition.key,
         kind,

@@ -460,12 +460,15 @@ const sectionForSetting = (indicatorId: string, key: string, fallback: string) =
     ? key === "usePercent" || /^(roc\d|average\d|signalPeriod|middleLevel)$/.test(key) ? "Inputs" : "Style"
     : indicatorId === "pivot-points"
       ? ["fontSize", "lineWidth", "periodsToShow"].includes(key) ? "Plot settings" : "Custom reference"
+    : indicatorId === "gap-detector"
+      ? key === "backgroundOpacity" || /Color$/.test(key) || key === "useThemeColors" ? "Color settings" : "General"
     : (isTpoIndicator(indicatorId) ? TPO_SETTING_SECTIONS[key] ?? "General" : fallback);
 
 const PIVOT_POINT_MANAGED_SETTINGS = new Set([
   "customReferenceEnabled", "referenceTimeframe", "customSessionEnabled",
   "customSessionStart", "customSessionEnd", "lineStyle", "labelAlign",
 ]);
+const GAP_DETECTOR_MANAGED_SETTINGS = new Set(["upColor", "downColor"]);
 
 export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "super-trend",
@@ -477,6 +480,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "average-directional-index-adx",
   "absolute-levels",
   "pivot-points",
+  "gap-detector",
   "gamma-levels",
   "overlay-chart",
   "overlay-symbol",
@@ -6574,6 +6578,33 @@ export default function ChartIndicatorsControl({
                 </div>
               ) : null}
 
+              {settingsDefinition.id === "gap-detector" ? (
+                <div data-settings-section="General" className="grid gap-3 sm:grid-cols-2">
+                  <label className="block space-y-1 text-[10px] text-muted">
+                    <span>Gap mode</span>
+                    <KwantSelect value={String(settingsInstance.settings?.gapMode ?? "day-begin")}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                        ...current, settings: { ...(current.settings ?? {}), gapMode: event.target.value },
+                      }))} menuLabel="Gap detection mode"
+                      className="h-9 w-full border border-border bg-background px-3 text-foreground">
+                      <option value="day-begin">Day begin</option>
+                      <option value="always">Always</option>
+                    </KwantSelect>
+                  </label>
+                  <label className="block space-y-1 text-[10px] text-muted">
+                    <span>Calculation mode</span>
+                    <KwantSelect value={String(settingsInstance.settings?.calculationMode ?? "tick")}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                        ...current, settings: { ...(current.settings ?? {}), calculationMode: event.target.value },
+                      }))} menuLabel="Gap threshold calculation mode"
+                      className="h-9 w-full border border-border bg-background px-3 text-foreground">
+                      <option value="tick">Tick</option>
+                      <option value="percent">Percentual</option>
+                    </KwantSelect>
+                  </label>
+                </div>
+              ) : null}
+
               {settingsDefinition.id === "pivot-points" ? (
                 <div data-settings-section="Custom reference" className="grid gap-3 sm:grid-cols-2">
                   <label className="flex min-h-10 items-center gap-2 rounded-lg border border-border bg-surface/30 px-3 text-[9px] text-muted sm:col-span-2">
@@ -7561,21 +7592,23 @@ export default function ChartIndicatorsControl({
                 */}
               {indicatorSupportsPalette(settingsDefinition.id)
                 && !hasOwnPaletteSection(settingsDefinition.id) ? (
-                <IndicatorPaletteSection
-                  indicatorId={settingsDefinition.id}
-                  settings={settingsInstance.settings ?? {}}
-                  theme={{
-                    up: chartSettings.upColor,
-                    down: chartSettings.downColor,
-                    neutral: chartSettings.gridColor,
-                    accent: chartSettings.borderUpColor,
-                    text: chartSettings.upColor,
-                  }}
-                  onChange={(next) => replace(settingsInstance.instanceId, (current) => ({
-                    ...current,
-                    settings: next,
-                  }))}
-                />
+                <div data-settings-section={settingsDefinition.id === "gap-detector" ? "Color settings" : undefined}>
+                  <IndicatorPaletteSection
+                    indicatorId={settingsDefinition.id}
+                    settings={settingsInstance.settings ?? {}}
+                    theme={{
+                      up: chartSettings.upColor,
+                      down: chartSettings.downColor,
+                      neutral: chartSettings.gridColor,
+                      accent: chartSettings.borderUpColor,
+                      text: chartSettings.upColor,
+                    }}
+                    onChange={(next) => replace(settingsInstance.instanceId, (current) => ({
+                      ...current,
+                      settings: next,
+                    }))}
+                  />
+                </div>
               ) : null}
 
               {(() => {
@@ -7633,6 +7666,7 @@ export default function ChartIndicatorsControl({
                     && !(settingsDefinition.id === "market-statistics" && MARKET_STATISTICS_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "confluence-identifier" && CONFLUENCE_IDENTIFIER_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "pivot-points" && PIVOT_POINT_MANAGED_SETTINGS.has(key))
+                    && !(settingsDefinition.id === "gap-detector" && GAP_DETECTOR_MANAGED_SETTINGS.has(key))
                     && !(VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) && VOLUME_PROFILE_VWAP_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "bounce-levels" && key === "syncGexMapColors")
                     && !(settingsDefinition.id === "super-trend" && settingsInstance.settings?.chartArea === "pane" && key === "useSecondaryAxis")
@@ -7704,7 +7738,7 @@ export default function ChartIndicatorsControl({
                   </div>
                 ));
               })()}
-              <div data-settings-section="Style" className="rounded-xl border border-primary/15 bg-primary/6 px-4 py-3 text-[9px] leading-4 text-muted">
+              <div data-settings-section={settingsDefinition.id === "gap-detector" ? "Color settings" : "Style"} className="rounded-xl border border-primary/15 bg-primary/6 px-4 py-3 text-[9px] leading-4 text-muted">
                 {settingsDefinition.id === "bounce-levels" ? (
                   <>Bounce colours follow the active chart theme by default. Changing any colour automatically creates a workspace-specific palette; turn <span className="text-foreground">Use Theme Colors</span> back on to relink it.</>
                 ) : (
