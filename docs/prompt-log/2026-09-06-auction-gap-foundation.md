@@ -46,3 +46,9 @@ or gate change; live pipeline/UI/settings/performance verification remain.
 Whole-study continuation: linked all pure stages; end-to-end source-to-zone
 tests pass. Added actual time-chart execution OHLC reconciliation, beyond just
 volume. Four end-to-end tests and project tsc pass; worker/live/UI still due.
+
+Worker continuation: bounded background history processing, scope/revision
+cancellation and explicit error recovery. 57 tests, scoped source lint and full
+tsc pass, including actual separate-thread calculation. No browser/live-FPS
+claim; not wired into Chart yet. Still 28 Pending, no production push for this
+foundation. Incremental live state and full integration/visual QA are next.

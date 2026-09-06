@@ -1,5 +1,20 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-07 — Auction Gap bounded history worker
+
+- Added `auctionGap.worker.ts` and lazy `AuctionGapWorkerClient`: one active
+  calculation plus one newest queued snapshot, scope-change cancellation,
+  exact revision/worker identity checks, disposal and explicit failure states.
+  No timers, new feed requests or main-thread calculation fallback.
+- 57 Auction Gap tests pass, including real separate-thread entry execution
+  with structured-cloned trades, callback reentrancy and clone failure/retry.
+  Scoped source lint and full project tsc pass. Node thread test does not prove
+  browser bundling or live performance; actual browser verification remains.
+- Still 28 Pending; this is isolated groundwork, not a released indicator.
+  Next: incremental forming-bar state, actual authoritative Chart source hookup,
+  settings/render/template/alert integration and browser/build QA. Do not send
+  a whole history snapshot on each tick. No production push for this foundation.
+
 ## 2026-09-07 — Auction Gap full pure calculation path
 
 - `auctionGapStudy.ts` now joins source/clock/ownership/rows/lifecycle. Explicit

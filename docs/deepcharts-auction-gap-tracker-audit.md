@@ -1,5 +1,24 @@
 # Auction Gap Tracker — implementation in progress
 
+### Background history execution — 2026-09-07
+
+The whole calculation path now has a lazy module-worker entry and scoped client.
+One active calculation and one newest queued snapshot bound pending work. Scope
+must include instrument, interval, settings and replay/source epoch. Changing it
+terminates the old worker; late replies and wrong revisions cannot publish.
+Same-scope completed results may publish before the newest queued result to
+avoid starvation. Disposal and callback reentrancy cannot resurrect stale work.
+Worker construction, clone and runtime failures produce explicit unavailable
+states, without main-thread fallback, provider requests or timer loops.
+
+57 Auction Gap tests pass, including real separate-thread execution of a cloned
+three-print fixture through the actual worker entry, queue pressure, stale
+replies, callback requests/disposal and failure/retry. Scoped source lint and
+full TypeScript pass. Node worker-thread verification is not browser bundling
+or live-FPS proof. This schedules history only: incremental live state and actual
+Chart source/settings/render/template/alert integration still remain. No gate
+enabled and no production deployment from this disconnected foundation.
+
 Reference: https://www.deepcharts.com/helpcenter/article/auction-gap-tracker
 Accessed 2026-09-06. This is a consecutive low-participation price-level study,
 not an OHLC opening gap or an extreme-only Unfinished Auction alias.
