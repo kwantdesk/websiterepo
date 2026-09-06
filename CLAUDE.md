@@ -2728,3 +2728,9 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
 - Ordinary Speed of Tape may aggregate exact execution Volume and Trades into
   fixed windows. Its Order database fails closed until true order-placement
   history is available; do not fake orders from prints.
+
+## 2026-09-07 — Volume Swing
+
+- `volume-swing` is a legacy alias for the working `deep-profile-swing` study.
+  Keep one catalogue row, migrate old workspaces/favourites through
+  `canonicalChartIndicatorId`, and preserve their instance settings.

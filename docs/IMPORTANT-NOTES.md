@@ -519,3 +519,9 @@ recap of the open items below and update this file when their state changes.
   reinterpret executions as placed orders.
 - A standard-deviation value of zero disables deviation filtering. Positive
   values use mean plus the selected population-standard-deviation multiple.
+
+## 2026-09-07 — Volume Swing catalogue cleanup
+
+- `volume-swing` was a duplicate display-name-derived ID for the complete
+  `deep-profile-swing` study. Keep it as a migration alias only; do not restore
+  a second library row or split saved settings between two IDs.

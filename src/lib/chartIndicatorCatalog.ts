@@ -31,6 +31,7 @@ export function canonicalChartIndicatorId(id: string): string {
   if (id === "big-trades-deep-trades") return "big-trades";
   if (id === "liquidity-sweep-stop-sweep-detector") return "liquidity-stop-sweep-detector";
   if (id === "market-profile-tpo") return "tpo-chart";
+  if (id === "volume-swing") return "deep-profile-swing";
   return id;
 }
 
@@ -113,7 +114,6 @@ export const CHART_INDICATOR_CATALOG: ChartIndicatorDefinition[] = [
   indicator("KWANT V-Tracker", "Order Flow", "Execution-confirmed acceleration, exhaustion, slowdown, absorption and pressure levels.", true, "Reference", "Deep V-Tracker"),
 
   indicator("Volume", "Volume & Profiles", "Total volume with filtering and delta-aware colouring."),
-  indicator("Volume Swing", "Volume & Profiles", "Volume measured across detected price swings.", true),
   indicator("Daily Volume Profile", "Volume & Profiles", "Configurable daily volume, bid/ask and delta profile.", true, "Reference", "KWANT Profile"),
   // The display name is "TPO Daily", but the stable id must stay "tpo-chart":
   // every registry, settings block and engine check keys off it, and saved

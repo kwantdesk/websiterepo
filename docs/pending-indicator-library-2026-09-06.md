@@ -102,7 +102,7 @@ Live diagnostics returned exact SHA `18a17c4d5ba23233ae678c4a75e324f596f0927b`.
 Isolated final tree passed 90 combined tests, 18 template checks and the normal
 production build. This supersedes the local-only deployment status above/below.
 
-## Remaining 4 — not released by blanket enablement
+## Remaining 3 — not released by blanket enablement
 
 Each row needs evidence, settings/data implementation, calculation tests,
 renderer/theme/persistence verification and explicit visual/latency limits.
@@ -114,7 +114,7 @@ Do not tick a row just because its Add gate changes.
 | `volume-delta-sprint` | [x] Rolling classified Volume/Trades Delta plus optional Bid/Ask subgraphs, filters, four smoothing modes, fading/fixed colours, theme/persistence and focused tests; protected filter allocation/pixel/live-soak limits documented |
 | `auction-gap-tracker` | [x] Exact one-tick detector, six location modes, time/event allocation, correction-safe worker lifecycle, zones/markers, source continuity, settings/theme/templates and closed/replay-safe alerts; 112 focused tests pass, live-market/native parity limits documented |
 | `session-imbalance` | [x] Dedicated CME-session range engine, IBH/IBL/mid and exact ±50/100% extensions, documented settings, theme/persistence/alerts and focused tests; protected pixel/formula and live-soak limits documented |
-| `volume-swing` | [ ] Audit / implement / verify |
+| `volume-swing` | [x] Removed duplicate catalogue row; legacy ID/favourites/workspaces canonicalize to the complete `deep-profile-swing` engine, settings and renderer |
 | `monthly-volume-profile` | [ ] Owned range/job foundation tested; workspace/live/settings integration outstanding |
 | `session-volume-profile` | [ ] Shared-engine routing audited; session/workspace integration outstanding |
 | `visible-range-volume-profile` | [ ] Owned range/job foundation tested; viewport/sequence-aware data integration outstanding |
