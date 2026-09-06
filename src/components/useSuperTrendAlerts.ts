@@ -67,14 +67,20 @@ export function useSuperTrendAlerts({ indicators, history, liveKey, instrument, 
           entry.tracker.update({ scopeKey: entry.scope, live: false, sourceTimestamp: NaN, now: Date.now() });
           continue;
         }
+        const now = Date.now();
+        const sourceTimestamp = Number(detail.sourceTimestampMs);
+        // Reject stale frames before touching recursive state. Merely hiding
+        // their paint still lets an old/provider-invalid packet poison the
+        // next fresh candle's ATR, bands or timestamp high-water mark.
+        if (!Number.isFinite(sourceTimestamp) || detail.sourceTimestampMs == null
+          || now - sourceTimestamp > 15000 || now - sourceTimestamp < -1000) continue;
         const point = entry.calculator.update(detail.candle);
-        if (point && Number.isFinite(detail.sourceTimestampMs) && Date.now() - Number(detail.sourceTimestampMs) <= 15000
-          && Date.now() - Number(detail.sourceTimestampMs) >= -1000) {
+        if (point) {
           paint.current?.(instanceId, point, entry.calculator.previousPoint(), entry.settings, entry.difference);
         }
         if (entry.difference || (!entry.settings.alertSoundEnabled && !entry.settings.messagePopupEnabled)) continue;
         const alert = entry.tracker.update({ scopeKey: entry.scope, live: true,
-          sourceTimestamp: Number(detail.sourceTimestampMs), now: Date.now(), point: point ?? undefined });
+          sourceTimestamp, now, point: point ?? undefined });
         if (!alert) continue;
         const title = `${entry.settings.alertName}: ${alert.direction === "up" ? "Uptrend" : "Downtrend"}`;
         const showNotice = (message: string) => {

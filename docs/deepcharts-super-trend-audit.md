@@ -218,4 +218,32 @@ and scoped ESLint pass. No production build/release this continuation. The
 two gates remain off; 30 entries are still Pending. Remaining checks include
 orientation geometry, template roundtrip, live plotting performance and audio.
 
+## Live state integrity continuation
+
+Found and corrected a live-state issue before release: invalid/stale source
+timestamps were excluded from painting only after advancing recursive state.
+They are now rejected before the calculator. The actual hook test injects
+missing/null/NaN/stale/future source times paired with a future chart timestamp,
+then verifies that the next legitimate point still matches independent clean
+calculator state. No new provider subscriptions or network requests.
+
+Added actual pane-hook execution with controlled React lifecycle and animation
+frames: 1,000 events queue one frame, wrong chart/instance events are ignored,
+an unrelated working CVD group retains identity, reset restores history, and
+chart switch/replay cancels pending work and drops old live buffers. This is a
+deterministic scheduling test, not a measured production FPS claim. 26 tests
+pass; scoped ESLint and full TypeScript pass.
+
+Re-read the official Super Trend article: its Auto Color None retains both
+trend colours. UI now calls the existing natural-direction mode "None (trend
+colours)" and calls the optional one-colour mode "Single colour", preserving
+stored keys without presenting different behaviour under the same label.
+Article image link 4 resolves to a 2400x2 separator, not an alert screenshot;
+no additional visual alert-default evidence was recovered.
+
+`npm run build` completed successfully (compile, TypeScript, 80 static pages,
+optimization). This is the current shared dirty worktree build, not proof of
+the isolated Git release tree; unrelated desktop/social edits remain excluded
+from this task's commits. No deployment was triggered.
+
 No available indicator modified. No production release for this prerequisite.

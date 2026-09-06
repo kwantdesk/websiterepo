@@ -23,7 +23,7 @@ test("actual hook dispatches and displays a live reversal; stale/wrong-chart/unm
   };
   new Function("require", "module", "exports", compiled)(mockRequire, loaded, loaded.exports);
   const originalWindow = globalThis.window;
-  const target = new EventTarget(), alerts = [];
+  const target = new EventTarget(), alerts = [], painted = [];
   globalThis.window = target;
   target.addEventListener("kwantdesk:chart-indicator-alert", e => alerts.push(e.detail));
   const now = Date.now();
@@ -32,13 +32,23 @@ test("actual hook dispatches and displays a live reversal; stale/wrong-chart/unm
   try {
     loaded.exports.useSuperTrendAlerts({ indicators: [{ instanceId: "test", indicatorId: "super-trend", enabled: true,
       settings: { length: 3, multiplier: 1, messagePopupEnabled: true, alertSoundEnabled: false } }],
-      history, liveKey: "nq-pane", instrument: "NQ", timeframe: "1m", live: true });
+      history, liveKey: "nq-pane", instrument: "NQ", timeframe: "1m", live: true,
+      onPoint: (_id, point) => painted.push(point) });
     effects.forEach(fn => { const cleanup = fn(); if (cleanup) cleanups.push(cleanup); });
     const candle = { ...history.at(-1), close: 14, high: 15 };
     const emit = detail => target.dispatchEvent(new CustomEvent("kwantdesk:live-chart-candle", { detail }));
     emit({ key: "other", candle, sourceTimestampMs: now });
     assert.equal(alerts.length, 0);
+    // An invalid provider timestamp must not advance the calculator into a
+    // future chart bar, otherwise the next valid candle is silently rejected.
+    for (const sourceTimestampMs of [undefined, null, NaN, now - 60000, now + 60000]) {
+      emit({ key: "nq-pane", candle: { ...candle, timestamp: now + 60000, high: 10000 }, sourceTimestampMs });
+    }
+    assert.equal(painted.length, 0);
     emit({ key: "nq-pane", candle, sourceTimestampMs: now });
+    const reference = new SuperTrendLiveCalculator({ length: 3, multiplier: 1 });
+    reference.reseed(history);
+    assert.deepEqual(painted.at(-1), reference.update(candle));
     assert.equal(alerts.length, 1); assert.equal(alerts[0].popup, true); assert.equal(alerts[0].sound, null);
     assert.equal(notices.at(-1), "Super Trend: Uptrend");
     emit({ key: "nq-pane", candle, sourceTimestampMs: now + 1 });

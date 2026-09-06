@@ -13,8 +13,8 @@ export default function SuperTrendIndicatorSettings({ settings, difference, onCh
       ? [["histogram", "Histogram"], ["line", "Line"]]
       : [["line", "Line"], ["points", "Points"], ["line-points", "Line and points"]] },
     { key: "colorMode", label: "Auto colour", choices: [
-      [difference ? "sign" : "direction", difference ? "Positive / negative" : "Trend direction"],
-      ["none", "None"], ["slope", "Slope"]] },
+      [difference ? "sign" : "direction", difference ? "Positive / negative" : "None (trend colours)"],
+      ["none", "Single colour"], ["slope", "Slope"]] },
     { key: "lineStyle", label: "Line style", choices: [["solid", "Solid"], ["dashed", "Dashed"], ["dotted", "Dotted"]] },
   ];
   return <div className="space-y-3">

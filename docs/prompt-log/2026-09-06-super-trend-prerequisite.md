@@ -49,3 +49,16 @@ full TypeScript and scoped lint pass. Both real dialogs save and close without
 re-prompt; local fixture settings survive reload. Account template roundtrip,
 full visual/orientation/live/audio checks remain. No gates enabled, no push;
 30 Pending remains the honest count.
+
+Live verification continuation: fixed stale/invalid provider frames modifying
+recursive state before paint suppression. Actual-hook regression verifies
+fresh output remains correct after maliciously future chart timestamps with
+invalid source times. New pane lifecycle test covers 1,000-to-one frame
+coalescing, chart isolation, reset/replay cleanup and unchanged working groups.
+26 tests, full TypeScript and scoped lint pass. Corrected Auto colour wording
+against the official article without changing stored settings. Production
+build started; release gates remain off pending remaining verification.
+
+Build outcome: full `npm run build` passed, including TypeScript and 80 static
+pages. Shared dirty-worktree build only; unrelated changes not staged. No
+deployment triggered. Remaining 30-entry scope unchanged.
