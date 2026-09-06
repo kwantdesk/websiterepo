@@ -9,6 +9,7 @@ import { ICHIMOKU_DEFAULTS, normalizeIchimokuSettings } from "@/lib/ichimoku";
 import { ADX_DEFAULTS } from "@/lib/averageDirectionalIndex";
 import { PARABOLIC_SAR_DEFAULTS } from "@/lib/parabolicSar";
 import { LINEAR_REGRESSION_DEFAULTS } from "@/lib/linearRegression";
+import { REGRESSION_CHANNEL_DEFAULTS, normalizeRegressionChannelSettings } from "@/lib/regressionChannel";
 import { TILLSON_T3_DEFAULTS } from "@/lib/tillsonT3";
 import { SUPER_TREND_DEFAULTS, SUPER_TREND_DIFFERENCE_DEFAULTS, superTrendNumericSettings } from "@/lib/superTrendSettings";
 import { KST_DEFAULTS, KST_NUMERIC_SETTINGS } from "@/lib/knowSureThingSettings";
@@ -101,6 +102,7 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "know-sure-thing-kst",
   "tillson-t3",
   "linear-regression",
+  "regression-channel",
   "parabolic-sar",
   "average-directional-index-adx",
   "absolute-levels",
@@ -281,6 +283,15 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
   "linear-regression": [
     { key: "length", label: "Length", defaultValue: 21, min: 1, max: 10000, step: 1 },
     { key: "lineWidth", label: "Line width / point size", defaultValue: 1, min: 1, max: 4, step: 1 },
+  ],
+  "regression-channel": [
+    { key: "bars", label: "Bars", defaultValue: 100, min: 2, max: 10000, step: 1 },
+    { key: "standardDeviationValue", label: "Std dev value", defaultValue: 1, min: 0, max: 10, step: 0.01 },
+    { key: "zigZagAbsoluteReversal", label: "Zig Zag abs. reversal", defaultValue: 0.5, min: 0, max: 100000, step: 0.01 },
+    { key: "zigZagReversalValue", label: "Zig Zag tick reversal / highest-lowest", defaultValue: 22, min: 1, max: 10000, step: 1 },
+    { key: "midLineWidth", label: "MID line width", defaultValue: 2, min: 1, max: 4, step: 1 },
+    { key: "upperLineWidth", label: "UP line width", defaultValue: 2, min: 1, max: 4, step: 1 },
+    { key: "lowerLineWidth", label: "DN line width", defaultValue: 2, min: 1, max: 4, step: 1 },
   ],
   "parabolic-sar": [
     { key: "accelerationStep", label: "Acceleration step", defaultValue: 0.02, min: 0, max: 1, step: 0.001 },
@@ -1529,6 +1540,7 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
   ...(indicatorId === "average-directional-index-adx" ? ADX_DEFAULTS : {}),
   ...(indicatorId === "parabolic-sar" ? PARABOLIC_SAR_DEFAULTS : {}),
   ...(indicatorId === "linear-regression" ? LINEAR_REGRESSION_DEFAULTS : {}),
+  ...(indicatorId === "regression-channel" ? REGRESSION_CHANNEL_DEFAULTS : {}),
   ...(indicatorId === "tillson-t3" ? TILLSON_T3_DEFAULTS : {}),
   ...(indicatorId === "super-trend" ? SUPER_TREND_DEFAULTS : {}),
   ...(indicatorId === "super-trend-difference" ? SUPER_TREND_DIFFERENCE_DEFAULTS : {}),
@@ -2914,6 +2926,13 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
   if (normalizedInstance.indicatorId === "ichimoku-indicator") {
     const settings = normalizeIchimokuSettings({
       ...defaultIndicatorSettings("ichimoku-indicator"),
+      ...(normalizedInstance.settings ?? {}),
+    });
+    return { ...normalizedInstance, settings };
+  }
+  if (normalizedInstance.indicatorId === "regression-channel") {
+    const settings = normalizeRegressionChannelSettings({
+      ...defaultIndicatorSettings("regression-channel"),
       ...(normalizedInstance.settings ?? {}),
     });
     return { ...normalizedInstance, settings };

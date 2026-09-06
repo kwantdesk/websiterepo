@@ -17,9 +17,10 @@
   modes, a live developing leg and retracements. Inverse Cyber Cycle now has
   its two real cycle plots, three levels and the public settings contract.
   Ichimoku now has its five standard displaced plots, two-colour Kumo and the
-  observed public `9/26/52` contract.
+  observed public `9/26/52` contract. Regression Channel now has separate Bars
+  and Zig Zag modes with three active standard-deviation lines.
   Their evidence and parity limits are tracked in the matching DeepCharts
-  audits. 23 still require individual work. Monthly/Session/
+  audits. 22 still require individual work. Monthly/Session/
   Visible profile data/settings integration remains unfinished, including exact
   multi-session filtering and event-allocation-aware visible boundaries.
   Track `docs/pending-indicator-library-2026-09-06.md`, not the old completion

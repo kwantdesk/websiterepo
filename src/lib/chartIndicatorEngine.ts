@@ -12,6 +12,7 @@ import type { ZigZagRetracementOptions } from "@/lib/zigZagRetracementPrimitive"
 import { calculateAverageDirectionalIndex } from "@/lib/averageDirectionalIndex";
 import { calculateParabolicSar } from "@/lib/parabolicSar";
 import { calculateLinearRegression } from "@/lib/linearRegression";
+import { calculateRegressionChannel } from "@/lib/regressionChannel";
 import { calculateTillsonT3 } from "@/lib/tillsonT3";
 import { calculateSuperTrendSeries } from "@/lib/superTrendSeries";
 import type { SuperTrendLabelOptions } from "@/lib/superTrendLabels";
@@ -362,6 +363,7 @@ function computeIndicatorSeries(
   if (key === "average-directional-index-adx") return calculateAverageDirectionalIndex(candles, instance.settings ?? {}, theme);
   if (key === "parabolic-sar") return calculateParabolicSar(candles, instance.settings ?? {}, theme, instance.instanceId);
   if (key === "linear-regression") return calculateLinearRegression(candles, instance.settings ?? {}, theme, instance.instanceId, context.instrument);
+  if (key === "regression-channel") return calculateRegressionChannel(candles, instance.settings ?? {}, theme, instance.instanceId, context.tickSize);
   if (key === "tillson-t3") return calculateTillsonT3(candles, instance.settings ?? {}, theme, instance.instanceId, context.instrument);
 
   if (key === "source-code-indicator") {

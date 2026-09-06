@@ -1,5 +1,20 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-07 — Regression Channel converted from Pending
+
+- Owner request: continue the complete Pending-library overhaul one real study
+  at a time, using DeepCharts/public DLL evidence and no cosmetic enablement.
+- Added a separate Regression Channel overlay with current-window Bars mode,
+  two Zig Zag anchor modes, three regression/deviation lines, gap-safe history,
+  deep-history routing and complete public width/style/directional-colour
+  controls. Existing Linear Regression was not changed.
+- Public contract and explicit protected-parity limits:
+  `docs/deepcharts-regression-channel-audit.md`.
+- Prompt and outcome: `docs/prompt-log/2026-09-07-regression-channel.md`.
+- Eight focused tests, shared slider/template/theme checks, scoped ESLint,
+  TypeScript, the complete 80-page production build and synthetic browser
+  plot/settings/Save-persistence QA pass. Production SHA verification is due.
+
 ## 2026-09-07 — Ichimoku Indicator converted from Pending
 
 - Added the standard Tenkan/Kijun/Chikou and two forward Senkou plots with a

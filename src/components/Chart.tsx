@@ -545,6 +545,7 @@ const DEEP_HISTORY_INDICATOR_IDS = new Set([
   // O(n) centered rolling fit: 20k-bar p95 < 1.6ms in the local calculator
   // check. Its selectable 10k length must not receive only 1.5k lite candles.
   "linear-regression",
+  "regression-channel",
   // Single-pass running extremes; the selectable 10k confirmation window and
   // long structural swings must not be truncated to the 1.5k lite tail.
   "zig-zag",

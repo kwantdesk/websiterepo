@@ -468,6 +468,9 @@ const sectionForSetting = (indicatorId: string, key: string, fallback: string) =
       ? /^(middle|low|high|levelWidth)/.test(key) ? "Level settings" : /^cycleA/.test(key) ? "Cycle A" : /^cycleB/.test(key) ? "Cycle B" : "Parameters"
     : indicatorId === "ichimoku-indicator"
       ? /Period$/.test(key) ? "Parameters" : /^(tenkan|kijun|chikou|senkou)/.test(key) ? "Subgraphs" : "Cloud"
+    : indicatorId === "regression-channel"
+      ? /^(bars|standardDeviationValue)$/.test(key) ? "General" : /^zigZag/.test(key) ? "Zig Zag settings"
+        : /^mid/.test(key) ? "MID plot settings" : /^upper/.test(key) ? "UP plot settings" : "DN plot settings"
     : (isTpoIndicator(indicatorId) ? TPO_SETTING_SECTIONS[key] ?? "General" : fallback);
 
 const PIVOT_POINT_MANAGED_SETTINGS = new Set([
@@ -483,10 +486,14 @@ const ICHIMOKU_MANAGED_SETTINGS = new Set([
   "tenkanLineStyle", "kijunLineStyle", "chikouLineStyle", "senkouLineStyle",
   "tenkanShortName", "kijunShortName", "chikouShortName", "senkouShortName",
 ]);
+const REGRESSION_CHANNEL_MANAGED_SETTINGS = new Set([
+  "mode", "zigZagMode", "midLineStyle", "upperLineStyle", "lowerLineStyle",
+]);
 
 export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "inverse-cyber-cycle",
   "ichimoku-indicator",
+  "regression-channel",
   "super-trend",
   "super-trend-difference",
   "know-sure-thing-kst",
@@ -6551,6 +6558,57 @@ export default function ChartIndicatorsControl({
                 </div>
               ) : null}
 
+              {settingsDefinition.id === "regression-channel" ? (
+                <>
+                  <div data-settings-section="General" className="space-y-3">
+                    <label className="block space-y-1 text-[10px] text-muted">
+                      <span>Mode</span>
+                      <KwantSelect value={String(settingsInstance.settings?.mode ?? "bars")}
+                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                          ...current, settings: { ...(current.settings ?? {}), mode: event.target.value },
+                        }))} menuLabel="Regression channel mode"
+                        className="h-9 w-full border border-border bg-background px-3 text-foreground">
+                        <option value="bars">Bars</option>
+                        <option value="zig-zag">Zig Zag</option>
+                      </KwantSelect>
+                    </label>
+                    <p className="text-[10px] text-muted">Bars fits the latest selected number of candles. Standard deviation sets the equal upper and lower residual bands.</p>
+                  </div>
+                  <div data-settings-section="Zig Zag settings" className="space-y-3">
+                    <label className="block space-y-1 text-[10px] text-muted">
+                      <span>Zig Zag mode</span>
+                      <KwantSelect value={String(settingsInstance.settings?.zigZagMode ?? "tick-reversal")}
+                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                          ...current, settings: { ...(current.settings ?? {}), zigZagMode: event.target.value },
+                        }))} menuLabel="Regression channel Zig Zag mode"
+                        className="h-9 w-full border border-border bg-background px-3 text-foreground">
+                        <option value="tick-reversal">Tick reversal</option>
+                        <option value="highest-lowest">Highest-Lowest</option>
+                      </KwantSelect>
+                    </label>
+                    <p className="text-[10px] text-muted">Tick reversal starts at the latest confirmed threshold pivot. Highest-Lowest starts at the opposite extreme within its selected lookback.</p>
+                  </div>
+                  {([
+                    ["MID plot settings", "midLineStyle", "MID"],
+                    ["UP plot settings", "upperLineStyle", "UP"],
+                    ["DN plot settings", "lowerLineStyle", "DN"],
+                  ] as const).map(([section, key, label]) => (
+                    <label key={key} data-settings-section={section} className="block space-y-1 text-[10px] text-muted">
+                      <span>{label} line style</span>
+                      <KwantSelect value={String(settingsInstance.settings?.[key] ?? "dashed")}
+                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                          ...current, settings: { ...(current.settings ?? {}), [key]: event.target.value },
+                        }))} menuLabel={`${label} regression channel line style`}
+                        className="h-9 w-full border border-border bg-background px-3 text-foreground">
+                        <option value="solid">Solid</option>
+                        <option value="dashed">Dash</option>
+                        <option value="dotted">Dot</option>
+                      </KwantSelect>
+                    </label>
+                  ))}
+                </>
+              ) : null}
+
               {settingsDefinition.id === "tillson-t3" ? (
                 <div data-settings-section="Inputs" className="space-y-3">
                   {[
@@ -7814,6 +7872,7 @@ export default function ChartIndicatorsControl({
                     && !(settingsDefinition.id === "gap-detector" && GAP_DETECTOR_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "inverse-cyber-cycle" && INVERSE_CYBER_CYCLE_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "ichimoku-indicator" && ICHIMOKU_MANAGED_SETTINGS.has(key))
+                    && !(settingsDefinition.id === "regression-channel" && REGRESSION_CHANNEL_MANAGED_SETTINGS.has(key))
                     && !(VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) && VOLUME_PROFILE_VWAP_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "bounce-levels" && key === "syncGexMapColors")
                     && !(settingsDefinition.id === "super-trend" && settingsInstance.settings?.chartArea === "pane" && key === "useSecondaryAxis")

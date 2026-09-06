@@ -54,6 +54,11 @@ export const INDICATOR_PLOT_COLOR_SLOTS: Record<string, IndicatorPlotColorSlot[]
     { key: "plotColor", role: "primary" },
     { key: "secondaryColor", role: "secondary" },
   ],
+  "regression-channel": [
+    { key: "midColor", role: "primary", upRole: "positive", downRole: "negative" },
+    { key: "upperColor", role: "primary", upRole: "positive", downRole: "negative" },
+    { key: "lowerColor", role: "primary", upRole: "positive", downRole: "negative" },
+  ],
   "parabolic-sar": [
     { key: "plotColor", role: "primary" },
     { key: "secondaryColor", role: "secondary" },
