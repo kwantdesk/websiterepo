@@ -1,5 +1,16 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-07 — Gateway-side Auction Gap time-row fold
+
+- Added a pure gateway fold that assigns ordered exact prints into explicit
+  half-open canonical time bars and emits compact one-tick bid/ask/unknown rows.
+- Every nonempty bar reconciles exact volume and OHLC. Missing, extra,
+  unassigned, reversed, off-tick or invalid-side execution input fails with no
+  partial result; zero-volume synthetic bridges produce no fake rows.
+- This is the intended cost boundary: raw tapes stay off Vercel/browser.
+  34 archive/coverage/fold tests and scoped lint pass. Route, proof attachment,
+  event-bar fold and Chart integration remain; gate OFF, no deploy.
+
 ## 2026-09-07 — Chart-interval trade-tape coverage proof
 
 - Added multi-receipt proof over explicit chart-bar intervals. Healthy adjacent

@@ -1,5 +1,18 @@
 # Auction Gap Tracker — implementation in progress
 
+### Gateway compact time-bar row fold — 2026-09-07
+
+Added a pure gateway fold from exact ordered prints into sorted one-tick
+bid/ask/unknown rows per canonical time candle. It uses half-open candle bounds,
+preserves unknown sides, supports genuine zero-volume bridge candles and leaves
+caller data immutable. Every nonempty bar must match source volume and exact
+OHLC; missing/extra/unassigned/reversed/off-tick/invalid-side data returns no
+partial bars. This keeps the full execution tape out of Vercel and the browser.
+
+34 combined archive/coverage/fold tests and scoped lint pass. The fold is not
+yet routed, coverage-attached or consumed by Chart; event-bar ownership remains
+to add. Auction Gap stays Pending, with no production push/deployment.
+
 ### Market-interval coverage proof — 2026-09-07
 
 Added aggregation that proves each actual chart-bar interval from one or more

@@ -1,5 +1,12 @@
 # Pending-library continuation — Auction Gap Tracker
 
+2026-09-07 compact-fold continuation: added a gateway-side exact print to
+one-tick bid/ask/unknown row fold for canonical time candles. It reconciles
+volume and OHLC and rejects missing/extra/unassigned/reversed/off-tick sources;
+zero-volume bridges remain empty. 34 combined tests and lint pass. Route,
+coverage attachment, event ownership and Chart integration remain; still
+Pending, no push/deploy.
+
 2026-09-07 interval-proof continuation: coverage can now be established against
 each actual chart-bar interval, joining adjacent healthy receipts while rejecting
 any positive hole/damage/wrong contract. Closed-market wall-clock gaps need no
