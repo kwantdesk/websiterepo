@@ -2546,16 +2546,19 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     showLondon: true,
     showNewYork: true,
     showSydney: false,
-    tokyoLabel: "Tokyo",
+    tokyoLabel: "Asia",
     londonLabel: "London",
     newYorkLabel: "New York",
     sydneyLabel: "Sydney",
-    tokyoStart: "09:00",
-    tokyoEnd: "18:00",
-    londonStart: "08:00",
-    londonEnd: "17:00",
-    newYorkStart: "09:00",
-    newYorkEnd: "18:00",
+    tokyoTimezone: "America/New_York",
+    londonTimezone: "America/New_York",
+    newYorkTimezone: "America/New_York",
+    tokyoStart: "16:00",
+    tokyoEnd: "03:00",
+    londonStart: "03:00",
+    londonEnd: "09:30",
+    newYorkStart: "09:30",
+    newYorkEnd: "16:00",
     sydneyStart: "08:00",
     sydneyEnd: "17:00",
     tokyoColor: "#FF9900",
@@ -2576,6 +2579,8 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     borderWidth: 1,
     lineStyle: "dashed",
     labelSize: "small",
+    allowSessionOverlap: false,
+    sessionsSettingsVersion: 2,
   } : {}),
   ...(indicatorId === "session-highs-lows" ? {
     showGlobex: true,
@@ -2597,7 +2602,7 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     tokyoStart: "17:00",
     tokyoEnd: "02:00",
     londonStart: "02:00",
-    londonEnd: "10:00",
+    londonEnd: "08:30",
     newYorkStart: "08:30",
     newYorkEnd: "15:00",
     showHighs: true,
@@ -2606,7 +2611,7 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     hideWeekends: true,
     lineStyle: "dashed",
     labelSize: "small",
-    sessionHighLowSettingsVersion: 2,
+    sessionHighLowSettingsVersion: 3,
   } : {}),
   ...(indicatorId === "session-marker" ? {
     ...SESSION_MARKER_DEFAULTS,
@@ -4359,16 +4364,44 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
     });
     return { ...normalizedInstance, settings };
   }
+  if (normalizedInstance.indicatorId === "sessions") {
+    const raw = normalizedInstance.settings ?? {};
+    const settings: Record<string, number | string | boolean> = {
+      ...defaultIndicatorSettings("sessions"),
+      ...raw,
+    };
+    const legacyContract = Number(raw.sessionsSettingsVersion ?? 0) < 2;
+    if (legacyContract) {
+      const upgradeStockValue = (key: string, former: string, replacement: string) => {
+        if (raw[key] === undefined || raw[key] === former) settings[key] = replacement;
+      };
+      upgradeStockValue("tokyoLabel", "Tokyo", "Asia");
+      upgradeStockValue("tokyoStart", "09:00", "16:00");
+      upgradeStockValue("tokyoEnd", "18:00", "03:00");
+      upgradeStockValue("londonStart", "08:00", "03:00");
+      upgradeStockValue("londonEnd", "17:00", "09:30");
+      upgradeStockValue("newYorkStart", "09:00", "09:30");
+      upgradeStockValue("newYorkEnd", "18:00", "16:00");
+      if (raw.tokyoTimezone === undefined) settings.tokyoTimezone = "America/New_York";
+      if (raw.londonTimezone === undefined) settings.londonTimezone = "America/New_York";
+      if (raw.newYorkTimezone === undefined) settings.newYorkTimezone = "America/New_York";
+    }
+    settings.allowSessionOverlap = raw.allowSessionOverlap === true;
+    settings.sessionsSettingsVersion = 2;
+    return { ...normalizedInstance, settings };
+  }
   if (normalizedInstance.indicatorId === "session-highs-lows") {
+    const raw = normalizedInstance.settings ?? {};
     const settings: Record<string, number | string | boolean> = {
       ...defaultIndicatorSettings("session-highs-lows"),
-      ...(normalizedInstance.settings ?? {}),
+      ...raw,
     };
     // This is a named four-session futures study, not a colour-linked copy of
     // the separate Sessions overlay. Force legacy workspaces onto the same
     // institutional contract so Tokyo/Sydney labels and saved random colours
     // cannot survive a theme change.
-    const legacyContract = Number(normalizedInstance.settings?.sessionHighLowSettingsVersion ?? 0) < 2;
+    const legacyContract = Number(raw.sessionHighLowSettingsVersion ?? 0) < 2;
+    const legacyHandoff = Number(raw.sessionHighLowSettingsVersion ?? 0) < 3;
     Object.assign(settings, {
       ...(legacyContract ? {
         showGlobex: true,
@@ -4384,16 +4417,19 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
       tokyoTimezone: "America/Chicago",
       londonTimezone: "America/Chicago",
       newYorkTimezone: "America/Chicago",
-      globexStart: "17:00",
-      globexEnd: "16:00",
-      tokyoStart: "17:00",
-      tokyoEnd: "02:00",
-      londonStart: "02:00",
-      londonEnd: "10:00",
-      newYorkStart: "08:30",
-      newYorkEnd: "15:00",
-      sessionHighLowSettingsVersion: 2,
+      sessionHighLowSettingsVersion: 3,
     });
+    if (legacyContract) {
+      for (const [key, value] of Object.entries({
+        globexStart: "17:00", globexEnd: "16:00", tokyoStart: "17:00", tokyoEnd: "02:00",
+        londonStart: "02:00", newYorkStart: "08:30", newYorkEnd: "15:00",
+      })) {
+        if (raw[key] === undefined) settings[key] = value;
+      }
+    }
+    if (legacyHandoff && (raw.londonEnd === undefined || raw.londonEnd === "10:00")) {
+      settings.londonEnd = "08:30";
+    }
     for (const obsoleteKey of [
       "showSydney", "sydneyLabel", "sydneyStart", "sydneyEnd", "sydneyColor",
       "globexColor", "tokyoColor", "londonColor", "newYorkColor",

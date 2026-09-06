@@ -200,7 +200,62 @@ export function buildMarketSessionWindows(
     });
     if (active) windows.push(active);
   });
-  return windows.sort((left, right) => left.startTimestamp - right.startTimestamp);
+  const ordered = windows.sort((left, right) => left.startTimestamp - right.startTimestamp);
+  if (settings.allowSessionOverlap !== false) return ordered;
+
+  // Session overlays are partitions by default: the candle at a hand-off
+  // belongs to the session that starts there, never to both.  This also
+  // protects customised clocks where an end time is accidentally set after
+  // the next enabled session's start.  Recalculate the clipped window so its
+  // OHLC cannot retain candles painted by the following session.
+  const firstAtOrAfter = (timestamp: number) => {
+    let low = 0;
+    let high = candles.length;
+    while (low < high) {
+      const middle = (low + high) >>> 1;
+      if (candles[middle].timestamp < timestamp) low = middle + 1;
+      else high = middle;
+    }
+    return low;
+  };
+  return ordered.flatMap((window, index) => {
+    let endTimestamp = window.endTimestamp;
+    for (let nextIndex = index + 1; nextIndex < ordered.length; nextIndex += 1) {
+      const nextStart = ordered[nextIndex].startTimestamp;
+      if (nextStart >= endTimestamp) break;
+      if (nextStart > window.startTimestamp) {
+        endTimestamp = nextStart;
+        break;
+      }
+    }
+    if (endTimestamp === window.endTimestamp) return [window];
+    const source = candles.slice(firstAtOrAfter(window.startTimestamp), firstAtOrAfter(endTimestamp));
+    if (!source.length) return [];
+    let high = source[0].high;
+    let low = source[0].low;
+    let highTimestamp = source[0].timestamp;
+    let lowTimestamp = source[0].timestamp;
+    for (const candle of source.slice(1)) {
+      if (candle.high > high) {
+        high = candle.high;
+        highTimestamp = candle.timestamp;
+      }
+      if (candle.low < low) {
+        low = candle.low;
+        lowTimestamp = candle.timestamp;
+      }
+    }
+    return [{
+      ...window,
+      endTimestamp,
+      highTimestamp,
+      lowTimestamp,
+      open: source[0].open,
+      close: source.at(-1)!.close,
+      high,
+      low,
+    }];
+  });
 }
 
 export function buildPreviousSessionHighLowLevels(

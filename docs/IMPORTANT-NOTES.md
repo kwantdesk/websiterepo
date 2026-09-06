@@ -1,5 +1,17 @@
 # KWANTDESK important notes
 
+## 2026-09-07 — Session-window ownership
+
+- Session overlays are non-overlapping by default. Asia, London/Europe and
+  New York/USA form a continuous exchange-time partition; a hand-off candle
+  belongs to the session opening at that time, never both.
+- User clocks and per-session visibility persist. An earlier customised
+  window is clipped at the next enabled start unless `Allow custom overlaps`
+  is explicitly enabled. Its OHLC must be recalculated after clipping.
+- Session Highs & Lows intentionally keeps Globex as the full CME envelope;
+  it may coexist with the independently toggleable Asia/London/New York
+  subsets. London ends when New York starts at 08:30 Chicago time.
+
 - **Pending indicator library:** the earlier 21-row checklist did not cover
   the whole catalogue. The September 6 audit found 38 blocked rows; two were
   broken catalogue IDs for existing Big Contracts/Liquidity Sweep engines.

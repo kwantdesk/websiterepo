@@ -530,6 +530,17 @@ const IMPORTANT_LEVELS_MANAGED_SETTINGS = new Set([
   "filterTime", "customStartTime", "customEndTime", "plotType", "textAlign", "skipLast", "importantLevelsSettingsVersion",
 ]);
 const SPEED_OF_TAPE_MANAGED_SETTINGS = new Set(["database", "speedOfTapeSettingsVersion"]);
+const SESSIONS_MANAGED_SETTINGS = new Set([
+  "showTokyo", "showLondon", "showNewYork", "allowSessionOverlap", "sessionsSettingsVersion",
+]);
+const SESSION_HIGH_LOW_MANAGED_SETTINGS = new Set([
+  "showGlobex", "showTokyo", "showLondon", "showNewYork", "sessionHighLowSettingsVersion",
+]);
+const SESSION_MARKER_MANAGED_SETTINGS = new Set([
+  "asianEnabled", "europeEnabled", "usaEnabled",
+  "asianVwapEnabled", "europeVwapEnabled", "usaVwapEnabled",
+  "allowSessionOverlap", "sessionMarkerSettingsVersion",
+]);
 
 export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "inverse-cyber-cycle",
@@ -8004,6 +8015,52 @@ export default function ChartIndicatorsControl({
                 </div>
               ) : null}
 
+              {settingsDefinition.id === "sessions" ? (
+                <div data-settings-section="General" className="space-y-4 rounded-xl border border-primary/15 bg-primary/[0.035] p-3">
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    {([
+                      ["Asia", "tokyo", "showTokyo", "16:00", "03:00"],
+                      ["London", "london", "showLondon", "03:00", "09:30"],
+                      ["New York", "newYork", "showNewYork", "09:30", "16:00"],
+                    ] as const).map(([label, key, enabledKey, start, end]) => {
+                      const enabled = settingsInstance.settings?.[enabledKey] !== false;
+                      return (
+                        <div key={key} className="space-y-3 border border-border bg-background/70 p-3">
+                          <button type="button" aria-pressed={enabled} onClick={() => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [enabledKey]: !enabled } }))} className="flex h-8 w-full items-center justify-between text-[9px] uppercase tracking-[0.14em] text-foreground"><span>{label}</span><span className={enabled ? "text-primary" : "text-muted"}>{enabled ? "On" : "Off"}</span></button>
+                          <label className="space-y-1.5 text-[8px] uppercase tracking-[0.12em] text-muted"><span>Start · New York exchange time</span><input type="time" step={60} value={String(settingsInstance.settings?.[`${key}Start`] ?? start)} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [`${key}Start`]: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none" /></label>
+                          <label className="space-y-1.5 text-[8px] uppercase tracking-[0.12em] text-muted"><span>End · New York exchange time</span><input type="time" step={60} value={String(settingsInstance.settings?.[`${key}End`] ?? end)} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [`${key}End`]: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none" /></label>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <button type="button" aria-pressed={settingsInstance.settings?.allowSessionOverlap === true} onClick={() => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), allowSessionOverlap: current.settings?.allowSessionOverlap !== true } }))} className="flex h-9 w-full items-center justify-between rounded-lg border border-border bg-background px-3 text-[9px] uppercase tracking-[0.1em] text-muted"><span>Allow custom overlaps</span><span className={settingsInstance.settings?.allowSessionOverlap === true ? "text-primary" : "text-muted"}>{settingsInstance.settings?.allowSessionOverlap === true ? "On" : "Off"}</span></button>
+                  <p className="text-[8px] leading-4 text-muted">Stock windows hand off Asia → London → New York with no shared candle. Custom times are clipped at the next enabled session unless custom overlaps are explicitly allowed.</p>
+                </div>
+              ) : null}
+
+              {settingsDefinition.id === "session-highs-lows" ? (
+                <div data-settings-section="General" className="space-y-4 rounded-xl border border-primary/15 bg-primary/[0.035] p-3">
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    {([
+                      ["Globex", "globex", "showGlobex", "17:00", "16:00"],
+                      ["Asia", "tokyo", "showTokyo", "17:00", "02:00"],
+                      ["London", "london", "showLondon", "02:00", "08:30"],
+                      ["New York", "newYork", "showNewYork", "08:30", "15:00"],
+                    ] as const).map(([label, key, enabledKey, start, end]) => {
+                      const enabled = settingsInstance.settings?.[enabledKey] !== false;
+                      return (
+                        <div key={key} className="space-y-3 border border-border bg-background/70 p-3">
+                          <button type="button" aria-pressed={enabled} onClick={() => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [enabledKey]: !enabled } }))} className="flex h-8 w-full items-center justify-between text-[9px] uppercase tracking-[0.14em] text-foreground"><span>{label}</span><span className={enabled ? "text-primary" : "text-muted"}>{enabled ? "On" : "Off"}</span></button>
+                          <label className="space-y-1.5 text-[8px] uppercase tracking-[0.12em] text-muted"><span>Start · Chicago time</span><input type="time" step={60} value={String(settingsInstance.settings?.[`${key}Start`] ?? start)} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [`${key}Start`]: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none" /></label>
+                          <label className="space-y-1.5 text-[8px] uppercase tracking-[0.12em] text-muted"><span>End · Chicago time</span><input type="time" step={60} value={String(settingsInstance.settings?.[`${key}End`] ?? end)} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [`${key}End`]: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none" /></label>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <p className="text-[8px] leading-4 text-muted">Asia hands directly to London and London directly to New York. Globex is the full futures-session envelope and can be switched off independently.</p>
+                </div>
+              ) : null}
+
               {settingsDefinition.id === "session-marker" ? (
                 <div data-settings-section="General" className="space-y-4 rounded-xl border border-primary/15 bg-primary/[0.035] p-3">
                   <div className="grid gap-3 sm:grid-cols-2">
@@ -8021,18 +8078,24 @@ export default function ChartIndicatorsControl({
                   </div>
                   <div className="grid gap-3 sm:grid-cols-3">
                     {([
-                      ["Asian", "asian", "15:00", "03:00"],
-                      ["Europe", "europe", "03:00", "11:00"],
+                      ["Asian", "asian", "16:00", "03:00"],
+                      ["Europe", "europe", "03:00", "09:30"],
                       ["USA", "usa", "09:30", "16:00"],
-                    ] as const).map(([label, key, start, end]) => (
+                    ] as const).map(([label, key, start, end]) => {
+                      const enabled = settingsInstance.settings?.[`${key}Enabled`] !== false;
+                      const vwapEnabled = settingsInstance.settings?.[`${key}VwapEnabled`] === true;
+                      return (
                       <div key={key} className="space-y-3 border border-border bg-background/70 p-3">
-                        <div className="text-[9px] uppercase tracking-[0.14em] text-foreground">{label}</div>
+                        <button type="button" aria-pressed={enabled} onClick={() => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [`${key}Enabled`]: !enabled } }))} className="flex h-8 w-full items-center justify-between text-[9px] uppercase tracking-[0.14em] text-foreground"><span>{label}</span><span className={enabled ? "text-primary" : "text-muted"}>{enabled ? "On" : "Off"}</span></button>
                         <label className="space-y-1.5 text-[8px] uppercase tracking-[0.12em] text-muted"><span>Start session</span><input type="time" step={60} value={String(settingsInstance.settings?.[`${key}StartTime`] ?? start)} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [`${key}StartTime`]: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none" /></label>
                         <label className="space-y-1.5 text-[8px] uppercase tracking-[0.12em] text-muted"><span>End session</span><input type="time" step={60} value={String(settingsInstance.settings?.[`${key}EndTime`] ?? end)} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [`${key}EndTime`]: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground outline-none" /></label>
+                        <button type="button" aria-pressed={vwapEnabled} onClick={() => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [`${key}VwapEnabled`]: !vwapEnabled } }))} className="flex h-8 w-full items-center justify-between border border-border px-2 text-[8px] uppercase tracking-[0.1em] text-muted"><span>Session VWAP</span><span className={vwapEnabled ? "text-primary" : "text-muted"}>{vwapEnabled ? "On" : "Off"}</span></button>
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
-                  <p className="text-[8px] leading-4 text-muted">Asian, Europe and USA use the reference platform's recovered stock session clocks. High, low, opening range, open, close, midpoint and optional session VWAP are calculated from the chart's real candles; no synthetic prints are inserted.</p>
+                  <button type="button" aria-pressed={settingsInstance.settings?.allowSessionOverlap === true} onClick={() => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), allowSessionOverlap: current.settings?.allowSessionOverlap !== true } }))} className="flex h-9 w-full items-center justify-between rounded-lg border border-border bg-background px-3 text-[9px] uppercase tracking-[0.1em] text-muted"><span>Allow custom overlaps</span><span className={settingsInstance.settings?.allowSessionOverlap === true ? "text-primary" : "text-muted"}>{settingsInstance.settings?.allowSessionOverlap === true ? "On" : "Off"}</span></button>
+                  <p className="text-[8px] leading-4 text-muted">Stock windows hand off Asian → Europe → USA with no shared candle. Each session and its VWAP can be controlled independently; custom overlaps are opt-in.</p>
                 </div>
               ) : null}
 
@@ -8273,6 +8336,9 @@ export default function ChartIndicatorsControl({
                     && !(settingsDefinition.id === "annotations-overlay" && ANNOTATIONS_OVERLAY_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "important-levels" && IMPORTANT_LEVELS_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "speed-of-tape" && SPEED_OF_TAPE_MANAGED_SETTINGS.has(key))
+                    && !(settingsDefinition.id === "sessions" && SESSIONS_MANAGED_SETTINGS.has(key))
+                    && !(settingsDefinition.id === "session-highs-lows" && SESSION_HIGH_LOW_MANAGED_SETTINGS.has(key))
+                    && !(settingsDefinition.id === "session-marker" && SESSION_MARKER_MANAGED_SETTINGS.has(key))
                     && !(VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) && VOLUME_PROFILE_VWAP_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "bounce-levels" && key === "syncGexMapColors")
                     && !(settingsDefinition.id === "super-trend" && settingsInstance.settings?.chartArea === "pane" && key === "useSecondaryAxis")

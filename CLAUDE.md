@@ -1,5 +1,17 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-07 — Session windows no longer overlap by default
+
+- Sessions and Session Marker now use one New York exchange-time hand-off:
+  Asia 16:00–03:00, London/Europe 03:00–09:30 and New York/USA 09:30–16:00.
+- Boundary candles belong to the newly opened session only. If customised
+  clocks overlap, the earlier window is clipped and its OHLC is recalculated;
+  intentional overlap remains available behind an explicit setting.
+- Session Highs & Lows now hands London to New York at 08:30 Chicago time.
+  All three studies expose independent per-session on/off and start/end
+  controls, while legacy stock clocks migrate without replacing real custom
+  clocks. Prompt/outcome: `docs/prompt-log/2026-09-07-session-window-handoffs.md`.
+
 ## 2026-09-07 — KWANT Profile Values accuracy and settings overhaul
 
 - Fixed the standalone level-only profile failing to activate its own exact

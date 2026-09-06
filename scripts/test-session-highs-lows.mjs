@@ -12,7 +12,7 @@ const sessions = resolveMarketSessions(settings);
 assert.deepEqual(sessions.map(({ key, label, timezone, start, end }) => ({ key, label, timezone, start, end })), [
   { key: "globex", label: "Globex", timezone: "America/Chicago", start: "17:00", end: "16:00" },
   { key: "tokyo", label: "Asia", timezone: "America/Chicago", start: "17:00", end: "02:00" },
-  { key: "london", label: "London", timezone: "America/Chicago", start: "02:00", end: "10:00" },
+  { key: "london", label: "London", timezone: "America/Chicago", start: "02:00", end: "08:30" },
   { key: "newYork", label: "New York", timezone: "America/Chicago", start: "08:30", end: "15:00" },
 ]);
 
@@ -57,6 +57,16 @@ assert.equal(migrated.settings.showGlobex, true);
 assert.equal(migrated.settings.showSydney, undefined);
 assert.equal(migrated.settings.tokyoColor, undefined);
 assert.equal(migrated.settings.showPrevious3, undefined);
+assert.equal(migrated.settings.londonEnd, "08:30");
+
+const customised = normalizeStoredIndicator({
+  instanceId: "custom-session-levels",
+  indicatorId: "session-highs-lows",
+  enabled: true,
+  settings: { londonStart: "01:30", londonEnd: "08:00", sessionHighLowSettingsVersion: 3 },
+});
+assert.equal(customised.settings.londonStart, "01:30");
+assert.equal(customised.settings.londonEnd, "08:00");
 
 // Renderer contract: exact name only, with high/low colours recalculated from
 // the current visible chart theme rather than stored session swatches.
@@ -64,5 +74,9 @@ const chartSource = readFileSync(new URL("../src/components/Chart.tsx", import.m
 assert.ok(chartSource.includes("const sessionTheme = visibleIndicatorTheme(settings)"));
 assert.ok(chartSource.includes('color: level.side === "high" ? sessionTheme.positive : sessionTheme.negative'));
 assert.ok(chartSource.includes("showPriceInLabel: false"), "the numeric suffix must not be appended to session labels");
+
+const settingsSource = readFileSync(new URL("../src/components/ChartIndicatorsControl.tsx", import.meta.url), "utf8");
+for (const label of ["Globex", "Asia", "London", "New York", "Start · Chicago time", "End · Chicago time"])
+  assert.ok(settingsSource.includes(label), `missing ${label} settings control`);
 
 console.log("Session highs/lows contract tests passed.");

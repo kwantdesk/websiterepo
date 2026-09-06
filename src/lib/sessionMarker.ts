@@ -36,8 +36,8 @@ export type SessionMarkerLevel = {
 type SessionMarkerSettings = Record<string, number | string | boolean>;
 
 const SESSION_MARKER_DEFINITIONS = [
-  { markerKey: "asian", marketKey: "tokyo", label: "Asian", start: "15:00", end: "03:00" },
-  { markerKey: "europe", marketKey: "london", label: "Europe", start: "03:00", end: "11:00" },
+  { markerKey: "asian", marketKey: "tokyo", label: "Asian", start: "16:00", end: "03:00" },
+  { markerKey: "europe", marketKey: "london", label: "Europe", start: "03:00", end: "09:30" },
   { markerKey: "usa", marketKey: "newYork", label: "USA", start: "09:30", end: "16:00" },
 ] as const;
 
@@ -57,13 +57,13 @@ export const SESSION_MARKER_DEFAULTS: SessionMarkerSettings = {
   showMidPrice: true,
   useThemeColors: true,
   asianEnabled: true,
-  asianStartTime: "15:00",
+  asianStartTime: "16:00",
   asianEndTime: "03:00",
   asianImbalanceMinutes: 60,
   asianVwapEnabled: false,
   europeEnabled: true,
   europeStartTime: "03:00",
-  europeEndTime: "11:00",
+  europeEndTime: "09:30",
   europeImbalanceMinutes: 60,
   europeVwapEnabled: false,
   usaEnabled: true,
@@ -72,7 +72,8 @@ export const SESSION_MARKER_DEFAULTS: SessionMarkerSettings = {
   usaImbalanceMinutes: 60,
   usaVwapEnabled: false,
   markerEnabled: false,
-  sessionMarkerSettingsVersion: 1,
+  allowSessionOverlap: false,
+  sessionMarkerSettingsVersion: 2,
 };
 
 const clock = (value: unknown, fallback: string) =>
@@ -80,6 +81,14 @@ const clock = (value: unknown, fallback: string) =>
 
 export function normalizeSessionMarkerSettings(input: SessionMarkerSettings = {}) {
   const next: SessionMarkerSettings = { ...SESSION_MARKER_DEFAULTS, ...input };
+  const legacyVersion = Number(input.sessionMarkerSettingsVersion ?? 0) < 2;
+  // Upgrade only the former stock values. Genuine user-entered clocks survive.
+  if (legacyVersion && (input.asianStartTime === undefined || input.asianStartTime === "15:00")) {
+    next.asianStartTime = "16:00";
+  }
+  if (legacyVersion && (input.europeEndTime === undefined || input.europeEndTime === "11:00")) {
+    next.europeEndTime = "09:30";
+  }
   next.timeReference = ["exchange", "local"].includes(String(next.timeReference))
     ? next.timeReference
     : "exchange";
@@ -99,7 +108,8 @@ export function normalizeSessionMarkerSettings(input: SessionMarkerSettings = {}
       Math.max(1, Math.round(Number(next[`${key}ImbalanceMinutes`]) || 60)),
     );
   }
-  next.sessionMarkerSettingsVersion = 1;
+  next.allowSessionOverlap = next.allowSessionOverlap === true;
+  next.sessionMarkerSettingsVersion = 2;
   return next;
 }
 
@@ -125,6 +135,7 @@ export function buildSessionMarkerWindows(
     hideWeekends: true,
     showGlobex: false,
     showSydney: false,
+    allowSessionOverlap: settings.allowSessionOverlap,
   };
   for (const definition of SESSION_MARKER_DEFINITIONS) {
     const key = definition.markerKey;
