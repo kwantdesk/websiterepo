@@ -1,7 +1,8 @@
 # Know Sure Thing — pending implementation audit, 2026-09-06
 
-Status: calculator implemented and tested; **still Pending**. No catalogue,
-engine, settings or renderer gate has been enabled. Do not call this released.
+Status: calculator, scalar settings, actual engine and both pane orientations
+are implemented. Local Add registration is enabled after the focused and
+browser checks below; production commit verification is recorded separately.
 
 ## Evidence
 
@@ -72,17 +73,50 @@ lite window is insufficient. No data is fetched by this module.
   multi-pane/live-market soak. Avoid unconditionally rebuilding 20k points
   at live frame cadence; measure real integration before release.
 
-## Remaining release checklist
+## Integration verification — continuation
 
-- [ ] Map flat persisted numeric fields and all four smoothing choices.
-- [ ] Wire separate KST/signal/middle line styles, colour ownership and labels.
-- [ ] Audit actual pane support for per-line auto-centre/labels/backgrounds;
+- Four settings tests cover every numeric bound, all horizon/mode routing,
+  scalar roundtrip, independent slope colours, theme ownership and presentation.
+- Five integration tests exercise the real engine/registration, stored instance
+  normalization, actual deep-history membership and compiled real SVG painter:
+  both orientations, full-pane reference, out-of-range clipping, hard breaks,
+  points/line, labels and their independently controlled backgrounds. The actual
+  pane domain function verifies KST-only opt-out without changing legacy scaling.
+- Combined 52 indicator tests pass; scoped new-code/test ESLint passes.
+- Browser fixture uses the real settings dialog, engine and pane renderer,
+  labelled synthetic data, no feed. Verified changing Simple to Triangular and
+  ROC1 10 to 5, visible coloured KST and dashed signal, full-width middle level,
+  points-only mode, custom Momentum name/background, value label, clean Save,
+  close without re-prompt, reload restoring every changed field.
+- Fixed KST-specific dialog routing found in that test: section markers must
+  surround the custom component at the dialog's collection boundary; markers
+  inside a component are not visible to its tab collector. No working study's
+  tab routing changed. Width/style switches route to Style; ROC and percent to
+  Inputs. Both orientations use a KST-only painter; legacy pane paths untouched.
+- KST owns its dual slope colours through the final engine boundary, avoiding
+  a generic post-colour pass flattening both sides to one custom swatch.
+- Middle reference participates in scaling even when its timestamp is outside
+  the viewport, and each main/signal auto-centre switch independently opts out.
+
+## Release checklist
+
+- [x] Map flat persisted numeric fields and all four smoothing choices.
+- [x] Wire separate KST/signal/middle line styles, colour ownership and labels.
+- [x] Audit actual pane support for per-line auto-centre/labels/backgrounds;
   do not expose no-op controls or mutate working studies to fake parity.
-- [ ] Wire engine, actual pane renderer and deep-history membership together.
-- [ ] Test real settings/template normalization and multiple instances.
-- [ ] Browser: rendering, all controls, theme/custom, Save/close/reload.
-- [ ] Integration performance and full production build.
-- [ ] Only then enable Add, update count, commit/push and verify production.
+- [x] Wire engine, actual pane renderer and deep-history membership together.
+- [x] Test real scalar settings and stored indicator normalization.
+- [x] Browser: rendering, selected controls, Save/close/reload; theme/custom
+  ownership additionally checked by deterministic series tests.
+- [x] Full production build: TypeScript and all 80 static pages passed.
+- [ ] Deployment commit verification after push.
+- [ ] Authenticated cloud-template import/export/account roundtrip and a
+  representative multi-pane live-session performance soak remain unproved.
 
-No feed/login/infrastructure changes. No production behavior changed by this
-prerequisite. T3 remains the latest verified live indicator release.
+Integration conventions, not vendor parity claims: KwantDesk gives each
+instance its own dockable pane rather than DeepCharts' arbitrary panel selector
+and secondary-axis sharing. Name/value labels are clipped in the plot. The
+marker-background toggle uses chart background instead of panel background;
+its exact vendor geometry and non-simple signal seed remain unverified.
+
+No feed/login/infrastructure changes or working-indicator formula changes.

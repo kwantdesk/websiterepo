@@ -1,5 +1,16 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-06 — KST integration batch
+
+- KST now routes through real scalar settings, engine, dockable pane and deep
+  history. New KST-only SVG painter covers line/points, slope colours, middle
+  line, per-plot labels/backgrounds and auto-centre; old studies keep old paths.
+- 52 combined tests and scoped lint pass. Browser verified settings changing
+  geometry, points, name/value labels, Save/close/reload. Production build and
+  deployment verification tracked in `docs/deepcharts-kst-audit.md`.
+- 30 pending remain. Vendor seeds/pixel parity, authenticated cloud-template
+  roundtrip and representative multi-pane live-market soak remain unproved.
+
 ## 2026-09-06 — KST prerequisite, not yet released
 
 - `knowSureThing.ts` implements four weighted/smoothed ROC horizons and signal;

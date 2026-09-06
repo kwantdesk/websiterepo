@@ -4,6 +4,7 @@ import { calculateAverageDirectionalIndex } from "@/lib/averageDirectionalIndex"
 import { calculateParabolicSar } from "@/lib/parabolicSar";
 import { calculateLinearRegression } from "@/lib/linearRegression";
 import { calculateTillsonT3 } from "@/lib/tillsonT3";
+import { calculateKstSeries, type KstPanePresentation } from "@/lib/knowSureThingSeries";
 import { exchangeClockParts } from "@/lib/exchangeClock";
 import type { ChartIndicatorInstance } from "@/lib/chartIndicatorCatalog";
 import { calculateDeepEffort } from "@/lib/deepEffort";
@@ -20,6 +21,7 @@ import {
 } from "@/lib/vwap";
 
 export type CalculatedIndicatorSeries = {
+  kstPresentation?: KstPanePresentation;
   key: string;
   groupKey?: string;
   label: string;
@@ -306,6 +308,11 @@ export function calculateIndicatorSeries(
   theme: IndicatorTheme,
   context: { instrument?: string; tickSize?: number } = {},
 ): CalculatedIndicatorSeries[] {
+  // KST owns both slope colours per plot. The generic post-colour pass would
+  // flatten those deliberate two-colour paths into one custom swatch.
+  if (instance.indicatorId === "know-sure-thing-kst") {
+    return instance.enabled ? calculateKstSeries(candles, instance.settings ?? {}, theme) : [];
+  }
   return applyIndicatorPlotColors(
     instance.indicatorId,
     instance.settings as Record<string, unknown> | undefined,

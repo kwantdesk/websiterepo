@@ -523,6 +523,8 @@ const CUMULATIVE_DELTA_MINIMUM_COVERAGE = 0.95;
  */
 const FOOTPRINT_MINIMUM_FLOW_COVERAGE = 0.85;
 const DEEP_HISTORY_INDICATOR_IDS = new Set([
+  // Four full ROC/average seeds plus signal need up to 2999 real bars.
+  "know-sure-thing-kst",
   // Six EMA seed windows at length 1000 need 5995 real bars, not the lite 1500.
   "tillson-t3",
   // O(n) centered rolling fit: 20k-bar p95 < 1.6ms in the local calculator
@@ -8135,6 +8137,14 @@ function Chart({
         definition.groupKey === instance.instanceId && definition.placement === "pane");
       const cumulativeDeltaStudy = CUMULATIVE_DELTA_INDICATOR_IDS.has(instance.indicatorId);
 
+      if (instance.indicatorId === "know-sure-thing-kst") {
+        return [{
+          key: instance.instanceId, title: "Know Sure Thing (KST)",
+          indicatorId: instance.indicatorId, settings: instance.settings, series,
+          showLegend: false,
+          unavailableReason: series.length ? undefined : "Waiting for complete KST momentum windows, or plots are hidden.",
+        }];
+      }
       if (instance.indicatorId === "average-directional-index-adx") {
         return [{
           key: instance.instanceId,

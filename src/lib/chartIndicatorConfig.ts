@@ -4,6 +4,7 @@ import { ADX_DEFAULTS } from "@/lib/averageDirectionalIndex";
 import { PARABOLIC_SAR_DEFAULTS } from "@/lib/parabolicSar";
 import { LINEAR_REGRESSION_DEFAULTS } from "@/lib/linearRegression";
 import { TILLSON_T3_DEFAULTS } from "@/lib/tillsonT3";
+import { KST_DEFAULTS, KST_NUMERIC_SETTINGS } from "@/lib/knowSureThingSettings";
 import type { ChartIndicatorInstance } from "@/lib/chartIndicatorCatalog";
 import { canonicalChartIndicatorId } from "@/lib/chartIndicatorCatalog";
 import { DEFAULT_VOLUME_PROFILE_VALUE_AREA_PERCENT } from "@/lib/volumeProfileMath";
@@ -85,6 +86,7 @@ import { CHART_OVERLAY_SETTINGS_VERSION } from "@/lib/chartOverlays";
 import { DEEP_PATTERN_BUILDER_SETTINGS_VERSION } from "@/lib/deepPatternBuilder";
 
 export const LIVE_CHART_INDICATOR_IDS = new Set([
+  "know-sure-thing-kst",
   "tillson-t3",
   "linear-regression",
   "parabolic-sar",
@@ -231,6 +233,7 @@ export function resolveDailyVolumeProfileCount(value: unknown): number {
 }
 
 export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[]> = {
+  "know-sure-thing-kst": KST_NUMERIC_SETTINGS,
   "tillson-t3": [
     { key: "length", label: "Length", defaultValue: 14, min: 1, max: 1000, step: 1 },
     { key: "volumeFactor", label: "Volume factor", defaultValue: 0.618, min: 0, max: 1, step: 0.001 },
@@ -1467,6 +1470,7 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
   ...(indicatorId === "parabolic-sar" ? PARABOLIC_SAR_DEFAULTS : {}),
   ...(indicatorId === "linear-regression" ? LINEAR_REGRESSION_DEFAULTS : {}),
   ...(indicatorId === "tillson-t3" ? TILLSON_T3_DEFAULTS : {}),
+  ...(indicatorId === "know-sure-thing-kst" ? KST_DEFAULTS : {}),
   // One picker per plotted series, seeded from the chart theme so an untouched
   // study looks exactly as it did. Spread FIRST, so any indicator that already
   // declares its own colour keys below keeps them.

@@ -74,7 +74,15 @@ reachable catalogue row and that catalogue IDs are unique.
   route supports maximum-length warmup. Reference and parity limits:
   `docs/deepcharts-tillson-t3-audit.md`.
 
-## Remaining 31 — not released by blanket enablement
+## Batch 7 — Know Sure Thing (KST)
+
+- [x] Four smoothed ROC horizons and signal, exact DLL smoothing enum, observed
+  settings, per-plot styles/colours/labels, full-pane middle reference, and deep
+  history for maximum warmup. Actual browser verified calculations/settings,
+  point mode, labels, Save/close/reload. 52 combined tests pass. Exact vendor
+  geometry/seeds and live soak are not claimed; `docs/deepcharts-kst-audit.md`.
+
+## Remaining 30 — not released by blanket enablement
 
 Each row needs evidence, settings/data implementation, calculation tests,
 renderer/theme/persistence verification and explicit visual/latency limits.
@@ -111,7 +119,6 @@ Do not tick a row just because its Add gate changes.
 | `super-trend-difference` | [ ] Audit / implement / verify |
 | `tillson-t3` | [x] Implemented; explicit seed and reference limits |
 | `zig-zag` | [ ] Audit / implement / verify |
-| `know-sure-thing-kst` | [ ] Calculator + DLL enum/reference screenshots audited; integration/visual QA outstanding (`deepcharts-kst-audit.md`) |
 | `inverse-cyber-cycle` | [ ] Audit / implement / verify |
 | `average-directional-index-adx` | [x] Batch 3; seed and vendor-parity limitations documented |
 | `candlestick-bar` | [ ] Audit / implement / verify |

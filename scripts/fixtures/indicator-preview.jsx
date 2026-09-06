@@ -10,8 +10,8 @@ import actualOverlayOptions from "kwant-preview-overlay-options";
 
 // Isolated, clearly labelled fixtures: never a market feed or production page.
 const requestedPreview = new URLSearchParams(location.search).get("indicator");
-const previewId = requestedPreview === "t3" ? "tillson-t3" : requestedPreview === "regression" ? "linear-regression" : requestedPreview === "sar" ? "parabolic-sar" : requestedPreview === "adx" ? "average-directional-index-adx" : "absolute-levels";
-const previewName = previewId === "tillson-t3" ? "Tillson T3" : previewId === "linear-regression" ? "Linear Regression" : previewId === "absolute-levels" ? "Absolute Levels" : previewId === "parabolic-sar" ? "Parabolic SAR" : "ADX";
+const previewId = requestedPreview === "kst" ? "know-sure-thing-kst" : requestedPreview === "t3" ? "tillson-t3" : requestedPreview === "regression" ? "linear-regression" : requestedPreview === "sar" ? "parabolic-sar" : requestedPreview === "adx" ? "average-directional-index-adx" : "absolute-levels";
+const previewName = previewId === "know-sure-thing-kst" ? "Know Sure Thing" : previewId === "tillson-t3" ? "Tillson T3" : previewId === "linear-regression" ? "Linear Regression" : previewId === "absolute-levels" ? "Absolute Levels" : previewId === "parabolic-sar" ? "Parabolic SAR" : "ADX";
 const storageKey = `qa-indicators-${previewId}`;
 const candles = Array.from({ length: previewId === "absolute-levels" ? 30 : 100 }, (_, i) => {
   const close = previewId === "absolute-levels" ? 100.2 + i / 40 : 100 + Math.sin(i / 8) * 2 + i / 40;
@@ -37,8 +37,8 @@ function Preview() {
     <button onClick={() => setRequest({ instanceId: "qa-study", requestId: Date.now() })}>Open {previewName} settings</button>
     <ChartIndicatorsControl chartInstanceId="qa" instrument="NQ" broker="Rithmic" timeframe="1m" chartSettings={defaultChartSettings} indicators={indicators} onChange={setIndicators} settingsOpenRequest={request}/>
     <div ref={host}/>
-    {previewId === "average-directional-index-adx" ? <div style={{ position: "relative", width: 1000, height: 260 }}>
-      <ChartIndicatorPanes groups={indicators.map(instance => ({ key: instance.instanceId, indicatorId: instance.indicatorId, title: previewName, settings: instance.settings, series: calculateIndicatorSeries(instance, candles, theme) }))}
+    {["average-directional-index-adx", "know-sure-thing-kst"].includes(previewId) ? <div style={{ position: "relative", width: 1000, height: 260 }}>
+      <ChartIndicatorPanes groups={indicators.map(instance => ({ key: instance.instanceId, indicatorId: instance.indicatorId, title: previewName, settings: instance.settings, showLegend: previewId === "know-sure-thing-kst" ? false : undefined, series: calculateIndicatorSeries(instance, candles, theme) }))}
         width={1000} priceScaleWidth={65} height={260} chartHeight={260} bottom={0} viewportVersion={0}
         paneHeights={{}} collapsedPanes={{}} paneLayout={{}} timeToX={time => (time - candles[0].timestamp / 1000) / (99 * 60) * 935}
         onResizePane={() => {}} onTogglePane={() => {}} onMovePane={() => {}}

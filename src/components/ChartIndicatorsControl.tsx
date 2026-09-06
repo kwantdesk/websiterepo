@@ -62,6 +62,7 @@ import {
 } from "@/lib/volumeProfileGradients";
 import { isInsideKwantSelectMenu } from "@/components/ui/KwantSelect";
 import KwantSelect from "@/components/ui/KwantSelect";
+import KstIndicatorSettings from "@/components/KstIndicatorSettings";
 import {
   FOOTPRINT_CHART_TYPES,
   footprintChartType,
@@ -451,9 +452,12 @@ const isTpoIndicator = (id: string) => id === "tpo-chart" || id === "weekly-tpo"
 const hasOwnPaletteSection = (id: string) =>
   VOLUME_PROFILE_INDICATOR_IDS.has(id) || isTpoIndicator(id) || id === "deep-print-footprint";
 const sectionForSetting = (indicatorId: string, key: string, fallback: string) =>
-  (isTpoIndicator(indicatorId) ? TPO_SETTING_SECTIONS[key] ?? "General" : fallback);
+  indicatorId === "know-sure-thing-kst"
+    ? key === "usePercent" || /^(roc\d|average\d|signalPeriod|middleLevel)$/.test(key) ? "Inputs" : "Style"
+    : (isTpoIndicator(indicatorId) ? TPO_SETTING_SECTIONS[key] ?? "General" : fallback);
 
 export const RENDERED_CHART_INDICATOR_IDS = new Set([
+  "know-sure-thing-kst",
   "tillson-t3",
   "linear-regression",
   "parabolic-sar",
@@ -6386,6 +6390,14 @@ export default function ChartIndicatorsControl({
                     VIX is the market&apos;s 30-day implied-volatility index. The 52-week rank places today inside its trailing range; percentile is the share of trailing closes at or below today. Replay never reads beyond its selected clock.
                   </p>
                 </div>
+              ) : null}
+
+              {settingsDefinition.id === "know-sure-thing-kst" ? (
+                (["Inputs", "Style"] as const).map(section => <div key={section} data-settings-section={section}>
+                  <KstIndicatorSettings section={section} settings={settingsInstance.settings ?? {}} onChange={(patch) => replace(settingsInstance.instanceId, (current) => ({
+                    ...current, settings: { ...(current.settings ?? {}), ...patch },
+                  }))} />
+                </div>)
               ) : null}
 
               {settingsDefinition.id === "average-directional-index-adx" ? (

@@ -6,6 +6,7 @@ import type { CalculatedIndicatorSeries } from "@/lib/chartIndicatorEngine";
 import type { KwantStatsTable } from "@/lib/kwantStats";
 import { chartCandleBodyWidth, paneBarSpacing } from "@/lib/chartBarWidth";
 import { sampledPanePoints, sampledVerticalPanePoints } from "@/lib/chartIndicatorPaneSampling";
+import KstPanePlot from "@/components/KstPanePlot";
 
 type IndicatorPaneGroup = {
   key: string;
@@ -59,7 +60,7 @@ function formatStatValue(value: number, format: "number" | "percent" | "seconds"
 }
 
 function seriesDomain(series: CalculatedIndicatorSeries[]) {
-  const values = series.flatMap((definition) => definition.data.flatMap((point) => [
+  const values = series.filter((definition) => !definition.kstPresentation || !definition.excludeFromAutoScale).flatMap((definition) => definition.data.flatMap((point) => [
     point.value,
     point.open,
     point.high,
@@ -281,6 +282,7 @@ function ChartIndicatorPaneSurface({
         const visibleSeries = group.series.map((definition) => ({
           ...definition,
           data: definition.data.filter((point) => {
+            if (group.indicatorId === "know-sure-thing-kst" && definition.horizontalPriceLine) return true;
             const x = xForTime(point.time);
             return x !== null && x >= -10 && x <= plotWidth + 10;
           }),
@@ -522,7 +524,13 @@ function ChartIndicatorPaneSurface({
                 const y2 = yFor(band.from, reference);
                 return <rect key={`${group.key}-band-${bandIndex}`} x={leftAxisWidth} y={Math.min(y1, y2)} width={innerPlotWidth} height={Math.abs(y2 - y1)} fill={band.color} fillOpacity={band.opacity ?? 0.055} />;
               })}
-              {group.series.map((definition) => {
+              {group.series.map((definition, seriesIndex) => {
+                if (group.indicatorId === "know-sure-thing-kst") {
+                  return <KstPanePlot key={definition.key} series={definition} nameRow={seriesIndex}
+                    bounds={{ left: leftAxisWidth, top: innerTop, right: plotWidth, bottom: innerBottom }}
+                    referenceCoordinate={definition.horizontalPriceLine ? yFor(definition.data[0]?.value ?? NaN, definition) : undefined}
+                    points={sampledPanePoints(definition, xForTime, plotWidth).map(p => ({ ...p, y: yFor(p.value, definition) }))} />;
+                }
                 const visible = sampledPanePoints(definition, xForTime, plotWidth);
                 if (!visible.length) return null;
                 if (definition.kind === "histogram") {
@@ -1046,6 +1054,7 @@ function ChartVerticalIndicatorPaneSurface({
           const visibleSeries = group.series.map((definition) => ({
             ...definition,
             data: definition.data.filter((point) => {
+              if (group.indicatorId === "know-sure-thing-kst" && definition.horizontalPriceLine) return true;
               const x = timeToX(point.time);
               return x !== null && x >= -10 && x <= globalPlotWidth + 10;
             }),
@@ -1087,8 +1096,14 @@ function ChartVerticalIndicatorPaneSurface({
               ) : null}
               {!collapsed ? (
                 <>
-                  <line x1={zeroX} x2={zeroX} y1={plotTop} y2={plotBottom} stroke="var(--grid-color)" strokeDasharray="3 4" opacity="0.72" />
-                  {group.series.map((definition) => {
+                  {group.indicatorId !== "know-sure-thing-kst" ? <line x1={zeroX} x2={zeroX} y1={plotTop} y2={plotBottom} stroke="var(--grid-color)" strokeDasharray="3 4" opacity="0.72" /> : null}
+                  {group.series.map((definition, seriesIndex) => {
+                    if (group.indicatorId === "know-sure-thing-kst") {
+                      return <KstPanePlot key={definition.key} series={definition} nameRow={seriesIndex} vertical
+                        bounds={{ left: innerLeft, top: plotTop, right: innerRight, bottom: plotBottom }}
+                        referenceCoordinate={definition.horizontalPriceLine ? xForValue(definition.data[0]?.value ?? NaN) : undefined}
+                        points={sampledVerticalPanePoints(definition, yForTime, plotHeight).map(p => ({ ...p, x: xForValue(p.value), y: p.y + plotTop }))} />;
+                    }
                     const visible = sampledVerticalPanePoints(definition, yForTime, plotHeight)
                       .map((point) => ({ ...point, y: point.y + plotTop }));
                     if (!visible.length) return null;

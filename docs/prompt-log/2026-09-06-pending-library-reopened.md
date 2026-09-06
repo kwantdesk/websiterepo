@@ -95,6 +95,19 @@ or provider requests. 31 pending remain; exact vendor startup and legend parity
 are documented limits, not claimed complete from mathematical fixtures.
 # KST calculation prerequisite — continuation 2026-09-06
 
+## KST integration outcome
+
+- Wired calculator to the real settings, pane renderer and deep-history path.
+  Separate main/signal styling, theme/custom slope colours, middle reference,
+  label backgrounds and auto-centre switches now reach rendering. Fixed its
+  component section-routing issue found during browser QA.
+- 52 combined tests, scoped new-code/test ESLint and full production build pass.
+  Browser verified smoothing/lookback changes, point mode, names/value labels,
+  immediate Save/close and reload persistence. No live-market or cloud-account
+  template verification claim; detailed limits in `deepcharts-kst-audit.md`.
+- Local catalogue is now 98 registered / 30 pending. This is one study released,
+  not whole-library completion. Existing native/SOCIALS work stays excluded.
+
 - Prompt: continue every pending study using DeepCharts evidence, not gate flips.
 - Work: read all six official KST screenshots; decoded actual four-choice
   smoothing enum from the licensed DLL; implemented and independently tested

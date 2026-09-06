@@ -8,7 +8,9 @@
   with explicit Wilder seeds; Parabolic SAR is implemented with documented seed
   and browser-tested dots/settings. Linear Regression now has all five inputs,
   tested rolling math and deep-history routing. Tillson T3 now has six-stage
-  smoothing, source/style/name controls and browser checks. 31 still require individual work. Monthly/Session/
+  smoothing, source/style/name controls and browser checks. KST now has all four
+  DLL-confirmed smoothing modes, styled pane output and browser-verified save
+  persistence (documented parity limits). 30 still require individual work. Monthly/Session/
   Visible profile data/settings integration remains unfinished, including exact
   multi-session filtering and event-allocation-aware visible boundaries.
   Track `docs/pending-indicator-library-2026-09-06.md`, not the old completion

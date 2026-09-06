@@ -31,6 +31,13 @@ export type IndicatorPlotColorSlot = {
 };
 
 export const INDICATOR_PLOT_COLOR_SLOTS: Record<string, IndicatorPlotColorSlot[]> = {
+  "know-sure-thing-kst": [
+    { key: "kstColor", role: "primary" },
+    { key: "kstSecondaryColor", role: "negative" },
+    { key: "signalColor", role: "secondary" },
+    { key: "signalSecondaryColor", role: "positive" },
+    { key: "middleColor", role: "muted" },
+  ],
   "tillson-t3": [
     { key: "plotColor", role: "primary" },
     { key: "secondaryColor", role: "secondary" },
