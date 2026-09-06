@@ -43,10 +43,14 @@ function Preview() {
   return <main style={{ padding: 24 }}>
     <h1>Indicator QA — SYNTHETIC TEST DATA — no trading connection</h1>
     <button onClick={() => setRequest({ instanceId: "qa-study", requestId: Date.now() })}>Open {previewName} settings</button>
+    {["super-trend", "super-trend-difference"].includes(previewId) ? <div>
+      {["bottom", "right", "left", "top"].map(dock => <button key={dock}
+        onClick={() => setPaneLayout({ "qa-study": { dock, order: 0 } })}>QA dock {dock}</button>)}
+    </div> : null}
     <ChartIndicatorsControl chartInstanceId="qa" instrument="NQ" broker="Rithmic" timeframe="1m" chartSettings={defaultChartSettings} indicators={indicators} onChange={setIndicators} settingsOpenRequest={request}/>
     <div ref={host}/>
-    {["average-directional-index-adx", "know-sure-thing-kst", "super-trend-difference"].includes(previewId) ? <div style={{ position: "relative", width: 1000, height: 260 }}>
-      <ChartIndicatorPanes groups={indicators.map(instance => ({ key: instance.instanceId, indicatorId: instance.indicatorId, title: previewName, settings: instance.settings, showLegend: previewId === "know-sure-thing-kst" ? false : undefined, series: calculateIndicatorSeries(instance, candles, theme) }))}
+    {["average-directional-index-adx", "know-sure-thing-kst", "super-trend-difference", "super-trend"].includes(previewId) ? <div style={{ position: "relative", width: 1000, height: 260 }}>
+      <ChartIndicatorPanes groups={indicators.map(instance => ({ key: instance.instanceId, indicatorId: instance.indicatorId, title: previewName, settings: instance.settings, showLegend: previewId === "know-sure-thing-kst" ? false : undefined, series: calculateIndicatorSeries(instance, candles, theme).filter(series => series.placement === "pane") })).filter(group => group.series.length)}
         width={1000} priceScaleWidth={65} height={260} chartHeight={260} bottom={0} viewportVersion={0}
         paneHeights={{}} collapsedPanes={{}} paneLayout={paneLayout} timeToX={time => (time - candles[0].timestamp / 1000) / (99 * 60) * 935}
         onResizePane={() => {}} onTogglePane={() => {}} onMovePane={(id, dock, order) => setPaneLayout(current => ({ ...current, [id]: { dock, order } }))}

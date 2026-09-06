@@ -11,7 +11,7 @@ export function useSuperTrendLivePanes<T extends Group>(groups: T[], chartKey?: 
   const buffers = useRef(new Map<string, SuperTrendPlotBuffer>());
   const activeChart = useRef<string | undefined>(undefined);
   const [revision, setRevision] = useState(0);
-  const ids = groups.filter(g => g.indicatorId === "super-trend-difference").map(g => g.key).join("\u0000");
+  const ids = groups.filter(g => g.indicatorId === "super-trend-difference" || g.indicatorId === "super-trend").map(g => g.key).join("\u0000");
   useEffect(() => {
     const activeBuffers = buffers.current;
     activeChart.current = chartKey;

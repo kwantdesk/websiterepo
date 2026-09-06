@@ -2,7 +2,7 @@ import type { IndicatorNumericSetting } from "./chartIndicatorConfig";
 
 export const SUPER_TREND_DEFAULTS = {
   length: 10, multiplier: 3, lineWidth: 1, lineStyle: "solid",
-  displayStyle: "line", colorMode: "direction", shortName: "ST",
+  displayStyle: "line", colorMode: "direction", shortName: "ST", chartArea: "overlay",
   useThemeColors: true, useSecondaryAxis: false, includeOnAutoCenter: true,
   valueLabel: false, nameLabel: false, nameBackground: false,
   valueBackground: false, chartColorForMarker: false,
@@ -42,6 +42,7 @@ export function normalizeSuperTrendSettings(raw: Record<string, unknown> = {}, d
   choose("displayStyle", difference ? ["histogram", "line"] : ["line", "points", "line-points"], defaults.displayStyle);
   choose("colorMode", difference ? ["sign", "none", "slope"] : ["direction", "none", "slope"], defaults.colorMode);
   choose("lineStyle", ["solid", "dashed", "dotted"], "solid");
+  if (!difference) choose("chartArea", ["overlay", "pane"], "overlay");
   result.shortName = typeof raw.shortName === "string" ? raw.shortName.trim().slice(0, 40) || defaults.shortName : defaults.shortName;
   if (!difference) result.alertName = typeof raw.alertName === "string" ? raw.alertName.trim().slice(0, 80) || "Super Trend" : "Super Trend";
   return result;

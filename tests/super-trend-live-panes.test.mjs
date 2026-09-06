@@ -4,7 +4,7 @@ import fs from "node:fs";
 import ts from "typescript";
 import { SuperTrendPlotBuffer, SUPER_TREND_LIVE_PLOT_EVENT } from "../src/lib/superTrendLivePlot.ts";
 
-test("actual pane hook coalesces bursts, isolates charts and restores history on reset/replay", () => {
+for (const indicatorId of ["super-trend", "super-trend-difference"]) test(`${indicatorId} actual pane hook coalesces bursts, isolates charts and restores history on reset/replay`, () => {
   const source = fs.readFileSync(new URL("../src/components/useSuperTrendLivePanes.ts", import.meta.url), "utf8");
   const compiled = ts.transpileModule(source, { compilerOptions: {
     module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022,
@@ -34,7 +34,7 @@ test("actual pane hook coalesces bursts, isolates charts and restores history on
   globalThis.requestAnimationFrame = fn => { frames.set(++frameId, fn); return frameId; };
   globalThis.cancelAnimationFrame = id => frames.delete(id);
   const base = { key: "series", superTrendStyleKey: "style-a", data: [{ time: 1, value: 10 }] };
-  const groups = [{ key: "st", indicatorId: "super-trend-difference", series: [base] },
+  const groups = [{ key: "st", indicatorId, series: [base] },
     { key: "working", indicatorId: "cvd", series: [base] }];
   const render = key => { cursor = 0; const value = loaded.exports.useSuperTrendLivePanes(groups, key);
     pending.splice(0).forEach(fn => fn()); return value; };

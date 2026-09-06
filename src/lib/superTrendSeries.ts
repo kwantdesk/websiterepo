@@ -19,6 +19,7 @@ export function paintSuperTrendSeries(
 ): CalculatedIndicatorSeries[] {
   const s = normalizeSuperTrendSettings(raw, difference);
   if (!values.length) return [];
+  const pane = difference || s.chartArea === "pane";
   const gradient = resolveVolumeProfileGradient(s.gradientPreset);
   const pick = (key: string, fallback: string) => s.useThemeColors === false
     && typeof s[key] === "string" && String(s[key]).trim() ? String(s[key]) : fallback;
@@ -37,15 +38,15 @@ export function paintSuperTrendSeries(
   return [{ key: `${difference ? "super-trend-difference" : "super-trend"}-${instanceId}`, label: String(s.shortName),
     superTrendStyleKey: JSON.stringify([s, theme]),
     kind: difference && s.displayStyle === "histogram" ? "histogram" : "line",
-    placement: difference ? "pane" : "overlay", color: primary,
+    placement: pane ? "pane" : "overlay", color: primary,
     lineWidth: s.lineWidth as 1 | 2 | 3 | 4,
     lineStyle: s.lineStyle as "solid" | "dashed" | "dotted",
     lineVisible: difference || s.displayStyle !== "points",
     pointMarkersVisible: !difference && s.displayStyle !== "line",
     lastValueVisible: false,
     excludeFromAutoScale: s.includeOnAutoCenter === false,
-    independentScale: !difference && s.useSecondaryAxis === true,
-    priceScaleId: !difference && s.useSecondaryAxis === true ? `super-trend-${instanceId}` : undefined,
+    independentScale: !pane && s.useSecondaryAxis === true,
+    priceScaleId: !pane && s.useSecondaryAxis === true ? `super-trend-${instanceId}` : undefined,
     ...(difference ? { showZeroLine: true, includeZeroInScale: true, histogramBarWidth: Number(s.lineWidth) } : {}),
     superTrendLabels: { name: String(s.shortName), nameLabel: s.nameLabel === true, valueLabel: s.valueLabel === true,
         nameBackground: s.nameBackground === true, valueBackground: s.valueBackground === true,

@@ -246,4 +246,31 @@ optimization). This is the current shared dirty worktree build, not proof of
 the isolated Git release tree; unrelated desktop/social edits remain excluded
 from this task's commits. No deployment was triggered.
 
+## Dockable Super Trend continuation
+
+Added a bounded `chartArea` choice for Super Trend: main price chart (default)
+or separate pane. Separate panes use the existing horizontal/vertical docking
+workflow rather than pretending to share arbitrary numbered DeepCharts panes.
+Both orientations preserve trend colours, points/line styles and label settings;
+live pane updates now accept both studies. The overlay secondary-axis preference
+is retained but its irrelevant checkbox is hidden while in a separate pane.
+Moving back to the main chart restores that preference. Price-level Super Trend
+does not inherit Difference's zero-centred domain or histogram behaviour.
+
+Browser-tested the actual selector, Save/close and reloaded pane selection.
+Viewed the real horizontal and right-docked vertical renderer with synthetic
+data. Horizontal latest labels overlapped recenter controls; added 28px label
+clearance, keeping selection of the actual latest visible point unchanged.
+Vertical output shows both trend colours and independent name/value labels.
+The fixture's dock buttons drive the real pane layout prop; this is not proof
+of the drag gesture. Its minimize callback is deliberately a fixture no-op,
+so no collapse verification is claimed. No native app or live feed used.
+
+29 tests pass, including both live-pane identities, pane/overlay transitions,
+price units, settings JSON roundtrip and control-clearance markup. Full
+TypeScript passed the placement changes; scoped lint passes. Final complete
+build needs rerun after the latest label-clearance addition. Template file and
+authenticated storage checks, live visual/audio verification and release are
+still open. Both Pending gates remain closed.
+
 No available indicator modified. No production release for this prerequisite.

@@ -81,3 +81,22 @@ test("difference histogram width is adjustable and legacy candle widths stay unc
   }
   for (const width of [0.75, 3, 15, 80]) assert.equal(indicatorHistogramWidth(width), width);
 });
+
+test("Super Trend pane placement preserves price units, point styles and template roundtrip", () => {
+  const saved = normalizeSuperTrendSettings({ chartArea: "pane", displayStyle: "points",
+    useSecondaryAxis: true, nameLabel: true });
+  assert.deepEqual(normalizeSuperTrendSettings(JSON.parse(JSON.stringify(saved))), saved);
+  const [overlay] = calculateIndicatorSeries(instance("super-trend"), bars, theme);
+  const [pane] = calculateIndicatorSeries(instance("super-trend", saved), bars, theme);
+  assert.equal(pane.placement, "pane");
+  assert.equal(pane.lineVisible, false); assert.equal(pane.pointMarkersVisible, true);
+  assert.equal(pane.superTrendLabels.nameLabel, true);
+  assert.equal(pane.priceScaleId, undefined); // separate pane already has its own price domain
+  assert.equal(pane.independentScale, false);
+  assert.equal(pane.includeZeroInScale, undefined); // price levels, not the difference oscillator
+  assert.deepEqual(pane.data, overlay.data);
+  const [restored] = calculateIndicatorSeries(instance("super-trend", { ...saved, chartArea: "overlay" }), bars, theme);
+  assert.equal(restored.placement, "overlay");
+  assert.equal(restored.independentScale, true); // retained overlay preference restored
+  assert.equal(normalizeSuperTrendSettings({ chartArea: "bad" }).chartArea, "overlay");
+});

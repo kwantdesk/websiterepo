@@ -1,9 +1,10 @@
 import type { CalculatedIndicatorSeries } from "@/lib/chartIndicatorEngine";
 
-export default function SuperTrendPaneLabels({ series, points, bounds }: {
+export default function SuperTrendPaneLabels({ series, points, bounds, rightInset = 0 }: {
   series: CalculatedIndicatorSeries;
   points: Array<{ x: number; y: number; value: number; color?: string }>;
   bounds: { left: number; top: number; right: number; bottom: number };
+  rightInset?: number;
 }) {
   const s = series.superTrendLabels;
   if (!s || (!s.nameLabel && !s.valueLabel)) return null;
@@ -19,6 +20,7 @@ export default function SuperTrendPaneLabels({ series, points, bounds }: {
   }
   if (!last || right <= left || bottom <= top) return null;
   const color = last.color ?? series.color;
+  const labelRight = Math.max(left + 1, right - Math.max(0, rightInset));
   const labels = [
     ...(s.nameLabel ? [{ key: "name", text: s.name, background: s.nameBackground }] : []),
     ...(s.valueLabel ? [{ key: "value", text: last.value.toLocaleString("en-US", { maximumFractionDigits: 2 }), background: s.valueBackground }] : []),
@@ -27,8 +29,8 @@ export default function SuperTrendPaneLabels({ series, points, bounds }: {
   return <svg x={left} y={top} width={right - left} height={bottom - top}
     viewBox={`${left} ${top} ${right - left} ${bottom - top}`} overflow="hidden" aria-hidden="true">
     {labels.map((label, i) => {
-      const width = Math.min(right - left, label.text.length * 6 + 10);
-      const x = Math.max(left, Math.min(right - width, last.x - width));
+      const width = Math.min(labelRight - left, label.text.length * 6 + 10);
+      const x = Math.max(left, Math.min(labelRight - width, last.x - width));
       const y = baseY + i * 17;
       return <g key={label.key} data-super-trend-label={label.key}>
         {label.background ? <rect x={x} y={y - 11} width={width} height={15}

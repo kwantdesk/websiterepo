@@ -7535,6 +7535,7 @@ export default function ChartIndicatorsControl({
                     && !(settingsDefinition.id === "confluence-identifier" && CONFLUENCE_IDENTIFIER_MANAGED_SETTINGS.has(key))
                     && !(VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) && VOLUME_PROFILE_VWAP_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "bounce-levels" && key === "syncGexMapColors")
+                    && !(settingsDefinition.id === "super-trend" && settingsInstance.settings?.chartArea === "pane" && key === "useSecondaryAxis")
                     && (typeof value === "boolean" || isColourSetting(key, value)))
                   .map(([key, value]) => [key, value, sectionForSetting(settingsDefinition.id, key, "Style")] as const);
                 const bySection = new Map<string, Array<readonly [string, unknown, string]>>();

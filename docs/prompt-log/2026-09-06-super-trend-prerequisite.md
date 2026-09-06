@@ -62,3 +62,10 @@ build started; release gates remain off pending remaining verification.
 Build outcome: full `npm run build` passed, including TypeScript and 80 static
 pages. Shared dirty-worktree build only; unrelated changes not staged. No
 deployment triggered. Remaining 30-entry scope unchanged.
+
+Placement continuation: Super Trend now switches to a real dockable pane,
+retaining price units, colours, line/point styles, labels and live updates.
+Browser verified selector/save/reload plus horizontal/right-side renders.
+Fixed a visible label/recenter overlap. 29 tests pass; placement TypeScript and
+scoped lint pass. No gates enabled or production push; template/live/audio and
+post-edit full-build checks remain. 30 Pending remains the actual tally.

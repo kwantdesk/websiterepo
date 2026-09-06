@@ -625,6 +625,9 @@ function ChartIndicatorPaneSurface({
                     </g>
                   );
                 }
+                if (definition.superTrendStyleKey) return <KstPanePlot key={definition.key}
+                  series={definition} bounds={{ left: leftAxisWidth, top: innerTop, right: plotWidth, bottom: innerBottom }}
+                  points={visible.map(point => ({ ...point, y: yFor(point.value, definition) }))} />;
                 const segments: Array<{ color: string; path: string }> = [];
                 visible.forEach((point, index) => {
                   const color = point.color ?? definition.color;
@@ -653,8 +656,8 @@ function ChartIndicatorPaneSurface({
                 ));
               })}
             </g> : null}
-            {!collapsed && group.indicatorId === "super-trend-difference" ? group.series.map(definition => (
-              <SuperTrendPaneLabels key={`labels-${definition.key}`} series={definition}
+            {!collapsed && (group.indicatorId === "super-trend-difference" || group.indicatorId === "super-trend") ? group.series.map(definition => (
+              <SuperTrendPaneLabels key={`labels-${definition.key}`} series={definition} rightInset={28}
                 bounds={{ left: leftAxisWidth, top: innerTop, right: plotWidth, bottom: innerBottom }}
                 points={sampledPanePoints(definition, xForTime, plotWidth).map(point => ({ ...point, y: yFor(point.value, definition) }))} />
             )) : null}
@@ -1175,7 +1178,7 @@ function ChartVerticalIndicatorPaneSurface({
                         </g>
                       );
                     }
-                    if (group.indicatorId === "super-trend-difference") return <KstPanePlot key={definition.key}
+                    if (definition.superTrendStyleKey) return <KstPanePlot key={definition.key}
                       series={definition} vertical bounds={{ left: innerLeft, top: plotTop, right: innerRight, bottom: plotBottom }}
                       points={visible.map(point => ({ ...point, x: xForValue(point.value) }))} />;
                     const path = visible.map((point, index) =>
@@ -1194,7 +1197,7 @@ function ChartVerticalIndicatorPaneSurface({
                       />
                     );
                   })}
-                  {group.indicatorId === "super-trend-difference" ? group.series.map(definition => (
+                  {group.indicatorId === "super-trend-difference" || group.indicatorId === "super-trend" ? group.series.map(definition => (
                     <SuperTrendPaneLabels key={`labels-${definition.key}`} series={definition}
                       bounds={{ left: innerLeft, top: plotTop, right: innerRight, bottom: plotBottom }}
                       points={sampledVerticalPanePoints(definition, yForTime, plotHeight).map(point => ({ ...point, x: xForValue(point.value), y: point.y + plotTop }))} />

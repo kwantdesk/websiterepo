@@ -44,6 +44,14 @@ test("disabled, missing or offscreen Difference labels paint nothing", () => {
   assert.equal(render(series, [{ x: 10, y: 10, value: NaN }]), "");
 });
 
+test("pane labels reserve right-side control clearance without dropping the latest point", () => {
+  const html = renderToStaticMarkup(Labels({ series, points: [{ x: 100, y: 70, value: 1 }],
+    bounds: { left: 0, right: 100, top: 0, bottom: 100 }, rightInset: 28 }));
+  assert.match(html, />STD</); assert.match(html, />1</);
+  // STD name chip: 3*6+10 wide, right edge must stop at 100-28.
+  assert.match(html, /<rect x="44"[^>]*width="28"/);
+});
+
 test("Difference exposes reference label and auto-centre controls through actual calculation", () => {
   const candles = Array.from({ length: 12 }, (_, i) => ({ timestamp: 1700000000000 + i * 1000,
     open: 10, high: 11, low: 9, close: 10 }));

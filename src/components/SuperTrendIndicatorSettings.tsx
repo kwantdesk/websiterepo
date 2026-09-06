@@ -9,6 +9,9 @@ export default function SuperTrendIndicatorSettings({ settings, difference, onCh
 }) {
   const s = normalizeSuperTrendSettings(settings, difference);
   const fields = [
+    ...(!difference ? [{ key: "chartArea", label: "Chart area", choices: [
+      ["overlay", "Main price chart"], ["pane", "Separate pane (dock horizontally or vertically)"],
+    ] }] : []),
     { key: "displayStyle", label: "Display style", choices: difference
       ? [["histogram", "Histogram"], ["line", "Line"]]
       : [["line", "Line"], ["points", "Points"], ["line-points", "Line and points"]] },
