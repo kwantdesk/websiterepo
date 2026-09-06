@@ -11,8 +11,8 @@
   smoothing, source/style/name controls and browser checks. KST now has all four
   DLL-confirmed smoothing modes, styled pane output and browser-verified save
   persistence (documented parity limits). Super Trend and Difference are now
-  implemented and locally registered, with release-tree/deployment verification
-  still due. 28 still require individual work. Monthly/Session/
+  implemented and production-verified at `18a17c4d`, after an isolated build,
+  90 combined tests and 18 template checks. 28 still require individual work. Monthly/Session/
   Visible profile data/settings integration remains unfinished, including exact
   multi-session filtering and event-allocation-aware visible boundaries.
   Track `docs/pending-indicator-library-2026-09-06.md`, not the old completion

@@ -2,6 +2,14 @@
 
 ## 2026-09-06 — Super Trend pair release verified locally
 
+Production follow-up: GitHub deployment status succeeded for `websiterepo-yfmi`
+and live diagnostics returned exact SHA `18a17c4d5ba23233ae678c4a75e324f596f0927b`.
+Deployment: https://vercel.com/kwant-desk/websiterepo-yfmi/FAzNsNGjgXbWMaceh4Ts5e84WjHo
+Release is live. Follow-up documentation is held for the next batch push to
+avoid another documentation-only production build. Ordinary Speed of Tape
+reference screenshot defaults now recorded; native `sky.list_windows()` found
+no DeepCharts window. Do not launch a possible second feed login to inspect it.
+
 - Supersedes the older gated-status entries below. Both studies are now
   implemented and registered: 100 registered / 28 Pending / zero orphan gates.
 - Isolated committed release tree at `293d23df` passed the normal Turbopack

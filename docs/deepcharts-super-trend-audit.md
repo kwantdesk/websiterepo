@@ -353,4 +353,11 @@ temporary dependency-link/webpack failures above are resolved for the actual
 production build path; no TPO route or unrelated files were changed. One main
 push follows; exact deployment verification remains a distinct release check.
 
+Production release passed: GitHub reports deployment completed for
+`websiterepo-yfmi`, deployment `FAzNsNGjgXbWMaceh4Ts5e84WjHo`. Live diagnostics
+returned `18a17c4d5ba23233ae678c4a75e324f596f0927b`, matching the main push.
+Both studies are live; remaining catalogue count is 28. No extra deploy command
+or duplicate project was used. Documentation follow-up will ship with the next
+implementation batch rather than cause a documentation-only build.
+
 No available indicator modified. No production release for this prerequisite.

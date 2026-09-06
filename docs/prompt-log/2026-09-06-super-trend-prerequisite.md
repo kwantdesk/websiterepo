@@ -96,3 +96,8 @@ Release check outcome: updated isolated committed tree `293d23df` passes the
 normal production build, 90 combined tests and 18 template checks. Ready for
 one scoped main-only push and exact live SHA verification. This completes the
 two-study implementation batch, not the remaining 28 Pending indicators.
+
+Production outcome: pushed main once; existing `websiterepo-yfmi` deployment
+succeeded and live diagnostics match `18a17c4d5ba23233ae678c4a75e324f596f0927b`.
+Super Trend and Difference are now available. 28 Pending remain. Follow-up
+notes are committed locally for the next batch to avoid a second build.

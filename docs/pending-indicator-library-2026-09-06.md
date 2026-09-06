@@ -97,6 +97,11 @@ reachable catalogue row and that catalogue IDs are unique.
   cross-device template roundtrip or market-open soak is claimed. Full evidence
   and implementation conventions: `docs/deepcharts-super-trend-audit.md`.
 
+Production follow-up: Batch 8 deployed successfully through `websiterepo-yfmi`.
+Live diagnostics returned exact SHA `18a17c4d5ba23233ae678c4a75e324f596f0927b`.
+Isolated final tree passed 90 combined tests, 18 template checks and the normal
+production build. This supersedes the local-only deployment status above/below.
+
 ## Remaining 28 — not released by blanket enablement
 
 Each row needs evidence, settings/data implementation, calculation tests,
@@ -130,8 +135,8 @@ Do not tick a row just because its Add gate changes.
 | `parabolic-sar` | [x] Implemented; documented seed and parity limits |
 | `linear-regression` | [x] Implemented; documented endpoint and parity limits |
 | `regression-channel` | [ ] Audit / implement / verify |
-| `super-trend` | [x] Implemented and locally registered; Batch 8 deployment verification outstanding |
-| `super-trend-difference` | [x] Implemented and locally registered; Batch 8 deployment verification outstanding |
+| `super-trend` | [x] Implemented; Batch 8 production SHA verified, documented parity limits |
+| `super-trend-difference` | [x] Implemented; Batch 8 production SHA verified, documented parity limits |
 | `tillson-t3` | [x] Implemented; explicit seed and reference limits |
 | `zig-zag` | [ ] Audit / implement / verify |
 | `inverse-cyber-cycle` | [ ] Audit / implement / verify |
