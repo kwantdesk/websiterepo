@@ -1,5 +1,16 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-06 — Candle countdown while closed
+
+- Countdown no longer invents a new deadline from wall time after the actual
+  candle expires. Inactive/unknown activity displays a dash and runs no badge
+  interval; a genuinely active current candle resumes the countdown.
+- Workspace activity uses unmodified provider observation timestamps. Old
+  snapshots cannot reset activity just because they were received again;
+  source time bypasses the existing candle-merging timestamp clamp.
+- Prompt/tests/limits: `docs/prompt-log/2026-09-06-closed-market-countdown.md`.
+  This is freshness gating, not a holiday-calendar implementation.
+
 ## 2026-09-06 — Closed-market indicator redraw loop
 
 - Removed sampled candle output from the shared sampling effect dependencies;

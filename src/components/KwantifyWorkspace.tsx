@@ -1,6 +1,7 @@
 "use client";
 
 import KwantSelect from "@/components/ui/KwantSelect";
+import { chartActivityRemainingMs, chartSourceTimestamp } from "@/lib/chartCountdown";
 import KwantDatePicker from "@/components/ui/KwantDatePicker";
 import { earliestGexVueReplaySessionDate } from "@/lib/replayHistoryRange";
 import TimeZoneSelect from "@/components/ui/TimeZoneSelect";
@@ -891,6 +892,7 @@ function subscribeLiveWatchlistQuote(key: string, notify: () => void) {
   };
 }
 type QueuedLiveTick = {
+  sourceTimestamp?: number;
   mid: number;
   timestamp: number;
   isTrade?: boolean;
@@ -6117,7 +6119,9 @@ function WorkspaceChartPaneComponent({
       valueAreaOverlay,
     ],
   );
-  const markMarketActive = useCallback(() => {
+  const markMarketActive = useCallback((sourceTimestamp: number) => {
+    const remainingMs = chartActivityRemainingMs(sourceTimestamp, Date.now());
+    if (remainingMs <= 0) return;
     if (!marketActiveRef.current) {
       marketActiveRef.current = true;
       setMarketIsActive(true);
@@ -6129,7 +6133,7 @@ function WorkspaceChartPaneComponent({
       marketInactiveTimerRef.current = null;
       marketActiveRef.current = false;
       setMarketIsActive(false);
-    }, 15_000);
+    }, remainingMs);
   }, []);
 
   useEffect(() => {
@@ -8164,6 +8168,7 @@ function WorkspaceChartPaneComponent({
         }));
       }
       pendingLiveTicksRef.current.push({
+        sourceTimestamp: chartSourceTimestamp(price.timestamp),
         mid: price.mid,
         timestamp: tickTimestamp,
         isTrade: price.isTrade,
@@ -8238,7 +8243,11 @@ function WorkspaceChartPaneComponent({
           setLoading(false);
           setError(null);
         }
-        if (ticks.some((tick) => !tick.cached)) markMarketActive();
+        const newestSourceTimestamp = ticks.reduce((latest, tick) => (
+          !tick.cached && Number.isFinite(tick.sourceTimestamp)
+            ? Math.max(latest, tick.sourceTimestamp!) : latest
+        ), 0);
+        markMarketActive(newestSourceTimestamp);
         setLiveFeedError(null);
         const previous = latestCandlesRef.current;
         if (
@@ -8419,7 +8428,7 @@ function WorkspaceChartPaneComponent({
             price: snapshot.lastPrice,
             asOfMs: tickTimestamp,
           };
-          markMarketActive();
+          markMarketActive(chartSourceTimestamp(snapshot.timestamp));
 
           const previous = latestCandlesRef.current;
           const retained = lightweightLiveTailRef.current;
@@ -8500,7 +8509,7 @@ function WorkspaceChartPaneComponent({
           price: snapshot.lastPrice,
           asOfMs: tickTimestamp,
         };
-        markMarketActive();
+        markMarketActive(chartSourceTimestamp(snapshot.timestamp));
         setCandles((prev) => mergeLiveMidIntoCandles(
           prev,
           snapshot.lastPrice,

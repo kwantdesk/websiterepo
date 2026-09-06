@@ -2,6 +2,7 @@
 
 import { memo, startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
 import KwantSelect from "@/components/ui/KwantSelect";
+import { candleCountdownRemainingMs } from "@/lib/chartCountdown";
 import {
   createChart,
   LineStyle,
@@ -2957,6 +2958,11 @@ function CandleCountdownBadge({
       return;
     }
 
+    if (marketIsActive !== true) {
+      setLabel("-");
+      return;
+    }
+
     const updateCountdown = () => {
       const lastCandle = latestCandleRef.current;
       if (!lastCandle || !Number.isFinite(lastCandle.timestamp)) {
@@ -2965,16 +2971,12 @@ function CandleCountdownBadge({
       }
 
       const now = Date.now();
-      const nextFromLastCandle = lastCandle.timestamp + candleIntervalMs;
-      const remainingMs =
-        now <= nextFromLastCandle + candleIntervalMs
-          ? Math.max(0, nextFromLastCandle - now)
-          : candleIntervalMs - (now % candleIntervalMs || candleIntervalMs);
+      const remainingMs = candleCountdownRemainingMs(lastCandle.timestamp, candleIntervalMs, now, marketIsActive);
       const priceScaleWidth = chartRef.current?.priceScale("right").width() ?? 64;
       // Match the range selector's `left-3` inset: keep twelve pixels of
       // breathing room between this badge and the live right price scale.
       setRightInset(Math.max(76, Math.ceil(priceScaleWidth) + 12));
-      setLabel(marketIsActive === false ? "-" : formatCountdown(remainingMs));
+      setLabel(remainingMs === null ? "-" : formatCountdown(remainingMs));
     };
 
     updateCountdown();
@@ -2988,7 +2990,7 @@ function CandleCountdownBadge({
     <div
       className="pointer-events-none absolute z-10 flex h-3.5 w-[27px] items-center justify-center rounded-[3px] bg-primary px-0.5 font-mono text-[6px] font-semibold leading-none text-on-primary shadow-sm shadow-black/25"
       style={{ bottom, right: rightInset }}
-      title="Time until next candle opens"
+      title={label === "-" ? "No active candle countdown — market closed, paused or awaiting fresh data" : "Time until next candle opens"}
     >
       {label}
     </div>
