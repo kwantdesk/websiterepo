@@ -33,8 +33,8 @@ test("emoji value and size survive drawing persistence", () => {
 });
 
 test("toolbar exposes a scrollable picker including the magnet", () => {
-  assert.match(toolbar, /CHAT_EMOJIS/);
-  assert.match(toolbar, /"🧲"/);
+  assert.match(toolbar, /ChartEmojiPicker/);
+  assert.match(toolbar, /dynamic\(\(\) => import\("\.\/ChartEmojiPicker"\)/);
   assert.match(toolbar, /openGroup === "emoji"/);
   assert.match(toolbar, /overflow-y-auto/);
   assert.match(toolbar, /onSelectEmoji\(value\); selectTool\("emoji"\)/);

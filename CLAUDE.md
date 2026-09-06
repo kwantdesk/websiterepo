@@ -1,5 +1,15 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-06 — Chart emoji catalogue and deployment confirmation
+
+- Chart emoji flyout now lazy-loads all 3,979 Emojibase 17 entries, including
+  skin-tone variants, with categories, keyword search and bounded 120-entry
+  scrollable pages. Placement/persistence/zoom geometry is unchanged.
+- Prompt and verification: `docs/prompt-log/2026-09-06-chart-emoji-catalogue.md`.
+- Owner confirmed the duplicate Vercel Git integration is disconnected when
+  asked explicitly to resume production pushes. The obsolete AGENTS.md hold
+  has been lifted; keep only the existing live main-only Git deployment path.
+
 > Read this entire file before changing the repository. This is the operating memory for a temporary engineer working on KwantDesk. It describes the product, architecture, working rules, data ownership, quality bar, verification process, and current state as of **2026-08-18**.
 
 ## 1. Your role

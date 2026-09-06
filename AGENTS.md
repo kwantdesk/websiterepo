@@ -15,7 +15,7 @@ WPF is a temporary migration reference only and is not a release target.
 
 ## Production deployment and cost safety
 
-**Emergency deployment hold (2026-08-25): do not push `main` or invoke any Vercel deployment.** GitHub deployment records prove that this repository is connected to two Vercel projects: `websiterepo-yfmi` (the linked live project) and the stale duplicate `websiterepo` (the failing deployment). This hold supersedes every older instruction in this repository that says completed work should be pushed or deployed. Keep working and testing locally. The hold may be removed only after the owner confirms that the duplicate `websiterepo` Git connection has been disconnected in Vercel and explicitly asks to resume production deployment.
+**Production deployment resumed (2026-09-06).** In response to the explicit confirmation request to resume production pushes, the owner confirmed: “it is diconneted in vercel yes”. The duplicate `websiterepo` Git connection is disconnected. The emergency hold is lifted: verified, scoped `main` pushes may resume for the live `websiterepo-yfmi` project only. Never reconnect the stale duplicate project.
 
 The owner wants KwantDesk to remain live. Do not delete, pause, unlink, or redeploy `websiterepo-yfmi` while resolving the duplicate integration.
 
@@ -32,8 +32,8 @@ The owner wants KwantDesk to remain live. Do not delete, pause, unlink, or redep
   ```
 
 - Never enable Vercel deployments for all branches, preview branches, or every commit without explicit owner approval.
-- Work and test locally. Local commits are allowed, but `main` pushes are blocked by `.git/hooks/pre-push` while the emergency hold is active.
-- Do not bypass the pre-push guard, run `vercel deploy`, or create another deployment path unless the owner explicitly confirms the duplicate Vercel integration is gone and asks to resume deployment.
+- Work and test locally, then commit scoped changes and push `main` once. Verify the resulting production deployment; a successful push is not proof of a healthy build.
+- Do not bypass a pre-push guard, run `vercel deploy`, or create another deployment path. Use the existing main-only Git integration.
 - Do not route continuous market-data streams, per-tick polling, replay generation, or vendor fan-out through Vercel. Those belong on the always-on VPS gateway described in `CLAUDE.md`.
 - Main-only deployments prevent preview-build churn, but do not guarantee zero Vercel runtime, transfer, Fluid, function, or observability charges.
 

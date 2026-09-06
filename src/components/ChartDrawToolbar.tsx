@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown } from "lucide-react";
-import { CHAT_EMOJIS } from "@/lib/emojis";
+import dynamic from "next/dynamic";
 import {
   DRAW_TOOL_GROUPS,
   DRAW_TOOL_LAST_USED_EVENT,
@@ -105,10 +105,10 @@ const ICONS: Partial<Record<DrawToolId, ToolIcon>> = {
   anchoredVwap: svg(<><path d="M4 18v2" /><path d="M4 18c4 0 6-9 9-9s3 5 7-4" strokeDasharray="1 0" /></>),
 };
 
-const CHART_EMOJIS = Array.from(new Set([
-  "🧲", "📍", "⬆️", "⬇️", "➡️", "⬅️", "🟢", "🔴", "🟡", "🔵",
-  ...CHAT_EMOJIS,
-]));
+// The full catalogue is a separate chunk, only mounted when its flyout opens.
+const ChartEmojiPicker = dynamic(() => import("./ChartEmojiPicker"), {
+  loading: () => <div className="p-3 text-xs text-muted" role="status">Loading emojis…</div>,
+});
 
 const fallbackIcon = svg(<circle cx="12" cy="12" r="7" />);
 const iconFor = (id: DrawToolId): ToolIcon => ICONS[id] ?? fallbackIcon;
@@ -206,8 +206,8 @@ export default function ChartDrawToolbar({
     // The rail sits on the chart's left edge, so flyouts open to the RIGHT of
     // their trigger, clamped inside the viewport vertically.
     setMenuPos({
-      left: Math.min(rect.right + 6, window.innerWidth - 226),
-      top: Math.max(8, Math.min(rect.top, window.innerHeight - 340)),
+      left: Math.max(8, Math.min(rect.right + 6, window.innerWidth - (group === "emoji" ? 328 : 226))),
+      top: Math.max(8, Math.min(rect.top, window.innerHeight - (group === "emoji" ? 536 : 340))),
     });
     setOpenGroup(group);
   };
@@ -307,29 +307,9 @@ export default function ChartDrawToolbar({
 
       {openGroup && menuPos && typeof document !== "undefined"
         ? createPortal(
-          <div ref={menuRef} className="fixed z-[280] max-h-[70vh] w-[218px] overflow-y-auto rounded-xl border border-border bg-panel/97 p-1.5 shadow-[0_22px_70px_rgba(0,0,0,0.55)] backdrop-blur-xl" style={{ left: menuPos.left, top: menuPos.top } as CSSProperties}>
+          <div ref={menuRef} className={`fixed z-[280] rounded-xl border border-border bg-panel/97 p-1.5 shadow-[0_22px_70px_rgba(0,0,0,0.55)] backdrop-blur-xl ${openGroup === "emoji" ? "flex h-[528px] max-h-[calc(100dvh-16px)] w-[320px] max-w-[calc(100vw-16px)] flex-col overflow-hidden" : "max-h-[70vh] w-[218px] overflow-y-auto"}`} style={{ left: menuPos.left, top: menuPos.top } as CSSProperties}>
             {openGroup === "emoji" ? (
-              <>
-                <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-panel/95 px-2 py-2 backdrop-blur-xl">
-                  <span className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted">Emoji</span>
-                  <span className="text-xl leading-none" aria-label="Selected emoji">{emoji}</span>
-                </div>
-                <div className="grid grid-cols-6 gap-1 p-1" role="listbox" aria-label="Chart emojis">
-                  {CHART_EMOJIS.map((value) => (
-                    <button
-                      key={value}
-                      type="button"
-                      role="option"
-                      aria-selected={value === emoji}
-                      aria-label={`Place ${value} on chart`}
-                      onClick={() => { onSelectEmoji(value); selectTool("emoji"); setOpenGroup(null); }}
-                      className={`flex h-8 w-8 items-center justify-center rounded-md text-lg leading-none transition-colors ${value === emoji ? "bg-primary/15 ring-1 ring-primary/50" : "hover:bg-surface"}`}
-                    >
-                      {value}
-                    </button>
-                  ))}
-                </div>
-              </>
+              <ChartEmojiPicker emoji={emoji} onSelect={(value) => { onSelectEmoji(value); selectTool("emoji"); setOpenGroup(null); }} />
             ) : flyoutTools.map((toolId) => {
               const Icon = iconFor(toolId);
               const isActive = activeTool === toolId;
