@@ -2943,26 +2943,11 @@ function mergeObservedDatabentoTail(
 }
 
 function marketTimestamp(value: unknown) {
-  if (typeof value === "string" && /^\d+$/.test(value.trim())) {
-    const numeric = Number(value);
-    if (Number.isFinite(numeric)) return marketTimestamp(numeric);
-  }
-  if (typeof value === "number") {
-    const timestamp = value > 10_000_000_000_000_000
-      ? Math.floor(value / 1_000_000)
-      : value > 10_000_000_000_000
-        ? Math.floor(value / 1_000)
-        : value < 10_000_000_000
-          ? Math.floor(value * 1_000)
-          : value;
-    const now = Date.now();
-    return timestamp > now + 60_000 || timestamp < now - 15 * 60_000 ? now : timestamp;
-  }
-  const parsed = Date.parse(String(value ?? ""));
-  const now = Date.now();
-  return Number.isFinite(parsed) && parsed <= now + 60_000 && parsed >= now - 15 * 60_000
-    ? parsed
-    : now;
+  const timestamp = chartSourceTimestamp(value);
+  // A repeated Friday quote remains a Friday quote. Relabelling old/invalid
+  // observations as "now" manufactured weekend candles and reset VWAP.
+  return Number.isFinite(timestamp) && timestamp <= Date.now() + 60_000
+    ? timestamp : Number.NaN;
 }
 
 // Only non-traded cash indices need a hedge-futures volume proxy. ETFs have
@@ -3241,7 +3226,12 @@ function mergeLiveMidIntoCandles(
   const executedDelta = flow?.isTrade ? Number(flow.delta ?? 0) : 0;
   const executedAsk = executedDelta > 0 ? executedSize : 0;
   const executedBid = executedDelta < 0 ? executedSize : 0;
-  if (!isPositiveFinite(mid)) return candles;
+  if (!isPositiveFinite(mid) || !Number.isFinite(tickTimestamp)) return candles;
+  // Closed-market snapshots are quotes, not new executions. Even with their
+  // correct timestamp they must not repeatedly overwrite the final candle's
+  // close between authoritative history refreshes. Delayed execution records
+  // keep their separate, timestamped processing path.
+  if (!flow?.isTrade && tickTimestamp < Date.now() - 15 * 60_000) return candles;
   if (candles.length === 0) {
     return [{
       timestamp: getTimeframeBucketStart(tickTimestamp, timeframe),
@@ -8420,6 +8410,7 @@ function WorkspaceChartPaneComponent({
           // chart must never animate an EOD snapshot as though it were live.
           if (!snapshot.marketOpen) return;
           const tickTimestamp = marketTimestamp(snapshot.timestamp);
+          if (!Number.isFinite(tickTimestamp)) return;
           const nextFrame = { timestamp: tickTimestamp, lastPrice: snapshot.lastPrice };
           if (!shouldAcceptMarketIndexFrame(latestMarketIndexFrameRef.current, nextFrame)) return;
           latestMarketIndexFrameRef.current = nextFrame;
@@ -8502,6 +8493,7 @@ function WorkspaceChartPaneComponent({
         if (cancelled || !snapshot || typeof snapshot.lastPrice !== "number") return;
         setLiveFeedError(null);
         const tickTimestamp = marketTimestamp(snapshot.timestamp);
+        if (!Number.isFinite(tickTimestamp)) return;
         const previousTimestamp = latestFuturesRef.current.asOfMs;
         if (previousTimestamp !== null && tickTimestamp < previousTimestamp) return;
         latestFuturesRef.current = {
@@ -13713,6 +13705,7 @@ export default function KwantifyWorkspace({
     const applySnapshot = (snapshot: MarketIndexLiveSnapshot) => {
       const symbol = snapshot.symbol.trim().toUpperCase();
       const timestamp = marketTimestamp(snapshot.timestamp);
+      if (!Number.isFinite(timestamp)) return;
       const previousFrame = latestFrameBySymbol.get(symbol);
       // REST snapshots often repeat the exact same provider frame between
       // genuine prints. SPX/NDX also publish real price changes under the same

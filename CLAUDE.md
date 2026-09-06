@@ -1,5 +1,18 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-06 — VWAP collapse/flashing after close
+
+- Removed the workspace candle timestamp normaliser's old-to-now fallback.
+  Provider observations retain their real time; invalid/excessively future
+  timestamps are rejected at chart merge/snapshot boundaries.
+- Period VWAP, VWAP envelopes and rolling VWAP no longer emit unweighted
+  quote-only points. Closed-session endpoints/bands remain unchanged when
+  empty tails appear/disappear during hydration. Rolling bar-window counting
+  is retained and actual reopening volume resumes the normal calculation.
+- Prompt/tests/limits: `docs/prompt-log/2026-09-06-vwap-closed-market.md`.
+  This completes the timestamp-path correction left separate by the countdown
+  fix. No historical stored records were deleted or rewritten.
+
 ## 2026-09-06 — Candle countdown while closed
 
 - Countdown no longer invents a new deadline from wall time after the actual

@@ -79,7 +79,11 @@ export function calculatePeriodVwap(
   let cumulativeOrders = 0;
   const totals = { weight: 0, pv: 0, p2v: 0 };
 
-  return candles.map((candle, index) => {
+  return candles.flatMap((candle, index): VwapPoint[] => {
+    const bar = weightedBar(candle, source);
+    // A quote-only/empty candle has no VWAP observation. In particular, it
+    // must not start a new session with zero variance and collapse all bands.
+    if (bar.weight <= 0) return [];
     const seconds = Math.floor(candle.timestamp / 1000);
     let bucket: string;
     if (mode === "minutes") bucket = `m:${Math.floor(seconds / (value * 60))}`;
@@ -95,12 +99,11 @@ export function calculatePeriodVwap(
       totals.pv = 0;
       totals.p2v = 0;
     }
-    const bar = weightedBar(candle, source);
     totals.weight += bar.weight;
     totals.pv += bar.weightedPrice;
     totals.p2v += bar.weightedPriceSquared;
     cumulativeOrders += Math.max(0, Math.round(finite(candle.trades)));
-    return pointFromTotals(candle, source, totals, breakBefore);
+    return [pointFromTotals(candle, source, totals, breakBefore)];
   });
 }
 
@@ -138,7 +141,11 @@ export function calculateRollingVwap(
       queue.splice(0, head);
       head = 0;
     }
-    output.push(pointFromTotals(candle, source, totals, false));
+    // Keep the rolling window's bar/time semantics, but never paint a fallback
+    // price after quote-only bars have evicted the last weighted observation.
+    if (bar.weight > 0 && totals.weight > 0) {
+      output.push(pointFromTotals(candle, source, totals, false));
+    }
   });
   return output;
 }
