@@ -525,3 +525,16 @@ recap of the open items below and update this file when their state changes.
 - `volume-swing` was a duplicate display-name-derived ID for the complete
   `deep-profile-swing` study. Keep it as a migration alias only; do not restore
   a second library row or split saved settings between two IDs.
+
+## 2026-09-07 — Monthly / Session / Visible Range profiles
+
+- These are owner-keyed `custom` execution profiles. Never route an unowned
+  custom response into them or let one variant evict another.
+- Visible Range uses logical bar indices and source execution bounds; debounce
+  interaction and reject ambiguous event-bar cuts instead of counting hidden
+  executions.
+- Session uses explicit DST-aware windows. Monthly and Visible filtering stays
+  fail-closed until disjoint-window aggregation exists.
+- A prior contract/month must have complete exact execution coverage. Never
+  substitute current-contract or OHLCV distribution and call it historical
+  volume-at-price.

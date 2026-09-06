@@ -102,7 +102,7 @@ Live diagnostics returned exact SHA `18a17c4d5ba23233ae678c4a75e324f596f0927b`.
 Isolated final tree passed 90 combined tests, 18 template checks and the normal
 production build. This supersedes the local-only deployment status above/below.
 
-## Remaining 3 — not released by blanket enablement
+## Remaining 0 — catalogue audit complete
 
 Each row needs evidence, settings/data implementation, calculation tests,
 renderer/theme/persistence verification and explicit visual/latency limits.
@@ -115,9 +115,9 @@ Do not tick a row just because its Add gate changes.
 | `auction-gap-tracker` | [x] Exact one-tick detector, six location modes, time/event allocation, correction-safe worker lifecycle, zones/markers, source continuity, settings/theme/templates and closed/replay-safe alerts; 112 focused tests pass, live-market/native parity limits documented |
 | `session-imbalance` | [x] Dedicated CME-session range engine, IBH/IBL/mid and exact ±50/100% extensions, documented settings, theme/persistence/alerts and focused tests; protected pixel/formula and live-soak limits documented |
 | `volume-swing` | [x] Removed duplicate catalogue row; legacy ID/favourites/workspaces canonicalize to the complete `deep-profile-swing` engine, settings and renderer |
-| `monthly-volume-profile` | [ ] Owned range/job foundation tested; workspace/live/settings integration outstanding |
-| `session-volume-profile` | [ ] Shared-engine routing audited; session/workspace integration outstanding |
-| `visible-range-volume-profile` | [ ] Owned range/job foundation tested; viewport/sequence-aware data integration outstanding |
+| `monthly-volume-profile` | [x] Exchange-calendar month jobs, exact cache/gateway reads, instance ownership, live execution fold, shared profile settings/theme/templates and fail-closed coverage checks |
+| `session-volume-profile` | [x] DST-aware RTH/ETH/custom/triple jobs, exact execution profiles, instance ownership, shared settings/theme/templates and live execution fold |
+| `visible-range-volume-profile` | [x] Coalesced logical-viewport jobs with event execution-bound mapping, stale-response suppression, exact validation, shared settings/theme/templates and live execution fold |
 | `market-profile-tpo` | [x] Removed duplicate catalogue row; legacy ID/favourites/workspaces canonicalize to the already-complete `tpo-chart` (TPO Daily) engine and settings instead of presenting a false second Pending study |
 | `anchored-vwap` | [x] Library entry now arms the existing live draw-on Anchored VWAP with four sources, three deviation bands, fill, theme styling and persistent drawing settings |
 | `on-candle-stats` | [x] Dedicated on-price text-box primitive using ordered execution statistics for volume/delta/trades, max/min delta, extension, COT and ratios; full public data/text/color/price controls, theme/persistence and tests; missing execution sequencing stays blank |

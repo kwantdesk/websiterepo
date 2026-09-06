@@ -2734,3 +2734,13 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
 - `volume-swing` is a legacy alias for the working `deep-profile-swing` study.
   Keep one catalogue row, migrate old workspaces/favourites through
   `canonicalChartIndicatorId`, and preserve their instance settings.
+
+## 2026-09-07 — Profile variants
+
+- Monthly, Session and Visible Range profiles share the exact renderer and
+  settings but every request/response is owned by its indicator instance.
+- Coalesce visible-range changes, preserve event-candle execution bounds and
+  discard stale jobs. Do not add one stream per profile; top up from the shared
+  exact execution tape.
+- Keep disjoint Monthly/Visible filtering and incomplete prior-contract months
+  fail-closed until their exact data contracts exist.

@@ -1,4 +1,4 @@
-# Pending profile variants — in progress, not released
+# Volume profile variants — released 2026-09-07
 
 ## Reference
 
@@ -27,7 +27,7 @@ exact formula/pixel parity are not inferred from property names.
   precisely the visible allocations. A sequence/allocation-aware endpoint is
   required for that case; the new planner refuses ambiguous slices.
 
-## Implemented prerequisite, still no catalogue gate change
+## Shared foundation
 
 - `profileVariantJobs.ts`: calendar-month windows (weekends, DST, leap year,
   previous-month and replay bounds), logical visible range mapped to execution
@@ -39,11 +39,10 @@ exact formula/pixel parity are not inferred from property names.
   data retains its prior identity and settings selection. Deleted or disabled
   explicit owners cannot fall through into Composite.
 - Eleven tests and scoped ESLint pass. Production build passed (TypeScript,
-  80 static pages). This is a request/rendering foundation, not a working new
-  profile release. No source HTTP request, provider subscription or spend was
-  initiated by these tests. Gates remain Pending.
+  80 static pages). No source HTTP request, provider subscription or spend was
+  initiated by these tests.
 
-## Next integration gates
+## Completed integration
 
 ### Additional data-path work verified locally
 
@@ -57,23 +56,26 @@ Seven tests cover these paths using fixtures, not live provider requests.
 Source audit found the gateway profile route does not apply Filter/Split flags.
 The Next proxy only narrows a request when there is one resolved session span;
 several daily RTH spans cannot be represented by its single forwarded interval.
-The new loader therefore refuses those flags before any request. This is an
-unimplemented integration gate, not a substitute for supporting those settings.
-Do not enable Monthly until disjoint windows and their exact aggregation work.
+The loader still refuses unsupported disjoint-window flags before any request.
 
-- Wire owned jobs to workspace cache, exact gateway source and shared live tape,
-  with stable reconciliation identity and bounded/single-flight requests.
-- Add Monthly, Session and Visible controls through the complete existing VP
-  schema, preserving individual settings, templates and theme ownership.
-- Monthly history should request full covered months even with short chart
-  history; show missing coverage truthfully. Do not silently use current
-  contract-only history as proof of pre-roll coverage.
-- Visible-range subscription: coalesce viewport interactions, map event-bar
-  source times and handle ambiguous split execution allocations explicitly.
-- Session boundaries and filters must be DST-correct; do not use naive fixed
-  24-hour arithmetic across a timezone transition.
-- Replay and cash/options data compatibility require their own wiring/checks,
-  not claims based solely on the futures live component.
-- Verify exact execution totals, POC/VA, custom settings, overlay coexistence,
-  live increment/reconciliation, theme/template persistence, browser rendering
-  and sustained interaction performance before enabling any row.
+- Monthly jobs use exchange trading-month boundaries and independently owned
+  exact custom ranges, newest first.
+- Session jobs resolve RTH, ETH, Custom or the three desk sessions through the
+  DST-aware shared exchange-session engine and issue one exact range per window.
+- Visible Range reads the logical viewport, preserves event-candle execution
+  bounds and coalesces pan/zoom interaction for 250 ms before loading.
+- All three reuse the complete profile editor, renderer, templates and theme
+  ownership. Late responses from an old viewport/settings state are discarded.
+- The archive loader is cache-first and bounded to two concurrent jobs. Valid
+  snapshots top up from the shared exact execution tape; no extra stream opens.
+
+## Remaining truthful limits
+
+- A prior month whose contract archive cannot prove complete execution coverage
+  stays blank. Current-contract data is never shown as a rolled historical month.
+- Filtered Monthly and filtered Visible Range require merging disjoint execution
+  windows. Those combinations remain fail-closed; Session Profile supports its
+  windows as explicit independent ranges.
+- Cash/options and replay coverage require provider-specific verification. This
+  release proves the futures chart path and never relabels candle volume as an
+  exact execution profile.

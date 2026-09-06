@@ -203,6 +203,9 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "weekly-tpo",
   "weekly-volume-profile",
   "composite-volume-profile",
+  "monthly-volume-profile",
+  "session-volume-profile",
+  "visible-range-volume-profile",
   "custom-draw-on-volume-profile",
   "ask-bid-volume-profile",
   "delta-profile",
@@ -238,6 +241,9 @@ export const VOLUME_PROFILE_INDICATOR_IDS = new Set([
   "custom-draw-on-volume-profile",
   "ask-bid-volume-profile",
   "delta-profile",
+  "monthly-volume-profile",
+  "session-volume-profile",
+  "visible-range-volume-profile",
 ]);
 export const DAILY_VOLUME_PROFILE_INDICATOR_IDS = new Set([
   "kwant-profile",
@@ -3025,7 +3031,7 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
    * this setting existed.
    */
   ...(indicatorId === "weekly-volume-profile" ? { weekSelection: "current" } : {}),
-  ...(["kwant-profile", "weekly-volume-profile", "composite-volume-profile", "custom-draw-on-volume-profile", "ask-bid-volume-profile", "delta-profile"].includes(indicatorId) ? {
+  ...(["kwant-profile", "weekly-volume-profile", "monthly-volume-profile", "session-volume-profile", "visible-range-volume-profile", "composite-volume-profile", "custom-draw-on-volume-profile", "ask-bid-volume-profile", "delta-profile"].includes(indicatorId) ? {
     valueAreaPercent: DEFAULT_VOLUME_PROFILE_VALUE_AREA_PERCENT,
     // Data Settings — the input series, the trade-size band applied before
     // binning, and how many ticks share a profile row. Automatic derives the
@@ -3179,6 +3185,24 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
       compositeCustomEndFollowsLatest: true,
       showProfileSpine: false,
       recentLevelsOnly: true,
+    } : {}),
+    ...(indicatorId === "monthly-volume-profile" ? {
+      numberOfProfiles: 3,
+      snapMode: "left",
+      recentLevelsOnly: true,
+    } : {}),
+    ...(indicatorId === "session-volume-profile" ? {
+      numberOfProfiles: 5,
+      filterMode: "filter",
+      filterTime: "rth",
+      snapMode: "left",
+    } : {}),
+    ...(indicatorId === "visible-range-volume-profile" ? {
+      numberOfProfiles: 1,
+      snapMode: "right",
+      widthMode: "window-percent",
+      recentLevelsOnly: true,
+      showProfileSpine: false,
     } : {}),
   } : {}),
 });

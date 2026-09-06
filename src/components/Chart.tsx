@@ -231,13 +231,17 @@ import { cancelChartFrameWork, queueChartFrameWork } from "@/lib/chartFrameWork"
 import { calculateImbalanceRejectorSignals } from "@/lib/imbalanceRejector";
 import { calculateImbalanceZones } from "@/lib/imbalanceTracker";
 import {
+  applyInstitutionalTradesToVolumeProfile,
   fetchInstitutionalVolumeProfile,
   fetchInstitutionalSnapshot,
   isCandleBackedVolumeProfile,
   isExecutionBackedVolumeProfile,
+  readCachedInstitutionalVolumeProfile,
   type InstitutionalTrade,
   type InstitutionalVolumeProfile,
 } from "@/lib/institutionalMarketData";
+import { loadOwnedVolumeProfiles } from "@/lib/ownedVolumeProfiles";
+import { planVolumeProfileVariantJobs } from "@/lib/volumeProfileVariants";
 import {
   NativeVolumeProfilePrimitive,
   type NativeVolumeProfileModel,
@@ -3819,6 +3823,7 @@ function Chart({
     [candles, timeframe],
   );
   const [drawVolumeProfiles, setDrawVolumeProfiles] = useState<Record<string, InstitutionalVolumeProfile>>({});
+  const [ownedVariantProfiles, setOwnedVariantProfiles] = useState<Record<string, InstitutionalVolumeProfile>>({});
   const drawVolumeProfileSignaturesRef = useRef<Record<string, string>>({});
   useEffect(() => {
     const requested = chartingDrawings.flatMap((drawing) => {
@@ -16576,6 +16581,54 @@ function Chart({
   }, [candles, instrument, paperFills]);
 
   const volumeProfileLastCandleTimestamp = candles.at(-1)?.timestamp ?? null;
+  const variantProfileInstances = useMemo(() => indicators.filter((instance) => (
+    instance.enabled && ["monthly-volume-profile", "session-volume-profile", "visible-range-volume-profile"].includes(instance.indicatorId)
+  )), [indicatorSignature, indicators]);
+  const variantProfileSignature = useMemo(() => JSON.stringify(variantProfileInstances), [variantProfileInstances]);
+  useEffect(() => {
+    if (!variantProfileInstances.length || !contractSymbol || !candles.length) {
+      setOwnedVariantProfiles((current) => Object.keys(current).length ? {} : current);
+      return;
+    }
+    let current = true;
+    // Viewport profiles should settle after a drag/zoom gesture instead of
+    // issuing one archive job per pointer sample. Monthly/session settings use
+    // the same short delay so simultaneous template changes collapse once.
+    const timer = window.setTimeout(() => {
+      const logical = chartRef.current?.timeScale().getVisibleLogicalRange();
+      const jobs = planVolumeProfileVariantJobs({
+        instances: variantProfileInstances,
+        candles,
+        visibleLogicalRange: logical ? { from: Number(logical.from), to: Number(logical.to) } : null,
+        intervalMs: candleIntervalMs,
+        clockMs: replayTimestampMs ?? Date.now(),
+        symbol: instrument,
+        contractSymbol,
+      });
+      const requested = new Set(jobs.map((job) => job.key));
+      setOwnedVariantProfiles((profiles) => Object.fromEntries(Object.entries(profiles).filter(([key]) => requested.has(key))));
+      void loadOwnedVolumeProfiles({
+        jobs,
+        isCurrent: () => current,
+        readCached: (job) => readCachedInstitutionalVolumeProfile(job.request),
+        readExact: (job) => fetchInstitutionalVolumeProfile(job.request),
+        publish: (result) => {
+          if (!current || result.status !== "ready") return;
+          setOwnedVariantProfiles((profiles) => ({ ...profiles, [result.job.key]: result.profile }));
+        },
+      });
+    }, 250);
+    return () => {
+      current = false;
+      window.clearTimeout(timer);
+    };
+  }, [candles, candleIntervalMs, chartReadyRevision, contractSymbol, instrument, replayTimestampMs, variantProfileInstances, variantProfileSignature, viewportVersion]);
+  const renderedVolumeProfiles = useMemo(() => {
+    const variants = Object.values(ownedVariantProfiles).map((profile) => (
+      applyInstitutionalTradesToVolumeProfile(profile, indicatorMarketTrades)
+    ));
+    return [...volumeProfiles, ...variants];
+  }, [indicatorMarketTrades, ownedVariantProfiles, volumeProfiles]);
   useEffect(() => {
     const primitive = volumeProfilePrimitiveRef.current;
     if (!primitive) return;
@@ -16592,7 +16645,7 @@ function Chart({
     // the one still forming — and silences the rest. Bodies are untouched, so
     // the history stays readable; only the extensions stop.
     const newestStartByKind = new Map<string, number>();
-    for (const profile of volumeProfiles) {
+    for (const profile of renderedVolumeProfiles) {
       const kind = volumeProfileOwnerKey(profile);
       const current = newestStartByKind.get(kind);
       if (current == null || profile.startMs > current) newestStartByKind.set(kind, profile.startMs);
@@ -16602,7 +16655,7 @@ function Chart({
         ? String(value)
         : fallback
     ) as "none" | "until-first-interaction" | "to-window-end";
-    const models = volumeProfiles.flatMap((profile): NativeVolumeProfileModel[] => {
+    const models = renderedVolumeProfiles.flatMap((profile): NativeVolumeProfileModel[] => {
       const instance = resolveVolumeProfileOwner(profile, indicators);
       if (!instance || profile.levels.length === 0) return [];
       // No native volume-profile mode may render a candle-distributed proxy.
@@ -16800,7 +16853,7 @@ function Chart({
     settings.upColor,
     toolbarPlotLeftInset,
     volumeProfileLastCandleTimestamp,
-    volumeProfiles,
+    renderedVolumeProfiles,
   ]);
 
   useEffect(() => {
@@ -18353,8 +18406,8 @@ function Chart({
         ref={chartContainerRef}
         className="relative h-full min-w-0 flex-1 overflow-hidden"
         data-chart-instance-id={chartInstanceId}
-        data-volume-profile-count={volumeProfiles.length}
-        data-volume-profile-provider={volumeProfiles.at(-1)?.provider ?? "none"}
+        data-volume-profile-count={renderedVolumeProfiles.length}
+        data-volume-profile-provider={renderedVolumeProfiles.at(-1)?.provider ?? "none"}
         onPointerDownCapture={() => {
           activeChartKeyboardTargetId = chartInstanceId;
         }}
