@@ -111,8 +111,8 @@ Do not tick a row just because its Add gate changes.
 | Indicator ID | Status |
 |---|---|
 | `speed-of-tape` | [ ] Audit / implement / verify |
-| `volume-delta-sprint` | [ ] Audit / implement / verify |
-| `auction-gap-tracker` | [ ] Audit / implement / verify |
+| `volume-delta-sprint` | [ ] DLL settings enums audited; numerical/data semantics outstanding |
+| `auction-gap-tracker` | [ ] Raw one-tick detector with six location modes tested; lifecycle/settings/render/live integration outstanding |
 | `session-imbalance` | [ ] Audit / implement / verify |
 | `volume-swing` | [ ] Audit / implement / verify |
 | `monthly-volume-profile` | [ ] Owned range/job foundation tested; workspace/live/settings integration outstanding |

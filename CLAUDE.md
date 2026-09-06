@@ -1,5 +1,18 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-06 — Auction Gap detector foundation (still Pending)
+
+- `auctionGapTracker.ts`: raw unfiltered one-tick volume detector, inclusive
+  thresholds, six DLL-evidenced location modes, honest unavailable/invalid
+  states, no fabricated zeros from missing/unknown rows, provisional live runs.
+- Nine tests and scoped lint pass; project tsc passed before final location-mode
+  addition (rerun before release). Not wired/registered; all 28 remain Pending.
+- Audit `docs/deepcharts-auction-gap-tracker-audit.md` includes actual official
+  screenshots/defaults, ConfigurableWatcher enums and remaining full contract.
+  Next lifecycle/session filters/renderer/settings/shared raw tape integration.
+- Sprint DLL candidate and unknown formula recorded separately. Working studies
+  untouched. Do not alias pending order-flow rows to existing studies.
+
 ## 2026-09-06 — ordinary tape enum evidence, no new release
 
 - Added read-only `scripts/dotnet-contracts.py`: scalar getter signatures and
