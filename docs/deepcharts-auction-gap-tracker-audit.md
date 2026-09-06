@@ -1,5 +1,22 @@
 # Auction Gap Tracker — implementation in progress
 
+### Exact history envelope validation — 2026-09-07
+
+Added a fail-closed validator for the original Rithmic response handed to the
+Auction Gap worker. It requires the exact contract, v3/Rithmic source identity,
+requested-window coverage, non-truncation, affirmative historical and execution-
+ordering completeness, an exact source count, atomic executions, side semantics
+v2, valid volume allocation, stable source identities and ordered timestamps.
+Any missing or contradictory proof returns no rows and keeps the study unavailable;
+the current retained live tape is therefore correctly rejected rather than being
+misrepresented as complete history.
+
+90 Auction Gap tests, TypeScript and scoped lint pass. Inspection also confirmed
+the raw-recorder backfill preserves GAP/DROPPED and damaged-member counts but does
+not repair those holes, so it cannot honestly manufacture completeness. A gateway
+archive coverage ledger or licensed exact-print backfill remains required before
+Chart wiring and release. Still 28 Pending; no gate, production push or deployment.
+
 ### Original response handoff and concrete source limitation — 2026-09-07
 
 Inspected workspace `compactIndicatorExecutionHistory`: beyond its recent window

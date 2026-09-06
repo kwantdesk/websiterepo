@@ -1,5 +1,21 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-07 — Auction Gap exact-history envelope validator
+
+- Added a fail-closed validator for the original Rithmic envelope: exact contract,
+  v3/provider identity, full requested bounds, explicit historical/ordering
+  completeness, no truncation, exact source count and valid atomic executions
+  with v2 sides, allocation, identities and timestamp order are all mandatory.
+- The current retained gateway tape is deliberately rejected because it says
+  historicalAvailable=false; matching bounds and truncated=false alone do not
+  prove the tape began at the requested start. Failed validation exposes no rows.
+- Confirmed raw-archive backfill records GAP/DROPPED and damaged-member evidence
+  but only extracts surviving prints, so it cannot turn a damaged recording into
+  complete history. Add truthful coverage evidence or licensed exact-print
+  backfill before connecting this source to Chart.
+- 90 Auction Gap tests, tsc and scoped lint pass. Gate remains OFF: 28 Pending,
+  no browser/runtime source proof, production push or deployment.
+
 ## 2026-09-07 — Auction Gap original history response handoff
 
 - Found `compactIndicatorExecutionHistory` explicitly reduces older history to

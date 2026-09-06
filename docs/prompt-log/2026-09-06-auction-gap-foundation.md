@@ -1,5 +1,14 @@
 # Pending-library continuation — Auction Gap Tracker
 
+2026-09-07 exact-history validation: added a fail-closed original-envelope
+validator covering contract/source/schema, requested bounds, positive archive
+coverage and execution-order proof, truncation, count, atomicity, v2 sides,
+allocation, identity and timestamp ordering. The live retained-tape response is
+correctly rejected because historicalAvailable is false. 90 tests/tsc/lint pass.
+Raw backfill reports recorder gaps and damaged members but cannot fill them;
+coverage ledger/licensed exact-print backfill and Chart/browser work remain.
+Still Pending, no gate flip, production push or deployment.
+
 2026-09-07 raw-history continuation: confirmed shared tape compaction loses
 older executions; added a scoped handoff from the existing original response
 before persistence merging, without extra network calls or changes to working
