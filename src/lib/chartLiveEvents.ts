@@ -10,6 +10,8 @@ export const DATABENTO_LIVE_STATUS_EVENT = "kwantdesk:databento-status";
 export type LiveChartCandleDetail = {
   key: string;
   candle: Candle;
+  /** Provider observation time in milliseconds; absent is not evidence of freshness. */
+  sourceTimestampMs?: number;
 };
 
 /**

@@ -1,6 +1,7 @@
 "use client";
 
 import { SuperTrendLabels } from "@/lib/superTrendLabels";
+import { useSuperTrendAlerts } from "@/components/useSuperTrendAlerts";
 
 import { memo, startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentType, type CSSProperties, type PointerEvent as ReactPointerEvent, type RefObject } from "react";
 import KwantSelect from "@/components/ui/KwantSelect";
@@ -7577,6 +7578,9 @@ function Chart({
       ? "CVD · PARTIAL EXECUTION HISTORY"
       : "CVD · LOADING EXECUTION HISTORY";
   }, [indicatorSignature, indicators, orderFlowHistoryReady, orderFlowSeriesReady]);
+
+  const superTrendAlertNotice = useSuperTrendAlerts({ indicators, history: indicatorCandlesLite, liveKey: liveCandleEventKey,
+    instrument, timeframe, live: marketIsActive === true && !(replayTimestampMs !== null && replayTimestampMs !== undefined && replayTimestampMs > 0) });
 
   const baseCalculatedIndicatorSeries = useMemo(
     () => indicators.flatMap((instance) => {
@@ -17440,6 +17444,10 @@ function Chart({
           activeChartKeyboardTargetId = chartInstanceId;
         }}
       >
+        {superTrendAlertNotice ? <div role="status" aria-live="polite"
+          className="pointer-events-none absolute right-3 top-3 z-50 max-w-xs border border-primary bg-panel px-3 py-2 text-xs text-foreground shadow-lg">
+          {superTrendAlertNotice}
+        </div> : null}
       {/*
         * The Mini DOM's own left edge, as something the trader can take hold
         * of. The ladder is a canvas primitive with no element to grab, so the

@@ -26,3 +26,11 @@ tests plus math/integration total 14 passing; scoped lint and TypeScript pass.
 Found candle events lack provider timestamp and execution events depend on
 other indicators. Recorded the correct source publishers for safe alert wiring.
 Still 30 Pending; not released until remaining live/UI verification is done.
+
+Live continuation: shared O(1) forming-bar calculator equals batch output in
+tests. Existing candle events now carry provider time without new feed calls.
+Hook dispatch, themed popup and optional audio wired; no existing generic alert
+listener existed, so event emission alone was insufficient. 19 tests pass,
+including actual hook execution and all four source-publisher checks. Scoped
+lint/TypeScript pass. Browser audio/visuals and live plot cadence still unproved;
+both Pending gates stay off and this remains local until the release gate.

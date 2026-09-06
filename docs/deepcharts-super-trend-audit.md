@@ -2,6 +2,42 @@
 
 Status: calculation prerequisite only. Both catalogue entries remain Pending.
 
+## Live calculator and alert integration
+
+The batch and live calculators now share one `advance` recurrence. The live
+calculator checkpoints only the numerical state before the forming bar:
+replacement restores that checkpoint, append commits the previous state.
+Three tests compare every replacement/append against full recalculation,
+including warmup, malformed-current-bar repair, late input and history reseed.
+It retains no candle history and performs constant work per live update.
+
+All four existing workspace candle publishers now include optional
+`sourceTimestampMs`. Execution batches use actual record times; price batches
+reuse the already validated uncached `newestSourceTimestamp`; index snapshots
+use `chartSourceTimestamp(snapshot.timestamp)`. No endpoint, interval or
+subscription changed. An AST test checks every actual publisher and rejects
+dispatch-clock fallback.
+
+`useSuperTrendAlerts` now seeds from the same lite candles as the engine,
+consumes existing candle events and dispatches only eligible fresh reversals.
+History reconciliation seeds silently; duplicate masks survive same-bar seeds.
+Replay/closed-market conditions are supplied from Chart. A compiled real-hook
+test verifies notification/dispatch, incorrect chart keys, repeated/stale events
+and unmount cleanup. One per-chart themed status toast is now rendered.
+
+Inspection found no consumer of the generic indicator-alert event. The new
+hook therefore implements its own optional browser oscillator and popup; merely
+emitting that event was not sufficient. Audio is lazy, closed on unmount and
+checks freshness again after resume. Browser autoplay/audibility remains to be
+verified; failures show a sound-unavailable notice rather than claiming success.
+No existing indicator-alert behaviour changed.
+
+19 Super Trend tests, scoped lint and TypeScript pass. Gates remain disabled.
+Remaining: inspect reference screenshots, browser all settings/labels/sound/
+save/template behaviour; ensure live plot cadence uses the new calculation
+path rather than leaving visuals on slower React history refresh; orientation
+parity; full production build/performance check and scoped push/live SHA check.
+
 ## Label rendering continuation
 
 `SuperTrendLabels` is now attached to the overlay's own line series and updated

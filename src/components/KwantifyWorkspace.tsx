@@ -6322,7 +6322,9 @@ function WorkspaceChartPaneComponent({
       }
       const latest = reconciledCandles.at(-1)!;
       window.dispatchEvent(new CustomEvent(LIVE_CHART_CANDLE_EVENT, {
-        detail: { key: pane.id, candle: latest },
+        detail: { key: pane.id, candle: latest,
+          sourceTimestampMs: records.reduce((latestTime, record) => Number.isFinite(record.timestamp)
+            ? Math.max(latestTime, record.timestamp) : latestTime, Number.NEGATIVE_INFINITY) },
       }));
       const newBar = flushedNewBar;
       if (newBar) {
@@ -8293,7 +8295,7 @@ function WorkspaceChartPaneComponent({
           };
           const latest = mergedTail.at(-1)!;
           window.dispatchEvent(new CustomEvent(LIVE_CHART_CANDLE_EVENT, {
-            detail: { key: pane.id, candle: latest },
+            detail: { key: pane.id, candle: latest, sourceTimestampMs: newestSourceTimestamp },
           }));
           const newBar = previous.at(-1)?.timestamp !== latest.timestamp;
           if (newBar) {
@@ -8344,7 +8346,7 @@ function WorkspaceChartPaneComponent({
         latestCandlesRef.current = next;
         const latest = next.at(-1)!;
         window.dispatchEvent(new CustomEvent(LIVE_CHART_CANDLE_EVENT, {
-          detail: { key: pane.id, candle: latest },
+          detail: { key: pane.id, candle: latest, sourceTimestampMs: newestSourceTimestamp },
         }));
         const newBar = previous.at(-1)?.timestamp !== latest.timestamp;
         if (newBar) {
@@ -8447,7 +8449,7 @@ function WorkspaceChartPaneComponent({
           // React reconciles studies on a slower cadence below, preventing
           // four SPX/NDX/SPY/QQQ panes from blocking one another.
           window.dispatchEvent(new CustomEvent(LIVE_CHART_CANDLE_EVENT, {
-            detail: { key: pane.id, candle: latest },
+            detail: { key: pane.id, candle: latest, sourceTimestampMs: chartSourceTimestamp(snapshot.timestamp) },
           }));
           if (historyHydratedRef.current) {
             setLoading(false);

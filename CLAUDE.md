@@ -1,5 +1,16 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-06 — Super Trend incremental calculator and actual alerts
+
+- Shared `advance` recurrence now powers batch and O(1) live forming-bar
+  replacement/append; 19 Super Trend tests pass, scoped lint/TypeScript pass.
+- Four existing candle publishers carry real provider `sourceTimestampMs`;
+  no new feed or cadence change. Actual alert hook wired to Chart, freshness,
+  replay/closed-market gates, popup and lazy audio (generic event had no listener).
+- Still 30 Pending: browser/autoplay/reference screenshot checks, template
+  roundtrip, live PLOT cadence (alerts alone now incremental), orientation and
+  full build/release remain. See `docs/deepcharts-super-trend-audit.md`.
+
 ## 2026-09-06 — Super Trend labels and alert-source investigation
 
 - New overlay-only `SuperTrendLabels` primitive is attached to the study's own

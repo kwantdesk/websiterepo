@@ -19,6 +19,14 @@ export class SuperTrendAlertTracker {
   private direction: SuperTrendPoint["direction"] | undefined;
   private emitted = new Set<SuperTrendPoint["direction"]>();
 
+  /** Establish history silently without replaying alerts. Same-bar dedup survives reconciliation. */
+  seed(scopeKey: string, point: SuperTrendPoint | null) {
+    if (!point) { this.scope = ""; this.direction = undefined; this.emitted.clear(); return; }
+    if (this.scope !== scopeKey || this.time !== point.time) this.emitted.clear();
+    this.scope = scopeKey; this.time = point.time; this.direction = point.direction;
+    this.emitted.add(point.direction);
+  }
+
   update(frame: SuperTrendAlertFrame): SuperTrendPoint | null {
     const point = frame.point;
     const valid = frame.live && point !== undefined
