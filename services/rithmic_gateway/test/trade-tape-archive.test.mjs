@@ -9,6 +9,9 @@ import { EventEmitter } from "node:events";
 import {
   TradeTapeArchive, backfillFileName, encodeTrade, decodeTrade, sideCode,
 } from "../src/trade-tape-archive.mjs";
+import {
+  coverageFileName, createBackfillCoverageReceipt, writeCoverageReceipt,
+} from "../src/trade-tape-coverage.mjs";
 import { chicagoTradingDate } from "../src/trading-session.mjs";
 
 /**
@@ -283,6 +286,33 @@ test("a session with only a backfill still loads", async () => {
       exchange: "CME", symbol: "NQU6", fromMs: T0 - 1, toMs: T0 + 1_000,
     });
     assert.deepEqual(trades, [{ timestamp: T0, price: 29000, size: 4, side: -1 }]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("raw coverage receipts are returned without being promoted to complete history", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "kwant-tape-"));
+  try {
+    const archive = new TradeTapeArchive({ dir, roots: ["NQ"], flushMs: 10_000 });
+    const tradingDate = chicagoTradingDate(T0);
+    const dayDir = join(dir, "trades", tradingDate);
+    mkdirSync(dayDir, { recursive: true });
+    writeFileSync(
+      join(dayDir, backfillFileName("CME", "NQU6")),
+      gzipSync(Buffer.from(`${JSON.stringify([T0, 29000, 4, -1])}\n`)),
+    );
+    const receipt = createBackfillCoverageReceipt({
+      exchange: "CME", symbol: "NQU6", tradingDate,
+      observationFromMs: T0 - 1_000, observationToMs: T0 + 1_000,
+      sourcePrintCount: 1, gapMarkers: 0, damagedMembers: 0,
+    });
+    await writeCoverageReceipt(join(dayDir, coverageFileName("CME", "NQU6")), receipt);
+    const result = await archive.load({
+      exchange: "CME", symbol: "NQU6", fromMs: T0 - 500, toMs: T0 + 500,
+    });
+    assert.deepEqual(result.coverageReceipts, [receipt]);
+    assert.equal("coverageComplete" in result, false, "loader guessed aggregate completeness");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

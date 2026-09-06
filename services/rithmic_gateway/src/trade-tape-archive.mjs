@@ -7,6 +7,7 @@ import { resolveInstrument } from "./recorder.mjs";
 import { tradeFromRecord } from "./futures-bar-archive.mjs";
 import { readArchiveRecords } from "./archive-reader.mjs";
 import { createEventBarBuilder, eventInterval } from "./event-bar-builder.mjs";
+import { coverageFileName, readCoverageReceipt } from "./trade-tape-coverage.mjs";
 
 /**
  * Every print, compactly, so range and volume bars have a history.
@@ -336,9 +337,14 @@ export class TradeTapeArchive {
      * have been discarded anyway.
      */
     let truncated = false;
+    const coverageReceipts = [];
     const ordered = [...dates].sort().reverse();
     for (const tradingDate of ordered) {
       if (trades.length >= limit) { truncated = true; break; }
+      const receipt = await readCoverageReceipt(join(
+        this.dir, tradingDate, coverageFileName(upper, upperSymbol),
+      ));
+      if (receipt) coverageReceipts.push(receipt);
       // Recorded live and backfilled from the raw archive, in that order. A
       // session recorded before the tape existed has only the sidecar; the one
       // in progress has both, meeting at the live tape's first print.
@@ -378,6 +384,9 @@ export class TradeTapeArchive {
        */
       truncated: truncated || trades.length > limit,
       earliestMs: kept.length ? kept[0].timestamp : null,
+      // Raw evidence only. The caller must validate every receipt and prove
+      // its requested market intervals; presence is not a completeness flag.
+      coverageReceipts,
       trades: kept,
     };
   }

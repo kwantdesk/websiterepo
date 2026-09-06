@@ -1,5 +1,11 @@
 # Pending-library continuation — Auction Gap Tracker
 
+2026-09-07 loader handoff: the bounded gateway tape response now carries its
+raw per-session coverage receipts without inventing aggregate completeness.
+25 archive/coverage tests and scoped lint pass; existing bar folds are unchanged.
+Multi-session proof, compact gateway study fold and Chart/browser integration
+remain. Still Pending; no push/deploy.
+
 2026-09-07 source-proof continuation: the raw-to-compact tape backfill now
 atomically persists a v1 coverage receipt per contract/session with observation
 bounds, source count, recorder gap/drop markers and damaged-member count.

@@ -1,5 +1,15 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-07 — Coverage receipts exposed by bounded tape loader
+
+- `TradeTapeArchive.load` now returns available raw per-session coverage
+  receipts alongside its bounded exact prints.
+- It intentionally does not add `coverageComplete`; callers must validate the
+  receipts and requested market intervals. Missing evidence remains explicit.
+- Existing time/event chart folds are unchanged. 25 archive/coverage tests and
+  scoped lint pass. Multi-session proof and gateway-side compact Auction Gap
+  folding still precede Chart wiring; Pending gate remains OFF, no deploy.
+
 ## 2026-09-07 — Persistent trade-tape coverage receipts
 
 - Added `trade-tape-coverage.mjs`: versioned Rithmic coverage receipts retain

@@ -1,5 +1,17 @@
 # Auction Gap Tracker — implementation in progress
 
+### Coverage evidence reaches the archive loader — 2026-09-07
+
+The existing bounded trade-tape loader now returns the raw per-session coverage
+receipts alongside exact prints. It deliberately does not synthesize a global
+`coverageComplete` claim: downstream code must validate the receipt contract and
+prove the requested market intervals. Missing receipts remain missing evidence,
+not empty-market success. Existing event/time chart building is unchanged.
+
+25 archive/coverage tests and scoped lint pass. Multi-session market-window
+aggregation, gateway-side compact Auction Gap folding and Chart integration
+remain. The catalogue gate stays Pending; no production push or deployment.
+
 ### Persistent backfill coverage receipts — 2026-09-07
 
 Added a v1 Rithmic trade-tape coverage receipt and made the existing raw-to-
