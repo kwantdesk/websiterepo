@@ -273,4 +273,35 @@ build needs rerun after the latest label-clearance addition. Template file and
 authenticated storage checks, live visual/audio verification and release are
 still open. Both Pending gates remain closed.
 
+## Template, audio and browser-live verification
+
+Saved `QA Super Trend full settings` through the actual shared template UI,
+reloaded, and found it in Saved templates. Export produced the real 741-byte
+`C:/Users/Karen/Downloads/super-trend-qa-super-trend-full-settings.kwantdesk.json`;
+read its contents and confirmed the format/version/study, pane choice, numeric
+settings, colours and label flags. No actual native file-picker import or
+authenticated second-device sync is claimed. The real template library now
+has explicit roundtrips for both Super Trend studies, wrong-study rejection,
+re-storage and preference-sync event checks: 18/18 template checks pass.
+
+Four actual-hook audio tests pass with a controlled AudioContext: history is
+silent, fresh reversal schedules the tone and disconnects ended nodes,
+unmount/stale delayed resume suppress tones, and rejected resume produces an
+unavailable notice. This proves API lifecycle, not speaker audibility or
+browser-specific autoplay permission.
+
+Extended the labelled synthetic browser fixture with the actual live hook,
+incremental painter, Lightweight Chart updates and pane event listener. Manual
+ticks changed ST from 102.2846 to 101.8246, with the green live label visually
+painted. Difference tick produced 11.8100, expanded the axis and painted its
+green histogram/label. No timer, provider request or fake production data.
+The fixture callback is a local adapter, not a full production Chart mount.
+
+Next known release issue: `seriesDomain` excludes a lone Super Trend plot when
+Include On Auto Center is false and falls back to -1..1 (or zero padding for
+Difference). Separate panes should retain a useful prior manual/auto domain,
+not disappear upon toggling this control. Fix this in the pending pair only;
+do not change existing working indicator scaling. Also finish warmup status,
+final combined build and scoped release-tree verification before enabling.
+
 No available indicator modified. No production release for this prerequisite.

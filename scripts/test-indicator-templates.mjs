@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { normalizeSuperTrendSettings } from "../src/lib/superTrendSettings.ts";
 
 /**
  * Indicator templates live in browser storage, so every read is a read of
@@ -200,6 +201,30 @@ check("all indicator-specific template stores are account-synced", () => {
   ]) {
     assert.match(source, new RegExp(key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), `${key} is missing from account preferences`);
   }
+});
+
+for (const difference of [false, true]) check(`${difference ? "Difference" : "Super Trend"} full settings survive the real template export/import/store`, () => {
+  reset();
+  const indicatorId = difference ? "super-trend-difference" : "super-trend";
+  const otherId = difference ? "super-trend" : "super-trend-difference";
+  const settings = normalizeSuperTrendSettings({ length: 34, multiplier: 4.25, lineWidth: 2,
+    displayStyle: "line", colorMode: "slope", chartArea: "pane", shortName: "My trend",
+    useThemeColors: false, plotColor: "#123456", secondaryColor: "#abcdef",
+    nameLabel: true, valueLabel: true, nameBackground: true, valueBackground: true,
+    includeOnAutoCenter: false, chartColorForMarker: true,
+    alertSoundEnabled: true, messagePopupEnabled: true, alertName: "My reversal" }, difference);
+  const saved = saveIndicatorTemplate(indicatorId, "Shared setup", settings);
+  assert.equal(saved.ok, true);
+  const file = exportIndicatorTemplate(saved.template);
+  assert.match(indicatorTemplateFileName(saved.template), /\.kwantdesk\.json$/);
+  assert.equal(importIndicatorTemplate(otherId, file).ok, false);
+  reset(); // another browser's initially empty store
+  const imported = importIndicatorTemplate(indicatorId, file);
+  assert.equal(imported.ok, true);
+  assert.deepEqual(normalizeSuperTrendSettings(imported.settings, difference), settings);
+  assert.equal(saveIndicatorTemplate(indicatorId, imported.name, imported.settings).ok, true);
+  assert.deepEqual(loadIndicatorTemplates(indicatorId)[0].settings, settings);
+  assert.ok(dispatchedEvents.includes("kwantdesk:preferences-changed"));
 });
 
 console.log(`\nindicator templates: ${passed}/${passed} checks passed`);

@@ -7,6 +7,10 @@ import { defaultIndicatorSettings } from "../../src/lib/chartIndicatorConfig";
 import { calculateIndicatorSeries } from "../../src/lib/chartIndicatorEngine";
 import { createChart } from "../../src/lib/lightweightChartsCompat";
 import { SuperTrendLabels } from "../../src/lib/superTrendLabels";
+import { useSuperTrendAlerts } from "../../src/components/useSuperTrendAlerts";
+import { paintSuperTrendSeries } from "../../src/lib/superTrendSeries";
+import { LIVE_CHART_CANDLE_EVENT } from "../../src/lib/chartLiveEvents";
+import { SUPER_TREND_LIVE_PLOT_EVENT, SuperTrendPlotBuffer } from "../../src/lib/superTrendLivePlot";
 import actualOverlayOptions from "kwant-preview-overlay-options";
 
 // Isolated, clearly labelled fixtures: never a market feed or production page.
@@ -21,29 +25,70 @@ const candles = Array.from({ length: previewId === "absolute-levels" ? 30 : 100 
 const theme = { primary: "#11ff44", secondary: "#ffaa22", positive: "#44ff66", negative: "#ff7777", muted: "#bbbbbb" };
 function Preview() {
   const host = useRef(null);
+  const livePlots = useRef(new Map());
+  const liveCandle = useRef(null);
+  const liveStatus = useRef(null);
+  const syntheticDirection = useRef(1);
   const [indicators, setIndicators] = useState(() => JSON.parse(localStorage.getItem(storageKey) || "null") ?? [{ instanceId: "qa-study", indicatorId: previewId, enabled: true, settings: { ...defaultIndicatorSettings(previewId), ...(previewId === "absolute-levels" ? { firstValue: 100.25, secondValue: 101.5, firstLineStyle: "dashed", secondLineStyle: "dotted" } : {}) } }]);
   const [request, setRequest] = useState(null);
   const [paneLayout, setPaneLayout] = useState({});
+  const alert = useSuperTrendAlerts({ indicators, history: candles, liveKey: "qa-synthetic", instrument: "NQ", timeframe: "1m", live: true,
+    onReset: instanceId => {
+      window.dispatchEvent(new CustomEvent(SUPER_TREND_LIVE_PLOT_EVENT, { detail: { chartKey: "qa-synthetic", instanceId, reset: true } }));
+    },
+    onPoint: (instanceId, point, previous, settings, difference) => {
+      const [painted] = paintSuperTrendSeries([point], settings, theme, instanceId, difference,
+        previous ? difference ? previous.difference : previous.value : undefined);
+      if (!painted) return;
+      if (painted.placement === "pane") window.dispatchEvent(new CustomEvent(SUPER_TREND_LIVE_PLOT_EVENT, {
+        detail: { chartKey: "qa-synthetic", instanceId, series: painted },
+      }));
+      else {
+        const target = livePlots.current.get(painted.key);
+        if (target) {
+          target.plot.update(painted.data[0]); target.buffer.push(painted);
+          const merged = target.buffer.merge(target.definition);
+          target.labels?.update(merged.data, merged.superTrendLabels, "#080b10", merged.color, 2);
+        }
+      }
+      if (liveStatus.current) liveStatus.current.textContent = `Synthetic live ${difference ? "difference" : "trend"}: ${painted.data[0].value.toFixed(4)}`;
+    } });
+  const sendSyntheticTick = () => {
+    const last = candles.at(-1), close = last.close + 12 * syntheticDirection.current;
+    syntheticDirection.current *= -1;
+    const candle = { ...last, close, high: Math.max(last.high, close), low: Math.min(last.low, close) };
+    liveCandle.current?.update({ time: candle.timestamp / 1000, open: candle.open, close, high: candle.high, low: candle.low });
+    window.dispatchEvent(new CustomEvent(LIVE_CHART_CANDLE_EVENT, { detail: {
+      key: "qa-synthetic", candle, sourceTimestampMs: Date.now(),
+    } }));
+  };
   useEffect(() => { localStorage.setItem(storageKey, JSON.stringify(indicators)); }, [indicators]);
   useEffect(() => {
     const chart = createChart(host.current, { width: 1000, height: 440, layout: { background: { color: "#080b10" }, textColor: "#dddddd" } });
-    chart.addCandlestickSeries().setData(candles.map(c => ({ time: c.timestamp / 1000, open: c.open, high: c.high, low: c.low, close: c.close })));
+    liveCandle.current = chart.addCandlestickSeries();
+    liveCandle.current.setData(candles.map(c => ({ time: c.timestamp / 1000, open: c.open, high: c.high, low: c.low, close: c.close })));
+    livePlots.current.clear();
     for (const instance of indicators) for (const definition of calculateIndicatorSeries(instance, candles, theme)) {
       if (definition.placement === "overlay") {
         const plot = chart.addLineSeries(actualOverlayOptions(definition)); plot.setData(definition.data);
+        let labels;
         if (definition.superTrendLabels) {
-          const labels = new SuperTrendLabels(); plot.attachPrimitive(labels);
+          labels = new SuperTrendLabels(); plot.attachPrimitive(labels);
           labels.update(definition.data, definition.superTrendLabels, "#080b10", definition.color, 2);
         }
+        livePlots.current.set(definition.key, { plot, labels, definition, buffer: new SuperTrendPlotBuffer() });
       }
     }
     chart.timeScale().fitContent();
-    return () => chart.remove();
+    return () => { chart.remove(); livePlots.current.clear(); liveCandle.current = null; };
   }, [indicators]);
   return <main style={{ padding: 24 }}>
     <h1>Indicator QA — SYNTHETIC TEST DATA — no trading connection</h1>
     <button onClick={() => setRequest({ instanceId: "qa-study", requestId: Date.now() })}>Open {previewName} settings</button>
     {["super-trend", "super-trend-difference"].includes(previewId) ? <div>
+      <button onClick={sendSyntheticTick}>QA synthetic live reversal</button>
+      <output ref={liveStatus}>No synthetic live tick sent</output>
+      {alert ? <div role="status">{alert}</div> : null}
       {["bottom", "right", "left", "top"].map(dock => <button key={dock}
         onClick={() => setPaneLayout({ "qa-study": { dock, order: 0 } })}>QA dock {dock}</button>)}
     </div> : null}
@@ -51,7 +96,7 @@ function Preview() {
     <div ref={host}/>
     {["average-directional-index-adx", "know-sure-thing-kst", "super-trend-difference", "super-trend"].includes(previewId) ? <div style={{ position: "relative", width: 1000, height: 260 }}>
       <ChartIndicatorPanes groups={indicators.map(instance => ({ key: instance.instanceId, indicatorId: instance.indicatorId, title: previewName, settings: instance.settings, showLegend: previewId === "know-sure-thing-kst" ? false : undefined, series: calculateIndicatorSeries(instance, candles, theme).filter(series => series.placement === "pane") })).filter(group => group.series.length)}
-        width={1000} priceScaleWidth={65} height={260} chartHeight={260} bottom={0} viewportVersion={0}
+        liveChartKey="qa-synthetic" width={1000} priceScaleWidth={65} height={260} chartHeight={260} bottom={0} viewportVersion={0}
         paneHeights={{}} collapsedPanes={{}} paneLayout={paneLayout} timeToX={time => (time - candles[0].timestamp / 1000) / (99 * 60) * 935}
         onResizePane={() => {}} onTogglePane={() => {}} onMovePane={(id, dock, order) => setPaneLayout(current => ({ ...current, [id]: { dock, order } }))}
         onOpenSettings={instanceId => setRequest({ instanceId, requestId: Date.now() })}/>

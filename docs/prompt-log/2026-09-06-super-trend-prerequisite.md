@@ -69,3 +69,11 @@ Browser verified selector/save/reload plus horizontal/right-side renders.
 Fixed a visible label/recenter overlap. 29 tests pass; placement TypeScript and
 scoped lint pass. No gates enabled or production push; template/live/audio and
 post-edit full-build checks remain. 30 Pending remains the actual tally.
+
+Template/audio/live continuation: actual UI saved and reloaded a named Super
+Trend template; export produced a real 741-byte JSON file whose contents were
+read. Both studies pass real template-library roundtrips (18 template checks).
+Four controlled actual-hook audio lifecycle tests pass. Browser synthetic live
+ticks visibly update ST and Difference, including labels and histogram scale.
+Found remaining auto-centre-off domain fallback issue in separate panes; this
+needs scoped correction before release. No production changes, still 30 Pending.
