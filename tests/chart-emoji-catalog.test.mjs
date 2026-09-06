@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import source from "emojibase-data/en/compact.json" with { type: "json" };
-import { CHART_EMOJI_CATALOG, CHART_EMOJI_CATEGORIES, CHART_EMOJI_PAGE_SIZE, CHART_QUICK_EMOJIS, chartEmojiIdentity, chartEmojiPage, filterChartEmojis } from "../src/lib/chartEmojiCatalog.ts";
+import { CHART_EMOJI_CATALOG, CHART_EMOJI_CATEGORIES, CHART_EMOJI_PAGE_SIZE, CHART_QUICK_EMOJI_LIMIT, CHART_QUICK_EMOJIS, chartEmojiIdentity, chartEmojiPage, filterChartEmojis, normalizeChartQuickEmojis, promoteChartQuickEmoji } from "../src/lib/chartEmojiCatalog.ts";
 import { CHAT_EMOJIS } from "../src/lib/emojis.ts";
 import { createDrawing, normalizeDrawings } from "../src/lib/chartDrawTools.ts";
 
@@ -21,6 +21,20 @@ test("search matches names, keywords, multiple terms and pasted sequences", () =
   assert.ok(filterChartEmojis("flag australia").some((entry) => entry.emoji === "🇦🇺"));
   assert.ok(filterChartEmojis("👋🏽").some((entry) => entry.emoji === "👋🏽"));
   assert.equal(filterChartEmojis("no-such-emoji-12345").length, 0);
+});
+
+test("chart quick picks promote the newest selection and evict the oldest", () => {
+  const promoted = promoteChartQuickEmoji(CHART_QUICK_EMOJIS, "🦄");
+  assert.equal(promoted.length, CHART_QUICK_EMOJI_LIMIT);
+  assert.equal(promoted[0], "🦄");
+  assert.deepEqual(promoted.slice(1), CHART_QUICK_EMOJIS.slice(0, -1));
+});
+
+test("chart quick picks move repeats to the front and normalize persisted data", () => {
+  const promoted = promoteChartQuickEmoji(CHART_QUICK_EMOJIS, "📈");
+  assert.equal(promoted[0], "📈");
+  assert.equal(promoted.filter((value) => chartEmojiIdentity(value) === chartEmojiIdentity("📈")).length, 1);
+  assert.deepEqual(normalizeChartQuickEmojis(["", "📈", "📈", null]).slice(0, 2), ["📈", "🧲"]);
 });
 
 test("categories and skin-tone filtering preserve the complete selectable set", () => {

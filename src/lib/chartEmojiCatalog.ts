@@ -38,6 +38,30 @@ export const CHART_EMOJI_CATALOG: readonly ChartEmojiEntry[] = (emojiData as Sou
 );
 
 export const CHART_QUICK_EMOJIS = ["🧲", "📍", "📈", "📉", "🎯", "🚀", "🔥", "💎", "🐂", "🐻", "⬆️", "⬇️", "➡️", "⬅️", "🟢", "🔴"];
+export const CHART_QUICK_EMOJI_LIMIT = 16;
+export const CHART_QUICK_EMOJI_STORAGE_KEY = "kwantdesk:chart-emoji-quick-picks:v1";
+export const CHART_QUICK_EMOJI_EVENT = "kwantdesk:chart-emoji-quick-picks-changed";
+
+export function normalizeChartQuickEmojis(value: unknown): string[] {
+  const candidates = Array.isArray(value) ? value : [];
+  const result: string[] = [];
+  const identities = new Set<string>();
+
+  for (const candidate of [...candidates, ...CHART_QUICK_EMOJIS]) {
+    if (typeof candidate !== "string" || !candidate.trim()) continue;
+    const identity = chartEmojiIdentity(candidate);
+    if (!identity || identities.has(identity)) continue;
+    identities.add(identity);
+    result.push(candidate);
+    if (result.length === CHART_QUICK_EMOJI_LIMIT) break;
+  }
+
+  return result;
+}
+
+export function promoteChartQuickEmoji(current: readonly string[], selected: string): string[] {
+  return normalizeChartQuickEmojis([selected, ...current]);
+}
 
 export function filterChartEmojis(query: string, group = -1, includeSkinTones = true) {
   const terms = chartEmojiIdentity(query).trim().toLowerCase().split(/\s+/).filter(Boolean);

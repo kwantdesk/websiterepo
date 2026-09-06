@@ -120,6 +120,7 @@ type Props = {
   magnet: boolean;
   magnetStrength: MagnetStrength;
   emoji: string;
+  quickEmojis: readonly string[];
   onSelectTool: (tool: DrawToolId) => void;
   onToggleKeepDrawing: () => void;
   onToggleMagnet: () => void;
@@ -132,7 +133,7 @@ type Props = {
 };
 
 export default function ChartDrawToolbar({
-  activeTool, keepDrawing, magnet, magnetStrength, emoji, onSelectTool, onToggleKeepDrawing, onToggleMagnet, onSelectMagnetStrength, onSelectEmoji, onOpenSettings, hasSelection, onDeleteSelection, onClearAll,
+  activeTool, keepDrawing, magnet, magnetStrength, emoji, quickEmojis, onSelectTool, onToggleKeepDrawing, onToggleMagnet, onSelectMagnetStrength, onSelectEmoji, onOpenSettings, hasSelection, onDeleteSelection, onClearAll,
 }: Props) {
   const [magnetMenuOpen, setMagnetMenuOpen] = useState(false);
   const [magnetMenuPos, setMagnetMenuPos] = useState<{ left: number; top: number } | null>(null);
@@ -309,7 +310,7 @@ export default function ChartDrawToolbar({
         ? createPortal(
           <div ref={menuRef} className={`fixed z-[280] rounded-xl border border-border bg-panel/97 p-1.5 shadow-[0_22px_70px_rgba(0,0,0,0.55)] backdrop-blur-xl ${openGroup === "emoji" ? "flex h-[528px] max-h-[calc(100dvh-16px)] w-[320px] max-w-[calc(100vw-16px)] flex-col overflow-hidden" : "max-h-[70vh] w-[218px] overflow-y-auto"}`} style={{ left: menuPos.left, top: menuPos.top } as CSSProperties}>
             {openGroup === "emoji" ? (
-              <ChartEmojiPicker emoji={emoji} onSelect={(value) => { onSelectEmoji(value); selectTool("emoji"); setOpenGroup(null); }} />
+              <ChartEmojiPicker emoji={emoji} quickEmojis={quickEmojis} onSelect={(value) => { onSelectEmoji(value); selectTool("emoji"); setOpenGroup(null); }} />
             ) : flyoutTools.map((toolId) => {
               const Icon = iconFor(toolId);
               const isActive = activeTool === toolId;

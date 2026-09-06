@@ -2744,3 +2744,12 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
   exact execution tape.
 - Keep disjoint Monthly/Visible filtering and incomplete prior-contract months
   fail-closed until their exact data contracts exist.
+
+## 2026-09-07 — Chart emoji quick picks
+
+- The chart emoji flyout's top row is a global persisted 16-item recent list.
+  Every chosen emoji moves to the front, duplicates collapse by presentation-
+  neutral Unicode identity, and the oldest entry drops off.
+- Keep the original 16 as first-run defaults and synchronize the list across
+  every open chart. Prompt/outcome:
+  `docs/prompt-log/2026-09-07-chart-emoji-quick-picks.md`.

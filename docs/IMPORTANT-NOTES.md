@@ -538,3 +538,10 @@ recap of the open items below and update this file when their state changes.
 - A prior contract/month must have complete exact execution coverage. Never
   substitute current-contract or OHLCV distribution and call it historical
   volume-at-price.
+
+## 2026-09-07 — Chart emoji quick picks
+
+- The emoji picker's top row is a persisted, global 16-item recent list. A
+  selected emoji moves to the front, is deduplicated by Unicode presentation
+  identity, and the oldest item is evicted. Keep the original set as first-run
+  defaults and synchronize changes across open charts.

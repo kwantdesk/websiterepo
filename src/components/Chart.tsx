@@ -20,6 +20,12 @@ import { memo, startTransition, useCallback, useEffect, useLayoutEffect, useMemo
 import KwantSelect from "@/components/ui/KwantSelect";
 import { candleCountdownRemainingMs } from "@/lib/chartCountdown";
 import {
+  CHART_QUICK_EMOJI_EVENT,
+  CHART_QUICK_EMOJI_STORAGE_KEY,
+  normalizeChartQuickEmojis,
+  promoteChartQuickEmoji,
+} from "@/lib/chartEmojiCatalog";
+import {
   createChart,
   LineStyle,
   LineType,
@@ -3746,13 +3752,41 @@ function Chart({
     if (typeof window === "undefined") return "🧲";
     try { return window.localStorage.getItem("kwantdesk:chart-emoji:v1") || "🧲"; } catch { return "🧲"; }
   });
-  const selectDrawEmoji = useCallback((emoji: string) => {
-    setDrawEmoji(emoji);
+  const [drawQuickEmojis, setDrawQuickEmojis] = useState<string[]>(() => {
+    if (typeof window === "undefined") return normalizeChartQuickEmojis([]);
     try {
+      return normalizeChartQuickEmojis(JSON.parse(window.localStorage.getItem(CHART_QUICK_EMOJI_STORAGE_KEY) ?? "[]"));
+    } catch {
+      return normalizeChartQuickEmojis([]);
+    }
+  });
+  useEffect(() => {
+    const syncQuickEmojis = (event?: Event) => {
+      if (event instanceof StorageEvent && event.key !== CHART_QUICK_EMOJI_STORAGE_KEY) return;
+      try {
+        setDrawQuickEmojis(normalizeChartQuickEmojis(JSON.parse(window.localStorage.getItem(CHART_QUICK_EMOJI_STORAGE_KEY) ?? "[]")));
+      } catch {
+        setDrawQuickEmojis(normalizeChartQuickEmojis([]));
+      }
+    };
+    window.addEventListener("storage", syncQuickEmojis);
+    window.addEventListener(CHART_QUICK_EMOJI_EVENT, syncQuickEmojis);
+    return () => {
+      window.removeEventListener("storage", syncQuickEmojis);
+      window.removeEventListener(CHART_QUICK_EMOJI_EVENT, syncQuickEmojis);
+    };
+  }, []);
+  const selectDrawEmoji = useCallback((emoji: string) => {
+    const nextQuickEmojis = promoteChartQuickEmoji(drawQuickEmojis, emoji);
+    setDrawEmoji(emoji);
+    setDrawQuickEmojis(nextQuickEmojis);
+    try {
+      window.localStorage.setItem(CHART_QUICK_EMOJI_STORAGE_KEY, JSON.stringify(nextQuickEmojis));
       window.localStorage.setItem("kwantdesk:chart-emoji:v1", emoji);
+      window.dispatchEvent(new Event(CHART_QUICK_EMOJI_EVENT));
       window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
     } catch {}
-  }, []);
+  }, [drawQuickEmojis]);
   const [drawSelectedId, setDrawSelectedId] = useState<string | null>(null);
   const [drawKeepDrawing, setDrawKeepDrawing] = useState(false);
   const [drawMagnet, setDrawMagnet] = useState(false);
@@ -18386,6 +18420,7 @@ function Chart({
           magnet={drawMagnet}
           magnetStrength={drawMagnetStrength}
           emoji={drawEmoji}
+          quickEmojis={drawQuickEmojis}
           onSelectTool={(tool) => { setDrawTool(tool); if (tool !== "cursor") setDrawSelectedId(null); }}
           onToggleKeepDrawing={() => setDrawKeepDrawing((value) => !value)}
           onToggleMagnet={toggleDrawMagnet}

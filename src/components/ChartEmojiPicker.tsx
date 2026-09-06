@@ -1,11 +1,11 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
-import { CHART_EMOJI_CATALOG, CHART_EMOJI_CATEGORIES, CHART_QUICK_EMOJIS, chartEmojiIdentity, chartEmojiPage, filterChartEmojis } from "@/lib/chartEmojiCatalog";
+import { CHART_EMOJI_CATALOG, CHART_EMOJI_CATEGORIES, chartEmojiIdentity, chartEmojiPage, filterChartEmojis } from "@/lib/chartEmojiCatalog";
 
 const emojiFont = { fontFamily: '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif' };
 
-export default function ChartEmojiPicker({ emoji, onSelect }: { emoji: string; onSelect: (value: string) => void }) {
+export default function ChartEmojiPicker({ emoji, quickEmojis, onSelect }: { emoji: string; quickEmojis: readonly string[]; onSelect: (value: string) => void }) {
   const [query, setQuery] = useState("");
   const [group, setGroup] = useState(-1);
   const [includeSkinTones, setIncludeSkinTones] = useState(true);
@@ -42,7 +42,7 @@ export default function ChartEmojiPicker({ emoji, onSelect }: { emoji: string; o
         Include skin-tone variations
       </label>
       {!query && group === -1 ? <div className="grid shrink-0 grid-cols-8 gap-1 border-b border-border pb-2" aria-label="Chart quick picks">
-        {CHART_QUICK_EMOJIS.map((value) => button(value, CHART_EMOJI_CATALOG.find((entry) => chartEmojiIdentity(entry.emoji) === chartEmojiIdentity(value))?.name ?? value))}
+        {quickEmojis.map((value) => button(value, CHART_EMOJI_CATALOG.find((entry) => chartEmojiIdentity(entry.emoji) === chartEmojiIdentity(value))?.name ?? value))}
       </div> : null}
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain" style={{ scrollbarWidth: "thin" }} aria-label="Chart emojis">
         <div className="grid grid-cols-8 gap-1 p-1">
