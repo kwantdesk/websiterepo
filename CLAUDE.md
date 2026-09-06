@@ -1,5 +1,18 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-06 — Pending profile-family prerequisite (not released)
+
+- `profileVariantJobs.ts` plans bounded monthly/visible execution windows and
+  owned, bounded-concurrency jobs with stale-result invalidation. Event slices
+  sharing a source execution across viewport boundaries are refused until an
+  allocation-aware data path is wired; never substitute timestamp-only totals.
+- `volumeProfileOwnership.ts` and Chart renderer accept optional ownerInstanceId
+  for new variants; legacy unowned profiles keep exact existing routing/IDs.
+- Eleven tests cover calendar/DST/replay, source-time bounds, ambiguous slices,
+  settings ownership and concurrency. Workspace/live/settings/cache integration
+  is still unfinished; NO pending gate enabled. Continue from
+  `docs/pending-profile-variants-audit.md`, do not call these profiles complete.
+
 ## 2026-09-06 — Absolute Levels, pending-library batch 2
 
 - Added the actual two-price manual study with independent colour/style/width.

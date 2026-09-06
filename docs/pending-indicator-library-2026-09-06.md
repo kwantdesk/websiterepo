@@ -55,9 +55,9 @@ Do not tick a row just because its Add gate changes.
 | `auction-gap-tracker` | [ ] Audit / implement / verify |
 | `session-imbalance` | [ ] Audit / implement / verify |
 | `volume-swing` | [ ] Audit / implement / verify |
-| `monthly-volume-profile` | [ ] Audit / implement / verify |
-| `session-volume-profile` | [ ] Audit / implement / verify |
-| `visible-range-volume-profile` | [ ] Audit / implement / verify |
+| `monthly-volume-profile` | [ ] Owned range/job foundation tested; workspace/live/settings integration outstanding |
+| `session-volume-profile` | [ ] Shared-engine routing audited; session/workspace integration outstanding |
+| `visible-range-volume-profile` | [ ] Owned range/job foundation tested; viewport/sequence-aware data integration outstanding |
 | `market-profile-tpo` | [ ] Audit / implement / verify |
 | `anchored-vwap` | [ ] Audit / implement / verify |
 | `on-candle-stats` | [ ] Audit / implement / verify |
@@ -88,6 +88,9 @@ Do not tick a row just because its Add gate changes.
 | `text-on-chart` | [ ] Audit / implement / verify |
 
 ## Reference evidence and constraints
+
+- Profile-family findings and explicit integration gates:
+  `docs/pending-profile-variants-audit.md`. The 35 Pending count is unchanged.
 
 - Read-only installed DLL probe: `python scripts/dotnet-metadata.py --types Speed`
   successfully read 2,777 types / 30,928 methods but found no unobfuscated Speed

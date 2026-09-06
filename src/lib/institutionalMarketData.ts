@@ -82,6 +82,8 @@ export type InstitutionalVolumeProfileLevel = {
 };
 
 export type InstitutionalVolumeProfile = {
+  /** Client study ownership; never inferred from a shared gateway period. */
+  ownerInstanceId?: string;
   schemaVersion: "kwantify-volume-profile-v1";
   provider: "Databento" | "Rithmic" | "Chart";
   source: string;

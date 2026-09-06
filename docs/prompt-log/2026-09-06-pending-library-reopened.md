@@ -39,3 +39,21 @@ browser QA verified line rendering, price edit, immediate clean save, clean
 close and fixture-local reload. No authenticated cloud/live-market or exact
 DeepCharts stock-default/pixel parity claimed. See the Absolute Levels audit.
 35 unfinished rows remain; ongoing goal is not complete.
+
+Deployment confirmed: batch 1 `91c9be4e` and batch 2 `eef254a1` both
+completed on the existing websiterepo-yfmi integration. After batch 2 the
+production diagnostics returned exact SHA
+`eef254a1702f1032d9cc85184c87892fb39365ed`. Ordinary Speed of Tape research
+continues in `docs/deepcharts-speed-of-tape-pending-audit.md`; no new gate
+enabled for it. Local QA server and temporary browser tab were stopped.
+
+Next continuation: audited Monthly/Session/Visible profile routing. Found the
+single custom-period settings owner would route new variants to Composite.
+Added optional per-instance ownership in the actual renderer, preserving old
+identities, plus bounded/invalidation-aware request jobs and exchange-month /
+visible execution range planners. Eleven new tests passed. This remains an
+integration prerequisite, not a new released indicator; all 35 gates unchanged.
+Detailed unfinished gates: `docs/pending-profile-variants-audit.md`.
+Scoped lint and production build (TypeScript / 80 pages) also passed. Keeping
+this prerequisite local until the complete profile batch is ready avoids a
+production deployment for unfinished library rows. Live remains `eef254a1`.

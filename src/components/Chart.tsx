@@ -446,6 +446,7 @@ import {
 import { buildOptionsDeltaSeries, optionsDeltaSourceForInstrument } from "@/lib/optionsDelta";
 import { isMarketIndexSymbol } from "@/lib/marketIndices";
 import { volumeProfileWithInputData } from "@/lib/volumeProfileMath";
+import { resolveVolumeProfileOwner, volumeProfileOwnerKey } from "@/lib/volumeProfileOwnership";
 import {
   buildMagnetCandles,
   createMagnetResolver,
@@ -15698,17 +15699,6 @@ function Chart({
     // The ladder no longer claims the pane's right edge, so a right-docked
     // profile runs to the price scale exactly as it does with the DOM off.
     primitive.setPaneInsets({ left: toolbarPlotLeftInset, right: 0 });
-    const dailyInstance = indicators.find((instance) =>
-      instance.enabled
-      && [
-        "kwant-profile",
-        "ask-bid-volume-profile",
-        "delta-profile",
-      ].includes(instance.indicatorId));
-    const weeklyInstance = indicators.find((instance) =>
-      instance.enabled && instance.indicatorId === "weekly-volume-profile");
-    const compositeInstance = indicators.find((instance) =>
-      instance.enabled && instance.indicatorId === "composite-volume-profile");
     const lastCandleTime = volumeProfileLastCandleTimestamp === null
       ? null
       : Math.floor(volumeProfileLastCandleTimestamp / 1_000);
@@ -15720,7 +15710,7 @@ function Chart({
     // the history stays readable; only the extensions stop.
     const newestStartByKind = new Map<string, number>();
     for (const profile of volumeProfiles) {
-      const kind = `${profile.root}:${profile.period}`;
+      const kind = volumeProfileOwnerKey(profile);
       const current = newestStartByKind.get(kind);
       if (current == null || profile.startMs > current) newestStartByKind.set(kind, profile.startMs);
     }
@@ -15730,9 +15720,7 @@ function Chart({
         : fallback
     ) as "none" | "until-first-interaction" | "to-window-end";
     const models = volumeProfiles.flatMap((profile): NativeVolumeProfileModel[] => {
-      const instance = profile.period === "weekly"
-        ? weeklyInstance
-        : profile.period === "custom" ? compositeInstance : dailyInstance;
+      const instance = resolveVolumeProfileOwner(profile, indicators);
       if (!instance || profile.levels.length === 0) return [];
       // No native volume-profile mode may render a candle-distributed proxy.
       // It has neither true traded-at-price volume nor aggressor-side delta.
@@ -15740,7 +15728,7 @@ function Chart({
       const profileSettings = instance.settings ?? {};
       const useThemeColors = profileSettings.useThemeColors !== false;
       const levelsVisible = profileSettings.recentLevelsOnly !== true
-        || newestStartByKind.get(`${profile.root}:${profile.period}`) === profile.startMs;
+        || newestStartByKind.get(volumeProfileOwnerKey(profile)) === profile.startMs;
       const requestedSnapMode = (
         ["off", "left", "right"].includes(String(profileSettings.snapMode))
           ? String(profileSettings.snapMode)
@@ -15770,7 +15758,7 @@ function Chart({
         String(profileSettings.inputData) === "trades" ? "trades" : "volume",
       );
       return [{
-        id: `${profile.root}:${profile.period}:${profile.startMs}`,
+        id: `${volumeProfileOwnerKey(profile)}:${profile.startMs}`,
         profile: rendered,
         lastCandleTime,
         intervalSeconds,
