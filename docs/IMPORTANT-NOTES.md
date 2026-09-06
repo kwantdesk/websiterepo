@@ -22,11 +22,17 @@
   now has future-safe confirmed high/low segments, all public display/style
   controls and hard history-gap boundaries.
   Their evidence and parity limits are tracked in the matching DeepCharts
-  audits. 21 still require individual work. Monthly/Session/
+  audits. Text on Chart now has a fixed multiline viewport overlay and the
+  complete public settings contract. 20 still require individual work. Monthly/Session/
   Visible profile data/settings integration remains unfinished, including exact
   multi-session filtering and event-allocation-aware visible boundaries.
   Track `docs/pending-indicator-library-2026-09-06.md`, not the old completion
   claim. Registration is not evidence of formula or visual parity.
+
+- **ADR Target parity:** its public settings and defaults are recovered, but
+  the official screenshot plots six named targets while the article omits
+  their arithmetic. Keep it Pending until controlled DeepCharts value tracing
+  establishes those levels; do not invent trading targets from the screenshot.
 
 This is the persistent launch ledger for material work that is incomplete,
 provider-blocked or unsafe to forget. Every task handoff should include a short

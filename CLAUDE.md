@@ -1,5 +1,17 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-07 — Text on Chart converted from Pending
+
+- Added the official four-setting fixed viewport note: font size, text colour,
+  background colour and multiline text, with DLL-confirmed max size 50.
+- The note is theme-aware, persisted/template-ready, bounded, and excluded
+  from price autoscale. Five focused tests and isolated browser edit/Save/
+  render QA pass. Pending inventory is 20; shared build/deploy gates are due.
+- ADR Target remains Pending: public evidence omits the arithmetic for its six
+  named target lines, so no speculative trading levels were enabled.
+- Evidence: `docs/deepcharts-text-on-chart-audit.md`; prompt/outcome:
+  `docs/prompt-log/2026-09-07-text-on-chart.md`.
+
 ## 2026-09-07 — Swing Point converted from Pending
 
 - Implemented confirmed high/low horizontal segments with the public `2 / 2`

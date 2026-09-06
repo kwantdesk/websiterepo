@@ -15,6 +15,8 @@ import { calculateLinearRegression } from "@/lib/linearRegression";
 import { calculateRegressionChannel } from "@/lib/regressionChannel";
 import { calculateSwingPoints } from "@/lib/swingPointLevels";
 import type { SwingPointLevelOptions } from "@/lib/swingPointLevelPrimitive";
+import { calculateTextOnChart } from "@/lib/textOnChart";
+import type { TextOnChartOptions } from "@/lib/textOnChartPrimitive";
 import { calculateTillsonT3 } from "@/lib/tillsonT3";
 import { calculateSuperTrendSeries } from "@/lib/superTrendSeries";
 import type { SuperTrendLabelOptions } from "@/lib/superTrendLabels";
@@ -35,6 +37,7 @@ import {
 } from "@/lib/vwap";
 
 export type CalculatedIndicatorSeries = {
+  textOnChart?: TextOnChartOptions;
   swingPointLevels?: SwingPointLevelOptions;
   ichimokuCloud?: IchimokuCloudOptions;
   gapZones?: GapZoneRenderOptions;
@@ -368,6 +371,7 @@ function computeIndicatorSeries(
   if (key === "linear-regression") return calculateLinearRegression(candles, instance.settings ?? {}, theme, instance.instanceId, context.instrument);
   if (key === "regression-channel") return calculateRegressionChannel(candles, instance.settings ?? {}, theme, instance.instanceId, context.tickSize);
   if (key === "swing-point") return calculateSwingPoints(candles, instance.settings ?? {}, theme, context.tickSize);
+  if (key === "text-on-chart") return calculateTextOnChart(candles, instance.settings ?? {}, theme);
   if (key === "tillson-t3") return calculateTillsonT3(candles, instance.settings ?? {}, theme, instance.instanceId, context.instrument);
 
   if (key === "source-code-indicator") {

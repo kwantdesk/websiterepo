@@ -473,6 +473,7 @@ const sectionForSetting = (indicatorId: string, key: string, fallback: string) =
         : /^mid/.test(key) ? "MID plot settings" : /^upper/.test(key) ? "UP plot settings" : "DN plot settings"
     : indicatorId === "swing-point"
       ? /^(leftBars|rightBars|filterSwing)$/.test(key) ? "General" : "Plot settings"
+    : indicatorId === "text-on-chart" ? "Text settings"
     : (isTpoIndicator(indicatorId) ? TPO_SETTING_SECTIONS[key] ?? "General" : fallback);
 
 const PIVOT_POINT_MANAGED_SETTINGS = new Set([
@@ -498,6 +499,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "ichimoku-indicator",
   "regression-channel",
   "swing-point",
+  "text-on-chart",
   "super-trend",
   "super-trend-difference",
   "know-sure-thing-kst",
@@ -6636,6 +6638,21 @@ export default function ChartIndicatorsControl({
                     </label>
                   </div>
                 </>
+              ) : null}
+
+              {settingsDefinition.id === "text-on-chart" ? (
+                <div data-settings-section="Text settings" className="space-y-3">
+                  <label className="block space-y-1 text-[10px] text-muted">
+                    <span>Text</span>
+                    <textarea aria-label="Text on Chart message" maxLength={2000} rows={4}
+                      value={String(settingsInstance.settings?.text ?? "")}
+                      onChange={(event) => replace(settingsInstance.instanceId, current => ({
+                        ...current, settings: { ...(current.settings ?? {}), text: event.target.value },
+                      }))}
+                      className="w-full resize-y border border-border bg-background px-3 py-2 text-foreground outline-none focus:border-primary" />
+                  </label>
+                  <p className="text-[10px] text-muted">This note stays pinned to the chart viewport. It does not alter price scale or candle history.</p>
+                </div>
               ) : null}
 
               {settingsDefinition.id === "tillson-t3" ? (

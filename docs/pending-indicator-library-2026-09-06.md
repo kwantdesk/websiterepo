@@ -102,7 +102,7 @@ Live diagnostics returned exact SHA `18a17c4d5ba23233ae678c4a75e324f596f0927b`.
 Isolated final tree passed 90 combined tests, 18 template checks and the normal
 production build. This supersedes the local-only deployment status above/below.
 
-## Remaining 21 — not released by blanket enablement
+## Remaining 20 — not released by blanket enablement
 
 Each row needs evidence, settings/data implementation, calculation tests,
 renderer/theme/persistence verification and explicit visual/latency limits.
@@ -144,7 +144,7 @@ Do not tick a row just because its Add gate changes.
 | `candlestick-bar` | [ ] Audit / implement / verify |
 | `overlay-timeframe-highlight` | [ ] Audit / implement / verify |
 | `annotations-overlay` | [ ] Audit / implement / verify |
-| `text-on-chart` | [ ] Audit / implement / verify |
+| `text-on-chart` | [x] Fixed multiline viewport overlay, full public/DLL settings contract, autoscale safety and browser Save QA |
 
 ## Reference evidence and constraints
 
@@ -170,6 +170,8 @@ Do not tick a row just because its Add gate changes.
   `docs/deepcharts-gap-detector-audit.md`.
 - Swing Point settings, calculation conventions and explicit parity limits:
   `docs/deepcharts-swing-point-audit.md`.
+- Text on Chart settings, placement and explicit visual limits:
+  `docs/deepcharts-text-on-chart-audit.md`.
 - Full formula/pixel parity remains unclaimed until suitable reference evidence
   and side-by-side verification exist. No provider spending is authorised by
   this task and no vendor DLL/source is to be redistributed.

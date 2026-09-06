@@ -63,6 +63,10 @@ export const INDICATOR_PLOT_COLOR_SLOTS: Record<string, IndicatorPlotColorSlot[]
     { key: "highColor", role: "positive" },
     { key: "lowColor", role: "negative" },
   ],
+  "text-on-chart": [
+    { key: "textColor", role: "primary" },
+    { key: "backgroundColor", role: "muted" },
+  ],
   "parabolic-sar": [
     { key: "plotColor", role: "primary" },
     { key: "secondaryColor", role: "secondary" },

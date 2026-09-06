@@ -6,6 +6,7 @@ import { GapZonePrimitive } from "@/lib/gapZonePrimitive";
 import { ZigZagRetracementPrimitive } from "@/lib/zigZagRetracementPrimitive";
 import { IchimokuCloudPrimitive } from "@/lib/ichimokuCloudPrimitive";
 import { SwingPointLevelPrimitive } from "@/lib/swingPointLevelPrimitive";
+import { TextOnChartPrimitive } from "@/lib/textOnChartPrimitive";
 import { useSuperTrendAlerts } from "@/components/useSuperTrendAlerts";
 import { paintSuperTrendSeries } from "@/lib/superTrendSeries";
 import { SUPER_TREND_LIVE_PLOT_EVENT, SuperTrendPlotBuffer } from "@/lib/superTrendLivePlot";
@@ -3347,6 +3348,7 @@ function Chart({
     zigZagRetracementPrimitive?: ZigZagRetracementPrimitive;
     ichimokuCloudPrimitive?: IchimokuCloudPrimitive;
     swingPointLevelPrimitive?: SwingPointLevelPrimitive;
+    textOnChartPrimitive?: TextOnChartPrimitive;
     superTrendDefinition?: CalculatedIndicatorSeries;
     key: string;
     kind: "line" | "histogram";
@@ -16896,6 +16898,7 @@ function Chart({
         if (definition.zigZagRetracements) existing.zigZagRetracementPrimitive?.update(definition.zigZagRetracements);
         if (definition.ichimokuCloud) existing.ichimokuCloudPrimitive?.update(definition.ichimokuCloud);
         if (definition.swingPointLevels) existing.swingPointLevelPrimitive?.update(definition.data, definition.swingPointLevels);
+        if (definition.textOnChart) existing.textOnChartPrimitive?.update(definition.textOnChart);
         if (existing.optionsSignature !== optionsSignature) {
           existing.series.applyOptions(options);
         }
@@ -16949,6 +16952,11 @@ function Chart({
         series.attachPrimitive(swingPointLevelPrimitive);
         swingPointLevelPrimitive.update(definition.data, definition.swingPointLevels);
       }
+      const textOnChartPrimitive = definition.textOnChart ? new TextOnChartPrimitive() : undefined;
+      if (textOnChartPrimitive && definition.textOnChart) {
+        series.attachPrimitive(textOnChartPrimitive);
+        textOnChartPrimitive.update(definition.textOnChart);
+      }
       return {
         superTrendLabels,
         pivotPointLabels,
@@ -16956,6 +16964,7 @@ function Chart({
         zigZagRetracementPrimitive,
         ichimokuCloudPrimitive,
         swingPointLevelPrimitive,
+        textOnChartPrimitive,
         superTrendDefinition: definition.superTrendStyleKey ? definition : undefined,
         key: definition.key,
         kind,

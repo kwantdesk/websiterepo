@@ -11,6 +11,7 @@ import { PARABOLIC_SAR_DEFAULTS } from "@/lib/parabolicSar";
 import { LINEAR_REGRESSION_DEFAULTS } from "@/lib/linearRegression";
 import { REGRESSION_CHANNEL_DEFAULTS, normalizeRegressionChannelSettings } from "@/lib/regressionChannel";
 import { SWING_POINT_DEFAULTS, normalizeSwingPointSettings } from "@/lib/swingPointLevels";
+import { TEXT_ON_CHART_DEFAULTS, normalizeTextOnChartSettings } from "@/lib/textOnChart";
 import { TILLSON_T3_DEFAULTS } from "@/lib/tillsonT3";
 import { SUPER_TREND_DEFAULTS, SUPER_TREND_DIFFERENCE_DEFAULTS, superTrendNumericSettings } from "@/lib/superTrendSettings";
 import { KST_DEFAULTS, KST_NUMERIC_SETTINGS } from "@/lib/knowSureThingSettings";
@@ -105,6 +106,7 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "linear-regression",
   "regression-channel",
   "swing-point",
+  "text-on-chart",
   "parabolic-sar",
   "average-directional-index-adx",
   "absolute-levels",
@@ -301,6 +303,9 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "lineWidth", label: "Line width", defaultValue: 2, min: 1, max: 4, step: 1 },
     { key: "textTickOffset", label: "Text tick offset", defaultValue: 1, min: -1000, max: 1000, step: 1 },
     { key: "textSize", label: "Text size", defaultValue: 11, min: 6, max: 50, step: 0.1 },
+  ],
+  "text-on-chart": [
+    { key: "fontSize", label: "Font size", defaultValue: 30, min: 6, max: 50, step: 0.1 },
   ],
   "parabolic-sar": [
     { key: "accelerationStep", label: "Acceleration step", defaultValue: 0.02, min: 0, max: 1, step: 0.001 },
@@ -1551,6 +1556,7 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
   ...(indicatorId === "linear-regression" ? LINEAR_REGRESSION_DEFAULTS : {}),
   ...(indicatorId === "regression-channel" ? REGRESSION_CHANNEL_DEFAULTS : {}),
   ...(indicatorId === "swing-point" ? SWING_POINT_DEFAULTS : {}),
+  ...(indicatorId === "text-on-chart" ? TEXT_ON_CHART_DEFAULTS : {}),
   ...(indicatorId === "tillson-t3" ? TILLSON_T3_DEFAULTS : {}),
   ...(indicatorId === "super-trend" ? SUPER_TREND_DEFAULTS : {}),
   ...(indicatorId === "super-trend-difference" ? SUPER_TREND_DIFFERENCE_DEFAULTS : {}),
@@ -1569,6 +1575,10 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
   ...(indicatorId === "swing-point" ? {
     highTextColor: theme?.borderUpColor ?? theme?.upColor ?? "#FFFFFF",
     lowTextColor: theme?.borderUpColor ?? theme?.upColor ?? "#FFFFFF",
+  } : {}),
+  ...(indicatorId === "text-on-chart" ? {
+    textColor: theme?.borderUpColor ?? theme?.upColor ?? "#FFFFFF",
+    backgroundColor: theme?.gridColor ?? "#333333",
   } : {}),
   ...(indicatorId === "zero-gamma-line" ? {
     // AUTO follows the chart's own options family (NQ -> NDX, ES -> SPX).
@@ -2954,6 +2964,11 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
   if (normalizedInstance.indicatorId === "swing-point") {
     return { ...normalizedInstance, settings: normalizeSwingPointSettings({
       ...defaultIndicatorSettings("swing-point"), ...(normalizedInstance.settings ?? {}),
+    }) };
+  }
+  if (normalizedInstance.indicatorId === "text-on-chart") {
+    return { ...normalizedInstance, settings: normalizeTextOnChartSettings({
+      ...defaultIndicatorSettings("text-on-chart"), ...(normalizedInstance.settings ?? {}),
     }) };
   }
   if (["vwap", "vwap-envelopes", "rolling-vwap"].includes(normalizedInstance.indicatorId)) {

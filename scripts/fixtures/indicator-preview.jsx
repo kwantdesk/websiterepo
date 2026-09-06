@@ -12,6 +12,7 @@ import { GapZonePrimitive } from "../../src/lib/gapZonePrimitive";
 import { ZigZagRetracementPrimitive } from "../../src/lib/zigZagRetracementPrimitive";
 import { IchimokuCloudPrimitive } from "../../src/lib/ichimokuCloudPrimitive";
 import { SwingPointLevelPrimitive } from "../../src/lib/swingPointLevelPrimitive";
+import { TextOnChartPrimitive } from "../../src/lib/textOnChartPrimitive";
 import { useSuperTrendAlerts } from "../../src/components/useSuperTrendAlerts";
 import { paintSuperTrendSeries } from "../../src/lib/superTrendSeries";
 import { LIVE_CHART_CANDLE_EVENT } from "../../src/lib/chartLiveEvents";
@@ -21,8 +22,8 @@ import actualOverlayOptions from "kwant-preview-overlay-options";
 // Isolated, clearly labelled fixtures: never a market feed or production page.
 const requestedPreview = new URLSearchParams(location.search).get("indicator");
 const autoOpenSettings = new URLSearchParams(location.search).get("settings") === "1";
-const previewId = requestedPreview === "swing-point" ? "swing-point" : requestedPreview === "regression-channel" ? "regression-channel" : requestedPreview === "ichimoku-indicator" ? "ichimoku-indicator" : requestedPreview === "inverse-cyber-cycle" ? "inverse-cyber-cycle" : requestedPreview === "zigzag" ? "zig-zag" : requestedPreview === "gap" ? "gap-detector" : requestedPreview === "pivot" ? "pivot-points" : requestedPreview === "supertrend" ? "super-trend" : requestedPreview === "supertrend-difference" ? "super-trend-difference" : requestedPreview === "kst" ? "know-sure-thing-kst" : requestedPreview === "t3" ? "tillson-t3" : requestedPreview === "regression" ? "linear-regression" : requestedPreview === "sar" ? "parabolic-sar" : requestedPreview === "adx" ? "average-directional-index-adx" : "absolute-levels";
-const previewName = previewId === "swing-point" ? "Swing Point" : previewId === "regression-channel" ? "Regression Channel" : previewId === "ichimoku-indicator" ? "Ichimoku Indicator" : previewId === "inverse-cyber-cycle" ? "Inverse Cyber Cycle" : previewId === "zig-zag" ? "Zig Zag" : previewId === "gap-detector" ? "Gap Detector" : previewId === "pivot-points" ? "Pivot Points" : previewId === "super-trend" ? "Super Trend" : previewId === "super-trend-difference" ? "Super Trend Difference" : previewId === "know-sure-thing-kst" ? "Know Sure Thing" : previewId === "tillson-t3" ? "Tillson T3" : previewId === "linear-regression" ? "Linear Regression" : previewId === "absolute-levels" ? "Absolute Levels" : previewId === "parabolic-sar" ? "Parabolic SAR" : "ADX";
+const previewId = requestedPreview === "text-on-chart" ? "text-on-chart" : requestedPreview === "swing-point" ? "swing-point" : requestedPreview === "regression-channel" ? "regression-channel" : requestedPreview === "ichimoku-indicator" ? "ichimoku-indicator" : requestedPreview === "inverse-cyber-cycle" ? "inverse-cyber-cycle" : requestedPreview === "zigzag" ? "zig-zag" : requestedPreview === "gap" ? "gap-detector" : requestedPreview === "pivot" ? "pivot-points" : requestedPreview === "supertrend" ? "super-trend" : requestedPreview === "supertrend-difference" ? "super-trend-difference" : requestedPreview === "kst" ? "know-sure-thing-kst" : requestedPreview === "t3" ? "tillson-t3" : requestedPreview === "regression" ? "linear-regression" : requestedPreview === "sar" ? "parabolic-sar" : requestedPreview === "adx" ? "average-directional-index-adx" : "absolute-levels";
+const previewName = previewId === "text-on-chart" ? "Text on Chart" : previewId === "swing-point" ? "Swing Point" : previewId === "regression-channel" ? "Regression Channel" : previewId === "ichimoku-indicator" ? "Ichimoku Indicator" : previewId === "inverse-cyber-cycle" ? "Inverse Cyber Cycle" : previewId === "zig-zag" ? "Zig Zag" : previewId === "gap-detector" ? "Gap Detector" : previewId === "pivot-points" ? "Pivot Points" : previewId === "super-trend" ? "Super Trend" : previewId === "super-trend-difference" ? "Super Trend Difference" : previewId === "know-sure-thing-kst" ? "Know Sure Thing" : previewId === "tillson-t3" ? "Tillson T3" : previewId === "linear-regression" ? "Linear Regression" : previewId === "absolute-levels" ? "Absolute Levels" : previewId === "parabolic-sar" ? "Parabolic SAR" : "ADX";
 const storageKey = `qa-indicators-${previewId}`;
 const candles = Array.from({ length: previewId === "absolute-levels" ? 30 : previewId === "pivot-points" ? 96 : 100 }, (_, i) => {
   const gapStep = previewId === "gap-detector" ? (Math.floor(i / 18) % 2) * 3 : 0;
@@ -36,7 +37,7 @@ function Preview() {
   const liveCandle = useRef(null);
   const liveStatus = useRef(null);
   const syntheticDirection = useRef(1);
-  const [indicators, setIndicators] = useState(() => JSON.parse(localStorage.getItem(storageKey) || "null") ?? [{ instanceId: "qa-study", indicatorId: previewId, enabled: true, settings: { ...defaultIndicatorSettings(previewId), ...(previewId === "absolute-levels" ? { firstValue: 100.25, secondValue: 101.5, firstLineStyle: "dashed", secondLineStyle: "dotted" } : {}), ...(previewId === "gap-detector" ? { gapMode: "always", tickValue: 4 } : {}) } }]);
+  const [indicators, setIndicators] = useState(() => JSON.parse(localStorage.getItem(storageKey) || "null") ?? [{ instanceId: "qa-study", indicatorId: previewId, enabled: true, settings: { ...defaultIndicatorSettings(previewId), ...(previewId === "text-on-chart" ? { text: "Plan the trade. Trade the plan." } : {}), ...(previewId === "absolute-levels" ? { firstValue: 100.25, secondValue: 101.5, firstLineStyle: "dashed", secondLineStyle: "dotted" } : {}), ...(previewId === "gap-detector" ? { gapMode: "always", tickValue: 4 } : {}) } }]);
   const [request, setRequest] = useState(() => autoOpenSettings ? { instanceId: "qa-study", requestId: Date.now() } : null);
   const [paneLayout, setPaneLayout] = useState({});
   const alert = useSuperTrendAlerts({ indicators, history: candles, liveKey: "qa-synthetic", instrument: "NQ", timeframe: "1m", live: true,
@@ -102,6 +103,10 @@ function Preview() {
         if (definition.swingPointLevels) {
           labels = new SwingPointLevelPrimitive(); plot.attachPrimitive(labels);
           labels.update(definition.data, definition.swingPointLevels);
+        }
+        if (definition.textOnChart) {
+          labels = new TextOnChartPrimitive(); plot.attachPrimitive(labels);
+          labels.update(definition.textOnChart);
         }
         livePlots.current.set(definition.key, { plot, labels, definition, buffer: new SuperTrendPlotBuffer() });
       }
