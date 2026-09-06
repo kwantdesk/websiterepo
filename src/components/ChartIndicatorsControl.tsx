@@ -458,7 +458,14 @@ const hasOwnPaletteSection = (id: string) =>
 const sectionForSetting = (indicatorId: string, key: string, fallback: string) =>
   indicatorId === "auction-gap-tracker" ? auctionGapSettingsSection(key) : indicatorId === "know-sure-thing-kst"
     ? key === "usePercent" || /^(roc\d|average\d|signalPeriod|middleLevel)$/.test(key) ? "Inputs" : "Style"
+    : indicatorId === "pivot-points"
+      ? ["fontSize", "lineWidth", "periodsToShow"].includes(key) ? "Plot settings" : "Custom reference"
     : (isTpoIndicator(indicatorId) ? TPO_SETTING_SECTIONS[key] ?? "General" : fallback);
+
+const PIVOT_POINT_MANAGED_SETTINGS = new Set([
+  "customReferenceEnabled", "referenceTimeframe", "customSessionEnabled",
+  "customSessionStart", "customSessionEnd", "lineStyle", "labelAlign",
+]);
 
 export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "super-trend",
@@ -469,6 +476,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "parabolic-sar",
   "average-directional-index-adx",
   "absolute-levels",
+  "pivot-points",
   "gamma-levels",
   "overlay-chart",
   "overlay-symbol",
@@ -6538,6 +6546,83 @@ export default function ChartIndicatorsControl({
                 </div>
               ) : null}
 
+              {settingsDefinition.id === "pivot-points" ? (
+                <div data-settings-section="Plot settings" className="grid gap-3 sm:grid-cols-2">
+                  <label className="block space-y-1 text-[10px] text-muted">
+                    <span>Line style</span>
+                    <KwantSelect value={String(settingsInstance.settings?.lineStyle ?? "dashed")}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                        ...current, settings: { ...(current.settings ?? {}), lineStyle: event.target.value },
+                      }))} menuLabel="Pivot point line style"
+                      className="h-9 w-full border border-border bg-background px-3 text-foreground">
+                      <option value="solid">Solid</option>
+                      <option value="dashed">Dash</option>
+                      <option value="dotted">Dot</option>
+                    </KwantSelect>
+                  </label>
+                  <label className="block space-y-1 text-[10px] text-muted">
+                    <span>Label align</span>
+                    <KwantSelect value={String(settingsInstance.settings?.labelAlign ?? "left")}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                        ...current, settings: { ...(current.settings ?? {}), labelAlign: event.target.value },
+                      }))} menuLabel="Pivot point label alignment"
+                      className="h-9 w-full border border-border bg-background px-3 text-foreground">
+                      <option value="left">Left</option>
+                      <option value="right">Right</option>
+                    </KwantSelect>
+                  </label>
+                </div>
+              ) : null}
+
+              {settingsDefinition.id === "pivot-points" ? (
+                <div data-settings-section="Custom reference" className="grid gap-3 sm:grid-cols-2">
+                  <label className="flex min-h-10 items-center gap-2 rounded-lg border border-border bg-surface/30 px-3 text-[9px] text-muted sm:col-span-2">
+                    <input type="checkbox" checked={settingsInstance.settings?.customReferenceEnabled === true}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                        ...current, settings: { ...(current.settings ?? {}), customReferenceEnabled: event.target.checked },
+                      }))} className="accent-primary" />
+                    <span>Enable custom reference timeframe</span>
+                  </label>
+                  <label className="block space-y-1 text-[10px] text-muted sm:col-span-2">
+                    <span>Parameter type</span>
+                    <KwantSelect value={String(settingsInstance.settings?.referenceTimeframe ?? "hour")}
+                      disabled={settingsInstance.settings?.customReferenceEnabled !== true}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                        ...current, settings: { ...(current.settings ?? {}), referenceTimeframe: event.target.value },
+                      }))} menuLabel="Pivot point reference timeframe"
+                      className="h-9 w-full border border-border bg-background px-3 text-foreground disabled:opacity-45">
+                      <option value="minute">Minute</option>
+                      <option value="hour">Hour</option>
+                      <option value="day">Day</option>
+                      <option value="week">Week</option>
+                    </KwantSelect>
+                  </label>
+                </div>
+              ) : null}
+
+              {settingsDefinition.id === "pivot-points" ? (
+                <div data-settings-section="Custom time session" className="grid gap-3 sm:grid-cols-2">
+                  <label className="flex min-h-10 items-center gap-2 rounded-lg border border-border bg-surface/30 px-3 text-[9px] text-muted sm:col-span-2">
+                    <input type="checkbox" checked={settingsInstance.settings?.customSessionEnabled === true}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                        ...current, settings: { ...(current.settings ?? {}), customSessionEnabled: event.target.checked },
+                      }))} className="accent-primary" />
+                    <span>Enable custom exchange-time session</span>
+                  </label>
+                  {(["customSessionStart", "customSessionEnd"] as const).map((key) => (
+                    <label key={key} className="block space-y-1 text-[10px] text-muted">
+                      <span>{key === "customSessionStart" ? "Initial time" : "End time"}</span>
+                      <input type="time" step={1} value={String(settingsInstance.settings?.[key] ?? "00:00:00")}
+                        disabled={settingsInstance.settings?.customSessionEnabled !== true}
+                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                          ...current, settings: { ...(current.settings ?? {}), [key]: event.target.value },
+                        }))}
+                        className="h-9 w-full border border-border bg-background px-3 font-mono text-foreground disabled:opacity-45" />
+                    </label>
+                  ))}
+                </div>
+              ) : null}
+
               {settingsDefinition.id === "zero-gamma-line" ? (
                 <div className="grid gap-3 border border-primary/20 bg-primary/[0.035] p-3 sm:grid-cols-2">
                   <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
@@ -7547,6 +7632,7 @@ export default function ChartIndicatorsControl({
                     && !(settingsDefinition.id === "deep-profile-values" && DEEP_PROFILE_VALUES_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "market-statistics" && MARKET_STATISTICS_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "confluence-identifier" && CONFLUENCE_IDENTIFIER_MANAGED_SETTINGS.has(key))
+                    && !(settingsDefinition.id === "pivot-points" && PIVOT_POINT_MANAGED_SETTINGS.has(key))
                     && !(VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) && VOLUME_PROFILE_VWAP_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "bounce-levels" && key === "syncGexMapColors")
                     && !(settingsDefinition.id === "super-trend" && settingsInstance.settings?.chartArea === "pane" && key === "useSecondaryAxis")

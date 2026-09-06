@@ -1,5 +1,7 @@
 import type { Candle } from "@/lib/backtester";
 import { calculateAbsoluteLevels } from "@/lib/absoluteLevels";
+import { calculatePivotPoints } from "@/lib/pivotPoints";
+import type { PivotPointLabelOptions } from "@/lib/pivotPointLabels";
 import { calculateAverageDirectionalIndex } from "@/lib/averageDirectionalIndex";
 import { calculateParabolicSar } from "@/lib/parabolicSar";
 import { calculateLinearRegression } from "@/lib/linearRegression";
@@ -23,6 +25,7 @@ import {
 } from "@/lib/vwap";
 
 export type CalculatedIndicatorSeries = {
+  pivotLabels?: PivotPointLabelOptions;
   superTrendLabels?: SuperTrendLabelOptions;
   superTrendStyleKey?: string;
   kstPresentation?: KstPanePresentation;
@@ -341,6 +344,7 @@ function computeIndicatorSeries(
   const key = instance.indicatorId;
 
   if (key === "absolute-levels") return calculateAbsoluteLevels(candles, instance.settings ?? {}, theme);
+  if (key === "pivot-points") return calculatePivotPoints(candles, instance.settings ?? {}, theme);
   if (key === "average-directional-index-adx") return calculateAverageDirectionalIndex(candles, instance.settings ?? {}, theme);
   if (key === "parabolic-sar") return calculateParabolicSar(candles, instance.settings ?? {}, theme, instance.instanceId);
   if (key === "linear-regression") return calculateLinearRegression(candles, instance.settings ?? {}, theme, instance.instanceId, context.instrument);

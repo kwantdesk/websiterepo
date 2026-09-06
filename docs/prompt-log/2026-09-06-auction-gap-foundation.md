@@ -233,3 +233,11 @@ backoff, so a maintained environment can return without a container replacement
 or guessed broker-system change. The new regression test and the full gateway
 suite pass (372/372). The recorder mount remained healthy with about 181 GB free;
 live-session verification is still required after Rithmic advertises the system.
+
+Deployment verification follow-up: the exact recovery commit authenticated on
+the next discovery response, accepted all ten futures subscriptions and restored
+valid L3 snapshots. The production execution stream emitted one stream ID from
+`ready` through `seed`, with batch sequence 0, continuity `continuous` and 18
+retained NQ executions. Recorder drops remained zero, the archive mount was
+healthy and approximately 169 GiB remained free. A closed market cannot prove
+advancing trade timestamps; the market-open soak gate remains explicit.

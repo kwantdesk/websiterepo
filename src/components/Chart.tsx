@@ -1,6 +1,7 @@
 "use client";
 
 import { SuperTrendLabels } from "@/lib/superTrendLabels";
+import { PivotPointLabels } from "@/lib/pivotPointLabels";
 import { useSuperTrendAlerts } from "@/components/useSuperTrendAlerts";
 import { paintSuperTrendSeries } from "@/lib/superTrendSeries";
 import { SUPER_TREND_LIVE_PLOT_EVENT, SuperTrendPlotBuffer } from "@/lib/superTrendLivePlot";
@@ -3330,6 +3331,7 @@ function Chart({
   const priceLinesRef = useRef<any[]>([]);
   const indicatorSeriesRefs = useRef<Array<{
     superTrendLabels?: SuperTrendLabels;
+    pivotPointLabels?: PivotPointLabels;
     superTrendDefinition?: CalculatedIndicatorSeries;
     key: string;
     kind: "line" | "histogram";
@@ -16858,6 +16860,7 @@ function Chart({
       if (existing && existing.kind === kind) {
         if (definition.superTrendLabels) existing.superTrendLabels?.update(definition.data, definition.superTrendLabels,
           settings.backgroundColor, definition.color, priceFormat.precision);
+        if (definition.pivotLabels) existing.pivotPointLabels?.update(definition.data, definition.pivotLabels, definition.color);
         if (existing.optionsSignature !== optionsSignature) {
           existing.series.applyOptions(options);
         }
@@ -16886,8 +16889,14 @@ function Chart({
         series.attachPrimitive(superTrendLabels);
         superTrendLabels.update(definition.data, definition.superTrendLabels, settings.backgroundColor, definition.color, priceFormat.precision);
       }
+      const pivotPointLabels = definition.pivotLabels ? new PivotPointLabels() : undefined;
+      if (pivotPointLabels && definition.pivotLabels) {
+        series.attachPrimitive(pivotPointLabels);
+        pivotPointLabels.update(definition.data, definition.pivotLabels, definition.color);
+      }
       return {
         superTrendLabels,
+        pivotPointLabels,
         superTrendDefinition: definition.superTrendStyleKey ? definition : undefined,
         key: definition.key,
         kind,

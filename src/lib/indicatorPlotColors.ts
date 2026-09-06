@@ -67,6 +67,13 @@ export const INDICATOR_PLOT_COLOR_SLOTS: Record<string, IndicatorPlotColorSlot[]
     { key: "firstLineColor", role: "primary" },
     { key: "secondLineColor", role: "secondary" },
   ],
+  "pivot-points": [
+    { key: "pivotPointColor", role: "primary" },
+    { key: "r1Color", role: "negative" },
+    { key: "r2Color", role: "negative" },
+    { key: "s1Color", role: "positive" },
+    { key: "s2Color", role: "positive" },
+  ],
   "market-statistics": [
     { key: "textColor", role: "primary" },
     { key: "averageColor", role: "positive" },

@@ -1,6 +1,7 @@
 import type { ChartSettings } from "@/lib/chartSettings";
 import { AUCTION_GAP_DEFAULTS, AUCTION_GAP_NUMERIC_SETTINGS, auctionGapThemeColors } from "@/lib/auctionGapSettings";
 import { ABSOLUTE_LEVEL_DEFAULTS } from "@/lib/absoluteLevels";
+import { PIVOT_POINT_DEFAULTS } from "@/lib/pivotPoints";
 import { ADX_DEFAULTS } from "@/lib/averageDirectionalIndex";
 import { PARABOLIC_SAR_DEFAULTS } from "@/lib/parabolicSar";
 import { LINEAR_REGRESSION_DEFAULTS } from "@/lib/linearRegression";
@@ -96,6 +97,7 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "parabolic-sar",
   "average-directional-index-adx",
   "absolute-levels",
+  "pivot-points",
   "gamma-environment",
   "vix-environment",
   "zero-gamma-line",
@@ -264,6 +266,12 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "secondValue", label: "Second value", defaultValue: 0, min: -1000000000, max: 1000000000, step: 0.00000001 },
     { key: "firstLineWidth", label: "First line width", defaultValue: 1, min: 1, max: 4, step: 1 },
     { key: "secondLineWidth", label: "Second line width", defaultValue: 1, min: 1, max: 4, step: 1 },
+  ],
+  "pivot-points": [
+    { key: "fontSize", label: "Font size", defaultValue: 12, min: 6, max: 40, step: 0.5 },
+    { key: "lineWidth", label: "Line width", defaultValue: 1, min: 1, max: 4, step: 1 },
+    { key: "periodsToShow", label: "Periods to show", defaultValue: 1, min: 1, max: 30, step: 1 },
+    { key: "referenceValue", label: "Reference timeframe value", defaultValue: 1, min: 1, max: 10000, step: 1 },
   ],
   "volume": [
     { key: "minimumTotalVolume", label: "Minimum total volume", defaultValue: 0, min: 0, max: 10000000, step: 1 },
@@ -1474,6 +1482,7 @@ export const defaultIndicatorSettings = (indicatorId: string, rawTheme?: ChartSe
 const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) => ({
   ...(indicatorId === "auction-gap-tracker" ? { ...AUCTION_GAP_DEFAULTS, ...(theme ? auctionGapThemeColors(theme) : {}) } : {}),
   ...(indicatorId === "absolute-levels" ? ABSOLUTE_LEVEL_DEFAULTS : {}),
+  ...(indicatorId === "pivot-points" ? PIVOT_POINT_DEFAULTS : {}),
   ...(indicatorId === "average-directional-index-adx" ? ADX_DEFAULTS : {}),
   ...(indicatorId === "parabolic-sar" ? PARABOLIC_SAR_DEFAULTS : {}),
   ...(indicatorId === "linear-regression" ? LINEAR_REGRESSION_DEFAULTS : {}),
