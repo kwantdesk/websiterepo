@@ -454,6 +454,7 @@ const sectionForSetting = (indicatorId: string, key: string, fallback: string) =
   (isTpoIndicator(indicatorId) ? TPO_SETTING_SECTIONS[key] ?? "General" : fallback);
 
 export const RENDERED_CHART_INDICATOR_IDS = new Set([
+  "absolute-levels",
   "gamma-levels",
   "overlay-chart",
   "overlay-symbol",
@@ -1499,15 +1500,20 @@ export default function ChartIndicatorsControl({
       replace(existing.instanceId, (instance) => ({ ...instance, enabled: true }));
       return;
     }
+    const newInstanceId = `${indicatorId}-${crypto.randomUUID()}`;
     onChange([
       ...indicators,
       {
-        instanceId: `${indicatorId}-${crypto.randomUUID()}`,
+        instanceId: newInstanceId,
         indicatorId,
         enabled: true,
         settings: defaultIndicatorSettings(indicatorId, chartSettings),
       },
     ]);
+    if (indicatorId === "absolute-levels") {
+      setLibraryOpen(false);
+      setSettingsInstanceId(newInstanceId);
+    }
   };
 
   const toggleLibraryIndicator = (indicatorId: string) => {
@@ -6373,6 +6379,29 @@ export default function ChartIndicatorsControl({
                   <p className="text-[8px] leading-4 text-muted sm:col-span-2">
                     VIX is the market&apos;s 30-day implied-volatility index. The 52-week rank places today inside its trailing range; percentile is the share of trailing closes at or below today. Replay never reads beyond its selected clock.
                   </p>
+                </div>
+              ) : null}
+
+              {settingsDefinition.id === "absolute-levels" ? (
+                <div data-settings-section="Inputs" className="space-y-3">
+                  <p className="text-[10px] text-muted">Enter your two reference prices below. These are manual levels, not calculated signals. Levels outside the visible price range do not squeeze the chart scale.</p>
+                  {(["first", "second"] as const).map((side) => (
+                    <label key={side} className="block space-y-1 text-[10px] text-muted">
+                      <span>{side === "first" ? "First" : "Second"} line style</span>
+                      <KwantSelect
+                        value={String(settingsInstance.settings?.[`${side}LineStyle`] ?? "solid")}
+                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                          ...current, settings: { ...(current.settings ?? {}), [`${side}LineStyle`]: event.target.value },
+                        }))}
+                        menuLabel={`${side} absolute level line style`}
+                        className="h-9 w-full border border-border bg-background px-3 text-foreground"
+                      >
+                        <option value="solid">Solid</option>
+                        <option value="dashed">Dashed</option>
+                        <option value="dotted">Dotted</option>
+                      </KwantSelect>
+                    </label>
+                  ))}
                 </div>
               ) : null}
 

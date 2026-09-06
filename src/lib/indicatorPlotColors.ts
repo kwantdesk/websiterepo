@@ -31,6 +31,10 @@ export type IndicatorPlotColorSlot = {
 };
 
 export const INDICATOR_PLOT_COLOR_SLOTS: Record<string, IndicatorPlotColorSlot[]> = {
+  "absolute-levels": [
+    { key: "firstLineColor", role: "primary" },
+    { key: "secondLineColor", role: "secondary" },
+  ],
   "market-statistics": [
     { key: "textColor", role: "primary" },
     { key: "averageColor", role: "positive" },

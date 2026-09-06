@@ -1,4 +1,5 @@
 import type { Candle } from "@/lib/backtester";
+import { calculateAbsoluteLevels } from "@/lib/absoluteLevels";
 import { exchangeClockParts } from "@/lib/exchangeClock";
 import type { ChartIndicatorInstance } from "@/lib/chartIndicatorCatalog";
 import { calculateDeepEffort } from "@/lib/deepEffort";
@@ -28,6 +29,9 @@ export type CalculatedIndicatorSeries = {
   lineType?: "simple" | "with-steps";
   candleStyle?: "candlestick" | "ohlc" | "candle-body" | "wick-only";
   lastValueVisible?: boolean;
+  /** Full-pane, user-defined reference; does not alter price autoscaling. */
+  horizontalPriceLine?: boolean;
+  excludeFromAutoScale?: boolean;
   independentScale?: boolean;
   priceScaleId?: string;
   showZeroLine?: boolean;
@@ -312,6 +316,8 @@ function computeIndicatorSeries(
 ): CalculatedIndicatorSeries[] {
   if (!instance.enabled || candles.length === 0) return [];
   const key = instance.indicatorId;
+
+  if (key === "absolute-levels") return calculateAbsoluteLevels(candles, instance.settings ?? {}, theme);
 
   if (key === "source-code-indicator") {
     const source = settingString(instance, "source", "");

@@ -16441,7 +16441,14 @@ function Chart({
                 : LineStyle.Solid,
             lineType: definition.lineType === "with-steps" ? LineType.WithSteps : LineType.Simple,
             lastValueVisible: definition.lastValueVisible !== false,
-            priceLineVisible: false,
+            priceLineVisible: definition.horizontalPriceLine === true,
+            ...(definition.horizontalPriceLine ? {
+              priceLineColor: definition.color,
+              priceLineWidth: definition.lineWidth ?? 1,
+              priceLineStyle: definition.lineStyle === "dashed" ? LineStyle.Dashed
+                : definition.lineStyle === "dotted" ? LineStyle.Dotted : LineStyle.Solid,
+            } : {}),
+            ...(definition.excludeFromAutoScale ? { autoscaleInfoProvider: () => null } : {}),
             crosshairMarkerVisible: false,
             ...(definition.priceScaleId?.startsWith("iv-rank-") ? {
               autoscaleInfoProvider: () => ({ priceRange: { minValue: 0, maxValue: 100 } }),

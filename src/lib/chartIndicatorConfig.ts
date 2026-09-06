@@ -1,4 +1,5 @@
 import type { ChartSettings } from "@/lib/chartSettings";
+import { ABSOLUTE_LEVEL_DEFAULTS } from "@/lib/absoluteLevels";
 import type { ChartIndicatorInstance } from "@/lib/chartIndicatorCatalog";
 import { canonicalChartIndicatorId } from "@/lib/chartIndicatorCatalog";
 import { DEFAULT_VOLUME_PROFILE_VALUE_AREA_PERCENT } from "@/lib/volumeProfileMath";
@@ -80,6 +81,7 @@ import { CHART_OVERLAY_SETTINGS_VERSION } from "@/lib/chartOverlays";
 import { DEEP_PATTERN_BUILDER_SETTINGS_VERSION } from "@/lib/deepPatternBuilder";
 
 export const LIVE_CHART_INDICATOR_IDS = new Set([
+  "absolute-levels",
   "gamma-environment",
   "vix-environment",
   "zero-gamma-line",
@@ -221,6 +223,12 @@ export function resolveDailyVolumeProfileCount(value: unknown): number {
 }
 
 export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[]> = {
+  "absolute-levels": [
+    { key: "firstValue", label: "First value", defaultValue: 0, min: -1000000000, max: 1000000000, step: 0.00000001 },
+    { key: "secondValue", label: "Second value", defaultValue: 0, min: -1000000000, max: 1000000000, step: 0.00000001 },
+    { key: "firstLineWidth", label: "First line width", defaultValue: 1, min: 1, max: 4, step: 1 },
+    { key: "secondLineWidth", label: "Second line width", defaultValue: 1, min: 1, max: 4, step: 1 },
+  ],
   "volume": [
     { key: "minimumTotalVolume", label: "Minimum total volume", defaultValue: 0, min: 0, max: 10000000, step: 1 },
   ],
@@ -1428,6 +1436,7 @@ export const defaultIndicatorSettings = (indicatorId: string, rawTheme?: ChartSe
   indicatorSettingsFromTheme(indicatorId, sidedTheme(rawTheme));
 
 const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) => ({
+  ...(indicatorId === "absolute-levels" ? ABSOLUTE_LEVEL_DEFAULTS : {}),
   // One picker per plotted series, seeded from the chart theme so an untouched
   // study looks exactly as it did. Spread FIRST, so any indicator that already
   // declares its own colour keys below keeps them.

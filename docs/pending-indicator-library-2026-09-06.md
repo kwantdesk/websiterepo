@@ -9,7 +9,7 @@ The September 4 overhaul completed its frozen 21-item list, not the whole
 catalogue. The actual September 6 library had 128 entries and 38 failed the
 intersection of LIVE_CHART_INDICATOR_IDS and RENDERED_CHART_INDICATOR_IDS.
 Absolute Levels was incorrectly described as already available in the old
-inventory; it has neither release registration nor calculator in this checkout.
+inventory; it had neither release registration nor calculator at audit time.
 
 Run the complete inventory (not a manually selected subset):
 `node --import ./scripts/alias-hook.mjs scripts/audit-indicator-library.mjs`
@@ -33,7 +33,16 @@ reachable catalogue row and that catalogue IDs are unique.
   production integration; deployed commit verification follows the push.
 - No authenticated chart visual test or live-market soak claimed.
 
-## Remaining 36 — not released by blanket enablement
+## Batch 2 — Absolute Levels
+
+- [x] Implemented its two manual prices and independent colour/style/width,
+  using official documentation and the eight public DLL settings properties.
+- Calculator, actual renderer options, settings, theme ownership and saved
+  normalization covered by tests; production build passed. Isolated browser
+  QA verified full-width lines, price editing, immediate clean Save and close.
+- Details/default and parity limits: `docs/deepcharts-absolute-levels-audit.md`.
+
+## Remaining 35 — not released by blanket enablement
 
 Each row needs evidence, settings/data implementation, calculation tests,
 renderer/theme/persistence verification and explicit visual/latency limits.
@@ -53,7 +62,7 @@ Do not tick a row just because its Add gate changes.
 | `anchored-vwap` | [ ] Audit / implement / verify |
 | `on-candle-stats` | [ ] Audit / implement / verify |
 | `important-levels` | [ ] Audit / implement / verify |
-| `absolute-levels` | [ ] Audit / implement / verify |
+| `absolute-levels` | [x] Batch 2; reference/default limits recorded above |
 | `pivot-points` | [ ] Audit / implement / verify |
 | `price-movement-levels` | [ ] Audit / implement / verify |
 | `fvg-identifier` | [ ] Audit / implement / verify |

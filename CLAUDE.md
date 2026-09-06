@@ -1,5 +1,19 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-06 — Absolute Levels, pending-library batch 2
+
+- Added the actual two-price manual study with independent colour/style/width.
+  Uses one real timestamp per level; horizontal price-line flags are opt-in
+  and levels are excluded from candle autoscaling. Existing plots unchanged.
+- Eight public settings confirmed in installed DLL metadata; official docs
+  establish the manual-level contract. Defaults are KwantDesk choices, not
+  claimed DLL defaults. See `docs/deepcharts-absolute-levels-audit.md`.
+- Five calculator/renderer/persistence tests plus three registration tests;
+  build passed. Isolated browser QA verified prices, full-width rendering,
+  immediate saved status, clean close and fixture-local reload persistence.
+- 35 rows remain. No blanket enablement, vendor call or paid infrastructure
+  change. DeepCharts offline/replay side-by-side comparison remains open.
+
 ## 2026-09-06 — Pending library reopened: earlier inventory was incomplete
 
 - Actual catalogue audit found 38 blocked entries, not zero. The earlier

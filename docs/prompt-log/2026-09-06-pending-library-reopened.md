@@ -30,3 +30,12 @@ formula bodies have not been recovered and parity is not claimed from names.
 Outcome: partial progress, not whole-library completion. The controlling
 checklist is `docs/pending-indicator-library-2026-09-06.md`; the ongoing goal
 remains active for the other 36. No feed, provider or paid infrastructure change.
+
+Batch 2: implemented Absolute Levels from the official manual-price contract
+and eight public DLL settings. Exact prices, independently styled/theme-aware
+full-width lines, no autoscale distortion, settings opened on Add. Five new
+tests plus three registration regressions passed; build passed. Isolated
+browser QA verified line rendering, price edit, immediate clean save, clean
+close and fixture-local reload. No authenticated cloud/live-market or exact
+DeepCharts stock-default/pixel parity claimed. See the Absolute Levels audit.
+35 unfinished rows remain; ongoing goal is not complete.

@@ -3,7 +3,8 @@
 - **Pending indicator library:** the earlier 21-row checklist did not cover
   the whole catalogue. The September 6 audit found 38 blocked rows; two were
   broken catalogue IDs for existing Big Contracts/Liquidity Sweep engines.
-  Those links are repaired; 36 still require individual implementation/audit.
+  Those links are repaired; Absolute Levels is now implemented and locally
+  verified (documented parity limits). 35 still require individual work.
   Track `docs/pending-indicator-library-2026-09-06.md`, not the old completion
   claim. Registration is not evidence of formula or visual parity.
 
