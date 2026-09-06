@@ -1,5 +1,18 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-06 — Theme and chart palette stay together
+
+- Shared saveTheme/resetTheme now commit chart colours and Charts/GEX VUE
+  runtime palettes before the CSS theme event. The settings page passes exact
+  chart overrides through that shared commit rather than owning a separate
+  canvas-notification path. Named presets and custom indicator colours remain
+  separate; candle border colours also survive chart-to-theme conversion.
+- Preference hydration previously retained a local/chosen-during-load theme
+  but could restore cloud chart colours alongside it. It now retains matching
+  local palette/ownership fields in all three runtime chart-settings keys;
+  non-colour preferences and existing account ownership selection are retained.
+- Prompt, executable race tests and verification: `docs/prompt-log/2026-09-06-theme-chart-live-sync.md`.
+
 ## 2026-09-06 — VWAP collapse/flashing after close
 
 - Removed the workspace candle timestamp normaliser's old-to-now fallback.

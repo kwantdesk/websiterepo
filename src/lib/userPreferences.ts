@@ -1,5 +1,6 @@
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { applyTheme } from "./theme.ts";
+import { retainLocalChartAppearance } from "./chartSettings.ts";
 import { writeProtectedItem } from "./browserStorageQuota.ts";
 
 const USER_PREFERENCES_TABLE = "user_preferences";
@@ -417,7 +418,7 @@ export async function hydrateUserPreferences(
       ...selected,
       updatedAt: latest.updatedAt,
       values: {
-        ...selected.values,
+        ...retainLocalChartAppearance(selected.values, latest.values),
         ...(latest.values["olisa-theme"]
           ? { "olisa-theme": latest.values["olisa-theme"] }
           : {}),
@@ -430,7 +431,7 @@ export async function hydrateUserPreferences(
     selected = {
       ...selected,
       values: {
-        ...selected.values,
+        ...retainLocalChartAppearance(selected.values, current.values),
         "olisa-theme": themeAtHydrationStart,
       },
     };

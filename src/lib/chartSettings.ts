@@ -218,5 +218,43 @@ export function mergeChartSettingsIntoTheme(theme: ThemeColors, settings: ChartS
     gridColor: settings.gridColor,
     candleUp: settings.upColor,
     candleDown: settings.downColor,
+    candleUpBorder: settings.borderUpColor,
+    candleDownBorder: settings.borderDownColor,
   };
+}
+
+/** Translate a website palette once, at the shared theme commit boundary. */
+export function chartSettingsForTheme(theme: ThemeColors, current: unknown): ChartSettings {
+  return {
+    ...normalizeChartSettings(current),
+    themeLinked: true,
+    backgroundColor: theme.chartBackground,
+    gridColor: theme.gridColor,
+    upColor: theme.candleUp,
+    downColor: theme.candleDown,
+    borderUpColor: theme.candleUpBorder,
+    borderDownColor: theme.candleDownBorder,
+    wickUpColor: theme.candleUpBorder,
+    wickDownColor: theme.candleDownBorder,
+  };
+}
+
+/** When hydration retains a local theme, retain its chart colours atomically. */
+export function retainLocalChartAppearance(
+  selected: Record<string, string>, local: Record<string, string>,
+): Record<string, string> {
+  const values = { ...selected };
+  for (const key of [CHART_SETTINGS_STORAGE_KEY, ...SCOPED_CHART_SETTINGS_STORAGE_KEYS]) {
+    if (!local[key]) continue;
+    try {
+      const appearance = normalizeChartSettings(JSON.parse(local[key]));
+      const next = normalizeChartSettings(JSON.parse(selected[key] ?? local[key]));
+      for (const field of CHART_THEME_COLOR_FIELDS) next[field] = appearance[field];
+      next.themeLinked = appearance.themeLinked;
+      values[key] = JSON.stringify(next);
+    } catch {
+      // Malformed local storage must not replace a valid account snapshot.
+    }
+  }
+  return values;
 }

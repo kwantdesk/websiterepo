@@ -60,11 +60,11 @@ check("one appearance commit updates chart payload before the global theme event
   const commit = settingsWorkspace.match(
     /function commitAppearance[\s\S]*?\n  }\n\n  function commitChartPreference/,
   )?.[0] ?? "";
-  assert.match(commit, /saveStoredChartSettings\(normalizedChartSettings\)/);
-  assert.match(commit, /saveAppTheme\(nextTheme\)/);
+  assert.match(commit, /saveAppTheme\(nextTheme, normalizedChartSettings\)/);
+  const save = theme.slice(theme.indexOf("export function saveTheme"), theme.indexOf("export function resetTheme"));
   assert.ok(
-    commit.indexOf("saveStoredChartSettings(normalizedChartSettings)")
-      < commit.indexOf("saveAppTheme(nextTheme)"),
+    save.indexOf("commitThemeCharts(normalized, chartSettings)")
+      < save.indexOf("applyTheme(normalized)"),
     "the CSS event can run before canvas charts receive the selected palette",
   );
   assert.match(settingsWorkspace, /function applyThemePreset[\s\S]*?commitAppearance\(theme, nextChartSettings\)/);

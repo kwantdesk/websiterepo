@@ -1,6 +1,7 @@
 import { writeProtectedItem } from "./browserStorageQuota.ts";
 import { brandMarkTokens } from "./brandMark.ts";
 import { readableTextOn } from "./readableContrast.ts";
+import { chartSettingsForTheme, loadStoredChartSettings, normalizeChartSettings, relinkStoredChartWorkspaceSettingsToActiveTheme, saveStoredChartSettings, type ChartSettings } from "./chartSettings.ts";
 
 export const defaultTheme = {
   background: "#000000",
@@ -103,10 +104,21 @@ export function applyTheme(theme?: Partial<ThemeColors>) {
   }));
 }
 
-export function saveTheme(theme: ThemeColors) {
+function commitThemeCharts(theme: ThemeColors, chartSettings?: ChartSettings) {
+  const palette = chartSettings
+    ? { ...normalizeChartSettings(chartSettings), themeLinked: true }
+    : chartSettingsForTheme(theme, loadStoredChartSettings());
+  relinkStoredChartWorkspaceSettingsToActiveTheme(palette);
+  saveStoredChartSettings(palette);
+}
+
+export function saveTheme(theme: ThemeColors, chartSettings?: ChartSettings) {
   if (typeof window === "undefined") return;
   const normalized = normalizeTheme(theme);
   writeProtectedItem(THEME_STORAGE_KEY, JSON.stringify(normalized));
+  // Every entry point (not only the settings page) must update canvas state
+  // and both route runtimes before publishing the CSS theme notification.
+  commitThemeCharts(normalized, chartSettings);
   applyTheme(normalized);
   // Theme-linked chart surfaces listen to the event from applyTheme. A surface
   // explicitly switched to custom colours remains custom.
@@ -116,6 +128,7 @@ export function saveTheme(theme: ThemeColors) {
 export function resetTheme() {
   if (typeof window === "undefined") return;
   localStorage.removeItem(THEME_STORAGE_KEY);
+  commitThemeCharts(defaultTheme);
   applyTheme(defaultTheme);
   window.dispatchEvent(new CustomEvent("kwantdesk:preferences-changed"));
 }
