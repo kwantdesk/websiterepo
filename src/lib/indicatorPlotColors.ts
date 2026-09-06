@@ -31,6 +31,14 @@ export type IndicatorPlotColorSlot = {
 };
 
 export const INDICATOR_PLOT_COLOR_SLOTS: Record<string, IndicatorPlotColorSlot[]> = {
+  "super-trend": [
+    { key: "plotColor", role: "positive" },
+    { key: "secondaryColor", role: "negative" },
+  ],
+  "super-trend-difference": [
+    { key: "plotColor", role: "positive" },
+    { key: "secondaryColor", role: "negative" },
+  ],
   "know-sure-thing-kst": [
     { key: "kstColor", role: "primary" },
     { key: "kstSecondaryColor", role: "negative" },

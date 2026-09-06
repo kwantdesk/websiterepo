@@ -4,6 +4,7 @@ import { calculateAverageDirectionalIndex } from "@/lib/averageDirectionalIndex"
 import { calculateParabolicSar } from "@/lib/parabolicSar";
 import { calculateLinearRegression } from "@/lib/linearRegression";
 import { calculateTillsonT3 } from "@/lib/tillsonT3";
+import { calculateSuperTrendSeries } from "@/lib/superTrendSeries";
 import { calculateKstSeries, type KstPanePresentation } from "@/lib/knowSureThingSeries";
 import { exchangeClockParts } from "@/lib/exchangeClock";
 import type { ChartIndicatorInstance } from "@/lib/chartIndicatorCatalog";
@@ -31,6 +32,8 @@ export type CalculatedIndicatorSeries = {
   lineWidth?: 1 | 2 | 3 | 4;
   /** Optional histogram outline; absent keeps every existing study unchanged. */
   histogramOutlineWidth?: number;
+  /** Optional bounded pixel thickness along the time axis; legacy candle widths unchanged. */
+  histogramBarWidth?: number;
   lineStyle?: "solid" | "dashed" | "dotted";
   lineType?: "simple" | "with-steps";
   pointMarkersVisible?: boolean;
@@ -312,6 +315,10 @@ export function calculateIndicatorSeries(
   // flatten those deliberate two-colour paths into one custom swatch.
   if (instance.indicatorId === "know-sure-thing-kst") {
     return instance.enabled ? calculateKstSeries(candles, instance.settings ?? {}, theme) : [];
+  }
+  if (instance.indicatorId === "super-trend" || instance.indicatorId === "super-trend-difference") {
+    return instance.enabled ? calculateSuperTrendSeries(candles, instance.settings ?? {}, theme,
+      instance.instanceId, instance.indicatorId === "super-trend-difference") : [];
   }
   return applyIndicatorPlotColors(
     instance.indicatorId,

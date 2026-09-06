@@ -1,5 +1,18 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-06 — Super Trend integration in progress
+
+- Both IDs now have real engine outputs and scalar settings/style UI/colour
+  slots, but LIVE/RENDERED gates remain OFF (30 Pending). Name/background/
+  marker controls still need rendering, alerts still need Chart dispatch.
+- `SuperTrendAlertTracker` tests baseline suppression, dedup, stale/live gates
+  and scope resets. Must wire real source trade time, not render/bar-open time.
+- Difference histogram width needed optional `histogramBarWidth` support in
+  both pane orientations; legacy candle widths unchanged. 19 combined tests
+  pass, detailed in `docs/deepcharts-super-trend-audit.md`.
+- Next: finish label/alert/orientation integration, browser settings/Save and
+  full build before enabling and batching the pending main push.
+
 ## 2026-09-06 — Super Trend prerequisite, not released
 
 - Shared `superTrend.ts` calculator implements explicit Wilder ATR seed,

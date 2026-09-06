@@ -2,6 +2,33 @@
 
 Status: calculation prerequisite only. Both catalogue entries remain Pending.
 
+## Integration in progress
+
+The real engine now routes both IDs to `superTrendSeries.ts`; gates remain off.
+Flat defaults/numeric sliders, dedicated style/name controls and two colour slots
+are connected. Engine tests prove overlay versus histogram placement, exact
+price-minus-line pairing, independent theme/custom colour ownership, scalar
+roundtrip, width/styles and per-instance secondary-scale options.
+
+The shared pane renderer now accepts an optional explicit histogram thickness:
+only the new Difference output supplies it. Both horizontal and vertical paths
+use `indicatorHistogramWidth`; legacy studies retain candle-body thickness.
+This fixes an integration mismatch found during inspection: setting lineWidth
+alone did not change histogram bars.
+
+`SuperTrendAlertTracker` has bounded per-instance state and tests for baseline,
+repeat direction, stale/disconnected/replay/closed-market input and scope reset.
+It is NOT dispatched from Chart yet. The caller must supply real trade receipt
+time, live eligibility and a scope that changes on backfill/settings/instrument;
+render time cannot act as feed evidence. The 15-second freshness bound is an
+explicit KwantDesk safety convention, not a vendor timing claim.
+
+19 combined new math/engine/alert/width, KST renderer and catalogue tests pass.
+Settings UI is wired but not browser-verified. Defaults for name/background/
+marker controls are still awaiting rendering, and alerts await actual wiring.
+Do not enable either Pending gate until these are complete; no no-op controls
+may be released. Chart orientation/labels and alert source mapping are next.
+
 ## Reference evidence
 
 - [DeepCharts Super Trend](https://www.deepcharts.com/helpcenter/article/super-trend):

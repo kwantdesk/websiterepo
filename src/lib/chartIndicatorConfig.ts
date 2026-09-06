@@ -4,6 +4,7 @@ import { ADX_DEFAULTS } from "@/lib/averageDirectionalIndex";
 import { PARABOLIC_SAR_DEFAULTS } from "@/lib/parabolicSar";
 import { LINEAR_REGRESSION_DEFAULTS } from "@/lib/linearRegression";
 import { TILLSON_T3_DEFAULTS } from "@/lib/tillsonT3";
+import { SUPER_TREND_DEFAULTS, SUPER_TREND_DIFFERENCE_DEFAULTS, superTrendNumericSettings } from "@/lib/superTrendSettings";
 import { KST_DEFAULTS, KST_NUMERIC_SETTINGS } from "@/lib/knowSureThingSettings";
 import type { ChartIndicatorInstance } from "@/lib/chartIndicatorCatalog";
 import { canonicalChartIndicatorId } from "@/lib/chartIndicatorCatalog";
@@ -234,6 +235,8 @@ export function resolveDailyVolumeProfileCount(value: unknown): number {
 
 export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[]> = {
   "know-sure-thing-kst": KST_NUMERIC_SETTINGS,
+  "super-trend": superTrendNumericSettings(),
+  "super-trend-difference": superTrendNumericSettings(true),
   "tillson-t3": [
     { key: "length", label: "Length", defaultValue: 14, min: 1, max: 1000, step: 1 },
     { key: "volumeFactor", label: "Volume factor", defaultValue: 0.618, min: 0, max: 1, step: 0.001 },
@@ -1470,6 +1473,8 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
   ...(indicatorId === "parabolic-sar" ? PARABOLIC_SAR_DEFAULTS : {}),
   ...(indicatorId === "linear-regression" ? LINEAR_REGRESSION_DEFAULTS : {}),
   ...(indicatorId === "tillson-t3" ? TILLSON_T3_DEFAULTS : {}),
+  ...(indicatorId === "super-trend" ? SUPER_TREND_DEFAULTS : {}),
+  ...(indicatorId === "super-trend-difference" ? SUPER_TREND_DIFFERENCE_DEFAULTS : {}),
   ...(indicatorId === "know-sure-thing-kst" ? KST_DEFAULTS : {}),
   // One picker per plotted series, seeded from the chart theme so an untouched
   // study looks exactly as it did. Spread FIRST, so any indicator that already

@@ -1,5 +1,7 @@
 "use client";
 
+import { indicatorHistogramWidth } from "@/lib/indicatorHistogramWidth";
+
 import { memo, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { Check, ChevronDown, GripHorizontal, Minus, Plus, RefreshCw, Settings2 } from "lucide-react";
 import type { CalculatedIndicatorSeries } from "@/lib/chartIndicatorEngine";
@@ -539,7 +541,7 @@ function ChartIndicatorPaneSurface({
                   // candles kept growing and the histogram stayed narrow, so a
                   // bar and its delta stopped being the same width — the one
                   // thing that makes a lower pane readable against price.
-                  const barWidth = chartCandleBodyWidth(paneBarSpacing(visible));
+                  const barWidth = indicatorHistogramWidth(chartCandleBodyWidth(paneBarSpacing(visible)), definition.histogramBarWidth);
                   const zero = Math.max(innerTop, Math.min(innerBottom, yFor(0, definition)));
                   const pathsByColor = new Map<string, string[]>();
                   visible.forEach((point) => {
@@ -1110,9 +1112,9 @@ function ChartVerticalIndicatorPaneSurface({
                     if (definition.kind === "histogram") {
                       // Rotated pane: bars run along price, so the same rule
                       // applies to their height.
-                      const barHeight = chartCandleBodyWidth(
+                      const barHeight = indicatorHistogramWidth(chartCandleBodyWidth(
                         paneBarSpacing(visible.map((point) => ({ x: point.y }))),
-                      );
+                      ), definition.histogramBarWidth);
                       const pathsByColor = new Map<string, string[]>();
                       visible.forEach((point) => {
                         const valueX = xForValue(point.value);

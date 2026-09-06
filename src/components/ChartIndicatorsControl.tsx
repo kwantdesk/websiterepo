@@ -1,5 +1,7 @@
 "use client";
 
+import SuperTrendIndicatorSettings from "@/components/SuperTrendIndicatorSettings";
+
 import { Children, Fragment, isValidElement, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -6398,6 +6400,16 @@ export default function ChartIndicatorsControl({
                     ...current, settings: { ...(current.settings ?? {}), ...patch },
                   }))} />
                 </div>)
+              ) : null}
+
+              {settingsDefinition.id === "super-trend" || settingsDefinition.id === "super-trend-difference" ? (
+                <div data-settings-section="Style">
+                  <SuperTrendIndicatorSettings settings={settingsInstance.settings ?? {}}
+                    difference={settingsDefinition.id === "super-trend-difference"}
+                    onChange={patch => replace(settingsInstance.instanceId, current => ({
+                      ...current, settings: { ...(current.settings ?? {}), ...patch },
+                    }))} />
+                </div>
               ) : null}
 
               {settingsDefinition.id === "average-directional-index-adx" ? (
