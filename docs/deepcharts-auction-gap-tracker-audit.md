@@ -51,6 +51,31 @@ the successful project-config check; it is not a production build claim.
 
 ## Required before release
 
+### Exact event ownership foundation, 2026-09-07
+
+`auctionGapEventAllocation.ts` replays the unchanged existing event builder's
+forming tail per print, derives owning chart index from volume increments,
+and validates all reconstructed candle timestamps/OHLC/volume against the
+expected full source seed. Timestamp alone never assigns ownership. One print
+maps once; bridge bars receive no duplicated volume. Price comparison tolerance
+is tied to tick size, not a price-relative tolerance that could allow whole ticks.
+Thresholds include volume, trade-count, delta; range, Renko, PF and VB covered.
+Prepared execution records now retain validated tradeCount for those builders.
+
+34 combined tests passed plus scoped lint/full tsc; final stricter numeric
+validation reran five allocation tests successfully. Existing event builder
+and working indicators unchanged. This is shared-engine consistency, not
+proof that the existing engine itself matches DeepCharts' event-bar conventions.
+
+Remaining source gates: expected candles must represent the same full seed,
+not a truncated viewport. Existing event builder rejects nonpositive prices;
+adapter reports invalid-source rather than lying about support. A range bridge
+can attribute a real print outside its synthetic boundary; row aggregation
+must preserve the actual price and explicitly reconcile the detector's extreme
+semantics, not move the execution to that boundary. Full exact source-to-row
+adapter, time-bar allocation, cross-session segments and incremental/worker
+integration remain. No Pending gate or production runtime changed.
+
 ### Execution source boundary, 2026-09-07
 
 `auctionGapExecutions.ts` validates exact source/expected contract, explicit

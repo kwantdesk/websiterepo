@@ -6,6 +6,7 @@ export type AuctionGapExecution = {
   timestamp: number;
   tickIndex: number;
   volume: number;
+  tradeCount: number;
   bidVolume: number;
   askVolume: number;
   unknownVolume: number;
@@ -42,7 +43,7 @@ export function prepareAuctionGapExecutions(input: {
     previous = record.timestamp;
     if (![record.open, record.high, record.low, record.close, record.volume, record.bidVolume, record.askVolume].every(Number.isFinite)
       || record.open !== record.close || record.high !== record.close || record.low !== record.close) return fail("requires-executions");
-    if (record.volume <= 0 || record.bidVolume < 0 || record.askVolume < 0
+    if (!Number.isFinite(record.trades) || record.trades <= 0 || record.volume <= 0 || record.bidVolume < 0 || record.askVolume < 0
       || record.bidVolume + record.askVolume > record.volume) return fail("invalid-data");
     const tick = record.close / input.tickSize;
     const tickIndex = Math.round(tick);
@@ -57,7 +58,7 @@ export function prepareAuctionGapExecutions(input: {
       if (record.aggressor === "BUY") askVolume = record.volume;
       else if (record.aggressor === "SELL") bidVolume = record.volume;
     }
-    const execution = { id, timestamp: record.timestamp, tickIndex, volume: record.volume,
+    const execution = { id, timestamp: record.timestamp, tickIndex, volume: record.volume, tradeCount: record.trades,
       bidVolume, askVolume, unknownVolume: record.volume - bidVolume - askVolume, ...time };
     const signature = JSON.stringify(execution);
     const prior = found.get(id);

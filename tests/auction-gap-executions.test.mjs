@@ -6,7 +6,7 @@ const clock = new AuctionGapSessionClock({ timeZone: 'America/Chicago', sessionO
   { resetMode: 'session-open', filterTime: 'rth', customStartMinutes: 0, customEndMinutes: 0 });
 const now = Date.parse('2026-09-08T13:30:00Z');
 const trade = (recordIndex, extra = {}) => ({ recordIndex, timestamp: now, open: 100, high: 100, low: 100, close: 100,
-  volume: 10, bidVolume: 0, askVolume: 0, aggressor: 'BUY', ...extra });
+  volume: 10, trades: 1, bidVolume: 0, askVolume: 0, aggressor: 'BUY', ...extra });
 const run = (records, extra = {}) => prepareAuctionGapExecutions({ contractSymbol: 'NQU6', expectedContract: 'NQU6',
   tickSize: .25, asOfMs: now, coverage: 'complete', records, ...extra }, clock);
 test('real executions retain individual identity, exact volume and exchange clock classification', () => {

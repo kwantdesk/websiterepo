@@ -26,3 +26,9 @@ cutoff, exact identity/tick/volume checks and per-print session flags. 29 tests,
 lint and full TypeScript pass. Found existing timestamp allocation/display-filter
 inheritance unsuitable as proof for this new study. Exact allocation/source
 integration still required. No production change; 28 Pending.
+
+Event allocation continuation: recovered exact per-print owning bar through
+unchanged event engine tail replay with full expected candle reconciliation.
+34 tests pass; no bridge-volume duplication or same-ms timestamp guessing.
+No production push/enablement; exact row generation and UI/live integration
+remain, with explicit synthetic-boundary and nonpositive-price limitations.

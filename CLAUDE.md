@@ -1,5 +1,18 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-07 — Auction Gap exact event allocation foundation
+
+- New `auctionGapEventAllocation.ts` uses unchanged chart builder tail replay,
+  recovers per-print bar index from volume increments and compares full seed
+  expected timestamps/OHLC/volume. No timestamp guessing or bridge duplication.
+- 34 tests pass across detector/lifecycle/clock/source/allocation; lint/tsc pass
+  before final validation tightening, five allocation tests rerun after it.
+- Retains tradeCount in validated executions. Event family tests include v/t/dv,
+  range, Renko, PF and VB. No working source file changed except our new adapter.
+- Still 28 Pending. Next actual rows/time allocation/reset subsegments. Beware
+  synthetic bridge boundary versus real execution price; don't relocate prints.
+  Existing builder rejects nonpositive price; adapter explicitly fails there.
+
 ## 2026-09-07 — Auction Gap source validation foundation
 
 - `auctionGapExecutions.ts` validates provider execution response contract/
