@@ -1,4 +1,5 @@
 import type { ChartSettings } from "@/lib/chartSettings";
+import { AUCTION_GAP_DEFAULTS, AUCTION_GAP_NUMERIC_SETTINGS, auctionGapThemeColors } from "@/lib/auctionGapSettings";
 import { ABSOLUTE_LEVEL_DEFAULTS } from "@/lib/absoluteLevels";
 import { ADX_DEFAULTS } from "@/lib/averageDirectionalIndex";
 import { PARABOLIC_SAR_DEFAULTS } from "@/lib/parabolicSar";
@@ -236,6 +237,7 @@ export function resolveDailyVolumeProfileCount(value: unknown): number {
 }
 
 export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[]> = {
+  "auction-gap-tracker": AUCTION_GAP_NUMERIC_SETTINGS,
   "know-sure-thing-kst": KST_NUMERIC_SETTINGS,
   "super-trend": superTrendNumericSettings(),
   "super-trend-difference": superTrendNumericSettings(true),
@@ -1470,6 +1472,7 @@ export const defaultIndicatorSettings = (indicatorId: string, rawTheme?: ChartSe
   indicatorSettingsFromTheme(indicatorId, sidedTheme(rawTheme));
 
 const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) => ({
+  ...(indicatorId === "auction-gap-tracker" ? { ...AUCTION_GAP_DEFAULTS, ...(theme ? auctionGapThemeColors(theme) : {}) } : {}),
   ...(indicatorId === "absolute-levels" ? ABSOLUTE_LEVEL_DEFAULTS : {}),
   ...(indicatorId === "average-directional-index-adx" ? ADX_DEFAULTS : {}),
   ...(indicatorId === "parabolic-sar" ? PARABOLIC_SAR_DEFAULTS : {}),

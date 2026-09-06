@@ -1,5 +1,25 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-07 — Auction Gap settings and chart-owned primitive
+
+- Added normalized settings/defaults and bounded numeric definitions; wired
+  only Auction Gap into existing Inputs/Style/Alerts dialog and theme colour map.
+  Generic sliders, colour toggles and existing templates/save plumbing reused.
+  Gate remains OFF; do not imply the user can add it yet.
+- Added logical-index/tick-cell plot models and own two-layer chart primitive:
+  zones behind candles, markers above, projection every draw, no DOM/timer.
+  Marker diamond, low-on-rising/high-on-falling convention and full-opacity
+  defaults are explicit KwantDesk presentation choices, not native visual proof.
+- Auction Gap suite: 80 tests pass including final SSR settings test. Full tsc
+  and scoped lint pass. Real template suite 18/18.
+  Broader plot-colour slot verifier fails on 11 pre-existing slot expectations
+  (SAR/LR/SuperTrend/Difference/T3/KST), identically reproduced in detached
+  293d23df release checkout. No changes made to those working studies/tests.
+- Next actual Chart source/coverage adapter, worker scheduling, primitive attach/
+  update/detach and source-timed alerts; browser bundle/render/full-depth QA still
+  needed. New files isolated except narrow config/dialog wiring. No production
+  push; still 28 Pending. Do not hide source failures as empty success.
+
 ## 2026-09-07 — Auction Gap event-bar incremental worker path
 
 - Event allocation now returns validated unchanged-builder continuation; append

@@ -1,5 +1,32 @@
 # Auction Gap Tracker — implementation in progress
 
+### Settings and drawing layer — 2026-09-07
+
+Added normalized settings and the shared-dialog Inputs/Style/Alerts controls:
+six include modes, thresholds/sliders, reset and exchange-time detection windows,
+touch/cross retest convention, zones/markers/both, placement, extension/width/
+opacity/size, four fresh/triggered colours, visibility and alert text/toggles.
+Shared numeric bounds are enforced; no new template store or modal. Actual
+template export/import preserves every setting. Theme mode uses the existing
+visible palette; custom picks use the dialog's existing sibling-seeding/unlink
+behaviour. Not enabled: live alert dispatch is still unwired.
+
+Logical-index models preserve event-bar identity, explicit source-window offset,
+tick-cell outer edges and stopped/reset endpoints. A dedicated chart primitive
+draws zones behind candles and diamond markers above, reprojecting through live
+chart scales every draw. Full-opacity default, tick-cell bands and bar-direction
+placement (low on rising, high on falling) are project conventions; they have not
+been native-screen matched. No animation/DOM viewport polling is introduced.
+
+80 combined tests pass, including six settings/plot tests and the final SSR
+component check. Full tsc/scoped lint pass, shared template suite 18/18. Tests
+cover configuration safety, real template round-trip, modes/colours, transforms,
+detach and real component SSR. These are not browser/visual/source integration
+proof. The broader colour-slot verifier fails identically on older 293d23df
+release checkout (11 SAR/LR/ST/STD/T3/KST slot expectations); unrelated studies
+untouched. Actual Chart source, worker scheduling, attach/update/detach and
+alerts/browser/full-depth QA remain. Gates OFF; no deployment.
+
 ### Event-bar incremental worker connection — 2026-09-07
 
 Validated allocation now returns the exact unchanged event builder's last-candle

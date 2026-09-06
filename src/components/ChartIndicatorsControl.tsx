@@ -1,6 +1,8 @@
 "use client";
 
 import SuperTrendIndicatorSettings from "@/components/SuperTrendIndicatorSettings";
+import AuctionGapIndicatorSettings from "@/components/AuctionGapIndicatorSettings";
+import { auctionGapSettingsSection, auctionGapThemeColors } from "@/lib/auctionGapSettings";
 
 import { Children, Fragment, isValidElement, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -454,7 +456,7 @@ const isTpoIndicator = (id: string) => id === "tpo-chart" || id === "weekly-tpo"
 const hasOwnPaletteSection = (id: string) =>
   VOLUME_PROFILE_INDICATOR_IDS.has(id) || isTpoIndicator(id) || id === "deep-print-footprint";
 const sectionForSetting = (indicatorId: string, key: string, fallback: string) =>
-  indicatorId === "know-sure-thing-kst"
+  indicatorId === "auction-gap-tracker" ? auctionGapSettingsSection(key) : indicatorId === "know-sure-thing-kst"
     ? key === "usePercent" || /^(roc\d|average\d|signalPeriod|middleLevel)$/.test(key) ? "Inputs" : "Style"
     : (isTpoIndicator(indicatorId) ? TPO_SETTING_SECTIONS[key] ?? "General" : fallback);
 
@@ -689,6 +691,7 @@ const volumeProfileThemeColours = (chartSettings: ChartSettings) => ({
  * already on screen so nothing else visibly jumps.
  */
 const themeColourMapFor = (indicatorId: string, chartSettings: ChartSettings) => {
+  if (indicatorId === "auction-gap-tracker") return auctionGapThemeColors(chartSettings) as Record<string, string>;
   if (indicatorId === "bounce-levels") return bounceThemeColours(chartSettings) as Record<string, string>;
   if (indicatorId === "unfinished-auction") {
     return {
@@ -6413,6 +6416,15 @@ export default function ChartIndicatorsControl({
                     }))} />
                 </div>
               ) : null}
+
+              {settingsDefinition.id === "auction-gap-tracker" ? (["Inputs", "Style", "Alerts"] as const).map(section => (
+                <div key={section} data-settings-section={section}>
+                  <AuctionGapIndicatorSettings section={section} settings={settingsInstance.settings ?? {}}
+                    onChange={patch => replace(settingsInstance.instanceId, current => ({
+                      ...current, settings: { ...(current.settings ?? {}), ...patch },
+                    }))} />
+                </div>
+              )) : null}
 
               {settingsDefinition.id === "average-directional-index-adx" ? (
                 <label data-settings-section="Style" className="block space-y-1 text-[10px] text-muted">

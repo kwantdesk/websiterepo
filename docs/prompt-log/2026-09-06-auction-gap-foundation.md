@@ -1,5 +1,13 @@
 # Pending-library continuation — Auction Gap Tracker
 
+2026-09-07 UI/plot continuation: added bounded sliders/defaults, include/session/
+plot/alert controls within shared settings, theme/custom colours and template
+round-trip coverage. Added chart-owned logical-index zone/marker primitive.
+Six settings/plot tests, tsc/lint and shared templates 18/18 pass; wider colour
+slot verifier has identical pre-existing failures on release 293d23df. Not yet
+attached to Chart/data or enabled; browser/source/alert QA remains. 28 Pending,
+no production push, no native visual parity claim.
+
 2026-09-07 event continuation: connected exact append-only event ownership to
 worker rows/session/lifecycle. Tested all seven event families against full
 reconstruction with actual nonempty zones. No silent delta queue replacement
