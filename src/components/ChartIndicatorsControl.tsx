@@ -464,6 +464,8 @@ const sectionForSetting = (indicatorId: string, key: string, fallback: string) =
       ? key === "backgroundOpacity" || /Color$/.test(key) || key === "useThemeColors" ? "Color settings" : "General"
     : indicatorId === "zig-zag"
       ? key.startsWith("retracement") || /^showRetracement/.test(key) || key === "extendRight" ? "Retracement settings" : "Zig Zag settings"
+    : indicatorId === "inverse-cyber-cycle"
+      ? /^(middle|low|high|levelWidth)/.test(key) ? "Level settings" : /^cycleA/.test(key) ? "Cycle A" : /^cycleB/.test(key) ? "Cycle B" : "Parameters"
     : (isTpoIndicator(indicatorId) ? TPO_SETTING_SECTIONS[key] ?? "General" : fallback);
 
 const PIVOT_POINT_MANAGED_SETTINGS = new Set([
@@ -471,8 +473,13 @@ const PIVOT_POINT_MANAGED_SETTINGS = new Set([
   "customSessionStart", "customSessionEnd", "lineStyle", "labelAlign",
 ]);
 const GAP_DETECTOR_MANAGED_SETTINGS = new Set(["upColor", "downColor"]);
+const INVERSE_CYBER_CYCLE_MANAGED_SETTINGS = new Set([
+  "cycleAAutoColor", "cycleBAutoColor", "cycleALineStyle", "cycleBLineStyle",
+  "cycleAShortName", "cycleBShortName",
+]);
 
 export const RENDERED_CHART_INDICATOR_IDS = new Set([
+  "inverse-cyber-cycle",
   "super-trend",
   "super-trend-difference",
   "know-sure-thing-kst",
@@ -659,6 +666,7 @@ function titleFromKey(key: string, indicatorId?: string) {
   if (indicatorId === "session-highs-lows" && key === "showTokyo") return "Show Asia";
   return key
     .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/([A-Z])([A-Z][a-z])/g, "$1 $2")
     .replace(/[-_]+/g, " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
@@ -716,6 +724,18 @@ const themeColourMapFor = (indicatorId: string, chartSettings: ChartSettings) =>
       retracementLineColor: visible.secondary,
       retracementBackgroundColor: visible.muted,
       retracementTextColor: visible.primary,
+    } as Record<string, string>;
+  }
+  if (indicatorId === "inverse-cyber-cycle") {
+    const visible = visibleIndicatorTheme(chartSettings);
+    return {
+      cycleAColor: visible.primary,
+      cycleASecondaryColor: visible.secondary,
+      cycleBColor: visible.negative,
+      cycleBSecondaryColor: visible.positive,
+      middleLevelColor: visible.muted,
+      lowLevelColor: visible.negative,
+      highLevelColor: visible.positive,
     } as Record<string, string>;
   }
   if (indicatorId === "unfinished-auction") {
@@ -6655,6 +6675,38 @@ export default function ChartIndicatorsControl({
                 </div>
               ) : null}
 
+              {settingsDefinition.id === "inverse-cyber-cycle" ? (
+                <div data-settings-section="Subgraphs" className="grid gap-3 sm:grid-cols-2">
+                  {(["A", "B"] as const).flatMap((cycle) => {
+                    const prefix = `cycle${cycle}`;
+                    return [
+                      <label key={`${prefix}-style`} className="block space-y-1 text-[10px] text-muted">
+                        <span>Cycle {cycle} line style</span>
+                        <KwantSelect value={String(settingsInstance.settings?.[`${prefix}LineStyle`] ?? "solid")}
+                          onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [`${prefix}LineStyle`]: event.target.value } }))}
+                          menuLabel={`Cycle ${cycle} line style`} className="h-9 w-full border border-border bg-background px-3 text-foreground">
+                          <option value="solid">Solid</option><option value="dashed">Dash</option><option value="dotted">Dot</option>
+                        </KwantSelect>
+                      </label>,
+                      <label key={`${prefix}-auto`} className="block space-y-1 text-[10px] text-muted">
+                        <span>Cycle {cycle} auto color</span>
+                        <KwantSelect value={String(settingsInstance.settings?.[`${prefix}AutoColor`] ?? "none")}
+                          onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [`${prefix}AutoColor`]: event.target.value } }))}
+                          menuLabel={`Cycle ${cycle} auto color`} className="h-9 w-full border border-border bg-background px-3 text-foreground">
+                          <option value="none">None</option><option value="slope">Slope</option><option value="middle">Middle level</option>
+                        </KwantSelect>
+                      </label>,
+                      <label key={`${prefix}-name`} className="block space-y-1 text-[10px] text-muted sm:col-span-2">
+                        <span>Cycle {cycle} short name</span>
+                        <input type="text" maxLength={32} value={String(settingsInstance.settings?.[`${prefix}ShortName`] ?? `Cyc${cycle}`)}
+                          onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [`${prefix}ShortName`]: event.target.value } }))}
+                          className="h-9 w-full border border-border bg-background px-3 text-foreground" />
+                      </label>,
+                    ];
+                  })}
+                </div>
+              ) : null}
+
               {settingsDefinition.id === "pivot-points" ? (
                 <div data-settings-section="Custom reference" className="grid gap-3 sm:grid-cols-2">
                   <label className="flex min-h-10 items-center gap-2 rounded-lg border border-border bg-surface/30 px-3 text-[9px] text-muted sm:col-span-2">
@@ -7717,6 +7769,7 @@ export default function ChartIndicatorsControl({
                     && !(settingsDefinition.id === "confluence-identifier" && CONFLUENCE_IDENTIFIER_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "pivot-points" && PIVOT_POINT_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "gap-detector" && GAP_DETECTOR_MANAGED_SETTINGS.has(key))
+                    && !(settingsDefinition.id === "inverse-cyber-cycle" && INVERSE_CYBER_CYCLE_MANAGED_SETTINGS.has(key))
                     && !(VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) && VOLUME_PROFILE_VWAP_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "bounce-levels" && key === "syncGexMapColors")
                     && !(settingsDefinition.id === "super-trend" && settingsInstance.settings?.chartArea === "pane" && key === "useSecondaryAxis")

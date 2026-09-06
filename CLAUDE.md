@@ -1,5 +1,20 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-07 — Inverse Cyber Cycle converted from Pending
+
+- Added the real two-window inverse-Fisher oscillator over an Ehlers Cyber
+  Cycle, with observed 0.010 / 21 / 84 defaults and full-width 0 / ±0.60 levels.
+- Added the complete public settings shape, theme/custom colours, auto-colour,
+  labels, secondary scale, pane docking, deep history and saved normalization.
+- Licensed DLL public metadata supplied exact properties/bounds; protected
+  formula bodies were not inspected and exact vendor seed/pixel parity is not
+  claimed. Seven focused tests, numeric-slider/template/theme/layout shared
+  regressions, TypeScript and the complete 80-page production build pass.
+  Isolated browser QA verified the pane/levels, exact numeric controls and
+  Save/close/reopen persistence. Production deployment verification is due.
+- Pending inventory is 24. Audit:
+  `docs/deepcharts-inverse-cyber-cycle-audit.md`.
+
 ## 2026-09-07 — Zig Zag converted from Pending
 
 - Added Highest lowest, Absolute reversal and real instrument-tick reversal,

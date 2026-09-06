@@ -532,6 +532,7 @@ const CUMULATIVE_DELTA_MINIMUM_COVERAGE = 0.95;
  */
 const FOOTPRINT_MINIMUM_FLOW_COVERAGE = 0.85;
 const DEEP_HISTORY_INDICATOR_IDS = new Set([
+  "inverse-cyber-cycle",
   // Linear recurrence: measured 20k-bar p95 ~4.3ms; live updates are incremental.
   "super-trend",
   "super-trend-difference",
@@ -8514,6 +8515,22 @@ function Chart({
           indicatorId: instance.indicatorId, settings: instance.settings, series,
           showLegend: false,
           unavailableReason: series.length ? undefined : "Waiting for complete KST momentum windows, or plots are hidden.",
+        }];
+      }
+      if (instance.indicatorId === "inverse-cyber-cycle") {
+        const cycleBKey = `${instance.instanceId}-cycle-b`;
+        return [{
+          key: instance.instanceId,
+          title: "Inverse Cyber Cycle",
+          indicatorId: instance.indicatorId,
+          settings: instance.settings,
+          series,
+          showLegend: series.some((definition) => definition.label.length > 0),
+          secondaryAxisSeriesKey: instance.settings?.useSecondaryAxis === true ? cycleBKey : undefined,
+          secondaryAxisLabel: instance.settings?.useSecondaryAxis === true ? String(instance.settings?.cycleBShortName ?? "CycB") : undefined,
+          unavailableReason: series.some((definition) => definition.key.endsWith("-cycle-a") && definition.data.length)
+            ? undefined
+            : "Waiting for complete Inverse Cyber Cycle windows.",
         }];
       }
       if (instance.indicatorId === "average-directional-index-adx") {

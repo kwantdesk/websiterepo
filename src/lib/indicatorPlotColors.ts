@@ -83,6 +83,13 @@ export const INDICATOR_PLOT_COLOR_SLOTS: Record<string, IndicatorPlotColorSlot[]
     { key: "downColor", role: "negative" },
     { key: "retracementLineColor", role: "secondary" },
   ],
+  "inverse-cyber-cycle": [
+    { key: "cycleAColor", role: "primary" },
+    { key: "cycleBColor", role: "secondary" },
+    { key: "middleLevelColor", role: "muted" },
+    { key: "lowLevelColor", role: "negative" },
+    { key: "highLevelColor", role: "positive" },
+  ],
   "market-statistics": [
     { key: "textColor", role: "primary" },
     { key: "averageColor", role: "positive" },
@@ -290,6 +297,13 @@ export function indicatorSeriesColorKey(indicatorId: string, seriesKey: string):
     if (seriesKey.endsWith("-zig-zag-up")) return "upColor";
     if (seriesKey.endsWith("-zig-zag-down")) return "downColor";
     if (seriesKey.endsWith("-zig-zag-retracement")) return "retracementLineColor";
+  }
+  if (indicatorId === "inverse-cyber-cycle") {
+    if (seriesKey.endsWith("-cycle-a")) return "cycleAColor";
+    if (seriesKey.endsWith("-cycle-b")) return "cycleBColor";
+    if (seriesKey.endsWith("-middle-level")) return "middleLevelColor";
+    if (seriesKey.endsWith("-low-level")) return "lowLevelColor";
+    if (seriesKey.endsWith("-high-level")) return "highLevelColor";
   }
   if (indicatorId === "deep-delta") {
     const mirroredLevel = seriesKey.match(/^deep-delta-level([12])-negative$/);

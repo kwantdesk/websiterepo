@@ -65,7 +65,7 @@ function formatStatValue(value: number, format: "number" | "percent" | "seconds"
 }
 
 function seriesDomain(series: CalculatedIndicatorSeries[]) {
-  const values = series.filter((definition) => !(definition.kstPresentation || definition.superTrendStyleKey) || !definition.excludeFromAutoScale).flatMap((definition) => definition.data.flatMap((point) => [
+  const values = series.filter((definition) => !definition.excludeFromAutoScale).flatMap((definition) => definition.data.flatMap((point) => [
     point.value,
     point.open,
     point.high,
@@ -289,7 +289,7 @@ function ChartIndicatorPaneSurface({
         const visibleSeries = group.series.map((definition) => ({
           ...definition,
           data: definition.data.filter((point) => {
-            if (group.indicatorId === "know-sure-thing-kst" && definition.horizontalPriceLine) return true;
+            if (definition.horizontalPriceLine) return true;
             const x = xForTime(point.time);
             return x !== null && x >= -10 && x <= plotWidth + 10;
           }),
@@ -538,6 +538,14 @@ function ChartIndicatorPaneSurface({
                     referenceCoordinate={definition.horizontalPriceLine ? yFor(definition.data[0]?.value ?? NaN, definition) : undefined}
                     points={sampledPanePoints(definition, xForTime, plotWidth).map(p => ({ ...p, y: yFor(p.value, definition) }))} />;
                 }
+                if (definition.horizontalPriceLine) {
+                  const value = definition.data[0]?.value;
+                  if (!Number.isFinite(value)) return null;
+                  return <line key={definition.key} x1={leftAxisWidth} x2={plotWidth} y1={yFor(value!, definition)} y2={yFor(value!, definition)}
+                    stroke={definition.color} strokeWidth={definition.lineWidth ?? 1}
+                    strokeDasharray={definition.lineStyle === "dotted" ? "1 3" : definition.lineStyle === "dashed" ? "5 4" : undefined}
+                    vectorEffect="non-scaling-stroke" />;
+                }
                 const visible = sampledPanePoints(definition, xForTime, plotWidth);
                 if (!visible.length) return null;
                 if (definition.kind === "histogram") {
@@ -666,7 +674,7 @@ function ChartIndicatorPaneSurface({
             )) : null}
             {!collapsed && !stats && !group.percentageAxis ? <text x={plotWidth + 6} y={innerTop + 2} fill="var(--muted)" fontSize="8" fontFamily="monospace">{compact(sharedDomain.max)}</text> : null}
             {!collapsed && !stats && !group.percentageAxis ? <text x={plotWidth + 6} y={innerBottom} fill="var(--muted)" fontSize="8" fontFamily="monospace">{compact(sharedDomain.min)}</text> : null}
-            {!collapsed && group.percentageAxis && secondaryDomain && group.secondaryAxisLabel ? (
+            {!collapsed && secondaryDomain && group.secondaryAxisLabel ? (
               <g aria-label={`${group.secondaryAxisLabel} price scale`}>
                 <text x={plotWidth + 6} y={innerTop + 2} fill="var(--muted)" fontSize="8" fontFamily="var(--font-mono), monospace">{secondaryDomain.max.toLocaleString(undefined, { maximumFractionDigits: 2 })}</text>
                 <text x={plotWidth + 6} y={innerBottom} fill="var(--muted)" fontSize="8" fontFamily="var(--font-mono), monospace">{secondaryDomain.min.toLocaleString(undefined, { maximumFractionDigits: 2 })}</text>
@@ -1072,7 +1080,7 @@ function ChartVerticalIndicatorPaneSurface({
           const visibleSeries = group.series.map((definition) => ({
             ...definition,
             data: definition.data.filter((point) => {
-              if (group.indicatorId === "know-sure-thing-kst" && definition.horizontalPriceLine) return true;
+              if (definition.horizontalPriceLine) return true;
               const x = timeToX(point.time);
               return x !== null && x >= -10 && x <= globalPlotWidth + 10;
             }),
@@ -1082,8 +1090,21 @@ function ChartVerticalIndicatorPaneSurface({
             superTrendScale.resolve(group.key, sharedSeries.length ? sharedSeries : visibleSeries, seriesDomain),
             scaleByPane[group.key] ?? 1,
           );
-          const xForValue = (value: number) =>
-            innerLeft + ((value - domain.min) / Math.max(1e-9, domain.max - domain.min)) * innerWidth;
+          const independentDomains = new Map(
+            visibleSeries
+              .filter((series) => series.independentScale)
+              .map((series) => [series.key, scaleDomain(seriesDomain([series]), scaleByPane[group.key] ?? 1)] as const),
+          );
+          const secondarySeries = group.secondaryAxisSeriesKey
+            ? visibleSeries.find((series) => series.key === group.secondaryAxisSeriesKey)
+            : undefined;
+          const secondaryDomain = secondarySeries ? independentDomains.get(secondarySeries.key) : undefined;
+          const xForValue = (value: number, definition?: CalculatedIndicatorSeries) => {
+            const valueDomain = definition?.independentScale
+              ? independentDomains.get(definition.key) ?? domain
+              : domain;
+            return innerLeft + ((value - valueDomain.min) / Math.max(1e-9, valueDomain.max - valueDomain.min)) * innerWidth;
+          };
           const yForTime = (time: number) => {
             const x = timeToX(time);
             if (x === null) return null;
@@ -1119,8 +1140,16 @@ function ChartVerticalIndicatorPaneSurface({
                     if (group.indicatorId === "know-sure-thing-kst") {
                       return <KstPanePlot key={definition.key} series={definition} nameRow={seriesIndex} vertical
                         bounds={{ left: innerLeft, top: plotTop, right: innerRight, bottom: plotBottom }}
-                        referenceCoordinate={definition.horizontalPriceLine ? xForValue(definition.data[0]?.value ?? NaN) : undefined}
-                        points={sampledVerticalPanePoints(definition, yForTime, plotHeight).map(p => ({ ...p, x: xForValue(p.value), y: p.y + plotTop }))} />;
+                        referenceCoordinate={definition.horizontalPriceLine ? xForValue(definition.data[0]?.value ?? NaN, definition) : undefined}
+                        points={sampledVerticalPanePoints(definition, yForTime, plotHeight).map(p => ({ ...p, x: xForValue(p.value, definition), y: p.y + plotTop }))} />;
+                    }
+                    if (definition.horizontalPriceLine) {
+                      const value = definition.data[0]?.value;
+                      if (!Number.isFinite(value)) return null;
+                      return <line key={definition.key} x1={xForValue(value!, definition)} x2={xForValue(value!, definition)} y1={plotTop} y2={plotBottom}
+                        stroke={definition.color} strokeWidth={definition.lineWidth ?? 1}
+                        strokeDasharray={definition.lineStyle === "dotted" ? "1 3" : definition.lineStyle === "dashed" ? "5 4" : undefined}
+                        vectorEffect="non-scaling-stroke" />;
                     }
                     const visible = sampledVerticalPanePoints(definition, yForTime, plotHeight)
                       .map((point) => ({ ...point, y: point.y + plotTop }));
@@ -1133,7 +1162,7 @@ function ChartVerticalIndicatorPaneSurface({
                       ), definition.histogramBarWidth);
                       const pathsByColor = new Map<string, string[]>();
                       visible.forEach((point) => {
-                        const valueX = xForValue(point.value);
+                        const valueX = xForValue(point.value, definition);
                         const color = point.color ?? definition.color;
                         const commands = pathsByColor.get(color) ?? [];
                         commands.push(
@@ -1163,12 +1192,12 @@ function ChartVerticalIndicatorPaneSurface({
                             const high = point.high ?? Math.max(open, close);
                             const low = point.low ?? Math.min(open, close);
                             const color = point.color ?? definition.color;
-                            const openX = xForValue(open);
-                            const closeX = xForValue(close);
+                            const openX = xForValue(open, definition);
+                            const closeX = xForValue(close, definition);
                             const candleStyle = definition.candleStyle ?? "candlestick";
                             return (
                               <g key={`${definition.key}-${point.time}`}>
-                                {candleStyle !== "candle-body" ? <line x1={xForValue(low)} x2={xForValue(high)} y1={point.y} y2={point.y} stroke={color} strokeWidth={definition.lineWidth ?? 1} /> : null}
+                                {candleStyle !== "candle-body" ? <line x1={xForValue(low, definition)} x2={xForValue(high, definition)} y1={point.y} y2={point.y} stroke={color} strokeWidth={definition.lineWidth ?? 1} /> : null}
                                 {candleStyle === "wick-only" ? null : (
                                   <rect
                                     x={Math.min(openX, closeX)}
@@ -1186,9 +1215,9 @@ function ChartVerticalIndicatorPaneSurface({
                     }
                     if (definition.superTrendStyleKey) return <KstPanePlot key={definition.key}
                       series={definition} vertical bounds={{ left: innerLeft, top: plotTop, right: innerRight, bottom: plotBottom }}
-                      points={visible.map(point => ({ ...point, x: xForValue(point.value) }))} />;
+                      points={visible.map(point => ({ ...point, x: xForValue(point.value, definition) }))} />;
                     const path = visible.map((point, index) =>
-                      `${index === 0 || point.breakBefore ? "M" : "L"} ${xForValue(point.value)} ${point.y}`,
+                      `${index === 0 || point.breakBefore ? "M" : "L"} ${xForValue(point.value, definition)} ${point.y}`,
                     ).join(" ");
                     return (
                       <path
@@ -1206,10 +1235,15 @@ function ChartVerticalIndicatorPaneSurface({
                   {group.indicatorId === "super-trend-difference" || group.indicatorId === "super-trend" ? group.series.map(definition => (
                     <SuperTrendPaneLabels key={`labels-${definition.key}`} series={definition}
                       bounds={{ left: innerLeft, top: plotTop, right: innerRight, bottom: plotBottom }}
-                      points={sampledVerticalPanePoints(definition, yForTime, plotHeight).map(point => ({ ...point, x: xForValue(point.value), y: point.y + plotTop }))} />
+                      points={sampledVerticalPanePoints(definition, yForTime, plotHeight).map(point => ({ ...point, x: xForValue(point.value, definition), y: point.y + plotTop }))} />
                   )) : null}
                   <text x={innerLeft} y={height - 1} fill="var(--muted)" fontSize="7" fontFamily="monospace">{compact(domain.min)}</text>
                   <text x={innerRight} y={height - 1} fill="var(--muted)" fontSize="7" fontFamily="monospace" textAnchor="end">{compact(domain.max)}</text>
+                  {secondaryDomain && group.secondaryAxisLabel ? (
+                    <text x={columnLeft + columnWidth / 2} y={headerHeight - 3} fill="var(--muted)" fontSize="7" fontFamily="monospace" textAnchor="middle">
+                      {group.secondaryAxisLabel} {compact(secondaryDomain.min)}..{compact(secondaryDomain.max)}
+                    </text>
+                  ) : null}
                 </>
               ) : null}
             </g>

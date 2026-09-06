@@ -14,8 +14,10 @@
   implemented and production-verified at `18a17c4d`, after an isolated build,
   90 combined tests and 18 template checks. Pivot Points and Gap Detector are
   released with explicit reference limits. Zig Zag now has all three observed
-  modes, a live developing leg and retracements; its release verification is
-  tracked in `docs/deepcharts-zig-zag-audit.md`. 25 still require individual work. Monthly/Session/
+  modes, a live developing leg and retracements. Inverse Cyber Cycle now has
+  its two real cycle plots, three levels and the public settings contract.
+  Their evidence and parity limits are tracked in the matching DeepCharts
+  audits. 24 still require individual work. Monthly/Session/
   Visible profile data/settings integration remains unfinished, including exact
   multi-session filtering and event-allocation-aware visible boundaries.
   Track `docs/pending-indicator-library-2026-09-06.md`, not the old completion

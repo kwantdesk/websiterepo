@@ -4,6 +4,7 @@ import { ABSOLUTE_LEVEL_DEFAULTS } from "@/lib/absoluteLevels";
 import { PIVOT_POINT_DEFAULTS } from "@/lib/pivotPoints";
 import { GAP_DETECTOR_DEFAULTS } from "@/lib/gapDetector";
 import { ZIG_ZAG_DEFAULTS, ZIG_ZAG_NUMERIC_SETTINGS, normalizeZigZagSettings } from "@/lib/zigZag";
+import { INVERSE_CYBER_CYCLE_DEFAULTS, normalizeInverseCyberCycleSettings } from "@/lib/inverseCyberCycle";
 import { ADX_DEFAULTS } from "@/lib/averageDirectionalIndex";
 import { PARABOLIC_SAR_DEFAULTS } from "@/lib/parabolicSar";
 import { LINEAR_REGRESSION_DEFAULTS } from "@/lib/linearRegression";
@@ -92,6 +93,7 @@ import { DEEP_PATTERN_BUILDER_SETTINGS_VERSION } from "@/lib/deepPatternBuilder"
 
 export const LIVE_CHART_INDICATOR_IDS = new Set([
   "zig-zag",
+  "inverse-cyber-cycle",
   "super-trend",
   "super-trend-difference",
   "know-sure-thing-kst",
@@ -244,6 +246,17 @@ export function resolveDailyVolumeProfileCount(value: unknown): number {
 
 export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[]> = {
   "zig-zag": [...ZIG_ZAG_NUMERIC_SETTINGS],
+  "inverse-cyber-cycle": [
+    { key: "smoothingAlpha", label: "Smoothing Alpha", defaultValue: 0.01, min: 0.001, max: 1, step: 0.001 },
+    { key: "cycleALength", label: "Cycle A Length", defaultValue: 21, min: 5, max: 2000, step: 1 },
+    { key: "cycleBLength", label: "Cycle B Length", defaultValue: 84, min: 5, max: 2000, step: 1 },
+    { key: "middleLevel", label: "Middle", defaultValue: 0, min: -1, max: 1, step: 0.1 },
+    { key: "lowLevel", label: "Low", defaultValue: -0.6, min: -1, max: 1, step: 0.1 },
+    { key: "highLevel", label: "High", defaultValue: 0.6, min: -1, max: 1, step: 0.1 },
+    { key: "levelWidth", label: "Level width", defaultValue: 1, min: 1, max: 4, step: 1 },
+    { key: "cycleALineWidth", label: "Cycle A line width", defaultValue: 2, min: 1, max: 4, step: 1 },
+    { key: "cycleBLineWidth", label: "Cycle B line width", defaultValue: 2, min: 1, max: 4, step: 1 },
+  ],
   "auction-gap-tracker": AUCTION_GAP_NUMERIC_SETTINGS,
   "know-sure-thing-kst": KST_NUMERIC_SETTINGS,
   "super-trend": superTrendNumericSettings(),
@@ -1499,6 +1512,7 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     retracementBackgroundColor: theme?.gridColor ?? ZIG_ZAG_DEFAULTS.retracementBackgroundColor,
     retracementTextColor: theme?.upColor ?? ZIG_ZAG_DEFAULTS.retracementTextColor,
   } : {}),
+  ...(indicatorId === "inverse-cyber-cycle" ? INVERSE_CYBER_CYCLE_DEFAULTS : {}),
   ...(indicatorId === "average-directional-index-adx" ? ADX_DEFAULTS : {}),
   ...(indicatorId === "parabolic-sar" ? PARABOLIC_SAR_DEFAULTS : {}),
   ...(indicatorId === "linear-regression" ? LINEAR_REGRESSION_DEFAULTS : {}),
@@ -2873,6 +2887,13 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
   if (normalizedInstance.indicatorId === "zig-zag") {
     const settings = normalizeZigZagSettings({
       ...defaultIndicatorSettings("zig-zag"),
+      ...(normalizedInstance.settings ?? {}),
+    });
+    return { ...normalizedInstance, settings };
+  }
+  if (normalizedInstance.indicatorId === "inverse-cyber-cycle") {
+    const settings = normalizeInverseCyberCycleSettings({
+      ...defaultIndicatorSettings("inverse-cyber-cycle"),
       ...(normalizedInstance.settings ?? {}),
     });
     return { ...normalizedInstance, settings };
