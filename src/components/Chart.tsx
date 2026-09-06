@@ -528,6 +528,9 @@ const CUMULATIVE_DELTA_MINIMUM_COVERAGE = 0.95;
  */
 const FOOTPRINT_MINIMUM_FLOW_COVERAGE = 0.85;
 const DEEP_HISTORY_INDICATOR_IDS = new Set([
+  // Linear recurrence: measured 20k-bar p95 ~4.3ms; live updates are incremental.
+  "super-trend",
+  "super-trend-difference",
   // Four full ROC/average seeds plus signal need up to 2999 real bars.
   "know-sure-thing-kst",
   // Six EMA seed windows at length 1000 need 5995 real bars, not the lite 1500.
@@ -7589,7 +7592,7 @@ function Chart({
       : "CVD · LOADING EXECUTION HISTORY";
   }, [indicatorSignature, indicators, orderFlowHistoryReady, orderFlowSeriesReady]);
 
-  const superTrendAlertNotice = useSuperTrendAlerts({ indicators, history: indicatorCandlesLite, liveKey: liveCandleEventKey,
+  const superTrendAlertNotice = useSuperTrendAlerts({ indicators, history: indicatorCandlesDeep, liveKey: liveCandleEventKey,
     instrument, timeframe, live: marketIsActive === true && !(replayTimestampMs !== null && replayTimestampMs !== undefined && replayTimestampMs > 0),
     onReset: instanceId => {
       superTrendPlotBuffersRef.current.delete(`super-trend-${instanceId}`);

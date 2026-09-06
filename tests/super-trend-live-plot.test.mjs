@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import { SuperTrendPlotBuffer } from "../src/lib/superTrendLivePlot.ts";
 import { calculateSuperTrendSeries, paintSuperTrendSeries } from "../src/lib/superTrendSeries.ts";
 import { SuperTrendLiveCalculator } from "../src/lib/superTrend.ts";
@@ -26,6 +27,24 @@ test("buffer is bounded, rejects invalid values and preserves event-bar times", 
   const result = buffer.merge(series([]));
   assert.equal(result.data.length, 1500); assert.equal(result.data[0].time, 125);
   assert.equal(result.data.at(-1).time, 139.99);
+});
+
+test("deep history survives forming ticks and both calculations use the same deep seed", () => {
+  const buffer = new SuperTrendPlotBuffer();
+  const data = Array.from({ length: 20000 }, (_, i) => ({ time: i, value: i }));
+  const base = series(data);
+  buffer.push(series([{ time: 19999, value: 30000 }]));
+  const merged = buffer.merge(base);
+  assert.equal(merged.data.length, 20000); assert.equal(merged.data[0], data[0]);
+  assert.equal(merged.data.at(-1).value, 30000);
+  buffer.push(series([{ time: 20000, value: 30001 }]));
+  assert.equal(buffer.merge(base).data.length, 20000);
+  assert.equal(buffer.merge(base).data[0].time, 1);
+  const chart = fs.readFileSync(new URL("../src/components/Chart.tsx", import.meta.url), "utf8");
+  const ids = chart.match(/const DEEP_HISTORY_INDICATOR_IDS = new Set\(\[([\s\S]*?)\]\)/)?.[1];
+  assert.ok(ids);
+  for (const id of ["super-trend", "super-trend-difference"]) assert.ok(ids.includes(`"${id}"`));
+  assert.match(chart, /useSuperTrendAlerts\(\{ indicators, history: indicatorCandlesDeep/);
 });
 
 test("incremental styles match complete engine plots, including same-bar slope colouring", () => {

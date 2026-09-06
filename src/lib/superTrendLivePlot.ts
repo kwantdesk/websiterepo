@@ -25,7 +25,9 @@ export class SuperTrendPlotBuffer {
     if (!this.points.size) return base;
     const values = new Map(base.data.map(point => [point.time, point]));
     for (const [time, point] of this.points) values.set(time, point);
-    return { ...base, data: [...values.values()].sort((a, b) => a.time - b.time).slice(-1500) };
+    // The live tail is bounded, but it must not truncate an already-loaded
+    // deep-history study to the tail's 1500-point budget on its first tick.
+    return { ...base, data: [...values.values()].sort((a, b) => a.time - b.time).slice(-Math.max(1500, base.data.length)) };
   }
   clear() { this.points.clear(); this.styleKey = undefined; }
 }

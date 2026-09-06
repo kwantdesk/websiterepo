@@ -325,4 +325,25 @@ isolated release-tree build and exact production SHA verification remain.
 Reference caveats above remain explicit, including protected seeds and marker
 semantics; these are documented implementation conventions, not DLL parity.
 
+## Isolated release verification / deep-history correction
+
+Detached release tree created at
+`C:/Users/Karen/AppData/Local/Temp/kwantdesk-supertrend-release-27b6c4e5`.
+Its 89 combined indicator/registration tests pass. Turbopack initially rejected
+the external node_modules junction; webpack compiled but its different generated
+route checks rejected the pre-existing `buildTpoLevelsPayload` export. That
+unrelated working route was not changed. Replaced only the temporary dependency
+junction with a physical local copy; robocopy exit 1 means files copied. Prior
+webpack output was preserved outside the release tree, not mixed into its types.
+The final isolated check will use the same Turbopack method as production.
+
+Final history-path review found the pair still used the 1500-bar lite history.
+Moved both to the existing 20,000-bar route and use the identical deep history
+to seed live calculation. Updated bounded live merge to retain the loaded base
+history rather than truncate it to 1500 on the first tick. Live-tail storage
+remains capped at 1500; output is capped at the larger existing base length.
+New 20k-history/forming-tick/routing regression passes: 38 focused tests now.
+Measured full 20k calculation p95 4.245ms across 30 warmed local samples.
+Rebuild isolated release tree at the updated commit before one main push.
+
 No available indicator modified. No production release for this prerequisite.

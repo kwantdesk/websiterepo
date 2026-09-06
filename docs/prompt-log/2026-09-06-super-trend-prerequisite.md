@@ -84,3 +84,10 @@ status. 37 focused tests, full shared-worktree build, and browser off/save/
 reload/vertical-scale checks pass. Both gates now registered locally; inventory
 is 100 registered / 28 Pending. Isolated release-tree build and one scoped
 main push with exact live SHA verification still due. No deployment yet.
+
+Isolated check: 89 combined tests passed. External-link Turbopack restriction
+and webpack's pre-existing TPO route validation prevented that build route;
+no unrelated route changed. Physical local dependency copy completed. Final
+review fixed 1500-bar truncation: both studies now use 20k deep history and the
+live merge retains it. 38 focused tests pass. Updated isolated Turbopack build
+and exact deployment verification still outstanding; local tally 28 Pending.
