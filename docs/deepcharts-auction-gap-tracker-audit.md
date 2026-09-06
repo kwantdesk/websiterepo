@@ -1,5 +1,23 @@
 # Auction Gap Tracker — implementation in progress
 
+### Direct live tape extends the compact history — 2026-09-07
+
+Auction Gap is now a consumer of the workspace's direct exact-execution event
+fan-out. The Chart-owned runtime retains one bounded worker client per active
+instance; execution events update its tape by reference and candle events queue
+the newest complete snapshot, so worker coalescing retains only the latest
+calculation while price painting remains independent.
+
+The study treats compact history as an immutable prefix. Once live records are
+present it removes the last compact bar, reconstructs that seam bar plus every
+newer time/event bar from exact executions using the established authoritative
+allocators, and then joins the segments. Exact candle OHLC/volume reconciliation
+must pass. A missing/compacted seam returns unavailable and the UI retains its
+last proven historical frame; it never double-counts rows or flashes empty.
+108 Auction Gap and 51 gateway tests, TypeScript and scoped lint pass. Explicit
+live loss/coverage receipts, status UX, alerts and real browser/live-market QA
+remain. Pending gate stays off; no production push/deployment.
+
 ### Validated history now paints through the real chart path — 2026-09-07
 
 An enabled Auction Gap pane now retrieves the exact compact payload retained

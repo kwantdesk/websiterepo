@@ -818,6 +818,42 @@ interface ChartProps {
   onResetPaperTrading?: () => void;
 }
 
+type AuctionGapChartRuntime = {
+  client: AuctionGapWorkerClient;
+  scope: string;
+  contract: string;
+  timeframe: string;
+  tickSize: number;
+  logicalOffset: number;
+  history: Extract<AuctionGapCompactRowsResult, { status: "ready" }>;
+  candles: Candle[];
+  records: InstitutionalTrade[];
+  settings: Record<string, number | string | boolean>;
+  hasPainted: boolean;
+};
+
+function auctionGapGeometryForChart(
+  candles: readonly Candle[],
+  timeframe: string,
+  tickSize: number,
+  contract: string,
+  asOfMs: number,
+) {
+  const duration = timeframeToMs(timeframe);
+  return candles.map((candle, index) => ({
+    id: JSON.stringify([contract, timeframe, candle.timestamp, index]),
+    timestamp: candle.timestamp,
+    endTime: duration === null
+      ? Number(candle.sourceEndTimestamp ?? candle.timestamp)
+      : candle.timestamp + duration,
+    openTick: Math.round(candle.open / tickSize),
+    highTick: Math.round(candle.high / tickSize),
+    lowTick: Math.round(candle.low / tickSize),
+    closeTick: Math.round(candle.close / tickSize),
+    isClosed: duration === null ? index < candles.length - 1 : candle.timestamp + duration <= asOfMs,
+  }));
+}
+
 export interface ChartLevel {
   id: string;
   price: number;
@@ -3315,6 +3351,7 @@ function Chart({
   const imbalanceZonesPrimitiveRef = useRef<ImbalanceZonesPrimitive | null>(null);
   const auctionGapPrimitiveRef = useRef<AuctionGapPrimitive | null>(null);
   const auctionGapModelsRef = useRef<AuctionGapPlotModel[]>([]);
+  const auctionGapRuntimeRef = useRef<AuctionGapChartRuntime | null>(null);
   const positionCalculatorPrimitiveRef = useRef<PositionCalculatorPrimitive | null>(null);
   const repaintNotifierRef = useRef<ChartRepaintNotifierPrimitive | null>(null);
   const imbalanceZoneModelsRef = useRef<ImbalanceZoneModel[]>([]);
@@ -5841,6 +5878,8 @@ function Chart({
     const primitive = auctionGapPrimitiveRef.current;
     const expectedContract = String(contractSymbol ?? "").trim().toUpperCase();
     if (!auctionGapIndicator || !expectedContract || !timeframe) {
+      auctionGapRuntimeRef.current?.client.dispose();
+      auctionGapRuntimeRef.current = null;
       auctionGapModelsRef.current = [];
       primitive?.update([]);
       return;
@@ -5848,6 +5887,8 @@ function Chart({
     const chartCandles = viewportSyncCandlesRef.current;
     const aligned = alignAuctionGapCompactRows(auctionGapHistory, chartCandles, expectedContract);
     if (aligned.status !== "ready") {
+      auctionGapRuntimeRef.current?.client.dispose();
+      auctionGapRuntimeRef.current = null;
       auctionGapModelsRef.current = [];
       primitive?.update([]);
       return;
@@ -5855,19 +5896,6 @@ function Chart({
 
     const normalized = normalizeAuctionGapSettings(auctionGapIndicator.settings);
     const tickSize = priceFormat.minMove;
-    const geometry = aligned.history.bars.map((bar, index) => {
-      const candle = aligned.candles[index];
-      return {
-        id: JSON.stringify([expectedContract, timeframe, bar.timestamp, index]),
-        timestamp: bar.timestamp,
-        endTime: Number(bar.endTime ?? bar.sourceEndTimestamp ?? bar.timestamp),
-        openTick: Math.round(candle.open / tickSize),
-        highTick: Math.round(candle.high / tickSize),
-        lowTick: Math.round(candle.low / tickSize),
-        closeTick: Math.round(candle.close / tickSize),
-        isClosed: index < aligned.candles.length - 1,
-      };
-    });
     const scope = JSON.stringify([
       chartInstanceId, expectedContract, timeframe, auctionGapIndicator.instanceId,
       auctionGapSettingsSignature, aligned.history.bars[0]?.timestamp,
@@ -5876,37 +5904,59 @@ function Chart({
     ]);
     let disposed = false;
     const client = new AuctionGapWorkerClient((reply) => {
-      if (disposed || reply.scope !== scope) return;
+      const runtime = auctionGapRuntimeRef.current;
+      if (disposed || reply.scope !== scope || !runtime || runtime.scope !== scope) return;
       if (reply.result.status !== "ready") {
-        auctionGapModelsRef.current = [];
-        auctionGapPrimitiveRef.current?.update([]);
+        // A partial live seam must not erase the last proven historical frame.
+        // Initial failure still clears because there is no trusted frame yet.
+        if (!runtime.hasPainted) {
+          auctionGapModelsRef.current = [];
+          auctionGapPrimitiveRef.current?.update([]);
+        }
         return;
       }
       const models = buildAuctionGapPlotModels(
         reply.result.zones,
-        aligned.candles,
-        normalized,
-        tickSize,
+        runtime.candles,
+        runtime.settings,
+        runtime.tickSize,
         settings,
-        aligned.logicalOffset,
+        runtime.logicalOffset,
       );
+      runtime.hasPainted = true;
       auctionGapModelsRef.current = models;
       auctionGapPrimitiveRef.current?.update(models);
     });
+    const runtime: AuctionGapChartRuntime = {
+      client,
+      scope,
+      contract: expectedContract,
+      timeframe,
+      tickSize,
+      logicalOffset: aligned.logicalOffset,
+      history: aligned.history,
+      candles: aligned.candles,
+      records: [],
+      settings: normalized,
+      hasPainted: false,
+    };
+    auctionGapRuntimeRef.current?.client.dispose();
+    auctionGapRuntimeRef.current = runtime;
+    const asOfMs = auctionGapReplayActive
+      ? Number(aligned.history.bars.at(-1)?.endTime
+        ?? aligned.history.bars.at(-1)?.sourceEndTimestamp
+        ?? aligned.history.bars.at(-1)?.timestamp)
+      : Date.now();
     client.request(scope, {
       contractSymbol: expectedContract,
       expectedContract,
       tickSize,
-      asOfMs: auctionGapReplayActive
-        ? Number(aligned.history.bars.at(-1)?.endTime
-          ?? aligned.history.bars.at(-1)?.sourceEndTimestamp
-          ?? aligned.history.bars.at(-1)?.timestamp)
-        : Date.now(),
+      asOfMs,
       coverage: "complete",
       records: [],
       compactHistory: aligned.history,
       candles: aligned.candles,
-      geometry,
+      geometry: auctionGapGeometryForChart(aligned.candles, timeframe, tickSize, expectedContract, asOfMs),
       chart: isEventBasedChartInterval(timeframe)
         ? { kind: "event", timeframe, symbol: expectedContract }
         : { kind: "time" },
@@ -5933,6 +5983,7 @@ function Chart({
     return () => {
       disposed = true;
       client.dispose();
+      if (auctionGapRuntimeRef.current?.client === client) auctionGapRuntimeRef.current = null;
     };
   }, [
     auctionGapHistory,
@@ -5951,6 +6002,72 @@ function Chart({
     settings.upColor,
     timeframe,
   ]);
+
+  useEffect(() => {
+    if (!liveCandleEventKey || auctionGapReplayActive) return;
+    const receiveExecutions = (event: Event) => {
+      const detail = (event as CustomEvent<LiveChartExecutionDetail>).detail;
+      const runtime = auctionGapRuntimeRef.current;
+      if (!detail || detail.key !== liveCandleEventKey || !runtime) return;
+      runtime.records = detail.tape;
+    };
+    const receiveCandle = (event: Event) => {
+      const detail = (event as CustomEvent<LiveChartCandleDetail>).detail;
+      const runtime = auctionGapRuntimeRef.current;
+      if (!detail || detail.key !== liveCandleEventKey || !runtime || !runtime.records.length) return;
+      const live = detail.candle;
+      const last = runtime.candles.at(-1);
+      if (!last || live.timestamp > last.timestamp) runtime.candles = [...runtime.candles, { ...live }];
+      else if (live.timestamp === last.timestamp) runtime.candles = [...runtime.candles.slice(0, -1), { ...live }];
+      else return;
+      const asOfMs = Number.isFinite(detail.sourceTimestampMs) ? Number(detail.sourceTimestampMs) : Date.now();
+      runtime.client.request(runtime.scope, {
+        contractSymbol: runtime.contract,
+        expectedContract: runtime.contract,
+        tickSize: runtime.tickSize,
+        asOfMs,
+        coverage: "complete",
+        records: runtime.records,
+        compactHistory: runtime.history,
+        candles: runtime.candles,
+        geometry: auctionGapGeometryForChart(
+          runtime.candles,
+          runtime.timeframe,
+          runtime.tickSize,
+          runtime.contract,
+          asOfMs,
+        ),
+        chart: isEventBasedChartInterval(runtime.timeframe)
+          ? { kind: "event", timeframe: runtime.timeframe, symbol: runtime.contract }
+          : { kind: "time" },
+        calendar: {
+          timeZone: "America/Chicago",
+          sessionOpenMinutes: 17 * 60,
+          rthStartMinutes: 8 * 60 + 30,
+          rthEndMinutes: 15 * 60,
+        },
+        timeSettings: {
+          resetMode: runtime.settings.resetMode as "none" | "session-open" | "eth-and-rth-open",
+          filterTime: runtime.settings.filterTime as "none" | "eth" | "rth" | "custom",
+          customStartMinutes: Number(runtime.settings.customStartMinutes),
+          customEndMinutes: Number(runtime.settings.customEndMinutes),
+        },
+        detectionSettings: runtime.settings,
+        lifecycleSettings: {
+          retestMode: runtime.settings.retestMode as "touch" | "cross",
+          extendedBars: Number(runtime.settings.extendedBars),
+          showTriggered: Boolean(runtime.settings.showTriggered),
+          onlyTriggered: Boolean(runtime.settings.onlyTriggered),
+        },
+      });
+    };
+    window.addEventListener(LIVE_CHART_EXECUTION_EVENT, receiveExecutions);
+    window.addEventListener(LIVE_CHART_CANDLE_EVENT, receiveCandle);
+    return () => {
+      window.removeEventListener(LIVE_CHART_EXECUTION_EVENT, receiveExecutions);
+      window.removeEventListener(LIVE_CHART_CANDLE_EVENT, receiveCandle);
+    };
+  }, [auctionGapReplayActive, liveCandleEventKey]);
   const barPocIndicator = useMemo(
     () => indicators.find((instance) => instance.enabled && instance.indicatorId === "bar-poc-indicator") ?? null,
     [indicatorSignature, indicators],

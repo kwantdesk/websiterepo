@@ -5745,6 +5745,8 @@ function WorkspaceChartPaneComponent({
     instance.enabled && instance.indicatorId === "deep-print-footprint");
   const instantTapeLiveActive = indicators.some((instance) =>
     instance.enabled && instance.indicatorId === "speed-of-tape-instant");
+  const auctionGapLiveActive = indicators.some((instance) =>
+    instance.enabled && instance.indicatorId === "auction-gap-tracker");
   const nonFootprintOrderFlowActive = indicators.some((instance) =>
     instance.enabled
     && instance.indicatorId !== "deep-print-footprint"
@@ -6313,7 +6315,7 @@ function WorkspaceChartPaneComponent({
           records,
         );
         latestMarketTradesRef.current = next;
-        if (footprintLiveActive || instantTapeLiveActive) {
+        if (footprintLiveActive || instantTapeLiveActive || auctionGapLiveActive) {
           window.dispatchEvent(new CustomEvent(LIVE_CHART_EXECUTION_EVENT, {
             detail: {
               key: pane.id,
@@ -6487,6 +6489,7 @@ function WorkspaceChartPaneComponent({
   }, [
     needsLiveVolumeProfiles,
     needsOrderFlowHistory,
+    auctionGapLiveActive,
     footprintLiveActive,
     instantTapeLiveActive,
     nonFootprintOrderFlowActive,

@@ -1,5 +1,17 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-07 — Auction Gap consumes the direct live execution seam
+
+- Auction Gap now opts into the existing per-pane exact-execution fan-out and
+  coalesces live calculations in its worker instead of moving work to React.
+- Live calculation keeps compact history immutable, replaces its final seam
+  bar from the retained exact tape, and appends newer time/event bars through
+  the existing authoritative allocation logic. A partial/mismatched tape keeps
+  the last proven frame rather than merging false rows or flashing blank.
+- 108 Auction Gap tests, 51 gateway tests, TypeScript and scoped lint pass.
+  Remaining: explicit live loss/coverage receipt propagation, unavailable UX,
+  alerts and browser/live-market QA. Gate OFF/no push/deploy.
+
 ## 2026-09-07 — Auction Gap history reaches the chart primitive
 
 - Active Auction Gap panes now pass their contract/timeframe-scoped compact

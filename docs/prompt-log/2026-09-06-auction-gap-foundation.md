@@ -1,5 +1,13 @@
 # Pending-library continuation — Auction Gap Tracker
 
+2026-09-07 live-seam continuation: Auction Gap now receives the existing direct
+exact-execution fan-out and queues full snapshots through one retained worker.
+Compact history stays immutable; its last bar is replaced and all newer time/
+event bars are rebuilt through authoritative allocation, with exact OHLC/volume
+reconciliation. Missing seams retain the last proven frame instead of merging
+or flashing blank. 108 Auction Gap tests, 51 gateway tests, tsc and lint pass.
+Live loss receipts/status UX/alerts/browser soak remain; Pending, no push/deploy.
+
 2026-09-07 chart-wiring continuation: enabled Auction Gap panes now pass their
 resolved-contract/timeframe-scoped compact history to Chart, calculate through
 the retained Web Worker pipeline and paint via the chart-native primitive.

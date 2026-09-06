@@ -59,9 +59,28 @@ export function prepareAuctionGapStudy(input: AuctionGapStudyInput): AuctionGapP
   catch { return unavailable("invalid-calendar"); }
   if (!auctionGapGeometryMatches(input)) return unavailable("geometry-mismatch");
   if (input.compactHistory) {
+    if (input.compactHistory.status !== "ready") return unavailable("partial-history");
+    const compactCount = input.compactHistory.bars.length;
+    if (!compactCount || compactCount > input.candles.length) return unavailable("source-chart-mismatch");
+    // With no live tape this is the immutable historical seed. Once exact
+    // prints arrive, replace the last compact bar and append every newer bar
+    // from executions. Replacing the seam is essential: a response can finish
+    // while that bar is still developing, and merging its old rows with a
+    // retained tape would either double count or hide a missing print.
+    const seamIndex = input.records.length ? compactCount - 1 : compactCount;
+    const compactBars = input.compactHistory.bars.slice(0, seamIndex).map((bar, chartIndex) => ({
+      ...bar,
+      chartIndex,
+    }));
+    const compactHistory: AuctionGapCompactRowsResult = {
+      status: "ready",
+      coverage: "complete",
+      contractSymbol: input.compactHistory.contractSymbol,
+      bars: compactBars,
+    };
     const compact = buildAuctionGapCompactSegments({
-      history: input.compactHistory,
-      candles: input.candles,
+      history: compactHistory,
+      candles: input.candles.slice(0, seamIndex),
       expectedContract: input.expectedContract,
       chartKind: input.chart.kind,
       tickSize: input.tickSize,
@@ -70,8 +89,39 @@ export function prepareAuctionGapStudy(input: AuctionGapStudyInput): AuctionGapP
       timeSettings: input.timeSettings,
     });
     if (compact.status !== "ready") return unavailable(compact.reason);
-    return { status: "ready", reason: null, segments: compact.segments,
+    if (!input.records.length) return { status: "ready", reason: null, segments: compact.segments,
       executions: [], assignments: [], eventContinuation: null };
+
+    const seamBar = input.compactHistory.bars[seamIndex];
+    const seamTimestamp = Number(seamBar?.sourceStartTimestamp
+      ?? seamBar?.slices[0]?.startTime
+      ?? seamBar?.timestamp);
+    if (!Number.isFinite(seamTimestamp)) return unavailable("source-chart-mismatch");
+    const tail = prepareAuctionGapStudy({
+      ...input,
+      compactHistory: undefined,
+      records: input.records.filter((record) => record.timestamp >= seamTimestamp),
+      candles: input.candles.slice(seamIndex),
+      geometry: input.geometry.slice(seamIndex),
+    });
+    if (tail.status !== "ready") return tail;
+    return { status: "ready", reason: null,
+      executions: tail.executions,
+      assignments: tail.assignments.map((assignment) => ({
+        ...assignment,
+        chartIndex: assignment.chartIndex + seamIndex,
+      })),
+      eventContinuation: tail.eventContinuation
+        ? { ...tail.eventContinuation, chartIndex: tail.eventContinuation.chartIndex + seamIndex }
+        : null,
+      segments: [
+        ...compact.segments,
+        ...tail.segments.map((segment) => ({
+          ...segment,
+          chartIndex: Number(segment.chartIndex ?? 0) + seamIndex,
+        })),
+      ],
+    };
   }
   const source = prepareAuctionGapExecutions(input, clock);
   if (source.status !== "ready") return unavailable(source.status);
