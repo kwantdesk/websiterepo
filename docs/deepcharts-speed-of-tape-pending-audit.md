@@ -53,3 +53,39 @@ No DeepCharts window returned. No application launch, credential action or
 new Rithmic session attempted. Automatic baseline, OHLC construction and filter
 mode enum still need evidence; this row remains Pending. Do not reuse the
 Instant bar totals and mislabel them as verified ordinary tape candlesticks.
+
+## Getter signature / enum evidence
+
+Read-only `scripts/dotnet-contracts.py` now resolves public scalar getter
+signatures and enum literal values, without invoking assembly code. Nine
+synthetic tests cover compressed integers, rejected signatures, heap bounds,
+type resolution and real Constant-table bytes. It intentionally supports only
+scalar getters and early table addresses; unsupported signatures are explicit.
+Signature reference: ECMA-335 II.23.2,
+https://www.ecma-international.org/wp-content/uploads/ECMA-335_6th_edition_june_2012.pdf
+
+Installed file version 16.0.9, product version 1.0.0. SHA256:
+`D8366C8312AB71F1706DEA8A2A0046EB620EAC4497FB2ACF595946F381F3D9B6`.
+Reproduce: `python scripts/dotnet-contracts.py ReadableMatcherMapper`.
+
+| Getter | Exact metadata type / enum literals |
+|---|---|
+| InputData | ResolverBamlTreeNodeState: Volume=0, Order=1 |
+| FilterMin / FilterMax / NumberOfSeconds | int32 |
+| DisplayValue | SequentialProviderNodeTypes: Total=0, Counter=1 |
+| FilterMode | StreamSpecialFileFlags: Automatic=0, None=1 |
+| StdDevForFilter | float64 |
+
+Enum types resolve to System.Enum through TypeRef metadata. This strengthens
+the settings-shape association but does not prove the protected type is bound
+to a particular catalogue row. Importantly, it contradicts assuming the public
+article's Volume/Order/Trades list is the exact installed dropdown. Counter's
+meaning is not proven: do not relabel it Buy/Sell/Delta, or substitute execution
+count for resting orders. No constructor defaults or automatic-filter baseline
+were recovered. Native offline observations and/or lawful vendor clarification
+remain needed to resolve those semantics before enabling this entry.
+
+The Instant candidate TreeResponder independently exposes Volume/Order and
+Total/Counter in its own enum types. Our existing Instant document's stronger
+claim about DeepCharts Buy/Sell/Delta modes is not supported by these getters;
+recorded a reference correction there, with no working indicator changed.

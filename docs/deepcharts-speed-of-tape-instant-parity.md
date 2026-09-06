@@ -1,5 +1,16 @@
 # DeepCharts Speed of Tape (Instant) parity audit
 
+## 2026-09-06 reference correction — implementation unchanged
+
+The earlier "DeepCharts exposes" bullet list below overstates what was verified.
+New read-only getter-signature inspection of the installed 16.0.9 DLL's
+TreeResponder candidate finds InputData Volume/Order and DisplayValue
+Total/Counter, not Volume/Trades and Total/Buy/Sell/Delta. Exact protected type
+binding and Counter semantics remain unproved. Treat our Trades/Buy/Sell/Delta
+controls as KwantDesk capabilities, not established native dropdown parity.
+See `deepcharts-speed-of-tape-pending-audit.md` for reproducible evidence/hash.
+No working Instant calculation or UI changed in this pending-library task.
+
 ## Reference contract
 
 The implementation was checked against the supplied DeepCharts screenshots,

@@ -1,5 +1,19 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-06 — ordinary tape enum evidence, no new release
+
+- Added read-only `scripts/dotnet-contracts.py`: scalar getter signatures and
+  actual enum constants; nine synthetic tests pass. Never executes vendor DLL.
+- Ordinary candidate ReadableMatcherMapper: input Volume/Order; display
+  Total/Counter; filter Automatic/None. Installed DLL version 16.0.9/hash in
+  `docs/deepcharts-speed-of-tape-pending-audit.md`. Article differs from enum;
+  Counter, order semantics and automatic baseline still unproved. Keep Pending.
+- Instant candidate has similar input/display enums. Corrected overconfident
+  reference claims in its audit, without modifying the working indicator.
+- No new runtime changes, requests, deployment or feed login. Still 28 Pending.
+  Continue evidence and engineering across the full remaining ledger; a single
+  study's protected semantics are not proof the whole goal is blocked.
+
 ## 2026-09-06 — Super Trend pair release verified locally
 
 Production follow-up: GitHub deployment status succeeded for `websiterepo-yfmi`
