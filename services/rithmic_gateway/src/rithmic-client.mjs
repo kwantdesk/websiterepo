@@ -252,14 +252,34 @@ export class RithmicMarketDataClient extends EventEmitter {
       this.status.lastError = "RITHMIC_USER and RITHMIC_PASSWORD are not configured.";
       return;
     }
-    const systems = await discoverRithmicSystems(this.config);
-    this.status.discoveredSystems = systems;
-    if (!systems.includes(this.config.systemName)) {
-      throw new Error(
-        `Configured Rithmic system "${this.config.systemName}" was not returned by the gateway.`,
-      );
+    try {
+      const systems = await this.discoverSystems();
+      this.status.discoveredSystems = systems;
+      if (!systems.includes(this.config.systemName)) {
+        const error = new Error(
+          `Configured Rithmic system "${this.config.systemName}" was not returned by the gateway.`,
+        );
+        error.code = "RITHMIC_SYSTEM_UNAVAILABLE";
+        throw error;
+      }
+    } catch (error) {
+      this.status.connected = false;
+      this.status.authenticated = false;
+      this.status.lastError = error instanceof Error ? error.message : String(error);
+      this.emit("gatewayError", error);
+      // Rithmic can temporarily omit an otherwise valid environment while its
+      // Sunday maintenance window is in progress. Discovery used to fail once
+      // and then remain dead because only socket/login failures armed the
+      // reconnect timer. Retry the whole startup path so discovery itself is
+      // repeated before the next login attempt.
+      this.scheduleReconnect();
+      throw error;
     }
     await this.connect();
+  }
+
+  async discoverSystems() {
+    return await discoverRithmicSystems(this.config);
   }
 
   async connect() {
@@ -784,9 +804,12 @@ export class RithmicMarketDataClient extends EventEmitter {
     this.reconnectTimer = setTimeout(async () => {
       this.reconnectTimer = null;
       try {
-        await this.connect();
+        // Repeat discovery as well as login. The configured environment can be
+        // absent during Rithmic maintenance and appear again without this
+        // process being restarted.
+        await this.start();
       } catch {
-        // connect() records the error and schedules the next bounded retry.
+        // start()/connect() record the error and schedule the next bounded retry.
       }
     }, delay);
   }

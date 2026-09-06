@@ -223,3 +223,13 @@ continues processing receipt-less legacy tape for existing indicators without
 claiming continuity. Auction Gap remains unavailable on that unproved path;
 partially present/invalid receipts still force recovery. Receipt + Auction Gap
 tests are 115/115; TypeScript and scoped lint pass.
+
+2026-09-07 deployment recovery: the clean gateway release built and restarted,
+but Rithmic's Sunday discovery response temporarily omitted the configured
+`Rithmic Paper Trading` environment. This exposed an existing recovery hole:
+socket and login failures retried, while system-discovery failures did not. The
+client now repeats the complete discovery-plus-login startup path on bounded
+backoff, so a maintained environment can return without a container replacement
+or guessed broker-system change. The new regression test and the full gateway
+suite pass (372/372). The recorder mount remained healthy with about 181 GB free;
+live-session verification is still required after Rithmic advertises the system.
