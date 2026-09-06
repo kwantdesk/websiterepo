@@ -60,3 +60,6 @@ not all confirmed DeepCharts defaults. Only length 21 is documented there.
   and pending: it includes Zig Zag-driven modes, not just this rolling line.
 
 Outcome: implemented Linear Regression; full-library goal remains open.
+Release `b8e245334f2e77fee8db9de4eede006c6016962a` was pushed through main.
+Vercel reported success for websiterepo-yfmi. After the domain promotion delay,
+the live diagnostics endpoint returned that exact commit; no duplicate deploy.

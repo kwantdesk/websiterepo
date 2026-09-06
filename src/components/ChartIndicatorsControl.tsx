@@ -454,6 +454,7 @@ const sectionForSetting = (indicatorId: string, key: string, fallback: string) =
   (isTpoIndicator(indicatorId) ? TPO_SETTING_SECTIONS[key] ?? "General" : fallback);
 
 export const RENDERED_CHART_INDICATOR_IDS = new Set([
+  "tillson-t3",
   "linear-regression",
   "parabolic-sar",
   "average-directional-index-adx",
@@ -1683,6 +1684,8 @@ export default function ChartIndicatorsControl({
                   if (!definition) return null;
                   const displayName = instance.indicatorId === "source-code-indicator"
                     ? String(instance.settings?.scriptName ?? definition.name)
+                    : instance.indicatorId === "tillson-t3"
+                      ? String(instance.settings?.shortName ?? "T3").trim().slice(0, 40) || "T3"
                     : definition.name;
                   return (
                     <div key={instance.instanceId} className="flex items-center gap-2 rounded-xl px-2 py-2 hover:bg-surface/60">
@@ -6443,6 +6446,34 @@ export default function ChartIndicatorsControl({
                     </label>
                   ))}
                   <p className="text-[10px] text-muted">Uses the fitted endpoint of each complete trailing window, not a future forecast. Secondary colour marks a negative fitted slope. Volume always uses an independent scale and requires native traded volume; it is unavailable on cash indices such as SPX/NDX. Missing values restart the full window.</p>
+                </div>
+              ) : null}
+
+              {settingsDefinition.id === "tillson-t3" ? (
+                <div data-settings-section="Inputs" className="space-y-3">
+                  {[
+                    { key: "inputData", label: "Input data", fallback: "close", options: [["close", "Close"], ["open", "Open"], ["high", "High"], ["low", "Low"], ["volume", "Volume"]] },
+                    { key: "colorMode", label: "Auto colour", fallback: "slope", options: [["slope", "Slope"], ["none", "None"]] },
+                    { key: "displayStyle", label: "Display style", fallback: "line", options: [["line", "Line"], ["points", "Points"], ["line-points", "Line and points"]] },
+                    { key: "lineStyle", label: "Line style", fallback: "solid", options: [["solid", "Solid"], ["dashed", "Dashed"], ["dotted", "Dotted"]] },
+                  ].map((control) => (
+                    <label key={control.key} className="block space-y-1 text-[10px] text-muted">
+                      <span>{control.label}</span>
+                      <KwantSelect value={String(settingsInstance.settings?.[control.key] ?? control.fallback)}
+                        onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                          ...current, settings: { ...(current.settings ?? {}), [control.key]: event.target.value },
+                        }))} menuLabel={`T3 ${control.label.toLowerCase()}`}
+                        className="h-9 w-full border border-border bg-background px-3 text-foreground">
+                        {control.options.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                      </KwantSelect>
+                    </label>
+                  ))}
+                  <label className="block space-y-1 text-[10px] text-muted"><span>Short name</span>
+                    <input aria-label="T3 short name" type="text" maxLength={40} value={String(settingsInstance.settings?.shortName ?? "T3")}
+                      onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), shortName: event.target.value } }))}
+                      className="h-9 w-full border border-border bg-background px-3 text-foreground" />
+                  </label>
+                  <p className="text-[10px] text-muted">Volume factor controls the smoothing formula; it does not weight prices by traded volume. Six complete EMA seeds require 6 × (Length − 1) + 1 valid bars. Volume input uses an independent scale and is unavailable on cash indices. Short name identifies this study in the active indicator list.</p>
                 </div>
               ) : null}
 

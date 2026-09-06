@@ -1,5 +1,18 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-06 — Tillson T3 pending-library batch
+
+- Six EMA stages with explicit full-window SMA seeding; defaults 14 / 0.618 /
+  Close, slope colours, all source/style controls and persisted short name in
+  the active list. No recovery claim for protected DLL seed or visual parity.
+- O(n) fixed rolling state; added only T3 to the existing 20k deep-history set
+  because length 1000 needs 5995 valid bars. Volume source has separate scale
+  and cash-index guard; factor is NOT executed-volume weighting.
+- Seven T3 tests / 37 combined pass. Browser verified controls, geometry,
+  colours, Save/close/reload and short name. `docs/deepcharts-tillson-t3-audit.md`.
+- 31 pending remain. No full-library completion, cloud-template roundtrip or
+  live-market soak claim. Continue the actual remaining checklist.
+
 ## 2026-09-06 — Linear Regression pending-library batch
 
 - Rolling OLS endpoint, length 21 default, all OHLC/Volume sources, themes,

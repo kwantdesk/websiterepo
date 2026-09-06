@@ -85,3 +85,11 @@ lengths; routed only this new study to the existing bounded 20,000-bar window
 after measuring it. Seven new tests and 30 combined passed; real local browser
 verified length/source changes, clean Save/close/reload and volume independent
 scaling. 32 still pending; no protected formula/pixel parity or live soak claim.
+
+Batch 6: continued pending-library engineering with Tillson T3. Added its actual
+six-state formula, explicit seeds, documented 14/0.618/Close defaults, five data
+inputs, colour/style/name controls and bounded deep-history routing. Seven T3
+tests and 37 combined passed; browser verified smoothing changes, slope colours,
+immediate clean Save, close/reload and active-list custom name. No new live feed
+or provider requests. 31 pending remain; exact vendor startup and legend parity
+are documented limits, not claimed complete from mathematical fixtures.

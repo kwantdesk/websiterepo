@@ -523,6 +523,8 @@ const CUMULATIVE_DELTA_MINIMUM_COVERAGE = 0.95;
  */
 const FOOTPRINT_MINIMUM_FLOW_COVERAGE = 0.85;
 const DEEP_HISTORY_INDICATOR_IDS = new Set([
+  // Six EMA seed windows at length 1000 need 5995 real bars, not the lite 1500.
+  "tillson-t3",
   // O(n) centered rolling fit: 20k-bar p95 < 1.6ms in the local calculator
   // check. Its selectable 10k length must not receive only 1.5k lite candles.
   "linear-regression",

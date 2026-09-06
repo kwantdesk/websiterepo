@@ -3,6 +3,7 @@ import { calculateAbsoluteLevels } from "@/lib/absoluteLevels";
 import { calculateAverageDirectionalIndex } from "@/lib/averageDirectionalIndex";
 import { calculateParabolicSar } from "@/lib/parabolicSar";
 import { calculateLinearRegression } from "@/lib/linearRegression";
+import { calculateTillsonT3 } from "@/lib/tillsonT3";
 import { exchangeClockParts } from "@/lib/exchangeClock";
 import type { ChartIndicatorInstance } from "@/lib/chartIndicatorCatalog";
 import { calculateDeepEffort } from "@/lib/deepEffort";
@@ -326,6 +327,7 @@ function computeIndicatorSeries(
   if (key === "average-directional-index-adx") return calculateAverageDirectionalIndex(candles, instance.settings ?? {}, theme);
   if (key === "parabolic-sar") return calculateParabolicSar(candles, instance.settings ?? {}, theme, instance.instanceId);
   if (key === "linear-regression") return calculateLinearRegression(candles, instance.settings ?? {}, theme, instance.instanceId, context.instrument);
+  if (key === "tillson-t3") return calculateTillsonT3(candles, instance.settings ?? {}, theme, instance.instanceId, context.instrument);
 
   if (key === "source-code-indicator") {
     const source = settingString(instance, "source", "");

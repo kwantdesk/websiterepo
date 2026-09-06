@@ -66,7 +66,15 @@ reachable catalogue row and that catalogue IDs are unique.
   Deep-history routing supports the selectable 10,000-bar length. Reference
   and visual/latency limits: `docs/deepcharts-linear-regression-audit.md`.
 
-## Remaining 32 — not released by blanket enablement
+## Batch 6 — Tillson T3
+
+- [x] Six-stage T3 with documented defaults, explicit full-window seeds,
+  all five inputs, slope colouring, styles and persistent short name. Seven
+  tests, combined 37-test suite and real browser checks passed. Deep-history
+  route supports maximum-length warmup. Reference and parity limits:
+  `docs/deepcharts-tillson-t3-audit.md`.
+
+## Remaining 31 — not released by blanket enablement
 
 Each row needs evidence, settings/data implementation, calculation tests,
 renderer/theme/persistence verification and explicit visual/latency limits.
@@ -101,7 +109,7 @@ Do not tick a row just because its Add gate changes.
 | `regression-channel` | [ ] Audit / implement / verify |
 | `super-trend` | [ ] Audit / implement / verify |
 | `super-trend-difference` | [ ] Audit / implement / verify |
-| `tillson-t3` | [ ] Audit / implement / verify |
+| `tillson-t3` | [x] Implemented; explicit seed and reference limits |
 | `zig-zag` | [ ] Audit / implement / verify |
 | `know-sure-thing-kst` | [ ] Audit / implement / verify |
 | `inverse-cyber-cycle` | [ ] Audit / implement / verify |

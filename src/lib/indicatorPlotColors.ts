@@ -31,6 +31,10 @@ export type IndicatorPlotColorSlot = {
 };
 
 export const INDICATOR_PLOT_COLOR_SLOTS: Record<string, IndicatorPlotColorSlot[]> = {
+  "tillson-t3": [
+    { key: "plotColor", role: "primary" },
+    { key: "secondaryColor", role: "secondary" },
+  ],
   "linear-regression": [
     { key: "plotColor", role: "primary" },
     { key: "secondaryColor", role: "secondary" },
