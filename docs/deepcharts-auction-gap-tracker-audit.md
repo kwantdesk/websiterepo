@@ -51,6 +51,25 @@ the successful project-config check; it is not a production build claim.
 
 ## Required before release
 
+### Exchange clock foundation
+
+`auctionGapSessionClock.ts` now classifies source executions against an explicit
+instrument calendar/timezone. Half-open RTH/custom windows, overnight custom
+windows, session-open and ETH+RTH reset keys use local civil dates, not fixed
+UTC offsets or timestamp-minus-24-hours across DST. RTH close is not an extra
+reset. Equal custom endpoints mean full day (documented convention).
+Immutable per-instance calendar/settings and bounded 2048-minute cache; invalid
+timestamps return null and invalid configuration throws. No implicit CME calendar
+for cash instruments. ETH here means outside configured RTH, not an assertion
+that an exchange is open; feed market-calendar gating remains separate.
+
+23 combined tests, scoped lint and full project TypeScript pass. Clock tests
+cover both DST transitions, repeated hours, exact window boundaries, overnight
+windows, per-execution classification and supplied New York calendar. This
+does not establish holiday schedules or native numerical parity. Integration
+must preserve unfiltered rows for retests and separately aggregate filtered
+detection rows, splitting reset boundaries within event/time bars as needed.
+
 ### Lifecycle foundation, subsequent continuation
 
 `auctionGapLifecycle.ts` adds deterministic correction-safe rebuilds: actual

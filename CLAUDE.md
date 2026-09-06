@@ -1,5 +1,16 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-06 — Auction Gap exchange-time policy foundation
+
+- `auctionGapSessionClock.ts` requires explicit instrument timezone/calendar,
+  classifies individual executions, supplies detection inclusion/reset keys,
+  handles overnight windows and DST civil dates with bounded minute cache.
+- 23 combined tests, scoped lint and full tsc pass. No UI/data connection or
+  release yet; still 28 Pending. Caller must filter before aggregation, retain
+  raw retest rows, handle bars crossing reset boundaries and replay cutoffs.
+- Next: source adapter and incremental/worker lifecycle, then full settings,
+  native reference semantics, renderer/theme/template/browser release checks.
+
 ## 2026-09-06 — Auction Gap lifecycle foundation
 
 - Added `auctionGapLifecycle.ts` with actual-bar extensions, caller-provided

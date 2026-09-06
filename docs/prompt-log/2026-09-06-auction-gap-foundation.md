@@ -15,3 +15,8 @@ Continuation: added chart-bar extension/reset/retest lifecycle and historical
 correction rebuilds. 17 tests, scoped lint and full TypeScript pass. One 20k-bar
 synthetic rebuild took 127.1ms: worker/history and incremental live integration
 are required, not a per-tick full UI rebuild. Still not enabled or deployed.
+
+Exchange-time continuation: explicit calendar clock with per-execution filtering,
+overnight windows, DST-safe reset dates and bounded cache. 23 combined tests,
+lint and TypeScript pass. Clock is not yet connected to source aggregation;
+no runtime deployment or gate change. Native boundary parity remains unproved.
