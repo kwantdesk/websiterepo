@@ -93,3 +93,13 @@ tests and 37 combined passed; browser verified smoothing changes, slope colours,
 immediate clean Save, close/reload and active-list custom name. No new live feed
 or provider requests. 31 pending remain; exact vendor startup and legend parity
 are documented limits, not claimed complete from mathematical fixtures.
+# KST calculation prerequisite — continuation 2026-09-06
+
+- Prompt: continue every pending study using DeepCharts evidence, not gate flips.
+- Work: read all six official KST screenshots; decoded actual four-choice
+  smoothing enum from the licensed DLL; implemented and independently tested
+  close-price momentum, full seeds, signal, invalid-data handling and bounds.
+- Outcome: calculator ready for integration; KST still Pending. UI/rendering,
+  templates/theme, deep history and browser/performance release gates remain.
+  No production behavior or provider connection changed. Local prerequisite
+  commit will be pushed with the finished, verified integration batch.

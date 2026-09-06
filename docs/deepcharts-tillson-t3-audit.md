@@ -64,3 +64,8 @@ measurements, not full-workspace FPS, concurrency or live-market guarantees.
   roundtrip, exact vendor seed/visual parity and live-market soak not claimed.
 
 Outcome: implemented T3; 31 pending library entries remain.
+
+Production verification: commit `09e57921e7ec69b063312bb0b6f01889de96a0e8`
+passed the existing `websiterepo-yfmi` Vercel deployment. The live
+`www.kwantdesk.com/api/market-data/diagnostics` endpoint returned that exact
+commit on 2026-09-06. No second deployment path was used.

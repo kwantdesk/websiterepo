@@ -1,5 +1,18 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-06 — KST prerequisite, not yet released
+
+- `knowSureThing.ts` implements four weighted/smoothed ROC horizons and signal;
+  six independent calculation tests pass. Actual DLL AvgType enum is Simple,
+  Exponential, Triangular, Weighted; all four implemented (not Wilder).
+- Official screenshots observed raw mode, averages 10/10/10/15, ROC
+  10/15/20/30, signal 9. Protected seeds/signal-mode parity remain unproved.
+- `docs/deepcharts-kst-audit.md` records complete evidence and remaining UI,
+  pane styles/labels, deep-history, persistence and browser/performance work.
+  Max configured signal warmup is 2999 bars: lite 1500 is insufficient.
+- Scoped lint and TypeScript pass. No engine/gate enabled: 31 still pending.
+  This prerequisite is not a release; batch its push with verified integration.
+
 ## 2026-09-06 — Tillson T3 pending-library batch
 
 - Six EMA stages with explicit full-window SMA seeding; defaults 14 / 0.618 /

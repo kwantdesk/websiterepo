@@ -111,7 +111,7 @@ Do not tick a row just because its Add gate changes.
 | `super-trend-difference` | [ ] Audit / implement / verify |
 | `tillson-t3` | [x] Implemented; explicit seed and reference limits |
 | `zig-zag` | [ ] Audit / implement / verify |
-| `know-sure-thing-kst` | [ ] Audit / implement / verify |
+| `know-sure-thing-kst` | [ ] Calculator + DLL enum/reference screenshots audited; integration/visual QA outstanding (`deepcharts-kst-audit.md`) |
 | `inverse-cyber-cycle` | [ ] Audit / implement / verify |
 | `average-directional-index-adx` | [x] Batch 3; seed and vendor-parity limitations documented |
 | `candlestick-bar` | [ ] Audit / implement / verify |
