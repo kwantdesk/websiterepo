@@ -1,5 +1,18 @@
 # Auction Gap Tracker — implementation in progress
 
+### Raw observation bounds replace trade-only bounds — 2026-09-07
+
+Corrected backfill receipts to use the raw recorder message span rather than
+the first/last execution. This can truthfully cover a candle edge before its
+first trade and after its last without inventing session boundaries. GAP or
+DROPPED markers are counted only inside the backfilled segment; an untimed marker
+still fails conservatively, while a marker after the live-tape cutoff belongs to
+that later segment. Older rows without `receivedAt` fall back only to real print
+times. Two CLI fixture tests and the seven receipt tests pass; scoped lint passes.
+
+Existing receipts require regeneration before they gain these stronger bounds.
+Gateway route/live proof/Chart integration remain; still Pending, no deployment.
+
 ### Gateway compact event-bar row fold — 2026-09-07
 
 Extended the authoritative event builder to return the one bar that owns each

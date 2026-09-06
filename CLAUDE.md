@@ -1,5 +1,16 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-07 — Backfill coverage uses raw observation span
+
+- Corrected receipt bounds from first/last trade to first/last observed raw
+  recorder message in the actual pre-live-cutoff segment. Candle edges can now
+  be proven without inventing session bounds.
+- GAP/DROPPED after live takeover no longer poisons the backfill segment;
+  in-segment or untimed loss still fails closed. Rows lacking `receivedAt`
+  fall back only to their real execution time.
+- Two end-to-end CLI fixtures and seven receipt tests pass; scoped lint passes.
+  Existing receipts need regeneration. Route/live/Chart remain; gate OFF.
+
 ## 2026-09-07 — Gateway-side Auction Gap event-row fold
 
 - Existing event builder now returns the sole owning bar for each accepted

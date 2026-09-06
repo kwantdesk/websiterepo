@@ -123,7 +123,24 @@ async function backfillFile(tradingDate, name) {
   // everything after it - a third of a session on a day the collector was
   // restarted.
   const summary = await readArchiveRecords(join(ROOT, tradingDate, name), (record) => {
-    if (record?.type === "GAP" || record?.type === "DROPPED") { gaps += 1; return; }
+    const numericTime = Number(record?.receivedAt);
+    const parsedTime = Date.parse(record?.receivedAt);
+    const observed = Number.isFinite(numericTime) && numericTime > 0
+      ? numericTime
+      : Number.isFinite(parsedTime) ? parsedTime : null;
+    const insideBackfill = observed === null || (
+      chicagoTradingDate(observed) === tradingDate && (cutoff === null || observed < cutoff)
+    );
+    if (record?.type === "GAP" || record?.type === "DROPPED") {
+      // Untimed loss is conservatively in scope. A marker after the live tape
+      // takeover belongs to the later segment and must not poison backfill.
+      if (insideBackfill) gaps += 1;
+      return;
+    }
+    if (observed !== null && insideBackfill) {
+      observationFromMs = observationFromMs === null ? observed : Math.min(observationFromMs, observed);
+      observationToMs = observationToMs === null ? observed : Math.max(observationToMs, observed);
+    }
     const trade = tradeFromRecord(record);
     if (!trade) return;
     // The print's own trading date, not the file's: the last minutes before
@@ -131,11 +148,12 @@ async function backfillFile(tradingDate, name) {
     if (chicagoTradingDate(trade.timestamp) !== tradingDate) return;
     // Stop where the live tape begins, so the pair is complementary.
     if (cutoff !== null && trade.timestamp >= cutoff) return;
-    const observed = Number.isFinite(Date.parse(record?.receivedAt))
-      ? Date.parse(record.receivedAt)
-      : trade.timestamp;
-    observationFromMs = observationFromMs === null ? observed : Math.min(observationFromMs, observed);
-    observationToMs = observationToMs === null ? observed : Math.max(observationToMs, observed);
+    // Older rows may have no receivedAt. A real print still gives a valid,
+    // narrower observation bound; never synthesize a session edge.
+    if (observed === null) {
+      observationFromMs = observationFromMs === null ? trade.timestamp : Math.min(observationFromMs, trade.timestamp);
+      observationToMs = observationToMs === null ? trade.timestamp : Math.max(observationToMs, trade.timestamp);
+    }
     rows.push(encodeTrade(trade, sideCode(record?.payload || record)));
   });
 

@@ -1,5 +1,11 @@
 # Pending-library continuation — Auction Gap Tracker
 
+2026-09-07 receipt-bound correction: backfill proof now spans observed raw
+messages, not just trades, and scopes gap/drop markers to the pre-live-cutoff
+segment. Untimed loss still fails closed; old rows fall back only to real trade
+times. Two CLI fixtures plus seven receipt tests and lint pass. Receipts need
+regeneration; route/live/Chart remain, still Pending and not deployed.
+
 2026-09-07 event-fold continuation: the unchanged event builder now reports
 the exact owning bar per execution. Gateway compact rows cover volume/trade/
 delta/range/Renko/point-and-figure without timestamp guesses, duplicated bridge
