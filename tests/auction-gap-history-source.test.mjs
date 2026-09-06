@@ -38,3 +38,11 @@ test('actual existing history fetch publishes original response before persisten
   assert.ok(method.indexOf('auctionGapHistorySource.publish(args, payload)') > method.indexOf('const result: InstitutionalOrderFlowResult'));
   assert.ok(method.indexOf('auctionGapHistorySource.publish(args, payload)') < method.indexOf('await persistMergedInstitutionalOrderFlowResult'));
 });
+
+test('chart history opts into compact rows only for an active Auction Gap pane and keeps request identities separate', () => {
+  const workspace = fs.readFileSync(new URL('../src/components/KwantifyWorkspace.tsx', import.meta.url), 'utf8');
+  assert.match(workspace, /instance\.enabled && instance\.indicatorId === "auction-gap-tracker"/);
+  assert.match(workspace, /auctionGapExpectedContract \? "&auctionGap=1" : ""/);
+  assert.match(workspace, /::auction-gap:\$\{auctionGapExpectedContract\.toUpperCase\(\)\}/);
+  assert.match(workspace, /acceptAuctionGapCompactRows\([\s\S]*?payload\.auctionGap,[\s\S]*?providerCandles,[\s\S]*?auctionGapExpectedContract/);
+});

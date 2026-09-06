@@ -1,5 +1,19 @@
 # Auction Gap Tracker — implementation in progress
 
+### Browser panes opt into exact history — 2026-09-07
+
+The workspace now adds `auctionGap=1` only for a pane with the Auction Gap
+indicator enabled, and includes the resolved contract in the shared request
+identity. Replay and live initial hydration use the same path. The browser
+rechecks the server-approved DTO against the currently resolved contract and
+exact candle timestamps/volumes before copying it into a bounded 32-scope
+cache; stale rollover/timeframe responses fail rather than attaching.
+
+97 Auction Gap tests, TypeScript and scoped lint pass (only the workspace's
+pre-existing warnings remain). The cache is intentionally not painted yet:
+minute-level settings segmentation, worker/primitive consumption, live archive
+proof and browser QA still precede the catalogue gate. No deployment.
+
 ### Compact rows validated at the web boundary — 2026-09-07
 
 The server-side CME history adapters now request the gateway's opt-in compact

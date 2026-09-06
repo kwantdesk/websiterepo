@@ -1,5 +1,12 @@
 # Pending-library continuation — Auction Gap Tracker
 
+2026-09-07 browser-opt-in continuation: only enabled Auction Gap panes request
+compact history; resolved-contract request keys isolate rollovers and replay.
+The browser rechecks the approved DTO against exact candle timestamps/volume,
+copies it and bounds retained contract/timeframe scopes to 32. 97 tests, tsc
+and scoped lint pass (pre-existing warnings only). Segmentation/worker/render/
+live receipt/QA remain; still Pending, no push/deploy.
+
 2026-09-07 web-boundary continuation: added fail-closed validation of compact
 time/event rows against resolved contract and the exact decoded chart candles,
 including schema/source/proof, ownership, tick geometry/order/range and volume.

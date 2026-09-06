@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { validateAuctionGapCompactRows } from '../src/lib/auctionGapCompactRows.ts';
+import { acceptAuctionGapCompactRows, validateAuctionGapCompactRows } from '../src/lib/auctionGapCompactRows.ts';
 
 const candle = (timestamp = 1_000, patch = {}) => ({
   timestamp, open: 100, high: 100.5, low: 99.75, close: 100.25, volume: 10, ...patch,
@@ -76,4 +76,14 @@ test('rejects omitted, extra, and ambiguous bar geometry', () => {
   assert.equal(validateAuctionGapCompactRows(envelope({ chartIndex: 0, timestamp: 1_000, endTime: 61_000,
     openTick: 400, highTick: 402, lowTick: 399, closeTick: 401, volume: 10, rows: rows() }, { rows: [] }),
     [candle()], 'NQU6', 0.25).reason, 'bar-count-mismatch');
+});
+
+test('browser handoff rejects stale contract/candle generations and copies accepted rows', () => {
+  const raw = envelope({ chartIndex: 0, timestamp: 1_000, endTime: 61_000,
+    openTick: 400, highTick: 402, lowTick: 399, closeTick: 401, volume: 10, rows: rows() });
+  const validated = validateAuctionGapCompactRows(raw, [candle()], 'NQU6', 0.25);
+  const accepted = acceptAuctionGapCompactRows(validated, [candle()], 'NQU6');
+  assert.equal(accepted.status, 'ready'); assert.notEqual(accepted.bars, validated.bars);
+  assert.equal(acceptAuctionGapCompactRows(validated, [candle()], 'NQZ6').reason, 'browser-history-mismatch');
+  assert.equal(acceptAuctionGapCompactRows(validated, [candle(2_000)], 'NQU6').reason, 'browser-history-mismatch');
 });

@@ -1,5 +1,16 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-07 — Active Auction Gap panes request and retain exact history
+
+- The chart workspace requests compact rows only when Auction Gap is enabled;
+  base/order-flow panes retain their existing payload and cache identity.
+- Browser handoff rechecks contract, candle generation, row order and volume,
+  copies accepted data and retains at most 32 contract/timeframe scopes.
+- Replay and live initial hydration both opt in. 97 Auction Gap tests,
+  TypeScript and scoped lint (pre-existing warnings only) pass.
+- Remaining: settings-time segmentation, worker/primitive consumption, live
+  coverage receipts and browser QA. Gate OFF/no push/deploy.
+
 ## 2026-09-07 — Auction Gap compact rows cross the web trust boundary
 
 - Added a fail-closed web validator for the gateway's compact time/event rows.

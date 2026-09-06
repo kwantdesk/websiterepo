@@ -119,6 +119,10 @@ import {
   Zap,
 } from "lucide-react";
 import { runBacktest, runStrategyCode, type BacktestConfig, type BacktestResult, type Candle, type Trade } from "@/lib/backtester";
+import {
+  acceptAuctionGapCompactRows,
+  type AuctionGapCompactRowsResult,
+} from "@/lib/auctionGapCompactRows";
 import { createClient } from "@/lib/supabase";
 import type { FriendsPayload } from "@/lib/friends";
 import { cacheProfileIdentity, readProfileIdentityCache } from "@/lib/profileIdentityCache";
@@ -3373,6 +3377,8 @@ const GLOBAL_FAVOURITE_INTERVALS_KEY = "kwantdesk:favourite-intervals:v1";
 const GLOBAL_FAVOURITE_INSTRUMENTS_KEY = "kwantdesk:favourite-instruments:v1";
 
 const workspaceCandleRequests = new Map<string, Promise<Candle[]>>();
+const workspaceAuctionGapHistory = new Map<string, AuctionGapCompactRowsResult>();
+const MAX_WORKSPACE_AUCTION_GAP_HISTORIES = 32;
 const workspaceLiveSeamRequests = new Map<string, Promise<Candle[]>>();
 const workspaceExecutionTape = new Map<string, InstitutionalTrade[]>();
 // The shared Rithmic stream fans one immutable batch out to every chart pane
@@ -3401,6 +3407,25 @@ type WorkspaceHistoricalRange = {
   toMs: number;
   key: string;
 };
+
+function workspaceAuctionGapKey(
+  symbol: string,
+  timeframe: string,
+  contractSymbol: string,
+  scope = "live",
+) {
+  return `${symbol}::${timeframe}::${contractSymbol.toUpperCase()}::auction-gap::${scope}`;
+}
+
+function storeWorkspaceAuctionGapHistory(key: string, result: AuctionGapCompactRowsResult) {
+  workspaceAuctionGapHistory.delete(key);
+  workspaceAuctionGapHistory.set(key, result);
+  while (workspaceAuctionGapHistory.size > MAX_WORKSPACE_AUCTION_GAP_HISTORIES) {
+    const oldest = workspaceAuctionGapHistory.keys().next().value;
+    if (typeof oldest !== "string") break;
+    workspaceAuctionGapHistory.delete(oldest);
+  }
+}
 
 function workspaceOrderFlowKey(symbol: string, timeframe: string, scope = "live") {
   // Executions belong to the contract, not to a chart aggregation. Sharing
@@ -3768,6 +3793,7 @@ async function fetchWorkspaceCandles(
   // a cold cache; the first paint asks for a short window instead.
   historyDays = DEFAULT_CHART_HISTORY_CALENDAR_DAYS,
   historicalRange?: WorkspaceHistoricalRange,
+  auctionGapExpectedContract?: string | null,
 ) {
   const periodConfig = getPeriodConfig(period);
   const usingCTraderFeed = FALLBACK_CTRADER_BROKER_NAMES.includes(broker as (typeof FALLBACK_CTRADER_BROKER_NAMES)[number]);
@@ -3779,7 +3805,7 @@ async function fetchWorkspaceCandles(
 
   if (broker === "Databento") {
     const rangeScope = historicalRange?.key ?? `${historyDays}d`;
-    const requestKey = `${symbol}::${timeframe}::${includeOrderFlow ? "flow" : "bars"}${forceFresh ? "::fresh" : ""}${healOnly ? "::heal" : ""}::${rangeScope}`;
+    const requestKey = `${symbol}::${timeframe}::${includeOrderFlow ? "flow" : "bars"}${forceFresh ? "::fresh" : ""}${healOnly ? "::heal" : ""}${auctionGapExpectedContract ? `::auction-gap:${auctionGapExpectedContract.toUpperCase()}` : ""}::${rangeScope}`;
     const pending = workspaceCandleRequests.get(requestKey);
     if (pending) return pending;
 
@@ -3794,7 +3820,7 @@ async function fetchWorkspaceCandles(
         ? fetchWorkspaceOrderFlow(symbol, timeframe, contractSymbol)
         : Promise.resolve(null);
       const response = await fetch(
-        `/api/cme-history?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&days=${historyDays}${includeOrderFlow ? "&orderFlow=1" : ""}${healOnly ? "&exec=0" : ""}${historicalRange ? `&from=${historicalRange.fromMs}&to=${historicalRange.toMs}` : ""}${forceFresh ? `&fresh=1&t=${Date.now()}` : ""}`,
+        `/api/cme-history?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&days=${historyDays}${includeOrderFlow ? "&orderFlow=1" : ""}${auctionGapExpectedContract ? "&auctionGap=1" : ""}${healOnly ? "&exec=0" : ""}${historicalRange ? `&from=${historicalRange.fromMs}&to=${historicalRange.toMs}` : ""}${forceFresh ? `&fresh=1&t=${Date.now()}` : ""}`,
         {
           cache: "no-store",
           // Keep a history request alive across rapid timeframe switches. Its
@@ -3813,6 +3839,17 @@ async function fetchWorkspaceCandles(
       ]);
       if (!response.ok) throw new Error(payload.error ?? `CME did not return candles for ${displayCmeSymbol(symbol)}.`);
       const providerCandles = sanitizeCandles((payload.candles ?? []) as Candle[], symbol, timeframe);
+      if (auctionGapExpectedContract) {
+        const result = acceptAuctionGapCompactRows(
+          payload.auctionGap,
+          providerCandles,
+          auctionGapExpectedContract,
+        );
+        storeWorkspaceAuctionGapHistory(
+          workspaceAuctionGapKey(symbol, timeframe, auctionGapExpectedContract, rangeScope),
+          result,
+        );
+      }
       // The history provider owns event-bar geometry. A gateway candle is a
       // clock bucket and must never replace range, volume, trade, delta or
       // Renko bars: doing so collapsed a five-day 40R chart to one 1-minute
@@ -5686,6 +5723,8 @@ function WorkspaceChartPaneComponent({
     : "";
   const needsOrderFlowHistory = indicators.some((instance) =>
     instance.enabled && CHART_INDICATOR_BY_ID.get(instance.indicatorId)?.requiresOrderFlow);
+  const needsAuctionGapHistory = indicators.some((instance) =>
+    instance.enabled && instance.indicatorId === "auction-gap-tracker");
   const replayOrderFlowRequired = Boolean(replayHistoryRange && needsOrderFlowHistory);
   // Big Contracts is the one study with an explicit lookback in days; the
   // execution archive request has to cover it.
@@ -6534,6 +6573,7 @@ function WorkspaceChartPaneComponent({
             false,
             2,
             replayHistoryRange,
+            needsAuctionGapHistory ? resolvedContractSymbol : null,
           );
           if (cancelled) return;
           const clean = sanitizeCandles(replayCandles, pane.symbol, pane.timeframe)
@@ -6936,6 +6976,11 @@ function WorkspaceChartPaneComponent({
           500,
           needsOrderFlowHistory,
           requestController.signal,
+          false,
+          false,
+          DEFAULT_CHART_HISTORY_CALENDAR_DAYS,
+          undefined,
+          needsAuctionGapHistory ? resolvedContractSymbol : null,
         );
         if (cancelled) return;
         const downloadedMarketTrades = needsOrderFlowHistory
@@ -7173,6 +7218,7 @@ function WorkspaceChartPaneComponent({
     pane.broker,
     pane.symbol,
     pane.timeframe,
+    needsAuctionGapHistory,
     period,
     replayHistoryRange,
     replayOrderFlowRequired,

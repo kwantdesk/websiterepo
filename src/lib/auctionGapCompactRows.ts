@@ -137,3 +137,56 @@ export function validateAuctionGapCompactRows(
 
   return { status: "ready", coverage: "complete", contractSymbol: normalizedContract, bars };
 }
+
+/** Recheck the smaller same-origin DTO in the browser before retaining it for
+ * a pane. Provider/schema proof was consumed by the server validator above;
+ * this second boundary prevents a response for an older contract or candle
+ * generation being attached after a rollover or rapid timeframe switch. */
+export function acceptAuctionGapCompactRows(
+  value: unknown,
+  candles: readonly Candle[],
+  expectedContract: string,
+): AuctionGapCompactRowsResult {
+  const fail = (reason: string): AuctionGapCompactRowsResult => ({
+    status: "unavailable", coverage: "partial", reason, bars: [],
+  });
+  const contract = expectedContract.trim().toUpperCase();
+  if (!record(value) || value.status !== "ready" || value.coverage !== "complete"
+    || String(value.contractSymbol ?? "").trim().toUpperCase() !== contract
+    || !contract || !Array.isArray(value.bars) || value.bars.length !== candles.length) {
+    return fail(record(value) && typeof value.reason === "string" && value.reason
+      ? value.reason : "browser-history-mismatch");
+  }
+  const bars: AuctionGapCompactBar[] = [];
+  for (let index = 0; index < candles.length; index += 1) {
+    const source = value.bars[index];
+    const candle = candles[index];
+    if (!record(source) || source.chartIndex !== index || source.timestamp !== candle.timestamp
+      || !Array.isArray(source.rows)) return fail("browser-history-mismatch");
+    const rows: AuctionGapCompactPriceRow[] = [];
+    let volume = 0;
+    let previousTick = -Infinity;
+    for (const item of source.rows) {
+      if (!record(item) || !finite(item.tickIndex) || !Number.isSafeInteger(item.tickIndex)
+        || item.tickIndex <= previousTick || !finite(item.bidVolume) || !finite(item.askVolume)
+        || !finite(item.unknownVolume) || item.bidVolume < 0 || item.askVolume < 0
+        || item.unknownVolume < 0) return fail("browser-history-mismatch");
+      previousTick = item.tickIndex;
+      volume += item.bidVolume + item.askVolume + item.unknownVolume;
+      rows.push({ tickIndex: item.tickIndex, bidVolume: item.bidVolume,
+        askVolume: item.askVolume, unknownVolume: item.unknownVolume });
+    }
+    if (!finite(candle.volume) || !closeEnough(volume, candle.volume)) {
+      return fail("browser-history-mismatch");
+    }
+    const geometry = finite(source.endTime)
+      ? { endTime: source.endTime }
+      : finite(source.sourceStartTimestamp) && finite(source.sourceEndTimestamp)
+        ? { sourceStartTimestamp: source.sourceStartTimestamp,
+            sourceEndTimestamp: source.sourceEndTimestamp }
+        : null;
+    if (!geometry) return fail("browser-history-mismatch");
+    bars.push({ chartIndex: index, timestamp: source.timestamp as number, ...geometry, rows });
+  }
+  return { status: "ready", coverage: "complete", contractSymbol: contract, bars };
+}
