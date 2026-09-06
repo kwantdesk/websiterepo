@@ -1,5 +1,20 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-06 — ADX and owned-profile validation
+
+- ADX now uses its own Wilder calculator, explicit 2N−1 warmup, three-line pane,
+  period/style/width/colour controls, +DI/−DI visibility and existing templates.
+  Actual settings/pane browser-tested with labelled synthetic input. Seed
+  convention and vendor-parity limits: `docs/deepcharts-adx-audit.md`.
+- Pending count is 34, not zero. Profile variants are still unfinished.
+  `ownedVolumeProfiles.ts` adds source/window/settings/totals validation,
+  cache/exact loading with invalidation and a clock-bounded live-fold helper.
+  Seven fixture tests pass; it is not yet wired into the workspace.
+- Monthly filtered history cannot be a single unfiltered gateway request.
+  Current gateway lacks multi-session filter handling, and the proxy only
+  narrows single-span requests. New owned loader refuses such flags until
+  disjoint-window aggregation is implemented. No existing profile changed.
+
 ## 2026-09-06 — Pending profile-family prerequisite (not released)
 
 - `profileVariantJobs.ts` plans bounded monthly/visible execution windows and

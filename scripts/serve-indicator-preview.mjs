@@ -21,8 +21,9 @@ const bundle = execSync("npx esbuild --bundle --loader=jsx --jsx=automatic --for
 const css = readdirSync(".next/static/chunks").filter(f => f.endsWith(".css")).map(f => readFileSync(`.next/static/chunks/${f}`, "utf8")).join("\n");
 const html = '<!doctype html><meta charset="utf-8"><title>Local indicator QA</title><link rel="stylesheet" href="/style.css"><style>:root{--background:#080b10;--foreground:#eee;--primary:#11ff44;--secondary:#ffaa22;--muted:#999;--surface:#182028;--border:#374151}body{background:#080b10;color:#eee}button{cursor:pointer}</style><div id="root"></div><script src="/bundle.js"></script>';
 http.createServer((req, res) => {
-  const body = req.url === "/" ? html : req.url === "/bundle.js" ? bundle : req.url === "/style.css" ? css : null;
+  const path = new URL(req.url, "http://127.0.0.1:3117").pathname;
+  const body = path === "/" ? html : path === "/bundle.js" ? bundle : path === "/style.css" ? css : null;
   if (body === null) { res.writeHead(404).end(); return; }
-  res.writeHead(200, { "Content-Type": req.url === "/" ? "text/html" : req.url === "/style.css" ? "text/css" : "text/javascript", "Cache-Control": "no-store" });
+  res.writeHead(200, { "Content-Type": path === "/" ? "text/html" : path === "/style.css" ? "text/css" : "text/javascript", "Cache-Control": "no-store" });
   res.end(body);
 }).listen(3117, "127.0.0.1", () => console.log("QA preview http://127.0.0.1:3117 — synthetic fixture only"));

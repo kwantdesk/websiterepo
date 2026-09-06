@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import ChartIndicatorsControl from "../../src/components/ChartIndicatorsControl";
+import ChartIndicatorPanes from "../../src/components/ChartIndicatorPanes";
 import { defaultChartSettings } from "../../src/lib/chartSettings";
 import { defaultIndicatorSettings } from "../../src/lib/chartIndicatorConfig";
 import { calculateIndicatorSeries } from "../../src/lib/chartIndicatorEngine";
@@ -8,27 +9,40 @@ import { createChart } from "../../src/lib/lightweightChartsCompat";
 import actualOverlayOptions from "kwant-preview-overlay-options";
 
 // Isolated, clearly labelled fixtures: never a market feed or production page.
-const candles = Array.from({ length: 30 }, (_, i) => ({ timestamp: 1700000000000 + i * 60000, open: 100 + i / 40, close: 100.2 + i / 40, high: 100.5 + i / 40, low: 99.9 + i / 40, volume: 10 }));
+const previewId = new URLSearchParams(location.search).get("indicator") === "adx" ? "average-directional-index-adx" : "absolute-levels";
+const previewName = previewId === "absolute-levels" ? "Absolute Levels" : "ADX";
+const storageKey = `qa-indicators-${previewId}`;
+const candles = Array.from({ length: previewId === "absolute-levels" ? 30 : 100 }, (_, i) => {
+  const close = previewId === "absolute-levels" ? 100.2 + i / 40 : 100 + Math.sin(i / 8) * 2 + i / 40;
+  return { timestamp: 1700000000000 + i * 60000, open: close - 0.2, close, high: close + 0.3, low: close - 0.4, volume: 10 };
+});
 const theme = { primary: "#11ff44", secondary: "#ffaa22", positive: "#44ff66", negative: "#ff7777", muted: "#bbbbbb" };
 function Preview() {
   const host = useRef(null);
-  const [indicators, setIndicators] = useState(() => JSON.parse(localStorage.getItem("qa-indicators") || "null") ?? [{ instanceId: "qa-absolute", indicatorId: "absolute-levels", enabled: true, settings: { ...defaultIndicatorSettings("absolute-levels"), firstValue: 100.25, secondValue: 101.5, firstLineStyle: "dashed", secondLineStyle: "dotted" } }]);
+  const [indicators, setIndicators] = useState(() => JSON.parse(localStorage.getItem(storageKey) || "null") ?? [{ instanceId: "qa-study", indicatorId: previewId, enabled: true, settings: { ...defaultIndicatorSettings(previewId), ...(previewId === "absolute-levels" ? { firstValue: 100.25, secondValue: 101.5, firstLineStyle: "dashed", secondLineStyle: "dotted" } : {}) } }]);
   const [request, setRequest] = useState(null);
-  useEffect(() => { localStorage.setItem("qa-indicators", JSON.stringify(indicators)); }, [indicators]);
+  useEffect(() => { localStorage.setItem(storageKey, JSON.stringify(indicators)); }, [indicators]);
   useEffect(() => {
     const chart = createChart(host.current, { width: 1000, height: 440, layout: { background: { color: "#080b10" }, textColor: "#dddddd" } });
     chart.addCandlestickSeries().setData(candles.map(c => ({ time: c.timestamp / 1000, open: c.open, high: c.high, low: c.low, close: c.close })));
     for (const instance of indicators) for (const definition of calculateIndicatorSeries(instance, candles, theme)) {
-      chart.addLineSeries(actualOverlayOptions(definition)).setData(definition.data);
+      if (definition.placement === "overlay") chart.addLineSeries(actualOverlayOptions(definition)).setData(definition.data);
     }
     chart.timeScale().fitContent();
     return () => chart.remove();
   }, [indicators]);
   return <main style={{ padding: 24 }}>
     <h1>Indicator QA — SYNTHETIC TEST DATA — no trading connection</h1>
-    <button onClick={() => setRequest({ instanceId: "qa-absolute", requestId: Date.now() })}>Open Absolute Levels settings</button>
+    <button onClick={() => setRequest({ instanceId: "qa-study", requestId: Date.now() })}>Open {previewName} settings</button>
     <ChartIndicatorsControl chartInstanceId="qa" instrument="NQ" broker="Rithmic" timeframe="1m" chartSettings={defaultChartSettings} indicators={indicators} onChange={setIndicators} settingsOpenRequest={request}/>
     <div ref={host}/>
+    {previewId !== "absolute-levels" ? <div style={{ position: "relative", width: 1000, height: 260 }}>
+      <ChartIndicatorPanes groups={indicators.map(instance => ({ key: instance.instanceId, indicatorId: instance.indicatorId, title: previewName, settings: instance.settings, series: calculateIndicatorSeries(instance, candles, theme) }))}
+        width={1000} priceScaleWidth={65} height={260} chartHeight={260} bottom={0} viewportVersion={0}
+        paneHeights={{}} collapsedPanes={{}} paneLayout={{}} timeToX={time => (time - candles[0].timestamp / 1000) / (99 * 60) * 935}
+        onResizePane={() => {}} onTogglePane={() => {}} onMovePane={() => {}}
+        onOpenSettings={instanceId => setRequest({ instanceId, requestId: Date.now() })}/>
+    </div> : null}
     <pre aria-label="QA current settings">{JSON.stringify(indicators, null, 2)}</pre>
   </main>;
 }

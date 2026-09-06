@@ -454,6 +454,7 @@ const sectionForSetting = (indicatorId: string, key: string, fallback: string) =
   (isTpoIndicator(indicatorId) ? TPO_SETTING_SECTIONS[key] ?? "General" : fallback);
 
 export const RENDERED_CHART_INDICATOR_IDS = new Set([
+  "average-directional-index-adx",
   "absolute-levels",
   "gamma-levels",
   "overlay-chart",
@@ -6380,6 +6381,24 @@ export default function ChartIndicatorsControl({
                     VIX is the market&apos;s 30-day implied-volatility index. The 52-week rank places today inside its trailing range; percentile is the share of trailing closes at or below today. Replay never reads beyond its selected clock.
                   </p>
                 </div>
+              ) : null}
+
+              {settingsDefinition.id === "average-directional-index-adx" ? (
+                <label data-settings-section="Style" className="block space-y-1 text-[10px] text-muted">
+                  <span>Line style</span>
+                  <KwantSelect
+                    value={String(settingsInstance.settings?.lineStyle ?? "solid")}
+                    onChange={(event) => replace(settingsInstance.instanceId, (current) => ({
+                      ...current, settings: { ...(current.settings ?? {}), lineStyle: event.target.value },
+                    }))}
+                    menuLabel="ADX line style"
+                    className="h-9 w-full border border-border bg-background px-3 text-foreground"
+                  >
+                    <option value="solid">Solid</option>
+                    <option value="dashed">Dashed</option>
+                    <option value="dotted">Dotted</option>
+                  </KwantSelect>
+                </label>
               ) : null}
 
               {settingsDefinition.id === "absolute-levels" ? (

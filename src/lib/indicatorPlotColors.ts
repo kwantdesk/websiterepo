@@ -31,6 +31,11 @@ export type IndicatorPlotColorSlot = {
 };
 
 export const INDICATOR_PLOT_COLOR_SLOTS: Record<string, IndicatorPlotColorSlot[]> = {
+  "average-directional-index-adx": [
+    { key: "adxColor", role: "primary" },
+    { key: "plusDiColor", role: "positive" },
+    { key: "minusDiColor", role: "negative" },
+  ],
   "absolute-levels": [
     { key: "firstLineColor", role: "primary" },
     { key: "secondLineColor", role: "secondary" },

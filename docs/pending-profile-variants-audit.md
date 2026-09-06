@@ -45,6 +45,22 @@ exact formula/pixel parity are not inferred from property names.
 
 ## Next integration gates
 
+### Additional data-path work verified locally
+
+`ownedVolumeProfiles.ts` validates exact instrument/contract, range, grouping,
+value area, size filters, coverage and row/totals reconciliation before assigning
+an owner. Cache errors do not block the exact reader; late results are suppressed;
+failed refreshes are explicit and do not issue a data-removal callback. A bounded
+live-fold helper excludes the next month and trades after the replay clock.
+Seven tests cover these paths using fixtures, not live provider requests.
+
+Source audit found the gateway profile route does not apply Filter/Split flags.
+The Next proxy only narrows a request when there is one resolved session span;
+several daily RTH spans cannot be represented by its single forwarded interval.
+The new loader therefore refuses those flags before any request. This is an
+unimplemented integration gate, not a substitute for supporting those settings.
+Do not enable Monthly until disjoint windows and their exact aggregation work.
+
 - Wire owned jobs to workspace cache, exact gateway source and shared live tape,
   with stable reconciliation identity and bounded/single-flight requests.
 - Add Monthly, Session and Visible controls through the complete existing VP

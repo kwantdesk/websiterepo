@@ -8130,6 +8130,18 @@ function Chart({
         definition.groupKey === instance.instanceId && definition.placement === "pane");
       const cumulativeDeltaStudy = CUMULATIVE_DELTA_INDICATOR_IDS.has(instance.indicatorId);
 
+      if (instance.indicatorId === "average-directional-index-adx") {
+        return [{
+          key: instance.instanceId,
+          title: "Average Directional Index (ADX)",
+          indicatorId: instance.indicatorId,
+          settings: instance.settings,
+          series,
+          statusLabel: series.some((definition) => definition.label === "ADX") ? undefined : "ADX warming up",
+          unavailableReason: series.length ? undefined : "Waiting for enough valid candles to calculate directional movement.",
+        }];
+      }
+
       // Render any verified CVD segment immediately. calculateIndicatorSeries
       // deliberately excludes OHLCV-only candles and marks discontinuities, so
       // partial history is honest and cannot be mistaken for zero delta.

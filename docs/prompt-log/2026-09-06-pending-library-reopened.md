@@ -57,3 +57,15 @@ Detailed unfinished gates: `docs/pending-profile-variants-audit.md`.
 Scoped lint and production build (TypeScript / 80 pages) also passed. Keeping
 this prerequisite local until the complete profile batch is ready avoids a
 production deployment for unfinished library rows. Live remains `eef254a1`.
+
+Batch 3: Monthly loader/execution validation and clock-bounded live fold added
+with seven tests. Discovered multi-session filtering is not supported by the
+current single-window forwarding path; new loader refuses that mismatch.
+Monthly/Session/Visible remain Pending until fully integrated.
+
+Also implemented ADX from the documented settings contract and explicit Wilder
+seed convention, without modifying working indicators. Eight ADX tests cover
+manual math, warmup, invalid data, source times, settings, theme and persistence.
+Actual browser pane/settings check passed (period edit, dashed lines, +DI hide,
+immediate clean Save/close). 34 rows remain. Reference defaults/seed/pixel parity
+and production live-market performance are not claimed from this local QA.

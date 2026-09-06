@@ -1,5 +1,6 @@
 import type { Candle } from "@/lib/backtester";
 import { calculateAbsoluteLevels } from "@/lib/absoluteLevels";
+import { calculateAverageDirectionalIndex } from "@/lib/averageDirectionalIndex";
 import { exchangeClockParts } from "@/lib/exchangeClock";
 import type { ChartIndicatorInstance } from "@/lib/chartIndicatorCatalog";
 import { calculateDeepEffort } from "@/lib/deepEffort";
@@ -318,6 +319,7 @@ function computeIndicatorSeries(
   const key = instance.indicatorId;
 
   if (key === "absolute-levels") return calculateAbsoluteLevels(candles, instance.settings ?? {}, theme);
+  if (key === "average-directional-index-adx") return calculateAverageDirectionalIndex(candles, instance.settings ?? {}, theme);
 
   if (key === "source-code-indicator") {
     const source = settingString(instance, "source", "");

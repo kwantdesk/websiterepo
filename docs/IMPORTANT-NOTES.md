@@ -4,7 +4,10 @@
   the whole catalogue. The September 6 audit found 38 blocked rows; two were
   broken catalogue IDs for existing Big Contracts/Liquidity Sweep engines.
   Those links are repaired; Absolute Levels is now implemented and locally
-  verified (documented parity limits). 35 still require individual work.
+  verified (documented parity limits). ADX is also implemented and browser-tested
+  with explicit Wilder seeds; 34 still require individual work. Monthly/Session/
+  Visible profile data/settings integration remains unfinished, including exact
+  multi-session filtering and event-allocation-aware visible boundaries.
   Track `docs/pending-indicator-library-2026-09-06.md`, not the old completion
   claim. Registration is not evidence of formula or visual parity.
 

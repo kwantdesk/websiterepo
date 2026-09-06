@@ -42,7 +42,16 @@ reachable catalogue row and that catalogue IDs are unique.
   QA verified full-width lines, price editing, immediate clean Save and close.
 - Details/default and parity limits: `docs/deepcharts-absolute-levels-audit.md`.
 
-## Remaining 35 — not released by blanket enablement
+## Batch 3 — ADX, profile-family data-path groundwork
+
+- [x] ADX calculator, documented full-window Wilder seeds, three-line pane,
+  complete documented period/colour/style/width controls, visibility and
+  theme/persistence handling. Browser-tested actual pane/settings; see
+  `docs/deepcharts-adx-audit.md` for vendor-parity and benchmark limitations.
+- Profile-family loading/validation/live-fold groundwork continues; no profile
+  entry was enabled. Multi-session filtering needs genuine disjoint windows.
+
+## Remaining 34 — not released by blanket enablement
 
 Each row needs evidence, settings/data implementation, calculation tests,
 renderer/theme/persistence verification and explicit visual/latency limits.
@@ -81,7 +90,7 @@ Do not tick a row just because its Add gate changes.
 | `zig-zag` | [ ] Audit / implement / verify |
 | `know-sure-thing-kst` | [ ] Audit / implement / verify |
 | `inverse-cyber-cycle` | [ ] Audit / implement / verify |
-| `average-directional-index-adx` | [ ] Audit / implement / verify |
+| `average-directional-index-adx` | [x] Batch 3; seed and vendor-parity limitations documented |
 | `candlestick-bar` | [ ] Audit / implement / verify |
 | `overlay-timeframe-highlight` | [ ] Audit / implement / verify |
 | `annotations-overlay` | [ ] Audit / implement / verify |
@@ -90,7 +99,7 @@ Do not tick a row just because its Add gate changes.
 ## Reference evidence and constraints
 
 - Profile-family findings and explicit integration gates:
-  `docs/pending-profile-variants-audit.md`. The 35 Pending count is unchanged.
+  `docs/pending-profile-variants-audit.md`. All three profile entries stay Pending.
 
 - Read-only installed DLL probe: `python scripts/dotnet-metadata.py --types Speed`
   successfully read 2,777 types / 30,928 methods but found no unobfuscated Speed

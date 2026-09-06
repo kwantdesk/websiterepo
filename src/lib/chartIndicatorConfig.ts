@@ -1,5 +1,6 @@
 import type { ChartSettings } from "@/lib/chartSettings";
 import { ABSOLUTE_LEVEL_DEFAULTS } from "@/lib/absoluteLevels";
+import { ADX_DEFAULTS } from "@/lib/averageDirectionalIndex";
 import type { ChartIndicatorInstance } from "@/lib/chartIndicatorCatalog";
 import { canonicalChartIndicatorId } from "@/lib/chartIndicatorCatalog";
 import { DEFAULT_VOLUME_PROFILE_VALUE_AREA_PERCENT } from "@/lib/volumeProfileMath";
@@ -81,6 +82,7 @@ import { CHART_OVERLAY_SETTINGS_VERSION } from "@/lib/chartOverlays";
 import { DEEP_PATTERN_BUILDER_SETTINGS_VERSION } from "@/lib/deepPatternBuilder";
 
 export const LIVE_CHART_INDICATOR_IDS = new Set([
+  "average-directional-index-adx",
   "absolute-levels",
   "gamma-environment",
   "vix-environment",
@@ -223,6 +225,10 @@ export function resolveDailyVolumeProfileCount(value: unknown): number {
 }
 
 export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[]> = {
+  "average-directional-index-adx": [
+    { key: "period", label: "Period", defaultValue: 14, min: 1, max: 1000, step: 1 },
+    { key: "lineWidth", label: "Line width", defaultValue: 1, min: 1, max: 4, step: 1 },
+  ],
   "absolute-levels": [
     { key: "firstValue", label: "First value", defaultValue: 0, min: -1000000000, max: 1000000000, step: 0.00000001 },
     { key: "secondValue", label: "Second value", defaultValue: 0, min: -1000000000, max: 1000000000, step: 0.00000001 },
@@ -1437,6 +1443,7 @@ export const defaultIndicatorSettings = (indicatorId: string, rawTheme?: ChartSe
 
 const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) => ({
   ...(indicatorId === "absolute-levels" ? ABSOLUTE_LEVEL_DEFAULTS : {}),
+  ...(indicatorId === "average-directional-index-adx" ? ADX_DEFAULTS : {}),
   // One picker per plotted series, seeded from the chart theme so an untouched
   // study looks exactly as it did. Spread FIRST, so any indicator that already
   // declares its own colour keys below keeps them.
