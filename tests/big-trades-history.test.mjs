@@ -31,16 +31,29 @@ function trade(timestamp, volume, price = 20_000) {
   };
 }
 
-test("Big Trades defaults to a rolling 24-hour execution history", () => {
+test("Big Trades defaults to 24 hours ending at the newest execution", () => {
   const now = Date.UTC(2026, 7, 15, 12);
   const prints = calculateBigTradePrints(
     [],
-    [trade(now - 25 * 60 * 60_000, 500), trade(now - 2 * 60 * 60_000, 100)],
+    [trade(now - 25 * 60 * 60_000, 500), trade(now, 100)],
     { filterMode: "manual", manualFilter: 1, enableClustering: false },
     now,
   );
 
   assert.deepEqual(prints.map((print) => print.volume), [100]);
+});
+
+test("unchanged tape keeps identical markers through daily close and the old six-hour boundary", () => {
+  const close = Date.UTC(2026, 8, 4, 21);
+  const tape = [trade(close - 86_400_000 + 100, 500), trade(close, 100)];
+  const settings = { filterMode: "manual", manualFilter: 1, enableClustering: false };
+  const expected = calculateBigTradePrints([], tape, settings, close);
+  assert.equal(expected.length, 2);
+  for (const elapsed of [1_000, 60_000, 3_600_000, 6 * 3_600_000, 6 * 3_600_000 + 1, 2 * 86_400_000]) {
+    assert.deepEqual(calculateBigTradePrints([], tape, settings, close + elapsed), expected);
+  }
+  const advanced = calculateBigTradePrints([], [...tape, trade(close + 1_000, 200)], settings, close + 1_000);
+  assert.deepEqual(advanced.map((print) => print.volume), [100, 200]);
 });
 
 test("Big Trades retains the latest completed session while CME is closed", () => {

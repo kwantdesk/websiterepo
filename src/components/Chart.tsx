@@ -4097,6 +4097,7 @@ function Chart({
   const pendingIndicatorMarketTradesRef = useRef(marketTrades);
   const pendingIndicatorMarketTradesVersionRef = useRef(marketTradesVersion);
   const sampledIndicatorMarketTradesRef = useRef(marketTrades);
+  const sampledIndicatorCandlesRef = useRef(sampledIndicatorCandles);
   const sampledOrderFlowHistoryReadyRef = useRef(orderFlowHistoryReady);
   const updateIndicatorSettingRef = useRef(onUpdateIndicatorSetting);
   const openIndicatorSettingsRef = useRef(onOpenIndicatorSettings);
@@ -4536,6 +4537,10 @@ function Chart({
   }, [tpoMergeHydratedKey, tpoMergeRecords, tpoMergeStorageKey]);
 
   useEffect(() => {
+    sampledIndicatorCandlesRef.current = sampledIndicatorCandles;
+  }, [sampledIndicatorCandles]);
+
+  useEffect(() => {
     const previousCandles = pendingIndicatorCandlesRef.current;
     const historyShapeChanged = (
       previousCandles.length !== candles.length
@@ -4555,7 +4560,8 @@ function Chart({
         || marketTrades.length - previousSampledTrades.length >= 250
       )
     );
-    const sampledReplayCandle = sampledIndicatorCandles.at(-1);
+    const sampledCandles = sampledIndicatorCandlesRef.current;
+    const sampledReplayCandle = sampledCandles.at(-1);
     const replayCandle = candles.at(-1);
     const replayFootprintAdvanced = (
       replayTimestampMs !== null
@@ -4563,7 +4569,7 @@ function Chart({
       && footprintSamplingEnabled
       && (
         previousSampledTrades.length !== marketTrades.length
-        || sampledIndicatorCandles.length !== candles.length
+        || sampledCandles.length !== candles.length
         || sampledReplayCandle?.timestamp !== replayCandle?.timestamp
         || sampledReplayCandle?.open !== replayCandle?.open
         || sampledReplayCandle?.high !== replayCandle?.high
@@ -4649,7 +4655,10 @@ function Chart({
     orderFlowHistoryReady,
     orderFlowIndicatorEnabled,
     replayTimestampMs,
-    sampledIndicatorCandles,
+    // Do not depend on the sampled output: merging the imperative live tail
+    // with the older prop snapshot can allocate a new array each time. Feeding
+    // that output back into this effect starts an endless idle-market timer.
+    // Replay comparisons read the committed snapshot through the ref above.
     volumeIndicatorEnabled,
   ]);
 

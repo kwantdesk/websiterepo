@@ -232,9 +232,10 @@ export function calculateBigTradePrintsWithContext(
     latestExecutionTimestamp = timestamp;
     break;
   }
-  const marketTapeIsClosed = latestExecutionTimestamp > 0
-    && now - latestExecutionTimestamp > 6 * 60 * 60_000;
-  const historyAnchor = marketTapeIsClosed
+  // No wall-clock expiry while the tape is unchanged, including short daily
+  // closures. The old six-hour switch first removed prints, then restored
+  // them on the same unchanged tape. New executions advance this window.
+  const historyAnchor = latestExecutionTimestamp > 0
     ? latestExecutionTimestamp
     : now;
   const cutoff = historyAnchor - daysToLoad * 86_400_000;

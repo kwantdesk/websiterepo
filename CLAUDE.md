@@ -1,5 +1,16 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-06 — Closed-market indicator redraw loop
+
+- Removed sampled candle output from the shared sampling effect dependencies;
+  replay comparisons now read a committed snapshot ref. An imperative live tail
+  ahead of candle props no longer re-arms sampling indefinitely with no trades.
+- Big Contracts' lookback advances with execution time, not the wall clock or
+  a six-hour closed-market switch. Unchanged tape retains identical markers.
+- Direct live execution listeners and sampling intervals are unchanged.
+- Tests, limits and owner prompt: `docs/prompt-log/2026-09-06-idle-indicator-flashing.md`.
+  No signed-in visual reproduction was possible (browser had no open tabs).
+
 ## 2026-09-06 — Chart emoji catalogue and deployment confirmation
 
 - Chart emoji flyout now lazy-loads all 3,979 Emojibase 17 entries, including
