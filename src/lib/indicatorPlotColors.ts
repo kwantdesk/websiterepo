@@ -91,6 +91,10 @@ export const INDICATOR_PLOT_COLOR_SLOTS: Record<string, IndicatorPlotColorSlot[]
     { key: "upColor", role: "positive" },
     { key: "downColor", role: "negative" },
   ],
+  "fvg-identifier": [
+    { key: "upColor", role: "positive" },
+    { key: "downColor", role: "negative" },
+  ],
   "zig-zag": [
     { key: "upColor", role: "positive" },
     { key: "downColor", role: "negative" },

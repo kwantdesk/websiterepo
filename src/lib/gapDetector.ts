@@ -8,6 +8,8 @@ export type GapZone = {
   endTime: number;
   low: number;
   high: number;
+  /** Open zones can paint to the pane edge without adding synthetic chart time. */
+  extendToRight?: boolean;
 };
 
 export const GAP_DETECTOR_DEFAULTS = {

@@ -23,7 +23,10 @@
   controls and hard history-gap boundaries.
   Their evidence and parity limits are tracked in the matching DeepCharts
   audits. Text on Chart now has a fixed multiline viewport overlay and the
-  complete public settings contract. 20 still require individual work. Monthly/Session/
+  complete public settings contract. FVG Identifier now has future-safe
+  three-candle zones, the complete observed public/DLL settings contract,
+  bounded mitigation lookup and browser-verified Save/reload behavior. 19
+  still require individual work. Monthly/Session/
   Visible profile data/settings integration remains unfinished, including exact
   multi-session filtering and event-allocation-aware visible boundaries.
   Track `docs/pending-indicator-library-2026-09-06.md`, not the old completion

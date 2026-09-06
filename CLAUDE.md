@@ -1,5 +1,21 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-07 — FVG Identifier converted from Pending
+
+- Added standard future-safe three-candle bullish/bearish fair-value gaps with
+  instrument-tick filters, close/wick mitigation, percentage breakout,
+  session reset, finite/unlimited extension and no synthetic future time.
+- Added the complete observed public/DLL settings contract in the official
+  General, Plot settings and Extension sections, plus shared theme/custom
+  colours, sliders, templates and saved normalization.
+- Nine focused tests, the existing Gap Detector suite, slider/template/theme
+  regressions, TypeScript, isolated browser plot/settings/Save/reload QA and
+  the complete 80-page production build pass. Pending inventory is 19;
+  production SHA verification is due.
+- Protected formula/native-pixel parity limits:
+  `docs/deepcharts-fvg-identifier-audit.md`; prompt/outcome:
+  `docs/prompt-log/2026-09-07-fvg-identifier.md`.
+
 ## 2026-09-07 — Text on Chart converted from Pending
 
 - Added the official four-setting fixed viewport note: font size, text colour,

@@ -94,6 +94,7 @@ import {
 } from "@/lib/kwantLevels";
 import { CHART_OVERLAY_SETTINGS_VERSION } from "@/lib/chartOverlays";
 import { DEEP_PATTERN_BUILDER_SETTINGS_VERSION } from "@/lib/deepPatternBuilder";
+import { FAIR_VALUE_GAP_DEFAULTS, normalizeFairValueGapSettings } from "@/lib/fairValueGap";
 
 export const LIVE_CHART_INDICATOR_IDS = new Set([
   "zig-zag",
@@ -112,6 +113,7 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "absolute-levels",
   "pivot-points",
   "gap-detector",
+  "fvg-identifier",
   "gamma-environment",
   "vix-environment",
   "zero-gamma-line",
@@ -332,6 +334,14 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "percentValue", label: "Percentage value", defaultValue: 1, min: 0, max: 100, step: 0.01 },
     { key: "tickValue", label: "Tick value", defaultValue: 20, min: 0, max: 100000, step: 1 },
     { key: "backgroundOpacity", label: "Background opacity", defaultValue: 40, min: 0, max: 100, step: 1 },
+  ],
+  "fvg-identifier": [
+    { key: "minNumTicks", label: "Min num ticks", defaultValue: 10, min: 0, max: 1000000, step: 1 },
+    { key: "maxNumTicks", label: "Max num ticks · 0 is unlimited", defaultValue: 0, min: 0, max: 1000000, step: 1 },
+    { key: "lineWidth", label: "Line width", defaultValue: 1, min: 0, max: 8, step: 1 },
+    { key: "backgroundOpacity", label: "Back opacity", defaultValue: 40, min: 0, max: 100, step: 1 },
+    { key: "maxBarsExtension", label: "Max bars extension · 0 is unlimited", defaultValue: 0, min: 0, max: 1000000, step: 1 },
+    { key: "breakoutPercent", label: "% breakout", defaultValue: 35, min: 0, max: 100, step: 1 },
   ],
   "volume": [
     { key: "minimumTotalVolume", label: "Minimum total volume", defaultValue: 0, min: 0, max: 10000000, step: 1 },
@@ -1544,6 +1554,7 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
   ...(indicatorId === "absolute-levels" ? ABSOLUTE_LEVEL_DEFAULTS : {}),
   ...(indicatorId === "pivot-points" ? PIVOT_POINT_DEFAULTS : {}),
   ...(indicatorId === "gap-detector" ? GAP_DETECTOR_DEFAULTS : {}),
+  ...(indicatorId === "fvg-identifier" ? FAIR_VALUE_GAP_DEFAULTS : {}),
   ...(indicatorId === "zig-zag" ? {
     ...ZIG_ZAG_DEFAULTS,
     retracementBackgroundColor: theme?.gridColor ?? ZIG_ZAG_DEFAULTS.retracementBackgroundColor,
@@ -2969,6 +2980,11 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
   if (normalizedInstance.indicatorId === "text-on-chart") {
     return { ...normalizedInstance, settings: normalizeTextOnChartSettings({
       ...defaultIndicatorSettings("text-on-chart"), ...(normalizedInstance.settings ?? {}),
+    }) };
+  }
+  if (normalizedInstance.indicatorId === "fvg-identifier") {
+    return { ...normalizedInstance, settings: normalizeFairValueGapSettings({
+      ...defaultIndicatorSettings("fvg-identifier"), ...(normalizedInstance.settings ?? {}),
     }) };
   }
   if (["vwap", "vwap-envelopes", "rolling-vwap"].includes(normalizedInstance.indicatorId)) {

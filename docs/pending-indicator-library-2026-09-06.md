@@ -102,7 +102,7 @@ Live diagnostics returned exact SHA `18a17c4d5ba23233ae678c4a75e324f596f0927b`.
 Isolated final tree passed 90 combined tests, 18 template checks and the normal
 production build. This supersedes the local-only deployment status above/below.
 
-## Remaining 20 — not released by blanket enablement
+## Remaining 19 — not released by blanket enablement
 
 Each row needs evidence, settings/data implementation, calculation tests,
 renderer/theme/persistence verification and explicit visual/latency limits.
@@ -125,7 +125,7 @@ Do not tick a row just because its Add gate changes.
 | `absolute-levels` | [x] Batch 2; reference/default limits recorded above |
 | `pivot-points` | [x] Public formula + exact DLL/UI contract implemented; synthetic browser QA passed; native pixel/open-session parity remains limited |
 | `price-movement-levels` | [ ] Audit / implement / verify |
-| `fvg-identifier` | [ ] Audit / implement / verify |
+| `fvg-identifier` | [x] Standard future-safe three-candle zones, full public/DLL settings contract, bounded mitigation lookup and browser Save/reload QA; protected formula/pixel parity limits documented |
 | `gap-detector` | [x] Public behavior + exact DLL settings contract implemented; synthetic renderer/settings QA passed; market-open parity remains limited |
 | `swing-point` | [x] Confirmed high/low segments, full public settings contract, gap safety and browser QA; protected tie/filter parity documented |
 | `average-daily-range-target` | [ ] Audit / implement / verify |
@@ -172,6 +172,8 @@ Do not tick a row just because its Add gate changes.
   `docs/deepcharts-swing-point-audit.md`.
 - Text on Chart settings, placement and explicit visual limits:
   `docs/deepcharts-text-on-chart-audit.md`.
+- FVG Identifier settings, calculation conventions and explicit protected
+  parity limits: `docs/deepcharts-fvg-identifier-audit.md`.
 - Full formula/pixel parity remains unclaimed until suitable reference evidence
   and side-by-side verification exist. No provider spending is authorised by
   this task and no vendor DLL/source is to be redistributed.

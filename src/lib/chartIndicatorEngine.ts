@@ -3,6 +3,7 @@ import { calculateAbsoluteLevels } from "@/lib/absoluteLevels";
 import { calculatePivotPoints } from "@/lib/pivotPoints";
 import type { PivotPointLabelOptions } from "@/lib/pivotPointLabels";
 import { calculateGapDetector } from "@/lib/gapDetector";
+import { calculateFairValueGaps } from "@/lib/fairValueGap";
 import type { GapZoneRenderOptions } from "@/lib/gapZonePrimitive";
 import { calculateZigZag } from "@/lib/zigZag";
 import { calculateInverseCyberCycle } from "@/lib/inverseCyberCycle";
@@ -363,6 +364,7 @@ function computeIndicatorSeries(
   if (key === "absolute-levels") return calculateAbsoluteLevels(candles, instance.settings ?? {}, theme);
   if (key === "pivot-points") return calculatePivotPoints(candles, instance.settings ?? {}, theme);
   if (key === "gap-detector") return calculateGapDetector(candles, instance.settings ?? {}, theme, context.tickSize);
+  if (key === "fvg-identifier") return calculateFairValueGaps(candles, instance.settings ?? {}, theme, context.tickSize);
   if (key === "zig-zag") return calculateZigZag(candles, instance.settings ?? {}, theme, context.tickSize, instance.instanceId);
   if (key === "inverse-cyber-cycle") return calculateInverseCyberCycle(candles, instance.settings ?? {}, theme, instance.instanceId);
   if (key === "ichimoku-indicator") return calculateIchimoku(candles, instance.settings ?? {}, theme, instance.instanceId);

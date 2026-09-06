@@ -154,6 +154,10 @@ export const INDICATOR_COLOR_ROLES: Readonly<Record<string, readonly IndicatorCo
     { key: "bullishColor", label: "Bullish divergence", fallback: (t) => t.up },
     { key: "bearishColor", label: "Bearish divergence", fallback: (t) => t.down },
   ],
+  "fvg-identifier": [
+    { key: "upColor", label: "Up Color", fallback: (t) => t.up },
+    { key: "downColor", label: "Down Color", fallback: (t) => t.down },
+  ],
 };
 
 /**

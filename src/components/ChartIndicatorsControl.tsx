@@ -462,6 +462,9 @@ const sectionForSetting = (indicatorId: string, key: string, fallback: string) =
       ? ["fontSize", "lineWidth", "periodsToShow"].includes(key) ? "Plot settings" : "Custom reference"
     : indicatorId === "gap-detector"
       ? key === "backgroundOpacity" || /Color$/.test(key) || key === "useThemeColors" ? "Color settings" : "General"
+    : indicatorId === "fvg-identifier"
+      ? /^(minNumTicks|maxNumTicks)$/.test(key) ? "General"
+        : /^(lineWidth|backgroundOpacity|upColor|downColor|useThemeColors)$/.test(key) ? "Plot settings" : "Extension"
     : indicatorId === "zig-zag"
       ? key.startsWith("retracement") || /^showRetracement/.test(key) || key === "extendRight" ? "Retracement settings" : "Zig Zag settings"
     : indicatorId === "inverse-cyber-cycle"
@@ -481,6 +484,7 @@ const PIVOT_POINT_MANAGED_SETTINGS = new Set([
   "customSessionStart", "customSessionEnd", "lineStyle", "labelAlign",
 ]);
 const GAP_DETECTOR_MANAGED_SETTINGS = new Set(["upColor", "downColor"]);
+const FVG_MANAGED_SETTINGS = new Set(["upColor", "downColor"]);
 const INVERSE_CYBER_CYCLE_MANAGED_SETTINGS = new Set([
   "cycleAAutoColor", "cycleBAutoColor", "cycleALineStyle", "cycleBLineStyle",
   "cycleAShortName", "cycleBShortName",
@@ -510,6 +514,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "absolute-levels",
   "pivot-points",
   "gap-detector",
+  "fvg-identifier",
   "zig-zag",
   "gamma-levels",
   "overlay-chart",
@@ -684,6 +689,8 @@ function bigTradeModeFor(
 
 function titleFromKey(key: string, indicatorId?: string) {
   if (indicatorId === "session-highs-lows" && key === "showTokyo") return "Show Asia";
+  if (indicatorId === "fvg-identifier" && key === "resetStartDay") return "Reset Start Day";
+  if (indicatorId === "fvg-identifier" && key === "removeOnShadowTriggered") return "Remove Line On Shadow Triggered";
   return key
     .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
     .replace(/([A-Z])([A-Z][a-z])/g, "$1 $2")
@@ -7841,7 +7848,7 @@ export default function ChartIndicatorsControl({
                 */}
               {indicatorSupportsPalette(settingsDefinition.id)
                 && !hasOwnPaletteSection(settingsDefinition.id) ? (
-                <div data-settings-section={settingsDefinition.id === "gap-detector" ? "Color settings" : undefined}>
+                <div data-settings-section={settingsDefinition.id === "gap-detector" ? "Color settings" : settingsDefinition.id === "fvg-identifier" ? "Plot settings" : undefined}>
                   <IndicatorPaletteSection
                     indicatorId={settingsDefinition.id}
                     settings={settingsInstance.settings ?? {}}
@@ -7916,6 +7923,7 @@ export default function ChartIndicatorsControl({
                     && !(settingsDefinition.id === "confluence-identifier" && CONFLUENCE_IDENTIFIER_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "pivot-points" && PIVOT_POINT_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "gap-detector" && GAP_DETECTOR_MANAGED_SETTINGS.has(key))
+                    && !(settingsDefinition.id === "fvg-identifier" && FVG_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "inverse-cyber-cycle" && INVERSE_CYBER_CYCLE_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "ichimoku-indicator" && ICHIMOKU_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "regression-channel" && REGRESSION_CHANNEL_MANAGED_SETTINGS.has(key))
@@ -7991,7 +7999,7 @@ export default function ChartIndicatorsControl({
                   </div>
                 ));
               })()}
-              <div data-settings-section={settingsDefinition.id === "gap-detector" ? "Color settings" : "Style"} className="rounded-xl border border-primary/15 bg-primary/6 px-4 py-3 text-[9px] leading-4 text-muted">
+              <div data-settings-section={settingsDefinition.id === "gap-detector" ? "Color settings" : settingsDefinition.id === "fvg-identifier" ? "Plot settings" : "Style"} className="rounded-xl border border-primary/15 bg-primary/6 px-4 py-3 text-[9px] leading-4 text-muted">
                 {settingsDefinition.id === "bounce-levels" ? (
                   <>Bounce colours follow the active chart theme by default. Changing any colour automatically creates a workspace-specific palette; turn <span className="text-foreground">Use Theme Colors</span> back on to relink it.</>
                 ) : (
