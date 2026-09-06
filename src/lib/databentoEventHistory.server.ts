@@ -21,6 +21,11 @@ import {
   vendorMarketDataFetch,
 } from "@/lib/vendorMarketData.server";
 import { fetchInstitutionalMarketData } from "@/lib/institutionalMarketData.server";
+import { futuresTickSize } from "@/lib/eventBars";
+import {
+  validateAuctionGapCompactRows,
+  type AuctionGapCompactRowsResult,
+} from "@/lib/auctionGapCompactRows";
 
 // Event charts must retain the same five-session history window as time-based
 // charts. The previous 5,000-bar tail was too small for active contracts on
@@ -72,6 +77,7 @@ export type DatabentoEventExecutionTuple = [
 type GatewayEventHistory = {
   candles: Candle[];
   executions: DatabentoEventExecutionTuple[];
+  auctionGap?: AuctionGapCompactRowsResult;
 };
 
 async function fetchGatewayEventHistory(args: {
@@ -80,6 +86,7 @@ async function fetchGatewayEventHistory(args: {
   startMs: number;
   endMs: number;
   includeExecutions: boolean;
+  includeAuctionGap?: boolean;
 }): Promise<GatewayEventHistory> {
   const query = new URLSearchParams({
     // The browser catalog can carry continuous aliases such as NQ.v.0, while
@@ -93,6 +100,7 @@ async function fetchGatewayEventHistory(args: {
     orderFlow: args.includeExecutions ? "1" : "0",
     exec: args.includeExecutions ? "1" : "0",
   });
+  if (args.includeAuctionGap) query.set("auctionGap", "1");
   const response = await fetchInstitutionalMarketData(
     `/v1/market-data/history?${query}`,
     { method: "GET" },
@@ -101,6 +109,8 @@ async function fetchGatewayEventHistory(args: {
   const payload = await response.json().catch(() => null) as {
     candles?: unknown;
     executions?: unknown;
+    symbol?: unknown;
+    auctionGap?: unknown;
     error?: unknown;
   } | null;
   if (!response.ok) {
@@ -110,7 +120,16 @@ async function fetchGatewayEventHistory(args: {
   const executions = Array.isArray(payload?.executions)
     ? payload.executions as DatabentoEventExecutionTuple[]
     : [];
-  return { candles, executions };
+  const expectedContract = String(payload?.symbol ?? "").trim().toUpperCase();
+  const auctionGap = args.includeAuctionGap
+    ? validateAuctionGapCompactRows(
+        payload?.auctionGap,
+        candles,
+        expectedContract,
+        futuresTickSize(expectedContract || args.symbol),
+      )
+    : undefined;
+  return { candles, executions, ...(auctionGap ? { auctionGap } : {}) };
 }
 
 function fixedPrice(value: unknown) {
@@ -326,7 +345,8 @@ export async function getDatabentoEventHistory(
    * which still want the most recent window ending at `end`.
    */
   executionStartMs?: number,
-) {
+  options: { auctionGap?: boolean } = {},
+): Promise<GatewayEventHistory> {
   const requestedStart = Date.parse(start);
   const requestedEnd = Date.parse(end);
   if (!Number.isFinite(requestedStart) || !Number.isFinite(requestedEnd) || requestedEnd <= requestedStart) {
@@ -346,6 +366,7 @@ export async function getDatabentoEventHistory(
       startMs: requestedStart,
       endMs: requestedEnd,
       includeExecutions: true,
+      includeAuctionGap: options.auctionGap,
     });
   }
 

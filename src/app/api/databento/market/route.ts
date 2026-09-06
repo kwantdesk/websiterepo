@@ -19,6 +19,7 @@ import {
   getDatabentoEventHistory,
   type DatabentoEventExecutionTuple,
 } from "@/lib/databentoEventHistory.server";
+import type { AuctionGapCompactRowsResult } from "@/lib/auctionGapCompactRows";
 
 /*
  * What these bars actually are. They said GLBX.MDP3 while every one of them
@@ -36,6 +37,7 @@ export const preferredRegion = "iad1";
 type HistoryCacheEntry = {
   candles: Candle[];
   executions: Array<DatabentoExecutionTuple | DatabentoEventExecutionTuple>;
+  auctionGap?: AuctionGapCompactRowsResult;
   updatedAt: number;
 };
 
@@ -70,6 +72,7 @@ type TimeHistoryPayload = Awaited<ReturnType<typeof getDatabentoOrderFlowHistory
 type EventBarsPayload = {
   candles: Awaited<ReturnType<typeof getDatabentoEventBars>>;
   executions: DatabentoExecutionTuple[];
+  auctionGap?: AuctionGapCompactRowsResult;
 };
 
 function encodeHistory(history: EventHistoryPayload | TimeHistoryPayload | EventBarsPayload) {
@@ -128,17 +131,20 @@ async function getDurableEventHistory(
   start: string,
   end: string,
   cacheScope = `${historyDays}d`,
+  includeAuctionGap = false,
 ): Promise<EventHistoryPayload> {
   const encoded = await unstable_cache(
     async () => {
-      const history = await getDatabentoEventHistory(symbol, timeframe, start, end);
+      const history = await getDatabentoEventHistory(
+        symbol, timeframe, start, end, undefined, { auctionGap: includeAuctionGap },
+      );
       if (!history.candles.some((candle) =>
         Number(candle.askVolume ?? 0) + Number(candle.bidVolume ?? 0) > 0)) {
         throw new Error("CME event flow returned no aggressor history.");
       }
       return encodeHistory(history);
     },
-    ["cme-event-flow-v4", symbol, timeframe, cacheScope],
+    ["cme-event-flow-v5", symbol, timeframe, cacheScope, includeAuctionGap ? "gap" : "base"],
     { revalidate: DURABLE_EVENT_HISTORY_REVALIDATE_SECONDS },
   )();
   return decodeHistory<EventHistoryPayload>(encoded);
@@ -151,17 +157,20 @@ async function getDurableTimeHistory(
   start: string,
   end: string,
   cacheScope = `${historyDays}d`,
+  includeAuctionGap = false,
 ): Promise<TimeHistoryPayload> {
   const encoded = await unstable_cache(
     async () => {
-      const history = await getDatabentoOrderFlowHistory(symbol, timeframe, start, end);
+      const history = await getDatabentoOrderFlowHistory(
+        symbol, timeframe, start, end, { auctionGap: includeAuctionGap },
+      );
       if (!history.candles.some((candle) =>
         Number(candle.askVolume ?? 0) + Number(candle.bidVolume ?? 0) > 0)) {
         throw new Error("CME timed flow returned no aggressor history.");
       }
       return encodeHistory(history);
     },
-    ["cme-time-flow-v3", symbol, timeframe, cacheScope],
+    ["cme-time-flow-v4", symbol, timeframe, cacheScope, includeAuctionGap ? "gap" : "base"],
     { revalidate: DURABLE_TIME_HISTORY_REVALIDATE_SECONDS },
   )();
   return decodeHistory<TimeHistoryPayload>(encoded);
@@ -174,15 +183,20 @@ async function durableEventHistoryOrDirect(
   start: string,
   end: string,
   cacheScope?: string,
+  includeAuctionGap = false,
 ) {
   try {
-    return await getDurableEventHistory(symbol, timeframe, historyDays, start, end, cacheScope);
+    return await getDurableEventHistory(
+      symbol, timeframe, historyDays, start, end, cacheScope, includeAuctionGap,
+    );
   } catch (error) {
     // Local scripts and unusual runtimes can lack Next's incremental cache.
     // The data path must remain available there, while production still gains
     // the cross-instance durable cache above.
     if (error instanceof Error && error.message.includes("incrementalCache")) {
-      return getDatabentoEventHistory(symbol, timeframe, start, end);
+      return getDatabentoEventHistory(
+        symbol, timeframe, start, end, undefined, { auctionGap: includeAuctionGap },
+      );
     }
     throw error;
   }
@@ -216,12 +230,15 @@ async function durableTimeHistoryOrDirect(
   start: string,
   end: string,
   cacheScope?: string,
+  includeAuctionGap = false,
 ) {
   try {
-    return await getDurableTimeHistory(symbol, timeframe, historyDays, start, end, cacheScope);
+    return await getDurableTimeHistory(
+      symbol, timeframe, historyDays, start, end, cacheScope, includeAuctionGap,
+    );
   } catch (error) {
     if (error instanceof Error && error.message.includes("incrementalCache")) {
-      return getDatabentoOrderFlowHistory(symbol, timeframe, start, end);
+      return getDatabentoOrderFlowHistory(symbol, timeframe, start, end, { auctionGap: includeAuctionGap });
     }
     throw error;
   }
@@ -232,6 +249,7 @@ export async function GET(request: Request) {
   const symbol = url.searchParams.get("symbol")?.trim();
   const timeframe = url.searchParams.get("timeframe")?.trim() || "5m";
   const includeOrderFlow = url.searchParams.get("orderFlow") === "1";
+  const includeAuctionGap = url.searchParams.get("auctionGap") === "1";
   // Flow-heal polling only needs the flow-baked candles; the multi-megabyte
   // execution tuple tape is skippable per request without a separate cache.
   const includeExecutions = includeOrderFlow && url.searchParams.get("exec") !== "0";
@@ -271,7 +289,7 @@ export async function GET(request: Request) {
   const end = new Date(toMs).toISOString();
   const cacheScope = hasExplicitRange ? `range-${fromMs}-${toMs}` : `${historyDays}d`;
   const rangeLabel = hasExplicitRange ? `${start}/${end}` : `${historyDays}D`;
-  const cacheKey = `${symbol}::${timeframe}::${cacheScope}::${includeOrderFlow ? "flow" : "bars"}`;
+  const cacheKey = `${symbol}::${timeframe}::${cacheScope}::${includeOrderFlow ? "flow" : "bars"}::${includeAuctionGap ? "gap" : "base"}`;
   const cached = historyCache.get(cacheKey);
   const cacheLifetime = hasExplicitRange
     ? HISTORICAL_SESSION_CACHE_MS
@@ -304,6 +322,7 @@ export async function GET(request: Request) {
       {
         candles: cached.candles,
         executions: includeExecutions ? cached.executions : [],
+        ...(includeAuctionGap ? { auctionGap: cached.auctionGap } : {}),
         source: "CME",
         dataset: RECORDED_DATASET,
         range: rangeLabel,
@@ -327,6 +346,7 @@ export async function GET(request: Request) {
             start,
             end,
             cacheScope,
+            includeAuctionGap,
           )
         : await durableEventBarsOrDirect(
             symbol,
@@ -344,23 +364,26 @@ export async function GET(request: Request) {
             start,
             end,
             cacheScope,
+            includeAuctionGap,
           )
         : {
             candles: await getDatabentoBars(symbol, timeframe, start, end),
             executions: [] as DatabentoExecutionTuple[],
+            auctionGap: undefined,
           };
-    const { candles, executions } = history;
+    const { candles, executions, auctionGap } = history;
     if (!hasExplicitRange && !hasMinimumChartHistory(candles, timeframe)) {
       throw new Error(
         `Rithmic has not recorded five complete trading sessions for ${symbol} ${timeframe}; partial candle history was rejected.`,
       );
     }
-    if (candles.length) historyCache.set(cacheKey, { candles, executions, updatedAt: now });
+    if (candles.length) historyCache.set(cacheKey, { candles, executions, auctionGap, updatedAt: now });
     return conditionalJson(
       request,
       {
         candles,
         executions: includeExecutions ? executions : [],
+        ...(includeAuctionGap ? { auctionGap } : {}),
         source: "CME",
         dataset: RECORDED_DATASET,
         range: rangeLabel,
@@ -378,6 +401,7 @@ export async function GET(request: Request) {
         {
           candles: cached.candles,
           executions: includeExecutions ? cached.executions : [],
+          ...(includeAuctionGap ? { auctionGap: cached.auctionGap } : {}),
           source: "CME",
           dataset: RECORDED_DATASET,
           range: rangeLabel,

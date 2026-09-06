@@ -17,6 +17,11 @@ import {
 } from "@/lib/vendorMarketData.server";
 import { availableEndFromError, clampEndToLicence, rememberAvailableEnd } from "@/lib/databentoAvailableEnd";
 import { fetchInstitutionalMarketData } from "@/lib/institutionalMarketData.server";
+import { futuresTickSize } from "@/lib/eventBars";
+import {
+  validateAuctionGapCompactRows,
+  type AuctionGapCompactRowsResult,
+} from "@/lib/auctionGapCompactRows";
 import { fetchRecordedTape, fetchRecordedTrades } from "@/lib/recordedTradeTape.server";
 
 export const DATABENTO_HISTORICAL_BASE_URL = "https://api.databento.com/v0";
@@ -51,6 +56,7 @@ export type DatabentoExecutionTuple = [
 export type DatabentoOrderFlowHistory = {
   candles: Candle[];
   executions: DatabentoExecutionTuple[];
+  auctionGap?: AuctionGapCompactRowsResult;
 };
 
 export const DATABENTO_FUTURES: DatabentoInstrument[] = [
@@ -574,6 +580,7 @@ export async function getDatabentoOrderFlowHistory(
   timeframe: string,
   start: string,
   end: string,
+  options: { auctionGap?: boolean } = {},
 ): Promise<DatabentoOrderFlowHistory> {
   if (isEventBasedChartInterval(timeframe)) {
     const bars = await getDatabentoBars(symbol, timeframe, start, end);
@@ -601,6 +608,7 @@ export async function getDatabentoOrderFlowHistory(
     interval: timeframe,
     orderFlow: "1",
   });
+  if (options.auctionGap) query.set("auctionGap", "1");
   if (Number.isFinite(requestedFrom)) query.set("fromMs", String(requestedFrom));
   if (Number.isFinite(requestedTo)) query.set("toMs", String(requestedTo));
   const response = await fetchInstitutionalMarketData(`/v1/market-data/history?${query}`);
@@ -608,7 +616,12 @@ export async function getDatabentoOrderFlowHistory(
     const detail = await response.text();
     throw new Error(`Chart history is unavailable (${response.status}): ${detail.slice(0, 300)}`);
   }
-  const payload = (await response.json()) as { candles?: unknown; executions?: unknown };
+  const payload = (await response.json()) as {
+    candles?: unknown;
+    executions?: unknown;
+    symbol?: unknown;
+    auctionGap?: unknown;
+  };
 
   const candles = (Array.isArray(payload.candles) ? payload.candles : [])
     .map((row) => {
@@ -651,7 +664,16 @@ export async function getDatabentoOrderFlowHistory(
     })
     .filter((tuple) => tuple[0] > 0 && tuple[1] > 0 && tuple[2] > 0);
 
-  return { candles, executions };
+  const expectedContract = String(payload.symbol ?? "").trim().toUpperCase();
+  const auctionGap = options.auctionGap
+    ? validateAuctionGapCompactRows(
+        payload.auctionGap,
+        candles,
+        expectedContract,
+        futuresTickSize(expectedContract || symbol),
+      )
+    : undefined;
+  return { candles, executions, ...(auctionGap ? { auctionGap } : {}) };
 }
 
 export async function getDatabentoBarsWithOrderFlow(

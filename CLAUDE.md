@@ -1,5 +1,17 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-07 — Auction Gap compact rows cross the web trust boundary
+
+- Added a fail-closed web validator for the gateway's compact time/event rows.
+  It reconciles exact contract, schema/provider, coverage/order proof, candle
+  identity, tick geometry, sorted one-tick rows and total source volume.
+- CME history now opts into `auctionGap=1`, validates beside the server-side
+  candle decode, preserves the result through isolated durable/process caches,
+  and exposes it only on explicitly requested public responses.
+- 95 Auction Gap tests, 50 gateway tests, TypeScript and scoped lint pass.
+  Remaining: browser request/state, settings-time segmentation, worker/Chart
+  consumption, live coverage receipts and browser QA. Gate OFF/no deploy.
+
 ## 2026-09-07 — Auction Gap compact rows on all history chart families
 
 - History `auctionGap=1` attaches compact proven rows to minute-and-higher

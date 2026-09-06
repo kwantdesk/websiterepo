@@ -1,5 +1,13 @@
 # Pending-library continuation — Auction Gap Tracker
 
+2026-09-07 web-boundary continuation: added fail-closed validation of compact
+time/event rows against resolved contract and the exact decoded chart candles,
+including schema/source/proof, ownership, tick geometry/order/range and volume.
+The public CME history route now opt-ins, caches and returns only the validated
+result under gap-specific keys. 95 Auction Gap tests, 50 gateway tests, tsc and
+lint pass. Browser state/settings segmentation/worker/render/live receipts/QA
+remain; still Pending, no push/deploy.
+
 2026-09-07 time-route continuation: `auctionGap=1` now returns coverage-proven
 compact rows for minute+ canonical history and collects them in the existing
 sub-minute tape fold without a second scan. Ordinary responses are unchanged;

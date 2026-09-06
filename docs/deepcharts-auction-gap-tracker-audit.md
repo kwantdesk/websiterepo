@@ -1,5 +1,21 @@
 # Auction Gap Tracker — implementation in progress
 
+### Compact rows validated at the web boundary — 2026-09-07
+
+The server-side CME history adapters now request the gateway's opt-in compact
+rows and validate them before the public route can preserve or return them.
+Validation is tied to the actual decoded candle list and resolved contract: it
+requires the v1/Rithmic identity, affirmative coverage and ordering proof,
+one exact row set per candle, time or event ownership metadata, on-tick OHLC,
+strictly increasing in-range price ticks, nonnegative side/unknown volume and
+an exact per-candle volume reconciliation. Any discrepancy produces an explicit
+empty unavailable result. Base/gap process and durable caches remain isolated.
+
+95 Auction Gap tests, 50 gateway tests, TypeScript and scoped lint pass. This
+does not yet make the indicator available: browser opt-in/state, session-setting
+segmentation, worker/primitive consumption, live coverage receipts and browser
+QA remain. Gate stays Pending, with no production deployment.
+
 ### Time history routes return proven compact rows — 2026-09-07
 
 `auctionGap=1` now attaches the versioned compact row envelope to canonical
