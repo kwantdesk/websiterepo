@@ -1,5 +1,28 @@
 # Auction Gap Tracker — implementation in progress
 
+### Original response handoff and concrete source limitation — 2026-09-07
+
+Inspected workspace `compactIndicatorExecutionHistory`: beyond its recent window
+it keeps up to 12 strongest prints per minute; even the recent portion is capped
+at 25,000 records, then combined output at 50,000. Those sparse records cannot
+establish historical low-participation tick levels. Existing compaction remains
+unchanged for working studies. Institutional normalization also drops flowOnly
+and rewrites legacy side semantics, so original response metadata matters.
+
+Added `auctionGapHistorySource` and a narrow publish hook in the existing fetch
+after normalization but before persistence merging. It delivers the original
+untrusted envelope only to matching explicit symbol/contract listeners. No cache,
+network, polling, timer, new stream or retained response body; consumer errors are
+isolated from the shared request. Chart consumer and worker envelope validation
+remain unwired. The actual source remains NOT proven complete: server order-flow
+route publishes retained book trades with truncated=false and historicalAvailable=
+false. Request bounds/count/truncated alone cannot be treated as complete-history
+proof. Independent source coverage/candle reconciliation is required.
+
+84 tests, TypeScript and scoped lint pass. Tests cover real hook placement,
+original metadata, contract isolation, subscriber release and error isolation.
+No production source/browser claim or gate change; 28 Pending, no deployment.
+
 ### Settings and drawing layer — 2026-09-07
 
 Added normalized settings and the shared-dialog Inputs/Style/Alerts controls:

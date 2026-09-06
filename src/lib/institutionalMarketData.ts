@@ -1,4 +1,5 @@
 import type { Candle } from "@/lib/backtester";
+import { auctionGapHistorySource } from "./auctionGapHistorySource.ts";
 import { cmeEventTailCutoffMs, cmeSessionDateKey } from "@/lib/chartHistoryWindow";
 import { futuresTickSize } from "@/lib/eventBars";
 import {
@@ -2209,6 +2210,9 @@ export async function fetchInstitutionalOrderFlowLevels(args: {
       toMs: finiteNumber(payload.toMs) ?? args.toMs,
       truncated: payload.truncated === true,
     };
+    // Preserve the original envelope for exact-data studies before cache merging
+    // and workspace display compaction. Delivery alone never asserts coverage.
+    auctionGapHistorySource.publish(args, payload);
     const persistentKey =
       `order-flow:${ORDER_FLOW_CACHE_SCHEMA}:${orderFlowRecordCacheKey(args.symbol, args.timeframe, args.contractSymbol)}`;
     const merged = await persistMergedInstitutionalOrderFlowResult(persistentKey, result);

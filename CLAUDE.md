@@ -1,5 +1,26 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-07 — Auction Gap original history response handoff
+
+- Found `compactIndicatorExecutionHistory` explicitly reduces older history to
+  12 strongest prints/minute, recent tail to 25k and total to 50k. Its output
+  cannot be Auction Gap's exact historical source. Existing indicators unchanged.
+- Added no-cache/no-fetch scoped `auctionGapHistorySource`; existing institutional
+  history fetch publishes original response after existing normalization and
+  before persistence merging. Preserves raw contract/schema/flowOnly metadata;
+  no consumer yet. Listener failure cannot fail shared history or other listeners.
+  No added network/stream/timer, no retained response when consumers leave.
+- 84 Auction Gap tests, tsc and scoped lint pass. Actual fetch hook is checked;
+  subscription/contract isolation/error/release tests pass. No browser/runtime
+  source proof yet. Keep Pending gate off; still 28 remaining, no deployment.
+- Critical: gateway order-flow endpoint currently sets truncated=false on its
+  retained book tape and historicalAvailable=false; that does NOT prove complete
+  historical coverage. Consumer must verify independent chart/coverage evidence,
+  not promote that flag. The original normalizer also drops flowOnly and rewrites
+  legacy side semantics; raw envelope is intentionally preserved for explicit
+  worker validation. Next connect scoped Chart consumer/worker source adapter,
+  real source verification and render/alerts/browser QA.
+
 ## 2026-09-07 — Auction Gap settings and chart-owned primitive
 
 - Added normalized settings/defaults and bounded numeric definitions; wired

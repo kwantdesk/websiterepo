@@ -1,5 +1,12 @@
 # Pending-library continuation — Auction Gap Tracker
 
+2026-09-07 raw-history continuation: confirmed shared tape compaction loses
+older executions; added a scoped handoff from the existing original response
+before persistence merging, without extra network calls or changes to working
+indicators. 84 tests/tsc/lint pass. Gateway truncated=false is not completeness
+proof for retained live tape. Consumer/coverage/Chart/browser checks remain;
+not enabled or deployed, 28 Pending.
+
 2026-09-07 UI/plot continuation: added bounded sliders/defaults, include/session/
 plot/alert controls within shared settings, theme/custom colours and template
 round-trip coverage. Added chart-owned logical-index zone/marker primitive.
