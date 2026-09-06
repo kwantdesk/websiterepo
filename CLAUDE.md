@@ -1,5 +1,19 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-07 — Persistent trade-tape coverage receipts
+
+- Added `trade-tape-coverage.mjs`: versioned Rithmic coverage receipts retain
+  exact exchange/contract/session observation bounds, print count, raw recorder
+  GAP/DROPPED count and damaged gzip-member count.
+- Existing backfill writes the receipt atomically beside each compact sidecar,
+  including honest evidence for empty/failed-integrity extracts. It does not
+  claim a damaged recording was repaired.
+- A receipt proves only a same-contract request wholly inside its observed
+  bounds with zero known gaps/damage and valid ordering. Missing or malformed
+  receipts fail closed.
+- 24 archive/coverage tests and scoped lint pass. This is source groundwork;
+  multi-session/live coverage and Chart integration remain, gate OFF, no deploy.
+
 ## 2026-09-07 — Auction Gap exact-history envelope validator
 
 - Added a fail-closed validator for the original Rithmic envelope: exact contract,

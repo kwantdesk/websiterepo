@@ -34,6 +34,9 @@ import { tradeFromRecord } from "../src/futures-bar-archive.mjs";
 import {
   DEFAULT_TAPE_ROOTS, backfillFileName, decodeTrade, encodeTrade, instrumentFileName, sideCode,
 } from "../src/trade-tape-archive.mjs";
+import {
+  coverageFileName, createBackfillCoverageReceipt, writeCoverageReceipt,
+} from "../src/trade-tape-coverage.mjs";
 
 const args = process.argv.slice(2);
 const flag = (name, fallback = null) => {
@@ -113,6 +116,8 @@ async function backfillFile(tradingDate, name) {
   const cutoff = await liveTapeStart(join(dayDir, instrumentFileName(exchange, symbol)));
   const rows = [];
   let gaps = 0;
+  let observationFromMs = null;
+  let observationToMs = null;
   // Member by member, so a truncated member costs only itself. Piping the
   // whole file through one gunzip aborts at the first break and discards
   // everything after it - a third of a session on a day the collector was
@@ -126,20 +131,32 @@ async function backfillFile(tradingDate, name) {
     if (chicagoTradingDate(trade.timestamp) !== tradingDate) return;
     // Stop where the live tape begins, so the pair is complementary.
     if (cutoff !== null && trade.timestamp >= cutoff) return;
+    const observed = Number.isFinite(Date.parse(record?.receivedAt))
+      ? Date.parse(record.receivedAt)
+      : trade.timestamp;
+    observationFromMs = observationFromMs === null ? observed : Math.min(observationFromMs, observed);
+    observationToMs = observationToMs === null ? observed : Math.max(observationToMs, observed);
     rows.push(encodeTrade(trade, sideCode(record?.payload || record)));
   });
 
-  if (!rows.length) {
-    return { exchange, symbol, prints: 0, gaps, breaks: summary.breaks, cutoff };
-  }
   rows.sort((left, right) => left[0] - right[0]);
+
+  const receipt = createBackfillCoverageReceipt({
+    exchange, symbol, tradingDate, observationFromMs, observationToMs,
+    sourcePrintCount: rows.length, gapMarkers: gaps, damagedMembers: summary.breaks,
+  });
 
   if (!DRY) {
     if (!existsSync(dayDir)) mkdirSync(dayDir, { recursive: true });
-    await writeTape(target, rows.map((row) => JSON.stringify(row)));
+    if (rows.length) await writeTape(target, rows.map((row) => JSON.stringify(row)));
+    await writeCoverageReceipt(join(dayDir, coverageFileName(exchange, symbol)), receipt);
+  }
+  if (!rows.length) {
+    return { exchange, symbol, prints: 0, gaps, breaks: summary.breaks, cutoff, receipt };
   }
   return {
     exchange, symbol, prints: rows.length, gaps, breaks: summary.breaks, cutoff,
+    receipt,
     from: new Date(rows[0][0]).toISOString(),
     to: new Date(rows[rows.length - 1][0]).toISOString(),
   };

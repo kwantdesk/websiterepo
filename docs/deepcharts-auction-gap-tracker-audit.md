@@ -1,5 +1,19 @@
 # Auction Gap Tracker — implementation in progress
 
+### Persistent backfill coverage receipts — 2026-09-07
+
+Added a v1 Rithmic trade-tape coverage receipt and made the existing raw-to-
+compact backfill write it atomically beside each contract tape. The receipt
+preserves exact contract/session observation bounds, print count, GAP/DROPPED
+markers and damaged gzip-member count. Only bounded, correctly ordered evidence
+with zero known integrity failures can prove a contained request window; absent,
+malformed, damaged, out-of-bounds or cross-contract evidence fails closed.
+
+The backfill still extracts only surviving raw prints and is not promoted into
+a repair mechanism. This receipt is source groundwork, not yet aggregated across
+sessions or exposed to Chart. 24 archive/coverage tests and scoped lint pass.
+Auction Gap remains Pending; no production push or deployment.
+
 ### Exact history envelope validation — 2026-09-07
 
 Added a fail-closed validator for the original Rithmic response handed to the

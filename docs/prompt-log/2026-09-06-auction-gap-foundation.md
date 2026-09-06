@@ -1,5 +1,13 @@
 # Pending-library continuation — Auction Gap Tracker
 
+2026-09-07 source-proof continuation: the raw-to-compact tape backfill now
+atomically persists a v1 coverage receipt per contract/session with observation
+bounds, source count, recorder gap/drop markers and damaged-member count.
+Only healthy evidence can prove a contained request; missing/damaged/wrong-
+contract/out-of-bounds evidence fails. 24 archive/coverage tests and scoped
+lint pass. Multi-session aggregation/live-tape proof and Chart wiring remain;
+still Pending, no push/deploy.
+
 2026-09-07 exact-history validation: added a fail-closed original-envelope
 validator covering contract/source/schema, requested bounds, positive archive
 coverage and execution-order proof, truncation, count, atomicity, v2 sides,
