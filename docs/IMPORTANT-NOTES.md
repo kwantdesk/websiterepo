@@ -472,3 +472,12 @@ recap of the open items below and update this file when their state changes.
   require exact non-`flowOnly` executions and fail closed without them. A
   reversal print belongs to the new bar exactly once; never multiply its
   volume or delta across both bars.
+
+## 2026-09-07 — On Candle Stats
+
+- On Candle Stats uses the shared execution-sequenced KWANT Stats calculator
+  but owns a separate chart-anchored text-box renderer; do not move KWANT Stats
+  out of its existing pane or treat the two catalogue rows as aliases.
+- COT High/Low/Bar, delta-trade and high/low ratios require ordered exact
+  executions. When that sequence is unavailable, those cells remain absent;
+  never derive them from candle direction or total OHLC volume.

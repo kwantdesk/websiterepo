@@ -200,7 +200,7 @@ export function calculateKwantStats(
       ? finite(candle.deltaClose, finite(candle.delta, ask - bid))
       : null;
     const totalTrades = Math.max(0, finite(candle.trades));
-    const filterValue = inputData === "Volume" ? total : totalTrades;
+    const filterValue = inputData === "Order" ? totalTrades : total;
     const passesFilter = filterValue >= filterMin && (filterMax === 0 || filterValue <= filterMax);
     const nextSession = sessionKey(candle.timestamp, startHour);
     if (nextSession !== activeSession) {

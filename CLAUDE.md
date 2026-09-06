@@ -2687,3 +2687,11 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
 - Range/Vol Bars must use exact executions and remain empty without them;
   `flowOnly` history cannot reconstruct an intrabar price path. Preserve
   one-execution/one-bar order-flow accounting at reversals.
+
+## 2026-09-07 — On Candle Stats
+
+- `on-candle-stats` and `kwant-stats` share audited calculations but not
+  presentation: the former is chart-anchored text, the latter remains a pane.
+- COT, trade-side delta and price-level ratios require ordered executions and
+  must remain blank when the tape is unavailable. Never infer those fields
+  from OHLC direction.

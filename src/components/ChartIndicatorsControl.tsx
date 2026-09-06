@@ -518,6 +518,7 @@ const OVERLAY_TIMEFRAME_HIGHLIGHT_MANAGED_SETTINGS = new Set([
 const CANDLESTICK_BAR_MANAGED_SETTINGS = new Set([
   "parameterType", "filled", "showVerticalLineOnClose", "candlestickBarSettingsVersion",
 ]);
+const ON_CANDLE_STATS_MANAGED_SETTINGS = new Set(["inputData", "pricePlot", "onCandleStatsSettingsVersion"]);
 
 export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "inverse-cyber-cycle",
@@ -541,6 +542,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "volume-delta-sprint",
   "overlay-timeframe-highlight",
   "candlestick-bar",
+  "on-candle-stats",
   "anchored-vwap",
   "zig-zag",
   "gamma-levels",
@@ -817,6 +819,10 @@ const themeColourMapFor = (indicatorId: string, chartSettings: ChartSettings) =>
   if (indicatorId === "candlestick-bar") {
     const visible = visibleIndicatorTheme(chartSettings);
     return { positiveColor: visible.positive, negativeColor: visible.negative } as Record<string, string>;
+  }
+  if (indicatorId === "on-candle-stats") {
+    const visible = visibleIndicatorTheme(chartSettings);
+    return { positiveColor: visible.positive, negativeColor: visible.negative, neutralColor: visible.secondary, textColor: visible.primary, backgroundColor: visible.muted } as Record<string, string>;
   }
   if (indicatorId === "zig-zag") {
     const visible = visibleIndicatorTheme(chartSettings);
@@ -7452,6 +7458,14 @@ export default function ChartIndicatorsControl({
                 </div>
               ) : null}
 
+              {settingsDefinition.id === "on-candle-stats" ? (
+                <div data-settings-section="Data settings" className="grid gap-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3 sm:grid-cols-2">
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"><span>Input data</span><KwantSelect value={String(settingsInstance.settings?.inputData ?? "Volume")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), inputData: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel="On Candle Stats input data"><option value="Volume">Volume</option><option value="Order">Order / trade count</option><option value="Aggregate Volume">Aggregate volume</option></KwantSelect></label>
+                  <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"><span>Price plot</span><KwantSelect value={String(settingsInstance.settings?.pricePlot ?? "price-slope")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), pricePlot: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel="On Candle Stats price plot"><option value="high">High</option><option value="low">Low</option><option value="center">Center</option><option value="price-slope">Price slope</option><option value="delta-sign">Delta sign</option></KwantSelect></label>
+                  <p className="text-[8px] leading-4 text-muted sm:col-span-2">COT and high/low ratios use the ordered execution tape. They remain hidden for bars without exact execution sequencing rather than being inferred from OHLC.</p>
+                </div>
+              ) : null}
+
               {settingsDefinition.id === "unfinished-auction" ? (
                 <div className="grid gap-3 border border-primary/20 bg-primary/[0.035] p-3 sm:grid-cols-2">
                   <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted">
@@ -8175,6 +8189,7 @@ export default function ChartIndicatorsControl({
                     && !(settingsDefinition.id === "volume-delta-sprint" && VOLUME_DELTA_SPRINT_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "overlay-timeframe-highlight" && OVERLAY_TIMEFRAME_HIGHLIGHT_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "candlestick-bar" && CANDLESTICK_BAR_MANAGED_SETTINGS.has(key))
+                    && !(settingsDefinition.id === "on-candle-stats" && ON_CANDLE_STATS_MANAGED_SETTINGS.has(key))
                     && !(VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) && VOLUME_PROFILE_VWAP_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "bounce-levels" && key === "syncGexMapColors")
                     && !(settingsDefinition.id === "super-trend" && settingsInstance.settings?.chartArea === "pane" && key === "useSecondaryAxis")

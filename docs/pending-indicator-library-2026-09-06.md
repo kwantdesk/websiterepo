@@ -120,7 +120,7 @@ Do not tick a row just because its Add gate changes.
 | `visible-range-volume-profile` | [ ] Owned range/job foundation tested; viewport/sequence-aware data integration outstanding |
 | `market-profile-tpo` | [x] Removed duplicate catalogue row; legacy ID/favourites/workspaces canonicalize to the already-complete `tpo-chart` (TPO Daily) engine and settings instead of presenting a false second Pending study |
 | `anchored-vwap` | [x] Library entry now arms the existing live draw-on Anchored VWAP with four sources, three deviation bands, fill, theme styling and persistent drawing settings |
-| `on-candle-stats` | [ ] Audit / implement / verify |
+| `on-candle-stats` | [x] Dedicated on-price text-box primitive using ordered execution statistics for volume/delta/trades, max/min delta, extension, COT and ratios; full public data/text/color/price controls, theme/persistence and tests; missing execution sequencing stays blank |
 | `important-levels` | [ ] Audit / implement / verify |
 | `absolute-levels` | [x] Batch 2; reference/default limits recorded above |
 | `pivot-points` | [x] Public formula + exact DLL/UI contract implemented; synthetic browser QA passed; native pixel/open-session parity remains limited |
@@ -189,6 +189,8 @@ Do not tick a row just because its Add gate changes.
   `docs/deepcharts-overlay-timeframe-highlight-audit.md`.
 - Candlestick Bar public contract, target/reversal Vol Bars semantics and
   exact-execution limits: `docs/deepcharts-candlestick-bar-audit.md`.
+- On Candle Stats public contract, ordered-execution calculations and
+  renderer limits: `docs/deepcharts-on-candle-stats-audit.md`.
 - Full formula/pixel parity remains unclaimed until suitable reference evidence
   and side-by-side verification exist. No provider spending is authorised by
   this task and no vendor DLL/source is to be redistributed.

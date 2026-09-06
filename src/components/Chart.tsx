@@ -8,6 +8,7 @@ import { IchimokuCloudPrimitive } from "@/lib/ichimokuCloudPrimitive";
 import { SwingPointLevelPrimitive } from "@/lib/swingPointLevelPrimitive";
 import { TextOnChartPrimitive } from "@/lib/textOnChartPrimitive";
 import { OverlayTimeframeHighlightPrimitive } from "@/lib/overlayTimeframeHighlightPrimitive";
+import { OnCandleStatsPrimitive } from "@/lib/onCandleStatsPrimitive";
 import { useSuperTrendAlerts } from "@/components/useSuperTrendAlerts";
 import { paintSuperTrendSeries } from "@/lib/superTrendSeries";
 import { SUPER_TREND_LIVE_PLOT_EVENT, SuperTrendPlotBuffer } from "@/lib/superTrendLivePlot";
@@ -3370,6 +3371,7 @@ function Chart({
     swingPointLevelPrimitive?: SwingPointLevelPrimitive;
     textOnChartPrimitive?: TextOnChartPrimitive;
     overlayTimeframeHighlightPrimitive?: OverlayTimeframeHighlightPrimitive;
+    onCandleStatsPrimitive?: OnCandleStatsPrimitive;
     superTrendDefinition?: CalculatedIndicatorSeries;
     key: string;
     kind: "line" | "histogram";
@@ -8090,6 +8092,47 @@ function Chart({
   const calculatedIndicatorSeries = useMemo(() => [
     ...chartAlignedIndicatorSeries,
     ...indicators.flatMap((instance): CalculatedIndicatorSeries[] => {
+      if (!instance.enabled || instance.indicatorId !== "on-candle-stats" || !indicatorCandles.length) return [];
+      const visible = visibleIndicatorTheme(settings);
+      const table = calculateKwantStats(indicatorCandles, indicatorMarketTrades, instance, priceFormat.minMove, {
+        positive: visible.positive,
+        negative: visible.negative,
+        neutral: visible.secondary,
+        text: visible.primary,
+        header: visible.muted,
+      });
+      const alignedCandles: Candle[] = [];
+      const alignedBars = [] as typeof table.bars;
+      indicatorCandles.forEach((candle, index) => {
+        const mappedTime = eventChartIndicatorTimeMap
+          ? eventChartIndicatorTimeMap.exact.get(candle.timestamp) ?? eventChartIndicatorTimeMap.uniqueSecond.get(Math.floor(candle.timestamp / 1_000))
+          : candle.timestamp / 1_000;
+        if (mappedTime == null) return;
+        alignedCandles.push({ ...candle, timestamp: mappedTime * 1_000 });
+        const row = table.bars[index];
+        if (row) alignedBars.push({ ...row, time: mappedTime });
+      });
+      const settingsForStudy = instance.settings ?? {};
+      const pricePlot = ["high", "low", "center", "price-slope", "delta-sign"].includes(String(settingsForStudy.pricePlot))
+        ? String(settingsForStudy.pricePlot) as "high" | "low" | "center" | "price-slope" | "delta-sign"
+        : "price-slope";
+      return [{
+        key: `${instance.instanceId}-on-candle-stats`, groupKey: instance.instanceId,
+        label: "On Candle Stats", kind: "line", placement: "overlay", color: visible.primary,
+        lineVisible: false, lastValueVisible: false, excludeFromAutoScale: true,
+        data: alignedCandles.map((candle) => ({ time: candle.timestamp / 1_000, value: candle.close })),
+        onCandleStats: {
+          candles: alignedCandles, table: { ...table, bars: alignedBars }, tickSize: priceFormat.minMove,
+          fontSize: Number(settingsForStudy.fontSize ?? 10), smallerFontSize: Number(settingsForStudy.smallerFontSize ?? 6),
+          autoTextFormat: settingsForStudy.autoTextFormat !== false, absoluteSign: settingsForStudy.absoluteSign === true,
+          opacityBasedOnRatio: settingsForStudy.opacityBasedOnRatio !== false, maxRatio: Number(settingsForStudy.maxRatio ?? 100),
+          colorTextBasedOnDelta: settingsForStudy.colorTextBasedOnDelta !== false, tickOffset: Number(settingsForStudy.tickOffset ?? 2),
+          pricePlot,
+          backgroundColor: settingsForStudy.useThemeColors !== false ? visible.muted : String(settingsForStudy.backgroundColor ?? visible.muted),
+        },
+      }];
+    }),
+    ...indicators.flatMap((instance): CalculatedIndicatorSeries[] => {
       if (!instance.enabled || instance.indicatorId !== "zero-gamma-line" || !zeroGammaLinePayload?.points.length) return [];
       const useThemeColors = instance.settings?.useThemeColors !== false;
       const opacity = Number(instance.settings?.opacity ?? 72);
@@ -8181,7 +8224,7 @@ function Chart({
         data: rankData,
       }];
     }),
-  ], [chartAlignedIndicatorSeries, candles, indicatorSignature, indicators, ivRankByInstance, optionsDeltaSeries, settings.borderUpColor, settings.downColor, settings.upColor, timeframe, zeroGammaBarsSeries, zeroGammaChartBarTimes, zeroGammaLinePayload]);
+  ], [chartAlignedIndicatorSeries, candles, eventChartIndicatorTimeMap, indicatorCandles, indicatorMarketTrades, indicatorSignature, indicators, ivRankByInstance, optionsDeltaSeries, priceFormat.minMove, settings.borderUpColor, settings.downColor, settings.gridColor, settings.upColor, timeframe, zeroGammaBarsSeries, zeroGammaChartBarTimes, zeroGammaLinePayload]);
   const calculatedIndicatorPanes = useMemo(() => {
     return indicators.flatMap((instance): IndicatorPaneGroup[] => {
       if (!instance.enabled) return [];
@@ -17199,6 +17242,7 @@ function Chart({
         if (definition.swingPointLevels) existing.swingPointLevelPrimitive?.update(definition.data, definition.swingPointLevels);
         if (definition.textOnChart) existing.textOnChartPrimitive?.update(definition.textOnChart);
         if (definition.overlayTimeframeHighlight) existing.overlayTimeframeHighlightPrimitive?.update(definition.overlayTimeframeHighlight);
+        if (definition.onCandleStats) existing.onCandleStatsPrimitive?.update(definition.onCandleStats);
         if (existing.optionsSignature !== optionsSignature) {
           existing.series.applyOptions(options);
         }
@@ -17262,6 +17306,11 @@ function Chart({
         series.attachPrimitive(overlayTimeframeHighlightPrimitive);
         overlayTimeframeHighlightPrimitive.update(definition.overlayTimeframeHighlight);
       }
+      const onCandleStatsPrimitive = definition.onCandleStats ? new OnCandleStatsPrimitive() : undefined;
+      if (onCandleStatsPrimitive && definition.onCandleStats) {
+        series.attachPrimitive(onCandleStatsPrimitive);
+        onCandleStatsPrimitive.update(definition.onCandleStats);
+      }
       return {
         superTrendLabels,
         pivotPointLabels,
@@ -17271,6 +17320,7 @@ function Chart({
         swingPointLevelPrimitive,
         textOnChartPrimitive,
         overlayTimeframeHighlightPrimitive,
+        onCandleStatsPrimitive,
         superTrendDefinition: definition.superTrendStyleKey ? definition : undefined,
         key: definition.key,
         kind,

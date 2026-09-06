@@ -22,6 +22,7 @@ import { calculateAverageDailyRangeTarget } from "@/lib/averageDailyRangeTarget"
 import { calculateVolumeDeltaSprint } from "@/lib/volumeDeltaSprint";
 import { calculateOverlayTimeframeHighlight } from "@/lib/overlayTimeframeHighlight";
 import type { OverlayTimeframeHighlightModel } from "@/lib/overlayTimeframeHighlight";
+import type { OnCandleStatsModel } from "@/lib/onCandleStatsPrimitive";
 import type { TextOnChartOptions } from "@/lib/textOnChartPrimitive";
 import { calculateTillsonT3 } from "@/lib/tillsonT3";
 import { calculateSuperTrendSeries } from "@/lib/superTrendSeries";
@@ -53,6 +54,7 @@ export type CalculatedIndicatorSeries = {
   superTrendStyleKey?: string;
   kstPresentation?: KstPanePresentation;
   overlayTimeframeHighlight?: OverlayTimeframeHighlightModel;
+  onCandleStats?: OnCandleStatsModel;
   key: string;
   groupKey?: string;
   label: string;

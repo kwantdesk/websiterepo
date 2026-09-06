@@ -210,6 +210,7 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "mini-dom",
   "deep-print-footprint",
   "kwant-stats",
+  "on-candle-stats",
   "gamma-levels",
   "overlay-chart",
   "overlay-symbol",
@@ -1375,6 +1376,14 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "coloringDeviation", label: "Standard deviations for cell coloring", defaultValue: 2, min: 0.1, max: 10, step: 0.1 },
     { key: "sessionStartHour", label: "Futures session start hour (America/Chicago)", defaultValue: 17, min: 0, max: 23 },
   ],
+  "on-candle-stats": [
+    { key: "filterMin", label: "Filter minimum", defaultValue: 0, min: 0, max: 10000000, step: 1 },
+    { key: "filterMax", label: "Filter maximum · 0 = unlimited", defaultValue: 0, min: 0, max: 10000000, step: 1 },
+    { key: "fontSize", label: "Font size", defaultValue: 10, min: 6, max: 24, step: 1 },
+    { key: "smallerFontSize", label: "Smaller font size", defaultValue: 6, min: 4, max: 18, step: 1 },
+    { key: "maxRatio", label: "Maximum opacity ratio (%)", defaultValue: 100, min: 1, max: 1000, step: 1 },
+    { key: "tickOffset", label: "Price offset (ticks)", defaultValue: 2, min: 0, max: 100, step: 1 },
+  ],
   "gamma-levels": [
     { key: "maxLevels", label: "Maximum displayed levels", defaultValue: 14, min: 4, max: 24, step: 1 },
     { key: "lineWidth", label: "Base line width", defaultValue: 1, min: 1, max: 4, step: 1 },
@@ -2394,6 +2403,48 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
     // were set by hand, so the picker does not claim a scheme it is not on.
     statsPaletteId: "",
     statsSettingsVersion: 2,
+  } : {}),
+  ...(indicatorId === "on-candle-stats" ? {
+    inputData: "Volume",
+    filterMin: 0,
+    filterMax: 0,
+    fontSize: 10,
+    smallerFontSize: 6,
+    autoTextFormat: true,
+    absoluteSign: false,
+    opacityBasedOnRatio: true,
+    maxRatio: 100,
+    colorTextBasedOnDelta: true,
+    tickOffset: 2,
+    pricePlot: "price-slope",
+    showMaxDeltaVolume: false,
+    showMinDeltaVolume: false,
+    showTotalVolume: true,
+    showDeltaVolume: true,
+    showTotalTrades: false,
+    showDeltaTrades: false,
+    showRangeTicks: false,
+    showCotHigh: false,
+    showCotLow: false,
+    showCotBar: false,
+    showDeltaPercent: false,
+    showBarRatio: false,
+    showBidVolume: false,
+    showAskVolume: false,
+    showSessionCvd: false,
+    showVolumePerSecond: false,
+    showDuration: false,
+    showHighRatio: false,
+    showLowRatio: false,
+    showTotalEffort: false,
+    showDeltaEffort: false,
+    useThemeColors: true,
+    positiveColor: theme?.upColor ?? "#22C55E",
+    negativeColor: theme?.downColor ?? "#EF4444",
+    neutralColor: theme?.borderUpColor ?? theme?.upColor ?? "#94A3B8",
+    textColor: theme?.borderUpColor ?? theme?.upColor ?? "#E5E7EB",
+    backgroundColor: theme?.gridColor ?? "#27272A",
+    onCandleStatsSettingsVersion: 1,
   } : {}),
   ...(indicatorId === "sessions" ? {
     showTokyo: true,
@@ -4042,6 +4093,20 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
         statsSettingsVersion: 2,
       },
     };
+  }
+  if (normalizedInstance.indicatorId === "on-candle-stats") {
+    const settings: Record<string, number | string | boolean> = {
+      ...defaultIndicatorSettings("on-candle-stats"),
+      ...(normalizedInstance.settings ?? {}),
+      onCandleStatsSettingsVersion: 1,
+    };
+    settings.inputData = ["Volume", "Order", "Aggregate Volume"].includes(String(settings.inputData)) ? settings.inputData : "Volume";
+    settings.pricePlot = ["high", "low", "center", "price-slope", "delta-sign"].includes(String(settings.pricePlot)) ? settings.pricePlot : "price-slope";
+    for (const definition of INDICATOR_NUMERIC_SETTINGS["on-candle-stats"] ?? []) {
+      const parsed = Number(settings[definition.key]);
+      settings[definition.key] = Math.min(definition.max, Math.max(definition.min, Number.isFinite(parsed) ? parsed : definition.defaultValue));
+    }
+    return { ...normalizedInstance, settings };
   }
   if (
     normalizedInstance.indicatorId === "gamma-levels"
