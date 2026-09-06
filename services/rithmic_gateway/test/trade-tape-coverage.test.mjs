@@ -8,6 +8,7 @@ import {
   TRADE_TAPE_COVERAGE_SCHEMA,
   coverageFileName,
   createBackfillCoverageReceipt,
+  provesCoverageIntervals,
   provesCoverageWindow,
   readCoverageReceipt,
   writeCoverageReceipt,
@@ -62,4 +63,43 @@ test("coverage receipt is atomically persisted and unreadable evidence returns n
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("separate chart-bar intervals can skip a legitimate closed-market window", () => {
+  const receipts = [
+    healthy({ observationFromMs: 1_000, observationToMs: 2_000 }),
+    healthy({ tradingDate: "2026-09-07", observationFromMs: 3_000, observationToMs: 4_000 }),
+  ];
+  assert.equal(provesCoverageIntervals(receipts, { exchange: "CME", symbol: "NQU6" }, [
+    { fromMs: 1_100, toMs: 1_900 },
+    { fromMs: 3_100, toMs: 3_900 },
+  ]), true);
+  assert.equal(provesCoverageIntervals(receipts, { exchange: "CME", symbol: "NQU6" }, [
+    { fromMs: 1_900, toMs: 3_100 },
+  ]), false, "an interval crossing an uncovered market period passed");
+});
+
+test("adjacent healthy receipts may jointly cover one bar but damaged evidence cannot", () => {
+  const receipts = [
+    healthy({ observationFromMs: 1_000, observationToMs: 1_500 }),
+    healthy({ observationFromMs: 1_500, observationToMs: 2_000 }),
+  ];
+  assert.equal(provesCoverageIntervals(receipts, { exchange: "CME", symbol: "NQU6" }, [
+    { fromMs: 1_100, toMs: 1_900 },
+  ]), true);
+  receipts[1] = healthy({ observationFromMs: 1_500, observationToMs: 2_000, gapMarkers: 1 });
+  assert.equal(provesCoverageIntervals(receipts, { exchange: "CME", symbol: "NQU6" }, [
+    { fromMs: 1_100, toMs: 1_900 },
+  ]), false);
+});
+
+test("empty, malformed and cross-contract interval proof fails closed", () => {
+  const receipt = healthy();
+  assert.equal(provesCoverageIntervals([receipt], { exchange: "CME", symbol: "NQU6" }, []), false);
+  assert.equal(provesCoverageIntervals([receipt], { exchange: "CME", symbol: "NQU6" }, [
+    { fromMs: 1_500, toMs: 1_500 },
+  ]), false);
+  assert.equal(provesCoverageIntervals([receipt], { exchange: "CME", symbol: "ESU6" }, [
+    { fromMs: 1_100, toMs: 1_900 },
+  ]), false);
 });

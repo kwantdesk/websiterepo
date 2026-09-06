@@ -1,5 +1,11 @@
 # Pending-library continuation — Auction Gap Tracker
 
+2026-09-07 interval-proof continuation: coverage can now be established against
+each actual chart-bar interval, joining adjacent healthy receipts while rejecting
+any positive hole/damage/wrong contract. Closed-market wall-clock gaps need no
+fake tape coverage. 28 archive/coverage tests and lint pass. Compact gateway
+row fold and Chart integration remain; still Pending, no push/deploy.
+
 2026-09-07 loader handoff: the bounded gateway tape response now carries its
 raw per-session coverage receipts without inventing aggregate completeness.
 25 archive/coverage tests and scoped lint pass; existing bar folds are unchanged.

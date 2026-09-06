@@ -63,6 +63,42 @@ export function provesCoverageWindow(receipt, request) {
     && Number(receipt.observationToMs) >= toMs;
 }
 
+/**
+ * Prove the market intervals the chart actually contains, rather than one
+ * continuous wall-clock span. CME maintenance/weekend closures contain no bars
+ * and therefore do not need invented coverage; every supplied bar interval
+ * still has to be fully covered by healthy same-contract evidence. Adjacent
+ * receipts may meet exactly, but any positive hole fails.
+ */
+export function provesCoverageIntervals(receipts, request, intervals) {
+  if (!Array.isArray(receipts) || !Array.isArray(intervals) || !intervals.length) return false;
+  const exchange = String(request.exchange || "").toUpperCase();
+  const symbol = String(request.symbol || "").toUpperCase();
+  const healthy = receipts.filter((receipt) => receipt
+    && receipt.exchange === exchange && receipt.symbol === symbol
+    && receipt.schemaVersion === TRADE_TAPE_COVERAGE_SCHEMA
+    && receipt.provider === "Rithmic" && receipt.integrityComplete === true
+    && receipt.executionOrderComplete === true
+    && finite(receipt.observationFromMs) && finite(receipt.observationToMs)
+    && Number(receipt.observationFromMs) <= Number(receipt.observationToMs))
+    .map((receipt) => [Number(receipt.observationFromMs), Number(receipt.observationToMs)])
+    .sort((left, right) => left[0] - right[0] || left[1] - right[1]);
+  if (!healthy.length) return false;
+  return intervals.every((interval) => {
+    const fromMs = Number(interval?.fromMs);
+    const toMs = Number(interval?.toMs);
+    if (!finite(interval?.fromMs) || !finite(interval?.toMs) || fromMs >= toMs) return false;
+    let through = fromMs;
+    for (const [start, end] of healthy) {
+      if (end < through) continue;
+      if (start > through) break;
+      through = Math.max(through, end);
+      if (through >= toMs) return true;
+    }
+    return false;
+  });
+}
+
 export async function writeCoverageReceipt(file, receipt) {
   const temporary = `${file}.tmp`;
   await writeFile(temporary, `${JSON.stringify(receipt, null, 2)}\n`, "utf8");

@@ -1,5 +1,17 @@
 # Auction Gap Tracker — implementation in progress
 
+### Market-interval coverage proof — 2026-09-07
+
+Added aggregation that proves each actual chart-bar interval from one or more
+healthy same-contract coverage receipts. Exact adjacent receipts may join; any
+positive hole, damaged receipt, invalid interval or wrong contract fails closed.
+Intervals are supplied explicitly, so CME maintenance and weekend closures with
+no chart bars are not falsely treated as missing trades.
+
+28 archive/coverage tests and scoped lint pass. The proof is not yet attached
+to a gateway-side compact row fold or Chart, so the gate remains Pending and
+there is no production push/deployment.
+
 ### Coverage evidence reaches the archive loader — 2026-09-07
 
 The existing bounded trade-tape loader now returns the raw per-session coverage

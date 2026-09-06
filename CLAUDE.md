@@ -1,5 +1,15 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-07 — Chart-interval trade-tape coverage proof
+
+- Added multi-receipt proof over explicit chart-bar intervals. Healthy adjacent
+  receipts can meet exactly; positive holes, damaged/malformed evidence and
+  cross-contract receipts fail closed.
+- Explicit intervals avoid pretending CME maintenance/weekend closures require
+  executions while still requiring every real chart bar to be covered.
+- 28 archive/coverage tests and scoped lint pass. Gateway compact-row fold and
+  Chart integration remain; Auction Gap is still Pending and not deployed.
+
 ## 2026-09-07 — Coverage receipts exposed by bounded tape loader
 
 - `TradeTapeArchive.load` now returns available raw per-session coverage
