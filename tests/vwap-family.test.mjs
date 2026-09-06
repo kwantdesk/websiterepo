@@ -5,6 +5,7 @@ import { calculatePeriodVwap, calculateRollingVwap, vwapEnvelopeOffset, vwapSour
 import { defaultIndicatorSettings, normalizeStoredIndicator } from "../src/lib/chartIndicatorConfig.ts";
 import { createDrawing, normalizeDrawings } from "../src/lib/chartDrawTools.ts";
 import { calculateIndicatorSeries } from "../src/lib/chartIndicatorEngine.ts";
+import { auditIndicatorLibrary } from "../scripts/audit-indicator-library.mjs";
 
 const candle = (iso, close, volume = 1, extra = {}) => ({
   timestamp: Date.parse(iso), open: close, high: close, low: close, close, volume, trades: 1, ...extra,
@@ -112,4 +113,11 @@ test("draw-on VWAP keeps theme linkage, bands and template-compatible settings",
   assert.match(layer, /vwapBandFillOpacity/);
   assert.match(settings, /Anchored VWAP upper band colour/);
   assert.match(settings, /saveDrawTemplate/);
+});
+
+test("Anchored VWAP library card arms the authoritative drawing tool", () => {
+  assert.ok(!auditIndicatorLibrary().pending.some(row => row.id === "anchored-vwap"));
+  const control = readFileSync(new URL("../src/components/ChartIndicatorsControl.tsx", import.meta.url), "utf8");
+  assert.match(control, /indicatorId === "anchored-vwap"/);
+  assert.match(control, /tool: indicatorId === "anchored-vwap" \? "anchoredVwap"/);
 });

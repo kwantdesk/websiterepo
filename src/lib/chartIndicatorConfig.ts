@@ -113,6 +113,7 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "average-directional-index-adx",
   "absolute-levels",
   "price-movement-levels",
+  "anchored-vwap",
   "pivot-points",
   "gap-detector",
   "fvg-identifier",

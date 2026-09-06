@@ -1,5 +1,16 @@
 # KwantDesk Engineering Handoff
 
+## 2026-09-07 — Anchored VWAP catalogue entry activated
+
+- The Pending Anchored VWAP library entry now arms the existing authoritative
+  `ChartDrawLayer` implementation instead of creating an anchorless study.
+- One chart click creates the live HLC3 VWAP; the existing drawing editor owns
+  four sources, three optional deviation bands, fill/opacity, theme colours and
+  drawing persistence. No duplicate calculator or static placeholder was added.
+- Existing VWAP-family and drawing-system tests plus the catalogue audit are the
+  release gate. Pending inventory is 17; production verification is due.
+- Prompt/outcome: `docs/prompt-log/2026-09-07-anchored-vwap-library.md`.
+
 ## 2026-09-07 — Price Movement Levels converted from Pending
 
 - Added exchange-session Open and future-safe prior-Close anchors, percentage
@@ -7,9 +18,9 @@
   support/resistance/zero plots.
 - Added the complete public/DLL setting surface, custom exchange-time windows,
   theme/custom colours, deep history and saved/template normalization.
-- Seven focused tests plus shared sliders/templates/theme and TypeScript pass.
-  Pending inventory is 18. The prior FVG production SHA `98d550f44d646891ae4df2b5eda82615118c8812`
-  is verified live; this release's build/deployment verification is due.
+- Seven focused tests plus shared sliders/templates/theme, isolated browser QA,
+  TypeScript and the 80-page production build pass. Pending inventory is 18.
+  Production SHA `64c43cdc7ed0c1628a233610346808af84a1b22e` is verified live.
 - Evidence and honest width/private-formula limits:
   `docs/deepcharts-price-movement-levels-audit.md`; prompt/outcome:
   `docs/prompt-log/2026-09-07-price-movement-levels.md`.

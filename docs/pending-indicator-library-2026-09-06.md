@@ -119,7 +119,7 @@ Do not tick a row just because its Add gate changes.
 | `session-volume-profile` | [ ] Shared-engine routing audited; session/workspace integration outstanding |
 | `visible-range-volume-profile` | [ ] Owned range/job foundation tested; viewport/sequence-aware data integration outstanding |
 | `market-profile-tpo` | [ ] Audit / implement / verify |
-| `anchored-vwap` | [ ] Audit / implement / verify |
+| `anchored-vwap` | [x] Library entry now arms the existing live draw-on Anchored VWAP with four sources, three deviation bands, fill, theme styling and persistent drawing settings |
 | `on-candle-stats` | [ ] Audit / implement / verify |
 | `important-levels` | [ ] Audit / implement / verify |
 | `absolute-levels` | [x] Batch 2; reference/default limits recorded above |

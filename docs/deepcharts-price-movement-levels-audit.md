@@ -51,4 +51,6 @@ web control honestly exposes 1–4 instead of accepting values it cannot render.
 - TypeScript passes. The broad plot-colour suite has only its already-recorded
   unrelated Ichimoku/SAR/Linear/SuperTrend/T3/KST/Text mismatches; this study
   introduces none.
-
+- The isolated synthetic browser rendered three session ladders and exposed all
+  five settings sections. The complete 80-page production build passed and SHA
+  `64c43cdc7ed0c1628a233610346808af84a1b22e` was verified live.

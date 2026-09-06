@@ -524,6 +524,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "gap-detector",
   "fvg-identifier",
   "price-movement-levels",
+  "anchored-vwap",
   "zig-zag",
   "gamma-levels",
   "overlay-chart",
@@ -1596,9 +1597,9 @@ export default function ChartIndicatorsControl({
     // A draw-on profile is a placement tool, not a study that can exist with
     // no anchors. Arm the real fixed-range profile on the active chart. The
     // resulting drawing is what persists and owns its settings/templates.
-    if (indicatorId === "custom-draw-on-volume-profile") {
+    if (indicatorId === "custom-draw-on-volume-profile" || indicatorId === "anchored-vwap") {
       window.dispatchEvent(new CustomEvent("kwantdesk:activate-chart-drawing", {
-        detail: { chartInstanceId, tool: "fixedRangeVolumeProfile" },
+        detail: { chartInstanceId, tool: indicatorId === "anchored-vwap" ? "anchoredVwap" : "fixedRangeVolumeProfile" },
       }));
       setLibraryOpen(false);
       return;

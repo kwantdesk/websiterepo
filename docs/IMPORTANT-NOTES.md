@@ -28,7 +28,9 @@
   bounded mitigation lookup and browser-verified Save/reload behavior. Price
   Movement Levels now has exchange-session Open/prior-Close anchors,
   percentage/true-tick spacing, complete support/resistance/zero styling and
-  custom-time controls. 18
+  custom-time controls. The Pending Anchored VWAP entry now opens the already
+  verified live draw-on implementation instead of remaining a dead duplicate.
+  17
   still require individual work. Monthly/Session/
   Visible profile data/settings integration remains unfinished, including exact
   multi-session filtering and event-allocation-aware visible boundaries.
