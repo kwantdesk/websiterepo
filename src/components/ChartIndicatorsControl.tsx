@@ -510,6 +510,11 @@ const VOLUME_DELTA_SPRINT_MANAGED_SETTINGS = new Set([
   "inputData", "deltaColorMode", "smoothingEnabled", "smoothingType",
   "showDelta", "showBid", "showAsk", "shortName",
 ]);
+const OVERLAY_TIMEFRAME_HIGHLIGHT_MANAGED_SETTINGS = new Set([
+  "parameterType", "colorMode", "enabled", "colorBasedOnDelta", "showBackground",
+  "targetEnabled", "targetLineStyle", "extendLineLeft", "showTargetText",
+  "summaryEnabled", "volumeSummary", "tradeSummary",
+]);
 
 export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "inverse-cyber-cycle",
@@ -531,6 +536,7 @@ export const RENDERED_CHART_INDICATOR_IDS = new Set([
   "price-movement-levels",
   "average-daily-range-target",
   "volume-delta-sprint",
+  "overlay-timeframe-highlight",
   "anchored-vwap",
   "zig-zag",
   "gamma-levels",
@@ -799,6 +805,10 @@ const themeColourMapFor = (indicatorId: string, chartSettings: ChartSettings) =>
   if (indicatorId === "volume-delta-sprint") {
     const visible = visibleIndicatorTheme(chartSettings);
     return { positiveColor: visible.positive, negativeColor: visible.negative, bidColor: visible.negative, askColor: visible.positive } as Record<string, string>;
+  }
+  if (indicatorId === "overlay-timeframe-highlight") {
+    const visible = visibleIndicatorTheme(chartSettings);
+    return { upColor: visible.positive, downColor: visible.negative, highColor: visible.positive, lowColor: visible.negative, textColor: visible.primary, summaryTextColor: visible.primary, askColor: visible.positive, bidColor: visible.negative } as Record<string, string>;
   }
   if (indicatorId === "zig-zag") {
     const visible = visibleIndicatorTheme(chartSettings);
@@ -7958,6 +7968,20 @@ export default function ChartIndicatorsControl({
                 </div>
               ) : null}
 
+              {settingsDefinition.id === "overlay-timeframe-highlight" ? (
+                <div data-settings-section="General" className="space-y-3 rounded-xl border border-primary/15 bg-primary/[0.035] p-3">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"><span>Parameter type</span><KwantSelect value={String(settingsInstance.settings?.parameterType ?? "minutes")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), parameterType: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel="Highlight timeframe type"><option value="minutes">Minutes</option><option value="hours">Hours</option><option value="days">Days</option></KwantSelect></label>
+                    <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"><span>Colour mode</span><KwantSelect value={String(settingsInstance.settings?.colorMode ?? "fixed")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), colorMode: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel="Highlight colour mode"><option value="fixed">Fixed</option><option value="fading">Fading</option></KwantSelect></label>
+                    <label className="space-y-1.5 text-[9px] uppercase tracking-[0.12em] text-muted"><span>Target line style</span><KwantSelect value={String(settingsInstance.settings?.targetLineStyle ?? "dashed")} onChange={(event) => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), targetLineStyle: event.target.value } }))} className="h-9 w-full border border-border bg-background px-3 text-[10px] normal-case tracking-normal text-foreground" menuLabel="Highlight target line style"><option value="solid">Solid</option><option value="dashed">Dashed</option><option value="dotted">Dotted</option></KwantSelect></label>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {[["Enable highlight", "enabled", true], ["Colour based on delta", "colorBasedOnDelta", false], ["Show range background", "showBackground", true], ["Range targets", "targetEnabled", false], ["Extend targets left", "extendLineLeft", false], ["Target text", "showTargetText", true], ["Summary", "summaryEnabled", false], ["Volume summary", "volumeSummary", true], ["Trade summary", "tradeSummary", true]].map(([label, key, fallback]) => { const on = settingsInstance.settings?.[String(key)] === undefined ? Boolean(fallback) : settingsInstance.settings?.[String(key)] === true; return <button key={String(key)} type="button" aria-pressed={on} onClick={() => replace(settingsInstance.instanceId, (current) => ({ ...current, settings: { ...(current.settings ?? {}), [String(key)]: !on } }))} className="flex h-9 items-center justify-between rounded-lg border border-border bg-background px-3 text-[9px] uppercase tracking-[0.1em] text-muted"><span>{String(label)}</span><span className={on ? "text-primary" : "text-muted"}>{on ? "On" : "Off"}</span></button>; })}
+                  </div>
+                  <p className="text-[8px] leading-4 text-muted">Aggregates the authoritative host candles into the selected higher timeframe. Delta colouring and Bid/Ask summaries activate only when classified executions are present.</p>
+                </div>
+              ) : null}
+
               {settingsDefinition.id === "session-imbalance" ? (
                 <div data-settings-section="General" className="space-y-4 rounded-xl border border-primary/15 bg-primary/[0.035] p-3">
                   <div className="grid gap-3 sm:grid-cols-2">
@@ -8131,6 +8155,7 @@ export default function ChartIndicatorsControl({
                     && !(settingsDefinition.id === "price-movement-levels" && PRICE_MOVEMENT_LEVELS_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "average-daily-range-target" && ADR_TARGET_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "volume-delta-sprint" && VOLUME_DELTA_SPRINT_MANAGED_SETTINGS.has(key))
+                    && !(settingsDefinition.id === "overlay-timeframe-highlight" && OVERLAY_TIMEFRAME_HIGHLIGHT_MANAGED_SETTINGS.has(key))
                     && !(VOLUME_PROFILE_INDICATOR_IDS.has(settingsDefinition.id) && VOLUME_PROFILE_VWAP_MANAGED_SETTINGS.has(key))
                     && !(settingsDefinition.id === "bounce-levels" && key === "syncGexMapColors")
                     && !(settingsDefinition.id === "super-trend" && settingsInstance.settings?.chartArea === "pane" && key === "useSecondaryAxis")

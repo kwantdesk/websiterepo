@@ -80,7 +80,7 @@ export function calculateVolumeDeltaSprintPoints(candles: readonly Candle[], raw
     const sides = classified(candle, settings.inputData);
     if (!sides || !Number.isFinite(candle.timestamp) || candle.timestamp <= previousTimestamp) {
       window = []; askSum = 0; bidSum = 0; nextBreak = true;
-      if (Number.isFinite(candle.timestamp)) previousTimestamp = candle.timestamp;
+      if (Number.isFinite(candle.timestamp)) previousTimestamp = Math.max(previousTimestamp, candle.timestamp);
       continue;
     }
     previousTimestamp = candle.timestamp;

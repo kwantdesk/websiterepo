@@ -73,7 +73,7 @@ export function buildAverageRangeBuckets(candles: readonly Candle[], type: Avera
   let seam = 0;
   for (const candle of candles) {
     if (!valid(candle, previousTimestamp)) {
-      if (Number.isFinite(candle.timestamp)) previousTimestamp = candle.timestamp;
+      if (Number.isFinite(candle.timestamp)) previousTimestamp = Math.max(previousTimestamp, candle.timestamp);
       active = null; seam += 1; continue;
     }
     previousTimestamp = candle.timestamp;

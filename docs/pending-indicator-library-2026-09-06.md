@@ -102,7 +102,7 @@ Live diagnostics returned exact SHA `18a17c4d5ba23233ae678c4a75e324f596f0927b`.
 Isolated final tree passed 90 combined tests, 18 template checks and the normal
 production build. This supersedes the local-only deployment status above/below.
 
-## Remaining 11 — not released by blanket enablement
+## Remaining 10 — not released by blanket enablement
 
 Each row needs evidence, settings/data implementation, calculation tests,
 renderer/theme/persistence verification and explicit visual/latency limits.
@@ -142,7 +142,7 @@ Do not tick a row just because its Add gate changes.
 | `inverse-cyber-cycle` | [x] Two-window inverse-Fisher oscillator, levels, complete public settings contract and persistence implemented; protected seed/pixel parity remains limited |
 | `average-directional-index-adx` | [x] Batch 3; seed and vendor-parity limitations documented |
 | `candlestick-bar` | [ ] Audit / implement / verify |
-| `overlay-timeframe-highlight` | [ ] Audit / implement / verify |
+| `overlay-timeframe-highlight` | [x] Dedicated HTF aggregation/primitive, fixed or delta-fading highlight, body/shadow/range styling, high/low targets, bounded summaries, theme/persistence and focused tests; protected edge/pixel/live-soak limits documented |
 | `annotations-overlay` | [ ] Audit / implement / verify |
 | `text-on-chart` | [x] Fixed multiline viewport overlay, full public/DLL settings contract, autoscale safety and browser Save QA |
 
@@ -184,6 +184,9 @@ Do not tick a row just because its Add gate changes.
 - Volume/Delta Sprint public/DLL settings, rolling execution contract and
   explicit allocation/pixel limits:
   `docs/deepcharts-volume-delta-sprint-audit.md`.
+- Overlay Timeframe Highlight public contract, aggregation/primitive and
+  explicit edge/pixel limits:
+  `docs/deepcharts-overlay-timeframe-highlight-audit.md`.
 - Full formula/pixel parity remains unclaimed until suitable reference evidence
   and side-by-side verification exist. No provider spending is authorised by
   this task and no vendor DLL/source is to be redistributed.

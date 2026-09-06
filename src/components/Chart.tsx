@@ -7,6 +7,7 @@ import { ZigZagRetracementPrimitive } from "@/lib/zigZagRetracementPrimitive";
 import { IchimokuCloudPrimitive } from "@/lib/ichimokuCloudPrimitive";
 import { SwingPointLevelPrimitive } from "@/lib/swingPointLevelPrimitive";
 import { TextOnChartPrimitive } from "@/lib/textOnChartPrimitive";
+import { OverlayTimeframeHighlightPrimitive } from "@/lib/overlayTimeframeHighlightPrimitive";
 import { useSuperTrendAlerts } from "@/components/useSuperTrendAlerts";
 import { paintSuperTrendSeries } from "@/lib/superTrendSeries";
 import { SUPER_TREND_LIVE_PLOT_EVENT, SuperTrendPlotBuffer } from "@/lib/superTrendLivePlot";
@@ -559,6 +560,7 @@ const DEEP_HISTORY_INDICATOR_IDS = new Set([
   "price-movement-levels",
   // Daily/weekly/monthly targets can require hundreds of completed periods.
   "average-daily-range-target",
+  "overlay-timeframe-highlight",
   // Single-pass running extremes; the selectable 10k confirmation window and
   // long structural swings must not be truncated to the 1.5k lite tail.
   "zig-zag",
@@ -3366,6 +3368,7 @@ function Chart({
     ichimokuCloudPrimitive?: IchimokuCloudPrimitive;
     swingPointLevelPrimitive?: SwingPointLevelPrimitive;
     textOnChartPrimitive?: TextOnChartPrimitive;
+    overlayTimeframeHighlightPrimitive?: OverlayTimeframeHighlightPrimitive;
     superTrendDefinition?: CalculatedIndicatorSeries;
     key: string;
     kind: "line" | "histogram";
@@ -17154,6 +17157,7 @@ function Chart({
         if (definition.ichimokuCloud) existing.ichimokuCloudPrimitive?.update(definition.ichimokuCloud);
         if (definition.swingPointLevels) existing.swingPointLevelPrimitive?.update(definition.data, definition.swingPointLevels);
         if (definition.textOnChart) existing.textOnChartPrimitive?.update(definition.textOnChart);
+        if (definition.overlayTimeframeHighlight) existing.overlayTimeframeHighlightPrimitive?.update(definition.overlayTimeframeHighlight);
         if (existing.optionsSignature !== optionsSignature) {
           existing.series.applyOptions(options);
         }
@@ -17212,6 +17216,11 @@ function Chart({
         series.attachPrimitive(textOnChartPrimitive);
         textOnChartPrimitive.update(definition.textOnChart);
       }
+      const overlayTimeframeHighlightPrimitive = definition.overlayTimeframeHighlight ? new OverlayTimeframeHighlightPrimitive() : undefined;
+      if (overlayTimeframeHighlightPrimitive && definition.overlayTimeframeHighlight) {
+        series.attachPrimitive(overlayTimeframeHighlightPrimitive);
+        overlayTimeframeHighlightPrimitive.update(definition.overlayTimeframeHighlight);
+      }
       return {
         superTrendLabels,
         pivotPointLabels,
@@ -17220,6 +17229,7 @@ function Chart({
         ichimokuCloudPrimitive,
         swingPointLevelPrimitive,
         textOnChartPrimitive,
+        overlayTimeframeHighlightPrimitive,
         superTrendDefinition: definition.superTrendStyleKey ? definition : undefined,
         key: definition.key,
         kind,

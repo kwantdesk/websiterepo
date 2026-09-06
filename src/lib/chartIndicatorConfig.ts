@@ -100,6 +100,7 @@ import { SESSION_MARKER_DEFAULTS, normalizeSessionMarkerSettings } from "@/lib/s
 import { SESSION_IMBALANCE_DEFAULTS, normalizeSessionImbalanceSettings } from "@/lib/sessionImbalance";
 import { AVERAGE_DAILY_RANGE_TARGET_DEFAULTS, normalizeAverageDailyRangeTargetSettings } from "@/lib/averageDailyRangeTarget";
 import { VOLUME_DELTA_SPRINT_DEFAULTS, normalizeVolumeDeltaSprintSettings } from "@/lib/volumeDeltaSprint";
+import { OVERLAY_TIMEFRAME_HIGHLIGHT_DEFAULTS, normalizeOverlayTimeframeHighlightSettings } from "@/lib/overlayTimeframeHighlight";
 
 export const LIVE_CHART_INDICATOR_IDS = new Set([
   "zig-zag",
@@ -119,6 +120,7 @@ export const LIVE_CHART_INDICATOR_IDS = new Set([
   "price-movement-levels",
   "average-daily-range-target",
   "volume-delta-sprint",
+  "overlay-timeframe-highlight",
   "anchored-vwap",
   "pivot-points",
   "gap-detector",
@@ -1392,6 +1394,17 @@ export const INDICATOR_NUMERIC_SETTINGS: Record<string, IndicatorNumericSetting[
     { key: "borderWidth", label: "Candle border width", defaultValue: 1, min: 1, max: 4, step: 1 },
     { key: "opacity", label: "Higher-timeframe candle opacity (%)", defaultValue: 34, min: 5, max: 100, step: 1 },
   ],
+  "overlay-timeframe-highlight": [
+    { key: "parameter1", label: "Timeframe value", defaultValue: 15, min: 1, max: 10080, step: 1 },
+    { key: "standardDeviation", label: "Std. dev. for colouring", defaultValue: 2, min: 0.1, max: 10, step: 0.1 },
+    { key: "borderWidth", label: "Border width", defaultValue: 1, min: 1, max: 4, step: 1 },
+    { key: "bodyOpacity", label: "Body opacity (%)", defaultValue: 18, min: 0, max: 100, step: 1 },
+    { key: "shadowOpacity", label: "Shadow opacity (%)", defaultValue: 70, min: 0, max: 100, step: 1 },
+    { key: "targetLineWidth", label: "Target line width", defaultValue: 1, min: 1, max: 4, step: 1 },
+    { key: "textSize", label: "Target text size", defaultValue: 10, min: 6, max: 30, step: 1 },
+    { key: "summaryTextSize", label: "Summary text size", defaultValue: 9, min: 6, max: 24, step: 1 },
+    { key: "summaryToView", label: "Summary candles to view", defaultValue: 3, min: 1, max: 100, step: 1 },
+  ],
   "deep-m-ivb": [
     { key: "lookbackSessions", label: "Completed sessions in empirical model", defaultValue: 20, min: 3, max: 120, step: 1 },
     { key: "zoneWidthTicks", label: "Support / resistance zone width (ticks)", defaultValue: 4, min: 1, max: 40, step: 1 },
@@ -1603,6 +1616,7 @@ const indicatorSettingsFromTheme = (indicatorId: string, theme?: ChartSettings) 
   ...(indicatorId === "price-movement-levels" ? PRICE_MOVEMENT_LEVEL_DEFAULTS : {}),
   ...(indicatorId === "average-daily-range-target" ? AVERAGE_DAILY_RANGE_TARGET_DEFAULTS : {}),
   ...(indicatorId === "volume-delta-sprint" ? VOLUME_DELTA_SPRINT_DEFAULTS : {}),
+  ...(indicatorId === "overlay-timeframe-highlight" ? OVERLAY_TIMEFRAME_HIGHLIGHT_DEFAULTS : {}),
   ...(indicatorId === "price-movement-levels" ? {
     textColor: theme?.borderUpColor ?? theme?.upColor ?? "#FFFFFF",
   } : {}),
@@ -3107,6 +3121,11 @@ export const normalizeStoredIndicator = (instance: ChartIndicatorInstance): Char
   if (normalizedInstance.indicatorId === "volume-delta-sprint") {
     return { ...normalizedInstance, settings: normalizeVolumeDeltaSprintSettings({
       ...defaultIndicatorSettings("volume-delta-sprint"), ...(normalizedInstance.settings ?? {}),
+    }) };
+  }
+  if (normalizedInstance.indicatorId === "overlay-timeframe-highlight") {
+    return { ...normalizedInstance, settings: normalizeOverlayTimeframeHighlightSettings({
+      ...defaultIndicatorSettings("overlay-timeframe-highlight"), ...(normalizedInstance.settings ?? {}),
     }) };
   }
   if (["vwap", "vwap-envelopes", "rolling-vwap"].includes(normalizedInstance.indicatorId)) {

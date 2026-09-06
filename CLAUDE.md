@@ -2670,3 +2670,10 @@ uncommitted Chart.tsx profile-style block of mine — harmless, it is in main.
   the segment, never become a zero bar, and filters apply to the selected
   per-bar side values unless future provider evidence establishes a different
   protected allocation.
+
+## 2026-09-07 — Overlay Timeframe Highlight
+
+- Overlay Timeframe Highlight derives only from the host chart's authoritative
+  ordered candles and owns no feed subscription. Invalid/duplicate/out-of-order
+  input breaks a visual segment. Delta colour and Bid/Ask summaries require
+  classified execution fields; never infer them from candle direction.
