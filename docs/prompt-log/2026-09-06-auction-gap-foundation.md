@@ -209,3 +209,11 @@ receipt is continuous. Focused gateway and browser receipt tests, 108 existing
 Auction Gap tests and project TypeScript pass. This is delivery-boundary proof,
 not an upstream Rithmic completeness claim. Pending remains unchanged; browser,
 alerts, closed-market and live-session soak still block release.
+
+2026-09-07 alert continuation: connected Auction Gap's sound/popup settings to
+the established chart alert event with stable zone-ID deduplication and source
+timestamps. Initial history, replay, market-closed state, stream reconnect/
+damage, historical corrections, scope changes and disabled channels are silent
+and become the new baseline. Four alert lifecycle tests bring the focused suite
+to 112/112; TypeScript and module lint pass. Interactive authenticated-browser
+presentation and live-session soak remain, so the Pending gate stays unchanged.

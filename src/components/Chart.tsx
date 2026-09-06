@@ -589,6 +589,10 @@ import { AuctionGapWorkerClient } from "@/lib/auctionGapWorkerClient";
 import { buildAuctionGapPlotModels, type AuctionGapPlotModel } from "@/lib/auctionGapPlot";
 import { AuctionGapPrimitive } from "@/lib/auctionGapPrimitive";
 import { normalizeAuctionGapSettings } from "@/lib/auctionGapSettings";
+import {
+  collectAuctionGapAlerts,
+  createAuctionGapAlertState,
+} from "@/lib/auctionGapAlerts";
 import { compactTimeZoneLabel, normalizeTimeZone } from "@/lib/timeZones";
 import { resolveChartLevelOverlaps } from "@/lib/chartLevelOverlap";
 import type {
@@ -3354,6 +3358,7 @@ function Chart({
   const auctionGapPrimitiveRef = useRef<AuctionGapPrimitive | null>(null);
   const auctionGapModelsRef = useRef<AuctionGapPlotModel[]>([]);
   const auctionGapRuntimeRef = useRef<AuctionGapChartRuntime | null>(null);
+  const auctionGapAlertStateRef = useRef(createAuctionGapAlertState());
   const positionCalculatorPrimitiveRef = useRef<PositionCalculatorPrimitive | null>(null);
   const repaintNotifierRef = useRef<ChartRepaintNotifierPrimitive | null>(null);
   const imbalanceZoneModelsRef = useRef<ImbalanceZoneModel[]>([]);
@@ -5905,6 +5910,7 @@ function Chart({
       auctionGapReplayWindowKey,
     ]);
     let disposed = false;
+    auctionGapAlertStateRef.current = createAuctionGapAlertState();
     const client = new AuctionGapWorkerClient((reply) => {
       const runtime = auctionGapRuntimeRef.current;
       if (disposed || reply.scope !== scope || !runtime || runtime.scope !== scope) return;
@@ -5916,6 +5922,30 @@ function Chart({
           auctionGapPrimitiveRef.current?.update([]);
         }
         return;
+      }
+      const alertSettingsEnabled = normalized.alertSoundEnabled === true
+        || normalized.messagePopupEnabled === true;
+      const alerts = collectAuctionGapAlerts(auctionGapAlertStateRef.current, {
+        scope,
+        zones: reply.result.zones,
+        sourceTimestampForIndex: (index) => runtime.candles[index]?.timestamp ?? null,
+        live: marketIsActive === true && !auctionGapReplayActive,
+        continuous: runtime.continuity === "continuous",
+        enabled: alertSettingsEnabled,
+      });
+      for (const alert of alerts) {
+        window.dispatchEvent(new CustomEvent("kwantdesk:chart-indicator-alert", {
+          detail: {
+            indicatorId: "auction-gap-tracker",
+            instanceId: auctionGapIndicator.instanceId,
+            instrument,
+            title: String(normalized.alertName),
+            message: String(normalized.alertMessage),
+            sound: normalized.alertSoundEnabled === true ? "default" : null,
+            popup: normalized.messagePopupEnabled === true,
+            event: alert,
+          },
+        }));
       }
       const models = buildAuctionGapPlotModels(
         reply.result.zones,
@@ -6003,6 +6033,7 @@ function Chart({
     settings.downColor,
     settings.gridColor,
     settings.upColor,
+    marketIsActive,
     timeframe,
   ]);
 

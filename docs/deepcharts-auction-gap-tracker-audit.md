@@ -591,3 +591,21 @@ source-integrity gates. Two gateway handoff tests, two browser receipt tests,
 108 existing Auction Gap tests and full TypeScript compilation pass. The
 indicator remains Pending until browser rendering, settings interaction, alert
 lifecycle, closed-market behavior and live-market soak are verified.
+
+### Alert lifecycle, 2026-09-07
+
+The existing sound/message controls now drive the shared chart-indicator alert
+event. The alert state hydrates the entire first historical result silently and
+deduplicates by the stable zone identity. Only a newly observed zone at or
+after the prior source-time watermark can alert. Replay, a closed market, an
+unproved execution stream, disabled alert channels, settings/scope changes and
+historical corrections all advance the baseline without emitting; a later
+state change therefore cannot replay a stale alert. Alert events carry the
+exchange-sourced zone timestamp and exact tick bounds, never `Date.now()` as
+the event identity.
+
+Four lifecycle tests cover first hydration, one-shot live emission, closed/
+replay-equivalent silence, continuity failure, settings changes, corrections
+and muted deduplication. The complete focused Auction Gap suite is 112/112;
+project TypeScript and the new module's ESLint pass. Browser sound/popup
+presentation and live-market observation are still required before release.
